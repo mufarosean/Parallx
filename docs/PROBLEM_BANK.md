@@ -138,6 +138,32 @@ the Starred card under Work On Next on the Dashboard, and the Starred and
 Not Starred chips in the quiz builder (Starred also sets the length to the
 count, so the other chips can narrow it further).
 
+## Quizzes are saved things (2026-09-17)
+
+Mufaro, after losing a campaign quiz: he rates every problem in the first
+minutes, before working any, and the quiz was marked complete under him,
+so the Dashboard offered no resume, and the campaign button made a new
+quiz of his starred problems instead. One button started, finished and
+replaced. The rule now:
+
+- A quiz has a NAME (ws_quiz_session.name; migration 009 adds name and
+  touched_at). Home, the Dashboard and the builder name them (Starred, Due
+  Problems, Day N Draw, the builder's filters or a typed name); Rename on
+  the overview changes it. Home lists every quiz under its name with its
+  status: in progress and where, at the summary, or completed when.
+- Several quizzes may be open at once. Starting one never closes another.
+- COMPLETE QUIZ, on the summary screen, is the only way a quiz finishes.
+  Rating every problem does not; the last Next does not (it opens the
+  summary, labelled Quiz Summary); nothing else does. finishQuizSession has
+  one caller.
+- REOPEN QUIZ makes a completed quiz open again, at its last problem.
+- COPY QUIZ makes a new open quiz over the same problems in the same order.
+- Resume on the Dashboard is the open quiz used last (touched_at), at
+  whatever step it stands, the summary included.
+- The overview head carries the name, Rename, Copy Quiz and Quiz Summary
+  (or Reopen Quiz); the summary carries Complete Quiz / Back To Quiz (or
+  Reopen Quiz), Copy Quiz, Quiz Overview, New Quiz, Dashboard, Home.
+
 ## Build order
 
 1. DONE 2026-09-08: OOXML reader and the one-sheet model

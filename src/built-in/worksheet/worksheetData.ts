@@ -419,49 +419,76 @@ export async function saveDailyDraw(day: string, ids: number[]): Promise<void> {
   await run('INSERT INTO ws_daily_draw (day, item_ids) VALUES (?, ?) ON CONFLICT(day) DO UPDATE SET item_ids = excluded.item_ids', [day, JSON.stringify(ids)]);
 }
 
-// ── Quiz sessions (the running quiz, stored so a restart resumes it) ────────
+// ── Quiz sessions (saved quizzes: named, resumable, completed only by hand) ──
+//
+// A quiz is a saved thing (Mufaro, 2026-09-17): it has a name, several may
+// be open at once, and nothing finishes it except Complete Quiz on its
+// summary. Rating every problem, reaching the last one, or starting another
+// quiz never closes it; that is what lost him a campaign quiz to "review".
+// touched_at is the last save, so the most recently used open quiz is the
+// one the Dashboard offers to resume.
 
-export interface QuizSessionRow { readonly id: string; readonly itemIds: number[]; readonly position: number; readonly skipped: number[]; readonly startedAt: number; readonly finishedAt: number | null }
+export interface QuizSessionRow {
+  readonly id: string;
+  readonly name: string;
+  readonly itemIds: number[];
+  readonly position: number;
+  readonly skipped: number[];
+  readonly startedAt: number;
+  readonly touchedAt: number;
+  readonly finishedAt: number | null;
+}
 function parseIdList(raw: unknown): number[] {
   try { const v = JSON.parse(String(raw ?? '[]')); return Array.isArray(v) ? v.map(Number).filter((n) => Number.isFinite(n)) : []; } catch { return []; }
 }
 function rowToSession(row: Record<string, unknown>): QuizSessionRow {
-  return { id: String(row.id), itemIds: parseIdList(row.item_ids), position: Number(row.position ?? 0), skipped: parseIdList(row.skipped), startedAt: Number(row.started_at), finishedAt: row.finished_at == null ? null : Number(row.finished_at) };
+  return {
+    id: String(row.id), name: String(row.name ?? ''), itemIds: parseIdList(row.item_ids), position: Number(row.position ?? 0), skipped: parseIdList(row.skipped),
+    startedAt: Number(row.started_at), touchedAt: Number(row.touched_at ?? row.started_at), finishedAt: row.finished_at == null ? null : Number(row.finished_at),
+  };
 }
-const SESSION_COLS = 'id, item_ids, position, skipped, started_at, finished_at';
+const SESSION_COLS = 'id, name, item_ids, position, skipped, started_at, touched_at, finished_at';
+const LAST_USED = 'COALESCE(touched_at, started_at) DESC';
+/** The open quiz used most recently: what Resume Quiz means. */
 export async function getOpenQuizSession(): Promise<QuizSessionRow | null> {
-  const row = await getRow(`SELECT ${SESSION_COLS} FROM ws_quiz_session WHERE finished_at IS NULL ORDER BY started_at DESC LIMIT 1`);
+  const row = await getRow(`SELECT ${SESSION_COLS} FROM ws_quiz_session WHERE finished_at IS NULL ORDER BY ${LAST_USED} LIMIT 1`);
   return row ? rowToSession(row) : null;
 }
 export async function getQuizSession(id: string): Promise<QuizSessionRow | null> {
   const row = await getRow(`SELECT ${SESSION_COLS} FROM ws_quiz_session WHERE id = ?`, [id]);
   return row ? rowToSession(row) : null;
 }
-/** Every quiz, newest first: the open one and the finished ones to review. */
+/** Every quiz: the open ones first, then the completed ones, each by last use. */
 export async function listQuizSessions(limit = 12): Promise<QuizSessionRow[]> {
-  const rows = await allRows(`SELECT ${SESSION_COLS} FROM ws_quiz_session ORDER BY started_at DESC LIMIT ?`, [limit]);
+  const rows = await allRows(`SELECT ${SESSION_COLS} FROM ws_quiz_session ORDER BY (finished_at IS NULL) DESC, ${LAST_USED} LIMIT ?`, [limit]);
   return rows.map(rowToSession).filter((s) => s.itemIds.length > 0);
 }
 export async function countFinishedQuizSessions(): Promise<number> {
   const row = await getRow('SELECT count(*) AS n FROM ws_quiz_session WHERE finished_at IS NOT NULL');
   return Number(row?.n ?? 0);
 }
-/** Upsert; `announce` tells open panes (the Dashboard's Resume Quiz) when a quiz begins. */
-export async function saveQuizSession(s: QuizSessionRow, announce = false): Promise<void> {
+/** Upsert; every save is a touch. `announce` tells open panes (the Dashboard's Resume Quiz) when a quiz begins. */
+export async function saveQuizSession(s: Omit<QuizSessionRow, 'touchedAt'>, announce = false): Promise<void> {
   await run(
-    `INSERT INTO ws_quiz_session (id, item_ids, position, skipped, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET item_ids = excluded.item_ids, position = excluded.position, skipped = excluded.skipped, finished_at = excluded.finished_at`,
-    [s.id, JSON.stringify(s.itemIds), s.position, JSON.stringify(s.skipped), s.startedAt, s.finishedAt],
+    `INSERT INTO ws_quiz_session (id, name, item_ids, position, skipped, started_at, touched_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET name = excluded.name, item_ids = excluded.item_ids, position = excluded.position, skipped = excluded.skipped, touched_at = excluded.touched_at, finished_at = excluded.finished_at`,
+    [s.id, s.name, JSON.stringify(s.itemIds), s.position, JSON.stringify(s.skipped), s.startedAt, Date.now(), s.finishedAt],
   );
   if (announce) emitChange();
 }
-export async function finishQuizSession(id: string): Promise<void> {
-  await run('UPDATE ws_quiz_session SET finished_at = ? WHERE id = ? AND finished_at IS NULL', [Date.now(), id]);
+export async function renameQuizSession(id: string, name: string): Promise<void> {
+  await run('UPDATE ws_quiz_session SET name = ?, touched_at = ? WHERE id = ?', [name, Date.now(), id]);
   emitChange();
 }
-/** One quiz at a time: starting another closes whatever was left open. */
-export async function finishOpenQuizSessions(): Promise<void> {
-  await run('UPDATE ws_quiz_session SET finished_at = ? WHERE finished_at IS NULL', [Date.now()]);
+/** Complete Quiz: the one and only way a quiz finishes. */
+export async function finishQuizSession(id: string): Promise<void> {
+  await run('UPDATE ws_quiz_session SET finished_at = ?, touched_at = ? WHERE id = ? AND finished_at IS NULL', [Date.now(), Date.now(), id]);
+  emitChange();
+}
+/** Reopen Quiz: a completed quiz goes back to open, where it was. */
+export async function reopenQuizSession(id: string): Promise<void> {
+  await run('UPDATE ws_quiz_session SET finished_at = NULL, touched_at = ? WHERE id = ?', [Date.now(), id]);
+  emitChange();
 }
 
 /** Every completed attempt, newest first, for the dashboard's timeline and score. */

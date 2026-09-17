@@ -25,7 +25,7 @@ import {
   discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
   getSessionGrades, attachWorksheetDatabase, recordImportedRating, upsertProgressSnapshot,
   getCampaign, startCampaign, endCampaign, listCompletedAttempts,
-  getOpenQuizSession, saveQuizSession, finishQuizSession, finishOpenQuizSessions,
+  getOpenQuizSession, saveQuizSession, finishQuizSession, renameQuizSession, reopenQuizSession,
   getQuizSession, listQuizSessions, getSessionItemStates, getProblemNotes, setProblemNote, setItemStarred, getStarred,
   type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
@@ -685,7 +685,7 @@ function createLauncherPane(container: HTMLElement) {
     // Starred: the student's own set, every one of them, in bank order.
     const starred = items.filter((it) => it.starred);
     tile('Quiz Starred', starred.length ? `${starred.length} starred · every one of them, in order.` : 'Star problems from their sheet; they collect here.', 'bank', 'Problem Bank', false,
-      () => { if (starred.length) startQuizWith(starred.map((it) => it.id)); else void openWorksheet('bank', 'Problem Bank'); });
+      () => { if (starred.length) startQuizWith(starred.map((it) => it.id), 0, 'Starred'); else void openWorksheet('bank', 'Problem Bank'); });
     tile('Dashboard', dashDesc, 'dashboard', 'Dashboard');
     tile('Problem Bank', problems.length ? `${problems.length} problems · ${rated} rated` : 'Empty until you import a workbook.', 'bank', 'Problem Bank');
     tile('Import Workbook', 'A ProblemTrack workbook, every sheet as it is.', 'excel-import', 'Import Workbook');
@@ -712,10 +712,6 @@ function createLauncherPane(container: HTMLElement) {
         box.appendChild(row);
       }
       lists.appendChild(box);
-    };
-    const when = (ms: number) => {
-      const days = Math.floor((Date.now() - ms) / 86400000);
-      return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
     };
     const recent = items.filter((it) => it.lastAttemptAt > 0).sort((a, b) => b.lastAttemptAt - a.lastAttemptAt).slice(0, 8);
     listOf('Recent', recent, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'in progress' : gradeLabel(it.attemptState), when(it.lastAttemptAt)].filter(Boolean).join(' · '));
@@ -745,10 +741,11 @@ function createLauncherPane(container: HTMLElement) {
         row.appendChild(el('span', `ws-bank__dot ${q.finishedAt ? 'rest' : 'open'}`));
         const text = el('span', 'ws-launch__rowtext');
         const started = new Date(q.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-        text.appendChild(el('span', 'ws-launch__rowtitle', `${started} · ${q.itemIds.length} ${q.itemIds.length === 1 ? 'problem' : 'problems'}${q.finishedAt ? '' : ' · in progress'}`));
+        const status = q.finishedAt ? `completed ${when(q.finishedAt)}` : q.position >= q.itemIds.length ? 'at the summary' : `in progress · ${q.position + 1} of ${q.itemIds.length}`;
+        text.appendChild(el('span', 'ws-launch__rowtitle', `${q.name || started} · ${q.itemIds.length} ${q.itemIds.length === 1 ? 'problem' : 'problems'} · ${status}`));
         text.appendChild(el('span', 'ws-launch__rowmeta', `${counts.easy} Easy · ${counts.medium} Medium · ${counts.hard} Hard · ${unrated} not rated`));
         row.appendChild(text);
-        row.title = q.finishedAt ? 'Reopen this quiz to review the work and the ratings.' : 'Resume this quiz where it was.';
+        row.title = q.finishedAt ? 'A completed quiz: open it to review the work and the ratings. Reopen Quiz on its summary makes it open again.' : 'Resume this quiz where it was.';
         row.addEventListener('click', () => void openPastQuiz(q.id));
         box.appendChild(row);
       }
@@ -1193,6 +1190,8 @@ function createGeneratePane(container: HTMLElement) {
 interface RunningPractice {
   /** The stored session (ws_quiz_session); attempts rated inside carry it. */
   id: string;
+  /** The quiz's name: given on Home, the Dashboard or the builder, changed from the overview. */
+  name: string;
   ids: number[];
   index: number;
   startedAt: number;
@@ -1212,13 +1211,24 @@ function newQuizId(): string {
 async function persistPractice(announce = false): Promise<void> {
   const s = _practice;
   if (!s) return;
-  await saveQuizSession({ id: s.id, itemIds: s.ids, position: s.index, skipped: [...s.skipped], startedAt: s.startedAt, finishedAt: s.finishedAt }, announce)
+  await saveQuizSession({ id: s.id, name: s.name, itemIds: s.ids, position: s.index, skipped: [...s.skipped], startedAt: s.startedAt, finishedAt: s.finishedAt }, announce)
     .catch((err) => console.warn('[Worksheet] quiz session save failed:', err));
 }
-/** A new quiz over these problems, starting at `startAt`; any open quiz closes. */
-async function beginPractice(ids: number[], startAt = 0): Promise<void> {
-  await finishOpenQuizSessions().catch(() => {});
-  _practice = { id: newQuizId(), ids: [...ids], index: Math.max(0, Math.min(startAt, ids.length - 1)), startedAt: Date.now(), skipped: new Set(), finishedAt: null };
+/** "today", "yesterday", "N days ago": how Home and the quiz screens date things. */
+function when(ms: number): string {
+  const days = Math.floor((Date.now() - ms) / 86400000);
+  return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+}
+/** A quiz named after the moment it began, when nothing better was given. */
+function defaultQuizName(count: number): string {
+  const at = new Date().toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return `${count} ${count === 1 ? 'Problem' : 'Problems'} · ${at}`;
+}
+/** A new, named quiz over these problems, starting at `startAt`. Open quizzes
+ *  stay open: a quiz is a saved thing, and only Complete Quiz on its summary
+ *  finishes it (Mufaro, 2026-09-17). */
+async function beginPractice(ids: number[], startAt = 0, name = ''): Promise<void> {
+  _practice = { id: newQuizId(), name: name.trim() || defaultQuizName(ids.length), ids: [...ids], index: Math.max(0, Math.min(startAt, ids.length - 1)), startedAt: Date.now(), skipped: new Set(), finishedAt: null };
   await persistPractice(true);
   for (const fn of _practiceListeners) { try { fn(); } catch { /* pane torn down */ } }
 }
@@ -1227,7 +1237,7 @@ async function restorePractice(): Promise<RunningPractice | null> {
   if (_practice) return _practice;
   const row = await getOpenQuizSession().catch(() => null);
   if (!row || row.itemIds.length === 0) return null;
-  _practice = { id: row.id, ids: row.itemIds, index: Math.max(0, Math.min(row.position, row.itemIds.length)), startedAt: row.startedAt, skipped: new Set(row.skipped), finishedAt: null };
+  _practice = { id: row.id, name: row.name, ids: row.itemIds, index: Math.max(0, Math.min(row.position, row.itemIds.length)), startedAt: row.startedAt, skipped: new Set(row.skipped), finishedAt: null };
   return _practice;
 }
 /** A past quiz reopened: the same player over the same problems, with the
@@ -1236,7 +1246,7 @@ async function openPastQuiz(id: string): Promise<void> {
   const row = await getQuizSession(id).catch(() => null);
   if (!row || row.itemIds.length === 0) return;
   _practice = {
-    id: row.id, ids: row.itemIds, startedAt: row.startedAt, skipped: new Set(row.skipped), finishedAt: row.finishedAt,
+    id: row.id, name: row.name, ids: row.itemIds, startedAt: row.startedAt, skipped: new Set(row.skipped), finishedAt: row.finishedAt,
     index: row.finishedAt ? 0 : Math.max(0, Math.min(row.position, row.itemIds.length)),
   };
   for (const fn of _practiceListeners) { try { fn(); } catch { /* pane torn down */ } }
@@ -1249,12 +1259,12 @@ function quizSessionIdFor(itemId: number): string | undefined {
 /** Filters chosen elsewhere (the dashboard's Quiz buttons), taken by the next quiz builder. */
 let _quizPreset: { papers?: string[]; state?: string } | null = null;
 
-/** A quiz over exactly these problems, in this order. */
-function startQuizWith(ids: number[], startAt = 0): void {
+/** A new quiz over exactly these problems, in this order, under `name`. */
+function startQuizWith(ids: number[], startAt = 0, name = ''): void {
   if (ids.length === 0) return;
   void (async () => {
-    await beginPractice(ids, startAt);
-    if (_api?.activity) _api.activity.note('started', `a quiz of ${ids.length} ${ids.length === 1 ? 'problem' : 'problems'}`);
+    await beginPractice(ids, startAt, name);
+    if (_api?.activity) _api.activity.note('started', `the quiz "${_practice?.name ?? name}" (${ids.length} ${ids.length === 1 ? 'problem' : 'problems'})`);
     await openWorksheet('practice-run', 'Quiz');
   })();
 }
@@ -1306,6 +1316,24 @@ function createPracticeConfigPane(container: HTMLElement) {
   shuffleIn.type = 'checkbox'; shuffleIn.checked = true;
   shuffleWrap.append(shuffleIn, document.createTextNode(' Shuffle'));
   optRow.appendChild(shuffleWrap);
+
+  // The quiz's name: what Home lists it under. Empty takes the filters.
+  root.appendChild(el('div', 'ws-sidebar__label', 'Name'));
+  const nameRow = el('div', 'ws-create__controls');
+  const nameIn = el('input', 'ws-input') as HTMLInputElement;
+  nameIn.type = 'text';
+  nameIn.maxLength = 80;
+  nameIn.title = 'The quiz is saved under this name and listed on Home until you complete it.';
+  nameRow.appendChild(nameIn);
+  root.appendChild(nameRow);
+  const filtersName = (): string => {
+    const papers = [...filters.papers].map(paperLabel);
+    const parts = [papers.length ? papers.join(', ') : 'All Papers'];
+    if (filters.state !== 'all') parts.push(filters.state.charAt(0).toUpperCase() + filters.state.slice(1));
+    if (filters.starred === 'starred') parts.push('Starred');
+    if (filters.starred === 'unstarred') parts.push('Not Starred');
+    return parts.join(' · ');
+  };
 
   const startBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
   startBtn.textContent = 'Start Quiz';
@@ -1390,7 +1418,7 @@ function createPracticeConfigPane(container: HTMLElement) {
       err.style.display = '';
       return;
     }
-    startQuizWith(ids);
+    startQuizWith(ids, 0, nameIn.value.trim() || filtersName());
   });
 
   void (async () => {
@@ -1450,6 +1478,38 @@ function createPracticeRunPane(container: HTMLElement) {
     bar.style.display = '';
     let view: 'sheet' | 'overview' = 'sheet';
 
+    // The quiz's lifecycle, one action each (Mufaro, 2026-09-17: one button
+    // used to start, finish and replace). Complete Quiz is the only way a
+    // quiz finishes; Reopen Quiz undoes it; Copy Quiz is a new open quiz over
+    // the same problems; Rename changes what Home lists it under.
+    const completeQuiz = async () => {
+      if (session.finishedAt) return;
+      await finishQuizSession(session.id).catch(() => {});
+      session.finishedAt = Date.now();
+      _api?.activity?.note('finished', `the quiz "${session.name}"`);
+      if (disposed) return;
+      session.index = session.ids.length;
+      view = 'sheet';
+      serve();
+    };
+    const reopenQuiz = async () => {
+      if (!session.finishedAt) return;
+      await reopenQuizSession(session.id).catch(() => {});
+      session.finishedAt = null;
+      _practice = session;
+      if (disposed) return;
+      session.index = Math.max(0, Math.min(session.index, session.ids.length - 1));
+      view = 'sheet';
+      serve();
+    };
+    const copyQuiz = () => startQuizWith(session.ids, 0, `${session.name || 'Quiz'} Copy`);
+    const renameQuiz = async (name: string) => {
+      const v = name.trim();
+      if (!v || v === session.name) return;
+      session.name = v;
+      await renameQuizSession(session.id, v).catch(() => {});
+    };
+
     const renderSummary = async () => {
       serveSeq++;
       player?.dispose();
@@ -1457,14 +1517,13 @@ function createPracticeRunPane(container: HTMLElement) {
       bar.style.display = 'none';
       bar.replaceChildren();
       playerHost.replaceChildren();
-      // The quiz is over: the stored session closes, so the Dashboard stops
-      // offering to resume it. Ratings stay on the problems.
-      await finishQuizSession(session.id).catch(() => {});
-      session.finishedAt ??= Date.now();
-      if (_practice === session) _practice = null;
+      // The summary finishes nothing. Complete Quiz below is the one way a
+      // quiz ends; until then it stays open and resumable, however many
+      // problems are rated.
       if (disposed) return;
       const wrap = el('div', 'ws-home');
-      wrap.appendChild(el('div', 'ws-home__title', 'Quiz Summary'));
+      wrap.appendChild(el('div', 'ws-home__title', `Quiz Summary · ${session.name || 'Quiz'}`));
+      wrap.appendChild(el('div', 'ws-hint', session.finishedAt ? `Completed ${when(session.finishedAt)}.` : 'Open. Complete Quiz marks it done; Back To Quiz continues it.'));
       const grades = await getSessionGrades(session.ids, session.startedAt, session.id, session.finishedAt ?? null);
       const bank = await listItems().catch(() => []);
       const byId = new Map(bank.map((i) => [i.id, i]));
@@ -1521,23 +1580,27 @@ function createPracticeRunPane(container: HTMLElement) {
       }
       wrap.appendChild(list);
       const actions = el('div', 'ws-create__controls');
-      const dash = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-      dash.textContent = 'Dashboard';
-      dash.addEventListener('click', () => void openWorksheet('dashboard', 'Dashboard'));
-      const over = el('button', 'ws-btn') as HTMLButtonElement;
-      over.textContent = 'Quiz Overview';
-      over.title = 'Every problem in this quiz, with your ratings and notes; click one to reopen it.';
-      over.addEventListener('click', () => { _practice = session; session.index = Math.min(session.index, session.ids.length - 1); view = 'overview'; serve(); });
-      const again = el('button', 'ws-btn') as HTMLButtonElement;
-      again.textContent = 'New Quiz';
-      again.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
-      const home = el('button', 'ws-btn') as HTMLButtonElement;
-      home.textContent = 'Home';
-      home.addEventListener('click', () => void openWorksheet('home', 'Worksheets'));
-      actions.append(dash, over, again, home);
+      const action = (label: string, hint: string, onClick: () => void, primary = false) => {
+        const b = el('button', primary ? 'ws-btn ws-btn--primary' : 'ws-btn') as HTMLButtonElement;
+        b.textContent = label;
+        b.title = hint;
+        b.addEventListener('click', onClick);
+        actions.appendChild(b);
+      };
+      if (!session.finishedAt) {
+        action('Complete Quiz', 'Marks this quiz completed. Ratings stay on the problems; Reopen Quiz undoes it.', () => void completeQuiz(), true);
+        action('Back To Quiz', 'Continues where the quiz was. It stays open.', () => { _practice = session; goTo(session.ids.length - 1); });
+      } else {
+        action('Reopen Quiz', 'Makes this completed quiz open again, at its last problem.', () => void reopenQuiz(), true);
+      }
+      action('Copy Quiz', 'A new open quiz over the same problems in the same order. Ratings start fresh for the copy.', copyQuiz);
+      action('Quiz Overview', 'Every problem in this quiz, with your ratings and notes; click one to reopen it.',
+        () => { _practice = session; session.index = Math.min(session.index, session.ids.length - 1); view = 'overview'; serve(); });
+      action('New Quiz', 'The quiz builder. This quiz stays as it is.', () => void openWorksheet('practice', 'Quiz'));
+      action('Dashboard', 'The campaign and what to work on next.', () => void openWorksheet('dashboard', 'Dashboard'));
+      action('Home', 'Every quiz, open and completed, is listed there.', () => void openWorksheet('home', 'Worksheets'));
       wrap.appendChild(actions);
       playerHost.appendChild(wrap);
-      _api?.activity?.note('finished', `a quiz (${line})`);
     };
 
     const gradeNote = el('span', 'ws-sessionbar__grade');
@@ -1644,7 +1707,40 @@ function createPracticeRunPane(container: HTMLElement) {
         rows.push(row);
       });
       const head = el('div', 'ws-quiz__overviewhead');
-      head.appendChild(el('div', 'ws-home__title', session.finishedAt ? `Quiz from ${new Date(session.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Quiz Overview'));
+      // The quiz's name, renamed in place; its lifecycle actions beside it.
+      const titleRow = el('div', 'ws-quiz__title');
+      const nameEl = el('div', 'ws-home__title', session.name || 'Quiz Overview');
+      titleRow.appendChild(nameEl);
+      const small = (label: string, hint: string, onClick: () => void) => {
+        const b = el('button', 'ws-btn ws-btn--small') as HTMLButtonElement;
+        b.textContent = label;
+        b.title = hint;
+        b.addEventListener('click', onClick);
+        titleRow.appendChild(b);
+        return b;
+      };
+      small('Rename', 'Give this quiz a name to find it again on Home.', () => {
+        const input = el('input', 'ws-input') as HTMLInputElement;
+        input.type = 'text';
+        input.maxLength = 80;
+        input.value = session.name;
+        input.placeholder = 'Quiz name';
+        const commit = () => { void renameQuiz(input.value).then(() => { nameEl.textContent = session.name || 'Quiz Overview'; input.replaceWith(nameEl); }); };
+        input.addEventListener('keydown', (e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') input.blur();
+          if (e.key === 'Escape') { input.value = session.name; input.blur(); }
+        });
+        input.addEventListener('blur', commit);
+        nameEl.replaceWith(input);
+        input.focus();
+        input.select();
+      });
+      small('Copy Quiz', 'A new open quiz over the same problems in the same order.', copyQuiz);
+      if (session.finishedAt) small('Reopen Quiz', 'Makes this completed quiz open again.', () => void reopenQuiz());
+      else small('Quiz Summary', 'The ratings so far, and Complete Quiz when you are done.', () => goTo(session.ids.length));
+      head.appendChild(titleRow);
+      head.appendChild(el('span', 'ws-chip ws-chip--muted', session.finishedAt ? `Completed ${when(session.finishedAt)}` : 'Open'));
       head.appendChild(el('span', 'ws-hint', [`${counts.rated} rated`, `${counts.attempted} attempted`, `${counts.skipped} skipped`, `${counts.untouched} not started`].join(' · ')));
       wrap.appendChild(head);
       for (const r of rows) wrap.appendChild(r);
@@ -1655,14 +1751,16 @@ function createPracticeRunPane(container: HTMLElement) {
       const prev = iconBtn('chevron-left', 'Previous Item', { onClick: () => goTo(session.index - 1) });
       prev.disabled = session.index === 0;
       bar.appendChild(prev);
-      bar.appendChild(el('span', 'ws-sessionbar__pos', `Item ${session.index + 1} of ${session.ids.length}`));
+      bar.appendChild(el('span', 'ws-sessionbar__pos', `${session.name ? `${session.name} · ` : ''}Item ${session.index + 1} of ${session.ids.length}`));
       // Next sits with Previous, either side of the position: the pair reads
       // as one control, and Skip keeps the far end to itself.
       const last = session.index === session.ids.length - 1;
-      bar.appendChild(iconBtn(last ? 'check' : 'chevron-right', last ? 'Finish Quiz' : 'Next Item', { primary: true, onClick: () => goTo(session.index + 1) }));
+      // The last Next opens the summary, where Complete Quiz is a separate
+      // decision; nothing here finishes the quiz.
+      bar.appendChild(iconBtn(last ? 'check' : 'chevron-right', last ? 'Quiz Summary' : 'Next Item', { primary: true, onClick: () => goTo(session.index + 1) }));
       if (session.finishedAt) {
         const chip = el('span', 'ws-chip ws-chip--muted', 'Reviewing');
-        chip.title = 'A finished quiz, reopened. Ratings you give still count on the problems.';
+        chip.title = 'A completed quiz, reopened. Ratings you give still count on the problems; Reopen Quiz on the summary makes it open again.';
         bar.appendChild(chip);
       }
       gradeNote.textContent = '';
@@ -1673,7 +1771,6 @@ function createPracticeRunPane(container: HTMLElement) {
         hint: view === 'overview' ? 'Back to the problem you were on.' : 'Every problem in this quiz, with status, rating, time and notes; click one to jump to it.',
         onClick: () => { view = view === 'overview' ? 'sheet' : 'overview'; serve(); },
       }));
-      if (!session.finishedAt) bar.appendChild(iconBtn('octagon-x', 'End Quiz', { danger: true, hint: 'Stops here and shows the summary. Ratings stay on the problems.', onClick: () => { void renderSummary(); } }));
       // Skipping an item already rated or worked moves on without marking anything.
       bar.appendChild(iconBtn('skip-forward', 'Skip Item', {
         hint: 'Moves on without a rating. Rating or working the problem later clears the skip.',
@@ -2695,7 +2792,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         if (instanceId === 'dashboard') {
           return createDashboardPane(container, {
             openItem: (id, title) => void openWorksheet(`item:${id}`, title),
-            startQuiz: (ids, startAt) => startQuizWith(ids, startAt),
+            startQuiz: (ids, startAt, name) => startQuizWith(ids, startAt, name),
             resumeQuiz: () => void openWorksheet('practice-run', 'Quiz'),
             openQuiz: (id) => void openPastQuiz(id),
             renderIcon: (id, size) => { try { return _api?.icons?.createIconHtml?.(id, size) ?? ''; } catch { return ''; } },

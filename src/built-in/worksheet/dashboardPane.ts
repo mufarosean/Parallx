@@ -16,9 +16,9 @@ import { paperLabel, ratingLabel, normalizeRating, QUADRANT_LABELS } from './pro
 
 export interface DashboardActions {
   openItem(id: number, title: string): void;
-  /** Start a quiz over exactly these problems, in this order, at `startAt`. */
-  startQuiz(ids: number[], startAt?: number): void;
-  /** Reopen the quiz left unfinished, where it was. */
+  /** Start a new, named quiz over exactly these problems, in this order, at `startAt`. */
+  startQuiz(ids: number[], startAt?: number, name?: string): void;
+  /** Reopen the open quiz used most recently, where it was. */
   resumeQuiz(): void;
   /** Reopen a past quiz to review it. */
   openQuiz(id: string): void;
@@ -278,7 +278,7 @@ function lineChart(host: HTMLElement, title: string, points: ChartPoint[], targe
 
 type Tip = ReturnType<typeof makeTooltip>;
 
-type QuizResume = { position: number; total: number } | null;
+type QuizResume = { name: string; position: number; total: number } | null;
 
 /**
  * The day's story under the quota line: today's tally while the day is on,
@@ -334,7 +334,11 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
   root.appendChild(sec);
   // A quiz left unfinished comes first, wherever it came from: resuming
   // keeps its order and lets you go back to what you rated.
-  const resumeBtn = () => btn(`Resume Quiz (${resume!.position + 1} of ${resume!.total})`, 'ws-btn ws-btn--primary', () => actions.resumeQuiz());
+  const resumeBtn = () => {
+    const b = btn(`Resume ${resume!.name || 'Quiz'} (${resume!.position + 1} of ${resume!.total})`, 'ws-btn ws-btn--primary', () => actions.resumeQuiz());
+    b.title = 'The open quiz you used last, where it stands. Every open quiz is listed on Home.';
+    return b;
+  };
 
   if (!campaign) {
     // No campaign: one quiet line. Setting one up is a Settings matter.
@@ -422,21 +426,21 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
   // Today's quiz is the whole draw, rated problems included, opened at the
   // first one not yet rated; once the quota is met the rest stays as a lead.
   if (p.restToday && !p.finished) {
-    if (due.length > 0) acts.appendChild(btn(`Quiz Due Problems (${due.length})`, primary, () => actions.startQuiz(due)));
+    if (due.length > 0) acts.appendChild(btn(`Quiz Due Problems (${due.length})`, primary, () => actions.startQuiz(due, 0, 'Due Problems')));
     if (p.remaining > 0) {
       const anyway = btn('Draw Anyway', 'ws-btn', () => {
         const ids = drawToday(campaign, items, attempts, p.target, today);
-        if (ids.length) actions.startQuiz(ids);
+        if (ids.length) actions.startQuiz(ids, 0, `Day ${p.dayIndex} Rest Day Draw`);
       });
       anyway.title = 'New problems on a rest day. They count toward the campaign, not toward a quota.';
       acts.appendChild(anyway);
     }
   } else if (drawLeft.length > 0) {
     const startAt = Math.max(0, draw.findIndex((id) => !done.has(id)));
-    acts.appendChild(btn(p.leftToday > 0 ? `Start Today's Quiz (${drawLeft.length} left)` : `Keep Going (${drawLeft.length})`, primary, () => actions.startQuiz(draw, startAt)));
+    acts.appendChild(btn(p.leftToday > 0 ? `Start Today's Quiz (${drawLeft.length} left)` : `Keep Going (${drawLeft.length})`, primary, () => actions.startQuiz(draw, startAt, `Day ${p.dayIndex} Draw`)));
   } else if (!p.finished && p.remaining > 0) acts.appendChild(btn('Draw More For Today', primary, () => {
     const extra = drawToday(campaign, items, attempts, p.target, `${today}+`);
-    if (extra.length) actions.startQuiz(extra);
+    if (extra.length) actions.startQuiz(extra, 0, `Day ${p.dayIndex} Extra Draw`);
   }));
   acts.appendChild(btn('Review Due Flashcards', 'ws-btn', () => actions.studyFlashcards()));
   todayRow.appendChild(acts);
@@ -543,7 +547,8 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
 
     // The campaign first: what today asks for, before the numbers.
     const quiz = await getOpenQuizSession().catch(() => null);
-    const resume: QuizResume = quiz && quiz.position < quiz.itemIds.length ? { position: quiz.position, total: quiz.itemIds.length } : null;
+    // An open quiz resumes wherever it stands, its summary included.
+    const resume: QuizResume = quiz ? { name: quiz.name, position: Math.min(quiz.position, quiz.itemIds.length - 1), total: quiz.itemIds.length } : null;
     const rewards = await syncRewards(items, attempts, campaign).catch(() => null);
     if (disposed || seq !== renderSeq) return;
     await campaignSection(root, items, attempts, campaign, ins.due.filter((d) => isCampaignProblem(d.item)).map((d) => d.item.id), resume, rewards?.bonusXp ?? 0, actions, tip);
@@ -574,7 +579,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
       due.body.appendChild(problemRow(d.item, `${ratingLabel(d.rating)} ${daysAgoLabel(d.daysAgo)}`, d.rating, () => actions.openItem(d.item.id, d.item.title)));
     }
     if (ins.due.length > LIMIT) due.body.appendChild(el('div', 'ws-dash__more', `and ${ins.due.length - LIMIT} more`));
-    if (ins.due.length > 0) due.foot.appendChild(btn(`Quiz Due Problems (${ins.due.length})`, 'ws-btn ws-btn--primary', () => actions.startQuiz(ins.due.map((d) => d.item.id))));
+    if (ins.due.length > 0) due.foot.appendChild(btn(`Quiz Due Problems (${ins.due.length})`, 'ws-btn ws-btn--primary', () => actions.startQuiz(ins.due.map((d) => d.item.id), 0, 'Due Problems')));
     grid.appendChild(due.root);
 
     const strug = card('Keeps Going Wrong', 'Rated Hard twice or more, still not Easy');
@@ -583,7 +588,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
       strug.body.appendChild(problemRow(s.item, `Hard ${s.hardCount} of ${s.attempts} ${s.attempts === 1 ? 'attempt' : 'attempts'}`, 'hard', () => actions.openItem(s.item.id, s.item.title)));
     }
     if (ins.struggling.length > LIMIT) strug.body.appendChild(el('div', 'ws-dash__more', `and ${ins.struggling.length - LIMIT} more`));
-    if (ins.struggling.length > 0) strug.foot.appendChild(btn('Quiz These', 'ws-btn', () => actions.startQuiz(ins.struggling.map((s) => s.item.id))));
+    if (ins.struggling.length > 0) strug.foot.appendChild(btn('Quiz These', 'ws-btn', () => actions.startQuiz(ins.struggling.map((s) => s.item.id), 0, 'Struggling')));
     grid.appendChild(strug.root);
 
     const weak = card('Weakest Papers', 'Lowest score once three are rated, else least covered');
@@ -606,7 +611,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
       wins.body.appendChild(problemRow(q, 'Never tried', 'rest', () => actions.openItem(q.id, q.title)));
     }
     if (ins.quickWins.length > LIMIT) wins.body.appendChild(el('div', 'ws-dash__more', `and ${ins.quickWins.length - LIMIT} more`));
-    if (ins.quickWins.length > 0) wins.foot.appendChild(btn(`Quiz Quick Wins (${Math.min(10, ins.quickWins.length)})`, 'ws-btn', () => actions.startQuiz(ins.quickWins.slice(0, 10).map((q) => q.id))));
+    if (ins.quickWins.length > 0) wins.foot.appendChild(btn(`Quiz Quick Wins (${Math.min(10, ins.quickWins.length)})`, 'ws-btn', () => actions.startQuiz(ins.quickWins.slice(0, 10).map((q) => q.id), 0, 'Quick Wins')));
     grid.appendChild(wins.root);
 
     // Starred: the student's own set, kept on the problems across quizzes.
@@ -619,7 +624,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
       star.body.appendChild(problemRow(s, open ? 'In progress' : r ? ratingLabel(r) : 'Never tried', open ? 'open' : r || 'rest', () => actions.openItem(s.id, s.title)));
     }
     if (starred.length > LIMIT) star.body.appendChild(el('div', 'ws-dash__more', `and ${starred.length - LIMIT} more`));
-    if (starred.length > 0) star.foot.appendChild(btn(`Quiz Starred (${starred.length})`, 'ws-btn', () => actions.startQuiz(starred.map((s) => s.id))));
+    if (starred.length > 0) star.foot.appendChild(btn(`Quiz Starred (${starred.length})`, 'ws-btn', () => actions.startQuiz(starred.map((s) => s.id), 0, 'Starred')));
     grid.appendChild(star.root);
 
     // Papers, weakest first.

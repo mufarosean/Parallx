@@ -516,3 +516,7 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 /* Scrolling pages keep a scrollbar gutter on BOTH edges, so the content sits centred: without it the right
    padding reads wider than the left by the width of the scrollbar. */
 .ws-dash, .ws-launch, .ws-settings, .ws-home, .ws-create, .ws-pane--scroll { scrollbar-gutter: stable both-edges; }
+
+/* The quiz overview title: the name with its lifecycle actions beside it. */
+.ws-quiz__title { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
+.ws-quiz__title .ws-input { min-width: 240px; }
