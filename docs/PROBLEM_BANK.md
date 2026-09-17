@@ -237,6 +237,15 @@ count, so the other chips can narrow it further).
    univerHost reports every error value with formula text and engine health
    (executors, MULTIPLY/SUM present, hosts alive, seconds since mount) via
    opts.onFormulaError -> activity journal verb 'formula error'.
+   2026-09-17 (Mufaro: #NAME? that returns on Enter for the same text, gone
+   after a restart): the engine's parsed-formula cache is module-level, keyed
+   by unit id + formula text, shared by every live instance, each node bound
+   to the services of the instance that parsed it; a problem mounted twice
+   under its stored id resolved references against the other instance's
+   unit data (zero rows -> #NAME?). FIX: every mount gets its own engine
+   unit id (univerHost withUnitId; stored id put back on every snapshot,
+   drawings' unitId rewritten both ways); a teardown that throws is
+   journaled as 'engine fault' instead of swallowed.
 3k. DONE 2026-09-14 (late morning): dollar signs survive a reference drag.
    Reproduced in a hidden host probe (scratch drag-probe: probeStartEditing
    + webContents.insertText, then a mouse drag on the highlighted box's top

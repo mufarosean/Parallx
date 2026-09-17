@@ -266,7 +266,7 @@ const AUTOSAVE_MS = 5000;
 // ── Univer bundle loader ────────────────────────────────────────────────────
 
 type UniverHostModule = {
-  createWorksheetHost(opts: { container: HTMLElement; snapshot?: IWorkbookData | null; darkMode?: boolean; displayDecimals?: number | null; onFormulaError?: (summary: string, detail: string) => void }): IWorksheetHost;
+  createWorksheetHost(opts: { container: HTMLElement; snapshot?: IWorkbookData | null; darkMode?: boolean; displayDecimals?: number | null; onFormulaError?: (summary: string, detail: string) => void; onEngineFault?: (summary: string, detail: string) => void }): IWorksheetHost;
 };
 
 let _univerModule: Promise<UniverHostModule> | null = null;
@@ -2111,6 +2111,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       container: sheetHost, snapshot, darkMode: resolveSheetDark(), displayDecimals: getDisplayDecimals(),
       // Evidence for the intermittent formula failures: the journal keeps it.
       onFormulaError: (summary, detail) => { try { _api?.activity?.note('formula error', `${item?.title ?? instanceId}: ${summary}`, detail); } catch { /* no journal */ } },
+      onEngineFault: (summary, detail) => { try { _api?.activity?.note('engine fault', `${item?.title ?? instanceId}: ${summary}`, detail); } catch { /* no journal */ } },
     });
     // Probe hook (tests/probes): the live host, reachable from the DOM.
     (sheetHost as unknown as { __wsHost?: unknown }).__wsHost = host;

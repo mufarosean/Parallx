@@ -67,10 +67,40 @@ export interface IWorksheetHostOptions {
    * in the activity journal so an intermittent failure leaves evidence.
    */
   readonly onFormulaError?: (summary: string, detail: string) => void;
+  /**
+   * Called when the engine itself misbehaves outside a calculation (a
+   * teardown that threw), with a one-line summary and the detail.
+   */
+  readonly onEngineFault?: (summary: string, detail: string) => void;
 }
 
 /** Live hosts on the page (the quiz mounts and disposes one per problem). */
 let _hostsAlive = 0;
+/** Mounts so far in this window; part of every engine unit id. */
+let _mountSeq = 0;
+
+/**
+ * A copy of the workbook data under another unit id: the id itself and
+ * every `unitId` field inside plugin resources (drawings carry one per text
+ * box). Resources are JSON strings, so each is parsed, rewritten and
+ * serialised again; one that fails to parse is kept as it is.
+ */
+function withUnitId<T extends Partial<IWorkbookData>>(data: T, from: string, to: string): T {
+  const swap = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(swap);
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = k === 'unitId' && v === from ? to : swap(v);
+      return out;
+    }
+    return value;
+  };
+  const resources = data.resources?.map((r) => {
+    if (typeof r.data !== 'string') return r;
+    try { return { ...r, data: JSON.stringify(swap(JSON.parse(r.data))) }; } catch { return r; }
+  });
+  return { ...data, id: to, ...(resources ? { resources } : {}) } as T;
+}
 
 export interface IWorksheetHost {
   /** Serializable full-workbook state (cells, formats, formulas). */
@@ -333,7 +363,21 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   };
 
   applyAthenaFunctionSet(univer);
-  univerAPI.createWorkbook(opts.snapshot ?? blankWorkbookData());
+  // Every mount gets its own engine unit id. The engine caches parsed
+  // formulas at module level, keyed by unit id + formula text, shared by
+  // every live instance in the window, and each cached node stays bound to
+  // the config and runtime services of the instance that parsed it. A
+  // problem mounted twice under its stored id (a tab and the quiz, or a
+  // remount after a teardown that threw before the cache was cleared)
+  // resolved references against the other instance's unit data; unit data
+  // without the sheet reads as zero rows, so every reference reported
+  // #NAME?, again on each Enter of the same text, until the app restarted
+  // (Mufaro, 2026-09-17). Snapshots leave with the stored id put back, so
+  // items, attempts and drawings never see the mount id.
+  const stored = opts.snapshot ?? blankWorkbookData();
+  const storedId = stored.id ?? 'worksheet';
+  const mountId = `${storedId}~m${(_mountSeq++).toString(36)}${Date.now().toString(36)}`;
+  univerAPI.createWorkbook(withUnitId(stored, storedId, mountId));
 
   let disposed = false;
   let renderedResolve: () => void = () => {};
@@ -879,7 +923,8 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   const getSnapshot = (): IWorkbookData | null => {
     if (disposed) return null;
     try {
-      return univerAPI.getActiveWorkbook()?.save() ?? null;
+      const live = univerAPI.getActiveWorkbook()?.save() ?? null;
+      return live ? withUnitId(live, mountId, storedId) : null;
     } catch {
       return null;
     }
@@ -936,9 +981,14 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       for (const d of engineRegistrations) { try { d.dispose(); } catch { /* engine already gone */ } }
       try {
         univer.dispose();
-      } catch {
-        // Engine teardown failed — its body-level portals may have leaked.
+      } catch (err) {
+        // Engine teardown failed: its body-level portals may have leaked, and
+        // the services it left alive keep module-level caches bound to them.
+        // The journal records it; the mount id keeps every later mount away
+        // from what it left behind.
         hideBodyPortals();
+        console.warn('[WorksheetHost] engine teardown threw:', err);
+        try { opts.onEngineFault?.('engine teardown threw', String((err as { stack?: unknown } | null)?.stack ?? err)); } catch { /* journal unavailable */ }
       }
     },
   };
