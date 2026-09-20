@@ -1398,7 +1398,10 @@ function _isAllowedWritePath(filePath) {
   ) {
     return true;
   }
-  return _matchesAnyRoot(normalized, _fsExtraRoots);
+  if (_matchesAnyRoot(normalized, _fsExtraRoots)) return true;
+  // A path the user just chose in the native Save dialog is writable once,
+  // for a short window: the same consent model as the read grant below.
+  return _consumeDialogWriteGrant(normalized);
 }
 
 /**
@@ -1467,6 +1470,24 @@ function _consumeDialogReadGrant(absPath) {
   }
   _dialogReadGrants.delete(absPath);
   return true;
+}
+
+// Write-side twin: dialog:saveFile registers the path the user picked, and
+// the next fs:writeFile to exactly that path is allowed even outside the
+// workspace (Export As Markdown, Save As, canvas export). One use, bounded.
+const _DIALOG_WRITE_GRANT_TTL_MS = 60_000;
+const _dialogWriteGrants = new Map();
+
+function _registerDialogWriteGrant(filePath) {
+  if (typeof filePath !== 'string' || filePath.length === 0) return;
+  _dialogWriteGrants.set(path.resolve(filePath), Date.now() + _DIALOG_WRITE_GRANT_TTL_MS);
+}
+
+function _consumeDialogWriteGrant(absPath) {
+  const expiry = _dialogWriteGrants.get(absPath);
+  if (expiry === undefined) return false;
+  _dialogWriteGrants.delete(absPath);
+  return expiry > Date.now();
 }
 
 // ── fs:setWorkspaceRoot ──
@@ -2118,7 +2139,10 @@ ipcMain.handle('dialog:saveFile', async (_event, options) => {
     filters: options?.filters || [],
     defaultPath: options?.defaultPath || (options?.defaultName ? path.join(app.getPath('home'), options.defaultName) : undefined),
   });
-  return result.canceled ? null : result.filePath;
+  if (result.canceled || !result.filePath) return null;
+  // The user picked this path themselves: let the renderer write it once.
+  _registerDialogWriteGrant(result.filePath);
+  return result.filePath;
 });
 
 // ── dialog:showMessageBox ──
