@@ -190,7 +190,7 @@ export function buildTwistMessages(facts, twist) {
 }
 
 const FIELD_REQUIREMENTS = [
-  '- "name": their name. Keep the canon\'s name when there is one. Otherwise a first name and surname from the character\'s own country and generation, the kind found in a phone book there. Never the fiction defaults: Elias, Elara, Silas, Marcus, Mara, Mira, Thorne, Vance, Vane, Aris, Kael, Vex, Wren. The same rule for every named person in the sheet.',
+  '- "name": their name. The NAME given above when there is one, exactly; otherwise the canon\'s name when there is one. Otherwise a first name and surname from the character\'s own country and generation, the kind found in a phone book there. Never the fiction defaults: Elias, Elara, Silas, Marcus, Mara, Mira, Thorne, Vance, Vane, Aris, Kael, Vex, Wren. The same rule for every named person in the sheet.',
   '- "tagline": at most ten words, no name, not a restatement of the concept: the one line that says who they are now.',
   '- "description": 1-2 paragraphs: who they are, their background, occupation and daily life, and how they behave. Concrete specifics over adjectives.',
   '- "appearance": one vivid paragraph: their physical appearance and typical clothing, faithful to the canon and the concept. Any physical trait the concept states replaces any attribute given below.',
@@ -219,7 +219,7 @@ const CRAFT_RULES = [
  * the dials as text (only when the user touched them), `twist` the change
  * so the writer knows the world has already moved.
  */
-export function buildSheetMessages({ concept = '', canon = [], spec = '', twist = '' } = {}) {
+export function buildSheetMessages({ concept = '', canon = [], spec = '', twist = '', name = '' } = {}) {
   const system = [
     'You are a character designer for roleplay fiction. You create original, specific, believable characters, never generic ones.',
     'Every field is written in the THIRD PERSON, as a description of the character ("<Name> is...", "She speaks..."). Never address anyone as "you", and never the general "you" either ("if you catch them early" becomes "if caught early"); the only "you" is inside the example dialogue. Never write instructions. It should all read as one consistent character portrait.',
@@ -227,6 +227,9 @@ export function buildSheetMessages({ concept = '', canon = [], spec = '', twist 
     NO_DASHES,
   ].join('\n');
   const parts = ['Create ONE character.', ''];
+  if (name.trim()) {
+    parts.push(`NAME: ${name.trim()}. The user chose this name. Use it exactly, in every field; never rename them.`, '');
+  }
   if (concept.trim()) {
     parts.push('CHARACTER CONCEPT (the user\'s own words; authoritative; build everything around this, and when it conflicts with anything below except the canon, the concept wins):', concept.trim(), '');
   }
@@ -242,10 +245,11 @@ export function buildSheetMessages({ concept = '', canon = [], spec = '', twist 
 }
 
 /** One field again, consistent with the rest of the sheet, written differently. */
-export function buildFieldMessages({ concept = '', canon = [], spec = '', twist = '' } = {}, sheet, key) {
+export function buildFieldMessages({ concept = '', canon = [], spec = '', twist = '', name = '' } = {}, sheet, key) {
   const field = STUDIO_FIELDS.find((f) => f.key === key);
   const label = field ? field.label.toLowerCase() : key;
   const context = [];
+  if (name.trim()) context.push(`NAME: ${name.trim()}. The user chose this name; use it exactly.`, '');
   if (concept.trim()) context.push('CHARACTER CONCEPT (authoritative):', concept.trim(), '');
   if (canon.length > 0) context.push('CANON (must agree with all of these):', ...canon.map((f) => `- ${f}`), '');
   if (twist.trim() && canon.length > 0) context.push(`The canon already includes this change: ${twist.trim()}.`, '');

@@ -78,6 +78,14 @@ describe('prompts', () => {
     const [, withSpec] = buildSheetMessages({ concept: 'A guard', spec: '- Gender: Male' });
     expect(withSpec.content).toContain('ATTRIBUTES');
     expect(withSpec.content).toContain('CHARACTER CONCEPT');
+    expect(withSpec.content).not.toContain('NAME:');
+  });
+  it('tells the writer the name the user chose, and the rewrite of a field too', () => {
+    const [, user] = buildSheetMessages({ concept: 'A guard', name: 'Barnaby Quill' });
+    expect(user.content).toContain('NAME: Barnaby Quill. The user chose this name.');
+    expect(user.content.indexOf('NAME:')).toBeLessThan(user.content.indexOf('CHARACTER CONCEPT'));
+    const [, field] = buildFieldMessages({ concept: 'A guard', name: 'Barnaby Quill' }, { name: 'Barnaby Quill' }, 'voice');
+    expect(field.content).toContain('NAME: Barnaby Quill');
   });
   it('rewrites one field with the sheet in view and the field\'s own requirement', () => {
     const [system, user] = buildFieldMessages({ concept: 'A guard' }, { name: 'X', backstory: 'old' }, 'backstory');

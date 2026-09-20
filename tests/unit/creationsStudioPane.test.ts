@@ -103,7 +103,7 @@ function makeWorld(opts: { existing?: Record<string, any> | null } = {}) {
   };
   const ctx = {
     fs, workspaceUri: 'ws', fileName: null as string | null, from: null as any,
-    onCreated: vi.fn(async () => {}), openChat: vi.fn(async () => {}), openChatBehaviour: vi.fn(async () => {}), openCharacter: vi.fn(), openNew: vi.fn(),
+    onCreated: vi.fn(async () => {}), onSaved: vi.fn(), openChat: vi.fn(async () => {}), openChatBehaviour: vi.fn(async () => {}), openCharacter: vi.fn(), openNew: vi.fn(),
   };
   const deps = {
     el, icon: (n: string) => `<i data-icon="${n}"></i>`, tgSelect,
@@ -186,6 +186,32 @@ describe('the Studio screen', () => {
     const sheetReq = w.requests.find((r) => r.messages[0].content.includes('character designer for roleplay fiction'))!;
     expect(sheetReq.options).toMatchObject({ format: 'json', think: false, numCtx: 4096 });
     expect(sheetReq.messages[1].content).not.toContain('ATTRIBUTES');
+  });
+
+  it('keeps the name you typed through Generate, tells the model, and the rail hears every later save', async () => {
+    const w = makeWorld();
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    typeInto(root.querySelector('.cs-title') as HTMLInputElement, 'Barnaby Quill');
+    await flush(900);
+    expect(w.ctx.onCreated).toHaveBeenCalledTimes(1);
+    typeInto(root.querySelector('.cs-textarea') as HTMLTextAreaElement, 'An innkeeper');
+    buttonNamed(root, 'Generate').click();
+    await flush();
+    expect((root.querySelector('.cs-title') as HTMLInputElement).value).toBe('Barnaby Quill');
+    expect(areaOf(root, 'backstory').value).toBe(SHEET.backstory);
+    const req = w.requests.find((r) => r.messages[0].content.includes('character designer for roleplay fiction'))!;
+    expect(req.messages[1].content).toContain('NAME: Barnaby Quill');
+    await flush(900);
+    const data = [...w.saved.values()][0];
+    expect(data.name).toBe('Barnaby Quill');
+    expect(w.ctx.onSaved).toHaveBeenCalledWith(expect.stringMatching(/^character-/), 'Barnaby Quill');
+    // Clearing the name hands the choice back to the model.
+    typeInto(root.querySelector('.cs-title') as HTMLInputElement, '');
+    buttonNamed(root, 'Generate').click();
+    await flush();
+    expect((root.querySelector('.cs-title') as HTMLInputElement).value).toBe('Ada Lovelace');
   });
 
   it('refuses to generate with nothing to go on, in words, not a dialog', async () => {

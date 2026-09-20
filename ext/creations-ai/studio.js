@@ -165,6 +165,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   const title = el('input', 'cs-title');
   title.type = 'text';
   title.placeholder = 'Name';
+  title.title = 'A name you give is kept when you Generate. Clear it to let the model choose one.';
   title.setAttribute('aria-label', 'Name');
   title.addEventListener('input', () => { setField('name', title.value, { fromTitle: true }); });
   const status = el('span', 'cs-chip', { text: 'Draft' });
@@ -391,9 +392,10 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     }
     if (!opts.silent) markDirty();
   }
-  function fillSheet(sheet, { respectLocks = true, silent = false } = {}) {
+  function fillSheet(sheet, { respectLocks = true, silent = false, skip = [] } = {}) {
     for (const k of STUDIO_KEYS) {
       if (respectLocks && state.locks.has(k)) continue;
+      if (skip.includes(k)) continue;
       if (typeof sheet[k] !== 'string') continue;
       setField(k, sheet[k], { silent: true });
     }
@@ -720,6 +722,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   }
   function context() {
     return {
+      name: state.sheet.name.trim(),
       concept: state.concept,
       canon: state.mode === 'sources' ? activeFacts() : [],
       spec: state.dialsTouched && forgeControls ? forgeControls.spec() : '',
@@ -761,17 +764,21 @@ export function renderStudioPane(container, parallx, ctx, deps) {
         renderCanon();
       }
       setStatus('Writing', 'accent');
+      // The name has no lock button: a name that is there when you press
+      // Generate is the name, and the prompt is told so. Clear it to let the
+      // model choose.
+      const keepName = !!state.sheet.name.trim();
       const filled = new Set();
       const { parsed } = await streamJson(modelId, numCtx, buildSheetMessages(context()), (raw) => {
         const done = extractCompletedFields(raw);
         for (const [k, v] of Object.entries(done)) {
-          if (filled.has(k) || state.locks.has(k)) continue;
+          if (filled.has(k) || state.locks.has(k) || (k === 'name' && keepName)) continue;
           filled.add(k);
           setField(k, cleanFieldValue(k, v), { silent: true });
         }
       });
       if (!parsed || typeof parsed.name !== 'string') throw new Error('The model did not return a character. Try again, or pick another model.');
-      fillSheet(cleanSheet(parsed));
+      fillSheet(cleanSheet(parsed), { skip: keepName ? ['name'] : [] });
       for (const k of STUDIO_KEYS) hideUndo(k);
       make.close();
       sheetSec.open();
@@ -876,6 +883,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       state.base = data;
       state.dirty = false;
       if (created) { state.savedOnce = true; try { await ctx.onCreated?.(state.fileName); } catch { /* the rail refresh is cosmetic */ } }
+      else { try { await ctx.onSaved?.(state.fileName, state.sheet.name.trim()); } catch { /* the rail label is cosmetic */ } }
       renderCanon();
       void renderCrumbs();
     } catch (err) {

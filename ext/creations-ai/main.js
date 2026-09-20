@@ -7884,6 +7884,12 @@ function renderCharactersPage(container, parallx, input) {
     // the rail learns about it. The pane is not re-rendered: the Studio is
     // already showing that character.
     onCreated: async (fileName) => { selectedFile = fileName; await refreshRail(); markActive(); _refreshSidebar?.(); },
+    // Every later save: the row's name follows the sheet, and so does the sidebar.
+    onSaved: (fileName, name) => {
+      const label = rowByFile.get(fileName)?.querySelector('.tg-cc-row-name');
+      if (label && name) label.textContent = name;
+      _refreshSidebar?.();
+    },
     openChat: (fileName, name) => startChatWithCharacter(fileName, name),
     openChatBehaviour: (fileName) => openBehaviour(fileName),
     openCharacter: (fileName) => { selectedFile = null; selectCharacter(fileName); },

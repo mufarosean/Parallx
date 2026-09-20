@@ -190,6 +190,11 @@ and why:
   twisted canon, so a Twist costs two extra model calls, not a second sheet.
 - Reroll has Undo. Three alternatives per field were cut: one more control
   per row for a gain the undo already gives.
+- The name has no lock. A name that is in the title when you press Generate
+  is the name: the prompt is told it and the model never rewrites it; clear
+  the title to let the model choose (Mufaro, 2026-09-20: his typed name was
+  being overwritten while the rail still showed it). Every later save also
+  updates the rail row and the sidebar, not only the first.
 - Try A Line at the bottom of the sheet: one reply in their voice, no
   thread, so the voice is heard before Open Chat.
 - The dials sit inside Make, collapsed, and enter the prompt only once
