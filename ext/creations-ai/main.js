@@ -6551,13 +6551,18 @@ function renderChatEditor(container, parallx, input) {
           // edits when the count happened to stay the same.
           const droppedKey = hashDroppedMessages(dropped);
           const cached = thread?.cachedSummary;
+          // The memory grows with the story instead of being rewritten from
+          // scratch: when the earlier memory covered a prefix of what is
+          // dropped now, only the newly dropped turns are folded into it.
+          // An edit or a regeneration inside that prefix breaks the match
+          // and the memory is rebuilt whole.
+          const prefixMatch = !!(cached && cached.prefixKey && cached.droppedCount > 0 && cached.droppedCount <= dropped.length
+            && cached.prefixKey === hashDroppedMessages(dropped.slice(0, cached.droppedCount)));
+          const newlyDropped = prefixMatch ? dropped.slice(cached.droppedCount) : dropped;
+          const priorSummary = prefixMatch ? (cached.text || '') : '';
           if (cached && cached.key === droppedKey) {
             historySummary = cached.text || '';
           } else if (parallx?.lm?.sendChatRequest && !dryRun) {
-            // dryRun (prompt-inspector preview) must never spend an LLM
-            // call — the preview shows the cached summary or none.
-            // Surface that we're spending an extra LLM call so the user knows
-            // why the first token is slower than usual.
             // The caller already owns the transient slot (its streaming bubble).
             // Borrow it for the summariser and hand it back after, never null it:
             // the caller's stream loop writes into it next.
@@ -6573,21 +6578,31 @@ function renderChatEditor(container, parallx, input) {
               {
                 role: 'system',
                 content:
-                  'You compress a roleplay conversation into a brief recap. ' +
-                  'Output 2-4 short sentences capturing key plot beats, setting, ' +
-                  'character relationships and unresolved threads. No preamble, ' +
-                  'no quotation marks, no list markers.',
+                  'You keep the running memory of a roleplay for its writer. Rewrite the memory so it holds everything a later turn must not contradict: ' +
+                  'the setting and where each character is right now (the place, the time, positions, what is within reach), what has happened in order, ' +
+                  'what each character wants and knows, promises and threats made, and every name, object and detail introduced. ' +
+                  'Keep every fact from the existing memory that is still true; fold the new turns in; drop nothing the story would need. ' +
+                  'Plain statements, third person, present tense for where things stand. Under 350 words. No preamble, no list markers, no quotation marks. Never use em dashes.',
               },
               {
                 role: 'user',
-                content: 'Summarise the following conversation excerpt:\n\n' +
-                  dropped.map(m => `${m.role}: ${(m.content || '').slice(0, 800)}`).join('\n\n'),
+                content:
+                  'EXISTING MEMORY:
+' + (priorSummary || '(none yet)') + '
+
+' +
+                  'NEW TURNS TO FOLD IN:
+
+' +
+                  newlyDropped.map(m => `${m.role}: ${(m.content || '').slice(0, 4000)}`).join('
+
+'),
               },
             ];
             try {
               const stream = parallx.lm.sendChatRequest(modelId, summariserMessages, {
                 temperature: 0.3,
-                maxTokens: 250,
+                maxTokens: 600,
                 think: false,
               });
               let summaryText = '';
@@ -6596,7 +6611,7 @@ function renderChatEditor(container, parallx, input) {
               }
               historySummary = stripEmDashes(summaryText.trim());
               if (historySummary && thread) {
-                thread.cachedSummary = { key: droppedKey, droppedCount: dropped.length, text: historySummary };
+                thread.cachedSummary = { key: droppedKey, prefixKey: droppedKey, droppedCount: dropped.length, text: historySummary };
                 await updateThreadMeta(fs, workspaceUri, thread.id, { cachedSummary: thread.cachedSummary });
               }
             } catch (err) {
