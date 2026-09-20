@@ -2,7 +2,7 @@
 // day, pace, streak, XP and levels, cleared papers, and a daily draw across
 // papers that does not reshuffle within the day.
 import { describe, it, expect } from 'vitest';
-import { planCampaign, campaignProgress, drawToday, campaignDone, addDays, levelFor, LEVEL_TITLES, XP_PER_LEVEL } from '../../src/built-in/worksheet/campaign.js';
+import { planCampaign, campaignProgress, drawToday, campaignDone, dayStory, addDays, levelFor, LEVEL_TITLES, XP_PER_LEVEL } from '../../src/built-in/worksheet/campaign.js';
 
 const DAY = 86400000;
 const START = Date.parse('2026-09-08T09:00:00');
@@ -11,6 +11,8 @@ const item = (id: number, paper: string, attemptState = '', attemptCount = 0) =>
   id, title: `P${id}`, paper, source: 'rf', kind: 'quant', quadrant: 0, attemptState, attemptCount, seconds: 0, lastAttemptAt: 0,
 });
 const attempt = (itemId: number, selfGrade: string, at: number, imported = false) => ({ itemId, selfGrade, at, seconds: 60, imported });
+/** Cells changed on the sheet, no rating given: the campaign's other proof of work. */
+const worked = (itemId: number, at: number) => ({ itemId, selfGrade: '', at, seconds: 60, imported: false, workedAt: at });
 
 const bank = [
   item(1, 'brosius'), item(2, 'brosius'), item(3, 'brosius'), item(4, 'brosius'),
@@ -92,5 +94,66 @@ describe('drawToday', () => {
   });
   it('never asks for more than is left', () => {
     expect(drawToday(campaign, bank, attempts, 50, '2026-09-11')).toHaveLength(6);
+  });
+});
+
+// Work counts, not only the rating (Mufaro, 2026-09-20). A problem imported
+// with its workbook rating already on it reads as rated everywhere it shows,
+// so requiring a fresh rating as the only proof of work let a day close one
+// short with every problem in it done.
+describe('work counts as done', () => {
+  const attempts = [
+    attempt(1, 'easy', START + 3600000),        // day 1: worked and rated
+    worked(2, START + 4 * 3600000),             // day 1: worked, never rated
+    attempt(3, 'medium', START + 1 * DAY, true), // imported: still not proof of anything
+    worked(3, START + 1 * DAY + 3600000),       // day 2: but working it is
+    attempt(9, '', START + 1 * DAY),            // neither worked nor rated: nothing
+  ];
+  const p = campaignProgress(campaign, bank, attempts, NOW);
+
+  it('credits a problem that was worked but never rated', () => {
+    expect(p.done).toBe(3);
+    expect(campaignDone(campaign, bank, attempts).has(2)).toBe(true);
+    expect(p.days[0]).toMatchObject({ done: 2, state: 'full' });
+  });
+
+  it('never credits an imported rating, and never draws a problem already worked', () => {
+    expect(campaignDone(campaign, bank, [attempt(3, 'medium', START + DAY, true)]).size).toBe(0);
+    expect(drawToday(campaign, bank, attempts, 8, '2026-09-11')).not.toContain(2);
+  });
+
+  it('gives the day XP for the work and the Easy bonus only for the rating', () => {
+    // Day 1: two problems (20) + one Easy (5) + a full day (50); day 2: one (10).
+    expect(p.xp).toBe(85);
+  });
+
+  it('says in the day tally how many were worked and left unrated', () => {
+    const story = dayStory(campaign, bank, attempts, START + 12 * 3600000);
+    expect(story.today).toMatchObject({ done: 2, easy: 1, unrated: 1 });
+  });
+
+  it('keeps a rating when the problem is worked again afterwards', () => {
+    const again = [attempt(1, 'easy', START + 3600000), worked(1, START + 5 * 3600000)];
+    const story = dayStory(campaign, bank, again, START + 12 * 3600000);
+    expect(story.today).toMatchObject({ done: 1, easy: 1, unrated: 0 });
+  });
+
+  it('counts a problem on the day it was worked, even when the rating comes a day later', () => {
+    // One attempt row: cells first changed on day 1, rated on day 2.
+    const later = [{ itemId: 1, selfGrade: 'medium', at: START + 1 * DAY, seconds: 300, imported: false, workedAt: START + 3600000 }];
+    const p2 = campaignProgress(campaign, bank, later, NOW);
+    expect(p2.days[0]).toMatchObject({ done: 1 });
+    expect(p2.days[1]).toMatchObject({ done: 0 });
+    const day1 = dayStory(campaign, bank, later, START + 12 * 3600000);
+    expect(day1.today).toMatchObject({ done: 1, unrated: 1 });
+    const day2 = dayStory(campaign, bank, later, START + 1 * DAY + 3600000);
+    expect(day2.today).toMatchObject({ done: 0 }); // a repeat of day 1's problem, not a new one
+  });
+
+  it('never moves a full day when its problem is worked again days later', () => {
+    const rows = [worked(1, START + 3600000), worked(2, START + 4 * 3600000), worked(1, START + 2 * DAY)];
+    const p2 = campaignProgress(campaign, bank, rows, NOW);
+    expect(p2.days[0]).toMatchObject({ done: 2, state: 'full' });
+    expect(p2.days[2]).toMatchObject({ done: 0 });
   });
 });

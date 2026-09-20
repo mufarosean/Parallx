@@ -21,6 +21,10 @@ export interface InsightItem {
   readonly attemptCount: number;
   readonly seconds: number;
   readonly lastAttemptAt: number;
+  /** The rating in attemptState came in with the workbook, not from work done here. */
+  readonly ratingImported?: boolean;
+  /** A cell on this problem's sheet was changed at some point. */
+  readonly worked?: boolean;
 }
 export interface InsightAttempt {
   readonly itemId: number;
@@ -28,6 +32,8 @@ export interface InsightAttempt {
   readonly at: number;
   readonly seconds: number;
   readonly imported: boolean;
+  /** When a cell was first changed on this attempt's sheet (0 or absent = never). */
+  readonly workedAt?: number;
 }
 export interface ProgressSnapshot { readonly day: string; readonly attempted: number; readonly score: number }
 

@@ -363,6 +363,33 @@ replaced. The rule now:
    (Monday through today) on a rest day. Quota met reads "Day N done", and
    "Your best day yet" when today beats every day before it. A problem
    counts on its first campaign day only; time counts on the day worked.
+3i. DONE 2026-09-20: work counts, not only the rating (migration 010,
+   ws_attempts.worked_at). A problem imported with its workbook self-rating
+   already on it read as rated everywhere it appeared, so the quiz lit the
+   grade button, the problem looked finished, and the work done on it was
+   never credited: a day closed 16 of 17 with every problem in it gone over,
+   and the streak broke. An attempt is now worked the moment a cell on its
+   sheet changes (host.onEdited over the engine's editing commands, armed
+   after the mount settles, the rating cell's own write excluded); worked_at
+   is that first moment and never moves. The campaign credits a problem on
+   the earlier of its worked day and its rated day, so a day that read full
+   stays full and work done the day before a rating counts on the day it
+   was done. The rating still decides the score, the Easy bonus and when a
+   problem comes back; a worked problem left unrated is never scheduled as
+   a repeat, which is the one thing the rating alone still buys. A workbook
+   rating never lights a Rate button: the header says "Medium In Your
+   Workbook", or "Worked, Not Rated" in the accent once it has been touched;
+   the bank draws an untouched workbook rating as a ring; the quiz overview
+   puts work ahead of an old rating and calls a sheet saved without an edit
+   (a Reveal Solution) "Opened"; Complete Quiz counts out loud anything
+   neither worked nor rated before it closes; the campaign card offers Rate
+   Worked Problems (n) so the tally's chip is never a dead end. Revealing
+   the solution no longer writes an attempt on a sheet with no work.
+   Backfill: every attempt already holding the student's own cells counts as
+   worked, a rated one at its rating's moment (no day already seen changes),
+   an open one at the moment its cells were first saved; a sheet that was
+   only revealed before this date is indistinguishable from one worked and
+   is credited too.
 4. Essay sheets and the Flashcards sheet into a flashcards deck. Pictures
    need the engine's drawing preset in the host; EMF/WMF pictures (16 of
    45) cannot be shown at all and are counted at import.

@@ -7,7 +7,7 @@
 // is due again, what keeps going wrong, the weakest papers, and the vendor's
 // easy-and-likely problems never tried. Every row opens the problem or
 // starts a quiz; the arithmetic lives in progressInsights.ts.
-import { listItems, listCompletedAttempts, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getDailyDraw, saveDailyDraw, getOpenQuizSession } from './worksheetData.js';
+import { listItems, listAttemptHistory, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getDailyDraw, saveDailyDraw, getOpenQuizSession } from './worksheetData.js';
 import { computeInsights, dayKey, type Insights, type PaperProgress, type InsightItem, type InsightAttempt, type TimelinePoint } from './progressInsights.js';
 import { campaignProgress, campaignDone, drawToday, dayStory, addDays, restDaysLabel, isCampaignProblem, LEVEL_TITLES, XP_PER_PROBLEM, XP_EASY_BONUS, XP_FULL_DAY, type Campaign, type CampaignProgress, type DayStory } from './campaign.js';
 import { syncRewards, type RewardState } from './rewardsSync.js';
@@ -292,10 +292,13 @@ function storyRow(story: DayStory, p: CampaignProgress): HTMLElement | null {
     if (title) c.title = title;
     row.appendChild(c);
   };
-  const split = (t: { easy: number; medium: number; hard: number }) => {
+  const split = (t: { easy: number; medium: number; hard: number; unrated: number }) => {
     if (t.easy) chip('ws-chip--easy', `${t.easy} Easy`);
     if (t.medium) chip('ws-chip--medium', `${t.medium} Medium`);
     if (t.hard) chip('ws-chip--hard', `${t.hard} Hard`);
+    // Worked and never rated: it counts for the day, and saying so is the
+    // only way the missing rating is ever visible.
+    if (t.unrated) chip('ws-chip--open', `${t.unrated} Worked, Not Rated`, 'Counted for the day. Rating them scores them and sets when they come back.');
   };
   const xpTip = `${XP_PER_PROBLEM} a problem, ${XP_EASY_BONUS} more for Easy, ${XP_FULL_DAY} for a full day`;
   if (p.restToday) {
@@ -442,6 +445,14 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
     const extra = drawToday(campaign, items, attempts, p.target, `${today}+`);
     if (extra.length) actions.startQuiz(extra, 0, `Day ${p.dayIndex} Extra Draw`);
   }));
+  // Worked without a rating of his own: counted already, and one click from
+  // the rating that scores them, so the tally's chip is never a dead end.
+  const unrated = problems.filter((it) => it.worked && (it.ratingImported || !normalizeRating(it.attemptState))).map((it) => it.id);
+  if (unrated.length > 0 && !p.finished) {
+    const rateBtn = btn(`Rate Worked Problems (${unrated.length})`, 'ws-btn', () => actions.startQuiz(unrated, 0, 'Worked, Not Rated'));
+    rateBtn.title = 'Problems you worked without rating. They count already; a rating scores them and sets when they come back.';
+    acts.appendChild(rateBtn);
+  }
   acts.appendChild(btn('Review Due Flashcards', 'ws-btn', () => actions.studyFlashcards()));
   todayRow.appendChild(acts);
   sec.appendChild(todayRow);
@@ -516,7 +527,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     const seq = ++renderSeq;
     const [items, attempts, snapshots, campaign] = await Promise.all([
       listItems().catch(() => []),
-      listCompletedAttempts().catch(() => []),
+      listAttemptHistory().catch(() => []),
       listProgressSnapshots().catch(() => []),
       getCampaign().catch(() => null),
     ]);

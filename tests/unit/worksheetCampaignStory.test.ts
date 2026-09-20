@@ -29,11 +29,11 @@ describe('a day\'s tally', () => {
       rate(5, 'easy', at('2026-09-14', 9), 0, true), // imported never counts
     ];
     const s = dayStory(campaign, bank, attempts, at('2026-09-14', 10));
-    expect(s.today).toEqual({ day: '2026-09-14', done: 2, easy: 1, medium: 1, hard: 0, seconds: 1260, papers: 2, xp: 2 * 10 + 5 + 50, full: true, rest: false });
+    expect(s.today).toEqual({ day: '2026-09-14', done: 2, easy: 1, medium: 1, hard: 0, unrated: 0, seconds: 1260, papers: 2, xp: 2 * 10 + 5 + 50, full: true, rest: false });
     expect(s.last).toBeNull();
     expect(s.best).toBeNull();
     expect(s.bestToday).toBe(false);
-    expect(s.week).toEqual({ done: 2, easy: 1, medium: 1, hard: 0, seconds: 1260, fullDays: 1, days: 1, papers: 2 });
+    expect(s.week).toEqual({ done: 2, easy: 1, medium: 1, hard: 0, unrated: 0, seconds: 1260, fullDays: 1, days: 1, papers: 2 });
   });
 
   it('counts a repeat on its first day only, but keeps its time on the day it was worked', () => {
@@ -75,7 +75,7 @@ describe('the story', () => {
     expect(fri.today).toMatchObject({ done: 0, rest: true, full: false });
     expect(fri.best?.day).toBe('2026-09-17');
     expect(fri.bestToday).toBe(false);
-    expect(fri.week).toEqual({ done: 6, easy: 4, medium: 1, hard: 1, seconds: 1800, fullDays: 2, days: 3, papers: 3 });
+    expect(fri.week).toEqual({ done: 6, easy: 4, medium: 1, hard: 1, unrated: 0, seconds: 1800, fullDays: 2, days: 3, papers: 3 });
   });
   it('starts the week over on Monday', () => {
     const nextMon = dayStory(campaign, bank, [...attempts, rate(7, 'easy', at('2026-09-21', 6))], at('2026-09-21', 7));

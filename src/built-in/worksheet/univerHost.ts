@@ -159,6 +159,14 @@ export interface IWorksheetHost {
   probeRecalculate(): boolean;
   /** Fires after the engine hides or shows columns by any means: the sheet's own menu, our button, an undo. */
   onColumnsVisibilityChanged(listener: () => void): { dispose(): void };
+  /**
+   * A cell's contents were changed by the student: typing, pasting, clearing
+   * or moving cells, and structural edits to rows and columns. This is the
+   * Problem Bank's proof that a problem was worked, so it deliberately
+   * ignores selection, scrolling, formatting and the engine's own formula
+   * results, and it fires on every edit (the caller marks once).
+   */
+  onEdited(listener: () => void): { dispose(): void };
   /** Resolves once the engine reports itself rendered (or after a short fallback), so a pane can be swapped in already painted. */
   whenRendered(): Promise<void>;
   /** Tear down the engine and all DOM it created. */
@@ -840,6 +848,35 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       return univer.__getInjector().get(ICommandService).syncExecuteCommand(SetCellEditVisibleOperation.id, { visible: true, eventType: DeviceInputEventType.Dblclick, unitId });
     } catch (err) { console.warn('[Worksheet] probeStartEditing failed:', err); return false; }
   };
+  // Commands that change what a cell holds. Ids verified against the
+  // installed @univerjs/sheets build; anything not listed (selection moves,
+  // scrolling, styling, formula results) is not work.
+  const EDIT_COMMANDS = new Set([
+    'sheet.command.set-range-values',
+    'sheet.command.auto-clear-content',
+    'sheet.command.clear-selection-all',
+    'sheet.command.clear-selection-content',
+    'sheet.command.delete-range-move-left',
+    'sheet.command.delete-range-move-up',
+    'sheet.command.insert-range-move-down',
+    'sheet.command.insert-range-move-right',
+    'sheet.command.move-range',
+    'sheet.command.paste',
+    'sheet.command.paste-value',
+    'sheet.command.optional-paste',
+    'sheet.command.insert-row', 'sheet.command.insert-row-after', 'sheet.command.insert-row-before',
+    'sheet.command.insert-col', 'sheet.command.insert-col-after', 'sheet.command.insert-col-before',
+    'sheet.command.remove-row', 'sheet.command.remove-col',
+  ]);
+  const onEdited = (listener: () => void): { dispose(): void } => {
+    if (disposed) return { dispose: () => {} };
+    try {
+      return univer.__getInjector().get(ICommandService).onCommandExecuted((c) => {
+        if (!EDIT_COMMANDS.has(c.id)) return;
+        try { listener(); } catch { /* pane torn down */ }
+      });
+    } catch { return { dispose: () => {} }; }
+  };
   const onColumnsVisibilityChanged = (listener: () => void): { dispose(): void } => {
     if (disposed) return { dispose: () => {} };
     try {
@@ -974,6 +1011,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     probeStartEditing,
     probeRecalculate,
     onColumnsVisibilityChanged,
+    onEdited,
     setDarkMode: (dark: boolean) => {
       if (disposed) return;
       try { univerAPI.toggleDarkMode(dark); } catch { /* engine disposed */ }

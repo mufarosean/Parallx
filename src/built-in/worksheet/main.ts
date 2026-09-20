@@ -22,9 +22,9 @@ import type { IWorksheetHost, SheetViewState } from './univerHost.js';
 import { renderMarkdown } from '../../ui/renderMarkdown.js';
 import {
   listItems, getItem, createItem, deleteItem, getOpenAttempt, getLatestWork, saveAttemptCells,
-  discardOpenAttempt, completeAttempt, saveAttemptReview, onWorksheetDataChanged,
+  discardOpenAttempt, completeAttempt, markAttemptWorked, saveAttemptReview, onWorksheetDataChanged,
   getSessionGrades, attachWorksheetDatabase, recordImportedRating, upsertProgressSnapshot,
-  getCampaign, startCampaign, endCampaign, listCompletedAttempts,
+  getCampaign, startCampaign, endCampaign, listAttemptHistory,
   getOpenQuizSession, saveQuizSession, finishQuizSession, renameQuizSession, reopenQuizSession, deleteQuizSession,
   getQuizSession, listQuizSessions, getSessionItemStates, getProblemNotes, setProblemNote, setItemStarred, getStarred,
   type WorksheetItem, type WorksheetItemSummary,
@@ -587,10 +587,20 @@ function renderBankSnapshot(root: HTMLElement, items: WorksheetItemSummary[]): v
       const rows = el('div', 'ws-bank__items');
       for (const it of list) {
         const row = el('div', 'ws-bank__item');
-        row.appendChild(el('span', `ws-bank__dot ${stateClass(it.attemptState)}`));
+        // A workbook rating is a ring until the problem is touched here;
+        // worked without a rating of his own, it takes the in-progress dot,
+        // never the workbook's colour.
+        const dot = it.attemptState === 'open' || (it.ratingImported && it.worked) ? 'open'
+          : it.ratingImported ? `${stateClass(it.attemptState)} ws-bank__dot--workbook`
+            : stateClass(it.attemptState);
+        row.appendChild(el('span', `ws-bank__dot ${dot}`));
         row.appendChild(el('span', 'ws-bank__itemtitle', it.title));
         const secs = it.seconds > 0 ? ` · ${fmtSeconds(it.seconds)}` : '';
-        row.title = `${it.title}${it.attemptState ? ` · ${it.attemptState === 'open' ? 'In Progress' : gradeLabel(it.attemptState)}` : ''}${secs}`;
+        const state = !it.attemptState ? 'Never tried'
+          : it.attemptState === 'open' ? 'In Progress'
+            : it.ratingImported ? `${gradeLabel(it.attemptState)} in your workbook${it.worked ? ', worked here' : ''}`
+              : gradeLabel(it.attemptState);
+        row.title = `${it.title} · ${state}${secs}`;
         row.addEventListener('click', () => void openWorksheet(`item:${it.id}`, it.title));
         rows.appendChild(row);
       }
@@ -659,7 +669,7 @@ function createLauncherPane(container: HTMLElement) {
     const [items, campaign, attempts] = await Promise.all([
       listItems().catch(() => []),
       getCampaign().catch(() => null),
-      listCompletedAttempts().catch(() => []),
+      listAttemptHistory().catch(() => []),
     ]);
     if (disposed || seq !== renderSeq) return;
     root.replaceChildren();
@@ -784,7 +794,7 @@ function createSettingsPane(container: HTMLElement) {
     const [items, campaign, attempts] = await Promise.all([
       listItems().catch(() => []),
       getCampaign().catch(() => null),
-      listCompletedAttempts().catch(() => []),
+      listAttemptHistory().catch(() => []),
     ]);
     if (disposed) return;
     root.replaceChildren();
@@ -1607,6 +1617,25 @@ function createPracticeRunPane(container: HTMLElement) {
     // the same problems; Rename changes what Home lists it under.
     const completeQuiz = async () => {
       if (session.finishedAt) return;
+      // A quiz never closes quietly one short. Anything neither worked nor
+      // rated is counted out loud first (Mufaro, 2026-09-20: a day ended 16
+      // of 17 with every problem in it gone over).
+      const states = await getSessionItemStates(session.ids, session.startedAt).catch(() => new Map());
+      const byId = new Map((await listItems().catch(() => [])).map((s) => [s.id, s]));
+      const undone = session.ids.filter((id) => {
+        const st = states.get(id);
+        if (st?.worked || normalizeRating(st?.grade ?? '')) return false;
+        const it = byId.get(id);
+        return !(it?.worked || (!it?.ratingImported && normalizeRating(it?.attemptState ?? '')));
+      });
+      if (undone.length > 0) {
+        const ok = await _api?.window?.showConfirmModal?.({
+          message: `Complete this quiz with ${undone.length} ${undone.length === 1 ? 'problem' : 'problems'} not done?`,
+          detail: 'Nothing was worked or rated on them, so they count for nothing today and stay in the bank for another day. Back To Quiz takes you to them.',
+          confirmLabel: 'Complete Anyway',
+        }) ?? true;
+        if (!ok || disposed) return;
+      }
       await finishQuizSession(session.id).catch(() => {});
       session.finishedAt = Date.now();
       _api?.activity?.note('finished', `the quiz "${session.name}"`);
@@ -1672,7 +1701,13 @@ function createPracticeRunPane(container: HTMLElement) {
         const row = el('div', 'ws-itemrow');
         const info = el('div', 'ws-itemrow__info');
         const title = el('div', 'ws-itemrow__title', `${i + 1}. ${item?.title ?? `Item ${id}`}`);
-        if (grade) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, hit!.own ? gradeLabelFor(grade) : `${gradeLabelFor(grade)} earlier`));
+        // Own rating, then an earlier one of his, then work without one, then
+        // what the workbook carried: the summary never dresses a workbook
+        // rating up as his.
+        if (grade && hit!.own) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, gradeLabelFor(grade)));
+        else if (grade && !item?.ratingImported) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} earlier`));
+        else if (item?.worked) title.appendChild(el('span', 'ws-chip ws-chip--open', 'Worked, Not Rated'));
+        else if (grade) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} in your workbook`));
         else title.appendChild(el('span', 'ws-chip', session.skipped.has(id) ? 'Skipped' : 'Not Rated'));
         info.appendChild(title);
         info.addEventListener('click', () => { _practice = session; view = 'sheet'; goTo(i); });
@@ -1734,7 +1769,7 @@ function createPracticeRunPane(container: HTMLElement) {
       const id = session.ids[session.index];
       const [grades, states] = await Promise.all([
         getSessionGrades([id], session.startedAt, session.id, session.finishedAt ?? null),
-        getSessionItemStates([id], session.startedAt).catch(() => new Map<number, { grade: string; attempted: boolean; seconds: number }>()),
+        getSessionItemStates([id], session.startedAt).catch(() => new Map<number, { grade: string; attempted: boolean; worked: boolean; seconds: number }>()),
       ]);
       if (disposed || id !== session.ids[session.index]) return;
       const g = grades.get(id);
@@ -1766,7 +1801,7 @@ function createPracticeRunPane(container: HTMLElement) {
       const wrap = el('div', 'ws-quiz__overview');
       playerHost.appendChild(wrap);
       const [states, notes, bank] = await Promise.all([
-        getSessionItemStates(session.ids, session.startedAt).catch(() => new Map<number, { grade: string; attempted: boolean; seconds: number }>()),
+        getSessionItemStates(session.ids, session.startedAt).catch(() => new Map<number, { grade: string; attempted: boolean; worked: boolean; seconds: number }>()),
         getProblemNotes(session.ids).catch(() => new Map<number, string>()),
         listItems().catch(() => []),
       ]);
@@ -1781,11 +1816,14 @@ function createPracticeRunPane(container: HTMLElement) {
         // Rated before this quiz began: the rating still shows, marked as earlier.
         const earlierGrade = !sessionGrade && item ? normalizeRating(item.attemptState) : '';
         const gradeText = sessionGrade ? st!.grade : (item?.attemptState ?? '');
-        const rated = sessionGrade || earlierGrade;
         if ((sessionGrade || st?.attempted) && session.skipped.delete(id)) void persistPractice();
         const skipped = session.skipped.has(id);
-        const status = sessionGrade ? gradeLabel(st!.grade) : earlierGrade ? `${gradeLabel(item!.attemptState)} earlier` : st?.attempted ? 'Attempted' : skipped ? 'Skipped' : 'Not Started';
-        if (sessionGrade) counts.rated++; else if (st?.attempted) counts.attempted++; else if (skipped) counts.skipped++; else counts.untouched++;
+        // Work outranks an old rating here: working a problem is what counts
+        // it for the day, and a rating that came in with the workbook is said
+        // in those words so it is never mistaken for one given here.
+        const earlierText = item?.ratingImported ? `${gradeLabel(item.attemptState)} in your workbook` : `${gradeLabel(item?.attemptState ?? '')} earlier`;
+        const status = sessionGrade ? gradeLabel(st!.grade) : st?.worked ? 'Worked, Not Rated' : earlierGrade ? earlierText : st?.attempted ? 'Opened' : skipped ? 'Skipped' : 'Not Started';
+        if (sessionGrade) counts.rated++; else if (st?.worked) counts.attempted++; else if (skipped) counts.skipped++; else counts.untouched++;
         const row = el('div', `ws-quiz__row${i === session.index ? ' ws-quiz__row--current' : ''}`);
         row.setAttribute('role', 'button');
         row.tabIndex = 0;
@@ -1798,7 +1836,8 @@ function createPracticeRunPane(container: HTMLElement) {
         if (!note) preview.style.display = 'none';
         text.appendChild(preview);
         row.appendChild(text);
-        row.appendChild(el('span', `ws-chip ${rated ? `ws-chip--${stateClass(gradeText)}` : st?.attempted ? 'ws-chip--open' : 'ws-chip--muted'}`, status));
+        const chipCls = sessionGrade ? `ws-chip--${stateClass(gradeText)}` : st?.worked ? 'ws-chip--open' : earlierGrade ? `ws-chip--${stateClass(gradeText)}` : 'ws-chip--muted';
+        row.appendChild(el('span', `ws-chip ${chipCls}`, status));
         row.appendChild(el('span', 'ws-quiz__time', st?.seconds ? fmtSeconds(st.seconds) : ''));
         const noteBtn = iconBtn('notebook-pen', note ? 'Edit Note' : 'Add Note', { hint: 'A note on this problem, kept with it across quizzes.' });
         row.appendChild(noteBtn);
@@ -1864,7 +1903,7 @@ function createPracticeRunPane(container: HTMLElement) {
       else small('Quiz Summary', 'The ratings so far, and Complete Quiz when you are done.', () => goTo(session.ids.length));
       head.appendChild(titleRow);
       head.appendChild(el('span', 'ws-chip ws-chip--muted', session.finishedAt ? `Completed ${when(session.finishedAt)}` : 'Open'));
-      head.appendChild(el('span', 'ws-hint', [`${counts.rated} rated`, `${counts.attempted} attempted`, `${counts.skipped} skipped`, `${counts.untouched} not started`].join(' · ')));
+      head.appendChild(el('span', 'ws-hint', [`${counts.rated} rated`, `${counts.attempted} worked`, `${counts.skipped} skipped`, `${counts.untouched} not started`].join(' · ')));
       wrap.appendChild(head);
       for (const r of rows) wrap.appendChild(r);
     };
@@ -2291,6 +2330,9 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   /** Set by the problem tab: re-reads the solution's visibility from the live sheet. */
   let syncRevealFromSheet: (() => void) | null = null;
   let visibilitySub: { dispose(): void } | null = null;
+  /** Set by a Problem Bank item: the first cell edit is the proof it was worked. */
+  let onSheetEdited: (() => void) | null = null;
+  let editedSub: { dispose(): void } | null = null;
   let autosaveTimer: ReturnType<typeof setInterval> | null = null;
   let lastSavedCells = '';
   /** Problem Bank items: time on the open attempt (-1 = not a problem item). */
@@ -2355,6 +2397,8 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     // Solution: the button follows the sheet, whichever way the columns moved.
     visibilitySub?.dispose();
     visibilitySub = host.onColumnsVisibilityChanged(() => syncRevealFromSheet?.());
+    editedSub?.dispose();
+    editedSub = host.onEdited(() => onSheetEdited?.());
   };
 
   // Sheet appearance: re-skin the live engine when the setting changes
@@ -2598,10 +2642,18 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     problemSeconds = open?.seconds ?? 0;
     readPristine(problem);
     let latestRating = '';
+    /** The rating shown came in with the workbook, not from work done here. */
+    let ratingImported = false;
+    /** A cell on this sheet has been changed: the campaign counts it done. */
+    let worked = false;
+    /** The rating landing in its cell is a write on the sheet, not work. */
+    let ratingWrite = false;
     let starred = false;
     const refreshRating = async () => {
       const summary = (await listItems().catch(() => [])).find((s) => s.id === problem.id);
       latestRating = summary ? normalizeRating(summary.attemptState) : '';
+      ratingImported = summary?.ratingImported ?? false;
+      worked = summary?.worked ?? false;
       starred = summary?.starred ?? false;
     };
     await refreshRating();
@@ -2619,12 +2671,28 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       const spacer = el('div'); spacer.style.flex = '1';
       titleRow.appendChild(spacer);
       titleRow.appendChild(timerEl);
+      // A rating carried in from the workbook is not a rating given here: it
+      // never lights a button, because a lit button reads as "done" and the
+      // work then goes uncounted (Mufaro, 2026-09-20). It is said in words
+      // instead, beside a plain statement of whether the problem was worked.
+      const ownRating = ratingImported ? '' : latestRating;
+      // A lit button is the one sign of a rating given here; the chip speaks
+      // only when the buttons cannot say it, in the accent, never a grade colour.
+      const status = ownRating ? null
+        : worked ? { text: 'Worked, Not Rated', cls: 'ws-chip--open', hint: ratingImported ? `Counts as done for the day. Your workbook rated this ${ratingLabel(latestRating)}; rate it here to score it and set when it comes back.` : 'Counts as done for the day. A rating scores it and sets when it comes back.' }
+          : ratingImported ? { text: `${ratingLabel(latestRating)} In Your Workbook`, cls: 'ws-chip--muted', hint: 'Carried in with the import. It counts for the campaign once you work it here or rate it again.' }
+            : null;
+      if (status) {
+        const chip = el('span', `ws-chip ${status.cls} ws-problem__status`, status.text);
+        chip.title = status.hint;
+        titleRow.appendChild(chip);
+      }
       const rate = el('div', 'ws-problem__rate');
       rate.appendChild(el('span', 'ws-problem__ratelabel', 'Rate'));
       for (const grade of ['easy', 'medium', 'hard'] as const) {
         const b = el('button', `ws-btn ws-btn--grade ws-btn--grade-${grade}`) as HTMLButtonElement;
         b.textContent = ratingLabel(grade);
-        b.setAttribute('aria-pressed', latestRating === grade ? 'true' : 'false');
+        b.setAttribute('aria-pressed', ownRating === grade ? 'true' : 'false');
         b.title = `Rate this problem ${ratingLabel(grade)}. Your rating feeds the dashboard and the quiz filters.`;
         b.addEventListener('click', () => {
           void (async () => {
@@ -2632,7 +2700,12 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
             await completeAttempt(problem.id, grade, lastSavedCells, { seconds: problemSeconds, sessionId: quizSessionIdFor(problem.id) });
             _api?.activity?.note('practiced', `problem "${problem.title}"`, `rated ${ratingLabel(grade)}`);
             latestRating = grade;
-            if (ratingCell) host?.setCellText(ratingCell.row, ratingCell.col, ratingLabel(grade));
+            ratingImported = false;
+            if (ratingCell) {
+              ratingWrite = true;
+              host?.setCellText(ratingCell.row, ratingCell.col, ratingLabel(grade));
+              setTimeout(() => { ratingWrite = false; }, 100);
+            }
             paintHeader();
           })();
         });
@@ -2685,8 +2758,11 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
             const h = host;
             const inPlace = segs.length > 0 && segs.every((seg) => h.setColumnsHidden(seg.start, seg.last - seg.start + 1, !revealed));
             if (!inPlace) await mountSheet(applySolutionVisibility(live, revealed));
-            lastSavedCells = '';
-            await persistWorking();
+            // Revealing is not work. With work on the sheet the column state
+            // is saved alongside it; without any, the baseline moves instead,
+            // so a look at the solution never writes an attempt.
+            if (worked) { lastSavedCells = ''; await persistWorking(); }
+            else lastSavedCells = JSON.stringify(host?.getSnapshot() ?? null);
             paintHeader();
           })();
         });
@@ -2742,8 +2818,8 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       if (nowRevealed === revealed) return;
       revealed = nowRevealed;
       paintHeader();
-      lastSavedCells = '';
-      void persistWorking();
+      if (worked) { lastSavedCells = ''; void persistWorking(); }
+      else lastSavedCells = JSON.stringify(host?.getSnapshot() ?? null);
     };
     paintHeader();
     const carried = open ?? prior;
@@ -2753,6 +2829,19 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     // mount, so merely reopening a problem (rated or not) starts no new attempt.
     lastSavedCells = await settledSnapshotJson();
     if (disposed) return;
+    // Work is what the campaign counts, not the rating alone. The first cell
+    // edit records it, so a problem that arrived carrying its workbook rating
+    // still closes out the day once it has actually been done. Armed only
+    // now, after the engine has settled, so nothing the mount does counts.
+    onSheetEdited = () => {
+      if (disposed || worked || ratingWrite) return;
+      worked = true;
+      void (async () => {
+        await persistWorking();
+        await markAttemptWorked(problem.id, problemSeconds >= 0 ? problemSeconds : undefined).catch(() => {});
+        if (!disposed) paintHeader();
+      })();
+    };
     autosaveTimer = setInterval(() => { void persistWorking(); }, AUTOSAVE_MS);
     problemTimer = setInterval(() => {
       if (disposed || document.hidden || !root.isConnected || root.offsetParent === null) return;
@@ -2845,6 +2934,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       _appearanceListeners.delete(applyAppearance);
       _decimalsListeners.delete(applyDecimals);
       visibilitySub?.dispose();
+      editedSub?.dispose();
       modeObserver.disconnect();
       host?.dispose();
       host = null;

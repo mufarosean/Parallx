@@ -162,6 +162,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 /* The problem tab: a compact header row with the paper, the timer and the rating. */
 .ws-problem__meta { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .ws-problem__timer { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; color: var(--px-text-muted); font-size: var(--px-text-sm); }
+.ws-problem__status { margin-left: var(--px-space-2); }
 .ws-problem__rate { display: flex; align-items: center; gap: var(--px-space-1); margin-left: var(--px-space-2); }
 .ws-problem__rate .ws-btn { padding: 2px 10px; }
 .ws-problem__ratelabel { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-right: var(--px-space-1); }
@@ -189,6 +190,12 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-bank__dot.medium { background: var(--px-warning); }
 .ws-bank__dot.hard { background: var(--px-danger); }
 .ws-bank__dot.open { background: var(--px-accent); }
+/* A rating that came in with the workbook is a ring, not a filled dot: the
+   problem is not done in this campaign until it has been worked or rated. */
+.ws-bank__dot--workbook { background: transparent !important; box-shadow: inset 0 0 0 1.5px currentColor; }
+.ws-bank__dot--workbook.easy { color: var(--px-success); }
+.ws-bank__dot--workbook.medium { color: var(--px-warning); }
+.ws-bank__dot--workbook.hard { color: var(--px-danger); }
 .ws-bank__summary { font-size: var(--px-text-xs); color: var(--px-text-muted); margin: var(--px-space-1) 0 var(--px-space-2); }
 /* The Problem Bank page: papers as openable rows, problems inside. */
 .ws-home__paper { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-3); margin-top: var(--px-space-1); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); cursor: pointer; user-select: none; background: var(--px-bg-elevated); }

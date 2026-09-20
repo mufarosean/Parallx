@@ -122,25 +122,43 @@ export function planCampaign(total: number, days: number, startedAt: number = Da
   return { startDay, days: d, dailyTarget: Math.max(1, Math.ceil(Math.max(0, total) / working)), startedAt, restDays: rest };
 }
 
-/** Problems rated in the campaign, each with the day it first counted and its latest rating. */
-function campaignRatings(campaign: Campaign, items: readonly InsightItem[], attempts: readonly InsightAttempt[]): Map<number, { day: string; latest: string }> {
+/**
+ * Problems the campaign credits, each with the day it first counted and its
+ * latest rating ('' when it was worked but never rated).
+ *
+ * Work counts, not only the rating. A problem imported with its workbook
+ * rating already on it looks rated everywhere it appears, so asking for a
+ * rating as the only proof of work meant a day could close one short after
+ * every problem in it had been done (Mufaro, 2026-09-20). Changing a cell
+ * on the sheet is proof enough; the rating still decides the score, the
+ * Easy bonus and when a problem comes back.
+ */
+function campaignCredits(campaign: Campaign, items: readonly InsightItem[], attempts: readonly InsightAttempt[]): Map<number, { day: string; latest: string }> {
   const known = new Set(items.filter(isCampaignProblem).map((i) => i.id));
   const out = new Map<number, { day: string; latest: string; at: number }>();
+  // Each attempt carries up to two fixed moments: when it was rated and when
+  // its first cell was changed. Either credits the problem on that day, and
+  // neither moves afterwards, so a day that read full stays full.
+  const credit = (itemId: number, at: number, rating: string) => {
+    const day = dayKey(at);
+    const cur = out.get(itemId);
+    if (!cur) { out.set(itemId, { day, latest: rating, at: rating ? at : 0 }); return; }
+    if (day < cur.day) cur.day = day;
+    // Only a rating replaces a rating: working a problem again after rating
+    // it never drops it back to unrated.
+    if (rating && at >= cur.at) { cur.latest = rating; cur.at = at; }
+  };
   for (const a of attempts) {
-    if (a.imported || a.at < campaign.startedAt || !known.has(a.itemId) || !normalizeRating(a.selfGrade)) continue;
-    const day = dayKey(a.at);
-    const cur = out.get(a.itemId);
-    if (!cur) out.set(a.itemId, { day, latest: normalizeRating(a.selfGrade), at: a.at });
-    else {
-      if (day < cur.day) cur.day = day;
-      if (a.at >= cur.at) { cur.latest = normalizeRating(a.selfGrade); cur.at = a.at; }
-    }
+    if (a.imported || !known.has(a.itemId)) continue;
+    const rating = normalizeRating(a.selfGrade);
+    if (rating && a.at >= campaign.startedAt) credit(a.itemId, a.at, rating);
+    if (a.workedAt && a.workedAt >= campaign.startedAt) credit(a.itemId, a.workedAt, '');
   }
   return out;
 }
-/** The problems already done in this campaign. */
+/** The problems already done in this campaign: worked, rated, or both. */
 export function campaignDone(campaign: Campaign, items: readonly InsightItem[], attempts: readonly InsightAttempt[]): Set<number> {
-  return new Set(campaignRatings(campaign, items, attempts).keys());
+  return new Set(campaignCredits(campaign, items, attempts).keys());
 }
 
 export function levelFor(xp: number): CampaignLevel {
@@ -151,17 +169,17 @@ export function levelFor(xp: number): CampaignLevel {
 export function campaignProgress(campaign: Campaign, items: readonly InsightItem[], attempts: readonly InsightAttempt[], now: number = Date.now(), bonusXp = 0): CampaignProgress {
   const problems = items.filter(isCampaignProblem);
   const total = problems.length;
-  const ratings = campaignRatings(campaign, items, attempts);
+  const credits = campaignCredits(campaign, items, attempts);
   const today = dayKey(now);
   const dayIndex = Math.max(1, daysBetween(campaign.startDay, today) + 1);
 
   const doneByDay = new Map<string, number>();
   let easy = 0;
-  for (const r of ratings.values()) {
+  for (const r of credits.values()) {
     doneByDay.set(r.day, (doneByDay.get(r.day) ?? 0) + 1);
     if (r.latest === 'easy') easy++;
   }
-  const done = ratings.size;
+  const done = credits.size;
   const rest = (day: string) => isRestDay(campaign.restDays ?? [], day);
   // The quota follows the bank: what the campaign holds now over the working
   // days planned, so an import or an exclusion after the start never leaves
@@ -210,7 +228,7 @@ export function campaignProgress(campaign: Campaign, items: readonly InsightItem
   for (const it of problems) {
     const e = byPaper.get(it.paper) ?? { total: 0, done: 0 };
     e.total++;
-    if (ratings.has(it.id)) e.done++;
+    if (credits.has(it.id)) e.done++;
     byPaper.set(it.paper, e);
   }
   const papers = [...byPaper.entries()].map(([paper, v]) => ({ paper, ...v })).sort((a, b) => a.paper.localeCompare(b.paper));
@@ -239,6 +257,8 @@ export interface DayTally {
   readonly easy: number;
   readonly medium: number;
   readonly hard: number;
+  /** Worked that day and still carrying no rating of their own. */
+  readonly unrated: number;
   /** Time on every rated attempt of the day, repeats included. */
   readonly seconds: number;
   /** Distinct papers among the problems done. */
@@ -253,6 +273,7 @@ export interface WeekTally {
   readonly easy: number;
   readonly medium: number;
   readonly hard: number;
+  readonly unrated: number;
   readonly seconds: number;
   readonly fullDays: number;
   /** Days with something done. */
@@ -275,43 +296,57 @@ export interface DayStory {
 export function dayStory(campaign: Campaign, items: readonly InsightItem[], attempts: readonly InsightAttempt[], now: number = Date.now()): DayStory {
   const problems = items.filter(isCampaignProblem);
   const paperOf = new Map(problems.map((i) => [i.id, i.paper]));
-  const ratings = campaignRatings(campaign, items, attempts);
+  const credits = campaignCredits(campaign, items, attempts);
   const rest = (day: string) => isRestDay(campaign.restDays ?? [], day);
   const working = Math.max(1, workingDays(campaign.startDay, campaign.days, campaign.restDays ?? []));
   const target = Math.max(1, Math.ceil(problems.length / working));
   const today = dayKey(now);
 
-  // Per day: the rating each problem was given (the last of the day) and the time spent.
+  // Per day: the rating each problem was given (the last of the day), the
+  // problems worked without one, and the time spent. Time goes on the day
+  // of the rating, or on the day the work began when there is no rating.
   const byDay = new Map<string, { rated: Map<number, { rating: string; at: number }>; seconds: number }>();
-  for (const a of attempts) {
-    if (a.imported || a.at < campaign.startedAt || !paperOf.has(a.itemId)) continue;
-    const rating = normalizeRating(a.selfGrade);
-    if (!rating) continue;
-    const day = dayKey(a.at);
+  const dayOf = (day: string) => {
     let d = byDay.get(day);
     if (!d) { d = { rated: new Map(), seconds: 0 }; byDay.set(day, d); }
-    d.seconds += Math.max(0, a.seconds || 0);
-    const cur = d.rated.get(a.itemId);
-    if (!cur || a.at >= cur.at) d.rated.set(a.itemId, { rating, at: a.at });
+    return d;
+  };
+  for (const a of attempts) {
+    if (a.imported || !paperOf.has(a.itemId)) continue;
+    const rating = normalizeRating(a.selfGrade);
+    const ratedAt = rating && a.at >= campaign.startedAt ? a.at : 0;
+    const workedAt = a.workedAt && a.workedAt >= campaign.startedAt ? a.workedAt : 0;
+    if (!ratedAt && !workedAt) continue;
+    dayOf(dayKey(ratedAt || workedAt)).seconds += Math.max(0, a.seconds || 0);
+    if (ratedAt) {
+      const d = dayOf(dayKey(ratedAt));
+      const cur = d.rated.get(a.itemId);
+      if (!cur || ratedAt >= cur.at) d.rated.set(a.itemId, { rating, at: ratedAt });
+    }
+    if (workedAt) {
+      const d = dayOf(dayKey(workedAt));
+      if (!d.rated.has(a.itemId)) d.rated.set(a.itemId, { rating: '', at: 0 });
+    }
   }
   const tallyOf = (day: string): { t: DayTally; papers: Set<string> } => {
     const d = byDay.get(day);
-    let done = 0, easy = 0, medium = 0, hard = 0;
+    let done = 0, easy = 0, medium = 0, hard = 0, unrated = 0;
     const papers = new Set<string>();
     if (d) {
       for (const [id, r] of d.rated) {
-        if (ratings.get(id)?.day !== day) continue; // a repeat: it counted on its first day
+        if (credits.get(id)?.day !== day) continue; // a repeat: it counted on its first day
         done++;
         if (r.rating === 'easy') easy++;
         else if (r.rating === 'medium') medium++;
         else if (r.rating === 'hard') hard++;
+        else unrated++;
         papers.add(paperOf.get(id) ?? '');
       }
     }
     const r = rest(day);
     const full = !r && done >= target;
     const xp = done * XP_PER_PROBLEM + easy * XP_EASY_BONUS + (full ? XP_FULL_DAY : 0);
-    return { t: { day, done, easy, medium, hard, seconds: d?.seconds ?? 0, papers: papers.size, xp, full, rest: r }, papers };
+    return { t: { day, done, easy, medium, hard, unrated, seconds: d?.seconds ?? 0, papers: papers.size, xp, full, rest: r }, papers };
   };
 
   const todayT = tallyOf(today).t;
@@ -325,11 +360,11 @@ export function dayStory(campaign: Campaign, items: readonly InsightItem[], atte
   }
 
   const monday = addDays(today, -((weekdayOf(today) + 6) % 7));
-  const week = { done: 0, easy: 0, medium: 0, hard: 0, seconds: 0, fullDays: 0, days: 0, papers: 0 };
+  const week = { done: 0, easy: 0, medium: 0, hard: 0, unrated: 0, seconds: 0, fullDays: 0, days: 0, papers: 0 };
   const weekPapers = new Set<string>();
   for (let day = monday; day <= today; day = addDays(day, 1)) {
     const { t, papers } = tallyOf(day);
-    week.done += t.done; week.easy += t.easy; week.medium += t.medium; week.hard += t.hard; week.seconds += t.seconds;
+    week.done += t.done; week.easy += t.easy; week.medium += t.medium; week.hard += t.hard; week.unrated += t.unrated; week.seconds += t.seconds;
     if (t.full) week.fullDays++;
     if (t.done > 0) week.days++;
     for (const p of papers) weekPapers.add(p);

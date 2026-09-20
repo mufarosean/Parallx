@@ -97,6 +97,10 @@ export interface WorksheetItemSummary extends Omit<WorksheetItem, 'givensJson' |
   readonly lastAttemptAt: number;
   /** True when the item carries a real sheet (Problem Bank model). */
   readonly hasSheet: boolean;
+  /** The last grade came from the imported workbook, not from work done here. */
+  readonly ratingImported: boolean;
+  /** Cells were changed on this problem's sheet at some point: it was worked. */
+  readonly worked: boolean;
   /** Starred: the student's bookmark on the problem, kept across quizzes. */
   readonly starred: boolean;
   readonly starredAt: number;
@@ -135,6 +139,9 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
            (SELECT COUNT(*) FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1) AS done_count,
            (SELECT a.self_grade FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1
              ORDER BY a.updated_at DESC LIMIT 1) AS last_grade,
+           (SELECT a.imported FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1
+             ORDER BY a.updated_at DESC LIMIT 1) AS last_grade_imported,
+           (SELECT MAX(a.worked_at) FROM ws_attempts a WHERE a.item_id = i.id) AS worked_at,
            (SELECT MAX(a.updated_at) FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1) AS last_at,
            (SELECT COALESCE(SUM(a.seconds), 0) FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1) AS seconds,
            EXISTS(SELECT 1 FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 0
@@ -159,6 +166,8 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
       seconds: Number(row.seconds ?? 0),
       lastAttemptAt: Number(row.last_at ?? 0),
       hasSheet: !!row.has_sheet,
+      ratingImported: !!lastGrade && !!row.last_grade_imported,
+      worked: Number(row.worked_at ?? 0) > 0,
       starred: Number(row.starred_at ?? 0) > 0,
       starredAt: Number(row.starred_at ?? 0),
     };
@@ -259,6 +268,8 @@ export interface WorksheetAttempt {
   readonly sessionId: string;
   /** The grade came from the workbook's own self-rating, not from work done here. */
   readonly imported: boolean;
+  /** When a cell on the sheet was first changed (0 = never): the student worked this problem, rated or not. */
+  readonly workedAt: number;
 }
 
 function rowToAttempt(row: Record<string, unknown>): WorksheetAttempt {
@@ -274,6 +285,7 @@ function rowToAttempt(row: Record<string, unknown>): WorksheetAttempt {
     seconds: Number(row.seconds ?? 0),
     sessionId: String(row.session_id ?? ''),
     imported: !!row.imported,
+    workedAt: Number(row.worked_at ?? 0),
   };
 }
 
@@ -324,6 +336,28 @@ export async function saveAttemptCells(itemId: number, cellsJson: string, second
       [itemId, now, now, cellsJson, secs ?? 0],
     );
   }
+}
+
+/**
+ * The student changed a cell on this problem's sheet. That is the campaign's
+ * proof of work, independent of the rating: a problem that arrives carrying
+ * its workbook rating still counts for the day once it has been worked.
+ * Marked once per attempt; the announce keeps the dashboard honest live.
+ */
+export async function markAttemptWorked(itemId: number, seconds?: number): Promise<void> {
+  const now = Date.now();
+  const secs = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds as number)) : 0;
+  const open = await getOpenAttempt(itemId);
+  if (open) {
+    if (open.workedAt > 0) return;
+    await run('UPDATE ws_attempts SET worked_at = ?, updated_at = ? WHERE id = ?', [now, now, open.id]);
+  } else {
+    await run(
+      'INSERT INTO ws_attempts (item_id, started_at, updated_at, cells_json, seconds, worked_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [itemId, now, now, '', secs, now],
+    );
+  }
+  emitChange();
 }
 
 /** Reset Sheet: discard the open attempt's work entirely. */
@@ -496,30 +530,48 @@ export async function deleteQuizSession(id: string): Promise<void> {
   emitChange();
 }
 
-/** Every completed attempt, newest first, for the dashboard's timeline and score. */
-export async function listCompletedAttempts(): Promise<{ itemId: number; selfGrade: string; at: number; seconds: number; sessionId: string; imported: boolean }[]> {
-  const rows = await allRows('SELECT item_id, self_grade, updated_at, seconds, session_id, imported FROM ws_attempts WHERE completed = 1 ORDER BY updated_at DESC');
-  return rows.map((r) => ({ itemId: Number(r.item_id), selfGrade: String(r.self_grade ?? ''), at: Number(r.updated_at ?? 0), seconds: Number(r.seconds ?? 0), sessionId: String(r.session_id ?? ''), imported: !!r.imported }));
+/**
+ * Every attempt that is evidence of work, newest first: the completed ones,
+ * which carry a rating, and the open ones a cell was changed on. The
+ * campaign credits either; the score and the timeline read ratings only, so
+ * a worked-but-unrated row is invisible to them.
+ */
+export async function listAttemptHistory(): Promise<{ itemId: number; selfGrade: string; at: number; seconds: number; sessionId: string; imported: boolean; workedAt: number }[]> {
+  const rows = await allRows('SELECT item_id, self_grade, updated_at, seconds, session_id, imported, worked_at FROM ws_attempts WHERE completed = 1 OR worked_at > 0 ORDER BY updated_at DESC');
+  return rows.map((r) => ({ itemId: Number(r.item_id), selfGrade: String(r.self_grade ?? ''), at: Number(r.updated_at ?? 0), seconds: Number(r.seconds ?? 0), sessionId: String(r.session_id ?? ''), imported: !!r.imported, workedAt: Number(r.worked_at ?? 0) }));
 }
 
 /** Grades earned on the given items since a timestamp (practice-session
  *  summaries). Later grades on the same item win. */
 /** What happened to each problem since a quiz began: the latest rating, whether any work was saved, time spent. */
-export interface SessionItemState { readonly itemId: number; readonly grade: string; readonly attempted: boolean; readonly seconds: number }
+export interface SessionItemState {
+  readonly itemId: number;
+  readonly grade: string;
+  /** Cells were saved since the quiz began (a Reveal Solution saves too). */
+  readonly attempted: boolean;
+  /** A cell was changed since the quiz began: the work the campaign counts. */
+  readonly worked: boolean;
+  readonly seconds: number;
+}
 export async function getSessionItemStates(itemIds: number[], sinceMs: number): Promise<Map<number, SessionItemState>> {
   const map = new Map<number, SessionItemState>();
   if (itemIds.length === 0) return map;
   const ph = itemIds.map(() => '?').join(',');
   const rows = await allRows(
-    `SELECT item_id, self_grade, completed, seconds, length(cells_json) AS len FROM ws_attempts
+    `SELECT item_id, self_grade, completed, seconds, worked_at, length(cells_json) AS len FROM ws_attempts
      WHERE updated_at >= ? AND item_id IN (${ph}) ORDER BY updated_at ASC`,
     [sinceMs, ...itemIds],
   );
   for (const r of rows) {
     const id = Number(r.item_id);
-    const prev = map.get(id) ?? { itemId: id, grade: '', attempted: false, seconds: 0 };
+    const prev = map.get(id) ?? { itemId: id, grade: '', attempted: false, worked: false, seconds: 0 };
     const grade = Number(r.completed) === 1 && String(r.self_grade ?? '') !== '' ? String(r.self_grade) : prev.grade;
-    map.set(id, { itemId: id, grade, attempted: prev.attempted || Number(r.len ?? 0) > 2 || Number(r.completed) === 1, seconds: prev.seconds + Number(r.seconds ?? 0) });
+    map.set(id, {
+      itemId: id, grade,
+      attempted: prev.attempted || Number(r.len ?? 0) > 2 || Number(r.completed) === 1,
+      worked: prev.worked || Number(r.worked_at ?? 0) >= sinceMs,
+      seconds: prev.seconds + Number(r.seconds ?? 0),
+    });
   }
   return map;
 }
