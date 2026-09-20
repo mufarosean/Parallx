@@ -6356,7 +6356,7 @@ function renderChatEditor(container, parallx, input) {
           if (chunk.thinking && !chunk.content) {
             if (!isThinking) {
               isThinking = true;
-              gen.transient.content = textSoFar + ' *Thinking…*';
+              if (gen.transient) gen.transient.content = textSoFar + ' *Thinking…*';
               notifyGen(gen, 'chunk');
             }
             continue;
@@ -6367,7 +6367,7 @@ function renderChatEditor(container, parallx, input) {
             const speakerName = target.name || '';
             const stripped = stripSpeakerLabel(fullResponse.trimStart(), speakerName, _otherNames);
             const spacer = textSoFar && !textSoFar.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
-            gen.transient.content = textSoFar + spacer + stripped;
+            if (gen.transient) gen.transient.content = textSoFar + spacer + stripped;
             notifyGen(gen, 'chunk');
           }
         }
@@ -6558,6 +6558,10 @@ function renderChatEditor(container, parallx, input) {
             // call — the preview shows the cached summary or none.
             // Surface that we're spending an extra LLM call so the user knows
             // why the first token is slower than usual.
+            // The caller already owns the transient slot (its streaming bubble).
+            // Borrow it for the summariser and hand it back after, never null it:
+            // the caller's stream loop writes into it next.
+            const priorTransient = gen.transient;
             gen.transient = {
               author: 'system',
               role: 'system',
@@ -6601,7 +6605,7 @@ function renderChatEditor(container, parallx, input) {
               // Clear the summarisation transient message so the actual
               // generation transient can take over without leaking.
               if (gen.transient?.content?.startsWith('*Summarising')) {
-                gen.transient = null;
+                gen.transient = priorTransient;
                 notifyGen(gen, 'chunk');
               }
             }
@@ -6995,7 +6999,7 @@ function renderChatEditor(container, parallx, input) {
         if (chunk.thinking && !chunk.content) {
           if (!isThinking) {
             isThinking = true;
-            gen.transient.content = '*Thinking…*';
+            if (gen.transient) gen.transient.content = '*Thinking…*';
             notifyGen(gen, 'chunk');
           }
           continue;
@@ -7012,7 +7016,7 @@ function renderChatEditor(container, parallx, input) {
             // Suppress an in-flight partial tag (model just started
             // emitting `<scene-` but hasn't closed the bracket yet).
             .replace(/<scene-update\b[^>]*$/i, '');
-          gen.transient.content = visible;
+          if (gen.transient) gen.transient.content = visible;
           notifyGen(gen, 'chunk');
         }
       }
@@ -7141,7 +7145,7 @@ function renderChatEditor(container, parallx, input) {
             if (chunk.thinking && !chunk.content) {
               if (!isThinking) {
                 isThinking = true;
-                gen.transient.content = lastAiMsg.content + ' *Thinking…*';
+                if (gen.transient) gen.transient.content = lastAiMsg.content + ' *Thinking…*';
                 notifyGen(gen, 'chunk');
               }
               continue;
@@ -7152,7 +7156,7 @@ function renderChatEditor(container, parallx, input) {
               const speakerName = lastAiMsg.name || '';
               const stripped = stripSpeakerLabel(fullResponse.trimStart(), speakerName, _otherNames);
               const spacer = lastAiMsg.content && !lastAiMsg.content.endsWith(' ') && stripped && !stripped.startsWith(' ') ? ' ' : '';
-              gen.transient.content = lastAiMsg.content + spacer + stripped;
+              if (gen.transient) gen.transient.content = lastAiMsg.content + spacer + stripped;
               notifyGen(gen, 'chunk');
             }
           }
