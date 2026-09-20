@@ -6956,6 +6956,7 @@ function renderChatEditor(container, parallx, input) {
 
     gen.isGenerating = true;
     gen.stopRequested = false;
+    gen.lastError = null;
     gen.transient = buildGeneratedTurnMessage('', effectiveSpeaker, instruction, asUser);
     notifyGen(gen, 'state');
 
@@ -7066,6 +7067,7 @@ function renderChatEditor(container, parallx, input) {
         void _maybeAutoExtractMemory();
       }
     } catch (err) {
+      gen.lastError = err;
       const errorMessage = {
         author: 'system',
         name: 'System',
@@ -7636,6 +7638,17 @@ function renderChatEditor(container, parallx, input) {
       return;
     }
     await handleUserInput(text);
+    // A turn that failed before anything was stored (an instruction, a slash
+    // command) hands the text back, so nothing typed is ever lost to an
+    // error row. A stored message stays in the thread; an empty Send retries.
+    if (gen.lastError && !textarea.value.trim()) {
+      const stored = messageHistory.slice(-4).some((m) => m.author === 'user' && m.content && text.includes(m.content));
+      if (!stored) {
+        textarea.value = text;
+        textarea.dispatchEvent(new Event('input'));
+        textarea.focus();
+      }
+    }
   }
 
   sendBtn.addEventListener('click', () => {
