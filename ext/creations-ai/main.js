@@ -6586,17 +6586,14 @@ function renderChatEditor(container, parallx, input) {
               },
               {
                 role: 'user',
-                content:
-                  'EXISTING MEMORY:
-' + (priorSummary || '(none yet)') + '
-
-' +
-                  'NEW TURNS TO FOLD IN:
-
-' +
-                  newlyDropped.map(m => `${m.role}: ${(m.content || '').slice(0, 4000)}`).join('
-
-'),
+                content: [
+                  'EXISTING MEMORY:',
+                  priorSummary || '(none yet)',
+                  '',
+                  'NEW TURNS TO FOLD IN:',
+                  '',
+                  ...newlyDropped.map(m => `${m.role}: ${(m.content || '').slice(0, 4000)}`),
+                ].join('\n'),
               },
             ];
             try {
