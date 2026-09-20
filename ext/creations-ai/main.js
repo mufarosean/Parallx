@@ -1,5 +1,5 @@
-// Text Generator — Parallx Extension
-// Character chat using local Ollama models.
+// Creations AI — Parallx Extension (docs/CREATIONS_AI.md)
+// Characters, roleplay, stories and random tables with the model you choose.
 // All data lives under .parallx/extensions/text-generator/.
 //
 // Architecture cloned from src/openclaw/ (study and clone, never join):
@@ -8,6 +8,12 @@
 //   - Context assembly       ← openclawContextEngine.ts
 //   - History trimming       ← openclawContextEngine.ts
 
+import { renderStudioPane } from './studio.js';
+import { renderStoriesPage, listStories } from './story.js';
+import { renderTablesPage, attachTableRoll } from './tables.js';
+
+// The workspace data folder keeps its original name: every character, thread,
+// lorebook and setting a user has is in there, and a rename would be a move.
 const EXT_ROOT = '.parallx/extensions/text-generator';
 const SELF_SPEAKER = '__self__';
 const NARRATOR_SPEAKER = '__narrator__';
@@ -1554,7 +1560,7 @@ function injectStyles() {
   padding: 6px 20px;
   border: 1px solid transparent;
   border-radius: var(--parallx-radius-sm, 3px);
-  background: var(--px-accent, #388a34);
+  background: var(--px-accent);
   color: #fff;
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-base, 12px);
@@ -1911,7 +1917,7 @@ function injectStyles() {
   padding: 6px 20px;
   border: 1px solid transparent;
   border-radius: var(--parallx-radius-sm, 3px);
-  background: var(--px-accent, #388a34);
+  background: var(--px-accent);
   color: #fff;
   font-family: var(--parallx-fontFamily-ui);
   font-size: var(--parallx-fontSize-base, 12px);
@@ -2363,34 +2369,45 @@ function applyHistoryFloor(budget, systemPromptTokens) {
 // SECTION 4: CHARACTER & LOREBOOK PARSERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Section headings of the markdown card. Exact names first (they would
+// otherwise collide with the legacy fuzzy matches: "User Reminder" contains
+// "reminder"), then the three legacy headings matched loosely as before.
+const CHARACTER_MD_EXACT_SECTIONS = {
+  'voice anchor': 'voiceAnchor',
+  'user reminder': 'userReminder',
+  'user description': 'userDescription',
+};
+const CHARACTER_MD_LEGACY_SECTIONS = { reminder: 'reminder', initial: 'initialMessages', example: 'exampleDialogue' };
+
 function parseCharacterMd(content, fileName) {
   const { frontmatter, body } = parseFrontmatter(content);
   const sections = {};
   let currentSection = 'roleInstruction';
   let currentContent = [];
 
-  // Only 3 special sections are recognised; everything else is roleInstruction.
-  const SPECIAL = { reminder: 'reminder', initial: 'initialMessages', example: 'exampleDialogue' };
+  const flush = () => {
+    if (!currentContent.length) return;
+    const text = currentContent.join('\n').trim();
+    if (text) sections[currentSection] = (sections[currentSection] ? sections[currentSection] + '\n\n' : '') + text;
+    currentContent = [];
+  };
 
   for (const line of body.split('\n')) {
     if (line.startsWith('## ')) {
-      if (currentContent.length) {
-        sections[currentSection] = (sections[currentSection] ? sections[currentSection] + '\n\n' : '') + currentContent.join('\n').trim();
-      }
+      flush();
       const heading = line.slice(3).trim().toLowerCase();
-      const matched = Object.keys(SPECIAL).find((k) => heading.includes(k));
-      currentSection = matched ? SPECIAL[matched] : 'roleInstruction';
-      currentContent = [];
-    } else if (line.startsWith('# ') && !line.startsWith('## ')) {
-      // Top-level heading — keep in roleInstruction body
-      currentContent.push(line);
+      const exact = CHARACTER_MD_EXACT_SECTIONS[heading];
+      const fuzzy = exact ? null : Object.keys(CHARACTER_MD_LEGACY_SECTIONS).find((k) => heading.includes(k));
+      currentSection = exact || (fuzzy ? CHARACTER_MD_LEGACY_SECTIONS[fuzzy] : 'roleInstruction');
+      // Any other heading is part of the role instruction and is kept, so a
+      // Forge card's "## Appearance" / "## Personality" survives a round trip
+      // through an exported markdown file.
+      if (!exact && !fuzzy) currentContent.push(line);
     } else {
       currentContent.push(line);
     }
   }
-  if (currentContent.length) {
-    sections[currentSection] = (sections[currentSection] ? sections[currentSection] + '\n\n' : '') + currentContent.join('\n').trim();
-  }
+  flush();
 
   return {
     frontmatter,
@@ -2584,16 +2601,150 @@ function normalizeCharacterForRuntime(data, fileName) {
  */
 function migrateCharacterMdToJson(mdContent, fileName) {
   const parsed = parseCharacterMd(mdContent, fileName);
-  return createCharacterJson({
-    name: parsed.frontmatter.name || fileName.replace(/\.(md|json)$/, ''),
+  const fm = parsed.frontmatter;
+  const overrides = {
+    name: fm.name !== undefined && fm.name !== null && fm.name !== '' ? String(fm.name) : fileName.replace(/\.(md|json)$/, ''),
     roleInstruction: parsed.sections.roleInstruction || '',
+    voiceAnchor: parsed.sections.voiceAnchor || '',
     exampleDialogue: parsed.sections.exampleDialogue || '',
     reminder: parsed.sections.reminder || '',
+    userReminder: parsed.sections.userReminder || '',
+    userDescription: parsed.sections.userDescription || '',
     initialMessages: parsed.sections.initialMessages || '',
-    temperature: parsed.frontmatter.temperature ?? 0.8,
-    maxTokensPerMessage: parsed.frontmatter.maxTokensPerMessage ?? 0,
-    writingPreset: parsed.frontmatter.writingPreset || 'immersive-rp',
-  });
+    temperature: fm.temperature ?? 0.8,
+    maxTokensPerMessage: fm.maxTokensPerMessage ?? 0,
+    writingPreset: fm.writingPreset || 'immersive-rp',
+  };
+  // The remaining scalars the export writes come back as-is when present.
+  for (const [key] of CHARACTER_MD_FRONTMATTER_KEYS) {
+    if (key in overrides) continue;
+    if (fm[key] !== undefined && fm[key] !== null && fm[key] !== '') overrides[key] = fm[key];
+  }
+  return createCharacterJson(overrides);
+}
+
+// ── Character markdown export ──
+// The exported file is the same card layout the scanner already imports:
+// frontmatter for the scalars, the role instruction as the body, then one
+// "## Heading" section per long-text field. Defaults and empty fields are
+// left out so a simple character stays a simple file.
+const CHARACTER_MD_FRONTMATTER_KEYS = [
+  ['writingPreset', 'immersive-rp'],
+  ['temperature', 0.8],
+  ['maxTokensPerMessage', 0],
+  ['pov', ''],
+  ['messageLengthLimit', ''],
+  ['userName', ''],
+  ['systemName', ''],
+  ['fitMessagesInContextMethod', 'dropOld'],
+  ['extendedMemory', false],
+  ['messageInputPlaceholder', ''],
+];
+const CHARACTER_MD_SECTIONS = [
+  ['voiceAnchor', 'Voice Anchor'],
+  // exampleDialogue is deliberately not exported.
+  ['reminder', 'Reminder'],
+  ['userReminder', 'User Reminder'],
+  ['userDescription', 'User Description'],
+  ['initialMessages', 'Initial Messages'],
+];
+
+/**
+ * One frontmatter value, written so parseFrontmatter reads it back unchanged:
+ * the parser strips "#" comments, coerces bare numbers and booleans, and
+ * unquotes a quoted string verbatim, so anything it could misread is quoted.
+ */
+function formatFrontmatterValue(value) {
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  const s = String(value).replace(/\r?\n/g, ' ').trim();
+  const risky = s === '' || /[#:'"]/.test(s) || /^\s|\s$/.test(s) || /^(true|false|null|~)$/.test(s) || /^-?\d/.test(s) || s.startsWith('[');
+  if (!risky) return s;
+  if (!s.includes('"')) return '"' + s + '"';
+  if (!s.includes("'")) return "'" + s + "'";
+  return '"' + s.replace(/"/g, "'") + '"';
+}
+
+/** Serialize a character JSON object as a markdown card. */
+function serializeCharacterMd(data) {
+  const lines = ['---', 'name: ' + formatFrontmatterValue(data.name || 'Unnamed')];
+  for (const [key, dflt] of CHARACTER_MD_FRONTMATTER_KEYS) {
+    const value = data[key];
+    if (value === undefined || value === null || value === '' || value === dflt) continue;
+    lines.push(key + ': ' + formatFrontmatterValue(value));
+  }
+  lines.push('---', '');
+  const body = String(data.roleInstruction || '').trim();
+  if (body) lines.push(body, '');
+  for (const [key, heading] of CHARACTER_MD_SECTIONS) {
+    const text = String(data[key] || '').trim();
+    if (!text) continue;
+    lines.push('## ' + heading, text, '');
+  }
+  return lines.join('\n').replace(/\n+$/, '\n');
+}
+
+/** File name for an exported character: the name, lower-cased and safe on every OS. */
+function characterExportFileName(name) {
+  const slug = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return (slug || 'character') + '.md';
+}
+
+/**
+ * Export a character as a markdown file: native Save dialog, then one write
+ * to the chosen path. The data may be unsaved (the editor form, the Forge),
+ * so this never touches the roster.
+ */
+async function exportCharacterToMarkdown(data) {
+  const electron = globalThis.parallxElectron;
+  if (!electron?.dialog?.saveFile || !electron?.fs?.writeFile) {
+    showToastLite('Export is unavailable in this build.');
+    return false;
+  }
+  const markdown = serializeCharacterMd(data);
+  try {
+    const target = await electron.dialog.saveFile({
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+      defaultName: characterExportFileName(data.name),
+    });
+    if (!target) return false;
+    const result = await electron.fs.writeFile(target, markdown, 'utf-8');
+    if (result?.error) throw new Error(result.error.message || result.error.code || 'could not write the file');
+    showToastLite('Exported ' + (data.name || 'character') + ' to ' + target);
+    return true;
+  } catch (err) {
+    console.warn('[TextGenerator] Export failed:', err);
+    showToastLite('Export failed: ' + (err?.message || String(err)));
+    return false;
+  }
+}
+
+/** A small toast for pages that live outside the chat editor. */
+/** Save any Markdown to a file of the user's choosing (stories, tables). */
+async function exportMarkdownFile(fileName, content, label = 'file') {
+  const electron = globalThis.parallxElectron;
+  if (!electron?.dialog?.saveFile || !electron?.fs?.writeFile) {
+    showToastLite('Export is unavailable in this build.');
+    return false;
+  }
+  try {
+    const target = await electron.dialog.saveFile({ filters: [{ name: 'Markdown', extensions: ['md'] }], defaultName: fileName });
+    if (!target) return false;
+    const result = await electron.fs.writeFile(target, content, 'utf-8');
+    if (result?.error) throw new Error(result.error.message || result.error.code || 'could not write the file');
+    showToastLite(`Exported ${label} to ${target}`);
+    return true;
+  } catch (err) {
+    console.warn('[TextGenerator] Export failed:', err);
+    showToastLite('Export failed: ' + (err?.message || String(err)));
+    return false;
+  }
+}
+
+function showToastLite(message) {
+  const toast = el('div', 'tg-toast');
+  toast.appendChild(el('span', null, { text: message }));
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 5000);
 }
 
 /** Scan EXT_ROOT/lorebooks/ for .md files. */
@@ -4498,6 +4649,8 @@ function renderSidebar(container, parallx) {
 
   nav.appendChild(navItem('home', 'Home', 'textGenerator.openHome'));
   nav.appendChild(navItem('users', 'Characters', 'textGenerator.openCharacters'));
+  nav.appendChild(navItem('book-open', 'Stories', 'textGenerator.openStories'));
+  nav.appendChild(navItem('dices', 'Tables', 'textGenerator.openTables'));
   nav.appendChild(navItem('settings', 'Settings', 'textGenerator.openSettings'));
   root.appendChild(nav);
 
@@ -4569,7 +4722,8 @@ function renderSidebar(container, parallx) {
       delBtn.title = 'Delete chat';
       delBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        if (!confirm(`Delete chat "${th.title || 'Untitled'}"? This cannot be undone.`)) return;
+        const choice = await parallx.window.showWarningMessage(`Delete the chat "${th.title || 'Untitled'}"? This cannot be undone.`, { title: 'Delete' });
+        if (!choice || choice.title !== 'Delete') return;
         await deleteThread(fs, workspaceUri, th.id);
         refresh();
       });
@@ -5863,7 +6017,8 @@ function renderChatEditor(container, parallx, input) {
           // Warn if regenerating will delete messages after this one
           const messagesAfter = messageHistory.length - 1 - index;
           if (messagesAfter > 0) {
-            if (!confirm(`Regenerating will remove ${messagesAfter} message${messagesAfter > 1 ? 's' : ''} after this one. Continue?`)) return;
+            const regenChoice = await _parallx.window.showWarningMessage(`Regenerating removes the ${messagesAfter} ${messagesAfter > 1 ? 'messages' : 'message'} after this one.`, { title: 'Regenerate' });
+            if (!regenChoice || regenChoice.title !== 'Regenerate') return;
           }
           const speaker = !target.characterFile && (target.name || '').toLowerCase() === 'narrator'
             ? NARRATOR_SPEAKER
@@ -5923,7 +6078,8 @@ function renderChatEditor(container, parallx, input) {
           const target = messageHistory[index];
           const messagesAfter = messageHistory.length - 1 - index;
           if (messagesAfter > 0) {
-            if (!confirm(`Regenerating will remove ${messagesAfter} message${messagesAfter > 1 ? 's' : ''} after this one. Continue?`)) return;
+            const regenChoice = await _parallx.window.showWarningMessage(`Regenerating removes the ${messagesAfter} ${messagesAfter > 1 ? 'messages' : 'message'} after this one.`, { title: 'Regenerate' });
+            if (!regenChoice || regenChoice.title !== 'Regenerate') return;
           }
           // For user messages, the speaker is whichever persona authored it:
           // either the character the user plays as, or "self" (no character).
@@ -7578,126 +7734,88 @@ function renderChatEditor(container, parallx, input) {
 
 function renderHomePage(container, parallx) {
   injectStyles();
-
   const fs = parallx.workspace?.fs;
   const workspaceUri = parallx.workspace?.workspaceFolders?.[0]?.uri;
-
   const root = el('div', 'tg-page');
   container.appendChild(root);
-
-  // Header
   const header = el('div', 'tg-page-header');
-  header.innerHTML = icon('px-ai-mark', 28);
+  header.innerHTML = icon('sparkles', 28);
   const info = el('div', 'tg-page-header-info');
-  info.appendChild(el('div', 'tg-page-header-title', { text: 'Text Generator' }));
-  info.appendChild(el('div', 'tg-page-header-subtitle', { text: 'Character chat powered by local Ollama models' }));
+  info.appendChild(el('div', 'tg-page-header-title', { text: 'Creations AI' }));
+  info.appendChild(el('div', 'tg-page-header-subtitle', { text: 'Characters, roleplay, and the worlds they live in.' }));
   header.appendChild(info);
   root.appendChild(header);
-
   const content = el('div', 'tg-page-content');
   root.appendChild(content);
 
-  // Quick actions
-  const actionsSection = el('div', 'tg-page-section');
-  actionsSection.appendChild(el('div', 'tg-page-section-title', { text: 'Quick Actions' }));
+  // One launcher per kind of creation. Setup lives on Settings, not here.
+  const launch = el('div', 'tg-page-section');
+  launch.appendChild(el('div', 'tg-page-section-title', { text: 'Make Something' }));
   const actions = el('div', 'tg-quick-actions');
-
-  function quickAction(iconName, label, command) {
+  const quickAction = (iconName, label, command, hint) => {
     const btn = el('button', 'tg-quick-action');
     btn.innerHTML = icon(iconName, 14) + ` <span>${label}</span>`;
+    btn.title = hint;
     btn.addEventListener('click', () => parallx.commands.executeCommand(command));
     return btn;
-  }
-
-  actions.appendChild(quickAction('plus', 'New Chat', 'textGenerator.newChat'));
-  actions.appendChild(quickAction('users', 'Characters', 'textGenerator.openCharacters'));
-  actions.appendChild(quickAction('settings', 'Settings', 'textGenerator.openSettings'));
-  actionsSection.appendChild(actions);
-  content.appendChild(actionsSection);
-
+  };
+  actions.append(
+    quickAction('sparkles', 'New Character', 'textGenerator.newCharacter', 'A character from a concept, from sources, or from sources with a Twist'),
+    quickAction('message-circle', 'New Roleplay', 'textGenerator.newChat', 'A chat with one of your characters'),
+    quickAction('book-open', 'New Story', 'textGenerator.newStory', 'A story written in beats you steer'),
+    quickAction('dices', 'New Table', 'textGenerator.newTable', 'A random table in the Perchance list grammar'),
+  );
+  launch.appendChild(actions);
+  content.appendChild(launch);
   if (!fs || !workspaceUri) return { dispose() { container.innerHTML = ''; } };
 
-  // Recent chats
-  const recentChatsSection = el('div', 'tg-page-section');
-  recentChatsSection.appendChild(el('div', 'tg-page-section-title', { text: 'Recent Chats' }));
-  const recentChatsList = el('div', 'tg-recent-list');
-  recentChatsSection.appendChild(recentChatsList);
-  content.appendChild(recentChatsSection);
-
-  // Recent characters
-  const recentCharsSection = el('div', 'tg-page-section');
-  recentCharsSection.appendChild(el('div', 'tg-page-section-title', { text: 'Characters' }));
-  const recentCharsList = el('div', 'tg-recent-list');
-  recentCharsSection.appendChild(recentCharsList);
-  content.appendChild(recentCharsSection);
-
+  const recentSection = (titleText) => {
+    const section = el('div', 'tg-page-section');
+    section.appendChild(el('div', 'tg-page-section-title', { text: titleText }));
+    const list = el('div', 'tg-recent-list');
+    section.appendChild(list);
+    content.appendChild(section);
+    return list;
+  };
+  const chatsList = recentSection('Recent Chats');
+  const charsList = recentSection('Characters');
+  const storiesList = recentSection('Stories');
+  const row = (label, time, onClick) => {
+    const r = el('div', 'tg-recent-row');
+    r.appendChild(el('span', 'tg-recent-row-label', { text: label }));
+    if (time) r.appendChild(el('span', 'tg-recent-row-time', { text: time }));
+    r.addEventListener('click', onClick);
+    return r;
+  };
+  const empty = (list, text) => list.appendChild(el('div', 'tg-empty', { text }));
+  let disposed = false;
   async function load() {
-    // Recent chats (last 5)
-    recentChatsList.innerHTML = '';
-    const threads = await listThreads(fs, workspaceUri);
-    const recent = threads.slice(0, 5);
-    if (recent.length === 0) {
-      recentChatsList.appendChild(el('div', 'tg-empty', { text: 'No conversations yet. Start a new chat!' }));
-    } else {
-      for (const th of recent) {
-        const row = el('div', 'tg-recent-row');
-        row.appendChild(el('span', 'tg-recent-row-label', { text: th.title || 'Untitled' }));
-        row.appendChild(el('span', 'tg-recent-row-time', { text: formatTimeAgo(th.updatedAt) }));
-        row.addEventListener('click', () => {
-          parallx.editors.openEditor({
-            typeId: 'text-generator-chat',
-            title: th.title,
-            icon: 'message-circle',
-            instanceId: th.id,
-          });
-        });
-        recentChatsList.appendChild(row);
-      }
+    const [threads, characters, stories] = await Promise.all([
+      listThreads(fs, workspaceUri).catch(() => []),
+      scanCharacters(fs, workspaceUri).catch(() => []),
+      listStories(fs, workspaceUri, studioDeps()).catch(() => []),
+    ]);
+    if (disposed) return;
+    chatsList.innerHTML = ''; charsList.innerHTML = ''; storiesList.innerHTML = '';
+    if (threads.length === 0) empty(chatsList, 'No chats yet. New Roleplay starts one.');
+    for (const th of threads.slice(0, 5)) {
+      chatsList.appendChild(row(th.title || 'Untitled', formatTimeAgo(th.updatedAt), () => parallx.editors.openEditor({ typeId: 'text-generator-chat', title: th.title || 'Chat', icon: 'message-circle', instanceId: th.id })));
     }
-
-    // Characters
-    recentCharsList.innerHTML = '';
-    const characters = await scanCharacters(fs, workspaceUri);
-    if (characters.length === 0) {
-      recentCharsList.appendChild(el('div', 'tg-empty', { text: 'No characters yet. Create one to get started!' }));
-    } else {
-      for (const ch of characters) {
-        const name = ch.frontmatter.name || ch.fileName;
-        const row = el('div', 'tg-recent-row');
-        row.innerHTML = icon('user', 14);
-        row.appendChild(el('span', 'tg-recent-row-label', { text: name }));
-        row.addEventListener('click', async () => {
-          // null lets createThread fall back to the settings default;
-          // the chat resolves the real model at load. The old 'unknown'
-          // string got persisted into thread.json as a bogus model id.
-          let modelId = null;
-          if (parallx.lm) {
-            try {
-              const mdls = await parallx.lm.getModels();
-              if (mdls.length) modelId = mdls[0].id;
-            } catch { /* fallback */ }
-          }
-          const thread = await createThread(fs, workspaceUri, ch.fileName, modelId);
-          _refreshSidebar?.();
-          await parallx.editors.openEditor({
-            typeId: 'text-generator-chat',
-            title: name,
-            icon: 'message-circle',
-            instanceId: thread.id,
-          });
-        });
-        recentCharsList.appendChild(row);
-      }
+    if (characters.length === 0) empty(charsList, 'No characters yet. New Character opens the Studio.');
+    for (const ch of characters.slice(0, 8)) {
+      const name = ch.frontmatter.name || ch.fileName;
+      charsList.appendChild(row(name, '', () => parallx.editors.openEditor({ typeId: 'text-generator-character-editor', title: name, icon: 'user', instanceId: ch.fileName })));
+    }
+    if (stories.length === 0) empty(storiesList, 'No stories yet. New Story starts one.');
+    for (const { fileName, story } of stories.slice(0, 5)) {
+      storiesList.appendChild(row(story.title || 'Untitled', formatTimeAgo(story.updatedAt), () => parallx.editors.openEditor({ typeId: 'text-generator-story', title: story.title || 'Story', icon: 'book-open', instanceId: fileName })));
     }
   }
-
-  load();
-  return { dispose() { container.innerHTML = ''; } };
+  void load();
+  let sub = null;
+  try { sub = parallx.workspace?.onDidFilesChange?.(() => { void load(); }) || null; } catch { sub = null; }
+  return { dispose() { disposed = true; try { sub?.dispose?.(); } catch { /* gone */ } container.innerHTML = ''; } };
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 10C: CHARACTERS PAGE
-// ═══════════════════════════════════════════════════════════════════════════════
 
 function renderCharactersPage(container, parallx, input) {
   injectStyles();
@@ -7723,12 +7841,12 @@ function renderCharactersPage(container, parallx, input) {
   const rail = el('div', 'tg-cc-rail');
   const railHead = el('div', 'tg-cc-rail-head');
   railHead.appendChild(el('span', 'tg-cc-rail-title', { text: 'Characters' }));
-  const forgeBtn = el('button', 'tg-cc-rail-add', { html: icon('px-ai-mark', 14) });
-  forgeBtn.title = 'Forge a character (AI-generated from dials)';
-  forgeBtn.addEventListener('click', () => openForge());
+  const forgeBtn = el('button', 'tg-cc-rail-add', { html: icon('sparkles', 14) });
+  forgeBtn.title = 'New Character';
+  forgeBtn.addEventListener('click', () => openStudioNew());
   railHead.appendChild(forgeBtn);
   const newCharBtn = el('button', 'tg-cc-rail-add', { html: icon('plus', 14) });
-  newCharBtn.title = 'Create new character (blank)';
+  newCharBtn.title = 'New Blank Character';
   railHead.appendChild(newCharBtn);
   rail.appendChild(railHead);
   const charList = el('div', 'tg-cc-list');
@@ -7749,36 +7867,60 @@ function renderCharactersPage(container, parallx, input) {
 
   let selectedFile; // undefined until the first selectCharacter call
   let paneEditor = null;
+  // What the pane shows: the Studio (the one surface for a character) or the
+  // chat behaviour form behind it. Clicking a character's row from the form
+  // brings the Studio back.
+  let paneMode = null;
   const rowByFile = new Map();
-
-  function selectCharacter(fileName) {
-    if (selectedFile === fileName) return;
+  const clearPane = () => {
     if (paneEditor) { try { paneEditor.dispose?.(); } catch { /* already disposed */ } paneEditor = null; }
     pane.innerHTML = '';
+    paneMode = null;
+  };
+  const markActive = () => { for (const [f, row] of rowByFile) row.classList.toggle('tg-cc-row--active', f === selectedFile); };
+  const studioCtx = (extra) => ({
+    fs, workspaceUri,
+    // The Studio autosaves; the first save of a new character is the moment
+    // the rail learns about it. The pane is not re-rendered: the Studio is
+    // already showing that character.
+    onCreated: async (fileName) => { selectedFile = fileName; await refreshRail(); markActive(); _refreshSidebar?.(); },
+    openChat: (fileName, name) => startChatWithCharacter(fileName, name),
+    openChatBehaviour: (fileName) => openBehaviour(fileName),
+    openCharacter: (fileName) => { selectedFile = null; selectCharacter(fileName); },
+    openNew: (from) => openStudioNew(from),
+    ...extra,
+  });
+  function selectCharacter(fileName) {
+    if (selectedFile === fileName && paneMode === 'studio') return;
+    clearPane();
     selectedFile = fileName || null;
-    for (const [f, row] of rowByFile) row.classList.toggle('tg-cc-row--active', f === selectedFile);
+    markActive();
     if (!selectedFile) {
       const empty = el('div', 'tg-cc-empty');
       empty.appendChild(el('div', null, { html: icon('users', 32) }));
-      empty.appendChild(el('div', null, { text: 'Select a character to edit, or create a new one.' }));
+      empty.appendChild(el('div', null, { text: 'Pick a character, or make a new one.' }));
       pane.appendChild(empty);
       return;
     }
-    paneEditor = renderCharacterEditor(pane, parallx, { instanceId: selectedFile });
+    paneMode = 'studio';
+    paneEditor = renderStudioPane(pane, parallx, studioCtx({ fileName: selectedFile }), studioDeps());
   }
-
-  function openForge() {
-    if (paneEditor) { try { paneEditor.dispose?.(); } catch { /* already disposed */ } paneEditor = null; }
-    pane.innerHTML = '';
+  function openBehaviour(fileName) {
+    clearPane();
+    selectedFile = fileName;
+    markActive();
+    paneMode = 'behaviour';
+    const back = el('button', 'cs-btn cs-btn--quiet cs-back', { html: `${icon('arrow-left', 14)}<span>Back To Studio</span>` });
+    back.addEventListener('click', () => { selectedFile = null; selectCharacter(fileName); });
+    pane.appendChild(back);
+    paneEditor = renderCharacterEditor(pane, parallx, { instanceId: fileName });
+  }
+  function openStudioNew(from = null) {
+    clearPane();
     selectedFile = null;
-    for (const [, row] of rowByFile) row.classList.remove('tg-cc-row--active');
-    paneEditor = renderForgePane(pane, parallx, {
-      fs, workspaceUri,
-      onSaved: async (fileName) => {
-        await refreshRail();
-        selectCharacter(fileName);
-      },
-    });
+    markActive();
+    paneMode = 'studio';
+    paneEditor = renderStudioPane(pane, parallx, studioCtx({ fileName: null, from }), studioDeps());
   }
 
   async function startChatWithCharacter(fileName, name) {
@@ -7841,9 +7983,22 @@ function renderCharactersPage(container, parallx, input) {
           selectCharacter(dupeName);
         } catch (err) { console.warn('[TextGenerator] Duplicate failed:', err); }
       }));
-      rowActions.appendChild(railAction('trash', 'Delete', async () => {
-        if (!confirm(`Delete character "${name}"? This cannot be undone.`)) return;
+      rowActions.appendChild(railAction('file-down', 'Export As Markdown', async () => {
+        const dir = resolveUri(workspaceUri, `${EXT_ROOT}/characters`);
         try {
+          const { content } = await fs.readFile(resolveUri(dir, ch.fileName));
+          const data = ch.fileName.endsWith('.json') ? JSON.parse(content) : migrateCharacterMdToJson(content, ch.fileName);
+          await exportCharacterToMarkdown(data);
+        } catch (err) {
+          console.warn('[TextGenerator] Export failed:', err);
+          showToastLite('Export failed: ' + (err?.message || String(err)));
+        }
+      }));
+      rowActions.appendChild(railAction('trash', 'Delete', async () => {
+        const choice = await parallx.window.showWarningMessage(`Delete "${name}"? This cannot be undone.`, { title: 'Delete' });
+        if (!choice || choice.title !== 'Delete') return;
+        try {
+          if (selectedFile === ch.fileName) { try { paneEditor?.abandon?.(); } catch { /* gone */ } }
           await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/characters/${ch.fileName}`));
           if (selectedFile === ch.fileName) selectCharacter(null);
           await refreshRail();
@@ -7885,7 +8040,8 @@ function renderCharactersPage(container, parallx, input) {
         } catch (err) { console.warn('[TextGenerator] Lorebook duplicate failed:', err); }
       }));
       rowActions.appendChild(railAction('trash', 'Delete', async () => {
-        if (!confirm(`Delete lorebook "${loreName}"? This cannot be undone.`)) return;
+        const choice = await parallx.window.showWarningMessage(`Delete the lorebook "${loreName}"? This cannot be undone.`, { title: 'Delete' });
+        if (!choice || choice.title !== 'Delete') return;
         try {
           await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lb.fileName}`));
           await refreshRail();
@@ -7922,7 +8078,8 @@ function renderCharactersPage(container, parallx, input) {
   });
 
   refreshRail().then(() => {
-    selectCharacter(preselect || null);
+    if (rawInstance === 'new') openStudioNew();
+    else selectCharacter(preselect || null);
   }).catch((err) => console.warn('[TextGenerator] Characters rail load failed:', err));
 
   return {
@@ -8017,491 +8174,26 @@ function buildForgeSpec(state) {
   return { spec: lines.join('\n'), resolved };
 }
 
-function buildForgeMessages(state) {
-  const { spec } = buildForgeSpec(state);
-  const system = [
-    'You are a character designer for roleplay fiction. You create original, specific, believable characters, never generic ones.',
-    'Every field is written in the THIRD PERSON, as a description of the character ("<Name> is...", "She speaks..."). Never address anyone as "you". Never write instructions. It should all read as one consistent character portrait.',
-    'Return ONLY a single JSON object with EXACTLY these string keys: "name", "description", "appearance", "personality", "voice", "exampleDialogue", "reminder". No markdown, no commentary.',
-    'Never use em dashes or en dashes anywhere in any field. Use commas, periods, or ellipses instead.',
-  ].join('\n');
-  const user = [
-    'Create ONE character from this specification:',
-    '',
-    spec,
-    '',
-    'Field requirements (all third person):',
-    '- "description": 1-2 paragraphs: who they are, their background, occupation, and daily life, and how they behave. Concrete specifics over adjectives. If the concept mentions a place, job, or history, build on it faithfully.',
-    '- "appearance": one vivid paragraph describing their physical appearance and typical clothing. The attribute list gives exact values (gender, age, height, build, bust/chest, waist, hips/thighs, skin, hair, eyes, clothing style); use them faithfully. EXCEPTION: any physical trait the CHARACTER CONCEPT states or implies REPLACES the corresponding attribute entirely. Example: if the concept says "short", the listed height is void and the character is short. Never contradict the concept.',
-    '- "personality": one paragraph: their temperament exactly as the dials describe, how they treat people, what they openly want, and the hidden need that conflicts with it.',
-    '- "voice": 3-5 short lines describing how they speak: tone, rhythm, two signature phrases they actually say, and two phrases they would NEVER say.',
-    '- "exampleDialogue": the MOST important field. Three exchanges in the exact format "[USER]: ...\\n[AI]: ..." where the personality dials are AUDIBLE in how the character speaks. Do not describe traits, perform them. Each reply in a distinct rhythm.',
-    '- "reminder": one third-person sentence: the single most important fact to never forget about this character.',
-    '',
-    'Craft rules: no stock phrases, no "eyes sparkling", no purple filler. No em dashes. Third person everywhere. The CHARACTER CONCEPT outranks every attribute: re-read it before writing each field and never contradict it.',
-  ].join('\n');
-  return [
-    { role: 'system', content: system },
-    { role: 'user', content: user },
-  ];
-}
-
-function buildForgeFieldMessages(state, card, key) {
-  const { spec } = buildForgeSpec(state);
-  return [
-    { role: 'system', content: `You are a character designer. Write in the THIRD PERSON as a description of the character; never address anyone as "you"; never write instructions. Return ONLY a JSON object with exactly one string key: "${key}". No commentary. Never use em dashes.` },
-    {
-      role: 'user',
-      content: [
-        'Character specification:', '', spec, '',
-        'Current character card JSON:', JSON.stringify(card, null, 2), '',
-        `Regenerate ONLY the "${key}" field — a fresh take, consistent with the rest of the card but written differently than before. Keep the same craft rules as the original field.`,
-      ].join('\n'),
+/** What the Studio borrows from this file: DOM helpers, storage, the dials. */
+function studioDeps() {
+  return {
+    el, icon, tgSelect, loadSettings, saveSettings, saveCharacter, createCharacterJson, exportCharacterToMarkdown,
+    ensureNestedDirs, generateId, scanCharacters, resolveUri, extRoot: EXT_ROOT, extFolder: 'text-generator', ctxPresets: CTX_WINDOW_PRESETS,
+    injectStyles, refreshSidebar: () => _refreshSidebar?.(), exportMarkdown: exportMarkdownFile,
+    // Roll A Table beside a text field: the Studio's concept, the story's premise.
+    tableRoll: (textarea) => {
+      const fs = _parallx?.workspace?.fs;
+      const workspaceUri = _parallx?.workspace?.workspaceFolders?.[0]?.uri;
+      return fs && workspaceUri ? attachTableRoll(_parallx, studioDeps(), fs, workspaceUri, textarea) : null;
     },
-  ];
+    forge: {
+      AXES: FORGE_AXES, RANDOM: FORGE_RANDOM, GENDERS: FORGE_GENDERS, BUILDS: FORGE_BUILDS, BUSTS: FORGE_BUSTS,
+      WAISTS: FORGE_WAISTS, HIPS: FORGE_HIPS, SKINS: FORGE_SKINS, HAIR_COLORS: FORGE_HAIR_COLORS,
+      HAIR_LENGTHS: FORGE_HAIR_LENGTHS, EYE_COLORS: FORGE_EYE_COLORS, CLOTHING: FORGE_CLOTHING,
+      feetInches: forgeFeetInches, buildSpec: buildForgeSpec,
+    },
+  };
 }
-
-/**
- * Models often tag dialogue with the character's own name
- * ("[BARNABY]: ...") despite being asked for [AI]:. Meaning is
- * identical, so normalize rather than reject: any line-leading bracket
- * tag that isn't USER becomes [AI], and USER variants are canonicalized.
- */
-function normalizeForgeDialogue(text) {
-  if (!text) return text;
-  return text.replace(/^\s*\[([^\]\n]+)\]\s*:/gm, (m, tag) =>
-    tag.trim().toUpperCase() === 'USER' ? '[USER]:' : '[AI]:');
-}
-
-function parseForgeJson(text) {
-  const tryParse = (s) => { try { const v = JSON.parse(s); return (v && typeof v === 'object') ? v : null; } catch { return null; } };
-  const direct = tryParse(text);
-  if (direct) return direct;
-  const m = text.match(/\{[\s\S]*\}/);
-  return m ? tryParse(m[0]) : null;
-}
-
-const FORGE_FIELDS = [
-  { key: 'name', label: 'Name', rows: 1 },
-  { key: 'description', label: 'Description', rows: 6 },
-  { key: 'appearance', label: 'Appearance', rows: 5 },
-  { key: 'personality', label: 'Personality', rows: 5 },
-  { key: 'voice', label: 'Voice', rows: 4 },
-  { key: 'exampleDialogue', label: 'Example dialogue (the steering wheel)', rows: 8 },
-  { key: 'reminder', label: 'Reminder', rows: 2 },
-];
-
-/**
- * The bottom "puts it all together" card: description + appearance +
- * personality + voice composed into ONE third-person portrait. This is
- * exactly what gets saved as the character's role instruction, so what
- * you see in the final box is what the model will receive in chat.
- */
-function composeForgeCard(fields) {
-  const parts = [(fields.description || '').trim()];
-  if ((fields.appearance || '').trim()) parts.push('## Appearance\n' + fields.appearance.trim());
-  if ((fields.personality || '').trim()) parts.push('## Personality\n' + fields.personality.trim());
-  if ((fields.voice || '').trim()) parts.push('## Voice\n' + fields.voice.trim());
-  return parts.filter(Boolean).join('\n\n');
-}
-
-function renderForgePane(container, parallx, ctx) {
-  const { fs, workspaceUri, onSaved } = ctx;
-  const root = el('div', 'tg-forge');
-  container.appendChild(root);
-
-  const head = el('div', 'tg-forge-head');
-  head.appendChild(el('div', null, { html: icon('px-ai-mark', 22) }));
-  const headInfo = el('div', null);
-  headInfo.appendChild(el('div', 'tg-forge-title', { text: 'Character Forge' }));
-  headInfo.appendChild(el('div', 'tg-forge-subtitle', { text: 'Describe the character in your own words, tune the dials, generate. Your description always wins.' }));
-  head.appendChild(headInfo);
-  root.appendChild(head);
-
-  const state = {
-    axes: Object.fromEntries(FORGE_AXES.map((a) => [a.key, 50])),
-    gender: FORGE_RANDOM, build: FORGE_RANDOM, bust: FORGE_RANDOM,
-    waist: FORGE_RANDOM, hips: FORGE_RANDOM, skin: FORGE_RANDOM,
-    hairColor: FORGE_RANDOM, hairLength: FORGE_RANDOM, eyeColor: FORGE_RANDOM,
-    clothing: FORGE_RANDOM,
-    age: 25, height: 67,
-    name: '', hairStyle: '', features: '', clothingNotes: '',
-    want: '', fear: '', secret: '', concept: '',
-    locks: new Set(),
-    lastCard: null,
-  };
-  let busy = false;
-
-  const controls = el('div', 'tg-forge-controls');
-  root.appendChild(controls);
-
-  const lockBtnFor = (lockKey) => {
-    const btn = el('button', 'tg-forge-lock', { html: icon('lock', 12) });
-    btn.title = 'Lock this control (dice will not change it)';
-    btn.addEventListener('click', () => {
-      if (state.locks.has(lockKey)) state.locks.delete(lockKey); else state.locks.add(lockKey);
-      btn.classList.toggle('tg-forge-lock--on', state.locks.has(lockKey));
-    });
-    return btn;
-  };
-
-  const sectionTitle = (text) => {
-    controls.appendChild(el('div', 'tg-forge-section', { text }));
-  };
-
-  // Engine — certain models write characters better than others, so the
-  // forge gets its own model + context picks (persisted in settings,
-  // independent of any chat's choice).
-  sectionTitle('Model');
-  const engineRow = el('div', 'tg-forge-row');
-  engineRow.appendChild(el('span', 'tg-forge-row-label', { text: 'Model' }));
-  const persistEnginePick = async (updates) => {
-    try {
-      const current = await loadSettings(fs, workspaceUri);
-      await saveSettings(fs, workspaceUri, { ...current, ...updates });
-    } catch (err) { console.warn('[TextGenerator] Failed to persist forge engine pick:', err); }
-  };
-  const modelSelect = tgSelect(parallx, {
-    className: 'tg-ce-select',
-    layout: 'flex',
-    onChange: (v) => { void persistEnginePick({ forgeModelId: v || '' }); },
-  });
-  engineRow.appendChild(modelSelect.element);
-  engineRow.appendChild(el('span', 'tg-forge-row-label tg-forge-row-label--ctx', { text: 'Ctx' }));
-  const ctxSelect = tgSelect(parallx, {
-    className: 'tg-ce-select tg-forge-ctx',
-    layout: 'ctx',
-    title: 'Context window sent as num_ctx for forge generations (Auto = global default)',
-    items: CTX_WINDOW_PRESETS.map((p) => ({ value: String(p.value), label: p.label })),
-    onChange: (v) => { void persistEnginePick({ forgeContextWindow: Number(v) || 0 }); },
-  });
-  engineRow.appendChild(ctxSelect.element);
-  controls.appendChild(engineRow);
-
-  void (async () => {
-    try {
-      const settings = await loadSettings(fs, workspaceUri);
-      const models = await parallx.lm.getModels();
-      if (models.length === 0) {
-        modelSelect.setItems([{ value: '', label: 'No models (Ollama offline?)' }]);
-      } else {
-        modelSelect.setItems(models.map((m) => ({ value: m.id, label: m.displayName || m.id })));
-        const preferred = [settings.forgeModelId, settings.defaultModel].find((id) => id && models.some((m) => m.id === id));
-        modelSelect.value = preferred || models[0].id;
-      }
-      ctxSelect.value = String(settings.forgeContextWindow || 0);
-    } catch (err) {
-      console.warn('[TextGenerator] Forge model list failed:', err);
-    }
-  })();
-
-  // Concept — the user's own description leads; every generated section
-  // is tuned to align with it, and it wins over any conflicting dial.
-  sectionTitle('Concept');
-  const conceptArea = el('textarea', 'tg-ce-textarea tg-forge-concept');
-  conceptArea.rows = 3;
-  conceptArea.placeholder = 'Describe your character in your own words, e.g. "Sofia, short woman from Costa Rica, immigrated to Los Angeles, works as a maid." The dials below fill in whatever you leave open.';
-  conceptArea.addEventListener('input', () => { state.concept = conceptArea.value; });
-  controls.appendChild(conceptArea);
-
-  // Personality dials
-  sectionTitle('Personality');
-  const sliderInputs = {};
-  for (const axis of FORGE_AXES) {
-    const row = el('div', 'tg-forge-row');
-    row.appendChild(el('span', 'tg-forge-row-label', { text: axis.label }));
-    row.appendChild(el('span', 'tg-forge-row-end', { text: axis.low }));
-    const slider = el('input', 'tg-forge-slider');
-    slider.type = 'range'; slider.min = '0'; slider.max = '100'; slider.value = String(state.axes[axis.key]);
-    slider.addEventListener('input', () => { state.axes[axis.key] = Number(slider.value); });
-    sliderInputs[axis.key] = slider;
-    row.appendChild(slider);
-    row.appendChild(el('span', 'tg-forge-row-end', { text: axis.high }));
-    row.appendChild(lockBtnFor(axis.key));
-    controls.appendChild(row);
-  }
-
-  // Pickers — pickerLists doubles as the dice's menu of what to randomize.
-  const selectInputs = {};
-  const pickerLists = {};
-  const pickerRow = (label, key, options) => {
-    const row = el('div', 'tg-forge-row');
-    row.appendChild(el('span', 'tg-forge-row-label', { text: label }));
-    const sel = tgSelect(parallx, {
-      className: 'tg-ce-select',
-      layout: 'flex',
-      items: [FORGE_RANDOM, ...options].map((opt) => ({ value: opt, label: opt })),
-      value: state[key],
-      onChange: (v) => { state[key] = v; },
-    });
-    selectInputs[key] = sel;
-    pickerLists[key] = options;
-    row.appendChild(sel.element);
-    row.appendChild(lockBtnFor(key));
-    controls.appendChild(row);
-  };
-  // Numeric sliders with live value labels (age, height in feet).
-  const numericMeta = {};
-  const numericInputs = {};
-  const numericRow = (label, key, min, max, fmt) => {
-    const row = el('div', 'tg-forge-row');
-    row.appendChild(el('span', 'tg-forge-row-label', { text: label }));
-    const slider = el('input', 'tg-forge-slider');
-    slider.type = 'range'; slider.min = String(min); slider.max = String(max); slider.value = String(state[key]);
-    const val = el('span', 'tg-forge-row-value', { text: fmt(state[key]) });
-    slider.addEventListener('input', () => { state[key] = Number(slider.value); val.textContent = fmt(state[key]); });
-    numericMeta[key] = { min, max, fmt };
-    numericInputs[key] = { slider, val };
-    row.append(slider, val, lockBtnFor(key));
-    controls.appendChild(row);
-  };
-
-  // Free-text rows (dice never touches these)
-  const textRow = (label, key, placeholder) => {
-    const row = el('div', 'tg-forge-row tg-forge-row--text');
-    row.appendChild(el('span', 'tg-forge-row-label', { text: label }));
-    const inp = el('input', 'tg-ce-input');
-    inp.type = 'text'; inp.placeholder = placeholder;
-    inp.addEventListener('input', () => { state[key] = inp.value; });
-    row.appendChild(inp);
-    controls.appendChild(row);
-  };
-
-  // Body
-  sectionTitle('Body');
-  pickerRow('Gender', 'gender', FORGE_GENDERS);
-  numericRow('Age', 'age', 18, 80, (v) => String(v));
-  numericRow('Height', 'height', 56, 84, forgeFeetInches);
-  pickerRow('Build', 'build', FORGE_BUILDS);
-  pickerRow('Bust / chest', 'bust', FORGE_BUSTS);
-  pickerRow('Waist', 'waist', FORGE_WAISTS);
-  pickerRow('Hips / thighs', 'hips', FORGE_HIPS);
-  pickerRow('Skin tone', 'skin', FORGE_SKINS);
-
-  // Face & hair
-  sectionTitle('Face & hair');
-  pickerRow('Hair color', 'hairColor', FORGE_HAIR_COLORS);
-  pickerRow('Hair length', 'hairLength', FORGE_HAIR_LENGTHS);
-  textRow('Hair style', 'hairStyle', '(optional) e.g. "loose braid over one shoulder"');
-  pickerRow('Eye color', 'eyeColor', FORGE_EYE_COLORS);
-  textRow('Features', 'features', '(optional) scars, tattoos, freckles, glasses...');
-
-  // Clothing
-  sectionTitle('Clothing');
-  pickerRow('Style', 'clothing', FORGE_CLOTHING);
-  textRow('Notes', 'clothingNotes', '(optional) specific outfit preferences');
-
-  // Story seeds
-  sectionTitle('Story seeds');
-  textRow('Name', 'name', '(blank = the AI invents one)');
-  textRow('Want', 'want', '(optional) what they openly pursue');
-  textRow('Fear', 'fear', '(optional) what they privately dread');
-  textRow('Secret', 'secret', '(optional) what they hide');
-
-  // Action bar
-  const actions = el('div', 'tg-forge-actions');
-  const diceBtn = el('button', 'tg-forge-dice', { html: `${icon('dices', 14)} Roll the dice` });
-  diceBtn.title = 'Randomize all unlocked dials and pickers';
-  diceBtn.addEventListener('click', () => {
-    for (const axis of FORGE_AXES) {
-      if (state.locks.has(axis.key)) continue;
-      state.axes[axis.key] = Math.floor(Math.random() * 101);
-      sliderInputs[axis.key].value = String(state.axes[axis.key]);
-    }
-    for (const [key, list] of Object.entries(pickerLists)) {
-      if (state.locks.has(key)) continue;
-      state[key] = list[Math.floor(Math.random() * list.length)];
-      selectInputs[key].value = state[key];
-    }
-    for (const [key, meta] of Object.entries(numericMeta)) {
-      if (state.locks.has(key)) continue;
-      state[key] = meta.min + Math.floor(Math.random() * (meta.max - meta.min + 1));
-      numericInputs[key].slider.value = String(state[key]);
-      numericInputs[key].val.textContent = meta.fmt(state[key]);
-    }
-  });
-  const genBtn = el('button', 'tg-forge-generate', { html: `${icon('px-ai-mark', 14)} Generate character` });
-  actions.append(diceBtn, genBtn);
-  root.appendChild(actions);
-
-  const output = el('div', 'tg-forge-output');
-  root.appendChild(output);
-
-  async function resolveModel() {
-    const settings = await loadSettings(fs, workspaceUri);
-    const models = await parallx.lm.getModels();
-    // The forge's own pick wins; then the global default; then whatever
-    // is first. The select is validated against the live model list so
-    // a stale persisted id can't produce a dead request.
-    const picked = modelSelect.value || '';
-    const modelId = (picked && models.some((m) => m.id === picked)) ? picked
-      : (settings.defaultModel && models.some((m) => m.id === settings.defaultModel)) ? settings.defaultModel
-      : models[0]?.id;
-    if (!modelId) throw new Error('No local model available (is Ollama running?)');
-    const ctxPick = Number(ctxSelect.value) || 0;
-    const numCtx = ctxPick > 0 ? ctxPick : (settings.defaultContextWindow || undefined);
-    return { modelId, settings, numCtx };
-  }
-
-  async function collectJson(modelId, numCtx, messages) {
-    const stream = parallx.lm.sendChatRequest(modelId, messages, {
-      temperature: 0.9,
-      think: false,
-      format: 'json',
-      numCtx,
-    });
-    let raw = '';
-    for await (const chunk of stream) {
-      if (chunk.content) raw += chunk.content;
-    }
-    return { raw, parsed: parseForgeJson(raw) };
-  }
-
-  function showStatus(text, isError = false) {
-    output.innerHTML = '';
-    output.appendChild(el('div', `tg-forge-status${isError ? ' tg-forge-status--error' : ''}`, { text }));
-  }
-
-  function renderCard() {
-    output.innerHTML = '';
-    const card = state.lastCard;
-    const fieldEls = {};
-    for (const f of FORGE_FIELDS) {
-      const wrap = el('div', 'tg-forge-field');
-      const labelRow = el('div', 'tg-forge-field-head');
-      labelRow.appendChild(el('span', 'tg-forge-field-label', { text: f.label }));
-      const rerollBtn = el('button', 'tg-forge-reroll', { html: icon('refresh-cw', 12) });
-      rerollBtn.title = `Regenerate only ${f.label.toLowerCase()}`;
-      labelRow.appendChild(rerollBtn);
-      wrap.appendChild(labelRow);
-      const area = el('textarea', 'tg-ce-textarea');
-      area.rows = f.rows;
-      area.value = typeof card[f.key] === 'string' ? card[f.key] : JSON.stringify(card[f.key] ?? '');
-      fieldEls[f.key] = area;
-      wrap.appendChild(area);
-      rerollBtn.addEventListener('click', async () => {
-        if (busy) return;
-        busy = true; rerollBtn.disabled = true;
-        try {
-          const current = Object.fromEntries(FORGE_FIELDS.map((x) => [x.key, fieldEls[x.key].value]));
-          const { modelId, numCtx } = await resolveModel();
-          const { parsed } = await collectJson(modelId, numCtx, buildForgeFieldMessages(state, current, f.key));
-          if (parsed && typeof parsed[f.key] === 'string' && parsed[f.key].trim()) {
-            let next = stripEmDashes(parsed[f.key]);
-            if (f.key === 'exampleDialogue') next = normalizeForgeDialogue(next);
-            area.value = next;
-            state.lastCard[f.key] = area.value;
-            refreshFinal();
-          } else {
-            showToastLite(`Could not regenerate ${f.label.toLowerCase()}. Kept the current text.`);
-          }
-        } catch (err) {
-          showToastLite('Regenerate failed: ' + (err?.message || String(err)));
-        } finally {
-          busy = false; rerollBtn.disabled = false;
-        }
-      });
-      output.appendChild(wrap);
-    }
-
-    // ── The final card: one third-person portrait, live-composed from
-    // description + appearance + personality + voice. What you read
-    // here is byte-for-byte what gets saved as the role instruction.
-    const finalWrap = el('div', 'tg-forge-field');
-    const finalHead = el('div', 'tg-forge-field-head');
-    finalHead.appendChild(el('span', 'tg-forge-field-label', { text: 'Full character (exactly what gets saved)' }));
-    finalWrap.appendChild(finalHead);
-    const finalBox = el('div', 'tg-forge-final');
-    finalWrap.appendChild(finalBox);
-    output.appendChild(finalWrap);
-    const composeFromFields = () => composeForgeCard({
-      description: fieldEls.description.value,
-      appearance: fieldEls.appearance.value,
-      personality: fieldEls.personality.value,
-      voice: fieldEls.voice.value,
-    });
-    const refreshFinal = () => { finalBox.textContent = composeFromFields(); };
-    for (const k of ['description', 'appearance', 'personality', 'voice']) {
-      fieldEls[k].addEventListener('input', refreshFinal);
-    }
-    refreshFinal();
-
-    const saveRow = el('div', 'tg-forge-actions');
-    const saveBtn = el('button', 'tg-forge-generate', { html: `${icon('user', 14)} Save to roster` });
-    saveBtn.addEventListener('click', async () => {
-      if (busy) return;
-      busy = true; saveBtn.disabled = true;
-      try {
-        await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'characters']);
-        const id = generateId().slice(0, 8);
-        const fileName = `character-${id}.json`;
-        const data = createCharacterJson({
-          name: (fieldEls.name.value || 'Unnamed').trim(),
-          roleInstruction: composeFromFields(),
-          voiceAnchor: fieldEls.voice.value,
-          exampleDialogue: fieldEls.exampleDialogue.value,
-          // No first message on purpose: a first message dictates the
-          // story. The user seeds the opening scene themselves in chat
-          // (e.g. as Narrator).
-          initialMessages: '',
-          reminder: fieldEls.reminder.value,
-        });
-        await saveCharacter(fs, workspaceUri, fileName, data);
-        _refreshSidebar?.();
-        await onSaved?.(fileName);
-      } catch (err) {
-        showToastLite('Save failed: ' + (err?.message || String(err)));
-        busy = false; saveBtn.disabled = false;
-      }
-    });
-    saveRow.appendChild(saveBtn);
-    output.appendChild(saveRow);
-  }
-
-  // Forge lives outside the chat editor, so it carries its own tiny toast.
-  function showToastLite(message) {
-    const toast = el('div', 'tg-toast');
-    toast.appendChild(el('span', null, { text: message }));
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 5000);
-  }
-
-  genBtn.addEventListener('click', async () => {
-    if (busy) return;
-    busy = true; genBtn.disabled = true;
-    showStatus('Forging… the model is writing the character.');
-    try {
-      const { modelId, numCtx } = await resolveModel();
-      const { raw, parsed } = await collectJson(modelId, numCtx, buildForgeMessages(state));
-      if (!parsed || typeof parsed.name !== 'string' || !parsed.name.trim()) {
-        showStatus('The model did not return a valid character JSON. Raw output:', true);
-        const pre = el('pre', 'tg-forge-raw', { text: raw.slice(0, 4000) });
-        output.appendChild(pre);
-        return;
-      }
-      // No-em-dash guard applies to forged prose too.
-      for (const k of Object.keys(parsed)) {
-        if (typeof parsed[k] === 'string') parsed[k] = stripEmDashes(parsed[k]);
-      }
-      if (typeof parsed.exampleDialogue === 'string') {
-        parsed.exampleDialogue = normalizeForgeDialogue(parsed.exampleDialogue);
-      }
-      state.lastCard = parsed;
-      renderCard();
-    } catch (err) {
-      showStatus('Generation failed: ' + (err?.message || String(err)), true);
-    } finally {
-      busy = false; genBtn.disabled = false;
-    }
-  });
-
-  return { dispose() { container.innerHTML = ''; } };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 10D: SETTINGS PAGE
-// ═══════════════════════════════════════════════════════════════════════════════
-
 const DEFAULT_SETTINGS = {
   tokenBudgetCharacter: 15,
   tokenBudgetLore: 20,
@@ -8520,6 +8212,11 @@ const DEFAULT_SETTINGS = {
   // Forge-specific engine choice ('' / 0 = follow the global defaults).
   forgeModelId: '',
   forgeContextWindow: 0,
+  // The Studio: how much of each source it keeps, in words.
+  studioSourceWords: 1500,
+  // The Story Writer's own model and context picks.
+  storyModelId: '',
+  storyContextWindow: 0,
 };
 
 async function loadSettings(fs, workspaceUri) {
@@ -8552,7 +8249,7 @@ function renderSettingsPage(container, parallx) {
   header.innerHTML = icon('sliders', 28);
   const info = el('div', 'tg-page-header-info');
   info.appendChild(el('div', 'tg-page-header-title', { text: 'Settings' }));
-  info.appendChild(el('div', 'tg-page-header-subtitle', { text: 'Configure token budgets, defaults, and preferences' }));
+  info.appendChild(el('div', 'tg-page-header-subtitle', { text: 'Token budgets, defaults, and what the Studio keeps from a source.' }));
   header.appendChild(info);
   root.appendChild(header);
 
@@ -8627,6 +8324,7 @@ function renderSettingsPage(container, parallx) {
   const maxTokInput = formGroup('Max tokens per response', '0 = unlimited (recommended for thinking models)', 'number', 'defaultMaxTokens', { min: 0, max: 16384 });
   const ctxInput = formGroup('Default context window', 'Sent to Ollama as num_ctx AND used for token budgeting. The two are kept identical so prompts can never silently overflow. Per-chat "Ctx" picker overrides this.', 'number', 'defaultContextWindow', { min: 2048, max: 131072 });
   const userNameInput = formGroup('User display name', 'Used in {{user}} template substitution', 'text', 'userName');
+  const sourceWordsInput = formGroup('Words Kept Per Source', 'How much of each source the Character Studio keeps, in words. Default 1500.', 'number', 'studioSourceWords', { min: 200, max: 20000, step: 100 });
   const presetSelect = formGroup('Default writing preset', 'Applied to newly created chats', 'select', 'defaultWritingPreset', {
     options: Object.entries(WRITING_PRESETS).map(([key, p]) => ({ label: p.label, value: key })),
   });
@@ -8692,6 +8390,7 @@ function renderSettingsPage(container, parallx) {
     maxTokInput.value = s.defaultMaxTokens;
     ctxInput.value = s.defaultContextWindow;
     userNameInput.value = s.userName;
+    sourceWordsInput.value = s.studioSourceWords || DEFAULT_SETTINGS.studioSourceWords;
     presetSelect.value = s.defaultWritingPreset || 'immersive-rp';
     customStyleInput.value = s.customWritingStyle || '';
     responseLengthSelect.value = s.defaultResponseLength || '';
@@ -8707,7 +8406,7 @@ function renderSettingsPage(container, parallx) {
         // If saved default is no longer available, surface a warning.
         if (s.defaultModel && !availableModels.some(m => m.id === s.defaultModel)) {
           const warn = el('div', 'tg-form-hint tg-form-hint--warn', {
-            text: `⚠ Saved default model "${s.defaultModel}" is not currently available. Using auto-select.`,
+            text: `The saved default model "${s.defaultModel}" is not available right now. The first available model is used instead.`,
           });
           defaultModelSelect.element.parentElement?.appendChild(warn);
         }
@@ -8730,6 +8429,7 @@ function renderSettingsPage(container, parallx) {
       defaultMaxTokens: Number.isFinite(Number(maxTokInput.value)) ? Number(maxTokInput.value) : DEFAULT_SETTINGS.defaultMaxTokens,
       defaultContextWindow: Number.isFinite(Number(ctxInput.value)) && Number(ctxInput.value) > 0 ? Number(ctxInput.value) : DEFAULT_SETTINGS.defaultContextWindow,
       userName: userNameInput.value.trim() || DEFAULT_SETTINGS.userName,
+      studioSourceWords: Number(sourceWordsInput.value) >= 200 ? Number(sourceWordsInput.value) : DEFAULT_SETTINGS.studioSourceWords,
       defaultWritingPreset: presetSelect.value || DEFAULT_SETTINGS.defaultWritingPreset,
       defaultResponseLength: responseLengthSelect.value || '',
       defaultPov: defaultPovSelect.value || '',
@@ -9067,11 +8767,13 @@ function renderCharacterEditor(container, parallx, input) {
   const footer = el('div', 'tg-ce-footer');
   const cancelBtn = el('button', 'tg-ce-cancel-btn', { text: 'Revert' });
   cancelBtn.title = 'Discard unsaved changes (re-load from disk)';
-  const sandboxBtn = el('button', 'tg-ce-cancel-btn', { html: `${icon('play', 13)} Test in chat` });
+  const sandboxBtn = el('button', 'tg-ce-cancel-btn', { html: `${icon('play', 13)} Test In Chat` });
   sandboxBtn.title = 'Save then open a fresh chat with this character';
+  const exportBtn = el('button', 'tg-ce-cancel-btn', { html: `${icon('file-down', 13)} Export As Markdown` });
+  exportBtn.title = 'Save a markdown copy of this form, unsaved edits included';
   const savedLabel = el('span', 'tg-ce-saved', { text: 'Saved!' });
   const saveBtn = el('button', 'tg-ce-save-btn', { text: 'Save Character' });
-  footer.append(cancelBtn, sandboxBtn, savedLabel, saveBtn);
+  footer.append(cancelBtn, sandboxBtn, exportBtn, savedLabel, saveBtn);
   root.appendChild(footer);
 
   let charData = null;
@@ -9165,6 +8867,10 @@ function renderCharacterEditor(container, parallx, input) {
     _refreshSidebar?.();
   });
 
+  exportBtn.addEventListener('click', () => {
+    exportCharacterToMarkdown(collectForm());
+  });
+
   sandboxBtn.addEventListener('click', async () => {
     if (isDirty()) {
       const data = collectForm();
@@ -9187,8 +8893,11 @@ function renderCharacterEditor(container, parallx, input) {
     }
   });
 
-  cancelBtn.addEventListener('click', () => {
-    if (isDirty() && !confirm('Discard unsaved changes?')) return;
+  cancelBtn.addEventListener('click', async () => {
+    if (isDirty()) {
+      const choice = await parallx.window.showWarningMessage('Discard the unsaved changes?', { title: 'Discard' });
+      if (!choice || choice.title !== 'Discard') return;
+    }
     if (charData) {
       populateForm(charData);
       _baselineSnapshot = snapshotForm();
@@ -9789,6 +9498,18 @@ export function activate(parallx, context) {
   });
   context.subscriptions.push(charEditorDisposable);
 
+  // Stories and Tables: one provider each, the rail routing on the instance id.
+  context.subscriptions.push(parallx.editors.registerEditorProvider('text-generator-story', {
+    createEditorPane(container, input) {
+      return renderStoriesPage(container, parallx, input, studioDeps());
+    },
+  }));
+  context.subscriptions.push(parallx.editors.registerEditorProvider('text-generator-tables', {
+    createEditorPane(container, input) {
+      return renderTablesPage(container, parallx, input, studioDeps());
+    },
+  }));
+
   // Commands
   const newChatCmd = parallx.commands.registerCommand('textGenerator.newChat', async () => {
     const fs = parallx.workspace?.fs;
@@ -9862,6 +9583,28 @@ export function activate(parallx, context) {
     });
   });
   context.subscriptions.push(openCharsCmd);
+
+  // Straight into the Studio with an empty sheet: Home's first launcher.
+  const newCharCmd = parallx.commands.registerCommand('textGenerator.newCharacter', () => {
+    parallx.editors.openEditor({
+      typeId: 'text-generator-character-editor',
+      title: 'Character Studio',
+      icon: 'sparkles',
+      instanceId: 'new',
+    });
+  });
+  context.subscriptions.push(newCharCmd);
+
+  const openEditorCmd = (id, typeId, title, iconName, instanceId) => {
+    const d = parallx.commands.registerCommand(id, () => {
+      parallx.editors.openEditor({ typeId, title, icon: iconName, instanceId });
+    });
+    context.subscriptions.push(d);
+  };
+  openEditorCmd('textGenerator.openStories', 'text-generator-story', 'Stories', 'book-open', 'stories');
+  openEditorCmd('textGenerator.newStory', 'text-generator-story', 'Stories', 'book-open', 'new');
+  openEditorCmd('textGenerator.openTables', 'text-generator-tables', 'Tables', 'dices', 'tables');
+  openEditorCmd('textGenerator.newTable', 'text-generator-tables', 'Tables', 'dices', 'new');
 
   const openSettingsCmd = parallx.commands.registerCommand('textGenerator.openSettings', () => {
     parallx.editors.openEditor({
@@ -9958,3 +9701,13 @@ export function deactivate() {
   if (style) style.remove();
   _styleInjected = false;
 }
+
+// Pure helpers for the unit suite (tests/unit/textGeneratorCharacterMd.test.ts).
+export const __testables = {
+  parseCharacterMd,
+  migrateCharacterMdToJson,
+  serializeCharacterMd,
+  createCharacterJson,
+  characterExportFileName,
+  formatFrontmatterValue,
+};

@@ -1,18 +1,23 @@
 {
   "manifestVersion": 1,
-  "id": "parallx-community.text-generator",
-  "name": "Text Generator",
+  "id": "parallx-community.creations-ai",
+  "name": "Creations AI",
   "version": "0.7.0",
   "publisher": "parallx-community",
-  "description": "Roleplay chat with local Ollama models: characters, lorebooks, scene memory, and a fully inspectable prompt pipeline.",
+  "description": "Characters, roleplay and stories with the model you choose: a Character Studio with sources and a Twist, lorebooks, memory, and a fully inspectable prompt pipeline.",
   "main": "main.js",
   "activationEvents": [
     "onStartupFinished",
+    "onCommand:textGenerator.newCharacter",
     "onCommand:textGenerator.newChat",
     "onCommand:textGenerator.openHome",
     "onCommand:textGenerator.openCharacters",
     "onCommand:textGenerator.openSettings",
-    "onView:textGenerator.home"
+    "onView:textGenerator.home",
+    "onCommand:textGenerator.openStories",
+    "onCommand:textGenerator.newStory",
+    "onCommand:textGenerator.openTables",
+    "onCommand:textGenerator.newTable"
   ],
   "engines": {
     "parallx": "^0.1.0"
@@ -20,32 +25,67 @@
   "contributes": {
     "commands": [
       {
-        "id": "textGenerator.newChat",
-        "title": "Text Generator: New Chat",
-        "category": "Text Generator",
+        "id": "textGenerator.newCharacter",
+        "title": "Creations AI: New Character",
+        "category": "Creations AI",
         "aiInvocable": true,
-        "aiDescription": "Start a new Text Generator roleplay chat."
+        "aiDescription": "Open the Character Studio with an empty sheet: a character from a concept, from sources, or from sources with a Twist."
+      },
+      {
+        "id": "textGenerator.newChat",
+        "title": "Creations AI: New Chat",
+        "category": "Creations AI",
+        "aiInvocable": true,
+        "aiDescription": "Start a new Creations AI roleplay chat."
       },
       {
         "id": "textGenerator.openHome",
-        "title": "Text Generator: Home",
-        "category": "Text Generator",
+        "title": "Creations AI: Home",
+        "category": "Creations AI",
         "aiInvocable": true,
-        "aiDescription": "Open the Text Generator home page."
+        "aiDescription": "Open the Creations AI home page."
       },
       {
         "id": "textGenerator.openCharacters",
-        "title": "Text Generator: Characters",
-        "category": "Text Generator",
+        "title": "Creations AI: Characters",
+        "category": "Creations AI",
         "aiInvocable": true,
-        "aiDescription": "Open the Text Generator character roster."
+        "aiDescription": "Open the Creations AI character roster."
       },
       {
         "id": "textGenerator.openSettings",
-        "title": "Text Generator: Settings",
-        "category": "Text Generator",
+        "title": "Creations AI: Settings",
+        "category": "Creations AI",
         "aiInvocable": true,
-        "aiDescription": "Open the Text Generator settings page."
+        "aiDescription": "Open the Creations AI settings page."
+      },
+      {
+        "id": "textGenerator.openStories",
+        "title": "Creations AI: Stories",
+        "category": "Creations AI",
+        "aiInvocable": true,
+        "aiDescription": "Open the Story Writer: stories written in beats you steer."
+      },
+      {
+        "id": "textGenerator.newStory",
+        "title": "Creations AI: New Story",
+        "category": "Creations AI",
+        "aiInvocable": true,
+        "aiDescription": "Start a new story in the Story Writer."
+      },
+      {
+        "id": "textGenerator.openTables",
+        "title": "Creations AI: Tables",
+        "category": "Creations AI",
+        "aiInvocable": true,
+        "aiDescription": "Open Tables: random tables in the Perchance list grammar."
+      },
+      {
+        "id": "textGenerator.newTable",
+        "title": "Creations AI: New Table",
+        "category": "Creations AI",
+        "aiInvocable": true,
+        "aiDescription": "Make a new random table."
       }
     ],
     "editors": [
@@ -55,7 +95,7 @@
       },
       {
         "typeId": "text-generator-home",
-        "displayName": "Text Generator"
+        "displayName": "Creations AI"
       },
       {
         "typeId": "text-generator-characters",
@@ -71,13 +111,21 @@
       },
       {
         "typeId": "text-generator-character-editor",
-        "displayName": "Character Editor"
+        "displayName": "Character Studio"
+      },
+      {
+        "typeId": "text-generator-story",
+        "displayName": "Stories"
+      },
+      {
+        "typeId": "text-generator-tables",
+        "displayName": "Tables"
       }
     ],
     "viewContainers": [
       {
         "id": "text-generator-container",
-        "title": "Text Generator",
+        "title": "Creations AI",
         "icon": "px-writer",
         "location": "sidebar"
       }
@@ -85,7 +133,7 @@
     "views": [
       {
         "id": "textGenerator.home",
-        "name": "Text Generator",
+        "name": "Creations AI",
         "defaultContainerId": "text-generator-container"
       }
     ]

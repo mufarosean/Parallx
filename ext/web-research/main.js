@@ -471,7 +471,36 @@ async function webFetchTool(args, turnId) {
     return softError('SANITIZE_FAILED', err && err.message ? err.message : 'sanitization failed');
   }
   const framed = wrapUntrusted(finalUrl, sanitized);
-  return { isError: false, content: framed };
+  // The page title rides along for callers that show sources by name (the
+  // Character Studio); the chat tool ignores it.
+  const titleMatch = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+  return { isError: false, content: framed, title, finalUrl };
+}
+
+/**
+ * The same fetch, for other extensions. One door to the web: a URL the user
+ * typed goes through the provenance seed, the egress bridge (HTTPS only,
+ * blocklist, size and redirect caps, the sealed switch), Readability and
+ * the hidden-text sanitizer, and the same per-turn cap, exactly as the chat's
+ * webFetch does. Returns { ok, text, title, source } or { ok: false, error }.
+ * The Character Studio's Add Link is the first caller (docs/CREATIONS_AI.md).
+ */
+async function fetchReadableForExtension(url) {
+  const turnId = `ext-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    seedTurnFromUserMessage(turnId, String(url || ''));
+    const result = await webFetchTool({ url: String(url || '') }, turnId);
+    if (!result || result.isError !== false) {
+      const code = result && result.error && result.error.code ? result.error.code : 'FETCH_FAILED';
+      const message = result && result.error && result.error.message ? result.error.message : 'fetch failed';
+      return { ok: false, error: { code, message } };
+    }
+    const text = String(result.content || '').replace(/^<untrusted_web_content[^>]*>\n?/, '').replace(/\n?<\/untrusted_web_content>\s*$/, '');
+    return { ok: true, text, title: result.title || '', source: result.finalUrl || String(url || '') };
+  } finally {
+    resetTurn(turnId);
+  }
 }
 
 /**
@@ -907,6 +936,9 @@ export async function activate(api, _context) {
 
   _registerTools(api);
   _registerLinkContract(api);
+  if (api.commands && typeof api.commands.registerCommand === 'function') {
+    _commandDisposables.push(api.commands.registerCommand('webResearch.fetchReadable', (url) => fetchReadableForExtension(url)));
+  }
   _registerNewsBriefWidget(api);
   console.log('[web-research] Activated');
 }

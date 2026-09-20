@@ -193,24 +193,52 @@ export class ToolModuleLoader {
    * Instead, we ask the Electron main process to read the file, then create
    * a blob URL and import that.
    */
-  private async _loadViaBlob(_toolId: string, fsPath: string): Promise<Record<string, unknown>> {
+  private async _loadViaBlob(toolId: string, fsPath: string): Promise<Record<string, unknown>> {
     const bridge = (globalThis as any).parallxElectron;
     if (!bridge?.readToolModule) {
       throw new Error('No Electron bridge for tool module loading');
     }
-
-    const result = await bridge.readToolModule(fsPath);
-    if (result.error) {
-      throw new Error(result.error);
-    }
-
-    // Use blob: URL — origin-scoped and CSP-safe (script-src includes blob:)
-    const blob = new Blob([result.source], { type: 'text/javascript' });
-    const blobUrl = URL.createObjectURL(blob);
+    // A blob URL cannot resolve a relative import, so every `./x.js` the
+    // entry (or anything it imports) names is read and given a blob URL of
+    // its own first, and the specifiers are rewritten to those URLs. That
+    // is what lets an extension be more than one file.
+    const created: string[] = [];
+    const done = new Map<string, string>();
+    const inProgress = new Set<string>();
+    const blobUrlFor = async (modulePath: string): Promise<string> => {
+      const key = modulePath.replace(/\\/g, '/').toLowerCase();
+      const known = done.get(key);
+      if (known) return known;
+      if (inProgress.has(key)) {
+        throw new Error(`Tool "${toolId}": circular import at "${modulePath}" (relative imports between an external tool's files must not form a cycle)`);
+      }
+      inProgress.add(key);
+      const result = await bridge.readToolModule(modulePath);
+      if (result.error) {
+        throw new Error(`${result.error} (while loading "${modulePath}")`);
+      }
+      let source = String(result.source);
+      const specifiers = collectRelativeImports(source);
+      if (specifiers.length > 0) {
+        const urls = new Map<string, string>();
+        for (const spec of specifiers) {
+          urls.set(spec, await blobUrlFor(resolveRelativeModulePath(modulePath, spec)));
+        }
+        source = rewriteRelativeImports(source, (spec) => urls.get(spec) ?? spec);
+      }
+      const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+      created.push(url);
+      done.set(key, url);
+      inProgress.delete(key);
+      return url;
+    };
     try {
-      return await import(/* webpackIgnore: true */ blobUrl);
+      const entryUrl = await blobUrlFor(fsPath);
+      return await import(/* webpackIgnore: true */ entryUrl);
     } finally {
-      URL.revokeObjectURL(blobUrl);
+      // The module graph is linked and evaluated once the import resolves;
+      // the URLs are only needed until then.
+      for (const url of created) URL.revokeObjectURL(url);
     }
   }
 
@@ -246,4 +274,50 @@ export class ToolModuleLoader {
       : toolPath + sep;
     return base + mainEntry;
   }
+}
+
+// ── Relative imports inside an external tool ────────────────────────────────
+// Static (`import x from './a.js'`, `import './a.js'`, `export * from './a.js'`)
+// and dynamic (`import('./a.js')`) forms. Only specifiers starting with `./`
+// or `../` count; packages and URLs are left alone. Comments are ignored when
+// collecting so prose never turns into a file read.
+
+const STATIC_RELATIVE_IMPORT = /(\b(?:import|export)\b(?:\s*[^'";]*?\bfrom)?\s*)(['"])(\.\.?\/[^'"\n]+)\2/g;
+const DYNAMIC_RELATIVE_IMPORT = /(\bimport\s*\(\s*)(['"])(\.\.?\/[^'"\n]+)\2/g;
+
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+}
+
+/** Every relative module specifier a source imports, in order, once each. */
+export function collectRelativeImports(source: string): string[] {
+  const clean = stripComments(source);
+  const out: string[] = [];
+  for (const re of [STATIC_RELATIVE_IMPORT, DYNAMIC_RELATIVE_IMPORT]) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(clean))) {
+      if (!out.includes(m[3])) out.push(m[3]);
+    }
+  }
+  return out;
+}
+
+/** The same source with each relative specifier replaced by what `resolve` returns for it. */
+export function rewriteRelativeImports(source: string, resolve: (specifier: string) => string): string {
+  const swap = (_m: string, head: string, quote: string, spec: string) => `${head}${quote}${resolve(spec)}${quote}`;
+  return source.replace(STATIC_RELATIVE_IMPORT, swap).replace(DYNAMIC_RELATIVE_IMPORT, swap);
+}
+
+/** `spec` resolved against the directory of `fromFile`, keeping that file's path style. */
+export function resolveRelativeModulePath(fromFile: string, spec: string): string {
+  const sep = fromFile.includes('\\') ? '\\' : '/';
+  const parts = fromFile.split(/[\\/]/);
+  parts.pop();
+  for (const seg of spec.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') { if (parts.length > 1) parts.pop(); continue; }
+    parts.push(seg);
+  }
+  return parts.join(sep);
 }
