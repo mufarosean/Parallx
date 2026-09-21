@@ -11,6 +11,7 @@
 import { renderStudioPane } from './studio.js';
 import { renderStoriesPage, listStories } from './story.js';
 import { renderTablesPage, attachTableRoll } from './tables.js';
+import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock } from './chat-memory.js';
 
 // The workspace data folder keeps its original name: every character, thread,
 // lorebook and setting a user has is in there, and a rename would be a move.
@@ -3202,7 +3203,7 @@ function trimHistoryToBudget(messages, budgetTokens, method = 'dropOld', opts = 
   // No fake placeholder summary — if the caller didn't pass `opts.summary`,
   // dropped messages are simply dropped (which matches dropOld behaviour).
   if (method === 'summarizeOld' && droppedCount > 0 && opts.summary) {
-    const summaryMsg = `[Earlier conversation summary: ${opts.summary}]`;
+    const summaryMsg = String(opts.summary);
     const summaryTokens = estimateTokens(summaryMsg);
     if (used + summaryTokens <= budgetTokens) {
       result.unshift({ role: 'system', content: summaryMsg });
@@ -4117,7 +4118,7 @@ function mergeSceneState(prior, update) {
 // fire-and-forget and never blocks the user. Existing `memories.md` files
 // are preserved verbatim and treated as additional semantic content.
 
-const MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES = 10;
+const MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES = 6;
 const MEMORY_SEMANTIC_FILE = 'memory.semantic.jsonl';
 const MEMORY_EPISODIC_FILE = 'memory.episodic.jsonl';
 const MEMORY_CATEGORY_ORDER = ['relationship', 'trait', 'event', 'place', 'preference', 'other'];
@@ -4161,11 +4162,45 @@ async function readEpisodicMemory(fs, workspaceUri, threadId) {
 }
 
 async function appendSemanticMemory(fs, workspaceUri, threadId, records) {
-  return _appendJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_SEMANTIC_FILE), records);
+  await _appendJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_SEMANTIC_FILE), records);
+  await mergeThreadMemory(fs, workspaceUri, threadId, { facts: (records || []).map((r) => ({ category: r.category, text: r.text })) });
 }
 
 async function appendEpisodicMemory(fs, workspaceUri, threadId, records) {
-  return _appendJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_EPISODIC_FILE), records);
+  await _appendJsonl(fs, _memoryFileUri(workspaceUri, threadId, MEMORY_EPISODIC_FILE), records);
+  await mergeThreadMemory(fs, workspaceUri, threadId, { beats: (records || []).map((r) => ({ text: r.summary || r.text })) });
+}
+
+/**
+ * The thread's memory file, memories.md: Facts, Timeline and Notes. The
+ * user opens and edits it; every prompt reads it; the extractor merges into
+ * it and never overwrites a line. A thread still on the old shape (free
+ * text plus the two JSON logs) is folded into the file the first time it
+ * is read. See docs/CREATIONS_AI.md, "Roleplay memory".
+ */
+async function loadThreadMemory(fs, workspaceUri, threadId) {
+  const raw = await readMemories(fs, workspaceUri, threadId);
+  if (isMemoryMarkdown(raw)) return parseMemoryMarkdown(raw);
+  const [semantic, episodic] = await Promise.all([
+    readSemanticMemory(fs, workspaceUri, threadId),
+    readEpisodicMemory(fs, workspaceUri, threadId),
+  ]);
+  const parts = memoryFromLegacy({ notes: raw, semantic, episodic });
+  await saveThreadMemory(fs, workspaceUri, threadId, parts);
+  return parts;
+}
+async function saveThreadMemory(fs, workspaceUri, threadId, parts) {
+  try {
+    await fs.writeFile(_memoryFileUri(workspaceUri, threadId, 'memories.md'), renderMemoryMarkdown(parts));
+  } catch (err) {
+    console.warn('[TextGenerator] Memory file not saved:', err);
+  }
+}
+/** New facts or beats into the file, never over a line that is already there. */
+async function mergeThreadMemory(fs, workspaceUri, threadId, { facts = [], beats = [] } = {}) {
+  if (facts.length === 0 && beats.length === 0) return;
+  const parts = await loadThreadMemory(fs, workspaceUri, threadId);
+  await saveThreadMemory(fs, workspaceUri, threadId, mergeMemory(parts, { facts, beats }));
 }
 
 async function _rewriteJsonl(fs, uri, records) {
@@ -4854,7 +4889,21 @@ function renderChatEditor(container, parallx, input) {
   // thread JSON.
   const sceneBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('map', 16) });
   sceneBtn.title = 'View / edit scene state';
-  toolbar.append(modelLabel, modelSelect.element, ctxLabel, ctxSelect.element, spacer, tokenCountEl, sceneBtn, viewPromptBtn, summaryEl);
+  // The memory file, opened in the editor: Facts, Timeline, Notes. What the
+  // model must not forget, in the user's hands.
+  const memoryBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('brain', 16) });
+  memoryBtn.title = 'Memory: the facts and timeline this chat keeps. Open and edit.';
+  memoryBtn.addEventListener('click', () => {
+    void (async () => {
+      try {
+        await loadThreadMemory(fs, workspaceUri, threadId);
+        await parallx.editors.openFileEditor(_memoryFileUri(workspaceUri, threadId, 'memories.md'));
+      } catch (err) {
+        console.warn('[TextGenerator] Could not open the memory file:', err);
+      }
+    })();
+  });
+  toolbar.append(modelLabel, modelSelect.element, ctxLabel, ctxSelect.element, spacer, tokenCountEl, memoryBtn, sceneBtn, viewPromptBtn, summaryEl);
   root.appendChild(toolbar);
 
   // ── Scene state panel (collapsible) ──
@@ -6508,17 +6557,14 @@ function renderChatEditor(container, parallx, input) {
     // existing memories.md file is preserved verbatim and surfaces
     // ahead of structured memory so users who edited it directly
     // still see their notes used.
-    const [legacyMemoryRaw, semanticMemory, episodicMemory] = await Promise.all([
-      readMemories(fs, workspaceUri, threadId),
-      readSemanticMemory(fs, workspaceUri, threadId),
-      readEpisodicMemory(fs, workspaceUri, threadId),
-    ]);
+    // The memory file: Facts and Notes go into every prompt. The Timeline
+    // travels with the earlier-in-the-story block below, only once turns
+    // have dropped out of the live window.
+    const memoryParts = await loadThreadMemory(fs, workspaceUri, threadId);
     const memoryContent = renderMemoryChannel({
-      legacyMemory: legacyMemoryRaw,
-      semantic: semanticMemory,
-      episodic: episodicMemory,
-      // Hand assembleContext the rendered combined string; budget
-      // splitting between lore and memory still happens there.
+      legacyMemory: memoryParts.notes,
+      semantic: memoryParts.facts,
+      episodic: [],
       budgetTokens: Infinity,
     });
     // When userText is provided, exclude the last history entry (the same message)
@@ -6536,95 +6582,27 @@ function renderChatEditor(container, parallx, input) {
       || currentSettings?.defaultFitMethod
       || 'dropOld';
     if (fitMethod === 'summarizeOld' && effectiveHistory.length > 0) {
+      // No summariser. What falls out of the live window is stood in for by
+      // the memory file's Timeline and by the dropped turns that bear on
+      // what is being said now, quoted word for word. No model call.
       try {
-        const previewMessages = effectiveHistory.map(m => ({
+        const previewMessages = effectiveHistory.map((m, i) => ({
           role: mapAuthorToRole(m.author || m.role, m),
+          turn: i + 1,
+          name: (m.author === 'user' && !m.characterFile) ? getUserName() : (m.name || ''),
+          raw: m.content || '',
           content: (m.author === 'user' && !m.characterFile) ? `${getUserName()}: ${m.content || ''}` : (m.name ? `${m.name}: ${m.content || ''}` : (m.content || '')),
         })).filter(m => m.content);
-        // Mirror the floor logic to estimate the real history budget.
         const estCharTokens = 1000; // safe over-estimate; refined below if available
         const floorPreview = applyHistoryFloor(budget, estCharTokens);
         const dropped = computeDroppedMessages(previewMessages, floorPreview.effectiveHistory);
         if (dropped.length > 0) {
-          // Cache key = stable hash of the dropped messages' content. Keying on
-          // count alone caused stale summaries to survive deletes / regenerates /
-          // edits when the count happened to stay the same.
-          const droppedKey = hashDroppedMessages(dropped);
-          const cached = thread?.cachedSummary;
-          // The memory grows with the story instead of being rewritten from
-          // scratch: when the earlier memory covered a prefix of what is
-          // dropped now, only the newly dropped turns are folded into it.
-          // An edit or a regeneration inside that prefix breaks the match
-          // and the memory is rebuilt whole.
-          const prefixMatch = !!(cached && cached.prefixKey && cached.droppedCount > 0 && cached.droppedCount <= dropped.length
-            && cached.prefixKey === hashDroppedMessages(dropped.slice(0, cached.droppedCount)));
-          const newlyDropped = prefixMatch ? dropped.slice(cached.droppedCount) : dropped;
-          const priorSummary = prefixMatch ? (cached.text || '') : '';
-          if (cached && cached.key === droppedKey) {
-            historySummary = cached.text || '';
-          } else if (parallx?.lm?.sendChatRequest && !dryRun) {
-            // The caller already owns the transient slot (its streaming bubble).
-            // Borrow it for the summariser and hand it back after, never null it:
-            // the caller's stream loop writes into it next.
-            const priorTransient = gen.transient;
-            gen.transient = {
-              author: 'system',
-              role: 'system',
-              content: `*Summarising ${dropped.length} earlier turn${dropped.length === 1 ? '' : 's'}…*`,
-              hiddenFrom: null,
-            };
-            notifyGen(gen, 'chunk');
-            const summariserMessages = [
-              {
-                role: 'system',
-                content:
-                  'You keep the running memory of a roleplay for its writer. Rewrite the memory so it holds everything a later turn must not contradict: ' +
-                  'the setting and where each character is right now (the place, the time, positions, what is within reach), what has happened in order, ' +
-                  'what each character wants and knows, promises and threats made, and every name, object and detail introduced. ' +
-                  'Keep every fact from the existing memory that is still true; fold the new turns in; drop nothing the story would need. ' +
-                  'Plain statements, third person, present tense for where things stand. Under 350 words. No preamble, no list markers, no quotation marks. Never use em dashes.',
-              },
-              {
-                role: 'user',
-                content: [
-                  'EXISTING MEMORY:',
-                  priorSummary || '(none yet)',
-                  '',
-                  'NEW TURNS TO FOLD IN:',
-                  '',
-                  ...newlyDropped.map(m => `${m.role}: ${(m.content || '').slice(0, 4000)}`),
-                ].join('\n'),
-              },
-            ];
-            try {
-              const stream = parallx.lm.sendChatRequest(modelId, summariserMessages, {
-                temperature: 0.3,
-                maxTokens: 600,
-                think: false,
-              });
-              let summaryText = '';
-              for await (const chunk of stream) {
-                if (chunk?.content) summaryText += chunk.content;
-              }
-              historySummary = stripEmDashes(summaryText.trim());
-              if (historySummary && thread) {
-                thread.cachedSummary = { key: droppedKey, prefixKey: droppedKey, droppedCount: dropped.length, text: historySummary };
-                await updateThreadMeta(fs, workspaceUri, thread.id, { cachedSummary: thread.cachedSummary });
-              }
-            } catch (err) {
-              console.warn('[TextGenerator] Summarisation request failed:', err);
-            } finally {
-              // Clear the summarisation transient message so the actual
-              // generation transient can take over without leaking.
-              if (gen.transient?.content?.startsWith('*Summarising')) {
-                gen.transient = priorTransient;
-                notifyGen(gen, 'chunk');
-              }
-            }
-          }
+          const said = [userText || '', ...effectiveHistory.slice(-2).map((m) => m.content || '')].join('\n');
+          const excerpts = rankExcerpts(dropped.map((m) => ({ turn: m.turn, name: m.name, content: m.raw })), said, 5);
+          historySummary = earlierBlock({ beats: memoryParts.beats, excerpts });
         }
       } catch (err) {
-        console.warn('[TextGenerator] Summarisation pre-pass failed:', err);
+        console.warn('[TextGenerator] Earlier-in-the-story block failed:', err);
       }
     }
 
@@ -8395,8 +8373,8 @@ function renderSettingsPage(container, parallx) {
   });
   const fitMethodSelect = formGroup('Default context-fit method', 'How to handle conversations longer than the context window.', 'select', 'defaultFitMethod', {
     options: [
-      { value: 'dropOld', label: 'Drop oldest messages (fast)' },
-      { value: 'summarizeOld', label: 'Summarize oldest messages (1 extra LLM call/turn, smarter)' },
+      { value: 'dropOld', label: 'Drop oldest messages' },
+      { value: 'summarizeOld', label: 'Keep the memory file and quote earlier turns (recommended)' },
     ],
   });
 
@@ -8751,8 +8729,8 @@ function renderCharacterEditor(container, parallx, input) {
     layout: 'full',
     items: [
       { value: '', label: '(use global default)' },
-      { value: 'dropOld', label: 'Drop oldest messages (fast)' },
-      { value: 'summarizeOld', label: 'Summarize oldest messages (smarter, +1 LLM call/turn)' },
+      { value: 'dropOld', label: 'Drop oldest messages' },
+      { value: 'summarizeOld', label: 'Keep the memory file and quote earlier turns (recommended)' },
     ],
   });
   moreSection.appendChild(field('Context-fit method', 'How to handle conversations longer than the context window. Overrides the global default.', fitSelect.element));

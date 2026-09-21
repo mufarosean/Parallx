@@ -333,6 +333,44 @@ calls that and nothing else, and its own page reader is deleted. Without
 Web Research, Add Link says so and does nothing. The rule for the future:
 an extension never touches `parallxElectron.webFetch` itself.
 
+## Roleplay memory (built 2026-09-20)
+
+Mufaro: the summariser fired too early, lost the setting (a parking garage
+became a driveway), and its memory was held in the background where he
+could neither see nor fix it. Summarising every turn is the weakest memory
+there is: each rewrite starts from the last rewrite's blind spots, and the
+model fills the gaps with plausible defaults.
+
+What replaced it (ext/creations-ai/chat-memory.js, pure, tested):
+
+- **One memory file per thread, `memories.md`, the user's to edit.** Facts
+  (grouped: relationships, traits, events, places, preferences, other),
+  Timeline (one line per beat, oldest first) and Notes. The Memory button
+  on the chat toolbar opens it in the editor. The file is the source of
+  truth: a line removed by hand stays removed; a line added is read on the
+  next turn. The extractor that already ran every ten exchanges (now six)
+  merges what it finds into the file and never overwrites a line; the two
+  JSON logs it wrote stay as logs. A thread on the old shape is folded into
+  the file the first time it is read.
+- **Facts and Notes go into every prompt.** The scene panel (Now) is pinned
+  as before.
+- **No summariser.** When turns drop out of the live window, the prompt
+  gets the Timeline's tail and the dropped turns that bear on what is being
+  said now, quoted word for word with their turn numbers, ranked by shared
+  terms (BM25 over the thread in memory: names, places and objects said now
+  pull the turns that said them). No model call, no rewrite, no index file
+  anywhere, so nothing can leak into the workspace index. Vectors can be
+  added when the platform exposes embeddings to extensions.
+- **The rule against inventing**, in the block: a detail of the setting,
+  of an object, of who is where or of what happened that is not in the
+  scene, the memory or the quoted turns is left unsaid or asked about.
+- The fit-method label says what it does: "Keep the memory file and quote
+  earlier turns (recommended)".
+
+Not built: proposals shown as a kept/changed/added diff before they land
+(the file itself is the review for now), and a consistency check on a
+reply against Facts. Both are next if the file alone is not enough.
+
 ## Gates, whole program
 
 Unit suite: 405 files, 6414 tests green after the rename, of which
