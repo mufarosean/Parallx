@@ -293,7 +293,8 @@ export interface DayStory {
   readonly week: WeekTally;
 }
 
-export function dayStory(campaign: Campaign, items: readonly InsightItem[], attempts: readonly InsightAttempt[], now: number = Date.now()): DayStory {
+/** `studyByDay`: the study ledger's seconds per day; given, it replaces the attempt clocks as the day's time. */
+export function dayStory(campaign: Campaign, items: readonly InsightItem[], attempts: readonly InsightAttempt[], now: number = Date.now(), studyByDay?: ReadonlyMap<string, number>): DayStory {
   const problems = items.filter(isCampaignProblem);
   const paperOf = new Map(problems.map((i) => [i.id, i.paper]));
   const credits = campaignCredits(campaign, items, attempts);
@@ -317,7 +318,7 @@ export function dayStory(campaign: Campaign, items: readonly InsightItem[], atte
     const ratedAt = rating && a.at >= campaign.startedAt ? a.at : 0;
     const workedAt = a.workedAt && a.workedAt >= campaign.startedAt ? a.workedAt : 0;
     if (!ratedAt && !workedAt) continue;
-    dayOf(dayKey(ratedAt || workedAt)).seconds += Math.max(0, a.seconds || 0);
+    if (!studyByDay) dayOf(dayKey(ratedAt || workedAt)).seconds += Math.max(0, a.seconds || 0);
     if (ratedAt) {
       const d = dayOf(dayKey(ratedAt));
       const cur = d.rated.get(a.itemId);
@@ -346,7 +347,7 @@ export function dayStory(campaign: Campaign, items: readonly InsightItem[], atte
     const r = rest(day);
     const full = !r && done >= target;
     const xp = done * XP_PER_PROBLEM + easy * XP_EASY_BONUS + (full ? XP_FULL_DAY : 0);
-    return { t: { day, done, easy, medium, hard, unrated, seconds: d?.seconds ?? 0, papers: papers.size, xp, full, rest: r }, papers };
+    return { t: { day, done, easy, medium, hard, unrated, seconds: studyByDay ? (studyByDay.get(day) ?? 0) : (d?.seconds ?? 0), papers: papers.size, xp, full, rest: r }, papers };
   };
 
   const todayT = tallyOf(today).t;

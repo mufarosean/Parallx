@@ -27,6 +27,7 @@ import {
   getCampaign, startCampaign, endCampaign, listAttemptHistory,
   getOpenQuizSession, saveQuizSession, finishQuizSession, renameQuizSession, reopenQuizSession, deleteQuizSession,
   getQuizSession, listQuizSessions, getSessionItemStates, getProblemNotes, setProblemNote, setItemStarred, getStarred,
+  addStudySeconds, getStudySecondsForItem,
   type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
 import { openXlsx } from './ooxml.js';
@@ -41,7 +42,9 @@ import { IDatabaseService } from '../../services/serviceTypes.js';
 import { buildPracticeSet, itemTags } from './practiceSession.js';
 import { itemToWorkbooks, workbookHasOnSheetQuestion, type GeneratedItem } from './itemFormat.js';
 import { generateItems, reviewAttempt, buildReviewRequest, type LmApiLike } from './worksheetAi.js';
-import { registerWorksheetChatTools } from './worksheetChat.js';
+import { nextMarkedIndex } from './practiceSession.js';
+import { createStudyTicker, DEFAULT_IDLE_MINUTES } from './studyClock.js';
+import { registerWorksheetChatTools, buildNotesDigest } from './worksheetChat.js';
 import { detectExcelItems, wholeSheetItem, type GridSheet, type ExcelItem } from './excelImport.js';
 import './worksheet.css';
 
@@ -49,11 +52,13 @@ import './worksheet.css';
 
 // ── Review in Chat ──────────────────────────────────────────────────────────
 // The learner's cells and the model solution go to the chat as an attached
-// context chip, with the review brief as the message, so the feedback streams
-// in the conversation and follow-up questions have the work in front of them
-// (Mufaro, 2026-09-08: the one-shot panel left nowhere to ask further). Returns
-// 'inline' when the chat surface is not there, so the caller can fall back to
-// the one-shot review. An empty sheet throws before anything is sent.
+// context chip, with the review brief STAGED in the input, not sent: the user
+// adds their own question under the brief and presses send, the same hand-off
+// the flashcards' Discuss with AI uses (Mufaro, 2026-09-21: auto-sending asked
+// only the question the code guessed; 2026-09-08: the one-shot panel left
+// nowhere to ask further). Returns 'inline' when the chat surface is not
+// there, so the caller can fall back to the one-shot review. An empty sheet
+// throws before anything is staged.
 async function reviewInChat(
   item: { title: string; questionMd: string; solutionJson: string; solutionNotesMd: string },
   itemId: number,
@@ -63,6 +68,8 @@ async function reviewInChat(
   const cmds = _api?.commands;
   if (!cmds?.executeCommand) return 'inline';
   try {
+    // chat.show is the idempotent reveal (never chat.focus, which toggles).
+    await cmds.executeCommand('chat.show');
     await cmds.executeCommand('chat.addSelectionContext', {
       kind: 'selection',
       id: `worksheet:item/${itemId}/work/${Date.now()}`,
@@ -72,12 +79,44 @@ async function reviewInChat(
       selectedText: req.context,
       surface: 'worksheet',
     });
-    await cmds.executeCommand('chat.submitPrompt', { text: req.prompt });
+    await cmds.executeCommand('chat.stagePrompt', { text: req.prompt });
   } catch {
     return 'inline';
   }
-  _api?.activity?.note('reviewed', `worksheet attempt on "${item.title}"`, 'sent to chat for method feedback');
+  // Staged, not sent: the journal must not claim a review that may never run.
+  _api?.activity?.note('staged', `worksheet attempt on "${item.title}"`, 'in the chat with the review brief, for a question and send');
   return 'chat';
+}
+
+/** Every note, staged in the chat (Mufaro, 2026-09-21: "have AI look at the
+ *  whole bank, which problems have notes, gain some insights"). The digest
+ *  is the text the worksheet.getNotes tool returns, so what he sees in the
+ *  chip is what the model reads. Staged, never sent. */
+async function discussNotesInChat(items: WorksheetItemSummary[]): Promise<void> {
+  const cmds = _api?.commands;
+  if (!cmds?.executeCommand) return;
+  const noted = items.filter((it) => it.note);
+  if (noted.length === 0) return;
+  const noun = noted.length === 1 ? 'problem' : 'problems';
+  try {
+    await cmds.executeCommand('chat.show');
+    await cmds.executeCommand('chat.addSelectionContext', {
+      kind: 'selection',
+      id: `worksheet:notes/${Date.now()}`,
+      name: `My notes on ${noted.length} ${noun}`,
+      fullPath: 'worksheet:notes',
+      isImplicit: false,
+      selectedText: buildNotesDigest(items),
+      surface: 'worksheet',
+    });
+    await cmds.executeCommand('chat.stagePrompt', {
+      text: [
+        `Read my notes on ${noted.length} ${noun} in the attached context. I write them on the fly during quizzes, mostly about what I need to review.`,
+        'Group them by topic, tell me what I keep flagging, and which problems to revisit first, naming each problem.',
+      ].join(' ') + '\n\n',
+    });
+  } catch { /* no chat surface */ }
+  _api?.activity?.note('staged', `notes on ${noted.length} worksheet ${noun}`, 'in the chat, for a question and send');
 }
 
 interface ParallxApiLike {
@@ -179,6 +218,33 @@ async function setSheetAppearance(value: SheetAppearance): Promise<void> {
   for (const fn of _appearanceListeners) { try { fn(value); } catch { /* pane torn down */ } }
 }
 
+// ── Study clock idle threshold (worksheet.idleMinutes) ─────────────────────
+//
+// The clock counts while a problem or the quiz is on screen and the student
+// is active; after this many minutes without input the stretch is taken back
+// (studyClock.ts). Reading keeps it running through the odd scroll; a break
+// with the tab up counts for nothing.
+const IDLE_MINUTES_CHOICES = [5, 10, 15, 30] as const;
+function getIdleMinutes(): number {
+  try {
+    const v = Number(_api?.workspace?.getConfiguration('worksheet').get<number>('idleMinutes', DEFAULT_IDLE_MINUTES) ?? DEFAULT_IDLE_MINUTES);
+    return (IDLE_MINUTES_CHOICES as readonly number[]).includes(v) ? v : DEFAULT_IDLE_MINUTES;
+  } catch {
+    return DEFAULT_IDLE_MINUTES;
+  }
+}
+async function setIdleMinutes(value: number): Promise<void> {
+  try {
+    await _api?.workspace?.getConfiguration('worksheet').update('idleMinutes', value);
+  } catch (err) {
+    console.warn('[Worksheet] idleMinutes persist failed:', err);
+  }
+}
+/** The pane is on screen: connected, laid out, and the window not hidden. */
+function paneOnScreen(root: HTMLElement): boolean {
+  return !document.hidden && root.isConnected && root.offsetParent !== null;
+}
+
 // ── Decimals shown (worksheet.displayDecimals) ──────────────────────────────
 //
 // A cell without a number format paints at most this many decimals; the
@@ -252,6 +318,30 @@ function starBtn(itemId: number, starred: boolean, onChange?: (on: boolean) => v
     paintStarBtn(b, on);
     onChange?.(on);
     void setItemStarred(itemId, on).catch(() => { on = !on; paintStarBtn(b, on); onChange?.(on); });
+  });
+  return b;
+}
+/** Mark For Later: the flag on a problem inside ONE quiz, an exam's mark for
+ *  review (Mufaro, 2026-09-21: no easy way to come back to a problem later in
+ *  the quiz). Same pressed look as the star, a flag instead of a star, so the
+ *  two never read as one thing; stored on the quiz, so it goes with it. */
+const MARK_HINT = 'Flags this problem to come back to in this quiz. Marked problems show in Quiz Overview, and Next Marked jumps between them.';
+function paintMarkBtn(b: HTMLButtonElement, on: boolean): void {
+  paintIconBtn(b, 'flag', on ? 'Unmark Problem' : 'Mark For Later', on ? 'Takes the mark off this problem.' : MARK_HINT);
+  b.classList.toggle('ws-mark--on', on);
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+function markBtn(session: RunningPractice, itemId: number, onChange?: (on: boolean) => void): HTMLButtonElement {
+  const b = iconBtn('flag', 'Mark For Later');
+  b.classList.add('ws-mark');
+  paintMarkBtn(b, session.marked.has(itemId));
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const on = !session.marked.has(itemId);
+    if (on) session.marked.add(itemId); else session.marked.delete(itemId);
+    paintMarkBtn(b, on);
+    void persistPractice();
+    onChange?.(on);
   });
   return b;
 }
@@ -362,6 +452,8 @@ function createBankPane(container: HTMLElement) {
       if (item.seconds > 0) meta.push(fmtSeconds(item.seconds));
       if (item.lastAttemptAt > 0) meta.push(`last ${new Date(item.lastAttemptAt).toLocaleDateString()}`);
       info.appendChild(el('div', 'ws-itemrow__meta', meta.join(' · ')));
+      // The note, in the row: what he told himself about this problem, where he picks it.
+      if (item.note) { const n = el('div', 'ws-itemrow__note', item.note); n.title = item.note; info.appendChild(n); }
       info.addEventListener('click', () => void openWorksheet(`item:${item.id}`, item.title));
       row.appendChild(starBtn(item.id, item.starred));
       row.appendChild(info);
@@ -483,13 +575,14 @@ let _bankQuery = '';
 function bankMatches(item: WorksheetItemSummary, filter: string, query: string): boolean {
   const state = stateClass(item.attemptState);
   if (filter === 'starred' && !item.starred) return false;
+  if (filter === 'noted' && !item.note) return false;
   if (filter === 'incomplete' && !(item.attemptCount === 0 || item.attemptState === 'open')) return false;
   if ((filter === 'easy' || filter === 'medium' || filter === 'hard') && state !== filter) return false;
   if ((filter === 'rf' || filter === 'cas') && item.source !== filter) return false;
   if ((filter === 'quant' || filter === 'qual' || filter === 'essay') && item.kind !== filter) return false;
   if (query) {
     const q = query.toLowerCase();
-    const hay = `${item.title} ${item.sheetName} ${item.questionMd} ${paperLabel(item.paper)}`.toLowerCase();
+    const hay = `${item.title} ${item.sheetName} ${item.questionMd} ${paperLabel(item.paper)} ${item.note}`.toLowerCase();
     if (!hay.includes(q)) return false;
   }
   return true;
@@ -523,7 +616,7 @@ function bankFilterBar(items: WorksheetItemSummary[], onChange: () => void): HTM
   });
   bar.appendChild(search);
   const filters = el('div', 'ws-bank__filters');
-  const FILTERS: [string, string][] = [['all', 'All'], ['starred', 'Starred'], ['incomplete', 'Incomplete'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['rf', 'RF'], ['cas', 'CAS'], ['quant', 'Quant'], ['qual', 'Qual'], ['essay', 'Essay']];
+  const FILTERS: [string, string][] = [['all', 'All'], ['starred', 'Starred'], ['noted', 'Noted'], ['incomplete', 'Incomplete'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['rf', 'RF'], ['cas', 'CAS'], ['quant', 'Quant'], ['qual', 'Qual'], ['essay', 'Essay']];
   const present = new Set<string>();
   for (const it of items) { present.add(it.source); present.add(it.kind); }
   for (const [value, label] of FILTERS) {
@@ -540,6 +633,17 @@ function bankFilterBar(items: WorksheetItemSummary[], onChange: () => void): HTM
   const shown = problems.filter((it) => bankMatches(it, _bankFilter, _bankQuery));
   const rated = problems.filter((it) => normalizeRating(it.attemptState)).length;
   bar.appendChild(el('span', 'ws-home__summary', `${shown.length} of ${problems.length} · ${rated} rated`));
+  // Every note, handed to the chat: staged with the notes attached, the
+  // question his (the same hand-off as Review in Chat).
+  const noted = items.filter((it) => it.note);
+  if (noted.length > 0) {
+    const b = el('button', 'ws-btn ws-btn--small') as HTMLButtonElement;
+    b.type = 'button';
+    b.textContent = `Discuss Notes In Chat (${noted.length})`;
+    b.title = 'Stages every note, with its problem, paper and rating, in the chat. Add your question under the brief, then send.';
+    b.addEventListener('click', () => void discussNotesInChat(items));
+    bar.appendChild(b);
+  }
   return bar;
 }
 
@@ -695,11 +799,13 @@ function createLauncherPane(container: HTMLElement) {
     tile('Start Quiz', 'Draw problems from the bank and work them in order.', 'practice', 'Quiz', true);
     // Starred: the student's own set, every one of them, in bank order.
     const starred = items.filter((it) => it.starred);
+    // Noted: what he told himself to review, newest note first.
+    const noted = items.filter((it) => it.note).sort((a, b) => b.noteAt - a.noteAt);
     tile('Quiz Starred', starred.length ? `${starred.length} starred · every one of them, in order.` : 'Star problems from their sheet; they collect here.', 'bank', 'Problem Bank', false,
       () => { if (starred.length) startQuizWith(starred.map((it) => it.id), 0, 'Starred'); else void openWorksheet('bank', 'Problem Bank'); });
     tile('Dashboard', dashDesc, 'dashboard', 'Dashboard');
     tile('Quizzes', 'Every quiz, open and completed, with its actions.', 'quizzes', 'Quizzes');
-    tile('Problem Bank', problems.length ? `${problems.length} problems · ${rated} rated` : 'Empty until you import a workbook.', 'bank', 'Problem Bank');
+    tile('Problem Bank', problems.length ? `${problems.length} problems · ${rated} rated${noted.length ? ` · ${noted.length} noted` : ''}` : 'Empty until you import a workbook.', 'bank', 'Problem Bank');
     tile('Import Workbook', 'A ProblemTrack workbook, every sheet as it is.', 'excel-import', 'Import Workbook');
     tile('Generate Items', 'Practice items from a PDF or pasted material.', 'create', 'Generate Items');
     tile('Scratch Sheet', 'The exam grid, blank.', 'scratch', 'Practice Sheet');
@@ -728,6 +834,7 @@ function createLauncherPane(container: HTMLElement) {
     const recent = items.filter((it) => it.lastAttemptAt > 0).sort((a, b) => b.lastAttemptAt - a.lastAttemptAt).slice(0, 8);
     listOf('Recent', recent, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'in progress' : gradeLabel(it.attemptState), when(it.lastAttemptAt)].filter(Boolean).join(' · '));
     listOf('Starred', starred.slice(0, 8), (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'in progress' : gradeLabel(it.attemptState) || 'never tried'].filter(Boolean).join(' · '));
+    listOf('Noted', noted.slice(0, 8), (it) => it.note);
     const added = [...items].sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
     listOf('Newly Added', added, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, `added ${when(it.createdAt)}`].filter(Boolean).join(' · '));
     // Quizzes: every one you ran, open to review the work and learn from the misses.
@@ -916,6 +1023,24 @@ function createSettingsPane(container: HTMLElement) {
     }
     nums.appendChild(numsRow);
     root.appendChild(nums);
+
+    // The study clock: when a stretch without input stops being study.
+    const clock = el('section', 'ws-settings__section');
+    const clockTitle = el('div', 'ws-settings__sectiontitle', 'Study Clock');
+    clockTitle.title = 'Study time counts while a problem or the quiz is on screen and you are active. After this many minutes without any input the stretch is taken back, so a break with the tab up counts for nothing. Reading keeps it running through the odd scroll.';
+    clock.appendChild(clockTitle);
+    const clockRow = el('div', 'ws-settings__row');
+    const currentIdle = getIdleMinutes();
+    for (const value of IDLE_MINUTES_CHOICES) {
+      const b = el('button', 'ws-chip ws-practicechip', `${value} Minutes Idle`) as HTMLButtonElement;
+      b.type = 'button';
+      b.classList.toggle('ws-practicechip--active', currentIdle === value);
+      b.setAttribute('aria-pressed', currentIdle === value ? 'true' : 'false');
+      b.addEventListener('click', () => { void setIdleMinutes(value).then(() => render()); });
+      clockRow.appendChild(b);
+    }
+    clock.appendChild(clockRow);
+    root.appendChild(clock);
   };
 
   void render();
@@ -1214,6 +1339,10 @@ interface RunningPractice {
   index: number;
   startedAt: number;
   skipped: Set<number>;
+  /** Mark For Later: problems flagged in this quiz to come back to. Only the
+   *  student clears a mark; rating or working the problem leaves it, unlike
+   *  a skip. On the quiz, not the problem (the star is the cross-quiz one). */
+  marked: Set<number>;
   /** Set when the quiz is finished and reopened to review the work. */
   finishedAt: number | null;
 }
@@ -1229,7 +1358,7 @@ function newQuizId(): string {
 async function persistPractice(announce = false): Promise<void> {
   const s = _practice;
   if (!s) return;
-  await saveQuizSession({ id: s.id, name: s.name, itemIds: s.ids, position: s.index, skipped: [...s.skipped], startedAt: s.startedAt, finishedAt: s.finishedAt }, announce)
+  await saveQuizSession({ id: s.id, name: s.name, itemIds: s.ids, position: s.index, skipped: [...s.skipped], marked: [...s.marked], startedAt: s.startedAt, finishedAt: s.finishedAt }, announce)
     .catch((err) => console.warn('[Worksheet] quiz session save failed:', err));
 }
 /** "today", "yesterday", "N days ago": how Home and the quiz screens date things. */
@@ -1246,7 +1375,7 @@ function defaultQuizName(count: number): string {
  *  stay open: a quiz is a saved thing, and only Complete Quiz on its summary
  *  finishes it (Mufaro, 2026-09-17). */
 async function beginPractice(ids: number[], startAt = 0, name = ''): Promise<void> {
-  _practice = { id: newQuizId(), name: name.trim() || defaultQuizName(ids.length), ids: [...ids], index: Math.max(0, Math.min(startAt, ids.length - 1)), startedAt: Date.now(), skipped: new Set(), finishedAt: null };
+  _practice = { id: newQuizId(), name: name.trim() || defaultQuizName(ids.length), ids: [...ids], index: Math.max(0, Math.min(startAt, ids.length - 1)), startedAt: Date.now(), skipped: new Set(), marked: new Set(), finishedAt: null };
   await persistPractice(true);
   for (const fn of _practiceListeners) { try { fn(); } catch { /* pane torn down */ } }
 }
@@ -1255,7 +1384,7 @@ async function restorePractice(): Promise<RunningPractice | null> {
   if (_practice) return _practice;
   const row = await getOpenQuizSession().catch(() => null);
   if (!row || row.itemIds.length === 0) return null;
-  _practice = { id: row.id, name: row.name, ids: row.itemIds, index: Math.max(0, Math.min(row.position, row.itemIds.length)), startedAt: row.startedAt, skipped: new Set(row.skipped), finishedAt: null };
+  _practice = { id: row.id, name: row.name, ids: row.itemIds, index: Math.max(0, Math.min(row.position, row.itemIds.length)), startedAt: row.startedAt, skipped: new Set(row.skipped), marked: new Set(row.marked), finishedAt: null };
   return _practice;
 }
 /** A past quiz reopened: the same player over the same problems, with the
@@ -1264,7 +1393,7 @@ async function openPastQuiz(id: string): Promise<void> {
   const row = await getQuizSession(id).catch(() => null);
   if (!row || row.itemIds.length === 0) return;
   _practice = {
-    id: row.id, name: row.name, ids: row.itemIds, startedAt: row.startedAt, skipped: new Set(row.skipped), finishedAt: row.finishedAt,
+    id: row.id, name: row.name, ids: row.itemIds, startedAt: row.startedAt, skipped: new Set(row.skipped), marked: new Set(row.marked), finishedAt: row.finishedAt,
     index: row.finishedAt ? 0 : Math.max(0, Math.min(row.position, row.itemIds.length)),
   };
   for (const fn of _practiceListeners) { try { fn(); } catch { /* pane torn down */ } }
@@ -1582,6 +1711,8 @@ function createPracticeRunPane(container: HTMLElement) {
   let disposed = false;
   let player: { dispose(): void } | null = null;
   let changeSub: { dispose(): void } | null = null;
+  /** The study clock for the quiz's own screens (overview, summary); a problem on screen has its own. */
+  let quizTicker: { dispose(): void } | null = null;
   /** Bumped by every change of what the player shows; a sheet still being staged for an older step is thrown away. */
   let serveSeq = 0;
   const bar = el('div', 'ws-sessionbar');
@@ -1610,6 +1741,14 @@ function createPracticeRunPane(container: HTMLElement) {
   const run = (session: RunningPractice) => {
     bar.style.display = '';
     let view: 'sheet' | 'overview' = 'sheet';
+    // Reviewing the overview or the summary is study too: it counts under
+    // item 0 of this quiz, only while no problem sheet is on screen.
+    quizTicker?.dispose();
+    quizTicker = createStudyTicker({
+      visible: () => !disposed && paneOnScreen(root) && (view === 'overview' || session.index >= session.ids.length),
+      idleMs: getIdleMinutes() * 60_000,
+      credit: (secs, final) => { void addStudySeconds(dayKey(Date.now()), 0, session.id, secs, final).catch(() => {}); },
+    });
 
     // The quiz's lifecycle, one action each (Mufaro, 2026-09-17: one button
     // used to start, finish and replace). Complete Quiz is the only way a
@@ -1628,10 +1767,18 @@ function createPracticeRunPane(container: HTMLElement) {
         const it = byId.get(id);
         return !(it?.worked || (!it?.ratingImported && normalizeRating(it?.attemptState ?? '')));
       });
-      if (undone.length > 0) {
+      // Marks are the student's own "come back to this"; completing over
+      // them is asked about in those words.
+      const marked = session.ids.filter((id) => session.marked.has(id));
+      if (undone.length > 0 || marked.length > 0) {
+        const n = undone.length > 0 ? undone.length : marked.length;
+        const noun = n === 1 ? 'problem' : 'problems';
+        const marksLeft = marked.length > 0 ? ` ${marked.length} ${marked.length === 1 ? 'is' : 'are'} still marked for later.` : '';
         const ok = await _api?.window?.showConfirmModal?.({
-          message: `Complete this quiz with ${undone.length} ${undone.length === 1 ? 'problem' : 'problems'} not done?`,
-          detail: 'Nothing was worked or rated on them, so they count for nothing today and stay in the bank for another day. Back To Quiz takes you to them.',
+          message: undone.length > 0 ? `Complete this quiz with ${n} ${noun} not done?` : `Complete this quiz with ${n} ${noun} still marked for later?`,
+          detail: undone.length > 0
+            ? `Nothing was worked or rated on them, so they count for nothing today and stay in the bank for another day. Back To Quiz takes you to them.${marksLeft}`
+            : 'You marked them to come back to. Next Marked on the summary takes you to them; a completed quiz keeps its marks.',
           confirmLabel: 'Complete Anyway',
         }) ?? true;
         if (!ok || disposed) return;
@@ -1709,6 +1856,7 @@ function createPracticeRunPane(container: HTMLElement) {
         else if (item?.worked) title.appendChild(el('span', 'ws-chip ws-chip--open', 'Worked, Not Rated'));
         else if (grade) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} in your workbook`));
         else title.appendChild(el('span', 'ws-chip', session.skipped.has(id) ? 'Skipped' : 'Not Rated'));
+        if (session.marked.has(id)) title.appendChild(el('span', 'ws-chip ws-chip--marked', 'Marked'));
         info.appendChild(title);
         info.addEventListener('click', () => { _practice = session; view = 'sheet'; goTo(i); });
         row.appendChild(info);
@@ -1728,6 +1876,7 @@ function createPracticeRunPane(container: HTMLElement) {
       const line = [
         `${counts.nailed} Easy`, `${counts.partial} Medium`, `${counts.missed} Hard`,
         counts.ungraded ? `${counts.ungraded} Not Rated` : '',
+        session.marked.size ? `${session.marked.size} Marked For Later` : '',
       ].filter(Boolean).join(' · ');
       wrap.appendChild(el('div', 'ws-hint', line));
       if (tagRoll.size > 0) {
@@ -1748,6 +1897,7 @@ function createPracticeRunPane(container: HTMLElement) {
       if (!session.finishedAt) {
         action('Complete Quiz', 'Marks this quiz completed. Ratings stay on the problems; Reopen Quiz undoes it.', () => void completeQuiz(), true);
         action('Back To Quiz', 'Continues where the quiz was. It stays open.', () => { _practice = session; goTo(session.ids.length - 1); });
+        if (session.marked.size > 0) action('Next Marked', 'Goes to the first problem you marked for later.', () => { _practice = session; goToMarked(-1); });
       } else {
         action('Reopen Quiz', 'Makes this completed quiz open again, at its last problem.', () => void reopenQuiz(), true);
       }
@@ -1769,7 +1919,7 @@ function createPracticeRunPane(container: HTMLElement) {
       const id = session.ids[session.index];
       const [grades, states] = await Promise.all([
         getSessionGrades([id], session.startedAt, session.id, session.finishedAt ?? null),
-        getSessionItemStates([id], session.startedAt).catch(() => new Map<number, { grade: string; attempted: boolean; worked: boolean; seconds: number }>()),
+        getSessionItemStates([id], session.startedAt, session.id).catch(() => new Map<number, { grade: string; attempted: boolean; worked: boolean; seconds: number }>()),
       ]);
       if (disposed || id !== session.ids[session.index]) return;
       const g = grades.get(id);
@@ -1790,6 +1940,11 @@ function createPracticeRunPane(container: HTMLElement) {
       view = 'sheet';
       serve();
     };
+    /** Next Marked: the marked problem after `from`, round the quiz; -1 starts at the first. */
+    const goToMarked = (from: number) => {
+      const i = nextMarkedIndex(session.ids, session.marked, from);
+      if (i >= 0) goTo(i);
+    };
 
     // The overview: every problem in the quiz with what happened to it, a
     // note per problem, and a click to jump. Skipping problem 1 no longer
@@ -1801,13 +1956,17 @@ function createPracticeRunPane(container: HTMLElement) {
       const wrap = el('div', 'ws-quiz__overview');
       playerHost.appendChild(wrap);
       const [states, notes, bank] = await Promise.all([
-        getSessionItemStates(session.ids, session.startedAt).catch(() => new Map<number, { grade: string; attempted: boolean; worked: boolean; seconds: number }>()),
+        getSessionItemStates(session.ids, session.startedAt, session.id).catch(() => new Map<number, { grade: string; attempted: boolean; worked: boolean; seconds: number }>()),
         getProblemNotes(session.ids).catch(() => new Map<number, string>()),
         listItems().catch(() => []),
       ]);
       if (disposed || view !== 'overview') return;
       const byId = new Map(bank.map((i) => [i.id, i]));
-      const counts = { rated: 0, attempted: 0, skipped: 0, untouched: 0 };
+      const counts = { rated: 0, attempted: 0, skipped: 0, untouched: 0, marked: 0 };
+      const countsLine = el('span', 'ws-hint');
+      const paintCounts = () => {
+        countsLine.textContent = [`${counts.rated} rated`, `${counts.attempted} worked`, `${counts.skipped} skipped`, `${counts.untouched} not started`, counts.marked ? `${counts.marked} marked for later` : ''].filter(Boolean).join(' · ');
+      };
       const rows: HTMLElement[] = [];
       session.ids.forEach((id, i) => {
         const item = byId.get(id);
@@ -1818,6 +1977,7 @@ function createPracticeRunPane(container: HTMLElement) {
         const gradeText = sessionGrade ? st!.grade : (item?.attemptState ?? '');
         if ((sessionGrade || st?.attempted) && session.skipped.delete(id)) void persistPractice();
         const skipped = session.skipped.has(id);
+        if (session.marked.has(id)) counts.marked++;
         // Work outranks an old rating here: working a problem is what counts
         // it for the day, and a rating that came in with the workbook is said
         // in those words so it is never mistaken for one given here.
@@ -1863,6 +2023,7 @@ function createPracticeRunPane(container: HTMLElement) {
           editor.style.display = open ? '' : 'none';
           if (open) ta.focus();
         });
+        row.appendChild(markBtn(session, id, (on) => { counts.marked += on ? 1 : -1; paintCounts(); }));
         row.appendChild(starBtn(id, item?.starred ?? false));
         row.addEventListener('click', () => goTo(i));
         row.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === row) goTo(i); });
@@ -1903,7 +2064,8 @@ function createPracticeRunPane(container: HTMLElement) {
       else small('Quiz Summary', 'The ratings so far, and Complete Quiz when you are done.', () => goTo(session.ids.length));
       head.appendChild(titleRow);
       head.appendChild(el('span', 'ws-chip ws-chip--muted', session.finishedAt ? `Completed ${when(session.finishedAt)}` : 'Open'));
-      head.appendChild(el('span', 'ws-hint', [`${counts.rated} rated`, `${counts.attempted} worked`, `${counts.skipped} skipped`, `${counts.untouched} not started`].join(' · ')));
+      paintCounts();
+      head.appendChild(countsLine);
       wrap.appendChild(head);
       for (const r of rows) wrap.appendChild(r);
     };
@@ -1933,6 +2095,20 @@ function createPracticeRunPane(container: HTMLElement) {
         hint: view === 'overview' ? 'Back to the problem you were on.' : 'Every problem in this quiz, with status, rating, time and notes; click one to jump to it.',
         onClick: () => { view = view === 'overview' ? 'sheet' : 'overview'; serve(); },
       }));
+      // Mark For Later sits with Skip: both say "not now"; a mark says "come back".
+      // Next Marked carries its count, so it is a word button, shown only while there is one.
+      const nextMarkedBtn = el('button', 'ws-btn ws-btn--small ws-sessionbar__marked') as HTMLButtonElement;
+      nextMarkedBtn.type = 'button';
+      const paintNextMarked = () => {
+        const n = session.marked.size;
+        nextMarkedBtn.textContent = `Next Marked (${n})`;
+        nextMarkedBtn.title = 'Goes to the next problem you marked for later, round the quiz.';
+        nextMarkedBtn.style.display = n ? '' : 'none';
+      };
+      nextMarkedBtn.addEventListener('click', () => goToMarked(session.index));
+      paintNextMarked();
+      bar.appendChild(markBtn(session, session.ids[session.index], paintNextMarked));
+      bar.appendChild(nextMarkedBtn);
       // Skipping an item already rated or worked moves on without marking anything.
       bar.appendChild(iconBtn('skip-forward', 'Skip Item', {
         hint: 'Moves on without a rating. Rating or working the problem later clears the skip.',
@@ -1993,6 +2169,8 @@ function createPracticeRunPane(container: HTMLElement) {
       disposed = true;
       _practiceListeners.delete(onPractice);
       changeSub?.dispose();
+      quizTicker?.dispose();
+      quizTicker = null;
       player?.dispose();
       root.remove();
     },
@@ -2336,8 +2514,9 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   let autosaveTimer: ReturnType<typeof setInterval> | null = null;
   let lastSavedCells = '';
   /** Problem Bank items: time on the open attempt (-1 = not a problem item). */
+  /** Study seconds on this problem, every sitting (the header clock); -1 before a problem is loaded. */
   let problemSeconds = -1;
-  let problemTimer: ReturnType<typeof setInterval> | null = null;
+  let studyTicker: { dispose(): void } | null = null;
 
   const captureWorking = (): IWorkbookData | null => {
     if (mode !== 'working') return null;
@@ -2524,7 +2703,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       const reviewWrap = el('div', 'ws-item__review');
       const reviewBtn = el('button', 'ws-btn') as HTMLButtonElement;
       reviewBtn.textContent = 'Review in Chat';
-      reviewBtn.title = 'Sends your cells and the model solution to the chat for method-level feedback. Ask follow-up questions there.';
+      reviewBtn.title = 'Stages your cells, the model solution and a review brief in the chat. Add your question under the brief, then send.';
       const reviewOut = el('div', 'ws-item__reviewout');
       reviewOut.style.display = 'none';
       reviewBtn.addEventListener('click', () => {
@@ -2639,7 +2818,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   // sheet comes back as he left it, and the next edit starts a fresh attempt
   // (its own timer) from that sheet.
   const initProblem = async (problem: WorksheetItem, open: Awaited<ReturnType<typeof getOpenAttempt>>, prior: Awaited<ReturnType<typeof getLatestWork>> = null): Promise<void> => {
-    problemSeconds = open?.seconds ?? 0;
+    problemSeconds = await getStudySecondsForItem(problem.id).catch(() => 0);
     readPristine(problem);
     let latestRating = '';
     /** The rating shown came in with the workbook, not from work done here. */
@@ -2658,7 +2837,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     };
     await refreshRating();
     const timerEl = el('span', 'ws-problem__timer', fmtSeconds(problemSeconds));
-    timerEl.title = 'Time on this attempt. Runs while the problem is on screen.';
+    timerEl.title = 'Study time on this problem, every sitting. Counts while it is on screen and you are active; idle stretches are taken back.';
     const header = el('div', 'ws-item__header');
     const titleRow = el('div', 'ws-item__titlerow');
     const paintHeader = () => {
@@ -2726,14 +2905,12 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         void (async () => {
           const ok = await _api?.window?.showConfirmModal?.({
             message: 'Reset your work on this problem?',
-            detail: 'Everything you typed on this sheet is discarded and the timer restarts. Your ratings are kept. This cannot be undone.',
+            detail: 'Everything you typed on this sheet is discarded. Your ratings and study time are kept. This cannot be undone.',
             confirmLabel: 'Reset Work',
             danger: true,
           }) ?? false;
           if (!ok || disposed) return;
           lastSavedCells = '';
-          problemSeconds = 0;
-          timerEl.textContent = fmtSeconds(0);
           _workingCache.delete(instanceId);
           await discardOpenAttempt(problem.id);
           await mountSheet(applyRatingCell(applySolutionVisibility(parseWorkbook(problem.sheetJson) as IWorkbookData, revealed), latestRating));
@@ -2773,7 +2950,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         const reviewWrap = el('div', 'ws-item__review');
         const reviewBtn = el('button', 'ws-btn') as HTMLButtonElement;
         reviewBtn.textContent = 'Review in Chat';
-        reviewBtn.title = 'Sends your cells and the worked solution to the chat for method-level feedback. Ask follow-up questions there.';
+        reviewBtn.title = 'Stages your cells, the worked solution and a review brief in the chat. Add your question under the brief, then send.';
         const reviewOut = el('div', 'ws-item__reviewout');
         reviewOut.style.display = 'none';
         reviewBtn.addEventListener('click', () => {
@@ -2843,11 +3020,16 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       })();
     };
     autosaveTimer = setInterval(() => { void persistWorking(); }, AUTOSAVE_MS);
-    problemTimer = setInterval(() => {
-      if (disposed || document.hidden || !root.isConnected || root.offsetParent === null) return;
-      problemSeconds++;
-      timerEl.textContent = fmtSeconds(problemSeconds);
-    }, 1000);
+    // The study clock: elapsed time on screen while active, whatever the
+    // cells do; flushed to the ledger every half minute and at teardown,
+    // which announces the change so the dashboard's day catches up.
+    studyTicker?.dispose();
+    studyTicker = createStudyTicker({
+      visible: () => !disposed && paneOnScreen(root),
+      idleMs: getIdleMinutes() * 60_000,
+      credit: (secs, final) => { void addStudySeconds(dayKey(Date.now()), problem.id, quizSessionIdFor(problem.id) ?? '', secs, final).catch(() => {}); },
+      onTotal: (delta) => { problemSeconds = Math.max(0, problemSeconds + delta); timerEl.textContent = fmtSeconds(problemSeconds); },
+    });
   };
 
   void (async () => {
@@ -2927,7 +3109,8 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     dispose: () => {
       readyResolve();
       if (autosaveTimer) clearInterval(autosaveTimer);
-      if (problemTimer) clearInterval(problemTimer);
+      studyTicker?.dispose();
+      studyTicker = null;
       // Capture-before-teardown so close-without-save cannot drop work.
       void persistWorking();
       disposed = true;

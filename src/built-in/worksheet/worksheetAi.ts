@@ -177,10 +177,15 @@ export function buildReviewContext(item: ReviewItem, attemptCellsJson: string): 
 }
 
 /**
- * The review as a CHAT turn: the brief is the message the user sends, the
- * work travels as an attached context chip, and the feedback streams in the
+ * The review as a CHAT turn: the brief is STAGED in the input, the work
+ * travels as an attached context chip, and the feedback streams in the
  * conversation where follow-up questions can be asked. Same rules as the
  * one-shot system prompt, spoken in the learner's voice.
+ *
+ * The brief ends with a blank line on purpose: the caret lands below it, so
+ * the user types their own question under the brief and sends when ready
+ * (Mufaro, 2026-09-21: firing the brief on its own asked only the question
+ * the code guessed; the flashcards hand-off already works this way).
  */
 export function buildReviewRequest(item: ReviewItem, attemptCellsJson: string): { prompt: string; context: string } {
   const context = buildReviewContext(item, attemptCellsJson);
@@ -192,7 +197,7 @@ export function buildReviewRequest(item: ReviewItem, attemptCellsJson: string): 
     'and whether a different method of mine is also valid.',
     'Be concise and concrete. KaTeX ($...$) for formulas.',
   ].join(' ');
-  return { prompt, context };
+  return { prompt: `${prompt}\n\n`, context };
 }
 
 export async function reviewAttempt(

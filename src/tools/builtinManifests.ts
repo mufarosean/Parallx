@@ -573,6 +573,11 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
             default: '4',
             description: 'How many decimals a cell without a number format shows. The stored value and the cell editor keep full precision, and a number format set on a cell always wins. "full" shows everything the engine keeps.',
           },
+          'worksheet.idleMinutes': {
+            type: 'number',
+            default: 10,
+            description: 'The study clock counts while a problem or the quiz is on screen. After this many minutes without any input the stretch is taken back, so a break with the tab up counts for nothing.',
+          },
         },
       },
     ],

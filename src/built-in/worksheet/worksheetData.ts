@@ -104,6 +104,9 @@ export interface WorksheetItemSummary extends Omit<WorksheetItem, 'givensJson' |
   /** Starred: the student's bookmark on the problem, kept across quizzes. */
   readonly starred: boolean;
   readonly starredAt: number;
+  /** The student's note on the problem (ws_problem_note), empty when none; noteAt is its last edit. */
+  readonly note: string;
+  readonly noteAt: number;
 }
 
 function rowToItem(row: Record<string, unknown>): WorksheetItem {
@@ -143,10 +146,12 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
              ORDER BY a.updated_at DESC LIMIT 1) AS last_grade_imported,
            (SELECT MAX(a.worked_at) FROM ws_attempts a WHERE a.item_id = i.id) AS worked_at,
            (SELECT MAX(a.updated_at) FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1) AS last_at,
-           (SELECT COALESCE(SUM(a.seconds), 0) FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1) AS seconds,
+           (SELECT COALESCE(SUM(t.seconds), 0) FROM ws_study_time t WHERE t.item_id = i.id) AS seconds,
            EXISTS(SELECT 1 FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 0
              AND a.cells_json != '') AS has_open,
-           (SELECT s.starred_at FROM ws_star s WHERE s.item_id = i.id) AS starred_at
+           (SELECT s.starred_at FROM ws_star s WHERE s.item_id = i.id) AS starred_at,
+           (SELECT n.note FROM ws_problem_note n WHERE n.item_id = i.id) AS note,
+           (SELECT n.updated_at FROM ws_problem_note n WHERE n.item_id = i.id) AS note_at
     FROM ws_items i ORDER BY i.paper, i.sheet_name, i.created_at DESC
   `);
   return rows.map((row) => {
@@ -170,6 +175,8 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
       worked: Number(row.worked_at ?? 0) > 0,
       starred: Number(row.starred_at ?? 0) > 0,
       starredAt: Number(row.starred_at ?? 0),
+      note: String(row.note ?? ''),
+      noteAt: Number(row.note_at ?? 0),
     };
   });
 }
@@ -468,6 +475,8 @@ export interface QuizSessionRow {
   readonly itemIds: number[];
   readonly position: number;
   readonly skipped: number[];
+  /** Mark For Later: problems flagged inside this quiz to come back to (migration 011). Only the student clears one. */
+  readonly marked: number[];
   readonly startedAt: number;
   readonly touchedAt: number;
   readonly finishedAt: number | null;
@@ -477,11 +486,11 @@ function parseIdList(raw: unknown): number[] {
 }
 function rowToSession(row: Record<string, unknown>): QuizSessionRow {
   return {
-    id: String(row.id), name: String(row.name ?? ''), itemIds: parseIdList(row.item_ids), position: Number(row.position ?? 0), skipped: parseIdList(row.skipped),
+    id: String(row.id), name: String(row.name ?? ''), itemIds: parseIdList(row.item_ids), position: Number(row.position ?? 0), skipped: parseIdList(row.skipped), marked: parseIdList(row.marked),
     startedAt: Number(row.started_at), touchedAt: Number(row.touched_at ?? row.started_at), finishedAt: row.finished_at == null ? null : Number(row.finished_at),
   };
 }
-const SESSION_COLS = 'id, name, item_ids, position, skipped, started_at, touched_at, finished_at';
+const SESSION_COLS = 'id, name, item_ids, position, skipped, marked, started_at, touched_at, finished_at';
 const LAST_USED = 'COALESCE(touched_at, started_at) DESC';
 /** The open quiz used most recently: what Resume Quiz means. */
 export async function getOpenQuizSession(): Promise<QuizSessionRow | null> {
@@ -504,9 +513,9 @@ export async function countFinishedQuizSessions(): Promise<number> {
 /** Upsert; every save is a touch. `announce` tells open panes (the Dashboard's Resume Quiz) when a quiz begins. */
 export async function saveQuizSession(s: Omit<QuizSessionRow, 'touchedAt'>, announce = false): Promise<void> {
   await run(
-    `INSERT INTO ws_quiz_session (id, name, item_ids, position, skipped, started_at, touched_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET name = excluded.name, item_ids = excluded.item_ids, position = excluded.position, skipped = excluded.skipped, touched_at = excluded.touched_at, finished_at = excluded.finished_at`,
-    [s.id, s.name, JSON.stringify(s.itemIds), s.position, JSON.stringify(s.skipped), s.startedAt, Date.now(), s.finishedAt],
+    `INSERT INTO ws_quiz_session (id, name, item_ids, position, skipped, marked, started_at, touched_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET name = excluded.name, item_ids = excluded.item_ids, position = excluded.position, skipped = excluded.skipped, marked = excluded.marked, touched_at = excluded.touched_at, finished_at = excluded.finished_at`,
+    [s.id, s.name, JSON.stringify(s.itemIds), s.position, JSON.stringify(s.skipped), JSON.stringify(s.marked), s.startedAt, Date.now(), s.finishedAt],
   );
   if (announce) emitChange();
 }
@@ -553,9 +562,12 @@ export interface SessionItemState {
   readonly worked: boolean;
   readonly seconds: number;
 }
-export async function getSessionItemStates(itemIds: number[], sinceMs: number): Promise<Map<number, SessionItemState>> {
+export async function getSessionItemStates(itemIds: number[], sinceMs: number, sessionId = ''): Promise<Map<number, SessionItemState>> {
   const map = new Map<number, SessionItemState>();
   if (itemIds.length === 0) return map;
+  // Time comes from the study ledger when the quiz is known: what the clock
+  // counted on each problem inside this quiz, whatever the cells did.
+  const study = sessionId ? await getStudySecondsBySession(sessionId).catch(() => new Map<number, number>()) : null;
   const ph = itemIds.map(() => '?').join(',');
   const rows = await allRows(
     `SELECT item_id, self_grade, completed, seconds, worked_at, length(cells_json) AS len FROM ws_attempts
@@ -570,10 +582,42 @@ export async function getSessionItemStates(itemIds: number[], sinceMs: number): 
       itemId: id, grade,
       attempted: prev.attempted || Number(r.len ?? 0) > 2 || Number(r.completed) === 1,
       worked: prev.worked || Number(r.worked_at ?? 0) >= sinceMs,
-      seconds: prev.seconds + Number(r.seconds ?? 0),
+      seconds: study ? (study.get(id) ?? 0) : prev.seconds + Number(r.seconds ?? 0),
     });
   }
   return map;
+}
+
+// ── Study time (ws_study_time, migration 012) ──────────────────────────────
+// Seconds with a problem (or the quiz's own screens, item 0) on screen while
+// the student is active, per day and per quiz. The clock writes them whatever
+// the cells do and takes idle stretches back, so a delta may be negative.
+
+export async function addStudySeconds(day: string, itemId: number, sessionId: string, seconds: number, announce = false): Promise<void> {
+  const delta = Math.round(seconds);
+  if (delta !== 0) {
+    await run(
+      `INSERT INTO ws_study_time (day, item_id, session_id, seconds) VALUES (?, ?, ?, MAX(0, ?))
+       ON CONFLICT(day, item_id, session_id) DO UPDATE SET seconds = MAX(0, seconds + ?)`,
+      [day, itemId, sessionId, delta, delta],
+    );
+  }
+  if (announce) emitChange();
+}
+/** Every day's study seconds, problems and quiz screens together. */
+export async function getStudySecondsByDay(): Promise<Map<string, number>> {
+  const rows = await allRows('SELECT day, SUM(seconds) AS s FROM ws_study_time GROUP BY day');
+  return new Map(rows.map((r) => [String(r.day), Number(r.s ?? 0)]));
+}
+/** Study seconds on one problem, every sitting. */
+export async function getStudySecondsForItem(itemId: number): Promise<number> {
+  const row = await getRow('SELECT COALESCE(SUM(seconds), 0) AS s FROM ws_study_time WHERE item_id = ?', [itemId]);
+  return Number(row?.s ?? 0);
+}
+/** Study seconds per problem inside one quiz (item 0 is the quiz's own screens). */
+export async function getStudySecondsBySession(sessionId: string): Promise<Map<number, number>> {
+  const rows = await allRows('SELECT item_id, SUM(seconds) AS s FROM ws_study_time WHERE session_id = ? GROUP BY item_id', [sessionId]);
+  return new Map(rows.map((r) => [Number(r.item_id), Number(r.s ?? 0)]));
 }
 
 /** Notes: one per problem, kept across quizzes. */

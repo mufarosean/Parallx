@@ -104,3 +104,21 @@ export function buildPracticeSet(
   const count = n > 0 ? n : 10; // non-positive/NaN → the default length
   return ids.slice(0, count);
 }
+
+/**
+ * Next Marked: the index of the first marked problem after `from` in quiz
+ * order, going round to the start, or -1 when nothing is marked. `from` of
+ * -1 starts at the first problem (the summary's Next Marked); the current
+ * index lands on the current problem last, so Next Marked from a marked
+ * problem moves on and only comes back when it is the one left.
+ */
+export function nextMarkedIndex(ids: readonly number[], marked: ReadonlySet<number>, from: number): number {
+  const n = ids.length;
+  if (n === 0 || marked.size === 0) return -1;
+  const start = Math.max(-1, Math.min(from, n - 1));
+  for (let step = 1; step <= n; step++) {
+    const i = (start + step) % n;
+    if (marked.has(ids[i])) return i;
+  }
+  return -1;
+}

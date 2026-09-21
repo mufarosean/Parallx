@@ -7,7 +7,7 @@
 // is due again, what keeps going wrong, the weakest papers, and the vendor's
 // easy-and-likely problems never tried. Every row opens the problem or
 // starts a quiz; the arithmetic lives in progressInsights.ts.
-import { listItems, listAttemptHistory, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getDailyDraw, saveDailyDraw, getOpenQuizSession } from './worksheetData.js';
+import { listItems, listAttemptHistory, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getDailyDraw, saveDailyDraw, getOpenQuizSession, getStudySecondsByDay } from './worksheetData.js';
 import { computeInsights, dayKey, type Insights, type PaperProgress, type InsightItem, type InsightAttempt, type TimelinePoint } from './progressInsights.js';
 import { campaignProgress, campaignDone, drawToday, dayStory, addDays, restDaysLabel, isCampaignProblem, LEVEL_TITLES, XP_PER_PROBLEM, XP_EASY_BONUS, XP_FULL_DAY, type Campaign, type CampaignProgress, type DayStory } from './campaign.js';
 import { syncRewards, type RewardState } from './rewardsSync.js';
@@ -331,7 +331,7 @@ function storyRow(story: DayStory, p: CampaignProgress): HTMLElement | null {
   return row;
 }
 
-async function campaignSection(root: HTMLElement, items: InsightItem[], attempts: InsightAttempt[], campaign: Campaign | null, due: number[], resume: QuizResume, bonusXp: number, actions: DashboardActions, tip: Tip): Promise<boolean> {
+async function campaignSection(root: HTMLElement, items: InsightItem[], attempts: InsightAttempt[], campaign: Campaign | null, due: number[], resume: QuizResume, bonusXp: number, actions: DashboardActions, tip: Tip, studyByDay: ReadonlyMap<string, number>): Promise<boolean> {
   const problems = items.filter(isCampaignProblem);
   const sec = el('section', 'ws-camp');
   root.appendChild(sec);
@@ -410,7 +410,7 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
   }
   todayRow.appendChild(big);
   const text = el('div', 'ws-camp__todaytext');
-  const story = dayStory(campaign, items, attempts, now);
+  const story = dayStory(campaign, items, attempts, now, studyByDay);
   const line = p.finished ? 'Nothing left to draw. The bank is yours.'
     : p.restToday ? (due.length > 0 ? `Rest day. ${due.length} ${due.length === 1 ? 'problem is' : 'problems are'} due for a repeat.` : 'Rest day. Nothing is due for a repeat.')
     : p.leftToday === 0 ? (story.bestToday ? `Day ${p.dayIndex} done. Your best day yet.` : `Day ${p.dayIndex} done. Anything more is a lead you keep.`)
@@ -495,8 +495,8 @@ function rewardsSection(root: HTMLElement, state: RewardState, icon: (id: string
     const at = state.unlocks.get(r.id);
     const card = el('div', `ws-reward${at ? '' : ' ws-reward--locked'}`);
     const ic = el('span', 'ws-reward__icon');
+    // Registry icons only; a text glyph here read as an emoji (2026-09-21).
     ic.innerHTML = icon(r.icon, 20);
-    if (!ic.innerHTML) ic.textContent = at ? '★' : '☆';
     card.appendChild(ic);
     const text = el('div', 'ws-reward__text');
     const name = el('div', 'ws-reward__title', r.title);
@@ -525,11 +525,12 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
   const render = async () => {
     if (disposed) return;
     const seq = ++renderSeq;
-    const [items, attempts, snapshots, campaign] = await Promise.all([
+    const [items, attempts, snapshots, campaign, studyByDay] = await Promise.all([
       listItems().catch(() => []),
       listAttemptHistory().catch(() => []),
       listProgressSnapshots().catch(() => []),
       getCampaign().catch(() => null),
+      getStudySecondsByDay().catch(() => new Map<string, number>()),
     ]);
     if (disposed || seq !== renderSeq) return;
     for (const c of cleanups) c();
@@ -562,7 +563,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     const resume: QuizResume = quiz ? { name: quiz.name, position: Math.min(quiz.position, quiz.itemIds.length - 1), total: quiz.itemIds.length } : null;
     const rewards = await syncRewards(items, attempts, campaign).catch(() => null);
     if (disposed || seq !== renderSeq) return;
-    await campaignSection(root, items, attempts, campaign, ins.due.filter((d) => isCampaignProblem(d.item)).map((d) => d.item.id), resume, rewards?.bonusXp ?? 0, actions, tip);
+    await campaignSection(root, items, attempts, campaign, ins.due.filter((d) => isCampaignProblem(d.item)).map((d) => d.item.id), resume, rewards?.bonusXp ?? 0, actions, tip, studyByDay);
     if (disposed || seq !== renderSeq) return;
     if (disposed) return;
 
@@ -570,8 +571,11 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     const tiles = el('div', 'ws-dash__tiles');
     tiles.appendChild(tile('Attempted', pct(ins.attempted), `${ins.rated} of ${ins.totalProblems} problems rated`));
     tiles.appendChild(tile('Score', ins.rated > 0 ? pct(ins.score) : '–', ins.rated > 0 ? `over ${ins.rated} rated problems` : 'nothing rated yet'));
-    const ownAttempts = attempts.filter((a) => !a.imported).length;
-    tiles.appendChild(tile('Time Studied', fmtStudyTime(ins.seconds), ownAttempts > 0 ? `across ${ownAttempts} ${ownAttempts === 1 ? 'attempt' : 'attempts'} here` : 'timed from the first attempt here'));
+    // The study ledger, not the attempt clocks: time with a problem or the
+    // quiz on screen while active, whatever the cells did (2026-09-21).
+    let studied = 0;
+    for (const s of studyByDay.values()) studied += s;
+    tiles.appendChild(tile('Time Studied', fmtStudyTime(studied), 'with a problem or the quiz on screen; idle stretches taken back'));
     tiles.appendChild(tile('Rated This Week', String(ins.ratedThisWeek), 'ratings in the last 7 days'));
     root.appendChild(tiles);
 

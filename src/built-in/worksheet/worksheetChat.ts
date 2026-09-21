@@ -1,13 +1,13 @@
 // worksheetChat.ts — the AI's read surface over Worksheets (M99).
 //
-// Two chat tools make the practice bank and the user's ACTUAL sheet work
-// visible to any chat/autonomous turn, mirroring how flashcards exposes
-// getDue. Both are read-only (no confirmation): the AI can discuss "where
-// am I weak" or "look at my work on the Brosius item" with real cells in
-// front of it instead of guessing.
+// Three chat tools make the practice bank, the user's ACTUAL sheet work and
+// the user's own notes visible to any chat/autonomous turn, mirroring how
+// flashcards exposes getDue. All are read-only (no confirmation): the AI can
+// discuss "where am I weak", "look at my work on the Brosius item" or "what
+// do my notes keep flagging" with the real thing in front of it.
 
 import {
-  listItems, getItem, findItemByTitle, getLatestAttempt,
+  listItems, getItem, findItemByTitle, getLatestAttempt, getProblemNotes,
   type WorksheetItem, type WorksheetItemSummary, type WorksheetAttempt,
 } from './worksheetData.js';
 import { serializeWorkbookCells } from './itemFormat.js';
@@ -78,13 +78,39 @@ export function buildProgressReport(items: WorksheetItemSummary[]): string {
     else if (item.attemptState) bits.push(`latest: ${gradeWord(item.attemptState)}`);
     if (item.attemptCount > 0) bits.push(`${item.attemptCount} completed ${item.attemptCount === 1 ? 'attempt' : 'attempts'}`);
     if (!item.attemptState && item.attemptCount === 0) bits.push('never attempted');
+    if (item.note) bits.push(`my note: "${item.note}"`);
     lines.push(`- [id ${item.id}] "${item.title}" — ${bits.join(' · ')}`);
   }
   return lines.join('\n');
 }
 
-/** The user's real cells, the model solution, and grading context for one item. */
-export function buildUserWorkReport(item: WorksheetItem, attempt: WorksheetAttempt | null): string {
+/** Every note the user wrote on a problem, newest first, with what the
+ *  problem is and how it went: the worksheet.getNotes tool's text and the
+ *  Discuss Notes In Chat chip, one and the same (Mufaro, 2026-09-21: "have
+ *  AI look at the whole bank, which problems have notes, gain insights"). */
+export function buildNotesDigest(items: WorksheetItemSummary[]): string {
+  const noted = items.filter((i) => i.note && i.note.trim()).sort((a, b) => (b.noteAt ?? 0) - (a.noteAt ?? 0));
+  if (noted.length === 0) return "No notes yet. The user writes a note on a problem from a quiz's overview (Add Note on its row); none exist.";
+  const lines: string[] = [`MY NOTES ON PROBLEMS: ${noted.length} of ${items.length} ${items.length === 1 ? 'problem' : 'problems'} carry a note, newest first.`];
+  lines.push('The user writes these on the fly during quizzes, mostly about what to review.');
+  lines.push('');
+  for (const item of noted) {
+    const bits: string[] = [];
+    if (item.paper) bits.push(item.paper);
+    else if (item.sourceLabel) bits.push(item.sourceLabel);
+    const tagStr = itemTags(item.tags).map((t) => `#${t}`).join(' ');
+    if (tagStr) bits.push(tagStr);
+    bits.push(item.attemptState === 'open' ? 'in progress' : item.attemptState ? `rated ${gradeWord(item.attemptState)}` : 'never rated');
+    if (item.starred) bits.push('starred');
+    const when = item.noteAt ? new Date(item.noteAt).toISOString().slice(0, 10) : '';
+    lines.push(`- [id ${item.id}] "${item.title}" (${bits.join(' · ')})${when ? ` noted ${when}` : ''}:`);
+    lines.push(`  ${item.note.trim().replace(/\s*\n\s*/g, ' / ')}`);
+  }
+  return lines.join('\n');
+}
+
+/** The user's real cells, the model solution, the user's own note, and grading context for one item. */
+export function buildUserWorkReport(item: WorksheetItem, attempt: WorksheetAttempt | null, note = ''): string {
   const lines: string[] = [];
   const src = item.sourceLabel
     ? ` (source: ${item.sourceLabel}${item.sourcePage > 0 ? ` p.${item.sourcePage}` : ''})`
@@ -112,6 +138,11 @@ export function buildUserWorkReport(item: WorksheetItem, attempt: WorksheetAttem
     lines.push('SOLUTION NOTES:');
     lines.push(item.solutionNotesMd);
   }
+  if (note.trim()) {
+    lines.push('');
+    lines.push("THE USER'S OWN NOTE ON THIS PROBLEM:");
+    lines.push(note.trim());
+  }
   if (attempt?.aiReviewMd) {
     lines.push('');
     lines.push('PRIOR AI REVIEW OF THIS ATTEMPT:');
@@ -120,7 +151,7 @@ export function buildUserWorkReport(item: WorksheetItem, attempt: WorksheetAttem
   return lines.join('\n');
 }
 
-/** Register both tools. No-op when the chat surface is absent (tests, minimal builds). */
+/** Register the tools. No-op when the chat surface is absent (tests, minimal builds). */
 export function registerWorksheetChatTools(
   api: ChatApiLike,
   subscriptions: { push(d: { dispose(): void }): void },
@@ -141,7 +172,7 @@ export function registerWorksheetChatTools(
   }));
 
   subscriptions.push(api.chat.registerTool('worksheet.getUserWork', {
-    description: "See the user's actual spreadsheet work on a practice item: the question, every cell the user entered (values and formulas), the model solution, and any prior AI review. Use this whenever the user asks about their work on an item, wants help mid-attempt, or asks how their answer compares to the solution. Identify the item by id (from worksheet.getProgress) or by title.",
+    description: "See the user's actual spreadsheet work on a practice item: the question, every cell the user entered (values and formulas), the model solution, the user's own note on the problem, and any prior AI review. Use this whenever the user asks about their work on an item, wants help mid-attempt, or asks how their answer compares to the solution. Identify the item by id (from worksheet.getProgress) or by title.",
     parameters: {
       type: 'object',
       properties: {
@@ -163,10 +194,23 @@ export function registerWorksheetChatTools(
             isError: true,
           };
         }
-        const attempt = await getLatestAttempt(item.id);
-        return { content: buildUserWorkReport(item, attempt) };
+        const [attempt, notes] = await Promise.all([getLatestAttempt(item.id), getProblemNotes([item.id]).catch(() => new Map<number, string>())]);
+        return { content: buildUserWorkReport(item, attempt, notes.get(item.id) ?? '') };
       } catch (err) {
         return { content: `Could not read the item: ${(err as Error).message}`, isError: true };
+      }
+    },
+  }));
+
+  subscriptions.push(api.chat.registerTool('worksheet.getNotes', {
+    description: "Every note the user wrote on a practice problem, newest first, each with the problem's title, paper, tags, latest rating and star. The user writes these on the fly during quizzes, mostly about what to review. Use this when asked what the notes say, what keeps coming up, which topics or problems to revisit, or for any insight across the bank's notes.",
+    parameters: { type: 'object', properties: {} },
+    requiresConfirmation: false,
+    handler: async () => {
+      try {
+        return { content: buildNotesDigest(await listItems()) };
+      } catch (err) {
+        return { content: `Could not read the notes: ${(err as Error).message}`, isError: true };
       }
     },
   }));

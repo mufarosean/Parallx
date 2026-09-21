@@ -1,5 +1,6 @@
-// Worksheets: the review as a chat turn. The brief goes as the message, the
-// work as attached context; an empty sheet refuses before anything is sent.
+// Worksheets: the review as a chat turn. The brief is staged in the input
+// with room for the user's own question, the work goes as attached context;
+// an empty sheet refuses before anything is staged.
 import { describe, it, expect } from 'vitest';
 import { buildReviewContext, buildReviewRequest } from '../../src/built-in/worksheet/worksheetAi.js';
 
@@ -35,7 +36,9 @@ describe('buildReviewRequest', () => {
     expect(prompt).toContain('Review my work on "Siewert 2018 Q3"');
     expect(prompt).toMatch(/never a score/);
     expect(prompt).toMatch(/naming the cell/);
-    expect(prompt).not.toContain('\n'); // one paragraph in the input box
+    // One paragraph, then a blank line: the caret lands under the brief so
+    // the user's question goes there before they send.
+    expect(prompt).toMatch(/^[^\n]+\n\n$/);
     expect(context).toBe(buildReviewContext(item, work));
   });
 });

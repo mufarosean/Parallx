@@ -138,6 +138,25 @@ the Starred card under Work On Next on the Dashboard, and the Starred and
 Not Starred chips in the quiz builder (Starred also sets the length to the
 count, so the other chips can narrow it further).
 
+The star is drawn as the registry's outline icon in the accent colour when
+on, the app's pressed look, never a filled or amber glyph and never a text
+character (2026-09-21: the filled amber star read as an emoji).
+
+## Mark For Later (2026-09-21)
+
+An exam's mark for review, inside one quiz: "no easy way to mark a problem
+so I can return to it later in the quiz". A mark is stored on the QUIZ
+(`ws_quiz_session.marked`, migration 011), not the problem, so it goes with
+the quiz and a star stays what it is. Set or cleared from the session bar
+(a flag beside Skip) and from each Quiz Overview row. Only the student
+clears a mark; rating or working the problem leaves it, unlike a skip.
+Spent by NEXT MARKED: a word button in the session bar with the count,
+shown only while something is marked, that goes to the next marked problem
+in quiz order and round to the start; the same action on the summary goes
+to the first. The overview and the summary chip marked problems and count
+them. Complete Quiz over marks asks first, in the same way it asks over
+problems not done; a completed quiz keeps its marks.
+
 ## Quizzes are saved things (2026-09-17)
 
 Mufaro, after losing a campaign quiz: he rates every problem in the first
@@ -403,3 +422,49 @@ replaced. The rule now:
 - Importer run: detectExcelItems over the copy through the same grid
   builder as electron/documentExtractor.cjs (316 split items, 24
   leftovers).
+
+## Notes, seen whole (2026-09-21)
+
+"Is there a way to see all the problems that I have notes entered in? Could
+AI look at the whole bank, which problems have notes, gain some insights? I
+take notes on the fly, particularly about something I may have to review."
+Until now a note lived only on its quiz overview row. Now:
+
+- The item summary carries the note (`note`, `noteAt` from ws_problem_note),
+  so every list can show it. The Problem Bank has a NOTED filter chip, shows
+  the note under the row's meta line (two lines, the tooltip has the rest),
+  and search matches note text. Home lists the eight newest notes under
+  Noted, and the Problem Bank tile counts them.
+- The AI reads them three ways: `worksheet.getNotes` (every note, newest
+  first, with paper, tags, rating and star; buildNotesDigest), a note line
+  on each item in `worksheet.getProgress`, and the problem's own note in
+  `worksheet.getUserWork`.
+- DISCUSS NOTES IN CHAT, on the bank's filter bar while any note exists,
+  stages the same digest as a context chip with a brief (group by topic,
+  what keeps coming up, what to revisit first) and leaves the question to
+  him, the Review in Chat hand-off. Nothing is sent.
+
+## Study time is time at the desk (2026-09-21)
+
+"I care more about the amount of time I spend studying. Sometimes I look
+through a problem and the answer and change no cells; sometimes I go through
+it while looking at the model solution, then spend time after understanding
+it. Hyperfocusing on cell changes does not capture the whole spectrum." The
+attempt clocks only reached the database with a cell change or a rating, so
+a morning of four hours showed 2h 35m. The rule now:
+
+- A STUDY LEDGER (`ws_study_time`, migration 012; backfilled from the attempt
+  clocks) holds seconds per day, per problem and per quiz. The clock in
+  studyClock.ts credits elapsed time (never tick counts) while the surface is
+  on screen and the student active; the quiz's overview and summary count
+  under item 0. Credits reach the ledger every half minute and at teardown.
+- IDLE: the clock cannot tell reading from a break, it only sees input. After
+  `worksheet.idleMinutes` (5/10/15/30, default 10; Study Clock in Worksheets
+  Settings) without any key, click, wheel or pointer movement, the stretch is
+  taken back, so a break with the tab up counts for nothing; reading keeps
+  it running through the odd scroll.
+- Every time shown reads the ledger: the header clock on a problem (every
+  sitting), bank rows and paper heads, quiz overview rows (this quiz), the
+  Dashboard's Today and This Week chips and the Time Studied tile (problems
+  and quiz screens together). Attempt clocks are still written but no longer
+  read. Reset Work keeps study time.
