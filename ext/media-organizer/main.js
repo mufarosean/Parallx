@@ -608,6 +608,61 @@ const TAG_COL_MAP = {
   favorite: 'favorite',
 };
 
+// ── Tag context helpers (migration 025) ──────────────────────────────────────
+// An assignment carries the sense it was made in: via_parent_id is the parent
+// the tag was applied under, 0 when applied bare. When a parent link goes (a
+// parent removed, a tag deleted or merged) the assignments made through it
+// turn bare rather than vanish: the photo is still tagged, it just no longer
+// says in which sense. UPDATE OR IGNORE keeps a bare row that already exists;
+// the DELETE clears what the ignore left behind.
+function moTagViaOrphanOps({ via = null, tagId = null } = {}) {
+  const ops = [];
+  for (const table of ['mo_photos_tags', 'mo_videos_tags']) {
+    const cond = [];
+    const params = [];
+    if (via != null) { cond.push('via_parent_id = ?'); params.push(via); } else cond.push('via_parent_id <> 0');
+    if (tagId != null) { cond.push('tag_id = ?'); params.push(tagId); }
+    const where = cond.join(' AND ');
+    ops.push({ type: 'run', sql: `UPDATE OR IGNORE ${table} SET via_parent_id = 0 WHERE ${where}`, params: [...params] });
+    ops.push({ type: 'run', sql: `DELETE FROM ${table} WHERE ${where}`, params: [...params] });
+  }
+  return ops;
+}
+
+// Which items a tag view shows. A tag's own view is everything in its subtree;
+// a branch view (the tag as listed under one parent) is the leaf in the sense
+// of that parent. Bare assignments belong to every sense: they said nothing,
+// so no view excludes them. Ancestors are inferred from the tree, so an item
+// tagged CORGI via DOG shows under DOG and under ANIMALS without carrying
+// them, and moving DOG in the tree changes no item.
+//   subtree(T): T and every descendant, through every parent link.
+//   own view of T: an assignment of T in any sense, or of a descendant of T
+//     said bare or in a sense inside subtree(T).
+//   branch P › LEAF: LEAF via P or bare, or a descendant of LEAF as above; and
+//     for each higher edge A › B on the path the item must not place B in
+//     another sense (no B assignment with a via, or one via A).
+// `pathIds` is root-to-leaf; a single id is the tag's own view.
+const MO_TAG_SUBTREE = 'WITH RECURSIVE sub(id) AS (SELECT ? UNION SELECT r.child_id FROM mo_tags_relations r JOIN sub ON sub.id = r.parent_id) SELECT id FROM sub';
+function moTagScopeWhere(alias, table, fkCol, pathIds) {
+  const ids = (pathIds || []).map(Number).filter(Number.isFinite);
+  if (ids.length === 0) return { sql: '0', params: [] };
+  const leaf = ids[ids.length - 1];
+  const via = ids.length >= 2 ? ids[ids.length - 2] : null;
+  const parts = [];
+  const params = [];
+  if (via == null) { parts.push('x.tag_id = ?'); params.push(leaf); }
+  else { parts.push('(x.tag_id = ? AND x.via_parent_id IN (?, 0))'); params.push(leaf, via); }
+  parts.push(`(x.tag_id <> ? AND x.tag_id IN (${MO_TAG_SUBTREE}) AND (x.via_parent_id = 0 OR x.via_parent_id IN (${MO_TAG_SUBTREE})))`);
+  params.push(leaf, leaf, leaf);
+  let sql = `EXISTS (SELECT 1 FROM ${table} x WHERE x.${fkCol} = ${alias}.id AND (${parts.join(' OR ')}))`;
+  for (let i = 0; i + 2 < ids.length; i++) {
+    const a = ids[i], b = ids[i + 1];
+    sql += ` AND (NOT EXISTS (SELECT 1 FROM ${table} y WHERE y.${fkCol} = ${alias}.id AND y.tag_id = ? AND y.via_parent_id <> 0) OR EXISTS (SELECT 1 FROM ${table} y WHERE y.${fkCol} = ${alias}.id AND y.tag_id = ? AND y.via_parent_id = ?))`;
+    params.push(b, b, a);
+  }
+  return { sql, params };
+}
+
 const TagQueries = {
   fromRow(row) {
     if (!row) return null;
@@ -727,12 +782,10 @@ const TagQueries = {
     }
     await buildPartialUpdate('mo_tags', id, partial, TAG_COL_MAP);
 
-    // A tag has at most one parent: parentIds sets it, so it takes zero or one id.
+    // parentIds SETS the tag's parents, any number of them. Senses made under a
+    // parent that goes turn bare; senses under a kept parent stand.
     if (partial.parentIds) {
       const uniqueParentIds = [...new Set(partial.parentIds)];
-      if (uniqueParentIds.length > 1) {
-        throw new ValidationError('A tag can only have one parent');
-      }
       for (const pid of uniqueParentIds) {
         await ensureExists('mo_tags', pid);
         if (await this.wouldCreateCycle(pid, id)) {
@@ -741,9 +794,13 @@ const TagQueries = {
           );
         }
       }
-      const ops = [
-        { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE child_id = ?`, params: [id] },
-      ];
+      const keepPh = uniqueParentIds.map(() => '?').join(', ') || 'NULL';
+      const ops = [];
+      for (const table of ['mo_photos_tags', 'mo_videos_tags']) {
+        ops.push({ type: 'run', sql: `UPDATE OR IGNORE ${table} SET via_parent_id = 0 WHERE tag_id = ? AND via_parent_id <> 0 AND via_parent_id NOT IN (${keepPh})`, params: [id, ...uniqueParentIds] });
+        ops.push({ type: 'run', sql: `DELETE FROM ${table} WHERE tag_id = ? AND via_parent_id <> 0 AND via_parent_id NOT IN (${keepPh})`, params: [id, ...uniqueParentIds] });
+      }
+      ops.push({ type: 'run', sql: `DELETE FROM mo_tags_relations WHERE child_id = ?`, params: [id] });
       for (const pid of uniqueParentIds) {
         ops.push({
           type: 'run',
@@ -766,15 +823,20 @@ const TagQueries = {
           );
         }
       }
-      const childOps = [
-        { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE parent_id = ?`, params: [id] },
-      ];
+      // childIds SETS this tag's children: ones no longer listed lose this
+      // parent (their senses under it go bare); listed ones gain it and keep
+      // any other parents they have.
+      const keepChildPh = uniqueChildIds.map(() => '?').join(', ') || 'NULL';
+      const childOps = [];
+      for (const table of ['mo_photos_tags', 'mo_videos_tags']) {
+        childOps.push({ type: 'run', sql: `UPDATE OR IGNORE ${table} SET via_parent_id = 0 WHERE via_parent_id = ? AND tag_id NOT IN (${keepChildPh})`, params: [id, ...uniqueChildIds] });
+        childOps.push({ type: 'run', sql: `DELETE FROM ${table} WHERE via_parent_id = ? AND tag_id NOT IN (${keepChildPh})`, params: [id, ...uniqueChildIds] });
+      }
+      childOps.push({ type: 'run', sql: `DELETE FROM mo_tags_relations WHERE parent_id = ?`, params: [id] });
       for (const cid of uniqueChildIds) {
-        // One parent per tag: a child moves here from wherever it was.
-        childOps.push({ type: 'run', sql: `DELETE FROM mo_tags_relations WHERE child_id = ?`, params: [cid] });
         childOps.push({
           type: 'run',
-          sql: `INSERT INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
+          sql: `INSERT OR IGNORE INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
           params: [id, cid],
         });
       }
@@ -786,7 +848,7 @@ const TagQueries = {
 
   async destroy(id) {
     await ensureExists('mo_tags', id);
-    await db.run(`DELETE FROM mo_tags WHERE id = ?`, [id]);
+    await db.transaction([...moTagViaOrphanOps({ via: id }), { type: 'run', sql: `DELETE FROM mo_tags WHERE id = ?`, params: [id] }]);
   },
 
   // Adapted from stash: internal/api/resolver_mutation_tag.go — TagsDestroy
@@ -796,11 +858,8 @@ const TagQueries = {
     for (const id of uniqueIds) {
       await ensureExists('mo_tags', id);
     }
-    const ops = uniqueIds.map((id) => ({
-      type: 'run',
-      sql: `DELETE FROM mo_tags WHERE id = ?`,
-      params: [id],
-    }));
+    const ops = [];
+    for (const id of uniqueIds) ops.push(...moTagViaOrphanOps({ via: id }), { type: 'run', sql: `DELETE FROM mo_tags WHERE id = ?`, params: [id] });
     await db.transaction(ops);
   },
 
@@ -839,6 +898,11 @@ const TagQueries = {
       sql: `DELETE FROM mo_videos_tags WHERE tag_id IN (${placeholders})`,
       params: [...uniqueSources],
     });
+    // 2b. Assignments made in a source's sense now mean the destination's.
+    for (const table of ['mo_photos_tags', 'mo_videos_tags']) {
+      ops.push({ type: 'run', sql: `UPDATE OR IGNORE ${table} SET via_parent_id = ? WHERE via_parent_id IN (${placeholders})`, params: [destinationId, ...uniqueSources] });
+      ops.push({ type: 'run', sql: `DELETE FROM ${table} WHERE via_parent_id IN (${placeholders})`, params: [...uniqueSources] });
+    }
     // 3. The sources' children move under the destination (each still has one
     //    parent). A child that is an ancestor of the destination would close a
     //    loop, so it goes to the top level instead.
@@ -854,8 +918,10 @@ const TagQueries = {
       sql: `DELETE FROM mo_tags_relations WHERE parent_id IN (${placeholders})`,
       params: [...uniqueSources],
     });
-    // 4. The destination keeps its own place in the tree. The sources' parent
-    //    links are dropped, not stacked onto it (one parent per tag).
+    // 4. The destination keeps its own places in the tree. The sources' parent
+    //    links are dropped, not added to it; senses made under them went bare
+    //    in 2b only where a source was the parent, and a source as the tag
+    //    itself was reassigned in 1 with its sense intact.
     ops.push({
       type: 'run',
       sql: `DELETE FROM mo_tags_relations WHERE child_id IN (${placeholders})`,
@@ -915,9 +981,6 @@ const TagQueries = {
       if (input.parentIds) {
         const { mode, values = [] } = input.parentIds;
         if (values.length > 0) {
-          if ((mode === 'set' || mode === 'add') && new Set(values).size > 1) {
-            throw new ValidationError('A tag can only have one parent');
-          }
           if (mode === 'set') {
             await this.update(id, { parentIds: values });
           } else if (mode === 'add') {
@@ -1098,8 +1161,9 @@ const TagQueries = {
     return descendants.some((d) => d.id === parentId);
   },
 
-  // One parent per tag (docs/AI_TAGGING.md): nesting a tag under a parent
-  // MOVES it there, replacing any parent it had. Loops are refused.
+  // A tag may sit under several parents, each place its own branch (docs/
+  // AI_TAGGING.md, 2026-09-21: FACE under PORTRAIT and under POSE). Nesting
+  // ADDS a parent; only loops are refused.
   async addParent(tagId, parentId) {
     await ensureExists('mo_tags', tagId);
     await ensureExists('mo_tags', parentId);
@@ -1108,17 +1172,16 @@ const TagQueries = {
         `Adding parent ${parentId} to tag ${tagId} would create a cycle`
       );
     }
-    await db.transaction([
-      { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE child_id = ?`, params: [tagId] },
-      { type: 'run', sql: `INSERT INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`, params: [parentId, tagId] },
-    ]);
+    await db.run(`INSERT OR IGNORE INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`, [parentId, tagId]);
   },
 
+  // Taking a parent away turns the assignments made in that sense bare: the
+  // items keep the tag, they no longer say under which parent.
   async removeParent(tagId, parentId) {
-    await db.run(
-      `DELETE FROM mo_tags_relations WHERE parent_id = ? AND child_id = ?`,
-      [parentId, tagId]
-    );
+    await db.transaction([
+      { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE parent_id = ? AND child_id = ?`, params: [parentId, tagId] },
+      ...moTagViaOrphanOps({ via: parentId, tagId }),
+    ]);
   },
 
   // Adapted from stash: pkg/sqlite/tag.go — child-side operations (symmetric to addParent)
@@ -1130,18 +1193,15 @@ const TagQueries = {
         `Adding child ${childId} to tag ${tagId} would create a cycle`
       );
     }
-    // The child moves here from wherever it was (one parent per tag).
-    await db.transaction([
-      { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE child_id = ?`, params: [childId] },
-      { type: 'run', sql: `INSERT INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`, params: [tagId, childId] },
-    ]);
+    // The child gains this parent; it keeps any others it has.
+    await db.run(`INSERT OR IGNORE INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`, [tagId, childId]);
   },
 
   async removeChild(tagId, childId) {
-    await db.run(
-      `DELETE FROM mo_tags_relations WHERE parent_id = ? AND child_id = ?`,
-      [tagId, childId]
-    );
+    await db.transaction([
+      { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE parent_id = ? AND child_id = ?`, params: [tagId, childId] },
+      ...moTagViaOrphanOps({ via: tagId, tagId: childId }),
+    ]);
   },
 
   // Adapted from stash: pkg/sqlite/tag.go — UpdateChildTags()
@@ -1156,15 +1216,19 @@ const TagQueries = {
         );
       }
     }
-    const ops = [
-      { type: 'run', sql: `DELETE FROM mo_tags_relations WHERE parent_id = ?`, params: [tagId] },
-    ];
+    // Children no longer listed lose this parent (their senses under it go
+    // bare); listed ones gain it and keep any other parents they have.
+    const keepPh = uniqueChildIds.map(() => '?').join(', ') || 'NULL';
+    const ops = [];
+    for (const table of ['mo_photos_tags', 'mo_videos_tags']) {
+      ops.push({ type: 'run', sql: `UPDATE OR IGNORE ${table} SET via_parent_id = 0 WHERE via_parent_id = ? AND tag_id NOT IN (${keepPh})`, params: [tagId, ...uniqueChildIds] });
+      ops.push({ type: 'run', sql: `DELETE FROM ${table} WHERE via_parent_id = ? AND tag_id NOT IN (${keepPh})`, params: [tagId, ...uniqueChildIds] });
+    }
+    ops.push({ type: 'run', sql: `DELETE FROM mo_tags_relations WHERE parent_id = ?`, params: [tagId] });
     for (const cid of uniqueChildIds) {
-      // One parent per tag: each child moves here from wherever it was.
-      ops.push({ type: 'run', sql: `DELETE FROM mo_tags_relations WHERE child_id = ?`, params: [cid] });
       ops.push({
         type: 'run',
-        sql: `INSERT INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
+        sql: `INSERT OR IGNORE INTO mo_tags_relations (parent_id, child_id) VALUES (?, ?)`,
         params: [tagId, cid],
       });
     }
@@ -1429,19 +1493,27 @@ const PhotoQueries = {
 
   // --- Relationships ---
 
+  // Each row is one assignment: the tag plus the sense it was applied in
+  // (via, viaName), 0 and '' when bare. A photo can carry a tag in two senses.
   async loadTags(photoId) {
     const rows = await db.all(
-      `SELECT t.* FROM mo_tags t
+      `SELECT t.*, pt.via_parent_id AS via, (SELECT v.name FROM mo_tags v WHERE v.id = pt.via_parent_id) AS via_name
+       FROM mo_tags t
        INNER JOIN mo_photos_tags pt ON t.id = pt.tag_id
        WHERE pt.photo_id = ?`,
       [photoId]
     );
-    return rows.map((r) => TagQueries.fromRow(r));
+    return rows.map((r) => ({ ...TagQueries.fromRow(r), via: Number(r.via) || 0, viaName: r.via_name || '' }));
   },
 
   async updateTags(photoId, updateIDs) {
     const ops = buildRelationOps('mo_photos_tags', 'photo_id', 'tag_id', photoId, updateIDs);
     if (ops.length > 0) await db.transaction(ops);
+  },
+
+  /** One assignment off the photo: the tag in one sense (via 0 = the bare one). */
+  async removeTag(photoId, tagId, via = 0) {
+    await db.run('DELETE FROM mo_photos_tags WHERE photo_id = ? AND tag_id = ? AND via_parent_id = ?', [photoId, tagId, via || 0]);
   },
 
   async loadFiles(photoId) {
@@ -1670,12 +1742,18 @@ const VideoQueries = {
 
   async loadTags(videoId) {
     const rows = await db.all(
-      `SELECT t.* FROM mo_tags t
+      `SELECT t.*, vt.via_parent_id AS via, (SELECT v.name FROM mo_tags v WHERE v.id = vt.via_parent_id) AS via_name
+       FROM mo_tags t
        INNER JOIN mo_videos_tags vt ON t.id = vt.tag_id
        WHERE vt.video_id = ?`,
       [videoId]
     );
-    return rows.map((r) => TagQueries.fromRow(r));
+    return rows.map((r) => ({ ...TagQueries.fromRow(r), via: Number(r.via) || 0, viaName: r.via_name || '' }));
+  },
+
+  /** One assignment off the video: the tag in one sense (via 0 = the bare one). */
+  async removeTag(videoId, tagId, via = 0) {
+    await db.run('DELETE FROM mo_videos_tags WHERE video_id = ? AND tag_id = ? AND via_parent_id = ?', [videoId, tagId, via || 0]);
   },
 
   async updateTags(videoId, updateIDs) {
@@ -9159,13 +9237,14 @@ function renderMediaCard(item, options) {
       // selection regardless of which card the user dropped on. When the
       // selection has 0\u20131 items, fall back to single-target drop.
       const targetKeys = (selSet.size > 1) ? [...selSet] : [myKey];
-      // Store exactly the branch you dragged from (the dragged instance's
-      // ancestor→leaf path). Fruit › Portrait and Face › Portrait are distinct;
-      // we never auto-derive a tag's OTHER parents.
-      const n = await moApplyTagsToKeys(tagIds, targetKeys);
+      // The branch you dragged from is the sense: the leaf goes on via its
+      // parent (Portrait › Face, not Pose › Face). Ancestors are inferred
+      // from the tree, never stamped on the item.
+      const pick = moTagPickFromChain(tagIds);
+      const n = await moApplyTagsToKeys([pick], targetKeys);
       const apiRef = options.api || _api;
-      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied ${tagIds.length === 1 ? 'tag' : tagIds.length + ' tags'} to ${n} item${n === 1 ? '' : 's'}`, 2000);
-      for (const tid of tagIds) document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: tid, keys: targetKeys } }));
+      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
+      document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: pick.tagId, keys: targetKeys } }));
     } catch (err) {
       console.warn('[mo] tag-drop failed', err);
     }
@@ -9325,13 +9404,14 @@ function renderMediaListRow(item, options) {
       const selSet = new Set(selectedKeys);
       // Same rule as the card variant: active multi-selection always wins.
       const targetKeys = (selSet.size > 1) ? [...selSet] : [myKey];
-      // Store exactly the branch you dragged from (the dragged instance's
-      // ancestor→leaf path). Fruit › Portrait and Face › Portrait are distinct;
-      // we never auto-derive a tag's OTHER parents.
-      const n = await moApplyTagsToKeys(tagIds, targetKeys);
+      // The branch you dragged from is the sense: the leaf goes on via its
+      // parent (Portrait › Face, not Pose › Face). Ancestors are inferred
+      // from the tree, never stamped on the item.
+      const pick = moTagPickFromChain(tagIds);
+      const n = await moApplyTagsToKeys([pick], targetKeys);
       const apiRef = options.api || _api;
-      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied ${tagIds.length === 1 ? 'tag' : tagIds.length + ' tags'} to ${n} item${n === 1 ? '' : 's'}`, 2000);
-      for (const tid of tagIds) document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: tid, keys: targetKeys } }));
+      if (apiRef && apiRef.statusBar) apiRef.statusBar.setMessage(`Applied tag to ${n} item${n === 1 ? '' : 's'}`, 2000);
+      document.dispatchEvent(new CustomEvent('mo:tag-applied', { detail: { tagId: pick.tagId, keys: targetKeys } }));
     } catch (err) {
       console.warn('[mo] tag-drop failed', err);
     }
@@ -10350,16 +10430,16 @@ function renderBrowserSidebar(container, api) {
     });
     return arr;
   }
-  // Re-parent: move the dragged tag under `parentId`. A tag has one parent,
-  // so this replaces wherever it was; loops are refused by the backend.
+  // Nest: the dragged tag gains `parentId` as a parent and keeps the others,
+  // so it appears in each place as its own branch. Loops are refused.
   async function reparentTag(childId, parentId) {
     if (childId === parentId) return;
     try {
       await TagQueries.addParent(childId, parentId);
-      // Auto-expand the new parent so the moved child is visible.
+      // Auto-expand the new parent so the nested child is visible.
       _tagExpanded.add(parentId);
       persistTagExpanded();
-      api.statusBar?.setMessage?.('Tag moved', 1500);
+      api.statusBar?.setMessage?.('Tag filed under parent', 1500);
       _notifySidebarRefresh();
     } catch (err) {
       api.window.showWarningMessage('Could not nest tag: ' + (err && err.message ? err.message : String(err)));
@@ -10423,7 +10503,7 @@ function renderBrowserSidebar(container, api) {
     // Multi-home indicator (tag filed under more than one parent).
     if (multiHome) {
       const mh = moEl('span', 'mo-tag-multihome', { innerHTML: moIcon('git-branch', 11) });
-      mh.title = 'Under more than one parent (from before tags had one parent). Drag it onto the parent to keep.';
+      mh.title = 'Under more than one parent. Each place is its own branch: what was tagged from here shows here.';
       row.appendChild(mh);
     }
 
@@ -10682,17 +10762,16 @@ function renderBrowserSidebar(container, api) {
       const roots = sortTags([...tagById.values()].filter(t => !(parentsOf.get(t.id)?.length)));
       collect(roots, 0, [], null);
 
-      // #5 Per-branch counts — a nested instance shows items matching its whole
-      // branch (Face AND Portrait), not the tag's global usage. Roots reuse the
-      // global count; only visible nested rows trigger a query.
+      // Per-row counts: what the row's grid would show (moTagScopeWhere), so a
+      // root counts its whole subtree by inference and a nested instance counts
+      // its branch. Only rows on screen are queried.
       const branchCounts = await Promise.all(visible.map((v) => {
-        if (v.path.length === 0) return Promise.resolve(v.tag._count);
         const ids = [...v.path, v.tag.id];
-        const ph = ids.map(() => '?').join(',');
+        const wp = moTagScopeWhere('p', 'mo_photos_tags', 'photo_id', ids);
+        const wv = moTagScopeWhere('v', 'mo_videos_tags', 'video_id', ids);
         return db.get(
-          `SELECT (SELECT COUNT(*) FROM (SELECT photo_id FROM mo_photos_tags WHERE tag_id IN (${ph}) GROUP BY photo_id HAVING COUNT(DISTINCT tag_id) = ${ids.length}))
-                + (SELECT COUNT(*) FROM (SELECT video_id FROM mo_videos_tags WHERE tag_id IN (${ph}) GROUP BY video_id HAVING COUNT(DISTINCT tag_id) = ${ids.length})) AS n`,
-          [...ids, ...ids]
+          `SELECT (SELECT COUNT(*) FROM mo_photos p WHERE ${wp.sql}) + (SELECT COUNT(*) FROM mo_videos v WHERE ${wv.sql}) AS n`,
+          [...wp.params, ...wv.params]
         ).then((row) => (row ? (row.n || 0) : 0)).catch(() => v.tag._count);
       }));
 
@@ -10740,12 +10819,21 @@ function renderBrowserSidebar(container, api) {
       }
     }});
     // Hierarchy ops, only in tree mode, where we know this instance's parent.
-    // A tag has one parent, so taking it out of its parent moves it to the top.
+    // Remove From takes this one place away; Move To Top Level takes them all.
     if (ctx.parentId != null) {
       actions.push({ separator: true });
+      actions.push({ label: `Remove From "${ctx.parentName}"`, handler: async () => {
+        try {
+          await TagQueries.removeParent(tag.id, ctx.parentId);
+          api.statusBar?.setMessage?.(`"${tag.name}" taken out of "${ctx.parentName}"`, 2500);
+          _notifySidebarRefresh();
+        } catch (err) {
+          api.window.showErrorMessage('Failed: ' + (err && err.message ? err.message : String(err)));
+        }
+      }});
       actions.push({ label: 'Move To Top Level', handler: async () => {
         try {
-          await db.run('DELETE FROM mo_tags_relations WHERE child_id = ?', [tag.id]);
+          await db.transaction([{ type: 'run', sql: 'DELETE FROM mo_tags_relations WHERE child_id = ?', params: [tag.id] }, ...moTagViaOrphanOps({ tagId: tag.id })]);
           api.statusBar?.setMessage?.(`"${tag.name}" moved to top level`, 2500);
           _notifySidebarRefresh();
         } catch (err) {
@@ -12155,16 +12243,14 @@ function renderGridBrowser(container, api, input) {
       videoJoinParts.push(` JOIN mo_videos_files vf ON vf.video_id = v.id JOIN mo_files f2 ON f2.id = vf.file_id`);
       videoWhere.push('f2.folder_id = ?'); videoParams.push(filterId);
     } else if (filterType === 'tag' && filterId) {
-      // Branch view passes the full path (AND each tag → must have all of them);
-      // Unique view passes just the leaf (one EXISTS). One EXISTS per tag so a
-      // card is never row-duplicated.
+      // Branch view passes the full path, Unique view just the leaf; the
+      // scope predicate (moTagScopeWhere) reads the sense each assignment was
+      // made in and infers ancestors from the tree.
       const tagIds = (filters && Array.isArray(filters.instanceTagIds) && filters.instanceTagIds.length) ? filters.instanceTagIds : [filterId];
-      for (const tid of tagIds) {
-        photoWhere.push(`EXISTS (SELECT 1 FROM mo_photos_tags pt WHERE pt.photo_id = p.id AND pt.tag_id = ?)`);
-        photoParams.push(tid);
-        videoWhere.push(`EXISTS (SELECT 1 FROM mo_videos_tags vt WHERE vt.video_id = v.id AND vt.tag_id = ?)`);
-        videoParams.push(tid);
-      }
+      const wp = moTagScopeWhere('p', 'mo_photos_tags', 'photo_id', tagIds);
+      photoWhere.push(wp.sql); photoParams.push(...wp.params);
+      const wv = moTagScopeWhere('v', 'mo_videos_tags', 'video_id', tagIds);
+      videoWhere.push(wv.sql); videoParams.push(...wv.params);
     } else if (filterType === 'favorites') {
       photoWhere.push('p.rating >= 5'); videoWhere.push('v.rating >= 5');
     } else if (filterType === 'untagged') {
@@ -12271,14 +12357,13 @@ function renderGridBrowser(container, api, input) {
       joinParts.push(` JOIN ${joinTable} jf ON jf.${joinCol} = ${alias}.id JOIN mo_files f ON f.id = jf.file_id`);
       where.push('f.folder_id = ?'); params.push(filterId);
     } else if (filterType === 'tag' && filterId) {
-      // Branch view: AND each tag in the path. Unique view: just the leaf.
+      // Branch view: the path; Unique view: the leaf. moTagScopeWhere reads
+      // the sense of each assignment and infers ancestors from the tree.
       const tagTable = type === 'photo' ? 'mo_photos_tags' : 'mo_videos_tags';
       const tagCol = type === 'photo' ? 'photo_id' : 'video_id';
       const tagIds = (filters && Array.isArray(filters.instanceTagIds) && filters.instanceTagIds.length) ? filters.instanceTagIds : [filterId];
-      for (const tid of tagIds) {
-        where.push(`EXISTS (SELECT 1 FROM ${tagTable} jt WHERE jt.${tagCol} = ${alias}.id AND jt.tag_id = ?)`);
-        params.push(tid);
-      }
+      const ws = moTagScopeWhere(alias, tagTable, tagCol, tagIds);
+      where.push(ws.sql); params.push(...ws.params);
     } else if (filterType === 'favorites') {
       where.push(`${alias}.rating >= 5`);
     } else if (filterType === 'untagged') {
@@ -15496,13 +15581,15 @@ function buildTagEditor(container, tags, entityType, entityId, api, onRefresh) {
     pillsWrap.innerHTML = '';
     for (const tag of currentTags) {
       const pill = moEl('span', 'mo-detail-tag-pill');
-      pill.textContent = tag.name;
-      const removeBtn = moEl('button', null, { textContent: '×', title: `Remove ${tag.name}` });
-      removeBtn.setAttribute('aria-label', `Remove tag ${tag.name}`);
+      // The sense the tag was applied in, when it has one (Portrait › Face).
+      const label = tag.viaName ? `${tag.viaName}${MO_TAG_PATH_SEP}${tag.name}` : tag.name;
+      pill.textContent = label;
+      const removeBtn = moEl('button', null, { textContent: '×', title: `Remove ${label}` });
+      removeBtn.setAttribute('aria-label', `Remove tag ${label}`);
       removeBtn.addEventListener('click', async () => {
         try {
-          await Queries.updateTags(entityId, { mode: 'REMOVE', ids: [tag.id] });
-          currentTags = currentTags.filter(t => t.id !== tag.id);
+          await Queries.removeTag(entityId, tag.id, tag.via || 0);
+          currentTags = currentTags.filter(t => !(t.id === tag.id && (t.via || 0) === (tag.via || 0)));
           renderPills();
           _notifySidebarRefresh();
           // Focus next pill remove button or the add input
@@ -17406,20 +17493,29 @@ function parseSelectedIds(selectedIds) {
 // of media keys in one transaction. Used by cascade-on-apply (#9): dropping a
 // child tag from the tree onto a card stores Italy + 2024 + Building as real
 // independent tags.
-async function moApplyTagsToKeys(tagIds, keys) {
-  if (!Array.isArray(keys) || keys.length === 0 || !Array.isArray(tagIds) || tagIds.length === 0) return 0;
+/** The pick a dragged branch means: its leaf, in the sense of the parent it hung under (0 at the top). */
+function moTagPickFromChain(chain) {
+  const ids = (chain || []).map((n) => parseInt(n, 10)).filter(Number.isFinite);
+  return { tagId: ids[ids.length - 1], via: ids.length >= 2 ? ids[ids.length - 2] : 0 };
+}
+
+// Each pick is { tagId, via } (a bare number means via 0).
+async function moApplyTagsToKeys(picks, keys) {
+  if (!Array.isArray(keys) || keys.length === 0 || !Array.isArray(picks) || picks.length === 0) return 0;
   const ops = [];
   for (const k of keys) {
     const [type, idStr] = String(k).split(':');
     const id = parseInt(idStr, 10);
     if (!Number.isFinite(id)) continue;
-    for (const tg of tagIds) {
-      const tid = parseInt(tg, 10);
+    for (const p of picks) {
+      const obj = p && typeof p === 'object';
+      const tid = parseInt(obj ? p.tagId : p, 10);
+      const via = obj ? (parseInt(p.via, 10) || 0) : 0;
       if (!Number.isFinite(tid)) continue;
       if (type === 'photo') {
-        ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [id, tid] });
+        ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id, via_parent_id) VALUES (?, ?, ?)', params: [id, tid, via] });
       } else if (type === 'video') {
-        ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_videos_tags (video_id, tag_id) VALUES (?, ?)', params: [id, tid] });
+        ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_videos_tags (video_id, tag_id, via_parent_id) VALUES (?, ?, ?)', params: [id, tid, via] });
       }
     }
   }
@@ -18173,7 +18269,7 @@ function showCreateTagDialog(api, onComplete) {
   section.appendChild(input);
 
   const hint = moEl('div', 'mo-bulk-mode-hint', {
-    textContent: 'Enter to create \u00b7 Shift+Enter for a new line \u00b7 "Italy/2024" nests 2024 under Italy \u00b7 names are saved in capitals, and a tag has one parent.',
+    textContent: 'Enter to create \u00b7 Shift+Enter for a new line \u00b7 "Italy/2024" nests 2024 under Italy \u00b7 names are saved in capitals, and a tag can sit under several parents.',
   });
   section.appendChild(hint);
 
@@ -18239,11 +18335,9 @@ function showCreateTagDialog(api, onComplete) {
             created++;
           }
           if (parentId != null && parentId !== tag.id) {
+            // A tag may sit under several parents; the path adds this one.
             const current = await TagQueries.getParents(tag.id);
-            if (current.length && !current.some((p) => p.id === parentId)) {
-              throw new Error(`${tag.name} is already under ${current.map((p) => p.name).join(', ')}`);
-            }
-            if (!current.length) await TagQueries.addParent(tag.id, parentId);
+            if (!current.some((p) => p.id === parentId)) await TagQueries.addParent(tag.id, parentId);
           }
           parentId = tag.id;
         }
@@ -24840,7 +24934,7 @@ async function moTransferPhotoMetadata(fromId, toId, fromBasename) {
       src.camera_make, src.camera_model, src.lens, src.iso, src.aperture, src.shutter_speed, src.focal_length,
       src.gps_latitude, src.gps_longitude, toId],
   );
-  await db.run('INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) SELECT ?, tag_id FROM mo_photos_tags WHERE photo_id = ?', [toId, fromId]);
+  await db.run('INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id, via_parent_id) SELECT ?, tag_id, via_parent_id FROM mo_photos_tags WHERE photo_id = ?', [toId, fromId]);
   await db.run('INSERT OR IGNORE INTO mo_albums_photos (album_id, photo_id, position) SELECT album_id, ?, position FROM mo_albums_photos WHERE photo_id = ?', [toId, fromId]);
 }
 
@@ -27089,43 +27183,12 @@ function moTagParentsOf(rels) {
   return parentsOf;
 }
 
-/**
- * Every ancestor of a tag. With one parent per tag this is the chain to the
- * root; tags filed under several parents before that rule get every path.
- * Cycle-safe.
- */
-function moTagAncestorIds(tagId, parentsOf) {
-  const self = Number(tagId);
-  const out = new Set();
-  const stack = [...(parentsOf.get(self) || [])];
-  while (stack.length) {
-    const p = stack.pop();
-    if (p === self || out.has(p)) continue;
-    out.add(p);
-    for (const pp of parentsOf.get(p) || []) stack.push(pp);
-  }
-  return out;
-}
-
-/** The ids plus all their ancestors, deduped, the given ids first. */
-function moExpandWithAncestors(ids, parentsOf) {
-  const out = [];
-  const seen = new Set();
-  for (const id of ids || []) {
-    const n = Number(id);
-    if (Number.isFinite(n) && !seen.has(n)) { seen.add(n); out.push(n); }
-  }
-  for (const id of [...out]) {
-    for (const a of moTagAncestorIds(id, parentsOf)) {
-      if (!seen.has(a)) { seen.add(a); out.push(a); }
-    }
-  }
-  return out;
-}
 
 /**
- * tag id -> every root-to-tag path ('ANIMALS › DOG › CORGI'). One path per
- * tag under the one-parent rule; older data may give a tag several.
+ * tag id -> every root-to-tag path, each as { path, via }: the text
+ * ('ANIMALS › DOG › CORGI') and the parent the tag hangs under on that path
+ * (0 at the top). A tag under several parents has one entry per place, and
+ * each is a different sense to pick.
  */
 function moTagPaths(tags, rels) {
   const byId = new Map();
@@ -27140,9 +27203,9 @@ function moTagPaths(tags, rels) {
     const out = [];
     const next = new Set(trail).add(id);
     for (const p of parents) {
-      for (const pp of walk(p, next)) out.push(pp + MO_TAG_PATH_SEP + t.name);
+      for (const pp of walk(p, next)) out.push({ path: pp.path + MO_TAG_PATH_SEP + t.name, via: p });
     }
-    if (out.length === 0) out.push(String(t.name));
+    if (out.length === 0) out.push({ path: String(t.name), via: 0 });
     memo.set(id, out);
     return out;
   };
@@ -27164,7 +27227,7 @@ function moTagEntries(tags, rels, excludeIds) {
   const out = [];
   for (const [id, list] of moTagPaths(tags, rels)) {
     if (skip.has(id)) continue;
-    for (const path of list) out.push({ id, path, description: desc.get(id) || '' });
+    for (const e of list) out.push({ id, via: e.via, path: e.path, description: desc.get(id) || '' });
   }
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
@@ -27210,7 +27273,7 @@ function moTagPrompt({ entries, existing, crops, rules }) {
     crops
       ? 'Image 1 is the whole photo. Images 2 to 5 are its four quarters at higher detail (top left, top right, bottom left, bottom right), all of the same photo.'
       : 'The image is the photo.',
-    'Pick every tag that clearly applies to what you can see; do not guess. "›" shows nesting: pick the most specific tag that fits. Its parents are added automatically, so you do not need to pick them too.',
+    'Pick every tag that clearly applies to what you can see; do not guess. "›" shows nesting: pick the most specific tag that fits, under the parent that fits, since the same tag can sit under several parents and the path is what it means. Do not pick a parent on its own when a tag under it fits.',
     'If no tag fits, reply with an empty list.',
   ];
   if (existing && existing.length) {
@@ -27251,36 +27314,44 @@ function moParseTagReply(text) {
 }
 
 /**
- * Picks -> tag ids from the entries only. Exact path first, then the path in
- * any case or with another separator, then the leaf name (tag names are
- * unique). Anything else is reported as unknown and never applied.
+ * Picks -> { id, via } from the entries only. Exact path first, then the path
+ * in any case or with another separator, then the leaf name alone (tag names
+ * are unique; a bare leaf resolves to its first listed sense). Anything else
+ * is reported as unknown and never applied.
  */
 function moResolveTagPicks(picks, entries) {
   const byPath = new Map();
   const byPathCi = new Map();
   const byLeaf = new Map();
   for (const e of entries || []) {
-    byPath.set(e.path, e.id);
-    byPathCi.set(moNormalizeTagName(e.path), e.id);
-    byLeaf.set(moNormalizeTagName(e.path.split(MO_TAG_PATH_SEP).pop()), e.id);
+    const hit = { id: Number(e.id), via: Number(e.via) || 0 };
+    byPath.set(e.path, hit);
+    byPathCi.set(moNormalizeTagName(e.path), hit);
+    const leaf = moNormalizeTagName(e.path.split(MO_TAG_PATH_SEP).pop());
+    if (!byLeaf.has(leaf)) byLeaf.set(leaf, hit);
   }
+  const out = [];
   const ids = [];
   const unknown = [];
   const seen = new Set();
   for (const raw of picks || []) {
     const p = String(raw).trim();
     if (!p) continue;
-    let id = byPath.get(p);
-    if (id === undefined) id = byPathCi.get(moNormalizeTagName(p));
-    if (id === undefined) {
+    let hit = byPath.get(p);
+    if (hit === undefined) hit = byPathCi.get(moNormalizeTagName(p));
+    if (hit === undefined) {
       const alt = moNormalizeTagName(p.replace(/\s*(?:>|\/|»|›)\s*/g, MO_TAG_PATH_SEP));
-      id = byPathCi.get(alt);
-      if (id === undefined) id = byLeaf.get(alt.split(MO_TAG_PATH_SEP).pop());
+      hit = byPathCi.get(alt);
+      if (hit === undefined) hit = byLeaf.get(alt.split(MO_TAG_PATH_SEP).pop());
     }
-    if (id === undefined) { unknown.push(p); continue; }
-    if (!seen.has(id)) { seen.add(id); ids.push(id); }
+    if (hit === undefined) { unknown.push(p); continue; }
+    const key = `${hit.id}:${hit.via}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ id: hit.id, via: hit.via });
+    if (!ids.includes(hit.id)) ids.push(hit.id);
   }
-  return { ids, unknown };
+  return { picks: out, ids, unknown };
 }
 
 /** Fit (w, h) inside maxEdge on the long side; never enlarges. */
@@ -27307,17 +27378,29 @@ function moQuarterRects(w, h, overlap = 0.1) {
  * 'retag' makes the target the photo's whole tag set: what it has and the
  * target lacks is removed. Nothing is ever removed on 'add'.
  */
-function moTagApprovePlan({ mode, currentIds, pickIds, parentsOf, liveIds }) {
+function moTagApprovePlan({ mode, current, picks, liveIds }) {
   const live = liveIds instanceof Set ? liveIds : new Set((liveIds || []).map(Number));
-  const picks = (pickIds || []).map(Number).filter((id) => live.has(id));
-  const target = moExpandWithAncestors(picks, parentsOf);
-  const targetSet = new Set(target);
-  const current = new Set((currentIds || []).map(Number));
+  const key = (p) => `${p.id}:${p.via}`;
+  // Only live tags, in a live sense; the same sense once.
+  const chosen = [];
+  const seen = new Set();
+  for (const p of picks || []) {
+    const id = Number(p && p.id), via = Number(p && p.via) || 0;
+    if (!live.has(id) || (via && !live.has(via))) continue;
+    const k = `${id}:${via}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    chosen.push({ id, via });
+  }
+  const cur = (current || []).map((c) => ({ id: Number(c.id), via: Number(c.via) || 0 }));
+  const curKeys = new Set(cur.map(key));
+  const chosenKeys = new Set(chosen.map(key));
   return {
-    picks,
-    target,
-    add: target.filter((id) => !current.has(id)),
-    remove: mode === 'retag' ? [...current].filter((id) => !targetSet.has(id)) : [],
+    picks: chosen,
+    // The tags touched, for the grid's card patch.
+    target: [...new Set(chosen.map((p) => p.id))],
+    add: chosen.filter((p) => !curKeys.has(key(p))),
+    remove: mode === 'retag' ? cur.filter((c) => !chosenKeys.has(key(c))) : [],
   };
 }
 
@@ -27387,11 +27470,18 @@ async function moTagCounts() {
   return c;
 }
 
-function moTagIdsOf(row) {
+// A review row's picks: tag_ids holds [id, via] pairs (older rows: bare ids).
+function moTagPicksOf(row) {
   try {
     const a = JSON.parse((row && row.tag_ids) || '[]');
-    return Array.isArray(a) ? a.map(Number).filter(Number.isFinite) : [];
+    if (!Array.isArray(a)) return [];
+    return a.map((x) => (Array.isArray(x) ? { id: Number(x[0]), via: Number(x[1]) || 0 } : { id: Number(x), via: 0 })).filter((p) => Number.isFinite(p.id));
   } catch { return []; }
+}
+function moTagIdsOf(row) {
+  const ids = [];
+  for (const p of moTagPicksOf(row)) if (!ids.includes(p.id)) ids.push(p.id);
+  return ids;
 }
 
 /** The chat model, when it can see images; otherwise an error to show. */
@@ -27590,9 +27680,9 @@ async function moTagOnePhoto(photoId, model, mode = 'add') {
   }
   const reply = moParseTagReply(text);
   if (!reply.ok) return { status: 'failed', tagIds: [], error: 'The model did not reply with a tag list.' };
-  const fresh = moResolveTagPicks(reply.tags, entries).ids.filter((id) => retag || !has.has(id));
+  const fresh = moResolveTagPicks(reply.tags, entries).picks.filter((p) => retag || !has.has(p.id));
   return fresh.length
-    ? { status: 'pending', tagIds: fresh, error: null }
+    ? { status: 'pending', tagIds: fresh.map((p) => [p.id, p.via]), error: null }
     : { status: 'nomatch', tagIds: [], error: null };
 }
 
@@ -27677,19 +27767,19 @@ async function moTagReviewRow(id) {
   return db.get('SELECT * FROM mo_ai_tag_reviews WHERE id = ?', [id]);
 }
 
-/** Approve one row: its tags and their parents go on the photo, the row goes. */
+/** Approve one row: each pick goes on the photo in its sense (the leaf via its parent, nothing else), the row goes. */
 async function moTagApprove(id, { quiet = false } = {}) {
   const row = await moTagReviewRow(id);
   if (!row || row.status !== 'pending') return 0;
   const tree = await moTagTree();
   const live = new Set(tree.tags.map((t) => Number(t.id)));
-  const current = (await db.all('SELECT tag_id FROM mo_photos_tags WHERE photo_id = ?', [row.photo_id])).map((r) => Number(r.tag_id));
-  const plan = moTagApprovePlan({ mode: row.mode, currentIds: current, pickIds: moTagIdsOf(row), parentsOf: tree.parentsOf, liveIds: live });
+  const current = (await db.all('SELECT tag_id, via_parent_id FROM mo_photos_tags WHERE photo_id = ?', [row.photo_id])).map((r) => ({ id: Number(r.tag_id), via: Number(r.via_parent_id) || 0 }));
+  const plan = moTagApprovePlan({ mode: row.mode, current, picks: moTagPicksOf(row), liveIds: live });
   if (plan.picks.length === 0) return 0;
   // A retag removes first, then adds; an add only adds. One transaction with the row's deletion.
   const ops = [];
-  for (const tagId of plan.remove) ops.push({ type: 'run', sql: 'DELETE FROM mo_photos_tags WHERE photo_id = ? AND tag_id = ?', params: [row.photo_id, tagId] });
-  for (const tagId of plan.add) ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id) VALUES (?, ?)', params: [row.photo_id, tagId] });
+  for (const p of plan.remove) ops.push({ type: 'run', sql: 'DELETE FROM mo_photos_tags WHERE photo_id = ? AND tag_id = ? AND via_parent_id = ?', params: [row.photo_id, p.id, p.via] });
+  for (const p of plan.add) ops.push({ type: 'run', sql: 'INSERT OR IGNORE INTO mo_photos_tags (photo_id, tag_id, via_parent_id) VALUES (?, ?, ?)', params: [row.photo_id, p.id, p.via] });
   ops.push({ type: 'run', sql: 'DELETE FROM mo_ai_tag_reviews WHERE id = ?', params: [id] });
   await db.transaction(ops);
   // Same event the Tag dialog sends: open grids patch the one card in place.
@@ -27717,13 +27807,13 @@ async function moTagRetry(id) {
 }
 
 /** The reviewer's edit of a row's picks. A pick on a No Match or Failed row makes it reviewable. */
-async function moTagSetPicks(id, ids) {
+async function moTagSetPicks(id, picks) {
   const row = await moTagReviewRow(id);
   if (!row || row.status === 'queued' || row.status === 'running') return;
-  const status = ids.length ? 'pending' : row.status;
+  const status = picks.length ? 'pending' : row.status;
   await db.run(
     `UPDATE mo_ai_tag_reviews SET tag_ids = ?, status = ?, error = CASE WHEN ? = 'pending' THEN NULL ELSE error END, updated_at = datetime('now') WHERE id = ?`,
-    [JSON.stringify(ids), status, status, id],
+    [JSON.stringify(picks.map((p) => [p.id, p.via || 0])), status, status, id],
   );
   moTagNotify();
 }
@@ -27806,7 +27896,9 @@ function renderTagReview(container, api) {
   let disposed = false;
   let renderSeq = 0;
   const rowEls = new Map();      // review id -> { el, sig }
-  let pathOf = new Map();        // tag id -> first path (for chips)
+  let pathOf = new Map();        // tag id -> first path (for chips of an unknown sense)
+  let pathOfKey = new Map();     // "id:via" -> that sense's path
+  let pathEntries = [];          // every { id, via, path } the reviewer can add
   let tagName = new Map();       // tag id -> name
   let suggest = null;            // { pop, input } while an add-tag list is open
 
@@ -27842,8 +27934,9 @@ function renderTagReview(container, api) {
     }
   });
 
-  function buildChip(r, ids, tagId, editable) {
-    const path = pathOf.get(tagId) || tagName.get(tagId) || '';
+  function buildChip(r, ids, pick, editable) {
+    const tagId = pick.id;
+    const path = pathOfKey.get(`${pick.id}:${pick.via}`) || pathOf.get(tagId) || tagName.get(tagId) || '';
     const parts = path.split(MO_TAG_PATH_SEP);
     const leaf = parts.pop();
     const chip = moEl('span', 'mo-tr-chip', { title: path });
@@ -27852,7 +27945,7 @@ function renderTagReview(container, api) {
     if (editable) {
       const x = moEl('button', null, { type: 'button', textContent: '×', title: `Remove ${leaf}` });
       x.setAttribute('aria-label', `Remove ${leaf}`);
-      x.addEventListener('click', () => { void moTagSetPicks(r.id, ids.filter((v) => v !== tagId)); });
+      x.addEventListener('click', () => { void moTagSetPicks(r.id, ids.filter((v) => !(v.id === pick.id && v.via === pick.via))); });
       chip.appendChild(x);
     }
     return chip;
@@ -27866,18 +27959,20 @@ function renderTagReview(container, api) {
     const matches = () => {
       const q = moNormalizeTagName(input.value);
       const out = [];
-      for (const [id, path] of pathOf) {
-        if (ids.includes(id) || hasIds.has(id)) continue;
-        if (q && !path.includes(q)) continue;
-        out.push({ id, path });
+      for (const e of pathEntries) {
+        if (ids.some((p) => p.id === e.id && p.via === e.via) || hasIds.has(e.id)) continue;
+        if (q && !e.path.includes(q)) continue;
+        // The suggestion's id is the sense ("id:via"): pick() reads it back.
+        out.push({ id: `${e.id}:${e.via}`, path: e.path });
       }
       out.sort((a, b) => a.path.localeCompare(b.path));
       return out.slice(0, 50);
     };
-    const pick = (id) => {
+    const pick = (key) => {
       closeSuggest();
       input.value = '';
-      void moTagSetPicks(r.id, [...ids, id]);
+      const [id, via] = String(key).split(':').map(Number);
+      void moTagSetPicks(r.id, [...ids, { id, via: via || 0 }]);
     };
     const open = () => {
       closeSuggest();
@@ -27962,8 +28057,8 @@ function renderTagReview(container, api) {
     const editable = r.status === 'pending' || r.status === 'nomatch' || r.status === 'failed';
     if (editable || ids.length) {
       const chips = moEl('div', 'mo-tr-chips');
-      for (const tagId of ids) chips.appendChild(buildChip(r, ids, tagId, editable));
-      if (editable) chips.appendChild(buildAddInput(r, ids, retag ? new Set() : hasIds));
+      for (const p of picks) chips.appendChild(buildChip(r, picks, p, editable));
+      if (editable) chips.appendChild(buildAddInput(r, picks, retag ? new Set() : hasIds));
       body.appendChild(chips);
     }
     row.appendChild(body);
@@ -28019,7 +28114,10 @@ function renderTagReview(container, api) {
     if (disposed || seq !== renderSeq) return;
 
     const paths = moTagPaths(tree.tags, tree.rels);
-    pathOf = new Map([...paths].map(([id, list]) => [id, list[0]]));
+    pathOf = new Map([...paths].map(([id, list]) => [id, list[0].path]));
+    pathEntries = [];
+    for (const [id, list] of paths) for (const e of list) pathEntries.push({ id, via: e.via, path: e.path });
+    pathOfKey = new Map(pathEntries.map((e) => [`${e.id}:${e.via}`, e.path]));
     tagName = new Map(tree.tags.map((t) => [Number(t.id), t.name]));
     // A rename or a move changes the chips' paths: fold the tree into each row's signature.
     let treeSig = 0;
@@ -28062,7 +28160,8 @@ function renderTagReview(container, api) {
     const seen = new Set();
     let prev = null;
     for (const r of rows) {
-      const ids = moTagIdsOf(r).filter((id) => tagName.has(id));
+      const picks = moTagPicksOf(r).filter((p) => tagName.has(p.id));
+      const ids = picks.map((p) => p.id);
       const has = hasBy.get(r.photo_id) || [];
       const sig = [r.status, r.mode || 'add', JSON.stringify(ids), r.error || '', r.basename || '', has.map((h) => h.id).join(','), treeSig].join('|');
       seen.add(r.id);

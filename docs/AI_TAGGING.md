@@ -42,11 +42,27 @@ This program replaces all of them with one tool and a review list.
    paths, so it cannot write a tag you do not have. Every reply is validated
    again against the tree before it reaches the review list; anything unknown
    is dropped.
-2. **Parents come along.** Picking `CORGI` adds `DOG` and `ANIMALS` on Approve.
-3. **One parent per tag.** Nesting a tag under a new parent moves it (drag in
-   the sidebar, or the path form in New Tags). The path form refuses to put an
-   existing tag under a second parent and says where it lives. Merging keeps
-   the destination where it is in the tree.
+2. **The path is the sense.** A pick is `ANIMALS › DOG › CORGI`, and Approve
+   writes `CORGI` on the photo *via* `DOG`. Since 2026-09-21 (migration 025)
+   every assignment carries the parent it was made under, or 0 when applied
+   bare, and nothing else is written: `DOG` and `ANIMALS` are inferred from
+   the tree, so the photo shows under both without carrying them, and moving
+   `DOG` elsewhere in the tree changes no photo. (Before this, Approve
+   stamped the parents on the photo, and a branch view required all of them;
+   filing every tag under one new root emptied every branch at once.)
+3. **Several parents, each its own branch.** `FACE` can sit under `PORTRAIT`
+   and under `POSE`. Dragging a tag onto another adds that parent; the path
+   form in New Tags does the same; Remove From on a nested row takes one
+   place away; Move To Top Level takes them all. The sidebar shows the tag in
+   each place, and each place is a branch: its count and its grid are the
+   items tagged `FACE` via that parent, plus bare `FACE` assignments, which
+   belong to every sense. The tag's own view (View as unique tag) is the
+   union. The model is offered one entry per path and can only answer with a
+   path, so it always tags the tree-specific sense; a person dragging from a
+   branch does the same, and a typed tag is bare. A pill on the detail panel
+   reads `PORTRAIT › FACE` when it has a sense. Merging a tag into another
+   carries its senses across; deleting a parent turns the senses made through
+   it bare.
 4. **ALL CAPS.** Every tag name is stored upper case, whichever way it was
    created or renamed. Uniqueness is case-insensitive, so `Beach` and `BEACH`
    can no longer both exist.
