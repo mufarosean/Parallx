@@ -4917,265 +4917,60 @@ function moIcon(name, size) {
  * etc. unchanged. The native popup is suppressed by preventDefault on
  * mousedown / keydown that would open it.
  */
-function moBindCustomSelect(selectEl) {
-  if (!selectEl || selectEl.dataset.moSelectBound === '1') return;
-  selectEl.dataset.moSelectBound = '1';
-  selectEl.classList.add('mo-select-bound');
-
-  let popup = null;
-  function close() {
-    if (!popup) return;
-    popup.remove();
-    popup = null;
-    document.removeEventListener('mousedown', onDocDown, true);
-    window.removeEventListener('resize', close, true);
-    window.removeEventListener('scroll', onOutsideScroll, true);
-  }
-  // Close when the PAGE scrolls (anchor drifts), but not when the user
-  // scrolls inside the popup itself — the list is scrollable now.
-  function onOutsideScroll(e) {
-    if (popup && e.target instanceof Node && popup.contains(e.target)) return;
-    close();
-  }
-  function onDocDown(e) {
-    if (popup && !popup.contains(e.target) && e.target !== selectEl) close();
-  }
-  function open() {
-    if (popup) { close(); return; }
-    const opts = Array.from(selectEl.options);
-    if (opts.length === 0) return;
-    popup = document.createElement('div');
-    popup.className = 'mo-select-popup';
-    const r = selectEl.getBoundingClientRect();
-    popup.style.left = r.left + 'px';
-    popup.style.top = (r.bottom + 2) + 'px';
-    popup.style.minWidth = r.width + 'px';
-    for (const opt of opts) {
-      const it = document.createElement('div');
-      it.className = 'mo-select-popup-item';
-      if (opt.value === selectEl.value) it.classList.add('mo-active');
-      it.textContent = opt.textContent || opt.value;
-      it.addEventListener('mousedown', (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        if (selectEl.value !== opt.value) {
-          selectEl.value = opt.value;
-          selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        close();
-      });
-      popup.appendChild(it);
-    }
-    document.body.appendChild(popup);
-    // Clamp into the viewport: fit below when possible, else open on the
-    // roomier side, capping height so long lists scroll in place instead of
-    // running off-screen (or being blindly flipped above and STILL not
-    // fitting, which is what the old flip did with 13+ items).
-    const margin = 8;
-    const below = window.innerHeight - (r.bottom + 2) - margin;
-    const above = r.top - 2 - margin;
-    let pr = popup.getBoundingClientRect();
-    if (pr.height > below) {
-      if (above > below) {
-        popup.style.maxHeight = Math.min(pr.height, above) + 'px';
-        pr = popup.getBoundingClientRect();
-        popup.style.top = Math.max(margin, r.top - pr.height - 2) + 'px';
-      } else {
-        popup.style.maxHeight = Math.max(80, below) + 'px';
-      }
-    }
-    document.addEventListener('mousedown', onDocDown, true);
-    window.addEventListener('resize', close, true);
-    window.addEventListener('scroll', onOutsideScroll, true);
-  }
-
-  selectEl.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    selectEl.focus();
-    open();
-  });
-  selectEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      open();
-    } else if (e.key === 'Escape') {
-      close();
-    }
-  });
-}
 
 /**
  * Custom dropdown component — mirrors src/ui/dropdown.ts API but works standalone.
  * Returns { el, getValue, setValue, setItems, onChange, dispose }
  */
+// THE dropdown (api.ui.createDropdown): the workbench's .ui-dropdown, whose
+// list lives at body level and clears any scrolling ancestor. This extension
+// carried its own clone (an absolute list at z-index 1000, clipped by any
+// overflow container). The handle shape is what the toolbars still expect.
 function moDropdown(options = {}) {
   const { items = [], selected, placeholder = '', ariaLabel = '', className = '' } = options;
-  let _items = [...items];
-  let _selectedValue = selected ?? '';
-  let _isOpen = false;
-  let _focusedIndex = -1;
+  const wrapper = moEl('div', `mo-dd${className ? ' ' + className : ''}`);
+  const dd = _api.ui.createDropdown(wrapper, { items, selected: selected == null ? '' : String(selected), placeholder, ariaLabel });
   let _onChangeFn = null;
-
-  const wrapper = moEl('div', `mo-dropdown ${className}`.trim());
-  const button = moEl('button', 'mo-dropdown__button', { type: 'button' });
-  button.setAttribute('aria-haspopup', 'listbox');
-  button.setAttribute('aria-expanded', 'false');
-  if (ariaLabel) button.setAttribute('aria-label', ariaLabel);
-
-  const textSpan = moEl('span', 'mo-dropdown__text');
-  const chevron = moEl('span', 'mo-dropdown__chevron', { textContent: '\u25BE' });
-  button.append(textSpan, chevron);
-  wrapper.appendChild(button);
-
-  const list = moEl('div', 'mo-dropdown__list');
-  list.setAttribute('role', 'listbox');
-  wrapper.appendChild(list);
-
-  function updateText() {
-    const item = _items.find(i => i.value === _selectedValue);
-    textSpan.textContent = item ? item.label : placeholder;
-  }
-
-  function renderItems() {
-    list.innerHTML = '';
-    _items.forEach((item) => {
-      const el = moEl('div', 'mo-dropdown__item');
-      el.textContent = item.label;
-      el.dataset.value = item.value;
-      el.setAttribute('role', 'option');
-      if (item.value === _selectedValue) {
-        el.classList.add('mo-dropdown__item--selected');
-        el.setAttribute('aria-selected', 'true');
-      }
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        selectValue(item.value);
-        close();
-      });
-      list.appendChild(el);
-    });
-  }
-
-  function updateSelectedClass() {
-    for (const el of list.children) {
-      const isSelected = el.dataset.value === _selectedValue;
-      el.classList.toggle('mo-dropdown__item--selected', isSelected);
-      el.setAttribute('aria-selected', String(isSelected));
-    }
-  }
-
-  function selectValue(value) {
-    if (_selectedValue === value) return;
-    _selectedValue = value;
-    updateText();
-    updateSelectedClass();
-    if (_onChangeFn) _onChangeFn(value);
-  }
-
-  function open() {
-    _isOpen = true;
-    wrapper.classList.add('mo-dropdown--open');
-    button.setAttribute('aria-expanded', 'true');
-    _focusedIndex = _items.findIndex(i => i.value === _selectedValue);
-    updateFocusedClass();
-    // Auto-flip: open upward if not enough space below. Bound the available
-    // space to the nearest clipping ancestor (overflow auto/hidden/scroll) so
-    // dropdowns near the bottom of a panel don't get hidden behind sibling
-    // panels even when the viewport itself has more room.
-    requestAnimationFrame(() => {
-      const btnRect = button.getBoundingClientRect();
-      const listH = list.scrollHeight || list.getBoundingClientRect().height;
-      let bottomBound = window.innerHeight;
-      let topBound = 0;
-      let node = wrapper.parentElement;
-      while (node && node !== document.body) {
-        const cs = window.getComputedStyle(node);
-        if (/(auto|hidden|scroll|clip)/.test(cs.overflowY) || /(auto|hidden|scroll|clip)/.test(cs.overflow)) {
-          const r = node.getBoundingClientRect();
-          if (r.bottom < bottomBound) bottomBound = r.bottom;
-          if (r.top > topBound) topBound = r.top;
-        }
-        node = node.parentElement;
-      }
-      const spaceBelow = bottomBound - btnRect.bottom;
-      const spaceAbove = btnRect.top - topBound;
-      if (spaceBelow < listH && spaceAbove > spaceBelow) {
-        wrapper.classList.add('mo-dropdown--up');
-      } else {
-        wrapper.classList.remove('mo-dropdown--up');
-      }
-    });
-  }
-
-  function close() {
-    _isOpen = false;
-    wrapper.classList.remove('mo-dropdown--open');
-    wrapper.classList.remove('mo-dropdown--up');
-    button.setAttribute('aria-expanded', 'false');
-    _focusedIndex = -1;
-    updateFocusedClass();
-  }
-
-  function updateFocusedClass() {
-    Array.from(list.children).forEach((el, idx) => {
-      el.classList.toggle('mo-dropdown__item--focused', idx === _focusedIndex);
-    });
-  }
-
-  button.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (_isOpen) close(); else open();
-  });
-
-  wrapper.addEventListener('keydown', (e) => {
-    if (!_isOpen) {
-      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault(); e.stopPropagation();
-        open();
-      }
-      return;
-    }
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault(); e.stopPropagation();
-        _focusedIndex = Math.min(_focusedIndex + 1, _items.length - 1);
-        updateFocusedClass();
-        break;
-      case 'ArrowUp':
-        e.preventDefault(); e.stopPropagation();
-        _focusedIndex = Math.max(_focusedIndex - 1, 0);
-        updateFocusedClass();
-        break;
-      case 'Enter': case ' ':
-        e.preventDefault(); e.stopPropagation();
-        if (_focusedIndex >= 0 && _focusedIndex < _items.length) {
-          selectValue(_items[_focusedIndex].value);
-        }
-        close();
-        break;
-      case 'Escape':
-        e.preventDefault(); e.stopPropagation();
-        close();
-        break;
-    }
-  });
-
-  const outsideHandler = (e) => {
-    if (_isOpen && !wrapper.contains(e.target)) close();
-  };
-  document.addEventListener('mousedown', outsideHandler, true);
-
-  renderItems();
-  updateText();
-
+  dd.onDidChange((v) => { if (_onChangeFn) _onChangeFn(v); });
   return {
     el: wrapper,
-    getValue() { return _selectedValue; },
-    setValue(v) { _selectedValue = v; updateText(); updateSelectedClass(); },
-    setItems(newItems) { _items = [...newItems]; renderItems(); updateText(); },
+    getValue() { return dd.value; },
+    setValue(v) { dd.value = v == null ? '' : String(v); },
+    setItems(newItems) { dd.setItems(newItems); },
     set onChange(fn) { _onChangeFn = fn; },
-    dispose() { document.removeEventListener('mousedown', outsideHandler, true); },
+    dispose() { dd.dispose(); },
   };
+}
+
+// A <select>-shaped facade over THE dropdown for the dense clip and export
+// forms: .value, .disabled, .options, .title and 'change' events behave as
+// they did on the native element, so the form code reads unchanged while the
+// popup is the workbench's. Items are [value, label] pairs or { value, label }.
+function moSelect(items, selected, opts = {}) {
+  const host = moEl('div', `mo-select${opts.className ? ' ' + opts.className : ''}`);
+  const norm = (list) => list.map((it) => Array.isArray(it)
+    ? { value: String(it[0]), label: String(it[1]) }
+    : { value: String(it.value), label: String(it.label) });
+  let _items = norm(items);
+  const dd = _api.ui.createDropdown(host, {
+    items: _items,
+    selected: selected == null ? (_items.length ? _items[0].value : '') : String(selected),
+    ariaLabel: opts.ariaLabel,
+  });
+  dd.onDidChange(() => host.dispatchEvent(new Event('change', { bubbles: true })));
+  let _disabled = false;
+  Object.defineProperties(host, {
+    value: { get: () => dd.value, set: (v) => { dd.value = v == null ? '' : String(v); } },
+    disabled: {
+      get: () => _disabled,
+      set: (v) => { _disabled = !!v; host.classList.toggle('is-disabled', _disabled); dd.setDisabled(_disabled); },
+    },
+    options: { get: () => _items.slice() },
+  });
+  host.setOptions = (list, value) => { _items = norm(list); dd.setItems(_items, value === undefined ? undefined : String(value)); };
+  host.addOption = (value, label) => { _items.push({ value: String(value), label: String(label) }); dd.setItems(_items, dd.value); };
+  host.focus = () => dd.focus();
+  return host;
 }
 
 const MO_CSS = `
@@ -5598,8 +5393,8 @@ const MO_CSS = `
 .mo-page-info { color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888)); }
 /* Center the bare-number label in the per-page dropdown; the chevron stays
    on the right (its own flex item keeps space-between balanced). */
-.mo-pagination .mo-dropdown__button { justify-content: center; }
-.mo-pagination .mo-dropdown__text {
+.mo-pagination .ui-dropdown__button { justify-content: center; }
+.mo-pagination .ui-dropdown__label {
   flex: 1;
   text-align: center;
   /* Cancel the chevron's right-side offset so the number is visually centered. */
@@ -5918,11 +5713,6 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-selection-bar .mo-sel-more, .mo-selection-bar .mo-sel-delete { padding: 0 7px; }
 .mo-selection-bar .mo-sel-delete { border-color: transparent; }
 .mo-pagination .mo-toolbar-count { margin-left: auto; }
-/* Menus: a mark column when any item can be checked; a disabled item is read, not clicked. */
-.mo-context-menu.has-checks .mo-context-menu-item { position: relative; padding-left: 30px; }
-.mo-context-menu-item.is-checked::before { content: '✓'; position: absolute; left: 11px; }
-.mo-context-menu-item.is-disabled { opacity: 0.5; cursor: default; }
-.mo-context-menu-item.is-disabled:hover { background: transparent; color: inherit; }
 
 /* ═══ List Mode ═══ */
 .mo-grid.mo-list-mode {
@@ -6931,66 +6721,6 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-card.mo-focused { outline: 2px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -2px; }
 .mo-list-row.mo-focused { outline: 2px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -2px; }
 
-/* ═══ Context Menu (F1) ═══ */
-.mo-context-menu {
-  position: fixed;
-  z-index: 10000;
-  min-width: 180px;
-  background: var(--vscode-menu-background, var(--px-bg-elevated));
-  border: 1px solid var(--vscode-menu-border, var(--px-border-strong));
-  border-radius: var(--parallx-radius-md, 6px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-  padding: 4px 0;
-  font-size: var(--parallx-fontSize-md, 13px);
-  color: var(--vscode-menu-foreground, var(--vscode-foreground, #ccc));
-}
-.mo-context-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 16px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.mo-context-menu-item:hover {
-  background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground, #094771));
-  color: var(--vscode-menu-selectionForeground, #fff);
-}
-.mo-context-menu-item.mo-ctx-danger {
-  color: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
-}
-.mo-context-menu-item.mo-ctx-danger:hover {
-  background: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
-  color: #fff;
-}
-.mo-context-menu-sep {
-  height: 1px;
-  margin: 4px 8px;
-  background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border, var(--px-border-strong)));
-}
-.mo-context-menu-sub {
-  position: relative;
-}
-.mo-context-menu-sub .mo-context-submenu {
-  display: none;
-  position: absolute;
-  left: 100%;
-  top: -4px;
-  min-width: 120px;
-  background: var(--vscode-menu-background, var(--px-bg-elevated));
-  border: 1px solid var(--vscode-menu-border, var(--px-border-strong));
-  border-radius: var(--parallx-radius-md, 6px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-  padding: 4px 0;
-}
-.mo-context-menu-sub:hover > .mo-context-submenu {
-  display: block;
-}
-.mo-context-menu-item .mo-ctx-arrow {
-  margin-left: auto;
-  opacity: 0.6;
-}
-
 /* ═══ Lightbox / Slideshow (F7) ═══ */
 .mo-lightbox {
   position: fixed;
@@ -7080,7 +6810,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
    chrome reads as one consistent control surface (otherwise the default
    --vscode-dropdown-background grey button stands out against the
    translucent bar). */
-.mo-lightbox-bar .mo-dropdown__button {
+.mo-lightbox-bar .ui-dropdown__button {
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.18);
   color: #fff;
@@ -7088,17 +6818,11 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   font-size: var(--parallx-fontSize-xs, 11px);
   line-height: 18px;
 }
-.mo-lightbox-bar .mo-dropdown__button:hover {
+.mo-lightbox-bar .ui-dropdown__button:hover {
   background: rgba(255,255,255,0.16);
   border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
-.mo-lightbox-bar .mo-dropdown--open .mo-dropdown__button {
-  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-}
-.mo-lightbox-bar .mo-dropdown__list {
-  /* The dropdown list pops above the bar — give it a solid (non-translucent)
-     background so option text stays readable over arbitrary media. */
-  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, var(--px-bg)));
+.mo-lightbox-bar .ui-dropdown--open .ui-dropdown__button {
   border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-lightbox-close {
@@ -7265,89 +6989,16 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 
-/* ═══ Custom Dropdown (replaces native <select>) ═══ */
-.mo-dropdown {
-  position: relative;
-  display: inline-block;
-  min-width: 80px;
-}
-.mo-dropdown__button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 3px 8px;
-  font-size: var(--parallx-fontSize-sm, 11px);
-  font-family: inherit;
-  line-height: 20px;
-  color: var(--vscode-dropdown-foreground, var(--vscode-foreground, var(--vscode-foreground, #ccc)));
-  background: var(--vscode-dropdown-background, var(--vscode-input-background, var(--px-border)));
-  border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, var(--px-border, #555)));
-  border-radius: var(--parallx-radius-sm, 3px);
-  cursor: pointer;
-  outline: none;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  gap: 4px;
-}
-.mo-dropdown__button:hover {
-  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-}
-.mo-dropdown__button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  outline-offset: -1px;
-}
-.mo-dropdown__text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mo-dropdown__chevron {
-  font-size: 8px;
-  opacity: 0.7;
-  flex-shrink: 0;
-}
-.mo-dropdown__list {
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  min-width: 100%;
-  z-index: 1000;
-  margin-top: 2px;
-  padding: 4px 0;
-  background: var(--vscode-dropdown-listBackground, var(--vscode-editorWidget-background, var(--px-bg-elevated)));
-  border: 1px solid var(--vscode-dropdown-border, var(--vscode-widget-border, var(--px-border-strong)));
-  border-radius: var(--parallx-radius-sm, 3px);
-  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
-  max-height: 200px;
-  overflow-y: auto;
-}
-.mo-dropdown--open .mo-dropdown__list { display: block; }
-.mo-dropdown--up .mo-dropdown__list { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 2px; }
-.mo-dropdown__item {
-  padding: 4px 8px;
-  font-size: var(--parallx-fontSize-sm, 11px);
-  line-height: 20px;
-  color: var(--vscode-foreground, var(--vscode-foreground, #ccc));
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.mo-dropdown__item:hover,
-.mo-dropdown__item--focused {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
-}
-.mo-dropdown__item--selected {
-  color: var(--vscode-list-activeSelectionForeground, #fff);
-  background: var(--vscode-list-activeSelectionBackground, var(--px-accent, var(--mo-accent)));
-}
-.mo-dropdown__item--selected:hover {
-  background: var(--vscode-list-activeSelectionBackground, var(--px-accent, var(--mo-accent)));
-}
+/* ═══ Dropdowns: THE workbench dropdown (api.ui.createDropdown) ═══
+   moDropdown wraps it for the toolbars; moSelect wraps it with a <select>
+   facade for the dense clip and export forms. Only the sizing lives here. */
+.mo-dd { display: inline-block; min-width: 80px; }
+.mo-dd > .ui-dropdown { min-width: 0; width: 100%; }
+.mo-select { display: inline-flex; flex: 0 1 120px; min-width: 0; }
+.mo-select > .ui-dropdown { min-width: 0; width: 100%; }
+.mo-select.is-disabled { opacity: 0.5; }
+.mo-select--sm { width: 92px; flex: 0 0 auto; }
+.mo-select--queue { flex: 0 0 auto; width: 84px; }
 
 /* ═══ Styled Date Input ═══ */
 .mo-filter-date {
@@ -8122,8 +7773,6 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
   outline: none;
   border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
-select.mo-clip-input { appearance: none; padding-right: 22px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 12px) 50%, calc(100% - 7px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
-select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-clip-input--num { flex: 0 0 auto; max-width: 80px; }
 .mo-clip-unit {
   font-size: 11px; opacity: 0.7;
@@ -8140,41 +7789,6 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 }
 .mo-clip-chip:hover {
   background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryHoverBackground, #45494e));
-}
-.mo-select-popup {
-  position: fixed; z-index: 10001;
-  min-width: 120px;
-  /* Long option lists (e.g. 13 filter presets) scroll instead of running
-     off-screen; the host's document-delegated scrollbar reveal applies. */
-  max-height: 320px;
-  overflow-y: auto;
-  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, var(--px-bg)));
-  color: var(--vscode-foreground, var(--px-text, #ddd));
-  border: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  border-radius: 4px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
-  padding: 4px;
-  font-size: 12px;
-  font-family: inherit;
-  max-height: 280px; overflow-y: auto;
-}
-.mo-select-popup-item {
-  padding: 5px 10px;
-  border-radius: 3px;
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.mo-select-popup-item:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
-}
-.mo-select-popup-item.mo-active {
-  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 28%, transparent);
-  color: var(--vscode-foreground, #fff);
-}
-.mo-select-popup-item.mo-active:hover {
-  background: color-mix(in srgb, var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))) 40%, transparent);
 }
 .mo-clip-check { margin: 0 6px 0 0; }
 
@@ -8314,17 +7928,6 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
   flex: 1 1 auto; min-width: 0; opacity: 0.85;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.mo-clip-queue-fmt {
-  flex: 0 0 auto; padding: 1px 4px; border-radius: 2px;
-  font-size: 10px; opacity: 0.85;
-  background: var(--vscode-input-background, rgba(255,255,255,0.06));
-  color: var(--vscode-input-foreground, inherit);
-  border: 1px solid var(--vscode-input-border, transparent);
-  text-transform: uppercase;
-  cursor: pointer;
-  height: 20px;
-}
-.mo-clip-queue-fmt:hover { opacity: 1; }
 .mo-clip-queue-del {
   flex: 0 0 auto; background: transparent; border: 0; color: inherit;
   opacity: 0.55; cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1;
@@ -8592,7 +8195,7 @@ select.mo-clip-input.mo-select-bound { cursor: pointer; }
 .mo-practice-label { flex: 0 0 120px; font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-practice-pooldetail { display: inline-flex; flex: 1 1 160px; min-width: 0; }
 .mo-practice-pooldetail:empty { display: none; }
-.mo-practice-pooldetail .mo-dropdown { flex: 1 1 auto; }
+.mo-practice-pooldetail .mo-dd { flex: 1 1 auto; }
 .mo-practice-summary { font-size: 12px; margin-left: 128px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-practice-poolcount { font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
 .mo-practice-start { padding: 6px 16px; border: 0; border-radius: var(--parallx-radius-sm, 3px); background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text-on-accent)); font-size: 12px; font-weight: 600; cursor: pointer; }
@@ -17160,89 +16763,35 @@ function openCompareView(items, resolveFilePath) {
 // SECTION 35: CONTEXT MENU (F1)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// THE context menu (api.ui.showContextMenu): the workbench's .context-menu,
+// with keyboard navigation, submenus, viewport clamping and one dismissal
+// path. This extension carried its own clone at z-index 10000, under the
+// app's popup floor, which is one way a menu ends up beneath another layer.
+// The action shape { label, handler, danger, disabled, checked, title,
+// submenu, separator } is what the call sites still build.
 let _activeContextMenu = null;
-
 function dismissContextMenu() {
-  if (_activeContextMenu) {
-    _activeContextMenu.remove();
-    _activeContextMenu = null;
-  }
+  const menu = _activeContextMenu;
+  _activeContextMenu = null;
+  if (menu) menu.dispose();
 }
-
-/**
- * Show a context menu at (x, y) with the given action definitions.
- * Each action: { label, icon?, handler?, danger?, separator?, submenu?: [{ label, handler }] }
- */
+function moMenuItems(actions) {
+  return (actions || []).filter(Boolean).map((a) => a.separator ? { separator: true } : {
+    label: a.label,
+    danger: !!a.danger,
+    disabled: !!a.disabled,
+    checked: Object.prototype.hasOwnProperty.call(a, 'checked') ? !!a.checked : undefined,
+    tooltip: a.title,
+    submenu: a.submenu ? moMenuItems(a.submenu) : undefined,
+    onSelect: a.handler,
+  });
+}
 function showContextMenu(x, y, actions) {
   dismissContextMenu();
-  const menu = moEl('div', 'mo-context-menu');
-  // A menu with any checkable item lays every item out with room for the mark, so labels line up.
-  if (actions.some((a) => a && Object.prototype.hasOwnProperty.call(a, 'checked'))) menu.classList.add('has-checks');
-  menu.style.left = `${x}px`;
-  menu.style.top = `${y}px`;
-
-  for (const action of actions) {
-    if (action.separator) {
-      menu.appendChild(moEl('div', 'mo-context-menu-sep'));
-      continue;
-    }
-    if (action.submenu) {
-      const sub = moEl('div', 'mo-context-menu-sub');
-      const trigger = moEl('div', `mo-context-menu-item${action.danger ? ' mo-ctx-danger' : ''}`);
-      trigger.textContent = action.label;
-      trigger.appendChild(moEl('span', 'mo-ctx-arrow', { textContent: '\u25B8' }));
-      sub.appendChild(trigger);
-      const subMenu = moEl('div', 'mo-context-submenu');
-      for (const si of action.submenu) {
-        const subItem = moEl('div', 'mo-context-menu-item');
-        subItem.textContent = si.label;
-        subItem.addEventListener('click', (e) => {
-          e.stopPropagation();
-          dismissContextMenu();
-          si.handler();
-        });
-        subMenu.appendChild(subItem);
-      }
-      sub.appendChild(subMenu);
-      menu.appendChild(sub);
-    } else {
-      const item = moEl('div', `mo-context-menu-item${action.danger ? ' mo-ctx-danger' : ''}${action.checked ? ' is-checked' : ''}${action.disabled ? ' is-disabled' : ''}`);
-      item.textContent = action.label;
-      if (action.title) item.title = action.title;
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (action.disabled) return;
-        dismissContextMenu();
-        action.handler();
-      });
-      menu.appendChild(item);
-    }
-  }
-
-  document.body.appendChild(menu);
+  const menu = _api.ui.showContextMenu({ x, y }, moMenuItems(actions), {
+    onClose: () => { if (_activeContextMenu === menu) _activeContextMenu = null; },
+  });
   _activeContextMenu = menu;
-
-  // Clamp to viewport
-  const rect = menu.getBoundingClientRect();
-  if (rect.right > window.innerWidth) menu.style.left = `${window.innerWidth - rect.width - 4}px`;
-  if (rect.bottom > window.innerHeight) menu.style.top = `${window.innerHeight - rect.height - 4}px`;
-
-  // Dismiss on outside click / Escape / scroll
-  setTimeout(() => {
-    function onDismiss(ev) {
-      if (ev && ev.target && menu.contains(ev.target)) return; // click inside menu — don't dismiss
-      dismissContextMenu(); cleanup();
-    }
-    function onKey(ev) { if (ev.key === 'Escape') { dismissContextMenu(); cleanup(); ev.preventDefault(); } }
-    function cleanup() {
-      document.removeEventListener('pointerdown', onDismiss);
-      document.removeEventListener('keydown', onKey, true);
-      document.removeEventListener('scroll', onDismiss, true);
-    }
-    document.addEventListener('pointerdown', onDismiss);
-    document.addEventListener('keydown', onKey, true);
-    document.addEventListener('scroll', onDismiss, true);
-  }, 0);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -17912,7 +17461,7 @@ function showBulkTagDialog(state, api, onComplete) {
       const msg = willClear
         ? `Replace mode with no tags picked will REMOVE ALL TAGS from ${totalItems} item${totalItems === 1 ? '' : 's'}. Continue?`
         : `Replace mode will set every selected item to exactly ${pickedTags.size} tag${pickedTags.size === 1 ? '' : 's'}, removing any other tags they have. Continue?`;
-      const ok = window.confirm(msg);
+      const ok = await _api.window.showConfirmModal({ message: msg, confirmLabel: 'Replace', danger: true });
       if (!ok) return;
     }
 
@@ -18697,14 +18246,7 @@ function moOpenFrameDialog(api, videoPath, timestampSec, _ctx) {
   // Format
   const fmtRow = moEl('div', 'mo-clip-row');
   fmtRow.appendChild(lbl('Format'));
-  const fmtSel = document.createElement('select');
-  fmtSel.className = 'mo-clip-input';
-  for (const f of [['jpg', 'JPEG'], ['png', 'PNG'], ['webp', 'WebP']]) {
-    const o = document.createElement('option');
-    o.value = f[0]; o.textContent = f[1];
-    if (f[0] === 'jpg') o.selected = true;
-    fmtSel.appendChild(o);
-  }
+  const fmtSel = moSelect([['jpg', 'JPEG'], ['png', 'PNG'], ['webp', 'WebP']], 'jpg');
   fmtRow.appendChild(fmtSel);
   controls.appendChild(fmtRow);
 
@@ -20567,26 +20109,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // Format
   const fmtRow = moEl('div', 'mo-clip-row');
   fmtRow.appendChild(lbl('Format'));
-  const fmtSel = document.createElement('select');
-  fmtSel.className = 'mo-clip-input';
-  for (const f of ['mp4', 'webm', 'gif']) {
-    const o = document.createElement('option'); o.value = f; o.textContent = f.toUpperCase();
-    if (f === 'mp4') o.selected = true;
-    fmtSel.appendChild(o);
-  }
+  const fmtSel = moSelect(['mp4', 'webm', 'gif'].map((f) => [f, f.toUpperCase()]), 'mp4');
   fmtRow.appendChild(fmtSel);
   secOutput.appendChild(fmtRow);
 
   // FPS
   const fpsRow = moEl('div', 'mo-clip-row');
   fpsRow.appendChild(lbl('FPS'));
-  const fpsSel = document.createElement('select');
-  fpsSel.className = 'mo-clip-input';
-  for (const f of [10, 15, 24, 30, 60]) {
-    const o = document.createElement('option'); o.value = String(f); o.textContent = String(f);
-    if (f === 30) o.selected = true;
-    fpsSel.appendChild(o);
-  }
+  const fpsSel = moSelect([10, 15, 24, 30, 60].map((f) => [f, f]), '30');
   fpsRow.appendChild(fpsSel);
   secOutput.appendChild(fpsRow);
 
@@ -20603,13 +20133,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // Speed
   const speedRow = moEl('div', 'mo-clip-row');
   speedRow.appendChild(lbl('Speed'));
-  const speedSel = document.createElement('select');
-  speedSel.className = 'mo-clip-input';
-  for (const s of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8, 16, 32, 64]) {
-    const o = document.createElement('option'); o.value = String(s); o.textContent = s + '×';
-    if (s === 1) o.selected = true;
-    speedSel.appendChild(o);
-  }
+  const speedSel = moSelect([0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8, 16, 32, 64].map((s) => [s, s + '×']), '1');
   speedRow.appendChild(speedSel);
   secOutput.appendChild(speedRow);
 
@@ -20617,12 +20141,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // length; the speed follows from the clip's length and is applied at export.
   const fitRow = moEl('div', 'mo-clip-row');
   fitRow.appendChild(lbl('Fit To Length'));
-  const fitSel = document.createElement('select');
-  fitSel.className = 'mo-clip-input';
-  for (const [v, label] of [[0, 'Off'], [15, '15 s'], [30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min']]) {
-    const o = document.createElement('option'); o.value = String(v); o.textContent = label;
-    fitSel.appendChild(o);
-  }
+  const fitSel = moSelect([[0, 'Off'], [15, '15 s'], [30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min']], '0');
   fitRow.appendChild(fitSel);
   const fitNote = moEl('span', 'mo-clip-hint');
   fitRow.appendChild(fitNote);
@@ -20647,13 +20166,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // approximation on the <video> element.
   const filterRow = moEl('div', 'mo-clip-row');
   filterRow.appendChild(lbl('Filter'));
-  const filterSel = document.createElement('select');
-  filterSel.className = 'mo-clip-input';
-  for (const f of MO_CLIP_FILTERS) {
-    const o = document.createElement('option'); o.value = f.id; o.textContent = f.label;
-    if (f.id === 'none') o.selected = true;
-    filterSel.appendChild(o);
-  }
+  const filterSel = moSelect(MO_CLIP_FILTERS.map((f) => [f.id, f.label]), 'none');
   filterRow.appendChild(filterSel);
   secLook.appendChild(filterRow);
   const applyFilterPreview = () => {
@@ -21185,11 +20698,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     capCount.textContent = '';
     for (const c of captions) {
       const row = moEl('div', 'mo-clip-segrow mo-clip-segrow--stack');
-      const styleSel = document.createElement('select');
-      styleSel.className = 'mo-clip-input mo-clip-input--sm';
-      for (const [v, l] of [['title', 'Title Card'], ['lower', 'Lower Third'], ['caption', 'Caption']]) {
-        const o = document.createElement('option'); o.value = v; o.textContent = l; if (c.style === v) o.selected = true; styleSel.appendChild(o);
-      }
+      const styleSel = moSelect([['title', 'Title Card'], ['lower', 'Lower Third'], ['caption', 'Caption']], c.style, { className: 'mo-select--sm' });
       styleSel.addEventListener('change', () => { c.style = styleSel.value; syncOverlaysToPlayhead(); });
       const text = document.createElement('input'); text.type = 'text'; text.className = 'mo-clip-input mo-clip-input--grow'; text.placeholder = 'Text'; text.value = c.text;
       text.addEventListener('input', () => { c.text = text.value; syncOverlaysToPlayhead(); try { updateAccordionSummaries(); } catch { /* pre-init */ } });
@@ -21205,7 +20714,6 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const line2 = moEl('div', 'mo-clip-segline'); line2.append(styleSel, from, to, color, del);
       row.append(line1, line2);
       capList.appendChild(row);
-      moBindCustomSelect(styleSel);
     }
     try { updateAccordionSummaries(); } catch { /* pre-init */ }
   }
@@ -21301,8 +20809,6 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // the clip is going. "Custom" leaves everything as it is.
   const destRow = moEl('div', 'mo-clip-row');
   destRow.appendChild(lbl('Preset for'));
-  const destSel = document.createElement('select');
-  destSel.className = 'mo-clip-input';
   const DESTS = [
     { id: 'custom', label: 'Custom' },
     { id: 'x', label: 'X / Twitter', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'size'; sizeInputMB.value = '25'; gpuSel.value = 'off'; } },
@@ -21310,8 +20816,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     { id: 'imessage', label: 'iMessage / WhatsApp', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'size'; sizeInputMB.value = '12'; } },
     { id: 'gif', label: 'Chat GIF', apply: () => { fmtSel.value = 'gif'; fpsSel.value = '15'; ditherSel.value = 'bayer'; autoOptChk.checked = true; autoOptThreshold.value = '8'; const vw = preview.videoWidth || 1280; sizeInput.value = String(Math.max(10, Math.min(100, Math.round((480 / vw) * 100)))); } },
   ];
-  for (const d of DESTS) { const o = document.createElement('option'); o.value = d.id; o.textContent = d.label; destSel.appendChild(o); }
-  moBindCustomSelect(destSel);
+  const destSel = moSelect(DESTS.map((d) => [d.id, d.label]), 'custom');
   destSel.addEventListener('change', () => {
     const d = DESTS.find((x) => x.id === destSel.value);
     if (d && d.apply) {
@@ -21350,13 +20855,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // GIF-only: dither
   const gifBox = moEl('div', 'mo-clip-row mo-clip-gif-only');
   gifBox.appendChild(lbl('Dither'));
-  const ditherSel = document.createElement('select');
-  ditherSel.className = 'mo-clip-input';
-  for (const d of [['none', 'None'], ['bayer', 'Bayer'], ['floyd_steinberg', 'Floyd-Steinberg']]) {
-    const o = document.createElement('option'); o.value = d[0]; o.textContent = d[1];
-    if (d[0] === 'bayer') o.selected = true;
-    ditherSel.appendChild(o);
-  }
+  const ditherSel = moSelect([['none', 'None'], ['bayer', 'Bayer'], ['floyd_steinberg', 'Floyd-Steinberg']], 'bayer');
   gifBox.appendChild(ditherSel);
   secExport.appendChild(gifBox);
 
@@ -21427,9 +20926,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // automatically scales the bitrate. Audio is fixed at 128 kbps when kept.
   const crfBox = moEl('div', 'mo-clip-row mo-clip-vid-only');
   crfBox.appendChild(lbl('Encode mode'));
-  const encModeSel = document.createElement('select');
-  encModeSel.className = 'mo-clip-input';
-  encModeSel.innerHTML = '<option value="crf">Quality (CRF)</option><option value="size">Target size (MB)</option>';
+  const encModeSel = moSelect([['crf', 'Quality (CRF)'], ['size', 'Target size (MB)']], 'crf');
   crfBox.appendChild(encModeSel);
   secExport.appendChild(crfBox);
 
@@ -21481,10 +20978,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // so we restrict GPU paths to H.264 (mp4) for now.
   const gpuBox = moEl('div', 'mo-clip-row mo-clip-vid-only');
   gpuBox.appendChild(lbl('GPU encoder'));
-  const gpuSel = document.createElement('select');
-  gpuSel.className = 'mo-clip-input';
   // Populated after detection (see _moDetectHwEncoders below).
-  gpuSel.innerHTML = '<option value="off">Off (CPU, libx264)</option>';
+  const gpuSel = moSelect([['off', 'Off (CPU, libx264)']], 'off');
   gpuSel.title = 'Use GPU hardware encoder: 5 to 20x faster, slightly lower quality at the same bitrate. MP4 only.';
   gpuBox.appendChild(gpuSel);
   secExport.appendChild(gpuBox);
@@ -21492,18 +20987,16 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // don't block dialog open. The user is unlikely to click GPU in the
   // first ~50ms anyway.
   detectHwEncoders().then(hw => {
-    if (hw.nvenc) gpuSel.appendChild(moEl('option', null, { value: 'nvenc', textContent: 'NVIDIA (NVENC)' }));
-    if (hw.qsv) gpuSel.appendChild(moEl('option', null, { value: 'qsv', textContent: 'Intel (QuickSync)' }));
-    if (hw.amf) gpuSel.appendChild(moEl('option', null, { value: 'amf', textContent: 'AMD (AMF)' }));
-    if (hw.videotoolbox) gpuSel.appendChild(moEl('option', null, { value: 'videotoolbox', textContent: 'Apple (VideoToolbox)' }));
+    if (hw.nvenc) gpuSel.addOption('nvenc', 'NVIDIA (NVENC)');
+    if (hw.qsv) gpuSel.addOption('qsv', 'Intel (QuickSync)');
+    if (hw.amf) gpuSel.addOption('amf', 'AMD (AMF)');
+    if (hw.videotoolbox) gpuSel.addOption('videotoolbox', 'Apple (VideoToolbox)');
     if (gpuSel.options.length === 1) {
       // No hardware encoders detected \u2014 leave the single "Off" option but
       // disable the dropdown so the user understands why nothing's listed.
       gpuSel.disabled = true;
       gpuSel.title = 'No GPU encoder detected. ffmpeg was built without nvenc/qsv/amf support, or the drivers are missing.';
     }
-    // Bind the styled popup now that the options exist.
-    moBindCustomSelect(gpuSel);
   });
 
   // ── Frame strip lives below the grid (full width) ──
@@ -21538,13 +21031,6 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   syncFormatVisibility();
 
   // Replace native OS dropdowns with Parallx-styled custom popup
-  moBindCustomSelect(fmtSel);
-  moBindCustomSelect(fpsSel);
-  moBindCustomSelect(speedSel);
-  moBindCustomSelect(fitSel);
-  moBindCustomSelect(filterSel);
-  moBindCustomSelect(ditherSel);
-  moBindCustomSelect(encModeSel);
   // gpuSel is bound after its async detectHwEncoders() population below.
 
   // ── Mode toggle (Out vs Duration) ──
@@ -22987,10 +22473,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         // clip without re-loading it for editing. Changing the format also
         // clears any encode-mode/CRF/GPU mismatch (e.g. switching to webm
         // disables hwAccel since we only support H.264 hardware encoders).
-        const fmtRowSel = document.createElement('select');
-        fmtRowSel.className = 'mo-clip-queue-fmt';
-        fmtRowSel.innerHTML = '<option value="mp4">mp4</option><option value="webm">webm</option><option value="gif">gif</option>';
-        fmtRowSel.value = c.format;
+        const fmtRowSel = moSelect(['mp4', 'webm', 'gif'].map((f) => [f, f]), c.format, { className: 'mo-select--queue' });
         fmtRowSel.title = 'Output format for this clip';
         fmtRowSel.addEventListener('click', (e) => e.stopPropagation());
         fmtRowSel.addEventListener('change', () => {
@@ -23000,7 +22483,6 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           updateQueueTotal();
         });
         row.appendChild(fmtRowSel);
-        moBindCustomSelect(fmtRowSel);
         // Duplicate
         const dup = moEl('button', 'mo-clip-queue-dup', { textContent: '\u29c9', title: 'Duplicate this clip' });
         dup.addEventListener('click', (e) => {
@@ -28022,6 +27504,9 @@ function renderTagReview(container, api) {
   }
 
   function buildRow(r, ids, hasIds, hasNames) {
+    // The row's live picks (id + via) for the ids the caller kept. Missing since the
+    // multi-parent commit: the renderer threw on the first row and Tag Review stayed empty.
+    const picks = moTagPicksOf(r).filter((p) => ids.includes(p.id));
     const row = moEl('div', `mo-tr-row is-${r.status}`);
     row.dataset.reviewId = String(r.id);
 

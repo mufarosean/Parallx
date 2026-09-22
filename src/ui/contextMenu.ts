@@ -36,6 +36,13 @@ export interface IContextMenuItem {
   readonly renderIcon?: (container: HTMLElement) => void;
   /** Optional extra CSS class(es) added to the row element (e.g. for danger styling). */
   readonly className?: string;
+  /**
+   * Checked state. A menu with any checkable item reserves a mark column on
+   * EVERY row, so labels line up whether or not a given row is checked.
+   */
+  readonly checked?: boolean;
+  /** Tooltip on the row: a disabled item's reason, a longer explanation. */
+  readonly tooltip?: string;
 }
 
 /** Anchor specification for positioning the menu. */
@@ -124,6 +131,9 @@ export class ContextMenu extends Disposable {
       this._el.classList.add(_options.className);
     }
     this._el.setAttribute('role', 'menu');
+    if (_options.items.some((it) => it.checked !== undefined)) {
+      this._el.classList.add('context-menu--has-checks');
+    }
 
     // Render items
     this._renderItems(_options.items);
@@ -272,7 +282,17 @@ export class ContextMenu extends Disposable {
       if (item.className) {
         row.classList.add(item.className);
       }
-      row.setAttribute('role', 'menuitem');
+      row.setAttribute('role', item.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
+      if (item.checked !== undefined) row.setAttribute('aria-checked', String(!!item.checked));
+      if (item.tooltip) row.title = item.tooltip;
+
+      // Mark column (present on every row once any item in this menu is checkable)
+      if (this._el.classList.contains('context-menu--has-checks')) {
+        const check = document.createElement('span');
+        check.classList.add('context-menu-item-check');
+        if (item.checked) check.textContent = '\u2713';
+        row.appendChild(check);
+      }
 
       // Icon (optional)
       if (item.renderIcon) {
@@ -432,4 +452,79 @@ export class ContextMenu extends Disposable {
 
   // ── Outside click ──────────────────────────────────────────────────────
 
+}
+
+// ─── Extension-facing surface ────────────────────────────────────────────────
+// `api.ui.showContextMenu` maps the flat shape extensions build (separator as
+// an item, handlers on the items, nested submenus) onto the core model above.
+// It lives here, beside the component, so a test exercises exactly what an
+// extension gets rather than a stand-in.
+
+/** One entry of an extension context menu (`api.ui.showContextMenu`). */
+export interface IExtensionMenuItem {
+  readonly label?: string;
+  /** Registry icon id shown at the row's leading edge. */
+  readonly icon?: string;
+  readonly danger?: boolean;
+  readonly disabled?: boolean;
+  /** A divider between groups. */
+  readonly separator?: boolean;
+  /** Draws a mark; a menu with any checkable item reserves the mark column on every row. */
+  readonly checked?: boolean;
+  /** Tooltip on the row (a disabled item's reason, for instance). */
+  readonly tooltip?: string;
+  /** A child menu, opened on hover or click. */
+  readonly submenu?: ReadonlyArray<IExtensionMenuItem>;
+  readonly onSelect?: () => void;
+}
+
+/** Where an extension context menu opens: a point, a rect, or the element it belongs to. */
+export type ExtensionMenuAnchor = IContextMenuAnchor | DOMRect | HTMLElement;
+
+export interface IExtensionMenuOptions {
+  /** Runs once the menu has closed, whether by selection or dismissal. */
+  readonly onClose?: () => void;
+  /** Placement relative to a rect or element anchor. Default: below. */
+  readonly anchorPosition?: 'below' | 'above' | 'right' | 'left';
+}
+
+export function showExtensionContextMenu(
+  anchor: ExtensionMenuAnchor,
+  items: ReadonlyArray<IExtensionMenuItem>,
+  options?: IExtensionMenuOptions,
+  renderIcon?: (icon: string, container: HTMLElement) => void,
+): { dispose(): void } {
+  // Separators become group boundaries, which the core draws as dividers.
+  // Submenus map recursively, and every row gets a unique id: the core
+  // forwards a submenu selection to the parent menu, which must still find
+  // the handler.
+  const handlers = new Map<string, () => void>();
+  let seq = 0;
+  const toCore = (list: ReadonlyArray<IExtensionMenuItem>): IContextMenuItem[] => {
+    let group = 0;
+    const out: IContextMenuItem[] = [];
+    for (const it of list) {
+      if (it.separator) { group++; continue; }
+      const id = `ext-ctx-${seq++}`;
+      if (it.onSelect) handlers.set(id, it.onSelect);
+      const icon = it.icon;
+      out.push({
+        id,
+        label: it.label ?? '',
+        group: String(group),
+        disabled: it.disabled,
+        checked: it.checked,
+        tooltip: it.tooltip,
+        className: it.danger ? 'context-menu-item--danger' : undefined,
+        renderIcon: icon && renderIcon ? (c: HTMLElement) => renderIcon(icon, c) : undefined,
+        submenu: it.submenu && it.submenu.length > 0 ? toCore(it.submenu) : undefined,
+      });
+    }
+    return out;
+  };
+  const rect: IContextMenuAnchor | DOMRect = 'getBoundingClientRect' in anchor ? (anchor as HTMLElement).getBoundingClientRect() : anchor;
+  const menu = ContextMenu.show({ items: toCore(items), anchor: rect, anchorPosition: options?.anchorPosition });
+  menu.onDidSelect((e) => { handlers.get(e.item.id)?.(); });
+  if (options?.onClose) menu.onDidDismiss(options.onClose);
+  return { dispose: () => menu.dismiss() };
 }

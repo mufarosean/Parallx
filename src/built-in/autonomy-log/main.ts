@@ -19,6 +19,7 @@ import { EMPTY_STATES } from '../../ui/emptyStates.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
+import { showConfirmModal } from '../../api/notificationService.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 import {
   IAutonomyLogService,
@@ -462,14 +463,14 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
   const clearBtn = $('button.autonomy-log-action') as HTMLButtonElement;
   clearBtn.textContent = 'Clear';
   clearBtn.title = 'Remove all entries';
-  clearBtn.addEventListener('click', () => {
+  clearBtn.addEventListener('click', async () => {
     if (currentMode === 'patterns') {
-      if (patternMemory && confirm('Forget every approved sub-agent pattern?')) {
+      if (patternMemory && await showConfirmModal(document.body, { message: 'Forget every approved sub-agent pattern?', confirmLabel: 'Forget', danger: true })) {
         void patternMemory.clear();
       }
       return;
     }
-    if (confirm('Clear the entire autonomy log?')) logService?.clear();
+    if (await showConfirmModal(document.body, { message: 'Clear the entire autonomy log?', confirmLabel: 'Clear', danger: true })) logService?.clear();
   });
   header.appendChild(clearBtn);
 
@@ -602,8 +603,8 @@ function renderAutonomyLogView(container: HTMLElement): IDisposable {
         const clearAll = $('button.autonomy-mind-panel__clear') as HTMLButtonElement;
         clearAll.textContent = `Clear all ${beliefs.length}`;
         clearAll.title = 'Wipe the agent’s entire belief set and start fresh';
-        clearAll.addEventListener('click', () => {
-          if (!confirm(`Clear all ${beliefs.length} of the agent’s beliefs? This can’t be undone.`)) return;
+        clearAll.addEventListener('click', async () => {
+          if (!(await showConfirmModal(document.body, { message: `Clear all ${beliefs.length} of the agent’s beliefs?`, detail: 'This can’t be undone.', confirmLabel: 'Clear All', danger: true }))) return;
           void runCommand?.('parallx.mind.clearAll').then(() => {
             panel.innerHTML = '';
             const empty = $('div.autonomy-mind-panel__empty');

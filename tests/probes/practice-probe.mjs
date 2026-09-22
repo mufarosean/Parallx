@@ -213,7 +213,7 @@ async function main() {
       return {
         labels: Array.from(root.querySelectorAll('.mo-practice-label')).map((l) => l.textContent).filter(Boolean).join(' | '),
         chips: Array.from(root.querySelectorAll('.mo-home-chip')).map((c) => c.textContent + (c.classList.contains('active') ? '*' : '')).join(' | '),
-        dropdowns: root.querySelectorAll('.mo-dropdown').length,
+        dropdowns: root.querySelectorAll('.mo-dd').length,
         nativeSelects: root.querySelectorAll('select').length,
         poolCount: root.querySelector('.mo-practice-poolcount')?.textContent,
         summary: root.querySelector('.mo-practice-summary')?.textContent,
@@ -225,9 +225,9 @@ async function main() {
     await shot(page, 'practice-setup');
 
     // Pool: Tag with the suggestion popup.
-    await page.locator('.mo-practice-setup .mo-dropdown').nth(1).locator('button, .mo-dropdown__button').first().click();
+    await page.locator('.mo-practice-setup .mo-dd').nth(1).locator('.ui-dropdown__button').first().click();
     await page.waitForTimeout(300);
-    await page.locator('.mo-dropdown__item', { hasText: 'Tag' }).first().click();
+    await page.locator('.ui-dropdown__item', { hasText: 'Tag' }).first().click();
     await page.waitForSelector('.mo-practice-pooldetail input', { timeout: 5_000 });
     await page.locator('.mo-practice-pooldetail input').fill('PAT');
     await page.waitForSelector('.mo-practice-suggest', { timeout: 5_000 });
@@ -248,16 +248,16 @@ async function main() {
     await page.locator('.mo-practice-setup input[type="number"]').fill('3');
     await page.locator('.mo-practice-setup input[type="number"]').dispatchEvent('input');
     // Time Per Picture: the last dropdown in the form.
-    const perDrop = page.locator('.mo-practice-form .mo-dropdown').last();
-    await perDrop.locator('button, .mo-dropdown__button').first().click();
+    const perDrop = page.locator('.mo-practice-form .mo-dd').last();
+    await perDrop.locator('.ui-dropdown__button').first().click();
     await page.waitForTimeout(300);
-    await page.locator('.mo-dropdown__item', { hasText: /^30 s$/ }).first().click();
+    await page.locator('.ui-dropdown__item', { hasText: /^30 s$/ }).first().click();
     await page.waitForTimeout(200);
     log('summary count', await page.evaluate(() => document.querySelector('.mo-practice-summary')?.textContent));
     // Back to Everything so the 3-picture run has 4 candidates.
-    await page.locator('.mo-practice-setup .mo-dropdown').nth(1).locator('button, .mo-dropdown__button').first().click();
+    await page.locator('.mo-practice-setup .mo-dd').nth(1).locator('.ui-dropdown__button').first().click();
     await page.waitForTimeout(300);
-    await page.locator('.mo-dropdown__item', { hasText: /^Everything$/ }).first().click();
+    await page.locator('.ui-dropdown__item', { hasText: /^Everything$/ }).first().click();
     await page.waitForFunction(() => /^4 pictures$/.test(document.querySelector('.mo-practice-poolcount')?.textContent || ''), null, { timeout: 8_000 }).catch(() => {});
     await page.locator('.mo-practice-setup .mo-practice-start').click();
 

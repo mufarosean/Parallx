@@ -247,12 +247,12 @@ async function main() {
 
     // The grid: right-click menu and selection bar.
     await runCommand(page, ['media-organizer.openGrid']);
-    await page.waitForSelector('.mo-card', { timeout: 15_000 });
+    await page.waitForSelector('.mo-card, .mo-feed-card', { timeout: 15_000 });
     await page.waitForTimeout(1_200);
-    const card = page.locator('.mo-card').first();
+    const card = page.locator('.mo-card, .mo-feed-card').first();
     await card.click({ button: 'right' });
-    await page.waitForSelector('.mo-context-menu', { timeout: 5_000 });
-    const menu = await page.evaluate(() => Array.from(document.querySelectorAll('.mo-context-menu > .mo-context-menu-item')).map((i) => i.textContent).join(' | '));
+    await page.waitForSelector('.context-menu', { timeout: 5_000 });
+    const menu = await page.evaluate(() => Array.from(document.querySelectorAll('.context-menu .context-menu-item')).map((i) => i.textContent).join(' | '));
     console.log(`[probe] grid menu: ${menu}`);
     await shot(page, 'tag-review-grid-menu');
     await page.keyboard.press('Escape');

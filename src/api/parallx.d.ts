@@ -537,24 +537,38 @@ export namespace ui {
     readonly title?: string;
   }): HTMLButtonElement;
 
+  /** One entry of a context menu. */
+  export interface ContextMenuItem {
+    readonly label?: string;
+    /** Registry icon id shown at the row's leading edge. */
+    readonly icon?: string;
+    readonly danger?: boolean;
+    readonly disabled?: boolean;
+    /** A divider between groups. */
+    readonly separator?: boolean;
+    /** Draws a mark; a menu with any checkable item reserves the mark column on every row. */
+    readonly checked?: boolean;
+    /** Tooltip on the row (a disabled item's reason, for instance). */
+    readonly tooltip?: string;
+    /** A child menu, opened on hover or click. */
+    readonly submenu?: ReadonlyArray<ContextMenuItem>;
+    readonly onSelect?: () => void;
+  }
+  /** Where a context menu opens: a point, a rect, or the element it belongs to. */
+  export type ContextMenuAnchor = { readonly x: number; readonly y: number } | DOMRect | HTMLElement;
+  export interface ContextMenuOptions {
+    /** Runs once the menu has closed, whether by selection or dismissal. */
+    readonly onClose?: () => void;
+    /** Placement relative to a rect or element anchor. Default: below. */
+    readonly anchorPosition?: 'below' | 'above' | 'right' | 'left';
+  }
   /**
    * Show the workbench context menu at a point — the SAME `.context-menu`
    * the built-in surfaces use (keyboard navigation, submenus, viewport
    * clamping, click-outside dismiss). Prefer this over a hand-rolled menu.
    * `separator: true` entries draw a divider between groups.
    */
-  export function showContextMenu(
-    anchor: { readonly x: number; readonly y: number },
-    items: ReadonlyArray<{
-      readonly label?: string;
-      /** Registry icon id shown at the row's leading edge. */
-      readonly icon?: string;
-      readonly danger?: boolean;
-      readonly disabled?: boolean;
-      readonly separator?: boolean;
-      readonly onSelect?: () => void;
-    }>,
-  ): { dispose(): void };
+  export function showContextMenu(anchor: ContextMenuAnchor, items: ReadonlyArray<ContextMenuItem>, options?: ContextMenuOptions): { dispose(): void };
 }
 
 /**

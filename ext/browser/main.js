@@ -239,38 +239,30 @@ function fmtTime(iso) {
 }
 
 /** A small anchored menu. Items: { label, handler, danger?, separator? }. onClose runs once when it goes away. */
+// THE context menu (api.ui.showContextMenu): the workbench's, not a clone.
+// Items are { label, handler, danger, disabled } or { separator: true }; the
+// anchor is the element the menu belongs to or a point.
+let _openMenu = null;
 function showMenu(anchor, items, onClose) {
   dismissMenu();
-  const menu = el('div', 'br-menu');
-  menu._onClose = typeof onClose === 'function' ? onClose : null;
-  menu.setAttribute('role', 'menu');
-  for (const it of items) {
-    if (it.separator) { menu.appendChild(el('div', 'br-menu-sep')); continue; }
-    const row = el('button', `br-menu-item${it.danger ? ' br-danger' : ''}`, { type: 'button', text: it.label, role: 'menuitem' });
-    if (it.disabled) row.disabled = true;
-    row.addEventListener('click', () => { dismissMenu(); try { it.handler(); } catch (err) { console.warn('[browser] menu action failed', err); } });
-    menu.appendChild(row);
-  }
-  document.body.appendChild(menu);
-  const r = anchor.getBoundingClientRect();
-  const mr = menu.getBoundingClientRect();
-  menu.style.left = `${Math.max(4, Math.min(window.innerWidth - mr.width - 4, r.right - mr.width))}px`;
-  menu.style.top = `${Math.min(window.innerHeight - mr.height - 4, r.bottom + 4)}px`;
+  const entries = items.map((it) => it.separator ? { separator: true } : {
+    label: it.label,
+    danger: !!it.danger,
+    disabled: !!it.disabled,
+    onSelect: () => { try { it.handler(); } catch (err) { console.warn('[browser] menu action failed', err); } },
+  });
+  const menu = _api.ui.showContextMenu(anchor, entries, {
+    onClose: () => {
+      if (_openMenu === menu) _openMenu = null;
+      if (typeof onClose === 'function') { try { onClose(); } catch { /* ignore */ } }
+    },
+  });
   _openMenu = menu;
-  const onDown = (e) => { if (!menu.contains(e.target)) { dismissMenu(); cleanup(); } };
-  const onKey = (e) => { if (e.key === 'Escape') { dismissMenu(); cleanup(); } };
-  const cleanup = () => { document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); };
-  setTimeout(() => { document.addEventListener('pointerdown', onDown, true); document.addEventListener('keydown', onKey, true); }, 0);
-  menu._cleanup = cleanup;
 }
-let _openMenu = null;
 function dismissMenu() {
-  if (!_openMenu) return;
   const m = _openMenu;
   _openMenu = null;
-  try { m._cleanup && m._cleanup(); } catch { /* ignore */ }
-  m.remove();
-  try { m._onClose && m._onClose(); } catch { /* ignore */ }
+  if (m) m.dispose();
 }
 
 const CSS = `
@@ -352,12 +344,6 @@ const CSS = `
 .br-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--vscode-editor-background, #fff); transition: left var(--px-dur-fast, 120ms) var(--px-ease, ease); }
 .br-switch.is-on { background: var(--vscode-button-background, var(--px-accent)); }
 .br-switch.is-on::after { left: 18px; }
-.br-menu { position: fixed; z-index: 10010; min-width: 200px; padding: 4px; background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--px-surface))); color: var(--vscode-menu-foreground, inherit); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
-.br-menu-item { display: block; width: 100%; text-align: left; border: none; background: transparent; color: inherit; font: inherit; font-size: 12px; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
-.br-menu-item:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground, var(--px-surface-hover))); }
-.br-menu-item:disabled { opacity: 0.4; cursor: default; }
-.br-menu-item.br-danger { color: var(--vscode-errorForeground, var(--px-danger)); }
-.br-menu-sep { height: 1px; margin: 4px 6px; background: var(--vscode-panel-border, var(--px-border)); }
 .br-error { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 40px; text-align: center; }
 .br-error h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .br-error p { margin: 0; opacity: 0.75; font-size: 12px; max-width: 520px; word-break: break-all; }
@@ -1218,7 +1204,7 @@ function createPagePane(container, input, opts = {}) {
     items.push({ separator: true });
     items.push({ label: 'Send Page To Chat', handler: () => sendToChat() });
     const r = content.getBoundingClientRect();
-    const anchor = { getBoundingClientRect: () => ({ left: r.left + (p.x || 0), right: r.left + (p.x || 0), top: r.top + (p.y || 0), bottom: r.top + (p.y || 0), width: 0, height: 0 }) };
+    const anchor = { x: r.left + (p.x || 0), y: r.top + (p.y || 0) };
     void overlayOpen();
     showMenu(anchor, items, overlayClose);
   }

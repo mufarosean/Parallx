@@ -1733,11 +1733,7 @@ function createGraphEditor(container, api) {
       const rebuildBtn = settingsInner.querySelector('#__gs_concept_rebuild');
       if (rebuildBtn) {
         rebuildBtn.addEventListener('click', async () => {
-          if (!window.confirm(
-            'Force full re-cluster will DELETE all your concept renames, merges, and deletions. ' +
-            'The next refresh will rebuild every cluster from scratch using only DBSCAN output. ' +
-            'Continue?',
-          )) return;
+          if (!(await api.window.showConfirmModal({ message: 'Force a full re-cluster?', detail: 'Every concept rename, merge and deletion is deleted. The next refresh rebuilds every cluster from scratch using only DBSCAN output.', confirmLabel: 'Re-cluster', danger: true }))) return;
           const svc = _getSemanticGraphService(api);
           if (!svc || typeof svc.forceFullReCluster !== 'function') return;
           rebuildBtn.disabled = true;
@@ -1795,9 +1791,6 @@ function createGraphEditor(container, api) {
 
     listEl.innerHTML = concepts.map((c) => {
       const renameMark = c.userRenamed ? ' <span title="Renamed by user" style="opacity:0.7">✎</span>' : '';
-      const otherOptions = otherIdsFor(c.stableId)
-        .map((other) => `<option value="${_esc(other.stableId)}">${_esc(other.label)}</option>`)
-        .join('');
       return `
         <div data-concept-id="${_esc(c.stableId)}" style="margin:2px 0;border-bottom:1px solid var(--vscode-panel-border,var(--px-bg-inset));padding-bottom:4px;">
           <div data-role="header" style="display:flex;align-items:center;gap:6px;padding:4px 2px;cursor:pointer;">
@@ -1814,10 +1807,7 @@ function createGraphEditor(container, api) {
             </div>
             <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;">
               <span style="color:var(--vscode-descriptionForeground,#888);font-size:10px;">Merge into:</span>
-              <select data-role="merge-target" style="flex:1;padding:3px;background:var(--vscode-input-background,#252525);color:var(--vscode-input-foreground,#ccc);border:1px solid var(--vscode-input-border,#444);border-radius:2px;font-size:11px;">
-                <option value="">Pick a concept</option>
-                ${otherOptions}
-              </select>
+              <span data-role="merge-target" style="flex:1;min-width:0;display:inline-flex;"></span>
               <button data-role="merge-go" style="padding:3px 8px;background:var(--vscode-button-secondaryBackground,#3a3a3a);color:var(--vscode-button-secondaryForeground,#ccc);border:none;border-radius:2px;cursor:pointer;font-size:11px;">Merge</button>
             </div>
             <button data-role="delete" style="width:100%;padding:3px 8px;background:transparent;color:#e08080;border:1px solid #5a3a3a;border-radius:2px;cursor:pointer;font-size:11px;">
@@ -1858,12 +1848,17 @@ function createGraphEditor(container, api) {
         if (e.key === 'Enter') { e.preventDefault(); renameSave.click(); }
       });
 
-      const mergeTarget = row.querySelector('[data-role="merge-target"]');
+      // THE dropdown (api.ui.createDropdown) in place of a native <select>.
+      const mergeTarget = api.ui.createDropdown(row.querySelector('[data-role="merge-target"]'), {
+        items: [{ value: '', label: 'Pick a concept' }, ...otherIdsFor(stableId).map((o) => ({ value: o.stableId, label: o.label }))],
+        selected: '',
+        ariaLabel: 'Merge into',
+      });
       const mergeGo = row.querySelector('[data-role="merge-go"]');
       mergeGo.addEventListener('click', async () => {
         const targetId = mergeTarget.value;
         if (!targetId) return;
-        if (!window.confirm('Merge this concept into the selected one? Members will move; this concept will be deleted.')) return;
+        if (!(await api.window.showConfirmModal({ message: 'Merge this concept into the selected one?', detail: 'Its members move across and this concept is deleted.', confirmLabel: 'Merge', danger: true }))) return;
         try {
           await svc.mergeConceptNodes(targetId, stableId);
           await _populateConceptList(api);
@@ -1875,10 +1870,7 @@ function createGraphEditor(container, api) {
 
       const deleteBtn = row.querySelector('[data-role="delete"]');
       deleteBtn.addEventListener('click', async () => {
-        if (!window.confirm(
-          'Delete this concept? The deletion is sticky, so re-clustering will not re-form this group. ' +
-          'Use Force full re-cluster to undo.',
-        )) return;
+        if (!(await api.window.showConfirmModal({ message: 'Delete this concept?', detail: 'The deletion is sticky, so re-clustering will not re-form this group. Force full re-cluster undoes it.', confirmLabel: 'Delete', danger: true }))) return;
         try {
           await svc.deleteConceptNode(stableId);
           await _populateConceptList(api);
