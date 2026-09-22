@@ -485,6 +485,12 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     richExtensions: () => ipcRenderer.invoke('document:richExtensions'),
   },
 
+  // ── Windows metafiles (EMF/WMF) to PNG for the worksheet importer (imageBridge.cjs) ──
+  images: {
+    /** Rasterise an EMF/WMF at 2x. Returns { png, width, height, scale } or null (not Windows, or GDI+ failed). */
+    rasterizeMetafile: (bytes, ext) => ipcRenderer.invoke('image:rasterizeMetafile', bytes, ext),
+  },
+
   // ── Dashboard image/GIF assets (file-backed, served over parallx-asset://) ──
   dashboardAssets: {
     /** Persist uploaded image bytes to disk. Returns { id } or { error }. */

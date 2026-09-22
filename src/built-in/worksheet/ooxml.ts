@@ -17,6 +17,7 @@
 import JSZip from 'jszip';
 import type { IWorkbookData, IStyleData } from '@univerjs/core';
 import { ATHENA_ROWS, ATHENA_COLUMNS } from './worksheetConstants.js';
+import { ommlToLatex, findOmml, stripLinearPlaceholders } from './omml.js';
 
 // ── Minimal XML ─────────────────────────────────────────────────────────────
 // OOXML parts are machine-written and regular; a small element scanner is
@@ -362,10 +363,19 @@ export interface XlsxImage {
   /** Absent for one-cell anchors; extPx then gives the size. */
   readonly to?: XlsxAnchor;
   readonly extPx?: { width: number; height: number };
-  readonly mime: string;
-  readonly base64: string;
+  /**
+   * image/png, image/jpeg, image/gif, image/bmp, image/svg+xml, or the two
+   * Windows metafile types Excel writes for pasted equations and figures,
+   * image/x-emf and image/x-wmf. Metafiles cannot be shown as they are; the
+   * importer rasterises them (equationImage.ts) and rewrites these two fields
+   * before the snapshot, which skips any metafile still unrasterised.
+   */
+  mime: string;
+  base64: string;
   readonly name: string;
 }
+/** An equation rendered to a picture, attached to its text box before the snapshot. */
+export interface RenderedEquation { readonly mime: string; readonly base64: string; readonly width: number; readonly height: number }
 /** A paragraph of a text box: runs plus alignment. */
 export interface DrawParagraph { readonly runs: readonly RichRun[]; readonly align: 'l' | 'ctr' | 'r' }
 export interface XlsxTextBox {
@@ -379,6 +389,10 @@ export interface XlsxTextBox {
   readonly fill: string | null;
   /** Inner padding in px (DrawingML insets), left/top. */
   readonly insetPx: { left: number; top: number };
+  /** LaTeX for the equation this box holds (Office Math in the shape's Choice branch), when it is one. */
+  readonly latex?: string;
+  /** The equation as a picture, set by the importer's enrich pass; the snapshot prefers it to the text. */
+  rendered?: RenderedEquation;
 }
 export interface XlsxSheet {
   readonly name: string;
@@ -461,7 +475,7 @@ export async function openXlsx(bytes: Uint8Array | ArrayBuffer): Promise<XlsxWor
   const ssXml = await text('xl/sharedStrings.xml');
   if (ssXml) {
     for (const si of children(child(parseXml(ssXml), 'sst'), 'si')) {
-      sharedStrings.push(deepText(si, 't'));
+      sharedStrings.push(stripLinearPlaceholders(deepText(si, 't')));
       const runs = richRunsOf(si, tables);
       if (runs) sharedRuns.set(sharedStrings.length - 1, runs);
     }
@@ -513,8 +527,8 @@ export async function openXlsx(bytes: Uint8Array | ArrayBuffer): Promise<XlsxWor
         let kind: 'error' | undefined;
         let rich: RichRun[] | undefined;
         if (type === 's') { const idx = Number(vNode?.text ?? -1); value = sharedStrings[idx] ?? ''; rich = sharedRuns.get(idx); }
-        else if (type === 'inlineStr') { const is = child(c, 'is'); value = deepText(is, 't'); rich = is ? richRunsOf(is, tables) ?? undefined : undefined; }
-        else if (type === 'str' || type === 'd') value = vNode?.text ?? '';
+        else if (type === 'inlineStr') { const is = child(c, 'is'); value = stripLinearPlaceholders(deepText(is, 't')); rich = is ? richRunsOf(is, tables) ?? undefined : undefined; }
+        else if (type === 'str' || type === 'd') value = stripLinearPlaceholders(vNode?.text ?? '');
         else if (type === 'b') value = vNode?.text === '1';
         else if (type === 'e') { value = vNode?.text ?? '#VALUE!'; kind = 'error'; }
         else if (vNode && vNode.text !== '') value = Number(vNode.text);
@@ -579,14 +593,17 @@ export async function openXlsx(bytes: Uint8Array | ArrayBuffer): Promise<XlsxWor
               const mediaTarget = dRels.get(embed);
               const mediaPath = mediaTarget ? resolvePath('xl/drawings/', mediaTarget) : '';
               const ext2 = mediaPath.slice(mediaPath.lastIndexOf('.') + 1).toLowerCase();
-              const mime = ext2 === 'png' ? 'image/png' : ext2 === 'jpg' || ext2 === 'jpeg' ? 'image/jpeg' : ext2 === 'gif' ? 'image/gif' : ext2 === 'bmp' ? 'image/bmp' : ext2 === 'svg' ? 'image/svg+xml' : '';
+              const mime = ext2 === 'png' ? 'image/png' : ext2 === 'jpg' || ext2 === 'jpeg' ? 'image/jpeg' : ext2 === 'gif' ? 'image/gif' : ext2 === 'bmp' ? 'image/bmp' : ext2 === 'svg' ? 'image/svg+xml'
+                : ext2 === 'emf' ? 'image/x-emf' : ext2 === 'wmf' ? 'image/x-wmf' : '';
               const file = mime ? zip.file(mediaPath) : null;
               if (!file) { imagesSkipped++; continue; }
               images.push({ from, to: to ?? undefined, extPx, mime, base64: await file.async('base64'), name: child(child(pic, 'nvPicPr'), 'cNvPr')?.attrs.name ?? 'Picture' });
               continue;
             }
             const paragraphs = textBoxParagraphs(item);
-            if (paragraphs.length) {
+            const omml = ommlOf.get(item);
+            const latex = omml ? ommlToLatex(omml).trim() : '';
+            if (paragraphs.length || latex) {
               const spPr = child(item, 'spPr');
               const fill = spPr ? drawingFill(spPr, theme) : null;
               const bodyPr = child(child(item, 'txBody'), 'bodyPr');
@@ -596,6 +613,7 @@ export async function openXlsx(bytes: Uint8Array | ArrayBuffer): Promise<XlsxWor
                 text: paragraphs.map((p) => p.runs.map((r) => r.text).join('')).join('\n'),
                 paragraphs, fill,
                 insetPx: { left: inset('lIns', 10), top: inset('tIns', 5) },
+                ...(latex ? { latex } : {}),
               });
             }
             }
@@ -626,6 +644,7 @@ function resolvePath(baseDir: string, target: string): string {
  * same box with plain-text runs, which is the readable form; groups nest
  * their members.
  */
+const ommlOf = new WeakMap<XNode, XNode>();
 function collectDrawables(node: XNode, out: XNode[]): void {
   for (const c of node.children) {
     if (c.name === 'pic' || c.name === 'sp') out.push(c);
@@ -635,6 +654,15 @@ function collectDrawables(node: XNode, out: XNode[]): void {
       if (fallback) collectDrawables(fallback, picked);
       const choice = child(c, 'Choice');
       if (!picked.length && choice) collectDrawables(choice, picked);
+      // The fallback carries Excel's linear text; the Choice carries the
+      // maths. Keep the maths beside the shape the loop will read, so the
+      // text box can be rendered as an equation instead of as that text.
+      if (choice && picked.length === 1 && picked[0].name === 'sp') {
+        const chosen: XNode[] = [];
+        collectDrawables(choice, chosen);
+        const omml = chosen.length === 1 ? findOmml(chosen[0]) : null;
+        if (omml) ommlOf.set(picked[0], omml);
+      }
       out.push(...picked);
     } else if (c.name === 'grpSp') collectDrawables(c, out);
   }
@@ -646,7 +674,7 @@ function richRunsOf(si: XNode, tables: StyleTables): RichRun[] | null {
   const runs: RichRun[] = [];
   let styled = false;
   for (const r of rs) {
-    const t = deepText(r, 't');
+    const t = stripLinearPlaceholders(deepText(r, 't'));
     if (!t) continue;
     const pr = child(r, 'rPr');
     const run: { -readonly [K in keyof RichRun]: RichRun[K] } = { text: t };
@@ -677,7 +705,7 @@ function textBoxParagraphs(sp: XNode): DrawParagraph[] {
     const walk = (n: XNode): void => {
       for (const c of n.children) {
         if (c.name === 'r' || c.name === 'fld') {
-          const t = deepText(c, 't');
+          const t = stripLinearPlaceholders(deepText(c, 't'));
           if (!t) continue;
           const pr = child(c, 'rPr');
           const run: { -readonly [K in keyof RichRun]: RichRun[K] } = { text: t };
@@ -850,6 +878,7 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
   const drawings: Record<string, unknown> = {};
   const order: string[] = [];
   sheet.images.forEach((img, i) => {
+    if (img.mime.startsWith('image/x-')) { stats.imagesSkipped++; return; }
     const left = xOf(img.from);
     const top = yOf(img.from);
     let width: number;
@@ -885,13 +914,24 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
       width = Math.max(8, tb.extPx?.width ?? 120); height = Math.max(8, tb.extPx?.height ?? 24);
       to = anchorAt(left + width, top + height, widthOf, heightOf);
     }
-    const svg = textBoxSvg(tb, width, height);
+    // A rendered equation takes its own size, capped at the box Excel gave it;
+    // anything else is the text box drawn as SVG.
+    let source: string;
+    if (tb.rendered) {
+      const scale = Math.min(1, width / Math.max(1, tb.rendered.width));
+      width = Math.max(8, Math.round(tb.rendered.width * scale));
+      height = Math.max(8, Math.round(tb.rendered.height * scale));
+      to = anchorAt(left + width, top + height, widthOf, heightOf);
+      source = `data:${tb.rendered.mime};base64,${tb.rendered.base64}`;
+    } else {
+      source = `data:image/svg+xml;base64,${toBase64Utf8(textBoxSvg(tb, width, height))}`;
+    }
     const drawingId = `tb${i}`;
     const from = { row: tb.from.row, column: tb.from.col, rowOffset: tb.from.rowOffsetPx, columnOffset: tb.from.colOffsetPx };
     const toPos = { row: to.row, column: to.col, rowOffset: to.rowOffsetPx, columnOffset: to.colOffsetPx };
     drawings[drawingId] = {
       unitId, subUnitId: sheetId, drawingId, drawingType: 0, imageSourceType: 'BASE64',
-      source: `data:image/svg+xml;base64,${toBase64Utf8(svg)}`,
+      source,
       transform: { left, top, width, height, angle: 0, skewX: 0, skewY: 0, flipX: false, flipY: false },
       sheetTransform: { from, to: toPos },
       axisAlignSheetTransform: { from, to: toPos },

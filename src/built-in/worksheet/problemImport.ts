@@ -9,6 +9,7 @@
 // as a snapshot with the rating dropdown stripped. The sheet keeps its
 // formatting; nothing here reshapes it.
 import { cellText, findCell, sheetToSnapshot, type XlsxSheet, type XlsxWorkbook, type SnapshotStats } from './ooxml.js';
+import { enrichSheetDrawings } from './equationImage.js';
 
 // ── Ratings ─────────────────────────────────────────────────────────────────
 // Stored as easy | medium | hard. Older attempts wrote nailed | partial |
@@ -75,17 +76,90 @@ export interface DetectResult {
 
 const MACHINERY = new Set(['dashboard', 'quiz template', 'instructions', 'quiz generator', 'problems', 'dashboard_data', 'template', 'flashcards']);
 
-/** Problem sheets are named Paper.Source_NN; everything else is the workbook's machinery. */
+/**
+ * Problem sheets are named Paper.Source_NN (ProblemTrack), "Q #N" (a Rising
+ * Fellow practice exam or problem bank), "2016 #15" (a past CAS question in
+ * an RF bank) or "MAC-01" (the question bank's codes); everything else is
+ * the workbook's machinery.
+ */
+const PRACTICE_SHEET = /^(Q\s*#?\s*\d+|\d{4}\s*#\s*\d+|[A-Z]{2,4}-\d{2,3})$/i;
 export function isProblemSheetName(name: string): boolean {
   const n = String(name ?? '').trim();
-  return n.includes('.') && !MACHINERY.has(n.toLowerCase());
+  if (MACHINERY.has(n.toLowerCase())) return false;
+  return n.includes('.') || PRACTICE_SHEET.test(n);
 }
 
 export function sourceOf(sheetName: string): ProblemImport['source'] {
   if (/\.RF_/i.test(sheetName)) return 'rf';
   if (/\.CAS_/i.test(sheetName)) return 'cas';
   if (/custom/i.test(sheetName)) return 'custom';
+  if (/^\d{4}\s*#/.test(sheetName)) return 'cas';
+  if (/^Q\s*#?\s*\d+$/i.test(sheetName)) return 'rf';
+  if (/^[A-Z]{2,4}-\d{2,3}$/i.test(sheetName)) return 'custom';
   return 'other';
+}
+
+/** A paper as a point sheet or a contents page names it ("Mack - Chain Ladder") to its key. */
+export function paperKeyFromLabel(label: string): string {
+  const l = String(label ?? '').toLowerCase();
+  if (!l.trim()) return '';
+  if (l.includes('mack')) return /benktander|2000/.test(l) ? 'mack2000' : /chain|1994/.test(l) ? 'mack1994' : 'mack2000';
+  if (/h[üu]rlimann/.test(l)) return 'hurlimann';
+  if (l.includes('sahas')) return 'sahas';
+  if (l.includes('teng')) return /disc/.test(l) ? 'tengdisc' : 'teng';
+  return paperKey(/[a-z]+/.exec(l)?.[0] ?? '');
+}
+
+/** "RF Meyers - 3" names its paper; a practice-exam sheet leaves A1 empty. */
+function paperFromTitle(a1: string): string {
+  const m = /^RF\s+(.+?)\s*-\s*\d+/i.exec(a1.trim());
+  return m ? paperKeyFromLabel(m[1]) : '';
+}
+
+interface SheetHint { paper?: string; title?: string; task?: string; points?: number }
+const cellsByRow = (sheet: XlsxSheet): Map<number, Map<number, string | number | boolean>> => {
+  const rows = new Map<number, Map<number, string | number | boolean>>();
+  for (const c of sheet.cells) {
+    if (c.value === undefined) continue;
+    let row = rows.get(c.row);
+    if (!row) { row = new Map(); rows.set(c.row, row); }
+    row.set(c.col, c.value);
+  }
+  return rows;
+};
+/**
+ * What the workbook says about its sheets beyond their names: a practice
+ * exam's PointSheet (question, paper, points, task) and the question bank's
+ * Contents (code, paper, title, points, task).
+ */
+async function readSheetHints(book: XlsxWorkbook): Promise<Map<string, SheetHint>> {
+  const hints = new Map<string, SheetHint>();
+  const str = (v: string | number | boolean | undefined): string => (v === undefined ? '' : String(v).trim());
+  if (book.sheetNames.includes('PointSheet')) {
+    try {
+      const rows = cellsByRow(await book.readSheet('PointSheet'));
+      for (const row of rows.values()) {
+        const q = row.get(0);
+        if (typeof q !== 'number') continue;
+        const paper = str(row.get(2)); const points = row.get(3); const task = str(row.get(5));
+        const hint: SheetHint = { paper, task, ...(typeof points === 'number' ? { points } : {}) };
+        hints.set(`Q #${q}`, hint);
+        hints.set(`Q#${q}`, hint);
+      }
+    } catch { /* no hints, the sheets still import */ }
+  }
+  if (book.sheetNames.includes('Contents')) {
+    try {
+      const rows = cellsByRow(await book.readSheet('Contents'));
+      for (const row of rows.values()) {
+        const code = str(row.get(1));
+        if (!/^[A-Z]{2,4}-\d{2,3}$/.test(code)) continue;
+        const points = row.get(4);
+        hints.set(code, { paper: str(row.get(2)), title: str(row.get(3)), task: str(row.get(5)), ...(typeof points === 'number' ? { points } : {}) });
+      }
+    } catch { /* as above */ }
+  }
+  return hints;
 }
 
 /** The workbook's index sheet, when present: sheet name → type and quadrant. */
@@ -139,6 +213,7 @@ export function problemTags(p: Pick<ProblemImport, 'paper' | 'source' | 'kind' |
  */
 export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: number, total: number) => void): Promise<DetectResult> {
   const index = await readIndex(book);
+  const hints = await readSheetHints(book);
   const names = book.sheetNames.filter(isProblemSheetName);
   const problems: ProblemImport[] = [];
   const skipped: { name: string; reason: string }[] = [];
@@ -149,6 +224,8 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
   for (const name of names) {
     let sheet: XlsxSheet;
     try { sheet = await book.readSheet(name); } catch (err) { skipped.push({ name, reason: `could not read: ${(err as Error).message}` }); continue; }
+    // Equations to pictures, metafiles to PNG, before the snapshot fixes what the sheet shows.
+    await enrichSheetDrawings(sheet);
     const solution = findCell(sheet, (t, r) => r <= 2 && /^solutions?\b/i.test(t.trim()));
     const work = findCell(sheet, (t) => /^show all work/i.test(t.trim()));
     // The rating cell stays as it is, thick border and all: the problem tab
@@ -156,7 +233,11 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
     const ratingCell = findCell(sheet, (t, r) => r <= 2 && /^self-rating/i.test(t.trim()));
     const drop = new Set<string>();
     const rating: Rating = ratingCell ? normalizeRating(cellText(sheet, ratingCell.row, ratingCell.col + 1)) : '';
-    const paper = paperKey(name.split('.')[0]);
+    const a1 = cellText(sheet, 0, 0).trim();
+    const hint = hints.get(name) ?? hints.get(name.replace(/\s+/g, ''));
+    const paper = name.includes('.') ? paperKey(name.split('.')[0])
+      : hint?.paper ? paperKeyFromLabel(hint.paper)
+        : paperFromTitle(a1);
     const source = sourceOf(name);
     const indexed = index.get(name);
     const kind: ProblemImport['kind'] = /essay/i.test(name) ? 'essay'
@@ -165,10 +246,17 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
           : solution ? 'quant' : 'qual';
     const quadrant = indexed && indexed.quadrant >= 1 && indexed.quadrant <= 4 ? indexed.quadrant : 0;
     const { workbook, stats } = sheetToSnapshot(sheet, book, { dropCells: drop });
-    const a1 = cellText(sheet, 0, 0).trim();
+    // A practice-exam sheet has no title in A1: "Source: | PE 1 | Exam 7 | Q #3".
+    // Name it by the exam and the question, with the paper when the point
+    // sheet gives one; a bank code takes the contents page's title.
+    const exam = /^source:?$/i.test(cellText(sheet, 0, 1).trim()) ? cellText(sheet, 0, 2).trim()
+      : /^source:?$/i.test(a1) ? cellText(sheet, 0, 1).trim() : '';
+    const title = a1 && !/^source:?$/i.test(a1) ? a1
+      : hint?.title ? `${name} · ${hint.title}`
+        : [exam, name, paper ? paperLabel(paper) : ''].filter(Boolean).join(' · ');
     const problem: ProblemImport = {
       sheetName: name,
-      title: a1 || name,
+      title: title || name,
       paper,
       source,
       kind,
@@ -181,7 +269,8 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
       tags: '',
       stats,
     };
-    problems.push({ ...problem, tags: problemTags(problem) });
+    // The content-outline task (A.iii.2) rides along as a tag when the workbook names one.
+    problems.push({ ...problem, tags: problemTags(problem) + (hint?.task ? `,${hint.task}` : '') });
     done++;
     onProgress?.(done, names.length);
   }

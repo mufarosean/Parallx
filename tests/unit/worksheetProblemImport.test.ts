@@ -106,7 +106,8 @@ describe('detectProblems', () => {
     const [rf, cas, essay] = problems;
     expect(rf).toMatchObject({ title: 'RF Brosius - 1', paper: 'brosius', source: 'rf', kind: 'quant', quadrant: 2, rating: 'medium', solutionCol: 10, workRow: 18, tags: 'brosius,rf,quant,q2' });
     expect(rf.questionMd).toBe('Given the following information for insurer ABC:\nCalculate the estimated ultimate losses for accident year 2013.');
-    expect(cas).toMatchObject({ title: 'Source:', paper: 'clark', source: 'cas', kind: 'qual', quadrant: 1, rating: '', solutionCol: 11, workRow: 22 });
+    // A "Source:" row is not a title; the sheet is named by its exam, its sheet and its paper.
+    expect(cas).toMatchObject({ title: 'Spring 2016 · Clark.CAS_SP16_04 · Clark', paper: 'clark', source: 'cas', kind: 'qual', quadrant: 1, rating: '', solutionCol: 11, workRow: 22 });
     expect(essay).toMatchObject({ paper: 'venter', source: 'rf', kind: 'essay', quadrant: 0, rating: 'hard', solutionCol: -1, workRow: -1 });
 
     // The snapshot keeps the whole sheet, the rating cell included with its thick border; the tab rewrites its text.

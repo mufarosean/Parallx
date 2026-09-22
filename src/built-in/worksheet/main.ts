@@ -2288,6 +2288,12 @@ function createPracticeRunPane(container: HTMLElement) {
 // merges and layout intact. Detection is mechanical (no AI): "Item N /
 // Answer N" pairs, and question-left / "Solution ->"-right sheets.
 
+// A workbook path handed to `worksheet.importExcel` (a probe, a drop, a
+// script) skips the native dialog: the live pane takes it at once, a pane not
+// yet built takes it when it mounts.
+let _pendingImportPath: string | null = null;
+let _importPaneHooks: { importPath(filePath: string): Promise<void> } | null = null;
+
 function createExcelImportPane(container: HTMLElement) {
   const root = el('div', 'ws-pane ws-create');
   container.appendChild(root);
@@ -2498,25 +2504,21 @@ function createExcelImportPane(container: HTMLElement) {
     listHost.appendChild(importBtn);
   };
 
-  pickBtn.addEventListener('click', () => {
-    void (async () => {
+  const importPath = async (filePath: string): Promise<void> => {
       const electron = (window as {
         parallxElectron?: {
-          dialog?: { openFile?(opts: unknown): Promise<string[] | null> };
           document?: { extractWorkbookGrid?(p: string): Promise<{ error?: { message: string }; sheets?: GridSheet[] }> };
           fs?: { readFile?(p: string): Promise<{ error?: { message: string }; content?: string; encoding?: string }> };
         };
       }).parallxElectron;
-      if (!electron?.dialog?.openFile || !electron?.document?.extractWorkbookGrid) {
+      // An .xlsx/.xlsm goes through the app's own reader (fs.readFile); only
+      // the legacy .xls path needs the document extractor.
+      const ooxml = /\.(xlsx|xlsm)$/i.test(filePath);
+      if (!electron || (ooxml ? !electron.fs?.readFile : !electron.document?.extractWorkbookGrid)) {
         err.textContent = 'Excel import needs the desktop app.';
         err.style.display = '';
         return;
       }
-      const res = await electron.dialog.openFile({
-        title: 'Import practice problems',
-        filters: [{ name: 'Excel Workbooks', extensions: ['xlsx', 'xlsm', 'xls'] }],
-      });
-      const filePath = Array.isArray(res) ? res[0] : undefined;
       if (!filePath || disposed) return;
       const fileLabel = filePath.split(/[\\/]/).pop() || 'Workbook';
       status.textContent = `Reading ${fileLabel}…`;
@@ -2552,6 +2554,7 @@ function createExcelImportPane(container: HTMLElement) {
         }
       }
       try {
+        if (!electron.document?.extractWorkbookGrid) throw new Error('the document extractor is not available');
         const grid = await electron.document.extractWorkbookGrid(filePath);
         if (grid?.error) throw new Error(grid.error.message);
         const sheets = grid?.sheets ?? [];
@@ -2565,12 +2568,23 @@ function createExcelImportPane(container: HTMLElement) {
         err.textContent = `Could not read the workbook: ${(e as Error).message}`;
         err.style.display = '';
       }
+  };
+  _importPaneHooks = { importPath };
+  pickBtn.addEventListener('click', () => {
+    void (async () => {
+      const dialog = (window as { parallxElectron?: { dialog?: { openFile?(opts: unknown): Promise<string[] | null> } } }).parallxElectron?.dialog;
+      if (!dialog?.openFile) { err.textContent = 'Excel import needs the desktop app.'; err.style.display = ''; return; }
+      const res = await dialog.openFile({ title: 'Import practice problems', filters: [{ name: 'Excel Workbooks', extensions: ['xlsx', 'xlsm', 'xls'] }] });
+      const filePath = Array.isArray(res) ? res[0] : undefined;
+      if (filePath) await importPath(filePath);
     })();
   });
+  if (_pendingImportPath) { const p = _pendingImportPath; _pendingImportPath = null; void importPath(p); }
 
   return {
     dispose: () => {
       disposed = true;
+      if (_importPaneHooks?.importPath === importPath) _importPaneHooks = null;
       root.remove();
     },
   };
@@ -3365,7 +3379,13 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
     api.commands.registerCommand('worksheet.generate', () => openWorksheet('create', 'Generate Items')),
   );
   context.subscriptions.push(
-    api.commands.registerCommand('worksheet.importExcel', () => openWorksheet('excel-import', 'Import Workbook')),
+    api.commands.registerCommand('worksheet.importExcel', async (filePath?: unknown) => {
+      await openWorksheet('excel-import', 'Import Workbook');
+      if (typeof filePath === 'string' && filePath) {
+        if (_importPaneHooks) void _importPaneHooks.importPath(filePath);
+        else _pendingImportPath = filePath;
+      }
+    }),
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.practice', () => openWorksheet('practice', 'Quiz')),

@@ -108,14 +108,20 @@ describe('openXlsx + sheetToSnapshot', () => {
     expect(sheet.rows.find((r) => r.index === 1)?.heightPx).toBe(40);
     expect(sheet.rows.find((r) => r.index === 2)?.hidden).toBe(true);
     expect(sheet.merges).toEqual([{ r0: 4, c0: 1, r1: 4, c1: 4 }]);
-    expect(sheet.images).toHaveLength(1);
-    expect(sheet.imagesSkipped).toBe(1);                              // the emf
+    // Metafiles are read, not skipped: the importer rasterises them before
+    // the snapshot, which skips any that are still metafiles.
+    expect(sheet.images).toHaveLength(2);
+    expect(sheet.imagesSkipped).toBe(0);
     expect(sheet.images[0].mime).toBe('image/png');
+    expect(sheet.images[1].mime).toBe('image/x-emf');
     expect(sheet.textBoxes.map((t) => [t.from.row, t.from.col, t.text])).toEqual([
       [3, 1, 'y\u0302 = a + bx'],
       [1, 1, 'Link Ratio:\ny = LDF x'], // the Fallback's plain text, not the OMML
     ]);
     expect(sheet.textBoxes[1].paragraphs).toHaveLength(2);
+    // The equation shape keeps its maths as LaTeX beside the fallback text.
+    expect(sheet.textBoxes[0].latex).toBeUndefined();
+    expect(sheet.textBoxes[1].latex).toBe('OMML');
 
     const { workbook, stats } = sheetToSnapshot(sheet, book, { unitId: 'u', sheetId: 's', dropCells: new Set(['0:3', '0:4']), hideFromColumn: 10 });
     const ws = workbook.sheets.s as unknown as { cellData: Record<number, Record<number, Record<string, unknown>>>; columnData: Record<number, { w?: number; hd?: number }>; rowData: Record<number, { h?: number; hd?: number }>; mergeData: unknown[]; defaultColumnWidth: number; defaultRowHeight: number };
@@ -142,8 +148,17 @@ describe('openXlsx + sheetToSnapshot', () => {
     expect(stats.textBoxes).toBe(2);
     expect(stats.textBoxesDropped).toBe(0);
     expect(stats.images).toBe(1);
+    expect(stats.imagesSkipped).toBe(1);                              // the metafile nobody rasterised
     const resources = (workbook as unknown as { resources: { name: string; data: string }[] }).resources;
     expect(resources[0].name).toBe('SHEET_DRAWING_PLUGIN');
+
+    // A rendered equation replaces the text box's SVG with its own picture at its own size.
+    sheet.textBoxes[1].rendered = { mime: 'image/png', base64: 'AAAA', width: 40, height: 20 };
+    const again = sheetToSnapshot(sheet, book, { unitId: 'u', sheetId: 's' });
+    const drawingsAgain = JSON.parse((again.workbook as unknown as { resources: { data: string }[] }).resources[0].data).s;
+    expect(drawingsAgain.data.tb1.source).toBe('data:image/png;base64,AAAA');
+    expect(drawingsAgain.data.tb1.transform).toMatchObject({ width: 40, height: 20 });
+    expect(drawingsAgain.data.tb0.source.startsWith('data:image/svg+xml;base64,')).toBe(true);
     const drawing = JSON.parse(resources[0].data).s.data.img0;
     expect(drawing.imageSourceType).toBe('BASE64');
     expect(drawing.source.startsWith('data:image/png;base64,')).toBe(true);

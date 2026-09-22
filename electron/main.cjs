@@ -40,6 +40,7 @@ const { setupPythonBridge } = pythonBridge;
 const notebookKernelBridge = require('./notebookKernelBridge.cjs');
 const { setupNotebookKernelBridge } = notebookKernelBridge;
 const { registerDashboardAssetScheme, setupDashboardAssetBridge } = require('./dashboardAssetBridge.cjs');
+const { setupImageBridge } = require('./imageBridge.cjs');
 
 // The parallx-asset:// scheme (dashboard image/GIF assets) must be registered
 // as privileged BEFORE app 'ready'; the handler itself is wired in whenReady.
@@ -817,6 +818,7 @@ app.whenReady().then(async () => {
 
   // File-backed dashboard image/GIF assets (served over parallx-asset://).
   setupDashboardAssetBridge(ipcMain, protocol, APP_ROOT);
+  setupImageBridge(ipcMain);
   // ── M53: Migrate tools from ~/.parallx/tools/ → data/extensions/ ──
   const oldToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
   try {
