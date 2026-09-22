@@ -35,9 +35,10 @@
      prose editor face. Every referencing site here is a code context. */
   --vscode-editor-font-family: var(--px-font-mono);
   /* Size aliases for the same reason: referenced, defined nowhere, so every
-     site drew its fallback instead of the app's type scale. */
-  --vscode-font-size: var(--px-text-md);
-  --vscode-editor-font-size: var(--px-text-md);
+     site drew its 13px fallback; the base step keeps that size, so the chat and
+     settings surfaces reading these do not grow when the alias lands. */
+  --vscode-font-size: var(--px-text-base);
+  --vscode-editor-font-size: var(--px-text-base);
 
   /* ── Tier 1 · Primitives — DEFAULT THEME: "Parallx Warm Dark" ──────────────
      A warm-neutral charcoal (Obsidian density, Notion warmth) — deliberately
