@@ -1850,7 +1850,7 @@ function createGraphEditor(container, api) {
 
       // THE dropdown (api.ui.createDropdown) in place of a native <select>.
       const mergeTarget = api.ui.createDropdown(row.querySelector('[data-role="merge-target"]'), {
-        items: [{ value: '', label: 'Pick a concept' }, ...otherIdsFor(stableId).map((o) => ({ value: o.stableId, label: o.label }))],
+        items: [{ value: '', label: 'Pick a Concept' }, ...otherIdsFor(stableId).map((o) => ({ value: o.stableId, label: o.label }))],
         selected: '',
         ariaLabel: 'Merge into',
       });

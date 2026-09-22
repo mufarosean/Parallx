@@ -5676,9 +5676,9 @@ kbd.mo-key {
 }
 /* The view row: one height, one baseline, one gap inside a group and a wider one between. */
 .mo-toolbar { gap: 6px; padding: 6px 10px; min-height: 40px; box-sizing: border-box; }
-.mo-toolbar-btn { height: 26px; box-sizing: border-box; padding: 0 8px; }
+.mo-toolbar-btn { height: var(--px-control-h); box-sizing: border-box; padding: 0 8px; }
 .mo-search-wrap { position: relative; display: flex; flex: 1 1 260px; min-width: 160px; max-width: 520px; }
-.mo-search-wrap .mo-toolbar-search { width: 100%; height: 26px; box-sizing: border-box; padding: 0 26px; background: transparent; border-color: transparent; }
+.mo-search-wrap .mo-toolbar-search { width: 100%; height: var(--px-control-h); box-sizing: border-box; padding: 0 26px; background: transparent; border-color: transparent; }
 .mo-search-wrap .mo-toolbar-search:hover { background: var(--vscode-input-background, var(--px-bg-inset)); }
 .mo-search-wrap .mo-toolbar-search:focus { background: var(--vscode-input-background, var(--px-bg-inset)); border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 .mo-search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); display: inline-flex; opacity: 0.55; pointer-events: none; }
@@ -5686,10 +5686,10 @@ kbd.mo-key {
 .mo-toolbar > .mo-toolbar-btn { background: transparent; border-color: transparent; }
 .mo-toolbar > .mo-toolbar-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
 .mo-toolbar > .mo-toolbar-btn.active { border-color: var(--vscode-button-background, #0e639c); }
-.mo-search-wrap .mo-search-help-btn { position: absolute; right: 1px; top: 1px; height: 24px; width: 24px; padding: 0; justify-content: center; background: transparent; border: none; opacity: 0.6; }
+.mo-search-wrap .mo-search-help-btn { position: absolute; right: 1px; top: 1px; height: calc(var(--px-control-h) - 2px); width: calc(var(--px-control-h) - 2px); padding: 0; justify-content: center; background: transparent; border: none; opacity: 0.6; }
 .mo-search-wrap .mo-search-help-btn:hover { opacity: 1; background: transparent; }
 .mo-toolbar-spacer { flex: 1 1 0; min-width: 6px; }
-.mo-segment { display: inline-flex; height: 26px; box-sizing: border-box; border: 1px solid var(--vscode-panel-border, var(--px-border, #555)); border-radius: var(--parallx-radius-sm, 3px); overflow: hidden; background: var(--vscode-button-secondaryBackground, var(--vscode-input-background, #3a3a3a)); }
+.mo-segment { display: inline-flex; height: var(--px-control-h); box-sizing: border-box; border: 1px solid var(--vscode-panel-border, var(--px-border, #555)); border-radius: var(--parallx-radius-sm, 3px); overflow: hidden; background: var(--vscode-button-secondaryBackground, var(--vscode-input-background, #3a3a3a)); }
 .mo-segment-btn { border: none; background: transparent; color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc)); padding: 0 10px; font-size: var(--parallx-fontSize-sm, 11px); font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 .mo-segment-btn + .mo-segment-btn { border-left: 1px solid var(--vscode-panel-border, var(--px-border, #555)); }
 .mo-segment-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
@@ -5708,7 +5708,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 /* The selection row takes the view row's place. */
 .mo-grid-browser.is-selecting > .mo-toolbar { display: none; }
 .mo-selection-bar { gap: 6px; padding: 6px 10px; min-height: 40px; box-sizing: border-box; }
-.mo-selection-bar .mo-sel-btn { height: 26px; box-sizing: border-box; padding: 0 10px; font-size: var(--parallx-fontSize-sm, 11px); display: inline-flex; align-items: center; gap: 6px; border-radius: var(--parallx-radius-sm, 3px); border-color: transparent; }
+.mo-selection-bar .mo-sel-btn { height: var(--px-control-h); box-sizing: border-box; padding: 0 10px; font-size: var(--parallx-fontSize-sm, 11px); display: inline-flex; align-items: center; gap: 6px; border-radius: var(--parallx-radius-sm, 3px); border-color: transparent; }
 .mo-selection-bar .mo-sel-count { font-weight: 600; }
 .mo-selection-bar .mo-sel-more, .mo-selection-bar .mo-sel-delete { padding: 0 7px; }
 .mo-selection-bar .mo-sel-delete { border-color: transparent; }
@@ -11657,7 +11657,7 @@ function renderGridBrowser(container, api, input) {
       iconName = 'search';
       title = 'No matches';
       sub = 'No media matches your current search and filters.';
-      actions.push({ label: 'Clear search & filters', primary: true, onClick: () => {
+      actions.push({ label: 'Clear Search & Filters', primary: true, onClick: () => {
         searchInput.value = '';
         state.filters = { tagIds: [], excludeTagIds: [], tagDepth: 0, tagMatch: 'and', ratingMin: null, dateFrom: null, dateTo: null };
         tagDepthCb.checked = false; dateFrom.value = ''; dateTo.value = ''; tagPickerSearch.value = '';
@@ -20068,7 +20068,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const modeRow = moEl('div', 'mo-clip-row');
   modeRow.appendChild(lbl('Mode'));
   const modeWrap = moEl('div', 'mo-clip-mode-toggle');
-  const modeOutBtn = moEl('button', 'mo-active', { textContent: 'Out point' });
+  const modeOutBtn = moEl('button', 'mo-active', { textContent: 'Out Point' });
   const modeDurBtn = moEl('button', null, { textContent: 'Duration' });
   modeWrap.append(modeOutBtn, modeDurBtn);
   modeRow.appendChild(modeWrap);
@@ -20082,7 +20082,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   inInput.value = (Math.max(0, initialIn || 0)).toFixed(2);
   inInput.className = 'mo-clip-input';
   inRow.appendChild(inInput);
-  const setInBtn = moEl('button', 'mo-mark-btn', { textContent: 'Set here', title: 'Set In to current playhead (I)' });
+  const setInBtn = moEl('button', 'mo-mark-btn', { textContent: 'Set Here', title: 'Set In to current playhead (I)' });
   inRow.appendChild(setInBtn);
   secTrim.appendChild(inRow);
 
@@ -20095,7 +20095,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   outInput.value = (initialOut > 0 ? initialOut : duration).toFixed(2);
   outInput.className = 'mo-clip-input';
   outRow.appendChild(outInput);
-  const setOutBtn = moEl('button', 'mo-mark-btn', { textContent: 'Set here', title: 'Set Out to current playhead (O)' });
+  const setOutBtn = moEl('button', 'mo-mark-btn', { textContent: 'Set Here', title: 'Set Out to current playhead (O)' });
   outRow.appendChild(setOutBtn);
   secTrim.appendChild(outRow);
 
@@ -20518,7 +20518,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     textContent: 'Point track',
     title: 'Pick the exact thing to follow: click this, then click the subject on the video, size the crop window, and click again to run. Right-click the marker to clear the point.',
   });
-  const clearKeysBtn = moEl('button', 'mo-mark-btn', { textContent: 'Clear keys', title: 'Remove all crop keyframes (back to a static crop)' });
+  const clearKeysBtn = moEl('button', 'mo-mark-btn', { textContent: 'Clear Keys', title: 'Remove all crop keyframes (back to a static crop)' });
   const keyCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
   keyRow.append(addKeyBtn, trackBtn, pointBtn, clearKeysBtn, keyCount);
   secCrop.appendChild(keyRow);
@@ -22287,7 +22287,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // \u2014 in/out times can therefore exceed the source duration; we clamp at
   // load. Save uses whatever is currently in the queue.
   const presetsRow = moEl('div', 'mo-clip-presets-row');
-  const saveBtn = moEl('button', 'mo-mark-btn', { textContent: 'Save preset', title: 'Save the current queue as a named preset' });
+  const saveBtn = moEl('button', 'mo-mark-btn', { textContent: 'Save Preset', title: 'Save the current queue as a named preset' });
   saveBtn.style.fontSize = '10px';
   saveBtn.style.padding = '3px 7px';
   presetsRow.appendChild(saveBtn);
@@ -22786,7 +22786,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
             + (trackPoint ? ' · point' : '')
           : 'On · static' + (trackPoint ? ' · point' : ''));
     const flt = MO_CLIP_FILTERS.find((x) => x.id === filterSel.value);
-    const lookBits = [flt && flt.id !== 'none' ? flt.label : 'No filter'];
+    const lookBits = [flt && flt.id !== 'none' ? flt.label : 'No Filter'];
     if (muteChk.checked) lookBits.push('mute');
     if (revChk.checked) lookBits.push('rev');
     accSections.look.sum.textContent = lookBits.join(' · ');
@@ -25388,7 +25388,7 @@ function buildDupGroup(api, files, label) {
   renderList();
 
   const actions = moEl('div', 'mo-dup-actions');
-  const trashBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Send others to OS trash' });
+  const trashBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Send Others to OS Trash' });
   trashBtn.addEventListener('click', async () => {
     if (!keeperId) return;
     const sep = _isWindows ? '\\' : '/';

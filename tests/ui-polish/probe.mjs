@@ -149,8 +149,8 @@ try {
   assert.equal(await page.getByRole('radio',{name:'Red flag',exact:true}).getAttribute('aria-checked'), 'true');
   assert.equal(await page.locator('.fc-study__keys, .fc-study__flagmenu').count(),0);
   assert.equal(await page.getByRole('button',{name:'Shuffle',exact:true}).innerText(),'');
-  await page.getByRole('button',{name:'More card actions',exact:true}).click();
-  await page.getByRole('menuitem',{name:'Delete card',exact:true}).waitFor();
+  await page.getByRole('button',{name:'More Card Actions',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Delete Card',exact:true}).waitFor();
   await page.keyboard.press('Escape');
   await shot('study-front');
   await page.getByRole('button', {name:'Show Answer',exact:true}).click();
@@ -182,7 +182,7 @@ try {
   await page.getByRole('button',{name:'Show Answer',exact:true}).click();
   await page.locator('.fc-study__back').waitFor();
   await page.locator('.fc-study__notes-body .katex').first().waitFor();
-  await page.getByRole('button',{name:'Edit notes',exact:true}).click();
+  await page.getByRole('button',{name:'Edit Notes',exact:true}).click();
   assert.equal(await page.getByRole('textbox',{name:'Card notes',exact:true}).inputValue(),note,'Notes should survive grading and Undo');
   await page.getByRole('button',{name:'Discard',exact:true}).click();
   await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));

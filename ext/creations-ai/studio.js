@@ -688,7 +688,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     try {
       const settings = await deps.loadSettings(fs, workspaceUri);
       const models = await parallx.lm.getModels();
-      if (!models.length) modelSelect.setItems([{ value: '', label: 'No models available' }]);
+      if (!models.length) modelSelect.setItems([{ value: '', label: 'No Models Available' }]);
       else {
         modelSelect.setItems(models.map((m) => ({ value: m.id, label: m.displayName || m.id })));
         const preferred = [settings.forgeModelId, settings.defaultModel].find((id) => id && models.some((m) => m.id === id));

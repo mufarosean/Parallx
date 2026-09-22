@@ -98,6 +98,53 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   ['--vscode-errorForeground', 'var(--px-danger)'],
   ['--vscode-editorError-foreground', 'var(--px-danger)'],
   ['--vscode-editorWarning-foreground', 'var(--px-warning)'],
+  ['--vscode-editorInfo-foreground', 'var(--px-info)'],
+  ['--vscode-notificationsInfoIcon-foreground', 'var(--px-info)'],
+  ['--vscode-testing-iconPassed', 'var(--px-success)'],
+  ['--vscode-testing-iconFailed', 'var(--px-danger)'],
+  ['--vscode-statusBarItem-warningBackground', 'var(--px-warning-soft)'],
+  ['--vscode-statusBarItem-warningForeground', 'var(--px-warning)'],
+  ['--vscode-inputValidation-infoBackground', 'var(--px-bg-elevated)'],
+
+  // Chart series (budget's ledger and pies, dashboard bars): the app's signal
+  // colours, so a theme re-hues the charts with everything else. Before this
+  // every chart drew VS Code's palette from its hardcoded fallback.
+  ['--vscode-charts-red', 'var(--px-danger)'],
+  ['--vscode-charts-green', 'var(--px-success)'],
+  ['--vscode-charts-blue', 'var(--px-info)'],
+  ['--vscode-charts-yellow', 'var(--px-warning)'],
+  ['--vscode-charts-orange', 'var(--px-warning)'],
+  ['--vscode-charts-purple', 'var(--px-accent)'],
+
+  // Code and diff surfaces (JSON viewers, transcript and version diffs)
+  ['--vscode-debugTokenExpression-string', 'var(--px-syntax-string)'],
+  ['--vscode-debugTokenExpression-name', 'var(--px-syntax-variable)'],
+  ['--vscode-debugTokenExpression-type', 'var(--px-syntax-type)'],
+  ['--vscode-debugTokenExpression-number', 'var(--px-syntax-number)'],
+  ['--vscode-debugTokenExpression-error', 'var(--px-syntax-invalid)'],
+  ['--vscode-symbolIcon-functionForeground', 'var(--px-syntax-function)'],
+  ['--vscode-editorLineNumber-foreground', 'var(--px-text-faint)'],
+  ['--vscode-editorLineNumber-activeForeground', 'var(--px-text)'],
+  ['--vscode-editorCursor-foreground', 'var(--px-text)'],
+  ['--vscode-editorIndentGuide-background', 'var(--px-divider)'],
+  ['--vscode-editor-inactiveSelectionBackground', 'var(--px-surface-active)'],
+  ['--vscode-editor-hoverHighlightBackground', 'var(--px-accent-soft)'],
+  ['--vscode-editor-findMatchBackground', 'var(--px-accent-soft)'],
+  ['--vscode-editor-findMatchHighlightBackground', 'var(--px-accent-soft)'],
+  ['--vscode-editor-findMatchHighlightBorder', 'var(--px-accent)'],
+  ['--vscode-diffEditor-insertedLineBackground', 'rgba(var(--px-green-rgb), 0.12)'],
+  ['--vscode-diffEditor-insertedTextBackground', 'rgba(var(--px-green-rgb), 0.28)'],
+  ['--vscode-diffEditor-removedLineBackground', 'rgba(var(--px-red-rgb), 0.12)'],
+  ['--vscode-diffEditor-removedTextBackground', 'rgba(var(--px-red-rgb), 0.28)'],
+  ['--vscode-diffEditor-unchangedRegionBackground', 'var(--px-bg-elevated)'],
+
+  // Chrome odds and ends
+  ['--vscode-list-dropBackground', 'var(--px-accent-soft)'],
+  ['--vscode-minimapSlider-hoverBackground', 'rgba(var(--px-accent-rgb), 0.30)'],
+  ['--vscode-minimapSlider-activeBackground', 'rgba(var(--px-accent-rgb), 0.45)'],
+  ['--vscode-titleBar-closeForeground', 'var(--px-text)'],
+  ['--vscode-tab-modifiedBorder', 'var(--px-accent)'],
+  ['--vscode-breadcrumb-activeSelectionForeground', 'var(--px-text)'],
 
   // Scrollbar
   ['--vscode-scrollbarSlider-background', 'rgba(var(--px-accent-rgb), 0.18)'],

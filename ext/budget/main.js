@@ -1440,7 +1440,7 @@ function injectStyles() {
 .budget-drawer-sub { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-drawer-close {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; padding: 0; border: none; border-radius: var(--px-radius-sm, 4px);
+  width: var(--px-control-h-sm); height: var(--px-control-h-sm); padding: 0; border: none; border-radius: var(--px-radius-sm, 4px);
   background: transparent; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); cursor: pointer;
 }
 .budget-drawer-close:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255,255,255,0.06))); color: var(--px-text, inherit); }
@@ -2234,7 +2234,7 @@ async function openTxEditor(api, opts = {}) {
     typeOpts.push({ value: row.tx_type, label: txTypeLabel(row.tx_type) });
   }
   const acctSel = makeDropdown(
-    [{ value: '', label: 'No account' }].concat(accounts.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) }))),
+    [{ value: '', label: 'No Account' }].concat(accounts.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) }))),
     row?.account_id || '');
 
   // Declared before typeSel so the type handler can re-scope it without a forward
@@ -2443,7 +2443,7 @@ function renderTransactionsSection(body, api) {
 
   async function populateAccountSelect() {
     accountsList = await db.all('SELECT id, last_four, kind, display_name FROM accounts WHERE archived=0 ORDER BY kind, last_four').catch(() => []);
-    const opts = [{ value: '', label: 'All accounts' }].concat(
+    const opts = [{ value: '', label: 'All Accounts' }].concat(
       accountsList.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) })));
     acctSlot.innerHTML = '';
     acctSlot.appendChild(makeDropdown(opts, accountId || '', (v) => { accountId = v || null; void refresh(); }));
@@ -6621,7 +6621,7 @@ function renderReconcileSection(body, api) {
     const accounts = await db.all('SELECT id, last_four, kind, display_name FROM accounts WHERE archived=0 ORDER BY kind, last_four');
     acctSlot.innerHTML = '';
     if (accounts.length === 0) {
-      acctSlot.appendChild(makeDropdown([{ value: '', label: 'No accounts' }], ''));
+      acctSlot.appendChild(makeDropdown([{ value: '', label: 'No Accounts' }], ''));
       return [];
     }
     selectedAccountId = selectedAccountId && accounts.find(a => a.id === selectedAccountId) ? selectedAccountId : accounts[0].id;
@@ -9607,7 +9607,7 @@ function buildMtdSpendWidget(api) {
       fields: {
         topCategories: {
           type: 'number',
-          label: 'Top categories to show',
+          label: 'Top Categories to Show',
           description: '0-8. Zero hides the breakdown.',
         },
       },

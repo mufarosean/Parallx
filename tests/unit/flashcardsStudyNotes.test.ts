@@ -36,12 +36,12 @@ describe('study notes document', () => {
     click('Save notes'); await settle();
     expect(card.notes).toBe('**Reasoning** $a/b$');
     expect(root.querySelector('textarea')).toBeNull();
-    click('Edit notes'); type('Unwanted edit'); click('Discard');
+    click('Edit Notes'); type('Unwanted edit'); click('Discard');
     expect(card.notes).toBe('**Reasoning** $a/b$');
   });
   it('reviews an AI draft without replacing saved notes until Save', async () => {
     const { card, root, click, persist, generate } = mount('Original');
-    click('Draft notes with AI'); await settle();
+    click('Draft Notes with AI'); await settle();
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({ id: 7, notes: 'Original' }));
     expect(root.dataset.mode).toBe('draft');
     expect(card.notes).toBe('Original'); expect(persist).not.toHaveBeenCalled();
@@ -52,18 +52,18 @@ describe('study notes document', () => {
     let finish!: (text: string) => void;
     const generate = vi.fn(() => new Promise<string>(resolve => { finish = resolve; }));
     const { card, root, click, persist } = mount('Original', generate);
-    click('Draft notes with AI'); click('Cancel'); finish('Too late'); await settle();
+    click('Draft Notes with AI'); click('Cancel'); finish('Too late'); await settle();
     expect(root.dataset.mode).toBe('read'); expect(root.textContent).not.toContain('Too late');
-    click('Draft notes with AI'); root.remove(); finish('Detached result'); await settle();
+    click('Draft Notes with AI'); root.remove(); finish('Detached result'); await settle();
     expect(card.notes).toBe('Original'); expect(persist).not.toHaveBeenCalled();
   });
   it('retains the draft on save failure and shows generation errors without damaging notes', async () => {
     const persist = vi.fn().mockRejectedValue(new Error('storage unavailable'));
     const generate = vi.fn().mockRejectedValue(new Error('model unavailable'));
     const { card, root, click, type } = mount('Original', generate, persist);
-    click('Draft notes with AI'); await settle();
+    click('Draft Notes with AI'); await settle();
     expect(root.querySelector('[role=alert]')?.textContent).toContain('model unavailable');
-    click('Edit notes'); type('Keep this draft'); click('Save notes'); await settle();
+    click('Edit Notes'); type('Keep this draft'); click('Save notes'); await settle();
     expect(root.querySelector('textarea')?.value).toBe('Keep this draft');
     expect(root.querySelector('[role=alert]')?.textContent).toContain('storage unavailable');
     expect(card.notes).toBe('Original');

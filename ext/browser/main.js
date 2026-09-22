@@ -1154,8 +1154,8 @@ function createPagePane(container, input, opts = {}) {
       { label: 'New Tab', handler: () => openTab(undefined, { private: keepsPrivate() }) },
       ...(isPrivate ? [{ label: 'New Regular Tab', handler: () => openTab() }] : [{ label: 'New Private Tab', handler: () => openTab(undefined, { private: true }) }]),
       { separator: true },
-      { label: 'Set Current Page As Home', handler: () => setHomepage(pane.url), disabled: !(web || INTERNAL_PAGES.has(pane.url)) },
-      ...(homepage() !== NEWTAB ? [{ label: 'Use New Tab Page As Home', handler: () => setHomepage(NEWTAB) }] : []),
+      { label: 'Set Current Page as Home', handler: () => setHomepage(pane.url), disabled: !(web || INTERNAL_PAGES.has(pane.url)) },
+      ...(homepage() !== NEWTAB ? [{ label: 'Use New Tab Page as Home', handler: () => setHomepage(NEWTAB) }] : []),
       { separator: true },
       { label: 'Bookmarks', handler: () => navigate('about:bookmarks') },
       { label: 'History', handler: () => navigate('about:history') },
@@ -1167,7 +1167,7 @@ function createPagePane(container, input, opts = {}) {
       { label: 'Zoom Out', handler: () => zoomBy(-1), disabled: !web },
       { label: 'Reset Zoom', handler: () => zoomBy(0), disabled: !web },
       { separator: true },
-      { label: 'Send Page To Chat', handler: () => sendToChat(), disabled: !web },
+      { label: 'Send Page to Chat', handler: () => sendToChat(), disabled: !web },
       { label: 'Copy Address', handler: () => navigator.clipboard.writeText(pane.url).catch(() => {}), disabled: !web },
       { label: 'Open In System Browser', handler: () => { const sh = window.parallxElectron && window.parallxElectron.shell; if (sh && sh.openExternal) sh.openExternal(pane.url, { system: true }); }, disabled: !web },
       { label: 'Print', handler: () => { if (pane.hasView) V('print', pane.tabId).catch(() => {}); }, disabled: !web },
@@ -1202,7 +1202,7 @@ function createPagePane(container, input, opts = {}) {
     items.push({ label: 'Forward', handler: () => goForward() });
     items.push({ label: 'Reload', handler: () => reload() });
     items.push({ separator: true });
-    items.push({ label: 'Send Page To Chat', handler: () => sendToChat() });
+    items.push({ label: 'Send Page to Chat', handler: () => sendToChat() });
     const r = content.getBoundingClientRect();
     const anchor = { x: r.left + (p.x || 0), y: r.top + (p.y || 0) };
     void overlayOpen();

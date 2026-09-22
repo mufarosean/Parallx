@@ -6613,8 +6613,8 @@ function fcCreateStudyNotes(card, {
     } else head.appendChild(el('span', 'fc-study__notes-label', mode === 'draft' ? (aiDraft ? 'Notes · AI draft' : 'Notes · Preview') : 'Notes'));
     head.appendChild(actions); root.appendChild(head);
     if (mode === 'read') {
-      if (card.notes?.trim()) fcIconBtn(actions, { iconName: 'pencil', label: 'Edit notes', onClick: () => { draft = card.notes; aiDraft = false; edit(); } });
-      const aiOptions = { label: 'Draft notes with AI', iconOnly: true, compact: true, title: 'Draft notes with AI using this card and its source excerpt' };
+      if (card.notes?.trim()) fcIconBtn(actions, { iconName: 'pencil', label: 'Edit Notes', onClick: () => { draft = card.notes; aiDraft = false; edit(); } });
+      const aiOptions = { label: 'Draft Notes with AI', iconOnly: true, compact: true, title: 'Draft notes with AI using this card and its source excerpt' };
       if (_api?.ui?.createAiButton) {
         const ai = _api.ui.createAiButton(actions, aiOptions);
         ai.addEventListener('click', () => { void startDraft(); });
@@ -6649,7 +6649,7 @@ function fcCreateStudyNotes(card, {
     if (mode === 'edit' || mode === 'draft') {
       const foot = el('div', 'fc-study__notes-foot'); root.appendChild(foot);
       if (mode === 'edit') textButton(foot, 'Preview', () => { mode = 'draft'; paint(); }).disabled = saving;
-      else textButton(foot, 'Edit notes', edit).disabled = saving;
+      else textButton(foot, 'Edit Notes', edit).disabled = saving;
       textButton(foot, 'Discard', cancel).disabled = saving;
       const keep = textButton(foot, saving ? 'Saving…' : 'Save notes', () => { void save(); });
       keep.disabled = saving;
@@ -9044,12 +9044,12 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     });
     const moreBtn = fcIconBtn(cardActions, {
       iconName: 'more-horizontal',
-      label: 'More card actions',
-      title: 'More card actions',
+      label: 'More Card Actions',
+      title: 'More Card Actions',
       onClick: () => {
         const r = moreBtn.getBoundingClientRect();
         _api.ui.showContextMenu({ x: r.left, y: r.bottom + 2 }, [
-          { label: 'Delete card', danger: true, onSelect: deleteCurrent },
+          { label: 'Delete Card', danger: true, onSelect: deleteCurrent },
         ]);
       },
     });
@@ -9817,7 +9817,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
       // pasted text no longer overrides loaded documents.
       const docs = [...sources];
       if (pasteIn.value.trim()) {
-        docs.push({ text: pasteIn.value.trim(), label: 'Pasted text', uri: '', pageTexts: null });
+        docs.push({ text: pasteIn.value.trim(), label: 'Pasted Text', uri: '', pageTexts: null });
       }
       if (docs.length === 0) {
         err.textContent = 'Load a source or paste some material first.';
@@ -9958,7 +9958,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
               back: r.back.value,
               tags: r.tags,
               sourceUri: src?.uri ?? '',
-              sourceLabel: src?.label ?? (lastDocs.length > 1 ? 'Multiple sources' : 'Pasted text'),
+              sourceLabel: src?.label ?? (lastDocs.length > 1 ? 'Multiple sources' : 'Pasted Text'),
               sourcePage: src ? (r.page || 0) : 0,
               importance: r.importance,
               importanceReason: r.importanceReason,
@@ -10121,7 +10121,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
         : 'Paste some rows first.');
       return;
     }
-    loaded = { kind: 'rows', cards, skipped, label: 'Pasted rows', uri: '' };
+    loaded = { kind: 'rows', cards, skipped, label: 'Pasted Rows', uri: '' };
     srcStatus.textContent = `Pasted rows: ${cards.length} cards${skipped ? ` (${skipped} lines skipped)` : ''}.`;
     renderPreview();
   });

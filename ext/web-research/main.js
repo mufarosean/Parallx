@@ -863,12 +863,12 @@ function _registerNewsBriefWidget(api) {
           },
           topN: {
             type: 'number',
-            label: 'Stories to summarize',
+            label: 'Stories to Summarize',
             description: 'Anywhere from 3 to 20.',
           },
           extraInstructions: {
             type: 'textarea',
-            label: 'Extra instructions (optional)',
+            label: 'Extra Instructions (Optional)',
             description: 'Add focus areas, tone, or formatting preferences.',
             placeholder: 'e.g. "Keep it neutral, two sentences per story."',
           },

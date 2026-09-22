@@ -194,7 +194,7 @@ function injectStyles() {
   font-size: var(--parallx-fontSize-md, 13px);
   color: var(--vscode-foreground);
   transition: background 80ms ease;
-  min-height: 32px;
+  min-height: var(--px-control-h-lg);
 }
 .tg-chat-row:hover { background: var(--vscode-list-hoverBackground); }
 .tg-chat-row .tg-icon { color: var(--vscode-descriptionForeground); }
@@ -1775,7 +1775,7 @@ function injectStyles() {
   cursor: pointer;
   font-size: var(--parallx-fontSize-base, 12px);
   color: var(--vscode-foreground);
-  min-height: 26px;
+  min-height: var(--px-control-h-sm);
 }
 .tg-cc-row:hover { background: var(--vscode-list-hoverBackground); }
 .tg-cc-row--active {
@@ -5706,7 +5706,7 @@ function renderChatEditor(container, parallx, input) {
       items: [
         { value: 'replace', label: 'Replace existing reply box text (if any)' },
         { value: 'append', label: 'Append to existing reply box text' },
-        { value: 'newline', label: 'Append on new line' },
+        { value: 'newline', label: 'Append on New Line' },
       ],
       value: 'replace',
     });
@@ -5716,7 +5716,7 @@ function renderChatEditor(container, parallx, input) {
     const autoSendSelect = tgSelect(parallx, {
       layout: 'full',
       items: [
-        { value: 'yes', label: 'Yes, send on click' },
+        { value: 'yes', label: 'Yes, Send on Click' },
         { value: 'no', label: 'No, just insert into reply box' },
       ],
       value: 'yes',
@@ -5727,8 +5727,8 @@ function renderChatEditor(container, parallx, input) {
     const clearSelect = tgSelect(parallx, {
       layout: 'full',
       items: [
-        { value: 'yes', label: 'Yes, clear it' },
-        { value: 'no', label: 'No, keep it' },
+        { value: 'yes', label: 'Yes, Clear It' },
+        { value: 'no', label: 'No, Keep It' },
       ],
       value: 'yes',
     });
@@ -7374,7 +7374,7 @@ function renderChatEditor(container, parallx, input) {
 
   async function loadModels() {
     if (!parallx.lm) {
-      modelSelect.setItems([{ value: '', label: 'Ollama offline' }]);
+      modelSelect.setItems([{ value: '', label: 'Ollama Offline' }]);
       return;
     }
     try {
@@ -7383,7 +7383,7 @@ function renderChatEditor(container, parallx, input) {
       models = [];
     }
     if (models.length === 0) {
-      modelSelect.setItems([{ value: '', label: 'No models' }]);
+      modelSelect.setItems([{ value: '', label: 'No Models' }]);
       return;
     }
     modelSelect.setItems(models.map((model) => ({ value: model.id, label: model.displayName || model.id })));
@@ -7569,10 +7569,10 @@ function renderChatEditor(container, parallx, input) {
       layout: 'full',
       items: [
         { value: '', label: 'Inherit (character / global default)' },
-        { value: 'none', label: 'No limit' },
-        { value: 'short', label: 'Short (1 paragraph)' },
-        { value: 'medium', label: 'Medium (2-3 paragraphs)' },
-        { value: 'long', label: 'Long (4+ paragraphs)' },
+        { value: 'none', label: 'No Limit' },
+        { value: 'short', label: 'Short (1 Paragraph)' },
+        { value: 'medium', label: 'Medium (2-3 Paragraphs)' },
+        { value: 'long', label: 'Long (4+ Paragraphs)' },
       ],
       value: thread.responseLengthOverride || '',
       onChange: (v) => { saveMeta({ responseLengthOverride: v || '' }, 'response length'); },
@@ -8359,10 +8359,10 @@ function renderSettingsPage(container, parallx) {
   form.appendChild(customStyleGroup);
   const responseLengthSelect = formGroup('Default response length', 'Applied to newly created chats when no character override exists', 'select', 'defaultResponseLength', {
     options: [
-      { value: '', label: 'No limit (default)' },
-      { value: 'short', label: 'Short (1 paragraph)' },
-      { value: 'medium', label: 'Medium (2-3 paragraphs)' },
-      { value: 'long', label: 'Long (4+ paragraphs)' },
+      { value: '', label: 'No Limit (Default)' },
+      { value: 'short', label: 'Short (1 Paragraph)' },
+      { value: 'medium', label: 'Medium (2-3 Paragraphs)' },
+      { value: 'long', label: 'Long (4+ Paragraphs)' },
     ],
   });
   const defaultPovSelect = formGroup('Default point of view', 'POV override applied when no character/thread setting exists. Inherit lets the writing preset decide.', 'select', 'defaultPov', {
@@ -8373,7 +8373,7 @@ function renderSettingsPage(container, parallx) {
   });
   const fitMethodSelect = formGroup('Default context-fit method', 'How to handle conversations longer than the context window.', 'select', 'defaultFitMethod', {
     options: [
-      { value: 'dropOld', label: 'Drop oldest messages' },
+      { value: 'dropOld', label: 'Drop Oldest Messages' },
       { value: 'summarizeOld', label: 'Keep the memory file and quote earlier turns (recommended)' },
     ],
   });
@@ -8514,7 +8514,7 @@ function renderCharacterEditor(container, parallx, input) {
     className: 'tg-ce-select',
     layout: 'full',
     items: [
-      { value: '', label: 'No reply length limit' },
+      { value: '', label: 'No Reply Length Limit' },
       { value: 'short', label: '1 paragraph' },
       { value: 'medium', label: '2-3 paragraphs' },
       { value: 'long', label: '4+ paragraphs' },
@@ -8729,7 +8729,7 @@ function renderCharacterEditor(container, parallx, input) {
     layout: 'full',
     items: [
       { value: '', label: '(use global default)' },
-      { value: 'dropOld', label: 'Drop oldest messages' },
+      { value: 'dropOld', label: 'Drop Oldest Messages' },
       { value: 'summarizeOld', label: 'Keep the memory file and quote earlier turns (recommended)' },
     ],
   });
@@ -9158,7 +9158,7 @@ function renderChatSettingsPage(container, parallx, input) {
       const validThreadModel = thread.modelId && models.some(m => m.id === thread.modelId) ? thread.modelId : models[0].id;
       modelSelect.value = validThreadModel;
     } else {
-      modelSelect.setItems([{ value: '', label: 'Ollama offline' }]);
+      modelSelect.setItems([{ value: '', label: 'Ollama Offline' }]);
     }
 
     renderCharacterChips();
@@ -9249,7 +9249,7 @@ const WRITING_PRESETS = {
 - It's okay to use contractions, fragments, and casual language`,
   },
   'natural-rp': {
-    label: 'Natural RP (benchmark winner)',
+    label: 'Natural RP (Benchmark Winner)',
     // Winner of the 2026-07-20 story-quality benchmark (test/run-quality-suite.mjs):
     // best cadence variance, zero cross-reply repeats, zero same-structure
     // openings, conversational reply lengths without a length override.
@@ -9335,17 +9335,17 @@ function getLengthHint(length) {
  * over whatever POV the preset implies. Empty/'inherit' = no extra line.
  */
 const POV_OPTIONS = {
-  '': { label: 'Inherit (preset decides)', content: '' },
+  '': { label: 'Inherit (Preset Decides)', content: '' },
   'first-person': {
-    label: 'First person',
+    label: 'First Person',
     content: 'Write {{char}}\'s narration in **first person, present tense** ("I walk", "I feel"). Inner thoughts in *italics*, dialogue in "quotes".',
   },
   'close-third': {
-    label: 'Close third person',
+    label: 'Close Third Person',
     content: 'Write {{char}}\'s narration in **third person, past tense, anchored tightly to {{char}}\'s viewpoint** ("She walked", "He felt"). The reader sees only what {{char}} sees, hears, and thinks. Inner thoughts in *italics*, dialogue in "quotes".',
   },
   'omniscient-third': {
-    label: 'Omniscient third person',
+    label: 'Omniscient Third Person',
     content: 'Write in **third person, past tense, with an omniscient narrator** ("They walked", "He felt"). The narration may step into any character\'s thoughts and observe events {{char}} cannot see. Inner thoughts in *italics*, dialogue in "quotes".',
   },
   'second-person': {
