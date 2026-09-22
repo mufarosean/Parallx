@@ -148,9 +148,10 @@ export function renderTablesPage(container, parallx, input, deps) {
     markActive();
   }
   function showEmpty() {
-    const empty = el('div', 'tg-cc-empty');
+    const empty = el('div', 'tg-cc-empty px-empty');
     empty.appendChild(el('div', null, { html: icon('dices', 32) }));
-    empty.appendChild(el('div', null, { text: 'Pick a table, or make a new one.' }));
+    empty.appendChild(el('div', 'px-empty__headline', { text: 'Nothing open' }));
+    empty.appendChild(el('div', 'px-empty__hint', { text: 'Pick a table, or make a new one.' }));
     pane.appendChild(empty);
   }
   function open(name) {

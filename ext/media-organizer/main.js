@@ -6585,7 +6585,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-bulk-tag-empty {
   padding: 12px 8px;
   text-align: center;
-  font-size: var(--parallx-fontSize-xs, 11px);
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
 }
 .mo-bulk-dialog-footer button:hover {
@@ -6712,7 +6712,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   box-shadow: 2px 0 0 0 var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
 }
 .mo-album-empty {
-  opacity: 0.6;
+  color: var(--px-text-muted);
   padding: 16px 0;
   text-align: center;
 }
@@ -7902,7 +7902,7 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
   max-height: 160px; overflow-y: auto;
 }
 .mo-clip-queue-empty {
-  font-size: 11px; opacity: 0.55; padding: 6px 4px;
+  font-size: var(--px-text-sm); color: var(--px-text-muted); padding: 6px 4px;
 }
 .mo-clip-queue-row {
   display: flex; align-items: center; gap: 6px;
@@ -8041,7 +8041,7 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-dup-name { font-size: 12px; }
 .mo-dup-meta { font-size: 11px; opacity: 0.6; }
 .mo-dup-actions { margin-top: 8px; display: flex; justify-content: flex-end; }
-.mo-dup-empty { padding: 24px; text-align: center; opacity: 0.65; }
+.mo-dup-empty { padding: 24px; text-align: center; color: var(--px-text-muted); }
 
 /* ═══ Home feed (Section 26B) ═══ */
 .mo-home-title { font-size: 15px; font-weight: 600; }
@@ -8064,7 +8064,7 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-feed-cap-sub { font-size: 11px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mo-feed-sentinel { height: 1px; }
 .mo-feed-sentinel.is-loading { height: 40px; }
-.mo-feed-empty { padding: 40px; text-align: center; opacity: 0.7; font-size: 13px; }
+.mo-feed-empty { padding: 40px; text-align: center; color: var(--px-text-muted); font-size: 13px; }
 /* Selection in the feed: a circle on hover, every circle while selecting; a picked tile shrinks in its cell with the accent around it, so nothing reflows. */
 .mo-feed-card { transition: transform 120ms ease, box-shadow 120ms ease; }
 .mo-feed-pick { position: absolute; top: 8px; left: 8px; width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid var(--vscode-editor-background, var(--px-bg)); background: color-mix(in srgb, var(--vscode-editor-background, var(--px-bg)) 55%, transparent); color: transparent; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 120ms ease; z-index: 2; }

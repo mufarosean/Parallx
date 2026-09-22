@@ -77,7 +77,7 @@
 
 .dashboard-header__title {
   margin: 0;
-  font-size: 28px;
+  font-size: var(--px-text-xl);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.1;

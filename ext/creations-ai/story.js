@@ -53,7 +53,7 @@ export function injectStoryStyles() {
 .st-beat-error { font-size: var(--px-text-xs); color: var(--px-danger); display: flex; gap: var(--px-space-2); align-items: center; margin-top: var(--px-space-1); }
 .st-composer { display: flex; gap: var(--px-space-2); align-items: center; padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); }
 .st-composer .cs-input { flex: 1; }
-.st-empty { font-size: var(--px-text-base); color: var(--px-text-muted); padding: var(--px-space-4) 0; }
+.st-empty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: var(--px-space-4) 0; }
 .st-memory { min-height: 80px; font-size: var(--px-text-sm); }
 `;
   document.head.appendChild(style);
@@ -148,9 +148,10 @@ export function renderStoriesPage(container, parallx, input, deps) {
     markActive();
   }
   function showEmpty() {
-    const empty = el('div', 'tg-cc-empty');
+    const empty = el('div', 'tg-cc-empty px-empty');
     empty.appendChild(el('div', null, { html: icon('book-open', 32) }));
-    empty.appendChild(el('div', null, { text: 'Pick a story, or start a new one.' }));
+    empty.appendChild(el('div', 'px-empty__headline', { text: 'Nothing open' }));
+    empty.appendChild(el('div', 'px-empty__hint', { text: 'Pick a story, or start a new one.' }));
     pane.appendChild(empty);
   }
   function open(fileName) {

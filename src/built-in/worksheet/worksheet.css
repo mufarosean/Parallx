@@ -99,7 +99,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 
 .ws-home { padding: var(--px-space-6); overflow-y: auto; }
 .ws-home__head { display: flex; align-items: center; gap: var(--px-space-2); margin-bottom: var(--px-space-4); }
-.ws-home__title { font-size: var(--px-text-lg); font-weight: 600; letter-spacing: -0.01em; }
+.ws-home__title { font-size: var(--px-text-xl); font-weight: 600; letter-spacing: -0.01em; }
 .ws-home__list { display: flex; flex-direction: column; gap: var(--px-space-2); }
 
 .ws-itemrow {

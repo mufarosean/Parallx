@@ -4678,7 +4678,7 @@ function injectStyles() {
 .fc-home__head-text { flex: 1; min-width: 0; }
 .fc-home__title {
   margin: 0;
-  font-size: var(--px-text-xl); font-weight: 700; letter-spacing: -0.02em;
+  font-size: var(--px-text-xl); font-weight: 600; letter-spacing: -0.02em;
   line-height: 1.15; color: var(--px-text);
 }
 .fc-home__sub {

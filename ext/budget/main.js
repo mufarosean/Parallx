@@ -473,10 +473,8 @@ function injectStyles() {
 }
 .budget-editor-title {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--px-text-xl);
   font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 .budget-editor-body {
   flex: 1;
@@ -517,7 +515,9 @@ function injectStyles() {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  height: var(--px-control-h);
+  box-sizing: border-box;
+  padding: 0 10px;
   background: var(--vscode-button-secondaryBackground, #3a3a3a);
   color: var(--vscode-button-secondaryForeground, #ccc);
   border: 1px solid var(--vscode-panel-border, #555);
@@ -580,8 +580,8 @@ function injectStyles() {
 .budget-empty {
   padding: 40px 20px;
   text-align: center;
-  color: var(--vscode-descriptionForeground, #888);
-  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
 }
 
 /* Tables — the ledger register. Ruled hairlines, small-caps column heads
@@ -758,11 +758,9 @@ function injectStyles() {
 .budget-section:last-of-type { margin-bottom: 16px; }
 .budget-section h3 {
   margin: 0 0 4px 0;
-  font-size: 11px;
+  font-size: var(--px-text-sm);
   font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--vscode-foreground, #ddd);
+  color: var(--px-text-secondary);
   padding-bottom: 4px;
   border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
 }
@@ -932,8 +930,9 @@ function injectStyles() {
 
 /* ═══ Section heading ═══ */
 .budget-section-h {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text-secondary);
   text-transform: none;
   letter-spacing: 0;
   color: var(--vscode-foreground, #ddd);
@@ -955,8 +954,10 @@ function injectStyles() {
   background: transparent;
   border: none;
   color: var(--vscode-descriptionForeground, #aaa);
-  padding: 4px 12px;
-  font-size: 11px;
+  height: var(--px-control-h-sm);
+  box-sizing: border-box;
+  padding: 0 12px;
+  font-size: var(--px-text-sm);
   font-weight: 500;
   cursor: pointer;
   border-radius: 4px;
@@ -1879,9 +1880,14 @@ function makeButton(label, opts) {
 }
 
 function emptyState(msg) {
+  // THE empty-state box (.px-empty): the same centring, spacing and hint rule
+  // every core surface uses; the copy stays the caller's one line.
   const div = document.createElement('div');
-  div.className = 'budget-empty';
-  div.textContent = msg;
+  div.className = 'budget-empty px-empty';
+  const hint = document.createElement('div');
+  hint.className = 'px-empty__hint';
+  hint.textContent = msg;
+  div.appendChild(hint);
   return div;
 }
 
@@ -3414,13 +3420,13 @@ function renderDashboardSection(body, api) {
     cashflowSection.appendChild(buildCashFlowChart(api, _state, refresh));
 
     // ── Top categories (full width, sorted desc by spend).
-    const catH = document.createElement('h3'); catH.className = 'budget-section-h'; catH.textContent = 'Where it went';
+    const catH = document.createElement('h3'); catH.className = 'budget-section-h'; catH.textContent = 'Where It Went';
     catSection.appendChild(catH);
     catSection.appendChild(buildSpendDonut(catRows, totalSpend, range.label.split(' ')[0], (slice) => {
       _navState.txFilter = { categoryId: slice.id, monthKey, type: 'spend' };
       api.commands.executeCommand('budget.openTransactions').catch(() => {});
     }));
-    const budH = document.createElement('h3'); budH.className = 'budget-section-h'; budH.textContent = 'Spending vs budget'; budH.style.marginTop = '22px';
+    const budH = document.createElement('h3'); budH.className = 'budget-section-h'; budH.textContent = 'Spending vs Budget'; budH.style.marginTop = '22px';
     catSection.appendChild(budH);
     catSection.appendChild(buildCategoryBars(catRows, prevByCatId, (slice) => {
       _navState.txFilter = { categoryId: slice.id, monthKey, type: 'spend' };

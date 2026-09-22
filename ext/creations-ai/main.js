@@ -265,8 +265,8 @@ function injectStyles() {
 /* Empty state */
 .tg-empty {
   padding: 12px 16px;
-  font-size: var(--parallx-fontSize-base, 12px);
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
   font-style: italic;
   text-align: center;
 }
@@ -291,7 +291,7 @@ function injectStyles() {
 .tg-page-header .tg-icon { color: var(--vscode-descriptionForeground); }
 .tg-page-header-info { flex: 1; }
 .tg-page-header-title {
-  font-size: 22px;
+  font-size: var(--px-text-xl);
   font-weight: 600;
   color: var(--vscode-foreground);
   line-height: 1.2;
@@ -413,11 +413,9 @@ function injectStyles() {
 }
 .tg-page-section:last-child { margin-bottom: 0; }
 .tg-page-section-title {
-  font-size: var(--parallx-fontSize-base, 12px);
+  font-size: var(--px-text-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--vscode-descriptionForeground);
+  color: var(--px-text-secondary);
   margin-bottom: 10px;
 }
 
@@ -431,7 +429,9 @@ function injectStyles() {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  min-height: var(--px-control-h-lg);
+  box-sizing: border-box;
+  padding: 0 14px;
   border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
   border-radius: var(--parallx-radius-md, 6px);
   background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
@@ -1743,11 +1743,9 @@ function injectStyles() {
   padding: 8px 12px 4px;
 }
 .tg-cc-rail-title {
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--vscode-descriptionForeground);
+  color: var(--px-text-secondary);
 }
 .tg-cc-rail-add {
   display: inline-flex;
@@ -1763,9 +1761,8 @@ function injectStyles() {
 .tg-cc-list { display: flex; flex-direction: column; padding-bottom: 8px; }
 .tg-cc-list-empty {
   padding: 6px 12px;
-  font-size: var(--parallx-fontSize-sm, 11px);
-  color: var(--vscode-descriptionForeground);
-  opacity: 0.8;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
 }
 .tg-cc-row {
   display: flex;
@@ -1811,9 +1808,8 @@ function injectStyles() {
   justify-content: center;
   height: 100%;
   gap: 10px;
-  opacity: 0.5;
-  color: var(--vscode-descriptionForeground);
-  font-size: var(--parallx-fontSize-md, 13px);
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
 }
 
 /* ═══ Character Forge ═══ */
@@ -7909,9 +7905,10 @@ function renderCharactersPage(container, parallx, input) {
     selectedFile = fileName || null;
     markActive();
     if (!selectedFile) {
-      const empty = el('div', 'tg-cc-empty');
+      const empty = el('div', 'tg-cc-empty px-empty');
       empty.appendChild(el('div', null, { html: icon('users', 32) }));
-      empty.appendChild(el('div', null, { text: 'Pick a character, or make a new one.' }));
+      empty.appendChild(el('div', 'px-empty__headline', { text: 'Nothing open' }));
+      empty.appendChild(el('div', 'px-empty__hint', { text: 'Pick a character, or make a new one.' }));
       pane.appendChild(empty);
       return;
     }

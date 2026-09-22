@@ -5404,9 +5404,9 @@ const CL_CSS = `
   margin-bottom: var(--px-space-6);
 }
 .cl-guide-title {
-  font-size: var(--px-text-xs);
+  font-size: var(--px-text-sm);
   font-weight: 600;
-  text-transform: uppercase;
+  color: var(--px-text-secondary);
   letter-spacing: 0.06em;
   color: var(--px-text-faint);
   margin-bottom: var(--px-space-3);
@@ -5445,7 +5445,7 @@ const CL_CSS = `
   overflow-y: auto;
   padding: var(--px-space-8);
 }
-.cl-home-title { font-size: var(--px-text-lg); font-weight: 650; }
+.cl-home-title { font-size: var(--px-text-xl); font-weight: 600; }
 .cl-home-sub {
   font-size: var(--px-text-sm);
   color: var(--px-text-muted);
@@ -5505,7 +5505,7 @@ const CL_CSS = `
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
-.cl-level-title { font-size: var(--px-text-md); font-weight: 650; }
+.cl-level-title { font-size: var(--px-text-md); font-weight: 600; }
 .cl-level-tag { font-size: var(--px-text-xs); color: var(--px-text-muted); }
 
 /* ── Connections: Builds On / Where The Exam Uses This ──────────────── */
@@ -5584,7 +5584,7 @@ const CL_CSS = `
 .cl-side { display: flex; flex-direction: column; gap: 2px; padding: var(--px-space-2); }
 .cl-side-level {
   font-size: var(--px-text-2xs);
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--px-text-faint);

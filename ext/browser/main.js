@@ -284,7 +284,7 @@ const CSS = `
 .br-page-tools { display: flex; gap: 8px; align-items: center; }
 .br-page-tools input { flex: 1; max-width: 420px; border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-input-background, var(--px-bg-inset)); color: inherit; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 4px; outline: none; }
 .br-page-tools input:focus { border-color: var(--vscode-focusBorder, var(--px-accent)); }
-.br-page-day { margin: 14px 0 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.7; }
+.br-page-day { margin: 14px 0 4px; font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
 .br-page-headline strong { font-size: 28px; font-weight: 600; margin-right: 6px; }
 .br-page-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 24px; align-items: start; }
 .br-table { width: 100%; border-collapse: collapse; }
@@ -304,7 +304,7 @@ const CSS = `
 .br-address-wrap:focus-within { border-color: var(--vscode-focusBorder, var(--px-accent)); }
 .br-lock { display: inline-flex; opacity: 0.7; flex: 0 0 auto; }
 .br-lock.is-insecure { color: var(--vscode-errorForeground, var(--px-danger)); opacity: 1; }
-.br-address { flex: 1; min-width: 0; border: none; background: transparent; color: inherit; font: inherit; font-size: 13px; outline: none; }
+.br-address { flex: 1; min-width: 0; height: 100%; border: none; background: transparent; color: inherit; font: inherit; font-size: 13px; outline: none; }
 .br-suggest { position: absolute; left: 0; right: 0; top: 30px; z-index: 5; background: var(--vscode-editorWidget-background, var(--px-surface)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 8px 24px rgba(0,0,0,0.25); overflow: hidden; }
 .br-suggest-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
 .br-suggest-item:hover, .br-suggest-item.is-selected { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
@@ -354,7 +354,7 @@ const CSS = `
 .br-newtab-search input { flex: 1; border: none; background: transparent; color: inherit; font: inherit; font-size: 14px; outline: none; }
 .br-newtab-private { width: min(640px, 100%); margin: 0; font-size: 12px; line-height: 1.5; opacity: 0.7; text-align: center; }
 .br-newtab-section { width: min(760px, 100%); }
-.br-newtab-section h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.7; }
+.br-newtab-section h3 { margin: 0 0 8px; font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
 .br-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .br-tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--parallx-radius-md, 6px); border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-editor-background, var(--px-bg)); cursor: pointer; text-align: left; color: inherit; font: inherit; min-width: 0; }
 .br-tile:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
@@ -367,7 +367,7 @@ const CSS = `
 .br-item .br-item-meta { opacity: 0.55; font-size: 11px; white-space: nowrap; }
 .br-item .br-btn { width: 22px; height: 22px; opacity: 0; }
 .br-item:hover .br-btn { opacity: 1; }
-.br-empty { padding: 8px; font-size: 12px; opacity: 0.6; }
+.br-empty { padding: 8px; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .br-sidebar { display: flex; flex-direction: column; height: 100%; overflow: hidden; font-size: 12px; }
 .br-sidebar-top { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
 .br-sidebar-top button.br-action.primary { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, #fff); border-color: transparent; flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
