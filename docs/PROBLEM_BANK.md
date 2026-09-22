@@ -468,3 +468,82 @@ a morning of four hours showed 2h 35m. The rule now:
   Dashboard's Today and This Week chips and the Time Studied tile (problems
   and quiz screens together). Attempt clocks are still written but no longer
   read. Reset Work keeps study time.
+
+## Dashboard, rebalanced (2026-09-21)
+
+"I like the info it provides but it feels very busy; the first panel feels
+imbalanced. Keep the same info." The campaign panel is three columns now:
+Today (the big number, the day line, the tally), the plan (Day N of M, the
+plan line, the day strip, four labelled stats: Done, Pace, Streak, Papers
+Cleared) and the level with the actions stacked under it. The per-paper
+"N left" chips went; the paper bars say it, in their tooltips too.
+
+- REWARDS moved to the bottom as a row of chips (icon, name; hint, date and
+  XP in the tooltip). XP AS CASH: `worksheet.xpCashRate` (dollars per 100
+  XP, Settings, 0 = off) makes the level block say what is left to cash out
+  and gives it a Cash Out button; `ws_xp_cashout` (migration 013) records
+  what he paid himself, and each reward's tooltip says its cash.
+- TILES: Attempted, Score, Time Studied, Rated This Week, Days To Exam
+  (`worksheet.examDate`, Settings). MINUTES PER PROBLEM is a third line
+  under Progress Over Time (study minutes over problems rated, a seven-day
+  window ending each rated day), the line that should fall as the exam
+  nears; it was a tile for an hour, "a graph with the other charts, not a
+  box". Time per point was held off: more than half the problems are Rising
+  Fellow questions with no points.
+- PAPER BARS: each segment is a button. The red of Venter opens a quiz of
+  Venter's Hard problems; the grey, its problems never rated.
+- NOTES ON THE SHEET: a note button on the problem header opens the editor
+  under it; the note is the same one the quiz overview and the bank show.
+- Status chips are Title Case throughout ("Hard · Earlier", "In Progress",
+  "Never Tried"); tile hints start with a capital.
+
+## Seen before shipped: the hidden screens probe (2026-09-21)
+
+`tests/probes/worksheet-screens-probe.mjs` runs the REAL app hidden over a
+throwaway workspace: a first run lets the app migrate an empty database,
+`worksheet-seed.cjs` fills it with a synthetic bank (48 problems, ratings,
+notes, stars, study time, two quizzes), a second run screenshots Home, the
+Dashboard (tall viewport, no scrolling: scrolling the charts' pane stalls the
+compositor), the bank, the builder, the quizzes list, a sheet with its note
+open, the overview with a row's editor open, and Settings. No real workspace
+is ever opened. It is how the 2026-09-21 polish pass was checked: the Today
+label said twice, the overview's editor pushing the flag and star onto their
+own line, the builder's length box a full row wide, five cards breaking into
+four and one, quiz-row verbs ("Copy Quiz", "Delete Quiz") beside bare ones,
+summaries showing seconds ("3:08:28" is now "3h 08m"), lowercase fragments
+("1 not rated", "started", "today"). Mufaro's standing rule: hidden probes
+may run while he studies; he is never asked to screenshot or restart.
+Icon buttons across Worksheets are bare glyphs with a hover wash since the
+same day, the workbench's title-action look, 14px icons in a 26px hit box;
+the accent glyph marks a primary action or an on-state. Words beside glyphs
+(Next Marked, the overview's Rename / Copy / Quiz Summary) are quiet too.
+
+## One gesture per intent (2026-09-21, later)
+
+"Vomiting buttons on pages is the quickest way to show someone it was made
+with AI." So: a Work On Next card is itself the way to a quiz of what it
+lists (click anywhere that is not a problem row); the builder opens with the
+set handed over as a From chip (`_quizPreset.ids` + `name`; the filters then
+narrow within it; Clear drops it). Starred hands over its filter. A weakest
+paper's row is the way to its quiz. No Quiz button under any card. The
+campaign panel keeps one primary action; the rest are quiet words under it.
+Every sentence a number already says became a tooltip: the day line, the
+plan line, the tile subtitles. The quiz summary is a flat numbered list with
+its state as a chip, the per-tag rollup as a tooltip, and its actions above
+the list: Complete Quiz, Back To Quiz, Next Marked when any, then quiet Quiz
+Overview and Copy. Home, Dashboard and New Quiz are the tabs' job.
+
+## Home is where you continue and where you go (2026-09-21, latest)
+
+"Our home tab looks awful too": nine tiles with sentences and five columns
+of eight rows. Home is now one centred column of fixed width (1120px, margins either side on a wide window; never left in a corner): a title, a row of small icon tiles as destinations (Dashboard,
+Problem Bank, Quizzes, Import Workbook, Generate Items, Scratch Sheet,
+Settings; the old descriptions are their tooltips), a continue strip (the
+campaign's line on the left, the one action on the right: Resume the open
+quiz, else Start Quiz; New Quiz quiet beside a Resume), and two lists of
+five: Recent and Noted. Starred lives in the bank's filter and the
+Dashboard; Newly Added and Recent Quizzes were the bank's and the Quizzes
+tab's job. The Quizzes tab is one panel of one-line rows (name, state chip,
+counts, the date only when the name does not already say it; actions on
+hover: Resume or Review, Rename, Copy, Reopen, Delete), completed quizzes
+ordered by when they were completed.

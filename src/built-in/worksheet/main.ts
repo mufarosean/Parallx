@@ -27,7 +27,7 @@ import {
   getCampaign, startCampaign, endCampaign, listAttemptHistory,
   getOpenQuizSession, saveQuizSession, finishQuizSession, renameQuizSession, reopenQuizSession, deleteQuizSession,
   getQuizSession, listQuizSessions, getSessionItemStates, getProblemNotes, setProblemNote, setItemStarred, getStarred,
-  addStudySeconds, getStudySecondsForItem,
+  addStudySeconds, getStudySecondsForItem, recordXpCashout,
   type WorksheetItem, type WorksheetItemSummary,
 } from './worksheetData.js';
 import { openXlsx } from './ooxml.js';
@@ -245,6 +245,44 @@ function paneOnScreen(root: HTMLElement): boolean {
   return !document.hidden && root.isConnected && root.offsetParent !== null;
 }
 
+// ── Exam date and XP as cash (worksheet.examDate, worksheet.xpCashRate) ─────
+//
+// The Dashboard counts the days to the exam, and, at a rate of dollars per
+// 100 XP, says what the campaign's XP and each reward are worth (Mufaro,
+// 2026-09-21: XP "sort of means nothing to me; what if XP could be converted
+// to cash"). Cash Out on the Dashboard records what he paid himself.
+function getExamDate(): string {
+  try {
+    const v = String(_api?.workspace?.getConfiguration('worksheet').get<string>('examDate', '') ?? '');
+    return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
+  } catch {
+    return '';
+  }
+}
+async function setExamDate(value: string): Promise<void> {
+  try {
+    await _api?.workspace?.getConfiguration('worksheet').update('examDate', value);
+  } catch (err) {
+    console.warn('[Worksheet] examDate persist failed:', err);
+  }
+}
+/** Dollars per 100 XP; 0 turns cash off. */
+function getXpCashRate(): number {
+  try {
+    const v = Number(_api?.workspace?.getConfiguration('worksheet').get<number>('xpCashRate', 0) ?? 0);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+async function setXpCashRate(value: number): Promise<void> {
+  try {
+    await _api?.workspace?.getConfiguration('worksheet').update('xpCashRate', value);
+  } catch (err) {
+    console.warn('[Worksheet] xpCashRate persist failed:', err);
+  }
+}
+
 // ── Decimals shown (worksheet.displayDecimals) ──────────────────────────────
 //
 // A cell without a number format paints at most this many decimals; the
@@ -449,7 +487,7 @@ function createBankPane(container: HTMLElement) {
       else if (item.sourceLabel) meta.push(item.sourcePage > 0 ? `${item.sourceLabel} · p.${item.sourcePage}` : item.sourceLabel);
       if (!item.paper && item.tags) meta.push(item.tags.split(',').filter(Boolean).map((t) => `#${t.trim()}`).join(' '));
       if (item.attemptCount > 0) meta.push(`${item.attemptCount} ${item.attemptCount === 1 ? 'attempt' : 'attempts'}`);
-      if (item.seconds > 0) meta.push(fmtSeconds(item.seconds));
+      if (item.seconds > 0) meta.push(fmtStudy(item.seconds));
       if (item.lastAttemptAt > 0) meta.push(`last ${new Date(item.lastAttemptAt).toLocaleDateString()}`);
       info.appendChild(el('div', 'ws-itemrow__meta', meta.join(' · ')));
       // The note, in the row: what he told himself about this problem, where he picks it.
@@ -505,7 +543,7 @@ function createBankPane(container: HTMLElement) {
         bar.appendChild(seg);
       }
       head.appendChild(bar);
-      head.appendChild(el('span', 'ws-home__papermeta', `${rated} of ${group.length} rated${secs > 0 ? ` · ${fmtSeconds(secs)}` : ''}`));
+      head.appendChild(el('span', 'ws-home__papermeta', `${rated} of ${group.length} rated${secs > 0 ? ` · ${fmtStudy(secs)}` : ''}`));
       head.addEventListener('click', () => { if (_homeOpen.has(key)) _homeOpen.delete(key); else _homeOpen.add(key); void render(); });
       list.appendChild(head);
       if (filtering || _homeOpen.has(key)) {
@@ -553,6 +591,15 @@ function gradeLabel(grade: string): string {
 /** The chip/dot class for an attempt state: easy | medium | hard | open. */
 function stateClass(state: string): string {
   return state === 'open' ? 'open' : normalizeRating(state) || state;
+}
+/** Study time in a summary: "12m", "3h 08m", never seconds (those belong to the sheet's clock). */
+function fmtStudy(total: number): string {
+  const s = Math.max(0, Math.round(total));
+  if (s < 60) return s === 0 ? '0m' : '<1m';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${String(m).padStart(2, '0')}m`;
 }
 function fmtSeconds(total: number): string {
   const s = Math.max(0, Math.round(total));
@@ -699,7 +746,7 @@ function renderBankSnapshot(root: HTMLElement, items: WorksheetItemSummary[]): v
             : stateClass(it.attemptState);
         row.appendChild(el('span', `ws-bank__dot ${dot}`));
         row.appendChild(el('span', 'ws-bank__itemtitle', it.title));
-        const secs = it.seconds > 0 ? ` · ${fmtSeconds(it.seconds)}` : '';
+        const secs = it.seconds > 0 ? ` · ${fmtStudy(it.seconds)}` : '';
         const state = !it.attemptState ? 'Never tried'
           : it.attemptState === 'open' ? 'In Progress'
             : it.ratingImported ? `${gradeLabel(it.attemptState)} in your workbook${it.worked ? ', worked here' : ''}`
@@ -777,40 +824,65 @@ function createLauncherPane(container: HTMLElement) {
     ]);
     if (disposed || seq !== renderSeq) return;
     root.replaceChildren();
-    root.appendChild(el('div', 'ws-home__title', 'Worksheets'));
-    const grid = el('div', 'ws-launch__grid');
-    const tile = (title: string, desc: string, instanceId: string, tabTitle: string, primary = false, onClick?: () => void) => {
-      const b = el('button', primary ? 'ws-launch__tile ws-launch__tile--primary' : 'ws-launch__tile') as HTMLButtonElement;
+    // Home is where you continue and where you go (Mufaro, 2026-09-21: nine
+    // tiles with sentences and five columns of rows was a wall; a row of text
+    // links and a strip across a 2300px window was worse). One column of
+    // fixed width: the title, a row of small icon tiles, the continue strip,
+    // two short lists.
+    const col = el('div', 'ws-home__col');
+    root.appendChild(col);
+    col.appendChild(el('div', 'ws-home__title', 'Worksheets'));
+    const nav = el('div', 'ws-home__nav');
+    const go = (label: string, instanceId: string, tabTitle: string, hint: string, icon: string) => {
+      const b = el('button', 'ws-home__navtile') as HTMLButtonElement;
       b.type = 'button';
-      b.appendChild(el('span', 'ws-launch__tiletitle', title));
-      b.appendChild(el('span', 'ws-launch__tiledesc', desc));
-      b.addEventListener('click', onClick ?? (() => void openWorksheet(instanceId, tabTitle)));
-      grid.appendChild(b);
+      b.title = hint;
+      const ic = el('span', 'ws-home__navicon');
+      try { ic.innerHTML = _api?.icons?.createIconHtml?.(icon, 18) ?? ''; } catch { /* label alone */ }
+      b.appendChild(ic);
+      b.appendChild(el('span', 'ws-home__navlabel', label));
+      b.addEventListener('click', () => void openWorksheet(instanceId, tabTitle));
+      nav.appendChild(b);
     };
     const problems = items.filter((it) => it.paper);
     const rated = problems.filter((it) => normalizeRating(it.attemptState)).length;
-    let dashDesc = 'Progress, pace, what to work on next.';
-    const rewards = await syncRewards(items, attempts, campaign).catch(() => null);
-    if (disposed || seq !== renderSeq) return;
-    if (campaign) {
-      const p = campaignProgress(campaign, items, attempts, Date.now(), rewards?.bonusXp ?? 0);
-      dashDesc = p.finished ? 'Campaign complete.' : p.restToday ? `Day ${p.dayIndex} of ${campaign.days} · rest day` : `Day ${p.dayIndex} of ${campaign.days} · ${p.doneToday} of ${p.target} today`;
-    }
-    tile('Start Quiz', 'Draw problems from the bank and work them in order.', 'practice', 'Quiz', true);
-    // Starred: the student's own set, every one of them, in bank order.
-    const starred = items.filter((it) => it.starred);
     // Noted: what he told himself to review, newest note first.
     const noted = items.filter((it) => it.note).sort((a, b) => b.noteAt - a.noteAt);
-    tile('Quiz Starred', starred.length ? `${starred.length} starred · every one of them, in order.` : 'Star problems from their sheet; they collect here.', 'bank', 'Problem Bank', false,
-      () => { if (starred.length) startQuizWith(starred.map((it) => it.id), 0, 'Starred'); else void openWorksheet('bank', 'Problem Bank'); });
-    tile('Dashboard', dashDesc, 'dashboard', 'Dashboard');
-    tile('Quizzes', 'Every quiz, open and completed, with its actions.', 'quizzes', 'Quizzes');
-    tile('Problem Bank', problems.length ? `${problems.length} problems · ${rated} rated${noted.length ? ` · ${noted.length} noted` : ''}` : 'Empty until you import a workbook.', 'bank', 'Problem Bank');
-    tile('Import Workbook', 'A ProblemTrack workbook, every sheet as it is.', 'excel-import', 'Import Workbook');
-    tile('Generate Items', 'Practice items from a PDF or pasted material.', 'create', 'Generate Items');
-    tile('Scratch Sheet', 'The exam grid, blank.', 'scratch', 'Practice Sheet');
-    tile('Settings', campaign ? 'Campaign running · sheet appearance' : 'Campaign · sheet appearance', 'settings', 'Worksheets Settings');
-    root.appendChild(grid);
+    go('Dashboard', 'dashboard', 'Dashboard', 'Progress, pace, what to work on next.', 'layout-dashboard');
+    go('Problem Bank', 'bank', 'Problem Bank', problems.length ? `${problems.length} problems · ${rated} rated${noted.length ? ` · ${noted.length} noted` : ''}` : 'Empty until you import a workbook.', 'library');
+    go('Quizzes', 'quizzes', 'Quizzes', 'Every quiz, open and completed, with its actions.', 'list-checks');
+    go('Import Workbook', 'excel-import', 'Import Workbook', 'A ProblemTrack workbook, every sheet as it is.', 'folder-input');
+    go('Generate Items', 'create', 'Generate Items', 'Practice items from a PDF or pasted material.', 'sparkles');
+    go('Scratch Sheet', 'scratch', 'Practice Sheet', 'The exam grid, blank.', 'table-2');
+    go('Settings', 'settings', 'Worksheets Settings', 'Campaign, exam date, XP to cash, sheet appearance, the study clock.', 'settings');
+    col.appendChild(nav);
+
+    // Continue: the campaign's line and the one action that matters now.
+    const rewards = await syncRewards(items, attempts, campaign).catch(() => null);
+    const open = await getOpenQuizSession().catch(() => null);
+    if (disposed || seq !== renderSeq) return;
+    const cont = el('div', 'ws-home__continue');
+    let line = problems.length ? `${problems.length} problems in the bank, no campaign running.` : 'The bank is empty. Import a workbook to begin.';
+    if (campaign) {
+      const p = campaignProgress(campaign, items, attempts, Date.now(), rewards?.bonusXp ?? 0);
+      line = p.finished ? 'Campaign complete.' : p.restToday ? `Day ${p.dayIndex} of ${campaign.days} · Rest day` : `Day ${p.dayIndex} of ${campaign.days} · ${p.doneToday} of ${p.target} today`;
+    }
+    cont.appendChild(el('div', 'ws-home__line', line));
+    const acts = el('div', 'ws-home__acts');
+    if (open) {
+      const b = el('button', 'ws-btn ws-btn--primary', `Resume ${open.name || 'Quiz'} (${Math.min(open.position + 1, open.itemIds.length)} of ${open.itemIds.length})`) as HTMLButtonElement;
+      b.type = 'button';
+      b.title = 'The open quiz you used last, where it stands.';
+      b.addEventListener('click', () => void openPastQuiz(open.id));
+      acts.appendChild(b);
+    }
+    const start = el('button', open ? 'ws-btn ws-btn--quiet' : 'ws-btn ws-btn--primary', open ? 'New Quiz' : 'Start Quiz') as HTMLButtonElement;
+    start.type = 'button';
+    start.title = 'The quiz builder: papers, sources, kinds, a rating band, a length.';
+    start.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
+    acts.appendChild(start);
+    cont.appendChild(acts);
+    col.appendChild(cont);
 
     // What you touched last, and what arrived last: two short lists, each row opens the item.
     const lists = el('div', 'ws-launch__lists');
@@ -831,52 +903,10 @@ function createLauncherPane(container: HTMLElement) {
       }
       lists.appendChild(box);
     };
-    const recent = items.filter((it) => it.lastAttemptAt > 0).sort((a, b) => b.lastAttemptAt - a.lastAttemptAt).slice(0, 8);
-    listOf('Recent', recent, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'in progress' : gradeLabel(it.attemptState), when(it.lastAttemptAt)].filter(Boolean).join(' · '));
-    listOf('Starred', starred.slice(0, 8), (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'in progress' : gradeLabel(it.attemptState) || 'never tried'].filter(Boolean).join(' · '));
-    listOf('Noted', noted.slice(0, 8), (it) => it.note);
-    const added = [...items].sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
-    listOf('Newly Added', added, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, `added ${when(it.createdAt)}`].filter(Boolean).join(' · '));
-    // Quizzes: every one you ran, open to review the work and learn from the misses.
-    const sessions = await listQuizSessions(8).catch(() => []);
-    if (disposed || seq !== renderSeq) return;
-    if (sessions.length > 0) {
-      const box = el('div', 'ws-launch__list');
-      box.appendChild(el('div', 'ws-launch__listtitle', 'Recent Quizzes'));
-      const bankById = new Map(items.map((i) => [i.id, i]));
-      for (const q of sessions) {
-        const grades = await getSessionGrades(q.itemIds, q.startedAt, q.id, q.finishedAt ?? null).catch(() => new Map<number, string>());
-        if (disposed || seq !== renderSeq) return;
-        // Rated before the quiz opened still counts as rated, the way the
-        // review pane already reads it; only never-rated is "not rated".
-        const counts = { easy: 0, medium: 0, hard: 0 };
-        let unrated = 0;
-        for (const id of q.itemIds) {
-          const r = normalizeRating(grades.get(id) ?? bankById.get(id)?.attemptState ?? '');
-          if (r === 'easy' || r === 'medium' || r === 'hard') counts[r]++; else unrated++;
-        }
-        const row = el('button', 'ws-launch__row') as HTMLButtonElement;
-        row.type = 'button';
-        row.appendChild(el('span', `ws-bank__dot ${q.finishedAt ? 'rest' : 'open'}`));
-        const text = el('span', 'ws-launch__rowtext');
-        const started = new Date(q.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-        const status = q.finishedAt ? `completed ${when(q.finishedAt)}` : q.position >= q.itemIds.length ? 'at the summary' : `in progress · ${q.position + 1} of ${q.itemIds.length}`;
-        text.appendChild(el('span', 'ws-launch__rowtitle', `${q.name || started} · ${q.itemIds.length} ${q.itemIds.length === 1 ? 'problem' : 'problems'} · ${status}`));
-        text.appendChild(el('span', 'ws-launch__rowmeta', `${counts.easy} Easy · ${counts.medium} Medium · ${counts.hard} Hard · ${unrated} not rated`));
-        row.appendChild(text);
-        row.title = q.finishedAt ? 'A completed quiz: open it to review the work and the ratings. Reopen Quiz on its summary makes it open again.' : 'Resume this quiz where it was.';
-        row.addEventListener('click', () => void openPastQuiz(q.id));
-        box.appendChild(row);
-      }
-      const all = el('button', 'ws-launch__row') as HTMLButtonElement;
-      all.type = 'button';
-      all.appendChild(el('span', 'ws-launch__rowtext', 'All Quizzes'));
-      all.title = 'The Quizzes tab: every quiz with its actions.';
-      all.addEventListener('click', () => void openWorksheet('quizzes', 'Quizzes'));
-      box.appendChild(all);
-      lists.appendChild(box);
-    }
-    root.appendChild(lists);
+    const recent = items.filter((it) => it.lastAttemptAt > 0).sort((a, b) => b.lastAttemptAt - a.lastAttemptAt).slice(0, 5);
+    listOf('Recent', recent, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'In Progress' : gradeLabel(it.attemptState), whenCap(it.lastAttemptAt)].filter(Boolean).join(' · '));
+    listOf('Noted', noted.slice(0, 5), (it) => it.note);
+    col.appendChild(lists);
   };
 
   void render();
@@ -987,6 +1017,45 @@ function createSettingsPane(container: HTMLElement) {
       camp.appendChild(end);
     }
     root.appendChild(camp);
+
+    // The exam: the Dashboard counts the days to it.
+    const exam = el('section', 'ws-settings__section');
+    const examTitle = el('div', 'ws-settings__sectiontitle', 'Exam Date');
+    examTitle.title = 'The Dashboard shows the days left to it beside your progress.';
+    exam.appendChild(examTitle);
+    const examRow = el('div', 'ws-settings__row');
+    const examIn = el('input', 'ws-input ws-input--date') as HTMLInputElement;
+    examIn.type = 'date';
+    examIn.value = getExamDate();
+    examIn.setAttribute('aria-label', 'Exam date');
+    examIn.addEventListener('change', () => { void setExamDate(examIn.value).then(() => render()); });
+    examRow.appendChild(examIn);
+    if (getExamDate()) {
+      const clear = el('button', 'ws-btn ws-btn--small', 'Clear') as HTMLButtonElement;
+      clear.type = 'button';
+      clear.addEventListener('click', () => { void setExamDate('').then(() => render()); });
+      examRow.appendChild(clear);
+    }
+    exam.appendChild(examRow);
+    root.appendChild(exam);
+
+    // XP as cash: what the campaign's points are worth, paid to yourself.
+    const cash = el('section', 'ws-settings__section');
+    const cashTitle = el('div', 'ws-settings__sectiontitle', 'XP To Cash');
+    cashTitle.title = 'Dollars per 100 XP. Set it and the Dashboard shows what your XP and each reward are worth; Cash Out there records what you paid yourself. 0 turns it off.';
+    cash.appendChild(cashTitle);
+    const cashRow = el('div', 'ws-settings__row');
+    cashRow.appendChild(el('span', 'ws-hint', 'Dollars per 100 XP'));
+    const cashIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
+    cashIn.type = 'number';
+    cashIn.min = '0';
+    cashIn.step = '0.25';
+    cashIn.value = String(getXpCashRate() || 0);
+    cashIn.setAttribute('aria-label', 'Dollars per 100 XP');
+    cashIn.addEventListener('change', () => { const v = Math.max(0, Number(cashIn.value) || 0); void setXpCashRate(v).then(() => render()); });
+    cashRow.appendChild(cashIn);
+    cash.appendChild(cashRow);
+    root.appendChild(cash);
 
     // The sheet's look, independent of the app theme.
     const look = el('section', 'ws-settings__section');
@@ -1366,6 +1435,11 @@ function when(ms: number): string {
   const days = Math.floor((Date.now() - ms) / 86400000);
   return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
 }
+/** `when` at the start of a fragment: "Today", "Yesterday", "3 days ago". */
+function whenCap(ms: number): string {
+  const w = when(ms);
+  return w.charAt(0).toUpperCase() + w.slice(1);
+}
 /** A quiz named after the moment it began, when nothing better was given. */
 function defaultQuizName(count: number): string {
   const at = new Date().toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -1404,7 +1478,7 @@ function quizSessionIdFor(itemId: number): string | undefined {
   return _practice && _practice.ids.includes(itemId) ? _practice.id : undefined;
 }
 /** Filters chosen elsewhere (the dashboard's Quiz buttons), taken by the next quiz builder. */
-let _quizPreset: { papers?: string[]; state?: string } | null = null;
+let _quizPreset: { papers?: string[]; state?: string; starred?: 'starred' | 'unstarred'; ids?: number[]; name?: string } | null = null;
 
 /** A new quiz over exactly these problems, in this order, under `name`. */
 function startQuizWith(ids: number[], startAt = 0, name = ''): void {
@@ -1434,7 +1508,7 @@ function createQuizzesPane(container: HTMLElement) {
   newBtn.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
   controls.appendChild(newBtn);
   root.appendChild(controls);
-  const listHost = el('div', 'ws-home__list');
+  const listHost = el('div', 'ws-summary__list');
   root.appendChild(listHost);
 
   const render = async () => {
@@ -1457,22 +1531,24 @@ function createQuizzesPane(container: HTMLElement) {
         if (r === 'easy' || r === 'medium' || r === 'hard') counts[r]++; else unrated++;
       }
       const started = new Date(q.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-      const row = el('div', 'ws-itemrow');
+      // One line per quiz: name, state, counts; the date only when the name
+      // does not already say it (an auto-named quiz is its date).
+      const row = el('div', 'ws-quizrow');
       row.appendChild(el('span', `ws-bank__dot ${q.finishedAt ? 'rest' : 'open'}`));
-      const info = el('div', 'ws-itemrow__info');
-      const title = el('div', 'ws-itemrow__title');
-      const nameEl = el('span', '', q.name || started);
-      title.appendChild(nameEl);
-      const status = q.finishedAt ? `Completed ${when(q.finishedAt)}` : q.position >= q.itemIds.length ? 'Open · at the summary' : `Open · ${q.position + 1} of ${q.itemIds.length}`;
-      title.appendChild(el('span', `ws-chip ${q.finishedAt ? 'ws-chip--muted' : 'ws-chip--open'}`, status));
-      info.appendChild(title);
-      info.appendChild(el('div', 'ws-itemrow__meta', `${q.itemIds.length} ${q.itemIds.length === 1 ? 'problem' : 'problems'} · ${counts.easy} Easy · ${counts.medium} Medium · ${counts.hard} Hard · ${unrated} not rated · started ${started}`));
+      const info = el('div', 'ws-quizrow__info');
+      const nameEl = el('span', 'ws-quizrow__name', q.name || started);
+      info.appendChild(nameEl);
+      const status = q.finishedAt ? `Completed ${when(q.finishedAt)}` : q.position >= q.itemIds.length ? 'Open · At the Summary' : `Open · ${q.position + 1} of ${q.itemIds.length}`;
+      info.appendChild(el('span', `ws-chip ${q.finishedAt ? 'ws-chip--muted' : 'ws-chip--open'}`, status));
+      const n = q.itemIds.length;
+      const showStarted = !(q.name || '').includes(started);
+      info.appendChild(el('span', 'ws-quizrow__meta', [`${n} ${n === 1 ? 'problem' : 'problems'}`, `${counts.easy} Easy`, `${counts.medium} Medium`, `${counts.hard} Hard`, unrated ? `${unrated} Not Rated` : '', showStarted ? `Started ${started}` : ''].filter(Boolean).join(' · ')));
       info.title = q.finishedAt ? 'Open this completed quiz to review it.' : 'Resume this quiz where it stands.';
       info.addEventListener('click', () => void openPastQuiz(q.id));
       row.appendChild(info);
-      const actions = el('div', 'ws-itemrow__actions');
+      const actions = el('div', 'ws-quizrow__actions');
       const act = (label: string, hint: string, onClick: () => void, danger = false) => {
-        const b = el('button', danger ? 'ws-btn ws-btn--small ws-btn--danger' : 'ws-btn ws-btn--small') as HTMLButtonElement;
+        const b = el('button', danger ? 'ws-btn ws-btn--small ws-btn--quiet ws-btn--danger' : 'ws-btn ws-btn--small ws-btn--quiet') as HTMLButtonElement;
         b.textContent = label;
         b.title = hint;
         b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
@@ -1504,9 +1580,9 @@ function createQuizzesPane(container: HTMLElement) {
         input.focus();
         input.select();
       });
-      act('Copy Quiz', 'A new open quiz over the same problems in the same order. Ratings start fresh for the copy.', () => startQuizWith(q.itemIds, 0, `${q.name || 'Quiz'} Copy`));
-      if (q.finishedAt) act('Reopen Quiz', 'Makes this completed quiz open again, at its last problem.', () => void reopenQuizSession(q.id).catch(() => {}));
-      act('Delete Quiz', 'Removes the quiz. The ratings it produced stay on the problems.', () => {
+      act('Copy', 'A new open quiz over the same problems in the same order. Ratings start fresh for the copy.', () => startQuizWith(q.itemIds, 0, `${q.name || 'Quiz'} Copy`));
+      if (q.finishedAt) act('Reopen', 'Makes this completed quiz open again, at its last problem.', () => void reopenQuizSession(q.id).catch(() => {}));
+      act('Delete', 'Removes the quiz. The ratings it produced stay on the problems.', () => {
         void (async () => {
           const ok = await _api?.window?.showConfirmModal?.({
             message: `Delete the quiz "${q.name || started}"?`,
@@ -1543,6 +1619,15 @@ function createPracticeConfigPane(container: HTMLElement) {
   // unless their source chip is on.
   const filters = { papers: new Set<string>(), sources: new Set<string>(), kinds: new Set<string>(), state: 'all', starred: 'any' as 'any' | 'starred' | 'unstarred', count: 10, shuffle: true };
   let bank: WorksheetItemSummary[] = [];
+  // A set handed over from the Dashboard (Due Now, Keeps Going Wrong, Quick
+  // Wins): the filters then narrow within it, and the From chip says where it
+  // came from until cleared (Mufaro, 2026-09-21: the card is the way to its
+  // quiz, not a button under it).
+  let presetIds: Set<number> | null = null;
+  let presetName = '';
+  const pool = (): WorksheetItemSummary[] => (presetIds ? bank.filter((it) => presetIds!.has(it.id)) : bank);
+  const fromLabel = el('div', 'ws-sidebar__label', 'From');
+  const fromHost = el('div', 'ws-create__controls');
 
   const paperHost = el('div', 'ws-create__controls ws-practice__chips');
   const sourceHost = el('div', 'ws-create__controls ws-practice__chips');
@@ -1554,6 +1639,7 @@ function createPracticeConfigPane(container: HTMLElement) {
   const err = el('div', 'ws-error');
   err.style.display = 'none';
 
+  root.append(fromLabel, fromHost);
   root.appendChild(el('div', 'ws-sidebar__label', 'Papers'));
   root.appendChild(paperHost);
   root.appendChild(el('div', 'ws-sidebar__label', 'Sources'));
@@ -1572,7 +1658,7 @@ function createPracticeConfigPane(container: HTMLElement) {
   const countIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
   countIn.type = 'number'; countIn.min = '1'; countIn.max = '100'; countIn.value = '10';
   optRow.appendChild(countIn);
-  optRow.appendChild(el('span', 'ws-hint', 'problems'));
+  optRow.appendChild(el('span', 'ws-hint', 'Problems'));
   const shuffleWrap = el('label', 'ws-hint') as HTMLLabelElement;
   const shuffleIn = el('input') as HTMLInputElement;
   shuffleIn.type = 'checkbox'; shuffleIn.checked = true;
@@ -1613,7 +1699,7 @@ function createPracticeConfigPane(container: HTMLElement) {
   });
 
   const syncMatchLine = () => {
-    const matching = buildPracticeSet(bank, { ...currentFilters(), count: 10_000, shuffle: false });
+    const matching = buildPracticeSet(pool(), { ...currentFilters(), count: 10_000, shuffle: false });
     matchLine.textContent = `${matching.length} ${matching.length === 1 ? 'problem matches' : 'problems match'} the filters.`;
   };
 
@@ -1637,6 +1723,17 @@ function createPracticeConfigPane(container: HTMLElement) {
     }
   };
   const renderFilters = () => {
+    fromHost.replaceChildren();
+    fromLabel.style.display = presetIds ? '' : 'none';
+    fromHost.style.display = presetIds ? '' : 'none';
+    if (presetIds) {
+      fromHost.appendChild(chip(`${presetName} ${pool().length}`, true, () => {}));
+      const clear = el('button', 'ws-btn ws-btn--small ws-btn--quiet', 'Clear') as HTMLButtonElement;
+      clear.type = 'button';
+      clear.title = 'Drop the set from the Dashboard and choose from the whole bank.';
+      clear.addEventListener('click', () => { presetIds = null; presetName = ''; renderFilters(); });
+      fromHost.appendChild(clear);
+    }
     const count = (pick: (it: WorksheetItemSummary) => string) => {
       const m = new Map<string, number>();
       for (const it of bank) { const k = pick(it); if (k) m.set(k, (m.get(k) ?? 0) + 1); }
@@ -1674,7 +1771,7 @@ function createPracticeConfigPane(container: HTMLElement) {
   shuffleIn.addEventListener('change', syncMatchLine);
 
   startBtn.addEventListener('click', () => {
-    const ids = buildPracticeSet(bank, currentFilters());
+    const ids = buildPracticeSet(pool(), currentFilters());
     if (ids.length === 0) {
       err.textContent = 'No items match those filters.';
       err.style.display = '';
@@ -1697,6 +1794,13 @@ function createPracticeConfigPane(container: HTMLElement) {
     if (_quizPreset) {
       for (const p of _quizPreset.papers ?? []) filters.papers.add(p);
       if (_quizPreset.state) filters.state = _quizPreset.state;
+      if (_quizPreset.starred) filters.starred = _quizPreset.starred;
+      if (_quizPreset.ids && _quizPreset.ids.length) {
+        presetIds = new Set(_quizPreset.ids);
+        presetName = _quizPreset.name || 'Selection';
+        nameIn.value = presetName;
+        countIn.value = String(Math.min(100, _quizPreset.ids.length));
+      }
       _quizPreset = null;
     }
     renderFilters();
@@ -1821,8 +1925,10 @@ function createPracticeRunPane(container: HTMLElement) {
       // problems are rated.
       if (disposed) return;
       const wrap = el('div', 'ws-home');
-      wrap.appendChild(el('div', 'ws-home__title', `Quiz Summary · ${session.name || 'Quiz'}`));
-      wrap.appendChild(el('div', 'ws-hint', session.finishedAt ? `Completed ${when(session.finishedAt)}.` : 'Open. Complete Quiz marks it done; Back To Quiz continues it.'));
+      const titleRow = el('div', 'ws-summary__head');
+      titleRow.appendChild(el('div', 'ws-home__title', `Quiz Summary · ${session.name || 'Quiz'}`));
+      titleRow.appendChild(el('span', 'ws-chip ws-chip--muted', session.finishedAt ? `Completed ${when(session.finishedAt)}` : 'Open'));
+      wrap.appendChild(titleRow);
       const grades = await getSessionGrades(session.ids, session.startedAt, session.id, session.finishedAt ?? null);
       const bank = await listItems().catch(() => []);
       const byId = new Map(bank.map((i) => [i.id, i]));
@@ -1835,7 +1941,7 @@ function createPracticeRunPane(container: HTMLElement) {
         if (normalizeRating(prev)) resolved.set(id, { grade: prev, own: false });
       }
       const counts = { nailed: 0, partial: 0, missed: 0, ungraded: 0 };
-      const list = el('div', 'ws-home__list');
+      const list = el('div', 'ws-summary__list');
       session.ids.forEach((id, i) => {
         const item = byId.get(id);
         const hit = resolved.get(id);
@@ -1845,16 +1951,17 @@ function createPracticeRunPane(container: HTMLElement) {
         else if (r === 'medium') counts.partial++;
         else if (r === 'hard') counts.missed++;
         else counts.ungraded++;
-        const row = el('div', 'ws-itemrow');
-        const info = el('div', 'ws-itemrow__info');
-        const title = el('div', 'ws-itemrow__title', `${i + 1}. ${item?.title ?? `Item ${id}`}`);
+        const row = el('div', 'ws-summary__row');
+        const info = el('div', 'ws-summary__info');
+        info.appendChild(el('span', 'ws-summary__num', String(i + 1)));
+        const title = el('div', 'ws-summary__title', item?.title ?? `Item ${id}`);
         // Own rating, then an earlier one of his, then work without one, then
         // what the workbook carried: the summary never dresses a workbook
         // rating up as his.
         if (grade && hit!.own) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, gradeLabelFor(grade)));
-        else if (grade && !item?.ratingImported) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} earlier`));
+        else if (grade && !item?.ratingImported) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} · Earlier`));
         else if (item?.worked) title.appendChild(el('span', 'ws-chip ws-chip--open', 'Worked, Not Rated'));
-        else if (grade) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} in your workbook`));
+        else if (grade) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} · Workbook`));
         else title.appendChild(el('span', 'ws-chip', session.skipped.has(id) ? 'Skipped' : 'Not Rated'));
         if (session.marked.has(id)) title.appendChild(el('span', 'ws-chip ws-chip--marked', 'Marked'));
         info.appendChild(title);
@@ -1878,17 +1985,17 @@ function createPracticeRunPane(container: HTMLElement) {
         counts.ungraded ? `${counts.ungraded} Not Rated` : '',
         session.marked.size ? `${session.marked.size} Marked For Later` : '',
       ].filter(Boolean).join(' · ');
-      wrap.appendChild(el('div', 'ws-hint', line));
-      if (tagRoll.size > 0) {
-        const tags = [...tagRoll.entries()]
-          .map(([t, e]) => `#${t} ${e.nailed}/${e.n}`)
-          .join(' · ');
-        wrap.appendChild(el('div', 'ws-hint', `By tag (easy / seen): ${tags}`));
-      }
+      const countsLine = el('div', 'ws-hint', line);
+      // The per-tag rollup rides as the tooltip: twenty hashtags in a row was noise on screen.
+      if (tagRoll.size > 0) countsLine.title = `By tag (easy / seen): ${[...tagRoll.entries()].map(([t, e]) => `#${t} ${e.nailed}/${e.n}`).join(' · ')}`;
+      wrap.appendChild(countsLine);
+      // Actions above the list, in view without scrolling past every problem;
+      // navigation the tabs already give (Home, Dashboard, New Quiz) is not repeated.
+      const actions = el('div', 'ws-create__controls ws-summary__actions');
+      wrap.appendChild(actions);
       wrap.appendChild(list);
-      const actions = el('div', 'ws-create__controls');
-      const action = (label: string, hint: string, onClick: () => void, primary = false) => {
-        const b = el('button', primary ? 'ws-btn ws-btn--primary' : 'ws-btn') as HTMLButtonElement;
+      const action = (label: string, hint: string, onClick: () => void, primary = false, quiet = false) => {
+        const b = el('button', primary ? 'ws-btn ws-btn--primary' : quiet ? 'ws-btn ws-btn--quiet' : 'ws-btn') as HTMLButtonElement;
         b.textContent = label;
         b.title = hint;
         b.addEventListener('click', onClick);
@@ -1901,13 +2008,9 @@ function createPracticeRunPane(container: HTMLElement) {
       } else {
         action('Reopen Quiz', 'Makes this completed quiz open again, at its last problem.', () => void reopenQuiz(), true);
       }
-      action('Copy Quiz', 'A new open quiz over the same problems in the same order. Ratings start fresh for the copy.', copyQuiz);
       action('Quiz Overview', 'Every problem in this quiz, with your ratings and notes; click one to reopen it.',
-        () => { _practice = session; session.index = Math.min(session.index, session.ids.length - 1); view = 'overview'; serve(); });
-      action('New Quiz', 'The quiz builder. This quiz stays as it is.', () => void openWorksheet('practice', 'Quiz'));
-      action('Dashboard', 'The campaign and what to work on next.', () => void openWorksheet('dashboard', 'Dashboard'));
-      action('Home', 'Every quiz, open and completed, is listed there.', () => void openWorksheet('home', 'Worksheets'));
-      wrap.appendChild(actions);
+        () => { _practice = session; session.index = Math.min(session.index, session.ids.length - 1); view = 'overview'; serve(); }, false, true);
+      action('Copy', 'A new open quiz over the same problems in the same order. Ratings start fresh for the copy.', copyQuiz, false, true);
       playerHost.appendChild(wrap);
     };
 
@@ -1981,7 +2084,7 @@ function createPracticeRunPane(container: HTMLElement) {
         // Work outranks an old rating here: working a problem is what counts
         // it for the day, and a rating that came in with the workbook is said
         // in those words so it is never mistaken for one given here.
-        const earlierText = item?.ratingImported ? `${gradeLabel(item.attemptState)} in your workbook` : `${gradeLabel(item?.attemptState ?? '')} earlier`;
+        const earlierText = item?.ratingImported ? `${gradeLabel(item.attemptState)} · Workbook` : `${gradeLabel(item?.attemptState ?? '')} · Earlier`;
         const status = sessionGrade ? gradeLabel(st!.grade) : st?.worked ? 'Worked, Not Rated' : earlierGrade ? earlierText : st?.attempted ? 'Opened' : skipped ? 'Skipped' : 'Not Started';
         if (sessionGrade) counts.rated++; else if (st?.worked) counts.attempted++; else if (skipped) counts.skipped++; else counts.untouched++;
         const row = el('div', `ws-quiz__row${i === session.index ? ' ws-quiz__row--current' : ''}`);
@@ -1998,7 +2101,7 @@ function createPracticeRunPane(container: HTMLElement) {
         row.appendChild(text);
         const chipCls = sessionGrade ? `ws-chip--${stateClass(gradeText)}` : st?.worked ? 'ws-chip--open' : earlierGrade ? `ws-chip--${stateClass(gradeText)}` : 'ws-chip--muted';
         row.appendChild(el('span', `ws-chip ${chipCls}`, status));
-        row.appendChild(el('span', 'ws-quiz__time', st?.seconds ? fmtSeconds(st.seconds) : ''));
+        row.appendChild(el('span', 'ws-quiz__time', st?.seconds ? fmtStudy(st.seconds) : ''));
         const noteBtn = iconBtn('notebook-pen', note ? 'Edit Note' : 'Add Note', { hint: 'A note on this problem, kept with it across quizzes.' });
         row.appendChild(noteBtn);
         const editor = el('div', 'ws-quiz__note');
@@ -2016,7 +2119,6 @@ function createPracticeRunPane(container: HTMLElement) {
           paintIconBtn(noteBtn, 'notebook-pen', v ? 'Edit Note' : 'Add Note', 'A note on this problem, kept with it across quizzes.');
         });
         editor.appendChild(ta);
-        row.appendChild(editor);
         noteBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           const open = editor.style.display === 'none';
@@ -2025,6 +2127,7 @@ function createPracticeRunPane(container: HTMLElement) {
         });
         row.appendChild(markBtn(session, id, (on) => { counts.marked += on ? 1 : -1; paintCounts(); }));
         row.appendChild(starBtn(id, item?.starred ?? false));
+        row.appendChild(editor);
         row.addEventListener('click', () => goTo(i));
         row.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === row) goTo(i); });
         rows.push(row);
@@ -2035,7 +2138,7 @@ function createPracticeRunPane(container: HTMLElement) {
       const nameEl = el('div', 'ws-home__title', session.name || 'Quiz Overview');
       titleRow.appendChild(nameEl);
       const small = (label: string, hint: string, onClick: () => void) => {
-        const b = el('button', 'ws-btn ws-btn--small') as HTMLButtonElement;
+        const b = el('button', 'ws-btn ws-btn--small ws-btn--quiet') as HTMLButtonElement;
         b.textContent = label;
         b.title = hint;
         b.addEventListener('click', onClick);
@@ -2059,7 +2162,7 @@ function createPracticeRunPane(container: HTMLElement) {
         input.focus();
         input.select();
       });
-      small('Copy Quiz', 'A new open quiz over the same problems in the same order.', copyQuiz);
+      small('Copy', 'A new open quiz over the same problems in the same order.', copyQuiz);
       if (session.finishedAt) small('Reopen Quiz', 'Makes this completed quiz open again.', () => void reopenQuiz());
       else small('Quiz Summary', 'The ratings so far, and Complete Quiz when you are done.', () => goTo(session.ids.length));
       head.appendChild(titleRow);
@@ -2097,7 +2200,7 @@ function createPracticeRunPane(container: HTMLElement) {
       }));
       // Mark For Later sits with Skip: both say "not now"; a mark says "come back".
       // Next Marked carries its count, so it is a word button, shown only while there is one.
-      const nextMarkedBtn = el('button', 'ws-btn ws-btn--small ws-sessionbar__marked') as HTMLButtonElement;
+      const nextMarkedBtn = el('button', 'ws-btn ws-btn--quiet ws-sessionbar__marked') as HTMLButtonElement;
       nextMarkedBtn.type = 'button';
       const paintNextMarked = () => {
         const n = session.marked.size;
@@ -2838,6 +2941,25 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
     await refreshRating();
     const timerEl = el('span', 'ws-problem__timer', fmtSeconds(problemSeconds));
     timerEl.title = 'Study time on this problem, every sitting. Counts while it is on screen and you are active; idle stretches are taken back.';
+    // The note on this problem, taken where the work is (Mufaro, 2026-09-21:
+    // it lived only on the quiz overview, a screen away). One button on the
+    // header opens the editor under it; saved on blur, kept across quizzes.
+    let problemNote = (await getProblemNotes([problem.id]).catch(() => new Map<number, string>())).get(problem.id) ?? '';
+    const noteHost = el('div', 'ws-item__note');
+    noteHost.style.display = 'none';
+    const noteArea = el('textarea', 'ws-quiz__notetext') as HTMLTextAreaElement;
+    noteArea.placeholder = 'What to remember about this problem.';
+    noteArea.value = problemNote;
+    noteArea.setAttribute('aria-label', 'Note on this problem');
+    noteArea.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') noteArea.blur(); });
+    noteArea.addEventListener('blur', () => {
+      const v = noteArea.value.trim();
+      if (v === problemNote) return;
+      problemNote = v;
+      void setProblemNote(problem.id, v).catch(() => {});
+      paintHeader();
+    });
+    noteHost.appendChild(noteArea);
     const header = el('div', 'ws-item__header');
     const titleRow = el('div', 'ws-item__titlerow');
     const paintHeader = () => {
@@ -2892,6 +3014,13 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       }
       titleRow.appendChild(rate);
       titleRow.appendChild(starBtn(problem.id, starred, (on) => { starred = on; }));
+      const noteBtn = iconBtn('notebook-pen', problemNote ? 'Edit Note' : 'Add Note', {
+        hint: problemNote || 'A note on this problem, kept with it across quizzes and shown in the bank.',
+        onClick: () => { const open = noteHost.style.display === 'none'; noteHost.style.display = open ? '' : 'none'; if (open) noteArea.focus(); },
+      });
+      noteBtn.classList.toggle('ws-note--on', !!problemNote);
+      noteBtn.setAttribute('aria-pressed', problemNote ? 'true' : 'false');
+      titleRow.appendChild(noteBtn);
       titleRow.appendChild(makeSheetThemeButton());
       titleRow.appendChild(iconBtn('file-spreadsheet', 'Export to Excel', {
         hint: 'Saves this sheet as a real .xlsx, values and formulas, in your Downloads folder.',
@@ -2945,7 +3074,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         });
         titleRow.appendChild(revealBtn);
       }
-      header.replaceChildren(titleRow);
+      header.replaceChildren(titleRow, noteHost);
       if (revealed && _api?.lm) {
         const reviewWrap = el('div', 'ws-item__review');
         const reviewBtn = el('button', 'ws-btn') as HTMLButtonElement;
@@ -3196,6 +3325,19 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
             configureQuiz: (preset) => { _quizPreset = preset; void openWorksheet('practice', 'Quiz'); },
             importWorkbook: () => void openWorksheet('excel-import', 'Import Workbook'),
             openSettings: () => void openWorksheet('settings', 'Worksheets Settings'),
+            examDate: () => getExamDate(),
+            xpCashRate: () => getXpCashRate(),
+            cashOut: async (xp, cents) => {
+              const dollars = (cents / 100).toFixed(2);
+              const ok = await _api?.window?.showConfirmModal?.({
+                message: `Cash out ${xp} XP for $${dollars}?`,
+                detail: 'Pay yourself, then this records it. The XP stays on your level; only what is left to cash out goes down.',
+                confirmLabel: 'Cash Out',
+              }) ?? true;
+              if (!ok) return;
+              await recordXpCashout(xp, cents);
+              _api?.activity?.note('cashed out', `${xp} XP for $${dollars}`);
+            },
             studyFlashcards: () => {
               const cmds = (_api as unknown as { commands?: { executeCommand?: (id: string) => Promise<unknown> } } | null)?.commands;
               if (cmds?.executeCommand) void cmds.executeCommand('flashcards.study').catch(() => void _api?.window?.showInformationMessage?.('Flashcards is not available in this workspace.'));

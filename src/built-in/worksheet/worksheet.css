@@ -67,17 +67,31 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-btn--primary:hover { background: var(--px-accent-hover); border-color: transparent; }
 .ws-btn--danger:hover { color: var(--px-danger); border-color: var(--px-danger); }
 /* Icon buttons: the bar's actions as glyphs, the word in the tooltip. */
-.ws-btn--icon { width: 30px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--px-text-secondary); }
-.ws-btn--icon svg { width: 16px; height: 16px; }
-.ws-btn--icon:hover { color: var(--px-text); }
-.ws-btn--icon.ws-btn--primary { color: var(--px-text-on-accent); }
+/* Icon buttons are bare glyphs, the workbench's title-action look (the chat
+   header's +, history, settings): no box, a hover wash, 14px icon. A boxed
+   28px icon on every action read as slop (Mufaro, 2026-09-21). A primary
+   icon button is an accent glyph, a danger one turns red on hover; the
+   on-states (star, mark, note) are the accent glyph too. */
+.ws-btn--icon { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--px-text-secondary); background: transparent; border-color: transparent; }
+.ws-btn--icon svg { width: 14px; height: 14px; }
+.ws-btn--icon:hover { color: var(--px-text); background: var(--px-surface-hover); border-color: transparent; }
+.ws-btn--icon.ws-btn--primary { color: var(--px-accent); background: transparent; }
+.ws-btn--icon.ws-btn--primary:hover { color: var(--px-accent); background: var(--px-surface-hover); border-color: transparent; }
+.ws-btn--icon.ws-btn--danger:hover { color: var(--px-danger); background: var(--px-surface-hover); border-color: transparent; }
 .ws-btn--icon:disabled { opacity: 0.4; cursor: default; }
-.ws-btn--icon:disabled:hover { border-color: var(--px-border-strong); color: var(--px-text-secondary); }
+.ws-btn--icon:disabled:hover { background: transparent; border-color: transparent; color: var(--px-text-secondary); }
+/* A quiet word button: the same bare look for a word beside glyphs (Next
+   Marked in the session bar, Rename / Copy / Quiz Summary by a title). */
+.ws-btn--quiet { background: transparent; border-color: transparent; color: var(--px-text-secondary); }
+.ws-btn--quiet:hover { background: var(--px-surface-hover); border-color: transparent; color: var(--px-text); }
 /* The star (a bookmark on the problem) and the mark (a flag inside one quiz):
    on = accent stroke, the app's pressed look, never a filled glyph (Mufaro,
    2026-09-21: the filled amber star read as an emoji). */
 .ws-btn--icon.ws-star--on, .ws-btn--icon.ws-star--on:hover,
-.ws-btn--icon.ws-mark--on, .ws-btn--icon.ws-mark--on:hover { color: var(--px-accent); border-color: var(--px-accent); }
+.ws-btn--icon.ws-mark--on, .ws-btn--icon.ws-mark--on:hover,
+.ws-btn--icon.ws-note--on, .ws-btn--icon.ws-note--on:hover { color: var(--px-accent); }
+/* The note editor under a problem's header, opened by the note button. */
+.ws-item__note { margin-top: var(--px-space-2); }
 .ws-itemrow > .ws-star { opacity: 0.45; }
 .ws-itemrow:hover > .ws-star, .ws-itemrow:focus-within > .ws-star, .ws-itemrow > .ws-star--on { opacity: 1; }
 
@@ -247,7 +261,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
   background: var(--px-bg-inset); border: 1px solid var(--px-border-strong);
   border-radius: var(--px-radius-sm);
 }
-.ws-input--count { flex: 0 0 64px; }
+.ws-input--count, .ws-create__controls .ws-input--count { flex: 0 0 5em; width: 5em; }
 .ws-input--date { flex: 0 0 auto; font-family: inherit; }
 .ws-textarea {
   width: 100%; padding: 6px 9px; font-size: var(--px-text-sm); color: var(--px-text);
@@ -365,7 +379,7 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-dash__tilevalue { font-size: var(--px-text-xl); font-weight: 600; letter-spacing: -0.01em; margin-top: 2px; font-variant-numeric: tabular-nums; color: var(--px-text); }
 .ws-dash__tilesub { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 2px; }
 /* Work On Next: four cards, each a list of problems that open on click. */
-.ws-dash__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--px-space-3); }
+.ws-dash__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--px-space-3); }
 .ws-dash__card { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); display: flex; flex-direction: column; min-width: 0; }
 .ws-dash__cardhead { padding: var(--px-space-3) var(--px-space-4) var(--px-space-2); }
 .ws-dash__cardtitle { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
@@ -380,7 +394,43 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-dash__rowtext { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .ws-dash__rowtitle { font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-dash__rowmeta { font-size: var(--px-text-xs); color: var(--px-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.ws-dash__paperline { display: flex; align-items: center; gap: var(--px-space-2); padding: 5px var(--px-space-2); }
+.ws-dash__paperline { display: flex; align-items: center; gap: var(--px-space-2); width: 100%; padding: 5px var(--px-space-2); border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.ws-dash__paperline:hover, .ws-dash__paperline:focus-visible { background: var(--px-surface-hover); outline: none; }
+/* A card that is itself the way to a quiz of what it lists. */
+.ws-dash__card--link { cursor: pointer; }
+.ws-dash__card--link:hover, .ws-dash__card--link:focus-visible { border-color: var(--px-accent); outline: none; }
+/* The quiz summary: a flat list, one line per problem. */
+.ws-summary__head { display: flex; align-items: center; gap: var(--px-space-3); }
+.ws-summary__actions { margin: var(--px-space-2) 0; }
+.ws-summary__list { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); overflow: hidden; }
+.ws-summary__row { display: flex; align-items: center; border-bottom: 1px solid var(--px-divider, var(--px-border)); }
+.ws-summary__row:last-child { border-bottom: 0; }
+.ws-summary__row:hover { background: var(--px-surface-hover); }
+.ws-summary__info { display: flex; align-items: center; gap: var(--px-space-3); flex: 1; min-width: 0; padding: 6px var(--px-space-3); cursor: pointer; }
+.ws-summary__num { color: var(--px-text-muted); font-variant-numeric: tabular-nums; min-width: 2em; text-align: right; font-size: var(--px-text-sm); }
+.ws-summary__title { font-size: var(--px-text-sm); font-weight: 500; display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; }
+/* Home: a row of destinations, the continue strip, two short lists. */
+/* Home is a centred column on any window: a launcher is a page, not a corner. */
+.ws-home__col { width: 100%; max-width: 1120px; margin: 0 auto; padding-top: var(--px-space-4); }
+.ws-home__nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: var(--px-space-2); margin: var(--px-space-3) 0 var(--px-space-4); }
+.ws-home__navtile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: var(--px-space-3) var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; font-size: var(--px-text-sm); cursor: pointer; min-height: 76px; }
+.ws-home__navtile:hover, .ws-home__navtile:focus-visible { border-color: var(--px-accent); background: var(--px-surface-hover); outline: none; }
+.ws-home__navicon { display: inline-flex; color: var(--px-text-secondary); }
+.ws-home__navicon svg { width: 20px; height: 20px; }
+.ws-home__navtile:hover .ws-home__navicon { color: var(--px-accent); }
+.ws-home__navlabel { white-space: nowrap; }
+.ws-home__continue { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-4); flex-wrap: wrap; padding: var(--px-space-3) var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); }
+.ws-home__line { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); }
+.ws-home__acts { display: flex; align-items: center; gap: var(--px-space-2); }
+/* Quizzes: one line per quiz, actions on hover. */
+.ws-quizrow { display: flex; align-items: center; gap: var(--px-space-3); padding: 6px var(--px-space-3); border-bottom: 1px solid var(--px-divider, var(--px-border)); }
+.ws-quizrow:last-child { border-bottom: 0; }
+.ws-quizrow:hover { background: var(--px-surface-hover); }
+.ws-quizrow__info { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; cursor: pointer; }
+.ws-quizrow__name { font-weight: 600; font-size: var(--px-text-sm); }
+.ws-quizrow__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.ws-quizrow__actions { display: flex; gap: 2px; flex: 0 0 auto; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
+.ws-quizrow:hover .ws-quizrow__actions, .ws-quizrow:focus-within .ws-quizrow__actions { opacity: 1; }
 .ws-btn--small { padding: 2px 10px; font-size: var(--px-text-xs); }
 .ws-bank__dot.rest { background: color-mix(in srgb, var(--px-text-muted) 35%, transparent); }
 /* Progress By Paper: horizontal stacked bars, the three status inks, a surface gap between segments. */
@@ -396,7 +446,9 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-dash__papername { flex: 0 0 150px; text-align: left; border: 0; background: transparent; color: var(--px-text); font: inherit; font-size: var(--px-text-sm); padding: 2px 4px; margin-left: -4px; border-radius: var(--px-radius-sm); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-dash__papername:hover, .ws-dash__papername:focus-visible { background: var(--px-surface-hover); color: var(--px-accent); outline: none; }
 .ws-dash__bar { flex: 1; display: flex; gap: 2px; height: 10px; border-radius: var(--px-radius-sm); overflow: hidden; }
-.ws-dash__bar > span { display: block; flex: 0 0 auto; flex-basis: 0; min-width: 2px; }
+.ws-dash__bar > span { display: block; flex: 0 0 auto; flex-basis: 0; min-width: 2px; cursor: pointer; }
+.ws-dash__bar > span:hover { filter: brightness(1.2); }
+.ws-dash__bar > span:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
 .ws-dash__barlabel { flex: 0 0 96px; text-align: right; font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 /* Progress Over Time: two small multiples on one scale, one series each, the target dashed. */
 .ws-dash__charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--px-space-3); }
@@ -422,24 +474,29 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 /* ── Campaign: every problem in the bank in N days ── */
 .ws-camp { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); padding: var(--px-space-4) var(--px-space-5); display: flex; flex-direction: column; gap: var(--px-space-3); }
 .ws-camp--idle { gap: var(--px-space-2); }
-.ws-camp__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--px-space-4); flex-wrap: wrap; }
-.ws-camp__headtext { min-width: 0; }
+/* Three columns: today, the plan, the level and actions. */
+.ws-camp__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--px-space-5); align-items: start; }
+.ws-camp__col { min-width: 0; display: flex; flex-direction: column; gap: var(--px-space-2); }
+.ws-camp__label { font-size: var(--px-text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--px-text-muted); }
 .ws-camp__title { font-size: var(--px-text-lg); font-weight: 650; letter-spacing: -0.01em; color: var(--px-text); }
 .ws-camp__sub { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: 2px; }
-.ws-camp__level { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 180px; }
+.ws-camp__level { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.ws-camp__cash { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-1); }
 .ws-camp__lvl { font-size: var(--px-text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--px-text-muted); }
 .ws-camp__lvlname { font-size: var(--px-text-md); font-weight: 650; color: var(--px-text); }
 .ws-camp__xpbar { width: 180px; height: 6px; border-radius: var(--px-radius-full); background: color-mix(in srgb, var(--px-text-muted) 18%, transparent); overflow: hidden; margin-top: 4px; }
 .ws-camp__xpbar > span { display: block; height: 100%; background: var(--px-accent); border-radius: var(--px-radius-full); }
 .ws-camp__xp { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .ws-camp__form { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
-.ws-camp__today { display: flex; align-items: center; gap: var(--px-space-5); flex-wrap: wrap; padding: var(--px-space-3) 0; border-top: 1px solid var(--px-divider, var(--px-border)); border-bottom: 1px solid var(--px-divider, var(--px-border)); }
 .ws-camp__big { font-size: 40px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; color: var(--px-text); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
 .ws-camp__of { font-size: var(--px-text-lg); font-weight: 500; color: var(--px-text-muted); letter-spacing: 0; }
-.ws-camp__todaytext { flex: 1 1 220px; min-width: 0; }
+.ws-camp__todaytext { min-width: 0; }
 .ws-camp__todayline { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); }
-.ws-camp__meta { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
-.ws-camp__actions { display: flex; gap: var(--px-space-2); flex-wrap: wrap; flex: 0 0 auto; }
+.ws-camp__stats { display: grid; grid-template-columns: 1fr 1fr; gap: var(--px-space-2) var(--px-space-4); margin-top: var(--px-space-1); }
+.ws-camp__statvalue { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); font-variant-numeric: tabular-nums; }
+.ws-camp__statlabel { font-size: var(--px-text-xs); color: var(--px-text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.ws-camp__actions { display: flex; flex-direction: column; align-items: flex-start; gap: var(--px-space-2); margin-top: var(--px-space-2); }
+.ws-camp__more { display: flex; flex-wrap: wrap; gap: 2px 4px; margin-left: -8px; }
 .ws-camp__strip { display: flex; flex-wrap: wrap; gap: 4px; }
 .ws-camp__day { width: 16px; height: 16px; border-radius: 3px; background: color-mix(in srgb, var(--px-text-muted) 14%, transparent); }
 .ws-camp__day--full { background: var(--px-success); }
@@ -448,8 +505,6 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-camp__day--today { box-shadow: inset 0 0 0 2px var(--px-accent); }
 .ws-camp__day--rest { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--px-text-muted) 45%, transparent); }
 .ws-camp__day--today.ws-camp__day--rest { box-shadow: inset 0 0 0 2px var(--px-accent); }
-.ws-camp__papers { display: flex; flex-wrap: wrap; gap: 4px; }
-.ws-camp__paper { margin-left: 0; }
 .ws-camp__tally { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: var(--px-space-2); }
 .ws-camp__tallylabel { font-size: var(--px-text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--px-text-muted); margin-right: 2px; }
 .ws-camp__tally .ws-chip { margin-left: 0; }
@@ -476,6 +531,7 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 /* Settings: sections with a heading and its controls, nothing else. */
 .ws-settings { padding: var(--px-space-6); overflow-y: auto; display: flex; flex-direction: column; gap: var(--px-space-5); }
 .ws-settings__section { display: flex; flex-direction: column; gap: var(--px-space-2); padding-top: var(--px-space-4); border-top: 1px solid var(--px-border); }
+.ws-settings__section > .ws-btn { align-self: flex-start; }
 .ws-settings__sectiontitle { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
 .ws-settings__row { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
 .ws-settings__weekdays { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -497,15 +553,13 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-quiz__notepreview { font-size: var(--px-text-xs); color: var(--px-text-secondary); white-space: pre-wrap; margin-top: 2px; }
 
 /* ── Rewards ── */
-.ws-rewards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--px-space-2); margin-bottom: var(--px-space-5); }
-.ws-reward { display: flex; gap: var(--px-space-3); align-items: center; padding: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); background: var(--px-bg-elevated); min-width: 0; }
+.ws-rewards { display: flex; flex-wrap: wrap; gap: var(--px-space-2); margin-bottom: var(--px-space-5); }
+.ws-reward { display: inline-flex; gap: var(--px-space-2); align-items: center; padding: 4px 12px 4px 8px; border: 1px solid var(--px-border); border-radius: var(--px-radius-full); background: var(--px-bg-elevated); font-size: var(--px-text-sm); color: var(--px-text); cursor: default; }
 .ws-reward--locked { opacity: 0.55; }
-.ws-reward__icon { flex: 0 0 auto; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; color: var(--px-accent); }
+.ws-reward__icon { flex: 0 0 auto; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; color: var(--px-accent); }
 .ws-reward--locked .ws-reward__icon { color: var(--px-text-muted); }
-.ws-reward__icon svg { width: 20px; height: 20px; }
-.ws-reward__text { min-width: 0; }
-.ws-reward__title { font-weight: 600; font-size: var(--px-text-sm); display: flex; align-items: center; gap: var(--px-space-1); }
-.ws-reward__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.ws-reward__icon svg { width: 16px; height: 16px; }
+.ws-reward__title { font-weight: 500; font-size: var(--px-text-sm); white-space: nowrap; }
 .ws-settings__status { font-size: var(--px-text-sm); color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
 /* The dashboard without a campaign: one quiet line. */
 .ws-camp--idle { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-4); }

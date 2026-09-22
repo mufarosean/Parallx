@@ -61,6 +61,12 @@ for (let d = 0; d < 11; d++) {
 }
 export async function listItems() { return ${empty ? '[]' : 'items'}; }
 export async function listCompletedAttempts() { return ${empty ? '[]' : 'attempts'}; }
+export async function listAttemptHistory() { return ${empty ? '[]' : 'attempts'}; }
+// The study ledger: the last ten days, an hour or three each.
+const study = new Map();
+for (let d = 0; d < 10; d++) { const t = new Date(NOW - d * DAY); const k = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); study.set(k, 3600 + Math.floor(rnd() * 7200)); }
+export async function getStudySecondsByDay() { return ${empty ? 'new Map()' : 'study'}; }
+export async function getXpCashouts() { return { xp: ${process.argv.includes('--cash') ? '300' : '0'}, cents: ${process.argv.includes('--cash') ? '600' : '0'}, count: ${process.argv.includes('--cash') ? '1' : '0'} }; }
 export async function listProgressSnapshots() { return ${empty ? '[]' : 'snapshots'}; }
 export function onWorksheetDataChanged() { return { dispose() {} }; }
 // A campaign three days in: 18 days, the bank's size over that, today half done.
@@ -115,6 +121,13 @@ app.whenReady().then(async () => {
       startQuiz: (ids) => window.__LOG__.push('quiz ' + ids.length),
       configureQuiz: (p) => window.__LOG__.push('configure ' + JSON.stringify(p)),
       importWorkbook: () => window.__LOG__.push('import'),
+      openSettings: () => window.__LOG__.push('settings'),
+      resumeQuiz: () => window.__LOG__.push('resume'),
+      openQuiz: (id) => window.__LOG__.push('open quiz ' + id),
+      studyFlashcards: () => window.__LOG__.push('flashcards'),
+      examDate: () => '',
+      xpCashRate: () => 0,
+      cashOut: async (xp, cents) => window.__LOG__.push('cash ' + xp + ' ' + cents),
     });
     window.__READY__ = true;
   } catch (err) { window.__ERROR__ = String(err && err.stack || err); }

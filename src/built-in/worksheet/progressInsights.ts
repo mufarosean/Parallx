@@ -49,6 +49,8 @@ export interface PaperProgress {
   /** 0..1 over rated problems; 0 when none rated. */
   readonly score: number;
   readonly seconds: number;
+  /** Study seconds per rated problem, 0 when none rated. */
+  readonly perProblem: number;
 }
 export interface DueItem { readonly item: InsightItem; readonly rating: Rating; readonly daysAgo: number }
 export interface StrugglingItem { readonly item: InsightItem; readonly hardCount: number; readonly attempts: number }
@@ -60,6 +62,8 @@ export interface Insights {
   readonly attempted: number;
   readonly score: number;
   readonly seconds: number;
+  /** Study seconds per rated problem over the whole bank. */
+  readonly perProblem: number;
   readonly ratedThisWeek: number;
   readonly byPaper: PaperProgress[];
   readonly due: DueItem[];
@@ -91,6 +95,7 @@ function paperProgress(paper: string, items: readonly InsightItem[]): PaperProgr
     attempted: items.length ? rated / items.length : 0,
     score: rated ? (easy * RATING_SCORE.easy + medium * RATING_SCORE.medium + hard * RATING_SCORE.hard) / rated : 0,
     seconds,
+    perProblem: rated ? seconds / rated : 0,
   };
 }
 
@@ -173,6 +178,7 @@ export function computeInsights(items: readonly InsightItem[], attempts: readonl
     attempted: all.attempted,
     score: all.score,
     seconds: all.seconds,
+    perProblem: all.perProblem,
     ratedThisWeek,
     byPaper,
     due,

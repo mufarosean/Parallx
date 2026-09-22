@@ -503,7 +503,9 @@ export async function getQuizSession(id: string): Promise<QuizSessionRow | null>
 }
 /** Every quiz: the open ones first, then the completed ones, each by last use. */
 export async function listQuizSessions(limit = 12): Promise<QuizSessionRow[]> {
-  const rows = await allRows(`SELECT ${SESSION_COLS} FROM ws_quiz_session ORDER BY (finished_at IS NULL) DESC, ${LAST_USED} LIMIT ?`, [limit]);
+  // Open quizzes by last use; completed ones by when they were completed
+  // (a reopened-then-completed quiz used to float above newer ones).
+  const rows = await allRows(`SELECT ${SESSION_COLS} FROM ws_quiz_session ORDER BY (finished_at IS NULL) DESC, CASE WHEN finished_at IS NULL THEN COALESCE(touched_at, started_at) ELSE finished_at END DESC LIMIT ?`, [limit]);
   return rows.map(rowToSession).filter((s) => s.itemIds.length > 0);
 }
 export async function countFinishedQuizSessions(): Promise<number> {
@@ -618,6 +620,19 @@ export async function getStudySecondsForItem(itemId: number): Promise<number> {
 export async function getStudySecondsBySession(sessionId: string): Promise<Map<number, number>> {
   const rows = await allRows('SELECT item_id, SUM(seconds) AS s FROM ws_study_time WHERE session_id = ? GROUP BY item_id', [sessionId]);
   return new Map(rows.map((r) => [Number(r.item_id), Number(r.s ?? 0)]));
+}
+
+// ── XP cash-outs (ws_xp_cashout, migration 013) ────────────────────────────
+// XP is worth cash at worksheet.xpCashRate (dollars per 100 XP). A cash-out
+// records what the student paid themself; what is left to cash out is the
+// campaign's XP minus the cash-outs since it began.
+export async function recordXpCashout(xp: number, cents: number): Promise<void> {
+  await run('INSERT INTO ws_xp_cashout (at, xp, cents) VALUES (?, ?, ?)', [Date.now(), Math.max(0, Math.round(xp)), Math.max(0, Math.round(cents))]);
+  emitChange();
+}
+export async function getXpCashouts(sinceMs = 0): Promise<{ xp: number; cents: number; count: number }> {
+  const row = await getRow('SELECT COALESCE(SUM(xp), 0) AS xp, COALESCE(SUM(cents), 0) AS cents, COUNT(*) AS n FROM ws_xp_cashout WHERE at >= ?', [sinceMs]);
+  return { xp: Number(row?.xp ?? 0), cents: Number(row?.cents ?? 0), count: Number(row?.n ?? 0) };
 }
 
 /** Notes: one per problem, kept across quizzes. */

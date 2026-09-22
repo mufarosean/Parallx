@@ -578,6 +578,16 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
             default: 10,
             description: 'The study clock counts while a problem or the quiz is on screen. After this many minutes without any input the stretch is taken back, so a break with the tab up counts for nothing.',
           },
+          'worksheet.examDate': {
+            type: 'string',
+            default: '',
+            description: 'The exam date (YYYY-MM-DD). The Dashboard shows the days left to it. Empty when not set.',
+          },
+          'worksheet.xpCashRate': {
+            type: 'number',
+            default: 0,
+            description: 'Dollars per 100 XP. Set it and the Dashboard shows what your XP and each reward are worth, and Cash Out records what you paid yourself. 0 turns it off.',
+          },
         },
       },
     ],
