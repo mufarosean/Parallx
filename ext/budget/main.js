@@ -223,6 +223,28 @@ const TX_TYPES = [
 ];
 const TX_TYPE_VALUES = TX_TYPES.map(t => t.value);
 
+// Who decided the type: the model on import, the email subject on
+// Reprocess, the user, or a CSV. Shown beside the type the way the
+// category's source is, so an AI transfer never passes for a user's.
+const TX_TYPE_SOURCE_LABELS = { ai: 'AI', subject: 'S', manual: 'M', csv: 'C' };
+const TX_TYPE_SOURCE_TITLES = {
+  ai: 'Type chosen by the AI on import',
+  subject: 'Type read from the email subject on Reprocess',
+  manual: 'You set this type',
+  csv: 'Type from a CSV import',
+};
+function typeSourceBadge(src) {
+  const span = document.createElement('span');
+  if (!src || !TX_TYPE_SOURCE_LABELS[src]) return span;
+  span.className = 'budget-pill';
+  span.style.marginLeft = '6px';
+  span.style.fontSize = '9px';
+  span.style.opacity = '0.75';
+  span.textContent = TX_TYPE_SOURCE_LABELS[src];
+  span.title = TX_TYPE_SOURCE_TITLES[src];
+  return span;
+}
+
 function txTypeLabel(txType, amountCents = 0) {
   if (txType === 'purchase' && Number(amountCents) < 0) return 'Refund';
   const t = TX_TYPES.find(x => x.value === txType);
@@ -253,22 +275,19 @@ async function learnExpenseRuleFromOverride(merchant, categoryId) {
   }
 }
 
-async function confirmReviewedTransaction(txId, categoryId, merchant) {
-  await db.run(
-    `UPDATE transactions
-        SET status='confirmed', user_overridden=1, category_id=?,
-            categorization_source='manual', matched_rule_id=NULL,
-            updated_at=?
-      WHERE id=?`,
-    [categoryId || null, new Date().toISOString(), txId],
-  );
+async function confirmReviewedTransaction(txId, categoryId, merchant, txType = null) {
+  const sets = ["status='confirmed'", 'user_overridden=1', 'category_id=?', "categorization_source='manual'", 'matched_rule_id=NULL', 'updated_at=?'];
+  const params = [categoryId || null, new Date().toISOString()];
+  if (txType) { sets.push('tx_type=?', "tx_type_source='manual'"); params.push(txType); }
+  params.push(txId);
+  await db.run(`UPDATE transactions SET ${sets.join(', ')} WHERE id=?`, params);
   await learnExpenseRuleFromOverride(merchant, categoryId);
 }
 
-async function hideReviewedTransaction(txId) {
+async function hideReviewedTransaction(txId, reason = '') {
   await db.run(
-    `UPDATE transactions SET status='hidden', user_overridden=1, updated_at=? WHERE id=?`,
-    [new Date().toISOString(), txId],
+    `UPDATE transactions SET status='hidden', user_overridden=1, updated_at=?, notes = CASE WHEN ? = '' THEN notes ELSE COALESCE(notes,'') || ' [hidden: ' || ? || ']' END WHERE id=?`,
+    [new Date().toISOString(), reason, reason, txId],
   );
 }
 
@@ -2298,12 +2317,12 @@ async function openTxEditor(api, opts = {}) {
           `INSERT INTO transactions
              (id, gmail_message_id, merchant, amount_cents, transaction_date, tx_type,
               category_id, account_id, notes, status, categorization_source, user_overridden,
-              created_at, updated_at)
-           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 1, ?, ?)`,
+              created_at, updated_at, tx_type_source)
+           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 1, ?, ?, 'manual')`,
           [crypto.randomUUID(), merchant || null, cents, dateYmd, txType, categoryId, accountId, notes, status, now, now],
         );
       } else {
-        const sets = ['merchant=?', 'amount_cents=?', 'transaction_date=?', 'tx_type=?', 'category_id=?', 'account_id=?', 'notes=?', 'status=?', 'user_overridden=1', 'updated_at=?'];
+        const sets = ['merchant=?', 'amount_cents=?', 'transaction_date=?', 'tx_type=?', "tx_type_source='manual'", 'category_id=?', 'account_id=?', 'notes=?', 'status=?', 'user_overridden=1', 'updated_at=?'];
         const params = [merchant || null, cents, dateYmd, txType, categoryId, accountId, notes, status, now];
         if (categoryChanged) sets.push("categorization_source='manual'", 'matched_rule_id=NULL');
         params.push(opts.id);
@@ -2471,7 +2490,7 @@ function renderTransactionsSection(body, api) {
     const sql = `
       SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.status, t.ai_confidence,
              t.card_last_four, t.tx_type, t.category_id, t.account_id,
-             t.categorization_source, t.matched_rule_id,
+             t.categorization_source, t.matched_rule_id, t.tx_type_source,
              c.name AS category_name, c.color AS category_color,
              a.kind AS account_kind, a.display_name AS account_name, a.last_four AS account_last_four
         FROM transactions t
@@ -2514,6 +2533,7 @@ function renderTransactionsSection(body, api) {
       // compact and backwards-compatible.
       const displayType = txTypeLabel(r.tx_type, cents);
       tdType.innerHTML = displayType ? `<span class="budget-pill">${escHtml(displayType)}</span>` : '<span class="budget-pill hidden">—</span>';
+      tdType.appendChild(typeSourceBadge(r.tx_type_source));
       const tdAcct = document.createElement('td');
       tdAcct.textContent = r.account_name || (r.account_last_four ? '••' + r.account_last_four : (r.card_last_four ? '••' + r.card_last_four : '—'));
       tdAcct.style.fontSize = '11px';
@@ -2656,6 +2676,7 @@ function renderReviewQueueSection(body, api) {
     try {
       rows = await db.all(`
         SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.ai_confidence, t.category_id, t.tx_type,
+               t.notes, t.tx_type_source,
                t.card_last_four, e.raw_subject, e.raw_snippet
           FROM transactions t
           LEFT JOIN email_imports e ON e.gmail_message_id = t.gmail_message_id
@@ -2696,7 +2717,21 @@ function renderReviewQueueSection(body, api) {
       }
       tr.appendChild(tdMerch);
       const tdType = document.createElement('td');
-      tdType.innerHTML = `<span class="budget-pill">${escHtml(txTypeLabel(r.tx_type, r.amount_cents))}</span>`;
+      // The verdict is the type: choose it, then Confirm. The badge says who
+      // chose the current one; the line under it says why the row is here.
+      tdType.addEventListener('click', (e) => e.stopPropagation());
+      const typeSel = makeDropdown(TX_TYPES.map((t) => ({ value: t.value, label: t.label })), r.tx_type || 'purchase');
+      tdType.appendChild(typeSel);
+      tdType.appendChild(typeSourceBadge(r.tx_type_source));
+      const isDupe = /\[possible duplicate of /.test(r.notes || '');
+      if (r.notes && /\[(cross-check|possible duplicate)/.test(r.notes)) {
+        const why = document.createElement('div');
+        why.style.fontSize = '10px';
+        why.style.marginTop = '3px';
+        why.style.color = 'var(--vscode-descriptionForeground, #aaa)';
+        why.textContent = r.notes.replace(/\[cross-check: /, 'Flagged: ').replace(/\[possible duplicate of ([^\]]+)\]/, 'Possible duplicate of $1').replace(/[\[\]]/g, '');
+        tdType.appendChild(why);
+      }
       tr.appendChild(tdType);
       const tdAmt = document.createElement('td'); tdAmt.className = 'budget-amount';
       tdAmt.textContent = fmtMoney(r.amount_cents);
@@ -2715,7 +2750,7 @@ function renderReviewQueueSection(body, api) {
         primary: true,
         onClick: async () => {
           try {
-            await confirmReviewedTransaction(r.id, sel.value || null, r.merchant);
+            await confirmReviewedTransaction(r.id, sel.value || null, r.merchant, typeSel.value || null);
             await refresh();
           } catch (e) {
             await api.window?.showErrorMessage?.('Confirm failed: ' + (e instanceof Error ? e.message : String(e)));
@@ -2733,6 +2768,15 @@ function renderReviewQueueSection(body, api) {
         },
       });
       tdAct.appendChild(confirmBtn);
+      if (isDupe) {
+        // One key for the common case: the second email about one charge.
+        tdAct.appendChild(makeButton('Duplicate', {
+          onClick: async () => {
+            try { await hideReviewedTransaction(r.id, 'duplicate'); await refresh(); }
+            catch (e) { await api.window?.showErrorMessage?.('Hide failed: ' + (e instanceof Error ? e.message : String(e))); }
+          },
+        }));
+      }
       tdAct.appendChild(hideBtn);
       tr.appendChild(tdAct);
 
@@ -4885,6 +4929,52 @@ async function buildNeedsAttention(api, scope) {
     }
   } catch { /* ignore */ }
 
+  // What the AI decided, laid out where it can be checked: the transfers it
+  // typed this month (a wrong one hides an expense from every total), the
+  // duplicates it flagged, the rules it learned. Nothing the model does is
+  // only in the sync log.
+  try {
+    const acct = _acctClause(scope, '');
+    const r = await db.get(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(amount_cents),0) AS sum_cents FROM transactions
+        WHERE status='confirmed' AND tx_type='transfer' AND tx_type_source='ai'
+          AND transaction_date >= ? AND transaction_date <= ?${acct.clause}`,
+      [scope.range.start, scope.range.end, ...acct.params]);
+    if (r && Number(r.n) > 0) {
+      items.push({
+        kind: 'warn',
+        title: `${r.n} Transfers The AI Typed`,
+        sub: `${fmtMoney(Math.abs(Number(r.sum_cents) || 0))} kept out of spending. A wrong one hides an expense.`,
+        action: 'Check',
+        onClick: () => {
+          _navState.txFilter = { monthKey: scope.monthKey, type: 'transfer' };
+          api.commands.executeCommand('budget.openTransactions').catch(() => {});
+        },
+      });
+    }
+    const last = await getSyncStateValue('last_run_status');
+    if (last && typeof last === 'object') {
+      if (Number(last.duplicates) > 0) {
+        items.push({
+          kind: 'warn',
+          title: `${last.duplicates} Possible Duplicates`,
+          sub: 'Flagged on the last sync, waiting in review',
+          action: 'Open Review',
+          onClick: () => api.commands.executeCommand('budget.openReviewQueue').catch(() => {}),
+        });
+      }
+      if (Number(last.rulesLearned) > 0) {
+        items.push({
+          kind: 'warn',
+          title: `${last.rulesLearned} Rules Learned`,
+          sub: 'From repeated AI categorisations on the last sync',
+          action: 'Open Rules',
+          onClick: () => api.commands.executeCommand('budget.openRules').catch(() => {}),
+        });
+      }
+    }
+  } catch { /* ignore */ }
+
   // 3. Categories at >= 80% of monthly limit (this month).
   try {
     const acct = _acctClause(scope, 't');
@@ -6384,6 +6474,33 @@ function renderRulesSection(body, api) {
     form.appendChild(Object.assign(document.createElement('label'), { textContent: 'Pattern' })); form.appendChild(patternInp);
     form.appendChild(Object.assign(document.createElement('label'), { textContent: 'Match type' })); form.appendChild(matchSel);
     form.appendChild(Object.assign(document.createElement('label'), { textContent: 'Category' })); form.appendChild(catSel);
+    // Dry run: what the rule would match in the ledger as typed, before it is saved.
+    const preview = document.createElement('div');
+    preview.style.fontSize = '11px';
+    preview.style.color = 'var(--vscode-descriptionForeground, #aaa)';
+    form.appendChild(Object.assign(document.createElement('label'), { textContent: 'Matches' })); form.appendChild(preview);
+    let previewTimer = null;
+    const runPreview = async () => {
+      const pattern = patternInp.value.trim();
+      if (!pattern) { preview.textContent = 'Type a pattern to see what it would match.'; return; }
+      try {
+        const rows = await db.all(`SELECT t.merchant, c.name AS category FROM transactions t LEFT JOIN categories c ON c.id = t.category_id WHERE t.status='confirmed' AND t.merchant IS NOT NULL`);
+        const probe = { pattern, match_type: matchSel.value };
+        const byCat = new Map();
+        let n = 0;
+        for (const r of rows) {
+          if (!ruleMatchesMerchant(probe, r.merchant)) continue;
+          n++;
+          const k = r.category || 'Uncategorised';
+          byCat.set(k, (byCat.get(k) || 0) + 1);
+        }
+        const top = [...byCat.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} ${v}`).join(', ');
+        preview.textContent = n === 0 ? 'Matches nothing in the ledger.' : `Matches ${n} past ${n === 1 ? 'transaction' : 'transactions'}${top ? ` (now: ${top})` : ''}.`;
+      } catch (e) { preview.textContent = 'Preview failed: ' + (e instanceof Error ? e.message : String(e)); }
+    };
+    const schedulePreview = () => { if (previewTimer) clearTimeout(previewTimer); previewTimer = setTimeout(() => void runPreview(), 250); };
+    patternInp.addEventListener('input', schedulePreview);
+    void runPreview();
     form.appendChild(Object.assign(document.createElement('label'), { textContent: 'Priority' })); form.appendChild(prioInp);
 
     const actions = document.createElement('div'); actions.style.gridColumn = '1 / -1'; actions.style.display = 'flex'; actions.style.gap = '6px'; actions.style.marginTop = '4px';
@@ -7160,12 +7277,28 @@ async function loadActiveRules() {
   } catch { return []; }
 }
 
+// Payee text as the bank prints it carries a processor prefix, a store
+// number and a city: "SQ *COFFEE SHOP 0042 DENVER CO". A rule is matched
+// against this normalised form as well as the raw text, so one rule covers
+// a chain and its store numbers.
+function normalizeMerchant(text) {
+  let m = String(text || '').toLowerCase();
+  m = m.replace(/^(sq|tst|pp|paypal|py|amzn mktp|amazon\.com|sp|dd|ig|ppl)\s*\*\s*/, '');
+  m = m.replace(/\s*#\s*\d+\b/g, ' ').replace(/\b\d{3,}\b/g, ' ');
+  m = m.replace(/[^a-z0-9&' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const parts = m.split(' ');
+  if (parts.length >= 3 && /^[a-z]{2}$/.test(parts[parts.length - 1])) parts.pop();
+  return parts.join(' ').trim();
+}
+
 function ruleMatchesMerchant(rule, merchant) {
   if (!merchant || !rule || !rule.pattern) return false;
   const m = String(merchant).toLowerCase();
   const p = String(rule.pattern).toLowerCase();
+  const mn = normalizeMerchant(merchant);
+  const pn = normalizeMerchant(rule.pattern);
   if (rule.match_type === 'exact')    return m === p;
-  if (rule.match_type === 'contains') return m.indexOf(p) >= 0;
+  if (rule.match_type === 'contains') return m.indexOf(p) >= 0 || (!!pn && mn.indexOf(pn) >= 0);
   if (rule.match_type === 'regex') {
     try { return new RegExp(rule.pattern, 'i').test(merchant); }
     catch { return false; }
@@ -7260,10 +7393,13 @@ async function promoteAiCategorizationsToRules(runId) {
       // Only promote if the AI's vote is unanimous for this merchant — i.e.
       // there isn't another candidate row with a different category_id for
       // the same merchant_key. Mixed signals = not stable enough.
+      // A rule is not learned over a disagreement: another AI answer for
+      // the merchant, or a category the user set by hand.
       const conflict = await db.get(
         `SELECT 1 AS x FROM transactions
           WHERE LOWER(merchant) = ? AND category_id IS NOT NULL
-            AND category_id != ? AND categorization_source = 'ai'
+            AND category_id != ?
+            AND (categorization_source IN ('ai', 'manual') OR user_overridden = 1)
           LIMIT 1`,
         [c.merchant_key, c.category_id],
       );
@@ -7462,6 +7598,40 @@ async function detectRecurring(api) {
 //      "Reprocess" should propagate those decisions back through their
 //      historical ledger. Rows with a non-NULL category are left untouched
 //      (we never overwrite a human or AI categorization here).
+// [tx_type, regex over LOWER(subject)], first match wins. The purchases that
+// the word "payment" can disguise (a Zelle send, a bill payment to a payee)
+// sit ABOVE the transfer patterns on purpose: "automatic payment" and "we
+// received your payment" used to swallow them.
+const BUDGET_SUBJECT_PATTERNS = [
+  ['deposit',  /direct deposit posted/],
+  ['deposit',  /direct deposit/],
+  ['deposit',  /you got paid/],
+  ['deposit',  /you received money with zelle/],
+  ['deposit',  /payment received from/],
+  ['purchase', /you sent (money|\$)/],
+  ['purchase', /sent money with zelle/],
+  ['purchase', /payment to (?!your )/],
+  ['transfer', /payment to your /],
+  ['transfer', /credit card payment is scheduled/],
+  ['transfer', /we'?ve received your.*payment/],
+  ['transfer', /we received your.*payment/],
+  ['transfer', /automatic payment/],
+  ['transfer', /mortgage payment/],
+  ['transfer', /transfer to your.*account/],
+  ['fee',      /overdraft fee|atm fee|late fee|service fee/],
+  ['purchase', /you made a \$.*transaction with/],
+  ['purchase', /you sent .* from account/],
+  ['purchase', /debit card transaction of/],
+  ['purchase', /transaction alert/],
+  ['purchase', /card was used/],
+];
+/** The type a subject line says, or null when it says nothing. */
+function classifySubjectTxType(subject) {
+  const subj = String(subject || '').toLowerCase();
+  for (const [t, re] of BUDGET_SUBJECT_PATTERNS) if (re.test(subj)) return t;
+  return null;
+}
+
 async function reprocessHistory(api) {
   // Suppress unused-arg lint when api is not consumed (kept for future use
   // — e.g. surfacing a progress notification).
@@ -7472,26 +7642,7 @@ async function reprocessHistory(api) {
   // from the cached subject in `email_imports`. We NEVER blanket-set rows
   // to 'purchase' — that would silently mis-type paychecks and credit-card
   // payments as spend.
-  const subjectPatterns = [
-    // [tx_type, regex tested against LOWER(subject)]
-    ['deposit',  /direct deposit posted/],
-    ['deposit',  /direct deposit/],
-    ['deposit',  /you got paid/],
-    ['deposit',  /you received money with zelle/],
-    ['deposit',  /payment received from/],
-    ['transfer', /credit card payment is scheduled/],
-    ['transfer', /we'?ve received your.*payment/],
-    ['transfer', /we received your.*payment/],
-    ['transfer', /automatic payment/],
-    ['transfer', /mortgage payment/],
-    ['transfer', /transfer to your.*account/],
-    ['fee',      /overdraft fee|atm fee|late fee|service fee/],
-    ['purchase', /you made a \$.*transaction with/],
-    ['purchase', /you sent .* from account/],
-    ['purchase', /debit card transaction of/],
-    ['purchase', /transaction alert/],
-    ['purchase', /card was used/],
-  ];
+  const subjectPatterns = BUDGET_SUBJECT_PATTERNS;
 
   const legacyRows = await db.all(`
     SELECT t.id, t.merchant, t.card_last_four, e.raw_subject
@@ -7505,10 +7656,8 @@ async function reprocessHistory(api) {
   for (const r of legacyRows) {
     try {
       const subj = String(r.raw_subject || '').toLowerCase();
-      let txType = null;
-      for (const [t, re] of subjectPatterns) {
-        if (re.test(subj)) { txType = t; break; }
-      }
+      void subjectPatterns;
+      let txType = classifySubjectTxType(subj);
       // Hide daily-balance-summary rows that got extracted as transactions.
       const isDailySummary = /daily (account )?summary|account balance alert/.test(subj);
 
@@ -7531,7 +7680,7 @@ async function reprocessHistory(api) {
       } else if (txType) {
         await db.run(
           `UPDATE transactions
-              SET tx_type = ?, account_id = COALESCE(account_id, ?), updated_at = ?
+              SET tx_type = ?, tx_type_source = 'subject', account_id = COALESCE(account_id, ?), updated_at = ?
             WHERE id = ?`,
           [txType, accountId, new Date().toISOString(), r.id],
         );
@@ -7687,8 +7836,8 @@ async function importCsvText(text) {
             id, gmail_message_id, transaction_date, merchant, amount_cents,
             tx_type, category_id, account_id, card_last_four, status, source,
             posted, notes, created_at, updated_at, categorizer_model,
-            categorization_source, matched_rule_id
-         ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'csv', 1, ?, ?, ?, 'csv:import', ?, ?)`,
+            categorization_source, matched_rule_id, tx_type_source
+         ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'csv', 1, ?, ?, ?, 'csv:import', ?, ?, 'csv')`,
         [crypto.randomUUID(), date, merchant, cents, txType, categoryId, accountId, last4 || null, notes || null, now, now, categorizationSource, matchedRuleId],
       );
       inserted++;
@@ -7887,7 +8036,8 @@ async function aiStage1(api, modelId, msg) {
     `Classify the email as exactly one of these event types:\n` +
     `  • "purchase"        — a real charge on a debit or credit card (gas, restaurant, subscription) OR a return/credit on a card. Refunds are purchases with a negative amount; do NOT use a separate refund type.\n` +
     `  • "deposit"         — money INTO a bank account from outside (paycheck, direct deposit, external transfer-IN).\n` +
-    `  • "transfer"        — INTERNAL movement between this user's own accounts. THIS INCLUDES paying a credit card from checking.\n` +
+    `  • "transfer"        — INTERNAL movement between this user's own accounts ONLY: checking to savings, or paying THIS user's credit card from checking. Both ends must be the user's own accounts.\n` +
+    `                        NOT a transfer: money sent to a person (Zelle, Venmo, "You sent $X to NAME"), a bill payment to a company or utility ("payment to <payee>", autopay to an insurer or utility), or any charge. Those are "purchase" even when the email says "payment".\n` +
     `  • "fee"             — bank fee, overdraft, ATM fee, late fee.\n` +
     `  • "balance_summary" — daily / periodic summary that lists ACCOUNT BALANCES (typical subjects: "Your daily account summary", "Account balance alert").\n` +
     `  • "other"           — statement-ready notice, marketing, security alerts, password resets, etc. (no money moved).\n\n` +
@@ -7987,6 +8137,14 @@ function truncateBody(body) {
 }
 
 // ─── Sync helpers ──────────────────────────────────────────────────────────
+
+/** A transfer's payee should be one of the user's own accounts (Checking, Savings, a card), never an outside party. */
+function looksLikeAccountName(merchant) {
+  const m = String(merchant || '').trim().toLowerCase();
+  if (!m) return true;
+  return /\b(checking|savings|visa|mastercard|amex|discover|credit card|card|account|acct|freedom|sapphire|slate|ink)\b/.test(m)
+    || /(\.{2,}|x{2,}|\*{2,}|ending in|ending)\s*\d{3,4}\b/.test(m);
+}
 
 function dollarsToCents(n) {
   // Math.round avoids 0.1+0.2 binary drift; we already store as INTEGER.
@@ -8193,7 +8351,7 @@ async function budgetSync(api) {
   _emitSync({ kind: 'start', runId, startedAt });
   _lastMalformedSample = null;
 
-  const counts = { confirmed: 0, review: 0, snapshot: 0, skipped: 0, errors: 0, malformed: 0, classifiedOther: 0, stalled: 0 };
+  const counts = { confirmed: 0, review: 0, snapshot: 0, skipped: 0, errors: 0, malformed: 0, classifiedOther: 0, stalled: 0, duplicates: 0 };
   // Stall circuit breaker: one stalled email is an anomaly worth skipping;
   // three IN A ROW means the model backend is down and every remaining email
   // would burn its own multi-minute timeout — abort the run instead. Stalled
@@ -8433,29 +8591,47 @@ async function budgetSync(api) {
             // Stage 1 ↔ Stage 2 cross-check. Catch silent contradictions
             // before they enter the ledger.
             const cents = dollarsToCents(item.amount);
+            // A transfer whose payee reads as an outside party (a person, a
+            // utility) is the classifier over-reaching on the word "payment":
+            // it lands in review with the reason on it, never silently confirmed.
+            const externalTransfer = txType === 'transfer' && !!item.merchant && !looksLikeAccountName(item.merchant);
             const crossFail = (
               (txType === 'deposit'  && cents > 0) ||
               (txType === 'purchase' && !item.merchant) ||
               (txType === 'fee'      && !item.merchant) ||
-              (txType === 'transfer' && !item.merchant)
+              (txType === 'transfer' && !item.merchant) ||
+              externalTransfer
             );
-            const insertStatus = (item.confidence === 'low' || crossFail) ? 'review' : 'confirmed';
-            const crossNote = crossFail
-              ? '[cross-check: tx_type=' + txType + ', merchant=' + (item.merchant || 'NULL')
-                + ', amount=' + (cents/100).toFixed(2) + ']'
-              : null;
+            // The same charge can arrive in two emails (an alert, then a
+            // posting; a payment scheduled, then received). A match on amount,
+            // payee and a two-day window goes to review as a possible duplicate
+            // instead of counting twice.
+            const dupe = item.merchant ? await db.get(
+              `SELECT id FROM transactions WHERE amount_cents=? AND LOWER(merchant)=LOWER(?) AND status IN ('confirmed','review')
+                 AND ABS(julianday(transaction_date) - julianday(?)) <= 2 AND gmail_message_id != ? LIMIT 1`,
+              [cents, item.merchant, item.transaction_date, msg.id],
+            ).catch(() => null) : null;
+            if (dupe) counts.duplicates++;
+            const insertStatus = (item.confidence === 'low' || crossFail || dupe) ? 'review' : 'confirmed';
+            const reasons = [];
+            if (crossFail) {
+              reasons.push('[cross-check: tx_type=' + txType + ', merchant=' + (item.merchant || 'NULL')
+                + ', amount=' + (cents/100).toFixed(2) + (externalTransfer ? ', payee looks external' : '') + ']');
+            }
+            if (dupe) reasons.push('[possible duplicate of ' + dupe.id + ']');
+            const crossNote = reasons.length ? reasons.join(' ') : null;
             await db.run(
               `INSERT INTO transactions (id, gmail_message_id, merchant, amount_cents, card_last_four, transaction_date,
                                          category_id, account_id, tx_type, ai_confidence,
                                          extractor_model, categorizer_model, status,
-                                         categorization_source, matched_rule_id, notes)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                                         categorization_source, matched_rule_id, notes, tx_type_source)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
               [
                 crypto.randomUUID(), msg.id, item.merchant, cents,
                 item.card_last_four, item.transaction_date, categoryId, accountId, txType,
                 item.confidence, modelId, categorizerModel,
                 insertStatus,
-                categorizationSource, matchedRuleId, crossNote,
+                categorizationSource, matchedRuleId, crossNote, 'ai',
               ],
             );
             if (insertStatus === 'review') counts.review++; else counts.confirmed++;
@@ -8571,6 +8747,12 @@ async function budgetSync(api) {
     }
 
     _emitSync({ kind: 'complete', runId, counts });
+    // The run in the app's activity language, so the awareness loop and a
+    // scheduled sync (an Automation over budget.sync) leave the same line.
+    try {
+      api.activity?.note?.('synced', 'the budget ledger from Gmail',
+        `${counts.confirmed} confirmed, ${counts.review} for review, ${counts.duplicates} possible duplicates, ${counts.snapshot} balances, ${counts.rulesLearned || 0} rules learned`);
+    } catch { /* the journal is optional */ }
     return counts;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -9130,25 +9312,69 @@ async function budgetToolUpdateSyncCursor(args = {}) {
   return _toolOk({ ok: true, lastSyncedDate: savedCursor, lastMessageId, advanced, heldBecause });
 }
 
+// The tool's schema speaks snake_case (category, tx_type, transaction_date),
+// the way the skill and the model write it; the handler used to read camelCase
+// only, so a category or a type the model sent was dropped while the reply
+// still said "updated" (found 2026-09-21: rows the user's local model had
+// "fixed" were still transfers). Every spelling is read, values are checked,
+// and the reply says exactly what changed and whether a rule was learned.
 async function budgetToolUpdateTransaction(args = {}) {
   if (!args.id || typeof args.id !== 'string') return _toolErr('id is required');
+  const row = await db.get('SELECT id, merchant FROM transactions WHERE id=?', [args.id]);
+  if (!row) return _toolErr('Transaction not found: ' + args.id);
   const sets = [];
   const params = [];
-  if (typeof args.merchant === 'string')        { sets.push('merchant=?');         params.push(args.merchant); }
-  if (Number.isFinite(Number(args.amount)))      { sets.push('amount_cents=?');     params.push(dollarsToCents(Number(args.amount))); }
-  if (args.categoryId !== undefined)             { sets.push('category_id=?');      params.push(args.categoryId || null); }
-  if (args.accountId !== undefined)              { sets.push('account_id=?');       params.push(args.accountId  || null); }
-  if (typeof args.transactionDate === 'string' && isYmd(args.transactionDate)) {
-    sets.push('transaction_date=?'); params.push(args.transactionDate);
+  const changed = {};
+  if (typeof args.merchant === 'string' && args.merchant.trim()) {
+    sets.push('merchant=?'); params.push(args.merchant.trim()); changed.merchant = args.merchant.trim();
   }
-  if (typeof args.status === 'string')           { sets.push('status=?');           params.push(args.status); }
-  if (typeof args.txType === 'string')           { sets.push('tx_type=?');          params.push(args.txType); }
-  if (typeof args.notes === 'string')            { sets.push('notes=?');            params.push(args.notes); }
-  if (sets.length === 0) return _toolErr('no fields to update');
-  sets.push('user_overridden=1');
-  params.push(args.id);
+  if (args.amount !== undefined && Number.isFinite(Number(args.amount))) {
+    sets.push('amount_cents=?'); params.push(dollarsToCents(Number(args.amount))); changed.amount = Number(args.amount);
+  }
+  // Category by name (the schema's field) or by id (older callers).
+  let categoryId;
+  if (typeof args.category === 'string' && args.category.trim()) {
+    const cat = await resolveCategoryByName(args.category.trim());
+    if (!cat) return _toolErr(`Unknown category: "${args.category}". Call budget.listCategories first.`);
+    categoryId = cat.id;
+  } else if (args.categoryId !== undefined) {
+    categoryId = args.categoryId || null;
+  }
+  if (categoryId !== undefined) {
+    sets.push('category_id=?', "categorization_source='manual'", 'matched_rule_id=NULL');
+    params.push(categoryId);
+    changed.category = categoryId;
+  }
+  if (args.accountId !== undefined) { sets.push('account_id=?'); params.push(args.accountId || null); changed.account = args.accountId || null; }
+  const date = args.transaction_date ?? args.transactionDate;
+  if (typeof date === 'string') {
+    if (!isYmd(date)) return _toolErr('transaction_date must be YYYY-MM-DD');
+    sets.push('transaction_date=?'); params.push(date); changed.transaction_date = date;
+  }
+  if (typeof args.status === 'string') {
+    if (!['confirmed', 'review', 'hidden'].includes(args.status)) return _toolErr('status must be confirmed, review or hidden');
+    sets.push('status=?'); params.push(args.status); changed.status = args.status;
+  }
+  const txType = args.tx_type ?? args.txType;
+  if (typeof txType === 'string') {
+    const t = txType.trim().toLowerCase();
+    const allowed = [...TX_TYPE_VALUES, 'other'];
+    if (!allowed.includes(t)) return _toolErr(`tx_type must be one of ${allowed.join(', ')}`);
+    sets.push('tx_type=?', "tx_type_source='manual'"); params.push(t); changed.tx_type = t;
+  }
+  if (typeof args.notes === 'string') { sets.push('notes=?'); params.push(args.notes); changed.notes = true; }
+  if (sets.length === 0) return _toolErr('no fields to update (merchant, amount, category, status, notes, tx_type, transaction_date)');
+  sets.push('user_overridden=1', 'updated_at=?');
+  params.push(new Date().toISOString(), args.id);
   await db.run(`UPDATE transactions SET ${sets.join(', ')} WHERE id=?`, params);
-  return _toolOk({ id: args.id, updated: sets.length - 1 });
+  // A category set by hand teaches the same exact-merchant rule the editor
+  // drawer teaches, and the reply says so: nothing is learned in silence.
+  let ruleLearned = false;
+  const merchant = changed.merchant || row.merchant;
+  if (categoryId && merchant) {
+    try { await learnRuleFromOverride(merchant, categoryId); ruleLearned = true; } catch { /* best-effort */ }
+  }
+  return _toolOk({ id: args.id, changed, ruleLearned });
 }
 
 async function budgetToolDeleteTransaction(args = {}) {
@@ -9195,7 +9421,7 @@ async function budgetToolResolveReview(args = {}) {
       sets.push('category_id=?'); params.push(args.categoryId || null);
     }
     const txType = args.txType ?? args.tx_type;
-    if (typeof txType === 'string') { sets.push('tx_type=?'); params.push(txType); }
+    if (typeof txType === 'string') { sets.push('tx_type=?', "tx_type_source='manual'"); params.push(txType); }
     if (typeof args.notes === 'string') { sets.push('notes=?'); params.push(args.notes); }
     sets.push("status='confirmed'", 'user_overridden=1', 'updated_at=?');
     params.push(new Date().toISOString(), id);
@@ -10107,7 +10333,7 @@ export async function activate(api, context) {
             transaction_date: { type: 'string' },
           },
         },
-        requiresConfirmation: false,
+        requiresConfirmation: true,
         handler: async (args) => budgetToolUpdateTransaction(args || {}),
       }));
       _disposables.push(api.chat.registerTool('budget.deleteTransaction', {
@@ -10136,7 +10362,7 @@ export async function activate(api, context) {
             notes:    { type: 'string' },
           },
         },
-        requiresConfirmation: false,
+        requiresConfirmation: true,
         handler: async (args) => budgetToolResolveReview(args || {}),
       }));
 
@@ -10162,7 +10388,7 @@ export async function activate(api, context) {
           required: ['from', 'to'],
           properties: { from: { type: 'string' }, to: { type: 'string' } },
         },
-        requiresConfirmation: false,
+        requiresConfirmation: true,
         handler: async (args) => budgetToolRenameCategory(args || {}),
       }));
       _disposables.push(api.chat.registerTool('budget.deleteCategory', {
@@ -10345,6 +10571,10 @@ export const __testables = {
   fetchBudgetGmailMessages,
   parseCsvLine: _parseCsvLine,
   ruleMatchesMerchant,
+  looksLikeAccountName,
+  classifySubjectTxType,
+  normalizeMerchant,
+  tryParseModelJson,
   makeDropdown,
   categoryOptions,
   scopedCategoryOptions,
