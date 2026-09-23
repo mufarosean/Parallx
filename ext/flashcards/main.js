@@ -960,6 +960,29 @@ function fcParseTags(raw) {
 }
 
 /**
+ * The tag that puts a card in the Memorize session: the formulas, theorems
+ * and lists to see every day in the weeks before the exam, drawn across
+ * every deck as one session and scheduled as usual, so they never hide
+ * among five hundred other cards. Set it from the study view's card menu or
+ * with Add Tag in the browser.
+ */
+const FC_MEMORIZE_TAG = 'memorize';
+function fcCardHasTag(card, tag) {
+  const t = String(tag).trim().toLowerCase();
+  return fcParseTags(card.tags).some((x) => x.toLowerCase() === t);
+}
+/** Add or remove a tag on a card; returns the card's new tags string. */
+async function fcToggleCardTag(card, tag) {
+  const t = String(tag).trim();
+  const tags = fcParseTags(card.tags);
+  const i = tags.findIndex((x) => x.toLowerCase() === t.toLowerCase());
+  if (i >= 0) tags.splice(i, 1); else tags.push(t);
+  const next = tags.join(',');
+  await fcUpdateCard(card.id, { tags: next });
+  return next;
+}
+
+/**
  * Aggregate progress stats. Pure: review rows + cards in, dashboard shape
  * out. `reviews` need { reviewedAt, rating, stateBefore }; `cards` need
  * { state, suspended }.
@@ -1367,19 +1390,23 @@ async function fcListDecks() {
 
 // Today's workload across ALL decks, split Anki-style into new / learning /
 // review (due). Used by the sidebar's Today section.
-async function fcTodayCounts() {
+async function fcTodayCounts(tag = '') {
   const now = Date.now();
+  // A tag scope matches the comma-separated tags column whole-word, case-blind.
+  const scope = tag ? ` WHERE (',' || replace(lower(tags), ' ', '') || ',') LIKE ?` : '';
+  const params = tag ? [now, now, `%,${String(tag).trim().toLowerCase()},%`] : [now, now];
   const row = await db.get(`
     SELECT
       SUM(CASE WHEN suspended = 0 AND state = 'new' THEN 1 ELSE 0 END) AS new_count,
       SUM(CASE WHEN suspended = 0 AND state IN ('learning','relearning') AND due_at <= ? THEN 1 ELSE 0 END) AS learn_count,
-      SUM(CASE WHEN suspended = 0 AND state = 'review' AND due_at <= ? THEN 1 ELSE 0 END) AS review_count
-    FROM fc_cards
-  `, [now, now]);
+      SUM(CASE WHEN suspended = 0 AND state = 'review' AND due_at <= ? THEN 1 ELSE 0 END) AS review_count,
+      SUM(CASE WHEN suspended = 0 THEN 1 ELSE 0 END) AS total
+    FROM fc_cards${scope}
+  `, params);
   const newCount = row?.new_count || 0;
   const learnCount = row?.learn_count || 0;
   const reviewCount = row?.review_count || 0;
-  return { newCount, learnCount, reviewCount, dueTotal: learnCount + reviewCount + newCount };
+  return { newCount, learnCount, reviewCount, dueTotal: learnCount + reviewCount + newCount, total: row?.total || 0 };
 }
 
 /** One deck by id, or null. Used by the pane breadcrumb, which needs a name
@@ -2782,6 +2809,7 @@ async function fcUpdateCard(id, patch) {
   }
   if (patch.suspended !== undefined) { sets.push('suspended = ?'); params.push(patch.suspended ? 1 : 0); }
   if (patch.flag !== undefined) { sets.push('flag = ?'); params.push(fcNormalizeFlag(patch.flag)); }
+  if (patch.tags !== undefined) { sets.push('tags = ?'); params.push(String(patch.tags)); }
   if (patch.importance !== undefined) { sets.push('importance = ?'); params.push(fcNormalizeImportance(patch.importance)); }
   if (patch.importanceReason !== undefined) { sets.push('importance_reason = ?'); params.push(String(patch.importanceReason || '').slice(0, 300)); }
   if (patch.recallMode !== undefined) { sets.push('recall_mode = ?'); params.push(fcNormalizeRecallMode(patch.recallMode)); }
@@ -5665,6 +5693,15 @@ function createSidebarView(container) {
       studyBtn.disabled = served === 0; // a zeroed daily limit — Custom Study is the way through
       studyBtn.addEventListener('click', () => void openFlashcards({ view: 'study' }));
       panel.appendChild(studyBtn);
+      const memo = await fcTodayCounts(FC_MEMORIZE_TAG).catch(() => null);
+      if (memo && memo.total > 0) {
+        const memoBtn = el('button', 'fc-today__more fc-today__memorize');
+        memoBtn.type = 'button';
+        memoBtn.innerHTML = `${icon('play', 12)}<span>Memorize · ${memo.dueTotal} of ${memo.total} due</span>`;
+        memoBtn.title = 'The cards tagged memorize, as their own session across every deck.';
+        memoBtn.addEventListener('click', () => void openFlashcards({ view: 'study', tag: FC_MEMORIZE_TAG }));
+        panel.appendChild(memoBtn);
+      }
       if (served < today.dueTotal) {
         const overflow = el('button', 'fc-today__more');
         overflow.type = 'button';
@@ -6341,6 +6378,14 @@ async function renderDecks(body, setRoute) {
     studyAll.disabled = served === 0;
     studyAll.addEventListener('click', () => setRoute({ view: 'study' }));
     cta.appendChild(studyAll);
+    const memo = await fcTodayCounts(FC_MEMORIZE_TAG).catch(() => null);
+    if (memo && memo.total > 0) {
+      const memorize = el('button', 'fc-btn');
+      memorize.innerHTML = `${icon('play', 12)}<span>${memo.dueTotal > 0 ? `Memorize ${memo.dueTotal} Due` : `Memorize · ${memo.total} Cards`}</span>`;
+      memorize.title = `${memo.total} cards tagged memorize, as their own session across every deck.`;
+      memorize.addEventListener('click', () => setRoute({ view: 'study', tag: FC_MEMORIZE_TAG }));
+      cta.appendChild(memorize);
+    }
     const customAll = el('button', 'fc-btn');
     customAll.textContent = 'Custom Study';
     customAll.title = behind > 0
@@ -8532,13 +8577,16 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   // resumes into nor is resumed by the deck's daily session — but a tab
   // switch, which restores the same route, still lands back on the same key.
   const custom = route.custom || null;
-  const deckKey = String(route.deckId ?? '__all__');
+  const tag = route.tag ? String(route.tag).trim().toLowerCase() : '';
+  const deckKey = tag ? `tag:${tag}` : String(route.deckId ?? '__all__');
   const sessionKey = custom ? `custom:${custom.startedAt}:${deckKey}` : deckKey;
   const cachedSession = _fcStudySessions.get(sessionKey);
   const resuming = !aheadMs && !!cachedSession
     && (cachedSession.index < cachedSession.queue.length || cachedSession.pending.length > 0);
 
-  const cards = await fcListAllCards(route.deckId ?? null);
+  const allCards = await fcListAllCards(route.deckId ?? null);
+  // A tag scope (the Memorize session) draws across every deck, scheduled as usual.
+  const cards = tag ? allCards.filter((c) => fcCardHasTag(c, tag)) : allCards;
   // Shuffle is a remembered choice (flashcards.shuffle), toggled from the
   // study toolbar; a resumed session keeps the order it already had.
   const shuffleOn = cfg('shuffle', false) === true;
@@ -8856,6 +8904,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       void (async () => {
         let fresh;
         try { fresh = await fcListAllCards(route.deckId ?? null); } catch { return; }
+        if (tag) fresh = fresh.filter((c) => fcCardHasTag(c, tag));
         if (!main.isConnected) return;
         const t = Date.now();
         const newLeft = fresh.filter((c) => !c.suspended && c.state === 'new').length;
@@ -9049,6 +9098,13 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       onClick: () => {
         const r = moreBtn.getBoundingClientRect();
         _api.ui.showContextMenu({ x: r.left, y: r.bottom + 2 }, [
+          {
+            label: 'Memorize',
+            checked: fcCardHasTag(card, FC_MEMORIZE_TAG),
+            tooltip: 'Tag this card memorize: it joins the Memorize session on Home.',
+            onSelect: () => { void fcToggleCardTag(card, FC_MEMORIZE_TAG).then((tags) => { card.tags = tags; _emitDataChanged(); }); },
+          },
+          { separator: true },
           { label: 'Delete Card', danger: true, onSelect: deleteCurrent },
         ]);
       },
