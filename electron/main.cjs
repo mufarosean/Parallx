@@ -818,7 +818,7 @@ app.whenReady().then(async () => {
 
   // File-backed dashboard image/GIF assets (served over parallx-asset://).
   setupDashboardAssetBridge(ipcMain, protocol, APP_ROOT);
-  setupImageBridge(ipcMain);
+  setupImageBridge(ipcMain, app);
   // ── M53: Migrate tools from ~/.parallx/tools/ → data/extensions/ ──
   const oldToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
   try {

@@ -489,6 +489,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   images: {
     /** Rasterise an EMF/WMF at 2x. Returns { png, width, height, scale } or null (not Windows, or GDI+ failed). */
     rasterizeMetafile: (bytes, ext) => ipcRenderer.invoke('image:rasterizeMetafile', bytes, ext),
+    /** Render LaTeX equations to PNG at 2x in an offscreen KaTeX page. items: [{ latex, fontPx }] -> [{ png, width, height } | null]. */
+    renderEquations: (items) => ipcRenderer.invoke('image:renderEquations', items),
   },
 
   // ── Dashboard image/GIF assets (file-backed, served over parallx-asset://) ──

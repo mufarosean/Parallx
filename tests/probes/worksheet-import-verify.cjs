@@ -7,6 +7,10 @@
 const Database = require('better-sqlite3');
 const dbPath = process.argv[2];
 if (!dbPath) { console.error('usage: worksheet-import-verify.cjs <dbPath>'); process.exit(2); }
+const outDir = process.argv[3] || '';
+const fs = require('node:fs');
+const path = require('node:path');
+let sampleWritten = false;
 const db = new Database(dbPath, { readonly: true });
 const rows = db.prepare('SELECT id, title, sheet_json AS givens_json FROM ws_items ORDER BY id').all();
 let equationPngs = 0, textSvgs = 0, picturePngs = 0, pictureOther = 0;
@@ -20,7 +24,15 @@ for (const r of rows) {
       for (const sheet of Object.values(all)) {
         for (const [id, d] of Object.entries(sheet.data || {})) {
           const src = String(d.source || '');
-          if (id.startsWith('tb')) { if (src.startsWith('data:image/png')) eq++; else svg++; }
+          if (id.startsWith('tb')) {
+            if (src.startsWith('data:image/png')) {
+              eq++;
+              // The first rendered equation as a file, for the eye.
+              if (outDir && !sampleWritten) {
+                try { fs.writeFileSync(path.join(outDir, 'equation-sample.png'), Buffer.from(src.slice(src.indexOf(',') + 1), 'base64')); sampleWritten = true; } catch { /* no sample */ }
+              }
+            } else svg++;
+          }
           else if (src.startsWith('data:image/png') || src.startsWith('data:image/jpeg') || src.startsWith('data:image/gif')) png++;
           else other++;
         }

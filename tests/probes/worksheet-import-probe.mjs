@@ -158,7 +158,7 @@ async function main() {
     await app.close().catch(() => {});
     // What landed in the database: drawings by kind per imported item.
     const db = path.join(workspace, '.parallx', 'data.db');
-    const r = spawnSync(ELECTRON, [VERIFY, db], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8', windowsHide: true });
+    const r = spawnSync(ELECTRON, [VERIFY, db, outDir], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8', windowsHide: true });
     const out = (r.stdout || '').trim();
     console.log(out || `[probe] verify produced no output: ${(r.stderr || '').slice(0, 300)}`);
     const totals = /TOTAL items=(\d+) equationPngs=(\d+) textSvgs=(\d+) picturePngs=(\d+) pictureOther=(\d+)/.exec(out);
