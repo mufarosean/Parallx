@@ -1155,7 +1155,7 @@ async function fcSessionNewAllowances(deckId = null) {
   const decks = await fcListDecks();
   // Route deck ids can arrive as strings (persisted routes, links); a typed
   // mismatch here would silently drop the allowance and disable pacing.
-  const scoped = deckId != null ? decks.filter((d) => String(d.id) === String(deckId)) : decks;
+  const scoped = deckId != null ? decks.filter((d) => String(d.id) === String(deckId)) : decks.filter((d) => !d.studyApart);
   return fcNewAllowances(scoped, Date.now(), fcPaceSettings());
 }
 
@@ -1261,6 +1261,12 @@ function fcDeckMenuItems(deck) {
     { separator: true },
     { label: 'Rename', icon: 'pencil', onSelect: () => void _renameDeckFlow(deck) },
     { label: deck.examDate ? 'Change Exam Date' : 'Set Exam Date', icon: 'calendar', onSelect: () => void _setExamDateFlow(deck) },
+    {
+      label: 'Study Apart',
+      checked: !!deck.studyApart,
+      tooltip: 'Keep this deck out of the mixed daily session. Study it from its own Study Deck.',
+      onSelect: () => void fcSetDeckStudyApart(deck.id, !deck.studyApart),
+    },
     { label: 'Delete Deck', icon: 'trash', danger: true, onSelect: () => void _deleteDeckFlow(deck) },
   ];
 }
@@ -1382,6 +1388,7 @@ async function fcListDecks() {
     createdAt: r.created_at,
     examDate: r.exam_date || 0,
     desiredRetention: r.desired_retention || 0.9,
+    studyApart: !!r.study_apart,
     newCount: byDeck.get(r.id)?.new_count || 0,
     dueCount: byDeck.get(r.id)?.due_count || 0,
     total: byDeck.get(r.id)?.total || 0,
@@ -1393,7 +1400,7 @@ async function fcListDecks() {
 async function fcTodayCounts(tag = '') {
   const now = Date.now();
   // A tag scope matches the comma-separated tags column whole-word, case-blind.
-  const scope = tag ? ` WHERE (',' || replace(lower(tags), ' ', '') || ',') LIKE ?` : '';
+  const scope = tag ? ` WHERE (',' || replace(lower(tags), ' ', '') || ',') LIKE ?` : ` WHERE deck_id NOT IN (SELECT id FROM fc_decks WHERE study_apart = 1)`;
   const params = tag ? [now, now, `%,${String(tag).trim().toLowerCase()},%`] : [now, now];
   const row = await db.get(`
     SELECT
@@ -1434,6 +1441,17 @@ async function fcGetOrCreateDeckByName(name) {
 
 async function fcRenameDeck(id, name) {
   await db.run('UPDATE fc_decks SET name = ? WHERE id = ?', [name.trim(), id]);
+  _emitDataChanged();
+}
+
+/**
+ * A deck studied apart stays out of the mixed daily session and the Today
+ * counts: its cards are reached through the deck's own Study Deck (and the
+ * Memorize session, when tagged). For reference decks such as the recipe
+ * cards, which are read on purpose rather than drawn at random.
+ */
+async function fcSetDeckStudyApart(id, on) {
+  await db.run('UPDATE fc_decks SET study_apart = ? WHERE id = ?', [on ? 1 : 0, id]);
   _emitDataChanged();
 }
 
@@ -4615,6 +4633,7 @@ function injectStyles() {
 .fc-deck-row__icon { flex: 0 0 auto; display: inline-flex; width: 13px; height: 13px; color: var(--px-text-faint); }
 .fc-deck-row__icon svg { width: 100%; height: 100%; }
 .fc-deck-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-deck-row__apart { flex: 0 0 auto; font-size: var(--px-text-xs); color: var(--px-text-muted); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); padding: 0 5px; line-height: 16px; }
 .fc-deck-row__counts { flex: 0 0 76px; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 8px; text-align: right; font-size: var(--px-text-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
 /* Anki color language: new = accent, due = success — readable at a glance
    instead of two indistinguishable grey numbers (user report). */
@@ -5745,6 +5764,11 @@ function createSidebarView(container) {
         row.appendChild(deckName);
         row.dataset.searchName = deck.name.toLocaleLowerCase();
 
+        if (deck.studyApart) {
+          const apartMark = el('span', 'fc-deck-row__apart', 'Apart');
+          apartMark.title = 'Studied apart: not in the mixed daily session.';
+          row.appendChild(apartMark);
+        }
         const counts = el('span', 'fc-deck-row__counts');
         counts.title = `${deck.newCount} new · ${deck.dueCount} due · ${deck.total} total`;
         counts.setAttribute('aria-label', counts.title);
@@ -8586,7 +8610,9 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
 
   const allCards = await fcListAllCards(route.deckId ?? null);
   // A tag scope (the Memorize session) draws across every deck, scheduled as usual.
-  const cards = tag ? allCards.filter((c) => fcCardHasTag(c, tag)) : allCards;
+  const apart = (tag || route.deckId != null) ? null : new Set((await fcListDecks()).filter((d) => d.studyApart).map((d) => d.id));
+  const cards = tag ? allCards.filter((c) => fcCardHasTag(c, tag))
+    : apart && apart.size ? allCards.filter((c) => !apart.has(c.deckId)) : allCards;
   // Shuffle is a remembered choice (flashcards.shuffle), toggled from the
   // study toolbar; a resumed session keeps the order it already had.
   const shuffleOn = cfg('shuffle', false) === true;
@@ -8905,6 +8931,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
         let fresh;
         try { fresh = await fcListAllCards(route.deckId ?? null); } catch { return; }
         if (tag) fresh = fresh.filter((c) => fcCardHasTag(c, tag));
+        else if (apart && apart.size) fresh = fresh.filter((c) => !apart.has(c.deckId));
         if (!main.isConnected) return;
         const t = Date.now();
         const newLeft = fresh.filter((c) => !c.suspended && c.state === 'new').length;
