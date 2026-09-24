@@ -142,11 +142,31 @@ async function main() {
     // Open the bank and the first problem with an equation, for the eye.
     console.log(`[probe] bank: ${await runCommand(page, 'worksheet.bank')}`);
     await page.waitForTimeout(2_500);
-    const q3 = page.getByText(/Q #3 ·/).first();
+    // The bank groups by paper; open the group first when one is named.
+    if (process.env.PROBE_SEARCH) {
+      await page.getByPlaceholder('Search problems').fill(process.env.PROBE_SEARCH).catch(() => {});
+      await page.waitForTimeout(1_500);
+    }
+    const q3 = page.locator('[class*="ws-bank"], [class*="ws-item"]', { hasText: new RegExp(process.env.PROBE_OPEN || 'Q #3 ·') }).last();
     if (await q3.count()) {
-      await q3.click().catch(() => {});
+      await q3.click().catch(() => {}); await page.waitForTimeout(800); if (await page.getByPlaceholder("Search problems").isVisible().catch(() => false)) await q3.dblclick().catch(() => {});
       await page.waitForTimeout(6_000);
+      await page.mouse.move(700, 500);
+      await page.mouse.wheel(0, 700);
+      await page.waitForTimeout(1_500);
       await shot(page, 'import-q3');
+      // The solution's Reveal door, and the sheet once revealed.
+      const reveal = page.locator('[aria-label="Reveal Solution"], [title="Reveal Solution"], button:has-text("Reveal Solution")').first();
+      const hasReveal = (await reveal.count()) > 0;
+      check(hasReveal, 'problem has a Reveal Solution door');
+      if (hasReveal) {
+        await reveal.click().catch(() => {});
+        await page.waitForTimeout(3_000);
+        await page.mouse.move(700, 500);
+        await page.mouse.wheel(0, 700);
+        await page.waitForTimeout(1_500);
+        await shot(page, 'import-q3-revealed');
+      }
     } else {
       console.log('[probe] no "Q #3" row found in the bank (skipped the screenshot)');
     }

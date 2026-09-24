@@ -2477,7 +2477,7 @@ function createExcelImportPane(container: HTMLElement) {
             if (existing.has(p.sheetName)) { done++; continue; }
             const id = await createItem({
               title: p.title, questionMd: p.questionMd, sourceUri: filePath, sourceLabel: fileLabel, tags: p.tags,
-              sheetJson: p.sheetJson, solutionCol: p.solutionCol, workRow: p.workRow,
+              sheetJson: p.sheetJson, solutionCol: p.solutionCol, workRow: p.workRow, solutionRow: p.solutionRow,
               paper: p.paper, source: p.source, kind: p.kind, quadrant: p.quadrant, sheetName: p.sheetName,
             });
             if (id != null && p.rating) { await recordImportedRating(id, p.rating, Date.now()); carried++; }
@@ -2913,9 +2913,18 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   /** Rebuild visibility from the marker on: only the solution hides, never the
    *  student's columns, whatever an earlier snapshot had flagged. */
   const applySolutionVisibility = (snap: IWorkbookData, show: boolean): IWorkbookData => {
-    if (!item || item.solutionCol < 0) return snap;
+    if (!item || (item.solutionCol < 0 && item.solutionRow < 0)) return snap;
     const sheet = firstSheet(snap);
-    if (sheet) pureApplySolutionVisibility(sheet, item.solutionCol, pristine, show);
+    if (sheet && item.solutionCol >= 0) pureApplySolutionVisibility(sheet, item.solutionCol, pristine, show);
+    // A solution below the question hides by rows, from its "SOLUTION" row to the last row with content.
+    if (sheet && item.solutionRow >= 0) {
+      const rows = ((sheet as unknown as { rowData?: Record<number, { hd?: number }> }).rowData ??= {});
+      const last = Math.max(item.solutionRow, ...Object.keys(sheet.cellData ?? {}).map(Number));
+      for (let r = item.solutionRow; r <= last; r++) {
+        if (!show) (rows[r] ??= {}).hd = 1;
+        else if (rows[r]?.hd) delete rows[r].hd;
+      }
+    }
     return snap;
   };
   /** Show the current rating in the workbook's own rating cell. */
@@ -3061,7 +3070,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         })();
       });
       titleRow.appendChild(resetBtn);
-      if (problem.solutionCol >= 0) {
+      if (problem.solutionCol >= 0 || problem.solutionRow >= 0) {
         const revealBtn = revealed
           ? iconBtn('eye-off', 'Hide Solution', { hint: 'Hides the worked solution again. Your work stays.' })
           : iconBtn('eye', 'Reveal Solution', { primary: true, hint: 'Shows the worked solution beside your work, as in the workbook.' });

@@ -64,6 +64,8 @@ export interface ProblemImport {
   readonly solutionCol: number;
   /** Zero-based row of the "SHOW ALL WORK" line; -1 when absent. */
   readonly workRow: number;
+  /** Zero-based first row of a solution laid out below the work area ("SOLUTION"); -1 when absent. */
+  readonly solutionRow: number;
   readonly sheetJson: string;
   readonly questionMd: string;
   readonly tags: string;
@@ -240,10 +242,14 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
         : paperFromTitle(a1);
     const source = sourceOf(name);
     const indexed = index.get(name);
+    // A solution below the question: a "SOLUTION" row in column A after SHOW ALL WORK.
+    const below = solution ? null : findCell(sheet, (t, r, c) => c === 0 && (!work || r > work.row) && /^solutions?\b/i.test(t.trim()));
+    const solutionRow = below ? below.row : -1;
+    const hasFormulaBelow = below ? sheet.cells.some((c) => c.row > below.row && !!c.formula) : false;
     const kind: ProblemImport['kind'] = /essay/i.test(name) ? 'essay'
       : indexed?.kind.startsWith('qual') ? 'qual'
         : indexed?.kind.startsWith('quant') ? 'quant'
-          : solution ? 'quant' : 'qual';
+          : solution || hasFormulaBelow ? 'quant' : 'qual';
     const quadrant = indexed && indexed.quadrant >= 1 && indexed.quadrant <= 4 ? indexed.quadrant : 0;
     const { workbook, stats } = sheetToSnapshot(sheet, book, { dropCells: drop });
     // A practice-exam sheet has no title in A1: "Source: | PE 1 | Exam 7 | Q #3".
@@ -251,7 +257,7 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
     // sheet gives one; a bank code takes the contents page's title.
     const exam = /^source:?$/i.test(cellText(sheet, 0, 1).trim()) ? cellText(sheet, 0, 2).trim()
       : /^source:?$/i.test(a1) ? cellText(sheet, 0, 1).trim() : '';
-    const title = a1 && !/^source:?$/i.test(a1) ? a1
+    const title = a1 && !/^source:?$/i.test(a1) && !(a1 === name && hint?.title) ? a1
       : hint?.title ? `${name} · ${hint.title}`
         : [exam, name, paper ? paperLabel(paper) : ''].filter(Boolean).join(' · ');
     const problem: ProblemImport = {
@@ -264,8 +270,9 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
       rating,
       solutionCol: solution ? solution.col : -1,
       workRow: work ? work.row : -1,
+      solutionRow,
       sheetJson: JSON.stringify(workbook),
-      questionMd: questionText(sheet, solution ? solution.col : -1, work ? work.row : -1),
+      questionMd: questionText(sheet, solution ? solution.col : -1, work ? work.row : below ? below.row : -1),
       tags: '',
       stats,
     };

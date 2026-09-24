@@ -80,6 +80,8 @@ export interface WorksheetItem {
   readonly solutionCol: number;
   /** The "SHOW ALL WORK" row; -1 = none. */
   readonly workRow: number;
+  /** First row of a solution laid out below the question, hidden until reveal; -1 = none. */
+  readonly solutionRow: number;
   readonly paper: string;
   readonly source: string;
   readonly kind: string;
@@ -125,6 +127,7 @@ function rowToItem(row: Record<string, unknown>): WorksheetItem {
     sheetJson: String(row.sheet_json ?? ''),
     solutionCol: Number(row.solution_col ?? -1),
     workRow: Number(row.work_row ?? -1),
+    solutionRow: Number(row.solution_row ?? -1),
     paper: String(row.paper ?? ''),
     source: String(row.source ?? ''),
     kind: String(row.kind ?? ''),
@@ -137,7 +140,7 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
   const rows = await allRows(`
     SELECT i.id, i.title, i.question_md, i.solution_notes_md, i.source_uri,
            i.source_label, i.source_page, i.tags, i.created_at,
-           i.solution_col, i.work_row, i.paper, i.source, i.kind, i.quadrant, i.sheet_name,
+           i.solution_col, i.work_row, i.solution_row, i.paper, i.source, i.kind, i.quadrant, i.sheet_name,
            (i.sheet_json != '') AS has_sheet,
            (SELECT COUNT(*) FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1) AS done_count,
            (SELECT a.self_grade FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1
@@ -165,7 +168,7 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
       solutionNotesMd: base.solutionNotesMd, sourceUri: base.sourceUri,
       sourceLabel: base.sourceLabel, sourcePage: base.sourcePage,
       tags: base.tags, createdAt: base.createdAt,
-      solutionCol: base.solutionCol, workRow: base.workRow, paper: base.paper, source: base.source,
+      solutionCol: base.solutionCol, workRow: base.workRow, solutionRow: base.solutionRow, paper: base.paper, source: base.source,
       kind: base.kind, quadrant: base.quadrant, sheetName: base.sheetName,
       attemptState, attemptCount: doneCount,
       seconds: Number(row.seconds ?? 0),
@@ -216,6 +219,7 @@ export interface CreateItemInput {
   sheetJson?: string;
   solutionCol?: number;
   workRow?: number;
+  solutionRow?: number;
   paper?: string;
   source?: string;
   kind?: string;
@@ -227,8 +231,8 @@ export async function createItem(input: CreateItemInput): Promise<number | null>
   const res = await run(`
     INSERT INTO ws_items (title, question_md, givens_json, solution_json,
       solution_notes_md, source_uri, source_label, source_page, tags, created_at,
-      sheet_json, solution_col, work_row, paper, source, kind, quadrant, sheet_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sheet_json, solution_col, work_row, paper, source, kind, quadrant, sheet_name, solution_row)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     input.title.trim(),
     input.questionMd ?? '',
@@ -248,6 +252,7 @@ export async function createItem(input: CreateItemInput): Promise<number | null>
     input.kind ?? '',
     Number.isInteger(input.quadrant) ? (input.quadrant as number) : 0,
     input.sheetName ?? '',
+    Number.isInteger(input.solutionRow) ? (input.solutionRow as number) : -1,
   ]);
   emitChange();
   return res.lastInsertRowid !== undefined ? Number(res.lastInsertRowid) : null;

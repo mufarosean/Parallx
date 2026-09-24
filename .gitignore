@@ -38,3 +38,4 @@ venv/
 ext/media-organizer/bin/realesrgan-ncnn-vulkan*
 ext/media-organizer/bin/models/
 ext/media-organizer/bin/vcomp140*.dll
+.claude/scratch-recipes/
