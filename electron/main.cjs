@@ -30,6 +30,8 @@ const doclingBridge = require('./doclingBridge.cjs');
 const { setupMcpBridge, killAllMcpProcesses } = require('./mcpBridge.cjs');
 const { setupStorageHandlers } = require('./storageHandlers.cjs');
 const { setupWebFetchBridge } = require('./webFetchBridge.cjs');
+const { isSealed: isWorkspaceSealed } = require('./webFetchBridge.cjs');
+const { setupModelBridge } = require('./modelBridge.cjs');
 const { setupBrowserBridge } = require('./browserBridge.cjs');
 /** The browser bridge once the window exists; asked before any link leaves for the system browser. */
 let _browserBridge = null;
@@ -819,6 +821,8 @@ app.whenReady().then(async () => {
   // File-backed dashboard image/GIF assets (served over parallx-asset://).
   setupDashboardAssetBridge(ipcMain, protocol, APP_ROOT);
   setupImageBridge(ipcMain, app);
+  // Local picture models (ONNX) for extensions: the image editor's Remove.
+  setupModelBridge(ipcMain, { appRoot: APP_ROOT, getMainWindow: () => mainWindow, isSealed: isWorkspaceSealed });
   // ── M53: Migrate tools from ~/.parallx/tools/ → data/extensions/ ──
   const oldToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
   try {

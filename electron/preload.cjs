@@ -493,6 +493,20 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     renderEquations: (items) => ipcRenderer.invoke('image:renderEquations', items),
   },
 
+  // ── Local picture models (electron/modelBridge.cjs) ──
+  // A model is named by the SHA-256 of its file; desc is { url, sha256, bytes }.
+  models: {
+    /** -> { ok, runtime, present, downloading } */
+    status: (desc) => ipcRenderer.invoke('models:status', desc),
+    /** Fetch the model once and keep it only if its hash matches. Progress arrives through onProgress. -> { ok, error? } */
+    download: (desc) => ipcRenderer.invoke('models:download', desc),
+    cancelDownload: (sha256) => ipcRenderer.invoke('models:cancelDownload', sha256),
+    /** inputs: { name: { data: Float32Array, dims } } -> { ok, outputs: { name: { data, dims } }, provider, ms, loadMs } */
+    run: (sha256, inputs) => ipcRenderer.invoke('models:run', sha256, inputs),
+    /** cb({ sha256, received, total, done?, error? }); returns a function that stops listening. */
+    onProgress: (cb) => { const h = (_e, p) => cb(p); ipcRenderer.on('models:progress', h); return () => ipcRenderer.removeListener('models:progress', h); },
+  },
+
   // ── Dashboard image/GIF assets (file-backed, served over parallx-asset://) ──
   dashboardAssets: {
     /** Persist uploaded image bytes to disk. Returns { id } or { error }. */

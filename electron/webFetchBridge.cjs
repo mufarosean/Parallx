@@ -561,7 +561,7 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret) {
   // not. Defaults to open; a failure to hear from the renderer therefore
   // fails safe only once the renderer has said "sealed".
   let _sealed = false;
-  ipcMain.handle('webFetch:setSealed', (_event, sealed) => { _sealed = !!sealed; return { ok: true, sealed: _sealed }; });
+  ipcMain.handle('webFetch:setSealed', (_event, sealed) => { _sealed = !!sealed; _sealedNow = _sealed; return { ok: true, sealed: _sealed }; });
   const SEALED_ERROR = { ok: false, error: { code: 'SEALED', message: 'This workspace is sealed: nothing leaves the machine.' } };
 
   ipcMain.handle('webFetch:request', async (_event, opts) => {
@@ -628,8 +628,13 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret) {
 
 // ─── Exports ─────────────────────────────────────────────────────────────────
 
+// The sealed flag as last pushed by the renderer, for bridges that fetch on their own (modelBridge.cjs).
+let _sealedNow = false;
+function isSealed() { return _sealedNow; }
+
 module.exports = {
   setupWebFetchBridge,
+  isSealed,
   // The same private-address rule, for the assistant browser (browserAutomationBroker.cjs).
   isPrivateIp,
   hostResolvesPrivate,
