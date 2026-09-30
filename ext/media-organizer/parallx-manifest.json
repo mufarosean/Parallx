@@ -29,8 +29,6 @@
       { "id": "media-organizer.findDuplicates", "title": "Find Duplicates", "category": "Media Organizer" },
       { "id": "media-organizer.saveSmartAlbum", "title": "Save Current Search as Smart Album", "category": "Media Organizer" },
       { "id": "media-organizer.openSmartAlbum", "title": "Open Smart Album", "category": "Media Organizer" },
-      { "id": "media-organizer.stackSelected", "title": "Stack Selected Items", "category": "Media Organizer" },
-      { "id": "media-organizer.autoStack", "title": "Auto-Stack by Filename", "category": "Media Organizer" },
       { "id": "media-organizer.moveToTrash", "title": "Move Selected to Trash", "category": "Media Organizer" },
       { "id": "media-organizer.emptyTrash", "title": "Empty Trash", "category": "Media Organizer" },
       { "id": "media-organizer.revealInMO", "title": "Reveal in Media Organizer", "category": "Media Organizer" },
@@ -38,7 +36,11 @@
       { "id": "media-organizer.toggleScreenRecorder", "title": "Toggle Screen Recorder", "category": "Media Organizer" },
       { "id": "media-organizer.recordGif", "title": "Record GIF (Screen)", "category": "Media Organizer" },
       { "id": "media-organizer.openClipEditor", "title": "Open Clip Editor", "category": "Media Organizer" },
-      { "id": "media-organizer.openTagReview", "title": "Open Tag Review", "category": "Media Organizer" }
+      { "id": "media-organizer.openTagReview", "title": "Open Tag Review", "category": "Media Organizer" },
+      { "id": "media-organizer.editImage", "title": "Edit Image", "category": "Media Organizer" },
+      { "id": "media-organizer.pasteEdit", "title": "Paste Edit Onto Selected Photos", "category": "Media Organizer" },
+      { "id": "media-organizer.removeFromOthers", "title": "Remove Marks From Other Photos", "category": "Media Organizer" },
+      { "id": "media-organizer.removeFromSelected", "title": "Remove Marks From Selected Photos", "category": "Media Organizer" }
     ],
     "viewContainers": [
       {
@@ -63,6 +65,10 @@
       {
         "typeId": "media-organizer-clip",
         "displayName": "Clip Editor"
+      },
+      {
+        "typeId": "media-organizer-image",
+        "displayName": "Image Editor"
       }
     ],
     "configuration": [
@@ -137,6 +143,13 @@
             "type": "number",
             "default": 0,
             "description": "Tile size, in pixels, for the upscaler. 0 picks it from your GPU's memory (a 24 GB or larger card gets 1024). The tool's own automatic choice never exceeds 200 pixels, which leaves a big card mostly idle. Larger tiles are faster with identical output; if a size fails, the next smaller one is tried automatically."
+          },
+          "mediaOrganizer.editJpegQuality": {
+            "type": "number",
+            "default": 92,
+            "minimum": 50,
+            "maximum": 100,
+            "description": "Image Editor: JPEG quality for Save As Copy, from 50 to 100. Higher keeps more detail and makes a larger file. PNG photos are saved as PNG and are not affected."
           }
         }
       }

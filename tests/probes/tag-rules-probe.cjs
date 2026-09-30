@@ -169,13 +169,11 @@ const multiParent = () => sqlite.prepare('SELECT child_id FROM mo_tags_relations
   addPhoto('trashed.jpg', { deleted: true });
   const inReview = addPhoto('queued.jpg');
   const primary = addPhoto('primary.jpg');
-  const stacked = addPhoto('stacked-copy.jpg');
-  const stack = insert('mo_stacks', { primary_type: 'photo', primary_id: primary });
-  insert('mo_stack_members', { stack_id: stack, member_type: 'photo', member_id: primary, role: 'primary', position: 0 });
-  insert('mo_stack_members', { stack_id: stack, member_type: 'photo', member_id: stacked, role: 'member', position: 1 });
+  // A copy is a photo of its own (stacks are retired): it is untagged like any other.
+  const stacked = addPhoto('primary-edit.jpg');
   await M.moTagQueue([inReview]);
   const untagged = sqlite.prepare(`SELECT p.id ${M.MO_TAG_UNTAGGED_FROM} ORDER BY p.id`).all().map((r) => r.id);
-  eq(untagged, [plain, primary], 'untagged = live, not GIF, not a stacked copy, not already in review');
+  eq(untagged, [plain, primary, stacked], 'untagged = live, not GIF, not already in review; a copy counts as a photo of its own');
 
   const elig = await M.moTagEligible([{ type: 'photo', id: plain }, { type: 'photo', id: gif }, { type: 'video', id: 1 }, { type: 'photo', id: 9999 }, { type: 'photo', id: plain }]);
   eq(elig, { ids: [plain], skipped: { gif: 1, notPhoto: 1, missing: 1 } }, 'eligibility: photos only, GIFs and missing left out, no duplicates');

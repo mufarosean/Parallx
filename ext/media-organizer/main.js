@@ -167,14 +167,16 @@ function buildRelationOps(table, entityCol, relatedCol, entityId, updateIDs) {
 /**
  * Build and execute a partial UPDATE statement.
  * Present key → set value; key with null → clear (set NULL); absent key → skip.
- * Always sets updated_at = datetime('now').
+ * Sets updated_at = datetime('now'), unless the table has no such column
+ * (mo_image_files and mo_video_files: they belong to a file row, which has it).
  *
  * @param {string} tableName - Table to update
  * @param {number} id        - Row id
  * @param {object} partial   - Partial update object
  * @param {object} colMap    - Maps JS property names to SQL column names
+ * @param {{ touch?: boolean }} [opts] - touch: false leaves updated_at out
  */
-async function buildPartialUpdate(tableName, id, partial, colMap) {
+async function buildPartialUpdate(tableName, id, partial, colMap, opts) {
   const setClauses = [];
   const params = [];
 
@@ -187,7 +189,7 @@ async function buildPartialUpdate(tableName, id, partial, colMap) {
 
   if (setClauses.length === 0) return;
 
-  setClauses.push(`updated_at = datetime('now')`);
+  if (!opts || opts.touch !== false) setClauses.push(`updated_at = datetime('now')`);
   params.push(id);
 
   const sql = `UPDATE ${tableName} SET ${setClauses.join(', ')} WHERE id = ?`;
@@ -2095,7 +2097,7 @@ const ImageFileQueries = {
   },
 
   async update(id, partial) {
-    await buildPartialUpdate('mo_image_files', id, partial, IMAGE_FILE_COL_MAP);
+    await buildPartialUpdate('mo_image_files', id, partial, IMAGE_FILE_COL_MAP, { touch: false });
     const row = await db.get(`SELECT * FROM mo_image_files WHERE id = ?`, [id]);
     return this.fromRow(row);
   },
@@ -2165,7 +2167,7 @@ const VideoFileQueries = {
   },
 
   async update(id, partial) {
-    await buildPartialUpdate('mo_video_files', id, partial, VIDEO_FILE_COL_MAP);
+    await buildPartialUpdate('mo_video_files', id, partial, VIDEO_FILE_COL_MAP, { touch: false });
     const row = await db.get(`SELECT * FROM mo_video_files WHERE id = ?`, [id]);
     return this.fromRow(row);
   },
@@ -2588,7 +2590,12 @@ async function extractMetadata(filePath, fileType) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: internal/manager/task_scan.go — recursive directory walk
 
+// The upscaler's half-way picture ("photo.upscale-k3x9.png") is deleted moments after it is written,
+// and what Save writes ("photo.saving-k3x9ab.jpg") takes the original's name moments after:
+// neither is ever a library item, whether a scan or the watcher comes across it.
+const MO_TEMP_NAME_RE = /\.(upscale|saving)-[a-z0-9]{1,8}\.(png|jpe?g)$/i;
 function classifyFile(name) {
+  if (MO_TEMP_NAME_RE.test(name)) return null;
   const dot = name.lastIndexOf('.');
   if (dot < 0) return null;
   const ext = name.slice(dot).toLowerCase();
@@ -2697,7 +2704,30 @@ let _scanRunning = false;
 let _scanCancelled = false;
 let _statusBarItem = null;
 
+/**
+ * Is a file's modified time the one the library holds? The library keeps it
+ * as text, to 15 significant digits; Windows stamps a freshly written file
+ * finer than that (a copied file keeps its source's time, often a whole
+ * second), so an exact comparison called every saved file changed, each time
+ * it was looked at: hashed again, its details read again. Within a
+ * millisecond is the same time.
+ */
+function moSameModTime(held, onDisk) {
+  const a = Number(held); const b = Number(onDisk);
+  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 1;
+}
+
+// A file is taken in by one caller at a time. The folder watcher and Parallx's own save (Upscale, Save As
+// Copy) both notice a new file; run together they each inserted it, and one of them failed.
+const _moFileTurns = new Map();
 async function processFile(entry) {
+  const key = _normErasePath(entry.path);
+  const turn = (_moFileTurns.get(key) || Promise.resolve()).catch(() => {}).then(() => processFileNow(entry));
+  _moFileTurns.set(key, turn);
+  try { return await turn; } finally { if (_moFileTurns.get(key) === turn) _moFileTurns.delete(key); }
+}
+
+async function processFileNow(entry) {
   // 0. Files mid-secure-erase are off limits. Eraser's overwrite passes bump
   // mtime, so scans would otherwise re-hash multi-GB garbage bytes (and fight
   // Eraser for disk bandwidth) for a file that's about to vanish.
@@ -2709,13 +2739,13 @@ async function processFile(entry) {
   if (existing) {
     // If mtime matches, check for missing data before skipping
     // Adapted from stash: pkg/file/scan.go — onUnchangedFile / setMissingFingerprints
-    if (Number(existing.modTime) === Number(entry.mtime)) {
+    if (moSameModTime(existing.modTime, entry.mtime)) {
       let recovered = false;
 
       // Check for missing fingerprints (tools may have been installed since last scan)
       const existingFps = await FingerprintQueries.findByFile(existing.id);
       if (existingFps.length === 0) {
-        const fps = await fingerprintFile(entry.path, entry.fileType);
+        const fps = (entry.fps && entry.fps.length) ? entry.fps : await fingerprintFile(entry.path, entry.fileType);
         for (const fp of fps) {
           await FingerprintQueries.upsert({ fileId: existing.id, type: fp.type, value: fp.value });
         }
@@ -2748,7 +2778,7 @@ async function processFile(entry) {
       [entry.size, entry.mtime, existing.id]
     );
     // Update fingerprints
-    const fps = await fingerprintFile(entry.path, entry.fileType);
+    const fps = (entry.fps && entry.fps.length) ? entry.fps : await fingerprintFile(entry.path, entry.fileType);
     for (const fp of fps) {
       await FingerprintQueries.upsert({ fileId: existing.id, type: fp.type, value: fp.value });
     }
@@ -2790,7 +2820,16 @@ async function processFile(entry) {
   }
 
   // 2. New file — compute fingerprints first for dedup/rename check
-  const fps = await fingerprintFile(entry.path, entry.fileType);
+  const fps = (entry.fps && entry.fps.length) ? entry.fps : await fingerprintFile(entry.path, entry.fileType);
+
+  // A file nobody can open yet (a fresh download the antivirus still holds, a
+  // copy a sync client is busy with) has no fingerprint. Indexing it now made
+  // an item with no picture, no size and no checksum that stayed that way
+  // until the next launch. It waits its turn instead and is taken in whole.
+  if (fps.length === 0 && !entry.allowUnhashed) {
+    moWaitForFile({ type: 'changed', path: entry.path, _tries: entry._tries || 0 }, 'unreadable');
+    return { action: 'busy', fileId: null };
+  }
 
   // 3. Dedup/rename check via fingerprint
   // Adapted from stash: pkg/file/scan.go — handleRename
@@ -3105,7 +3144,7 @@ async function syncScanRootsToFsGate() {
 
 // ── Incremental processing ──
 
-async function processIncrementalCreate(filePath) {
+async function processIncrementalCreate(filePath, given) {
   if (isInternalPath(filePath)) return null;
   const sep = _isWindows ? '\\' : '/';
   let lastSep = filePath.lastIndexOf(sep);
@@ -3122,9 +3161,11 @@ async function processIncrementalCreate(filePath) {
 
   // WebP gate — convert in place before indexing. Mirrors walkDirectory().
   let effectivePath = filePath;
+  let fps = given && given.fps ? given.fps : null;
   if (/\.webp$/i.test(fileName)) {
     const converted = await convertWebpAtPath(filePath);
     if (converted) {
+      fps = null; // the fingerprint was the .webp's; the converted file has its own
       effectivePath = converted;
       lastSep = converted.lastIndexOf(sep);
       dirPath = lastSep > 0 ? converted.slice(0, lastSep) : converted;
@@ -3143,6 +3184,9 @@ async function processIncrementalCreate(filePath) {
     mtime: statResult.mtime,
     fileType,
     folderId: folder.id,
+    fps,
+    allowUnhashed: !!(given && given.allowUnhashed),
+    _tries: given && given.tries ? given.tries : 0,
   };
 
   return processFile(entry);
@@ -3205,51 +3249,157 @@ async function processIncrementalDeleteBatch(filePaths) {
 
 // ── Batched watcher event processor ──
 
-/**
- * Wait for a path's size + mtime to stop changing. Videos (and large
- * images on slow disks / network shares / cloud sync folders) arrive
- * via many small writes; if we run ffprobe before the writer is done,
- * we hash a partial file and ffprobe fails because the moov atom isn't
- * written yet. Result: a half-broken DB row with no metadata that the
- * grid won't render properly.
- *
- * Polls stat every `intervalMs` and returns once two consecutive polls
- * agree on size + mtime (or `maxWaitMs` elapses). Returns false if the
- * file vanished or never settled.
- */
-async function _waitForFileToSettle(filePath, { intervalMs = 400, maxWaitMs = 8000 } = {}) {
-  const start = Date.now();
-  let prevSize = -1;
-  let prevMtime = -1;
-  // Fast path: if the file's mtime is already comfortably in the past
-  // (>2s), the writer is almost certainly done. Skip the second-poll
-  // confirmation and return immediately. This is the common case for
-  // small files (single fs.watch burst, then quiescent) and shaves
-  // ~800ms off the perceived latency for GIFs and small images.
-  try {
-    const st = await window.parallxElectron.fs.stat(filePath);
-    if (st && !st.error && typeof st.size === 'number' && st.size > 0) {
-      const ageMs = Date.now() - Number(st.mtime);
-      if (ageMs > 2000) return true;
-      prevSize = st.size;
-      prevMtime = Number(st.mtime);
-    } else if (!st || st.error) {
-      return false;
-    }
-  } catch { return false; }
+// ── A new file's readiness ──
+// A file is taken into the library once it holds bytes, has stopped changing
+// and can be opened. A browser's placeholder is empty, a save in progress is
+// still growing, and a scanner (antivirus, a sync client) may keep a fresh
+// download to itself for a while. None of these holds the queue up: the file
+// is set aside and looked at again on a lengthening schedule while the files
+// behind it go ahead. The old wait sat on one file for up to eight seconds
+// with everything else queued behind it, and a file that could not be opened
+// was indexed anyway, as an item with no picture that never recovered.
+// Looking costs one stat and one refused open, so the looks stay close together
+// while the file is fresh: it is shown within a second or two of being let go.
+const MO_READY_RETRY_MS = [500, 1000, 1000, 2000, 2000, 2000, 3000, 3000, 5000, 5000, 5000, 10000, 10000, 15000, 30000, 60000, 60000, 60000];
+/** The wait before look number `tries` (from 1), or -1 once the schedule is spent. */
+function moReadyDelay(tries) {
+  return tries >= 1 && tries <= MO_READY_RETRY_MS.length ? MO_READY_RETRY_MS[tries - 1] : -1;
+}
 
-  while (Date.now() - start < maxWaitMs) {
-    await new Promise(r => setTimeout(r, intervalMs));
-    let st;
-    try { st = await window.parallxElectron.fs.stat(filePath); } catch { return false; }
-    if (!st || st.error || typeof st.size !== 'number') return false;
-    if (st.size === prevSize && Number(st.mtime) === Number(prevMtime) && st.size > 0) {
-      return true;
-    }
-    prevSize = st.size;
-    prevMtime = Number(st.mtime);
+/** Files set aside until they can be read: normalised path -> { timer, tries, why, since }. */
+const _moWaitingFiles = new Map();
+
+/**
+ * Is this file ready to be taken in? { state: 'ready', fps } with its
+ * fingerprints (so it is read once, not twice), { state: 'waiting', why } with
+ * why one of 'empty', 'changing', 'unreadable', or { state: 'gone' }.
+ * Costs one stat for a file written a while ago; a file written within the
+ * last two seconds is looked at twice, 400 ms apart.
+ */
+async function moFileReady(filePath, fileType, opts) {
+  const fsApi = window.parallxElectron.fs;
+  let st;
+  try { st = await fsApi.stat(filePath); } catch { return { state: 'gone' }; }
+  if (!st || st.error || typeof st.size !== 'number') return { state: 'gone' };
+  if (st.size === 0) return { state: 'waiting', why: 'empty' };
+  // opts.written: Parallx wrote the file itself and knows the writing is over.
+  if (!(opts && opts.written) && Date.now() - Number(st.mtime) <= 2000) {
+    await new Promise((r) => setTimeout(r, 400));
+    let again;
+    try { again = await fsApi.stat(filePath); } catch { return { state: 'gone' }; }
+    if (!again || again.error || typeof again.size !== 'number') return { state: 'gone' };
+    if (again.size !== st.size || Number(again.mtime) !== Number(st.mtime)) return { state: 'waiting', why: 'changing' };
   }
-  return false; // timed out — caller decides what to do
+  // Already in the library, whole and unchanged: there is nothing to read.
+  // (Every touch of an indexed file arrives here; a video must not be hashed for each.)
+  try {
+    const cut = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'));
+    const folder = cut > 0 ? await FolderQueries.findByPath(filePath.slice(0, cut)) : null;
+    const row = folder ? await FileQueries.findByFolderAndName(folder.id, filePath.slice(cut + 1)) : null;
+    if (row && moSameModTime(row.modTime, st.mtime)) {
+      const whole = (await FingerprintQueries.findByFile(row.id)).length > 0
+        && !!(fileType === 'video' ? await VideoFileQueries.findByFileId(row.id) : await ImageFileQueries.findByFileId(row.id));
+      if (whole) return { state: 'known' };
+    }
+  } catch { /* the library could not say: read the file */ }
+  const fps = await fingerprintFile(filePath, fileType);
+  if (fps.length === 0) return { state: 'waiting', why: 'unreadable' };
+  return { state: 'ready', fps };
+}
+
+/**
+ * Set a file aside and look again later. When the schedule is spent (about
+ * four minutes), a file that still cannot be read is indexed as it is, so it
+ * is in the library rather than lost; one that never finished being written
+ * is left for the next launch's scan.
+ */
+function moWaitForFile(evt, why) {
+  if (_moClosing || !evt || !evt.path) return;
+  const key = _normErasePath(evt.path);
+  const held = _moWaitingFiles.get(key);
+  if (held) clearTimeout(held.timer);
+  const tries = (evt._tries || 0) + 1;
+  const since = held ? held.since : (evt._seenAt || Date.now());
+  const delay = moReadyDelay(tries);
+  if (delay < 0) {
+    _moWaitingFiles.delete(key);
+    console.warn(`[MediaOrganizer] Gave up waiting for ${evt.path} (${why}) after ${Math.round((Date.now() - since) / 1000)} s`);
+    if (why === 'unreadable') enqueueWatcherEvent({ type: 'changed', path: evt.path, _tries: tries, _seenAt: since, _lastResort: true });
+    moShowIngestStatus(null);
+    return;
+  }
+  const timer = setTimeout(() => {
+    enqueueWatcherEvent({ type: 'changed', path: evt.path, _tries: tries, _seenAt: since });
+  }, delay);
+  _moWaitingFiles.set(key, { timer, tries, why, since });
+  moShowIngestStatus(null);
+}
+
+/** The file has been dealt with (or is gone): it waits no longer. Returns how long it had waited, in ms. */
+function moDoneWaitingForFile(filePath) {
+  const key = _normErasePath(filePath);
+  const held = _moWaitingFiles.get(key);
+  if (!held) return 0;
+  clearTimeout(held.timer);
+  _moWaitingFiles.delete(key);
+  return Date.now() - held.since;
+}
+
+// The status bar says what the library is doing about new files, so a slow
+// one is seen to be in hand. A scan owns the bar while it runs.
+let _moIngestStatusText = '';
+function moShowIngestStatus(current) {
+  if (!_statusBarItem || _scanRunning) return;
+  let text = '';
+  if (current) text = `$(sync~spin) Adding ${String(current).split(/[/\\]/).pop()}`;
+  else if (_moWaitingFiles.size > 0) text = `$(sync~spin) Waiting for ${_moWaitingFiles.size} new ${_moWaitingFiles.size === 1 ? 'file' : 'files'} to be readable`;
+  if (!text) {
+    if (_moIngestStatusText && _statusBarItem.text === _moIngestStatusText) _statusBarItem.hide();
+    _moIngestStatusText = '';
+    return;
+  }
+  _moIngestStatusText = text;
+  _statusBarItem.text = text;
+  _statusBarItem.show();
+}
+
+// What happened to the last new files, with times: when the library first
+// heard of the file, how long it waited for it, how long taking it in took.
+// Kept in the extension's own folder (names and times only) so a slow save
+// can be traced afterwards to the stage that was slow.
+const MO_IMPORT_LOG_MAX = 200;
+let _moImportLog = null;
+let _moImportLogTimer = null;
+function _importLogPath(api) {
+  const p = _pendingErasePath(api);
+  return p ? p.replace(/pending-erase\.json$/, 'import-log.json') : null;
+}
+function moImportLogAdd(row) {
+  console.log(`[MediaOrganizer] New file ${row.action} ${(row.totalMs / 1000).toFixed(1)} s after it was first seen (waited ${(row.waitedMs / 1000).toFixed(1)} s for it${row.why ? ', ' + row.why : ''}; ${(row.readMs / 1000).toFixed(1)} s to read, ${(row.indexMs / 1000).toFixed(1)} s to take in): ${row.path}`);
+  if (!_api) return;
+  const p = _importLogPath(_api);
+  if (!p) return;
+  const pending = _moImportLog || (_moImportLog = { loaded: false, rows: [] });
+  pending.rows.push(row);
+  if (_moImportLogTimer) return;
+  _moImportLogTimer = setTimeout(async () => {
+    _moImportLogTimer = null;
+    try {
+      if (!pending.loaded) {
+        pending.loaded = true;
+        try {
+          const r = await window.parallxElectron.fs.readFile(p, 'utf8');
+          const text = typeof r === 'string' ? r : (r && !r.error ? (r.content ?? '') : '');
+          const old = text ? JSON.parse(text) : null;
+          if (old && Array.isArray(old.rows)) pending.rows = old.rows.concat(pending.rows);
+        } catch { /* no log yet, or one that cannot be read: start afresh */ }
+      }
+      if (pending.rows.length > MO_IMPORT_LOG_MAX) pending.rows.splice(0, pending.rows.length - MO_IMPORT_LOG_MAX);
+      await window.parallxElectron.fs.writeFile(p, JSON.stringify({ version: 1, rows: pending.rows }, null, 1), 'utf8');
+    } catch (err) {
+      console.warn('[MediaOrganizer] The import log could not be written:', err?.message || err);
+    }
+  }, 2000);
 }
 
 async function drainWatcherQueue() {
@@ -3313,28 +3463,36 @@ async function drainWatcherQueue() {
     for (const evt of creates) {
       if (_moClosing) break; // each create can cost seconds (hash + ffprobe)
       try {
-        const settled = await _waitForFileToSettle(evt.path);
-        if (!settled) {
-          try {
-            const exists = await window.parallxElectron.fs.exists(evt.path);
-            // Bounded retry: if a file genuinely never settles (a log being
-            // continuously appended, a clock-skewed network share, etc.),
-            // we'd otherwise re-enqueue every 5s forever. Cap at 3 retries
-            // and let the periodic delta scan pick it up later if it ever
-            // does stop changing.
-            const tries = (evt._settleRetries || 0) + 1;
-            if (exists && tries <= 3) {
-              setTimeout(() => enqueueWatcherEvent({ type: 'changed', path: evt.path, _settleRetries: tries }), 5_000);
-            }
-          } catch { /* ignore */ }
-          continue;
-        }
-        const result = await processIncrementalCreate(evt.path);
+        const t0 = Date.now();
+        const seenAt = evt._seenAt || t0;
+        const held = _moWaitingFiles.get(_normErasePath(evt.path));
+        const ready = evt._lastResort
+          ? { state: 'ready', fps: null }
+          : await moFileReady(evt.path, classifyFile(evt.path.split(/[/\\]/).pop()));
+        if (ready.state === 'gone' || ready.state === 'known') { moDoneWaitingForFile(evt.path); moShowIngestStatus(null); continue; }
+        if (ready.state === 'waiting') { moWaitForFile(evt, ready.why); continue; }
+        moDoneWaitingForFile(evt.path);
+        moShowIngestStatus(evt.path);
+        const t1 = Date.now();
+        const result = await processIncrementalCreate(evt.path, { fps: ready.fps, allowUnhashed: !!evt._lastResort, tries: evt._tries || 0 });
         if (result) {
           if (result.action === 'created') { created++; _notifySidebarRefresh(); refreshGrid(); }
           else if (result.action === 'updated') { updated++; refreshGrid(); }
+          // A file moved or renamed on disk keeps its library item; the views showed its old place until something else refreshed them.
+          else if (result.action === 'renamed') { updated++; _notifySidebarRefresh(); refreshGrid(); }
+          if (result.action === 'created' || result.action === 'renamed' || result.action === 'duplicate' || held) {
+            moImportLogAdd({
+              at: new Date(seenAt).toISOString(), path: evt.path, action: result.action,
+              totalMs: Date.now() - seenAt, waitedMs: t0 - seenAt, why: held ? held.why : '', looks: (evt._tries || 0) + 1,
+              readMs: t1 - t0, indexMs: Date.now() - t1,
+              // was the window out of sight (minimised or covered) when the file arrived, and when it was done?
+              hiddenAtStart: !!evt._hidden, hiddenAtEnd: typeof document !== 'undefined' && document.visibilityState === 'hidden',
+            });
+          }
         }
+        moShowIngestStatus(null);
       } catch (err) {
+        moShowIngestStatus(null);
         console.warn(`[MediaOrganizer] Watcher: error processing ${evt.path}:`, err);
         errors++;
       }
@@ -3358,6 +3516,13 @@ function enqueueWatcherEvent(evt) {
   // the dying file), and convert the final stat-verified unlink into the
   // erase scheduler's completion signal instead of an incremental delete.
   if (_eraserInterceptWatchEvent(evt)) return;
+  if (!evt._seenAt) { evt._seenAt = Date.now(); evt._hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'; }
+  // News of a file that was set aside: something changed, so look now
+  // instead of at the end of its wait, and keep counting from when it was first seen.
+  if (!evt._tries && evt.type !== 'deleted') {
+    const held = _moWaitingFiles.get(_normErasePath(evt.path));
+    if (held) { clearTimeout(held.timer); evt._seenAt = held.since; }
+  }
   _watcherQueue.push(evt);
   if (_watcherDebounceTimer) clearTimeout(_watcherDebounceTimer);
   _watcherDebounceTimer = setTimeout(() => {
@@ -3435,6 +3600,8 @@ function stopAllWatchers() {
   }
   _activeMediaWatchers.clear();
   _watcherQueue = [];
+  for (const held of _moWaitingFiles.values()) clearTimeout(held.timer);
+  _moWaitingFiles.clear();
   if (_watcherDebounceTimer) { clearTimeout(_watcherDebounceTimer); _watcherDebounceTimer = null; }
 }
 
@@ -5196,19 +5363,6 @@ const MO_CSS = `
   letter-spacing: 0.3px;
   text-transform: uppercase;
   pointer-events: none;
-}
-.mo-card-stack-badge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  font-size: var(--parallx-fontSize-xs, 10px);
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  color: #fff;
-  font-weight: 700;
-  pointer-events: none;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 .mo-card-rating {
   position: absolute;
@@ -8266,6 +8420,160 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-plans-card:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-plans-card img { width: 144px; height: 144px; object-fit: cover; display: block; border-radius: 2px; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); margin-bottom: 6px; }
 .mo-plans-card-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Image editor (docs/IMAGE_EDITOR.md): presets | stage over filmstrip | panel | tool strip, all flush. */
+.mo-edit { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); outline: none; --mo-edit-line: var(--vscode-foreground, var(--px-text)); --mo-edit-faint: var(--vscode-panel-border, var(--px-border)); }
+.mo-edit button:disabled { opacity: 0.4; cursor: default; }
+.mo-edit-topbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
+.mo-edit-topbar-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mo-edit-topbar-right { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
+.mo-edit-group { display: flex; align-items: center; gap: 4px; }
+.mo-edit-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-edit-dim { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mo-edit-zoom { min-width: 38px; text-align: right; }
+.mo-edit-icon, .mo-edit-tool, .mo-edit-mini { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--parallx-radius-sm, 3px); background: transparent; color: inherit; cursor: pointer; }
+.mo-edit-icon { width: 26px; height: 26px; }
+.mo-edit-mini { width: 20px; height: 20px; opacity: 0.75; }
+.mo-edit-icon:hover:not(:disabled), .mo-edit-tool:hover:not(:disabled), .mo-edit-mini:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground, var(--px-surface-hover)); opacity: 1; }
+.mo-edit-icon.is-on, .mo-edit-tool.is-on, .mo-edit .mo-toolbar-btn.is-on, .mo-edit-chan.is-on { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text-on-accent)); }
+.mo-edit-mini.is-on { opacity: 1; color: var(--vscode-focusBorder, var(--px-accent)); }
+.mo-edit-body { flex: 1 1 auto; min-height: 0; display: flex; }
+.mo-edit-centre { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.mo-edit-stage { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; background: var(--px-bg-inset, var(--vscode-editor-background)); touch-action: none; user-select: none; }
+.mo-edit-stage.is-pannable { cursor: grab; }
+.mo-edit-stage.is-panning { cursor: grabbing; }
+.mo-edit-stage.is-picking, .mo-edit-stage.is-picking.is-pannable { cursor: crosshair; }
+.mo-edit-stage.is-brushing, .mo-edit-stage.is-brushing.is-pannable { cursor: crosshair; }
+.mo-edit-canvas, .mo-edit-paint { position: absolute; left: 0; top: 0; display: block; }
+.mo-edit-paint { pointer-events: none; }
+.mo-edit-message { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); pointer-events: none; }
+.mo-edit-chip { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); box-sizing: border-box; width: 300px; max-width: calc(100% - 32px); display: flex; flex-direction: column; gap: 7px; padding: 9px 12px; border-radius: var(--parallx-radius-sm, 3px); font-size: 12px; background: var(--vscode-sideBar-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-panel-border, var(--px-border)); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); pointer-events: none; }
+.mo-edit-chip-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.mo-edit-chip-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-edit-chip-note { flex: 0 0 auto; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); font-variant-numeric: tabular-nums; }
+.mo-edit-brush { position: absolute; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); pointer-events: none; }
+.mo-edit-splitbar { position: absolute; top: 0; bottom: 0; width: 9px; margin-left: -4px; cursor: ew-resize; background: linear-gradient(to right, transparent 4px, rgba(255, 255, 255, 0.9) 4px, rgba(255, 255, 255, 0.9) 5px, transparent 5px); }
+.mo-edit-cropframe { position: absolute; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, 0.95); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55); cursor: move; }
+.mo-edit-crophandle { position: absolute; width: 11px; height: 11px; background: var(--vscode-focusBorder, var(--px-accent)); border: 1px solid rgba(0, 0, 0, 0.55); }
+.mo-edit-crophandle--nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.mo-edit-crophandle--n { left: calc(50% - 6px); top: -6px; cursor: ns-resize; }
+.mo-edit-crophandle--ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.mo-edit-crophandle--e { right: -6px; top: calc(50% - 6px); cursor: ew-resize; }
+.mo-edit-crophandle--se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.mo-edit-crophandle--s { left: calc(50% - 6px); bottom: -6px; cursor: ns-resize; }
+.mo-edit-crophandle--sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.mo-edit-crophandle--w { left: -6px; top: calc(50% - 6px); cursor: ew-resize; }
+.mo-edit-cropline { position: absolute; background: rgba(255, 255, 255, 0.45); pointer-events: none; }
+.mo-edit-cropline--v1 { left: 33.333%; top: 0; bottom: 0; width: 1px; }
+.mo-edit-cropline--v2 { left: 66.666%; top: 0; bottom: 0; width: 1px; }
+.mo-edit-cropline--h1 { top: 33.333%; left: 0; right: 0; height: 1px; }
+.mo-edit-cropline--h2 { top: 66.666%; left: 0; right: 0; height: 1px; }
+.mo-edit-film { flex: 0 0 76px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-top: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
+.mo-edit-film-count { flex: 0 0 auto; font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); font-variant-numeric: tabular-nums; }
+.mo-edit-film-strip { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 4px; overflow-x: auto; overflow-y: hidden; height: 100%; }
+.mo-edit-film-item { position: relative; flex: 0 0 auto; height: 60px; min-width: 44px; padding: 0; border: 2px solid transparent; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); cursor: pointer; overflow: hidden; }
+.mo-edit-film-item img { display: block; height: 56px; width: auto; min-width: 40px; max-width: 120px; object-fit: cover; }
+.mo-edit-film-item:hover { border-color: var(--vscode-panel-border, var(--px-border)); }
+.mo-edit-film-item.is-current { border-color: var(--vscode-focusBorder, var(--px-accent)); }
+.mo-edit-film-item.is-edited::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--vscode-focusBorder, var(--px-accent)); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); }
+.mo-edit-presets { flex: 0 0 176px; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
+.mo-edit-presets-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
+.mo-edit-presets-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 0 8px; }
+.mo-edit-presets-group { padding: 8px 12px 4px; font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-edit-preset { display: block; width: 100%; padding: 5px 12px; border: 0; background: transparent; color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-edit-preset:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.mo-edit-panel { flex: 0 0 288px; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
+.mo-edit-hist { flex: 0 0 auto; position: relative; height: 84px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--px-bg-inset, var(--vscode-editor-background)); }
+.mo-edit-hist-canvas { display: block; width: 100%; height: 100%; }
+.mo-edit-clip { position: absolute; top: 4px; width: 8px; height: 8px; border: 1px solid var(--vscode-panel-border, var(--px-border)); }
+.mo-edit-clip--lo { left: 4px; }
+.mo-edit-clip--hi { right: 4px; }
+.mo-edit-clip.is-on { background: var(--vscode-foreground, var(--px-text)); }
+.mo-edit-panel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.mo-edit-panel-body > .mo-edit-row { padding: 8px 12px; }
+.mo-edit-panel-body > .mo-edit-hint { padding: 0 12px 12px; }
+.mo-edit-tools { flex: 0 0 40px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-left: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
+.mo-edit-tool { width: 30px; height: 30px; opacity: 0.8; }
+.mo-edit-tool.is-on { opacity: 1; }
+.mo-edit-section { border-top: 1px solid var(--vscode-panel-border, var(--px-border)); }
+.mo-edit-panel-body > .mo-edit-section:first-child { border-top: 0; }
+.mo-edit-section-head { display: flex; align-items: center; gap: 2px; padding: 0 8px 0 0; }
+.mo-edit-section-fold { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 8px 12px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mo-edit-section-fold:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.mo-edit-section-title { font-size: 12px; font-weight: 600; }
+.mo-edit-chevron { display: inline-flex; }
+.mo-edit-section.is-shut > .mo-edit-section-head .mo-edit-chevron { transform: rotate(-90deg); }
+.mo-edit-section.is-shut > .mo-edit-section-body { display: none; }
+.mo-edit-section-body { display: flex; flex-direction: column; gap: 10px; padding: 2px 12px 12px; }
+.mo-edit-section-body > .mo-edit-section { margin: 0 -12px; }
+.mo-edit-section-body > .mo-edit-section:last-child > .mo-edit-section-body { padding-bottom: 0; }
+.mo-edit-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mo-edit-label { font-size: 12px; }
+.mo-edit-hint { font-size: 11px; line-height: 1.45; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-edit-slider { display: flex; flex-direction: column; gap: 1px; }
+.mo-edit-slider.is-dim { opacity: 0.5; }
+.mo-edit-slider-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; min-height: 18px; }
+.mo-edit-slider-name { cursor: default; }
+.mo-edit-value { min-width: 38px; padding: 0 3px; border: 0; border-radius: 2px; background: transparent; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; cursor: text; }
+.mo-edit-value:hover { background: var(--vscode-toolbar-hoverBackground, var(--px-surface-hover)); color: inherit; }
+.mo-edit-value-input { width: 52px; padding: 0 3px; border: 1px solid var(--vscode-focusBorder, var(--px-accent)); border-radius: 2px; background: var(--vscode-input-background, var(--px-bg)); color: inherit; font: inherit; font-size: 11px; text-align: right; outline: none; }
+.mo-edit-range { -webkit-appearance: none; appearance: none; width: 100%; height: 14px; margin: 0; background: transparent; cursor: pointer; }
+.mo-edit-range::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: var(--vscode-panel-border, var(--px-border)); }
+.mo-edit-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 11px; height: 11px; margin-top: -4px; border: 0; border-radius: 50%; background: var(--vscode-foreground, var(--px-text)); }
+.mo-edit-range:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent)); outline-offset: 2px; }
+.mo-edit-range--warmth::-webkit-slider-runnable-track { background: linear-gradient(to right, rgb(60, 110, 230), rgb(190, 190, 190), rgb(240, 190, 60)); }
+.mo-edit-range--tint::-webkit-slider-runnable-track { background: linear-gradient(to right, rgb(70, 190, 90), rgb(190, 190, 190), rgb(220, 80, 200)); }
+.mo-edit-range--vibrance::-webkit-slider-runnable-track, .mo-edit-range--saturation::-webkit-slider-runnable-track { background: linear-gradient(to right, rgb(128, 128, 128), rgb(90, 170, 230), rgb(240, 90, 90)); }
+.mo-edit-chan { padding: 2px 8px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-sm, 3px); background: transparent; color: inherit; font: inherit; font-size: 11px; cursor: pointer; }
+.mo-edit-curve { display: block; width: 100%; aspect-ratio: 1 / 1; border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--px-bg-inset, var(--vscode-editor-background)); cursor: crosshair; touch-action: none; }
+.mo-edit-dots { display: flex; justify-content: space-between; gap: 4px; }
+.mo-edit-dot { width: 22px; height: 22px; padding: 0; border: 2px solid transparent; border-radius: 50%; cursor: pointer; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
+.mo-edit-dot.is-on { border-color: var(--vscode-foreground, var(--px-text)); }
+.mo-edit-dot.is-set { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 0 0 3px var(--vscode-focusBorder, var(--px-accent)); }
+.mo-edit-wheels { display: flex; justify-content: space-between; gap: 6px; }
+.mo-edit-wheel-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.mo-edit-wheel { position: relative; width: 72px; height: 72px; border-radius: 50%; cursor: crosshair; touch-action: none; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); background: radial-gradient(circle, rgb(128, 128, 128) 0%, rgba(128, 128, 128, 0) 72%), conic-gradient(from 90deg, hsl(360, 85%, 55%), hsl(300, 85%, 55%), hsl(240, 85%, 55%), hsl(180, 85%, 55%), hsl(120, 85%, 55%), hsl(60, 85%, 55%), hsl(0, 85%, 55%)); }
+.mo-edit-wheel-knob { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; border-radius: 50%; background: rgb(255, 255, 255); border: 1px solid rgba(0, 0, 0, 0.7); pointer-events: none; }
+.mo-edit-wheel-name { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-edit-progress { height: 4px; border-radius: 2px; background: var(--vscode-panel-border, var(--px-border)); overflow: hidden; }
+.mo-edit-progress-fill { height: 100%; background: var(--vscode-focusBorder, var(--px-accent)); transition: width var(--px-dur-base, 180ms) var(--px-ease-out, ease-out); }
+/* Remove From Other Photos */
+.mo-br-marks { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
+.mo-br-marks:empty { display: none; }
+.mo-br-marks-label { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-br-mark { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-sm, 3px); font-size: 11px; cursor: pointer; }
+.mo-br-mark img { display: block; height: 36px; max-width: 180px; object-fit: contain; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
+.mo-br-mark.is-plain { opacity: 0.6; cursor: default; }
+.mo-br-pickbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 14px 0; }
+.mo-br-pickbar[hidden] { display: none; }
+.mo-br-picked { margin-left: 6px; font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-br-filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 14px 0; }
+.mo-br-filters:empty { display: none; }
+.mo-br-page .mo-dd.is-disabled { pointer-events: none; opacity: 0.5; }
+.mo-br-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; padding: 12px 14px 20px; align-items: start; }
+.mo-br-tile { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); overflow: hidden; background: var(--px-bg-inset, rgba(128, 128, 128, 0.06)); }
+.mo-br-tile[hidden] { display: none; }
+.mo-br-tile.is-ticked, .mo-br-tile.is-busy { border-color: var(--vscode-focusBorder, var(--px-accent)); }
+.mo-br-tile.is-ticked { box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, var(--px-accent)); }
+.mo-br-pic { cursor: pointer; }
+.mo-br-pic { position: relative; width: 100%; margin: 0 auto; aspect-ratio: 3 / 2; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
+.mo-br-pic img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.mo-br-finds { position: absolute; inset: 0; }
+.mo-br-find { position: absolute; box-sizing: border-box; min-width: 8px; min-height: 8px; padding: 0; border: 1px solid var(--vscode-focusBorder, var(--px-accent)); border-radius: 2px; background: transparent; cursor: pointer; }
+.mo-br-find.is-unsure { border-color: var(--vscode-editorWarning-foreground, var(--px-warning, currentColor)); }
+.mo-br-find.is-off { border-style: dashed; background: transparent; }
+.mo-br-shape { position: absolute; inset: 0; pointer-events: none; background: var(--vscode-focusBorder, var(--px-accent)); opacity: 0.8; -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
+.mo-br-find.is-unsure .mo-br-shape { background: var(--vscode-editorWarning-foreground, var(--px-warning, currentColor)); }
+.mo-br-find.is-off .mo-br-shape { display: none; }
+.mo-br-mark-pic { position: relative; display: block; }
+.mo-br-find:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--px-accent)); outline-offset: 2px; }
+.mo-br-find:disabled { cursor: default; }
+.mo-br-cap { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 6px 8px; font-size: 12px; min-width: 0; }
+.mo-br-pick { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 100%; cursor: pointer; }
+.mo-br-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-br-status { flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
+.mo-br-tile.is-unsure .mo-br-status { color: var(--vscode-editorWarning-foreground, var(--px-warning, currentColor)); }
+.mo-br-tile.is-failed .mo-br-status { color: var(--vscode-errorForeground, var(--px-danger)); }
+.mo-br-open { flex: 0 0 auto; }
 .mo-practice-history-actions { display: flex; gap: 6px; }
 `;
 
@@ -8636,16 +8944,6 @@ function renderMediaCard(item, options) {
     ? formatDuration(item.duration)
     : item.type.toUpperCase();
   thumb.appendChild(moEl('span', 'mo-card-badge', { textContent: badgeText }));
-
-  // M59 P5: stack badge (populated lazily by loadPage when item._stackCount is set)
-  const stackBadge = moEl('span', 'mo-card-stack-badge');
-  stackBadge.style.display = 'none';
-  if (item._stackCount && item._stackCount > 0) {
-    stackBadge.textContent = `+${item._stackCount}`;
-    stackBadge.style.display = '';
-  }
-  thumb.appendChild(stackBadge);
-  card._stackBadge = stackBadge;
 
   // Rating
   if (item.rating && item.rating > 0) {
@@ -9091,16 +9389,6 @@ function renderCardGrid(container, items, options) {
     else if (!item.thumbnailPath && item.type && item.id) {
       resolveThumbnailForCard(card, item);
     }
-    // M59 P5: lazily fetch stack member count and update badge
-    if (item.type && item.id && card._stackBadge && item._stackCount == null) {
-      moGetStackMemberCount(item.type, item.id).then(n => {
-        if (n > 0) {
-          item._stackCount = n;
-          card._stackBadge.textContent = `+${n}`;
-          card._stackBadge.style.display = '';
-        }
-      }).catch(() => {});
-    }
   }
 
   function renderAll(itemList, opts) {
@@ -9407,6 +9695,21 @@ function moShowShortcutsCheatSheet() {
       [['Space', 'K'], 'Play / pause (video)'],
       [['J', 'L'], 'Step back / forward (video)'],
       [['Esc'], 'Close'],
+    ]},
+    // Registered through the keybinding service (activate), live while the Edit Image tab is the active one.
+    { title: 'Image editor', items: [
+      [[mod, 'Z'], 'Undo'],
+      [[mod, 'Y'], 'Redo'],
+      [['\\'], 'Show the original'],
+      [['Shift', '\\'], 'Split view'],
+      [[mod, '0'], 'Fit the picture'],
+      [[mod, '1'], 'Show at 100%'],
+      [[mod, 'Shift', 'C'], 'Copy the edit'],
+      [[mod, 'Shift', 'V'], 'Paste the edit'],
+      [['PgUp', 'PgDn'], 'Previous / next photo'],
+      [['[', ']'], 'Smaller / larger brush (Remove)'],
+      [[mod, 'Shift', 'S'], 'Save As Copy'],
+      [[mod, 'S'], 'Save over the original'],
     ]},
   ];
 
@@ -11873,9 +12176,6 @@ function renderGridBrowser(container, api, input) {
     } else {
       photoWhere.push('p.deleted_at IS NULL');
       videoWhere.push('v.deleted_at IS NULL');
-      // M59 P5: hide stack non-primary members from default views
-      photoWhere.push(`NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = 'photo' AND sm.member_id = p.id AND sm.role <> 'primary')`);
-      videoWhere.push(`NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = 'video' AND sm.member_id = v.id AND sm.role <> 'primary')`);
     }
 
     if (searchText) {
@@ -11985,9 +12285,6 @@ function renderGridBrowser(container, api, input) {
       where.push(`${alias}.deleted_at IS NOT NULL`);
     } else {
       where.push(`${alias}.deleted_at IS NULL`);
-      // M59 P5: hide stack non-primary members from default views
-      const memType = type === 'photo' ? 'photo' : 'video';
-      where.push(`NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = '${memType}' AND sm.member_id = ${alias}.id AND sm.role <> 'primary')`);
     }
 
     if (searchText) {
@@ -13448,6 +13745,8 @@ function renderGridBrowser(container, api, input) {
       // Single-item actions
       actions.push({ label: 'View Full Size', handler: () => handleCardViewFullSize(item) });
       actions.push({ label: 'Edit Details', handler: () => handleCardOpen(item) });
+      if (item.type === 'photo') actions.push({ label: 'Edit Image', handler: () => void moOpenImageEditor(api, item.id) });
+      if (item.type === 'photo' && _moEditClipboard) actions.push({ label: 'Paste Edit', handler: () => void moEditPasteTo(api, [item.id]) });
       if (item.type === 'photo' && _artToolsEnabled) actions.push({ label: 'Plan Painting', handler: () => void moPlanCreate(_api, item.id) });
       if (item.type === 'photo') {
         actions.push({ label: 'Select Similar Photos', handler: () => selectSimilarPhotos(item) });
@@ -13579,6 +13878,14 @@ function renderGridBrowser(container, api, input) {
       actions.push({ label: 'Upscale…', handler: () => {
         const selectedItems = state.items.filter((it) => state.selectedIds.has(`${it.type}:${it.id}`));
         void moUpscaleItems(selectedItems, api, () => loadPage());
+      }});
+      if (_moEditClipboard) actions.push({ label: 'Paste Edit', handler: () => {
+        const ids = state.items.filter((it) => it.type === 'photo' && state.selectedIds.has(`${it.type}:${it.id}`)).map((it) => it.id);
+        void moEditPasteTo(api, ids);
+      }});
+      if (state.items.filter((it) => it.type === 'photo' && state.selectedIds.has(`${it.type}:${it.id}`)).length > 1) actions.push({ label: 'Remove Marks From Selected', handler: () => {
+        const ids = state.items.filter((it) => it.type === 'photo' && state.selectedIds.has(`${it.type}:${it.id}`)).map((it) => it.id);
+        void moBulkFromSelection(api, ids);
       }});
       // Optimize GIF — resolves selected items, filters to .gif files only
       actions.push({ label: 'Optimize GIFs\u2026', handler: async () => {
@@ -14208,12 +14515,12 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
     chatBtn.addEventListener('click', () => { void moAttachItemsToChat([{ type: ctx.type, id: ctx.entity.id }]); });
     actions.appendChild(chatBtn);
   }
-  // Upscale (Section 38B): still photos only.
+  // Edit Image (docs/IMAGE_EDITOR.md): still photos only.
   if (ctx.type === 'photo' && ctx.fullPath && !moIsGifPath(ctx.primaryFile && ctx.primaryFile.basename)) {
-    const upBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Upscale' });
-    upBtn.innerHTML = moIcon('wand-sparkles', 12);
-    upBtn.addEventListener('click', () => { void moUpscaleItems([{ type: 'photo', id: ctx.entity.id }], api, null); });
-    actions.appendChild(upBtn);
+    const editBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Edit Image' });
+    editBtn.innerHTML = moIcon('sliders-horizontal', 12);
+    editBtn.addEventListener('click', () => { void moOpenImageEditor(api, ctx.entity.id); });
+    actions.appendChild(editBtn);
   }
   // Toggle sidebar button
   const toggleBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Toggle details panel' });
@@ -24223,9 +24530,10 @@ async function moSetSetting(key, value) {
 // binary (bin/realesrgan-ncnn-vulkan.exe with its models folder, fetched
 // once by bin/get-realesrgan.ps1 because the app never downloads programs
 // itself) writes a 2x or 4x PNG beside the original. The new file is
-// ingested through the same processFile path a scan uses and stacked under
-// the original so the grid keeps one card. GIFs and videos are never
-// upscaled. Originals are never touched.
+// ingested through the same processFile path a scan uses and is a photo of
+// its own in the library, beside the original, with the original's tags,
+// albums, rating and details. GIFs and videos are never upscaled. Originals
+// are never touched.
 
 const MO_UPSCALE_EXE = 'realesrgan-ncnn-vulkan';
 const MO_UPSCALE_MODELS = {
@@ -24368,36 +24676,30 @@ async function moIngestNewImage(fullPath) {
   const sep = fullPath.includes('\\') ? '\\' : '/';
   const dir = fullPath.slice(0, fullPath.lastIndexOf(sep));
   const name = fullPath.slice(fullPath.lastIndexOf(sep) + 1);
+  // A file Parallx has just written can be held by a scanner for a moment.
+  // It is waited for here (about fifteen seconds at most), since the caller
+  // goes on to work with the photo; past that the watcher's waiting list
+  // brings it into the library when it can be read.
+  let fps = null;
+  let known = false; // the watcher got to it first
+  for (let look = 1; look <= 9 && !fps && !known; look++) {
+    const ready = await moFileReady(fullPath, 'image', { written: true });
+    if (ready.state === 'gone') return null;
+    if (ready.state === 'known') known = true;
+    else if (ready.state === 'ready') fps = ready.fps;
+    else if (look < 9) await new Promise((r) => setTimeout(r, moReadyDelay(look)));
+  }
+  if (!fps && !known) { moWaitForFile({ type: 'changed', path: fullPath, _tries: 8 }, 'unreadable'); return null; }
   const st = await window.parallxElectron.fs.stat(fullPath);
   if (!st || st.error) return null;
   const folder = await FolderQueries.findOrCreate(dir);
-  const result = await processFile({ path: fullPath, name, size: st.size, mtime: st.mtime, fileType: 'image', folderId: folder.id });
+  const result = await processFile({ path: fullPath, name, size: st.size, mtime: st.mtime, fileType: 'image', folderId: folder.id, fps });
   if (!result || !result.fileId) return null;
   return await PhotoQueries.findByFileId(result.fileId);
 }
 
-/** Put `member` under `primary` in a stack, creating the stack if needed. */
-async function moStackUnder(primary, member) {
-  await db.run(
-    `INSERT INTO mo_stacks (primary_type, primary_id) VALUES (?, ?)
-     ON CONFLICT(primary_type, primary_id) DO UPDATE SET updated_at = datetime('now')`,
-    [primary.type, primary.id],
-  );
-  const stack = await db.get('SELECT id FROM mo_stacks WHERE primary_type = ? AND primary_id = ?', [primary.type, primary.id]);
-  if (!stack) throw new Error('Could not create the stack');
-  await db.run(
-    `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'primary', 0)`,
-    [stack.id, primary.type, primary.id],
-  );
-  const pos = await db.get('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM mo_stack_members WHERE stack_id = ?', [stack.id]);
-  await db.run(
-    `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'member', ?)`,
-    [stack.id, member.type, member.id, pos ? pos.next : 1],
-  );
-}
-
 /**
- * The upscaled copy takes the original's place: title (unless the title was
+ * The copy carries what the original carries: title (unless the title was
  * just the file name), details, rating, label, photographer, capture data,
  * tags and album memberships. Plain UPDATEs, the same as PhotoQueries.update;
  * the search index is rebuilt by its own command, not by triggers.
@@ -24488,15 +24790,6 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
   modelSection.appendChild(modelDropdown.el);
   dialog.appendChild(modelSection);
 
-  // Stack under the original
-  const stackRow = moEl('label', 'mo-bulk-dialog-opt');
-  const stackCheckbox = moEl('input');
-  stackCheckbox.type = 'checkbox';
-  stackCheckbox.checked = true;
-  stackRow.appendChild(stackCheckbox);
-  stackRow.appendChild(moEl('span', null, { textContent: ' Stack the result under the original, so the grid keeps one card' }));
-  dialog.appendChild(stackRow);
-
   // Delete the original. Delete in this app means Trash (recoverable until
   // Empty Trash), and it happens only after the copy is safely in the
   // library. The copy inherits the original's title, details, rating, label,
@@ -24508,12 +24801,7 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
   deleteRow.appendChild(deleteCheckbox);
   deleteRow.appendChild(moEl('span', null, { textContent: ' Delete the original after upscaling (moves it to Trash; the copy keeps its tags, rating, albums and details)' }));
   dialog.appendChild(deleteRow);
-  deleteCheckbox.addEventListener('change', () => {
-    // Nothing to stack under once the original is gone.
-    stackCheckbox.disabled = deleteCheckbox.checked;
-    if (deleteCheckbox.checked) stackCheckbox.checked = false;
-    refreshChoice();
-  });
+  deleteCheckbox.addEventListener('change', () => refreshChoice());
 
   // What will happen
   const estimateEl = moEl('div', 'mo-bulk-dialog-section');
@@ -24605,7 +24893,6 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
     running = true;
     runBtn.disabled = true;
     modelDropdown.el.style.pointerEvents = 'none';
-    stackCheckbox.disabled = true;
     deleteCheckbox.disabled = true;
     progressWrap.style.display = '';
     const modelKey = modelDropdown.getValue() === 'art' ? 'art' : 'photo';
@@ -24679,14 +24966,17 @@ function showUpscaleDialog(targets, skipped, api, onComplete) {
       }
       let photo = null;
       try { photo = await moIngestNewImage(out); } catch (err) { console.warn('[MediaOrganizer] upscale ingest failed:', err); }
-      if (photo && stackCheckbox.checked) {
-        try { await moStackUnder({ type: 'photo', id: t.item.id }, { type: 'photo', id: photo.id }); } catch (err) { console.warn('[MediaOrganizer] upscale stack failed:', err); }
+      // The copy is a photo of its own beside the original, so it carries the
+      // original's tags, albums, rating and details, as a copy saved from the editor does.
+      let carried = false;
+      if (photo) {
+        try { await moTransferPhotoMetadata(t.item.id, photo.id, t.basename); carried = true; } catch (err) { console.warn('[MediaOrganizer] upscale: the original\'s details could not be carried over:', err); }
       }
       if (photo && deleteCheckbox.checked) {
-        // Only once the copy is in the library: hand the metadata over, then
+        // Only once the copy is in the library with the original's details:
         // move the original to Trash. An ingest failure leaves the original alone.
         try {
-          await moTransferPhotoMetadata(t.item.id, photo.id, t.basename);
+          if (!carried) throw new Error('the details were not carried over');
           await moMoveToTrash(api, [{ type: 'photo', id: t.item.id }]);
           trashed++;
         } catch (err) {
@@ -25440,135 +25730,8 @@ function buildDupGroup(api, files, label) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 41: STACKS + TRASH — M59 P5
+// SECTION 41: TRASH — M59 P5
 // ═══════════════════════════════════════════════════════════════════════════════
-
-// ── Stacks ──
-// Group selected items under a primary. Promotes the highest-rated (or first)
-// as primary; the rest become 'member'. Stack-aware queries hide members.
-async function moStackSelected(api, selectedIds) {
-  // selectedIds is a Set of "type:id" strings (matches grid selection format)
-  if (!selectedIds || selectedIds.size < 2) {
-    api.window.showWarningMessage('Select at least 2 items to stack.');
-    return;
-  }
-  const items = [...selectedIds].map(s => {
-    const [type, id] = s.split(':');
-    return { type, id: parseInt(id, 10) };
-  });
-  // Pick the first as primary by default; could enhance with "highest rated"
-  const primary = items[0];
-  const members = items.slice(1);
-  try {
-    const r = await db.run(
-      `INSERT INTO mo_stacks (primary_type, primary_id) VALUES (?, ?)
-       ON CONFLICT(primary_type, primary_id) DO UPDATE SET updated_at = datetime('now')`,
-      [primary.type, primary.id]
-    );
-    let stackId;
-    const existing = await db.get('SELECT id FROM mo_stacks WHERE primary_type = ? AND primary_id = ?', [primary.type, primary.id]);
-    stackId = existing ? existing.id : (r && r.lastID);
-    if (!stackId) throw new Error('Failed to obtain stack id');
-    // Insert primary as a stack_member with role='primary'
-    await db.run(
-      `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'primary', 0)`,
-      [stackId, primary.type, primary.id]
-    );
-    let pos = 1;
-    for (const m of members) {
-      await db.run(
-        `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'member', ?)`,
-        [stackId, m.type, m.id, pos++]
-      );
-    }
-    api.window.showInformationMessage(`Stacked ${items.length} items.`);
-    _notifySidebarRefresh();
-  } catch (err) {
-    api.window.showErrorMessage('Stack failed: ' + (err && err.message || err));
-  }
-}
-
-async function moUnstackItem(api, type, id) {
-  // If item is a stack primary, dissolve the stack entirely.
-  const stack = await db.get('SELECT id FROM mo_stacks WHERE primary_type = ? AND primary_id = ?', [type, id]);
-  if (!stack) {
-    // Maybe a member — remove just that member
-    await db.run(
-      `DELETE FROM mo_stack_members WHERE member_type = ? AND member_id = ?`, [type, id]
-    );
-    api.window.showInformationMessage('Removed from stack.');
-    return;
-  }
-  await db.run('DELETE FROM mo_stacks WHERE id = ?', [stack.id]);
-  api.window.showInformationMessage('Stack dissolved.');
-  _notifySidebarRefresh();
-}
-
-async function moGetStackMemberCount(type, id) {
-  const row = await db.get(
-    `SELECT COUNT(*) AS n FROM mo_stack_members
-       WHERE stack_id = (SELECT id FROM mo_stacks WHERE primary_type = ? AND primary_id = ?)`,
-    [type, id]
-  );
-  return row ? row.n : 0;
-}
-
-async function moAutoStackByBasename(api) {
-  // Group photos by stripped basename (no extension, no _edited/_v2 suffix).
-  // Items sharing a normalized basename within the same folder become a stack.
-  const rows = await db.all(
-    `SELECT 'photo' AS type, p.id AS id, f.basename AS basename, f.folder_id AS folder_id
-       FROM mo_photos p
-       JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
-       JOIN mo_files f ON f.id = pf.file_id
-      WHERE p.deleted_at IS NULL`
-  );
-  const groups = new Map();
-  function norm(name) {
-    // Strip extension and common edit suffixes
-    return name
-      .replace(/\.[^.]+$/, '')
-      .replace(/[-_](edited|v\d+|copy|edit)$/i, '')
-      .toLowerCase();
-  }
-  for (const r of rows) {
-    const key = `${r.folder_id}::${norm(r.basename)}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(r);
-  }
-  let created = 0;
-  for (const [, list] of groups) {
-    if (list.length < 2) continue;
-    // Skip if any item already in a stack
-    let already = false;
-    for (const it of list) {
-      const ex = await db.get('SELECT 1 FROM mo_stack_members WHERE member_type = ? AND member_id = ?', [it.type, it.id]);
-      if (ex) { already = true; break; }
-    }
-    if (already) continue;
-    const primary = list[0];
-    const result = await db.run(
-      `INSERT OR IGNORE INTO mo_stacks (primary_type, primary_id) VALUES (?, ?)`,
-      [primary.type, primary.id]
-    );
-    const sRow = await db.get('SELECT id FROM mo_stacks WHERE primary_type = ? AND primary_id = ?', [primary.type, primary.id]);
-    if (!sRow) continue;
-    await db.run(
-      `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'primary', 0)`,
-      [sRow.id, primary.type, primary.id]
-    );
-    let pos = 1;
-    for (const m of list.slice(1)) {
-      await db.run(
-        `INSERT OR IGNORE INTO mo_stack_members (stack_id, member_type, member_id, role, position) VALUES (?, ?, ?, 'member', ?)`,
-        [sRow.id, m.type, m.id, pos++]
-      );
-    }
-    created++;
-  }
-  api.window.showInformationMessage(`Auto-stacked: ${created} new stack${created === 1 ? '' : 's'} created.`);
-  _notifySidebarRefresh();
-}
 
 // ── Permanent purge ──
 // Permanently removes photo/video items: cascades DB rows (via FK CASCADE on
@@ -25871,6 +26034,8 @@ async function _persistPendingQueue(api) {
         photoIds: b.photoIds,
         videoIds: b.videoIds,
         deadlineMs: b.deadlineMs,
+        hidPhotoIds: b.hidPhotoIds || [],
+        hidVideoIds: b.hidVideoIds || [],
       })),
     });
     await window.parallxElectron.fs.writeFile(p, payload, 'utf8');
@@ -25905,6 +26070,8 @@ async function _resumePendingErase(api) {
       fileRows: b.fileRows,
       photoIds,
       videoIds,
+      hidPhotoIds: Array.isArray(b.hidPhotoIds) ? b.hidPhotoIds.map(Number).filter(Number.isFinite) : [],
+      hidVideoIds: Array.isArray(b.hidVideoIds) ? b.hidVideoIds.map(Number).filter(Number.isFinite) : [],
       _resumedDeadlineMs: Number.isFinite(b.deadlineMs) ? b.deadlineMs : undefined,
     });
   }
@@ -25938,6 +26105,42 @@ function _unwindPendingEraseBatch(api, photoIds, videoIds, fileRows) {
   }
   _refreshErasingDecoration();
   _persistPendingQueue(api).catch(() => {});
+  // The files are still there, so the items are too: back into view.
+  void _unhideEraseBatch(batch).then(_refreshLibraryViews);
+}
+
+/**
+ * Take items out of every view while their files are being erased: they are
+ * marked as trashed, which every view, count and search already leaves out.
+ * Their rows stay until the disk confirms the files are gone. Returns the ids
+ * this call marked (not the ones that were in the trash already), so a failed
+ * erase can bring back exactly those.
+ */
+async function _hideForErase(photoIds, videoIds) {
+  const hid = { photoIds: [], videoIds: [] };
+  for (const [table, ids, out] of [['mo_photos', photoIds, hid.photoIds], ['mo_videos', videoIds, hid.videoIds]]) {
+    for (const chunk of _sqlChunks(ids || [])) {
+      const live = await db.all(`SELECT id FROM ${table} WHERE deleted_at IS NULL AND id IN (${_qMarks(chunk)})`, chunk);
+      const liveIds = live.map((r) => Number(r.id));
+      if (!liveIds.length) continue;
+      await db.run(`UPDATE ${table} SET deleted_at = datetime('now') WHERE id IN (${_qMarks(liveIds)})`, liveIds);
+      out.push(...liveIds);
+    }
+  }
+  return hid;
+}
+/** The erase did not happen: what _hideForErase took out of view comes back. */
+async function _unhideEraseBatch(batch) {
+  try {
+    for (const [table, ids] of [['mo_photos', batch.hidPhotoIds], ['mo_videos', batch.hidVideoIds]]) {
+      for (const chunk of _sqlChunks(ids || [])) await db.run(`UPDATE ${table} SET deleted_at = NULL WHERE id IN (${_qMarks(chunk)})`, chunk);
+    }
+  } catch (err) { console.warn('[MediaOrganizer] Could not bring items back into view after a failed erase:', err?.message || err); }
+}
+/** Every open view of the library is brought up to date. */
+function _refreshLibraryViews() {
+  _notifySidebarRefresh();
+  try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* no view open */ }
 }
 
 /** Drop a batch's ids from the pending sets and its paths from the index. */
@@ -25994,6 +26197,9 @@ function _scheduleEraserCommit(api, batch) {
       ? batch._resumedDeadlineMs
       : Date.now() + 60 * 60 * 1000, // 1 h safety; gives up after that
     remaining: new Set(),
+    // the ids this delete took out of view (see _hideForErase); brought back if the erase fails
+    hidPhotoIds: Array.isArray(batch.hidPhotoIds) ? batch.hidPhotoIds : [],
+    hidVideoIds: Array.isArray(batch.hidVideoIds) ? batch.hidVideoIds : [],
   };
   for (const fr of batch.fileRows) {
     if (!fr.sourcePath) continue;
@@ -26039,6 +26245,7 @@ async function _eraserTickBody() {
   const api = _pendingEraserCommits.api;
   const stillPending = [];
   let mutated = false;
+  let committed = false;   // rows were dropped, or brought back: every view is told
   for (const b of _pendingEraserCommits.batches) {
     if (b.remaining.size > 0) await _checkBatchRemaining(b);
     if (b.remaining.size === 0) {
@@ -26056,6 +26263,7 @@ async function _eraserTickBody() {
         }
         _releaseEraseBatch(b);
         mutated = true;
+        committed = true;
         continue;
       }
       for (const orig of alive) {
@@ -26065,10 +26273,12 @@ async function _eraserTickBody() {
     }
     if (Date.now() > b.deadlineMs) {
       api.window.showWarningMessage(
-        `Eraser timeout: ${b.fileRows.length} file(s) didn't disappear within an hour. Library entries left intact; restart Parallx to reconcile if Eraser eventually finishes.`
+        `Eraser timeout: ${b.fileRows.length} file(s) didn't disappear within an hour. They are back in your library; restart Parallx to reconcile if Eraser eventually finishes.`
       );
       _releaseEraseBatch(b);
+      await _unhideEraseBatch(b);
       mutated = true;
+      committed = true;
     } else {
       stillPending.push(b);
     }
@@ -26078,6 +26288,9 @@ async function _eraserTickBody() {
     _refreshErasingDecoration();
     _persistPendingQueue(api).catch(() => {});
   }
+  // The sidebar heard from _commitMediaPurge; the library's own view never did, and kept showing
+  // photos whose files and rows were both gone until something else happened to refresh it.
+  if (committed) _refreshLibraryViews();
   if (stillPending.length > 0) {
     _kickEraserTick(_nextPollDelay(_pendingEraserCommits.tickCount));
   } else {
@@ -26382,8 +26595,11 @@ async function moPurgeMedia(api, items, opts = {}) {
     if (erasedHere) {
       filesErased = uniquePaths.length;
       // Defer the DB cleanup — _scheduleEraserCommit will run it once disk
-      // confirms each path is gone. Library entries stay visible until then.
-      const scheduled = _scheduleEraserCommit(api, { fileRows, photoIds, videoIds });
+      // confirms each path is gone. The items leave every view now: a delete
+      // that leaves the photo on screen reads as a delete that did not happen.
+      const hid = await _hideForErase(photoIds, videoIds);
+      const scheduled = _scheduleEraserCommit(api, { fileRows, photoIds, videoIds, hidPhotoIds: hid.photoIds, hidVideoIds: hid.videoIds });
+      _refreshLibraryViews();
       if (!scheduled) {
         // Queue at capacity — the schedule call already showed a toast.
         // Eraser is still working in the background; reconcile on next
@@ -26405,7 +26621,7 @@ async function moPurgeMedia(api, items, opts = {}) {
       const goneN = spawn && spawn.skipped ? spawn.skipped.missing : 0;
       const heldN = spawn && spawn.skipped ? spawn.skipped.queued : 0;
       api.window.showInformationMessage(
-        `Eraser is securely erasing ${queuedN} file(s)${heldN ? `, ${heldN} already with Eraser` : ''}${goneN ? `, ${goneN} already gone` : ''}. They'll be removed from your library once erasure completes.`
+        `Eraser is securely erasing ${queuedN} file(s)${heldN ? `, ${heldN} already with Eraser` : ''}${goneN ? `, ${goneN} already gone` : ''}. They have left your library; the files go when the erase completes.`
       );
       return { purged: 0, filesTrashed: 0, filesFailed: 0, filesPermanent: 0, filesErased, filesGone: goneN };
     }
@@ -26530,6 +26746,8 @@ async function moRestoreFromTrash(api, items) {
   if (!items || items.length === 0) return 0;
   let n = 0;
   for (const it of items) {
+    // A file that is being erased cannot be had back.
+    if (_isAnyIdPendingErase([it])) continue;
     const table = it.type === 'photo' ? 'mo_photos' : 'mo_videos';
     await db.run(`UPDATE ${table} SET deleted_at = NULL WHERE id = ?`, [it.id]);
     n++;
@@ -26902,8 +27120,8 @@ const MO_TAG_RULES_KEY = 'ai_tag_rules';
 const MO_TAG_DECODE_MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.bmp': 'image/bmp', '.avif': 'image/avif' };
 
 /**
- * Untagged photos as the grid shows them: live, not a GIF, not a stacked
- * copy, and not already in Tag Review. `p` is the photo.
+ * Untagged photos as the grid shows them: live, not a GIF, and not already
+ * in Tag Review. `p` is the photo.
  */
 const MO_TAG_UNTAGGED_FROM = `FROM mo_photos p
   JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
@@ -26911,7 +27129,6 @@ const MO_TAG_UNTAGGED_FROM = `FROM mo_photos p
   WHERE p.deleted_at IS NULL
     AND LOWER(f.basename) NOT LIKE '%.gif'
     AND NOT EXISTS (SELECT 1 FROM mo_photos_tags t WHERE t.photo_id = p.id)
-    AND NOT EXISTS (SELECT 1 FROM mo_stack_members sm WHERE sm.member_type = 'photo' AND sm.member_id = p.id AND sm.role <> 'primary')
     AND NOT EXISTS (SELECT 1 FROM mo_ai_tag_reviews r WHERE r.photo_id = p.id)`;
 /** Photos with at least one tag and not already in Tag Review: the retag scope. */
 const MO_TAG_TAGGED_FROM = `FROM mo_photos p
@@ -28970,8 +29187,8 @@ function buildPracticeHistoryStrip(ctx, api) {
 // canvas size in inches, and variations, each a recipe of non-destructive
 // adjustments (crop locked to the canvas, light, colour, values, overlays,
 // palette). The original file is never touched; the recipe renders live on
-// the GPU and the export renders the same recipe beside the original, stacked
-// under it the way Upscale does. Behind mediaOrganizer.enableArtTools (D7).
+// the GPU and the export renders the same recipe beside the original, as a
+// photo of its own in the library. Behind mediaOrganizer.enableArtTools (D7).
 // ═══════════════════════════════════════════════════════════════════════════
 
 // @mo-plan-pure-begin — pure plan math (extracted verbatim by tests/unit/moPlan.test.ts)
@@ -29200,20 +29417,55 @@ function renderPlansList(container, api) {
 }
 
 // ── The renderer ───────────────────────────────────────────────────────────
-// One WebGL program applies the whole recipe. Blur ("squint") is baked into
-// the source texture through a 2D canvas filter, so one pass does the rest.
+// One WebGL program applies a whole recipe, for Painting Plans and for the
+// image editor (docs/IMAGE_EDITOR.md). Where a pixel comes from is two maps:
+// canvas to output (zoom and pan, or one tile of a save) and output to source
+// (crop, straighten, quarter turns, flips). Controls that look at a pixel's
+// neighbourhood (texture, clarity, dehaze) read two blurred copies of the
+// source, made once per source by halving it and blurring the small copy.
+// Every control is skipped when it is at rest, so a recipe that leaves it
+// alone draws exactly what it drew before the control existed.
 
 const MO_PLAN_VS = `
 attribute vec2 a_pos; varying vec2 v_uv;
 void main() { v_uv = vec2(a_pos.x * 0.5 + 0.5, 0.5 - a_pos.y * 0.5); gl_Position = vec4(a_pos, 0.0, 1.0); }`;
-const MO_PLAN_FS = `
+// Texture space in, texture space out: for passes that write a texture.
+const MO_ENGINE_COPY_VS = `
+attribute vec2 a_pos; varying vec2 v_uv;
+void main() { v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+// Nine taps of a gaussian along u_step; u_step of zero is a plain copy.
+const MO_ENGINE_BLUR_FS = `
 precision highp float;
 varying vec2 v_uv;
 uniform sampler2D u_img;
-uniform vec4 u_crop; uniform int u_rotate; uniform vec2 u_flip;
-uniform float u_exposure, u_contrast, u_highlights, u_shadows, u_warmth, u_tint, u_hue, u_sat;
-uniform float u_grey, u_levels, u_notan, u_split, u_paletteN;
+uniform vec2 u_step;
+void main() {
+  vec4 c = texture2D(u_img, v_uv) * 0.227027;
+  c += (texture2D(u_img, v_uv + u_step * 1.384615) + texture2D(u_img, v_uv - u_step * 1.384615)) * 0.316216;
+  c += (texture2D(u_img, v_uv + u_step * 3.230769) + texture2D(u_img, v_uv - u_step * 3.230769)) * 0.070270;
+  gl_FragColor = c;
+}`;
+const MO_ENGINE_FS = `
+precision highp float;
+varying vec2 v_uv;
+uniform sampler2D u_img;
+uniform sampler2D u_blurS;
+uniform sampler2D u_blurL;
+uniform sampler2D u_curve;
+uniform vec3 u_v0, u_v1, u_m0, u_m1;
+uniform vec2 u_texel, u_outSize;
+uniform float u_exposure, u_contrast, u_highlights, u_shadows, u_whites, u_blacks;
+uniform float u_warmth, u_tint, u_hue, u_sat, u_vibrance;
+uniform float u_grey, u_levels, u_notan, u_split, u_paletteN, u_opaque, u_outside;
+uniform float u_curveOn, u_mixOn, u_gradeOn;
+uniform vec3 u_mix[8];
+uniform vec3 u_gShadow, u_gMid, u_gHigh, u_gLum;
+uniform float u_gBlend, u_gBalance;
+uniform float u_texture, u_clarity, u_dehaze;
+uniform float u_vignette, u_vigMid, u_vigFeather, u_grain, u_grainSize;
+uniform float u_sharpen, u_sharpRadius, u_noise, u_noiseColour;
 uniform vec3 u_palette[16];
+const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 vec3 rgb2hsv(vec3 c) {
   vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
   vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
@@ -29226,29 +29478,121 @@ vec3 hsv2rgb(vec3 c) {
   vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
   return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
+// Noise reduction: neighbours that look like this pixel are averaged in.
+vec3 denoise(vec2 s, vec3 c0) {
+  vec3 sum = vec3(0.0); float wsum = 0.0;
+  for (int j = -2; j <= 2; j++) {
+    for (int i = -2; i <= 2; i++) {
+      vec2 d = vec2(float(i), float(j));
+      vec3 c = texture2D(u_img, s + d * u_texel * 1.5).rgb;
+      vec3 df = c - c0;
+      float w = exp(-dot(d, d) * 0.18 - dot(df, df) * 60.0);
+      sum += c * w; wsum += w;
+    }
+  }
+  vec3 avg = sum / wsum;
+  float l0 = dot(c0, LUMA); float la = dot(avg, LUMA);
+  float l = mix(l0, la, u_noise);
+  vec3 ch = mix(c0 - l0, avg - la, u_noiseColour);
+  return clamp(vec3(l) + ch, 0.0, 1.0);
+}
+// A colour's share of one band of the mixer: 1 at the band's hue, 0 at its neighbours'. Hues in turns.
+float band(float h, float c, float lo, float hi) {
+  float d = h - c; d -= floor(d + 0.5);
+  float wl = c - lo; wl -= floor(wl);
+  float wr = hi - c; wr -= floor(wr);
+  return d < 0.0 ? max(0.0, 1.0 + d / wl) : max(0.0, 1.0 - d / wr);
+}
+vec3 mixer(vec3 c) {
+  vec3 h = rgb2hsv(c);
+  vec3 m = band(h.x, 0.0, 300.0 / 360.0, 30.0 / 360.0) * u_mix[0]
+    + band(h.x, 30.0 / 360.0, 0.0, 60.0 / 360.0) * u_mix[1]
+    + band(h.x, 60.0 / 360.0, 30.0 / 360.0, 120.0 / 360.0) * u_mix[2]
+    + band(h.x, 120.0 / 360.0, 60.0 / 360.0, 180.0 / 360.0) * u_mix[3]
+    + band(h.x, 180.0 / 360.0, 120.0 / 360.0, 240.0 / 360.0) * u_mix[4]
+    + band(h.x, 240.0 / 360.0, 180.0 / 360.0, 270.0 / 360.0) * u_mix[5]
+    + band(h.x, 270.0 / 360.0, 240.0 / 360.0, 300.0 / 360.0) * u_mix[6]
+    + band(h.x, 300.0 / 360.0, 270.0 / 360.0, 0.0) * u_mix[7];
+  float k = smoothstep(0.02, 0.2, h.y);                       // greys are left alone
+  h.x = fract(h.x + m.x * (30.0 / 360.0) * k + 1.0);
+  h.y = clamp(h.y * (1.0 + m.y * k), 0.0, 1.0);
+  h.z = clamp(h.z * (1.0 + m.z * 0.5 * k), 0.0, 1.0);
+  return hsv2rgb(h);
+}
+vec3 grade(vec3 c) {
+  float l = dot(c, LUMA);
+  float b = u_gBalance * 0.25;
+  float ws = 1.0 - smoothstep(0.0, mix(0.35, 0.75, u_gBlend) + b, l);
+  float wh = smoothstep(mix(0.65, 0.25, u_gBlend) + b, 1.0, l);
+  float wm = clamp(1.0 - ws - wh, 0.0, 1.0);
+  c += ws * u_gShadow + wm * u_gMid + wh * u_gHigh;
+  c += (ws * u_gLum.x + wm * u_gLum.y + wh * u_gLum.z) * 0.25;
+  return clamp(c, 0.0, 1.0);
+}
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 void main() {
-  vec2 p = u_crop.xy + v_uv * u_crop.zw;
-  if (u_flip.x > 0.5) p.x = 1.0 - p.x;
-  if (u_flip.y > 0.5) p.y = 1.0 - p.y;
-  vec2 s = p;
-  if (u_rotate == 1) s = vec2(p.y, 1.0 - p.x);
-  else if (u_rotate == 2) s = vec2(1.0 - p.x, 1.0 - p.y);
-  else if (u_rotate == 3) s = vec2(1.0 - p.y, p.x);
-  vec3 c = texture2D(u_img, s).rgb;
+  vec3 q = vec3(v_uv, 1.0);
+  vec2 o = vec2(dot(u_v0, q), dot(u_v1, q));
+  bool outside = o.x < 0.0 || o.x > 1.0 || o.y < 0.0 || o.y > 1.0;
+  if (outside && u_outside < 0.5) { gl_FragColor = vec4(0.0); return; }
+  vec3 oq = vec3(o, 1.0);
+  vec2 s = vec2(dot(u_m0, oq), dot(u_m1, oq));
+  if (outside && (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0)) { gl_FragColor = vec4(0.0); return; }
+  vec4 t = texture2D(u_img, s);
+  vec3 c = t.rgb;
   vec3 orig = c;
+  if (u_noise > 0.0005 || u_noiseColour > 0.0005) c = denoise(s, c);
+  vec3 src = c;
   c *= pow(2.0, u_exposure);
-  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  float l = dot(c, LUMA);
   float sw = 1.0 - smoothstep(0.0, 0.6, l);
   float hw = smoothstep(0.4, 1.0, l);
   c += u_shadows * sw * 0.5 * (1.0 - c);
   c += u_highlights * hw * 0.5 * c;
+  if (abs(u_whites) > 0.0005) c += u_whites * 0.25 * smoothstep(0.55, 1.0, l);
+  if (abs(u_blacks) > 0.0005) c += u_blacks * 0.25 * (1.0 - smoothstep(0.0, 0.45, l));
   c = (c - 0.5) * (1.0 + u_contrast) + 0.5;
   c.r += u_warmth * 0.12; c.b -= u_warmth * 0.12; c.g -= u_tint * 0.1;
   c = clamp(c, 0.0, 1.0);
+  if (u_curveOn > 0.5) {
+    c = vec3(texture2D(u_curve, vec2((c.r * 1023.0 + 0.5) / 1024.0, 0.5)).r,
+      texture2D(u_curve, vec2((c.g * 1023.0 + 0.5) / 1024.0, 0.5)).g,
+      texture2D(u_curve, vec2((c.b * 1023.0 + 0.5) / 1024.0, 0.5)).b);
+  }
+  if (abs(u_texture) > 0.0005 || abs(u_clarity) > 0.0005 || abs(u_dehaze) > 0.0005) {
+    vec3 bs = texture2D(u_blurS, s).rgb;
+    vec3 bl = texture2D(u_blurL, s).rgb;
+    if (u_dehaze > 0.0005) {
+      float dark = min(bl.r, min(bl.g, bl.b));
+      float tr = max(0.15, 1.0 - u_dehaze * 0.85 * dark);
+      c = (c - 1.0) / tr + 1.0;
+      c = mix(vec3(dot(c, LUMA)), c, 1.0 + u_dehaze * 0.25);
+    } else if (u_dehaze < -0.0005) {
+      float dark = min(bl.r, min(bl.g, bl.b));
+      c = mix(c, vec3(1.0), -u_dehaze * 0.5 * (0.35 + 0.65 * dark));
+    }
+    float lm = clamp(dot(c, LUMA), 0.0, 1.0);
+    c += u_texture * 1.2 * (src - bs);
+    c += u_clarity * 0.9 * (src - bl) * (1.0 - pow(abs(2.0 * lm - 1.0), 2.0));
+    c = clamp(c, 0.0, 1.0);
+  }
+  if (u_sharpen > 0.0005) {
+    vec2 d = u_texel * u_sharpRadius;
+    vec3 n = (texture2D(u_img, s + vec2(d.x, 0.0)).rgb + texture2D(u_img, s - vec2(d.x, 0.0)).rgb
+      + texture2D(u_img, s + vec2(0.0, d.y)).rgb + texture2D(u_img, s - vec2(0.0, d.y)).rgb) * 0.25;
+    c = clamp(c + u_sharpen * 1.5 * (src - n), 0.0, 1.0);
+  }
   if (abs(u_hue) > 0.0005 || abs(u_sat) > 0.0005) {
     vec3 h = rgb2hsv(c); h.x = fract(h.x + u_hue); h.y = clamp(h.y * (1.0 + u_sat), 0.0, 1.0); c = hsv2rgb(h);
   }
-  float lum = dot(c, vec3(0.299, 0.587, 0.114));
+  if (abs(u_vibrance) > 0.0005) {
+    float mx = max(c.r, max(c.g, c.b)); float mn = min(c.r, min(c.g, c.b));
+    float g = dot(c, LUMA);
+    c = clamp(mix(vec3(g), c, 1.0 + u_vibrance * (1.0 - (mx - mn))), 0.0, 1.0);
+  }
+  if (u_mixOn > 0.5) c = mixer(c);
+  if (u_gradeOn > 0.5) c = grade(c);
+  float lum = dot(c, LUMA);
   if (u_grey > 0.5) c = vec3(lum);
   if (u_notan > 0.0) c = vec3(step(u_notan, lum));
   else if (u_levels >= 2.0) c = clamp(floor(c * u_levels) / (u_levels - 1.0), 0.0, 1.0);
@@ -29261,40 +29605,193 @@ void main() {
     }
     c = best;
   }
+  if (!outside && abs(u_vignette) > 0.0005) {
+    float d = length((o - 0.5) * 2.0) / 1.41421356;            // 0 at the centre, 1 in a corner
+    float inner = 0.9 * u_vigMid;
+    float v = smoothstep(inner, inner + mix(0.1, 1.0, u_vigFeather), d);
+    c = u_vignette < 0.0 ? c * (1.0 + u_vignette * v) : c + u_vignette * v * (1.0 - c);
+  }
+  if (!outside && u_grain > 0.0005) {
+    vec2 g = floor(o * u_outSize / mix(1.0, 4.0, u_grainSize));
+    float n = hash(g) + hash(g + 17.0) - 1.0;
+    float gm = dot(c, LUMA);
+    c = clamp(c + u_grain * 0.18 * n * (1.0 - 0.6 * abs(2.0 * gm - 1.0)), 0.0, 1.0);
+  }
   if (u_split >= 0.0 && v_uv.x < u_split) c = orig;
-  gl_FragColor = vec4(c, 1.0);
+  if (outside) c *= 0.3;
+  gl_FragColor = vec4(c, (u_opaque > 0.5 || outside) ? 1.0 : t.a);
 }`;
 
-function moPlanRenderer(canvas) {
-  const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, premultipliedAlpha: false, antialias: false });
+const MO_ENGINE_LOOK_KEYS = ['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks', 'warmth', 'tint', 'hue', 'saturation', 'vibrance'];
+const MO_ENGINE_FLOATS = [['u_exposure', 'exposure'], ['u_contrast', 'contrast'], ['u_highlights', 'highlights'], ['u_shadows', 'shadows'], ['u_whites', 'whites'], ['u_blacks', 'blacks'],
+  ['u_warmth', 'warmth'], ['u_tint', 'tint'], ['u_hue', 'hue'], ['u_sat', 'saturation'], ['u_vibrance', 'vibrance'],
+  ['u_texture', 'texture'], ['u_clarity', 'clarity'], ['u_dehaze', 'dehaze'],
+  ['u_vignette', 'vignette'], ['u_vigMid', 'vignetteMid'], ['u_vigFeather', 'vignetteFeather'], ['u_grain', 'grain'], ['u_grainSize', 'grainSize'],
+  ['u_sharpen', 'sharpen'], ['u_sharpRadius', 'sharpenRadius'], ['u_noise', 'noise'], ['u_noiseColour', 'noiseColour']];
+const MO_ENGINE_IDENTITY = [1, 0, 0, 0, 1, 0];
+const MO_ENGINE_CURVE_N = 1024;
+
+function moImageEngine(canvas) {
+  const attrs = { preserveDrawingBuffer: true, premultipliedAlpha: false, antialias: false };
+  const gl = canvas.getContext('webgl2', attrs) || canvas.getContext('webgl', attrs);
   if (!gl) return null;
+  const gl2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
   const compile = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh) || 'shader'); return sh; };
-  const prog = gl.createProgram();
-  gl.attachShader(prog, compile(gl.VERTEX_SHADER, MO_PLAN_VS));
-  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, MO_PLAN_FS));
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || 'program');
-  gl.useProgram(prog);
+  const link = (vs, fs) => {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+    gl.bindAttribLocation(p, 0, 'a_pos');
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) || 'program');
+    return p;
+  };
+  const prog = link(MO_PLAN_VS, MO_ENGINE_FS);
+  const blurProg = link(MO_ENGINE_COPY_VS, MO_ENGINE_BLUR_FS);
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-  const aPos = gl.getAttribLocation(prog, 'a_pos');
-  gl.enableVertexAttribArray(aPos);
-  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
   const U = {};
-  for (const n of ['u_img', 'u_crop', 'u_rotate', 'u_flip', 'u_exposure', 'u_contrast', 'u_highlights', 'u_shadows', 'u_warmth', 'u_tint', 'u_hue', 'u_sat', 'u_grey', 'u_levels', 'u_notan', 'u_split', 'u_paletteN', 'u_palette']) U[n] = gl.getUniformLocation(prog, n);
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  for (const n of ['u_img', 'u_blurS', 'u_blurL', 'u_curve', 'u_v0', 'u_v1', 'u_m0', 'u_m1', 'u_texel', 'u_outSize',
+    'u_grey', 'u_levels', 'u_notan', 'u_split', 'u_paletteN', 'u_palette', 'u_opaque', 'u_outside',
+    'u_curveOn', 'u_mixOn', 'u_gradeOn', 'u_mix', 'u_gShadow', 'u_gMid', 'u_gHigh', 'u_gLum', 'u_gBlend', 'u_gBalance',
+    ...MO_ENGINE_FLOATS.map((f) => f[0])]) U[n] = gl.getUniformLocation(prog, n);
+  const BU = { img: gl.getUniformLocation(blurProg, 'u_img'), step: gl.getUniformLocation(blurProg, 'u_step') };
+  const plainTexture = (filter) => {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter || gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter || gl.LINEAR);
+    return t;
+  };
+  const tex = plainTexture();
   const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096;
   let srcW = 0, srcH = 0;
+
+  // A texture that can be drawn into.
+  const targets = [];
+  const target = (w, h) => {
+    const t = plainTexture();
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const o = { tex: t, fb, w, h };
+    targets.push(o);
+    return o;
+  };
+  const release = (o) => { if (!o) return; try { gl.deleteFramebuffer(o.fb); gl.deleteTexture(o.tex); } catch { /* gone */ } const i = targets.indexOf(o); if (i >= 0) targets.splice(i, 1); };
+  const pass = (from, to, stepX, stepY) => {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, to.fb);
+    gl.viewport(0, 0, to.w, to.h);
+    gl.useProgram(blurProg);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, from);
+    gl.uniform1i(BU.img, 0);
+    gl.uniform2f(BU.step, stepX, stepY);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  };
+
+  // The two blurred copies: the source halved to a quarter (fine detail) and
+  // to a sixteenth (broad shapes), each then blurred. Made when first needed.
+  let blurS = null, blurL = null;
+  const dropBlur = () => { release(blurS); release(blurL); blurS = null; blurL = null; };
+  const ensureBlur = () => {
+    if (blurS || !srcW) return;
+    const levels = [];
+    let from = tex; let w = srcW; let h = srcH;
+    for (let i = 0; i < 4; i++) {
+      w = Math.max(1, Math.round(w / 2)); h = Math.max(1, Math.round(h / 2));
+      const t = target(w, h);
+      pass(from, t, 0, 0);
+      levels.push(t);
+      from = t.tex;
+    }
+    const blurred = (level) => {
+      const a = target(level.w, level.h); const b = target(level.w, level.h);
+      pass(level.tex, a, 1 / level.w, 0);
+      pass(a.tex, b, 0, 1 / level.h);
+      release(a);
+      return b;
+    };
+    blurS = blurred(levels[1]);
+    blurL = blurred(levels[3]);
+    for (const t of levels) release(t);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  };
+
+  // The tone curve as a strip of 1024 values per channel; uploaded when it changes.
+  const curveTex = plainTexture();
+  let curveData = null;
+  const setCurve = (data) => {
+    if (data === curveData) return;
+    curveData = data;
+    gl.bindTexture(gl.TEXTURE_2D, curveTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, MO_ENGINE_CURVE_N, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  };
+
+  const apply = (p, W, H) => {
+    gl.viewport(0, 0, W, H);
+    gl.useProgram(prog);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const v = p.view || MO_ENGINE_IDENTITY; const m = p.m || MO_ENGINE_IDENTITY;
+    gl.uniform3f(U.u_v0, v[0], v[1], v[2]); gl.uniform3f(U.u_v1, v[3], v[4], v[5]);
+    gl.uniform3f(U.u_m0, m[0], m[1], m[2]); gl.uniform3f(U.u_m1, m[3], m[4], m[5]);
+    gl.uniform2f(U.u_texel, 1 / Math.max(1, srcW), 1 / Math.max(1, srcH));
+    const out = p.outSize || [W, H];
+    gl.uniform2f(U.u_outSize, out[0], out[1]);
+    const look = p.look || {};
+    for (const [u, k] of MO_ENGINE_FLOATS) gl.uniform1f(U[u], Number(look[k]) || 0);
+    gl.uniform1f(U.u_grey, p.grey ? 1 : 0); gl.uniform1f(U.u_levels, Number(p.levels) || 0); gl.uniform1f(U.u_notan, Number(p.notan) || 0);
+    gl.uniform1f(U.u_split, typeof p.split === 'number' ? p.split : -1);
+    gl.uniform1f(U.u_opaque, p.opaque ? 1 : 0);
+    gl.uniform1f(U.u_outside, p.outside ? 1 : 0);
+    const sw = Array.isArray(p.palette) ? p.palette : [];
+    const arr = new Float32Array(48);
+    sw.slice(0, 16).forEach((s, i) => { arr[i * 3] = s[0] / 255; arr[i * 3 + 1] = s[1] / 255; arr[i * 3 + 2] = s[2] / 255; });
+    gl.uniform3fv(U.u_palette, arr);
+    gl.uniform1f(U.u_paletteN, Math.min(16, sw.length));
+    gl.uniform1f(U.u_curveOn, p.curve ? 1 : 0);
+    gl.uniform1f(U.u_mixOn, p.mix ? 1 : 0);
+    if (p.mix) gl.uniform3fv(U.u_mix, p.mix);
+    const g = p.grade;
+    gl.uniform1f(U.u_gradeOn, g ? 1 : 0);
+    if (g) {
+      gl.uniform3f(U.u_gShadow, g.shadow[0], g.shadow[1], g.shadow[2]);
+      gl.uniform3f(U.u_gMid, g.mid[0], g.mid[1], g.mid[2]);
+      gl.uniform3f(U.u_gHigh, g.high[0], g.high[1], g.high[2]);
+      gl.uniform3f(U.u_gLum, g.lum[0], g.lum[1], g.lum[2]);
+      gl.uniform1f(U.u_gBlend, g.blend); gl.uniform1f(U.u_gBalance, g.balance);
+    }
+    gl.uniform1i(U.u_img, 0); gl.uniform1i(U.u_blurS, 1); gl.uniform1i(U.u_blurL, 2); gl.uniform1i(U.u_curve, 3);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, blurS ? blurS.tex : tex);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, blurL ? blurL.tex : tex);
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, curveTex);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  };
+  const prepare = (p) => {
+    const look = p.look || {};
+    if (Number(look.texture) || Number(look.clarity) || Number(look.dehaze)) ensureBlur();
+    if (p.curve) setCurve(p.curve);
+  };
+  setCurve(new Uint8Array(MO_ENGINE_CURVE_N * 4));
+
   return {
     maxTexture: maxTex,
-    // source: an Image or canvas. blurPx bakes a squint blur into the texture.
-    setSource(source, blurPx) {
+    // source: an Image, ImageBitmap or canvas. opts.blurPx bakes a squint blur
+    // into the texture; opts.smooth keeps a shrunken view clean (WebGL2 only).
+    setSource(source, opts) {
+      const o = opts || {};
+      const blurPx = Number(o.blurPx) || 0;
       let w = source.naturalWidth || source.width; let h = source.naturalHeight || source.height;
       const scale = Math.min(1, maxTex / Math.max(w, h));
       let up = source;
@@ -29306,41 +29803,76 @@ function moPlanRenderer(canvas) {
         ctx.drawImage(source, 0, 0, cv.width, cv.height);
         up = cv; w = cv.width; h = cv.height;
       }
+      gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, up);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, up);
+      const smooth = gl2 && o.smooth === true;
+      if (smooth) gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, smooth ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
       srcW = w; srcH = h;
+      dropBlur();
     },
     get size() { return { w: srcW, h: srcH }; },
+    // p: { view, m, outSize, look, curve, mix, grade, grey, levels, notan, palette, split, opaque, outside }
+    draw(p, width, height) {
+      const W = Math.max(1, Math.round(width)); const H = Math.max(1, Math.round(height));
+      if (canvas.width !== W) canvas.width = W;
+      if (canvas.height !== H) canvas.height = H;
+      prepare(p);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      apply(p, W, H);
+    },
+    // The same drawing at a small size, handed back as RGBA bytes (rows top to bottom).
+    sample(p, width, height) {
+      const W = Math.max(1, Math.round(width)); const H = Math.max(1, Math.round(height));
+      prepare(p);
+      const t = target(W, H);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb);
+      apply(p, W, H);
+      const raw = new Uint8Array(W * H * 4);
+      gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, raw);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      release(t);
+      const out = new Uint8Array(raw.length);
+      for (let y = 0; y < H; y++) out.set(raw.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
+      return out;
+    },
+    dispose() {
+      try {
+        for (const t of targets.slice()) release(t);
+        gl.deleteTexture(tex); gl.deleteTexture(curveTex); gl.deleteBuffer(buf); gl.deleteProgram(prog); gl.deleteProgram(blurProg);
+        const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext();
+      } catch { /* gone */ }
+    },
+  };
+}
+
+// Painting Plans on the shared engine: a plan recipe has a canvas-locked crop,
+// quarter turns and flips (no straighten), and is always opaque.
+function moPlanRenderer(canvas) {
+  const engine = moImageEngine(canvas);
+  if (!engine) return null;
+  return {
+    maxTexture: engine.maxTexture,
+    setSource(source, blurPx) { engine.setSource(source, { blurPx }); },
+    get size() { return engine.size; },
     // opts: { width, height, full (ignore the crop), split (-1 or 0..1) }
     render(recipe, opts) {
       const r = recipe;
-      const W = Math.max(1, Math.round(opts.width)); const H = Math.max(1, Math.round(opts.height));
-      if (canvas.width !== W) canvas.width = W;
-      if (canvas.height !== H) canvas.height = H;
-      gl.viewport(0, 0, W, H);
-      gl.useProgram(prog);
-      const c = opts.full ? { x: 0, y: 0, w: 1, h: 1 } : r.crop;
-      gl.uniform4f(U.u_crop, c.x, c.y, c.w, c.h);
-      gl.uniform1i(U.u_rotate, r.rotate);
-      gl.uniform2f(U.u_flip, r.flipH ? 1 : 0, r.flipV ? 1 : 0);
-      gl.uniform1f(U.u_exposure, r.exposure); gl.uniform1f(U.u_contrast, r.contrast);
-      gl.uniform1f(U.u_highlights, r.highlights); gl.uniform1f(U.u_shadows, r.shadows);
-      gl.uniform1f(U.u_warmth, r.warmth); gl.uniform1f(U.u_tint, r.tint);
-      gl.uniform1f(U.u_hue, r.hue); gl.uniform1f(U.u_sat, r.saturation);
-      gl.uniform1f(U.u_grey, r.grey ? 1 : 0); gl.uniform1f(U.u_levels, r.levels || 0); gl.uniform1f(U.u_notan, r.notan || 0);
-      gl.uniform1f(U.u_split, typeof opts.split === 'number' ? opts.split : -1);
-      const sw = r.palette.apply ? r.palette.swatches : [];
-      const arr = new Float32Array(48);
-      sw.slice(0, 16).forEach((s, i) => { arr[i * 3] = s[0] / 255; arr[i * 3 + 1] = s[1] / 255; arr[i * 3 + 2] = s[2] / 255; });
-      gl.uniform3fv(U.u_palette, arr);
-      gl.uniform1f(U.u_paletteN, Math.min(16, sw.length));
-      gl.uniform1i(U.u_img, 0);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      const size = engine.size;
+      const geo = moEditAffine({ crop: opts.full ? { x: 0, y: 0, w: 1, h: 1 } : r.crop, angle: 0, rotate: r.rotate, flipH: r.flipH, flipV: r.flipV }, size.w, size.h);
+      const look = {};
+      for (const k of MO_ENGINE_LOOK_KEYS) look[k] = r[k];
+      engine.draw({
+        m: geo.m, look, opaque: true,
+        grey: r.grey, levels: r.levels, notan: r.notan,
+        palette: r.palette && r.palette.apply ? r.palette.swatches : [],
+        split: typeof opts.split === 'number' ? opts.split : -1,
+      }, opts.width, opts.height);
     },
-    dispose() { try { gl.deleteTexture(tex); gl.deleteBuffer(buf); gl.deleteProgram(prog); const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); } catch { /* gone */ } },
+    dispose() { engine.dispose(); },
   };
 }
 
@@ -29803,8 +30335,8 @@ function renderPlanEditor(container, api, planId) {
   }
 
   // ── export ──
-  // Renders the recipe at full resolution into a JPEG beside the original,
-  // ingests it like a scan and stacks it under the original (as Upscale does).
+  // Renders the recipe at full resolution into a JPEG beside the original and
+  // ingests it like a scan: a photo of its own in the library.
   async function renderFull(withGrid) {
     const rs = rotated();
     const r = state.recipe;
@@ -29844,7 +30376,6 @@ function renderPlanEditor(container, api, planId) {
       if (res && res.error) throw new Error(res.error.message || String(res.error));
       const photo = await moIngestNewImage(outPath);
       if (photo) {
-        await moStackUnder({ type: 'photo', id: state.plan.photo_id }, { type: 'photo', id: photo.id });
         const pos = await db.get('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM mo_plan_media WHERE plan_id = ?', [planId]);
         await db.run('INSERT INTO mo_plan_media (plan_id, kind, item_id, role, position, created_at) VALUES (?, ?, ?, ?, ?, ?)', [planId, 'photo', photo.id, 'output', pos ? pos.p : 0, new Date().toISOString()]);
         state.media = (await moPlanLoad(planId)).media;
@@ -29921,6 +30452,3958 @@ function renderPlanEditor(container, api, planId) {
       for (const d of panelDisposers.splice(0)) { try { d(); } catch { /* gone */ } }
       if (renderer) renderer.dispose();
       if (thumbRenderer) thumbRenderer.dispose();
+      container.innerHTML = '';
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMAGE EDITOR (docs/IMAGE_EDITOR.md)
+// One editor tab, modelled on Lightroom: a histogram and tool strip, sliders
+// in sections (Light with a tone curve, Colour with a mixer and grading,
+// Effects, Detail), Crop And Rotate, Remove, Enhance, presets and a filmstrip.
+// The edit is a recipe stored per photo (mo_photo_edits); the original file is
+// never touched. Save As Copy renders the recipe at full size beside the
+// original; the copy is a photo of its own in the library. The engine is
+// the one Painting Plans draws with.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// @mo-edit-pure-begin — pure editor math (extracted verbatim by tests/unit/moImageEdit.test.ts)
+
+// [key, label, min, max, rest, format, parent]. `rest` is the value that
+// changes nothing. format: 'stops', 'pct' (shown times 100) or 'one' (one
+// decimal). A slider with a parent only matters while the parent is off rest.
+const MO_EDIT_LIGHT = [['exposure', 'Exposure', -2, 2, 0, 'stops'], ['contrast', 'Contrast', -1, 1, 0, 'pct'], ['highlights', 'Highlights', -1, 1, 0, 'pct'],
+  ['shadows', 'Shadows', -1, 1, 0, 'pct'], ['whites', 'Whites', -1, 1, 0, 'pct'], ['blacks', 'Blacks', -1, 1, 0, 'pct']];
+const MO_EDIT_COLOUR = [['warmth', 'Temperature', -1, 1, 0, 'pct'], ['tint', 'Tint', -1, 1, 0, 'pct'], ['vibrance', 'Vibrance', -1, 1, 0, 'pct'], ['saturation', 'Saturation', -1, 1, 0, 'pct']];
+const MO_EDIT_EFFECTS = [['texture', 'Texture', -1, 1, 0, 'pct'], ['clarity', 'Clarity', -1, 1, 0, 'pct'], ['dehaze', 'Dehaze', -1, 1, 0, 'pct'],
+  ['vignette', 'Vignette', -1, 1, 0, 'pct'], ['vignetteMid', 'Midpoint', 0, 1, 0.5, 'pct', 'vignette'], ['vignetteFeather', 'Feather', 0, 1, 0.5, 'pct', 'vignette'],
+  ['grain', 'Grain', 0, 1, 0, 'pct'], ['grainSize', 'Size', 0, 1, 0.25, 'pct', 'grain']];
+const MO_EDIT_DETAIL = [['sharpen', 'Sharpening', 0, 1.5, 0, 'pct'], ['sharpenRadius', 'Radius', 0.5, 3, 1, 'one', 'sharpen'],
+  ['noise', 'Noise Reduction', 0, 1, 0, 'pct'], ['noiseColour', 'Colour Noise Reduction', 0, 1, 0, 'pct']];
+const MO_EDIT_SLIDERS = MO_EDIT_LIGHT.concat(MO_EDIT_COLOUR, MO_EDIT_EFFECTS, MO_EDIT_DETAIL);
+const MO_EDIT_SECTIONS = [['light', 'Light', MO_EDIT_LIGHT], ['colour', 'Colour', MO_EDIT_COLOUR], ['effects', 'Effects', MO_EDIT_EFFECTS], ['detail', 'Detail', MO_EDIT_DETAIL]];
+
+// The colour mixer's eight bands: [key, label, hue in degrees].
+const MO_EDIT_MIX = [['red', 'Red', 0], ['orange', 'Orange', 30], ['yellow', 'Yellow', 60], ['green', 'Green', 120],
+  ['aqua', 'Aqua', 180], ['blue', 'Blue', 240], ['purple', 'Purple', 270], ['magenta', 'Magenta', 300]];
+const MO_EDIT_GRADE = [['shadows', 'Shadows'], ['midtones', 'Midtones'], ['highlights', 'Highlights']];
+const MO_EDIT_CURVES = [['rgb', 'All'], ['r', 'Red'], ['g', 'Green'], ['b', 'Blue']];
+// [key, label, width over height]; 0 follows the photo, -1 is free.
+const MO_EDIT_ASPECTS = [['original', 'Original', 0], ['free', 'Free', -1], ['1:1', '1 : 1', 1], ['4:5', '4 : 5', 0.8], ['5:7', '5 : 7', 5 / 7],
+  ['2:3', '2 : 3', 2 / 3], ['3:4', '3 : 4', 0.75], ['9:16', '9 : 16', 9 / 16]];
+
+// A 2D canvas holds at most this much (Chromium's limits); a larger result is refused, never shrunk in silence.
+const MO_EDIT_MAX_PIXELS = 268435456;
+const MO_EDIT_MAX_SIDE = 32767;
+const MO_EDIT_TILE = 4096;
+const MO_EDIT_ZOOM_MIN = 0.02;
+const MO_EDIT_ZOOM_MAX = 16;
+const MO_EDIT_CURVE_N = 1024;
+const MO_EDIT_CURVE_MAX_POINTS = 16;
+const MO_EDIT_MODEL_SIDE = 512;      // the Remove model's window, in pixels
+
+function moEditClamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function moEditNum(v, fallback) { return v !== null && v !== '' && v !== undefined && Number.isFinite(Number(v)) ? Number(v) : fallback; }
+
+function moEditDefaultCurve() { return { rgb: [[0, 0], [1, 1]], r: [[0, 0], [1, 1]], g: [[0, 0], [1, 1]], b: [[0, 0], [1, 1]] }; }
+function moEditDefaultMixer() { const m = {}; for (const [key] of MO_EDIT_MIX) m[key] = [0, 0, 0]; return m; }
+function moEditDefaultGrading() {
+  const g = { blending: 0.5, balance: 0 };
+  for (const [key] of MO_EDIT_GRADE) g[key] = { h: 0, s: 0, l: 0 };
+  return g;
+}
+
+function moEditDefaultRecipe() {
+  const r = { crop: { x: 0, y: 0, w: 1, h: 1 }, angle: 0, rotate: 0, flipH: false, flipV: false, aspect: 'original', aspectFlip: false };
+  for (const [key, , , , rest] of MO_EDIT_SLIDERS) r[key] = rest;
+  r.bw = false;
+  r.curve = moEditDefaultCurve();
+  r.mixer = moEditDefaultMixer();
+  r.grading = moEditDefaultGrading();
+  r.removals = [];
+  r.enhance = { scale: 0, model: 'photo' };
+  r.off = [];
+  return r;
+}
+
+// Curve points: sorted by x, inside the square, ends pinned to the sides, no two on one x.
+function moEditNormalizeCurvePoints(points) {
+  const pts = (Array.isArray(points) ? points : [])
+    .filter((p) => Array.isArray(p) && Number.isFinite(Number(p[0])) && Number.isFinite(Number(p[1])))
+    .map((p) => [moEditClamp(Number(p[0]), 0, 1), moEditClamp(Number(p[1]), 0, 1)])
+    .sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const p of pts) { if (out.length && p[0] - out[out.length - 1][0] < 0.004) continue; out.push(p); }
+  if (out.length < 2) return [[0, 0], [1, 1]];
+  out[0][0] = 0; out[out.length - 1][0] = 1;
+  if (out.length > MO_EDIT_CURVE_MAX_POINTS) out.splice(MO_EDIT_CURVE_MAX_POINTS - 1, out.length - MO_EDIT_CURVE_MAX_POINTS);
+  return out;
+}
+
+// Fill in anything a stored recipe lacks and keep every number in range.
+function moEditNormalizeRecipe(r) {
+  const o = r && typeof r === 'object' ? r : {};
+  const out = moEditDefaultRecipe();
+  for (const [key, , min, max, rest] of MO_EDIT_SLIDERS) out[key] = moEditClamp(moEditNum(o[key], rest), min, max);
+  out.angle = moEditClamp(moEditNum(o.angle, 0), -45, 45);
+  // An upright crop lies inside the photo. A leaning one is a turned rectangle, whose box may reach past
+  // the photo's sides while its corners do not: the editor checks those against the photo (moEditCropFits).
+  const c = o.crop && typeof o.crop === 'object' ? o.crop : {};
+  const lean = Math.abs(out.angle) > 1e-6;
+  const w = moEditClamp(moEditNum(c.w, 1), 0.001, lean ? 2 : 1);
+  const h = moEditClamp(moEditNum(c.h, 1), 0.001, lean ? 2 : 1);
+  out.crop = lean
+    ? { x: moEditClamp(moEditNum(c.x, 0), -1, 2), y: moEditClamp(moEditNum(c.y, 0), -1, 2), w, h }
+    : { x: moEditClamp(moEditNum(c.x, 0), 0, 1 - w), y: moEditClamp(moEditNum(c.y, 0), 0, 1 - h), w, h };
+  out.rotate = ((Math.round(moEditNum(o.rotate, 0)) % 4) + 4) % 4;
+  out.flipH = o.flipH === true;
+  out.flipV = o.flipV === true;
+  out.aspect = MO_EDIT_ASPECTS.some((a) => a[0] === o.aspect) ? o.aspect : 'original';
+  out.aspectFlip = o.aspectFlip === true;
+  out.bw = o.bw === true;
+  const cv = o.curve && typeof o.curve === 'object' ? o.curve : {};
+  for (const [key] of MO_EDIT_CURVES) out.curve[key] = moEditNormalizeCurvePoints(cv[key]);
+  const mx = o.mixer && typeof o.mixer === 'object' ? o.mixer : {};
+  for (const [key] of MO_EDIT_MIX) {
+    const v = Array.isArray(mx[key]) ? mx[key] : [];
+    out.mixer[key] = [0, 1, 2].map((i) => moEditClamp(moEditNum(v[i], 0), -1, 1));
+  }
+  const gr = o.grading && typeof o.grading === 'object' ? o.grading : {};
+  for (const [key] of MO_EDIT_GRADE) {
+    const v = gr[key] && typeof gr[key] === 'object' ? gr[key] : {};
+    out.grading[key] = { h: ((moEditNum(v.h, 0) % 1) + 1) % 1, s: moEditClamp(moEditNum(v.s, 0), 0, 1), l: moEditClamp(moEditNum(v.l, 0), -1, 1) };
+  }
+  out.grading.blending = moEditClamp(moEditNum(gr.blending, 0.5), 0, 1);
+  out.grading.balance = moEditClamp(moEditNum(gr.balance, 0), -1, 1);
+  out.removals = (Array.isArray(o.removals) ? o.removals : [])
+    .filter((m) => m && typeof m.file === 'string' && m.file && [m.x, m.y, m.w, m.h].every((n) => Number.isFinite(Number(n))) && Number(m.w) > 0 && Number(m.h) > 0)
+    .map((m) => ({ file: m.file, x: Math.round(Number(m.x)), y: Math.round(Number(m.y)), w: Math.round(Number(m.w)), h: Math.round(Number(m.h)) }));
+  const en = o.enhance && typeof o.enhance === 'object' ? o.enhance : {};
+  out.enhance = { scale: [2, 4].includes(Number(en.scale)) ? Number(en.scale) : 0, model: en.model === 'art' ? 'art' : 'photo' };
+  out.off = (Array.isArray(o.off) ? o.off : []).filter((s) => MO_EDIT_SECTIONS.some((x) => x[0] === s));
+  return out;
+}
+
+function moEditCurveIsRest(curve) {
+  if (!curve) return true;
+  for (const [key] of MO_EDIT_CURVES) {
+    const p = curve[key];
+    if (!p || p.length !== 2 || p[0][0] !== 0 || p[0][1] !== 0 || p[1][0] !== 1 || p[1][1] !== 1) return false;
+  }
+  return true;
+}
+function moEditMixerIsRest(mixer) {
+  if (!mixer) return true;
+  for (const [key] of MO_EDIT_MIX) if ((mixer[key] || []).some((v) => Math.abs(Number(v) || 0) > 1e-6)) return false;
+  return true;
+}
+function moEditGradingIsRest(g) {
+  if (!g) return true;
+  for (const [key] of MO_EDIT_GRADE) { const v = g[key] || {}; if ((Number(v.s) || 0) > 1e-6 || Math.abs(Number(v.l) || 0) > 1e-6) return false; }
+  return true;
+}
+
+// Which of a section's controls are off rest (the section's own, the curve with Light, the mixer and grading with Colour).
+function moEditSectionIsRest(r, id) {
+  const sec = MO_EDIT_SECTIONS.find((s) => s[0] === id);
+  if (!sec) return true;
+  for (const [key, , , , rest, , parent] of sec[2]) { if (parent) continue; if (Math.abs((Number(r[key]) || 0) - rest) > 1e-6) return false; }
+  if (id === 'light') return moEditCurveIsRest(r.curve);
+  if (id === 'colour') return !r.bw && moEditMixerIsRest(r.mixer) && moEditGradingIsRest(r.grading);
+  return true;
+}
+function moEditLookIsRest(r) { return MO_EDIT_SECTIONS.every((s) => moEditSectionIsRest(r, s[0])); }
+function moEditGeometryIsRest(r) {
+  const c = r.crop || { x: 0, y: 0, w: 1, h: 1 };
+  if (Math.abs(c.x) > 1e-6 || Math.abs(c.y) > 1e-6 || Math.abs(c.w - 1) > 1e-6 || Math.abs(c.h - 1) > 1e-6) return false;
+  return !(r.angle || r.rotate || r.flipH || r.flipV);
+}
+// True when the recipe changes no pixel: a copy would equal the original. Enhance is not counted here.
+function moEditIsNeutral(r) {
+  if (!r) return true;
+  return moEditLookIsRest(r) && moEditGeometryIsRest(r) && !(r.removals && r.removals.length);
+}
+// True when Save As Copy has something to write.
+function moEditHasWork(r) { return !!r && (!moEditIsNeutral(r) || (r.enhance && r.enhance.scale > 0)); }
+
+// The part of a recipe that is a look: what presets hold and Copy Edit carries. Not the crop, not removals.
+function moEditPickLook(r) {
+  const look = {};
+  for (const [key] of MO_EDIT_SLIDERS) look[key] = r[key];
+  look.bw = !!r.bw;
+  look.curve = JSON.parse(JSON.stringify(r.curve));
+  look.mixer = JSON.parse(JSON.stringify(r.mixer));
+  look.grading = JSON.parse(JSON.stringify(r.grading));
+  return look;
+}
+// A recipe with its look replaced; what the look does not name goes to rest.
+function moEditApplyLook(r, look) {
+  const base = moEditDefaultRecipe();
+  const next = Object.assign({}, r);
+  for (const [key] of MO_EDIT_SLIDERS) next[key] = base[key];
+  next.bw = false; next.curve = base.curve; next.mixer = base.mixer; next.grading = base.grading; next.off = [];
+  const l = look || {};
+  for (const key of Object.keys(l)) {
+    if (key === 'curve') next.curve = Object.assign(moEditDefaultCurve(), l.curve);
+    else if (key === 'mixer') next.mixer = Object.assign(moEditDefaultMixer(), l.mixer);
+    else if (key === 'grading') next.grading = Object.assign(moEditDefaultGrading(), l.grading);
+    else if (key === 'bw' || MO_EDIT_SLIDERS.some((s) => s[0] === key)) next[key] = l[key];
+  }
+  return moEditNormalizeRecipe(next);
+}
+
+// The looks that come with the editor.
+const MO_EDIT_PRESETS = [
+  ['cinematic', 'Cinematic', { contrast: 0.12, saturation: 0.08, grading: { shadows: { h: 0.55, s: 0.25, l: 0 }, highlights: { h: 0.08, s: 0.2, l: 0 } } }],
+  ['tealorange', 'Teal And Orange', { contrast: 0.15, vibrance: 0.25, grading: { shadows: { h: 0.5, s: 0.4, l: 0 }, highlights: { h: 0.07, s: 0.35, l: 0 } } }],
+  ['goldenhour', 'Golden Hour', { warmth: 0.35, exposure: 0.1, saturation: 0.12, highlights: -0.1, grading: { highlights: { h: 0.1, s: 0.25, l: 0 } } }],
+  ['dusk', 'Dusk', { warmth: -0.2, contrast: 0.15, saturation: -0.15, exposure: -0.1, grading: { shadows: { h: 0.65, s: 0.3, l: 0 } } }],
+  ['neon', 'Neon', { saturation: 0.35, vibrance: 0.3, contrast: 0.12, grading: { shadows: { h: 0.8, s: 0.3, l: 0 }, highlights: { h: 0.5, s: 0.2, l: 0 } } }],
+  ['punch', 'Punch', { contrast: 0.15, vibrance: 0.2, clarity: 0.25, sharpen: 0.5 }],
+  ['pastel', 'Pastel', { contrast: -0.2, blacks: 0.3, saturation: -0.12, exposure: 0.15, clarity: -0.15 }],
+  ['warm', 'Warm', { warmth: 0.25, saturation: 0.1 }],
+  ['cool', 'Cool', { warmth: -0.25, saturation: 0.06 }],
+  ['vivid', 'Vivid', { contrast: 0.12, saturation: 0.3, vibrance: 0.15 }],
+  ['fade', 'Fade', { saturation: -0.15, contrast: -0.08, curve: { rgb: [[0, 0.08], [1, 0.94]] } }],
+  ['vintage', 'Vintage', { saturation: -0.2, warmth: 0.15, vignette: -0.35, grain: 0.25, curve: { rgb: [[0, 0.07], [1, 1]] } }],
+];
+
+// A slider's value as shown beside it.
+function moEditFormatValue(key, v) {
+  const def = MO_EDIT_SLIDERS.find((s) => s[0] === key);
+  const fmt = def ? def[5] : 'pct';
+  const n = Number(v) || 0;
+  if (fmt === 'stops') { const s = Math.abs(n) < 0.005 ? 0 : n; return (s > 0 ? '+' : '') + s.toFixed(2); }
+  if (fmt === 'one') return n.toFixed(1);
+  const p = Math.round(n * 100);
+  return (p > 0 && def && def[2] < 0 ? '+' : '') + String(p);
+}
+// What someone typed beside a slider, as a value in range (null when it is not a number).
+function moEditParseValue(key, text) {
+  const def = MO_EDIT_SLIDERS.find((s) => s[0] === key);
+  const n = Number(String(text).replace(',', '.').replace('+', '').trim());
+  if (!def || !Number.isFinite(n) || String(text).trim() === '') return null;
+  return moEditClamp(def[5] === 'pct' ? n / 100 : n, def[2], def[3]);
+}
+
+// ── The tone curve ──
+// A smooth line through the points that never overshoots them (monotone cubic, Fritsch-Carlson).
+function moEditCurveLut(points, n) {
+  const pts = moEditNormalizeCurvePoints(points);
+  const N = n || MO_EDIT_CURVE_N;
+  const k = pts.length;
+  const out = new Float32Array(N);
+  const d = []; const m = new Array(k).fill(0);
+  for (let i = 0; i < k - 1; i++) d.push((pts[i + 1][1] - pts[i][1]) / (pts[i + 1][0] - pts[i][0]));
+  m[0] = d[0]; m[k - 1] = d[k - 2];
+  for (let i = 1; i < k - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < k - 1; i++) {
+    if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / d[i]; const b = m[i + 1] / d[i];
+    const s = a * a + b * b;
+    if (s > 9) { const t = 3 / Math.sqrt(s); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  let seg = 0;
+  for (let j = 0; j < N; j++) {
+    const x = j / (N - 1);
+    while (seg < k - 2 && x > pts[seg + 1][0]) seg++;
+    const h = pts[seg + 1][0] - pts[seg][0];
+    const t = (x - pts[seg][0]) / h;
+    const t2 = t * t; const t3 = t2 * t;
+    const y = (2 * t3 - 3 * t2 + 1) * pts[seg][1] + (t3 - 2 * t2 + t) * h * m[seg] + (-2 * t3 + 3 * t2) * pts[seg + 1][1] + (t3 - t2) * h * m[seg + 1];
+    out[j] = moEditClamp(y, 0, 1);
+  }
+  return out;
+}
+// The strip the engine reads: each channel's own curve, then the curve for all three.
+function moEditCurveStrip(curve) {
+  const N = MO_EDIT_CURVE_N;
+  const all = moEditCurveLut(curve.rgb, N);
+  const out = new Uint8Array(N * 4);
+  ['r', 'g', 'b'].forEach((key, c) => {
+    const own = moEditCurveLut(curve[key], N);
+    for (let j = 0; j < N; j++) out[j * 4 + c] = Math.round(all[Math.min(N - 1, Math.round(own[j] * (N - 1)))] * 255);
+  });
+  for (let j = 0; j < N; j++) out[j * 4 + 3] = 255;
+  return out;
+}
+
+// ── What the engine is handed ──
+function moEditHsvToRgb(h, s, v) {
+  const f = (n) => { const k = (n + h * 6) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return [f(5), f(3), f(1)];
+}
+// A grading wheel's colour as a push on each channel that leaves brightness alone.
+function moEditGradeTint(v) {
+  const rgb = moEditHsvToRgb(v.h, 1, 1);
+  const lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+  return rgb.map((c) => (c - lum) * v.s * 0.4);
+}
+/**
+ * Everything the engine needs for the look. `original` hands it a look at
+ * rest, for Show Original. A section switched off (its eye) is at rest too.
+ * `strip` is the curve strip to reuse when the curve has not changed.
+ */
+function moEditEngineLook(recipe, original, strip) {
+  const off = (id) => original || (recipe.off || []).includes(id);
+  const look = {};
+  for (const [id, , sliders] of MO_EDIT_SECTIONS) for (const [key, , , , rest] of sliders) look[key] = off(id) ? rest : (Number(recipe[key]) || 0);
+  const p = { look, grey: !off('colour') && !!recipe.bw };
+  if (!off('light') && !moEditCurveIsRest(recipe.curve)) p.curve = strip || moEditCurveStrip(recipe.curve);
+  if (!off('colour') && !moEditMixerIsRest(recipe.mixer)) {
+    p.mix = new Float32Array(24);
+    MO_EDIT_MIX.forEach(([key], i) => { p.mix.set(recipe.mixer[key], i * 3); });
+  }
+  if (!off('colour') && !moEditGradingIsRest(recipe.grading)) {
+    const g = recipe.grading;
+    p.grade = { shadow: moEditGradeTint(g.shadows), mid: moEditGradeTint(g.midtones), high: moEditGradeTint(g.highlights),
+      lum: [g.shadows.l, g.midtones.l, g.highlights.l], blend: g.blending, balance: g.balance };
+  }
+  return p;
+}
+// How far a save's tiles must read beyond their own pixels for the neighbourhood controls.
+function moEditMargin(recipe) {
+  let m = 2;
+  if (recipe.texture || recipe.clarity || recipe.dehaze) m = 96;
+  if (recipe.noise || recipe.noiseColour) m = Math.max(m, 6);
+  if (recipe.sharpen) m = Math.max(m, 2 + Math.ceil(recipe.sharpenRadius || 1));
+  return m;
+}
+
+// ── Where a pixel comes from ──
+// Affine maps as [a, b, c, d, e, f]: x' = a x + b y + c, y' = d x + e y + f.
+// moAffineMul(p, q) applies q first, then p.
+function moAffineMul(p, q) {
+  return [
+    p[0] * q[0] + p[1] * q[3], p[0] * q[1] + p[1] * q[4], p[0] * q[2] + p[1] * q[5] + p[2],
+    p[3] * q[0] + p[4] * q[3], p[3] * q[1] + p[4] * q[4], p[3] * q[2] + p[4] * q[5] + p[5],
+  ];
+}
+function moAffineApply(m, x, y) { return [m[0] * x + m[1] * y + m[2], m[3] * x + m[4] * y + m[5]]; }
+function moAffineInvert(m) {
+  const det = m[0] * m[4] - m[1] * m[3];
+  const a = m[4] / det; const b = -m[1] / det; const d = -m[3] / det; const e = m[0] / det;
+  return [a, b, -(a * m[2] + b * m[5]), d, e, -(d * m[2] + e * m[5])];
+}
+
+// The photo as the viewer sees it, after its quarter turns.
+function moEditViewSize(imgW, imgH, rotate) {
+  const rot = ((Math.round(Number(rotate) || 0) % 4) + 4) % 4;
+  return rot % 2 === 1 ? { w: imgH, h: imgW } : { w: imgW, h: imgH };
+}
+
+/**
+ * Where each output pixel comes from. The viewer sees the photo after its
+ * quarter turns and flips; the crop (a rectangle turned by `angle` degrees
+ * about its own centre) is cut from that view. Returns the output size in
+ * pixels and the map from output uv (0..1) to source uv (0..1).
+ */
+function moEditAffine(recipe, imgW, imgH) {
+  const r = recipe || {};
+  const rot = ((Math.round(Number(r.rotate) || 0) % 4) + 4) % 4;
+  const vw = rot % 2 === 1 ? imgH : imgW;
+  const vh = rot % 2 === 1 ? imgW : imgH;
+  const c = r.crop || { x: 0, y: 0, w: 1, h: 1 };
+  const w = c.w * vw; const h = c.h * vh;
+  const cx = (c.x + c.w / 2) * vw; const cy = (c.y + c.h / 2) * vh;
+  const a = ((Number(r.angle) || 0) * Math.PI) / 180;
+  const cos = Math.cos(a); const sin = Math.sin(a);
+  // output uv -> view pixels: centre the uv, scale to the crop, turn, move to the crop's centre
+  const toView = [w * cos, -h * sin, cx - (w * cos) / 2 + (h * sin) / 2,
+    w * sin, h * cos, cy - (w * sin) / 2 - (h * cos) / 2];
+  let m = moAffineMul([1 / vw, 0, 0, 0, 1 / vh, 0], toView);       // -> view uv
+  if (r.flipH) m = moAffineMul([-1, 0, 1, 0, 1, 0], m);
+  if (r.flipV) m = moAffineMul([1, 0, 0, 0, -1, 1], m);
+  if (rot === 1) m = moAffineMul([0, 1, 0, -1, 0, 1], m);          // s = (p.y, 1 - p.x)
+  else if (rot === 2) m = moAffineMul([-1, 0, 1, 0, -1, 1], m);    // s = (1 - p.x, 1 - p.y)
+  else if (rot === 3) m = moAffineMul([0, -1, 1, 1, 0, 0], m);     // s = (1 - p.y, p.x)
+  return { outW: Math.max(1, Math.round(w)), outH: Math.max(1, Math.round(h)), m };
+}
+
+// The zoom at which the whole output fits the canvas with `pad` pixels to spare.
+function moEditFitZoom(outW, outH, canvasW, canvasH, pad) {
+  const p = Math.max(0, pad || 0);
+  return Math.max(MO_EDIT_ZOOM_MIN, Math.min((canvasW - p) / outW, (canvasH - p) / outH));
+}
+
+// Keep the view on the picture: centred along a side that fits, inside the picture along one that does not.
+function moEditClampView(outW, outH, canvasW, canvasH, zoom, cx, cy) {
+  const z = moEditClamp(zoom, MO_EDIT_ZOOM_MIN, MO_EDIT_ZOOM_MAX);
+  const halfW = canvasW / (2 * z); const halfH = canvasH / (2 * z);
+  return {
+    zoom: z,
+    cx: outW <= 2 * halfW ? outW / 2 : moEditClamp(cx, halfW, outW - halfW),
+    cy: outH <= 2 * halfH ? outH / 2 : moEditClamp(cy, halfH, outH - halfH),
+  };
+}
+
+/**
+ * The window onto the output. `zoom` is canvas pixels per output pixel and
+ * (cx, cy) the output pixel at the middle of the canvas. Returns the map from
+ * canvas uv to output uv.
+ */
+function moEditViewMap(outW, outH, canvasW, canvasH, zoom, cx, cy) {
+  return [canvasW / (zoom * outW), 0, (cx - canvasW / (2 * zoom)) / outW,
+    0, canvasH / (zoom * outH), (cy - canvasH / (2 * zoom)) / outH];
+}
+
+// ── Crop And Rotate ──
+// The crop in pixels of the view: its centre, its size, its angle.
+function moEditCropBox(crop, vw, vh) {
+  return { cx: (crop.x + crop.w / 2) * vw, cy: (crop.y + crop.h / 2) * vh, w: crop.w * vw, h: crop.h * vh };
+}
+function moEditCropFromBox(box, vw, vh) {
+  return { x: (box.cx - box.w / 2) / vw, y: (box.cy - box.h / 2) / vh, w: box.w / vw, h: box.h / vh };
+}
+function moEditCropCorners(box, angle) {
+  const a = ((Number(angle) || 0) * Math.PI) / 180;
+  const cos = Math.cos(a); const sin = Math.sin(a);
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => {
+    const x = (sx * box.w) / 2; const y = (sy * box.h) / 2;
+    return [box.cx + x * cos - y * sin, box.cy + x * sin + y * cos];
+  });
+}
+// Does the turned crop lie wholly on the photo?
+function moEditCropFits(box, angle, vw, vh) {
+  const e = 1e-6;
+  if (!(box.w >= 1 && box.h >= 1)) return false;
+  return moEditCropCorners(box, angle).every(([x, y]) => x >= -e && y >= -e && x <= vw + e && y <= vh + e);
+}
+/**
+ * The box scaled about its own centre, keeping its shape, to the largest size
+ * that lies on the turned photo. With `grow` it may end larger than it was;
+ * without, a box that already fits is returned as it is.
+ */
+function moEditCropScaled(box, angle, vw, vh, grow) {
+  if (!grow && moEditCropFits(box, angle, vw, vh)) return box;
+  const cx = moEditClamp(box.cx, 0.5, vw - 0.5); const cy = moEditClamp(box.cy, 0.5, vh - 0.5);
+  const at = (k) => ({ cx, cy, w: Math.max(1, box.w * k), h: Math.max(1, box.h * k) });
+  let lo = 0; let hi = grow ? Math.hypot(vw, vh) / Math.max(1, Math.min(box.w, box.h)) : 1;
+  for (let i = 0; i < 48; i++) { const mid = (lo + hi) / 2; if (moEditCropFits(at(mid), angle, vw, vh)) lo = mid; else hi = mid; }
+  return at(lo);
+}
+function moEditCropShrink(box, angle, vw, vh) { return moEditCropScaled(box, angle, vw, vh, false); }
+// Is the box as large as its place and shape allow? Then straightening keeps it that way.
+function moEditCropIsLargest(box, angle, vw, vh) {
+  const max = moEditCropScaled(box, angle, vw, vh, true);
+  return moEditCropFits(box, angle, vw, vh) && box.w >= max.w * 0.985;
+}
+// The largest centred box of a shape (width over height; 0 or less takes the photo's) that lies on the turned photo.
+function moEditCropLargest(ratio, angle, vw, vh) {
+  const r = ratio > 0 ? ratio : vw / vh;
+  const big = Math.hypot(vw, vh);
+  return moEditCropShrink({ cx: vw / 2, cy: vh / 2, w: r >= 1 ? big : big * r, h: r >= 1 ? big / r : big }, angle, vw, vh);
+}
+// The shape a recipe's crop is held to: width over height, or 0 when free.
+function moEditAspectRatio(recipe, vw, vh) {
+  const def = MO_EDIT_ASPECTS.find((a) => a[0] === recipe.aspect) || MO_EDIT_ASPECTS[0];
+  if (def[2] < 0) return 0;
+  let r = def[2] === 0 ? vw / vh : def[2];
+  if (def[2] > 0) { const landscape = vw >= vh; if (landscape) r = 1 / r; }   // listed portrait; follow the photo
+  if (recipe.aspectFlip) r = 1 / r;
+  return r;
+}
+/**
+ * One step of dragging the crop. `handle` is 'move' or a compass point; (dx,
+ * dy) is how far the pointer went, in view pixels along the crop's own axes;
+ * `ratio` holds the shape (0 is free). The side opposite a handle stays where
+ * it is. A step that would leave the photo goes as far as it can.
+ */
+function moEditCropDrag(start, handle, dx, dy, ratio, angle, vw, vh) {
+  const a = ((Number(angle) || 0) * Math.PI) / 180;
+  const cos = Math.cos(a); const sin = Math.sin(a);
+  const min = 16;
+  const at = (k) => {
+    const x = dx * k; const y = dy * k;
+    if (handle === 'move') return { cx: start.cx + x * cos - y * sin, cy: start.cy + x * sin + y * cos, w: start.w, h: start.h };
+    const ex = handle.includes('e') ? 1 : handle.includes('w') ? -1 : 0;
+    const ey = handle.includes('s') ? 1 : handle.includes('n') ? -1 : 0;
+    let w = Math.max(min, start.w + ex * x);
+    let h = Math.max(min, start.h + ey * y);
+    if (ratio > 0) {
+      if (ex !== 0 && ey !== 0) { if (Math.abs(x) * start.h >= Math.abs(y) * start.w) h = w / ratio; else w = h * ratio; }
+      else if (ex !== 0) h = w / ratio;
+      else w = h * ratio;
+    }
+    // the centre moves half of what the size changed, away from the fixed side
+    const mx = (ex * (w - start.w)) / 2; const my = (ey * (h - start.h)) / 2;
+    return { cx: start.cx + mx * cos - my * sin, cy: start.cy + mx * sin + my * cos, w, h };
+  };
+  if (moEditCropFits(at(1), angle, vw, vh)) return at(1);
+  let lo = 0; let hi = 1;
+  for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (moEditCropFits(at(mid), angle, vw, vh)) lo = mid; else hi = mid; }
+  return moEditCropFits(at(lo), angle, vw, vh) ? at(lo) : start;
+}
+// A quarter turn (dir 1 is clockwise, -1 the other way): the crop turns with the photo.
+function moEditTurn(recipe, dir) {
+  const c = recipe.crop;
+  const crop = dir > 0 ? { x: 1 - (c.y + c.h), y: c.x, w: c.h, h: c.w } : { x: c.y, y: 1 - (c.x + c.w), w: c.h, h: c.w };
+  return Object.assign({}, recipe, { rotate: (((recipe.rotate + (dir > 0 ? 1 : 3)) % 4) + 4) % 4, crop });
+}
+// A mirror ('h' left to right, 'v' top to bottom): the crop mirrors and its lean reverses.
+function moEditFlip(recipe, axis) {
+  const c = recipe.crop;
+  const crop = axis === 'h' ? { x: 1 - (c.x + c.w), y: c.y, w: c.w, h: c.h } : { x: c.x, y: 1 - (c.y + c.h), w: c.w, h: c.h };
+  return Object.assign({}, recipe, axis === 'h' ? { flipH: !recipe.flipH } : { flipV: !recipe.flipV }, { crop, angle: -recipe.angle || 0 });
+}
+/**
+ * The crop tool's window: the photo lies still while the crop is dragged, and
+ * turns about its middle when straightened. Returns the zoom that fits the
+ * turned photo, the crop's frame on the canvas (pixels) and the map from
+ * canvas uv to output uv.
+ */
+function moEditCropView(recipe, imgW, imgH, canvasW, canvasH, pad) {
+  const v = moEditViewSize(imgW, imgH, recipe.rotate);
+  const a = ((Number(recipe.angle) || 0) * Math.PI) / 180;
+  const cos = Math.cos(a); const sin = Math.sin(a);
+  const bw = v.w * Math.abs(cos) + v.h * Math.abs(sin);
+  const bh = v.w * Math.abs(sin) + v.h * Math.abs(cos);
+  const zoom = Math.max(MO_EDIT_ZOOM_MIN, Math.min((canvasW - pad) / bw, (canvasH - pad) / bh));
+  const box = moEditCropBox(recipe.crop, v.w, v.h);
+  // the crop's centre seen from the photo's middle, along the crop's own axes
+  const ox = box.cx - v.w / 2; const oy = box.cy - v.h / 2;
+  const ax = ox * cos + oy * sin; const ay = -ox * sin + oy * cos;
+  const frame = { x: canvasW / 2 + (ax - box.w / 2) * zoom, y: canvasH / 2 + (ay - box.h / 2) * zoom, w: box.w * zoom, h: box.h * zoom };
+  const view = [canvasW / frame.w, 0, -frame.x / frame.w, 0, canvasH / frame.h, -frame.y / frame.h];
+  return { zoom, frame, view, viewW: v.w, viewH: v.h };
+}
+
+// ── Saving at full size ──
+// Output tiles of at most `tile` pixels a side, row by row.
+function moEditTiles(outW, outH, tile) {
+  const t = Math.max(64, Math.floor(tile));
+  const out = [];
+  for (let y = 0; y < outH; y += t) for (let x = 0; x < outW; x += t) out.push({ x, y, w: Math.min(t, outW - x), h: Math.min(t, outH - y) });
+  return out;
+}
+/**
+ * One tile of the output: the part of the source it reads (whole pixels, with
+ * a margin, inside the photo), the map from the tile's uv to output uv, and
+ * the map from output uv to that part's uv.
+ */
+function moEditTileSource(m, tile, outW, outH, imgW, imgH, margin) {
+  const view = [tile.w / outW, 0, tile.x / outW, 0, tile.h / outH, tile.y / outH];
+  const tm = moAffineMul(m, view);
+  let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+  for (const [u, v] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+    const [su, sv] = moAffineApply(tm, u, v);
+    x0 = Math.min(x0, su * imgW); x1 = Math.max(x1, su * imgW);
+    y0 = Math.min(y0, sv * imgH); y1 = Math.max(y1, sv * imgH);
+  }
+  const pad = Math.max(0, margin || 0);
+  const sx = moEditClamp(Math.floor(x0 - pad), 0, imgW - 1);
+  const sy = moEditClamp(Math.floor(y0 - pad), 0, imgH - 1);
+  const sw = Math.max(1, Math.min(imgW, Math.ceil(x1 + pad)) - sx);
+  const sh = Math.max(1, Math.min(imgH, Math.ceil(y1 + pad)) - sy);
+  return { sx, sy, sw, sh, view, m: moAffineMul([imgW / sw, 0, -sx / sw, 0, imgH / sh, -sy / sh], m) };
+}
+
+// PNG stays PNG, an enlarged picture is a PNG; everything else is written as JPEG.
+function moEditOutputExt(basename, scale) { return scale > 0 || /\.png$/i.test(basename || '') ? 'png' : 'jpg'; }
+// "photo.jpg" -> "photo-edit.jpg", "photo-edit-2x.png", or "photo-2x.png" when nothing but the size changed; n > 1 adds " (n)".
+function moEditOutputName(basename, n = 1, scale = 0, edited = true) {
+  const dot = basename.lastIndexOf('.');
+  const stem = dot > 0 ? basename.slice(0, dot) : basename;
+  return `${stem}${edited ? '-edit' : ''}${scale > 0 ? `-${scale}x` : ''}${n > 1 ? ` (${n})` : ''}.${moEditOutputExt(basename, scale)}`;
+}
+// What Save writes over an original: a file of the original's own kind. 'jpg', 'png', or null for a
+// kind the editor cannot write (a WebP, a HEIC, a camera's raw file), which can only be saved as a copy.
+function moEditSaveOverExt(basename) {
+  const m = /\.([a-z0-9]+)$/i.exec(basename || '');
+  const e = m ? m[1].toLowerCase() : '';
+  return e === 'jpg' || e === 'jpeg' ? 'jpg' : e === 'png' ? 'png' : null;
+}
+// "photo.jpg" -> "photo.saving-k3x9ab.jpg": the name Save writes under before the file takes the original's place.
+function moEditSavingName(basename, rand) {
+  const dot = basename.lastIndexOf('.');
+  const stem = dot > 0 ? basename.slice(0, dot) : basename;
+  const tail = String(rand || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || '0';
+  return `${stem}.saving-${tail}.${moEditSaveOverExt(basename) === 'png' ? 'png' : 'jpg'}`;
+}
+
+/**
+ * Carry the camera data block (EXIF) of the original JPEG into a freshly
+ * encoded one. The new pixels are already upright and may have a new size, so
+ * the orientation is reset, the stored size is updated and the link to the
+ * embedded thumbnail (the old picture) is cut. Anything unexpected returns
+ * the new JPEG as it was.
+ */
+function moEditCarryExif(orig, fresh, outW, outH) {
+  try {
+    if (!orig || !fresh || orig.length < 4 || fresh.length < 4) return fresh;
+    if (orig[0] !== 0xFF || orig[1] !== 0xD8 || fresh[0] !== 0xFF || fresh[1] !== 0xD8) return fresh;
+    let p = 2; let seg = null;
+    while (p + 4 <= orig.length && orig[p] === 0xFF) {
+      const marker = orig[p + 1];
+      if (marker === 0xDA || marker === 0xD9) break;               // the picture itself: no more headers
+      const len = (orig[p + 2] << 8) | orig[p + 3];
+      if (len < 2 || p + 2 + len > orig.length) break;
+      if (marker === 0xE1 && len >= 16 && orig[p + 4] === 0x45 && orig[p + 5] === 0x78 && orig[p + 6] === 0x69 && orig[p + 7] === 0x66 && orig[p + 8] === 0 && orig[p + 9] === 0) {
+        seg = orig.slice(p, p + 2 + len);
+        break;
+      }
+      p += 2 + len;
+    }
+    if (!seg) return fresh;
+    const t = 10;                                                  // the TIFF block: after FF E1, the length and "Exif\0\0"
+    const le = seg[t] === 0x49 && seg[t + 1] === 0x49;
+    if (!le && !(seg[t] === 0x4D && seg[t + 1] === 0x4D)) return fresh;
+    const u16 = (o) => (le ? seg[o] | (seg[o + 1] << 8) : (seg[o] << 8) | seg[o + 1]);
+    const u32 = (o) => (le ? (seg[o] | (seg[o + 1] << 8) | (seg[o + 2] << 16) | (seg[o + 3] << 24)) : ((seg[o] << 24) | (seg[o + 1] << 16) | (seg[o + 2] << 8) | seg[o + 3])) >>> 0;
+    const w16 = (o, v) => { if (le) { seg[o] = v & 255; seg[o + 1] = (v >> 8) & 255; } else { seg[o] = (v >> 8) & 255; seg[o + 1] = v & 255; } };
+    const w32 = (o, v) => { const b = [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; if (!le) b.reverse(); for (let i = 0; i < 4; i++) seg[o + i] = b[i]; };
+    const inside = (o, n) => o >= t && o + n <= seg.length;
+    // one SHORT (3) or LONG (4) value, written in place
+    const setNumber = (entry, v) => {
+      if (u32(entry + 4) !== 1) return;
+      const type = u16(entry + 2);
+      if (type === 3 && v <= 65535) { w16(entry + 8, v); w16(entry + 10, 0); } else if (type === 4) w32(entry + 8, v);
+    };
+    if (u16(t + 2) !== 42) return fresh;
+    const ifd0 = t + u32(t + 4);
+    if (!inside(ifd0, 2)) return fresh;
+    const n0 = u16(ifd0);
+    if (!inside(ifd0 + 2, n0 * 12 + 4)) return fresh;
+    let exifIfd = 0;
+    for (let i = 0; i < n0; i++) {
+      const e = ifd0 + 2 + i * 12;
+      const tag = u16(e);
+      if (tag === 0x0112) setNumber(e, 1);
+      else if (tag === 0x8769) exifIfd = t + u32(e + 8);
+    }
+    w32(ifd0 + 2 + n0 * 12, 0);                                    // no second directory: the old thumbnail is unlinked
+    if (exifIfd && inside(exifIfd, 2)) {
+      const n1 = u16(exifIfd);
+      if (inside(exifIfd + 2, n1 * 12)) {
+        for (let i = 0; i < n1; i++) {
+          const e = exifIfd + 2 + i * 12;
+          const tag = u16(e);
+          if (tag === 0xA002) setNumber(e, outW);
+          else if (tag === 0xA003) setNumber(e, outH);
+        }
+      }
+    }
+    // after the start marker, and after the JFIF header when the new file has one
+    let at = 2;
+    if (fresh[2] === 0xFF && fresh[3] === 0xE0 && fresh.length >= 6) at = 4 + ((fresh[4] << 8) | fresh[5]);
+    if (at > fresh.length) return fresh;
+    const out = new Uint8Array(fresh.length + seg.length);
+    out.set(fresh.subarray(0, at), 0);
+    out.set(seg, at);
+    out.set(fresh.subarray(at), at + seg.length);
+    return out;
+  } catch { return fresh; }
+}
+
+// ── Reading the picture: histogram, Auto, white balance ──
+// Counts per level for red, green, blue and brightness, from RGBA bytes; see-through pixels are left out.
+function moEditHistogram(rgba) {
+  const h = { r: new Uint32Array(256), g: new Uint32Array(256), b: new Uint32Array(256), l: new Uint32Array(256), n: 0 };
+  for (let i = 0; i + 3 < rgba.length; i += 4) {
+    if (rgba[i + 3] < 128) continue;
+    h.r[rgba[i]]++; h.g[rgba[i + 1]]++; h.b[rgba[i + 2]]++;
+    h.l[Math.min(255, Math.round(0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2]))]++;
+    h.n++;
+  }
+  return h;
+}
+// The level below which a share of the pixels lie, 0..1.
+function moEditPercentile(counts, n, share) {
+  if (!n) return 0;
+  const want = n * share; let seen = 0;
+  for (let i = 0; i < 256; i++) { seen += counts[i]; if (seen >= want) return i / 255; }
+  return 1;
+}
+/**
+ * Auto: Light settings worked out from the untouched picture's brightness
+ * counts. It brings the middle to a middle grey, stretches the ends towards
+ * black and white, and opens shadows or tames highlights when a large part of
+ * the picture sits in them.
+ */
+function moEditAutoTone(hist) {
+  const rest = { exposure: 0, contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0, vibrance: 0 };
+  if (!hist || !hist.n) return rest;
+  const lo = moEditPercentile(hist.l, hist.n, 0.005);
+  const mid = moEditPercentile(hist.l, hist.n, 0.5);
+  const hi = moEditPercentile(hist.l, hist.n, 0.995);
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const exposure = moEditClamp(Math.log2(0.46 / Math.max(mid, 0.02)) * 0.6, -1.5, 1.5);
+  const gain = Math.pow(2, exposure);
+  const lo2 = lo * gain; const hi2 = Math.min(1.2, hi * gain);
+  let dark = 0; let bright = 0;
+  for (let i = 0; i < 256; i++) { const v = (i / 255) * gain; if (v < 0.2) dark += hist.l[i]; else if (v > 0.85) bright += hist.l[i]; }
+  const out = {
+    exposure: r2(exposure),
+    // the ends are moved most of the way, never all of it: a picture with no true white is not given one
+    whites: r2(moEditClamp(((0.98 - hi2) / 0.25) * 0.6, -0.6, 0.6)),
+    blacks: r2(moEditClamp(((0.02 - lo2) / 0.25) * 0.6, -0.6, 0.6)),
+    shadows: r2(dark / hist.n > 0.35 ? Math.min(0.5, (dark / hist.n - 0.35) * 1.5 + 0.15) : 0),
+    highlights: r2(bright / hist.n > 0.25 ? -Math.min(0.5, (bright / hist.n - 0.25) * 1.5 + 0.15) : 0),
+    contrast: r2(hi2 - lo2 < 0.6 ? 0.15 : 0.05),
+    vibrance: 0.1,
+  };
+  return out;
+}
+// The Temperature and Tint that turn a picked colour (0..1 each) into a neutral grey.
+function moEditWhiteBalance(r, g, b) {
+  return {
+    warmth: Math.round(moEditClamp((b - r) / 0.24, -1, 1) * 100) / 100,
+    tint: Math.round(moEditClamp((g - (r + b) / 2) / 0.1, -1, 1) * 100) / 100,
+  };
+}
+
+// ── How far along a save is ──
+// The upscaler writes "12.50%" as it goes; the last one in a chunk of its output, as 0..1 (null when there is none).
+function moEditUpscalePercent(chunk) {
+  const all = String(chunk || '').match(/(\d+(?:\.\d+)?)%/g);
+  if (!all) return null;
+  const v = parseFloat(all[all.length - 1]);
+  return Number.isFinite(v) ? moEditClamp(v / 100, 0, 1) : null;
+}
+/**
+ * Where a stage of a save starts and ends on the bar, 0..1. Enlarging is by
+ * far the longest stage when there is one; drawing the edit is when there is not.
+ * stage: 'draw', 'write', 'enlarge', 'halve' or 'library'.
+ */
+function moEditStageSpan(stage, enlarging, edited) {
+  const spans = enlarging
+    ? (edited ? { draw: [0, 0.1], write: [0.1, 0.14], enlarge: [0.14, 0.86], halve: [0.86, 0.94], library: [0.94, 1] }
+      : { draw: [0, 0], write: [0, 0], enlarge: [0, 0.86], halve: [0.86, 0.94], library: [0.94, 1] })
+    : { draw: [0, 0.7], write: [0.7, 0.88], enlarge: [0.88, 0.88], halve: [0.88, 0.88], library: [0.88, 1] };
+  return spans[stage] || [0, 1];
+}
+// A stage's own progress (0..1) as a place on the whole bar.
+function moEditStageFraction(stage, within, enlarging, edited) {
+  const [a, b] = moEditStageSpan(stage, enlarging, edited);
+  return a + (b - a) * moEditClamp(Number(within) || 0, 0, 1);
+}
+
+// ── Remove ──
+/**
+ * The square window the model is shown for a mark: three times the mark, at
+ * least the model's own size, no larger than the photo, and on the photo.
+ * `box` is the mark in source pixels.
+ */
+function moEditRemovalWindow(box, imgW, imgH) {
+  const side = Math.round(Math.min(Math.min(imgW, imgH), Math.max(MO_EDIT_MODEL_SIDE, 3 * Math.max(box.w, box.h))));
+  const cx = box.x + box.w / 2; const cy = box.y + box.h / 2;
+  return { x: Math.round(moEditClamp(cx - side / 2, 0, imgW - side)), y: Math.round(moEditClamp(cy - side / 2, 0, imgH - side)), side };
+}
+// The box around a stroke's points (source pixels) with its brush, kept on the photo.
+function moEditStrokeBox(points, radius, imgW, imgH) {
+  if (!points || !points.length) return null;
+  let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+  for (const [x, y] of points) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const pad = radius + 2;
+  const x = moEditClamp(Math.floor(x0 - pad), 0, imgW - 1); const y = moEditClamp(Math.floor(y0 - pad), 0, imgH - 1);
+  return { x, y, w: Math.max(1, Math.min(imgW, Math.ceil(x1 + pad)) - x), h: Math.max(1, Math.min(imgH, Math.ceil(y1 + pad)) - y) };
+}
+
+// ── Remove From Other Photos: finding a mark ──
+// A mark removed on one photo is looked for in others by its SHAPE: the
+// direction of its edges, point by point (Steger's measure, the one industrial
+// shape matching is built on). Brightness, contrast and what lies behind the
+// mark do not enter into it, so a stamp is found over any background, at any
+// place, and, by trying sizes a step apart, at any size. It is not found
+// turned or bent: that needs a model that has learnt what logos look like.
+const MO_FIND_SIZE = 48;        // the smallest a mark is searched at: the root of its area, in pixels. At 20 a word is a smudge and look-alikes score as high as the mark.
+const MO_FIND_STEP = 1.07;      // from one size tried to the next
+const MO_FIND_RANGE = 2.5;      // tried from this much smaller to this much larger than on the example
+const MO_FIND_POINTS = 128;     // edge points a position is scored on when every position is scored
+const MO_FIND_CHECK = 320;      // and when a candidate is checked
+// The longest side a photo is searched at. It was 2048: a mark of 210 pixels on a photo of 4800 was then
+// 90 pixels at most, and the smaller sizes tried for it went down to 24, where 75 places a photo looked
+// like it (measured). A large photo is searched as large as the mark needs to be read.
+const MO_FIND_BASE = 6144;
+const MO_FIND_MOST = 6;         // finds kept for one mark on one photo, the best of them: more than that is the finder taken in
+const MO_FIND_NARROW = 1.25;    // once a mark is learnt it is looked for from this much under the smallest it was met at to this much over the largest
+const MO_FIND_FLOOR = 3;        // a gradient weaker than this (of 255, Sobel / 4) has no direction worth the name. At 6 a white mark on a bright sky went unread.
+const MO_FIND_FEW = 24;         // a mark with fewer edge points than this is too plain to look for
+const MO_FIND_LEAST = 0.25;     // a position scoring this on the search is worth a check
+const MO_FIND_PEAKS = 60;       // at most this many a size
+const MO_FIND_NEAR = [0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06];   // the check tries these sizes round the one searched, two pixels each way
+// A find is looked at twice. The search and its check have the mark 48 to 96 pixels large; what passes
+// (MO_FIND_AGAIN) is looked at again with the mark 128 pixels large, where a place that only looked
+// like the mark no longer does. Measured on photos of 4800 pixels with a mark of 360: at the first
+// look marks scored 0.53 to 0.96 and look-alikes 0.46 to 0.54 (on photos of 1600: 0.56 to 0.88 and
+// 0.44; the larger the photo, the more places, the better the best look-alike). At the second look
+// the marks scored 0.87 to 0.99 and the same look-alikes 0.17 to 0.31.
+const MO_FIND_AGAIN = 0.38;     // a first look this good is worth a second
+const MO_FIND_LOOKED = 24;      // places a mark is looked at again, a photo, at most
+const MO_FIND_FINER = 1.3;      // the second look counts as finer when the mark is this much larger in it than in the first
+const MO_FIND_FOUND = 0.6;      // a second look this good is the mark
+const MO_FIND_UNSURE = 0.45;    // one this good may be: shown, left out until agreed to
+// Where the mark is too small on the photo for a finer look, the first look is all there is, and must be better
+const MO_FIND_FOUND_ALONE = 0.62;
+const MO_FIND_UNSURE_ALONE = 0.56;
+const MO_FIND_INSIDE = 0.6;     // what was brushed may reach this far past the photo's edge: this share of it stays on the photo
+const MO_FIND_WHOLE = 0.85;     // and this share of the mark's edge points must be on the photo; any more missing count as misses
+const MO_FIND_GROW = 0.08;      // what is removed is this much larger than what was found, each side
+const MO_FIND_LEARN = 8;        // finds a mark is learnt from, the best of those met
+const MO_FIND_LEARN_MIN = 3;    // fewer than this and the example stands alone
+const MO_FIND_LEARN_FROM = 0.7; // a find this good is one to learn from
+const MO_FIND_LEARN_PHOTOS = 40;   // photos looked at to learn from, at most
+const MO_FIND_AGREE = 0.6;      // an edge is the mark's when this share of the photos have it, facing the same way
+const MO_FIND_FINE = 128;       // a find is settled, and the mark's shape drawn, with the mark this large (the root of its area)
+const MO_FIND_FINE_NEAR = [0.98, 0.985, 0.99, 0.995, 1, 1.005, 1.01, 1.015, 1.02];   // sizes tried to settle a find, half a percent apart
+const MO_FIND_FINE_REACH = 3;   // and this many pixels each way
+const MO_FIND_SHAPE_GROW = 0.02;   // the shape removed reaches this far past the mark's own edge (of the mark's size): the fringe a JPEG leaves round it
+const MO_FIND_SHAPE_MIN = 0.03;    // a shape under this share of what was brushed is a few stray edges, not a mark
+const MO_FIND_SHAPE_MAX = 0.92;    // one over this share saves nothing: what was brushed is removed as it is
+
+/** Grey levels (0..255) of RGBA bytes. */
+function moFindGray(rgba, w, h) {
+  const n = w * h; const g = new Float32Array(n);
+  for (let i = 0, p = 0; i < n; i++, p += 4) g[i] = 0.299 * rgba[p] + 0.587 * rgba[p + 1] + 0.114 * rgba[p + 2];
+  return g;
+}
+// Sobel, a quarter of its sum so a full step of 255 reads 255.
+function moFindSobel(g, w, h) {
+  const gx = new Float32Array(w * h); const gy = new Float32Array(w * h);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      const a = g[i - w - 1]; const b = g[i - w]; const c = g[i - w + 1];
+      const d = g[i - 1]; const f = g[i + 1];
+      const k = g[i + w - 1]; const l = g[i + w]; const m = g[i + w + 1];
+      gx[i] = (c + 2 * f + m - a - 2 * d - k) / 4;
+      gy[i] = (k + 2 * l + m - a - 2 * b - c) / 4;
+    }
+  }
+  return { gx, gy };
+}
+/**
+ * A picture as a field of edge directions: two bytes a pixel, the unit
+ * gradient times 127 plus 128, and 128 128 (no direction) where the picture is
+ * flat. Bytes, because this is what the graphics card is handed.
+ */
+function moFindField(gray, w, h) {
+  const { gx, gy } = moFindSobel(gray, w, h);
+  const out = new Uint8Array(w * h * 2).fill(128);
+  for (let i = 0; i < w * h; i++) {
+    const m = Math.hypot(gx[i], gy[i]);
+    if (m < MO_FIND_FLOOR) continue;
+    out[i * 2] = 128 + Math.round((gx[i] / m) * 127);
+    out[i * 2 + 1] = 128 + Math.round((gy[i] / m) * 127);
+  }
+  return out;
+}
+/**
+ * The mark as edge points: where its edges are (dx, dy from its top left) and
+ * which way each faces (tx, ty, a unit vector). `mask` says which pixels were
+ * brushed (non-zero). The strongest edges are kept, spread over the mark, at
+ * most `max` of them. -> { w, h, n, dx, dy, tx, ty }
+ */
+function moFindTemplate(gray, mask, w, h, max) {
+  const { gx, gy } = moFindSobel(gray, w, h);
+  const mags = []; const at = [];
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (mask && !mask[i]) continue;
+      const m = Math.hypot(gx[i], gy[i]);
+      if (m < MO_FIND_FLOOR) continue;
+      mags.push(m); at.push(i);
+    }
+  }
+  const empty = { w, h, n: 0, dx: new Int16Array(0), dy: new Int16Array(0), tx: new Float32Array(0), ty: new Float32Array(0) };
+  if (!at.length) return empty;
+  // edges a third as strong as the mark's strong ones count; the faint ones are the background's
+  const sorted = Float32Array.from(mags).sort();
+  const strong = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))];
+  const keep = [];
+  for (let k = 0; k < at.length; k++) if (mags[k] >= strong / 3) keep.push(k);
+  const n = Math.min(max, keep.length);
+  const t = { w, h, n, dx: new Int16Array(n), dy: new Int16Array(n), tx: new Float32Array(n), ty: new Float32Array(n) };
+  for (let j = 0; j < n; j++) {
+    const k = keep[Math.floor(((j + 0.5) * keep.length) / n)];
+    const i = at[k];
+    t.dx[j] = i % w; t.dy[j] = Math.floor(i / w);
+    t.tx[j] = gx[i] / mags[k]; t.ty[j] = gy[i] / mags[k];
+  }
+  return t;
+}
+/**
+ * The mark as several photos agree on it. `grays` are the same region cut
+ * from several photos, the example first, each w x h. Behind the mark every
+ * photo is different, so an edge most of them have, facing the same way, is
+ * the mark's, and an edge only one has is that photo's background. One
+ * example cannot tell the two apart: brushed over a skyline, it looks for
+ * the skyline as well. Whether the mark is lighter or darker than what is
+ * behind it may differ from photo to photo; the edge's line is what counts.
+ * -> the same as moFindTemplate, or n: 0 when the photos agree on too little.
+ */
+function moFindAgreement(grays, mask, w, h) {
+  const n = w * h; const k = grays.length;
+  const c2 = new Float32Array(n); const s2 = new Float32Array(n);      // twice the angle: an edge and its reverse add up
+  const sx = new Float32Array(n); const sy = new Float32Array(n);
+  const seen = new Uint8Array(n);
+  for (const g of grays) {
+    const { gx, gy } = moFindSobel(g, w, h);
+    for (let i = 0; i < n; i++) {
+      const m = Math.hypot(gx[i], gy[i]);
+      if (m < MO_FIND_FLOOR) continue;
+      const ux = gx[i] / m; const uy = gy[i] / m;
+      c2[i] += ux * ux - uy * uy; s2[i] += 2 * ux * uy;
+      sx[i] += ux; sy[i] += uy;
+      seen[i]++;
+    }
+  }
+  // Four photos agree by chance far more often than nine: the fewer there are, the closer they must agree.
+  const least = Math.min(0.9, Math.max(MO_FIND_AGREE, 1.1 - 0.05 * k));
+  const at = []; const agree = [];
+  const need = Math.max(2, Math.ceil(k * MO_FIND_AGREE));
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if ((mask && !mask[i]) || seen[i] < need) continue;
+      const r = Math.hypot(c2[i], s2[i]) / k;                           // 1 when every photo has the edge along one line
+      if (r < least) continue;
+      at.push(i); agree.push(r);
+    }
+  }
+  return { at, agree, c2, s2, sx, sy };
+}
+function moFindConsensus(grays, mask, w, h, max) {
+  const { at, agree, c2, s2, sx, sy } = moFindAgreement(grays, mask, w, h);
+  // where more agree than are asked for, those agreeing most, still spread over the mark
+  let keep = at.map((_, j) => j);
+  if (at.length > max * 2) {
+    const sorted = Float32Array.from(agree).sort();
+    const cut = sorted[Math.max(0, sorted.length - max * 2)];
+    keep = keep.filter((j) => agree[j] >= cut);
+  }
+  const m = Math.min(max, keep.length);
+  const t = { w, h, n: m, dx: new Int16Array(m), dy: new Int16Array(m), tx: new Float32Array(m), ty: new Float32Array(m) };
+  for (let j = 0; j < m; j++) {
+    const i = at[keep[Math.floor(((j + 0.5) * keep.length) / m)]];
+    const half = Math.atan2(s2[i], c2[i]) / 2;
+    let ux = Math.cos(half); let uy = Math.sin(half);
+    if (ux * sx[i] + uy * sy[i] < 0) { ux = -ux; uy = -uy; }           // facing the way most photos have it
+    t.dx[j] = i % w; t.dy[j] = Math.floor(i / w); t.tx[j] = ux; t.ty[j] = uy;
+  }
+  return t;
+}
+// Every pixel within `by` of a set one, set (`on` true) or cleared (`on` false, the set eaten back from its rim).
+function moFindSpread(bits, w, h, by, on) {
+  const out = new Uint8Array(w * h);
+  const want = on ? 1 : 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let hit = false;
+      for (let dy = -by; dy <= by && !hit; dy++) {
+        const yy = y + dy;
+        for (let dx = -by; dx <= by; dx++) {
+          if (dx * dx + dy * dy > by * by) continue;
+          const xx = x + dx;
+          const v = xx < 0 || yy < 0 || xx >= w || yy >= h ? 0 : bits[yy * w + xx];
+          if ((v ? 1 : 0) === want) { hit = true; break; }
+        }
+      }
+      out[y * w + x] = hit ? want : 1 - want;
+    }
+  }
+  return out;
+}
+/**
+ * The mark's own shape, as several photos agree on it: which pixels of what
+ * was brushed are the mark, and which are only the photo behind it. The
+ * mark's edges are the edges the photos agree on (moFindAgreement). Small
+ * breaks in them are closed, and whatever they shut in is the mark: the body
+ * of a thick letter, the eye of an O. The shape reaches `grow` pixels past
+ * the mark's edge, for the fringe round it, and never past what was brushed
+ * (`mask`). -> a byte a pixel (1: the mark), or null when the photos agree on
+ * too little to call a shape, or on so much that nothing would be spared.
+ */
+function moFindMatte(grays, mask, w, h, grow) {
+  const n = w * h;
+  const { at } = moFindAgreement(grays, mask, w, h);
+  const edge = new Uint8Array(n);
+  for (const i of at) edge[i] = 1;
+  const close = Math.max(1, Math.round(Math.min(w, h) * 0.03));
+  const wall = moFindSpread(edge, w, h, close, true);
+  // what can be reached from the frame without crossing an edge is outside the mark
+  const out = new Uint8Array(n);
+  const stack = [];
+  const visit = (i) => { if (!wall[i] && !out[i]) { out[i] = 1; stack.push(i); } };
+  for (let x = 0; x < w; x++) { visit(x); visit((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { visit(y * w); visit(y * w + w - 1); }
+  while (stack.length) {
+    const i = stack.pop(); const x = i % w; const y = (i - x) / w;
+    if (x > 0) visit(i - 1);
+    if (x < w - 1) visit(i + 1);
+    if (y > 0) visit(i - w);
+    if (y < h - 1) visit(i + w);
+  }
+  let inside = new Uint8Array(n);
+  for (let i = 0; i < n; i++) inside[i] = out[i] ? 0 : 1;
+  inside = moFindSpread(inside, w, h, close, false);      // the closing taken back: the shape's rim is the mark's edge again
+  if (grow > 0) inside = moFindSpread(inside, w, h, Math.round(grow), true);
+  let area = 0; let brushed = 0;
+  for (let i = 0; i < n; i++) {
+    const m = mask ? (mask[i] ? 1 : 0) : 1;
+    brushed += m;
+    inside[i] = inside[i] && m ? 1 : 0;
+    area += inside[i];
+  }
+  if (!brushed || area < brushed * MO_FIND_SHAPE_MIN || area > brushed * MO_FIND_SHAPE_MAX) return null;
+  return inside;
+}
+/** The box round a shape's set pixels, as shares of its width and height. */
+function moFindShapeBox(bits, w, h) {
+  let x0 = w; let y0 = h; let x1 = -1; let y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (bits[y * w + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return null;
+  return { x: x0 / w, y: y0 / h, w: (x1 - x0 + 1) / w, h: (y1 - y0 + 1) / h };
+}
+/**
+ * What is removed for a find when only the mark's shape is: the part of the
+ * find the shape covers (`part`, moFindShapeBox), a few pixels more each
+ * side, kept on the photo. Also where the whole shape is drawn inside it
+ * (mx, my, mw, mh): at the find's own place and size, not stretched.
+ */
+function moFindShapeRemoval(box, part, imgW, imgH) {
+  const pad = 3;
+  const x0 = Math.floor(box.x + part.x * box.w) - pad; const y0 = Math.floor(box.y + part.y * box.h) - pad;
+  const x1 = Math.ceil(box.x + (part.x + part.w) * box.w) + pad; const y1 = Math.ceil(box.y + (part.y + part.h) * box.h) + pad;
+  const x = moEditClamp(x0, 0, Math.max(0, imgW - 1)); const y = moEditClamp(y0, 0, Math.max(0, imgH - 1));
+  const w = Math.max(1, Math.min(imgW, x1) - x); const h = Math.max(1, Math.min(imgH, y1) - y);
+  return { x, y, w, h, mx: box.x - x, my: box.y - y, mw: box.w, mh: box.h };
+}
+/**
+ * How well the mark fits with its top left at (x, y): the mean, over its edge
+ * points, of how far the picture's edge there faces the same way. 1 is the
+ * mark itself, 0 is nothing in common, the sign is light-on-dark against
+ * dark-on-light. A mark in a corner is brushed past the photo's edge, so x
+ * and y may be below zero: the points that fall off the picture are left out
+ * of the mean, as long as MO_FIND_WHOLE of them are on it (fewer, and the
+ * missing ones count as misses). What reaches past the edge is mostly the
+ * brushing round the mark, which has no edge points; a position with many
+ * points off the picture is a few edges taken for the mark.
+ */
+function moFindScoreAt(field, w, h, t, x, y) {
+  let s = 0; let on = 0;
+  for (let j = 0; j < t.n; j++) {
+    const px = x + t.dx[j]; const py = y + t.dy[j];
+    if (px < 0 || py < 0 || px >= w || py >= h) continue;
+    const i = (py * w + px) * 2;
+    s += t.tx[j] * (field[i] - 128) + t.ty[j] * (field[i + 1] - 128);
+    on++;
+  }
+  return t.n ? s / (127 * Math.max(on, MO_FIND_WHOLE * t.n)) : 0;
+}
+/** How far past the picture's edge a mark of w x h is looked for: what may lie off the picture, each way. */
+function moFindMargin(w, h) {
+  return { mx: Math.ceil(w * (1 - MO_FIND_INSIDE)), my: Math.ceil(h * (1 - MO_FIND_INSIDE)) };
+}
+/**
+ * The fit at every position, as bytes (0..255 for 0..1, the sign dropped):
+ * from mx, my before the picture's top left to as far past its bottom right,
+ * a row being w + 2 mx positions. What the graphics card does, done here.
+ */
+function moFindDense(field, w, h, t, mx, my) {
+  const ax = mx || 0; const ay = my || 0;
+  const W = w + 2 * ax; const H = h + 2 * ay;
+  const out = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) out[y * W + x] = Math.min(255, Math.round(Math.abs(moFindScoreAt(field, w, h, t, x - ax, y - ay)) * 255));
+  return out;
+}
+/**
+ * One size of one mark on one picture: every position scored (`dense`, on
+ * the graphics card or here), those that stand out checked. `level` is the
+ * picture at this size, { field, w, h, mx, my }; `at(size)` the mark at a
+ * size, { search, check }; `dense(search)` gives { scores, stride } over the
+ * picture and its margin. -> [{ score, x, y, w, h }] in this size's pixels.
+ */
+function moFindOnLevel(level, at, size, dense) {
+  const v = at(size);
+  if (!v || v.search.n < MO_FIND_FEW) return [];
+  const { scores, stride } = dense(v.search);
+  const out = [];
+  for (const pk of moFindPeaks(scores, level.w + 2 * level.mx, level.h + 2 * level.my, stride, MO_FIND_LEAST, MO_FIND_PEAKS)) {
+    const c = moFindCheck(level.field, level.w, level.h, (z) => { const n = at(z); return n && n.check; }, size, pk.x - level.mx, pk.y - level.my);
+    if (c.score >= MO_FIND_AGAIN) out.push(c);
+  }
+  return out;
+}
+/** The positions that stand out: at least `least` (0..1), and the best within two pixels. `stride` bytes a position. -> [{ x, y, score }], best first, at most `max`. */
+function moFindPeaks(scores, w, h, stride, least, max) {
+  const floor = Math.ceil(least * 255);
+  const out = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const v = scores[(y * w + x) * stride];
+      if (v < floor) continue;
+      let top = true;
+      for (let dy = -2; dy <= 2 && top; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          if (!dx && !dy) continue;
+          const xx = x + dx; const yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const o = scores[(yy * w + xx) * stride];
+          if (o > v || (o === v && (dy < 0 || (dy === 0 && dx < 0)))) { top = false; break; }
+        }
+      }
+      if (top) out.push({ x, y, score: v / 255 });
+    }
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out.slice(0, max);
+}
+/**
+ * What to try for one mark in one photo. `share` is the mark's size on the
+ * example (the root of its area) as a share of that photo's longest side;
+ * `long` the longest side of the photo searched; `range` narrows the sizes
+ * to those the mark has been met at. Each entry is a size to try:
+ * the photo shrunk to `side` on its longest side, the mark `size` pixels
+ * there. Small marks are tried on a large picture, large marks on a small
+ * one, so the work is about the same for each.
+ */
+function moFindPlan(share, long, range) {
+  const base = Math.min(MO_FIND_BASE, Math.max(1, Math.round(long)));
+  // Never smaller than the mark can be read at, with the photo at its largest: below MO_FIND_SIZE a
+  // mark is a smudge and look-alikes score as high as it does. A mark that small on the photo is not
+  // looked for. `range` ({ from, to }, shares of the long side): the sizes the mark was met at.
+  const from = Math.max(range ? range.from : share / MO_FIND_RANGE, MO_FIND_SIZE / base);
+  const to = Math.min(range ? range.to : share * MO_FIND_RANGE, 0.9);
+  const out = [];
+  for (let r = from; r <= to * 1.0001; r *= MO_FIND_STEP) {
+    let side = base;
+    while (r * side >= MO_FIND_SIZE * 2 && side > 32) side /= 2;
+    side = Math.max(16, Math.round(side));
+    out.push({ share: r, side, size: r * side });
+  }
+  return out;
+}
+/** A mark `aspect` wide for its height (w / h), `size` the root of its area: its width and height in whole pixels. */
+function moFindShape(size, aspect) {
+  return { w: Math.max(3, Math.round(size * Math.sqrt(aspect))), h: Math.max(3, Math.round(size / Math.sqrt(aspect))) };
+}
+/**
+ * Check a candidate: the mark's full set of edge points, at the sizes round
+ * the one searched and two pixels each way, its middle held still.
+ * `at(size)` gives the mark at a size ({ w, h, n, ... }); (x, y) is where
+ * the search put its top left at `size`. To settle a find more finely the
+ * same is done on a larger picture with sizes closer together: `near` and
+ * `reach` say which sizes and how many pixels. -> { score, x, y, w, h }
+ */
+function moFindCheck(field, w, h, at, size, x, y, near, reach) {
+  const first = at(size);
+  const sizes = near || MO_FIND_NEAR; const by = reach || 2;
+  const cx = x + first.w / 2; const cy = y + first.h / 2;
+  let best = { score: 0, x, y, w: first.w, h: first.h, n: first.n };
+  const tryAt = (t) => {
+    if (!t || t.n < MO_FIND_FEW) return;
+    const x0 = Math.round(cx - t.w / 2); const y0 = Math.round(cy - t.h / 2);
+    for (let dy = -by; dy <= by; dy++) {
+      for (let dx = -by; dx <= by; dx++) {
+        const v = Math.abs(moFindScoreAt(field, w, h, t, x0 + dx, y0 + dy));
+        if (v > best.score) best = { score: v, x: x0 + dx, y: y0 + dy, w: t.w, h: t.h, n: t.n };
+      }
+    }
+  };
+  tryAt(first);
+  if (best.score < MO_FIND_LEAST) return best;          // the search was taken in by a few edges: not worth the other sizes
+  for (const f of sizes) if (f !== 1) tryAt(at(size * f));
+  return best;
+}
+function moFindOverlap(a, b) {
+  const x = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+  const y = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  const both = x * y;
+  return both <= 0 ? 0 : both / Math.min(a.w * a.h, b.w * b.h);
+}
+/** Of finds lying over each other, the best one stays, and of one mark's finds the best `most` (MO_FIND_MOST when not said). -> best first. */
+function moFindMerge(found, most) {
+  const out = []; const of = new Map();
+  const cap = most > 0 ? most : MO_FIND_MOST;
+  for (const f of [...found].sort((a, b) => b.score - a.score)) {
+    if (out.some((o) => moFindOverlap(o, f) > 0.3)) continue;
+    const n = of.get(f.mark) || 0;
+    if (n >= cap) continue;
+    of.set(f.mark, n + 1);
+    out.push(f);
+  }
+  return out;
+}
+/**
+ * The sizes a mark was met at, as the sizes to look for it from now on:
+ * `shares` are its sizes on the photos it was learnt from (shares of each
+ * photo's long side). -> { from, to }, or null with fewer than three.
+ */
+function moFindRange(shares) {
+  const v = (shares || []).filter((x) => x > 0);
+  if (v.length < 3) return null;
+  return { from: Math.min(...v) / MO_FIND_NARROW, to: Math.max(...v) * MO_FIND_NARROW };
+}
+/**
+ * What a find is called: 'found', 'unsure' (shown, left out until agreed to)
+ * or nothing. `again` is its score at the second look, `finer` whether that
+ * look had the mark larger than the first; without a finer look the first
+ * look's `score` is all there is and is asked more of.
+ */
+function moFindVerdict(score, again, finer) {
+  if (finer) return again >= MO_FIND_FOUND ? 'found' : again >= MO_FIND_UNSURE ? 'unsure' : '';
+  return score >= MO_FIND_FOUND_ALONE ? 'found' : score >= MO_FIND_UNSURE_ALONE ? 'unsure' : '';
+}
+/**
+ * What is removed for a find: the find grown a little each side, kept on the
+ * photo. Also where the mark's mask is drawn inside it (mx, my, mw, mh), since
+ * a box cut by the photo's edge is no longer the mask's own shape.
+ */
+function moFindRemoval(box, imgW, imgH) {
+  const pad = Math.max(3, Math.round(Math.min(box.w, box.h) * MO_FIND_GROW));
+  const x0 = Math.round(box.x - pad); const y0 = Math.round(box.y - pad);
+  const w0 = Math.round(box.w + 2 * pad); const h0 = Math.round(box.h + 2 * pad);
+  const x = moEditClamp(x0, 0, Math.max(0, imgW - 1)); const y = moEditClamp(y0, 0, Math.max(0, imgH - 1));
+  const w = Math.max(1, Math.min(imgW, x0 + w0) - x); const h = Math.max(1, Math.min(imgH, y0 + h0) - y);
+  return { x, y, w, h, mx: x0 - x, my: y0 - y, mw: w0, mh: h0 };
+}
+/** A grey picture resized by averaging (shrinking) or by nearest pixel (growing). For tests and for where there is no canvas. */
+function moFindResize(gray, w, h, w2, h2) {
+  const out = new Float32Array(w2 * h2);
+  const sx = w / w2; const sy = h / h2;
+  for (let y = 0; y < h2; y++) {
+    const y0 = Math.floor(y * sy); const y1 = Math.max(y0 + 1, Math.min(h, Math.ceil((y + 1) * sy)));
+    for (let x = 0; x < w2; x++) {
+      const x0 = Math.floor(x * sx); const x1 = Math.max(x0 + 1, Math.min(w, Math.ceil((x + 1) * sx)));
+      let s = 0;
+      for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) s += gray[yy * w + xx];
+      out[y * w2 + x] = s / ((y1 - y0) * (x1 - x0));
+    }
+  }
+  return out;
+}
+// @mo-edit-pure-end
+
+// ── Data ───────────────────────────────────────────────────────────────────
+
+const MO_EDIT_TYPE = 'media-organizer-image';
+const MO_EDIT_INSTANCE = 'edit:main';
+const MO_EDIT_LAST_KEY = 'edit_last_photo';
+// The Remove model: LaMa, as exported to ONNX by Carve (Apache-2.0). Named by the hash of the file that was tested.
+const MO_EDIT_REMOVE_MODEL = {
+  name: 'LaMa',
+  url: 'https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx',
+  sha256: '1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6',
+  bytes: 208044816,
+};
+
+const _moEditSessions = new Map();     // photo id -> { history, histIdx, view }: undo and zoom survive a tab switch
+const _moEditOpen = new Set();         // the editors on screen, newest last
+const _moEditCollapsed = new Set(['effects', 'detail', 'curve', 'mixer', 'grading']);   // folded shut, for every editor this session
+const _moEditUi = { presets: true, filmstrip: true, brush: 40 };
+let _moEditRequest = 0;                // the photo Edit Image was last asked for
+let _moEditClipboard = null;           // Copy Edit: a look
+
+async function moEditLoadRecipe(photoId) {
+  const row = await db.get('SELECT recipe_json FROM mo_photo_edits WHERE photo_id = ?', [photoId]);
+  if (!row) return moEditDefaultRecipe();
+  try { return moEditNormalizeRecipe(JSON.parse(row.recipe_json)); } catch { return moEditDefaultRecipe(); }
+}
+
+// A recipe that would write nothing is no edit: its row goes.
+async function moEditSaveRecipe(photoId, recipe) {
+  if (!moEditHasWork(recipe)) { await db.run('DELETE FROM mo_photo_edits WHERE photo_id = ?', [photoId]); return; }
+  await db.run(
+    `INSERT INTO mo_photo_edits (photo_id, recipe_json) VALUES (?, ?)
+     ON CONFLICT(photo_id) DO UPDATE SET recipe_json = excluded.recipe_json, updated_at = datetime('now')`,
+    [photoId, JSON.stringify(recipe)],
+  );
+}
+
+async function moEditPresetsLoad() {
+  const rows = await db.all('SELECT id, name, look_json FROM mo_edit_presets ORDER BY position, id');
+  return (rows || []).map((r) => { let look = {}; try { look = JSON.parse(r.look_json); } catch { look = {}; } return { id: Number(r.id), name: r.name, look }; });
+}
+
+function moEditBase64ToBytes(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+async function moEditReadBytes(filePath) {
+  const res = await window.parallxElectron.fs.readFile(filePath);
+  if (!res || res.error || !res.content) throw new Error((res && res.error && res.error.message) || 'The file could not be read.');
+  return moEditBase64ToBytes(res.encoding === 'base64' ? res.content : btoa(res.content));
+}
+async function moEditWriteBytes(filePath, bytes) {
+  const b64 = await moTagBlobToBase64(new Blob([bytes]));
+  const res = await window.parallxElectron.fs.writeFile(filePath, b64, 'base64');
+  if (res && res.error) throw new Error(res.error.message || String(res.error));
+}
+
+/**
+ * The photo's pixels, upright, with their own transparency. A format the
+ * window cannot decode (HEIC) is read from its display copy. Also returns the
+ * file's bytes, which Save As Copy needs for the camera data.
+ */
+async function moEditDecode(filePath) {
+  let p = filePath;
+  if (MO_HEIC_RE.test(p)) { const copy = await moHeicDisplayCopy(p, _api); if (copy) p = copy; }
+  const bytes = await moEditReadBytes(p);
+  const ext = p.slice(p.lastIndexOf('.')).toLowerCase();
+  const blob = new Blob([bytes], { type: _MIME_FROM_EXT[ext] || 'application/octet-stream' });
+  let bitmap;
+  try { bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image', premultiplyAlpha: 'none', colorSpaceConversion: 'default' }); } catch { throw new Error('The photo could not be decoded.'); }
+  return { bitmap, bytes: p === filePath ? bytes : null };
+}
+
+// Where a photo's removal patches live: <workspace>/.parallx/extensions/media-organizer/edits/<photo id>.
+function moEditDir(photoId) {
+  const thumbs = getThumbDir(_api);
+  if (!thumbs) return null;
+  const sep = thumbs.includes('\\') ? '\\' : '/';
+  return thumbs.slice(0, thumbs.replace(/[\\/]+$/, '').lastIndexOf(sep)) + sep + 'edits' + sep + String(photoId);
+}
+function moEditPatchPath(photoId, file) {
+  const dir = moEditDir(photoId);
+  if (!dir || !/^[\w.-]+\.png$/.test(file)) return null;
+  return dir + (dir.includes('\\') ? '\\' : '/') + file;
+}
+
+/**
+ * The picture the recipe is drawn from: the photo itself, or the photo with
+ * its removal patches laid over it. A patch that is missing is left out.
+ */
+async function moEditWorkSource(photoId, bitmap, removals) {
+  if (!removals || !removals.length) return bitmap;
+  const cv = document.createElement('canvas');
+  cv.width = bitmap.width; cv.height = bitmap.height;
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(bitmap, 0, 0);
+  for (const m of removals) {
+    const p = moEditPatchPath(photoId, m.file);
+    if (!p) continue;
+    try {
+      const patch = await createImageBitmap(new Blob([await moEditReadBytes(p)], { type: 'image/png' }));
+      ctx.drawImage(patch, m.x, m.y, m.w, m.h);
+      patch.close();
+    } catch (err) { console.warn('[MediaOrganizer] a removal patch could not be read:', m.file, err && err.message); }
+  }
+  return cv;
+}
+
+// Patches no recipe or undo step names any more are deleted.
+async function moEditSweepPatches(photoId, keep) {
+  const dir = moEditDir(photoId);
+  if (!dir) return;
+  try {
+    if (!(await window.parallxElectron.fs.exists(dir))) return;
+    const list = await window.parallxElectron.fs.readdir(dir);
+    const names = ((list && (list.entries || list.files || list)) || []).map((e) => (typeof e === 'string' ? e : e && e.name)).filter(Boolean);
+    const sep = dir.includes('\\') ? '\\' : '/';
+    for (const n of names) if (/\.png$/i.test(n) && !keep.has(n)) { try { await window.parallxElectron.fs.delete(dir + sep + n, { useTrash: false }); } catch { /* in use */ } }
+  } catch { /* no folder */ }
+}
+
+/**
+ * The recipe at full size, on a 2D canvas. The output is drawn in tiles, each
+ * from its own part of the source, so neither the size of the photo nor the
+ * graphics card's texture limit changes a pixel. `flatten` puts white under
+ * transparent pixels (JPEG has none).
+ */
+async function moEditRenderFull(source, recipe, flatten, onTile) {
+  const imgW = source.width; const imgH = source.height;
+  const geo = moEditAffine(recipe, imgW, imgH);
+  if (geo.outW > MO_EDIT_MAX_SIDE || geo.outH > MO_EDIT_MAX_SIDE || geo.outW * geo.outH > MO_EDIT_MAX_PIXELS) {
+    throw new Error(`The picture is too large to save from here (${geo.outW} × ${geo.outH} pixels).`);
+  }
+  const out = document.createElement('canvas');
+  out.width = geo.outW; out.height = geo.outH;
+  const ctx = out.getContext('2d');
+  if (!ctx) throw new Error('There is not enough memory for a picture this large.');
+  if (flatten) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, out.width, out.height); }
+  const glCanvas = document.createElement('canvas');
+  const engine = moImageEngine(glCanvas);
+  if (!engine) throw new Error('WebGL is not available, so the picture cannot be rendered.');
+  try {
+    const params = moEditEngineLook(recipe, false);
+    const margin = moEditMargin(recipe);
+    const tiles = moEditTiles(geo.outW, geo.outH, Math.min(MO_EDIT_TILE, Math.floor(engine.maxTexture / 2)));
+    let drawn = 0;
+    for (const tile of tiles) {
+      const part = moEditTileSource(geo.m, tile, geo.outW, geo.outH, imgW, imgH, margin);
+      const whole = part.sx === 0 && part.sy === 0 && part.sw === imgW && part.sh === imgH;
+      const piece = whole ? source : await createImageBitmap(source, part.sx, part.sy, part.sw, part.sh, { premultiplyAlpha: 'none' });
+      try {
+        engine.setSource(piece, {});
+        engine.draw(Object.assign({}, params, { view: part.view, m: part.m, outSize: [geo.outW, geo.outH], opaque: false }), tile.w, tile.h);
+        ctx.drawImage(glCanvas, tile.x, tile.y);
+      } finally { if (!whole && piece.close) piece.close(); }
+      drawn++;
+      if (onTile) onTile(drawn / tiles.length);
+      if (tiles.length > 1) await new Promise((resolve) => setTimeout(resolve, 0));   // keep the window responsive
+    }
+  } finally { engine.dispose(); }
+  return out;
+}
+
+// Enlarge a written picture with the upscaler (Enhance). The model always runs at 4x; 2x is that, halved.
+// onStage(stage, within): 'enlarge' with how far the upscaler says it is, then 'halve'.
+async function moEditUpscaleFile(input, output, scale, modelKey, onStage) {
+  const paths = moUpscaleToolPaths();
+  const exe = _toolPaths.realesrgan || paths.exe;
+  const model = (MO_UPSCALE_MODELS[modelKey] || MO_UPSCALE_MODELS.photo).name;
+  let setting = 0;
+  try { setting = Number(_api.workspace.getConfiguration('mediaOrganizer').get('upscaleTileSize', 0)) || 0; } catch { setting = 0; }
+  const plan = moUpscaleTilePlan(setting, await moUpscaleVramMiB());
+  const sep = output.includes('\\') ? '\\' : '/';
+  const target = scale === MO_UPSCALE_MODEL_SCALE ? output : output.slice(0, output.lastIndexOf(sep) + 1) + moUpscaleTempName(output.slice(output.lastIndexOf(sep) + 1), 'png');
+  const started = Date.now();
+  let last = null; let written = false;
+  for (const tile of plan) {
+    const args = ['-i', input, '-o', target, '-n', model, '-s', String(MO_UPSCALE_MODEL_SCALE), ...(Number(tile) > 0 ? ['-t', String(Math.round(Number(tile)))] : []), '-m', paths.modelsDir, '-f', 'png'];
+    let said = '';
+    if (onStage) onStage('enlarge', 0);
+    try {
+      const r = await window.parallxElectron.terminal.execStream({ command: exe, args, timeout: MO_UPSCALE_TIMEOUT_MS }, {
+        onStdout: () => {},
+        onStderr: (chunk) => {
+          said = (said + chunk).slice(-4000);
+          const p = moEditUpscalePercent(chunk);
+          if (p !== null && onStage) onStage('enlarge', p);
+        },
+      });
+      last = { exitCode: r.exitCode, stderr: said + (r.error && r.error.message ? '\n' + r.error.message : '') };
+    } catch (err) { last = { exitCode: -1, stderr: (err && err.message) || String(err) }; }
+    written = !!last && last.exitCode === 0 && await window.parallxElectron.fs.exists(target);
+    if (written) break;
+  }
+  if (!written) throw new Error(((last && (last.stderr || last.stdout)) || 'the upscaler did not write a file').toString().trim().split(/\r?\n/).pop());
+  console.log(`[MediaOrganizer] enhance: upscaled in ${Math.round((Date.now() - started) / 100) / 10} s`);
+  if (target === output) return;
+  if (onStage) onStage('halve', 0);
+  const halving = Date.now();
+  try {
+    const down = moDownscaleTool();
+    if (!down) throw new Error('2x needs ImageMagick or ffmpeg to halve the 4x picture.');
+    const d = await window.parallxElectron.terminal.exec(moBuildDownscaleCommand(down.kind, down.path, target, output), { timeout: MO_UPSCALE_TIMEOUT_MS });
+    if (!d || d.exitCode !== 0 || !(await window.parallxElectron.fs.exists(output))) throw new Error(((d && (d.stderr || d.stdout)) || 'the picture could not be halved').toString().trim().split(/\r?\n/).pop());
+    console.log(`[MediaOrganizer] enhance: halved in ${Math.round((Date.now() - halving) / 100) / 10} s`);
+  } finally { try { await window.parallxElectron.fs.delete(target, { useTrash: false }); } catch { /* temp file */ } }
+}
+
+// Enhance needs the upscaler, and a result it can hold. Throws with the reason when a save cannot enlarge.
+async function moEditCanEnlarge(recipe, source) {
+  const scale = recipe.enhance && recipe.enhance.scale > 0 ? recipe.enhance.scale : 0;
+  if (!scale) return;
+  const geo = moEditAffine(recipe, source.width, source.height);
+  if (!(await moUpscaleReady())) throw new Error('Enhance needs the upscaler. Choose Set Up The Upscaler in the Enhance tool.');
+  if (!moUpscaleGuard(geo.outW, geo.outH, scale).ok) throw new Error(`Enlarged ${scale}x the picture would be over ${Math.round(MO_UPSCALE_MAX_OUTPUT_PIXELS / 1e6)} megapixels.`);
+}
+
+// tell(stage, within): how far along a save is, for whoever asked. `library` is what the last stage is called.
+function moEditTeller(onProgress, library, enlarging, edited) {
+  const labels = { draw: 'Drawing the edit', write: 'Writing the file', enlarge: 'Enlarging', halve: 'Bringing it to size', library };
+  return (stage, within) => { if (!onProgress) return; try { onProgress({ label: labels[stage], fraction: moEditStageFraction(stage, within, enlarging, edited) }); } catch { /* the editor closed */ } };
+}
+
+function moEditJpegQuality() {
+  let q = 92;
+  try { q = Number(_api.workspace.getConfiguration('mediaOrganizer').get('editJpegQuality', 92)) || 92; } catch { q = 92; }
+  return moEditClamp(q / 100, 0.5, 1);
+}
+
+// The upscaler writes a PNG. Where a JPEG is wanted it is made from that one, with the original's camera data.
+async function moEditPngToJpeg(pngPath, outPath, origBytes) {
+  const bitmap = await createImageBitmap(new Blob([await moEditReadBytes(pngPath)], { type: 'image/png' }));
+  try {
+    const cv = document.createElement('canvas');
+    cv.width = bitmap.width; cv.height = bitmap.height;
+    const ctx = cv.getContext('2d');
+    if (!ctx) throw new Error('There is not enough memory for a picture this large.');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(bitmap, 0, 0);
+    const blob = await new Promise((resolve) => cv.toBlob(resolve, 'image/jpeg', moEditJpegQuality()));
+    if (!blob) throw new Error('The picture could not be encoded.');
+    let bytes = new Uint8Array(await blob.arrayBuffer());
+    if (origBytes) bytes = moEditCarryExif(origBytes, bytes, cv.width, cv.height);
+    await moEditWriteBytes(outPath, bytes);
+  } finally { try { bitmap.close(); } catch { /* gone */ } }
+}
+
+/**
+ * The recipe written to `outPath` as a JPEG or a PNG (`ext`), enlarged when
+ * Enhance is on. What Save As Copy and Save both write; where it goes and
+ * what the library is told is theirs.
+ */
+async function moEditWritePicture(photoId, srcPath, outPath, ext, source, origBytes, recipe, tell) {
+  const sep = srcPath.includes('\\') ? '\\' : '/';
+  const base = srcPath.slice(srcPath.lastIndexOf(sep) + 1);
+  const scale = recipe.enhance && recipe.enhance.scale > 0 ? recipe.enhance.scale : 0;
+  const edited = !moEditIsNeutral(recipe);
+  const camera = origBytes && /\.jpe?g$/i.test(base) ? origBytes : null;
+  const stamp = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const gone = async (p) => { if (p) { try { await window.parallxElectron.fs.delete(p, { useTrash: false }); } catch { /* temp file */ } } };
+
+  if (!scale) {
+    tell('draw', 0);
+    const canvas = await moEditRenderFull(source, recipe, ext === 'jpg', (done) => tell('draw', done));
+    tell('write', 0);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, ext === 'png' ? 'image/png' : 'image/jpeg', moEditJpegQuality()));
+    if (!blob) throw new Error('The picture could not be encoded.');
+    let bytes = new Uint8Array(await blob.arrayBuffer());
+    if (ext === 'jpg' && camera) bytes = moEditCarryExif(camera, bytes, canvas.width, canvas.height);
+    await moEditWriteBytes(outPath, bytes);
+    return;
+  }
+
+  const edits = edited || ext !== 'png' ? moEditDir(photoId) : null;
+  if ((edited || ext !== 'png') && !edits) throw new Error('Enhance needs an open workspace.');
+  let drawn = null;   // the edit as a lossless picture in the workspace, enlarged from there, then removed
+  let large = null;   // the enlarged PNG a JPEG is made from
+  try {
+    if (edited) {
+      tell('draw', 0);
+      const canvas = await moEditRenderFull(source, recipe, false, (done) => tell('draw', done));
+      tell('write', 0);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('The picture could not be encoded.');
+      drawn = edits + sep + `enhance-${stamp}.png`;
+      await moEditWriteBytes(drawn, new Uint8Array(await blob.arrayBuffer()));
+    }
+    if (ext === 'png') {
+      await moEditUpscaleFile(drawn || srcPath, outPath, scale, recipe.enhance.model, tell);
+    } else {
+      large = edits + sep + `enlarged-${stamp}.png`;
+      await moEditUpscaleFile(drawn || srcPath, large, scale, recipe.enhance.model, tell);
+      await moEditPngToJpeg(large, outPath, camera);
+    }
+  } finally { await gone(drawn); await gone(large); }
+}
+
+/**
+ * Save As Copy: the recipe rendered beside the original (enlarged when
+ * Enhance is on), taken into the library like a scan and given the
+ * original's tags, albums, rating and details. It is a photo of its own in
+ * the library, beside the original.
+ * `source` is the photo with its removals. opts.quiet: do not tell the library. onProgress({ label, fraction })
+ * is told how far along it is. Returns { name, path, photoId } of the copy
+ * (photoId is null when the library could not take it in).
+ */
+async function moEditSaveCopy(photoId, srcPath, source, origBytes, recipe, onProgress, opts) {
+  const sep = srcPath.includes('\\') ? '\\' : '/';
+  const dir = srcPath.slice(0, srcPath.lastIndexOf(sep));
+  const base = srcPath.slice(srcPath.lastIndexOf(sep) + 1);
+  const scale = recipe.enhance && recipe.enhance.scale > 0 ? recipe.enhance.scale : 0;
+  const edited = !moEditIsNeutral(recipe);
+  await moEditCanEnlarge(recipe, source);
+  const ext = moEditOutputExt(base, scale);
+  let outPath = null;
+  for (let n = 1; n < 100; n++) {
+    const candidate = dir + sep + moEditOutputName(base, n, scale, edited);
+    if (!(await window.parallxElectron.fs.exists(candidate))) { outPath = candidate; break; }
+  }
+  if (!outPath) throw new Error('No free file name beside the original.');
+
+  const tell = moEditTeller(onProgress, 'Adding it to the library', scale > 0, edited);
+  await moEditWritePicture(photoId, srcPath, outPath, ext, source, origBytes, recipe, tell);
+  tell('library', 0);
+  let photo = null;
+  try { photo = await moIngestNewImage(outPath); } catch (err) { console.warn('[MediaOrganizer] the saved copy could not be taken into the library:', err?.message || err); }
+  if (photo) await moTransferPhotoMetadata(photoId, photo.id, base);
+  tell('library', 1);
+  // opts.quiet: one of many copies; whoever writes them tells the library once, when the last is written
+  if (!(opts && opts.quiet)) {
+    _notifySidebarRefresh();
+    try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* no grid open */ }
+  }
+  return { name: outPath.slice(outPath.lastIndexOf(sep) + 1), path: outPath, photoId: photo ? Number(photo.id) : null };
+}
+
+// Save As Copy for a photo that is not open: decode it, lay its removals over it, write the copy.
+async function moEditSaveCopyOf(photoId) {
+  const srcPath = await moResolveItemPath({ type: 'photo', id: photoId });
+  if (!srcPath || moIsGifPath(srcPath)) return null;
+  const recipe = await moEditLoadRecipe(photoId);
+  if (!moEditHasWork(recipe)) return null;
+  const decoded = await moEditDecode(srcPath);
+  try {
+    const source = await moEditWorkSource(photoId, decoded.bitmap, recipe.removals);
+    return await moEditSaveCopy(photoId, srcPath, source, decoded.bytes, recipe);
+  } finally { try { decoded.bitmap.close(); } catch { /* gone */ } }
+}
+
+// The checksum the library holds for a photo's file: what its thumbnail is kept under.
+async function moEditHeldChecksum(photoId) {
+  const row = await db.get(
+    `SELECT fp.value AS md5 FROM mo_photos_files pf JOIN mo_fingerprints fp ON fp.file_id = pf.file_id AND fp.type = 'md5'
+      WHERE pf.photo_id = ? AND pf.is_primary = 1`, [photoId]);
+  return row ? row.md5 : null;
+}
+
+/**
+ * A photo's file holds another picture now: the library's record of it is
+ * brought up to date (size, checksum, dimensions, camera data), its thumbnail
+ * is made again and the old one removed, and nothing keeps showing the old
+ * picture. The photo keeps its place: same item, tags, albums and rating.
+ */
+async function moEditRefreshRecord(photoId, filePath, oldMd5) {
+  const sep = filePath.includes('\\') ? '\\' : '/';
+  const dir = filePath.slice(0, filePath.lastIndexOf(sep));
+  const name = filePath.slice(filePath.lastIndexOf(sep) + 1);
+  const st = await window.parallxElectron.fs.stat(filePath);
+  if (!st || st.error) throw new Error('The saved file could not be read back.');
+  const folder = await FolderQueries.findOrCreate(dir);
+  const result = await processFile({ path: filePath, name, size: st.size, mtime: st.mtime, fileType: 'image', folderId: folder.id });
+  const fileId = result && result.fileId;
+  let md5 = null;
+  if (fileId) {
+    // the look-alike hash was the old picture's: it is worked out again when next wanted
+    try { await db.run('UPDATE mo_image_files SET phash = NULL WHERE file_id = ?', [fileId]); } catch { /* no such column in an old library */ }
+    md5 = ((await FingerprintQueries.findByFile(fileId)).find((f) => f.type === 'md5') || {}).value || null;
+    const dims = await ImageFileQueries.findByFileId(fileId);
+    if (md5 && _api) {
+      try { await generateImageThumbnail(md5, filePath, dims ? dims.width : 0, dims ? dims.height : 0, _api, true); } catch (err) { console.warn('[MediaOrganizer] the thumbnail could not be made again:', err && err.message); }
+    }
+  }
+  if (oldMd5 && oldMd5 !== md5 && _api) { try { await _sweepOrphanThumbs(_api, [oldMd5]); } catch { /* the old thumbnail stays until the next sweep */ } }
+  _moResolvedThumbs.delete(`photo:${photoId}`);
+  _revokeCachedBlobUrlsFor([filePath]);
+}
+
+/**
+ * Save: the recipe rendered over the original file, which it replaces
+ * (enlarged when Enhance is on). The picture is written beside the original
+ * under a name the library turns away and then takes the original's name in
+ * one step, so a save that fails leaves the original as it was. The photo
+ * stays the same item in the library; its edit is cleared, since the file
+ * holds it now. A JPEG stays a JPEG and a PNG a PNG; any other kind of file
+ * can only be saved as a copy. opts.quiet: do not tell the library's views.
+ * Returns { name, path, photoId }.
+ */
+async function moEditSaveOver(photoId, srcPath, source, origBytes, recipe, onProgress, opts) {
+  const sep = srcPath.includes('\\') ? '\\' : '/';
+  const dir = srcPath.slice(0, srcPath.lastIndexOf(sep));
+  const base = srcPath.slice(srcPath.lastIndexOf(sep) + 1);
+  const ext = moEditSaveOverExt(base);
+  if (!ext) throw new Error(`${base} is a kind of file the editor cannot write. Choose Save As Copy.`);
+  if (!moEditHasWork(recipe)) throw new Error('Nothing has been changed.');
+  const scale = recipe.enhance && recipe.enhance.scale > 0 ? recipe.enhance.scale : 0;
+  await moEditCanEnlarge(recipe, source);
+  const tell = moEditTeller(onProgress, 'Updating the library', scale > 0, !moEditIsNeutral(recipe));
+  const oldMd5 = await moEditHeldChecksum(photoId);
+  const saving = dir + sep + moEditSavingName(base, Math.random().toString(36).slice(2, 8));
+  try {
+    await moEditWritePicture(photoId, srcPath, saving, ext, source, origBytes, recipe, tell);
+    const moved = await window.parallxElectron.fs.rename(saving, srcPath);
+    if (moved && moved.error) throw new Error(`The original could not be replaced (${moved.error.message || moved.error.code || 'it may be open in another program'}).`);
+  } catch (err) {
+    try { await window.parallxElectron.fs.delete(saving, { useTrash: false }); } catch { /* never written */ }
+    throw err;
+  }
+  tell('library', 0);
+  // the file holds the edit now: drawn from again, the recipe would be applied twice
+  await db.run('DELETE FROM mo_photo_edits WHERE photo_id = ?', [photoId]);
+  _moEditSessions.delete(Number(photoId));
+  await moEditSweepPatches(photoId, new Set());
+  await moEditRefreshRecord(photoId, srcPath, oldMd5);
+  tell('library', 1);
+  if (!(opts && opts.quiet)) moEditSavedOver([Number(photoId)]);
+  return { name: base, path: srcPath, photoId: Number(photoId) };
+}
+
+// Every view is told that these photos' files hold another picture now; an editor showing one opens it afresh.
+function moEditSavedOver(photoIds) {
+  _notifySidebarRefresh();
+  try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* no grid open */ }
+  try { document.dispatchEvent(new CustomEvent('mo:edit-saved-over', { detail: { photoIds } })); } catch { /* no editor open */ }
+}
+
+// Save for a photo that is not open: decode it, lay its removals over it, write it over the original.
+async function moEditSaveOverOf(photoId) {
+  const srcPath = await moResolveItemPath({ type: 'photo', id: photoId });
+  if (!srcPath || moIsGifPath(srcPath)) return null;
+  const recipe = await moEditLoadRecipe(photoId);
+  if (!moEditHasWork(recipe)) return null;
+  const decoded = await moEditDecode(srcPath);
+  try {
+    const source = await moEditWorkSource(photoId, decoded.bitmap, recipe.removals);
+    return await moEditSaveOver(photoId, srcPath, source, decoded.bytes, recipe, null, { quiet: true });
+  } finally { try { decoded.bitmap.close(); } catch { /* gone */ } }
+}
+
+/**
+ * How several edited photos are to be saved: 'copy' (a copy beside each
+ * original), 'over' (each original replaced) or null (not now). `overable`
+ * is how many of the `n` are of a kind Save can write.
+ */
+function moEditAskSave(n, overable) {
+  return new Promise((resolve) => {
+    const overlay = moEl('div', 'mo-bulk-dialog-overlay');
+    const dialog = moEl('div', 'mo-bulk-dialog');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-label', 'Save The Edit');
+    overlay.appendChild(dialog);
+    dialog.appendChild(moEl('h3', null, { textContent: `The edit is on ${n} photo${n === 1 ? '' : 's'}` }));
+    const text = moEl('div', 'mo-bulk-dialog-section', {
+      textContent: `Save As Copy writes a copy of each beside its original and leaves the original as it is. Save Over Original replaces each file with the edited picture, which cannot be brought back.${overable < n ? ` ${n - overable} of them ${n - overable === 1 ? 'is' : 'are'} of a kind that can only be saved as a copy.` : ''} Either way each photo opens in the editor with the edit on it until it is saved.`,
+    });
+    text.style.cssText = 'font-size:12px;line-height:1.5;';
+    dialog.appendChild(text);
+    const footer = moEl('div', 'mo-bulk-dialog-footer');
+    const later = moEl('button', null, { type: 'button', textContent: 'Not Now' });
+    const over = moEl('button', null, { type: 'button', textContent: overable === 1 ? 'Save Over Original' : `Save Over ${overable} Originals` });
+    const copy = moEl('button', 'primary', { type: 'button', textContent: n === 1 ? 'Save As Copy' : `Save ${n} Copies` });
+    over.disabled = !overable;
+    footer.append(later, over, copy);
+    dialog.appendChild(footer);
+    let answered = false;
+    const answer = (how) => { if (answered) return; answered = true; overlay.remove(); resolve(how); };
+    later.addEventListener('click', () => answer(null));
+    over.addEventListener('click', () => answer('over'));
+    copy.addEventListener('click', () => answer('copy'));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) answer(null); });
+    overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') answer(null); });
+    document.body.appendChild(overlay);
+    copy.focus();
+  });
+}
+
+/**
+ * Paste Edit onto photos in the library: each takes the copied look into its
+ * own edit (its crop and removals stay), and, when asked, each is saved: as
+ * a copy beside its original, or over it.
+ */
+async function moEditPasteTo(api, photoIds) {
+  if (!_moEditClipboard) { api.window.showInformationMessage('Nothing to paste yet. Open a photo in the editor and choose Copy Edit.'); return; }
+  const ids = [...new Set((photoIds || []).map(Number).filter((n) => n > 0))];
+  const usable = [];
+  for (const id of ids) { const p = await moResolveItemPath({ type: 'photo', id }); if (p && !moIsGifPath(p)) usable.push(id); }
+  if (!usable.length) { api.window.showInformationMessage('Nothing to paste onto: no photo with a file on disk in that selection.'); return; }
+  for (const id of usable) await moEditSaveRecipe(id, moEditApplyLook(await moEditLoadRecipe(id), _moEditClipboard));
+  document.dispatchEvent(new CustomEvent('mo:edit-changed', { detail: { photoIds: usable } }));
+  const n = usable.length;
+  const overable = [];
+  for (const id of usable) { const p = await moResolveItemPath({ type: 'photo', id }); if (p && moEditSaveOverExt(p.slice(Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')) + 1))) overable.push(id); }
+  const how = await moEditAskSave(n, overable.length);
+  if (!how) return;
+  const list = how === 'over' ? overable : usable;
+  let done = 0; const failures = []; const over = [];
+  for (let i = 0; i < list.length; i++) {
+    if (_statusBarItem) { _statusBarItem.text = `$(sync~spin) Saving ${i + 1} / ${list.length}`; _statusBarItem.show(); }
+    try {
+      if (how === 'over') { if (await moEditSaveOverOf(list[i])) { done++; over.push(list[i]); } }
+      else if (await moEditSaveCopyOf(list[i])) done++;
+    } catch (err) { failures.push((err && err.message) || String(err)); }
+  }
+  if (_statusBarItem) _statusBarItem.hide();
+  if (over.length) moEditSavedOver(over);
+  const what = how === 'over' ? `Saved over ${done} of ${list.length} original${list.length === 1 ? '' : 's'}.` : `Saved ${done} of ${n} cop${n === 1 ? 'y' : 'ies'}.`;
+  const text = `${what}${failures.length ? ` ${failures.length} failed: ${failures[0]}` : ''}`;
+  if (failures.length && !done) api.window.showErrorMessage(text); else api.window.showInformationMessage(text);
+}
+
+// ── Remove: the model ──
+// -> 'ready', 'model' (not fetched yet), 'runtime' (the runner is missing) or 'unavailable'
+async function moEditRemoveState() {
+  const m = window.parallxElectron && window.parallxElectron.models;
+  if (!m) return 'unavailable';
+  try {
+    const s = await m.status(MO_EDIT_REMOVE_MODEL);
+    if (!s || !s.ok) return 'unavailable';
+    if (!s.runtime) return 'runtime';
+    return s.present ? 'ready' : 'model';
+  } catch { return 'unavailable'; }
+}
+
+/**
+ * Fill a brushed mark. `source` is the picture as it stands, `maskCanvas` a
+ * canvas of the mark's box with the stroke painted opaque, `box` that box in
+ * source pixels. Returns a patch the size of the box: the model's pixels
+ * where the stroke was, fading out at its edge, clear elsewhere.
+ */
+async function moEditFill(source, maskCanvas, box) {
+  const S = MO_EDIT_MODEL_SIDE;
+  const win = moEditRemovalWindow(box, source.width, source.height);
+  const small = document.createElement('canvas'); small.width = S; small.height = S;
+  const sctx = small.getContext('2d', { willReadFrequently: true });
+  sctx.imageSmoothingQuality = 'high';
+  sctx.drawImage(source, win.x, win.y, win.side, win.side, 0, 0, S, S);
+  const px = sctx.getImageData(0, 0, S, S).data;
+  const mk = document.createElement('canvas'); mk.width = S; mk.height = S;
+  const mctx = mk.getContext('2d', { willReadFrequently: true });
+  const k = S / win.side;
+  mctx.drawImage(maskCanvas, (box.x - win.x) * k, (box.y - win.y) * k, box.w * k, box.h * k);
+  const md = mctx.getImageData(0, 0, S, S).data;
+  const image = new Float32Array(3 * S * S); const mask = new Float32Array(S * S);
+  let marked = 0;
+  for (let p = 0; p < S * S; p++) {
+    image[p] = px[p * 4] / 255; image[S * S + p] = px[p * 4 + 1] / 255; image[2 * S * S + p] = px[p * 4 + 2] / 255;
+    if (md[p * 4 + 3] > 8) { mask[p] = 1; marked++; }
+  }
+  if (!marked) throw new Error('The mark is too small to see.');
+  const r = await window.parallxElectron.models.run(MO_EDIT_REMOVE_MODEL.sha256, { image: { data: image, dims: [1, 3, S, S] }, mask: { data: mask, dims: [1, 1, S, S] } });
+  if (!r || !r.ok) throw new Error((r && r.error) || 'The model did not answer.');
+  const o = r.outputs && (r.outputs.output || Object.values(r.outputs)[0]);
+  if (!o || !o.data || o.data.length < 3 * S * S) throw new Error('The model answered with nothing usable.');
+  let max = 0;
+  for (let i = 0; i < o.data.length; i += 97) if (o.data[i] > max) max = o.data[i];
+  const gain = max > 2 ? 1 : 255;                       // some exports answer 0..255, some 0..1
+  const filled = sctx.createImageData(S, S);
+  for (let p = 0; p < S * S; p++) {
+    filled.data[p * 4] = moEditClamp(Math.round(o.data[p] * gain), 0, 255);
+    filled.data[p * 4 + 1] = moEditClamp(Math.round(o.data[S * S + p] * gain), 0, 255);
+    filled.data[p * 4 + 2] = moEditClamp(Math.round(o.data[2 * S * S + p] * gain), 0, 255);
+    filled.data[p * 4 + 3] = 255;
+  }
+  sctx.putImageData(filled, 0, 0);
+  // the patch: the fill at the box's own size, kept only where the stroke was (its edge softened)
+  const patch = document.createElement('canvas'); patch.width = box.w; patch.height = box.h;
+  const pctx = patch.getContext('2d');
+  pctx.filter = `blur(${Math.max(1, Math.round(Math.min(box.w, box.h) / 60))}px)`;
+  pctx.drawImage(maskCanvas, 0, 0);
+  pctx.filter = 'none';
+  pctx.globalCompositeOperation = 'source-in';
+  pctx.imageSmoothingQuality = 'high';
+  pctx.drawImage(small, (box.x - win.x) * k, (box.y - win.y) * k, box.w * k, box.h * k, 0, 0, box.w, box.h);
+  pctx.globalCompositeOperation = 'source-over';
+  return { patch, provider: r.provider, ms: r.ms };
+}
+
+// ── Remove From Other Photos ───────────────────────────────────────────────
+// A mark removed on one photo is found in others and removed there too
+// (docs/IMAGE_EDITOR.md). The finding is moFind* in the pure region; here are
+// the graphics card, the photos and the page.
+
+const MO_BULK_INSTANCE = 'bulk-remove';
+let _moBulkRequest = null;             // { exampleId, selection }: what the page was last asked for
+
+const MO_FIND_VS = `#version 300 es
+void main() {
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+// moFindScoreAt for every position at once: the same sum, the same bytes.
+const MO_FIND_FS = `#version 300 es
+precision highp float;
+precision highp int;
+uniform highp sampler2D u_field;
+uniform ivec2 u_size;
+uniform ivec2 u_margin;
+uniform int u_n;
+uniform vec4 u_pts[${MO_FIND_POINTS}];
+out vec4 o;
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy) - u_margin;
+  float s = 0.0;
+  float on = 0.0;
+  for (int i = 0; i < u_n; i++) {
+    vec4 t = u_pts[i];
+    ivec2 q = p + ivec2(t.xy);
+    if (q.x < 0 || q.y < 0 || q.x >= u_size.x || q.y >= u_size.y) continue;
+    vec2 g = texelFetch(u_field, q, 0).rg * 255.0 - 128.0;
+    s += dot(t.zw, g);
+    on += 1.0;
+  }
+  o = vec4(min(1.0, abs(s) / (127.0 * max(on, ${MO_FIND_WHOLE.toFixed(3)} * float(max(u_n, 1))))), 0.0, 0.0, 1.0);
+}`;
+
+/**
+ * Every position of a picture scored against a mark. On the graphics card: a
+ * photo is up to 2048 x 1365 positions, each scored on 128 edge points, at
+ * some twenty sizes, which is seconds a photo in JavaScript. Where there is
+ * no WebGL 2 the same sum is done in JavaScript (moFindDense).
+ */
+function moFindEngine() {
+  let gl = null; let prog = null; let vao = null; let fieldTex = null; let outTex = null; let fbo = null; let loc = null;
+  let W = 0; let H = 0; let MX = 0; let MY = 0; let field = null; let pixels = null;
+  const pts = new Float32Array(MO_FIND_POINTS * 4);
+  const lose = () => { try { const e = gl && gl.getExtension('WEBGL_lose_context'); if (e) e.loseContext(); } catch { /* gone */ } gl = null; };
+  try {
+    gl = document.createElement('canvas').getContext('webgl2', { antialias: false, depth: false, stencil: false, alpha: false, powerPreference: 'high-performance' });
+    if (gl) {
+      const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'the shader did not compile'); return s; };
+      prog = gl.createProgram();
+      gl.attachShader(prog, sh(gl.VERTEX_SHADER, MO_FIND_VS));
+      gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, MO_FIND_FS));
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || 'the program did not link');
+      loc = { field: gl.getUniformLocation(prog, 'u_field'), size: gl.getUniformLocation(prog, 'u_size'), margin: gl.getUniformLocation(prog, 'u_margin'), n: gl.getUniformLocation(prog, 'u_n'), pts: gl.getUniformLocation(prog, 'u_pts') };
+      vao = gl.createVertexArray();
+      fieldTex = gl.createTexture(); outTex = gl.createTexture(); fbo = gl.createFramebuffer();
+    }
+  } catch (err) { console.warn('[MediaOrganizer] the finder runs without the graphics card:', err && err.message); lose(); }
+  const plain = (tex) => {
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  };
+  return {
+    get gpu() { return !!gl && !gl.isContextLost(); },
+    // the picture's field, and how far past its edge positions are scored (mx, my)
+    setField(f, w, h, mx, my) {
+      field = f; W = w; H = h; MX = mx || 0; MY = my || 0;
+      if (!gl || gl.isContextLost()) return;
+      try {
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        plain(fieldTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG8, w, h, 0, gl.RG, gl.UNSIGNED_BYTE, f);
+        plain(outTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w + 2 * MX, h + 2 * MY, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, outTex, 0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('the picture is too large for the graphics card');
+        pixels = new Uint8Array((w + 2 * MX) * (h + 2 * MY) * 4);
+      } catch (err) { console.warn('[MediaOrganizer] the finder left the graphics card:', err && err.message); lose(); }
+    },
+    // -> { scores, stride }: a byte a position (0..255 for a fit of 0..1), `stride` bytes apart
+    score(t) {
+      if (gl && !gl.isContextLost() && pixels) {
+        try {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+          gl.viewport(0, 0, W + 2 * MX, H + 2 * MY);
+          gl.useProgram(prog);
+          gl.bindVertexArray(vao);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, fieldTex);
+          gl.uniform1i(loc.field, 0); gl.uniform2i(loc.size, W, H); gl.uniform2i(loc.margin, MX, MY); gl.uniform1i(loc.n, t.n);
+          pts.fill(0);
+          for (let j = 0; j < t.n; j++) { pts[j * 4] = t.dx[j]; pts[j * 4 + 1] = t.dy[j]; pts[j * 4 + 2] = t.tx[j]; pts[j * 4 + 3] = t.ty[j]; }
+          gl.uniform4fv(loc.pts, pts);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
+          gl.readPixels(0, 0, W + 2 * MX, H + 2 * MY, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+          if (gl.getError() === gl.NO_ERROR) return { scores: pixels, stride: 4 };
+        } catch (err) { console.warn('[MediaOrganizer] the finder left the graphics card:', err && err.message); }
+        lose();
+      }
+      return { scores: moFindDense(field, W, H, t, MX, MY), stride: 1 };
+    },
+    dispose() { lose(); field = null; pixels = null; },
+  };
+}
+
+/** A mark at a size: its edge points for the search and for the check. */
+function moFindVariant(mark, size) {
+  const shape = moFindShape(size, mark.aspect);
+  const key = shape.w + 'x' + shape.h;
+  let v = mark.variants.get(key);
+  if (v) return v;
+  const cv = document.createElement('canvas'); cv.width = shape.w; cv.height = shape.h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high';
+  const grayOf = (picture) => { ctx.clearRect(0, 0, shape.w, shape.h); ctx.drawImage(picture, 0, 0, shape.w, shape.h); return moFindGray(ctx.getImageData(0, 0, shape.w, shape.h).data, shape.w, shape.h); };
+  const gray = grayOf(mark.crop);
+  ctx.clearRect(0, 0, shape.w, shape.h);
+  ctx.drawImage(mark.mask, 0, 0, shape.w, shape.h);
+  const md = ctx.getImageData(0, 0, shape.w, shape.h).data;
+  const mask = new Uint8Array(shape.w * shape.h);
+  for (let q = 0; q < mask.length; q++) mask[q] = md[q * 4 + 3] > 127 ? 1 : 0;
+  v = null;
+  if (mark.learnt && mark.samples.length >= MO_FIND_LEARN_MIN) {
+    const grays = [gray].concat(mark.samples.map((x) => grayOf(x.picture)));
+    const check = moFindConsensus(grays, mask, shape.w, shape.h, MO_FIND_CHECK);
+    if (check.n >= MO_FIND_FEW) v = { search: moFindConsensus(grays, mask, shape.w, shape.h, MO_FIND_POINTS), check };
+  }
+  if (!v) v = { search: moFindTemplate(gray, mask, shape.w, shape.h, MO_FIND_POINTS), check: moFindTemplate(gray, mask, shape.w, shape.h, MO_FIND_CHECK) };
+  mark.variants.set(key, v);
+  return v;
+}
+
+/**
+ * What was removed on a photo, as things to look for: for each removal the
+ * photo as it was under the brush, and the brushed shape (the patch's own).
+ */
+async function moFindMarksOf(photoId) {
+  const srcPath = await moResolveItemPath({ type: 'photo', id: photoId });
+  if (!srcPath) throw new Error('That photo has no file on disk right now.');
+  const recipe = await moEditLoadRecipe(photoId);
+  const decoded = await moEditDecode(srcPath);
+  const bmp = decoded.bitmap;
+  const marks = [];
+  try {
+    const long = Math.max(bmp.width, bmp.height);
+    for (let i = 0; i < recipe.removals.length; i++) {
+      const m = recipe.removals[i];
+      const p = moEditPatchPath(photoId, m.file);
+      if (!p) continue;
+      let patch = null;
+      try { patch = await createImageBitmap(new Blob([await moEditReadBytes(p)], { type: 'image/png' })); } catch { continue; }
+      // held at 512 on the longer side at most: a mark is never searched for larger than a quarter of that
+      const k = Math.min(1, 512 / Math.max(m.w, m.h));
+      const w = Math.max(3, Math.round(m.w * k)); const h = Math.max(3, Math.round(m.h * k));
+      const crop = document.createElement('canvas'); crop.width = w; crop.height = h;
+      const cctx = crop.getContext('2d');
+      cctx.imageSmoothingQuality = 'high';
+      cctx.drawImage(bmp, m.x, m.y, m.w, m.h, 0, 0, w, h);
+      const mask = document.createElement('canvas'); mask.width = w; mask.height = h;
+      const mctx = mask.getContext('2d', { willReadFrequently: true });
+      mctx.imageSmoothingQuality = 'high';
+      mctx.drawImage(patch, 0, 0, w, h);
+      patch.close();
+      // the brushed shape with a hard edge: the patch fades out at its rim
+      const md = mctx.getImageData(0, 0, w, h);
+      for (let q = 0; q < w * h; q++) { const on = md.data[q * 4 + 3] > 40; md.data[q * 4] = 255; md.data[q * 4 + 1] = 255; md.data[q * 4 + 2] = 255; md.data[q * 4 + 3] = on ? 255 : 0; }
+      mctx.putImageData(md, 0, 0);
+      const mark = { index: i, box: { x: m.x, y: m.y, w: m.w, h: m.h }, share: Math.sqrt(m.w * m.h) / long, aspect: m.w / m.h, crop, mask, maskUrl: '', shape: null, shapeUrl: '', part: null, variants: new Map(), samples: [], learnt: false, usable: false, on: false };
+      try { mark.maskUrl = mask.toDataURL('image/png'); } catch { mark.maskUrl = ''; }
+      mark.small = Math.sqrt(m.w * m.h) < MO_FIND_SIZE;
+      mark.usable = !mark.small && moFindVariant(mark, MO_FIND_SIZE * 1.4).check.n >= MO_FIND_FEW;
+      mark.on = mark.usable;
+      marks.push(mark);
+    }
+  } finally { try { bmp.close(); } catch { /* gone */ } }
+  const sep = srcPath.includes('\\') ? '\\' : '/';
+  return { photoId, path: srcPath, name: srcPath.slice(srcPath.lastIndexOf(sep) + 1), marks };
+}
+
+/**
+ * Settle a find: the search places a mark to a pixel where the mark is 48 to
+ * 96 pixels large, which is two or three pixels, and a percent or two in
+ * size, on the photo. Too coarse to lay a shape cut to the letters over
+ * them. The place is looked at again with the mark MO_FIND_FINE large (no
+ * larger than the photo and the example hold it), sizes half a percent apart.
+ */
+function moFindSettle(source, mark, f) {
+  const held = Math.sqrt(mark.crop.width * mark.crop.height);
+  const here = Math.sqrt(f.w * f.h);
+  const size = Math.min(MO_FIND_FINE, held, here);
+  if (!(size >= MO_FIND_SIZE)) return f;
+  const finer = size >= (f.at || size) * MO_FIND_FINER;
+  const k = size / here;                                            // pixels here to a pixel of the photo
+  const padX = f.w * 0.1 + 6 / k; const padY = f.h * 0.1 + 6 / k;
+  const rx = Math.floor(f.x - padX); const ry = Math.floor(f.y - padY);
+  const rw = Math.ceil(f.w + 2 * padX); const rh = Math.ceil(f.h + 2 * padY);
+  const W = Math.max(8, Math.round(rw * k)); const H = Math.max(8, Math.round(rh * k));
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high';
+  // the part of the place that is on the photo, drawn where it belongs
+  const sx = Math.max(0, rx); const sy = Math.max(0, ry);
+  const ex = Math.min(source.width, rx + rw); const ey = Math.min(source.height, ry + rh);
+  if (ex - sx < 4 || ey - sy < 4) return f;
+  ctx.drawImage(source, sx, sy, ex - sx, ey - sy, (sx - rx) * k, (sy - ry) * k, (ex - sx) * k, (ey - sy) * k);
+  const field = moFindField(moFindGray(ctx.getImageData(0, 0, W, H).data, W, H), W, H);
+  const c = moFindCheck(field, W, H, (z) => moFindVariant(mark, z).check, size, Math.round((f.x - rx) * k), Math.round((f.y - ry) * k), MO_FIND_FINE_NEAR, MO_FIND_FINE_REACH);
+  if (!(c.score > 0)) return { ...f, settled: 0, finer };
+  return { ...f, x: rx + c.x / k, y: ry + c.y / k, w: c.w / k, h: c.h / k, settled: c.score, finer };
+}
+
+/** Keep a find to learn the mark from, if it is among the best met so far. A find cut by the photo's edge is no use. */
+function moFindKeepSample(mark, source, f) {
+  if (f.verdict !== 'found' || f.score < MO_FIND_LEARN_FROM || f.x < 0 || f.y < 0 || f.x + f.w > source.width || f.y + f.h > source.height) return;
+  if (mark.samples.length >= MO_FIND_LEARN && f.score <= mark.samples[mark.samples.length - 1].score) return;
+  const picture = document.createElement('canvas'); picture.width = mark.crop.width; picture.height = mark.crop.height;
+  const ctx = picture.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(source, f.x, f.y, f.w, f.h, 0, 0, picture.width, picture.height);
+  mark.samples.push({ score: f.score, picture, share: Math.sqrt(f.w * f.h) / Math.max(source.width, source.height) });
+  mark.samples.sort((a, b) => b.score - a.score);
+  mark.samples.length = Math.min(mark.samples.length, MO_FIND_LEARN);
+}
+/** What was kept becomes what is looked for. -> true when the mark was learnt (enough photos had it). */
+function moFindLearn(mark) {
+  mark.learnt = mark.samples.length >= MO_FIND_LEARN_MIN;
+  mark.range = mark.learnt ? moFindRange(mark.samples.map((x) => x.share)) : null;
+  mark.variants = new Map();
+  mark.shape = null; mark.shapeUrl = ''; mark.part = null;
+  if (mark.learnt) moFindShapeOf(mark);
+  return mark.learnt;
+}
+// A byte a pixel as a picture: white where set, clear elsewhere.
+function moFindBitsCanvas(bits, w, h) {
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+  const d = ctx.createImageData(w, h);
+  for (let q = 0; q < w * h; q++) { d.data[q * 4] = 255; d.data[q * 4 + 1] = 255; d.data[q * 4 + 2] = 255; d.data[q * 4 + 3] = bits[q] ? 255 : 0; }
+  ctx.putImageData(d, 0, 0);
+  return cv;
+}
+/**
+ * The mark's own shape, from the example and the finds it was learnt from
+ * (moFindMatte). Left unset when they do not give one: what was brushed is
+ * then removed as it is.
+ */
+function moFindShapeOf(mark) {
+  const size = Math.min(MO_FIND_FINE, Math.sqrt(mark.crop.width * mark.crop.height));
+  const shape = moFindShape(size, mark.aspect);
+  const cv = document.createElement('canvas'); cv.width = shape.w; cv.height = shape.h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high';
+  const grayOf = (picture) => { ctx.clearRect(0, 0, shape.w, shape.h); ctx.drawImage(picture, 0, 0, shape.w, shape.h); return moFindGray(ctx.getImageData(0, 0, shape.w, shape.h).data, shape.w, shape.h); };
+  const grays = [grayOf(mark.crop)].concat(mark.samples.map((x) => grayOf(x.picture)));
+  ctx.clearRect(0, 0, shape.w, shape.h);
+  ctx.drawImage(mark.mask, 0, 0, shape.w, shape.h);
+  const md = ctx.getImageData(0, 0, shape.w, shape.h).data;
+  const mask = new Uint8Array(shape.w * shape.h);
+  for (let q = 0; q < mask.length; q++) mask[q] = md[q * 4 + 3] > 127 ? 1 : 0;
+  const bits = moFindMatte(grays, mask, shape.w, shape.h, Math.max(1, size * MO_FIND_SHAPE_GROW));
+  if (!bits) return;
+  mark.part = moFindShapeBox(bits, shape.w, shape.h);
+  mark.shape = moFindBitsCanvas(bits, shape.w, shape.h);
+  try { mark.shapeUrl = mark.shape.toDataURL('image/png'); } catch { mark.shapeUrl = ''; }
+}
+
+/**
+ * Look for the marks in one picture (a bitmap or a canvas).
+ * -> [{ mark, x, y, w, h, score, verdict }] in the picture's own pixels, best first.
+ */
+async function moFindInPicture(engine, marks, source, shouldStop, wide) {
+  const long = Math.max(source.width, source.height);
+  const bySide = new Map();
+  for (const mark of marks) {
+    // a mark that has been learnt is looked for at the sizes it was met at; `wide` asks for every size again
+    for (const step of moFindPlan(mark.share, long, wide ? null : mark.range)) {
+      if (!bySide.has(step.side)) bySide.set(step.side, []);
+      bySide.get(step.side).push({ mark, step });
+    }
+  }
+  const found = [];
+  const level = document.createElement('canvas');
+  const lctx = level.getContext('2d', { willReadFrequently: true });
+  for (const [side, jobs] of bySide) {
+    if (shouldStop && shouldStop()) break;
+    const W = Math.max(1, Math.round((source.width * side) / long)); const H = Math.max(1, Math.round((source.height * side) / long));
+    level.width = W; level.height = H;
+    lctx.imageSmoothingQuality = 'high';
+    lctx.drawImage(source, 0, 0, W, H);
+    const field = moFindField(moFindGray(lctx.getImageData(0, 0, W, H).data, W, H), W, H);
+    // positions are scored past the picture's edge as far as the largest mark tried at this size may reach
+    let mx = 0; let my = 0;
+    for (const { mark, step } of jobs) { const shape = moFindShape(step.size, mark.aspect); const m = moFindMargin(shape.w, shape.h); mx = Math.max(mx, m.mx); my = Math.max(my, m.my); }
+    const at = { field, w: W, h: H, mx, my };
+    engine.setField(field, W, H, mx, my);
+    const k = long / side;
+    for (const { mark, step } of jobs) {
+      for (const c of moFindOnLevel(at, (z) => moFindVariant(mark, z), step.size, (t) => engine.score(t))) found.push({ mark: mark.index, score: c.score, n: c.n, at: step.size, x: c.x * k, y: c.y * k, w: c.w * k, h: c.h * k });
+    }
+    await new Promise((r) => setTimeout(r, 0));   // the page draws between sizes
+  }
+  // every place worth it is looked at again, finer, and judged on that; then the best few a mark are kept
+  const marksBy = new Map(marks.map((m) => [m.index, m]));
+  const judged = [];
+  for (const f of moFindMerge(found, MO_FIND_LOOKED)) {
+    const g = moFindSettle(source, marksBy.get(f.mark), f);
+    const verdict = moFindVerdict(g.score, g.settled || 0, !!g.finer);
+    if (verdict) judged.push({ ...g, first: g.score, score: g.finer ? g.settled : g.score, verdict });
+  }
+  return moFindMerge(judged);
+}
+
+/**
+ * Remove what was found on one photo: each find filled as a brushed mark is,
+ * added to the photo's own edit (so it can be undone there), and a copy
+ * written beside the original. `what`: 'mark' removes the mark's own shape
+ * where one was learnt, 'area' all that was brushed.
+ * -> { removed, copy } or null when nothing was.
+ */
+async function moFindRemoveFrom(photoId, finds, marks, what, how) {
+  const srcPath = await moResolveItemPath({ type: 'photo', id: photoId });
+  if (!srcPath || moIsGifPath(srcPath)) throw new Error('The photo has no file on disk right now.');
+  const decoded = await moEditDecode(srcPath);
+  try {
+    const recipe = await moEditLoadRecipe(photoId);
+    const base = await moEditWorkSource(photoId, decoded.bitmap, recipe.removals);
+    const work = document.createElement('canvas'); work.width = decoded.bitmap.width; work.height = decoded.bitmap.height;
+    const wctx = work.getContext('2d');
+    wctx.drawImage(base, 0, 0);
+    let n = 0;
+    for (const f of finds) {
+      const mark = marks.find((m) => m.index === f.mark);
+      if (!mark) continue;
+      const tight = what === 'mark' && mark.shape && mark.part;
+      const r = tight ? moFindShapeRemoval(f, mark.part, work.width, work.height) : moFindRemoval(f, work.width, work.height);
+      const mask = document.createElement('canvas'); mask.width = r.w; mask.height = r.h;
+      const mctx = mask.getContext('2d');
+      mctx.imageSmoothingQuality = 'high';
+      mctx.drawImage(tight ? mark.shape : mark.mask, r.mx, r.my, r.mw, r.mh);
+      const box = { x: r.x, y: r.y, w: r.w, h: r.h };
+      const { patch } = await moEditFill(work, mask, box);
+      const blob = await new Promise((resolve) => patch.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('The patch could not be encoded.');
+      const file = `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.png`;
+      const path = moEditPatchPath(photoId, file);
+      if (!path) throw new Error('Remove needs an open workspace to keep its patches in.');
+      await moEditWriteBytes(path, new Uint8Array(await blob.arrayBuffer()));
+      wctx.drawImage(patch, box.x, box.y);
+      recipe.removals = recipe.removals.concat([{ file, ...box }]);
+      n++;
+    }
+    if (!n) return null;
+    await moEditSaveRecipe(photoId, recipe);
+    const copy = how === 'over'
+      ? await moEditSaveOver(photoId, srcPath, work, decoded.bytes, recipe, null, { quiet: true })
+      : await moEditSaveCopy(photoId, srcPath, work, decoded.bytes, recipe, null, { quiet: true });
+    return { removed: n, copy };
+  } finally { try { decoded.bitmap.close(); } catch { /* gone */ } }
+}
+
+// The photos selected in the library. Every library tab that is open answers, there and then; the
+// largest selection is the one meant (a tab with nothing selected answers too).
+function moBulkSelection() {
+  let best = [];
+  const handler = (e) => {
+    const ids = [...((e.detail && e.detail.selectedIds) || [])].filter((x) => String(x).startsWith('photo:')).map((x) => parseInt(String(x).split(':')[1], 10)).filter((n) => n > 0);
+    if (ids.length > best.length) best = ids;
+  };
+  document.addEventListener('mo:reply-selection', handler);
+  try { document.dispatchEvent(new CustomEvent('mo:request-selection')); } finally { document.removeEventListener('mo:reply-selection', handler); }
+  return best;
+}
+let _moBulkPending = null;             // photos chosen in the library for a removal whose example is still to be brushed
+
+async function moOpenBulkRemove(api, exampleId) {
+  const a = api || _api;
+  const live = moBulkSelection();
+  // several photos selected in the library are the photos meant; else those chosen there earlier for this
+  const selection = live.length > 1 ? live : (_moBulkPending && _moBulkPending.length ? _moBulkPending : live);
+  _moBulkPending = null;
+  _moBulkRequest = { exampleId: Number(exampleId), selection };
+  await a.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Remove From Other Photos', icon: 'eraser', instanceId: MO_BULK_INSTANCE });
+  document.dispatchEvent(new CustomEvent('mo:bulk-remove-open'));
+}
+
+/**
+ * Remove Marks From Selected, in the library: the photos selected are the
+ * photos to look in. The example is the one of them a mark was last removed
+ * on. When none has had one removed yet, the first opens in the editor on
+ * Remove, and the selection is kept for Remove From Other Photos there.
+ */
+async function moBulkFromSelection(api, photoIds) {
+  const a = api || _api;
+  const asked = Array.isArray(photoIds) && photoIds.length ? photoIds : moBulkSelection();
+  const usable = [];
+  for (const id of [...new Set(asked.map(Number).filter((n) => n > 0))]) { const path = await moResolveItemPath({ type: 'photo', id }); if (path && !moIsGifPath(path)) usable.push(id); }
+  if (usable.length < 2) { a.window.showInformationMessage('Select the photos that have the mark in the library, two or more, then choose Remove Marks From Selected.'); return; }
+  let example = 0;
+  for (let i = 0; i < usable.length && !example; i += 400) {
+    const chunk = usable.slice(i, i + 400);
+    const rows = await db.all(`SELECT photo_id, recipe_json FROM mo_photo_edits WHERE photo_id IN (${chunk.map(() => '?').join(',')}) ORDER BY updated_at DESC`, chunk);
+    for (const r of rows || []) {
+      try { if ((JSON.parse(r.recipe_json).removals || []).length) { example = Number(r.photo_id); break; } } catch { /* not a recipe */ }
+    }
+  }
+  if (example) {
+    _moBulkPending = null;
+    _moBulkRequest = { exampleId: example, selection: usable };
+    await a.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Remove From Other Photos', icon: 'eraser', instanceId: MO_BULK_INSTANCE });
+    document.dispatchEvent(new CustomEvent('mo:bulk-remove-open'));
+    return;
+  }
+  _moBulkPending = usable;
+  _moEditUi.tool = 'remove';
+  await moOpenImageEditor(a, usable[0]);
+  setTimeout(() => { const e = moEditActive(); if (e) e.setTool('remove'); }, 800);
+  a.window.showInformationMessage(`Brush over the mark on this photo with Remove, then choose Remove From Other Photos. The ${usable.length} photos you selected are kept for it.`);
+}
+
+const MO_BULK_TILE_HEIGHT = 300;
+const MO_BULK_WHAT = [{ value: 'mark', label: 'Mark Only' }, { value: 'area', label: 'Whole Brushed Area' }];
+const MO_BULK_SAVE = [{ value: 'copy', label: 'Save As Copies' }, { value: 'over', label: 'Save Over Originals' }];
+const _moBulkUi = { what: 'mark', save: 'copy' };      // kept for the session
+const MO_BULK_FILTERS = [['all', 'All'], ['found', 'Found'], ['unsure', 'To Decide'], ['none', 'Not Found'], ['removed', 'Removed'], ['waiting', 'Not Looked At']];
+
+function renderBulkRemove(container, api) {
+  moInjectStyles();
+  const page = moEl('div', 'mo-tr-page mo-br-page');
+  container.appendChild(page);
+  let disposed = false; let seq = 0;
+  const state = { example: null, scope: 'folder', lists: { folder: [], selection: [] }, photos: [], phase: 'empty', stop: false, filter: 'all', done: 0, total: 0, looked: 0, looking: 0, learning: false, note: '' };
+  const tiles = new Map();
+
+  // ── head ──
+  const head = moEl('div', 'mo-tr-head');
+  const titleWrap = moEl('div', 'mo-tr-title-wrap');
+  titleWrap.appendChild(moEl('div', 'mo-tr-title', { textContent: 'Remove From Other Photos' }));
+  const sub = moEl('div', 'mo-tr-sub', { role: 'status', 'aria-live': 'polite' });
+  titleWrap.appendChild(sub);
+  head.appendChild(titleWrap);
+  const bar = moEl('div', 'mo-tr-actions-bar');
+  const scopeDd = moDropdown({ items: [{ value: 'folder', label: 'This Folder' }], selected: 'folder', ariaLabel: 'Photos To Look In' });
+  const whatDd = moDropdown({ items: MO_BULK_WHAT, selected: _moBulkUi.what, ariaLabel: 'What To Remove' });
+  whatDd.el.title = 'Mark Only removes the mark\'s own shape, worked out from the photos that have it, and leaves what lies beside it. Whole Brushed Area removes all that was brushed on the example.';
+  const findBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Find Marks', title: 'Look for the marks in these photos. Nothing is changed yet.' });
+  const stopBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Stop', title: 'Finish the photo in progress, then stop' });
+  const saveDd = moDropdown({ items: MO_BULK_SAVE, selected: _moBulkUi.save, ariaLabel: 'How To Save' });
+  saveDd.el.title = 'Save As Copies writes a copy of each photo beside its original. Save Over Originals replaces each photo\'s file, which cannot be brought back.';
+  const removeBtn = moEl('button', 'mo-tr-btn primary', { type: 'button', textContent: 'Remove And Save Copies' });
+  bar.append(scopeDd.el, whatDd.el, findBtn, stopBtn, saveDd.el, removeBtn);
+  head.appendChild(bar);
+  const progress = moEl('div', 'mo-tr-progress', { role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100' });
+  const progressFill = moEl('div', 'mo-tr-progress-fill');
+  progress.appendChild(progressFill);
+  head.appendChild(progress);
+  page.appendChild(head);
+
+  const marksEl = moEl('div', 'mo-br-marks');
+  const pickEl = moEl('div', 'mo-br-pickbar');
+  const allBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Select All', title: 'Tick every photo shown' });
+  const noneBtn = moEl('button', 'mo-tr-btn', { type: 'button', textContent: 'Select None', title: 'Untick every photo shown' });
+  const pickedEl = moEl('span', 'mo-br-picked');
+  pickEl.append(allBtn, noneBtn, pickedEl);
+  pickEl.title = 'Click a photo to tick it. Shift-click ticks every photo from the last one clicked to this one.';
+  const filtersEl = moEl('div', 'mo-br-filters', { role: 'group', 'aria-label': 'Show' });
+  const scroll = moEl('div', 'mo-tr-scroll');
+  const grid = moEl('div', 'mo-br-grid');
+  const empty = moEl('div', 'mo-tr-empty');
+  scroll.append(grid, empty);
+  page.append(marksEl, pickEl, filtersEl, scroll);
+
+  const busyNow = () => state.phase === 'reading' || state.phase === 'finding' || state.phase === 'removing';
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const kindOf = (p) => (p.status === 'removed' ? 'removed' : p.status === 'none' ? 'none' : p.status === 'waiting' ? 'waiting' : p.finds.some((f) => f.verdict === 'unsure') ? 'unsure' : p.finds.length ? 'found' : '');
+  // A tick means the photo is in: to be looked in, and, once marks are found on it, to have them removed.
+  const toLook = () => state.photos.filter((p) => p.include && p.status !== 'removed');
+  const toRemove = () => state.photos.filter((p) => p.include && p.status === 'found' && p.finds.some((f) => f.on));
+  const searched = () => state.phase === 'review' || state.phase === 'removing' || state.phase === 'done';
+  const marksOn = () => (state.example ? state.example.marks.filter((m) => m.on && m.usable) : []);
+  const tightFor = (m) => !!m && _moBulkUi.what === 'mark' && !!m.shapeUrl;
+  const shapeEl = (m) => {
+    const url = m ? (tightFor(m) ? m.shapeUrl : m.maskUrl) : '';
+    if (!url) return null;
+    const el = moEl('span', 'mo-br-shape');
+    el.style.maskImage = `url("${url}")`;
+    el.style.webkitMaskImage = `url("${url}")`;
+    return el;
+  };
+
+  function sync() {
+    const n = toRemove().length;
+    const busy = busyNow();
+    const look = toLook().length;
+    findBtn.disabled = busy || !look || !marksOn().length;
+    findBtn.textContent = look ? `Find Marks In ${plural(look, 'Photo', 'Photos')}` : 'Find Marks';
+    findBtn.title = look ? 'Look for the marks in the photos ticked. Nothing is changed yet.' : 'Tick the photos to look in first';
+    const open = state.photos.filter((p) => p.status !== 'removed').length;
+    pickEl.hidden = !state.photos.length;
+    allBtn.disabled = busy || !open; noneBtn.disabled = busy || !look;
+    pickedEl.textContent = state.photos.length ? `${look} of ${open} ticked` : '';
+    stopBtn.disabled = !(state.phase === 'finding' || state.phase === 'removing');
+    removeBtn.disabled = busy || !n;
+    const over = _moBulkUi.save === 'over';
+    removeBtn.textContent = over
+      ? (n ? `Remove And Save Over ${plural(n, 'Original', 'Originals')}` : 'Remove And Save Over Originals')
+      : (n ? `Remove And Save ${plural(n, 'Copy', 'Copies')}` : 'Remove And Save Copies');
+    removeBtn.title = !n ? 'Nothing is marked for removal yet'
+      : over ? 'Remove the outlined marks and save each photo over its original. The originals are replaced and cannot be brought back.'
+        : 'Remove the outlined marks and write a copy of each photo beside its original. The originals are not changed.';
+    scopeDd.el.classList.toggle('is-disabled', busy);
+    whatDd.el.classList.toggle('is-disabled', busy);
+    saveDd.el.classList.toggle('is-disabled', busy);
+    const frac = state.total ? state.done / state.total : 0;
+    progress.style.visibility = state.phase === 'finding' || state.phase === 'removing' ? 'visible' : 'hidden';
+    progressFill.style.width = Math.round(frac * 100) + '%';
+    progress.setAttribute('aria-valuenow', String(Math.round(frac * 100)));
+    const counts = { found: 0, unsure: 0, none: 0, removed: 0, waiting: 0 };
+    for (const p of state.photos) { const k = kindOf(p); if (k) counts[k]++; }
+    let text = state.note;
+    if (!text) {
+      if (state.phase === 'empty') text = '';
+      else if (state.phase === 'reading') text = 'Reading the marks';
+      else if (state.phase === 'finding' && state.learning) text = 'Learning the marks from the first photos';
+      else if (state.phase === 'finding') text = `Looking at ${Math.min(state.looked + 1, state.looking)} of ${state.looking}. Marks found on ${counts.found + counts.unsure} so far.`;
+      else if (state.phase === 'removing') text = `Removing ${Math.min(state.done + 1, state.total)} of ${state.total}`;
+      else if (state.phase === 'done') {
+        const overN = state.photos.filter((p) => p.status === 'removed' && p.savedOver).length;
+        const how = !overN ? 'Each has a copy beside its original.' : overN === counts.removed ? (overN === 1 ? 'It was saved over its original.' : 'Each was saved over its original.') : `${overN} saved over ${overN === 1 ? 'its original' : 'their originals'}, ${plural(counts.removed - overN, 'copy', 'copies')} written.`;
+        text = `Removed from ${plural(counts.removed, 'photo', 'photos')}. ${how}`;
+      }
+      else if (state.phase === 'review') text = `Found on ${counts.found + counts.unsure} of ${plural(counts.found + counts.unsure + counts.none, 'photo', 'photos')} looked at. ${counts.unsure ? `${counts.unsure} to decide. ` : ''}${counts.none ? `${counts.none} with nothing found. ` : ''}${counts.waiting ? `${counts.waiting} not looked at.` : ''}`;
+      else if (!look) text = `Tick the photos that have the mark, or choose Select All. ${plural(state.photos.length, 'photo', 'photos')} here.`;
+      else text = `${look} of ${plural(state.photos.length, 'photo', 'photos')} ticked, ${plural(marksOn().length, 'mark', 'marks')} to look for.`;
+    }
+    sub.textContent = text;
+    sub.classList.toggle('is-error', !!state.note && state.noteIsError === true);
+    filtersEl.innerHTML = '';
+    if (state.photos.length && searched()) {
+      for (const [id, label] of MO_BULK_FILTERS) {
+        const n2 = id === 'all' ? state.photos.length : counts[id];
+        if (id !== 'all' && !n2) continue;
+        const b = moEl('button', 'mo-tr-btn', { type: 'button', textContent: `${label} ${n2}`, 'aria-pressed': state.filter === id ? 'true' : 'false' });
+        b.classList.toggle('is-on', state.filter === id);
+        b.addEventListener('click', () => { state.filter = id; sync(); applyFilter(); });
+        filtersEl.appendChild(b);
+      }
+    }
+    empty.hidden = state.photos.length > 0;
+    if (!state.photos.length) empty.textContent = state.phase === 'empty'
+      ? 'Open a photo in the editor, brush over the mark with Remove, then choose Remove From Other Photos.'
+      : state.phase === 'reading' ? '' : 'No other photos here. Select the photos in the library and choose Remove Marks From Selected, or put them in the same folder as this one.';
+  }
+  function applyFilter() {
+    for (const p of state.photos) {
+      const t = tiles.get(p.id);
+      if (t) t.el.hidden = !(state.filter === 'all' || kindOf(p) === state.filter);
+    }
+  }
+
+  // ── the marks looked for ──
+  function renderMarks() {
+    marksEl.innerHTML = '';
+    if (!state.example) return;
+    marksEl.appendChild(moEl('div', 'mo-br-marks-label', { textContent: `Looking for, from ${state.example.name}` }));
+    state.example.marks.forEach((m, i) => {
+      const lab = moEl('label', 'mo-br-mark', { title: m.small ? 'Too small to look for: under 48 pixels, anything looks like it' : !m.usable ? 'Too plain to look for: there are no edges in it to go by' : m.learnt ? `Look for this mark. Learnt from ${m.samples.length} photos that have it.` : 'Look for this mark' });
+      lab.classList.toggle('is-plain', !m.usable);
+      const box = moEl('input', null, { type: 'checkbox', 'aria-label': `Mark ${i + 1}` });
+      box.checked = m.on; box.disabled = !m.usable || busyNow();
+      box.addEventListener('change', () => { m.on = box.checked; sync(); });
+      const img = moEl('img', null, { alt: '', draggable: 'false' });
+      try { img.src = m.crop.toDataURL('image/jpeg', 0.85); } catch { /* no preview */ }
+      const pic = moEl('span', 'mo-br-mark-pic');
+      pic.appendChild(img);
+      // once the photos have been looked at: what will be removed of it
+      const searched = state.phase === 'review' || state.phase === 'removing' || state.phase === 'done';
+      if (m.usable && m.on && searched) { const sh = shapeEl(m); if (sh) pic.appendChild(sh); }
+      lab.append(box, pic);
+      if (!m.usable) lab.appendChild(moEl('span', null, { textContent: m.small ? 'Too Small' : 'Too Plain' }));
+      else if (m.on && searched && _moBulkUi.what === 'mark' && !m.shapeUrl) {
+        lab.appendChild(moEl('span', null, { textContent: 'Whole Area' }));
+        lab.title = 'Too few photos have this mark to work out its shape. All that was brushed is removed.';
+      }
+      marksEl.appendChild(lab);
+    });
+  }
+
+  // ── the photos ──
+  function statusText(p) {
+    if (p.status === 'waiting') return '';
+    if (p.status === 'looking') return 'Looking';
+    if (p.status === 'removing') return 'Removing';
+    if (p.status === 'failed') return 'Failed';
+    if (p.status === 'removed') return `Removed ${p.removed}`;
+    if (p.status === 'none') return 'Not Found';
+    const sure = p.finds.filter((f) => f.verdict === 'found').length; const unsure = p.finds.length - sure;
+    return [sure ? `${sure} Found` : '', unsure ? `${unsure} To Decide` : ''].filter(Boolean).join(', ');
+  }
+  function paintTile(p) {
+    const t = tiles.get(p.id);
+    if (!t) return;
+    const kind = kindOf(p);
+    t.el.className = 'mo-br-tile' + (kind ? ' is-' + kind : '') + (p.include && p.status !== 'removed' ? ' is-ticked' : '') + (p.status === 'failed' ? ' is-failed' : '') + (p.status === 'looking' || p.status === 'removing' ? ' is-busy' : '');
+    t.status.textContent = statusText(p);
+    t.status.title = p.status === 'failed' ? p.error : p.status === 'removed' && p.copy ? (p.savedOver ? `Saved over ${p.copy.name}` : `Saved as ${p.copy.name}`) : '';
+    t.box.checked = p.include && p.status !== 'removed';
+    t.box.disabled = busyNow() || p.status === 'removed';
+    t.finds.innerHTML = '';
+    if (p.status === 'removed' || !p.width) return;
+    p.finds.forEach((f, i) => {
+      const b = moEl('button', 'mo-br-find', { type: 'button', 'aria-pressed': f.on ? 'true' : 'false' });
+      b.classList.toggle('is-unsure', f.verdict === 'unsure');
+      b.classList.toggle('is-off', !f.on);
+      b.dataset.mark = String(f.mark); b.dataset.score = f.score.toFixed(3); b.dataset.first = (f.first || 0).toFixed(3); b.dataset.points = String(f.n || 0); b.dataset.size = String(Math.round(f.at || 0)); b.dataset.settled = (f.settled || 0).toFixed(3);
+      const what = f.verdict === 'unsure' ? 'May be the mark' : 'The mark';
+      b.title = f.on ? `${what}. It will be removed. Click to leave it in the photo.` : `${what}. It stays in the photo. Click to remove it.`;
+      b.setAttribute('aria-label', `${p.name}, find ${i + 1}: ${b.title}`);
+      b.style.left = (f.x / p.width) * 100 + '%'; b.style.top = (f.y / p.height) * 100 + '%';
+      b.style.width = (f.w / p.width) * 100 + '%'; b.style.height = (f.h / p.height) * 100 + '%';
+      b.disabled = busyNow();
+      const sh = shapeEl(state.example && state.example.marks.find((m) => m.index === f.mark));
+      if (sh) b.appendChild(sh);
+      b.addEventListener('click', () => { f.on = !f.on; p.include = p.finds.some((x) => x.on); paintTile(p); sync(); });
+      t.finds.appendChild(b);
+    });
+  }
+  let lastPicked = 0;
+  function pickAll(on) {
+    if (busyNow()) return;
+    for (const p of state.photos) {
+      const t = tiles.get(p.id);
+      if (!t || t.el.hidden || p.status === 'removed') continue;
+      p.include = on;
+      if (on && p.finds.length && !p.finds.some((f) => f.on)) for (const f of p.finds) f.on = true;
+      paintTile(p);
+    }
+    sync();
+  }
+  function renderTiles() {
+    grid.innerHTML = '';
+    tiles.clear();
+    lastPicked = 0;
+    for (const p of state.photos) {
+      const el = moEl('div', 'mo-br-tile', { 'data-photo': String(p.id) });
+      const pic = moEl('div', 'mo-br-pic');
+      const img = moEl('img', null, { alt: '', draggable: 'false' });
+      const finds = moEl('div', 'mo-br-finds');
+      pic.append(img, finds);
+      // the picture at its own shape, so the outlines sit where the marks are; a tall photo is held to the height of a wide one
+      img.addEventListener('load', () => {
+        if (!(img.naturalWidth > 0 && img.naturalHeight > 0)) return;
+        pic.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+        pic.style.maxWidth = Math.round((MO_BULK_TILE_HEIGHT * img.naturalWidth) / img.naturalHeight) + 'px';
+      });
+      const cap = moEl('div', 'mo-br-cap');
+      const pick = moEl('label', 'mo-br-pick', { title: p.name });
+      const box = moEl('input', null, { type: 'checkbox', 'aria-label': `Choose ${p.name}` });
+      const choose = (on, run) => {
+        if (busyNow() || p.status === 'removed') return;
+        // a run of them: from the photo last clicked to this one, as they are shown
+        const shown = state.photos.filter((x) => { const tx = tiles.get(x.id); return tx && !tx.el.hidden && x.status !== 'removed'; });
+        const from = run && lastPicked ? shown.findIndex((x) => x.id === lastPicked) : -1;
+        const to = shown.findIndex((x) => x.id === p.id);
+        const span = from >= 0 && to >= 0 ? shown.slice(Math.min(from, to), Math.max(from, to) + 1) : [p];
+        for (const x of span) {
+          x.include = on;
+          if (on && x.finds.length && !x.finds.some((f) => f.on)) for (const f of x.finds) f.on = true;
+          paintTile(x);
+        }
+        lastPicked = p.id;
+        sync();
+      };
+      box.addEventListener('click', (e) => { choose(box.checked, e.shiftKey); });
+      pic.addEventListener('click', (e) => { if (e.target instanceof Element && e.target.closest('.mo-br-find')) return; choose(e.shiftKey ? true : !p.include, e.shiftKey); });
+      pick.append(box, moEl('span', 'mo-br-name', { textContent: p.name }));
+      const status = moEl('span', 'mo-br-status');
+      const open = moEl('button', 'mo-tr-btn mo-br-open', { type: 'button', textContent: 'Open In Editor', title: 'Open this photo in the editor, to look closer or to brush a mark by hand' });
+      open.addEventListener('click', () => { void moOpenImageEditor(api, p.id); });
+      cap.append(pick, status, open);
+      el.append(pic, cap);
+      grid.appendChild(el);
+      tiles.set(p.id, { el, img, finds, box, status });
+      paintTile(p);
+    }
+    applyFilter();
+    void loadThumbs(seq);
+  }
+  async function loadThumbs(at) {
+    const list = state.photos.slice();
+    for (let i = 0; i < list.length; i += 48) {
+      if (disposed || at !== seq) return;
+      try {
+        const chunk = list.slice(i, i + 48);
+        const thumbs = await resolveThumbnailBatch(chunk.map((p) => ({ type: 'photo', id: p.id })), api);
+        if (disposed || at !== seq) return;
+        for (const p of chunk) { const th = thumbs.get(`photo:${p.id}`); const t = tiles.get(p.id); if (th && th.path && t) setThumbImgSrc(t.img, th.path); }
+      } catch { /* no thumbnails: the names still show */ }
+    }
+  }
+  // After a search the photos that need a decision come first, then those with nothing found, then the rest.
+  function order() {
+    const rank = { unsure: 0, none: 1, found: 2, removed: 3, '': 4, waiting: 5 };
+    state.photos = state.photos.map((p, i) => ({ p, i })).sort((a, b) => (rank[kindOf(a.p)] - rank[kindOf(b.p)]) || (a.i - b.i)).map((x) => x.p);
+    for (const p of state.photos) { const t = tiles.get(p.id); if (t) grid.appendChild(t.el); }
+  }
+  function useScope(scope) {
+    state.scope = scope;
+    // photos selected in the library were chosen for this: they come ticked. A folder's photos are for ticking.
+    state.photos = (state.lists[scope] || []).map((r) => ({ id: r.id, name: r.name, width: 0, height: 0, status: 'waiting', finds: [], include: scope === 'selection', removed: 0, copy: null, error: '' }));
+    state.phase = 'ready';
+    state.filter = 'all'; state.done = 0; state.total = 0; state.note = '';
+    seq++;
+    renderTiles();
+    sync();
+  }
+
+  // ── opening ──
+  let startedFor = null;
+  async function start() {
+    const req = _moBulkRequest;
+    startedFor = req;
+    const at = ++seq;
+    state.stop = true;                       // whatever was running for the last request ends
+    state.example = null; state.photos = []; state.lists = { folder: [], selection: [] }; state.note = ''; state.noteIsError = false;
+    tiles.clear(); grid.innerHTML = ''; marksEl.innerHTML = '';
+    if (!req || !(req.exampleId > 0)) { state.phase = 'empty'; sync(); return; }
+    state.phase = 'reading';
+    sync();
+    try {
+      const example = await moFindMarksOf(req.exampleId);
+      if (disposed || at !== seq) return;
+      const rowsOf = (rows) => (rows || []).map((r) => ({ id: Number(r.id), name: r.basename })).filter((r) => r.id !== req.exampleId);
+      const folder = await db.get('SELECT f.folder_id AS id FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id WHERE pf.photo_id = ? AND pf.is_primary = 1', [req.exampleId]);
+      const pick = `SELECT p.id AS id, f.basename AS basename FROM mo_photos p
+        JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
+        JOIN mo_files f ON f.id = pf.file_id
+        WHERE p.deleted_at IS NULL AND LOWER(f.basename) NOT LIKE '%.gif'`;
+      const inFolder = folder ? await db.all(`${pick} AND f.folder_id = ?
+        ORDER BY f.basename COLLATE NOCASE`, [folder.id]) : [];
+      let selected = [];
+      const ids = [...new Set((req.selection || []).map(Number).filter((n) => n > 0 && n !== req.exampleId))];
+      for (let i = 0; i < ids.length; i += 400) {
+        const chunk = ids.slice(i, i + 400);
+        selected = selected.concat(await db.all(`${pick} AND p.id IN (${chunk.map(() => '?').join(',')}) ORDER BY f.basename COLLATE NOCASE`, chunk));
+      }
+      if (disposed || at !== seq) return;
+      state.example = example;
+      state.lists = { folder: rowsOf(inFolder), selection: rowsOf(selected) };
+      const items = [{ value: 'folder', label: `This Folder (${state.lists.folder.length})` }];
+      if (state.lists.selection.length) items.push({ value: 'selection', label: `Selected In Library (${state.lists.selection.length})` });
+      scopeDd.setItems(items);
+      const scope = state.lists.selection.length ? 'selection' : 'folder';
+      scopeDd.setValue(scope);
+      renderMarks();
+      useScope(scope);
+      if (!example.marks.length) { state.note = 'Nothing has been removed on that photo yet. Brush over the mark with Remove first.'; state.noteIsError = true; }
+      else if (!example.marks.some((m) => m.usable)) { state.note = 'The marks removed on that photo are too plain to look for: there are no edges in them to go by.'; state.noteIsError = true; }
+      sync();
+    } catch (err) {
+      if (disposed || at !== seq) return;
+      state.phase = 'empty'; state.note = 'The marks could not be read: ' + ((err && err.message) || err); state.noteIsError = true;
+      sync();
+    }
+  }
+
+  // ── finding ──
+  async function find() {
+    if (busyNow() || !state.example) return;
+    const marks = marksOn();
+    const list = toLook();                       // only the photos ticked are read and searched
+    if (!marks.length || !list.length) return;
+    const at = seq;
+    state.phase = 'finding'; state.stop = false; state.note = ''; state.filter = 'all';
+    state.done = 0; state.total = list.length; state.looking = list.length;
+    for (const p of list) { p.status = 'waiting'; p.finds = []; paintTile(p); }
+    renderMarks(); sync(); applyFilter();
+    const engine = moFindEngine();
+    const onCard = engine.gpu;
+    const t0 = Date.now();
+    const stopped = () => disposed || at !== seq || state.stop;
+    try {
+      // The marks are learnt first: the first photos are searched with the example alone, and what
+      // they agree on becomes what every photo is then searched for.
+      for (const m of marks) { m.samples = []; m.learnt = false; m.range = null; m.variants = new Map(); }
+      state.learning = true;
+      state.total = list.length + Math.min(list.length, MO_FIND_LEARN_PHOTOS);
+      sync();
+      let learntFrom = 0;
+      for (const p of list.slice(0, MO_FIND_LEARN_PHOTOS)) {
+        if (stopped() || marks.every((m) => m.samples.length >= MO_FIND_LEARN)) break;
+        try {
+          const srcPath = await moResolveItemPath({ type: 'photo', id: p.id });
+          if (srcPath) {
+            const decoded = await moEditDecode(srcPath);
+            try {
+              const recipe = await moEditLoadRecipe(p.id);
+              const source = await moEditWorkSource(p.id, decoded.bitmap, recipe.removals);
+              for (const f of await moFindInPicture(engine, marks, source, stopped)) { const m = marks.find((x) => x.index === f.mark); if (m) moFindKeepSample(m, source, f); }
+            } finally { try { decoded.bitmap.close(); } catch { /* gone */ } }
+          }
+        } catch { /* the photo is met again below, where its failure is shown */ }
+        learntFrom++;
+        state.done = learntFrom;
+        sync();
+      }
+      const learnt = marks.filter((m) => moFindLearn(m)).length;
+      console.log(`[MediaOrganizer] Remove From Other Photos: learnt ${learnt} of ${marks.length} marks from ${learntFrom} photos in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+      state.learning = false;
+      state.looked = 0;
+      state.total = list.length + learntFrom;
+      if (!stopped()) { renderMarks(); sync(); }
+      for (const p of list) {
+        if (stopped()) break;
+        p.status = 'looking'; paintTile(p);
+        try {
+          const srcPath = await moResolveItemPath({ type: 'photo', id: p.id });
+          if (!srcPath) throw new Error('The photo has no file on disk right now.');
+          const decoded = await moEditDecode(srcPath);
+          try {
+            // what was removed from this photo before is not found again
+            const recipe = await moEditLoadRecipe(p.id);
+            const source = await moEditWorkSource(p.id, decoded.bitmap, recipe.removals);
+            p.width = decoded.bitmap.width; p.height = decoded.bitmap.height;
+            let finds = await moFindInPicture(engine, marks, source, stopped);
+            // nothing at the sizes the marks were met at: every size is tried, before the photo is called without one
+            if (!finds.some((f) => f.verdict === 'found') && marks.some((m) => m.range) && !stopped()) finds = await moFindInPicture(engine, marks, source, stopped, true);
+            p.finds = finds.map((f) => ({ ...f, on: f.verdict === 'found' }));
+          } finally { try { decoded.bitmap.close(); } catch { /* gone */ } }
+          p.status = p.finds.length ? 'found' : 'none';
+          p.include = p.finds.some((f) => f.on);
+        } catch (err) { p.status = 'failed'; p.error = (err && err.message) || String(err); p.finds = []; }
+        if (disposed || at !== seq) break;
+        state.done++; state.looked++;
+        paintTile(p); sync();
+      }
+    } finally {
+      engine.dispose();
+      state.learning = false;
+      if (!disposed && at === seq) {
+        for (const p of list) if (p.status === 'waiting' || p.status === 'looking') { p.status = 'waiting'; p.include = false; paintTile(p); }
+        console.log(`[MediaOrganizer] Remove From Other Photos: looked at ${state.looked} photos in ${((Date.now() - t0) / 1000).toFixed(1)} s, ${onCard ? 'on the graphics card' : 'without the graphics card'}`);
+        state.phase = 'review';
+        order(); renderMarks();
+        for (const p of state.photos) paintTile(p);
+        sync(); applyFilter();
+      }
+    }
+  }
+
+  // ── removing ──
+  async function removeAll() {
+    if (busyNow() || !state.example) return;
+    const list = toRemove();
+    if (!list.length) return;
+    const ready = await moEditRemoveState();
+    if (ready !== 'ready') { api.window.showErrorMessage('Remove is not set up on this machine. Open a photo in the editor and choose Remove to set it up.'); return; }
+    const n = list.length;
+    const how = _moBulkUi.save === 'over' ? 'over' : 'copy';
+    const removes = _moBulkUi.what === 'mark' ? 'The shape shown on each mark is removed' : 'All that was brushed on the example is removed';
+    const ok = await api.window.showConfirmModal(how === 'over' ? {
+      message: `Remove the marks and save over ${plural(n, 'original', 'originals')}?`,
+      detail: `${removes}. Each photo's file is replaced with the picture without the marks and cannot be brought back. To keep the originals, choose Save As Copies.`,
+      confirmLabel: `Save Over ${plural(n, 'Original', 'Originals')}`, cancelLabel: 'Cancel', danger: true,
+    } : {
+      message: `Remove the marks from ${plural(n, 'photo', 'photos')}?`,
+      detail: `${removes}. A copy of each photo is written beside its original. The originals are not changed, and each removal can be undone in the editor.`,
+      confirmLabel: `Save ${plural(n, 'Copy', 'Copies')}`, cancelLabel: 'Cancel',
+    });
+    if (!ok || disposed) return;
+    const at = seq;
+    state.phase = 'removing'; state.stop = false; state.note = ''; state.done = 0; state.total = n;
+    for (const p of state.photos) paintTile(p);
+    renderMarks(); sync();
+    const changed = []; const failures = [];
+    try {
+      for (const p of list) {
+        if (disposed || at !== seq || state.stop) break;
+        p.status = 'removing'; paintTile(p);
+        try {
+          const res = await moFindRemoveFrom(p.id, p.finds.filter((f) => f.on), state.example.marks, _moBulkUi.what, how);
+          if (res) { p.status = 'removed'; p.removed = res.removed; p.copy = res.copy; p.savedOver = how === 'over'; changed.push(p.id); } else { p.status = 'found'; }
+        } catch (err) { p.status = 'failed'; p.error = (err && err.message) || String(err); failures.push(`${p.name}: ${p.error}`); }
+        state.done++;
+        if (disposed || at !== seq) break;
+        paintTile(p); sync();
+      }
+    } finally {
+      if (changed.length && how === 'over') moEditSavedOver(changed);
+      else if (changed.length) {
+        _notifySidebarRefresh();
+        try { document.dispatchEvent(new CustomEvent('mo:refresh-grid')); } catch { /* no grid open */ }
+        document.dispatchEvent(new CustomEvent('mo:edit-changed', { detail: { photoIds: changed } }));
+      }
+      if (!disposed && at === seq) {
+        state.phase = toRemove().length ? 'review' : 'done';
+        order(); renderMarks();
+        for (const p of state.photos) paintTile(p);
+        sync(); applyFilter();
+        const text = `Removed the marks from ${changed.length} of ${plural(n, 'photo', 'photos')}.${failures.length ? ` ${failures.length} failed: ${failures[0]}` : ''}`;
+        if (failures.length && !changed.length) api.window.showErrorMessage(text); else api.window.showInformationMessage(text);
+      }
+    }
+  }
+
+  findBtn.addEventListener('click', () => void find());
+  allBtn.addEventListener('click', () => pickAll(true));
+  noneBtn.addEventListener('click', () => pickAll(false));
+  stopBtn.addEventListener('click', () => { state.stop = true; stopBtn.disabled = true; });
+  removeBtn.addEventListener('click', () => void removeAll());
+  scopeDd.onChange = (v) => { if (busyNow() || !state.lists[v]) { scopeDd.setValue(state.scope); return; } useScope(v); };
+  whatDd.onChange = (v) => {
+    if (busyNow() || !MO_BULK_WHAT.some((x) => x.value === v)) { whatDd.setValue(_moBulkUi.what); return; }
+    _moBulkUi.what = v;
+    renderMarks();
+    for (const p of state.photos) paintTile(p);
+  };
+  saveDd.onChange = (v) => {
+    if (busyNow() || !MO_BULK_SAVE.some((x) => x.value === v)) { saveDd.setValue(_moBulkUi.save); return; }
+    _moBulkUi.save = v;
+    sync();
+  };
+  const onOpen = () => { if (_moBulkRequest !== startedFor) void start(); };
+  document.addEventListener('mo:bulk-remove-open', onOpen);
+  sync();
+  void start();
+
+  return {
+    dispose() {
+      disposed = true; state.stop = true; seq++;
+      document.removeEventListener('mo:bulk-remove-open', onOpen);
+      try { scopeDd.dispose(); } catch { /* gone */ }
+      try { whatDd.dispose(); } catch { /* gone */ }
+      try { saveDd.dispose(); } catch { /* gone */ }
+      page.remove();
+    },
+  };
+}
+
+// ── Opening ────────────────────────────────────────────────────────────────
+
+async function moOpenImageEditor(api, photoId) {
+  const a = api || _api;
+  const id = Number(photoId);
+  if (!(id > 0)) return;
+  const path = await moResolveItemPath({ type: 'photo', id });
+  if (!path) { a.window.showInformationMessage('That photo has no file on disk right now.'); return; }
+  if (moIsGifPath(path)) { a.window.showInformationMessage('GIFs are not edited here. Use Optimize GIF for those.'); return; }
+  _moEditRequest = id;
+  await a.editors.openEditor({ typeId: MO_EDIT_TYPE, title: 'Edit Image', icon: 'sliders-horizontal', instanceId: MO_EDIT_INSTANCE });
+  document.dispatchEvent(new CustomEvent('mo:edit-open', { detail: { photoId: id } }));
+}
+
+// The editor a shortcut means: the one holding the focus, else the newest one on screen.
+function moEditActive() {
+  const shown = [..._moEditOpen].filter((e) => e.root.isConnected && e.root.offsetParent !== null);
+  const focused = shown.find((e) => e.root.contains(document.activeElement));
+  return focused || shown[shown.length - 1] || null;
+}
+
+// ── The editor ─────────────────────────────────────────────────────────────
+
+const MO_EDIT_TOOLS = [['edit', 'sliders-horizontal', 'Edit'], ['crop', 'crop', 'Crop And Rotate'], ['remove', 'eraser', 'Remove'], ['enhance', 'wand-sparkles', 'Enhance']];
+const MO_EDIT_FILM_SPAN = 30;   // photos shown either side of the open one
+
+function renderImageEditor(container, api) {
+  moInjectStyles();
+  const root = moEl('div', 'mo-edit');
+  root.tabIndex = -1;
+  container.appendChild(root);
+  let disposed = false;
+
+  const state = {
+    photoId: 0, srcPath: null, name: '', recipe: null, session: null,
+    bitmap: null, bytes: null, work: null, workKey: '[]', sourceObj: null,
+    tool: _moEditUi.tool || 'edit', original: false, split: -1, hover: null, pickWb: false,
+    saving: false, busy: '', strip: null, stripKey: '', curveChannel: 'rgb', mixColour: 'red',
+    presets: [], film: { items: [], index: -1, total: 0 }, removeState: 'unknown', download: null, upscaler: null,
+    hist: null, cropView: null, straightenBase: null,
+  };
+  let engine = null; let raf = 0; let saveTimer = null; let dirty = false; let histTimer = null; let loadSeq = 0;
+  const disposers = [];
+
+  // ── layout ──
+  const topbar = moEl('div', 'mo-edit-topbar');
+  const body = moEl('div', 'mo-edit-body');
+  const presetsEl = moEl('div', 'mo-edit-presets');
+  const centre = moEl('div', 'mo-edit-centre');
+  const stage = moEl('div', 'mo-edit-stage');
+  const canvas = moEl('canvas', 'mo-edit-canvas');
+  const paint = moEl('canvas', 'mo-edit-paint');
+  const cropFrame = moEl('div', 'mo-edit-cropframe mo-hidden');
+  for (const h of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) cropFrame.appendChild(moEl('div', `mo-edit-crophandle mo-edit-crophandle--${h}`, { 'data-handle': h }));
+  for (const l of ['v1', 'v2', 'h1', 'h2']) cropFrame.appendChild(moEl('div', `mo-edit-cropline mo-edit-cropline--${l}`));
+  const splitBar = moEl('div', 'mo-edit-splitbar mo-hidden');
+  const brushRing = moEl('div', 'mo-edit-brush mo-hidden');
+  const chip = moEl('div', 'mo-edit-chip mo-hidden', { role: 'status', 'aria-live': 'polite' });
+  const chipLabel = moEl('span', 'mo-edit-chip-label');
+  const chipNote = moEl('span', 'mo-edit-chip-note');
+  const chipHead = moEl('div', 'mo-edit-chip-head');
+  chipHead.appendChild(chipLabel); chipHead.appendChild(chipNote);
+  const chipBar = moEl('div', 'mo-edit-progress mo-hidden', { role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100' });
+  const chipFill = moEl('div', 'mo-edit-progress-fill');
+  chipBar.appendChild(chipFill);
+  chip.appendChild(chipHead); chip.appendChild(chipBar);
+  const notice = moEl('div', 'mo-edit-message mo-hidden');
+  for (const e of [canvas, paint, cropFrame, splitBar, brushRing, chip, notice]) stage.appendChild(e);
+  const film = moEl('div', 'mo-edit-film');
+  centre.appendChild(stage); centre.appendChild(film);
+  const panel = moEl('div', 'mo-edit-panel');
+  const histWrap = moEl('div', 'mo-edit-hist');
+  const histCanvas = moEl('canvas', 'mo-edit-hist-canvas');
+  const clipLo = moEl('div', 'mo-edit-clip mo-edit-clip--lo', { title: 'Shadows are clipped to black' });
+  const clipHi = moEl('div', 'mo-edit-clip mo-edit-clip--hi', { title: 'Highlights are clipped to white' });
+  histWrap.appendChild(histCanvas); histWrap.appendChild(clipLo); histWrap.appendChild(clipHi);
+  const panelBody = moEl('div', 'mo-edit-panel-body');
+  panel.appendChild(histWrap); panel.appendChild(panelBody);
+  const tools = moEl('div', 'mo-edit-tools');
+  body.appendChild(presetsEl); body.appendChild(centre); body.appendChild(panel); body.appendChild(tools);
+  root.appendChild(topbar); root.appendChild(body);
+
+  const say = (text) => { notice.textContent = text || ''; notice.classList.toggle('mo-hidden', !text); };
+  // What is going on, how far along it is (0..1, or nothing when that cannot be known) and for how long.
+  let busySince = 0; let busyFraction = null; let busyTimer = null;
+  const paintBusy = () => {
+    const secs = Math.round((Date.now() - busySince) / 1000);
+    const known = typeof busyFraction === 'number';
+    const pctNow = known ? Math.round(busyFraction * 100) : 0;
+    chipLabel.textContent = state.busy;
+    chipNote.textContent = [known ? pctNow + '%' : '', secs >= 2 ? secs + ' s' : ''].filter(Boolean).join(', ');
+    chipBar.classList.toggle('mo-hidden', !known);
+    chipFill.style.width = pctNow + '%';
+    chipBar.setAttribute('aria-valuenow', String(pctNow));
+  };
+  const busy = (text, fraction) => {
+    const was = !!state.busy;
+    state.busy = text || '';
+    busyFraction = typeof fraction === 'number' ? moEditClamp(fraction, 0, 1) : null;
+    chip.classList.toggle('mo-hidden', !state.busy);
+    if (state.busy && !was) { busySince = Date.now(); busyTimer = setInterval(paintBusy, 1000); }
+    if (!state.busy && busyTimer) { clearInterval(busyTimer); busyTimer = null; }
+    if (state.busy) paintBusy();
+  };
+  disposers.push(() => { if (busyTimer) clearInterval(busyTimer); });
+  const openPhotoTab = (photoId, title) => api.editors.openEditor({ typeId: 'media-organizer-grid', title: title || 'Photo', icon: 'image', instanceId: `detail:photo:${photoId}` });
+  const flash = (text) => { try { if (api.statusBar && api.statusBar.setMessage) api.statusBar.setMessage(text, 2500); else api.window.showInformationMessage(text); } catch { /* no status bar */ } };
+
+  // ── top bar ──
+  const iconBtn = (icon, label, fn) => { const b = moEl('button', 'mo-edit-icon', { type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 14) }); b.addEventListener('click', fn); return b; };
+  const textBtn = (label, fn, cls) => { const b = moEl('button', cls || 'mo-toolbar-btn', { type: 'button', textContent: label }); b.addEventListener('click', fn); return b; };
+  const group = (...els) => { const g = moEl('div', 'mo-edit-group'); for (const e of els) g.appendChild(e); return g; };
+  const presetsBtn = iconBtn('panel-left', 'Presets', () => { _moEditUi.presets = !_moEditUi.presets; syncChrome(); requestRender(); });
+  const filmBtn = iconBtn('panel-bottom', 'Filmstrip', () => { _moEditUi.filmstrip = !_moEditUi.filmstrip; syncChrome(); requestRender(); });
+  const titleEl = moEl('div', 'mo-edit-title');
+  const sizeEl = moEl('div', 'mo-edit-dim');
+  const undoBtn = iconBtn('undo-2', 'Undo', () => undo());
+  const redoBtn = iconBtn('redo-2', 'Redo', () => redo());
+  const resetBtn = textBtn('Reset', () => resetAll());
+  const originalBtn = textBtn('Show Original', () => toggleOriginal());
+  const splitBtn = iconBtn('columns-2', 'Split View', () => toggleSplit());
+  const fitBtn = textBtn('Fit', () => zoomTo('fit'));
+  const fullBtn = textBtn('100%', () => zoomTo(1));
+  const zoomEl = moEl('div', 'mo-edit-dim mo-edit-zoom');
+  const copyBtn = iconBtn('copy', 'Copy Edit', () => copyEdit());
+  const pasteBtn = iconBtn('clipboard-paste', 'Paste Edit', () => pasteEdit());
+  const saveOverBtn = textBtn('Save', () => void saveOver());
+  const saveBtn = textBtn('Save As Copy', () => void saveCopy(), 'mo-practice-start');
+  const left = moEl('div', 'mo-edit-topbar-left');
+  left.appendChild(presetsBtn); left.appendChild(titleEl); left.appendChild(sizeEl);
+  const right = moEl('div', 'mo-edit-topbar-right');
+  for (const g of [group(undoBtn, redoBtn, resetBtn), group(originalBtn, splitBtn), group(zoomEl, fitBtn, fullBtn), group(copyBtn, pasteBtn), group(filmBtn), group(saveOverBtn, saveBtn)]) right.appendChild(g);
+  topbar.appendChild(left); topbar.appendChild(right);
+
+  const toolBtns = {};
+  for (const [id, icon, label] of MO_EDIT_TOOLS) {
+    const b = moEl('button', 'mo-edit-tool', { type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 16) });
+    b.addEventListener('click', () => setTool(id));
+    toolBtns[id] = b;
+    tools.appendChild(b);
+  }
+
+  function syncChrome() {
+    presetsEl.classList.toggle('mo-hidden', !_moEditUi.presets);
+    film.classList.toggle('mo-hidden', !_moEditUi.filmstrip);
+    presetsBtn.classList.toggle('is-on', _moEditUi.presets);
+    filmBtn.classList.toggle('is-on', _moEditUi.filmstrip);
+  }
+  function syncButtons() {
+    const ready = !!state.recipe && !!state.bitmap;
+    const neutral = !state.recipe || moEditIsNeutral(state.recipe);
+    const session = state.session;
+    undoBtn.disabled = !ready || !session || session.histIdx <= 0;
+    redoBtn.disabled = !ready || !session || session.histIdx >= session.history.length - 1;
+    resetBtn.disabled = !ready || (neutral && !(state.recipe && state.recipe.enhance.scale));
+    originalBtn.disabled = !ready || neutral;
+    splitBtn.disabled = !ready || neutral || state.tool === 'crop';
+    copyBtn.disabled = !ready || moEditLookIsRest(state.recipe);
+    pasteBtn.disabled = !ready || !_moEditClipboard;
+    saveBtn.disabled = !ready || state.saving || !moEditHasWork(state.recipe);
+    saveBtn.title = saveBtn.disabled && ready && !state.saving ? 'Nothing has been changed yet' : 'Write the edited picture beside the original';
+    const writable = !!moEditSaveOverExt(state.name);
+    saveOverBtn.disabled = saveBtn.disabled || !writable;
+    saveOverBtn.title = ready && !writable ? 'This kind of file can only be saved as a copy'
+      : saveOverBtn.disabled && ready && !state.saving ? 'Nothing has been changed yet' : 'Replace the original file with the edited picture';
+    fitBtn.disabled = !ready || state.tool === 'crop'; fullBtn.disabled = fitBtn.disabled;
+    for (const id of Object.keys(toolBtns)) { toolBtns[id].classList.toggle('is-on', id === state.tool); toolBtns[id].disabled = !ready; }
+  }
+
+  // ── the recipe, undo, storing the edit ──
+  function pushHistory() {
+    const s = state.session;
+    const snap = JSON.stringify(state.recipe);
+    if (s.history[s.histIdx] === snap) return;
+    s.history.splice(s.histIdx + 1);
+    s.history.push(snap);
+    if (s.history.length > 100) s.history.shift();
+    s.histIdx = s.history.length - 1;
+  }
+  function scheduleSave() { dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(() => void flushSave(), 400); }
+  async function flushSave() {
+    clearTimeout(saveTimer);
+    if (!dirty || !state.recipe || !state.photoId) return;
+    dirty = false;
+    try { await moEditSaveRecipe(state.photoId, state.recipe); markFilm(state.photoId, moEditHasWork(state.recipe)); } catch (err) { console.warn('[MediaOrganizer] the edit could not be stored:', err && err.message); }
+  }
+  // record: true when the change is a step worth an undo
+  function afterChange(record) {
+    if (record) pushHistory();
+    if ((state.original || state.split >= 0) && moEditIsNeutral(state.recipe)) { state.original = false; state.split = -1; }
+    scheduleSave();
+    syncButtons();
+    syncCompare();
+    renderPanel();
+    void syncWork().then(() => requestRender());
+  }
+  function restore(idx) {
+    state.session.histIdx = idx;
+    state.recipe = moEditNormalizeRecipe(JSON.parse(state.session.history[idx]));
+    afterChange(false);
+  }
+  function undo() { if (state.recipe && state.session.histIdx > 0) restore(state.session.histIdx - 1); }
+  function redo() { if (state.recipe && state.session.histIdx < state.session.history.length - 1) restore(state.session.histIdx + 1); }
+  function resetAll() {
+    if (!state.recipe) return;
+    state.recipe = moEditDefaultRecipe();
+    afterChange(true);
+  }
+  function syncCompare() {
+    originalBtn.classList.toggle('is-on', state.original);
+    originalBtn.setAttribute('aria-pressed', state.original ? 'true' : 'false');
+    splitBtn.classList.toggle('is-on', state.split >= 0);
+    splitBtn.setAttribute('aria-pressed', state.split >= 0 ? 'true' : 'false');
+    splitBar.classList.toggle('mo-hidden', !(state.split >= 0) || state.tool === 'crop');
+  }
+  function toggleOriginal() { if (!state.recipe || originalBtn.disabled) return; state.original = !state.original; if (state.original) state.split = -1; syncCompare(); requestRender(); }
+  function toggleSplit() { if (!state.recipe || splitBtn.disabled) return; state.split = state.split >= 0 ? -1 : 0.5; if (state.split >= 0) state.original = false; syncCompare(); requestRender(); }
+  function copyEdit() { if (!state.recipe || copyBtn.disabled) return; _moEditClipboard = moEditPickLook(state.recipe); syncButtons(); flash('Edit copied. Paste it onto another photo here or from the library.'); }
+  function pasteEdit() { if (!state.recipe || !_moEditClipboard) return; state.recipe = moEditApplyLook(state.recipe, _moEditClipboard); afterChange(true); }
+
+  // The picture the recipe is drawn from follows the recipe's removals.
+  async function syncWork() {
+    if (!state.bitmap || !state.recipe) return;
+    const key = JSON.stringify(state.recipe.removals);
+    if (key === state.workKey) return;
+    const seq = loadSeq;
+    const work = await moEditWorkSource(state.photoId, state.bitmap, state.recipe.removals);
+    if (disposed || seq !== loadSeq) return;
+    state.work = work; state.workKey = key;
+  }
+
+  // ── drawing ──
+  function canvasSize() {
+    const dpr = window.devicePixelRatio || 1;
+    return { w: Math.max(1, Math.round(stage.clientWidth * dpr)), h: Math.max(1, Math.round(stage.clientHeight * dpr)), dpr };
+  }
+  function lookParams() {
+    const r = state.hover ? moEditApplyLook(state.recipe, state.hover) : state.recipe;
+    const key = JSON.stringify(r.curve);
+    if (key !== state.stripKey) { state.strip = moEditCurveIsRest(r.curve) ? null : moEditCurveStrip(r.curve); state.stripKey = key; }
+    return moEditEngineLook(r, state.original, state.strip);
+  }
+  function geometry() { return moEditAffine(state.recipe, state.bitmap.width, state.bitmap.height); }
+  function viewMap(cs, geo) {
+    const v = state.session.view;
+    if (v.fit) { v.zoom = moEditFitZoom(geo.outW, geo.outH, cs.w, cs.h, 32 * cs.dpr); v.cx = geo.outW / 2; v.cy = geo.outH / 2; }
+    Object.assign(v, moEditClampView(geo.outW, geo.outH, cs.w, cs.h, v.zoom, v.cx, v.cy));
+    return moEditViewMap(geo.outW, geo.outH, cs.w, cs.h, v.zoom, v.cx, v.cy);
+  }
+  function requestRender() { if (raf || disposed) return; raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
+  function draw() {
+    if (disposed || !engine || !state.recipe || !state.bitmap || !stage.clientWidth) return;
+    const src = state.original ? state.bitmap : (state.work || state.bitmap);
+    if (state.sourceObj !== src) { engine.setSource(src, { smooth: true }); state.sourceObj = src; }
+    const cs = canvasSize();
+    const geo = geometry();
+    canvas.style.width = stage.clientWidth + 'px'; canvas.style.height = stage.clientHeight + 'px';
+    const p = Object.assign(lookParams(), { m: geo.m, outSize: [geo.outW, geo.outH], opaque: false });
+    const crop = state.tool === 'crop';
+    if (crop) {
+      state.cropView = moEditCropView(state.recipe, state.bitmap.width, state.bitmap.height, cs.w, cs.h, 72 * cs.dpr);
+      p.view = state.cropView.view; p.outside = true;
+      const f = state.cropView.frame;
+      cropFrame.style.left = (f.x / cs.dpr) + 'px'; cropFrame.style.top = (f.y / cs.dpr) + 'px';
+      cropFrame.style.width = (f.w / cs.dpr) + 'px'; cropFrame.style.height = (f.h / cs.dpr) + 'px';
+      zoomEl.textContent = Math.round(state.cropView.zoom * 100) + '%';
+    } else {
+      p.view = viewMap(cs, geo);
+      p.split = state.split >= 0 ? state.split : -1;
+      zoomEl.textContent = Math.round(state.session.view.zoom * 100) + '%';
+      const v = state.session.view;
+      stage.classList.toggle('is-pannable', geo.outW * v.zoom > cs.w + 1 || geo.outH * v.zoom > cs.h + 1);
+      splitBar.style.left = (state.split * stage.clientWidth) + 'px';
+    }
+    cropFrame.classList.toggle('mo-hidden', !crop);
+    engine.draw(p, cs.w, cs.h);
+    sizeEl.textContent = `${geo.outW} × ${geo.outH}`;
+    if (paint.width !== cs.w || paint.height !== cs.h) { paint.width = cs.w; paint.height = cs.h; paint.style.width = canvas.style.width; paint.style.height = canvas.style.height; }
+    if (!histTimer) histTimer = setTimeout(() => { histTimer = null; updateHistogram(); }, 120);
+  }
+
+  // ── histogram ──
+  function updateHistogram() {
+    if (disposed || !engine || !state.recipe || !state.bitmap) return;
+    const geo = geometry();
+    const k = 192 / Math.max(geo.outW, geo.outH);
+    const w = Math.max(1, Math.round(geo.outW * k)); const h = Math.max(1, Math.round(geo.outH * k));
+    let px;
+    try { px = engine.sample(Object.assign(lookParams(), { m: geo.m, outSize: [geo.outW, geo.outH], opaque: false }), w, h); } catch { return; }
+    state.hist = moEditHistogram(px);
+    drawHistogram();
+    drawCurve();
+  }
+  function drawHistogram() {
+    const hist = state.hist;
+    const dpr = window.devicePixelRatio || 1;
+    const W = Math.max(1, Math.round(histCanvas.clientWidth * dpr)); const H = Math.max(1, Math.round(histCanvas.clientHeight * dpr));
+    if (histCanvas.width !== W) histCanvas.width = W;
+    if (histCanvas.height !== H) histCanvas.height = H;
+    const ctx = histCanvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    if (!hist || !hist.n) return;
+    let top = 1;
+    for (const c of ['r', 'g', 'b']) for (let i = 2; i < 254; i++) top = Math.max(top, hist[c][i]);
+    const area = (counts, colour) => {
+      ctx.fillStyle = colour;
+      ctx.beginPath(); ctx.moveTo(0, H);
+      for (let i = 0; i < 256; i++) ctx.lineTo((i / 255) * W, H - Math.min(1, counts[i] / top) * (H - 2));
+      ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+    };
+    ctx.globalCompositeOperation = 'lighter';
+    area(hist.r, 'rgba(230, 60, 60, 0.72)'); area(hist.g, 'rgba(60, 200, 80, 0.72)'); area(hist.b, 'rgba(70, 110, 240, 0.72)');
+    ctx.globalCompositeOperation = 'source-over';
+    clipLo.classList.toggle('is-on', hist.l[0] / hist.n > 0.005);
+    clipHi.classList.toggle('is-on', hist.l[255] / hist.n > 0.005);
+  }
+
+  // ── zoom and pan ──
+  function outputAt(px, py) {
+    const cs = canvasSize(); const v = state.session.view;
+    return { x: v.cx + (px * cs.dpr - cs.w / 2) / v.zoom, y: v.cy + (py * cs.dpr - cs.h / 2) / v.zoom };
+  }
+  // The source pixel under a point of the stage, through the window and the crop.
+  function sourceAt(px, py) {
+    const geo = geometry();
+    const o = outputAt(px, py);
+    const s = moAffineApply(geo.m, o.x / geo.outW, o.y / geo.outH);
+    return [s[0] * state.bitmap.width, s[1] * state.bitmap.height];
+  }
+  function zoomAt(zoom, px, py) {
+    if (!state.bitmap || state.tool === 'crop') return;
+    const cs = canvasSize(); const v = state.session.view;
+    const at = outputAt(px, py);
+    const z = moEditClamp(zoom, MO_EDIT_ZOOM_MIN, MO_EDIT_ZOOM_MAX);
+    v.fit = false; v.zoom = z;
+    v.cx = at.x - (px * cs.dpr - cs.w / 2) / z;
+    v.cy = at.y - (py * cs.dpr - cs.h / 2) / z;
+    requestRender();
+  }
+  function zoomTo(what) {
+    if (!state.bitmap || state.tool === 'crop') return;
+    if (what === 'fit') { state.session.view.fit = true; requestRender(); return; }
+    zoomAt(Number(what) || 1, stage.clientWidth / 2, stage.clientHeight / 2);
+  }
+  const stagePoint = (e) => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+
+  stage.addEventListener('wheel', (e) => {
+    if (!state.bitmap || state.tool === 'crop') return;
+    e.preventDefault();
+    const p = stagePoint(e);
+    zoomAt(state.session.view.zoom * Math.pow(1.0015, -e.deltaY), p.x, p.y);
+  }, { passive: false });
+  stage.addEventListener('dblclick', (e) => {
+    if (!state.bitmap || state.tool === 'crop' || state.tool === 'remove' || state.pickWb) return;
+    if (state.session.view.fit) { const p = stagePoint(e); zoomAt(1, p.x, p.y); } else zoomTo('fit');
+  });
+
+  // One pointer at a time on the stage; what it does depends on the tool.
+  let drag = null;
+  stage.addEventListener('pointerdown', (e) => {
+    root.focus({ preventScroll: true });
+    if (!state.bitmap || !state.recipe || state.busy) return;
+    const p = stagePoint(e);
+    if (e.target === splitBar) { drag = { kind: 'split' }; }
+    else if (state.tool === 'crop') {
+      const handle = e.target && e.target.dataset && e.target.dataset.handle ? e.target.dataset.handle : (cropFrame.contains(e.target) ? 'move' : null);
+      if (!handle || e.button !== 0 || !state.cropView) return;
+      const cv = state.cropView;
+      drag = { kind: 'crop', handle, x: e.clientX, y: e.clientY, zoom: cv.zoom, box: moEditCropBox(state.recipe.crop, cv.viewW, cv.viewH), vw: cv.viewW, vh: cv.viewH };
+    }
+    else if (state.pickWb && e.button === 0) { pickWhiteBalance(p); return; }
+    else if (state.tool === 'remove' && e.button === 0 && !e.altKey && state.removeState === 'ready') {
+      drag = { kind: 'stroke', points: [sourceAt(p.x, p.y)], screen: [[p.x, p.y]], radius: (_moEditUi.brush / 2) * (window.devicePixelRatio || 1) / state.session.view.zoom };
+      paintStroke(drag);
+    }
+    else if ((e.button === 0 || e.button === 1) && stage.classList.contains('is-pannable')) {
+      drag = { kind: 'pan', x: e.clientX, y: e.clientY, cx: state.session.view.cx, cy: state.session.view.cy };
+      stage.classList.add('is-panning');
+    }
+    if (drag) { e.preventDefault(); stage.setPointerCapture(e.pointerId); }
+  });
+  stage.addEventListener('pointermove', (e) => {
+    const p = stagePoint(e);
+    if (state.tool === 'remove' && state.removeState === 'ready') {
+      brushRing.classList.remove('mo-hidden');
+      brushRing.style.width = _moEditUi.brush + 'px'; brushRing.style.height = _moEditUi.brush + 'px';
+      brushRing.style.left = (p.x - _moEditUi.brush / 2) + 'px'; brushRing.style.top = (p.y - _moEditUi.brush / 2) + 'px';
+    }
+    if (!drag) return;
+    const dpr = window.devicePixelRatio || 1;
+    if (drag.kind === 'pan') {
+      const v = state.session.view;
+      v.fit = false;
+      v.cx = drag.cx - ((e.clientX - drag.x) * dpr) / v.zoom;
+      v.cy = drag.cy - ((e.clientY - drag.y) * dpr) / v.zoom;
+      requestRender();
+    } else if (drag.kind === 'split') {
+      state.split = moEditClamp(p.x / Math.max(1, stage.clientWidth), 0.02, 0.98);
+      requestRender();
+    } else if (drag.kind === 'crop') {
+      const dx = ((e.clientX - drag.x) * dpr) / drag.zoom; const dy = ((e.clientY - drag.y) * dpr) / drag.zoom;
+      const ratio = moEditAspectRatio(state.recipe, drag.vw, drag.vh);
+      state.recipe.crop = moEditCropFromBox(moEditCropDrag(drag.box, drag.handle, dx, dy, ratio, state.recipe.angle, drag.vw, drag.vh), drag.vw, drag.vh);
+      requestRender();
+    } else if (drag.kind === 'stroke') {
+      drag.points.push(sourceAt(p.x, p.y)); drag.screen.push([p.x, p.y]);
+      paintStroke(drag);
+    }
+  });
+  const endDrag = () => {
+    const d = drag; drag = null;
+    stage.classList.remove('is-panning');
+    if (!d) return;
+    if (d.kind === 'crop') afterChange(true);
+    else if (d.kind === 'stroke') void removeStroke(d);
+  };
+  stage.addEventListener('pointerup', endDrag);
+  stage.addEventListener('pointercancel', endDrag);
+  stage.addEventListener('pointerleave', () => brushRing.classList.add('mo-hidden'));
+  const resizeObs = ('ResizeObserver' in window) ? new ResizeObserver(() => requestRender()) : null;
+  if (resizeObs) resizeObs.observe(stage);
+
+  // ── the panel's building blocks ──
+  const panelDisposers = [];
+  const openSection = (parent, id, title, extra) => {
+    const section = moEl('div', 'mo-edit-section');
+    const head = moEl('div', 'mo-edit-section-head');
+    const fold = moEl('button', 'mo-edit-section-fold', { type: 'button' });
+    fold.appendChild(moEl('span', 'mo-edit-chevron', { innerHTML: moIcon('chevron-down', 12) }));
+    fold.appendChild(moEl('span', 'mo-edit-section-title', { textContent: title }));
+    head.appendChild(fold);
+    if (extra) for (const e of extra) head.appendChild(e);
+    const bodyEl = moEl('div', 'mo-edit-section-body');
+    const set = (shut) => { section.classList.toggle('is-shut', shut); fold.setAttribute('aria-expanded', shut ? 'false' : 'true'); };
+    set(_moEditCollapsed.has(id));
+    fold.addEventListener('click', () => { const shut = !_moEditCollapsed.has(id); if (shut) _moEditCollapsed.add(id); else _moEditCollapsed.delete(id); set(shut); if (!shut && id === 'curve') drawCurve(); });
+    section.appendChild(head); section.appendChild(bodyEl);
+    parent.appendChild(section);
+    return bodyEl;
+  };
+  /**
+   * One slider row. o: { id, label, aria, min, max, step, value, rest, show(v),
+   * parse(text), tint (a class for a coloured track), dim, onInput(v), onChange(v) }.
+   * The id finds the slider again after the panel is rebuilt, so it keeps the focus.
+   * Double-clicking the label or the track returns it to rest; the number can be typed.
+   */
+  const sliderRow = (o) => {
+    const row = moEl('div', 'mo-edit-slider' + (o.dim ? ' is-dim' : ''));
+    const head = moEl('div', 'mo-edit-slider-head');
+    const name = moEl('span', 'mo-edit-slider-name', { textContent: o.label, title: 'Double-click to reset' });
+    const val = moEl('button', 'mo-edit-value', { type: 'button', title: 'Click to type a value' });
+    head.appendChild(name); head.appendChild(val);
+    const input = moEl('input', 'mo-edit-range' + (o.tint ? ` mo-edit-range--${o.tint}` : ''), { type: 'range', min: String(o.min), max: String(o.max), step: String(o.step || 0.01), 'aria-label': o.aria || o.label, 'data-slider': o.id || o.label });
+    input.value = String(o.value);
+    const show = () => { val.textContent = o.show(Number(input.value)); };
+    show();
+    input.addEventListener('input', () => { show(); o.onInput(Number(input.value)); });
+    input.addEventListener('change', () => { show(); o.onChange(Number(input.value)); });
+    const toRest = () => { if (Number(input.value) === o.rest) return; input.value = String(o.rest); show(); o.onChange(o.rest); };
+    input.addEventListener('dblclick', toRest);
+    name.addEventListener('dblclick', toRest);
+    val.addEventListener('click', () => {
+      const box = moEl('input', 'mo-edit-value-input', { type: 'text', 'aria-label': o.label });
+      box.value = val.textContent;
+      head.replaceChild(box, val);
+      box.focus(); box.select();
+      let done = false;
+      const finish = (keep) => {
+        if (done) return; done = true;
+        const v = keep ? o.parse(box.value) : null;
+        if (box.parentNode === head) head.replaceChild(val, box);
+        if (v !== null && v !== Number(input.value)) { input.value = String(v); show(); o.onChange(Number(input.value)); }
+      };
+      box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } e.stopPropagation(); });
+      box.addEventListener('blur', () => finish(true));
+    });
+    row.appendChild(head); row.appendChild(input);
+    return { row, input, show };
+  };
+  const pct = (v) => { const p = Math.round(v * 100); return (p > 0 ? '+' : '') + p; };
+  const parsePct = (min, max) => (text) => { const n = Number(String(text).replace(',', '.').replace('+', '').trim()); return Number.isFinite(n) && String(text).trim() !== '' ? moEditClamp(n / 100, min, max) : null; };
+  const recipeSlider = ([key, label, min, max, rest, , parent]) => sliderRow({
+    id: key, label, min, max, rest, value: state.recipe[key],
+    tint: ['warmth', 'tint', 'vibrance', 'saturation'].includes(key) ? key : null,
+    dim: !!parent && Math.abs(state.recipe[parent]) < 1e-6,
+    show: (v) => moEditFormatValue(key, v), parse: (t) => moEditParseValue(key, t),
+    onInput: (v) => { state.recipe[key] = v; requestRender(); },
+    onChange: (v) => { state.recipe[key] = v; afterChange(true); },
+  }).row;
+  const smallBtn = (icon, label, fn, on) => { const b = moEl('button', 'mo-edit-mini' + (on ? ' is-on' : ''), { type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 12) }); b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); return b; };
+  const hint = (text) => moEl('div', 'mo-edit-hint', { textContent: text });
+  const row = (...els) => { const r = moEl('div', 'mo-edit-row'); for (const e of els) r.appendChild(e); return r; };
+  const dropdown = (items, selected, label, onChange) => { const d = moDropdown({ items, selected, ariaLabel: label }); d.onChange = onChange; panelDisposers.push(() => d.dispose()); return d.el; };
+
+  // The panel is rebuilt from the recipe; where it was scrolled to and the slider that had the focus are kept.
+  function renderPanel() {
+    const top = panelBody.scrollTop;
+    const held = panelBody.contains(document.activeElement) && document.activeElement.dataset ? document.activeElement.dataset.slider : null;
+    for (const d of panelDisposers.splice(0)) { try { d(); } catch { /* gone */ } }
+    curveCanvas = null;
+    panelBody.innerHTML = '';
+    if (!state.recipe) return;
+    if (state.tool === 'crop') panelCrop();
+    else if (state.tool === 'remove') panelRemove();
+    else if (state.tool === 'enhance') panelEnhance();
+    else panelEdit();
+    panelBody.scrollTop = top;
+    if (held) { const again = Array.from(panelBody.querySelectorAll('[data-slider]')).find((el) => el.dataset.slider === held); if (again) again.focus({ preventScroll: true }); }
+  }
+
+  // ── Edit ──
+  function panelEdit() {
+    const r = state.recipe;
+    const autoBtn = textBtn('Auto', () => autoTone());
+    const bwBtn = textBtn('Black And White', () => { r.bw = !r.bw; afterChange(true); });
+    bwBtn.classList.toggle('is-on', r.bw); bwBtn.setAttribute('aria-pressed', r.bw ? 'true' : 'false');
+    panelBody.appendChild(row(autoBtn, bwBtn));
+    for (const [id, title, sliders] of MO_EDIT_SECTIONS) {
+      const off = r.off.includes(id);
+      const rest = moEditSectionIsRest(r, id);
+      const eye = smallBtn(off ? 'eye-off' : 'eye', off ? `Show ${title}` : `Hide ${title}`, () => { r.off = off ? r.off.filter((x) => x !== id) : r.off.concat(id); afterChange(true); }, off);
+      const reset = smallBtn('rotate-ccw', `Reset ${title}`, () => resetSection(id));
+      eye.disabled = rest && !off; reset.disabled = rest;
+      const bodyEl = openSection(panelBody, id, title, [eye, reset]);
+      if (id === 'colour') {
+        const pick = textBtn('Pick White Balance', () => { state.pickWb = !state.pickWb; stage.classList.toggle('is-picking', state.pickWb); renderPanel(); });
+        pick.classList.toggle('is-on', state.pickWb);
+        bodyEl.appendChild(row(pick));
+        if (state.pickWb) bodyEl.appendChild(hint('Click something in the photo that should be a neutral grey or white.'));
+      }
+      for (const s of sliders) bodyEl.appendChild(recipeSlider(s));
+      if (id === 'light') curveBlock(openSection(bodyEl, 'curve', 'Tone Curve'));
+      if (id === 'colour') { mixerBlock(openSection(bodyEl, 'mixer', 'Colour Mixer')); gradingBlock(openSection(bodyEl, 'grading', 'Colour Grading')); }
+    }
+  }
+  function resetSection(id) {
+    const base = moEditDefaultRecipe(); const r = state.recipe;
+    const sec = MO_EDIT_SECTIONS.find((s) => s[0] === id);
+    for (const [key] of sec[2]) r[key] = base[key];
+    if (id === 'light') r.curve = base.curve;
+    if (id === 'colour') { r.bw = false; r.mixer = base.mixer; r.grading = base.grading; }
+    r.off = r.off.filter((x) => x !== id);
+    afterChange(true);
+  }
+  function autoTone() {
+    if (!engine || !state.bitmap) return;
+    const geo = geometry();
+    const k = 256 / Math.max(geo.outW, geo.outH);
+    const rest = moEditEngineLook(moEditDefaultRecipe(), true);
+    let px;
+    try { px = engine.sample(Object.assign(rest, { m: geo.m, outSize: [geo.outW, geo.outH], opaque: false }), Math.max(1, Math.round(geo.outW * k)), Math.max(1, Math.round(geo.outH * k))); } catch { return; }
+    Object.assign(state.recipe, moEditAutoTone(moEditHistogram(px)));
+    state.recipe.off = state.recipe.off.filter((x) => x !== 'light');
+    afterChange(true);
+  }
+  function pickWhiteBalance(p) {
+    const [sx, sy] = sourceAt(p.x, p.y);
+    const src = state.work || state.bitmap;
+    if (sx < 0 || sy < 0 || sx >= src.width || sy >= src.height) return;
+    const c = document.createElement('canvas'); c.width = 5; c.height = 5;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(src, moEditClamp(Math.round(sx) - 2, 0, Math.max(0, src.width - 5)), moEditClamp(Math.round(sy) - 2, 0, Math.max(0, src.height - 5)), 5, 5, 0, 0, 5, 5);
+    const d = ctx.getImageData(0, 0, 5, 5).data;
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    Object.assign(state.recipe, moEditWhiteBalance(r / 25 / 255, g / 25 / 255, b / 25 / 255));
+    state.pickWb = false; stage.classList.remove('is-picking');
+    afterChange(true);
+  }
+
+  // The tone curve: a square to drag points on, over the picture's brightness counts.
+  let curveCanvas = null;
+  function curveBlock(parent) {
+    const r = state.recipe;
+    const chans = moEl('div', 'mo-edit-row');
+    for (const [key, label] of MO_EDIT_CURVES) {
+      const b = textBtn(label, () => { state.curveChannel = key; renderPanel(); }, 'mo-edit-chan mo-edit-chan--' + key);
+      b.classList.toggle('is-on', state.curveChannel === key);
+      chans.appendChild(b);
+    }
+    parent.appendChild(chans);
+    const cv = moEl('canvas', 'mo-edit-curve', { 'aria-label': 'Tone Curve' });
+    parent.appendChild(cv);
+    curveCanvas = cv;
+    const pts = () => r.curve[state.curveChannel];
+    const at = (e) => { const b = cv.getBoundingClientRect(); return [moEditClamp((e.clientX - b.left) / b.width, 0, 1), moEditClamp(1 - (e.clientY - b.top) / b.height, 0, 1)]; };
+    const near = (x, y) => { const b = cv.getBoundingClientRect(); let best = -1; let bd = 14; pts().forEach((p, i) => { const d = Math.hypot((p[0] - x) * b.width, (p[1] - y) * b.height); if (d < bd) { bd = d; best = i; } }); return best; };
+    let held = -1;
+    cv.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const [x, y] = at(e);
+      held = near(x, y);
+      if (held < 0 && pts().length < MO_EDIT_CURVE_MAX_POINTS) {
+        const list = pts().concat([[x, y]]).sort((a, b) => a[0] - b[0]);
+        r.curve[state.curveChannel] = list;
+        held = list.findIndex((p) => p[0] === x && p[1] === y);
+      }
+      if (held >= 0) { cv.setPointerCapture(e.pointerId); e.preventDefault(); move(e); }
+    });
+    const move = (e) => {
+      if (held < 0) return;
+      const list = pts(); const [x, y] = at(e);
+      const last = list.length - 1;
+      const px = held === 0 ? 0 : held === last ? 1 : moEditClamp(x, list[held - 1][0] + 0.01, list[held + 1][0] - 0.01);
+      list[held] = [px, y];
+      drawCurve(); requestRender();
+    };
+    cv.addEventListener('pointermove', move);
+    const drop = () => { if (held < 0) return; held = -1; r.curve[state.curveChannel] = moEditNormalizeCurvePoints(pts()); afterChange(true); drawCurve(); };
+    cv.addEventListener('pointerup', drop);
+    cv.addEventListener('pointercancel', drop);
+    cv.addEventListener('dblclick', (e) => {
+      const [x, y] = at(e); const i = near(x, y); const list = pts();
+      if (i <= 0 || i >= list.length - 1) return;
+      list.splice(i, 1);
+      afterChange(true); drawCurve();
+    });
+    const reset = textBtn('Reset Curve', () => { r.curve = moEditDefaultCurve(); afterChange(true); });
+    reset.disabled = moEditCurveIsRest(r.curve);
+    parent.appendChild(row(reset));
+    parent.appendChild(hint('Click to add a point, drag to bend the line, double-click a point to remove it.'));
+    requestAnimationFrame(drawCurve);
+  }
+  function drawCurve() {
+    const cv = curveCanvas;
+    if (!cv || !cv.isConnected || !cv.clientWidth || !state.recipe) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = Math.round(cv.clientWidth * dpr); const H = Math.round(cv.clientHeight * dpr);
+    if (cv.width !== W) cv.width = W;
+    if (cv.height !== H) cv.height = H;
+    const ctx = cv.getContext('2d');
+    const css = getComputedStyle(cv);
+    const line = css.getPropertyValue('--mo-edit-line').trim() || css.color;
+    const faint = css.getPropertyValue('--mo-edit-faint').trim() || css.color;
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = faint; ctx.lineWidth = dpr;
+    for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo((W * i) / 4, 0); ctx.lineTo((W * i) / 4, H); ctx.moveTo(0, (H * i) / 4); ctx.lineTo(W, (H * i) / 4); ctx.stroke(); }
+    if (state.hist && state.hist.n) {
+      const counts = state.curveChannel === 'rgb' ? state.hist.l : state.hist[state.curveChannel];
+      let top = 1; for (let i = 2; i < 254; i++) top = Math.max(top, counts[i]);
+      ctx.fillStyle = faint;
+      ctx.beginPath(); ctx.moveTo(0, H);
+      for (let i = 0; i < 256; i++) ctx.lineTo((i / 255) * W, H - Math.min(1, counts[i] / top) * H * 0.9);
+      ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+    }
+    ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(W, 0); ctx.stroke();
+    const tints = { rgb: line, r: 'rgb(230, 70, 70)', g: 'rgb(70, 190, 90)', b: 'rgb(80, 120, 240)' };
+    const pts = state.recipe.curve[state.curveChannel];
+    const lut = moEditCurveLut(pts, 128);
+    ctx.strokeStyle = tints[state.curveChannel]; ctx.lineWidth = 1.5 * dpr;
+    ctx.beginPath();
+    for (let i = 0; i < lut.length; i++) { const x = (i / (lut.length - 1)) * W; const y = H - lut[i] * H; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+    ctx.stroke();
+    ctx.fillStyle = tints[state.curveChannel];
+    for (const p of pts) { ctx.beginPath(); ctx.arc(p[0] * W, H - p[1] * H, 4 * dpr, 0, Math.PI * 2); ctx.fill(); }
+  }
+
+  // The colour mixer: pick one of eight colours, then shift its hue, saturation and luminance.
+  function mixerBlock(parent) {
+    const r = state.recipe;
+    const dots = moEl('div', 'mo-edit-dots');
+    for (const [key, label, hue] of MO_EDIT_MIX) {
+      const d = moEl('button', 'mo-edit-dot', { type: 'button', title: label, 'aria-label': label });
+      d.style.background = `hsl(${hue}, 80%, 55%)`;
+      d.classList.toggle('is-on', state.mixColour === key);
+      d.classList.toggle('is-set', r.mixer[key].some((v) => Math.abs(v) > 1e-6));
+      d.addEventListener('click', () => { state.mixColour = key; renderPanel(); });
+      dots.appendChild(d);
+    }
+    parent.appendChild(dots);
+    ['Hue', 'Saturation', 'Luminance'].forEach((label, i) => {
+      parent.appendChild(sliderRow({
+        id: 'mix-' + i, aria: `${label} Of ${(MO_EDIT_MIX.find((m) => m[0] === state.mixColour) || [])[1]}`,
+        label, min: -1, max: 1, rest: 0, value: r.mixer[state.mixColour][i], show: pct, parse: parsePct(-1, 1),
+        onInput: (v) => { r.mixer[state.mixColour][i] = v; requestRender(); },
+        onChange: (v) => { r.mixer[state.mixColour][i] = v; afterChange(true); },
+      }).row);
+    });
+    const reset = textBtn('Reset Mixer', () => { r.mixer = moEditDefaultMixer(); afterChange(true); });
+    reset.disabled = moEditMixerIsRest(r.mixer);
+    parent.appendChild(row(reset));
+  }
+
+  // Colour grading: a wheel each for shadows, midtones and highlights. The knob's angle is the hue, its distance the strength.
+  function gradingBlock(parent) {
+    const r = state.recipe;
+    const wheels = moEl('div', 'mo-edit-wheels');
+    for (const [key, label] of MO_EDIT_GRADE) {
+      const cell = moEl('div', 'mo-edit-wheel-cell');
+      const wheel = moEl('div', 'mo-edit-wheel', { role: 'slider', 'aria-label': `${label} Colour`, title: 'Drag to colour; double-click to reset' });
+      const knob = moEl('div', 'mo-edit-wheel-knob');
+      wheel.appendChild(knob);
+      const place = () => { const v = r.grading[key]; const a = v.h * Math.PI * 2; knob.style.left = (50 + Math.cos(a) * v.s * 50) + '%'; knob.style.top = (50 - Math.sin(a) * v.s * 50) + '%'; };
+      place();
+      let on = false;
+      const set = (e) => {
+        const b = wheel.getBoundingClientRect();
+        const x = (e.clientX - b.left) / b.width * 2 - 1; const y = 1 - (e.clientY - b.top) / b.height * 2;
+        r.grading[key].s = Math.min(1, Math.hypot(x, y));
+        r.grading[key].h = ((Math.atan2(y, x) / (Math.PI * 2)) + 1) % 1;
+        place(); requestRender();
+      };
+      wheel.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; on = true; wheel.setPointerCapture(e.pointerId); e.preventDefault(); set(e); });
+      wheel.addEventListener('pointermove', (e) => { if (on) set(e); });
+      const drop = () => { if (!on) return; on = false; afterChange(true); };
+      wheel.addEventListener('pointerup', drop);
+      wheel.addEventListener('pointercancel', drop);
+      wheel.addEventListener('dblclick', () => { r.grading[key] = { h: 0, s: 0, l: 0 }; afterChange(true); });
+      cell.appendChild(wheel);
+      cell.appendChild(moEl('div', 'mo-edit-wheel-name', { textContent: label }));
+      wheels.appendChild(cell);
+    }
+    parent.appendChild(wheels);
+    for (const [key, label] of MO_EDIT_GRADE) {
+      parent.appendChild(sliderRow({
+        id: 'grade-' + key, label: `${label} Luminance`, min: -1, max: 1, rest: 0, value: r.grading[key].l, show: pct, parse: parsePct(-1, 1),
+        onInput: (v) => { r.grading[key].l = v; requestRender(); }, onChange: (v) => { r.grading[key].l = v; afterChange(true); },
+      }).row);
+    }
+    parent.appendChild(sliderRow({ id: 'grade-blending', label: 'Blending', min: 0, max: 1, rest: 0.5, value: r.grading.blending, show: (v) => String(Math.round(v * 100)), parse: parsePct(0, 1),
+      onInput: (v) => { r.grading.blending = v; requestRender(); }, onChange: (v) => { r.grading.blending = v; afterChange(true); } }).row);
+    parent.appendChild(sliderRow({ id: 'grade-balance', label: 'Balance', min: -1, max: 1, rest: 0, value: r.grading.balance, show: pct, parse: parsePct(-1, 1),
+      onInput: (v) => { r.grading.balance = v; requestRender(); }, onChange: (v) => { r.grading.balance = v; afterChange(true); } }).row);
+    const reset = textBtn('Reset Grading', () => { r.grading = moEditDefaultGrading(); afterChange(true); });
+    reset.disabled = moEditGradingIsRest(r.grading);
+    parent.appendChild(row(reset));
+  }
+
+  // ── Crop And Rotate ──
+  function viewSize() { return moEditViewSize(state.bitmap.width, state.bitmap.height, state.recipe.rotate); }
+  function refit() {
+    const v = viewSize(); const r = state.recipe;
+    const ratio = moEditAspectRatio(r, v.w, v.h);
+    r.crop = moEditCropFromBox(moEditCropLargest(ratio, r.angle, v.w, v.h), v.w, v.h);
+  }
+  function panelCrop() {
+    const r = state.recipe;
+    const s = openSection(panelBody, 'crop-shape', 'Shape');
+    s.appendChild(dropdown(MO_EDIT_ASPECTS.map(([value, label]) => ({ value, label })), r.aspect, 'Shape', (v) => { r.aspect = v; r.aspectFlip = false; if (v !== 'free') refit(); afterChange(true); }));
+    const swap = textBtn('Swap Orientation', () => { r.aspectFlip = !r.aspectFlip; refit(); afterChange(true); });
+    swap.disabled = r.aspect === 'free' || r.aspect === '1:1';
+    s.appendChild(row(swap));
+    const t = openSection(panelBody, 'crop-turn', 'Rotate');
+    t.appendChild(sliderRow({
+      id: 'straighten', label: 'Straighten', min: -45, max: 45, step: 0.1, rest: 0, value: r.angle,
+      show: (v) => (v > 0 ? '+' : '') + v.toFixed(1) + '°',
+      parse: (text) => { const n = Number(String(text).replace(',', '.').replace('°', '').replace('+', '').trim()); return Number.isFinite(n) && String(text).trim() !== '' ? moEditClamp(n, -45, 45) : null; },
+      onInput: (v) => straighten(v), onChange: (v) => { straighten(v); state.straightenBase = null; afterChange(true); },
+    }).row);
+    t.appendChild(row(textBtn('Rotate Left', () => { state.recipe = moEditTurn(r, -1); afterChange(true); }), textBtn('Rotate Right', () => { state.recipe = moEditTurn(r, 1); afterChange(true); })));
+    t.appendChild(row(textBtn('Flip Horizontal', () => { state.recipe = moEditFlip(r, 'h'); afterChange(true); }), textBtn('Flip Vertical', () => { state.recipe = moEditFlip(r, 'v'); afterChange(true); })));
+    const reset = textBtn('Reset Crop And Rotate', () => { Object.assign(r, { crop: { x: 0, y: 0, w: 1, h: 1 }, angle: 0, rotate: 0, flipH: false, flipV: false, aspect: 'original', aspectFlip: false }); afterChange(true); });
+    reset.disabled = moEditGeometryIsRest(r);
+    panelBody.appendChild(row(reset));
+    panelBody.appendChild(hint('Drag the frame to move it, a handle to resize it. The part outside the frame is left out of the copy.'));
+  }
+  // Straightening keeps the crop's middle and shape. A crop that was as large as the photo allowed stays as
+  // large as it allows at each angle; one drawn smaller is only ever made smaller, to stay on the photo.
+  function straighten(angle) {
+    const v = viewSize(); const r = state.recipe;
+    if (!state.straightenBase) { const box = moEditCropBox(r.crop, v.w, v.h); state.straightenBase = { box, grow: moEditCropIsLargest(box, r.angle, v.w, v.h) }; }
+    r.angle = angle;
+    r.crop = moEditCropFromBox(moEditCropScaled(state.straightenBase.box, angle, v.w, v.h, state.straightenBase.grow), v.w, v.h);
+    requestRender();
+  }
+
+  // ── Remove ──
+  function paintStroke(d) {
+    const ctx = paint.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, paint.width, paint.height);
+    if (!d) return;
+    ctx.strokeStyle = 'rgba(255, 70, 70, 0.45)'; ctx.fillStyle = ctx.strokeStyle;
+    ctx.lineWidth = _moEditUi.brush * dpr; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    d.screen.forEach(([x, y], i) => { if (i) ctx.lineTo(x * dpr, y * dpr); else ctx.moveTo(x * dpr, y * dpr); });
+    if (d.screen.length === 1) { ctx.arc(d.screen[0][0] * dpr, d.screen[0][1] * dpr, (_moEditUi.brush * dpr) / 2, 0, Math.PI * 2); ctx.fill(); } else ctx.stroke();
+  }
+  async function removeStroke(d) {
+    const src = state.work || state.bitmap;
+    const box = moEditStrokeBox(d.points, d.radius, src.width, src.height);
+    if (!box) { paintStroke(null); return; }
+    busy('Removing');
+    try {
+      const mask = document.createElement('canvas'); mask.width = box.w; mask.height = box.h;
+      const mctx = mask.getContext('2d');
+      mctx.translate(-box.x, -box.y);
+      mctx.strokeStyle = '#ffffff'; mctx.fillStyle = '#ffffff';
+      mctx.lineWidth = Math.max(1, d.radius * 2); mctx.lineCap = 'round'; mctx.lineJoin = 'round';
+      mctx.beginPath();
+      d.points.forEach(([x, y], i) => { if (i) mctx.lineTo(x, y); else mctx.moveTo(x, y); });
+      if (d.points.length === 1) { mctx.arc(d.points[0][0], d.points[0][1], Math.max(0.5, d.radius), 0, Math.PI * 2); mctx.fill(); } else mctx.stroke();
+      const seq = loadSeq;
+      const { patch } = await moEditFill(src, mask, box);
+      if (disposed || seq !== loadSeq) return;
+      const blob = await new Promise((resolve) => patch.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('The patch could not be encoded.');
+      const file = `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.png`;
+      const path = moEditPatchPath(state.photoId, file);
+      if (!path) throw new Error('Remove needs an open workspace to keep its patches in.');
+      await moEditWriteBytes(path, new Uint8Array(await blob.arrayBuffer()));
+      // lay the patch over the working picture; the recipe names it from now on
+      let work = state.work;
+      if (!(work instanceof HTMLCanvasElement)) { work = document.createElement('canvas'); work.width = state.bitmap.width; work.height = state.bitmap.height; work.getContext('2d').drawImage(state.bitmap, 0, 0); }
+      work.getContext('2d').drawImage(patch, box.x, box.y);
+      state.recipe.removals = state.recipe.removals.concat([{ file, x: box.x, y: box.y, w: box.w, h: box.h }]);
+      state.work = work; state.workKey = JSON.stringify(state.recipe.removals); state.sourceObj = null;
+      afterChange(true);
+    } catch (err) {
+      api.window.showErrorMessage('The mark could not be removed: ' + ((err && err.message) || err));
+    } finally { paintStroke(null); busy(''); }
+  }
+  function removeFromOthers() {
+    if (!state.recipe || !state.photoId) return;
+    if (!state.recipe.removals.length) { api.window.showInformationMessage('Remove a mark on this photo first: brush over it with Remove.'); return; }
+    const id = state.photoId;
+    void flushSave().then(() => moOpenBulkRemove(api, id));
+  }
+  function panelRemove() {
+    const r = state.recipe;
+    if (state.removeState === 'unknown') { panelBody.appendChild(hint('Checking')); void checkRemove(); return; }
+    if (state.removeState === 'ready') {
+      const s = openSection(panelBody, 'remove-brush', 'Brush');
+      s.appendChild(sliderRow({ id: 'brush', label: 'Size', aria: 'Brush Size', min: 6, max: 240, step: 1, rest: 40, value: _moEditUi.brush, show: (v) => String(Math.round(v)), parse: (t) => { const n = Number(t); return Number.isFinite(n) && String(t).trim() !== '' ? moEditClamp(n, 6, 240) : null; },
+        onInput: (v) => { _moEditUi.brush = v; }, onChange: (v) => { _moEditUi.brush = v; } }).row);
+      s.appendChild(hint('Brush over a logo, a tag or a mark. It is erased and the background is rebuilt from what surrounds it. Cover the whole mark and a little around it.'));
+      const n = r.removals.length;
+      const list = openSection(panelBody, 'remove-list', n ? `Removed (${n})` : 'Removed');
+      const last = textBtn('Undo Last Removal', () => { r.removals = r.removals.slice(0, -1); afterChange(true); });
+      const all = textBtn('Clear Removals', () => { r.removals = []; afterChange(true); });
+      last.disabled = !n; all.disabled = !n;
+      list.appendChild(row(last, all));
+      list.appendChild(hint('Removals are part of the edit: each can be undone later, and the original file is never changed. It runs on this machine.'));
+      const others = openSection(panelBody, 'remove-others', 'Other Photos');
+      const bulk = textBtn('Remove From Other Photos', () => removeFromOthers());
+      bulk.disabled = !n;
+      bulk.title = n ? 'Look for these marks in other photos and remove them there too' : 'Remove a mark on this photo first';
+      others.appendChild(row(bulk));
+      others.appendChild(hint('Looks for the marks removed here in the photos selected in the library, or in the rest of this folder. A mark is found wherever it sits and at whatever size. What was found is shown before anything is removed.'));
+      return;
+    }
+    const s = openSection(panelBody, 'remove-setup', 'Set Up Remove');
+    if (state.removeState === 'model') {
+      const mb = Math.round(MO_EDIT_REMOVE_MODEL.bytes / 1048576);
+      s.appendChild(hint(`Remove uses ${MO_EDIT_REMOVE_MODEL.name}, a model that runs on this machine. It is fetched once (${mb} MB) from huggingface.co and kept only if it is exactly the file that was tested.`));
+      if (state.download) {
+        const bar = moEl('div', 'mo-edit-progress');
+        const fill = moEl('div', 'mo-edit-progress-fill');
+        fill.style.width = Math.round((state.download.received / MO_EDIT_REMOVE_MODEL.bytes) * 100) + '%';
+        bar.appendChild(fill);
+        s.appendChild(bar);
+        s.appendChild(hint(`${Math.round(state.download.received / 1048576)} of ${mb} MB`));
+        s.appendChild(row(textBtn('Stop', () => void window.parallxElectron.models.cancelDownload(MO_EDIT_REMOVE_MODEL.sha256))));
+      } else {
+        s.appendChild(row(textBtn('Download Model', () => void downloadModel(), 'mo-practice-start')));
+        if (state.downloadError) s.appendChild(hint(state.downloadError));
+      }
+    } else if (state.removeState === 'runtime') {
+      s.appendChild(hint('The part of Parallx that runs this model is missing from this install, so Remove cannot run here.'));
+    } else {
+      s.appendChild(hint('Remove is not available in this build of Parallx.'));
+    }
+    s.appendChild(row(textBtn('Check Again', () => { state.removeState = 'unknown'; renderPanel(); })));
+  }
+  async function checkRemove() {
+    const st = await moEditRemoveState();
+    if (disposed) return;
+    state.removeState = st;
+    if (state.tool === 'remove') renderPanel();
+  }
+  async function downloadModel() {
+    state.download = { received: 0 }; state.downloadError = '';
+    renderPanel();
+    const res = await window.parallxElectron.models.download(MO_EDIT_REMOVE_MODEL);
+    if (disposed) return;
+    state.download = null;
+    if (res && res.ok) state.removeState = 'ready';
+    else state.downloadError = res && res.stopped ? 'Stopped. Nothing was kept.' : `The model could not be fetched: ${(res && res.error) || 'no answer'}`;
+    if (state.tool === 'remove') renderPanel();
+  }
+  if (window.parallxElectron && window.parallxElectron.models && window.parallxElectron.models.onProgress) {
+    let lastDraw = 0;
+    disposers.push(window.parallxElectron.models.onProgress((p) => {
+      if (!p || p.sha256 !== MO_EDIT_REMOVE_MODEL.sha256 || !state.download || p.done) return;
+      state.download.received = p.received;
+      if (state.tool === 'remove' && Date.now() - lastDraw > 400) { lastDraw = Date.now(); renderPanel(); }
+    }));
+  }
+
+  // ── Enhance ──
+  function panelEnhance() {
+    const r = state.recipe;
+    const s = openSection(panelBody, 'enhance', 'Enhance');
+    if (state.upscaler === null) { s.appendChild(hint('Checking')); void moUpscaleReady().then((ok) => { if (disposed) return; state.upscaler = !!ok; if (state.tool === 'enhance') renderPanel(); }); return; }
+    if (!state.upscaler) {
+      s.appendChild(hint('Enhance makes a larger, sharper copy with the upscaler, which is not set up yet.'));
+      s.appendChild(row(textBtn('Set Up The Upscaler', () => showUpscaleSetupDialog(api)), textBtn('Check Again', () => { _toolsDetected = false; _toolsRetryAfter = 0; state.upscaler = null; renderPanel(); })));
+      return;
+    }
+    s.appendChild(moEl('div', 'mo-edit-label', { textContent: 'Size' }));
+    s.appendChild(dropdown([{ value: '0', label: 'Same Size' }, { value: '2', label: '2x Larger' }, { value: '4', label: '4x Larger' }], String(r.enhance.scale), 'Size', (v) => { r.enhance.scale = Number(v) || 0; afterChange(true); }));
+    s.appendChild(moEl('div', 'mo-edit-label', { textContent: 'Model' }));
+    s.appendChild(dropdown([{ value: 'photo', label: 'Photo' }, { value: 'art', label: 'Art And Illustration' }], r.enhance.model, 'Model', (v) => { r.enhance.model = v === 'art' ? 'art' : 'photo'; afterChange(true); }));
+    const geo = geometry();
+    if (r.enhance.scale > 0) {
+      const ok = moUpscaleGuard(geo.outW, geo.outH, r.enhance.scale).ok;
+      s.appendChild(hint(ok
+        ? `${geo.outW} × ${geo.outH} becomes ${geo.outW * r.enhance.scale} × ${geo.outH * r.enhance.scale}. The copy is enlarged when you choose Save As Copy, after the rest of the edit, and is written as a PNG.`
+        : `Enlarged ${r.enhance.scale}x this picture would be over ${Math.round(MO_UPSCALE_MAX_OUTPUT_PIXELS / 1e6)} megapixels. Crop it or choose a smaller size.`));
+    } else s.appendChild(hint('Choose a size to make the saved copy larger and sharper. The picture here does not change: the enlarging happens when the copy is saved.'));
+  }
+
+  function setTool(id) {
+    if (!state.recipe || state.busy) return;
+    state.tool = id; _moEditUi.tool = id;
+    state.pickWb = false; stage.classList.remove('is-picking');
+    state.straightenBase = null;
+    stage.classList.toggle('is-brushing', id === 'remove');
+    brushRing.classList.add('mo-hidden');
+    if (id === 'crop') { state.original = false; state.split = -1; }
+    if (id === 'remove' && state.removeState !== 'ready') state.removeState = 'unknown';
+    syncButtons(); syncCompare(); renderPanel(); requestRender();
+  }
+
+  // ── presets ──
+  function renderPresets() {
+    presetsEl.innerHTML = '';
+    const head = moEl('div', 'mo-edit-presets-head');
+    head.appendChild(moEl('div', 'mo-edit-section-title', { textContent: 'Presets' }));
+    const add = iconBtn('plus', 'Save Preset', () => void savePreset());
+    add.disabled = !state.recipe || moEditLookIsRest(state.recipe);
+    head.appendChild(add);
+    presetsEl.appendChild(head);
+    const list = moEl('div', 'mo-edit-presets-list');
+    const item = (label, look, own) => {
+      const b = moEl('button', 'mo-edit-preset', { type: 'button', textContent: label });
+      b.addEventListener('pointerenter', () => { if (!state.recipe) return; state.hover = look; requestRender(); });
+      b.addEventListener('pointerleave', () => { if (state.hover === look) { state.hover = null; requestRender(); } });
+      b.addEventListener('click', () => { if (!state.recipe) return; state.hover = null; state.recipe = moEditApplyLook(state.recipe, look); afterChange(true); });
+      if (own) b.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showContextMenu(e.clientX, e.clientY, [
+          { label: 'Rename', handler: async () => { const name = await api.window.showInputBox({ prompt: 'Preset name', value: own.name }); if (name && name.trim()) { await db.run('UPDATE mo_edit_presets SET name = ? WHERE id = ?', [name.trim().slice(0, 60), own.id]); await loadPresets(); } } },
+          { label: 'Update With This Edit', disabled: !state.recipe || moEditLookIsRest(state.recipe), handler: async () => { await db.run('UPDATE mo_edit_presets SET look_json = ? WHERE id = ?', [JSON.stringify(moEditPickLook(state.recipe)), own.id]); await loadPresets(); } },
+          { separator: true },
+          { label: 'Delete', danger: true, handler: async () => { await db.run('DELETE FROM mo_edit_presets WHERE id = ?', [own.id]); await loadPresets(); } },
+        ]);
+      });
+      list.appendChild(b);
+    };
+    if (state.presets.length) {
+      list.appendChild(moEl('div', 'mo-edit-presets-group', { textContent: 'Yours' }));
+      for (const p of state.presets) item(p.name, p.look, p);
+    }
+    list.appendChild(moEl('div', 'mo-edit-presets-group', { textContent: 'Looks' }));
+    for (const [, label, look] of MO_EDIT_PRESETS) item(label, look, null);
+    presetsEl.appendChild(list);
+  }
+  async function loadPresets() {
+    try { state.presets = await moEditPresetsLoad(); } catch { state.presets = []; }
+    if (!disposed) renderPresets();
+  }
+  async function savePreset() {
+    if (!state.recipe || moEditLookIsRest(state.recipe)) return;
+    const name = await api.window.showInputBox({ prompt: 'Name this preset', placeholder: 'Preset name' });
+    if (!name || !name.trim()) return;
+    const pos = await db.get('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM mo_edit_presets');
+    await db.run('INSERT INTO mo_edit_presets (name, look_json, position) VALUES (?, ?, ?)', [name.trim().slice(0, 60), JSON.stringify(moEditPickLook(state.recipe)), pos ? pos.p : 0]);
+    await loadPresets();
+  }
+
+  // ── filmstrip: the photos in the same folder ──
+  function markFilm(photoId, edited) {
+    const el = film.querySelector(`[data-photo="${photoId}"]`);
+    if (el) el.classList.toggle('is-edited', !!edited);
+    const it = state.film.items.find((x) => x.id === photoId);
+    if (it) it.edited = !!edited;
+  }
+  async function loadFilm() {
+    const seq = loadSeq;
+    let rows = [];
+    try {
+      const folder = await db.get('SELECT f.folder_id AS id FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id WHERE pf.photo_id = ? AND pf.is_primary = 1', [state.photoId]);
+      if (folder) rows = await db.all(
+        `SELECT p.id AS id, f.basename AS basename, (SELECT 1 FROM mo_photo_edits e WHERE e.photo_id = p.id) AS edited
+         FROM mo_photos p
+         JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
+         JOIN mo_files f ON f.id = pf.file_id
+         WHERE f.folder_id = ? AND p.deleted_at IS NULL AND LOWER(f.basename) NOT LIKE '%.gif'
+         ORDER BY f.basename COLLATE NOCASE`, [folder.id]);
+    } catch (err) { console.warn('[MediaOrganizer] the filmstrip could not be read:', err && err.message); }
+    if (disposed || seq !== loadSeq) return;
+    const all = (rows || []).map((r) => ({ id: Number(r.id), name: r.basename, edited: !!r.edited }));
+    const index = all.findIndex((x) => x.id === state.photoId);
+    state.film = { all, index, total: all.length, items: index < 0 ? [] : all.slice(Math.max(0, index - MO_EDIT_FILM_SPAN), index + MO_EDIT_FILM_SPAN + 1) };
+    film.innerHTML = '';
+    if (!state.film.items.length) return;
+    film.appendChild(moEl('div', 'mo-edit-film-count', { textContent: `${index + 1} of ${all.length}` }));
+    const strip = moEl('div', 'mo-edit-film-strip');
+    film.appendChild(strip);
+    let current = null;
+    for (const it of state.film.items) {
+      const b = moEl('button', 'mo-edit-film-item', { type: 'button', title: it.name, 'aria-label': it.name, 'data-photo': String(it.id) });
+      b.classList.toggle('is-current', it.id === state.photoId);
+      b.classList.toggle('is-edited', it.edited);
+      const img = moEl('img', null, { alt: '', draggable: 'false' });
+      b.appendChild(img);
+      b.addEventListener('click', () => { if (it.id !== state.photoId) void loadPhoto(it.id); });
+      strip.appendChild(b);
+      if (it.id === state.photoId) current = b;
+    }
+    if (current) current.scrollIntoView({ block: 'nearest', inline: 'center' });
+    try {
+      const thumbs = await resolveThumbnailBatch(state.film.items.map((it) => ({ type: 'photo', id: it.id })), api);
+      if (disposed || seq !== loadSeq) return;
+      for (const it of state.film.items) {
+        const t = thumbs.get(`photo:${it.id}`);
+        const img = strip.querySelector(`[data-photo="${it.id}"] img`);
+        if (t && t.path && img) setThumbImgSrc(img, t.path);
+      }
+    } catch { /* no thumbnails: the names still show as tooltips */ }
+  }
+  function step(by) {
+    const f = state.film;
+    if (!f.all || f.index < 0) return;
+    const next = f.all[f.index + by];
+    if (next) void loadPhoto(next.id);
+  }
+
+  // ── Save As Copy ──
+  async function saveCopy() {
+    if (state.saving || !state.bitmap || !state.recipe || !moEditHasWork(state.recipe)) return;
+    state.saving = true;
+    saveBtn.textContent = 'Saving';
+    syncButtons();
+    const enlarging = state.recipe.enhance.scale > 0;
+    busy(enlarging ? 'Saving and enlarging' : 'Saving', 0);
+    try {
+      await flushSave();
+      await syncWork();
+      const saved = await moEditSaveCopy(state.photoId, state.srcPath, state.work || state.bitmap, state.bytes, state.recipe, (p) => { if (!disposed) busy(p.label, p.fraction); });
+      if (enlarging && saved.photoId) {
+        // an enlarged copy cannot be seen in the editor: it opens in its own tab
+        flash(`Saved beside the original: ${saved.name}`);
+        void openPhotoTab(saved.photoId, saved.name);
+      } else {
+        const opening = saved.photoId ? [{ title: 'Open' }] : [];
+        void Promise.resolve(api.window.showInformationMessage(`Saved beside the original: ${saved.name}`, ...opening)).then((picked) => { if (picked && picked.title === 'Open') void openPhotoTab(saved.photoId, saved.name); }).catch(() => {});
+      }
+    } catch (err) {
+      api.window.showErrorMessage('The copy could not be saved: ' + ((err && err.message) || err));
+    } finally {
+      state.saving = false;
+      if (!disposed) { saveBtn.textContent = 'Save As Copy'; busy(''); syncButtons(); }
+    }
+  }
+
+  // ── Save: over the original ──
+  async function saveOver() {
+    if (state.saving || !state.bitmap || !state.recipe || !moEditHasWork(state.recipe) || !moEditSaveOverExt(state.name)) return;
+    const id = state.photoId;
+    const ok = await api.window.showConfirmModal({
+      message: `Save over ${state.name}?`,
+      detail: 'The original file is replaced with the edited picture and cannot be brought back. To keep the original, choose Save As Copy.',
+      confirmLabel: 'Save Over Original', cancelLabel: 'Cancel', danger: true,
+    });
+    if (!ok || disposed || state.saving || state.photoId !== id || !state.bitmap || !state.recipe) return;
+    state.saving = true;
+    saveOverBtn.textContent = 'Saving';
+    syncButtons();
+    busy(state.recipe.enhance.scale > 0 ? 'Saving and enlarging' : 'Saving', 0);
+    let saved = null;
+    try {
+      await flushSave();
+      await syncWork();
+      saved = await moEditSaveOver(id, state.srcPath, state.work || state.bitmap, state.bytes, state.recipe, (p) => { if (!disposed) busy(p.label, p.fraction); });
+      flash(`Saved over the original: ${saved.name}`);
+    } catch (err) {
+      api.window.showErrorMessage('The photo could not be saved: ' + ((err && err.message) || err));
+    } finally {
+      state.saving = false;
+      if (!disposed) { saveOverBtn.textContent = 'Save'; busy(''); syncButtons(); }
+    }
+  }
+
+  // ── opening a photo ──
+  async function loadPhoto(photoId) {
+    const seq = ++loadSeq;
+    await flushSave();
+    const id = Number(photoId);
+    state.recipe = null; state.hover = null; state.original = false; state.split = -1; state.pickWb = false; state.straightenBase = null;
+    stage.classList.remove('is-picking');
+    if (state.bitmap) { try { state.bitmap.close(); } catch { /* gone */ } }
+    state.bitmap = null; state.bytes = null; state.work = null; state.workKey = '[]'; state.sourceObj = null; state.hist = null;
+    state.photoId = id;
+    sizeEl.textContent = ''; zoomEl.textContent = '';
+    syncButtons(); syncCompare(); renderPanel(); renderPresets();
+    film.innerHTML = '';
+    if (engine) engine.draw({ look: {} }, 1, 1);
+    canvas.classList.add('mo-hidden');
+    if (!(id > 0)) { titleEl.textContent = ''; sizeEl.textContent = ''; say('Choose Edit Image on a photo to open it here.'); return; }
+    try {
+      state.srcPath = await moResolveItemPath({ type: 'photo', id });
+      if (disposed || seq !== loadSeq) return;
+      if (!state.srcPath) { say('The photo is not on disk right now.'); return; }
+      const sep = state.srcPath.includes('\\') ? '\\' : '/';
+      state.name = state.srcPath.slice(state.srcPath.lastIndexOf(sep) + 1);
+      titleEl.textContent = state.name;
+      say('Loading');
+      const [decoded, recipe] = await Promise.all([moEditDecode(state.srcPath), moEditLoadRecipe(id)]);
+      if (disposed || seq !== loadSeq) { decoded.bitmap.close(); return; }
+      state.bitmap = decoded.bitmap; state.bytes = decoded.bytes;
+      if (!engine) engine = moImageEngine(canvas);
+      if (!engine) { say('WebGL is not available, so the photo cannot be edited here.'); return; }
+      // a crop that no longer lies on the photo (the file was replaced by another size) is brought back onto it
+      const v = moEditViewSize(state.bitmap.width, state.bitmap.height, recipe.rotate);
+      const box = moEditCropBox(recipe.crop, v.w, v.h);
+      if (!moEditCropFits(box, recipe.angle, v.w, v.h)) recipe.crop = moEditCropFromBox(moEditCropShrink(box, recipe.angle, v.w, v.h), v.w, v.h);
+      // undo steps from before a tab switch still apply when they end at the stored edit
+      const session = _moEditSessions.get(id) || { history: [], histIdx: -1, view: { fit: true, zoom: 1, cx: 0, cy: 0 } };
+      _moEditSessions.set(id, session);
+      if (session.history[session.histIdx] !== JSON.stringify(recipe)) { session.history = []; session.histIdx = -1; }
+      state.session = session;
+      state.recipe = recipe;
+      pushHistory();
+      await syncWork();
+      if (disposed || seq !== loadSeq) return;
+      const keep = new Set();
+      for (const snap of session.history) { try { for (const m of JSON.parse(snap).removals || []) keep.add(m.file); } catch { /* not a recipe */ } }
+      void moEditSweepPatches(id, keep);
+      say('');
+      canvas.classList.remove('mo-hidden');
+      if (state.tool === 'remove') state.removeState = 'unknown';
+      syncButtons(); syncCompare(); renderPanel(); renderPresets();
+      requestRender();
+      void loadFilm();
+      void moSetSetting(MO_EDIT_LAST_KEY, String(id)).catch(() => {});
+    } catch (err) {
+      if (!disposed && seq === loadSeq) say('The photo could not be opened: ' + ((err && err.message) || err));
+    }
+  }
+
+  // ── wiring ──
+  const onOpen = (e) => { const id = e && e.detail && Number(e.detail.photoId); if (id > 0 && id !== state.photoId) void loadPhoto(id); };
+  const onChanged = async (e) => {
+    const ids = (e && e.detail && e.detail.photoIds) || [];
+    for (const id of ids) markFilm(Number(id), true);
+    if (!ids.map(Number).includes(state.photoId) || !state.bitmap) return;
+    state.recipe = await moEditLoadRecipe(state.photoId);
+    afterChange(true);
+  };
+  // A photo's file was saved over: it holds the edit now and has none of its own. The one on screen is opened afresh.
+  const onSavedOver = (e) => {
+    const ids = ((e && e.detail && e.detail.photoIds) || []).map(Number);
+    for (const id of ids) markFilm(id, false);
+    if (ids.includes(state.photoId)) { dirty = false; clearTimeout(saveTimer); void loadPhoto(state.photoId); }
+    else void loadFilm();
+  };
+  document.addEventListener('mo:edit-open', onOpen);
+  document.addEventListener('mo:edit-changed', onChanged);
+  document.addEventListener('mo:edit-saved-over', onSavedOver);
+  disposers.push(() => document.removeEventListener('mo:edit-open', onOpen), () => document.removeEventListener('mo:edit-changed', onChanged), () => document.removeEventListener('mo:edit-saved-over', onSavedOver));
+
+  const handle = {
+    root, undo, redo, toggleOriginal, toggleSplit, zoomTo, copyEdit, pasteEdit, setTool,
+    previous: () => step(-1), next: () => step(1),
+    brush: (by) => { if (state.tool !== 'remove') return; _moEditUi.brush = moEditClamp(Math.round(_moEditUi.brush + by), 6, 240); renderPanel(); },
+    saveCopy: () => void saveCopy(),
+    saveOver: () => void saveOver(),
+    removeFromOthers,
+  };
+  _moEditOpen.add(handle);
+  syncChrome(); syncButtons(); syncCompare();
+  (async () => {
+    await loadPresets();
+    let id = _moEditRequest;
+    if (!(id > 0)) id = Number(await moGetSetting(MO_EDIT_LAST_KEY, '0')) || 0;
+    if (disposed) return;
+    if (state.photoId !== id || !state.bitmap) await loadPhoto(id);
+  })();
+
+  return {
+    dispose() {
+      disposed = true;
+      loadSeq++;
+      _moEditOpen.delete(handle);
+      void flushSave();
+      clearTimeout(histTimer);
+      if (raf) cancelAnimationFrame(raf);
+      if (resizeObs) resizeObs.disconnect();
+      for (const d of panelDisposers.splice(0).concat(disposers.splice(0))) { try { d(); } catch { /* gone */ } }
+      if (engine) engine.dispose();
+      if (state.bitmap) { try { state.bitmap.close(); } catch { /* gone */ } }
       container.innerHTML = '';
     },
   };
@@ -30284,6 +34767,9 @@ export async function activate(api, context) {
         if (inputId === 'tag-review') {
           return renderTagReview(container, api);
         }
+        if (inputId === MO_BULK_INSTANCE) {
+          return renderBulkRemove(container, api);
+        }
         if (inputId.startsWith('detail:')) {
           return renderDetailEditor(container, api, input);
         }
@@ -30320,6 +34806,77 @@ export async function activate(api, context) {
       },
     })
   );
+
+  // Image editor (docs/IMAGE_EDITOR.md): one editor page; Edit Image puts a photo in it.
+  _commandDisposables.push(
+    api.editors.registerEditorProvider(MO_EDIT_TYPE, {
+      createEditorPane(container) {
+        return renderImageEditor(container, api);
+      },
+    })
+  );
+  // The one photo selected in the library, or the several: asked of whichever grid is showing.
+  const moEditSelection = () => new Promise((resolve) => {
+    let answered = false;
+    const handler = (e) => { answered = true; resolve([...((e.detail && e.detail.selectedIds) || [])].filter((s) => String(s).startsWith('photo:')).map((s) => parseInt(String(s).split(':')[1], 10)).filter((n) => n > 0)); };
+    document.addEventListener('mo:reply-selection', handler, { once: true });
+    document.dispatchEvent(new CustomEvent('mo:request-selection'));
+    setTimeout(() => { document.removeEventListener('mo:reply-selection', handler); if (!answered) resolve(null); }, 500);
+  });
+  const moEditDo = (fn) => () => { const e = moEditActive(); if (e) fn(e); };
+  _commandDisposables.push(
+    // With a photo id: that photo. Without: the one photo selected in the library.
+    api.commands.registerCommand('media-organizer.editImage', async (photoId) => {
+      if (Number(photoId) > 0) { await moOpenImageEditor(api, Number(photoId)); return; }
+      const sel = await moEditSelection();
+      if (sel && sel.length === 1) await moOpenImageEditor(api, sel[0]);
+      else api.window.showInformationMessage('Select one photo in the library, then choose Edit Image.');
+    }),
+    api.commands.registerCommand('media-organizer.pasteEdit', async (photoIds) => {
+      const ids = Array.isArray(photoIds) && photoIds.length ? photoIds : await moEditSelection();
+      if (!ids || !ids.length) { api.window.showInformationMessage('Select the photos in the library to paste the edit onto.'); return; }
+      await moEditPasteTo(api, ids);
+    }),
+    api.commands.registerCommand('media-organizer.editor.undo', moEditDo((e) => e.undo())),
+    api.commands.registerCommand('media-organizer.editor.redo', moEditDo((e) => e.redo())),
+    api.commands.registerCommand('media-organizer.editor.toggleOriginal', moEditDo((e) => e.toggleOriginal())),
+    api.commands.registerCommand('media-organizer.editor.toggleSplit', moEditDo((e) => e.toggleSplit())),
+    api.commands.registerCommand('media-organizer.editor.zoomFit', moEditDo((e) => e.zoomTo('fit'))),
+    api.commands.registerCommand('media-organizer.editor.zoomFull', moEditDo((e) => e.zoomTo(1))),
+    api.commands.registerCommand('media-organizer.editor.copyEdit', moEditDo((e) => e.copyEdit())),
+    api.commands.registerCommand('media-organizer.editor.pasteEdit', moEditDo((e) => e.pasteEdit())),
+    api.commands.registerCommand('media-organizer.editor.previousPhoto', moEditDo((e) => e.previous())),
+    api.commands.registerCommand('media-organizer.editor.nextPhoto', moEditDo((e) => e.next())),
+    api.commands.registerCommand('media-organizer.editor.brushSmaller', moEditDo((e) => e.brush(-8))),
+    api.commands.registerCommand('media-organizer.editor.brushLarger', moEditDo((e) => e.brush(8))),
+    api.commands.registerCommand('media-organizer.editor.toolEdit', moEditDo((e) => e.setTool('edit'))),
+    api.commands.registerCommand('media-organizer.editor.toolCrop', moEditDo((e) => e.setTool('crop'))),
+    api.commands.registerCommand('media-organizer.editor.toolRemove', moEditDo((e) => e.setTool('remove'))),
+    api.commands.registerCommand('media-organizer.editor.saveCopy', moEditDo((e) => e.saveCopy())),
+    api.commands.registerCommand('media-organizer.editor.save', moEditDo((e) => e.saveOver())),
+    // With photo ids: those photos. Without: the photos selected in the library.
+    api.commands.registerCommand('media-organizer.removeFromSelected', (photoIds) => moBulkFromSelection(api, photoIds)),
+    api.commands.registerCommand('media-organizer.removeFromOthers', () => {
+      const e = moEditActive();
+      if (e) e.removeFromOthers();
+      else api.window.showInformationMessage('Open a photo in the editor and remove a mark from it first.');
+    }),
+  );
+  // Shortcuts go through the one dispatcher, scoped to the image editor's tab.
+  if (api.keybindings && typeof api.keybindings.register === 'function') {
+    const when = `activeEditor == '${MO_EDIT_TYPE}'`;
+    for (const [key, command] of [
+      ['Ctrl+Z', 'media-organizer.editor.undo'], ['Ctrl+Y', 'media-organizer.editor.redo'], ['Ctrl+Shift+Z', 'media-organizer.editor.redo'],
+      ['\\', 'media-organizer.editor.toggleOriginal'], ['Shift+\\', 'media-organizer.editor.toggleSplit'],
+      ['Ctrl+0', 'media-organizer.editor.zoomFit'], ['Ctrl+1', 'media-organizer.editor.zoomFull'],
+      ['Ctrl+Shift+C', 'media-organizer.editor.copyEdit'], ['Ctrl+Shift+V', 'media-organizer.editor.pasteEdit'],
+      ['PageUp', 'media-organizer.editor.previousPhoto'], ['PageDown', 'media-organizer.editor.nextPhoto'],
+      ['[', 'media-organizer.editor.brushSmaller'], [']', 'media-organizer.editor.brushLarger'],
+      ['Ctrl+Shift+S', 'media-organizer.editor.saveCopy'], ['Ctrl+S', 'media-organizer.editor.save'],
+    ]) {
+      try { _commandDisposables.push(api.keybindings.register(key, command, when)); } catch (err) { console.warn('[MediaOrganizer] shortcut not registered:', key, err && err.message); }
+    }
+  }
 
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.openTagReview', () => moOpenTagReview(api))
@@ -30447,23 +35004,7 @@ export async function activate(api, context) {
     })
   );
 
-  // M59 P5: stacks + trash
-  _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.stackSelected', () => {
-      const ev = new CustomEvent('mo:request-selection');
-      const handler = (e) => {
-        document.removeEventListener('mo:reply-selection', handler);
-        const sel = (e.detail && e.detail.selectedIds) || new Set();
-        moStackSelected(api, sel);
-      };
-      document.addEventListener('mo:reply-selection', handler, { once: true });
-      document.dispatchEvent(ev);
-      setTimeout(() => document.removeEventListener('mo:reply-selection', handler), 500);
-    })
-  );
-  _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.autoStack', () => moAutoStackByBasename(api))
-  );
+  // M59 P5: trash
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.moveToTrash', () => {
       const ev = new CustomEvent('mo:request-selection');

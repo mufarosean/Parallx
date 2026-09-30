@@ -176,6 +176,10 @@ const APP_ROOT = process.env.PARALLX_APP_ROOT
 // process while still painting it, so a screenshot probe can run on a machine
 // someone is working at without a window ever appearing.
 const HIDDEN_PROBE = process.env.PARALLX_HIDDEN_PROBE === '1';
+// `PARALLX_PROBE_BACKGROUND=1` (with the above) leaves the unshown window as
+// Chromium treats the real one while it is minimised or wholly covered: not
+// painting, its timers slowed. For measuring what the app does out of sight.
+const PROBE_BACKGROUND = HIDDEN_PROBE && process.env.PARALLX_PROBE_BACKGROUND === '1';
 
 fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'chromium-cache'), { recursive: true });
 fsSync.mkdirSync(path.join(APP_ROOT, 'data', 'extensions'), { recursive: true });
@@ -631,8 +635,19 @@ async function createWindow() {
       webviewTag: true,
       // A hidden probe window must keep painting and ticking or its
       // screenshots come back blank.
-      ...(HIDDEN_PROBE ? { paintWhenInitiallyHidden: true, backgroundThrottling: false } : {}),
+      // The app keeps working while its window is minimised or covered: the
+      // media library takes in new files, chat streams, automations fire.
+      // Chromium's default slows a hidden page's timers to one a second, and
+      // to one a MINUTE once the page has been hidden for five. Measured
+      // 2026-09-28 on Electron 40: a chain of three waits (1.1 s in all) took
+      // 3.0 s in the first minute and did not finish in 90 s after the fifth.
+      // VS Code sets the same on its windows.
+      backgroundThrottling: PROBE_BACKGROUND,
+      ...(HIDDEN_PROBE && !PROBE_BACKGROUND ? { paintWhenInitiallyHidden: true } : {}),
     },
+    // A window option, not a web preference: the page of a window that is
+    // never shown counts as visible unless this is off.
+    ...(PROBE_BACKGROUND ? { paintWhenInitiallyHidden: false } : {}),
   };
 
   mainWindow = new BrowserWindow(opts);
