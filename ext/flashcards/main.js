@@ -982,6 +982,166 @@ async function fcToggleCardTag(card, tag) {
   return next;
 }
 
+// ── Custom decks ──
+// A custom deck is a view: a name and a tag. A card joins one by carrying the
+// tag. It stays in its own deck and keeps its one schedule, so a review taken
+// in a custom deck is the same review everywhere. One card can be in several.
+const FC_CUSTOM_TAG_PREFIX = 'deck-';
+/** The tag a custom deck of this name gives its cards: lower case, words joined by hyphens. Pure. */
+function fcCustomDeckTag(name) {
+  const slug = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+  return slug ? FC_CUSTOM_TAG_PREFIX + slug : '';
+}
+// SQL for "this card carries the tag": the tags column whole-word, case-blind.
+const FC_TAG_MATCH = `(',' || replace(lower(tags), ' ', '') || ',') LIKE ?`;
+const fcTagPattern = (tag) => `%,${String(tag).trim().toLowerCase()},%`;
+
+/**
+ * The limits a scheduled session's queue is built with. One place, so a
+ * button that says how many cards a session holds counts with the same
+ * limits the session is served with.
+ */
+function fcDailyQueueLimits(pace) {
+  return {
+    // The paced allowance has to be able to EXCEED the batch setting,
+    // and this global slice runs after the per-deck one — leaving it at
+    // the raw setting would trim a raised pace straight back down and
+    // make the raise a no-op.
+    newLimit: Math.max(Number(cfg('dailyNewLimit', 20)) || 20, pace ? pace.total : 0),
+    reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
+    newAllowanceByDeck: pace ? pace.byDeck : null,
+    // Custom study bypasses this the same way it bypasses pacing —
+    // "extra" exists precisely to work past the batch.
+    productionLimit: fcProductionDailyLimit(),
+  };
+}
+
+/** The custom decks, in order, without counts. Empty before the table exists. */
+async function fcListCustomDeckNames() {
+  try { return (await db.all('SELECT id, name, tag, description FROM fc_custom_decks ORDER BY position, id')) || []; } catch { return []; }
+}
+/**
+ * The custom decks with what each holds today (suspended cards left out):
+ * new, due, total, and served: the cards Study will hand over now. Served can
+ * be under new + due, because new cards come in at each deck's pace.
+ */
+async function fcListCustomDecks() {
+  const names = await fcListCustomDeckNames();
+  if (names.length === 0) return [];
+  const [all, pace] = await Promise.all([fcListAllCards(null), fcSessionNewAllowances(null)]);
+  const limits = fcDailyQueueLimits(pace);
+  const now = Date.now();
+  return names.map((r) => {
+    const cards = all.filter((c) => !c.suspended && fcCardHasTag(c, r.tag));
+    const newCount = cards.filter((c) => c.state === 'new').length;
+    const dueCount = cards.filter((c) => c.state !== 'new' && c.dueAt <= now).length;
+    return {
+      id: r.id, name: r.name, tag: r.tag, description: r.description || '',
+      newCount, dueCount, total: cards.length,
+      served: fcBuildQueue(cards, now, limits).length,
+    };
+  });
+}
+/** What the Study button of a custom deck says, and the hint that explains a count under new + due. */
+function fcCustomStudyLabel(deck) {
+  const waiting = deck.newCount + deck.dueCount;
+  const held = Math.max(0, waiting - deck.served);
+  return {
+    label: deck.served > 0 ? `Study ${deck.served} ${deck.served === 1 ? 'Card' : 'Cards'}` : 'Nothing Due Right Now',
+    hint: held > 0
+      ? `${held} new ${held === 1 ? 'card waits' : 'cards wait'} behind today's pace. Study All reaches every card.`
+      : 'The cards of this custom deck that are due or new, scheduled as usual',
+  };
+}
+async function fcGetCustomDeck(id) {
+  if (id == null) return null;
+  try { return (await db.get('SELECT id, name, tag, description FROM fc_custom_decks WHERE id = ?', [id])) || null; } catch { return null; }
+}
+/** A new custom deck. Its tag comes from its name; a second deck of a like name gets a number. -> its id */
+async function fcCreateCustomDeck(name, description = '') {
+  const clean = String(name || '').trim();
+  const base = fcCustomDeckTag(clean);
+  if (!clean || !base) throw new Error('A custom deck needs a name with a letter or a digit in it.');
+  const taken = new Set((await fcListCustomDeckNames()).map((d) => d.tag));
+  let tag = base;
+  for (let n = 2; taken.has(tag); n++) tag = `${base}-${n}`;
+  const pos = await db.get('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM fc_custom_decks');
+  const res = await db.run('INSERT INTO fc_custom_decks (name, tag, description, position, created_at) VALUES (?, ?, ?, ?, ?)',
+    [clean, tag, String(description || ''), pos ? pos.p : 0, Date.now()]);
+  _emitDataChanged();
+  return res.lastInsertRowid ?? res.lastID ?? null;
+}
+/** The name changes, the tag does not: the cards stay in. */
+async function fcRenameCustomDeck(id, name) {
+  await db.run('UPDATE fc_custom_decks SET name = ? WHERE id = ?', [String(name).trim(), id]);
+  _emitDataChanged();
+}
+/** The view goes and its tag comes off every card. The cards themselves are untouched, in their own decks. -> cards that were in it */
+async function fcDeleteCustomDeck(id) {
+  const deck = await fcGetCustomDeck(id);
+  if (!deck) return 0;
+  const rows = await db.all(`SELECT id FROM fc_cards WHERE ${FC_TAG_MATCH}`, [fcTagPattern(deck.tag)]);
+  const n = await fcBulkTag((rows || []).map((r) => r.id), deck.tag, true);
+  await db.run('DELETE FROM fc_custom_decks WHERE id = ?', [id]);
+  _emitDataChanged();
+  return n;
+}
+/** The cards of a custom deck, each with the deck it lives in, by deck then by id. */
+async function fcCustomDeckCards(tag) {
+  const rows = await db.all(`
+    SELECT c.id, c.front, c.state, c.due_at, c.suspended, c.deck_id, d.name AS deck_name
+    FROM fc_cards c JOIN fc_decks d ON d.id = c.deck_id
+    WHERE ${FC_TAG_MATCH.replace(/tags/g, 'c.tags')}
+    ORDER BY d.name COLLATE NOCASE, c.id`, [fcTagPattern(tag)]);
+  return (rows || []).map((r) => ({ id: r.id, front: r.front || '', state: r.state, dueAt: r.due_at, suspended: !!r.suspended, deckId: r.deck_id, deckName: r.deck_name }));
+}
+async function _newCustomDeckFlow() {
+  const name = await _api.window.showInputBox({ prompt: 'New custom deck name', placeholder: 'e.g. Formulas' });
+  if (!name?.trim()) return null;
+  try { return await fcCreateCustomDeck(name.trim()); } catch (err) { void _api.window.showErrorMessage(err?.message || String(err)); return null; }
+}
+async function _renameCustomDeckFlow(deck) {
+  const name = await _api.window.showInputBox({ prompt: 'Rename custom deck', value: deck.name });
+  if (name?.trim() && name.trim() !== deck.name) await fcRenameCustomDeck(deck.id, name.trim());
+}
+async function _deleteCustomDeckFlow(deck) {
+  const detail = 'The cards stay in their own decks with their schedules. Only this view of them goes.';
+  let ok = false;
+  if (_api.window.showConfirmModal) {
+    ok = await _api.window.showConfirmModal({ message: `Delete the custom deck "${deck.name}"?`, detail, confirmLabel: 'Delete Custom Deck', danger: true });
+  } else {
+    const pick = await _api.window.showWarningMessage(`Delete the custom deck "${deck.name}"? ${detail}`, { title: 'Delete Custom Deck' });
+    ok = pick?.title === 'Delete Custom Deck';
+  }
+  if (!ok) return false;
+  await fcDeleteCustomDeck(deck.id);
+  return true;
+}
+/** Which custom deck a route is inside: its page by id, a study session by tag. Pure. */
+function fcActiveCustomDeck(route) {
+  return {
+    id: route?.view === 'customDeck' && route.customId != null ? String(route.customId) : '',
+    tag: route?.view === 'study' && route.tag ? String(route.tag).trim().toLowerCase() : '',
+  };
+}
+function fcIsActiveCustomRow(row, active) {
+  return (!!active.id && row.dataset.customId === active.id) || (!!active.tag && row.dataset.customTag === active.tag);
+}
+/** Study every card of a custom deck now, whatever is due: a cram, so grading leaves the schedule alone. */
+function fcCustomDeckCramRoute(deck) {
+  return { view: 'study', tag: deck.tag, custom: { mode: 'cram', count: Math.max(1, deck.total || 0), aheadDays: 0, tags: [deck.tag], flags: [], startedAt: Date.now() } };
+}
+function fcCustomDeckMenuItems(deck, go) {
+  return [
+    { label: 'Open', onSelect: () => go({ view: 'customDeck', customId: deck.id }) },
+    { label: 'Study', onSelect: () => go({ view: 'study', tag: deck.tag }) },
+    { label: 'Study All', onSelect: () => go(fcCustomDeckCramRoute(deck)) },
+    { separator: true },
+    { label: 'Rename', onSelect: () => void _renameCustomDeckFlow(deck) },
+    { label: 'Delete Custom Deck', danger: true, onSelect: () => void _deleteCustomDeckFlow(deck) },
+  ];
+}
+
 /**
  * Aggregate progress stats. Pure: review rows + cards in, dashboard shape
  * out. `reviews` need { reviewedAt, rating, stateBefore }; `cards` need
@@ -4659,6 +4819,7 @@ function injectStyles() {
   .fc-deck-row__counts > :first-child::before { content: 'New '; color: var(--px-text-muted); font-weight: 400; }
   .fc-deck-row__counts > :last-child::before { content: 'Due '; color: var(--px-text-muted); font-weight: 400; }
   .fc-deck-row__more { grid-column: 2; grid-row: 1 / 3; }
+  .fc-deck-row__apart { grid-column: 1; grid-row: 2; justify-self: end; }
 }
 .fc-sb__empty { padding: var(--px-space-3) var(--px-sidebar-inset); font-size: var(--px-text-sm); line-height: var(--px-leading-base); color: var(--px-text-muted); }
 
@@ -4761,8 +4922,39 @@ function injectStyles() {
 .fc-home__columns { display: grid; grid-template-columns: minmax(0, 1fr) 156px 178px; gap: var(--px-space-4); padding: var(--px-space-2) var(--px-space-1); border-block: 1px solid var(--px-divider); color: var(--px-text-muted); font-size: var(--px-text-xs); }
 .fc-home__columns-counts { display: grid; grid-template-columns: repeat(3, 1fr); text-align: right; gap: var(--px-space-3); }
 .fc-home__no-match { padding: var(--px-space-6) 0; color: var(--px-text-muted); font-size: var(--px-text-base); }
-.fc-home__no-match[hidden], .fc-deck-card[hidden] { display: none; }
+.fc-home__no-match[hidden], .fc-deck-card[hidden], .fc-home__columns[hidden] { display: none; }
 .fc-home__decks { display: flex; flex-direction: column; }
+.fc-home__decks--custom { margin-bottom: var(--px-space-5); }
+
+/* A custom deck's page: its cards, grouped by the deck each one lives in. */
+.fc-custom__sub { margin-top: var(--px-space-1); }
+.fc-custom__list { display: flex; flex-direction: column; margin-top: var(--px-space-4); }
+.fc-custom__group-head {
+  display: flex; align-items: baseline; gap: var(--px-space-2);
+  padding: var(--px-space-3) var(--px-space-1) var(--px-space-1);
+  border-bottom: 1px solid var(--px-divider);
+  font-size: var(--px-text-xs); color: var(--px-text-muted);
+}
+.fc-custom__group-name { font-weight: 600; color: var(--px-text); font-size: var(--px-text-sm); }
+.fc-custom__group-count { font-variant-numeric: tabular-nums; }
+.fc-custom__card {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 64px auto; align-items: center; gap: var(--px-space-3);
+  min-height: 34px; padding: var(--px-space-1); border-bottom: 1px solid var(--px-divider);
+}
+.fc-custom__card .fc-cardrow__id { margin-left: 0; }
+.fc-custom__card:hover { background: var(--px-surface-hover); }
+.fc-custom__front {
+  min-width: 0; padding: var(--px-space-1) 0; cursor: pointer;
+  font-size: var(--px-text-sm); color: var(--px-text); overflow-wrap: anywhere; overflow-x: auto;
+}
+.fc-custom__front > :first-child, .fc-custom__front p:first-child { margin-top: 0; }
+.fc-custom__front > :last-child, .fc-custom__front p:last-child { margin-bottom: 0; }
+.fc-custom__front--off { cursor: default; color: var(--px-text-muted); }
+.fc-custom__front:focus-visible { outline: none; box-shadow: var(--px-ring-accent); border-radius: var(--px-radius-sm); }
+.fc-custom__state { font-size: var(--px-text-xs); color: var(--px-text-muted); text-align: right; }
+.fc-custom__state--due, .fc-custom__state--new { color: var(--px-text); }
+.fc-custom__remove { border-color: transparent; visibility: hidden; }
+.fc-custom__card:hover .fc-custom__remove, .fc-custom__remove:focus-visible { visibility: visible; }
 
 /* Deck rows on the home page: identity and counts on the left, the actions
    that operate on that deck on the right — visible, not hover-revealed. A
@@ -5512,6 +5704,7 @@ const FC_VIEW_LABELS = {
   stats: 'Stats',
   browse: 'Browse Cards',
   custom: 'Custom Study',
+  customDeck: 'Custom Deck',
   dedup: 'Find Duplicates',
   coverage: 'Coverage Review',
 };
@@ -5526,6 +5719,7 @@ function fcNavViewFor(route) {
   const view = route?.view || 'decks';
   if (FC_DECK_VIEWS.includes(view)) return 'decks';
   if (view === 'custom') return 'study';
+  if (view === 'customDeck') return 'decks';
   return view;
 }
 
@@ -5656,6 +5850,7 @@ function createSidebarView(container) {
    *  able to answer "where am I?" — a rail entry alone cannot, because four of
    *  the five destinations can be scoped to a deck. */
   let activeDeckId = typeof _fcActiveRoute?.deckId === 'number' ? _fcActiveRoute.deckId : null;
+  let activeCustom = fcActiveCustomDeck(_fcActiveRoute);
 
   const syncNav = (route) => {
     const active = route ? fcNavViewFor(route) : null;
@@ -5666,7 +5861,9 @@ function createSidebarView(container) {
       item.tabIndex = on || (!active && view === 'decks') ? 0 : -1;
     }
     activeDeckId = typeof route?.deckId === 'number' ? route.deckId : null;
+    activeCustom = fcActiveCustomDeck(route);
     for (const row of deckList.children) {
+      if (row.dataset?.customId) { row.classList.toggle('fc-deck-row--active', fcIsActiveCustomRow(row, activeCustom)); continue; }
       if (!row.dataset?.deckId) continue;
       row.classList.toggle('fc-deck-row--active', Number(row.dataset.deckId) === activeDeckId);
     }
@@ -5677,7 +5874,8 @@ function createSidebarView(container) {
     if (disposed) return;
     let decks = [];
     let today = { newCount: 0, learnCount: 0, reviewCount: 0, dueTotal: 0 };
-    try { [decks, today] = await Promise.all([fcListDecks(), fcTodayCounts()]); } catch { /* db not ready */ }
+    let customDecks = [];
+    try { [decks, today, customDecks] = await Promise.all([fcListDecks(), fcTodayCounts(), fcListCustomDecks()]); } catch { /* db not ready */ }
     if (disposed) return;
 
     // Today panel.
@@ -5752,6 +5950,55 @@ function createSidebarView(container) {
       deckList.appendChild(el('div', 'fc-sb__empty',
         'Your decks live here. Use + for a new deck, or Create to turn a page or PDF into cards.'));
     } else {
+      for (const deck of customDecks) {
+        const row = el('div', 'fc-deck-row fc-deck-row--custom');
+        row.setAttribute('role', 'button');
+        row.tabIndex = 0;
+        const ic = el('span', 'fc-deck-row__icon');
+        ic.innerHTML = icon('layers', 14);
+        row.appendChild(ic);
+        const deckName = el('span', 'fc-deck-row__name', deck.name);
+        deckName.title = `${deck.name}: a custom deck, cards from several decks`;
+        row.appendChild(deckName);
+        row.dataset.searchName = deck.name.toLocaleLowerCase();
+        const mark = el('span', 'fc-deck-row__apart', 'Custom');
+        mark.title = 'A custom deck: a view over cards that stay in their own decks.';
+        row.appendChild(mark);
+        const counts = el('span', 'fc-deck-row__counts');
+        counts.title = `${deck.newCount} new · ${deck.dueCount} due · ${deck.total} total`;
+        counts.setAttribute('aria-label', counts.title);
+        counts.appendChild(el('span', deck.newCount > 0 ? 'fc-deck-row__ct--new' : 'fc-deck-row__ct--zero', deck.newCount > 0 ? String(deck.newCount) : '—'));
+        counts.appendChild(el('span', deck.dueCount > 0 ? 'fc-deck-row__ct--due' : 'fc-deck-row__ct--zero', deck.dueCount > 0 ? String(deck.dueCount) : '—'));
+        row.appendChild(counts);
+        const go = (r) => void openFlashcards(r);
+        // The same trailing button a deck row has: it is also what keeps the
+        // counts under the New and Due headings.
+        const more = el('button', 'fc-deck-row__more');
+        more.type = 'button';
+        more.title = 'Custom deck actions';
+        more.setAttribute('aria-label', `Actions for ${deck.name}`);
+        more.innerHTML = icon('more-horizontal', 15);
+        more.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (!_api.ui.showContextMenu) return;
+          const r = more.getBoundingClientRect();
+          _api.ui.showContextMenu({ x: r.left, y: r.bottom + 2 }, fcCustomDeckMenuItems(deck, go));
+        });
+        row.appendChild(more);
+        row.dataset.customId = String(deck.id);
+        row.dataset.customTag = deck.tag;
+        row.classList.toggle('fc-deck-row--active', fcIsActiveCustomRow(row, activeCustom));
+        row.addEventListener('click', () => go({ view: 'customDeck', customId: deck.id }));
+        row.addEventListener('keydown', (e) => {
+          if (e.target !== row) return;
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go({ view: 'customDeck', customId: deck.id }); }
+        });
+        row.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          if (_api.ui.showContextMenu) _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, fcCustomDeckMenuItems(deck, go));
+        });
+        deckList.appendChild(row);
+      }
       for (const deck of decks) {
         const row = el('div', 'fc-deck-row');
         row.setAttribute('role', 'button');
@@ -6177,6 +6424,17 @@ function createEditorPane(container, input) {
     if (view === 'decks') { paint([crumb('Decks')]); return; }
 
     const nodes = [crumb('Decks', () => setRoute({ view: 'decks' }))];
+    if (view === 'customDeck') {
+      const custom = await fcGetCustomDeck(route.customId);
+      nodes.push(sep());
+      nodes.push(crumb(custom ? custom.name : FC_VIEW_LABELS.customDeck));
+      paint(nodes);
+      return;
+    }
+    if (view === 'study' && route.tag && route.tag !== FC_MEMORIZE_TAG) {
+      const custom = (await fcListCustomDeckNames()).find((d) => d.tag === String(route.tag).toLowerCase());
+      if (custom) { nodes.push(sep()); nodes.push(crumb(custom.name, () => setRoute({ view: 'customDeck', customId: custom.id }))); }
+    }
     if (route.deckId != null) {
       const deck = await fcGetDeck(route.deckId);
       if (deck) {
@@ -6221,6 +6479,7 @@ function createEditorPane(container, input) {
           if (route.view === 'browse') await renderBrowse(body, route, setRoute);
           else if (route.view === 'study') await renderStudy(body, route, state, setRoute);
           else if (route.view === 'custom') await renderCustomStudy(body, route, setRoute);
+          else if (route.view === 'customDeck') await renderCustomDeck(body, route, setRoute);
           else if (route.view === 'create') await renderCreate(body, route, setRoute, viewDisposables);
           else if (route.view === 'import') await renderImport(body, route, setRoute, viewDisposables);
           else if (route.view === 'stats') await renderStats(body);
@@ -6441,6 +6700,13 @@ async function renderDecks(body, setRoute) {
   newDeckBtn.innerHTML = `${icon('plus', 12)}<span>New Deck</span>`;
   newDeckBtn.addEventListener('click', () => void _cmdNewDeck());
   actions.appendChild(newDeckBtn);
+  if (decks.length) {
+    const newCustomBtn = el('button', 'fc-btn');
+    newCustomBtn.innerHTML = `${icon('plus', 12)}<span>New Custom Deck</span>`;
+    newCustomBtn.title = 'A custom deck gathers cards from any deck. The cards stay in their own decks and keep one schedule.';
+    newCustomBtn.addEventListener('click', () => { void _newCustomDeckFlow().then((id) => { if (id != null) setRoute({ view: 'customDeck', customId: id }); }); });
+    actions.appendChild(newCustomBtn);
+  }
   const genBtn = _api.ui.createAiButton
     ? _api.ui.createAiButton(actions, { label: 'Generate Cards' })
     : el('button', 'fc-btn');
@@ -6468,6 +6734,74 @@ async function renderDecks(body, setRoute) {
     view.appendChild(empty);
     body.appendChild(view);
     return;
+  }
+
+  // ── Custom decks: views over cards from any deck ──
+  const customRows = [];
+  let customHead = null;
+  const customDecks = await fcListCustomDecks();
+  if (customDecks.length) {
+    const head = el('div', 'fc-home__columns fc-home__columns--custom');
+    head.appendChild(el('span', '', 'Custom Deck'));
+    const headCounts = el('div', 'fc-home__columns-counts');
+    for (const label of ['New', 'Due', 'Cards']) headCounts.appendChild(el('span', '', label));
+    head.appendChild(headCounts);
+    head.setAttribute('aria-hidden', 'true');
+    view.appendChild(head);
+    const customList = el('div', 'fc-home__decks fc-home__decks--custom');
+    view.appendChild(customList);
+    for (const deck of customDecks) {
+      const card = el('div', 'fc-deck-card fc-deck-card--custom');
+      card.dataset.customId = String(deck.id);
+      const info = el('div', 'fc-deck-card__info');
+      info.setAttribute('role', 'button');
+      info.tabIndex = 0;
+      info.title = `See the cards in ${deck.name}`;
+      info.appendChild(el('div', 'fc-deck-card__name', deck.name));
+      info.appendChild(el('div', 'fc-deck-card__meta', deck.description || 'Cards from several decks, each still in its own deck'));
+      const openIt = () => setRoute({ view: 'customDeck', customId: deck.id });
+      info.addEventListener('click', openIt);
+      info.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openIt(); } });
+      card.appendChild(info);
+      const counts = el('div', 'fc-deck-card__counts');
+      const count = (n, cls, label) => {
+        const box = el('span', 'fc-deck-count');
+        box.appendChild(el('span', `fc-deck-count__n fc-deck-count__n--${n > 0 ? cls : 'zero'}`, String(n)));
+        box.appendChild(el('span', 'fc-deck-count__l', label));
+        return box;
+      };
+      counts.appendChild(count(deck.newCount, 'new', 'new'));
+      counts.appendChild(count(deck.dueCount, 'due', 'due'));
+      counts.appendChild(count(deck.total, 'total', 'total'));
+      card.appendChild(counts);
+      const btns = el('div', 'fc-deck-card__actions');
+      const studyBtn = el('button', 'fc-btn');
+      studyBtn.textContent = 'Study';
+      studyBtn.title = fcCustomStudyLabel(deck).hint;
+      studyBtn.disabled = deck.served === 0 && !_fcStudySessions.has(`tag:${deck.tag}`);
+      studyBtn.addEventListener('click', () => setRoute({ view: 'study', tag: deck.tag }));
+      btns.appendChild(studyBtn);
+      const allBtn = el('button', 'fc-btn');
+      allBtn.textContent = 'Study All';
+      allBtn.title = 'Every card of this custom deck now, whatever is due. Grading will not change your schedule.';
+      allBtn.disabled = deck.total === 0;
+      allBtn.addEventListener('click', () => setRoute(fcCustomDeckCramRoute(deck)));
+      btns.appendChild(allBtn);
+      const moreBtn = el('button', 'fc-btn');
+      moreBtn.innerHTML = icon('more-horizontal', 12);
+      moreBtn.title = 'Custom deck actions';
+      moreBtn.setAttribute('aria-label', `Actions for ${deck.name}`);
+      moreBtn.addEventListener('click', () => {
+        if (!_api.ui.showContextMenu) return;
+        const r = moreBtn.getBoundingClientRect();
+        _api.ui.showContextMenu({ x: r.left, y: r.bottom + 4 }, fcCustomDeckMenuItems(deck, setRoute));
+      });
+      btns.appendChild(moreBtn);
+      card.appendChild(btns);
+      customList.appendChild(card);
+      customRows.push({ row: card, name: deck.name.toLocaleLowerCase() });
+    }
+    customHead = head;
   }
 
   const columns = el('div', 'fc-home__columns');
@@ -6590,7 +6924,14 @@ async function renderDecks(body, setRoute) {
       row.hidden = !decks[index].name.toLocaleLowerCase().includes(query);
       if (!row.hidden) visible++;
     });
-    noMatch.hidden = visible > 0;
+    let customVisible = 0;
+    for (const c of customRows) {
+      c.row.hidden = !c.name.includes(query);
+      if (!c.row.hidden) customVisible++;
+    }
+    if (customHead) customHead.hidden = customVisible === 0;
+    columns.hidden = visible === 0 && customVisible > 0;
+    noMatch.hidden = visible + customVisible > 0;
   });
 
   body.appendChild(view);
@@ -6881,6 +7222,97 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
   return form;
 }
 
+/**
+ * A custom deck: what it holds, deck by deck, and the two ways to study it.
+ * Cards are added from Browse (Add To Custom Deck) or from the study view's
+ * card menu, and removed here.
+ */
+async function renderCustomDeck(body, route, setRoute) {
+  const deck = await fcGetCustomDeck(route.customId);
+  if (!deck) { setRoute({ view: 'decks' }); return; }
+  const [cards, listed] = await Promise.all([fcCustomDeckCards(deck.tag), fcListCustomDecks()]);
+  const live = listed.find((d) => d.id === deck.id) || { ...deck, total: 0, newCount: 0, dueCount: 0, served: 0 };
+  const view = el('div', 'fc-view fc-custom');
+
+  const head = el('div', 'fc-row');
+  const backBtn = el('button', 'fc-btn');
+  backBtn.innerHTML = `${icon('arrow-left', 12)}<span>Decks</span>`;
+  backBtn.addEventListener('click', () => setRoute({ view: 'decks' }));
+  head.appendChild(backBtn);
+  head.appendChild(el('div', 'fc-view__title', deck.name));
+  const spacer = el('div'); spacer.style.flex = '1';
+  head.appendChild(spacer);
+  const studyBtn = el('button', 'fc-btn fc-btn--primary');
+  const studySays = fcCustomStudyLabel(live);
+  studyBtn.innerHTML = `${icon('play', 12)}<span>${studySays.label}</span>`;
+  studyBtn.title = studySays.hint;
+  studyBtn.disabled = live.served === 0 && !_fcStudySessions.has(`tag:${deck.tag}`);
+  studyBtn.addEventListener('click', () => setRoute({ view: 'study', tag: deck.tag }));
+  head.appendChild(studyBtn);
+  const allBtn = el('button', 'fc-btn');
+  allBtn.innerHTML = `${icon('play', 12)}<span>Study All ${live.total}</span>`;
+  allBtn.title = 'Every card of this custom deck now, whatever is due. Grading will not change your schedule.';
+  allBtn.disabled = live.total === 0;
+  allBtn.addEventListener('click', () => setRoute(fcCustomDeckCramRoute(live)));
+  head.appendChild(allBtn);
+  const moreBtn = el('button', 'fc-btn');
+  moreBtn.innerHTML = icon('more-horizontal', 12);
+  moreBtn.setAttribute('aria-label', 'Custom deck actions');
+  moreBtn.title = 'Custom deck actions';
+  moreBtn.addEventListener('click', () => {
+    if (!_api.ui.showContextMenu) return;
+    const r = moreBtn.getBoundingClientRect();
+    _api.ui.showContextMenu({ x: r.left, y: r.bottom + 4 }, fcCustomDeckMenuItems(live, setRoute).slice(4));
+  });
+  head.appendChild(moreBtn);
+  view.appendChild(head);
+
+  const byDeck = new Map();
+  for (const c of cards) { if (!byDeck.has(c.deckName)) byDeck.set(c.deckName, []); byDeck.get(c.deckName).push(c); }
+  view.appendChild(el('div', 'fc-hint fc-custom__sub', cards.length
+    ? `${cards.length} ${cards.length === 1 ? 'card' : 'cards'} from ${byDeck.size} ${byDeck.size === 1 ? 'deck' : 'decks'}. Each stays in its own deck and keeps one schedule.`
+    : 'No cards yet. Select cards in a deck and choose Add To Custom Deck, or use the card menu while studying.'));
+
+  const list = el('div', 'fc-custom__list');
+  const stateLabel = (c) => (c.suspended ? 'Suspended' : c.state === 'new' ? 'New' : c.state === 'review' ? (c.dueAt <= Date.now() ? 'Due' : 'Review') : 'Learning');
+  for (const [name, group] of byDeck) {
+    const section = el('div', 'fc-custom__group');
+    const groupHead = el('div', 'fc-custom__group-head');
+    groupHead.appendChild(el('span', 'fc-custom__group-name', name));
+    groupHead.appendChild(el('span', 'fc-custom__group-count', String(group.length)));
+    section.appendChild(groupHead);
+    for (const c of group) {
+      const row = el('div', 'fc-custom__card');
+      row.dataset.cardId = String(c.id);
+      // The front as the deck list shows it: markdown and equations rendered.
+      const text = el('div', 'fc-custom__front');
+      text.appendChild(_api.ui.renderMarkdown ? _api.ui.renderMarkdown(c.front) : document.createTextNode(c.front));
+      if (!c.suspended) {
+        const studyOne = () => setRoute({ view: 'study', deckId: c.deckId, custom: { mode: 'single', cardId: c.id, startedAt: Date.now() } });
+        text.setAttribute('role', 'button');
+        text.tabIndex = 0;
+        text.title = 'Study this card now';
+        text.addEventListener('click', studyOne);
+        text.addEventListener('keydown', (e) => { if (e.target === text && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); studyOne(); } });
+      } else {
+        text.classList.add('fc-custom__front--off');
+      }
+      row.appendChild(text);
+      row.appendChild(fcIdChip(c.id, 'fc-cardrow__id'));
+      row.appendChild(el('span', `fc-custom__state fc-custom__state--${stateLabel(c).toLowerCase()}`, stateLabel(c)));
+      const remove = el('button', 'fc-btn fc-custom__remove');
+      remove.textContent = 'Remove';
+      remove.title = `Take this card out of ${deck.name}. It stays in ${name}.`;
+      remove.addEventListener('click', () => { void fcBulkTag([c.id], deck.tag, true); });
+      row.appendChild(remove);
+      section.appendChild(row);
+    }
+    list.appendChild(section);
+  }
+  view.appendChild(list);
+  body.appendChild(view);
+}
+
 async function renderBrowse(body, route, setRoute) {
   const deckRow = await db.get('SELECT * FROM fc_decks WHERE id = ?', [route.deckId]);
   if (!deckRow) { setRoute({ view: 'decks' }); return; }
@@ -7093,6 +7525,19 @@ async function renderBrowse(body, route, setRoute) {
       void renderList();
     });
 
+    mk('Add To Custom Deck…', async () => {
+      const decksNow = await fcListCustomDeckNames();
+      const NEW = 'New Custom Deck…';
+      const pick = await _api.window.showQuickPick(
+        decksNow.map((d) => ({ label: d.name })).concat([{ label: NEW }]), { placeholder: `Add ${selectedIds.size} cards to which custom deck?` });
+      if (!pick) return;
+      let target = decksNow.find((d) => d.name === pick.label) || null;
+      if (pick.label === NEW) { const id = await _newCustomDeckFlow(); target = id != null ? await fcGetCustomDeck(id) : null; }
+      if (!target) return;
+      const n = await fcBulkTag([...selectedIds], target.tag);
+      void _api.window.showInformationMessage(`Added ${n} ${n === 1 ? 'card' : 'cards'} to ${target.name}. They stay in this deck too.`);
+      void renderList();
+    });
     mk('Add Tag…', async () => {
       const tag = await _api.window.showInputBox({ prompt: `Add a tag to ${selectedIds.size} cards`, placeholder: 'e.g. mack' });
       if (!tag?.trim()) return;
@@ -8624,19 +9069,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   // queue as of a moment slightly past the next learning card's dueAt.
   const queue = resuming ? []
     : custom ? fcBuildCustomQueue(cards, Date.now(), { ...custom, shuffle: shuffleOn })
-      : fcBuildQueue(cards, Date.now() + aheadMs, {
-        shuffle: shuffleOn,
-        // The paced allowance has to be able to EXCEED the batch setting,
-        // and this global slice runs after the per-deck one — leaving it at
-        // the raw setting would trim a raised pace straight back down and
-        // make the raise a no-op.
-        newLimit: Math.max(Number(cfg('dailyNewLimit', 20)) || 20, pace ? pace.total : 0),
-        reviewLimit: Number(cfg('dailyReviewLimit', 200)) || 200,
-        newAllowanceByDeck: pace ? pace.byDeck : null,
-        // Custom study bypasses this the same way it bypasses pacing —
-        // "extra" exists precisely to work past the batch.
-        productionLimit: fcProductionDailyLimit(),
-      });
+      : fcBuildQueue(cards, Date.now() + aheadMs, { shuffle: shuffleOn, ...fcDailyQueueLimits(pace) });
   // Preview modes grade for flow only — see fcCustomIsPreview.
   const previewOnly = !!custom && fcCustomIsPreview(custom.mode);
   const customDef = custom
@@ -9124,16 +9557,25 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       title: 'More Card Actions',
       onClick: () => {
         const r = moreBtn.getBoundingClientRect();
-        _api.ui.showContextMenu({ x: r.left, y: r.bottom + 2 }, [
-          {
-            label: 'Memorize',
-            checked: fcCardHasTag(card, FC_MEMORIZE_TAG),
-            tooltip: 'Tag this card memorize: it joins the Memorize session on Home.',
-            onSelect: () => { void fcToggleCardTag(card, FC_MEMORIZE_TAG).then((tags) => { card.tags = tags; _emitDataChanged(); }); },
-          },
-          { separator: true },
-          { label: 'Delete Card', danger: true, onSelect: deleteCurrent },
-        ]);
+        void fcListCustomDeckNames().then((customs) => {
+          _api.ui.showContextMenu({ x: r.left, y: r.bottom + 2 }, [
+            {
+              label: 'Memorize',
+              checked: fcCardHasTag(card, FC_MEMORIZE_TAG),
+              tooltip: 'Tag this card memorize: it joins the Memorize session on Home.',
+              onSelect: () => { void fcToggleCardTag(card, FC_MEMORIZE_TAG).then((tags) => { card.tags = tags; _emitDataChanged(); }); },
+            },
+            ...(customs.length ? [{ separator: true }] : []),
+            ...customs.map((d) => ({
+              label: d.name,
+              checked: fcCardHasTag(card, d.tag),
+              tooltip: `In the custom deck ${d.name}. The card stays in its own deck either way.`,
+              onSelect: () => { void fcToggleCardTag(card, d.tag).then((tags) => { card.tags = tags; _emitDataChanged(); }); },
+            })),
+            { separator: true },
+            { label: 'Delete Card', danger: true, onSelect: deleteCurrent },
+          ]);
+        });
       },
     });
     toolbar.appendChild(cardActions);
@@ -10647,10 +11089,51 @@ function registerChatTools(context) {
     return byName ? byName.value : fcNormalizeFlag(v);
   };
   const endOfToday = () => { const d = new Date(); d.setHours(23, 59, 59, 999); return d.getTime(); };
-  const cardLine = (c, names) => [
+  // A search answers "is this covered?", so its words and its excerpts have
+  // to carry the meaning. Three faults made the chat report a gap that did
+  // not exist (2026-09-28): a search for every word of a sentence found
+  // nothing and said so as if nothing were there; a line showed the first 80
+  // characters of an answer whose point came later; a suspended card said
+  // only "suspended", so the chat proposed resuming one retired on purpose.
+  const QUERY_FILLER = new Set(['the', 'a', 'an', 'of', 'to', 'in', 'on', 'at', 'as', 'by', 'and', 'or', 'for', 'from', 'with', 'is', 'are', 'be', 'do', 'does', 'did', 'can', 'we', 'i', 'my', 'me', 'have', 'has', 'what', 'which', 'how', 'why', 'that', 'this', 'it', 'any', 'card', 'cards', 'flashcard', 'flashcards']);
+  /** The words of a query that carry meaning, punctuation stripped, no repeats. */
+  const meaningWords = (query) => {
+    const words = [...new Set(String(query || '').toLowerCase().split(/\s+/).map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')).filter(Boolean))];
+    const kept = words.filter((w) => w.length > 2 && !QUERY_FILLER.has(w));
+    return kept.length ? kept : words;
+  };
+  const cardHaystack = (c, names) => [c.front, c.back, c.notes, c.tags, names.get(c.deckId)].map((t) => String(t || '').toLowerCase()).join('\n');
+  /** The stretch of a text holding the most query words: a line then shows WHY the card matched. */
+  const excerptAround = (text, words, max) => {
+    const flat = String(text || '').replace(/\s+/g, ' ').trim();
+    if (flat.length <= max) return flat;
+    const low = flat.toLowerCase();
+    const hits = words.map((w) => low.indexOf(w)).filter((i) => i >= 0);
+    if (hits.length === 0) return fcTruncate(flat, max);
+    let best = 0;
+    let bestScore = -1;
+    for (const hit of hits) {
+      const start = Math.max(0, Math.min(hit - Math.floor(max / 5), flat.length - max));
+      const win = low.slice(start, start + max);
+      const score = words.reduce((n, w) => n + (win.includes(w) ? 1 : 0), 0);
+      if (score > bestScore) { bestScore = score; best = start; }
+    }
+    return `${best > 0 ? '…' : ''}${flat.slice(best, best + max).trim()}${best + max < flat.length ? '…' : ''}`;
+  };
+  /** Cards holding some of the words, the most words first. Reading only: a write never widens its own selector. */
+  const rankByWords = (cards, words, names) => {
+    const floor = words.length >= 4 ? 2 : 1;
+    return cards
+      .map((c) => { const hay = cardHaystack(c, names); return { card: c, hits: words.reduce((n, w) => n + (hay.includes(w) ? 1 : 0), 0) }; })
+      .filter((r) => r.hits >= floor)
+      .sort((x, y) => y.hits - x.hits || (y.card.importance || 0) - (x.card.importance || 0) || y.card.createdAt - x.card.createdAt);
+  };
+  const SUSPENDED_MEANS = 'Suspended: the user took this card out of study on purpose. Leave it suspended, and do not write a new card for what it says, unless the user asks.';
+  const READ_BEFORE_JUDGING = 'Each line is an excerpt. Read a card in full (action card) before saying what it covers or does not cover.';
+  const cardLine = (c, names, words) => [
     `#${c.id}`, names.get(c.deckId) || `deck ${c.deckId}`,
-    `Q: ${fcTruncate(c.front, 110)}`, `A: ${fcTruncate(c.back, 80)}`,
-    c.state, c.reps ? `reps ${c.reps}` : '', c.suspended ? 'suspended' : '', c.tags ? `tags: ${c.tags}` : '',
+    `Q: ${fcTruncate(c.front, 140)}`, `A: ${words && words.length ? excerptAround(c.back, words, 220) : fcTruncate(c.back, 160)}`,
+    c.state, c.reps ? `reps ${c.reps}` : '', c.suspended ? 'suspended by the user' : '', c.tags ? `tags: ${c.tags}` : '',
     c.importance ? `importance ${c.importance}` : '', c.flag ? `flag ${fcFlagDef(c.flag)?.name || c.flag}` : '',
     c.recallMode && c.recallMode !== 'recognition' ? `mode ${c.recallMode}` : '',
   ].filter(Boolean).join(' · ');
@@ -10662,6 +11145,7 @@ function registerChatTools(context) {
     c.flag ? `Flag: ${fcFlagDef(c.flag)?.name || c.flag}` : '',
     `Recall mode: ${c.recallMode}${c.rubric?.length ? `\nRubric:\n${c.rubric.map((pt) => `- ${pt.text}${pt.required ? '' : ' (optional)'}`).join('\n')}` : ''}`,
     `State: ${c.state} · reps ${c.reps || 0} · lapses ${c.lapses || 0}${c.dueAt ? ` · due ${new Date(c.dueAt).toLocaleDateString()}` : ''}`,
+    c.suspended ? SUSPENDED_MEANS : '',
   ].filter(Boolean).join('\n');
 
   /** The cards a selector names, over every deck. Filters combine with AND. */
@@ -10680,7 +11164,7 @@ function registerChatTools(context) {
     if (w.query) {
       const terms = String(w.query).toLowerCase().split(/\s+/).filter(Boolean);
       const any = w.matchAny === true;
-      cards = cards.filter((c) => { const hay = [c.front, c.back, c.notes, c.tags, deckNames.get(c.deckId)].map((t) => String(t || '').toLowerCase()).join('\n'); return any ? terms.some((term) => hay.includes(term)) : terms.every((term) => hay.includes(term)); });
+      cards = cards.filter((c) => { const hay = cardHaystack(c, deckNames); return any ? terms.some((term) => hay.includes(term)) : terms.every((term) => hay.includes(term)); });
     }
     if (w.state) cards = cards.filter((c) => c.state === String(w.state));
     if (typeof w.suspended === 'boolean') cards = cards.filter((c) => c.suspended === w.suspended);
@@ -10718,7 +11202,7 @@ function registerChatTools(context) {
       deckName: { type: 'string' },
       ids: { type: 'array', items: { type: 'string' }, description: 'Card ids like "#123".' },
       tag: { type: 'string' },
-      query: { type: 'string', description: 'Words that must all appear in the front, back, notes, tags or deck name, case-insensitive. For "do I have cards on X", pass the key terms of X, or use action similar for meaning.' },
+      query: { type: 'string', description: 'Two or three key words, not a sentence. All must appear in the front, back, notes, tags or deck name, case-insensitive; when no card has them all, find and count fall back to the cards holding the most of them. For meaning rather than words, use action similar.' },
       matchAny: { type: 'boolean', description: 'query: match cards containing ANY of the words instead of all.' },
       state: { type: 'string', enum: ['new', 'learning', 'review', 'relearning'] },
       suspended: { type: 'boolean' },
@@ -10733,7 +11217,8 @@ function registerChatTools(context) {
     description:
       'Read the user\'s flashcards. Actions: find (list matching cards), count (how many, by deck/state/tag; use it for '
       + '"do I have cards on X" and "how many cards about X"), due (what is due now/today/this week, with per-deck '
-      + 'totals), decks (list decks), stats (reviews, retention, counts), card (read cards in full by id), '
+      + 'totals), decks (list decks), stats (reviews, retention, counts), card (read cards in full by id; do this '
+      + 'before saying a topic is or is not covered, a search line is only an excerpt), '
       + 'duplicates (scan a deck, or every deck, for near-duplicate pairs; you then judge which are true duplicates '
       + 'and use flashcards.edit to delete or merge), similar (the cards closest in MEANING to a text, for coverage '
       + 'questions and for thinning a chapter). Every card is identified by #id. Read-only.',
@@ -10748,6 +11233,13 @@ function registerChatTools(context) {
         ids: { type: 'array', items: { type: 'string' }, description: 'card: the ids to read in full.' },
         deckName: { type: 'string', description: 'duplicates: the deck to scan (omit to scan every deck). Also accepted as a shortcut for where.deckName.' },
         query: { type: 'string', description: 'Shortcut for where.query.' },
+        matchAny: { type: 'boolean', description: 'Shortcut for where.matchAny.' },
+        tag: { type: 'string', description: 'Shortcut for where.tag.' },
+        state: { type: 'string', enum: ['new', 'learning', 'review', 'relearning'], description: 'Shortcut for where.state.' },
+        suspended: { type: 'boolean', description: 'Shortcut for where.suspended.' },
+        flag: { type: 'string', description: 'Shortcut for where.flag.' },
+        minImportance: { type: 'number', description: 'Shortcut for where.minImportance.' },
+        recallMode: { type: 'string', enum: FC_RECALL_MODES, description: 'Shortcut for where.recallMode.' },
         due: { type: 'string', enum: ['now', 'today', 'week', 'new'], description: 'due: the window (default now).' },
         limit: { type: 'number', description: 'Cards or pairs to list (default 30, max 200).' },
         minSimilarity: { type: 'number', description: 'duplicates: only pairs at least this similar, 0 to 1 (default the app threshold).' },
@@ -10762,8 +11254,13 @@ function registerChatTools(context) {
         const names = new Map(decks.map((d) => [d.id, d.name]));
         const limit = Math.max(1, Math.min(200, Number(args?.limit) || 30));
         const where = { ...(args?.where || {}) };
-        if (args?.deckName && !where.deckName) where.deckName = args.deckName;
-        if (args?.query && !where.query) where.query = args.query;
+        // A selector field written beside `where` means what it means inside
+        // it. Only `query` and `deckName` used to: the rest were dropped, and
+        // a dropped `matchAny` turns "any of these words" into "all of them".
+        for (const key of ['deckName', 'query', 'matchAny', 'tag', 'state', 'suspended', 'flag', 'minImportance', 'recallMode']) {
+          const given = args?.[key];
+          if (given !== undefined && given !== null && given !== '' && (where[key] === undefined || where[key] === null || where[key] === '')) where[key] = given;
+        }
         if (action === 'decks') {
           if (decks.length === 0) return { content: 'No decks yet.' };
           return { content: decks.map((d) => `- ${d.name}: ${d.total} cards, ${d.dueCount} due, ${d.newCount} new`).join('\n') };
@@ -10812,7 +11309,8 @@ function registerChatTools(context) {
             const probe = text.toLowerCase();
             hits = all.map((c) => ({ id: c.id, similarity: fcTrigramSimilarity(probe, fcCardEmbedText(c.front, c.back).toLowerCase()) })).filter((h) => h.similarity > 0).sort((x, y) => y.similarity - x.similarity);
           }
-          const list = hits.slice(0, limit).map((h) => `${Math.round(h.similarity * 100)}% · ${cardLine(byId.get(h.id), names)}`);
+          const probeWords = meaningWords(text);
+          const list = hits.slice(0, limit).map((h) => `${Math.round(h.similarity * 100)}% · ${cardLine(byId.get(h.id), names, probeWords)}`);
           const top = hits[0]?.similarity ?? 0;
           const verdict = method === 'meaning'
             ? `Top match ${Math.round(top * 100)}%: above about 75% is usually the same topic, 60 to 75% a neighbouring one, below 60% usually not covered; read the cards to decide.`
@@ -10853,9 +11351,24 @@ function registerChatTools(context) {
         const sel = await selectCards(where, decks);
         if (sel.error) return { content: sel.error, isError: true };
         const cards = sel.cards;
+        const words = where.query ? meaningWords(where.query) : [];
+        // No card holds every word of the query: that is a fact about the
+        // words, not about coverage. Say which cards hold the most of them.
+        let closest = [];
+        if (cards.length === 0 && words.length > 1 && where.matchAny !== true && (action === 'find' || action === 'count')) {
+          const rest = await selectCards({ ...where, query: undefined }, decks);
+          if (!rest.error) closest = rankByWords(rest.cards, words, names);
+        }
+        const closestHead = closest.length
+          ? `No card holds all of: ${words.join(', ')}. ${closest.length} hold${closest.length === 1 ? 's' : ''} some of them, closest first`
+          : '';
         if (action === 'count') {
           const what = [where.query ? `about "${where.query}"` : '', where.deckName ? `in "${where.deckName}"` : '', where.tag ? `tagged ${where.tag}` : ''].filter(Boolean).join(' ');
-          if (cards.length === 0) return { content: `0 cards ${what}`.trim() + '. Nothing covers that yet.' };
+          if (closest.length) {
+            const near = closest.slice(0, Math.min(limit, 10)).map((r) => `  ${r.hits} of ${words.length} words · #${r.card.id} ${fcTruncate(r.card.front, 90)}${r.card.suspended ? ' · suspended by the user' : ''}`).join('\n');
+            return { content: `${closestHead}:\n${near}\n${READ_BEFORE_JUDGING}` };
+          }
+          if (cards.length === 0) return { content: `0 cards ${what}`.trim() + (where.query ? '. No card holds these words. That is not yet "not covered": action similar searches by meaning.' : '.') };
           const sample = cards.slice(0, Math.min(limit, 10)).map((c) => `  #${c.id} ${fcTruncate(c.front, 90)}`).join('\n');
           return { content: `${cards.length} card${cards.length === 1 ? '' : 's'} ${what}`.trim() + `.\n${breakdown(cards, names)}\nExamples:\n${sample}` };
         }
@@ -10869,7 +11382,15 @@ function registerChatTools(context) {
           return { content: `${head.join('\n')}\n\n${cards.length} card${cards.length === 1 ? '' : 's'} due ${where.due}${cards.length > limit ? `, first ${limit}` : ''}:\n${list.join('\n') || '(none)'}` };
         }
         // find
-        if (cards.length === 0) return { content: 'No cards match.' };
+        if (closest.length) {
+          const cap = args?.full ? Math.min(limit, 100) : limit;
+          const shown = closest.slice(0, cap);
+          const body = args?.full
+            ? shown.map((r) => `${r.hits} of ${words.length} words\n${cardFull(r.card, names)}`).join('\n\n')
+            : shown.map((r) => `${r.hits} of ${words.length} words · ${cardLine(r.card, names, words)}`).join('\n');
+          return { content: `${closestHead}${closest.length > cap ? `, first ${cap}` : ''}:\n${body}${args?.full ? '' : `\n${READ_BEFORE_JUDGING}`}` };
+        }
+        if (cards.length === 0) return { content: `No cards match.${where.query ? ' No card holds these words. That is not yet "not covered": try fewer words, or action similar to search by meaning.' : ''}` };
         const sort = String(args?.sort || 'newest');
         const sorted = [...cards].sort((x, y) => sort === 'oldest' ? x.createdAt - y.createdAt
           : sort === 'importance' ? (y.importance || 0) - (x.importance || 0) || y.createdAt - x.createdAt
@@ -10881,7 +11402,7 @@ function registerChatTools(context) {
           const blocks = sorted.slice(0, cap).map((c) => cardFull(c, names));
           return { content: `${cards.length} match${cards.length === 1 ? '' : 'es'}${cards.length > cap ? `, first ${cap} in full` : ', in full'}:\n\n${blocks.join('\n\n')}` };
         }
-        return { content: `${cards.length} match${cards.length === 1 ? '' : 'es'}${cards.length > limit ? `, first ${limit}` : ''}:\n${sorted.slice(0, limit).map((c) => cardLine(c, names)).join('\n')}` };
+        return { content: `${cards.length} match${cards.length === 1 ? '' : 'es'}${cards.length > limit ? `, first ${limit}` : ''}:\n${sorted.slice(0, limit).map((c) => cardLine(c, names, words)).join('\n')}${words.length ? `\n${READ_BEFORE_JUDGING}` : ''}` };
       } catch (err) {
         return { content: `Failed: ${err.message}`, isError: true };
       }
@@ -11570,6 +12091,16 @@ function fcParsePastedRows(text) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const __testables = {
+  fcCustomDeckTag,
+  fcListCustomDecks,
+  fcCreateCustomDeck,
+  fcRenameCustomDeck,
+  fcDeleteCustomDeck,
+  fcCustomDeckCards,
+  fcCustomDeckCramRoute,
+  fcCustomStudyLabel,
+  fcActiveCustomDeck,
+  fcBulkTag,
   fcSchedule,
   fcScheduleFsrs,
   fcReplayFsrs,

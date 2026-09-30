@@ -387,7 +387,7 @@ describe('activation', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'fc_%' ORDER BY name")
       .all()
       .map((r: { name: string }) => r.name);
-    expect(tables).toEqual(['fc_cards', 'fc_decks', 'fc_reviews']);
+    expect(tables).toEqual(['fc_cards', 'fc_custom_decks', 'fc_decks', 'fc_reviews']);
   });
 
   it('registers chat tools, dashboard widget, and links contract', () => {
@@ -871,6 +871,302 @@ describe('selection → flashcard', () => {
     await fake.api.commands.executeCommand('flashcards.captureSelection', 'too short', {});
     await settle();
     expect(fake.scripted.messages.slice(before).some((m) => /a little more text/i.test(m))).toBe(true);
+  });
+});
+
+// A search answers "is this covered?". Regression for 2026-09-28: the chat
+// told the user his cards covered half of an exam question when they covered
+// all of it, because the search tool dropped an argument, returned nothing
+// for a sentence, cut the answer before its point, and gave a suspended card
+// no meaning.
+describe('chat tool: query (search for coverage)', () => {
+  const LONG_ANSWER = [
+    'Obstacles: ease of implementation, and adaptability, because practitioners routinely adjust the results of a model',
+    'with their own knowledge of the business and a reserving method has to leave room for that judgment to be applied.',
+    'Situations: intervention in the development factors, and Bornhuetter-Ferguson, where opinion about the level of each row is a prior.',
+  ].join(' ');
+  let ids: string[] = [];
+  const query = () => fake.chatTools.get('flashcards.query')!;
+
+  it('sets up a deck with a long answer and a suspended card', async () => {
+    const edit = fake.chatTools.get('flashcards.edit')!;
+    const made = await edit.handler({
+      action: 'create',
+      deckName: 'Coverage',
+      cards: [
+        { front: 'What two obstacles does Verrall address, and what two situations call for a Bayesian approach?', back: LONG_ANSWER },
+        { front: 'How is expert opinion used to override specific development factors?', back: 'Give the selected factor a prior with a small variance.' },
+        { front: 'Why use a Bayesian model when expert opinion matters?', back: 'Intervening by hand breaks the assumptions of the model.' },
+      ],
+    });
+    expect(made.isError).toBeUndefined();
+    ids = [...String(made.content).matchAll(/#(\d+)/g)].map((m) => `#${m[1]}`);
+    expect(ids).toHaveLength(3);
+    const off = await edit.handler({ action: 'update', ids: [ids[2]], set: { suspended: true } });
+    expect(off.isError).toBeUndefined();
+  });
+
+  it('honours matchAny written beside query', async () => {
+    const result = await query().handler({ action: 'find', deckName: 'Coverage', query: 'variance zebra', matchAny: true });
+    expect(result.content).toContain('1 match');
+    expect(result.content).toContain(ids[1]);
+  });
+
+  it('never answers a sentence with "nothing": it ranks the cards holding the most words', async () => {
+    const result = await query().handler({
+      action: 'find',
+      deckName: 'Coverage',
+      query: 'Verrall expert opinion override development factors ultimate Bornhuetter-Ferguson',
+    });
+    expect(result.content).toContain('No card holds all of');
+    expect(result.content).toContain('closest first');
+    expect(result.content).toContain(ids[0]);
+    expect(result.content).toContain(ids[1]);
+    expect(result.content).not.toBe('No cards match.');
+    expect(result.content).toContain('Read a card in full');
+  });
+
+  it('shows the part of the answer that matched, not its first characters', async () => {
+    const result = await query().handler({ action: 'find', deckName: 'Coverage', query: 'situations Bornhuetter-Ferguson' });
+    expect(result.content).toContain('1 match');
+    expect(LONG_ANSWER.indexOf('Bornhuetter')).toBeGreaterThan(220);
+    expect(result.content).toContain('Bornhuetter-Ferguson, where opinion');
+  });
+
+  it('count reports the closest cards in place of "nothing covers that"', async () => {
+    const result = await query().handler({ action: 'count', deckName: 'Coverage', query: 'expert opinion zebra giraffe' });
+    expect(result.content).toContain('hold some of them');
+    expect(result.content).not.toContain('Nothing covers');
+  });
+
+  it('a search that widens is for reading only: an edit selector stays exact', async () => {
+    const edit = fake.chatTools.get('flashcards.edit')!;
+    const result = await edit.handler({ action: 'update', where: { deckName: 'Coverage', query: 'expert opinion zebra' }, set: { flag: 'red' }, dryRun: true });
+    expect(result.content).toContain('No cards match');
+  });
+
+  it('says what suspended means when a card is read', async () => {
+    const result = await query().handler({ action: 'card', ids: [ids[2]] });
+    expect(result.content).toContain('took this card out of study on purpose');
+    const line = await query().handler({ action: 'find', deckName: 'Coverage', suspended: true });
+    expect(line.content).toContain('suspended by the user');
+    expect(line.content).toContain(ids[2]);
+    expect(line.content).not.toContain(ids[0]);
+  });
+});
+
+// A custom deck is a view: cards join it by tag and stay in their own decks.
+describe('custom decks', () => {
+  const T = __testables as unknown as {
+    fcCustomDeckTag(name: string): string;
+    fcListCustomDecks(): Promise<{ id: number; name: string; tag: string; newCount: number; dueCount: number; total: number; served: number }[]>;
+    fcCustomStudyLabel(deck: { newCount: number; dueCount: number; served: number }): { label: string; hint: string };
+    fcActiveCustomDeck(route: Record<string, unknown> | null): { id: string; tag: string };
+    fcCreateCustomDeck(name: string): Promise<number>;
+    fcRenameCustomDeck(id: number, name: string): Promise<void>;
+    fcDeleteCustomDeck(id: number): Promise<number>;
+    fcCustomDeckCards(tag: string): Promise<{ id: number; deckId: number; deckName: string; front: string }[]>;
+    fcCustomDeckCramRoute(deck: { tag: string; total: number }): { view: string; tag: string; custom: { mode: string; count: number; tags: string[] } };
+    fcBulkTag(ids: number[], tag: string, remove?: boolean): Promise<number>;
+  };
+  const ids: number[] = [];
+  const deckIds: number[] = [];
+  let customId = 0;
+  const tagsOf = (id: number): string => (fake.sqlite.prepare('SELECT tags FROM fc_cards WHERE id = ?').get(id) as { tags: string }).tags || '';
+  const deckOf = (id: number): number => (fake.sqlite.prepare('SELECT deck_id FROM fc_cards WHERE id = ?').get(id) as { deck_id: number }).deck_id;
+
+  beforeAll(() => {
+    const now = Date.now();
+    for (const name of ['Custom Source A', 'Custom Source B']) {
+      const r = fake.sqlite.prepare('INSERT INTO fc_decks (name, created_at) VALUES (?, ?)').run(name, now);
+      deckIds.push(Number(r.lastInsertRowid));
+    }
+    const add = (deckId: number, front: string, tags: string) => {
+      const r = fake.sqlite.prepare('INSERT INTO fc_cards (deck_id, front, back, tags, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(deckId, front, 'answer', tags, now);
+      ids.push(Number(r.lastInsertRowid));
+    };
+    add(deckIds[0], 'Mean of the over-dispersed Poisson model', 'glm');
+    add(deckIds[0], 'Variance of the over-dispersed Poisson model', '');
+    add(deckIds[1], 'Mean of the Cape Cod model', 'memorize');
+  });
+
+  it('names its tag from the deck name', () => {
+    expect(T.fcCustomDeckTag('Model Specifications')).toBe('deck-model-specifications');
+    expect(T.fcCustomDeckTag('  Plots & Tests!  ')).toBe('deck-plots-tests');
+    expect(T.fcCustomDeckTag('***')).toBe('');
+  });
+
+  it('holds cards from several decks, each still in its own deck', async () => {
+    customId = await T.fcCreateCustomDeck('Model Specifications');
+    const custom = (await T.fcListCustomDecks()).find((d) => d.id === customId)!;
+    expect(custom.tag).toBe('deck-model-specifications');
+    expect(custom.total).toBe(0);
+
+    expect(await T.fcBulkTag(ids, custom.tag)).toBe(3);
+    const cards = await T.fcCustomDeckCards(custom.tag);
+    expect(cards.map((c) => c.id)).toEqual(ids);
+    expect(new Set(cards.map((c) => c.deckName))).toEqual(new Set(['Custom Source A', 'Custom Source B']));
+    // The card did not move, and the tags it had are kept.
+    expect(deckOf(ids[0])).toBe(deckIds[0]);
+    expect(deckOf(ids[2])).toBe(deckIds[1]);
+    expect(tagsOf(ids[0]).split(',').map((x) => x.trim())).toEqual(expect.arrayContaining(['glm', 'deck-model-specifications']));
+    expect(tagsOf(ids[2]).split(',').map((x) => x.trim())).toEqual(expect.arrayContaining(['memorize', 'deck-model-specifications']));
+
+    const after = (await T.fcListCustomDecks()).find((d) => d.id === customId)!;
+    expect(after.total).toBe(3);
+    expect(after.newCount).toBe(3);
+  });
+
+  it('a card can be in two custom decks at once', async () => {
+    const second = await T.fcCreateCustomDeck('Formulas');
+    await T.fcBulkTag([ids[0]], 'deck-formulas');
+    const decks = await T.fcListCustomDecks();
+    expect(decks.find((d) => d.id === second)!.total).toBe(1);
+    expect(decks.find((d) => d.id === customId)!.total).toBe(3);
+    expect(await T.fcDeleteCustomDeck(second)).toBe(1);
+    expect(tagsOf(ids[0])).not.toContain('deck-formulas');
+    expect(tagsOf(ids[0])).toContain('deck-model-specifications');
+  });
+
+  it('a second deck of the same name gets its own tag', async () => {
+    const twin = await T.fcCreateCustomDeck('Model Specifications');
+    const decks = await T.fcListCustomDecks();
+    expect(decks.find((d) => d.id === twin)!.tag).toBe('deck-model-specifications-2');
+    expect(decks.find((d) => d.id === twin)!.total).toBe(0);
+    await T.fcDeleteCustomDeck(twin);
+  });
+
+  it('renaming keeps the cards in', async () => {
+    await T.fcRenameCustomDeck(customId, 'Models');
+    const custom = (await T.fcListCustomDecks()).find((d) => d.id === customId)!;
+    expect(custom.name).toBe('Models');
+    expect(custom.tag).toBe('deck-model-specifications');
+    expect(custom.total).toBe(3);
+  });
+
+  it('Study All takes every card and leaves the schedule alone', () => {
+    const route = T.fcCustomDeckCramRoute({ tag: 'deck-model-specifications', total: 3 });
+    expect(route.view).toBe('study');
+    expect(route.custom.mode).toBe('cram');
+    expect(route.custom.count).toBe(3);
+    expect(route.custom.tags).toEqual(['deck-model-specifications']);
+    // Scoped by the tag itself, so cards in a deck studied apart are in too.
+    expect(route.tag).toBe('deck-model-specifications');
+  });
+
+  it('the Study count is what the session will serve, not every new card', async () => {
+    fake.setConfig('dailyNewLimit', 1);
+    const paced = (await T.fcListCustomDecks()).find((d) => d.id === customId)!;
+    // Three new cards, two decks, one new card a deck a day.
+    expect(paced.newCount).toBe(3);
+    expect(paced.served).toBe(2);
+    expect(T.fcCustomStudyLabel(paced).label).toBe('Study 2 Cards');
+    expect(T.fcCustomStudyLabel(paced).hint).toContain('1 new card waits');
+    fake.setConfig('dailyNewLimit', 20);
+    const open = (await T.fcListCustomDecks()).find((d) => d.id === customId)!;
+    expect(open.served).toBe(3);
+    expect(T.fcCustomStudyLabel({ newCount: 0, dueCount: 0, served: 0 }).label).toBe('Nothing Due Right Now');
+  });
+
+  it('knows which custom deck a route is inside', () => {
+    expect(T.fcActiveCustomDeck({ view: 'customDeck', customId: 7 })).toEqual({ id: '7', tag: '' });
+    expect(T.fcActiveCustomDeck({ view: 'study', tag: 'Deck-Formulas' })).toEqual({ id: '', tag: 'deck-formulas' });
+    expect(T.fcActiveCustomDeck({ view: 'browse', deckId: 3 })).toEqual({ id: '', tag: '' });
+  });
+
+  it('shows on Home and in the sidebar, and opens to its cards', async () => {
+    (document.querySelector('.fc-sb__nav-item[data-view="decks"]') as HTMLElement).click();
+    await settle();
+    const pane = document.querySelector('.fc-pane')!;
+    const sidebar = document.querySelector('[data-role="sidebar-host"]')!;
+    const home = pane.querySelector('.fc-deck-card--custom') as HTMLElement;
+    expect(home).toBeTruthy();
+    expect(home.querySelector('.fc-deck-card__name')?.textContent).toBe('Models');
+    expect([...home.querySelectorAll('.fc-deck-count__n')].map((n) => n.textContent)).toEqual(['3', '0', '3']);
+    expect([...home.querySelectorAll('button')].map((b) => b.textContent).filter(Boolean)).toEqual(['Study', 'Study All']);
+    expect(sidebar.querySelector('.fc-deck-row--custom .fc-deck-row__name')?.textContent).toBe('Models');
+
+    (home.querySelector('.fc-deck-card__info') as HTMLElement).click();
+    await settle();
+    expect(pane.querySelector('.fc-pane__crumbs')?.textContent).toContain('Models');
+    expect(pane.querySelector('.fc-custom .fc-view__title')?.textContent).toBe('Models');
+    expect([...pane.querySelectorAll('.fc-custom__group-name')].map((n) => n.textContent)).toEqual(['Custom Source A', 'Custom Source B']);
+    expect(pane.querySelectorAll('.fc-custom__card')).toHaveLength(3);
+    const buttons = [...pane.querySelectorAll('.fc-custom .fc-row button')].map((b) => b.textContent);
+    expect(buttons).toContain('Study 3 Cards');
+    expect(buttons).toContain('Study All 3');
+    // The page's own menu starts with an action, not a rule.
+    expect(sidebar.querySelector('.fc-deck-row--custom')?.classList.contains('fc-deck-row--active')).toBe(true);
+  });
+
+  it('Find a deck covers custom decks', async () => {
+    const pane = document.querySelector('.fc-pane')!;
+    (document.querySelector('.fc-sb__nav-item[data-view="decks"]') as HTMLElement).click();
+    await settle();
+    const input = pane.querySelector('.fc-home__search input') as HTMLInputElement;
+    input.value = 'models';
+    input.dispatchEvent(new Event('input'));
+    expect((pane.querySelector('.fc-deck-card--custom') as HTMLElement).hidden).toBe(false);
+    expect((pane.querySelector('.fc-home__no-match') as HTMLElement).hidden).toBe(true);
+    input.value = 'custom source';
+    input.dispatchEvent(new Event('input'));
+    expect((pane.querySelector('.fc-deck-card--custom') as HTMLElement).hidden).toBe(true);
+    expect((pane.querySelector('.fc-home__columns--custom') as HTMLElement).hidden).toBe(true);
+    input.value = '';
+    input.dispatchEvent(new Event('input'));
+    expect((pane.querySelector('.fc-deck-card--custom') as HTMLElement).hidden).toBe(false);
+    (pane.querySelector('.fc-deck-card--custom .fc-deck-card__info') as HTMLElement).click();
+    await settle();
+  });
+
+  it('Remove takes a card out of the custom deck only', async () => {
+    const pane = document.querySelector('.fc-pane')!;
+    const row = pane.querySelector(`.fc-custom__card[data-card-id="${ids[1]}"]`) as HTMLElement;
+    (row.querySelector('.fc-custom__remove') as HTMLButtonElement).click();
+    await settle();
+    expect(tagsOf(ids[1])).not.toContain('deck-model-specifications');
+    expect(deckOf(ids[1])).toBe(deckIds[0]);
+    expect(pane.querySelectorAll('.fc-custom__card')).toHaveLength(2);
+  });
+
+  it('studies only its own cards', async () => {
+    const pane = document.querySelector('.fc-pane')!;
+    const study = [...pane.querySelectorAll('.fc-custom .fc-row button')].find((b) => b.textContent === 'Study 2 Cards') as HTMLButtonElement;
+    expect(study).toBeTruthy();
+    study.click();
+    await settle();
+    expect(pane.querySelector('.fc-pane__crumbs')?.textContent).toContain('Models');
+    const shown = pane.textContent || '';
+    expect(shown.includes('Mean of the over-dispersed Poisson model') || shown.includes('Mean of the Cape Cod model')).toBe(true);
+    expect(shown).not.toContain('Variance of the over-dispersed Poisson model');
+    expect(pane.querySelector('.fc-study__position')?.textContent).toBe('1 / 2');
+  });
+
+  it('Study All reaches a card whose deck is studied apart', async () => {
+    fake.sqlite.prepare('UPDATE fc_decks SET study_apart = 1 WHERE id = ?').run(deckIds[1]);
+    const pane = document.querySelector('.fc-pane')!;
+    (document.querySelector('.fc-sb__nav-item[data-view="decks"]') as HTMLElement).click();
+    await settle();
+    const all = [...pane.querySelectorAll('.fc-deck-card--custom button')].find((b) => b.textContent === 'Study All') as HTMLButtonElement;
+    all.click();
+    await settle();
+    expect(pane.querySelector('.fc-study__position')?.textContent).toBe('1 / 2');
+    expect(pane.querySelector('.fc-pane__crumbs')?.textContent).toContain('Models');
+    fake.sqlite.prepare('UPDATE fc_decks SET study_apart = 0 WHERE id = ?').run(deckIds[1]);
+  });
+
+  it('deleting the custom deck leaves every card where it was', async () => {
+    const cardsBefore = (fake.sqlite.prepare('SELECT COUNT(*) AS n FROM fc_cards').get() as { n: number }).n;
+    expect(await T.fcDeleteCustomDeck(customId)).toBe(2);
+    expect((fake.sqlite.prepare('SELECT COUNT(*) AS n FROM fc_cards').get() as { n: number }).n).toBe(cardsBefore);
+    expect((fake.sqlite.prepare('SELECT COUNT(*) AS n FROM fc_custom_decks').get() as { n: number }).n).toBe(0);
+    expect(tagsOf(ids[0])).toBe('glm');
+    expect(tagsOf(ids[2])).toBe('memorize');
+    fake.sqlite.prepare('DELETE FROM fc_cards WHERE deck_id IN (?, ?)').run(deckIds[0], deckIds[1]);
+    fake.sqlite.prepare('DELETE FROM fc_decks WHERE id IN (?, ?)').run(deckIds[0], deckIds[1]);
+    (document.querySelector('.fc-sb__nav-item[data-view="decks"]') as HTMLElement).click();
+    await settle();
   });
 });
 
