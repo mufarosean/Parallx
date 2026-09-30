@@ -169,6 +169,50 @@ describe('executeOpenclawAttempt', () => {
     expect(toolMessages[0].content).toContain('not available in this session');
   });
 
+  it('refuses a call carrying an argument the offered schema does not declare, and says where it belongs', async () => {
+    let callCount = 0;
+    const sendChatRequest = vi.fn(() => {
+      callCount++;
+      if (callCount === 1) {
+        return streamChunks([
+          toolCallChunk('Searching...', [{ function: { name: 'flashcards_query', arguments: { action: 'find', query: 'expert opinion', matchAny: true } } }]),
+        ]);
+      }
+      if (callCount === 2) {
+        return streamChunks([
+          toolCallChunk('Searching again...', [{ function: { name: 'flashcards_query', arguments: { action: 'find', where: { query: 'expert opinion', matchAny: true } } } }]),
+        ]);
+      }
+      return streamChunks([textChunk('Done.')]);
+    });
+    const invokeToolWithRuntimeControl = vi.fn(async (): Promise<IToolResult> => ({ content: '2 matches' }));
+    const context = createContext({
+      sendChatRequest,
+      invokeToolWithRuntimeControl,
+      toolState: {
+        availableDefinitions: [{
+          name: 'flashcards_query',
+          description: 'Read the flashcards',
+          parameters: {
+            type: 'object',
+            properties: {
+              action: { type: 'string' },
+              query: { type: 'string' },
+              where: { type: 'object', properties: { query: { type: 'string' }, matchAny: { type: 'boolean' } } },
+            },
+          },
+        }],
+      } as any,
+    });
+    await executeOpenclawAttempt(createRequest(), context, createAssembled(), createResponse(), createToken());
+    // The malformed call never reached the tool; the corrected one did.
+    expect(invokeToolWithRuntimeControl).toHaveBeenCalledTimes(1);
+    expect((invokeToolWithRuntimeControl.mock.calls[0] as unknown[])[1]).toEqual({ action: 'find', where: { query: 'expert opinion', matchAny: true } });
+    const refused = (sendChatRequest.mock.calls[1][0] as Array<{ role: string; content: string }>).filter((m) => m.role === 'tool');
+    expect(refused[0].content).toContain('was not run');
+    expect(refused[0].content).toContain('"matchAny" goes inside "where"');
+  });
+
   it('tool call loop — model returns tool call, tool executes, model returns text', async () => {
     let callCount = 0;
     const sendChatRequest = vi.fn(() => {

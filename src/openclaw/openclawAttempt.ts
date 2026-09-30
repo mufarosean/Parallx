@@ -29,6 +29,7 @@ import type { IChatRuntimeToolInvocationObserver } from './openclawTypes.js';
 import type { IOpenclawBootstrapDebugReport, IOpenclawSystemPromptReport } from '../services/chatRuntimeTypes.js';
 import { ChatToolLoopSafety } from '../services/chatToolLoopSafety.js';
 import { isToolImageGone } from '../services/toolImageLifetime.js';
+import { describeUndeclaredArguments } from '../services/toolArgumentCheck.js';
 import { estimateMessagesTokens, estimateTokens } from './openclawTokenBudget.js';
 import type { IOpenclawRuntimeSkillState } from './openclawSkillState.js';
 import { buildOpenclawPromptArtifacts } from './openclawPromptArtifacts.js';
@@ -679,7 +680,17 @@ export async function executeOpenclawAttempt(
       // (An empty catalog carries no filter: nothing was offered, so
       // nothing was withheld; the PDP alone gates that path.)
       const offered = context.toolState.availableDefinitions;
-      const toolResult = offered.length === 0 || offered.some((d) => d.name === toolCall.function.name)
+      const definition = offered.find((d) => d.name === toolCall.function.name);
+      // Nor may a call carry an argument the offered schema does not declare:
+      // the handler would drop it and run a different call from the one the
+      // model wrote (toolArgumentCheck.ts). Refused before approval, so the
+      // user is never asked to approve a call that would not run as it reads.
+      const argumentProblem = definition
+        ? describeUndeclaredArguments(definition.name, definition.parameters, toolCall.function.arguments)
+        : undefined;
+      const toolResult = argumentProblem
+        ? { content: argumentProblem, isError: true }
+        : offered.length === 0 || definition
         ? await context.invokeToolWithRuntimeControl(
           toolCall.function.name,
           toolCall.function.arguments,

@@ -8879,22 +8879,42 @@ async function budgetToolListRecurringSeries() {
   return _toolOk({ series: rows });
 }
 
+// The tool functions below read the argument names their schemas DECLARE
+// (from, to, merchant, category by name). Several used to read other names
+// only (startDate, merchantContains, categoryId), so a filter the model set
+// was dropped and the call ran unfiltered, or failed on a "missing" argument
+// it had been given (2026-09-28). The older names still work for callers that
+// use them.
+async function _categoryIdFromArgs(args, idKey, nameKey) {
+  if (args[idKey] && typeof args[idKey] === 'string') return { id: args[idKey] };
+  const name = args[nameKey];
+  if (typeof name !== 'string' || !name.trim()) return { id: null };
+  const found = await resolveCategoryByName(name);
+  return found ? { id: found.id } : { error: `Unknown category: "${name}". Call budget.listCategories first.` };
+}
+
 async function budgetToolQueryTransactions(args = {}) {
   const where = [];
   const params = [];
-  if (args.merchantContains) {
+  const merchant = args.merchant ?? args.merchantContains;
+  if (merchant) {
     where.push('LOWER(merchant) LIKE LOWER(?)');
-    params.push('%' + String(args.merchantContains) + '%');
+    params.push('%' + String(merchant) + '%');
   }
-  if (args.startDate && isYmd(args.startDate)) {
-    where.push('transaction_date >= ?'); params.push(args.startDate);
+  const from = args.from ?? args.startDate;
+  if (from && isYmd(from)) {
+    where.push('transaction_date >= ?'); params.push(from);
   }
-  if (args.endDate && isYmd(args.endDate)) {
-    where.push('transaction_date <= ?'); params.push(args.endDate);
+  const to = args.to ?? args.endDate;
+  if (to && isYmd(to)) {
+    where.push('transaction_date <= ?'); params.push(to);
   }
-  if (args.categoryId) { where.push('category_id = ?'); params.push(args.categoryId); }
+  const category = await _categoryIdFromArgs(args, 'categoryId', 'category');
+  if (category.error) return _toolErr(category.error);
+  if (category.id) { where.push('category_id = ?'); params.push(category.id); }
   if (args.accountId)  { where.push('account_id = ?');  params.push(args.accountId); }
-  if (args.status)     { where.push('status = ?');      params.push(args.status); }
+  // 'all' is the schema's word for "no status filter", not a status.
+  if (args.status && args.status !== 'all') { where.push('status = ?'); params.push(args.status); }
   if (args.txType)     { where.push('tx_type = ?');     params.push(args.txType); }
   const limit = Math.max(1, Math.min(500, Number(args.limit) || 100));
   const sql = `SELECT t.id, t.gmail_message_id, t.merchant, t.amount_cents, t.currency,
@@ -9458,22 +9478,31 @@ async function budgetToolCreateCategory(args = {}) {
 }
 
 async function budgetToolRenameCategory(args = {}) {
-  if (!args.id || typeof args.id !== 'string') return _toolErr('id is required');
-  if (!args.newName || typeof args.newName !== 'string') return _toolErr('newName is required');
-  await db.run(`UPDATE categories SET name=? WHERE id=?`, [args.newName.trim(), args.id]);
-  return _toolOk({ id: args.id, newName: args.newName.trim() });
+  const category = await _categoryIdFromArgs(args, 'id', 'from');
+  if (category.error) return _toolErr(category.error);
+  if (!category.id) return _toolErr('from is required: the current name of the category');
+  const newName = typeof args.to === 'string' && args.to.trim() ? args.to : args.newName;
+  if (!newName || typeof newName !== 'string') return _toolErr('to is required: the new name');
+  await db.run(`UPDATE categories SET name=? WHERE id=?`, [newName.trim(), category.id]);
+  return _toolOk({ id: category.id, newName: newName.trim() });
 }
 
 async function budgetToolDeleteCategory(args = {}) {
-  if (!args.id || typeof args.id !== 'string') return _toolErr('id is required');
+  const category = await _categoryIdFromArgs(args, 'id', 'name');
+  if (category.error) return _toolErr(category.error);
+  if (!category.id) return _toolErr('name is required: the category to archive');
   // Soft-archive — transactions referencing this category still resolve.
-  await db.run(`UPDATE categories SET archived=1 WHERE id=?`, [args.id]);
-  return _toolOk({ id: args.id, archived: true });
+  await db.run(`UPDATE categories SET archived=1 WHERE id=?`, [category.id]);
+  return _toolOk({ id: category.id, archived: true });
 }
 
-async function budgetToolCreateCategorizationRule(args = {}) {
-  if (!args.pattern || typeof args.pattern !== 'string') return _toolErr('pattern is required');
-  if (!args.categoryId || typeof args.categoryId !== 'string') return _toolErr('categoryId is required');
+async function budgetToolCreateCategorizationRule(input = {}) {
+  const pattern = typeof input.merchant === 'string' && input.merchant.trim() ? input.merchant : input.pattern;
+  if (!pattern || typeof pattern !== 'string') return _toolErr('merchant is required: the text the rule matches');
+  const category = await _categoryIdFromArgs(input, 'categoryId', 'category');
+  if (category.error) return _toolErr(category.error);
+  if (!category.id) return _toolErr('category is required: the name of the category');
+  const args = { ...input, pattern, categoryId: category.id };
   const matchType = ['exact','contains','regex'].includes(args.matchType) ? args.matchType : 'contains';
   const priority = Math.max(0, Math.min(1000, Number(args.priority) || 100));
   const id = crypto.randomUUID();
@@ -10381,7 +10410,6 @@ export async function activate(api, context) {
           properties: {
             name: { type: 'string' },
             kind: { type: 'string', enum: ['expense', 'income'] },
-            icon: { type: 'string' },
           },
         },
         requiresConfirmation: true,
@@ -10590,4 +10618,10 @@ export const __testables = {
    * dropdown is not a trade worth making.
    */
   __setApi: (api) => { _api = api; },
+  /** Test seam: the database bridge, so a tool function runs against a fake. */
+  __setDbBridge: (bridge) => { _dbBridge = bridge; },
+  budgetToolQueryTransactions,
+  budgetToolRenameCategory,
+  budgetToolDeleteCategory,
+  budgetToolCreateCategorizationRule,
 };

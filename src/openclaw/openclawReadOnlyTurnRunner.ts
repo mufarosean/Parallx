@@ -29,6 +29,7 @@ import { applyOpenclawToolPolicy } from './openclawToolPolicy.js';
 import { normalizeToolResultContent } from './openclawAttempt.js';
 import { isTransientError, isTimeoutError } from './openclawErrorClassification.js';
 import { ChatToolLoopSafety } from '../services/chatToolLoopSafety.js';
+import { describeUndeclaredArguments } from '../services/toolArgumentCheck.js';
 
 // ---------------------------------------------------------------------------
 // Constants (shared with openclawTurnRunner.ts)
@@ -268,7 +269,14 @@ export async function runOpenclawReadOnlyTurn(
       }
       // No acceptsImages: this loop sends tool results as text only, so a tool
       // that makes an image for the model (browserCapture) refuses here.
-      const toolResult = await options.invokeToolWithRuntimeControl(toolName, toolCall.function.arguments, token, undefined, options.sessionId);
+      // An argument the offered schema does not declare is refused, not dropped (toolArgumentCheck.ts).
+      const definition = options.tools.find((d) => d.name === toolName);
+      const argumentProblem = definition
+        ? describeUndeclaredArguments(definition.name, definition.parameters, toolCall.function.arguments)
+        : undefined;
+      const toolResult = argumentProblem
+        ? { content: argumentProblem, isError: true }
+        : await options.invokeToolWithRuntimeControl(toolName, toolCall.function.arguments, token, undefined, options.sessionId);
       // D4: Fire after-tool hook (approval hooks skipped — readonly tools have no approval flow)
       if (options.toolObserver?.onExecuted) {
         try { options.toolObserver.onExecuted(hookMetadata, toolResult); } catch (e) { console.warn('[D4] Readonly tool hook error:', e); }
