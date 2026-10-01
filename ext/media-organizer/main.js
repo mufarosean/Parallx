@@ -5564,10 +5564,9 @@ const MO_CSS = `
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-  color: var(--vscode-sideBar-foreground, var(--vscode-editor-foreground));
-  font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
-  font-size: var(--parallx-fontSize-md, 13px);
+  color: var(--px-text);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-base);
   overflow: hidden;
 }
 .mo-sidebar-sections {
@@ -5589,26 +5588,37 @@ const MO_CSS = `
 .mo-sidebar-section.mo-section-collapsed { flex: 0 0 auto; }
 .mo-sidebar-section.mo-section-fixed { flex: 0 0 auto !important; }
 .mo-sidebar-section.mo-section-fixed > .mo-sidebar-section-body { overflow: visible; }
+/* Section header: the section label (sentence case, 12px/600, secondary),
+   its actions to the right, the fold chevron last. */
 .mo-sidebar-section-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: var(--px-space-2);
+  min-height: var(--px-control-h);
+  padding: var(--px-space-2) var(--px-sidebar-inset) var(--px-space-1);
   flex: 0 0 auto;
-  font-size: var(--parallx-fontSize-sm, 11px);
+  font-size: var(--px-text-sm);
   font-weight: 600;
-  text-transform: none;
-  letter-spacing: normal;
-  color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground, #ccc));
-  background: var(--vscode-sideBarSectionHeader-background, transparent);
-  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
+  color: var(--px-text-secondary);
   cursor: pointer;
   user-select: none;
 }
+.mo-sidebar-section-header > .svg-icon { color: var(--px-text-muted); }
 .mo-sidebar-section-header .mo-chevron {
   margin-left: auto;
-  transition: transform 0.15s;
+  display: inline-flex;
+  color: var(--px-text-muted);
+  transition: transform var(--px-dur-fast) var(--px-ease);
 }
+.mo-sidebar-header-btns { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.mo-sidebar-header-btns + .mo-chevron { margin-left: 0; }
+.mo-sidebar-header-btn.is-active { background: var(--px-surface-selected); color: var(--px-text); }
+.mo-tag-section-count { font-weight: 400; color: var(--px-text-muted); }
+/* The Folders and Tags filter field, under its header. */
+.mo-sidebar-search-wrap { position: relative; margin: 2px var(--px-sidebar-inset) var(--px-space-1); }
+.mo-sidebar-search-wrap .mo-sidebar-search { width: 100%; height: var(--px-control-h-sm); box-sizing: border-box; padding: 0 var(--px-space-6) 0 var(--px-space-2); font-size: var(--px-text-sm); }
+.mo-sidebar-search-clear { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text-muted); cursor: pointer; }
+.mo-sidebar-search-clear:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .mo-sidebar-section-header.collapsed .mo-chevron { transform: rotate(-90deg); }
 .mo-sidebar-section-body {
   padding: 2px 0;
@@ -5674,23 +5684,34 @@ kbd.mo-key {
 .mo-cheat-hint { flex: 1; font-size: 11px; opacity: 0.65; }
 .mo-cheat-record-btn { display: inline-flex; align-items: center; gap: 6px; }
 .mo-cheat-record-btn svg { width: 13px; height: 13px; }
+/* A row: the workbench list-row (icon, label, quiet count), on the shared
+   hover surface, inset from the section edges. */
 .mo-sidebar-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px 4px 16px;
+  gap: var(--px-space-2);
+  min-height: var(--px-control-h);
+  margin: 0 var(--px-space-1);
+  padding: 0 var(--px-space-2);
+  border-radius: var(--px-radius-sm);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.mo-sidebar-item:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
-.mo-sidebar-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
+.mo-sidebar-item .mo-icon-wrap { color: var(--px-text-secondary); }
+.mo-sidebar-item:hover { background: var(--px-surface-hover); }
+.mo-sidebar-item:focus-visible { outline: 2px solid var(--px-accent); outline-offset: -2px; }
+.mo-sidebar-item-caption { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.mo-sidebar-item-count.mo-sidebar-item-badge { min-width: 16px; height: 16px; padding: 0 5px; border-radius: var(--px-radius-full); background: var(--px-accent-soft); color: var(--px-accent-text); font-size: var(--px-text-2xs); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
 .mo-sidebar-item.mo-drop-target { background: var(--vscode-list-dropBackground, rgba(0,100,200,0.18)); outline: 1px dashed var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
-.mo-sidebar-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.mo-sidebar-item-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mo-sidebar-item-count {
-  font-size: var(--parallx-fontSize-xs, 10px);
-  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
+  margin-left: auto;
+  padding-left: var(--px-space-1);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
 .mo-sidebar-item .mo-icon-wrap { flex-shrink: 0; display: flex; align-items: center; }
@@ -9877,6 +9898,14 @@ function moShowShortcutsCheatSheet() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Adapted from stash: sidebar navigation pattern
 
+/** A section-header action: the kit's small icon button; clicking it never folds the section. */
+function moSidebarHeaderBtn(api, icon, title) {
+  const b = api.ui.createIconButton(null, { icon, title, size: 'sm' });
+  b.classList.add('mo-sidebar-header-btn');
+  b.addEventListener('click', (e) => e.stopPropagation());
+  return b;
+}
+
 function renderBrowserSidebar(container, api) {
   moInjectStyles();
   const root = moEl('div', 'mo-sidebar');
@@ -10051,11 +10080,13 @@ function renderBrowserSidebar(container, api) {
     return { section, body };
   }
 
-  function sidebarItem(iconName, label, count, onClick) {
+  function sidebarItem(iconName, label, count, onClick, caption) {
     const item = moEl('div', 'mo-sidebar-item');
     const iconWrap = moEl('span', 'mo-icon-wrap', { innerHTML: moIcon(iconName, 14) });
     item.appendChild(iconWrap);
     item.appendChild(moEl('span', 'mo-sidebar-item-label', { textContent: label }));
+    // A quiet second name (a folder's parent) that tells two alike apart.
+    if (caption) item.appendChild(moEl('span', 'mo-sidebar-item-caption', { textContent: caption }));
     if (count !== undefined && count !== null) {
       item.appendChild(moEl('span', 'mo-sidebar-item-count', { textContent: String(count) }));
     }
@@ -10070,11 +10101,12 @@ function renderBrowserSidebar(container, api) {
   // A fixed, short list of filters: natural height, never squeezed into a
   // scroll box by the growing Folders and Tags sections below it.
   qfSection.classList.add('mo-section-fixed');
-  qfBody.appendChild(sidebarItem('library', 'Library', null, () => openGrid('all', 'Library', 'library')));
+  qfBody.appendChild(sidebarItem('library', 'All Media', null, () => openGrid('all', 'All Media', 'library')));
   qfBody.appendChild(sidebarItem('circle-help', 'Untagged', null, () => openGrid('untagged', 'Untagged')));
   // AI tagging (Section 43): the review list, counting photos waiting or to review.
-  const tagReviewItem = sidebarItem('sparkles', 'Tag Review', null, () => moOpenTagReview(api));
-  const tagReviewCount = moEl('span', 'mo-sidebar-item-count');
+  // The app's AI mark, as everywhere something calls the AI; the count is a badge.
+  const tagReviewItem = sidebarItem('px-ai-mark', 'Tag Review', null, () => moOpenTagReview(api));
+  const tagReviewCount = moEl('span', 'mo-sidebar-item-count mo-sidebar-item-badge');
   tagReviewItem.appendChild(tagReviewCount);
   qfBody.appendChild(tagReviewItem);
   const refreshTagReviewCount = () => {
@@ -10112,30 +10144,20 @@ function renderBrowserSidebar(container, api) {
   let folderSearchOpen = false;
   const folderHeader = folderSection.querySelector('.mo-sidebar-section-header');
   const folderChevron = folderHeader.querySelector('.mo-chevron');
-  const mkFolderHeaderBtn = (icon, title) => {
-    const b = moEl('button', 'mo-sidebar-header-btn', { type: 'button', title, innerHTML: moIcon(icon, 11) });
-    b.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;padding:0 4px;display:flex;align-items:center;opacity:0.65;';
-    b.addEventListener('mouseenter', () => { b.style.opacity = '1'; });
-    b.addEventListener('mouseleave', () => { b.style.opacity = b.classList.contains('is-active') ? '1' : '0.65'; });
-    b.addEventListener('click', (e) => e.stopPropagation());
-    return b;
-  };
-  const folderSearchBtn = mkFolderHeaderBtn('search', 'Filter folders');
-  folderSearchBtn.style.marginLeft = 'auto';
-  if (folderChevron) {
-    // CSS gives .mo-chevron margin-left:auto, which would split free space
-    // with our button. Zero it so only the button drives the right alignment.
-    folderChevron.style.marginLeft = '0';
-    folderHeader.insertBefore(folderSearchBtn, folderChevron);
-  } else {
-    folderHeader.appendChild(folderSearchBtn);
-  }
-  const folderSearchWrap = moEl('div', 'mo-folder-search-wrap');
-  folderSearchWrap.style.cssText = 'display:none;position:relative;margin:2px 8px 4px 8px;';
-  const folderSearchInput = moEl('input', 'mo-folder-search', { type: 'text', placeholder: 'Filter folders…' });
-  folderSearchInput.style.cssText = 'width:100%;padding:3px 22px 3px 6px;font-size:11px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,transparent);border-radius:3px;box-sizing:border-box;';
-  const folderSearchClearBtn = moEl('button', null, { type: 'button', title: 'Clear filter', textContent: '\u00D7' });
-  folderSearchClearBtn.style.cssText = 'position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--vscode-input-placeholderForeground,#888);cursor:pointer;font-size:14px;line-height:1;padding:0 4px;display:none;';
+  const mkFolderHeaderBtn = (icon, title) => moSidebarHeaderBtn(api, icon, title);
+  const folderAddBtn = mkFolderHeaderBtn('plus', 'Add Folder…');
+  folderAddBtn.addEventListener('click', () => { api.commands.executeCommand('media-organizer.scan').catch(() => {}); });
+  const folderSearchBtn = mkFolderHeaderBtn('search', 'Filter Folders');
+  const folderBtnGroup = moEl('div', 'mo-sidebar-header-btns');
+  folderBtnGroup.append(folderAddBtn, folderSearchBtn);
+  if (folderChevron) folderHeader.insertBefore(folderBtnGroup, folderChevron);
+  else folderHeader.appendChild(folderBtnGroup);
+  const folderSearchWrap = moEl('div', 'mo-folder-search-wrap mo-sidebar-search-wrap');
+  folderSearchWrap.style.display = 'none';
+  const folderSearchInput = moEl('input', 'mo-folder-search mo-sidebar-search', { type: 'text', placeholder: 'Filter folders' });
+  folderSearchInput.setAttribute('aria-label', 'Filter folders');
+  const folderSearchClearBtn = moEl('button', 'mo-sidebar-search-clear', { type: 'button', title: 'Clear Filter', 'aria-label': 'Clear Filter', innerHTML: moIcon('x', 12) });
+  folderSearchClearBtn.style.display = 'none';
   folderSearchClearBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     folderSearchInput.value = '';
@@ -10159,7 +10181,6 @@ function renderBrowserSidebar(container, api) {
         folderSearchOpen = false;
         folderSearchWrap.style.display = 'none';
         folderSearchBtn.classList.remove('is-active');
-        folderSearchBtn.style.opacity = '0.65';
       }
       loadFolders();
     }
@@ -10171,7 +10192,6 @@ function renderBrowserSidebar(container, api) {
     folderSearchOpen = !folderSearchOpen;
     folderSearchWrap.style.display = folderSearchOpen ? '' : 'none';
     folderSearchBtn.classList.toggle('is-active', folderSearchOpen);
-    folderSearchBtn.style.opacity = folderSearchOpen ? '1' : '0.65';
     if (folderSearchOpen) folderSearchInput.focus();
     else if (folderFilterText) {
       folderSearchInput.value = '';
@@ -10231,7 +10251,10 @@ function renderBrowserSidebar(container, api) {
         if (folderFilterText && !displayName.toLowerCase().includes(folderFilterText) && !row.path.toLowerCase().includes(folderFilterText)) continue;
         const offline = moFolderIsOffline(row.path);
         const badge = offline ? 'Offline' : String(row.file_count);
-        const item = sidebarItem('folder', displayName, badge, () => openGrid(`folder:${row.id}`, displayName, 'folder'));
+        // The folder's own name, its parent as a caption, the full path on hover.
+        const name = moFolderName(row.path) || displayName;
+        const item = sidebarItem('folder', name, badge, () => openGrid(`folder:${row.id}`, name, 'folder'), moFolderParent(row.path));
+        item.title = row.path;
         if (offline) { item.classList.add('is-offline'); item.title = 'Offline: the drive or folder is not available right now. Its photos are kept.'; }
         folderBody.appendChild(item);
       }
@@ -10262,33 +10285,23 @@ function renderBrowserSidebar(container, api) {
 
   // Total tag count badge next to "Tags" label (#3). Updated by loadTags().
   const tagCountSpan = moEl('span', 'mo-tag-section-count', { textContent: '' });
-  tagCountSpan.style.cssText = 'opacity:0.5;margin-left:6px;font-size:11px;font-weight:normal;';
   // Header structure is: [icon, labelSpan, chevron]. Insert after the label.
   if (tagHeader.children.length >= 2) {
     tagHeader.insertBefore(tagCountSpan, tagHeader.children[2] || null);
   }
 
-  const mkHeaderBtn = (icon, title) => {
-    const b = moEl('button', 'mo-tag-header-btn', { type: 'button', title, innerHTML: moIcon(icon, 11) });
-    b.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;padding:0 4px;display:flex;align-items:center;opacity:0.65;';
-    b.addEventListener('mouseenter', () => { b.style.opacity = '1'; });
-    b.addEventListener('mouseleave', () => { b.style.opacity = b.classList.contains('is-active') ? '1' : '0.65'; });
-    b.addEventListener('click', (e) => e.stopPropagation()); // don't toggle section
-    return b;
-  };
+  const mkHeaderBtn = (icon, title) => moSidebarHeaderBtn(api, icon, title);
 
-  const tagNewBtn = mkHeaderBtn('plus', 'New tag\u2026');
-  const tagSearchBtn = mkHeaderBtn('search', 'Filter tags ( / to focus )');
+  const tagNewBtn = mkHeaderBtn('plus', 'New Tag\u2026');
+  const tagSearchBtn = mkHeaderBtn('search', 'Filter Tags (/)');
   const tagSortBtn = mkHeaderBtn(tagSortModes[0].icon, tagSortModes[0].tooltip);
   // Group both buttons in a flush-right wrapper. Avoids fragile margin-auto
   // interactions with the chevron (which has its own margin-left:auto in CSS).
-  const tagBtnGroup = moEl('div', 'mo-tag-header-btns');
-  tagBtnGroup.style.cssText = 'display:flex;align-items:center;margin-left:auto;gap:2px;';
+  const tagBtnGroup = moEl('div', 'mo-tag-header-btns mo-sidebar-header-btns');
   tagBtnGroup.appendChild(tagNewBtn);
   tagBtnGroup.appendChild(tagSearchBtn);
   tagBtnGroup.appendChild(tagSortBtn);
   if (tagChevron) {
-    tagChevron.style.marginLeft = '4px';
     tagHeader.insertBefore(tagBtnGroup, tagChevron);
   } else {
     tagHeader.appendChild(tagBtnGroup);
@@ -10306,22 +10319,22 @@ function renderBrowserSidebar(container, api) {
   tagSortBtn.addEventListener('click', () => {
     tagSortIdx = (tagSortIdx + 1) % tagSortModes.length;
     tagSortBtn.title = tagSortModes[tagSortIdx].tooltip;
-    tagSortBtn.innerHTML = moIcon(tagSortModes[tagSortIdx].icon, 11);
+    tagSortBtn.innerHTML = moIcon(tagSortModes[tagSortIdx].icon, 14);
     moSetSetting('tag_sort_mode', tagSortModes[tagSortIdx].value).catch(() => {});
     loadTags();
   });
 
   // Search input wrapped to host a clear-× control (#4). Hidden by default;
   // toggled via the search icon or the "/" shortcut (#5).
-  const tagSearchWrap = moEl('div', 'mo-tag-search-wrap');
-  tagSearchWrap.style.cssText = 'display:none;position:relative;margin:2px 8px 4px 8px;';
-  const tagSearchInput = moEl('input', 'mo-tag-search', {
+  const tagSearchWrap = moEl('div', 'mo-tag-search-wrap mo-sidebar-search-wrap');
+  tagSearchWrap.style.display = 'none';
+  const tagSearchInput = moEl('input', 'mo-tag-search mo-sidebar-search', {
     type: 'text',
-    placeholder: 'Filter tags…',
+    placeholder: 'Filter tags',
   });
-  tagSearchInput.style.cssText = 'width:100%;padding:3px 22px 3px 6px;font-size:11px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,transparent);border-radius:3px;box-sizing:border-box;';
-  const tagSearchClearBtn = moEl('button', null, { type: 'button', title: 'Clear filter', textContent: '\u00D7' });
-  tagSearchClearBtn.style.cssText = 'position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--vscode-input-placeholderForeground,#888);cursor:pointer;font-size:14px;line-height:1;padding:0 4px;display:none;';
+  tagSearchInput.setAttribute('aria-label', 'Filter tags');
+  const tagSearchClearBtn = moEl('button', 'mo-sidebar-search-clear', { type: 'button', title: 'Clear Filter', 'aria-label': 'Clear Filter', innerHTML: moIcon('x', 12) });
+  tagSearchClearBtn.style.display = 'none';
   tagSearchClearBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     tagSearchInput.value = '';
@@ -10345,7 +10358,6 @@ function renderBrowserSidebar(container, api) {
         tagSearchOpen = false;
         tagSearchWrap.style.display = 'none';
         tagSearchBtn.classList.remove('is-active');
-        tagSearchBtn.style.opacity = '0.65';
         moSetSetting('tag_search_open', '0').catch(() => {});
       }
       loadTags();
@@ -10359,7 +10371,6 @@ function renderBrowserSidebar(container, api) {
     tagSearchOpen = !!open;
     tagSearchWrap.style.display = tagSearchOpen ? '' : 'none';
     tagSearchBtn.classList.toggle('is-active', tagSearchOpen);
-    tagSearchBtn.style.opacity = tagSearchOpen ? '1' : '0.65';
     moSetSetting('tag_search_open', tagSearchOpen ? '1' : '0').catch(() => {});
     if (tagSearchOpen && focus) tagSearchInput.focus();
     if (!tagSearchOpen && tagFilterText) {
@@ -10380,7 +10391,7 @@ function renderBrowserSidebar(container, api) {
       if (idx >= 0) {
         tagSortIdx = idx;
         tagSortBtn.title = tagSortModes[tagSortIdx].tooltip;
-        tagSortBtn.innerHTML = moIcon(tagSortModes[tagSortIdx].icon, 11);
+        tagSortBtn.innerHTML = moIcon(tagSortModes[tagSortIdx].icon, 14);
       }
       const savedOpen = (await moGetSetting('tag_search_open', '0')) === '1';
       if (savedOpen) setTagSearchOpen(true, false);
@@ -10933,6 +10944,17 @@ function renderBrowserSidebar(container, api) {
   // Cap height — parity with Tags / Folders (#10).
   albumBody.style.maxHeight = '320px';
   albumBody.style.overflowY = 'auto';
+  {
+    const albumHeader = albumSection.querySelector('.mo-sidebar-section-header');
+    const albumChevron = albumHeader.querySelector('.mo-chevron');
+    const newAlbumBtn = moSidebarHeaderBtn(api, 'plus', 'New Album…');
+    newAlbumBtn.addEventListener('click', () => {
+      api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'New Album', icon: 'folder-library', instanceId: 'album:new' });
+    });
+    const albumBtnGroup = moEl('div', 'mo-sidebar-header-btns');
+    albumBtnGroup.appendChild(newAlbumBtn);
+    albumHeader.insertBefore(albumBtnGroup, albumChevron || null);
+  }
 
   async function loadAlbums() {
     try {
@@ -10941,16 +10963,6 @@ function renderBrowserSidebar(container, api) {
       // implicitly because the cap is applied to the full library, not per level.
       const result = await AlbumQueries.findMany({}, { field: 'title', direction: 'ASC' }, { page: 1, perPage: 200 });
       albumBody.innerHTML = '';
-
-      // "Create Album" action stays at the top of the section.
-      albumBody.appendChild(sidebarItem('add', 'Create Album...', null, () => {
-        api.editors.openEditor({
-          typeId: 'media-organizer-grid',
-          title: 'New Album',
-          icon: 'folder-library',
-          instanceId: 'album:new',
-        });
-      }));
 
       const items = result.items || [];
       if (items.length === 0) {
@@ -11210,16 +11222,8 @@ function renderBrowserSidebar(container, api) {
   applySidebarLayout();
   initSidebarLayout();
 
-  // ── Footer: keyboard shortcuts cheat sheet ────────────────────────────────
-  const footer = moEl('div', 'mo-sidebar-footer');
-  const helpBtn = moEl('button', 'mo-sidebar-help-btn', {
-    type: 'button',
-    title: 'Keyboard shortcuts (?)',
-    innerHTML: `${moIcon('keyboard', 13)}<span>Keyboard shortcuts</span>`,
-  });
-  helpBtn.addEventListener('click', () => moShowShortcutsCheatSheet());
-  footer.appendChild(helpBtn);
-  root.appendChild(footer);
+  // Keyboard Shortcuts: in the library's ⋯ menu and on "?" (the sidebar's
+  // footer row for it was the only footer in the workbench's sidebars).
 
   // Register for refresh after scan completes
   const refreshAll = () => { loadFolders(); loadTags(); loadAlbums(); };
