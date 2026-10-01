@@ -17,6 +17,7 @@ import { PlannerScheduledController, type WorkflowServiceLike } from './plannerS
 import { PlannerTodayView } from './plannerToday.js';
 import { Dropdown, type IDropdownItem } from '../../ui/dropdown.js';
 import { createIconElement, getIcon } from '../../ui/iconRegistry.js';
+import { createButton } from '../../ui/kit.js';
 
 interface PlannerEditorInput {
   readonly id: string;          // === instanceId; only one ('main') for M82
@@ -72,6 +73,10 @@ export interface IDayLoadProviderLike {
 
 type Tab = 'today' | 'tasks' | 'calendar' | 'scheduled';
 type CalendarView = 'month' | 'week' | 'day';
+
+/** Widest pane that gets the compact layout. Mirrors the `compact` step in
+ *  the Tier 3 planner block of px-tokens.css (CSS can't share it with TS). */
+const PANE_COMPACT_MAX = 719;
 
 const PLANNER_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>';
 
@@ -275,6 +280,18 @@ class PlannerEditorPane implements IDisposable {
     this._input?.setIconHtml?.(PLANNER_ICON_SVG);
     this._buildShell();
     await this._renderTab();
+
+    // The week view shows 3 days in a compact pane and 7 otherwise; repaint
+    // the calendar when the pane crosses that width (a split, a sidebar).
+    let wasCompact = this._isCompact();
+    const resize = new ResizeObserver(() => {
+      const compact = this._isCompact();
+      if (compact === wasCompact || this._disposed) return;
+      wasCompact = compact;
+      if (this._activeTab === 'calendar') void this._renderTab();
+    });
+    resize.observe(this._container);
+    this._disposables.push({ dispose: () => resize.disconnect() });
 
     this._disposables.push(this._data.onDidChange(() => {
       if (this._disposed) return;
@@ -615,9 +632,8 @@ class PlannerEditorPane implements IDisposable {
   // ── Tasks tab ────────────────────────────────────────────────────────
 
   private async _renderTasksTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    const addBtn = el('button', 'planner-cta');
-    addBtn.type = 'button';
-    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create</span>';
+    const addBtn = createButton(null, { label: 'New Task', icon: 'plus', kind: 'primary', title: 'New Task (C)' });
+    addBtn.classList.add('planner-cta');
     addBtn.addEventListener('click', () => this._captureNewTask(addBtn.getBoundingClientRect()));
     actions.appendChild(addBtn);
 
@@ -940,7 +956,7 @@ class PlannerEditorPane implements IDisposable {
     // View dropdown — right cluster.
     const viewBtn = el('button', 'planner-viewdrop');
     viewBtn.type = 'button';
-    const label = this._calendarView[0].toUpperCase() + this._calendarView.slice(1);
+    const label = this._viewLabel(this._calendarView);
     viewBtn.innerHTML = `<span>${label}</span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg>`;
     viewBtn.addEventListener('click', () => this._openViewMenu(viewBtn));
     actions.appendChild(viewBtn);
@@ -1025,10 +1041,8 @@ class PlannerEditorPane implements IDisposable {
     actions.appendChild(calsBtn);
 
     // Primary CTA.
-    const addEvt = el('button', 'planner-cta');
-    addEvt.type = 'button';
-    addEvt.title = 'Create event (C)';
-    addEvt.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Create</span>';
+    const addEvt = createButton(null, { label: 'New Event', icon: 'plus', kind: 'primary', title: 'New Event (C)' });
+    addEvt.classList.add('planner-cta');
     addEvt.addEventListener('click', () => {
       const start = new Date(this._cursorDate);
       start.setHours(9, 0, 0, 0);
@@ -1056,7 +1070,7 @@ class PlannerEditorPane implements IDisposable {
     for (const v of ['month', 'week', 'day'] as CalendarView[]) {
       const item = el('button', 'planner-menu__item');
       item.type = 'button';
-      const labelText = v[0].toUpperCase() + v.slice(1);
+      const labelText = this._viewLabel(v);
       const check = v === this._calendarView ? '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>' : '<span style="display:inline-block;width:13px"></span>';
       item.innerHTML = `${check}<span>${labelText}</span>`;
       item.addEventListener('click', () => {
@@ -1083,6 +1097,26 @@ class PlannerEditorPane implements IDisposable {
     const detach = attachPopupDismiss(menu, close);
   }
 
+  /** Days the week view shows: 7 from Sunday, or 3 around the cursor in a compact pane. */
+  private _spanDays = 7;
+
+  private _isCompact(): boolean {
+    const w = this._container.clientWidth;
+    return w > 0 && w <= PANE_COMPACT_MAX;
+  }
+
+  private _weekSpan(): { start: Date; days: number } {
+    return this._isCompact()
+      ? { start: addDays(this._cursorDate, -1), days: 3 }
+      : { start: startOfWeek(this._cursorDate), days: 7 };
+  }
+
+  /** "Week" names the view; a compact pane shows it as three days. */
+  private _viewLabel(v: CalendarView): string {
+    if (v === 'week' && this._isCompact()) return '3 Days';
+    return v[0].toUpperCase() + v.slice(1);
+  }
+
   /** Set the calendar view and persist it per-workspace (M86). */
   private _setCalendarView(v: CalendarView): void {
     this._calendarView = v;
@@ -1094,7 +1128,7 @@ class PlannerEditorPane implements IDisposable {
     if (this._calendarView === 'month') {
       d.setMonth(d.getMonth() + direction);
     } else if (this._calendarView === 'week') {
-      d.setDate(d.getDate() + direction * 7);
+      d.setDate(d.getDate() + direction * this._weekSpan().days);
     } else {
       d.setDate(d.getDate() + direction);
     }
@@ -1106,8 +1140,8 @@ class PlannerEditorPane implements IDisposable {
       return this._cursorDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     }
     if (this._calendarView === 'week') {
-      const start = startOfWeek(this._cursorDate);
-      const end = addDays(start, 6);
+      const { start, days } = this._weekSpan();
+      const end = addDays(start, days - 1);
       const same = start.getMonth() === end.getMonth();
       return same
         ? `${start.toLocaleDateString(undefined, { month: 'long' })} ${start.getDate()}–${end.getDate()}, ${start.getFullYear()}`
@@ -1200,6 +1234,8 @@ class PlannerEditorPane implements IDisposable {
     // Past events (already ended) render faded — the only special-case styling
     // on an event, matching Google Calendar.
     if (ev.endAt < Date.now()) bar.classList.add(`planner-${variant}__event--past`);
+    // Under ~45 minutes the block has room for the title only.
+    if (evEnd - evStart < 45 * 60_000) bar.classList.add(`planner-${variant}__event--short`);
     bar.title = `${ev.title}\n${formatTimeRange(ev)}`;
     bar.innerHTML = variant === 'day'
       ? `
@@ -1551,18 +1587,19 @@ class PlannerEditorPane implements IDisposable {
   ): void {
     const ROW_H = 22;
     const weekStartMs = weekStart.getTime();
-    const weekEndMs = addDays(weekStart, 7).getTime();
+    const days = this._spanDays;
+    const weekEndMs = addDays(weekStart, days).getTime();
 
     const band = el('div', 'planner-week__allday');
     const gutter = el('div', 'planner-week__allday-gutter');
-    gutter.textContent = 'all-day';
+    gutter.textContent = 'All day';
     band.appendChild(gutter);
 
     const grid = el('div', 'planner-week__allday-grid');
     band.appendChild(grid);
 
     // Background day cells — these are the drag-create surface.
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < days; i++) {
       const cell = el('div', 'planner-week__allday-cell');
       cell.dataset.dayIndex = String(i);
       if (sameDay(addDays(weekStart, i), new Date())) cell.classList.add('planner-week__allday-cell--today');
@@ -1577,7 +1614,7 @@ class PlannerEditorPane implements IDisposable {
     let maxLane = 0;
     for (const ev of visible) {
       const startCol = Math.max(0, this._weekDayIndex(ev.startAt, weekStartMs));
-      const endCol = Math.min(6, this._weekDayIndex(ev.endAt, weekStartMs));
+      const endCol = Math.min(days - 1, this._weekDayIndex(ev.endAt, weekStartMs));
       let lane = laneEnds.findIndex(end => startCol > end);
       if (lane === -1) { lane = laneEnds.length; laneEnds.push(endCol); }
       else laneEnds[lane] = endCol;
@@ -1586,8 +1623,8 @@ class PlannerEditorPane implements IDisposable {
       const span = endCol - startCol + 1;
       const bar = el('button', 'planner-week__alldaybar');
       bar.type = 'button';
-      bar.style.left = `calc(${(startCol / 7) * 100}% + 2px)`;
-      bar.style.width = `calc(${(span / 7) * 100}% - 4px)`;
+      bar.style.left = `calc(${(startCol / days) * 100}% + 2px)`;
+      bar.style.width = `calc(${(span / days) * 100}% - 4px)`;
       bar.style.top = `${lane * ROW_H + 2}px`;
       bar.style.setProperty('--cal-color', colorOf(ev.calendarId, ev.color));
       const continuesLeft = ev.startAt < weekStartMs;
@@ -1614,9 +1651,10 @@ class PlannerEditorPane implements IDisposable {
       if (!(e.target instanceof HTMLElement) || !e.target.classList.contains('planner-week__allday-cell')) return;
       e.preventDefault();
 
+      const days = this._spanDays;
       const gridRect = grid.getBoundingClientRect();
-      const colW = gridRect.width / 7;
-      const xToCol = (x: number) => Math.max(0, Math.min(6, Math.floor((x - gridRect.left) / colW)));
+      const colW = gridRect.width / days;
+      const xToCol = (x: number) => Math.max(0, Math.min(days - 1, Math.floor((x - gridRect.left) / colW)));
       const startCol = xToCol(e.clientX);
       let endCol = startCol;
       let moved = false;
@@ -1625,8 +1663,8 @@ class PlannerEditorPane implements IDisposable {
       grid.appendChild(ghost);
       const drawGhost = () => {
         const a = Math.min(startCol, endCol), b = Math.max(startCol, endCol);
-        ghost.style.left = `calc(${(a / 7) * 100}% + 2px)`;
-        ghost.style.width = `calc(${((b - a + 1) / 7) * 100}% - 4px)`;
+        ghost.style.left = `calc(${(a / days) * 100}% + 2px)`;
+        ghost.style.width = `calc(${((b - a + 1) / days) * 100}% - 4px)`;
       };
       drawGhost();
 
@@ -1671,8 +1709,9 @@ class PlannerEditorPane implements IDisposable {
       const mode: 'move' | 'resize-start' | 'resize-end' =
         target === leftHandle ? 'resize-start' : target === rightHandle ? 'resize-end' : 'move';
 
+      const days = this._spanDays;
       const gridRect = grid.getBoundingClientRect();
-      const colW = gridRect.width / 7;
+      const colW = gridRect.width / days;
       const startClientX = e.clientX;
       let dragging = false;
       let curStart = ev.startAt;
@@ -1693,9 +1732,9 @@ class PlannerEditorPane implements IDisposable {
           curStart = ev.startAt;
         }
         const startCol = Math.max(0, this._weekDayIndex(curStart, weekStartMs));
-        const endCol = Math.min(6, this._weekDayIndex(curEnd, weekStartMs));
-        bar.style.left = `calc(${(startCol / 7) * 100}% + 2px)`;
-        bar.style.width = `calc(${((endCol - startCol + 1) / 7) * 100}% - 4px)`;
+        const endCol = Math.min(days - 1, this._weekDayIndex(curEnd, weekStartMs));
+        bar.style.left = `calc(${(startCol / days) * 100}% + 2px)`;
+        bar.style.width = `calc(${((endCol - startCol + 1) / days) * 100}% - 4px)`;
         bar.classList.add('planner-evt--dragging');
       };
       const onMove = (pe: PointerEvent) => {
@@ -1739,7 +1778,7 @@ class PlannerEditorPane implements IDisposable {
 
     const band = el('div', 'planner-day__allday');
     const gutter = el('div', 'planner-day__allday-gutter');
-    gutter.textContent = 'all-day';
+    gutter.textContent = 'All day';
     band.appendChild(gutter);
     const list = el('div', 'planner-day__allday-list');
     band.appendChild(list);
@@ -2008,8 +2047,9 @@ class PlannerEditorPane implements IDisposable {
   }
 
   private async _renderWeekView(body: HTMLElement): Promise<void> {
-    const start = startOfWeek(this._cursorDate);
-    const end = addDays(start, 7);
+    const { start, days } = this._weekSpan();
+    this._spanDays = days;
+    const end = addDays(start, days);
     const { isVisible, colorOf } = await this._loadCalCtx();
     const allEvents = (await this._data.listEvents({ from: start.getTime(), to: end.getTime(), limit: 500 })).filter(ev => isVisible(ev.calendarId));
     const allDayEvents = allEvents.filter(ev => this._isAllDayLike(ev));
@@ -2018,9 +2058,10 @@ class PlannerEditorPane implements IDisposable {
     const dayLoads = await this._collectDayLoads(start.getTime(), end.getTime());
 
     const grid = el('div', 'planner-week');
+    grid.style.setProperty('--planner-week-days', String(days));
     const headerRow = el('div', 'planner-week__header');
     headerRow.appendChild(el('div', 'planner-week__corner'));
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < days; i++) {
       const day = addDays(start, i);
       const wd = el('div', 'planner-week__weekday');
       const wdLabel = el('span', 'planner-week__weekday-label');
@@ -2056,7 +2097,7 @@ class PlannerEditorPane implements IDisposable {
     }
     body2.appendChild(hourScale);
 
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < days; i++) {
       const dayCol = el('div', 'planner-week__col');
       const day = addDays(start, i);
       const dayStart = day.getTime();
