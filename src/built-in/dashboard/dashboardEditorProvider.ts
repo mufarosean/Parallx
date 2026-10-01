@@ -1237,23 +1237,13 @@ class DashboardEditorPane implements IDisposable {
   }
 
   /**
-   * Naive bottom-stack placement: drop the new widget below the current
-   * lowest row, left-aligned. Phase 5's drag/resize lets the user move it.
-   * Avoids overlap detection complexity for now.
+   * First-fit placement: the first free spot reading left to right, top to
+   * bottom, so new widgets fill the row beside the last one instead of all
+   * stacking in the left column. Falls back to below the lowest row.
    */
   private async _nextPlacement(size: { colSpan: number; rowSpan: number }): Promise<WidgetPlacement> {
     const widgets = await this._data.listWidgets(this._pageId);
-    let maxRow = -1;
-    for (const w of widgets) {
-      const bottom = w.placement.row + w.placement.rowSpan - 1;
-      if (bottom > maxRow) maxRow = bottom;
-    }
-    return {
-      row: maxRow + 1,
-      col: 0,
-      rowSpan: Math.max(1, size.rowSpan),
-      colSpan: Math.min(DASHBOARD_GRID_COLS, Math.max(1, size.colSpan)),
-    };
+    return firstFitPlacement(widgets.map((w) => w.placement), size, DASHBOARD_GRID_COLS);
   }
 
   // ── Drag-to-move ───────────────────────────────────────────────────────
@@ -1558,4 +1548,24 @@ class DashboardEditorPane implements IDisposable {
     }
     this._container.classList.remove('dashboard-pane-host');
   }
+}
+
+/** First free rectangle of `size` on a `cols`-wide grid, scanning rows top-down and columns left-right. */
+export function firstFitPlacement(
+  taken: readonly WidgetPlacement[],
+  size: { colSpan: number; rowSpan: number },
+  cols: number,
+): WidgetPlacement {
+  const colSpan = Math.min(cols, Math.max(1, size.colSpan));
+  const rowSpan = Math.max(1, size.rowSpan);
+  let maxRow = -1;
+  for (const t of taken) maxRow = Math.max(maxRow, t.row + t.rowSpan - 1);
+  const overlaps = (row: number, col: number): boolean => taken.some((t) =>
+    row < t.row + t.rowSpan && t.row < row + rowSpan && col < t.col + t.colSpan && t.col < col + colSpan);
+  for (let row = 0; row <= maxRow + 1; row++) {
+    for (let col = 0; col + colSpan <= cols; col++) {
+      if (!overlaps(row, col)) return { row, col, rowSpan, colSpan };
+    }
+  }
+  return { row: maxRow + 1, col: 0, rowSpan, colSpan };
 }
