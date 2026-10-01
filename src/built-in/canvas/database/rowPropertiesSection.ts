@@ -269,6 +269,14 @@ export async function mountRowPropertiesSection(
     ]);
     if (disposed) { rendering = false; return; }
 
+    // Adding a tag saves, and the save re-renders this section. Without this
+    // the cursor would fall out of the tag field after every tag, so a second
+    // tag (and any keystroke after Enter) would land on the page body.
+    const active = document.activeElement as HTMLElement | null;
+    const refocusKey = active?.classList.contains('canvas-prop-tag-input') && body.contains(active)
+      ? (active.closest('.canvas-property-row') as HTMLElement | null)?.dataset.propertyKey?.toLowerCase()
+      : undefined;
+
     body.textContent = '';
 
     // The home schema's rows — the page's row of its database, vertically.
@@ -324,6 +332,12 @@ export async function mountRowPropertiesSection(
       );
     });
     body.appendChild(addBtn);
+
+    if (refocusKey) {
+      const row = [...body.querySelectorAll<HTMLElement>('.canvas-property-row')]
+        .find((r) => r.dataset.propertyKey?.toLowerCase() === refocusKey);
+      row?.querySelector<HTMLInputElement>('.canvas-prop-tag-input')?.focus();
+    }
 
     rendering = false;
     if (renderQueued) { renderQueued = false; void render(); }

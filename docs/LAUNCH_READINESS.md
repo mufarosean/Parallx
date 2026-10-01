@@ -42,7 +42,7 @@ I checked this rather than assume it. Extensions under `ext/` (Budget, Creations
 **Fix (decision D1 for you):** decide the default set around the audience in section 1; I recommend Flashcards on. Change Budget's default filter to empty and ask on first sync.
 
 ### 3.3 AI is the headline, and it is dead without setup
-Without Ollama running, chat used to spin forever. It now says so after 6 seconds and offers Open AI Settings, where Claude can be turned on with a key. That is the minimum.
+Without Ollama running, chat used to spin forever. It now says so after 6 seconds and offers Open AI Settings, where Claude can be turned on with a key. Until tonight, a Claude-only user was still locked out, because chat only asked Ollama whether it was online. That is fixed (RUN_REPORT, iteration 10). This is the minimum.
 **Fix:** make provider choice part of first run ("Run AI on this computer: Install Ollama" / "Use Claude: paste a key" / "Skip for now"), with an honest note on what leaves the machine. The AI settings page already has the right copy for this.
 
 ### 3.4 "Are my notes mine?"
