@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Media Organizer Sidebar</title>
+<style>
+/* Mockup of the Media Organizer sidebar, today and three ways to change it.
+   Colours, spacing, radii and type come from src/theme/px-tokens.css (Slate,
+   dark and light). Static, but the Folders | Tags switch and the sections
+   fold so the "expanded" problem can be tried. */
+:root {
+  --px-base-00:#16171a; --px-base-05:#1a1c1f; --px-base-10:#1f2125; --px-base-15:#24262b;
+  --px-base-20:#2b2e34; --px-base-25:#33363d; --px-base-30:#41454d; --px-base-40:#838893;
+  --px-base-60:#9ea3ad; --px-base-70:#c0c4cc; --px-base-100:#e8eaee;
+  --px-accent-h:205; --px-accent-s:64%; --px-accent-l:60%; --px-accent-rgb:86,156,214;
+  --px-red-rgb:224,108,102; --px-yellow-rgb:220,170,90;
+  --px-accent-text:hsl(var(--px-accent-h) var(--px-accent-s) calc(var(--px-accent-l) + 7%));
+}
+.frame.light {
+  --px-base-00:#f4f5f7; --px-base-05:#eceef1; --px-base-10:#ffffff; --px-base-15:#eaecf0;
+  --px-base-20:#e2e5ea; --px-base-25:#d6dae1; --px-base-30:#c3c9d2; --px-base-40:#656c78;
+  --px-base-60:#555b64; --px-base-70:#3c414a; --px-base-100:#1b1d21;
+  --px-red-rgb:194,60,54; --px-yellow-rgb:142,100,21;
+  --px-accent-text:hsl(var(--px-accent-h) var(--px-accent-s) 33%);
+}
+:root, .frame {
+  --px-font-ui:'Inter','Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+  --px-bg:var(--px-base-00); --px-sidebar-bg:var(--px-base-05); --px-bg-inset:var(--px-base-15);
+  --px-surface-hover:var(--px-base-20); --px-surface-active:var(--px-base-25);
+  --px-surface-selected:rgba(var(--px-accent-rgb),.16);
+  --px-text:var(--px-base-100); --px-text-secondary:var(--px-base-70); --px-text-muted:var(--px-base-60); --px-text-faint:var(--px-base-40);
+  --px-border:var(--px-base-25); --px-divider:var(--px-base-20);
+  --px-accent:hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l));
+  --px-accent-soft:hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l) / .15);
+  --px-danger:rgb(var(--px-red-rgb)); --px-warning:rgb(var(--px-yellow-rgb));
+  --px-radius-sm:4px; --px-radius-md:6px; --px-radius-full:999px;
+  --px-control-h-sm:24px; --px-control-h:28px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: #0f1012; color: var(--px-text); font: 13px/1.45 var(--px-font-ui); }
+.page { max-width: 1340px; margin: 0 auto; padding: 32px 16px 80px; }
+h1 { font-size: 22px; margin: 0 0 6px; font-weight: 600; }
+h2 { font-size: 18px; margin: 48px 0 6px; font-weight: 600; }
+h3 { font-size: 14px; margin: 0 0 4px; font-weight: 600; }
+p, li { color: var(--px-text-secondary); max-width: 80ch; }
+.lede { font-size: 15px; max-width: 76ch; }
+.rec { display: inline-block; font-size: 11px; font-weight: 600; color: var(--px-accent-text); background: var(--px-accent-soft); padding: 1px 8px; border-radius: 999px; margin-left: 6px; vertical-align: 2px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 24px; margin-top: 20px; align-items: start; }
+.col h3 { min-height: 22px; }
+.col .sub { font-size: 12px; color: var(--px-text-muted); margin: 0 0 10px; min-height: 36px; }
+.notes { margin: 12px 0 0; padding-left: 18px; font-size: 12.5px; }
+.notes li { margin: 3px 0; }
+.issue { color: var(--px-warning); }
+
+/* ── the sidebar frame ── */
+.frame { width: 100%; max-width: 320px; height: 720px; background: var(--px-sidebar-bg); color: var(--px-text); border: 1px solid #2a2c31; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; font-family: var(--px-font-ui); }
+.frame.light { border-color: #c9ced6; }
+.vt { display: flex; align-items: center; height: 35px; padding: 0 8px 0 14px; font-size: 12.5px; font-weight: 600; flex: none; }
+.vt .grow { flex: 1; }
+.body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.scroll { overflow-y: auto; min-height: 0; }
+.ico { width: 16px; height: 16px; flex: none; display: inline-flex; color: var(--px-text-muted); }
+.ico svg { width: 16px; height: 16px; }
+.ibtn { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--px-radius-sm); color: var(--px-text-muted); cursor: pointer; flex: none; }
+.ibtn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.ibtn svg { width: 15px; height: 15px; }
+.row { display: flex; align-items: center; gap: 8px; min-height: 28px; margin: 0 4px; padding: 0 8px; border-radius: var(--px-radius-sm); cursor: pointer; white-space: nowrap; font-size: 13px; }
+.row:hover { background: var(--px-surface-hover); }
+.row .lab { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.row .cap { font-size: 11.5px; color: var(--px-text-faint); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.row .n { margin-left: auto; font-size: 11.5px; color: var(--px-text-muted); font-variant-numeric: tabular-nums; padding-left: 4px; }
+.row .badge { margin-left: auto; min-width: 18px; height: 16px; padding: 0 6px; border-radius: 999px; background: var(--px-accent-soft); color: var(--px-accent-text); font-size: 10.5px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.row.on { background: var(--px-surface-selected); }
+.row.on .lab { color: var(--px-text); font-weight: 600; }
+.row.on .ico { color: var(--px-accent-text); }
+.row.quiet .lab { color: var(--px-text-muted); }
+.row .chev { width: 12px; display: inline-flex; color: var(--px-text-faint); margin-left: -4px; margin-right: -4px; }
+.row .chev svg { width: 12px; height: 12px; }
+
+/* today's header: same size and colour family as a row */
+.h-now { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 8px 14px 4px; font-size: 12.5px; font-weight: 600; color: var(--px-text-secondary); cursor: pointer; }
+.h-now .btns { margin-left: auto; display: flex; gap: 2px; align-items: center; }
+.h-now .muted { font-weight: 400; color: var(--px-text-muted); }
+
+/* the new header: a quiet label on a hairline, more room above, actions on hover */
+.h { display: flex; align-items: center; gap: 4px; height: 30px; margin-top: 10px; padding: 0 8px 0 14px; border-top: 1px solid var(--px-divider); font-size: 11.5px; font-weight: 600; color: var(--px-text-muted); cursor: pointer; flex: none; }
+.h:first-child { margin-top: 0; border-top: 0; }
+.h .t { letter-spacing: .01em; }
+.h .count { font-weight: 400; color: var(--px-text-faint); margin-left: 4px; }
+.h .btns { margin-left: auto; display: flex; gap: 1px; opacity: 0; transition: opacity .12s; }
+.frame:hover .h .btns, .h .btns.keep { opacity: 1; }
+.h .fold { width: 14px; display: inline-flex; color: var(--px-text-faint); margin-left: -6px; transition: transform .12s; }
+.h .fold svg { width: 12px; height: 12px; }
+.sec.closed .fold { transform: rotate(-90deg); }
+.sec.closed .sec-body { display: none; }
+.sec-body { padding: 2px 0 4px; }
+.hint { font-size: 12px; color: var(--px-text-faint); padding: 2px 14px 6px 36px; }
+
+/* the Folders | Tags switch */
+.seg { display: flex; margin: 6px 10px 6px; padding: 2px; background: var(--px-bg-inset); border-radius: var(--px-radius-md); flex: none; }
+.seg button { flex: 1; height: 24px; border: 0; background: transparent; color: var(--px-text-muted); font: inherit; font-size: 12.5px; border-radius: var(--px-radius-sm); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.seg button.on { background: var(--px-base-25); color: var(--px-text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.frame.light .seg button.on { background: #fff; }
+.seg button .n { font-size: 11px; color: var(--px-text-faint); font-weight: 400; }
+.filter { display: flex; align-items: center; gap: 4px; margin: 0 10px 4px; flex: none; }
+.filter .box { flex: 1; height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); background: var(--px-bg); color: var(--px-text-faint); font-size: 12px; }
+.filter .box svg { width: 13px; height: 13px; }
+.tabs { display: flex; gap: 2px; padding: 4px 8px 0; border-bottom: 1px solid var(--px-divider); flex: none; }
+.tabs button { flex: 1; height: 30px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--px-text-muted); font: inherit; font-size: 12px; cursor: pointer; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; }
+.tabs button.on { color: var(--px-text); border-bottom-color: var(--px-accent); font-weight: 600; }
+.foot { margin-top: auto; flex: none; border-top: 1px solid var(--px-divider); padding: 4px 0; display: flex; align-items: center; }
+.foot .row { flex: 1; }
+.foot .row .lab { color: var(--px-text-muted); }
+.fill { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.ann { position: relative; }
+.pin { position: absolute; right: 6px; width: 18px; height: 18px; border-radius: 50%; background: var(--px-warning); color: #1a1a1a; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; z-index: 2; }
+.legend { counter-reset: n; list-style: none; padding: 0; }
+.legend li { counter-increment: n; position: relative; padding-left: 26px; margin: 6px 0; font-size: 12.5px; }
+.legend li::before { content: counter(n); position: absolute; left: 0; top: 1px; width: 18px; height: 18px; border-radius: 50%; background: var(--px-warning); color: #1a1a1a; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.menu { margin: 4px 10px 8px 40px; background: var(--px-base-10); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4); font-size: 12.5px; }
+.menu div { padding: 4px 8px; border-radius: 3px; display: flex; gap: 8px; align-items: center; }
+.menu div:first-child { background: var(--px-surface-hover); }
+.menu .ico svg { width: 14px; height: 14px; }
+table.cmp { border-collapse: collapse; margin-top: 12px; font-size: 12.5px; width: 100%; max-width: 980px; }
+table.cmp th, table.cmp td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #2a2c31; vertical-align: top; color: var(--px-base-70); }
+table.cmp th { color: var(--px-base-100); font-weight: 600; }
+@media (max-width: 700px) { .frame { max-width: none; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Media Organizer sidebar</h1>
+  <p class="lede">Today every section header is the same size and colour as the rows under it, there is nothing between sections, and Folders, Tags and Albums all grow into one another when opened. Below: today's sidebar with what is wrong with it, then three ways to change it. B is the one I'd build.</p>
+
+  <h2>What is there today</h2>
+  <div class="grid">
+    <div class="col">
+      <h3>Today, with Folders, Tags and Albums open</h3>
+      <p class="sub">Drawn from the code as it is. The numbers point at the problems.</p>
+      <div class="frame" id="now"></div>
+    </div>
+    <div class="col" style="grid-column: span 2; min-width: 0;">
+      <h3>What is wrong</h3>
+      <ol class="legend">
+        <li><b>Headers look like rows.</b> 12.5px semibold in the secondary text colour, with an icon, against 13px rows with icons. Nothing marks where one section ends: no line, no gap.</li>
+        <li><b>The Library header and All Media share an icon</b> (the same "library" mark twice, one under the other).</li>
+        <li><b>Clip Projects says the same thing twice when empty:</b> a + in the header and a "New Clip Project…" row under it.</li>
+        <li><b>Albums has no icon.</b> It asks for <code>folder-library</code>, which is not in the icon registry, so the header is blank where the icon should be. That is part of why it looks out of place.</li>
+        <li><b>Albums is a section of its own, and smart albums are nowhere.</b> Saved searches ("Save As Smart Album") can only be opened from a command's quick pick; they never appear in the sidebar. An album, a smart album and a clip project are all "things I gathered", but they live in three places.</li>
+        <li><b>Folders, Tags and Albums compete for height.</b> Each is a long list with its own scroll box (capped at 260px and 320px) and sashes between them, so opening one squeezes the others and you scroll inside small boxes.</li>
+        <li><b>Nothing shows where you are.</b> No row is marked when its view is open.</li>
+        <li><b>Library mixes two kinds of row:</b> places to look (All Media, Favorites, Recent) and jobs to do (Untagged, Tag Review, Duplicates), plus Trash. Only Tag Review shows a count.</li>
+      </ol>
+    </div>
+  </div>
+
+  <h2>Three ways to change it</h2>
+  <p>All three keep every destination there is today; nothing is taken away, only moved. Hover a frame to see the header actions. Click a section header to fold it, and the Folders | Tags switch in B.</p>
+  <div class="grid">
+    <div class="col">
+      <h3>A. Tidy up</h3>
+      <p class="sub">Same sections, told apart: quiet labels on a hairline, no header icons, the open view marked.</p>
+      <div class="frame" id="a"></div>
+      <ul class="notes">
+        <li>Headers: 11.5px muted label, a hairline and 10px of room above; their buttons show on hover.</li>
+        <li>Row icons stay; header icons go (fixes 1, 2 and 4).</li>
+        <li>Empty Clip Projects: a one-line hint, not a second New row (3).</li>
+        <li>Counts on Untagged and Duplicates; the open view marked (7).</li>
+        <li>Trash moves to the foot, beside Keyboard Shortcuts.</li>
+        <li>Leaves 5 and 6 as they are.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>B. Fewer sections <span class="rec">Recommended</span></h3>
+      <p class="sub">A's look, plus: Albums, smart albums and clip projects become one Collections list; Folders and Tags share one browser.</p>
+      <div class="frame" id="b"></div>
+      <ul class="notes">
+        <li><b>Top, no header:</b> All Media, Favorites, Recent.</li>
+        <li><b>To sort:</b> Untagged, Tag Review, Duplicates, each with its count. A row at 0 goes quiet.</li>
+        <li><b>Collections:</b> albums, smart albums and clip projects in one list, told apart by icon. + offers New Album…, New Smart Album From Search, New Clip Project…. Smart albums show up for the first time (5).</li>
+        <li><b>Browse:</b> one switch, Folders | Tags, and one list that takes the rest of the height, with its filter always there. No sashes, no boxes inside boxes (6).</li>
+        <li>Drawing and Painting, when it is on, is a section like the others.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>C. Tabs</h3>
+      <p class="sub">The most compact: four tabs across the top, each owning the whole height.</p>
+      <div class="frame" id="c"></div>
+      <ul class="notes">
+        <li>Library | Folders | Tags | Collections.</li>
+        <li>Nothing ever squeezes anything else.</li>
+        <li>But only one kind of thing is in view at a time: dragging photos onto an album from a tag's view needs a tab switch mid-drag, and the To sort counts are hidden while you browse tags.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>B in light mode, and with Tags chosen</h2>
+  <div class="grid">
+    <div class="col"><h3>Light, Folders</h3><p class="sub">The same tokens, Slate light.</p><div class="frame light" id="bl"></div></div>
+    <div class="col"><h3>Tags, nested</h3><p class="sub">The tag tree as today (chevrons, counts), with sort and New Tag… beside the filter.</p><div class="frame" id="bt"></div></div>
+    <div class="col"><h3>Collections' + menu</h3><p class="sub">One button for every kind of collection.</p><div class="frame" id="bm"></div></div>
+  </div>
+
+  <h2>Side by side</h2>
+  <table class="cmp">
+    <tr><th></th><th>A. Tidy up</th><th>B. Fewer sections</th><th>C. Tabs</th></tr>
+    <tr><td>Sections tell apart</td><td>Yes</td><td>Yes</td><td>Yes (tabs)</td></tr>
+    <tr><td>Long lists squeeze each other</td><td>Still</td><td>No: one list at a time below</td><td>No</td></tr>
+    <tr><td>Smart albums in the sidebar</td><td>No</td><td>Yes, in Collections</td><td>Yes, in Collections</td></tr>
+    <tr><td>Albums visible while browsing tags (for dragging)</td><td>Yes</td><td>Yes</td><td>No</td></tr>
+    <tr><td>Size of the change</td><td>Small: CSS, two fixes</td><td>Medium: Collections list, the Folders | Tags browser</td><td>Medium, and moves the most</td></tr>
+  </table>
+  <p>Either way, things that stay as they are: right-click on a folder, tag or album keeps its menu; dropping photos on an album or tag still files them; the tag tree and its Branch and Unique views are unchanged.</p>
+</div>
+
+<script>
+const P = {
+  library: '<path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/>',
+  images: '<path d="m22 11-1.296-1.296a2.4 2.4 0 0 0-3.408 0L11 16"/><path d="M4 8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2"/><circle cx="13" cy="7" r="1" fill="currentColor"/><rect x="8" y="2" width="14" height="14" rx="2"/>',
+  help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  ai: '<path d="M9.94 14.06 4 20"/><path d="m14 4 1.5 3.5L19 9l-3.5 1.5L14 14l-1.5-3.5L9 9l3.5-1.5z"/><path d="M5 3v4"/><path d="M3 5h4"/>',
+  star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+  clap: '<path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  tag: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
+  album: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><polyline points="11 3 11 11 14 8 17 11 17 3"/>',
+  smart: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  sort: '<path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="M20 8h-5"/><path d="M15 10V6.5a2.5 2.5 0 0 1 5 0V10"/><path d="M15 14h5l-5 6h5"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
+  right: '<path d="m9 18 6-6-6-6"/>',
+  more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  kbd: '<path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/>',
+  brush: '<path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z"/><path d="M9 8c-2 3-4 3.5-7 4l8 10c2-1 6-5 6-7"/>',
+};
+const svg = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${P[k] || ''}</svg>`;
+const ico = (k) => `<span class="ico">${k ? svg(k) : ''}</span>`;
+const ib = (k, t) => `<span class="ibtn" title="${t}">${svg(k)}</span>`;
+const row = (k, label, opt = {}) => `<div class="row${opt.on ? ' on' : ''}${opt.quiet ? ' quiet' : ''}" ${opt.pad ? `style="padding-left:${opt.pad}px"` : ''}>${opt.chev !== undefined ? `<span class="chev">${opt.chev ? svg(opt.chev) : ''}</span>` : ''}${ico(k)}<span class="lab">${label}</span>${opt.cap ? `<span class="cap">${opt.cap}</span>` : ''}${opt.badge ? `<span class="badge">${opt.badge}</span>` : opt.n != null ? `<span class="n">${opt.n}</span>` : ''}</div>`;
+const vt = (extra = '') => `<div class="vt">Media Organizer<span class="grow"></span>${extra}${ib('more', 'More')}</div>`;
+const sec = (title, body, opt = {}) => `<div class="sec${opt.closed ? ' closed' : ''}"><div class="h" onclick="this.parentNode.classList.toggle('closed')"><span class="fold">${svg('down')}</span><span class="t">${title}</span>${opt.count ? `<span class="count">${opt.count}</span>` : ''}<span class="btns${opt.keep ? ' keep' : ''}" onclick="event.stopPropagation()">${(opt.btns || []).map(([k, t]) => ib(k, t)).join('')}</span></div><div class="sec-body">${body}</div></div>`;
+const pin = (n, top) => `<span class="pin" style="top:${top}px">${n}</span>`;
+
+const folders = [['Gallery', '2026', 370, true], ['Camera Roll', 'Phone', 1204], ['Screenshots', 'Pictures', 88], ['Paintings', 'Art', 142], ['References', 'Art', 516], ['Exports', 'Video', 37], ['Trips', 'Pictures', 611], ['Family', 'Pictures', 932], ['Scans', 'Documents', 64]];
+const folderRows = (on) => folders.map(([n, c, k], i) => row('folder', n, { cap: c, n: k, on: on && i === 0 })).join('');
+const tagRows = () => [
+  row('tag', 'People', { chev: 'down', n: 1210 }),
+  row('tag', 'Family', { chev: '', n: 640, pad: 26 }),
+  row('tag', 'Friends', { chev: '', n: 402, pad: 26 }),
+  row('tag', 'Places', { chev: 'right', n: 811 }),
+  row('tag', 'Painting', { chev: 'down', n: 233, on: true }),
+  row('tag', 'Oil', { chev: '', n: 120, pad: 26 }),
+  row('tag', 'Watercolour', { chev: '', n: 74, pad: 26 }),
+  row('tag', 'Portrait', { chev: 'right', n: 302 }),
+  row('tag', 'Sky', { chev: '', n: 96 }),
+  row('tag', 'Street', { chev: '', n: 58 }),
+  row('tag', 'Texture', { chev: '', n: 41 }),
+].join('');
+const collections = () => [
+  row('album', 'Gallery', { n: 370 }),
+  row('album', 'Prints to Order', { n: 24 }),
+  row('smart', 'Untagged Paintings', { n: 18, cap: 'Smart' }),
+  row('smart', 'Five Stars This Year', { n: 61, cap: 'Smart' }),
+  row('clap', 'Studio Timelapse', { n: 3, cap: 'Clips' }),
+].join('');
+const toSort = (on) => row('help', 'Untagged', { n: 214, on }) + row('ai', 'Tag Review', { badge: 12 }) + row('copy', 'Duplicates', { n: 8 });
+const foot = () => `<div class="foot">${row('trash', 'Trash', { n: 6 })}${ib('kbd', 'Keyboard Shortcuts')}<span style="width:8px"></span></div>`;
+
+// Today
+document.getElementById('now').innerHTML = vt() + `<div class="body scroll ann">
+  ${pin(1, 38)}${pin(2, 40 + 28)}${pin(8, 150)}${pin(3, 262)}${pin(6, 360)}${pin(4, 640)}${pin(7, 128)}
+  <div class="h-now">${ico('library')}<span>Library</span><span class="btns"><span class="ico">${svg('down')}</span></span></div>
+  ${row('library', 'All Media')}${row('help', 'Untagged')}${row('ai', 'Tag Review', { badge: 12 })}${row('star', 'Favorites')}${row('clock', 'Recent')}${row('copy', 'Duplicates')}${row('trash', 'Trash')}
+  <div class="h-now">${ico('clap')}<span>Clip Projects</span><span class="btns">${ib('plus', 'New Clip Project…')}<span class="ico">${svg('down')}</span></span></div>
+  ${row('plus', 'New Clip Project…')}
+  <div class="h-now">${ico('folder')}<span>Folders</span><span class="btns">${ib('plus', 'Add Folder…')}${ib('search', 'Filter Folders')}<span class="ico">${svg('down')}</span></span></div>
+  <div style="max-height:150px;overflow:auto">${folderRows(false)}</div>
+  <div class="h-now">${ico('tag')}<span>Tags <span class="muted">(156)</span></span><span class="btns">${ib('plus', 'New Tag…')}${ib('search', 'Filter Tags')}${ib('sort', 'Sort')}<span class="ico">${svg('down')}</span></span></div>
+  <div style="max-height:120px;overflow:auto">${tagRows()}</div>
+  <div class="h-now">${ico(null)}<span>Albums</span><span class="btns">${ib('plus', 'New Album…')}<span class="ico">${svg('down')}</span></span></div>
+  ${row('folder', 'Gallery', { n: 370, pad: 26 })}
+</div>`;
+
+// A. Tidy up
+document.getElementById('a').innerHTML = vt() + `<div class="body scroll">
+  ${sec('Library', row('library', 'All Media', { n: '4,812', on: true }) + row('help', 'Untagged', { n: 214 }) + row('ai', 'Tag Review', { badge: 12 }) + row('star', 'Favorites', { n: 96 }) + row('clock', 'Recent') + row('copy', 'Duplicates', { n: 8 }))}
+  ${sec('Clip projects', '<div class="hint">None yet. Select videos and choose New Clip Project….</div>', { btns: [['plus', 'New Clip Project…']] })}
+  ${sec('Folders', `<div style="max-height:170px;overflow:auto">${folderRows(false)}</div>`, { btns: [['plus', 'Add Folder…'], ['search', 'Filter Folders']] })}
+  ${sec('Tags', `<div style="max-height:150px;overflow:auto">${tagRows()}</div>`, { count: 156, btns: [['plus', 'New Tag…'], ['search', 'Filter Tags'], ['sort', 'Sort']] })}
+  ${sec('Albums', row('album', 'Gallery', { n: 370 }), { btns: [['plus', 'New Album…']] })}
+</div>${foot()}`;
+
+// B. Fewer sections
+const bBody = (mode, opts = {}) => `<div class="body">
+  <div style="flex:none;padding-top:2px">
+    ${row('library', 'All Media', { n: '4,812', on: opts.allOn })}${row('star', 'Favorites', { n: 96 })}${row('clock', 'Recent')}
+  </div>
+  <div style="flex:none">
+    ${sec('To sort', toSort(false))}
+    ${sec('Collections', collections() + (opts.menu ? `<div class="menu"><div>${ico('album')}New Album…</div><div>${ico('smart')}New Smart Album From Search</div><div>${ico('clap')}New Clip Project…</div></div>` : ''), { count: 5, btns: [['plus', 'New…']], keep: opts.menu })}
+  </div>
+  <div class="h" style="cursor:default"><span class="t">Browse</span></div>
+  <div class="seg" data-seg>
+    <button class="${mode === 'folders' ? 'on' : ''}" data-m="folders">${svg('folder').replace('<svg', '<svg width="13" height="13"')}Folders <span class="n">9</span></button>
+    <button class="${mode === 'tags' ? 'on' : ''}" data-m="tags">${svg('tag').replace('<svg', '<svg width="13" height="13"')}Tags <span class="n">156</span></button>
+  </div>
+  <div class="filter"><span class="box">${svg('search')}<span data-ph>${mode === 'tags' ? 'Filter tags' : 'Filter folders'}</span></span><span data-acts>${mode === 'tags' ? ib('sort', 'Sort') + ib('plus', 'New Tag…') : ib('plus', 'Add Folder…')}</span></div>
+  <div class="fill" data-list>${mode === 'tags' ? tagRows() : folderRows(opts.folderOn)}</div>
+</div>${foot()}`;
+for (const [id, mode, opts] of [['b', 'folders', { folderOn: true }], ['bl', 'folders', { folderOn: true }], ['bt', 'tags', {}], ['bm', 'folders', { menu: true, allOn: true }]]) {
+  const el = document.getElementById(id);
+  el.innerHTML = vt() + bBody(mode, opts);
+  el.querySelectorAll('[data-seg] button').forEach((btn) => btn.addEventListener('click', () => {
+    const m = btn.dataset.m;
+    el.querySelectorAll('[data-seg] button').forEach((x) => x.classList.toggle('on', x === btn));
+    el.querySelector('[data-list]').innerHTML = m === 'tags' ? tagRows() : folderRows(true);
+    el.querySelector('[data-ph]').textContent = m === 'tags' ? 'Filter tags' : 'Filter folders';
+    el.querySelector('[data-acts]').innerHTML = m === 'tags' ? ib('sort', 'Sort') + ib('plus', 'New Tag…') : ib('plus', 'Add Folder…');
+  }));
+}
+
+// C. Tabs
+const cEl = document.getElementById('c');
+const cPanes = {
+  Library: `<div class="fill">${row('library', 'All Media', { n: '4,812', on: true })}${row('star', 'Favorites', { n: 96 })}${row('clock', 'Recent')}${sec('To sort', toSort(false))}</div>${foot()}`,
+  Folders: `<div class="filter" style="margin-top:8px"><span class="box">${svg('search')}Filter folders</span>${ib('plus', 'Add Folder…')}</div><div class="fill">${folderRows(true)}</div>`,
+  Tags: `<div class="filter" style="margin-top:8px"><span class="box">${svg('search')}Filter tags</span>${ib('sort', 'Sort')}${ib('plus', 'New Tag…')}</div><div class="fill">${tagRows()}</div>`,
+  Collections: `<div class="filter" style="margin-top:8px"><span class="box">${svg('search')}Filter collections</span>${ib('plus', 'New…')}</div><div class="fill">${collections()}</div>`,
+};
+cEl.innerHTML = vt() + `<div class="tabs">${Object.keys(cPanes).map((k, i) => `<button class="${i === 0 ? 'on' : ''}" data-t="${k}">${k}</button>`).join('')}</div><div class="body" data-pane>${cPanes.Library}</div>`;
+cEl.querySelectorAll('[data-t]').forEach((b) => b.addEventListener('click', () => {
+  cEl.querySelectorAll('[data-t]').forEach((x) => x.classList.toggle('on', x === b));
+  cEl.querySelector('[data-pane]').innerHTML = cPanes[b.dataset.t];
+}));
+</script>
+</body>
+</html>
