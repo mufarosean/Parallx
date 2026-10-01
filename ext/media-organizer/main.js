@@ -5374,14 +5374,33 @@ const MO_CSS = `
   text-transform: none;
   pointer-events: none;
 }
-.mo-card-rating {
+/* Favorite: a star at the bottom-right of the picture. It shows on hover,
+   and stays (filled, gold) while the item is a favorite. */
+.mo-card-fav {
   position: absolute;
-  bottom: 4px;
-  right: 4px;
-  font-size: var(--parallx-fontSize-xs, 10px);
-  color: var(--mo-rating-color, var(--mo-star));
-  pointer-events: none;
+  bottom: var(--px-space-1);
+  right: var(--px-space-1);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--px-radius-full);
+  background: color-mix(in srgb, var(--px-viewer-scrim, #1b1c1f) 55%, transparent);
+  color: var(--px-viewer-ink, #f2f3f5);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
+.mo-card:hover .mo-card-fav, .mo-card-fav:focus-visible, .mo-card-fav.is-on { opacity: 1; }
+.mo-card-fav.is-on { color: var(--mo-rating-color, var(--mo-star)); }
+.mo-card-fav.is-on svg { fill: currentColor; }
+.mo-card-fav:hover { color: var(--mo-rating-color, var(--mo-star)); }
+.mo-detail-fav.mo-active { color: var(--mo-rating-color, var(--mo-star)); }
+.mo-detail-fav.mo-active svg { fill: currentColor; }
 /* ── M59 P9 / F12 — Color labels ── */
 :root {
   --mo-label-red: #e15554;
@@ -5940,7 +5959,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 /* A table: one column track list shared by the header and every row (the
    .mo-grid's auto-fill columns used to wrap the rows four abreast). */
 .mo-grid.mo-list-mode {
-  --mo-list-cols: 20px 40px minmax(0, 1fr) 96px 112px 72px 84px 96px;
+  --mo-list-cols: 20px 40px minmax(0, 1fr) 96px 112px 72px 32px 96px;
   display: flex;
   flex-direction: column;
   flex-wrap: nowrap;
@@ -5994,6 +6013,16 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-list-type, .mo-list-dims, .mo-list-size, .mo-list-date { font-size: var(--px-text-sm); color: var(--px-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .mo-list-head .mo-list-type, .mo-list-head .mo-list-dims, .mo-list-head .mo-list-size, .mo-list-head .mo-list-date { color: inherit; }
 .mo-list-rating { display: inline-flex; gap: 1px; color: var(--px-border-strong); }
+.mo-list-fav { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text-faint); cursor: pointer; opacity: 0; }
+.mo-list-row:hover .mo-list-fav, .mo-list-fav:focus-visible, .mo-list-fav.is-on { opacity: 1; }
+.mo-list-fav:hover { background: var(--px-surface-hover); color: var(--mo-rating-color, var(--mo-star)); }
+.mo-list-fav.is-on { color: var(--mo-rating-color, var(--mo-star)); }
+.mo-list-fav.is-on svg { fill: currentColor; }
+/* The filter panel's Favorites only toggle. */
+.mo-filter-fav { display: inline-flex; align-items: center; gap: var(--px-space-2); height: var(--px-control-h-sm); padding: 0 var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: transparent; color: var(--px-text-secondary); font: inherit; font-size: var(--px-text-sm); cursor: pointer; }
+.mo-filter-fav:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.mo-filter-fav.is-on { background: var(--px-surface-selected); border-color: transparent; color: var(--px-text); }
+.mo-filter-fav.is-on svg { color: var(--mo-rating-color, var(--mo-star)); fill: currentColor; }
 .mo-list-head .mo-list-rating { color: inherit; }
 .mo-list-star { display: inline-flex; }
 .mo-list-star.is-on { color: var(--mo-rating-color, var(--mo-star)); }
@@ -9549,10 +9578,14 @@ function renderMediaCard(item, options) {
     : item.type.toUpperCase();
   thumb.appendChild(moEl('span', 'mo-card-badge', { textContent: badgeText }));
 
-  // Rating
-  if (item.rating && item.rating > 0) {
-    const stars = '\u2605'.repeat(item.rating);
-    thumb.appendChild(moEl('span', 'mo-card-rating', { textContent: stars }));
+  // Favorite: a star to click; it shows on hover, and stays while the item is one.
+  {
+    const fav = moIsFavorite(item);
+    const favBtn = moEl('button', 'mo-card-fav' + (fav ? ' is-on' : ''), { type: 'button', title: fav ? 'Remove From Favorites (F)' : 'Add to Favorites (F)', 'aria-pressed': fav ? 'true' : 'false', 'aria-label': 'Favorite', innerHTML: moIcon('star', 14) });
+    favBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    favBtn.addEventListener('dblclick', (e) => e.stopPropagation());
+    favBtn.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); void moSetFavorite([`${item.type}:${item.id}`], !moIsFavorite(item)); });
+    thumb.appendChild(favBtn);
   }
 
   // M59 P9 / F12 — Color label stripe (left edge of thumb)
@@ -9766,7 +9799,7 @@ function renderMediaCard(item, options) {
 function moListHeader() {
   const head = moEl('div', 'mo-list-head');
   head.setAttribute('aria-hidden', 'true');
-  for (const [cls, label] of [['mo-list-select-h', ''], ['mo-list-thumb-h', ''], ['mo-list-title', 'Name'], ['mo-list-type', 'Type'], ['mo-list-dims', 'Dimensions'], ['mo-list-size', 'Size'], ['mo-list-rating', 'Rating'], ['mo-list-date', 'Added']]) {
+  for (const [cls, label] of [['mo-list-select-h', ''], ['mo-list-thumb-h', ''], ['mo-list-title', 'Name'], ['mo-list-type', 'Type'], ['mo-list-dims', 'Dimensions'], ['mo-list-size', 'Size'], ['mo-list-rating', ''], ['mo-list-date', 'Added']]) {
     head.appendChild(moEl('span', cls, { textContent: label }));
   }
   return head;
@@ -9819,9 +9852,13 @@ function renderMediaListRow(item, options) {
   row.appendChild(moEl('span', 'mo-list-dims', { textContent: item.width && item.height ? `${item.width} × ${item.height}` : '' }));
   row.appendChild(moEl('span', 'mo-list-size', { textContent: item.size != null ? formatFileSize(item.size) : '' }));
   const rating = moEl('span', 'mo-list-rating');
-  if (item.rating > 0) {
-    rating.setAttribute('aria-label', `Rated ${item.rating} of 5`);
-    for (let i = 1; i <= 5; i++) rating.insertAdjacentHTML('beforeend', `<span class="mo-list-star${i <= item.rating ? ' is-on' : ''}">${moIcon('star', 12)}</span>`);
+  {
+    const fav = moIsFavorite(item);
+    const favBtn = moEl('button', 'mo-list-fav' + (fav ? ' is-on' : ''), { type: 'button', title: fav ? 'Remove From Favorites (F)' : 'Add to Favorites (F)', 'aria-pressed': fav ? 'true' : 'false', 'aria-label': 'Favorite', innerHTML: moIcon('star', 12) });
+    favBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    favBtn.addEventListener('dblclick', (e) => e.stopPropagation());
+    favBtn.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); void moSetFavorite([`${item.type}:${item.id}`], !moIsFavorite(item)); });
+    rating.appendChild(favBtn);
   }
   row.appendChild(rating);
   row.appendChild(moEl('span', 'mo-list-date', { textContent: formatShortDate(item.createdAt) }));
@@ -10293,8 +10330,8 @@ function moShowShortcutsCheatSheet() {
       [['Shift', '↑↓←→'], 'Extend selection'],
       [['Drag'], 'Box-select (hold ' + mod + ' to add), auto-scrolls at edges'],
     ]},
-    { title: 'Rate & label', items: [
-      [['0', '–', '5'], 'Set star rating (0 clears)'],
+    { title: 'Favorite & label', items: [
+      [['F'], 'Favorite (again to remove)'],
       [['6'], 'Red label'],
       [['7'], 'Yellow label'],
       [['8'], 'Green label'],
@@ -10745,7 +10782,7 @@ function renderBrowserSidebar(container, api) {
     try {
       const row = await db.get(`SELECT
         (SELECT COUNT(*) FROM mo_photos WHERE deleted_at IS NULL) + (SELECT COUNT(*) FROM mo_videos WHERE deleted_at IS NULL) AS total,
-        (SELECT COUNT(*) FROM mo_photos WHERE deleted_at IS NULL AND rating >= 5) + (SELECT COUNT(*) FROM mo_videos WHERE deleted_at IS NULL AND rating >= 5) AS fav,
+        (SELECT COUNT(*) FROM mo_photos WHERE deleted_at IS NULL AND rating > 0) + (SELECT COUNT(*) FROM mo_videos WHERE deleted_at IS NULL AND rating > 0) AS fav,
         (SELECT COUNT(*) FROM mo_photos p WHERE p.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM mo_photos_tags t WHERE t.photo_id = p.id))
           + (SELECT COUNT(*) FROM mo_videos v WHERE v.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM mo_videos_tags t WHERE t.video_id = v.id)) AS untagged,
         (SELECT COUNT(*) FROM mo_photos WHERE deleted_at IS NOT NULL) + (SELECT COUNT(*) FROM mo_videos WHERE deleted_at IS NOT NULL) AS trash`);
@@ -10771,6 +10808,7 @@ function renderBrowserSidebar(container, api) {
   const refreshCountsSoon = () => { clearTimeout(countsTimer); countsTimer = setTimeout(() => void refreshCounts(), 600); };
   document.addEventListener('mo:refresh-grid', refreshCountsSoon);
   document.addEventListener('mo:delete-mode-changed', refreshCountsSoon);
+  document.addEventListener('mo:favorite-changed', refreshCountsSoon);
   void refreshCounts();
 
   // The row for the editor in front is marked.
@@ -11729,7 +11767,7 @@ function renderBrowserSidebar(container, api) {
   const refreshAll = () => { loadFolders(); loadTags(); loadAlbums(); void loadSmartAlbums(); refreshCountsSoon(); };
   _sidebarRefreshCallbacks.push(refreshAll);
 
-  return { dispose() { container.innerHTML = ''; document.removeEventListener('mo:ai-tag-changed', refreshTagReviewCount); document.removeEventListener('mo:art-tools-changed', syncPractice); document.removeEventListener('mo:refresh-grid', refreshCountsSoon); document.removeEventListener('mo:delete-mode-changed', refreshCountsSoon); clearTimeout(countsTimer); if (openEditorsSub) openEditorsSub.dispose(); const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
+  return { dispose() { container.innerHTML = ''; document.removeEventListener('mo:ai-tag-changed', refreshTagReviewCount); document.removeEventListener('mo:art-tools-changed', syncPractice); document.removeEventListener('mo:refresh-grid', refreshCountsSoon); document.removeEventListener('mo:delete-mode-changed', refreshCountsSoon); document.removeEventListener('mo:favorite-changed', refreshCountsSoon); clearTimeout(countsTimer); if (openEditorsSub) openEditorsSub.dispose(); const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -11990,7 +12028,7 @@ function renderGridBrowser(container, api, input) {
   const searchInput = moEl('input', 'mo-toolbar-search', {
     type: 'text',
     placeholder: 'Search title, tags, folder, filename…',
-    title: 'Free text searches title, details, tags, folder, and filename.\nOperators: tag:NAME, -tag:NAME, rating:>=4 (or 3..5), folder:TERM, taken:2024 (or 2024-06), type:photo/video',
+    title: 'Free text searches title, details, tags, folder, and filename.\nOperators: tag:NAME, -tag:NAME, is:favorite, folder:TERM, taken:2024 (or 2024-06), type:photo/video',
   });
   searchWrap.appendChild(moEl('span', 'mo-search-icon', { innerHTML: moIcon('search', 12) }));
   searchWrap.appendChild(searchInput);
@@ -12017,7 +12055,7 @@ function renderGridBrowser(container, api, input) {
     const rows = [
       { op: 'tag:beach', desc: 'Has the tag “beach”' },
       { op: '-tag:blurry', desc: 'Excludes a tag' },
-      { op: 'rating:>=4', desc: 'Rating at least 4 (or rating:3..5)' },
+      { op: 'is:favorite', desc: 'Favorites only' },
       { op: 'folder:vacation', desc: 'In a folder matching the term' },
       { op: 'taken:2024-06', desc: 'Taken in a year or month' },
       { op: 'type:video', desc: 'Only photos or only videos' },
@@ -12043,7 +12081,7 @@ function renderGridBrowser(container, api, input) {
     pop.appendChild(list);
     const ex = moEl('div', 'mo-search-help-example');
     ex.appendChild(moEl('span', null, { textContent: 'Example: ' }));
-    ex.appendChild(moEl('code', null, { textContent: 'cat tag:beach rating:>=4' }));
+    ex.appendChild(moEl('code', null, { textContent: 'cat tag:beach is:favorite' }));
     pop.appendChild(ex);
 
     document.body.appendChild(pop);
@@ -12078,7 +12116,7 @@ function renderGridBrowser(container, api, input) {
   // Shuffle Again while the order is Shuffled.
   const SORT_FIELDS = [
     ['created_at', 'Date Added'], ['taken_at', 'Date Taken'], ['file_mod_time', 'File Modified'],
-    ['title', 'Title'], ['rating', 'Rating'], ['shuffle', 'Shuffled'],
+    ['title', 'Title'], ['rating', 'Favorite'], ['shuffle', 'Shuffled'],
   ];
   const sortBtn = moEl('button', 'mo-toolbar-btn mo-menu-btn', { type: 'button', title: 'Sort and group' });
   sortBtn.setAttribute('aria-haspopup', 'menu');
@@ -12311,7 +12349,7 @@ function renderGridBrowser(container, api, input) {
       });
     }
     if (state.filters.ratingMin != null) {
-      mkChip(`Rating ${state.filters.ratingMin}+`, () => {
+      mkChip('Favorites', () => {
         state.filters.ratingMin = null;
         updateStarBar(); state.currentPage = 1; loadPage();
       });
@@ -12396,21 +12434,9 @@ function renderGridBrowser(container, api, input) {
   tagSection.appendChild(tagChipList);
   filterPanel.appendChild(tagSection);
 
-  // -- Rating filter section --
+  // -- Favorites filter --
   const ratingSection = moEl('div', 'mo-filter-section');
-  ratingSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Minimum rating' }));
-  const starBar = moEl('div', 'mo-star-bar');
-  starBar.setAttribute('role', 'radiogroup');
-  starBar.setAttribute('aria-label', 'Minimum rating');
-  for (let i = 1; i <= 5; i++) {
-    const star = moEl('span', 'mo-star', { textContent: '\u2606' });
-    star.dataset.value = String(i);
-    star.setAttribute('role', 'radio');
-    star.setAttribute('aria-label', `${i} star${i > 1 ? 's' : ''}`);
-    star.setAttribute('aria-checked', 'false');
-    star.setAttribute('tabindex', '0');
-    starBar.appendChild(star);
-  }
+  const starBar = moEl('button', 'mo-filter-fav', { type: 'button', 'aria-pressed': 'false', innerHTML: moIcon('star', 12) + '<span>Favorites only</span>' });
   ratingSection.appendChild(starBar);
   filterPanel.appendChild(ratingSection);
 
@@ -12499,14 +12525,9 @@ function renderGridBrowser(container, api, input) {
   }
 
   function updateStarBar() {
-    const stars = starBar.querySelectorAll('.mo-star');
-    for (const star of stars) {
-      const val = parseInt(star.dataset.value, 10);
-      const filled = state.filters.ratingMin !== null && val <= state.filters.ratingMin;
-      star.textContent = filled ? '\u2605' : '\u2606';
-      star.classList.toggle('filled', filled);
-      star.setAttribute('aria-checked', String(state.filters.ratingMin === val));
-    }
+    const on = state.filters.ratingMin != null && state.filters.ratingMin > 0;
+    starBar.classList.toggle('is-on', on);
+    starBar.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
 
   // ── Filter panel event handlers ──
@@ -12545,11 +12566,8 @@ function renderGridBrowser(container, api, input) {
     state.currentPage = 1; loadPage();
   });
 
-  starBar.addEventListener('click', (e) => {
-    const star = e.target.closest('.mo-star');
-    if (!star) return;
-    const val = parseInt(star.dataset.value, 10);
-    state.filters.ratingMin = (state.filters.ratingMin === val) ? null : val;
+  starBar.addEventListener('click', () => {
+    state.filters.ratingMin = state.filters.ratingMin != null && state.filters.ratingMin > 0 ? null : 1;
     updateStarBar();
     state.currentPage = 1; loadPage();
   });
@@ -12790,15 +12808,9 @@ function renderGridBrowser(container, api, input) {
       params.push(...filters.resolvedExcludeTagIds);
     }
 
-    // Rating min (schema stores 0-5 integers, no scale conversion needed)
-    if (filters.ratingMin != null) {
-      where.push(`${alias}.rating >= ?`);
-      params.push(filters.ratingMin);
-    }
-    // M59 P3: rating max (used by "rating:<=4" / "rating:3..5")
-    if (filters.ratingMax != null) {
-      where.push(`${alias}.rating <= ?`);
-      params.push(filters.ratingMax);
+    // Favorites only: any minimum (old saved searches kept 1–5) means a favorite.
+    if (filters.ratingMin != null && filters.ratingMin > 0) {
+      where.push(`${alias}.rating > 0`);
     }
 
     // Date range
@@ -12849,7 +12861,7 @@ function renderGridBrowser(container, api, input) {
       const wv = moTagScopeWhere('v', 'mo_videos_tags', 'video_id', tagIds);
       videoWhere.push(wv.sql); videoParams.push(...wv.params);
     } else if (filterType === 'favorites') {
-      photoWhere.push('p.rating >= 5'); videoWhere.push('v.rating >= 5');
+      photoWhere.push('p.rating > 0'); videoWhere.push('v.rating > 0');
     } else if (filterType === 'untagged') {
       photoWhere.push('NOT EXISTS (SELECT 1 FROM mo_photos_tags upt WHERE upt.photo_id = p.id)');
       videoWhere.push('NOT EXISTS (SELECT 1 FROM mo_videos_tags uvt WHERE uvt.video_id = v.id)');
@@ -12959,7 +12971,7 @@ function renderGridBrowser(container, api, input) {
       const ws = moTagScopeWhere(alias, tagTable, tagCol, tagIds);
       where.push(ws.sql); params.push(...ws.params);
     } else if (filterType === 'favorites') {
-      where.push(`${alias}.rating >= 5`);
+      where.push(`${alias}.rating > 0`);
     } else if (filterType === 'untagged') {
       const tagTbl = type === 'photo' ? 'mo_photos_tags' : 'mo_videos_tags';
       const tagFkCol = type === 'photo' ? 'photo_id' : 'video_id';
@@ -14080,50 +14092,31 @@ function renderGridBrowser(container, api, input) {
     }
   }
 
-  // F3: Bulk rate items by key (0-5)
-  async function rateItemsByKey(rating) {
-    const targetKeys = state.selectedIds.size > 0
+  // Favorite the selection (or the focused item); if every one already is, unfavorite them.
+  async function toggleFavoriteTargets(keysIn) {
+    const targetKeys = keysIn || (state.selectedIds.size > 0
       ? [...state.selectedIds]
       : (state.focusedIndex !== null && state.items[state.focusedIndex]
           ? [`${state.items[state.focusedIndex].type}:${state.items[state.focusedIndex].id}`]
-          : []);
+          : []));
     if (targetKeys.length === 0) return;
-
-    const photoIds = [];
-    const videoIds = [];
-    for (const k of targetKeys) {
-      const [type, id] = k.split(':');
-      if (type === 'photo') photoIds.push(parseInt(id, 10));
-      else if (type === 'video') videoIds.push(parseInt(id, 10));
-    }
-
-    const txnOps = [];
-    for (const id of photoIds) {
-      txnOps.push({ type: 'run', sql: 'UPDATE mo_photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', params: [rating, id] });
-    }
-    for (const id of videoIds) {
-      txnOps.push({ type: 'run', sql: 'UPDATE mo_videos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', params: [rating, id] });
-    }
-    if (txnOps.length > 0) {
-      await db.transaction(txnOps);
-    }
-
-    // Update local item data
-    for (const item of state.items) {
-      const k = `${item.type}:${item.id}`;
-      if (targetKeys.includes(k)) item.rating = rating;
-    }
-
-    const stars = rating > 0 ? '\u2605'.repeat(rating) : '\u2606';
+    const on = !targetKeys.every((k) => moIsFavorite(state.items.find((x) => `${x.type}:${x.id}` === k)));
+    const n = await moSetFavorite(targetKeys, on);
     if (_statusBarItem) {
-      _statusBarItem.text = `Rated ${targetKeys.length} item${targetKeys.length > 1 ? 's' : ''} ${stars}`;
+      _statusBarItem.text = `${on ? 'Added' : 'Removed'} ${n} item${n === 1 ? '' : 's'} ${on ? 'to' : 'from'} Favorites`;
       _statusBarItem.show();
     }
-    refreshAffectedCards(targetKeys);
   }
+  // Every favourite change (a card's star, a menu, a key, another view) lands here.
+  const _favoriteChangedHandler = (e) => {
+    const keys = (e.detail && e.detail.keys) || [];
+    for (const item of state.items) if (keys.includes(`${item.type}:${item.id}`)) item.rating = e.detail.on ? 1 : 0;
+    refreshAffectedCards(keys);
+  };
+  document.addEventListener('mo:favorite-changed', _favoriteChangedHandler);
 
   // M59 P9 / F12 — Set color label on selected/focused items.
-  // Pass null to clear the label. Mirrors rateItemsByKey's selection logic.
+  // Pass null to clear the label. Mirrors toggleFavoriteTargets's selection logic.
   async function colorLabelItemsByKey(label) {
     const targetKeys = state.selectedIds.size > 0
       ? [...state.selectedIds]
@@ -14297,10 +14290,10 @@ function renderGridBrowser(container, api, input) {
       return;
     }
 
-    // F3: Number keys 0-5 — set star rating
-    if (!inInput && !e.ctrlKey && !e.metaKey && !e.altKey && e.key >= '0' && e.key <= '5') {
+    // F: favorite the selection or the focused item (again to unfavorite).
+    if (!inInput && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'f' || e.key === 'F')) {
       e.preventDefault();
-      rateItemsByKey(parseInt(e.key, 10));
+      void toggleFavoriteTargets();
       return;
     }
 
@@ -14522,14 +14515,7 @@ function renderGridBrowser(container, api, input) {
         actions.push({ label: 'Tag With AI', handler: () => { void moTagWithAIFromUI([item], api); } });
         actions.push({ label: 'Retag With AI', handler: () => { void moTagWithAIFromUI([item], api, 'retag'); } });
       }
-      actions.push({ label: 'Rate', submenu: [
-        { label: '\u2606 Clear', handler: () => rateItemsByKey(0) },
-        { label: '\u2605', handler: () => rateItemsByKey(1) },
-        { label: '\u2605\u2605', handler: () => rateItemsByKey(2) },
-        { label: '\u2605\u2605\u2605', handler: () => rateItemsByKey(3) },
-        { label: '\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(4) },
-        { label: '\u2605\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(5) },
-      ]});
+      actions.push({ label: moIsFavorite(item) ? 'Remove From Favorites' : 'Add to Favorites', icon: 'star', key: 'F', handler: () => void toggleFavoriteTargets([`${item.type}:${item.id}`]) });
       actions.push({ label: 'Color Label', submenu: [
         { label: 'Clear', handler: () => colorLabelItemsByKey(null) },
         { label: 'Red', handler: () => colorLabelItemsByKey('red') },
@@ -14599,14 +14585,10 @@ function renderGridBrowser(container, api, input) {
         const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
         void moTagWithAIFromUI(items, api, 'retag');
       }});
-      actions.push({ label: 'Rate', submenu: [
-        { label: '\u2606 Clear', handler: () => rateItemsByKey(0) },
-        { label: '\u2605', handler: () => rateItemsByKey(1) },
-        { label: '\u2605\u2605', handler: () => rateItemsByKey(2) },
-        { label: '\u2605\u2605\u2605', handler: () => rateItemsByKey(3) },
-        { label: '\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(4) },
-        { label: '\u2605\u2605\u2605\u2605\u2605', handler: () => rateItemsByKey(5) },
-      ]});
+      {
+        const allFav = [...state.selectedIds].every((k) => moIsFavorite(state.items.find((x) => `${x.type}:${x.id}` === k)));
+        actions.push({ label: allFav ? 'Remove From Favorites' : 'Add to Favorites', icon: 'star', key: 'F', handler: () => void toggleFavoriteTargets() });
+      }
       actions.push({ label: 'Color Label', submenu: [
         { label: 'Clear', handler: () => colorLabelItemsByKey(null) },
         { label: 'Red', handler: () => colorLabelItemsByKey('red') },
@@ -14954,6 +14936,7 @@ function renderGridBrowser(container, api, input) {
       document.removeEventListener('mo:request-selection', _selectionReplyHandler);
       document.removeEventListener('mo:refresh-grid', _gridRefreshHandler);
       document.removeEventListener('mo:items-removed', _itemsRemovedHandler);
+      document.removeEventListener('mo:favorite-changed', _favoriteChangedHandler);
       document.removeEventListener('mo:tag-applied', _tagAppliedHandler);
       document.removeEventListener('mo:tag-meta-changed', _tagMetaChangedHandler);
       document.removeEventListener('mo:tags-bulk-changed', _tagsBulkChangedHandler);
@@ -15274,6 +15257,24 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
   // (an image becomes a vision attachment there, a video a file).
   if (ctx.fullPath) {
     api.ui.createIconButton(actions, { icon: 'message-square-plus', title: 'Add to Chat', onClick: () => { void moAttachItemsToChat([{ type: ctx.type, id: ctx.entity.id }]); } });
+  }
+  {
+    // Favorite: one star, on or off (the old 1–5 scale is gone).
+    const favBtn = api.ui.createIconButton(actions, { icon: 'star', title: '' });
+    favBtn.classList.add('mo-detail-fav');
+    const syncFav = () => {
+      const on = moIsFavorite(ctx.entity);
+      favBtn.classList.toggle('mo-active', on);
+      favBtn.title = on ? 'Remove From Favorites' : 'Add to Favorites';
+      favBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    };
+    syncFav();
+    favBtn.addEventListener('click', async () => {
+      const on = !moIsFavorite(ctx.entity);
+      await moSetFavorite([`${ctx.type}:${ctx.entity.id}`], on);
+      ctx.entity.rating = on ? 1 : 0;
+      syncFav();
+    });
   }
   const toggleBtn = api.ui.createIconButton(actions, { icon: 'panel-right', title: 'Hide Details' });
   toggleBtn.setAttribute('aria-pressed', 'true');
@@ -16066,17 +16067,6 @@ function buildDetailsTab(ctx, api, container, onRefresh) {
     } catch (err) { console.error('[MO-Detail] Details save failed:', err); }
   });
 
-  // Rating — inline auto-save (fire-and-forget, per stash pattern)
-  const ratingSection = moEl('div', 'mo-detail-section');
-  const ratingLabel = moEl('div', 'mo-detail-section-label', { textContent: 'Rating' });
-  ratingSection.appendChild(ratingLabel);
-  buildRatingWidget(ratingSection, ctx.entity.rating || 0, async (newRating) => {
-    try {
-      await Queries.update(ctx.entity.id, { rating: newRating });
-      ctx.entity.rating = newRating;
-    } catch (err) { console.error('[MO-Detail] Rating save failed:', err); }
-  });
-  container.appendChild(ratingSection);
 
   // Tags
   const tagSection = moEl('div', 'mo-detail-section');
@@ -16104,63 +16094,6 @@ function buildDetailsTab(ctx, api, container, onRefresh) {
     dateSection.appendChild(dateVal);
     container.appendChild(dateSection);
   }
-}
-
-function buildRatingWidget(container, currentRating, onRate) {
-  const wrap = moEl('div', 'mo-detail-rating');
-  wrap.setAttribute('role', 'radiogroup');
-  wrap.setAttribute('aria-label', 'Rating');
-
-  let focusedIndex = currentRating > 0 ? currentRating - 1 : 0;
-
-  for (let i = 1; i <= 5; i++) {
-    const star = moEl('button', `mo-detail-star${i <= currentRating ? ' filled' : ''}`, { textContent: '★' });
-    star.setAttribute('role', 'radio');
-    star.setAttribute('aria-checked', String(i <= currentRating));
-    star.setAttribute('aria-label', `${i} star${i > 1 ? 's' : ''}`);
-    // Roving tabindex: only focused star gets tabindex 0
-    star.setAttribute('tabindex', i - 1 === focusedIndex ? '0' : '-1');
-    star.title = i === currentRating ? 'Clear rating' : `Rate ${i} star${i > 1 ? 's' : ''}`;
-    star.addEventListener('click', async () => {
-      const newRating = i === currentRating ? 0 : i;
-      currentRating = newRating;
-      focusedIndex = i - 1;
-      updateStars();
-      await onRate(newRating);
-    });
-    star.addEventListener('keydown', (e) => {
-      const stars = wrap.querySelectorAll('.mo-detail-star');
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        focusedIndex = Math.min(focusedIndex + 1, 4);
-        updateTabindex(stars);
-        stars[focusedIndex].focus();
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        focusedIndex = Math.max(focusedIndex - 1, 0);
-        updateTabindex(stars);
-        stars[focusedIndex].focus();
-      }
-    });
-    wrap.appendChild(star);
-  }
-
-  function updateTabindex(stars) {
-    stars.forEach((s, idx) => s.setAttribute('tabindex', idx === focusedIndex ? '0' : '-1'));
-  }
-
-  function updateStars() {
-    const stars = wrap.querySelectorAll('.mo-detail-star');
-    stars.forEach((s, idx) => {
-      const starNum = idx + 1;
-      s.classList.toggle('filled', starNum <= currentRating);
-      s.setAttribute('aria-checked', String(starNum <= currentRating));
-      s.title = starNum === currentRating ? 'Clear rating' : `Rate ${starNum} star${starNum > 1 ? 's' : ''}`;
-    });
-    updateTabindex(stars);
-  }
-
-  container.appendChild(wrap);
 }
 
 function buildEditableField(container, label, value, multiline, onSave) {
@@ -16898,31 +16831,6 @@ function buildAlbumUI(root, album, api, isNew) {
   descField.appendChild(descInput);
   body.appendChild(descField);
 
-  // Rating
-  if (!isNew) {
-    const ratingField = moEl('div', 'mo-album-field');
-    ratingField.appendChild(moEl('label', null, { textContent: 'Rating' }));
-    const starBar = moEl('div', 'mo-star-bar');
-    for (let i = 1; i <= 5; i++) {
-      const star = moEl('span', `mo-star${album.rating >= i ? ' active' : ''}`, { textContent: album.rating >= i ? '\u2605' : '\u2606' });
-      star.addEventListener('click', async () => {
-        const newRating = album.rating === i ? 0 : i;
-        try {
-          await AlbumQueries.update(album.id, { rating: newRating });
-          album.rating = newRating;
-          for (const s of starBar.children) {
-            const v = parseInt(s.dataset.value, 10);
-            s.textContent = newRating >= v ? '\u2605' : '\u2606';
-            s.classList.toggle('active', newRating >= v);
-          }
-        } catch (err) { console.error('[MO-Album] Rating save failed:', err); }
-      });
-      star.dataset.value = String(i);
-      starBar.appendChild(star);
-    }
-    ratingField.appendChild(starBar);
-    body.appendChild(ratingField);
-  }
 
   // Tag editor (reuse pattern from detail editor)
   if (!isNew) {
@@ -17401,7 +17309,8 @@ function openLightbox(items, startIndex, resolveFilePath) {
     // Update info bar
     const title = item.title || (item.filePath ? item.filePath.split(/[/\\]/).pop() : `${item.type} #${item.id}`);
     titleEl.textContent = title;
-    ratingEl.textContent = item.rating > 0 ? '\u2605'.repeat(item.rating) : '';
+    ratingEl.textContent = moIsFavorite(item) ? '\u2605' : '';
+    ratingEl.title = moIsFavorite(item) ? 'Favorite (F to remove)' : '';
     if (item.colorLabel) {
       colorDotEl.dataset.label = item.colorLabel;
     } else {
@@ -17451,31 +17360,33 @@ function openLightbox(items, startIndex, resolveFilePath) {
     if (e.key === '+' || e.key === '=') { zoomBy(LB_ZOOM_STEP); e.preventDefault(); return; }
     if (e.key === '-' || e.key === '_') { zoomBy(-LB_ZOOM_STEP); e.preventDefault(); return; }
     if (e.key === '0' && !e.ctrlKey) { resetZoom(); e.preventDefault(); return; }
-    // M59 P9 / F12 — 1-5 set rating, 6-9 set/toggle color label on the current item
-    if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key >= '1' && e.key <= '9') {
+    // F favorites the current item (again to unfavorite); 6-9 set/toggle its colour label.
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'f' || e.key === 'F')) {
       const item = items[currentIdx];
       if (!item) return;
       e.preventDefault();
-      const n = parseInt(e.key, 10);
-      if (n >= 1 && n <= 5) {
-        applyLightboxRating(item, n);
-      } else {
-        const labelMap = { 6: 'red', 7: 'yellow', 8: 'green', 9: 'blue' };
-        const want = labelMap[n];
-        applyLightboxColorLabel(item, item.colorLabel === want ? null : want);
-      }
+      void applyLightboxFavorite(item);
+      return;
+    }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key >= '6' && e.key <= '9') {
+      const item = items[currentIdx];
+      if (!item) return;
+      e.preventDefault();
+      const labelMap = { 6: 'red', 7: 'yellow', 8: 'green', 9: 'blue' };
+      const want = labelMap[parseInt(e.key, 10)];
+      applyLightboxColorLabel(item, item.colorLabel === want ? null : want);
       return;
     }
   }
 
-  // Persist a rating change made from the lightbox; mutates the in-memory item too.
-  async function applyLightboxRating(item, rating) {
+  // Toggle the current item's favourite from the lightbox; the grid hears it too.
+  async function applyLightboxFavorite(item) {
     try {
-      const table = item.type === 'photo' ? 'mo_photos' : 'mo_videos';
-      await db.run(`UPDATE ${table} SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [rating, item.id]);
-      item.rating = rating;
-      ratingEl.textContent = rating > 0 ? '\u2605'.repeat(rating) : '';
-    } catch (err) { console.error('[mo] lightbox rating failed', err); }
+      const on = !moIsFavorite(item);
+      await moSetFavorite([`${item.type}:${item.id}`], on);
+      item.rating = on ? 1 : 0;
+      ratingEl.textContent = on ? '\u2605' : '';
+    } catch (err) { console.error('[mo] lightbox favorite failed', err); }
   }
 
   // Persist a color label change made from the lightbox; mutates the in-memory item too.
@@ -17644,8 +17555,8 @@ function openCompareView(items, resolveFilePath) {
     const dimsSpan = moEl('span', 'mo-cmp-dims');
     if (item.width && item.height) dimsSpan.textContent = `${item.width}×${item.height}`;
     const ratingSpan = moEl('span', 'mo-cmp-rating');
-    if (typeof item.rating === 'number' && item.rating > 0) {
-      ratingSpan.textContent = '★'.repeat(item.rating);
+    if (moIsFavorite(item)) {
+      ratingSpan.textContent = '★';
     }
     info.append(titleSpan, dimsSpan, ratingSpan);
     pane.appendChild(info);
@@ -17966,10 +17877,13 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   ]));
   bar.appendChild(aiTagBtn);
 
-  // Bulk Rating button
-  const bulkRatingBtn = selBtn('Rate…', 'Rate the selected items', 'star');
-  bulkRatingBtn.addEventListener('click', () => {
-    showBulkRatingDialog(state, api, () => { updateBar(); refreshFn(); });
+  // Favorite: marks the selection (or unmarks it, when every one already is).
+  const bulkRatingBtn = selBtn('Favorite', 'Add the selected items to Favorites, or remove them when all already are (F)', 'star');
+  bulkRatingBtn.addEventListener('click', async () => {
+    const keys = [...state.selectedIds];
+    const allFav = keys.every((k) => moIsFavorite(state.items.find((x) => `${x.type}:${x.id}` === k)));
+    await moSetFavorite(keys, !allFav);
+    updateBar();
   });
   bar.appendChild(bulkRatingBtn);
 
@@ -18639,74 +18553,6 @@ function showBulkTagDialog(state, api, onComplete) {
   renderChips();
 }
 
-function showBulkRatingDialog(state, api, onComplete) {
-  const overlay = moEl('div', 'mo-bulk-dialog-overlay');
-  const dialog = moEl('div', 'mo-bulk-dialog');
-  dialog.setAttribute('role', 'dialog');
-  dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-label', 'Set Rating');
-  overlay.appendChild(dialog);
-
-  dialog.appendChild(moEl('h3', null, { textContent: `Set Rating (${state.selectedIds.size} items)` }));
-
-  const ratingSection = moEl('div', 'mo-bulk-dialog-section');
-  ratingSection.appendChild(moEl('label', null, { textContent: 'Rating' }));
-  const starBar = moEl('div', 'mo-star-bar');
-  let selectedRating = 0;
-  for (let i = 1; i <= 5; i++) {
-    const star = moEl('span', 'mo-star', { textContent: '\u2606' });
-    star.dataset.value = String(i);
-    star.addEventListener('click', () => {
-      selectedRating = selectedRating === i ? 0 : i;
-      for (const s of starBar.children) {
-        const v = parseInt(s.dataset.value, 10);
-        s.textContent = selectedRating >= v ? '\u2605' : '\u2606';
-        s.classList.toggle('active', selectedRating >= v);
-      }
-    });
-    starBar.appendChild(star);
-  }
-  ratingSection.appendChild(starBar);
-  dialog.appendChild(ratingSection);
-
-  const footer = moEl('div', 'mo-bulk-dialog-footer');
-  const cancelBtn = moEl('button', null, { textContent: 'Cancel' });
-  cancelBtn.addEventListener('click', () => overlay.remove());
-  const applyBtn = moEl('button', 'primary', { textContent: 'Apply' });
-  applyBtn.addEventListener('click', async () => {
-    applyBtn.disabled = true;
-    cancelBtn.disabled = true;
-    applyBtn.textContent = 'Applying…';
-    const { photos, videos } = parseSelectedIds(state.selectedIds);
-    try {
-      const txnOps = [];
-      for (const id of photos) {
-        txnOps.push({ type: 'run', sql: 'UPDATE mo_photos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', params: [selectedRating, id] });
-      }
-      for (const id of videos) {
-        txnOps.push({ type: 'run', sql: 'UPDATE mo_videos SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', params: [selectedRating, id] });
-      }
-      if (txnOps.length > 0) await db.transaction(txnOps);
-      api.window.showInformationMessage(`Rating set to ${selectedRating} for ${photos.length + videos.length} items.`);
-      overlay.remove();
-      onComplete();
-    } catch (err) {
-      applyBtn.disabled = false;
-      cancelBtn.disabled = false;
-      applyBtn.textContent = 'Apply';
-      api.window.showErrorMessage('Bulk rating failed: ' + err.message);
-    }
-  });
-  footer.append(cancelBtn, applyBtn);
-  dialog.appendChild(footer);
-
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.remove(); });
-  document.body.appendChild(overlay);
-  overlay.setAttribute('tabindex', '-1');
-  overlay.focus();
-}
-
 function showAddToAlbumDialog(state, api, onComplete) {
   const overlay = moEl('div', 'mo-bulk-dialog-overlay');
   const dialog = moEl('div', 'mo-bulk-dialog');
@@ -18791,7 +18637,7 @@ function showBulkDeleteDialog(state, api, onComplete, opts = {}) {
   const count = state.selectedIds.size;
   dialog.appendChild(moEl('h3', null, { textContent: `Delete ${count} item${count !== 1 ? 's' : ''}?` }));
   dialog.appendChild(moEl('p', 'mo-bulk-dialog-warn', {
-    textContent: 'This permanently removes the selected items and all of their metadata (tags, ratings, custom fields, album links).',
+    textContent: 'This permanently removes the selected items and all of their metadata (tags, favorites, custom fields, album links).',
   }));
 
   // Permanent + irreversible — also delete the source files from disk by
@@ -28523,7 +28369,7 @@ async function _refreshFtsForIds(photoIds, videoIds) {
 }
 
 // ── Query parser ──
-// Supports: tag:foo  -tag:foo  rating:>=4  rating:5  rating:3..5
+// Supports: tag:foo  -tag:foo  is:favorite (old rating:… means the same)
 //           folder:beach  taken:2024  taken:2024-06  type:photo|video
 //           and bare words → free-text FTS MATCH
 function moParseSearchQuery(input) {
@@ -28548,20 +28394,14 @@ function moParseSearchQuery(input) {
       case 'tag':
         (neg ? result.excludeTags : result.tags).push(val);
         break;
-      case 'rating': {
-        const r = val.match(/^(>=|<=|>|<|=)?(\d)(?:\.\.(\d))?$/);
-        if (r) {
-          const op = r[1] || '=';
-          const a = parseInt(r[2], 10);
-          const b = r[3] != null ? parseInt(r[3], 10) : null;
-          if (b != null) { result.ratingMin = a; result.ratingMax = b; }
-          else if (op === '>=' || op === '=') result.ratingMin = a;
-          else if (op === '>') result.ratingMin = a + 1;
-          else if (op === '<=') result.ratingMax = a;
-          else if (op === '<') result.ratingMax = a - 1;
-        }
+      case 'is':
+        if (/^fav(ou?rites?)?$/i.test(val)) result.ratingMin = 1;
+        else words.push(m[0]);
         break;
-      }
+      case 'rating':
+        // The star scale is gone; a rating search (from an old saved search) means favorites.
+        result.ratingMin = 1;
+        break;
       case 'folder':
         result.folderTerm = val;
         break;
@@ -30092,6 +29932,17 @@ function moItemsFromKeys(keys) {
   return [...keys].map((k) => { const i = String(k).indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; })
     .filter((it) => (it.type === 'photo' || it.type === 'video') && Number.isFinite(it.id));
 }
+// Favorites: one mark, no star scale. Stored in the old rating column (0 or
+// 1, anything above 0 counts), so saved searches and copies keep working.
+function moIsFavorite(item) { return !!item && Number(item.rating) > 0; }
+async function moSetFavorite(keys, on) {
+  const items = moItemsFromKeys(keys);
+  const ops = items.map((it) => ({ type: 'run', sql: `UPDATE ${it.type === 'photo' ? 'mo_photos' : 'mo_videos'} SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, params: [on ? 1 : 0, it.id] }));
+  if (ops.length) await db.transaction(ops);
+  document.dispatchEvent(new CustomEvent('mo:favorite-changed', { detail: { keys: items.map((it) => `${it.type}:${it.id}`), on: !!on } }));
+  return items.length;
+}
+
 // Items leaving the library's views (to Trash or back) leave every selection too.
 function moAnnounceRemoved(items) {
   document.dispatchEvent(new CustomEvent('mo:items-removed', { detail: { keys: items.map((it) => `${it.type}:${it.id}`) } }));
@@ -39134,6 +38985,16 @@ export async function activate(api, context) {
 
   // M59 P5: auto-empty trash older than N days (default 30)
   moAutoEmptyTrashIfStale(api).catch(() => {});
+  // Favorites replaced the 1–5 star scale (2026-10-01): any rating became a favorite (1).
+  (async () => {
+    try {
+      const done = await moGetSetting('favorites_from_ratings', '');
+      if (done === '1') return;
+      await db.run('UPDATE mo_photos SET rating = 1 WHERE rating > 1');
+      await db.run('UPDATE mo_videos SET rating = 1 WHERE rating > 1');
+      await moSetSetting('favorites_from_ratings', '1');
+    } catch (err) { console.warn('[MediaOrganizer] favorites migration failed:', err); }
+  })();
   // Resume any in-flight Eraser batches saved from a previous session FIRST —
   // that repopulates the pending-erase path index — THEN sweep orphan DB rows
   // whose backing file vanished. The other order let the sweep race resumed

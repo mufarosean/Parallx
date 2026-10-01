@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'motrash', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'motrash', 'mofav', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -390,6 +390,80 @@ async function timelapseScene(appRoot, clip2, errors) {
 
 // The image editor: a folder of photos is scanned, one opens in Edit Image,
 // and each tool is shot (dark, then light, then a narrow window).
+// Favorites in place of star ratings: a card's star, the F key, the menu,
+// the Favorites view and filter, the detail page, and old ratings migrated.
+async function moFavScene(appRoot, workspace, errors) {
+  const media = path.join(workspace, 'favtest');
+  await fs.mkdir(media, { recursive: true });
+  const ff = (args) => spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args]);
+  ff(['-f', 'lavfi', '-i', 'mandelbrot=s=640x480', '-frames:v', '1', '-q:v', '4', path.join(media, 'alpha.jpg')]);
+  ff(['-f', 'lavfi', '-i', 'cellauto=s=640x480:rule=30', '-frames:v', '1', '-q:v', '4', path.join(media, 'beta.jpg')]);
+  ff(['-f', 'lavfi', '-i', 'cellauto=s=640x480:rule=90', '-frames:v', '1', '-q:v', '4', path.join(media, 'gamma.jpg')]);
+  const { app, page } = await launchApp(appRoot, errors);
+  const log = (k, v) => console.log(`[probe] fav ${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+  const sql = (q, p = []) => page.evaluate(async ({ q, p }) => { const r = await window.parallxElectron.extensionDatabase.all('media-organizer', q, p); return r.rows || r.error; }, { q, p });
+  const runSql = (q, p = []) => page.evaluate(async ({ q, p }) => { const r = await window.parallxElectron.extensionDatabase.run('media-organizer', q, p); return r.error ? JSON.stringify(r.error) : r.changes; }, { q, p });
+  const ratings = async () => JSON.stringify(await sql(`SELECT f.basename AS f, p.rating AS r FROM mo_photos p JOIN mo_photos_files pf ON pf.photo_id = p.id JOIN mo_files f ON f.id = pf.file_id ORDER BY f.basename`));
+  const menuItems = () => page.evaluate(() => { const m = Array.from(document.querySelectorAll('.context-menu')).pop(); return m ? Array.from(m.querySelectorAll('.context-menu-item-label')).map((x) => x.textContent.trim()).join(' | ') : 'NO MENU'; });
+  const card = (n) => `Array.from(document.querySelectorAll('.mo-card')).find((x) => (x.textContent || '').includes('${n}'))`;
+  const sideRow = (label) => page.evaluate((l) => Array.from(document.querySelectorAll('.mo-sidebar-item')).find((r) => r.querySelector('.mo-sidebar-item-label')?.textContent === l)?.click(), label);
+  try {
+    await enableMediaOrganizer(page);
+    await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }); }, media);
+    await runCommand(page, ['media-organizer.scan']);
+    await page.waitForTimeout(5_000);
+    // Old star ratings, as a library from before would have them; restart to migrate.
+    await runSql(`UPDATE mo_photos SET rating = 4 WHERE id IN (SELECT pf.photo_id FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id WHERE f.basename = 'gamma.jpg')`);
+    await runSql(`DELETE FROM mo_settings WHERE key = 'favorites_from_ratings'`);
+    await page.evaluate(async () => { const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' }); await svc.setEnablement('parallx-community.media-organizer', false); });
+    await page.waitForTimeout(1_500);
+    await enableMediaOrganizer(page);
+    await page.waitForTimeout(2_000);
+    log('after migration', await ratings());
+    await page.evaluate(() => Array.from(document.querySelectorAll('.activity-bar-item')).find((b) => Array.from(b.attributes).some((a) => /media.?organizer/i.test(a.value)))?.click());
+    await page.waitForTimeout(1_200);
+    await sideRow('Untagged');
+    await page.waitForTimeout(2_500);
+    // A card's star.
+    await page.evaluate(`${card('alpha')}?.querySelector('.mo-card-fav')?.click()`);
+    await page.waitForTimeout(800);
+    log('after clicking alpha star', `${await ratings()} star on=${await page.evaluate(`${card('alpha')}?.querySelector('.mo-card-fav')?.classList.contains('is-on')`)}`);
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(300);
+    await shot(page, 'fav-cards');
+    // The F key on the focused card.
+    await page.evaluate(`${card('beta')}?.click()`);
+    await page.waitForTimeout(300);
+    await page.keyboard.press('f');
+    await page.waitForTimeout(800);
+    log('after F on beta', await ratings());
+    // The menu.
+    await page.evaluate(`(() => { const c = ${card('beta')}; const r = c.getBoundingClientRect(); c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 20, clientY: r.top + 20 })); })()`);
+    await page.waitForTimeout(400);
+    log('menu on beta', await menuItems());
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    // Sidebar count and the Favorites view.
+    log('sidebar Favorites count', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-sidebar-item')).find((r) => r.querySelector('.mo-sidebar-item-label')?.textContent === 'Favorites')?.querySelector('.mo-sidebar-item-count')?.textContent || ''));
+    await sideRow('Favorites');
+    await page.waitForTimeout(2_500);
+    log('Favorites view', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-card .mo-card-title, .mo-feed-tile')).map((c) => c.textContent.trim()).join(', ') || Array.from(document.querySelectorAll('.mo-card')).length + ' cards'));
+    // Detail page favourite button.
+    await page.evaluate(`(() => { const c = ${card('gamma')} || Array.from(document.querySelectorAll('.mo-card'))[0]; c && c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); })()`);
+    await page.waitForTimeout(2_500);
+    log('detail header buttons', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-detail-header button, .mo-detail-actions button')).map((b) => `${b.title}${b.classList.contains('mo-active') ? '*' : ''}`).join(' | ')));
+    await shot(page, 'fav-detail');
+    // Search operator.
+    await sideRow('All Media');
+    await page.waitForTimeout(2_000);
+    await page.evaluate(() => { const i = document.querySelector('.mo-search-wrap input, input.mo-search'); if (i) { i.value = 'is:favorite'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } });
+    await page.waitForTimeout(2_000);
+    log('is:favorite search subtitle', await page.evaluate(() => document.querySelector('.mo-page-header .px-page-header__subtitle')?.textContent || ''));
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 // Delete set to Trash: Delete moves without asking, Trash offers Restore,
 // Delete Permanently… and Empty Trash…, and Trash older than 30 days is
 // removed with its files (and so is not re-imported by the folder watcher).
@@ -822,6 +896,17 @@ async function main() {
     await scene('image', () => imageScene(appRoot, workspace, errs));
     const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
     if (real.length) { console.log(`[probe] image: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
+    if (scenes.length === 1) {
+      await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
+      return;
+    }
+  }
+  if (scenes.includes('mofav')) {
+    const errs = [];
+    await scene('mofav', () => moFavScene(appRoot, workspace, errs));
+    const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
+    if (real.length) { console.log(`[probe] mofav: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
     if (scenes.length === 1) {
       await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
       await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
