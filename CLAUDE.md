@@ -22,7 +22,7 @@
   it back into the working branch as soon as the step is done.
 - Before starting locally, pull. Before stopping, push.
 - `master` trails the working branch and is only ever fast-forwarded to it
-  (last on 2026-10-01). Do not build on `master`; work on the working branch.
+  (last on 2026-10-01, at `8b9e82d2`). Do not build on `master`; work on the working branch.
 
 ## House rules worth knowing first
 
