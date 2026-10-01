@@ -17,7 +17,7 @@ function loadRegion(): string {
   return src.slice(a, b);
 }
 
-const NAMES = ['moGridInstance', 'moKindForMediaType', 'moShuffleOrderExpr'];
+const NAMES = ['moGridInstance', 'moKindForMediaType', 'moShuffleOrderExpr', 'moScopeTitle', 'moFolderName', 'moFolderParent', 'moActiveFilterCount', 'moFeedGroupKey', 'moFeedGroupLabel'];
 // eslint-disable-next-line @typescript-eslint/no-implied-eval
 const P: Record<string, any> = new Function(loadRegion() + `\nreturn { ${NAMES.join(', ')} };`)();
 
@@ -82,5 +82,52 @@ describe('moShuffleOrderExpr', () => {
     // Not merely rotated: the same neighbours would follow each other after rotation.
     const rot = (x: string) => { const p = x.split(','); return p.map((_, i) => p.slice(i).concat(p.slice(0, i)).join(',')); };
     expect(rot(a)).not.toContain(b);
+  });
+});
+
+describe('library page header', () => {
+  it('titles each scope, and names a folder by its last segment', () => {
+    expect(P.moScopeTitle('all')).toBe('All Media');
+    expect(P.moScopeTitle('favorites')).toBe('Favorites');
+    expect(P.moScopeTitle('nonsense')).toBe('All Media');
+    expect(P.moFolderName('C:\\Users\\me\\Pictures\\Lisbon')).toBe('Lisbon');
+    expect(P.moFolderName('/home/me/Travel/Kyoto/')).toBe('Kyoto');
+    expect(P.moFolderParent('/home/me/Travel/Kyoto')).toBe('Travel');
+    expect(P.moFolderParent('Kyoto')).toBe('');
+  });
+
+  it('counts the Filters panel only (the media type is its own switch)', () => {
+    const f = { tagIds: [1, 2], excludeTagIds: [], ratingMin: 3, dateFrom: '2026-01-01', dateTo: '2026-02-01' };
+    expect(P.moActiveFilterCount({ filters: f, mediaType: 'videos' })).toBe(3);
+    expect(P.moActiveFilterCount({ filters: { tagIds: [], excludeTagIds: [], ratingMin: null, dateFrom: null, dateTo: null } })).toBe(0);
+  });
+});
+
+describe('feed date groups', () => {
+  // Thursday, October 1 2026 (local): the week began on Sunday, September 27.
+  const NOW = new Date(2026, 9, 1, 15, 0).getTime();
+  const at = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')} 09:00:00`;
+
+  it('buckets today, yesterday, earlier this week, then by month', () => {
+    const key = (d: string) => P.moFeedGroupKey({ createdAt: d }, 'created_at', NOW);
+    expect(key(at(2026, 10, 1))).toBe('today');
+    expect(key(at(2026, 9, 30))).toBe('yesterday');
+    expect(key(at(2026, 9, 27))).toBe('week');
+    expect(key(at(2026, 9, 26))).toBe('m:2026-09');
+    expect(key(at(2025, 12, 31))).toBe('m:2025-12');
+    expect(P.moFeedGroupKey({ createdAt: null }, 'created_at', NOW)).toBe('none');
+  });
+
+  it('follows Date Taken when that is the sort, falling back to Date Added', () => {
+    const item = { createdAt: at(2026, 10, 1), takenAt: at(2026, 8, 3) };
+    expect(P.moFeedGroupKey(item, 'taken_at', NOW)).toBe('m:2026-08');
+    expect(P.moFeedGroupKey({ createdAt: at(2026, 10, 1), takenAt: null }, 'taken_at', NOW)).toBe('today');
+  });
+
+  it('labels in sentence case', () => {
+    expect(P.moFeedGroupLabel('today')).toBe('Today');
+    expect(P.moFeedGroupLabel('week')).toBe('Earlier this week');
+    expect(P.moFeedGroupLabel('none')).toBe('No date');
+    expect(P.moFeedGroupLabel('m:2026-09')).toMatch(/2026/);
   });
 });

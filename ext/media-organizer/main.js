@@ -5159,10 +5159,13 @@ const MO_CSS = `
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--vscode-editor-background);
-  color: var(--vscode-editor-foreground);
-  font-family: var(--parallx-fontFamily-ui, system-ui, sans-serif);
-  font-size: var(--parallx-fontSize-base, 12px);
+  background: var(--px-bg);
+  color: var(--px-text);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-base);
+  /* Lays out by its own width (wide, medium under 1024px, compact under
+     720px, the planner's steps), so a split editor gets the narrow layout. */
+  container: mo-grid / inline-size;
 }
 .mo-grid-area {
   flex: 1;
@@ -5831,28 +5834,41 @@ kbd.mo-key {
   border-color: var(--vscode-button-background, var(--vscode-button-background, #0e639c));
 }
 /* The view row: one height, one baseline, one gap inside a group and a wider one between. */
-.mo-toolbar { gap: 6px; padding: 6px 10px; min-height: 40px; box-sizing: border-box; }
+.mo-toolbar { gap: var(--px-space-2); padding: 0 var(--px-space-6) var(--px-space-3); border-bottom: 0; box-sizing: border-box; }
+/* The kit page header, aligned with the toolbar under it. */
+.mo-grid-browser > .mo-page-header { padding: var(--px-space-5) var(--px-space-6) var(--px-space-3); flex-wrap: wrap; flex-shrink: 0; }
 .mo-toolbar-btn { height: var(--px-control-h); box-sizing: border-box; padding: 0 8px; }
 .mo-search-wrap { position: relative; display: flex; flex: 1 1 260px; min-width: 160px; max-width: 520px; }
-.mo-search-wrap .mo-toolbar-search { width: 100%; height: var(--px-control-h); box-sizing: border-box; padding: 0 26px; background: transparent; border-color: transparent; }
-.mo-search-wrap .mo-toolbar-search:hover { background: var(--vscode-input-background, var(--px-bg-inset)); }
-.mo-search-wrap .mo-toolbar-search:focus { background: var(--vscode-input-background, var(--px-bg-inset)); border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
+.mo-search-wrap .mo-toolbar-search { width: 100%; height: var(--px-control-h); box-sizing: border-box; padding: 0 30px 0 28px; background: var(--px-bg-inset); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); color: var(--px-text); font-size: var(--px-text-base); }
+.mo-search-wrap .mo-toolbar-search:hover { border-color: var(--px-base-35); }
+.mo-search-wrap .mo-toolbar-search:focus { border-color: var(--px-accent); outline: none; }
 .mo-search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); display: inline-flex; opacity: 0.55; pointer-events: none; }
 /* Only a grouped control gets a box (the segments); a lone button is a ghost until hovered. */
 .mo-toolbar > .mo-toolbar-btn { background: transparent; border-color: transparent; }
-.mo-toolbar > .mo-toolbar-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
-.mo-toolbar > .mo-toolbar-btn.active { border-color: var(--vscode-button-background, #0e639c); }
+.mo-toolbar > .mo-toolbar-btn:hover { background: var(--px-surface-hover); }
+.mo-toolbar > .mo-toolbar-btn.active { background: var(--px-surface-selected); }
+/* Filters: the kit's secondary button, with the in-use count as a badge. */
+.mo-toolbar .mo-filters-btn { position: relative; }
+.mo-toolbar .mo-filters-btn.active { background: var(--px-surface-selected); border-color: var(--px-accent); }
+.mo-toolbar .mo-filters-btn .mo-filter-badge { position: static; display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 5px; border-radius: var(--px-radius-full); background: var(--px-accent-soft); color: var(--px-accent-text); font-size: var(--px-text-2xs); line-height: 1; }
+/* Active filters, one removable chip each, under the toolbar. */
+.mo-filter-chip-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-1) var(--px-space-2); padding: 0 var(--px-space-6) var(--px-space-3); flex-shrink: 0; }
+.mo-filter-chip { display: inline-flex; align-items: center; gap: var(--px-space-1); height: var(--px-control-h-sm); padding: 0 var(--px-space-1) 0 var(--px-space-3); border: 0; border-radius: var(--px-radius-full); background: var(--px-surface-selected); color: var(--px-text); font: inherit; font-size: var(--px-text-sm); cursor: pointer; }
+.mo-filter-chip .svg-icon { color: var(--px-text-secondary); }
+.mo-filter-chip:hover { background: var(--px-accent-soft); }
+.mo-filter-chip--scope { padding-right: var(--px-space-3); background: var(--px-bg-inset); cursor: default; }
 .mo-search-wrap .mo-search-help-btn { position: absolute; right: 1px; top: 1px; height: calc(var(--px-control-h) - 2px); width: calc(var(--px-control-h) - 2px); padding: 0; justify-content: center; background: transparent; border: none; opacity: 0.6; }
 .mo-search-wrap .mo-search-help-btn:hover { opacity: 1; background: transparent; }
 .mo-toolbar-spacer { flex: 1 1 0; min-width: 6px; }
-.mo-segment { display: inline-flex; height: var(--px-control-h); box-sizing: border-box; border: 1px solid var(--vscode-panel-border, var(--px-border, #555)); border-radius: var(--parallx-radius-sm, 3px); overflow: hidden; background: var(--vscode-button-secondaryBackground, var(--vscode-input-background, #3a3a3a)); }
-.mo-segment-btn { border: none; background: transparent; color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc)); padding: 0 10px; font-size: var(--parallx-fontSize-sm, 11px); font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
-.mo-segment-btn + .mo-segment-btn { border-left: 1px solid var(--vscode-panel-border, var(--px-border, #555)); }
-.mo-segment-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
-.mo-segment-btn.active { background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #fff); }
-.mo-segment-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
+/* Segmented control: an inset track, the chosen segment raised on it. */
+.mo-segment { display: inline-flex; gap: 2px; height: var(--px-control-h); box-sizing: border-box; padding: 2px; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
+.mo-segment-btn { min-width: var(--px-control-h-xs); border: none; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text-muted); padding: 0 var(--px-space-2); font-size: var(--px-text-sm); font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: var(--px-space-1); }
+.mo-segment-btn:hover { color: var(--px-text); }
+.mo-segment-btn.active { background: var(--px-bg-elevated); color: var(--px-text); font-weight: 600; box-shadow: var(--px-shadow-sm); }
+.mo-segment-btn:focus-visible { outline: 2px solid var(--px-accent); outline-offset: -1px; }
 .mo-menu-btn { gap: 6px; white-space: nowrap; }
 .mo-menu-btn-caret { display: inline-flex; opacity: 0.7; }
+.mo-menu-btn-icon { display: inline-flex; color: var(--px-text-secondary); }
 .mo-view-pop { position: fixed; z-index: 10000; min-width: 240px; background: var(--vscode-menu-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-menu-border, var(--px-border-strong)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 4px 16px rgba(0,0,0,0.4); padding: 6px; display: flex; flex-direction: column; gap: 2px; font-size: var(--parallx-fontSize-sm, 11px); color: var(--vscode-menu-foreground, var(--vscode-foreground, #ccc)); }
 .mo-view-pop[hidden] { display: none; }
 .mo-view-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--parallx-radius-sm, 3px); min-height: 28px; box-sizing: border-box; }
@@ -5912,20 +5928,23 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   flex-direction: row;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 16px 24px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
-  background: var(--vscode-sideBar-background, var(--px-bg));
-  font-size: var(--parallx-fontSize-sm, 11px);
+  gap: var(--px-space-4) var(--px-space-6);
+  margin: 0 var(--px-space-6) var(--px-space-3);
+  padding: var(--px-space-4);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  background: var(--px-bg-elevated);
+  font-size: var(--px-text-sm);
+}
+@container mo-grid (max-width: 719px) {
+  .mo-filter-panel { margin-left: var(--px-space-3); margin-right: var(--px-space-3); }
 }
 .mo-filter-section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .mo-filter-section.mo-filter-section-tags { flex: 1 1 340px; max-width: 560px; }
 .mo-filter-section-label {
   font-weight: 600;
-  font-size: var(--parallx-fontSize-xs, 10px);
-  text-transform: none;
-  color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
-  letter-spacing: normal;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-secondary);
 }
 .mo-filter-tag-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .mo-filter-row-label {
@@ -6021,15 +6040,16 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-filter-clear {
   margin-left: auto;
   align-self: flex-start;
-  padding: 4px 10px;
-  font-size: var(--parallx-fontSize-xs, 10px);
-  background: var(--vscode-button-secondaryBackground, var(--vscode-button-secondaryBackground, #3a3d41));
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
+  height: var(--px-control-h-sm);
+  padding: 0 var(--px-space-2);
+  font-size: var(--px-text-sm);
+  background: transparent;
+  color: var(--px-text-secondary);
   border: none;
-  border-radius: var(--parallx-radius-sm, 3px);
+  border-radius: var(--px-radius-sm);
   cursor: pointer;
 }
-.mo-filter-clear:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryHoverBackground, #45494e)); }
+.mo-filter-clear:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .mo-filter-empty {
   font-size: var(--parallx-fontSize-xs, 10px);
   color: var(--vscode-descriptionForeground, #666);
@@ -6086,22 +6106,20 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 /* All/Any (AND/OR) segmented toggle */
 .mo-tagmatch { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 .mo-tagmatch-label { font-size: var(--px-text-xs); opacity: 0.6; text-transform: none; letter-spacing: normal; }
-.mo-tagmatch-group { display: inline-flex; border-radius: var(--parallx-radius-sm, 4px); overflow: hidden; }
+/* All / Any: the same segmented control as the toolbar's. */
+.mo-tagmatch-group { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
 .mo-tagmatch-btn {
-  font-size: 10px;
-  padding: 3px 11px;
+  height: calc(var(--px-control-h-sm) - 6px);
+  font-size: var(--px-text-xs);
+  padding: 0 var(--px-space-2);
   cursor: pointer;
-  border: 1px solid var(--vscode-input-border, var(--px-border, var(--vscode-input-background, #3a3a3a)));
-  background: var(--vscode-input-background, #2a2a2a);
-  color: var(--vscode-foreground, var(--vscode-foreground, #ccc));
+  border: 0;
+  border-radius: var(--px-radius-sm);
+  background: transparent;
+  color: var(--px-text-muted);
 }
-.mo-tagmatch-btn + .mo-tagmatch-btn { border-left: none; }
-.mo-tagmatch-btn:hover { color: var(--vscode-foreground, #fff); }
-.mo-tagmatch-btn.active {
-  background: var(--vscode-button-background, var(--px-accent, var(--mo-accent)));
-  border-color: var(--vscode-button-background, var(--px-accent, var(--mo-accent)));
-  color: var(--vscode-button-foreground, #fff);
-}
+.mo-tagmatch-btn:hover { color: var(--px-text); }
+.mo-tagmatch-btn.active { background: var(--px-bg-elevated); color: var(--px-text); font-weight: 600; box-shadow: var(--px-shadow-sm); }
 .mo-filter-badge {
   position: absolute;
   top: -4px;
@@ -8206,7 +8224,24 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-home-chip { border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: 999px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
 .mo-home-chip:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-home-chip.active { background: var(--vscode-badge-background, var(--px-accent)); color: var(--vscode-badge-foreground, #fff); border-color: transparent; }
-.mo-feed { display: flex; gap: 10px; padding: 10px 14px; align-items: flex-start; }
+.mo-feed { display: flex; gap: 10px; padding: var(--px-space-1) var(--px-space-6) var(--px-space-8); align-items: flex-start; }
+/* Grouped by date: a section per group, each with its own columns. */
+.mo-feed.mo-feed--grouped { flex-direction: column; align-items: stretch; gap: var(--px-space-6); }
+.mo-feed-group { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.mo-feed-group-header { margin: 0; font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
+.mo-feed-cols { display: flex; gap: 10px; align-items: flex-start; }
+/* Library in a compact pane: search gets its own row, the header's action
+   keeps its icon and tooltip only, and the edges come in. */
+@container mo-grid (max-width: 719px) {
+  .mo-grid-browser > .mo-page-header { padding: var(--px-space-4) var(--px-space-3) var(--px-space-2); }
+  .mo-page-header .px-btn--primary .px-btn__label { display: none; }
+  .mo-page-header .px-btn--primary { width: var(--px-control-h); padding: 0; justify-content: center; }
+  .mo-toolbar, .mo-filter-chip-bar { padding-left: var(--px-space-3); padding-right: var(--px-space-3); }
+  .mo-toolbar .mo-search-wrap { flex-basis: 100%; max-width: none; order: -1; }
+  .mo-toolbar .mo-filters-btn .px-btn__label,
+  .mo-toolbar .mo-menu-btn .mo-menu-btn-label { display: none; }
+  .mo-feed { padding-left: var(--px-space-3); padding-right: var(--px-space-3); }
+}
 .mo-feed-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .mo-feed-card { position: relative; width: 100%; border-radius: var(--parallx-radius-md, 6px); overflow: hidden; background: var(--vscode-input-background, var(--px-bg-inset)); cursor: pointer; }
 .mo-feed-card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--px-dur-slow, 260ms) var(--px-ease, ease); }
@@ -8666,7 +8701,8 @@ if (typeof globalThis !== 'undefined') {
 // Session-level state: survives grid editor re-opens within the same session
 let _sessionZoomWidth = MO_ZOOM_DEFAULT;
 // #1 Grid grouping mode ('none' | 'date'), persisted across sessions.
-let _sessionGroupBy = 'none';
+// Date groups are on until the user turns them off (the choice is saved).
+let _sessionGroupBy = 'date';
 const _sessionGridState = new Map(); // keyed by instanceId
 
 // Adapted from stash: GridCard.tsx — calculateCardWidth()
@@ -11174,6 +11210,58 @@ function moGridInstance(instanceId) {
   if (filterId != null && !Number.isFinite(filterId)) filterId = null;
   return { filterType, filterId, filterTagPath, mediaType, displayMode };
 }
+/** The page title for a grid scope; a tag or folder is renamed once its row loads. */
+function moScopeTitle(filterType) {
+  return ({
+    all: 'All Media', favorites: 'Favorites', untagged: 'Untagged', recent: 'Recent',
+    duplicates: 'Duplicates', trash: 'Trash', tag: 'Tag', folder: 'Folder',
+  })[filterType] || 'All Media';
+}
+/** A folder's own name: the last segment of its path. */
+function moFolderName(p) {
+  const parts = String(p || '').split(/[\\/]+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : String(p || '');
+}
+/** The folder a folder sits in, for telling two "Exports" apart. */
+function moFolderParent(p) {
+  const parts = String(p || '').split(/[\\/]+/).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 2] : '';
+}
+/** Filters in use from the Filters panel (the media type is its own switch). */
+function moActiveFilterCount(state) {
+  const f = state.filters;
+  return (f.tagIds.length > 0 ? 1 : 0) + (f.excludeTagIds.length > 0 ? 1 : 0)
+    + (f.ratingMin != null ? 1 : 0) + (f.dateFrom || f.dateTo ? 1 : 0);
+}
+/** Sorts that order by a date, the only ones a date group can follow. */
+const MO_DATE_SORTS = new Set(['created_at', 'taken_at', 'file_mod_time']);
+/**
+ * The feed's date group for an item, coarser than the grid's day headers so a
+ * feed is not cut into a section per day: today, yesterday, earlier this
+ * week (Sunday start, as the planner), then one group per month.
+ */
+function moFeedGroupKey(item, sortBy, now) {
+  const raw = sortBy === 'taken_at' ? (item.takenAt || item.createdAt) : item.createdAt;
+  if (!raw) return 'none';
+  const d = new Date(String(raw).slice(0, 10) + 'T00:00:00');
+  if (isNaN(d.getTime())) return 'none';
+  const today = now ? new Date(now) : new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((today.getTime() - d.getTime()) / 86400000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days > 1 && days <= today.getDay()) return 'week';
+  return `m:${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function moFeedGroupLabel(key) {
+  if (key === 'today') return 'Today';
+  if (key === 'yesterday') return 'Yesterday';
+  if (key === 'week') return 'Earlier this week';
+  if (key === 'none') return 'No date';
+  const m = /^m:(\d{4})-(\d{2})$/.exec(key);
+  if (!m) return key;
+  return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
 /** The kind a media-type filter narrows the photos query to: stills, GIFs, or nothing. */
 function moKindForMediaType(mediaType) {
   return mediaType === 'gifs' ? 'gif' : (mediaType === 'photos' ? 'still' : null);
@@ -11275,6 +11363,42 @@ function renderGridBrowser(container, api, input) {
     state.sortDir = 'DESC';
   }
 
+  // ── Page header ──
+  // The kit's page header: what this view is and how much is in it, the one
+  // main action (Add Folder…) and the rarer library actions behind ⋯.
+  const pageHeader = api.ui.createPageHeader(root, {
+    title: moScopeTitle(filterType),
+    subtitle: '\u00a0',
+    primary: {
+      label: 'Add Folder…', icon: 'plus', title: 'Add a folder of photos and videos to the library',
+      onClick: () => { api.commands.executeCommand('media-organizer.scan').catch(() => {}); },
+    },
+    more: [
+      { label: 'Rescan Library', icon: 'refresh-cw', onSelect: () => { api.commands.executeCommand('media-organizer.rescan').catch(() => {}); } },
+      { label: 'Find Duplicates', icon: 'copy', onSelect: () => { api.commands.executeCommand('media-organizer.findDuplicates').catch(() => {}); } },
+      { label: 'Save As Smart Album', icon: 'bookmark', onSelect: () => { api.commands.executeCommand('media-organizer.saveSmartAlbum').catch(() => {}); } },
+      { separator: true },
+      { label: 'Keyboard Shortcuts', icon: 'keyboard', onSelect: () => { api.commands.executeCommand('media-organizer.showShortcuts').catch(() => {}); } },
+    ],
+  });
+  pageHeader.classList.add('mo-page-header');
+  const pageTitleEl = pageHeader.querySelector('.px-page-header__title');
+  const pageSubtitleEl = pageHeader.querySelector('.px-page-header__subtitle');
+  // A tag or folder scope is titled by its name, which needs a lookup.
+  if (filterId != null && (filterType === 'tag' || filterType === 'folder')) {
+    const q = filterType === 'tag' ? TagQueries.findById(filterId) : FolderQueries.findById(filterId);
+    q.then((row) => {
+      if (!row || !pageTitleEl) return;
+      pageTitleEl.textContent = filterType === 'tag' ? row.name : moFolderName(row.path);
+      if (filterType === 'folder') pageTitleEl.title = row.path;
+    }).catch(() => {});
+  }
+  function updateHeaderCount(total) {
+    if (!pageSubtitleEl) return;
+    const filtered = moActiveFilterCount(state) > 0 || !!(searchInput && searchInput.value.trim());
+    pageSubtitleEl.textContent = `${total} ${total === 1 ? 'item' : 'items'}${filtered ? ' match' : ''}`;
+  }
+
   // ── Toolbar ──
   const toolbar = moEl('div', 'mo-toolbar');
   root.appendChild(toolbar);
@@ -11285,7 +11409,8 @@ function renderGridBrowser(container, api, input) {
   // to clear it. The instance-filter chip is read-only — to leave it the
   // user navigates to a different entry in the sidebar.
   const chipBar = moEl('div', 'mo-filter-chip-bar');
-  chipBar.style.cssText = 'display:none;flex-wrap:wrap;gap:4px;padding:4px 8px;border-bottom:1px solid var(--vscode-panel-border,transparent);';
+  chipBar.setAttribute('aria-label', 'Active filters');
+  chipBar.style.display = 'none';
   root.appendChild(chipBar);
 
   // The row answers one question per group, left to right: what am I
@@ -11377,7 +11502,7 @@ function renderGridBrowser(container, api, input) {
   }
   function syncTypeChips() { for (const [k, el] of typeChips) el.classList.toggle('active', state.mediaType === k); }
   syncTypeChips();
-  toolbar.appendChild(moEl('span', 'mo-toolbar-spacer'));
+  toolbar.appendChild(typeGroup);
 
   // How it's sorted: one menu. The field, the direction, Group By Date, and
   // Shuffle Again while the order is Shuffled.
@@ -11388,7 +11513,7 @@ function renderGridBrowser(container, api, input) {
   const sortBtn = moEl('button', 'mo-toolbar-btn mo-menu-btn', { type: 'button', title: 'Sort and group' });
   sortBtn.setAttribute('aria-haspopup', 'menu');
   const sortLabel = moEl('span', 'mo-menu-btn-label');
-  sortBtn.append(sortLabel, moEl('span', 'mo-menu-btn-caret', { innerHTML: moIcon('chevron-down', 10) }));
+  sortBtn.append(moEl('span', 'mo-menu-btn-icon', { innerHTML: moIcon('arrow-down-wide-narrow', 14) }), sortLabel, moEl('span', 'mo-menu-btn-caret', { innerHTML: moIcon('chevron-down', 10) }));
   function updateSortUi() {
     const f = SORT_FIELDS.find(([v]) => v === state.sortBy);
     sortLabel.textContent = f ? f[1] : 'Date Added';
@@ -11415,14 +11540,14 @@ function renderGridBrowser(container, api, input) {
   sortBtn.addEventListener('click', () => {
     const r = sortBtn.getBoundingClientRect();
     const shuffled = state.sortBy === 'shuffle';
-    const feed = state.displayMode === 'feed';
+    const dateSort = MO_DATE_SORTS.has(state.sortBy);
     showContextMenu(r.left, r.bottom + 4, [
       ...SORT_FIELDS.map(([value, label]) => ({ label, checked: state.sortBy === value, handler: () => setSort(value) })),
       { separator: true },
       { label: 'Ascending', checked: !shuffled && state.sortDir === 'ASC', disabled: shuffled, handler: () => setSortDir('ASC') },
       { label: 'Descending', checked: !shuffled && state.sortDir === 'DESC', disabled: shuffled, handler: () => setSortDir('DESC') },
       { separator: true },
-      { label: 'Group By Date', checked: state.groupBy === 'date', disabled: feed, title: feed ? 'A feed has no day headers' : 'Day headers, in the order the sort gives', handler: () => setGroupBy(state.groupBy === 'date' ? 'none' : 'date') },
+      { label: 'Group By Date', checked: state.groupBy === 'date', disabled: !dateSort, title: dateSort ? 'Date headers, in the order the sort gives' : 'Sort by a date to group by it', handler: () => setGroupBy(state.groupBy === 'date' ? 'none' : 'date') },
       ...(shuffled ? [{ separator: true }, { label: 'Shuffle Again', handler: () => { state.shuffleSeed = Math.floor(Math.random() * 2147483647); state.currentPage = 1; loadPage(); } }] : []),
     ]);
   });
@@ -11455,14 +11580,16 @@ function renderGridBrowser(container, api, input) {
   modeGroup.append(feedModeBtn, gridModeBtn, listModeBtn);
   toolbar.appendChild(modeGroup);
 
-  // Filter toggle button + count badge
-  const filterToggleBtn = moEl('button', 'mo-toolbar-btn', { title: 'Toggle filters' });
-  filterToggleBtn.innerHTML = moIcon('filter', 12);
-  filterToggleBtn.setAttribute('aria-label', 'Toggle filters');
+  // Filters: tags, rating and dates, in the panel this button opens. The
+  // badge counts the ones in use; each also shows as a chip below.
+  const filterToggleBtn = api.ui.createButton(null, { label: 'Filters', icon: 'list-filter', kind: 'secondary', title: 'Filter by tags, rating and date' });
+  filterToggleBtn.classList.add('mo-filters-btn');
+  filterToggleBtn.setAttribute('aria-expanded', 'false');
   const filterBadge = moEl('span', 'mo-filter-badge');
   filterBadge.style.display = 'none';
   filterToggleBtn.appendChild(filterBadge);
-  toolbar.appendChild(filterToggleBtn);
+  toolbar.insertBefore(filterToggleBtn, sortBtn);
+  toolbar.insertBefore(moEl('span', 'mo-toolbar-spacer'), sortBtn);
 
   // The rest of how it's shown: a View popover with zoom, Show Tags On
   // Cards, and Save As Smart Album. None of them earns a place on the row.
@@ -11546,13 +11673,7 @@ function renderGridBrowser(container, api, input) {
   document.addEventListener('mo:show-card-tags-changed', showTagsCfgListener);
 
   function updateFilterBadge() {
-    let count = 0;
-    if (state.filters.tagIds.length > 0) count++;
-    if (state.filters.excludeTagIds.length > 0) count++;
-    if (state.filters.ratingMin != null) count++;
-    if (state.filters.dateFrom) count++;
-    if (state.filters.dateTo) count++;
-    if (state.mediaType && state.mediaType !== 'all') count++;
+    const count = moActiveFilterCount(state);
     filterBadge.textContent = count > 0 ? String(count) : '';
     filterBadge.style.display = count > 0 ? '' : 'none';
     renderFilterChips();
@@ -11567,26 +11688,21 @@ function renderGridBrowser(container, api, input) {
       loadFilterTags().then(() => { renderFilterChips(); }).catch(() => {});
     }
     const tagMap = new Map((_filterTagCache || []).map(t => [t.id, t.name]));
+    let clearable = 0;
     const mkChip = (label, onClear) => {
-      const chip = moEl('span', 'mo-filter-chip');
-      chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 6px;font-size:11px;border-radius:10px;background:var(--vscode-badge-background,var(--px-border));color:var(--vscode-badge-foreground,#fff);';
-      chip.appendChild(document.createTextNode(label));
+      // A clearable filter is one button (remove it); the scope chip is plain text.
       if (onClear) {
-        const x = moEl('span', null, { textContent: '\u00D7' });
-        x.style.cssText = 'cursor:pointer;opacity:0.7;font-size:13px;line-height:1;';
-        x.addEventListener('mouseenter', () => { x.style.opacity = '1'; });
-        x.addEventListener('mouseleave', () => { x.style.opacity = '0.7'; });
-        x.addEventListener('click', (e) => { e.stopPropagation(); onClear(); });
-        chip.appendChild(x);
+        clearable++;
+        const chip = moEl('button', 'mo-filter-chip', { type: 'button', title: 'Remove This Filter' });
+        chip.setAttribute('aria-label', `Remove filter: ${label}`);
+        chip.appendChild(moEl('span', null, { textContent: label }));
+        chip.insertAdjacentHTML('beforeend', moIcon('x', 12));
+        chip.addEventListener('click', (e) => { e.stopPropagation(); onClear(); });
+        chipBar.appendChild(chip);
+      } else {
+        chipBar.appendChild(moEl('span', 'mo-filter-chip mo-filter-chip--scope', { textContent: label }));
       }
-      chipBar.appendChild(chip);
     };
-
-    // The media-type filter, clearable like the rest.
-    if (state.mediaType && state.mediaType !== 'all') {
-      const typeLabel = { photos: 'Photos', gifs: 'GIFs', videos: 'Videos' }[state.mediaType] || state.mediaType;
-      mkChip(typeLabel, () => { state.mediaType = 'all'; syncTypeChips(); state.currentPage = 1; loadPage(); });
-    }
 
     // Instance-filter chip (read-only). Derived from filterType / filterId.
     if (filterType && filterType !== 'all') {
@@ -11625,13 +11741,15 @@ function renderGridBrowser(container, api, input) {
       });
     }
     if (state.filters.ratingMin != null) {
-      mkChip(`\u2265 ${state.filters.ratingMin}\u2605`, () => {
+      mkChip(`Rating ${state.filters.ratingMin}+`, () => {
         state.filters.ratingMin = null;
         updateStarBar(); state.currentPage = 1; loadPage();
       });
     }
     if (state.filters.dateFrom || state.filters.dateTo) {
-      const label = `Date: ${state.filters.dateFrom || '…'} → ${state.filters.dateTo || '…'}`;
+      const label = state.filters.dateFrom && state.filters.dateTo
+        ? `${state.filters.dateFrom} to ${state.filters.dateTo}`
+        : (state.filters.dateFrom ? `From ${state.filters.dateFrom}` : `Until ${state.filters.dateTo}`);
       mkChip(label, () => {
         state.filters.dateFrom = null;
         state.filters.dateTo = null;
@@ -11641,6 +11759,9 @@ function renderGridBrowser(container, api, input) {
       });
     }
 
+    if (clearable > 1) {
+      api.ui.createButton(chipBar, { label: 'Clear All', kind: 'ghost', size: 'sm', onClick: () => clearFiltersBtn.click() });
+    }
     chipBar.style.display = chipBar.children.length > 0 ? 'flex' : 'none';
   }
 
@@ -11705,15 +11826,9 @@ function renderGridBrowser(container, api, input) {
   tagSection.appendChild(tagChipList);
   filterPanel.appendChild(tagSection);
 
-  // -- Media type section: the segmented control built with the toolbar --
-  const typeSection = moEl('div', 'mo-filter-section');
-  typeSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Media Type' }));
-  typeSection.appendChild(typeGroup);
-  filterPanel.insertBefore(typeSection, tagSection);
-
   // -- Rating filter section --
   const ratingSection = moEl('div', 'mo-filter-section');
-  ratingSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Min Rating' }));
+  ratingSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Minimum rating' }));
   const starBar = moEl('div', 'mo-star-bar');
   starBar.setAttribute('role', 'radiogroup');
   starBar.setAttribute('aria-label', 'Minimum rating');
@@ -11731,7 +11846,7 @@ function renderGridBrowser(container, api, input) {
 
   // -- Date range section --
   const dateSection = moEl('div', 'mo-filter-section');
-  dateSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Date Range' }));
+  dateSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Date range' }));
   const dateRow = moEl('div', 'mo-filter-date-row');
   const dateFrom = moEl('input', 'mo-filter-date', { type: 'text', placeholder: 'YYYY-MM-DD', title: 'From date' });
   dateFrom.setAttribute('aria-label', 'From date');
@@ -11829,6 +11944,7 @@ function renderGridBrowser(container, api, input) {
     const visible = filterPanel.style.display === 'flex';
     filterPanel.style.display = visible ? 'none' : 'flex';
     filterToggleBtn.classList.toggle('active', !visible);
+    filterToggleBtn.setAttribute('aria-expanded', String(!visible));
     if (!visible) {
       _filterTagCache = null; // refresh so newly-created/renamed tags appear
       loadFilterTags().then(() => { renderTagChips(); try { tagPickerSearch.focus(); } catch { /* ignore */ } });
@@ -12574,6 +12690,7 @@ function renderGridBrowser(container, api, input) {
 
     state.items = items;
     countLabel.textContent = `${totalCount} items`;
+    updateHeaderCount(totalCount);
     updatePagination();
     updateFilterBadge();
 
@@ -12798,6 +12915,8 @@ function renderGridBrowser(container, api, input) {
   feedEmpty.style.display = 'none';
   const feedSentinel = moEl('div', 'mo-feed-sentinel');
   let feedCols = [];
+  let feedColCount = 0;
+  let feedSection = null;   // the date group tiles are going into, while grouped
   let feedLoading = false;
   let feedExhausted = false;
   let feedGen = 0;          // bumped by every restart and unmount: a late page for an old run is dropped
@@ -12806,12 +12925,24 @@ function renderGridBrowser(container, api, input) {
   const feedMounted = () => feedEl.parentNode === gridArea;
   function feedColumnsWanted() {
     const w = feedEl.clientWidth || gridArea.clientWidth || 900;
-    return Math.max(1, Math.min(8, Math.floor((w + FEED_GAP) / (state.zoomWidth + FEED_GAP))));
+    // A narrow pane still gets two columns once each can be 140px wide.
+    const floor = w >= 2 * 140 + FEED_GAP ? 2 : 1;
+    return Math.max(floor, Math.min(8, Math.floor((w + FEED_GAP) / (state.zoomWidth + FEED_GAP))));
+  }
+  // Grouped by date, the feed is a run of sections (a header and its own
+  // columns); tiles arrive in sort order, so each group is contiguous.
+  const feedGrouped = () => state.groupBy === 'date' && MO_DATE_SORTS.has(state.sortBy);
+  function feedMakeCols(host, n) {
+    const cols = [];
+    for (let i = 0; i < n; i++) { const col = moEl('div', 'mo-feed-col'); host.appendChild(col); cols.push({ el: col, height: 0 }); }
+    return cols;
   }
   function feedBuildColumns(n) {
     feedEl.innerHTML = '';
-    feedCols = [];
-    for (let i = 0; i < n; i++) { const col = moEl('div', 'mo-feed-col'); feedEl.appendChild(col); feedCols.push({ el: col, height: 0 }); }
+    feedColCount = n;
+    feedSection = null;
+    feedEl.classList.toggle('mo-feed--grouped', feedGrouped());
+    feedCols = feedGrouped() ? [] : feedMakeCols(feedEl, n);
   }
   function feedRatio(item) {
     const w = Number(item.width);
@@ -12821,15 +12952,29 @@ function renderGridBrowser(container, api, input) {
   }
   // Each tile goes to the shortest column, so a new page never moves what is on screen.
   function feedPlace(tile, item) {
-    let best = feedCols[0];
-    for (const c of feedCols) if (c.height < best.height) best = c;
+    let cols = feedCols;
+    if (feedGrouped()) {
+      const key = moFeedGroupKey(item, state.sortBy);
+      if (!feedSection || feedSection.key !== key) {
+        const label = moFeedGroupLabel(key);
+        const sec = moEl('section', 'mo-feed-group');
+        sec.setAttribute('aria-label', label);
+        const row = moEl('div', 'mo-feed-cols');
+        sec.append(moEl('h2', 'mo-feed-group-header', { textContent: label }), row);
+        feedEl.appendChild(sec);
+        feedSection = { key, cols: feedMakeCols(row, feedColCount) };
+      }
+      cols = feedSection.cols;
+    }
+    let best = cols[0];
+    for (const c of cols) if (c.height < best.height) best = c;
     best.el.appendChild(tile);
     best.height += 1 / feedRatio(item) + 0.04;
   }
   function feedRelayout(force) {
     if (!feedMounted()) return;
     const n = feedColumnsWanted();
-    if (!force && n === feedCols.length) return;
+    if (!force && n === feedColCount) return;
     feedBuildColumns(n);
     for (const it of state.items) if (it._tile) feedPlace(it._tile, it);
   }
@@ -12942,6 +13087,7 @@ function renderGridBrowser(container, api, input) {
       const items = page ? page.items : [];
       state.totalCount = page ? page.totalCount : 0;
       countLabel.textContent = `${state.totalCount} items`;
+      updateHeaderCount(state.totalCount);
       if (!items.length) {
         feedExhausted = true;
         if (state.items.length === 0) {
