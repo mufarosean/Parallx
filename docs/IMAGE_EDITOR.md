@@ -1,6 +1,6 @@
 # Image Editor: a Lightroom-style editor inside Media Organizer
 
-Status: built 2026-09-28, not committed. Mufaro's verdict in the app is owed.
+Status: built 2026-09-28; redesigned 2026-10-01 to the approved mockup.
 
 Media Organizer could store, tag and upscale a photo, but it could not
 change one. A video had a whole editor; a photo had two buttons. This program
@@ -17,11 +17,26 @@ the whole editor, which is what is in the app now.
 **The screen**
 - One Edit Image tab. Edit Image on a photo's tab, in the library's right-click
   menu, or as a command puts that photo in it.
-- A histogram at the top of the panel, with a marker at each end that lights
-  when shadows or highlights are clipped.
-- A tool strip: Edit, Crop And Rotate, Remove, Enhance.
-- A presets panel on the left and a filmstrip of the folder's photos along the
-  bottom. Both can be hidden.
+- Redesigned 2026-10-01 to the mockup Mufaro approved
+  (`docs/mockups/image-editor-redesign.html`, "that works").
+- A top bar: the Presets toggle (P), the photo's name, size and file size, an
+  Edited chip; Undo and Redo; Compare (Hold, which shows the original while
+  pressed, and Split); Zoom (Fit, 50%, 100%, 200%); ⋯ for what is used less
+  (Copy Edit, Paste Edit, Save Edit as Preset…, Show Presets, Show Filmstrip,
+  Reset All Changes…); and Save As Copy with a menu holding Save Over
+  Original…. Every button names itself and its key.
+- A histogram at the top of the panel, with a caption saying how much of the
+  picture is clipped ("No clipping" otherwise). A marker at each end lights
+  above 0.5%; clicking it paints the clipped parts on the photo.
+- Tabs across the panel, labelled: Edit, Crop, Remove, Enhance. A dot on a tab
+  means it holds changes.
+- A presets panel on the left, a small picture of this photo in each look, and
+  a filmstrip of the folder's photos along the bottom. Both can be hidden.
+- A narrow tab: below about 1100 pixels the presets close (P still brings them
+  over the photo) and the filmstrip hides; below about 900 the tabs become
+  icons and Compare and Zoom move into ⋯.
+- A save says what it wrote in a notice on the photo, with Show in Folder and
+  Open, instead of a dialog.
 
 **Edit**
 - Light: Exposure, Contrast, Highlights, Shadows, Whites, Blacks, a Tone Curve
@@ -32,13 +47,23 @@ the whole editor, which is what is in the app now.
 - Effects: Texture, Clarity, Dehaze, Vignette with Midpoint and Feather, Grain
   with Size.
 - Detail: Sharpening with Radius, Noise and Colour Noise (noise reduction).
-- Every slider moves the picture live. Double-clicking a slider or its name
-  returns it to rest, and the number beside it can be typed.
-- Each section has an eye, to see the picture without it, and its own reset.
+- One row per slider: name, track, value. A changed slider shows its name and
+  value highlighted and its track filled from rest. Every slider moves the
+  picture live. Double-clicking a slider or its name returns it to rest, and
+  the number beside it can be typed.
+- Each section's header has an eye, to see the picture without it, and its
+  own reset; a dot means the section holds changes. Tone Curve, Colour Mixer
+  and Colour Grading are sections of their own. Hiding Light also hides the
+  curve, and hiding Colour the mixer and grading (as before).
+- Auto sits in the Light header (Ctrl+U); Pick White Balance (W) and Black And
+  White (V) in the Colour header.
 
 **Crop And Rotate**
-- Shapes: Original, Free, 1:1, 4:5, 5:7, 2:3, 3:4, 9:16, and Swap Orientation.
-- Straighten, Rotate Left and Right, Flip Horizontal and Vertical.
+- Shapes as chips drawn to their proportions, named the way they fall on this
+  photo (a landscape photo shows 3:2, not 2:3), and Swap Orientation.
+- Straighten as a slider and as a dial under the photo (drag; double-click
+  levels it), Rotate Left and Right (Ctrl+[ and Ctrl+]), Flip Horizontal and
+  Vertical. The frame shows its size in pixels.
 - The frame is dragged on the photo, with thirds lines. Straightening a crop
   that was as large as the photo allowed keeps it as large as the turned photo
   allows; one drawn smaller is only ever made smaller, to stay on the photo.
@@ -47,7 +72,11 @@ the whole editor, which is what is in the app now.
 - Brush over a mark and it is erased; the background is rebuilt from what
   surrounds it. Each removal can be undone later, on its own.
 - It runs on this machine. Nothing is sent anywhere.
-- The model is fetched once (198 MB), from the Remove tool.
+- The model is fetched once (198 MB), from the Remove tool, which shows how
+  far along the download is and can cancel it.
+- A list of the removals, each with a small picture, where it is and its size.
+  Clicking one outlines it on the photo; its eye hides it without losing it;
+  × undoes it. Alt and a stroke takes back the removals the stroke covers.
 
 **Remove From Other Photos**
 - A set of photos carries the same logo. Remove it on one, choose Remove From
@@ -91,8 +120,12 @@ the whole editor, which is what is in the app now.
 **Enhance**
 - Upscale lives here: 2x or 4x, Photo or Art model. The enlarging happens when
   the copy is saved, after the rest of the edit.
-- The editor cannot show an enlarged picture, so when the copy is done it opens
-  in a tab of its own.
+- Kind of picture: Photo, or Art and illustration. The size the copy will be
+  is shown, and how long it takes, measured on the first enlargement.
+- Preview Enlarged enlarges the photo as edited and shows it at 100% on the
+  stage, to drag around; Esc closes it. The saved copy also opens in a tab of
+  its own when it is done.
+- When the upscaler is not set up the tab says so and offers to set it up.
 - The Upscale button on a photo's tab is gone. The library keeps Upscale in its
   right-click menu, for several photos at once.
 
@@ -105,7 +138,8 @@ the whole editor, which is what is in the app now.
   and grading; the crop and removals stay with their own photo.
 
 **Comparing**
-- Show Original, and Split View with a divider to drag.
+- Hold (shows the original while pressed; `\` switches it), and Split with a
+  divider to drag and Before and After labels.
 
 **Saving**
 - Save As Copy writes `name-edit.jpg` (PNG stays PNG, an enlarged copy is a
@@ -116,7 +150,7 @@ the whole editor, which is what is in the app now.
   is ever put under another photo: stacks were retired on 2026-09-28 (see
   Stacks retired, below).
 - Save As Copy never changes the original file.
-- Save (Ctrl+S) writes the edit over the original, which it replaces. It asks
+- Save Over Original…, in the Save menu, writes the edit over the original, which it replaces. It asks
   first and says the original cannot be brought back. The photo stays the
   same item in the library, with its tags, albums and rating; its record,
   thumbnail and look-alike hash are brought up to date; the edit is cleared,
@@ -151,8 +185,12 @@ the whole editor, which is what is in the app now.
 | Ctrl+Shift+C, Ctrl+Shift+V | Copy Edit, Paste Edit |
 | Page Up, Page Down | Previous photo, next photo |
 | `[`, `]` | Smaller brush, larger brush |
-| Ctrl+Shift+S | Save As Copy |
-| Ctrl+S | Save, over the original |
+| Ctrl+S or Ctrl+Shift+S | Save As Copy |
+| P, F | Presets, filmstrip |
+| Ctrl+U | Auto |
+| W, V | Pick White Balance, Black And White |
+| Ctrl+[, Ctrl+] | Rotate left, rotate right |
+| Esc | Stop picking, close the enlarged preview |
 
 **Settings**
 - JPEG quality for Save As Copy (default 92).
@@ -229,7 +267,10 @@ as a copy saved from the editor does.
 | The enlarged copy opens in a new tab when it finishes | Mufaro, 2026-09-28 |
 | No button of its own in the Enhance panel | Mufaro, 2026-09-28 (offered, "not necessary") |
 | Save As Copy always, original untouched | Claude; told to Mufaro, not answered. Overruled 2026-09-28: he asked for Save over the original as well |
-| Save asks before it replaces the original; Ctrl+S; JPEG and PNG only | Claude; told to Mufaro |
+| Save asks before it replaces the original; JPEG and PNG only | Claude; told to Mufaro |
+| The redesign: top bar, labelled tabs, one-row sliders, preset pictures, crop dial, removal list, Enhance preview | Mockup by Claude; Mufaro, 2026-10-01 ("that works") |
+| Ctrl+S saves a copy; Save Over Original has no key and sits in the Save menu | Claude, with the redesign; the safe save is the quick one |
+| No Sharpen Faces in Enhance (in the mockup) | Claude: there is no face model in Parallx to run it |
 | The photo tab's Upscale button gives way to Edit Image; the library keeps Upscale | Claude; told to Mufaro, not answered |
 | One editor tab with a filmstrip, not a tab per photo | Claude |
 | The model is fetched by the app, on the user's click, and kept only if its hash matches | Claude; differs from the upscaler, which is fetched by a script the user runs |

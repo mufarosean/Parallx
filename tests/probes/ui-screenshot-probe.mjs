@@ -154,6 +154,11 @@ async function enableMediaOrganizer(page) {
 }
 
 let _currentApp = null;
+// Resize the real window too: the viewport alone does not always follow a second change.
+async function resizeWindow(page, width, height) {
+  if (_currentApp) await _currentApp.evaluate(({ BrowserWindow }, [w, h]) => { const win = BrowserWindow.getAllWindows()[0]; if (win) { win.unmaximize(); win.setContentSize(w, h); } }, [width, height]).catch(() => {});
+  await page.setViewportSize({ width, height }).catch(() => {});
+}
 async function launchApp(appRoot, errors) {
   // Software WebGL (SwiftShader): the container has no GPU, and the image
   // editor draws with WebGL.
@@ -501,13 +506,13 @@ async function imageScene(appRoot, workspace, errors) {
     await page.waitForTimeout(800);
     await shots('-light');
     // A narrow window.
-    await page.setViewportSize({ width: 1000, height: 760 }).catch(() => {});
+    await resizeWindow(page, 1000, 760);
     await page.waitForTimeout(1_000);
     await tool('Edit');
     await scrollPanel(0);
     console.log(`[probe] image narrow: ${await state()}`);
     await shot(page, 'image-narrow-light');
-    await page.setViewportSize({ width: 860, height: 700 }).catch(() => {});
+    await resizeWindow(page, 860, 700);
     await page.waitForTimeout(1_000);
     console.log(`[probe] image narrower: ${await state()}`);
     await shot(page, 'image-narrower-light');
