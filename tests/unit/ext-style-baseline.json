@@ -10,7 +10,7 @@
   },
   "budget": {
     "rawColor": 38,
-    "pxFontSize": 40,
+    "pxFontSize": 38,
     "uppercase": 0,
     "emoji": 5,
     "nativeConfirm": 0,
@@ -45,8 +45,8 @@
     "retiredPurple": 0
   },
   "media-organizer": {
-    "rawColor": 173,
-    "pxFontSize": 138,
+    "rawColor": 208,
+    "pxFontSize": 159,
     "uppercase": 2,
     "emoji": 6,
     "nativeConfirm": 0,
