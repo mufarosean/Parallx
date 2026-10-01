@@ -33006,18 +33006,21 @@ function renderBulkRemove(container, api) {
       if (disposed || at !== seq) return;
       const rowsOf = (rows) => (rows || []).map((r) => ({ id: Number(r.id), name: r.basename })).filter((r) => r.id !== req.exampleId);
       const folder = await db.get('SELECT f.folder_id AS id FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id WHERE pf.photo_id = ? AND pf.is_primary = 1', [req.exampleId]);
-      const pick = `SELECT p.id AS id, f.basename AS basename FROM mo_photos p
+      const pick = `SELECT p.id AS id, f.basename AS basename, p.created_at AS added FROM mo_photos p
         JOIN mo_photos_files pf ON pf.photo_id = p.id AND pf.is_primary = 1
         JOIN mo_files f ON f.id = pf.file_id
         WHERE p.deleted_at IS NULL AND LOWER(f.basename) NOT LIKE '%.gif'`;
+      // Newest added first, so a set just brought in stands together at the top and is ticked as one.
       const inFolder = folder ? await db.all(`${pick} AND f.folder_id = ?
-        ORDER BY f.basename COLLATE NOCASE`, [folder.id]) : [];
+        ORDER BY p.created_at DESC, p.id DESC`, [folder.id]) : [];
       let selected = [];
       const ids = [...new Set((req.selection || []).map(Number).filter((n) => n > 0 && n !== req.exampleId))];
       for (let i = 0; i < ids.length; i += 400) {
         const chunk = ids.slice(i, i + 400);
-        selected = selected.concat(await db.all(`${pick} AND p.id IN (${chunk.map(() => '?').join(',')}) ORDER BY f.basename COLLATE NOCASE`, chunk));
+        selected = selected.concat(await db.all(`${pick} AND p.id IN (${chunk.map(() => '?').join(',')}) ORDER BY p.created_at DESC, p.id DESC`, chunk));
       }
+      // each chunk came back in order; the whole list is put in order once more
+      selected.sort((a, b) => (a.added < b.added) - (a.added > b.added) || b.id - a.id);
       if (disposed || at !== seq) return;
       state.example = example;
       state.lists = { folder: rowsOf(inFolder), selection: rowsOf(selected) };
