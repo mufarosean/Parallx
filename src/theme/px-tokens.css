@@ -116,7 +116,9 @@
   --px-text-secondary:   var(--px-base-70);
   --px-text-muted:       var(--px-base-60);
   --px-text-faint:       var(--px-base-40);
-  --px-text-on-accent:   #ffffff;
+  /* Every theme's own accent is mid-light, where white fails AA; pxAppearance
+     re-picks this per accent (onAccentInk) once the user chooses one. */
+  --px-text-on-accent:   #14161a;
 
   /* Lines — three deliberate roles:
        --px-border        outline of FLOATING surfaces (menus, popovers, cards,

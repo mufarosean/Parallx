@@ -7,6 +7,9 @@ import {
   writeAppearance,
   healAppearanceFromDurable,
   savePreset,
+  onAccentInk,
+  ON_ACCENT_DARK,
+  PX_ACCENTS,
   type PxAppearanceState,
 } from '../../src/theme/pxAppearance';
 
@@ -138,5 +141,40 @@ describe('appearance durable layer', () => {
     writeAppearance({ mode: 'dark', base: 'slate', accent: 'iris' });
     await healAppearanceFromDurable();
     expect(readAppearance().accent).toBe('iris');
+  });
+});
+
+describe('text on accent', () => {
+  function contrast(hex: string, h: number, s: number, l: number): number {
+    const lum = (rgb: number[]) => {
+      const [r, g, b] = rgb.map(v => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const sN = s / 100, lN = l / 100, k = (n: number) => (n + h / 30) % 12;
+    const a = sN * Math.min(lN, 1 - lN);
+    const f = (n: number) => 255 * (lN - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))));
+    const accent = lum([f(0), f(8), f(4)]);
+    const ink = lum([1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)));
+    const [hi, lo] = accent > ink ? [accent, ink] : [ink, accent];
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  it('every curated accent gets ink that meets WCAG AA (4.5:1)', () => {
+    for (const a of PX_ACCENTS) {
+      expect(contrast(onAccentInk(a.h, a.s, a.l), a.h, a.s, a.l), a.id).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('every custom hue gets the better of white or dark ink', () => {
+    for (let h = 0; h < 360; h += 5) {
+      const ink = onAccentInk(h, 58, 62);
+      const other = ink === ON_ACCENT_DARK ? '#ffffff' : ON_ACCENT_DARK;
+      expect(contrast(ink, h, 58, 62)).toBeGreaterThanOrEqual(contrast(other, h, 58, 62));
+    }
+  });
+
+  it('applyAppearance sets the ink inline with the accent', () => {
+    applyAppearance({ mode: 'dark', base: 'slate', accent: 'steel' } as PxAppearanceState);
+    expect(document.documentElement.style.getPropertyValue('--px-text-on-accent')).toBe(ON_ACCENT_DARK);
   });
 });
