@@ -110,7 +110,8 @@ const log = (label, value) => console.log(`[probe] ${label}: ${typeof value === 
 
 async function practiceSidebar(page) {
   return page.evaluate(() => {
-    const sec = document.querySelector('[data-mo-section="drawing-and-painting"]');
+    // Drawing and Painting lives in Studio, shown only while the tools are on.
+    const sec = document.querySelector('[data-mo-studio="art"]');
     if (!sec) return 'no section';
     const items = Array.from(sec.querySelectorAll('.mo-sidebar-item-label')).map((l) => l.textContent);
     return `display=${getComputedStyle(sec).display} items=${items.join(' | ')}`;
@@ -176,7 +177,7 @@ async function main() {
     await page.waitForSelector('.mo-sidebar-item', { timeout: 10_000 });
     await page.waitForTimeout(800);
     log('sidebar gate off', await practiceSidebar(page));
-    log('folders', await page.evaluate(() => Array.from(document.querySelectorAll('[data-mo-section="folders"] .mo-sidebar-item')).map((i) => `${i.querySelector('.mo-sidebar-item-label')?.textContent}:${i.querySelector('.mo-sidebar-item-count')?.textContent || ''}${i.classList.contains('is-offline') ? '(offline)' : ''}`).join(' | ')));
+    log('folders', await page.evaluate(() => Array.from(document.querySelectorAll('[data-mo-browse="folders"] .mo-sidebar-item')).map((i) => `${i.querySelector('.mo-sidebar-item-label')?.textContent}:${i.querySelector('.mo-sidebar-item-count')?.textContent || ''}${i.classList.contains('is-offline') ? '(offline)' : ''}`).join(' | ')));
     log('openHome', await runCommand(page, 'media-organizer.openHome'));
     await page.waitForSelector('.mo-home', { timeout: 15_000 });
     await page.waitForTimeout(1_500);
@@ -197,7 +198,7 @@ async function main() {
     await page.waitForTimeout(1_200);
     log('sidebar gate on', await practiceSidebar(page));
     log('exists checks', await page.evaluate(async () => `root=${await window.parallxElectron.fs.exists('Q:\parallx-offline-root')} file=${await window.parallxElectron.fs.exists('Q:\parallx-offline-root\gone.jpg')}`));
-    log('folders after gate on', await page.evaluate(() => Array.from(document.querySelectorAll('[data-mo-section="folders"] .mo-sidebar-item')).map((i) => `${i.querySelector('.mo-sidebar-item-label')?.textContent}:${i.querySelector('.mo-sidebar-item-count')?.textContent || ''}${i.classList.contains('is-offline') ? '(offline)' : ''}`).join(' | ')));
+    log('folders after gate on', await page.evaluate(() => Array.from(document.querySelectorAll('[data-mo-browse="folders"] .mo-sidebar-item')).map((i) => `${i.querySelector('.mo-sidebar-item-label')?.textContent}:${i.querySelector('.mo-sidebar-item-count')?.textContent || ''}${i.classList.contains('is-offline') ? '(offline)' : ''}`).join(' | ')));
     await page.waitForFunction(() => document.querySelector('.mo-daily') && getComputedStyle(document.querySelector('.mo-daily')).display !== 'none', null, { timeout: 8_000 }).catch(() => {});
     await page.waitForTimeout(1_500);
     log('daily card gate on', await dailyCard(page));
@@ -417,7 +418,7 @@ async function main() {
     await runCommand(page, 'media-organizer.openHome');
     await page.waitForTimeout(1_000);
     log('daily card gate off again', await dailyCard(page));
-    log('folders at end', await page.evaluate(() => Array.from(document.querySelectorAll('[data-mo-section="folders"] .mo-sidebar-item')).map((i) => `${i.querySelector('.mo-sidebar-item-label')?.textContent}:${i.querySelector('.mo-sidebar-item-count')?.textContent || ''}${i.classList.contains('is-offline') ? '(offline)' : ''}`).join(' | ')));
+    log('folders at end', await page.evaluate(() => Array.from(document.querySelectorAll('[data-mo-browse="folders"] .mo-sidebar-item')).map((i) => `${i.querySelector('.mo-sidebar-item-label')?.textContent}:${i.querySelector('.mo-sidebar-item-count')?.textContent || ''}${i.classList.contains('is-offline') ? '(offline)' : ''}`).join(' | ')));
   } finally {
     if (errors.length) {
       console.log(`[probe] ${errors.length} renderer error(s):`);

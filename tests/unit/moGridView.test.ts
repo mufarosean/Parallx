@@ -46,6 +46,10 @@ describe('moGridInstance', () => {
     expect(P.moGridInstance('grid:gifs')).toMatchObject({ filterType: 'all', mediaType: 'gifs' });
     expect(P.moGridInstance('grid:videos')).toMatchObject({ filterType: 'all', mediaType: 'videos' });
   });
+  it('opens a smart album as the whole library in a grid, carrying its id', () => {
+    expect(P.moGridInstance('grid:smart:4')).toEqual({ filterType: 'all', filterId: null, filterTagPath: null, mediaType: null, displayMode: 'grid', smartId: 4 });
+    expect(P.moGridInstance('grid:smart:x').smartId).toBeUndefined();
+  });
 });
 
 describe('moKindForMediaType', () => {

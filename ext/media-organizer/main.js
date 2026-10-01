@@ -5581,57 +5581,78 @@ const MO_CSS = `
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
-/* Each section is a flex column: fixed header (+ optional search), growing
-   body. Expanded sections share the leftover vertical space via an inline
-   flex-grow weight set by the layout manager; collapsed shrink to the header. */
+/* The places to look sit at the top; To sort, Collections and Studio keep
+   their natural height; Browse takes the rest (and the whole sidebar scrolls
+   when it is too short for all of it). */
+.mo-sidebar-top { flex: 0 0 auto; padding: var(--px-space-1) 0 var(--px-space-1); }
 .mo-sidebar-section {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
+  flex: 0 0 auto;
 }
-.mo-sidebar-section.mo-section-collapsed { flex: 0 0 auto; }
-.mo-sidebar-section.mo-section-fixed { flex: 0 0 auto !important; }
+.mo-sidebar-section.mo-section-browse { flex: 1 0 auto; min-height: 260px; }
+.mo-sidebar-section.mo-section-browse.mo-section-collapsed { flex: 0 0 auto; min-height: 0; }
 .mo-sidebar-section.mo-section-fixed > .mo-sidebar-section-body { overflow: visible; }
-/* Section header: the section label (sentence case, 12px/600, secondary),
-   its actions to the right, the fold chevron last. */
+/* Section header: a quiet label on a hairline, with room above it, so a
+   header never reads as a row. Its actions show while the sidebar is pointed
+   at or has focus; the fold chevron leads. */
 .mo-sidebar-section-header {
   display: flex;
   align-items: center;
-  gap: var(--px-space-2);
-  min-height: var(--px-control-h);
-  padding: var(--px-space-2) var(--px-sidebar-inset) var(--px-space-1);
+  gap: var(--px-space-1);
+  height: 30px;
+  margin-top: var(--px-space-2);
+  padding: 0 var(--px-space-2) 0 var(--px-space-3);
+  border-top: 1px solid var(--px-divider);
   flex: 0 0 auto;
-  font-size: var(--px-text-sm);
+  font-size: var(--px-text-xs);
   font-weight: 600;
-  color: var(--px-text-secondary);
+  color: var(--px-text-muted);
   cursor: pointer;
   user-select: none;
 }
-.mo-sidebar-section-header > .svg-icon { color: var(--px-text-muted); }
+.mo-sidebar-section-header:hover { color: var(--px-text-secondary); }
+.mo-sidebar-section-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mo-sidebar-section-header .mo-chevron {
-  margin-left: auto;
+  order: -1;
   display: inline-flex;
-  color: var(--px-text-muted);
+  width: 12px;
+  color: var(--px-text-faint);
   transition: transform var(--px-dur-fast) var(--px-ease);
 }
-.mo-sidebar-header-btns { display: flex; align-items: center; gap: 2px; margin-left: auto; }
-.mo-sidebar-header-btns + .mo-chevron { margin-left: 0; }
+.mo-sidebar-header-btns { display: flex; align-items: center; gap: 2px; margin-left: auto; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
+.mo-sidebar:hover .mo-sidebar-header-btns, .mo-sidebar:focus-within .mo-sidebar-header-btns { opacity: 1; }
 .mo-sidebar-header-btn.is-active { background: var(--px-surface-selected); color: var(--px-text); }
+/* Browse: Folders | Tags, then the chosen list's filter and actions, then the list. */
+.mo-section-browse > .mo-sidebar-section-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding: 0; }
+.mo-section-browse > .mo-sidebar-section-body.collapsed { display: none; }
+.mo-browse-seg { display: flex; flex: 0 0 auto; margin: var(--px-space-1) var(--px-space-2) var(--px-space-2); padding: 2px; background: var(--px-bg-inset); border-radius: var(--px-radius-md); }
+.mo-browse-segbtn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: var(--px-space-1); height: var(--px-control-h-sm); border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text-muted); font: inherit; font-size: var(--px-text-sm); cursor: pointer; }
+.mo-browse-segbtn:hover { color: var(--px-text); }
+.mo-browse-segbtn.is-on { background: var(--px-surface-active); color: var(--px-text); font-weight: 600; box-shadow: var(--px-shadow-sm); }
+.mo-browse-segbtn:focus-visible { outline: 2px solid var(--px-accent); outline-offset: -2px; }
+.mo-browse-segcount { font-size: var(--px-text-2xs); font-weight: 400; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.mo-browse-pane { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.mo-browse-bar { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; margin: 0 var(--px-space-2) var(--px-space-1) var(--px-space-2); }
+.mo-browse-bar .mo-sidebar-search-wrap { flex: 1 1 auto; min-width: 0; margin: 0; }
+.mo-browse-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: var(--px-space-1); }
+/* The trash, at the foot. */
+.mo-sidebar-foot { flex: 0 0 auto; border-top: 1px solid var(--px-divider); padding: var(--px-space-1) 0; }
+.mo-sidebar-foot .mo-sidebar-item-label { color: var(--px-text-secondary); }
+/* A line of help where a list is empty. */
+.mo-sidebar-hint { font-size: var(--px-text-xs); line-height: 1.45; color: var(--px-text-faint); padding: 2px var(--px-space-3) var(--px-space-2) calc(var(--px-space-3) + 16px); }
 .mo-tag-section-count { font-weight: 400; color: var(--px-text-muted); }
-/* The Folders and Tags filter field, under its header. */
+/* The filter field, in the Browse bar. */
 .mo-sidebar-search-wrap { position: relative; margin: 2px var(--px-sidebar-inset) var(--px-space-1); }
 .mo-sidebar-search-wrap .mo-sidebar-search { width: 100%; height: var(--px-control-h-sm); box-sizing: border-box; padding: 0 var(--px-space-6) 0 var(--px-space-2); font-size: var(--px-text-sm); }
 .mo-sidebar-search-clear { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text-muted); cursor: pointer; }
 .mo-sidebar-search-clear:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .mo-sidebar-section-header.collapsed .mo-chevron { transform: rotate(-90deg); }
 .mo-sidebar-section-body {
-  padding: 2px 0;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
+  padding: 2px 0 var(--px-space-1);
 }
 .mo-sidebar-section-body.collapsed { display: none; }
 /* Resize handle between two expanded sections (VS Code Explorer sash).
@@ -5708,8 +5729,14 @@ kbd.mo-key {
 }
 .mo-sidebar-item .mo-icon-wrap { color: var(--px-text-secondary); }
 .mo-sidebar-item:hover { background: var(--px-surface-hover); }
+/* The row whose view is in front. */
+.mo-sidebar-item.is-current { background: var(--px-surface-selected); }
+.mo-sidebar-item.is-current .mo-sidebar-item-label { color: var(--px-text); font-weight: 600; }
+.mo-sidebar-item.is-current .mo-icon-wrap { color: var(--px-accent-text); }
+/* A job with nothing left in it. */
+.mo-sidebar-item.is-quiet .mo-sidebar-item-label { color: var(--px-text-muted); }
 .mo-sidebar-item:focus-visible { outline: 2px solid var(--px-accent); outline-offset: -2px; }
-.mo-sidebar-item-caption { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.mo-sidebar-item-caption { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--px-text-xs); color: var(--px-text-faint); }
 .mo-sidebar-item-count.mo-sidebar-item-badge { min-width: 16px; height: 16px; padding: 0 5px; border-radius: var(--px-radius-full); background: var(--px-accent-soft); color: var(--px-accent-text); font-size: var(--px-text-2xs); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
 .mo-sidebar-item.mo-drop-target { background: var(--vscode-list-dropBackground, rgba(0,100,200,0.18)); outline: 1px dashed var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 .mo-sidebar-item-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -5723,7 +5750,7 @@ kbd.mo-key {
 }
 .mo-sidebar-item .mo-icon-wrap { flex-shrink: 0; display: flex; align-items: center; }
 /* M59 P9 / F13 — Hierarchical album rows */
-.mo-sidebar-item.mo-album-row { padding-left: 16px; }
+
 .mo-album-chevron {
   display: inline-flex;
   align-items: center;
@@ -10392,97 +10419,19 @@ function renderBrowserSidebar(container, api) {
   const sections = moEl('div', 'mo-sidebar-sections');
   root.appendChild(sections);
 
-  // ── Resizable sections (VS Code Explorer-style) ───────────────────────────
-  // Expanded sections share the leftover vertical space via a flex-grow
-  // "weight" (≈ pixel height). Sashes between adjacent expanded sections let
-  // the user drag space between them. Weights + collapsed state persist in
-  // mo_settings under 'sidebar_layout' so the layout survives reloads.
+  // ── Sections ─────────────────────────────────────────────────────────────
+  // The places to look sit at the top with no header; To sort, Collections and
+  // Studio keep their natural height; Browse (Folders | Tags) takes the rest,
+  // so no two long lists squeeze each other. Folded sections are remembered
+  // in mo_settings under 'sidebar_layout'.
   const _moSectionRegistry = []; // { id, section, header, body }
-  const _moSectionWeights = {};  // id -> flex-grow weight (≈ px)
-  const _MO_SECTION_DEFAULT_W = { 'quick-filters': 200, 'folders': 240, 'tags': 300, 'albums': 240 };
-  const _MO_SECTION_MIN_PX = 64;
   let _moLayoutPersistTimer = null;
 
   const _moSlug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const _moIsCollapsed = (rec) => rec.header.classList.contains('collapsed');
 
   function applySidebarLayout() {
-    for (const s of sections.querySelectorAll('.mo-sidebar-sash')) s.remove();
-
-    for (const rec of _moSectionRegistry) {
-      const collapsed = _moIsCollapsed(rec);
-      rec.section.classList.toggle('mo-section-collapsed', collapsed);
-      if (collapsed) {
-        rec.section.style.flex = '0 0 auto';
-        rec.section.style.flexGrow = '';
-      } else {
-        const w = _moSectionWeights[rec.id] ?? _MO_SECTION_DEFAULT_W[rec.id] ?? 200;
-        _moSectionWeights[rec.id] = w;
-        rec.section.style.flex = '';
-        rec.section.style.flexGrow = String(w);
-        rec.section.style.flexShrink = '1';
-        rec.section.style.flexBasis = '0';
-        rec.body.style.maxHeight = 'none'; // override the legacy 260px cap
-      }
-    }
-
-    // A sash sits between each expanded section and the next expanded one.
-    for (let i = 0; i < _moSectionRegistry.length; i++) {
-      if (_moIsCollapsed(_moSectionRegistry[i])) continue;
-      let j = -1;
-      for (let k = i + 1; k < _moSectionRegistry.length; k++) {
-        if (!_moIsCollapsed(_moSectionRegistry[k])) { j = k; break; }
-      }
-      if (j === -1) break;
-      const sash = _buildSidebarSash(_moSectionRegistry[i], _moSectionRegistry[j]);
-      // Place the handle at the top edge of the lower expanded section so it
-      // reads correctly even when a collapsed section sits between the two.
-      _moSectionRegistry[j].section.insertAdjacentElement('beforebegin', sash);
-      i = j - 1; // resume scanning from the lower neighbour
-    }
-  }
-
-  function _buildSidebarSash(aboveRec, belowRec) {
-    const sash = moEl('div', 'mo-sidebar-sash');
-    sash.title = 'Drag to resize';
-    sash.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      sash.classList.add('mo-sash-active');
-      const startY = e.clientY;
-      const wa = _moSectionWeights[aboveRec.id] ?? _MO_SECTION_DEFAULT_W[aboveRec.id] ?? 200;
-      const wb = _moSectionWeights[belowRec.id] ?? _MO_SECTION_DEFAULT_W[belowRec.id] ?? 200;
-      const aboveH = aboveRec.section.getBoundingClientRect().height;
-      const belowH = belowRec.section.getBoundingClientRect().height;
-      // px-per-weight scale so a pixel drag maps 1:1 to the boundary.
-      const kA = aboveH > 0 && wa > 0 ? aboveH / wa : 1;
-      const kB = belowH > 0 && wb > 0 ? belowH / wb : 1;
-      const k = (kA + kB) / 2 || 1;
-      const minW = _MO_SECTION_MIN_PX / k;
-      try { sash.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-      const onMove = (ev) => {
-        const dW = (ev.clientY - startY) / k;
-        let na = wa + dW;
-        let nb = wb - dW;
-        if (na < minW) { nb -= (minW - na); na = minW; }
-        if (nb < minW) { na -= (minW - nb); nb = minW; }
-        _moSectionWeights[aboveRec.id] = na;
-        _moSectionWeights[belowRec.id] = nb;
-        aboveRec.section.style.flexGrow = String(na);
-        belowRec.section.style.flexGrow = String(nb);
-      };
-      const onUp = () => {
-        sash.classList.remove('mo-sash-active');
-        sash.removeEventListener('pointermove', onMove);
-        sash.removeEventListener('pointerup', onUp);
-        sash.removeEventListener('pointercancel', onUp);
-        persistSidebarLayout();
-      };
-      sash.addEventListener('pointermove', onMove);
-      sash.addEventListener('pointerup', onUp);
-      sash.addEventListener('pointercancel', onUp);
-    });
-    return sash;
+    for (const rec of _moSectionRegistry) rec.section.classList.toggle('mo-section-collapsed', _moIsCollapsed(rec));
   }
 
   function persistSidebarLayout() {
@@ -10491,32 +10440,20 @@ function renderBrowserSidebar(container, api) {
       _moLayoutPersistTimer = null;
       const collapsed = {};
       for (const rec of _moSectionRegistry) collapsed[rec.id] = _moIsCollapsed(rec);
-      moSetSetting('sidebar_layout', JSON.stringify({ weights: _moSectionWeights, collapsed })).catch(() => {});
+      moSetSetting('sidebar_layout', JSON.stringify({ collapsed })).catch(() => {});
     }, 250);
   }
 
   async function initSidebarLayout() {
     try {
       const raw = await moGetSetting('sidebar_layout', null);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        if (saved && saved.weights) {
-          for (const [id, w] of Object.entries(saved.weights)) {
-            const n = Number(w);
-            if (Number.isFinite(n) && n > 0) _moSectionWeights[id] = n;
-          }
-        }
-        if (saved && saved.collapsed) {
-          for (const rec of _moSectionRegistry) {
-            const want = saved.collapsed[rec.id];
-            if (want === true && !_moIsCollapsed(rec)) {
-              rec.header.classList.add('collapsed');
-              rec.body.classList.add('collapsed');
-            } else if (want === false && _moIsCollapsed(rec)) {
-              rec.header.classList.remove('collapsed');
-              rec.body.classList.remove('collapsed');
-            }
-          }
+      const saved = raw ? JSON.parse(raw) : null;
+      if (saved && saved.collapsed) {
+        for (const rec of _moSectionRegistry) {
+          const want = saved.collapsed[rec.id];
+          if (typeof want !== 'boolean' || want === _moIsCollapsed(rec)) continue;
+          rec.header.classList.toggle('collapsed', want);
+          rec.body.classList.toggle('collapsed', want);
         }
       }
     } catch { /* fall back to defaults */ }
@@ -10532,11 +10469,13 @@ function renderBrowserSidebar(container, api) {
     });
   }
 
-  function sidebarSection(title, iconName, collapsed) {
+  function sidebarSection(title, collapsed) {
     const section = moEl('div', 'mo-sidebar-section');
     const header = moEl('div', `mo-sidebar-section-header${collapsed ? ' collapsed' : ''}`);
-    header.innerHTML = moIcon(iconName, 12);
-    header.appendChild(moEl('span', null, { textContent: title }));
+    // A quiet label on a hairline, no icon: a header never looks like a row.
+    // The fold chevron is drawn first (CSS order) but stays last in the DOM,
+    // so a section's actions can be put before it.
+    header.appendChild(moEl('span', 'mo-sidebar-section-title', { textContent: title }));
     const chevron = moEl('span', 'mo-chevron', { innerHTML: moIcon('chevron-down', 10) });
     header.appendChild(chevron);
     section.appendChild(header);
@@ -10558,8 +10497,10 @@ function renderBrowserSidebar(container, api) {
     return { section, body };
   }
 
-  function sidebarItem(iconName, label, count, onClick, caption) {
+  function sidebarItem(iconName, label, count, onClick, caption, view) {
     const item = moEl('div', 'mo-sidebar-item');
+    // The editor this row opens, so the row can show when it is the one in front.
+    if (view) item.dataset.view = view;
     const iconWrap = moEl('span', 'mo-icon-wrap', { innerHTML: moIcon(iconName, 14) });
     item.appendChild(iconWrap);
     item.appendChild(moEl('span', 'mo-sidebar-item-label', { textContent: label }));
@@ -10572,162 +10513,268 @@ function renderBrowserSidebar(container, api) {
     return item;
   }
 
-  // Library
-  // What to see is the sidebar's: the library and its cuts. How to see it
-  // (feed, grid or list; all, photos, GIFs or videos) is the view's own toolbar.
-  const { section: qfSection, body: qfBody } = sidebarSection('Library', 'library', false);
-  // A fixed, short list of filters: natural height, never squeezed into a
-  // scroll box by the growing Folders and Tags sections below it.
-  qfSection.classList.add('mo-section-fixed');
-  qfBody.appendChild(sidebarItem('library', 'All Media', null, () => openGrid('all', 'All Media', 'library')));
-  qfBody.appendChild(sidebarItem('circle-help', 'Untagged', null, () => openGrid('untagged', 'Untagged')));
+  // ── The places to look ──
+  // No header: all of it, the favourites, the latest. How to see them (feed,
+  // grid or list; photos, GIFs or videos) is the view's own toolbar.
+  const topNav = moEl('div', 'mo-sidebar-top');
+  const allItem = sidebarItem('library', 'All Media', '', () => openGrid('all', 'All Media', 'library'), null, 'grid:all');
+  const favItem = sidebarItem('star', 'Favorites', '', () => openGrid('favorites', 'Favorites'), null, 'grid:favorites');
+  topNav.append(allItem, favItem, sidebarItem('clock', 'Recent', null, () => openGrid('recent', 'Recent'), null, 'grid:recent'));
+  sections.appendChild(topNav);
+
+  // ── To sort ──
+  // The jobs, each with what is left of it. A job with nothing left goes quiet.
+  const { section: sortSection, body: sortBody } = sidebarSection('To sort', false);
+  sortSection.classList.add('mo-section-fixed');
+  const untaggedItem = sidebarItem('circle-help', 'Untagged', '', () => openGrid('untagged', 'Untagged'), null, 'grid:untagged');
   // AI tagging (Section 43): the review list, counting photos waiting or to review.
   // The app's AI mark, as everywhere something calls the AI; the count is a badge.
-  const tagReviewItem = sidebarItem('px-ai-mark', 'Tag Review', null, () => moOpenTagReview(api));
+  const tagReviewItem = sidebarItem('px-ai-mark', 'Tag Review', null, () => moOpenTagReview(api), null, 'tag-review');
   const tagReviewCount = moEl('span', 'mo-sidebar-item-count mo-sidebar-item-badge');
   tagReviewItem.appendChild(tagReviewCount);
-  qfBody.appendChild(tagReviewItem);
+  const dupItem = sidebarItem('copy', 'Duplicates', '', () => openGrid('duplicates', 'Duplicates'), null, 'grid:duplicates');
+  sortBody.append(untaggedItem, tagReviewItem, dupItem);
+  sections.appendChild(sortSection);
   const refreshTagReviewCount = () => {
     moTagCounts().then((c) => {
       const n = c.queued + c.running + c.pending + c.nomatch + c.failed;
       tagReviewCount.textContent = n ? String(n) : '';
+      tagReviewItem.classList.toggle('is-quiet', !n);
     }).catch(() => {});
   };
   document.addEventListener('mo:ai-tag-changed', refreshTagReviewCount);
   refreshTagReviewCount();
-  qfBody.appendChild(sidebarItem('star', 'Favorites', null, () => openGrid('favorites', 'Favorites')));
-  qfBody.appendChild(sidebarItem('clock', 'Recent', null, () => openGrid('recent', 'Recent')));
-  qfBody.appendChild(sidebarItem('copy', 'Duplicates', null, () => openGrid('duplicates', 'Duplicates')));
-  qfBody.appendChild(sidebarItem('trash', 'Trash', null, () => openGrid('trash', 'Trash')));
-  sections.appendChild(qfSection);
 
-  // Clip projects (docs/CLIPS.md, Phase 2): videos gathered for editing, kept
-  // with every edit until the project is deleted.
-  const { section: cpSection, body: cpBody } = sidebarSection('Clip Projects', 'clapperboard', false);
-  cpSection.classList.add('mo-section-fixed');
-  cpBody.classList.add('mo-cp-sidebar');
+  // ── Collections ──
+  // What was gathered to look at: albums, and smart albums (saved searches).
+  const { section: colSection, body: colBody } = sidebarSection('Collections', false);
+  colSection.classList.add('mo-section-fixed');
+  const albumBody = moEl('div', 'mo-collections-albums');
+  const smartBody = moEl('div', 'mo-collections-smart');
+  const colEmpty = moEl('div', 'mo-sidebar-hint mo-hidden', { textContent: 'No albums yet. Use + to start one, or save a search as a smart album.' });
+  colBody.append(albumBody, smartBody, colEmpty);
   {
-    const cpHeader = cpSection.querySelector('.mo-sidebar-section-header');
-    const cpChevron = cpHeader.querySelector('.mo-chevron');
-    const cpBtns = moEl('div', 'mo-sidebar-header-btns');
-    const cpNewBtn = moSidebarHeaderBtn(api, 'plus', 'New Clip Project\u2026');
-    cpNewBtn.addEventListener('click', (e) => { e.stopPropagation(); void moNewClipProject(api, []); });
-    cpBtns.appendChild(cpNewBtn);
-    if (cpChevron) cpHeader.insertBefore(cpBtns, cpChevron); else cpHeader.appendChild(cpBtns);
+    const colHeader = colSection.querySelector('.mo-sidebar-section-header');
+    const colBtns = moEl('div', 'mo-sidebar-header-btns');
+    const colNewBtn = moSidebarHeaderBtn(api, 'plus', 'New Collection');
+    colNewBtn.addEventListener('click', () => {
+      const r = colNewBtn.getBoundingClientRect();
+      showContextMenu(r.left, r.bottom + 2, [
+        { label: 'New Album…', icon: 'album', handler: () => api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'New Album', icon: 'album', instanceId: 'album:new' }) },
+        { label: 'Save Current Search as Smart Album…', icon: 'bookmark', handler: () => { api.commands.executeCommand('media-organizer.saveSmartAlbum').catch(() => {}); } },
+      ]);
+    });
+    colBtns.appendChild(colNewBtn);
+    colHeader.insertBefore(colBtns, colHeader.querySelector('.mo-chevron'));
   }
+  sections.appendChild(colSection);
+  const syncCollectionsEmpty = () => {
+    const none = !albumBody.querySelector('.mo-sidebar-item') && !smartBody.querySelector('.mo-sidebar-item');
+    colEmpty.classList.toggle('mo-hidden', !none);
+  };
+  async function loadSmartAlbums() {
+    let rows = [];
+    try { rows = await db.all('SELECT id, name FROM mo_smart_albums ORDER BY name COLLATE NOCASE ASC'); } catch { rows = []; }
+    smartBody.innerHTML = '';
+    for (const r of rows || []) {
+      const open = () => api.editors.openEditor({ typeId: 'media-organizer-grid', title: r.name, icon: 'bookmark', instanceId: `grid:smart:${r.id}` });
+      const item = sidebarItem('bookmark', r.name, null, open, 'Smart', `grid:smart:${r.id}`);
+      item.title = `${r.name}: a saved search`;
+      item.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showContextMenu(e.clientX, e.clientY, [
+          { label: 'Open', handler: open },
+          { label: 'Rename…', handler: async () => {
+            const next = await api.window.showInputBox({ prompt: 'Rename the smart album', value: r.name });
+            if (next == null || !next.trim() || next.trim() === r.name) return;
+            try { await db.run('UPDATE mo_smart_albums SET name = ?, updated_at = datetime(\'now\') WHERE id = ?', [next.trim(), r.id]); } catch (err) { api.window.showErrorMessage('Could not rename: ' + (err && err.message || err)); }
+            void loadSmartAlbums();
+          } },
+          { separator: true },
+          { label: 'Delete Smart Album', danger: true, title: 'Only the saved search is deleted; no photo is touched', handler: async () => {
+            try { await db.run('DELETE FROM mo_smart_albums WHERE id = ?', [r.id]); } catch { /* ignore */ }
+            void loadSmartAlbums();
+          } },
+        ]);
+      });
+      smartBody.appendChild(item);
+    }
+    syncCollectionsEmpty();
+    syncCurrentRow();
+  }
+  document.addEventListener('mo:smart-albums-changed', () => void loadSmartAlbums());
+
+  // ── Studio ──
+  // What is being made: clip projects (docs/CLIPS.md), and the drawing and
+  // painting tools while they are on (decision D7).
+  const { section: studioSection, body: studioBody } = sidebarSection('Studio', false);
+  studioSection.classList.add('mo-section-fixed');
+  const cpBody = moEl('div', 'mo-cp-sidebar');
+  const artBody = moEl('div', 'mo-studio-art', { 'data-mo-studio': 'art' });
+  const studioEmpty = moEl('div', 'mo-sidebar-hint mo-hidden', { textContent: 'No clip projects yet. Select videos and choose New Clip Project…, or use +.' });
+  studioBody.append(cpBody, artBody, studioEmpty);
+  {
+    const stHeader = studioSection.querySelector('.mo-sidebar-section-header');
+    const stBtns = moEl('div', 'mo-sidebar-header-btns');
+    const cpNewBtn = moSidebarHeaderBtn(api, 'plus', 'New Clip Project…');
+    cpNewBtn.addEventListener('click', () => { void moNewClipProject(api, []); });
+    stBtns.appendChild(cpNewBtn);
+    stHeader.insertBefore(stBtns, stHeader.querySelector('.mo-chevron'));
+  }
+  artBody.append(
+    sidebarItem('sun', 'Daily Study', null, () => void moStartDailyStudy(api)),
+    sidebarItem('timer', 'Practice Session', null, () => moOpenPracticeSetup(api), null, 'practice:setup'),
+    sidebarItem('palette', 'Painting Plans', null, () => moOpenPlansList(api), null, 'plans:list'),
+  );
+  const syncStudioEmpty = () => { studioEmpty.classList.toggle('mo-hidden', !!cpBody.firstChild || _artToolsEnabled); };
+  const syncPractice = () => { artBody.classList.toggle('mo-hidden', !_artToolsEnabled); syncStudioEmpty(); };
+  syncPractice();
+  document.addEventListener('mo:art-tools-changed', syncPractice);
   async function loadClipProjects() {
     let rows = [];
     try { rows = await MoClipProjects.list(); } catch { rows = []; }
     cpBody.innerHTML = '';
-    if (!rows.length) {
-      cpBody.appendChild(sidebarItem('plus', 'New Clip Project\u2026', null, () => void moNewClipProject(api, [])));
-      return;
-    }
     for (const p of rows) {
-      const item = sidebarItem('clapperboard', p.name, p.source_count || null, () => void moOpenClipProject(api, p.id, p.name));
+      const item = sidebarItem('clapperboard', p.name, p.source_count || null, () => void moOpenClipProject(api, p.id, p.name), null, MO_CLIP_PROJECT_PREFIX + p.id);
       item.title = `${p.name}: ${p.source_count} video${p.source_count === 1 ? '' : 's'}`;
       item.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         showContextMenu(e.clientX, e.clientY, [
           { label: 'Open', handler: () => void moOpenClipProject(api, p.id, p.name) },
-          { label: 'Rename\u2026', handler: async () => {
+          { label: 'Rename…', handler: async () => {
             const next = await api.window.showInputBox({ prompt: 'Rename the clip project', value: p.name });
             if (next != null && next.trim() && next.trim() !== p.name) {
               try { await MoClipProjects.rename(p.id, next.trim()); } catch (err) { api.window.showErrorMessage('Could not rename: ' + (err && err.message || err)); }
             }
           } },
           { separator: true },
-          { label: 'Delete Project\u2026', danger: true, handler: () => void moDeleteClipProject(api, p.id, p.name) },
+          { label: 'Delete Project…', danger: true, handler: () => void moDeleteClipProject(api, p.id, p.name) },
         ]);
       });
       cpBody.appendChild(item);
     }
+    syncStudioEmpty();
+    syncCurrentRow();
   }
   document.addEventListener('mo:clip-projects-changed', () => void loadClipProjects());
   void loadClipProjects();
-  sections.appendChild(cpSection);
+  sections.appendChild(studioSection);
 
-  // Drawing and Painting (M104): practice and painting plans. Shown only while
-  // Drawing and Painting Tools is on (decision D7).
-  const { section: prSection, body: prBody } = sidebarSection('Drawing and Painting', 'paintbrush', false);
-  prBody.appendChild(sidebarItem('sun', 'Daily Study', null, () => void moStartDailyStudy(api)));
-  prBody.appendChild(sidebarItem('timer', 'Practice Session', null, () => moOpenPracticeSetup(api)));
-  prBody.appendChild(sidebarItem('palette', 'Painting Plans', null, () => moOpenPlansList(api)));
-  const syncPractice = () => { prSection.style.display = _artToolsEnabled ? '' : 'none'; };
-  syncPractice();
-  document.addEventListener('mo:art-tools-changed', syncPractice);
-  sections.appendChild(prSection);
+  // ── Browse ──
+  // Folders | Tags: one list at a time, taking the rest of the height, with
+  // its filter always there. The choice is remembered.
+  const { section: browseSection, body: browseBody } = sidebarSection('Browse', false);
+  browseSection.classList.add('mo-section-browse');
+  sections.appendChild(browseSection);
+  const browseSeg = moEl('div', 'mo-browse-seg', { role: 'tablist', 'aria-label': 'Browse by' });
+  const segBtn = (icon, label) => {
+    const b = moEl('button', 'mo-browse-segbtn', { type: 'button', role: 'tab' });
+    const n = moEl('span', 'mo-browse-segcount');
+    b.append(moEl('span', 'mo-icon-wrap', { innerHTML: moIcon(icon, 13) }), moEl('span', null, { textContent: label }), n);
+    return { b, n };
+  };
+  const { b: folderSegBtn, n: folderCountSpan } = segBtn('folder', 'Folders');
+  const { b: tagSegBtn, n: tagCountSpan } = segBtn('tag', 'Tags');
+  browseSeg.append(folderSegBtn, tagSegBtn);
+  const folderPane = moEl('div', 'mo-browse-pane', { 'data-mo-browse': 'folders' });
+  const folderBar = moEl('div', 'mo-browse-bar');
+  const folderBody = moEl('div', 'mo-browse-list');
+  folderPane.append(folderBar, folderBody);
+  const tagPane = moEl('div', 'mo-browse-pane', { 'data-mo-browse': 'tags' });
+  const tagBar = moEl('div', 'mo-browse-bar');
+  const tagBody = moEl('div', 'mo-browse-list');
+  tagPane.append(tagBar, tagBody);
+  browseBody.append(browseSeg, folderPane, tagPane);
+  let browseMode = 'folders';
+  function setBrowseMode(mode, persist) {
+    browseMode = mode === 'tags' ? 'tags' : 'folders';
+    folderPane.classList.toggle('mo-hidden', browseMode !== 'folders');
+    tagPane.classList.toggle('mo-hidden', browseMode !== 'tags');
+    folderSegBtn.classList.toggle('is-on', browseMode === 'folders');
+    tagSegBtn.classList.toggle('is-on', browseMode === 'tags');
+    folderSegBtn.setAttribute('aria-selected', browseMode === 'folders' ? 'true' : 'false');
+    tagSegBtn.setAttribute('aria-selected', browseMode === 'tags' ? 'true' : 'false');
+    if (persist) moSetSetting('sidebar_browse', browseMode).catch(() => {});
+  }
+  folderSegBtn.addEventListener('click', () => setBrowseMode('folders', true));
+  tagSegBtn.addEventListener('click', () => setBrowseMode('tags', true));
+  setBrowseMode('folders', false);
+  moGetSetting('sidebar_browse', 'folders').then((m) => setBrowseMode(m, false)).catch(() => {});
 
-  // Folders section
-  const { section: folderSection, body: folderBody } = sidebarSection('Folders', 'folder', false);
-  sections.appendChild(folderSection);
-  // Cap height + filter input — parity with the Tags section (#10, #11).
-  folderBody.style.maxHeight = '260px';
-  folderBody.style.overflowY = 'auto';
+  // Folders: filter, Add Folder….
   let folderFilterText = '';
-  let folderSearchOpen = false;
-  const folderHeader = folderSection.querySelector('.mo-sidebar-section-header');
-  const folderChevron = folderHeader.querySelector('.mo-chevron');
-  const mkFolderHeaderBtn = (icon, title) => moSidebarHeaderBtn(api, icon, title);
-  const folderAddBtn = mkFolderHeaderBtn('plus', 'Add Folder…');
+  const folderAddBtn = moSidebarHeaderBtn(api, 'plus', 'Add Folder…');
   folderAddBtn.addEventListener('click', () => { api.commands.executeCommand('media-organizer.scan').catch(() => {}); });
-  const folderSearchBtn = mkFolderHeaderBtn('search', 'Filter Folders');
-  const folderBtnGroup = moEl('div', 'mo-sidebar-header-btns');
-  folderBtnGroup.append(folderAddBtn, folderSearchBtn);
-  if (folderChevron) folderHeader.insertBefore(folderBtnGroup, folderChevron);
-  else folderHeader.appendChild(folderBtnGroup);
   const folderSearchWrap = moEl('div', 'mo-folder-search-wrap mo-sidebar-search-wrap');
-  folderSearchWrap.style.display = 'none';
   const folderSearchInput = moEl('input', 'mo-folder-search mo-sidebar-search', { type: 'text', placeholder: 'Filter folders' });
   folderSearchInput.setAttribute('aria-label', 'Filter folders');
   const folderSearchClearBtn = moEl('button', 'mo-sidebar-search-clear', { type: 'button', title: 'Clear Filter', 'aria-label': 'Clear Filter', innerHTML: moIcon('x', 12) });
   folderSearchClearBtn.style.display = 'none';
-  folderSearchClearBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  const clearFolderFilter = () => {
     folderSearchInput.value = '';
     folderFilterText = '';
     folderSearchClearBtn.style.display = 'none';
     loadFolders();
-    folderSearchInput.focus();
-  });
+  };
+  folderSearchClearBtn.addEventListener('click', (e) => { e.stopPropagation(); clearFolderFilter(); folderSearchInput.focus(); });
   folderSearchInput.addEventListener('input', () => {
     folderFilterText = folderSearchInput.value.trim().toLowerCase();
     folderSearchClearBtn.style.display = folderSearchInput.value ? '' : 'none';
     loadFolders();
   });
   folderSearchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const hadText = !!folderSearchInput.value;
-      folderSearchInput.value = '';
-      folderFilterText = '';
-      folderSearchClearBtn.style.display = 'none';
-      if (!hadText) {
-        folderSearchOpen = false;
-        folderSearchWrap.style.display = 'none';
-        folderSearchBtn.classList.remove('is-active');
-      }
-      loadFolders();
-    }
+    if (e.key !== 'Escape') return;
+    if (folderSearchInput.value) clearFolderFilter(); else folderSearchInput.blur();
   });
-  folderSearchWrap.appendChild(folderSearchInput);
-  folderSearchWrap.appendChild(folderSearchClearBtn);
-  folderSection.insertBefore(folderSearchWrap, folderBody);
-  folderSearchBtn.addEventListener('click', () => {
-    folderSearchOpen = !folderSearchOpen;
-    folderSearchWrap.style.display = folderSearchOpen ? '' : 'none';
-    folderSearchBtn.classList.toggle('is-active', folderSearchOpen);
-    if (folderSearchOpen) folderSearchInput.focus();
-    else if (folderFilterText) {
-      folderSearchInput.value = '';
-      folderFilterText = '';
-      folderSearchClearBtn.style.display = 'none';
-      loadFolders();
-    }
-  });
+  folderSearchWrap.append(folderSearchInput, folderSearchClearBtn);
+  folderBar.append(folderSearchWrap, folderAddBtn);
 
-  // Tags section
-  const { section: tagSection, body: tagBody } = sidebarSection('Tags', 'tag', false);
-  sections.appendChild(tagSection);
+  // The trash, at the foot, out of the way of the places to look.
+  const trashFoot = moEl('div', 'mo-sidebar-foot');
+  const trashItem = sidebarItem('trash', 'Trash', '', () => openGrid('trash', 'Trash'), null, 'grid:trash');
+  trashFoot.appendChild(trashItem);
+  root.appendChild(trashFoot);
+
+  // How many in each place, so a job's size is seen before it is opened.
+  const fmtCount = (n) => (n ? Number(n).toLocaleString() : '');
+  async function refreshCounts() {
+    try {
+      const row = await db.get(`SELECT
+        (SELECT COUNT(*) FROM mo_photos WHERE deleted_at IS NULL) + (SELECT COUNT(*) FROM mo_videos WHERE deleted_at IS NULL) AS total,
+        (SELECT COUNT(*) FROM mo_photos WHERE deleted_at IS NULL AND rating >= 5) + (SELECT COUNT(*) FROM mo_videos WHERE deleted_at IS NULL AND rating >= 5) AS fav,
+        (SELECT COUNT(*) FROM mo_photos p WHERE p.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM mo_photos_tags t WHERE t.photo_id = p.id))
+          + (SELECT COUNT(*) FROM mo_videos v WHERE v.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM mo_videos_tags t WHERE t.video_id = v.id)) AS untagged,
+        (SELECT COUNT(*) FROM mo_photos WHERE deleted_at IS NOT NULL) + (SELECT COUNT(*) FROM mo_videos WHERE deleted_at IS NOT NULL) AS trash`);
+      const dup = await db.get(`SELECT COUNT(DISTINCT pf.photo_id) AS n FROM mo_photos_files pf
+        JOIN mo_photos p ON p.id = pf.photo_id AND p.deleted_at IS NULL
+        JOIN mo_fingerprints f ON f.file_id = pf.file_id AND f.type = 'md5'
+        WHERE f.value IN (SELECT value FROM mo_fingerprints WHERE type = 'md5' GROUP BY value HAVING COUNT(DISTINCT file_id) > 1)`).catch(() => null);
+      const set = (item, n) => {
+        const c = item.querySelector('.mo-sidebar-item-count');
+        if (c) c.textContent = fmtCount(n);
+        item.classList.toggle('is-quiet', !n);
+      };
+      if (row) {
+        set(allItem, row.total); set(favItem, row.fav); set(untaggedItem, row.untagged); set(trashItem, row.trash);
+        allItem.classList.remove('is-quiet'); favItem.classList.remove('is-quiet'); trashItem.classList.remove('is-quiet');
+      }
+      set(dupItem, dup ? dup.n : 0);
+    } catch { /* counts are a help, never a blocker */ }
+  }
+  let countsTimer = null;
+  const refreshCountsSoon = () => { clearTimeout(countsTimer); countsTimer = setTimeout(() => void refreshCounts(), 600); };
+  document.addEventListener('mo:refresh-grid', refreshCountsSoon);
+  void refreshCounts();
+
+  // The row for the editor in front is marked.
+  function syncCurrentRow() {
+    let activeId = '';
+    try { const a = (api.editors.openEditors || []).find((e) => e.isActive); activeId = a ? String(a.id || '') : ''; } catch { activeId = ''; }
+    for (const row of root.querySelectorAll('.mo-sidebar-item[data-view]')) {
+      row.classList.toggle('is-current', !!activeId && activeId.endsWith(':' + row.dataset.view));
+    }
+  }
+  const openEditorsSub = api.editors.onDidChangeOpenEditors ? api.editors.onDidChangeOpenEditors(() => syncCurrentRow()) : null;
 
   async function loadFolders() {
     try {
@@ -10744,8 +10791,9 @@ function renderBrowserSidebar(container, api) {
       // Filter out internal .parallx paths (thumbnail dirs, extension data)
       const filtered = rows.filter(row => !isInternalPath(row.path));
       folderBody.innerHTML = '';
+      folderCountSpan.textContent = filtered.length ? String(filtered.length) : '';
       if (filtered.length === 0) {
-        folderBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No folders scanned yet' }));
+        folderBody.appendChild(moEl('div', 'mo-sidebar-hint', { textContent: 'No folders yet. Add Folder\u2026 (+) brings one in.' }));
         return;
       }
 
@@ -10777,13 +10825,14 @@ function renderBrowserSidebar(container, api) {
         const badge = offline ? 'Offline' : String(row.file_count);
         // The folder's own name, its parent as a caption, the full path on hover.
         const name = moFolderName(row.path) || displayName;
-        const item = sidebarItem('folder', name, badge, () => openGrid(`folder:${row.id}`, name, 'folder'), moFolderParent(row.path));
+        const item = sidebarItem('folder', name, badge, () => openGrid(`folder:${row.id}`, name, 'folder'), moFolderParent(row.path), `grid:folder:${row.id}`);
         item.title = row.path;
         if (offline) { item.classList.add('is-offline'); item.title = 'Offline: the drive or folder is not available right now. Its photos are kept.'; }
         folderBody.appendChild(item);
       }
+      syncCurrentRow();
     } catch {
-      folderBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load folders' }));
+      folderBody.appendChild(moEl('div', 'mo-sidebar-hint', { textContent: 'Could not load folders' }));
     }
   }
 
@@ -10802,42 +10851,14 @@ function renderBrowserSidebar(container, api) {
   ];
   let tagSortIdx = 0;
   let tagFilterText = '';
-  let tagSearchOpen = false;
-
-  const tagHeader = tagSection.querySelector('.mo-sidebar-section-header');
-  const tagChevron = tagHeader.querySelector('.mo-chevron');
-
-  // Total tag count badge next to "Tags" label (#3). Updated by loadTags().
-  const tagCountSpan = moEl('span', 'mo-tag-section-count', { textContent: '' });
-  // Header structure is: [icon, labelSpan, chevron]. Insert after the label.
-  if (tagHeader.children.length >= 2) {
-    tagHeader.insertBefore(tagCountSpan, tagHeader.children[2] || null);
-  }
 
   const mkHeaderBtn = (icon, title) => moSidebarHeaderBtn(api, icon, title);
-
   const tagNewBtn = mkHeaderBtn('plus', 'New Tag\u2026');
-  const tagSearchBtn = mkHeaderBtn('search', 'Filter Tags (/)');
   const tagSortBtn = mkHeaderBtn(tagSortModes[0].icon, tagSortModes[0].tooltip);
-  // Group both buttons in a flush-right wrapper. Avoids fragile margin-auto
-  // interactions with the chevron (which has its own margin-left:auto in CSS).
-  const tagBtnGroup = moEl('div', 'mo-tag-header-btns mo-sidebar-header-btns');
-  tagBtnGroup.appendChild(tagNewBtn);
-  tagBtnGroup.appendChild(tagSearchBtn);
-  tagBtnGroup.appendChild(tagSortBtn);
-  if (tagChevron) {
-    tagHeader.insertBefore(tagBtnGroup, tagChevron);
-  } else {
-    tagHeader.appendChild(tagBtnGroup);
-  }
   tagNewBtn.addEventListener('click', () => {
     // Tag-library entry point: lets users build their taxonomy up front
-    // without first selecting media. Reuses the dedicated dialog so the
-    // create flow is identical whether triggered here or from the Bulk Tag
-    // composer\u2019s inline-create input. NOTE: creating a tag never
-    // changes any visible card (no item has the new tag yet), so we do
-    // NOT dispatch mo:refresh-grid here \u2014 doing so would reload the
-    // grid and reset the user\u2019s scroll position for no reason.
+    // without first selecting media. Creating a tag changes no card, so the
+    // grid is not refreshed (that would reset its scroll for nothing).
     showCreateTagDialog(api, () => { loadTags(); });
   });
   tagSortBtn.addEventListener('click', () => {
@@ -10848,66 +10869,32 @@ function renderBrowserSidebar(container, api) {
     loadTags();
   });
 
-  // Search input wrapped to host a clear-× control (#4). Hidden by default;
-  // toggled via the search icon or the "/" shortcut (#5).
+  // The filter, always there, with a clear-× control.
   const tagSearchWrap = moEl('div', 'mo-tag-search-wrap mo-sidebar-search-wrap');
-  tagSearchWrap.style.display = 'none';
-  const tagSearchInput = moEl('input', 'mo-tag-search mo-sidebar-search', {
-    type: 'text',
-    placeholder: 'Filter tags',
-  });
+  const tagSearchInput = moEl('input', 'mo-tag-search mo-sidebar-search', { type: 'text', placeholder: 'Filter tags (/)' });
   tagSearchInput.setAttribute('aria-label', 'Filter tags');
   const tagSearchClearBtn = moEl('button', 'mo-sidebar-search-clear', { type: 'button', title: 'Clear Filter', 'aria-label': 'Clear Filter', innerHTML: moIcon('x', 12) });
   tagSearchClearBtn.style.display = 'none';
-  tagSearchClearBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  const clearTagFilter = () => {
     tagSearchInput.value = '';
     tagFilterText = '';
     tagSearchClearBtn.style.display = 'none';
     loadTags();
-    tagSearchInput.focus();
-  });
+  };
+  tagSearchClearBtn.addEventListener('click', (e) => { e.stopPropagation(); clearTagFilter(); tagSearchInput.focus(); });
   tagSearchInput.addEventListener('input', () => {
     tagFilterText = tagSearchInput.value.trim().toLowerCase();
     tagSearchClearBtn.style.display = tagSearchInput.value ? '' : 'none';
     loadTags();
   });
   tagSearchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const hadText = !!tagSearchInput.value;
-      tagSearchInput.value = '';
-      tagFilterText = '';
-      tagSearchClearBtn.style.display = 'none';
-      if (!hadText) {
-        tagSearchOpen = false;
-        tagSearchWrap.style.display = 'none';
-        tagSearchBtn.classList.remove('is-active');
-        moSetSetting('tag_search_open', '0').catch(() => {});
-      }
-      loadTags();
-    }
+    if (e.key !== 'Escape') return;
+    if (tagSearchInput.value) clearTagFilter(); else tagSearchInput.blur();
   });
-  tagSearchWrap.appendChild(tagSearchInput);
-  tagSearchWrap.appendChild(tagSearchClearBtn);
-  tagSection.insertBefore(tagSearchWrap, tagBody);
+  tagSearchWrap.append(tagSearchInput, tagSearchClearBtn);
+  tagBar.append(tagSearchWrap, tagSortBtn, tagNewBtn);
 
-  function setTagSearchOpen(open, focus) {
-    tagSearchOpen = !!open;
-    tagSearchWrap.style.display = tagSearchOpen ? '' : 'none';
-    tagSearchBtn.classList.toggle('is-active', tagSearchOpen);
-    moSetSetting('tag_search_open', tagSearchOpen ? '1' : '0').catch(() => {});
-    if (tagSearchOpen && focus) tagSearchInput.focus();
-    if (!tagSearchOpen && tagFilterText) {
-      tagSearchInput.value = '';
-      tagFilterText = '';
-      tagSearchClearBtn.style.display = 'none';
-      loadTags();
-    }
-  }
-  tagSearchBtn.addEventListener('click', () => setTagSearchOpen(!tagSearchOpen, true));
-
-  // Hydrate persisted preferences (#1). UI defaults remain valid until the
-  // async load completes, then we re-render once with the saved settings.
+  // The saved sort; the list loads once it is known.
   (async () => {
     try {
       const savedSort = await moGetSetting('tag_sort_mode', 'az');
@@ -10917,26 +10904,20 @@ function renderBrowserSidebar(container, api) {
         tagSortBtn.title = tagSortModes[tagSortIdx].tooltip;
         tagSortBtn.innerHTML = moIcon(tagSortModes[tagSortIdx].icon, 14);
       }
-      const savedOpen = (await moGetSetting('tag_search_open', '0')) === '1';
-      if (savedOpen) setTagSearchOpen(true, false);
       loadTags();
     } catch { /* defaults already in place */ }
   })();
 
-  // "/" focuses the tag search from anywhere in the sidebar (#5).
+  // "/" from anywhere in the sidebar shows the tags and focuses their filter (#5).
   root.addEventListener('keydown', (e) => {
     if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       e.preventDefault();
-      setTagSearchOpen(true, true);
+      setBrowseMode('tags', true);
+      tagSearchInput.focus();
     }
   });
-
-  // Cap the visible list height so long tag libraries scroll inside the
-  // section instead of pushing Albums / Quick Filters off-screen.
-  tagBody.style.maxHeight = '260px';
-  tagBody.style.overflowY = 'auto';
 
   // buildTagRow: a single tag row in the sidebar. Encapsulates highlight (#2),
   // favorite star (#7), drag-source (#6), keyboard nav (#8), inline rename (#9),
@@ -10998,6 +10979,7 @@ function renderBrowserSidebar(container, api) {
     row.setAttribute('tabindex', '0');
     row.setAttribute('draggable', 'true');
     row.dataset.tagId = String(tag.id);
+    row.dataset.view = `grid:${branchKey}`;
     row.dataset.tagInstance = String(tag.id);
     if (!flat) row.style.paddingLeft = (10 + depth * 14) + 'px';
 
@@ -11244,10 +11226,10 @@ function renderBrowserSidebar(container, api) {
       // the two don't both append to tagBody (the duplication bug).
       if (seq !== _tagLoadSeq) return;
 
-      if (tagCountSpan) tagCountSpan.textContent = allRaw.length ? `(${allRaw.length})` : '';
+      if (tagCountSpan) tagCountSpan.textContent = allRaw.length ? String(allRaw.length) : '';
       if (allRaw.length === 0) {
         tagBody.innerHTML = '';
-        tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No tags created yet' }));
+        tagBody.appendChild(moEl('div', 'mo-sidebar-hint', { textContent: 'No tags yet. New Tag\u2026 (+) makes one.' }));
         return;
       }
 
@@ -11259,7 +11241,7 @@ function renderBrowserSidebar(container, api) {
         const matches = sortTags([...tagById.values()].filter(t => t.name.toLowerCase().includes(tagFilterText)));
         tagBody.innerHTML = '';
         if (matches.length === 0) {
-          tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No tags match filter' }));
+          tagBody.appendChild(moEl('div', 'mo-sidebar-hint', { textContent: 'No tag has that name.' }));
           return;
         }
         for (const tag of matches) tagBody.appendChild(buildTagRow(tag, { flat: true }));
@@ -11334,10 +11316,11 @@ function renderBrowserSidebar(container, api) {
           branchCount: branchCounts[i],
         }));
       }
+      syncCurrentRow();
     } catch (err) {
       if (seq !== _tagLoadSeq) return;
       tagBody.innerHTML = '';
-      tagBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load tags' }));
+      tagBody.appendChild(moEl('div', 'mo-sidebar-hint', { textContent: 'Could not load tags' }));
     }
   }
 
@@ -11462,24 +11445,7 @@ function renderBrowserSidebar(container, api) {
     showContextMenu(x, y, actions);
   }
 
-  // Albums section (D8)
-  const { section: albumSection, body: albumBody } = sidebarSection('Albums', 'folder-library', false);
-  sections.appendChild(albumSection);
-  // Cap height — parity with Tags / Folders (#10).
-  albumBody.style.maxHeight = '320px';
-  albumBody.style.overflowY = 'auto';
-  {
-    const albumHeader = albumSection.querySelector('.mo-sidebar-section-header');
-    const albumChevron = albumHeader.querySelector('.mo-chevron');
-    const newAlbumBtn = moSidebarHeaderBtn(api, 'plus', 'New Album…');
-    newAlbumBtn.addEventListener('click', () => {
-      api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'New Album', icon: 'folder-library', instanceId: 'album:new' });
-    });
-    const albumBtnGroup = moEl('div', 'mo-sidebar-header-btns');
-    albumBtnGroup.appendChild(newAlbumBtn);
-    albumHeader.insertBefore(albumBtnGroup, albumChevron || null);
-  }
-
+  // Albums (D8), in Collections above.
   async function loadAlbums() {
     try {
       // Load all albums in a single query, then build the tree client-side.
@@ -11489,10 +11455,7 @@ function renderBrowserSidebar(container, api) {
       albumBody.innerHTML = '';
 
       const items = result.items || [];
-      if (items.length === 0) {
-        albumBody.appendChild(moEl('div', 'mo-empty', { textContent: 'No albums yet' }));
-        return;
-      }
+      if (items.length === 0) { syncCollectionsEmpty(); return; }
 
       // Build an id→album map plus a parentId→[children] index.
       // Albums whose parent is missing (deleted, foreign, or set-null) are
@@ -11517,6 +11480,7 @@ function renderBrowserSidebar(container, api) {
         counts.set(album.id, countRow ? countRow.total : 0);
       }
 
+      const anyNested = items.some((a) => a.parentAlbumId && byId.has(a.parentAlbumId));
       // Sort each level by title (A → Z) for stable, predictable rendering.
       const cmpAlbumTitle = (a, b) => String(a.title || '').localeCompare(String(b.title || ''));
       for (const list of childrenOf.values()) list.sort(cmpAlbumTitle);
@@ -11539,16 +11503,18 @@ function renderBrowserSidebar(container, api) {
           const hasChildren = grandKids.length > 0;
           const isExpanded = expandedSet.has(album.id);
 
-          const icon = album.folderId ? 'folder' : 'folder-library';
+          const icon = album.folderId ? 'folder' : 'album';
           const itemCount = counts.get(album.id) || 0;
           const badge = itemCount > 0 ? String(itemCount) : null;
 
           const row = moEl('div', 'mo-sidebar-item mo-album-row');
-          row.style.paddingLeft = `${16 + depth * 12}px`;
+          // Lined up with every other row; nested albums step in and carry a fold chevron.
+          row.style.paddingLeft = `calc(var(--px-space-2) + ${depth * 12}px)`;
           row.dataset.albumId = String(album.id);
+          row.dataset.view = `album:${album.id}`;
           row.setAttribute('draggable', 'true');
 
-          const chevron = moEl('span', `mo-album-chevron${hasChildren ? '' : ' mo-leaf'}${isExpanded || !hasChildren ? '' : ' mo-collapsed'}`);
+          const chevron = moEl('span', `mo-album-chevron${hasChildren ? '' : ' mo-leaf'}${isExpanded || !hasChildren ? '' : ' mo-collapsed'}${anyNested ? '' : ' mo-hidden'}`);
           chevron.innerHTML = moIcon('chevron-down', 10);
           row.appendChild(chevron);
 
@@ -11563,7 +11529,7 @@ function renderBrowserSidebar(container, api) {
             api.editors.openEditor({
               typeId: 'media-organizer-grid',
               title: album.title || 'Album',
-              icon: 'folder-library',
+              icon: 'album',
               instanceId: `album:${album.id}`,
             });
           });
@@ -11709,6 +11675,8 @@ function renderBrowserSidebar(container, api) {
       }
 
       renderLevel(null, 0, albumBody);
+      syncCollectionsEmpty();
+      syncCurrentRow();
 
       // Allow dragging an album onto the section body itself (outside any row)
       // to move it to root.
@@ -11733,13 +11701,14 @@ function renderBrowserSidebar(container, api) {
         }
       });
     } catch {
-      albumBody.appendChild(moEl('div', 'mo-empty', { textContent: 'Could not load albums' }));
+      albumBody.appendChild(moEl('div', 'mo-sidebar-hint', { textContent: 'Could not load albums' }));
     }
   }
 
   loadFolders();
   loadTags();
   loadAlbums();
+  void loadSmartAlbums();
 
   // Apply the section layout immediately (defaults — no flash), then hydrate
   // persisted weights/collapsed state and re-apply.
@@ -11750,10 +11719,10 @@ function renderBrowserSidebar(container, api) {
   // footer row for it was the only footer in the workbench's sidebars).
 
   // Register for refresh after scan completes
-  const refreshAll = () => { loadFolders(); loadTags(); loadAlbums(); };
+  const refreshAll = () => { loadFolders(); loadTags(); loadAlbums(); void loadSmartAlbums(); refreshCountsSoon(); };
   _sidebarRefreshCallbacks.push(refreshAll);
 
-  return { dispose() { container.innerHTML = ''; document.removeEventListener('mo:ai-tag-changed', refreshTagReviewCount); document.removeEventListener('mo:art-tools-changed', syncPractice); const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
+  return { dispose() { container.innerHTML = ''; document.removeEventListener('mo:ai-tag-changed', refreshTagReviewCount); document.removeEventListener('mo:art-tools-changed', syncPractice); document.removeEventListener('mo:refresh-grid', refreshCountsSoon); clearTimeout(countsTimer); if (openEditorsSub) openEditorsSub.dispose(); const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -11796,7 +11765,12 @@ function moGridInstance(instanceId) {
     if (filterTagPath.length) filterId = filterTagPath[filterTagPath.length - 1];
   }
   if (filterId != null && !Number.isFinite(filterId)) filterId = null;
-  return { filterType, filterId, filterTagPath, mediaType, displayMode };
+  // A smart album is the whole library with its saved search applied, as a grid.
+  let smartId = null;
+  if (filterType === 'smart') { smartId = filterId; filterType = 'all'; filterId = null; displayMode = 'grid'; }
+  const out = { filterType, filterId, filterTagPath, mediaType, displayMode };
+  if (smartId != null) out.smartId = smartId;
+  return out;
 }
 /** The page title for a grid scope; a tag or folder is renamed once its row loads. */
 function moScopeTitle(filterType) {
@@ -13787,6 +13761,17 @@ function renderGridBrowser(container, api, input) {
     loadPage();
   };
   document.addEventListener('mo:apply-search-state', _smartAlbumApplyHandler);
+  // Opened from a smart album in the sidebar: its saved search, and its name as the title.
+  if (inst.smartId != null) {
+    db.get('SELECT name, query_json FROM mo_smart_albums WHERE id = ?', [inst.smartId]).then((row) => {
+      if (!row) return;
+      if (pageTitleEl) pageTitleEl.textContent = row.name;
+      if (cached) return;
+      let parsed;
+      try { parsed = JSON.parse(row.query_json); } catch { parsed = { query: '', filters: {} }; }
+      _smartAlbumApplyHandler({ detail: parsed });
+    }).catch(() => {});
+  }
 
   // M59 P5: respond to selection requests + grid refresh broadcasts
   const _selectionReplyHandler = () => {
@@ -16804,7 +16789,7 @@ function buildAlbumUI(root, album, api, isNew) {
         api.editors.openEditor({
           typeId: 'media-organizer-grid',
           title: newAlbum.title,
-          icon: 'folder-library',
+          icon: 'album',
           instanceId: `album:${newAlbum.id}`,
         });
       } catch (err) {
@@ -28625,6 +28610,7 @@ async function moSaveSmartAlbum(api, queryStr, currentFilters) {
       [name, payload]
     );
     api.window.showInformationMessage(`Smart album "${name}" saved.`);
+    document.dispatchEvent(new CustomEvent('mo:smart-albums-changed'));
   } catch (err) {
     api.window.showErrorMessage('Save failed: ' + (err && err.message || err));
   }
@@ -28660,6 +28646,7 @@ async function moManageSmartAlbums(api) {
   if (!row) return;
   await db.run('DELETE FROM mo_smart_albums WHERE id = ?', [row.id]);
   api.window.showInformationMessage(`Deleted "${row.name}".`);
+  document.dispatchEvent(new CustomEvent('mo:smart-albums-changed'));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -38940,7 +38927,7 @@ export async function activate(api, context) {
       api.editors.openEditor({
         typeId: 'media-organizer-grid',
         title: 'New Album',
-        icon: 'folder-library',
+        icon: 'album',
         instanceId: 'album:new',
       });
     })
@@ -38965,16 +38952,19 @@ export async function activate(api, context) {
       // Read current grid query state via the active grid editor's exposed state.
       // We reach into the latest cached state by dispatching a custom event the grid listens for.
       const ev = new CustomEvent('mo:request-search-state');
+      let replied = false;
       const handler = (e) => {
+        replied = true;
         document.removeEventListener('mo:reply-search-state', handler);
         const s = e.detail || {};
         moSaveSmartAlbum(api, s.query || '', s.filters || {});
       };
       document.addEventListener('mo:reply-search-state', handler, { once: true });
       document.dispatchEvent(ev);
-      // Fallback if no grid is open
+      // No library view open: say where a search is made.
       setTimeout(() => {
         document.removeEventListener('mo:reply-search-state', handler);
+        if (!replied) api.window.showInformationMessage('Open the library, search or filter it, then save that as a smart album.');
       }, 500);
     })
   );

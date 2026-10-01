@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -390,6 +390,52 @@ async function timelapseScene(appRoot, clip2, errors) {
 
 // The image editor: a folder of photos is scanned, one opens in Edit Image,
 // and each tool is shot (dark, then light, then a narrow window).
+// The Media Organizer sidebar: the places to look, To sort, Collections,
+// Studio and Browse (Folders | Tags), in dark and light, with a view open.
+async function sidebarScene(appRoot, workspace, errors) {
+  const photos = path.join(workspace, 'photos');
+  await fs.mkdir(photos, { recursive: true });
+  for (const [name, lav] of [['a.jpg', 'mandelbrot=s=800x600'], ['b.jpg', 'gradients=s=800x600:speed=0'], ['c.jpg', 'cellauto=s=800x600:rule=110']]) {
+    spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', lav, '-frames:v', '1', '-q:v', '4', path.join(photos, name)]);
+  }
+  const { app, page } = await launchApp(appRoot, errors);
+  try {
+    await enableMediaOrganizer(page);
+    await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }); }, photos);
+    await runCommand(page, ['media-organizer.scan']);
+    await page.waitForTimeout(4_000);
+    await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('.activity-bar-item')).find((b) => Array.from(b.attributes).some((a) => /media.?organizer/i.test(a.value)));
+      if (btn) btn.click();
+    });
+    await page.waitForSelector('.mo-sidebar-item', { timeout: 10_000 }).catch(() => {});
+    await page.waitForTimeout(1_500);
+    const state = () => page.evaluate(() => {
+      const heads = Array.from(document.querySelectorAll('.mo-sidebar-section-header')).map((h) => `${h.querySelector('.mo-sidebar-section-title')?.textContent}${h.classList.contains('collapsed') ? '(folded)' : ''}`);
+      const rows = Array.from(document.querySelectorAll('.mo-sidebar .mo-sidebar-item')).filter((r) => r.offsetParent).map((r) => `${r.querySelector('.mo-sidebar-item-label')?.textContent}${r.querySelector('.mo-sidebar-item-count')?.textContent ? '=' + r.querySelector('.mo-sidebar-item-count').textContent : ''}${r.classList.contains('is-current') ? '*' : ''}${r.classList.contains('is-quiet') ? '~' : ''}`);
+      const seg = Array.from(document.querySelectorAll('.mo-browse-segbtn')).map((b) => `${b.textContent}${b.classList.contains('is-on') ? '*' : ''}`);
+      const hints = Array.from(document.querySelectorAll('.mo-sidebar-hint')).filter((h) => h.offsetParent).map((h) => h.textContent);
+      return `heads=[${heads}] seg=[${seg}] rows=[${rows.join(', ')}] hints=[${hints.join(' / ')}]`;
+    });
+    console.log(`[probe] sidebar: ${await state()}`);
+    await shot(page, 'sidebar');
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-sidebar-item')).find((r) => r.querySelector('.mo-sidebar-item-label')?.textContent === 'All Media')?.click());
+    await page.waitForTimeout(2_500);
+    await page.mouse.move(150, 300);
+    console.log(`[probe] sidebar, All Media open: ${await state()}`);
+    await shot(page, 'sidebar-current');
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-browse-segbtn')).find((b) => /Tags/.test(b.textContent))?.click());
+    await page.waitForTimeout(800);
+    console.log(`[probe] sidebar, tags: ${await state()}`);
+    await shot(page, 'sidebar-tags');
+    await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
+    await page.waitForTimeout(800);
+    await shot(page, 'sidebar-light');
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 async function imageScene(appRoot, workspace, errors) {
   const photos = path.join(workspace, 'photos');
   await fs.mkdir(photos, { recursive: true });
@@ -530,6 +576,17 @@ async function main() {
     await scene('image', () => imageScene(appRoot, workspace, errs));
     const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
     if (real.length) { console.log(`[probe] image: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
+    if (scenes.length === 1) {
+      await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
+      return;
+    }
+  }
+  if (scenes.includes('sidebar')) {
+    const errs = [];
+    await scene('sidebar', () => sidebarScene(appRoot, workspace, errs));
+    const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
+    if (real.length) { console.log(`[probe] sidebar: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
     if (scenes.length === 1) {
       await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
       await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});

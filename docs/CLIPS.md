@@ -193,7 +193,8 @@ clips. Phase 2 makes it a third Media Organizer surface:
    Measured on a 2-hour, 1.2 GB file in the app: seek to 1:02:05 in 13 ms, 34 MB JS
    heap, timeline thumbnails and envelope in 35 s in the background.
 2. **Clip projects in the sidebar (done 2026-10-01).** Media Organizer's sidebar
-   has a Clip Projects section: + makes a project, a click opens it, right-click
+   lists clip projects (in Studio since 2026-10-01, see
+   MEDIA_ORGANIZER_SIDEBAR.md): + makes a project, a click opens it, right-click
    renames or deletes it. A project opens as a page with a bin of its videos down
    the left and the editor on the one that is open. Videos come from Add Videos…
    (a file dialog) or the library's right-click menu (Add to Clip Project, one
