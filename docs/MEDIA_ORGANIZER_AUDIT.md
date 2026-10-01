@@ -264,15 +264,12 @@ The shortcuts sheet (10280–10336) is out of date from work earlier today:
    - Hide Reveal in Media Organizer and Open Clip Editor from the palette
      (1.6), since they need arguments.
    - Fix the "Save Smart Album" and "Trim / Export Clip" wording.
-2. **Decide one way to delete.** My proposal:
-   - Delete moves to Trash, everywhere and on the Delete key. It is
-     reversible and asks nothing.
-   - The Trash view gets Restore and Empty Trash.
-   - Only Empty Trash, or Delete Permanently inside Trash, removes files, and
-     always through `moPurgeMedia`, so Eraser is honoured.
-   - Auto-empty after 30 days does the same, or is switched off, so it can no
-     longer bring photos back (1.2).
-   - The Duplicate Finder's removal moves the extras to Trash too.
+2. **Deleting: decided, no change.** Mufaro, 2026-10-01: "Delete and trash
+   are okay as permanent for now, we should not change this. I prefer a pure
+   delete." Delete stays a permanent delete everywhere, and Trash is not
+   reworked. What step 1 still covers is unchanged: the crashing confirmations
+   (1.1), and the shortcuts sheet, which should say that Delete removes for
+   good instead of "Move selected to Trash".
 3. **Folder management.** A right-click on a folder row:
    - Rescan;
    - Show in Folder;
@@ -299,9 +296,8 @@ The shortcuts sheet (10280–10336) is out of date from work earlier today:
    get selection, menus, sort and layouts. The album's own fields (title,
    description) go in its header.
 
-**Your calls before any of this is built:**
+**Your calls before any of this is built** (Delete settled, step 2):
 
-- whether Delete should go to Trash (step 2);
 - whether Feed should stay the default for All Media (3.5);
 - whether Favorites should mean 5 stars or be its own mark (3.4);
 - whether the screen recorder belongs in Media Organizer at all (3.8).
