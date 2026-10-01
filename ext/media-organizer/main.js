@@ -5935,6 +5935,55 @@ kbd.mo-key {
 .mo-filter-chip-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-1) var(--px-space-2); padding: 0 var(--px-space-6) var(--px-space-3); flex-shrink: 0; }
 .mo-filter-chip { display: inline-flex; align-items: center; gap: var(--px-space-1); height: var(--px-control-h-sm); padding: 0 var(--px-space-1) 0 var(--px-space-3); border: 0; border-radius: var(--px-radius-full); background: var(--px-surface-selected); color: var(--px-text); font: inherit; font-size: var(--px-text-sm); cursor: pointer; }
 .mo-filter-chip .svg-icon { color: var(--px-text-secondary); }
+/* Filter pills: one per filter, under the search. Empty is dashed and names
+   the filter; set is filled and shows its value with a × to clear it. */
+.mo-filter-pill { display: inline-flex; align-items: center; gap: var(--px-space-1); height: var(--px-control-h-sm); padding: 0 var(--px-space-3) 0 var(--px-space-2); border: 1px dashed var(--px-border-strong); border-radius: var(--px-radius-full); background: transparent; color: var(--px-text-muted); font: inherit; font-size: var(--px-text-sm); cursor: pointer; white-space: nowrap; }
+.mo-filter-pill:hover { color: var(--px-text); border-color: var(--px-text-faint); }
+.mo-filter-pill:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.mo-filter-pill.is-set { border: 1px solid transparent; background: var(--px-surface-selected); color: var(--px-text); padding-right: var(--px-space-1); }
+.mo-filter-pill[data-pill="fav"].is-set { padding-right: var(--px-space-3); }
+.mo-filter-pill[data-pill="fav"].is-set svg { color: var(--mo-rating-color, var(--mo-star)); fill: currentColor; }
+.mo-filter-pill-value { color: var(--px-accent-text); font-weight: 600; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.mo-filter-pill-x { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--px-radius-full); color: var(--px-text-muted); }
+.mo-filter-pill-x:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.mo-filter-pills-clear { height: var(--px-control-h-sm); padding: 0 var(--px-space-2); border: 0; background: transparent; color: var(--px-text-muted); font: inherit; font-size: var(--px-text-sm); cursor: pointer; border-radius: var(--px-radius-sm); }
+.mo-filter-pills-clear:hover { color: var(--px-text); background: var(--px-surface-hover); }
+/* The picker a pill opens. */
+.mo-filter-pop { position: fixed; z-index: 1000; width: 280px; max-height: min(420px, 70vh); display: flex; flex-direction: column; background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); box-shadow: var(--px-shadow-lg); padding: var(--px-space-2) var(--px-space-3) var(--px-space-3); font-size: var(--px-text-sm); color: var(--px-text); }
+.mo-filter-pop[hidden] { display: none; }
+.mo-filter-pop-body { display: flex; flex-direction: column; min-height: 0; gap: var(--px-space-1); }
+.mo-filter-pop .mo-tagpick-search { margin: 0; height: var(--px-control-h-sm); padding: 0 var(--px-space-1); border: 0; border-bottom: 1px solid var(--px-divider); border-radius: 0; background: transparent; font-size: var(--px-text-sm); color: var(--px-text); outline: none; cursor: text; }
+.mo-filter-pop .mo-tagpick-search::placeholder { color: var(--px-text-faint); }
+.mo-filter-pop .mo-tagpick-search:hover { border-bottom-color: var(--px-border-strong); }
+.mo-filter-pop .mo-tagpick-search:focus { border-bottom-color: var(--px-accent); outline: none; }
+.mo-filter-pop-opts { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-1) 0; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.mo-filter-pop .mo-tagmatch { margin-left: 0; gap: var(--px-space-1); }
+.mo-filter-pop .mo-tagmatch-label { opacity: 1; }
+.mo-filter-pop .mo-tagmatch-btn { height: auto; padding: 0 2px; border: 0; background: transparent; box-shadow: none; color: var(--px-text-muted); font: inherit; font-size: var(--px-text-xs); cursor: pointer; }
+.mo-filter-pop .mo-tagmatch-btn.active { color: var(--px-text); font-weight: 600; background: transparent; box-shadow: none; }
+.mo-tagmatch-dot { color: var(--px-text-faint); }
+.mo-filter-pop .mo-filter-depth-label { margin-left: auto; display: inline-flex; align-items: center; gap: var(--px-space-1); font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.mo-filter-pop .mo-tagpick-list { display: flex; flex-direction: column; flex-wrap: nowrap; gap: 0; max-height: 260px; padding: 0; border: 0; background: transparent; overflow-y: auto; }
+.mo-tagpick-row { display: flex; align-items: center; gap: var(--px-space-2); min-height: 26px; padding: 0 var(--px-space-1); border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text-secondary); font: inherit; font-size: var(--px-text-sm); text-align: left; cursor: pointer; }
+.mo-tagpick-row:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.mo-tagpick-row.is-exc .mo-tagpick-name { color: var(--px-text-muted); text-decoration: line-through; }
+.mo-tagpick-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-tagpick-box { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1px solid var(--px-border-strong); border-radius: 3px; color: var(--px-text-on-accent, #14161a); }
+.mo-tagpick-row.is-inc .mo-tagpick-box { background: var(--px-accent); border-color: var(--px-accent); }
+.mo-tagpick-row.is-exc .mo-tagpick-box { background: var(--px-danger); border-color: var(--px-danger); }
+.mo-filter-pop .mo-tagpick-hint { font-size: var(--px-text-xs); opacity: 1; color: var(--px-text-faint); margin: var(--px-space-1) 0 0; }
+.mo-filter-pop .mo-filter-empty { color: var(--px-text-faint); font-size: var(--px-text-xs); padding: var(--px-space-1); }
+.mo-filter-pop-list { display: flex; flex-direction: column; }
+.mo-filter-pop-opt { display: flex; align-items: center; gap: var(--px-space-2); min-height: 26px; padding: 0 var(--px-space-1); border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text-secondary); font: inherit; font-size: var(--px-text-sm); text-align: left; cursor: pointer; }
+.mo-filter-pop-opt:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.mo-filter-pop-check { display: inline-flex; width: 12px; visibility: hidden; color: var(--px-accent-text); }
+.mo-filter-pop-opt.is-on { color: var(--px-text); }
+.mo-filter-pop-opt.is-on .mo-filter-pop-check { visibility: visible; }
+.mo-filter-pop .mo-filter-date-row { display: flex; align-items: center; gap: var(--px-space-1); padding-top: var(--px-space-1); }
+.mo-filter-pop .mo-filter-date-row[hidden] { display: none; }
+.mo-filter-pop .mo-filter-date { flex: 1 1 0; min-width: 0; height: var(--px-control-h-sm); padding: 0 var(--px-space-1); border: 0; border-bottom: 1px solid var(--px-divider); border-radius: 0; background: transparent; color: var(--px-text); font: inherit; font-size: var(--px-text-sm); color-scheme: dark light; }
+.mo-filter-pop .mo-filter-date:focus { border-bottom-color: var(--px-accent); outline: none; }
+.mo-filter-pop .mo-filter-date::-webkit-calendar-picker-indicator { display: block; opacity: 0.6; cursor: pointer; }
 .mo-filter-chip:hover { background: var(--px-accent-soft); }
 .mo-filter-chip--scope { padding-right: var(--px-space-3); background: var(--px-bg-inset); cursor: default; }
 .mo-search-wrap .mo-search-help-btn { position: absolute; right: 1px; top: 1px; height: calc(var(--px-control-h) - 2px); width: calc(var(--px-control-h) - 2px); padding: 0; justify-content: center; background: transparent; border: none; opacity: 0.6; }
@@ -11836,6 +11885,15 @@ function moGridInstance(instanceId) {
   if (smartId != null) out.smartId = smartId;
   return out;
 }
+/** The Date pill's value: a quick choice by name, else the dates; "taken" when on the date taken. */
+function moFilterDateLabel(f) {
+  if (!f || (!f.dateFrom && !f.dateTo)) return null;
+  const names = { today: 'Today', week: 'This week', month: 'This month', year: 'This year' };
+  const fmt = (d) => { const t = new Date(d + 'T00:00:00'); return isNaN(t.getTime()) ? d : t.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); };
+  let label = names[f.datePreset] || (f.dateFrom && f.dateTo ? `${fmt(f.dateFrom)} – ${fmt(f.dateTo)}` : f.dateFrom ? `From ${fmt(f.dateFrom)}` : `Until ${fmt(f.dateTo)}`);
+  if (f.dateField === 'taken') label += ', taken';
+  return label;
+}
 /** The page title for a grid scope; a tag or folder is renamed once its row loads. */
 function moScopeTitle(filterType) {
   return ({
@@ -11951,6 +12009,8 @@ function renderGridBrowser(container, api, input) {
       ratingMin: null,
       dateFrom: null,
       dateTo: null,
+      dateField: 'added', // 'added' (created_at) or 'taken' (a photo's capture date)
+      datePreset: null,   // 'today' | 'week' | 'month' | 'year' | 'custom' | null, for the pill's label
     },
   };
 
@@ -12206,15 +12266,7 @@ function renderGridBrowser(container, api, input) {
   modeGroup.append(feedModeBtn, gridModeBtn, listModeBtn);
   toolbar.appendChild(modeGroup);
 
-  // Filters: tags, rating and dates, in the panel this button opens. The
-  // badge counts the ones in use; each also shows as a chip below.
-  const filterToggleBtn = api.ui.createButton(null, { label: 'Filters', icon: 'list-filter', kind: 'secondary', title: 'Filter by tags, rating and date' });
-  filterToggleBtn.classList.add('mo-filters-btn');
-  filterToggleBtn.setAttribute('aria-expanded', 'false');
-  const filterBadge = moEl('span', 'mo-filter-badge');
-  filterBadge.style.display = 'none';
-  filterToggleBtn.appendChild(filterBadge);
-  toolbar.insertBefore(filterToggleBtn, sortBtn);
+  // Filters live in the pill row under the toolbar (renderFilterChips).
   toolbar.insertBefore(moEl('span', 'mo-toolbar-spacer'), sortBtn);
 
   // The rest of how it's shown: a View popover with zoom, Show Tags On
@@ -12298,97 +12350,89 @@ function renderGridBrowser(container, api, input) {
   };
   document.addEventListener('mo:show-card-tags-changed', showTagsCfgListener);
 
-  function updateFilterBadge() {
-    const count = moActiveFilterCount(state);
-    filterBadge.textContent = count > 0 ? String(count) : '';
-    filterBadge.style.display = count > 0 ? '' : 'none';
-    renderFilterChips();
-  }
+  // Every filter change redraws the pills (the readout and the controls).
+  function updateFilterBadge() { renderFilterChips(); }
 
-  // Renders the chip bar (#14). Each chip shows a label + optional × to clear.
+
+  // The filter pills (2026-10-01, mockup B): one pill per filter under the
+  // search. An empty pill is dashed and names the filter; a set one is filled,
+  // shows its value and has a × to clear it. Tags and Date open a small picker;
+  // Favorites toggles. The pill is the readout, so nothing repeats elsewhere.
   function renderFilterChips() {
     chipBar.innerHTML = '';
-    // Lazy-load the tag-name cache the first time chips render so we can show
-    // "Tag: name" labels even when the user never opened the filter panel.
     if (!_filterTagCache) {
       loadFilterTags().then(() => { renderFilterChips(); }).catch(() => {});
     }
     const tagMap = new Map((_filterTagCache || []).map(t => [t.id, t.name]));
-    let clearable = 0;
-    const mkChip = (label, onClear) => {
-      // A clearable filter is one button (remove it); the scope chip is plain text.
-      if (onClear) {
-        clearable++;
-        const chip = moEl('button', 'mo-filter-chip', { type: 'button', title: 'Remove This Filter' });
-        chip.setAttribute('aria-label', `Remove filter: ${label}`);
-        chip.appendChild(moEl('span', null, { textContent: label }));
-        chip.insertAdjacentHTML('beforeend', moIcon('x', 12));
-        chip.addEventListener('click', (e) => { e.stopPropagation(); onClear(); });
-        chipBar.appendChild(chip);
-      } else {
-        chipBar.appendChild(moEl('span', 'mo-filter-chip mo-filter-chip--scope', { textContent: label }));
+    const f = state.filters;
+    // A tag branch (Face › Portrait) is the view's scope; say so, read-only.
+    if (filterType === 'tag' && filterTagPath && filterTagPath.length > 1) {
+      chipBar.appendChild(moEl('span', 'mo-filter-chip mo-filter-chip--scope', { textContent: filterTagPath.map((id) => tagMap.get(id) || `#${id}`).join(' › ') }));
+    }
+    const mkPill = (key, icon, label, value, onClick, onClear) => {
+      const set = value !== null && value !== undefined && value !== false;
+      const pill = moEl('button', 'mo-filter-pill' + (set ? ' is-set' : ''), { type: 'button', 'data-pill': key, 'aria-pressed': set ? 'true' : 'false' });
+      pill.insertAdjacentHTML('beforeend', moIcon(icon, 12));
+      pill.appendChild(moEl('span', null, { textContent: label }));
+      if (typeof value === 'string' && value) pill.appendChild(moEl('span', 'mo-filter-pill-value', { textContent: value }));
+      if (set && onClear) {
+        const x = moEl('span', 'mo-filter-pill-x', { role: 'button', title: `Clear ${label}`, 'aria-label': `Clear ${label}`, innerHTML: moIcon('x', 11) });
+        x.addEventListener('click', (e) => { e.stopPropagation(); closeFilterPop(); onClear(); });
+        pill.appendChild(x);
+      } else if (!set && key !== 'fav') {
+        pill.insertAdjacentHTML('beforeend', moIcon('chevron-down', 10));
       }
+      pill.addEventListener('click', (e) => { e.stopPropagation(); onClick(pill); });
+      chipBar.appendChild(pill);
+      return pill;
     };
+    // Tags: what is included, then what is left out ("not oil").
+    const tagNames = [...f.tagIds.map((id) => tagMap.get(id) || `#${id}`), ...f.excludeTagIds.map((id) => `not ${tagMap.get(id) || `#${id}`}`)];
+    const tagValue = tagNames.length ? (tagNames.length > 2 ? `${tagNames.slice(0, 2).join(', ')} +${tagNames.length - 2}` : tagNames.join(', ')) : null;
+    mkPill('tags', 'tag', 'Tags', tagValue, (pill) => toggleFilterPop('tags', pill), () => { f.tagIds = []; f.excludeTagIds = []; _afterFilterChange(); });
+    const favOn = f.ratingMin != null && f.ratingMin > 0;
+    const favPill = mkPill('fav', 'star', 'Favorites', favOn || null, () => { closeFilterPop(); starBar.click(); }, null);
+    favPill.title = favOn ? 'Showing favorites only (click to show all)' : 'Show favorites only';
+    mkPill('date', 'calendar', 'Date', moFilterDateLabel(f), (pill) => toggleFilterPop('date', pill), () => { setDateRange(null, null, null); });
+    if (moActiveFilterCount(state) > 0) {
+      const clear = moEl('button', 'mo-filter-pills-clear', { type: 'button', textContent: 'Clear', title: 'Clear every filter' });
+      clear.addEventListener('click', () => { closeFilterPop(); clearFiltersBtn.click(); });
+      chipBar.appendChild(clear);
+    }
+    chipBar.style.display = 'flex';
+  }
 
-    // Instance-filter chip (read-only). Derived from filterType / filterId.
-    if (filterType && filterType !== 'all') {
-      let instanceLabel = null;
-      if (filterType === 'photos') instanceLabel = 'Photos';
-      else if (filterType === 'gifs') instanceLabel = 'GIFs';
-      else if (filterType === 'videos') instanceLabel = 'Videos';
-      else if (filterType === 'favorites') instanceLabel = 'Favorites';
-      else if (filterType === 'untagged') instanceLabel = 'Untagged';
-      else if (filterType === 'recent') instanceLabel = 'Recent';
-      else if (filterType === 'duplicates') instanceLabel = 'Duplicates';
-      else if (filterType === 'trash') instanceLabel = 'Trash';
-      else if (filterType === 'tag' && filterId != null) {
-        // Branch view shows the whole path (Face › Portrait) so it's clear the
-        // grid is "Face's portraits", not every portrait; Unique shows the leaf.
-        instanceLabel = (filterTagPath && filterTagPath.length > 1)
-          ? 'Tag: ' + filterTagPath.map((id) => tagMap.get(id) || `#${id}`).join(' › ')
-          : `Tag: ${tagMap.get(filterId) || `#${filterId}`}`;
-      }
-      else if (filterType === 'folder' && filterId != null) instanceLabel = `Folder #${filterId}`;
-      if (instanceLabel) mkChip(instanceLabel, null);
-    }
-
-    for (const id of state.filters.tagIds) {
-      const name = tagMap.get(id) || `#${id}`;
-      mkChip(`Tag: ${name}`, () => {
-        state.filters.tagIds = state.filters.tagIds.filter(i => i !== id);
-        _afterFilterChange();
-      });
-    }
-    for (const id of state.filters.excludeTagIds) {
-      const name = tagMap.get(id) || `#${id}`;
-      mkChip(`Not: ${name}`, () => {
-        state.filters.excludeTagIds = state.filters.excludeTagIds.filter(i => i !== id);
-        _afterFilterChange();
-      });
-    }
-    if (state.filters.ratingMin != null) {
-      mkChip('Favorites', () => {
-        state.filters.ratingMin = null;
-        updateStarBar(); state.currentPage = 1; loadPage();
-      });
-    }
-    if (state.filters.dateFrom || state.filters.dateTo) {
-      const label = state.filters.dateFrom && state.filters.dateTo
-        ? `${state.filters.dateFrom} to ${state.filters.dateTo}`
-        : (state.filters.dateFrom ? `From ${state.filters.dateFrom}` : `Until ${state.filters.dateTo}`);
-      mkChip(label, () => {
-        state.filters.dateFrom = null;
-        state.filters.dateTo = null;
-        if (typeof dateFrom !== 'undefined') dateFrom.value = '';
-        if (typeof dateTo !== 'undefined') dateTo.value = '';
-        state.currentPage = 1; loadPage();
-      });
-    }
-
-    if (clearable > 1) {
-      api.ui.createButton(chipBar, { label: 'Clear All', kind: 'ghost', size: 'sm', onClick: () => clearFiltersBtn.click() });
-    }
-    chipBar.style.display = chipBar.children.length > 0 ? 'flex' : 'none';
+  // The picker a pill opens, under it; it stays open while you choose.
+  const filterPop = moEl('div', 'mo-filter-pop');
+  filterPop.hidden = true;
+  document.body.appendChild(filterPop);
+  let _filterPopKind = null;
+  const _filterPopOutside = (e) => { if (!filterPop.contains(e.target) && !e.target.closest('.mo-filter-pill')) closeFilterPop(); };
+  const _filterPopKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeFilterPop(); } };
+  function closeFilterPop() {
+    if (!_filterPopKind) return;
+    _filterPopKind = null;
+    filterPop.hidden = true;
+    filterPop.innerHTML = '';
+    document.removeEventListener('mousedown', _filterPopOutside, true);
+    document.removeEventListener('keydown', _filterPopKey, true);
+  }
+  function toggleFilterPop(kind, pill) {
+    if (_filterPopKind === kind) { closeFilterPop(); return; }
+    closeFilterPop();
+    _filterPopKind = kind;
+    filterPop.innerHTML = '';
+    filterPop.appendChild(kind === 'tags' ? tagPopBody : datePopBody);
+    filterPop.hidden = false;
+    const r = pill.getBoundingClientRect();
+    filterPop.style.top = (r.bottom + 6) + 'px';
+    filterPop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - filterPop.offsetWidth - 8)) + 'px';
+    document.addEventListener('mousedown', _filterPopOutside, true);
+    document.addEventListener('keydown', _filterPopKey, true);
+    if (kind === 'tags') {
+      _filterTagCache = null; // newly created or renamed tags appear
+      loadFilterTags().then(() => { renderTagChips(); try { tagPickerSearch.focus(); } catch { /* ignore */ } });
+    } else syncDatePop();
   }
 
   // Item count
@@ -12412,70 +12456,57 @@ function renderGridBrowser(container, api, input) {
 
   selectionBar = buildSelectionToolbar(root, state, api, refreshGrid, applySelectionToGrid);
 
-  // ── Filter Panel ──
-  const filterPanel = moEl('div', 'mo-filter-panel');
-  filterPanel.style.display = 'none';
-  root.appendChild(filterPanel);
-
-  // -- Tag filter section: a fast searchable picker --
-  // Type to filter, left-click a tag to include, right-click to exclude.
-  // Tags match as UNIQUE (leaf) by default; "Include sub-tags" pulls in
-  // descendants. The active include/exclude summary lives in the top chip bar.
-  const tagSection = moEl('div', 'mo-filter-section mo-filter-section-tags');
-  const tagHeaderRow = moEl('div', 'mo-filter-tag-row');
-  tagHeaderRow.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Tags' }));
-  // All/Any (AND/OR) toggle — applies to the included tags.
+  // ── The pickers behind the Tags and Date pills ──
+  // Tags: a quiet filter line, Match All · Any and Include sub-tags, then the
+  // list. A click includes a tag, a second leaves it out, a third clears it.
+  const tagPopBody = moEl('div', 'mo-filter-pop-body');
+  const tagPickerSearch = moEl('input', 'mo-tagpick-search', { type: 'text', placeholder: 'Filter tags' });
+  tagPickerSearch.setAttribute('aria-label', 'Filter tags');
   const tagMatchWrap = moEl('div', 'mo-tagmatch');
   tagMatchWrap.appendChild(moEl('span', 'mo-tagmatch-label', { textContent: 'Match' }));
-  const tagMatchAnd = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'All' });
-  tagMatchAnd.title = 'Show items that have ALL selected tags (AND)';
-  const tagMatchOr = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'Any' });
-  tagMatchOr.title = 'Show items that have ANY selected tag (OR)';
-  const tagMatchGroup = moEl('div', 'mo-tagmatch-group');
-  tagMatchGroup.appendChild(tagMatchAnd);
-  tagMatchGroup.appendChild(tagMatchOr);
-  tagMatchWrap.appendChild(tagMatchGroup);
-  tagHeaderRow.appendChild(tagMatchWrap);
+  const tagMatchAnd = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'All', title: 'Items that have every tag ticked' });
+  const tagMatchOr = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'Any', title: 'Items that have any tag ticked' });
+  tagMatchWrap.append(tagMatchAnd, moEl('span', 'mo-tagmatch-dot', { textContent: '·' }), tagMatchOr);
   const tagDepthCb = moEl('input', null, { type: 'checkbox' });
   tagDepthCb.setAttribute('aria-label', 'Include sub-tags');
   const tagDepthLabel = moEl('label', 'mo-filter-depth-label');
-  tagDepthLabel.appendChild(tagDepthCb);
-  tagDepthLabel.appendChild(document.createTextNode(' Include sub-tags'));
-  tagHeaderRow.appendChild(tagDepthLabel);
-  tagSection.appendChild(tagHeaderRow);
-
-  const tagPickerSearch = moEl('input', 'mo-tagpick-search', { type: 'text', placeholder: 'Type to filter tags…' });
-  tagPickerSearch.setAttribute('aria-label', 'Filter tags');
-  tagSection.appendChild(tagPickerSearch);
-  tagSection.appendChild(moEl('div', 'mo-tagpick-hint', { textContent: 'Click to include · right-click to exclude' }));
+  tagDepthLabel.append(tagDepthCb, document.createTextNode(' Include sub-tags'));
+  const tagOptRow = moEl('div', 'mo-filter-pop-opts');
+  tagOptRow.append(tagMatchWrap, tagDepthLabel);
   const tagChipList = moEl('div', 'mo-tagpick-list');
-  tagSection.appendChild(tagChipList);
-  filterPanel.appendChild(tagSection);
+  tagPopBody.append(tagPickerSearch, tagOptRow, tagChipList, moEl('div', 'mo-tagpick-hint', { textContent: 'Click to include, again to leave out, again to clear.' }));
 
-  // -- Favorites filter --
-  const ratingSection = moEl('div', 'mo-filter-section');
-  const starBar = moEl('button', 'mo-filter-fav', { type: 'button', 'aria-pressed': 'false', innerHTML: moIcon('star', 12) + '<span>Favorites only</span>' });
-  ratingSection.appendChild(starBar);
-  filterPanel.appendChild(ratingSection);
+  // Favorites: the pill toggles it (this button carries the old handler).
+  const starBar = moEl('button', 'mo-filter-fav', { type: 'button' });
 
-  // -- Date range section --
-  const dateSection = moEl('div', 'mo-filter-section');
-  dateSection.appendChild(moEl('div', 'mo-filter-section-label', { textContent: 'Date range' }));
+  // Date: on the date added or taken; quick choices, or Custom… with two dates.
+  const datePopBody = moEl('div', 'mo-filter-pop-body');
+  const dateFieldRow = moEl('div', 'mo-filter-pop-opts');
+  const dateAddedBtn = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'Added', title: 'The date each item came into the library' });
+  const dateTakenBtn = moEl('button', 'mo-tagmatch-btn', { type: 'button', textContent: 'Taken', title: 'The date each photo was taken (its added date when it has none; videos use their added date)' });
+  const dateFieldWrap = moEl('div', 'mo-tagmatch');
+  dateFieldWrap.append(dateAddedBtn, moEl('span', 'mo-tagmatch-dot', { textContent: '·' }), dateTakenBtn);
+  dateFieldRow.appendChild(dateFieldWrap);
+  const datePresetList = moEl('div', 'mo-filter-pop-list');
+  const DATE_PRESETS = [[null, 'Any time'], ['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['year', 'This year'], ['custom', 'Custom…']];
+  const datePresetBtns = new Map();
+  for (const [key, label] of DATE_PRESETS) {
+    const b = moEl('button', 'mo-filter-pop-opt', { type: 'button' });
+    b.append(moEl('span', 'mo-filter-pop-check', { innerHTML: moIcon('check', 12) }), moEl('span', null, { textContent: label }));
+    b.addEventListener('click', () => pickDatePreset(key));
+    datePresetBtns.set(key, b);
+    datePresetList.appendChild(b);
+  }
   const dateRow = moEl('div', 'mo-filter-date-row');
-  const dateFrom = moEl('input', 'mo-filter-date', { type: 'text', placeholder: 'YYYY-MM-DD', title: 'From date' });
+  const dateFrom = moEl('input', 'mo-filter-date', { type: 'date', title: 'From' });
   dateFrom.setAttribute('aria-label', 'From date');
-  const dateTo = moEl('input', 'mo-filter-date', { type: 'text', placeholder: 'YYYY-MM-DD', title: 'To date' });
+  const dateTo = moEl('input', 'mo-filter-date', { type: 'date', title: 'To' });
   dateTo.setAttribute('aria-label', 'To date');
-  dateRow.appendChild(dateFrom);
-  dateRow.appendChild(moEl('span', 'mo-filter-row-label', { textContent: '→' }));
-  dateRow.appendChild(dateTo);
-  dateSection.appendChild(dateRow);
-  filterPanel.appendChild(dateSection);
+  dateRow.append(dateFrom, moEl('span', 'mo-filter-row-label', { textContent: '–' }), dateTo);
+  datePopBody.append(dateFieldRow, datePresetList, dateRow);
 
-  // -- Clear all button --
+  // -- Clear all (the pills' Clear runs it) --
   const clearFiltersBtn = moEl('button', 'mo-toolbar-btn mo-filter-clear', { textContent: 'Clear All Filters' });
-  clearFiltersBtn.setAttribute('aria-label', 'Clear all filters');
-  filterPanel.appendChild(clearFiltersBtn);
 
   // ── Filter panel helpers ──
   let _filterTagCache = null;
@@ -12510,13 +12541,14 @@ function renderGridBrowser(container, api, input) {
     }
     for (const tag of matches) {
       const mode = inc.has(tag.id) ? 'inc' : (exc.has(tag.id) ? 'exc' : 'off');
-      const chip = moEl('button', 'mo-tagpick-chip' + (mode === 'inc' ? ' is-inc' : mode === 'exc' ? ' is-exc' : ''), { type: 'button' });
-      chip.textContent = tag.name;
-      chip.title = `${tag.name}. Click to include, right-click to exclude`;
-      chip.setAttribute('aria-label', `${tag.name}, ${mode === 'inc' ? 'included' : mode === 'exc' ? 'excluded' : 'not filtered'}`);
-      chip.addEventListener('click', () => toggleTagFilter(tag.id, 'inc'));
-      chip.addEventListener('contextmenu', (e) => { e.preventDefault(); toggleTagFilter(tag.id, 'exc'); });
-      tagChipList.appendChild(chip);
+      const row = moEl('button', 'mo-tagpick-row' + (mode === 'inc' ? ' is-inc' : mode === 'exc' ? ' is-exc' : ''), { type: 'button' });
+      row.append(moEl('span', 'mo-tagpick-box', { innerHTML: mode === 'inc' ? moIcon('check', 10) : mode === 'exc' ? moIcon('minus', 10) : '' }), moEl('span', 'mo-tagpick-name', { textContent: tag.name }));
+      row.title = mode === 'inc' ? `${tag.name}: included (click to leave it out)` : mode === 'exc' ? `${tag.name}: left out (click to clear)` : `${tag.name} (click to include)`;
+      row.setAttribute('aria-label', `${tag.name}, ${mode === 'inc' ? 'included' : mode === 'exc' ? 'left out' : 'not filtered'}`);
+      // off → include → leave out → off; right-click goes straight to leave out.
+      row.addEventListener('click', () => toggleTagFilter(tag.id, mode === 'off' ? 'inc' : mode === 'inc' ? 'exc' : 'clear'));
+      row.addEventListener('contextmenu', (e) => { e.preventDefault(); toggleTagFilter(tag.id, 'exc'); });
+      tagChipList.appendChild(row);
     }
   }
 
@@ -12529,6 +12561,7 @@ function renderGridBrowser(container, api, input) {
     const exc = state.filters.excludeTagIds.filter((i) => i !== id);
     if (mode === 'inc' && !wasInc) inc.push(id);   // off/exclude \u2192 include
     if (mode === 'exc' && !wasExc) exc.push(id);   // off/include \u2192 exclude
+    // 'clear' leaves it in neither.
     state.filters.tagIds = inc;
     state.filters.excludeTagIds = exc;
     _afterFilterChange();
@@ -12542,28 +12575,14 @@ function renderGridBrowser(container, api, input) {
     loadPage();
   }
 
-  function updateStarBar() {
-    const on = state.filters.ratingMin != null && state.filters.ratingMin > 0;
-    starBar.classList.toggle('is-on', on);
-    starBar.setAttribute('aria-pressed', on ? 'true' : 'false');
-  }
+  function updateStarBar() { renderFilterChips(); }
 
-  // ── Filter panel event handlers ──
-  filterToggleBtn.addEventListener('click', () => {
-    const visible = filterPanel.style.display === 'flex';
-    filterPanel.style.display = visible ? 'none' : 'flex';
-    filterToggleBtn.classList.toggle('active', !visible);
-    filterToggleBtn.setAttribute('aria-expanded', String(!visible));
-    if (!visible) {
-      _filterTagCache = null; // refresh so newly-created/renamed tags appear
-      loadFilterTags().then(() => { renderTagChips(); try { tagPickerSearch.focus(); } catch { /* ignore */ } });
-    }
-  });
-
+  // ── Picker handlers ──
   tagPickerSearch.addEventListener('input', () => renderTagChips());
 
   function updateTagMatchUI() {
     const isOr = state.filters.tagMatch === 'or';
+    tagDepthCb.checked = state.filters.tagDepth === -1;
     tagMatchAnd.classList.toggle('active', !isOr);
     tagMatchOr.classList.toggle('active', isOr);
     tagMatchAnd.setAttribute('aria-pressed', String(!isOr));
@@ -12586,33 +12605,64 @@ function renderGridBrowser(container, api, input) {
 
   starBar.addEventListener('click', () => {
     state.filters.ratingMin = state.filters.ratingMin != null && state.filters.ratingMin > 0 ? null : 1;
-    updateStarBar();
+    updateFilterBadge();
     state.currentPage = 1; loadPage();
   });
 
-  dateFrom.addEventListener('change', () => {
-    const v = dateFrom.value.trim();
-    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) { dateFrom.value = ''; }
-    state.filters.dateFrom = dateFrom.value || null;
+  // Date: a quick choice sets both ends from today; Custom… takes the two dates.
+  const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  function setDateRange(from, to, preset) {
+    state.filters.dateFrom = from || null;
+    state.filters.dateTo = to || null;
+    state.filters.datePreset = (from || to) ? preset : null;
+    syncDatePop();
+    updateFilterBadge();
     state.currentPage = 1; loadPage();
-  });
-
-  dateTo.addEventListener('change', () => {
-    const v = dateTo.value.trim();
-    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) { dateTo.value = ''; }
-    state.filters.dateTo = dateTo.value || null;
-    state.currentPage = 1; loadPage();
-  });
+  }
+  function pickDatePreset(key) {
+    const now = new Date();
+    const today = isoDay(now);
+    if (key === null) { setDateRange(null, null, null); return; }
+    if (key === 'custom') {
+      state.filters.datePreset = 'custom';
+      syncDatePop();
+      try { dateFrom.focus(); } catch { /* ignore */ }
+      return;
+    }
+    let from = today;
+    if (key === 'week') { const d = new Date(now); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); from = isoDay(d); }
+    else if (key === 'month') from = `${today.slice(0, 7)}-01`;
+    else if (key === 'year') from = `${today.slice(0, 4)}-01-01`;
+    setDateRange(from, today, key);
+  }
+  function syncDatePop() {
+    const f = state.filters;
+    const preset = f.datePreset || (f.dateFrom || f.dateTo ? 'custom' : null);
+    for (const [key, b] of datePresetBtns) b.classList.toggle('is-on', key === preset);
+    dateAddedBtn.classList.toggle('active', f.dateField !== 'taken');
+    dateTakenBtn.classList.toggle('active', f.dateField === 'taken');
+    dateRow.hidden = preset !== 'custom';
+    dateFrom.value = f.dateFrom || '';
+    dateTo.value = f.dateTo || '';
+  }
+  const setDateField = (v) => {
+    if ((state.filters.dateField || 'added') === v) return;
+    state.filters.dateField = v;
+    syncDatePop(); updateFilterBadge();
+    if (state.filters.dateFrom || state.filters.dateTo) { state.currentPage = 1; loadPage(); }
+  };
+  dateAddedBtn.addEventListener('click', () => setDateField('added'));
+  dateTakenBtn.addEventListener('click', () => setDateField('taken'));
+  const onCustomDate = () => setDateRange(dateFrom.value || null, dateTo.value || null, 'custom');
+  dateFrom.addEventListener('change', onCustomDate);
+  dateTo.addEventListener('change', onCustomDate);
 
   clearFiltersBtn.addEventListener('click', () => {
     state.mediaType = 'all';
     syncTypeChips();
-    state.filters = { tagIds: [], excludeTagIds: [], tagDepth: 0, tagMatch: 'and', ratingMin: null, dateFrom: null, dateTo: null };
-    tagDepthCb.checked = false;
-    dateFrom.value = '';
-    dateTo.value = '';
+    state.filters = { tagIds: [], excludeTagIds: [], tagDepth: 0, tagMatch: 'and', ratingMin: null, dateFrom: null, dateTo: null, dateField: 'added', datePreset: null };
     tagPickerSearch.value = '';
-    updateStarBar(); renderTagChips(); updateTagMatchUI(); updateFilterBadge();
+    updateStarBar(); renderTagChips(); updateTagMatchUI(); syncDatePop(); updateFilterBadge();
     state.currentPage = 1; loadPage();
   });
 
@@ -12689,9 +12739,9 @@ function renderGridBrowser(container, api, input) {
       sub = 'No media matches your current search and filters.';
       actions.push({ label: 'Clear Search & Filters', primary: true, onClick: () => {
         searchInput.value = '';
-        state.filters = { tagIds: [], excludeTagIds: [], tagDepth: 0, tagMatch: 'and', ratingMin: null, dateFrom: null, dateTo: null };
-        tagDepthCb.checked = false; dateFrom.value = ''; dateTo.value = ''; tagPickerSearch.value = '';
-        updateStarBar(); renderTagChips(); updateTagMatchUI(); updateFilterBadge();
+        state.filters = { tagIds: [], excludeTagIds: [], tagDepth: 0, tagMatch: 'and', ratingMin: null, dateFrom: null, dateTo: null, dateField: 'added', datePreset: null };
+        tagPickerSearch.value = '';
+        renderTagChips(); updateTagMatchUI(); syncDatePop(); updateFilterBadge();
         state.currentPage = 1; loadPage();
       }});
     } else {
@@ -12831,13 +12881,15 @@ function renderGridBrowser(container, api, input) {
       where.push(`${alias}.rating > 0`);
     }
 
-    // Date range
+    // Date range, on the date added or (photos) the date taken; a photo with
+    // no capture date falls back to the date it was added. Videos have none.
+    const dateCol = filters.dateField === 'taken' && alias === 'p' ? 'COALESCE(p.taken_at, p.created_at)' : `${alias}.created_at`;
     if (filters.dateFrom) {
-      where.push(`${alias}.created_at >= ?`);
+      where.push(`${dateCol} >= ?`);
       params.push(filters.dateFrom);
     }
     if (filters.dateTo) {
-      where.push(`${alias}.created_at <= ?`);
+      where.push(`${dateCol} <= ?`);
       params.push(filters.dateTo + 'T23:59:59');
     }
 
@@ -13164,6 +13216,8 @@ function renderGridBrowser(container, api, input) {
       ratingMax: parsed.ratingMax,
       dateFrom: parsed.dateFrom || state.filters.dateFrom,
       dateTo: parsed.dateTo || state.filters.dateTo,
+      // The search's taken: operator means the date taken; the Date pill says which.
+      dateField: (parsed.dateFrom || parsed.dateTo) ? 'taken' : (state.filters.dateField || 'added'),
       tagMatch: state.filters.tagMatch || 'and', // AND (has all) vs OR (has any) for included tags
       kind: kindFilter, // 'gif' | 'still' | null (photos only; see applyFilterCriteria)
     };
@@ -14926,6 +14980,8 @@ function renderGridBrowser(container, api, input) {
       dismissSearchHelp();
       closeViewPop();
       viewPop.remove();
+      closeFilterPop();
+      filterPop.remove();
       clearTimeout(searchTimer);
       // Flush pending debounced writes so closing the pane immediately after
       // scrolling or moving the zoom slider doesn't lose the final value.

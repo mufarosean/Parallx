@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'motrash', 'mofav', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'motrash', 'mofav', 'mofilters', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -390,6 +390,79 @@ async function timelapseScene(appRoot, clip2, errors) {
 
 // The image editor: a folder of photos is scanned, one opens in Edit Image,
 // and each tool is shot (dark, then light, then a narrow window).
+// The filter pills: Tags (include, leave out), Favorites, Date (a quick
+// choice, then taken), Clear. Logs each pill and the match count.
+async function moFiltersScene(appRoot, workspace, errors) {
+  const media = path.join(workspace, 'filtertest');
+  await fs.mkdir(media, { recursive: true });
+  const ff = (args) => spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args]);
+  ff(['-f', 'lavfi', '-i', 'mandelbrot=s=640x480', '-frames:v', '1', '-q:v', '4', path.join(media, 'beach1.jpg')]);
+  ff(['-f', 'lavfi', '-i', 'cellauto=s=640x480:rule=30', '-frames:v', '1', '-q:v', '4', path.join(media, 'beach2.jpg')]);
+  ff(['-f', 'lavfi', '-i', 'cellauto=s=640x480:rule=90', '-frames:v', '1', '-q:v', '4', path.join(media, 'sky.jpg')]);
+  const { app, page } = await launchApp(appRoot, errors);
+  const log = (k, v) => console.log(`[probe] filters ${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+  const runSql = (q, p = []) => page.evaluate(async ({ q, p }) => { const r = await window.parallxElectron.extensionDatabase.run('media-organizer', q, p); return r.error ? JSON.stringify(r.error) : r.changes; }, { q, p });
+  const pills = () => page.evaluate(() => Array.from(document.querySelectorAll('.mo-filter-chip-bar > *')).filter((p) => p.offsetParent).map((p) => `${p.textContent.trim()}${p.classList.contains('is-set') ? '*' : ''}`).join(' | '));
+  const count = () => page.evaluate(() => document.querySelector('.mo-page-header .px-page-header__subtitle')?.textContent || '');
+  const pill = (k) => page.evaluate((k) => document.querySelector(`.mo-filter-pill[data-pill="${k}"]`)?.click(), k);
+  const row = (name) => page.evaluate((n) => Array.from(document.querySelectorAll('.mo-filter-pop .mo-tagpick-row')).find((r) => r.textContent.trim() === n)?.click(), name);
+  const opt = (label) => page.evaluate((l) => Array.from(document.querySelectorAll('.mo-filter-pop button')).find((b) => b.textContent.trim() === l)?.click(), label);
+  try {
+    await enableMediaOrganizer(page);
+    await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }); }, media);
+    await runCommand(page, ['media-organizer.scan']);
+    await page.waitForTimeout(5_000);
+    await runSql(`INSERT INTO mo_tags (name) VALUES ('beach'), ('sky')`);
+    await runSql(`INSERT INTO mo_photos_tags (photo_id, tag_id, via_parent_id) SELECT pf.photo_id, (SELECT id FROM mo_tags WHERE name = 'beach'), 0 FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id WHERE f.basename LIKE 'beach%'`);
+    await runSql(`INSERT INTO mo_photos_tags (photo_id, tag_id, via_parent_id) SELECT pf.photo_id, (SELECT id FROM mo_tags WHERE name = 'sky'), 0 FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id WHERE f.basename IN ('sky.jpg', 'beach2.jpg')`);
+    await runSql(`UPDATE mo_photos SET rating = 1 WHERE id IN (SELECT pf.photo_id FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id WHERE f.basename = 'beach1.jpg')`);
+    await runSql(`UPDATE mo_photos SET taken_at = '2019-05-04T10:00:00' WHERE id IN (SELECT pf.photo_id FROM mo_photos_files pf JOIN mo_files f ON f.id = pf.file_id WHERE f.basename = 'sky.jpg')`);
+    await runCommand(page, ['media-organizer.openGrid']);
+    await page.waitForTimeout(3_000);
+    await page.evaluate(() => document.querySelector('.mo-segment-btn[title="Grid"]')?.click());
+    await page.waitForTimeout(1_500);
+    log('start', `${await pills()} / ${await count()}`);
+    await shot(page, 'filters-pills');
+    await pill('tags');
+    await page.waitForTimeout(800);
+    await row('beach');
+    await page.waitForTimeout(1_200);
+    log('include beach', `${await pills()} / ${await count()}`);
+    await row('sky');
+    await page.waitForTimeout(400);
+    await row('sky');
+    await page.waitForTimeout(1_200);
+    log('beach, not sky', `${await pills()} / ${await count()}`);
+    await shot(page, 'filters-tags-pop');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    await page.evaluate(() => document.querySelector('.mo-filter-pill[data-pill="tags"] .mo-filter-pill-x')?.click());
+    await page.waitForTimeout(1_000);
+    log('tags cleared', `${await pills()} / ${await count()}`);
+    await pill('fav');
+    await page.waitForTimeout(1_200);
+    log('favorites', `${await pills()} / ${await count()}`);
+    await pill('fav');
+    await page.waitForTimeout(1_000);
+    await pill('date');
+    await page.waitForTimeout(500);
+    await opt('This month');
+    await page.waitForTimeout(1_200);
+    log('this month (added)', `${await pills()} / ${await count()}`);
+    await opt('Taken');
+    await page.waitForTimeout(1_200);
+    log('this month (taken)', `${await pills()} / ${await count()}`);
+    await shot(page, 'filters-date-pop');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    await page.evaluate(() => document.querySelector('.mo-filter-pills-clear')?.click());
+    await page.waitForTimeout(1_200);
+    log('cleared', `${await pills()} / ${await count()}`);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 // Favorites in place of star ratings: a card's star, the F key, the menu,
 // the Favorites view and filter, the detail page, and old ratings migrated.
 async function moFavScene(appRoot, workspace, errors) {
@@ -903,6 +976,17 @@ async function main() {
     await scene('image', () => imageScene(appRoot, workspace, errs));
     const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
     if (real.length) { console.log(`[probe] image: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
+    if (scenes.length === 1) {
+      await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
+      return;
+    }
+  }
+  if (scenes.includes('mofilters')) {
+    const errs = [];
+    await scene('mofilters', () => moFiltersScene(appRoot, workspace, errs));
+    const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
+    if (real.length) { console.log(`[probe] mofilters: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
     if (scenes.length === 1) {
       await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
       await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
