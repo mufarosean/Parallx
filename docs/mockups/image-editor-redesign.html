@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Editor Redesign</title>
+<style>
+/* Mockup of the Media Organizer image editor redesign. Colours, spacing,
+   radii and type come from src/theme/px-tokens.css (Slate, dark and light).
+   The photo stage stays a neutral dark in both modes, like the viewer and
+   the clip editor (colour is judged on neutral grey). Static: nothing here
+   edits a photo. */
+:root {
+  --px-base-00:#16171a; --px-base-05:#1a1c1f; --px-base-10:#1f2125; --px-base-15:#24262b;
+  --px-base-20:#2b2e34; --px-base-25:#33363d; --px-base-30:#41454d; --px-base-40:#838893;
+  --px-base-60:#9ea3ad; --px-base-70:#c0c4cc; --px-base-100:#e8eaee;
+  --px-accent-h:205; --px-accent-s:64%; --px-accent-l:60%; --px-accent-rgb:86,156,214;
+  --px-red-rgb:224,108,102; --px-green-rgb:108,191,143; --px-yellow-rgb:220,170,90;
+  --px-shadow-md:0 4px 14px -3px rgba(0,0,0,.42),0 1px 3px rgba(0,0,0,.30);
+  --px-shadow-lg:0 16px 36px -8px rgba(0,0,0,.58),0 4px 10px -4px rgba(0,0,0,.40);
+  --px-accent-text:hsl(var(--px-accent-h) var(--px-accent-s) calc(var(--px-accent-l) + 7%));
+}
+:root[data-mode="light"], .frame.light {
+  --px-base-00:#f4f5f7; --px-base-05:#eceef1; --px-base-10:#ffffff; --px-base-15:#eaecf0;
+  --px-base-20:#e2e5ea; --px-base-25:#d6dae1; --px-base-30:#c3c9d2; --px-base-40:#656c78;
+  --px-base-60:#555b64; --px-base-70:#3c414a; --px-base-100:#1b1d21;
+  --px-red-rgb:194,60,54; --px-green-rgb:33,122,80; --px-yellow-rgb:142,100,21;
+  --px-shadow-md:0 4px 14px -3px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.08);
+  --px-shadow-lg:0 16px 36px -8px rgba(0,0,0,.18),0 4px 10px -4px rgba(0,0,0,.12);
+  --px-accent-text:hsl(var(--px-accent-h) var(--px-accent-s) 33%);
+}
+:root, .frame {
+  --px-font-ui:'Inter','Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+  --px-font-mono:'Cascadia Code','Fira Code',Consolas,ui-monospace,monospace;
+  --px-bg:var(--px-base-00); --px-bg-elevated:var(--px-base-10); --px-bg-inset:var(--px-base-15);
+  --px-surface-hover:var(--px-base-20); --px-surface-active:var(--px-base-25);
+  --px-surface-selected:rgba(var(--px-accent-rgb),.16);
+  --px-text:var(--px-base-100); --px-text-secondary:var(--px-base-70); --px-text-muted:var(--px-base-60); --px-text-faint:var(--px-base-40);
+  --px-text-on-accent:#14161a;
+  --px-border:var(--px-base-25); --px-border-strong:var(--px-base-30); --px-divider:var(--px-base-20);
+  --px-accent:hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l));
+  --px-accent-soft:hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l) / .15);
+  --px-danger:rgb(var(--px-red-rgb)); --px-success:rgb(var(--px-green-rgb)); --px-warning:rgb(var(--px-yellow-rgb));
+  --px-radius-sm:4px; --px-radius-md:6px; --px-radius-lg:10px; --px-radius-full:999px;
+  --px-control-h-sm:24px; --px-control-h:28px;
+  /* The stage stays neutral dark in every mode (viewer tokens). */
+  --px-viewer-scrim:#1b1c1f; --px-viewer-ink:#f2f3f5; --px-viewer-ink-muted:rgba(242,243,245,.72);
+  --px-viewer-line:rgba(255,255,255,.14);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--px-bg); color: var(--px-text); font: 13px/1.45 var(--px-font-ui); }
+.page { max-width: 1340px; margin: 0 auto; padding: 32px 16px 80px; }
+.page-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0 0 6px; font-weight: 600; }
+h2 { font-size: 18px; margin: 48px 0 6px; font-weight: 600; }
+h3 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
+p, li { color: var(--px-text-secondary); max-width: 80ch; }
+.lede { font-size: 15px; margin: 0; max-width: 74ch; }
+code { font-family: var(--px-font-mono); font-size: 12px; }
+.mode-btn { height: 28px; padding: 0 12px; border-radius: var(--px-radius-md); border: 1px solid var(--px-border); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; cursor: pointer; }
+.mode-btn:hover { background: var(--px-surface-hover); }
+ol.notes { padding-left: 20px; margin: 12px 0 0; }
+ol.notes li { margin: 5px 0; }
+ol.notes b { color: var(--px-text); font-weight: 600; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 12px; }
+.card { border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); padding: 14px 16px; }
+.card ul { margin: 0; padding-left: 18px; }
+.card li { margin: 3px 0; font-size: 12.5px; }
+.tbl-wrap { overflow-x: auto; margin-top: 12px; border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 12.5px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--px-divider); vertical-align: top; }
+th { color: var(--px-text-muted); font-weight: 600; background: var(--px-bg-elevated); }
+td { color: var(--px-text-secondary); }
+tr:last-child td { border-bottom: 0; }
+
+/* ── Frame: a fixed design size, scaled to the page width ────────────── */
+.frame-wrap { margin-top: 14px; width: 100%; }
+.frame-scale { transform-origin: 0 0; }
+.frame {
+  width: 1280px; height: 780px; border-radius: var(--px-radius-lg); overflow: hidden;
+  border: 1px solid var(--px-border); box-shadow: var(--px-shadow-lg); background: var(--px-bg); color: var(--px-text);
+  display: flex; flex-direction: column; position: relative; font: 13px/1.45 var(--px-font-ui);
+}
+.frame.narrow { width: 1000px; height: 700px; }
+.tabstrip { height: 34px; display: flex; align-items: flex-end; background: var(--px-base-05); border-bottom: 1px solid var(--px-border); padding-left: 8px; flex: none; }
+.tab { height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 6px 6px 0 0; color: var(--px-text-muted); font-size: 12px; }
+.tab.on { background: var(--px-bg); color: var(--px-text); border: 1px solid var(--px-border); border-bottom-color: var(--px-bg); margin-bottom: -1px; }
+.tab svg { width: 14px; height: 14px; }
+
+/* ── Editor ─────────────────────────────────────────────────────────── */
+.ed { flex: 1; min-height: 0; display: grid; grid-template-columns: 196px minmax(0,1fr) 312px; grid-template-rows: 44px minmax(0,1fr) auto; }
+.ed.nopresets { grid-template-columns: minmax(0,1fr) 312px; }
+.narrow .ed.nopresets { grid-template-columns: minmax(0,1fr) 288px; }
+.ed.nopresets .presets { display: none; }
+.tb { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid var(--px-border); min-width: 0; }
+.tb .name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tb .meta { color: var(--px-text-muted); font-size: 12px; white-space: nowrap; }
+.tb .edited { font-size: 11px; color: var(--px-accent-text); background: var(--px-accent-soft); padding: 1px 7px; border-radius: var(--px-radius-full); white-space: nowrap; }
+.sp { flex: 1; min-width: 8px; }
+.sep { width: 1px; height: 18px; background: var(--px-border); margin: 0 2px; flex: none; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; height: var(--px-control-h); padding: 0 10px; border-radius: var(--px-radius-md); border: 1px solid var(--px-border); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; font-size: 12px; white-space: nowrap; flex: none; }
+.btn.sm { height: var(--px-control-h-sm); padding: 0 8px; font-size: 11.5px; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--px-text-secondary); }
+.btn.icon { width: var(--px-control-h); padding: 0; justify-content: center; }
+.btn.sm.icon { width: var(--px-control-h-sm); }
+.btn.primary { background: var(--px-accent); border-color: transparent; color: var(--px-text-on-accent); font-weight: 600; }
+.btn.on { background: var(--px-surface-selected); border-color: rgba(var(--px-accent-rgb),.45); color: var(--px-accent-text); }
+.btn.ghost.on { border-color: transparent; }
+.btn svg { width: 14px; height: 14px; flex: none; }
+.btn .k { font-family: var(--px-font-mono); font-size: 10px; color: var(--px-text-faint); border: 1px solid var(--px-border); border-radius: 3px; padding: 0 3px; line-height: 14px; }
+.split { display: inline-flex; flex: none; }
+.split .btn:first-child { border-radius: var(--px-radius-md) 0 0 var(--px-radius-md); }
+.split .btn:last-child { border-radius: 0 var(--px-radius-md) var(--px-radius-md) 0; border-left: 1px solid rgba(0,0,0,.2); width: 26px; padding: 0; justify-content: center; }
+.seg { display: inline-flex; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); overflow: hidden; flex: none; }
+.seg span { height: 26px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; font-size: 12px; color: var(--px-text-secondary); border-right: 1px solid var(--px-border); }
+.seg span:last-child { border-right: 0; }
+.seg span.on { background: var(--px-surface-selected); color: var(--px-accent-text); }
+.seg svg { width: 14px; height: 14px; }
+.zoom { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border-radius: var(--px-radius-md); border: 1px solid var(--px-border); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--px-text-secondary); flex: none; }
+.zoom svg { width: 12px; height: 12px; color: var(--px-text-faint); }
+
+/* Presets (left) */
+.presets { border-right: 1px solid var(--px-border); display: flex; flex-direction: column; min-height: 0; background: var(--px-bg); }
+.ph { height: 38px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--px-divider); flex: none; }
+.ph b { font-weight: 600; font-size: 12.5px; flex: 1; }
+.plist { flex: 1; min-height: 0; overflow: hidden; padding: 8px 10px; }
+.pgroup { font-size: 11.5px; color: var(--px-text-muted); font-weight: 600; margin: 6px 2px 6px; }
+.pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pthumb { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--px-text-secondary); }
+.pthumb .im { aspect-ratio: 3/2; border-radius: var(--px-radius-sm); overflow: hidden; border: 1px solid var(--px-border); position: relative; }
+.pthumb .im svg { width: 100%; height: 100%; display: block; }
+.pthumb.on .im { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.pthumb.on { color: var(--px-text); }
+.pthumb.hover .im { outline: 1px solid var(--px-border-strong); outline-offset: 1px; }
+
+/* Stage (centre) */
+.centre { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.stage { flex: 1; min-height: 0; background: var(--px-viewer-scrim); position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.photo { position: relative; width: 82%; aspect-ratio: 1600/1067; max-height: 86%; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+.photo > svg { width: 100%; height: 100%; display: block; }
+.chip { position: absolute; font-size: 11px; color: var(--px-viewer-ink); background: rgba(0,0,0,.62); padding: 3px 8px; border-radius: var(--px-radius-full); white-space: nowrap; border: 1px solid var(--px-viewer-line); }
+.chip.tr { top: 10px; right: 10px; } .chip.br { bottom: 10px; right: 10px; } .chip.tl { top: 10px; left: 10px; }
+.chip.tc { top: 10px; left: 50%; transform: translateX(-50%); }
+.chip b { font-weight: 600; }
+.film { height: 76px; flex: none; border-top: 1px solid var(--px-border); display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--px-bg); }
+.film .count { font-size: 11px; color: var(--px-text-muted); width: 44px; flex: none; }
+.film .ft { height: 54px; aspect-ratio: 3/2; border-radius: var(--px-radius-sm); overflow: hidden; border: 1px solid var(--px-border); position: relative; flex: none; }
+.film .ft svg { width: 100%; height: 100%; display: block; }
+.film .ft.on { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.film .ft .dot { position: absolute; right: 4px; top: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--px-accent); box-shadow: 0 0 0 1.5px rgba(0,0,0,.5); }
+
+/* Split compare */
+.splitline { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.splitline i { position: absolute; top: 50%; left: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: #fff; box-shadow: var(--px-shadow-md); display: flex; align-items: center; justify-content: center; color: #222; }
+.splitline i svg { width: 14px; height: 14px; }
+.ba { position: absolute; bottom: 10px; font-size: 11px; font-weight: 600; color: #fff; background: rgba(0,0,0,.55); padding: 2px 8px; border-radius: var(--px-radius-sm); }
+
+/* Crop overlay */
+.crop-shade { position: absolute; inset: 0; background: rgba(0,0,0,.58); clip-path: polygon(0 0,100% 0,100% 100%,0 100%,0 0, var(--x0) var(--y0), var(--x0) var(--y1), var(--x1) var(--y1), var(--x1) var(--y0), var(--x0) var(--y0)); }
+.crop { position: absolute; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+.crop::before, .crop::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent 33.1%, rgba(255,255,255,.4) 33.3%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.4) 66.7%, transparent 66.9%); }
+.crop::after { background: linear-gradient(180deg, transparent 33.1%, rgba(255,255,255,.4) 33.3%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.4) 66.7%, transparent 66.9%); }
+.crop b { position: absolute; width: 14px; height: 14px; border: 3px solid #fff; }
+.crop b.tl { left: -3px; top: -3px; border-right: 0; border-bottom: 0; } .crop b.tr { right: -3px; top: -3px; border-left: 0; border-bottom: 0; }
+.crop b.bl { left: -3px; bottom: -3px; border-right: 0; border-top: 0; } .crop b.br { right: -3px; bottom: -3px; border-left: 0; border-top: 0; }
+.crop .size { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); font-size: 11px; color: var(--px-viewer-ink); background: rgba(0,0,0,.7); padding: 2px 7px; border-radius: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ruler { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); width: 420px; height: 40px; }
+.ruler .ticks { position: absolute; left: 0; right: 0; top: 4px; height: 16px;
+  background: repeating-linear-gradient(90deg, rgba(255,255,255,.5) 0 1px, transparent 1px 10.5px); -webkit-mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
+.ruler .mid { position: absolute; left: 50%; top: 0; width: 2px; height: 24px; margin-left: -1px; background: var(--px-accent); border-radius: 1px; }
+.ruler .val { position: absolute; left: 50%; top: 24px; transform: translateX(-50%); font-size: 11px; color: var(--px-viewer-ink); font-variant-numeric: tabular-nums; }
+
+/* Remove overlay */
+.stroke { position: absolute; border-radius: 20px; background: rgba(var(--px-red-rgb), .45); border: 1.5px solid rgba(255,255,255,.7); }
+.ring { position: absolute; width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+.mark { position: absolute; font: 600 13px/1 var(--px-font-ui); color: rgba(255,255,255,.75); letter-spacing: .02em; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.donebox { position: absolute; border: 1.5px dashed rgba(255,255,255,.7); border-radius: 4px; }
+
+/* Panel (right) */
+.panel { border-left: 1px solid var(--px-border); display: flex; flex-direction: column; min-height: 0; background: var(--px-bg); }
+.ptabs { display: flex; flex: none; border-bottom: 1px solid var(--px-border); padding: 0 6px; }
+.ptab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 6px; font-size: 11px; color: var(--px-text-muted); position: relative; border-bottom: 2px solid transparent; }
+.ptab svg { width: 16px; height: 16px; }
+.ptab.on { color: var(--px-text); border-bottom-color: var(--px-accent); }
+.ptab .dot { position: absolute; top: 6px; right: calc(50% - 15px); width: 6px; height: 6px; border-radius: 50%; background: var(--px-accent); }
+.narrow .ptab { flex-direction: row; justify-content: center; padding: 10px 0 9px; }
+.narrow .ptab span.l { display: none; }
+.pbody { flex: 1; min-height: 0; overflow: hidden; }
+.hist { margin: 10px 12px 2px; height: 78px; border-radius: var(--px-radius-md); background: var(--px-bg-inset); position: relative; overflow: hidden; border: 1px solid var(--px-divider); }
+.hist svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.clipbtn { position: absolute; top: 5px; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 3px; color: var(--px-text-faint); }
+.clipbtn svg { width: 10px; height: 10px; }
+.clipbtn.l { left: 5px; } .clipbtn.r { right: 5px; }
+.clipbtn.lit { color: var(--px-warning); background: rgba(var(--px-yellow-rgb),.15); }
+.histcap { display: flex; justify-content: space-between; margin: 0 12px 6px; font-size: 11px; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.histcap .warn { color: var(--px-warning); }
+.sec { border-top: 1px solid var(--px-divider); }
+.sh { height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; }
+.sh .chev { width: 12px; height: 12px; color: var(--px-text-faint); flex: none; transition: transform .1s; }
+.sec.shut .sh .chev { transform: rotate(-90deg); }
+.sh .t { font-weight: 600; font-size: 12.5px; }
+.sh .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--px-accent); }
+.sh .acts { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.sh .acts .btn.icon svg { color: var(--px-text-faint); }
+.sec.shut .sb { display: none; }
+.sb { padding: 0 12px 10px; }
+.sl { display: grid; grid-template-columns: 82px minmax(0,1fr) 40px; align-items: center; gap: 8px; height: 26px; }
+.sl .n { font-size: 12px; color: var(--px-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sl .v { font-size: 12px; text-align: right; color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.sl.ch .n { color: var(--px-text); }
+.sl.ch .v { color: var(--px-accent-text); font-weight: 600; }
+.track { position: relative; height: 4px; border-radius: 2px; background: var(--px-surface-active); }
+.track .fill { position: absolute; top: 0; bottom: 0; background: var(--px-accent); border-radius: 2px; }
+.track .knob { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--px-base-100); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+.frame.light .track .knob { background: #fff; border: 1px solid var(--px-border-strong); }
+.track.temp { background: linear-gradient(90deg, #4f7fd6, #9aa4b5, #e0b040); }
+.track.tint { background: linear-gradient(90deg, #3dbb6a, #9aa4b5, #d65bc4); }
+.track.sat { background: linear-gradient(90deg, #8a8f99, #d9584c); }
+.track.temp .fill, .track.tint .fill, .track.sat .fill { display: none; }
+.subhead { font-size: 11.5px; color: var(--px-text-muted); font-weight: 600; margin: 8px 0 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips .c { height: 26px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border-radius: var(--px-radius-md); border: 1px solid var(--px-border); font-size: 12px; color: var(--px-text-secondary); }
+.chips .c.on { background: var(--px-surface-selected); border-color: rgba(var(--px-accent-rgb),.45); color: var(--px-accent-text); }
+.chips .c svg { width: 14px; height: 14px; }
+.chips .c i { display: inline-block; border: 1.5px solid currentColor; border-radius: 2px; opacity: .8; }
+.iconrow { display: flex; gap: 4px; }
+.hint { font-size: 11.5px; color: var(--px-text-muted); margin-top: 8px; }
+.list { border: 1px solid var(--px-divider); border-radius: var(--px-radius-md); overflow: hidden; margin-top: 6px; }
+.li { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 6px 0 8px; border-bottom: 1px solid var(--px-divider); font-size: 12px; }
+.li:last-child { border-bottom: 0; }
+.li .sw { width: 36px; height: 24px; border-radius: 3px; overflow: hidden; flex: none; border: 1px solid var(--px-border); }
+.li .sw svg { width: 100%; height: 100%; display: block; }
+.li .t { flex: 1; }
+.li .d { color: var(--px-text-muted); font-size: 11px; }
+.li.on { background: var(--px-surface-selected); }
+.switch { width: 28px; height: 16px; border-radius: 8px; background: var(--px-accent); position: relative; flex: none; }
+.switch::after { content: ''; position: absolute; right: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--px-text-on-accent); }
+.switch.off { background: var(--px-surface-active); }
+.switch.off::after { right: auto; left: 2px; background: var(--px-text-muted); }
+.fr { display: flex; align-items: center; justify-content: space-between; height: 28px; font-size: 12px; color: var(--px-text-secondary); }
+.setup { margin: 12px; padding: 12px; border-radius: var(--px-radius-md); border: 1px solid var(--px-border); background: var(--px-bg-elevated); }
+.setup h4 { margin: 0 0 4px; font-size: 12.5px; }
+.setup p { margin: 0 0 10px; font-size: 12px; color: var(--px-text-secondary); }
+.setup .facts { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--px-text-muted); margin-bottom: 10px; }
+.setup .facts span { display: inline-flex; align-items: center; gap: 4px; }
+.setup .facts svg { width: 12px; height: 12px; }
+.progress { height: 4px; border-radius: 2px; background: var(--px-surface-active); overflow: hidden; margin: 6px 0 4px; }
+.progress i { display: block; height: 100%; width: 42%; background: var(--px-accent); }
+.wheels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; font-size: 11px; color: var(--px-text-muted); }
+.wheel { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 3px; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); position: relative; }
+.wheel::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle, #8a8a8a 0, rgba(138,138,138,0) 70%); }
+.wheel b { position: absolute; z-index: 1; width: 8px; height: 8px; border-radius: 50%; background: #fff; border: 1.5px solid #222; margin: -4px 0 0 -4px; }
+.mixer { display: flex; gap: 6px; margin-bottom: 6px; }
+.mixer i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; }
+.mixer i.on { border-color: var(--px-text); }
+
+/* Menus */
+.menu { position: absolute; z-index: 5; min-width: 220px; padding: 4px; border-radius: var(--px-radius-md); background: var(--px-bg-elevated); border: 1px solid var(--px-border); box-shadow: var(--px-shadow-lg); font-size: 12px; }
+.menu .mi { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: var(--px-radius-sm); color: var(--px-text); }
+.menu .mi svg { width: 14px; height: 14px; color: var(--px-text-muted); }
+.menu .mi .k { margin-left: auto; font-family: var(--px-font-mono); font-size: 10.5px; color: var(--px-text-faint); }
+.menu .mi.hl { background: var(--px-surface-hover); }
+.menu .mi.danger { color: var(--px-danger); }
+.menu .mi.danger svg { color: var(--px-danger); }
+.menu .ms { height: 1px; background: var(--px-divider); margin: 4px 0; }
+.menu .mh { font-size: 11px; color: var(--px-text-muted); padding: 4px 8px 2px; }
+.toast { position: absolute; z-index: 4; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 10px; border-radius: var(--px-radius-md); background: var(--px-bg-elevated); border: 1px solid var(--px-border); box-shadow: var(--px-shadow-md); font-size: 12px; }
+.toast .ok { color: var(--px-success); display: inline-flex; }
+.toast .ok svg { width: 14px; height: 14px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- A painting-like landscape stands in for the photo. -->
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f4f7a"/><stop offset=".55" stop-color="#d98c5f"/><stop offset="1" stop-color="#f2c27b"/></linearGradient>
+    <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c98a62"/><stop offset="1" stop-color="#3a4d66"/></linearGradient>
+    <radialGradient id="sun" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff3c4"/><stop offset=".45" stop-color="#ffd27a"/><stop offset="1" stop-color="#ffd27a" stop-opacity="0"/></radialGradient>
+    <symbol id="photo" viewBox="0 0 1600 1067" preserveAspectRatio="xMidYMid slice">
+      <rect width="1600" height="1067" fill="url(#sky)"/>
+      <circle cx="1080" cy="520" r="210" fill="url(#sun)"/>
+      <path d="M0 560 L180 430 L320 500 L470 360 L640 520 L760 450 L900 560 L1060 470 L1220 540 L1380 420 L1600 540 L1600 700 L0 700Z" fill="#5c4b6e" opacity=".85"/>
+      <path d="M0 640 L220 540 L420 610 L600 520 L820 640 L1000 580 L1180 650 L1400 560 L1600 640 L1600 720 L0 720Z" fill="#3c3654"/>
+      <rect y="700" width="1600" height="367" fill="url(#lake)"/>
+      <ellipse cx="1080" cy="760" rx="260" ry="24" fill="#ffe0a0" opacity=".45"/>
+      <path d="M0 860 C 300 820, 520 900, 800 870 S 1300 830, 1600 880 L1600 1067 L0 1067Z" fill="#2a3a2f"/>
+      <path d="M90 880 l26 -150 l26 150z M150 900 l34 -210 l34 210z M240 890 l22 -120 l22 120z M1380 900 l30 -190 l30 190z M1450 890 l24 -130 l24 130z" fill="#1d2a22"/>
+    </symbol>
+    <symbol id="i-sliders" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 4h7M12 4h2M2 12h3M8 12h6M2 8h2M7 8h7"/><circle cx="10.5" cy="4" r="1.5"/><circle cx="6.5" cy="12" r="1.5"/><circle cx="5.5" cy="8" r="1.5"/></symbol>
+    <symbol id="i-crop" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 1.5V12h10.5M1.5 4H12v10.5"/></symbol>
+    <symbol id="i-eraser" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6 13.5h8M2.8 9.6 9 3.4a1.4 1.4 0 0 1 2 0l2.1 2.1a1.4 1.4 0 0 1 0 2L7.4 13.2H5.6L2.8 10.4a.6.6 0 0 1 0-.8zM5.5 6.9l4.1 4.1"/></symbol>
+    <symbol id="i-wand" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="m2 14 8.5-8.5M9 3.5l1 1M11.5 1.5v2M13 5h2M12.5 2.5 14 1"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 3 2 6l3 3"/><path d="M2.5 6H10a4 4 0 0 1 0 8H7"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="m11 3 3 3-3 3"/><path d="M13.5 6H6a4 4 0 0 0 0 8h3"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></symbol>
+    <symbol id="i-compare" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M8 1.5v13"/><path d="M8 3h5a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 13 13H8z" fill="currentColor" opacity=".3"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.5 2.5v3h3"/></symbol>
+    <symbol id="i-more" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12.5" cy="8" r="1.2"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M5.5 2.5v11"/></symbol>
+    <symbol id="i-film" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M1.5 10.5h13M4.5 10.5v3M8 10.5v3M11.5 10.5v3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3v10M3 8h10"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></symbol>
+    <symbol id="i-paste" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="3" y="3" width="10" height="11.5" rx="1.5"/><path d="M6 3V1.8h4V3M5.5 7.5h5M5.5 10.5h3.5"/></symbol>
+    <symbol id="i-image" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5.5" cy="6" r="1.3"/><path d="m2 12 4-4 3 3 2-2 3.5 3.5"/></symbol>
+    <symbol id="i-rotl" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="6" y="6" width="8" height="8" rx="1"/><path d="M2.5 9V6.5A3.5 3.5 0 0 1 6 3h3"/><path d="m7.5 1.5 1.8 1.5-1.8 1.5"/></symbol>
+    <symbol id="i-rotr" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="6" width="8" height="8" rx="1"/><path d="M13.5 9V6.5A3.5 3.5 0 0 0 10 3H7"/><path d="M8.5 1.5 6.7 3l1.8 1.5"/></symbol>
+    <symbol id="i-fliph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 1.5v13" stroke-dasharray="1.5 1.5"/><path d="M6 4 2 12h4zM10 4l4 8h-4z"/></symbol>
+    <symbol id="i-flipv" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 8h13" stroke-dasharray="1.5 1.5"/><path d="M4 6 12 2v4zM4 10l8 4v-4z"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="4" width="7" height="10" rx="1"/><path d="M11 3h1.5A1.5 1.5 0 0 1 14 4.5V7"/><path d="m12.5 5.5 1.5 1.5 1.5-1.5"/></symbol>
+    <symbol id="i-pipette" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="m10 3 3 3M8.5 4.5l3 3L5 14H2v-3z"/><path d="M11 2.5a1.4 1.4 0 0 1 2 0l.5.5a1.4 1.4 0 0 1 0 2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m3 8.5 3 3 7-7"/></symbol>
+    <symbol id="i-x" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="m4 4 8 8M12 4l-8 8"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 4.5v8h13v-7H8L6.5 3.5h-5z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></symbol>
+    <symbol id="i-disk" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2.5 2.5h9l2 2v9h-11z"/><path d="M5 2.5v3.5h5V2.5M5 13.5V9.5h6v4"/></symbol>
+    <symbol id="i-tri" viewBox="0 0 10 10" fill="currentColor"><path d="M5 1 9.5 9h-9z"/></symbol>
+    <symbol id="i-bw" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></symbol>
+    <symbol id="i-auto" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5"/></symbol>
+  </defs>
+</svg>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>Image Editor redesign</h1>
+      <p class="lede">The editor keeps every tool and slider it has today. What changes is how it is laid out: tools become labelled tabs on the panel, the top bar is grouped and fits any width, changes show where they are, presets show what they do, and the photo always sits on neutral grey. Five frames below, then where each current control goes.</p>
+    </div>
+    <button class="mode-btn" id="modeBtn" type="button">Light Mode</button>
+  </div>
+
+  <h2>What is wrong today</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>Tools and top bar</h3>
+      <ul>
+        <li>Edit, Crop And Rotate, Remove and Enhance are four bare icons on a strip at the window's edge; nothing names the tool you are in.</li>
+        <li>The top bar mixes text buttons, unlabelled icons (Copy Edit, Paste Edit), a zoom readout and two view toggles drawn as solid blue squares that outshout Save.</li>
+        <li>Below about 1100px it overflows: the name disappears and the size sits on top of Undo.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>The panel</h3>
+      <ul>
+        <li>A changed slider looks exactly like an untouched one; an edited section looks like any other.</li>
+        <li>Each slider takes two rows (about 43px), so Light alone fills the panel.</li>
+        <li>Auto and Black And White float between the histogram and Light; the clipping markers read as stray squares.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Presets, stage, crop</h3>
+      <ul>
+        <li>Presets are a text list: you learn what Dusk does by trying it.</li>
+        <li>In light mode the stage turns light grey, which skews how colour reads.</li>
+        <li>Crop shapes hide in a dropdown, straighten is a far-away slider, and the cut-off part is not darkened.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════ A ═══════════════════════════════ -->
+  <h2>A. Edit</h2>
+  <p>A photo with a few changes. Golden Hour is under the pointer in Presets, so the stage previews it.</p>
+  <div class="frame-wrap"><div class="frame-scale"><div class="frame" id="fA">
+    <div class="tabstrip"><div class="tab"><svg><use href="#i-folder"/></svg>Media Library</div><div class="tab on"><svg><use href="#i-sliders"/></svg>Edit Image</div></div>
+    <div class="ed">
+      <div class="tb" data-tb="edit"></div>
+      <div class="presets" data-presets="hover"></div>
+      <div class="centre">
+        <div class="stage">
+          <div class="photo" style="filter:sepia(.22) saturate(1.3) brightness(1.05) hue-rotate(-10deg)"><svg><use href="#photo"/></svg></div>
+          <span class="chip tc">Previewing <b>Golden Hour</b> · click to apply</span>
+          <span class="chip br">35%</span>
+        </div>
+        <div class="film" data-film="1"></div>
+      </div>
+      <aside class="panel" data-panel="edit"></aside>
+    </div>
+  </div></div></div>
+  <ol class="notes">
+    <li><b>Tools are tabs on the panel</b> (Edit, Crop, Remove, Enhance), labelled, with a dot on tools that hold changes, the same way the clip editor marks its inspector tabs. The strip at the window's edge goes.</li>
+    <li><b>Changes show where they are.</b> A changed slider's name brightens, its value turns accent, and a fill runs from rest to the knob. A section with changes gets a dot; closed sections keep it, so you can see Effects was touched without opening it.</li>
+    <li><b>One row per slider</b> (name, track, value), as in Lightroom: Light and Colour fit together. Double-click still resets; the value can still be typed.</li>
+    <li><b>Section actions in the header:</b> Auto sits on Light, the white balance picker on Colour, Black And White becomes Colour's B&amp;W switch. Eye and reset stay.</li>
+    <li><b>Histogram with named clipping.</b> The two corner triangles light when shadows or highlights clip, and the line under it says how much ("Highlights 1.2% clipped"); clicking a triangle shows the clipped pixels on the photo.</li>
+    <li><b>Presets show themselves:</b> a small picture of this photo in each look; pointing at one previews it on the stage, clicking applies it. Your own presets sit under Yours.</li>
+    <li><b>The edited filmstrip photos carry a dot</b>; the count stays.</li>
+  </ol>
+
+  <!-- ═══════════════════════════════ B ═══════════════════════════════ -->
+  <h2>B. Light mode, comparing, and the ⋯ and Save menus</h2>
+  <p>The same editor in light mode: the chrome follows the theme, the stage stays neutral dark. Compare is on (split), and both menus are open to show what moved into them.</p>
+  <div class="frame-wrap"><div class="frame-scale"><div class="frame light" id="fB">
+    <div class="tabstrip"><div class="tab"><svg><use href="#i-folder"/></svg>Media Library</div><div class="tab on"><svg><use href="#i-sliders"/></svg>Edit Image</div></div>
+    <div class="ed">
+      <div class="tb" data-tb="compare"></div>
+      <div class="presets" data-presets="applied"></div>
+      <div class="centre">
+        <div class="stage">
+          <div class="photo">
+            <svg style="position:absolute;inset:0"><use href="#photo"/></svg>
+            <svg style="position:absolute;inset:0;clip-path:inset(0 0 0 50%);filter:contrast(1.12) saturate(1.25) brightness(1.06)"><use href="#photo"/></svg>
+            <div class="splitline" style="left:calc(50% - 1px)"><i><svg><use href="#i-compare"/></svg></i></div>
+            <span class="ba" style="left:10px">Before</span><span class="ba" style="right:10px">After</span>
+          </div>
+          <span class="chip br">35%</span>
+        </div>
+        <div class="film" data-film="1"></div>
+      </div>
+      <aside class="panel" data-panel="edit"></aside>
+    </div>
+    <div class="menu" style="right:186px;top:76px">
+      <div class="mi"><svg><use href="#i-copy"/></svg>Copy Edit<span class="k">Ctrl+Shift+C</span></div>
+      <div class="mi"><svg><use href="#i-paste"/></svg>Paste Edit<span class="k">Ctrl+Shift+V</span></div>
+      <div class="mi"><svg><use href="#i-plus"/></svg>Save Edit as Preset…</div>
+      <div class="ms"></div>
+      <div class="mi"><svg><use href="#i-panel"/></svg>Show Presets<span class="k">P</span></div>
+      <div class="mi hl"><svg><use href="#i-film"/></svg>Show Filmstrip<span class="k">F</span></div>
+      <div class="ms"></div>
+      <div class="mi danger"><svg><use href="#i-reset"/></svg>Reset All Changes…</div>
+    </div>
+    <div class="menu" style="right:10px;top:76px;min-width:240px">
+      <div class="mi hl"><svg><use href="#i-copy"/></svg>Save As Copy<span class="k">Ctrl+S</span></div>
+      <div class="mi danger"><svg><use href="#i-disk"/></svg>Save Over Original…</div>
+      <div class="ms"></div>
+      <div class="mh">Your edits are kept with the photo either way; nothing is lost if you close the tab.</div>
+    </div>
+  </div></div></div>
+  <ol class="notes">
+    <li><b>A grouped top bar:</b> Presets toggle and name · Undo, Redo · Compare · Zoom · ⋯ · Save. Every icon button has a label in its tooltip and a shortcut; toggles look like toggles (a soft selected state), never like Save.</li>
+    <li><b>Compare is one control</b> with two states, Hold (press \ to see the original) and Split (a handle you drag). It replaces Show Original and the split icon.</li>
+    <li><b>Zoom is one control:</b> the percentage opens Fit, 50%, 100%, 200%; the stage keeps a small zoom chip.</li>
+    <li><b>⋯ holds what is used less:</b> Copy Edit, Paste Edit, Save Edit as Preset…, Show Presets, Show Filmstrip, Reset All Changes….</li>
+    <li><b>Save is a split button.</b> Save As Copy is the safe main action; Save Over Original… sits in its menu, in red, and still asks first. Disabled, it is plainly grey.</li>
+    <li><b>The stage stays neutral dark in light mode</b> (viewer tokens), so colour reads the same in both.</li>
+  </ol>
+
+  <!-- ═══════════════════════════════ C ═══════════════════════════════ -->
+  <h2>C. Crop</h2>
+  <p>A 4:5 crop for a post, straightened by 2.5°.</p>
+  <div class="frame-wrap"><div class="frame-scale"><div class="frame" id="fC">
+    <div class="tabstrip"><div class="tab"><svg><use href="#i-folder"/></svg>Media Library</div><div class="tab on"><svg><use href="#i-sliders"/></svg>Edit Image</div></div>
+    <div class="ed nopresets">
+      <div class="tb" data-tb="crop"></div>
+      <div class="presets"></div>
+      <div class="centre">
+        <div class="stage">
+          <div class="photo" style="width:74%">
+            <svg style="transform:rotate(-2.5deg) scale(1.08)"><use href="#photo"/></svg>
+            <div class="crop-shade" style="--x0:30%;--y0:4%;--x1:70%;--y1:96%"></div>
+            <div class="crop" style="left:30%;top:4%;width:40%;height:92%"><b class="tl"></b><b class="tr"></b><b class="bl"></b><b class="br"></b><span class="size">854 × 1067</span></div>
+          </div>
+          <div class="ruler"><div class="ticks"></div><div class="mid"></div><div class="val">−2.5°</div></div>
+        </div>
+        <div class="film" data-film="1"></div>
+      </div>
+      <aside class="panel" data-panel="crop"></aside>
+    </div>
+  </div></div></div>
+  <ol class="notes">
+    <li><b>Shapes are chips</b>, each drawn at its proportion, with Swap Orientation beside them. Free stays; Original is the default.</li>
+    <li><b>Straighten on the photo:</b> a dial under the stage you drag; the slider in the panel stays for exact values. Drawing a line along the horizon to level it is a later addition.</li>
+    <li><b>What is cut is darkened</b>, the frame shows its size in pixels, and corner handles are drawn as corners.</li>
+    <li><b>Rotate and flip are one icon row</b> with tooltips; Reset Crop sits in the section header like every other reset.</li>
+  </ol>
+
+  <!-- ═══════════════════════════════ D ═══════════════════════════════ -->
+  <h2>D. Remove</h2>
+  <p>Removing a watermark: one mark already removed, a second being brushed. Under the frame, how the tool looks before its model is downloaded.</p>
+  <div class="frame-wrap"><div class="frame-scale"><div class="frame" id="fD">
+    <div class="tabstrip"><div class="tab"><svg><use href="#i-folder"/></svg>Media Library</div><div class="tab on"><svg><use href="#i-sliders"/></svg>Edit Image</div></div>
+    <div class="ed nopresets">
+      <div class="tb" data-tb="remove"></div>
+      <div class="presets"></div>
+      <div class="centre">
+        <div class="stage">
+          <div class="photo">
+            <svg><use href="#photo"/></svg>
+            <span class="mark" style="right:5%;bottom:6%">© studio-ines.art</span>
+            <div class="stroke" style="right:4%;bottom:4.6%;width:21%;height:6.5%"></div>
+            <div class="ring" style="right:calc(4% + 16px);bottom:calc(4.6% - 6px)"></div>
+            <div class="donebox" style="left:4%;top:5%;width:12%;height:8%"></div>
+          </div>
+          <span class="chip tc">Brush over the mark · release to remove it</span>
+          <span class="chip br">35%</span>
+        </div>
+        <div class="film" data-film="1"></div>
+      </div>
+      <aside class="panel" data-panel="remove"></aside>
+    </div>
+  </div></div></div>
+  <div class="cols" style="max-width:640px">
+    <div class="card" style="padding:0">
+      <div class="setup" style="margin:12px">
+        <h4>Remove needs a one-time download</h4>
+        <p>Brush over a logo, a date stamp or a stray mark and it is erased; the picture behind it is rebuilt from what surrounds it.</p>
+        <div class="facts"><span><svg><use href="#i-lock"/></svg>Runs on this computer; photos are never sent anywhere</span><span><svg><use href="#i-disk"/></svg>198 MB, once</span></div>
+        <div class="progress"><i></i></div>
+        <div class="hint" style="margin:0 0 10px">Downloading · 83 of 198 MB</div>
+        <button class="btn sm">Cancel Download</button>
+      </div>
+    </div>
+  </div>
+  <ol class="notes">
+    <li><b>Brush size on the stage too:</b> [ and ] change it, the ring shows it; the panel slider stays.</li>
+    <li><b>Each removal is a row</b> with a small picture of the spot, a show/hide eye and a remove ×; selecting a row outlines it on the photo.</li>
+    <li><b>Remove From Other Photos…</b> is the section's main button, with how many photos share the folder.</li>
+    <li><b>Setup in plain words:</b> what it does, that it runs on this computer, the size, and progress while it downloads. No model or site names in the copy (they stay in the tooltip and docs).</li>
+  </ol>
+
+  <!-- ═══════════════════════════════ E ═══════════════════════════════ -->
+  <h2>E. Enhance, in a 1000px window</h2>
+  <p>A narrow tab: Presets folds away, the top bar keeps the essentials and moves the rest into ⋯, the panel's tabs drop to icons, and the photo keeps the room.</p>
+  <div class="frame-wrap"><div class="frame-scale"><div class="frame narrow" id="fE">
+    <div class="tabstrip"><div class="tab"><svg><use href="#i-folder"/></svg>Media Library</div><div class="tab on"><svg><use href="#i-sliders"/></svg>Edit Image</div></div>
+    <div class="ed nopresets">
+      <div class="tb" data-tb="narrow"></div>
+      <div class="presets"></div>
+      <div class="centre">
+        <div class="stage">
+          <div class="photo" style="width:88%"><svg><use href="#photo"/></svg></div>
+          <span class="chip br">52%</span>
+        </div>
+      </div>
+      <aside class="panel" data-panel="enhance"></aside>
+    </div>
+    <div class="toast" style="left:24px;bottom:16px"><span class="ok"><svg><use href="#i-check"/></svg></span><span>Saved <b>garden-edited.jpg</b> · 3200 × 2134</span><button class="btn sm"><svg><use href="#i-folder"/></svg>Show in Folder</button></div>
+  </div></div></div>
+  <ol class="notes">
+    <li><b>Narrow rules:</b> below about 1100px Presets closes (the toggle brings it back over the stage) and the filmstrip hides; below about 900px the panel's tabs become icons and Compare and Zoom move into ⋯. The name truncates; the size never overlaps a button.</li>
+    <li><b>Enhance</b> shows the size it will make and the time it takes before you start, and the result is previewed on the stage before saving.</li>
+    <li><b>After saving,</b> a note with Show in Folder, the same as the clip editor's export note.</li>
+  </ol>
+
+  <h2>Where every current control goes</h2>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Today</th><th>Control</th><th>In the redesign</th></tr></thead>
+    <tbody>
+      <tr><td>Tool strip (right edge)</td><td>Edit, Crop And Rotate, Remove, Enhance</td><td>Labelled tabs at the top of the panel, with a dot when a tool holds changes</td></tr>
+      <tr><td>Top bar</td><td>Presets toggle, name, size</td><td>Same place; toggle drawn as a quiet toggle; name truncates</td></tr>
+      <tr><td>Top bar</td><td>Undo, Redo</td><td>Same</td></tr>
+      <tr><td>Top bar</td><td>Reset</td><td>⋯ › Reset All Changes… (each section keeps its own reset)</td></tr>
+      <tr><td>Top bar</td><td>Show Original, Split View</td><td>Compare: Hold or Split</td></tr>
+      <tr><td>Top bar</td><td>Zoom readout, Fit, 100%</td><td>One zoom control with a menu; a zoom chip on the stage</td></tr>
+      <tr><td>Top bar</td><td>Copy Edit, Paste Edit</td><td>⋯ menu, named, with shortcuts</td></tr>
+      <tr><td>Top bar</td><td>Filmstrip toggle</td><td>⋯ › Show Filmstrip (F)</td></tr>
+      <tr><td>Top bar</td><td>Save, Save As Copy</td><td>Split button: Save As Copy, and Save Over Original… in its menu</td></tr>
+      <tr><td>Panel</td><td>Histogram, clipping markers</td><td>Histogram with named clipping triangles and a line saying how much clips</td></tr>
+      <tr><td>Panel</td><td>Auto, Black And White</td><td>Auto in Light's header; B&amp;W switch in Colour's header</td></tr>
+      <tr><td>Panel</td><td>Pick White Balance</td><td>Picker icon in Colour's header</td></tr>
+      <tr><td>Panel</td><td>Every slider, Tone Curve, Colour Mixer, Colour Grading, Effects, Detail</td><td>Same controls, one row per slider, changed ones marked</td></tr>
+      <tr><td>Crop</td><td>Shape dropdown, Swap Orientation</td><td>Shape chips and Swap Orientation</td></tr>
+      <tr><td>Crop</td><td>Straighten, Rotate, Flip, Reset Crop And Rotate</td><td>Dial on the stage plus slider; icon row; reset in the header</td></tr>
+      <tr><td>Remove</td><td>Brush, removals, Remove From Other Photos, setup</td><td>Brush size on stage and panel; removal rows with pictures; setup card with progress</td></tr>
+      <tr><td>Enhance</td><td>Upscale settings, setup</td><td>Same, with the output size and time shown first</td></tr>
+      <tr><td>Presets</td><td>Text list, + Save Preset</td><td>Thumbnail grid with hover preview; Yours; + stays</td></tr>
+      <tr><td>Filmstrip</td><td>Photos of the folder, count</td><td>Same, with a dot on edited photos</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Build order</h2>
+  <ol class="notes">
+    <li><b>Fix the narrow top bar first</b> (the overlap is a bug), with the grouped top bar, ⋯ menu and Save split button.</li>
+    <li><b>Panel:</b> tool tabs with dots, one-row sliders, changed marks, header actions, histogram clipping line. New values go in a Tier 3 "Image editor" token block.</li>
+    <li><b>Stage:</b> neutral dark in both modes; Compare as one control.</li>
+    <li><b>Presets:</b> thumbnails rendered from the open photo (small, cached per photo), hover preview.</li>
+    <li><b>Crop and Remove:</b> shape chips, straighten dial, darkened outside; removal rows, brush keys, setup card.</li>
+  </ol>
+</div>
+
+<script>
+(() => {
+  const use = (id) => `<svg><use href="#${id}"/></svg>`;
+  // Light / dark toggle for the page (frame B is always light), remembered per viewer.
+  const btn = document.getElementById('modeBtn');
+  const setMode = (m) => { document.documentElement.dataset.mode = m; btn.textContent = m === 'light' ? 'Dark Mode' : 'Light Mode'; };
+  let saved = null; try { saved = localStorage.getItem('imageMockMode'); } catch {}
+  setMode(saved || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
+  btn.addEventListener('click', () => { const m = document.documentElement.dataset.mode === 'light' ? 'dark' : 'light'; setMode(m); try { localStorage.setItem('imageMockMode', m); } catch {} });
+
+  // Top bars
+  const tb = ({ compare = 'off', narrow = false, edited = true } = {}) => `
+    <button class="btn ghost icon${narrow ? '' : ' on'}" title="Presets (P)">${use('i-panel')}</button>
+    <span class="name">garden.jpg</span>${narrow ? '' : '<span class="meta">1600 × 1067 · 2.4 MB</span>'}
+    ${edited && !narrow ? '<span class="edited">Edited</span>' : ''}
+    <span class="sp"></span>
+    <button class="btn ghost icon" title="Undo (Ctrl+Z)">${use('i-undo')}</button><button class="btn ghost icon" title="Redo (Ctrl+Shift+Z)">${use('i-redo')}</button>
+    <span class="sep"></span>
+    ${narrow ? '' : `<span class="seg" title="Compare with the original"><span class="${compare === 'hold' ? 'on' : ''}">${use('i-eye')}Hold <span class="k" style="font-family:var(--px-font-mono);font-size:10px;opacity:.7">\\</span></span><span class="${compare === 'split' ? 'on' : ''}">${use('i-compare')}Split</span></span>
+    <span class="zoom" title="Zoom">35%${use('i-chev')}</span>`}
+    <button class="btn ghost icon${compare === 'split' ? ' on' : ''}" title="More">${use('i-more')}</button>
+    <span class="split"><button class="btn primary"${edited ? '' : ' disabled'}>Save As Copy</button><button class="btn primary${compare === 'split' ? ' on' : ''}" title="Save options">${use('i-chev')}</button></span>`;
+  const TB = { edit: tb(), compare: tb({ compare: 'split' }), crop: tb(), remove: tb(), narrow: tb({ narrow: true }) };
+  document.querySelectorAll('[data-tb]').forEach((el) => { el.innerHTML = TB[el.dataset.tb]; });
+
+  // Presets
+  const LOOKS = [['None','none'],['Cinematic','contrast(1.06) saturate(1.15)'],['Teal And Orange','contrast(1.1) saturate(1.28) hue-rotate(-6deg)'],['Golden Hour','sepia(.22) saturate(1.3) brightness(1.05) hue-rotate(-10deg)'],['Dusk','contrast(1.12) saturate(.82) brightness(.95) hue-rotate(8deg)'],['Neon','saturate(1.6) contrast(1.1) hue-rotate(-14deg)'],['Punch','contrast(1.15) saturate(1.2)'],['Pastel','contrast(.86) brightness(1.06) saturate(.85)'],['Warm','sepia(.18) saturate(1.22) hue-rotate(-8deg)'],['Cool','saturate(1.05) hue-rotate(12deg)'],['Vivid','contrast(1.13) saturate(1.4)'],['Fade','contrast(.82) saturate(.8) brightness(1.04)']];
+  const thumb = (n, f, cls) => `<div class="pthumb ${cls}"><div class="im"><svg style="filter:${f}"><use href="#photo"/></svg></div><span>${n}</span></div>`;
+  document.querySelectorAll('[data-presets]').forEach((el) => {
+    const mode = el.dataset.presets;
+    const looks = LOOKS.slice(0, 10).map(([n, f]) => thumb(n, f, mode === 'hover' && n === 'Golden Hour' ? 'hover' : (mode === 'applied' && n === 'Punch' ? 'on' : (mode === 'hover' && n === 'None' ? 'on' : '')))).join('');
+    el.innerHTML = `<div class="ph"><b>Presets</b><button class="btn sm ghost icon" title="Search">${use('i-search')}</button><button class="btn sm ghost icon" title="Save Edit as Preset…">${use('i-plus')}</button></div>
+      <div class="plist"><div class="pgroup">Yours</div><div class="pgrid">${thumb('Studio Warm', 'sepia(.12) contrast(1.05) saturate(1.1)', '')}</div>
+      <div class="pgroup" style="margin-top:12px">Looks</div><div class="pgrid">${looks}</div></div>`;
+  });
+
+  // Filmstrips
+  const FILM = ['none','hue-rotate(40deg) saturate(.8)','grayscale(1) contrast(1.1)','hue-rotate(-30deg) brightness(.9)','sepia(.4)','hue-rotate(160deg) saturate(.7)','brightness(1.1) saturate(1.3)'];
+  document.querySelectorAll('[data-film]').forEach((el) => {
+    el.innerHTML = `<span class="count">3 of 7</span>` + FILM.map((f, i) => `<div class="ft${i === 2 ? ' on' : ''}"><svg style="filter:${f}"><use href="#photo"/></svg>${[1, 2, 4].includes(i) ? '<span class="dot"></span>' : ''}</div>`).join('');
+  });
+
+  // Panels
+  const TOOLS = [['edit','i-sliders','Edit'],['crop','i-crop','Crop'],['remove','i-eraser','Remove'],['enhance','i-wand','Enhance']];
+  const dots = { edit: true, crop: true, remove: true };
+  const tabs = (cur) => `<div class="ptabs">${TOOLS.map(([id, ic, l]) => `<div class="ptab${id === cur ? ' on' : ''}" title="${l}">${use(ic)}<span class="l">${l}</span>${dots[id] && id !== cur ? '<span class="dot"></span>' : ''}</div>`).join('')}</div>`;
+  const slider = (name, value, pos, from = 50, extra = '') => {
+    const ch = pos !== from;
+    const lo = Math.min(pos, from), hi = Math.max(pos, from);
+    return `<div class="sl${ch ? ' ch' : ''}"><span class="n">${name}</span><div class="track ${extra}">${ch ? `<span class="fill" style="left:${lo}%;width:${hi - lo}%"></span>` : ''}<span class="knob" style="left:${pos}%"></span></div><span class="v">${value}</span></div>`;
+  };
+  const sec = (title, body, { dot = false, shut = false, acts = '' } = {}) => `<div class="sec${shut ? ' shut' : ''}"><div class="sh"><svg class="chev">${'<use href="#i-chev"/>'}</svg><span class="t">${title}</span>${dot ? '<span class="dot"></span>' : ''}<span class="acts">${acts}<button class="btn sm ghost icon" title="See without ${title}">${use('i-eye')}</button><button class="btn sm ghost icon" title="Reset ${title}">${use('i-reset')}</button></span></div><div class="sb">${body}</div></div>`;
+  const hist = () => {
+    const pts = (fn) => { let d = 'M0,100'; for (let i = 0; i <= 100; i++) d += ` L${i * 3},${100 - fn(i / 100) * 92}`; return d + ' L300,100Z'; };
+    const r = (x) => Math.exp(-((x - .72) ** 2) / .018) * .8 + Math.exp(-((x - .35) ** 2) / .02) * .35 + (x > .97 ? .55 : 0);
+    const g = (x) => Math.exp(-((x - .55) ** 2) / .03) * .7 + Math.exp(-((x - .25) ** 2) / .015) * .4;
+    const b = (x) => Math.exp(-((x - .3) ** 2) / .02) * .85 + Math.exp(-((x - .62) ** 2) / .03) * .3;
+    return `<div class="hist"><svg viewBox="0 0 300 100" preserveAspectRatio="none" style="mix-blend-mode:normal">
+      <path d="${pts(r)}" fill="rgba(229,90,80,.55)"/><path d="${pts(g)}" fill="rgba(90,200,120,.5)"/><path d="${pts(b)}" fill="rgba(80,140,230,.55)"/></svg>
+      <span class="clipbtn l" title="Shadows clipped: none">${use('i-tri')}</span><span class="clipbtn r lit" title="Highlights clipped: show on the photo">${use('i-tri')}</span></div>
+      <div class="histcap"><span>ISO 200 · f/8 · 1/250</span><span class="warn">Highlights 1.2% clipped</span></div>`;
+  };
+  const PANELS = {
+    edit: () => tabs('edit') + `<div class="pbody">${hist()}
+      ${sec('Light', slider('Exposure', '+0.35', 59) + slider('Contrast', '+12', 56) + slider('Highlights', '−40', 30) + slider('Shadows', '+25', 62.5) + slider('Whites', '0', 50) + slider('Blacks', '−8', 46), { dot: true, acts: `<button class="btn sm ghost" title="Auto (Ctrl+U)">${use('i-auto')}Auto</button>` })}
+      ${sec('Tone Curve', '', { shut: true })}
+      ${sec('Colour', slider('Temperature', '+6', 56, 50, 'temp') + slider('Tint', '0', 50, 50, 'tint') + slider('Vibrance', '+18', 59) + slider('Saturation', '0', 50, 50), { dot: true, acts: `<button class="btn sm ghost icon" title="Pick White Balance (W)">${use('i-pipette')}</button><button class="btn sm ghost icon" title="Black And White (V)">${use('i-bw')}</button>` })}
+      ${sec('Colour Mixer', '', { shut: true })}
+      ${sec('Colour Grading', '', { shut: true })}
+      ${sec('Effects', '', { shut: true, dot: true })}
+      ${sec('Detail', '', { shut: true })}</div>`,
+    crop: () => tabs('crop') + `<div class="pbody" style="padding-top:4px">
+      ${sec('Shape', `<div class="chips">${[['Original', 15, 10], ['Free', 0, 0], ['1:1', 12, 12], ['4:5', 10, 12.5], ['5:7', 10, 14], ['2:3', 10, 15], ['3:4', 10, 13.3], ['16:9', 16, 9], ['9:16', 9, 16]].map(([l, w, h]) => `<span class="c${l === '4:5' ? ' on' : ''}">${w ? `<i style="width:${w * .8}px;height:${h * .8}px"></i>` : ''}${l}</span>`).join('')}<span class="c" title="Swap Orientation">${use('i-swap')}</span></div>`, { dot: true })}
+      ${sec('Rotate', slider('Straighten', '−2.5°', 46.5) + `<div class="subhead">Turn and flip</div><div class="iconrow"><button class="btn icon" title="Rotate Left (Ctrl+[)">${use('i-rotl')}</button><button class="btn icon" title="Rotate Right (Ctrl+])">${use('i-rotr')}</button><button class="btn icon" title="Flip Horizontal">${use('i-fliph')}</button><button class="btn icon" title="Flip Vertical">${use('i-flipv')}</button></div><div class="hint">Drag the dial under the photo to straighten; drag the frame to move it, a corner to resize it.</div>`, { dot: true })}
+      </div>`,
+    remove: () => tabs('remove') + `<div class="pbody" style="padding-top:4px">
+      ${sec('Brush', slider('Size', '34 px', 30, 0) + `<div class="hint">[ and ] change the size. Hold Alt to brush back what was removed.</div>`)}
+      ${sec('Removed', `<div class="list"><div class="li on"><span class="sw"><svg style="transform:scale(3);transform-origin:8% 9%"><use href="#photo"/></svg></span><span class="t">Removal 1<br><span class="d">top left · 96 × 64</span></span><button class="btn sm ghost icon" title="Hide">${use('i-eye')}</button><button class="btn sm ghost icon" title="Undo This Removal">${use('i-x')}</button></div>
+        <div class="li"><span class="sw"><svg style="transform:scale(3);transform-origin:90% 92%"><use href="#photo"/></svg></span><span class="t">Brushing…<br><span class="d">release to remove</span></span></div></div>`, { dot: true })}
+      ${sec('Other Photos', `<p style="margin:0 0 8px;font-size:12px">The same mark on other photos? Find it there and remove it the same way. You choose the photos and see every find before anything changes.</p><button class="btn primary sm">Remove From Other Photos…</button><div class="hint">6 other photos in this folder</div>`)}
+      <div class="hint" style="margin:10px 12px"><svg style="width:12px;height:12px;vertical-align:-2px"><use href="#i-lock"/></svg> Runs on this computer.</div></div>`,
+    enhance: () => tabs('enhance') + `<div class="pbody" style="padding-top:4px">
+      ${sec('Enlarge', `<div class="chips"><span class="c">Off</span><span class="c on">2×</span><span class="c">4×</span></div>
+        <div class="fr" style="margin-top:8px"><span>Result</span><b style="font-weight:600;color:var(--px-text)">3200 × 2134</b></div>
+        <div class="fr"><span>Takes about</span><span>20 s on this computer</span></div>
+        <div class="fr"><span>Sharpen faces</span><span class="switch off"></span></div>
+        <div class="hint">The enlarged picture is previewed here first; nothing is written until you save.</div>`, { dot: false })}</div>`,
+  };
+  document.querySelectorAll('[data-panel]').forEach((el) => { el.innerHTML = PANELS[el.dataset.panel](); });
+
+  // Scale each frame to the page width.
+  const fit = () => document.querySelectorAll('.frame-wrap').forEach((w) => {
+    const s = w.querySelector('.frame-scale'); const f = s.firstElementChild;
+    const k = Math.min(1, w.clientWidth / f.offsetWidth);
+    s.style.transform = `scale(${k})`; w.style.height = (f.offsetHeight * k) + 'px';
+  });
+  addEventListener('resize', fit); fit();
+})();
+</script>
+</body>
+</html>
