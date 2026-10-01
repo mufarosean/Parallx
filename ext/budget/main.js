@@ -766,12 +766,10 @@ function injectStyles() {
 }
 .budget-section:last-of-type { margin-bottom: 16px; }
 .budget-section h3 {
-  margin: 0 0 4px 0;
+  margin: 0 0 10px 0;
   font-size: var(--px-text-sm);
   font-weight: 600;
-  color: var(--px-text-secondary);
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  color: var(--px-text);
 }
 
 .budget-log-row {
@@ -941,10 +939,7 @@ function injectStyles() {
 .budget-section-h {
   font-size: var(--px-text-sm);
   font-weight: 600;
-  color: var(--px-text-secondary);
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--vscode-foreground, #ddd);
+  color: var(--px-text);
   margin: 0 0 10px 0;
 }
 
@@ -1023,11 +1018,9 @@ function injectStyles() {
   margin-bottom: 12px;
 }
 .budget-trend-title {
-  font-size: 14px;
-  font-weight: 500;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--vscode-foreground, #ddd);
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text);
 }
 .budget-trend-chart-host {
   position: relative;
@@ -1744,7 +1737,7 @@ function renderSidebarNav(container, api) {
   const syncBtn = document.createElement('button');
   syncBtn.type = 'button';
   syncBtn.className = 'budget-sync-btn';
-  const syncIconHtml = makeIcon(api, 'refresh-cw', 14);
+  const syncIconHtml = makeIcon(api, 'cloud-download', 14);
   if (syncIconHtml) {
     const ic = document.createElement('span');
     ic.className = 'budget-icon';
@@ -2439,7 +2432,7 @@ function renderTransactionsSection(body, api) {
   }));
   toolbar.appendChild(makeButton('Sync Now', {
     primary: true,
-    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    iconHtml: makeIcon(api, 'cloud-download', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
   }));
   body.appendChild(toolbar);
@@ -2815,7 +2808,7 @@ function renderSyncLogSection(body, api) {
   }));
   toolbar.appendChild(makeButton('Sync Now', {
     primary: true,
-    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    iconHtml: makeIcon(api, 'cloud-download', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
   }));
   toolbar.appendChild(makeButton('Reprocess History', {
@@ -3053,7 +3046,7 @@ function renderDashboardSection(body, api) {
   toolbar.appendChild(lastSyncMeta);
   toolbar.appendChild(makeButton('Sync Now', {
     primary: true,
-    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    iconHtml: makeIcon(api, 'cloud-download', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
   }));
   body.appendChild(toolbar);
@@ -5441,7 +5434,7 @@ function renderAccountsSection(body, api) {
   toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
   toolbar.appendChild(makeButton('Sync Now', {
     primary: true,
-    iconHtml: makeIcon(api, 'refresh-cw', 12),
+    iconHtml: makeIcon(api, 'cloud-download', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
   }));
   body.appendChild(toolbar);

@@ -1015,7 +1015,7 @@ export class PageChromeController {
         },
       },
       {
-        label: 'Export Markdown',
+        label: 'Export as Markdown',
         iconId: 'export',
         action: async () => {
           try {
