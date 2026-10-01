@@ -661,22 +661,41 @@ async function main() {
           return `bar h=${Math.round(bar.getBoundingClientRect().height)} fs=${getComputedStyle(bar).fontSize}; ${items.join('; ')}`;
         });
         console.log(`[probe] status bar: ${sb}`);
+        // A file one folder down, so the path has a folder, a chevron and the file.
+        const node = (name) => Array.from(document.querySelectorAll('.tree-node')).find((n) => n.querySelector('.tree-node-label')?.textContent === name);
+        await page.evaluate(() => { const n = Array.from(document.querySelectorAll('.tree-node')).find((x) => x.querySelector('.tree-node-label')?.textContent === 'notes'); if (n) n.click(); });
+        await page.waitForTimeout(800);
         const opened = await page.evaluate(async () => {
-          const row = Array.from(document.querySelectorAll('.tree-node')).find((n) => n.querySelector('.tree-node-label')?.textContent === 'README.md');
-          if (!row) return 'no README row';
+          const row = Array.from(document.querySelectorAll('.tree-node')).find((n) => n.querySelector('.tree-node-label')?.textContent === 'siewert.md');
+          if (!row) return 'no siewert.md row';
           row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
           return 'ok';
         });
+        void node;
         await page.waitForTimeout(1_500);
+        // Each crumb's icon, label and chevron: their vertical centres should agree.
         const bc = await page.evaluate(() => {
           const c = document.querySelector('.breadcrumbs-control:not(.hidden)');
           if (!c) return 'no breadcrumbs';
           const r = c.getBoundingClientRect();
+          const mid = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return b.height ? +(b.top + b.height / 2).toFixed(1) : null; };
+          const glyph = (el) => { if (!el) return null; const rg = document.createRange(); rg.selectNodeContents(el); const b = rg.getBoundingClientRect(); return b.height ? +(b.top + b.height / 2).toFixed(1) : null; };
+          const items = Array.from(c.querySelectorAll('.parallx-breadcrumb-item')).map((it) => {
+            const svg = it.querySelector('.breadcrumb-icon svg');
+            const sep = it.querySelector('.breadcrumb-separator svg');
+            return `${it.querySelector('.breadcrumb-label')?.textContent} icon=${mid(svg)} text=${glyph(it.querySelector('.breadcrumb-label'))} sep=${mid(sep)}`;
+          });
           const item = c.querySelector('.parallx-breadcrumb-item');
-          return `bar h=${Math.round(r.height)} item fs=${item ? getComputedStyle(item).fontSize : '-'} text="${c.textContent.trim().slice(0, 60)}"`;
+          return `bar h=${Math.round(r.height)} mid=${(r.top + r.height / 2).toFixed(1)} fs=${item ? getComputedStyle(item).fontSize : '-'}; ${items.join('; ')}`;
         });
         console.log(`[probe] file breadcrumbs (${opened}): ${bc}`);
         await shot(page, 'chrome-file');
+        const tbar = await page.evaluate(() => {
+          const b = document.querySelector('.titlebar-search-btn');
+          const center = document.querySelector('.titlebar-center');
+          return `search=${b ? `"${b.title}" ${Math.round(b.getBoundingClientRect().width)}x${Math.round(b.getBoundingClientRect().height)}` : 'none'} centre="${(center?.textContent || '').trim()}"`;
+        });
+        console.log(`[probe] title bar: ${tbar}`);
       });
     }
     if (scenes.includes('watermark')) {

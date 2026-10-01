@@ -175,6 +175,8 @@ html, body {
   color: var(--px-text);
 }
 .titlebar-layout-btn.is-on { color: var(--px-text); }
+/* A little air between Search Commands and the area toggles. */
+.titlebar-layout-gap { width: 6px; flex: none; }
 /* The filled pane region only shows when that pane is visible. */
 .titlebar-layout-btn .titlebar-layout-fill {
   opacity: 0;
@@ -271,99 +273,6 @@ html, body {
   color: var(--vscode-menu-selectionForeground);
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
-}
-
-/* ── Title-bar command center (search box) ──
- *  Opens the command palette. A crafted search pill: a recessed well with a
- *  faint top sheen, an accent-tinted lens, and a keycap hint that lifts on
- *  hover. Inspired by Spotlight/Raycast more than VS Code's flat field. */
-.titlebar-command-center {
-  -webkit-app-region: no-drag;
-  /* Centre at the true viewport centre (resolves to .titlebar-container, which is
-     position:relative + full width) so it lines up with the command palette.
-     Centred via inset:0 + margin:auto on a fixed width/height — NOT a transform —
-     so the global [role=button]:active press transform can't knock it out of
-     place on click (that was the "it jumps when I click it" bug). */
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: clamp(220px, 30vw, 360px);
-  height: 24px;
-  padding: 0 9px 0 11px;
-  /* Quiet flat pill — ONE effect, not five. The old recessed-well treatment
-     (hard border + gradient + inset sheen + drop shadow + accent icon +
-     boxed keycaps) read as clunky chrome at 24px. Transparent border keeps
-     the box size stable for the hover hairline. */
-  border: 1px solid transparent;
-  border-radius: var(--px-radius-md);
-  background: var(--px-bg-inset);
-  color: var(--px-text-muted);
-  font-size: var(--px-text-sm);
-  cursor: text;
-  user-select: none;
-  transition:
-    border-color var(--px-dur-fast) var(--px-ease),
-    background-color var(--px-dur-fast) var(--px-ease),
-    color var(--px-dur-fast) var(--px-ease);
-}
-
-.titlebar-command-center:hover {
-  background: var(--px-surface-hover);
-  border-color: var(--px-border);
-  color: var(--px-text-secondary);
-}
-
-.titlebar-command-center:focus-visible {
-  outline: none;
-  border-color: var(--px-accent);
-  box-shadow: 0 0 0 3px var(--px-accent-soft);
-  color: var(--px-text-secondary);
-}
-
-.titlebar-command-center-icon {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  color: currentColor;
-  opacity: 0.75;
-}
-
-.titlebar-command-center-label {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Shortcut hint — quiet text, no boxed keycaps (three bordered chips inside
-   an already-bordered pill was the busiest corner of the titlebar). */
-.titlebar-command-center-kbd {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-}
-.titlebar-command-center-kbd kbd {
-  display: inline-flex;
-  align-items: center;
-  background: none;
-  border: 0;
-  padding: 0;
-  color: var(--px-text-muted);
-  font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--px-text-2xs);
-  font-weight: 500;
-  line-height: 1;
-}
-/* Join the caps with quiet plus signs: "Ctrl+⇧+P". */
-.titlebar-command-center-kbd kbd + kbd::before {
-  content: '+';
-  margin-right: 1px;
-  opacity: 0.6;
 }
 
 /* ── Titlebar dropdown menus (M3 Cap 1.2) ──
@@ -1951,69 +1860,77 @@ html, body {
   flex: 0 0 auto;
   cursor: pointer;
   height: 100%;
-  font-size: var(--parallx-fontSize-base);
-  color: var(--vscode-breadcrumb-foreground, var(--vscode-foreground));
+  /* A path strip, a notch under the editor's text, ancestors quieter than
+     the file. One 16px line box for every piece (as the canvas ribbon does),
+     so text, icons and chevrons centre on the same line at any DPR. */
+  font-size: var(--px-text-sm);
+  line-height: 16px;
+  color: var(--px-text-muted);
   outline: none;
-  line-height: 22px;
 }
+.parallx-breadcrumb-item:last-child { color: var(--px-text-secondary); }
 
 .parallx-breadcrumbs.disabled .parallx-breadcrumb-item {
   cursor: default;
 }
 
-.parallx-breadcrumb-item:hover:not(.focused):not(.selected) {
-  color: var(--vscode-breadcrumb-focusForeground, var(--vscode-foreground));
-}
-
-.parallx-breadcrumb-item.focused {
-  color: var(--vscode-breadcrumb-focusForeground, var(--vscode-foreground));
-}
-
+/* The crumb itself (icon + name) takes the hover, like every other row. */
+.parallx-breadcrumb-item .breadcrumb-icon,
+.parallx-breadcrumb-item .breadcrumb-label { transition: color var(--px-dur-fast) var(--px-ease); }
+.parallx-breadcrumb-item:hover:not(.focused):not(.selected) .breadcrumb-label,
 .parallx-breadcrumb-item.focused .breadcrumb-label,
-.parallx-breadcrumb-item.selected .breadcrumb-label {
-  text-decoration: underline;
+.parallx-breadcrumb-item.focused.selected .breadcrumb-label {
+  color: var(--px-text);
 }
 
-.parallx-breadcrumb-item.focused.selected {
-  color: var(--vscode-breadcrumb-activeSelectionForeground, var(--vscode-foreground));
-}
-
-/* Breadcrumb separator — chevron between items */
+/* Breadcrumb separator: a 10px drawn chevron, centred in the line box. */
 .breadcrumb-separator {
-  margin: 0 6px;
-  opacity: 0.7;
-  font-size: 1.3em;
-  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 16px;
+  margin: 0 5px;
+  color: var(--px-text-faint);
+  line-height: 0;
 }
+.breadcrumb-separator svg { width: 10px; height: 10px; display: block; }
 
 /* Hide separator after the last breadcrumb item */
 .parallx-breadcrumb-item:last-child .breadcrumb-separator {
   display: none;
 }
 
-/* First item gets leading space for clean indentation */
+/* First item lines up with the editor text's gutter. */
 .parallx-breadcrumb-item:first-of-type {
-  padding-left: 15px;
+  padding-left: 14px;
 }
 
-/* Breadcrumb icons */
+/* Breadcrumb icons: a 12px box in the same 16px line, the SVG as a block
+   (an inline SVG sits on the text baseline and rides high). */
 .breadcrumb-icon {
   display: inline-flex;
   align-items: center;
-  margin-right: 4px;
-  opacity: 0.85;
-  width: 14px;
-  height: 14px;
+  justify-content: center;
+  width: 12px;
+  height: 16px;
+  margin-right: 5px;
   flex-shrink: 0;
+  line-height: 0;
 }
+.parallx-breadcrumb-item.folder .breadcrumb-icon { color: var(--px-text-faint); }
 
 .breadcrumb-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 
 .breadcrumb-label {
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
 }
 
 /* ── View (base class) ── */

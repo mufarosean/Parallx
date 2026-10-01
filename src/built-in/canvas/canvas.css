@@ -2682,7 +2682,7 @@
   justify-content: space-between;
   padding: 0 12px;
   box-sizing: border-box;
-  height: 32px;
+  height: 26px;
   flex-shrink: 0;
   /* Stick to top of scroll container so the ribbon stays visible on scroll */
   position: sticky;
@@ -2734,7 +2734,7 @@
 }
 
 .canvas-top-ribbon-edited {
-  font-size: var(--px-text-sm);
+  font-size: var(--px-text-xs);
   color: var(--px-text-muted);
   white-space: nowrap;
   padding: 0 6px;
@@ -2955,7 +2955,8 @@
   align-items: center;
   gap: 4px;
   margin-bottom: 12px;
-  font-size: var(--parallx-fontSize-base);
+  /* A path, not content: a notch under the page's text (files match). */
+  font-size: var(--px-text-sm);
   color: var(--px-text-muted);
   flex-wrap: wrap;
 }
@@ -2996,14 +2997,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   line-height: 0;
 }
 
 .canvas-breadcrumb-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   display: block;
 }
 

@@ -14,6 +14,7 @@
 
 import { Disposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
+import { getIcon } from './iconRegistry.js';
 
 // ─── BreadcrumbsItem ─────────────────────────────────────────────────────────
 
@@ -219,7 +220,9 @@ export class BreadcrumbsWidget extends Disposable {
       const sep = document.createElement('span');
       sep.className = 'breadcrumb-separator';
       sep.setAttribute('aria-hidden', 'true');
-      sep.textContent = '›'; // VS Code uses codicon-chevronRight
+      // A drawn chevron, not a '›' glyph: a glyph sits on the text baseline
+      // and its size follows the font, so it never lined up with the icons.
+      sep.innerHTML = getIcon('chevron-right') ?? '›';
       node.appendChild(sep);
 
       this._domNode.appendChild(node);

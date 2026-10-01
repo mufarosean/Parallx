@@ -236,6 +236,7 @@ export enum WorkbenchState {
 // a rail-stacked part earns (`part:` icon ids).
 const ICON_SIDEBAR = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2.5" width="12" height="11" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M6 3v10" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="2.7" y="3.2" width="2.6" height="9.6" rx="0.6" fill="currentColor"/></svg>';
 const ICON_PANEL = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2.5" width="12" height="11" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M2.5 9.8h11" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="2.7" y="10.2" width="10.6" height="2.5" rx="0.6" fill="currentColor"/></svg>';
+const ICON_SEARCH = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7" cy="7" r="4.3" stroke="currentColor" stroke-width="1.2"/><path d="M10.3 10.3 13.5 13.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
 const ICON_AUX = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2.5" width="12" height="11" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M10 3v10" stroke="currentColor" stroke-width="1.1"/><rect class="titlebar-layout-fill" x="10.7" y="3.2" width="2.6" height="9.6" rx="0.6" fill="currentColor"/></svg>';
 
 const PART_ICON_PREFIX = 'part:';
@@ -2142,10 +2143,6 @@ export class Workbench extends Layout {
       this.showQuickOpen();
     }));
 
-    // The title-bar command center (search box) opens the command palette.
-    this._register(this._titlebar.onDidClickCommandCenter(() => {
-      this.toggleCommandPalette();
-    }));
 
     // ── Title-bar layout controls — toggle the side bars + bottom panel ──
     // The titlebar's right slot is created in TitlebarPart.createContent, which
@@ -2183,6 +2180,22 @@ export class Workbench extends Layout {
           this._register(this._grid.onDidChange(() => syncState()));
           layoutGroup.appendChild(btn);
         };
+        // Search Commands: an icon like its neighbours, not a field in the
+        // middle of the bar. It is also on the gear menu and its shortcut.
+        {
+          const btn = document.createElement('button');
+          btn.className = 'titlebar-layout-btn titlebar-search-btn';
+          btn.type = 'button';
+          const key = this._keybindingHint('workbench.action.showCommands') ?? formatKeybindingForDisplay('ctrl+shift+p');
+          btn.title = `Search Commands (${key})`;
+          btn.setAttribute('aria-label', 'Search Commands');
+          btn.innerHTML = ICON_SEARCH;
+          btn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleCommandPalette(); });
+          layoutGroup.appendChild(btn);
+          const gap = document.createElement('span');
+          gap.className = 'titlebar-layout-gap';
+          layoutGroup.appendChild(gap);
+        }
         makeToggle(ICON_SIDEBAR, 'Toggle Left Area', 'left');
         makeToggle(ICON_PANEL, 'Toggle Bottom Area', 'bottom');
         makeToggle(ICON_AUX, 'Toggle Right Area', 'right');

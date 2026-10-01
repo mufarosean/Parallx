@@ -26,7 +26,7 @@ import { getFileTypeIcon, getFolderIcon } from '../ui/iconRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-export const BREADCRUMBS_HEIGHT = 32; // Aligned with canvas ribbon height (was 28)
+export const BREADCRUMBS_HEIGHT = 26; // The canvas ribbon's height too: a path strip, not a toolbar
 
 const FOLDER_ICON_SVG = getFolderIcon();
 
@@ -259,14 +259,8 @@ export class BreadcrumbsBar extends Disposable {
       current = current.dirname;
     }
 
-    // If we found a workspace folder, prepend it as root
-    if (workspaceFolder) {
-      elements.unshift({
-        uri: workspaceFolder,
-        kind: 'root-folder',
-        label: workspaceFolder.basename || 'Workspace',
-      });
-    }
+    // The workspace folder itself is not a crumb: the status bar names it,
+    // and repeating it first pushed the file's own path to the right.
 
     return elements;
   }
