@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atelier Filters</title>
+<style>
+/* Mockup: the library's Filters area, today and two ways to set it out.
+   Tokens from src/theme/px-tokens.css (Slate dark). Static except that the
+   pills in B open and close. */
+:root {
+  --px-base-00:#16171a; --px-base-05:#1a1c1f; --px-base-10:#1f2125; --px-base-15:#24262b;
+  --px-base-20:#2b2e34; --px-base-25:#33363d; --px-base-30:#41454d; --px-base-40:#838893;
+  --px-base-60:#9ea3ad; --px-base-70:#c0c4cc; --px-base-100:#e8eaee;
+  --px-accent:hsl(205 64% 60%); --px-accent-soft:hsl(205 64% 60% / .15); --px-accent-text:hsl(205 64% 67%);
+  --px-bg:var(--px-base-00); --px-bg-elevated:var(--px-base-10); --px-bg-inset:var(--px-base-15);
+  --px-surface-hover:var(--px-base-20); --px-surface-selected:rgba(86,156,214,.16);
+  --px-text:var(--px-base-100); --px-text-secondary:var(--px-base-70); --px-text-muted:var(--px-base-60); --px-text-faint:var(--px-base-40);
+  --px-border:var(--px-base-25); --px-border-strong:var(--px-base-30); --px-divider:var(--px-base-20);
+  --star:#f5c518;
+  --px-font-ui:'Inter','Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: #0c0d0f; color: var(--px-text); font: 13px/1.45 var(--px-font-ui); }
+.page { max-width: 1180px; margin: 0 auto; padding: 32px 16px 80px; }
+h1 { font-size: 22px; margin: 0 0 6px; font-weight: 600; }
+h2 { font-size: 18px; margin: 44px 0 6px; font-weight: 600; }
+p, li { color: var(--px-text-secondary); max-width: 82ch; }
+.rec { display: inline-block; font-size: 11px; font-weight: 600; color: var(--px-accent-text); background: var(--px-accent-soft); padding: 1px 8px; border-radius: 999px; margin-left: 6px; vertical-align: 3px; }
+.label { font-size: 12px; color: var(--px-text-muted); margin: 16px 0 6px; }
+.notes { margin: 10px 0 0; padding-left: 18px; font-size: 12.5px; }
+.notes li { margin: 3px 0; }
+.scrollx { overflow-x: auto; border: 1px solid #26282d; border-radius: 8px; }
+.frame { background: var(--px-bg); min-width: 980px; padding: 14px 18px 18px; position: relative; }
+svg { display: block; }
+.ico { display: inline-flex; color: currentColor; }
+
+/* the toolbar row, as it is now */
+.row { display: flex; align-items: center; gap: 8px; height: 34px; }
+.search { flex: 0 1 420px; height: 28px; border-bottom: 1px solid var(--px-divider); color: var(--px-text-faint); display: flex; align-items: center; padding: 0 4px; }
+.tabs { display: inline-flex; gap: 2px; }
+.tabs span { padding: 3px 9px; border-radius: 4px; color: var(--px-text-muted); font-size: 12.5px; }
+.tabs span.on { background: var(--px-surface-selected); color: var(--px-text); font-weight: 600; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; color: var(--px-text-secondary); border: 1px solid transparent; cursor: pointer; white-space: nowrap; }
+.btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.btn.on { background: var(--px-surface-selected); color: var(--px-text); border-color: var(--px-accent); }
+.grow { flex: 1; }
+.badge { min-width: 16px; height: 16px; padding: 0 5px; border-radius: 999px; background: var(--px-accent-soft); color: var(--px-accent-text); font-size: 10.5px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+
+/* today */
+.today-panel { margin-top: 8px; border: 1px solid var(--px-border); border-radius: 8px; background: var(--px-bg-elevated); padding: 14px 16px; display: flex; gap: 22px; align-items: flex-start; }
+.today-panel .sec-h { font-size: 12.5px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+.seg { display: inline-flex; border: 1px solid var(--px-border); border-radius: 6px; padding: 2px; background: var(--px-bg-inset); }
+.seg span { padding: 1px 8px; font-size: 11.5px; color: var(--px-text-muted); border-radius: 4px; }
+.seg span.on { background: var(--px-base-25); color: var(--px-text); font-weight: 600; }
+.input { height: 26px; border: 1px solid var(--px-border-strong); border-radius: 4px; background: var(--px-bg-inset); color: var(--px-text-faint); font-size: 12px; display: flex; align-items: center; padding: 0 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.chip { padding: 2px 9px; border: 1px solid var(--px-border); border-radius: 999px; font-size: 12px; color: var(--px-text-secondary); }
+.chip.inc { background: var(--px-accent-soft); border-color: transparent; color: var(--px-accent-text); }
+.chip.exc { border-color: rgba(224,108,102,.5); color: #e08680; text-decoration: line-through; }
+.hint { font-size: 11px; color: var(--px-text-faint); margin-top: 6px; }
+.pin { display: inline-flex; width: 18px; height: 18px; border-radius: 50%; background: #dcaa5a; color: #1a1a1a; font-size: 11px; font-weight: 700; align-items: center; justify-content: center; margin-left: 6px; }
+.legend { list-style: none; padding: 0; counter-reset: n; }
+.legend li { counter-increment: n; position: relative; padding-left: 26px; margin: 6px 0; font-size: 12.5px; }
+.legend li::before { content: counter(n); position: absolute; left: 0; top: 1px; width: 18px; height: 18px; border-radius: 50%; background: #dcaa5a; color: #1a1a1a; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+
+/* A: one panel */
+.panelA { position: absolute; top: 52px; left: 640px; width: 340px; background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: 10px; box-shadow: 0 16px 36px -8px rgba(0,0,0,.58); padding: 6px 0 0; z-index: 3; }
+.panelA .sec { padding: 10px 14px; border-top: 1px solid var(--px-divider); }
+.panelA .sec:first-child { border-top: 0; }
+.panelA .h { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 600; color: var(--px-text-muted); margin-bottom: 8px; }
+.panelA .h .r { margin-left: auto; font-weight: 400; display: flex; gap: 10px; align-items: center; }
+.line { height: 26px; border-bottom: 1px solid var(--px-divider); color: var(--px-text-faint); font-size: 12.5px; display: flex; align-items: center; padding: 0 2px; }
+.mini { font-size: 11.5px; color: var(--px-text-muted); display: inline-flex; gap: 4px; align-items: center; }
+.mini b { color: var(--px-text); font-weight: 600; }
+.toggle { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; }
+.toggle > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 28px; height: 16px; border-radius: 999px; background: var(--px-base-30); position: relative; }
+.sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--px-base-100); }
+.sw.on { background: var(--px-accent); }
+.sw.on::after { left: 14px; }
+.presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.presets span { padding: 3px 9px; border-radius: 999px; font-size: 12px; color: var(--px-text-secondary); border: 1px solid var(--px-border); }
+.presets span.on { background: var(--px-surface-selected); border-color: transparent; color: var(--px-text); }
+.foot { display: flex; align-items: center; padding: 10px 14px; border-top: 1px solid var(--px-divider); font-size: 12px; color: var(--px-text-muted); }
+.foot .clear { margin-left: auto; color: var(--px-text-secondary); }
+
+/* B: pills */
+.pills { display: flex; align-items: center; gap: 6px; margin-top: 6px; height: 30px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12.5px; color: var(--px-text-muted); border: 1px dashed var(--px-border-strong); cursor: pointer; white-space: nowrap; user-select: none; }
+.pill:hover { color: var(--px-text); border-color: var(--px-base-40); }
+.pill.set { border: 1px solid transparent; background: var(--px-surface-selected); color: var(--px-text); }
+.pill.set .x { margin-left: 2px; color: var(--px-text-muted); }
+.pill .v { color: var(--px-accent-text); font-weight: 600; }
+.pill.fav.set .ico { color: var(--star); }
+.pop { position: absolute; z-index: 3; width: 300px; background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: 10px; box-shadow: 0 16px 36px -8px rgba(0,0,0,.58); padding: 10px 12px; display: none; }
+.pop.open { display: block; }
+.pop .h { font-size: 11.5px; font-weight: 600; color: var(--px-text-muted); margin: 2px 0 8px; display: flex; gap: 8px; align-items: center; }
+.pop .h .r { margin-left: auto; font-weight: 400; }
+.opt { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px; font-size: 12.5px; color: var(--px-text-secondary); }
+.opt:hover { background: var(--px-surface-hover); }
+.opt .n { margin-left: auto; font-size: 11.5px; color: var(--px-text-faint); }
+.box { width: 14px; height: 14px; border: 1px solid var(--px-border-strong); border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; }
+.box.inc { background: var(--px-accent); border-color: var(--px-accent); color: #14161a; }
+.box.exc { background: rgba(224,108,102,.85); border-color: transparent; color: #14161a; }
+.clearall { font-size: 12px; color: var(--px-text-muted); margin-left: 4px; cursor: pointer; }
+.clearall:hover { color: var(--px-text); }
+table.cmp { border-collapse: collapse; margin-top: 12px; font-size: 12.5px; width: 100%; max-width: 900px; }
+table.cmp th, table.cmp td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #23252a; color: var(--px-base-70); vertical-align: top; }
+table.cmp th { color: var(--px-base-100); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Atelier: the Filters area</h1>
+  <p>Today Filters opens a wide panel under the toolbar. Its three filters sit side by side at different sizes, each laid out its own way, and what is set shows again as a row of chips below it. Below: today, then two ways to set it out. B is the one I'd build.</p>
+
+  <h2>Today</h2>
+  <div class="scrollx"><div class="frame" id="today"></div></div>
+  <ol class="legend">
+    <li><b>Three filters, three layouts.</b> Tags is a large block with its own toolbar (Match All/Any, Include sub-tags), a boxed field and a chip cloud. Favorites is a lone button. Date is two boxed text fields. Nothing lines up.</li>
+    <li><b>Settings in the header line.</b> Match and Include sub-tags crowd the Tags label, before you have picked a tag they could apply to.</li>
+    <li><b>Dates are typed</b> as YYYY-MM-DD, into boxes, with no quick choices. They filter on the date a photo was <b>added</b> to the library, but the panel only says "Date range".</li>
+    <li><b>Said twice.</b> What is set appears in the panel and again as chips under the toolbar.</li>
+    <li><b>Right-click to exclude</b> is a hidden gesture, explained only by small print.</li>
+  </ol>
+
+  <h2>A. One tidy panel</h2>
+  <p>Filters opens a narrow panel under its button. The three filters are stacked, in one style, with the same quiet fields as the sidebar.</p>
+  <div class="scrollx"><div class="frame" id="a" style="min-height:430px"></div></div>
+  <ul class="notes">
+    <li>Each section has a quiet label. Tag options (Match, sub-tags) sit to the right of the label, small, and only matter once tags are picked.</li>
+    <li>Favorites becomes a switch on one line.</li>
+    <li>Date gets quick choices (Any time, Today, This week, This month, This year, Custom…) and a choice of which date (added or taken).</li>
+    <li>The footer shows how many match, with Clear All.</li>
+    <li>What is set still shows as chips under the toolbar while the panel is closed.</li>
+  </ul>
+
+  <h2>B. Filter pills <span class="rec">Recommended</span></h2>
+  <p>No panel. Under the search there is one pill per filter. An empty pill is dashed and names the filter. A set pill is filled and shows its value, with a × to clear it. Clicking a pill opens a small picker just for that filter. Try them.</p>
+  <div class="scrollx"><div class="frame" id="b" style="min-height:400px"></div></div>
+  <ul class="notes">
+    <li><b>One place for each filter:</b> the pill is both the control and the readout, so the chip row under the toolbar goes away.</li>
+    <li><b>Tags:</b> a searchable list with ticks. Click once to include, again to exclude (the box shows a minus), a third time to clear. Excluding is visible, not a hidden right-click. Match and sub-tags are two small options at the top of the list.</li>
+    <li><b>Favorites:</b> one click toggles it.</li>
+    <li><b>Date:</b> quick choices, Added or Taken, and Custom… with a calendar.</li>
+    <li>The toolbar's Filters button goes. The pills sit in their own line under the search, so the toolbar keeps one row.</li>
+    <li>"Clear" shows at the end once anything is set.</li>
+  </ul>
+
+  <h2>Side by side</h2>
+  <table class="cmp">
+    <tr><th></th><th>Today</th><th>A. One panel</th><th>B. Pills</th></tr>
+    <tr><td>What is set, at a glance</td><td>Chips under the toolbar and in the panel</td><td>Chips while closed</td><td>The pills themselves</td></tr>
+    <tr><td>Clicks to filter by one tag</td><td>Filters, type, click</td><td>Filters, type, click</td><td>Tags pill, type, click</td></tr>
+    <tr><td>Excluding a tag</td><td>Right-click (hidden)</td><td>Second click, shown</td><td>Second click, shown</td></tr>
+    <tr><td>Dates</td><td>Typed, date added only</td><td>Quick choices, added or taken</td><td>Quick choices, added or taken</td></tr>
+    <tr><td>Space it takes</td><td>A wide panel pushing the grid down</td><td>A floating panel</td><td>One line, pickers float</td></tr>
+  </table>
+  <p>Either way, nothing filters differently than today except Date: "taken" is new, and so are the quick choices.</p>
+</div>
+
+<script>
+const I = {
+  filter: '<path d="M3 6h18M7 12h10M10 18h4"/>',
+  star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  tag: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/>',
+  cal: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  down: '<path d="m6 9 6 6 6-6"/>', x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  sort: '<path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="M20 8h-5"/><path d="M15 10V6.5a2.5 2.5 0 0 1 5 0V10"/><path d="M15 14h5l-5 6h5"/>',
+  grid: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
+  plus: '<path d="M5 12h14M12 5v14"/>',
+};
+const svg = (k, w = 13, f = 'none') => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="${f}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I[k]}</svg>`;
+const toolbar = (filtersBtn) => `<div class="row"><div class="search">Search title, tags, folder, filename…</div><div class="tabs"><span class="on">All</span><span>Photos</span><span>GIFs</span><span>Videos</span></div>${filtersBtn}<span class="grow"></span><span class="btn">${svg('sort')} Date Added ${svg('down', 11)}</span><span class="btn">${svg('grid')}</span></div>`;
+const tags = ['beach', 'sky', 'portrait', 'oil', 'street', 'family', 'reference', 'texture'];
+
+document.getElementById('today').innerHTML = toolbar(`<span class="btn on">${svg('filter')} Filters</span>`) + `
+  <div class="today-panel">
+    <div style="flex:0 0 520px">
+      <div class="sec-h">Tags <span class="pin">2</span><span class="grow"></span><span class="mini">Match</span><span class="seg"><span class="on">All</span><span>Any</span></span><span class="mini">☐ Include sub-tags</span></div>
+      <div class="input" style="border-color:var(--px-accent)">Type to filter tags…</div>
+      <div class="hint">Click to include · right-click to exclude <span class="pin">5</span></div>
+      <div class="chips">${tags.map((t, i) => `<span class="chip ${i === 0 ? 'inc' : i === 3 ? 'exc' : ''}">${t}</span>`).join('')}</div>
+    </div>
+    <div><span class="btn" style="border:1px solid var(--px-border)">${svg('star')} Favorites only</span><span class="pin">1</span></div>
+    <div><div class="sec-h">Date range <span class="pin">3</span></div><div style="display:flex;gap:6px;align-items:center"><div class="input">YYYY-MM-DD</div>→<div class="input">YYYY-MM-DD</div></div></div>
+  </div>
+  <div class="chips" style="margin-top:10px"><span class="chip inc">Tag: beach ×</span><span class="chip exc">Not: oil ×</span><span class="pin">4</span></div>`;
+
+document.getElementById('a').innerHTML = toolbar(`<span class="btn on">${svg('filter')} Filters <span class="badge">3</span></span>`) + `
+  <div class="chips" style="margin-top:6px"><span class="chip inc">beach ×</span><span class="chip exc">not oil ×</span><span class="chip inc">Favorites ×</span><span class="chip inc">This month ×</span></div>
+  <div class="panelA">
+    <div class="sec"><div class="h">Tags<span class="r"><span class="mini">Match <b>All</b> · Any</span><span class="mini">Sub-tags</span></span></div>
+      <div class="line">Filter tags</div>
+      <div class="chips">${tags.map((t, i) => `<span class="chip ${i === 0 ? 'inc' : i === 3 ? 'exc' : ''}">${i === 3 ? '− ' : ''}${t}</span>`).join('')}</div>
+      <div class="hint">Click to include, again to exclude, again to clear.</div></div>
+    <div class="sec"><div class="toggle"><span>${svg('star')} Favorites only</span><span class="sw on"></span></div></div>
+    <div class="sec"><div class="h">Date<span class="r"><span class="mini"><b>Added</b> · Taken</span></span></div>
+      <div class="presets"><span>Any time</span><span>Today</span><span>This week</span><span class="on">This month</span><span>This year</span><span>Custom…</span></div></div>
+    <div class="foot">124 match<span class="clear">Clear All</span></div>
+  </div>`;
+
+// B: pills, with working pickers
+const b = document.getElementById('b');
+b.innerHTML = toolbar('') + `
+  <div class="pills" id="pills">
+    <span class="pill set" data-p="tags">${svg('tag')} Tags <span class="v">beach, not oil</span><span class="x">${svg('x', 11)}</span></span>
+    <span class="pill fav" data-p="fav">${svg('star')} Favorites</span>
+    <span class="pill" data-p="date">${svg('cal')} Date ${svg('down', 11)}</span>
+    <span class="clearall">Clear</span>
+  </div>
+  <div class="pop" id="pop-tags" style="top:86px;left:18px">
+    <div class="line" style="margin-bottom:6px">Filter tags</div>
+    <div class="h"><span class="mini">Match <b>All</b> · Any</span><span class="r mini">☐ Include sub-tags</span></div>
+    ${tags.slice(0, 6).map((t, i) => `<div class="opt"><span class="box ${i === 0 ? 'inc' : i === 3 ? 'exc' : ''}">${i === 0 ? '✓' : i === 3 ? '−' : ''}</span>${t}<span class="n">${[214, 96, 73, 120, 58, 640][i]}</span></div>`).join('')}
+    <div class="hint" style="padding:4px 6px 0">Click to include, again to exclude, again to clear.</div>
+  </div>
+  <div class="pop" id="pop-date" style="top:86px;left:240px;width:240px">
+    <div class="h"><span class="mini"><b>Added</b> · Taken</span></div>
+    ${['Any time', 'Today', 'This week', 'This month', 'This year', 'Custom…'].map((t, i) => `<div class="opt">${i === 0 ? '✓ ' : '&nbsp;&nbsp;&nbsp;'}${t}</div>`).join('')}
+  </div>`;
+const pops = { tags: b.querySelector('#pop-tags'), date: b.querySelector('#pop-date') };
+b.querySelectorAll('.pill').forEach((p) => p.addEventListener('click', (e) => {
+  const k = p.dataset.p;
+  if (k === 'fav') { p.classList.toggle('set'); p.querySelector('svg').setAttribute('fill', p.classList.contains('set') ? 'currentColor' : 'none'); return; }
+  const open = !pops[k].classList.contains('open');
+  Object.values(pops).forEach((x) => x.classList.remove('open'));
+  if (open) pops[k].classList.add('open');
+  e.stopPropagation();
+}));
+b.addEventListener('click', () => Object.values(pops).forEach((x) => x.classList.remove('open')));
+pops.tags.classList.add('open');
+</script>
+</body>
+</html>
