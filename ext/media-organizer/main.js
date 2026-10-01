@@ -5658,6 +5658,14 @@ const MO_CSS = `
 .mo-browse-pane { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .mo-browse-bar { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; margin: 0 var(--px-space-2) var(--px-space-1) var(--px-space-2); }
 .mo-browse-bar .mo-sidebar-search-wrap { flex: 1 1 auto; min-width: 0; margin: 0; }
+/* The filter is a quiet line, not a box: a magnifier and the placeholder,
+   with a faint surface only while pointed at or typed in. */
+.mo-browse-search-ico { position: absolute; left: var(--px-space-2); top: 50%; transform: translateY(-50%); display: inline-flex; color: var(--px-text-faint); pointer-events: none; }
+.mo-browse-bar .mo-sidebar-search-wrap .mo-sidebar-search { padding-left: calc(var(--px-space-2) + 18px); border: 1px solid transparent; background: transparent; box-shadow: none; border-radius: var(--px-radius-sm); }
+.mo-browse-bar .mo-sidebar-search-wrap .mo-sidebar-search::placeholder { color: var(--px-text-faint); }
+.mo-browse-bar .mo-sidebar-search-wrap:hover .mo-sidebar-search { background: var(--px-surface-hover); }
+.mo-browse-bar .mo-sidebar-search-wrap .mo-sidebar-search:focus { background: var(--px-surface-hover); border-color: transparent; outline: none; box-shadow: none; }
+.mo-browse-bar .mo-sidebar-search-wrap:focus-within .mo-browse-search-ico { color: var(--px-text-muted); }
 .mo-browse-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: var(--px-space-1); }
 /* The trash, at the foot. */
 .mo-sidebar-foot { flex: 0 0 auto; border-top: 1px solid var(--px-divider); padding: var(--px-space-1) 0; }
@@ -10764,7 +10772,7 @@ function renderBrowserSidebar(container, api) {
     if (e.key !== 'Escape') return;
     if (folderSearchInput.value) clearFolderFilter(); else folderSearchInput.blur();
   });
-  folderSearchWrap.append(folderSearchInput, folderSearchClearBtn);
+  folderSearchWrap.append(moEl('span', 'mo-browse-search-ico', { innerHTML: moIcon('search', 12) }), folderSearchInput, folderSearchClearBtn);
   folderBar.append(folderSearchWrap, folderAddBtn);
 
   // The trash, at the foot, out of the way of the places to look.
@@ -10933,7 +10941,7 @@ function renderBrowserSidebar(container, api) {
     if (e.key !== 'Escape') return;
     if (tagSearchInput.value) clearTagFilter(); else tagSearchInput.blur();
   });
-  tagSearchWrap.append(tagSearchInput, tagSearchClearBtn);
+  tagSearchWrap.append(moEl('span', 'mo-browse-search-ico', { innerHTML: moIcon('search', 12) }), tagSearchInput, tagSearchClearBtn);
   tagBar.append(tagSearchWrap, tagSortBtn, tagNewBtn);
 
   // The saved sort; the list loads once it is known.
