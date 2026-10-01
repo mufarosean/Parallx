@@ -2712,6 +2712,11 @@ let _statusBarItem = null;
  * it was looked at: hashed again, its details read again. Within a
  * millisecond is the same time.
  */
+/** mod_time is milliseconds stored as TEXT ("1790855928123.456"), which new Date() cannot parse ("Invalid Date"). */
+function moModTimeDate(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? new Date(n) : new Date(v);
+}
 function moSameModTime(held, onDisk) {
   const a = Number(held); const b = Number(onDisk);
   return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 1;
@@ -6218,24 +6223,31 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--vscode-editor-background);
-  color: var(--vscode-editor-foreground);
+  background: var(--px-bg);
+  color: var(--px-text);
+  font-family: var(--px-font-ui);
+  font-size: var(--px-text-base);
+  /* Its own width decides the layout: a narrow pane puts the panel under the photo. */
+  container: mo-detail / inline-size;
 }
 .mo-detail-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
+  gap: var(--px-space-2);
+  min-height: 44px;
+  padding: var(--px-space-2) var(--px-space-4);
+  border-bottom: 1px solid var(--px-divider);
   flex-shrink: 0;
 }
 .mo-detail-header-icon {
-  opacity: 0.7;
+  display: inline-flex;
+  color: var(--px-text-muted);
   flex-shrink: 0;
 }
 .mo-detail-header-title {
   flex: 1;
-  font-size: var(--parallx-fontSize-base, 13px);
+  min-width: 0;
+  font-size: var(--px-text-md);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6243,20 +6255,9 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-detail-header-actions {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: var(--px-space-1);
   flex-shrink: 0;
-}
-.mo-detail-header-actions button {
-  background: none;
-  border: 1px solid var(--vscode-button-secondaryBackground, var(--px-surface, #333));
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
-  padding: 3px 8px;
-  border-radius: var(--parallx-radius-sm, 3px);
-  cursor: pointer;
-  font-size: var(--parallx-fontSize-xs, 11px);
-}
-.mo-detail-header-actions button:hover {
-  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-widget-border, #444));
 }
 .mo-detail-body {
   display: flex;
@@ -6268,7 +6269,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--vscode-sideBar-background, var(--px-bg));
+  background: var(--px-window);
   overflow: hidden;
   min-width: 200px;
 }
@@ -6285,12 +6286,14 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   width: 320px;
   min-width: 260px;
   flex-shrink: 0;
-  border-left: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
+  border-left: 1px solid var(--px-divider);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  transition: width 0.15s ease, min-width 0.15s ease, opacity 0.15s ease;
+  transition: width var(--px-dur-fast) var(--px-ease), min-width var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-fast) var(--px-ease);
 }
+.mo-detail-panel-section { padding: var(--px-space-3) var(--px-space-4) var(--px-space-4); border-bottom: 1px solid var(--px-divider); }
+.mo-detail-panel-section:last-child { border-bottom: 0; }
 .mo-detail-panel.mo-collapsed {
   width: 0;
   min-width: 0;
@@ -6299,45 +6302,14 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   opacity: 0;
   pointer-events: none;
 }
-.mo-detail-tab-bar {
-  display: flex;
-  border-bottom: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
-  flex-shrink: 0;
-}
-.mo-detail-tab-btn {
-  flex: 1;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--vscode-foreground, var(--vscode-foreground, #ccc));
-  padding: 6px 12px;
-  cursor: pointer;
-  font-size: var(--parallx-fontSize-xs, 11px);
-  text-transform: none;
-  letter-spacing: normal;
-  opacity: 0.7;
-}
-.mo-detail-tab-btn.active {
-  border-bottom-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  opacity: 1;
-}
-.mo-detail-tab-btn:hover {
-  opacity: 1;
-}
-.mo-detail-tab-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px;
-}
+.mo-detail-tab-content { padding: 0; }
 .mo-detail-section {
   margin-bottom: 16px;
 }
 .mo-detail-section-label {
-  font-size: var(--parallx-fontSize-xs, 11px);
-  text-transform: none;
-  letter-spacing: normal;
-  opacity: 0.6;
-  margin-bottom: 6px;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+  margin-bottom: var(--px-space-1);
 }
 .mo-detail-dl {
   display: grid;
@@ -6516,20 +6488,18 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-detail-empty-state {
   opacity: 0.6;
 }
-/* Responsive: stack to vertical below 520px editor width */
-@container (max-width: 520px) {
-  .mo-detail-body { flex-direction: column; }
-  .mo-detail-panel { width: 100%; border-left: none; border-top: 1px solid var(--vscode-panel-border, var(--px-surface, #333)); }
-  .mo-detail-preview { min-height: 200px; }
+/* A narrow pane: the panel goes under the photo (it named no container
+   before, so it never applied). */
+@container mo-detail (max-width: 719px) {
+  .mo-detail-editor .mo-detail-body { flex-direction: column; overflow-y: auto; }
+  .mo-detail-editor .mo-detail-body > .mo-detail-main { flex: 0 0 auto; }
+  .mo-detail-editor .mo-detail-main > .mo-detail-preview { flex: 0 0 auto; height: 320px; min-height: 0; }
+  .mo-detail-editor .mo-detail-body > .mo-detail-panel { flex: 0 0 auto; width: 100%; min-width: 0; overflow: visible; border-left: none; border-top: 1px solid var(--px-divider); }
 }
 .mo-detail-star:focus-visible {
   outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
   outline-offset: 1px;
   border-radius: 2px;
-}
-.mo-detail-tab-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  outline-offset: -1px;
 }
 .mo-detail-tag-pill button:focus-visible {
   outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
@@ -6963,8 +6933,9 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   z-index: 9999;
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.92);
-  color: #fff;
+  background: var(--px-viewer-scrim);
+  color: var(--px-viewer-ink);
+  font-family: var(--px-font-ui);
 }
 .mo-lightbox-content {
   flex: 1;
@@ -6980,109 +6951,80 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   max-height: 90%;
   object-fit: contain;
 }
-.mo-lightbox-nav {
+/* Round controls on the dark: previous, next, close. */
+.mo-lightbox-nav, .mo-lightbox-close {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: #fff;
-  font-size: 28px;
-  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--px-viewer-line);
+  border-radius: var(--px-radius-full);
+  background: var(--px-viewer-control);
+  color: var(--px-viewer-ink);
   cursor: pointer;
-  border-radius: var(--parallx-radius-md, 6px);
-  opacity: 0.6;
-  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+  opacity: 0.8;
+  transition: opacity var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
-.mo-lightbox-nav:hover {
-  opacity: 1;
-  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  background: rgba(255,255,255,0.14);
-}
-.mo-lightbox-nav.prev { left: 12px; }
-.mo-lightbox-nav.next { right: 12px; }
+.mo-lightbox-nav:hover, .mo-lightbox-close:hover { opacity: 1; background: var(--px-viewer-control-hover); border-color: var(--px-accent); }
+.mo-lightbox-nav { top: 50%; transform: translateY(-50%); width: 44px; height: 44px; padding: 0; }
+.mo-lightbox-nav.prev { left: var(--px-space-4); }
+.mo-lightbox-nav.next { right: var(--px-space-4); }
+.mo-lightbox-close { top: var(--px-space-3); right: var(--px-space-3); width: 36px; height: 36px; padding: 0; }
+/* The bar: name and position on the left, then the actions. */
 .mo-lightbox-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  background: rgba(0, 0, 0, 0.7);
-  border-top: 1px solid rgba(255,255,255,0.08);
-  font-size: var(--parallx-fontSize-md, 13px);
+  gap: var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-4) var(--px-space-3);
+  background: var(--px-viewer-bar);
+  border-top: 1px solid var(--px-viewer-line);
+  font-size: var(--px-text-base);
 }
-.mo-lightbox-bar .mo-lb-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-lightbox-bar .mo-lb-name { display: flex; flex-direction: column; min-width: 0; }
+.mo-lightbox-bar .mo-lb-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-lightbox-bar .mo-lb-counter { font-size: var(--px-text-xs); color: var(--px-viewer-ink-muted); font-variant-numeric: tabular-nums; }
+.mo-lightbox-bar .mo-lb-spacer { flex: 1; }
 .mo-lightbox-bar .mo-lb-rating { color: var(--mo-rating-color, var(--mo-star)); }
-.mo-lightbox-bar .mo-lb-counter { opacity: 0.7; font-variant-numeric: tabular-nums; }
 .mo-lightbox-bar .mo-lb-zoom-indicator {
-  font-size: 11px;
+  font-size: var(--px-text-xs);
   font-variant-numeric: tabular-nums;
-  opacity: 0.85;
-  padding: 2px 6px;
-  border: 1px solid rgba(255,255,255,0.15);
-  border-radius: var(--parallx-radius-sm, 3px);
+  padding: 2px var(--px-space-2);
+  border: 1px solid var(--px-viewer-line);
+  border-radius: var(--px-radius-sm);
   min-width: 36px;
   text-align: center;
 }
 .mo-lightbox-bar .mo-lb-zoom-indicator:empty { display: none; }
 .mo-lightbox-bar button {
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.18);
-  color: #fff;
-  padding: 4px 10px;
-  border-radius: var(--parallx-radius-sm, 3px);
-  cursor: pointer;
-  font-size: var(--parallx-fontSize-xs, 11px);
-  line-height: 18px;
-  transition: background 0.15s, border-color 0.15s;
-}
-.mo-lightbox-bar button:hover { background: rgba(255,255,255,0.16); border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
-.mo-lightbox-bar button.active {
-  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  color: var(--vscode-button-foreground, #fff);
-}
-/* Harmonize the speed dropdown with the rest of the bar so the lightbox
-   chrome reads as one consistent control surface (otherwise the default
-   --vscode-dropdown-background grey button stands out against the
-   translucent bar). */
-.mo-lightbox-bar .ui-dropdown__button {
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.18);
-  color: #fff;
-  padding: 4px 8px;
-  font-size: var(--parallx-fontSize-xs, 11px);
-  line-height: 18px;
-}
-.mo-lightbox-bar .ui-dropdown__button:hover {
-  background: rgba(255,255,255,0.16);
-  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-}
-.mo-lightbox-bar .ui-dropdown--open .ui-dropdown__button {
-  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-}
-.mo-lightbox-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.15);
-  color: #fff;
-  font-size: 18px;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  opacity: 0.75;
-  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+  gap: var(--px-space-2);
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-3);
+  background: var(--px-viewer-control);
+  border: 1px solid var(--px-viewer-line);
+  color: var(--px-viewer-ink);
+  border-radius: var(--px-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--px-text-base);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
-.mo-lightbox-close:hover {
-  opacity: 1;
-  background: rgba(255,255,255,0.18);
-  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
+.mo-lightbox-bar button:hover { background: var(--px-viewer-control-hover); border-color: var(--px-accent); }
+.mo-lightbox-bar button.active { background: var(--px-accent); border-color: var(--px-accent); color: var(--px-text-on-accent); }
+/* The speed dropdown matches the bar's buttons. */
+.mo-lightbox-bar .ui-dropdown__button {
+  height: var(--px-control-h);
+  background: var(--px-viewer-control);
+  border: 1px solid var(--px-viewer-line);
+  color: var(--px-viewer-ink);
+  padding: 0 var(--px-space-2);
+  font-size: var(--px-text-base);
 }
+.mo-lightbox-bar .ui-dropdown__button:hover { background: var(--px-viewer-control-hover); border-color: var(--px-accent); }
+.mo-lightbox-bar .ui-dropdown--open .ui-dropdown__button { border-color: var(--px-accent); }
 
 /* ═══ M59 P10 / F15 — Compare View ═══
    Shares the lightbox aesthetic (dark overlay, translucent chrome) so the
@@ -14708,44 +14650,30 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
   const titleEl = moEl('span', 'mo-detail-header-title', { textContent: titleText });
   headerEl.appendChild(titleEl);
 
+  // The kit's buttons: Edit Image labelled (the one action that opens
+  // somewhere else), the rest icon buttons with their names as tooltips.
   const actions = moEl('div', 'mo-detail-header-actions');
-  // Navigation buttons (prev/next — stubs for now)
-  if (callbacks.onPrev) {
-    const prevBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Previous' });
-    prevBtn.innerHTML = moIcon('arrow-left', 12);
-    prevBtn.addEventListener('click', callbacks.onPrev);
-    actions.appendChild(prevBtn);
-  }
-  if (callbacks.onNext) {
-    const nextBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Next' });
-    nextBtn.innerHTML = moIcon('arrow-right', 12);
-    nextBtn.addEventListener('click', callbacks.onNext);
-    actions.appendChild(nextBtn);
-  }
-  // Add To Chat: the primary file goes to the chat composer as an attachment
+  if (callbacks.onPrev) api.ui.createIconButton(actions, { icon: 'chevron-left', title: 'Previous', onClick: callbacks.onPrev });
+  if (callbacks.onNext) api.ui.createIconButton(actions, { icon: 'chevron-right', title: 'Next', onClick: callbacks.onNext });
+  // Add to Chat: the primary file goes to the chat composer as an attachment
   // (an image becomes a vision attachment there, a video a file).
   if (ctx.fullPath) {
-    const chatBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Add To Chat' });
-    chatBtn.innerHTML = moIcon('message-square', 12);
-    chatBtn.addEventListener('click', () => { void moAttachItemsToChat([{ type: ctx.type, id: ctx.entity.id }]); });
-    actions.appendChild(chatBtn);
+    api.ui.createIconButton(actions, { icon: 'message-square-plus', title: 'Add to Chat', onClick: () => { void moAttachItemsToChat([{ type: ctx.type, id: ctx.entity.id }]); } });
   }
-  // Edit Image (docs/IMAGE_EDITOR.md): still photos only.
-  if (ctx.type === 'photo' && ctx.fullPath && !moIsGifPath(ctx.primaryFile && ctx.primaryFile.basename)) {
-    const editBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Edit Image' });
-    editBtn.innerHTML = moIcon('sliders-horizontal', 12);
-    editBtn.addEventListener('click', () => { void moOpenImageEditor(api, ctx.entity.id); });
-    actions.appendChild(editBtn);
-  }
-  // Toggle sidebar button
-  const toggleBtn = moEl('button', 'mo-detail-nav-btn', { title: 'Toggle details panel' });
-  toggleBtn.innerHTML = moIcon('panel-right', 12);
+  const toggleBtn = api.ui.createIconButton(actions, { icon: 'panel-right', title: 'Hide Details' });
+  toggleBtn.setAttribute('aria-pressed', 'true');
   toggleBtn.addEventListener('click', () => {
     const panel = headerEl.closest('.mo-detail-editor')?.querySelector('.mo-detail-panel');
-    if (panel) panel.classList.toggle('mo-collapsed');
+    if (!panel) return;
+    const hidden = panel.classList.toggle('mo-collapsed');
+    toggleBtn.title = hidden ? 'Show Details' : 'Hide Details';
+    toggleBtn.setAttribute('aria-label', toggleBtn.title);
+    toggleBtn.setAttribute('aria-pressed', String(!hidden));
   });
-  actions.appendChild(toggleBtn);
-
+  // Edit Image (docs/IMAGE_EDITOR.md): still photos only.
+  if (ctx.type === 'photo' && ctx.fullPath && !moIsGifPath(ctx.primaryFile && ctx.primaryFile.basename)) {
+    api.ui.createButton(actions, { label: 'Edit Image', icon: 'sliders-horizontal', kind: 'secondary', onClick: () => { void moOpenImageEditor(api, ctx.entity.id); } });
+  }
   headerEl.appendChild(actions);
 }
 
@@ -14763,86 +14691,38 @@ function buildDetailLayout(ctx, api, bodyEl, onRefresh) {
   }
   bodyEl.appendChild(main);
 
-  // Right: tabbed panel
+  // Right: one panel, Details then File, each under its section label (it
+  // was two tabs, so the file facts were a click away from the fields).
   const panel = moEl('div', 'mo-detail-panel');
+  panel.setAttribute('aria-label', 'Details');
   bodyEl.appendChild(panel);
 
-  const tabBar = moEl('div', 'mo-detail-tab-bar');
-  tabBar.setAttribute('role', 'tablist');
-  panel.appendChild(tabBar);
-
+  const detailsSection = moEl('section', 'mo-detail-panel-section');
+  api.ui.createSectionLabel(detailsSection, 'Details');
+  // Keeps its class: dispose() finds the fields' pending saves through it.
   const tabContent = moEl('div', 'mo-detail-tab-content');
-  panel.appendChild(tabContent);
+  detailsSection.appendChild(tabContent);
+  panel.appendChild(detailsSection);
+  buildDetailsTab(ctx, api, tabContent, onRefresh);
 
-  const tabs = [
-    { key: 'details', label: 'Details' },
-    { key: 'fileinfo', label: ctx.files && ctx.files.length > 1 ? `File Info (${ctx.files.length})` : 'File Info' },
-  ];
+  const fileSection = moEl('section', 'mo-detail-panel-section');
+  api.ui.createSectionLabel(fileSection, ctx.files && ctx.files.length > 1 ? `File info (${ctx.files.length} files)` : 'File info');
+  const fileContent = moEl('div', 'mo-detail-fileinfo');
+  fileSection.appendChild(fileContent);
+  panel.appendChild(fileSection);
+  buildFileInfoTab(ctx, fileContent);
 
-  let activeTab = 'details';
-  const tabBtns = {};
-
-  function switchTab(key) {
-    activeTab = key;
-    for (const [k, btn] of Object.entries(tabBtns)) {
-      const isActive = k === key;
-      btn.classList.toggle('active', isActive);
-      btn.setAttribute('aria-selected', String(isActive));
-    }
-    tabContent.innerHTML = '';
-    tabContent.setAttribute('aria-labelledby', `mo-tab-${key}`);
-    if (key === 'details') {
-      buildDetailsTab(ctx, api, tabContent, onRefresh);
-    } else if (key === 'fileinfo') {
-      buildFileInfoTab(ctx, tabContent);
-    }
-  }
-
-  for (const tab of tabs) {
-    const btn = moEl('button', `mo-detail-tab-btn${tab.key === activeTab ? ' active' : ''}`, { textContent: tab.label });
-    btn.setAttribute('role', 'tab');
-    btn.setAttribute('aria-selected', String(tab.key === activeTab));
-    btn.setAttribute('aria-controls', 'mo-detail-tab-content');
-    btn.id = `mo-tab-${tab.key}`;
-    btn.addEventListener('click', () => switchTab(tab.key));
-    tabBar.appendChild(btn);
-    tabBtns[tab.key] = btn;
-  }
-
-  tabContent.setAttribute('role', 'tabpanel');
-  tabContent.setAttribute('aria-labelledby', `mo-tab-${activeTab}`);
-
-  // Tab bar arrow key navigation (WAI-ARIA tabs pattern)
-  tabBar.addEventListener('keydown', (e) => {
-    const tabKeys = Object.keys(tabBtns);
-    const currentIdx = tabKeys.indexOf(activeTab);
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      const nextIdx = (currentIdx + 1) % tabKeys.length;
-      switchTab(tabKeys[nextIdx]);
-      tabBtns[tabKeys[nextIdx]].focus();
-    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const prevIdx = (currentIdx - 1 + tabKeys.length) % tabKeys.length;
-      switchTab(tabKeys[prevIdx]);
-      tabBtns[tabKeys[prevIdx]].focus();
-    }
-  });
-
-  // Keyboard shortcuts for tab switching — scoped to editor root
+  // A and I still jump to Details and File, as they switched the tabs.
   function handleKeydown(e) {
-    // Only when not focused on an input/textarea and within this editor
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (!bodyEl.closest('.mo-detail-editor')?.contains(document.activeElement) && document.activeElement !== document.body) return;
-    if (e.key === 'a' || e.key === 'A') { switchTab('details'); }
-    else if (e.key === 'i' || e.key === 'I') { switchTab('fileinfo'); }
+    if (e.key === 'a' || e.key === 'A') detailsSection.scrollIntoView({ block: 'start' });
+    else if (e.key === 'i' || e.key === 'I') fileSection.scrollIntoView({ block: 'start' });
   }
   document.addEventListener('keydown', handleKeydown);
   bodyEl._moKeydownCleanup = () => document.removeEventListener('keydown', handleKeydown);
-
-  // Render initial tab
-  switchTab(activeTab);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -15975,7 +15855,7 @@ async function moFindSimilarPhotos(photoId, limit = MO_SIMILAR_LIMIT) {
 function buildSimilarStrip(ctx, api) {
   const wrap = moEl('div', 'mo-similar');
   const head = moEl('div', 'mo-similar-head');
-  head.appendChild(moEl('span', 'mo-similar-title', { textContent: 'Similar Photos' }));
+  head.appendChild(moEl('span', 'mo-similar-title', { textContent: 'Similar photos' }));
   const hint = moEl('span', 'mo-similar-hint');
   head.appendChild(hint);
   wrap.appendChild(head);
@@ -16068,7 +15948,7 @@ function buildFileInfoTab(ctx, container) {
     dlRow(dl, 'Filename', ctx.primaryFile.basename);
     dlRow(dl, 'Size', formatFileSize(ctx.primaryFile.size));
     if (ctx.fullPath) dlRow(dl, 'Path', ctx.fullPath);
-    if (ctx.primaryFile.modTime) dlRow(dl, 'Modified', new Date(ctx.primaryFile.modTime).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+    if (ctx.primaryFile.modTime) dlRow(dl, 'Modified', moModTimeDate(ctx.primaryFile.modTime).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
     fileSection.appendChild(dl);
     container.appendChild(fileSection);
   }
@@ -16082,7 +15962,7 @@ function buildFileInfoTab(ctx, container) {
       fileSection.appendChild(fileLbl);
       const dl = moEl('dl', 'mo-detail-dl');
       dlRow(dl, 'Size', formatFileSize(file.size));
-      if (file.modTime) dlRow(dl, 'Modified', new Date(file.modTime).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+      if (file.modTime) dlRow(dl, 'Modified', moModTimeDate(file.modTime).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
       fileSection.appendChild(dl);
       container.appendChild(fileSection);
     }
@@ -16669,13 +16549,13 @@ function openLightbox(items, startIndex, resolveFilePath) {
   overlay.appendChild(content);
 
   // Close button
-  const closeBtn = moEl('button', 'mo-lightbox-close', { textContent: '\u00D7' });
+  const closeBtn = moEl('button', 'mo-lightbox-close', { type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', innerHTML: moIcon('x', 18) });
   closeBtn.addEventListener('click', dismissLightbox);
   content.appendChild(closeBtn);
 
   // Nav buttons
-  const prevBtn = moEl('button', 'mo-lightbox-nav prev', { textContent: '\u2039' });
-  const nextBtn = moEl('button', 'mo-lightbox-nav next', { textContent: '\u203A' });
+  const prevBtn = moEl('button', 'mo-lightbox-nav prev', { type: 'button', title: 'Previous (←)', 'aria-label': 'Previous', innerHTML: moIcon('chevron-left', 22) });
+  const nextBtn = moEl('button', 'mo-lightbox-nav next', { type: 'button', title: 'Next (→)', 'aria-label': 'Next', innerHTML: moIcon('chevron-right', 22) });
   prevBtn.addEventListener('click', () => navigate(-1));
   nextBtn.addEventListener('click', () => navigate(1));
   content.appendChild(prevBtn);
@@ -16683,20 +16563,25 @@ function openLightbox(items, startIndex, resolveFilePath) {
 
   // Info bar
   const bar = moEl('div', 'mo-lightbox-bar');
+  // Name over position on the left; the rating, colour label and zoom beside them.
   const titleEl = moEl('span', 'mo-lb-title');
   const ratingEl = moEl('span', 'mo-lb-rating');
   const colorDotEl = moEl('span', 'mo-lb-color-label');
   const counterEl = moEl('span', 'mo-lb-counter');
   const zoomIndicator = moEl('span', 'mo-lb-zoom-indicator');
-  bar.append(titleEl, ratingEl, colorDotEl, counterEl, zoomIndicator);
+  const nameStack = moEl('div', 'mo-lb-name');
+  nameStack.append(titleEl, counterEl);
+  bar.append(nameStack, ratingEl, colorDotEl, zoomIndicator, moEl('span', 'mo-lb-spacer'));
 
   // Slideshow controls
-  const playBtn = moEl('button', null, { textContent: '\u25B6 Slideshow' });
+  const playBtn = moEl('button', null, { type: 'button' });
+  const setPlayLabel = (playing) => { playBtn.innerHTML = moIcon(playing ? 'pause' : 'play', 14) + `<span>${playing ? 'Pause' : 'Slideshow'}</span>`; };
+  setPlayLabel(false);
   const speedDropdown = moDropdown({
     items: [
-      { value: '3000', label: '3s' },
-      { value: '5000', label: '5s' },
-      { value: '10000', label: '10s' },
+      { value: '3000', label: 'Every 3 s' },
+      { value: '5000', label: 'Every 5 s' },
+      { value: '10000', label: 'Every 10 s' },
     ],
     selected: '5000',
     ariaLabel: 'Slideshow speed',
@@ -16711,9 +16596,9 @@ function openLightbox(items, startIndex, resolveFilePath) {
   });
   bar.append(playBtn, speedDropdown.el);
   // Add To Chat: the item on screen goes to the chat composer.
-  const chatBtn = moEl('button', null, { textContent: 'Add To Chat', title: 'Attach this file to the chat composer' });
+  const chatBtn = moEl('button', null, { type: 'button', title: 'Attach this file to the chat composer', innerHTML: moIcon('message-square-plus', 14) + '<span>Add to Chat</span>' });
   chatBtn.addEventListener('click', () => { const it = items[currentIdx]; if (it) void moAttachItemsToChat([it]); });
-  const upscaleBtn = moEl('button', null, { textContent: 'Upscale…', title: 'Upscale this photo with Real-ESRGAN. The original is never changed.' });
+  const upscaleBtn = moEl('button', null, { type: 'button', title: 'Upscale this photo with Real-ESRGAN. The original is never changed.', innerHTML: moIcon('maximize-2', 14) + '<span>Upscale…</span>' });
   upscaleBtn.addEventListener('click', () => { const it = items[currentIdx]; if (it && _api) void moUpscaleItems([it], _api, null); });
   bar.append(chatBtn, upscaleBtn);
   overlay.appendChild(bar);
@@ -16921,7 +16806,7 @@ function openLightbox(items, startIndex, resolveFilePath) {
   }
 
   function startSlideshow() {
-    playBtn.textContent = '\u23F8 Pause';
+    setPlayLabel(true);
     playBtn.classList.add('active');
     slideshowTimer = setInterval(() => {
       if (currentIdx < items.length - 1) navigate(1);
@@ -16933,7 +16818,7 @@ function openLightbox(items, startIndex, resolveFilePath) {
     slideshowInterval = 0;
     clearInterval(slideshowTimer);
     slideshowTimer = null;
-    playBtn.textContent = '\u25B6 Slideshow';
+    setPlayLabel(false);
     playBtn.classList.remove('active');
   }
 

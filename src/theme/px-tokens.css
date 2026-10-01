@@ -266,6 +266,19 @@
   --px-planner-event-tint:      24%;   /* calendar colour mixed into an event block */
   --px-planner-event-tint-past: 12%;   /* the same block once it has ended          */
   --px-planner-now:             var(--px-danger);   /* the current-time line   */
+
+  /* ── Tier 3 · Component — Media viewer ──────────────────────────────────
+     A full-screen photo or video viewer (Media Organizer's lightbox) stays
+     dark in every theme and mode: photos are judged against black, as in
+     every photo app. Its chrome reads from these, never raw white alphas.
+     Not redefined under light mode on purpose. */
+  --px-viewer-scrim:          rgba(0, 0, 0, 0.92);
+  --px-viewer-bar:            rgba(0, 0, 0, 0.7);
+  --px-viewer-ink:            #f2f3f5;
+  --px-viewer-ink-muted:      rgba(242, 243, 245, 0.72);
+  --px-viewer-control:        rgba(255, 255, 255, 0.08);
+  --px-viewer-control-hover:  rgba(255, 255, 255, 0.16);
+  --px-viewer-line:           rgba(255, 255, 255, 0.14);
 }
 
 /* ============================================================================
