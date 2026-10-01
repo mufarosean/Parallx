@@ -15,7 +15,7 @@ import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurre
 import { packLanes } from './plannerLayout.js';
 import { PlannerScheduledController, type WorkflowServiceLike } from './plannerScheduled.js';
 import { Dropdown, type IDropdownItem } from '../../ui/dropdown.js';
-import { getIcon } from '../../ui/iconRegistry.js';
+import { createIconElement, getIcon } from '../../ui/iconRegistry.js';
 
 interface PlannerEditorInput {
   readonly id: string;          // === instanceId; only one ('main') for M82
@@ -440,15 +440,20 @@ class PlannerEditorPane implements IDisposable {
 
     const tabs = el('div', 'planner-pane__tabs');
     const tabsConfig: { key: Tab; label: string; icon: string }[] = [
-      { key: 'tasks',    label: 'Tasks',    icon: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>' },
-      { key: 'calendar', label: 'Calendar', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' },
-      { key: 'scheduled', label: 'Scheduled', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><circle cx="17" cy="17" r="4"/><path d="M17 15.5V17l1 1"/></svg>' },
+      { key: 'tasks',     label: 'Tasks',     icon: 'list-checks' },
+      { key: 'calendar',  label: 'Calendar',  icon: 'calendar' },
+      { key: 'scheduled', label: 'Scheduled', icon: 'calendar-clock' },
     ];
     for (const t of tabsConfig) {
       const tab = el('button', 'planner-pane__tab');
       tab.type = 'button';
       tab.dataset.tab = t.key;
-      tab.innerHTML = `${t.icon}<span>${t.label}</span>`;
+      tab.title = t.label;
+      tab.setAttribute('aria-label', t.label);
+      tab.appendChild(createIconElement(t.icon, 14));
+      const label = el('span', 'planner-pane__tab-label');
+      label.textContent = t.label;
+      tab.appendChild(label);
       tab.addEventListener('click', () => this._setTab(t.key));
       tabs.appendChild(tab);
     }

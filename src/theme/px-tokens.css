@@ -252,6 +252,20 @@
   /* Press — the physical-button feel. Controls translate + dim shadow on
      :active so a click feels like depressing a key. */
   --px-press: translateY(0.5px) scale(0.992);
+
+  /* ── Tier 3 · Component — Planner ──────────────────────────────────────
+     Values only the planner pane needs. They reference Tier 2 (or are pure
+     ratios), so they re-theme with everything else.
+     Pane widths: the planner lays out by its OWN width (a container named
+     `planner`), not the window, so a split editor gets the narrow layout.
+     Container queries cannot read custom properties, so the three steps are
+     named here and written literally in planner.css:
+       wide     ≥ 1024px   side column beside the page
+       medium   720–1023px side column drops below the page
+       compact  < 720px    one column; week view shows 3 days */
+  --px-planner-event-tint:      24%;   /* calendar colour mixed into an event block */
+  --px-planner-event-tint-past: 12%;   /* the same block once it has ended          */
+  --px-planner-now:             var(--px-danger);   /* the current-time line   */
 }
 
 /* ============================================================================

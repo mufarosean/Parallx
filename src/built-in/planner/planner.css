@@ -56,10 +56,9 @@
    Sidebar
    ========================================================================== */
 
-/* Sidebar — navigation only, matching the workbench list-row idiom used
-   by Explorer / Canvas / Dashboards. Flat 26px rows with monochrome
-   icon + label; hover and active states use the standard list-selection
-   tokens so it reads as a peer of the other sidebars. */
+/* Sidebar — navigation plus the calendar toggles, in the workbench list-row
+   idiom used by Explorer / Canvas / Dashboards: flat rows, monochrome icon +
+   label, the shared hover and selection surfaces. */
 .planner-sidebar-host { display: flex; width: 100%; height: 100%; }
 
 .planner-sidebar {
@@ -67,14 +66,14 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
-  font-family: var(--vscode-font-family, -apple-system, "Segoe UI", sans-serif);
-  color: var(--vscode-sideBar-foreground, #cccccc);
+  font-family: var(--px-font-ui);
+  color: var(--px-text);
 }
 
 .planner-sidebar__list {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 6px 6px 12px;
+  padding: var(--px-space-1) var(--px-space-1) var(--px-space-3);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -83,13 +82,13 @@
 .planner-sidebar__row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--px-space-2);
   height: var(--px-control-h);
-  padding: 0 8px;
+  padding: 0 var(--px-space-2);
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--px-radius-sm);
   background: transparent;
-  color: var(--vscode-editor-foreground, #d4d4d4);
+  color: var(--px-text);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -97,21 +96,14 @@
   position: relative;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
-.planner-sidebar__row:hover {
-  background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
-}
+.planner-sidebar__row:hover { background: var(--px-surface-hover); }
 .planner-sidebar__row:focus-visible {
   outline: none;
-  background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
-  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, #5b9bd5);
+  background: var(--px-surface-hover);
+  box-shadow: inset 0 0 0 1px var(--px-accent);
 }
-.planner-sidebar__row--active {
-  background: var(--vscode-list-activeSelectionBackground, #094771);
-  color: var(--vscode-list-activeSelectionForeground, #ffffff);
-}
-.planner-sidebar__row--active .planner-sidebar__row-icon {
-  color: var(--vscode-list-activeSelectionForeground, #ffffff);
-}
+.planner-sidebar__row--active { background: var(--px-surface-selected); }
+.planner-sidebar__row--active .planner-sidebar__row-icon { color: var(--px-accent-text); }
 
 .planner-sidebar__row-icon {
   display: inline-flex;
@@ -122,7 +114,6 @@
   flex: 0 0 auto;
   color: var(--px-text-secondary);
 }
-.planner-sidebar__row-icon svg { width: 14px; height: 14px; }
 
 .planner-sidebar__row-label {
   flex: 1 1 auto;
@@ -140,39 +131,60 @@
   min-width: 16px;
   height: 16px;
   padding: 0 5px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
+  border-radius: var(--px-radius-full);
+  background: var(--px-surface-active);
   color: var(--px-text);
   font-size: var(--px-text-2xs);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   flex: 0 0 auto;
 }
-.planner-sidebar__row--active .planner-sidebar__row-count {
-  background: color-mix(in srgb, var(--vscode-list-activeSelectionForeground, #ffffff) 22%, transparent);
-  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+
+/* Calendars — one checkbox row per calendar, box filled in the calendar's
+   own colour (user data, carried as --cal-color) when it is shown. */
+.planner-sidebar__cals { display: flex; flex-direction: column; gap: 1px; margin-top: var(--px-space-4); }
+.planner-sidebar__label { padding-inline: var(--px-space-2); }
+.planner-sidebar__cal-list { display: flex; flex-direction: column; gap: 1px; }
+.planner-sidebar__cal[aria-checked="false"] { color: var(--px-text-muted); }
+.planner-sidebar__cal-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  border-radius: var(--px-radius-sm);
+  border: 2px solid var(--cal-color);
+  background: var(--cal-color);
+  color: var(--px-bg);
 }
+.planner-sidebar__cal[aria-checked="false"] .planner-sidebar__cal-box { background: transparent; }
 
 
 /* ============================================================================
    Editor pane
    ========================================================================== */
 
+/* The pane is a named size container: everything inside lays out by the
+   planner's own width (wide / medium / compact, see the Tier 3 planner
+   block in px-tokens.css), so a split editor gets the narrow layout. */
 .planner-pane-host {
   position: relative;
   display: block;
   width: 100%;
   height: 100%;
-  background: var(--vscode-editor-background, #1e1e1e);
-  color: var(--vscode-editor-foreground, #d4d4d4);
+  background: var(--px-bg);
+  color: var(--px-text);
   overflow: auto;
+  container: planner / inline-size;
 }
 
 .planner-pane {
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  font-family: var(--vscode-font-family, -apple-system, "Segoe UI", sans-serif);
+  font-family: var(--px-font-ui);
 }
 
 .planner-pane__header {
@@ -180,23 +192,17 @@
   top: 0;
   z-index: 5;
   display: flex;
-  /* align-items: stretch lets the tabs span the full header height so
-     their bottom border can overlap the header's own bottom border —
-     the standard underline-tab pattern (Linear / browser tabs). */
+  /* Stretch so the tabs span the full header height and their underline
+     sits on the header's own bottom border. */
   align-items: stretch;
-  gap: 16px;
-  padding: 0 16px;
-  /* Snap to a 4px / 8px grid. 48px is 4×12; ample for 32px controls + 8px
-     breathing room top and bottom. */
+  gap: var(--px-space-4);
+  padding: 0 var(--px-space-4);
   min-height: 48px;
   box-sizing: border-box;
-  /* Recede the chrome — Linear's principle of dimming supporting surfaces
-     so the work area takes precedence. The editor background bleeds
-     through at near-full intensity. */
-  background: var(--vscode-editor-background, #1e1e1e);
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
+  background: var(--px-bg);
+  border-bottom: 1px solid var(--px-divider);
 }
-.planner-pane__spacer { flex: 1 1 auto; min-width: 12px; align-self: center; }
+.planner-pane__spacer { flex: 1 1 auto; min-width: var(--px-space-3); align-self: center; }
 
 /* Header is align-stretch so its children would all stretch too. Force
    non-tab controls back to centered so they keep their fixed heights. */
@@ -209,10 +215,8 @@
   align-self: center;
 }
 
-/* Tabs — underline tabs (Linear / browser style). The underline lives
-   on the tab itself as a real border-bottom and uses margin-bottom: -1px
-   to sit ON TOP of the header's bottom border for a clean connected
-   look — no floating pseudo elements that have to be hand-aligned. */
+/* Tabs — underline tabs. The underline is a real border-bottom pulled
+   1px down onto the header's own border. */
 .planner-pane__tabs {
   display: flex;
   align-items: stretch;
@@ -221,8 +225,8 @@
 .planner-pane__tab {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 14px;
+  gap: var(--px-space-2);
+  padding: 0 var(--px-space-3);
   border: 0;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
@@ -230,25 +234,36 @@
   color: var(--px-text-muted);
   font: inherit;
   font-size: var(--px-text-base);
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
   transition: color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
-.planner-pane__tab:hover { color: var(--vscode-editor-foreground, #d4d4d4); }
+.planner-pane__tab:hover { color: var(--px-text); }
+.planner-pane__tab:focus-visible { outline: 2px solid var(--px-accent); outline-offset: -2px; }
 .planner-pane__tab--active {
-  color: var(--vscode-editor-foreground, #f3f3f3);
+  color: var(--px-text);
   font-weight: 600;
-  border-bottom-color: var(--vscode-button-background, #0e639c);
+  border-bottom-color: var(--px-accent);
 }
+.planner-pane__tab--active .svg-icon { color: var(--px-accent-text); }
 
-.planner-pane__actions { display: flex; align-items: center; gap: 6px; }
+.planner-pane__actions { display: flex; align-items: center; gap: var(--px-space-2); }
 
 .planner-pane__body {
   flex: 1 1 auto;
-  padding: 18px 24px 48px;
+  padding: var(--px-space-5) var(--px-space-6) 48px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--px-space-5);
+}
+
+/* Compact pane: tabs drop their labels (each keeps its name as tooltip and
+   aria-label) so the tab strip and the tab's actions still fit one line. */
+@container planner (max-width: 719px) {
+  .planner-pane__header { padding: 0 var(--px-space-2); gap: var(--px-space-2); }
+  .planner-pane__tab { padding: 0 var(--px-space-2); }
+  .planner-pane__tab-label { display: none; }
+  .planner-pane__body { padding: var(--px-space-4) var(--px-space-3) var(--px-space-8); }
 }
 
 /* ── Tasks ────────────────────────────────────────────────────────────── */

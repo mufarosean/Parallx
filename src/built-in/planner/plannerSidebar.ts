@@ -10,6 +10,8 @@
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import { setPendingPlannerTab } from './plannerNavState.js';
+import { createIconElement } from '../../ui/iconRegistry.js';
+import { createSectionLabel } from '../../ui/kit.js';
 
 interface SidebarApi {
   editors: {
@@ -26,11 +28,12 @@ interface SidebarApi {
 
 type NavKey = 'calendar' | 'tasks' | 'scheduled' | 'settings';
 
+/** Registry icon ids (ui/iconRegistry), the same ids the pane's tabs use. */
 const ICONS: Record<NavKey, string> = {
-  calendar: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
-  tasks:    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
-  scheduled: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><circle cx="17" cy="17" r="4"/><path d="M17 15.5V17l1 1"/></svg>',
-  settings: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  calendar: 'calendar',
+  tasks: 'list-checks',
+  scheduled: 'calendar-clock',
+  settings: 'settings',
 };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
@@ -97,7 +100,7 @@ export class PlannerSidebar implements IDisposable {
       row.tabIndex = 0;
 
       const icon = el('span', 'planner-sidebar__row-icon');
-      icon.innerHTML = ICONS[r.key];
+      icon.appendChild(createIconElement(ICONS[r.key], 14));
       row.appendChild(icon);
 
       const label = el('span', 'planner-sidebar__row-label');
@@ -114,6 +117,39 @@ export class PlannerSidebar implements IDisposable {
       row.addEventListener('click', r.onClick);
       list.appendChild(row);
     }
+
+    // Calendars — which ones the calendar and Today draw. The same toggle the
+    // calendar toolbar's Calendars menu flips, kept in view here.
+    const cals = el('div', 'planner-sidebar__cals');
+    createSectionLabel(cals, 'Calendars').classList.add('planner-sidebar__label');
+    const calList = el('div', 'planner-sidebar__cal-list');
+    cals.appendChild(calList);
+    list.appendChild(cals);
+    const renderCalendars = async () => {
+      if (this._disposed) return;
+      let all: Awaited<ReturnType<PlannerDataService['listCalendars']>> = [];
+      try { all = await this._data.listCalendars(); } catch { /* keep the last list */ return; }
+      calList.replaceChildren(...all.map((cal) => {
+        const row = el('button', 'planner-sidebar__row planner-sidebar__cal');
+        row.type = 'button';
+        row.setAttribute('role', 'checkbox');
+        row.setAttribute('aria-checked', String(cal.visible));
+        row.title = cal.visible ? `Hide ${cal.name}` : `Show ${cal.name}`;
+        row.style.setProperty('--cal-color', cal.color);
+        const box = el('span', 'planner-sidebar__cal-box');
+        if (cal.visible) box.appendChild(createIconElement('check', 12));
+        row.appendChild(box);
+        const label = el('span', 'planner-sidebar__row-label');
+        label.textContent = cal.name;
+        row.appendChild(label);
+        row.addEventListener('click', () => { void this._data.updateCalendar(cal.id, { visible: !cal.visible }); });
+        return row;
+      }));
+    };
+    void renderCalendars();
+    this._disposables.push(this._data.onDidChange((e) => {
+      if (e.kind === 'calendar-changed') void renderCalendars();
+    }));
 
     container.appendChild(root);
     this._syncActive();
