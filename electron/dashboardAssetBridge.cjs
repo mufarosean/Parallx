@@ -35,12 +35,14 @@ const ID_RE = /^[a-f0-9-]{20,}\.[a-z0-9]{1,5}$/i;
 
 let _dir = null;
 
-/** Register the scheme as privileged. MUST run before app 'ready'. */
-function registerDashboardAssetScheme(protocol) {
+/** Register the scheme as privileged. MUST run before app 'ready'.
+ *  Electron honours only the last registerSchemesAsPrivileged call, so other
+ *  privileged schemes ride along here (`extraSchemes`). */
+function registerDashboardAssetScheme(protocol, extraSchemes = []) {
   protocol.registerSchemesAsPrivileged([{
     scheme: SCHEME,
     privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
-  }]);
+  }, ...extraSchemes]);
 }
 
 /** Wire the file store IPC + the protocol handler. Call after app 'ready'. */

@@ -126,15 +126,12 @@ confirm on this machine.
 | 6 Shapes | oval and rounded regions through a feathered alpha mask (geq on the patch), Blur/Pixelate and shape as buttons; exported pixels checked: outside the oval untouched, inside blurred | shipped |
 | 5 Fixes | real-timestamp capture (short takes played fast), app dropdowns everywhere, Track switch on blur regions, real blur and mosaic previews, look previews matched to the export | shipped |
 | 4 Probe | clip scene in the screenshot probe, open-clip-editor command | shipped |
+| 9 Streaming | parallx-media:// with range requests; video and audio stream from disk in every Media Organizer surface | shipped |
 | 8 Layout | page layout: toolbar, transport, tabbed inspector, zoomable lane timeline, Export menu, Queue panel; timecode fields; split at playhead; look swatches | shipped |
 | 7 Handles | oval and rounded regions could not be resized (the soft-edge mask hid the one corner handle and the outline); shape moved to an inner fill, active region gets an eight-handle frame; move + 4 resize directions measured on all three shapes with real mouse input | shipped |
 
 ## Known limits
 
-- Videos reach the editor (and every Media Organizer surface) through
-  `localFileToUrl`, which reads the whole file over IPC into a Blob. A multi-gigabyte
-  session is too much for that. The fix is a streaming file protocol with range
-  requests (next step, see the phase 2 plan below).
 
 - Follow the box captures the whole display, so long takes are larger on disk until
   the editor crops them.
@@ -149,10 +146,15 @@ The owner records drawing and painting sessions and wants Media Organizer to be
 where they become content. Today the editor opens on one video and cuts it into
 clips. Phase 2 makes it a third Media Organizer surface:
 
-1. **Streaming video.** A `parallx-media://` protocol in the main process that
-   serves workspace files with HTTP range requests, confined to the open
-   workspace's roots, and `localFileToUrl` using it for video. Without this a long
-   session cannot even be previewed.
+1. **Streaming video (done 2026-10-01).** `electron/mediaStreamBridge.cjs` serves
+   `parallx-media://file/<encoded absolute path>` with HTTP range requests, media
+   file types only, under the same roots as `fs:readFile` (never spending a dialog
+   grant). `localFileToUrl` returns these URLs for video and audio, so nothing reads
+   a whole video into memory any more (it used to go over IPC as base64 and was
+   refused past 512 MB). Video elements set `crossOrigin = 'anonymous'` and the
+   protocol sends CORS headers, so frames still draw to readable canvases.
+   Measured on a 2-hour, 1.2 GB file in the app: seek to 1:02:05 in 13 ms, 34 MB JS
+   heap, timeline thumbnails and envelope in 35 s in the background.
 2. **Clip Editor in the sidebar.** Opens an empty editor with a media bin: pick
    videos (and clips already exported) from the library.
 3. **Many sources.** A segment carries its source path. The assembly step already

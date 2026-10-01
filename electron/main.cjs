@@ -44,9 +44,12 @@ const { setupNotebookKernelBridge } = notebookKernelBridge;
 const { registerDashboardAssetScheme, setupDashboardAssetBridge } = require('./dashboardAssetBridge.cjs');
 const { setupImageBridge } = require('./imageBridge.cjs');
 
-// The parallx-asset:// scheme (dashboard image/GIF assets) must be registered
-// as privileged BEFORE app 'ready'; the handler itself is wired in whenReady.
-registerDashboardAssetScheme(protocol);
+const { MEDIA_SCHEME_SPEC, setupMediaStreamBridge } = require('./mediaStreamBridge.cjs');
+
+// The parallx-asset:// scheme (dashboard image/GIF assets) and parallx-media://
+// (streamed local video and audio) must be registered as privileged BEFORE app
+// 'ready', in one call; the handlers are wired in whenReady.
+registerDashboardAssetScheme(protocol, [MEDIA_SCHEME_SPEC]);
 const { setupAnthropicBridge } = require('./anthropicBridge.cjs');
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -840,6 +843,8 @@ app.whenReady().then(async () => {
 
   // File-backed dashboard image/GIF assets (served over parallx-asset://).
   setupDashboardAssetBridge(ipcMain, protocol, APP_ROOT);
+  // Local video and audio, streamed with range requests (parallx-media://).
+  setupMediaStreamBridge(protocol, (absPath) => _isAllowedMediaReadPath(absPath));
   setupImageBridge(ipcMain, app);
   // Local picture models (ONNX) for extensions: the image editor's Remove.
   setupModelBridge(ipcMain, { appRoot: APP_ROOT, getMainWindow: () => mainWindow, isSealed: isWorkspaceSealed });
@@ -1472,6 +1477,24 @@ function _isAllowedReadPath(filePath) {
   // by design (Pictures, Downloads, …). The grant is created when the dialog
   // returns and expires shortly after, so the read window is bounded.
   return _consumeDialogReadGrant(normalized);
+}
+
+// The media stream (parallx-media://) reads under the same roots as
+// fs:readFile but never spends a dialog grant: a <video> re-requests ranges
+// for as long as it plays, long after a one-shot grant would have expired.
+function _isAllowedMediaReadPath(filePath) {
+  if (!_fsWorkspaceRoot) return true;
+  const normalized = path.resolve(filePath);
+  const roots = [
+    path.resolve(APP_ROOT),
+    path.resolve(_fsWorkspaceRoot),
+    path.resolve(path.join(os.homedir(), '.parallx')),
+    path.resolve(os.tmpdir()),
+  ];
+  for (const root of roots) {
+    if (normalized === root || normalized.startsWith(root + path.sep)) return true;
+  }
+  return _matchesAnyRoot(normalized, _fsExtraRoots);
 }
 
 // ── Dialog-returned read grants ──────────────────────────────────────────

@@ -4277,6 +4277,8 @@ async function generateVideoCoverFrame(checksum, filePath, duration, api, overwr
     if (!url) return { generated: false, path: null, encoder: null };
 
     const video = document.createElement('video');
+
+    video.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
     video.muted = true;
     video.preload = 'auto';
 
@@ -9013,8 +9015,19 @@ const _MIME_FROM_EXT = {
   '.ogv': 'video/ogg', '.mpg': 'video/mpeg', '.mpeg': 'video/mpeg',
 };
 
+// Video and audio stream from disk over parallx-media:// (range requests),
+// never through fs.readFile: that sends the whole file as base64 over IPC and
+// refuses anything past 512 MB, so a long painting session could not play.
+// Elements that draw these frames to a canvas set crossOrigin='anonymous';
+// the protocol answers with CORS headers, so the canvas stays readable.
+const MO_STREAM_EXT_RE = /\.(mp4|m4v|webm|mov|mkv|avi|wmv|flv|ogv|mpg|mpeg|ts|3gp|mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i;
+function moMediaStreamUrl(filePath) {
+  return 'parallx-media://file/' + encodeURIComponent(String(filePath));
+}
+
 async function localFileToUrl(filePath) {
   if (!filePath) return null;
+  if (MO_STREAM_EXT_RE.test(filePath)) return moMediaStreamUrl(filePath);
   if (MO_HEIC_RE.test(filePath)) { const copy = await moHeicDisplayCopy(filePath, _api); if (copy) filePath = copy; }
   const cached = _blobUrlCache.get(filePath);
   if (cached) return cached;
@@ -15056,6 +15069,8 @@ function buildVideoPlayer(container, fullPath, ctx) {
   container.tabIndex = 0; // make focusable for keyboard
 
   const video = document.createElement('video');
+
+  video.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
   video.preload = 'metadata';
   video.draggable = false;
   video.controls = false;
@@ -15064,6 +15079,7 @@ function buildVideoPlayer(container, fullPath, ctx) {
 
   // Hidden seek-preview video (separate element so seeking it doesn't disturb playback)
   const previewVid = document.createElement('video');
+  previewVid.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
   previewVid.preload = 'metadata';
   previewVid.muted = true;
   previewVid.className = 'mo-player-preview-vid';
@@ -15276,6 +15292,8 @@ function buildVideoPlayer(container, fullPath, ctx) {
     const n = Math.max(6, Math.min(24, Math.round(dur / 12)));
 
     const fsVid = document.createElement('video');
+
+    fsVid.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
     fsVid.preload = 'metadata';
     fsVid.muted = true;
     fsVid.playsInline = true;
@@ -18819,6 +18837,7 @@ function moOpenFrameDialog(api, videoPath, timestampSec, _ctx) {
   // Preview <video> seeked to the requested timestamp. Identical setup to the
   // clip dialog so the crop overlay math reuses videoWidth/videoHeight.
   const preview = document.createElement('video');
+  preview.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
   preview.className = 'mo-clip-preview';
   preview.muted = true;
   preview.controls = false;
@@ -19313,6 +19332,7 @@ async function moProbeDuration(path) {
     if (!url) return 0;
     return await new Promise((resolve) => {
       const v = document.createElement('video');
+      v.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
       let settled = false;
       const done = (d) => { if (!settled) { settled = true; try { v.src = ''; } catch {} resolve(d || 0); } };
       v.preload = 'metadata';
@@ -20529,6 +20549,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // even when exporting to GIF. Mute Audio (Export menu) mirrors the
   // export-time strip-audio decision and mutes the preview, so it is honest.
   const preview = document.createElement('video');
+  preview.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
   preview.className = 'mo-clip-preview';
   preview.muted = false;
   preview.volume = 1;
@@ -21132,6 +21153,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const url = await localFileToUrl(outPath);
       renderOverlay = moEl('div', 'mo-render-preview');
       const v = document.createElement('video');
+      v.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
       v.src = url; v.loop = true; v.muted = true; v.autoplay = true; v.controls = false;
       const bar = moEl('div', 'mo-render-preview-bar');
       bar.appendChild(moEl('span', null, { textContent: `Real render · ${moTimeStr(t0)} → ${moTimeStr(t1)} · ${previewScale}%` }));
