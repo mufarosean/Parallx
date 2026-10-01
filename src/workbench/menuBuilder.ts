@@ -200,7 +200,7 @@ export class MenuBuilder extends Disposable {
   // ── Manage menu ────────────────────────────────────────────────────────
 
   /**
-   * Show the Manage menu anchored above the gear icon (opens upward like VS Code).
+   * Show the Manage menu beside the gear icon, bottoms lined up (opens upward like VS Code).
    */
   private _showManageMenu(anchor: HTMLElement): void {
     const cmdService = this._services.get(ICommandService) as CommandService;
@@ -232,30 +232,17 @@ export class MenuBuilder extends Disposable {
       },
     ];
 
-    // Anchor above the gear icon (VS Code pattern: menu opens upward).
-    //
-    // This used to compute the position from a GUESSED height
-    // (`items.length * 28 + 24`) and pass a fixed point. The guess counted
-    // rows only — not the separators between the four groups, nor the menu's
-    // own padding — so it was always wrong, and the error showed up on screen
-    // as a gap between the gear and the bottom of the menu. Any change to row
-    // height, font size, or group count would silently move it again.
-    //
-    // `layoutPopup` (via ContextMenu's DOMRect anchor) measures the real
-    // element after render, places it flush above with a small gap, flips
-    // below when there is no room, clamps to the viewport, and caps the
-    // height if it would overflow. All of that already existed.
-    //
-    // The rect is synthesised rather than passed through: `'above'` aligns to
-    // the anchor's LEFT edge, but this menu belongs beside the activity bar,
-    // not on top of it. A zero-width rect at the gear's right edge keeps the
-    // vertical behaviour and moves the horizontal origin to where we want it.
-    const anchorRect = new DOMRect(rect.right + 4, rect.top, 0, rect.height);
+    // Beside the gear, its bottom on the gear's bottom, growing upward (VS
+    // Code's Manage menu). `layoutPopup` measures the real menu after render,
+    // so rows, separators and padding never have to be guessed, and it flips
+    // or clamps at the window's edges. It used to open ABOVE the gear and to
+    // its right, which left it floating clear of the icon it came from.
+    const anchorRect = rect;
 
     const ctxMenu = ContextMenu.show({
       items,
       anchor: anchorRect,
-      anchorPosition: 'above',
+      anchorPosition: 'right-end',
     });
 
     // Track the menu for toggle behavior

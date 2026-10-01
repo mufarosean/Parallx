@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -634,6 +634,51 @@ async function main() {
       await shot(page, 'welcome');
     }
 
+    // The chrome at a glance: the empty editor's hints, the settings (gear)
+    // menu against its icon, the status bar, and a file's breadcrumbs.
+    if (scenes.includes('chrome')) {
+      await scene('chrome', async () => {
+        for (let i = 0; i < 6; i++) await runCommand(page, ['workbench.action.closeActiveEditor']);
+        await page.waitForTimeout(600);
+        await shot(page, 'chrome-empty');
+        const gear = page.locator('.activity-bar-manage-gear').first();
+        await gear.click({ timeout: 5_000 }).catch(() => {});
+        await page.waitForTimeout(500);
+        const gap = await page.evaluate(() => {
+          const g = document.querySelector('.activity-bar-manage-gear')?.getBoundingClientRect();
+          const m = Array.from(document.querySelectorAll('.context-menu, .parallx-context-menu, [role="menu"]')).map((x) => x.getBoundingClientRect()).find((r) => r.width > 0);
+          if (!g || !m) return 'no gear or menu';
+          return `gear=${Math.round(g.left)},${Math.round(g.top)} ${Math.round(g.width)}x${Math.round(g.height)} menu=${Math.round(m.left)},${Math.round(m.top)} ${Math.round(m.width)}x${Math.round(m.height)} menuBottom-gearBottom=${Math.round(m.bottom - g.bottom)} menuLeft-gearRight=${Math.round(m.left - g.right)}`;
+        });
+        console.log(`[probe] gear menu: ${gap}`);
+        await shot(page, 'chrome-gear');
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+        const sb = await page.evaluate(() => {
+          const bar = document.querySelector('.part-workbench-parts-statusbar');
+          if (!bar) return 'no status bar';
+          const items = Array.from(bar.querySelectorAll('.statusbar-item-label')).filter((x) => x.offsetParent).map((x) => { const r = x.getBoundingClientRect(); return `"${x.textContent.trim().slice(0, 20)}" h=${Math.round(r.height)} fs=${getComputedStyle(x).fontSize}`; });
+          return `bar h=${Math.round(bar.getBoundingClientRect().height)} fs=${getComputedStyle(bar).fontSize}; ${items.join('; ')}`;
+        });
+        console.log(`[probe] status bar: ${sb}`);
+        const opened = await page.evaluate(async () => {
+          const row = Array.from(document.querySelectorAll('.tree-node')).find((n) => n.querySelector('.tree-node-label')?.textContent === 'README.md');
+          if (!row) return 'no README row';
+          row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+          return 'ok';
+        });
+        await page.waitForTimeout(1_500);
+        const bc = await page.evaluate(() => {
+          const c = document.querySelector('.breadcrumbs-control:not(.hidden)');
+          if (!c) return 'no breadcrumbs';
+          const r = c.getBoundingClientRect();
+          const item = c.querySelector('.parallx-breadcrumb-item');
+          return `bar h=${Math.round(r.height)} item fs=${item ? getComputedStyle(item).fontSize : '-'} text="${c.textContent.trim().slice(0, 60)}"`;
+        });
+        console.log(`[probe] file breadcrumbs (${opened}): ${bc}`);
+        await shot(page, 'chrome-file');
+      });
+    }
     if (scenes.includes('watermark')) {
       for (let i = 0; i < 4; i++) await runCommand(page, ['workbench.action.closeActiveEditor']);
       await page.waitForTimeout(600);

@@ -783,29 +783,41 @@ html, body {
 .editor-watermark-shortcuts {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: var(--parallx-fontSize-base);
+  gap: 8px;
+  font-size: var(--px-text-base);
 }
 
 .editor-watermark-entry {
   display: flex;
   justify-content: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: 16px;
 }
 
 .editor-watermark-entry kbd {
+  /* Plain shortcut text, as menus show it: not the keycap chip, which no
+     other surface of the empty workbench uses. */
   display: inline-block;
-  min-width: 90px;
+  min-width: 96px;
+  height: auto;
+  padding: 0;
   text-align: right;
   font-family: inherit;
-  font-size: var(--parallx-fontSize-sm);
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--px-text-sm);
+  font-weight: 400;
+  line-height: inherit;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--px-text-faint);
+  background: none;
+  border: 0;
+  box-shadow: none;
 }
 
 .editor-watermark-entry span {
   min-width: 120px;
   text-align: left;
-  color: var(--vscode-descriptionForeground);
+  color: var(--px-text-muted);
 }
 
 /* ── Auxiliary Bar ── */
@@ -1199,7 +1211,9 @@ html, body {
   cursor: default;
   width: 100%;
   height: 22px;
-  font-size: var(--parallx-fontSize-base);
+  /* 12px in a 22px bar (VS Code's proportion): the bar's text is a notch
+     under the UI's 13px, so it reads as chrome, not content. */
+  font-size: var(--px-text-sm);
   display: flex;
   overflow: hidden;
 }
@@ -1262,6 +1276,7 @@ html, body {
   align-items: center;
   flex-shrink: 0;
 }
+.statusbar-item-icon svg { width: 14px; height: 14px; }
 
 /* First/last visible items: reduce margin (attach to edge) — VS Code parity */
 .statusbar-item.left:first-child > .statusbar-item-label,

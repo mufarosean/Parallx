@@ -143,7 +143,8 @@ export interface IPopupLayoutOptions {
    *
    * Default: `'below'`
    */
-  readonly position?: 'below' | 'above' | 'right' | 'left';
+  /** `right-end`: beside the anchor, bottoms lined up, so it grows upward from the anchor (a menu on a bottom-docked icon). */
+  readonly position?: 'below' | 'above' | 'right' | 'right-end' | 'left';
 
   /** Gap between anchor edge and popup edge (px). Default: 4 */
   readonly gap?: number;
@@ -228,6 +229,14 @@ export function layoutPopup(
         left = r.right + gap;
         top  = r.top;
         // Flip left if not enough space right AND more room left
+        if (left + elW > vw - margin && r.left - gap - elW >= margin) {
+          left = r.left - gap - elW;
+        }
+        break;
+
+      case 'right-end':
+        left = r.right + gap;
+        top  = r.bottom - elH;
         if (left + elW > vw - margin && r.left - gap - elW >= margin) {
           left = r.left - gap - elW;
         }

@@ -62,7 +62,7 @@ export interface IContextMenuOptions {
    * Ignored for point anchors. Default: `'below'`.
    * Passed through to `layoutPopup`.
    */
-  readonly anchorPosition?: 'below' | 'above' | 'right' | 'left';
+  readonly anchorPosition?: 'below' | 'above' | 'right' | 'right-end' | 'left';
   /** Whether to auto-select the first item. Default false. */
   readonly autoSelectFirst?: boolean;
   /** Additional CSS class(es) for the root element. */
@@ -487,7 +487,7 @@ export interface IExtensionMenuOptions {
   /** Runs once the menu has closed, whether by selection or dismissal. */
   readonly onClose?: () => void;
   /** Placement relative to a rect or element anchor. Default: below. */
-  readonly anchorPosition?: 'below' | 'above' | 'right' | 'left';
+  readonly anchorPosition?: 'below' | 'above' | 'right' | 'right-end' | 'left';
 }
 
 export function showExtensionContextMenu(
