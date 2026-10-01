@@ -37,6 +37,7 @@ A new user lands in an IDE-shaped window: activity bar, Explorer and a Welcome t
 ### 3.2 Opt-in tools carry personal defaults
 I checked this rather than assume it. Extensions under `ext/` (Budget, Creations AI, Media Organizer, Concept Lab, Flashcards, Browser, Web Research, Workspace Graph) are **off by default**; the user turns them on in Manage Tools. That is the right shape. Two things still leak:
 - Budget's Gmail filter defaults to `from:chase.com`, a single bank. A stranger who turns Budget on gets an empty ledger and no idea why.
+- (Fixed tonight) A one-off repair migration had planted a sync cursor in every new workspace. Budget claimed a sync on 3/31/2026, ignored the first-sync settings, and hid its own setup card. Personal fixes in shared migrations are a pattern to watch for before launch.
 - **Flashcards, the core of the study pitch, is off by default** while Worksheets is on.
 
 **Fix (decision D1 for you):** decide the default set around the audience in section 1; I recommend Flashcards on. Change Budget's default filter to empty and ask on first sync.
@@ -46,8 +47,9 @@ Without Ollama running, chat used to spin forever. It now says so after 6 second
 **Fix:** make provider choice part of first run ("Run AI on this computer: Install Ollama" / "Use Claude: paste a key" / "Skip for now"), with an honest note on what leaves the machine. The AI settings page already has the right copy for this.
 
 ### 3.4 "Are my notes mine?"
-This is the first question every Obsidian user will ask. Canvas pages live in SQLite. Export as Markdown exists per page, but there is no export of the whole workspace and no statement anywhere in the UI about where data lives.
-**Fix:** add "Export Workspace as Markdown" (pages with their folder tree, attachments alongside). Add one sentence on the Welcome page: "Everything stays in this folder on your computer."
+This is the first question every Obsidian user will ask. Canvas pages live in SQLite, inside the workspace folder (`.parallx/data.db`). Export as Markdown exists per page, but there is no export of the whole workspace.
+Tonight, Welcome gained one plain sentence (shown when a folder is open): "Your pages and notes are saved in this workspace folder, on your computer."
+**Fix:** add "Export Workspace as Markdown" (pages with their folder tree, attachments alongside).
 
 ### 3.5 Platforms
 The app crashed on start on Linux and macOS (Windows-only `setAppDetails` and `.ico`). That is fixed on this branch.
