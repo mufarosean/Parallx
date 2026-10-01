@@ -83,7 +83,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     : undefined;
 
   // Build IToolPickerServices adapter (same shape as chatDataService.ts)
-  // Extension names for the Tools section's group headers: "Media Organizer",
+  // Extension names for the Tools section's group headers: "Atelier",
   // not "parallx-community.media-organizer".
   const toolRegistry = api.services.has(IToolRegistryService)
     ? api.services.get<import('../../services/serviceTypes.js').IToolRegistryService>(IToolRegistryService)

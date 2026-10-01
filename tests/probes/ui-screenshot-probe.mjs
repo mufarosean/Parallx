@@ -306,7 +306,7 @@ async function projectScene(appRoot, clip, clip2, errors) {
     await page.locator('.mo-cp-list .mo-cp-row').nth(0).click();
     await page.waitForTimeout(1_200);
     // The Media Organizer sidebar lists the project.
-    await page.locator('.activity-bar-item[aria-label="Media Organizer"]').first().click({ timeout: 3_000 }).catch((e) => console.log(`[probe] project: no Media Organizer view button (${String(e).split('\n')[0]})`));
+    await page.locator('.activity-bar-item[aria-label="Atelier"]').first().click({ timeout: 3_000 }).catch((e) => console.log(`[probe] project: no Atelier view button (${String(e).split('\n')[0]})`));
     await page.waitForTimeout(1_500);
     await shot(page, 'project-sidebar');
     // Delete it from the project's menu.

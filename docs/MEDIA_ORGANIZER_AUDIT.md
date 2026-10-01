@@ -317,4 +317,4 @@ The shortcuts sheet (10280–10336) is out of date from work earlier today:
   (5).
 
 **Still open:** folder management (step 3), one Duplicates (4), menus by
-kind (5), names (6), the album page (7), and a new name for the tool.
+kind (5), names (6), the album page (7), and the album page. The tool is now called Atelier (2026-10-01).

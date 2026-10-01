@@ -1,10 +1,10 @@
 {
   "manifestVersion": 1,
   "id": "parallx-community.media-organizer",
-  "name": "Media Organizer",
+  "name": "Atelier",
   "version": "0.13.0",
   "publisher": "parallx-community",
-  "description": "Organize photos, GIFs and videos with tags, albums, and EXIF metadata.",
+  "description": "Gather, organise and make: a library of photos, GIFs and videos with tags and albums, references and painting plans, and editors for photos, clips and GIFs.",
   "main": "main.js",
   "activationEvents": ["*"],
   "engines": {
@@ -12,41 +12,41 @@
   },
   "contributes": {
     "commands": [
-      { "id": "media-organizer.scan", "title": "Scan Directory", "category": "Media Organizer" },
-      { "id": "media-organizer.cancelScan", "title": "Cancel Scan", "category": "Media Organizer" },
-      { "id": "media-organizer.rescan", "title": "Rescan Library", "category": "Media Organizer" },
-      { "id": "media-organizer.generateThumbnails", "title": "Generate Thumbnails", "category": "Media Organizer" },
-      { "id": "media-organizer.cleanThumbnails", "title": "Clean Orphan Thumbnails", "category": "Media Organizer" },
-      { "id": "media-organizer.cacheStats", "title": "Show Thumbnail Cache Stats", "category": "Media Organizer" },
-      { "id": "media-organizer.openGrid", "title": "Open Library", "category": "Media Organizer" },
-      { "id": "media-organizer.practiceSession", "title": "Practice Session", "category": "Media Organizer" },
-      { "id": "media-organizer.dailyStudy", "title": "Daily Study", "category": "Media Organizer" },
-      { "id": "media-organizer.paintingPlans", "title": "Painting Plans", "category": "Media Organizer" },
-      { "id": "media-organizer.upscaleSetup", "title": "Set Up The Upscaler", "category": "Media Organizer" },
-      { "id": "media-organizer.createAlbum", "title": "Create Album", "category": "Media Organizer" },
-      { "id": "media-organizer.rebuildSearchIndex", "title": "Rebuild Search Index", "category": "Media Organizer" },
-      { "id": "media-organizer.buildPHashes", "title": "Build Perceptual Hashes (find near-duplicates)", "category": "Media Organizer" },
-      { "id": "media-organizer.findDuplicates", "title": "Find Duplicates", "category": "Media Organizer" },
-      { "id": "media-organizer.saveSmartAlbum", "title": "Save Current Search as Smart Album", "category": "Media Organizer" },
-      { "id": "media-organizer.openSmartAlbum", "title": "Open Smart Album", "category": "Media Organizer" },
-      { "id": "media-organizer.moveToTrash", "title": "Move Selected to Trash", "category": "Media Organizer" },
-      { "id": "media-organizer.emptyTrash", "title": "Empty Trash", "category": "Media Organizer" },
-      { "id": "media-organizer.revealInMO", "title": "Reveal in Media Organizer", "category": "Media Organizer" },
-      { "id": "media-organizer.showShortcuts", "title": "Keyboard Shortcuts", "category": "Media Organizer" },
-      { "id": "media-organizer.recordGif", "title": "Record Screen…", "category": "Media Organizer" },
-      { "id": "media-organizer.openClipEditor", "title": "Open Clip Editor", "category": "Media Organizer" },
-      { "id": "media-organizer.newClipProject", "title": "New Clip Project…", "category": "Media Organizer" },
-      { "id": "media-organizer.openClipProject", "title": "Open Clip Project…", "category": "Media Organizer" },
-      { "id": "media-organizer.openTagReview", "title": "Open Tag Review", "category": "Media Organizer" },
-      { "id": "media-organizer.editImage", "title": "Edit Image", "category": "Media Organizer" },
-      { "id": "media-organizer.pasteEdit", "title": "Paste Edit Onto Selected Photos", "category": "Media Organizer" },
-      { "id": "media-organizer.removeFromOthers", "title": "Remove Marks From Other Photos", "category": "Media Organizer" },
-      { "id": "media-organizer.removeFromSelected", "title": "Remove Marks From Selected Photos", "category": "Media Organizer" }
+      { "id": "media-organizer.scan", "title": "Scan Directory", "category": "Atelier" },
+      { "id": "media-organizer.cancelScan", "title": "Cancel Scan", "category": "Atelier" },
+      { "id": "media-organizer.rescan", "title": "Rescan Library", "category": "Atelier" },
+      { "id": "media-organizer.generateThumbnails", "title": "Generate Thumbnails", "category": "Atelier" },
+      { "id": "media-organizer.cleanThumbnails", "title": "Clean Orphan Thumbnails", "category": "Atelier" },
+      { "id": "media-organizer.cacheStats", "title": "Show Thumbnail Cache Stats", "category": "Atelier" },
+      { "id": "media-organizer.openGrid", "title": "Open Library", "category": "Atelier" },
+      { "id": "media-organizer.practiceSession", "title": "Practice Session", "category": "Atelier" },
+      { "id": "media-organizer.dailyStudy", "title": "Daily Study", "category": "Atelier" },
+      { "id": "media-organizer.paintingPlans", "title": "Painting Plans", "category": "Atelier" },
+      { "id": "media-organizer.upscaleSetup", "title": "Set Up The Upscaler", "category": "Atelier" },
+      { "id": "media-organizer.createAlbum", "title": "Create Album", "category": "Atelier" },
+      { "id": "media-organizer.rebuildSearchIndex", "title": "Rebuild Search Index", "category": "Atelier" },
+      { "id": "media-organizer.buildPHashes", "title": "Build Perceptual Hashes (find near-duplicates)", "category": "Atelier" },
+      { "id": "media-organizer.findDuplicates", "title": "Find Duplicates", "category": "Atelier" },
+      { "id": "media-organizer.saveSmartAlbum", "title": "Save Current Search as Smart Album", "category": "Atelier" },
+      { "id": "media-organizer.openSmartAlbum", "title": "Open Smart Album", "category": "Atelier" },
+      { "id": "media-organizer.moveToTrash", "title": "Move Selected to Trash", "category": "Atelier" },
+      { "id": "media-organizer.emptyTrash", "title": "Empty Trash", "category": "Atelier" },
+      { "id": "media-organizer.revealInMO", "title": "Reveal in Atelier", "category": "Atelier" },
+      { "id": "media-organizer.showShortcuts", "title": "Keyboard Shortcuts", "category": "Atelier" },
+      { "id": "media-organizer.recordGif", "title": "Record Screen…", "category": "Atelier" },
+      { "id": "media-organizer.openClipEditor", "title": "Open Clip Editor", "category": "Atelier" },
+      { "id": "media-organizer.newClipProject", "title": "New Clip Project…", "category": "Atelier" },
+      { "id": "media-organizer.openClipProject", "title": "Open Clip Project…", "category": "Atelier" },
+      { "id": "media-organizer.openTagReview", "title": "Open Tag Review", "category": "Atelier" },
+      { "id": "media-organizer.editImage", "title": "Edit Image", "category": "Atelier" },
+      { "id": "media-organizer.pasteEdit", "title": "Paste Edit Onto Selected Photos", "category": "Atelier" },
+      { "id": "media-organizer.removeFromOthers", "title": "Remove Marks From Other Photos", "category": "Atelier" },
+      { "id": "media-organizer.removeFromSelected", "title": "Remove Marks From Selected Photos", "category": "Atelier" }
     ],
     "viewContainers": [
       {
         "id": "media-organizer-container",
-        "title": "Media Organizer",
+        "title": "Atelier",
         "icon": "px-media",
         "location": "sidebar"
       }
@@ -54,14 +54,14 @@
     "views": [
       {
         "id": "mediaOrganizer.browser",
-        "name": "Media Library",
+        "name": "Atelier",
         "defaultContainerId": "media-organizer-container"
       }
     ],
     "editors": [
       {
         "typeId": "media-organizer-grid",
-        "displayName": "Media Grid"
+        "displayName": "Atelier Library"
       },
       {
         "typeId": "media-organizer-clip",
@@ -74,7 +74,7 @@
     ],
     "configuration": [
       {
-        "title": "Media Organizer",
+        "title": "Atelier",
         "properties": {
           "mediaOrganizer.showCardTags": {
             "type": "boolean",
@@ -84,7 +84,7 @@
           "mediaOrganizer.enableArtTools": {
             "type": "boolean",
             "default": false,
-            "description": "Drawing and Painting Tools. Shows Daily Study, Practice Sessions and practice history in Media Organizer, for a workspace that holds reference photos. Off hides them; nothing is deleted."
+            "description": "Drawing and Painting Tools. Shows Daily Study, Practice Sessions and practice history in Atelier, for a workspace that holds reference photos. Off hides them; nothing is deleted."
           },
           "mediaOrganizer.practiceDailyMinutes": {
             "type": "number",

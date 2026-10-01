@@ -1,5 +1,9 @@
 # Media Organizer sidebar
 
+Media Organizer is called **Atelier** since 2026-10-01 (Mufaro). Only the
+name shown changed; ids, settings keys and the database are still
+`media-organizer` / `mediaOrganizer`.
+
 Status: built 2026-10-01, option B of `docs/mockups/media-organizer-sidebar.html`
 with a Studio section, as Mufaro chose ("I think I like B", then "lets do studio").
 

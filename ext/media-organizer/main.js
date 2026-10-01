@@ -1,4 +1,5 @@
-// Media Organizer — Parallx Extension
+// Atelier (formerly Media Organizer) — Parallx Extension. Ids, settings keys and the
+// database stay 'media-organizer' / 'mediaOrganizer': a library's data is stored under them.
 // Organize photos, GIFs and videos with tags, albums, and EXIF metadata.
 // All data lives in a per-extension isolated SQLite database at
 // <workspace>/.parallx/extensions/media-organizer/data.db.
@@ -31165,7 +31166,7 @@ async function moToolTagPhotos(args) {
   const more = scope === 'photos' ? 0 : Math.max(0, untaggedTotal - r.queued);
   const lines = [
     `Started: ${r.queued} photo${r.queued === 1 ? '' : 's'} queued for ${mode === 'retag' ? 'retagging' : 'tagging'} with ${r.model}. It runs in the background, one photo at a time.`,
-    'Suggestions appear in Media Organizer > Tag Review (Library in the sidebar), where the user approves or skips each photo. Nothing is applied until they approve.',
+    'Suggestions appear in Atelier > Tag Review (To sort in the sidebar), where the user approves or skips each photo. Nothing is applied until they approve.',
   ];
   if (mode === 'retag') lines.push('Each photo\'s current tags are shown beside the new picks; Approve replaces them, Skip keeps them.');
   if (r.skipped.gif) lines.push(`${r.skipped.gif} GIF${r.skipped.gif === 1 ? ' was' : 's were'} left out (only photos are tagged).`);
@@ -31179,7 +31180,7 @@ function moRegisterTagTool(api) {
     // Registered under its canonical tool name (snake_case, no dots).
     _commandDisposables.push(api.chat.registerTool('mediaOrganizer_tagPhotos', {
       description:
-        'Tag photos in the Media Organizer library with the user\'s existing tags. Use it when the user asks how many photos are untagged, ' +
+        'Tag photos in the Atelier library with the user\'s existing tags. Use it when the user asks how many photos are untagged, ' +
         'or asks to tag photos. It works in the background: it looks at each photo itself with the chat model and puts suggested tags in ' +
         'the Tag Review list, where the user approves them. Nothing is applied without approval. Only existing tags are used and only ' +
         'photos are tagged (not GIFs or videos); the library\'s own Tagging Rules (Tag Review) go with every request. Do not try to view ' +
@@ -31743,7 +31744,7 @@ function renderPracticeTab(container, api, input) {
   const inputId = (input && (input.instanceId || input.id)) || '';
   if (!_artToolsEnabled) {
     moInjectStyles();
-    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on drawing and painting tools in Media Organizer settings to use practice.' }));
+    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on drawing and painting tools in Atelier settings to use practice.' }));
     return { dispose() { container.innerHTML = ''; } };
   }
   if (inputId.startsWith('practice:run:')) return renderPracticePlayer(container, api, parseInt(inputId.slice('practice:run:'.length), 10) || 0);
@@ -32606,7 +32607,7 @@ function renderPlansTab(container, api, input) {
   const inputId = (input && (input.instanceId || input.id)) || '';
   if (!_artToolsEnabled) {
     moInjectStyles();
-    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on drawing and painting tools in Media Organizer settings to use painting plans.' }));
+    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on drawing and painting tools in Atelier settings to use painting plans.' }));
     return { dispose() { container.innerHTML = ''; } };
   }
   if (inputId.startsWith('plans:edit:')) return renderPlanEditor(container, api, parseInt(inputId.slice('plans:edit:'.length), 10) || 0);
@@ -38833,7 +38834,7 @@ export async function activate(api, context) {
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.openClipEditor', async (videoPath) => {
       if (!videoPath || typeof videoPath !== 'string') {
-        api.window.showInformationMessage('Open a video in the Media Organizer and choose Trim / Export Clip, or record the screen.');
+        api.window.showInformationMessage('Open a video, then use the trim button on its player; or use Record Screen… from Studio\'s +.');
         return;
       }
       if (!(await moPathInWorkspace(videoPath))) {
@@ -38933,13 +38934,13 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.revealInMO', async (arg) => {
       const path = (typeof arg === 'string') ? arg : (arg && arg.path) || '';
       if (!path) {
-        api.window.showWarningMessage('Reveal in Media Organizer: no path provided.');
+        api.window.showWarningMessage('Reveal in Atelier: no path provided.');
         return;
       }
       // Open the All Media grid first
       await api.editors.openEditor({
         typeId: 'media-organizer-grid',
-        title: 'Media Library',
+        title: 'All Media',
         icon: 'image',
         instanceId: 'grid:all',
       });
@@ -38986,7 +38987,7 @@ export async function activate(api, context) {
   if (api.links && typeof api.links.register === 'function') {
     _commandDisposables.push(api.links.register({
       segment: 'media-organizer',
-      displayName: 'Media Organizer',
+      displayName: 'Atelier',
       kinds: {
         photo: {
           uriTemplate: 'parallx://media-organizer/photo/<photoId>',

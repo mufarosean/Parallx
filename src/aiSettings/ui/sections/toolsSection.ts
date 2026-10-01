@@ -181,7 +181,7 @@ export class ToolsSection extends SettingsSection {
     type ToolEntry = { name: string; description: string; enabled: boolean; extensionId?: string; extensionName?: string; category?: ToolCategoryKind };
 
     // Filter by search: a tool's name and description, and the name of the
-    // extension that contributes it ("media" finds the Media Organizer's tool).
+    // extension that contributes it ("media" finds Atelier's tool).
     const filtered: ToolEntry[] = q
       ? allTools.filter(
           (t: ToolEntry) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
