@@ -3046,11 +3046,12 @@ function renderDashboardSection(body, api) {
   const lastSyncMeta = document.createElement('span');
   lastSyncMeta.className = 'budget-toolbar-meta';
   toolbar.appendChild(lastSyncMeta);
-  toolbar.appendChild(makeButton('Sync Now', {
+  const toolbarSyncBtn = makeButton('Sync Now', {
     primary: true,
     iconHtml: makeIcon(api, 'cloud-download', 12),
     onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
-  }));
+  });
+  toolbar.appendChild(toolbarSyncBtn);
   body.appendChild(toolbar);
 
   // Sync status banner — sticky surface so the user always knows whether the
@@ -3171,6 +3172,7 @@ function renderDashboardSection(body, api) {
     // Skip if user has any confirmed transactions OR has run a sync.
     const txCount = await db.get(`SELECT COUNT(*) AS n FROM transactions`).catch(() => ({ n: 0 }));
     const lastSync = (await getSyncStateValue('last_run_at')) || (await getSyncStateValue('last_synced_at'));
+    toolbarSyncBtn.style.display = '';
     if ((Number(txCount?.n) || 0) > 0 || lastSync) return;
 
     const card = document.createElement('div');
@@ -3180,7 +3182,7 @@ function renderDashboardSection(body, api) {
     card.style.background = 'var(--vscode-textBlockQuote-background, rgba(127,127,127,0.08))';
     card.innerHTML = `
       <div class="budget-card-label" style="font-size:var(--px-text-md);font-weight:600;">Welcome to Budget</div>
-      <div class="budget-card-value" style="font-size:18px;margin-top:4px;">Set up in three steps.</div>
+      <div style="font-size:var(--px-text-lg);font-weight:600;margin-top:4px;color:var(--px-text);">Set up in three steps.</div>
       <ol style="margin:12px 0 0 20px;padding:0;line-height:1.7;">
         <li><b>Connect Gmail:</b> make sure the <code>gmail-mcp-server</code> tool is enabled in Settings → MCP Servers.</li>
         <li><b>Run your first sync:</b> pull transaction emails and let the AI categorize them.</li>
@@ -3214,12 +3216,16 @@ function renderDashboardSection(body, api) {
           );
         } catch { /* table may not exist on first ever run; ignore */ }
         onboardingWrap.innerHTML = '';
+        toolbarSyncBtn.style.display = '';
       },
     }));
     // Honour dismissed flag.
     const dismissed = await getSyncStateValue('onboarding_dismissed').catch(() => null);
     if (dismissed) return;
     onboardingWrap.appendChild(card);
+    // One primary action per screen: while the welcome card offers
+    // "Run First Sync", the toolbar's Sync Now steps aside.
+    toolbarSyncBtn.style.display = 'none';
   }
 
   let alive = true;
