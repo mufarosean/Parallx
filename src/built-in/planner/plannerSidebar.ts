@@ -1,11 +1,10 @@
 // plannerSidebar.ts — workbench sidebar view for the planner.
 //
-// Navigation only. Three rows: Calendar, Tasks, Settings. Same list-row
-// idiom every other Parallx sidebar uses (Explorer file tree, Canvas
-// page tree, Dashboards list) — 26px row height, plain monochrome icon
-// + label, workbench list-selection treatment on hover and active. The
-// task list and filter groupings live inside the editor pane's Tasks
-// tab; the sidebar is just the way in.
+// Navigation (Today, Calendar, Tasks, Scheduled, Settings) and the Calendars
+// toggles. Same list-row idiom every other Parallx sidebar uses (Explorer
+// file tree, Canvas page tree, Dashboards list): plain monochrome icon +
+// label, the shared hover and selection surfaces. The task list and filter
+// groupings live inside the editor pane's Tasks tab; the sidebar is the way in.
 
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
@@ -26,10 +25,11 @@ interface SidebarApi {
   };
 }
 
-type NavKey = 'calendar' | 'tasks' | 'scheduled' | 'settings';
+type NavKey = 'today' | 'calendar' | 'tasks' | 'scheduled' | 'settings';
 
 /** Registry icon ids (ui/iconRegistry), the same ids the pane's tabs use. */
 const ICONS: Record<NavKey, string> = {
+  today: 'sun',
   calendar: 'calendar',
   tasks: 'list-checks',
   scheduled: 'calendar-clock',
@@ -44,7 +44,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): 
 
 export class PlannerSidebar implements IDisposable {
   private _root: HTMLElement | null = null;
-  private _activeKey: NavKey = 'calendar';
+  private _activeKey: NavKey = 'today';
   private _disposed = false;
   private readonly _disposables: IDisposable[] = [];
 
@@ -63,6 +63,11 @@ export class PlannerSidebar implements IDisposable {
     root.appendChild(list);
 
     const rows: { key: NavKey; label: string; onClick: () => void }[] = [
+      {
+        key: 'today',
+        label: 'Today',
+        onClick: () => void this._openTab('today'),
+      },
       {
         key: 'calendar',
         label: 'Calendar',
@@ -184,7 +189,7 @@ export class PlannerSidebar implements IDisposable {
     });
   }
 
-  private async _openTab(tab: 'calendar' | 'tasks' | 'scheduled'): Promise<void> {
+  private async _openTab(tab: 'today' | 'calendar' | 'tasks' | 'scheduled'): Promise<void> {
     try {
       this._setActive(tab);
       // Record the target tab BEFORE opening so a first-open pane initialises to

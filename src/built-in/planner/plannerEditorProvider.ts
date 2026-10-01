@@ -14,6 +14,7 @@ import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 import { packLanes } from './plannerLayout.js';
 import { PlannerScheduledController, type WorkflowServiceLike } from './plannerScheduled.js';
+import { PlannerTodayView } from './plannerToday.js';
 import { Dropdown, type IDropdownItem } from '../../ui/dropdown.js';
 import { createIconElement, getIcon } from '../../ui/iconRegistry.js';
 
@@ -69,7 +70,7 @@ export interface IDayLoadProviderLike {
   onDidChange?(listener: () => void): { dispose(): void };
 }
 
-type Tab = 'tasks' | 'calendar' | 'scheduled';
+type Tab = 'today' | 'tasks' | 'calendar' | 'scheduled';
 type CalendarView = 'month' | 'week' | 'day';
 
 const PLANNER_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>';
@@ -214,7 +215,7 @@ class PlannerEditorPane implements IDisposable {
   /** True when the last pointerdown landed inside this pane (see onKey). */
   private _pointerInside = false;
   private _bodyEl: HTMLElement | null = null;
-  private _activeTab: Tab = 'tasks';
+  private _activeTab: Tab = 'today';
   private _calendarView: CalendarView = 'month';
   private _cursorDate: Date = startOfDay(new Date());
   /** Persists the currently-selected filter inside the Tasks tab. */
@@ -244,8 +245,8 @@ class PlannerEditorPane implements IDisposable {
     // calendar cursor date.
     const vs = this._api.viewState;
     if (vs) {
-      const savedTab = vs.get<string>('planner.activeTab', 'tasks');
-      if (savedTab === 'tasks' || savedTab === 'calendar' || savedTab === 'scheduled') this._activeTab = savedTab;
+      const savedTab = vs.get<string>('planner.activeTab', 'today');
+      if (savedTab === 'today' || savedTab === 'tasks' || savedTab === 'calendar' || savedTab === 'scheduled') this._activeTab = savedTab;
       else if (savedTab === 'automations') this._activeTab = 'scheduled'; // the retired tab's saved state
       const savedView = vs.get<string>('planner.calendarView', 'month');
       if (savedView === 'month' || savedView === 'week' || savedView === 'day') {
@@ -300,7 +301,7 @@ class PlannerEditorPane implements IDisposable {
     const onFocusTab = (e: Event) => {
       if (!this._root?.isConnected) return;
       const tab = (e as CustomEvent<{ tab?: Tab }>).detail?.tab;
-      if (tab === 'tasks' || tab === 'calendar' || tab === 'scheduled') this._setTab(tab);
+      if (tab === 'today' || tab === 'tasks' || tab === 'calendar' || tab === 'scheduled') this._setTab(tab);
     };
     document.addEventListener('parallx.planner.focusTab', onFocusTab);
 
@@ -359,8 +360,8 @@ class PlannerEditorPane implements IDisposable {
           }
           break;
         case 'c':
-          // C — quick create (event in calendar, task in tasks)
-          if (this._activeTab === 'calendar') {
+          // C — quick create (event in calendar and today, task in tasks)
+          if (this._activeTab === 'calendar' || this._activeTab === 'today') {
             const start = new Date(this._cursorDate);
             start.setHours(9, 0, 0, 0);
             this._openEventPopover({
@@ -440,6 +441,7 @@ class PlannerEditorPane implements IDisposable {
 
     const tabs = el('div', 'planner-pane__tabs');
     const tabsConfig: { key: Tab; label: string; icon: string }[] = [
+      { key: 'today',     label: 'Today',     icon: 'sun' },
       { key: 'tasks',     label: 'Tasks',     icon: 'list-checks' },
       { key: 'calendar',  label: 'Calendar',  icon: 'calendar' },
       { key: 'scheduled', label: 'Scheduled', icon: 'calendar-clock' },
@@ -545,7 +547,9 @@ class PlannerEditorPane implements IDisposable {
     const nextBody = document.createElement('div');
     const nextActions = document.createElement('div');
 
-    if (this._activeTab === 'tasks') {
+    if (this._activeTab === 'today') {
+      await this._renderTodayTab(nextBody, nextActions);
+    } else if (this._activeTab === 'tasks') {
       await this._renderTasksTab(nextBody, nextActions);
     } else if (this._activeTab === 'scheduled') {
       await this._renderScheduledTab(nextBody, nextActions);
@@ -556,6 +560,39 @@ class PlannerEditorPane implements IDisposable {
 
     body.replaceChildren(...Array.from(nextBody.childNodes));
     actions.replaceChildren(...Array.from(nextActions.childNodes));
+  }
+
+  // ── Today tab ────────────────────────────────────────────────────────
+
+  private _today: PlannerTodayView | null = null;
+
+  private async _renderTodayTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
+    if (!this._today) {
+      this._today = new PlannerTodayView({
+        data: this._data,
+        loadCalCtx: () => this._loadCalCtx(),
+        openEvent: (ev, anchor) => this._openEventPopover({ mode: 'edit', event: ev }, anchor),
+        newEvent: (anchor) => {
+          // Next whole hour today, the default event length the popover applies.
+          const start = new Date();
+          start.setHours(start.getHours() + 1, 0, 0, 0);
+          this._openEventPopover({ mode: 'create', startAt: start.getTime(), endAt: start.getTime() + 60 * 60 * 1000 }, anchor);
+        },
+        openTask: (task, anchor) => this._openTaskPopover({ mode: 'edit', task }, anchor),
+        openDay: (dayStart) => {
+          this._cursorDate = startOfDay(new Date(dayStart));
+          this._setCalendarView('day');
+          this._setTab('calendar');
+        },
+        openReviewQueue: () => {
+          this._tasksFilter = 'review';
+          this._setTab('tasks');
+        },
+        note: (verb, object, taskId, detail) => this._note(verb, object, taskId, detail),
+      });
+      this._disposables.push(this._today);
+    }
+    await this._today.render(body, actions);
   }
 
   // ── Automations tab (M93) ────────────────────────────────────────────

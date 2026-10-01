@@ -266,6 +266,260 @@
   .planner-pane__body { padding: var(--px-space-4) var(--px-space-3) var(--px-space-8); }
 }
 
+/* ── Today ────────────────────────────────────────────────────────────── */
+
+/* One day on a timeline, with what still needs a decision in a side column.
+   Wide: side column beside the page. Medium: it drops below as two columns.
+   Compact: one column. */
+.planner-today {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--px-space-8);
+  align-items: start;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+.planner-today__main { display: flex; flex-direction: column; gap: var(--px-space-6); min-width: 0; }
+.planner-today__main > .px-page-header { padding: 0; }
+.planner-today__side { display: flex; flex-direction: column; gap: var(--px-space-4); min-width: 0; }
+.planner-today__section { display: flex; flex-direction: column; gap: var(--px-space-2); }
+
+.planner-today__capture { display: flex; flex-direction: column; gap: var(--px-space-1); }
+.planner-today__capture-input {
+  height: var(--px-control-h-lg);
+  box-sizing: border-box;
+  width: 100%;
+}
+.planner-today__hint { margin: 0; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.planner-today__empty { margin: 0; font-size: var(--px-text-base); color: var(--px-text-muted); }
+
+/* Timeline: a time column, then the item. */
+.planner-today__timeline { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.planner-today__row,
+.planner-today__now {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--px-space-4);
+}
+.planner-today__row--past { opacity: 0.6; }
+.planner-today__time {
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.planner-today__now-time { color: var(--px-planner-now); font-weight: 600; }
+.planner-today__now-rule {
+  position: relative;
+  height: 2px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-planner-now);
+}
+.planner-today__now-rule::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-planner-now);
+}
+
+/* An event is a block tinted with its calendar's colour; no stripe. */
+.planner-today__event {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--px-space-2) var(--px-space-3);
+  border: 0;
+  border-radius: var(--px-radius-lg);
+  background: color-mix(in srgb, var(--cal-color) var(--px-planner-event-tint), var(--px-bg));
+  color: var(--px-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--px-dur-fast) var(--px-ease);
+}
+.planner-today__event:hover { background: color-mix(in srgb, var(--cal-color) calc(var(--px-planner-event-tint) + 8%), var(--px-bg)); }
+.planner-today__event-title { font-size: var(--px-text-md); font-weight: 600; }
+.planner-today__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--px-space-3);
+  font-size: var(--px-text-sm);
+  color: var(--px-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.planner-today__where { display: inline-flex; align-items: center; gap: var(--px-space-1); }
+
+.planner-today__allday { display: flex; flex-wrap: wrap; gap: var(--px-space-2); }
+.planner-today__allday-chip {
+  max-width: 100%;
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-3);
+  border: 0;
+  border-radius: var(--px-radius-md);
+  background: color-mix(in srgb, var(--cal-color) var(--px-planner-event-tint), var(--px-bg));
+  color: var(--px-text);
+  font: inherit;
+  font-size: var(--px-text-base);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+/* A task: round check, title, tags. Timed tasks sit on the timeline in a
+   dashed outline so they read as "to do", not "to attend". */
+.planner-today__task {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-3);
+  min-width: 0;
+  min-height: var(--px-control-h-lg);
+}
+.planner-today__row .planner-today__task {
+  padding: var(--px-space-1) var(--px-space-3);
+  border: 1px dashed var(--px-border-strong);
+  border-radius: var(--px-radius-lg);
+}
+.planner-today__list { display: flex; flex-direction: column; border-top: 1px solid var(--px-divider); }
+.planner-today__task-line { padding: 0 var(--px-space-1); border-bottom: 1px solid var(--px-divider); }
+.planner-today__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  padding: 0;
+  box-sizing: border-box;
+  border: 2px solid var(--px-success);
+  border-radius: var(--px-radius-full);
+  background: transparent;
+  color: var(--px-bg);
+  cursor: pointer;
+}
+.planner-today__task--done .planner-today__check { background: var(--px-success); }
+.planner-today__task-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--px-text);
+  font: inherit;
+  font-size: var(--px-text-base);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.planner-today__task-title:hover { color: var(--px-accent-text); }
+.planner-today__task--done .planner-today__task-title { color: var(--px-text-muted); text-decoration: line-through; }
+.planner-today__tag { font-size: var(--px-text-xs); color: var(--px-text-muted); white-space: nowrap; }
+
+/* Side cards. */
+.planner-today__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-2);
+  padding: var(--px-space-4);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-xl);
+  background: var(--px-bg-elevated);
+}
+.planner-today__card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); }
+.planner-today__card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  margin: 0;
+  font-size: var(--px-text-md);
+  font-weight: 600;
+}
+.planner-today__review .planner-today__card-title .svg-icon { color: var(--px-accent-text); }
+.planner-today__overdue { border-color: color-mix(in srgb, var(--px-danger) 45%, var(--px-border)); }
+.planner-today__overdue .planner-today__card-title .svg-icon { color: var(--px-danger); }
+.planner-today__count {
+  min-width: 18px;
+  padding: 1px var(--px-space-2);
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent-soft);
+  color: var(--px-accent-text);
+  font-size: var(--px-text-xs);
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.planner-today__overdue .planner-today__count { background: var(--px-danger-soft); color: var(--px-danger); }
+
+.planner-today__review-item,
+.planner-today__overdue-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-1);
+  padding-top: var(--px-space-3);
+  border-top: 1px solid var(--px-divider);
+  transition: opacity var(--px-dur-base) var(--px-ease);
+}
+.planner-today__review-item--leaving { opacity: 0.4; pointer-events: none; }
+.planner-today__overdue-item { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--px-space-3); }
+.planner-today__overdue-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.planner-today__plan { display: flex; flex-wrap: wrap; gap: var(--px-space-1); padding-top: var(--px-space-1); }
+.planner-today__more { align-self: flex-start; }
+
+/* Mini month: day number with up to three load dots. */
+.planner-today__month-nav { display: flex; gap: 2px; }
+.planner-today__month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); row-gap: 2px; }
+.planner-today__dow { padding-bottom: var(--px-space-1); font-size: var(--px-text-2xs); font-weight: 600; text-align: center; color: var(--px-text-muted); }
+.planner-today__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 3px 0 0;
+  border: 0;
+  border-radius: var(--px-radius-md);
+  background: transparent;
+  color: var(--px-text);
+  font: inherit;
+  cursor: pointer;
+}
+.planner-today__day:hover { background: var(--px-surface-hover); }
+.planner-today__day--out { color: var(--px-text-faint); }
+.planner-today__day-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--px-radius-full);
+  font-size: var(--px-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.planner-today__day--today .planner-today__day-num { background: var(--px-accent); color: var(--px-text-on-accent); font-weight: 600; }
+.planner-today__dots { display: flex; gap: 2px; height: 4px; }
+.planner-today__dot { width: 4px; height: 4px; border-radius: var(--px-radius-full); background: var(--px-text-muted); }
+
+@container planner (max-width: 1023px) {
+  .planner-today { grid-template-columns: minmax(0, 1fr); }
+  .planner-today__side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .planner-today__overdue { grid-column: 1 / -1; }
+}
+@container planner (max-width: 719px) {
+  .planner-today__side { display: flex; align-items: stretch; }
+  .planner-today__row,
+  .planner-today__now { gap: var(--px-space-3); }
+}
+
 /* ── Tasks ────────────────────────────────────────────────────────────── */
 
 /* Tasks tab — two-column layout: left filter nav, right content. The
