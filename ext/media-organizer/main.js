@@ -9009,6 +9009,7 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-edit-tab.is-used:not(.is-on) .mo-edit-tab-dot { display: block; }
 .mo-edit--narrow .mo-edit-tab { flex-direction: row; justify-content: center; padding: 10px 0 9px; }
 .mo-edit--narrow .mo-edit-tab-label { display: none; }
+.mo-edit--narrow .mo-edit-panel { flex-basis: calc(var(--px-edit-panel-w) - 40px); width: calc(var(--px-edit-panel-w) - 40px); }
 .mo-edit-hist { flex: 0 0 auto; position: relative; height: 78px; margin: var(--px-space-3) var(--px-space-3) 2px; border-radius: var(--px-radius-md); border: 1px solid var(--px-divider); background: var(--px-bg-inset); overflow: hidden; }
 .mo-edit-hist-canvas { display: block; width: 100%; height: 100%; }
 .mo-edit-clip { position: absolute; top: 4px; width: 16px; height: 16px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 3px; background: transparent; color: var(--px-text-faint); cursor: pointer; }
