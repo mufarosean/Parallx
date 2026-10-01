@@ -61,6 +61,18 @@ export function isUntimed(ms: number): boolean {
   return d.getHours() === 0 && d.getMinutes() === 0;
 }
 
+/** An open task whose due day has passed. A task due earlier today is late,
+ *  not overdue: it stays on today's list until the day ends. */
+export function isOverdue(task: Pick<PlannerTask, 'status' | 'dueAt'>, now: number): boolean {
+  return task.status !== 'done' && task.status !== 'cancelled' && task.dueAt != null && task.dueAt < startOfLocalDay(now);
+}
+
+/** Past its due time today, or overdue. Untimed tasks are never late on their own day. */
+export function isLate(task: Pick<PlannerTask, 'status' | 'dueAt'>, now: number): boolean {
+  if (task.status === 'done' || task.dueAt == null) return false;
+  return isOverdue(task, now) || (!isUntimed(task.dueAt) && task.dueAt < now);
+}
+
 /** Flagged all-day, or spanning more than one calendar day (the calendar's own rule). */
 export function isAllDayLike(ev: PlannerEvent): boolean {
   return ev.allDay || startOfLocalDay(ev.startAt) !== startOfLocalDay(ev.endAt - 1);
@@ -86,7 +98,7 @@ export function buildTodayModel(input: TodayInput): TodayModel {
     if (task.status === 'reviewing') { review.push(task); continue; }
     if (task.dueAt == null || !input.isVisible(task.calendarId)) continue;
     if (task.dueAt < dayStart) {
-      if (task.status !== 'done') overdue.push(task);
+      if (isOverdue(task, now)) overdue.push(task);
     } else if (task.dueAt < dayEnd) {
       if (isUntimed(task.dueAt)) anytime.push(task);
       else items.push({ kind: 'task', at: task.dueAt, task, past: task.dueAt <= now });

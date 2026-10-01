@@ -14,7 +14,7 @@ import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 import { packLanes } from './plannerLayout.js';
 import { PlannerScheduledController, type WorkflowServiceLike } from './plannerScheduled.js';
-import { PlannerTodayView } from './plannerToday.js';
+import { PlannerTodayView, isLate, isOverdue, quickPlanOptions } from './plannerToday.js';
 import { Dropdown, type IDropdownItem } from '../../ui/dropdown.js';
 import { createIconElement, getIcon } from '../../ui/iconRegistry.js';
 import { createButton } from '../../ui/kit.js';
@@ -663,7 +663,7 @@ class PlannerEditorPane implements IDisposable {
       { key: 'review',  label: 'Review Queue', pinned: true, match: t => t.status === 'reviewing' },
       { key: 'today',   label: 'Today',     match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && sameDay(new Date(t.dueAt), new Date()) },
       { key: 'week',    label: 'This Week', match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && t.dueAt >= startOfDayMs() && t.dueAt <= startOfDayMs() + 7 * 86_400_000 },
-      { key: 'overdue', label: 'Overdue',   match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && t.dueAt < Date.now() },
+      { key: 'overdue', label: 'Overdue',   match: t => (t.status === 'planned' || t.status === 'reviewing') && isOverdue(t, Date.now()) },
       { key: 'all',     label: 'All Tasks', match: t => t.status !== 'cancelled' },
       { key: 'completed', label: 'Completed', match: t => t.status === 'done' },
     ];
@@ -679,17 +679,17 @@ class PlannerEditorPane implements IDisposable {
         // "All tasks" uses the grouped section view so the user has the
         // full overview when no specific filter is active.
         const reviewing = matching.filter(t => t.status === 'reviewing');
-        const overdue   = matching.filter(t => t.status === 'planned' && t.dueAt != null && t.dueAt < Date.now());
+        const overdue   = matching.filter(t => t.status === 'planned' && isOverdue(t, Date.now()));
         const today     = matching.filter(t => t.status === 'planned' && t.dueAt != null && sameDay(new Date(t.dueAt), new Date()));
         const upcoming  = matching.filter(t => t.status === 'planned' && t.dueAt != null && t.dueAt > endOfDay(new Date()).getTime());
         const noDate    = matching.filter(t => t.status === 'planned' && !t.dueAt);
         const completed = matching.filter(t => t.status === 'done').slice(0, 12);
-        if (reviewing.length > 0) content.appendChild(this._renderTaskSection('Review Queue', reviewing, { accent: 'review', hint: 'Captured fast. Pick a real due date or mark cancelled.' }));
+        if (reviewing.length > 0) content.appendChild(this._renderTaskSection('Review Queue', reviewing, { accent: 'review', hint: 'Captured without a date. Pick a day for each.' }));
         if (overdue.length > 0)   content.appendChild(this._renderTaskSection('Overdue', overdue, { accent: 'overdue' }));
         if (today.length > 0)     content.appendChild(this._renderTaskSection('Today', today, { accent: 'today' }));
         if (upcoming.length > 0)  content.appendChild(this._renderTaskSection('Upcoming', upcoming));
-        if (noDate.length > 0)    content.appendChild(this._renderTaskSection('No date', noDate));
-        if (completed.length > 0) content.appendChild(this._renderTaskSection('Recently completed', completed, { collapsed: true }));
+        if (noDate.length > 0)    content.appendChild(this._renderTaskSection('No Date', noDate));
+        if (completed.length > 0) content.appendChild(this._renderTaskSection('Recently Completed', completed, { collapsed: true }));
       } else {
         // Single-filter view: one flat section with the matching rows.
         if (matching.length === 0) {
@@ -752,7 +752,7 @@ class PlannerEditorPane implements IDisposable {
       head.classList.add('planner-section__head--toggle');
       head.setAttribute('role', 'button');
       head.tabIndex = 0;
-      head.title = 'Show / hide';
+      head.title = 'Show or Hide';
       const caret = el('span', 'planner-section__caret');
       caret.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
       head.appendChild(caret);
@@ -788,7 +788,8 @@ class PlannerEditorPane implements IDisposable {
 
     const checkbox = el('button', 'planner-task__check');
     checkbox.type = 'button';
-    checkbox.title = task.status === 'done' ? 'Mark not done' : 'Mark done';
+    checkbox.title = task.status === 'done' ? 'Mark Not Done' : 'Mark Done';
+    checkbox.setAttribute('aria-label', checkbox.title);
     checkbox.innerHTML = task.status === 'done'
       ? '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>'
       : '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
@@ -817,6 +818,24 @@ class PlannerEditorPane implements IDisposable {
       desc.textContent = task.description;
       main.appendChild(desc);
     }
+    // Review Queue: plan it in one click, the same days Today offers.
+    if (task.status === 'reviewing') {
+      const plan = el('div', 'planner-task__quickplan');
+      plan.setAttribute('role', 'group');
+      plan.setAttribute('aria-label', `Plan “${task.title}”`);
+      for (const opt of quickPlanOptions(Date.now())) {
+        const day = new Date(opt.dueAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        createButton(plan, {
+          label: opt.label, size: 'sm', kind: 'secondary', title: `Plan for ${day}`,
+          onClick: () => {
+            row.classList.add('planner-task--leaving');
+            void this._data.updateTask(task.id, { status: 'planned', dueAt: opt.dueAt });
+            this._note('planned', `task "${task.title}"`, task.id, `for ${day}`);
+          },
+        });
+      }
+      main.appendChild(plan);
+    }
     row.appendChild(main);
 
     const right = el('div', 'planner-task__right');
@@ -825,24 +844,25 @@ class PlannerEditorPane implements IDisposable {
       const due = el('button', 'planner-task__due');
       due.type = 'button';
       due.title = 'Click to edit task';
-      const overdue = task.dueAt < Date.now() && task.status !== 'done';
-      if (overdue) due.classList.add('planner-task__due--overdue');
+      if (isLate(task, Date.now())) due.classList.add('planner-task__due--overdue');
       due.textContent = formatDateShort(task.dueAt);
       due.addEventListener('click', () => this._openTaskPopover({ mode: 'edit', task }, due.getBoundingClientRect()));
       right.appendChild(due);
     } else {
       const setDue = el('button', 'planner-task__due planner-task__due--empty');
       setDue.type = 'button';
-      setDue.title = 'Click to edit task';
-      setDue.textContent = 'Set Date';
+      setDue.title = 'Pick a date';
+      setDue.textContent = 'Pick Date…';
       setDue.addEventListener('click', () => this._openTaskPopover({ mode: 'edit', task }, setDue.getBoundingClientRect()));
       right.appendChild(setDue);
     }
 
-    if (task.status === 'reviewing') {
+    // A captured task that already carries a date: confirm that date as is.
+    if (task.status === 'reviewing' && task.dueAt) {
       const planBtn = el('button', 'planner-task__plan');
       planBtn.type = 'button';
-      planBtn.title = 'Confirm date and promote to planned';
+      planBtn.title = 'Keep This Date';
+      planBtn.setAttribute('aria-label', 'Keep This Date');
       planBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg>';
       planBtn.addEventListener('click', () => {
         void this._data.updateTask(task.id, { status: 'planned' });
@@ -853,7 +873,8 @@ class PlannerEditorPane implements IDisposable {
 
     const more = el('button', 'planner-task__more');
     more.type = 'button';
-    more.title = 'More';
+    more.title = 'More Actions';
+    more.setAttribute('aria-label', 'More Actions');
     more.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
     more.addEventListener('click', () => void this._openTaskMenu(task, more.getBoundingClientRect()));
     right.appendChild(more);

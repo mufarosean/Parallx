@@ -541,10 +541,6 @@
   gap: 24px;
   align-items: start;
 }
-@media (max-width: 720px) {
-  .planner-tasks { grid-template-columns: 1fr; gap: 16px; }
-}
-
 .planner-tasks__nav {
   position: sticky;
   top: 60px; /* clear the sticky header */
@@ -562,9 +558,9 @@
   height: 28px;
   padding: 0 10px 0 12px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--px-radius-sm);
   background: transparent;
-  color: var(--vscode-editor-foreground, #d4d4d4);
+  color: var(--px-text);
   font: inherit;
   font-size: var(--px-text-base);
   cursor: pointer;
@@ -572,13 +568,8 @@
   position: relative;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
-.planner-tasks__navitem:hover {
-  background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 100%, transparent);
-}
-.planner-tasks__navitem--active {
-  background: var(--vscode-list-activeSelectionBackground, #094771);
-  color: var(--vscode-list-activeSelectionForeground, #ffffff);
-}
+.planner-tasks__navitem:hover { background: var(--px-surface-hover); }
+.planner-tasks__navitem--active { background: var(--px-surface-selected); font-weight: 600; }
 .planner-tasks__navitem[data-key="review"] {
   padding-left: 16px;
 }
@@ -589,9 +580,6 @@
   width: 2px;
   border-radius: 2px;
   background: var(--px-warning);
-}
-.planner-tasks__navitem--active[data-key="review"]::before {
-  background: var(--vscode-list-activeSelectionForeground, #ffffff);
 }
 
 .planner-tasks__navlabel {
@@ -613,6 +601,29 @@
   margin: 6px 8px;
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
 }
+
+/* Medium and compact panes: the filter list becomes a row of pills above
+   the tasks (it scrolls sideways if it has to). */
+@container planner (max-width: 1023px) {
+  .planner-tasks { grid-template-columns: minmax(0, 1fr); gap: var(--px-space-4); }
+  .planner-tasks__nav {
+    position: static;
+    flex-direction: row;
+    gap: var(--px-space-1);
+    padding: 0 0 var(--px-space-1);
+    overflow-x: auto;
+  }
+  .planner-tasks__navsep { display: none; }
+  .planner-tasks__navitem {
+    flex: 0 0 auto;
+    gap: var(--px-space-2);
+    border: 1px solid var(--px-border);
+    border-radius: var(--px-radius-full);
+  }
+  .planner-tasks__navitem[data-key="review"] { padding-left: 10px; }
+  .planner-tasks__navitem[data-key="review"]::before { display: none; }
+}
+
 
 .planner-tasks__content {
   display: flex;
@@ -679,6 +690,8 @@
 }
 .planner-task:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
 .planner-task--done { opacity: 0.55; }
+.planner-task--leaving { opacity: 0.4; pointer-events: none; }
+.planner-task__quickplan { display: flex; flex-wrap: wrap; gap: var(--px-space-1); margin-top: var(--px-space-2); }
 .planner-task--done .planner-task__title { text-decoration: line-through; text-decoration-thickness: 1px; }
 
 .planner-task__check {
@@ -725,7 +738,7 @@
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 .planner-task__due:hover { background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent); color: var(--vscode-button-background, #0e639c); border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 38%, transparent); }
-.planner-task__due--empty { color: var(--px-text-muted); font-style: italic; }
+.planner-task__due--empty { color: var(--px-text-muted); }
 .planner-task__due--overdue { color: var(--px-danger); border-color: color-mix(in srgb, var(--px-danger) 40%, transparent); }
 
 .planner-task__plan,

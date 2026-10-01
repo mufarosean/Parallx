@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildTodayModel,
+  isLate,
+  isOverdue,
   isUntimed,
   quickPlanOptions,
   todaySummary,
@@ -105,5 +107,19 @@ describe('todaySummary', () => {
     });
     expect(todaySummary(model)).toBe('1 event, 1 task due, 1 to review');
     expect(todaySummary(buildTodayModel({ now: NOW, isVisible: visible, events: [], tasks: [] }))).toBe('Nothing planned yet');
+  });
+});
+
+describe('isOverdue / isLate', () => {
+  it('a task due before today is overdue; one due earlier today is late but not overdue', () => {
+    expect(isOverdue(task('a', 'planned', at(0, 9)), NOW)).toBe(true);
+    expect(isOverdue(task('b', 'planned', at(1, 9)), NOW)).toBe(false);
+    expect(isLate(task('b', 'planned', at(1, 9)), NOW)).toBe(true);
+  });
+
+  it('an untimed task is neither on its own day, and done tasks never are', () => {
+    expect(isOverdue(task('c', 'planned', at(1, 0)), NOW)).toBe(false);
+    expect(isLate(task('c', 'planned', at(1, 0)), NOW)).toBe(false);
+    expect(isOverdue(task('d', 'done', at(0, 9)), NOW)).toBe(false);
   });
 });
