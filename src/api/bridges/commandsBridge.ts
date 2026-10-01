@@ -56,7 +56,10 @@ export class CommandsBridge {
 
     const descriptor: CommandDescriptor = {
       id,
-      title: id, // tools provide proper titles through manifest contributes.commands
+      // No manifest entry means plumbing (registries, hosts, deep links called
+      // from code). An empty title keeps it out of the command palette, its
+      // recents and Keyboard Shortcuts, which list titled commands only.
+      title: '',
       handler: internalHandler,
     };
 

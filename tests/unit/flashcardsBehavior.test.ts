@@ -449,8 +449,10 @@ describe('editor pane', () => {
     expect(pane.querySelectorAll('.fc-pane__tab')).toHaveLength(0);
     expect([...sidebar.querySelectorAll('.fc-sb__nav-item')].map((n) => n.textContent))
       .toEqual(['Decks', 'Study', 'Create', 'Import', 'Stats']);
-    // The pane says where you are instead.
-    expect(pane.querySelector('.fc-pane__crumbs')?.textContent).toBe('Decks');
+    // The pane says where you are instead: at the top level its heading does,
+    // and a one-word breadcrumb repeating it is hidden.
+    expect(pane.querySelector('.fc-home__title')?.textContent).toBe('Decks');
+    expect((pane.querySelector('.fc-pane__header') as HTMLElement).style.display).toBe('none');
     expect(sidebar.querySelector('.fc-sb__nav-item--active')?.getAttribute('data-view')).toBe('decks');
   });
 

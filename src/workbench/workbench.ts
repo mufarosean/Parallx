@@ -2238,6 +2238,32 @@ export class Workbench extends Layout {
       sidebarContent.appendChild(defaultContainer.element);
     }
 
+    // Right-click on the ribbon: hide this icon, or choose which to show.
+    // Thirteen unlabeled icons with no way to put any away was the busiest
+    // edge of the window; this is VS Code's and Obsidian's answer.
+    this._register(this._activityBarPart.onDidContextMenuIcon(({ iconId, x, y }) => {
+      const bar = this._activityBarPart;
+      const icons = bar.getIcons().filter((d) => !d.id.startsWith(PART_ICON_PREFIX));
+      const label = icons.find((d) => d.id === iconId)?.label ?? 'This Icon';
+      const visible = icons.filter((d) => !bar.isIconHidden(d.id));
+      const items: import('../ui/contextMenu.js').IContextMenuItem[] = [
+        { id: `hide:${iconId}`, label: `Hide ‘${label}’`, group: '1_hide', disabled: visible.length <= 1 },
+        ...icons.map((d) => ({ id: `toggle:${d.id}`, label: d.label, group: '2_icons', checked: !bar.isIconHidden(d.id) })),
+        { id: 'show-all', label: 'Show All', group: '3_reset', disabled: visible.length === icons.length },
+      ];
+      const menu = ContextMenu.show({ items, anchor: { x, y } });
+      menu.onDidSelect(({ item }) => {
+        if (item.id === 'show-all') { for (const d of icons) bar.setIconHidden(d.id, false); return; }
+        const [kind, id] = [item.id.slice(0, item.id.indexOf(':')), item.id.slice(item.id.indexOf(':') + 1)];
+        if (kind === 'hide') { bar.setIconHidden(id, true); return; }
+        if (kind === 'toggle') {
+          const hide = !bar.isIconHidden(id);
+          if (hide && visible.length <= 1) return; // always keep one
+          bar.setIconHidden(id, hide);
+        }
+      });
+    }));
+
     // Wire icon click events — delegate container switching to handler
     this._register(this._activityBarPart.onDidClickIcon((event) => {
       // A rail-stacked part's icon toggles that part in place.
@@ -2957,7 +2983,7 @@ export class Workbench extends Layout {
     if (headerSlot) {
       const headerLabel = $('span');
       headerLabel.classList.add('auxiliary-bar-header-label');
-      headerLabel.textContent = 'SECONDARY SIDE BAR';
+      headerLabel.textContent = 'Secondary Side Bar';
       headerSlot.appendChild(headerLabel);
 
       container.onDidChangeActiveView((viewId) => {

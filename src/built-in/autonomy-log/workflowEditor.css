@@ -24,7 +24,7 @@
 
 .wfe__icon {
   display: inline-flex;
-  color: var(--px-accent);
+  color: var(--px-accent-text);
 }
 .wfe__icon svg { width: 18px; height: 18px; }
 
@@ -70,12 +70,18 @@
   border: 1px solid var(--px-border);
   background: transparent;
   color: var(--px-text);
-  font-size: var(--px-text-sm);
   font-family: var(--px-font-ui);
-  padding: var(--px-space-1) var(--px-space-3);
-  border-radius: var(--px-radius-md);
   cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--px-control-h-sm);
+  padding: 0 10px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .wfe__btn:hover { background: var(--px-surface-hover); }
 .wfe__btn:disabled { opacity: 0.5; cursor: default; }
@@ -87,7 +93,7 @@
 }
 .wfe__btn--primary:hover { background: var(--px-accent-hover); }
 
-.wfe__btn--armed { border-color: var(--px-accent); color: var(--px-accent); }
+.wfe__btn--armed { border-color: var(--px-accent); color: var(--px-accent-text); }
 
 .wfe__btn--danger {
   color: var(--px-danger, var(--px-text));
@@ -136,8 +142,8 @@
 .wfe__palette-head {
   font-size: var(--px-text-xs);
   color: var(--px-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: normal;
   padding: var(--px-space-1);
 }
 
@@ -214,8 +220,8 @@
 .wfe-ins__head {
   font-size: var(--px-text-xs);
   color: var(--px-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: normal;
   margin: var(--px-space-2) 0;
 }
 .wfe-ins__head:first-child { margin-top: 0; }
@@ -280,8 +286,8 @@
 .wfe-card__kind {
   font-size: var(--px-text-xs);
   color: var(--px-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .wfe-card__title {
@@ -314,7 +320,7 @@
   border-left: 3px solid var(--px-accent);
 }
 .wfe .is-family-trigger .wfe-card__ic,
-.wfe .is-family-trigger .wfe-card__kind { color: var(--px-accent); }
+.wfe .is-family-trigger .wfe-card__kind { color: var(--px-accent-text); }
 
 .wfe .is-family-control > .px-node-canvas__node-body {
   border-left: 3px solid var(--px-warning, var(--px-border-strong));
@@ -367,7 +373,7 @@
 .wfe__coach-num {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   font-weight: 600;
 }
 
@@ -375,7 +381,7 @@
   margin-top: var(--px-space-2);
   border: none;
   background: transparent;
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   font-size: var(--px-text-xs);
   font-family: var(--px-font-ui);
   cursor: pointer;

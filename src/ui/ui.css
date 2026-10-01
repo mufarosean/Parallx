@@ -21,14 +21,17 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 12px;
-  font-size: var(--parallx-fontSize-md);
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-3);
+  font-size: var(--px-text-sm);
+  font-weight: 500;
   font-family: inherit;
-  line-height: 20px;
+  line-height: 1;
   color: var(--vscode-button-foreground);
   background-color: var(--vscode-button-background);
   border: 1px solid transparent;
-  border-radius: var(--parallx-radius-sm);
+  border-radius: var(--px-radius-sm);
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
@@ -111,7 +114,7 @@
 }
 
 .ui-input-box-input::placeholder {
-  color: var(--vscode-input-placeholderForeground);
+  color: var(--px-text-faint);
 }
 
 .ui-input-box-input:focus {
@@ -606,7 +609,7 @@
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--px-text-xs);
   line-height: 1;
 }
 .context-menu--has-checks .context-menu-item-check { display: inline-flex; }
@@ -748,7 +751,7 @@
 }
 
 .find-replace-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #a0a0a0);
+  color: var(--px-text-faint);
 }
 
 .find-replace-options {
@@ -843,14 +846,17 @@
   text-align: center;
   animation: px-fade-in var(--px-dur-slow) var(--px-ease-out);
 }
+.px-empty__icon { color: var(--px-text-faint); margin-bottom: var(--px-space-2); }
+.px-empty__icon svg { width: 32px; height: 32px; }
+.px-empty__action { margin-top: var(--px-space-3); }
 .px-empty__headline {
-  font-size: var(--parallx-fontSize-md, 14px);
+  font-size: var(--px-text-md);
   font-weight: 600;
   color: var(--px-text, #ddd);
   opacity: 0.85;
 }
 .px-empty__hint {
-  font-size: var(--parallx-fontSize-sm, 12px);
+  font-size: var(--px-text-sm);
   color: var(--px-text-muted, #999);
   max-width: 420px;
   line-height: 1.5;
@@ -903,7 +909,7 @@
   padding: 0.25em 0.6em;
   text-align: left;
 }
-.px-markdown a { color: var(--px-accent); text-decoration: none; }
+.px-markdown a { color: var(--px-accent-text); text-decoration: none; }
 .px-markdown a:hover { text-decoration: underline; }
 .px-markdown__math--display {
   display: block;
@@ -925,7 +931,7 @@
   border: 1px solid var(--px-accent-faint);
   border-radius: var(--px-radius-full);
   background: var(--px-accent-soft);
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   font: inherit;
   font-size: var(--px-text-sm);
   font-weight: 600;

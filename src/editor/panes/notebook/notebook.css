@@ -234,7 +234,7 @@
 .nb-generate__spark {
   display: inline-flex;
   flex: 0 0 auto;
-  color: var(--px-accent);
+  color: var(--px-accent-text);
 }
 
 .nb-generate__spark svg { width: 13px; height: 13px; }
@@ -261,7 +261,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.nb-generate__status--live { color: var(--px-accent); }
+.nb-generate__status--live { color: var(--px-accent-text); }
 .nb-generate__status--error { color: var(--px-danger); }
 
 .nb-generate__go {
@@ -487,7 +487,7 @@
   font-weight: 600;
 }
 .nb-output__html tr:hover td { background: var(--px-surface-hover); }
-.nb-output__html a { color: var(--px-accent); }
+.nb-output__html a { color: var(--px-accent-text); }
 .nb-output__html pre { margin: 0; font-family: var(--px-font-mono, monospace); }
 
 /* ── Per-cell execution timing ────────────────────────────────────────────
@@ -504,4 +504,4 @@
 .nb-cell__timing[hidden] { display: none; }
 
 /* While running: accented, so a long-running cell is obvious at a glance. */
-.nb-cell__timing--live { color: var(--px-accent); }
+.nb-cell__timing--live { color: var(--px-accent-text); }

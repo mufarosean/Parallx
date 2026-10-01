@@ -47,7 +47,7 @@
 }
 
 .tool-gallery-search-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #888);
+  color: var(--px-text-faint);
 }
 
 .tool-gallery-search-input:focus {
@@ -109,7 +109,7 @@
   user-select: none;
   font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
   background: var(--vscode-sideBarSectionHeader-background, rgba(255,255,255,0.04));
   border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
@@ -132,10 +132,11 @@
 
 /* ── Tool row ── */
 .tool-gallery-row {
+  position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 6px 12px;
   cursor: pointer;
   border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
   transition: background var(--px-dur-instant) var(--px-ease);
@@ -149,7 +150,6 @@
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-  margin-top: 3px;
   color: var(--vscode-descriptionForeground, #888);
   display: flex;
   align-items: center;
@@ -307,7 +307,7 @@
 }
 
 .tool-editor-header-name {
-  font-size: 22px;
+  font-size: var(--px-text-xl);
   font-weight: 600;
   color: var(--vscode-foreground);
   margin-bottom: 4px;
@@ -508,7 +508,7 @@
   padding: 6px 10px;
   font-weight: 600;
   font-size: var(--parallx-fontSize-sm);
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--vscode-descriptionForeground);
   background: var(--vscode-editorWidget-background, rgba(255,255,255,0.04));
   border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
@@ -691,3 +691,21 @@
 }
 .tool-editor-row-action:hover { border-color: var(--px-accent); color: var(--px-text); }
 .tool-editor-row-action:active { transform: var(--px-press, translateY(0.5px)); }
+
+/* Row actions appear on hover (Linear): an always-visible Disable on every
+   row squeezed each name and description in a 200px sidebar. A disabled
+   tool keeps its Enable visible — that is the action you came for. */
+.tool-gallery-row .tool-gallery-toggle:not(.tool-gallery-toggle-enable) {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  background: var(--px-bg-elevated);
+}
+.tool-gallery-row:hover .tool-gallery-toggle,
+.tool-gallery-row:focus-within .tool-gallery-toggle {
+  opacity: 1;
+  pointer-events: auto;
+}

@@ -33,7 +33,7 @@
 .canvas-sidebar-add-btn {
   background: none;
   border: none;
-  color: var(--vscode-icon-foreground, rgba(255, 255, 255, 0.4));
+  color: var(--vscode-icon-foreground, color-mix(in srgb, var(--px-text) 40%, transparent));
   cursor: pointer;
   width: 20px;
   height: 20px;
@@ -47,8 +47,8 @@
 }
 
 .canvas-sidebar-add-btn:hover {
-  background-color: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.8));
+  background-color: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--px-text) 8%, transparent));
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 80%, transparent));
 }
 
 /* ── Fixed-bottom Trash Button ── */
@@ -62,9 +62,9 @@
   user-select: none;
   background: none;
   border: none;
-  border-top: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
+  border-top: 1px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 6%, transparent));
   width: 100%;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 40%, transparent));
   font-size: var(--parallx-fontSize-base);
   font-family: inherit;
   flex-shrink: 0;
@@ -72,13 +72,13 @@
 }
 
 .canvas-sidebar-trash-btn:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.6));
+  background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--px-text) 4%, transparent));
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 60%, transparent));
 }
 
 .canvas-sidebar-trash-badge {
-  background: var(--vscode-badge-background, rgba(255, 255, 255, 0.1));
-  color: var(--vscode-badge-foreground, rgba(255, 255, 255, 0.5));
+  background: var(--vscode-badge-background, color-mix(in srgb, var(--px-text) 10%, transparent));
+  color: var(--vscode-badge-foreground, color-mix(in srgb, var(--px-text) 50%, transparent));
   font-size: var(--parallx-fontSize-xs);
   padding: 1px 5px;
   border-radius: var(--parallx-radius-lg);
@@ -139,16 +139,16 @@
   left: 8px;
   right: 8px;
   bottom: 44px;
-  background: rgba(40, 40, 40, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--px-bg-elevated);
+  border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
   border-radius: var(--parallx-radius-md, 6px);
   padding: 8px 10px;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.92));
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  font-size: var(--px-text-sm);
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 92%, transparent));
+  box-shadow: var(--px-shadow-md);
   z-index: 100;
   animation: canvas-toast-rise 0.18s ease;
 }
@@ -164,31 +164,31 @@
 }
 .canvas-sidebar-toast-undo {
   background: none;
-  border: 1px solid rgba(120, 170, 230, 0.5);
-  color: rgba(150, 190, 250, 0.95);
+  border: 1px solid rgba(var(--px-accent-rgb), 0.5);
+  color: var(--px-accent-text);
   padding: 3px 9px;
   border-radius: 4px;
   font-family: inherit;
-  font-size: 11.5px;
+  font-size: var(--px-text-xs);
   font-weight: 600;
   cursor: pointer;
   transition: background-color var(--px-dur-fast) var(--px-ease);
 }
 .canvas-sidebar-toast-undo:hover {
-  background: rgba(80, 140, 220, 0.16);
+  background: rgba(var(--px-accent-rgb), 0.16);
 }
 .canvas-sidebar-toast-close {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 16px;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-md);
   line-height: 1;
   cursor: pointer;
   padding: 0 4px;
   border-radius: 3px;
 }
 .canvas-sidebar-toast-close:hover {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--px-text);
 }
 .canvas-tree {
   position: relative;
@@ -198,7 +198,7 @@
 .canvas-sidebar-recents {
   margin-bottom: 6px;
   padding-bottom: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid color-mix(in srgb, var(--px-text) 4%, transparent);
 }
 .canvas-sidebar-recents-header {
   display: flex;
@@ -208,9 +208,9 @@
   padding: 4px 8px;
   background: none;
   border: none;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 50%, transparent));
   font-family: inherit;
-  font-size: 10px;
+  font-size: var(--px-text-2xs);
   letter-spacing: 0.5px;
   text-align: left;
   cursor: pointer;
@@ -218,8 +218,8 @@
   transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .canvas-sidebar-recents-header:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.85));
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 85%, transparent));
 }
 .canvas-sidebar-recents-chevron {
   display: inline-flex;
@@ -240,12 +240,12 @@
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
+  background: var(--px-bg-inset);
 }
 .canvas-sidebar-search-icon {
   flex: 0 0 auto;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--px-text-faint);
   display: inline-flex;
   align-items: center;
 }
@@ -254,34 +254,34 @@
   background: transparent;
   border: none;
   outline: none;
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.9));
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 90%, transparent));
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   padding: 2px 0;
   min-width: 0;
 }
 .canvas-sidebar-search-input::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--px-text-faint);
 }
 .canvas-empty-search {
   padding: 16px;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
-  font-size: 12px;
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 55%, transparent));
+  font-size: var(--px-text-sm);
   font-style: italic;
   text-align: center;
 }
 
 /* M77 Phase 11.7 — richer empty state */
 .canvas-empty-title {
-  font-size: 14px;
+  font-size: var(--px-text-md);
   font-weight: 600;
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.9));
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 90%, transparent));
   margin-bottom: 6px;
 }
 .canvas-empty-subtitle {
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   line-height: 1.5;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 55%, transparent));
   margin-bottom: 14px;
 }
 .canvas-empty-actions {
@@ -294,26 +294,30 @@
   display: block;
   width: 100%;
   text-align: left;
-  padding: 7px 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--parallx-radius-sm);
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.85));
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 85%, transparent));
   font-family: inherit;
-  font-size: 12px;
   cursor: pointer;
   transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .canvas-empty-action:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
+  border-color: color-mix(in srgb, var(--px-text) 16%, transparent);
 }
 .canvas-empty-action--primary {
-  background: rgba(80, 140, 220, 0.18);
-  border-color: rgba(120, 170, 230, 0.4);
+  background: rgba(var(--px-accent-rgb), 0.18);
+  border-color: rgba(var(--px-accent-rgb), 0.4);
 }
 .canvas-empty-action--primary:hover {
-  background: rgba(80, 140, 220, 0.28);
+  background: rgba(var(--px-accent-rgb), 0.28);
 }
 .canvas-empty-hints {
   display: flex;
@@ -324,20 +328,20 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+  font-size: var(--px-text-xs);
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 50%, transparent));
 }
 .canvas-empty-hint-kbd {
   display: inline-block;
   min-width: 18px;
   padding: 1px 5px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
   border-radius: 3px;
   font-family: var(--parallx-fontFamily-mono, monospace);
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.7);
+  font-size: var(--px-text-2xs);
+  color: var(--px-text-secondary);
 }
 
 /* M77 Phase 11.4 — template picker modal */
@@ -359,22 +363,22 @@
   width: min(540px, 90vw);
   max-height: 80vh;
   background: var(--vscode-editor-background, #1e1e1e);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
   border-radius: var(--parallx-radius-lg, 8px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--px-shadow-lg);
   padding: 22px 22px 16px;
   overflow-y: auto;
   font-family: var(--parallx-fontFamily-ui);
 }
 .canvas-template-picker-title {
-  font-size: 16px;
+  font-size: var(--px-text-md);
   font-weight: 600;
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.95));
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 95%, transparent));
   margin-bottom: 4px;
 }
 .canvas-template-picker-subtitle {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.6));
+  font-size: var(--px-text-sm);
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 60%, transparent));
   margin-bottom: 18px;
 }
 .canvas-template-picker-grid {
@@ -384,8 +388,8 @@
   margin-bottom: 16px;
 }
 .canvas-template-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   border-radius: var(--parallx-radius-md, 6px);
   padding: 14px 12px;
   text-align: left;
@@ -396,8 +400,8 @@
 }
 .canvas-template-card:hover,
 .canvas-template-card:focus-visible {
-  background: rgba(80, 140, 220, 0.16);
-  border-color: rgba(120, 170, 230, 0.5);
+  background: rgba(var(--px-accent-rgb), 0.16);
+  border-color: rgba(var(--px-accent-rgb), 0.5);
   outline: none;
 }
 .canvas-template-card:active {
@@ -420,37 +424,37 @@
   display: inline-block;
   margin-top: 6px;
   padding: 1px 8px;
-  font-size: 10px;
+  font-size: var(--px-text-2xs);
   border-radius: 999px;
   background: var(--px-bg-inset);
   color: var(--px-text-secondary);
 }
 .canvas-template-picker-section-header {
   grid-column: 1 / -1;
-  font-size: 10.5px;
+  font-size: var(--px-text-xs);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 50%, transparent));
   margin: 4px 0 -2px;
 }
 .canvas-template-card-name {
-  font-size: 13px;
+  font-size: var(--px-text-base);
   font-weight: 600;
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.95));
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 95%, transparent));
   margin-bottom: 4px;
 }
 .canvas-template-card-desc {
-  font-size: 11.5px;
+  font-size: var(--px-text-xs);
   line-height: 1.4;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 55%, transparent));
 }
 .canvas-template-picker-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
   margin-top: 4px;
   padding-top: 12px;
 }
@@ -462,9 +466,9 @@
   gap: 6px;
   background: none;
   border: none;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 55%, transparent));
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   cursor: pointer;
   padding: 6px 10px;
   border-radius: var(--parallx-radius-sm);
@@ -473,7 +477,7 @@
 .canvas-template-picker-blank:hover,
 .canvas-template-picker-manage:hover,
 .canvas-template-picker-cancel:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
   color: var(--vscode-foreground);
 }
 .canvas-template-picker-cancel { margin-left: auto; }
@@ -492,13 +496,13 @@
   height: 22px;
   background: transparent;
   border: none;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 55%, transparent));
   cursor: pointer;
   border-radius: 3px;
   padding: 0;
 }
 .canvas-sidebar-add-menu-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
   color: var(--vscode-foreground);
 }
 .canvas-sidebar-add-popover {
@@ -506,9 +510,9 @@
   z-index: 9500;
   min-width: 200px;
   background: var(--vscode-menu-background, var(--vscode-editorWidget-background, #252526));
-  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border: 1px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 10%, transparent));
   border-radius: var(--parallx-radius-md, 6px);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--px-shadow-lg);
   padding: 4px;
   font-family: var(--parallx-fontFamily-ui);
 }
@@ -522,14 +526,14 @@
   border: none;
   color: var(--vscode-foreground, #ddd);
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   text-align: left;
   cursor: pointer;
   border-radius: 4px;
 }
 .canvas-sidebar-add-popover-item:hover,
 .canvas-sidebar-add-popover-item:focus-visible {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--px-text) 6%, transparent));
   outline: none;
 }
 
@@ -548,9 +552,9 @@
   width: min(620px, 92vw);
   max-height: 84vh;
   background: var(--vscode-editor-background, #1e1e1e);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
   border-radius: var(--parallx-radius-lg, 8px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--px-shadow-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -561,25 +565,25 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
 }
 .canvas-shortcuts-title {
-  font-size: 15px;
+  font-size: var(--px-text-md);
   font-weight: 600;
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.95));
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 95%, transparent));
 }
 .canvas-shortcuts-close {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 22px;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-xl);
   line-height: 1;
   cursor: pointer;
   padding: 2px 8px;
   border-radius: var(--parallx-radius-sm);
 }
 .canvas-shortcuts-close:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
   color: var(--vscode-foreground);
 }
 .canvas-shortcuts-body {
@@ -593,12 +597,12 @@
   margin-bottom: 0;
 }
 .canvas-shortcuts-section-title {
-  font-size: 11px;
+  font-size: var(--px-text-xs);
   font-weight: 600;
-  letter-spacing: 0.5px;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.55));
+  letter-spacing: normal;
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 55%, transparent));
   margin-bottom: 8px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 .canvas-shortcuts-row {
   display: flex;
@@ -606,8 +610,8 @@
   justify-content: space-between;
   gap: 14px;
   padding: 4px 0;
-  font-size: 12.5px;
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.88));
+  font-size: var(--px-text-sm);
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 88%, transparent));
 }
 .canvas-shortcuts-label {
   flex: 1;
@@ -623,12 +627,12 @@
   min-width: 18px;
   padding: 2px 7px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--px-text) 14%, transparent);
   border-radius: 4px;
   font-family: var(--parallx-fontFamily-mono, monospace);
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.85);
+  font-size: var(--px-text-xs);
+  color: var(--px-text);
 }
 
 /* ── Tree node ── */
@@ -673,12 +677,12 @@
  * the alpha-blend later.
  */
 .canvas-node--multi-selected {
-  background-color: rgba(45, 170, 219, 0.22);
+  background-color: rgba(var(--px-accent-rgb), 0.22);
   box-shadow: inset 3px 0 0 var(--vscode-button-background, #2383e2);
 }
 
 .canvas-node--multi-selected:hover {
-  background-color: rgba(45, 170, 219, 0.28);
+  background-color: rgba(var(--px-accent-rgb), 0.28);
 }
 
 /*
@@ -688,7 +692,7 @@
  * still sees the row is part of the batch.
  */
 .canvas-node--selected.canvas-node--multi-selected {
-  background-color: var(--vscode-list-activeSelectionBackground, rgba(45, 170, 219, 0.22));
+  background-color: var(--vscode-list-activeSelectionBackground, rgba(var(--px-accent-rgb), 0.22));
   box-shadow: inset 3px 0 0 var(--vscode-button-background, #2383e2);
 }
 
@@ -729,7 +733,7 @@
 }
 
 .canvas-node-chevron:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--px-text) 6%, transparent));
 }
 
 /* On hover: show chevron and hide icon (only for nodes with children) */
@@ -850,7 +854,7 @@
 .canvas-tiptap-editor .is-empty:not(tr):not(td):not(th):not(.tableWrapper)::before {
   content: attr(data-placeholder);
   position: absolute;
-  color: var(--vscode-input-placeholderForeground, rgba(255, 255, 255, 0.25));
+  color: var(--vscode-input-placeholderForeground, color-mix(in srgb, var(--px-text) 25%, transparent));
   pointer-events: none;
   font-style: normal;
 }
@@ -992,7 +996,7 @@
 
 /* Markers recede so content leads — Notion dims them the same way. */
 .canvas-tiptap-editor li::marker {
-  color: var(--px-text-muted, var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5)));
+  color: var(--px-text-muted, var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 50%, transparent)));
 }
 
 /* ── Block background colour — one clean rounded region (Notion-style) ──
@@ -1054,7 +1058,7 @@
   appearance: none;
   width: 16px;
   height: 16px;
-  border: 2px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.3));
+  border: 2px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 30%, transparent));
   border-radius: var(--parallx-radius-sm);
   background: transparent;
   cursor: pointer;
@@ -1065,8 +1069,8 @@
 }
 
 .canvas-tiptap-editor ul[data-type="taskList"] li label input[type="checkbox"]:hover {
-  border-color: var(--vscode-widget-border, rgba(255, 255, 255, 0.5));
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+  border-color: var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 50%, transparent));
+  background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--px-text) 5%, transparent));
 }
 
 .canvas-tiptap-editor ul[data-type="taskList"] li label input[type="checkbox"]:checked {
@@ -1085,13 +1089,13 @@
 
 .canvas-tiptap-editor ul[data-type="taskList"] li[data-checked="true"] > div > p {
   text-decoration: line-through;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 40%, transparent));
 }
 
 /* ── Blockquote — clean border, Notion-style ── */
 
 .canvas-tiptap-editor blockquote {
-  border-left: 3px solid var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
+  border-left: 3px solid var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 40%, transparent));
   padding-left: 16px;
   margin: 8px 0;
   color: inherit;
@@ -1100,7 +1104,7 @@
 /* ── Inline Code — rounded pill style ── */
 
 .canvas-tiptap-editor code {
-  background: var(--vscode-textCodeBlock-background, rgba(255, 255, 255, 0.08));
+  background: var(--vscode-textCodeBlock-background, color-mix(in srgb, var(--px-text) 8%, transparent));
   padding: 2px 6px;
   border-radius: 4px;
   font-family: var(--parallx-fontFamily-mono);
@@ -1123,8 +1127,8 @@
   background-image: linear-gradient(
     to bottom,
     transparent calc(50% - 0.5px),
-    rgba(255, 255, 255, 0.12) calc(50% - 0.5px),
-    rgba(255, 255, 255, 0.12) calc(50% + 0.5px),
+    color-mix(in srgb, var(--px-text) 12%, transparent) calc(50% - 0.5px),
+    color-mix(in srgb, var(--px-text) 12%, transparent) calc(50% + 0.5px),
     transparent calc(50% + 0.5px)
   );
 }
@@ -1146,7 +1150,7 @@
 /* ── Selection — soft blue ── */
 
 .canvas-tiptap-editor ::selection {
-  background: var(--vscode-editor-selectionBackground, rgba(45, 170, 219, 0.3));
+  background: var(--vscode-editor-selectionBackground, rgba(var(--px-accent-rgb), 0.3));
 }
 
 /* Underline */
@@ -1161,7 +1165,7 @@
 .canvas-tiptap-editor .canvas-link {
   color: inherit;
   text-decoration: underline;
-  text-decoration-color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
+  text-decoration-color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 40%, transparent));
   text-underline-offset: 3px;
   cursor: pointer;
   transition: text-decoration-color var(--px-dur-base) var(--px-ease);
@@ -1211,7 +1215,7 @@
    `outline: none !important` would otherwise win against it. */
 .canvas-tiptap-editor:not(.dragging) .ProseMirror-selectednode:not(.tableWrapper) {
   outline: none !important;
-  background-color: var(--vscode-editor-selectionBackground, rgba(45, 170, 219, 0.15));
+  background-color: var(--vscode-editor-selectionBackground, rgba(var(--px-accent-rgb), 0.15));
   transition: background-color var(--px-dur-base) var(--px-ease);
   border-radius: 4px;
 }
@@ -1236,8 +1240,8 @@
 .block-marquee {
   display: none;
   position: absolute;
-  border: 1.5px solid var(--vscode-focusBorder, rgba(45, 170, 219, 0.6));
-  background-color: var(--vscode-list-dropBackground, rgba(45, 170, 219, 0.08));
+  border: 1.5px solid var(--vscode-focusBorder, rgba(var(--px-accent-rgb), 0.6));
+  background-color: var(--vscode-list-dropBackground, rgba(var(--px-accent-rgb), 0.08));
   border-radius: 2px;
   pointer-events: none;
   z-index: 10;
@@ -1306,13 +1310,13 @@
 
 .drag-handle:hover {
   opacity: 1 !important;
-  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+  background-color: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--px-text) 8%, transparent));
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' style='fill: rgba(255, 255, 255, 0.7)'%3E%3Cpath d='M3,2 C2.44771525,2 2,1.55228475 2,1 C2,0.44771525 2.44771525,0 3,0 C3.55228475,0 4,0.44771525 4,1 C4,1.55228475 3.55228475,2 3,2 Z M3,6 C2.44771525,6 2,5.55228475 2,5 C2,4.44771525 2.44771525,4 3,4 C3.55228475,4 4,4.44771525 4,5 C4,5.55228475 3.55228475,6 3,6 Z M3,10 C2.44771525,10 2,9.55228475 2,9 C2,8.44771525 2.44771525,8 3,8 C3.55228475,8 4,8.44771525 4,9 C4,9.55228475 3.55228475,10 3,10 Z M7,2 C6.44771525,2 6,1.55228475 6,1 C6,0.44771525 6.44771525,0 7,0 C7.55228475,0 8,0.44771525 8,1 C8,1.55228475 7.55228475,2 7,2 Z M7,6 C6.44771525,6 6,5.55228475 6,5 C6,4.44771525 6.44771525,4 7,4 C7.55228475,4 8,4.44771525 8,5 C8,5.55228475 7.55228475,6 7,6 Z M7,10 C6.44771525,10 6,9.55228475 6,9 C6,8.44771525 6.44771525,8 7,8 C7.55228475,8 8,8.44771525 8,9 C8,9.55228475 7.55228475,10 7,10 Z'%3E%3C/path%3E%3C/svg%3E");
   transition: background-color var(--px-dur-base) var(--px-ease);
 }
 
 .drag-handle:active {
-  background-color: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.12));
+  background-color: var(--vscode-list-activeSelectionBackground, color-mix(in srgb, var(--px-text) 12%, transparent));
   cursor: grabbing;
 }
 
@@ -1346,15 +1350,15 @@
   justify-content: center;
   border-radius: 4px;
   z-index: 56;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.35));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 35%, transparent));
   /* Match drag-handle shift so they stay aligned */
   transform: translateX(-8px);
 }
 
 .block-add-btn:hover {
   opacity: 1 !important;
-  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.7));
+  background-color: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--px-text) 8%, transparent));
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 70%, transparent));
 }
 
 .block-add-btn.hide {
@@ -1377,8 +1381,8 @@
 
 .handle-area-hovered > .block-add-btn:hover {
   opacity: 1 !important;
-  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.7));
+  background-color: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--px-text) 8%, transparent));
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 70%, transparent));
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -1390,9 +1394,9 @@
   position: fixed;
   z-index: 1002;
   background: var(--vscode-menu-background, #252525);
-  border: 1px solid var(--vscode-menu-border, rgba(255, 255, 255, 0.1));
+  border: 1px solid var(--vscode-menu-border, color-mix(in srgb, var(--px-text) 10%, transparent));
   border-radius: var(--parallx-radius-lg);
-  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5)), 0 0 0 1px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--px-shadow-md);
   padding: 4px;
   min-width: 200px;
   max-height: 70vh;
@@ -1413,7 +1417,7 @@
   padding: 4px 8px 2px;
   font-size: var(--parallx-fontSize-sm);
   font-weight: 500;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.35));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 35%, transparent));
   text-transform: capitalize;
   user-select: none;
 }
@@ -1427,12 +1431,12 @@
   cursor: pointer;
   user-select: none;
   font-size: var(--parallx-fontSize-md);
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.8));
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 80%, transparent));
   transition: background-color var(--px-dur-instant) var(--px-ease);
 }
 
 .block-action-item:hover {
-  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+  background-color: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--px-text) 8%, transparent));
 }
 
 .block-action-icon {
@@ -1441,7 +1445,7 @@
   justify-content: center;
   width: 22px;
   height: 22px;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 50%, transparent));
   flex-shrink: 0;
 }
 
@@ -1457,7 +1461,7 @@
 
 .block-action-shortcut {
   font-size: var(--parallx-fontSize-sm);
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.25));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 25%, transparent));
   margin-left: auto;
   font-family: inherit;
 }
@@ -1465,19 +1469,19 @@
 .block-action-arrow {
   display: flex;
   align-items: center;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.25));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 25%, transparent));
   margin-left: auto;
 }
 
 .block-action-check {
   font-size: var(--parallx-fontSize-lg);
-  color: var(--vscode-textLink-foreground, rgba(45, 170, 219, 0.8));
+  color: var(--vscode-textLink-foreground, rgba(var(--px-accent-rgb), 0.8));
   margin-left: auto;
 }
 
 .block-action-separator {
   height: 1px;
-  background: var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
+  background: var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 8%, transparent));
   margin: 4px 0;
 }
 
@@ -1499,7 +1503,7 @@
   padding: 6px 8px 2px;
   font-size: var(--parallx-fontSize-sm);
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--px-text-faint);
   user-select: none;
 }
 
@@ -1511,12 +1515,12 @@
   border-radius: 4px;
   cursor: pointer;
   font-size: var(--parallx-fontSize-md);
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--px-text);
   transition: background-color var(--px-dur-instant) var(--px-ease);
 }
 
 .block-color-item:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
 .block-color-swatch {
@@ -1548,9 +1552,9 @@
   gap: 2px;
   padding: 4px 6px;
   background: var(--vscode-menu-background);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   border-radius: var(--parallx-radius-lg);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--px-shadow-md);
   white-space: nowrap;
   animation: bubbleMenuFadeIn 0.12s ease-out;
 }
@@ -1563,7 +1567,7 @@
 .canvas-bubble-btn {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--px-text);
   cursor: pointer;
   font-size: var(--parallx-fontSize-md);
   min-width: 30px;
@@ -1583,7 +1587,7 @@
 }
 
 .canvas-bubble-btn--active {
-  background: rgba(45, 170, 219, 0.2);
+  background: rgba(var(--px-accent-rgb), 0.2);
   color: var(--vscode-textLink-foreground);
 }
 
@@ -1604,16 +1608,16 @@
   width: 100%;
   /* Span all 5 grid columns so the input row claims its own line. */
   grid-column: 1 / -1;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
   margin-top: 2px;
 }
 
 .canvas-bubble-link-field {
   flex: 1;
   min-width: 180px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid color-mix(in srgb, var(--px-text) 15%, transparent);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
+  color: var(--px-text);
   font: inherit;
   font-size: var(--parallx-fontSize-md);
   padding: 4px 8px;
@@ -1634,7 +1638,7 @@
 .canvas-bubble-link-remove {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--px-text-secondary);
   cursor: pointer;
   font-size: var(--parallx-fontSize-lg);
   width: 28px;
@@ -1647,18 +1651,18 @@
 }
 
 .canvas-bubble-link-apply:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
   color: var(--vscode-testing-iconPassed);
 }
 
 .canvas-bubble-link-copy:hover,
 .canvas-bubble-link-open:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
   color: var(--vscode-textLink-foreground);
 }
 
 .canvas-bubble-link-remove:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
   color: var(--vscode-errorForeground);
 }
 
@@ -1677,9 +1681,9 @@
   max-height: 340px;
   overflow-y: auto;
   background: var(--vscode-menu-background, #252525);
-  border: 1px solid var(--vscode-menu-border, rgba(255, 255, 255, 0.1));
+  border: 1px solid var(--vscode-menu-border, color-mix(in srgb, var(--px-text) 10%, transparent));
   border-radius: var(--parallx-radius-lg);
-  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5)), 0 0 0 1px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--px-shadow-md);
   padding: 4px;
   animation: slashMenuFadeIn 0.1s ease-out;
 }
@@ -1698,13 +1702,13 @@
   cursor: pointer;
   user-select: none;
   font-size: var(--parallx-fontSize-md);
-  color: var(--vscode-foreground, rgba(255, 255, 255, 0.8));
+  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 80%, transparent));
   transition: background-color var(--px-dur-instant) var(--px-ease);
 }
 
 .canvas-slash-item:hover,
 .canvas-slash-item--selected {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+  background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--px-text) 8%, transparent));
 }
 
 .canvas-slash-icon {
@@ -1714,7 +1718,7 @@
   width: 22px;
   height: 22px;
   flex-shrink: 0;
-  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+  color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 50%, transparent));
 }
 
 .canvas-slash-icon--text {
@@ -1825,7 +1829,7 @@
 }
 
 .canvas-tiptap-editor [data-type="details"] > button:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
 /* Chevron icon via ::before pseudo-element on the button */
@@ -1834,9 +1838,9 @@
   display: block;
   width: 16px;
   height: 16px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E");
-  background-size: contain;
-  background-repeat: no-repeat;
+  background-color: color-mix(in srgb, var(--px-text) 50%, transparent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
   transition: transform var(--px-dur-base) var(--px-ease);
 }
 
@@ -1907,7 +1911,7 @@
 }
 
 .canvas-tiptap-editor .toggle-heading-chevron:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
 .canvas-tiptap-editor .toggle-heading-chevron::before {
@@ -1915,9 +1919,9 @@
   display: block;
   width: 16px;
   height: 16px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E");
-  background-size: contain;
-  background-repeat: no-repeat;
+  background-color: color-mix(in srgb, var(--px-text) 50%, transparent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
   transition: transform var(--px-dur-base) var(--px-ease);
 }
 
@@ -1969,7 +1973,7 @@
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-tiptap-editor .canvas-bookmark {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   border-radius: 4px;
   overflow: hidden;
   cursor: pointer;
@@ -1979,7 +1983,7 @@
 }
 
 .canvas-tiptap-editor .canvas-bookmark:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--px-text) 3%, transparent);
 }
 
 .canvas-bookmark-info {
@@ -1991,7 +1995,7 @@
 .canvas-bookmark-title {
   font-size: var(--parallx-fontSize-lg);
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--px-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1999,7 +2003,7 @@
 
 .canvas-bookmark-description {
   font-size: var(--parallx-fontSize-base);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--px-text-muted);
   margin-top: 4px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -2009,7 +2013,7 @@
 
 .canvas-bookmark-url {
   font-size: var(--parallx-fontSize-sm);
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--px-text-faint);
   margin-top: 6px;
   display: flex;
   align-items: center;
@@ -2054,8 +2058,8 @@
 }
 
 .canvas-page-block--drop-target .canvas-page-block-card {
-  background: rgba(55, 120, 255, 0.08);
-  outline: 2px solid rgba(55, 120, 255, 0.5);
+  background: rgba(var(--px-accent-rgb), 0.08);
+  outline: 2px solid rgba(var(--px-accent-rgb), 0.5);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -2076,7 +2080,7 @@
   appearance: none;
   border: 0;
   background: transparent;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--px-text-secondary);
   width: 20px;
   height: 20px;
   border-radius: 4px;
@@ -2088,8 +2092,8 @@
 }
 
 .canvas-page-block-icon:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.95);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-page-block-body {
@@ -2098,9 +2102,9 @@
 }
 
 .canvas-page-block-title {
-  font-size: 15px;
+  font-size: var(--px-text-md);
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--px-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2113,22 +2117,22 @@
   max-width: calc(100vw - 16px);
   padding: 10px 12px;
   border-radius: var(--parallx-radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
   background: var(--vscode-editor-background);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--px-shadow-lg);
 }
 
 .canvas-page-block-preview-title {
   font-size: var(--parallx-fontSize-md);
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--px-text);
 }
 
 .canvas-page-block-preview-snippet {
   margin-top: 6px;
   font-size: var(--parallx-fontSize-base);
   line-height: 1.45;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--px-text-secondary);
   display: -webkit-box;
   -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
@@ -2143,28 +2147,28 @@
   margin: 8px 0;
   padding: 12px 16px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--px-text) 2%, transparent);
 }
 
 .canvas-toc-title {
   font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: rgba(255, 255, 255, 0.4);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--px-text-faint);
   margin-bottom: 8px;
 }
 
 .canvas-toc-item {
   padding: 3px 0;
   font-size: var(--parallx-fontSize-lg);
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--px-text-secondary);
   cursor: pointer;
   transition: color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-toc-item:hover {
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--px-text);
 }
 
 .canvas-toc-level-1 { padding-left: 0; }
@@ -2173,7 +2177,7 @@
 
 .canvas-toc-empty {
   font-size: var(--parallx-fontSize-md);
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--px-text-faint);
   font-style: italic;
 }
 
@@ -2221,9 +2225,9 @@
 .canvas-media-placeholder {
   padding: 32px 16px;
   text-align: center;
-  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
   border-radius: 4px;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--px-text-faint);
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   display: flex;
@@ -2233,8 +2237,8 @@
 }
 
 .canvas-media-placeholder:hover {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.25);
+  background: color-mix(in srgb, var(--px-text) 3%, transparent);
+  border-color: color-mix(in srgb, var(--px-text) 25%, transparent);
 }
 
 /* File attachment card */
@@ -2243,7 +2247,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   border-radius: 4px;
   margin: 4px 0;
   cursor: pointer;
@@ -2251,13 +2255,13 @@
 }
 
 .canvas-tiptap-editor .canvas-file-attachment:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--px-text) 3%, transparent);
 }
 
 .canvas-file-icon {
   width: var(--parallx-icon-size-xl, 32px);
   height: var(--parallx-icon-size-xl, 32px);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--px-text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2271,7 +2275,7 @@
 .canvas-file-name {
   font-size: var(--parallx-fontSize-lg);
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--px-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2279,7 +2283,7 @@
 
 .canvas-file-size {
   font-size: var(--parallx-fontSize-base);
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--px-text-faint);
   margin-top: 2px;
 }
 
@@ -2313,7 +2317,7 @@
   vertical-align: top;
   position: relative;
   min-width: 80px;
-  font-size: 15px;
+  font-size: var(--px-text-md);
 }
 
 .canvas-tiptap-editor table th {
@@ -2561,9 +2565,9 @@
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-tiptap-editor pre {
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: var(--parallx-radius-lg);
-  padding: 0;
+  background: var(--px-bg-inset);
+  border-radius: var(--px-radius-md);
+  padding: var(--px-space-3) var(--px-space-4);
   margin: 8px 0;
   overflow-x: auto;
   font-family: var(--parallx-fontFamily-mono);
@@ -2577,7 +2581,7 @@
   padding: 0;
   border: none;
   font-size: inherit;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--px-text);
 }
 
 /* highlight.js token colors — refined dark palette */
@@ -2628,20 +2632,20 @@
 
 .canvas-tiptap-editor .hljs-symbol,
 .canvas-tiptap-editor .hljs-bullet {
-  color: #d7ba7d;
+  color: var(--px-syntax-number);
 }
 
 .canvas-tiptap-editor .hljs-meta {
-  color: #c586c0;
+  color: var(--px-syntax-meta);
 }
 
 .canvas-tiptap-editor .hljs-deletion {
   color: var(--vscode-debugTokenExpression-string, #ce9178);
-  background: rgba(206, 145, 120, 0.1);
+  background: rgba(var(--px-red-rgb), 0.1);
 }
 
 .canvas-tiptap-editor .hljs-addition {
-  background: rgba(86, 156, 214, 0.1);
+  background: rgba(var(--px-green-rgb), 0.1);
 }
 
 .canvas-tiptap-editor .hljs-emphasis {
@@ -2691,7 +2695,7 @@
      and the snap direction flips when the window moves to a monitor with a
      different devicePixelRatio — the "breadcrumbs not centered on my other
      screen" bug. Even box + integer offsets = DPI-stable centering. */
-  box-shadow: inset 0 -1px 0 0 rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 -1px 0 0 color-mix(in srgb, var(--px-text) 6%, transparent);
   /* One uniform line box for ALL ribbon text (labels, › separators, the
      "Edited … ago" stamp): 12px type in a 16px box centers at exactly 8px
      and never depends on line-height:normal, whose ascent/descent rounding
@@ -2768,22 +2772,22 @@
   background: currentColor;
 }
 .canvas-top-ribbon-save--flushing {
-  color: rgba(150, 180, 255, 0.85);
+  color: var(--px-info);
 }
 .canvas-top-ribbon-save--saved {
-  color: rgba(120, 200, 140, 0.8);
+  color: var(--px-success);
 }
 .canvas-top-ribbon-save--retrying {
-  color: rgba(220, 180, 90, 0.9);
+  color: var(--px-warning);
 }
 .canvas-top-ribbon-save--failed {
-  color: rgba(240, 120, 110, 0.95);
+  color: var(--px-danger);
 }
 
 .canvas-top-ribbon-btn {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--px-text-muted);
   width: 22px;
   height: 22px;
   display: flex;
@@ -2797,12 +2801,12 @@
 }
 
 .canvas-top-ribbon-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.8);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-top-ribbon-favorite--active {
-  color: rgba(255, 200, 50, 0.85);
+  color: var(--px-warning);
 }
 
 .canvas-top-ribbon-favorite--active svg {
@@ -2810,7 +2814,7 @@
 }
 
 .canvas-top-ribbon-favorite--active:hover {
-  color: rgba(255, 200, 50, 1);
+  color: var(--px-warning);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -2952,7 +2956,7 @@
   gap: 4px;
   margin-bottom: 12px;
   font-size: var(--parallx-fontSize-base);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--px-text-muted);
   flex-wrap: wrap;
 }
 
@@ -2969,11 +2973,11 @@
 }
 
 .canvas-breadcrumb:hover {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--px-text-secondary);
 }
 
 .canvas-breadcrumb-sep {
-  color: rgba(255, 255, 255, 0.2);
+  color: var(--px-text-faint);
   user-select: none;
 }
 
@@ -2982,7 +2986,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--px-text-muted);
   /* The page you're on should show its full name when there's room; only
      ancestor crumbs are capped to keep the bar from exploding horizontally. */
   max-width: none;
@@ -3021,7 +3025,7 @@
   user-select: none;
   transition: transform var(--px-dur-fast) var(--px-ease);
   transform-origin: left center;
-  color: var(--vscode-editor-foreground, rgba(255, 255, 255, 0.8));
+  color: var(--vscode-editor-foreground, color-mix(in srgb, var(--px-text) 80%, transparent));
 }
 
 .canvas-page-icon:hover {
@@ -3052,7 +3056,7 @@
 .canvas-affordance-btn {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--px-text-faint);
   font-size: var(--parallx-fontSize-md);
   cursor: pointer;
   padding: 2px 6px;
@@ -3065,8 +3069,8 @@
 }
 
 .canvas-affordance-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.6);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
+  color: var(--px-text-secondary);
 }
 
 .canvas-affordance-btn span {
@@ -3095,7 +3099,7 @@
 
 .canvas-page-title:empty::before {
   content: attr(data-placeholder);
-  color: rgba(255, 255, 255, 0.2);
+  color: var(--px-text-faint);
   pointer-events: none;
 }
 
@@ -3110,9 +3114,9 @@
   z-index: 1002;
   min-width: 240px;
   background: var(--vscode-menu-background);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
   border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--px-shadow-lg);
   padding: 8px;
   animation: slashMenuFadeIn 0.12s ease-out;
 }
@@ -3120,10 +3124,10 @@
 .canvas-page-menu-label {
   font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.35);
+  text-transform: none;
+  color: var(--px-text-faint);
   padding: 4px 8px;
-  letter-spacing: 0.05em;
+  letter-spacing: normal;
 }
 
 /* ── Font picker (open-ended list, self-previewing) ── */
@@ -3170,11 +3174,11 @@
 }
 
 .canvas-page-menu-font-row:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
 }
 
 .canvas-page-menu-font-row--active {
-  background: rgba(35, 131, 226, 0.12);
+  background: var(--px-surface-selected);
 }
 
 .canvas-page-menu-font-pick {
@@ -3188,8 +3192,8 @@
   border: none;
   cursor: pointer;
   text-align: left;
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 15px;
+  color: var(--px-text);
+  font-size: var(--px-text-md);
 }
 
 .canvas-page-menu-font-row--active .canvas-page-menu-font-pick {
@@ -3206,11 +3210,11 @@
   display: none;
   flex: 0 0 auto;
   font-family: var(--parallx-fontFamily-ui);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: var(--px-text-xs);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--px-text-faint);
+  border: 1px solid color-mix(in srgb, var(--px-text) 14%, transparent);
   border-radius: 4px;
   padding: 1px 5px;
 }
@@ -3242,14 +3246,14 @@
   border: none;
   background: none;
   border-radius: var(--parallx-radius-sm);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--px-text-muted);
   cursor: pointer;
   transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-page-menu-font-action:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.9);
+  background: color-mix(in srgb, var(--px-text) 10%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-page-menu-font-row--default .canvas-page-menu-font-action--pin {
@@ -3270,7 +3274,7 @@
   background: none;
   border: none;
   border-radius: var(--parallx-radius-md);
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--px-text-secondary);
   font-size: var(--parallx-fontSize-md);
   font-family: var(--parallx-fontFamily-ui);
   cursor: pointer;
@@ -3278,8 +3282,8 @@
 }
 
 .canvas-page-menu-font-upload:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.95);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-page-menu-toggle {
@@ -3293,7 +3297,7 @@
 }
 
 .canvas-page-menu-toggle:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
 }
 
 .canvas-page-menu-toggle-label {
@@ -3301,14 +3305,14 @@
   align-items: center;
   gap: 4px;
   font-size: var(--parallx-fontSize-lg);
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--px-text);
 }
 
 .canvas-page-menu-switch {
   width: 32px;
   height: 18px;
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--px-text) 15%, transparent);
   position: relative;
   transition: background-color var(--px-dur-base) var(--px-ease);
   flex-shrink: 0;
@@ -3322,7 +3326,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.7);
+  background: color-mix(in srgb, var(--px-text) 70%, transparent);
   transition: transform var(--px-dur-base) var(--px-ease), background-color var(--px-dur-base) var(--px-ease);
 }
 
@@ -3337,7 +3341,7 @@
 
 .canvas-page-menu-divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
   margin: 4px 0;
 }
 
@@ -3350,7 +3354,7 @@
   padding: 6px 8px;
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   border-radius: 4px;
@@ -3359,7 +3363,7 @@
 }
 
 .canvas-page-menu-action:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
 }
 
 .canvas-page-menu-action--danger {
@@ -3367,7 +3371,7 @@
 }
 
 .canvas-page-menu-action--danger:hover {
-  background: rgba(241, 76, 76, 0.1);
+  background: var(--px-danger-soft);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -3379,9 +3383,9 @@
   z-index: 1003;
   width: 340px;
   background: var(--vscode-menu-background);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
   border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--px-shadow-lg);
   padding: 8px;
   animation: slashMenuFadeIn 0.12s ease-out;
 }
@@ -3390,14 +3394,14 @@
   display: flex;
   gap: 4px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
   margin-bottom: 8px;
 }
 
 .canvas-image-insert-tab {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--px-text-muted);
   font-size: var(--parallx-fontSize-md);
   padding: 4px 12px;
   cursor: pointer;
@@ -3407,12 +3411,12 @@
 }
 
 .canvas-image-insert-tab:hover {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--px-text);
 }
 
 .canvas-image-insert-tab--active {
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--px-text);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
 .canvas-image-insert-content {
@@ -3423,10 +3427,10 @@
   display: block;
   width: 100%;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px dashed rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
   border-radius: var(--parallx-radius-lg);
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--px-text-secondary);
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   text-align: center;
@@ -3435,13 +3439,13 @@
 }
 
 .canvas-image-insert-upload-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
+  border-color: color-mix(in srgb, var(--px-text) 30%, transparent);
 }
 
 .canvas-image-insert-hint {
   font-size: var(--parallx-fontSize-sm);
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--px-text-faint);
   text-align: center;
   margin-top: 8px;
 }
@@ -3453,9 +3457,9 @@
 
 .canvas-image-insert-link-input {
   flex: 1;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   padding: 8px 12px;
   border-radius: var(--parallx-radius-md);
@@ -3498,9 +3502,9 @@
   z-index: 1003;
   width: 360px;
   background: var(--vscode-menu-background);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
   border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--px-shadow-lg);
   padding: 8px;
   animation: slashMenuFadeIn 0.12s ease-out;
 }
@@ -3509,14 +3513,14 @@
   display: flex;
   gap: 4px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
   margin-bottom: 8px;
 }
 
 .canvas-media-insert-tab {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--px-text-muted);
   font-size: var(--parallx-fontSize-md);
   padding: 4px 12px;
   cursor: pointer;
@@ -3526,12 +3530,12 @@
 }
 
 .canvas-media-insert-tab:hover {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--px-text);
 }
 
 .canvas-media-insert-tab--active {
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--px-text);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
 .canvas-media-insert-content {
@@ -3542,10 +3546,10 @@
   display: block;
   width: 100%;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px dashed rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
   border-radius: var(--parallx-radius-lg);
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--px-text-secondary);
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   text-align: center;
@@ -3554,13 +3558,13 @@
 }
 
 .canvas-media-insert-upload-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
+  border-color: color-mix(in srgb, var(--px-text) 30%, transparent);
 }
 
 .canvas-media-insert-hint {
   font-size: var(--parallx-fontSize-sm);
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--px-text-faint);
   text-align: center;
   margin-top: 8px;
 }
@@ -3572,9 +3576,9 @@
 
 .canvas-media-insert-link-input {
   flex: 1;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   padding: 8px 12px;
   border-radius: var(--parallx-radius-md);
@@ -3617,9 +3621,9 @@
   z-index: 1003;
   width: 420px;
   background: var(--vscode-menu-background);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
   border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--px-shadow-lg);
   padding: 10px;
   animation: slashMenuFadeIn 0.12s ease-out;
 }
@@ -3627,7 +3631,7 @@
 .canvas-bookmark-insert-title {
   font-size: var(--parallx-fontSize-md);
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--px-text);
   margin-bottom: 8px;
 }
 
@@ -3638,9 +3642,9 @@
 
 .canvas-bookmark-insert-input {
   flex: 1;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   padding: 8px 12px;
   border-radius: var(--parallx-radius-md);
@@ -3681,9 +3685,9 @@
   z-index: 1100;
   min-width: 120px;
   background: var(--vscode-menu-background);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
   border-radius: var(--parallx-radius-lg);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--px-shadow-lg);
   padding: 4px;
   animation: slashMenuFadeIn 0.1s ease-out;
 }
@@ -3693,7 +3697,7 @@
   width: 100%;
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   padding: 6px 10px;
   text-align: left;
@@ -3703,7 +3707,7 @@
 }
 
 .canvas-input-paste-menu-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -3715,9 +3719,9 @@
   z-index: 1003;
   width: 420px;
   background: var(--vscode-menu-background);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
   border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--px-shadow-lg);
   padding: 8px;
   animation: slashMenuFadeIn 0.12s ease-out;
 }
@@ -3726,14 +3730,14 @@
   display: flex;
   gap: 4px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
   margin-bottom: 8px;
 }
 
 .canvas-cover-picker-tab {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--px-text-muted);
   font-size: var(--parallx-fontSize-md);
   padding: 4px 12px;
   cursor: pointer;
@@ -3743,12 +3747,12 @@
 }
 
 .canvas-cover-picker-tab:hover {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--px-text);
 }
 
 .canvas-cover-picker-tab--active {
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--px-text);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
 .canvas-cover-picker-content {
@@ -3766,22 +3770,22 @@
   border-radius: var(--parallx-radius-md);
   cursor: pointer;
   transition: transform var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
 }
 
 .canvas-cover-swatch:hover {
   transform: scale(1.05);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--px-shadow-md);
 }
 
 .canvas-cover-upload-btn {
   display: block;
   width: 100%;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px dashed rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
   border-radius: var(--parallx-radius-lg);
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--px-text-secondary);
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   text-align: center;
@@ -3790,13 +3794,13 @@
 }
 
 .canvas-cover-upload-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
+  border-color: color-mix(in srgb, var(--px-text) 30%, transparent);
 }
 
 .canvas-cover-upload-hint {
   font-size: var(--parallx-fontSize-sm);
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--px-text-faint);
   text-align: center;
   margin-top: 8px;
 }
@@ -3815,9 +3819,9 @@
 
 .canvas-cover-link-input {
   flex: 1;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   padding: 8px 12px;
   border-radius: var(--parallx-radius-md);
@@ -3918,9 +3922,9 @@
 .canvas-sidebar-section-label {
   font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.35);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--px-text-faint);
+  text-transform: none;
+  letter-spacing: normal;
   padding: 8px 12px 4px;
   user-select: none;
 }
@@ -3959,7 +3963,7 @@
   height: 20px;
   border: none;
   background: none;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--px-text-faint);
   border-radius: var(--parallx-radius-sm);
   cursor: pointer;
   padding: 0;
@@ -3967,8 +3971,8 @@
 }
 
 .canvas-node-action-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.8);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
+  color: var(--px-text);
 }
 
 /* ── Sidebar Page Options Popup ── */
@@ -3981,8 +3985,8 @@
   padding: 8px;
   border-radius: 10px;
   background: var(--vscode-menu-background);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
+  box-shadow: var(--px-shadow-lg);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -3999,10 +4003,10 @@
   width: var(--canvas-sidebar-page-menu-control-height);
   min-width: var(--canvas-sidebar-page-menu-control-height);
   height: var(--canvas-sidebar-page-menu-control-height);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   border-radius: var(--parallx-radius-lg);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.78);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  color: var(--px-text-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4011,12 +4015,12 @@
 }
 
 .canvas-sidebar-page-menu__icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
+  border-color: color-mix(in srgb, var(--px-text) 16%, transparent);
 }
 
 .canvas-sidebar-page-menu__icon-btn--empty {
-  color: rgba(255, 255, 255, 0.42);
+  color: var(--px-text-faint);
 }
 
 .canvas-sidebar-page-menu__title {
@@ -4035,8 +4039,8 @@
   height: var(--canvas-sidebar-page-menu-control-height);
   padding: 0 10px;
   border-radius: var(--parallx-radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
   color: var(--vscode-input-foreground);
   font: inherit;
   line-height: calc(var(--canvas-sidebar-page-menu-control-height) - 2px);
@@ -4051,13 +4055,13 @@
 .canvas-sidebar-page-menu__divider {
   height: 1px;
   margin: 4px 0;
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
 .canvas-sidebar-page-menu__action {
   border: none;
   background: none;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--px-text);
   min-height: var(--px-control-h);
   border-radius: var(--parallx-radius-lg);
   display: flex;
@@ -4069,7 +4073,7 @@
 }
 
 .canvas-sidebar-page-menu__action:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
 .canvas-sidebar-page-menu__action--danger {
@@ -4077,7 +4081,7 @@
 }
 
 .canvas-sidebar-page-menu__action--danger:hover {
-  background: rgba(255, 77, 77, 0.12);
+  background: var(--px-danger-soft);
 }
 
 .canvas-sidebar-page-menu__action-label {
@@ -4280,9 +4284,9 @@
   z-index: 1010;
   min-width: 200px;
   background: var(--vscode-menu-background);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
   border-radius: var(--parallx-radius-lg);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--px-shadow-lg);
   padding: 4px;
   animation: slashMenuFadeIn 0.1s ease-out;
 }
@@ -4334,7 +4338,7 @@
 
 
 .canvas-tiptap-editor .tiptap-math.latex:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
 }
 
 .canvas-tiptap-editor .tiptap-math.latex .katex {
@@ -4350,12 +4354,12 @@
 }
 
 .canvas-math-block--editing {
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--px-text) 3%, transparent);
   border-radius: 4px;
 }
 
 .canvas-math-block.ProseMirror-selectednode {
-  outline: 2px solid rgba(45, 170, 219, 0.5);
+  outline: 2px solid rgba(var(--px-accent-rgb), 0.5);
   outline-offset: 2px;
 }
 
@@ -4374,7 +4378,7 @@
 }
 
 .canvas-math-block-empty {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--px-text-faint);
   font-style: italic;
   font-size: var(--parallx-fontSize-lg);
   user-select: none;
@@ -4393,9 +4397,9 @@
   gap: 6px;
   padding: 6px 6px 6px 10px;
   background: var(--vscode-editor-background);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   border-radius: var(--parallx-radius-lg);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--px-shadow-md);
   min-width: 600px;
   max-width: 900px;
 }
@@ -4407,9 +4411,9 @@
   font-family: var(--parallx-fontFamily-mono);
   font-size: var(--parallx-fontSize-lg);
   line-height: 1.4;
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--px-text);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
   border-radius: 4px;
   outline: none;
   box-sizing: border-box;
@@ -4421,11 +4425,11 @@
 }
 
 .canvas-math-block-input:focus {
-  border-color: rgba(45, 170, 219, 0.5);
+  border-color: rgba(var(--px-accent-rgb), 0.5);
 }
 
 .canvas-math-block-input::placeholder {
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--px-text-faint);
   font-family: inherit;
 }
 
@@ -4464,9 +4468,9 @@
   gap: 6px;
   padding: 10px 12px;
   background: var(--vscode-editorWidget-background);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
   border-radius: var(--parallx-radius-md);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--px-shadow-md);
   min-width: 240px;
   max-width: 380px;
 }
@@ -4477,9 +4481,9 @@
   font-family: var(--parallx-fontFamily-mono);
   font-size: var(--parallx-fontSize-md);
   line-height: 1.5;
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--px-text);
+  background: var(--px-bg-inset);
+  border: 1px solid var(--px-border);
   border-radius: 4px;
   outline: none;
   transition: border-color var(--px-dur-base) var(--px-ease);
@@ -4487,18 +4491,18 @@
 }
 
 .canvas-inline-math-input:focus {
-  border-color: rgba(45, 170, 219, 0.6);
+  border-color: rgba(var(--px-accent-rgb), 0.6);
 }
 
 .canvas-inline-math-input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--px-text-faint);
 }
 
 .canvas-inline-math-preview {
   text-align: center;
   min-height: 20px;
   padding: 4px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
 }
 
 .canvas-inline-math-preview .katex {
@@ -4506,14 +4510,14 @@
 }
 
 .canvas-inline-math-preview-empty {
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--px-text-faint);
   font-style: italic;
   font-size: var(--parallx-fontSize-base);
 }
 
 .canvas-inline-math-hint {
   font-size: var(--parallx-fontSize-sm);
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--px-text-faint);
   text-align: center;
 }
 
@@ -4595,7 +4599,7 @@
   display: none;
   position: fixed;
   width: 2px;
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--px-text) 15%, transparent);
   border-radius: 1px;
   pointer-events: none;
   z-index: 55;
@@ -4614,7 +4618,7 @@
   display: none;
   position: absolute;
   width: 3px;
-  background: rgba(37, 99, 235, 0.7);
+  background: var(--px-accent);
   border-radius: 2px;
   z-index: 50;
   pointer-events: none;
@@ -4626,7 +4630,7 @@
   display: none;
   position: absolute;
   height: 3px;
-  background: rgba(37, 99, 235, 0.7);
+  background: var(--px-accent);
   border-radius: 2px;
   z-index: 50;
   pointer-events: none;
@@ -4635,7 +4639,7 @@
 
 /* Placeholder text style inside columns */
 .canvas-column .is-empty::before {
-  color: rgba(255, 255, 255, 0.2);
+  color: var(--px-text-faint);
   font-style: italic;
 }
 
@@ -4649,9 +4653,9 @@
   width: 340px;
   max-height: 420px;
   background: var(--vscode-editorWidget-background, #1e1e2e);
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  border: 1px solid rgba(var(--px-accent-rgb), 0.3);
   border-radius: 10px;
-  box-shadow: 0 8px 32px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.6)), 0 0 0 1px rgba(139, 92, 246, 0.1);
+  box-shadow: var(--px-shadow-lg);
   overflow: hidden;
   animation: canvasAIChatFadeIn 0.15s ease-out;
 }
@@ -4666,20 +4670,20 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
+  border-bottom: 1px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 6%, transparent));
 }
 
 .canvas-ai-chat-title {
   font-size: var(--parallx-fontSize-base);
   font-weight: 600;
-  color: rgba(139, 92, 246, 0.9);
+  color: rgba(var(--px-accent-rgb), 0.9);
   letter-spacing: 0.3px;
 }
 
 .canvas-ai-chat-close {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--px-text-faint);
   cursor: pointer;
   font-size: var(--parallx-fontSize-lg);
   width: 22px;
@@ -4692,8 +4696,8 @@
 }
 
 .canvas-ai-chat-close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.8);
+  background: color-mix(in srgb, var(--px-text) 8%, transparent);
+  color: var(--px-text);
 }
 
 /* Messages area */
@@ -4718,22 +4722,22 @@
   flex-direction: column;
   gap: 2px;
   padding: 6px 8px;
-  background: rgba(139, 92, 246, 0.06);
+  background: rgba(var(--px-accent-rgb), 0.06);
   border-radius: var(--parallx-radius-md);
-  border-left: 2px solid rgba(139, 92, 246, 0.3);
+  border-left: 2px solid rgba(var(--px-accent-rgb), 0.3);
 }
 
 .canvas-ai-chat-context-label {
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
   font-weight: 600;
-  color: rgba(139, 92, 246, 0.7);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: rgba(var(--px-accent-rgb), 0.7);
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .canvas-ai-chat-context-excerpt {
   font-size: var(--parallx-fontSize-sm);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--px-text-muted);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4753,17 +4757,17 @@
 }
 
 .canvas-ai-chat-msg--user .canvas-ai-chat-msg-content {
-  background: rgba(139, 92, 246, 0.15);
-  border: 1px solid rgba(139, 92, 246, 0.2);
+  background: rgba(var(--px-accent-rgb), 0.15);
+  border: 1px solid rgba(var(--px-accent-rgb), 0.2);
   border-radius: 10px 10px 2px 10px;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--px-text);
 }
 
 .canvas-ai-chat-msg--assistant .canvas-ai-chat-msg-content {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  border: 1px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 6%, transparent));
   border-radius: 10px 10px 10px 2px;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--px-text);
 }
 
 .canvas-ai-chat-msg-content {
@@ -4788,8 +4792,8 @@
 
 .canvas-ai-chat-action-btn {
   background: none;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.55);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
+  color: var(--px-text-muted);
   cursor: pointer;
   font-size: var(--parallx-fontSize-sm);
   padding: 3px 8px;
@@ -4799,19 +4803,19 @@
 }
 
 .canvas-ai-chat-action-btn:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.85);
+  border-color: color-mix(in srgb, var(--px-text) 20%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-ai-chat-replace:hover {
-  background: rgba(34, 197, 94, 0.12);
-  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(var(--px-green-rgb), 0.12);
+  border-color: rgba(var(--px-green-rgb), 0.3);
   color: var(--vscode-testing-iconPassed, #4ade80);
 }
 
 .canvas-ai-chat-send-to-chat:hover {
-  background: rgba(139, 92, 246, 0.12);
-  border-color: rgba(139, 92, 246, 0.3);
+  background: rgba(var(--px-accent-rgb), 0.12);
+  border-color: rgba(var(--px-accent-rgb), 0.3);
   color: var(--vscode-textLink-foreground);
 }
 
@@ -4821,15 +4825,15 @@
   align-items: flex-end;
   gap: 6px;
   padding: 8px 12px;
-  border-top: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
+  border-top: 1px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 6%, transparent));
 }
 
 .canvas-ai-chat-input {
   flex: 1;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--px-text) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   border-radius: var(--parallx-radius-md);
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   font-family: inherit;
   padding: 6px 8px;
@@ -4842,17 +4846,17 @@
 }
 
 .canvas-ai-chat-input:focus {
-  border-color: rgba(139, 92, 246, 0.4);
+  border-color: rgba(var(--px-accent-rgb), 0.4);
 }
 
 .canvas-ai-chat-input::placeholder {
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--px-text-faint);
 }
 
 .canvas-ai-chat-send {
-  background: rgba(139, 92, 246, 0.15);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  color: rgba(139, 92, 246, 0.9);
+  background: rgba(var(--px-accent-rgb), 0.15);
+  border: 1px solid rgba(var(--px-accent-rgb), 0.3);
+  color: rgba(var(--px-accent-rgb), 0.9);
   cursor: pointer;
   font-size: var(--parallx-fontSize-lg);
   width: 32px;
@@ -4867,7 +4871,7 @@
 }
 
 .canvas-ai-chat-send:hover {
-  background: rgba(139, 92, 246, 0.25);
+  background: rgba(var(--px-accent-rgb), 0.25);
 }
 
 
@@ -4921,9 +4925,9 @@
   width: min(820px, 94vw);
   height: min(620px, 86vh);
   background: var(--vscode-editor-background, #1e1e1e);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
   border-radius: var(--parallx-radius-lg, 8px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--px-shadow-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4934,22 +4938,22 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
 }
-.canvas-vh-title { font-size: 15px; font-weight: 600; color: var(--vscode-foreground, rgba(255,255,255,0.95)); }
+.canvas-vh-title { font-size: var(--px-text-md); font-weight: 600; color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 95%, transparent)); }
 .canvas-vh-close {
-  background: none; border: none; color: rgba(255,255,255,0.55);
-  font-size: 22px; line-height: 1; cursor: pointer; padding: 2px 8px;
+  background: none; border: none; color: var(--px-text-muted);
+  font-size: var(--px-text-xl); line-height: 1; cursor: pointer; padding: 2px 8px;
   border-radius: var(--parallx-radius-sm);
 }
-.canvas-vh-close:hover { background: rgba(255,255,255,0.08); color: var(--vscode-foreground, #fff); }
+.canvas-vh-close:hover { background: color-mix(in srgb, var(--px-text) 8%, transparent); color: var(--vscode-foreground, #fff); }
 .canvas-vh-body { display: flex; flex: 1; min-height: 0; }
 .canvas-vh-list {
   width: 260px; flex-shrink: 0; overflow-y: auto;
-  border-right: 1px solid rgba(255,255,255,0.06); padding: 8px;
+  border-right: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent); padding: 8px;
   display: flex; flex-direction: column; gap: 2px;
 }
-.canvas-vh-empty { padding: 16px; font-size: 12px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
+.canvas-vh-empty { padding: 16px; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .canvas-vh-item {
   display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
   width: 100%; text-align: left; padding: 8px 10px; border: none;
@@ -4958,35 +4962,35 @@
 }
 .canvas-vh-item:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
 .canvas-vh-item--active { background: color-mix(in srgb, var(--vscode-focusBorder, #5b9bd5) 18%, transparent); }
-.canvas-vh-item-when { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.canvas-vh-item-sub { font-size: 11px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent); }
+.canvas-vh-item-when { display: flex; align-items: center; gap: 8px; font-size: var(--px-text-base); }
+.canvas-vh-item-sub { font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .canvas-vh-badge {
   font-size: 10px; padding: 1px 6px; border-radius: 999px; font-weight: 600;
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
   color: var(--vscode-foreground, #ddd);
 }
-.canvas-vh-badge[data-source="ai"] { background: transparent; color: var(--px-accent);
+.canvas-vh-badge[data-source="ai"] { background: transparent; color: var(--px-accent-text);
   border: 1px solid color-mix(in srgb, var(--px-accent) 45%, transparent);
 }
-.canvas-vh-badge[data-source="restore"] { background: color-mix(in srgb, var(--px-warning, #e3b341) 35%, transparent); color: #fff; }
+.canvas-vh-badge[data-source="restore"] { background: color-mix(in srgb, var(--px-warning, #e3b341) 35%, transparent); color: var(--px-text); }
 .canvas-vh-preview { flex: 1; min-width: 0; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
-.canvas-vh-preview-hint { font-size: 12px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
-.canvas-vh-preview-meta { font-size: 12px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent); }
+.canvas-vh-preview-hint { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.canvas-vh-preview-meta { font-size: var(--px-text-sm); color: var(--px-text-secondary); }
 .canvas-vh-preview-text {
-  flex: 1; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.55;
+  flex: 1; white-space: pre-wrap; word-break: break-word; font-size: var(--px-text-base); line-height: 1.55;
   color: var(--vscode-foreground, #ddd);
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 4%, transparent);
   border-radius: 6px; padding: 12px 14px;
 }
 .canvas-vh-preview-actions { display: flex; align-items: center; gap: 12px; }
 .canvas-vh-restore {
-  padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer;
+  padding: 6px 14px; font: inherit; font-size: var(--px-text-base); cursor: pointer;
   color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #0e639c);
   border: none; border-radius: 5px;
 }
 .canvas-vh-restore:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
 .canvas-vh-restore:disabled { opacity: 0.55; cursor: default; }
-.canvas-vh-status { font-size: 12px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); }
+.canvas-vh-status { font-size: var(--px-text-sm); color: var(--px-text-secondary); }
 .canvas-vh-status.is-error { color: var(--px-danger, #f85149); }
 
 /* ── AI-handoff shimmer (M89 S3 — presence) ────────────────────────────────

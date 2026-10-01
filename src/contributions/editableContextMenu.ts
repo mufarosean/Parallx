@@ -468,8 +468,8 @@ export class EditableContextMenu extends Disposable {
       { id: 'cut',         label: 'Cut',                 keybinding: `${mod}+X`,        group: '2_clipboard', disabled: !menuState.editFlags.canCut && !hasSel },
       { id: 'copy',        label: 'Copy',                keybinding: `${mod}+C`,        group: '2_clipboard', disabled: !menuState.editFlags.canCopy && !hasSel },
       { id: 'paste',       label: 'Paste',               keybinding: `${mod}+V`,        group: '2_clipboard', disabled: !menuState.editFlags.canPaste && !hasClip },
-      { id: 'paste-plain', label: 'Paste as plain text', keybinding: `${mod}+Shift+V`, group: '2_clipboard', disabled: !menuState.editFlags.canPaste && !hasClip },
-      { id: 'select-all',  label: 'Select all',          keybinding: `${mod}+A`,        group: '3_selection', disabled: !menuState.editFlags.canSelectAll },
+      { id: 'paste-plain', label: 'Paste as Plain Text', keybinding: `${mod}+Shift+V`, group: '2_clipboard', disabled: !menuState.editFlags.canPaste && !hasClip },
+      { id: 'select-all',  label: 'Select All',          keybinding: `${mod}+A`,        group: '3_selection', disabled: !menuState.editFlags.canSelectAll },
     ];
 
     const menu = ContextMenu.show({

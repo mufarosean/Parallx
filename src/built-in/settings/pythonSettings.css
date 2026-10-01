@@ -18,8 +18,8 @@
   margin: 0;
   font-size: var(--px-text-sm, 12px);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--px-text-muted);
 }
 
@@ -64,8 +64,8 @@
 
 .pysettings__fact-label {
   font-size: var(--px-text-xs, 11px);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--px-text-faint);
 }
 
@@ -87,16 +87,22 @@
 }
 
 .pysettings__btn {
-  padding: 5px 12px;
   border: 1px solid var(--px-border);
-  border-radius: var(--px-radius-sm, 4px);
   background: var(--px-bg-elevated);
   color: var(--px-text);
-  font-size: var(--px-text-sm, 12px);
   font-family: inherit;
   cursor: pointer;
   transition: background var(--px-dur-fast, 120ms) var(--px-ease, ease),
               border-color var(--px-dur-fast, 120ms) var(--px-ease, ease);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .pysettings__btn:hover:not(:disabled) {
   background: var(--px-surface-hover);
@@ -266,8 +272,8 @@
 
 .pysettings__log-title {
   font-size: var(--px-text-xs, 11px);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--px-text-faint);
 }
 

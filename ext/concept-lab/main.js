@@ -5100,10 +5100,10 @@ const CL_CSS = `
   overflow-y: auto;
 }
 .cl-rail-label {
-  font-size: var(--px-text-2xs);
+  font-size: var(--px-text-xs);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--px-text-faint);
   margin-bottom: var(--px-space-2);
 }
@@ -5154,7 +5154,7 @@ const CL_CSS = `
   color: var(--px-text);
   transition: color var(--px-dur-fast) var(--px-ease);
 }
-.cl-slider-row.cl-hot .cl-slider-value { color: var(--px-accent); }
+.cl-slider-row.cl-hot .cl-slider-value { color: var(--px-accent-text); }
 .cl-slider-input {
   -webkit-appearance: none;
   appearance: none;
@@ -5205,7 +5205,7 @@ const CL_CSS = `
   font-size: var(--px-text-sm);
   color: var(--px-text);
 }
-.cl-readout-value.cl-accent { color: var(--px-accent); }
+.cl-readout-value.cl-accent { color: var(--px-accent-text); }
 
 .cl-ghost-row { display: flex; flex-wrap: wrap; gap: var(--px-space-1); align-items: center; }
 .cl-ghost-btn {
@@ -5388,7 +5388,7 @@ const CL_CSS = `
   font-size: var(--px-text-sm);
   color: var(--px-text);
 }
-.cl-term.cl-primary .cl-term-val { color: var(--px-accent); font-weight: 600; }
+.cl-term.cl-primary .cl-term-val { color: var(--px-accent-text); font-weight: 600; }
 .cl-op {
   font-size: var(--px-text-md);
   color: var(--px-text-faint);
@@ -5423,7 +5423,7 @@ const CL_CSS = `
 }
 .cl-guide-icon {
   display: inline-flex;
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   flex: 0 0 auto;
   margin-top: 1px;
 }
@@ -5473,7 +5473,7 @@ const CL_CSS = `
 }
 .cl-card:active { transform: var(--px-press); }
 .cl-card-head { display: flex; align-items: center; gap: var(--px-space-2); margin-bottom: var(--px-space-2); }
-.cl-card-icon { display: inline-flex; color: var(--px-accent); }
+.cl-card-icon { display: inline-flex; color: var(--px-accent-text); }
 .cl-card-title { font-size: var(--px-text-base); font-weight: 600; }
 .cl-card-sub {
   font-size: var(--px-text-xs);
@@ -5553,7 +5553,7 @@ const CL_CSS = `
   font-size: var(--px-text-sm);
   font-weight: 600;
 }
-.cl-predict-icon { display: inline-flex; color: var(--px-accent); }
+.cl-predict-icon { display: inline-flex; color: var(--px-accent-text); }
 .cl-predict-opts { display: flex; flex-direction: column; align-items: stretch; gap: var(--px-space-2); margin-top: var(--px-space-2); }
 .cl-predict-opt {
   font: inherit;
@@ -5583,10 +5583,10 @@ const CL_CSS = `
 /* ── Sidebar ────────────────────────────────────────────────────────── */
 .cl-side { display: flex; flex-direction: column; gap: 2px; padding: var(--px-space-2); }
 .cl-side-level {
-  font-size: var(--px-text-2xs);
+  font-size: var(--px-text-xs);
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--px-text-faint);
   padding: var(--px-space-3) var(--px-space-2) var(--px-space-1);
 }

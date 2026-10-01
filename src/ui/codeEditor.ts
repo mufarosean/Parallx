@@ -120,7 +120,7 @@ const pxHighlightStyle = HighlightStyle.define([
   { tag: [t.meta, t.annotation, t.processingInstruction], color: 'var(--px-syntax-meta)' },
   { tag: [t.invalid], color: 'var(--px-syntax-invalid)' },
   { tag: [t.heading], color: 'var(--px-syntax-keyword)', fontWeight: 'bold' },
-  { tag: [t.link, t.url], color: 'var(--px-accent)', textDecoration: 'underline' },
+  { tag: [t.link, t.url], color: 'var(--px-accent-text)', textDecoration: 'underline' },
   { tag: [t.emphasis], fontStyle: 'italic' },
   { tag: [t.strong], fontWeight: 'bold' },
   { tag: [t.strikethrough], textDecoration: 'line-through' },

@@ -170,8 +170,8 @@ function injectStyles() {
   padding: 6px 12px;
   font-size: var(--parallx-fontSize-sm, 11px);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-descriptionForeground);
   border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
@@ -248,16 +248,19 @@ function injectStyles() {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 12px;
   margin: 6px 10px 10px;
   cursor: pointer;
-  font-size: var(--parallx-fontSize-md, 13px);
   font-family: var(--parallx-fontFamily-ui);
   color: var(--vscode-button-foreground, #fff);
   background: var(--vscode-button-background, #0e639c);
   border: none;
-  border-radius: var(--parallx-radius-md, 6px);
   transition: opacity 80ms ease;
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .tg-new-chat-btn:hover { opacity: 0.85; }
 .tg-new-chat-btn .tg-icon { color: inherit; }
@@ -429,17 +432,19 @@ function injectStyles() {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: var(--px-control-h-lg);
   box-sizing: border-box;
-  padding: 0 14px;
   border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
-  border-radius: var(--parallx-radius-md, 6px);
   background: var(--vscode-editorWidget-background, var(--px-bg-elevated));
   cursor: pointer;
   font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-base, 12px);
   color: var(--vscode-foreground);
   transition: border-color 80ms ease, background 80ms ease;
+  justify-content: center;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .tg-quick-action:hover {
   border-color: var(--vscode-focusBorder, #007fd4);
@@ -600,8 +605,8 @@ function injectStyles() {
 .tg-msg-name {
   font-size: var(--parallx-fontSize-sm, 11px);
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  text-transform: none;
+  letter-spacing: normal;
 }
 /* Name styling by author type — bold, no color */
 .tg-name--user { color: var(--vscode-foreground); }
@@ -728,8 +733,8 @@ function injectStyles() {
 }
 .tg-msg--ooc .tg-msg-name {
   color: var(--vscode-descriptionForeground, #888);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+  text-transform: none;
+  letter-spacing: normal;
   font-size: var(--parallx-fontSize-sm, 11px);
 }
 .tg-msg-body em { font-style: italic; }
@@ -1210,8 +1215,8 @@ function injectStyles() {
 .tg-modal-body .tg-prompt-role {
   font-size: var(--parallx-fontSize-sm, 11px);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-descriptionForeground);
   margin-bottom: 4px;
   margin-top: 16px;
@@ -1277,8 +1282,8 @@ function injectStyles() {
 .tg-cs-section-title {
   font-size: var(--parallx-fontSize-sm, 11px);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-descriptionForeground);
   margin-bottom: 10px;
 }
@@ -1839,8 +1844,8 @@ function injectStyles() {
   margin-top: 12px;
   font-size: var(--parallx-fontSize-sm, 11px);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-descriptionForeground);
 }
 .tg-forge-section:first-child { margin-top: 0; }
@@ -8307,12 +8312,12 @@ function renderSettingsPage(container, parallx) {
   const charBudget = formGroup('Character prompt', 'Higher = richer persona, but eats history. Default 15%.', 'number', 'tokenBudgetCharacter', { min: 0, max: 90 });
   const loreBudget = formGroup('Lore / World info', 'Lorebook + long-term memory share. Default 20%.', 'number', 'tokenBudgetLore', { min: 0, max: 90 });
   const histBudget = formGroup('Chat history', 'Older turns kept in context. Default 35%.', 'number', 'tokenBudgetHistory', { min: 0, max: 90 });
-  const userBudget = formGroup('User message ✍️', 'Headroom for your latest message. Default 30%.', 'number', 'tokenBudgetUser', { min: 0, max: 90 });
+  const userBudget = formGroup('User message', 'Headroom for your latest message. Default 30%.', 'number', 'tokenBudgetUser', { min: 0, max: 90 });
   function recomputeBudgetTotal() {
     const sum = [charBudget, loreBudget, histBudget, userBudget]
       .map(i => Number(i.value) || 0).reduce((a, b) => a + b, 0);
     if (sum === 100) {
-      budgetTotalEl.textContent = `Total: ${sum}% ✓`;
+      budgetTotalEl.textContent = `Total: ${sum}%`;
       budgetTotalEl.className = 'tg-form-budget-total tg-form-budget-total--ok';
     } else if (sum === 0) {
       budgetTotalEl.textContent = 'Total: 0% (falls back to defaults)';
@@ -8681,7 +8686,7 @@ function renderCharacterEditor(container, parallx, input) {
   const maxTokInput = el('input', 'tg-ce-input');
   maxTokInput.type = 'number';
   maxTokInput.min = '0';
-  genRow.appendChild(field('Max tokens ⚡', '0 = unlimited (best for thinking models). Caps reply length, lower = faster.', maxTokInput));
+  genRow.appendChild(field('Max tokens', '0 = unlimited (best for thinking models). Caps reply length, lower = faster.', maxTokInput));
   root.appendChild(genRow);
 
   // ── "show more settings" / collapsed section ──

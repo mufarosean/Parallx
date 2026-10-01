@@ -48,7 +48,7 @@ const NAMED_OPTION_COLORS: Record<string, string> = {
   red: 'rgba(212,76,71,0.32)',
 };
 export function resolveOptionColor(color: string | undefined | null): string {
-  if (!color) return 'rgba(255, 255, 255, 0.1)';
+  if (!color) return NAMED_OPTION_COLORS.default;
   return NAMED_OPTION_COLORS[color] ?? color;
 }
 
@@ -245,6 +245,9 @@ function _createTagsEditor(
   const renderChips = () => {
     // Remove existing chips (keep the input at the end)
     const inputEl = container.querySelector('.canvas-prop-tag-input') as HTMLInputElement | null;
+    // Clearing the container detaches the input, which blurs it; put the
+    // cursor back so the next tag can be typed straight away.
+    const hadFocus = !!inputEl && document.activeElement === inputEl;
     container.innerHTML = '';
 
     for (const tag of tags) {
@@ -279,6 +282,7 @@ function _createTagsEditor(
     // Re-append or create input
     if (inputEl) {
       container.appendChild(inputEl);
+      if (hadFocus) inputEl.focus();
     } else {
       const input = document.createElement('input');
       input.className = 'canvas-prop-tag-input';

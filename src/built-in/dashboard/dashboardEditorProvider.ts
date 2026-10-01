@@ -277,7 +277,7 @@ class DashboardEditorPane implements IDisposable {
     const addBtn = el('button', 'dashboard-btn dashboard-btn--primary');
     addBtn.type = 'button';
     addBtn.dataset.activity = 'Add Widget';
-    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
+    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add Widget</span>';
     addBtn.addEventListener('click', () => void this._openWidgetPicker());
     actions.appendChild(addBtn);
 
@@ -288,7 +288,7 @@ class DashboardEditorPane implements IDisposable {
     const refreshAllBtn = el('button', 'dashboard-btn dashboard-btn--ghost');
     refreshAllBtn.type = 'button';
     refreshAllBtn.title = 'Refresh every widget on this page';
-    refreshAllBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>Refresh all</span>';
+    refreshAllBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>Refresh All</span>';
     refreshAllBtn.addEventListener('click', () => {
       for (const id of this._instances.keys()) void this._triggerManualRefresh(id);
     });
@@ -323,7 +323,7 @@ class DashboardEditorPane implements IDisposable {
 
     const revealAdd = el('button', 'dashboard-btn dashboard-btn--primary dashboard-btn--small');
     revealAdd.type = 'button';
-    revealAdd.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
+    revealAdd.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add Widget</span>';
     revealAdd.addEventListener('click', () => void this._openWidgetPicker());
     revealActions.appendChild(revealAdd);
 
@@ -360,7 +360,7 @@ class DashboardEditorPane implements IDisposable {
     `;
     const emptyAddBtn = el('button', 'dashboard-btn dashboard-btn--primary dashboard-empty__cta');
     emptyAddBtn.type = 'button';
-    emptyAddBtn.textContent = 'Add Your First Widget';
+    emptyAddBtn.textContent = 'Add Widget';
     emptyAddBtn.addEventListener('click', () => void this._openWidgetPicker());
     empty.appendChild(emptyAddBtn);
     gridWrap.appendChild(empty);
@@ -576,6 +576,9 @@ class DashboardEditorPane implements IDisposable {
     if (!this._emptyEl || !this._gridEl) return;
     this._emptyEl.classList.toggle('dashboard-empty--hidden', !empty);
     this._gridEl.classList.toggle('dashboard-grid--hidden', empty);
+    // One call to action at a time: an empty page shows the empty state's
+    // button only (nothing to refresh or schedule yet).
+    this._root?.classList.toggle('dashboard-pane--empty', empty);
   }
 
   private _mountWidget(row: DashboardWidgetRow): void {
@@ -590,6 +593,7 @@ class DashboardEditorPane implements IDisposable {
     // footer visibility via CSS. Defaults to full 'card' chrome.
     card.dataset.chrome = typeReg?.chromeStyle ?? 'card';
     card.style.gridRow = `${row.placement.row + 1} / span ${row.placement.rowSpan}`;
+    card.style.setProperty('--dashboard-row-span', String(row.placement.rowSpan));
     card.style.gridColumn = `${row.placement.col + 1} / span ${row.placement.colSpan}`;
     this._applyAppearance(card, row.appearance);
 
@@ -1096,19 +1100,18 @@ class DashboardEditorPane implements IDisposable {
       // ── Templates rail (M86 C3): preconfigured recipes — one click adds
       // a fully configured widget. Only recipes whose type is currently
       // registered are shown, so a disabled extension hides its recipes.
+      const grid = el('div', 'dashboard-picker__grid');
       const recipes = WIDGET_TEMPLATES.filter((r) => this._registry.getWidgetType(r.typeId));
       if (recipes.length > 0) {
-        const tHead = el('div', 'dashboard-picker__section');
+        // Templates are the first section of the scrolling list, titled and
+        // aligned like every other section (they were a fixed rail above it).
+        const tSection = el('div', 'dashboard-picker__section');
+        const tHead = el('div', 'dashboard-picker__section-title');
         tHead.textContent = 'Templates';
-        sheet.appendChild(tHead);
+        tSection.appendChild(tHead);
         const rail = el('div', 'dashboard-picker__templates');
-        // A mouse wheel only produces vertical deltas, so a horizontal rail
-        // is unreachable without this: translate wheel to horizontal scroll.
-        rail.addEventListener('wheel', (e: WheelEvent) => {
-          if (e.deltaY === 0 || e.shiftKey) return;
-          e.preventDefault();
-          rail.scrollLeft += e.deltaY;
-        }, { passive: false });
+        // The templates wrap into a grid now (dashboard.css), so the wheel
+        // scrolls the dialog as usual — no sideways translation.
         for (const recipe of recipes) {
           const tile = el('button', 'dashboard-picker__template');
           tile.setAttribute('type', 'button');
@@ -1134,10 +1137,10 @@ class DashboardEditorPane implements IDisposable {
           });
           rail.appendChild(tile);
         }
-        sheet.appendChild(rail);
+        tSection.appendChild(rail);
+        grid.appendChild(tSection);
       }
 
-      const grid = el('div', 'dashboard-picker__grid');
       const grouped = new Map<string, WidgetTypeRegistration<unknown>[]>();
       for (const t of types) {
         const k = t.category;
@@ -1235,23 +1238,13 @@ class DashboardEditorPane implements IDisposable {
   }
 
   /**
-   * Naive bottom-stack placement: drop the new widget below the current
-   * lowest row, left-aligned. Phase 5's drag/resize lets the user move it.
-   * Avoids overlap detection complexity for now.
+   * First-fit placement: the first free spot reading left to right, top to
+   * bottom, so new widgets fill the row beside the last one instead of all
+   * stacking in the left column. Falls back to below the lowest row.
    */
   private async _nextPlacement(size: { colSpan: number; rowSpan: number }): Promise<WidgetPlacement> {
     const widgets = await this._data.listWidgets(this._pageId);
-    let maxRow = -1;
-    for (const w of widgets) {
-      const bottom = w.placement.row + w.placement.rowSpan - 1;
-      if (bottom > maxRow) maxRow = bottom;
-    }
-    return {
-      row: maxRow + 1,
-      col: 0,
-      rowSpan: Math.max(1, size.rowSpan),
-      colSpan: Math.min(DASHBOARD_GRID_COLS, Math.max(1, size.colSpan)),
-    };
+    return firstFitPlacement(widgets.map((w) => w.placement), size, DASHBOARD_GRID_COLS);
   }
 
   // ── Drag-to-move ───────────────────────────────────────────────────────
@@ -1330,6 +1323,7 @@ class DashboardEditorPane implements IDisposable {
         setTimeout(() => card.removeEventListener('click', cancelClick, { capture: true } as EventListenerOptions), 60);
         if (lastTarget.col !== origPlacement.col || lastTarget.row !== origPlacement.row) {
           card.style.gridRow = `${lastTarget.row + 1} / span ${lastTarget.rowSpan}`;
+          card.style.setProperty('--dashboard-row-span', String(lastTarget.rowSpan));
           card.style.gridColumn = `${lastTarget.col + 1} / span ${lastTarget.colSpan}`;
           try {
             await this._data.updateWidgetPlacement(widgetId, lastTarget);
@@ -1431,6 +1425,7 @@ class DashboardEditorPane implements IDisposable {
         lastTarget = { col, row, colSpan, rowSpan };
         card.style.gridColumn = `${col + 1} / span ${colSpan}`;
         card.style.gridRow = `${row + 1} / span ${rowSpan}`;
+        card.style.setProperty('--dashboard-row-span', String(rowSpan));
       };
       const onMove = (ev: PointerEvent) => {
         pendingDx = ev.clientX - startX;
@@ -1456,6 +1451,7 @@ class DashboardEditorPane implements IDisposable {
             // Revert to the original placement on failure.
             card.style.gridColumn = `${origPlacement.col + 1} / span ${origPlacement.colSpan}`;
             card.style.gridRow = `${origPlacement.row + 1} / span ${origPlacement.rowSpan}`;
+            card.style.setProperty('--dashboard-row-span', String(origPlacement.rowSpan));
           }
         }
       };
@@ -1556,4 +1552,24 @@ class DashboardEditorPane implements IDisposable {
     }
     this._container.classList.remove('dashboard-pane-host');
   }
+}
+
+/** First free rectangle of `size` on a `cols`-wide grid, scanning rows top-down and columns left-right. */
+export function firstFitPlacement(
+  taken: readonly WidgetPlacement[],
+  size: { colSpan: number; rowSpan: number },
+  cols: number,
+): WidgetPlacement {
+  const colSpan = Math.min(cols, Math.max(1, size.colSpan));
+  const rowSpan = Math.max(1, size.rowSpan);
+  let maxRow = -1;
+  for (const t of taken) maxRow = Math.max(maxRow, t.row + t.rowSpan - 1);
+  const overlaps = (row: number, col: number): boolean => taken.some((t) =>
+    row < t.row + t.rowSpan && t.row < row + rowSpan && col < t.col + t.colSpan && t.col < col + colSpan);
+  for (let row = 0; row <= maxRow + 1; row++) {
+    for (let col = 0; col + colSpan <= cols; col++) {
+      if (!overlaps(row, col)) return { row, col, rowSpan, colSpan };
+    }
+  }
+  return { row: maxRow + 1, col: 0, rowSpan, colSpan };
 }

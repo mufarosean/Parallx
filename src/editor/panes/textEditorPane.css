@@ -141,7 +141,7 @@
 }
 
 .text-editor-textarea::placeholder {
-  color: var(--vscode-descriptionForeground);
+  color: var(--px-text-faint);
   font-style: italic;
 }
 

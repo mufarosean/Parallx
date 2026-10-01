@@ -37,7 +37,7 @@
   padding: 0;
 }
 .search-toggle-replace:hover { background: var(--px-surface-hover); color: var(--px-text); }
-.search-toggle-replace.active { color: var(--px-accent); }
+.search-toggle-replace.active { color: var(--px-accent-text); }
 .search-toggle-replace svg { width: 12px; height: 12px; }
 
 .search-input-rows {
@@ -83,7 +83,7 @@
 .search-option-btn {
   border: none;
   background: transparent;
-  color: var(--px-text-muted);
+  color: var(--px-text-secondary);
   font-size: var(--px-text-xs, 11px);
   font-family: var(--vscode-editor-font-family, monospace);
   width: 20px;
@@ -98,7 +98,7 @@
 .search-option-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .search-option-btn.active {
   background: var(--px-accent-soft);
-  color: var(--px-accent);
+  color: var(--px-accent-text);
 }
 
 /* ── Include / exclude filters ─────────────────────────────────────────── */
@@ -110,7 +110,7 @@
 .search-filters-toggle {
   border: none;
   background: transparent;
-  color: var(--px-text-faint);
+  color: var(--px-text-muted);
   font-size: var(--px-text-xs, 11px);
   cursor: pointer;
   padding: 2px 4px;

@@ -22,7 +22,7 @@
 }
 
 .ui-textarea__input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #888);
+  color: var(--px-text-faint);
 }
 
 .ui-textarea__input:focus {

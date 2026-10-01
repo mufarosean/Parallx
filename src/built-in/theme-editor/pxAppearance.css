@@ -153,7 +153,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
+  height: var(--px-control-h);
+  box-sizing: border-box;
+  padding: 0 14px;
   border: 0;
   border-radius: var(--px-radius-sm, 4px);
   background: transparent;
@@ -316,7 +318,7 @@
 .px-pv-muted kbd {
   display: inline-block;
   font-family: var(--px-font-mono, monospace);
-  font-size: 10px;
+  font-size: var(--px-text-2xs);
   padding: 1px 5px;
   margin: 0 1px;
   color: var(--px-text-secondary);
@@ -340,7 +342,7 @@
 }
 .px-pv-link {
   font-size: var(--px-text-sm, 12px);
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   text-decoration: none;
 }
 .px-pv-link:hover { text-decoration: underline; }
@@ -430,7 +432,7 @@
   border: none;
   border-left: 1px solid var(--px-border);
   color: var(--px-text-faint);
-  font-size: 15px;
+  font-size: var(--px-text-md);
   line-height: 1;
   cursor: pointer;
   transition: color var(--px-dur-fast, 90ms) var(--px-ease, ease),

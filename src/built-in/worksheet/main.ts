@@ -783,17 +783,21 @@ function createSidebarView(container: HTMLElement) {
     if (disposed) return;
     root.replaceChildren();
     const nav = el('div', 'ws-nav');
-    const navItem = (label: string, instanceId: string, tabTitle: string, tip: string) => {
-      const b = el('button', 'ws-nav__item', label) as HTMLButtonElement;
+    // Same row shape as every other tool's sidebar: icon, then label.
+    const navItem = (label: string, icon: string, instanceId: string, tabTitle: string, tip: string) => {
+      const b = el('button', 'ws-nav__item') as HTMLButtonElement;
       b.type = 'button';
       b.title = tip;
+      const ic = el('span', 'ws-nav__icon');
+      try { ic.innerHTML = _api?.icons?.createIconHtml?.(icon, 16) ?? ''; } catch { /* label alone */ }
+      b.append(ic, el('span', 'ws-nav__label', label));
       b.addEventListener('click', () => void openWorksheet(instanceId, tabTitle));
       nav.appendChild(b);
     };
-    navItem('Home', 'home', 'Worksheets', 'Quiz, dashboard, bank, import, generate, scratch sheet');
-    navItem('Dashboard', 'dashboard', 'Dashboard', 'Progress, pace, the campaign, what to work on next');
-    navItem('Quizzes', 'quizzes', 'Quizzes', 'Every quiz, open and completed: resume, rename, copy, reopen, delete');
-    navItem('Settings', 'settings', 'Worksheets Settings', 'The campaign and the sheet appearance');
+    navItem('Home', 'home', 'home', 'Worksheets', 'Quiz, dashboard, bank, import, generate, scratch sheet');
+    navItem('Dashboard', 'layout-dashboard', 'dashboard', 'Dashboard', 'Progress, pace, the campaign, what to work on next');
+    navItem('Quizzes', 'list-checks', 'quizzes', 'Quizzes', 'Every quiz, open and completed: resume, rename, copy, reopen, delete');
+    navItem('Settings', 'settings', 'settings', 'Worksheets Settings', 'The campaign and the sheet appearance');
     root.appendChild(nav);
     if (items.length === 0) return;
     renderBankSnapshot(root, items);
@@ -876,11 +880,20 @@ function createLauncherPane(container: HTMLElement) {
       b.addEventListener('click', () => void openPastQuiz(open.id));
       acts.appendChild(b);
     }
-    const start = el('button', open ? 'ws-btn ws-btn--quiet' : 'ws-btn ws-btn--primary', open ? 'New Quiz' : 'Start Quiz') as HTMLButtonElement;
-    start.type = 'button';
-    start.title = 'The quiz builder: papers, sources, kinds, a rating band, a length.';
-    start.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
-    acts.appendChild(start);
+    if (!open && problems.length === 0) {
+      // Nothing to quiz yet: the one action that matters is the import.
+      const imp = el('button', 'ws-btn ws-btn--primary', 'Import Workbook') as HTMLButtonElement;
+      imp.type = 'button';
+      imp.title = 'A ProblemTrack workbook, every sheet as it is.';
+      imp.addEventListener('click', () => void openWorksheet('excel-import', 'Import Workbook'));
+      acts.appendChild(imp);
+    } else {
+      const start = el('button', open ? 'ws-btn ws-btn--quiet' : 'ws-btn ws-btn--primary', open ? 'New Quiz' : 'Start Quiz') as HTMLButtonElement;
+      start.type = 'button';
+      start.title = 'The quiz builder: papers, sources, kinds, a rating band, a length.';
+      start.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
+      acts.appendChild(start);
+    }
     cont.appendChild(acts);
     col.appendChild(cont);
 

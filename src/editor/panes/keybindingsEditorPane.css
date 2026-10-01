@@ -42,7 +42,7 @@
 }
 
 .keybindings-search-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #888);
+  color: var(--px-text-faint);
 }
 
 .keybindings-table-container {
@@ -65,8 +65,8 @@
   padding: 6px 12px;
   font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-descriptionForeground, #888);
   border-bottom: 1px solid var(--vscode-editorGroup-border, #333);
   z-index: 1;

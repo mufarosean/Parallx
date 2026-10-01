@@ -382,7 +382,7 @@ export class WorkbenchContributionHandler extends Disposable {
     this._auxHeaderWiring.set(containerId, vc.onDidChangeActiveView((viewId) => {
       if (viewId && this._activeAuxBarContainerId === containerId && this._auxBarHeaderLabel) {
         const view = vc.getView(viewId);
-        this._auxBarHeaderLabel.textContent = (view?.name ?? title()).toUpperCase();
+        this._auxBarHeaderLabel.textContent = view?.name ?? title();
       }
     }));
   }
@@ -490,7 +490,7 @@ export class WorkbenchContributionHandler extends Disposable {
       // Wire header label to the contributed container's active view
       this._wireAuxHeader(info.id, vc);
       if (this._auxBarHeaderLabel && this._activeAuxBarContainerId === info.id) {
-        this._auxBarHeaderLabel.textContent = info.title.toUpperCase();
+        this._auxBarHeaderLabel.textContent = info.title;
       }
 
       console.log(`[Workbench] Added auxiliary bar container "${info.id}" (${info.title})`);
@@ -702,11 +702,11 @@ export class WorkbenchContributionHandler extends Disposable {
     if (this._sidebarHeaderLabel) {
       if (containerId) {
         const info = this._viewContribution?.getContainer(containerId);
-        this._sidebarHeaderLabel.textContent = (info?.title ?? 'SIDEBAR').toUpperCase();
+        this._sidebarHeaderLabel.textContent = info?.title ?? 'Sidebar';
       } else {
         const activeId = this._defaultSidebarContainer?.activeViewId;
         const activeView = activeId ? this._defaultSidebarContainer?.getView(activeId) : undefined;
-        this._sidebarHeaderLabel.textContent = (activeView?.name ?? 'SIDEBAR').toUpperCase();
+        this._sidebarHeaderLabel.textContent = activeView?.name ?? 'Sidebar';
       }
     }
   }
@@ -751,10 +751,10 @@ export class WorkbenchContributionHandler extends Disposable {
           const info = this._viewContribution?.getContainer(targetId);
           const iconLabel = this._containerIcons.get(targetId)?.label;
           this._auxBarHeaderLabel.textContent =
-            (activeView?.name ?? info?.title ?? iconLabel ?? 'SECONDARY SIDE BAR').toUpperCase();
+            activeView?.name ?? info?.title ?? iconLabel ?? 'Right Area';
         }
       } else {
-        this._auxBarHeaderLabel.textContent = 'SECONDARY SIDE BAR';
+        this._auxBarHeaderLabel.textContent = 'Secondary Side Bar';
       }
     }
 

@@ -75,7 +75,7 @@
 
 /* Toggled-on state (outline / thumbnails / night reading). */
 .pdf-toolbar-btn.active {
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   background: var(--px-accent-faint);
 }
 
@@ -299,8 +299,8 @@
   padding: 0 12px;
   font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-sideBarSectionHeader-foreground, #bbb);
   background: var(--vscode-sideBarSectionHeader-background, transparent);
   border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
@@ -635,8 +635,8 @@
   gap: 5px;
   font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-descriptionForeground, #999);
 }
 

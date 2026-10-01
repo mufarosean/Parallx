@@ -5149,7 +5149,7 @@ const MO_CSS = `
    Deliberately NOT tokenized: #fff/#000 + black/white alpha (text-on-accent,
    scrims, hover veils — these must not flip with the theme). */
 :root {
-  --mo-accent: var(--px-accent, #9333ea);
+  --mo-accent: var(--px-accent);
   --mo-star: #f5c518;
 }
 
@@ -5360,8 +5360,8 @@ const MO_CSS = `
   background: rgba(0,0,0,0.65);
   color: #fff;
   font-weight: 600;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
   pointer-events: none;
 }
 .mo-card-rating {
@@ -5584,6 +5584,8 @@ const MO_CSS = `
   overflow: hidden;
 }
 .mo-sidebar-section.mo-section-collapsed { flex: 0 0 auto; }
+.mo-sidebar-section.mo-section-fixed { flex: 0 0 auto !important; }
+.mo-sidebar-section.mo-section-fixed > .mo-sidebar-section-body { overflow: visible; }
 .mo-sidebar-section-header {
   display: flex;
   align-items: center;
@@ -5592,8 +5594,8 @@ const MO_CSS = `
   flex: 0 0 auto;
   font-size: var(--parallx-fontSize-sm, 11px);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground, #ccc));
   background: var(--vscode-sideBarSectionHeader-background, transparent);
   border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
@@ -5651,7 +5653,7 @@ const MO_CSS = `
 }
 .mo-cheat-group { break-inside: avoid; margin-bottom: 10px; }
 .mo-cheat-group-title {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  font-size: 11px; text-transform: none; letter-spacing: normal;
   opacity: 0.6; font-weight: 700; margin: 6px 0 4px;
 }
 .mo-cheat-row { display: flex; align-items: baseline; gap: 10px; padding: 2px 0; }
@@ -5900,7 +5902,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-list-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mo-list-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--parallx-fontSize-md, 13px); }
-.mo-list-type { font-size: var(--parallx-fontSize-xs, 10px); text-transform: uppercase; color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888)); width: 50px; flex-shrink: 0; }
+.mo-list-type { font-size: var(--parallx-fontSize-xs, 10px); text-transform: capitalize; color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888)); width: 50px; flex-shrink: 0; }
 .mo-list-rating { font-size: var(--parallx-fontSize-sm, 11px); color: var(--mo-rating-color, var(--mo-star)); width: 60px; flex-shrink: 0; }
 .mo-list-date { font-size: var(--parallx-fontSize-xs, 10px); color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888)); width: 80px; flex-shrink: 0; text-align: right; }
 
@@ -5921,17 +5923,17 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-filter-section-label {
   font-weight: 600;
   font-size: var(--parallx-fontSize-xs, 10px);
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
-  letter-spacing: 0.5px;
+  letter-spacing: normal;
 }
 .mo-filter-tag-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .mo-filter-row-label {
   font-size: var(--parallx-fontSize-xs, 10px);
   color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888));
   flex-shrink: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+  text-transform: none;
+  letter-spacing: normal;
 }
 .mo-filter-pills {
   display: flex;
@@ -6083,7 +6085,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 /* All/Any (AND/OR) segmented toggle */
 .mo-tagmatch { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
-.mo-tagmatch-label { font-size: 10px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.4px; }
+.mo-tagmatch-label { font-size: var(--px-text-xs); opacity: 0.6; text-transform: none; letter-spacing: normal; }
 .mo-tagmatch-group { display: inline-flex; border-radius: var(--parallx-radius-sm, 4px); overflow: hidden; }
 .mo-tagmatch-btn {
   font-size: 10px;
@@ -6241,8 +6243,8 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   padding: 6px 12px;
   cursor: pointer;
   font-size: var(--parallx-fontSize-xs, 11px);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
   opacity: 0.7;
 }
 .mo-detail-tab-btn.active {
@@ -6262,8 +6264,8 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 }
 .mo-detail-section-label {
   font-size: var(--parallx-fontSize-xs, 11px);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
   opacity: 0.6;
   margin-bottom: 6px;
 }
@@ -7522,7 +7524,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-clip-acc-head:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05)); }
 .mo-clip-acc-chev { font-size: 9px; opacity: 0.6; width: 10px; flex: none; }
 .mo-clip-acc-title {
-  font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  font-size: 10.5px; font-weight: 700; letter-spacing: normal; text-transform: none;
   color: var(--vscode-descriptionForeground, #8a8f98);
   flex: none;
 }
@@ -8049,7 +8051,7 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 }
 .mo-clip-queue-head {
   display: flex; align-items: center; justify-content: space-between;
-  font-size: 11px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.04em;
+  font-size: 11px; opacity: 0.85; text-transform: none; letter-spacing: normal;
 }
 .mo-clip-queue-list {
   display: flex; flex-direction: column; gap: 3px;
@@ -8240,7 +8242,7 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-detail-main > .mo-detail-preview { min-height: 0; }
 .mo-similar { flex: 0 0 auto; border-top: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg)); padding: 8px 12px 10px; }
 .mo-similar-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
-.mo-similar-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.8; }
+.mo-similar-title { font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: normal; opacity: 0.8; }
 .mo-similar-hint { font-size: 11px; opacity: 0.7; margin-left: auto; }
 .mo-similar-link { background: none; border: none; color: var(--vscode-textLink-foreground, var(--px-accent)); cursor: pointer; font-size: 11px; padding: 0; }
 .mo-similar-link:hover { text-decoration: underline; }
@@ -8357,7 +8359,7 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-practice-start:disabled { opacity: 0.5; cursor: default; }
 .mo-practice-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
 .mo-practice-section { margin-top: 28px; max-width: 900px; }
-.mo-practice-section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.8; margin-bottom: 8px; }
+.mo-practice-section-title { font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: normal; opacity: 0.8; margin-bottom: 8px; }
 .mo-practice-thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
 .mo-practice-thumb { width: 96px; cursor: pointer; }
 .mo-practice-thumb img { width: 96px; height: 96px; object-fit: cover; display: block; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); }
@@ -9969,6 +9971,9 @@ function renderBrowserSidebar(container, api) {
   // What to see is the sidebar's: the library and its cuts. How to see it
   // (feed, grid or list; all, photos, GIFs or videos) is the view's own toolbar.
   const { section: qfSection, body: qfBody } = sidebarSection('Library', 'library', false);
+  // A fixed, short list of filters: natural height, never squeezed into a
+  // scroll box by the growing Folders and Tags sections below it.
+  qfSection.classList.add('mo-section-fixed');
   qfBody.appendChild(sidebarItem('library', 'Library', null, () => openGrid('all', 'Library', 'library')));
   qfBody.appendChild(sidebarItem('circle-help', 'Untagged', null, () => openGrid('untagged', 'Untagged')));
   // AI tagging (Section 43): the review list, counting photos waiting or to review.
@@ -9990,9 +9995,9 @@ function renderBrowserSidebar(container, api) {
   qfBody.appendChild(sidebarItem('trash', 'Trash', null, () => openGrid('trash', 'Trash')));
   sections.appendChild(qfSection);
 
-  // Drawing And Painting (M104): practice and painting plans. Shown only while
-  // Drawing And Painting Tools is on (decision D7).
-  const { section: prSection, body: prBody } = sidebarSection('Drawing And Painting', 'paintbrush', false);
+  // Drawing and Painting (M104): practice and painting plans. Shown only while
+  // Drawing and Painting Tools is on (decision D7).
+  const { section: prSection, body: prBody } = sidebarSection('Drawing and Painting', 'paintbrush', false);
   prBody.appendChild(sidebarItem('sun', 'Daily Study', null, () => void moStartDailyStudy(api)));
   prBody.appendChild(sidebarItem('timer', 'Practice Session', null, () => moOpenPracticeSetup(api)));
   prBody.appendChild(sidebarItem('palette', 'Painting Plans', null, () => moOpenPlansList(api)));
@@ -10512,7 +10517,7 @@ function renderBrowserSidebar(container, api) {
   function startInlineRename(row, label, tag) {
     if (row.querySelector('.mo-tag-rename-input')) return;
     const input = moEl('input', 'mo-tag-rename-input mo-tag-name-input', { type: 'text', value: tag.name || '' });
-    input.style.cssText = 'flex:1;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-focusBorder,var(--px-accent,#9333ea));border-radius:3px;padding:1px 4px;font-size:inherit;min-width:0;';
+    input.style.cssText = 'flex:1;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-focusBorder,var(--px-accent));border-radius:3px;padding:1px 4px;font-size:inherit;min-width:0;';
     label.style.display = 'none';
     label.parentNode.insertBefore(input, label.nextSibling);
     // Disable row drag while editing — otherwise Chromium intercepts mousedown
@@ -17308,7 +17313,7 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
 
   // Delete: the trash, at the far right.
   const deleteBtn = moEl('button', 'mo-sel-btn mo-sel-delete', { type: 'button', title: 'Delete the selected items', 'aria-label': 'Delete' });
-  deleteBtn.innerHTML = moIcon('trash-2', 12);
+  deleteBtn.innerHTML = moIcon('trash', 12);
   deleteBtn.addEventListener('click', () => {
     showBulkDeleteDialog(state, api, () => { updateBar(); refreshFn(); });
   });
@@ -28217,9 +28222,21 @@ function moReadArtCfg(api) {
   };
 }
 
-function moArtGate(api) {
+// The drawing and painting tools are opt-in. A command that needs them asks
+// once, in place, and carries on if the user says yes — never a dead-end toast
+// that sends them hunting through settings.
+function moArtGate(api, retry) {
   if (_artToolsEnabled) return true;
-  (api || _api).window.showInformationMessage('Turn on Drawing And Painting Tools in Media Organizer settings first.');
+  api = api || _api;
+  void Promise.resolve(api.window.showInformationMessage(
+    'Drawing and painting tools are off. Turn them on to use this.',
+    { title: 'Turn On' },
+  )).then(async (picked) => {
+    if (!picked || picked.title !== 'Turn On') return;
+    try { await api.workspace.getConfiguration('mediaOrganizer').update('enableArtTools', true); } catch { return; }
+    _artToolsEnabled = true;
+    if (typeof retry === 'function') retry();
+  }).catch(() => {});
   return false;
 }
 
@@ -28394,7 +28411,7 @@ async function moDailyToday() {
 
 async function moStartDailyStudy(api, opts) {
   api = api || _api;
-  if (!moArtGate(api)) return;
+  if (!moArtGate(api, () => void moStartDailyStudy(api, opts))) return;
   try {
     const today = await moDailyToday();
     if (!today) { api.window.showInformationMessage('Add some pictures to the library first.'); return; }
@@ -28512,7 +28529,7 @@ function renderPracticeTab(container, api, input) {
   const inputId = (input && (input.instanceId || input.id)) || '';
   if (!_artToolsEnabled) {
     moInjectStyles();
-    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on Drawing And Painting Tools in Media Organizer settings to use practice.' }));
+    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on drawing and painting tools in Media Organizer settings to use practice.' }));
     return { dispose() { container.innerHTML = ''; } };
   }
   if (inputId.startsWith('practice:run:')) return renderPracticePlayer(container, api, parseInt(inputId.slice('practice:run:'.length), 10) || 0);
@@ -29137,7 +29154,7 @@ function buildPracticeHistoryStrip(ctx, api) {
   const id = ctx.entity ? ctx.entity.id : ctx.id;
   const wrap = moEl('div', 'mo-similar');
   const head = moEl('div', 'mo-practice-history-head');
-  head.appendChild(moEl('div', 'mo-similar-title', { textContent: 'Drawing And Painting' }));
+  head.appendChild(moEl('div', 'mo-similar-title', { textContent: 'Drawing and Painting' }));
   const actions = moEl('div', 'mo-practice-history-actions');
   const addBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Add To Plan' });
   addBtn.addEventListener('click', () => void moPlanPickAndAdd(api, ctx.type === 'video' ? 'video' : 'photo', id));
@@ -29375,7 +29392,7 @@ function renderPlansTab(container, api, input) {
   const inputId = (input && (input.instanceId || input.id)) || '';
   if (!_artToolsEnabled) {
     moInjectStyles();
-    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on Drawing And Painting Tools in Media Organizer settings to use painting plans.' }));
+    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on drawing and painting tools in Media Organizer settings to use painting plans.' }));
     return { dispose() { container.innerHTML = ''; } };
   }
   if (inputId.startsWith('plans:edit:')) return renderPlanEditor(container, api, parseInt(inputId.slice('plans:edit:'.length), 10) || 0);
@@ -34588,7 +34605,7 @@ export async function activate(api, context) {
     if (sub2 && typeof sub2.dispose === 'function') _commandDisposables.push(sub2);
   }
 
-  // Drawing And Painting Tools (M104, decision D7) and the practice settings.
+  // Drawing and Painting Tools (M104, decision D7) and the practice settings.
   try { moReadArtCfg(api); } catch { /* keep defaults */ }
   if (api.workspace.onDidChangeConfiguration) {
     const sub3 = api.workspace.onDidChangeConfiguration((e) => {
@@ -34682,9 +34699,9 @@ export async function activate(api, context) {
   // Register scan command
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
-    api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api)) moOpenPracticeSetup(api); }),
+    api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api)) moOpenPlansList(api); }),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({
         title: 'Select folder to scan',

@@ -114,13 +114,13 @@ export const FILE_TYPE_ICONS: Record<string, string> = {
   'filetype-log':   docBase('#a0aec0', 'LOG'),
   'filetype-env':   docBase('#ecc94b', 'ENV', '#333'),
 
-  // ── Folder (clean white with grey accents) ──────────────────────────
+  // ── Folder: drawn in the row's text colour so it reads in every mode ──
   'filetype-folder': svg(
-    `<path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z" fill="#ffffff" stroke="#ffffff" stroke-width="1.5"/>`
+    `<path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z" fill="currentColor" stroke="currentColor" stroke-width="1.5"/>`
   ),
   'filetype-folder-open': svg(
-    `<path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H6.5a2 2 0 0 0-1.9 1.4L2 18V6z" fill="#ffffff" stroke="#ffffff" stroke-width="1.5"/>` +
-    `<path d="M4.6 11H20l-2.4 8H2.2l2.4-8z" fill="#d1d5db" stroke="#d1d5db" stroke-width="1.5"/>`
+    `<path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H6.5a2 2 0 0 0-1.9 1.4L2 18V6z" fill="currentColor" stroke="currentColor" stroke-width="1.5"/>` +
+    `<path d="M4.6 11H20l-2.4 8H2.2l2.4-8z" fill="currentColor" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>`
   ),
 };
 

@@ -90,7 +90,7 @@ export class ContainerBox extends Disposable implements IGridView {
 
     this._title = $('span');
     this._title.classList.add('container-box-title');
-    this._title.textContent = label.toUpperCase();
+    this._title.textContent = label;
     this._header.appendChild(this._title);
 
     // A quiet ⋯ that shows on header hover, opening the placement menu
@@ -147,7 +147,7 @@ export class ContainerBox extends Disposable implements IGridView {
   /** Mount a container into the box (the arrival of what the shell awaited). */
   seat(container: ViewContainer, label?: string): void {
     this._container = container;
-    if (label) this._title.textContent = label.toUpperCase();
+    if (label) this._title.textContent = label;
     this._body.appendChild(container.element);
     container.setVisible(true);
     this._setWaiting(false);

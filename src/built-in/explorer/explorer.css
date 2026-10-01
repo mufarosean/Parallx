@@ -22,8 +22,8 @@
   padding: 0 8px 0 4px;
   font-size: var(--parallx-fontSize-sm);
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--vscode-sideBarSectionHeader-foreground);
   white-space: nowrap;
   overflow: hidden;
@@ -240,8 +240,8 @@
   line-height: 22px;
   font-size: var(--parallx-fontSize-sm);
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-foreground);
   white-space: nowrap;
   overflow: hidden;

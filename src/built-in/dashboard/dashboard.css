@@ -93,7 +93,7 @@
   margin: 4px 0 0;
   font-size: var(--px-text-base);
   font-weight: 400;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  color: var(--px-text-secondary);
   letter-spacing: 0;
 }
 
@@ -172,19 +172,21 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: var(--px-control-h);
-  padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: 8px;
   background: transparent;
   color: var(--vscode-editor-foreground, #d4d4d4);
   font-family: inherit;
-  font-size: var(--px-text-base);
   font-weight: 500;
   letter-spacing: 0.01em;
   cursor: pointer;
   user-select: none;
   transition: background var(--px-dur-base) var(--px-ease), color var(--px-dur-base) var(--px-ease), border-color var(--px-dur-base) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .dashboard-btn:focus-visible {
   outline: 2px solid var(--vscode-focusBorder, #5b9bd5);
@@ -221,6 +223,18 @@
   position: relative;
   flex: 1 1 auto;
   min-height: 320px;
+  container-type: inline-size;
+}
+
+/* A narrow pane (the chat open beside it, a split editor) cannot hold three
+   widgets abreast: a 4-of-12 widget becomes ~170px and its text wraps a
+   letter per line. Below that width every widget takes the full row, in
+   reading order, keeping its height. */
+@container (max-width: 640px) {
+  .dashboard-grid > .dashboard-widget {
+    grid-column: 1 / -1 !important;
+    grid-row: auto / span var(--dashboard-row-span, 2) !important;
+  }
 }
 
 .dashboard-grid {
@@ -275,12 +289,12 @@
   font-size: var(--px-text-base);
   line-height: 1.55;
   max-width: 420px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+  color: var(--px-text-secondary);
 }
 
 .dashboard-empty__cta {
-  height: 36px;
-  padding: 0 18px;
+  height: var(--px-control-h-lg);
+  padding: 0 16px;
   font-size: var(--px-text-base);
 }
 
@@ -337,7 +351,7 @@
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 40%, transparent);
+  color: var(--px-text-faint);
   cursor: grab;
   opacity: 0;
   transition: opacity var(--px-dur-base) var(--px-ease), color var(--px-dur-base) var(--px-ease);
@@ -377,7 +391,7 @@
   flex: 1 1 auto;
   font-size: var(--px-text-sm);
   font-weight: 600;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--px-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -426,7 +440,7 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+  color: var(--px-text-muted);
   cursor: pointer;
   transition: background var(--px-dur-base) var(--px-ease), color var(--px-dur-base) var(--px-ease);
 }
@@ -469,14 +483,14 @@
 .dashboard-widget__footer {
   padding: 6px 14px 10px;
   font-size: var(--px-text-xs);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 45%, transparent);
+  color: var(--px-text-muted);
   border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 5%, transparent);
 }
 
 .dashboard-widget__unavailable {
   font-size: var(--px-text-base);
   line-height: 1.55;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+  color: var(--px-text-secondary);
 }
 .dashboard-widget__unavailable strong { color: var(--vscode-editor-foreground, #f3f3f3); display: block; margin-bottom: 4px; font-weight: 600; }
 .dashboard-widget__unavailable code {
@@ -734,24 +748,24 @@
 .dashboard-picker__hint {
   margin: 0;
   font-size: var(--px-text-base);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--px-text-secondary);
 }
 
 .dashboard-picker__grid {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 16px 16px 0;
+  padding: 12px 20px 0;
 }
 .dashboard-picker__section {
   margin-bottom: 18px;
 }
 .dashboard-picker__section-title {
-  margin: 0 8px 8px;
-  font-size: var(--px-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+  margin: 0 0 8px;
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--px-text-muted);
 }
 .dashboard-picker__items {
   display: grid;
@@ -807,13 +821,13 @@
 .dashboard-picker__tile-desc {
   font-size: var(--px-text-sm);
   line-height: 1.4;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--px-text-secondary);
 }
 
 .dashboard-picker__empty {
   padding: 24px;
   text-align: center;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  color: var(--px-text-secondary);
 }
 .dashboard-picker__empty strong { display: block; margin-bottom: 6px; color: var(--vscode-editor-foreground, #f3f3f3); }
 .dashboard-picker__empty p { margin: 0; font-size: var(--px-text-base); line-height: 1.5; }
@@ -844,7 +858,7 @@
 .clw__greeting {
   font-size: var(--px-text-sm);
   font-weight: 500;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  color: var(--px-text-secondary);
   letter-spacing: -0.01em;
 }
 .clw__time {
@@ -857,7 +871,7 @@
 }
 .clw__date {
   font-size: var(--px-text-base);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+  color: var(--px-text-secondary);
 }
 .clw__links {
   display: flex;
@@ -888,7 +902,7 @@
 
 .clw__links-hint {
   font-size: var(--px-text-xs);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+  color: var(--px-text-muted);
   font-style: italic;
 }
 
@@ -941,7 +955,7 @@
   flex: 0 0 auto;
   border-radius: 6px;
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+  color: var(--px-text-secondary);
   font-size: var(--px-text-2xs);
   font-weight: 600;
   text-transform: uppercase;
@@ -949,10 +963,10 @@
   font-family: var(--vscode-editor-font-family, "SF Mono", monospace);
 }
 .rfw__icon svg { width: 15px; height: 15px; }
-.rfw__icon--file { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 72%, transparent); }
+.rfw__icon--file { color: var(--px-text-secondary); }
 .rfw__icon--page {
   background: color-mix(in srgb, var(--px-accent, #b4a7d6) 20%, transparent);
-  color: var(--px-accent, #b4a7d6);
+  color: var(--px-accent-text);
 }
 
 .rfw__text {
@@ -971,7 +985,7 @@
 }
 .rfw__folder {
   font-size: var(--px-text-xs);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+  color: var(--px-text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -980,7 +994,7 @@
 .rfw__empty {
   padding: 16px 4px;
   font-size: var(--px-text-sm);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  color: var(--px-text-secondary);
 }
 .rfw__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
 .rfw__empty p { margin: 0; line-height: 1.5; }
@@ -1052,7 +1066,7 @@
   padding: 1px 6px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 12%, transparent);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+  color: var(--px-text);
 }
 .aaw__outcome--ok { background: color-mix(in srgb, var(--vscode-testing-iconPassed, #4caf50) 22%, transparent); color: var(--vscode-testing-iconPassed, #4caf50); }
 .aaw__outcome--error { background: color-mix(in srgb, var(--vscode-testing-iconFailed, #f44336) 22%, transparent); color: var(--vscode-testing-iconFailed, #f44336); }
@@ -1060,12 +1074,12 @@
 .aaw__outcome--gated { background: color-mix(in srgb, var(--vscode-charts-purple, #b180d7) 22%, transparent); color: var(--vscode-charts-purple, #b180d7); }
 .aaw__meta {
   font-size: var(--px-text-xs);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+  color: var(--px-text-muted);
 }
 .aaw__empty {
   padding: 16px 4px;
   font-size: var(--px-text-sm);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  color: var(--px-text-secondary);
 }
 .aaw__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
 .aaw__empty p { margin: 0; line-height: 1.5; }
@@ -1099,7 +1113,7 @@
   border: 1.5px dashed color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 22%, transparent);
   border-radius: inherit;
   background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 70%, transparent);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--px-text-secondary);
   font: inherit;
   font-size: var(--px-text-base);
   text-align: center;
@@ -1111,7 +1125,7 @@
   color: var(--vscode-editor-foreground, #f3f3f3);
   background: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 85%, white);
 }
-.iw__empty-text small { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 45%, transparent); }
+.iw__empty-text small { color: var(--px-text-muted); }
 .iw--drag .iw__empty {
   border-color: var(--vscode-focusBorder, #5b9bd5);
   background: color-mix(in srgb, var(--vscode-focusBorder, #5b9bd5) 14%, transparent);
@@ -1167,7 +1181,7 @@
 .dashboard-md__body p, .dashboard-md__body ul, .dashboard-md__body ol { margin: 0 0 10px; }
 .dashboard-md__body ol, .dashboard-md__body ul { padding-left: 22px; }
 .dashboard-md__body li { margin-bottom: 6px; }
-.dashboard-md__body em { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent); font-style: italic; }
+.dashboard-md__body em { color: var(--px-text-secondary); font-style: italic; }
 .dashboard-md__body strong { color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
 .dashboard-md__body code {
   font-family: var(--vscode-editor-font-family, "SF Mono", monospace);
@@ -1187,7 +1201,7 @@
 .dashboard-md__empty {
   padding: 16px 6px;
   font-size: var(--px-text-base);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  color: var(--px-text-secondary);
 }
 .dashboard-md__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
 .dashboard-md__empty p { margin: 0; line-height: 1.55; }
@@ -1197,7 +1211,7 @@
   border: 1px solid color-mix(in srgb, var(--px-danger) 35%, transparent);
   background: color-mix(in srgb, var(--px-danger) 10%, transparent);
   font-size: var(--px-text-base);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 80%, transparent);
+  color: var(--px-text);
 }
 .dashboard-md__error strong { display: block; margin-bottom: 4px; color: var(--px-danger); font-weight: 600; }
 
@@ -1318,13 +1332,13 @@ video.vw__fill { object-fit: contain; background: #000; }
   border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
 }
 .dashboard-settings__title { margin: 0 0 4px; font-size: var(--px-text-md); font-weight: 600; letter-spacing: -0.01em; }
-.dashboard-settings__hint { margin: 0; font-size: var(--px-text-sm); color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); }
+.dashboard-settings__hint { margin: 0; font-size: var(--px-text-sm); color: var(--px-text-secondary); }
 
 .dashboard-settings__body { flex: 1 1 auto; overflow-y: auto; padding: 16px 22px; display: flex; flex-direction: column; gap: 14px; }
 
 .dashboard-field { display: flex; flex-direction: column; gap: 4px; }
 .dashboard-field__label { font-size: var(--px-text-sm); font-weight: 600; color: var(--vscode-editor-foreground, #f3f3f3); }
-.dashboard-field__hint  { font-size: var(--px-text-sm); color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); margin-top: -2px; }
+.dashboard-field__hint  { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: -2px; }
 .dashboard-field__input,
 .dashboard-field__textarea {
   width: 100%;
@@ -1410,17 +1424,19 @@ video.vw__fill { object-fit: contain; background: #000; }
   align-items: center;
   gap: 6px;
   width: 100%;
-  height: var(--px-control-h);
-  padding: 0 10px;
   border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
-  border-radius: 6px;
   background: transparent;
   color: var(--vscode-editor-foreground, #d4d4d4);
   font: inherit;
-  font-size: var(--px-text-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background var(--px-dur-base) var(--px-ease), border-color var(--px-dur-base) var(--px-ease);
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .dashboard-sidebar__newbtn:hover {
   background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 12%, transparent);
@@ -1470,7 +1486,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  color: var(--px-text-secondary);
 }
 .dashboard-sidebar__row-icon svg { width: 14px; height: 14px; }
 
@@ -1494,7 +1510,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+  color: var(--px-text-muted);
   cursor: pointer;
   opacity: 0;
   transition: opacity var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
@@ -1515,7 +1531,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   align-items: center;
   text-align: center;
   padding: 24px 18px;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--px-text-secondary);
 }
 .dashboard-sidebar__empty-icon {
   display: inline-flex;
@@ -1613,7 +1629,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
   font-size: var(--px-text-xs); border-radius: 5px; border: 1px solid transparent;
   background: transparent; cursor: pointer;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--px-text-secondary);
 }
 .ntw__open:hover {
   background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
@@ -1622,16 +1638,17 @@ video.vw__fill { object-fit: contain; background: #000; }
 /* The embedded canvas editor lives here. It brings its OWN (global) canvas
    styling — so an embedded note looks exactly like a canvas page. */
 .ntw__host { flex: 1 1 auto; min-height: 0; overflow-y: auto; position: relative; }
-.ntw__host .canvas-editor-wrapper { height: auto; }
+/* A note in a card, not a page: the page's 64px reading gutter would eat a third of it. */
+.ntw__host .canvas-editor-wrapper { height: auto; --canvas-content-gutter: var(--px-space-3, 12px); --canvas-content-max-width: 100%; }
 .ntw--sm .ntw__host { font-size: var(--px-text-sm); }
 .ntw--md .ntw__host { font-size: var(--px-text-base); }
 .ntw--lg .ntw__host { font-size: var(--px-text-md); }
 
 .ntw__empty {
   font-size: var(--px-text-sm);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+  color: var(--px-text-muted);
 }
-.ntw__empty strong { display: block; margin-bottom: 4px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 75%, transparent); font-weight: 600; }
+.ntw__empty strong { display: block; margin-bottom: 4px; color: var(--px-text-secondary); font-weight: 600; }
 .ntw__empty p { margin: 0; line-height: 1.5; }
 
 
@@ -1658,9 +1675,9 @@ video.vw__fill { object-fit: contain; background: #000; }
 .tkw__summary {
   font-size: var(--px-text-xs);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 45%, transparent);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--px-text-muted);
   padding: 0 8px 4px;
 }
 .tkw__row {
@@ -1706,7 +1723,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 .tkw__row--done .tkw__label {
   text-decoration: line-through;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 45%, transparent);
+  color: var(--px-text-muted);
 }
 
 .tkw__del {
@@ -1720,7 +1737,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--px-text-secondary);
   cursor: pointer;
   opacity: 0;
   transition: opacity var(--px-dur-fast) var(--px-ease), background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
@@ -1779,7 +1796,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .tkw__empty {
   padding: 16px 8px;
   font-size: var(--px-text-sm);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--px-text-secondary);
 }
 .tkw__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
 .tkw__empty p { margin: 0; line-height: 1.5; }
@@ -1799,7 +1816,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .cdw__title {
   font-size: var(--px-text-sm);
   font-weight: 500;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 65%, transparent);
+  color: var(--px-text-secondary);
   letter-spacing: -0.01em;
 }
 .cdw__body {
@@ -1823,19 +1840,19 @@ video.vw__fill { object-fit: contain; background: #000; }
   font-variant-numeric: tabular-nums;
 }
 .cdw__lbl {
-  font-size: var(--px-text-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+  font-size: var(--px-text-xs);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--px-text-muted);
 }
 .cdw__caption {
   font-size: var(--px-text-sm);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--px-text-secondary);
 }
 .cdw__empty {
   font-size: var(--px-text-sm);
   font-style: italic;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+  color: var(--px-text-muted);
 }
 .cdw__done-text {
   font-size: 28px;
@@ -1843,7 +1860,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   letter-spacing: -0.02em;
   color: var(--vscode-button-background, #4daafc);
 }
-.cdw--done .cdw__title { color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent); }
+.cdw--done .cdw__title { color: var(--px-text-secondary); }
 
 /* ── Page schedule popover (M86 C4) ── */
 .dashboard-schedule-pop {
@@ -1926,7 +1943,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer__tasks { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; border-top: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent); padding-top: 8px; }
 .dtimer__tasks[hidden] { display: none; }
 .dtimer__taskshead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: var(--px-text-xs); color: var(--px-text-muted); }
-.dtimer__taskstitle { font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.dtimer__taskstitle { font-weight: 600; text-transform: none; letter-spacing: normal; }
 .dtimer__taskssummary { font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dtimer__tasklist { display: flex; flex-direction: column; gap: 2px; }
 .dtimer__tasklist[hidden], .dtimer__add[hidden] { display: none; }
@@ -2013,17 +2030,15 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtable__chartvalue { font-variant-numeric: tabular-nums; opacity: .8; }
 .dtable__more { font-size: var(--px-text-xs); opacity: .6; }
 
-/* ── Picker templates rail (M86 C3) ── */
-.dashboard-picker__section {
-  font-size: var(--px-text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
-  opacity: .6; padding: 12px 20px 4px;
-}
+/* ── Picker templates (M86 C3) ──
+   Same label and the same 20px edge as the sections below; the cards wrap
+   into a grid (a sideways rail hid every card past the third). */
 .dashboard-picker__templates {
-  display: flex; gap: 8px; overflow-x: auto; padding: 4px 20px 10px; flex-shrink: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px;
 }
 .dashboard-picker__template {
-  flex: 0 0 190px; display: flex; flex-direction: column; gap: 4px; text-align: left;
-  padding: 10px 12px; border-radius: 10px; cursor: pointer; font: inherit; color: inherit;
+  display: flex; flex-direction: column; gap: 4px; text-align: left;
+  padding: 10px 12px; border-radius: var(--px-radius-md); cursor: pointer; font: inherit; color: inherit;
   background: var(--px-bg-elevated);
   border: 1px solid var(--px-border);
 }
@@ -2031,7 +2046,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   background: color-mix(in srgb, var(--px-accent, #7aa2f7) 14%, transparent);
 }
 .dashboard-picker__template-name { font-size: var(--px-text-sm); font-weight: 600; }
-.dashboard-picker__template-desc { font-size: var(--px-text-xs); opacity: .75; line-height: 1.35; }
+.dashboard-picker__template-desc { font-size: var(--px-text-xs); color: var(--px-text-muted); line-height: 1.35; }
 
 /* Templates rail: slim horizontal scrollbar (visibility follows the
    app-wide hover-or-scrolling rule in workbench.css). Wheel scrolling is
@@ -2119,7 +2134,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   display: flex;
   justify-content: space-between;
   font-size: var(--px-text-2xs);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+  color: var(--px-text-muted);
 }
 .ypw__stats {
   display: flex;
@@ -2144,7 +2159,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .ypw__stat-l {
   margin-top: 2px;
   font-size: var(--px-text-2xs);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+  color: var(--px-text-muted);
 }
 
 /* ── Text ── */
@@ -2153,7 +2168,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   font-size: var(--px-text-sm);
   font-weight: 500;
   white-space: nowrap;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+  color: var(--px-text-secondary);
 }
 .ypw__pct {
   font-size: var(--px-text-sm);
@@ -2165,7 +2180,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .ypw__caption {
   margin-top: 6px;
   font-size: var(--px-text-2xs);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+  color: var(--px-text-muted);
 }
 
 /* ── The bar itself ── */
@@ -2222,7 +2237,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   user-select: none;
 }
 .qtw__mark {
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 30%, transparent);
+  color: var(--px-text-faint);
 }
 .qtw__text {
   font-size: var(--px-text-md, 15px);
@@ -2232,7 +2247,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 .qtw__author {
   font-size: var(--px-text-sm);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent);
+  color: var(--px-text-muted);
 }
 .qtw__author:not(:empty)::before {
   content: '\2014\00a0';
@@ -2273,9 +2288,9 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 .brw__label {
   font-size: var(--px-text-sm);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--px-text-secondary);
 }
 
 /* ============================================================================
@@ -2293,7 +2308,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dcw__question {
   font-size: var(--px-text-sm);
   font-weight: 500;
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent);
+  color: var(--px-text-secondary);
 }
 .dcw__coin {
   width: 84px;
@@ -2326,7 +2341,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 .dcw__hint {
   font-size: var(--px-text-2xs);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent);
+  color: var(--px-text-muted);
   text-align: center;
 }
 @keyframes dcw-spin {
@@ -2505,11 +2520,16 @@ video.vw__fill { object-fit: contain; background: #000; }
 
 .cmw__status {
   font-size: var(--px-text-sm);
-  color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent);
+  color: var(--px-text-secondary);
   text-align: center;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cmw__char, .cmw__eye-open, .cmw__zzz-t1, .cmw__zzz-t2 { animation: none; }
   .cmw__pupils { transition: none; }
+}
+
+/* Empty page: the empty state carries the only call to action. */
+.dashboard-pane--empty .dashboard-header__actions > .dashboard-btn:not([data-role="header-collapse"]) {
+  display: none;
 }

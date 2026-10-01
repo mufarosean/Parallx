@@ -86,7 +86,7 @@ input[type="text"].parallx-terminal-input:focus-visible {
 .ansi-red { color: var(--px-danger); }
 .ansi-green { color: var(--px-success); }
 .ansi-yellow { color: var(--px-warning); }
-.ansi-blue { color: var(--px-accent); }
+.ansi-blue { color: var(--px-accent-text); }
 .ansi-magenta { color: #c586c0; }
 .ansi-cyan { color: #4ec9b0; }
 .ansi-white { color: var(--px-text); }

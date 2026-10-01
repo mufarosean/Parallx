@@ -569,6 +569,74 @@ export namespace ui {
    * `separator: true` entries draw a divider between groups.
    */
   export function showContextMenu(anchor: ContextMenuAnchor, items: ReadonlyArray<ContextMenuItem>, options?: ContextMenuOptions): { dispose(): void };
+
+  // ── The chrome kit ──────────────────────────────────────────────────────
+  // The workbench's own buttons, page header, empty state and section label.
+  // Use these instead of styling your own: they follow the theme, the
+  // control-height ladder (28 / 24), the radius and the type scale, and they
+  // keep every tab looking like one app. Each appends to `container` when
+  // one is given and returns the element.
+
+  /** primary: the one main action of a view. secondary: other worded actions. ghost: toolbars and rows. danger: destructive. */
+  export type ButtonKind = 'primary' | 'secondary' | 'ghost' | 'danger';
+  export interface ButtonOptions {
+    readonly label: string;
+    /** Default 'secondary'. A view has at most one 'primary'. */
+    readonly kind?: ButtonKind;
+    /** 'md' 28px (default); 'sm' 24px for dense rows, panels and sidebars. */
+    readonly size?: 'md' | 'sm';
+    /** Icon id (see `icons`), drawn before the label. */
+    readonly icon?: string;
+    readonly title?: string;
+    readonly disabled?: boolean;
+    readonly onClick?: (e: MouseEvent) => void;
+  }
+  export function createButton(container: HTMLElement | null, options: ButtonOptions): HTMLButtonElement;
+
+  export interface IconButtonOptions {
+    readonly icon: string;
+    /** Required: the tooltip and aria-label are the button's only words. */
+    readonly title: string;
+    readonly size?: 'md' | 'sm';
+    readonly disabled?: boolean;
+    readonly onClick?: (e: MouseEvent) => void;
+  }
+  /** A toolbar action: icon only, tooltip required. */
+  export function createIconButton(container: HTMLElement | null, options: IconButtonOptions): HTMLButtonElement;
+
+  export interface Action {
+    readonly label: string;
+    readonly icon?: string;
+    readonly title?: string;
+    readonly disabled?: boolean;
+    readonly onClick: () => void;
+  }
+  export interface PageHeaderOptions {
+    readonly title: string;
+    readonly subtitle?: string;
+    /** The page's one main action. */
+    readonly primary?: Action;
+    /** Shown up to two; the rest move into the ⋯ menu automatically. */
+    readonly secondary?: readonly Action[];
+    /** Everything else, behind ⋯. */
+    readonly more?: ReadonlyArray<ContextMenuItem>;
+  }
+  /** The header every tab uses: title left; one primary, two secondary and ⋯ right. */
+  export function createPageHeader(container: HTMLElement | null, options: PageHeaderOptions): HTMLElement;
+
+  export interface EmptyStateOptions {
+    /** One sentence: what is missing. */
+    readonly headline: string;
+    /** One sentence: how it fills up. */
+    readonly hint?: string;
+    readonly icon?: string;
+    /** The one way out of the empty state. */
+    readonly action?: Action;
+  }
+  export function createEmptyState(container: HTMLElement | null, options: EmptyStateOptions): HTMLElement;
+
+  /** A section label inside a page or sidebar: sentence case, never uppercase. */
+  export function createSectionLabel(container: HTMLElement | null, text: string): HTMLElement;
 }
 
 /**

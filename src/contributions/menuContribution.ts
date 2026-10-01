@@ -270,15 +270,16 @@ export class MenuContributionProcessor extends Disposable implements IContributi
 
       const button = $('button');
       button.className = 'view-title-action';
-      button.title = cmd.title;
-      button.setAttribute('aria-label', cmd.title);
+      const title = cmd.title || cmd.id;
+      button.title = title;
+      button.setAttribute('aria-label', title);
 
       // Icon or text
       if (cmd.icon) {
         button.textContent = cmd.icon;
       } else {
         // Use first letter of title as fallback
-        button.textContent = cmd.title.charAt(0);
+        button.textContent = title.charAt(0);
       }
 
       // Styling
@@ -358,7 +359,8 @@ export class MenuContributionProcessor extends Disposable implements IContributi
       const cmd = this._commandService.getCommand(item.commandId);
       if (!cmd) continue;
 
-      const label = cmd.category ? `${cmd.category}: ${cmd.title}` : cmd.title;
+      const title = cmd.title || cmd.id;
+      const label = cmd.category ? `${cmd.category}: ${title}` : title;
       menuItems.push({
         id: item.commandId,
         label,

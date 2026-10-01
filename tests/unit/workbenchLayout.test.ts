@@ -246,14 +246,22 @@ describe('Layout on one grid', () => {
 
     layout.resetLayout();
 
+    // The default shape is the first-launch shape: panel closed until needed.
+    expect(rootShape(layout)).toEqual([
+      'workbench.parts.sidebar',
+      'workbench.parts.editor',
+    ]);
+    expect(sizeOf('workbench.parts.sidebar')).toBe(DEFAULT_SIDEBAR_WIDTH);
+    expect(parts.panel.visible).toBe(false);
+    expect(parts.auxiliaryBar.visible).toBe(false);
+    expect(parts.sidebar.visible).toBe(true);
+    // Showing it again lands at the default height in the default spot.
+    layout.togglePanel();
     expect(rootShape(layout)).toEqual([
       'workbench.parts.sidebar',
       'vertical[workbench.parts.editor, workbench.parts.panel]',
     ]);
-    expect(sizeOf('workbench.parts.sidebar')).toBe(DEFAULT_SIDEBAR_WIDTH);
     expect(sizeOf('workbench.parts.panel')).toBe(DEFAULT_PANEL_HEIGHT);
-    expect(parts.auxiliaryBar.visible).toBe(false);
-    expect(parts.sidebar.visible).toBe(true);
   });
 
   it('keeps the companion strips fixed on window resize; the editor absorbs it', () => {
@@ -589,8 +597,7 @@ describe('stacking and placement recall', () => {
       'workbench.parts.panel', 'workbench.parts.sidebar', Orientation.Vertical, false,
     );
     layout.togglePanel(); // hide with recall
-    layout.resetLayout();
-    layout.togglePanel(); // hide again (reset showed it)
+    layout.resetLayout(); // reset leaves the panel closed
     layout.togglePanel(); // show — default spot, recall was cleared
     expect(rootShape(layout)).toEqual([
       'workbench.parts.sidebar',

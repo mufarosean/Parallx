@@ -309,9 +309,11 @@ class PlannerEditorPane implements IDisposable {
     const onNewTask = () => {
       if (!this._root?.isConnected) return;
       this._setTab('tasks');
-      // Anchor in the top-left of the body, popover positioning will keep
-      // it on-screen.
-      const anchor = this._bodyEl?.getBoundingClientRect() ?? new DOMRect(120, 120, 0, 0);
+      // Open beside the Create button it stands for (the body's top-left
+      // corner put the popover over the menu bar); centred if it is hidden.
+      const cta = this._root.querySelector<HTMLElement>('.planner-cta');
+      const r = cta?.getBoundingClientRect();
+      const anchor = r && r.width > 0 ? r : new DOMRect(window.innerWidth / 2 - 180, 100, 0, 0);
       this._openTaskPopover({ mode: 'create' }, anchor);
     };
     document.addEventListener('parallx.planner.newTask', onNewTask);

@@ -1743,22 +1743,22 @@ export class PdfEditorPane extends EditorPane {
           label: 'Two-page spread',
           submenu: [
             { id: 'pdf.spread.none', label: 'Off',        renderIcon: checked(spread === SpreadMode.NONE) },
-            { id: 'pdf.spread.odd',  label: 'Odd pages',  renderIcon: checked(spread === SpreadMode.ODD) },
-            { id: 'pdf.spread.even', label: 'Even pages', renderIcon: checked(spread === SpreadMode.EVEN) },
+            { id: 'pdf.spread.odd',  label: 'Odd Pages',  renderIcon: checked(spread === SpreadMode.ODD) },
+            { id: 'pdf.spread.even', label: 'Even Pages', renderIcon: checked(spread === SpreadMode.EVEN) },
           ],
         },
         {
           id: 'pdf.scroll',
-          label: 'Scroll direction',
+          label: 'Scroll Direction',
           submenu: [
             { id: 'pdf.scroll.vertical',   label: 'Vertical',    renderIcon: checked(scroll === ScrollMode.VERTICAL) },
             { id: 'pdf.scroll.horizontal', label: 'Horizontal',  renderIcon: checked(scroll === ScrollMode.HORIZONTAL) },
             { id: 'pdf.scroll.wrapped',    label: 'Wrapped',     renderIcon: checked(scroll === ScrollMode.WRAPPED) },
-            { id: 'pdf.scroll.page',       label: 'Single page', renderIcon: checked(scroll === ScrollMode.PAGE) },
+            { id: 'pdf.scroll.page',       label: 'Single Page', renderIcon: checked(scroll === ScrollMode.PAGE) },
           ],
         },
         { id: 'pdf.print', label: 'Print…', keybinding: 'Ctrl+P', group: 'doc' },
-        { id: 'pdf.openExternal', label: 'Open in system viewer', group: 'doc' },
+        { id: 'pdf.openExternal', label: 'Open in System Viewer', group: 'doc' },
       ],
       anchor: { x: r.left, y: r.bottom + 4 },
     });
@@ -2364,8 +2364,8 @@ export class PdfEditorPane extends EditorPane {
     const menu = ContextMenu.show({
       items: [
         ...presets.map((p) => ({ id: `zoom.${p}`, label: `${p}%` })),
-        { id: 'zoom.page-width', label: 'Fit width', group: 'fit' },
-        { id: 'zoom.page-fit', label: 'Fit page', group: 'fit' },
+        { id: 'zoom.page-width', label: 'Fit Width', group: 'fit' },
+        { id: 'zoom.page-fit', label: 'Fit Page', group: 'fit' },
       ],
       anchor: { x, y },
     });
@@ -2646,7 +2646,7 @@ export class PdfEditorPane extends EditorPane {
         })),
         {
           id: 'pdf.findInDocument',
-          label: 'Find in document',
+          label: 'Find in Document',
           keybinding: 'Ctrl+F',
           disabled: !hasSel,
         },

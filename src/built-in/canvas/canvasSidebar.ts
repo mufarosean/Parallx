@@ -353,7 +353,7 @@ export class CanvasSidebar {
       if (chevSvg) { chevSvg.setAttribute('width', '10'); chevSvg.setAttribute('height', '10'); }
       if (this._recentsExpanded) chev.classList.add('canvas-sidebar-recents-chevron--open');
       const recentsLabel = $('span.canvas-sidebar-section-label');
-      recentsLabel.textContent = 'RECENT';
+      recentsLabel.textContent = 'Recent';
       header.appendChild(chev);
       header.appendChild(recentsLabel);
       header.addEventListener('click', (e) => {
@@ -402,7 +402,7 @@ export class CanvasSidebar {
       const favSection = $('div.canvas-sidebar-section.canvas-sidebar-favorites');
 
       const favLabel = $('div.canvas-sidebar-section-label');
-      favLabel.textContent = 'FAVORITES';
+      favLabel.textContent = 'Favorites';
       favSection.appendChild(favLabel);
 
       for (const page of this._favoritedPages) {
@@ -427,7 +427,7 @@ export class CanvasSidebar {
     // ── Pages section header with inline + button ──
     const pagesHeader = $('div.canvas-sidebar-section-header');
     const pagesLabel = $('div.canvas-sidebar-section-label');
-    pagesLabel.textContent = 'PAGES';
+    pagesLabel.textContent = 'Pages';
     pagesHeader.appendChild(pagesLabel);
 
     // ── Split add control ─────────────────────────────────────────────

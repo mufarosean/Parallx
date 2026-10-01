@@ -64,8 +64,8 @@
 .parallx-chat-agent-task-rail-title {
   font-size: var(--px-text-sm);
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--vscode-descriptionForeground, #999999);
 }
 
@@ -113,8 +113,8 @@
 .parallx-chat-agent-task-card-eyebrow {
   font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, #999999);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .parallx-chat-agent-task-card-title {
@@ -789,6 +789,33 @@
   max-width: 280px;
 }
 
+.parallx-chat-offline-state.is-stalled .parallx-chat-offline-spinner {
+  display: none;
+}
+
+.parallx-chat-offline-state.is-stalled .parallx-chat-offline-title {
+  color: var(--px-text);
+}
+
+.parallx-chat-offline-action {
+  margin-top: var(--px-space-4);
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-3);
+  font: inherit;
+  font-size: var(--px-text-sm);
+  font-weight: 500;
+  color: var(--px-text);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm);
+  cursor: pointer;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
+}
+
+.parallx-chat-offline-action:hover {
+  background: var(--px-surface-hover);
+}
+
 .parallx-chat-offline-instruction code {
   background: var(--vscode-textCodeBlock-background, #2d2d2d);
   padding: 1px 4px;
@@ -801,7 +828,7 @@
 
 .parallx-chat-markdown {
   line-height: 1.6;
-  font-size: 13px;
+  font-size: var(--px-text-base);
   color: var(--vscode-foreground, #cccccc);
 }
 
@@ -828,8 +855,8 @@
   margin-top: 0;
 }
 
-.parallx-chat-markdown h1 { font-size: 17px; }
-.parallx-chat-markdown h2 { font-size: 15px; }
+.parallx-chat-markdown h1 { font-size: var(--px-text-lg); }
+.parallx-chat-markdown h2 { font-size: var(--px-text-md); }
 .parallx-chat-markdown h3 { font-size: var(--px-text-lg); }
 
 .parallx-chat-markdown code {
@@ -923,7 +950,7 @@
   margin: 8px 0;
   border-left: 4px solid;
   border-radius: var(--px-radius-sm);
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--px-text) 3%, transparent);
 }
 
 .parallx-chat-markdown .markdown-alert-title {
@@ -947,7 +974,7 @@
 .parallx-chat-markdown .markdown-alert-tip .markdown-alert-title { color: var(--px-success); }
 
 .parallx-chat-markdown .markdown-alert-important { border-left-color: var(--px-accent); }
-.parallx-chat-markdown .markdown-alert-important .markdown-alert-title { color: var(--px-accent); }
+.parallx-chat-markdown .markdown-alert-important .markdown-alert-title { color: var(--px-accent-text); }
 
 .parallx-chat-markdown .markdown-alert-warning { border-left-color: var(--px-warning); }
 .parallx-chat-markdown .markdown-alert-warning .markdown-alert-title { color: var(--px-warning); }
@@ -1117,7 +1144,7 @@
   border: 1px solid color-mix(in srgb, var(--px-accent, #569cd6) 55%, transparent);
   border-radius: var(--px-radius-full, 999px);
   background: var(--px-accent-soft, rgba(86, 156, 214, 0.15));
-  color: var(--px-accent, #569cd6);
+  color: var(--px-accent-text);
   cursor: pointer;
   font-size: var(--px-text-xs, 11px);
   font-weight: 600;
@@ -1142,7 +1169,7 @@
   color: var(--px-text-muted, var(--vscode-descriptionForeground, #989898));
   cursor: pointer;
   padding: 0;
-  font-size: 15px;
+  font-size: var(--px-text-md);
   line-height: 1;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
@@ -1158,7 +1185,7 @@
   border-color: color-mix(in srgb, var(--px-accent, #569cd6) 60%, transparent);
   box-shadow: 0 0 0 1px var(--px-accent-faint, rgba(86, 156, 214, 0.08)),
               0 0 14px -2px color-mix(in srgb, var(--px-accent, #569cd6) 45%, transparent);
-  color: var(--px-accent, #569cd6);
+  color: var(--px-accent-text);
 }
 .parallx-chat-pending-message--steering .parallx-chat-pending-marker {
   border: none;
@@ -1465,8 +1492,8 @@
   font-size: var(--px-text-sm);
   font-weight: 500;
   color: var(--vscode-descriptionForeground, #888);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .parallx-chat-thinking-sources-meta {
@@ -1744,7 +1771,7 @@
 /* A tool's images (a page capture), fetched by id. */
 .parallx-chat-tool-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .parallx-chat-tool-image { display: block; max-width: 240px; max-height: 160px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); }
-.parallx-chat-tool-image-missing { display: inline-block; padding: 2px 8px; font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-muted)); border: 1px dashed var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); }
+.parallx-chat-tool-image-missing { display: inline-block; padding: 2px 8px; font-size: var(--px-text-xs); color: var(--vscode-descriptionForeground, var(--px-text-muted)); border: 1px dashed var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); }
 
 /* ── Status Badge ── */
 
@@ -2256,8 +2283,8 @@
 .parallx-chat-session-sidebar-title {
   font-size: var(--px-text-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground, #cccccc));
 }
 
@@ -2322,7 +2349,7 @@
 }
 
 .parallx-chat-session-sidebar-filter-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #848484);
+  color: var(--px-text-faint);
 }
 
 /* ── Session list ── */
@@ -2366,8 +2393,8 @@
 .parallx-chat-session-sidebar-section-label {
   font-size: var(--px-text-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground, #cccccc));
 }
 
@@ -2553,7 +2580,7 @@
 }
 .parallx-chat-empty-key:hover .parallx-chat-empty-key__glyph,
 .parallx-chat-empty-key:focus-visible .parallx-chat-empty-key__glyph {
-  color: var(--px-accent);
+  color: var(--px-accent-text);
 }
 
 .parallx-chat-empty-key__label { white-space: nowrap; }

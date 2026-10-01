@@ -60,7 +60,7 @@ test.describe('Workspace Management — User Experience', () => {
     // The sidebar should have an "EXPLORER" header label
     const headerLabel = window.locator('.sidebar-header-label');
     await expect(headerLabel).toBeVisible();
-    await expect(headerLabel).toHaveText('EXPLORER');
+    await expect(headerLabel).toHaveText('Explorer');
 
     // There should be exactly ONE header label, not multiples
     await expect(headerLabel).toHaveCount(1);

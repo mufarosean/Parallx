@@ -51,6 +51,9 @@ export function bootstrapSettingsRegistry(services: ServiceCollection): IDisposa
     scope: 'user',
     description: 'Enable the unified settings editor (M60 §3.8 rollback flag).',
     category: 'General',
+    // A rollback switch for developers, not a preference: it was the only
+    // row on the General page every user opened Settings to.
+    hidden: true,
   });
 
   services.registerInstance(ISettingsRegistryService, registry);

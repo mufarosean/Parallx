@@ -89,42 +89,8 @@ export function normalizeKeybinding(key: string): string {
   return modifiers.join('+');
 }
 
-/**
- * Convert a keybinding string to a human-readable display form.
- * Uses platform-appropriate modifier names.
- */
-export function formatKeybindingForDisplay(key: string): string {
-  const isMac = navigator.platform?.toUpperCase().includes('MAC') ?? false;
-  const parts = key.split('+').map(p => p.trim());
-  const displayParts: string[] = [];
-
-  for (const part of parts) {
-    const lower = part.toLowerCase();
-    switch (lower) {
-      case 'ctrl':
-      case 'control':
-        displayParts.push(isMac ? '⌃' : 'Ctrl');
-        break;
-      case 'shift':
-        displayParts.push(isMac ? '⇧' : 'Shift');
-        break;
-      case 'alt':
-      case 'option':
-        displayParts.push(isMac ? '⌥' : 'Alt');
-        break;
-      case 'meta':
-      case 'cmd':
-      case 'command':
-        displayParts.push(isMac ? '⌘' : 'Win');
-        break;
-      default:
-        displayParts.push(part.charAt(0).toUpperCase() + part.slice(1));
-        break;
-    }
-  }
-
-  return displayParts.join(isMac ? '' : '+');
-}
+// One formatter for every surface (menus, palette, Keyboard Shortcuts).
+export { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
 
 /**
  * Build a normalized key string from a keyboard event.

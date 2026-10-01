@@ -1373,10 +1373,29 @@ function _el(tag, style) {
 function _btn(text) {
   const btn = document.createElement('button');
   btn.textContent = text;
-  btn.style.cssText = 'background:var(--vscode-button-secondaryBackground,#1a1a2e);color:var(--vscode-button-secondaryForeground,#aaa);border:1px solid var(--vscode-panel-border,#2a2a4a);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:var(--parallx-fontFamily-ui,-apple-system,"Segoe UI",sans-serif);';
-  btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--vscode-button-secondaryHoverBackground,#222244)'; });
-  btn.addEventListener('mouseleave', () => { btn.style.background = 'var(--vscode-button-secondaryBackground,#1a1a2e)'; });
+  btn.style.cssText = 'display:inline-flex;align-items:center;gap:6px;height:var(--px-control-h-sm);padding:0 10px;white-space:nowrap;flex-shrink:0;background:var(--px-bg-elevated);color:var(--px-text);border:1px solid var(--px-border);border-radius:var(--px-radius-sm);font-size:var(--px-text-sm);cursor:pointer;font-family:var(--parallx-fontFamily-ui);';
+  btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--px-surface-hover)'; });
+  btn.addEventListener('mouseleave', () => { btn.style.background = 'var(--px-bg-elevated)'; });
   return btn;
+}
+
+// Toolbar actions are icons with a tooltip: seven text buttons wrapped onto
+// three lines at ordinary widths. Text stays for the two things a label
+// actually explains (the view switch and the AI refresh).
+function _iconBtn(api, icon, title) {
+  const btn = document.createElement('button');
+  btn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:var(--px-control-h-sm);height:var(--px-control-h-sm);padding:0;flex-shrink:0;background:transparent;color:var(--px-text-secondary);border:1px solid transparent;border-radius:var(--px-radius-sm);cursor:pointer;';
+  btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--px-surface-hover)'; btn.style.color = 'var(--px-text)'; });
+  btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; btn.style.color = 'var(--px-text-secondary)'; });
+  _setIconBtn(api, btn, icon, title);
+  return btn;
+}
+
+function _setIconBtn(api, btn, icon, title) {
+  const html = api && api.icons && api.icons.createIconHtml ? api.icons.createIconHtml(icon, 15) : '';
+  if (html) btn.innerHTML = html; else btn.textContent = title;
+  btn.title = title;
+  btn.setAttribute('aria-label', title);
 }
 
 function _esc(s) {
@@ -1414,24 +1433,24 @@ function createGraphEditor(container, api) {
   container.style.overflow = 'hidden';
 
   // ── Toolbar ──
-  const toolbar = _el('div', 'display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--vscode-sideBar-background,#252525);border-bottom:1px solid var(--vscode-panel-border,#333);flex-shrink:0;');
+  const toolbar = _el('div', 'display:flex;align-items:center;gap:4px;padding:6px 12px;background:var(--px-bg);border-bottom:1px solid var(--px-divider);flex-shrink:0;overflow:hidden;');
 
   const searchInput = document.createElement('input');
   searchInput.type = 'text';
   searchInput.placeholder = 'Search nodes\u2026';
-  searchInput.style.cssText = 'background:var(--vscode-input-background,var(--px-bg-inset));color:var(--vscode-input-foreground,#ccc);border:1px solid var(--vscode-input-border,var(--px-border));border-radius:4px;padding:4px 8px;font-size:12px;width:200px;outline:none;font-family:var(--parallx-fontFamily-ui);';
+  searchInput.style.cssText = 'background:var(--vscode-input-background,var(--px-bg-inset));color:var(--vscode-input-foreground,#ccc);border:1px solid var(--vscode-input-border,var(--px-border));border-radius:var(--px-radius-sm);height:var(--px-control-h-sm);box-sizing:border-box;padding:0 8px;margin-right:4px;font-size:var(--px-text-sm);width:180px;min-width:100px;flex-shrink:1;outline:none;font-family:var(--parallx-fontFamily-ui);';
 
-  const physBtn = _btn('Pause Physics');
-  const edgesBtn = _btn('Hide Edges');
-  const fitBtn = _btn('Fit All');
-  const refreshBtn = _btn('Refresh');
+  const physBtn = _iconBtn(api, 'pause', 'Pause Physics');
+  const edgesBtn = _iconBtn(api, 'eye-off', 'Hide Edges');
+  const fitBtn = _iconBtn(api, 'maximize', 'Fit All');
+  const refreshBtn = _iconBtn(api, 'refresh-cw', 'Refresh');
   // M88 S4 — the mind map is a first-class MODE, not a settings toggle;
   // and the LLM refresh that produces lineage/concept edges lives on the
   // toolbar where it can actually be discovered (the settings-panel copy
   // remains for status + history).
-  const modeBtn = _btn(GS.viewMode === 'mindmap' ? 'Workspace view' : 'Mind map view');
+  const modeBtn = _btn(GS.viewMode === 'mindmap' ? 'Workspace View' : 'Mind Map View');
   const aiRefreshBtn = _btn('AI Refresh');
-  const settingsBtn = _btn('\u2699 Settings');
+  const settingsBtn = _iconBtn(api, 'settings', 'Graph Settings');
   const nodeCount = _el('span', 'margin-left:auto;font-size:11px;color:var(--vscode-descriptionForeground,#666);');
 
   toolbar.append(searchInput, modeBtn, physBtn, edgesBtn, fitBtn, refreshBtn, aiRefreshBtn, settingsBtn, nodeCount);
@@ -1905,7 +1924,7 @@ function createGraphEditor(container, api) {
         : 'never';
       const processed = stats.lastBuildProcessedCount ?? 0;
       const skipped = stats.lastBuildSkippedCount ?? 0;
-      const state = stats.isProcessing ? '⏳ building…' : (queued > 0 ? '⏸ waiting' : '✓ idle');
+      const state = stats.isProcessing ? 'Building…' : (queued > 0 ? 'Waiting' : 'Idle');
       el.innerHTML = [
         `<div><strong>${state}</strong></div>`,
         `<div>Cached edges: ${cached.toLocaleString()} &nbsp;·&nbsp; sources: ${sources.toLocaleString()}</div>`,
@@ -1967,7 +1986,7 @@ function createGraphEditor(container, api) {
   settingsBtn.addEventListener('click', _toggleSettings);
 
   // Legend overlay
-  const legend = _el('div', 'position:absolute;bottom:8px;left:8px;background:rgba(30,30,30,.85);border:1px solid var(--vscode-panel-border,#333);border-radius:6px;padding:8px 12px;font-size:11px;pointer-events:none;');
+  const legend = _el('div', 'position:absolute;bottom:8px;left:8px;background:color-mix(in srgb, var(--px-bg-elevated) 92%, transparent);border:1px solid var(--px-border);border-radius:var(--px-radius-md);padding:8px 12px;font-size:var(--px-text-xs);color:var(--px-text-secondary);pointer-events:none;');
   legend.innerHTML = Object.entries(DOMAIN_COLORS).map(([k, c]) =>
     `<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c}"></span>${_esc(k)}</div>`
   ).join('');
@@ -1984,23 +2003,23 @@ function createGraphEditor(container, api) {
 
   physBtn.addEventListener('click', () => {
     physicsOn = !physicsOn;
-    physBtn.textContent = physicsOn ? 'Pause Physics' : 'Resume Physics';
+    _setIconBtn(api, physBtn, physicsOn ? 'pause' : 'play', physicsOn ? 'Pause Physics' : 'Resume Physics');
     if (physicsOn) resetSimulation();
   });
 
   edgesBtn.addEventListener('click', () => {
     showEdges = !showEdges;
-    edgesBtn.textContent = showEdges ? 'Hide Edges' : 'Show Edges';
+    _setIconBtn(api, edgesBtn, showEdges ? 'eye-off' : 'eye', showEdges ? 'Hide Edges' : 'Show Edges');
     if (!showEdges) {
       const ccx = cvs.clientWidth / 2, ccy = cvs.clientHeight / 2;
       snapToClusters(m.nodes, (ccx - view.x) / view.s, (ccy - view.y) / view.s);
       physicsOn = false;
-      physBtn.textContent = 'Resume Physics';
+      _setIconBtn(api, physBtn, 'play', 'Resume Physics');
       _fitAndDraw();
     } else {
       for (const n of m.nodes) { n.pinned = false; n.vx = 0; n.vy = 0; }
       physicsOn = true;
-      physBtn.textContent = 'Pause Physics';
+      _setIconBtn(api, physBtn, 'pause', 'Pause Physics');
       resetSimulation();
     }
   });
@@ -2011,7 +2030,7 @@ function createGraphEditor(container, api) {
   // M88 S4 — mode toggle rebuilds with the other node universe.
   modeBtn.addEventListener('click', () => {
     GS.viewMode = GS.viewMode === 'mindmap' ? 'workspace' : 'mindmap';
-    modeBtn.textContent = GS.viewMode === 'mindmap' ? 'Workspace view' : 'Mind map view';
+    modeBtn.textContent = GS.viewMode === 'mindmap' ? 'Workspace View' : 'Mind Map View';
     _saveSettings(api);
     _refresh();
   });
@@ -2190,7 +2209,7 @@ function createGraphEditor(container, api) {
     // even if it has no indexed content itself (concept/structural nodes).
     const askBtnStyle = 'background:var(--vscode-button-secondaryBackground,#1a1a2e);color:var(--vscode-button-secondaryForeground,#aaa);border:1px solid var(--vscode-panel-border,#2a2a4a);border-radius:4px;padding:3px 9px;font-size:11px;cursor:pointer;font-family:var(--parallx-fontFamily-ui);';
     if (semanticConns.length > 0) {
-      html += `<div id="__wg_ai" style="margin:0 0 10px;"><button id="__wg_askAi" style="${askBtnStyle}">✦ Ask AI</button></div>`;
+      html += `<div id="__wg_ai" style="margin:0 0 10px;"><button id="__wg_askAi" style="${askBtnStyle}">Ask AI</button></div>`;
     } else {
       html += `<div id="__wg_ai" style="margin:0 0 10px;"><span style="color:#555;font-size:11px" title="No semantic connections to analyze">✦ Ask AI</span></div>`;
     }
@@ -2301,7 +2320,7 @@ function createGraphEditor(container, api) {
     }
 
     // Loading state
-    aiDiv.innerHTML = '<span style="color:#777;font-size:11px">✦ Thinking…</span>';
+    aiDiv.innerHTML = '<span style="color:#777;font-size:11px">Thinking…</span>';
 
     // Fetch chunks for node and all semantic neighbors in parallel
     let nodeChunks, neighborChunkSets;
@@ -2429,7 +2448,7 @@ Respond using this exact JSON with no other text before or after it:
     const _thinkTimer = setInterval(() => {
       _thinkDots = (_thinkDots + 1) % 4;
       if (selected?.id === requestNodeId) {
-        aiDiv.innerHTML = `<span style="color:#777;font-size:11px">✦ Thinking${'.'.repeat(_thinkDots)}</span>`;
+        aiDiv.innerHTML = `<span style="color:#777;font-size:11px">Thinking${'.'.repeat(_thinkDots)}</span>`;
       }
     }, 400);
 

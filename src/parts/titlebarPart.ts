@@ -7,6 +7,7 @@
 //
 // VS Code reference: src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
 
+import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
 import { Part } from './part.js';
 import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
@@ -410,20 +411,7 @@ export class TitlebarPart extends Part {
   }
 
   private _formatKeybinding(key: string): string {
-    // Convert normalized key to display format (Ctrl → ⌃ on Mac)
-    const isMac = navigator.platform?.startsWith('Mac') ?? false;
-    let display = key;
-    if (isMac) {
-      display = display.replace(/\bctrl\b/gi, '⌃').replace(/\balt\b/gi, '⌥')
-        .replace(/\bshift\b/gi, '⇧').replace(/\bmeta\b/gi, '⌘');
-    } else {
-      display = display.replace(/\bctrl\b/gi, 'Ctrl').replace(/\balt\b/gi, 'Alt')
-        .replace(/\bshift\b/gi, 'Shift').replace(/\bmeta\b/gi, 'Win');
-    }
-    // Capitalize key portions and replace + with delimiter
-    return display.split('+').map(p => p.trim())
-      .map(p => p.length === 1 ? p.toUpperCase() : p)
-      .join(isMac ? '' : '+');
+    return key ? formatKeybindingForDisplay(key) : '';
   }
 
   /** Handle Alt key to focus/unfocus menu bar (Windows/Linux convention). */
@@ -689,7 +677,7 @@ export class TitlebarPart extends Part {
     commandCenter.setAttribute('role', 'button');
     commandCenter.setAttribute('tabindex', '0');
     commandCenter.title = 'Search & run commands';
-    commandCenter.innerHTML = `<span class="titlebar-command-center-icon" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.2"/><line x1="10.3" y1="10.3" x2="14" y2="14" stroke-linecap="round"/></svg></span><span class="titlebar-command-center-label">Search commands</span><span class="titlebar-command-center-kbd" aria-hidden="true"><kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>P</kbd></span>`;
+    commandCenter.innerHTML = `<span class="titlebar-command-center-icon" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.2"/><line x1="10.3" y1="10.3" x2="14" y2="14" stroke-linecap="round"/></svg></span><span class="titlebar-command-center-label">Search commands</span><span class="titlebar-command-center-kbd" aria-hidden="true"><kbd>${formatKeybindingForDisplay('ctrl+shift+p')}</kbd></span>`;
     commandCenter.addEventListener('click', () => {
       this._onDidClickCommandCenter.fire();
     });

@@ -413,6 +413,8 @@ export interface IChatWidgetServices {
   readonly onDidChangeSession: Event<string>;
   readonly getProviderStatus: () => { available: boolean };
   readonly onDidChangeProviderStatus: Event<void>;
+  /** Open Settings at the AI section — the offline state's way forward. */
+  readonly openAiSettings?: () => void;
   readonly modelPicker?: IModelPickerServices;
   readonly modePicker?: IModePickerServices;
   readonly attachmentServices?: IAttachmentServices;

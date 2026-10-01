@@ -274,6 +274,44 @@ function hslToRgbString(h: number, s: number, l: number): string {
   return `${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)}`;
 }
 
+// Text on an accent fill (primary buttons, chips). Every curated accent sits
+// at 52–66% lightness, where white text reads at ~3:1 (fails WCAG AA), so the
+// ink is chosen per accent: whichever of white or near-black contrasts more.
+export const ON_ACCENT_LIGHT = '#ffffff';
+export const ON_ACCENT_DARK = '#14161a';
+
+function relativeLuminance(rgb: number[]): number {
+  const [r, g, b] = rgb.map(v => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** The text colour that reads best on hsl(h s% l%): white or near-black. */
+export function onAccentInk(h: number, s: number, l: number): string {
+  const accent = relativeLuminance(hslToRgbString(h, s, l).split(',').map(Number));
+  const dark = relativeLuminance([0x14, 0x16, 0x1a]);
+  const onWhite = 1.05 / (accent + 0.05);
+  const onDark = (accent + 0.05) / (dark + 0.05);
+  return onDark > onWhite ? ON_ACCENT_DARK : ON_ACCENT_LIGHT;
+}
+
+// Accent used as TEXT (links, active labels) on paper. The fill lightness
+// (52–66%) reads ~2.5:1 on the light grounds, so light mode draws accent text
+// at the highest lightness that still reaches 4.5:1 on paper, sidebar and
+// card. Dark mode uses the accent itself (≥ 4.5:1 on every dark ground).
+const LIGHT_GROUNDS = [[0xf4, 0xf5, 0xf7], [0xec, 0xee, 0xf1], [0xff, 0xff, 0xff]];
+
+export function accentTextLightness(h: number, s: number, l: number): number {
+  for (let L = l; L >= 10; L--) {
+    const ink = relativeLuminance(hslToRgbString(h, s, L).split(',').map(Number));
+    const worst = Math.min(...LIGHT_GROUNDS.map(g => (relativeLuminance(g) + 0.05) / (ink + 0.05)));
+    if (worst >= 4.5) return L;
+  }
+  return 10;
+}
+
 /** Apply a state to :root (mode + base via data-attrs, accent via inline vars). */
 export function applyAppearance(state: PxAppearanceState): void {
   const root = document.documentElement;
@@ -295,6 +333,8 @@ export function applyAppearance(state: PxAppearanceState): void {
   root.style.removeProperty('--px-accent-s');
   root.style.removeProperty('--px-accent-l');
   root.style.removeProperty('--px-accent-rgb');
+  root.style.removeProperty('--px-text-on-accent');
+  root.style.removeProperty('--px-accent-text-l');
 
   if (state.accent === 'custom' && typeof state.customHue === 'number') {
     const h = state.customHue, s = 58, l = 62;
@@ -302,6 +342,8 @@ export function applyAppearance(state: PxAppearanceState): void {
     root.style.setProperty('--px-accent-s', `${s}%`);
     root.style.setProperty('--px-accent-l', `${l}%`);
     root.style.setProperty('--px-accent-rgb', hslToRgbString(h, s, l));
+    root.style.setProperty('--px-text-on-accent', onAccentInk(h, s, l));
+    root.style.setProperty('--px-accent-text-l', `${accentTextLightness(h, s, l)}%`);
   } else {
     const a = PX_ACCENTS.find(x => x.id === state.accent);
     // For the base theme's own accent, leave it to the theme block; only set
@@ -311,6 +353,8 @@ export function applyAppearance(state: PxAppearanceState): void {
       root.style.setProperty('--px-accent-s', `${a.s}%`);
       root.style.setProperty('--px-accent-l', `${a.l}%`);
       root.style.setProperty('--px-accent-rgb', a.rgb);
+      root.style.setProperty('--px-text-on-accent', onAccentInk(a.h, a.s, a.l));
+      root.style.setProperty('--px-accent-text-l', `${accentTextLightness(a.h, a.s, a.l)}%`);
     }
   }
 

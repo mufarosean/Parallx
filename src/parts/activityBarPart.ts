@@ -122,6 +122,10 @@ export class ActivityBarPart extends Part {
   /** User-defined icon order (persisted). */
   private _iconOrder: string[] = [];
 
+  /** Icons the user hid from the ribbon (right-click › Hide). A per-user
+   *  preference: kept in localStorage, never workspace state. */
+  private readonly _hiddenIcons = new Set<string>(readHiddenIcons());
+
   // ── Events ──
 
   private readonly _onDidClickIcon = this._register(new Emitter<ActivityBarIconClickEvent>());
@@ -190,6 +194,7 @@ export class ActivityBarPart extends Part {
 
     this._icons.set(descriptor.id, descriptor);
     const btn = this._createIconButton(descriptor);
+    btn.classList.toggle('activity-bar-item--user-hidden', this._hiddenIcons.has(descriptor.id));
 
     // If a saved icon order exists, insert at the correct position
     // instead of appending to the end. Icons not in the saved order
@@ -282,6 +287,18 @@ export class ActivityBarPart extends Part {
   /**
    * Get all registered icon descriptors.
    */
+  /** Hide or show an icon on the ribbon; the choice persists for this user. */
+  setIconHidden(iconId: string, hidden: boolean): void {
+    if (hidden) this._hiddenIcons.add(iconId); else this._hiddenIcons.delete(iconId);
+    writeHiddenIcons([...this._hiddenIcons]);
+    const btn = this._iconSection.querySelector(`[data-icon-id="${CSS.escape(iconId)}"]`);
+    btn?.classList.toggle('activity-bar-item--user-hidden', hidden);
+  }
+
+  isIconHidden(iconId: string): boolean {
+    return this._hiddenIcons.has(iconId);
+  }
+
   getIcons(): readonly ActivityBarIconDescriptor[] {
     return [...this._icons.values()];
   }
@@ -701,3 +718,21 @@ export const activityBarPartDescriptor: PartDescriptor = {
   constraints: ACTIVITY_BAR_CONSTRAINTS,
   factory: () => new ActivityBarPart(),
 };
+
+// ── Hidden-icon preference ─────────────────────────────────────────────────
+
+const HIDDEN_ICONS_KEY = 'parallx.activityBar.hiddenIcons';
+
+function readHiddenIcons(): string[] {
+  try {
+    const raw = localStorage.getItem(HIDDEN_ICONS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeHiddenIcons(ids: string[]): void {
+  try { localStorage.setItem(HIDDEN_ICONS_KEY, JSON.stringify(ids)); } catch { /* storage unavailable */ }
+}

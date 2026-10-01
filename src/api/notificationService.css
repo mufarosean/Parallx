@@ -159,7 +159,9 @@
  *  - .--secondary: cancel-style, low-emphasis ghost.
  */
 .parallx-notification-action-btn {
-  padding: 5px 14px;
+  height: var(--px-control-h);
+  box-sizing: border-box;
+  padding: 0 14px;
   font-size: var(--px-text-base);
   font-weight: 500;
   font-family: inherit;
@@ -313,11 +315,8 @@
 }
 
 .parallx-modal-btn {
-  padding: 5px 14px;
-  font-size: var(--px-text-base);
   font-weight: 500;
   font-family: inherit;
-  border-radius: var(--px-radius-md);
   border: 1px solid transparent;
   cursor: pointer;
   outline: none;
@@ -325,6 +324,15 @@
   transition: background-color var(--px-dur-fast) var(--px-ease),
               border-color var(--px-dur-fast) var(--px-ease),
               transform var(--px-dur-instant) var(--px-ease);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 
 .parallx-modal-btn:active {

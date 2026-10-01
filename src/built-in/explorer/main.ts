@@ -105,6 +105,14 @@ interface TreeNode {
 // ─── State ───────────────────────────────────────────────────────────────────
 
 let _api: ParallxApi;
+
+/** The OS file manager's own name: Finder, File Explorer, or a plain phrase on Linux. */
+const REVEAL_LABEL = (() => {
+  const p = typeof navigator !== 'undefined' ? navigator.platform : '';
+  if (/Mac/i.test(p)) return 'Reveal in Finder';
+  if (/Win/i.test(p)) return 'Reveal in File Explorer';
+  return 'Open Containing Folder';
+})();
 let _context: ToolContext;
 let _showHidden = true;
 let _selectedNode: TreeNode | null = null;
@@ -432,8 +440,7 @@ function renderTree(): void {
   if (_roots.length > 1) {
     const header = $('div');
     header.className = 'explorer-workspace-header';
-    const displayName = _getWorkspaceDisplayName().toUpperCase();
-    header.textContent = `${displayName} (WORKSPACE)`;
+    header.textContent = `${_getWorkspaceDisplayName()} (Workspace)`;
     fragment.appendChild(header);
   }
 
@@ -459,7 +466,29 @@ function renderTree(): void {
 }
 
 function renderNodeFlat(container: HTMLElement | DocumentFragment, node: TreeNode): void {
-  const depth = Math.max(0, node.depth);
+  // A single-folder workspace: the section header already names the folder,
+  // so its own row is not drawn and its contents sit at the first indent
+  // (VS Code). Right-click on empty space still targets the root.
+  const singleRoot = _roots.length === 1 ? _roots[0] : null;
+  const shift = singleRoot ? 1 : 0;
+  if (node === singleRoot && node.type === FILE_TYPE_DIRECTORY && node.expanded) {
+    node.element = undefined;
+    if (node.loading && !node.loaded) {
+      container.appendChild(createLoadingElement(0));
+    } else if (node.error) {
+      container.appendChild(createErrorElement(node, 0));
+    } else if (node.loaded && node.children.length === 0) {
+      const emptyEl = $('div');
+      emptyEl.className = 'tree-empty-dir';
+      emptyEl.style.paddingLeft = `${INDENT_PX + 20}px`;
+      emptyEl.textContent = '(empty)';
+      container.appendChild(emptyEl);
+    } else {
+      for (const child of node.children) renderNodeFlat(container, child);
+    }
+    return;
+  }
+  const depth = Math.max(0, node.depth - shift);
   const el = $('div');
   el.className = 'tree-node';
   if (_selectedNode === node) {
@@ -1252,7 +1281,7 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
       items.push({ id: 'explorer.delete', label: 'Delete', keybinding: 'Delete', group: '4_edit' });
       items.push({ id: 'explorer.copyPath', label: 'Copy Path', group: '5_copy' });
       items.push({ id: 'explorer.copyRelativePath', label: 'Copy Relative Path', group: '5_copy' });
-      items.push({ id: 'explorer.revealInFileExplorer', label: 'Reveal in File Explorer', group: '6_reveal' });
+      items.push({ id: 'explorer.revealInFileExplorer', label: REVEAL_LABEL, group: '6_reveal' });
     } else {
       // Folder context — hide rename/delete for workspace root folders
       const isRootFolder = _roots.some(r => r.uri === node.uri);
@@ -1272,7 +1301,7 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
       }
       items.push({ id: 'explorer.copyPath', label: 'Copy Path', group: '4_copy' });
       items.push({ id: 'explorer.copyRelativePath', label: 'Copy Relative Path', group: '4_copy' });
-      items.push({ id: 'explorer.revealInFileExplorer', label: 'Reveal in File Explorer', group: '5_reveal' });
+      items.push({ id: 'explorer.revealInFileExplorer', label: REVEAL_LABEL, group: '5_reveal' });
       if (node.expanded) {
         items.push({ id: 'explorer.collapse', label: 'Collapse All', group: '6_collapse' });
       }
@@ -1555,7 +1584,11 @@ function insertCreateInput(parentNode: TreeNode, kind: 'file' | 'folder'): void 
   if (!_treeContainer) return;
   renderTree(); // re-render first to ensure DOM is current
 
-  const depth = Math.max(0, parentNode.depth + 1);
+  // A hidden single root (see renderNodeFlat) has no row: its new child goes
+  // at the top of the tree, one indent shallower like the rest of its children.
+  const hiddenRoot = _roots.length === 1 && parentNode === _roots[0];
+  const shift = _roots.length === 1 ? 1 : 0;
+  const depth = Math.max(0, parentNode.depth + 1 - shift);
   const inputRow = $('div');
   inputRow.className = 'tree-create-row';
   // Computed layout dimension
@@ -1574,7 +1607,9 @@ function insertCreateInput(parentNode: TreeNode, kind: 'file' | 'folder'): void 
 
   // Insert after the parent's element
   const parentEl = parentNode.element;
-  if (parentEl?.nextSibling) {
+  if (hiddenRoot) {
+    _treeContainer.insertBefore(inputRow, _treeContainer.firstChild);
+  } else if (parentEl?.nextSibling) {
     _treeContainer.insertBefore(inputRow, parentEl.nextSibling);
   } else {
     _treeContainer.appendChild(inputRow);
