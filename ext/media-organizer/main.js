@@ -10303,7 +10303,7 @@ function moShowShortcutsCheatSheet() {
     { title: 'Tag & organize', items: [
       [['T'], 'Tag the selected / focused item(s)'],
       [['Drag tag'], 'Drop a sidebar tag on a card to apply it'],
-      [['Delete'], 'Delete the selected items (it asks first)'],
+      [['Delete'], 'Delete the selected items (to Trash or for good, as set in Settings)'],
       [[mod, 'Shift', 'E'], 'Reveal focused item in file explorer'],
     ]},
     { title: 'Sidebar', items: [
@@ -10761,6 +10761,8 @@ function renderBrowserSidebar(container, api) {
       if (row) {
         set(allItem, row.total); set(favItem, row.fav); set(untaggedItem, row.untagged); set(trashItem, row.trash);
         allItem.classList.remove('is-quiet'); favItem.classList.remove('is-quiet'); trashItem.classList.remove('is-quiet');
+        // Trash shows when Delete goes there, or while anything is in it.
+        trashFoot.classList.toggle('mo-hidden', !moDeleteToTrash() && !row.trash);
       }
       set(dupItem, dup ? dup.n : 0);
     } catch { /* counts are a help, never a blocker */ }
@@ -10768,6 +10770,7 @@ function renderBrowserSidebar(container, api) {
   let countsTimer = null;
   const refreshCountsSoon = () => { clearTimeout(countsTimer); countsTimer = setTimeout(() => void refreshCounts(), 600); };
   document.addEventListener('mo:refresh-grid', refreshCountsSoon);
+  document.addEventListener('mo:delete-mode-changed', refreshCountsSoon);
   void refreshCounts();
 
   // The row for the editor in front is marked.
@@ -11726,7 +11729,7 @@ function renderBrowserSidebar(container, api) {
   const refreshAll = () => { loadFolders(); loadTags(); loadAlbums(); void loadSmartAlbums(); refreshCountsSoon(); };
   _sidebarRefreshCallbacks.push(refreshAll);
 
-  return { dispose() { container.innerHTML = ''; document.removeEventListener('mo:ai-tag-changed', refreshTagReviewCount); document.removeEventListener('mo:art-tools-changed', syncPractice); document.removeEventListener('mo:refresh-grid', refreshCountsSoon); clearTimeout(countsTimer); if (openEditorsSub) openEditorsSub.dispose(); const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
+  return { dispose() { container.innerHTML = ''; document.removeEventListener('mo:ai-tag-changed', refreshTagReviewCount); document.removeEventListener('mo:art-tools-changed', syncPractice); document.removeEventListener('mo:refresh-grid', refreshCountsSoon); document.removeEventListener('mo:delete-mode-changed', refreshCountsSoon); clearTimeout(countsTimer); if (openEditorsSub) openEditorsSub.dispose(); const idx = _sidebarRefreshCallbacks.indexOf(refreshAll); if (idx >= 0) _sidebarRefreshCallbacks.splice(idx, 1); } };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -11864,6 +11867,7 @@ function renderGridBrowser(container, api, input) {
   // Restore session state if available for this grid instance
   const cached = _sessionGridState.get(instanceId);
   const state = {
+    inTrash: filterType === 'trash',
     currentPage: cached?.currentPage ?? 1,
     perPage: cached?.perPage ?? MO_DEFAULT_PER_PAGE,
     zoomWidth: _sessionZoomWidth,
@@ -11935,10 +11939,10 @@ function renderGridBrowser(container, api, input) {
   const pageHeader = api.ui.createPageHeader(root, {
     title: moScopeTitle(filterType),
     subtitle: '\u00a0',
-    primary: {
-      label: 'Add Folder…', icon: 'plus', title: 'Add a folder of photos and videos to the library',
-      onClick: () => { api.commands.executeCommand('media-organizer.scan').catch(() => {}); },
-    },
+    // In Trash the one main action is to empty it; everywhere else, Add Folder….
+    primary: filterType === 'trash'
+      ? { label: 'Empty Trash\u2026', icon: 'trash-2', title: 'Delete everything in Trash now (it asks first)', onClick: () => { api.commands.executeCommand('media-organizer.emptyTrash').catch(() => {}); } }
+      : { label: 'Add Folder…', icon: 'plus', title: 'Add a folder of photos and videos to the library', onClick: () => { api.commands.executeCommand('media-organizer.scan').catch(() => {}); } },
     more: [
       { label: 'Rescan Library', icon: 'refresh-cw', onSelect: () => { api.commands.executeCommand('media-organizer.rescan').catch(() => {}); } },
       { label: 'Find Duplicates', icon: 'copy', onSelect: () => { api.commands.executeCommand('media-organizer.findDuplicates').catch(() => {}); } },
@@ -13800,6 +13804,15 @@ function renderGridBrowser(container, api, input) {
     }, 200);
   };
   document.addEventListener('mo:refresh-grid', _gridRefreshHandler);
+  // Items moved to Trash or restored leave this view's selection, so a later
+  // action (Edit Image, Paste Edit…) never reaches a photo that is not here.
+  const _itemsRemovedHandler = (e) => {
+    const keys = (e.detail && e.detail.keys) || [];
+    let changed = false;
+    for (const k of keys) if (state.selectedIds.delete(k)) changed = true;
+    if (changed) { if (!state.selectedIds.size) state.selecting = false; if (selectionBar) selectionBar.update(); }
+  };
+  document.addEventListener('mo:items-removed', _itemsRemovedHandler);
 
   // Surgical, non-debounced refresh path for tag-drop (#6). Updates the
   // affected cards' tag arrays in state.items so the new chip appears
@@ -14209,7 +14222,7 @@ function renderGridBrowser(container, api, input) {
       showBulkDeleteDialog(state, api, () => {
         if (selectionBar) selectionBar.update();
         loadPage();
-      });
+      }, { permanent: filterType === 'trash' });
       return;
     }
 
@@ -14467,7 +14480,26 @@ function renderGridBrowser(container, api, input) {
     api.window.showInformationMessage(msg);
   }
 
+  async function restoreKeys(keys) {
+    const n = await moRestoreFromTrash(api, moItemsFromKeys(keys));
+    state.selectedIds.clear();
+    state.selecting = false;
+    if (selectionBar) selectionBar.update();
+    api.window.showInformationMessage(`Restored ${n} item${n === 1 ? '' : 's'}.`);
+    loadPage();
+  }
   function buildContextMenuActions(item, isMulti) {
+    // In Trash: bring it back, look at it, or delete it for good.
+    if (filterType === 'trash') {
+      const keys = isMulti ? new Set(state.selectedIds) : new Set([`${item.type}:${item.id}`]);
+      const out = [{ label: isMulti ? `Restore ${keys.size} Items` : 'Restore', icon: 'rotate-ccw', handler: () => void restoreKeys(keys) }];
+      if (!isMulti) out.push({ label: 'View Full Size', handler: () => handleCardViewFullSize(item) });
+      out.push({ separator: true });
+      out.push({ label: 'Delete Permanently\u2026', danger: true, handler: () => {
+        showBulkDeleteDialog(isMulti ? state : { selectedIds: keys }, api, () => { if (selectionBar) selectionBar.update(); loadPage(); }, { permanent: true });
+      } });
+      return out;
+    }
     const actions = [];
     if (!isMulti) {
       // Single-item actions
@@ -14545,7 +14577,7 @@ function renderGridBrowser(container, api, input) {
         }
       }});
       actions.push({ separator: true });
-      actions.push({ label: 'Delete\u2026', danger: true, handler: () => {
+      actions.push({ label: moDeleteLabel(), danger: true, handler: () => {
         const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
         showBulkDeleteDialog(tmpState, api, () => loadPage());
       }});
@@ -14642,7 +14674,7 @@ function renderGridBrowser(container, api, input) {
         showOptimizeGifDialog(gifs, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
       }});
       actions.push({ separator: true });
-      actions.push({ label: 'Delete\u2026', danger: true, handler: () => {
+      actions.push({ label: moDeleteLabel(), danger: true, handler: () => {
         showBulkDeleteDialog(state, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
       }});
     }
@@ -14921,6 +14953,7 @@ function renderGridBrowser(container, api, input) {
       document.removeEventListener('mo:apply-search-state', _smartAlbumApplyHandler);
       document.removeEventListener('mo:request-selection', _selectionReplyHandler);
       document.removeEventListener('mo:refresh-grid', _gridRefreshHandler);
+      document.removeEventListener('mo:items-removed', _itemsRemovedHandler);
       document.removeEventListener('mo:tag-applied', _tagAppliedHandler);
       document.removeEventListener('mo:tag-meta-changed', _tagMetaChangedHandler);
       document.removeEventListener('mo:tags-bulk-changed', _tagsBulkChangedHandler);
@@ -18006,12 +18039,36 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
 
   bar.appendChild(moEl('span', 'mo-sel-spacer'));
 
-  // Delete (it asks first), at the far right, then Done to leave selecting.
-  const deleteBtn = selBtn('Delete…', 'Permanently remove the selected items from the library', 'trash-2');
+  // Delete at the far right, then Done to leave selecting. It moves to Trash
+  // or deletes for good (asking first), as the Delete setting says; in Trash
+  // the bar is Restore and Delete Permanently….
+  const deleteBtn = selBtn('Delete…', '', 'trash-2');
   deleteBtn.classList.add('mo-sel-delete');
+  const syncDeleteBtn = () => {
+    const label = state.inTrash ? 'Delete Permanently\u2026' : moDeleteLabel();
+    deleteBtn.querySelector('.mo-sel-label').textContent = label;
+    deleteBtn.setAttribute('aria-label', label);
+    deleteBtn.title = state.inTrash || !moDeleteToTrash() ? 'Delete the selected items and their files (it asks first)' : `Move the selected items to Trash; they are deleted after ${MO_TRASH_DAYS} days`;
+  };
+  syncDeleteBtn();
+  const onDeleteMode = () => { if (!bar.isConnected) { document.removeEventListener('mo:delete-mode-changed', onDeleteMode); return; } syncDeleteBtn(); };
+  document.addEventListener('mo:delete-mode-changed', onDeleteMode);
   deleteBtn.addEventListener('click', () => {
-    showBulkDeleteDialog(state, api, () => { updateBar(); refreshFn(); });
+    showBulkDeleteDialog(state, api, () => { updateBar(); refreshFn(); }, { permanent: !!state.inTrash });
   });
+  if (state.inTrash) {
+    for (const b of [bulkTagBtn, aiTagBtn, bulkRatingBtn, addToAlbumBtn, chatBtn, moreBtn]) b.style.display = 'none';
+    const restoreBtn = selBtn('Restore', 'Bring the selected items back into the library', 'rotate-ccw');
+    restoreBtn.addEventListener('click', async () => {
+      const n = await moRestoreFromTrash(api, moItemsFromKeys(state.selectedIds));
+      state.selectedIds.clear();
+      state.selecting = false;
+      updateBar();
+      api.window.showInformationMessage(`Restored ${n} item${n === 1 ? '' : 's'}.`);
+      refreshFn();
+    });
+    bar.insertBefore(restoreBtn, bulkTagBtn);
+  }
   bar.appendChild(deleteBtn);
   const doneBtn = api.ui.createButton(bar, { label: 'Done', kind: 'secondary', title: 'Clear the selection (Esc)' });
   doneBtn.addEventListener('click', () => {
@@ -18712,7 +18769,18 @@ function showAddToAlbumDialog(state, api, onComplete) {
 }
 
 // Bulk delete confirmation dialog
-function showBulkDeleteDialog(state, api, onComplete) {
+function showBulkDeleteDialog(state, api, onComplete, opts = {}) {
+  // Delete set to Trash: move them there at once; Restore brings them back.
+  if (moDeleteToTrash() && !opts.permanent) {
+    const items = moItemsFromKeys(state.selectedIds);
+    void moMoveToTrash(api, items).then((n) => {
+      state.selectedIds.clear();
+      state.selecting = false;
+      api.window.showInformationMessage(`Moved ${n} item${n === 1 ? '' : 's'} to Trash. Restore brings them back; after ${MO_TRASH_DAYS} days they are deleted.`);
+      onComplete();
+    }).catch((err) => api.window.showErrorMessage('Could not move to Trash: ' + (err && err.message || err)));
+    return;
+  }
   const overlay = moEl('div', 'mo-bulk-dialog-overlay');
   const dialog = moEl('div', 'mo-bulk-dialog');
   dialog.setAttribute('role', 'dialog');
@@ -30012,6 +30080,24 @@ async function moPurgeMissingFiles() {
 }
 
 // ── Trash ──
+// What Delete does is the user's choice (mediaOrganizer.deleteMode):
+// 'permanent' (the default) removes at once through moPurgeMedia, after
+// asking; 'trash' moves to Trash, and Trash is emptied through the same
+// moPurgeMedia after MO_TRASH_DAYS, so Eraser handles the files either way.
+const MO_TRASH_DAYS = 30;
+let _deleteMode = 'permanent';
+function moDeleteToTrash() { return _deleteMode === 'trash'; }
+function moDeleteLabel() { return moDeleteToTrash() ? 'Move to Trash' : 'Delete\u2026'; }
+function moItemsFromKeys(keys) {
+  return [...keys].map((k) => { const i = String(k).indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; })
+    .filter((it) => (it.type === 'photo' || it.type === 'video') && Number.isFinite(it.id));
+}
+// Items leaving the library's views (to Trash or back) leave every selection too.
+function moAnnounceRemoved(items) {
+  document.dispatchEvent(new CustomEvent('mo:items-removed', { detail: { keys: items.map((it) => `${it.type}:${it.id}`) } }));
+  document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
+}
+
 async function moMoveToTrash(api, items) {
   // items: array of { type, id }
   if (!items || items.length === 0) return 0;
@@ -30022,6 +30108,7 @@ async function moMoveToTrash(api, items) {
     n++;
   }
   _notifySidebarRefresh();
+  moAnnounceRemoved(items);
   return n;
 }
 
@@ -30036,6 +30123,7 @@ async function moRestoreFromTrash(api, items) {
     n++;
   }
   _notifySidebarRefresh();
+  moAnnounceRemoved(items);
   return n;
 }
 
@@ -30083,28 +30171,29 @@ async function moEmptyTrash(api) {
   if (result.filesFailed) emsg += `, ${result.filesFailed} failed`;
   api.window.showInformationMessage(emsg + '.' + heldNote);
   _notifySidebarRefresh();
+  document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
 }
 
-// Auto-empty trash older than N days (default 30). Setting key: trash_auto_purge_days.
-async function moAutoEmptyTrashIfStale() {
+// Trash older than MO_TRASH_DAYS (setting key trash_auto_purge_days) is
+// removed the way Empty Trash removes it: through moPurgeMedia, so the files
+// go too (through Eraser when it is set up). It used to delete only the rows;
+// the files stayed, and the folder watcher re-imported them as new photos.
+async function moAutoEmptyTrashIfStale(api) {
   try {
     const row = await db.get(`SELECT value FROM mo_settings WHERE key = 'trash_auto_purge_days'`);
-    const days = row && row.value ? parseInt(row.value, 10) : 30;
+    const days = row && row.value ? parseInt(row.value, 10) : MO_TRASH_DAYS;
     if (!days || days <= 0) return;
-    // Hard-delete rows whose deleted_at is older than N days
-    await db.run(
-      `DELETE FROM mo_photos WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)`,
-      [`-${days} days`]
-    );
-    await db.run(
-      `DELETE FROM mo_videos WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)`,
-      [`-${days} days`]
-    );
-    await db.run(`
-      DELETE FROM mo_files
-       WHERE id NOT IN (SELECT file_id FROM mo_photos_files)
-         AND id NOT IN (SELECT file_id FROM mo_videos_files)
-    `);
+    const age = [`-${days} days`];
+    const photos = await db.all(`SELECT id FROM mo_photos WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)`, age);
+    const videos = await db.all(`SELECT id FROM mo_videos WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)`, age);
+    const items = [
+      ...photos.map((p) => ({ type: 'photo', id: Number(p.id) })),
+      ...videos.map((v) => ({ type: 'video', id: Number(v.id) })),
+    ].filter((it) => Number.isFinite(it.id) && !_isAnyIdPendingErase([it]));
+    if (!items.length) return;
+    await moPurgeMedia(api, items, { deleteFiles: true });
+    _notifySidebarRefresh();
+    document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
   } catch (err) {
     console.warn('[MediaOrganizer] auto-purge trash failed:', err);
   }
@@ -38497,6 +38586,21 @@ export async function activate(api, context) {
     if (sub && typeof sub.dispose === 'function') _commandDisposables.push(sub);
   }
 
+  // What Delete does (permanent or to Trash); menus and the sidebar follow it.
+  const _readDeleteCfg = () => {
+    const v = api.workspace.getConfiguration('mediaOrganizer').get('deleteMode', 'permanent');
+    _deleteMode = v === 'trash' ? 'trash' : 'permanent';
+  };
+  try { _readDeleteCfg(); } catch { /* keep default */ }
+  if (api.workspace.onDidChangeConfiguration) {
+    const subDel = api.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration('mediaOrganizer.deleteMode')) return;
+      try { _readDeleteCfg(); } catch { /* ignore */ }
+      document.dispatchEvent(new CustomEvent('mo:delete-mode-changed'));
+    });
+    if (subDel && typeof subDel.dispose === 'function') _commandDisposables.push(subDel);
+  }
+
   // Hydrate screen-recorder settings + watch for changes (re-renders the cheat
   // sheet's Record button live).
   const _readRecorderCfg = () => {
@@ -39029,7 +39133,7 @@ export async function activate(api, context) {
   );
 
   // M59 P5: auto-empty trash older than N days (default 30)
-  moAutoEmptyTrashIfStale().catch(() => {});
+  moAutoEmptyTrashIfStale(api).catch(() => {});
   // Resume any in-flight Eraser batches saved from a previous session FIRST —
   // that repopulates the pending-erase path index — THEN sweep orphan DB rows
   // whose backing file vanished. The other order let the sweep race resumed

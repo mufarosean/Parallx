@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'motrash', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -390,6 +390,95 @@ async function timelapseScene(appRoot, clip2, errors) {
 
 // The image editor: a folder of photos is scanned, one opens in Edit Image,
 // and each tool is shot (dark, then light, then a narrow window).
+// Delete set to Trash: Delete moves without asking, Trash offers Restore,
+// Delete Permanently… and Empty Trash…, and Trash older than 30 days is
+// removed with its files (and so is not re-imported by the folder watcher).
+async function moTrashScene(appRoot, workspace, errors) {
+  const media = path.join(workspace, 'trashtest');
+  await fs.mkdir(media, { recursive: true });
+  const ff = (args) => spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args]);
+  ff(['-f', 'lavfi', '-i', 'mandelbrot=s=640x480', '-frames:v', '1', '-q:v', '4', path.join(media, 'keep.jpg')]);
+  ff(['-f', 'lavfi', '-i', 'cellauto=s=640x480:rule=30', '-frames:v', '1', '-q:v', '4', path.join(media, 'bin.jpg')]);
+  const { app, page } = await launchApp(appRoot, errors);
+  const log = (k, v) => console.log(`[probe] trash ${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+  const msgs = async () => page.evaluate(() => { const svc = window.__parallx_workbench__?._services?.get?.({ id: 'INotificationService' }); const out = ((svc && svc.history) || []).map((n) => n.message); if (svc && svc.clearHistory) svc.clearHistory(); return out; });
+  const menuItems = () => page.evaluate(() => { const m = Array.from(document.querySelectorAll('.context-menu')).pop(); return m ? Array.from(m.querySelectorAll('.context-menu-item-label')).map((x) => x.textContent.trim()).join(' | ') : 'NO MENU'; });
+  const clickMenu = (label) => page.evaluate((l) => { const m = Array.from(document.querySelectorAll('.context-menu')).pop(); const it = m && Array.from(m.querySelectorAll('.context-menu-item')).find((r) => r.querySelector('.context-menu-item-label')?.textContent.trim() === l); if (it) it.click(); return !!it; }, label);
+  const rightClick = (name) => page.evaluate((n) => { const c = Array.from(document.querySelectorAll('.mo-card')).find((x) => (x.textContent || '').includes(n)); if (!c) return false; const r = c.getBoundingClientRect(); c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 20, clientY: r.top + 20 })); return true; }, name);
+  const sql = (q, p = []) => page.evaluate(async ({ q, p }) => { const r = await window.parallxElectron.extensionDatabase.all('media-organizer', q, p); return r.rows || r.error; }, { q, p });
+  const runSql = (q, p = []) => page.evaluate(async ({ q, p }) => { const r = await window.parallxElectron.extensionDatabase.run('media-organizer', q, p); return r.error ? JSON.stringify(r.error) : r.changes; }, { q, p });
+  const binState = async () => JSON.stringify(await sql(`SELECT p.id, p.deleted_at FROM mo_photos p JOIN mo_photos_files pf ON pf.photo_id = p.id JOIN mo_files f ON f.id = pf.file_id WHERE f.basename = 'bin.jpg'`));
+  const sideRow = (label) => page.evaluate((l) => Array.from(document.querySelectorAll('.mo-sidebar-item')).find((r) => r.querySelector('.mo-sidebar-item-label')?.textContent === l)?.click(), label);
+  try {
+    await enableMediaOrganizer(page);
+    await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }); }, media);
+    await runCommand(page, ['media-organizer.scan']);
+    await page.waitForTimeout(5_000);
+    await page.evaluate(() => Array.from(document.querySelectorAll('.activity-bar-item')).find((b) => Array.from(b.attributes).some((a) => /media.?organizer/i.test(a.value)))?.click());
+    await page.waitForTimeout(1_500);
+    log('Trash row with Delete = permanent and Trash empty', await page.evaluate(() => (document.querySelector('.mo-sidebar-foot')?.classList.contains('mo-hidden') ? 'hidden' : 'shown')));
+    await page.evaluate(async () => { const c = window.__parallx_workbench__?._services?.get?.({ id: 'IConfigurationService' }); await c._updateValue('mediaOrganizer.deleteMode', 'trash'); });
+    await page.waitForTimeout(1_500);
+    log('Trash row with Delete = trash', await page.evaluate(() => (document.querySelector('.mo-sidebar-foot')?.classList.contains('mo-hidden') ? 'hidden' : 'shown')));
+    await sideRow('Untagged');
+    await page.waitForTimeout(2_500);
+    await rightClick('bin');
+    await page.waitForTimeout(400);
+    log('menu on a photo', await menuItems());
+    await clickMenu('Move to Trash');
+    await page.waitForTimeout(1_500);
+    log('after Move to Trash', `${await binState()} ${JSON.stringify(await msgs())}`);
+    await sideRow('Trash');
+    await page.waitForTimeout(2_500);
+    log('Trash header', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-page-header button')).filter((b) => b.offsetParent).map((b) => (b.textContent || b.title || '').trim()).join(' | ')));
+    await rightClick('bin');
+    await page.waitForTimeout(400);
+    log('menu in Trash', await menuItems());
+    await shot(page, 'trash-menu');
+    await clickMenu('Restore');
+    await page.waitForTimeout(1_500);
+    log('after Restore', `${await binState()} ${JSON.stringify(await msgs())}`);
+    // Again into Trash, by the Delete key this time, then the permanent dialog.
+    await sideRow('Untagged');
+    await page.waitForTimeout(2_000);
+    await page.evaluate(() => { const c = Array.from(document.querySelectorAll('.mo-card')).find((x) => (x.textContent || '').includes('bin')); c?.querySelector('.mo-card-check, .mo-card-select, input[type=checkbox]')?.click(); });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => document.querySelector('.mo-grid-browser')?.focus());
+    await page.keyboard.press('Delete');
+    await page.waitForTimeout(1_500);
+    log('Delete key (Trash mode)', `${await binState()} dialog=${await page.evaluate(() => !!document.querySelector('.mo-bulk-dialog'))} ${JSON.stringify(await msgs())}`);
+    await sideRow('Trash');
+    await page.waitForTimeout(2_000);
+    await rightClick('bin');
+    await page.waitForTimeout(400);
+    await clickMenu('Delete Permanently…');
+    await page.waitForTimeout(500);
+    log('Delete Permanently… opens', await page.evaluate(() => { const d = document.querySelector('.mo-bulk-dialog'); return d ? d.querySelector('h3')?.textContent : 'no dialog'; }));
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-bulk-dialog button')).find((b) => b.textContent === 'Cancel')?.click());
+    await page.waitForTimeout(300);
+    // Empty Trash… asks (it used to crash before asking).
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-page-header button')).find((b) => /Empty Trash/.test(b.textContent || ''))?.click());
+    await page.waitForTimeout(800);
+    log('Empty Trash… asks', await page.evaluate(() => Array.from(document.querySelectorAll('.parallx-notification-prompts-container .parallx-notification-message, .parallx-notification-prompts-container button')).map((e) => e.textContent.trim()).join(' | ') || 'nothing'));
+    await shot(page, 'trash-empty-prompt');
+    await page.evaluate(() => Array.from(document.querySelectorAll('.parallx-notification-prompts-container button')).find((b) => b.textContent.trim() === 'Cancel')?.click());
+    await page.waitForTimeout(300);
+    // 30 days later: removed with its file, and not re-imported.
+    log('backdate', String(await runSql(`UPDATE mo_photos SET deleted_at = datetime('now', '-40 days') WHERE deleted_at IS NOT NULL`)));
+    await page.evaluate(async () => { const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' }); await svc.setEnablement('parallx-community.media-organizer', false); });
+    await page.waitForTimeout(2_000);
+    await enableMediaOrganizer(page);
+    await page.waitForTimeout(3_000);
+    log('bin.jpg after restart', `${await binState()} on disk=${await fs.stat(path.join(media, 'bin.jpg')).then(() => true).catch(() => false)}`);
+    await runCommand(page, ['media-organizer.rescan']);
+    await page.waitForTimeout(5_000);
+    log('bin.jpg after rescan', `${await binState()} ${JSON.stringify(await msgs())}`);
+    log('keep.jpg untouched', JSON.stringify(await sql(`SELECT p.deleted_at FROM mo_photos p JOIN mo_photos_files pf ON pf.photo_id = p.id JOIN mo_files f ON f.id = pf.file_id WHERE f.basename = 'keep.jpg'`)));
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 // Media Organizer audit: every menu on a photo, a GIF, a video and a
 // selection; the page ⋯ and View; what Delete and the Delete key do; Trash;
 // commands run from the palette without arguments; the shortcuts sheet.
@@ -733,6 +822,17 @@ async function main() {
     await scene('image', () => imageScene(appRoot, workspace, errs));
     const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
     if (real.length) { console.log(`[probe] image: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
+    if (scenes.length === 1) {
+      await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
+      return;
+    }
+  }
+  if (scenes.includes('motrash')) {
+    const errs = [];
+    await scene('motrash', () => moTrashScene(appRoot, workspace, errs));
+    const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
+    if (real.length) { console.log(`[probe] motrash: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
     if (scenes.length === 1) {
       await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
       await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});

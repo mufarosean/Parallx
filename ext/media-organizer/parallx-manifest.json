@@ -109,6 +109,12 @@
             "default": false,
             "description": "Start practice runs with the picture in greyscale. Can be changed during a run."
           },
+          "mediaOrganizer.deleteMode": {
+            "type": "string",
+            "default": "permanent",
+            "enum": ["permanent", "trash"],
+            "description": "What Delete does. 'permanent' removes the items and their files at once (through Eraser when it is set up), after asking. 'trash' moves them to Trash without asking; Restore brings them back, and after 30 days they are removed the same way as a permanent delete."
+          },
           "mediaOrganizer.enableScreenRecorder": {
             "type": "boolean",
             "default": false,
