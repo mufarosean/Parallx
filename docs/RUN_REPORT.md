@@ -6,21 +6,34 @@ Companion documents:
 - `docs/DESIGN_UNIFICATION.md`: the charter for placement, busyness and extension governance.
 - `docs/LAUNCH_READINESS.md`: audience, positioning, and what must be true to not fail at launch.
 
-Screenshots: `docs/run-report/` (final state, dark and light).
+Screenshots: `docs/run-report/`.
+- `after-dark/` and `after-light/`: the final build, the same 12 screens in each mode:
+  - Welcome
+  - a Canvas page with tags
+  - the File and Tools menus
+  - the activity-bar menu
+  - Chat with no AI configured
+  - Dashboard
+  - Planner
+  - Flashcards
+  - Budget's first run
+  - Settings → Appearance
+  - Tools
+- `before/`: the same harness on the first audit, for comparison.
 
 ## The Short Version
 
-I audited the whole running app: 120 scenes, each in dark and light mode, every extension switched on. Then I fixed, re-audited and fixed again over nine iterations. Every number below comes from the same automated harness on the same 120 scenes, so before and after are directly comparable.
+I audited the whole running app: 120 scenes, each in dark and light mode, every extension switched on. Then I fixed, re-audited and fixed again: 18 fix commits and five full audits. Every number below comes from the same automated harness on the same 120 scenes, so before and after are directly comparable.
 
 | Measure | Start | After iter 2 | Final | |
 |---|---|---|---|---|
-| Text failing WCAG contrast, dark | 502 | 103 | {{D}} | |
-| …of which below 3:1 | 156 | 14 | {{D3}} | |
-| Text failing WCAG contrast, light | 729 | 153 | {{L}} | |
-| …of which below 3:1 | 682 | 24 | {{L3}} | |
-| Distinct rendered font sizes (UI) | 25 | 16 | {{FS}} | the remainder are content headings and hero numbers |
-| Distinct button heights | 16 | 13 | {{BH}} | |
-| Buttons on the 22/24/28/32 ladder | 46% | 74% | {{BL}}% | |
+| Text failing WCAG contrast, dark | 502 | 103 | **3** | 2 are disabled buttons (exempt under WCAG); 1 is a 4.26:1 near-miss |
+| …of which below 3:1 | 156 | 14 | 2 | both disabled buttons |
+| Text failing WCAG contrast, light | 729 | 153 | **13** | 2 disabled; the rest 3.9–4.47:1 near-misses, 3 of them code-editor syntax colours |
+| …of which below 3:1 | 682 | 24 | 2 | both disabled buttons |
+| Distinct rendered font sizes | 25 | 16 | 16 | all chrome text is on the 7-step scale; the rest are document content (canvas headings, code editor), hero numbers and glyphs |
+| Distinct button heights | 16 | 13 | 5 | |
+| Buttons on the 22/24/28/32 ladder | 46% | 74% | 99% | the one exception is the tab bar's scroll arrow, which is full bar height |
 | Text rendered in ALL CAPS (CSS) | 590 | 0 | 0 | plus the JS-uppercased panel titles, now gone |
 | Renderer errors across 240 captures | 0 | 0 | 0 | |
 | Unit tests | 6 failing | same | same 6 | identical on the commit before this branch (verified in a clean worktree): a perf-timing test, a rounding test, two date-dependent web-research tests, and `moAiTagging` (its harness references a helper, `moTagAncestorIds`, that it doesn't load). Not caused or touched by this work. |
@@ -87,6 +100,31 @@ I audited the whole running app: 120 scenes, each in dark and light mode, every 
 - Availability now counts every provider, and re-checks every 5s while nothing is usable, so saving a key unblocks chat without a restart.
 - Covered by unit tests. I could not try it with a real Claude key in this environment.
 
+**Iterations 11–15: from looking at the final screenshots**
+
+The numbers were nearly clean by now, so I reviewed every final screen by eye, the way a new user would see it. That found more than the metrics did.
+- **Budget told new users they had synced on 3/31/2026** (`ee38ca1`). A one-off repair migration for one ledger set a sync cursor in *every* workspace. That fake cursor:
+  - showed a sync that never happened;
+  - made the first sync ignore the user's `syncStartDays`/`syncStartDate` settings;
+  - **hid Budget's own "Set up in three steps" welcome card from every new user.**
+
+  A new migration removes the cursor only where Budget has provably never run. I checked it against the real migration chain in three scenarios. The welcome card now shows (`0d6cd33`), with one primary action.
+- **The tag field lost the cursor after each tag** (`6ff71e1`). After adding one tag, typing went to the page body. Fixed, with a regression test that fails on the old code. Uncoloured tags were also invisible in light mode.
+- **Dashboard** (`95f397c`): new widgets fill the first free spot instead of stacking in one column.
+- **Welcome** (`58e34c0`): Start links use the menu names ("New Page"). The redundant tip became one honest line: your pages are saved in this workspace folder, on your computer.
+- **Iteration 11** (`63e0cc8`):
+  - A legacy duplicate CSS rule dimmed the search toggles to 3.1:1.
+  - The Flashcards "Decks" breadcrumb repeated the "Decks" heading.
+  - The Autonomy Log summary was cut to "No a…"; it now hides when there's no room.
+  - "Reveal in File Explorer" became "Reveal in Finder" / "Open Containing Folder" on Mac and Linux.
+- **Iteration 12** (`5a3a7c2`):
+  - Each tool shows its own icon, instead of 20 identical boxes.
+  - The empty-editor watermark uses the menu vocabulary and the shared shortcut formatter (it pointed at a command that doesn't exist).
+  - Settings buttons are in Title Case.
+- Planner's task list labels are left-aligned; a `<button>` had centred them.
+- **The app now ships its own typeface** (`f34276a`). Inter was the default font in Appearance and first in every font stack, but it was never bundled, so most people saw Segoe UI, the Mac system font or DejaVu. It's now vendored (OFL, ~270 KB). Verified rendering as Inter by measurement, not by eye.
+- **Dashboard in a narrow pane** (`0eda647`). With Chat open, widgets were ~170px wide and a note wrapped one letter per line. Below 640px, widgets now take the full row.
+
 ## Menus: Treated as One System
 
 I opened every menu in the app (title bar, submenus, and right-click on files, folders, empty space, text, tabs, activity bar, status bar, panel tabs and Canvas pages) and judged them as a set rather than one by one.
@@ -133,7 +171,9 @@ I checked each of these three times, because the user asked for exactly that:
 - *"A tooltip gets stuck."* It's an artefact of the harness's static mouse; real hover clears it.
 - *"Saved appears twice."* The first one fades after 1.5s.
 - *"Exam Dates and Create environment fail contrast."* Both were disabled, and WCAG exempts disabled controls. I still hid Exam Dates when there is nothing to date.
-- *"Canvas sidebar right-click is empty."* It uses its own popup, which works (screenshot in `docs/run-report/`).
+- *"Canvas sidebar right-click is empty."* It uses its own popup, which works.
+- *"Typing created a page called Tags."* No: the first tag on a page creates a workspace "Tags" database by design. The real bug nearby was the lost cursor, which is fixed.
+- *"A single-root Explorer still shows the root row."* That row is the section header naming the folder, as in VS Code. The folder's own row is hidden.
 - *"Budget, Creations AI and others clutter the default install."* They don't: extensions are **off by default**. This corrected my own first draft of the launch review.
 
 ## Decisions Left to You
@@ -145,12 +185,14 @@ I didn't make these, because they change what the product is rather than how it 
 - **The version number.** Help shows the API version (v0.2.0); package.json says 0.1.0.
 - **The right-edge activity bar** holds only Chat. Either move Chat's icon to the left bar, or give the right bar a purpose.
 - **Budget's Gmail filter** defaults to `from:chase.com`.
+- **What "Tools" lists.** It shows 20 enabled tools, including infrastructure (Output, Indexing, Diagnostics, Autonomy Log, Settings, Welcome). A user-facing list would show the things people choose to use, with the plumbing in a collapsed group.
 
 ## What Is Still Open (Known, Not Fixed)
 
-- **A few near-misses at 4.2–4.49:1** (muted text on raised surfaces in light mode), and CodeMirror's syntax colours in light mode. The syntax theme deserves its own pass.
+- **Near-misses at 3.9–4.47:1** in light mode, which come from compositing (opacity or tinted parents) on a few chips and labels rather than from a token, plus CodeMirror's syntax colours. Each needs a look of its own; the syntax theme deserves its own pass.
 - **Not every extension header is on `api.ui.createPageHeader` yet.** The ratchet stops new drift; migration happens as each one is touched.
 - **Chat's model and connection state should move to the status bar.**
+- **An existing e2e test** (`tests/e2e/93-activity-journal.spec.ts`) types "Toggle Sidebar" into the palette. That command was renamed "Toggle Left Area" before this branch, so the test needs updating. I didn't run the e2e suite.
 
 ## How to Reproduce the Numbers
 
