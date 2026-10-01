@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -109,10 +109,28 @@ async function shot(page, name) {
     v.muted = true; v.play().catch(() => {});
     return st;
   }).filter(Boolean)).catch(() => []);
+  // A still page in the hidden window makes no new frame until something
+  // changes: nudge a 1 px dot so the screenshot has a frame to take.
+  await page.evaluate(() => {
+    let d = document.getElementById('__probe_repaint');
+    if (!d) { d = document.createElement('div'); d.id = '__probe_repaint'; d.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;pointer-events:none;z-index:2147483647'; document.body.appendChild(d); }
+    d.style.opacity = d.style.opacity === '0.01' ? '0.02' : '0.01';
+  }).catch(() => {});
   const file = path.join(outDir, `${name}.png`);
   // A still page in the hidden window sometimes makes no new frame; a missed
   // shot is reported, not a reason to stop the scene.
-  const took = await page.screenshot({ path: file, timeout: 15_000 }).then(() => true, (e) => { console.log(`[probe] ${name}: no shot (${String(e).split('\n')[0]})`); return false; });
+  let took = await page.screenshot({ path: file, timeout: 8_000 }).then(() => true, () => false);
+  // Fallback: the main process captures what the window last drew.
+  if (!took && _currentApp) {
+    const b64 = await _currentApp.evaluate(async ({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows()[0];
+      if (!w) return null;
+      const img = await w.webContents.capturePage();
+      return img.toPNG().toString('base64');
+    }).catch((e) => { console.log(`[probe] ${name}: capturePage failed (${String(e).split('\n')[0]})`); return null; });
+    if (b64) { await fs.writeFile(file, Buffer.from(b64, 'base64')); took = true; }
+  }
+  if (!took) console.log(`[probe] ${name}: no shot`);
   if (held.length) {
     await page.evaluate((list) => {
       const vids = document.querySelectorAll('video');
@@ -135,8 +153,12 @@ async function enableMediaOrganizer(page) {
   await page.waitForTimeout(3_000);
 }
 
+let _currentApp = null;
 async function launchApp(appRoot, errors) {
-  const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  // Software WebGL (SwiftShader): the container has no GPU, and the image
+  // editor draws with WebGL.
+  const app = await electron.launch({ args: ['.', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  _currentApp = app;
   const page = await app.firstWindow();
   page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text().slice(0, 300)}`); });
@@ -361,10 +383,98 @@ async function timelapseScene(appRoot, clip2, errors) {
   }
 }
 
+// The image editor: a folder of photos is scanned, one opens in Edit Image,
+// and each tool is shot (dark, then light, then a narrow window).
+async function imageScene(appRoot, workspace, errors) {
+  const photos = path.join(workspace, 'photos');
+  await fs.mkdir(photos, { recursive: true });
+  const srcs = [
+    ['studio.jpg', 'gradients=s=1600x1067:c0=0x2b4a6f:c1=0xd99a5b:c2=0x7a3b2e:x0=0:y0=0:x1=1600:y1=1067:speed=0,noise=alls=12:allf=t'],
+    ['garden.jpg', 'mandelbrot=s=1600x1067:maxiter=200'],
+    ['portrait.jpg', 'gradients=s=900x1200:c0=0x1d2b24:c1=0xe8d7b0:x0=0:y0=1200:x1=900:y1=0:speed=0,noise=alls=10:allf=t'],
+    ['sketch.jpg', 'cellauto=s=1600x1067:rule=110,negate'],
+    ['dusk.jpg', 'gradients=s=1600x1067:c0=0x0b0d26:c1=0xff7a3d:c2=0x6a2c70:speed=0'],
+  ];
+  for (const [name, lav] of srcs) {
+    spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', lav, '-frames:v', '1', '-q:v', '3', path.join(photos, name)]);
+  }
+  const { app, page } = await launchApp(appRoot, errors);
+  try {
+    await enableMediaOrganizer(page);
+    await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }); }, photos);
+    await runCommand(page, ['media-organizer.scan']);
+    await page.waitForTimeout(4_000);
+    await runCommand(page, [['media-organizer.editImage', 1]]);
+    await page.waitForSelector('.mo-edit', { timeout: 20_000 });
+    await page.waitForTimeout(3_000);
+    const tool = async (label) => { await page.evaluate((l) => document.querySelector(`.mo-edit-tool[title="${l}"]`)?.click(), label); await page.waitForTimeout(1_200); };
+    const scrollPanel = async (frac) => { await page.evaluate((f) => { const b = document.querySelector('.mo-edit-panel-body'); if (b) b.scrollTop = (b.scrollHeight - b.clientHeight) * f; }, frac); await page.waitForTimeout(400); };
+    const openAll = async () => {
+      for (let i = 0; i < 8; i++) {
+        const n = await page.evaluate(() => { const f = document.querySelector('.mo-edit-panel .mo-edit-section.is-shut .mo-edit-section-fold'); if (!f) return 0; f.click(); return 1; });
+        if (!n) break;
+        await page.waitForTimeout(150);
+      }
+      console.log(`[probe] image sections shut after opening: ${await page.evaluate(() => document.querySelectorAll('.mo-edit-panel .mo-edit-section.is-shut').length)}`);
+    };
+    const shots = async (suffix) => {
+      await tool('Edit');
+      await scrollPanel(0);
+      await shot(page, `image-edit${suffix}`);
+      await openAll();
+      await page.waitForTimeout(400);
+      await scrollPanel(0.45);
+      await shot(page, `image-edit-colour${suffix}`);
+      await scrollPanel(1);
+      await shot(page, `image-edit-bottom${suffix}`);
+      await tool('Crop And Rotate');
+      await shot(page, `image-crop${suffix}`);
+      await tool('Remove');
+      await shot(page, `image-remove${suffix}`);
+      await tool('Enhance');
+      await shot(page, `image-enhance${suffix}`);
+      await tool('Edit');
+    };
+    const layout = await page.evaluate(() => {
+      const r = (sel) => { const e = document.querySelector(sel); if (!e) return `${sel}=none`; const b = e.getBoundingClientRect(); return `${sel}=${Math.round(b.width)}x${Math.round(b.height)}@${Math.round(b.left)},${Math.round(b.top)}${e.classList.contains('mo-hidden') ? ' hidden' : ''}`; };
+      return ['.mo-edit-topbar', '.mo-edit-presets', '.mo-edit-centre', '.mo-edit-panel', '.mo-edit-tools', '.mo-edit-film', '.mo-edit-hist'].map(r).join(' ');
+    });
+    console.log(`[probe] image layout: ${layout}`);
+    const topbar = await page.evaluate(() => Array.from(document.querySelectorAll('.mo-edit-topbar button, .mo-edit-topbar .mo-edit-value')).map((b) => (b.getAttribute('title') || b.textContent || '').trim()).filter(Boolean).join(' | '));
+    console.log(`[probe] image topbar: ${topbar}`);
+    const sections = await page.evaluate(() => Array.from(document.querySelectorAll('.mo-edit-section-title')).map((t) => t.textContent).join(' | '));
+    console.log(`[probe] image sections: ${sections}`);
+    await shots('');
+    // Light mode (Appearance's data-px-mode, which the --px-* tokens follow).
+    await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
+    await page.waitForTimeout(800);
+    await shots('-light');
+    // A narrow window.
+    await page.setViewportSize({ width: 1000, height: 760 }).catch(() => {});
+    await page.waitForTimeout(1_000);
+    await tool('Edit');
+    await scrollPanel(0);
+    await shot(page, 'image-narrow-light');
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 async function main() {
   await fs.mkdir(outDir, { recursive: true });
   const { appRoot, workspace, clip, clip2 } = await makeTempRoots();
   console.log(`[probe] app root ${appRoot}\n[probe] workspace ${workspace}`);
+  if (scenes.includes('image')) {
+    const errs = [];
+    await scene('image', () => imageScene(appRoot, workspace, errs));
+    const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
+    if (real.length) { console.log(`[probe] image: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
+    if (scenes.length === 1) {
+      await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
+      return;
+    }
+  }
   if (scenes.includes('timelapse')) {
     const errs = [];
     await scene('timelapse', () => timelapseScene(appRoot, clip2, errs));
@@ -388,6 +498,7 @@ async function main() {
   }
 
   const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  _currentApp = app;
   const errors = [];
   try {
     const page = await app.firstWindow();
