@@ -5729,8 +5729,6 @@ kbd.mo-key {
   border-bottom-width: 2px; border-radius: 4px;
 }
 .mo-cheat-hint { flex: 1; font-size: 11px; opacity: 0.65; }
-.mo-cheat-record-btn { display: inline-flex; align-items: center; gap: 6px; }
-.mo-cheat-record-btn svg { width: 13px; height: 13px; }
 /* A row: the workbench list-row (icon, label, quiet count), on the shared
    hover surface, inset from the section edges. */
 .mo-sidebar-item {
@@ -10409,17 +10407,6 @@ function moShowShortcutsCheatSheet() {
   modal.appendChild(body);
 
   const footer = moEl('div', 'mo-modal-footer');
-  // Record GIF — only when the screen recorder is enabled in settings. Closes
-  // the sheet and opens the framing window.
-  if (_enableScreenRecorder) {
-    const recBtn = moEl('button', 'mo-btn-primary mo-cheat-record-btn', { type: 'button' });
-    recBtn.innerHTML = `${moIcon('video', 13)}<span>Record GIF</span>`;
-    recBtn.addEventListener('click', () => {
-      dismissShortcutsCheatSheet();
-      if (_api) moStartScreenRecording(_api);
-    });
-    footer.appendChild(recBtn);
-  }
   footer.appendChild(moEl('span', 'mo-cheat-hint', {
     textContent: 'Press ?  anytime to open this. Shortcuts act on the focused or selected items.',
   }));
@@ -10652,13 +10639,22 @@ function renderBrowserSidebar(container, api) {
   studioSection.classList.add('mo-section-fixed');
   const cpBody = moEl('div', 'mo-cp-sidebar');
   const artBody = moEl('div', 'mo-studio-art', { 'data-mo-studio': 'art' });
-  const studioEmpty = moEl('div', 'mo-sidebar-hint mo-hidden', { textContent: 'No clip projects yet. Select videos and choose New Clip Project…, or use +.' });
+  const studioEmpty = moEl('div', 'mo-sidebar-hint mo-hidden', { textContent: 'Nothing here yet. Use + to start a clip project or record the screen.' });
   studioBody.append(cpBody, artBody, studioEmpty);
   {
     const stHeader = studioSection.querySelector('.mo-sidebar-section-header');
     const stBtns = moEl('div', 'mo-sidebar-header-btns');
-    const cpNewBtn = moSidebarHeaderBtn(api, 'plus', 'New Clip Project…');
-    cpNewBtn.addEventListener('click', () => { void moNewClipProject(api, []); });
+    const cpNewBtn = moSidebarHeaderBtn(api, 'plus', 'New in Studio');
+    cpNewBtn.addEventListener('click', () => {
+      const r = cpNewBtn.getBoundingClientRect();
+      const canRecord = !!(window.parallxElectron && window.parallxElectron.recorder && window.parallxElectron.recorder.openFrame);
+      showContextMenu(r.left, r.bottom + 2, [
+        { label: 'New Clip Project\u2026', icon: 'clapperboard', handler: () => void moNewClipProject(api, []) },
+        // A recording opens as a temporary project: closing it erases the
+        // recording; what is exported from it is what stays.
+        { label: 'Record Screen\u2026', icon: 'video', disabled: !canRecord, title: canRecord ? 'Record part of the screen, then trim and export it' : 'The screen recorder is not available in this build', handler: () => void moStartScreenRecording(api) },
+      ]);
+    });
     stBtns.appendChild(cpNewBtn);
     stHeader.insertBefore(stBtns, stHeader.querySelector('.mo-chevron'));
   }
@@ -38294,7 +38290,6 @@ let _showCardTags = true;
 // Screen-recorder settings (mirror manifest defaults). The app Settings hub and
 // the extension's ConfigurationService are separate stores (same as
 // showCardTags), so the authoritative writes go through cfg.update() here.
-let _enableScreenRecorder = false;
 let _screenRecorderTempDir = '';   // '' = use the default in-workspace recordings dir
 let _screenRecorderAudio = 'system'; // 'off' | 'system' | 'mic' | 'both' (mirrors manifest default)
 let _screenRecorderCountdown = 0;    // seconds before the first frame (0 = instant, the default)
@@ -38456,7 +38451,6 @@ export async function activate(api, context) {
   // sheet's Record button live).
   const _readRecorderCfg = () => {
     const cfg = api.workspace.getConfiguration('mediaOrganizer');
-    _enableScreenRecorder = cfg.get('enableScreenRecorder', false) === true;
     _screenRecorderTempDir = cfg.get('screenRecorderTempDir', '') || '';
     const audio = cfg.get('screenRecorderAudio', 'system');
     _screenRecorderAudio = ['off', 'system', 'mic', 'both'].includes(audio) ? audio : 'system';
@@ -38468,8 +38462,7 @@ export async function activate(api, context) {
   try { _readRecorderCfg(); } catch { /* keep defaults */ }
   if (api.workspace.onDidChangeConfiguration) {
     const sub2 = api.workspace.onDidChangeConfiguration((e) => {
-      if (!e.affectsConfiguration('mediaOrganizer.enableScreenRecorder') &&
-          !e.affectsConfiguration('mediaOrganizer.screenRecorderTempDir') &&
+      if (!e.affectsConfiguration('mediaOrganizer.screenRecorderTempDir') &&
           !e.affectsConfiguration('mediaOrganizer.screenRecorderAudio') &&
           !e.affectsConfiguration('mediaOrganizer.screenRecorderCountdown') &&
           !e.affectsConfiguration('mediaOrganizer.screenRecorderShowCursor') &&
@@ -38810,33 +38803,10 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.showShortcuts', () => moShowShortcutsCheatSheet())
   );
 
-  // Toggle the screen recorder. This is the authoritative on/off switch: the
-  // app Settings hub shows the setting but its store isn't bridged to the
-  // extension's ConfigurationService (same as showCardTags), so cfg.update()
-  // here is what actually drives it.
+  // Record Screen: frame a region, record it, and open it in a temporary clip
+  // project (Studio's + menu, and the palette).
   _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.toggleScreenRecorder', async () => {
-      const next = !_enableScreenRecorder;
-      try {
-        await api.workspace.getConfiguration('mediaOrganizer').update('enableScreenRecorder', next);
-        _enableScreenRecorder = next;
-        api.window.showInformationMessage(`Screen recorder ${next ? 'enabled' : 'disabled'}. Open Keyboard Shortcuts (?) to ${next ? 'find the Record GIF button' : ''}.`.trim());
-      } catch (err) {
-        api.window.showErrorMessage('Could not toggle screen recorder: ' + (err && err.message ? err.message : String(err)));
-      }
-    })
-  );
-
-  // Start a screen recording directly (also reachable from the cheat sheet's
-  // Record GIF button when enabled).
-  _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.recordGif', () => {
-      if (!_enableScreenRecorder) {
-        api.window.showInformationMessage('Enable the screen recorder first (run "Media Organizer: Toggle Screen Recorder").');
-        return;
-      }
-      moStartScreenRecording(api);
-    })
+    api.commands.registerCommand('media-organizer.recordGif', () => moStartScreenRecording(api))
   );
 
   // Clip projects (docs/CLIPS.md, Phase 2). With video paths it starts the

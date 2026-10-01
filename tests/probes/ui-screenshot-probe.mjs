@@ -739,6 +739,13 @@ async function sidebarScene(appRoot, workspace, errors) {
     });
     console.log(`[probe] sidebar: ${await state()}`);
     await shot(page, 'sidebar');
+    // Studio's +: New Clip Project… and Record Screen….
+    await page.evaluate(() => { const h = Array.from(document.querySelectorAll('.mo-sidebar-section-header')).find((x) => x.querySelector('.mo-sidebar-section-title')?.textContent === 'Studio'); h?.querySelector('.mo-sidebar-header-btns button')?.click(); });
+    await page.waitForTimeout(400);
+    console.log(`[probe] sidebar Studio +: ${await page.evaluate(() => { const m = Array.from(document.querySelectorAll('.context-menu')).pop(); return m ? Array.from(m.querySelectorAll('.context-menu-item')).map((r) => `${r.querySelector('.context-menu-item-label')?.textContent}${r.classList.contains('context-menu-item--disabled') ? ' (off)' : ''}`).join(' | ') : 'NO MENU'; })}`);
+    await shot(page, 'sidebar-studio-menu');
+    await page.keyboard.press('Escape');
+    console.log(`[probe] settings hub: ${await page.evaluate(() => { const r = window.__parallx_workbench__?._services?.get?.({ id: 'ISettingsRegistryService' }); const sc = r && r.getSchema && r.getSchema('mediaOrganizer.deleteMode'); return sc ? `${sc.key} ${sc.type} [${(sc.enumValues || sc.enum || []).join(',')}]` : 'not registered'; })}`);
     await page.evaluate(() => Array.from(document.querySelectorAll('.mo-sidebar-item')).find((r) => r.querySelector('.mo-sidebar-item-label')?.textContent === 'All Media')?.click());
     await page.waitForTimeout(2_500);
     await page.mouse.move(150, 300);

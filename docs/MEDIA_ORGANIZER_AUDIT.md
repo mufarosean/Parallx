@@ -264,12 +264,20 @@ The shortcuts sheet (10280–10336) is out of date from work earlier today:
    - Hide Reveal in Media Organizer and Open Clip Editor from the palette
      (1.6), since they need arguments.
    - Fix the "Save Smart Album" and "Trim / Export Clip" wording.
-2. **Deleting: decided, no change.** Mufaro, 2026-10-01: "Delete and trash
-   are okay as permanent for now, we should not change this. I prefer a pure
-   delete." Delete stays a permanent delete everywhere, and Trash is not
-   reworked. What step 1 still covers is unchanged: the crashing confirmations
-   (1.1), and the shortcuts sheet, which should say that Delete removes for
-   good instead of "Move selected to Trash".
+2. **Deleting: built 2026-10-01** after Mufaro: "maybe we give an option, a
+   user can choose to have permanent delete which is currently routed through
+   eraser, or normal delete that sends things to trash and clears through
+   eraser after 30 days." Setting `mediaOrganizer.deleteMode`:
+   - `permanent` (default, as before) asks, then deletes.
+   - `trash` moves to Trash without asking.
+
+   Trash now:
+   - Restore and Delete Permanently… in its menu and selection bar;
+   - Empty Trash… as its page action;
+   - after 30 days, items are removed through `moPurgeMedia`, files and all,
+     so they no longer come back (1.2 fixed).
+
+   Probe: `motrash`.
 3. **Folder management.** A right-click on a folder row:
    - Rescan;
    - Show in Folder;
@@ -296,8 +304,17 @@ The shortcuts sheet (10280–10336) is out of date from work earlier today:
    get selection, menus, sort and layouts. The album's own fields (title,
    description) go in its header.
 
-**Your calls before any of this is built** (Delete settled, step 2):
+**Decided 2026-10-01 and built:**
 
-- whether Feed should stay the default for All Media (3.5);
-- whether Favorites should mean 5 stars or be its own mark (3.4);
-- whether the screen recorder belongs in Media Organizer at all (3.8).
+- **Feed** stays the default for All Media (3.5).
+- **Favorites** replace the 1–5 stars: one mark on cards, menus, the
+  selection bar, the detail page and the lightbox. The keyboard shortcut is
+  F; search with `is:favorite`. Existing ratings became favorites (3.4).
+  Probe: `mofav`.
+- **The screen recorder** moved to Studio's + (New Clip Project… or Record
+  Screen…). The on/off setting and Toggle Screen Recorder are gone (3.8).
+- **Fixed:** the four crashing confirmations (1.1) and the shortcuts sheet
+  (5).
+
+**Still open:** folder management (step 3), one Duplicates (4), menus by
+kind (5), names (6), the album page (7), and a new name for the tool.

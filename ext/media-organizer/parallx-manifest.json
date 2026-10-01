@@ -33,8 +33,7 @@
       { "id": "media-organizer.emptyTrash", "title": "Empty Trash", "category": "Media Organizer" },
       { "id": "media-organizer.revealInMO", "title": "Reveal in Media Organizer", "category": "Media Organizer" },
       { "id": "media-organizer.showShortcuts", "title": "Keyboard Shortcuts", "category": "Media Organizer" },
-      { "id": "media-organizer.toggleScreenRecorder", "title": "Toggle Screen Recorder", "category": "Media Organizer" },
-      { "id": "media-organizer.recordGif", "title": "Record GIF (Screen)", "category": "Media Organizer" },
+      { "id": "media-organizer.recordGif", "title": "Record Screen…", "category": "Media Organizer" },
       { "id": "media-organizer.openClipEditor", "title": "Open Clip Editor", "category": "Media Organizer" },
       { "id": "media-organizer.newClipProject", "title": "New Clip Project…", "category": "Media Organizer" },
       { "id": "media-organizer.openClipProject", "title": "Open Clip Project…", "category": "Media Organizer" },
@@ -114,11 +113,6 @@
             "default": "permanent",
             "enum": ["permanent", "trash"],
             "description": "What Delete does. 'permanent' removes the items and their files at once (through Eraser when it is set up), after asking. 'trash' moves them to Trash without asking; Restore brings them back, and after 30 days they are removed the same way as a permanent delete."
-          },
-          "mediaOrganizer.enableScreenRecorder": {
-            "type": "boolean",
-            "default": false,
-            "description": "Show a 'Record GIF' screen recorder in the keyboard-shortcuts panel. Records a screen region to a temporary video (inside the workspace) and opens it straight into the clip/GIF exporter; the temp video is securely erased afterward."
           },
           "mediaOrganizer.screenRecorderTempDir": {
             "type": "string",

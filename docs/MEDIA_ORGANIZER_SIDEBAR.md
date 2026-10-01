@@ -27,7 +27,9 @@ From the top:
   whole library with its saved search applied and its name as the title
   (`grid:smart:<id>`); right-click renames or deletes it (only the saved search
   is deleted).
-- **Studio**: what is being made. Clip projects (as before: + makes one,
+- **Studio**: what is being made. Its + offers New Clip Project… and Record
+  Screen… (a recording opens as a temporary project; closing it erases the
+  recording, and what is exported from it stays). Before that, Clip projects (as before: + makes one,
   right-click renames or deletes), and Daily Study, Practice Session and
   Painting Plans while Drawing and Painting Tools is on. This replaces the
   Drawing and Painting section.
