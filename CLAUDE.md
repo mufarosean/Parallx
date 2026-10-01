@@ -21,8 +21,8 @@
   force-pushing what is already pushed. If a side branch is ever needed, fold
   it back into the working branch as soon as the step is done.
 - Before starting locally, pull. Before stopping, push.
-- `master` is older (last moved 2026-09-22); the working branch contains all
-  of it. Do not build on `master` unless the owner says it has caught up.
+- `master` trails the working branch and is only ever fast-forwarded to it
+  (last on 2026-10-01). Do not build on `master`; work on the working branch.
 
 ## House rules worth knowing first
 
