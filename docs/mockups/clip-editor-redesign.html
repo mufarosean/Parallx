@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clip Editor Redesign</title>
+<style>
+/* Mockup of the Media Organizer clip editor redesign. Colours, spacing,
+   radii and type come from src/theme/px-tokens.css (Slate, dark and light).
+   The stage and timeline media stay dark in both modes, like the viewer
+   (Tier 3 · Media viewer tokens). Static: nothing here plays. */
+:root {
+  --px-base-00:#16171a; --px-base-05:#1a1c1f; --px-base-10:#1f2125; --px-base-15:#24262b;
+  --px-base-20:#2b2e34; --px-base-25:#33363d; --px-base-30:#41454d; --px-base-40:#838893;
+  --px-base-60:#9ea3ad; --px-base-70:#c0c4cc; --px-base-100:#e8eaee;
+  --px-accent-h:205; --px-accent-s:64%; --px-accent-l:60%; --px-accent-rgb:86,156,214;
+  --px-red-rgb:224,108,102; --px-green-rgb:108,191,143; --px-yellow-rgb:220,170,90;
+  --px-viz-4:190,140,210; --px-viz-5:96,190,190; --px-viz-6:224,128,150;
+  --px-shadow-md:0 4px 14px -3px rgba(0,0,0,.42),0 1px 3px rgba(0,0,0,.30);
+  --px-shadow-lg:0 16px 36px -8px rgba(0,0,0,.58),0 4px 10px -4px rgba(0,0,0,.40);
+  --px-accent-text:hsl(var(--px-accent-h) var(--px-accent-s) calc(var(--px-accent-l) + 7%));
+}
+:root[data-mode="light"] {
+  --px-base-00:#f4f5f7; --px-base-05:#eceef1; --px-base-10:#ffffff; --px-base-15:#eaecf0;
+  --px-base-20:#e2e5ea; --px-base-25:#d6dae1; --px-base-30:#c3c9d2; --px-base-40:#656c78;
+  --px-base-60:#555b64; --px-base-70:#3c414a; --px-base-100:#1b1d21;
+  --px-red-rgb:194,60,54; --px-green-rgb:33,122,80; --px-yellow-rgb:142,100,21;
+  --px-shadow-md:0 4px 14px -3px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.08);
+  --px-shadow-lg:0 16px 36px -8px rgba(0,0,0,.18),0 4px 10px -4px rgba(0,0,0,.12);
+  --px-accent-text:hsl(var(--px-accent-h) var(--px-accent-s) 33%);
+}
+:root {
+  --px-font-ui:'Inter','Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+  --px-font-mono:'Cascadia Code','Fira Code',Consolas,ui-monospace,monospace;
+  --px-bg:var(--px-base-00); --px-bg-elevated:var(--px-base-10); --px-bg-inset:var(--px-base-15);
+  --px-surface-hover:var(--px-base-20); --px-surface-active:var(--px-base-25);
+  --px-surface-selected:rgba(var(--px-accent-rgb),.16);
+  --px-text:var(--px-base-100); --px-text-secondary:var(--px-base-70); --px-text-muted:var(--px-base-60); --px-text-faint:var(--px-base-40);
+  --px-text-on-accent:#14161a;
+  --px-border:var(--px-base-25); --px-border-strong:var(--px-base-30);
+  --px-accent:hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l));
+  --px-accent-soft:hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l) / .15);
+  --px-danger:rgb(var(--px-red-rgb)); --px-success:rgb(var(--px-green-rgb)); --px-warning:rgb(var(--px-yellow-rgb));
+  --px-radius-sm:4px; --px-radius-md:6px; --px-radius-lg:10px; --px-radius-full:999px;
+  --px-control-h-sm:24px; --px-control-h:28px; --px-control-h-lg:32px;
+  /* Media stays dark in every mode (viewer tokens). */
+  --px-viewer-scrim:#0b0c0e; --px-viewer-ink:#f2f3f5; --px-viewer-ink-muted:rgba(242,243,245,.72);
+  --px-viewer-control:rgba(255,255,255,.08); --px-viewer-line:rgba(255,255,255,.14);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--px-bg); color: var(--px-text); font: 13px/1.45 var(--px-font-ui); }
+.page { max-width: 1340px; margin: 0 auto; padding: 32px 16px 80px; }
+.page-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0 0 6px; font-weight: 600; }
+h2 { font-size: 18px; margin: 48px 0 6px; font-weight: 600; }
+h3 { font-size: 15px; margin: 24px 0 6px; font-weight: 600; }
+p, li { color: var(--px-text-secondary); max-width: 78ch; }
+.lede { font-size: 15px; color: var(--px-text-secondary); margin: 0; max-width: 72ch; }
+.mode-btn { height: 28px; padding: 0 12px; border-radius: var(--px-radius-md); border: 1px solid var(--px-border); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; cursor: pointer; }
+.mode-btn:hover { background: var(--px-surface-hover); }
+.cap { color: var(--px-text-muted); font-size: 12px; margin: 10px 2px 0; }
+ol.notes { padding-left: 20px; margin: 10px 0 0; }
+ol.notes li { margin: 4px 0; }
+ol.notes b { color: var(--px-text); font-weight: 600; }
+
+/* ── Frame: fixed 1280×780 design, scaled to the page width ───────────── */
+.frame-wrap { margin-top: 14px; width: 100%; }
+.frame-scale { transform-origin: 0 0; width: 1280px; }
+.frame {
+  width: 1280px; height: 780px; border-radius: var(--px-radius-lg); overflow: hidden;
+  border: 1px solid var(--px-border); box-shadow: var(--px-shadow-lg); background: var(--px-bg);
+  display: flex; flex-direction: column; position: relative;
+}
+.tabstrip { height: 34px; display: flex; align-items: flex-end; background: var(--px-base-05); border-bottom: 1px solid var(--px-border); padding-left: 8px; flex: none; }
+.tab { height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 6px 6px 0 0; color: var(--px-text-muted); font-size: 12px; }
+.tab.on { background: var(--px-bg); color: var(--px-text); border: 1px solid var(--px-border); border-bottom-color: var(--px-bg); margin-bottom: -1px; }
+.tab svg { width: 14px; height: 14px; }
+
+/* ── Editor ───────────────────────────────────────────────────────────── */
+.ed { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) 304px; grid-template-rows: 44px minmax(0,1fr) auto; }
+.tb { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--px-border); }
+.tb .name { font-weight: 600; font-size: 13px; white-space: nowrap; }
+.tb .meta { color: var(--px-text-muted); font-size: 12px; white-space: nowrap; }
+.sp { flex: 1; }
+.sep { width: 1px; height: 18px; background: var(--px-border); margin: 0 2px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; height: var(--px-control-h); padding: 0 10px; border-radius: var(--px-radius-md); border: 1px solid var(--px-border); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; font-size: 12px; white-space: nowrap; cursor: default; }
+.btn.sm { height: var(--px-control-h-sm); padding: 0 8px; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--px-text-secondary); }
+.btn.icon { width: var(--px-control-h); padding: 0; justify-content: center; }
+.btn.sm.icon { width: var(--px-control-h-sm); }
+.btn.primary { background: var(--px-accent); border-color: transparent; color: var(--px-text-on-accent); font-weight: 600; }
+.btn.on { background: var(--px-surface-selected); border-color: rgba(var(--px-accent-rgb),.45); color: var(--px-accent-text); }
+.btn svg { width: 14px; height: 14px; flex: none; }
+.btn .k { font-family: var(--px-font-mono); font-size: 10px; color: var(--px-text-faint); border: 1px solid var(--px-border); border-radius: 3px; padding: 0 3px; line-height: 14px; }
+.btn.primary .k { color: inherit; border-color: rgba(0,0,0,.25); }
+.split { display: inline-flex; }
+.split .btn:first-child { border-radius: var(--px-radius-md) 0 0 var(--px-radius-md); }
+.split .btn:last-child { border-radius: 0 var(--px-radius-md) var(--px-radius-md) 0; border-left: 1px solid rgba(0,0,0,.2); width: 26px; padding: 0; justify-content: center; }
+.badge { font-size: 10px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--px-radius-full); background: var(--px-accent-soft); color: var(--px-accent-text); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; }
+
+/* Stage column */
+.stagecol { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px 12px 0; gap: 8px; }
+.stage { flex: 1; min-height: 0; background: var(--px-viewer-scrim); border-radius: var(--px-radius-md); position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.video { position: relative; height: 100%; aspect-ratio: 16/9; max-width: 100%; }
+.transport { height: 36px; display: flex; align-items: center; gap: 4px; flex: none; }
+.tc { font-family: var(--px-font-mono); font-size: 12px; color: var(--px-text); font-variant-numeric: tabular-nums; padding: 0 8px; }
+.tc span { color: var(--px-text-faint); }
+.play { width: 32px; height: 32px; border-radius: var(--px-radius-full); background: var(--px-text); color: var(--px-bg); border: 0; display: inline-flex; align-items: center; justify-content: center; }
+.play svg { width: 14px; height: 14px; }
+.readout { font-size: 12px; color: var(--px-text-muted); white-space: nowrap; }
+.readout b { color: var(--px-text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Fake screen recording on the stage */
+.scr { position: absolute; inset: 0; background: #1d2026; display: grid; grid-template-columns: 22% 1fr; overflow: hidden; }
+.scr .side { background: #191b20; border-right: 1px solid #2a2d33; padding: 6% 6%; display: flex; flex-direction: column; gap: 6%; }
+.scr .side i { display: block; height: 4%; min-height: 6px; border-radius: 3px; background: #2c3038; }
+.scr .side i.on { background: #2f4a64; }
+.scr .main { padding: 5% 6%; display: flex; flex-direction: column; gap: 4%; }
+.scr .h { height: 7%; width: 46%; border-radius: 4px; background: #3a3f48; }
+.scr .row { display: grid; grid-template-columns: repeat(3,1fr); gap: 4%; height: 30%; }
+.scr .card { border-radius: 6px; background: #252932; border: 1px solid #30343c; position: relative; }
+.scr .card::after { content: ''; position: absolute; left: 10%; right: 30%; bottom: 14%; height: 9%; border-radius: 3px; background: #343944; }
+.scr .card.hl { background: linear-gradient(135deg,#2c4a63,#2a3b55); }
+.scr .lines i { display: block; height: 7px; margin: 0 0 10px; border-radius: 3px; background: #2e333c; }
+.scr .mail { position: absolute; left: 31%; top: 10.5%; width: 26%; height: 5.5%; border-radius: 3px;
+  background: repeating-conic-gradient(#4a505b 0 25%, #3a3f48 0 50%) 0 0/10px 10px; }
+.cursor { position: absolute; width: 14px; height: 18px; }
+
+/* Overlays on the stage */
+.crop-shade { position: absolute; inset: 0; background: rgba(0,0,0,.55); clip-path: polygon(0 0,100% 0,100% 100%,0 100%,0 0, var(--x0) var(--y0), var(--x0) var(--y1), var(--x1) var(--y1), var(--x1) var(--y0), var(--x0) var(--y0)); }
+.crop { position: absolute; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+.crop::before, .crop::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent 33.1%, rgba(255,255,255,.35) 33.3%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.35) 66.7%, transparent 66.9%); }
+.crop::after { background: linear-gradient(180deg, transparent 33.1%, rgba(255,255,255,.35) 33.3%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.35) 66.7%, transparent 66.9%); }
+.crop b { position: absolute; width: 10px; height: 10px; background: #fff; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+.crop .size { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); font-size: 11px; color: var(--px-viewer-ink); background: rgba(0,0,0,.7); padding: 2px 6px; border-radius: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.floatbar { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; gap: 2px; padding: 3px; border-radius: var(--px-radius-md); background: rgba(16,17,20,.82); border: 1px solid var(--px-viewer-line); backdrop-filter: blur(6px); z-index: 3; }
+.floatbar button { height: 24px; padding: 0 9px; border: 0; border-radius: 4px; background: transparent; color: var(--px-viewer-ink-muted); font: inherit; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+.floatbar button.on { background: rgba(255,255,255,.14); color: var(--px-viewer-ink); }
+.floatbar .div { width: 1px; background: var(--px-viewer-line); margin: 3px 3px; }
+.floatbar svg { width: 13px; height: 13px; }
+.stage-chip { position: absolute; left: 10px; bottom: 10px; font-size: 11px; color: var(--px-viewer-ink-muted); background: rgba(0,0,0,.6); padding: 3px 8px; border-radius: var(--px-radius-full); z-index: 3; }
+.stage-chip.right { left: auto; right: 10px; }
+.blurbox { position: absolute; border-radius: 4px; overflow: hidden; background: repeating-conic-gradient(#565c67 0 25%, #40454e 0 50%) 0 0/9px 9px; outline: 1.5px solid #fff; outline-offset: 1px; }
+.blurbox.idle { outline: 1px dashed rgba(255,255,255,.5); }
+.lower3 { position: absolute; left: 5%; bottom: 9%; padding: 1.1% 2%; background: rgba(12,14,18,.82); border-left: 3px solid var(--px-accent); border-radius: 0 4px 4px 0; color: #fff; outline: 1.5px solid #fff; outline-offset: 3px; }
+.lower3 .t { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.lower3 .s { font-size: 11px; color: rgba(255,255,255,.75); }
+
+/* Inspector */
+.insp { grid-row: 2 / 3; grid-column: 2; border-left: 1px solid var(--px-border); display: flex; flex-direction: column; min-height: 0; background: var(--px-bg); }
+.itabs { display: flex; gap: 2px; padding: 8px 8px 0; border-bottom: 1px solid var(--px-border); flex: none; }
+.itab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 0 7px; font-size: 11px; color: var(--px-text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; position: relative; }
+.itab svg { width: 16px; height: 16px; }
+.itab.on { color: var(--px-text); border-bottom-color: var(--px-accent); }
+.itab .dot { position: absolute; top: 3px; right: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--px-accent); }
+.ibody { flex: 1; overflow: hidden; padding: 4px 14px 14px; -webkit-mask-image: linear-gradient(180deg,#000 calc(100% - 28px),transparent); mask-image: linear-gradient(180deg,#000 calc(100% - 28px),transparent); }
+.grp { padding: 12px 0; border-bottom: 1px solid var(--px-border); }
+.grp:last-child { border-bottom: 0; }
+.gh { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.gt { font-size: 12px; font-weight: 600; color: var(--px-text); }
+.gs { font-size: 11px; color: var(--px-text-muted); }
+.fr { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-top: 6px; }
+.fr > label { width: 76px; flex: none; color: var(--px-text-secondary); font-size: 12px; }
+.fr .grow { flex: 1; min-width: 0; }
+.field { height: 26px; border-radius: var(--px-radius-sm); border: 1px solid var(--px-border); background: var(--px-bg-inset); color: var(--px-text); padding: 0 8px; display: flex; align-items: center; font-size: 12px; gap: 6px; min-width: 0; }
+.field.mono { font-family: var(--px-font-mono); font-variant-numeric: tabular-nums; }
+.field .unit { color: var(--px-text-faint); margin-left: auto; }
+.field.sel::after { content: ''; margin-left: auto; width: 6px; height: 6px; border-right: 1.5px solid var(--px-text-muted); border-bottom: 1.5px solid var(--px-text-muted); transform: rotate(45deg) translate(-2px,-2px); }
+.seg { display: flex; padding: 2px; border-radius: var(--px-radius-md); background: var(--px-bg-inset); border: 1px solid var(--px-border); gap: 2px; }
+.seg span { flex: 1; text-align: center; height: 22px; line-height: 22px; border-radius: 4px; font-size: 12px; color: var(--px-text-secondary); padding: 0 6px; white-space: nowrap; }
+.seg span.on { background: var(--px-bg-elevated); color: var(--px-text); box-shadow: var(--px-shadow-md); }
+.slider { position: relative; height: 18px; flex: 1; }
+.slider::before { content: ''; position: absolute; left: 0; right: 0; top: 8px; height: 3px; border-radius: 2px; background: var(--px-surface-active); }
+.slider i { position: absolute; left: 0; top: 8px; height: 3px; border-radius: 2px; background: var(--px-accent); }
+.slider b { position: absolute; top: 2px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.sw { width: 30px; height: 18px; border-radius: 9px; background: var(--px-surface-active); position: relative; flex: none; margin-left: auto; }
+.sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--px-text-muted); }
+.sw.on { background: var(--px-accent); }
+.sw.on::after { left: 14px; background: #fff; }
+.hint { font-size: 11px; color: var(--px-text-muted); margin-top: 6px; line-height: 1.4; }
+.btnrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.list { display: flex; flex-direction: column; gap: 2px; }
+.li { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px; border-radius: var(--px-radius-sm); font-size: 12px; }
+.li.on { background: var(--px-surface-selected); }
+.li .grip { color: var(--px-text-faint); width: 10px; }
+.li .num { width: 18px; height: 18px; border-radius: 4px; background: var(--px-surface-active); color: var(--px-text-secondary); font-size: 11px; display: flex; align-items: center; justify-content: center; font-weight: 600; flex: none; }
+.li.on .num { background: var(--px-accent); color: var(--px-text-on-accent); }
+.li .t { font-family: var(--px-font-mono); font-variant-numeric: tabular-nums; color: var(--px-text); }
+.li .d { margin-left: auto; color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.li .x { color: var(--px-text-faint); width: 14px; text-align: center; }
+.swatches { display: flex; gap: 6px; }
+.swatches i { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--px-border-strong); }
+.swatches i.on { outline: 2px solid var(--px-accent); outline-offset: 2px; }
+.textarea { border-radius: var(--px-radius-sm); border: 1px solid var(--px-accent); background: var(--px-bg-inset); padding: 6px 8px; font-size: 12px; min-height: 48px; box-shadow: 0 0 0 3px var(--px-accent-soft); }
+.looks { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
+.look { border-radius: var(--px-radius-sm); overflow: hidden; border: 1px solid var(--px-border); font-size: 11px; color: var(--px-text-secondary); }
+.look .th { height: 44px; background: linear-gradient(135deg,#3b5872,#8a6a4a); }
+.look span { display: block; padding: 3px 6px; }
+.look.on { border-color: var(--px-accent); box-shadow: 0 0 0 1px var(--px-accent); color: var(--px-text); }
+
+/* Timeline */
+.tl { grid-column: 1 / -1; border-top: 1px solid var(--px-border); background: var(--px-bg); display: flex; flex-direction: column; }
+.tlbar { height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid var(--px-border); }
+.zoom { display: flex; align-items: center; gap: 6px; width: 140px; color: var(--px-text-faint); }
+.zoom svg { width: 14px; height: 14px; }
+.tracks { position: relative; display: grid; grid-template-columns: 96px minmax(0,1fr); }
+.th-col { border-right: 1px solid var(--px-border); }
+.trk-h { height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 10px; font-size: 11px; color: var(--px-text-muted); border-bottom: 1px solid var(--px-border); }
+.trk-h svg { width: 13px; height: 13px; }
+.trk-h.ruler { height: 22px; }
+.trk-h.tall { height: 46px; }
+.lane-col { position: relative; overflow: hidden; }
+.lane { height: 30px; border-bottom: 1px solid var(--px-border); position: relative; }
+.lane.tall { height: 46px; background: var(--px-viewer-scrim); }
+.lane.ruler { height: 22px; font-size: 10px; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.tick { position: absolute; bottom: 0; width: 1px; height: 5px; background: var(--px-border-strong); }
+.tick.maj { height: 9px; }
+.tick-l { position: absolute; top: 3px; transform: translateX(3px); }
+.clip { position: absolute; top: 3px; bottom: 3px; border-radius: 5px; overflow: hidden; display: flex; border: 1.5px solid rgba(255,255,255,.0); }
+.clip .thumbs { display: flex; height: 100%; width: 100%; }
+.clip .thumbs i { flex: 0 0 64px; height: 100%; border-right: 1px solid rgba(0,0,0,.5); background:
+   linear-gradient(90deg,#191b20 0 22%,transparent 22%), linear-gradient(180deg,#3a3f48 0 14%,transparent 14%), #23272f; }
+.clip .thumbs i:nth-child(3n) { background: linear-gradient(90deg,#191b20 0 22%,transparent 22%), linear-gradient(135deg,#2c4a63,#2a3b55); }
+.clip .lab { position: absolute; left: 4px; top: 3px; font-size: 10px; font-weight: 600; color: #fff; background: rgba(0,0,0,.6); padding: 0 5px; border-radius: 3px; line-height: 15px; }
+.clip.sel { border-color: var(--px-accent); }
+.clip .h { position: absolute; top: 0; bottom: 0; width: 7px; background: var(--px-accent); }
+.clip .h.l { left: 0; border-radius: 3px 0 0 3px; } .clip .h.r { right: 0; border-radius: 0 3px 3px 0; }
+.cut { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; background: repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 5px, transparent 5px 10px); border: 1px dashed rgba(255,255,255,.18); }
+.cut span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: rgba(255,255,255,.45); white-space: nowrap; }
+.wave { position: absolute; left: 0; top: 2px; width: 100%; height: calc(100% - 4px); display: block; }
+.wave path { fill: rgba(var(--px-viz-5), .55); }
+.bar { position: absolute; top: 5px; bottom: 5px; border-radius: 4px; font-size: 11px; line-height: 18px; padding: 0 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--px-text); }
+.bar.text { background: rgba(var(--px-viz-4),.22); border: 1px solid rgba(var(--px-viz-4),.6); }
+.bar.blur { background: rgba(var(--px-viz-6),.18); border: 1px solid rgba(var(--px-viz-6),.55); }
+.bar.zoom { background: rgba(var(--px-yellow-rgb),.14); border: 1px solid rgba(var(--px-yellow-rgb),.45); }
+.bar.sel { box-shadow: 0 0 0 2px var(--px-accent); }
+.key { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; transform: rotate(45deg); background: var(--px-warning); border: 1px solid rgba(0,0,0,.5); border-radius: 2px; }
+.key.sel { background: #fff; box-shadow: 0 0 0 2px var(--px-accent); }
+.keyline { position: absolute; top: 50%; height: 1px; background: rgba(var(--px-yellow-rgb),.5); }
+.phead { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px solid var(--px-danger); z-index: 4; pointer-events: none; }
+.phead::before { content: ''; position: absolute; top: 0; left: -6px; width: 11px; height: 12px; background: var(--px-danger); clip-path: polygon(0 0,100% 0,100% 60%,50% 100%,0 60%); }
+.inout { position: absolute; top: 0; height: 22px; background: rgba(var(--px-accent-rgb),.18); border-left: 2px solid var(--px-accent); border-right: 2px solid var(--px-accent); z-index: 2; }
+.frames { position: absolute; inset: 3px 0; display: flex; gap: 2px; }
+.frames i { flex: 1; border-radius: 3px; position: relative; background: linear-gradient(180deg,#3a3f48 0 16%,#23272f 16%); }
+.frames i:nth-child(4n) { background: linear-gradient(180deg,#3a3f48 0 16%,#2c4a63 16%); }
+.frames i.del { opacity: .25; outline: 1px dashed rgba(255,255,255,.5); }
+.frames i.sel { outline: 2px solid var(--px-accent); }
+.frames i em { position: absolute; left: 2px; bottom: 2px; font-style: normal; font-size: 9px; color: #fff; background: rgba(0,0,0,.65); padding: 0 3px; border-radius: 2px; }
+
+/* Popover + toast */
+.pop { position: absolute; z-index: 10; width: 360px; background: var(--px-bg-elevated); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-lg); box-shadow: var(--px-shadow-lg); }
+.pop .ph { padding: 12px 14px 8px; display: flex; align-items: center; justify-content: space-between; }
+.pop .pb { padding: 0 14px; }
+.pop .pf { padding: 12px 14px; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--px-border); margin-top: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { height: 24px; padding: 0 9px; border-radius: var(--px-radius-full); border: 1px solid var(--px-border); font-size: 12px; display: inline-flex; align-items: center; gap: 5px; color: var(--px-text-secondary); }
+.chip.on { background: var(--px-surface-selected); border-color: rgba(var(--px-accent-rgb),.5); color: var(--px-accent-text); }
+.est { display: flex; align-items: baseline; gap: 6px; }
+.est b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.est span { font-size: 11px; color: var(--px-text-muted); }
+.toast { position: absolute; right: 16px; bottom: 16px; z-index: 10; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; background: var(--px-bg-elevated); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-md); box-shadow: var(--px-shadow-lg); font-size: 12px; }
+.toast .ok { color: var(--px-success); display: flex; }
+.toast svg { width: 14px; height: 14px; }
+.banner { display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin: 0 0 0; border-radius: var(--px-radius-md); background: var(--px-accent-soft); border: 1px solid rgba(var(--px-accent-rgb),.35); font-size: 12px; flex: none; }
+.banner svg { width: 15px; height: 15px; color: var(--px-accent-text); flex: none; }
+.banner .sp { flex: 1; }
+.queue { position: absolute; z-index: 9; top: 44px; right: 0; bottom: 0; width: 304px; background: var(--px-bg-elevated); border-left: 1px solid var(--px-border-strong); box-shadow: var(--px-shadow-lg); display: flex; flex-direction: column; }
+.qi { display: grid; grid-template-columns: 56px 1fr auto; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--px-border); }
+.qi .qt { height: 32px; border-radius: 4px; background: linear-gradient(90deg,#191b20 0 22%,transparent 22%), linear-gradient(180deg,#3a3f48 0 14%,#23272f 14%); }
+.qi .qn { font-size: 12px; font-weight: 600; }
+.qi .qm { font-size: 11px; color: var(--px-text-muted); }
+
+/* Comparison table */
+table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 12px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--px-border); vertical-align: top; }
+th { color: var(--px-text-muted); font-weight: 600; }
+td:first-child { color: var(--px-text); white-space: nowrap; }
+td { color: var(--px-text-secondary); }
+.tbl-wrap { overflow-x: auto; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); gap: 16px; margin-top: 12px; }
+.card { border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); padding: 14px 16px; background: var(--px-bg-elevated); }
+.card h3 { margin-top: 0; }
+.card ul { margin: 6px 0 0; padding-left: 18px; }
+.card li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-film" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M5 2.5v11M11 2.5v11M2 5.5h3M2 10.5h3M11 5.5h3M11 10.5h3"/></symbol>
+    <symbol id="i-play" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 2.8v10.4L13 8z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx=".6"/><rect x="9" y="3" width="3" height="10" rx=".6"/></symbol>
+    <symbol id="i-stepb" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 3v10M12 3.5 6.5 8 12 12.5z"/></symbol>
+    <symbol id="i-stepf" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 3v10M4 3.5 9.5 8 4 12.5z"/></symbol>
+    <symbol id="i-in" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M7 3H4v10h3M10 8H6.5M8.5 6 10.5 8 8.5 10" transform="scale(-1 1) translate(-16 0)"/></symbol>
+    <symbol id="i-out" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9 3h3v10H9M3 8h6M7 6l2 2-2 2"/></symbol>
+    <symbol id="i-loop" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 7V6a2 2 0 0 1 2-2h7l-2-2M13 9v1a2 2 0 0 1-2 2H4l2 2"/></symbol>
+    <symbol id="i-vol" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2.5 6v4h2.5l3.5 3V3L5 6zM11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.5a6 6 0 0 1 0 9"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M5 3 2 6l3 3M2 6h7.5a4 4 0 0 1 0 8H7"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M11 3l3 3-3 3M14 6H6.5a4 4 0 0 0 0 8H9"/></symbol>
+    <symbol id="i-list" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.5M2.5 8h.5M2.5 12h.5"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4.5 6 3.5 3.5L11.5 6"/></symbol>
+    <symbol id="i-trim" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="4.5" cy="4.5" r="2"/><circle cx="4.5" cy="11.5" r="2"/><path d="M6.2 5.6 13.5 12M6.2 10.4 13.5 4"/></symbol>
+    <symbol id="i-crop" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4.5 1.5v10h10M1.5 4.5h10v10"/></symbol>
+    <symbol id="i-look" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="6" cy="6.5" r="3.8"/><circle cx="10" cy="6.5" r="3.8"/><circle cx="8" cy="10" r="3.8"/></symbol>
+    <symbol id="i-blur" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 5h2v2H5zM9 5h2v2H9zM7 7h2v2H7zM5 9h2v2H5zM9 9h2v2H9z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-text" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4V2.8h10V4M8 2.8V13.5M6 13.5h4"/></symbol>
+    <symbol id="i-audio" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 8h1M4.5 5v6M7 2.5v11M9.5 5.5v5M12 4v8M14.5 7v2"/></symbol>
+    <symbol id="i-split" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 1.5v13M2 5h4v6H2M14 5h-4v6h4"/></symbol>
+    <symbol id="i-dead" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 8h2l1.5-4 2 8 1.5-4H10"/><path d="M11.5 8h3" stroke-dasharray="1.2 1.4"/></symbol>
+    <symbol id="i-magnet" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3.5 2.5v6a4.5 4.5 0 0 0 9 0v-6h-3v6a1.5 1.5 0 0 1-3 0v-6zM3.5 5.5h3M9.5 5.5h3"/></symbol>
+    <symbol id="i-zin" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14M5 7h4M7 5v4"/></symbol>
+    <symbol id="i-zout" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14M5 7h4"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></symbol>
+    <symbol id="i-key" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 2.5 13.5 8 8 13.5 2.5 8z"/></symbol>
+    <symbol id="i-target" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/><path d="M8 .8v2.5M8 12.7v2.5M.8 8h2.5M12.7 8h2.5"/></symbol>
+    <symbol id="i-track" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="4.5" width="7" height="7" rx="1"/><path d="M1.5 4V1.5H4M12 1.5h2.5V4M14.5 12v2.5H12M4 14.5H1.5V12"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m3 8.5 3 3 7-7"/></symbol>
+    <symbol id="i-close" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="m4 4 8 8M12 4l-8 8"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3v10M3 8h10"/></symbol>
+    <symbol id="i-more" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12.5" cy="8" r="1.2"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 4.5v8h13v-7H8L6.5 3.5h-5z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></symbol>
+    <symbol id="i-rec" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.6" fill="currentColor"/></symbol>
+    <symbol id="i-cursor" viewBox="0 0 14 18"><path d="M1 1v14l3.6-3.4L7 17l2.4-1-2.3-5.2H12z" fill="#fff" stroke="#000" stroke-width="1"/></symbol>
+  </defs>
+</svg>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>Clip Editor redesign</h1>
+      <p class="lede">The clip editor becomes a small video editor: the video is big, a real timeline runs along the bottom, one inspector sits on the right, and Export lives in the toolbar. Nothing it does today is removed. The five frames below are mockups; the table at the end lists where each current control goes.</p>
+    </div>
+    <button class="mode-btn" id="modeBtn" type="button">Light Mode</button>
+  </div>
+
+  <h2>What is wrong today</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>It is a dialog inside a tab</h3>
+      <ul>
+        <li>The tab hosts a modal ("Export Clip / GIF") with a hidden close button, fixed at 1180px wide.</li>
+        <li>The video shares a two-column grid with a long control column, so it stays small.</li>
+        <li>A row of hotkeys is printed over the video, permanently.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>The timeline is a 32px bar</h3>
+      <ul>
+        <li>In/Out, segments, crop keyframes and the playhead are squeezed into one strip with 10% ticks.</li>
+        <li>Blur regions and text have no place on the timeline; they are lists of seconds fields.</li>
+        <li>The GIF frame strip is a separate band under everything, with a hidden waveform.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Nine accordions, mixed groups</h3>
+      <ul>
+        <li>Trim, Output, Crop &amp; motion, Look, Blur, Text, Audio &amp; Finish, Export, Batch queue.</li>
+        <li>Mute and Reverse sit under Look; speed under Output; destination presets under Export.</li>
+        <li>Raw seconds fields (step 0.01), glyph buttons (▶ ✕ ▲ ▼ ⧉), "+ " labels, and <code>--vscode-*</code> fallbacks instead of the kit and tokens.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════ A ═══════════════════════════════ -->
+  <h2>A. Opening a screen recording</h2>
+  <p>The editor as it opens after a recording. The paused stretches are already cut, so the recording arrives as two segments with a gap between them. A banner offers Smart Zoom because a cursor path came with the take.</p>
+  <div class="frame-wrap"><div class="frame-scale"><div class="frame" id="fA">
+    <div class="tabstrip"><div class="tab"><svg><use href="#i-folder"/></svg>Media Library</div><div class="tab on"><svg><use href="#i-film"/></svg>Clip · Screen Recording 14.22.mp4</div></div>
+    <div class="ed">
+      <div class="tb" data-tb="trim"></div>
+      <div class="stagecol">
+        <div class="banner"><svg><use href="#i-rec"/></svg><span>From your recording: <b>2 pauses cut</b> and a cursor path saved.</span><span class="sp"></span><button class="btn sm"><svg><use href="#i-spark"/></svg>Add Smart Zoom</button><button class="btn sm ghost icon"><svg><use href="#i-close"/></svg></button></div>
+        <div class="stage"><div class="video" data-screen="cursor"></div><div class="stage-chip right">1920 × 1080 · 30 fps</div></div>
+        <div class="transport" data-transport="12.40"></div>
+      </div>
+      <aside class="insp" data-insp="trim" data-used="trim">
+        <div class="ibody">
+          <div class="grp">
+            <div class="gh"><span class="gt">Range</span><span class="gs">Selected segment</span></div>
+            <div class="fr"><label>In</label><div class="field mono grow">0:04.20</div><button class="btn sm"><svg><use href="#i-in"/></svg>Set <span class="k">I</span></button></div>
+            <div class="fr"><label>Out</label><div class="field mono grow">0:21.00</div><button class="btn sm"><svg><use href="#i-out"/></svg>Set <span class="k">O</span></button></div>
+            <div class="fr"><label>Length</label><div class="field mono grow">0:16.80</div></div>
+            <div class="hint">Type a length and Out follows. Drag the ends of a segment on the timeline for the same thing.</div>
+          </div>
+          <div class="grp">
+            <div class="gh"><span class="gt">Segments</span><span class="gs">3 kept · 0:46.10</span></div>
+            <div class="list">
+              <div class="li on"><span class="grip">⋮⋮</span><span class="num">1</span><span class="t">0:04.20 – 0:21.00</span><span class="d">16.8 s</span></div>
+              <div class="li"><span class="grip">⋮⋮</span><span class="num">2</span><span class="t">0:27.50 – 0:48.90</span><span class="d">21.4 s</span></div>
+              <div class="li"><span class="grip">⋮⋮</span><span class="num">3</span><span class="t">0:51.00 – 0:58.90</span><span class="d">7.9 s</span></div>
+            </div>
+            <div class="btnrow"><button class="btn sm"><svg><use href="#i-split"/></svg>Split at Playhead <span class="k">S</span></button><button class="btn sm"><svg><use href="#i-dead"/></svg>Cut Dead Air</button></div>
+          </div>
+          <div class="grp">
+            <div class="gh"><span class="gt">Speed</span><span class="gs">0:46.10 out</span></div>
+            <div class="seg"><span>0.5×</span><span class="on">1×</span><span>1.5×</span><span>2×</span><span>Fit…</span></div>
+            <div class="fr"><label>Reverse</label><span class="sw"></span></div>
+          </div>
+        </div>
+      </aside>
+      <div class="tl" data-tl="A"></div>
+    </div>
+  </div></div></div>
+  <ol class="notes">
+    <li><b>Video first.</b> The stage takes the whole left side and grows with the tab. No hotkey text on the picture; hotkeys live in tooltips and the <span class="k">?</span> sheet.</li>
+    <li><b>Transport under the video:</b> Set In, frame back, Play, frame forward, Set Out, timecode, loop, volume. Timecode is <code>m:ss.cc</code>, never raw seconds.</li>
+    <li><b>A real timeline.</b> Video track with thumbnails, audio waveform, and lanes for Motion, Blur and Text. Kept segments are blocks you drag and trim; cuts show as hatched gaps you can click to bring back.</li>
+    <li><b>One inspector, six tabs</b> (Trim, Crop, Look, Blur, Text, Audio). A dot marks tabs whose settings are in use. Selecting something on the timeline or the video opens its tab.</li>
+    <li><b>Out Point / Duration toggle is gone:</b> In, Out and Length are all editable; changing Length moves Out.</li>
+  </ol>
+
+  <!-- ═══════════════════════════════ B ═══════════════════════════════ -->
+  <h2>B. Crop and motion</h2>
+  <p>Crop is drawn on the video. Aspect ratios float over the stage while the Crop tab is open, the crop size shows on the frame, and keyframes appear as diamonds on the Motion lane where they can be dragged in time.</p>
+  <div class="frame-wrap"><div class="frame-scale"><div class="frame" id="fB">
+    <div class="tabstrip"><div class="tab"><svg><use href="#i-folder"/></svg>Media Library</div><div class="tab on"><svg><use href="#i-film"/></svg>Clip · Screen Recording 14.22.mp4</div></div>
+    <div class="ed">
+      <div class="tb" data-tb="crop"></div>
+      <div class="stagecol">
+        <div class="stage">
+          <div class="floatbar"><button>Free</button><button>1:1</button><button class="on">9:16</button><button>16:9</button><button>4:5</button><button>4:3</button><span class="div"></span><button><svg><use href="#i-eye"/></svg>Preview Crop</button></div>
+          <div class="video" data-screen="crop"></div>
+          <div class="stage-chip">Key 3 of 4 · 0:31.20</div>
+        </div>
+        <div class="transport" data-transport="31.20"></div>
+      </div>
+      <aside class="insp" data-insp="crop" data-used="trim crop blur text">
+        <div class="ibody">
+          <div class="grp">
+            <div class="gh"><span class="gt">Crop</span><span class="sw on" style="margin-left:0"></span></div>
+            <div class="fr"><label>Aspect</label><div class="field sel grow">9:16 portrait</div></div>
+            <div class="fr"><label>Output</label><div class="field mono grow">608 × 1080<span class="unit">px</span></div></div>
+            <div class="btnrow"><button class="btn sm">Reset to Full Frame</button></div>
+          </div>
+          <div class="grp">
+            <div class="gh"><span class="gt">Motion</span><span class="gs">4 keyframes</span></div>
+            <div class="btnrow" style="margin-top:0"><button class="btn sm"><svg><use href="#i-key"/></svg>Add Keyframe <span class="k">K</span></button><button class="btn sm ghost">Clear Keys</button></div>
+            <div class="hint">Two or more keyframes move the crop between them. Drag a diamond on the Motion lane to change its time.</div>
+          </div>
+          <div class="grp">
+            <div class="gh"><span class="gt">Follow a subject</span></div>
+            <div class="btnrow" style="margin-top:0"><button class="btn sm"><svg><use href="#i-track"/></svg>Auto-Track</button><button class="btn sm"><svg><use href="#i-target"/></svg>Point Track</button></div>
+            <div class="hint">Auto-Track follows what is inside the crop from In to Out. Point Track: click the subject on the video first.</div>
+          </div>
+          <div class="grp">
+            <div class="gh"><span class="gt">Smart Zoom</span><span class="gs">From the cursor path</span></div>
+            <div class="btnrow" style="margin-top:0"><button class="btn sm"><svg><use href="#i-spark"/></svg>Add Smart Zoom</button></div>
+          </div>
+        </div>
+      </aside>
+      <div class="tl" data-tl="B"></div>
+    </div>
+  </div></div></div>
+  <ol class="notes">
+    <li><b>Aspect chips on the stage</b>, next to the thing they change, with Preview Crop (the old camera-in-camera toggle) beside them.</li>
+    <li><b>Keyframes on the timeline.</b> The Motion lane shows each key, the glide between keys, and Smart Zoom stretches as amber bars. The selected key is white.</li>
+    <li><b>Crop, Motion, Follow and Smart Zoom</b> are four short groups instead of one row of five buttons. Smart Zoom only appears for screen recordings.</li>
+  </ol>
+
+  <!-- ═══════════════════════════════ C ═══════════════════════════════ -->
+  <h2>C. Text and blur, on the video and on the timeline</h2>
+  <p>A lower third selected on the video: the Text tab shows its fields, and its bar on the Text lane is selected too. The pixelated email address has a Blur bar of its own.</p>
+  <div class="frame-wrap"><div class="frame-scale"><div class="frame" id="fC">
+    <div class="tabstrip"><div class="tab"><svg><use href="#i-folder"/></svg>Media Library</div><div class="tab on"><svg><use href="#i-film"/></svg>Clip · Screen Recording 14.22.mp4</div></div>
+    <div class="ed">
+      <div class="tb" data-tb="text"></div>
+      <div class="stagecol">
+        <div class="stage">
+          <div class="floatbar"><button><svg><use href="#i-text"/></svg>Add Text <span style="opacity:.6">T</span></button><button><svg><use href="#i-blur"/></svg>Add Blur Region</button></div>
+          <div class="video" data-screen="text"></div>
+        </div>
+        <div class="transport" data-transport="8.60"></div>
+      </div>
+      <aside class="insp" data-insp="text" data-used="trim blur text">
+        <div class="ibody">
+          <div class="grp">
+            <div class="gh"><span class="gt">Text 1 of 2</span><button class="btn sm ghost icon"><svg><use href="#i-more"/></svg></button></div>
+            <div class="textarea">Weekly update<br><span style="color:var(--px-text-muted)">Planner, Today tab</span></div>
+            <div class="fr"><label>Style</label><div class="seg grow"><span>Title</span><span class="on">Lower Third</span><span>Caption</span></div></div>
+            <div class="fr"><label>Colour</label><div class="swatches"><i class="on" style="background:#fff"></i><i style="background:#f5d06b"></i><i style="background:#6fb6ff"></i><i style="background:#ff7a7a"></i><i style="background:#111"></i></div></div>
+            <div class="fr"><label>Shows</label><div class="field mono grow">0:01.00</div><span class="gs">to</span><div class="field mono grow">0:06.00</div></div>
+            <div class="hint">Times are on the exported clip. Drag the bar on the Text lane to move it.</div>
+          </div>
+          <div class="grp">
+            <div class="gh"><span class="gt">All text</span></div>
+            <div class="list">
+              <div class="li on"><span class="num">1</span><span>Weekly update</span><span class="d">0:01–0:06</span></div>
+              <div class="li"><span class="num">2</span><span>Drag to plan</span><span class="d">0:24–0:29</span></div>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <div class="tl" data-tl="C"></div>
+    </div>
+  </div></div></div>
+  <ol class="notes">
+    <li><b>Things on the video are objects.</b> Click to select, drag to move; the inspector follows the selection. Blur regions keep Blur | Pixelate, Box | Rounded | Oval and Track as today, in the Blur tab.</li>
+    <li><b>Time windows are bars</b> on the Blur and Text lanes instead of From/To seconds fields only. The fields stay for exact values.</li>
+    <li><b>Add Text and Add Blur Region</b> float over the video while the Text or Blur tab is open.</li>
+  </ol>
+
+  <!-- ═══════════════════════════════ D ═══════════════════════════════ -->
+  <h2>D. Export from the toolbar</h2>
+  <p>Export is one button with the format and an estimate on it. Its menu holds the destination presets, format, size and quality, with the format-specific options (here GIF) appearing in place. The video track turns into frames for GIF, where per-frame delays and deletions are made.</p>
+  <div class="frame-wrap"><div class="frame-scale"><div class="frame" id="fD">
+    <div class="tabstrip"><div class="tab"><svg><use href="#i-folder"/></svg>Media Library</div><div class="tab on"><svg><use href="#i-film"/></svg>Clip · Screen Recording 14.22.mp4</div></div>
+    <div class="ed">
+      <div class="tb" data-tb="gif"></div>
+      <div class="stagecol">
+        <div class="stage"><div class="video" data-screen="plain"></div></div>
+        <div class="transport" data-transport="31.40"></div>
+      </div>
+      <aside class="insp" data-insp="look" data-used="trim crop look blur text">
+        <div class="ibody">
+          <div class="grp">
+            <div class="gh"><span class="gt">Look</span><span class="gs">Cinematic</span></div>
+            <div class="looks" data-looks></div>
+            <div class="btnrow"><button class="btn sm"><svg><use href="#i-play"/></svg>Preview Render</button></div>
+            <div class="hint">Renders three real seconds from the playhead, so what you see is what exports.</div>
+          </div>
+        </div>
+      </aside>
+      <div class="tl" data-tl="D"></div>
+    </div>
+    <div class="pop" style="top:84px; right:12px;">
+      <div class="ph"><span class="gt" style="font-size:13px">Export</span><div class="est"><b>~2.8 MB</b><span>GIF · 12 s</span></div></div>
+      <div class="pb">
+        <div class="fr" style="margin-top:0"><label>Preset</label><div class="chips grow"><span class="chip on">Slack</span><span class="chip">GitHub</span><span class="chip">X</span><span class="chip">Discord</span><span class="chip">Email</span><span class="chip">Custom</span></div></div>
+        <div class="fr"><label>Format</label><div class="seg grow"><span>MP4</span><span>WebM</span><span class="on">GIF</span></div></div>
+        <div class="fr"><label>Size</label><div class="slider"><i style="width:50%"></i><b style="left:50%"></b></div><div class="field mono" style="width:76px">50<span class="unit">%</span></div></div>
+        <div class="fr"><label>Frame rate</label><div class="seg grow"><span>10</span><span class="on">15</span><span>24</span><span>30</span><span>Source</span></div></div>
+        <div style="height:1px;background:var(--px-border);margin:12px 0 6px"></div>
+        <div class="fr"><label>Loop</label><div class="field sel grow">Forever</div></div>
+        <div class="fr"><label>Dither</label><div class="field sel grow">Sierra (smooth)</div></div>
+        <div class="fr"><label>Max size</label><span class="sw on" style="margin-left:0"></span><div class="field mono" style="width:76px">10<span class="unit">MB</span></div></div>
+        <div class="fr"><label>Frames</label><span class="gs">38 of 40 kept · reverse order</span><span class="sw"></span></div>
+        <div class="fr"><label>Name</label><div class="field grow" style="color:var(--px-text-faint)">Optional, used as the file name</div></div>
+      </div>
+      <div class="pf"><button class="btn"><svg><use href="#i-plus"/></svg>Add to Queue <span class="k">Q</span></button><span class="sp"></span><button class="btn primary">Export…</button></div>
+    </div>
+  </div></div></div>
+  <ol class="notes">
+    <li><b>One Export button</b> shows format and an estimate; Format, FPS and Scale leave the inspector, since they are about the file, not the edit.</li>
+    <li><b>Only the options that apply are shown.</b> GIF: Loop, Dither, Shrink if over, frame order. MP4: Quality or Target size, GPU encoder. WebM: Quality or Target size. Mute Audio sits here for video formats.</li>
+    <li><b>GIF frames on the timeline.</b> The video track switches to frames: click one for its delay, right-click to drop it. Dropped frames stay visible, faded, so they can be restored.</li>
+  </ol>
+
+  <!-- ═══════════════════════════════ E ═══════════════════════════════ -->
+  <h2>E. Batch queue and after export</h2>
+  <p>The queue opens as a panel from the toolbar instead of an accordion. After an export a toast offers Reveal and Copy Path, replacing the extra footer buttons.</p>
+  <div class="frame-wrap"><div class="frame-scale"><div class="frame" id="fE">
+    <div class="tabstrip"><div class="tab"><svg><use href="#i-folder"/></svg>Media Library</div><div class="tab on"><svg><use href="#i-film"/></svg>Clip · Screen Recording 14.22.mp4</div></div>
+    <div class="ed">
+      <div class="tb" data-tb="queue"></div>
+      <div class="stagecol">
+        <div class="stage"><div class="video" data-screen="plain"></div></div>
+        <div class="transport" data-transport="27.50"></div>
+      </div>
+      <aside class="insp" data-insp="audio" data-used="trim crop look blur text audio">
+        <div class="ibody">
+          <div class="grp">
+            <div class="gh"><span class="gt">Audio</span></div>
+            <div class="fr"><label>Fade in</label><div class="slider"><i style="width:20%"></i><b style="left:20%"></b></div><div class="field mono" style="width:64px">0.5<span class="unit">s</span></div></div>
+            <div class="fr"><label>Fade out</label><div class="slider"><i style="width:40%"></i><b style="left:40%"></b></div><div class="field mono" style="width:64px">1.0<span class="unit">s</span></div></div>
+            <div class="fr"><label>Even out volume</label><span class="sw on"></span></div>
+            <div class="fr"><label>Reduce noise</label><span class="sw"></span></div>
+          </div>
+          <div class="grp">
+            <div class="gh"><span class="gt">End card</span><span class="sw on" style="margin-left:0"></span></div>
+          </div>
+        </div>
+      </aside>
+      <div class="tl" data-tl="E"></div>
+    </div>
+    <div class="queue">
+      <div class="ph" style="padding:12px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--px-border)"><span class="gt" style="font-size:13px">Queue</span><span class="badge">3</span><span class="sp"></span><button class="btn sm ghost">Save as Preset…</button><button class="btn sm ghost icon"><svg><use href="#i-close"/></svg></button></div>
+      <div class="qi"><div class="qt"></div><div><div class="qn">Intro</div><div class="qm">MP4 · 0:04.2–0:21.0 · Cinematic</div></div><button class="btn sm ghost icon"><svg><use href="#i-more"/></svg></button></div>
+      <div class="qi" style="background:var(--px-surface-selected)"><div class="qt"></div><div><div class="qn">Drag to plan <span class="gs">· editing</span></div><div class="qm">GIF · 0:27.5–0:39.5 · 9:16 crop</div></div><button class="btn sm ghost icon"><svg><use href="#i-more"/></svg></button></div>
+      <div class="qi"><div class="qt"></div><div><div class="qn">Full take</div><div class="qm">MP4 · 3 segments · Slack</div></div><button class="btn sm ghost icon"><svg><use href="#i-more"/></svg></button></div>
+      <div style="padding:12px 14px" class="hint">Click a clip to load its settings for editing; its menu has Duplicate and Remove. Q adds the current settings.</div>
+      <div class="sp"></div>
+      <div style="padding:12px 14px;border-top:1px solid var(--px-border);display:flex;gap:8px"><button class="btn">Update Clip</button><span class="sp"></span><button class="btn primary">Export All 3…</button></div>
+    </div>
+    <div class="toast" style="right:320px"><span class="ok"><svg><use href="#i-check"/></svg></span><span>Exported <b>Intro.mp4</b> · 4.1 MB</span><button class="btn sm"><svg><use href="#i-folder"/></svg>Reveal</button><button class="btn sm"><svg><use href="#i-copy"/></svg>Copy Path</button></div>
+  </div></div></div>
+  <ol class="notes">
+    <li><b>Queue as a panel</b> with a count on its toolbar button. Duplicate and Remove move into each clip's menu instead of ⧉ and × glyphs.</li>
+    <li><b>Audio is its own tab</b> (fades, Even Out Volume, Reduce Noise, End Card). Mute Audio moves to Export, where the old Look section kept it.</li>
+    <li><b>Export progress</b> runs on the Export button (a fill and Cancel), so the editor stays usable while a clip renders.</li>
+  </ol>
+
+  <h2>Where every current control goes</h2>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Today</th><th>Control</th><th>In the redesign</th></tr></thead>
+    <tbody>
+      <tr><td>Stage</td><td>▶/⏸ overlay, click to pause, hotkey hint, time readout</td><td>Transport bar under the video; click to pause stays; hints in tooltips</td></tr>
+      <tr><td>Stage</td><td>Preview crop (camera-in-camera)</td><td>Preview Crop on the Crop tab's floating bar</td></tr>
+      <tr><td>Scrubber</td><td>In/Out handles, segment bars, keyframe diamonds, playhead</td><td>Timeline: ruler range, Video track blocks, Motion lane</td></tr>
+      <tr><td>Trim</td><td>Mode (Out Point / Duration), In, Out, Set Here, Length</td><td>Trim tab: In, Out, Length all editable; Set In / Set Out on the transport too</td></tr>
+      <tr><td>Trim</td><td>+ Add Segment, Cut Dead Air, Clear, segment list ▲ ▼ ✕</td><td>Split at Playhead, Cut Dead Air; list with drag to reorder; blocks on the timeline</td></tr>
+      <tr><td>Output</td><td>Format, FPS, Scale (%)</td><td>Export menu</td></tr>
+      <tr><td>Output</td><td>Speed, Fit To Length</td><td>Trim tab, Speed (Fit… opens the length field)</td></tr>
+      <tr><td>Crop &amp; motion</td><td>Crop toggle, Reset, aspect buttons</td><td>Crop tab; aspect chips on the stage</td></tr>
+      <tr><td>Crop &amp; motion</td><td>+ Keyframe, Auto-track, Point track, Clear Keys, Smart Zoom</td><td>Crop tab: Motion, Follow a Subject, Smart Zoom groups; keys on the Motion lane</td></tr>
+      <tr><td>Look</td><td>Filter, Preview Render</td><td>Look tab with thumbnail swatches</td></tr>
+      <tr><td>Look</td><td>Mute audio</td><td>Export menu (video formats)</td></tr>
+      <tr><td>Look</td><td>Reverse playback</td><td>Trim tab, under Speed</td></tr>
+      <tr><td>Blur</td><td>+ Blur Region, region list (mode, shape, strength, from/to, Track)</td><td>Blur tab + objects on the video + bars on the Blur lane</td></tr>
+      <tr><td>Text</td><td>+ Text, list (text, style, from/to, colour)</td><td>Text tab + objects on the video + bars on the Text lane</td></tr>
+      <tr><td>Audio &amp; Finish</td><td>Fades, Normalize, Reduce noise, End card</td><td>Audio tab</td></tr>
+      <tr><td>Export</td><td>Preset for, Dither, Loop, Reverse frame order, Auto-optimize, Encode mode, Quality, Target size, GPU encoder</td><td>Export menu, shown per format</td></tr>
+      <tr><td>Frame strip</td><td>Per-frame delay, delete (GIF), waveform</td><td>Video track in Frames mode for GIF; waveform is the Audio track</td></tr>
+      <tr><td>Batch queue</td><td>+ Add to Queue, Update, stop editing, Save Preset, ⧉ ×</td><td>Queue panel; Add to Queue in the Export menu (Q)</td></tr>
+      <tr><td>Footer</td><td>Status, estimate, Close, Export…, Reveal, Copy Path</td><td>Estimate on the Export button; tab close; toast with Reveal and Copy Path</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Narrow panes</h2>
+  <p>Below about 900px the inspector folds into a sheet that slides up over the timeline, opened from the same six tabs shown as an icon row under the transport. Below 640px the timeline drops to the Video and Audio tracks, and the other lanes show as markers on the Video track.</p>
+
+  <h2>Build order</h2>
+  <ol class="notes">
+    <li><b>Shell:</b> drop the dialog; toolbar, stage, transport, inspector tabs and timeline on the kit and <code>--px-*</code> tokens (new values go in a Tier 3 "Clip editor" block). Existing state and export code stay as they are.</li>
+    <li><b>Timeline:</b> ruler, Video track with segments, Audio waveform, playhead, zoom. Then the Motion, Blur and Text lanes.</li>
+    <li><b>Export menu and queue panel,</b> moving format options out of the inspector.</li>
+    <li><b>On-video objects</b> for text, and the GIF Frames mode.</li>
+  </ol>
+</div>
+
+<script>
+(() => {
+  const D = 64.18; // source duration (s)
+  let W0 = 0, W1 = D; // visible timeline window
+  const pct = (t) => ((t - W0) / (W1 - W0) * 100).toFixed(3) + '%';
+  const dur = (a) => (a / (W1 - W0) * 100).toFixed(3) + '%';
+  const use = (id) => `<svg><use href="#${id}"/></svg>`;
+
+  // Light / dark toggle, remembered per viewer.
+  const btn = document.getElementById('modeBtn');
+  const setMode = (m) => { document.documentElement.dataset.mode = m; btn.textContent = m === 'light' ? 'Dark Mode' : 'Light Mode'; };
+  let saved = null; try { saved = localStorage.getItem('clipMockMode'); } catch {}
+  setMode(saved || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
+  btn.addEventListener('click', () => { const m = document.documentElement.dataset.mode === 'light' ? 'dark' : 'light'; setMode(m); try { localStorage.setItem('clipMockMode', m); } catch {} });
+
+  // Toolbars
+  const TB = {
+    base: (exportLabel, extra = '') => `
+      <svg style="width:16px;height:16px;color:var(--px-text-muted)"><use href="#i-film"/></svg>
+      <span class="name">Screen Recording 14.22.mp4</span><span class="meta">1:04.18 · 1920 × 1080</span>
+      <span class="sp"></span>
+      <button class="btn ghost icon" title="Undo (Ctrl+Z)">${use('i-undo')}</button><button class="btn ghost icon" title="Redo">${use('i-redo')}</button>
+      <span class="sep"></span>
+      ${extra}
+      <span class="split"><button class="btn primary">${exportLabel}</button><button class="btn primary">${use('i-chev')}</button></span>`,
+  };
+  const queueBtn = (on) => `<button class="btn${on ? ' on' : ''}">${use('i-list')}Queue <span class="badge">3</span></button>`;
+  const tbHtml = {
+    trim:  TB.base('Export MP4 · ~6.4 MB', queueBtn(false)),
+    crop:  TB.base('Export MP4 · ~3.9 MB', queueBtn(false)),
+    text:  TB.base('Export MP4 · ~6.5 MB', queueBtn(false)),
+    gif:   TB.base('Export GIF · ~2.8 MB', queueBtn(false)),
+    queue: TB.base('Export MP4 · ~4.1 MB', queueBtn(true)),
+  };
+  document.querySelectorAll('[data-tb]').forEach((el) => { el.innerHTML = tbHtml[el.dataset.tb]; });
+  // The open export menu points at its button.
+  document.querySelector('#fD .split .btn:last-child').classList.add('on');
+
+  // Transport
+  const tc = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(2).padStart(5, '0'); };
+  document.querySelectorAll('[data-transport]').forEach((el) => {
+    const t = parseFloat(el.dataset.transport);
+    el.innerHTML = `
+      <button class="btn sm ghost" title="Set In (I)">${use('i-in')}In</button>
+      <button class="btn sm ghost icon" title="Previous frame (,)">${use('i-stepb')}</button>
+      <button class="play" title="Play (Space)">${use('i-play')}</button>
+      <button class="btn sm ghost icon" title="Next frame (.)">${use('i-stepf')}</button>
+      <button class="btn sm ghost" title="Set Out (O)">Out${use('i-out')}</button>
+      <span class="tc">${tc(t)} <span>/ ${tc(D)}</span></span>
+      <span class="sp"></span>
+      <span class="readout">Clip <b>0:46.10</b> · 3 segments</span>
+      <span class="sep"></span>
+      <button class="btn sm ghost icon on" title="Loop the range">${use('i-loop')}</button>
+      <button class="btn sm ghost icon" title="Volume">${use('i-vol')}</button>`;
+  });
+
+  // Inspector tabs
+  const TABS = [['trim','i-trim','Trim'],['crop','i-crop','Crop'],['look','i-look','Look'],['blur','i-blur','Blur'],['text','i-text','Text'],['audio','i-audio','Audio']];
+  document.querySelectorAll('[data-insp]').forEach((el) => {
+    const cur = el.dataset.insp; const used = (el.dataset.used || '').split(' ');
+    const tabs = document.createElement('div');
+    tabs.className = 'itabs';
+    tabs.innerHTML = TABS.map(([id, ic, label]) => `<div class="itab${id === cur ? ' on' : ''}">${use(ic)}${label}${used.includes(id) && id !== cur ? '<span class="dot"></span>' : ''}</div>`).join('');
+    el.prepend(tabs);
+  });
+
+  // Look swatches
+  const LOOKS = [['None','none'],['Cinematic','contrast(1.06) saturate(1.15)'],['Teal & Orange','contrast(1.1) saturate(1.28)'],['Golden Hour','sepia(.22) saturate(1.3) brightness(1.05) hue-rotate(-10deg)'],['Dusk','contrast(1.12) saturate(.82) brightness(.97) hue-rotate(6deg)'],['Neon','saturate(1.5) contrast(1.1) hue-rotate(-6deg)'],['Punch','contrast(1.12) saturate(1.15)'],['Pastel','contrast(.88) brightness(1.03) saturate(.9)'],['Warm','sepia(.18) saturate(1.22) hue-rotate(-8deg)'],['Cool','saturate(1.08) hue-rotate(9deg) brightness(1.01)'],['Vivid','contrast(1.13) saturate(1.38)'],['Fade','contrast(.84) saturate(.85)'],['Vintage','contrast(.86) sepia(.28) saturate(.8) brightness(1.02)']];
+  document.querySelectorAll('[data-looks]').forEach((el) => {
+    el.innerHTML = LOOKS.slice(0, 12).map(([n, f]) => `<div class="look${n === 'Cinematic' ? ' on' : ''}"><div class="th" style="filter:${f === 'none' ? 'saturate(.85)' : f}"></div><span>${n}</span></div>`).join('');
+  });
+
+  // Fake screen recording
+  const screen = (extra = '') => `<div class="scr"><div class="side"><i></i><i class="on"></i><i></i><i></i><i></i><i style="width:60%"></i></div>
+    <div class="main"><div class="h"></div><div class="row"><div class="card hl"></div><div class="card"></div><div class="card"></div></div>
+    <div class="lines"><i style="width:82%"></i><i style="width:64%"></i><i style="width:74%"></i><i style="width:40%"></i></div></div>
+    <span class="mail"></span>${extra}</div>`;
+  const crop = { x0: 38, y0: 6, x1: 66.5, y1: 96 };
+  const cropHtml = () => {
+    const { x0, y0, x1, y1 } = crop;
+    const handles = [[0,0],[50,0],[100,0],[100,50],[100,100],[50,100],[0,100],[0,50]].map(([x,y]) => `<b style="left:calc(${x}% - 5px);top:calc(${y}% - 5px)"></b>`).join('');
+    return `<div class="crop-shade" style="--x0:${x0}%;--y0:${y0}%;--x1:${x1}%;--y1:${y1}%"></div>
+      <div class="crop" style="left:${x0}%;top:${y0}%;width:${x1 - x0}%;height:${y1 - y0}%">${handles}<span class="size">608 × 1080</span></div>`;
+  };
+  const cursor = (l, t) => `<svg class="cursor" style="left:${l}%;top:${t}%" viewBox="0 0 14 18"><use href="#i-cursor"/></svg>`;
+  document.querySelectorAll('[data-screen]').forEach((el) => {
+    const k = el.dataset.screen;
+    if (k === 'crop') el.innerHTML = screen(cursor(52, 40) + cropHtml());
+    else if (k === 'text') el.innerHTML = screen(cursor(60, 30) + `<div class="blurbox idle" style="left:31%;top:10.5%;width:26%;height:5.5%"></div><div class="lower3"><div class="t">Weekly update</div><div class="s">Planner, Today tab</div></div>`);
+    else if (k === 'cursor') el.innerHTML = screen(cursor(46, 36));
+    else el.innerHTML = screen(cursor(46, 36));
+  });
+
+  // Waveform (deterministic)
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const wave = (() => {
+    const n = 420, pts = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / n * D;
+      const quiet = (t > 21 && t < 27.5) || (t > 48.9 && t < 51) ? 0.06 : 1;
+      const env = (0.35 + 0.65 * Math.abs(Math.sin(i / 9)) * (0.5 + rnd() * 0.5)) * quiet;
+      pts.push(Math.max(0.03, env));
+    }
+    const up = pts.map((v, i) => `${(i / (n - 1) * 1000).toFixed(1)},${(50 - v * 46).toFixed(1)}`);
+    const dn = pts.map((v, i) => `${(i / (n - 1) * 1000).toFixed(1)},${(50 + v * 46).toFixed(1)}`).reverse();
+    const path = `M${up.join('L')}L${dn.join('L')}Z`;
+    return () => `<svg class="wave" viewBox="${(W0 / D * 1000).toFixed(1)} 0 ${((W1 - W0) / D * 1000).toFixed(1)} 100" preserveAspectRatio="none"><path d="${path}"/></svg>`;
+  })();
+
+  // Timelines
+  const SEGS = [[4.2, 21.0], [27.5, 48.9], [51.0, 58.9]];
+  const ruler = () => {
+    let h = '';
+    const zoomed = W1 - W0 < 30, step = zoomed ? 0.5 : 1, every = zoomed ? 2 : 10;
+    for (let s = Math.ceil(W0); s <= W1; s += step) {
+      const maj = zoomed ? s % 1 === 0 : s % 5 === 0;
+      h += `<span class="tick${maj ? ' maj' : ''}" style="left:${pct(s)}"></span>`;
+      if (s % every === 0) h += `<span class="tick-l" style="left:${pct(s)}">0:${String(s).padStart(2, '0')}</span>`;
+    }
+    return h;
+  };
+  const thumbs = (a, b) => `<div class="thumbs">${'<i></i>'.repeat(Math.ceil((b - a) * 1.6))}</div>`;
+  const video = (selIdx) => {
+    let h = `<span class="cut" style="left:${pct(0)};width:${dur(4.2)}"></span>`;
+    SEGS.forEach(([a, b], i) => {
+      h += `<div class="clip${i === selIdx ? ' sel' : ''}" style="left:${pct(a)};width:${dur(b - a)}">${thumbs(a, b)}<span class="lab">${i + 1}</span>${i === selIdx ? '<span class="h l"></span><span class="h r"></span>' : ''}</div>`;
+      const next = SEGS[i + 1];
+      const gapEnd = next ? next[0] : D;
+      const label = i === 0 ? 'Paused · 6.5 s' : (i === 1 ? 'Paused · 2.1 s' : '');
+      h += `<span class="cut" style="left:${pct(b)};width:${dur(gapEnd - b)}"><span>${label}</span></span>`;
+    });
+    return h;
+  };
+  const gifFrames = () => {
+    let h = '';
+    for (let i = 0; i < 40; i++) {
+      const cls = i === 17 || i === 18 ? 'del' : (i === 9 ? 'sel' : '');
+      h += `<i class="${cls}">${i === 9 ? '<em>200 ms</em>' : (i === 0 ? '<em>66</em>' : '')}</i>`;
+    }
+    return `<span class="cut" style="left:${pct(W0)};width:${dur(27.5 - W0)}"></span><div class="frames" style="left:${pct(27.5)};width:${dur(12)}">${h}</div><span class="cut" style="left:${pct(39.5)};width:${dur(W1 - 39.5)}"></span>`;
+  };
+  const motion = (on) => {
+    if (!on) return `<span class="bar zoom" style="left:${pct(30)};width:${dur(8)}">Smart Zoom</span>`;
+    const keys = [27.5, 29.8, 31.2, 36.0];
+    return `<span class="keyline" style="left:${pct(keys[0])};width:${dur(keys[3] - keys[0])}"></span>` +
+      keys.map((k, i) => `<span class="key${i === 2 ? ' sel' : ''}" style="left:${pct(k)}"></span>`).join('') +
+      `<span class="bar zoom" style="left:${pct(40)};width:${dur(7.5)}">Smart Zoom</span>`;
+  };
+  const TL = {
+    A: { sel: 0, ph: 12.4, inout: [4.2, 21], motion: 0, blur: 0, text: 0 },
+    B: { sel: 1, ph: 31.2, inout: [27.5, 48.9], motion: 1, blur: 1, text: 1 },
+    C: { sel: -1, ph: 8.6, inout: [4.2, 21], motion: 0, blur: 1, text: 1, textSel: 1 },
+    D: { win: [26.5, 40.5], sel: -1, ph: 31.4, inout: [27.5, 39.5], motion: 0, blur: 1, text: 1, gif: 1 },
+    E: { sel: 1, ph: 27.5, inout: [27.5, 48.9], motion: 0, blur: 1, text: 1 },
+  };
+  document.querySelectorAll('[data-tl]').forEach((el) => {
+    const o = TL[el.dataset.tl];
+    [W0, W1] = o.win || [0, D];
+    const tools = `
+      <button class="btn sm ghost">${use('i-split')}Split <span class="k">S</span></button>
+      <button class="btn sm ghost">${use('i-dead')}Cut Dead Air</button>
+      <span class="sep"></span>
+      <button class="btn sm ghost icon on" title="Snap">${use('i-magnet')}</button>
+      ${o.gif ? '<span class="gs" style="margin-left:6px">Zoomed to the range · click a frame for its delay, right-click to drop it</span>' : ''}
+      <span class="sp"></span>
+      <span class="zoom">${use('i-zout')}<span class="slider"><i style="width:30%"></i><b style="left:30%"></b></span>${use('i-zin')}</span>`;
+    const heads = `
+      <div class="trk-h ruler"></div>
+      <div class="trk-h tall">${use('i-film')}${o.gif ? 'Frames' : 'Video'}</div>
+      <div class="trk-h">${use('i-audio')}Audio</div>
+      <div class="trk-h">${use('i-key')}Motion</div>
+      <div class="trk-h">${use('i-blur')}Blur</div>
+      <div class="trk-h">${use('i-text')}Text</div>`;
+    const blur = o.blur ? `<span class="bar blur" style="left:${pct(4.2)};width:${dur(16.8)}">Pixelate · email · tracked</span>` : '';
+    const text = o.text ? `<span class="bar text${o.textSel ? ' sel' : ''}" style="left:${pct(5.2)};width:${dur(5)}">Weekly update</span><span class="bar text" style="left:${pct(28.5)};width:${dur(5)}">Drag to plan</span>` : '';
+    const lanes = `
+      <div class="lane ruler">${ruler()}<span class="inout" style="left:${pct(o.inout[0])};width:${dur(o.inout[1] - o.inout[0])}"></span></div>
+      <div class="lane tall">${o.gif ? gifFrames() : video(o.sel)}</div>
+      <div class="lane">${wave()}</div>
+      <div class="lane">${motion(o.motion)}</div>
+      <div class="lane">${blur}</div>
+      <div class="lane">${text}</div>
+      <span class="phead" style="left:${pct(o.ph)}"></span>`;
+    el.innerHTML = `<div class="tlbar">${tools}</div><div class="tracks"><div class="th-col">${heads}</div><div class="lane-col">${lanes}</div></div>`;
+  });
+  // GIF: the frames sit over a faded copy of the segments.
+
+  // Scale each 1280-wide frame to the page width.
+  const fit = () => document.querySelectorAll('.frame-wrap').forEach((w) => {
+    const s = Math.min(1, w.clientWidth / 1280);
+    const inner = w.firstElementChild;
+    inner.style.transform = `scale(${s})`;
+    w.style.height = (inner.firstElementChild.offsetHeight * s) + 'px';
+  });
+  addEventListener('resize', fit); fit();
+})();
+</script>
+</body>
+</html>
