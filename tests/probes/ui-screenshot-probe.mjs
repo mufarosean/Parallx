@@ -73,10 +73,11 @@ async function runCommand(page, entries) {
     const ok = await page.evaluate(async ({ commandId, args }) => {
       const wb = window.__parallx_workbench__;
       const svc = wb?._services?.get?.({ id: 'ICommandService' });
-      if (!svc?.executeCommand) return false;
-      try { await svc.executeCommand(commandId, ...args); return true; } catch { return false; }
+      if (!svc?.executeCommand) return 'no command service';
+      try { await svc.executeCommand(commandId, ...args); return true; } catch (err) { return String(err && err.message || err); }
     }, { commandId: id, args });
-    if (ok) return id;
+    if (ok === true) return id;
+    console.log(`[probe] ${id}: ${ok}`);
   }
   return null;
 }
@@ -255,6 +256,15 @@ async function main() {
     }
     if (scenes.includes('clip')) {
       await scene('clip', async () => {
+        // External tools start disabled in a fresh data root; enabling one
+        // activates it directly.
+        const enabled = await page.evaluate(async () => {
+          const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' });
+          if (!svc) return 'no enablement service';
+          try { await svc.setEnablement('parallx-community.media-organizer', true); return true; } catch (err) { return String(err && err.message || err); }
+        });
+        if (enabled !== true) console.log(`[probe] enable media-organizer: ${enabled}`);
+        await page.waitForTimeout(3_000);
         const ok = await runCommand(page, [['media-organizer.openClipEditor', clip]]);
         if (!ok) throw new Error('media-organizer.openClipEditor not available (extension not loaded?)');
         await page.waitForSelector('.mo-clip-page', { timeout: 20_000 });

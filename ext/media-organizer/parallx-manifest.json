@@ -124,9 +124,9 @@
             "description": "Record audio into screen recordings. The sound is saved in the temp video, so MP4/WebM clip exports keep it (GIFs have no audio). 'system' captures whatever is playing on any output device (speakers, Bluetooth, USB, HDMI) via Windows loopback; 'mic' captures the default microphone; 'both' mixes the two into one track (narrate over what plays); 'off' disables audio."
           },
           "mediaOrganizer.screenRecorderCountdown": {
-            "type": "number",
-            "default": 0,
-            "enum": [0, 3, 5, 10],
+            "type": "string",
+            "default": "0",
+            "enum": ["0", "3", "5", "10"],
             "description": "Off by default: recording starts the moment you press Record. Set 3, 5 or 10 to count down inside the frame first, which gives you time to switch to the window you want to capture. Ctrl+Alt+R starts and stops a recording from any app while the frame is open; Ctrl+Alt+P pauses."
           },
           "mediaOrganizer.screenRecorderShowCursor": {
