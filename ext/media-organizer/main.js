@@ -5946,6 +5946,9 @@ kbd.mo-key {
 .mo-filter-pill-value { color: var(--px-accent-text); font-weight: 600; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .mo-filter-pill-x { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--px-radius-full); color: var(--px-text-muted); }
 .mo-filter-pill-x:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.mo-filter-pills-sep { width: 1px; height: 16px; background: var(--px-divider); margin: 0 var(--px-space-1); flex: none; }
+.mo-filter-chip-bar .mo-filter-type { border-color: transparent; background: transparent; padding: 0; height: var(--px-control-h-sm); }
+.mo-filter-chip-bar .mo-filter-type .mo-segment-btn.active { background: var(--px-surface-selected); box-shadow: none; color: var(--px-text); }
 .mo-filter-pills-clear { height: var(--px-control-h-sm); padding: 0 var(--px-space-2); border: 0; background: transparent; color: var(--px-text-muted); font: inherit; font-size: var(--px-text-sm); cursor: pointer; border-radius: var(--px-radius-sm); }
 .mo-filter-pills-clear:hover { color: var(--px-text); background: var(--px-surface-hover); }
 /* The picker a pill opens. */
@@ -12198,7 +12201,7 @@ function renderGridBrowser(container, api, input) {
   }
   function syncTypeChips() { for (const [k, el] of typeChips) el.classList.toggle('active', state.mediaType === k); }
   syncTypeChips();
-  toolbar.appendChild(typeGroup);
+  typeGroup.classList.add('mo-filter-type');
 
   // How it's sorted: one menu. The field, the direction, Group By Date, and
   // Shuffle Again while the order is Shuffled.
@@ -12375,6 +12378,9 @@ function renderGridBrowser(container, api, input) {
     }
     const tagMap = new Map((_filterTagCache || []).map(t => [t.id, t.name]));
     const f = state.filters;
+    // What kind of media leads the row (All, Photos, GIFs, Videos), then the filters.
+    chipBar.appendChild(typeGroup);
+    chipBar.appendChild(moEl('span', 'mo-filter-pills-sep'));
     // A tag branch (Face › Portrait) is the view's scope; say so, read-only.
     if (filterType === 'tag' && filterTagPath && filterTagPath.length > 1) {
       chipBar.appendChild(moEl('span', 'mo-filter-chip mo-filter-chip--scope', { textContent: filterTagPath.map((id) => tagMap.get(id) || `#${id}`).join(' › ') }));
