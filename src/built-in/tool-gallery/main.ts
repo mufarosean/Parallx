@@ -12,7 +12,7 @@ import './toolGallery.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $, clearNode } from '../../ui/dom.js';
-import { getIcon } from '../../ui/iconRegistry.js';
+import { getIcon, hasIcon } from '../../ui/iconRegistry.js';
 import { renderEmptyState } from '../../ui/emptyStates.js';
 import { IIntrospectionService } from '../../services/introspectionService.js';
 
@@ -92,11 +92,14 @@ const SVG_ICON_BUILTIN = getIcon('package')!;
 /** External tool icon — plug connector. */
 const SVG_ICON_EXTERNAL = getIcon('plug')!;
 
-/** Large built-in tool icon for editor pane header. */
-const SVG_ICON_BUILTIN_LG = SVG_ICON_BUILTIN;
 
-/** Large external tool icon for editor pane header. */
-const SVG_ICON_EXTERNAL_LG = SVG_ICON_EXTERNAL;
+/** A tool's own icon: the one it shows in the activity bar, else the generic mark. */
+function toolIconSvg(tool: { isBuiltin: boolean; contributes?: ToolContributions }): string {
+  const c = tool.contributes ?? {};
+  const ids = [...(c.viewContainers ?? []).map((v) => v.icon), ...(c.views ?? []).map((v) => v.icon)];
+  for (const id of ids) if (id && hasIcon(id)) return getIcon(id);
+  return tool.isBuiltin ? SVG_ICON_BUILTIN : SVG_ICON_EXTERNAL;
+}
 
 /** Install/download icon for the install button. */
 const SVG_ICON_INSTALL = getIcon('export')!;
@@ -166,7 +169,8 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
   const searchInput = $('input') as HTMLInputElement;
   searchInput.classList.add('tool-gallery-search-input');
   searchInput.type = 'text';
-  searchInput.placeholder = 'Search tools…  (@enabled, @disabled, @builtin)';
+  searchInput.placeholder = 'Search tools…';
+  searchInput.title = 'Filter with @enabled, @disabled or @builtin';
   searchInput.spellcheck = false;
   searchWrap.appendChild(searchInput);
 
@@ -263,7 +267,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
     // Icon
     const icon = $('span');
     icon.classList.add('tool-gallery-row-icon');
-    icon.innerHTML = tool.isBuiltin ? SVG_ICON_BUILTIN : SVG_ICON_EXTERNAL;
+    icon.innerHTML = toolIconSvg(tool);
     row.appendChild(icon);
 
     // Info
@@ -463,7 +467,7 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
 
   const iconEl = $('div');
   iconEl.classList.add('tool-editor-header-icon');
-  iconEl.innerHTML = tool.isBuiltin ? SVG_ICON_BUILTIN_LG : SVG_ICON_EXTERNAL_LG;
+  iconEl.innerHTML = toolIconSvg(tool);
   header.appendChild(iconEl);
 
   const headerDetails = $('div');

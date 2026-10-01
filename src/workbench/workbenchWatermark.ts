@@ -6,6 +6,7 @@
  */
 
 import { getIcon } from '../ui/iconRegistry.js';
+import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -17,9 +18,9 @@ interface KeybindingLookup {
 
 const WATERMARK_SHORTCUTS: { commandId: string; label: string; fallback: string }[] = [
   { commandId: 'workbench.action.showCommands', label: 'Command Palette', fallback: 'Ctrl+Shift+P' },
-  { commandId: 'workbench.action.toggleSidebarVisibility', label: 'Toggle Sidebar', fallback: 'Ctrl+B' },
-  { commandId: 'workbench.action.togglePanel', label: 'Toggle Panel', fallback: 'Ctrl+J' },
-  { commandId: 'workbench.action.splitEditor', label: 'Split Editor', fallback: 'Ctrl+\\' },
+  { commandId: 'workbench.action.quickOpen', label: 'Go to File', fallback: 'Ctrl+P' },
+  { commandId: 'workbench.action.toggleSidebar', label: 'Toggle Left Area', fallback: 'Ctrl+B' },
+  { commandId: 'workbench.action.togglePanel', label: 'Toggle Bottom Area', fallback: 'Ctrl+J' },
 ];
 
 // ── Public API ───────────────────────────────────────────────────────────
@@ -61,11 +62,7 @@ function renderWatermarkContent(
     let key = fallback;
     if (keybindingService) {
       const resolved = keybindingService.lookupKeybinding(commandId);
-      if (resolved) {
-        key = resolved.split('+').map(part =>
-          part.charAt(0).toUpperCase() + part.slice(1),
-        ).join('+');
-      }
+      if (resolved) key = formatKeybindingForDisplay(resolved);
     }
     return `<div class="editor-watermark-entry"><kbd>${key}</kbd> <span>${label}</span></div>`;
   }).join('\n            ');
@@ -73,7 +70,7 @@ function renderWatermarkContent(
   watermark.innerHTML = `
         <div class="editor-watermark-content">
           <div class="editor-watermark-icon">${getIcon('px-mark')}</div>
-          <div class="editor-watermark-title">Parallx Workbench</div>
+          <div class="editor-watermark-title">Parallx</div>
           <div class="editor-watermark-shortcuts">
             ${entries}
           </div>
