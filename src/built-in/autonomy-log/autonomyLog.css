@@ -77,10 +77,11 @@
   color: var(--vscode-descriptionForeground, #999);
   border: 1px solid transparent;
   border-radius: var(--parallx-radius-sm, 3px);
-  padding: 2px 8px;
-  font-size: var(--parallx-fontSize-xs);
+  height: var(--px-control-h-xs);
+  box-sizing: border-box;
+  padding: 0 8px;
+  font-size: var(--px-text-xs);
   cursor: pointer;
-  line-height: 1.4;
 }
 
 .autonomy-log-chip:hover {

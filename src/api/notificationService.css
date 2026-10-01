@@ -159,7 +159,9 @@
  *  - .--secondary: cancel-style, low-emphasis ghost.
  */
 .parallx-notification-action-btn {
-  padding: 5px 14px;
+  height: var(--px-control-h);
+  box-sizing: border-box;
+  padding: 0 14px;
   font-size: var(--px-text-base);
   font-weight: 500;
   font-family: inherit;

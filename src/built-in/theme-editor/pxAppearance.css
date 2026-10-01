@@ -153,7 +153,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
+  height: var(--px-control-h);
+  box-sizing: border-box;
+  padding: 0 14px;
   border: 0;
   border-radius: var(--px-radius-sm, 4px);
   background: transparent;

@@ -109,7 +109,10 @@
   display: block;
   width: 100%;
   text-align: left;
-  padding: 7px 12px;
+  height: var(--px-control-h);
+  line-height: var(--px-control-h);
+  padding: 0 12px;
+  box-sizing: border-box;
   border: none;
   background: transparent;
   color: var(--px-text-secondary);
