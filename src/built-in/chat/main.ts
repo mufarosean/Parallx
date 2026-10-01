@@ -845,6 +845,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     agentTaskStore: agentTaskStore ?? undefined,
     openFileEditor: (uri, opts) => api.editors.openFileEditor(uri, opts),
     openLink: (uri: string) => api.links.open(uri),
+    openAiSettings: () => { void api.commands.executeCommand('settings.open', 'ai'); },
     notifyWarning: (message: string) => { void api.window.showWarningMessage(message); },
   });
 

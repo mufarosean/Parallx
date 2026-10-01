@@ -37,7 +37,7 @@
   padding: 0;
 }
 .search-toggle-replace:hover { background: var(--px-surface-hover); color: var(--px-text); }
-.search-toggle-replace.active { color: var(--px-accent); }
+.search-toggle-replace.active { color: var(--px-accent-text); }
 .search-toggle-replace svg { width: 12px; height: 12px; }
 
 .search-input-rows {
@@ -98,7 +98,7 @@
 .search-option-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .search-option-btn.active {
   background: var(--px-accent-soft);
-  color: var(--px-accent);
+  color: var(--px-accent-text);
 }
 
 /* ── Include / exclude filters ─────────────────────────────────────────── */

@@ -162,6 +162,8 @@ export interface ChatDataServiceDeps {
   readonly openFileEditor?: (uri: string, options?: { pinned?: boolean }) => Promise<void>;
   /** Open a parallx:// link (canvas block reveal rides the link contract). */
   readonly openLink?: (uri: string) => Promise<boolean>;
+  /** Open Settings at the AI section (chat's offline state links here). */
+  readonly openAiSettings?: () => void;
   /** Surface a user-visible warning toast (attachment failures must never be silent). */
   readonly notifyWarning?: (message: string) => void;
 }
@@ -2148,6 +2150,7 @@ export class ChatDataService {
       ...attachmentServices,
       ...sessionServices,
       ...agentTaskServices,
+      openAiSettings: this._d.openAiSettings,
       setContextLengthOverride: (contextWindow: number) => {
         const provider = this._d.ollamaProvider as { setContextLengthOverride?: (n: number) => void };
         provider.setContextLengthOverride?.(Math.max(0, Math.floor(contextWindow)));

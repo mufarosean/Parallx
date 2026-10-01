@@ -1325,7 +1325,7 @@
 }
 
 .ai-settings-mcp-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #888);
+  color: var(--px-text-faint);
 }
 
 .ai-settings-mcp-form-actions {
@@ -1742,7 +1742,7 @@ input[type="number"].ai-settings-agent-card__field-input {
 
 .ai-settings-cron-job__source--ai {
   background: transparent;
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   border: 1px solid color-mix(in srgb, var(--px-accent) 45%, transparent);
 }
 

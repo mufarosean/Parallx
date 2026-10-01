@@ -340,7 +340,7 @@
 }
 .px-pv-link {
   font-size: var(--px-text-sm, 12px);
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   text-decoration: none;
 }
 .px-pv-link:hover { text-decoration: underline; }

@@ -24,7 +24,7 @@
 
 .wfe__icon {
   display: inline-flex;
-  color: var(--px-accent);
+  color: var(--px-accent-text);
 }
 .wfe__icon svg { width: 18px; height: 18px; }
 
@@ -87,7 +87,7 @@
 }
 .wfe__btn--primary:hover { background: var(--px-accent-hover); }
 
-.wfe__btn--armed { border-color: var(--px-accent); color: var(--px-accent); }
+.wfe__btn--armed { border-color: var(--px-accent); color: var(--px-accent-text); }
 
 .wfe__btn--danger {
   color: var(--px-danger, var(--px-text));
@@ -314,7 +314,7 @@
   border-left: 3px solid var(--px-accent);
 }
 .wfe .is-family-trigger .wfe-card__ic,
-.wfe .is-family-trigger .wfe-card__kind { color: var(--px-accent); }
+.wfe .is-family-trigger .wfe-card__kind { color: var(--px-accent-text); }
 
 .wfe .is-family-control > .px-node-canvas__node-body {
   border-left: 3px solid var(--px-warning, var(--px-border-strong));
@@ -367,7 +367,7 @@
 .wfe__coach-num {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   font-weight: 600;
 }
 
@@ -375,7 +375,7 @@
   margin-top: var(--px-space-2);
   border: none;
   background: transparent;
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   font-size: var(--px-text-xs);
   font-family: var(--px-font-ui);
   cursor: pointer;

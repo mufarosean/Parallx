@@ -75,7 +75,7 @@
 
 /* Toggled-on state (outline / thumbnails / night reading). */
 .pdf-toolbar-btn.active {
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   background: var(--px-accent-faint);
 }
 

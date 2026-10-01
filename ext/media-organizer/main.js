@@ -9687,9 +9687,9 @@ function renderBrowserSidebar(container, api) {
   qfBody.appendChild(sidebarItem('trash', 'Trash', null, () => openGrid('trash', 'Trash')));
   sections.appendChild(qfSection);
 
-  // Drawing And Painting (M104): practice and painting plans. Shown only while
-  // Drawing And Painting Tools is on (decision D7).
-  const { section: prSection, body: prBody } = sidebarSection('Drawing And Painting', 'paintbrush', false);
+  // Drawing and Painting (M104): practice and painting plans. Shown only while
+  // Drawing and Painting Tools is on (decision D7).
+  const { section: prSection, body: prBody } = sidebarSection('Drawing and Painting', 'paintbrush', false);
   prBody.appendChild(sidebarItem('sun', 'Daily Study', null, () => void moStartDailyStudy(api)));
   prBody.appendChild(sidebarItem('timer', 'Practice Session', null, () => moOpenPracticeSetup(api)));
   prBody.appendChild(sidebarItem('palette', 'Painting Plans', null, () => moOpenPlansList(api)));
@@ -28000,9 +28000,21 @@ function moReadArtCfg(api) {
   };
 }
 
-function moArtGate(api) {
+// The drawing and painting tools are opt-in. A command that needs them asks
+// once, in place, and carries on if the user says yes — never a dead-end toast
+// that sends them hunting through settings.
+function moArtGate(api, retry) {
   if (_artToolsEnabled) return true;
-  (api || _api).window.showInformationMessage('Turn on Drawing And Painting Tools in Media Organizer settings first.');
+  api = api || _api;
+  void Promise.resolve(api.window.showInformationMessage(
+    'Drawing and painting tools are off. Turn them on to use this.',
+    { title: 'Turn On' },
+  )).then(async (picked) => {
+    if (!picked || picked.title !== 'Turn On') return;
+    try { await api.workspace.getConfiguration('mediaOrganizer').update('enableArtTools', true); } catch { return; }
+    _artToolsEnabled = true;
+    if (typeof retry === 'function') retry();
+  }).catch(() => {});
   return false;
 }
 
@@ -28177,7 +28189,7 @@ async function moDailyToday() {
 
 async function moStartDailyStudy(api, opts) {
   api = api || _api;
-  if (!moArtGate(api)) return;
+  if (!moArtGate(api, () => void moStartDailyStudy(api, opts))) return;
   try {
     const today = await moDailyToday();
     if (!today) { api.window.showInformationMessage('Add some pictures to the library first.'); return; }
@@ -28295,7 +28307,7 @@ function renderPracticeTab(container, api, input) {
   const inputId = (input && (input.instanceId || input.id)) || '';
   if (!_artToolsEnabled) {
     moInjectStyles();
-    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on Drawing And Painting Tools in Media Organizer settings to use practice.' }));
+    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on drawing and painting tools in Media Organizer settings to use practice.' }));
     return { dispose() { container.innerHTML = ''; } };
   }
   if (inputId.startsWith('practice:run:')) return renderPracticePlayer(container, api, parseInt(inputId.slice('practice:run:'.length), 10) || 0);
@@ -28920,7 +28932,7 @@ function buildPracticeHistoryStrip(ctx, api) {
   const id = ctx.entity ? ctx.entity.id : ctx.id;
   const wrap = moEl('div', 'mo-similar');
   const head = moEl('div', 'mo-practice-history-head');
-  head.appendChild(moEl('div', 'mo-similar-title', { textContent: 'Drawing And Painting' }));
+  head.appendChild(moEl('div', 'mo-similar-title', { textContent: 'Drawing and Painting' }));
   const actions = moEl('div', 'mo-practice-history-actions');
   const addBtn = moEl('button', 'mo-toolbar-btn', { type: 'button', textContent: 'Add To Plan' });
   addBtn.addEventListener('click', () => void moPlanPickAndAdd(api, ctx.type === 'video' ? 'video' : 'photo', id));
@@ -29158,7 +29170,7 @@ function renderPlansTab(container, api, input) {
   const inputId = (input && (input.instanceId || input.id)) || '';
   if (!_artToolsEnabled) {
     moInjectStyles();
-    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on Drawing And Painting Tools in Media Organizer settings to use painting plans.' }));
+    container.appendChild(moEl('div', 'mo-practice-empty', { textContent: 'Turn on drawing and painting tools in Media Organizer settings to use painting plans.' }));
     return { dispose() { container.innerHTML = ''; } };
   }
   if (inputId.startsWith('plans:edit:')) return renderPlanEditor(container, api, parseInt(inputId.slice('plans:edit:'.length), 10) || 0);
@@ -30102,7 +30114,7 @@ export async function activate(api, context) {
     if (sub2 && typeof sub2.dispose === 'function') _commandDisposables.push(sub2);
   }
 
-  // Drawing And Painting Tools (M104, decision D7) and the practice settings.
+  // Drawing and Painting Tools (M104, decision D7) and the practice settings.
   try { moReadArtCfg(api); } catch { /* keep defaults */ }
   if (api.workspace.onDidChangeConfiguration) {
     const sub3 = api.workspace.onDidChangeConfiguration((e) => {
@@ -30196,9 +30208,9 @@ export async function activate(api, context) {
   // Register scan command
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.upscaleSetup', () => showUpscaleSetupDialog(api)),
-    api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api)) moOpenPracticeSetup(api); }),
+    api.commands.registerCommand('media-organizer.practiceSession', () => { if (moArtGate(api, () => moOpenPracticeSetup(api))) moOpenPracticeSetup(api); }),
     api.commands.registerCommand('media-organizer.dailyStudy', () => void moStartDailyStudy(api)),
-    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api)) moOpenPlansList(api); }),
+    api.commands.registerCommand('media-organizer.paintingPlans', () => { if (moArtGate(api, () => moOpenPlansList(api))) moOpenPlansList(api); }),
     api.commands.registerCommand('media-organizer.scan', async () => {
       const result = await window.parallxElectron.dialog.openFolder({
         title: 'Select folder to scan',

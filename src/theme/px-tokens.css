@@ -56,7 +56,7 @@
   --px-base-25: #33363d;   /* active / selected                   */
   --px-base-30: #41454d;   /* strong border                       */
   --px-base-35: #4e525b;   /* divider on elevated                 */
-  --px-base-40: #686d77;   /* faint text                          */
+  --px-base-40: #838893;   /* faint text — 4.5:1 on 00/05/10 (AA)    */
   --px-base-50: #838893;   /* disabled                            */
   --px-base-60: #9ea3ad;   /* muted text                          */
   --px-base-70: #c0c4cc;   /* secondary text                      */
@@ -146,6 +146,10 @@
   --px-accent-strong: hsl(var(--px-accent-h) var(--px-accent-s) calc(var(--px-accent-l) - 8%));
   --px-accent-soft:   hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l) / 0.15);
   --px-accent-faint:  hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l) / 0.08);
+  /* Accent as TEXT (links, active labels, accent ink on soft fills). Dark: the
+     accent itself. Light mode redefines it darker; pxAppearance computes the
+     lightness per accent (accentTextLightness) so it reaches 4.5:1 on paper. */
+  --px-accent-text:   var(--px-accent);
 
   /* Signals */
   --px-danger:        rgb(var(--px-red-rgb));
@@ -271,7 +275,7 @@
   --px-base-25: #38352f;
   --px-base-30: #45413a;
   --px-base-35: #524d45;
-  --px-base-40: #6b655b;
+  --px-base-40: #90897d;
   --px-base-50: #877f73;
   --px-base-60: #a39b8d;
   --px-base-70: #c4bcae;
@@ -293,7 +297,7 @@
   --px-base-25: #3b342b;
   --px-base-30: #4a4136;
   --px-base-35: #574d40;
-  --px-base-40: #71665a;
+  --px-base-40: #948778;
   --px-base-50: #8d8275;
   --px-base-60: #a89d8d;
   --px-base-70: #c8beaf;
@@ -334,7 +338,7 @@
   --px-base-25: #d6dae1;   /* active / selected / border           */
   --px-base-30: #c3c9d2;   /* strong border                        */
   --px-base-35: #b1b8c2;   /* divider on elevated                  */
-  --px-base-40: #888f9b;   /* faint text                           */
+  --px-base-40: #656c78;   /* faint text                           */
   --px-base-50: #6e757f;   /* disabled                             */
   --px-base-60: #555b64;   /* muted text                           */
   --px-base-70: #3c414a;   /* secondary text                       */
@@ -347,6 +351,7 @@
   --px-blue-rgb:   46, 110, 200;
 
   /* Semantic tokens that assume dark — overridden for light. */
+  --px-accent-text:  hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-text-l, 33%));
   --px-window:       color-mix(in srgb, var(--px-base-00) 93%, #000);  /* subtle recess */
   --px-chrome-line:  rgba(0, 0, 0, 0.08);     /* dark hairline, not white */
   --px-edge-light:   none;                     /* white top-sheen is invisible on light */
@@ -376,7 +381,7 @@
   --px-base-25: #d8d0c4;
   --px-base-30: #c5bcab;
   --px-base-35: #b4aa96;
-  --px-base-40: #8c8475;
+  --px-base-40: #706a5e;
   --px-base-50: #726a5c;
   --px-base-60: #585145;
   --px-base-70: #403a30;
@@ -393,7 +398,7 @@
   --px-base-25: #dacfbf;
   --px-base-30: #c8bba6;
   --px-base-35: #b7a890;
-  --px-base-40: #8f8472;
+  --px-base-40: #72695a;
   --px-base-50: #756a58;
   --px-base-60: #5b5142;
   --px-base-70: #423a2e;

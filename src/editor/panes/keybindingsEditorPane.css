@@ -42,7 +42,7 @@
 }
 
 .keybindings-search-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #888);
+  color: var(--px-text-faint);
 }
 
 .keybindings-table-container {

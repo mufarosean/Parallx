@@ -494,10 +494,13 @@ function setupBrowserBridge(ipcMain, opts) {
   watchWindow(getMainWindow());
 
   // ── Downloads ──
-  function downloadDir() {
+  // Where downloads land. Created only when a download actually happens:
+  // reporting the path (browser:getState, on every launch) must not leave an
+  // empty Downloads/ folder in the user's workspace.
+  function downloadDir({ create = true } = {}) {
     const root = getWorkspaceRoot();
     const base = root ? path.join(root, 'Downloads') : app.getPath('downloads');
-    try { fs.mkdirSync(base, { recursive: true }); } catch { /* best effort */ }
+    if (create) { try { fs.mkdirSync(base, { recursive: true }); } catch { /* best effort */ } }
     return base;
   }
   function handleDownload(item, wc, kind) {
@@ -858,7 +861,7 @@ function setupBrowserBridge(ipcMain, opts) {
   function writeJson(p, value) { try { fs.writeFileSync(p, JSON.stringify(value, null, 2)); } catch (err) { console.warn('[browser] could not save', p, err && err.message); } }
 
   // ── IPC ──
-  ipcMain.handle('browser:getState', () => ({ partitions: PARTITIONS, lists, downloadDir: downloadDir(), engineInstalled: !!ElectronBlocker }));
+  ipcMain.handle('browser:getState', () => ({ partitions: PARTITIONS, lists, downloadDir: downloadDir({ create: false }), engineInstalled: !!ElectronBlocker }));
   ipcMain.handle('browser:getSite', (_e, url) => ({ key: policy.siteKey(url), settings: siteFor(url) }));
   ipcMain.handle('browser:setSite', (_e, url, patch) => {
     const key = policy.siteKey(url);

@@ -47,7 +47,7 @@
 }
 
 .tool-gallery-search-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #888);
+  color: var(--px-text-faint);
 }
 
 .tool-gallery-search-input:focus {

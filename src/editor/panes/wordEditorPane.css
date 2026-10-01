@@ -82,7 +82,7 @@
 .word-reader-content p { margin: 0 0 0.9em; }
 .word-reader-content ul, .word-reader-content ol { margin: 0 0 0.9em; padding-left: 1.6em; }
 .word-reader-content li { margin-bottom: 0.3em; }
-.word-reader-content a { color: var(--px-accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--px-accent) 35%, transparent); }
+.word-reader-content a { color: var(--px-accent-text); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--px-accent) 35%, transparent); }
 .word-reader-content a:hover { border-color: var(--px-accent); }
 .word-reader-content strong, .word-reader-content b { font-weight: 650; color: var(--px-text); }
 .word-reader-content code {

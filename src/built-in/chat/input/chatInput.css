@@ -42,7 +42,7 @@
   padding: 2px 8px;
   border-radius: var(--px-radius-sm);
   background: var(--px-bg-inset);
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   font-size: var(--px-text-base);
   font-weight: 550;
   font-family: var(--px-font-mono, monospace);
@@ -495,7 +495,7 @@
 .parallx-chat-context-chip--canvas-block {
   border-color: color-mix(in srgb, var(--vscode-focusBorder, #007acc) 55%, transparent);
   background: var(--px-bg-inset);
-  color: var(--px-accent);
+  color: var(--px-accent-text);
 }
 .parallx-chat-context-chip--canvas-block .parallx-chat-context-chip-icon {
   color: var(--vscode-focusBorder, #007acc);
@@ -606,7 +606,7 @@
 }
 
 .parallx-chat-context-picker-search-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #8b8b8b);
+  color: var(--px-text-faint);
 }
 
 .parallx-chat-context-picker-list {
@@ -883,7 +883,7 @@
 }
 
 .parallx-chat-tool-picker-search-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #8b8b8b);
+  color: var(--px-text-faint);
 }
 
 .parallx-chat-tool-picker-badge {

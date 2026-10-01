@@ -34,7 +34,7 @@ export function injectStudioStyles() {
 .cs-title:focus { border-bottom-color: var(--px-accent); }
 .cs-title::placeholder { color: var(--px-text-faint); font-weight: 500; }
 .cs-chip { font-size: var(--px-text-xs); line-height: 18px; padding: 0 var(--px-space-2); border-radius: var(--px-radius-full); background: var(--px-bg-inset); color: var(--px-text-muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
-.cs-chip--accent { color: var(--px-accent); background: var(--px-accent-faint); }
+.cs-chip--accent { color: var(--px-accent-text); background: var(--px-accent-faint); }
 .cs-chip--warn { color: var(--px-warning); background: var(--px-warning-soft); }
 .cs-chip--danger { color: var(--px-danger); background: var(--px-danger-soft); }
 .cs-chip--ok { color: var(--px-success); background: var(--px-bg-inset); }
@@ -48,7 +48,7 @@ export function injectStudioStyles() {
 .cs-btn--quiet:hover { color: var(--px-text); background: var(--px-bg-inset); border-color: transparent; }
 .cs-btn--small { padding: 2px var(--px-space-2); font-size: var(--px-text-xs); line-height: 18px; }
 .cs-crumbs { display: flex; align-items: center; gap: var(--px-space-1); font-size: var(--px-text-sm); color: var(--px-text-muted); flex-wrap: wrap; }
-.cs-crumb { background: none; border: 0; padding: 0; color: var(--px-accent); cursor: pointer; font: inherit; }
+.cs-crumb { background: none; border: 0; padding: 0; color: var(--px-accent-text); cursor: pointer; font: inherit; }
 .cs-crumb:hover { text-decoration: underline; }
 .cs-crumb--here { color: var(--px-text); cursor: default; text-decoration: none; }
 .cs-crumb--here:hover { text-decoration: none; }
@@ -63,7 +63,7 @@ export function injectStudioStyles() {
 .cs-section--closed .cs-section-body { display: none; }
 .cs-modes { display: flex; gap: var(--px-space-1); }
 .cs-mode { font-size: var(--px-text-xs); line-height: 20px; padding: 0 var(--px-space-2); border-radius: var(--px-radius-full); border: 1px solid var(--px-border); background: transparent; color: var(--px-text-muted); cursor: pointer; font-family: inherit; }
-.cs-mode[aria-pressed="true"] { color: var(--px-accent); border-color: var(--px-accent); background: var(--px-accent-faint); }
+.cs-mode[aria-pressed="true"] { color: var(--px-accent-text); border-color: var(--px-accent); background: var(--px-accent-faint); }
 .cs-field { display: flex; flex-direction: column; gap: var(--px-space-1); }
 .cs-label { font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-secondary); }
 .cs-textarea, .cs-input { width: 100%; box-sizing: border-box; background: var(--px-bg-inset); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-base); line-height: 1.5; padding: var(--px-space-2) var(--px-space-3); }
@@ -81,7 +81,7 @@ export function injectStudioStyles() {
 .cs-rows { display: flex; flex-direction: column; }
 .cs-row { display: grid; grid-template-columns: 132px minmax(0, 1fr) auto; gap: var(--px-space-3); padding: var(--px-space-2) 0; border-bottom: 1px solid var(--px-divider); align-items: start; }
 .cs-row-label { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); padding-top: 7px; display: flex; align-items: center; gap: var(--px-space-1); min-width: 0; }
-.cs-row-lock { color: var(--px-accent); display: inline-flex; }
+.cs-row-lock { color: var(--px-accent-text); display: inline-flex; }
 .cs-row-text { width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-base); line-height: 1.5; padding: 6px var(--px-space-2); resize: none; overflow: hidden; min-height: 34px; }
 .cs-row-text:hover { border-color: var(--px-border); }
 .cs-row-text:focus { outline: none; border-color: var(--px-accent); background: var(--px-bg-inset); }
@@ -92,7 +92,7 @@ export function injectStudioStyles() {
 .cs-icon-btn { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--px-text-muted); border-radius: var(--px-radius-xs); cursor: pointer; padding: 0; }
 .cs-icon-btn:hover { background: var(--px-bg-inset); color: var(--px-text); }
 .cs-icon-btn:disabled { opacity: .4; cursor: default; }
-.cs-icon-btn[aria-pressed="true"] { color: var(--px-accent); }
+.cs-icon-btn[aria-pressed="true"] { color: var(--px-accent-text); }
 .cs-row-error { grid-column: 2 / 4; display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-danger); }
 .cs-canon { display: flex; flex-direction: column; gap: 2px; }
 .cs-fact { display: flex; gap: var(--px-space-2); font-size: var(--px-text-sm); line-height: 1.45; padding: 2px 0; cursor: pointer; }

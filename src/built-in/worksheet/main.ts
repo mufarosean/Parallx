@@ -876,11 +876,20 @@ function createLauncherPane(container: HTMLElement) {
       b.addEventListener('click', () => void openPastQuiz(open.id));
       acts.appendChild(b);
     }
-    const start = el('button', open ? 'ws-btn ws-btn--quiet' : 'ws-btn ws-btn--primary', open ? 'New Quiz' : 'Start Quiz') as HTMLButtonElement;
-    start.type = 'button';
-    start.title = 'The quiz builder: papers, sources, kinds, a rating band, a length.';
-    start.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
-    acts.appendChild(start);
+    if (!open && problems.length === 0) {
+      // Nothing to quiz yet: the one action that matters is the import.
+      const imp = el('button', 'ws-btn ws-btn--primary', 'Import Workbook') as HTMLButtonElement;
+      imp.type = 'button';
+      imp.title = 'A ProblemTrack workbook, every sheet as it is.';
+      imp.addEventListener('click', () => void openWorksheet('excel-import', 'Import Workbook'));
+      acts.appendChild(imp);
+    } else {
+      const start = el('button', open ? 'ws-btn ws-btn--quiet' : 'ws-btn ws-btn--primary', open ? 'New Quiz' : 'Start Quiz') as HTMLButtonElement;
+      start.type = 'button';
+      start.title = 'The quiz builder: papers, sources, kinds, a rating band, a length.';
+      start.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
+      acts.appendChild(start);
+    }
     cont.appendChild(acts);
     col.appendChild(cont);
 

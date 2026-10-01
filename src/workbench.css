@@ -346,11 +346,6 @@ html, body {
   align-items: center;
   gap: 3px;
   flex-shrink: 0;
-  opacity: 0.55;
-  transition: opacity var(--px-dur-fast) var(--px-ease);
-}
-.titlebar-command-center:hover .titlebar-command-center-kbd {
-  opacity: 0.85;
 }
 .titlebar-command-center-kbd kbd {
   display: inline-flex;
@@ -619,7 +614,7 @@ html, body {
 /* Active — accent icon + a signature left indicator bar (rounded, ~half
    height, springs in). Distinctive, calm, unmistakable. */
 .activity-bar-item.active {
-  color: var(--px-accent);
+  color: var(--px-accent-text);
 }
 .activity-bar-item.active::after {
   background: var(--px-accent-faint);
@@ -1594,7 +1589,7 @@ html, body {
 }
 
 .command-palette-input::placeholder {
-  color: var(--vscode-input-placeholderForeground);
+  color: var(--px-text-faint);
 }
 
 .command-palette-list {
@@ -2113,7 +2108,7 @@ html, body {
 }
 
 .search-input::placeholder {
-  color: var(--vscode-input-placeholderForeground);
+  color: var(--px-text-faint);
 }
 
 /* ── Option toggles (Aa, Ab|, .*) ── */
@@ -2406,7 +2401,7 @@ html, body {
   padding: 0 5px;
   border-radius: var(--px-radius-full);
   background-color: var(--px-accent-soft);
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   font-size: var(--px-text-xs);
   font-weight: 600;
 }
@@ -2565,7 +2560,7 @@ html, body {
 }
 
 .theme-picker-input::placeholder {
-  color: var(--vscode-input-placeholderForeground);
+  color: var(--px-text-faint);
 }
 
 .theme-picker-list {

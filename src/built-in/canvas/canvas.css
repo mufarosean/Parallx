@@ -165,7 +165,7 @@
 .canvas-sidebar-toast-undo {
   background: none;
   border: 1px solid rgba(var(--px-accent-rgb), 0.5);
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   padding: 3px 9px;
   border-radius: 4px;
   font-family: inherit;
@@ -261,7 +261,7 @@
   min-width: 0;
 }
 .canvas-sidebar-search-input::placeholder {
-  color: color-mix(in srgb, var(--px-text) 35%, transparent);
+  color: var(--px-text-faint);
 }
 .canvas-empty-search {
   padding: 16px;
@@ -2562,8 +2562,8 @@
 
 .canvas-tiptap-editor pre {
   background: var(--px-bg-inset);
-  border-radius: var(--parallx-radius-lg);
-  padding: 0;
+  border-radius: var(--px-radius-md);
+  padding: var(--px-space-3) var(--px-space-4);
   margin: 8px 0;
   overflow-x: auto;
   font-family: var(--parallx-fontFamily-mono);
@@ -4425,7 +4425,7 @@
 }
 
 .canvas-math-block-input::placeholder {
-  color: color-mix(in srgb, var(--px-text) 25%, transparent);
+  color: var(--px-text-faint);
   font-family: inherit;
 }
 
@@ -4491,7 +4491,7 @@
 }
 
 .canvas-inline-math-input::placeholder {
-  color: color-mix(in srgb, var(--px-text) 30%, transparent);
+  color: var(--px-text-faint);
 }
 
 .canvas-inline-math-preview {
@@ -4846,7 +4846,7 @@
 }
 
 .canvas-ai-chat-input::placeholder {
-  color: color-mix(in srgb, var(--px-text) 25%, transparent);
+  color: var(--px-text-faint);
 }
 
 .canvas-ai-chat-send {
@@ -4965,7 +4965,7 @@
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
   color: var(--vscode-foreground, #ddd);
 }
-.canvas-vh-badge[data-source="ai"] { background: transparent; color: var(--px-accent);
+.canvas-vh-badge[data-source="ai"] { background: transparent; color: var(--px-accent-text);
   border: 1px solid color-mix(in srgb, var(--px-accent) 45%, transparent);
 }
 .canvas-vh-badge[data-source="restore"] { background: color-mix(in srgb, var(--px-warning, #e3b341) 35%, transparent); color: var(--px-text); }

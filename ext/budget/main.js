@@ -25,6 +25,10 @@ const _disposables = [];
 // `planTab` / `settingsTab` are consumed by the Plan / Settings wrapper sections
 // so palette commands like `budget.openCategories` deep-link to the right tab.
 const _navState = { txFilter: null, planTab: null, settingsTab: null };
+// Live Plan / Settings wrappers by navStateKey → their tab switcher. A palette
+// deep link into a wrapper that is already open re-uses its editor, which does
+// not re-render, so the command switches the tab through this instead.
+const _liveTabWrappers = new Map();
 
 // ─── Cross-view sync event bus ────────────────────────────────────────────
 //
@@ -9899,8 +9903,10 @@ function renderTabbedWrapper(body, api, opts) {
   body.appendChild(strip);
   body.appendChild(content);
   mount(activeId);
+  _liveTabWrappers.set(opts.navStateKey, mount);
 
   return () => {
+    if (_liveTabWrappers.get(opts.navStateKey) === mount) _liveTabWrappers.delete(opts.navStateKey);
     if (typeof activeCleanup === 'function') {
       try { activeCleanup(); } catch { /* best-effort */ }
     }
@@ -10037,6 +10043,13 @@ export async function activate(api, context) {
           icon:  wrapperSection ? wrapperSection.icon  : icon,
           instanceId: 'budget:' + wrap.wrapper,
         });
+        // A freshly rendered wrapper consumed the tab already; an open one did not.
+        const navKey = wrap.wrapper === 'plan' ? 'planTab' : 'settingsTab';
+        const live = _liveTabWrappers.get(navKey);
+        if (_navState[navKey] && live) {
+          live(_navState[navKey]);
+          _navState[navKey] = null;
+        }
         return;
       }
       await api.editors.openEditor({

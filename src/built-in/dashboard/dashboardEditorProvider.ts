@@ -277,7 +277,7 @@ class DashboardEditorPane implements IDisposable {
     const addBtn = el('button', 'dashboard-btn dashboard-btn--primary');
     addBtn.type = 'button';
     addBtn.dataset.activity = 'Add Widget';
-    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
+    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add Widget</span>';
     addBtn.addEventListener('click', () => void this._openWidgetPicker());
     actions.appendChild(addBtn);
 
@@ -288,7 +288,7 @@ class DashboardEditorPane implements IDisposable {
     const refreshAllBtn = el('button', 'dashboard-btn dashboard-btn--ghost');
     refreshAllBtn.type = 'button';
     refreshAllBtn.title = 'Refresh every widget on this page';
-    refreshAllBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>Refresh all</span>';
+    refreshAllBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>Refresh All</span>';
     refreshAllBtn.addEventListener('click', () => {
       for (const id of this._instances.keys()) void this._triggerManualRefresh(id);
     });
@@ -323,7 +323,7 @@ class DashboardEditorPane implements IDisposable {
 
     const revealAdd = el('button', 'dashboard-btn dashboard-btn--primary dashboard-btn--small');
     revealAdd.type = 'button';
-    revealAdd.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add widget</span>';
+    revealAdd.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add Widget</span>';
     revealAdd.addEventListener('click', () => void this._openWidgetPicker());
     revealActions.appendChild(revealAdd);
 
@@ -360,7 +360,7 @@ class DashboardEditorPane implements IDisposable {
     `;
     const emptyAddBtn = el('button', 'dashboard-btn dashboard-btn--primary dashboard-empty__cta');
     emptyAddBtn.type = 'button';
-    emptyAddBtn.textContent = 'Add Your First Widget';
+    emptyAddBtn.textContent = 'Add Widget';
     emptyAddBtn.addEventListener('click', () => void this._openWidgetPicker());
     empty.appendChild(emptyAddBtn);
     gridWrap.appendChild(empty);
@@ -576,6 +576,9 @@ class DashboardEditorPane implements IDisposable {
     if (!this._emptyEl || !this._gridEl) return;
     this._emptyEl.classList.toggle('dashboard-empty--hidden', !empty);
     this._gridEl.classList.toggle('dashboard-grid--hidden', empty);
+    // One call to action at a time: an empty page shows the empty state's
+    // button only (nothing to refresh or schedule yet).
+    this._root?.classList.toggle('dashboard-pane--empty', empty);
   }
 
   private _mountWidget(row: DashboardWidgetRow): void {

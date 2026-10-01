@@ -385,7 +385,7 @@
   border: 1px solid var(--px-border-strong);
 }
 
-.autonomy-log-badge--workflow { color: var(--px-accent); border-color: color-mix(in srgb, var(--px-accent) 50%, transparent); }
+.autonomy-log-badge--workflow { color: var(--px-accent-text); border-color: color-mix(in srgb, var(--px-accent) 50%, transparent); }
 .autonomy-log-badge--heartbeat { color: #e4a853; border-color: color-mix(in srgb, #e4a853 50%, transparent); }
 .autonomy-log-badge--cron { color: #7ec8e3; border-color: color-mix(in srgb, #7ec8e3 50%, transparent); }
 .autonomy-log-badge--subagent { color: #c586c0; border-color: color-mix(in srgb, #c586c0 50%, transparent); }
@@ -790,7 +790,7 @@
   transition: color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-fast) var(--px-ease);
 }
 .wf-card__plus svg { width: 22px; height: 22px; }
-.wf-card:hover .wf-card__plus { color: var(--px-accent); transform: scale(1.12); }
+.wf-card:hover .wf-card__plus { color: var(--px-accent-text); transform: scale(1.12); }
 
 .wf-card__name {
   font-size: var(--px-text-sm);
@@ -885,4 +885,4 @@
   color: var(--px-text-muted);
   margin: 2px 0 var(--px-space-2);
 }
-.wf-row--suggested .wf-row__kind-ic { color: var(--px-accent); }
+.wf-row--suggested .wf-row__kind-ic { color: var(--px-accent-text); }

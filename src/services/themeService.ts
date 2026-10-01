@@ -78,7 +78,7 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   ['--vscode-button-hoverBackground', 'var(--px-accent-hover)'],
   ['--vscode-button-foreground', 'var(--px-text-on-accent)'],
   ['--vscode-focusBorder', 'var(--px-accent)'],
-  ['--vscode-textLink-foreground', 'var(--px-accent)'],
+  ['--vscode-textLink-foreground', 'var(--px-accent-text)'],
   ['--vscode-progressBar-background', 'var(--px-accent)'],
 
   // Lists / selection — neutral selection, accent reserved for focus.
@@ -261,8 +261,8 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   ['--vscode-button-secondaryBorder', 'var(--px-border-strong)'],
   ['--vscode-inputOption-activeBorder', 'var(--px-accent)'],
   // Inline text decorations
-  ['--vscode-textLink-activeForeground', 'var(--px-accent-hover)'],
-  ['--vscode-textPreformat-foreground', 'var(--px-accent)'],
+  ['--vscode-textLink-activeForeground', 'var(--px-accent-text)'],
+  ['--vscode-textPreformat-foreground', 'var(--px-accent-text)'],
   ['--vscode-textBlockQuote-foreground', 'var(--px-text-secondary)'],
   // Validation states reuse the semantic signal tokens
   ['--vscode-inputValidation-errorBackground', 'var(--px-bg-elevated)'],

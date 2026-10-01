@@ -192,7 +192,7 @@
 }
 
 .canvas-prop-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, rgba(255, 255, 255, 0.25));
+  color: var(--px-text-faint);
 }
 
 /* ─── Custom Date Trigger ──────────────────────────────────────────────────── */

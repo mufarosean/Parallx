@@ -8,6 +8,7 @@ import {
   healAppearanceFromDurable,
   savePreset,
   onAccentInk,
+  accentTextLightness,
   ON_ACCENT_DARK,
   PX_ACCENTS,
   type PxAppearanceState,
@@ -176,5 +177,34 @@ describe('text on accent', () => {
   it('applyAppearance sets the ink inline with the accent', () => {
     applyAppearance({ mode: 'dark', base: 'slate', accent: 'steel' } as PxAppearanceState);
     expect(document.documentElement.style.getPropertyValue('--px-text-on-accent')).toBe(ON_ACCENT_DARK);
+  });
+});
+
+describe('accent as text in light mode', () => {
+  const lum = (rgb: number[]) => {
+    const [r, g, b] = rgb.map(v => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const hsl = (h: number, s: number, l: number) => {
+    const sN = s / 100, lN = l / 100, k = (n: number) => (n + h / 30) % 12, a = sN * Math.min(lN, 1 - lN);
+    const f = (n: number) => 255 * (lN - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))));
+    return [f(0), f(8), f(4)];
+  };
+
+  it('every accent (curated and custom hue) reads at 4.5:1 on paper, sidebar and card', () => {
+    const grounds = [[0xf4, 0xf5, 0xf7], [0xec, 0xee, 0xf1], [0xff, 0xff, 0xff]];
+    const cases = [...PX_ACCENTS.map(a => [a.h, a.s, a.l]), ...Array.from({ length: 72 }, (_, i) => [i * 5, 58, 62])];
+    for (const [h, s, l] of cases) {
+      const L = accentTextLightness(h, s, l);
+      const ink = lum(hsl(h, s, L));
+      for (const g of grounds) expect((lum(g) + 0.05) / (ink + 0.05)).toBeGreaterThanOrEqual(4.45);
+    }
+  });
+
+  it('keeps as much of the accent as it can (never darker than it needs to be)', () => {
+    const steel = PX_ACCENTS.find(a => a.id === 'steel')!;
+    const L = accentTextLightness(steel.h, steel.s, steel.l);
+    expect(L).toBeLessThan(steel.l);
+    expect(L).toBeGreaterThan(30);
   });
 });

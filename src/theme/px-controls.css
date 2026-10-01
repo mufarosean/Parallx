@@ -160,12 +160,14 @@ kbd,
 }
 
 /* ── Links — accent, with a quiet underline that warms on hover ──────────── */
-a:not(.px-bare):not([class*="btn"]):not([class*="button"]) {
-  color: var(--px-accent);
+/* :where() keeps this at element specificity, so any component that sets its
+   own colour (status bar items, nav rows) wins without fighting it. */
+a:where(:not(.px-bare):not([class*="btn"]):not([class*="button"])) {
+  color: var(--px-accent-text);
   text-decoration-color: var(--px-accent-soft);
   text-underline-offset: 2px;
 }
-a:not(.px-bare):not([class*="btn"]):not([class*="button"]):hover {
+a:where(:not(.px-bare):not([class*="btn"]):not([class*="button"])):hover {
   text-decoration-color: var(--px-accent);
 }
 

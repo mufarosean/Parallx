@@ -1851,7 +1851,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.planner-sched__name:hover { color: var(--px-accent); }
+.planner-sched__name:hover { color: var(--px-accent-text); }
 .planner-sched__origin {
   flex-shrink: 0;
   height: 18px;
@@ -1864,7 +1864,7 @@
   color: var(--px-text-secondary);
   background: var(--px-bg-inset);
 }
-.planner-sched__origin--ai { color: var(--px-accent); background: transparent;
+.planner-sched__origin--ai { color: var(--px-accent-text); background: transparent;
   border: 1px solid color-mix(in srgb, var(--px-accent) 45%, transparent);
 }
 .planner-sched__meta { font-size: var(--px-text-sm); color: var(--px-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

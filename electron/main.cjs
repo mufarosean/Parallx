@@ -647,16 +647,21 @@ async function createWindow() {
   });
 
   // Tell Windows taskbar this is "Parallx", not "Electron"
-  mainWindow.setAppDetails({
-    appId: 'com.parallx.app',
-    appIconPath: path.join(__dirname, 'parallx.ico'),
-    appIconIndex: 0,
-    relaunchCommand: `wscript.exe "${path.join(__dirname, '..', 'scripts', 'Parallx.vbs')}"`,
-    relaunchDisplayName: 'Parallx',
-  });
+  // Windows-only: setAppDetails does not exist elsewhere and an .ico does not
+  // load on Linux/macOS — unguarded, either throws inside createWindow and the
+  // app never shows a window off Windows.
+  if (process.platform === 'win32') {
+    mainWindow.setAppDetails({
+      appId: 'com.parallx.app',
+      appIconPath: path.join(__dirname, 'parallx.ico'),
+      appIconIndex: 0,
+      relaunchCommand: `wscript.exe "${path.join(__dirname, '..', 'scripts', 'Parallx.vbs')}"`,
+      relaunchDisplayName: 'Parallx',
+    });
 
-  // Override the window icon explicitly (taskbar + title bar)
-  mainWindow.setIcon(path.join(__dirname, 'parallx.ico'));
+    // Override the window icon explicitly (taskbar + title bar)
+    mainWindow.setIcon(path.join(__dirname, 'parallx.ico'));
+  }
 
   configureSpellCheckerForWindow(mainWindow);
 

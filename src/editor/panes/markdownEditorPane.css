@@ -220,7 +220,7 @@
   border-left-color: var(--px-accent);
 }
 .markdown-content .markdown-alert-important .markdown-alert-title {
-  color: var(--px-accent);
+  color: var(--px-accent-text);
 }
 
 .markdown-content .markdown-alert-warning {

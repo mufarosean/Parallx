@@ -2513,3 +2513,8 @@ video.vw__fill { object-fit: contain; background: #000; }
   .cmw__char, .cmw__eye-open, .cmw__zzz-t1, .cmw__zzz-t2 { animation: none; }
   .cmw__pupils { transition: none; }
 }
+
+/* Empty page: the empty state carries the only call to action. */
+.dashboard-pane--empty .dashboard-header__actions > .dashboard-btn:not([data-role="header-collapse"]) {
+  display: none;
+}

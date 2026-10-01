@@ -111,7 +111,7 @@
 }
 
 .ui-input-box-input::placeholder {
-  color: var(--vscode-input-placeholderForeground);
+  color: var(--px-text-faint);
 }
 
 .ui-input-box-input:focus {
@@ -748,7 +748,7 @@
 }
 
 .find-replace-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #a0a0a0);
+  color: var(--px-text-faint);
 }
 
 .find-replace-options {
@@ -903,7 +903,7 @@
   padding: 0.25em 0.6em;
   text-align: left;
 }
-.px-markdown a { color: var(--px-accent); text-decoration: none; }
+.px-markdown a { color: var(--px-accent-text); text-decoration: none; }
 .px-markdown a:hover { text-decoration: underline; }
 .px-markdown__math--display {
   display: block;
@@ -925,7 +925,7 @@
   border: 1px solid var(--px-accent-faint);
   border-radius: var(--px-radius-full);
   background: var(--px-accent-soft);
-  color: var(--px-accent);
+  color: var(--px-accent-text);
   font: inherit;
   font-size: var(--px-text-sm);
   font-weight: 600;

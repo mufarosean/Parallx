@@ -789,6 +789,33 @@
   max-width: 280px;
 }
 
+.parallx-chat-offline-state.is-stalled .parallx-chat-offline-spinner {
+  display: none;
+}
+
+.parallx-chat-offline-state.is-stalled .parallx-chat-offline-title {
+  color: var(--px-text);
+}
+
+.parallx-chat-offline-action {
+  margin-top: var(--px-space-4);
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-3);
+  font: inherit;
+  font-size: var(--px-text-sm);
+  font-weight: 500;
+  color: var(--px-text);
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm);
+  cursor: pointer;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
+}
+
+.parallx-chat-offline-action:hover {
+  background: var(--px-surface-hover);
+}
+
 .parallx-chat-offline-instruction code {
   background: var(--vscode-textCodeBlock-background, #2d2d2d);
   padding: 1px 4px;
@@ -947,7 +974,7 @@
 .parallx-chat-markdown .markdown-alert-tip .markdown-alert-title { color: var(--px-success); }
 
 .parallx-chat-markdown .markdown-alert-important { border-left-color: var(--px-accent); }
-.parallx-chat-markdown .markdown-alert-important .markdown-alert-title { color: var(--px-accent); }
+.parallx-chat-markdown .markdown-alert-important .markdown-alert-title { color: var(--px-accent-text); }
 
 .parallx-chat-markdown .markdown-alert-warning { border-left-color: var(--px-warning); }
 .parallx-chat-markdown .markdown-alert-warning .markdown-alert-title { color: var(--px-warning); }
@@ -2322,7 +2349,7 @@
 }
 
 .parallx-chat-session-sidebar-filter-input::placeholder {
-  color: var(--vscode-input-placeholderForeground, #848484);
+  color: var(--px-text-faint);
 }
 
 /* ── Session list ── */
@@ -2553,7 +2580,7 @@
 }
 .parallx-chat-empty-key:hover .parallx-chat-empty-key__glyph,
 .parallx-chat-empty-key:focus-visible .parallx-chat-empty-key__glyph {
-  color: var(--px-accent);
+  color: var(--px-accent-text);
 }
 
 .parallx-chat-empty-key__label { white-space: nowrap; }

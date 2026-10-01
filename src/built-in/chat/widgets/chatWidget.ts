@@ -88,6 +88,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _inputAreaContainer: HTMLElement;
   private readonly _emptyStateEl: HTMLElement;
   private readonly _offlineStateEl: HTMLElement;
+  private _offlineTitleEl: HTMLElement | undefined;
+  private _offlineSince = 0;
+  private _offlineTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly _sash: HTMLElement;
 
   /** Map of pending request ID → DOM element for hover actions. */
@@ -238,6 +241,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Offline state (hidden by default)
     this._offlineStateEl = this._buildOfflineState();
     this._messageListContainer.appendChild(this._offlineStateEl);
+    this._register(toDisposable(() => { if (this._offlineTimer) clearTimeout(this._offlineTimer); }));
 
     this._setupResponsiveLayout();
 
@@ -1036,10 +1040,20 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       this._emptyStateEl.style.display = 'none';
       this._offlineStateEl.style.display = '';
       this._inputPart.setEnabled(false);
+      if (!this._offlineSince) {
+        this._offlineSince = Date.now();
+        this._offlineTimer = setTimeout(() => this._setOfflineStalled(true), OFFLINE_STALL_MS);
+      }
       return;
     }
 
     this._offlineStateEl.style.display = 'none';
+    if (this._offlineSince) {
+      this._offlineSince = 0;
+      if (this._offlineTimer) clearTimeout(this._offlineTimer);
+      this._offlineTimer = undefined;
+      this._setOfflineStalled(false);
+    }
 
     // Empty state when no messages
     if (!hasMessages && !hasAgentTasks) {
@@ -1506,16 +1520,35 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     const spinner = $('div.parallx-chat-offline-spinner');
     const title = $('div.parallx-chat-offline-title', 'Connecting to Ollama\u2026');
+    this._offlineTitleEl = title;
 
     const instruction = $('div.parallx-chat-offline-instruction');
     instruction.innerHTML = [
-      'Looking for a local <strong>Ollama</strong> server.',
-      'If Ollama is not installed, get it from',
-      '<a href="https://ollama.com">ollama.com</a>.',
+      'Parallx\u2019s AI runs on your computer through <strong>Ollama</strong>.',
+      'Install it from <a href="https://ollama.com">ollama.com</a> and it connects on its own,',
+      'or set up a cloud model in AI settings.',
     ].join(' ');
 
     append(root, spinner, title, instruction);
+
+    if (this._services.openAiSettings) {
+      const open = $('button.parallx-chat-offline-action', 'Open AI Settings') as HTMLButtonElement;
+      open.type = 'button';
+      open.addEventListener('click', () => this._services.openAiSettings?.());
+      root.appendChild(open);
+    }
     return root;
+  }
+
+  /**
+   * The first seconds of a launch are a real wait (Ollama warming up); after
+   * that an unreachable server is a setup state, not a spinner forever.
+   */
+  private _setOfflineStalled(stalled: boolean): void {
+    this._offlineStateEl.classList.toggle('is-stalled', stalled);
+    if (this._offlineTitleEl) {
+      this._offlineTitleEl.textContent = stalled ? 'Ollama isn\u2019t running' : 'Connecting to Ollama\u2026';
+    }
   }
 
   private _setupResponsiveLayout(): void {
@@ -1546,6 +1579,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 }
 
 // ── Utility ──
+
+/** How long "Connecting…" may show before it becomes the setup state. */
+const OFFLINE_STALL_MS = 6000;
 
 let _widgetCounter = 0;
 

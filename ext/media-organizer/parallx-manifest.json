@@ -77,7 +77,7 @@
           "mediaOrganizer.enableArtTools": {
             "type": "boolean",
             "default": false,
-            "description": "Drawing And Painting Tools. Shows Daily Study, Practice Sessions and practice history in Media Organizer, for a workspace that holds reference photos. Off hides them; nothing is deleted."
+            "description": "Drawing and Painting Tools. Shows Daily Study, Practice Sessions and practice history in Media Organizer, for a workspace that holds reference photos. Off hides them; nothing is deleted."
           },
           "mediaOrganizer.practiceDailyMinutes": {
             "type": "number",
