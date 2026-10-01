@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -296,10 +296,86 @@ async function projectScene(appRoot, clip, clip2, errors) {
   }
 }
 
+// Timelapse tools: three segments with the middle one at 4×, the last frame
+// held and a before-and-after still, exported for real and measured.
+async function timelapseScene(appRoot, clip2, errors) {
+  const { app, page } = await launchApp(appRoot, errors);
+  try {
+    await enableMediaOrganizer(page);
+    await runCommand(page, [['media-organizer.openClipEditor', clip2]]);
+    await page.waitForSelector('.mo-clip-page', { timeout: 20_000 });
+    await page.waitForTimeout(1_500);
+    for (const t of [3, 6]) {
+      await page.evaluate((tt) => { const v = document.querySelector('.mo-clip-page video'); v.pause(); v.currentTime = tt; }, t);
+      await page.waitForTimeout(400);
+      await page.locator('.mo-clip-page').first().focus();
+      await page.keyboard.press('s');
+      await page.waitForTimeout(300);
+    }
+    await page.evaluate(() => document.querySelector('.mo-ce-tab[title="Trim"]')?.click());
+    await page.waitForTimeout(300);
+    const set = await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.mo-clip-segrow')).filter((r) => r.querySelector('.mo-ce-segspeed'));
+      const sel = rows[1]?.querySelector('.mo-ce-segspeed');
+      if (!sel) return `segment rows=${rows.length}, no speed control`;
+      sel.value = '4'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+      return `segment rows=${rows.length}`;
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate(() => document.querySelector('.mo-ce-tab[title="Audio"]')?.click());
+    await page.waitForTimeout(300);
+    const fin = await page.evaluate(() => {
+      const holdRow = Array.from(document.querySelectorAll('.mo-clip-row')).find((r) => /Hold the last frame/.test(r.textContent || ''));
+      const hold = holdRow?.querySelector('input[type="number"]');
+      if (hold) { hold.value = '1.5'; hold.dispatchEvent(new Event('input', { bubbles: true })); }
+      const ba = document.getElementById('mo-clip-before-after');
+      if (ba && !ba.checked) ba.click();
+      const secsRow = Array.from(document.querySelectorAll('.mo-clip-row')).find((r) => /Shown for/.test(r.textContent || ''));
+      const secs = secsRow?.querySelector('input[type="number"]');
+      if (secs) { secs.value = '2'; secs.dispatchEvent(new Event('input', { bubbles: true })); }
+      return `hold=${!!hold} beforeAfter=${!!ba && ba.checked} secs=${!!secs}`;
+    });
+    await page.waitForTimeout(500);
+    const state = await page.evaluate(() => {
+      const segs = Array.from(document.querySelectorAll('.mo-clip-segrow')).filter((r) => r.querySelector('.mo-ce-segspeed')).map((r) => `${r.querySelector('.mo-clip-queue-meta')?.textContent}@${r.querySelector('.mo-ce-segspeed')?.value}×=${r.querySelector('.mo-ce-seglen')?.textContent}`);
+      const blocks = Array.from(document.querySelectorAll('.mo-ce-block-num')).map((b) => b.textContent);
+      return `segs=[${segs.join(' | ')}] blocks=[${blocks.join(',')}] readout="${document.querySelector('.mo-ce-readout')?.textContent}" export="${document.querySelector('.mo-ce-split .px-btn--primary')?.textContent}"`;
+    });
+    console.log(`[probe] timelapse: ${set}; ${fin}; ${state}`);
+    await shot(page, 'timelapse');
+    const out = path.join(path.dirname(clip2), 'probe-timelapse.mp4');
+    await app.evaluate(({ dialog }, o) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: o }); }, out);
+    const t0 = Date.now();
+    await page.evaluate(() => document.querySelector('.mo-ce-split .px-btn--primary').click());
+    await page.waitForFunction(() => document.querySelector('.mo-ce-toast')?.style.display === '' || /failed/i.test(document.querySelector('.mo-clip-status')?.textContent || ''), null, { timeout: 180_000 }).catch(() => {});
+    const pr = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', out]);
+    let probeText = 'no file';
+    try { const j = JSON.parse(String(pr.stdout)); probeText = `duration=${Number(j.format.duration).toFixed(2)} (want 10.25) streams=${j.streams.map((x) => x.codec_type).join(',')}`; } catch { /* no file */ }
+    console.log(`[probe] timelapse export (${((Date.now() - t0) / 1000).toFixed(1)} s): ${probeText}`);
+    if (probeText !== 'no file') {
+      spawnSync('ffmpeg', ['-v', 'error', '-y', '-ss', '7.5', '-i', out, '-frames:v', '1', path.join(outDir, 'timelapse-hold.png')]);
+      spawnSync('ffmpeg', ['-v', 'error', '-y', '-ss', '9.3', '-i', out, '-frames:v', '1', path.join(outDir, 'timelapse-before-after.png')]);
+    }
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 async function main() {
   await fs.mkdir(outDir, { recursive: true });
   const { appRoot, workspace, clip, clip2 } = await makeTempRoots();
   console.log(`[probe] app root ${appRoot}\n[probe] workspace ${workspace}`);
+  if (scenes.includes('timelapse')) {
+    const errs = [];
+    await scene('timelapse', () => timelapseScene(appRoot, clip2, errs));
+    const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
+    if (real.length) { console.log(`[probe] timelapse: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
+    if (scenes.length === 1) {
+      await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
+      return;
+    }
+  }
   if (scenes.includes('project')) {
     const errs = [];
     await scene('project', () => projectScene(appRoot, clip, clip2, errs));

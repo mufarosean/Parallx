@@ -129,8 +129,9 @@ extracted verbatim by the unit test and by the ffmpeg probe.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Pure clip math | `npx vitest run tests/unit/moClipGraph.test.ts` | 24 pass (timecode, split, captions per line and placed, project "edited" check, sequence order, clip length, join graph) |
-| Real ffmpeg graphs | `node tests/probes/clip-graph-probe.mjs` | 38/38 (incl. a sequence of 640×360 sound, 360×640 silent and 1280×720 60 fps parts: even size, sound throughout, length = sum) |
+| Pure clip math | `npx vitest run tests/unit/moClipGraph.test.ts` | 28 pass (timecode, split, captions per line and placed, project "edited" check, sequence order, clip length, join graph, speed-aware time mapping, split keeps speed, atempo steps) |
+| Timelapse in the editor | `node tests/probes/ui-screenshot-probe.mjs <out> timelapse` | three segments, the middle at 4× (row 0:00.75, block "2 · 4×", readout "Clip 0:06.75 · then 0:03.50 of finish"); hold 1.5 s and before and after 2 s; a real export is 10.27 s for 10.25 s wanted, with sound; frames from the hold and the before and after checked by eye |
+| Real ffmpeg graphs | `node tests/probes/clip-graph-probe.mjs` | 44/44 (incl. segments at 1×, 2×, 8× and 32× with crop, blur, a 1.5 s hold, before and after and an end card: length exact, sound throughout, held frames identical (PSNR 70 dB); before and after on a tall picture; and a sequence of 640×360 sound, 360×640 silent and 1280×720 60 fps parts: even size, sound throughout, length = sum) |
 | Editor on screen | `node tests/probes/ui-screenshot-probe.mjs <out> clip` | split, cut, bring back, undo; blur, follow, pixelate; text dragged; a real MP4 export and a cancelled one (partial file removed); narrow sheet and tiny pane; 20 shots reviewed |
 | Clip projects | `node tests/probes/ui-screenshot-probe.mjs <out> project` | a project from two videos; In moved and a clip queued on the first; the second opens untouched; the first comes back as left; the app quit and started again: the project is in the sidebar and opens with the same In, Out and queued clip; a clip queued on each video lines up in the Sequence; a real export of both (9.36 s file = the two clips); a heavier export cancelled mid-render stops in about a second with ffmpeg gone and the partial file removed; double-click opens a clip for editing; Delete Project closes the tab and empties the list |
 | Media stream | `npx vitest run tests/unit/mediaStreamBridge.test.ts` | 9 pass |
@@ -154,6 +155,7 @@ confirm on this machine.
 | 6 Shapes | oval and rounded regions through a feathered alpha mask (geq on the patch), Blur/Pixelate and shape as buttons; exported pixels checked: outside the oval untouched, inside blurred | shipped |
 | 5 Fixes | real-timestamp capture (short takes played fast), app dropdowns everywhere, Track switch on blur regions, real blur and mosaic previews, look previews matched to the export | shipped |
 | 4 Probe | clip scene in the screenshot probe, open-clip-editor command | shipped |
+| 13 Timelapse | speed per segment (row control, timeline label, per-segment audition, lengths everywhere); Finish: hold the last frame, before and after; the assembly graph samples sped segments at fps/speed before crop and blur, stretches sound to 4× and silences beyond | shipped |
 | 12 Sequence | the project's Sequence: queued clips from every video in order, reorder, leave out, edit; Export Sequence… renders, joins and encodes as one video with progress and Cancel; projects keep exported clips. Cancel now kills the running ffmpeg (editor and sequence): the bridge's promise.cancel never crossed the context bridge, so a long render used to run to its end; `terminal.cancelStream(streamId)` with a caller-named stream replaces it | shipped |
 | 11 Projects | Clip Projects in the sidebar; a project page with a bin of videos (library thumbnail or a frame from the stream, drag to reorder, remove) beside the editor; each video's edits and queued clips saved to the database as they settle and on leaving, until the project is deleted; Add to Clip Project in the library's right-click menu; New Clip Project… and Open Clip Project… commands; migration 029 | shipped |
 | 10 Mockup | everything the approved mockups show: undo/redo, loop, stage chips and floating bars, text as objects (multi-line, placed), split/cut/bring-back on the timeline, snap, selected-segment range, crop groups, text and blur editors, audio sliders, export presets/Source fps/loop/Sierra/max size/name, progress and Cancel on Export, queue ⋯ menu, GIF frames on the video lane, narrow sheet; Capture Frame without the old dialog; editor opens on the whole video | shipped |
@@ -168,10 +170,14 @@ confirm on this machine.
   the editor crops them.
 - Per-frame GIF edits are skipped when segments are joined; the frame strip belongs
   to the single-range path.
+- The player does not show the finish (hold, before and after, end card); the
+  readout says how long it adds, and the export renders it.
+- A segment faster than 16× auditions at 16× (the browser's limit); its export
+  runs at the chosen speed. Its sound is silent beyond 4×.
 - Hotkeys are fixed combinations. If another program owns one, the toolbar still
   works and nothing is reported.
 
-## Phase 2: Clip Editor as a place of its own (in progress)
+## Phase 2: Clip Editor as a place of its own (done 2026-10-01)
 
 The owner records drawing and painting sessions and wants Media Organizer to be
 where they become content. Today the editor opens on one video and cuts it into
@@ -209,9 +215,21 @@ clips. Phase 2 makes it a third Media Organizer surface:
    if the view changes and the view that comes back shows it. In a project,
    exported clips stay in their queue (`opts.keepQueue`): they are the sequence.
    The order and settings live in `mo_clip_projects.sequence_json`.
-4. **Timelapse tools for paintings.** Speed per segment (ramp through the slow
-   parts, linger on the reveal), a "finished painting" hold at the end, and a
-   before/after split.
+4. **Timelapse tools for paintings (done 2026-10-01).** Each segment in the Trim
+   tab has its own speed (0.5× to 64×): race through the slow parts, linger on
+   the reveal. The timeline marks a sped segment ("2 · 8×"), the player auditions
+   each segment at its speed (up to the browser's 16×), and every length (row,
+   readout, estimate, Fit To Length, the project sequence) counts it. Splitting a
+   segment keeps its speed on both halves. The Audio tab's Finish group adds
+   Hold the last frame (0 to 10 s) and Before and after (the first kept frame
+   beside the last, labelled, side by side for a wide picture and one above the
+   other for a tall one; 1 to 10 s), played after the last segment and before
+   the end card. In `moSegmentsGraph` a sped segment samples the source at
+   fps/speed before crop and blur (they run only on kept frames) and then plays
+   at fps; its sound is time-stretched (`atempo`) up to 4× and silent beyond;
+   the hold is `tpad` clone on the last segment; before and after is two
+   one-frame stills through the same crop, blur and look, stacked and held. The
+   clip's overall speed still applies on top.
 5. **Projects keep their edits; quick clips do not.** Two kinds of work, saved
    differently on purpose. A quick clip (take a video, cut a GIF) stays as it is
    today: its edits live in memory and go when the tab closes, nothing to manage. A

@@ -23,7 +23,7 @@ function loadPure(): Record<string, any> {
     'moCaptionVf', 'moCaptionsVf', 'moBlurRegionsGraph', 'moAudioFxAf', 'moParseDetectLog', 'moDeadAirSegments', 'moSmartZoomKeys',
     'moBoxTrackToKeys', 'moStageOutputDims', 'moEndCardInputs', 'moSegmentsGraph', 'moClipOutputTime',
     'moTcStr', 'moParseTc', 'moTimelineStep', 'moClipSourceTime', 'moSplitSegments', 'moCaptionLayout', 'moClipStateEdited',
-    'moClipOutLength', 'moSequenceOrder', 'moSequenceGraph'];
+    'moClipOutLength', 'moSequenceOrder', 'moSequenceGraph', 'moSegSpeed', 'moAtempoChain'];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   return new Function(src.slice(a, b) + `\nreturn { ${names.join(', ')} };`)();
 }
@@ -282,5 +282,29 @@ describe('project sequence', () => {
     expect(g.filterComplex).toContain('anullsrc=r=48000:cl=stereo,atrim=duration=1.500');
     expect(g.filterComplex).not.toContain('[1:a]');
     expect(g.filterComplex).toContain('[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]');
+  });
+});
+
+describe('timelapse tools', () => {
+  it('maps times through segments at their own speeds', () => {
+    const segs = [{ in: 0, out: 10 }, { in: 20, out: 100, speed: 8 }];
+    expect(P.moClipOutputTime(segs, 5)).toBeCloseTo(5, 6);
+    expect(P.moClipOutputTime(segs, 60)).toBeCloseTo(10 + 40 / 8, 6);
+    expect(P.moClipSourceTime(segs, 0, 15)).toBeCloseTo(60, 6);
+    for (const t of [3, 25, 99]) expect(P.moClipSourceTime(segs, 0, P.moClipOutputTime(segs, t))).toBeCloseTo(t, 6);
+  });
+  it('keeps a segment\'s speed on both halves of a split', () => {
+    expect(P.moSplitSegments([{ in: 0, out: 10, speed: 4 }], 0, 10, 6)).toEqual([{ in: 0, out: 6, speed: 4 }, { in: 6, out: 10, speed: 4 }]);
+  });
+  it('counts sped parts, the hold and the before and after in a clip\'s length', () => {
+    const c = { inT: 0, outT: 100, segments: [{ in: 0, out: 10 }, { in: 20, out: 100, speed: 8 }], holdEnd: 2, beforeAfter: { enabled: true, seconds: 3 } };
+    expect(P.moClipOutLength(c)).toBeCloseTo(10 + 10 + 2 + 3, 6);
+  });
+  it('stretches sound with atempo steps of at most 2', () => {
+    expect(P.moAtempoChain(1)).toEqual([]);
+    expect(P.moAtempoChain(4)).toEqual(['atempo=2', 'atempo=2']);
+    expect(P.moAtempoChain(3)).toEqual(['atempo=2', 'atempo=1.5']);
+    expect(P.moAtempoChain(0.25)).toEqual(['atempo=0.5', 'atempo=0.5']);
+    expect(P.moSegSpeed({ speed: 0 })).toBe(1);
   });
 });

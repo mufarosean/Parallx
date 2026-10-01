@@ -150,6 +150,53 @@ async function main() {
     check('assembled size = stage dims', vs && vs.width === g.dims.w && vs.height === g.dims.h, `${vs?.width}x${vs?.height} vs ${g.dims.w}x${g.dims.h}`);
   }
 
+  // ── 2a. Timelapse tools: a speed per segment (2×, 8× with silence, 32×),
+  // the last frame held, and a before-and-after still, with crop and blur.
+  {
+    const g = P.moSegmentsGraph({
+      segments: [{ in: 0, out: 2 }, { in: 2, out: 6, speed: 2 }, { in: 0, out: 8, speed: 8 }, { in: 1, out: 7.4, speed: 32 }],
+      fps: 30, srcW: 640, srcH: 360, scalePct: 100, filter: 'vivid', withAudio: true,
+      crop: { x: 0.1, y: 0.1, w: 0.6, h: 0.6 },
+      cropKeys: [{ t: 0, x: 0.1, y: 0.1, w: 0.6 }, { t: 6, x: 0.3, y: 0.3, w: 0.6 }],
+      blurRegions: [{ x: 0.2, y: 0.2, w: 0.2, h: 0.2, mode: 'blur', strength: 50 }],
+      holdEnd: 1.5, beforeAfter: { enabled: true, seconds: 2 },
+      endCard: { enabled: true, title: 'Day 12', subtitle: 'Oil on panel', seconds: 1.5, bg: '#101418' },
+      fontFile: font,
+    });
+    const want = 2 + 2 + 1 + 0.2 + 1.5 + 2 + 1.5;
+    check('timelapse length is the sum of sped parts, hold, before and after, card', Math.abs(g.durationSec - want) < 0.01, `${g.durationSec.toFixed(2)} vs ${want.toFixed(2)}`);
+    const out = path.join(OUT, 'timelapse.mp4');
+    const r = await ff(['-i', src, ...g.extraInputs, '-filter_complex', g.filterComplex, '-map', g.mapV, '-map', g.mapA,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', out]);
+    check('timelapse graph renders', r.code === 0, r.code === 0 ? '' : r.err.slice(-500));
+    const meta = r.code === 0 ? await ffprobe(out) : null;
+    const dur = meta ? parseFloat(meta.format?.duration) : NaN;
+    check('timelapse file length matches', Math.abs(dur - g.durationSec) < 0.2, `${dur?.toFixed?.(2)} vs ${g.durationSec.toFixed(2)}`);
+    check('timelapse keeps a sound track throughout', !!meta?.streams?.find((x) => x.codec_type === 'audio'));
+    // The held frame really holds: two frames 1 s apart inside the hold are the same picture.
+    if (r.code === 0) {
+      const holdAt = 2 + 2 + 1 + 0.2 + 0.3;
+      const a = path.join(OUT, 'hold-a.png'), b = path.join(OUT, 'hold-b.png');
+      await ff(['-ss', holdAt.toFixed(2), '-i', out, '-frames:v', '1', a]);
+      await ff(['-ss', (holdAt + 1).toFixed(2), '-i', out, '-frames:v', '1', b]);
+      const d = await ff(['-i', a, '-i', b, '-lavfi', 'psnr', '-f', 'null', '-']);
+      const m = /average:(inf|[\d.]+)/.exec(d.err);
+      const psnr = m ? (m[1] === 'inf' ? Infinity : parseFloat(m[1])) : 0;
+      check('the last frame is held', psnr > 40, `PSNR ${m ? m[1] : 'n/a'} dB between frames 1 s apart`);
+    }
+  }
+  // A tall picture puts before above after.
+  {
+    const g = P.moSegmentsGraph({
+      segments: [{ in: 0, out: 3, speed: 4 }, { in: 4, out: 7 }], fps: 24, srcW: 640, srcH: 360, scalePct: 100, filter: 'none', withAudio: false,
+      crop: { x: 0.35, y: 0, w: 0.3, h: 1 }, cropKeys: [],
+      beforeAfter: { enabled: true, seconds: 1 }, fontFile: font,
+    });
+    const out = path.join(OUT, 'before-after-tall.mp4');
+    const r = await ff(['-i', src, '-filter_complex', g.filterComplex, '-map', g.mapV, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', out]);
+    check('before and after renders on a tall picture', r.code === 0 && g.filterComplex.includes('vstack'), r.code === 0 ? '' : r.err.slice(-400));
+  }
+
   // ── 2b. Assembly with ZOOM keys (zoompan path) and no audio.
   {
     const g = P.moSegmentsGraph({
