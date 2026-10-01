@@ -593,6 +593,7 @@ class DashboardEditorPane implements IDisposable {
     // footer visibility via CSS. Defaults to full 'card' chrome.
     card.dataset.chrome = typeReg?.chromeStyle ?? 'card';
     card.style.gridRow = `${row.placement.row + 1} / span ${row.placement.rowSpan}`;
+    card.style.setProperty('--dashboard-row-span', String(row.placement.rowSpan));
     card.style.gridColumn = `${row.placement.col + 1} / span ${row.placement.colSpan}`;
     this._applyAppearance(card, row.appearance);
 
@@ -1322,6 +1323,7 @@ class DashboardEditorPane implements IDisposable {
         setTimeout(() => card.removeEventListener('click', cancelClick, { capture: true } as EventListenerOptions), 60);
         if (lastTarget.col !== origPlacement.col || lastTarget.row !== origPlacement.row) {
           card.style.gridRow = `${lastTarget.row + 1} / span ${lastTarget.rowSpan}`;
+          card.style.setProperty('--dashboard-row-span', String(lastTarget.rowSpan));
           card.style.gridColumn = `${lastTarget.col + 1} / span ${lastTarget.colSpan}`;
           try {
             await this._data.updateWidgetPlacement(widgetId, lastTarget);
@@ -1423,6 +1425,7 @@ class DashboardEditorPane implements IDisposable {
         lastTarget = { col, row, colSpan, rowSpan };
         card.style.gridColumn = `${col + 1} / span ${colSpan}`;
         card.style.gridRow = `${row + 1} / span ${rowSpan}`;
+        card.style.setProperty('--dashboard-row-span', String(rowSpan));
       };
       const onMove = (ev: PointerEvent) => {
         pendingDx = ev.clientX - startX;
@@ -1448,6 +1451,7 @@ class DashboardEditorPane implements IDisposable {
             // Revert to the original placement on failure.
             card.style.gridColumn = `${origPlacement.col + 1} / span ${origPlacement.colSpan}`;
             card.style.gridRow = `${origPlacement.row + 1} / span ${origPlacement.rowSpan}`;
+            card.style.setProperty('--dashboard-row-span', String(origPlacement.rowSpan));
           }
         }
       };

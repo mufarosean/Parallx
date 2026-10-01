@@ -223,6 +223,18 @@
   position: relative;
   flex: 1 1 auto;
   min-height: 320px;
+  container-type: inline-size;
+}
+
+/* A narrow pane (the chat open beside it, a split editor) cannot hold three
+   widgets abreast: a 4-of-12 widget becomes ~170px and its text wraps a
+   letter per line. Below that width every widget takes the full row, in
+   reading order, keeping its height. */
+@container (max-width: 640px) {
+  .dashboard-grid > .dashboard-widget {
+    grid-column: 1 / -1 !important;
+    grid-row: auto / span var(--dashboard-row-span, 2) !important;
+  }
 }
 
 .dashboard-grid {
@@ -1626,7 +1638,8 @@ video.vw__fill { object-fit: contain; background: #000; }
 /* The embedded canvas editor lives here. It brings its OWN (global) canvas
    styling — so an embedded note looks exactly like a canvas page. */
 .ntw__host { flex: 1 1 auto; min-height: 0; overflow-y: auto; position: relative; }
-.ntw__host .canvas-editor-wrapper { height: auto; }
+/* A note in a card, not a page: the page's 64px reading gutter would eat a third of it. */
+.ntw__host .canvas-editor-wrapper { height: auto; --canvas-content-gutter: var(--px-space-3, 12px); --canvas-content-max-width: 100%; }
 .ntw--sm .ntw__host { font-size: var(--px-text-sm); }
 .ntw--md .ntw__host { font-size: var(--px-text-base); }
 .ntw--lg .ntw__host { font-size: var(--px-text-md); }
