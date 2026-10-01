@@ -473,6 +473,8 @@ export interface IExtensionMenuItem {
   readonly checked?: boolean;
   /** Tooltip on the row (a disabled item's reason, for instance). */
   readonly tooltip?: string;
+  /** The shortcut shown at the row's trailing edge (e.g. "Ctrl+S"); display only. */
+  readonly keybinding?: string;
   /** A child menu, opened on hover or click. */
   readonly submenu?: ReadonlyArray<IExtensionMenuItem>;
   readonly onSelect?: () => void;
@@ -515,6 +517,7 @@ export function showExtensionContextMenu(
         disabled: it.disabled,
         checked: it.checked,
         tooltip: it.tooltip,
+        keybinding: it.keybinding,
         className: it.danger ? 'context-menu-item--danger' : undefined,
         renderIcon: icon && renderIcon ? (c: HTMLElement) => renderIcon(icon, c) : undefined,
         submenu: it.submenu && it.submenu.length > 0 ? toCore(it.submenu) : undefined,

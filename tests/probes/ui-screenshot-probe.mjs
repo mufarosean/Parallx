@@ -407,26 +407,42 @@ async function imageScene(appRoot, workspace, errors) {
     await runCommand(page, [['media-organizer.editImage', 1]]);
     await page.waitForSelector('.mo-edit', { timeout: 20_000 });
     await page.waitForTimeout(3_000);
-    const tool = async (label) => { await page.evaluate((l) => document.querySelector(`.mo-edit-tool[title="${l}"]`)?.click(), label); await page.waitForTimeout(1_200); };
+    const tool = async (label) => { await page.evaluate((l) => document.querySelector(`.mo-edit-tab[title="${l}"]`)?.click(), label); await page.waitForTimeout(1_200); };
     const scrollPanel = async (frac) => { await page.evaluate((f) => { const b = document.querySelector('.mo-edit-panel-body'); if (b) b.scrollTop = (b.scrollHeight - b.clientHeight) * f; }, frac); await page.waitForTimeout(400); };
     const openAll = async () => {
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 10; i++) {
         const n = await page.evaluate(() => { const f = document.querySelector('.mo-edit-panel .mo-edit-section.is-shut .mo-edit-section-fold'); if (!f) return 0; f.click(); return 1; });
         if (!n) break;
         await page.waitForTimeout(150);
       }
-      console.log(`[probe] image sections shut after opening: ${await page.evaluate(() => document.querySelectorAll('.mo-edit-panel .mo-edit-section.is-shut').length)}`);
     };
+    const setSlider = async (id, value) => page.evaluate(({ id, value }) => {
+      const el = document.querySelector(`.mo-edit-range[data-slider="${id}"]`);
+      if (!el) return false;
+      el.value = String(value); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }, { id, value });
+    const state = async () => page.evaluate(() => {
+      const tabs = Array.from(document.querySelectorAll('.mo-edit-tab')).map((t) => `${t.textContent.trim()}${t.classList.contains('is-on') ? '*' : ''}${t.classList.contains('is-used') ? '•' : ''}`).join(' ');
+      const secs = Array.from(document.querySelectorAll('.mo-edit-section')).map((x) => `${x.querySelector('.mo-edit-section-title')?.textContent}${x.querySelector('.mo-edit-section-dot') ? '•' : ''}`).join(', ');
+      const changed = Array.from(document.querySelectorAll('.mo-edit-slider.is-changed')).map((x) => `${x.querySelector('.mo-edit-slider-name')?.textContent}=${x.querySelector('.mo-edit-value')?.textContent}`).join(', ');
+      const top = Array.from(document.querySelectorAll('.mo-edit-topbar button')).filter((b) => b.offsetParent).map((b) => (b.getAttribute('aria-label') || b.textContent || '').trim()).join(' | ');
+      const presets = document.querySelectorAll('.mo-edit-ptile').length + ' tiles, ' + document.querySelectorAll('.mo-edit-ptile img:not(.mo-hidden)').length + ' pictures, on: ' + Array.from(document.querySelectorAll('.mo-edit-ptile.is-on')).map((t) => t.textContent).join(',');
+      const root = document.querySelector('.mo-edit'); const tb = document.querySelector('.mo-edit-topbar'); const pn = document.querySelector('.mo-edit-panel');
+      const geo = `win=${window.innerWidth} root=${root?.clientWidth} rootR=${Math.round(root?.getBoundingClientRect().right || 0)} topbar=${tb?.clientWidth}/${tb?.scrollWidth} panelR=${Math.round(pn?.getBoundingClientRect().right || 0)}`;
+      return `${geo} tabs=[${tabs}] sections=[${secs}] changed=[${changed}] top=[${top}] presets=[${presets}] hist="${document.querySelector('.mo-edit-histcap')?.textContent}" size="${document.querySelector('.mo-edit-dim')?.textContent}" edited=${!document.querySelector('.mo-edit-edited')?.classList.contains('mo-hidden')}`;
+    });
     const shots = async (suffix) => {
       await tool('Edit');
       await scrollPanel(0);
+      await page.waitForTimeout(1_500);
       await shot(page, `image-edit${suffix}`);
       await openAll();
-      await page.waitForTimeout(400);
-      await scrollPanel(0.45);
+      await scrollPanel(0.5);
       await shot(page, `image-edit-colour${suffix}`);
       await scrollPanel(1);
       await shot(page, `image-edit-bottom${suffix}`);
+      await scrollPanel(0);
       await tool('Crop And Rotate');
       await shot(page, `image-crop${suffix}`);
       await tool('Remove');
@@ -435,15 +451,50 @@ async function imageScene(appRoot, workspace, errors) {
       await shot(page, `image-enhance${suffix}`);
       await tool('Edit');
     };
-    const layout = await page.evaluate(() => {
-      const r = (sel) => { const e = document.querySelector(sel); if (!e) return `${sel}=none`; const b = e.getBoundingClientRect(); return `${sel}=${Math.round(b.width)}x${Math.round(b.height)}@${Math.round(b.left)},${Math.round(b.top)}${e.classList.contains('mo-hidden') ? ' hidden' : ''}`; };
-      return ['.mo-edit-topbar', '.mo-edit-presets', '.mo-edit-centre', '.mo-edit-panel', '.mo-edit-tools', '.mo-edit-film', '.mo-edit-hist'].map(r).join(' ');
-    });
-    console.log(`[probe] image layout: ${layout}`);
-    const topbar = await page.evaluate(() => Array.from(document.querySelectorAll('.mo-edit-topbar button, .mo-edit-topbar .mo-edit-value')).map((b) => (b.getAttribute('title') || b.textContent || '').trim()).filter(Boolean).join(' | '));
-    console.log(`[probe] image topbar: ${topbar}`);
-    const sections = await page.evaluate(() => Array.from(document.querySelectorAll('.mo-edit-section-title')).map((t) => t.textContent).join(' | '));
-    console.log(`[probe] image sections: ${sections}`);
+    // A few changes, so the marks show: Exposure, Contrast, Highlights, Vibrance, and Clarity (in Effects, closed).
+    await tool('Edit');
+    for (const [id, v] of [['exposure', 0.35], ['contrast', 0.12], ['highlights', -0.4], ['vibrance', 0.18], ['clarity', 0.3]]) await setSlider(id, v);
+    await page.waitForTimeout(800);
+    console.log(`[probe] image state: ${await state()}`);
+    // Point at a preset: the stage previews it and says so.
+    await page.locator('.mo-edit-ptile', { hasText: 'Golden Hour' }).first().hover().catch(() => {});
+    await page.waitForTimeout(800);
+    console.log(`[probe] image hover chip: "${await page.evaluate(() => document.querySelector('.mo-edit-stagechip--top:not(.mo-hidden)')?.textContent || 'none')}"`);
+    await shot(page, 'image-preset-hover');
+    await page.mouse.move(700, 300);
+    // Split compare and the highlight clipping shown on the photo.
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-edit-segbtn')).find((b) => /Split/.test(b.textContent))?.click());
+    await page.evaluate(() => document.querySelector('.mo-edit-clip--hi')?.click());
+    await page.waitForTimeout(1_200);
+    console.log(`[probe] image split: ${await page.evaluate(() => `bar=${!document.querySelector('.mo-edit-splitbar')?.classList.contains('mo-hidden')} clipLayer=${!document.querySelector('.mo-edit-cliplayer')?.classList.contains('mo-hidden')} hist="${document.querySelector('.mo-edit-histcap')?.textContent}"`)}`);
+    await shot(page, 'image-split');
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-edit-segbtn')).find((b) => /Split/.test(b.textContent))?.click());
+    await page.evaluate(() => document.querySelector('.mo-edit-clip--hi')?.click());
+    // Crop 4:5 and straighten a little with the dial.
+    await tool('Crop And Rotate');
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-edit-chipbtn')).find((b) => b.textContent.trim() === '4:5')?.click());
+    await page.waitForTimeout(600);
+    const dialBox = await page.locator('.mo-edit-dial').boundingBox().catch(() => null);
+    if (dialBox) {
+      await page.mouse.move(dialBox.x + dialBox.width / 2, dialBox.y + 10);
+      await page.mouse.down(); await page.mouse.move(dialBox.x + dialBox.width / 2 + 25, dialBox.y + 10, { steps: 5 }); await page.mouse.up();
+    }
+    await page.waitForTimeout(800);
+    console.log(`[probe] image crop: size="${await page.evaluate(() => document.querySelector('.mo-edit-cropsize')?.textContent)}" dial="${await page.evaluate(() => document.querySelector('.mo-edit-dial-value')?.textContent)}" ${await state()}`);
+    await shot(page, 'image-crop-45');
+    // The ⋯ and Save menus.
+    await page.evaluate(() => document.querySelector('.mo-edit-topbar [aria-label="More"]')?.click());
+    await page.waitForTimeout(400);
+    console.log(`[probe] image more menu: ${await page.evaluate(() => Array.from(document.querySelectorAll('.context-menu-item')).map((x) => x.textContent.trim()).join(' | '))}`);
+    await shot(page, 'image-more-menu');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => document.querySelector('.mo-edit-split-menu')?.click());
+    await page.waitForTimeout(400);
+    console.log(`[probe] image save menu: ${await page.evaluate(() => Array.from(document.querySelectorAll('.context-menu-item')).map((x) => x.textContent.trim()).join(' | '))}`);
+    await page.keyboard.press('Escape');
+    // Undo the crop so the rest of the shots show the whole photo.
+    await page.keyboard.press('Control+z'); await page.keyboard.press('Control+z');
+    await page.waitForTimeout(600);
     await shots('');
     // Light mode (Appearance's data-px-mode, which the --px-* tokens follow).
     await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
@@ -454,7 +505,12 @@ async function imageScene(appRoot, workspace, errors) {
     await page.waitForTimeout(1_000);
     await tool('Edit');
     await scrollPanel(0);
+    console.log(`[probe] image narrow: ${await state()}`);
     await shot(page, 'image-narrow-light');
+    await page.setViewportSize({ width: 860, height: 700 }).catch(() => {});
+    await page.waitForTimeout(1_000);
+    console.log(`[probe] image narrower: ${await state()}`);
+    await shot(page, 'image-narrower-light');
   } finally {
     await app.close().catch(() => {});
   }

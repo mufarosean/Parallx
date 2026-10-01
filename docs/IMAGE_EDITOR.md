@@ -31,7 +31,7 @@ the whole editor, which is what is in the app now.
   and Colour Grading (a wheel each for shadows, midtones and highlights).
 - Effects: Texture, Clarity, Dehaze, Vignette with Midpoint and Feather, Grain
   with Size.
-- Detail: Sharpening with Radius, Noise Reduction, Colour Noise Reduction.
+- Detail: Sharpening with Radius, Noise and Colour Noise (noise reduction).
 - Every slider moves the picture live. Double-clicking a slider or its name
   returns it to rest, and the number beside it can be typed.
 - Each section has an eye, to see the picture without it, and its own reset.

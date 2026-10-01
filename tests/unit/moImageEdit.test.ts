@@ -23,7 +23,7 @@ function loadPure(): Record<string, any> {
   const names = ['MO_EDIT_SLIDERS', 'MO_EDIT_SECTIONS', 'MO_EDIT_MIX', 'MO_EDIT_PRESETS', 'MO_EDIT_ASPECTS', 'MO_EDIT_CURVE_N', 'MO_EDIT_MODEL_SIDE',
     'moEditDefaultRecipe', 'moEditNormalizeRecipe', 'moEditNormalizeCurvePoints', 'moEditIsNeutral', 'moEditHasWork', 'moEditLookIsRest', 'moEditSectionIsRest',
     'moEditPickLook', 'moEditApplyLook', 'moEditFormatValue', 'moEditParseValue', 'moEditCurveLut', 'moEditCurveStrip', 'moEditCurveIsRest',
-    'moEditEngineLook', 'moEditGradeTint', 'moEditMargin',
+    'moEditEngineLook', 'moEditGradeTint', 'moEditMargin', 'moEditShownRemovals', 'MO_EDIT_PARTS',
     'moAffineMul', 'moAffineApply', 'moAffineInvert', 'moEditViewSize', 'moEditAffine', 'moEditFitZoom', 'moEditClampView', 'moEditViewMap',
     'moEditCropBox', 'moEditCropFromBox', 'moEditCropCorners', 'moEditCropFits', 'moEditCropScaled', 'moEditCropShrink', 'moEditCropIsLargest', 'moEditCropLargest',
     'moEditAspectRatio', 'moEditCropDrag', 'moEditTurn', 'moEditFlip', 'moEditCropView',
@@ -1010,5 +1010,27 @@ describe('finding a mark in other photos', () => {
     // cut by the photo's edge: the box is smaller, the mask is drawn from outside it
     expect(E.moFindRemoval({ x: 2, y: 950, w: 300, h: 100 }, 2000, 1000)).toEqual({ x: 0, y: 942, w: 310, h: 58, mx: -6, my: 0, mw: 316, mh: 116 });
     expect(E.moFindRemoval({ x: 10, y: 10, w: 20, h: 12 }, 2000, 1000).w).toBe(26);      // never less than three pixels more each side
+  });
+});
+
+describe('editor redesign: hidden removals and seeing without a part', () => {
+  it('keeps a hidden removal but does not count it as work', () => {
+    const r = recipe({ removals: [{ file: 'a.png', x: 1, y: 2, w: 10, h: 10, hidden: true }] });
+    expect(r.removals).toHaveLength(1);
+    expect(r.removals[0].hidden).toBe(true);
+    expect(E.moEditShownRemovals(r)).toHaveLength(0);
+    expect(E.moEditIsNeutral(r)).toBe(true);
+    const shown = recipe({ removals: [{ file: 'a.png', x: 1, y: 2, w: 10, h: 10 }] });
+    expect(shown.removals[0].hidden).toBeUndefined();
+    expect(E.moEditIsNeutral(shown)).toBe(false);
+  });
+  it('turns off the curve, the mixer or grading on their own', () => {
+    const base = { curve: { rgb: [[0, 0.1], [1, 1]] }, mixer: { red: [0.5, 0, 0] }, grading: { shadows: { h: 0.5, s: 0.4, l: 0 } } };
+    const on = E.moEditEngineLook(recipe(base), false);
+    expect(on.curve).toBeTruthy(); expect(on.mix).toBeTruthy(); expect(on.grade).toBeTruthy();
+    const off = E.moEditEngineLook(recipe({ ...base, off: ['curve', 'mixer', 'grading'] }), false);
+    expect(off.curve).toBeUndefined(); expect(off.mix).toBeUndefined(); expect(off.grade).toBeUndefined();
+    expect(recipe({ off: ['curve', 'nonsense'] }).off).toEqual(['curve']);
+    expect(E.MO_EDIT_PARTS).toEqual(['curve', 'mixer', 'grading']);
   });
 });

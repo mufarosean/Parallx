@@ -297,6 +297,17 @@
   --px-clip-text-3: #6fb6ff;
   --px-clip-text-4: #ff7a7a;
   --px-clip-text-5: #111111;
+
+  /* ── Tier 3 · Component — Image editor ──────────────────────────────────
+     Media Organizer's image editor: the photo sits on a neutral grey in
+     both modes (colour is judged against neutral); the chrome follows the
+     theme. */
+  --px-edit-stage:        #1b1c1f;  /* the stage behind the photo, every mode */
+  --px-edit-panel-w:      312px;    /* the tool panel                         */
+  --px-edit-presets-w:    196px;    /* the presets column                     */
+  --px-edit-knob:         var(--px-base-100);  /* slider knob                 */
+  --px-edit-clip-hi:      #ff5a4f;  /* clipped highlights, on the photo       */
+  --px-edit-clip-lo:      #4f8dff;  /* clipped shadows, on the photo          */
 }
 
 /* ============================================================================
@@ -415,6 +426,9 @@
   --px-syntax-variable: hsl(210 55% 38%);
   --px-syntax-constant: hsl(270 50% 48%);
   --px-syntax-meta:     hsl(25 60% 40%);
+
+  /* Image editor: a white knob with an edge, not a heavy ink dot. */
+  --px-edit-knob:       #ffffff;
 }
 
 /* Light Warm — warm-tinted paper. */

@@ -8881,122 +8881,225 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-plans-card:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .mo-plans-card img { width: 144px; height: 144px; object-fit: cover; display: block; border-radius: 2px; background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); margin-bottom: 6px; }
 .mo-plans-card-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Image editor (docs/IMAGE_EDITOR.md): presets | stage over filmstrip | panel | tool strip, all flush. */
-.mo-edit { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--vscode-editor-background, var(--px-bg)); color: var(--vscode-foreground, var(--px-text)); outline: none; --mo-edit-line: var(--vscode-foreground, var(--px-text)); --mo-edit-faint: var(--vscode-panel-border, var(--px-border)); }
-.mo-edit button:disabled { opacity: 0.4; cursor: default; }
-.mo-edit-topbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
-.mo-edit-topbar-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.mo-edit-topbar-right { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
-.mo-edit-group { display: flex; align-items: center; gap: 4px; }
-.mo-edit-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mo-edit-dim { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.mo-edit-zoom { min-width: 38px; text-align: right; }
-.mo-edit-icon, .mo-edit-tool, .mo-edit-mini { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--parallx-radius-sm, 3px); background: transparent; color: inherit; cursor: pointer; }
-.mo-edit-icon { width: 26px; height: 26px; }
-.mo-edit-mini { width: 20px; height: 20px; opacity: 0.75; }
-.mo-edit-icon:hover:not(:disabled), .mo-edit-tool:hover:not(:disabled), .mo-edit-mini:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground, var(--px-surface-hover)); opacity: 1; }
-.mo-edit-icon.is-on, .mo-edit-tool.is-on, .mo-edit .mo-toolbar-btn.is-on, .mo-edit-chan.is-on { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, var(--px-text-on-accent)); }
-.mo-edit-mini.is-on { opacity: 1; color: var(--vscode-focusBorder, var(--px-accent)); }
-.mo-edit-body { flex: 1 1 auto; min-height: 0; display: flex; }
+/* Image editor (docs/IMAGE_EDITOR.md, docs/mockups/image-editor-redesign.html):
+   top bar · presets | the stage over the filmstrip | the panel with its tool
+   tabs. --px-* tokens and the Tier 3 "Image editor" block in px-tokens.css. */
+.mo-edit { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--px-bg); color: var(--px-text); outline: none; font-family: var(--px-font-ui); font-size: var(--px-text-base); --mo-edit-line: var(--px-text); --mo-edit-faint: var(--px-border); }
+.mo-edit button:disabled { cursor: default; }
+.mo-edit-ico { display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.mo-edit-ico svg { display: block; }
+.mo-edit .px-btn.mo-active, .mo-edit .px-btn--icon.mo-active { background: var(--px-surface-selected); color: var(--px-accent-text); }
+/* Top bar */
+.mo-edit-topbar { flex: 0 0 auto; display: flex; align-items: center; gap: var(--px-space-2); height: 44px; padding: 0 var(--px-space-2); border-bottom: 1px solid var(--px-border); min-width: 0; }
+.mo-edit-topbar-left { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; flex: 1 1 auto; }
+.mo-edit-topbar-right { display: flex; align-items: center; gap: var(--px-space-1); flex: 0 0 auto; }
+.mo-edit-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.mo-edit-dim { font-size: var(--px-text-sm); color: var(--px-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
+.mo-edit-edited { flex: none; font-size: var(--px-text-xs); color: var(--px-accent-text); background: var(--px-accent-soft); padding: 1px var(--px-space-2); border-radius: var(--px-radius-full); white-space: nowrap; }
+.mo-edit-sep { width: 1px; height: 18px; background: var(--px-border); margin: 0 var(--px-space-1); flex: none; }
+.mo-edit-seg { display: inline-flex; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); overflow: hidden; flex: none; }
+.mo-edit-segbtn { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 var(--px-space-2); border: 0; border-right: 1px solid var(--px-border); background: transparent; color: var(--px-text-secondary); font: inherit; font-size: var(--px-text-sm); cursor: pointer; user-select: none; }
+.mo-edit-segbtn:last-child { border-right: 0; }
+.mo-edit-segbtn:hover:not(:disabled) { background: var(--px-surface-hover); color: var(--px-text); }
+.mo-edit-segbtn.is-on { background: var(--px-surface-selected); color: var(--px-accent-text); }
+.mo-edit-segbtn:disabled { opacity: 0.45; }
+.mo-edit-kbd { font-family: var(--px-font-mono); font-size: var(--px-text-2xs); color: var(--px-text-faint); border: 1px solid var(--px-border); border-radius: 3px; padding: 0 3px; line-height: 14px; }
+.mo-edit-zoombtn { display: inline-flex; align-items: center; gap: var(--px-space-1); height: 28px; padding: 0 var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: transparent; color: var(--px-text-secondary); font: inherit; font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; cursor: pointer; flex: none; }
+.mo-edit-zoombtn:hover:not(:disabled) { background: var(--px-surface-hover); color: var(--px-text); }
+.mo-edit-zoombtn:disabled { opacity: 0.45; }
+.mo-edit-zoomval { min-width: 34px; text-align: right; }
+.mo-edit-split { display: inline-flex; flex: none; margin-left: var(--px-space-1); }
+.mo-edit-split > .px-btn--primary { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.mo-edit-split > .mo-edit-split-menu { border-top-left-radius: 0; border-bottom-left-radius: 0; background: var(--px-accent); color: var(--px-text-on-accent); border-left: 1px solid color-mix(in srgb, var(--px-text-on-accent) 25%, transparent); }
+.mo-edit-split > .mo-edit-split-menu:hover:not(:disabled) { background: var(--px-accent-hover); color: var(--px-text-on-accent); }
+.mo-edit-split > .mo-edit-split-menu:disabled, .mo-edit-split > .px-btn--primary:disabled { background: var(--px-surface-active); color: var(--px-text-faint); }
+.mo-edit--narrow .mo-edit-seg, .mo-edit--narrow .mo-edit-zoombtn, .mo-edit--narrow .mo-edit-dim, .mo-edit--narrow .mo-edit-edited { display: none; }
+/* Body */
+.mo-edit-body { flex: 1 1 auto; min-height: 0; display: flex; position: relative; }
 .mo-edit-centre { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-.mo-edit-stage { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; background: var(--px-bg-inset, var(--vscode-editor-background)); touch-action: none; user-select: none; }
+/* The stage stays neutral dark in both modes. */
+.mo-edit-stage { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; background: var(--px-edit-stage); touch-action: none; user-select: none; }
 .mo-edit-stage.is-pannable { cursor: grab; }
 .mo-edit-stage.is-panning { cursor: grabbing; }
 .mo-edit-stage.is-picking, .mo-edit-stage.is-picking.is-pannable { cursor: crosshair; }
 .mo-edit-stage.is-brushing, .mo-edit-stage.is-brushing.is-pannable { cursor: crosshair; }
 .mo-edit-canvas, .mo-edit-paint { position: absolute; left: 0; top: 0; display: block; }
 .mo-edit-paint { pointer-events: none; }
-.mo-edit-message { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; font-size: 12px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); pointer-events: none; }
-.mo-edit-chip { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); box-sizing: border-box; width: 300px; max-width: calc(100% - 32px); display: flex; flex-direction: column; gap: 7px; padding: 9px 12px; border-radius: var(--parallx-radius-sm, 3px); font-size: 12px; background: var(--vscode-sideBar-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-panel-border, var(--px-border)); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); pointer-events: none; }
+.mo-edit-message { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: var(--px-space-6); text-align: center; font-size: var(--px-text-sm); color: var(--px-viewer-ink-muted); pointer-events: none; }
+.mo-edit-stagechip { position: absolute; font-size: var(--px-text-xs); color: var(--px-viewer-ink); background: var(--px-viewer-bar); padding: 3px var(--px-space-2); border-radius: var(--px-radius-full); white-space: nowrap; border: 1px solid var(--px-viewer-line); pointer-events: none; z-index: 2; }
+.mo-edit-stagechip b { font-weight: 600; }
+.mo-edit-stagechip--top { top: var(--px-space-2); left: 50%; transform: translateX(-50%); }
+.mo-edit-stagechip--zoom { right: var(--px-space-2); bottom: var(--px-space-2); font-variant-numeric: tabular-nums; }
+.mo-edit-stagechip--zoom:empty { display: none; }
+.mo-edit-chip { position: absolute; left: 50%; bottom: var(--px-space-4); transform: translateX(-50%); box-sizing: border-box; width: 300px; max-width: calc(100% - 32px); display: flex; flex-direction: column; gap: 7px; padding: 9px 12px; border-radius: var(--px-radius-md); font-size: var(--px-text-sm); background: var(--px-bg-elevated); border: 1px solid var(--px-border); box-shadow: var(--px-shadow-md); pointer-events: none; z-index: 3; }
 .mo-edit-chip-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .mo-edit-chip-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mo-edit-chip-note { flex: 0 0 auto; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); font-variant-numeric: tabular-nums; }
-.mo-edit-brush { position: absolute; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); pointer-events: none; }
-.mo-edit-splitbar { position: absolute; top: 0; bottom: 0; width: 9px; margin-left: -4px; cursor: ew-resize; background: linear-gradient(to right, transparent 4px, rgba(255, 255, 255, 0.9) 4px, rgba(255, 255, 255, 0.9) 5px, transparent 5px); }
-.mo-edit-cropframe { position: absolute; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, 0.95); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55); cursor: move; }
-.mo-edit-crophandle { position: absolute; width: 11px; height: 11px; background: var(--vscode-focusBorder, var(--px-accent)); border: 1px solid rgba(0, 0, 0, 0.55); }
-.mo-edit-crophandle--nw { left: -6px; top: -6px; cursor: nwse-resize; }
-.mo-edit-crophandle--n { left: calc(50% - 6px); top: -6px; cursor: ns-resize; }
-.mo-edit-crophandle--ne { right: -6px; top: -6px; cursor: nesw-resize; }
-.mo-edit-crophandle--e { right: -6px; top: calc(50% - 6px); cursor: ew-resize; }
-.mo-edit-crophandle--se { right: -6px; bottom: -6px; cursor: nwse-resize; }
-.mo-edit-crophandle--s { left: calc(50% - 6px); bottom: -6px; cursor: ns-resize; }
-.mo-edit-crophandle--sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
-.mo-edit-crophandle--w { left: -6px; top: calc(50% - 6px); cursor: ew-resize; }
-.mo-edit-cropline { position: absolute; background: rgba(255, 255, 255, 0.45); pointer-events: none; }
+.mo-edit-chip-note { flex: 0 0 auto; color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.mo-edit-toast { position: absolute; left: var(--px-space-3); bottom: var(--px-space-3); display: flex; align-items: center; gap: var(--px-space-2); max-width: calc(100% - 24px); padding: var(--px-space-1) var(--px-space-1) var(--px-space-1) var(--px-space-3); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); border: 1px solid var(--px-border); box-shadow: var(--px-shadow-md); font-size: var(--px-text-sm); z-index: 4; }
+.mo-edit-toast-ok { color: var(--px-success); }
+.mo-edit-toast-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-edit-brush { position: absolute; border-radius: 50%; border: 1.5px solid var(--px-viewer-ink); box-shadow: 0 0 0 1px var(--px-viewer-scrim); pointer-events: none; }
+.mo-edit-markbox { position: absolute; border: 1.5px dashed var(--px-viewer-ink); border-radius: var(--px-radius-sm); box-shadow: 0 0 0 1px var(--px-viewer-scrim); pointer-events: none; }
+/* Split compare */
+.mo-edit-splitbar { position: absolute; top: 0; bottom: 0; width: 13px; margin-left: -6px; cursor: ew-resize; background: linear-gradient(to right, transparent 6px, var(--px-viewer-ink) 6px, var(--px-viewer-ink) 7px, transparent 7px); z-index: 1; }
+.mo-edit-splitknob { position: absolute; top: 50%; left: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: var(--px-viewer-ink); color: var(--px-edit-stage); display: flex; align-items: center; justify-content: center; box-shadow: var(--px-shadow-md); pointer-events: none; }
+.mo-edit-ba { position: absolute; top: var(--px-space-3); font-size: var(--px-text-xs); font-weight: 600; color: var(--px-viewer-ink); background: var(--px-viewer-bar); padding: 2px var(--px-space-2); border-radius: var(--px-radius-sm); pointer-events: none; z-index: 1; }
+/* Crop */
+.mo-edit-cropframe { position: absolute; box-sizing: border-box; border: 1.5px solid var(--px-viewer-ink); box-shadow: 0 0 0 1px var(--px-viewer-scrim); cursor: move; }
+.mo-edit-crophandle { position: absolute; width: 16px; height: 16px; }
+.mo-edit-crophandle--nw { left: -4px; top: -4px; cursor: nwse-resize; border-left: 3px solid var(--px-viewer-ink); border-top: 3px solid var(--px-viewer-ink); }
+.mo-edit-crophandle--ne { right: -4px; top: -4px; cursor: nesw-resize; border-right: 3px solid var(--px-viewer-ink); border-top: 3px solid var(--px-viewer-ink); }
+.mo-edit-crophandle--se { right: -4px; bottom: -4px; cursor: nwse-resize; border-right: 3px solid var(--px-viewer-ink); border-bottom: 3px solid var(--px-viewer-ink); }
+.mo-edit-crophandle--sw { left: -4px; bottom: -4px; cursor: nesw-resize; border-left: 3px solid var(--px-viewer-ink); border-bottom: 3px solid var(--px-viewer-ink); }
+.mo-edit-crophandle--n, .mo-edit-crophandle--s { left: calc(50% - 12px); width: 24px; height: 10px; cursor: ns-resize; }
+.mo-edit-crophandle--n { top: -6px; } .mo-edit-crophandle--s { bottom: -6px; }
+.mo-edit-crophandle--e, .mo-edit-crophandle--w { top: calc(50% - 12px); width: 10px; height: 24px; cursor: ew-resize; }
+.mo-edit-crophandle--e { right: -6px; } .mo-edit-crophandle--w { left: -6px; }
+.mo-edit-crophandle--n::after, .mo-edit-crophandle--s::after { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 3px; border-radius: 2px; background: var(--px-viewer-ink); }
+.mo-edit-crophandle--e::after, .mo-edit-crophandle--w::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 3px; border-radius: 2px; background: var(--px-viewer-ink); }
+.mo-edit-cropline { position: absolute; background: var(--px-viewer-line); pointer-events: none; }
 .mo-edit-cropline--v1 { left: 33.333%; top: 0; bottom: 0; width: 1px; }
 .mo-edit-cropline--v2 { left: 66.666%; top: 0; bottom: 0; width: 1px; }
 .mo-edit-cropline--h1 { top: 33.333%; left: 0; right: 0; height: 1px; }
 .mo-edit-cropline--h2 { top: 66.666%; left: 0; right: 0; height: 1px; }
-.mo-edit-film { flex: 0 0 76px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-top: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
-.mo-edit-film-count { flex: 0 0 auto; font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); font-variant-numeric: tabular-nums; }
-.mo-edit-film-strip { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 4px; overflow-x: auto; overflow-y: hidden; height: 100%; }
-.mo-edit-film-item { position: relative; flex: 0 0 auto; height: 60px; min-width: 44px; padding: 0; border: 2px solid transparent; border-radius: var(--parallx-radius-sm, 3px); background: var(--px-bg-inset, rgba(128, 128, 128, 0.1)); cursor: pointer; overflow: hidden; }
-.mo-edit-film-item img { display: block; height: 56px; width: auto; min-width: 40px; max-width: 120px; object-fit: cover; }
-.mo-edit-film-item:hover { border-color: var(--vscode-panel-border, var(--px-border)); }
-.mo-edit-film-item.is-current { border-color: var(--vscode-focusBorder, var(--px-accent)); }
-.mo-edit-film-item.is-edited::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--vscode-focusBorder, var(--px-accent)); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); }
-.mo-edit-presets { flex: 0 0 176px; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
-.mo-edit-presets-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
-.mo-edit-presets-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 0 8px; }
-.mo-edit-presets-group { padding: 8px 12px 4px; font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
-.mo-edit-preset { display: block; width: 100%; padding: 5px 12px; border: 0; background: transparent; color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mo-edit-preset:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
-.mo-edit-panel { flex: 0 0 288px; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
-.mo-edit-hist { flex: 0 0 auto; position: relative; height: 84px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--px-bg-inset, var(--vscode-editor-background)); }
+.mo-edit-cropsize { position: absolute; left: 50%; top: var(--px-space-2); transform: translateX(-50%); font-size: var(--px-text-xs); color: var(--px-viewer-ink); background: var(--px-viewer-bar); padding: 2px 7px; border-radius: var(--px-radius-sm); white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
+.mo-edit-dial { position: absolute; left: 50%; bottom: var(--px-space-3); transform: translateX(-50%); width: min(420px, 80%); height: 42px; cursor: ew-resize; z-index: 2; touch-action: none; }
+.mo-edit-dial-ticks { position: absolute; left: 0; right: 0; top: 4px; height: 16px; background-image: repeating-linear-gradient(90deg, var(--px-viewer-ink-muted) 0 1px, transparent 1px 10px); -webkit-mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
+.mo-edit-dial-mid { position: absolute; left: 50%; top: 0; width: 2px; height: 24px; margin-left: -1px; border-radius: 1px; background: var(--px-accent); }
+.mo-edit-dial-value { position: absolute; left: 50%; top: 24px; transform: translateX(-50%); font-size: var(--px-text-xs); color: var(--px-viewer-ink); font-variant-numeric: tabular-nums; }
+/* The enlarged preview, at 100% */
+.mo-edit-preview { position: absolute; inset: 0; overflow: auto; background: var(--px-edit-stage); z-index: 1; cursor: grab; }
+.mo-edit-preview.is-panning { cursor: grabbing; }
+.mo-edit-preview-img { display: block; max-width: none; image-rendering: auto; }
+/* Filmstrip */
+.mo-edit-film { flex: 0 0 76px; display: flex; align-items: center; gap: var(--px-space-3); padding: 0 var(--px-space-3); border-top: 1px solid var(--px-border); background: var(--px-bg); }
+.mo-edit-film-count { flex: 0 0 auto; font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.mo-edit-film-strip { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--px-space-2); overflow-x: auto; overflow-y: hidden; height: 100%; }
+.mo-edit-film-item { position: relative; flex: 0 0 auto; height: 56px; min-width: 44px; padding: 0; border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); background: var(--px-bg-inset); cursor: pointer; overflow: hidden; }
+.mo-edit-film-item img { display: block; height: 54px; width: auto; min-width: 40px; max-width: 120px; object-fit: cover; }
+.mo-edit-film-item:hover { border-color: var(--px-border-strong); }
+.mo-edit-film-item.is-current { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.mo-edit-film-item.is-edited::after { content: ''; position: absolute; right: 4px; top: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--px-accent); box-shadow: 0 0 0 1.5px var(--px-viewer-scrim); }
+/* Presets */
+.mo-edit-presets { flex: 0 0 var(--px-edit-presets-w); width: var(--px-edit-presets-w); display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--px-border); background: var(--px-bg); }
+.mo-edit-presets--over { position: absolute; left: 0; top: 0; bottom: 0; z-index: 5; box-shadow: var(--px-shadow-lg); }
+.mo-edit-presets-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; height: 38px; padding: 0 var(--px-space-1) 0 var(--px-space-3); border-bottom: 1px solid var(--px-divider); }
+.mo-edit-presets-btns { display: flex; gap: 2px; }
+.mo-edit-presets-filter { margin: var(--px-space-2) var(--px-space-2) 0; height: 26px; padding: 0 var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); color: var(--px-text); font: inherit; font-size: var(--px-text-sm); outline: none; }
+.mo-edit-presets-filter:focus { border-color: var(--px-accent); }
+.mo-edit-presets-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--px-space-2) var(--px-space-2) var(--px-space-3); }
+.mo-edit-presets-group { padding: var(--px-space-2) 2px var(--px-space-1); font-size: var(--px-text-xs); color: var(--px-text-muted); font-weight: 600; }
+.mo-edit-presets-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--px-space-2); }
+.mo-edit-ptile { display: flex; flex-direction: column; gap: 3px; padding: 0; border: 0; background: transparent; color: var(--px-text-secondary); font: inherit; font-size: var(--px-text-xs); text-align: left; cursor: pointer; min-width: 0; }
+.mo-edit-ptile-im { aspect-ratio: 3 / 2; border-radius: var(--px-radius-sm); overflow: hidden; border: 1px solid var(--px-border); background: var(--px-edit-stage); }
+.mo-edit-ptile-im img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.mo-edit-ptile:hover .mo-edit-ptile-im { outline: 1px solid var(--px-border-strong); outline-offset: 1px; }
+.mo-edit-ptile:hover { color: var(--px-text); }
+.mo-edit-ptile.is-on { color: var(--px-text); }
+.mo-edit-ptile.is-on .mo-edit-ptile-im { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.mo-edit-ptile-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Panel */
+.mo-edit-panel { flex: 0 0 var(--px-edit-panel-w); width: var(--px-edit-panel-w); display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--px-border); background: var(--px-bg); }
+.mo-edit-tabs { flex: none; display: flex; padding: 0 var(--px-space-1); border-bottom: 1px solid var(--px-border); }
+.mo-edit-tab { flex: 1 1 0; position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 6px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--px-text-muted); font: inherit; font-size: var(--px-text-xs); cursor: pointer; }
+.mo-edit-tab:hover:not(:disabled) { color: var(--px-text); }
+.mo-edit-tab.is-on { color: var(--px-text); border-bottom-color: var(--px-accent); }
+.mo-edit-tab:disabled { opacity: 0.45; }
+.mo-edit-tab-dot { position: absolute; top: 6px; left: calc(50% + 9px); width: 6px; height: 6px; border-radius: 50%; background: var(--px-accent); display: none; }
+.mo-edit-tab.is-used:not(.is-on) .mo-edit-tab-dot { display: block; }
+.mo-edit--narrow .mo-edit-tab { flex-direction: row; justify-content: center; padding: 10px 0 9px; }
+.mo-edit--narrow .mo-edit-tab-label { display: none; }
+.mo-edit-hist { flex: 0 0 auto; position: relative; height: 78px; margin: var(--px-space-3) var(--px-space-3) 2px; border-radius: var(--px-radius-md); border: 1px solid var(--px-divider); background: var(--px-bg-inset); overflow: hidden; }
 .mo-edit-hist-canvas { display: block; width: 100%; height: 100%; }
-.mo-edit-clip { position: absolute; top: 4px; width: 8px; height: 8px; border: 1px solid var(--vscode-panel-border, var(--px-border)); }
-.mo-edit-clip--lo { left: 4px; }
-.mo-edit-clip--hi { right: 4px; }
-.mo-edit-clip.is-on { background: var(--vscode-foreground, var(--px-text)); }
+.mo-edit-clip { position: absolute; top: 4px; width: 16px; height: 16px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 3px; background: transparent; color: var(--px-text-faint); cursor: pointer; }
+.mo-edit-clip--lo { left: 4px; } .mo-edit-clip--hi { right: 4px; }
+.mo-edit-clip.is-on { color: var(--px-warning); background: rgba(var(--px-yellow-rgb), 0.15); }
+.mo-edit-clip.is-showing { color: var(--px-accent-text); background: var(--px-accent-soft); }
+.mo-edit-histcap { flex: none; display: flex; justify-content: space-between; gap: var(--px-space-2); margin: 0 var(--px-space-3) var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; min-height: 16px; }
+.mo-edit-histcap-exif { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-edit-histcap-clip { white-space: nowrap; }
+.mo-edit-histcap-clip.is-warn { color: var(--px-warning); }
 .mo-edit-panel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-.mo-edit-panel-body > .mo-edit-row { padding: 8px 12px; }
-.mo-edit-panel-body > .mo-edit-hint { padding: 0 12px 12px; }
-.mo-edit-tools { flex: 0 0 40px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-left: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-sideBar-background, var(--px-bg-elevated)); }
-.mo-edit-tool { width: 30px; height: 30px; opacity: 0.8; }
-.mo-edit-tool.is-on { opacity: 1; }
-.mo-edit-section { border-top: 1px solid var(--vscode-panel-border, var(--px-border)); }
-.mo-edit-panel-body > .mo-edit-section:first-child { border-top: 0; }
-.mo-edit-section-head { display: flex; align-items: center; gap: 2px; padding: 0 8px 0 0; }
-.mo-edit-section-fold { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 8px 12px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.mo-edit-section-fold:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
-.mo-edit-section-title { font-size: 12px; font-weight: 600; }
-.mo-edit-chevron { display: inline-flex; }
+.mo-edit-panel-body > .mo-edit-hint { padding: var(--px-space-3); }
+.mo-edit-section { border-top: 1px solid var(--px-divider); }
+.mo-edit-section-head { display: flex; align-items: center; gap: 2px; padding: 0 var(--px-space-2) 0 0; min-height: 34px; }
+.mo-edit-section-fold { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; padding: var(--px-space-2) var(--px-space-3); border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mo-edit-section-fold:hover .mo-edit-section-title { color: var(--px-text); }
+.mo-edit-section-title { font-size: var(--px-text-sm); font-weight: 600; }
+.mo-edit-section-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--px-accent); flex: none; }
+.mo-edit-section-acts { display: flex; align-items: center; gap: 2px; flex: none; }
+.mo-edit-chevron { display: inline-flex; color: var(--px-text-faint); }
 .mo-edit-section.is-shut > .mo-edit-section-head .mo-edit-chevron { transform: rotate(-90deg); }
 .mo-edit-section.is-shut > .mo-edit-section-body { display: none; }
-.mo-edit-section-body { display: flex; flex-direction: column; gap: 10px; padding: 2px 12px 12px; }
-.mo-edit-section-body > .mo-edit-section { margin: 0 -12px; }
-.mo-edit-section-body > .mo-edit-section:last-child > .mo-edit-section-body { padding-bottom: 0; }
-.mo-edit-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.mo-edit-label { font-size: 12px; }
-.mo-edit-hint { font-size: 11px; line-height: 1.45; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
-.mo-edit-slider { display: flex; flex-direction: column; gap: 1px; }
+.mo-edit-section-body { display: flex; flex-direction: column; gap: 4px; padding: 0 var(--px-space-3) var(--px-space-3); }
+.mo-edit-headbtn.px-btn { height: 22px; padding: 0 6px; color: var(--px-text-secondary); }
+.mo-edit-mini { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text-faint); cursor: pointer; }
+.mo-edit-mini:hover:not(:disabled) { background: var(--px-surface-hover); color: var(--px-text); }
+.mo-edit-mini.is-on { color: var(--px-accent-text); background: var(--px-accent-soft); }
+.mo-edit-mini:disabled { opacity: 0.35; }
+.mo-edit-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.mo-edit-label { font-size: var(--px-text-xs); color: var(--px-text-muted); font-weight: 600; margin-top: var(--px-space-2); }
+.mo-edit-hint { font-size: var(--px-text-xs); line-height: 1.45; color: var(--px-text-muted); }
+/* One row per slider: name, track, value */
+.mo-edit-slider { display: grid; grid-template-columns: 92px minmax(0, 1fr) 46px; align-items: center; gap: var(--px-space-2); min-height: 26px; }
 .mo-edit-slider.is-dim { opacity: 0.5; }
-.mo-edit-slider-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; min-height: 18px; }
-.mo-edit-slider-name { cursor: default; }
-.mo-edit-value { min-width: 38px; padding: 0 3px; border: 0; border-radius: 2px; background: transparent; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; cursor: text; }
-.mo-edit-value:hover { background: var(--vscode-toolbar-hoverBackground, var(--px-surface-hover)); color: inherit; }
-.mo-edit-value-input { width: 52px; padding: 0 3px; border: 1px solid var(--vscode-focusBorder, var(--px-accent)); border-radius: 2px; background: var(--vscode-input-background, var(--px-bg)); color: inherit; font: inherit; font-size: 11px; text-align: right; outline: none; }
-.mo-edit-range { -webkit-appearance: none; appearance: none; width: 100%; height: 14px; margin: 0; background: transparent; cursor: pointer; }
-.mo-edit-range::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: var(--vscode-panel-border, var(--px-border)); }
-.mo-edit-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 11px; height: 11px; margin-top: -4px; border: 0; border-radius: 50%; background: var(--vscode-foreground, var(--px-text)); }
-.mo-edit-range:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent)); outline-offset: 2px; }
-.mo-edit-range--warmth::-webkit-slider-runnable-track { background: linear-gradient(to right, rgb(60, 110, 230), rgb(190, 190, 190), rgb(240, 190, 60)); }
-.mo-edit-range--tint::-webkit-slider-runnable-track { background: linear-gradient(to right, rgb(70, 190, 90), rgb(190, 190, 190), rgb(220, 80, 200)); }
-.mo-edit-range--vibrance::-webkit-slider-runnable-track, .mo-edit-range--saturation::-webkit-slider-runnable-track { background: linear-gradient(to right, rgb(128, 128, 128), rgb(90, 170, 230), rgb(240, 90, 90)); }
-.mo-edit-chan { padding: 2px 8px; border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-sm, 3px); background: transparent; color: inherit; font: inherit; font-size: 11px; cursor: pointer; }
-.mo-edit-curve { display: block; width: 100%; aspect-ratio: 1 / 1; border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--px-bg-inset, var(--vscode-editor-background)); cursor: crosshair; touch-action: none; }
-.mo-edit-dots { display: flex; justify-content: space-between; gap: 4px; }
-.mo-edit-dot { width: 22px; height: 22px; padding: 0; border: 2px solid transparent; border-radius: 50%; cursor: pointer; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
-.mo-edit-dot.is-on { border-color: var(--vscode-foreground, var(--px-text)); }
-.mo-edit-dot.is-set { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 0 0 3px var(--vscode-focusBorder, var(--px-accent)); }
-.mo-edit-wheels { display: flex; justify-content: space-between; gap: 6px; }
+.mo-edit-slider-name { font-size: var(--px-text-sm); color: var(--px-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+.mo-edit-slider.is-changed .mo-edit-slider-name { color: var(--px-text); }
+.mo-edit-value { justify-self: end; min-width: 40px; padding: 0 3px; border: 0; border-radius: 2px; background: transparent; color: var(--px-text-muted); font: inherit; font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; text-align: right; cursor: text; }
+.mo-edit-slider.is-changed .mo-edit-value { color: var(--px-accent-text); font-weight: 600; }
+.mo-edit-value:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.mo-edit-value-input { width: 46px; padding: 0 3px; border: 1px solid var(--px-accent); border-radius: 2px; background: var(--px-bg-inset); color: inherit; font: inherit; font-size: var(--px-text-sm); text-align: right; outline: none; }
+.mo-edit-range { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; margin: 0; background: transparent; cursor: pointer; }
+.mo-edit-range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--px-surface-active) var(--lo, 0%), var(--px-accent) var(--lo, 0%), var(--px-accent) var(--hi, 0%), var(--px-surface-active) var(--hi, 0%)); }
+.mo-edit-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; margin-top: -4px; border: 1px solid var(--px-border-strong); border-radius: 50%; background: var(--px-edit-knob); box-shadow: var(--px-shadow-sm); }
+.mo-edit-range:focus-visible { outline: 1px solid var(--px-accent); outline-offset: 2px; }
+.mo-edit-range--warmth::-webkit-slider-runnable-track { background: linear-gradient(to right, rgb(79, 127, 214), rgb(154, 164, 181), rgb(224, 176, 64)); }
+.mo-edit-range--tint::-webkit-slider-runnable-track { background: linear-gradient(to right, rgb(61, 187, 106), rgb(154, 164, 181), rgb(214, 91, 196)); }
+.mo-edit-range--vibrance::-webkit-slider-runnable-track, .mo-edit-range--saturation::-webkit-slider-runnable-track { background: linear-gradient(to right, rgb(138, 143, 153), rgb(90, 170, 230), rgb(217, 88, 76)); }
+/* Chips (curve channels, crop shapes, Enhance) */
+.mo-edit-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mo-edit-chipbtn { height: 26px; min-width: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: transparent; color: var(--px-text-secondary); font: inherit; font-size: var(--px-text-sm); cursor: pointer; }
+.mo-edit-chipbtn:hover:not(:disabled) { background: var(--px-surface-hover); color: var(--px-text); }
+.mo-edit-chipbtn.is-on { background: var(--px-surface-selected); border-color: color-mix(in srgb, var(--px-accent) 45%, transparent); color: var(--px-accent-text); }
+.mo-edit-chipbtn:disabled { opacity: 0.4; }
+.mo-edit-shape { display: inline-block; box-sizing: border-box; border: 1.5px solid currentColor; border-radius: 2px; opacity: 0.85; }
+.mo-edit-shape--free { width: 12px; height: 12px; border-style: dashed; }
+.mo-edit-iconrow { display: flex; gap: var(--px-space-1); }
+.mo-edit-iconrow .px-btn--icon { border: 1px solid var(--px-border); }
+.mo-edit-curve { display: block; width: 100%; aspect-ratio: 1 / 1; margin-top: var(--px-space-1); border: 1px solid var(--px-divider); border-radius: var(--px-radius-sm); background: var(--px-bg-inset); cursor: crosshair; touch-action: none; }
+.mo-edit-dots { display: flex; justify-content: space-between; gap: 4px; margin-bottom: var(--px-space-1); }
+.mo-edit-dot { width: 20px; height: 20px; padding: 0; border: 2px solid transparent; border-radius: 50%; cursor: pointer; box-shadow: 0 0 0 1px var(--px-border-strong); }
+.mo-edit-dot.is-on { border-color: var(--px-text); }
+.mo-edit-dot.is-set { box-shadow: 0 0 0 1px var(--px-border-strong), 0 0 0 3px var(--px-accent); }
+.mo-edit-wheels { display: flex; justify-content: space-between; gap: 6px; margin-bottom: var(--px-space-1); }
 .mo-edit-wheel-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.mo-edit-wheel { position: relative; width: 72px; height: 72px; border-radius: 50%; cursor: crosshair; touch-action: none; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); background: radial-gradient(circle, rgb(128, 128, 128) 0%, rgba(128, 128, 128, 0) 72%), conic-gradient(from 90deg, hsl(360, 85%, 55%), hsl(300, 85%, 55%), hsl(240, 85%, 55%), hsl(180, 85%, 55%), hsl(120, 85%, 55%), hsl(60, 85%, 55%), hsl(0, 85%, 55%)); }
-.mo-edit-wheel-knob { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; border-radius: 50%; background: rgb(255, 255, 255); border: 1px solid rgba(0, 0, 0, 0.7); pointer-events: none; }
-.mo-edit-wheel-name { font-size: 11px; color: var(--vscode-descriptionForeground, var(--px-text-secondary)); }
-.mo-edit-progress { height: 4px; border-radius: 2px; background: var(--vscode-panel-border, var(--px-border)); overflow: hidden; }
-.mo-edit-progress-fill { height: 100%; background: var(--vscode-focusBorder, var(--px-accent)); transition: width var(--px-dur-base, 180ms) var(--px-ease-out, ease-out); }
+.mo-edit-wheel { position: relative; width: 72px; height: 72px; border-radius: 50%; cursor: crosshair; touch-action: none; box-shadow: 0 0 0 1px var(--px-border-strong); background: radial-gradient(circle, rgb(128, 128, 128) 0%, rgba(128, 128, 128, 0) 72%), conic-gradient(from 90deg, hsl(360, 85%, 55%), hsl(300, 85%, 55%), hsl(240, 85%, 55%), hsl(180, 85%, 55%), hsl(120, 85%, 55%), hsl(60, 85%, 55%), hsl(0, 85%, 55%)); }
+.mo-edit-wheel-knob { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--px-viewer-ink); border: 1px solid var(--px-viewer-scrim); pointer-events: none; }
+.mo-edit-wheel-name { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.mo-edit-progress { height: 4px; border-radius: 2px; background: var(--px-surface-active); overflow: hidden; }
+.mo-edit-progress-fill { height: 100%; background: var(--px-accent); transition: width var(--px-dur-base, 180ms) var(--px-ease-out, ease-out); }
+/* Remove */
+.mo-edit-list { border: 1px solid var(--px-divider); border-radius: var(--px-radius-md); overflow: hidden; }
+.mo-edit-li { display: flex; align-items: center; gap: var(--px-space-2); min-height: 40px; padding: var(--px-space-1) var(--px-space-1) var(--px-space-1) var(--px-space-2); border-bottom: 1px solid var(--px-divider); cursor: pointer; outline: none; }
+.mo-edit-li:last-child { border-bottom: 0; }
+.mo-edit-li:hover { background: var(--px-surface-hover); }
+.mo-edit-li.is-on { background: var(--px-surface-selected); }
+.mo-edit-li:focus-visible { box-shadow: inset 0 0 0 1px var(--px-accent); }
+.mo-edit-li.is-hidden .mo-edit-removal-thumb, .mo-edit-li.is-hidden .mo-edit-li-text { opacity: 0.5; }
+.mo-edit-removal-thumb { width: 36px; height: 24px; flex: none; border-radius: 3px; border: 1px solid var(--px-border); object-fit: cover; }
+.mo-edit-li-text { flex: 1 1 auto; min-width: 0; }
+.mo-edit-li-name { font-size: var(--px-text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-edit-li-meta { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.mo-edit-local { display: flex; align-items: center; gap: var(--px-space-1); padding: var(--px-space-3); font-size: var(--px-text-xs); color: var(--px-text-muted); border-top: 1px solid var(--px-divider); }
+/* Setup cards (Remove, Enhance) */
+.mo-edit-setup { margin: var(--px-space-3); padding: var(--px-space-3); border-radius: var(--px-radius-md); border: 1px solid var(--px-border); background: var(--px-bg-elevated); }
+.mo-edit-setup-title { font-weight: 600; font-size: var(--px-text-sm); margin-bottom: var(--px-space-1); }
+.mo-edit-setup p { margin: 0 0 var(--px-space-2); font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+.mo-edit-facts { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 6px; margin-bottom: var(--px-space-3); font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.mo-edit-setup .mo-edit-progress { margin: var(--px-space-2) 0 var(--px-space-1); }
+/* Enhance */
+.mo-edit-fact { display: flex; justify-content: space-between; align-items: center; min-height: 26px; font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+.mo-edit-fact b { color: var(--px-text); font-weight: 600; font-variant-numeric: tabular-nums; }
 /* Remove From Other Photos */
 .mo-br-marks { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
 .mo-br-marks:empty { display: none; }
@@ -17683,6 +17786,8 @@ function moMenuItems(actions) {
     disabled: !!a.disabled,
     checked: Object.prototype.hasOwnProperty.call(a, 'checked') ? !!a.checked : undefined,
     tooltip: a.title,
+    keybinding: a.key || undefined,
+    icon: a.icon || undefined,
     submenu: a.submenu ? moMenuItems(a.submenu) : undefined,
     onSelect: a.handler,
   });
@@ -33678,9 +33783,12 @@ const MO_EDIT_EFFECTS = [['texture', 'Texture', -1, 1, 0, 'pct'], ['clarity', 'C
   ['vignette', 'Vignette', -1, 1, 0, 'pct'], ['vignetteMid', 'Midpoint', 0, 1, 0.5, 'pct', 'vignette'], ['vignetteFeather', 'Feather', 0, 1, 0.5, 'pct', 'vignette'],
   ['grain', 'Grain', 0, 1, 0, 'pct'], ['grainSize', 'Size', 0, 1, 0.25, 'pct', 'grain']];
 const MO_EDIT_DETAIL = [['sharpen', 'Sharpening', 0, 1.5, 0, 'pct'], ['sharpenRadius', 'Radius', 0.5, 3, 1, 'one', 'sharpen'],
-  ['noise', 'Noise Reduction', 0, 1, 0, 'pct'], ['noiseColour', 'Colour Noise Reduction', 0, 1, 0, 'pct']];
+  ['noise', 'Noise', 0, 1, 0, 'pct'], ['noiseColour', 'Colour Noise', 0, 1, 0, 'pct']];
 const MO_EDIT_SLIDERS = MO_EDIT_LIGHT.concat(MO_EDIT_COLOUR, MO_EDIT_EFFECTS, MO_EDIT_DETAIL);
 const MO_EDIT_SECTIONS = [['light', 'Light', MO_EDIT_LIGHT], ['colour', 'Colour', MO_EDIT_COLOUR], ['effects', 'Effects', MO_EDIT_EFFECTS], ['detail', 'Detail', MO_EDIT_DETAIL]];
+// Parts that can be seen without (the eye) besides the four sections: the
+// tone curve, the colour mixer and colour grading.
+const MO_EDIT_PARTS = ['curve', 'mixer', 'grading'];
 
 // The colour mixer's eight bands: [key, label, hue in degrees].
 const MO_EDIT_MIX = [['red', 'Red', 0], ['orange', 'Orange', 30], ['yellow', 'Yellow', 60], ['green', 'Green', 120],
@@ -33776,10 +33884,14 @@ function moEditNormalizeRecipe(r) {
   out.grading.balance = moEditClamp(moEditNum(gr.balance, 0), -1, 1);
   out.removals = (Array.isArray(o.removals) ? o.removals : [])
     .filter((m) => m && typeof m.file === 'string' && m.file && [m.x, m.y, m.w, m.h].every((n) => Number.isFinite(Number(n))) && Number(m.w) > 0 && Number(m.h) > 0)
-    .map((m) => ({ file: m.file, x: Math.round(Number(m.x)), y: Math.round(Number(m.y)), w: Math.round(Number(m.w)), h: Math.round(Number(m.h)) }));
+    .map((m) => {
+      const o = { file: m.file, x: Math.round(Number(m.x)), y: Math.round(Number(m.y)), w: Math.round(Number(m.w)), h: Math.round(Number(m.h)) };
+      if (m.hidden === true) o.hidden = true; // kept, but not applied: seen without it
+      return o;
+    });
   const en = o.enhance && typeof o.enhance === 'object' ? o.enhance : {};
   out.enhance = { scale: [2, 4].includes(Number(en.scale)) ? Number(en.scale) : 0, model: en.model === 'art' ? 'art' : 'photo' };
-  out.off = (Array.isArray(o.off) ? o.off : []).filter((s) => MO_EDIT_SECTIONS.some((x) => x[0] === s));
+  out.off = (Array.isArray(o.off) ? o.off : []).filter((s) => MO_EDIT_SECTIONS.some((x) => x[0] === s) || MO_EDIT_PARTS.includes(s));
   return out;
 }
 
@@ -33820,8 +33932,10 @@ function moEditGeometryIsRest(r) {
 // True when the recipe changes no pixel: a copy would equal the original. Enhance is not counted here.
 function moEditIsNeutral(r) {
   if (!r) return true;
-  return moEditLookIsRest(r) && moEditGeometryIsRest(r) && !(r.removals && r.removals.length);
+  return moEditLookIsRest(r) && moEditGeometryIsRest(r) && !moEditShownRemovals(r).length;
 }
+// The removals that are applied (one can be hidden: kept, but not applied).
+function moEditShownRemovals(r) { return (r && Array.isArray(r.removals) ? r.removals : []).filter((m) => m && !m.hidden); }
 // True when Save As Copy has something to write.
 function moEditHasWork(r) { return !!r && (!moEditIsNeutral(r) || (r.enhance && r.enhance.scale > 0)); }
 
@@ -33948,12 +34062,13 @@ function moEditEngineLook(recipe, original, strip) {
   const look = {};
   for (const [id, , sliders] of MO_EDIT_SECTIONS) for (const [key, , , , rest] of sliders) look[key] = off(id) ? rest : (Number(recipe[key]) || 0);
   const p = { look, grey: !off('colour') && !!recipe.bw };
-  if (!off('light') && !moEditCurveIsRest(recipe.curve)) p.curve = strip || moEditCurveStrip(recipe.curve);
-  if (!off('colour') && !moEditMixerIsRest(recipe.mixer)) {
+  // The tone curve goes with Light, the mixer and grading with Colour; each also has an eye of its own.
+  if (!off('light') && !off('curve') && !moEditCurveIsRest(recipe.curve)) p.curve = strip || moEditCurveStrip(recipe.curve);
+  if (!off('colour') && !off('mixer') && !moEditMixerIsRest(recipe.mixer)) {
     p.mix = new Float32Array(24);
     MO_EDIT_MIX.forEach(([key], i) => { p.mix.set(recipe.mixer[key], i * 3); });
   }
-  if (!off('colour') && !moEditGradingIsRest(recipe.grading)) {
+  if (!off('colour') && !off('grading') && !moEditGradingIsRest(recipe.grading)) {
     const g = recipe.grading;
     p.grade = { shadow: moEditGradeTint(g.shadows), mid: moEditGradeTint(g.midtones), high: moEditGradeTint(g.highlights),
       lum: [g.shadows.l, g.midtones.l, g.highlights.l], blend: g.blending, balance: g.balance };
@@ -34967,7 +35082,8 @@ function moEditPatchPath(photoId, file) {
  * its removal patches laid over it. A patch that is missing is left out.
  */
 async function moEditWorkSource(photoId, bitmap, removals) {
-  if (!removals || !removals.length) return bitmap;
+  removals = (removals || []).filter((m) => m && !m.hidden);
+  if (!removals.length) return bitmap;
   const cv = document.createElement('canvas');
   cv.width = bitmap.width; cv.height = bitmap.height;
   const ctx = cv.getContext('2d');
@@ -35618,6 +35734,7 @@ async function moFindMarksOf(photoId) {
     const long = Math.max(bmp.width, bmp.height);
     for (let i = 0; i < recipe.removals.length; i++) {
       const m = recipe.removals[i];
+      if (m.hidden) continue; // a hidden removal is not a mark to look for
       const p = moEditPatchPath(photoId, m.file);
       if (!p) continue;
       let patch = null;
@@ -36426,6 +36543,14 @@ async function moOpenImageEditor(api, photoId) {
   document.dispatchEvent(new CustomEvent('mo:edit-open', { detail: { photoId: id } }));
 }
 
+// A length of time in words: "8 s", "2 min 10 s".
+function moEditDuration(sec) {
+  const s = Math.max(1, Math.round(Number(sec) || 0));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60); const r = s % 60;
+  return r ? `${m} min ${r} s` : `${m} min`;
+}
+
 // The editor a shortcut means: the one holding the focus, else the newest one on screen.
 function moEditActive() {
   const shown = [..._moEditOpen].filter((e) => e.root.isConnected && e.root.offsetParent !== null);
@@ -36436,6 +36561,7 @@ function moEditActive() {
 // ── The editor ─────────────────────────────────────────────────────────────
 
 const MO_EDIT_TOOLS = [['edit', 'sliders-horizontal', 'Edit'], ['crop', 'crop', 'Crop And Rotate'], ['remove', 'eraser', 'Remove'], ['enhance', 'wand-sparkles', 'Enhance']];
+const MO_EDIT_TAB_LABEL = { edit: 'Edit', crop: 'Crop', remove: 'Remove', enhance: 'Enhance' };
 const MO_EDIT_FILM_SPAN = 30;   // photos shown either side of the open one
 
 function renderImageEditor(container, api) {
@@ -36456,7 +36582,9 @@ function renderImageEditor(container, api) {
   let engine = null; let raf = 0; let saveTimer = null; let dirty = false; let histTimer = null; let loadSeq = 0;
   const disposers = [];
 
-  // ── layout ──
+  // ── layout (docs/mockups/image-editor-redesign.html) ──
+  // Top bar · presets | the stage over the filmstrip | the panel, whose tool
+  // tabs sit at its top. The stage stays neutral dark in both modes.
   const topbar = moEl('div', 'mo-edit-topbar');
   const body = moEl('div', 'mo-edit-body');
   const presetsEl = moEl('div', 'mo-edit-presets');
@@ -36464,11 +36592,23 @@ function renderImageEditor(container, api) {
   const stage = moEl('div', 'mo-edit-stage');
   const canvas = moEl('canvas', 'mo-edit-canvas');
   const paint = moEl('canvas', 'mo-edit-paint');
+  const clipLayer = moEl('canvas', 'mo-edit-paint mo-edit-cliplayer mo-hidden');
   const cropFrame = moEl('div', 'mo-edit-cropframe mo-hidden');
   for (const h of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) cropFrame.appendChild(moEl('div', `mo-edit-crophandle mo-edit-crophandle--${h}`, { 'data-handle': h }));
   for (const l of ['v1', 'v2', 'h1', 'h2']) cropFrame.appendChild(moEl('div', `mo-edit-cropline mo-edit-cropline--${l}`));
+  const cropSize = moEl('span', 'mo-edit-cropsize');
+  cropFrame.appendChild(cropSize);
+  // Straighten on the photo: a dial under it, dragged sideways.
+  const dial = moEl('div', 'mo-edit-dial mo-hidden', { role: 'slider', 'aria-label': 'Straighten', title: 'Drag to straighten; double-click to level' });
+  const dialTicks = moEl('div', 'mo-edit-dial-ticks');
+  const dialValue = moEl('div', 'mo-edit-dial-value');
+  dial.append(dialTicks, moEl('div', 'mo-edit-dial-mid'), dialValue);
   const splitBar = moEl('div', 'mo-edit-splitbar mo-hidden');
+  splitBar.appendChild(moEl('span', 'mo-edit-splitknob', { innerHTML: moIcon('columns-2', 14) }));
+  const splitBefore = moEl('span', 'mo-edit-ba mo-edit-ba--before mo-hidden', { textContent: 'Before' });
+  const splitAfter = moEl('span', 'mo-edit-ba mo-edit-ba--after mo-hidden', { textContent: 'After' });
   const brushRing = moEl('div', 'mo-edit-brush mo-hidden');
+  const markBox = moEl('div', 'mo-edit-markbox mo-hidden');
   const chip = moEl('div', 'mo-edit-chip mo-hidden', { role: 'status', 'aria-live': 'polite' });
   const chipLabel = moEl('span', 'mo-edit-chip-label');
   const chipNote = moEl('span', 'mo-edit-chip-note');
@@ -36478,20 +36618,29 @@ function renderImageEditor(container, api) {
   const chipFill = moEl('div', 'mo-edit-progress-fill');
   chipBar.appendChild(chipFill);
   chip.appendChild(chipHead); chip.appendChild(chipBar);
+  // Small notes on the stage: what a hovered preset is, the zoom, what to do now.
+  const topChip = moEl('div', 'mo-edit-stagechip mo-edit-stagechip--top mo-hidden');
+  const zoomChip = moEl('div', 'mo-edit-stagechip mo-edit-stagechip--zoom');
+  // After a save: the note with Show in Folder (no dialog to dismiss).
+  const toast = moEl('div', 'mo-edit-toast mo-hidden', { role: 'status' });
   const notice = moEl('div', 'mo-edit-message mo-hidden');
-  for (const e of [canvas, paint, cropFrame, splitBar, brushRing, chip, notice]) stage.appendChild(e);
+  for (const e of [canvas, clipLayer, paint, cropFrame, dial, splitBar, splitBefore, splitAfter, brushRing, markBox, topChip, zoomChip, chip, toast, notice]) stage.appendChild(e);
   const film = moEl('div', 'mo-edit-film');
   centre.appendChild(stage); centre.appendChild(film);
   const panel = moEl('div', 'mo-edit-panel');
+  const tabsEl = moEl('div', 'mo-edit-tabs', { role: 'tablist', 'aria-label': 'Tools' });
   const histWrap = moEl('div', 'mo-edit-hist');
   const histCanvas = moEl('canvas', 'mo-edit-hist-canvas');
-  const clipLo = moEl('div', 'mo-edit-clip mo-edit-clip--lo', { title: 'Shadows are clipped to black' });
-  const clipHi = moEl('div', 'mo-edit-clip mo-edit-clip--hi', { title: 'Highlights are clipped to white' });
+  const clipLo = moEl('button', 'mo-edit-clip mo-edit-clip--lo', { type: 'button', innerHTML: moIcon('triangle', 10) });
+  const clipHi = moEl('button', 'mo-edit-clip mo-edit-clip--hi', { type: 'button', innerHTML: moIcon('triangle', 10) });
   histWrap.appendChild(histCanvas); histWrap.appendChild(clipLo); histWrap.appendChild(clipHi);
+  const histCap = moEl('div', 'mo-edit-histcap');
+  const histExif = moEl('span', 'mo-edit-histcap-exif');
+  const histClip = moEl('span', 'mo-edit-histcap-clip');
+  histCap.append(histExif, histClip);
   const panelBody = moEl('div', 'mo-edit-panel-body');
-  panel.appendChild(histWrap); panel.appendChild(panelBody);
-  const tools = moEl('div', 'mo-edit-tools');
-  body.appendChild(presetsEl); body.appendChild(centre); body.appendChild(panel); body.appendChild(tools);
+  panel.appendChild(tabsEl); panel.appendChild(histWrap); panel.appendChild(histCap); panel.appendChild(panelBody);
+  body.appendChild(presetsEl); body.appendChild(centre); body.appendChild(panel);
   root.appendChild(topbar); root.appendChild(body);
 
   const say = (text) => { notice.textContent = text || ''; notice.classList.toggle('mo-hidden', !text); };
@@ -36521,64 +36670,170 @@ function renderImageEditor(container, api) {
   const flash = (text) => { try { if (api.statusBar && api.statusBar.setMessage) api.statusBar.setMessage(text, 2500); else api.window.showInformationMessage(text); } catch { /* no status bar */ } };
 
   // ── top bar ──
-  const iconBtn = (icon, label, fn) => { const b = moEl('button', 'mo-edit-icon', { type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 14) }); b.addEventListener('click', fn); return b; };
-  const textBtn = (label, fn, cls) => { const b = moEl('button', cls || 'mo-toolbar-btn', { type: 'button', textContent: label }); b.addEventListener('click', fn); return b; };
-  const group = (...els) => { const g = moEl('div', 'mo-edit-group'); for (const e of els) g.appendChild(e); return g; };
-  const presetsBtn = iconBtn('panel-left', 'Presets', () => { _moEditUi.presets = !_moEditUi.presets; syncChrome(); requestRender(); });
-  const filmBtn = iconBtn('panel-bottom', 'Filmstrip', () => { _moEditUi.filmstrip = !_moEditUi.filmstrip; syncChrome(); requestRender(); });
+  // Presets toggle and the name · Undo, Redo · Compare · Zoom · ⋯ · Save.
+  // Every icon names itself and its key; toggles look like toggles, never like Save.
+  const iconBtn = (icon, label, fn, key) => {
+    const b = api.ui.createIconButton(null, { icon, title: key ? `${label} (${key})` : label, onClick: fn });
+    b.setAttribute('aria-label', label);
+    return b;
+  };
+  const textBtn = (label, fn, kind) => api.ui.createButton(null, { label, kind: kind || 'secondary', size: 'sm', onClick: fn });
+  const presetsBtn = iconBtn('panel-left', 'Presets', () => togglePresets(), 'P');
+  presetsBtn.classList.add('mo-edit-toggle');
   const titleEl = moEl('div', 'mo-edit-title');
   const sizeEl = moEl('div', 'mo-edit-dim');
-  const undoBtn = iconBtn('undo-2', 'Undo', () => undo());
-  const redoBtn = iconBtn('redo-2', 'Redo', () => redo());
-  const resetBtn = textBtn('Reset', () => resetAll());
-  const originalBtn = textBtn('Show Original', () => toggleOriginal());
-  const splitBtn = iconBtn('columns-2', 'Split View', () => toggleSplit());
-  const fitBtn = textBtn('Fit', () => zoomTo('fit'));
-  const fullBtn = textBtn('100%', () => zoomTo(1));
-  const zoomEl = moEl('div', 'mo-edit-dim mo-edit-zoom');
-  const copyBtn = iconBtn('copy', 'Copy Edit', () => copyEdit());
-  const pasteBtn = iconBtn('clipboard-paste', 'Paste Edit', () => pasteEdit());
-  const saveOverBtn = textBtn('Save', () => void saveOver());
-  const saveBtn = textBtn('Save As Copy', () => void saveCopy(), 'mo-practice-start');
+  const editedChip = moEl('span', 'mo-edit-edited mo-hidden', { textContent: 'Edited', title: 'This photo has an edit. It is kept with the photo; the file is unchanged until you save.' });
+  const undoBtn = iconBtn('undo-2', 'Undo', () => undo(), 'Ctrl+Z');
+  const redoBtn = iconBtn('redo-2', 'Redo', () => redo(), 'Ctrl+Shift+Z');
+  // Compare: Hold shows the original while pressed (\ switches it); Split draws a handle to drag.
+  const compareSeg = moEl('div', 'mo-edit-seg', { role: 'group', 'aria-label': 'Compare with the original' });
+  const holdBtn = moEl('button', 'mo-edit-segbtn', { type: 'button', title: 'Hold to see the original (\\ switches it)', 'aria-pressed': 'false' });
+  holdBtn.append(moEl('span', 'mo-edit-ico', { innerHTML: moIcon('eye', 14) }), moEl('span', null, { textContent: 'Hold' }), moEl('kbd', 'mo-edit-kbd', { textContent: '\\' }));
+  const splitBtn = moEl('button', 'mo-edit-segbtn', { type: 'button', title: 'Split: before and after side by side (Shift+\\)', 'aria-pressed': 'false' });
+  splitBtn.append(moEl('span', 'mo-edit-ico', { innerHTML: moIcon('columns-2', 14) }), moEl('span', null, { textContent: 'Split' }));
+  compareSeg.append(holdBtn, splitBtn);
+  let holding = false;
+  holdBtn.addEventListener('pointerdown', (e) => { if (e.button !== 0 || holdBtn.disabled) return; holding = true; state.original = true; state.split = -1; syncCompare(); requestRender(); });
+  const letGo = () => { if (!holding) return; holding = false; state.original = false; syncCompare(); requestRender(); };
+  holdBtn.addEventListener('pointerup', letGo);
+  holdBtn.addEventListener('pointerleave', letGo);
+  holdBtn.addEventListener('pointercancel', letGo);
+  holdBtn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleOriginal(); } });
+  splitBtn.addEventListener('click', () => toggleSplit());
+  // Zoom: one control; the percentage opens Fit, 50%, 100%, 200%.
+  const zoomBtn = moEl('button', 'mo-edit-zoombtn', { type: 'button', title: 'Zoom' });
+  const zoomEl = moEl('span', 'mo-edit-zoomval');
+  zoomBtn.append(zoomEl, moEl('span', 'mo-edit-ico', { innerHTML: moIcon('chevron-down', 12) }));
+  zoomBtn.addEventListener('click', () => {
+    const r = zoomBtn.getBoundingClientRect();
+    const v = state.session && state.session.view;
+    showContextMenu(r.left, r.bottom + 2, [
+      { label: 'Fit', key: 'Ctrl+0', checked: !!(v && v.fit), handler: () => zoomTo('fit') },
+      { label: '50%', checked: !!(v && !v.fit && Math.abs(v.zoom - 0.5) < 1e-3), handler: () => zoomTo(0.5) },
+      { label: '100%', key: 'Ctrl+1', checked: !!(v && !v.fit && Math.abs(v.zoom - 1) < 1e-3), handler: () => zoomTo(1) },
+      { label: '200%', checked: !!(v && !v.fit && Math.abs(v.zoom - 2) < 1e-3), handler: () => zoomTo(2) },
+    ]);
+  });
+  // ⋯: what is used less.
+  const moreBtn = iconBtn('ellipsis', 'More', () => {
+    const r = moreBtn.getBoundingClientRect();
+    const ready = !!state.recipe && !!state.bitmap;
+    const items = [];
+    if (root.classList.contains('mo-edit--narrow')) {
+      items.push(
+        { label: 'Show the Original', key: '\\', checked: state.original, disabled: holdBtn.disabled, handler: () => toggleOriginal() },
+        { label: 'Split Before and After', key: 'Shift+\\', checked: state.split >= 0, disabled: splitBtn.disabled, handler: () => toggleSplit() },
+        { label: 'Zoom to Fit', key: 'Ctrl+0', disabled: zoomBtn.disabled, handler: () => zoomTo('fit') },
+        { label: 'Zoom to 100%', key: 'Ctrl+1', disabled: zoomBtn.disabled, handler: () => zoomTo(1) },
+        { separator: true },
+      );
+    }
+    items.push(
+      { label: 'Copy Edit', icon: 'copy', key: 'Ctrl+Shift+C', disabled: !ready || moEditLookIsRest(state.recipe), handler: () => copyEdit() },
+      { label: 'Paste Edit', icon: 'clipboard-paste', key: 'Ctrl+Shift+V', disabled: !ready || !_moEditClipboard, handler: () => pasteEdit() },
+      { label: 'Save Edit as Preset…', icon: 'plus', disabled: !ready || moEditLookIsRest(state.recipe), handler: () => void savePreset() },
+      { separator: true },
+      { label: 'Show Presets', key: 'P', checked: presetsShown(), handler: () => togglePresets() },
+      { label: 'Show Filmstrip', key: 'F', checked: filmShown(), handler: () => toggleFilm() },
+      { separator: true },
+      { label: 'Reset All Changes…', icon: 'rotate-ccw', danger: true, disabled: !ready || (moEditIsNeutral(state.recipe) && !(state.recipe && state.recipe.enhance.scale)), handler: () => void confirmResetAll() },
+    );
+    showContextMenu(r.left, r.bottom + 2, items);
+  });
+  // Save: Save As Copy is the safe main action; Save Over Original… is in its menu, in red, and still asks.
+  const saveSplit = moEl('span', 'mo-edit-split');
+  const saveBtn = api.ui.createButton(saveSplit, { label: 'Save As Copy', kind: 'primary', size: 'sm', title: 'Write the edited picture beside the original (Ctrl+S)', onClick: () => void saveCopy() });
+  const saveMenuBtn = api.ui.createIconButton(saveSplit, { icon: 'chevron-down', size: 'sm', title: 'Save options' });
+  saveMenuBtn.classList.add('mo-edit-split-menu');
+  saveMenuBtn.addEventListener('click', () => {
+    const r = saveMenuBtn.getBoundingClientRect();
+    const writable = !!moEditSaveOverExt(state.name);
+    showContextMenu(r.right - 260, r.bottom + 2, [
+      { label: 'Save As Copy', icon: 'copy', key: 'Ctrl+S', disabled: saveBtn.disabled, handler: () => void saveCopy() },
+      { label: 'Save Over Original…', icon: 'save', danger: true, disabled: saveBtn.disabled || !writable, title: writable ? 'Replace the original file with the edited picture' : 'This kind of file can only be saved as a copy', handler: () => void saveOver() },
+      { separator: true },
+      { label: 'Your edits are kept with the photo either way; nothing is lost if you close the tab.', disabled: true },
+    ]);
+  });
+  const sep = () => moEl('span', 'mo-edit-sep');
   const left = moEl('div', 'mo-edit-topbar-left');
-  left.appendChild(presetsBtn); left.appendChild(titleEl); left.appendChild(sizeEl);
+  left.append(presetsBtn, titleEl, sizeEl, editedChip);
   const right = moEl('div', 'mo-edit-topbar-right');
-  for (const g of [group(undoBtn, redoBtn, resetBtn), group(originalBtn, splitBtn), group(zoomEl, fitBtn, fullBtn), group(copyBtn, pasteBtn), group(filmBtn), group(saveOverBtn, saveBtn)]) right.appendChild(g);
+  right.append(undoBtn, redoBtn, sep(), compareSeg, zoomBtn, moreBtn, saveSplit);
   topbar.appendChild(left); topbar.appendChild(right);
 
+  // The panel's tool tabs: labelled, with a dot on a tool that holds changes.
   const toolBtns = {};
   for (const [id, icon, label] of MO_EDIT_TOOLS) {
-    const b = moEl('button', 'mo-edit-tool', { type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 16) });
+    const b = moEl('button', 'mo-edit-tab', { type: 'button', role: 'tab', title: label, 'aria-label': label });
+    b.append(moEl('span', 'mo-edit-ico', { innerHTML: moIcon(icon, 16) }), moEl('span', 'mo-edit-tab-label', { textContent: MO_EDIT_TAB_LABEL[id] || label }), moEl('span', 'mo-edit-tab-dot'));
     b.addEventListener('click', () => setTool(id));
     toolBtns[id] = b;
-    tools.appendChild(b);
+    tabsEl.appendChild(b);
   }
 
-  function syncChrome() {
-    presetsEl.classList.toggle('mo-hidden', !_moEditUi.presets);
-    film.classList.toggle('mo-hidden', !_moEditUi.filmstrip);
-    presetsBtn.classList.toggle('is-on', _moEditUi.presets);
-    filmBtn.classList.toggle('is-on', _moEditUi.filmstrip);
+  // What shows: the user's choice, folded away by a narrow tab (the toggle still brings it back, over the stage).
+  let compact = false;
+  let presetsOver = false;
+  const presetsShown = () => (compact ? presetsOver : _moEditUi.presets);
+  const filmShown = () => _moEditUi.filmstrip && !compact;
+  function togglePresets() {
+    if (compact) presetsOver = !presetsOver; else _moEditUi.presets = !_moEditUi.presets;
+    syncChrome(); requestRender();
   }
+  function toggleFilm() {
+    if (compact) { _moEditUi.filmstrip = true; } else _moEditUi.filmstrip = !_moEditUi.filmstrip;
+    syncChrome(); requestRender();
+  }
+  function syncChrome() {
+    presetsEl.classList.toggle('mo-hidden', !presetsShown());
+    presetsEl.classList.toggle('mo-edit-presets--over', compact && presetsOver);
+    film.classList.toggle('mo-hidden', !filmShown());
+    presetsBtn.classList.toggle('mo-active', presetsShown());
+    presetsBtn.setAttribute('aria-pressed', presetsShown() ? 'true' : 'false');
+  }
+  // Below about 1100px the presets close and the filmstrip hides; below about
+  // 900px the panel's tabs become icons and Compare and Zoom move into ⋯.
+  const widthObs = ('ResizeObserver' in window) ? new ResizeObserver(() => {
+    const w = root.clientWidth;
+    if (!w) return;
+    const wasCompact = compact;
+    compact = w < 1100;
+    if (!compact) presetsOver = false;
+    root.classList.toggle('mo-edit--compact', compact);
+    root.classList.toggle('mo-edit--narrow', w < 900);
+    if (wasCompact !== compact) { syncChrome(); requestRender(); }
+  }) : null;
+  if (widthObs) widthObs.observe(root);
+  disposers.push(() => { if (widthObs) widthObs.disconnect(); });
+
   function syncButtons() {
     const ready = !!state.recipe && !!state.bitmap;
     const neutral = !state.recipe || moEditIsNeutral(state.recipe);
     const session = state.session;
     undoBtn.disabled = !ready || !session || session.histIdx <= 0;
     redoBtn.disabled = !ready || !session || session.histIdx >= session.history.length - 1;
-    resetBtn.disabled = !ready || (neutral && !(state.recipe && state.recipe.enhance.scale));
-    originalBtn.disabled = !ready || neutral;
+    holdBtn.disabled = !ready || neutral;
     splitBtn.disabled = !ready || neutral || state.tool === 'crop';
-    copyBtn.disabled = !ready || moEditLookIsRest(state.recipe);
-    pasteBtn.disabled = !ready || !_moEditClipboard;
     saveBtn.disabled = !ready || state.saving || !moEditHasWork(state.recipe);
-    saveBtn.title = saveBtn.disabled && ready && !state.saving ? 'Nothing has been changed yet' : 'Write the edited picture beside the original';
-    const writable = !!moEditSaveOverExt(state.name);
-    saveOverBtn.disabled = saveBtn.disabled || !writable;
-    saveOverBtn.title = ready && !writable ? 'This kind of file can only be saved as a copy'
-      : saveOverBtn.disabled && ready && !state.saving ? 'Nothing has been changed yet' : 'Replace the original file with the edited picture';
-    fitBtn.disabled = !ready || state.tool === 'crop'; fullBtn.disabled = fitBtn.disabled;
-    for (const id of Object.keys(toolBtns)) { toolBtns[id].classList.toggle('is-on', id === state.tool); toolBtns[id].disabled = !ready; }
+    saveBtn.title = saveBtn.disabled && ready && !state.saving ? 'Nothing has been changed yet' : 'Write the edited picture beside the original (Ctrl+S)';
+    saveMenuBtn.disabled = !ready || state.saving;
+    zoomBtn.disabled = !ready || state.tool === 'crop';
+    editedChip.classList.toggle('mo-hidden', !ready || !moEditHasWork(state.recipe));
+    const r = state.recipe;
+    const used = {
+      edit: !!r && !moEditLookIsRest(r),
+      crop: !!r && !moEditGeometryIsRest(r),
+      remove: !!r && r.removals.length > 0,
+      enhance: !!r && r.enhance.scale > 0,
+    };
+    for (const id of Object.keys(toolBtns)) {
+      const b = toolBtns[id];
+      b.classList.toggle('is-on', id === state.tool);
+      b.setAttribute('aria-selected', id === state.tool ? 'true' : 'false');
+      b.classList.toggle('is-used', !!used[id]);
+      b.disabled = !ready;
+    }
   }
 
   // ── the recipe, undo, storing the edit ──
@@ -36606,7 +36861,9 @@ function renderImageEditor(container, api) {
     syncButtons();
     syncCompare();
     renderPanel();
-    void syncWork().then(() => requestRender());
+    syncPresetSelection();
+    syncStageChip();
+    void syncWork().then(() => { requestRender(); if (thumbKeyNow() !== thumbKey) fillPresets(); });
   }
   function restore(idx) {
     state.session.histIdx = idx;
@@ -36621,15 +36878,23 @@ function renderImageEditor(container, api) {
     afterChange(true);
   }
   function syncCompare() {
-    originalBtn.classList.toggle('is-on', state.original);
-    originalBtn.setAttribute('aria-pressed', state.original ? 'true' : 'false');
+    holdBtn.classList.toggle('is-on', state.original);
+    holdBtn.setAttribute('aria-pressed', state.original ? 'true' : 'false');
     splitBtn.classList.toggle('is-on', state.split >= 0);
     splitBtn.setAttribute('aria-pressed', state.split >= 0 ? 'true' : 'false');
-    splitBar.classList.toggle('mo-hidden', !(state.split >= 0) || state.tool === 'crop');
+    const showSplit = state.split >= 0 && state.tool !== 'crop';
+    splitBar.classList.toggle('mo-hidden', !showSplit);
+    splitBefore.classList.toggle('mo-hidden', !showSplit);
+    splitAfter.classList.toggle('mo-hidden', !showSplit);
   }
-  function toggleOriginal() { if (!state.recipe || originalBtn.disabled) return; state.original = !state.original; if (state.original) state.split = -1; syncCompare(); requestRender(); }
+  function toggleOriginal() { if (!state.recipe || holdBtn.disabled) return; state.original = !state.original; if (state.original) state.split = -1; syncCompare(); requestRender(); }
   function toggleSplit() { if (!state.recipe || splitBtn.disabled) return; state.split = state.split >= 0 ? -1 : 0.5; if (state.split >= 0) state.original = false; syncCompare(); requestRender(); }
-  function copyEdit() { if (!state.recipe || copyBtn.disabled) return; _moEditClipboard = moEditPickLook(state.recipe); syncButtons(); flash('Edit copied. Paste it onto another photo here or from the library.'); }
+  async function confirmResetAll() {
+    if (!state.recipe) return;
+    const ok = await api.window.showConfirmModal({ message: 'Reset all changes to this photo?', detail: 'Every slider, the crop, removals and Enhance go back to rest. Undo brings them back.', confirmLabel: 'Reset All', cancelLabel: 'Cancel', danger: true });
+    if (ok && !disposed && state.recipe) resetAll();
+  }
+  function copyEdit() { if (!state.recipe || moEditLookIsRest(state.recipe)) return; _moEditClipboard = moEditPickLook(state.recipe); syncButtons(); flash('Edit copied. Paste it onto another photo here or from the library.'); }
   function pasteEdit() { if (!state.recipe || !_moEditClipboard) return; state.recipe = moEditApplyLook(state.recipe, _moEditClipboard); afterChange(true); }
 
   // The picture the recipe is drawn from follows the recipe's removals.
@@ -36677,7 +36942,12 @@ function renderImageEditor(container, api) {
       const f = state.cropView.frame;
       cropFrame.style.left = (f.x / cs.dpr) + 'px'; cropFrame.style.top = (f.y / cs.dpr) + 'px';
       cropFrame.style.width = (f.w / cs.dpr) + 'px'; cropFrame.style.height = (f.h / cs.dpr) + 'px';
+      cropSize.textContent = `${geo.outW} \u00d7 ${geo.outH}`;
       zoomEl.textContent = Math.round(state.cropView.zoom * 100) + '%';
+      // The dial's ticks move with the angle; its value is the angle.
+      const a = state.recipe.angle || 0;
+      dialTicks.style.backgroundPositionX = `calc(50% + ${(-a * 10).toFixed(1)}px)`;
+      dialValue.textContent = (a > 0 ? '+' : a < 0 ? '\u2212' : '') + Math.abs(a).toFixed(1) + '°';
     } else {
       p.view = viewMap(cs, geo);
       p.split = state.split >= 0 ? state.split : -1;
@@ -36685,13 +36955,83 @@ function renderImageEditor(container, api) {
       const v = state.session.view;
       stage.classList.toggle('is-pannable', geo.outW * v.zoom > cs.w + 1 || geo.outH * v.zoom > cs.h + 1);
       splitBar.style.left = (state.split * stage.clientWidth) + 'px';
+      splitBefore.style.left = '12px'; splitAfter.style.right = '12px';
     }
+    zoomChip.textContent = zoomEl.textContent;
     cropFrame.classList.toggle('mo-hidden', !crop);
+    dial.classList.toggle('mo-hidden', !crop);
     engine.draw(p, cs.w, cs.h);
-    sizeEl.textContent = `${geo.outW} × ${geo.outH}`;
+    const mb = state.bytes ? state.bytes.byteLength / 1048576 : 0;
+    sizeEl.textContent = `${geo.outW} \u00d7 ${geo.outH}` + (mb ? ` \u00b7 ${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB` : '');
+    placeMarkBox(cs, geo);
+    if (state.showClip && !crop) scheduleClipLayer(); else clipLayer.classList.add('mo-hidden');
     if (paint.width !== cs.w || paint.height !== cs.h) { paint.width = cs.w; paint.height = cs.h; paint.style.width = canvas.style.width; paint.style.height = canvas.style.height; }
     if (!histTimer) histTimer = setTimeout(() => { histTimer = null; updateHistogram(); }, 120);
   }
+
+  // The removal picked in the Remove list, outlined on the photo.
+  function placeMarkBox(cs, geo) {
+    const m = state.tool === 'remove' && state.recipe && markSel >= 0 ? state.recipe.removals[markSel] : null;
+    if (!m || !state.bitmap) { markBox.classList.add('mo-hidden'); return; }
+    // source pixels → output (inverse of the source map) → the canvas (inverse of the view map)
+    const inv = moAffineInvert(geo.m);
+    const vm = moAffineInvert(moEditViewMap(geo.outW, geo.outH, cs.w, cs.h, state.session.view.zoom, state.session.view.cx, state.session.view.cy));
+    const pts = [[m.x, m.y], [m.x + m.w, m.y], [m.x, m.y + m.h], [m.x + m.w, m.y + m.h]].map(([x, y]) => {
+      const o = moAffineApply(inv, x / state.bitmap.width, y / state.bitmap.height);
+      const c = moAffineApply(vm, o[0], o[1]);
+      return [c[0] * cs.w / cs.dpr, c[1] * cs.h / cs.dpr];
+    });
+    const xs = pts.map((q) => q[0]); const ys = pts.map((q) => q[1]);
+    markBox.style.left = Math.min(...xs) + 'px'; markBox.style.top = Math.min(...ys) + 'px';
+    markBox.style.width = (Math.max(...xs) - Math.min(...xs)) + 'px'; markBox.style.height = (Math.max(...ys) - Math.min(...ys)) + 'px';
+    markBox.classList.remove('mo-hidden');
+  }
+  // Clipped pixels on the photo: highlights in red, shadows in blue, while a histogram triangle is on.
+  let clipTimer = null;
+  function scheduleClipLayer() { clearTimeout(clipTimer); clipTimer = setTimeout(drawClipLayer, 140); }
+  disposers.push(() => clearTimeout(clipTimer));
+  function drawClipLayer() {
+    if (disposed || !engine || !state.recipe || !state.bitmap || !state.showClip || state.tool === 'crop') { clipLayer.classList.add('mo-hidden'); return; }
+    const cs = canvasSize(); const geo = geometry();
+    const k = Math.min(1, 1024 / Math.max(geo.outW, geo.outH));
+    const w = Math.max(1, Math.round(geo.outW * k)); const h = Math.max(1, Math.round(geo.outH * k));
+    let px;
+    try { px = engine.sample(Object.assign(lookParams(), { m: geo.m, outSize: [geo.outW, geo.outH], opaque: false }), w, h); } catch { return; }
+    const img = new ImageData(w, h);
+    const hi = state.showClip === 'hi' || state.showClip === 'both'; const lo = state.showClip === 'lo' || state.showClip === 'both';
+    const css = getComputedStyle(root);
+    const rgbOf = (name) => { const m = /^#?([0-9a-f]{6})$/i.exec(css.getPropertyValue(name).trim()); const n = m ? parseInt(m[1], 16) : 0x808080; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+    const cHi = rgbOf('--px-edit-clip-hi'); const cLo = rgbOf('--px-edit-clip-lo');
+    // The same rule as the histogram's count: brightness at pure white or pure black.
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] < 128) continue;
+      const l = Math.round(0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]);
+      const c = hi && l >= 255 ? cHi : lo && l <= 0 ? cLo : null;
+      if (c) { img.data[i] = c[0]; img.data[i + 1] = c[1]; img.data[i + 2] = c[2]; img.data[i + 3] = 220; }
+    }
+    const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
+    tmp.getContext('2d').putImageData(img, 0, 0);
+    if (clipLayer.width !== cs.w || clipLayer.height !== cs.h) { clipLayer.width = cs.w; clipLayer.height = cs.h; clipLayer.style.width = stage.clientWidth + 'px'; clipLayer.style.height = stage.clientHeight + 'px'; }
+    const ctx = clipLayer.getContext('2d');
+    ctx.clearRect(0, 0, cs.w, cs.h);
+    const v = state.session.view;
+    const vm = moAffineInvert(moEditViewMap(geo.outW, geo.outH, cs.w, cs.h, v.zoom, v.cx, v.cy));
+    const p0 = moAffineApply(vm, 0, 0); const p1 = moAffineApply(vm, 1, 1);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(tmp, p0[0] * cs.w, p0[1] * cs.h, (p1[0] - p0[0]) * cs.w, (p1[1] - p0[1]) * cs.h);
+    clipLayer.classList.remove('mo-hidden');
+  }
+  const toggleClip = (which) => {
+    const cur = state.showClip || '';
+    const has = (x) => cur === x || cur === 'both';
+    const lo = which === 'lo' ? !has('lo') : has('lo'); const hi = which === 'hi' ? !has('hi') : has('hi');
+    state.showClip = lo && hi ? 'both' : lo ? 'lo' : hi ? 'hi' : '';
+    clipLo.classList.toggle('is-showing', lo); clipHi.classList.toggle('is-showing', hi);
+    clipLo.setAttribute('aria-pressed', lo ? 'true' : 'false'); clipHi.setAttribute('aria-pressed', hi ? 'true' : 'false');
+    requestRender();
+  };
+  clipLo.addEventListener('click', () => toggleClip('lo'));
+  clipHi.addEventListener('click', () => toggleClip('hi'));
 
   // ── histogram ──
   function updateHistogram() {
@@ -36725,8 +37065,17 @@ function renderImageEditor(container, api) {
     ctx.globalCompositeOperation = 'lighter';
     area(hist.r, 'rgba(230, 60, 60, 0.72)'); area(hist.g, 'rgba(60, 200, 80, 0.72)'); area(hist.b, 'rgba(70, 110, 240, 0.72)');
     ctx.globalCompositeOperation = 'source-over';
-    clipLo.classList.toggle('is-on', hist.l[0] / hist.n > 0.005);
-    clipHi.classList.toggle('is-on', hist.l[255] / hist.n > 0.005);
+    // How much clips, said in the line under it, and lit on the triangles.
+    const loPct = (hist.l[0] / hist.n) * 100; const hiPct = (hist.l[255] / hist.n) * 100;
+    clipLo.classList.toggle('is-on', loPct > 0.5);
+    clipHi.classList.toggle('is-on', hiPct > 0.5);
+    clipLo.title = `Shadows clipped: ${loPct > 0.05 ? loPct.toFixed(1) + '%' : 'none'}. Click to show them on the photo.`;
+    clipHi.title = `Highlights clipped: ${hiPct > 0.05 ? hiPct.toFixed(1) + '%' : 'none'}. Click to show them on the photo.`;
+    const bits = [];
+    if (loPct > 0.05) bits.push(`Shadows ${loPct.toFixed(1)}%`);
+    if (hiPct > 0.05) bits.push(`Highlights ${hiPct.toFixed(1)}%`);
+    histClip.textContent = bits.length ? `${bits.join(' \u00b7 ')} clipped` : 'No clipping';
+    histClip.classList.toggle('is-warn', loPct > 0.5 || hiPct > 0.5);
   }
 
   // ── zoom and pan ──
@@ -36783,8 +37132,9 @@ function renderImageEditor(container, api) {
       drag = { kind: 'crop', handle, x: e.clientX, y: e.clientY, zoom: cv.zoom, box: moEditCropBox(state.recipe.crop, cv.viewW, cv.viewH), vw: cv.viewW, vh: cv.viewH };
     }
     else if (state.pickWb && e.button === 0) { pickWhiteBalance(p); return; }
-    else if (state.tool === 'remove' && e.button === 0 && !e.altKey && state.removeState === 'ready') {
-      drag = { kind: 'stroke', points: [sourceAt(p.x, p.y)], screen: [[p.x, p.y]], radius: (_moEditUi.brush / 2) * (window.devicePixelRatio || 1) / state.session.view.zoom };
+    else if (state.tool === 'remove' && e.button === 0 && state.removeState === 'ready') {
+      // Alt brushes back: what was removed under the brush comes back.
+      drag = { kind: e.altKey ? 'unstroke' : 'stroke', points: [sourceAt(p.x, p.y)], screen: [[p.x, p.y]], radius: (_moEditUi.brush / 2) * (window.devicePixelRatio || 1) / state.session.view.zoom };
       paintStroke(drag);
     }
     else if ((e.button === 0 || e.button === 1) && stage.classList.contains('is-pannable')) {
@@ -36816,7 +37166,7 @@ function renderImageEditor(container, api) {
       const ratio = moEditAspectRatio(state.recipe, drag.vw, drag.vh);
       state.recipe.crop = moEditCropFromBox(moEditCropDrag(drag.box, drag.handle, dx, dy, ratio, state.recipe.angle, drag.vw, drag.vh), drag.vw, drag.vh);
       requestRender();
-    } else if (drag.kind === 'stroke') {
+    } else if (drag.kind === 'stroke' || drag.kind === 'unstroke') {
       drag.points.push(sourceAt(p.x, p.y)); drag.screen.push([p.x, p.y]);
       paintStroke(drag);
     }
@@ -36827,23 +37177,47 @@ function renderImageEditor(container, api) {
     if (!d) return;
     if (d.kind === 'crop') afterChange(true);
     else if (d.kind === 'stroke') void removeStroke(d);
+    else if (d.kind === 'unstroke') unremoveStroke(d);
   };
   stage.addEventListener('pointerup', endDrag);
   stage.addEventListener('pointercancel', endDrag);
   stage.addEventListener('pointerleave', () => brushRing.classList.add('mo-hidden'));
   const resizeObs = ('ResizeObserver' in window) ? new ResizeObserver(() => requestRender()) : null;
   if (resizeObs) resizeObs.observe(stage);
+  root.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (state.pickWb) { e.preventDefault(); togglePickWb(); }
+    else if (state.preview) { e.preventDefault(); closePreview(); }
+  });
 
   // ── the panel's building blocks ──
   const panelDisposers = [];
-  const openSection = (parent, id, title, extra) => {
+  /**
+   * A section: a header with its fold, title, a dot when it holds changes,
+   * its own actions, an eye (see without it) and a reset; then its body.
+   * o: { dot, acts: [elements], eye: { off, disabled, title, toggle }, reset: { disabled, title, run } }
+   */
+  const openSection = (parent, id, title, o = {}) => {
     const section = moEl('div', 'mo-edit-section');
     const head = moEl('div', 'mo-edit-section-head');
     const fold = moEl('button', 'mo-edit-section-fold', { type: 'button' });
     fold.appendChild(moEl('span', 'mo-edit-chevron', { innerHTML: moIcon('chevron-down', 12) }));
     fold.appendChild(moEl('span', 'mo-edit-section-title', { textContent: title }));
+    if (o.dot) fold.appendChild(moEl('span', 'mo-edit-section-dot', { title: 'Changed' }));
     head.appendChild(fold);
-    if (extra) for (const e of extra) head.appendChild(e);
+    const acts = moEl('div', 'mo-edit-section-acts');
+    for (const e of o.acts || []) acts.appendChild(e);
+    if (o.eye) {
+      const eye = miniBtn(o.eye.off ? 'eye-off' : 'eye', o.eye.title || (o.eye.off ? `Show ${title}` : `See Without ${title}`), o.eye.toggle, o.eye.off);
+      eye.disabled = !!o.eye.disabled;
+      acts.appendChild(eye);
+    }
+    if (o.reset) {
+      const reset = miniBtn('rotate-ccw', o.reset.title || `Reset ${title}`, o.reset.run);
+      reset.disabled = !!o.reset.disabled;
+      acts.appendChild(reset);
+    }
+    head.appendChild(acts);
     const bodyEl = moEl('div', 'mo-edit-section-body');
     const set = (shut) => { section.classList.toggle('is-shut', shut); fold.setAttribute('aria-expanded', shut ? 'false' : 'true'); };
     set(_moEditCollapsed.has(id));
@@ -36853,20 +37227,28 @@ function renderImageEditor(container, api) {
     return bodyEl;
   };
   /**
-   * One slider row. o: { id, label, aria, min, max, step, value, rest, show(v),
-   * parse(text), tint (a class for a coloured track), dim, onInput(v), onChange(v) }.
-   * The id finds the slider again after the panel is rebuilt, so it keeps the focus.
-   * Double-clicking the label or the track returns it to rest; the number can be typed.
+   * One slider on one row: name, track, value. o: { id, label, aria, min, max,
+   * step, value, rest, show(v), parse(text), tint, dim, onInput(v), onChange(v) }.
+   * Off rest, the name brightens, the value turns accent and a fill runs from
+   * rest to the knob. Double-click the name or the track for rest; click the
+   * value to type one. The id finds the slider again after the panel is rebuilt.
    */
   const sliderRow = (o) => {
     const row = moEl('div', 'mo-edit-slider' + (o.dim ? ' is-dim' : ''));
-    const head = moEl('div', 'mo-edit-slider-head');
-    const name = moEl('span', 'mo-edit-slider-name', { textContent: o.label, title: 'Double-click to reset' });
+    const name = moEl('span', 'mo-edit-slider-name', { textContent: o.label, title: `${o.label}: double-click to reset` });
     const val = moEl('button', 'mo-edit-value', { type: 'button', title: 'Click to type a value' });
-    head.appendChild(name); head.appendChild(val);
     const input = moEl('input', 'mo-edit-range' + (o.tint ? ` mo-edit-range--${o.tint}` : ''), { type: 'range', min: String(o.min), max: String(o.max), step: String(o.step || 0.01), 'aria-label': o.aria || o.label, 'data-slider': o.id || o.label });
     input.value = String(o.value);
-    const show = () => { val.textContent = o.show(Number(input.value)); };
+    const span = Math.max(1e-9, o.max - o.min);
+    const show = () => {
+      const v = Number(input.value);
+      val.textContent = o.show(v);
+      const changed = Math.abs(v - o.rest) > 1e-6;
+      row.classList.toggle('is-changed', changed);
+      const a = ((Math.min(v, o.rest) - o.min) / span) * 100; const b = ((Math.max(v, o.rest) - o.min) / span) * 100;
+      input.style.setProperty('--lo', a.toFixed(2) + '%');
+      input.style.setProperty('--hi', (changed ? b : a).toFixed(2) + '%');
+    };
     show();
     input.addEventListener('input', () => { show(); o.onInput(Number(input.value)); });
     input.addEventListener('change', () => { show(); o.onChange(Number(input.value)); });
@@ -36876,19 +37258,19 @@ function renderImageEditor(container, api) {
     val.addEventListener('click', () => {
       const box = moEl('input', 'mo-edit-value-input', { type: 'text', 'aria-label': o.label });
       box.value = val.textContent;
-      head.replaceChild(box, val);
+      row.replaceChild(box, val);
       box.focus(); box.select();
       let done = false;
       const finish = (keep) => {
         if (done) return; done = true;
         const v = keep ? o.parse(box.value) : null;
-        if (box.parentNode === head) head.replaceChild(val, box);
+        if (box.parentNode === row) row.replaceChild(val, box);
         if (v !== null && v !== Number(input.value)) { input.value = String(v); show(); o.onChange(Number(input.value)); }
       };
       box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } e.stopPropagation(); });
       box.addEventListener('blur', () => finish(true));
     });
-    row.appendChild(head); row.appendChild(input);
+    row.append(name, input, val);
     return { row, input, show };
   };
   const pct = (v) => { const p = Math.round(v * 100); return (p > 0 ? '+' : '') + p; };
@@ -36901,10 +37283,34 @@ function renderImageEditor(container, api) {
     onInput: (v) => { state.recipe[key] = v; requestRender(); },
     onChange: (v) => { state.recipe[key] = v; afterChange(true); },
   }).row;
-  const smallBtn = (icon, label, fn, on) => { const b = moEl('button', 'mo-edit-mini' + (on ? ' is-on' : ''), { type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 12) }); b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); return b; };
+  function miniBtn(icon, label, fn, on) {
+    const b = moEl('button', 'mo-edit-mini' + (on ? ' is-on' : ''), { type: 'button', title: label, 'aria-label': label, innerHTML: moIcon(icon, 14) });
+    if (on !== undefined) b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+    return b;
+  }
   const hint = (text) => moEl('div', 'mo-edit-hint', { textContent: text });
   const row = (...els) => { const r = moEl('div', 'mo-edit-row'); for (const e of els) r.appendChild(e); return r; };
-  const dropdown = (items, selected, label, onChange) => { const d = moDropdown({ items, selected, ariaLabel: label }); d.onChange = onChange; panelDisposers.push(() => d.dispose()); return d.el; };
+  // A row of choices drawn as chips. items: [{ value, label, icon?, shape?: [w, h], title? }].
+  const chips = (items, selected, onPick) => {
+    const box = moEl('div', 'mo-edit-chips', { role: 'radiogroup' });
+    for (const it of items) {
+      const c = moEl('button', 'mo-edit-chipbtn' + (String(it.value) === String(selected) ? ' is-on' : ''), { type: 'button', role: 'radio', 'aria-checked': String(it.value) === String(selected) ? 'true' : 'false', title: it.title || it.label });
+      if (it.shape) {
+        const sh = moEl('i', 'mo-edit-shape' + (it.shape[0] === 0 ? ' mo-edit-shape--free' : ''));
+        const k = 13 / Math.max(it.shape[0] || 1, it.shape[1] || 1);
+        sh.style.width = Math.max(5, Math.round((it.shape[0] || 1) * k)) + 'px';
+        sh.style.height = Math.max(5, Math.round((it.shape[1] || 1) * k)) + 'px';
+        c.appendChild(sh);
+      }
+      if (it.icon) c.appendChild(moEl('span', 'mo-edit-ico', { innerHTML: moIcon(it.icon, 14) }));
+      if (it.label) c.appendChild(moEl('span', null, { textContent: it.label }));
+      c.addEventListener('click', () => onPick(it.value));
+      box.appendChild(c);
+    }
+    return box;
+  };
+  const slidersRest = (list) => list.every(([key, , , , rest, , parent]) => parent || Math.abs((Number(state.recipe[key]) || 0) - rest) <= 1e-6);
 
   // The panel is rebuilt from the recipe; where it was scrolled to and the slider that had the focus are kept.
   function renderPanel() {
@@ -36913,6 +37319,7 @@ function renderImageEditor(container, api) {
     for (const d of panelDisposers.splice(0)) { try { d(); } catch { /* gone */ } }
     curveCanvas = null;
     panelBody.innerHTML = '';
+    // The histogram belongs to the look: shown with Edit, Crop and Enhance.
     if (!state.recipe) return;
     if (state.tool === 'crop') panelCrop();
     else if (state.tool === 'remove') panelRemove();
@@ -36925,39 +37332,60 @@ function renderImageEditor(container, api) {
   // ── Edit ──
   function panelEdit() {
     const r = state.recipe;
-    const autoBtn = textBtn('Auto', () => autoTone());
-    const bwBtn = textBtn('Black And White', () => { r.bw = !r.bw; afterChange(true); });
-    bwBtn.classList.toggle('is-on', r.bw); bwBtn.setAttribute('aria-pressed', r.bw ? 'true' : 'false');
-    panelBody.appendChild(row(autoBtn, bwBtn));
-    for (const [id, title, sliders] of MO_EDIT_SECTIONS) {
-      const off = r.off.includes(id);
+    const isOff = (id) => r.off.includes(id);
+    const eye = (id, title, rest) => ({ off: isOff(id), disabled: rest && !isOff(id), title, toggle: () => { r.off = isOff(id) ? r.off.filter((x) => x !== id) : r.off.concat(id); afterChange(true); } });
+    // Light: Auto sits in its header.
+    const autoBtn = api.ui.createButton(null, { label: 'Auto', icon: 'sparkles', kind: 'ghost', size: 'sm', title: 'Auto: set the light from the picture (Ctrl+U)', onClick: () => autoTone() });
+    autoBtn.classList.add('mo-edit-headbtn');
+    const lightRest = slidersRest(MO_EDIT_LIGHT);
+    const light = openSection(panelBody, 'light', 'Light', { dot: !lightRest, acts: [autoBtn],
+      eye: eye('light', isOff('light') ? 'Show Light' : 'See Without Light (and its tone curve)', lightRest && moEditCurveIsRest(r.curve)),
+      reset: { disabled: lightRest, run: () => resetSection('light') } });
+    for (const s of MO_EDIT_LIGHT) light.appendChild(recipeSlider(s));
+    // Tone Curve
+    const curveRest = moEditCurveIsRest(r.curve);
+    curveBlock(openSection(panelBody, 'curve', 'Tone Curve', { dot: !curveRest, eye: eye('curve', isOff('curve') ? 'Show Tone Curve' : 'See Without Tone Curve', curveRest),
+      reset: { disabled: curveRest, run: () => { r.curve = moEditDefaultCurve(); r.off = r.off.filter((x) => x !== 'curve'); afterChange(true); } } }));
+    // Colour: the white balance picker and Black And White sit in its header.
+    const pick = miniBtn('pipette', state.pickWb ? 'Stop Picking White Balance (Esc)' : 'Pick White Balance (W)', () => togglePickWb(), state.pickWb);
+    const bw = miniBtn('contrast', r.bw ? 'Back to Colour (V)' : 'Black And White (V)', () => { r.bw = !r.bw; afterChange(true); }, r.bw);
+    const colourRest = slidersRest(MO_EDIT_COLOUR) && !r.bw;
+    const colour = openSection(panelBody, 'colour', 'Colour', { dot: !colourRest, acts: [pick, bw],
+      eye: eye('colour', isOff('colour') ? 'Show Colour' : 'See Without Colour (and its mixer and grading)', colourRest && moEditMixerIsRest(r.mixer) && moEditGradingIsRest(r.grading)),
+      reset: { disabled: colourRest, run: () => resetSection('colour') } });
+    if (state.pickWb) colour.appendChild(hint('Click something in the photo that should be a neutral grey or white.'));
+    if (r.bw) colour.appendChild(hint('Black and white: the colour sliders shape the grey tones.'));
+    for (const s of MO_EDIT_COLOUR) colour.appendChild(recipeSlider(s));
+    const mixRest = moEditMixerIsRest(r.mixer);
+    mixerBlock(openSection(panelBody, 'mixer', 'Colour Mixer', { dot: !mixRest, eye: eye('mixer', isOff('mixer') ? 'Show Colour Mixer' : 'See Without Colour Mixer', mixRest),
+      reset: { disabled: mixRest, run: () => { r.mixer = moEditDefaultMixer(); r.off = r.off.filter((x) => x !== 'mixer'); afterChange(true); } } }));
+    const gradeRest = moEditGradingIsRest(r.grading);
+    gradingBlock(openSection(panelBody, 'grading', 'Colour Grading', { dot: !gradeRest, eye: eye('grading', isOff('grading') ? 'Show Colour Grading' : 'See Without Colour Grading', gradeRest),
+      reset: { disabled: gradeRest, run: () => { r.grading = moEditDefaultGrading(); r.off = r.off.filter((x) => x !== 'grading'); afterChange(true); } } }));
+    for (const [id, title, sliders] of MO_EDIT_SECTIONS.filter((s) => s[0] === 'effects' || s[0] === 'detail')) {
       const rest = moEditSectionIsRest(r, id);
-      const eye = smallBtn(off ? 'eye-off' : 'eye', off ? `Show ${title}` : `Hide ${title}`, () => { r.off = off ? r.off.filter((x) => x !== id) : r.off.concat(id); afterChange(true); }, off);
-      const reset = smallBtn('rotate-ccw', `Reset ${title}`, () => resetSection(id));
-      eye.disabled = rest && !off; reset.disabled = rest;
-      const bodyEl = openSection(panelBody, id, title, [eye, reset]);
-      if (id === 'colour') {
-        const pick = textBtn('Pick White Balance', () => { state.pickWb = !state.pickWb; stage.classList.toggle('is-picking', state.pickWb); renderPanel(); });
-        pick.classList.toggle('is-on', state.pickWb);
-        bodyEl.appendChild(row(pick));
-        if (state.pickWb) bodyEl.appendChild(hint('Click something in the photo that should be a neutral grey or white.'));
-      }
+      const bodyEl = openSection(panelBody, id, title, { dot: !rest, eye: eye(id, isOff(id) ? `Show ${title}` : `See Without ${title}`, rest), reset: { disabled: rest, run: () => resetSection(id) } });
       for (const s of sliders) bodyEl.appendChild(recipeSlider(s));
-      if (id === 'light') curveBlock(openSection(bodyEl, 'curve', 'Tone Curve'));
-      if (id === 'colour') { mixerBlock(openSection(bodyEl, 'mixer', 'Colour Mixer')); gradingBlock(openSection(bodyEl, 'grading', 'Colour Grading')); }
     }
   }
+  function togglePickWb() {
+    if (!state.recipe || state.tool !== 'edit') return;
+    state.pickWb = !state.pickWb;
+    stage.classList.toggle('is-picking', state.pickWb);
+    syncStageChip();
+    renderPanel();
+  }
+  // Light and Colour reset their own sliders (and Black And White); the curve, mixer and grading have resets of their own.
   function resetSection(id) {
     const base = moEditDefaultRecipe(); const r = state.recipe;
     const sec = MO_EDIT_SECTIONS.find((s) => s[0] === id);
     for (const [key] of sec[2]) r[key] = base[key];
-    if (id === 'light') r.curve = base.curve;
-    if (id === 'colour') { r.bw = false; r.mixer = base.mixer; r.grading = base.grading; }
+    if (id === 'colour') r.bw = false;
     r.off = r.off.filter((x) => x !== id);
     afterChange(true);
   }
   function autoTone() {
-    if (!engine || !state.bitmap) return;
+    if (!engine || !state.bitmap || !state.recipe) return;
     const geo = geometry();
     const k = 256 / Math.max(geo.outW, geo.outH);
     const rest = moEditEngineLook(moEditDefaultRecipe(), true);
@@ -36966,6 +37394,7 @@ function renderImageEditor(container, api) {
     Object.assign(state.recipe, moEditAutoTone(moEditHistogram(px)));
     state.recipe.off = state.recipe.off.filter((x) => x !== 'light');
     afterChange(true);
+    requestRender();
   }
   function pickWhiteBalance(p) {
     const [sx, sy] = sourceAt(p.x, p.y);
@@ -36979,6 +37408,7 @@ function renderImageEditor(container, api) {
     for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
     Object.assign(state.recipe, moEditWhiteBalance(r / 25 / 255, g / 25 / 255, b / 25 / 255));
     state.pickWb = false; stage.classList.remove('is-picking');
+    syncStageChip();
     afterChange(true);
   }
 
@@ -36986,13 +37416,7 @@ function renderImageEditor(container, api) {
   let curveCanvas = null;
   function curveBlock(parent) {
     const r = state.recipe;
-    const chans = moEl('div', 'mo-edit-row');
-    for (const [key, label] of MO_EDIT_CURVES) {
-      const b = textBtn(label, () => { state.curveChannel = key; renderPanel(); }, 'mo-edit-chan mo-edit-chan--' + key);
-      b.classList.toggle('is-on', state.curveChannel === key);
-      chans.appendChild(b);
-    }
-    parent.appendChild(chans);
+    parent.appendChild(chips(MO_EDIT_CURVES.map(([value, label]) => ({ value, label })), state.curveChannel, (v) => { state.curveChannel = v; renderPanel(); }));
     const cv = moEl('canvas', 'mo-edit-curve', { 'aria-label': 'Tone Curve' });
     parent.appendChild(cv);
     curveCanvas = cv;
@@ -37029,12 +37453,10 @@ function renderImageEditor(container, api) {
       list.splice(i, 1);
       afterChange(true); drawCurve();
     });
-    const reset = textBtn('Reset Curve', () => { r.curve = moEditDefaultCurve(); afterChange(true); });
-    reset.disabled = moEditCurveIsRest(r.curve);
-    parent.appendChild(row(reset));
     parent.appendChild(hint('Click to add a point, drag to bend the line, double-click a point to remove it.'));
     requestAnimationFrame(drawCurve);
   }
+
   function drawCurve() {
     const cv = curveCanvas;
     if (!cv || !cv.isConnected || !cv.clientWidth || !state.recipe) return;
@@ -37090,9 +37512,6 @@ function renderImageEditor(container, api) {
         onChange: (v) => { r.mixer[state.mixColour][i] = v; afterChange(true); },
       }).row);
     });
-    const reset = textBtn('Reset Mixer', () => { r.mixer = moEditDefaultMixer(); afterChange(true); });
-    reset.disabled = moEditMixerIsRest(r.mixer);
-    parent.appendChild(row(reset));
   }
 
   // Colour grading: a wheel each for shadows, midtones and highlights. The knob's angle is the hue, its distance the strength.
@@ -37125,9 +37544,10 @@ function renderImageEditor(container, api) {
       wheels.appendChild(cell);
     }
     parent.appendChild(wheels);
+    parent.appendChild(moEl('div', 'mo-edit-label', { textContent: 'Luminance' }));
     for (const [key, label] of MO_EDIT_GRADE) {
       parent.appendChild(sliderRow({
-        id: 'grade-' + key, label: `${label} Luminance`, min: -1, max: 1, rest: 0, value: r.grading[key].l, show: pct, parse: parsePct(-1, 1),
+        id: 'grade-' + key, label, min: -1, max: 1, rest: 0, value: r.grading[key].l, show: pct, parse: parsePct(-1, 1),
         onInput: (v) => { r.grading[key].l = v; requestRender(); }, onChange: (v) => { r.grading[key].l = v; afterChange(true); },
       }).row);
     }
@@ -37135,9 +37555,6 @@ function renderImageEditor(container, api) {
       onInput: (v) => { r.grading.blending = v; requestRender(); }, onChange: (v) => { r.grading.blending = v; afterChange(true); } }).row);
     parent.appendChild(sliderRow({ id: 'grade-balance', label: 'Balance', min: -1, max: 1, rest: 0, value: r.grading.balance, show: pct, parse: parsePct(-1, 1),
       onInput: (v) => { r.grading.balance = v; requestRender(); }, onChange: (v) => { r.grading.balance = v; afterChange(true); } }).row);
-    const reset = textBtn('Reset Grading', () => { r.grading = moEditDefaultGrading(); afterChange(true); });
-    reset.disabled = moEditGradingIsRest(r.grading);
-    parent.appendChild(row(reset));
   }
 
   // ── Crop And Rotate ──
@@ -37149,24 +37566,50 @@ function renderImageEditor(container, api) {
   }
   function panelCrop() {
     const r = state.recipe;
-    const s = openSection(panelBody, 'crop-shape', 'Shape');
-    s.appendChild(dropdown(MO_EDIT_ASPECTS.map(([value, label]) => ({ value, label })), r.aspect, 'Shape', (v) => { r.aspect = v; r.aspectFlip = false; if (v !== 'free') refit(); afterChange(true); }));
-    const swap = textBtn('Swap Orientation', () => { r.aspectFlip = !r.aspectFlip; refit(); afterChange(true); });
-    swap.disabled = r.aspect === 'free' || r.aspect === '1:1';
-    s.appendChild(row(swap));
-    const t = openSection(panelBody, 'crop-turn', 'Rotate');
+    const v = viewSize();
+    const shapeRest = r.aspect === 'original' && !r.aspectFlip && Math.abs(r.crop.x) < 1e-6 && Math.abs(r.crop.y) < 1e-6 && Math.abs(r.crop.w - 1) < 1e-6 && Math.abs(r.crop.h - 1) < 1e-6;
+    const turnRest = !r.angle && !r.rotate && !r.flipH && !r.flipV;
+    // Shapes as chips, each drawn at its proportion; Swap Orientation beside them.
+    const s = openSection(panelBody, 'crop-shape', 'Shape', { dot: !shapeRest,
+      reset: { disabled: shapeRest, title: 'Reset the Crop', run: () => { r.crop = { x: 0, y: 0, w: 1, h: 1 }; r.aspect = 'original'; r.aspectFlip = false; if (r.angle) refit(); afterChange(true); } } });
+    // Each chip says and draws the shape it makes here: listed shapes follow
+    // the photo (4:5 on a landscape photo is 5:4), and Swap turns them.
+    const items = MO_EDIT_ASPECTS.map(([value, label]) => {
+      if (value === 'free') return { value, label, shape: [0, 0], title: 'Free: any shape' };
+      const rt = moEditAspectRatio({ aspect: value, aspectFlip: r.aspectFlip && value === r.aspect }, v.w, v.h);
+      let text = label;
+      if (value !== 'original') {
+        const [a, b] = label.split(':').map((x) => x.trim());
+        text = (rt >= 1) === (Number(a) >= Number(b)) ? `${a}:${b}` : `${b}:${a}`;
+      }
+      return { value, label: text, shape: [rt, 1], title: value === 'original' ? 'The photo\u2019s own shape' : text };
+    });
+    const swapRest = r.aspect === 'free' || r.aspect === '1:1';
+    const box = chips(items, r.aspect, (val) => { r.aspect = val; r.aspectFlip = false; if (val !== 'free') refit(); afterChange(true); });
+    const swap = moEl('button', 'mo-edit-chipbtn' + (r.aspectFlip ? ' is-on' : ''), { type: 'button', title: 'Swap Orientation', 'aria-label': 'Swap Orientation', innerHTML: moIcon('repeat', 14) });
+    swap.disabled = swapRest;
+    swap.addEventListener('click', () => { r.aspectFlip = !r.aspectFlip; refit(); afterChange(true); });
+    box.appendChild(swap);
+    s.appendChild(box);
+    // Straighten (also the dial under the photo), and turn and flip as one icon row.
+    const t = openSection(panelBody, 'crop-turn', 'Rotate', { dot: !turnRest,
+      reset: { disabled: turnRest, title: 'Reset Rotate and Flip', run: () => { Object.assign(r, { angle: 0, rotate: 0, flipH: false, flipV: false }); refit(); afterChange(true); } } });
     t.appendChild(sliderRow({
       id: 'straighten', label: 'Straighten', min: -45, max: 45, step: 0.1, rest: 0, value: r.angle,
-      show: (v) => (v > 0 ? '+' : '') + v.toFixed(1) + '°',
-      parse: (text) => { const n = Number(String(text).replace(',', '.').replace('°', '').replace('+', '').trim()); return Number.isFinite(n) && String(text).trim() !== '' ? moEditClamp(n, -45, 45) : null; },
-      onInput: (v) => straighten(v), onChange: (v) => { straighten(v); state.straightenBase = null; afterChange(true); },
+      show: (val) => (val > 0 ? '+' : val < 0 ? '−' : '') + Math.abs(val).toFixed(1) + '°',
+      parse: (text) => { const n = Number(String(text).replace(',', '.').replace('°', '').replace('−', '-').replace('+', '').trim()); return Number.isFinite(n) && String(text).trim() !== '' ? moEditClamp(n, -45, 45) : null; },
+      onInput: (val) => straighten(val), onChange: (val) => { straighten(val); state.straightenBase = null; afterChange(true); },
     }).row);
-    t.appendChild(row(textBtn('Rotate Left', () => { state.recipe = moEditTurn(r, -1); afterChange(true); }), textBtn('Rotate Right', () => { state.recipe = moEditTurn(r, 1); afterChange(true); })));
-    t.appendChild(row(textBtn('Flip Horizontal', () => { state.recipe = moEditFlip(r, 'h'); afterChange(true); }), textBtn('Flip Vertical', () => { state.recipe = moEditFlip(r, 'v'); afterChange(true); })));
-    const reset = textBtn('Reset Crop And Rotate', () => { Object.assign(r, { crop: { x: 0, y: 0, w: 1, h: 1 }, angle: 0, rotate: 0, flipH: false, flipV: false, aspect: 'original', aspectFlip: false }); afterChange(true); });
-    reset.disabled = moEditGeometryIsRest(r);
-    panelBody.appendChild(row(reset));
-    panelBody.appendChild(hint('Drag the frame to move it, a handle to resize it. The part outside the frame is left out of the copy.'));
+    t.appendChild(moEl('div', 'mo-edit-label', { textContent: 'Turn and flip' }));
+    const turn = moEl('div', 'mo-edit-iconrow');
+    turn.append(
+      iconBtn('rotate-ccw-square', 'Rotate Left', () => { state.recipe = moEditTurn(r, -1); afterChange(true); }, 'Ctrl+['),
+      iconBtn('rotate-cw-square', 'Rotate Right', () => { state.recipe = moEditTurn(r, 1); afterChange(true); }, 'Ctrl+]'),
+      iconBtn('flip-horizontal-2', 'Flip Horizontal', () => { state.recipe = moEditFlip(r, 'h'); afterChange(true); }),
+      iconBtn('flip-vertical-2', 'Flip Vertical', () => { state.recipe = moEditFlip(r, 'v'); afterChange(true); }),
+    );
+    t.appendChild(turn);
+    t.appendChild(hint('Drag the dial under the photo to straighten; drag the frame to move it, a corner to resize it. The part outside is left out of the copy.'));
   }
   // Straightening keeps the crop's middle and shape. A crop that was as large as the photo allowed stays as
   // large as it allows at each angle; one drawn smaller is only ever made smaller, to stay on the photo.
@@ -37177,14 +37620,32 @@ function renderImageEditor(container, api) {
     r.crop = moEditCropFromBox(moEditCropScaled(state.straightenBase.box, angle, v.w, v.h, state.straightenBase.grow), v.w, v.h);
     requestRender();
   }
+  // The dial: drag sideways, a tenth of a degree a pixel; double-click levels it.
+  let dialDrag = null;
+  dial.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !state.recipe || state.tool !== 'crop') return;
+    e.preventDefault(); e.stopPropagation();
+    dialDrag = { x: e.clientX, a0: state.recipe.angle };
+    dial.setPointerCapture(e.pointerId);
+  });
+  dial.addEventListener('pointermove', (e) => {
+    if (!dialDrag) return;
+    straighten(moEditClamp(Math.round((dialDrag.a0 - (e.clientX - dialDrag.x) * 0.1) * 10) / 10, -45, 45));
+  });
+  const dialUp = () => { if (!dialDrag) return; dialDrag = null; state.straightenBase = null; afterChange(true); };
+  dial.addEventListener('pointerup', dialUp);
+  dial.addEventListener('pointercancel', dialUp);
+  dial.addEventListener('dblclick', (e) => { e.stopPropagation(); if (!state.recipe) return; straighten(0); state.straightenBase = null; afterChange(true); });
 
   // ── Remove ──
+  let markSel = -1; // the removal outlined on the photo
   function paintStroke(d) {
     const ctx = paint.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
     ctx.clearRect(0, 0, paint.width, paint.height);
     if (!d) return;
-    ctx.strokeStyle = 'rgba(255, 70, 70, 0.45)'; ctx.fillStyle = ctx.strokeStyle;
+    // Removing paints warm; bringing back (Alt) paints cool.
+    ctx.strokeStyle = d.kind === 'unstroke' ? 'rgba(80, 160, 255, 0.45)' : 'rgba(255, 70, 70, 0.45)'; ctx.fillStyle = ctx.strokeStyle;
     ctx.lineWidth = _moEditUi.brush * dpr; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath();
     d.screen.forEach(([x, y], i) => { if (i) ctx.lineTo(x * dpr, y * dpr); else ctx.moveTo(x * dpr, y * dpr); });
@@ -37219,62 +37680,124 @@ function renderImageEditor(container, api) {
       work.getContext('2d').drawImage(patch, box.x, box.y);
       state.recipe.removals = state.recipe.removals.concat([{ file, x: box.x, y: box.y, w: box.w, h: box.h }]);
       state.work = work; state.workKey = JSON.stringify(state.recipe.removals); state.sourceObj = null;
+      markSel = -1;
       afterChange(true);
     } catch (err) {
       api.window.showErrorMessage('The mark could not be removed: ' + ((err && err.message) || err));
     } finally { paintStroke(null); busy(''); }
   }
+  // Alt and brush: what was removed where the brush went comes back (those removals are undone).
+  function unremoveStroke(d) {
+    paintStroke(null);
+    const src = state.bitmap;
+    const box = moEditStrokeBox(d.points, d.radius, src.width, src.height);
+    if (!box || !state.recipe) return;
+    const hits = (m) => m.x < box.x + box.w && m.x + m.w > box.x && m.y < box.y + box.h && m.y + m.h > box.y;
+    const keep = state.recipe.removals.filter((m) => !hits(m));
+    const n = state.recipe.removals.length - keep.length;
+    if (!n) { flash('Nothing was removed there.'); return; }
+    state.recipe.removals = keep;
+    markSel = -1;
+    afterChange(true);
+    flash(n === 1 ? 'One removal brought back.' : `${n} removals brought back.`);
+  }
   function removeFromOthers() {
     if (!state.recipe || !state.photoId) return;
-    if (!state.recipe.removals.length) { api.window.showInformationMessage('Remove a mark on this photo first: brush over it with Remove.'); return; }
+    if (!moEditShownRemovals(state.recipe).length) { api.window.showInformationMessage('Remove a mark on this photo first: brush over it with Remove.'); return; }
     const id = state.photoId;
     void flushSave().then(() => moOpenBulkRemove(api, id));
+  }
+  // Where on the photo a removal sits, in words, and a small picture of it.
+  const MO_WHERE_V = ['top', 'middle', 'bottom']; const MO_WHERE_H = ['left', 'centre', 'right'];
+  const whereOf = (m) => {
+    const W = state.bitmap.width; const H = state.bitmap.height;
+    const v = MO_WHERE_V[Math.min(2, Math.floor(((m.y + m.h / 2) / H) * 3))];
+    const h = MO_WHERE_H[Math.min(2, Math.floor(((m.x + m.w / 2) / W) * 3))];
+    return v === 'middle' && h === 'centre' ? 'centre' : `${v} ${h}`;
+  };
+  function removalThumb(m) {
+    const src = state.work || state.bitmap;
+    const c = document.createElement('canvas');
+    const pad = Math.round(Math.max(m.w, m.h) * 0.25);
+    const x = Math.max(0, m.x - pad); const y = Math.max(0, m.y - pad);
+    const w = Math.min(src.width - x, m.w + pad * 2); const h = Math.min(src.height - y, m.h + pad * 2);
+    c.width = 72; c.height = 48;
+    const k = Math.max(72 / Math.max(1, w), 48 / Math.max(1, h));
+    const ctx = c.getContext('2d');
+    ctx.drawImage(src, x + w / 2 - 36 / k, y + h / 2 - 24 / k, 72 / k, 48 / k, 0, 0, 72, 48);
+    c.className = 'mo-edit-removal-thumb';
+    return c;
   }
   function panelRemove() {
     const r = state.recipe;
     if (state.removeState === 'unknown') { panelBody.appendChild(hint('Checking')); void checkRemove(); return; }
     if (state.removeState === 'ready') {
       const s = openSection(panelBody, 'remove-brush', 'Brush');
-      s.appendChild(sliderRow({ id: 'brush', label: 'Size', aria: 'Brush Size', min: 6, max: 240, step: 1, rest: 40, value: _moEditUi.brush, show: (v) => String(Math.round(v)), parse: (t) => { const n = Number(t); return Number.isFinite(n) && String(t).trim() !== '' ? moEditClamp(n, 6, 240) : null; },
+      s.appendChild(sliderRow({ id: 'brush', label: 'Size', aria: 'Brush Size', min: 6, max: 240, step: 1, rest: 40, value: _moEditUi.brush, show: (v) => `${Math.round(v)} px`, parse: (t) => { const n = Number(String(t).replace(/px/i, '').trim()); return Number.isFinite(n) && String(t).trim() !== '' ? moEditClamp(n, 6, 240) : null; },
         onInput: (v) => { _moEditUi.brush = v; }, onChange: (v) => { _moEditUi.brush = v; } }).row);
-      s.appendChild(hint('Brush over a logo, a tag or a mark. It is erased and the background is rebuilt from what surrounds it. Cover the whole mark and a little around it.'));
+      s.appendChild(hint('Brush over a logo, a date or a mark; the background is rebuilt from what surrounds it. [ and ] change the size. Hold Alt and brush to bring back what was removed there.'));
       const n = r.removals.length;
-      const list = openSection(panelBody, 'remove-list', n ? `Removed (${n})` : 'Removed');
-      const last = textBtn('Undo Last Removal', () => { r.removals = r.removals.slice(0, -1); afterChange(true); });
-      const all = textBtn('Clear Removals', () => { r.removals = []; afterChange(true); });
-      last.disabled = !n; all.disabled = !n;
-      list.appendChild(row(last, all));
-      list.appendChild(hint('Removals are part of the edit: each can be undone later, and the original file is never changed. It runs on this machine.'));
+      const list = openSection(panelBody, 'remove-list', n ? `Removed (${n})` : 'Removed', { dot: n > 0,
+        reset: { disabled: !n, title: 'Bring Back Everything Removed', run: () => { r.removals = []; markSel = -1; afterChange(true); } } });
+      if (!n) list.appendChild(hint('Nothing removed yet.'));
+      else {
+        const box = moEl('div', 'mo-edit-list');
+        r.removals.forEach((m, i) => {
+          const rowEl = moEl('div', 'mo-edit-li' + (i === markSel ? ' is-on' : '') + (m.hidden ? ' is-hidden' : ''), { tabIndex: 0, role: 'button', title: 'Outline it on the photo' });
+          const text = moEl('div', 'mo-edit-li-text');
+          text.append(moEl('div', 'mo-edit-li-name', { textContent: `Removal ${i + 1}${m.hidden ? ' (hidden)' : ''}` }), moEl('div', 'mo-edit-li-meta', { textContent: `${whereOf(m)} · ${m.w} × ${m.h}` }));
+          const eyeB = miniBtn(m.hidden ? 'eye-off' : 'eye', m.hidden ? 'Show This Removal' : 'Hide This Removal', () => { r.removals = r.removals.map((x, j) => (j === i ? (x.hidden ? { ...x, hidden: undefined } : { ...x, hidden: true }) : x)).map((x) => { const o = { ...x }; if (!o.hidden) delete o.hidden; return o; }); afterChange(true); }, !!m.hidden);
+          const del = miniBtn('x', 'Undo This Removal', () => { r.removals = r.removals.filter((_, j) => j !== i); if (markSel === i) markSel = -1; afterChange(true); });
+          rowEl.append(removalThumb(m), text, eyeB, del);
+          const select = () => { markSel = markSel === i ? -1 : i; renderPanel(); requestRender(); };
+          rowEl.addEventListener('click', select);
+          rowEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); } });
+          box.appendChild(rowEl);
+        });
+        list.appendChild(box);
+      }
       const others = openSection(panelBody, 'remove-others', 'Other Photos');
-      const bulk = textBtn('Remove From Other Photos', () => removeFromOthers());
-      bulk.disabled = !n;
-      bulk.title = n ? 'Look for these marks in other photos and remove them there too' : 'Remove a mark on this photo first';
+      others.appendChild(hint('The same mark on other photos? Find it there and remove it the same way. You choose the photos and see every find before anything changes.'));
+      const bulk = api.ui.createButton(null, { label: 'Remove From Other Photos…', kind: 'primary', size: 'sm', onClick: () => removeFromOthers() });
+      bulk.disabled = !moEditShownRemovals(r).length;
+      bulk.title = bulk.disabled ? 'Remove a mark on this photo first' : 'Look for these marks in other photos and remove them there too';
       others.appendChild(row(bulk));
-      others.appendChild(hint('Looks for the marks removed here in the photos selected in the library, or in the rest of this folder. A mark is found wherever it sits and at whatever size. What was found is shown before anything is removed.'));
+      const otherCount = Math.max(0, (state.film.total || 0) - 1);
+      if (otherCount) others.appendChild(hint(`${otherCount} other photo${otherCount === 1 ? '' : 's'} in this folder.`));
+      const local = moEl('div', 'mo-edit-local');
+      local.append(moEl('span', 'mo-edit-ico', { innerHTML: moIcon('lock', 12) }), moEl('span', null, { textContent: 'Runs on this computer.' }));
+      panelBody.appendChild(local);
       return;
     }
-    const s = openSection(panelBody, 'remove-setup', 'Set Up Remove');
+    // Not set up: what it does, that it stays on this computer, the size, and progress while it downloads.
+    const card = moEl('div', 'mo-edit-setup');
+    const mb = Math.round(MO_EDIT_REMOVE_MODEL.bytes / 1048576);
+    card.title = `${MO_EDIT_REMOVE_MODEL.name}, from huggingface.co, kept only if it is exactly the file that was tested`;
     if (state.removeState === 'model') {
-      const mb = Math.round(MO_EDIT_REMOVE_MODEL.bytes / 1048576);
-      s.appendChild(hint(`Remove uses ${MO_EDIT_REMOVE_MODEL.name}, a model that runs on this machine. It is fetched once (${mb} MB) from huggingface.co and kept only if it is exactly the file that was tested.`));
+      card.append(moEl('div', 'mo-edit-setup-title', { textContent: 'Remove needs a one-time download' }),
+        moEl('p', null, { textContent: 'Brush over a logo, a date stamp or a stray mark and it is erased; the picture behind it is rebuilt from what surrounds it.' }));
+      const facts = moEl('div', 'mo-edit-facts');
+      facts.append(moEl('span', null, { innerHTML: moIcon('lock', 12) }), moEl('span', null, { textContent: 'Runs on this computer; photos are never sent anywhere' }),
+        moEl('span', null, { innerHTML: moIcon('hard-drive', 12) }), moEl('span', null, { textContent: `${mb} MB, once` }));
+      card.appendChild(facts);
       if (state.download) {
         const bar = moEl('div', 'mo-edit-progress');
         const fill = moEl('div', 'mo-edit-progress-fill');
         fill.style.width = Math.round((state.download.received / MO_EDIT_REMOVE_MODEL.bytes) * 100) + '%';
         bar.appendChild(fill);
-        s.appendChild(bar);
-        s.appendChild(hint(`${Math.round(state.download.received / 1048576)} of ${mb} MB`));
-        s.appendChild(row(textBtn('Stop', () => void window.parallxElectron.models.cancelDownload(MO_EDIT_REMOVE_MODEL.sha256))));
+        card.appendChild(bar);
+        card.appendChild(hint(`Downloading · ${Math.round(state.download.received / 1048576)} of ${mb} MB`));
+        card.appendChild(row(textBtn('Cancel Download', () => void window.parallxElectron.models.cancelDownload(MO_EDIT_REMOVE_MODEL.sha256))));
       } else {
-        s.appendChild(row(textBtn('Download Model', () => void downloadModel(), 'mo-practice-start')));
-        if (state.downloadError) s.appendChild(hint(state.downloadError));
+        card.appendChild(row(api.ui.createButton(null, { label: 'Download', kind: 'primary', size: 'sm', onClick: () => void downloadModel() }), textBtn('Check Again', () => { state.removeState = 'unknown'; renderPanel(); }, 'ghost')));
+        if (state.downloadError) card.appendChild(hint(state.downloadError));
       }
-    } else if (state.removeState === 'runtime') {
-      s.appendChild(hint('The part of Parallx that runs this model is missing from this install, so Remove cannot run here.'));
     } else {
-      s.appendChild(hint('Remove is not available in this build of Parallx.'));
+      card.append(moEl('div', 'mo-edit-setup-title', { textContent: 'Remove cannot run here' }),
+        moEl('p', null, { textContent: state.removeState === 'runtime' ? 'The part of Parallx that runs Remove is missing from this install.' : 'Remove is not available in this build of Parallx.' }));
+      card.appendChild(row(textBtn('Check Again', () => { state.removeState = 'unknown'; renderPanel(); }, 'ghost')));
     }
-    s.appendChild(row(textBtn('Check Again', () => { state.removeState = 'unknown'; renderPanel(); })));
+    panelBody.appendChild(card);
   }
   async function checkRemove() {
     const st = await moEditRemoveState();
@@ -37289,7 +37812,7 @@ function renderImageEditor(container, api) {
     if (disposed) return;
     state.download = null;
     if (res && res.ok) state.removeState = 'ready';
-    else state.downloadError = res && res.stopped ? 'Stopped. Nothing was kept.' : `The model could not be fetched: ${(res && res.error) || 'no answer'}`;
+    else state.downloadError = res && res.stopped ? 'Cancelled. Nothing was kept.' : `The download did not finish: ${(res && res.error) || 'no answer'}`;
     if (state.tool === 'remove') renderPanel();
   }
   if (window.parallxElectron && window.parallxElectron.models && window.parallxElectron.models.onProgress) {
@@ -37302,27 +37825,102 @@ function renderImageEditor(container, api) {
   }
 
   // ── Enhance ──
+  // The size it will make and the time it takes come first; Preview shows the
+  // enlarged picture on the stage before anything is written.
+  let upscaleRate = null; // seconds per output megapixel, measured on this computer
+  void moGetSetting('edit_upscale_rate', '').then((v) => { const n = Number(v); if (n > 0) upscaleRate = n; }).catch(() => {});
   function panelEnhance() {
     const r = state.recipe;
-    const s = openSection(panelBody, 'enhance', 'Enhance');
-    if (state.upscaler === null) { s.appendChild(hint('Checking')); void moUpscaleReady().then((ok) => { if (disposed) return; state.upscaler = !!ok; if (state.tool === 'enhance') renderPanel(); }); return; }
+    if (state.upscaler === null) { panelBody.appendChild(hint('Checking')); void moUpscaleReady().then((ok) => { if (disposed) return; state.upscaler = !!ok; if (state.tool === 'enhance') renderPanel(); }); return; }
     if (!state.upscaler) {
-      s.appendChild(hint('Enhance makes a larger, sharper copy with the upscaler, which is not set up yet.'));
-      s.appendChild(row(textBtn('Set Up The Upscaler', () => showUpscaleSetupDialog(api)), textBtn('Check Again', () => { _toolsDetected = false; _toolsRetryAfter = 0; state.upscaler = null; renderPanel(); })));
+      const card = moEl('div', 'mo-edit-setup');
+      card.append(moEl('div', 'mo-edit-setup-title', { textContent: 'Enhance needs the upscaler' }),
+        moEl('p', null, { textContent: 'Enhance makes a larger, sharper copy of the photo. It runs on this computer once the upscaler is set up.' }));
+      card.appendChild(row(api.ui.createButton(null, { label: 'Set Up the Upscaler…', kind: 'primary', size: 'sm', onClick: () => showUpscaleSetupDialog(api) }),
+        textBtn('Check Again', () => { _toolsDetected = false; _toolsRetryAfter = 0; state.upscaler = null; renderPanel(); }, 'ghost')));
+      panelBody.appendChild(card);
       return;
     }
-    s.appendChild(moEl('div', 'mo-edit-label', { textContent: 'Size' }));
-    s.appendChild(dropdown([{ value: '0', label: 'Same Size' }, { value: '2', label: '2x Larger' }, { value: '4', label: '4x Larger' }], String(r.enhance.scale), 'Size', (v) => { r.enhance.scale = Number(v) || 0; afterChange(true); }));
-    s.appendChild(moEl('div', 'mo-edit-label', { textContent: 'Model' }));
-    s.appendChild(dropdown([{ value: 'photo', label: 'Photo' }, { value: 'art', label: 'Art And Illustration' }], r.enhance.model, 'Model', (v) => { r.enhance.model = v === 'art' ? 'art' : 'photo'; afterChange(true); }));
     const geo = geometry();
-    if (r.enhance.scale > 0) {
-      const ok = moUpscaleGuard(geo.outW, geo.outH, r.enhance.scale).ok;
-      s.appendChild(hint(ok
-        ? `${geo.outW} × ${geo.outH} becomes ${geo.outW * r.enhance.scale} × ${geo.outH * r.enhance.scale}. The copy is enlarged when you choose Save As Copy, after the rest of the edit, and is written as a PNG.`
-        : `Enlarged ${r.enhance.scale}x this picture would be over ${Math.round(MO_UPSCALE_MAX_OUTPUT_PIXELS / 1e6)} megapixels. Crop it or choose a smaller size.`));
-    } else s.appendChild(hint('Choose a size to make the saved copy larger and sharper. The picture here does not change: the enlarging happens when the copy is saved.'));
+    const sc = r.enhance.scale;
+    const s = openSection(panelBody, 'enhance', 'Enlarge', { dot: sc > 0,
+      reset: { disabled: !sc, title: 'Do Not Enlarge', run: () => { r.enhance.scale = 0; closePreview(); afterChange(true); } } });
+    s.appendChild(chips([{ value: 0, label: 'Off' }, { value: 2, label: '2×' }, { value: 4, label: '4×' }], sc, (v) => { r.enhance.scale = Number(v) || 0; closePreview(); afterChange(true); }));
+    s.appendChild(moEl('div', 'mo-edit-label', { textContent: 'Kind of picture' }));
+    s.appendChild(chips([{ value: 'photo', label: 'Photo' }, { value: 'art', label: 'Art and illustration' }], r.enhance.model, (v) => { r.enhance.model = v === 'art' ? 'art' : 'photo'; closePreview(); afterChange(true); }));
+    const fact = (k, v, strong) => { const f = moEl('div', 'mo-edit-fact'); f.append(moEl('span', null, { textContent: k }), moEl(strong ? 'b' : 'span', null, { textContent: v })); return f; };
+    if (sc > 0) {
+      const ok = moUpscaleGuard(geo.outW, geo.outH, sc).ok;
+      s.appendChild(fact('Result', `${geo.outW * sc} × ${geo.outH * sc}`, true));
+      const mp = (geo.outW * sc * geo.outH * sc) / 1e6;
+      s.appendChild(fact('Takes about', upscaleRate ? moEditDuration(upscaleRate * mp) + ' on this computer' : 'measured on the first enlargement'));
+      if (!ok) s.appendChild(hint(`Enlarged ${sc}× this picture would be over ${Math.round(MO_UPSCALE_MAX_OUTPUT_PIXELS / 1e6)} megapixels. Crop it or choose a smaller size.`));
+      else {
+        const prev = api.ui.createButton(null, { label: state.preview ? 'Close Preview' : 'Preview Enlarged', icon: state.preview ? 'x' : 'maximize-2', size: 'sm', onClick: () => (state.preview ? closePreview() : void previewEnlarge()) });
+        prev.disabled = !!state.busy;
+        s.appendChild(row(prev));
+        s.appendChild(hint('The enlarged picture is previewed here first; nothing is written until you save. Saved copies are PNG.'));
+      }
+    } else s.appendChild(hint('Choose 2× or 4× to make the saved copy larger and sharper.'));
   }
+  // The enlarged picture, on the stage at 100%: drag (scroll) to look around.
+  const previewEl = moEl('div', 'mo-edit-preview mo-hidden');
+  const previewImg = moEl('img', 'mo-edit-preview-img', { alt: 'The enlarged picture', draggable: 'false' });
+  previewEl.appendChild(previewImg);
+  stage.appendChild(previewEl);
+  let previewUrl = null;
+  function closePreview() {
+    if (previewUrl) { try { URL.revokeObjectURL(previewUrl); } catch { /* gone */ } previewUrl = null; }
+    previewImg.removeAttribute('src');
+    previewEl.classList.add('mo-hidden');
+    if (state.preview) { state.preview = false; syncStageChip(); if (state.tool === 'enhance') renderPanel(); }
+  }
+  disposers.push(() => closePreview());
+  async function previewEnlarge() {
+    const r = state.recipe;
+    if (!r || !state.bitmap || state.busy || !(r.enhance.scale > 0)) return;
+    const dir = moEditDir(state.photoId);
+    if (!dir) { api.window.showErrorMessage('Preview needs an open workspace to work in.'); return; }
+    const sep = dir.includes('\\') ? '\\' : '/';
+    const stamp = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const drawn = dir + sep + `preview-src-${stamp}.png`;
+    const out = dir + sep + `preview-${stamp}.png`;
+    const seq = loadSeq;
+    const started = Date.now();
+    busy('Drawing the edit', 0);
+    renderPanel();
+    try {
+      await syncWork();
+      const canvasFull = await moEditRenderFull(state.work || state.bitmap, r, false, (done) => { if (!disposed) busy('Drawing the edit', 0.2 * done); });
+      const blob = await new Promise((resolve) => canvasFull.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('The picture could not be encoded.');
+      await moEditWriteBytes(drawn, new Uint8Array(await blob.arrayBuffer()));
+      const t0 = Date.now();
+      await moEditUpscaleFile(drawn, out, r.enhance.scale, r.enhance.model, (stage, p) => { if (!disposed) busy('Enlarging', 0.2 + 0.8 * (typeof p === 'number' ? p : 0)); });
+      const geo = geometry();
+      const mp = (geo.outW * r.enhance.scale * geo.outH * r.enhance.scale) / 1e6;
+      if (mp > 0) { upscaleRate = (Date.now() - t0) / 1000 / mp; void moSetSetting('edit_upscale_rate', String(upscaleRate)).catch(() => {}); }
+      const bytes = await moEditReadBytes(out);
+      if (disposed || seq !== loadSeq) return;
+      previewUrl = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+      previewImg.src = previewUrl;
+      previewEl.classList.remove('mo-hidden');
+      state.preview = true;
+      flash(`Enlarged preview ready in ${moEditDuration((Date.now() - started) / 1000)}.`);
+    } catch (err) {
+      api.window.showErrorMessage('The preview could not be made: ' + ((err && err.message) || err));
+    } finally {
+      for (const p of [drawn, out]) { try { await window.parallxElectron.fs.delete(p, { useTrash: false }); } catch { /* temp */ } }
+      if (!disposed) { busy(''); syncStageChip(); if (state.tool === 'enhance') renderPanel(); }
+    }
+  }
+  // Drag to look around the enlarged picture.
+  let previewDrag = null;
+  previewEl.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; previewDrag = { x: e.clientX, y: e.clientY, l: previewEl.scrollLeft, t: previewEl.scrollTop }; previewEl.setPointerCapture(e.pointerId); previewEl.classList.add('is-panning'); });
+  previewEl.addEventListener('pointermove', (e) => { if (!previewDrag) return; previewEl.scrollLeft = previewDrag.l - (e.clientX - previewDrag.x); previewEl.scrollTop = previewDrag.t - (e.clientY - previewDrag.y); });
+  const previewUp = () => { previewDrag = null; previewEl.classList.remove('is-panning'); };
+  previewEl.addEventListener('pointerup', previewUp);
+  previewEl.addEventListener('pointercancel', previewUp);
 
   function setTool(id) {
     if (!state.recipe || state.busy) return;
@@ -37331,44 +37929,145 @@ function renderImageEditor(container, api) {
     state.straightenBase = null;
     stage.classList.toggle('is-brushing', id === 'remove');
     brushRing.classList.add('mo-hidden');
+    if (id !== 'enhance') closePreview();
+    if (id !== 'remove') markSel = -1;
     if (id === 'crop') { state.original = false; state.split = -1; }
     if (id === 'remove' && state.removeState !== 'ready') state.removeState = 'unknown';
-    syncButtons(); syncCompare(); renderPanel(); requestRender();
+    syncButtons(); syncCompare(); syncStageChip(); renderPanel(); requestRender();
   }
 
   // ── presets ──
+  // A small picture of this photo in each look. Pointing at one previews it on
+  // the stage; a click applies it. Yours first, then the looks that come with it.
+  let presetFilter = '';
+  let presetSearchOpen = false;
+  const presetThumbs = new Map(); // key -> data URL, for the photo and crop on screen
+  let thumbKey = '';
+  let thumbQueue = [];
+  let thumbRaf = 0;
+  const restLook = () => moEditPickLook(moEditDefaultRecipe());
+  const lookKey = (look) => JSON.stringify(moEditPickLook(moEditApplyLook(state.recipe, look)));
+  function presetList() {
+    const out = [];
+    for (const p of state.presets) out.push({ group: 'Yours', name: p.name, look: p.look, own: p });
+    out.push({ group: 'Looks', name: 'None', look: restLook(), own: null });
+    for (const [, label, look] of MO_EDIT_PRESETS) out.push({ group: 'Looks', name: label, look, own: null });
+    return out;
+  }
   function renderPresets() {
     presetsEl.innerHTML = '';
     const head = moEl('div', 'mo-edit-presets-head');
     head.appendChild(moEl('div', 'mo-edit-section-title', { textContent: 'Presets' }));
-    const add = iconBtn('plus', 'Save Preset', () => void savePreset());
+    const searchBtn = iconBtn('search', 'Filter Presets', () => { presetSearchOpen = !presetSearchOpen; if (!presetSearchOpen) presetFilter = ''; renderPresets(); });
+    searchBtn.classList.toggle('mo-active', presetSearchOpen);
+    const add = iconBtn('plus', 'Save Edit as Preset…', () => void savePreset());
     add.disabled = !state.recipe || moEditLookIsRest(state.recipe);
-    head.appendChild(add);
+    const btns = moEl('div', 'mo-edit-presets-btns');
+    btns.append(searchBtn, add);
+    head.appendChild(btns);
     presetsEl.appendChild(head);
+    if (presetSearchOpen) {
+      const box = moEl('input', 'mo-edit-presets-filter', { type: 'text', placeholder: 'Filter presets', 'aria-label': 'Filter presets' });
+      box.value = presetFilter;
+      box.addEventListener('input', () => { presetFilter = box.value.trim().toLowerCase(); fillPresets(); });
+      box.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') { presetSearchOpen = false; presetFilter = ''; renderPresets(); } });
+      presetsEl.appendChild(box);
+      setTimeout(() => box.focus(), 0);
+    }
     const list = moEl('div', 'mo-edit-presets-list');
-    const item = (label, look, own) => {
-      const b = moEl('button', 'mo-edit-preset', { type: 'button', textContent: label });
-      b.addEventListener('pointerenter', () => { if (!state.recipe) return; state.hover = look; requestRender(); });
-      b.addEventListener('pointerleave', () => { if (state.hover === look) { state.hover = null; requestRender(); } });
-      b.addEventListener('click', () => { if (!state.recipe) return; state.hover = null; state.recipe = moEditApplyLook(state.recipe, look); afterChange(true); });
-      if (own) b.addEventListener('contextmenu', (e) => {
+    presetsEl.appendChild(list);
+    fillPresets();
+  }
+  function fillPresets() {
+    const list = presetsEl.querySelector('.mo-edit-presets-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const current = state.recipe ? JSON.stringify(moEditPickLook(state.recipe)) : '';
+    let group = '';
+    let grid = null;
+    const all = presetList().filter((p) => !presetFilter || p.name.toLowerCase().includes(presetFilter));
+    if (!all.length) list.appendChild(hint('No preset has that name.'));
+    for (const p of all) {
+      if (p.group !== group) {
+        group = p.group;
+        list.appendChild(moEl('div', 'mo-edit-presets-group', { textContent: group }));
+        grid = moEl('div', 'mo-edit-presets-grid');
+        list.appendChild(grid);
+      }
+      const on = !!state.recipe && lookKey(p.look) === current;
+      const tile = moEl('button', 'mo-edit-ptile' + (on ? ' is-on' : ''), { type: 'button', title: on ? `${p.name} (applied)` : `${p.name}: point to preview, click to apply`, 'aria-pressed': on ? 'true' : 'false' });
+      const im = moEl('div', 'mo-edit-ptile-im');
+      const img = moEl('img', null, { alt: '', draggable: 'false' });
+      const key = p.name + '|' + JSON.stringify(p.look);
+      const cached = presetThumbs.get(key);
+      if (cached) img.src = cached; else { img.classList.add('mo-hidden'); thumbQueue.push({ key, look: p.look, img }); }
+      im.appendChild(img);
+      tile.append(im, moEl('span', 'mo-edit-ptile-name', { textContent: p.name }));
+      tile.addEventListener('pointerenter', () => { if (!state.recipe) return; state.hover = p.look; state.hoverName = p.name; syncStageChip(); requestRender(); });
+      tile.addEventListener('pointerleave', () => { if (state.hover === p.look) { state.hover = null; state.hoverName = ''; syncStageChip(); requestRender(); } });
+      tile.addEventListener('click', () => { if (!state.recipe) return; state.hover = null; state.hoverName = ''; state.recipe = moEditApplyLook(state.recipe, p.look); syncStageChip(); afterChange(true); });
+      if (p.own) tile.addEventListener('contextmenu', (e) => {
         e.preventDefault();
+        const own = p.own;
         showContextMenu(e.clientX, e.clientY, [
-          { label: 'Rename', handler: async () => { const name = await api.window.showInputBox({ prompt: 'Preset name', value: own.name }); if (name && name.trim()) { await db.run('UPDATE mo_edit_presets SET name = ? WHERE id = ?', [name.trim().slice(0, 60), own.id]); await loadPresets(); } } },
+          { label: 'Rename…', handler: async () => { const name = await api.window.showInputBox({ prompt: 'Preset name', value: own.name }); if (name && name.trim()) { await db.run('UPDATE mo_edit_presets SET name = ? WHERE id = ?', [name.trim().slice(0, 60), own.id]); await loadPresets(); } } },
           { label: 'Update With This Edit', disabled: !state.recipe || moEditLookIsRest(state.recipe), handler: async () => { await db.run('UPDATE mo_edit_presets SET look_json = ? WHERE id = ?', [JSON.stringify(moEditPickLook(state.recipe)), own.id]); await loadPresets(); } },
           { separator: true },
           { label: 'Delete', danger: true, handler: async () => { await db.run('DELETE FROM mo_edit_presets WHERE id = ?', [own.id]); await loadPresets(); } },
         ]);
       });
-      list.appendChild(b);
-    };
-    if (state.presets.length) {
-      list.appendChild(moEl('div', 'mo-edit-presets-group', { textContent: 'Yours' }));
-      for (const p of state.presets) item(p.name, p.look, p);
+      grid.appendChild(tile);
     }
-    list.appendChild(moEl('div', 'mo-edit-presets-group', { textContent: 'Looks' }));
-    for (const [, label, look] of MO_EDIT_PRESETS) item(label, look, null);
-    presetsEl.appendChild(list);
+    pumpThumbs();
+  }
+  // Mark the applied preset after an edit without drawing the pictures again.
+  function syncPresetSelection() {
+    if (!state.recipe) return;
+    const current = JSON.stringify(moEditPickLook(state.recipe));
+    const tiles = presetsEl.querySelectorAll('.mo-edit-ptile');
+    const all = presetList().filter((p) => !presetFilter || p.name.toLowerCase().includes(presetFilter));
+    tiles.forEach((t, i) => { const p = all[i]; if (!p) return; const on = lookKey(p.look) === current; t.classList.toggle('is-on', on); t.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  }
+  // The pictures follow the photo as it is cropped and what was removed from it.
+  function thumbKeyNow() {
+    if (!state.recipe || !state.bitmap) return '';
+    const r = state.recipe;
+    return `${state.photoId}|${JSON.stringify(r.crop)}|${r.angle}|${r.rotate}|${r.flipH}|${r.flipV}|${state.workKey}`;
+  }
+  // The pictures are drawn a few at a time, so the editor stays responsive.
+  function pumpThumbs() {
+    if (thumbRaf || disposed) return;
+    thumbRaf = requestAnimationFrame(() => {
+      thumbRaf = 0;
+      if (disposed || !engine || !state.recipe || !state.bitmap) return;
+      const geo = geometry();
+      const key = thumbKeyNow();
+      if (key !== thumbKey) { thumbKey = key; presetThumbs.clear(); }
+      const tw = 176; const th = Math.max(1, Math.round(tw * geo.outH / Math.max(1, geo.outW)));
+      let n = 0;
+      while (thumbQueue.length && n < 3) {
+        const job = thumbQueue.shift();
+        if (!job.img.isConnected) continue;
+        let url = presetThumbs.get(job.key);
+        if (!url) {
+          try {
+            const rr = moEditApplyLook(state.recipe, job.look);
+            const strip = moEditCurveIsRest(rr.curve) ? null : moEditCurveStrip(rr.curve);
+            const src = state.work || state.bitmap;
+            if (state.sourceObj !== src) { engine.setSource(src, { smooth: true }); state.sourceObj = src; }
+            const px = engine.sample(Object.assign(moEditEngineLook(rr, false, strip), { m: geo.m, outSize: [geo.outW, geo.outH], opaque: true }), tw, th);
+            const c = document.createElement('canvas'); c.width = tw; c.height = th;
+            c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer), tw, th), 0, 0);
+            url = c.toDataURL('image/jpeg', 0.82);
+            presetThumbs.set(job.key, url);
+          } catch { continue; }
+          n++;
+        }
+        job.img.src = url;
+        job.img.classList.remove('mo-hidden');
+      }
+      if (thumbQueue.length) pumpThumbs(); else requestRender();
+    });
   }
   async function loadPresets() {
     try { state.presets = await moEditPresetsLoad(); } catch { state.presets = []; }
@@ -37382,6 +38081,31 @@ function renderImageEditor(container, api) {
     await db.run('INSERT INTO mo_edit_presets (name, look_json, position) VALUES (?, ?, ?)', [name.trim().slice(0, 60), JSON.stringify(moEditPickLook(state.recipe)), pos ? pos.p : 0]);
     await loadPresets();
   }
+
+  // ── notes on the stage ──
+  function syncStageChip() {
+    let parts = null; // [text, bold?] pieces
+    if (state.preview) parts = [['Enlarged preview at 100% \u00b7 drag to look around']];
+    else if (state.hover && state.hoverName) parts = [['Previewing '], [state.hoverName, true], [' \u00b7 click to apply']];
+    else if (state.pickWb) parts = [['Click something that should be neutral grey or white \u00b7 Esc to stop']];
+    else if (state.tool === 'remove' && state.removeState === 'ready' && state.recipe && !state.recipe.removals.length) parts = [['Brush over the mark \u00b7 release to remove it']];
+    topChip.textContent = '';
+    for (const [t, b] of parts || []) topChip.appendChild(b ? moEl('b', null, { textContent: t }) : document.createTextNode(t));
+    topChip.classList.toggle('mo-hidden', !parts);
+  }
+  let toastTimer = null;
+  // After a save: what was written, and Show in Folder (and Open, for a copy).
+  function showToast(text, path, photoId) {
+    toast.innerHTML = '';
+    toast.append(moEl('span', 'mo-edit-ico mo-edit-toast-ok', { innerHTML: moIcon('check', 14) }), moEl('span', 'mo-edit-toast-text', { textContent: text, title: path || '' }));
+    if (path) api.ui.createButton(toast, { label: 'Show in Folder', icon: 'folder-open', size: 'sm', onClick: () => { try { window.parallxElectron.shell.showItemInFolder(path); } catch { /* ignore */ } } });
+    if (photoId) api.ui.createButton(toast, { label: 'Open', size: 'sm', onClick: () => void openPhotoTab(photoId, (path || '').split(/[\\/]/).pop()) });
+    api.ui.createIconButton(toast, { icon: 'x', size: 'sm', title: 'Close', onClick: () => toast.classList.add('mo-hidden') });
+    toast.classList.remove('mo-hidden');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.add('mo-hidden'), 12000);
+  }
+  disposers.push(() => clearTimeout(toastTimer));
 
   // ── filmstrip: the photos in the same folder ──
   function markFilm(photoId, edited) {
@@ -37441,11 +38165,12 @@ function renderImageEditor(container, api) {
     if (next) void loadPhoto(next.id);
   }
 
+  const setSaveLabel = (text) => { const l = saveBtn.querySelector('.px-btn__label'); if (l) l.textContent = text; };
   // ── Save As Copy ──
   async function saveCopy() {
     if (state.saving || !state.bitmap || !state.recipe || !moEditHasWork(state.recipe)) return;
     state.saving = true;
-    saveBtn.textContent = 'Saving';
+    setSaveLabel('Saving');
     syncButtons();
     const enlarging = state.recipe.enhance.scale > 0;
     busy(enlarging ? 'Saving and enlarging' : 'Saving', 0);
@@ -37453,19 +38178,16 @@ function renderImageEditor(container, api) {
       await flushSave();
       await syncWork();
       const saved = await moEditSaveCopy(state.photoId, state.srcPath, state.work || state.bitmap, state.bytes, state.recipe, (p) => { if (!disposed) busy(p.label, p.fraction); });
-      if (enlarging && saved.photoId) {
-        // an enlarged copy cannot be seen in the editor: it opens in its own tab
-        flash(`Saved beside the original: ${saved.name}`);
-        void openPhotoTab(saved.photoId, saved.name);
-      } else {
-        const opening = saved.photoId ? [{ title: 'Open' }] : [];
-        void Promise.resolve(api.window.showInformationMessage(`Saved beside the original: ${saved.name}`, ...opening)).then((picked) => { if (picked && picked.title === 'Open') void openPhotoTab(saved.photoId, saved.name); }).catch(() => {});
+      // Said on the stage, with Show in Folder and Open; no dialog to dismiss.
+      if (!disposed) {
+        const geo = geometry(); const k = enlarging ? state.recipe.enhance.scale : 1;
+        showToast(`Saved ${saved.name} \u00b7 ${geo.outW * k} \u00d7 ${geo.outH * k}`, saved.path, saved.photoId);
       }
     } catch (err) {
       api.window.showErrorMessage('The copy could not be saved: ' + ((err && err.message) || err));
     } finally {
       state.saving = false;
-      if (!disposed) { saveBtn.textContent = 'Save As Copy'; busy(''); syncButtons(); }
+      if (!disposed) { setSaveLabel('Save As Copy'); busy(''); syncButtons(); }
     }
   }
 
@@ -37480,7 +38202,7 @@ function renderImageEditor(container, api) {
     });
     if (!ok || disposed || state.saving || state.photoId !== id || !state.bitmap || !state.recipe) return;
     state.saving = true;
-    saveOverBtn.textContent = 'Saving';
+    setSaveLabel('Saving');
     syncButtons();
     busy(state.recipe.enhance.scale > 0 ? 'Saving and enlarging' : 'Saving', 0);
     let saved = null;
@@ -37488,22 +38210,36 @@ function renderImageEditor(container, api) {
       await flushSave();
       await syncWork();
       saved = await moEditSaveOver(id, state.srcPath, state.work || state.bitmap, state.bytes, state.recipe, (p) => { if (!disposed) busy(p.label, p.fraction); });
-      flash(`Saved over the original: ${saved.name}`);
+      if (!disposed) showToast(`Saved over the original: ${saved.name}`, saved.path, null);
     } catch (err) {
       api.window.showErrorMessage('The photo could not be saved: ' + ((err && err.message) || err));
     } finally {
       state.saving = false;
-      if (!disposed) { saveOverBtn.textContent = 'Save'; busy(''); syncButtons(); }
+      if (!disposed) { setSaveLabel('Save As Copy'); busy(''); syncButtons(); }
     }
   }
 
+  // The camera's settings, under the histogram, when the photo has them.
+  async function loadExif(id, seq) {
+    try {
+      const row = await db.get('SELECT iso, aperture, shutter_speed AS shutter FROM mo_photos WHERE id = ?', [id]);
+      if (disposed || seq !== loadSeq || !row) return;
+      const bits = [];
+      if (row.iso) bits.push(`ISO ${row.iso}`);
+      if (row.aperture) bits.push(`f/${Number(row.aperture) % 1 ? Number(row.aperture).toFixed(1) : Number(row.aperture)}`);
+      if (row.shutter) bits.push(String(row.shutter));
+      histExif.textContent = bits.join(' \u00b7 ');
+    } catch { /* no camera data */ }
+  }
   // ── opening a photo ──
   async function loadPhoto(photoId) {
     const seq = ++loadSeq;
     await flushSave();
     const id = Number(photoId);
-    state.recipe = null; state.hover = null; state.original = false; state.split = -1; state.pickWb = false; state.straightenBase = null;
+    state.recipe = null; state.hover = null; state.hoverName = ''; state.original = false; state.split = -1; state.pickWb = false; state.straightenBase = null;
     stage.classList.remove('is-picking');
+    closePreview(); markSel = -1; toast.classList.add('mo-hidden');
+    histExif.textContent = ''; histClip.textContent = '';
     if (state.bitmap) { try { state.bitmap.close(); } catch { /* gone */ } }
     state.bitmap = null; state.bytes = null; state.work = null; state.workKey = '[]'; state.sourceObj = null; state.hist = null;
     state.photoId = id;
@@ -37545,9 +38281,10 @@ function renderImageEditor(container, api) {
       say('');
       canvas.classList.remove('mo-hidden');
       if (state.tool === 'remove') state.removeState = 'unknown';
-      syncButtons(); syncCompare(); renderPanel(); renderPresets();
+      syncButtons(); syncCompare(); renderPanel(); renderPresets(); syncStageChip();
       requestRender();
       void loadFilm();
+      void loadExif(id, seq);
       void moSetSetting(MO_EDIT_LAST_KEY, String(id)).catch(() => {});
     } catch (err) {
       if (!disposed && seq === loadSeq) say('The photo could not be opened: ' + ((err && err.message) || err));
@@ -37576,7 +38313,10 @@ function renderImageEditor(container, api) {
   disposers.push(() => document.removeEventListener('mo:edit-open', onOpen), () => document.removeEventListener('mo:edit-changed', onChanged), () => document.removeEventListener('mo:edit-saved-over', onSavedOver));
 
   const handle = {
-    root, undo, redo, toggleOriginal, toggleSplit, zoomTo, copyEdit, pasteEdit, setTool,
+    root, undo, redo, toggleOriginal, toggleSplit, zoomTo, copyEdit, pasteEdit, setTool, togglePresets, toggleFilm, autoTone,
+    pickWb: () => { if (state.tool !== 'edit') setTool('edit'); togglePickWb(); },
+    blackWhite: () => { if (!state.recipe) return; state.recipe.bw = !state.recipe.bw; afterChange(true); },
+    turn: (by) => { if (!state.recipe) return; state.recipe = moEditTurn(state.recipe, by); afterChange(true); },
     previous: () => step(-1), next: () => step(1),
     brush: (by) => { if (state.tool !== 'remove') return; _moEditUi.brush = moEditClamp(Math.round(_moEditUi.brush + by), 6, 240); renderPanel(); },
     saveCopy: () => void saveCopy(),
@@ -38066,6 +38806,13 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.editor.toolCrop', moEditDo((e) => e.setTool('crop'))),
     api.commands.registerCommand('media-organizer.editor.toolRemove', moEditDo((e) => e.setTool('remove'))),
     api.commands.registerCommand('media-organizer.editor.saveCopy', moEditDo((e) => e.saveCopy())),
+    api.commands.registerCommand('media-organizer.editor.togglePresets', moEditDo((e) => e.togglePresets())),
+    api.commands.registerCommand('media-organizer.editor.toggleFilmstrip', moEditDo((e) => e.toggleFilm())),
+    api.commands.registerCommand('media-organizer.editor.auto', moEditDo((e) => e.autoTone())),
+    api.commands.registerCommand('media-organizer.editor.pickWhiteBalance', moEditDo((e) => e.pickWb())),
+    api.commands.registerCommand('media-organizer.editor.blackWhite', moEditDo((e) => e.blackWhite())),
+    api.commands.registerCommand('media-organizer.editor.rotateLeft', moEditDo((e) => e.turn(-1))),
+    api.commands.registerCommand('media-organizer.editor.rotateRight', moEditDo((e) => e.turn(1))),
     api.commands.registerCommand('media-organizer.editor.save', moEditDo((e) => e.saveOver())),
     // With photo ids: those photos. Without: the photos selected in the library.
     api.commands.registerCommand('media-organizer.removeFromSelected', (photoIds) => moBulkFromSelection(api, photoIds)),
@@ -38085,7 +38832,11 @@ export async function activate(api, context) {
       ['Ctrl+Shift+C', 'media-organizer.editor.copyEdit'], ['Ctrl+Shift+V', 'media-organizer.editor.pasteEdit'],
       ['PageUp', 'media-organizer.editor.previousPhoto'], ['PageDown', 'media-organizer.editor.nextPhoto'],
       ['[', 'media-organizer.editor.brushSmaller'], [']', 'media-organizer.editor.brushLarger'],
-      ['Ctrl+Shift+S', 'media-organizer.editor.saveCopy'], ['Ctrl+S', 'media-organizer.editor.save'],
+      // Ctrl+S is the safe save (a copy); Save Over Original stays in the Save menu, where it asks first.
+      ['Ctrl+S', 'media-organizer.editor.saveCopy'], ['Ctrl+Shift+S', 'media-organizer.editor.saveCopy'],
+      ['P', 'media-organizer.editor.togglePresets'], ['F', 'media-organizer.editor.toggleFilmstrip'],
+      ['Ctrl+U', 'media-organizer.editor.auto'], ['W', 'media-organizer.editor.pickWhiteBalance'], ['V', 'media-organizer.editor.blackWhite'],
+      ['Ctrl+[', 'media-organizer.editor.rotateLeft'], ['Ctrl+]', 'media-organizer.editor.rotateRight'],
     ]) {
       try { _commandDisposables.push(api.keybindings.register(key, command, when)); } catch (err) { console.warn('[MediaOrganizer] shortcut not registered:', key, err && err.message); }
     }

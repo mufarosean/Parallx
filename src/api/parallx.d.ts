@@ -550,6 +550,8 @@ export namespace ui {
     readonly checked?: boolean;
     /** Tooltip on the row (a disabled item's reason, for instance). */
     readonly tooltip?: string;
+    /** The shortcut shown at the row's trailing edge (e.g. "Ctrl+S"); display only. */
+    readonly keybinding?: string;
     /** A child menu, opened on hover or click. */
     readonly submenu?: ReadonlyArray<ContextMenuItem>;
     readonly onSelect?: () => void;
