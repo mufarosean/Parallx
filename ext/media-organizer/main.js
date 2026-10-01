@@ -10303,14 +10303,13 @@ function moShowShortcutsCheatSheet() {
     { title: 'Tag & organize', items: [
       [['T'], 'Tag the selected / focused item(s)'],
       [['Drag tag'], 'Drop a sidebar tag on a card to apply it'],
-      [['Delete'], 'Move selected to Trash'],
+      [['Delete'], 'Delete the selected items (it asks first)'],
       [[mod, 'Shift', 'E'], 'Reveal focused item in file explorer'],
     ]},
     { title: 'Sidebar', items: [
-      [['/'], 'Focus the tag / folder filter'],
+      [['/'], 'Show the tags and focus their filter'],
       [['F2'], 'Rename the focused tag (or double-click)'],
       [['Delete'], 'Delete the focused tag'],
-      [['Drag'], 'Drag the sash between sections to resize'],
     ]},
     { title: 'Lightbox & video', items: [
       [['←', '→'], 'Previous / next (lightbox)'],
@@ -10332,8 +10331,13 @@ function moShowShortcutsCheatSheet() {
       [[mod, 'Shift', 'V'], 'Paste the edit'],
       [['PgUp', 'PgDn'], 'Previous / next photo'],
       [['[', ']'], 'Smaller / larger brush (Remove)'],
-      [[mod, 'Shift', 'S'], 'Save As Copy'],
-      [[mod, 'S'], 'Save over the original'],
+      [[mod, 'S'], 'Save As Copy (Save Over Original is in the Save menu)'],
+      [['P'], 'Show or hide the presets'],
+      [['F'], 'Show or hide the filmstrip'],
+      [[mod, 'U'], 'Auto (Light)'],
+      [['W'], 'Pick white balance'],
+      [['V'], 'Black and white'],
+      [[mod, '[', ']'], 'Turn left / right'],
     ]},
   ];
 
@@ -25825,8 +25829,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const x = moEl('span', 'mo-clip-preset-chip-x', { textContent: ' \u2715', title: 'Delete preset' });
       x.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const ok = await api.window.showWarningMessage(`Delete preset "${p.name}"?`, 'Delete', 'Cancel');
-        if (ok !== 'Delete') return;
+        const ok = await api.window.showWarningMessage(`Delete preset "${p.name}"?`, { title: 'Delete' }, { title: 'Cancel' });
+        if (!ok || ok.title !== 'Delete') return;
         presets = presets.filter(pp => pp !== p);
         await savePresetsToStore();
         renderPresets();
@@ -25877,8 +25881,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     });
     const existing = presets.findIndex(p => p.name === trimmed);
     if (existing >= 0) {
-      const ok = await api.window.showWarningMessage(`Overwrite preset "${trimmed}"?`, 'Overwrite', 'Cancel');
-      if (ok !== 'Overwrite') return;
+      const ok = await api.window.showWarningMessage(`Overwrite preset "${trimmed}"?`, { title: 'Overwrite' }, { title: 'Cancel' });
+      if (!ok || ok.title !== 'Overwrite') return;
       presets[existing] = { name: trimmed, clips: stored };
     } else {
       presets.push({ name: trimmed, clips: stored });
@@ -28965,9 +28969,9 @@ function buildDupGroup(api, files, label) {
     if (targets.length === 0) return;
     const ok = await api.window.showWarningMessage(
       `Move ${targets.length} file(s) to OS trash? Database rows will be deleted.`,
-      'Move to Trash', 'Cancel'
+      { title: 'Move to Trash' }, { title: 'Cancel' }
     );
-    if (ok !== 'Move to Trash') return;
+    if (!ok || ok.title !== 'Move to Trash') return;
     // Capture which photos/videos point at these files BEFORE we delete the
     // mo_files rows — afterwards the join-table cascade has already wiped
     // the link rows we'd need to find them.
@@ -30054,9 +30058,9 @@ async function moEmptyTrash(api) {
   }
   const ok = await api.window.showWarningMessage(
     `Permanently delete ${total} trashed item${total === 1 ? '' : 's'}? Files go to Eraser for secure erasure when it is configured. Without Eraser, files on your home drive go to the OS recycle bin and files on external/removable drives are permanently deleted in place.`,
-    'Empty Trash', 'Cancel'
+    { title: 'Empty Trash' }, { title: 'Cancel' }
   );
-  if (ok !== 'Empty Trash') return;
+  if (!ok || ok.title !== 'Empty Trash') return;
   // Anything already handed to Eraser is Eraser's to remove. Leaving it out is
   // what keeps Empty Trash from deleting a file before Eraser gets to it.
   const held = items.filter((it) => _isAnyIdPendingErase([it]));
