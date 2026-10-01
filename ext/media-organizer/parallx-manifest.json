@@ -36,6 +36,8 @@
       { "id": "media-organizer.toggleScreenRecorder", "title": "Toggle Screen Recorder", "category": "Media Organizer" },
       { "id": "media-organizer.recordGif", "title": "Record GIF (Screen)", "category": "Media Organizer" },
       { "id": "media-organizer.openClipEditor", "title": "Open Clip Editor", "category": "Media Organizer" },
+      { "id": "media-organizer.newClipProject", "title": "New Clip Project…", "category": "Media Organizer" },
+      { "id": "media-organizer.openClipProject", "title": "Open Clip Project…", "category": "Media Organizer" },
       { "id": "media-organizer.openTagReview", "title": "Open Tag Review", "category": "Media Organizer" },
       { "id": "media-organizer.editImage", "title": "Edit Image", "category": "Media Organizer" },
       { "id": "media-organizer.pasteEdit", "title": "Paste Edit Onto Selected Photos", "category": "Media Organizer" },

@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -61,7 +61,13 @@ async function makeTempRoots() {
     '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000',
     '-t', '6', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', clip], { windowsHide: true });
   if (ff.status !== 0) console.log(`[probe] synthetic clip failed: ${String(ff.stderr || '').slice(0, 200)}`);
-  return { appRoot, workspace, clip };
+  // A second one for the clip project scene (a different picture and length).
+  const clip2 = path.join(workspace, 'probe-session-2.mp4');
+  const ff2 = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', 'smptebars=size=640x360:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=330:sample_rate=48000',
+    '-t', '9', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', clip2], { windowsHide: true });
+  if (ff2.status !== 0) console.log(`[probe] second clip failed: ${String(ff2.stderr || '').slice(0, 200)}`);
+  return { appRoot, workspace, clip, clip2 };
 }
 
 // Commands run through the workbench's own command service (main.ts exposes
@@ -115,10 +121,124 @@ async function shot(page, name) {
   console.log(`[probe] ${name} -> ${file}`);
 }
 
+async function enableMediaOrganizer(page) {
+  // External tools start disabled in a fresh data root; enabling one
+  // activates it directly.
+  const enabled = await page.evaluate(async () => {
+    const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' });
+    if (!svc) return 'no enablement service';
+    try { await svc.setEnablement('parallx-community.media-organizer', true); return true; } catch (err) { return String(err && err.message || err); }
+  });
+  if (enabled !== true) console.log(`[probe] enable media-organizer: ${enabled}`);
+  await page.waitForTimeout(3_000);
+}
+
+async function launchApp(appRoot, errors) {
+  const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
+  const page = await app.firstWindow();
+  page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text().slice(0, 300)}`); });
+  await page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
+  await page.waitForSelector('[data-part-id="workbench.parts.titlebar"]', { state: 'attached', timeout: 90_000 });
+  await page.waitForTimeout(2_500);
+  return { app, page };
+}
+
+// A clip project keeps its edits until it is deleted: make one from two
+// videos, edit the first, switch videos, quit the app, start it again, and
+// read the edits back. Then delete the project.
+async function projectScene(appRoot, clip, clip2, errors) {
+  const trimState = (page) => page.evaluate(() => {
+    const panel = Array.from(document.querySelectorAll('.mo-ce-panel')).find((x) => (x.querySelector('.mo-ce-panel-title')?.textContent || '') === 'Trim');
+    const tcs = Array.from(panel ? panel.querySelectorAll('.mo-ce-tcfield') : []).map((i) => i.value);
+    const name = document.querySelector('.mo-ce-name')?.textContent || '';
+    const badge = document.querySelector('.mo-ce-toolbar .mo-ce-badge')?.textContent || '';
+    const rows = Array.from(document.querySelectorAll('.mo-cp-row')).map((r) => `${r.querySelector('.mo-cp-row-name')?.textContent}[${r.querySelector('.mo-cp-row-meta')?.textContent}]${r.classList.contains('mo-cp-row--active') ? '*' : ''}`);
+    const sub = document.querySelector('.mo-cp-sub')?.textContent || '';
+    const side = Array.from(document.querySelectorAll('.mo-cp-sidebar .mo-sidebar-item-label')).map((x) => x.textContent);
+    return `editor=${name} trim=${tcs.join('..')} queue=${badge} bin=${rows.join(' | ')} sub="${sub}" sidebar=${side.join(',')}`;
+  });
+  let { app, page } = await launchApp(appRoot, errors);
+  try {
+    await enableMediaOrganizer(page);
+    // New Clip Project… asks for a name first.
+    await page.evaluate(({ a, b }) => {
+      const svc = window.__parallx_workbench__?._services?.get?.({ id: 'ICommandService' });
+      void svc.executeCommand('media-organizer.newClipProject', [a, b]);
+    }, { a: clip, b: clip2 });
+    await page.waitForSelector('.parallx-modal-input', { timeout: 10_000 });
+    await page.fill('.parallx-modal-input', 'Oil study, October');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.mo-cp .mo-clip-page', { timeout: 30_000 });
+    await page.waitForTimeout(1_500);
+    console.log(`[probe] project @open: ${await trimState(page)}`);
+    // Edit the first video: In at 2 s, and queue a clip.
+    await page.evaluate(() => { const v = document.querySelector('.mo-clip-page video'); v.currentTime = 2; });
+    await page.waitForTimeout(400);
+    await page.locator('.mo-clip-page').first().focus();
+    await page.keyboard.press('i');
+    await page.waitForTimeout(300);
+    await page.keyboard.press('q');
+    await page.waitForTimeout(1_500);
+    console.log(`[probe] project @edited: ${await trimState(page)}`);
+    await shot(page, 'project');
+    // The second video opens untouched; the first comes back as it was left.
+    await page.locator('.mo-cp-row').nth(1).click();
+    await page.waitForTimeout(1_500);
+    console.log(`[probe] project @second: ${await trimState(page)}`);
+    await page.locator('.mo-cp-row').nth(0).click();
+    await page.waitForTimeout(1_500);
+    console.log(`[probe] project @back: ${await trimState(page)}`);
+    // A narrow tab closes the bin to a rail.
+    await page.setViewportSize({ width: 820, height: 900 }).catch(() => {});
+    await page.waitForTimeout(800);
+    await shot(page, 'project-narrow');
+    await page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
+    await page.waitForTimeout(800);
+  } finally {
+    await app.close().catch(() => {});
+  }
+  // Start again: the project is in the sidebar and opens where it was left.
+  ({ app, page } = await launchApp(appRoot, errors));
+  try {
+    await page.waitForTimeout(2_000);
+    await runCommand(page, [['media-organizer.openClipProject', 1]]);
+    await page.waitForSelector('.mo-cp .mo-clip-page', { timeout: 30_000 });
+    await page.waitForTimeout(1_500);
+    console.log(`[probe] project @restart: ${await trimState(page)}`);
+    await shot(page, 'project-restart');
+    // The Media Organizer sidebar lists the project.
+    await page.locator('.activity-bar [title="Media Organizer"], [aria-label="Media Organizer"]').first().click({ timeout: 3_000 }).catch((e) => console.log(`[probe] project: no Media Organizer view button (${String(e).split('\n')[0]})`));
+    await page.waitForTimeout(1_500);
+    await shot(page, 'project-sidebar');
+    // Delete it from the project's menu.
+    await page.locator('.mo-cp-head [title="Project Actions"]').click();
+    await page.waitForTimeout(300);
+    await page.getByText('Delete Project\u2026', { exact: true }).first().click();
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: 'Delete Project', exact: true }).first().click();
+    await page.waitForTimeout(1_200);
+    const after = await page.evaluate(() => `pageOpen=${!!document.querySelector('.mo-cp')} sidebar=${Array.from(document.querySelectorAll('.mo-cp-sidebar .mo-sidebar-item-label')).map((x) => x.textContent).join(',')}`);
+    console.log(`[probe] project @deleted: ${after}`);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 async function main() {
   await fs.mkdir(outDir, { recursive: true });
-  const { appRoot, workspace, clip } = await makeTempRoots();
+  const { appRoot, workspace, clip, clip2 } = await makeTempRoots();
   console.log(`[probe] app root ${appRoot}\n[probe] workspace ${workspace}`);
+  if (scenes.includes('project')) {
+    const errs = [];
+    await scene('project', () => projectScene(appRoot, clip, clip2, errs));
+    if (errs.length) { console.log(`[probe] project: ${errs.length} renderer error(s)`); for (const e of errs) console.log(`  ${e}`); }
+    if (scenes.length === 1) {
+      await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
+      return;
+    }
+  }
 
   const app = await electron.launch({ args: ['.'], cwd: PROJECT_ROOT, env: launchEnv(appRoot) });
   const errors = [];

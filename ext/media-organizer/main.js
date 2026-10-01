@@ -8010,6 +8010,77 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 /* Preview fills the left column instead of a fixed 16:9 letterbox. */
 /* Footer pinned at the bottom of the page. */
 
+/* ═══ Clip project (docs/CLIPS.md, Phase 2) ═══════════════════════════════
+   The bin of videos down the left; the clip editor fills the rest. Closed
+   (by the user, or a narrow tab) the bin is a rail with one button. */
+.mo-cp {
+  position: absolute; inset: 0; display: flex; overflow: hidden;
+  background: var(--px-bg); color: var(--px-text);
+  font-family: var(--px-font-ui); font-size: var(--px-text-base);
+}
+.mo-cp-bin {
+  flex: 0 0 var(--px-clip-bin-w); width: var(--px-clip-bin-w); min-width: 0;
+  display: flex; flex-direction: column; border-right: 1px solid var(--px-divider);
+  background: var(--px-bg-elevated);
+}
+.mo-cp-rail {
+  display: none; flex: none; flex-direction: column; align-items: center; gap: var(--px-space-1);
+  padding: var(--px-space-2) var(--px-space-1); border-right: 1px solid var(--px-divider);
+  background: var(--px-bg-elevated);
+}
+.mo-cp-rail-count { color: var(--px-text-muted); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
+.mo-cp--closed .mo-cp-bin { display: none; }
+.mo-cp--closed .mo-cp-rail { display: flex; }
+.mo-cp-stage { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.mo-cp-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: var(--px-space-6); }
+.mo-cp-empty .px-empty { max-width: 420px; }
+.mo-cp-head {
+  display: flex; align-items: center; gap: var(--px-space-2);
+  height: 44px; padding: 0 var(--px-space-2) 0 var(--px-space-3); flex: none;
+  border-bottom: 1px solid var(--px-divider);
+}
+.mo-cp-head > .mo-ce-ico { color: var(--px-text-muted); }
+.mo-cp-name { flex: 1 1 auto; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-cp-head-btns { display: flex; align-items: center; gap: 2px; flex: none; }
+.mo-cp-sub {
+  padding: var(--px-space-2) var(--px-space-3) var(--px-space-1); flex: none;
+  color: var(--px-text-muted); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums;
+}
+.mo-cp-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--px-space-1) var(--px-space-2); display: flex; flex-direction: column; gap: 2px; }
+.mo-cp-list-empty { padding: var(--px-space-3) var(--px-space-1); color: var(--px-text-muted); font-size: var(--px-text-sm); }
+.mo-cp-row {
+  position: relative; display: flex; align-items: center; gap: var(--px-space-2);
+  padding: var(--px-space-1) var(--px-space-1) var(--px-space-1) 0; border-radius: var(--px-radius-md);
+  cursor: pointer; outline: none;
+}
+.mo-cp-row:hover { background: var(--px-surface-hover); }
+.mo-cp-row:focus-visible { box-shadow: inset 0 0 0 1px var(--px-accent); }
+.mo-cp-row--active, .mo-cp-row--active:hover { background: var(--px-surface-selected); }
+.mo-cp-row--dragging { opacity: 0.5; }
+.mo-cp-row--drop::before {
+  content: ''; position: absolute; left: 0; right: 0; top: -2px; height: 2px;
+  border-radius: 1px; background: var(--px-accent);
+}
+.mo-cp-grip { display: inline-flex; flex: none; width: 14px; justify-content: center; color: var(--px-text-faint); cursor: grab; opacity: 0; }
+.mo-cp-row:hover .mo-cp-grip, .mo-cp-row--active .mo-cp-grip { opacity: 1; }
+.mo-cp-thumb {
+  position: relative; flex: none; width: 64px; height: 36px; overflow: hidden;
+  border-radius: var(--px-radius-sm); background: var(--px-viewer-scrim);
+  display: flex; align-items: center; justify-content: center; color: var(--px-viewer-ink-muted);
+}
+.mo-cp-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.mo-cp-thumb--img > .mo-ce-ico { display: none; }
+.mo-cp-row--missing .mo-cp-thumb { color: var(--px-warning); }
+.mo-cp-row-text { flex: 1 1 auto; min-width: 0; }
+.mo-cp-row-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-cp-row-meta { color: var(--px-text-muted); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-cp-row--missing .mo-cp-row-meta { color: var(--px-warning); }
+.mo-cp-row-more { flex: none; opacity: 0; }
+.mo-cp-row:hover .mo-cp-row-more, .mo-cp-row--active .mo-cp-row-more, .mo-cp-row-more:focus-visible { opacity: 1; }
+.mo-cp-foot { flex: none; padding: var(--px-space-2) var(--px-space-3) var(--px-space-3); border-top: 1px solid var(--px-divider); }
+.mo-cp-add { width: 100%; justify-content: center; }
+.mo-cp-sidebar { max-height: 200px; overflow-y: auto; }
+
 .mo-clip-unavailable {
   display: flex; align-items: center; justify-content: center;
   height: 100%; padding: 40px; text-align: center;
@@ -10375,6 +10446,52 @@ function renderBrowserSidebar(container, api) {
   qfBody.appendChild(sidebarItem('copy', 'Duplicates', null, () => openGrid('duplicates', 'Duplicates')));
   qfBody.appendChild(sidebarItem('trash', 'Trash', null, () => openGrid('trash', 'Trash')));
   sections.appendChild(qfSection);
+
+  // Clip projects (docs/CLIPS.md, Phase 2): videos gathered for editing, kept
+  // with every edit until the project is deleted.
+  const { section: cpSection, body: cpBody } = sidebarSection('Clip Projects', 'clapperboard', false);
+  cpSection.classList.add('mo-section-fixed');
+  cpBody.classList.add('mo-cp-sidebar');
+  {
+    const cpHeader = cpSection.querySelector('.mo-sidebar-section-header');
+    const cpChevron = cpHeader.querySelector('.mo-chevron');
+    const cpBtns = moEl('div', 'mo-sidebar-header-btns');
+    const cpNewBtn = moSidebarHeaderBtn(api, 'plus', 'New Clip Project\u2026');
+    cpNewBtn.addEventListener('click', (e) => { e.stopPropagation(); void moNewClipProject(api, []); });
+    cpBtns.appendChild(cpNewBtn);
+    if (cpChevron) cpHeader.insertBefore(cpBtns, cpChevron); else cpHeader.appendChild(cpBtns);
+  }
+  async function loadClipProjects() {
+    let rows = [];
+    try { rows = await MoClipProjects.list(); } catch { rows = []; }
+    cpBody.innerHTML = '';
+    if (!rows.length) {
+      cpBody.appendChild(sidebarItem('plus', 'New Clip Project\u2026', null, () => void moNewClipProject(api, [])));
+      return;
+    }
+    for (const p of rows) {
+      const item = sidebarItem('clapperboard', p.name, p.source_count || null, () => void moOpenClipProject(api, p.id, p.name));
+      item.title = `${p.name}: ${p.source_count} video${p.source_count === 1 ? '' : 's'}`;
+      item.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showContextMenu(e.clientX, e.clientY, [
+          { label: 'Open', handler: () => void moOpenClipProject(api, p.id, p.name) },
+          { label: 'Rename\u2026', handler: async () => {
+            const next = await api.window.showInputBox({ prompt: 'Rename the clip project', value: p.name });
+            if (next != null && next.trim() && next.trim() !== p.name) {
+              try { await MoClipProjects.rename(p.id, next.trim()); } catch (err) { api.window.showErrorMessage('Could not rename: ' + (err && err.message || err)); }
+            }
+          } },
+          { separator: true },
+          { label: 'Delete Project\u2026', danger: true, handler: () => void moDeleteClipProject(api, p.id, p.name) },
+        ]);
+      });
+      cpBody.appendChild(item);
+    }
+  }
+  document.addEventListener('mo:clip-projects-changed', () => void loadClipProjects());
+  void loadClipProjects();
+  sections.appendChild(cpSection);
 
   // Drawing and Painting (M104): practice and painting plans. Shown only while
   // Drawing and Painting Tools is on (decision D7).
@@ -14250,6 +14367,9 @@ function renderGridBrowser(container, api, input) {
         const tmpState = { selectedIds: new Set([`${item.type}:${item.id}`]) };
         showAddToAlbumDialog(tmpState, api, () => loadPage());
       }});
+      if (item.type === 'video') {
+        actions.push({ label: 'Add to Clip Project', submenu: moClipProjectMenu(api, async () => { const fp = await resolveItemFilePath(item); return fp ? [fp] : []; }) });
+      }
       actions.push({ label: 'Add to Chat', handler: async () => {
         const ok = await attachItemToChat(item);
         if (ok && api.statusBar) api.statusBar.setMessage('Attached to chat', 2000);
@@ -14323,6 +14443,14 @@ function renderGridBrowser(container, api, input) {
       actions.push({ label: 'Add to Album\u2026', handler: () => {
         showAddToAlbumDialog(state, api, () => { if (selectionBar) selectionBar.update(); loadPage(); });
       }});
+      const selectedVideos = state.items.filter((it) => it.type === 'video' && state.selectedIds.has(`${it.type}:${it.id}`));
+      if (selectedVideos.length) {
+        actions.push({ label: `Add ${selectedVideos.length} Video${selectedVideos.length === 1 ? '' : 's'} to Clip Project`, submenu: moClipProjectMenu(api, async () => {
+          const out = [];
+          for (const it of selectedVideos) { const fp = await resolveItemFilePath(it); if (fp) out.push(fp); }
+          return out;
+        }) });
+      }
       actions.push({ label: 'Add to Chat', handler: async () => {
         const selectedItems = state.items.filter((it) => state.selectedIds.has(`${it.type}:${it.id}`));
         // Cap at 20 to protect the chat composer from extreme right-click
@@ -19257,7 +19385,605 @@ async function moOpenClipDialog(api, videoPath, duration, initialIn, initialOut,
   }
 }
 
+// ── Clip projects (docs/CLIPS.md, Phase 2) ───────────────────────────────────
+// Two kinds of clip work, saved differently on purpose. A quick clip (open a
+// video, cut a GIF) keeps its edits in memory until its tab closes. A project
+// gathers videos in a bin and keeps every edit made to each one (the editor's
+// snapshot and its queued clips) in the database until the project is deleted.
+// Deleting a project never touches the video files.
+
+const MO_CLIP_PROJECT_PREFIX = 'project:';
+// Writes land here first, so a pane rebuilt on a tab switch reads the edit
+// that is still on its way to the database.
+const _moClipProjectCache = new Map(); // sourceId -> { state, queue }
+
+function moParseJson(text, fallback) {
+  if (typeof text !== 'string' || !text) return fallback;
+  try { const v = JSON.parse(text); return v == null ? fallback : v; } catch { return fallback; }
+}
+
+function moClipProjectsChanged(projectId) {
+  try { document.dispatchEvent(new CustomEvent('mo:clip-projects-changed', { detail: { projectId: projectId || null } })); } catch { /* ignore */ }
+}
+
+const MoClipProjects = {
+  async list() {
+    return db.all(`
+      SELECT p.id, p.name, p.updated_at,
+             (SELECT COUNT(*) FROM mo_clip_project_sources s WHERE s.project_id = p.id) AS source_count
+      FROM mo_clip_projects p
+      ORDER BY p.updated_at DESC, p.id DESC`);
+  },
+  async get(id) {
+    return db.get('SELECT * FROM mo_clip_projects WHERE id = ?', [id]);
+  },
+  async sources(projectId) {
+    return db.all('SELECT * FROM mo_clip_project_sources WHERE project_id = ? ORDER BY position ASC, id ASC', [projectId]);
+  },
+  async create(name) {
+    const res = await db.run('INSERT INTO mo_clip_projects (name) VALUES (?)', [String(name).trim() || 'Untitled project']);
+    moClipProjectsChanged(res.lastInsertRowid);
+    return res.lastInsertRowid;
+  },
+  async rename(id, name) {
+    const n = String(name || '').trim();
+    if (!n) return;
+    await db.run(`UPDATE mo_clip_projects SET name = ?, updated_at = datetime('now') WHERE id = ?`, [n, id]);
+    moClipProjectsChanged(id);
+  },
+  async destroy(id) {
+    const rows = await db.all('SELECT id FROM mo_clip_project_sources WHERE project_id = ?', [id]);
+    await db.transaction([
+      { type: 'run', sql: 'DELETE FROM mo_clip_project_sources WHERE project_id = ?', params: [id] },
+      { type: 'run', sql: 'DELETE FROM mo_clip_projects WHERE id = ?', params: [id] },
+    ]);
+    for (const r of rows) {
+      _moClipProjectCache.delete(r.id);
+      _moClipQueueByVideo.delete(`${MO_CLIP_PROJECT_PREFIX}${id}:${r.id}`);
+    }
+    moClipProjectsChanged(id);
+  },
+  /** Add videos (absolute paths) to the end of the bin. Paths already in it are skipped. */
+  async addSources(projectId, paths) {
+    const have = new Set((await this.sources(projectId)).map((r) => r.path));
+    const top = await db.get('SELECT COALESCE(MAX(position), -1) AS p FROM mo_clip_project_sources WHERE project_id = ?', [projectId]);
+    let pos = (top && Number.isFinite(top.p) ? top.p : -1) + 1;
+    const added = [];
+    const skipped = [];
+    for (const p of paths) {
+      if (!p || have.has(p)) { if (p) skipped.push({ path: p, why: 'already in the project' }); continue; }
+      if (!MO_STREAM_EXT_RE.test(p) || /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i.test(p)) { skipped.push({ path: p, why: 'not a video' }); continue; }
+      if (!(await moPathInWorkspace(p))) { skipped.push({ path: p, why: 'outside the workspace' }); continue; }
+      const duration = await moProbeDuration(p);
+      if (!(duration > 0)) { skipped.push({ path: p, why: 'could not be read' }); continue; }
+      const res = await db.run('INSERT OR IGNORE INTO mo_clip_project_sources (project_id, path, duration, position) VALUES (?, ?, ?, ?)', [projectId, p, duration, pos++]);
+      have.add(p);
+      if (res.changes !== 0) added.push(res.lastInsertRowid);
+    }
+    if (added.length) {
+      await db.run(`UPDATE mo_clip_projects SET updated_at = datetime('now') WHERE id = ?`, [projectId]);
+      moClipProjectsChanged(projectId);
+    }
+    return { added, skipped };
+  },
+  async removeSource(projectId, sourceId) {
+    await db.run('DELETE FROM mo_clip_project_sources WHERE id = ? AND project_id = ?', [sourceId, projectId]);
+    _moClipProjectCache.delete(sourceId);
+    _moClipQueueByVideo.delete(`${MO_CLIP_PROJECT_PREFIX}${projectId}:${sourceId}`);
+    moClipProjectsChanged(projectId);
+  },
+  /** Put the bin in this order (source ids). */
+  async reorder(projectId, ids) {
+    await db.transaction(ids.map((sid, i) => ({ type: 'run', sql: 'UPDATE mo_clip_project_sources SET position = ? WHERE id = ? AND project_id = ?', params: [i, sid, projectId] })));
+    moClipProjectsChanged(projectId);
+  },
+  async setActive(projectId, sourceId) {
+    await db.run('UPDATE mo_clip_projects SET active_source_id = ? WHERE id = ?', [sourceId, projectId]);
+  },
+  async saveSource(projectId, sourceId, state, queue) {
+    await db.run('UPDATE mo_clip_project_sources SET state_json = ?, queue_json = ? WHERE id = ? AND project_id = ?',
+      [JSON.stringify(state || null), JSON.stringify(queue || []), sourceId, projectId]);
+    await db.run(`UPDATE mo_clip_projects SET updated_at = datetime('now') WHERE id = ?`, [projectId]);
+  },
+};
+
+async function moOpenClipProject(api, projectId, name) {
+  let title = name;
+  if (!title) { try { const p = await MoClipProjects.get(projectId); title = p ? p.name : ''; } catch { /* ignore */ } }
+  await api.editors.openEditor({ typeId: 'media-organizer-clip', title: title || 'Clip Project', icon: 'clapperboard', instanceId: MO_CLIP_PROJECT_PREFIX + projectId });
+}
+
+function moClipProjectEditorId(projectId) {
+  return `parallx-community.media-organizer:media-organizer-clip:${MO_CLIP_PROJECT_PREFIX}${projectId}`;
+}
+
+/** Ask, then delete a project's saved edits and close its tab. */
+async function moDeleteClipProject(api, projectId, name, beforeDelete) {
+  const pick = await api.window.showWarningMessage(
+    `Delete the project "${name}"? Its edits and queued clips are deleted. The videos and anything already exported stay.`,
+    { title: 'Delete Project' }, { title: 'Cancel' });
+  if (!pick || pick.title !== 'Delete Project') return false;
+  if (typeof beforeDelete === 'function') { try { beforeDelete(); } catch { /* ignore */ } }
+  try { await MoClipProjects.destroy(projectId); } catch (err) {
+    api.window.showErrorMessage('Could not delete the project: ' + (err && err.message || err));
+    return false;
+  }
+  try { await api.editors.closeEditor(moClipProjectEditorId(projectId)); } catch { /* not open */ }
+  return true;
+}
+
+/** Ask for a name, create the project, add any videos given, and open it. */
+async function moNewClipProject(api, paths) {
+  const name = await api.window.showInputBox({ prompt: 'Name the clip project', placeholder: 'Project name', value: '' });
+  if (name == null) return null;
+  const id = await MoClipProjects.create(name.trim() || 'Untitled project');
+  if (Array.isArray(paths) && paths.length) await moAddToClipProject(api, id, paths, { quiet: true });
+  await moOpenClipProject(api, id);
+  return id;
+}
+
+/** Add videos to a project and say what happened. */
+async function moAddToClipProject(api, projectId, paths, { quiet = false } = {}) {
+  let res;
+  try { res = await MoClipProjects.addSources(projectId, paths); } catch (err) {
+    api.window.showErrorMessage('Could not add the videos: ' + (err && err.message || err));
+    return null;
+  }
+  const n = res.added.length;
+  const bits = [];
+  if (n) bits.push(`Added ${n} video${n === 1 ? '' : 's'}.`);
+  const why = new Map();
+  for (const s of res.skipped) why.set(s.why, (why.get(s.why) || 0) + 1);
+  for (const [w, c] of why) bits.push(`${c} skipped: ${w}.`);
+  if (!quiet || res.skipped.length) {
+    if (n) api.window.showInformationMessage(bits.join(' '));
+    else if (bits.length) api.window.showWarningMessage(bits.join(' '));
+  }
+  return res;
+}
+
+// The projects, newest first, for menus that are built synchronously.
+let _moClipProjectList = [];
+function moRefreshClipProjectList() {
+  return MoClipProjects.list().then((rows) => { _moClipProjectList = rows.map((r) => ({ id: r.id, name: r.name })); }).catch(() => {});
+}
+
+/** The menu entries for adding videos to a project: each project, then a new one. */
+function moClipProjectMenu(api, getPaths) {
+  const items = _moClipProjectList.map((p) => ({
+    label: p.name,
+    handler: async () => {
+      const paths = await getPaths();
+      const res = await moAddToClipProject(api, p.id, paths);
+      if (res && res.added.length) await moOpenClipProject(api, p.id, p.name);
+    },
+  }));
+  if (items.length) items.push({ separator: true });
+  items.push({ label: 'New Clip Project…', handler: async () => { await moNewClipProject(api, await getPaths()); } });
+  return items;
+}
+
+/** One frame of a video as a JPEG data URL (width w), or null. */
+async function moGrabVideoFrame(p, t, w) {
+  let url = null;
+  try { url = await localFileToUrl(p); } catch { url = null; }
+  if (!url) return null;
+  return new Promise((resolve) => {
+    const v = document.createElement('video');
+    v.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
+    v.muted = true; v.preload = 'auto';
+    let settled = false;
+    const done = (val) => {
+      if (settled) return; settled = true; clearTimeout(timer);
+      try { v.removeAttribute('src'); v.load(); } catch { /* ignore */ }
+      resolve(val);
+    };
+    const timer = setTimeout(() => done(null), 8000);
+    v.onerror = () => done(null);
+    v.onloadedmetadata = () => { try { v.currentTime = Math.max(0, Math.min(t, (v.duration || t) - 0.05)); } catch { done(null); } };
+    v.onseeked = () => {
+      try {
+        const vw = v.videoWidth, vh = v.videoHeight;
+        if (!vw || !vh) { done(null); return; }
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = Math.max(1, Math.round(w * vh / vw));
+        cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+        done(cv.toDataURL('image/jpeg', 0.7));
+      } catch { done(null); }
+    };
+    v.src = url;
+  });
+}
+
+/** The library video id for a path, for its thumbnail. */
+async function moVideoIdForPath(p) {
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+  if (i < 0) return null;
+  const dir = p.slice(0, i);
+  const base = p.slice(i + 1);
+  try {
+    const row = await db.get(`
+      SELECT vf.video_id AS id FROM mo_files f
+      JOIN mo_folders fo ON fo.id = f.folder_id
+      JOIN mo_videos_files vf ON vf.file_id = f.id
+      WHERE f.basename = ? AND (fo.path = ? OR fo.path = ? OR fo.path = ?)
+      LIMIT 1`, [base, dir, dir + '/', dir + '\\']);
+    return row ? row.id : null;
+  } catch { return null; }
+}
+
+function moClipProjectSummary(sources) {
+  const clips = sources.reduce((n, s) => n + (s.queueCount || 0), 0);
+  const total = sources.reduce((n, s) => n + (s.duration || 0), 0);
+  const parts = [`${sources.length} video${sources.length === 1 ? '' : 's'}`];
+  if (total > 0) parts.push(moTcStr(total));
+  if (clips) parts.push(`${clips} clip${clips === 1 ? '' : 's'} queued`);
+  return parts.join(' · ');
+}
+
+// The project page: the bin of videos down the left, the editor on the one
+// that is open. Switching videos saves the one being left (the editor saves on
+// dispose) and opens the next where it was left.
+function renderClipProject(container, api, projectId, input) {
+  const page = moEl('div', 'mo-cp');
+  const bin = moEl('div', 'mo-cp-bin');
+  const stage = moEl('div', 'mo-cp-stage');
+  page.append(bin, stage);
+  container.appendChild(page);
+
+  let project = null;
+  /** @type {Array<any>} */
+  let sources = [];
+  let activeId = null;
+  let editor = null;
+  let disposed = false;
+  let loadGen = 0;
+  let binClosed = false;
+  let binAuto = false; // closed because the page is narrow, not by the user
+
+  // Bin head: the project's name and its menu.
+  const head = moEl('div', 'mo-cp-head');
+  const nameEl = moEl('div', 'mo-cp-name', { textContent: '' });
+  const headBtns = moEl('div', 'mo-cp-head-btns');
+  api.ui.createIconButton(headBtns, { icon: 'ellipsis', title: 'Project Actions', size: 'sm', onClick: (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    showContextMenu(r.left, r.bottom + 2, [
+      { label: 'Add Videos…', handler: () => void addFromFiles() },
+      { label: 'Rename Project…', handler: () => void renameProject() },
+      { separator: true },
+      { label: 'Delete Project…', danger: true, handler: () => void deleteProject() },
+    ]);
+  } });
+  api.ui.createIconButton(headBtns, { icon: 'panel-left-close', title: 'Hide the Videos', size: 'sm', onClick: () => setBinClosed(true, false) });
+  head.append(moEl('span', 'mo-ce-ico', { innerHTML: moIcon('clapperboard', 16) }), nameEl, headBtns);
+  const sub = moEl('div', 'mo-cp-sub');
+  const list = moEl('div', 'mo-cp-list');
+  list.setAttribute('role', 'listbox');
+  list.setAttribute('aria-label', 'Videos in this project');
+  const foot = moEl('div', 'mo-cp-foot');
+  const addBtn = api.ui.createButton(foot, { label: 'Add Videos…', icon: 'plus', title: 'Add videos from your files. You can also right-click videos in the library and choose Add to Clip Project.', onClick: () => void addFromFiles() });
+  addBtn.classList.add('mo-cp-add');
+  bin.append(head, sub, list, foot);
+
+  // The closed bin is a rail with one button to bring it back.
+  const rail = moEl('div', 'mo-cp-rail');
+  api.ui.createIconButton(rail, { icon: 'panel-left-open', title: 'Show the Videos', onClick: () => setBinClosed(false, false) });
+  const railCount = moEl('span', 'mo-cp-rail-count');
+  rail.appendChild(railCount);
+  page.insertBefore(rail, stage);
+
+  function setBinClosed(closed, auto) {
+    binClosed = closed;
+    binAuto = closed && auto;
+    page.classList.toggle('mo-cp--closed', closed);
+  }
+  const pageObs = new ResizeObserver(() => {
+    const w = page.clientWidth;
+    if (!w) return;
+    if (w < 760 && !binClosed) setBinClosed(true, true);
+    else if (w >= 760 && binClosed && binAuto) setBinClosed(false, false);
+  });
+  pageObs.observe(page);
+
+  function setStageEmpty(headline, hint, action) {
+    if (editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; }
+    stage.innerHTML = '';
+    const wrap = moEl('div', 'mo-cp-empty');
+    api.ui.createEmptyState(wrap, { icon: 'clapperboard', headline, hint, action });
+    stage.appendChild(wrap);
+  }
+
+  function rowMeta(s) {
+    const bits = [moTcStr(s.duration || 0)];
+    if (s.queueCount) bits.push(`${s.queueCount} clip${s.queueCount === 1 ? '' : 's'}`);
+    else if (s.edited) bits.push('edited');
+    return bits.join(' · ');
+  }
+
+  function renderBin() {
+    nameEl.textContent = project ? project.name : '';
+    nameEl.title = project ? project.name : '';
+    sub.textContent = sources.length ? moClipProjectSummary(sources) : 'No videos yet';
+    railCount.textContent = sources.length ? String(sources.length) : '';
+    list.innerHTML = '';
+    if (!sources.length) {
+      list.appendChild(moEl('div', 'mo-cp-list-empty', { textContent: 'Add the videos this project is made from.' }));
+      return;
+    }
+    sources.forEach((s, idx) => {
+      const row = moEl('div', 'mo-cp-row' + (s.id === activeId ? ' mo-cp-row--active' : '') + (s.missing ? ' mo-cp-row--missing' : ''));
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', s.id === activeId ? 'true' : 'false');
+      row.tabIndex = 0;
+      row.title = s.path;
+      row.dataset.sourceId = String(s.id);
+      const grip = moEl('span', 'mo-cp-grip', { innerHTML: moIcon('grip-vertical', 12), title: 'Drag to reorder' });
+      const thumb = moEl('div', 'mo-cp-thumb');
+      const img = moEl('img', null, { alt: '' });
+      img.style.display = 'none';
+      thumb.append(moEl('span', 'mo-ce-ico', { innerHTML: moIcon(s.missing ? 'triangle-alert' : 'film', 16) }), img);
+      if (!s.missing) void loadThumb(s, img, thumb);
+      const text = moEl('div', 'mo-cp-row-text');
+      text.append(
+        moEl('div', 'mo-cp-row-name', { textContent: s.name }),
+        moEl('div', 'mo-cp-row-meta', { textContent: s.missing ? 'File not found' : rowMeta(s) }),
+      );
+      const more = api.ui.createIconButton(null, { icon: 'ellipsis', title: 'Video Actions', size: 'sm', onClick: (e) => {
+        e.stopPropagation();
+        const r = e.currentTarget.getBoundingClientRect();
+        showRowMenu(s, idx, r.left, r.bottom + 2);
+      } });
+      more.classList.add('mo-cp-row-more');
+      row.append(grip, thumb, text, more);
+      row.addEventListener('click', () => { if (s.id !== activeId) void openSource(s.id); });
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (s.id !== activeId) void openSource(s.id); }
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          const next = list.querySelectorAll('.mo-cp-row')[idx + (e.key === 'ArrowDown' ? 1 : -1)];
+          if (next) next.focus();
+        }
+      });
+      row.addEventListener('contextmenu', (e) => { e.preventDefault(); showRowMenu(s, idx, e.clientX, e.clientY); });
+      // Reorder by dragging the grip.
+      grip.addEventListener('pointerdown', (e) => beginReorder(e, row, idx));
+      list.appendChild(row);
+    });
+  }
+
+  async function loadThumb(s, img, thumb) {
+    try {
+      if (s.thumbSrc === undefined) {
+        s.thumbSrc = null;
+        const vid = await moVideoIdForPath(s.path);
+        if (vid) {
+          const r = await resolveThumbnail('video', vid, api);
+          if (r && (r.path || r.sourcePath)) s.thumbSrc = r.path || r.sourcePath;
+        }
+      }
+      // Not in the library: a frame a tenth of the way in, drawn from the stream.
+      if (!s.thumbSrc && !s.thumbData) s.thumbData = await moGrabVideoFrame(s.path, Math.min(10, (s.duration || 0) * 0.1), 128);
+      if (disposed) return;
+      img.onload = () => { img.style.display = ''; thumb.classList.add('mo-cp-thumb--img'); };
+      if (s.thumbSrc) setThumbImgSrc(img, s.thumbSrc, {});
+      else if (s.thumbData) img.src = s.thumbData;
+    } catch { /* the icon stays */ }
+  }
+
+  function showRowMenu(s, idx, x, y) {
+    showContextMenu(x, y, [
+      { label: 'Open', handler: () => void openSource(s.id) },
+      { label: 'Move Up', handler: () => void move(idx, idx - 1), disabled: idx === 0 },
+      { label: 'Move Down', handler: () => void move(idx, idx + 1), disabled: idx === sources.length - 1 },
+      { separator: true },
+      { label: 'Show in Folder', handler: () => { try { window.parallxElectron.shell.showItemInFolder(s.path); } catch { /* ignore */ } } },
+      { separator: true },
+      { label: 'Remove From Project…', danger: true, handler: () => void removeSource(s) },
+    ].filter((a) => !a.disabled));
+  }
+
+  function beginReorder(e, row, fromIdx) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const rows = Array.from(list.querySelectorAll('.mo-cp-row'));
+    const rects = rows.map((r) => r.getBoundingClientRect());
+    let toIdx = fromIdx;
+    row.classList.add('mo-cp-row--dragging');
+    const onMove = (ev) => {
+      toIdx = rects.length - 1;
+      for (let i = 0; i < rects.length; i++) { if (ev.clientY < rects[i].top + rects[i].height / 2) { toIdx = i; break; } }
+      rows.forEach((r, i) => r.classList.toggle('mo-cp-row--drop', i === toIdx && toIdx !== fromIdx));
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      rows.forEach((r) => r.classList.remove('mo-cp-row--drop', 'mo-cp-row--dragging'));
+      if (toIdx !== fromIdx) void move(fromIdx, toIdx);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  async function move(from, to) {
+    if (to < 0 || to >= sources.length || from === to) return;
+    const [m] = sources.splice(from, 1);
+    sources.splice(to, 0, m);
+    renderBin();
+    try { await MoClipProjects.reorder(projectId, sources.map((s) => s.id)); } catch (err) { api.window.showErrorMessage('Could not reorder: ' + (err && err.message || err)); }
+  }
+
+  async function removeSource(s) {
+    const clips = s.queueCount ? ` Its ${s.queueCount} queued clip${s.queueCount === 1 ? '' : 's'} and edits go with it.` : (s.edited ? ' Its edits go with it.' : '');
+    const pick = await api.window.showWarningMessage(`Remove "${s.name}" from this project?${clips} The video file stays where it is.`, { title: 'Remove' }, { title: 'Cancel' });
+    if (!pick || pick.title !== 'Remove') return;
+    if (s.id === activeId && editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; activeId = null; }
+    try { await MoClipProjects.removeSource(projectId, s.id); } catch (err) { api.window.showErrorMessage('Could not remove the video: ' + (err && err.message || err)); }
+  }
+
+  async function addFromFiles() {
+    let picked = null;
+    try {
+      picked = await window.parallxElectron.dialog.openFile({
+        multiSelect: true,
+        filters: [{ name: 'Videos', extensions: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'wmv', 'flv', 'ogv', 'mpg', 'mpeg', 'ts', '3gp'] }],
+      });
+    } catch { picked = null; }
+    if (!Array.isArray(picked) || !picked.length) return;
+    const res = await moAddToClipProject(api, projectId, picked);
+    if (res && res.added.length && activeId == null) await reload(res.added[0]);
+  }
+
+  async function renameProject() {
+    if (!project) return;
+    const next = await api.window.showInputBox({ prompt: 'Rename the clip project', value: project.name });
+    if (next == null || !next.trim() || next.trim() === project.name) return;
+    try { await MoClipProjects.rename(projectId, next.trim()); } catch (err) { api.window.showErrorMessage('Could not rename: ' + (err && err.message || err)); }
+  }
+
+  async function deleteProject() {
+    if (!project) return;
+    await moDeleteClipProject(api, projectId, project.name, () => {
+      if (editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; }
+    });
+  }
+
+  async function openSource(sourceId) {
+    const s = sources.find((x) => x.id === sourceId);
+    if (!s || disposed) return;
+    if (editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; }
+    activeId = s.id;
+    renderBin();
+    void MoClipProjects.setActive(projectId, s.id).catch(() => {});
+    stage.innerHTML = '';
+    if (s.missing) {
+      setStageEmpty('This video is not where it was', s.path, { label: 'Remove From Project…', onClick: () => void removeSource(s) });
+      return;
+    }
+    if (!_toolPaths.ffmpeg) { try { await detectAllTools(); } catch { /* ignore */ } }
+    if (disposed || activeId !== s.id) return;
+    if (!_toolPaths.ffmpeg) {
+      setStageEmpty('ffmpeg is not available', 'The clip editor needs ffmpeg to cut and export. Install it and reopen the project.');
+      return;
+    }
+    const cached = _moClipProjectCache.get(s.id);
+    const state = cached ? cached.state : moParseJson(s.state_json, null);
+    const queue = cached ? cached.queue : moParseJson(s.queue_json, []);
+    const key = `${MO_CLIP_PROJECT_PREFIX}${projectId}:${s.id}`;
+    try {
+      editor = moBuildClipEditor(api, stage, key, s.path, s.duration, 0, s.duration, {
+        queueKey: key,
+        initialQueue: Array.isArray(queue) ? queue : [],
+        initialState: state && typeof state === 'object' ? state : null,
+        onPersist: ({ state: st, queue: q }) => {
+          _moClipProjectCache.set(s.id, { state: st, queue: q });
+          // The bin may have reloaded since this editor opened: update the live row.
+          const cur = sources.find((x) => x.id === s.id) || s;
+          const before = rowMeta(cur);
+          cur.queueCount = q.length;
+          cur.edited = moClipStateEdited(st, cur.duration);
+          if (rowMeta(cur) !== before) {
+            const metaEl = list.querySelector(`.mo-cp-row[data-source-id="${s.id}"] .mo-cp-row-meta`);
+            if (metaEl) metaEl.textContent = rowMeta(cur);
+            sub.textContent = moClipProjectSummary(sources);
+          }
+          MoClipProjects.saveSource(projectId, s.id, st, q).catch((err) => console.warn('[media-organizer] project save failed', err));
+        },
+      });
+    } catch (err) {
+      console.error('[media-organizer] project editor failed', err);
+      setStageEmpty('Could not open this video', String(err && err.message || err));
+    }
+  }
+
+  async function reload(preferId) {
+    const gen = ++loadGen;
+    let p, rows;
+    try {
+      [p, rows] = await Promise.all([MoClipProjects.get(projectId), MoClipProjects.sources(projectId)]);
+    } catch (err) {
+      setStageEmpty('Could not load the project', String(err && err.message || err));
+      return;
+    }
+    if (disposed || gen !== loadGen) return;
+    if (!p) {
+      if (editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; }
+      bin.style.display = 'none'; rail.style.display = 'none';
+      setStageEmpty('This project was deleted', 'Its videos and exported clips are still in your library.');
+      return;
+    }
+    project = p;
+    // The tab follows a rename.
+    if (input && typeof input.setName === 'function') { try { input.setName(p.name); } catch { /* ignore */ } }
+    const old = new Map(sources.map((s) => [s.id, s]));
+    sources = await Promise.all(rows.map(async (r) => {
+      const prev = old.get(r.id);
+      const cached = _moClipProjectCache.get(r.id);
+      const st = cached ? cached.state : moParseJson(r.state_json, null);
+      const q = cached ? cached.queue : moParseJson(r.queue_json, []);
+      let missing = false;
+      try { missing = !(await window.parallxElectron.fs.exists(r.path)); } catch { missing = false; }
+      return {
+        ...r,
+        name: String(r.path).split(/[\\/]/).pop() || r.path,
+        queueCount: Array.isArray(q) ? q.length : 0,
+        edited: moClipStateEdited(st, r.duration),
+        missing,
+        thumbSrc: prev ? prev.thumbSrc : undefined,
+        thumbData: prev ? prev.thumbData : undefined,
+      };
+    }));
+    if (disposed || gen !== loadGen) return;
+    const want = preferId != null && sources.some((s) => s.id === preferId) ? preferId
+      : (activeId != null && sources.some((s) => s.id === activeId)) ? activeId
+      : (p.active_source_id != null && sources.some((s) => s.id === p.active_source_id)) ? p.active_source_id
+      : (sources[0] ? sources[0].id : null);
+    renderBin();
+    if (want == null) {
+      activeId = null;
+      setStageEmpty('Add the videos this project is made from',
+        'Each video keeps its own cuts, crops, text and queued clips, saved until you delete the project. You can also right-click videos in the library and choose Add to Clip Project.',
+        { label: 'Add Videos…', icon: 'plus', onClick: () => void addFromFiles() });
+    } else if (want !== activeId || !editor) {
+      await openSource(want);
+    }
+  }
+
+  const onChanged = (e) => {
+    const pid = e && e.detail ? e.detail.projectId : null;
+    if (pid == null || pid === projectId) void reload();
+  };
+  document.addEventListener('mo:clip-projects-changed', onChanged);
+  void reload();
+
+  return {
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      document.removeEventListener('mo:clip-projects-changed', onChanged);
+      try { pageObs.disconnect(); } catch { /* ignore */ }
+      if (editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; }
+    },
+  };
+}
+
 // @mo-pure-begin — pure clip math (extracted verbatim by tests and the ffmpeg probe)
+
+/** Whether a saved editor state differs from a fresh, untouched video. */
+function moClipStateEdited(st, duration) {
+  if (!st || typeof st !== 'object') return false;
+  const d = Number(duration) || 0;
+  if ((Number(st.inT) || 0) > 0.01) return true;
+  if (d > 0 && Number.isFinite(st.outT) && st.outT < d - 0.01) return true;
+  if (Array.isArray(st.segments) && st.segments.length >= 2) return true;
+  if (st.cropEnabled || st.reverse) return true;
+  if (Number.isFinite(st.speed) && Math.abs(st.speed - 1) > 0.001) return true;
+  if (st.filter && st.filter !== 'none') return true;
+  if (Array.isArray(st.blurRegions) && st.blurRegions.length) return true;
+  if (Array.isArray(st.captions) && st.captions.some((c) => c && String(c.text || '').trim())) return true;
+  const a = st.audioFx || {};
+  if (a.fadeIn > 0 || a.fadeOut > 0 || a.normalize || a.denoise) return true;
+  return !!(st.endCard && st.endCard.enabled);
+}
 // ── Clip filter presets ─────────────────────────────────────────────────────
 // Each preset is one ffmpeg video-filter chain segment (`vf`) injected into
 // the shared filter pipeline (so MP4 / WebM / GIF / GIF-frame-edits all get
@@ -22548,7 +23274,23 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   let restoringHistory = false;
   const editKey = (snap) => { const { id, thumb, name, ...rest } = snap; void id; void thumb; void name; return JSON.stringify(rest); };
   function takeEditSnapshot() { const keep = clipSeq; const snap = snapshotCurrent(); clipSeq = keep; return snap; }
+  // A project saves every settled edit (opts.onPersist); a quick clip has none.
+  let persistTimer = null;
+  function persistNow() {
+    if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
+    if (typeof opts.onPersist !== 'function') return;
+    let state;
+    try { state = takeEditSnapshot(); } catch { return; }
+    state.t = Number.isFinite(preview.currentTime) ? preview.currentTime : 0;
+    try { opts.onPersist({ state, queue: clipQueue.map((c) => ({ ...c })) }); } catch (err) { console.warn('[media-organizer] project save failed', err); }
+  }
+  function persistSoon() {
+    if (typeof opts.onPersist !== 'function') return;
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => { if (!_disposed) persistNow(); }, 600);
+  }
   function scheduleHistory() {
+    persistSoon();
     if (restoringHistory) return;
     if (historyTimer) clearTimeout(historyTimer);
     historyTimer = setTimeout(() => {
@@ -23965,8 +24707,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // reverse-frame-order are NOT batched; they only apply to single-clip
   // exports (queue empty path).
   /** @type {Array<{id:number,inT:number,outT:number,format:string,fps:number,scale:number,speed:number,reverse:boolean,crf:number,dither:string,loops:number,cropEnabled:boolean,cropNorm:{x:number,y:number,w:number,h:number}}>} */
-  let clipQueue = _moClipQueueByVideo.get(videoPath);
-  if (!clipQueue) { clipQueue = []; _moClipQueueByVideo.set(videoPath, clipQueue); }
+  // A project's editor keeps its own queue per video (opts.queueKey), seeded
+  // from the project's saved clips; a quick clip shares the per-video queue.
+  const queueKey = opts.queueKey || videoPath;
+  let clipQueue = _moClipQueueByVideo.get(queueKey);
+  if (!clipQueue) {
+    clipQueue = Array.isArray(opts.initialQueue) ? opts.initialQueue.filter((c) => c && typeof c === 'object').map((c) => ({ ...c })) : [];
+    _moClipQueueByVideo.set(queueKey, clipQueue);
+  }
   // Seed the id sequence above the highest existing id so re-opening a
   // populated queue and adding new clips can't collide with old ones.
   let clipSeq = clipQueue.reduce((m, c) => Math.max(m, c.id | 0), 0);
@@ -24318,6 +25066,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   }
 
   function renderQueue() {
+    try { persistSoon(); } catch { /* history not built yet */ }
     queueList.innerHTML = '';
     stopEditBtn.style.display = editingId != null ? '' : 'none';
     queueHead.style.display = editingId != null ? '' : 'none';
@@ -25094,6 +25843,13 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     // Smart zoom is offered when the recorder captured the cursor.
     smartZoomBtn.style.display = '';
   }
+  // A project reopens a video where it was left: every edit, and the playhead.
+  if (opts.initialState && typeof opts.initialState === 'object') {
+    try {
+      loadSnapshot(opts.initialState);
+      if (Number.isFinite(opts.initialState.t)) preview.currentTime = Math.max(0, Math.min(duration, opts.initialState.t));
+    } catch (err) { console.warn('[media-organizer] project state restore failed', err); }
+  }
   showRecordingBanner();
   container.appendChild(overlay);
   // Focus the page so the I/O/Space hotkeys work without a click first.
@@ -25112,6 +25868,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   let _disposed = false;
   const dispose = () => {
     if (_disposed) return;
+    // A project keeps the playhead too, which moves without an edit.
+    if (typeof opts.onPersist === 'function') { try { persistNow(); } catch { /* ignore */ } }
     _disposed = true;
     try { if (previewTimer) clearInterval(previewTimer); } catch { /* ignore */ }
     try { if (regenTimer) clearTimeout(regenTimer); } catch { /* ignore */ }
@@ -36140,6 +36898,13 @@ export async function activate(api, context) {
   }
   // AI tagging: a photo left mid-run by a closed app goes back in the queue.
   db.run(`UPDATE mo_ai_tag_reviews SET status = 'queued' WHERE status = 'running'`).catch(() => {});
+  // Clip projects: the list the library's Add to Clip Project menu offers.
+  {
+    const onProjects = () => void moRefreshClipProjectList();
+    document.addEventListener('mo:clip-projects-changed', onProjects);
+    _commandDisposables.push({ dispose: () => document.removeEventListener('mo:clip-projects-changed', onProjects) });
+    onProjects();
+  }
   try {
     console.log('[MediaOrganizer] activate() completed core init, registering views...');
   } catch (e) {}
@@ -36431,6 +37196,11 @@ export async function activate(api, context) {
     api.editors.registerEditorProvider('media-organizer-clip', {
       createEditorPane(container, input) {
         const instanceId = (input && (input.instanceId || input.id)) || '';
+        // A clip project: its videos and edits come from the database.
+        if (instanceId.startsWith(MO_CLIP_PROJECT_PREFIX)) {
+          const pid = parseInt(instanceId.slice(MO_CLIP_PROJECT_PREFIX.length), 10);
+          if (Number.isFinite(pid)) return renderClipProject(container, api, pid, input);
+        }
         const params = _moClipEditors.get(instanceId);
         if (!params) {
           const msg = moEl('div', 'mo-clip-unavailable', {
@@ -36568,6 +37338,24 @@ export async function activate(api, context) {
         return;
       }
       moStartScreenRecording(api);
+    })
+  );
+
+  // Clip projects (docs/CLIPS.md, Phase 2). With video paths it starts the
+  // project with them (used by the screenshot probe and the library menu).
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.newClipProject', async (paths) => {
+      return moNewClipProject(api, Array.isArray(paths) ? paths.filter((p) => typeof p === 'string') : []);
+    })
+  );
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.openClipProject', async (projectId) => {
+      const id = Number(projectId);
+      if (Number.isFinite(id) && id > 0) { await moOpenClipProject(api, id); return; }
+      const projects = await MoClipProjects.list().catch(() => []);
+      if (!projects.length) { await moNewClipProject(api, []); return; }
+      const pick = await api.window.showQuickPick(projects.map((p) => ({ label: p.name, description: `${p.source_count} video${p.source_count === 1 ? '' : 's'}`, id: p.id })), { placeholder: 'Open a clip project' });
+      if (pick) await moOpenClipProject(api, pick.id, pick.label);
     })
   );
 

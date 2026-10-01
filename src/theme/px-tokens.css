@@ -289,6 +289,7 @@
   --px-clip-lane-h-video:  46px;    /* the thumbnail lane                   */
   --px-clip-lane-h-ruler:  22px;
   --px-clip-head-w:        88px;    /* lane names                           */
+  --px-clip-bin-w:         248px;   /* a clip project's video bin           */
   --px-clip-dim:           rgba(0, 0, 0, 0.62);   /* source that will not export */
   /* Text colours offered in the Text tab (burned into the export as is). */
   --px-clip-text-1: #ffffff;

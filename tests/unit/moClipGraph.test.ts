@@ -22,7 +22,7 @@ function loadPure(): Record<string, any> {
   const names = ['MO_CLIP_FILTERS', 'moClipFilterVf', 'moCropKeysAt', 'moCropVfSegment', 'moSimplifyTrackKeys', 'moFfEscapeText', 'moFfEscapePath',
     'moCaptionVf', 'moCaptionsVf', 'moBlurRegionsGraph', 'moAudioFxAf', 'moParseDetectLog', 'moDeadAirSegments', 'moSmartZoomKeys',
     'moBoxTrackToKeys', 'moStageOutputDims', 'moEndCardInputs', 'moSegmentsGraph', 'moClipOutputTime',
-    'moTcStr', 'moParseTc', 'moTimelineStep', 'moClipSourceTime', 'moSplitSegments', 'moCaptionLayout'];
+    'moTcStr', 'moParseTc', 'moTimelineStep', 'moClipSourceTime', 'moSplitSegments', 'moCaptionLayout', 'moClipStateEdited'];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   return new Function(src.slice(a, b) + `\nreturn { ${names.join(', ')} };`)();
 }
@@ -239,5 +239,20 @@ describe('editor timeline helpers', () => {
     expect(P.moSplitSegments([{ in: 5, out: 8 }, { in: 1, out: 3 }], 0, 10, 2)).toEqual([{ in: 5, out: 8 }, { in: 1, out: 2 }, { in: 2, out: 3 }]);
     expect(P.moSplitSegments([{ in: 1, out: 3 }], 0, 10, 4)).toBeNull();
     expect(P.moSplitSegments([], 0, 10, 0.01)).toBeNull();
+  });
+});
+
+describe('clip projects', () => {
+  it('tells an edited video from an untouched one', () => {
+    const fresh = { inT: 0, outT: 60, segments: [], cropEnabled: false, speed: 1, filter: 'none', blurRegions: [], captions: [], audioFx: { fadeIn: 0, fadeOut: 0 }, endCard: { enabled: false } };
+    expect(P.moClipStateEdited(null, 60)).toBe(false);
+    expect(P.moClipStateEdited(fresh, 60)).toBe(false);
+    expect(P.moClipStateEdited({ ...fresh, captions: [{ text: '  ' }] }, 60)).toBe(false);
+    expect(P.moClipStateEdited({ ...fresh, inT: 2 }, 60)).toBe(true);
+    expect(P.moClipStateEdited({ ...fresh, outT: 30 }, 60)).toBe(true);
+    expect(P.moClipStateEdited({ ...fresh, segments: [{ in: 0, out: 5 }, { in: 9, out: 12 }] }, 60)).toBe(true);
+    expect(P.moClipStateEdited({ ...fresh, speed: 8 }, 60)).toBe(true);
+    expect(P.moClipStateEdited({ ...fresh, captions: [{ text: 'Day 3' }] }, 60)).toBe(true);
+    expect(P.moClipStateEdited({ ...fresh, audioFx: { fadeIn: 1 } }, 60)).toBe(true);
   });
 });

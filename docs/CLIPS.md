@@ -129,9 +129,10 @@ extracted verbatim by the unit test and by the ffmpeg probe.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Pure clip math | `npx vitest run tests/unit/moClipGraph.test.ts` | 22 pass (timecode, split, captions per line and placed) |
+| Pure clip math | `npx vitest run tests/unit/moClipGraph.test.ts` | 23 pass (timecode, split, captions per line and placed, project "edited" check) |
 | Real ffmpeg graphs | `node tests/probes/clip-graph-probe.mjs` | 34/34 |
 | Editor on screen | `node tests/probes/ui-screenshot-probe.mjs <out> clip` | split, cut, bring back, undo; blur, follow, pixelate; text dragged; a real MP4 export and a cancelled one (partial file removed); narrow sheet and tiny pane; 20 shots reviewed |
+| Clip projects | `node tests/probes/ui-screenshot-probe.mjs <out> project` | a project from two videos; In moved and a clip queued on the first; the second opens untouched; the first comes back as left; the app quit and started again: the project is in the sidebar and opens with the same In, Out and queued clip; Delete Project closes the tab and empties the list |
 | Media stream | `npx vitest run tests/unit/mediaStreamBridge.test.ts` | 9 pass |
 | Whole suite | `npx vitest run` | green apart from the four failures CLAUDE.md lists |
 | Recorder timing | hidden 2 s capture through the recorder's own argv + finalize | duration = wall clock within 40 ms |
@@ -153,6 +154,7 @@ confirm on this machine.
 | 6 Shapes | oval and rounded regions through a feathered alpha mask (geq on the patch), Blur/Pixelate and shape as buttons; exported pixels checked: outside the oval untouched, inside blurred | shipped |
 | 5 Fixes | real-timestamp capture (short takes played fast), app dropdowns everywhere, Track switch on blur regions, real blur and mosaic previews, look previews matched to the export | shipped |
 | 4 Probe | clip scene in the screenshot probe, open-clip-editor command | shipped |
+| 11 Projects | Clip Projects in the sidebar; a project page with a bin of videos (library thumbnail or a frame from the stream, drag to reorder, remove) beside the editor; each video's edits and queued clips saved to the database as they settle and on leaving, until the project is deleted; Add to Clip Project in the library's right-click menu; New Clip Project… and Open Clip Project… commands; migration 029 | shipped |
 | 10 Mockup | everything the approved mockups show: undo/redo, loop, stage chips and floating bars, text as objects (multi-line, placed), split/cut/bring-back on the timeline, snap, selected-segment range, crop groups, text and blur editors, audio sliders, export presets/Source fps/loop/Sierra/max size/name, progress and Cancel on Export, queue ⋯ menu, GIF frames on the video lane, narrow sheet; Capture Frame without the old dialog; editor opens on the whole video | shipped |
 | 9 Streaming | parallx-media:// with range requests; video and audio stream from disk in every Media Organizer surface | shipped |
 | 8 Layout | page layout: toolbar, transport, tabbed inspector, zoomable lane timeline, Export menu, Queue panel; timecode fields; split at playhead; look swatches | shipped |
@@ -168,7 +170,7 @@ confirm on this machine.
 - Hotkeys are fixed combinations. If another program owns one, the toolbar still
   works and nothing is reported.
 
-## Phase 2: Clip Editor as a place of its own (planned)
+## Phase 2: Clip Editor as a place of its own (in progress)
 
 The owner records drawing and painting sessions and wants Media Organizer to be
 where they become content. Today the editor opens on one video and cuts it into
@@ -183,8 +185,13 @@ clips. Phase 2 makes it a third Media Organizer surface:
    protocol sends CORS headers, so frames still draw to readable canvases.
    Measured on a 2-hour, 1.2 GB file in the app: seek to 1:02:05 in 13 ms, 34 MB JS
    heap, timeline thumbnails and envelope in 35 s in the background.
-2. **Clip Editor in the sidebar.** Opens an empty editor with a media bin: pick
-   videos (and clips already exported) from the library.
+2. **Clip projects in the sidebar (done 2026-10-01).** Media Organizer's sidebar
+   has a Clip Projects section: + makes a project, a click opens it, right-click
+   renames or deletes it. A project opens as a page with a bin of its videos down
+   the left and the editor on the one that is open. Videos come from Add Videos…
+   (a file dialog) or the library's right-click menu (Add to Clip Project, one
+   video or a selection). Only videos in the workspace are taken, as for Open
+   Clip Editor. The bin closes to a rail on a narrow tab or on request.
 3. **Many sources.** A segment carries its source path. The assembly step already
    cuts segments into one near-lossless temp file, so the change is per-segment
    `-i` inputs plus normalising size and frame rate before concat. Crop keys, blur
@@ -197,3 +204,13 @@ clips. Phase 2 makes it a third Media Organizer surface:
    today: its edits live in memory and go when the tab closes, nothing to manage. A
    project (the Clip Editor opened from the sidebar, built from several videos)
    saves its edits to the database and keeps them until the project is deleted.
+   **Done 2026-10-01** (`db/migrations/media-organizer_029_clip_projects.sql`):
+   `mo_clip_projects` holds the name and the video last open;
+   `mo_clip_project_sources` holds each video's path, length, bin position, the
+   editor's snapshot (the same object the queue stores, plus the playhead) and
+   its queued clips. The editor saves through `opts.onPersist` 600 ms after an
+   edit settles, after any queue change, and when it closes (tab switch, video
+   switch, app quit); a write-through cache covers a pane rebuilt before the
+   database write lands. A project's editor keys its queue per project and
+   video, so a quick clip of the same file never shares it. Delete Project
+   removes these rows and closes the tab; videos and exported files stay.
