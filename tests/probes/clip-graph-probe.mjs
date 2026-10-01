@@ -194,6 +194,8 @@ async function main() {
       { text: "Title: 'Quotes' & 100% colons:", style: 'title', t0: 0, t1: 1 },
       { text: 'Lower third label', style: 'lower', t0: 0.5, t1: 1.5, color: '#ffd166' },
       { text: 'A caption line', style: 'caption', t0: 1, t1: 2 },
+      { text: 'Two lines\nunder a title', style: 'lower', t0: 0, t1: 2 },
+      { text: 'Dragged here', style: 'title', t0: 0, t1: 2, cx: 0.3, cy: 0.25 },
     ], font);
     const out = path.join(OUT, 'captions.mp4');
     const r = await ff(['-ss', '0', '-t', '2', '-i', src, '-vf', ['fps=30', ...vfs].join(','), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-an', out]);

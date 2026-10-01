@@ -7470,21 +7470,8 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   border-top: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
   align-items: center;
 }
-.mo-modal-footer .mo-clip-status { flex: 1; font-size: 12px; opacity: 0.7; }
-.mo-modal-footer .mo-clip-estimate {
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.85;
-  padding: 4px 10px;
-  margin-right: 6px;
-  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, #444));
-  border-radius: 4px;
-  background: var(--vscode-input-background, transparent);
-  white-space: nowrap;
-}
 
 /* ── M59 P4: large two-column clip dialog ── */
-.mo-clip-dialog { width: 1180px; max-width: 96vw; }
 
 /* ═══ Clip editor (redesign 2026-10-01) ═══════════════════════════════════
    Toolbar · stage + transport · inspector · timeline, as one grid filling
@@ -7561,6 +7548,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   height: var(--px-control-h-sm); padding: 0 var(--px-space-2); border: 0; border-radius: var(--px-radius-sm);
   display: inline-flex; align-items: center; gap: var(--px-space-1);
   background: transparent; color: var(--px-viewer-ink-muted); font: inherit; font-size: var(--px-text-sm); cursor: pointer;
+  white-space: nowrap;
 }
 .mo-ce-float-btn:hover { background: var(--px-viewer-control-hover); color: var(--px-viewer-ink); }
 .mo-ce-float-btn.mo-active { background: var(--px-viewer-control-hover); color: var(--px-viewer-ink); }
@@ -7805,42 +7793,186 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-ce-frames-head { display: flex; align-items: center; gap: var(--px-space-2); color: var(--px-text-muted); font-size: var(--px-text-xs); }
 .mo-ce .mo-clip-strip-status { color: var(--px-text-muted); font-size: var(--px-text-xs); }
 
-/* Narrow panes (classes set from the editor's own width): the inspector
-   moves under the video; tiny panes keep the video and audio lanes only. */
+/* Toolbar and transport details */
+.mo-ce-sep { width: 1px; height: 18px; background: var(--px-border); margin: 0 var(--px-space-1); flex: none; }
+.mo-ce-btn-sub { margin-left: var(--px-space-2); font-weight: 400; opacity: 0.78; font-variant-numeric: tabular-nums; }
+.mo-ce-split > .px-btn--primary { position: relative; overflow: hidden; }
+.mo-ce-split > .px-btn--primary.mo-ce-busy {
+  background: linear-gradient(90deg, var(--px-accent-strong) 0 var(--mo-ce-progress, 0%), var(--px-accent) var(--mo-ce-progress, 0%) 100%);
+}
+.mo-ce-pop-est-sub { color: var(--px-text-muted); font-size: var(--px-text-xs); white-space: nowrap; }
+.mo-ce-transport .px-btn--sm .mo-ce-ico { margin-left: 2px; }
+/* Stage chips and the crop frame's size */
+.mo-ce-chip {
+  position: absolute; z-index: 4; left: var(--px-space-2); bottom: var(--px-space-2);
+  padding: 2px var(--px-space-2); border-radius: var(--px-radius-full);
+  background: var(--px-viewer-bar); color: var(--px-viewer-ink-muted); font-size: var(--px-text-xs);
+  font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap;
+}
+.mo-ce-chip--right { left: auto; right: var(--px-space-2); }
+.mo-ce-crop-size {
+  position: absolute; left: 50%; bottom: var(--px-space-2); transform: translateX(-50%);
+  padding: 1px var(--px-space-2); border-radius: var(--px-radius-sm);
+  background: var(--px-viewer-bar); color: var(--px-viewer-ink); font-size: var(--px-text-xs);
+  font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap;
+}
+.mo-ce-float-key { opacity: 0.6; margin-left: 2px; font-size: var(--px-text-2xs); }
+/* The ? sheet */
+.mo-ce-keys {
+  position: absolute; z-index: 30; left: 50%; top: 64px; transform: translateX(-50%); width: min(480px, calc(100% - 32px));
+  background: var(--px-bg-elevated); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-lg);
+  box-shadow: var(--px-shadow-lg); padding: var(--px-space-2) var(--px-space-4) var(--px-space-4);
+}
+.mo-ce-keys-head { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-1) 0 var(--px-space-2); }
+.mo-ce-keys-row { display: flex; align-items: baseline; gap: var(--px-space-3); padding: 3px 0; font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+.mo-ce-keys-row kbd {
+  flex: 0 0 196px; font-family: var(--px-font-mono); font-size: var(--px-text-xs); color: var(--px-text);
+  background: none; border: 0; box-shadow: none; padding: 0; text-align: left; white-space: nowrap;
+}
+/* Trim: group heads, keycaps, segment rows, the speed control, switches */
+.mo-ce-group-head { display: flex; align-items: baseline; gap: var(--px-space-2); }
+.mo-ce-kbd {
+  margin-left: var(--px-space-1); padding: 0 3px; border: 1px solid var(--px-border); border-radius: 3px;
+  font-family: var(--px-font-mono); font-size: var(--px-text-2xs); line-height: 14px; color: var(--px-text-faint);
+}
+.mo-ce .mo-clip-segrow { cursor: pointer; }
+.mo-ce-grip { color: var(--px-text-faint); display: inline-flex; cursor: grab; }
+.mo-ce-seglen { margin-left: auto; color: var(--px-text-muted); font-variant-numeric: tabular-nums; font-size: var(--px-text-xs); }
+.mo-ce .mo-clip-segrow .mo-ce-hoverbtn { visibility: hidden; }
+.mo-ce .mo-clip-segrow:hover .mo-ce-hoverbtn, .mo-ce .mo-clip-segrow.mo-active .mo-ce-hoverbtn { visibility: visible; }
+.mo-ce .mo-clip-segrow.mo-dragging { opacity: 0.5; }
+.mo-ce .mo-clip-segrow.mo-drop-above { box-shadow: inset 0 2px 0 var(--px-accent); }
+.mo-ce .mo-clip-segrow.mo-drop-below { box-shadow: inset 0 -2px 0 var(--px-accent); }
+.mo-ce-seg--fill { display: flex; }
+.mo-ce-seg--fill button { flex: 1 1 0; }
+.mo-ce-switchrow { justify-content: space-between; flex-wrap: nowrap; }
+.mo-ce-switchrow .mo-clip-check { margin: 0 0 0 auto; }
+/* Timeline: cut gaps, block edges, the glide and zoom bars on the Motion lane */
+.mo-ce .mo-ce-dims { pointer-events: none; }
+.mo-ce-dim {
+  pointer-events: auto; cursor: pointer; overflow: hidden;
+  background: repeating-linear-gradient(135deg, var(--px-clip-dim) 0 6px, color-mix(in srgb, var(--px-clip-dim) 70%, transparent) 6px 12px);
+  border-left: 1px dashed var(--px-viewer-line); border-right: 1px dashed var(--px-viewer-line);
+}
+.mo-ce-dim:hover { background: var(--px-clip-dim); }
+.mo-ce-dim-label {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--px-viewer-ink-muted); font-size: var(--px-text-2xs); white-space: nowrap; overflow: hidden; pointer-events: none;
+}
+.mo-ce-block-edge { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 1; }
+.mo-ce-block-edge--l { left: -2px; }
+.mo-ce-block-edge--r { right: -2px; }
+.mo-ce-block.mo-active .mo-ce-block-edge { background: var(--px-accent); }
+.mo-ce-block.mo-active .mo-ce-block-edge--l { left: 0; border-radius: 2px 0 0 2px; }
+.mo-ce-block.mo-active .mo-ce-block-edge--r { right: 0; border-radius: 0 2px 2px 0; }
+.mo-ce-block { cursor: grab; }
+.mo-ce-keyline { position: absolute; top: 50%; height: 1px; background: color-mix(in srgb, var(--px-warning) 55%, transparent); pointer-events: none; }
+.mo-ce-zoombar {
+  position: absolute; top: 4px; bottom: 4px; padding: 0 var(--px-space-2); border-radius: var(--px-radius-sm);
+  background: color-mix(in srgb, var(--px-warning) 16%, transparent); border: 1px solid color-mix(in srgb, var(--px-warning) 50%, transparent);
+  color: var(--px-text); font-size: var(--px-text-xs); line-height: 18px; white-space: nowrap; overflow: hidden; pointer-events: none;
+}
+.mo-ce .mo-scrub-key.mo-sel { background: var(--px-viewer-ink); box-shadow: 0 0 0 2px var(--px-accent); }
+/* Inspector tabs: empty states, the text box, swatches, list rows, readouts */
+.mo-ce-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--px-space-2); padding: var(--px-space-2) 0; }
+.mo-ce-group-body { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.mo-ce .mo-ce-textarea { flex: none; height: 56px; min-height: 40px; padding: var(--px-space-1) var(--px-space-2); resize: vertical; line-height: 1.4; font-family: var(--px-font-ui); width: 100%; }
+.mo-ce-seg button { white-space: nowrap; }
+.mo-ce-swatch--wheel { position: relative; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
+.mo-ce-swatch--wheel.mo-active { background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); box-shadow: inset 0 0 0 4px var(--mo-ce-custom, transparent); }
+.mo-ce-swatch-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; padding: 0; border: 0; }
+.mo-ce-swatches { display: flex; align-items: center; gap: var(--px-space-2); }
+.mo-ce-swatch {
+  width: 20px; height: 20px; padding: 0; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid var(--px-border-strong);
+}
+.mo-ce-swatch.mo-active { outline: 2px solid var(--px-accent); outline-offset: 2px; }
+.mo-ce-swatch--custom { appearance: none; -webkit-appearance: none; background: none; overflow: hidden; }
+.mo-ce-swatch--custom::-webkit-color-swatch-wrapper { padding: 0; }
+.mo-ce-swatch--custom::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.mo-ce-rowtext { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-ce .mo-clip-segrow { gap: var(--px-space-1); }
+.mo-ce .mo-clip-segrow .mo-clip-queue-meta { font-size: var(--px-text-xs); }
+.mo-ce-timerow .mo-ce-tcfield { flex: 1 1 0; width: 0; }
+.mo-ce .mo-ce-readonly { display: flex; align-items: center; flex: 1 1 auto; font-family: var(--px-font-mono); color: var(--px-text-secondary); background: transparent; }
+.mo-ce .mo-ce-ghostbtn { background: transparent; border-color: transparent; color: var(--px-text-secondary); }
+.mo-ce .mo-ce-ghostbtn:hover { background: var(--px-surface-hover); }
+.mo-ce .mo-clip-slider-val { min-width: 18px; text-align: right; font-variant-numeric: tabular-nums; color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.mo-ce .mo-clip-row > .mo-clip-slider { flex: 1 1 auto; }
+.mo-ce .mo-clip-unit { color: var(--px-text-faint); font-size: var(--px-text-xs); }
+.mo-ce .mo-clip-cardbody { display: flex; flex-direction: column; gap: var(--px-space-2); }
+/* Text on the video: one block per text, the export's layout */
+.mo-ce .mo-caption-layer { pointer-events: none; }
+.mo-ce-caption {
+  position: absolute; display: flex; flex-direction: column; justify-content: flex-start;
+  pointer-events: auto; cursor: move; white-space: pre; font-family: var(--px-font-ui); font-weight: 600; line-height: 1.15;
+}
+.mo-ce-caption-line { width: max-content; }
+.mo-ce-caption:hover { outline: 1px dashed var(--px-viewer-ink-muted); outline-offset: 4px; }
+.mo-ce-caption.mo-active { outline: 1.5px solid var(--px-viewer-ink); outline-offset: 4px; }
+/* Queue rows and footer */
+.mo-ce .mo-clip-queue-row { flex-wrap: nowrap; }
+.mo-ce .mo-clip-queue-handle { color: var(--px-text-faint); display: inline-flex; cursor: grab; }
+.mo-ce-qtext { flex: 1 1 auto; min-width: 0; }
+.mo-ce-qname { font-weight: 600; font-size: var(--px-text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-ce-qmeta { color: var(--px-text-muted); font-size: var(--px-text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-ce-sum--left { margin-left: 0; }
+.mo-ce-queue-foot { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-3); border-top: 1px solid var(--px-border); }
+.mo-ce .mo-clip-queue-row.mo-dragging { opacity: 0.5; }
+.mo-ce .mo-clip-queue-row.mo-drop-above { box-shadow: inset 0 2px 0 var(--px-accent); }
+.mo-ce .mo-clip-queue-row.mo-drop-below { box-shadow: inset 0 -2px 0 var(--px-accent); }
+/* GIF: the frames sit on the video lane over the range */
+.mo-ce .mo-ce-lane--video .mo-clip-stripwrap {
+  position: absolute; top: 2px; bottom: 2px; padding: 0; border: 0; z-index: 2; display: block;
+}
+.mo-ce .mo-ce-lane--video .mo-clip-framestrip { display: flex; gap: 2px; height: 100%; overflow: hidden; }
+.mo-ce .mo-ce-lane--video .mo-clip-frame { flex: 1 1 0; min-width: 0; height: 100%; position: relative; border-radius: 2px; overflow: hidden; cursor: pointer; }
+.mo-ce .mo-ce-lane--video .mo-clip-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mo-ce .mo-ce-lane--video .mo-clip-frame-idx { display: none; }
+.mo-ce .mo-ce-lane--video .mo-clip-frame-delay {
+  position: absolute; left: 2px; bottom: 2px; padding: 0 3px; border-radius: 2px;
+  background: var(--px-viewer-bar); color: var(--px-viewer-ink); font-size: var(--px-text-2xs);
+}
+.mo-ce .mo-ce-lane--video .mo-clip-frame:hover { outline: 2px solid var(--px-accent); outline-offset: -2px; }
+.mo-ce-tl--gif .mo-ce-thumbs, .mo-ce-tl--gif .mo-scrub-segs { visibility: hidden; }
+.mo-ce .mo-ce-tlbar .mo-clip-strip-status { color: var(--px-text-muted); font-size: var(--px-text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+/* Marks on the video lane (tiny panes only) */
+.mo-ce-markers { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; pointer-events: none; display: none; z-index: 3; }
+.mo-ce--tiny .mo-ce-markers { display: block; }
+.mo-ce-marker { position: absolute; bottom: 0; height: 4px; min-width: 3px; border-radius: 1px; }
+.mo-ce-marker--key { width: 3px; margin-left: -1px; background: var(--px-warning); height: 6px; }
+.mo-ce-marker--blur { background: rgba(var(--px-viz-6), 0.85); bottom: 0; }
+.mo-ce-marker--text { background: rgba(var(--px-viz-4), 0.85); bottom: 4px; }
+/* Narrow panes (classes set from the editor's own width): below 900 px the
+   inspector is a sheet over the timeline, opened from the six tabs as icons
+   under the transport; below 640 px the timeline keeps Video and Audio and
+   the other lanes become marks on the video lane. */
 .mo-clip-page.mo-ce.mo-ce--narrow {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(300px, 52vh) auto auto;
-  grid-template-areas: "bar" "stage" "insp" "tl";
-  overflow-y: auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "bar" "stage" "tl";
 }
-.mo-ce--narrow .mo-ce-panels { overflow: visible; }
-.mo-ce--narrow .mo-ce-insp, .mo-ce--narrow .mo-ce-queue { min-height: auto; }
-.mo-clip-page.mo-ce.mo-ce--narrow { align-content: start; }
-.mo-ce--narrow .mo-ce-insp { border-left: 0; border-top: 1px solid var(--px-border); }
-.mo-ce--narrow .mo-ce-estimate, .mo-ce--narrow .mo-ce-meta { display: none; }
-
+.mo-ce-sheetbar { display: none; }
+.mo-ce--narrow .mo-ce-insp {
+  position: absolute; z-index: 18; left: 0; right: 0; bottom: 0; height: min(62%, 560px);
+  border-left: 0; border-top: 1px solid var(--px-border-strong); border-radius: var(--px-radius-lg) var(--px-radius-lg) 0 0;
+  background: var(--px-bg-elevated); box-shadow: var(--px-shadow-lg);
+  transform: translateY(105%); transition: transform var(--px-dur-fast) var(--px-ease);
+}
+.mo-ce--narrow.mo-ce--sheet-open .mo-ce-insp { transform: translateY(0); }
+.mo-ce--narrow .mo-ce-sheetbar { display: flex; align-items: center; justify-content: center; position: relative; height: 28px; flex: none; }
+.mo-ce--narrow .mo-ce-sheetbar .px-btn { position: absolute; right: var(--px-space-2); top: 2px; }
+.mo-ce-sheetbar-grip { width: 36px; height: 4px; border-radius: 2px; background: var(--px-border-strong); }
+.mo-ce--narrow .mo-ce-stagecol > .mo-ce-tabs { border-bottom: 0; padding: 0 0 var(--px-space-1); justify-content: center; }
+.mo-ce--narrow .mo-ce-stagecol > .mo-ce-tabs .mo-ce-tab { flex: 0 0 auto; padding: var(--px-space-1) var(--px-space-3); border-bottom: 0; border-radius: var(--px-radius-md); }
+.mo-ce--narrow .mo-ce-stagecol > .mo-ce-tabs .mo-ce-tab > span:nth-child(2) { display: none; }
+.mo-ce--narrow.mo-ce--sheet-open .mo-ce-stagecol > .mo-ce-tabs .mo-ce-tab.mo-active { background: var(--px-surface-selected); color: var(--px-accent-text); }
+.mo-ce--narrow:not(.mo-ce--sheet-open) .mo-ce-stagecol > .mo-ce-tabs .mo-ce-tab.mo-active { color: var(--px-text-muted); }
+.mo-ce--narrow .mo-ce-queue { position: absolute; top: 44px; right: 0; bottom: 0; width: min(100%, 360px); }
+.mo-ce--narrow .mo-ce-meta { display: none; }
 .mo-ce--tiny .mo-ce-lanehead--motion, .mo-ce--tiny .mo-ce-lanehead--blur, .mo-ce--tiny .mo-ce-lanehead--text,
 .mo-ce--tiny .mo-ce-lane--motion, .mo-ce--tiny .mo-ce-lane--blur, .mo-ce--tiny .mo-ce-lane--text { display: none; }
-.mo-ce--tiny .mo-ce-tab > span:nth-child(2) { display: none; }
-
-/* ── Clip exporter as a standalone editor PAGE ── */
-/* Render the PROVEN dialog layout inside the tab. We only remove the floating-
-   modal shell (backdrop/border/shadow/fixed width) and make it scroll in the
-   pane — everything inside (.mo-clip-body / .mo-clip-grid / .mo-clip-stage /
-   .mo-clip-controls / rows) keeps its original, working sizing. Do NOT add
-   flex:1 / align-items:stretch here — that stretches the grid and flings the
-   controls out of their column. */
-/* Fill the width, but keep the preview a sane 16:9 sized by height and CENTERED,
-   with the scrubber matching its width — so large screens don't leave a void and
-   the preview never balloons into a wide letterbox. */
-/* The preview stays in view while the controls scroll: blur boxes and text
-   are dragged and read on the video, so it must never scroll away. */
-/* Footer pinned to the bottom of the scroll area. */
-
-/* ── Professional control components ── */
-
-/* Accordion sections: collapsed headers carry a live value summary so the
-   column stays short and nothing important is hidden while closed. */
+.mo-ce--tiny .mo-ce-btn-sub { display: none; }
 
 /* Range sliders (Scale, Quality) — draggable + paired with a precise number. */
 .mo-clip-slider {
@@ -7893,18 +8025,6 @@ select.mo-select-bound {
 }
 select.mo-select-bound:hover { border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
 select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
-.mo-frame-dialog { width: 880px; max-width: 92vw; }
-.mo-frame-dialog .mo-clip-grid { grid-template-columns: minmax(0, 1fr) 260px; }
-.mo-clip-body {
-  padding: 12px 16px; display: flex; flex-direction: column; gap: 10px;
-  overflow: hidden;
-}
-.mo-clip-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 14px;
-  align-items: start;
-}
 .mo-clip-stage {
   position: relative;
   background: #000;
@@ -7917,20 +8037,6 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-clip-preview {
   display: block; width: 100%; height: 100%; background: #000;
   object-fit: contain;
-}
-.mo-clip-stage-hint {
-  position: absolute; left: 8px; bottom: 8px;
-  font-size: 11px; padding: 3px 8px; border-radius: 3px;
-  background: rgba(0,0,0,0.55); color: #eee;
-  pointer-events: none; opacity: 0.8;
-  font-variant-numeric: tabular-nums;
-}
-.mo-clip-stage-time {
-  position: absolute; right: 8px; bottom: 8px;
-  font-size: 11px; padding: 3px 8px; border-radius: 3px;
-  background: rgba(0,0,0,0.55); color: #eee;
-  pointer-events: none;
-  font-variant-numeric: tabular-nums;
 }
 
 /* Crop overlay */
@@ -8072,17 +8178,8 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
   z-index: 2;
 }
 /* Keep the HUD overlays legible above the mask */
-.mo-clip-stage-hint, .mo-clip-stage-time { z-index: 3; }
 
 /* Controls column */
-.mo-clip-controls {
-  display: flex; flex-direction: column; gap: 10px;
-  min-width: 0;
-}
-.mo-clip-controls .mo-clip-row { gap: 6px; }
-.mo-clip-controls .mo-clip-label { min-width: 70px; }
-.mo-clip-mark-row { display: flex; gap: 6px; align-items: center; }
-.mo-clip-mark-row .mo-clip-input { flex: 1 1 auto; min-width: 0; }
 .mo-mark-btn {
   flex: 0 0 auto;
   padding: 4px 8px; font-size: 11px; line-height: 1; border-radius: 3px;
@@ -15186,9 +15283,9 @@ function buildVideoPlayer(container, fullPath, ctx) {
 
   // ── Right action rail ──
   const rail = moEl('div', 'mo-player-rail');
-  const captureBtn = moEl('button', 'mo-player-rail-btn', { title: 'Capture frame as photo' });
+  const captureBtn = moEl('button', 'mo-player-rail-btn', { title: 'Save this frame as a photo (next to the video)' });
   captureBtn.innerHTML = moIcon('device-camera', 14);
-  captureBtn.addEventListener('click', (e) => { e.stopPropagation(); moCaptureFrame(_api, fullPath, video.currentTime, ctx); });
+  captureBtn.addEventListener('click', (e) => { e.stopPropagation(); void moCaptureFrame(_api, fullPath, video.currentTime); });
 
   const coverBtn = moEl('button', 'mo-player-rail-btn', { title: 'Set as cover frame' });
   coverBtn.innerHTML = moIcon('image', 14);
@@ -18802,12 +18899,12 @@ function showOptimizeGifDialog(gifFiles, api, onComplete) {
 // SECTION 37: M59 PHASE 1 — CLIP/GIF EXPORT, FRAME CAPTURE, WEBP CONVERSION
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── Frame capture dialog: preview + crop + save-as ──
-// Opens a modal preview of the frame at the given timestamp with a draggable
-// crop rectangle and a Save button that opens the native save dialog. Mirrors
-// the clip/gif export UX so cropping a still feels identical to cropping a
-// clip.
-async function moCaptureFrame(api, videoPath, timestampSec, ctx) {
+// ─── Capture frame: the frame under the playhead, saved as a photo ──
+// One click from the player saves a JPEG next to the video and adds it to
+// the library. Cropping a still, or choosing the format and place, is the
+// clip editor's Save Frame (its crop applies). The old Capture Frame dialog
+// (its own preview and crop box) is gone: it duplicated the clip editor.
+async function moCaptureFrame(api, videoPath, timestampSec) {
   if (!_toolPaths.ffmpeg) {
     try { await detectAllTools(); } catch { /* ignore */ }
   }
@@ -18815,283 +18912,22 @@ async function moCaptureFrame(api, videoPath, timestampSec, ctx) {
     api.window.showErrorMessage('ffmpeg not available. Cannot capture frames.');
     return;
   }
-  moOpenFrameDialog(api, videoPath, timestampSec, ctx);
+  const sep = _isWindows ? '\\' : '/';
+  const srcDir = videoPath.slice(0, videoPath.lastIndexOf(sep));
+  try {
+    const outPath = await moRandomNameFree(srcDir, sep, 'jpg');
+    await _moExtractFrame(api, { videoPath, timestampSec: timestampSec || 0, outPath, format: 'jpg', quality: 92, scalePct: 100, crop: null });
+    await moIndexExportedFile(outPath);
+    const pick = await api.window.showInformationMessage(`Frame saved: ${outPath.split(sep).pop()}`, { title: 'Reveal' });
+    if (pick && (pick.title === 'Reveal' || pick === 'Reveal')) {
+      const sh = window.parallxElectron.shell || {};
+      try { if (typeof sh.showItemInFolder === 'function') await sh.showItemInFolder(outPath); } catch { /* ignore */ }
+    }
+  } catch (err) {
+    api.window.showErrorMessage('Frame save failed: ' + (err && err.message || err));
+  }
 }
 
-function moOpenFrameDialog(api, videoPath, timestampSec, _ctx) {
-  const overlay = moEl('div', 'mo-modal-overlay');
-  const dialog = moEl('div', 'mo-modal mo-clip-dialog mo-frame-dialog');
-  overlay.appendChild(dialog);
-
-  const header = moEl('div', 'mo-modal-header');
-  header.appendChild(moEl('div', 'mo-modal-title', { textContent: 'Capture Frame' }));
-  const closeBtn = moEl('button', 'mo-modal-close', { textContent: '×' });
-  closeBtn.addEventListener('click', () => overlay.remove());
-  header.appendChild(closeBtn);
-  dialog.appendChild(header);
-
-  // ── State ──
-  let cropEnabled = false;
-  let cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
-
-  // Preview <video> seeked to the requested timestamp. Identical setup to the
-  // clip dialog so the crop overlay math reuses videoWidth/videoHeight.
-  const preview = document.createElement('video');
-  preview.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
-  preview.className = 'mo-clip-preview';
-  preview.muted = true;
-  preview.controls = false;
-  preview.preload = 'auto';
-  localFileToUrl(videoPath).then((u) => { if (u) preview.src = u; });
-  preview.addEventListener('loadedmetadata', () => {
-    try { preview.currentTime = Math.max(0, timestampSec || 0); } catch { /* ignore */ }
-  });
-
-  const body = moEl('div', 'mo-clip-body');
-  dialog.appendChild(body);
-  const grid = moEl('div', 'mo-clip-grid');
-  body.appendChild(grid);
-
-  // LEFT: stage with preview + crop overlay ─────────────────────────────────
-  const stageWrap = moEl('div');
-  stageWrap.style.display = 'flex';
-  stageWrap.style.flexDirection = 'column';
-  stageWrap.style.gap = '8px';
-  stageWrap.style.minWidth = '0';
-
-  const stage = moEl('div', 'mo-clip-stage');
-  stage.appendChild(preview);
-
-  const cropOverlay = moEl('div', 'mo-crop-overlay');
-  const cropShade = moEl('div', 'mo-crop-shade');
-  const cropRect = moEl('div', 'mo-crop-rect');
-  const HANDLE_DIRS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
-  const cropHandles = {};
-  for (const d of HANDLE_DIRS) {
-    const h = moEl('div', 'mo-crop-handle mo-crop-h-' + d);
-    cropRect.appendChild(h);
-    cropHandles[d] = h;
-  }
-  cropOverlay.appendChild(cropShade);
-  cropOverlay.appendChild(cropRect);
-  cropOverlay.style.display = 'none';
-  stage.appendChild(cropOverlay);
-
-  stage.appendChild(moEl('div', 'mo-clip-stage-hint', {
-    textContent: `Frame at ${moTimeStr(timestampSec || 0, true)}`,
-  }));
-  stageWrap.appendChild(stage);
-  grid.appendChild(stageWrap);
-
-  // RIGHT: controls ─────────────────────────────────────────────────────────
-  const controls = moEl('div', 'mo-clip-controls');
-  grid.appendChild(controls);
-  const lbl = (t) => moEl('label', 'mo-clip-label', { textContent: t });
-
-  // Format
-  const fmtRow = moEl('div', 'mo-clip-row');
-  fmtRow.appendChild(lbl('Format'));
-  const fmtSel = moSelect([['jpg', 'JPEG'], ['png', 'PNG'], ['webp', 'WebP']], 'jpg');
-  fmtRow.appendChild(fmtSel);
-  controls.appendChild(fmtRow);
-
-  // Quality (jpg/webp only)
-  const qRow = moEl('div', 'mo-clip-row');
-  qRow.appendChild(lbl('Quality'));
-  const qInput = document.createElement('input');
-  qInput.type = 'number'; qInput.min = '1'; qInput.max = '100'; qInput.value = '92'; qInput.step = '1';
-  qInput.className = 'mo-clip-input';
-  qRow.appendChild(qInput);
-  controls.appendChild(qRow);
-
-  // Scale
-  const sizeRow = moEl('div', 'mo-clip-row');
-  sizeRow.appendChild(lbl('Scale (%)'));
-  const sizeInput = document.createElement('input');
-  sizeInput.type = 'number'; sizeInput.min = '10'; sizeInput.max = '200'; sizeInput.value = '100'; sizeInput.step = '5';
-  sizeInput.className = 'mo-clip-input';
-  sizeRow.appendChild(sizeInput);
-  controls.appendChild(sizeRow);
-
-  // Crop toggle
-  const cropRow = moEl('div', 'mo-clip-row');
-  const cropChk = document.createElement('input');
-  cropChk.type = 'checkbox'; cropChk.id = 'mo-frame-crop'; cropChk.className = 'mo-clip-check';
-  cropRow.appendChild(cropChk);
-  const cropLabel = lbl('Crop region'); cropLabel.htmlFor = 'mo-frame-crop';
-  cropRow.appendChild(cropLabel);
-  const cropResetBtn = moEl('button', 'mo-mark-btn', { textContent: 'Reset', title: 'Reset crop to full frame' });
-  cropResetBtn.style.marginLeft = 'auto';
-  cropResetBtn.style.display = 'none';
-  cropRow.appendChild(cropResetBtn);
-  controls.appendChild(cropRow);
-
-  // Status (lives in footer, declared here so closures can reach it)
-  const status = moEl('div', 'mo-clip-status', { textContent: '' });
-
-  // Format toggles quality enable state
-  function syncFmt() {
-    const fmt = fmtSel.value;
-    qInput.disabled = (fmt === 'png');
-    qRow.style.opacity = qInput.disabled ? '0.5' : '';
-  }
-  fmtSel.addEventListener('change', syncFmt);
-  syncFmt();
-
-  // ── Crop overlay (mirrors clip dialog) ──
-  function getVideoDisplayRect() {
-    const stageR = stage.getBoundingClientRect();
-    const vw = preview.videoWidth || 16;
-    const vh = preview.videoHeight || 9;
-    const sw = stageR.width, sh = stageR.height;
-    const videoAR = vw / vh, stageAR = sw / sh;
-    let dw, dh;
-    if (videoAR > stageAR) { dw = sw; dh = sw / videoAR; }
-    else { dh = sh; dw = sh * videoAR; }
-    return { dx: (sw - dw) / 2, dy: (sh - dh) / 2, dw, dh };
-  }
-  function applyCropRect() {
-    if (!cropEnabled) { cropOverlay.style.display = 'none'; return; }
-    cropOverlay.style.display = '';
-    const r = getVideoDisplayRect();
-    cropRect.style.left = (r.dx + cropNorm.x * r.dw) + 'px';
-    cropRect.style.top = (r.dy + cropNorm.y * r.dh) + 'px';
-    cropRect.style.width = (cropNorm.w * r.dw) + 'px';
-    cropRect.style.height = (cropNorm.h * r.dh) + 'px';
-  }
-  cropChk.addEventListener('change', () => {
-    cropEnabled = cropChk.checked;
-    cropOverlay.classList.toggle('mo-crop-active', cropEnabled);
-    cropResetBtn.style.display = cropEnabled ? '' : 'none';
-    applyCropRect();
-  });
-  cropResetBtn.addEventListener('click', () => {
-    cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
-    applyCropRect();
-  });
-  preview.addEventListener('loadedmetadata', applyCropRect);
-  const cropResizeObs = new ResizeObserver(applyCropRect);
-  cropResizeObs.observe(stage);
-
-  cropRect.addEventListener('mousedown', (e) => {
-    if (e.target !== cropRect) return;
-    e.preventDefault(); e.stopPropagation();
-    const r0 = getVideoDisplayRect();
-    const sx = e.clientX, sy = e.clientY;
-    const start = { ...cropNorm };
-    const move = (ev) => {
-      const dxN = (ev.clientX - sx) / r0.dw;
-      const dyN = (ev.clientY - sy) / r0.dh;
-      cropNorm.x = Math.max(0, Math.min(1 - start.w, start.x + dxN));
-      cropNorm.y = Math.max(0, Math.min(1 - start.h, start.y + dyN));
-      applyCropRect();
-    };
-    const up = () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
-    };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-  });
-  function bindCropHandle(dir) {
-    const handleEl = cropHandles[dir];
-    handleEl.addEventListener('mousedown', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      const r0 = getVideoDisplayRect();
-      const sx = e.clientX, sy = e.clientY;
-      const start = { ...cropNorm };
-      const minN = 0.02;
-      const move = (ev) => {
-        const dxN = (ev.clientX - sx) / r0.dw;
-        const dyN = (ev.clientY - sy) / r0.dh;
-        let { x, y, w, h: hh } = start;
-        if (dir.includes('e')) w = Math.max(minN, Math.min(1 - x, start.w + dxN));
-        if (dir.includes('s')) hh = Math.max(minN, Math.min(1 - y, start.h + dyN));
-        if (dir.includes('w')) {
-          const nx = Math.max(0, Math.min(start.x + start.w - minN, start.x + dxN));
-          w = start.w + (start.x - nx);
-          x = nx;
-        }
-        if (dir.includes('n')) {
-          const ny = Math.max(0, Math.min(start.y + start.h - minN, start.y + dyN));
-          hh = start.h + (start.y - ny);
-          y = ny;
-        }
-        cropNorm = { x, y, w, h: hh };
-        applyCropRect();
-      };
-      const up = () => {
-        window.removeEventListener('mousemove', move);
-        window.removeEventListener('mouseup', up);
-      };
-      window.addEventListener('mousemove', move);
-      window.addEventListener('mouseup', up);
-    });
-  }
-  HANDLE_DIRS.forEach(bindCropHandle);
-
-  // ── Footer ──
-  const footer = moEl('div', 'mo-modal-footer');
-  const cancelBtn = moEl('button', 'mo-btn-secondary', { textContent: 'Cancel' });
-  const saveBtn = moEl('button', 'mo-btn-primary', { textContent: 'Save…' });
-  footer.append(status, cancelBtn, saveBtn);
-  dialog.appendChild(footer);
-
-  cancelBtn.addEventListener('click', () => {
-    cropResizeObs.disconnect();
-    overlay.remove();
-  });
-
-  saveBtn.addEventListener('click', async () => {
-    const sep = _isWindows ? '\\' : '/';
-    const lastSep = videoPath.lastIndexOf(sep);
-    const srcDir = videoPath.slice(0, lastSep);
-    const ext = fmtSel.value;
-    const filterMap = {
-      jpg:  [{ name: 'JPEG', extensions: ['jpg', 'jpeg'] }],
-      png:  [{ name: 'PNG',  extensions: ['png'] }],
-      webp: [{ name: 'WebP', extensions: ['webp'] }],
-    };
-    const chosen = await window.parallxElectron.dialog.saveFile({
-      defaultPath: await moRandomNameFree(srcDir, sep, ext),
-      filters: filterMap[ext] || [],
-    });
-    if (!chosen) return;
-
-    saveBtn.disabled = true; cancelBtn.disabled = true;
-    status.textContent = 'Saving…';
-
-    try {
-      await _moExtractFrame(api, {
-        videoPath,
-        timestampSec: timestampSec || 0,
-        outPath: chosen,
-        format: ext,
-        quality: Math.max(1, Math.min(100, parseInt(qInput.value, 10) || 92)),
-        scalePct: Math.max(10, Math.min(200, parseInt(sizeInput.value, 10) || 100)),
-        crop: cropEnabled ? { ...cropNorm } : null,
-      });
-      api.window.showInformationMessage('Frame saved: ' + chosen.split(sep).pop());
-      cropResizeObs.disconnect();
-      overlay.remove();
-    } catch (err) {
-      saveBtn.disabled = false; cancelBtn.disabled = false;
-      status.textContent = '';
-      api.window.showErrorMessage('Frame save failed: ' + (err && err.message || err));
-    }
-  });
-
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) {
-      cropResizeObs.disconnect();
-      overlay.remove();
-    }
-  });
-  document.body.appendChild(overlay);
-}
-
-// Single-frame extractor used by the capture dialog. ffmpeg seeks to the
-// requested timestamp, applies optional crop + scale, and writes one image.
 async function _moExtractFrame(api, opts) {
   const filters = [];
   if (opts.crop && opts.crop.w > 0 && opts.crop.h > 0) {
@@ -19311,9 +19147,9 @@ async function moOnRecordingComplete(api, payload) {
     if (duration - cursor >= 0.2) keep.push({ in: cursor, out: duration });
     if (keep.length) editorOpts.initialSegments = keep;
   }
-  // A paused or followed take opens whole; a plain take opens on its first
-  // six seconds as before.
-  const openOut = (editorOpts.initialSegments || editorOpts.initialCrop) ? duration : Math.min(duration, 6);
+  // Every take opens whole; trimming is the editor's job (it opened plain
+  // takes on their first six seconds once, which hid the rest).
+  const openOut = duration;
   // Open the existing clip/GIF exporter; erase the temp source when it closes.
   let erased = false;
   await moOpenClipDialog(api, recPath, duration, 0, openOut, {
@@ -19489,10 +19325,30 @@ function moFfEscapePath(p) {
 //   lower  — bottom-left lower-third label
 //   caption— bottom-center subtitle line
 const MO_CAPTION_STYLES = {
-  title:   { size: 0.075, x: '(w-text_w)/2', y: '(h-text_h)/2', box: 1, boxBorder: 0.02, alpha: 0.55 },
-  lower:   { size: 0.045, x: 'w*0.05',       y: 'h*0.86-text_h', box: 1, boxBorder: 0.012, alpha: 0.6 },
-  caption: { size: 0.05,  x: '(w-text_w)/2', y: 'h*0.9-text_h',  box: 1, boxBorder: 0.012, alpha: 0.6 },
+  // anchor: where the block sits (center of the frame, or its bottom edge at
+  // `bottom`); sub: the size of every line after the first (a title and the
+  // line under it). A caption dragged on the video carries cx/cy instead.
+  title:   { size: 0.075, x: '(w-text_w)/2', anchor: 'center', bottom: 0.5,  sub: 0.6,  align: 'center', box: 1, boxBorder: 0.02, alpha: 0.55 },
+  lower:   { size: 0.045, x: 'w*0.05',       anchor: 'bottom', bottom: 0.86, sub: 0.72, align: 'left',   box: 1, boxBorder: 0.012, alpha: 0.6 },
+  caption: { size: 0.05,  x: '(w-text_w)/2', anchor: 'bottom', bottom: 0.9,  sub: 1,    align: 'center', box: 1, boxBorder: 0.012, alpha: 0.6 },
 };
+
+/** Where each line of a caption goes, as fractions of the frame: shared by
+ *  the export (drawtext) and the editor's preview so they agree. */
+function moCaptionLayout(cap) {
+  const st = MO_CAPTION_STYLES[cap.style] || MO_CAPTION_STYLES.caption;
+  const lines = String(cap.text == null ? '' : cap.text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const sizes = lines.map((_, i) => (i === 0 ? st.size : st.size * st.sub));
+  const lineH = sizes.map((sz) => sz * 1.3);
+  const total = lineH.reduce((a, b) => a + b, 0);
+  const placed = Number.isFinite(cap.cx) && Number.isFinite(cap.cy);
+  let top = placed ? cap.cy - total / 2 : (st.anchor === 'center' ? 0.5 - total / 2 : st.bottom - total);
+  top = Math.max(0, Math.min(1 - total, top));
+  const out = [];
+  let y = top;
+  lines.forEach((text, i) => { out.push({ text, size: sizes[i], y: y + sizes[i] * 0.15 }); y += lineH[i]; });
+  return { lines: out, top, total, placed, cx: placed ? Math.max(0, Math.min(1, cap.cx)) : null, align: placed ? 'center' : st.align, style: st };
+}
 
 /**
  * One drawtext segment for a caption {text, style, t0, t1, color?}. Times are
@@ -19501,23 +19357,29 @@ const MO_CAPTION_STYLES = {
  * default, when the build has it).
  */
 function moCaptionVf(cap, fontFile) {
-  const st = MO_CAPTION_STYLES[cap.style] || MO_CAPTION_STYLES.caption;
   const t0 = Math.max(0, +cap.t0 || 0);
   const t1 = Math.max(t0 + 0.05, +cap.t1 || t0 + 3);
   const color = /^[a-zA-Z]+$|^#?[0-9a-fA-F]{6}$/.test(String(cap.color || '')) ? String(cap.color).replace(/^#/, '0x') : 'white';
-  const parts = [
-    fontFile ? `fontfile='${moFfEscapePath(fontFile)}'` : '',
-    `text='${moFfEscapeText(cap.text)}'`,
-    `fontsize=h*${st.size.toFixed(3)}`,
-    `fontcolor=${color}`,
-    `x=${st.x}`,
-    `y=${st.y}`,
-    `box=${st.box}`,
-    `boxcolor=black@${st.alpha}`,
-    `boxborderw=h*${st.boxBorder.toFixed(3)}`,
-    `enable='between(t,${t0.toFixed(3)},${t1.toFixed(3)})'`,
-  ].filter(Boolean);
-  return 'drawtext=' + parts.join(':');
+  const lay = moCaptionLayout(cap);
+  const st = lay.style;
+  // drawtext has no newline: one drawtext per line, stacked by the layout.
+  const lines = lay.lines.length ? lay.lines : [{ text: String(cap.text || ''), size: st.size, y: st.bottom - st.size }];
+  return lines.map((ln) => {
+    const x = lay.placed ? `w*${lay.cx.toFixed(4)}-text_w/2` : st.x;
+    const parts = [
+      fontFile ? `fontfile='${moFfEscapePath(fontFile)}'` : '',
+      `text='${moFfEscapeText(ln.text)}'`,
+      `fontsize=h*${ln.size.toFixed(4)}`,
+      `fontcolor=${color}`,
+      `x=${x}`,
+      `y=h*${ln.y.toFixed(4)}`,
+      `box=${st.box}`,
+      `boxcolor=black@${st.alpha}`,
+      `boxborderw=h*${st.boxBorder.toFixed(3)}`,
+      `enable='between(t,${t0.toFixed(3)},${t1.toFixed(3)})'`,
+    ].filter(Boolean);
+    return 'drawtext=' + parts.join(':');
+  }).join(',');
 }
 
 /** Every caption as vf segments (empty array when none). */
@@ -19845,10 +19707,10 @@ function moEndCardInputs(card, dims, fps, fontFile, withAudio) {
   if (withAudio) inputs.push('-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo:d=${secs.toFixed(2)}`);
   const chain = [];
   if (String(card.title || '').trim()) {
-    chain.push(moCaptionVf({ text: card.title, style: 'title', t0: 0, t1: secs + 1 }, fontFile).replace(/:enable='[^']*'/, ''));
+    chain.push(moCaptionVf({ text: card.title, style: 'title', t0: 0, t1: secs + 1 }, fontFile).replace(/:enable='[^']*'/g, ''));
   }
   if (String(card.subtitle || '').trim()) {
-    const sub = moCaptionVf({ text: card.subtitle, style: 'caption', t0: 0, t1: secs + 1 }, fontFile).replace(/:enable='[^']*'/, '');
+    const sub = moCaptionVf({ text: card.subtitle, style: 'caption', t0: 0, t1: secs + 1 }, fontFile).replace(/:enable='[^']*'/g, '');
     chain.push(sub);
   }
   chain.push('fade=t=in:st=0:d=0.35', 'format=yuv420p');
@@ -20411,7 +20273,7 @@ async function moExportClipPipeline(api, opts) {
       temp,
     ];
     let buf = '', stderrTail = '';
-    const r = await window.parallxElectron.terminal.execStream(
+    const r = await moFfStream(opts.cancel, 
       { command: _toolPaths.ffmpeg, args: argv, timeout: 1800000 },
       {
         onStdout: (chunk) => {
@@ -20455,9 +20317,22 @@ async function moExportClipPipeline(api, opts) {
   }
 }
 
-async function moExecFFArgs(args, timeoutMs) {
+// An export's ffmpeg runs belong to a cancel scope ({ procs: Set, cancelled })
+// the editor holds: Cancel stops every run in it, and later steps refuse to
+// start. No scope (every other caller): a plain run.
+function moFfStream(scope, payload, handlers) {
+  if (scope && scope.cancelled) return Promise.resolve({ exitCode: -1, error: { code: 'CANCELLED', message: 'Cancelled' } });
+  const p = window.parallxElectron.terminal.execStream(payload, handlers);
+  if (scope && scope.procs) {
+    scope.procs.add(p);
+    p.then(() => scope.procs.delete(p), () => scope.procs.delete(p));
+  }
+  return p;
+}
+
+async function moExecFFArgs(args, timeoutMs, scope) {
   let stderrTail = '';
-  const r = await window.parallxElectron.terminal.execStream(
+  const r = await moFfStream(scope, 
     { command: _toolPaths.ffmpeg, args, timeout: timeoutMs || 600000 },
     { onStdout: () => {}, onStderr: (c) => { stderrTail = (stderrTail + c).slice(-4000); } },
   );
@@ -20567,13 +20442,24 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     metaEl.textContent = `${moTimeStr(duration)} · ${preview.videoWidth} × ${preview.videoHeight}`;
   });
   toolbar.appendChild(moEl('span', 'mo-ce-spacer'));
-  const estimateEl = moEl('span', 'mo-ce-estimate', { textContent: '' });
-  toolbar.appendChild(estimateEl);
+  const undoBtn = api.ui.createIconButton(toolbar, { icon: 'undo-2', title: 'Undo (Ctrl+Z)', onClick: () => undoEdit() });
+  const redoBtn = api.ui.createIconButton(toolbar, { icon: 'redo-2', title: 'Redo (Ctrl+Shift+Z)', onClick: () => redoEdit() });
+  undoBtn.disabled = true; redoBtn.disabled = true;
+  toolbar.appendChild(moEl('span', 'mo-ce-sep'));
   const queueToggle = api.ui.createButton(toolbar, { label: 'Queue', icon: 'list-video', kind: 'secondary', title: 'The clips waiting to export together' });
   const queueBadge = moEl('span', 'mo-ce-badge', { textContent: '0' });
   queueToggle.appendChild(queueBadge);
   const exportSplit = moEl('span', 'mo-ce-split');
   const exportBtn = api.ui.createButton(exportSplit, { label: 'Export…', kind: 'primary', title: 'Export the clip, or every queued clip' });
+  // The button's words: what it does, then the estimate, quieter. A progress
+  // fill (--mo-ce-progress) runs under them while a clip renders.
+  const estimateEl = moEl('span', 'mo-ce-btn-sub');
+  let exportBusy = false; // a render is running: the button shows progress and Cancel
+  function setExportLabel(main, sub) {
+    exportBtn.textContent = main;
+    estimateEl.textContent = sub || '';
+    if (sub) exportBtn.appendChild(estimateEl);
+  }
   const exportMenuBtn = api.ui.createIconButton(exportSplit, { icon: 'chevron-down', title: 'Format, size and quality' });
   exportMenuBtn.classList.add('mo-ce-split-menu');
   toolbar.appendChild(exportSplit);
@@ -20601,6 +20487,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     cropRect.appendChild(h);
     cropHandles[d] = h;
   }
+  const cropSizeEl = moEl('span', 'mo-ce-crop-size');
+  cropRect.appendChild(cropSizeEl);
   cropOverlay.appendChild(cropShade);
   cropOverlay.appendChild(cropRect);
   // Point-track marker: the user-picked subject point. Right-click clears it.
@@ -20626,6 +20514,16 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const floatBar = moEl('div', 'mo-ce-floatbar');
   floatBar.style.display = 'none';
   stage.appendChild(floatBar);
+  const floatCrop = moEl('div', 'mo-ce-float-group');
+  const floatObjects = moEl('div', 'mo-ce-float-group');
+  floatBar.append(floatCrop, floatObjects);
+  const addTextFloat = moEl('button', 'mo-ce-float-btn', { title: 'Add a title, lower third or caption at the playhead (T)' });
+  addTextFloat.append(ico('type', 14), moEl('span', null, { textContent: 'Add Text' }), moEl('span', 'mo-ce-float-key', { textContent: 'T' }));
+  addTextFloat.addEventListener('click', (e) => { e.stopPropagation(); addCapBtn.click(); });
+  const addBlurFloat = moEl('button', 'mo-ce-float-btn', { title: 'Add a box that blurs or pixelates what is under it' });
+  addBlurFloat.append(ico('grid-2x2', 14), moEl('span', null, { textContent: 'Add Blur Region' }));
+  addBlurFloat.addEventListener('click', (e) => { e.stopPropagation(); addBlurBtn.click(); setTab('blur'); });
+  floatObjects.append(addTextFloat, addBlurFloat);
   const camBtn = moEl('button', 'mo-ce-float-btn', {
     title: 'The cropped view fills the stage and follows crop keyframes during playback',
   });
@@ -20673,23 +20571,64 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
   // Transport: set In, frame back, play, frame forward, set Out, timecode.
   const transport = moEl('div', 'mo-ce-transport');
-  api.ui.createButton(transport, { label: 'Set In', kind: 'ghost', size: 'sm', title: 'Set In at the playhead (I)', onClick: () => setInBtn.click() });
+  api.ui.createButton(transport, { label: 'In', icon: 'arrow-right-to-line', kind: 'ghost', size: 'sm', title: 'Set In at the playhead (I)', onClick: () => setInBtn.click() });
   api.ui.createIconButton(transport, { icon: 'step-back', size: 'sm', title: 'Previous frame (,)', onClick: () => stepFrame(-1) });
   transport.appendChild(playBtn);
   api.ui.createIconButton(transport, { icon: 'step-forward', size: 'sm', title: 'Next frame (.)', onClick: () => stepFrame(1) });
-  api.ui.createButton(transport, { label: 'Set Out', kind: 'ghost', size: 'sm', title: 'Set Out at the playhead (O)', onClick: () => setOutBtn.click() });
+  const outTBtn = api.ui.createButton(transport, { label: 'Out', kind: 'ghost', size: 'sm', title: 'Set Out at the playhead (O)', onClick: () => setOutBtn.click() });
+  outTBtn.appendChild(ico('arrow-left-to-line', 14));
   const stageTime = moEl('span', 'mo-ce-tc', { textContent: moTcStr(0) + ' / ' + moTcStr(duration) });
   transport.appendChild(stageTime);
   transport.appendChild(moEl('span', 'mo-ce-spacer'));
   const readoutEl = moEl('span', 'mo-ce-readout');
   transport.appendChild(readoutEl);
+  transport.appendChild(moEl('span', 'mo-ce-sep'));
+  // Loop: on, playback wraps inside the range (or the segments); off, it
+  // stops at Out. Remembered per user.
+  let loopOn = true;
+  const loopBtn = api.ui.createIconButton(transport, { icon: 'repeat', size: 'sm', title: 'Loop the range' });
+  const syncLoopBtn = () => { loopBtn.classList.toggle('mo-active', loopOn); loopBtn.title = loopOn ? 'Looping the range (click to stop at Out)' : 'Stops at Out (click to loop the range)'; };
+  loopBtn.addEventListener('click', () => { loopOn = !loopOn; syncLoopBtn(); moSetSetting('clipEditorLoop_v1', loopOn ? '1' : '0').catch(() => {}); });
+  moGetSetting('clipEditorLoop_v1', '1').then((v) => { loopOn = v !== '0'; syncLoopBtn(); }).catch(() => {});
+  syncLoopBtn();
   const volBtn = api.ui.createIconButton(transport, { icon: 'volume-2', size: 'sm', title: 'Mute the preview' });
   volBtn.addEventListener('click', () => {
     preview.muted = !preview.muted;
     volBtn.innerHTML = moIcon(preview.muted ? 'volume-x' : 'volume-2', 14);
     volBtn.title = preview.muted ? 'Unmute the preview' : 'Mute the preview';
   });
+  api.ui.createIconButton(transport, { icon: 'camera', size: 'sm', title: 'Save Frame: the frame under the playhead as a photo (cropped when the crop is on)', onClick: () => { void saveFrame(); } });
   stageCol.appendChild(transport);
+
+  // Stage chips: the source (bottom right) and, while cropping with keys,
+  // which key the playhead is on (bottom left).
+  const srcChip = moEl('div', 'mo-ce-chip mo-ce-chip--right');
+  const keyChip = moEl('div', 'mo-ce-chip');
+  keyChip.style.display = 'none';
+  stage.append(srcChip, keyChip);
+  let srcFps = 0;
+  const syncSrcChip = () => {
+    if (!preview.videoWidth) return;
+    srcChip.textContent = `${preview.videoWidth} × ${preview.videoHeight}` + (srcFps > 0 ? ` · ${Math.round(srcFps * 100) / 100} fps` : '');
+  };
+  preview.addEventListener('loadedmetadata', syncSrcChip);
+  extractVideoMeta(videoPath).then((m) => { if (m && m.frameRate > 0) { srcFps = m.frameRate; syncSrcChip(); } }).catch(() => {});
+  function syncKeyChip() {
+    if (activeTab !== 'crop' || !cropEnabled || cropKeys.length === 0 || camActive) { keyChip.style.display = 'none'; return; }
+    const t = preview.currentTime;
+    const n = cropKeys.length;
+    const on = cropKeys.findIndex((k) => Math.abs(k.t - t) < 0.05);
+    let text;
+    if (on >= 0) text = `Key ${on + 1} of ${n} · ${moTcStr(cropKeys[on].t)}`;
+    else {
+      const after = cropKeys.findIndex((k) => k.t > t);
+      text = after === 0 ? `Before key 1 of ${n}` : after < 0 ? `After key ${n} of ${n}` : `Between keys ${after} and ${after + 1}`;
+    }
+    keyChip.textContent = text;
+    keyChip.style.display = '';
+  }
+  preview.addEventListener('timeupdate', () => syncKeyChip());
+  preview.addEventListener('seeked', () => syncKeyChip());
 
   // ── Timeline: ruler, video, audio and a lane per kind of overlay ──
   // Every lane spans the same content width, so a time is one left% on all
@@ -20717,7 +20656,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const lanes = {};
   for (const [id, icon, label] of LANES) {
     const head = moEl('div', 'mo-ce-lanehead mo-ce-lanehead--' + id);
-    if (icon) head.append(ico(icon, 14), moEl('span', null, { textContent: label }));
+    if (icon) head.append(ico(icon, 14), moEl('span', 'mo-ce-lanehead-label', { textContent: label }));
     tlHeads.appendChild(head);
     const lane = moEl('div', 'mo-ce-lane mo-ce-lane--' + id);
     scrub.appendChild(lane);
@@ -20750,7 +20689,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   overlay.appendChild(insp);
   const tabsRow = moEl('div', 'mo-ce-tabs', { role: 'tablist' });
   const panels = moEl('div', 'mo-ce-panels');
-  insp.append(tabsRow, panels);
+  const sheetBar = moEl('div', 'mo-ce-sheetbar');
+  sheetBar.appendChild(moEl('span', 'mo-ce-sheetbar-grip'));
+  api.ui.createIconButton(sheetBar, { icon: 'x', size: 'sm', title: 'Close', onClick: () => setSheetOpen(false) });
+  insp.append(tabsRow, sheetBar, panels);
   const TABS = [
     ['trim', 'scissors', 'Trim'],
     ['crop', 'crop', 'Crop'],
@@ -20765,12 +20707,18 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   for (const [id, icon, label] of TABS) {
     const tab = moEl('button', 'mo-ce-tab', { role: 'tab', title: label });
     tab.append(ico(icon, 16), moEl('span', null, { textContent: label }), moEl('span', 'mo-ce-tab-dot'));
-    tab.addEventListener('click', () => setTab(id));
+    tab.addEventListener('click', () => {
+      // In a narrow pane the active tab's icon closes its sheet again.
+      if (overlay.classList.contains('mo-ce--narrow') && activeTab === id && overlay.classList.contains('mo-ce--sheet-open')) { setSheetOpen(false); return; }
+      setTab(id);
+    });
     tabsRow.appendChild(tab);
     tabEls[id] = { tab, panel: null };
   }
+  function setSheetOpen(open) { overlay.classList.toggle('mo-ce--sheet-open', !!open); }
   function setTab(id, persist = true) {
     if (!tabEls[id]) return;
+    if (overlay.classList.contains('mo-ce--narrow') && persist) setSheetOpen(true);
     activeTab = id;
     for (const [k, t] of Object.entries(tabEls)) {
       t.tab.classList.toggle('mo-active', k === id);
@@ -20781,8 +20729,12 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     if (persist) moSetSetting('clipEditorTab_v1', id).catch(() => {});
   }
   function syncFloatBar() {
-    floatBar.style.display = cropEnabled && activeTab === 'crop' && !camActive ? '' : 'none';
-    if (camActive && activeTab === 'crop') floatBar.style.display = '';
+    const crop = activeTab === 'crop' && (cropEnabled || camActive);
+    const objects = activeTab === 'text' || activeTab === 'blur';
+    floatCrop.style.display = crop ? '' : 'none';
+    floatObjects.style.display = objects ? '' : 'none';
+    floatBar.style.display = crop || objects ? '' : 'none';
+    try { syncKeyChip(); } catch { /* chips not built yet */ }
   }
 
   // ── Export menu (format, size, quality) and Queue panel ──
@@ -20791,7 +20743,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const popHead = moEl('div', 'mo-ce-pop-head');
   popHead.appendChild(moEl('span', 'mo-ce-pop-title', { textContent: 'Export' }));
   const popEstimate = moEl('span', 'mo-ce-pop-est');
-  popHead.appendChild(popEstimate);
+  const popEstimateSub = moEl('span', 'mo-ce-pop-est-sub');
+  popHead.append(popEstimate, popEstimateSub);
   const popBody = moEl('div', 'mo-ce-pop-body');
   const popFoot = moEl('div', 'mo-ce-pop-foot');
   pop.append(popHead, popBody, popFoot);
@@ -20816,12 +20769,28 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   queuePanel.style.display = 'none';
   const queuePanelHead = moEl('div', 'mo-ce-queue-head');
   queuePanelHead.appendChild(moEl('span', 'mo-ce-pop-title', { textContent: 'Queue' }));
-  const queueSum = moEl('span', 'mo-ce-sum');
-  queuePanelHead.appendChild(queueSum);
+  const queueHeadBadge = moEl('span', 'mo-ce-badge', { textContent: '0' });
+  queuePanelHead.appendChild(queueHeadBadge);
   queuePanelHead.appendChild(moEl('span', 'mo-ce-spacer'));
+  const queueSaveSlot = moEl('span');
+  queuePanelHead.appendChild(queueSaveSlot);
   api.ui.createIconButton(queuePanelHead, { icon: 'x', size: 'sm', title: 'Close the queue', onClick: () => setQueueOpen(false) });
   const queuePanelBody = moEl('div', 'mo-ce-queue-body');
-  queuePanel.append(queuePanelHead, queuePanelBody);
+  const queueFoot = moEl('div', 'mo-ce-queue-foot');
+  const queueUpdateBtn = api.ui.createButton(queueFoot, { label: 'Update Clip', title: 'Replace the clip being edited with the current settings (Q)', onClick: () => addBtn.click() });
+  const queueStopBtn = api.ui.createButton(queueFoot, { label: 'Stop Editing', kind: 'ghost', title: 'Stop editing this clip (settings stay as they are)', onClick: () => stopEditBtn.click() });
+  const queueSize = moEl('span', 'mo-ce-sum mo-ce-sum--left');
+  queueFoot.append(moEl('span', 'mo-ce-spacer'), queueSize);
+  const queueExportAll = api.ui.createButton(queueFoot, { label: 'Export All…', kind: 'primary', title: 'Export every queued clip into one folder', onClick: () => exportBtn.click() });
+  queuePanel.append(queuePanelHead, queuePanelBody, queueFoot);
+  function syncQueueFoot() {
+    const editing = editingId != null && clipQueue.some((x) => x.id === editingId);
+    queueUpdateBtn.style.display = editing ? '' : 'none';
+    queueStopBtn.style.display = editing ? '' : 'none';
+    queueExportAll.querySelector('.px-btn__label').textContent = clipQueue.length ? `Export All ${clipQueue.length}\u2026` : 'Export All\u2026';
+    queueExportAll.disabled = clipQueue.length === 0;
+    queueHeadBadge.textContent = String(clipQueue.length);
+  }
   overlay.appendChild(queuePanel);
   function setQueueOpen(open) {
     queuePanel.style.display = open ? '' : 'none';
@@ -20973,8 +20942,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     if (document.activeElement !== outTc) outTc.value = moTcStr(b);
     if (document.activeElement !== lenTc) lenTc.value = moTcStr(b - a);
   }
-  const setInBtn = api.ui.createButton(null, { label: 'Set', size: 'sm', title: 'Set In at the playhead (I)' });
-  const setOutBtn = api.ui.createButton(null, { label: 'Set', size: 'sm', title: 'Set Out at the playhead (O)' });
+  const setInBtn = api.ui.createButton(null, { label: 'Set', icon: 'arrow-right-to-line', size: 'sm', title: 'Set In at the playhead (I)' });
+  setInBtn.appendChild(moEl('span', 'mo-ce-kbd', { textContent: 'I' }));
+  const setOutBtn = api.ui.createButton(null, { label: 'Set', icon: 'arrow-left-to-line', size: 'sm', title: 'Set Out at the playhead (O)' });
+  setOutBtn.appendChild(moEl('span', 'mo-ce-kbd', { textContent: 'O' }));
   const inRow = moEl('div', 'mo-clip-row mo-clip-mark-row');
   inRow.append(lbl('In'), inTc, setInBtn);
   const outRow = moEl('div', 'mo-clip-row mo-clip-mark-row');
@@ -20986,7 +20957,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const modeOutBtn = moEl('button', 'mo-active');
   const modeDurBtn = moEl('button');
   const rangeGroup = moEl('div', 'mo-ce-group');
-  rangeGroup.append(moEl('div', 'mo-ce-group-title', { textContent: 'Range' }), inRow, outRow, lenRow);
+  const rangeHead = moEl('div', 'mo-ce-group-head');
+  const rangeSub = moEl('span', 'mo-ce-sum', { textContent: 'Whole clip' });
+  rangeHead.append(moEl('span', 'mo-ce-group-title', { textContent: 'Range' }), rangeSub);
+  rangeGroup.append(rangeHead, inRow, outRow, lenRow,
+    moEl('div', 'mo-clip-note', { textContent: 'Type a length and Out follows. Drag the ends of a segment on the timeline for the same thing.' }));
   secTrim.appendChild(rangeGroup);
 
   // Format
@@ -20999,8 +20974,13 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // FPS
   const fpsRow = moEl('div', 'mo-clip-row');
   fpsRow.appendChild(lbl('Frame rate'));
-  const fpsSel = moSelect([10, 15, 24, 30, 60].map((f) => [f, f]), '30');
-  fpsRow.appendChild(segFor(fpsSel, [10, 15, 24, 30, 60].map((f) => [f, String(f)])));
+  const fpsSel = moSelect([...[10, 15, 24, 30, 60].map((f) => [f, f]), ['src', 'Source']], '30');
+  fpsRow.appendChild(segFor(fpsSel, [...[10, 15, 24, 30].map((f) => [f, String(f)]), ['src', 'Source']]));
+  // The frame rate a render uses: the chosen one, or the source's own.
+  function outFps() {
+    if (fpsSel.value === 'src') return Math.max(1, Math.min(120, Math.round(srcFps || 30)));
+    return Math.max(1, parseInt(fpsSel.value, 10) || 30);
+  }
   secOutput.appendChild(fpsRow);
 
   // Scale
@@ -21016,22 +20996,57 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // Timing: speed, Fit To Length, reverse. A painting session becomes a
   // timelapse here, so it sits with the range it shortens.
   const timingGroup = moEl('div', 'mo-ce-group');
-  timingGroup.appendChild(moEl('div', 'mo-ce-group-title', { textContent: 'Timing' }));
-  const speedRow = moEl('div', 'mo-clip-row');
-  speedRow.appendChild(lbl('Speed'));
+  const speedHead = moEl('div', 'mo-ce-group-head');
+  const speedSub = moEl('span', 'mo-ce-sum');
+  speedHead.append(moEl('span', 'mo-ce-group-title', { textContent: 'Speed' }), speedSub);
+  timingGroup.appendChild(speedHead);
   const speedSel = moSelect([0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8, 16, 32, 64].map((s) => [s, s + '×']), '1');
+  // The quick speeds, plus Fit… for timelapses: it opens Fit To Length and
+  // the full speed list (up to 64×, a painting session's pace).
+  const speedSeg = moEl('div', 'mo-ce-seg mo-ce-seg--fill');
+  const quickSpeeds = ['0.5', '1', '1.5', '2'];
+  let speedMore = false;
+  const speedBtns = quickSpeeds.map((v) => {
+    const b = moEl('button', null, { textContent: v + '×' });
+    b.addEventListener('click', () => {
+      speedMore = false;
+      fitSel.value = '0'; fitSel.dispatchEvent(new Event('change', { bubbles: true }));
+      speedSel.value = v; speedSel.dispatchEvent(new Event('change', { bubbles: true }));
+      syncSpeedSeg();
+    });
+    speedSeg.appendChild(b);
+    return [v, b];
+  });
+  const fitBtn = moEl('button', null, { textContent: 'Fit…', title: 'Fit the clip to a length (a timelapse), or pick any speed up to 64×' });
+  fitBtn.addEventListener('click', () => { speedMore = true; syncSpeedSeg(); });
+  speedSeg.appendChild(fitBtn);
+  timingGroup.appendChild(speedSeg);
+  const speedRow = moEl('div', 'mo-clip-row');
+  speedRow.appendChild(lbl('Any speed'));
   speedRow.appendChild(speedSel);
-  timingGroup.appendChild(speedRow);
+  function syncSpeedSeg() {
+    const fitOn = (parseFloat(fitSel.value) || 0) > 0;
+    const quick = !fitOn && quickSpeeds.includes(String(parseFloat(speedSel.value)));
+    const more = speedMore || !quick;
+    for (const [v, b] of speedBtns) b.classList.toggle('mo-active', !more && String(parseFloat(speedSel.value)) === v);
+    fitBtn.classList.toggle('mo-active', more);
+    fitRow.style.display = more ? '' : 'none';
+    speedRow.style.display = more ? '' : 'none';
+  }
 
   // Fit To Length (M104): a painting session becomes a timelapse of a chosen
   // length; the speed follows from the clip's length and is applied at export.
   const fitRow = moEl('div', 'mo-clip-row');
-  fitRow.appendChild(lbl('Fit to length'));
+  fitRow.appendChild(lbl('Fit to'));
   const fitSel = moSelect([[0, 'Off'], [15, '15 s'], [30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min']], '0');
   fitRow.appendChild(fitSel);
   const fitNote = moEl('span', 'mo-clip-hint');
   fitRow.appendChild(fitNote);
   timingGroup.appendChild(fitRow);
+  timingGroup.appendChild(speedRow);
+  speedSel.addEventListener('change', syncSpeedSeg);
+  fitSel.addEventListener('change', syncSpeedSeg);
+  syncSpeedSeg();
   // The speed the export really uses: the chosen one, or the one that fits the length.
   function effectiveSpeed() {
     const fit = parseFloat(fitSel.value) || 0;
@@ -21100,9 +21115,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // over the stage. What you see here is what the file will be.
   const renderRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
   const renderBtn = moEl('button', 'mo-mark-btn', { textContent: 'Preview Render', title: 'Render three real seconds from the playhead with the current settings (look, crop, blur, text) and play them over the stage.' });
-  const renderHint = moEl('span', 'mo-clip-keycount', { textContent: 'The live preview approximates looks. This shows the truth.' });
-  renderRow.append(renderBtn, renderHint);
+  renderRow.append(renderBtn);
   secLook.appendChild(renderRow);
+  secLook.appendChild(moEl('div', 'mo-clip-note', { textContent: 'Renders three real seconds from the playhead, so what you see is what exports.' }));
   let renderOverlay = null;
   let renderTempPath = '';
   async function closeRenderPreview() {
@@ -21137,7 +21152,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const fontFile = await moFindFontFile();
       await moExportClipPipeline(api, {
         videoPath, inPoint: t0, outPoint: t1, outPath,
-        format: 'mp4', fps: Math.min(30, parseInt(fpsSel.value, 10) || 30),
+        format: 'mp4', fps: Math.min(30, outFps()),
         scalePct: previewScale, speed: effectiveSpeed(),
         reverse: revChk.checked, mute: true, crf: 26, encodeMode: 'crf', hwAccel: 'off',
         filter: filterSel.value,
@@ -21174,14 +21189,18 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   });
 
   // ── Blur regions: hide something, still or moving ──
-  const blurRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
-  const addBlurBtn = moEl('button', 'mo-mark-btn', { textContent: 'Add Blur Region', title: 'A box over the video that blurs or pixelates what is under it. Drag it on the video; use From/To to limit it in time; Follow makes it track a moving subject.' });
+  // The tab edits the selected region (Region i of n) and lists them all,
+  // like the Text tab. Times are source times; blank means the whole video.
+  const addBlurBtn = moEl('button', 'mo-mark-btn', { title: 'A box over the video that blurs or pixelates what is under it. Drag it on the video; Shows limits it in time; Track makes it follow a moving subject.' });
+  addBlurBtn.append(ico('grid-2x2', 14), moEl('span', null, { textContent: 'Add Blur Region' }));
   const blurCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
-  blurRow.append(addBlurBtn, blurCount);
-  secBlur.appendChild(blurRow);
-  secBlur.appendChild(moEl('div', 'mo-clip-note', { textContent: 'Put the box over what to hide at the current frame. Turn on Track and the box follows it through the clip; leave it off for something that does not move.' }));
+  const blurEmpty = moEl('div', 'mo-ce-empty');
+  blurEmpty.append(moEl('div', 'mo-clip-note', { textContent: 'Put a box over what to hide (an email, a face, a screen). Turn on Track and it follows through the clip; leave it off for something that does not move.' }), addBlurBtn);
+  const blurEditor = moEl('div', 'mo-ce-group');
   const blurList = moEl('div', 'mo-clip-seglist');
-  secBlur.appendChild(blurList);
+  const blurListGroup = moEl('div', 'mo-ce-group');
+  blurListGroup.append(moEl('div', 'mo-ce-group-title', { textContent: 'All regions' }), blurList);
+  secBlur.append(blurEmpty, blurEditor, blurListGroup);
   let activeBlurId = null;
 
   function blurRegionAt(r, t) {
@@ -21193,50 +21212,63 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   }
   function renderBlurRegions() {
     blurList.innerHTML = '';
+    blurEditor.innerHTML = '';
     blurCount.textContent = '';
-    for (const r of blurRegions) {
-      const row = moEl('div', 'mo-clip-segrow');
-      if (r.id === activeBlurId) row.classList.add('mo-active');
-      row.classList.add('mo-clip-segrow--stack');
-      const line1 = moEl('div', 'mo-clip-segline'); const line2 = moEl('div', 'mo-clip-segline'); const line3 = moEl('div', 'mo-clip-segline');
-      row.append(line1, line2, line3);
-      // Two visible choices, not a dropdown that reads like a title.
-      const seg = (choices, current, onPick) => {
-        const wrap = moEl('div', 'mo-clip-mode-toggle');
-        for (const [v, l, tip] of choices) {
-          const btn = moEl('button', v === current ? 'mo-active' : null, { textContent: l, title: tip || '' });
-          btn.addEventListener('click', (e) => { e.stopPropagation(); onPick(v); for (const b of wrap.children) b.classList.toggle('mo-active', b === btn); syncOverlaysToPlayhead(); });
-          wrap.appendChild(btn);
-        }
-        return wrap;
-      };
-      line1.appendChild(seg([['blur', 'Blur', 'Soften what is under the box'], ['pixelate', 'Pixelate', 'Mosaic blocks over what is under the box']], r.mode === 'pixelate' ? 'pixelate' : 'blur', (v) => { r.mode = v; }));
-      line1.appendChild(seg([['rect', 'Box', 'Hard-edged rectangle'], ['rounded', 'Rounded', 'Rounded corners, soft edge'], ['ellipse', 'Oval', 'Oval, soft edge']], r.shape === 'ellipse' || r.shape === 'rounded' ? r.shape : 'rect', (v) => { r.shape = v; }));
+    if (!blurRegions.some((x) => x.id === activeBlurId)) activeBlurId = blurRegions.length ? blurRegions[blurRegions.length - 1].id : null;
+    blurEmpty.style.display = blurRegions.length ? 'none' : '';
+    blurEditor.style.display = blurRegions.length ? '' : 'none';
+    blurListGroup.style.display = blurRegions.length ? '' : 'none';
+    const r = blurRegions.find((x) => x.id === activeBlurId);
+    const segChoice = (choices, current, onPick) => {
+      const wrap = moEl('div', 'mo-ce-seg mo-ce-seg--fill');
+      for (const [v, l, tip] of choices) {
+        const btn = moEl('button', v === current ? 'mo-active' : null, { textContent: l, title: tip || '' });
+        btn.addEventListener('click', (e) => { e.stopPropagation(); onPick(v); for (const b of wrap.children) b.classList.toggle('mo-active', b === btn); syncOverlaysToPlayhead(); paintLanes(); });
+        wrap.appendChild(btn);
+      }
+      return wrap;
+    };
+    if (r) {
+      const head = moEl('div', 'mo-ce-group-head');
+      head.appendChild(moEl('span', 'mo-ce-group-title', { textContent: `Region ${blurRegions.indexOf(r) + 1} of ${blurRegions.length}` }));
+      head.appendChild(moEl('span', 'mo-ce-spacer'));
+      const more = api.ui.createIconButton(head, { icon: 'ellipsis', size: 'sm', title: 'More' });
+      more.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const rr = more.getBoundingClientRect();
+        showContextMenu(rr.left, rr.bottom + 4, [
+          { label: 'Add Blur Region', handler: () => addBlurBtn.click() },
+          { label: 'Duplicate', handler: () => { const copy = { ...r, id: ++blurSeq, x: Math.min(1 - r.w, r.x + 0.03), y: Math.min(1 - r.h, r.y + 0.03), keys: r.keys ? r.keys.map((k) => ({ ...k })) : undefined }; blurRegions.push(copy); activeBlurId = copy.id; renderBlurRegions(); syncOverlaysToPlayhead(); } },
+          { separator: true },
+          { label: 'Remove', danger: true, handler: () => { blurRegions = blurRegions.filter((x) => x !== r); activeBlurId = null; renderBlurRegions(); syncOverlaysToPlayhead(); } },
+        ]);
+      });
+      const modeRow = moEl('div', 'mo-clip-row');
+      modeRow.append(lbl('Effect'), segChoice([['blur', 'Blur', 'Soften what is under the box'], ['pixelate', 'Pixelate', 'Mosaic blocks over what is under the box']], r.mode === 'pixelate' ? 'pixelate' : 'blur', (v) => { r.mode = v; }));
+      const shapeRow = moEl('div', 'mo-clip-row');
+      shapeRow.append(lbl('Shape'), segChoice([['rect', 'Box', 'Hard-edged rectangle'], ['rounded', 'Rounded', 'Rounded corners, soft edge'], ['ellipse', 'Oval', 'Oval, soft edge']], r.shape === 'ellipse' || r.shape === 'rounded' ? r.shape : 'rect', (v) => { r.shape = v; }));
+      const strRow = moEl('div', 'mo-clip-row');
       const str = document.createElement('input');
       str.type = 'range'; str.min = '1'; str.max = '10'; str.step = '1'; str.value = String(r.strength);
-      str.className = 'mo-clip-slider mo-clip-slider--sm'; str.title = 'Strength';
-      str.addEventListener('input', () => { r.strength = parseInt(str.value, 10) || 5; syncOverlaysToPlayhead(); });
+      str.className = 'mo-clip-slider'; str.title = 'Strength';
       const strVal = moEl('span', 'mo-clip-slider-val', { textContent: String(r.strength) });
-      str.addEventListener('input', () => { strVal.textContent = str.value; });
-      line2.append(moEl('span', 'mo-clip-keycount', { textContent: 'Strength' }), str, strVal);
-      const from = document.createElement('input'); from.type = 'number'; from.step = '0.1'; from.min = '0'; from.className = 'mo-clip-input mo-clip-input--xs';
-      from.placeholder = 'from'; from.title = 'Only from this time (seconds of the source; blank = start)'; from.value = Number.isFinite(r.t0) ? r.t0.toFixed(1) : '';
-      from.addEventListener('change', () => { const v = parseFloat(from.value); r.t0 = Number.isFinite(v) ? v : undefined; syncOverlaysToPlayhead(); });
-      const to = document.createElement('input'); to.type = 'number'; to.step = '0.1'; to.min = '0'; to.className = 'mo-clip-input mo-clip-input--xs';
-      to.placeholder = 'to'; to.title = 'Only until this time (seconds; blank = end)'; to.value = Number.isFinite(r.t1) ? r.t1.toFixed(1) : '';
-      to.addEventListener('change', () => { const v = parseFloat(to.value); r.t1 = Number.isFinite(v) ? v : undefined; syncOverlaysToPlayhead(); });
-      line2.append(from, to);
-      // (time window sits with the strength; tracking and removal on their own line)
+      str.addEventListener('input', () => { r.strength = parseInt(str.value, 10) || 5; strVal.textContent = str.value; syncOverlaysToPlayhead(); });
+      str.addEventListener('change', () => { try { updateAccordionSummaries(); } catch { /* pre-init */ } });
+      strRow.append(lbl('Strength'), str, strVal);
+      const timeRow = moEl('div', 'mo-clip-row mo-ce-timerow');
+      const from = timeField(r.t0, 'Only from this time (blank: the start)', (t) => { r.t0 = t; renderBlurRegions(); syncOverlaysToPlayhead(); }, 'Start');
+      const to = timeField(r.t1, 'Only until this time (blank: the end)', (t) => { r.t1 = t; renderBlurRegions(); syncOverlaysToPlayhead(); }, 'End');
+      timeRow.append(lbl('Shows'), from, moEl('span', 'mo-ce-sum', { textContent: 'to' }), to);
       // Track switch: on = the box follows what is under it (tracker runs
       // from the current frame across In/Out); off = a still box.
       const tracked = !!(r.keys && r.keys.length >= 2);
-      const trackWrap = moEl('label', 'mo-clip-track');
+      const trackRow = moEl('div', 'mo-clip-row mo-ce-switchrow');
       const trackChk = document.createElement('input');
-      trackChk.type = 'checkbox'; trackChk.className = 'mo-clip-check'; trackChk.checked = tracked;
+      trackChk.type = 'checkbox'; trackChk.className = 'mo-clip-check'; trackChk.checked = tracked; trackChk.id = 'mo-ce-blurtrack';
       trackChk.title = tracked ? 'Tracking. Turn off to make the box still again.' : 'Turn on to follow what is under the box through the clip.';
-      const trackTxt = moEl('span', 'mo-clip-track-txt', { textContent: tracked ? `Track · ${r.keys.length} keys` : 'Track' });
-      trackWrap.append(trackChk, trackTxt);
-      trackChk.addEventListener('click', (e) => e.stopPropagation());
+      const trackTxt = moEl('label', 'mo-clip-label', { textContent: tracked ? `Track · ${r.keys.length} keys` : 'Track' });
+      trackTxt.htmlFor = 'mo-ce-blurtrack';
+      trackRow.append(trackTxt, trackChk);
       trackChk.addEventListener('change', () => {
         if (!trackChk.checked) { delete r.keys; renderBlurRegions(); syncOverlaysToPlayhead(); return; }
         trackChk.disabled = true;
@@ -21252,13 +21284,18 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           api.window.showErrorMessage('Track failed: ' + (err && err.message || err));
         });
       });
-      line3.appendChild(trackWrap);
-      const del = moEl('button', 'mo-clip-queue-del', { innerHTML: moIcon('x', 14), title: 'Remove this region' });
-      del.addEventListener('click', (e) => { e.stopPropagation(); blurRegions = blurRegions.filter((x) => x !== r); if (activeBlurId === r.id) activeBlurId = null; renderBlurRegions(); syncOverlaysToPlayhead(); });
-      line3.appendChild(del);
-      row.addEventListener('click', () => { activeBlurId = r.id; renderBlurRegions(); syncOverlaysToPlayhead(); });
-      blurList.appendChild(row);
+      blurEditor.append(head, modeRow, shapeRow, strRow, timeRow, trackRow,
+        moEl('div', 'mo-clip-note', { textContent: 'Drag the box on the video to place it, its handles to size it, its bar on the Blur lane to move it in time.' }));
     }
+    blurRegions.forEach((x, i) => {
+      const row = moEl('div', 'mo-clip-segrow' + (x.id === activeBlurId ? ' mo-active' : ''));
+      const shape = x.shape === 'ellipse' ? 'oval' : x.shape === 'rounded' ? 'rounded' : 'box';
+      row.append(moEl('span', 'mo-clip-queue-num', { textContent: String(i + 1) }),
+        moEl('span', 'mo-ce-rowtext', { textContent: `${x.mode === 'pixelate' ? 'Pixelate' : 'Blur'} · ${shape}${x.keys && x.keys.length >= 2 ? ' · tracked' : ''}` }),
+        moEl('span', 'mo-ce-seglen', { textContent: Number.isFinite(x.t0) || Number.isFinite(x.t1) ? `${moTimeStr(Number.isFinite(x.t0) ? x.t0 : 0)}–${moTimeStr(Number.isFinite(x.t1) ? x.t1 : duration)}` : 'Whole video' }));
+      row.addEventListener('click', () => { activeBlurId = x.id; renderBlurRegions(); syncOverlaysToPlayhead(); });
+      blurList.appendChild(row);
+    });
     try { updateAccordionSummaries(); } catch { /* pre-init */ }
   }
   addBlurBtn.addEventListener('click', () => {
@@ -21339,6 +21376,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         const startX = e0.clientX, startY = e0.clientY;
         const o = { x: pos.x, y: pos.y, w: r.w, h: r.h };
         if (activeBlurId !== r.id) { activeBlurId = r.id; paintBlurLayer(); }
+        if (activeTab !== 'blur') { setTab('blur'); renderBlurRegions(); }
         const move = (ev) => {
           const dx = (ev.clientX - startX) / rect.dw, dy = (ev.clientY - startY) / rect.dh;
           if (dir) {
@@ -21378,64 +21416,85 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     }
   }
 
-  // Crop toggle
-  const cropRow = moEl('div', 'mo-clip-row');
+  // ── Crop tab: four short groups (Crop, Motion, Follow a subject, Smart Zoom) ──
+  const cropGroup = moEl('div', 'mo-ce-group');
+  const cropHead = moEl('div', 'mo-ce-group-head');
   const cropChk = document.createElement('input');
   cropChk.type = 'checkbox'; cropChk.id = 'mo-clip-crop'; cropChk.className = 'mo-clip-check';
-  cropRow.appendChild(cropChk);
-  const cropLabel = lbl('Crop'); cropLabel.htmlFor = 'mo-clip-crop';
-  cropRow.appendChild(cropLabel);
-  const cropResetBtn = moEl('button', 'mo-mark-btn', { textContent: 'Reset Crop', title: 'Start the crop over: a centred window, no keyframes' });
-  cropResetBtn.style.marginLeft = 'auto';
-  cropResetBtn.style.display = 'none';
-  cropRow.appendChild(cropResetBtn);
-  secCrop.appendChild(cropRow);
+  cropChk.title = 'Crop: frame part of the video';
+  const cropLabel = moEl('label', 'mo-ce-group-title', { textContent: 'Crop' }); cropLabel.htmlFor = 'mo-clip-crop';
+  cropHead.append(cropLabel, cropChk);
+  cropGroup.appendChild(cropHead);
+  const cropOffNote = moEl('div', 'mo-clip-note', { textContent: 'Turn on to frame part of the video, move the frame over time, or follow a subject.' });
+  cropGroup.appendChild(cropOffNote);
+  const cropBody = moEl('div', 'mo-ce-group-body');
+  cropBody.style.display = 'none';
+  cropGroup.appendChild(cropBody);
+  secCrop.appendChild(cropGroup);
 
-  // Aspect-ratio presets \u2014 active only when crop is enabled. Centers the crop
-  // rect on the source frame and sizes it to the target ratio while staying
-  // inside [0..1]. "Free" releases the constraint (any-shape drag).
+  // Aspect-ratio presets: on the video (the floating bar) and as a menu here.
+  // Centers the crop on the source frame and sizes it to the target ratio
+  // while staying inside [0..1]. "Free" releases the constraint.
   const aspectRow = moEl('div', 'mo-ce-float-group');
-  /** @type {Array<{label:string, ratio:number|null}>} */
+  /** @type {Array<{label:string, name:string, ratio:number|null}>} */
   const aspects = [
-    { label: 'Free',   ratio: null },
-    { label: '1:1',    ratio: 1 },
-    { label: '9:16',   ratio: 9 / 16 },
-    { label: '16:9',   ratio: 16 / 9 },
-    { label: '4:5',    ratio: 4 / 5 },
-    { label: '4:3',    ratio: 4 / 3 },
+    { label: 'Free',   name: 'Free',           ratio: null },
+    { label: '1:1',    name: '1:1 square',     ratio: 1 },
+    { label: '9:16',   name: '9:16 portrait',  ratio: 9 / 16 },
+    { label: '16:9',   name: '16:9 wide',      ratio: 16 / 9 },
+    { label: '4:5',    name: '4:5 portrait',   ratio: 4 / 5 },
+    { label: '4:3',    name: '4:3',            ratio: 4 / 3 },
   ];
-  /** @type {{label:string, ratio:number|null}} */
+  /** @type {{label:string, name:string, ratio:number|null}} */
   let activeAspect = aspects[0];
+  const aspectSel = moSelect(aspects.map((a) => [a.label, a.name]), 'Free');
+  const setAspect = (a) => {
+    activeAspect = a;
+    aspectBtns.forEach((bb, i) => bb.classList.toggle('mo-active', aspects[i] === activeAspect));
+    if (aspectSel.value !== a.label) aspectSel.value = a.label;
+    if (a.ratio != null && cropEnabled) applyAspectRatio(a.ratio);
+  };
   const aspectBtns = aspects.map(a => {
     const b = moEl('button', 'mo-ce-float-btn', { textContent: a.label, title: a.ratio == null ? 'Free crop, no aspect-ratio constraint' : `Constrain crop to ${a.label}` });
-    b.addEventListener('click', () => {
-      activeAspect = a;
-      aspectBtns.forEach((bb, i) => bb.classList.toggle('mo-active', aspects[i] === activeAspect));
-      if (a.ratio != null && cropEnabled) {
-        applyAspectRatio(a.ratio);
-      }
-    });
+    b.addEventListener('click', (e) => { e.stopPropagation(); setAspect(a); });
     aspectRow.appendChild(b);
     return b;
   });
+  aspectSel.addEventListener('change', () => { const a = aspects.find((x) => x.label === aspectSel.value); if (a && a !== activeAspect) setAspect(a); });
   aspectBtns[0].classList.add('mo-active');
-  floatBar.appendChild(aspectRow);
-  floatBar.appendChild(moEl('span', 'mo-ce-float-div'));
-  floatBar.appendChild(camBtn);
-  // The aspect also reads in the panel, as text: what the crop is now.
-  const aspectNote = moEl('div', 'mo-clip-note', { textContent: 'Aspect ratios and Preview Crop are on the video while this tab is open.' });
-  secCrop.appendChild(aspectNote);
+  floatCrop.appendChild(aspectRow);
+  floatCrop.appendChild(moEl('span', 'mo-ce-float-div'));
+  floatCrop.appendChild(camBtn);
+  const aspectRowPanel = moEl('div', 'mo-clip-row');
+  aspectRowPanel.append(lbl('Aspect'), aspectSel);
+  const outputRow = moEl('div', 'mo-clip-row');
+  const outputField = moEl('div', 'mo-clip-input mo-ce-readonly', { title: 'The crop in source pixels (Size in the Export menu scales it)' });
+  outputRow.append(lbl('Output'), outputField);
+  function syncCropReadout() {
+    const vw0 = preview.videoWidth || 0, vh0 = preview.videoHeight || 0;
+    outputField.textContent = vw0 ? `${Math.round(cropBase.w * vw0)} × ${Math.round(cropBase.h * vh0)} px` : '';
+  }
+  const cropResetBtn = moEl('button', 'mo-mark-btn', { textContent: 'Reset to Full Frame', title: 'Start the crop over: the whole frame, no keyframes' });
+  const resetRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
+  resetRow.appendChild(cropResetBtn);
+  cropBody.append(aspectRowPanel, outputRow, resetRow);
 
-  // Crop keyframes (animated crop / subject tracking) — visible only while
-  // crop is enabled. "+ Keyframe" pins the window's position at the playhead;
-  // ≥2 keys make the window glide between them (camera-in-camera). Auto-track
-  // follows the subject inside the current window and writes keys for you.
+  // Motion: keyframes glide the crop (camera-in-camera).
+  const motionGroup = moEl('div', 'mo-ce-group');
+  const motionHead = moEl('div', 'mo-ce-group-head');
+  const keyCount = moEl('span', 'mo-ce-sum', { textContent: '' });
+  motionHead.append(moEl('span', 'mo-ce-group-title', { textContent: 'Motion' }), keyCount);
   const keyRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
-  keyRow.style.display = 'none';
   const addKeyBtn = moEl('button', 'mo-mark-btn', {
-    textContent: 'Add Keyframe',
     title: 'Add/update a crop keyframe at the playhead (K). Two or more keyframes animate the crop window between them.',
   });
+  addKeyBtn.append(ico('diamond', 14), moEl('span', null, { textContent: 'Add Keyframe' }), moEl('span', 'mo-ce-kbd', { textContent: 'K' }));
+  const clearKeysBtn = moEl('button', 'mo-mark-btn mo-ce-ghostbtn', { textContent: 'Clear Keys', title: 'Remove all crop keyframes (back to a static crop)' });
+  keyRow.append(addKeyBtn, clearKeysBtn);
+  motionGroup.append(motionHead, keyRow, moEl('div', 'mo-clip-note', { textContent: 'Two or more keyframes move the crop between them. Drag a diamond on the Motion lane to change its time.' }));
+
+  // Follow a subject: the tracker writes the keys.
+  const followGroup = moEl('div', 'mo-ce-group');
   const trackBtn = moEl('button', 'mo-mark-btn', {
     textContent: 'Auto-Track',
     title: 'Follow the subject inside the crop window across the In→Out range and generate keyframes automatically. Position the window over the subject first; click again to cancel.',
@@ -21444,17 +21503,25 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     textContent: 'Point Track',
     title: 'Pick the exact thing to follow: click this, then click the subject on the video, size the crop window, and click again to run. Right-click the marker to clear the point.',
   });
-  const clearKeysBtn = moEl('button', 'mo-mark-btn', { textContent: 'Clear Keys', title: 'Remove all crop keyframes (back to a static crop)' });
-  const keyCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
-  keyRow.append(addKeyBtn, trackBtn, pointBtn, clearKeysBtn, keyCount);
-  secCrop.appendChild(keyRow);
+  const followRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
+  followRow.append(trackBtn, pointBtn);
+  followGroup.append(moEl('div', 'mo-ce-group-title', { textContent: 'Follow a subject' }), followRow,
+    moEl('div', 'mo-clip-note', { textContent: 'Auto-Track follows what is inside the crop from In to Out. Point Track: click the subject on the video first.' }));
+  const motionBody = moEl('div');
+  motionBody.style.display = 'none';
+  motionBody.append(motionGroup, followGroup);
+  secCrop.appendChild(motionBody);
+
   // Smart zoom: the recorder's cursor path → zoom keys around where the
   // pointer rested. Only offered when that path exists (screen recordings).
-  const smartRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
-  const smartZoomBtn = moEl('button', 'mo-mark-btn', { textContent: 'Smart Zoom', title: 'Zoom in around the places the mouse rested while recording, glide between them, and zoom back out. Uses the cursor path the recorder captured. You can edit the keys after.' });
-  smartZoomBtn.style.display = 'none';
-  const smartHint = moEl('span', 'mo-clip-keycount', { textContent: 'From the recorded cursor path.' });
-  smartRow.append(smartZoomBtn, smartHint);
+  const smartRow = moEl('div', 'mo-ce-group');
+  const smartHead = moEl('div', 'mo-ce-group-head');
+  smartHead.append(moEl('span', 'mo-ce-group-title', { textContent: 'Smart Zoom' }), moEl('span', 'mo-ce-sum', { textContent: 'From the cursor path' }));
+  const smartZoomBtn = moEl('button', 'mo-mark-btn', { title: 'Zoom in around the places the mouse rested while recording, glide between them, and zoom back out. Uses the cursor path the recorder captured. You can edit the keys after.' });
+  smartZoomBtn.append(ico('sparkles', 14), moEl('span', null, { textContent: 'Add Smart Zoom' }));
+  const smartBtnRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
+  smartBtnRow.appendChild(smartZoomBtn);
+  smartRow.append(smartHead, smartBtnRow);
   // Only a screen recording carries the cursor path Smart Zoom reads.
   if (!cursorTrack) smartRow.style.display = 'none';
   secCrop.appendChild(smartRow);
@@ -21607,13 +21674,23 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   }
 
   // ── Text: title cards, lower thirds, captions ──
-  const capRow = moEl('div', 'mo-clip-row mo-clip-keyrow');
-  const addCapBtn = moEl('button', 'mo-mark-btn', { textContent: 'Add Text', title: 'A title card, a lower-third label, or a caption line, shown between the From and To seconds of the exported clip.' });
-  const capCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
-  capRow.append(addCapBtn, capCount);
-  secText.appendChild(capRow);
+  // The tab edits the selected text (Text i of n) and lists them all. Times
+  // are on the exported clip. On the video each text is an object: click
+  // selects it, drag moves it (cx/cy, burned in where you put it).
+  let activeCapId = null;
+  const addCapBtn = moEl('button', 'mo-mark-btn', { title: 'A title card, a lower-third label, or a caption line at the playhead (T)' });
+  addCapBtn.append(ico('type', 14), moEl('span', null, { textContent: 'Add Text' }), moEl('span', 'mo-ce-kbd', { textContent: 'T' }));
+  const capEmpty = moEl('div', 'mo-ce-empty');
+  capEmpty.append(moEl('div', 'mo-clip-note', { textContent: 'No text yet. Add a title, a lower third or a caption; it shows on the video and as a bar on the Text lane.' }), addCapBtn);
+  const capEditor = moEl('div', 'mo-ce-group');
   const capList = moEl('div', 'mo-clip-seglist');
-  secText.appendChild(capList);
+  const capListGroup = moEl('div', 'mo-ce-group');
+  capListGroup.append(moEl('div', 'mo-ce-group-title', { textContent: 'All text' }), capList);
+  secText.append(capEmpty, capEditor, capListGroup);
+  const textColors = () => {
+    const cs = getComputedStyle(document.documentElement);
+    return [1, 2, 3, 4, 5].map((i) => cs.getPropertyValue(`--px-clip-text-${i}`).trim()).filter((v) => /^#[0-9a-fA-F]{6}$/.test(v));
+  };
   function outputTimeNow() {
     const segs = segments.length >= 2 ? segments : null;
     const [a] = getInOut();
@@ -21621,40 +21698,125 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     if (segs) return moClipOutputTime(segs, t);
     return t - a;
   }
+  function selectCaption(c, focusText) {
+    activeCapId = c ? c.id : null;
+    setTab('text');
+    renderCaptions();
+    syncOverlaysToPlayhead();
+    if (focusText) { const ta = capEditor.querySelector('textarea'); if (ta) ta.focus(); }
+  }
+  function removeCaption(c) {
+    const i = captions.indexOf(c);
+    captions = captions.filter((x) => x !== c);
+    if (activeCapId === c.id) activeCapId = captions.length ? captions[Math.min(i, captions.length - 1)].id : null;
+    renderCaptions(); syncOverlaysToPlayhead();
+  }
+  function duplicateCaption(c) {
+    const copy = { ...c, id: ++captionSeq, t0: c.t1, t1: c.t1 + (c.t1 - c.t0) };
+    captions.splice(captions.indexOf(c) + 1, 0, copy);
+    activeCapId = copy.id;
+    renderCaptions(); syncOverlaysToPlayhead();
+  }
+  // A From/To pair in timecode; blank means "from the start" / "to the end"
+  // when `optional` (blur regions), never for text.
+  function timeField(value, title, onSet, optional) {
+    const f = document.createElement('input');
+    f.type = 'text'; f.className = 'mo-clip-input mo-ce-tcfield'; f.title = title; f.spellcheck = false;
+    f.value = Number.isFinite(value) ? moTcStr(value) : '';
+    if (optional) f.placeholder = optional;
+    f.addEventListener('keydown', (e) => { if (e.key === 'Enter') f.blur(); });
+    f.addEventListener('change', () => {
+      if (optional && !f.value.trim()) { onSet(undefined); return; }
+      const t = moParseTc(f.value);
+      if (t == null) { f.value = Number.isFinite(value) ? moTcStr(value) : ''; return; }
+      onSet(t);
+    });
+    return f;
+  }
   function renderCaptions() {
     capList.innerHTML = '';
-    capCount.textContent = '';
-    for (const c of captions) {
-      const row = moEl('div', 'mo-clip-segrow mo-clip-segrow--stack');
-      const styleSel = moSelect([['title', 'Title Card'], ['lower', 'Lower Third'], ['caption', 'Caption']], c.style, { className: 'mo-select--sm' });
-      styleSel.addEventListener('change', () => { c.style = styleSel.value; syncOverlaysToPlayhead(); });
-      const text = document.createElement('input'); text.type = 'text'; text.className = 'mo-clip-input mo-clip-input--grow'; text.placeholder = 'Text'; text.value = c.text;
-      text.addEventListener('input', () => { c.text = text.value; syncOverlaysToPlayhead(); try { updateAccordionSummaries(); } catch { /* pre-init */ } });
-      const from = document.createElement('input'); from.type = 'number'; from.step = '0.1'; from.min = '0'; from.className = 'mo-clip-input mo-clip-input--xs'; from.title = 'From (seconds into the clip)'; from.placeholder = 'from'; from.value = c.t0.toFixed(1);
-      from.addEventListener('change', () => { c.t0 = Math.max(0, parseFloat(from.value) || 0); if (c.t1 <= c.t0) { c.t1 = c.t0 + 2; to.value = c.t1.toFixed(1); } syncOverlaysToPlayhead(); });
-      const to = document.createElement('input'); to.type = 'number'; to.step = '0.1'; to.min = '0'; to.className = 'mo-clip-input mo-clip-input--xs'; to.title = 'To (seconds into the clip)'; to.placeholder = 'to'; to.value = c.t1.toFixed(1);
-      to.addEventListener('change', () => { c.t1 = Math.max(c.t0 + 0.1, parseFloat(to.value) || (c.t0 + 2)); to.value = c.t1.toFixed(1); syncOverlaysToPlayhead(); });
-      const color = document.createElement('input'); color.type = 'color'; color.className = 'mo-clip-color'; color.title = 'Text color'; color.value = /^#[0-9a-fA-F]{6}$/.test(c.color) ? c.color : '#ffffff';
-      color.addEventListener('input', () => { c.color = color.value; syncOverlaysToPlayhead(); });
-      const del = moEl('button', 'mo-clip-queue-del', { innerHTML: moIcon('x', 14), title: 'Remove this text' });
-      del.addEventListener('click', () => { captions = captions.filter((x) => x !== c); renderCaptions(); syncOverlaysToPlayhead(); });
-      const line1 = moEl('div', 'mo-clip-segline'); line1.append(text);
-      const line2 = moEl('div', 'mo-clip-segline'); line2.append(styleSel, from, to, color, del);
-      row.append(line1, line2);
-      capList.appendChild(row);
+    capEditor.innerHTML = '';
+    if (!captions.some((x) => x.id === activeCapId)) activeCapId = captions.length ? captions[captions.length - 1].id : null;
+    capEmpty.style.display = captions.length ? 'none' : '';
+    capEditor.style.display = captions.length ? '' : 'none';
+    capListGroup.style.display = captions.length ? '' : 'none';
+    const c = captions.find((x) => x.id === activeCapId);
+    if (c) {
+      const head = moEl('div', 'mo-ce-group-head');
+      head.appendChild(moEl('span', 'mo-ce-group-title', { textContent: `Text ${captions.indexOf(c) + 1} of ${captions.length}` }));
+      head.appendChild(moEl('span', 'mo-ce-spacer'));
+      const more = api.ui.createIconButton(head, { icon: 'ellipsis', size: 'sm', title: 'More' });
+      more.addEventListener('click', (e) => {
+        const r = more.getBoundingClientRect();
+        showContextMenu(r.left, r.bottom + 4, [
+          { label: 'Add Text', handler: () => addCapBtn.click() },
+          { label: 'Duplicate', handler: () => duplicateCaption(c) },
+          ...(Number.isFinite(c.cx) ? [{ label: 'Back to the Style\u2019s Place', handler: () => { delete c.cx; delete c.cy; renderCaptions(); syncOverlaysToPlayhead(); } }] : []),
+          { separator: true },
+          { label: 'Remove', danger: true, handler: () => removeCaption(c) },
+        ]);
+        e.stopPropagation();
+      });
+      const ta = document.createElement('textarea');
+      ta.className = 'mo-clip-input mo-ce-textarea'; ta.rows = 2; ta.placeholder = 'Text (a second line sits under the first)'; ta.value = c.text;
+      ta.addEventListener('input', () => { c.text = ta.value; syncOverlaysToPlayhead(); try { updateAccordionSummaries(); } catch { /* pre-init */ } refreshCapListRow(c); });
+      const styleRow = moEl('div', 'mo-clip-row');
+      const styleSeg = moEl('div', 'mo-ce-seg mo-ce-seg--fill');
+      for (const [v, l] of [['title', 'Title'], ['lower', 'Lower Third'], ['caption', 'Caption']]) {
+        const b = moEl('button', c.style === v ? 'mo-active' : null, { textContent: l });
+        b.addEventListener('click', () => { c.style = v; for (const x of styleSeg.children) x.classList.toggle('mo-active', x === b); syncOverlaysToPlayhead(); });
+        styleSeg.appendChild(b);
+      }
+      styleRow.append(lbl('Style'), styleSeg);
+      const colorRow = moEl('div', 'mo-clip-row');
+      const sw = moEl('div', 'mo-ce-swatches');
+      const customWrap = moEl('label', 'mo-ce-swatch mo-ce-swatch--wheel', { title: 'Any colour' });
+      const custom = document.createElement('input'); custom.type = 'color'; custom.className = 'mo-ce-swatch-input';
+      customWrap.appendChild(custom);
+      custom.value = /^#[0-9a-fA-F]{6}$/.test(c.color) ? c.color : (textColors()[0] || custom.value);
+      const syncSw = () => { for (const x of sw.querySelectorAll('.mo-ce-swatch')) x.classList.toggle('mo-active', x.dataset.color ? x.dataset.color.toLowerCase() === String(c.color).toLowerCase() : !textColors().some((v) => v.toLowerCase() === String(c.color).toLowerCase())); customWrap.style.setProperty('--mo-ce-custom', custom.value); };
+      for (const v of textColors()) {
+        const b = moEl('button', 'mo-ce-swatch', { title: v });
+        b.dataset.color = v; b.style.background = v;
+        b.addEventListener('click', () => { c.color = v; syncSw(); syncOverlaysToPlayhead(); });
+        sw.appendChild(b);
+      }
+      custom.addEventListener('input', () => { c.color = custom.value; syncSw(); syncOverlaysToPlayhead(); });
+      sw.appendChild(customWrap);
+      syncSw();
+      colorRow.append(lbl('Colour'), sw);
+      const timeRow = moEl('div', 'mo-clip-row mo-ce-timerow');
+      const from = timeField(c.t0, 'Shows from (time into the exported clip)', (t) => { c.t0 = Math.max(0, t); if (c.t1 <= c.t0) c.t1 = c.t0 + 2; renderCaptions(); syncOverlaysToPlayhead(); });
+      const to = timeField(c.t1, 'Shows until (time into the exported clip)', (t) => { c.t1 = Math.max(c.t0 + 0.1, t); renderCaptions(); syncOverlaysToPlayhead(); });
+      timeRow.append(lbl('Shows'), from, moEl('span', 'mo-ce-sum', { textContent: 'to' }), to);
+      capEditor.append(head, ta, styleRow, colorRow, timeRow,
+        moEl('div', 'mo-clip-note', { textContent: 'Times are on the exported clip. Drag the bar on the Text lane to move it in time, or the text on the video to move it in the frame.' }));
     }
+    captions.forEach((x, i) => {
+      const row = moEl('div', 'mo-clip-segrow' + (x.id === activeCapId ? ' mo-active' : ''));
+      row.dataset.capId = String(x.id);
+      row.append(moEl('span', 'mo-clip-queue-num', { textContent: String(i + 1) }),
+        moEl('span', 'mo-ce-rowtext', { textContent: x.text.split(/\r?\n/)[0].trim() || 'Empty text' }),
+        moEl('span', 'mo-ce-seglen', { textContent: `${moTimeStr(x.t0)}–${moTimeStr(x.t1)}` }));
+      row.addEventListener('click', () => selectCaption(x, false));
+      capList.appendChild(row);
+    });
     try { updateAccordionSummaries(); } catch { /* pre-init */ }
+  }
+  function refreshCapListRow(c) {
+    const row = capList.querySelector(`[data-cap-id="${c.id}"] .mo-ce-rowtext`);
+    if (row) row.textContent = c.text.split(/\r?\n/)[0].trim() || 'Empty text';
   }
   addCapBtn.addEventListener('click', () => {
     const now = outputTimeNow();
     const t0 = Number.isFinite(now) && now !== null ? Math.max(0, now) : 0;
-    captions.push({ id: ++captionSeq, text: '', style: captions.length === 0 ? 'title' : 'caption', t0, t1: t0 + 3, color: '#ffffff' });
-    renderCaptions();
-    syncOverlaysToPlayhead();
-    status.textContent = 'Text added. Type it; From and To are seconds into the exported clip.';
-    const last = capList.querySelector('.mo-clip-segrow:last-child input[type="text"]');
-    if (last) last.focus();
+    const c = { id: ++captionSeq, text: '', style: captions.length === 0 ? 'title' : 'caption', t0, t1: t0 + 3, color: textColors()[0] || 'white' };
+    captions.push(c);
+    selectCaption(c, true);
+    status.textContent = 'Text added. Type it; drag it on the video to place it.';
   });
+  // The text on the video: the same layout the export uses, one block per
+  // text, selectable and draggable.
   function paintCaptionLayer() {
     captionLayer.innerHTML = '';
     if (captions.length === 0) { captionLayer.style.display = 'none'; return; }
@@ -21664,11 +21826,51 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     if (ot === null || !Number.isFinite(ot)) return;
     for (const c of captions) {
       if (!c.text.trim() || ot < c.t0 || ot > c.t1) continue;
-      const el = moEl('div', `mo-caption mo-caption--${c.style}`, { textContent: c.text });
-      el.style.color = c.color || '#fff';
-      el.style.fontSize = `${Math.max(9, rect.dh * (MO_CAPTION_STYLES[c.style] || MO_CAPTION_STYLES.caption).size)}px`;
-      el.style.left = rect.dx + 'px'; el.style.top = rect.dy + 'px'; el.style.width = rect.dw + 'px'; el.style.height = rect.dh + 'px';
-      captionLayer.appendChild(el);
+      const lay = moCaptionLayout(c);
+      if (!lay.lines.length) continue;
+      const block = moEl('div', 'mo-ce-caption' + (c.id === activeCapId ? ' mo-active' : ''), { title: 'Click to edit · drag to move' });
+      block.style.top = (rect.dy + lay.top * rect.dh) + 'px';
+      block.style.height = (lay.total * rect.dh) + 'px';
+      for (const ln of lay.lines) {
+        const line = moEl('div', 'mo-ce-caption-line', { textContent: ln.text });
+        line.style.fontSize = `${Math.max(8, rect.dh * ln.size)}px`;
+        line.style.color = c.color || 'white';
+        line.style.background = `color-mix(in srgb, black ${Math.round(lay.style.alpha * 100)}%, transparent)`;
+        line.style.padding = `0 ${Math.round(rect.dh * lay.style.boxBorder)}px`;
+        line.style.marginTop = `${Math.round(rect.dh * ln.size * 0.15)}px`;
+        block.appendChild(line);
+      }
+      captionLayer.appendChild(block);
+      // Horizontal place: centred on cx (or the frame), or the lower third's left margin.
+      const bw = block.offsetWidth;
+      const left = lay.align === 'left' ? rect.dx + rect.dw * 0.05 : rect.dx + (lay.cx != null ? lay.cx : 0.5) * rect.dw - bw / 2;
+      block.style.left = left + 'px';
+      block.style.alignItems = lay.align === 'left' ? 'flex-start' : 'center';
+      block.addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || pointPickArmed) return;
+        e.preventDefault(); e.stopPropagation();
+        const sx = e.clientX, sy = e.clientY;
+        const cx0 = (left + bw / 2 - rect.dx) / rect.dw;
+        const cy0 = lay.top + lay.total / 2;
+        let moved = false;
+        if (activeCapId !== c.id) { activeCapId = c.id; setTab('text'); renderCaptions(); }
+        const move = (ev) => {
+          if (!moved && Math.abs(ev.clientX - sx) < 3 && Math.abs(ev.clientY - sy) < 3) return;
+          moved = true;
+          c.cx = Math.max(0.02, Math.min(0.98, cx0 + (ev.clientX - sx) / rect.dw));
+          c.cy = Math.max(lay.total / 2, Math.min(1 - lay.total / 2, cy0 + (ev.clientY - sy) / rect.dh));
+          paintCaptionLayer();
+        };
+        const up = () => {
+          window.removeEventListener('mousemove', move);
+          window.removeEventListener('mouseup', up);
+          lastCropDragEnd = Date.now();
+          setTab('text');
+          renderCaptions(); syncOverlaysToPlayhead();
+        };
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+      });
     }
   }
 
@@ -21685,46 +21887,55 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   preview.addEventListener('play', () => { if (!ovRaf && (captions.length || blurRegions.some((r) => r.keys || r.mode === 'pixelate'))) ovRaf = requestAnimationFrame(ovTick); });
   preview.addEventListener('pause', () => { if (ovRaf) { cancelAnimationFrame(ovRaf); ovRaf = 0; } });
 
-  // ── Audio & finish: fades, loudness, denoise, end card, destination ──
-  const fadeRow = moEl('div', 'mo-clip-row');
-  fadeRow.appendChild(lbl('Fade in / out (s)'));
-  const fadeInInput = document.createElement('input'); fadeInInput.type = 'number'; fadeInInput.min = '0'; fadeInInput.max = '10'; fadeInInput.step = '0.1'; fadeInInput.value = '0'; fadeInInput.className = 'mo-clip-input mo-clip-input--xs';
-  const fadeOutInput = document.createElement('input'); fadeOutInput.type = 'number'; fadeOutInput.min = '0'; fadeOutInput.max = '10'; fadeOutInput.step = '0.1'; fadeOutInput.value = '0'; fadeOutInput.className = 'mo-clip-input mo-clip-input--xs';
-  fadeInInput.addEventListener('input', () => { audioFx.fadeIn = Math.max(0, parseFloat(fadeInInput.value) || 0); updateAccordionSummaries(); });
-  fadeOutInput.addEventListener('input', () => { audioFx.fadeOut = Math.max(0, parseFloat(fadeOutInput.value) || 0); updateAccordionSummaries(); });
-  fadeRow.append(fadeInInput, fadeOutInput);
-  secAudio.appendChild(fadeRow);
-  const normRow = moEl('div', 'mo-clip-row');
-  const normChk = document.createElement('input'); normChk.type = 'checkbox'; normChk.id = 'mo-clip-norm'; normChk.className = 'mo-clip-check';
-  const normLbl = lbl('Normalize loudness'); normLbl.htmlFor = 'mo-clip-norm'; normLbl.title = 'Even out the volume to a broadcast-standard level.';
+  // ── Audio tab: fades (slider and field), Even Out Volume, Reduce Noise;
+  // then the End Card as its own group with a switch in its head.
+  const audioGroup = moEl('div', 'mo-ce-group');
+  audioGroup.appendChild(moEl('div', 'mo-ce-group-title', { textContent: 'Sound' }));
+  const fadeField = (label, onSet) => {
+    const row = moEl('div', 'mo-clip-row');
+    const input = document.createElement('input'); input.type = 'number'; input.min = '0'; input.max = '10'; input.step = '0.1'; input.value = '0';
+    input.className = 'mo-clip-input mo-clip-input--num';
+    row.append(lbl(label), input, moEl('span', 'mo-clip-unit', { textContent: 's' }));
+    addSlider(input, 0, 10, 0.1);
+    input.addEventListener('input', () => { onSet(Math.max(0, parseFloat(input.value) || 0)); updateAccordionSummaries(); });
+    audioGroup.appendChild(row);
+    return input;
+  };
+  const fadeInInput = fadeField('Fade in', (v) => { audioFx.fadeIn = v; });
+  const fadeOutInput = fadeField('Fade out', (v) => { audioFx.fadeOut = v; });
+  const switchRow = (id, label, title) => {
+    const row = moEl('div', 'mo-clip-row mo-ce-switchrow');
+    const chk = document.createElement('input'); chk.type = 'checkbox'; chk.id = id; chk.className = 'mo-clip-check';
+    const l = lbl(label); l.htmlFor = id; l.title = title;
+    row.append(l, chk);
+    audioGroup.appendChild(row);
+    return chk;
+  };
+  const normChk = switchRow('mo-clip-norm', 'Even out volume', 'Bring the volume to a steady, broadcast-standard level.');
   normChk.addEventListener('change', () => { audioFx.normalize = normChk.checked; updateAccordionSummaries(); });
-  normRow.append(normChk, normLbl);
-  secAudio.appendChild(normRow);
-  const dnRow = moEl('div', 'mo-clip-row');
-  const dnChk = document.createElement('input'); dnChk.type = 'checkbox'; dnChk.id = 'mo-clip-denoise'; dnChk.className = 'mo-clip-check';
-  const dnLbl = lbl('Reduce noise'); dnLbl.htmlFor = 'mo-clip-denoise'; dnLbl.title = 'Take the hiss and hum out of a microphone recording.';
+  const dnChk = switchRow('mo-clip-denoise', 'Reduce noise', 'Take the hiss and hum out of a microphone recording.');
   dnChk.addEventListener('change', () => { audioFx.denoise = dnChk.checked; updateAccordionSummaries(); });
-  dnRow.append(dnChk, dnLbl);
-  secAudio.appendChild(dnRow);
-  const audioNote = moEl('div', 'mo-clip-keycount', { textContent: 'Audio settings apply to MP4 and WebM. GIFs have no sound.' });
-  audioNote.style.padding = '0 0 6px';
-  secAudio.appendChild(audioNote);
+  const audioNote = moEl('div', 'mo-clip-note', { textContent: 'Sound settings apply to MP4 and WebM. A GIF has no sound.' });
+  audioGroup.appendChild(audioNote);
+  secAudio.appendChild(audioGroup);
 
-  const cardRow = moEl('div', 'mo-clip-row');
+  const cardGroup = moEl('div', 'mo-ce-group');
+  const cardHead = moEl('div', 'mo-ce-group-head');
   const cardChk = document.createElement('input'); cardChk.type = 'checkbox'; cardChk.id = 'mo-clip-card'; cardChk.className = 'mo-clip-check';
-  const cardLbl = lbl('End card'); cardLbl.htmlFor = 'mo-clip-card'; cardLbl.title = 'A closing card with a title and a line under it, appended after the last segment.';
-  cardRow.append(cardChk, cardLbl);
-  secAudio.appendChild(cardRow);
+  const cardLbl = moEl('label', 'mo-ce-group-title', { textContent: 'End card', title: 'A closing card with a title and a line under it, after the last segment.' }); cardLbl.htmlFor = 'mo-clip-card';
+  cardHead.append(cardLbl, cardChk);
+  cardGroup.appendChild(cardHead);
   const cardBody = moEl('div', 'mo-clip-cardbody');
   cardBody.style.display = 'none';
   const cardTitle = document.createElement('input'); cardTitle.type = 'text'; cardTitle.className = 'mo-clip-input mo-clip-input--grow'; cardTitle.placeholder = 'Title';
   const cardSub = document.createElement('input'); cardSub.type = 'text'; cardSub.className = 'mo-clip-input mo-clip-input--grow'; cardSub.placeholder = 'Line under the title (optional)';
-  const cardSecs = document.createElement('input'); cardSecs.type = 'number'; cardSecs.min = '0.5'; cardSecs.max = '15'; cardSecs.step = '0.5'; cardSecs.value = '3'; cardSecs.className = 'mo-clip-input mo-clip-input--xs'; cardSecs.title = 'Seconds';
-  const cardBg = document.createElement('input'); cardBg.type = 'color'; cardBg.className = 'mo-clip-color'; cardBg.value = '#101418'; cardBg.title = 'Background';
+  const cardSecs = document.createElement('input'); cardSecs.type = 'number'; cardSecs.min = '0.5'; cardSecs.max = '15'; cardSecs.step = '0.5'; cardSecs.value = '3'; cardSecs.className = 'mo-clip-input mo-clip-input--num'; cardSecs.title = 'Seconds';
+  const cardBg = document.createElement('input'); cardBg.type = 'color'; cardBg.className = 'mo-ce-swatch mo-ce-swatch--custom'; cardBg.value = '#101418'; cardBg.title = 'Background';
   const cardRow2 = moEl('div', 'mo-clip-row');
-  cardRow2.append(lbl('Seconds / color'), cardSecs, cardBg);
+  cardRow2.append(lbl('Length'), cardSecs, moEl('span', 'mo-clip-unit', { textContent: 's' }), moEl('span', 'mo-ce-spacer'), lbl('Colour'), cardBg);
   cardBody.append(cardTitle, cardSub, cardRow2);
-  secAudio.appendChild(cardBody);
+  cardGroup.appendChild(cardBody);
+  secAudio.appendChild(cardGroup);
   const syncCard = () => {
     endCard = { enabled: cardChk.checked, title: cardTitle.value, subtitle: cardSub.value, seconds: Math.max(0.5, parseFloat(cardSecs.value) || 3), bg: cardBg.value };
     cardBody.style.display = cardChk.checked ? '' : 'none';
@@ -21738,25 +21949,45 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const destRow = moEl('div', 'mo-clip-row');
   destRow.appendChild(lbl('Preset'));
   const DESTS = [
-    { id: 'custom', label: 'Custom' },
-    { id: 'x', label: 'X / Twitter', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'size'; sizeInputMB.value = '25'; gpuSel.value = 'off'; } },
-    { id: 'slack', label: 'Slack / Teams', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'crf'; crfInput.value = '24'; } },
-    { id: 'imessage', label: 'iMessage / WhatsApp', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'size'; sizeInputMB.value = '12'; } },
+    { id: 'slack', label: 'Slack', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'crf'; crfInput.value = '24'; } },
+    // GitHub and Discord (free) refuse uploads over 10 MB; X takes far more but plays 25 MB well.
+    { id: 'github', label: 'GitHub', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'size'; sizeInputMB.value = '9.5'; gpuSel.value = 'off'; } },
+    { id: 'x', label: 'X', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'size'; sizeInputMB.value = '25'; gpuSel.value = 'off'; } },
+    { id: 'discord', label: 'Discord', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'size'; sizeInputMB.value = '9.5'; gpuSel.value = 'off'; } },
+    // Mail services cap attachments near 25 MB; 720p keeps it readable.
+    { id: 'email', label: 'Email', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'size'; sizeInputMB.value = '20'; gpuSel.value = 'off'; const vw = preview.videoWidth || 1280; if (vw > 1280) sizeInput.value = String(Math.max(10, Math.round((1280 / vw) * 100))); } },
+    { id: 'imessage', label: 'Messages', apply: () => { fmtSel.value = 'mp4'; fpsSel.value = '30'; encModeSel.value = 'size'; sizeInputMB.value = '12'; } },
     { id: 'gif', label: 'Chat GIF', apply: () => { fmtSel.value = 'gif'; fpsSel.value = '15'; ditherSel.value = 'bayer'; autoOptChk.checked = true; autoOptThreshold.value = '8'; const vw = preview.videoWidth || 1280; sizeInput.value = String(Math.max(10, Math.min(100, Math.round((480 / vw) * 100)))); } },
+    { id: 'custom', label: 'Custom' },
   ];
   const destSel = moSelect(DESTS.map((d) => [d.id, d.label]), 'custom');
+  // A preset that set the fields stays lit until a field changes by hand.
+  let applyingPreset = false;
   destSel.addEventListener('change', () => {
     const d = DESTS.find((x) => x.id === destSel.value);
     if (d && d.apply) {
+      applyingPreset = true;
       d.apply();
       for (const el of [fmtSel, fpsSel, encModeSel, sizeInputMB, crfInput, gpuSel, ditherSel, autoOptChk, autoOptThreshold, sizeInput]) {
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
       }
+      applyingPreset = false;
       status.textContent = `Preset applied: ${d.label}.`;
     }
   });
   destRow.appendChild(segFor(destSel, DESTS.map((d) => [d.id, d.label]), 'mo-ce-chips'));
+  // A field changed by hand: the settings are no longer that preset's.
+  const presetFields = () => [fmtSel, fpsSel, encModeSel, sizeInputMB, crfInput, gpuSel, ditherSel, autoOptChk, autoOptThreshold, sizeInput];
+  setTimeout(() => {
+    for (const el of presetFields()) {
+      el.addEventListener('change', () => {
+        if (applyingPreset || destSel.value === 'custom') return;
+        destSel.value = 'custom';
+        destSel.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+  }, 0);
   secOutput.insertBefore(destRow, secOutput.firstChild);
 
   // Mute audio toggle (video formats only \u2014 GIF has no audio anyway).
@@ -21773,63 +22004,63 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   secOutput.appendChild(muteRow);
 
   // Reverse playback
-  const revRow = moEl('div', 'mo-clip-row');
+  const revRow = moEl('div', 'mo-clip-row mo-ce-switchrow');
   const revChk = document.createElement('input');
   revChk.type = 'checkbox'; revChk.id = 'mo-clip-rev'; revChk.className = 'mo-clip-check';
-  revRow.appendChild(revChk);
   const revLabel = lbl('Reverse'); revLabel.htmlFor = 'mo-clip-rev';
-  revRow.appendChild(revLabel);
+  revRow.append(revLabel, revChk);
   timingGroup.appendChild(revRow);
+
+  // GIF-only: loop (ffmpeg's -loop: 0 forever, -1 play once, N repeat N times)
+  const loopRow = moEl('div', 'mo-clip-row mo-clip-gif-only');
+  loopRow.appendChild(lbl('Loop'));
+  const loopInput = moSelect([['0', 'Forever'], ['-1', 'Play once'], ['1', 'Play twice'], ['2', 'Play 3 times'], ['4', 'Play 5 times']], '0');
+  loopRow.appendChild(loopInput);
+  secExport.appendChild(loopRow);
 
   // GIF-only: dither
   const gifBox = moEl('div', 'mo-clip-row mo-clip-gif-only');
   gifBox.appendChild(lbl('Dither'));
-  const ditherSel = moSelect([['none', 'None'], ['bayer', 'Bayer'], ['floyd_steinberg', 'Floyd-Steinberg']], 'bayer');
+  const ditherSel = moSelect([['sierra2_4a', 'Sierra (smooth)'], ['bayer', 'Bayer (small files)'], ['floyd_steinberg', 'Floyd-Steinberg'], ['none', 'None']], 'bayer');
   gifBox.appendChild(ditherSel);
   secExport.appendChild(gifBox);
 
-  // GIF-only: loop count
-  const loopRow = moEl('div', 'mo-clip-row mo-clip-gif-only');
-  loopRow.appendChild(lbl('Loop'));
-  const loopInput = document.createElement('input');
-  loopInput.type = 'number'; loopInput.min = '0'; loopInput.max = '100'; loopInput.value = '0';
-  loopInput.className = 'mo-clip-input'; loopInput.title = '0 = infinite';
-  loopRow.appendChild(loopInput);
-  secExport.appendChild(loopRow);
-
-  // GIF-only: reverse frame order (per-frame edits)
-  const revFrRow = moEl('div', 'mo-clip-row mo-clip-gif-only');
-  const revFrChk = document.createElement('input');
-  revFrChk.type = 'checkbox'; revFrChk.id = 'mo-clip-rev-frames'; revFrChk.className = 'mo-clip-check';
-  revFrChk.addEventListener('change', () => { revFrames = revFrChk.checked; });
-  revFrRow.appendChild(revFrChk);
-  const revFrLabel = lbl('Reverse frame order'); revFrLabel.htmlFor = 'mo-clip-rev-frames';
-  revFrLabel.title = 'Reverses the order of edited strip frames in GIF export';
-  revFrRow.appendChild(revFrLabel);
-  secExport.appendChild(revFrRow);
-
-  // GIF-only: auto-optimize after export. The GIF estimator can still miss
-  // by ±20% on unusual content; this safety net runs the optimizer in place
-  // when the actual output exceeds the user's threshold. No backup is taken
-  // — the freshly-exported file is itself the "original" and the user can
-  // re-export with different settings if the optimizer's compromise is
-  // unacceptable.
+  // GIF-only: Max size. The GIF estimator can still miss by ±20% on unusual
+  // content; with this on, a GIF that comes out over the size is
+  // re-encoded in place. No backup is taken: the freshly exported file is
+  // itself the "original", and re-exporting with other settings undoes it.
   const autoOptRow = moEl('div', 'mo-clip-row mo-clip-gif-only');
   const autoOptChk = document.createElement('input');
   autoOptChk.type = 'checkbox'; autoOptChk.id = 'mo-clip-auto-opt'; autoOptChk.className = 'mo-clip-check';
   autoOptChk.checked = true;
-  autoOptRow.appendChild(autoOptChk);
-  const autoOptLabel = lbl('Auto-optimize if over');
+  const autoOptLabel = lbl('Max size');
   autoOptLabel.htmlFor = 'mo-clip-auto-opt';
-  autoOptLabel.title = 'After export, re-encode in place if the actual file size exceeds the threshold';
-  autoOptRow.appendChild(autoOptLabel);
+  autoOptLabel.title = 'After export, shrink the GIF in place if it came out over this size';
   const autoOptThreshold = document.createElement('input');
   autoOptThreshold.type = 'number'; autoOptThreshold.min = '1'; autoOptThreshold.max = '500'; autoOptThreshold.step = '1';
   autoOptThreshold.value = '8';
   autoOptThreshold.className = 'mo-clip-input mo-clip-input--num';
-  autoOptRow.appendChild(autoOptThreshold);
-  autoOptRow.appendChild(moEl('span', 'mo-clip-unit', { textContent: 'MB' }));
+  autoOptRow.append(autoOptLabel, autoOptChk, autoOptThreshold, moEl('span', 'mo-clip-unit', { textContent: 'MB' }));
   secExport.appendChild(autoOptRow);
+
+  // GIF-only: the frames row's edits (drops, delays) and frame order.
+  const revFrRow = moEl('div', 'mo-clip-row mo-clip-gif-only mo-ce-switchrow');
+  const revFrChk = document.createElement('input');
+  revFrChk.type = 'checkbox'; revFrChk.id = 'mo-clip-rev-frames'; revFrChk.className = 'mo-clip-check';
+  revFrChk.title = 'Reverse the order of the frames';
+  const framesSummaryEl = moEl('span', 'mo-ce-sum mo-ce-sum--left');
+  const syncFramesSummary = () => {
+    const kept = frames.filter((f) => !f.deleted).length;
+    const delays = frames.filter((f) => !f.deleted && f.delayMs != null).length;
+    framesSummaryEl.textContent = frames.length
+      ? `${kept} of ${frames.length} kept${delays ? ` · ${delays} timed` : ''}${revFrames ? ' · reverse order' : ''}`
+      : (revFrames ? 'Reverse order' : 'All frames');
+  };
+  revFrChk.addEventListener('change', () => { revFrames = revFrChk.checked; syncFramesSummary(); });
+  const revFrLabel = lbl('Frames'); revFrLabel.htmlFor = 'mo-clip-rev-frames';
+  revFrRow.append(revFrLabel, framesSummaryEl, revFrChk);
+  secExport.appendChild(revFrRow);
+  syncFramesSummary();
   // Persist the user's last choice so it survives across dialog opens.
   (async () => {
     try {
@@ -21912,6 +22143,12 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   gpuSel.title = 'Use GPU hardware encoder: 5 to 20x faster, slightly lower quality at the same bitrate. MP4 only.';
   gpuBox.appendChild(gpuSel);
   secExport.appendChild(gpuBox);
+  const nameRow = moEl('div', 'mo-clip-row');
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text'; nameInput.className = 'mo-clip-input mo-clip-input--grow'; nameInput.placeholder = 'Optional, used as the file name';
+  nameRow.append(lbl('Name'), nameInput);
+  secExport.appendChild(nameRow);
+  const safeFileName = (v) => String(v || '').trim().replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').slice(0, 64);
   // Populate GPU dropdown asynchronously \u2014 detection runs ffmpeg, so we
   // don't block dialog open. The user is unlikely to click GPU in the
   // first ~50ms anyway.
@@ -21939,11 +22176,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   stripEl.title = 'Click frame to set per-frame delay (GIF). Right-click to delete (GIF).';
   stripWrap.appendChild(stripEl);
   const stripStatus = moEl('div', 'mo-clip-strip-status', { textContent: 'Loading frames…' });
-  stripWrap.appendChild(stripStatus);
-  const framesHead = moEl('div', 'mo-ce-frames-head');
-  framesHead.append(ico('film', 14), moEl('span', null, { textContent: 'GIF frames' }));
-  stripWrap.insertBefore(framesHead, stripWrap.firstChild);
-  tl.appendChild(stripWrap);
+  // For a GIF the video lane IS the frames: they sit over In→Out on that
+  // lane (the timeline zooms to the range), click one for its delay,
+  // right-click to drop it; dropped frames stay, faded, to bring back.
+  lanes.video.appendChild(stripWrap);
+  let gifZoomed = false;
 
   // ── Format visibility ──
   function syncFormatVisibility() {
@@ -21961,7 +22198,19 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     // Audio settings mean nothing to a GIF; its frames row only to a GIF.
     muteRow.style.display = isGif ? 'none' : '';
     stripWrap.style.display = isGif ? '' : 'none';
+    stripStatus.style.display = isGif ? '' : 'none';
+    tl.classList.toggle('mo-ce-tl--gif', isGif);
+    const videoHead = tlHeads.querySelector('.mo-ce-lanehead--video .mo-ce-lanehead-label');
+    if (videoHead) videoHead.textContent = isGif ? 'Frames' : 'Video';
     if (isGif && frames.length === 0) scheduleRegen();
+    if (isGif && !gifZoomed) {
+      // Zoom the timeline to the range so the frames have room.
+      gifZoomed = true;
+      const [ga, gb] = getInOut();
+      try { setZoom(Math.max(1, (duration / Math.max(0.1, gb - ga)) * 0.9), ga); tlScroll.scrollLeft = Math.max(0, (ga / duration) * scrub.offsetWidth - 24); } catch { /* timeline not built yet */ }
+    }
+    if (!isGif) gifZoomed = false;
+    try { paintVideoLane(); } catch { /* pre-init */ }
   }
   fmtSel.addEventListener('change', syncFormatVisibility);
   syncFormatVisibility();
@@ -22004,41 +22253,100 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const clearSegBtn = moEl('button', 'mo-mark-btn', { textContent: 'Clear', title: 'Remove every segment (back to one In→Out range).' });
   clearSegBtn.style.display = 'none';
   const segCount = moEl('span', 'mo-clip-keycount', { textContent: '' });
-  segRow.append(addSegBtn, deadAirBtn, clearSegBtn, segCount);
+  // Segments come from Split (and Cut Dead Air); Add Segment and Clear stay
+  // as functions (the queue's old snapshots and the probe use them) but the
+  // panel offers what the mockup does. Undo replaces Clear.
+  const splitBtn = moEl('button', 'mo-mark-btn', { title: 'Split the kept part at the playhead (S)' });
+  splitBtn.append(ico('scissors', 14), moEl('span', null, { textContent: 'Split at Playhead' }), moEl('span', 'mo-ce-kbd', { textContent: 'S' }));
+  splitBtn.addEventListener('click', () => splitAtPlayhead());
+  deadAirBtn.prepend(ico('audio-waveform', 14));
+  segRow.append(splitBtn, deadAirBtn, segCount);
   const segGroup = moEl('div', 'mo-ce-group');
-  segGroup.append(moEl('div', 'mo-ce-group-title', { textContent: 'Segments' }), segRow);
-  secTrim.appendChild(segGroup);
+  const segHead = moEl('div', 'mo-ce-group-head');
+  const segSub = moEl('span', 'mo-ce-sum');
+  segHead.append(moEl('span', 'mo-ce-group-title', { textContent: 'Segments' }), segSub);
   const segList = moEl('div', 'mo-clip-seglist');
-  segGroup.appendChild(segList);
+  segGroup.append(segHead, segList, segRow);
+  secTrim.appendChild(segGroup);
+  // The segment the Range fields edit (-1: none, the Range is the whole clip).
+  let selSeg = -1;
+  function selectSegment(i, seek) {
+    selSeg = i;
+    const sg = segments[i];
+    if (!sg) { selSeg = -1; renderSegments(); return; }
+    syncingSegRange = true;
+    inInput.value = sg.in.toFixed(2);
+    outInput.value = (outMode === 'duration' ? (sg.out - sg.in) : sg.out).toFixed(2);
+    updateAll();
+    syncingSegRange = false;
+    if (seek) { try { preview.currentTime = sg.in; } catch { /* ignore */ } }
+    renderSegments();
+  }
+  let syncingSegRange = false;
+  function removeSegment(i) {
+    segments.splice(i, 1);
+    const wasSel = selSeg === i;
+    if (wasSel) selSeg = -1; else if (selSeg > i) selSeg--;
+    renderSegments();
+    if (wasSel && segments.length) selectSegment(Math.min(i, segments.length - 1), false);
+    status.textContent = segments.length ? 'Segment removed. Its stretch is a cut now; click it on the timeline to bring it back.' : 'Back to one range.';
+  }
   secTrim.appendChild(timingGroup);
 
   function segmentsTotal() { return segments.reduce((sum, sg) => sum + Math.max(0, sg.out - sg.in), 0); }
   function renderSegments() {
+    // One kept part is just a range: fold it back so In/Out (what a
+    // single-range export reads) and the timeline agree.
+    if (segments.length === 1) {
+      const only = segments[0];
+      segments = []; selSeg = -1;
+      syncingSegRange = true;
+      inInput.value = only.in.toFixed(2);
+      outInput.value = (outMode === 'duration' ? (only.out - only.in) : only.out).toFixed(2);
+      try { updateAll(); } catch { /* pre-init */ }
+      syncingSegRange = false;
+    }
     segList.innerHTML = '';
     const many = segments.length > 0;
     clearSegBtn.style.display = many ? '' : 'none';
-    segCount.textContent = segments.length === 1 ? 'Add one more to join them' : '';
+    if (selSeg >= segments.length) selSeg = -1;
+    segCount.textContent = segments.length ? '' : 'Split the range at the playhead to cut parts out.';
+    segSub.textContent = segments.length ? `${segments.length} kept · ${moTcStr(segmentsTotal())}` : '';
+    rangeSub.textContent = selSeg >= 0 ? `Segment ${selSeg + 1}` : (segments.length ? 'Pick a segment' : 'Whole clip');
     segments.forEach((sg, i) => {
-      const row = moEl('div', 'mo-clip-segrow');
+      const row = moEl('div', 'mo-clip-segrow' + (i === selSeg ? ' mo-active' : ''));
+      row.draggable = true;
+      row.title = 'Click to edit its In and Out · drag the grip to reorder';
+      row.appendChild(moEl('span', 'mo-ce-grip', { innerHTML: moIcon('grip-vertical', 14) }));
       row.appendChild(moEl('span', 'mo-clip-queue-num', { textContent: String(i + 1) }));
-      const meta = moEl('span', 'mo-clip-queue-meta', { textContent: `${moTcStr(sg.in)} – ${moTcStr(sg.out)}` });
-      meta.title = `${moTcStr(sg.out - sg.in)} long. Click to jump to it; In and Out load it for editing.`;
-      meta.addEventListener('click', () => {
-        inInput.value = sg.in.toFixed(2);
-        outInput.value = (outMode === 'duration' ? (sg.out - sg.in) : sg.out).toFixed(2);
-        updateAll();
-        try { preview.currentTime = sg.in; } catch { /* ignore */ }
+      row.appendChild(moEl('span', 'mo-clip-queue-meta', { textContent: `${moTcStr(sg.in)} – ${moTcStr(sg.out)}` }));
+      row.appendChild(moEl('span', 'mo-ce-seglen', { textContent: moTcStr(sg.out - sg.in) }));
+      const del = moEl('button', 'mo-clip-queue-del mo-ce-hoverbtn', { innerHTML: moIcon('x', 14), title: 'Remove this segment (Delete)' });
+      del.addEventListener('click', (e) => { e.stopPropagation(); removeSegment(i); });
+      row.appendChild(del);
+      row.addEventListener('click', () => selectSegment(i, true));
+      // Drag to reorder (export order).
+      row.addEventListener('dragstart', (e) => { row.classList.add('mo-dragging'); if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/x-mo-seg', String(i)); } });
+      row.addEventListener('dragend', () => { row.classList.remove('mo-dragging'); segList.querySelectorAll('.mo-drop-above, .mo-drop-below').forEach((el) => el.classList.remove('mo-drop-above', 'mo-drop-below')); });
+      row.addEventListener('dragover', (e) => {
+        if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('text/x-mo-seg')) return;
+        e.preventDefault();
+        const rr = row.getBoundingClientRect(); const above = (e.clientY - rr.top) < rr.height / 2;
+        row.classList.toggle('mo-drop-above', above); row.classList.toggle('mo-drop-below', !above);
       });
-      row.appendChild(meta);
-      const up = moEl('button', 'mo-clip-queue-del', { innerHTML: moIcon('chevron-up', 14), title: 'Move earlier' });
-      up.disabled = i === 0;
-      up.addEventListener('click', (e) => { e.stopPropagation(); if (i > 0) { [segments[i - 1], segments[i]] = [segments[i], segments[i - 1]]; renderSegments(); } });
-      const down = moEl('button', 'mo-clip-queue-del', { innerHTML: moIcon('chevron-down', 14), title: 'Move later' });
-      down.disabled = i === segments.length - 1;
-      down.addEventListener('click', (e) => { e.stopPropagation(); if (i < segments.length - 1) { [segments[i + 1], segments[i]] = [segments[i], segments[i + 1]]; renderSegments(); } });
-      const del = moEl('button', 'mo-clip-queue-del', { innerHTML: moIcon('x', 14), title: 'Remove this segment' });
-      del.addEventListener('click', (e) => { e.stopPropagation(); segments.splice(i, 1); renderSegments(); });
-      row.append(up, down, del);
+      row.addEventListener('dragleave', () => row.classList.remove('mo-drop-above', 'mo-drop-below'));
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const from = parseInt((e.dataTransfer && e.dataTransfer.getData('text/x-mo-seg')) || '-1', 10);
+        if (!(from >= 0) || from === i) return;
+        const rr = row.getBoundingClientRect(); const above = (e.clientY - rr.top) < rr.height / 2;
+        const selItem = segments[selSeg];
+        const [moved] = segments.splice(from, 1);
+        let to = segments.indexOf(sg); if (!above) to += 1;
+        segments.splice(to, 0, moved);
+        selSeg = selItem ? segments.indexOf(selItem) : -1;
+        renderSegments();
+      });
       segList.appendChild(row);
     });
     paintLanes();
@@ -22104,6 +22412,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
   function updateAll() {
     const [a, b] = getInOut();
+    if (!syncingSegRange && selSeg >= 0 && segments[selSeg] && b - a >= 0.05
+      && (Math.abs(segments[selSeg].in - a) > 1e-6 || Math.abs(segments[selSeg].out - b) > 1e-6)) {
+      segments[selSeg] = { in: a, out: b };
+      try { renderSegments(); } catch { /* pre-init */ }
+    }
     const len = Math.max(0, b - a);
     void len;
     syncTcFields();
@@ -22135,25 +22448,31 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     }
     previewTimer = setInterval(() => {
       if (preview.paused) return;
+      const [a2, b2] = getInOut();
       if (segments.length >= 2) {
-        // Play the segments in order, skipping what is cut, wrapping at the end.
+        // Play the segments in order, skipping what is cut; at the end wrap
+        // (loop on) or stop (loop off).
         const t = preview.currentTime;
         const cur = segments.find((sg) => t >= sg.in - 0.02 && t < sg.out);
         if (cur) {
           if (t >= cur.out - 0.02) {
-            const next = segments[(segments.indexOf(cur) + 1) % segments.length];
+            const i = segments.indexOf(cur);
+            if (i === segments.length - 1 && !loopOn) { preview.pause(); return; }
+            const next = segments[(i + 1) % segments.length];
             try { preview.currentTime = next.in; } catch { /* ignore */ }
           }
         } else {
-          const next = segments.find((sg) => sg.in > t) || segments[0];
+          const next = segments.find((sg) => sg.in > t) || (loopOn ? segments[0] : null);
+          if (!next) { preview.pause(); return; }
           try { preview.currentTime = next.in; } catch { /* ignore */ }
         }
         return;
       }
-      if (preview.currentTime >= b - 0.02) {
-        try { preview.currentTime = a; preview.play().catch(() => {}); } catch {}
+      if (preview.currentTime >= b2 - 0.02) {
+        if (!loopOn) { preview.pause(); try { preview.currentTime = b2; } catch { /* ignore */ } return; }
+        try { preview.currentTime = a2; preview.play().catch(() => {}); } catch {}
       }
-    }, 200);
+    }, 100);
   }
   preview.addEventListener('loadedmetadata', () => loopPreview(true));
   inInput.addEventListener('change', () => loopPreview(false));
@@ -22164,7 +22483,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // explicit pause is never overridden here.)
   preview.addEventListener('ended', () => {
     const [a, b] = getInOut();
-    if (b > a) {
+    if (b > a && loopOn) {
       try { preview.currentTime = a; preview.play().catch(() => {}); } catch { /* ignore */ }
     }
   });
@@ -22197,10 +22516,126 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     loopPreview();
   });
 
+  // The ? sheet: every hotkey, in one place (tooltips carry them too).
+  const keysSheet = moEl('div', 'mo-ce-keys');
+  keysSheet.style.display = 'none';
+  const keysHead = moEl('div', 'mo-ce-keys-head');
+  keysHead.append(moEl('span', 'mo-ce-pop-title', { textContent: 'Keyboard shortcuts' }), moEl('span', 'mo-ce-spacer'));
+  api.ui.createIconButton(keysHead, { icon: 'x', size: 'sm', title: 'Close (Esc)', onClick: () => toggleKeysSheet(false) });
+  keysSheet.appendChild(keysHead);
+  for (const [k, what] of [
+    ['Space', 'Play or pause (or click the video)'], [', and .', 'Previous and next frame'],
+    ['I and O', 'Set In and Out at the playhead'], ['S', 'Split at the playhead'],
+    ['K', 'Add a crop keyframe'], ['T', 'Add text'], ['Q', 'Add the clip to the queue'],
+    ['Ctrl+Z', 'Undo'], ['Ctrl+Shift+Z', 'Redo'], ['Scroll on the video', 'Scrub (Shift ×10, Alt fine)'],
+    ['Ctrl+scroll on the timeline', 'Zoom the timeline'], ['?', 'This sheet'],
+  ]) {
+    const row = moEl('div', 'mo-ce-keys-row');
+    row.append(moEl('kbd', null, { textContent: k }), moEl('span', null, { textContent: what }));
+    keysSheet.appendChild(row);
+  }
+  overlay.appendChild(keysSheet);
+  function toggleKeysSheet(open) {
+    const show = open === undefined ? keysSheet.style.display === 'none' : open;
+    keysSheet.style.display = show ? '' : 'none';
+  }
+
+  // Undo and redo: every settled edit is a snapshot of the whole clip (the
+  // same snapshot the queue stores). Restoring one keeps the playhead where it is.
+  const undoStack = [];
+  const redoStack = [];
+  let historyTimer = null;
+  let restoringHistory = false;
+  const editKey = (snap) => { const { id, thumb, name, ...rest } = snap; void id; void thumb; void name; return JSON.stringify(rest); };
+  function takeEditSnapshot() { const keep = clipSeq; const snap = snapshotCurrent(); clipSeq = keep; return snap; }
+  function scheduleHistory() {
+    if (restoringHistory) return;
+    if (historyTimer) clearTimeout(historyTimer);
+    historyTimer = setTimeout(() => {
+      historyTimer = null;
+      if (restoringHistory || _disposed) return;
+      let snap;
+      try { snap = takeEditSnapshot(); } catch { return; }
+      const key = editKey(snap);
+      const top = undoStack[undoStack.length - 1];
+      if (top && top.key === key) return;
+      undoStack.push({ snap, key });
+      if (undoStack.length > 200) undoStack.shift();
+      redoStack.length = 0;
+      syncHistoryBtns();
+    }, 350);
+  }
+  function syncHistoryBtns() { undoBtn.disabled = undoStack.length < 2; redoBtn.disabled = redoStack.length === 0; }
+  function restoreEdit(entry) {
+    restoringHistory = true;
+    const t = preview.currentTime;
+    try { loadSnapshot(entry.snap); } finally {
+      try { preview.currentTime = t; } catch { /* ignore */ }
+      setTimeout(() => { restoringHistory = false; }, 0);
+    }
+    syncHistoryBtns();
+  }
+  // Ctrl+Z / Ctrl+Shift+Z: the workbench's Edit commands offer undo and redo
+  // to the focused pane as cancelable events; the editor claims them unless
+  // the focus is in a text field (which keeps its own native undo).
+  const claimEdit = (fn) => (e) => {
+    const t = document.activeElement;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    fn();
+  };
+  overlay.addEventListener('parallx:edit-undo', claimEdit(() => undoEdit()));
+  overlay.addEventListener('parallx:edit-redo', claimEdit(() => redoEdit()));
+  function undoEdit() {
+    if (historyTimer) { clearTimeout(historyTimer); historyTimer = null; }
+    if (undoStack.length < 2) return;
+    redoStack.push(undoStack.pop());
+    restoreEdit(undoStack[undoStack.length - 1]);
+    status.textContent = 'Undone.';
+  }
+  function redoEdit() {
+    if (!redoStack.length) return;
+    const entry = redoStack.pop();
+    undoStack.push(entry);
+    restoreEdit(entry);
+    status.textContent = 'Redone.';
+  }
+
+  // Save Frame: the frame under the playhead as a photo, cropped when the
+  // crop is on. (This replaces the old Capture Frame dialog.)
+  async function saveFrame() {
+    preview.pause();
+    const sep = _isWindows ? '\\' : '/';
+    const srcDir = videoPath.slice(0, videoPath.lastIndexOf(sep));
+    const chosen = await window.parallxElectron.dialog.saveFile({
+      defaultPath: await moRandomNameFree(srcDir, sep, 'jpg'),
+      filters: [{ name: 'JPEG', extensions: ['jpg', 'jpeg'] }, { name: 'PNG', extensions: ['png'] }, { name: 'WebP', extensions: ['webp'] }],
+    });
+    if (!chosen) return;
+    const ext = (chosen.split('.').pop() || 'jpg').toLowerCase();
+    const format = ext === 'png' ? 'png' : ext === 'webp' ? 'webp' : 'jpg';
+    status.textContent = 'Saving the frame…';
+    try {
+      await _moExtractFrame(api, {
+        videoPath, timestampSec: preview.currentTime, outPath: chosen, format, quality: 92, scalePct: 100,
+        crop: cropEnabled ? { x: cropNorm.x, y: cropNorm.y, w: cropNorm.w, h: cropNorm.h } : null,
+      });
+      await moIndexExportedFile(chosen);
+      lastExportPath = chosen;
+      toastText.textContent = 'Frame saved: ' + (chosen.split(/[\\/]/).pop() || chosen);
+      toastText.title = chosen;
+      toast.style.display = '';
+      status.textContent = `Frame at ${moTcStr(preview.currentTime)} saved.`;
+    } catch (err) {
+      status.textContent = '';
+      api.window.showErrorMessage('Frame save failed: ' + (err && err.message || err));
+    }
+  }
+
   // Frame-step (editor convention): pause and nudge by one output frame.
   function stepFrame(dir) {
     preview.pause();
-    const stepS = 1 / Math.max(1, parseInt(fpsSel.value, 10) || 30);
+    const stepS = 1 / Math.max(1, outFps());
     try { preview.currentTime = Math.max(0, Math.min(duration, preview.currentTime + dir * stepS)); } catch { /* ignore */ }
   }
 
@@ -22208,12 +22643,16 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   overlay.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === '?') { e.preventDefault(); toggleKeysSheet(); return; }
+    if (e.key === 'Escape' && keysSheet.style.display !== 'none') { e.preventDefault(); toggleKeysSheet(false); return; }
     if (e.key === 'Escape' && pop.style.display !== 'none') { e.preventDefault(); setPopOpen(false); }
     else if (e.key === 'Escape' && pointPickArmed) { e.preventDefault(); setPointPickArmed(false); }
     else if (e.key === 'i' || e.key === 'I') { e.preventDefault(); setInBtn.click(); }
     else if (e.key === 'o' || e.key === 'O') { e.preventDefault(); setOutBtn.click(); }
     else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); if (cropEnabled) addKeyBtn.click(); }
     else if (e.key === 's' || e.key === 'S') { e.preventDefault(); splitAtPlayhead(); }
+    else if (e.key === 't' || e.key === 'T') { e.preventDefault(); setTab('text'); addCapBtn.click(); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && selSeg >= 0 && activeTab === 'trim') { e.preventDefault(); removeSegment(selSeg); }
     else if (e.key === ',' || e.key === '.') { e.preventDefault(); stepFrame(e.key === '.' ? 1 : -1); }
     else if (e.key === ' ') {
       e.preventDefault();
@@ -22248,8 +22687,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   function bindMarker(handle, role) {
     handle.addEventListener('mousedown', (e) => {
       e.preventDefault(); e.stopPropagation();
+      const [a0, b0] = getInOut();
       const move = (ev) => {
-        const t = pctFromEvent(ev) * duration;
+        const t = snapTime(pctFromEvent(ev) * duration, [role === 'in' ? a0 : b0]);
         if (role === 'in') {
           const [, b] = getInOut();
           inInput.value = Math.max(0, Math.min(b - 0.05, t)).toFixed(2);
@@ -22326,8 +22766,13 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   tlResizeObs.observe(tlScroll);
   const pageResizeObs = new ResizeObserver(() => {
     const w = overlay.clientWidth;
-    overlay.classList.toggle('mo-ce--narrow', w > 0 && w < 860);
-    overlay.classList.toggle('mo-ce--tiny', w > 0 && w < 560);
+    const narrow = w > 0 && w < 900;
+    overlay.classList.toggle('mo-ce--narrow', narrow);
+    overlay.classList.toggle('mo-ce--tiny', w > 0 && w < 640);
+    // Below 900 px the six tabs sit under the transport as icons and open
+    // the inspector as a sheet over the timeline; above, they head it.
+    if (narrow && tabsRow.parentElement !== stageCol) stageCol.appendChild(tabsRow);
+    if (!narrow && tabsRow.parentElement !== insp) { insp.insertBefore(tabsRow, insp.firstChild); setSheetOpen(false); }
   });
   pageResizeObs.observe(overlay);
 
@@ -22396,46 +22841,127 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   }
 
   // Video lane: what exports is bright (the range, or each segment as a
-  // numbered block in export order); everything else is dimmed.
+  // numbered block in export order); what is cut is hatched and labelled,
+  // and a click brings it back. Blocks select on click, trim from their
+  // ends and slide when dragged by the body.
+  const pauseGaps = (() => {
+    const init = Array.isArray(opts.initialSegments) ? opts.initialSegments.filter((sg) => sg && sg.out > sg.in).slice().sort((x, y) => x.in - y.in) : [];
+    const gaps = [];
+    for (let i = 1; i < init.length; i++) if (init[i].in > init[i - 1].out + 0.01) gaps.push([init[i - 1].out, init[i].in]);
+    return gaps;
+  })();
+  function restoreGap(g0, g1) {
+    if (!segments.length) {
+      const [a, b] = getInOut();
+      if (g1 <= a + 0.01) inInput.value = g0.toFixed(2);
+      else if (g0 >= b - 0.01) outInput.value = (outMode === 'duration' ? g1 - a : g1).toFixed(2);
+      updateAll(); loopPreview();
+      status.textContent = `Brought back ${moTcStr(g1 - g0)}.`;
+      return;
+    }
+    const prev = segments.find((sg) => Math.abs(sg.out - g0) < 0.011);
+    const next = segments.find((sg) => Math.abs(sg.in - g1) < 0.011);
+    if (prev && next && prev !== next) { prev.out = next.out; segments.splice(segments.indexOf(next), 1); }
+    else if (prev) prev.out = g1;
+    else if (next) next.in = g0;
+    else segments.push({ in: g0, out: g1 });
+    selSeg = -1;
+    renderSegments();
+    status.textContent = `Brought back ${moTcStr(g1 - g0)}.`;
+  }
   function paintVideoLane() {
     const [a, b] = getInOut();
+    try { stripWrap.style.left = tlPct(a); stripWrap.style.width = ((b - a) / Math.max(0.1, duration)) * 100 + '%'; } catch { /* frames not built yet */ }
+    try { paintLaneMarkers(); } catch { /* pre-init */ }
     const kept = (segments.length ? segments.slice() : [{ in: a, out: b }]).sort((x, y) => x.in - y.in);
     dimLayer.innerHTML = '';
     let cursor = 0;
     for (const k of kept.concat([{ in: duration, out: duration }])) {
       if (k.in > cursor + 0.01) {
-        const d = moEl('div', 'mo-ce-dim');
-        d.style.left = tlPct(cursor);
-        d.style.width = ((k.in - cursor) / Math.max(0.1, duration)) * 100 + '%';
+        const g0 = cursor, g1 = k.in;
+        const paused = pauseGaps.some(([p0, p1]) => Math.abs(p0 - g0) < 0.05 && Math.abs(p1 - g1) < 0.05);
+        const d = moEl('div', 'mo-ce-dim', { title: `${paused ? 'Paused while recording' : 'Cut'} · ${moTcStr(g1 - g0)} · click to bring it back` });
+        d.style.left = tlPct(g0);
+        d.style.width = ((g1 - g0) / Math.max(0.1, duration)) * 100 + '%';
+        d.appendChild(moEl('span', 'mo-ce-dim-label', { textContent: `${paused ? 'Paused' : 'Cut'} · ${moTcStr(g1 - g0)}` }));
+        d.addEventListener('mousedown', (e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); });
+        d.addEventListener('click', (e) => { e.stopPropagation(); restoreGap(g0, g1); });
         dimLayer.appendChild(d);
       }
       cursor = Math.max(cursor, k.out);
     }
     segLayer.innerHTML = '';
-    const blocks = segments.length ? segments : [{ in: a, out: b }];
-    blocks.forEach((sg, i) => {
-      const block = moEl('div', 'mo-ce-block' + (segments.length ? '' : ' mo-ce-block--range'));
+    if (!segments.length) {
+      const block = moEl('div', 'mo-ce-block mo-ce-block--range', { title: `In ${moTcStr(a)} · Out ${moTcStr(b)}` });
+      block.style.left = tlPct(a);
+      block.style.width = ((b - a) / Math.max(0.1, duration)) * 100 + '%';
+      segLayer.appendChild(block);
+      return;
+    }
+    segments.forEach((sg, i) => {
+      const block = moEl('div', 'mo-ce-block' + (i === selSeg ? ' mo-active' : ''));
       block.style.left = tlPct(sg.in);
       block.style.width = ((sg.out - sg.in) / Math.max(0.1, duration)) * 100 + '%';
-      if (segments.length) {
-        block.appendChild(moEl('span', 'mo-ce-block-num', { textContent: String(i + 1) }));
-        block.title = `Segment ${i + 1} · ${moTcStr(sg.in)} to ${moTcStr(sg.out)} · click to edit its In and Out`;
-        if (Math.abs(sg.in - a) < 0.011 && Math.abs(sg.out - b) < 0.011) block.classList.add('mo-active');
-        block.addEventListener('mousedown', (e) => {
-          if (e.button !== 0) return;
-          e.preventDefault(); e.stopPropagation();
-          const r = scrub.getBoundingClientRect();
-          inInput.value = sg.in.toFixed(2);
-          outInput.value = (outMode === 'duration' ? (sg.out - sg.in) : sg.out).toFixed(2);
-          updateAll();
-          try { preview.currentTime = Math.max(sg.in, Math.min(sg.out, ((e.clientX - r.left) / r.width) * duration)); } catch { /* ignore */ }
+      block.appendChild(moEl('span', 'mo-ce-block-num', { textContent: String(i + 1) }));
+      block.title = `Segment ${i + 1} · ${moTcStr(sg.in)} to ${moTcStr(sg.out)} · drag the ends to trim, the middle to slide · right-click to remove`;
+      const edgeL = moEl('div', 'mo-ce-block-edge mo-ce-block-edge--l');
+      const edgeR = moEl('div', 'mo-ce-block-edge mo-ce-block-edge--r');
+      block.append(edgeL, edgeR);
+      const drag = (e, mode) => {
+        if (e.button !== 0) return;
+        const r = scrub.getBoundingClientRect();
+        const clickT = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * duration;
+        const o = { in: sg.in, out: sg.out };
+        selSeg = i;
+        beginBarDrag(e, (dt) => {
+          if (mode === 'l') sg.in = Math.max(0, Math.min(o.out - 0.05, snapTime(o.in + dt, [o.in])));
+          else if (mode === 'r') sg.out = Math.max(o.in + 0.05, Math.min(duration, snapTime(o.out + dt, [o.out])));
+          else {
+            const len = o.out - o.in;
+            let n0 = Math.max(0, Math.min(duration - len, o.in + dt));
+            const s0 = snapTime(n0, [o.in, o.out]); const s1 = snapTime(n0 + len, [o.in, o.out]);
+            if (s0 !== n0) n0 = s0; else if (s1 !== n0 + len) n0 = s1 - len;
+            sg.in = Math.max(0, n0); sg.out = Math.min(duration, sg.in + len);
+          }
+          block.style.left = tlPct(sg.in);
+          block.style.width = ((sg.out - sg.in) / Math.max(0.1, duration)) * 100 + '%';
+        }, (moved) => {
+          selectSegment(i, false);
+          if (!moved && mode === 'm') { try { preview.currentTime = Math.max(sg.in, Math.min(sg.out, clickT)); } catch { /* ignore */ } }
           setTab('trim');
         });
-      } else {
-        block.title = `In ${moTcStr(a)} · Out ${moTcStr(b)}`;
-      }
+      };
+      edgeL.addEventListener('mousedown', (e) => drag(e, 'l'));
+      edgeR.addEventListener('mousedown', (e) => drag(e, 'r'));
+      block.addEventListener('mousedown', (e) => { if (e.target === edgeL || e.target === edgeR) return; drag(e, 'm'); });
+      block.addEventListener('contextmenu', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        showContextMenu(e.clientX, e.clientY, [
+          { label: 'Edit In and Out', handler: () => selectSegment(i, true) },
+          { label: 'Remove Segment', danger: true, handler: () => removeSegment(i) },
+        ]);
+      });
       segLayer.appendChild(block);
     });
+  }
+
+  // Tiny panes keep the Video and Audio lanes only: crop keys, blur windows
+  // and text windows show as marks along the bottom of the video lane.
+  const markersLayer = moEl('div', 'mo-ce-markers');
+  lanes.video.appendChild(markersLayer);
+  function paintLaneMarkers() {
+    markersLayer.innerHTML = '';
+    const mark = (cls, t0, t1, title) => {
+      const m = moEl('div', 'mo-ce-marker ' + cls, { title });
+      m.style.left = tlPct(t0);
+      m.style.width = t1 != null ? (Math.max(0, t1 - t0) / Math.max(0.1, duration)) * 100 + '%' : '';
+      markersLayer.appendChild(m);
+    };
+    if (cropEnabled) for (const k of cropKeys) mark('mo-ce-marker--key', k.t, null, `Crop key · ${moTcStr(k.t)}`);
+    for (const rg of blurRegions) mark('mo-ce-marker--blur', Number.isFinite(rg.t0) ? rg.t0 : 0, Number.isFinite(rg.t1) ? rg.t1 : duration, 'Blur region');
+    const [a] = getInOut();
+    const segs = segments.length >= 2 ? segments : null;
+    for (const c of captions) mark('mo-ce-marker--text', moClipSourceTime(segs, a, c.t0), moClipSourceTime(segs, a, c.t1), c.text.split(/\r?\n/)[0] || 'Text');
   }
 
   // Blur lane: one bar per region over its time window (all of the video
@@ -22457,8 +22983,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         setTab('blur');
         beginBarDrag(e, (dt) => {
           const len = o1 - o0;
-          const n0 = Math.max(0, Math.min(duration - len, o0 + dt));
-          r.t0 = n0; r.t1 = n0 + len;
+          let n0 = Math.max(0, Math.min(duration - len, o0 + dt));
+          const s0 = snapTime(n0, [o0, o1]); const s1 = snapTime(n0 + len, [o0, o1]);
+          if (s0 !== n0) n0 = s0; else if (s1 !== n0 + len) n0 = s1 - len;
+          r.t0 = Math.max(0, n0); r.t1 = r.t0 + len;
           bar.style.left = tlPct(r.t0);
         }, () => { renderBlurRegions(); syncOverlaysToPlayhead(); });
       });
@@ -22475,10 +23003,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     for (const c of captions) {
       const s0 = moClipSourceTime(segs, a, c.t0);
       const s1 = moClipSourceTime(segs, a, c.t1);
-      const bar = moEl('div', 'mo-ce-bar mo-ce-bar--text');
+      const bar = moEl('div', 'mo-ce-bar mo-ce-bar--text' + (c.id === activeCapId ? ' mo-active' : ''));
       bar.style.left = tlPct(s0);
       bar.style.width = (Math.max(0, s1 - s0) / Math.max(0.1, duration)) * 100 + '%';
-      bar.textContent = c.text.trim() || 'Empty text';
+      bar.textContent = c.text.split(/\r?\n/)[0].trim() || 'Empty text';
       bar.title = `${bar.textContent} · ${moTcStr(c.t0)} to ${moTcStr(c.t1)} into the clip · drag to move`;
       bar.addEventListener('mousedown', (e) => {
         if (e.button !== 0) return;
@@ -22489,12 +23017,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           c.t0 = Math.max(0, o0 + dt); c.t1 = c.t0 + len;
           bar.style.left = tlPct(moClipSourceTime(segs, a, c.t0));
         }, (moved) => {
+          activeCapId = c.id;
           renderCaptions(); syncOverlaysToPlayhead();
-          if (!moved) {
-            const idx = captions.indexOf(c);
-            const input = capList.querySelectorAll('.mo-clip-segrow input[type="text"]')[idx];
-            if (input) input.focus();
-          }
+          if (!moved) selectCaption(c, true);
         });
       });
       lanes.text.appendChild(bar);
@@ -22586,12 +23111,43 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const next = moSplitSegments(segments, a, b, t);
     if (!next) { status.textContent = 'Put the playhead inside a kept part to split it.'; return; }
     segments = next;
+    selSeg = segments.findIndex((sg) => Math.abs(sg.in - t) < 1e-6);
     renderSegments();
-    status.textContent = `Split at ${moTcStr(t)}: ${segments.length} segments. Click a block to edit it; remove one in Trim to cut it.`;
+    if (selSeg >= 0) selectSegment(selSeg, false);
+    status.textContent = `Split at ${moTcStr(t)}: ${segments.length} segments. Click a block to edit it; Delete removes the selected one.`;
   }
-  api.ui.createButton(tlBar, { label: 'Split', icon: 'scissors', kind: 'ghost', size: 'sm', title: 'Split the kept part at the playhead (S)', onClick: () => splitAtPlayhead() });
+  const tlSplitBtn = api.ui.createButton(tlBar, { label: 'Split', icon: 'scissors', kind: 'ghost', size: 'sm', title: 'Split the kept part at the playhead (S)', onClick: () => splitAtPlayhead() });
+  tlSplitBtn.appendChild(moEl('span', 'mo-ce-kbd', { textContent: 'S' }));
   api.ui.createButton(tlBar, { label: 'Cut Dead Air', icon: 'audio-waveform', kind: 'ghost', size: 'sm', title: 'Inside In→Out, cut where the picture froze and the sound went quiet', onClick: () => deadAirBtn.click() });
+  tlBar.appendChild(moEl('span', 'mo-ce-sep'));
+  // Snap: drags settle on the playhead, In/Out, segment edges, keys and bar
+  // edges when they come within a few pixels. Remembered per user.
+  let snapOn = true;
+  const snapBtn = api.ui.createIconButton(tlBar, { icon: 'magnet', size: 'sm', title: 'Snap' });
+  const syncSnapBtn = () => { snapBtn.classList.toggle('mo-active', snapOn); snapBtn.title = snapOn ? 'Snapping on (click to drag freely)' : 'Snapping off'; };
+  snapBtn.addEventListener('click', () => { snapOn = !snapOn; syncSnapBtn(); moSetSetting('clipEditorSnap_v1', snapOn ? '1' : '0').catch(() => {}); });
+  moGetSetting('clipEditorSnap_v1', '1').then((v) => { snapOn = v !== '0'; syncSnapBtn(); }).catch(() => {});
+  syncSnapBtn();
+  /** Snap a time to the nearest edge within 8 px; `skip` names times to ignore (the thing being dragged). */
+  function snapTime(t, skip = []) {
+    if (!snapOn) return t;
+    const tol = 8 / Math.max(1e-6, pxPerSec());
+    const [a, b] = getInOut();
+    const cands = [0, duration, preview.currentTime, a, b];
+    for (const sg of segments) cands.push(sg.in, sg.out);
+    for (const k of cropKeys) cands.push(k.t);
+    for (const rg of blurRegions) { if (Number.isFinite(rg.t0)) cands.push(rg.t0); if (Number.isFinite(rg.t1)) cands.push(rg.t1); }
+    let best = t, bestD = tol;
+    for (const c of cands) {
+      if (!Number.isFinite(c) || skip.some((x) => Math.abs(x - c) < 1e-9)) continue;
+      const d = Math.abs(c - t);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    return best;
+  }
   tlBar.appendChild(status);
+  tlBar.appendChild(stripStatus);
+  stripStatus.style.display = fmtSel.value === 'gif' ? '' : 'none';
   tlBar.appendChild(zoomRow);
 
   // A screen recording says what was already done to it.
@@ -22638,13 +23194,18 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     cropRect.style.top = (r.dy + cropNorm.y * r.dh) + 'px';
     cropRect.style.width = (cropNorm.w * r.dw) + 'px';
     cropRect.style.height = (cropNorm.h * r.dh) + 'px';
+    const vw0 = preview.videoWidth || 0, vh0 = preview.videoHeight || 0;
+    cropSizeEl.textContent = vw0 ? `${Math.round(cropNorm.w * vw0)} × ${Math.round(cropNorm.h * vh0)}` : '';
     try { updateTrackPointUi(); } catch { /* not built yet */ }
+    try { syncCropReadout(); } catch { /* crop panel not built yet */ }
+    try { scheduleHistory(); } catch { /* history not built yet */ }
   }
   cropChk.addEventListener('change', () => {
     cropEnabled = cropChk.checked;
     cropOverlay.classList.toggle('mo-crop-active', cropEnabled);
-    cropResetBtn.style.display = cropEnabled ? '' : 'none';
-    keyRow.style.display = cropEnabled ? '' : 'none';
+    cropBody.style.display = cropEnabled ? '' : 'none';
+    motionBody.style.display = cropEnabled ? '' : 'none';
+    cropOffNote.style.display = cropEnabled ? 'none' : '';
     syncFloatBar();
     if (!cropEnabled && camActive) setCamActive(false);
     // Disabling crop while pick mode is armed would strand a crosshair
@@ -22654,8 +23215,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     applyCropRect();
   });
   cropResetBtn.addEventListener('click', () => {
-    cropNorm = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
-    cropBase = { w: 0.8, h: 0.8 };
+    cropNorm = { x: 0, y: 0, w: 1, h: 1 };
+    cropBase = { w: 1, h: 1 };
+    activeAspect = aspects[0]; aspectSel.value = 'Free';
+    aspectBtns.forEach((bb, i) => bb.classList.toggle('mo-active', i === 0));
     // Reset means "start the crop over" — stale keyframes would snap the
     // window right back on the next playhead sync, so they go too.
     cropKeys = [];
@@ -22881,14 +23444,37 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
 
   function updateKeyCount() {
     keyCount.textContent = cropKeys.length
-      ? (cropKeys.length === 1 ? '1 key · static until a 2nd is added' : `${cropKeys.length} keys`)
-      : 'No keys · static crop';
+      ? (cropKeys.length === 1 ? '1 keyframe · add a second to move' : `${cropKeys.length} keyframes`)
+      : 'Static';
   }
+  let selKey = null;
   function renderCropKeys() {
     keysLayer.innerHTML = '';
     keysLayer.style.display = cropEnabled && cropKeys.length ? '' : 'none';
+    // The glide between the keys, and zoom stretches as amber bars: runs of
+    // keys whose window is smaller than the base (a Smart Zoom or a zoom key).
+    if (cropKeys.length >= 2) {
+      const line = moEl('div', 'mo-ce-keyline');
+      line.style.left = tlPct(cropKeys[0].t);
+      line.style.width = ((cropKeys[cropKeys.length - 1].t - cropKeys[0].t) / Math.max(0.1, duration)) * 100 + '%';
+      keysLayer.appendChild(line);
+      const isZoom = (k) => Number.isFinite(k.w) && cropBase.w - k.w > 0.003;
+      for (let i = 0; i < cropKeys.length; i++) {
+        if (!isZoom(cropKeys[i])) continue;
+        let j = i;
+        while (j + 1 < cropKeys.length && isZoom(cropKeys[j + 1])) j++;
+        const t0 = i > 0 ? cropKeys[i - 1].t : cropKeys[i].t;
+        const t1 = j + 1 < cropKeys.length ? cropKeys[j + 1].t : cropKeys[j].t;
+        const bar = moEl('div', 'mo-ce-zoombar', { title: `Zoomed in · ${moTcStr(t0)} to ${moTcStr(t1)}` });
+        bar.style.left = tlPct(t0);
+        bar.style.width = ((t1 - t0) / Math.max(0.1, duration)) * 100 + '%';
+        bar.textContent = 'Zoom';
+        keysLayer.appendChild(bar);
+        i = j;
+      }
+    }
     for (const k of cropKeys) {
-      const m = moEl('div', 'mo-scrub-key');
+      const m = moEl('div', 'mo-scrub-key' + (k === selKey ? ' mo-sel' : ''));
       m.style.left = (duration > 0 ? (k.t / duration) * 100 : 0) + '%';
       const zoomed = Number.isFinite(k.w) && Math.abs(k.w - cropBase.w) > 0.003;
       if (zoomed) m.classList.add('mo-scrub-key-zoom');
@@ -22901,14 +23487,16 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     }
     updateKeyCount();
     updateAccordionSummaries();
+    try { syncKeyChip(); } catch { /* pre-init */ }
     if (!preview.paused) startCamLoop();
   }
   function upsertKeyAtPlayhead() {
     const t = Math.max(0, Math.min(duration, preview.currentTime));
     const near = cropKeys.find((k) => Math.abs(k.t - t) < 0.05);
-    if (near) { near.x = cropNorm.x; near.y = cropNorm.y; near.w = cropNorm.w; }
+    if (near) { near.x = cropNorm.x; near.y = cropNorm.y; near.w = cropNorm.w; selKey = near; }
     else {
-      cropKeys.push({ t, x: cropNorm.x, y: cropNorm.y, w: cropNorm.w });
+      selKey = { t, x: cropNorm.x, y: cropNorm.y, w: cropNorm.w };
+      cropKeys.push(selKey);
       cropKeys.sort((a, b) => a.t - b.t);
     }
     renderCropKeys();
@@ -22925,12 +23513,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const move = (ev) => {
       if (!moved && Math.abs(ev.clientX - startX) < 3) return;
       moved = true;
-      k.t = Math.max(0, Math.min(duration, pctFromEvent(ev) * duration));
+      k.t = Math.max(0, Math.min(duration, snapTime(pctFromEvent(ev) * duration, [k.t])));
       m.style.left = (duration > 0 ? (k.t / duration) * 100 : 0) + '%';
     };
+    selKey = k;
     const up = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      setTab('crop');
       if (moved) {
         cropKeys.sort((a, b) => a.t - b.t);
         renderCropKeys();
@@ -22996,7 +23586,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       // Tracking cadence: fine enough to follow motion, cheap enough to stay
       // interactive. Capped so long clips don't extract hundreds of frames —
       // RDP simplification erases the density difference anyway.
-      let fpsT = Math.min(15, Math.max(4, Math.round(parseFloat(fpsSel.value) || 15)));
+      let fpsT = Math.min(15, Math.max(4, Math.round(outFps())));
       if (len * fpsT > 240) fpsT = 240 / len;
       // 512 wide keeps small subjects (cursors, icons) above the matcher's
       // noise floor; 360 lost them on high-res captures.
@@ -23315,6 +23905,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         f.delayMs = v;
         delayBadge.textContent = v + 'ms';
         delayBadge.style.display = '';
+        syncFramesSummary();
       });
       cell.addEventListener('contextmenu', (ev) => {
         ev.preventDefault();
@@ -23322,10 +23913,12 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         if (!f) return;
         f.deleted = !f.deleted;
         cell.classList.toggle('mo-clip-frame-deleted', f.deleted);
+        syncFramesSummary();
       });
       stripEl.appendChild(cell);
       frames.push({ index: i, src: fpath, deleted: false, delayMs: null });
     }
+    syncFramesSummary();
     stripStatus.textContent = jpgs.length === 0 ? 'No frames extracted' : `${jpgs.length} frames of the range · click one for its delay, right-click to drop it`;
 
     // Waveform (best-effort; ignore failure)
@@ -23389,7 +23982,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       id: ++clipSeq,
       inT: aa, outT: bb,
       format: fmtSel.value,
-      fps: parseInt(fpsSel.value, 10) || 30,
+      fps: outFps(),
       scale: Math.max(10, parseInt(sizeInput.value, 10) || 100),
       speed: effectiveSpeed(),
       reverse: revChk.checked,
@@ -23424,7 +24017,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       // pixels (see moCropVfSegment).
       srcW: preview.videoWidth || 0,
       srcH: preview.videoHeight || 0,
-      name: '',
+      name: nameInput.value.trim(),
+      fpsSource: fpsSel.value === 'src',
       thumb: null,
       // The program beyond one range (assembled exports).
       segments: segments.map((sg) => ({ in: sg.in, out: sg.out })),
@@ -23473,7 +24067,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     inInput.value = c.inT.toFixed(2);
     outInput.value = c.outT.toFixed(2);
     fmtSel.value = c.format;
-    fpsSel.value = String(c.fps);
+    const ensureOpt = (sel, v, label) => { if (!sel.options.some((o) => o.value === String(v))) sel.addOption(String(v), label); sel.value = String(v); };
+    if (c.fpsSource) fpsSel.value = 'src'; else ensureOpt(fpsSel, c.fps, String(c.fps));
+    nameInput.value = c.name || '';
     sizeInput.value = String(c.scale);
     speedSel.value = String(c.speed);
     revChk.checked = !!c.reverse;
@@ -23488,10 +24084,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     } else {
       gpuSel.value = 'off';
     }
-    ditherSel.value = c.dither;
+    ensureOpt(ditherSel, c.dither || 'bayer', String(c.dither));
     filterSel.value = (c.filter && MO_CLIP_FILTERS.some((f) => f.id === c.filter)) ? c.filter : 'none';
     applyFilterPreview();
-    loopInput.value = String(c.loops);
+    ensureOpt(loopInput, c.loops || 0, `Repeat ${c.loops} times`);
     cropEnabled = !!c.cropEnabled;
     cropChk.checked = cropEnabled;
     cropNorm = { ...c.cropNorm };
@@ -23529,11 +24125,13 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     try { if (Number.isFinite(c.inT)) preview.currentTime = c.inT; } catch { /* ignore */ }
     // The program state (snapshots predating these fields restore to empty).
     segments = Array.isArray(c.segments) ? c.segments.filter((sg) => sg && sg.out > sg.in).map((sg) => ({ in: Math.max(0, sg.in), out: Math.min(duration, sg.out) })) : [];
+    selSeg = segments.findIndex((sg) => Math.abs(sg.in - c.inT) < 0.011 && Math.abs(sg.out - c.outT) < 0.011);
     blurRegions = Array.isArray(c.blurRegions) ? c.blurRegions.map((r) => ({ ...r, id: ++blurSeq })) : [];
     captions = Array.isArray(c.captions) ? c.captions.map((x) => ({ ...x, id: ++captionSeq })) : [];
     audioFx = c.audioFx ? { fadeIn: 0, fadeOut: 0, normalize: false, denoise: false, ...c.audioFx } : { fadeIn: 0, fadeOut: 0, normalize: false, denoise: false };
     endCard = c.endCard ? { enabled: false, title: '', subtitle: '', seconds: 3, bg: '#101418', ...c.endCard } : { enabled: false, title: '', subtitle: '', seconds: 3, bg: '#101418' };
     fadeInInput.value = String(audioFx.fadeIn); fadeOutInput.value = String(audioFx.fadeOut);
+    for (const f of [fadeInInput, fadeOutInput]) f.dispatchEvent(new Event('input', { bubbles: true }));
     normChk.checked = !!audioFx.normalize; dnChk.checked = !!audioFx.denoise;
     cardChk.checked = !!endCard.enabled; cardTitle.value = endCard.title || ''; cardSub.value = endCard.subtitle || ''; cardSecs.value = String(endCard.seconds || 3); cardBg.value = /^#[0-9a-fA-F]{6}$/.test(endCard.bg || '') ? endCard.bg : '#101418';
     cardBody.style.display = endCard.enabled ? '' : 'none';
@@ -23561,9 +24159,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // addBtn sits in the Export menu's footer (and answers Q anywhere).
   queueHeadActions.append(stopEditBtn);
   queueHead.appendChild(queueHeadActions);
-  queueWrap.appendChild(queueHead);
   const queueList = moEl('div', 'mo-clip-queue-list');
   queueWrap.appendChild(queueList);
+  queueWrap.appendChild(moEl('div', 'mo-clip-note', { textContent: 'Click a clip to load its settings for editing; its menu has Rename, Format, Duplicate and Remove. Q adds the current settings.' }));
   // ── Queue presets ────────────────────────────────────────────────────────
   // Persisted JSON in mo_settings (key 'clip_presets_v1'). Each preset is a
   // named array of partial snapshots: { name: string, clips: Snapshot[] }.
@@ -23571,8 +24169,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // \u2014 in/out times can therefore exceed the source duration; we clamp at
   // load. Save uses whatever is currently in the queue.
   const presetsRow = moEl('div', 'mo-clip-presets-row');
-  const saveBtn = moEl('button', 'mo-mark-btn', { textContent: 'Save as Preset…', title: 'Save the current queue as a named preset' });
-  presetsRow.appendChild(saveBtn);
+  const saveBtn = api.ui.createButton(queueSaveSlot, { label: 'Save as Preset…', kind: 'ghost', size: 'sm', title: 'Save the queued clips as a named preset' });
+  presetsRow.appendChild(moEl('span', 'mo-ce-group-title', { textContent: 'Presets' }));
   const presetsHost = moEl('div');
   presetsHost.style.display = 'flex';
   presetsHost.style.gap = '4px';
@@ -23675,7 +24273,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   const secQueue = addSection('queue', 'Queue');
   popFoot.appendChild(addBtn);
   popFoot.appendChild(moEl('span', 'mo-ce-spacer'));
-  api.ui.createButton(popFoot, { label: 'Export…', title: 'Export now with these settings', onClick: () => { setPopOpen(false); exportBtn.click(); } });
+  api.ui.createButton(popFoot, { label: 'Export…', kind: 'primary', title: 'Export now with these settings', onClick: () => { setPopOpen(false); exportBtn.click(); } });
+
   secQueue.appendChild(queueWrap);
 
   // Estimate bytes for a snapshot (mirrors the live estimateBytes() used for
@@ -23708,11 +24307,14 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   function updateQueueTotal() {
     queueBadge.textContent = String(clipQueue.length);
     queueBadge.style.display = clipQueue.length ? '' : 'none';
+    try { syncQueueFoot(); } catch { /* pre-init */ }
+    queueSize.textContent = '';
     if (!accSections.queue) return;
     if (clipQueue.length === 0) { accSections.queue.sum.textContent = 'Empty'; return; }
     let total = 0;
     for (const c of clipQueue) total += estimateBytesForSnapshot(c);
     accSections.queue.sum.textContent = `${clipQueue.length} queued \u00b7 \u2248 ${fmtBytes(total)}`;
+    queueSize.textContent = `\u2248 ${fmtBytes(total)}`;
   }
 
   function renderQueue() {
@@ -23729,8 +24331,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         if (c.id === editingId) row.classList.add('mo-active');
         row.draggable = true;
         row.dataset.clipId = String(c.id);
-        // Drag handle (visual affordance only \u2014 the row itself is the drag source)
-        row.appendChild(moEl('span', 'mo-clip-queue-handle', { textContent: '\u22ee\u22ee', title: 'Drag to reorder' }));
+        row.appendChild(moEl('span', 'mo-clip-queue-handle', { innerHTML: moIcon('grip-vertical', 14), title: 'Drag to reorder' }));
         // Thumbnail (or placeholder)
         if (c.thumb) {
           const img = document.createElement('img');
@@ -23741,67 +24342,61 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         } else {
           row.appendChild(moEl('span', 'mo-clip-queue-thumb'));
         }
-        row.appendChild(moEl('span', 'mo-clip-queue-num', { textContent: String(idx + 1) }));
-        const dur = Math.max(0, (c.outT - c.inT) / Math.max(0.1, c.speed));
-        row.appendChild(moEl('span', 'mo-clip-queue-meta', {
-          textContent: `${moTimeStr(c.inT)} \u2192 ${moTimeStr(c.outT)} \u00b7 ${dur.toFixed(2)}s${c.reverse ? ' \u00b7 rev' : ''}${c.cropEnabled ? (Array.isArray(c.cropKeys) && c.cropKeys.length >= 2 ? ' \u00b7 crop+track' : ' \u00b7 crop') : ''}${c.mute ? ' \u00b7 mute' : ''}`,
-        }));
-        // Optional name (becomes the filename suffix if non-empty)
-        const nameInput = document.createElement('input');
-        nameInput.className = 'mo-clip-queue-name';
-        nameInput.type = 'text';
-        nameInput.placeholder = 'name\u2026';
-        nameInput.value = c.name || '';
-        nameInput.title = 'Optional name, used as the filename in place of the random name';
-        nameInput.addEventListener('click', (e) => e.stopPropagation());
-        nameInput.addEventListener('input', () => { c.name = nameInput.value; });
-        row.appendChild(nameInput);
-        // Per-row format override (#18) \u2014 lets the user retarget a queued
-        // clip without re-loading it for editing. Changing the format also
-        // clears any encode-mode/CRF/GPU mismatch (e.g. switching to webm
-        // disables hwAccel since we only support H.264 hardware encoders).
-        const fmtRowSel = moSelect([['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF']], c.format, { className: 'mo-select--queue' });
-        fmtRowSel.title = 'Output format for this clip';
-        fmtRowSel.addEventListener('click', (e) => e.stopPropagation());
-        fmtRowSel.addEventListener('change', () => {
-          c.format = fmtRowSel.value;
+        // Name (or "Clip N") and what the clip is: format, range, the look.
+        const textCol = moEl('div', 'mo-ce-qtext');
+        const nameLine = moEl('div', 'mo-ce-qname', { textContent: c.name || `Clip ${idx + 1}` });
+        if (c.id === editingId) nameLine.appendChild(moEl('span', 'mo-ce-sum mo-ce-sum--left', { textContent: ' · editing' }));
+        const fmtName = c.format === 'webm' ? 'WebM' : String(c.format || 'mp4').toUpperCase();
+        const range = Array.isArray(c.segments) && c.segments.length >= 2 ? `${c.segments.length} segments` : `${moTcStr(c.inT)}–${moTcStr(c.outT)}`;
+        const flt = MO_CLIP_FILTERS.find((x) => x.id === c.filter);
+        const bits = [fmtName, range];
+        if (flt && flt.id !== 'none') bits.push(flt.label.replace(/\s*\(.*\)$/, ''));
+        if (c.cropEnabled) bits.push(Array.isArray(c.cropKeys) && c.cropKeys.length >= 2 ? 'moving crop' : 'crop');
+        if (c.mute) bits.push('muted');
+        textCol.append(nameLine, moEl('div', 'mo-ce-qmeta', { textContent: bits.join(' · ') }));
+        row.appendChild(textCol);
+        const more = api.ui.createIconButton(row, { icon: 'ellipsis', size: 'sm', title: 'More' });
+        const rename = async () => {
+          const v = await api.window.showInputBox({ prompt: 'Name this clip (also its file name)', value: c.name || '' });
+          if (v === undefined) return;
+          c.name = String(v).trim();
+          renderQueue();
+        };
+        const setFormat = (f) => {
+          c.format = f;
           if (c.format !== 'mp4') c.hwAccel = 'off';
           if (c.format === 'gif') c.encodeMode = 'crf';
-          updateQueueTotal();
-        });
-        row.appendChild(fmtRowSel);
-        // Duplicate
-        const dup = moEl('button', 'mo-clip-queue-dup', { innerHTML: moIcon('copy', 14), title: 'Duplicate this clip' });
-        dup.addEventListener('click', (e) => {
-          e.stopPropagation();
+          renderQueue();
+        };
+        const duplicate = () => {
           const i = clipQueue.findIndex(x => x.id === c.id);
           if (i < 0) return;
           const copy = JSON.parse(JSON.stringify(c));
           copy.id = ++clipSeq;
-          // Append "(copy)" once if name is set; otherwise leave empty so the
-          // numbered fallback distinguishes them.
           if (copy.name) copy.name = copy.name + ' (copy)';
           clipQueue.splice(i + 1, 0, copy);
-          renderQueue();
-          updateExportLabel();
-          updateQueueTotal();
-        });
-        row.appendChild(dup);
-        const del = moEl('button', 'mo-clip-queue-del', { innerHTML: moIcon('x', 14), title: 'Remove from queue' });
-        del.addEventListener('click', (e) => {
-          e.stopPropagation();
+          renderQueue(); updateExportLabel(); updateQueueTotal();
+        };
+        const remove = () => {
           const i = clipQueue.findIndex(x => x.id === c.id);
           if (i >= 0) clipQueue.splice(i, 1);
           if (editingId === c.id) editingId = null;
-          renderQueue();
-          updateExportLabel();
-          updateAddBtnLabel();
-          updateQueueTotal();
+          renderQueue(); updateExportLabel(); updateAddBtnLabel(); updateQueueTotal();
+        };
+        more.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rr = more.getBoundingClientRect();
+          showContextMenu(rr.left, rr.bottom + 4, [
+            { label: 'Rename\u2026', handler: () => { void rename(); } },
+            { label: 'Format', submenu: [['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF']].map(([f, l]) => ({ label: l, checked: c.format === f, handler: () => setFormat(f) })) },
+            { label: 'Duplicate', handler: duplicate },
+            { separator: true },
+            { label: 'Remove', danger: true, handler: remove },
+          ]);
         });
-        row.appendChild(del);
         // Click anywhere else on the row to load it for editing.
         row.addEventListener('click', (e) => {
-          if (e.target === nameInput || e.target === del || e.target === dup) return;
+          if (more.contains(e.target)) return;
           if (editingId === c.id) return;
           editingId = c.id;
           loadSnapshot(c);
@@ -23861,14 +24456,11 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   renderQueue();
 
   function updateAddBtnLabel() {
-    if (editingId == null) {
-      addBtn.textContent = 'Add to Queue';
-      addBtn.title = 'Snapshot current settings as a clip in the batch (Q)';
-    } else {
-      const idx = clipQueue.findIndex(x => x.id === editingId);
-      addBtn.textContent = idx >= 0 ? `Update Clip ${idx + 1}` : 'Add to Queue';
-      addBtn.title = 'Replace the queued clip with the current settings';
-    }
+    const idx = editingId == null ? -1 : clipQueue.findIndex(x => x.id === editingId);
+    addBtn.textContent = '';
+    addBtn.append(ico(idx >= 0 ? 'check' : 'plus', 14), moEl('span', null, { textContent: idx >= 0 ? `Update Clip ${idx + 1}` : 'Add to Queue' }), moEl('span', 'mo-ce-kbd', { textContent: 'Q' }));
+    addBtn.title = idx >= 0 ? 'Replace the queued clip with the current settings (Q)' : 'Snapshot current settings as a clip in the batch (Q)';
+    try { syncQueueFoot(); } catch { /* queue panel not built yet */ }
   }
   updateAddBtnLabel();
 
@@ -23919,8 +24511,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   });
 
   function updateExportLabel() {
-    if (clipQueue.length > 0) exportBtn.textContent = `Export ${clipQueue.length} clip${clipQueue.length === 1 ? '' : 's'}\u2026`;
-    else exportBtn.textContent = 'Export\u2026';
+    if (exportBusy) return;
+    if (clipQueue.length > 0) setExportLabel(`Export ${clipQueue.length} Clip${clipQueue.length === 1 ? '' : 's'}\u2026`, '');
+    else { let est = ''; try { est = '~' + fmtBytes(estimateBytes()); } catch { /* pre-init */ } setExportLabel(`Export ${fmtSel.value === 'webm' ? 'WebM' : fmtSel.value.toUpperCase()}\u2026`, est); }
   }
 
   // ── Export result: the toast's Reveal and Copy Path ──
@@ -23951,7 +24544,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const speed = effectiveSpeed();
     syncFit();
     const dur = Math.max(0.05, ((segments.length >= 2 ? segmentsTotal() : (bb - aa)) + (endCard.enabled ? endCard.seconds : 0)) / speed);
-    const fps = Math.max(1, parseInt(fpsSel.value, 10) || 12);
+    const fps = Math.max(1, outFps());
     const scale = Math.max(0.1, (parseInt(sizeInput.value, 10) || 100) / 100);
     const vw = preview.videoWidth || 1280;
     const vh = preview.videoHeight || 720;
@@ -23993,9 +24586,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const [aa, bb] = getInOut();
     const dur = Math.max(0, (segments.length >= 2 ? segmentsTotal() : (bb - aa)) + (endCard.enabled ? endCard.seconds : 0));
     const est = fmtBytes(estimateBytes());
-    estimateEl.textContent = `${fmtSel.value.toUpperCase()} · ~${est}`;
-    estimateEl.title = `Estimated: ~${est} · ${moTcStr(dur)} at ${fpsSel.value} fps`;
-    popEstimate.textContent = `~${est} · ${moTcStr(dur)}`;
+    exportBtn.title = `Estimated: ~${est} · ${moTcStr(dur)} at ${outFps()} fps`;
+    popEstimate.textContent = `~${est}`;
+    popEstimateSub.textContent = `${fmtSel.value === 'webm' ? 'WebM' : fmtSel.value.toUpperCase()} · ${moTcStr(dur)}`;
+    updateExportLabel();
   }
   inInput.addEventListener('input', updateEstimate);
   outInput.addEventListener('input', updateEstimate);
@@ -24042,6 +24636,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     const [aa, bb] = getInOut();
     const lenNow = segments.length >= 2 ? segmentsTotal() : (bb - aa);
     const spNow = effectiveSpeed();
+    speedSub.textContent = `${moTcStr(lenNow / spNow)} out`;
     readoutEl.textContent = `Clip ${moTcStr(lenNow)}`
       + (segments.length >= 2 ? ` · ${segments.length} segments` : '')
       + (Math.abs(spNow - 1) > 0.001 ? ` · ${moTcStr(lenNow / spNow)} at ${spNow >= 10 ? Math.round(spNow) : Math.round(spNow * 100) / 100}×` : '');
@@ -24055,6 +24650,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     };
     for (const [k, t] of Object.entries(tabEls)) t.tab.classList.toggle('mo-ce-tab--used', !!used[k]);
     paintLanes();
+    try { scheduleHistory(); } catch { /* history not built yet */ }
     accSections.trim.sum.textContent = segments.length >= 2
       ? `${segments.length} segments · ${moTcStr(segmentsTotal())}`
       : moTcStr(bb - aa);
@@ -24070,7 +24666,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     }
     const scalePct = parseInt(sizeInput.value, 10) || 100;
     accSections.output.sum.textContent =
-      `${fmtSel.value.toUpperCase()} · ${fpsSel.value} fps` +
+      `${fmtSel.value.toUpperCase()} · ${fpsSel.value === 'src' ? 'source' : fpsSel.value} fps` +
       (scalePct !== 100 ? ` · ${scalePct}%` : '') +
       (muteChk.checked && fmtSel.value !== 'gif' ? ' · muted' : '');
     accSections.crop.sum.textContent = !cropEnabled
@@ -24103,7 +24699,41 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
   // Cancel-batch flag (set by the in-flight cancel button below)
   let batchCancelled = false;
 
+  // Export progress runs on the Export button: a fill, the percentage and
+  // Cancel (clicking it stops every ffmpeg run of this export). The editor
+  // stays usable while it renders.
+  let exportScope = null;
+  function beginExportUi() {
+    exportBusy = true;
+    exportScope = { procs: new Set(), cancelled: false };
+    exportBtn.classList.add('mo-ce-busy');
+    setExportProgress(0, '');
+    return exportScope;
+  }
+  function setExportProgress(pct, what) {
+    const p = Math.max(0, Math.min(1, pct || 0));
+    exportBtn.style.setProperty('--mo-ce-progress', (p * 100).toFixed(1) + '%');
+    setExportLabel('Cancel', `${what ? what + ' · ' : ''}${Math.round(p * 100)}%`);
+    exportBtn.title = 'Exporting. Click to cancel.';
+  }
+  function endExportUi() {
+    exportBusy = false;
+    exportScope = null;
+    exportBtn.classList.remove('mo-ce-busy');
+    exportBtn.style.removeProperty('--mo-ce-progress');
+    exportBtn.disabled = false;
+    updateExportLabel();
+    try { updateEstimate(); } catch { /* ignore */ }
+  }
+  function cancelExport() {
+    if (!exportScope || exportScope.cancelled) return;
+    exportScope.cancelled = true;
+    batchCancelled = true;
+    for (const proc of exportScope.procs) { try { proc.cancel(); } catch { /* ignore */ } }
+    status.textContent = 'Cancelling…';
+  }
   exportBtn.addEventListener('click', async () => {
+    if (exportBusy) { cancelExport(); return; }
     // ── Batch-export path: queue has at least one entry ─────────────────────
     // Each queued clip is a fully isolated snapshot \u2014 settings, crop, format
     // are not shared with the working state. Per-frame GIF edits and the
@@ -24122,14 +24752,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       const outDir = Array.isArray(folderRes) ? folderRes[0] : folderRes;
       if (!outDir) return; // cancelled
 
-      // While the batch runs, the Export button morphs into Cancel.
+      // While the batch runs, the Export button shows progress and cancels.
       batchCancelled = false;
-      const origExportLabel = exportBtn.textContent;
-      exportBtn.textContent = 'Cancel batch';
-      exportBtn.classList.add('px-btn--secondary');
-      exportBtn.classList.remove('px-btn--primary');
-      const onCancelClick = (e) => { e.stopPropagation(); batchCancelled = true; exportBtn.disabled = true; status.textContent = 'Cancelling after current clip\u2026'; };
-      exportBtn.addEventListener('click', onCancelClick, { capture: true });
+      const scope = beginExportUi();
       cancelBtn.disabled = true;
 
       // Sanitize a name for filesystem safety.
@@ -24194,7 +24819,9 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
               srcW: preview.videoWidth || c.srcW || 0,
               srcH: preview.videoHeight || c.srcH || 0,
               frameEdits: null,
+              cancel: scope,
               onProgress: ({ pct, etaMs }) => {
+                setExportProgress((i + pct) / clipQueue.length, `${i + 1} of ${clipQueue.length}`);
                 const pctStr = (pct * 100).toFixed(0).padStart(2, ' ');
                 const etaStr = etaMs != null && etaMs > 0 ? ` \u00b7 ETA ${formatEta(etaMs)}` : '';
                 status.textContent = `Exporting ${i + 1} / ${clipQueue.length}\u2026 ${pctStr}%${etaStr}`;
@@ -24229,17 +24856,17 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
             // Index after any optimize pass so fingerprints match final bytes.
             await moIndexExportedFile(candidate);
           } catch (err) {
+            if (scope.cancelled) {
+              await window.parallxElectron.fs.delete(candidate, { useTrash: false }).catch(() => {});
+              break;
+            }
             failCount++;
             // eslint-disable-next-line no-console
             console.warn('[media-organizer] batch clip export failed', err);
           }
         }
       } finally {
-        exportBtn.removeEventListener('click', onCancelClick, { capture: true });
-        exportBtn.textContent = origExportLabel;
-        exportBtn.classList.add('px-btn--primary');
-        exportBtn.classList.remove('px-btn--secondary');
-        exportBtn.disabled = false;
+        endExportUi();
         cancelBtn.disabled = false;
       }
       const cancelledTail = batchCancelled ? ' (cancelled)' : '';
@@ -24279,13 +24906,15 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       mp4:  [{ name: 'MP4',  extensions: ['mp4'] }],
       webm: [{ name: 'WebM', extensions: ['webm'] }],
     };
+    const typed = safeFileName(nameInput.value);
     const chosen = await window.parallxElectron.dialog.saveFile({
-      defaultPath: await moRandomNameFree(srcDir, sep, ext),
+      defaultPath: typed ? `${srcDir}${sep}${typed}.${ext}` : await moRandomNameFree(srcDir, sep, ext),
       filters: filterMap[fmtSel.value] || [],
     });
     if (!chosen) return; // cancelled — keep the dialog open
 
-    exportBtn.disabled = true; cancelBtn.disabled = true;
+    cancelBtn.disabled = true;
+    const scope = beginExportUi();
     status.textContent = 'Exporting…';
 
     // Detect frame edits — only honored when format=gif
@@ -24305,7 +24934,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         fontFile,
         outPath: chosen,
         format: fmtSel.value,
-        fps: parseInt(fpsSel.value, 10),
+        fps: outFps(),
         scalePct: Math.max(10, parseInt(sizeInput.value, 10) || 100),
         speed: effectiveSpeed(),
         reverse: revChk.checked,
@@ -24337,8 +24966,10 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
           frames: frames.map(f => ({ src: f.src, deleted: f.deleted, delayMs: f.delayMs })),
           reverseFrameOrder: revFrames,
         } : null,
+        cancel: scope,
         // Real-time progress \u2014 streams from ffmpeg's `-progress pipe:1`.
         onProgress: ({ pct, etaMs }) => {
+          setExportProgress(pct, '');
           const pctStr = (pct * 100).toFixed(0).padStart(2, ' ');
           const etaStr = etaMs != null && etaMs > 0
             ? ` \u00b7 ETA ${formatEta(etaMs)}`
@@ -24363,7 +24994,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         const [aa, bb] = getInOut();
         const speed = effectiveSpeed();
         const dur = Math.max(0.05, (bb - aa) / speed);
-        const fps = Math.max(1, parseInt(fpsSel.value, 10) || 12);
+        const fps = Math.max(1, outFps());
         const scale = Math.max(0.1, (parseInt(sizeInput.value, 10) || 100) / 100);
         const vw = preview.videoWidth || 1280;
         const vh = preview.videoHeight || 720;
@@ -24427,10 +25058,15 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       toast.style.display = '';
       api.window.showInformationMessage('Exported: ' + result.outPath);
     } catch (err) {
-      status.textContent = '';
-      api.window.showErrorMessage('Export failed: ' + (err && err.message || err));
+      if (scope.cancelled) {
+        status.textContent = 'Export cancelled.';
+        await window.parallxElectron.fs.delete(chosen, { useTrash: false }).catch(() => {});
+      } else {
+        status.textContent = '';
+        api.window.showErrorMessage('Export failed: ' + (err && err.message || err));
+      }
     } finally {
-      exportBtn.disabled = false; cancelBtn.disabled = false;
+      endExportUi(); cancelBtn.disabled = false;
     }
   });
 
@@ -24592,7 +25228,7 @@ async function moExportClip(api, opts) {
       '-ss', startSs, '-t', len, '-i', opts.videoPath,
       '-vf', vfA,
       tmpPalette,
-    ], 600000);
+    ], 600000, opts.cancel);
     if (r1.exitCode !== 0) throw new Error('palettegen: ' + (r1.stderr || 'unknown'));
 
     const dither = opts.dither || 'bayer';
@@ -24604,7 +25240,7 @@ async function moExportClip(api, opts) {
       '-lavfi', vfB,
       '-loop', String(opts.loops || 0),
       outPath,
-    ], 600000);
+    ], 600000, opts.cancel);
     await window.parallxElectron.fs.delete(tmpPalette, { useTrash: false }).catch(() => {});
     if (r2.exitCode !== 0) throw new Error('paletteuse: ' + (r2.stderr || 'unknown'));
   } else {
@@ -24769,13 +25405,13 @@ async function moExportClip(api, opts) {
       // Software two-pass (libx264 or libvpx-vp9). Hardware encoders all do
       // single-pass VBR \u2014 they don't benefit from two-pass.
       startedAt = Date.now();
-      const r1 = await window.parallxElectron.terminal.execStream(
+      const r1 = await moFfStream(opts.cancel, 
         { command: _toolPaths.ffmpeg, args: buildArgv(buildCodecArgs(1), outPath, true), timeout: 1800000 },
         { onStdout, onStderr },
       );
       if (r1.exitCode !== 0) throw new Error('ffmpeg pass 1: ' + (stderrTail || 'failed'));
       lastEncodedSec = 0; progressBuffer = ''; startedAt = Date.now();
-      const r2 = await window.parallxElectron.terminal.execStream(
+      const r2 = await moFfStream(opts.cancel, 
         { command: _toolPaths.ffmpeg, args: buildArgv(buildCodecArgs(2), outPath, false), timeout: 1800000 },
         { onStdout, onStderr },
       );
@@ -24789,7 +25425,7 @@ async function moExportClip(api, opts) {
     } else {
       // Single-pass (CRF mode, or hardware encoder in size mode).
       startedAt = Date.now();
-      const r = await window.parallxElectron.terminal.execStream(
+      const r = await moFfStream(opts.cancel, 
         { command: _toolPaths.ffmpeg, args: buildArgv(buildCodecArgs(), outPath, false), timeout: 1800000 },
         { onStdout, onStderr },
       );
@@ -24803,7 +25439,7 @@ async function moExportClip(api, opts) {
           const fallback = opts.format === 'mp4'
             ? ['-c:v', 'libx264', '-preset', 'medium', '-crf', String(opts.crf), '-pix_fmt', 'yuv420p', '-movflags', '+faststart']
             : ['-c:v', 'libvpx-vp9', '-crf', String(opts.crf), '-b:v', '0', '-row-mt', '1'];
-          const rr = await window.parallxElectron.terminal.execStream(
+          const rr = await moFfStream(opts.cancel, 
             { command: _toolPaths.ffmpeg, args: buildArgv(fallback, outPath, false), timeout: 1800000 },
             { onStdout, onStderr },
           );
@@ -24867,7 +25503,7 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
       '-vf', vfExtract,
       '-frames:v', String(totalFrames + 4),
       pattern,
-    ], 300000);
+    ], 300000, opts.cancel);
     if (rEx.exitCode !== 0) throw new Error('frame extract: ' + (rEx.stderr || 'failed'));
 
     const list = await window.parallxElectron.fs.readdir(workDir);
@@ -24912,7 +25548,7 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
       '-f', 'concat', '-safe', '0', '-i', concatPath,
       '-vf', 'palettegen=stats_mode=diff',
       palettePath,
-    ], 300000);
+    ], 300000, opts.cancel);
     if (r1.exitCode !== 0) throw new Error('palettegen: ' + (r1.stderr || 'failed'));
 
     const r2 = await moExecFFArgs([
@@ -24922,7 +25558,7 @@ async function moExportGifWithFrameEdits(api, opts, outPath) {
       '-lavfi', `paletteuse=dither=${dither}`,
       '-loop', String(opts.loops || 0),
       outPath,
-    ], 300000);
+    ], 300000, opts.cancel);
     if (r2.exitCode !== 0) throw new Error('paletteuse: ' + (r2.stderr || 'failed'));
 
     return { outPath };
@@ -35953,7 +36589,7 @@ export async function activate(api, context) {
         api.window.showWarningMessage('Could not read the video duration.');
         return;
       }
-      await moOpenClipDialog(api, videoPath, duration, 0, Math.min(duration, 6), {});
+      await moOpenClipDialog(api, videoPath, duration, 0, duration, {});
     })
   );
 

@@ -290,6 +290,12 @@
   --px-clip-lane-h-ruler:  22px;
   --px-clip-head-w:        88px;    /* lane names                           */
   --px-clip-dim:           rgba(0, 0, 0, 0.62);   /* source that will not export */
+  /* Text colours offered in the Text tab (burned into the export as is). */
+  --px-clip-text-1: #ffffff;
+  --px-clip-text-2: #f5d06b;
+  --px-clip-text-3: #6fb6ff;
+  --px-clip-text-4: #ff7a7a;
+  --px-clip-text-5: #111111;
 }
 
 /* ============================================================================

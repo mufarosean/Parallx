@@ -22,7 +22,7 @@ function loadPure(): Record<string, any> {
   const names = ['MO_CLIP_FILTERS', 'moClipFilterVf', 'moCropKeysAt', 'moCropVfSegment', 'moSimplifyTrackKeys', 'moFfEscapeText', 'moFfEscapePath',
     'moCaptionVf', 'moCaptionsVf', 'moBlurRegionsGraph', 'moAudioFxAf', 'moParseDetectLog', 'moDeadAirSegments', 'moSmartZoomKeys',
     'moBoxTrackToKeys', 'moStageOutputDims', 'moEndCardInputs', 'moSegmentsGraph', 'moClipOutputTime',
-    'moTcStr', 'moParseTc', 'moTimelineStep', 'moClipSourceTime', 'moSplitSegments'];
+    'moTcStr', 'moParseTc', 'moTimelineStep', 'moClipSourceTime', 'moSplitSegments', 'moCaptionLayout'];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   return new Function(src.slice(a, b) + `\nreturn { ${names.join(', ')} };`)();
 }
@@ -50,6 +50,26 @@ describe('drawtext escaping', () => {
     expect(vf).toContain("enable='between(t,1.000,2.500)'");
     expect(vf).toContain('boxcolor=black@0.6');
     expect(P.moCaptionsVf([{ text: '   ' }], '')).toEqual([]);
+  });
+  it('stacks a line per drawtext, the second smaller, inside the frame', () => {
+    const vf = P.moCaptionVf({ text: 'Weekly update\nPlanner, Today tab', style: 'lower', t0: 0, t1: 2 }, '') as string;
+    const parts = vf.split(/,(?=drawtext=)/);
+    expect(parts).toHaveLength(2);
+    const y = parts.map((p) => parseFloat(/y=h\*([\d.]+)/.exec(p)![1]));
+    const size = parts.map((p) => parseFloat(/fontsize=h\*([\d.]+)/.exec(p)![1]));
+    expect(y[1]).toBeGreaterThan(y[0]);
+    expect(size[1]).toBeLessThan(size[0]);
+    expect(parts[1]).toContain("text='Planner, Today tab'".replace(',', ','));
+    const lay = P.moCaptionLayout({ text: 'a\nb', style: 'lower' });
+    expect(lay.top + lay.total).toBeLessThanOrEqual(0.86 + 1e-9);
+  });
+  it('a dragged caption sits where it was put', () => {
+    const vf = P.moCaptionVf({ text: 'Here', style: 'title', t0: 0, t1: 1, cx: 0.25, cy: 0.2 }, '') as string;
+    expect(vf).toContain('x=w*0.2500-text_w/2');
+    const lay = P.moCaptionLayout({ text: 'Here', style: 'title', cx: 0.25, cy: 0.2 });
+    expect(lay.top + lay.total / 2).toBeCloseTo(0.2, 6);
+    const edge = P.moCaptionLayout({ text: 'Here', style: 'title', cx: 0.5, cy: 0.999 });
+    expect(edge.top + edge.total).toBeLessThanOrEqual(1 + 1e-9);
   });
 });
 

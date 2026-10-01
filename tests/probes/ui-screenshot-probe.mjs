@@ -313,7 +313,7 @@ async function main() {
         };
         const closeMenus = async () => page.evaluate(() => {
           const pop = document.querySelector('.mo-ce-pop'); if (pop && pop.style.display !== 'none') document.querySelector('.mo-ce-split-menu')?.click();
-          const q = document.querySelector('.mo-ce-queue'); if (q && q.style.display !== 'none') q.querySelector('.mo-ce-queue-head button:last-child')?.click();
+          const q = document.querySelector('.mo-ce-queue'); if (q && q.style.display !== 'none') q.querySelector('[title="Close the queue"]')?.click();
         });
         const clickBtn = async (text) => {
           const btn = page.locator('.mo-clip-page button', { hasText: text }).first();
@@ -322,23 +322,26 @@ async function main() {
           await page.waitForTimeout(400);
           return true;
         };
-        // Trim: two segments from the one range.
+        // Trim: split twice, delete the middle segment (a cut), bring it back
+        // from the timeline, then undo that.
         await openSection('Trim');
-        await clickBtn('Add Segment');
-        // Second range via the I/O hotkeys at a later playhead.
-        await page.locator('.mo-clip-page').first().focus().catch(() => {});
-        await page.evaluate(() => { const v = document.querySelector('.mo-clip-page video'); if (v) v.currentTime = 3; });
-        await page.waitForTimeout(300); await page.keyboard.press('i');
-        await page.evaluate(() => { const v = document.querySelector('.mo-clip-page video'); if (v) v.currentTime = 5; });
-        await page.waitForTimeout(300); await page.keyboard.press('o');
-        await page.waitForTimeout(300);
-        await clickBtn('Add Segment');
+        const focusPage = async () => page.locator('.mo-clip-page').first().focus().catch(() => {});
+        const seekTo = async (t) => { await page.evaluate((tt) => { const v = document.querySelector('.mo-clip-page video'); if (v) { v.pause(); v.currentTime = tt; } }, t); await page.waitForTimeout(300); };
+        const laneState = () => page.evaluate(() => `blocks=${document.querySelectorAll('.mo-ce-block').length} cuts=[${Array.from(document.querySelectorAll('.mo-ce-dim')).map((d) => d.textContent).join(', ')}] segrows=${document.querySelectorAll('.mo-ce .mo-clip-segrow').length} range=${document.querySelector('.mo-ce-tcfield')?.value}..${document.querySelectorAll('.mo-ce-tcfield')[1]?.value} undo=${!document.querySelector('[title^="Undo"]')?.disabled}`);
+        await seekTo(2); await focusPage(); await page.keyboard.press('s');
+        await seekTo(4); await focusPage(); await page.keyboard.press('s');
+        await page.evaluate(() => document.querySelectorAll('.mo-ce .mo-clip-segrow')[1]?.click());
+        await page.waitForTimeout(300); await focusPage(); await page.keyboard.press('Delete');
+        await page.waitForTimeout(500);
+        console.log(`[probe] clip cut: ${await laneState()}`);
         await shot(page, 'clip-segments'); await stageState('clip-segments');
-        // Split at the playhead (S) inside the first segment.
-        await page.evaluate(() => { const v = document.querySelector('.mo-clip-page video'); if (v) { v.pause(); v.currentTime = 1.5; } });
-        await page.waitForTimeout(300); await page.locator('.mo-clip-page').first().focus().catch(() => {}); await page.keyboard.press('s');
-        await page.waitForTimeout(400);
-        const lanes = await page.evaluate(() => `blocks=${document.querySelectorAll('.mo-ce-block').length} dims=${document.querySelectorAll('.mo-ce-dim').length} thumbs=${document.querySelectorAll('.mo-ce-thumb').length} wave=${document.querySelector('.mo-ce-wave')?.style.display !== 'none'} ticks=${document.querySelectorAll('.mo-ce-tick').length} status="${document.querySelector('.mo-clip-status')?.textContent || ''}"`);
+        await page.evaluate(() => Array.from(document.querySelectorAll('.mo-ce-dim')).find((d) => /Cut/.test(d.textContent))?.click());
+        await page.waitForTimeout(500);
+        console.log(`[probe] clip brought back: ${await laneState()}`);
+        await focusPage(); await page.keyboard.press('Control+z');
+        await page.waitForTimeout(600);
+        console.log(`[probe] clip undo: ${await laneState()}`);
+        const lanes = await page.evaluate(() => `thumbs=${document.querySelectorAll('.mo-ce-thumb').length} wave=${document.querySelector('.mo-ce-wave')?.style.display !== 'none'} ticks=${document.querySelectorAll('.mo-ce-tick').length} status="${document.querySelector('.mo-clip-status')?.textContent || ''}"`);
         console.log(`[probe] clip timeline: ${lanes}`);
         await shot(page, 'clip-split');
         // Blur: one region on the stage.
@@ -349,10 +352,10 @@ async function main() {
           const d = await page.evaluate(() => { const b = document.querySelector('.mo-blur-rect'); if (!b) return 'none'; const r = b.getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)}x${Math.round(r.height)} t=${document.querySelector('.mo-clip-page video')?.currentTime}`; });
           console.log(`[probe] clip blur rect: ${d}`);
           // Oval shape for the shot.
-          await page.evaluate(() => { const b = Array.from(document.querySelectorAll('.mo-clip-page .mo-clip-mode-toggle button')).find((x) => x.textContent === 'Oval'); if (b) b.click(); });
+          await page.evaluate(() => { const b = Array.from(document.querySelectorAll('.mo-clip-page .mo-ce-seg button')).find((x) => x.textContent === 'Oval'); if (b) b.click(); });
           await page.waitForTimeout(300);
           const shapeState = await page.evaluate(() => {
-            const active = Array.from(document.querySelectorAll('.mo-clip-page .mo-clip-mode-toggle button.mo-active')).map((b) => b.textContent).join('|');
+            const active = Array.from(document.querySelectorAll('.mo-clip-page .mo-ce-seg button.mo-active')).map((b) => b.textContent).join('|');
             // The shape lives on the inner fill; the box stays rectangular so
             // its outline and handles are never masked away.
             const b = document.querySelector('.mo-blur-rect .mo-blur-fill');
@@ -369,15 +372,16 @@ async function main() {
         // Text: one caption.
         if (await openSection('Text')) {
           await clickBtn('Add Text');
-          const capInput = page.locator('.mo-clip-page .mo-clip-input--grow').first();
-          if (await capInput.count()) { await capInput.fill('Excess of loss, explained'); await capInput.dispatchEvent('input'); await page.waitForTimeout(400); }
+          const capInput = page.locator('.mo-clip-page .mo-ce-textarea').first();
+          if (await capInput.count()) { await capInput.fill('Excess of loss, explained\nA second line'); await capInput.dispatchEvent('input'); await page.waitForTimeout(400); }
           // Pause and park the playhead inside the caption's window so the
           // preview on the stage is in the shot.
           await page.evaluate(() => {
             const v = document.querySelector('.mo-clip-page video');
-            const sec = Array.from(document.querySelectorAll('.mo-ce-panel')).find((a) => (a.querySelector('.mo-ce-panel-title')?.textContent || '') === 'Text');
-            const from = sec?.querySelector('input[type="number"]');
-            if (v) { v.pause(); if (from) v.currentTime = parseFloat(from.value) + 0.3; }
+            const textPanel = Array.from(document.querySelectorAll('.mo-ce-panel')).find((x) => (x.querySelector('.mo-ce-panel-title')?.textContent || '') === 'Text');
+            const from = textPanel?.querySelector('.mo-ce-timerow .mo-ce-tcfield');
+            const parse = (t) => t.split(':').reduce((acc, p) => acc * 60 + parseFloat(p), 0);
+            if (v) { v.pause(); if (from) v.currentTime = parse(from.value) + 0.3; }
           });
           await page.waitForTimeout(600);
           await shot(page, 'clip-text'); await stageState('clip-text');
@@ -411,7 +415,7 @@ async function main() {
         }
         // Blur: Follow must track the region across In/Out.
         const trackOn = async () => page.evaluate(() => {
-          const chk = document.querySelector('.mo-clip-page .mo-clip-track input');
+          const chk = document.querySelector('.mo-clip-page #mo-ce-blurtrack');
           if (!chk) return false;
           chk.click();
           return true;
@@ -428,10 +432,10 @@ async function main() {
           await shot(page, 'clip-follow');
           // Pixelate must preview as a real mosaic (a canvas inside the box).
           const mosaic = await page.evaluate(() => {
-            const btn = Array.from(document.querySelectorAll('.mo-clip-page .mo-clip-mode-toggle button')).find((b) => b.textContent === 'Pixelate');
+            const btn = Array.from(document.querySelectorAll('.mo-clip-page .mo-ce-seg button')).find((b) => b.textContent === 'Pixelate');
             if (!btn) return 'no Pixelate button';
             btn.click();
-            const oval = Array.from(document.querySelectorAll('.mo-clip-page .mo-clip-mode-toggle button')).find((b) => b.textContent === 'Oval');
+            const oval = Array.from(document.querySelectorAll('.mo-clip-page .mo-ce-seg button')).find((b) => b.textContent === 'Oval');
             if (oval) oval.click();
             const cv = document.querySelector('.mo-blur-mosaic');
             if (!cv) return 'no mosaic canvas';
@@ -462,14 +466,85 @@ async function main() {
           await page.waitForTimeout(800);
         }
         await closeMenus();
-        await page.evaluate(() => document.querySelector('.mo-ce-toolbar .px-btn')?.click());
+        await page.evaluate(() => Array.from(document.querySelectorAll('.mo-ce-toolbar .px-btn')).find((x) => /Queue/.test(x.textContent))?.click());
         await page.waitForTimeout(400);
         await shot(page, 'clip-queue');
         await closeMenus();
-        // A narrow pane: the inspector moves under the video.
+        // Text on the video: park inside the text's window, drag it, check it moved.
+        const capCheck = await page.evaluate(async () => {
+          const v = document.querySelector('.mo-clip-page video');
+          v.pause(); v.currentTime = 4.5; // segment 2 starts at 4 → output 2.5, inside 2..5
+          await new Promise((r) => setTimeout(r, 500));
+          const cap = document.querySelector('.mo-ce-caption');
+          if (!cap) return 'no caption on the video';
+          const r0 = cap.getBoundingClientRect();
+          const lines = cap.querySelectorAll('.mo-ce-caption-line').length;
+          const opts = { bubbles: true, clientX: r0.left + r0.width / 2, clientY: r0.top + r0.height / 2, button: 0 };
+          cap.dispatchEvent(new MouseEvent('mousedown', opts));
+          window.dispatchEvent(new MouseEvent('mousemove', { ...opts, clientX: opts.clientX - 120, clientY: opts.clientY - 80 }));
+          window.dispatchEvent(new MouseEvent('mouseup', opts));
+          await new Promise((r) => setTimeout(r, 300));
+          const cap2 = document.querySelector('.mo-ce-caption');
+          const r1 = cap2 ? cap2.getBoundingClientRect() : null;
+          return `lines=${lines} moved=${r1 ? Math.round(r1.left - r0.left) + ',' + Math.round(r1.top - r0.top) : 'gone'}`;
+        });
+        console.log(`[probe] clip text object: ${capCheck}`);
+        await shot(page, 'clip-text-moved');
+        // The ? sheet.
+        await page.locator('.mo-clip-page').first().focus().catch(() => {}); await page.keyboard.press('?');
+        await page.waitForTimeout(300); await shot(page, 'clip-keys'); await page.keyboard.press('Escape');
+        // Exports through the real pipeline, the save dialog answered with a
+        // workspace path: one to the end, one cancelled half way.
+        // The renderer's bridge is frozen; the native dialog is answered in
+        // the main process instead.
+        const stub = await app.evaluate(({ dialog }, ws) => {
+          let n = 0;
+          dialog.showSaveDialog = async () => ({ canceled: false, filePath: `${ws}/probe-export-${++n}.mp4` });
+          return 'stubbed';
+        }, workspace).catch((e) => 'failed: ' + String(e).slice(0, 80));
+        console.log(`[probe] clip save dialog: ${stub}`);
+        if (stub === 'stubbed') {
+          await page.evaluate(() => { const q = Array.from(document.querySelectorAll('.mo-ce-queue .mo-ce-qtext')); void q; });
+          // Empty the queue so Export is the single-clip path, pick MP4.
+          await page.evaluate(async () => {
+            for (let i = 0; i < 5; i++) { const b = document.querySelector('.mo-ce-queue .mo-clip-queue-row [title="More"]'); if (!b) break; b.click(); await new Promise((r) => setTimeout(r, 200)); const rm = Array.from(document.querySelectorAll('.context-menu *')).find((x) => x.textContent.trim() === 'Remove'); rm?.click(); await new Promise((r) => setTimeout(r, 200)); }
+            Array.from(document.querySelectorAll('.mo-ce-pop .mo-ce-seg button')).find((b) => b.textContent === 'MP4')?.click();
+          });
+          await page.waitForTimeout(500);
+          const exportBtnSel = '.mo-ce-split .px-btn--primary';
+          await page.locator(exportBtnSel).first().evaluate((el) => el.click());
+          const t0 = Date.now(); let st = '';
+          while (Date.now() - t0 < 60_000) {
+            st = await page.evaluate(() => `${document.querySelector('.mo-ce-toast')?.style.display !== 'none' ? 'toast: ' + document.querySelector('.mo-ce-toast-text')?.textContent : ''}|${document.querySelector('.mo-clip-status')?.textContent}`);
+            if (/^toast/.test(st) || /failed/i.test(st)) break;
+            await page.waitForTimeout(500);
+          }
+          const f1 = await fs.stat(path.join(workspace, 'probe-export-1.mp4')).then((x) => x.size).catch(() => 0);
+          console.log(`[probe] clip export: ${st} · file ${f1} bytes (${Math.round((Date.now() - t0) / 1000)}s)`);
+          await shot(page, 'clip-exported');
+          // Second export, cancelled on its first progress.
+          await page.locator(exportBtnSel).first().evaluate((el) => el.click());
+          let sawBusy = false;
+          for (let i = 0; i < 100; i++) {
+            const busy = await page.evaluate((sel) => document.querySelector(sel)?.classList.contains('mo-ce-busy'), exportBtnSel);
+            if (busy) { sawBusy = true; await page.locator(exportBtnSel).first().evaluate((el) => el.click()); break; }
+            await page.waitForTimeout(50);
+          }
+          await page.waitForTimeout(3_000);
+          const after = await page.evaluate((sel) => `${document.querySelector('.mo-clip-status')?.textContent} · button "${document.querySelector(sel)?.textContent}"`, exportBtnSel);
+          const f2 = await fs.stat(path.join(workspace, 'probe-export-2.mp4')).then(() => 'left behind').catch(() => 'removed');
+          console.log(`[probe] clip cancel: saw progress=${sawBusy} · ${after} · partial file ${f2}`);
+        }
+        // A narrow pane: the inspector is a sheet over the timeline.
         await page.setViewportSize({ width: 820, height: 900 }).catch(() => {});
         await page.waitForTimeout(600);
         await shot(page, 'clip-narrow');
+        await page.evaluate(() => document.querySelector('.mo-ce-stagecol .mo-ce-tab[title="Text"]')?.click());
+        await page.waitForTimeout(500);
+        await shot(page, 'clip-narrow-sheet');
+        await page.setViewportSize({ width: 620, height: 900 }).catch(() => {});
+        await page.waitForTimeout(600);
+        await shot(page, 'clip-tiny');
         await page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
         await page.waitForTimeout(400);
         const summary = await page.evaluate(() => {
@@ -480,12 +555,12 @@ async function main() {
           });
           const segs = document.querySelectorAll('.mo-clip-segrow').length;
           const blurs = document.querySelectorAll('.mo-blur-rect').length;
-          const caps = document.querySelectorAll('.mo-caption').length;
+          const caps = document.querySelectorAll('.mo-ce-caption').length;
           const status = document.querySelector('.mo-clip-status')?.textContent || '';
           const layer = document.querySelector('.mo-caption-layer');
-          const capRow = Array.from(document.querySelectorAll('.mo-ce-panel')).find((a) => (a.querySelector('.mo-ce-panel-title')?.textContent || '') === 'Text')?.querySelector('.mo-clip-segrow--stack');
-          const nums = capRow ? Array.from(capRow.querySelectorAll('input[type="number"]')).map((i) => i.value).join('..') : 'none';
-          const txt = capRow ? (capRow.querySelector('input[type="text"]')?.value || '') : '';
+          const textPanel = Array.from(document.querySelectorAll('.mo-ce-panel')).find((x) => (x.querySelector('.mo-ce-panel-title')?.textContent || '') === 'Text');
+          const nums = Array.from(textPanel ? textPanel.querySelectorAll('.mo-ce-timerow .mo-ce-tcfield') : []).map((i) => i.value).join('..') || 'none';
+          const txt = document.querySelector('.mo-ce-textarea')?.value || '';
           const vt = document.querySelector('.mo-clip-page video')?.currentTime;
           const capDiag = `layer=${layer ? getComputedStyle(layer).display + '/' + layer.children.length : 'none'} window=${nums} text="${txt}" vt=${vt}`;
           return `sections=${rows.join(' | ')} segrows=${segs} blurrects=${blurs} captions=${caps} ${capDiag} status="${status}"`;

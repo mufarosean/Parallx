@@ -53,38 +53,64 @@ program that turned a trimmer into a small editor and the recorder into a camera
 
 ## The editor's layout (redesign 2026-10-01)
 
-Mockups: `docs/mockups/clip-editor-redesign.html`. The editor is a page, not a dialog
-in a tab:
+Built to the approved mockups, `docs/mockups/clip-editor-redesign.html`. The editor
+is a page, not a dialog in a tab. It opens on the whole video.
 
-- **Toolbar**: file name, length and size; the estimate (format and size); Queue
-  (with a count); Export, with a menu for format, size and quality.
-- **Stage**: the video fills the left side. Under it the transport: Set In, frame
-  back, play, frame forward, Set Out, timecode, the clip's length (and its length
-  after speed), mute. On the Crop tab the aspect ratios and Preview Crop float on the
-  video.
-- **Inspector**: six tabs (Trim, Crop, Look, Blur, Text, Audio). A dot marks a tab
-  whose settings are in use. Trim holds the range in timecode (In, Out and an
-  editable Length), the segments, and Timing (Speed, Fit To Length, Reverse). Look is
-  a grid of swatches of the current frame.
-- **Timeline**: a ruler, the Video lane (thumbnails over the whole source; what
-  exports is bright, the rest dimmed; segments as numbered blocks), the Audio lane
-  (a peak envelope), and lanes for crop keyframes, blur windows and text windows.
-  Drag anywhere to scrub; drag bars to move them in time; S splits at the playhead.
-  Zoom with the slider or Ctrl+scroll; Fit shows everything. The ruler draws only
-  the ticks in view, and thumbnails come from key frames only on videos over two
-  minutes, so a two-hour session opens in seconds.
-- **Export menu**: preset chips, format, frame rate, size, mute; then encoding
-  (quality or target size, GPU; for GIF dither, loop, frame order, auto-optimize);
-  Add to Queue (Q) and Export. A GIF also gets the GIF frames row under the timeline
-  for per-frame delays and drops.
-- **Queue panel**: the batch, presets, Stop Editing. After an export a toast offers
-  Reveal and Copy Path.
-- Below 860px wide the inspector moves under the video; below 560px the timeline
-  keeps the Video and Audio lanes.
+- **Toolbar**: file name, length and size; Undo and Redo (Ctrl+Z, Ctrl+Shift+Z: every
+  settled edit is a snapshot); Queue with a count; Export, whose button carries the
+  format and the size estimate and, while a clip renders, the progress and Cancel.
+- **Stage**: the video fills the left side, with chips for the source (size and frame
+  rate) and, while cropping with keys, which key the playhead is on. The crop frame
+  shows its size. On the Crop tab the aspect ratios and Preview Crop float on the
+  video; on the Text and Blur tabs, Add Text (T) and Add Blur Region. Text and blur
+  boxes are objects: click selects (and opens their tab), drag moves.
+- **Transport**: Set In, frame back, play, frame forward, Set Out, timecode, the clip's
+  length (and after speed), loop (on: wraps; off: stops at Out), mute, Save Frame (the
+  frame under the playhead as a photo, cropped when the crop is on).
+- **Inspector**, six tabs with an in-use dot:
+  - *Trim*: Range (In, Out, Length in timecode; it edits the selected segment), the
+    segments (drag the grip to reorder, Delete removes), Split at Playhead (S) and Cut
+    Dead Air, Speed (0.5×, 1×, 1.5×, 2×, and Fit… for Fit To Length and any speed up
+    to 64×), Reverse.
+  - *Crop*: Crop with its switch (Aspect, Output size, Reset to Full Frame), Motion
+    (Add Keyframe K, Clear Keys), Follow a Subject (Auto-Track, Point Track), Smart
+    Zoom (screen recordings only).
+  - *Look*: swatches of the current frame in each look; Preview Render.
+  - *Blur*: the selected region (effect, shape, strength, Shows from–to, Track) and
+    the list.
+  - *Text*: the selected text (Text i of n with a ⋯ menu, a box where a second line
+    sits under the first, Style, colour swatches, Shows from–to) and the list.
+  - *Audio*: fade in and out (slider and field), Even Out Volume, Reduce Noise; the End
+    Card as its own group.
+- **Timeline**: ruler, Video (thumbnails; what exports is bright; segments are blocks
+  that trim from their ends and slide; cuts are hatched, labelled Cut or Paused, and
+  come back on a click), Audio (a peak envelope), Motion (keys, the glide between
+  them, zoom stretches in amber), Blur and Text (bars that drag in time). Snap (on by
+  default) settles drags on the playhead, In/Out, edges and keys. Zoom by slider,
+  buttons or Ctrl+scroll. For a GIF the video lane shows the frames over the range
+  (click for a delay, right-click to drop) and the timeline zooms to it.
+- **Export menu**: presets (Slack, GitHub, X, Discord, Email, Messages, Chat GIF,
+  Custom), format, frame rate (or Source), size, mute; encoding (GIF: loop, dither
+  with Sierra, Max Size, the frames summary and Reverse; MP4/WebM: quality or target
+  size, GPU); Name; Add to Queue (Q) and Export.
+- **Queue panel**: clips with a thumbnail, name and summary, and a ⋯ menu (Rename,
+  Format, Duplicate, Remove); Save as Preset…; Update Clip while editing one; Export
+  All.
+- **Narrow panes**: below 900 px the inspector is a sheet over the timeline, opened
+  from the tabs as icons under the transport; below 640 px the timeline keeps Video
+  and Audio, with crop keys, blur and text as marks on the video lane.
+- **?** opens the keyboard sheet.
 
-The state, tracker and export pipeline are unchanged by the redesign. Fixed on the
-way: a single export ignored Fit To Length (only queued clips honoured it); the Smart
-Zoom hint showed on videos with no cursor path.
+Text on the video exports where it is drawn: `moCaptionLayout` places each line (the
+export draws one drawtext per line) and the preview uses the same layout; a dragged
+text carries its centre (`cx`, `cy`).
+
+Also changed: the player's Capture Frame saves the frame at once (a JPEG next to the
+video, added to the library, with Reveal); the old Capture Frame dialog (its own
+preview and crop box) is gone, since the editor's Save Frame does the cropped,
+choose-where version. Fixed on the way: a single export ignored Fit To Length; the
+Smart Zoom hint showed without a cursor path; one remaining segment exported the stale
+In/Out instead of itself (a lone segment now folds back into the range).
 
 ## How it fits together
 
@@ -103,10 +129,11 @@ extracted verbatim by the unit test and by the ffmpeg probe.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Pure clip math | `npx vitest run tests/unit/moClipGraph.test.ts` | 13 pass |
+| Pure clip math | `npx vitest run tests/unit/moClipGraph.test.ts` | 22 pass (timecode, split, captions per line and placed) |
 | Real ffmpeg graphs | `node tests/probes/clip-graph-probe.mjs` | 34/34 |
-| Editor on screen | `node tests/probes/ui-screenshot-probe.mjs <out> clip` | 6 scenes captured, reviewed |
-| Whole suite | `npx vitest run` | green |
+| Editor on screen | `node tests/probes/ui-screenshot-probe.mjs <out> clip` | split, cut, bring back, undo; blur, follow, pixelate; text dragged; a real MP4 export and a cancelled one (partial file removed); narrow sheet and tiny pane; 20 shots reviewed |
+| Media stream | `npx vitest run tests/unit/mediaStreamBridge.test.ts` | 9 pass |
+| Whole suite | `npx vitest run` | green apart from the four failures CLAUDE.md lists |
 | Recorder timing | hidden 2 s capture through the recorder's own argv + finalize | duration = wall clock within 40 ms |
 
 The recorder changes (countdown, pause, hotkeys, follow, telemetry, mixed audio)
@@ -126,6 +153,7 @@ confirm on this machine.
 | 6 Shapes | oval and rounded regions through a feathered alpha mask (geq on the patch), Blur/Pixelate and shape as buttons; exported pixels checked: outside the oval untouched, inside blurred | shipped |
 | 5 Fixes | real-timestamp capture (short takes played fast), app dropdowns everywhere, Track switch on blur regions, real blur and mosaic previews, look previews matched to the export | shipped |
 | 4 Probe | clip scene in the screenshot probe, open-clip-editor command | shipped |
+| 10 Mockup | everything the approved mockups show: undo/redo, loop, stage chips and floating bars, text as objects (multi-line, placed), split/cut/bring-back on the timeline, snap, selected-segment range, crop groups, text and blur editors, audio sliders, export presets/Source fps/loop/Sierra/max size/name, progress and Cancel on Export, queue ⋯ menu, GIF frames on the video lane, narrow sheet; Capture Frame without the old dialog; editor opens on the whole video | shipped |
 | 9 Streaming | parallx-media:// with range requests; video and audio stream from disk in every Media Organizer surface | shipped |
 | 8 Layout | page layout: toolbar, transport, tabbed inspector, zoomable lane timeline, Export menu, Queue panel; timecode fields; split at playhead; look swatches | shipped |
 | 7 Handles | oval and rounded regions could not be resized (the soft-edge mask hid the one corner handle and the outline); shape moved to an inner fill, active region gets an eight-handle frame; move + 4 resize directions measured on all three shapes with real mouse input | shipped |
@@ -164,5 +192,8 @@ clips. Phase 2 makes it a third Media Organizer surface:
 4. **Timelapse tools for paintings.** Speed per segment (ramp through the slow
    parts, linger on the reveal), a "finished painting" hold at the end, and a
    before/after split.
-5. **Projects that persist.** The editor's state saved to the database so an edit
-   survives closing the app (today it lives in memory and the tab's view state).
+5. **Projects keep their edits; quick clips do not.** Two kinds of work, saved
+   differently on purpose. A quick clip (take a video, cut a GIF) stays as it is
+   today: its edits live in memory and go when the tab closes, nothing to manage. A
+   project (the Clip Editor opened from the sidebar, built from several videos)
+   saves its edits to the database and keeps them until the project is deleted.
