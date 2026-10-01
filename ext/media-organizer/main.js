@@ -11447,6 +11447,16 @@ function renderBrowserSidebar(container, api) {
       actions.push({ label: `View "${tag.name}" as unique tag`, handler: () => openGrid('tag:' + tag.id, tag.name, 'tag') });
       actions.push({ separator: true });
     }
+    actions.push({ label: 'New Child Tag\u2026', icon: 'plus', handler: () => {
+      showCreateTagDialog(api, () => {
+        // Open the parent so the new child is in view.
+        _tagExpanded.add(tag.id);
+        persistTagExpanded();
+        loadTags();
+        _notifySidebarRefresh();
+      }, { parent: { id: tag.id, name: tag.name } });
+    } });
+    actions.push({ separator: true });
     actions.push({ label: tag.favorite ? 'Unmark Favorite' : 'Mark Favorite', handler: async () => {
       try {
         await TagQueries.update(tag.id, { favorite: !tag.favorite });
@@ -18797,15 +18807,19 @@ function showBulkDeleteDialog(state, api, onComplete, opts = {}) {
  *
  * On success, calls onComplete() so the sidebar can reload.
  */
-function showCreateTagDialog(api, onComplete) {
+// opts.parent ({ id, name }): every name typed is made a child of that tag
+// (New Child Tag… on a tag's right-click menu).
+function showCreateTagDialog(api, onComplete, opts = {}) {
+  const parent = opts.parent && opts.parent.id != null ? opts.parent : null;
   const overlay = moEl('div', 'mo-bulk-dialog-overlay');
   const dialog = moEl('div', 'mo-bulk-dialog');
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-label', 'New Tags');
+  const heading = parent ? `New Tags Under ${parent.name}` : 'New Tags';
+  dialog.setAttribute('aria-label', heading);
   overlay.appendChild(dialog);
 
-  dialog.appendChild(moEl('h3', null, { textContent: 'New Tags' }));
+  dialog.appendChild(moEl('h3', null, { textContent: heading }));
 
   const section = moEl('div', 'mo-bulk-dialog-section');
   section.appendChild(moEl('label', null, { textContent: 'Names' }));
@@ -18820,7 +18834,9 @@ function showCreateTagDialog(api, onComplete) {
   section.appendChild(input);
 
   const hint = moEl('div', 'mo-bulk-mode-hint', {
-    textContent: 'Enter to create \u00b7 Shift+Enter for a new line \u00b7 "Italy/2024" nests 2024 under Italy \u00b7 names are saved in capitals, and a tag can sit under several parents.',
+    textContent: parent
+      ? `Each name becomes a child of ${parent.name}. Enter to create \u00b7 Shift+Enter for a new line \u00b7 "Beach/Sunset" nests deeper \u00b7 an existing tag is filed here too.`
+      : 'Enter to create \u00b7 Shift+Enter for a new line \u00b7 "Italy/2024" nests 2024 under Italy \u00b7 names are saved in capitals, and a tag can sit under several parents.',
   });
   section.appendChild(hint);
 
@@ -18873,7 +18889,7 @@ function showCreateTagDialog(api, onComplete) {
     for (const entry of entries) {
       const segments = entry.split('/').map((s) => moNormalizeTagName(s)).filter(Boolean);
       if (segments.length === 0) continue;
-      let parentId = null;
+      let parentId = parent ? parent.id : null;
       try {
         for (const seg of segments) {
           // Case-insensitive reuse so "Italy/2024" and "italy/2024" don't make

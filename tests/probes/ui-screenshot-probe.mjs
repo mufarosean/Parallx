@@ -458,6 +458,29 @@ async function moFiltersScene(appRoot, workspace, errors) {
     await page.evaluate(() => document.querySelector('.mo-filter-pills-clear')?.click());
     await page.waitForTimeout(1_200);
     log('cleared', `${await pills()} / ${await count()}`);
+    // A tag's right-click: New Child Tag… files the new tag under it.
+    await page.evaluate(() => { if (!document.querySelector('.mo-sidebar')?.offsetParent) Array.from(document.querySelectorAll('.activity-bar-item')).find((b) => Array.from(b.attributes).some((x) => /media.?organizer/i.test(x.value)))?.click(); });
+    await page.waitForTimeout(1_500);
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-browse-segbtn')).find((b) => /Tags/.test(b.textContent))?.click());
+    await page.waitForTimeout(1_200);
+    // Tags went in by SQL; a filter keystroke reloads the list.
+    await page.evaluate(() => { const i = document.querySelector('.mo-tag-search'); if (i) { i.value = 'b'; i.dispatchEvent(new Event('input', { bubbles: true })); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); } });
+    await page.waitForTimeout(1_200);
+    log('tag rows before', await page.evaluate(() => `${document.querySelectorAll('.mo-tag-row').length} rows, sidebar ${document.querySelector('.mo-sidebar')?.offsetParent ? 'shown' : 'hidden'}: ` + Array.from(document.querySelectorAll('.mo-tag-row')).map((r) => r.textContent.trim()).join(', ')));
+    await page.evaluate(() => { const r = Array.from(document.querySelectorAll('.mo-tag-row')).find((x) => /beach/i.test(x.textContent)); if (r) { const b = r.getBoundingClientRect(); r.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: b.left + 20, clientY: b.top + 5 })); } });
+    await page.waitForTimeout(400);
+    log('tag menu', await page.evaluate(() => { const m = Array.from(document.querySelectorAll('.context-menu')).pop(); return m ? Array.from(m.querySelectorAll('.context-menu-item-label')).map((x) => x.textContent.trim()).join(' | ') : 'NO MENU'; }));
+    await page.evaluate(() => { const m = Array.from(document.querySelectorAll('.context-menu')).pop(); if (m) Array.from(m.querySelectorAll('.context-menu-item')).find((r) => /New Child Tag/.test(r.textContent))?.click(); });
+    await page.waitForTimeout(500);
+    log('dialog', await page.evaluate(() => document.querySelector('.mo-bulk-dialog h3')?.textContent || 'no dialog'));
+    await shot(page, 'filters-child-tag-dialog');
+    await page.evaluate(() => { const t = document.querySelector('.mo-bulk-dialog textarea'); t.value = 'Sunset'; t.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-bulk-dialog button')).find((b) => b.textContent === 'Create')?.click());
+    await page.waitForTimeout(1_500);
+    const sqlAll = (q) => page.evaluate(async (q) => { const r = await window.parallxElectron.extensionDatabase.all('media-organizer', q, []); return r.rows || r.error; }, q);
+    log('relation', JSON.stringify(await sqlAll(`SELECT c.name AS child, p.name AS parent FROM mo_tags_relations r JOIN mo_tags c ON c.id = r.child_id JOIN mo_tags p ON p.id = r.parent_id`)));
+    log('tag rows', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-tag-row')).map((r) => `${r.querySelector('.mo-sidebar-item-label')?.textContent || r.textContent.trim()}@${r.style.paddingLeft}`).join(' | ')));
+    await shot(page, 'filters-child-tag');
   } finally {
     await app.close().catch(() => {});
   }
