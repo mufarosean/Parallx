@@ -5939,6 +5939,21 @@ kbd.mo-key {
 .mo-filter-chip--scope { padding-right: var(--px-space-3); background: var(--px-bg-inset); cursor: default; }
 .mo-search-wrap .mo-search-help-btn { position: absolute; right: 1px; top: 1px; height: calc(var(--px-control-h) - 2px); width: calc(var(--px-control-h) - 2px); padding: 0; justify-content: center; background: transparent; border: none; opacity: 0.6; }
 .mo-search-wrap .mo-search-help-btn:hover { opacity: 1; background: transparent; }
+/* The library's toolbar is one quiet line (2026-10-01): no boxes. The search
+   is its placeholder over a faint underline, with its "?" only while pointed
+   at or in use; Type and Layout are text and icons with the chosen one lit;
+   Filters, sort and View are plain buttons until pointed at. */
+.mo-toolbar .mo-search-wrap .mo-toolbar-search { padding: 0 30px 0 var(--px-space-1); background: transparent; border: 0; border-bottom: 1px solid var(--px-divider); border-radius: 0; cursor: text; }
+.mo-toolbar .mo-search-wrap .mo-toolbar-search::placeholder { color: var(--px-text-faint); }
+.mo-toolbar .mo-search-wrap .mo-toolbar-search:hover { border-bottom-color: var(--px-border-strong); }
+.mo-toolbar .mo-search-wrap .mo-toolbar-search:focus { border-bottom-color: var(--px-accent); }
+.mo-toolbar .mo-search-wrap .mo-search-help-btn { opacity: 0; }
+.mo-toolbar .mo-search-wrap:hover .mo-search-help-btn, .mo-toolbar .mo-search-wrap:focus-within .mo-search-help-btn { opacity: 0.6; }
+.mo-toolbar .mo-search-wrap .mo-search-help-btn:hover, .mo-toolbar .mo-search-wrap .mo-search-help-btn:focus-visible { opacity: 1; }
+.mo-toolbar .mo-segment { border-color: transparent; background: transparent; padding: 0; }
+.mo-toolbar .mo-segment-btn.active { background: var(--px-surface-selected); box-shadow: none; color: var(--px-text); }
+.mo-toolbar .mo-filters-btn:not(.active) { background: transparent; border-color: transparent; }
+.mo-toolbar .mo-filters-btn:not(.active):hover { background: var(--px-surface-hover); }
 .mo-toolbar-spacer { flex: 1 1 0; min-width: 6px; }
 /* Segmented control: an inset track, the chosen segment raised on it. */
 .mo-segment { display: inline-flex; gap: 2px; height: var(--px-control-h); box-sizing: border-box; padding: 2px; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
@@ -12034,7 +12049,6 @@ function renderGridBrowser(container, api, input) {
     placeholder: 'Search title, tags, folder, filename…',
     title: 'Free text searches title, details, tags, folder, and filename.\nOperators: tag:NAME, -tag:NAME, is:favorite, folder:TERM, taken:2024 (or 2024-06), type:photo/video',
   });
-  searchWrap.appendChild(moEl('span', 'mo-search-icon', { innerHTML: moIcon('search', 12) }));
   searchWrap.appendChild(searchInput);
   toolbar.appendChild(searchWrap);
 
