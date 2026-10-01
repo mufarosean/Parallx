@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'motrash', 'mofav', 'mofilters', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'motrash', 'mofav', 'mofilters', 'moart', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -481,6 +481,119 @@ async function moFiltersScene(appRoot, workspace, errors) {
     log('relation', JSON.stringify(await sqlAll(`SELECT c.name AS child, p.name AS parent FROM mo_tags_relations r JOIN mo_tags c ON c.id = r.child_id JOIN mo_tags p ON p.id = r.parent_id`)));
     log('tag rows', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-tag-row')).map((r) => `${r.querySelector('.mo-sidebar-item-label')?.textContent || r.textContent.trim()}@${r.style.paddingLeft}`).join(' | ')));
     await shot(page, 'filters-child-tag');
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
+// The video player on a video's page, and the art tools (Daily Study,
+// Practice Session, Painting Plans) as they stand, for a UI review.
+async function moArtScene(appRoot, workspace, errors) {
+  const media = path.join(workspace, 'arttest');
+  await fs.mkdir(media, { recursive: true });
+  const ff = (args) => spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args]);
+  ff(['-f', 'lavfi', '-i', 'mandelbrot=s=960x720', '-frames:v', '1', '-q:v', '3', path.join(media, 'harbour.jpg')]);
+  ff(['-f', 'lavfi', '-i', 'cellauto=s=720x960:rule=30', '-frames:v', '1', '-q:v', '3', path.join(media, 'figure.jpg')]);
+  ff(['-f', 'lavfi', '-i', 'life=s=800x600:mold=10:ratio=0.3', '-frames:v', '1', '-q:v', '3', path.join(media, 'still-life.jpg')]);
+  ff(['-f', 'lavfi', '-i', 'testsrc2=s=1280x720:r=30:d=12', '-f', 'lavfi', '-i', 'sine=frequency=330:duration=12', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', path.join(media, 'studio-session.mp4')]);
+  const { app, page } = await launchApp(appRoot, errors);
+  const log = (k, v) => console.log(`[probe] art ${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+  const setCfg = (k, v) => page.evaluate(async ({ k, v }) => { const c = window.__parallx_workbench__?._services?.get?.({ id: 'IConfigurationService' }); await c._updateValue(k, v); }, { k, v });
+  const card = (n) => `Array.from(document.querySelectorAll('.mo-card')).find((x) => (x.textContent || '').includes('${n}'))`;
+  const menuClick = (re) => page.evaluate((src) => { const m = Array.from(document.querySelectorAll('.context-menu')).pop(); if (m) Array.from(m.querySelectorAll('.context-menu-item')).find((r) => new RegExp(src).test(r.textContent))?.click(); }, re);
+  try {
+    await enableMediaOrganizer(page);
+    await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }); }, media);
+    await runCommand(page, ['media-organizer.scan']);
+    await page.waitForTimeout(8_000);
+    await runCommand(page, ['media-organizer.openGrid']);
+    await page.waitForTimeout(3_000);
+    await page.evaluate(() => document.querySelector('.mo-segment-btn[title="Grid"]')?.click());
+    await page.waitForTimeout(1_500);
+    // The video's page: the player.
+    await page.evaluate(`(() => { const c = ${card('studio-session')}; c && c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); })()`);
+    await page.waitForTimeout(3_000);
+    const pb = await page.evaluate(() => { const p = document.querySelector('.mo-player'); if (!p) return null; const b = p.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
+    log('player', pb ? 'found' : 'MISSING');
+    await page.evaluate(() => { const v = document.querySelector('.mo-player-video'); if (v) { v.muted = true; v.currentTime = 4; } });
+    await page.waitForTimeout(800);
+    if (pb) await page.mouse.move(pb.x, pb.y);
+    await page.waitForTimeout(400);
+    log('player controls', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-player button')).map((b) => b.title || b.textContent.trim()).join(' | ')));
+    await shot(page, 'art-video-page');
+    // Fullscreen-sized look at the player alone.
+    await page.evaluate(() => document.querySelector('.mo-player')?.scrollIntoView());
+    if (pb) await page.mouse.move(pb.x + 10, pb.y + 10);
+    await shot(page, 'art-video-player-hover');
+    // Art tools on.
+    await setCfg('mediaOrganizer.enableArtTools', true);
+    await page.waitForTimeout(1_500);
+    await runCommand(page, ['media-organizer.openGrid']);
+    await page.waitForTimeout(2_500);
+    await page.evaluate(() => { if (!document.querySelector('.mo-sidebar')?.offsetParent) Array.from(document.querySelectorAll('.activity-bar-item')).find((b) => Array.from(b.attributes).some((x) => /media.?organizer/i.test(x.value)))?.click(); });
+    await page.waitForTimeout(1_200);
+    log('sidebar', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-sidebar-item-label')).map((x) => x.textContent).join(' | ')));
+    await shot(page, 'art-library');
+    await page.evaluate(() => document.querySelector('.mo-segment-btn[title="Feed"]')?.click());
+    await page.waitForTimeout(1_500);
+    await shot(page, 'art-library-feed');
+    // Practice Session setup, then a run.
+    await runCommand(page, ['media-organizer.practiceSession']);
+    await page.waitForTimeout(2_500);
+    log('practice setup buttons', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-practice-setup button')).map((b) => b.textContent.trim() || b.title).join(' | ')));
+    await shot(page, 'art-practice-setup');
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-practice-setup .mo-practice-start')).find((b) => b.offsetParent)?.click());
+    await page.waitForTimeout(3_000);
+    await page.mouse.move(800, 450);
+    await page.waitForTimeout(150);
+    await page.mouse.move(820, 470);
+    log('practice player buttons', await page.evaluate(() => Array.from(document.querySelectorAll('[class*="mo-practice"] button')).filter((b) => b.offsetParent).map((b) => b.textContent.trim() || b.title || b.getAttribute('aria-label')).join(' | ')));
+    await shot(page, 'art-practice-player');
+    await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.offsetParent && (b.title === 'Stop' || b.getAttribute('aria-label') === 'Stop' || b.textContent.trim() === 'Stop'))?.click());
+    await page.waitForTimeout(1_500);
+    await shot(page, 'art-practice-after');
+    // Daily Study.
+    await runCommand(page, ['media-organizer.dailyStudy']);
+    await page.waitForTimeout(3_000);
+    await page.mouse.move(800, 450);
+    await page.waitForTimeout(150);
+    await page.mouse.move(820, 470);
+    await shot(page, 'art-daily');
+    await page.evaluate(() => Array.from(document.querySelectorAll('button')).find((b) => b.offsetParent && (b.title === 'Stop' || b.getAttribute('aria-label') === 'Stop' || b.textContent.trim() === 'Stop'))?.click());
+    await page.waitForTimeout(1_000);
+    // Painting Plans: empty list, then a plan from a photo.
+    await runCommand(page, ['media-organizer.paintingPlans']);
+    await page.waitForTimeout(2_000);
+    await shot(page, 'art-plans-empty');
+    await runCommand(page, ['media-organizer.openGrid']);
+    await page.waitForTimeout(2_000);
+    await page.evaluate(() => document.querySelector('.mo-segment-btn[title="Grid"]')?.click());
+    await page.waitForTimeout(1_500);
+    await page.evaluate(`(() => { const c = ${card('harbour')}; if (c) { const b = c.getBoundingClientRect(); c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: b.left + 20, clientY: b.top + 20 })); } })()`);
+    await page.waitForTimeout(500);
+    await menuClick('Plan Painting');
+    await page.waitForTimeout(4_000);
+    log('plan tools', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-plan-tool')).map((b) => b.title).join(' | ')));
+    await shot(page, 'art-plan-light');
+    for (const t of ['Crop', 'Values', 'Composition', 'Palette', 'Compare', 'Process', 'Plan']) {
+      await page.evaluate((t) => Array.from(document.querySelectorAll('.mo-plan-tool')).find((b) => b.title === t)?.click(), t);
+      await page.waitForTimeout(1_200);
+      await shot(page, `art-plan-${t.toLowerCase()}`);
+    }
+    await runCommand(page, ['media-organizer.paintingPlans']);
+    await page.waitForTimeout(2_000);
+    await shot(page, 'art-plans-list');
+    // A photo's page with the art tools on.
+    await runCommand(page, ['media-organizer.openGrid']);
+    await page.waitForTimeout(2_000);
+    await page.evaluate(`(() => { const c = ${card('harbour')}; c && c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); })()`);
+    await page.waitForTimeout(2_500);
+    await shot(page, 'art-photo-page');
+    await resizeWindow(page, 900, 800);
+    await page.waitForTimeout(800);
+    await runCommand(page, ['media-organizer.practiceSession']);
+    await page.waitForTimeout(1_500);
+    await shot(page, 'art-practice-setup-narrow');
   } finally {
     await app.close().catch(() => {});
   }
@@ -1010,6 +1123,17 @@ async function main() {
     await scene('mofilters', () => moFiltersScene(appRoot, workspace, errs));
     const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
     if (real.length) { console.log(`[probe] mofilters: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
+    if (scenes.length === 1) {
+      await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
+      return;
+    }
+  }
+  if (scenes.includes('moart')) {
+    const errs = [];
+    await scene('moart', () => moArtScene(appRoot, workspace, errs));
+    const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
+    if (real.length) { console.log(`[probe] moart: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
     if (scenes.length === 1) {
       await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
       await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});

@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atelier Video Player</title>
+<style>
+/* Mockup: the player on a video's page in Atelier, today and two ways to
+   redo it. Tokens from src/theme/px-tokens.css (Slate dark). Static except
+   that hovering a frame shows its overlay controls. */
+:root {
+  --px-base-00:#16171a; --px-base-05:#1a1c1f; --px-base-10:#1f2125; --px-base-15:#24262b;
+  --px-base-20:#2b2e34; --px-base-25:#33363d; --px-base-30:#41454d; --px-base-40:#838893;
+  --px-base-60:#9ea3ad; --px-base-70:#c0c4cc; --px-base-100:#e8eaee;
+  --px-accent:hsl(205 64% 60%); --px-accent-soft:hsl(205 64% 60% / .15); --px-accent-text:hsl(205 64% 67%);
+  --px-bg:var(--px-base-00); --px-bg-elevated:var(--px-base-10); --px-bg-inset:var(--px-base-15);
+  --px-surface-hover:var(--px-base-20); --px-surface-selected:rgba(86,156,214,.16);
+  --px-text:var(--px-base-100); --px-text-secondary:var(--px-base-70); --px-text-muted:var(--px-base-60); --px-text-faint:var(--px-base-40);
+  --px-border:var(--px-base-25); --px-border-strong:var(--px-base-30); --px-divider:var(--px-base-20);
+  --px-viewer-bg:#0b0c0e; --px-viewer-ink:#f2f3f5; --px-viewer-ink-muted:rgba(242,243,245,.72);
+  --px-font-ui:'Inter','Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: #0c0d0f; color: var(--px-text); font: 13px/1.45 var(--px-font-ui); }
+.page { max-width: 1180px; margin: 0 auto; padding: 32px 16px 80px; }
+h1 { font-size: 22px; margin: 0 0 6px; font-weight: 600; }
+h2 { font-size: 18px; margin: 44px 0 6px; font-weight: 600; }
+p, li { color: var(--px-text-secondary); max-width: 82ch; }
+.rec { display: inline-block; font-size: 11px; font-weight: 600; color: var(--px-accent-text); background: var(--px-accent-soft); padding: 1px 8px; border-radius: 999px; margin-left: 6px; vertical-align: 3px; }
+.notes { margin: 10px 0 0; padding-left: 18px; font-size: 12.5px; }
+.notes li { margin: 3px 0; }
+.scrollx { overflow-x: auto; border: 1px solid #26282d; border-radius: 8px; margin-top: 12px; }
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+svg.i.s14 { width: 14px; height: 14px; }
+svg.i.fill { fill: currentColor; stroke: none; }
+
+/* the video page frame: header, stage, details panel */
+.vpage { background: var(--px-bg); min-width: 1000px; display: grid; grid-template-columns: 1fr 300px; grid-template-rows: 44px 470px; }
+.vhead { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 0 16px 0 20px; border-bottom: 1px solid var(--px-divider); }
+.vhead .t { font-size: 15px; font-weight: 600; }
+.vhead .m { font-size: 12px; color: var(--px-text-muted); }
+.grow { flex: 1; }
+.ib { width: 28px; height: 28px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--px-text-muted); }
+.ib:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; color: var(--px-text-secondary); border: 1px solid var(--px-border-strong); white-space: nowrap; }
+.btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.side { border-left: 1px solid var(--px-divider); padding: 14px 16px; font-size: 12px; color: var(--px-text-muted); }
+.side .sl { font-size: 12px; font-weight: 600; color: var(--px-text); margin: 0 0 8px; }
+.side .f { height: 26px; border: 1px solid var(--px-border-strong); border-radius: 4px; background: var(--px-bg-inset); margin: 4px 0 10px; }
+.side .kv { display: grid; grid-template-columns: 80px 1fr; gap: 3px 8px; }
+.side .kv span:nth-child(even) { color: var(--px-text-secondary); }
+
+/* the picture: a stand-in frame of a painting session */
+.stage { position: relative; background: var(--px-viewer-bg); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.pic { width: 640px; aspect-ratio: 16 / 9; position: relative; background:
+  radial-gradient(ellipse 30% 40% at 62% 45%, #c9a26b 0 40%, transparent 70%),
+  radial-gradient(ellipse 22% 26% at 40% 60%, #6b8fa8 0 45%, transparent 75%),
+  linear-gradient(160deg, #3c3a36 0%, #57524a 45%, #2b2a27 100%); }
+.pic::after { content: ''; position: absolute; left: 18%; top: 22%; width: 46%; height: 58%; border: 2px solid rgba(240,230,210,.35); transform: rotate(-3deg); }
+
+/* today */
+.t-top { position: absolute; left: 0; right: 0; top: 0; height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; background: linear-gradient(rgba(0,0,0,.55), transparent); color: var(--px-viewer-ink); font-size: 12.5px; }
+.t-top .m { color: var(--px-viewer-ink-muted); font-size: 11.5px; }
+.t-rail { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; }
+.t-rail span { width: 34px; height: 34px; border-radius: 50%; background: #0e6b6b; color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+.t-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 12px 6px; background: linear-gradient(transparent, rgba(0,0,0,.6)); color: var(--px-viewer-ink); }
+.t-prog { height: 4px; background: rgba(255,255,255,.25); border-radius: 2px; position: relative; margin: 0 0 8px; }
+.t-prog i { position: absolute; left: 0; top: 0; bottom: 0; width: 52%; background: #5aa0d8; border-radius: 2px; }
+.t-row { display: flex; align-items: center; gap: 14px; height: 26px; font-size: 12px; }
+.t-vol { width: 54px; height: 4px; border-radius: 2px; background: #5aa0d8; position: relative; }
+.t-vol::after { content: ''; position: absolute; right: -4px; top: -4px; width: 12px; height: 12px; border-radius: 50%; background: #5aa0d8; }
+.pin { position: absolute; width: 18px; height: 18px; border-radius: 50%; background: #dcaa5a; color: #1a1a1a; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; z-index: 5; box-shadow: 0 0 0 2px #0c0d0f; }
+.legend { list-style: none; padding: 0; counter-reset: n; }
+.legend li { counter-increment: n; position: relative; padding-left: 26px; margin: 6px 0; font-size: 12.5px; }
+.legend li::before { content: counter(n); position: absolute; left: 0; top: 1px; width: 18px; height: 18px; border-radius: 50%; background: #dcaa5a; color: #1a1a1a; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+
+/* A: one floating bar over the picture, shown on hover */
+.a-bar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(620px, calc(100% - 28px)); padding: 6px 10px 8px; border-radius: 10px; background: rgba(18,19,22,.78); backdrop-filter: blur(10px); color: var(--px-viewer-ink); box-shadow: 0 10px 30px -10px rgba(0,0,0,.7); transition: opacity .15s; }
+.stage.hov .a-bar { opacity: .0; }
+.stage.hov:hover .a-bar, .stage.hov.pinned .a-bar { opacity: 1; }
+.scrub { position: relative; height: 14px; display: flex; align-items: center; }
+.scrub .track { position: absolute; left: 0; right: 0; height: 3px; border-radius: 2px; background: rgba(255,255,255,.22); }
+.scrub .buf { position: absolute; left: 0; width: 70%; height: 3px; border-radius: 2px; background: rgba(255,255,255,.3); }
+.scrub .played { position: absolute; left: 0; width: 38%; height: 3px; border-radius: 2px; background: var(--px-viewer-ink); }
+.scrub .knob { position: absolute; left: 38%; width: 11px; height: 11px; margin-left: -5px; border-radius: 50%; background: var(--px-viewer-ink); }
+.scrub .tip { position: absolute; left: 61%; bottom: 18px; transform: translateX(-50%); text-align: center; }
+.scrub .tip .th { width: 112px; height: 63px; border-radius: 4px; border: 1px solid rgba(255,255,255,.35); background: linear-gradient(160deg, #3c3a36, #6b6255 55%, #2b2a27); }
+.scrub .tip .tt { font-size: 11px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.a-row { display: flex; align-items: center; gap: 2px; height: 30px; }
+.vb { width: 30px; height: 28px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--px-viewer-ink); opacity: .9; }
+.vb:hover { background: rgba(255,255,255,.12); opacity: 1; }
+.vt { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--px-viewer-ink-muted); margin: 0 8px; white-space: nowrap; }
+.vt b { color: var(--px-viewer-ink); font-weight: 600; }
+.chip { height: 22px; padding: 0 7px; border-radius: 5px; font-size: 11.5px; display: inline-flex; align-items: center; color: var(--px-viewer-ink); background: rgba(255,255,255,.1); margin: 0 3px; }
+.menu { position: absolute; right: 18px; bottom: 74px; width: 220px; background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: 8px; padding: 4px; box-shadow: 0 16px 36px -8px rgba(0,0,0,.6); font-size: 12.5px; z-index: 4; }
+.menu div { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 4px; color: var(--px-text-secondary); }
+.menu div:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.menu div kbd { margin-left: auto; font: inherit; font-size: 11px; color: var(--px-text-faint); }
+.menu hr { border: 0; border-top: 1px solid var(--px-divider); margin: 4px 0; }
+
+/* B: a docked bar under the picture, the clip editor's transport */
+.vpage.b { grid-template-rows: 44px 400px 100px; grid-template-columns: minmax(0, 1fr) 260px; min-width: 1120px; }
+.vpage.b .side { grid-row: 2 / span 2; grid-column: 2; }
+.b-dock { grid-column: 1; border-top: 1px solid var(--px-divider); background: var(--px-bg); padding: 8px 16px 10px; }
+.strip { position: relative; height: 38px; border-radius: 4px; overflow: hidden; display: flex; background: var(--px-bg-inset); }
+.strip i { flex: 1; border-right: 1px solid rgba(0,0,0,.35); background: linear-gradient(160deg, #3c3a36, #57524a 50%, #2b2a27); opacity: .85; }
+.strip i:nth-child(3n) { background: linear-gradient(160deg, #4a4840, #8a7a5e 55%, #2b2a27); }
+.strip i:nth-child(4n) { background: linear-gradient(160deg, #3a4048, #6b8fa8 55%, #2b2a27); }
+.strip .range { position: absolute; top: 0; bottom: 0; left: 22%; width: 31%; border: 2px solid var(--px-accent); border-radius: 3px; background: hsl(205 64% 60% / .12); }
+.strip .head { position: absolute; top: -3px; bottom: -3px; left: 38%; width: 2px; background: var(--px-text); box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+.strip .head::before { content: ''; position: absolute; top: 0; left: -4px; width: 10px; height: 6px; border-radius: 0 0 3px 3px; background: var(--px-text); }
+.b-row { display: flex; align-items: center; gap: 2px; height: 34px; margin-top: 8px; }
+.b-row .ib { width: 30px; height: 28px; }
+.readout { font-size: 12px; color: var(--px-text-muted); white-space: nowrap; margin: 0 6px; font-variant-numeric: tabular-nums; }
+.readout b { color: var(--px-text); font-weight: 600; }
+.sep { width: 1px; height: 16px; background: var(--px-divider); margin: 0 6px; }
+.sel { height: 24px; padding: 0 8px; border-radius: 5px; border: 1px solid var(--px-border); font-size: 12px; color: var(--px-text-secondary); display: inline-flex; align-items: center; gap: 4px; }
+.lbl { white-space: nowrap; height: 28px; padding: 0 7px; border-radius: 6px; font-size: 12.5px; color: var(--px-text-secondary); display: inline-flex; align-items: center; gap: 6px; }
+.lbl:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.lbl.on { background: var(--px-surface-selected); color: var(--px-text); }
+.b-stage-chip { position: absolute; right: 12px; top: 12px; font-size: 11px; padding: 2px 7px; border-radius: 4px; background: rgba(0,0,0,.55); color: var(--px-viewer-ink-muted); font-variant-numeric: tabular-nums; }
+
+table { border-collapse: collapse; margin-top: 14px; font-size: 12.5px; width: 100%; max-width: 1000px; }
+td, th { border-bottom: 1px solid #26282d; padding: 7px 10px; text-align: left; vertical-align: top; color: var(--px-text-secondary); }
+th { color: var(--px-text); font-weight: 600; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="pause" viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4.5" width="4" height="15" rx="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="back5" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><text x="12" y="15.5" font-size="7.5" text-anchor="middle" fill="currentColor" stroke="none" font-family="system-ui" font-weight="700">5</text></symbol>
+  <symbol id="fwd5" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/><text x="12" y="15.5" font-size="7.5" text-anchor="middle" fill="currentColor" stroke="none" font-family="system-ui" font-weight="700">5</text></symbol>
+  <symbol id="fprev" viewBox="0 0 24 24"><path d="M6 5v14"/><path d="M18 6l-8 6 8 6z"/></symbol>
+  <symbol id="fnext" viewBox="0 0 24 24"><path d="M18 5v14"/><path d="M6 6l8 6-8 6z"/></symbol>
+  <symbol id="vol" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
+  <symbol id="full" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+  <symbol id="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="19" cy="12" r="1.4" fill="currentColor"/></symbol>
+  <symbol id="cam" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="img" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-5-5-9 8.5"/></symbol>
+  <symbol id="scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8 7.5L20 18M8 16.5L20 6"/></symbol>
+  <symbol id="strip" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1.5"/><path d="M9 6v12M15 6v12"/></symbol>
+  <symbol id="bookmark" viewBox="0 0 24 24"><path d="M7 4h10v16l-5-4-5 4z"/></symbol>
+  <symbol id="loop" viewBox="0 0 24 24"><path d="M4 12a7 7 0 0 1 12-5l3 3"/><path d="M19 4v6h-6"/><path d="M20 12a7 7 0 0 1-12 5l-3-3"/><path d="M5 20v-6h6"/></symbol>
+  <symbol id="chevl" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="chevr" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="star" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.8z"/></symbol>
+  <symbol id="panel" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M15 4.5v15"/></symbol>
+  <symbol id="clap" viewBox="0 0 24 24"><path d="M4 10h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 10l1-4.5 15-1L20 10"/><path d="M8.5 5.2l2 4.6M13.5 4.9l2 4.8"/></symbol>
+  <symbol id="in" viewBox="0 0 24 24"><path d="M8 4v16"/><path d="M8 4h5M8 20h5"/></symbol>
+  <symbol id="out" viewBox="0 0 24 24"><path d="M16 4v16"/><path d="M16 4h-5M16 20h-5"/></symbol>
+  <symbol id="chat" viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4z"/><path d="M12 8v4M10 10h4"/></symbol>
+</svg>
+
+<div class="page">
+  <h1>Atelier: the video player</h1>
+  <p>The player on a video's page. Today it is a set of controls laid over the picture, with a column of round buttons on the right. The photo page now has a clear <b>Edit Image</b> button, the clip editor has a transport bar under the picture, and the image editor has quiet icon buttons. The video page has none of that yet.</p>
+
+  <h2>Today</h2>
+  <div class="scrollx">
+    <div class="vpage" style="position:relative">
+      <div class="vhead">
+        <span class="t">studio-session.mp4</span>
+        <span class="grow"></span>
+        <span class="ib"><svg class="i"><use href="#chat"/></svg></span>
+        <span class="ib"><svg class="i"><use href="#star"/></svg></span>
+        <span class="ib"><svg class="i"><use href="#panel"/></svg></span>
+        <span class="pin" style="right:322px; top:13px">1</span>
+      </div>
+      <div class="stage">
+        <div class="pic"></div>
+        <div class="t-top"><span>studio-session.mp4</span><span class="m">1280×720 · 0:12</span></div>
+        <span class="pin" style="left:150px; top:11px">2</span>
+        <div class="t-rail">
+          <span><svg class="i"><use href="#cam"/></svg></span>
+          <span><svg class="i"><use href="#img"/></svg></span>
+          <span><svg class="i"><use href="#scissors"/></svg></span>
+          <span><svg class="i"><use href="#strip"/></svg></span>
+        </div>
+        <span class="pin" style="right:52px; top:160px">3</span>
+        <div class="t-bottom">
+          <div class="t-prog"><i></i></div>
+          <div class="t-row">
+            <svg class="i"><use href="#pause"/></svg>
+            <svg class="i"><use href="#chevl"/></svg>
+            <svg class="i"><use href="#fprev"/></svg>
+            <svg class="i"><use href="#fnext"/></svg>
+            <svg class="i"><use href="#chevr"/></svg>
+            <span>0:06 / 0:12</span>
+            <span class="grow"></span>
+            <svg class="i"><use href="#bookmark"/></svg>
+            <svg class="i" style="transform:scaleX(-1)"><use href="#bookmark"/></svg>
+            <svg class="i"><use href="#loop"/></svg>
+            <svg class="i"><use href="#vol"/></svg><span class="t-vol"></span>
+            <span>1×</span>
+            <svg class="i"><use href="#full"/></svg>
+          </div>
+        </div>
+        <span class="pin" style="left:24px; bottom:40px">4</span>
+        <span class="pin" style="right:250px; bottom:40px">5</span>
+      </div>
+      <div class="side">
+        <div class="sl">Details</div><div>Title</div><div class="f"></div><div>Tags</div><div class="f"></div>
+        <div class="sl" style="margin-top:18px">File info</div>
+        <div class="kv"><span>Dimensions</span><span>1280 × 720</span><span>Duration</span><span>0:12</span><span>Frame rate</span><span>30 fps</span></div>
+      </div>
+    </div>
+  </div>
+  <ol class="legend">
+    <li><b>No way into the clip editor from the header.</b> The photo page has Edit Image there; the video page has only the chat, favorite and panel icons.</li>
+    <li><b>The name is shown twice.</b> The page header and the player's own top bar both say studio-session.mp4.</li>
+    <li><b>Four round teal buttons over the picture</b> (save frame, set cover, trim, filmstrip). The colour is not one of the app's, they cover the picture, and only a tooltip says what they do. Trim is the way into the clip editor, hidden as a scissors circle.</li>
+    <li><b>Skip and frame step look alike.</b> Chevrons for 5 seconds, triangles for one frame, all the same weight.</li>
+    <li><b>In and out are two bookmark icons, one mirrored,</b> next to a loop icon. Nothing on the bar says what in and out are for. The volume slider is always open, and the progress line is thin and only appears on hover.</li>
+  </ol>
+
+  <h2>A. One floating bar, shown on hover</h2>
+  <p>The picture stays clean. Hovering shows one rounded bar at the bottom, the way QuickTime and modern browsers do it: the scrubber with a frame preview on top, then play, step, time, and on the right speed, volume, fullscreen and a ⋯ menu. Everything that is not playback (save frame, set cover, in and out, loop) moves into that menu with its shortcut beside it. <b>Edit Clip</b> goes in the page header, where Edit Image is on a photo. Hover a frame below to see the bar.</p>
+  <div class="scrollx">
+    <div class="vpage">
+      <div class="vhead">
+        <span class="t">studio-session.mp4</span>
+        <span class="m">1280 × 720 · 0:12</span>
+        <span class="grow"></span>
+        <span class="ib"><svg class="i"><use href="#chat"/></svg></span>
+        <span class="ib"><svg class="i"><use href="#star"/></svg></span>
+        <span class="ib"><svg class="i"><use href="#panel"/></svg></span>
+        <span class="btn"><svg class="i s14"><use href="#clap"/></svg>Edit Clip</span>
+      </div>
+      <div class="stage hov pinned">
+        <div class="pic"></div>
+        <div class="a-bar">
+          <div class="scrub"><span class="track"></span><span class="buf"></span><span class="played"></span><span class="knob"></span>
+            <span class="tip"><div class="th"></div><div class="tt">0:07.40</div></span>
+          </div>
+          <div class="a-row">
+            <span class="vb"><svg class="i"><use href="#pause"/></svg></span>
+            <span class="vb" title="Back 5 seconds (J)"><svg class="i"><use href="#back5"/></svg></span>
+            <span class="vb" title="Forward 5 seconds (L)"><svg class="i"><use href="#fwd5"/></svg></span>
+            <span class="vb" title="Previous frame (,)"><svg class="i s14"><use href="#fprev"/></svg></span>
+            <span class="vb" title="Next frame (.)"><svg class="i s14"><use href="#fnext"/></svg></span>
+            <span class="vt"><b>0:04.60</b> / 0:12.00</span>
+            <span class="grow"></span>
+            <span class="chip">1×</span>
+            <span class="vb"><svg class="i"><use href="#vol"/></svg></span>
+            <span class="vb"><svg class="i"><use href="#full"/></svg></span>
+            <span class="vb"><svg class="i"><use href="#more"/></svg></span>
+          </div>
+        </div>
+        <div class="menu">
+          <div><svg class="i s14"><use href="#cam"/></svg>Save Frame as Photo<kbd>S</kbd></div>
+          <div><svg class="i s14"><use href="#img"/></svg>Use Frame as Cover</div>
+          <hr>
+          <div><svg class="i s14"><use href="#in"/></svg>Mark In<kbd>[</kbd></div>
+          <div><svg class="i s14"><use href="#out"/></svg>Mark Out<kbd>]</kbd></div>
+          <div><svg class="i s14"><use href="#loop"/></svg>Loop Between Marks</div>
+          <hr>
+          <div><svg class="i s14"><use href="#strip"/></svg>Show Filmstrip</div>
+        </div>
+      </div>
+      <div class="side">
+        <div class="sl">Details</div><div>Title</div><div class="f"></div><div>Tags</div><div class="f"></div>
+        <div class="sl" style="margin-top:18px">File info</div>
+        <div class="kv"><span>Dimensions</span><span>1280 × 720</span><span>Duration</span><span>0:12</span><span>Frame rate</span><span>30 fps</span></div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Best for watching: nothing over the picture until you reach for it.</li>
+    <li>Marks still show on the scrubber once set, and Edit Clip opens the clip editor with them as the trim.</li>
+    <li>Costs a click for the review tools (save frame, marks), which painters use while studying process footage.</li>
+  </ul>
+
+  <h2>B. A docked bar under the picture <span class="rec">Recommended</span></h2>
+  <p>The clip editor's transport, on the video page. The picture sits alone in the stage; under it, a filmstrip scrubber (frames you can see, with the playhead and any marked range) and one row of controls that never hide. Save Frame and Set Cover are labelled buttons, not floating circles, and In and Out read as what they are. <b>Edit Clip</b> in the header opens the clip editor on the marked range.</p>
+  <div class="scrollx">
+    <div class="vpage b">
+      <div class="vhead">
+        <span class="t">studio-session.mp4</span>
+        <span class="m">1280 × 720 · 0:12</span>
+        <span class="grow"></span>
+        <span class="ib"><svg class="i"><use href="#chat"/></svg></span>
+        <span class="ib"><svg class="i"><use href="#star"/></svg></span>
+        <span class="ib"><svg class="i"><use href="#panel"/></svg></span>
+        <span class="btn"><svg class="i s14"><use href="#clap"/></svg>Edit Clip</span>
+      </div>
+      <div class="stage">
+        <div class="pic" style="width:600px"></div>
+        <span class="b-stage-chip">0:04.60</span>
+      </div>
+      <div class="b-dock">
+        <div class="strip"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><span class="range"></span><span class="head"></span></div>
+        <div class="b-row">
+          <span class="ib" title="Play (Space)"><svg class="i"><use href="#play"/></svg></span>
+          <span class="ib" title="Back 5 seconds (J)"><svg class="i"><use href="#back5"/></svg></span>
+          <span class="ib" title="Forward 5 seconds (L)"><svg class="i"><use href="#fwd5"/></svg></span>
+          <span class="ib" title="Previous frame (,)"><svg class="i s14"><use href="#fprev"/></svg></span>
+          <span class="ib" title="Next frame (.)"><svg class="i s14"><use href="#fnext"/></svg></span>
+          <span class="readout"><b>0:04.60</b> / 0:12.00</span>
+          <span class="sep"></span>
+          <span class="lbl" title="Mark in ([)"><svg class="i s14"><use href="#in"/></svg>In 0:02.60</span>
+          <span class="lbl" title="Mark out (])"><svg class="i s14"><use href="#out"/></svg>Out 0:06.30</span>
+          <span class="lbl on" title="Loop between the marks"><svg class="i s14"><use href="#loop"/></svg>Loop</span>
+          <span class="grow"></span>
+          <span class="lbl"><svg class="i s14"><use href="#cam"/></svg>Save Frame</span>
+          <span class="lbl"><svg class="i s14"><use href="#img"/></svg>Set Cover</span>
+          <span class="sep"></span>
+          <span class="sel">1× <svg class="i s14"><use href="#chevr"/></svg></span>
+          <span class="ib"><svg class="i"><use href="#vol"/></svg></span>
+          <span class="ib"><svg class="i"><use href="#full"/></svg></span>
+        </div>
+      </div>
+      <div class="side">
+        <div class="sl">Details</div><div>Title</div><div class="f"></div><div>Tags</div><div class="f"></div>
+        <div class="sl" style="margin-top:18px">File info</div>
+        <div class="kv"><span>Dimensions</span><span>1280 × 720</span><span>Duration</span><span>0:12</span><span>Frame rate</span><span>30 fps</span></div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>One language with the clip editor: the same transport, readout and In / Out, so moving from the page to the editor changes nothing you have learned.</li>
+    <li>The filmstrip is the scrubber, always there: you can see where the painting changes and jump to it, which is what a process video is watched for.</li>
+    <li>Volume opens a small slider on hover; speed is a dropdown (0.25× to 16×, the timelapse speeds).</li>
+    <li>Fullscreen keeps the picture alone, with A's floating bar there, since a docked bar has nowhere to dock.</li>
+    <li>Below about 760px the labelled buttons (Save Frame, Set Cover, Loop) fold to icons.</li>
+  </ul>
+
+  <h2>What changes, either way</h2>
+  <table>
+    <tr><th>Today</th><th>Both A and B</th></tr>
+    <tr><td>No Edit Clip on the page; Trim is a scissors circle over the picture</td><td><b>Edit Clip</b> in the header, the way Edit Image is on a photo</td></tr>
+    <tr><td>Name in the header and again over the picture</td><td>Once, in the header, with size and length beside it</td></tr>
+    <tr><td>Four teal circles over the picture</td><td>Gone: labelled buttons (B) or the ⋯ menu (A), on the app's tokens</td></tr>
+    <tr><td>Chevrons for 5 s, triangles for a frame</td><td>Rewind and forward arrows marked 5; a bar and triangle for one frame</td></tr>
+    <tr><td>In and out as two bookmarks</td><td>In and Out, named, with their times; the range shows on the scrubber</td></tr>
+    <tr><td>Time as 0:06 / 0:12</td><td>Hundredths, 0:04.60 / 0:12.00, so a frame can be found again</td></tr>
+  </table>
+</div>
+</body>
+</html>
