@@ -20,6 +20,7 @@ const ROOT = resolve(__dirname, '../..');
 /** Files allowed to declare literal font stacks. */
 const EXEMPT_FILES = new Set<string>([
   'src/theme/px-tokens.css',            // defines the vocabulary itself
+  'src/theme/px-fonts.css',             // @font-face: names the bundled Inter face, not a stack
   'src/editor/panes/epubEditorPane.css', // book serif — deliberate reading face
 ]);
 

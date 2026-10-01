@@ -3,6 +3,7 @@
 // Delegates all orchestration to the Workbench class and its lifecycle phases.
 
 import './theme/px-tokens.css';   // M83: design-token foundation (load first)
+import './theme/px-fonts.css';    // the bundled UI typeface (Inter)
 import './workbench.css';
 import './theme/px-base.css';     // M83: global presentation layer (load after workbench)
 import './theme/px-controls.css'; // M83: tactile control primitives
