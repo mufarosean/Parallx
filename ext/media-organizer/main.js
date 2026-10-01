@@ -5879,48 +5879,79 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-view-toggle.is-on { color: var(--vscode-textLink-foreground, var(--px-accent)); }
 /* The selection row takes the view row's place. */
 .mo-grid-browser.is-selecting > .mo-toolbar { display: none; }
-.mo-selection-bar { gap: 6px; padding: 6px 10px; min-height: 40px; box-sizing: border-box; }
-.mo-selection-bar .mo-sel-btn { height: var(--px-control-h); box-sizing: border-box; padding: 0 10px; font-size: var(--parallx-fontSize-sm, 11px); display: inline-flex; align-items: center; gap: 6px; border-radius: var(--parallx-radius-sm, 3px); border-color: transparent; }
-.mo-selection-bar .mo-sel-count { font-weight: 600; }
-.mo-selection-bar .mo-sel-more, .mo-selection-bar .mo-sel-delete { padding: 0 7px; }
-.mo-selection-bar .mo-sel-delete { border-color: transparent; }
 .mo-pagination .mo-toolbar-count { margin-left: auto; }
 
 /* ═══ List Mode ═══ */
+/* A table: one column track list shared by the header and every row (the
+   .mo-grid's auto-fill columns used to wrap the rows four abreast). */
 .mo-grid.mo-list-mode {
+  --mo-list-cols: 20px 40px minmax(0, 1fr) 96px 112px 72px 84px 96px;
+  display: flex;
   flex-direction: column;
   flex-wrap: nowrap;
   gap: 0;
-  padding: 0;
+  padding: 0 var(--px-space-6) var(--px-space-8);
+}
+.mo-list-head, .mo-list-row {
+  display: grid;
+  grid-template-columns: var(--mo-list-cols);
+  align-items: center;
+  column-gap: var(--px-space-3);
+}
+.mo-list-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-2);
+  background: var(--px-bg);
+  border-bottom: 1px solid var(--px-divider);
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text-secondary);
 }
 .mo-list-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
+  padding: var(--px-space-1) var(--px-space-2);
+  border-bottom: 1px solid var(--px-divider);
+  border-radius: 0;
   cursor: pointer;
-  min-height: 40px;
+  min-height: 44px;
   /* See .mo-card for rationale: shift+click would otherwise select text. */
   user-select: none;
   -webkit-user-select: none;
 }
-.mo-list-row:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
-.mo-list-row:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
-.mo-list-row.mo-selected { background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-activeSelectionBackground, #094771)); }
+.mo-list-row > .mo-list-select { grid-column: 1; }
+.mo-list-row > .mo-list-thumb { grid-column: 2; grid-row: 1; }
+.mo-list-row:hover { background: var(--px-surface-hover); }
+.mo-list-row:focus-visible { outline: 2px solid var(--px-accent); outline-offset: -2px; }
+.mo-list-row.mo-selected { background: var(--px-surface-selected); }
 .mo-list-thumb {
   width: 40px;
-  height: 40px;
-  border-radius: var(--parallx-radius-sm, 3px);
+  height: 30px;
+  border-radius: var(--px-radius-sm);
   overflow: hidden;
-  flex-shrink: 0;
-  background: var(--vscode-input-background, var(--px-bg));
+  background: var(--px-bg-inset);
 }
 .mo-list-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.mo-list-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--parallx-fontSize-md, 13px); }
-.mo-list-type { font-size: var(--parallx-fontSize-xs, 10px); text-transform: capitalize; color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888)); width: 50px; flex-shrink: 0; }
-.mo-list-rating { font-size: var(--parallx-fontSize-sm, 11px); color: var(--mo-rating-color, var(--mo-star)); width: 60px; flex-shrink: 0; }
-.mo-list-date { font-size: var(--parallx-fontSize-xs, 10px); color: var(--vscode-descriptionForeground, var(--vscode-descriptionForeground, #888)); width: 80px; flex-shrink: 0; text-align: right; }
+.mo-list-title { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; font-size: var(--px-text-base); color: var(--px-text); }
+.mo-list-row .mo-list-title { font-weight: 600; }
+.mo-list-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-list-type, .mo-list-dims, .mo-list-size, .mo-list-date { font-size: var(--px-text-sm); color: var(--px-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.mo-list-head .mo-list-type, .mo-list-head .mo-list-dims, .mo-list-head .mo-list-size, .mo-list-head .mo-list-date { color: inherit; }
+.mo-list-rating { display: inline-flex; gap: 1px; color: var(--px-border-strong); }
+.mo-list-head .mo-list-rating { color: inherit; }
+.mo-list-star { display: inline-flex; }
+.mo-list-star.is-on { color: var(--mo-rating-color, var(--mo-star)); }
+.mo-list-star.is-on svg { fill: currentColor; }
+/* Narrower panes keep Name, Type, Rating and Added, then Name and Rating. */
+@container mo-grid (max-width: 1023px) {
+  .mo-grid.mo-list-mode { --mo-list-cols: 20px 40px minmax(0, 1fr) 96px 84px 96px; }
+  .mo-list-head .mo-list-dims, .mo-list-head .mo-list-size, .mo-list-row .mo-list-dims, .mo-list-row .mo-list-size { display: none; }
+}
+@container mo-grid (max-width: 719px) {
+  .mo-grid.mo-list-mode { --mo-list-cols: 20px 40px minmax(0, 1fr) 84px; padding: 0 var(--px-space-3) var(--px-space-8); }
+  .mo-list-head .mo-list-type, .mo-list-head .mo-list-date, .mo-list-row .mo-list-type, .mo-list-row .mo-list-date { display: none; }
+}
 
 /* ═══ Filter Panel ═══ */
 .mo-filter-panel {
@@ -6484,46 +6515,55 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   border-radius: 2px;
 }
 /* D8: Selection Toolbar */
+/* Selecting: a raised bar in the toolbar's place. The count opens Select
+   All / Deselect All / Invert; verbs are ghost buttons with an icon; Delete
+   is the kit's danger style; Done clears the selection. */
 .mo-selection-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  background: var(--vscode-toolbar-activeBackground, rgba(90,93,110,.31));
-  border-bottom: 1px solid var(--vscode-panel-border, var(--px-surface, #333));
-  font-size: var(--parallx-fontSize-sm, 12px);
+  gap: var(--px-space-1);
+  margin: 0 var(--px-space-6) var(--px-space-3);
+  padding: var(--px-space-1) var(--px-space-1) var(--px-space-1) var(--px-space-2);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated);
+  box-shadow: var(--px-shadow-sm);
+  font-size: var(--px-text-base);
+  flex-shrink: 0;
 }
-.mo-selection-bar .mo-sel-count {
+.mo-selection-bar .mo-sel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--px-radius-sm);
+  background: transparent;
+  color: var(--px-text-secondary);
+  font: inherit;
+  font-size: var(--px-text-base);
   font-weight: 600;
   white-space: nowrap;
-}
-.mo-selection-bar button {
-  background: none;
-  border: 1px solid var(--vscode-button-secondaryBackground, var(--vscode-widget-border, #444));
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground, #ccc));
-  padding: 2px 8px;
-  border-radius: var(--parallx-radius-sm, 3px);
   cursor: pointer;
-  font-size: var(--parallx-fontSize-xs, 10px);
 }
-.mo-selection-bar button:hover {
-  background: var(--vscode-button-secondaryHoverBackground, var(--px-border, #555));
-}
-.mo-selection-bar button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.mo-selection-bar button:disabled:hover {
-  background: none;
-}
+.mo-selection-bar .mo-sel-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.mo-selection-bar .mo-sel-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.mo-selection-bar .mo-sel-btn:disabled:hover { background: transparent; }
+.mo-selection-bar .mo-sel-count { color: var(--px-text); }
+.mo-selection-bar .mo-sel-sep { width: 1px; height: 18px; margin: 0 var(--px-space-1); background: var(--px-divider); }
 .mo-selection-bar .mo-sel-spacer { flex: 1; }
-.mo-selection-bar .mo-sel-delete {
-  border-color: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
-  color: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
+.mo-selection-bar .mo-sel-delete { color: var(--px-danger); border-color: color-mix(in srgb, var(--px-danger) 45%, transparent); }
+.mo-selection-bar .mo-sel-delete:hover { background: var(--px-danger-soft); color: var(--px-danger); }
+.mo-selection-bar .mo-sel-more { width: var(--px-control-h); padding: 0; justify-content: center; }
+/* Medium pane: the two widest verbs move behind their icon; compact: all do. */
+@container mo-grid (max-width: 1023px) {
+  .mo-selection-bar .mo-sel-wide .mo-sel-label, .mo-selection-bar .mo-sel-wide .mo-menu-btn-label { display: none; }
 }
-.mo-selection-bar .mo-sel-delete:hover {
-  background: var(--vscode-errorForeground, var(--vscode-errorForeground, #f44747));
-  color: #fff;
+@container mo-grid (max-width: 719px) {
+  .mo-selection-bar { margin: 0 var(--px-space-3) var(--px-space-3); }
+  .mo-selection-bar .mo-sel-btn:not(.mo-sel-count) .mo-sel-label { display: none; }
 }
 .mo-bulk-dialog-warn {
   font-size: var(--parallx-fontSize-sm, 12px);
@@ -9196,6 +9236,16 @@ function renderMediaCard(item, options) {
 }
 
 // Adapted from stash: list display mode — compact row rendering
+/** The list's column header; its cells line up with renderMediaListRow's. Not a .mo-list-row, so selection and keys skip it. */
+function moListHeader() {
+  const head = moEl('div', 'mo-list-head');
+  head.setAttribute('aria-hidden', 'true');
+  for (const [cls, label] of [['mo-list-select-h', ''], ['mo-list-thumb-h', ''], ['mo-list-title', 'Name'], ['mo-list-type', 'Type'], ['mo-list-dims', 'Dimensions'], ['mo-list-size', 'Size'], ['mo-list-rating', 'Rating'], ['mo-list-date', 'Added']]) {
+    head.appendChild(moEl('span', cls, { textContent: label }));
+  }
+  return head;
+}
+
 function renderMediaListRow(item, options) {
   const { selecting, isSelected, isFocused, onSelect, onClick, onDblClick } = options;
   let cls = 'mo-list-row';
@@ -9227,18 +9277,27 @@ function renderMediaListRow(item, options) {
   cb.addEventListener('click', (e) => e.stopPropagation());
   row.appendChild(cb);
 
+  // One cell per column of the list header (moListHeader), in its order.
   const title = item.title || `${item.type} #${item.id}`;
+  const name = moEl('span', 'mo-list-title', { title });
   // M59 P9 / F12 — Color label dot before title
   if (item.colorLabel) {
     const dot = moEl('span', 'mo-list-color-label');
     dot.dataset.label = item.colorLabel;
-    row.appendChild(dot);
+    name.appendChild(dot);
   }
-  row.appendChild(moEl('span', 'mo-list-title', { textContent: title, title: title }));
-  row.appendChild(moEl('span', 'mo-list-type', { textContent: item.type }));
-
-  const stars = item.rating > 0 ? '\u2605'.repeat(item.rating) : '';
-  row.appendChild(moEl('span', 'mo-list-rating', { textContent: stars }));
+  name.appendChild(moEl('span', 'mo-list-title-text', { textContent: title }));
+  row.appendChild(name);
+  const kind = item.type === 'video' ? `Video${item.duration ? ', ' + moHomeDuration(item.duration) : ''}` : (item.isGif ? 'GIF' : 'Photo');
+  row.appendChild(moEl('span', 'mo-list-type', { textContent: kind }));
+  row.appendChild(moEl('span', 'mo-list-dims', { textContent: item.width && item.height ? `${item.width} × ${item.height}` : '' }));
+  row.appendChild(moEl('span', 'mo-list-size', { textContent: item.size != null ? formatFileSize(item.size) : '' }));
+  const rating = moEl('span', 'mo-list-rating');
+  if (item.rating > 0) {
+    rating.setAttribute('aria-label', `Rated ${item.rating} of 5`);
+    for (let i = 1; i <= 5; i++) rating.insertAdjacentHTML('beforeend', `<span class="mo-list-star${i <= item.rating ? ' is-on' : ''}">${moIcon('star', 12)}</span>`);
+  }
+  row.appendChild(rating);
   row.appendChild(moEl('span', 'mo-list-date', { textContent: formatShortDate(item.createdAt) }));
 
   row.addEventListener('pointerdown', (e) => {
@@ -9458,6 +9517,7 @@ function renderCardGrid(container, items, options) {
     const focIdx = opts.focusedIndex ?? null;
     let focusedNode = null;
     if (listMode) {
+      newChildren.push(moListHeader());
       for (let idx = 0; idx < itemList.length; idx++) {
         const item = itemList[idx];
         const row = renderMediaListRow(item, {
@@ -17328,9 +17388,17 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   const bar = moEl('div', 'mo-selection-bar');
   const itemsOf = () => [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
   const menuAt = (el, actions) => { const r = el.getBoundingClientRect(); showContextMenu(r.left, r.bottom + 4, actions); };
-  const selBtn = (label, title) => moEl('button', 'mo-sel-btn', { type: 'button', textContent: label, ...(title ? { title } : {}) });
-  const selMenuBtn = (label, title) => {
+  // Icon then label; a compact pane keeps the icon (the label is the tooltip).
+  const selBtn = (label, title, icon) => {
+    const b = moEl('button', 'mo-sel-btn', { type: 'button', ...(title ? { title } : {}) });
+    if (icon) b.insertAdjacentHTML('beforeend', moIcon(icon, 14));
+    b.appendChild(moEl('span', 'mo-sel-label', { textContent: label }));
+    b.setAttribute('aria-label', label);
+    return b;
+  };
+  const selMenuBtn = (label, title, icon) => {
     const b = moEl('button', 'mo-sel-btn mo-menu-btn', { type: 'button', ...(title ? { title } : {}) });
+    if (icon) b.insertAdjacentHTML('beforeend', moIcon(icon, 14));
     b.append(moEl('span', 'mo-menu-btn-label', { textContent: label }), moEl('span', 'mo-menu-btn-caret', { innerHTML: moIcon('chevron-down', 10) }));
     b.setAttribute('aria-haspopup', 'menu');
     return b;
@@ -17368,7 +17436,8 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   bar.appendChild(countBtn);
 
   // Bulk Tag button
-  const bulkTagBtn = selBtn('Tag', 'Add or remove tags on the selected items');
+  bar.appendChild(moEl('span', 'mo-sel-sep'));
+  const bulkTagBtn = selBtn('Tag…', 'Add or remove tags on the selected items', 'tag');
   bulkTagBtn.addEventListener('click', () => {
     // No refreshFn — the dialog dispatches mo:tags-bulk-changed for a
     // surgical, scroll-preserving update.
@@ -17378,7 +17447,8 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
 
   // AI tagging (Section 43): suggestions for the selected photos, reviewed in Tag Review.
   // One verb, two modes: suggestions on top of what each photo has, or a fresh set that replaces it.
-  const aiTagBtn = selMenuBtn('Tag With AI', 'Suggest tags from your tag list for the selected photos. Nothing is applied until you approve it in Tag Review.');
+  const aiTagBtn = selMenuBtn('Tag With AI', 'Suggest tags from your tag list for the selected photos. Nothing is applied until you approve it in Tag Review.', 'px-ai-mark');
+  aiTagBtn.classList.add('mo-sel-wide');
   aiTagBtn.addEventListener('click', () => menuAt(aiTagBtn, [
     { label: 'Tag With AI', title: 'Suggestions on top of what each photo has', handler: () => { void moTagWithAIFromUI(itemsOf(), api); } },
     { label: 'Retag With AI', title: 'A fresh set that replaces what each photo has, on Approve', handler: () => { void moTagWithAIFromUI(itemsOf(), api, 'retag'); } },
@@ -17386,21 +17456,22 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   bar.appendChild(aiTagBtn);
 
   // Bulk Rating button
-  const bulkRatingBtn = selBtn('Rate', 'Rate the selected items');
+  const bulkRatingBtn = selBtn('Rate…', 'Rate the selected items', 'star');
   bulkRatingBtn.addEventListener('click', () => {
     showBulkRatingDialog(state, api, () => { updateBar(); refreshFn(); });
   });
   bar.appendChild(bulkRatingBtn);
 
   // Add to Album button
-  const addToAlbumBtn = selBtn('Add To Album', 'Add the selected items to an album');
+  const addToAlbumBtn = selBtn('Add to Album…', 'Add the selected items to an album', 'images');
   addToAlbumBtn.addEventListener('click', () => {
     showAddToAlbumDialog(state, api, () => { updateBar(); refreshFn(); });
   });
   bar.appendChild(addToAlbumBtn);
 
   // M59 P10 / F15 — Compare button (visible when 2-4 items are selected)
-  const chatBtn = selBtn('Add To Chat', `Attach the selected files to the chat composer (${MO_CHAT_ATTACH_MAX} at a time)`);
+  const chatBtn = selBtn('Add to Chat', `Attach the selected files to the chat composer (${MO_CHAT_ATTACH_MAX} at a time)`, 'message-square-plus');
+  chatBtn.classList.add('mo-sel-wide');
   chatBtn.addEventListener('click', () => {
     const items = [...state.selectedIds].map((k) => { const i = k.indexOf(':'); return { type: k.slice(0, i), id: parseInt(k.slice(i + 1), 10) }; });
     void moAttachItemsToChat(items);
@@ -17438,12 +17509,12 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
   });
 
   // F9: Export button
-  const exportBtn = moEl('button', null, { textContent: 'Export...' });
+  const exportBtn = moEl('button', null, { textContent: 'Export…' });
   exportBtn.addEventListener('click', () => {
     exportSelectedItems(state, api);
   });
-  const moreBtn = moEl('button', 'mo-sel-btn mo-sel-more', { type: 'button', title: 'More', 'aria-label': 'More actions' });
-  moreBtn.innerHTML = moIcon('ellipsis', 12);
+  const moreBtn = moEl('button', 'mo-sel-btn mo-sel-more', { type: 'button', title: 'More Actions', 'aria-label': 'More Actions' });
+  moreBtn.innerHTML = moIcon('ellipsis', 16);
   moreBtn.setAttribute('aria-haspopup', 'menu');
   moreBtn.addEventListener('click', () => {
     const n = state.selectedIds.size;
@@ -17457,13 +17528,20 @@ function buildSelectionToolbar(container, state, api, refreshFn, applySelectionF
 
   bar.appendChild(moEl('span', 'mo-sel-spacer'));
 
-  // Delete: the trash, at the far right.
-  const deleteBtn = moEl('button', 'mo-sel-btn mo-sel-delete', { type: 'button', title: 'Delete the selected items', 'aria-label': 'Delete' });
-  deleteBtn.innerHTML = moIcon('trash', 12);
+  // Delete (it asks first), at the far right, then Done to leave selecting.
+  const deleteBtn = selBtn('Delete…', 'Permanently remove the selected items from the library', 'trash-2');
+  deleteBtn.classList.add('mo-sel-delete');
   deleteBtn.addEventListener('click', () => {
     showBulkDeleteDialog(state, api, () => { updateBar(); refreshFn(); });
   });
   bar.appendChild(deleteBtn);
+  const doneBtn = api.ui.createButton(bar, { label: 'Done', kind: 'secondary', title: 'Clear the selection (Esc)' });
+  doneBtn.addEventListener('click', () => {
+    state.selectedIds.clear();
+    state.selecting = false;
+    updateBar();
+    _applySelection();
+  });
 
   function updateBar() {
     const count = state.selectedIds.size;
