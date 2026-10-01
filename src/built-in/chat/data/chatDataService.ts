@@ -39,7 +39,7 @@ import {
   ChatRequestQueueKind,
 } from '../../../services/chatTypes.js';
 
-import type { Event } from '../../../platform/events.js';
+import { Emitter, type Event } from '../../../platform/events.js';
 
 import type { IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, ICanonicalMemorySearchService, IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
 import type { IUnifiedAIConfigService } from '../../../aiSettings/unifiedConfigTypes.js';
@@ -713,6 +713,9 @@ export function buildFileSystemAccessor(
 // ChatDataService
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/** How often to re-check providers while none is usable. */
+const PROVIDER_RECHECK_MS = 5_000;
+
 export class ChatDataService {
 
   // ── Digest cache (deprecated — workspace digest now always returns
@@ -734,6 +737,51 @@ export class ChatDataService {
     if (this._d.memoryService) {
       this._d.memoryService.evictStaleContent().catch(() => {});
     }
+  }
+
+  // ── Provider availability ──
+  // Chat is usable when ANY model provider is: local Ollama, or a cloud
+  // provider (Claude) with its key saved. Reading Ollama alone left a
+  // Claude-only user behind the "Ollama isn't running" screen with the
+  // input disabled.
+  private _otherProvidersAvailable = false;
+  private _providerStatusEmitter: Emitter<void> | undefined;
+  private _providerRecheckTimer: ReturnType<typeof setInterval> | undefined;
+
+  private _isAnyProviderAvailable(): boolean {
+    const ollama = (this._d.ollamaProvider as any)?.getLastStatus?.()?.available ?? false;
+    return ollama || this._otherProvidersAvailable;
+  }
+
+  private _providerStatusEvent(): Event<void> {
+    if (this._providerStatusEmitter) return this._providerStatusEmitter.event;
+    const emitter = new Emitter<void>();
+    this._providerStatusEmitter = emitter;
+    const recheck = async (): Promise<void> => {
+      const others = (this._d.languageModelsService?.getProviders?.() ?? []).filter((p) => p.id !== 'ollama');
+      let any = false;
+      for (const p of others) {
+        try { if ((await p.checkAvailability()).available) { any = true; break; } } catch { /* unavailable */ }
+      }
+      if (any !== this._otherProvidersAvailable) {
+        this._otherProvidersAvailable = any;
+        emitter.fire();
+      }
+      // While nothing is usable, look again every few seconds so a key saved
+      // in AI Settings unblocks chat without a restart. Stop once something is.
+      const blocked = !this._isAnyProviderAvailable();
+      if (blocked && !this._providerRecheckTimer) {
+        this._providerRecheckTimer = setInterval(() => void recheck(), PROVIDER_RECHECK_MS);
+      } else if (!blocked && this._providerRecheckTimer) {
+        clearInterval(this._providerRecheckTimer);
+        this._providerRecheckTimer = undefined;
+      }
+    };
+    const ollamaChanged = (this._d.ollamaProvider as any)?.onDidChangeStatus as Event<unknown> | undefined;
+    ollamaChanged?.(() => { emitter.fire(); void recheck(); });
+    this._d.languageModelsService?.onDidChangeProviders?.(() => void recheck());
+    void recheck();
+    return emitter.event;
   }
 
   /** Called by the indexing-complete listener in chatTool.ts. */
@@ -2131,10 +2179,8 @@ export class ChatDataService {
       },
       createSession: () => this._d.chatService.createSession(),
       onDidChangeSession: this._d.chatService.onDidChangeSession as Event<string>,
-      getProviderStatus: () => ({
-        available: (this._d.ollamaProvider as any).getLastStatus?.()?.available ?? false,
-      }),
-      onDidChangeProviderStatus: (this._d.ollamaProvider as any).onDidChangeStatus as Event<void>,
+      getProviderStatus: () => ({ available: this._isAnyProviderAvailable() }),
+      onDidChangeProviderStatus: this._providerStatusEvent(),
       queueRequest: (sessionId: string, message: string, kind: ChatRequestQueueKind, options) =>
         this._d.chatService.queueRequest(sessionId, message, kind, options),
       removePendingRequest: (sessionId: string, requestId: string) =>
