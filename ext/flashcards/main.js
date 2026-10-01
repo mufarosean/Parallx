@@ -6461,7 +6461,8 @@ async function renderDecks(body, setRoute) {
   const datesBtn = el('button', 'fc-btn');
   datesBtn.textContent = 'Exam Dates';
   datesBtn.title = 'Set or clear the exam date on several decks at once.';
-  datesBtn.disabled = decks.length === 0;
+  // Nothing to date on an empty shelf: show the button once a deck exists.
+  if (decks.length === 0) datesBtn.style.display = 'none';
   datesBtn.addEventListener('click', () => void _setExamDatesBulkFlow());
   actions.appendChild(datesBtn);
   view.appendChild(actions);

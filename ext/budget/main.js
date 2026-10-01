@@ -662,16 +662,16 @@ function injectStyles() {
 }
 .budget-pill.review, .budget-pill.low {
   border-color: var(--vscode-charts-orange, #965719);
-  color: var(--vscode-charts-orange, #965719);
+  color: var(--px-warning);
 }
 .budget-pill.confirmed, .budget-pill.high {
   border-color: var(--vscode-charts-green, #5da56e);
-  color: var(--vscode-charts-green, #5da56e);
+  color: var(--px-success);
 }
 .budget-pill.hidden  { opacity: 0.7; }
 .budget-pill.deleted {
   border-color: var(--vscode-charts-red, #a43b38);
-  color: var(--vscode-charts-red, #a43b38);
+  color: var(--px-danger);
 }
 .budget-pill.medium {
   border-color: var(--vscode-charts-blue, #5a8bca);

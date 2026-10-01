@@ -83,7 +83,7 @@
 .search-option-btn {
   border: none;
   background: transparent;
-  color: var(--px-text-muted);
+  color: var(--px-text-secondary);
   font-size: var(--px-text-xs, 11px);
   font-family: var(--vscode-editor-font-family, monospace);
   width: 20px;
@@ -110,7 +110,7 @@
 .search-filters-toggle {
   border: none;
   background: transparent;
-  color: var(--px-text-faint);
+  color: var(--px-text-muted);
   font-size: var(--px-text-xs, 11px);
   cursor: pointer;
   padding: 2px 4px;
