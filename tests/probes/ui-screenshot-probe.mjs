@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -390,6 +390,163 @@ async function timelapseScene(appRoot, clip2, errors) {
 
 // The image editor: a folder of photos is scanned, one opens in Edit Image,
 // and each tool is shot (dark, then light, then a narrow window).
+// Media Organizer audit: every menu on a photo, a GIF, a video and a
+// selection; the page ⋯ and View; what Delete and the Delete key do; Trash;
+// commands run from the palette without arguments; the shortcuts sheet.
+// Logs each menu's items and each message the app shows.
+async function moAuditScene(appRoot, workspace, errors) {
+  const media = path.join(workspace, 'audit');
+  await fs.mkdir(media, { recursive: true });
+  const ff = (args) => spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args]);
+  ff(['-f', 'lavfi', '-i', 'mandelbrot=s=800x600', '-frames:v', '1', '-q:v', '4', path.join(media, 'one.jpg')]);
+  ff(['-f', 'lavfi', '-i', 'gradients=s=800x600:speed=0', '-frames:v', '1', '-q:v', '4', path.join(media, 'two.jpg')]);
+  ff(['-f', 'lavfi', '-i', 'cellauto=s=800x600:rule=30', '-frames:v', '1', '-q:v', '4', path.join(media, 'three.jpg')]);
+  ff(['-f', 'lavfi', '-i', 'testsrc=s=320x240:d=1:r=10', path.join(media, 'loop.gif')]);
+  ff(['-f', 'lavfi', '-i', 'testsrc=s=640x360:d=2:r=25', '-pix_fmt', 'yuv420p', path.join(media, 'clip.mp4')]);
+  const { app, page } = await launchApp(appRoot, errors);
+  const log = (k, v) => console.log(`[probe] audit ${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+  const msgs = async () => page.evaluate(() => {
+    const svc = window.__parallx_workbench__?._services?.get?.({ id: 'INotificationService' });
+    const h = (svc && svc.history) || [];
+    const out = h.map((n) => n.message + (n.actions && n.actions.length ? ` [${n.actions.map((a) => a.title || a).join(' | ')}]` : ''));
+    if (svc && svc.clearHistory) svc.clearHistory();
+    return out;
+  });
+  const menuItems = () => page.evaluate(() => {
+    const menus = Array.from(document.querySelectorAll('.context-menu')).filter((m) => m.offsetParent || m.getBoundingClientRect().width);
+    const m = menus[menus.length - 1];
+    if (!m) return 'NO MENU';
+    return Array.from(m.children).map((r) => {
+      if (r.classList.contains('context-menu-separator') || /separator/.test(r.className)) return '—';
+      const l = r.querySelector('.context-menu-item-label')?.textContent || r.textContent || '';
+      const k = r.querySelector('.context-menu-item-keybinding, .context-menu-item-key')?.textContent || '';
+      return `${l.trim()}${r.classList.contains('context-menu-item--disabled') ? ' (off)' : ''}${k ? ` <${k.trim()}>` : ''}${r.querySelector('.context-menu-item-submenu, .context-menu-submenu-indicator') ? ' ›' : ''}`;
+    }).join(' | ');
+  });
+  const prompts = () => page.evaluate(() => Array.from(document.querySelectorAll('.parallx-notification-prompts-container *, .parallx-notifications-container .parallx-notification-message, .parallx-modal-box')).filter((e) => e.offsetParent && e.children.length === 0 && (e.textContent || '').trim()).map((e) => e.textContent.trim()).join(' | '));
+  const closeMenus = async () => { await page.keyboard.press('Escape'); await page.waitForTimeout(250); };
+  const rightClickCard = async (name) => {
+    const ok = await page.evaluate((n) => {
+      const card = Array.from(document.querySelectorAll('.mo-card, .mo-list-row')).find((c) => (c.textContent || '').includes(n));
+      if (!card) return false;
+      const r = card.getBoundingClientRect();
+      card.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 20, clientY: r.top + 20 }));
+      return true;
+    }, name);
+    await page.waitForTimeout(400);
+    return ok;
+  };
+  try {
+    await enableMediaOrganizer(page);
+    await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }); }, media);
+    await runCommand(page, ['media-organizer.scan']);
+    await page.waitForTimeout(6_000);
+    await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('.activity-bar-item')).find((b) => Array.from(b.attributes).some((a) => /media.?organizer/i.test(a.value)));
+      if (btn) btn.click();
+    });
+    await page.waitForTimeout(1_500);
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-sidebar-item')).find((r) => r.querySelector('.mo-sidebar-item-label')?.textContent === 'All Media')?.click());
+    await page.waitForTimeout(3_000);
+    log('All Media opens as', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-segment-btn')).filter((b) => b.classList.contains('active') || b.getAttribute('aria-pressed') === 'true').map((b) => b.title).join(',') + (document.querySelector('.mo-feed:not([hidden])') && document.querySelector('.mo-feed').offsetParent ? ' (feed visible)' : '')));
+    log('messages after scan', await msgs());
+    // Grid layout, then each kind of card.
+    await page.evaluate(() => document.querySelector('.mo-segment-btn[title="Grid"]')?.click());
+    await page.waitForTimeout(2_000);
+    log('cards', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-card')).map((c) => (c.querySelector('.mo-card-title')?.textContent || '').trim()).join(', ')));
+    for (const name of ['one', 'loop', 'clip']) {
+      const ok = await rightClickCard(name);
+      log(`menu on ${name}`, ok ? await menuItems() : 'card not found');
+      if (name === 'one') await shot(page, 'audit-menu-photo');
+      await closeMenus();
+    }
+    // Page ⋯ and View.
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-page-header button')).find((b) => /More/.test(b.title || b.getAttribute('aria-label') || ''))?.click());
+    await page.waitForTimeout(400);
+    log('page ⋯', await menuItems());
+    await closeMenus();
+    await page.evaluate(() => document.querySelector('.mo-toolbar-btn[title="View options"]')?.click());
+    await page.waitForTimeout(400);
+    log('View popover', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-view-pop .mo-view-row')).map((r) => r.textContent.trim()).join(' | ')));
+    await page.mouse.click(700, 700);
+    await page.waitForTimeout(300);
+    // Select all, then the selection's right-click and bar.
+    await page.evaluate(() => document.querySelector('.mo-card')?.click());
+    await page.waitForTimeout(300);
+    await page.keyboard.press('Control+a');
+    await page.waitForTimeout(600);
+    log('selection bar', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-selection-bar button, .mo-sel-bar button, [class*="mo-sel"] button')).filter((b) => b.offsetParent).map((b) => (b.getAttribute('aria-label') || b.textContent || b.title || '').trim()).filter(Boolean).join(' | ')));
+    await shot(page, 'audit-selection');
+    await rightClickCard('one');
+    log('menu on selection', await menuItems());
+    await shot(page, 'audit-menu-selection');
+    await closeMenus();
+    // The Delete key with the selection (keys go to the focused grid).
+    await page.evaluate(() => { const g = document.querySelector('.mo-grid-browser'); if (g) g.focus(); });
+    await page.keyboard.press('Control+a');
+    await page.waitForTimeout(400);
+    await page.keyboard.press('Delete');
+    await page.waitForTimeout(500);
+    log('Delete key opens', await page.evaluate(() => { const d = document.querySelector('.mo-bulk-dialog'); return d ? `${d.querySelector('h3')?.textContent} / ${d.querySelector('.mo-bulk-dialog-warn')?.textContent} / checkbox checked=${d.querySelector('input[type=checkbox]')?.checked}` : 'no dialog'; }));
+    await shot(page, 'audit-delete-dialog');
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-bulk-dialog button')).find((b) => b.textContent === 'Cancel')?.click());
+    await page.waitForTimeout(300);
+    // The palette's Move Selected to Trash on one item, then the Trash view.
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await page.evaluate(() => { const c = Array.from(document.querySelectorAll('.mo-card')).find((x) => (x.textContent || '').includes('three')); c?.querySelector('.mo-card-check, .mo-card-select, input[type=checkbox]')?.click(); });
+    await page.waitForTimeout(300);
+    const selN = await page.evaluate(() => document.querySelectorAll('.mo-card.selected, .mo-card.is-selected, .mo-card[aria-selected="true"]').length);
+    log('selected before moveToTrash', String(selN));
+    await runCommand(page, ['media-organizer.moveToTrash']);
+    await page.waitForTimeout(1_200);
+    log('messages after moveToTrash', await msgs());
+    await page.evaluate(() => Array.from(document.querySelectorAll('.mo-sidebar-item')).find((r) => r.querySelector('.mo-sidebar-item-label')?.textContent === 'Trash')?.click());
+    await page.waitForTimeout(2_500);
+    log('Trash view cards', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-card, .mo-feed-tile')).filter((c) => c.offsetParent).map((c) => (c.textContent || '').trim().slice(0, 20)).join(', ') || 'none'));
+    log('Trash view buttons', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-page-header button')).filter((b) => b.offsetParent).map((b) => (b.textContent || b.title || '').trim()).join(' | ')));
+    if (await rightClickCard('three')) { log('menu in Trash', await menuItems()); await closeMenus(); }
+    else log('menu in Trash', 'no card (Trash view may be a feed or empty)');
+    // Folder row right-click in the sidebar.
+    await page.evaluate(() => { const r = document.querySelector('[data-mo-browse="folders"] .mo-sidebar-item'); if (r) { const b = r.getBoundingClientRect(); r.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: b.left + 10, clientY: b.top + 5 })); } });
+    await page.waitForTimeout(400);
+    log('folder row right-click', await menuItems());
+    await closeMenus();
+    // Commands from the palette, no arguments.
+    for (const c of ['revealInMO', 'openClipEditor', 'editImage', 'createAlbum', 'openSmartAlbum', 'cacheStats', 'emptyTrash']) {
+      await runCommand(page, [`media-organizer.${c}`]);
+      await page.waitForTimeout(900);
+      log(`palette ${c}`, `${JSON.stringify(await msgs())} on screen: ${await prompts()}`);
+      if (c === 'editImage' || c === 'emptyTrash') await shot(page, `audit-palette-${c}`);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(200);
+    }
+    // Trash older than 30 days: backdate the trashed photo, restart the tool
+    // (the purge runs on activation), then rescan the folder.
+    const sql = (q, p = []) => page.evaluate(async ({ q, p }) => { const r = await window.parallxElectron.extensionDatabase.all('media-organizer', q, p); return r.rows || r.error; }, { q, p });
+    const runSql = (q, p = []) => page.evaluate(async ({ q, p }) => { const r = await window.parallxElectron.extensionDatabase.run('media-organizer', q, p); return r.error ? JSON.stringify(r.error) : r.changes; }, { q, p });
+    const photoState = async () => JSON.stringify(await sql(`SELECT p.id, f.basename, p.deleted_at FROM mo_photos p JOIN mo_photos_files pf ON pf.photo_id = p.id JOIN mo_files f ON f.id = pf.file_id WHERE f.basename = 'three.jpg'`));
+    log('three.jpg before', await photoState());
+    log('backdate', String(await runSql(`UPDATE mo_photos SET deleted_at = datetime('now', '-40 days') WHERE deleted_at IS NOT NULL`)));
+    await page.evaluate(async () => { const svc = window.__parallx_workbench__?._services?.get?.({ id: 'IToolEnablementService' }); await svc.setEnablement('parallx-community.media-organizer', false); });
+    await page.waitForTimeout(2_000);
+    await enableMediaOrganizer(page);
+    log('three.jpg after restart (auto-purge)', await photoState());
+    log('three.jpg on disk', String(await fs.stat(path.join(media, 'three.jpg')).then(() => true).catch(() => false)));
+    await runCommand(page, ['media-organizer.rescan']);
+    await page.waitForTimeout(6_000);
+    log('three.jpg after rescan', await photoState());
+    log('messages', await msgs());
+    // The shortcuts sheet.
+    await runCommand(page, ['media-organizer.showShortcuts']);
+    await page.waitForTimeout(600);
+    log('shortcuts sheet', await page.evaluate(() => Array.from(document.querySelectorAll('.mo-cheat-row')).map((r) => r.textContent.replace(/\s+/g, ' ').trim()).filter((t) => /Delete|sash|Save|filter/i.test(t)).join(' | ')));
+    await page.keyboard.press('Escape');
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 // The Media Organizer sidebar: the places to look, To sort, Collections,
 // Studio and Browse (Folders | Tags), in dark and light, with a view open.
 async function sidebarScene(appRoot, workspace, errors) {
@@ -576,6 +733,17 @@ async function main() {
     await scene('image', () => imageScene(appRoot, workspace, errs));
     const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
     if (real.length) { console.log(`[probe] image: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
+    if (scenes.length === 1) {
+      await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
+      return;
+    }
+  }
+  if (scenes.includes('moaudit')) {
+    const errs = [];
+    await scene('moaudit', () => moAuditScene(appRoot, workspace, errs));
+    const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
+    if (real.length) { console.log(`[probe] moaudit: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
     if (scenes.length === 1) {
       await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
       await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
@@ -871,7 +1039,8 @@ async function main() {
           await page.waitForTimeout(300);
           return true;
         };
-        const closeMenus = async () => page.evaluate(() => {
+        const prompts = () => page.evaluate(() => Array.from(document.querySelectorAll('.parallx-notification-prompts-container *, .parallx-notifications-container .parallx-notification-message, .parallx-modal-box')).filter((e) => e.offsetParent && e.children.length === 0 && (e.textContent || '').trim()).map((e) => e.textContent.trim()).join(' | '));
+  const closeMenus = async () => page.evaluate(() => {
           const pop = document.querySelector('.mo-ce-pop'); if (pop && pop.style.display !== 'none') document.querySelector('.mo-ce-split-menu')?.click();
           const q = document.querySelector('.mo-ce-queue'); if (q && q.style.display !== 'none') q.querySelector('[title="Close the queue"]')?.click();
         });
