@@ -4504,7 +4504,7 @@ function injectStyles() {
 }
 .fc-sb__title {
   flex: 1; min-width: 0;
-  font-size: var(--px-text-2xs); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  font-size: var(--px-text-xs); font-weight: 700; letter-spacing: normal; text-transform: none;
   color: var(--px-text-faint);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -4665,11 +4665,18 @@ function injectStyles() {
 /* ── Buttons — text-forward; ghost default, one accent primary ── */
 .fc-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 28px; padding: 0 var(--px-space-3);
   border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
   background: transparent; color: var(--px-text-secondary);
   font: inherit; font-size: var(--px-text-sm); font-weight: 550; cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .fc-btn:hover { background: var(--px-surface-hover); color: var(--px-text); border-color: var(--px-border-strong); }
 .fc-btn:active { transform: var(--px-press); }
@@ -5027,8 +5034,8 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-cardrow:hover .fc-cardrow__actions,
 .fc-cardrow:focus-within .fc-cardrow__actions { opacity: 1; }
 .fc-state {
-  display: inline-block; font-size: var(--px-text-2xs); font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.04em;
+  display: inline-block; font-size: var(--px-text-xs); font-weight: 700;
+  text-transform: capitalize; letter-spacing: normal;
   border-radius: var(--px-radius-sm); padding: 1px 6px;
 }
 .fc-state--new { background: rgba(var(--px-blue-rgb), 0.15); color: var(--px-info); }
@@ -5106,7 +5113,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 }
 .fc-card__head {
   display: flex; justify-content: space-between; align-items: center;
-  font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
+  font-size: var(--px-text-xs); font-weight: 700; text-transform: none; letter-spacing: normal;
   color: #9a9a9a; font-variant-numeric: tabular-nums;
   margin-bottom: var(--px-space-4);
 }
@@ -5183,7 +5190,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
   border-left: 2px solid var(--px-border); padding-left: var(--px-space-3);
 }
 .fc-answers__head { display: flex; align-items: center; gap: var(--px-space-2); margin-bottom: 2px; }
-.fc-answers__grade { font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.fc-answers__grade { font-size: var(--px-text-xs); font-weight: 700; text-transform: none; letter-spacing: normal; }
 .fc-answers__grade--again { color: var(--px-danger); }
 .fc-answers__grade--hard  { color: var(--px-warning); }
 .fc-answers__grade--good  { color: var(--px-success); }
@@ -5200,8 +5207,8 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-edit__rubric .fc-textarea { width: 100%; box-sizing: border-box; resize: vertical; }
 .fc-study__produce { width: 100%; max-width: min(100%, 920px); margin-top: var(--px-space-5); text-align: left; }
 .fc-study__produce-label {
-  font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.07em; color: var(--px-text-faint); margin-bottom: 4px;
+  font-size: var(--px-text-xs); font-weight: 700; text-transform: none;
+  letter-spacing: normal; color: var(--px-text-faint); margin-bottom: 4px;
 }
 .fc-study__produce-input { width: 100%; box-sizing: border-box; resize: none; line-height: var(--px-leading-relaxed); }
 .fc-study__produce-input[readonly] { opacity: 0.72; cursor: default; }
@@ -5384,7 +5391,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
    separated by whitespace; one restrained review histogram on a baseline. ── */
 .fc-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--px-space-5) var(--px-space-4); margin-bottom: var(--px-space-6); }
 .fc-stat__value { font-size: var(--px-text-xl); font-weight: 700; letter-spacing: -0.02em; color: var(--px-text); font-variant-numeric: tabular-nums; }
-.fc-stat__label { font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-faint); margin-top: 3px; }
+.fc-stat__label { font-size: var(--px-text-xs); font-weight: 700; text-transform: none; letter-spacing: normal; color: var(--px-text-faint); margin-top: 3px; }
 .fc-chart { display: flex; align-items: flex-end; gap: 3px; height: 96px; margin: var(--px-space-2) 0 var(--px-space-1); padding-bottom: var(--px-space-2); border-bottom: 1px solid var(--px-divider); }
 .fc-chart__bar { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; background: var(--px-surface-active); transition: background var(--px-dur-fast) var(--px-ease); }
 .fc-chart__bar:hover { background: var(--px-accent); }
@@ -5402,7 +5409,7 @@ button.fc-exam-chip:hover { background: var(--px-accent-faint); }
 .fc-answermix__dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .fc-decktable { display: flex; flex-direction: column; }
 .fc-decktable__row { display: grid; grid-template-columns: 1fr 70px 70px 70px 100px; gap: var(--px-space-2); padding: 6px 0; border-bottom: 1px solid var(--px-divider); font-size: var(--px-text-sm); color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
-.fc-decktable__row--head { font-size: var(--px-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--px-text-faint); }
+.fc-decktable__row--head { font-size: var(--px-text-xs); font-weight: 700; text-transform: none; letter-spacing: normal; color: var(--px-text-faint); }
 .fc-decktable__name { color: var(--px-text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fc-decktable__due { color: var(--px-accent-text); font-weight: 600; }
 
@@ -10403,7 +10410,7 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
               if (group._ui) {
                 group._ui.section.classList.add('fc-import-group--done');
                 if (group._ui.cb) group._ui.cb.disabled = true;
-                group._ui.head.appendChild(el('span', 'fc-hint', '✓ imported'));
+                group._ui.head.appendChild(el('span', 'fc-hint', 'Imported'));
               }
               progress.textContent = `${done.toLocaleString()} / ${grand.toLocaleString()}…`;
             }

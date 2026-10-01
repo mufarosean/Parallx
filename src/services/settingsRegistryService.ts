@@ -80,6 +80,9 @@ export interface ISettingSchema {
   readonly rows?: number;
   /** For sensitive values (passwords, API keys). Masks input + excludes from export. */
   readonly secret?: boolean;
+  /** Internal switches (rollback flags, migrations): real settings, readable and
+   *  writable through the registry, but not listed in the Settings editor. */
+  readonly hidden?: boolean;
 }
 
 /**

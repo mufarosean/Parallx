@@ -279,30 +279,10 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
     nameEl.textContent = tool.name;
     nameRow.appendChild(nameEl);
 
-    const versionEl = $('span');
-    versionEl.classList.add('tool-gallery-row-version');
-    versionEl.textContent = `v${tool.version}`;
-    nameRow.appendChild(versionEl);
-
-    if (tool.isBuiltin) {
-      const badge = $('span');
-      badge.classList.add('tool-gallery-row-badge');
-      badge.textContent = 'Built-in';
-      nameRow.appendChild(badge);
-    }
-    if (!enabled) {
-      const disabledBadge = $('span');
-      disabledBadge.classList.add('tool-gallery-row-badge', 'tool-gallery-row-badge-disabled');
-      disabledBadge.textContent = 'disabled';
-      nameRow.appendChild(disabledBadge);
-    }
+    // The list is for finding and toggling. Version, publisher and the
+    // built-in mark live on the tool's own page (a click away); the group
+    // headers already say enabled or disabled.
     info.appendChild(nameRow);
-
-    // Publisher
-    const publisherEl = $('div');
-    publisherEl.classList.add('tool-gallery-row-publisher');
-    publisherEl.textContent = tool.publisher;
-    info.appendChild(publisherEl);
 
     // Description
     const descEl = $('div');
@@ -316,10 +296,9 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
     const toggle = $('button');
     toggle.classList.add('tool-gallery-toggle');
     if (!api.tools.canChangeEnablement(tool.id)) {
-      toggle.textContent = 'Disable';
-      toggle.title = 'Required by the app and cannot be disabled';
-      toggle.disabled = true;
-      toggle.classList.add('tool-gallery-toggle-builtin');
+      // Required by the app: nothing to toggle, so no button. A permanently
+      // disabled "Disable" on every core tool was most of the list's noise.
+      row.title = `${tool.name} is part of Parallx and is always on.`;
     } else {
       toggle.textContent = enabled ? 'Disable' : 'Enable';
       toggle.title = enabled ? `Disable ${tool.name}` : `Enable ${tool.name}`;
@@ -334,8 +313,8 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
           toggle.textContent = enabled ? 'Disable' : 'Enable';
         });
       });
+      row.appendChild(toggle);
     }
-    row.appendChild(toggle);
 
     // Click → open editor
     row.addEventListener('click', () => {

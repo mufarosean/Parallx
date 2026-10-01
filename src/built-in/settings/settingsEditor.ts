@@ -299,7 +299,7 @@ export class SettingsEditor extends Disposable {
     }
 
     const cats = new Set<string>();
-    for (const s of this._registry.getAllSchemas()) cats.add(s.category ?? 'General');
+    for (const s of this._visibleSchemas()) cats.add(s.category ?? 'General');
     for (const cat of cats) {
       // A feature that contributes BOTH a rich panel and flat settings under
       // the same name previously produced two identical nav rows — one from
@@ -435,8 +435,7 @@ export class SettingsEditor extends Disposable {
       // A `fill` panel owns its own scroll and would clip anything appended
       // after it, so those keep the panel alone and stay reachable by search.
       if (entry.absorbedCategory && !entry.panel.fill) {
-        const rows = this._registry
-          .getAllSchemas()
+        const rows = this._visibleSchemas()
           .filter((s) => (s.category ?? 'General') === entry.absorbedCategory && this._matches(s));
         if (rows.length) {
           const sub = $('h4.settings-editor__category-title');
@@ -453,12 +452,16 @@ export class SettingsEditor extends Disposable {
     heading.textContent = entry.label;
     this._contentEl.appendChild(heading);
 
-    const rows = this._registry
-      .getAllSchemas()
+    const rows = this._visibleSchemas()
       .filter((s) => (s.category ?? 'General') === entry.category && this._matches(s));
     for (const schema of rows) {
       this._contentEl.appendChild(this._renderRow(schema));
     }
+  }
+
+  /** Every schema the editor lists: all of them except internal switches. */
+  private _visibleSchemas(): readonly ISettingSchema[] {
+    return this._registry.getAllSchemas().filter((s) => !s.hidden);
   }
 
   private _renderSearchResults(): void {
@@ -466,7 +469,7 @@ export class SettingsEditor extends Disposable {
     heading.textContent = 'Search results';
     this._contentEl.appendChild(heading);
 
-    const schemas = this._registry.getAllSchemas().filter((s) => this._matches(s));
+    const schemas = this._visibleSchemas().filter((s) => this._matches(s));
     if (schemas.length === 0) {
       const empty = $('div.settings-editor__empty');
       empty.textContent = 'No settings match the current filter.';

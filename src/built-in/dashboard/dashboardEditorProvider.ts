@@ -1099,19 +1099,18 @@ class DashboardEditorPane implements IDisposable {
       // ── Templates rail (M86 C3): preconfigured recipes — one click adds
       // a fully configured widget. Only recipes whose type is currently
       // registered are shown, so a disabled extension hides its recipes.
+      const grid = el('div', 'dashboard-picker__grid');
       const recipes = WIDGET_TEMPLATES.filter((r) => this._registry.getWidgetType(r.typeId));
       if (recipes.length > 0) {
-        const tHead = el('div', 'dashboard-picker__section');
+        // Templates are the first section of the scrolling list, titled and
+        // aligned like every other section (they were a fixed rail above it).
+        const tSection = el('div', 'dashboard-picker__section');
+        const tHead = el('div', 'dashboard-picker__section-title');
         tHead.textContent = 'Templates';
-        sheet.appendChild(tHead);
+        tSection.appendChild(tHead);
         const rail = el('div', 'dashboard-picker__templates');
-        // A mouse wheel only produces vertical deltas, so a horizontal rail
-        // is unreachable without this: translate wheel to horizontal scroll.
-        rail.addEventListener('wheel', (e: WheelEvent) => {
-          if (e.deltaY === 0 || e.shiftKey) return;
-          e.preventDefault();
-          rail.scrollLeft += e.deltaY;
-        }, { passive: false });
+        // The templates wrap into a grid now (dashboard.css), so the wheel
+        // scrolls the dialog as usual — no sideways translation.
         for (const recipe of recipes) {
           const tile = el('button', 'dashboard-picker__template');
           tile.setAttribute('type', 'button');
@@ -1137,10 +1136,10 @@ class DashboardEditorPane implements IDisposable {
           });
           rail.appendChild(tile);
         }
-        sheet.appendChild(rail);
+        tSection.appendChild(rail);
+        grid.appendChild(tSection);
       }
 
-      const grid = el('div', 'dashboard-picker__grid');
       const grouped = new Map<string, WidgetTypeRegistration<unknown>[]>();
       for (const t of types) {
         const k = t.category;

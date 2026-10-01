@@ -32,8 +32,8 @@
 .kbs__row--head {
   background: var(--px-bg-elevated);
   font-size: var(--px-text-xs, 11px);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--px-text-muted);
   position: sticky;
   top: 0;
@@ -85,7 +85,7 @@
 .kbs__cap {
   display: inline-block;
   font-family: var(--px-font-ui, inherit);
-  font-size: 11px;
+  font-size: var(--px-text-xs);
   line-height: 1;
   padding: 3px 6px;
   color: var(--px-text-secondary);

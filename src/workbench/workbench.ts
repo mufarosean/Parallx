@@ -2957,7 +2957,7 @@ export class Workbench extends Layout {
     if (headerSlot) {
       const headerLabel = $('span');
       headerLabel.classList.add('auxiliary-bar-header-label');
-      headerLabel.textContent = 'SECONDARY SIDE BAR';
+      headerLabel.textContent = 'Secondary Side Bar';
       headerSlot.appendChild(headerLabel);
 
       container.onDidChangeActiveView((viewId) => {

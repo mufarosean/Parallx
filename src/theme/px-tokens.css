@@ -147,9 +147,9 @@
   --px-accent-soft:   hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l) / 0.15);
   --px-accent-faint:  hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-l) / 0.08);
   /* Accent as TEXT (links, active labels, accent ink on soft fills). Dark: the
-     accent itself. Light mode redefines it darker; pxAppearance computes the
+     accent one step lighter, so it holds 4.5:1 even on an accent-soft fill. Light mode redefines it darker; pxAppearance computes the
      lightness per accent (accentTextLightness) so it reaches 4.5:1 on paper. */
-  --px-accent-text:   var(--px-accent);
+  --px-accent-text:   var(--px-accent-hover);
 
   /* Signals */
   --px-danger:        rgb(var(--px-red-rgb));
@@ -344,11 +344,12 @@
   --px-base-70: #3c414a;   /* secondary text                       */
   --px-base-100: #1b1d21;  /* primary text (ink)                   */
 
-  /* Signals — darkened/saturated for legibility on a light canvas. */
-  --px-red-rgb:    200, 64, 58;
-  --px-green-rgb:  38, 140, 92;
-  --px-yellow-rgb: 173, 122, 26;
-  --px-blue-rgb:   46, 110, 200;
+  /* Signals — darkened for legibility on a light canvas: each reaches 4.5:1
+     as text on paper, sidebar and card (status labels are text). */
+  --px-red-rgb:    194, 60, 54;
+  --px-green-rgb:  33, 122, 80;
+  --px-yellow-rgb: 142, 100, 21;
+  --px-blue-rgb:   45, 107, 194;
 
   /* Semantic tokens that assume dark — overridden for light. */
   --px-accent-text:  hsl(var(--px-accent-h) var(--px-accent-s) var(--px-accent-text-l, 33%));

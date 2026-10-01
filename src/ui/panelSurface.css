@@ -47,8 +47,8 @@
 .px-panel-toolbar-title {
   font-size: var(--px-text-xs);
   font-weight: 600;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--px-text-muted);
   user-select: none;
   white-space: nowrap;

@@ -146,7 +146,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 92%, transparent));
   box-shadow: var(--px-shadow-md);
   z-index: 100;
@@ -169,7 +169,7 @@
   padding: 3px 9px;
   border-radius: 4px;
   font-family: inherit;
-  font-size: 11.5px;
+  font-size: var(--px-text-xs);
   font-weight: 600;
   cursor: pointer;
   transition: background-color var(--px-dur-fast) var(--px-ease);
@@ -180,15 +180,15 @@
 .canvas-sidebar-toast-close {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 45%, transparent);
-  font-size: 16px;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-md);
   line-height: 1;
   cursor: pointer;
   padding: 0 4px;
   border-radius: 3px;
 }
 .canvas-sidebar-toast-close:hover {
-  color: color-mix(in srgb, var(--px-text) 85%, transparent);
+  color: var(--px-text);
 }
 .canvas-tree {
   position: relative;
@@ -210,7 +210,7 @@
   border: none;
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 50%, transparent));
   font-family: inherit;
-  font-size: 10px;
+  font-size: var(--px-text-2xs);
   letter-spacing: 0.5px;
   text-align: left;
   cursor: pointer;
@@ -245,7 +245,7 @@
 }
 .canvas-sidebar-search-icon {
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--px-text) 40%, transparent);
+  color: var(--px-text-faint);
   display: inline-flex;
   align-items: center;
 }
@@ -256,7 +256,7 @@
   outline: none;
   color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 90%, transparent));
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   padding: 2px 0;
   min-width: 0;
 }
@@ -266,20 +266,20 @@
 .canvas-empty-search {
   padding: 16px;
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 55%, transparent));
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   font-style: italic;
   text-align: center;
 }
 
 /* M77 Phase 11.7 — richer empty state */
 .canvas-empty-title {
-  font-size: 14px;
+  font-size: var(--px-text-md);
   font-weight: 600;
   color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 90%, transparent));
   margin-bottom: 6px;
 }
 .canvas-empty-subtitle {
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   line-height: 1.5;
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 55%, transparent));
   margin-bottom: 14px;
@@ -294,15 +294,19 @@
   display: block;
   width: 100%;
   text-align: left;
-  padding: 7px 10px;
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
-  border-radius: var(--parallx-radius-sm);
   color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 85%, transparent));
   font-family: inherit;
-  font-size: 12px;
   cursor: pointer;
   transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .canvas-empty-action:hover {
   background: color-mix(in srgb, var(--px-text) 8%, transparent);
@@ -324,7 +328,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 50%, transparent));
 }
 .canvas-empty-hint-kbd {
@@ -336,8 +340,8 @@
   border: 1px solid color-mix(in srgb, var(--px-text) 12%, transparent);
   border-radius: 3px;
   font-family: var(--parallx-fontFamily-mono, monospace);
-  font-size: 10px;
-  color: color-mix(in srgb, var(--px-text) 70%, transparent);
+  font-size: var(--px-text-2xs);
+  color: var(--px-text-secondary);
 }
 
 /* M77 Phase 11.4 — template picker modal */
@@ -367,13 +371,13 @@
   font-family: var(--parallx-fontFamily-ui);
 }
 .canvas-template-picker-title {
-  font-size: 16px;
+  font-size: var(--px-text-md);
   font-weight: 600;
   color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 95%, transparent));
   margin-bottom: 4px;
 }
 .canvas-template-picker-subtitle {
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 60%, transparent));
   margin-bottom: 18px;
 }
@@ -420,28 +424,28 @@
   display: inline-block;
   margin-top: 6px;
   padding: 1px 8px;
-  font-size: 10px;
+  font-size: var(--px-text-2xs);
   border-radius: 999px;
   background: var(--px-bg-inset);
   color: var(--px-text-secondary);
 }
 .canvas-template-picker-section-header {
   grid-column: 1 / -1;
-  font-size: 10.5px;
+  font-size: var(--px-text-xs);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 50%, transparent));
   margin: 4px 0 -2px;
 }
 .canvas-template-card-name {
-  font-size: 13px;
+  font-size: var(--px-text-base);
   font-weight: 600;
   color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 95%, transparent));
   margin-bottom: 4px;
 }
 .canvas-template-card-desc {
-  font-size: 11.5px;
+  font-size: var(--px-text-xs);
   line-height: 1.4;
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 55%, transparent));
 }
@@ -464,7 +468,7 @@
   border: none;
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 55%, transparent));
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   cursor: pointer;
   padding: 6px 10px;
   border-radius: var(--parallx-radius-sm);
@@ -522,7 +526,7 @@
   border: none;
   color: var(--vscode-foreground, #ddd);
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   text-align: left;
   cursor: pointer;
   border-radius: 4px;
@@ -564,15 +568,15 @@
   border-bottom: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
 }
 .canvas-shortcuts-title {
-  font-size: 15px;
+  font-size: var(--px-text-md);
   font-weight: 600;
   color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 95%, transparent));
 }
 .canvas-shortcuts-close {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 55%, transparent);
-  font-size: 22px;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-xl);
   line-height: 1;
   cursor: pointer;
   padding: 2px 8px;
@@ -593,12 +597,12 @@
   margin-bottom: 0;
 }
 .canvas-shortcuts-section-title {
-  font-size: 11px;
+  font-size: var(--px-text-xs);
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: normal;
   color: var(--vscode-descriptionForeground, color-mix(in srgb, var(--px-text) 55%, transparent));
   margin-bottom: 8px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 .canvas-shortcuts-row {
   display: flex;
@@ -606,7 +610,7 @@
   justify-content: space-between;
   gap: 14px;
   padding: 4px 0;
-  font-size: 12.5px;
+  font-size: var(--px-text-sm);
   color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 88%, transparent));
 }
 .canvas-shortcuts-label {
@@ -627,8 +631,8 @@
   border: 1px solid color-mix(in srgb, var(--px-text) 14%, transparent);
   border-radius: 4px;
   font-family: var(--parallx-fontFamily-mono, monospace);
-  font-size: 11px;
-  color: color-mix(in srgb, var(--px-text) 85%, transparent);
+  font-size: var(--px-text-xs);
+  color: var(--px-text);
 }
 
 /* ── Tree node ── */
@@ -1499,7 +1503,7 @@
   padding: 6px 8px 2px;
   font-size: var(--parallx-fontSize-sm);
   font-weight: 500;
-  color: color-mix(in srgb, var(--px-text) 35%, transparent);
+  color: var(--px-text-faint);
   user-select: none;
 }
 
@@ -1511,7 +1515,7 @@
   border-radius: 4px;
   cursor: pointer;
   font-size: var(--parallx-fontSize-md);
-  color: color-mix(in srgb, var(--px-text) 80%, transparent);
+  color: var(--px-text);
   transition: background-color var(--px-dur-instant) var(--px-ease);
 }
 
@@ -1563,7 +1567,7 @@
 .canvas-bubble-btn {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 80%, transparent);
+  color: var(--px-text);
   cursor: pointer;
   font-size: var(--parallx-fontSize-md);
   min-width: 30px;
@@ -1613,7 +1617,7 @@
   min-width: 180px;
   border: 1px solid color-mix(in srgb, var(--px-text) 15%, transparent);
   background: color-mix(in srgb, var(--px-text) 6%, transparent);
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   font: inherit;
   font-size: var(--parallx-fontSize-md);
   padding: 4px 8px;
@@ -1634,7 +1638,7 @@
 .canvas-bubble-link-remove {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 60%, transparent);
+  color: var(--px-text-secondary);
   cursor: pointer;
   font-size: var(--parallx-fontSize-lg);
   width: 28px;
@@ -1991,7 +1995,7 @@
 .canvas-bookmark-title {
   font-size: var(--parallx-fontSize-lg);
   font-weight: 500;
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1999,7 +2003,7 @@
 
 .canvas-bookmark-description {
   font-size: var(--parallx-fontSize-base);
-  color: color-mix(in srgb, var(--px-text) 50%, transparent);
+  color: var(--px-text-muted);
   margin-top: 4px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -2009,7 +2013,7 @@
 
 .canvas-bookmark-url {
   font-size: var(--parallx-fontSize-sm);
-  color: color-mix(in srgb, var(--px-text) 40%, transparent);
+  color: var(--px-text-faint);
   margin-top: 6px;
   display: flex;
   align-items: center;
@@ -2076,7 +2080,7 @@
   appearance: none;
   border: 0;
   background: transparent;
-  color: color-mix(in srgb, var(--px-text) 72%, transparent);
+  color: var(--px-text-secondary);
   width: 20px;
   height: 20px;
   border-radius: 4px;
@@ -2089,7 +2093,7 @@
 
 .canvas-page-block-icon:hover {
   background: color-mix(in srgb, var(--px-text) 8%, transparent);
-  color: color-mix(in srgb, var(--px-text) 95%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-page-block-body {
@@ -2098,9 +2102,9 @@
 }
 
 .canvas-page-block-title {
-  font-size: 15px;
+  font-size: var(--px-text-md);
   font-weight: 500;
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2121,14 +2125,14 @@
 .canvas-page-block-preview-title {
   font-size: var(--parallx-fontSize-md);
   font-weight: 600;
-  color: color-mix(in srgb, var(--px-text) 92%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-page-block-preview-snippet {
   margin-top: 6px;
   font-size: var(--parallx-fontSize-base);
   line-height: 1.45;
-  color: color-mix(in srgb, var(--px-text) 65%, transparent);
+  color: var(--px-text-secondary);
   display: -webkit-box;
   -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
@@ -2149,22 +2153,22 @@
 .canvas-toc-title {
   font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: color-mix(in srgb, var(--px-text) 40%, transparent);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--px-text-faint);
   margin-bottom: 8px;
 }
 
 .canvas-toc-item {
   padding: 3px 0;
   font-size: var(--parallx-fontSize-lg);
-  color: color-mix(in srgb, var(--px-text) 70%, transparent);
+  color: var(--px-text-secondary);
   cursor: pointer;
   transition: color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-toc-item:hover {
-  color: color-mix(in srgb, var(--px-text) 95%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-toc-level-1 { padding-left: 0; }
@@ -2173,7 +2177,7 @@
 
 .canvas-toc-empty {
   font-size: var(--parallx-fontSize-md);
-  color: color-mix(in srgb, var(--px-text) 30%, transparent);
+  color: var(--px-text-faint);
   font-style: italic;
 }
 
@@ -2223,7 +2227,7 @@
   text-align: center;
   border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
   border-radius: 4px;
-  color: color-mix(in srgb, var(--px-text) 40%, transparent);
+  color: var(--px-text-faint);
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   display: flex;
@@ -2257,7 +2261,7 @@
 .canvas-file-icon {
   width: var(--parallx-icon-size-xl, 32px);
   height: var(--parallx-icon-size-xl, 32px);
-  color: color-mix(in srgb, var(--px-text) 50%, transparent);
+  color: var(--px-text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2271,7 +2275,7 @@
 .canvas-file-name {
   font-size: var(--parallx-fontSize-lg);
   font-weight: 500;
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2279,7 +2283,7 @@
 
 .canvas-file-size {
   font-size: var(--parallx-fontSize-base);
-  color: color-mix(in srgb, var(--px-text) 40%, transparent);
+  color: var(--px-text-faint);
   margin-top: 2px;
 }
 
@@ -2313,7 +2317,7 @@
   vertical-align: top;
   position: relative;
   min-width: 80px;
-  font-size: 15px;
+  font-size: var(--px-text-md);
 }
 
 .canvas-tiptap-editor table th {
@@ -2577,7 +2581,7 @@
   padding: 0;
   border: none;
   font-size: inherit;
-  color: color-mix(in srgb, var(--px-text) 85%, transparent);
+  color: var(--px-text);
 }
 
 /* highlight.js token colors — refined dark palette */
@@ -2783,7 +2787,7 @@
 .canvas-top-ribbon-btn {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 55%, transparent);
+  color: var(--px-text-muted);
   width: 22px;
   height: 22px;
   display: flex;
@@ -2798,7 +2802,7 @@
 
 .canvas-top-ribbon-btn:hover {
   background: color-mix(in srgb, var(--px-text) 6%, transparent);
-  color: color-mix(in srgb, var(--px-text) 80%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-top-ribbon-favorite--active {
@@ -2952,7 +2956,7 @@
   gap: 4px;
   margin-bottom: 12px;
   font-size: var(--parallx-fontSize-base);
-  color: color-mix(in srgb, var(--px-text) 50%, transparent);
+  color: var(--px-text-muted);
   flex-wrap: wrap;
 }
 
@@ -2969,11 +2973,11 @@
 }
 
 .canvas-breadcrumb:hover {
-  color: color-mix(in srgb, var(--px-text) 70%, transparent);
+  color: var(--px-text-secondary);
 }
 
 .canvas-breadcrumb-sep {
-  color: color-mix(in srgb, var(--px-text) 20%, transparent);
+  color: var(--px-text-faint);
   user-select: none;
 }
 
@@ -2982,7 +2986,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: color-mix(in srgb, var(--px-text) 50%, transparent);
+  color: var(--px-text-muted);
   /* The page you're on should show its full name when there's room; only
      ancestor crumbs are capped to keep the bar from exploding horizontally. */
   max-width: none;
@@ -3052,7 +3056,7 @@
 .canvas-affordance-btn {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 35%, transparent);
+  color: var(--px-text-faint);
   font-size: var(--parallx-fontSize-md);
   cursor: pointer;
   padding: 2px 6px;
@@ -3066,7 +3070,7 @@
 
 .canvas-affordance-btn:hover {
   background: color-mix(in srgb, var(--px-text) 6%, transparent);
-  color: color-mix(in srgb, var(--px-text) 60%, transparent);
+  color: var(--px-text-secondary);
 }
 
 .canvas-affordance-btn span {
@@ -3095,7 +3099,7 @@
 
 .canvas-page-title:empty::before {
   content: attr(data-placeholder);
-  color: color-mix(in srgb, var(--px-text) 20%, transparent);
+  color: var(--px-text-faint);
   pointer-events: none;
 }
 
@@ -3120,10 +3124,10 @@
 .canvas-page-menu-label {
   font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--px-text) 35%, transparent);
+  text-transform: none;
+  color: var(--px-text-faint);
   padding: 4px 8px;
-  letter-spacing: 0.05em;
+  letter-spacing: normal;
 }
 
 /* ── Font picker (open-ended list, self-previewing) ── */
@@ -3188,8 +3192,8 @@
   border: none;
   cursor: pointer;
   text-align: left;
-  color: color-mix(in srgb, var(--px-text) 85%, transparent);
-  font-size: 15px;
+  color: var(--px-text);
+  font-size: var(--px-text-md);
 }
 
 .canvas-page-menu-font-row--active .canvas-page-menu-font-pick {
@@ -3206,10 +3210,10 @@
   display: none;
   flex: 0 0 auto;
   font-family: var(--parallx-fontFamily-ui);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--px-text) 40%, transparent);
+  font-size: var(--px-text-xs);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--px-text-faint);
   border: 1px solid color-mix(in srgb, var(--px-text) 14%, transparent);
   border-radius: 4px;
   padding: 1px 5px;
@@ -3242,14 +3246,14 @@
   border: none;
   background: none;
   border-radius: var(--parallx-radius-sm);
-  color: color-mix(in srgb, var(--px-text) 50%, transparent);
+  color: var(--px-text-muted);
   cursor: pointer;
   transition: background-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 
 .canvas-page-menu-font-action:hover {
   background: color-mix(in srgb, var(--px-text) 10%, transparent);
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-page-menu-font-row--default .canvas-page-menu-font-action--pin {
@@ -3270,7 +3274,7 @@
   background: none;
   border: none;
   border-radius: var(--parallx-radius-md);
-  color: color-mix(in srgb, var(--px-text) 70%, transparent);
+  color: var(--px-text-secondary);
   font-size: var(--parallx-fontSize-md);
   font-family: var(--parallx-fontFamily-ui);
   cursor: pointer;
@@ -3279,7 +3283,7 @@
 
 .canvas-page-menu-font-upload:hover {
   background: color-mix(in srgb, var(--px-text) 8%, transparent);
-  color: color-mix(in srgb, var(--px-text) 95%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-page-menu-toggle {
@@ -3301,7 +3305,7 @@
   align-items: center;
   gap: 4px;
   font-size: var(--parallx-fontSize-lg);
-  color: color-mix(in srgb, var(--px-text) 80%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-page-menu-switch {
@@ -3350,7 +3354,7 @@
   padding: 6px 8px;
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 80%, transparent);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   border-radius: 4px;
@@ -3397,7 +3401,7 @@
 .canvas-image-insert-tab {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 50%, transparent);
+  color: var(--px-text-muted);
   font-size: var(--parallx-fontSize-md);
   padding: 4px 12px;
   cursor: pointer;
@@ -3407,11 +3411,11 @@
 }
 
 .canvas-image-insert-tab:hover {
-  color: color-mix(in srgb, var(--px-text) 80%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-image-insert-tab--active {
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   background: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
@@ -3426,7 +3430,7 @@
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
   border-radius: var(--parallx-radius-lg);
-  color: color-mix(in srgb, var(--px-text) 60%, transparent);
+  color: var(--px-text-secondary);
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   text-align: center;
@@ -3441,7 +3445,7 @@
 
 .canvas-image-insert-hint {
   font-size: var(--parallx-fontSize-sm);
-  color: color-mix(in srgb, var(--px-text) 30%, transparent);
+  color: var(--px-text-faint);
   text-align: center;
   margin-top: 8px;
 }
@@ -3455,7 +3459,7 @@
   flex: 1;
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   padding: 8px 12px;
   border-radius: var(--parallx-radius-md);
@@ -3516,7 +3520,7 @@
 .canvas-media-insert-tab {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 50%, transparent);
+  color: var(--px-text-muted);
   font-size: var(--parallx-fontSize-md);
   padding: 4px 12px;
   cursor: pointer;
@@ -3526,11 +3530,11 @@
 }
 
 .canvas-media-insert-tab:hover {
-  color: color-mix(in srgb, var(--px-text) 80%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-media-insert-tab--active {
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   background: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
@@ -3545,7 +3549,7 @@
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
   border-radius: var(--parallx-radius-lg);
-  color: color-mix(in srgb, var(--px-text) 60%, transparent);
+  color: var(--px-text-secondary);
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   text-align: center;
@@ -3560,7 +3564,7 @@
 
 .canvas-media-insert-hint {
   font-size: var(--parallx-fontSize-sm);
-  color: color-mix(in srgb, var(--px-text) 30%, transparent);
+  color: var(--px-text-faint);
   text-align: center;
   margin-top: 8px;
 }
@@ -3574,7 +3578,7 @@
   flex: 1;
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   padding: 8px 12px;
   border-radius: var(--parallx-radius-md);
@@ -3627,7 +3631,7 @@
 .canvas-bookmark-insert-title {
   font-size: var(--parallx-fontSize-md);
   font-weight: 600;
-  color: color-mix(in srgb, var(--px-text) 85%, transparent);
+  color: var(--px-text);
   margin-bottom: 8px;
 }
 
@@ -3640,7 +3644,7 @@
   flex: 1;
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   padding: 8px 12px;
   border-radius: var(--parallx-radius-md);
@@ -3693,7 +3697,7 @@
   width: 100%;
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 85%, transparent);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   padding: 6px 10px;
   text-align: left;
@@ -3733,7 +3737,7 @@
 .canvas-cover-picker-tab {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 50%, transparent);
+  color: var(--px-text-muted);
   font-size: var(--parallx-fontSize-md);
   padding: 4px 12px;
   cursor: pointer;
@@ -3743,11 +3747,11 @@
 }
 
 .canvas-cover-picker-tab:hover {
-  color: color-mix(in srgb, var(--px-text) 80%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-cover-picker-tab--active {
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   background: color-mix(in srgb, var(--px-text) 8%, transparent);
 }
 
@@ -3781,7 +3785,7 @@
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px dashed color-mix(in srgb, var(--px-text) 15%, transparent);
   border-radius: var(--parallx-radius-lg);
-  color: color-mix(in srgb, var(--px-text) 60%, transparent);
+  color: var(--px-text-secondary);
   font-size: var(--parallx-fontSize-lg);
   cursor: pointer;
   text-align: center;
@@ -3796,7 +3800,7 @@
 
 .canvas-cover-upload-hint {
   font-size: var(--parallx-fontSize-sm);
-  color: color-mix(in srgb, var(--px-text) 30%, transparent);
+  color: var(--px-text-faint);
   text-align: center;
   margin-top: 8px;
 }
@@ -3817,7 +3821,7 @@
   flex: 1;
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   padding: 8px 12px;
   border-radius: var(--parallx-radius-md);
@@ -3918,9 +3922,9 @@
 .canvas-sidebar-section-label {
   font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
-  color: color-mix(in srgb, var(--px-text) 35%, transparent);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--px-text-faint);
+  text-transform: none;
+  letter-spacing: normal;
   padding: 8px 12px 4px;
   user-select: none;
 }
@@ -3959,7 +3963,7 @@
   height: 20px;
   border: none;
   background: none;
-  color: color-mix(in srgb, var(--px-text) 40%, transparent);
+  color: var(--px-text-faint);
   border-radius: var(--parallx-radius-sm);
   cursor: pointer;
   padding: 0;
@@ -3968,7 +3972,7 @@
 
 .canvas-node-action-btn:hover {
   background: color-mix(in srgb, var(--px-text) 8%, transparent);
-  color: color-mix(in srgb, var(--px-text) 80%, transparent);
+  color: var(--px-text);
 }
 
 /* ── Sidebar Page Options Popup ── */
@@ -4002,7 +4006,7 @@
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   border-radius: var(--parallx-radius-lg);
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
-  color: color-mix(in srgb, var(--px-text) 78%, transparent);
+  color: var(--px-text-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4016,7 +4020,7 @@
 }
 
 .canvas-sidebar-page-menu__icon-btn--empty {
-  color: color-mix(in srgb, var(--px-text) 42%, transparent);
+  color: var(--px-text-faint);
 }
 
 .canvas-sidebar-page-menu__title {
@@ -4057,7 +4061,7 @@
 .canvas-sidebar-page-menu__action {
   border: none;
   background: none;
-  color: color-mix(in srgb, var(--px-text) 82%, transparent);
+  color: var(--px-text);
   min-height: var(--px-control-h);
   border-radius: var(--parallx-radius-lg);
   display: flex;
@@ -4374,7 +4378,7 @@
 }
 
 .canvas-math-block-empty {
-  color: color-mix(in srgb, var(--px-text) 35%, transparent);
+  color: var(--px-text-faint);
   font-style: italic;
   font-size: var(--parallx-fontSize-lg);
   user-select: none;
@@ -4407,7 +4411,7 @@
   font-family: var(--parallx-fontFamily-mono);
   font-size: var(--parallx-fontSize-lg);
   line-height: 1.4;
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   background: color-mix(in srgb, var(--px-text) 6%, transparent);
   border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
   border-radius: 4px;
@@ -4506,14 +4510,14 @@
 }
 
 .canvas-inline-math-preview-empty {
-  color: color-mix(in srgb, var(--px-text) 25%, transparent);
+  color: var(--px-text-faint);
   font-style: italic;
   font-size: var(--parallx-fontSize-base);
 }
 
 .canvas-inline-math-hint {
   font-size: var(--parallx-fontSize-sm);
-  color: color-mix(in srgb, var(--px-text) 30%, transparent);
+  color: var(--px-text-faint);
   text-align: center;
 }
 
@@ -4635,7 +4639,7 @@
 
 /* Placeholder text style inside columns */
 .canvas-column .is-empty::before {
-  color: color-mix(in srgb, var(--px-text) 20%, transparent);
+  color: var(--px-text-faint);
   font-style: italic;
 }
 
@@ -4679,7 +4683,7 @@
 .canvas-ai-chat-close {
   background: none;
   border: none;
-  color: color-mix(in srgb, var(--px-text) 35%, transparent);
+  color: var(--px-text-faint);
   cursor: pointer;
   font-size: var(--parallx-fontSize-lg);
   width: 22px;
@@ -4693,7 +4697,7 @@
 
 .canvas-ai-chat-close:hover {
   background: color-mix(in srgb, var(--px-text) 8%, transparent);
-  color: color-mix(in srgb, var(--px-text) 80%, transparent);
+  color: var(--px-text);
 }
 
 /* Messages area */
@@ -4724,16 +4728,16 @@
 }
 
 .canvas-ai-chat-context-label {
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
   font-weight: 600;
   color: rgba(var(--px-accent-rgb), 0.7);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .canvas-ai-chat-context-excerpt {
   font-size: var(--parallx-fontSize-sm);
-  color: color-mix(in srgb, var(--px-text) 50%, transparent);
+  color: var(--px-text-muted);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4756,14 +4760,14 @@
   background: rgba(var(--px-accent-rgb), 0.15);
   border: 1px solid rgba(var(--px-accent-rgb), 0.2);
   border-radius: 10px 10px 2px 10px;
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-ai-chat-msg--assistant .canvas-ai-chat-msg-content {
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 6%, transparent));
   border-radius: 10px 10px 10px 2px;
-  color: color-mix(in srgb, var(--px-text) 85%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-ai-chat-msg-content {
@@ -4789,7 +4793,7 @@
 .canvas-ai-chat-action-btn {
   background: none;
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
-  color: color-mix(in srgb, var(--px-text) 55%, transparent);
+  color: var(--px-text-muted);
   cursor: pointer;
   font-size: var(--parallx-fontSize-sm);
   padding: 3px 8px;
@@ -4800,7 +4804,7 @@
 
 .canvas-ai-chat-action-btn:hover {
   border-color: color-mix(in srgb, var(--px-text) 20%, transparent);
-  color: color-mix(in srgb, var(--px-text) 85%, transparent);
+  color: var(--px-text);
 }
 
 .canvas-ai-chat-replace:hover {
@@ -4829,7 +4833,7 @@
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px solid color-mix(in srgb, var(--px-text) 10%, transparent);
   border-radius: var(--parallx-radius-md);
-  color: color-mix(in srgb, var(--px-text) 90%, transparent);
+  color: var(--px-text);
   font-size: var(--parallx-fontSize-md);
   font-family: inherit;
   padding: 6px 8px;
@@ -4936,10 +4940,10 @@
   padding: 14px 18px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent);
 }
-.canvas-vh-title { font-size: 15px; font-weight: 600; color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 95%, transparent)); }
+.canvas-vh-title { font-size: var(--px-text-md); font-weight: 600; color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 95%, transparent)); }
 .canvas-vh-close {
-  background: none; border: none; color: color-mix(in srgb, var(--px-text) 55%, transparent);
-  font-size: 22px; line-height: 1; cursor: pointer; padding: 2px 8px;
+  background: none; border: none; color: var(--px-text-muted);
+  font-size: var(--px-text-xl); line-height: 1; cursor: pointer; padding: 2px 8px;
   border-radius: var(--parallx-radius-sm);
 }
 .canvas-vh-close:hover { background: color-mix(in srgb, var(--px-text) 8%, transparent); color: var(--vscode-foreground, #fff); }
@@ -4949,7 +4953,7 @@
   border-right: 1px solid color-mix(in srgb, var(--px-text) 6%, transparent); padding: 8px;
   display: flex; flex-direction: column; gap: 2px;
 }
-.canvas-vh-empty { padding: 16px; font-size: 12px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
+.canvas-vh-empty { padding: 16px; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .canvas-vh-item {
   display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
   width: 100%; text-align: left; padding: 8px 10px; border: none;
@@ -4958,8 +4962,8 @@
 }
 .canvas-vh-item:hover { background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 6%, transparent); }
 .canvas-vh-item--active { background: color-mix(in srgb, var(--vscode-focusBorder, #5b9bd5) 18%, transparent); }
-.canvas-vh-item-when { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.canvas-vh-item-sub { font-size: 11px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 50%, transparent); }
+.canvas-vh-item-when { display: flex; align-items: center; gap: 8px; font-size: var(--px-text-base); }
+.canvas-vh-item-sub { font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .canvas-vh-badge {
   font-size: 10px; padding: 1px 6px; border-radius: 999px; font-weight: 600;
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 14%, transparent);
@@ -4970,23 +4974,23 @@
 }
 .canvas-vh-badge[data-source="restore"] { background: color-mix(in srgb, var(--px-warning, #e3b341) 35%, transparent); color: var(--px-text); }
 .canvas-vh-preview { flex: 1; min-width: 0; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
-.canvas-vh-preview-hint { font-size: 12px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 55%, transparent); }
-.canvas-vh-preview-meta { font-size: 12px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 70%, transparent); }
+.canvas-vh-preview-hint { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.canvas-vh-preview-meta { font-size: var(--px-text-sm); color: var(--px-text-secondary); }
 .canvas-vh-preview-text {
-  flex: 1; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.55;
+  flex: 1; white-space: pre-wrap; word-break: break-word; font-size: var(--px-text-base); line-height: 1.55;
   color: var(--vscode-foreground, #ddd);
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 4%, transparent);
   border-radius: 6px; padding: 12px 14px;
 }
 .canvas-vh-preview-actions { display: flex; align-items: center; gap: 12px; }
 .canvas-vh-restore {
-  padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer;
+  padding: 6px 14px; font: inherit; font-size: var(--px-text-base); cursor: pointer;
   color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #0e639c);
   border: none; border-radius: 5px;
 }
 .canvas-vh-restore:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
 .canvas-vh-restore:disabled { opacity: 0.55; cursor: default; }
-.canvas-vh-status { font-size: 12px; color: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 60%, transparent); }
+.canvas-vh-status { font-size: var(--px-text-sm); color: var(--px-text-secondary); }
 .canvas-vh-status.is-error { color: var(--px-danger, #f85149); }
 
 /* ── AI-handoff shimmer (M89 S3 — presence) ────────────────────────────────

@@ -783,17 +783,21 @@ function createSidebarView(container: HTMLElement) {
     if (disposed) return;
     root.replaceChildren();
     const nav = el('div', 'ws-nav');
-    const navItem = (label: string, instanceId: string, tabTitle: string, tip: string) => {
-      const b = el('button', 'ws-nav__item', label) as HTMLButtonElement;
+    // Same row shape as every other tool's sidebar: icon, then label.
+    const navItem = (label: string, icon: string, instanceId: string, tabTitle: string, tip: string) => {
+      const b = el('button', 'ws-nav__item') as HTMLButtonElement;
       b.type = 'button';
       b.title = tip;
+      const ic = el('span', 'ws-nav__icon');
+      try { ic.innerHTML = _api?.icons?.createIconHtml?.(icon, 16) ?? ''; } catch { /* label alone */ }
+      b.append(ic, el('span', 'ws-nav__label', label));
       b.addEventListener('click', () => void openWorksheet(instanceId, tabTitle));
       nav.appendChild(b);
     };
-    navItem('Home', 'home', 'Worksheets', 'Quiz, dashboard, bank, import, generate, scratch sheet');
-    navItem('Dashboard', 'dashboard', 'Dashboard', 'Progress, pace, the campaign, what to work on next');
-    navItem('Quizzes', 'quizzes', 'Quizzes', 'Every quiz, open and completed: resume, rename, copy, reopen, delete');
-    navItem('Settings', 'settings', 'Worksheets Settings', 'The campaign and the sheet appearance');
+    navItem('Home', 'home', 'home', 'Worksheets', 'Quiz, dashboard, bank, import, generate, scratch sheet');
+    navItem('Dashboard', 'layout-dashboard', 'dashboard', 'Dashboard', 'Progress, pace, the campaign, what to work on next');
+    navItem('Quizzes', 'list-checks', 'quizzes', 'Quizzes', 'Every quiz, open and completed: resume, rename, copy, reopen, delete');
+    navItem('Settings', 'settings', 'settings', 'Worksheets Settings', 'The campaign and the sheet appearance');
     root.appendChild(nav);
     if (items.length === 0) return;
     renderBankSnapshot(root, items);

@@ -40,10 +40,10 @@
 
 .activity-log-actor {
   flex-shrink: 0;
-  font-size: 9.5px;
+  font-size: var(--px-text-xs);
   line-height: 15px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
   padding: 0 5px;
   border-radius: 2px;
   border: 1px solid var(--px-border, rgba(127, 127, 127, 0.35));

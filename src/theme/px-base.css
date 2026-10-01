@@ -90,3 +90,11 @@ h1, h2, h3, h4,
   background: var(--px-bg);
 }
 
+
+/* Form controls inherit the UI font and size (Chromium gives <button> and
+   <input> 13.33px system text otherwise — the "unstyled control" look).
+   :where() keeps this at zero specificity: any component rule wins. */
+:where(button, input, select, textarea) {
+  font-family: inherit;
+  font-size: inherit;
+}

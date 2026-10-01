@@ -164,7 +164,7 @@
 }
 
 .parallx-token-popup-sub-label {
-  font-size: 11px;
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground);
   opacity: 0.85;
   overflow: hidden;
@@ -174,7 +174,7 @@
 }
 
 .parallx-token-popup-sub-value {
-  font-size: 11px;
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground);
   font-variant-numeric: tabular-nums;
   min-width: 30px;

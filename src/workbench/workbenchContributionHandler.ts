@@ -754,7 +754,7 @@ export class WorkbenchContributionHandler extends Disposable {
             (activeView?.name ?? info?.title ?? iconLabel ?? 'SECONDARY SIDE BAR').toUpperCase();
         }
       } else {
-        this._auxBarHeaderLabel.textContent = 'SECONDARY SIDE BAR';
+        this._auxBarHeaderLabel.textContent = 'Secondary Side Bar';
       }
     }
 

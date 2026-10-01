@@ -33,7 +33,10 @@ export class PanelPart extends Part {
       'Panel',
       PartPosition.Bottom,
       PANEL_CONSTRAINTS,
-      true,
+      // Closed until something needs it: the panel holds the terminal and the
+      // logs, and an open panel on first launch put developer output under
+      // every new user's first page. Commands that show a panel view open it.
+      false,
       true, // snap: auto-hide when dragged past minimum
     );
   }
@@ -78,7 +81,7 @@ export const panelPartDescriptor: PartDescriptor = {
   id: PartId.Panel,
   name: 'Panel',
   position: PartPosition.Bottom,
-  defaultVisible: true,
+  defaultVisible: false,
   constraints: PANEL_CONSTRAINTS,
   factory: () => new PanelPart(),
 };

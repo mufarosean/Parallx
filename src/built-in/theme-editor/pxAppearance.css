@@ -316,7 +316,7 @@
 .px-pv-muted kbd {
   display: inline-block;
   font-family: var(--px-font-mono, monospace);
-  font-size: 10px;
+  font-size: var(--px-text-2xs);
   padding: 1px 5px;
   margin: 0 1px;
   color: var(--px-text-secondary);
@@ -430,7 +430,7 @@
   border: none;
   border-left: 1px solid var(--px-border);
   color: var(--px-text-faint);
-  font-size: 15px;
+  font-size: var(--px-text-md);
   line-height: 1;
   cursor: pointer;
   transition: color var(--px-dur-fast, 90ms) var(--px-ease, ease),

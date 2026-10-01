@@ -13,8 +13,10 @@
   margin: 0 auto;
   padding: 0 var(--canvas-content-gutter, 64px) 12px;
   box-sizing: border-box;
-  font-size: var(--parallx-fontSize-xl, 16px);
-  color: var(--vscode-editor-foreground, #cdd6f4);
+  /* Metadata, not content: the UI base size, quieter than the page's text.
+     (It was --parallx-fontSize-xl → 18px, larger than the body it sits on.) */
+  font-size: var(--px-text-base);
+  color: var(--px-text);
   user-select: none;
 }
 
@@ -51,7 +53,7 @@
   display: grid;
   grid-template-columns: 140px 1fr 24px 24px;
   align-items: center;
-  min-height: 30px;
+  min-height: var(--px-control-h);
   padding: 2px 0;
   border-radius: var(--parallx-radius-sm, 3px);
   position: relative;
@@ -260,7 +262,7 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--parallx-radius-sm, 3px);
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   padding: 0;
 }
 
@@ -278,7 +280,7 @@
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   text-align: center;
-  font-size: 11px;
+  font-size: var(--px-text-xs);
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
   padding-bottom: 4px;
 }
@@ -295,7 +297,7 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--parallx-radius-sm, 3px);
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   background: none;
   border: none;
   color: var(--vscode-menu-foreground);
@@ -365,7 +367,7 @@
   border-radius: 3px;
   color: var(--vscode-input-foreground, #cdd6f4);
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--px-text-base);
   text-align: center;
   padding: 2px;
   height: 26px;
@@ -398,7 +400,7 @@
   padding: 2px 12px;
   height: 26px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--px-text-sm);
   font-family: inherit;
 }
 
@@ -465,7 +467,7 @@
 .canvas-prop-tag__remove {
   cursor: pointer;
   opacity: 0.5;
-  font-size: 10px;
+  font-size: var(--px-text-2xs);
   line-height: 1;
   transition: opacity var(--px-dur-fast) var(--px-ease);
 }

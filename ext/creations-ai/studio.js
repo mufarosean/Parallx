@@ -39,7 +39,7 @@ export function injectStudioStyles() {
 .cs-chip--danger { color: var(--px-danger); background: var(--px-danger-soft); }
 .cs-chip--ok { color: var(--px-success); background: var(--px-bg-inset); }
 .cs-actions { display: flex; gap: var(--px-space-2); flex-wrap: wrap; }
-.cs-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px var(--px-space-3); border-radius: var(--px-radius-sm); border: 1px solid var(--px-border); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; font-size: var(--px-text-sm); line-height: 20px; cursor: pointer; white-space: nowrap; }
+.cs-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--px-border); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; cursor: pointer; white-space: nowrap; align-items: center; justify-content: center; box-sizing: border-box; height: var(--px-control-h); padding: 0 12px; border-radius: var(--px-radius-sm); font-size: var(--px-text-sm); line-height: 1; }
 .cs-btn:hover { border-color: var(--px-border-strong); }
 .cs-btn:disabled { opacity: .5; cursor: default; }
 .cs-btn--primary { background: var(--px-accent); border-color: var(--px-accent); color: var(--px-text-on-accent); }

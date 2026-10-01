@@ -297,7 +297,7 @@ async function hideReviewedTransaction(txId, reason = '') {
 
 const SECTIONS = [
   { id: 'dashboard',    title: 'Overview',     icon: 'layout-dashboard', commandId: 'budget.openDashboard',    blurb: 'Tracked Balances, Month-to-Date Expenses & Income, Top Categories.', nav: true },
-  { id: 'accounts',     title: 'Net Worth',    icon: 'trending-up',      commandId: 'budget.openAccounts',     blurb: 'Net worth: accounts, investments, real estate, vehicles, and liabilities.', nav: true },
+  { id: 'accounts',     title: 'Net Worth',    icon: 'landmark',         commandId: 'budget.openAccounts',     blurb: 'Net worth: accounts, investments, real estate, vehicles, and liabilities.', nav: true },
   { id: 'transactions', title: 'Transactions', icon: 'list',             commandId: 'budget.openTransactions', blurb: 'Searchable, filterable ledger of every imported transaction.', nav: true },
   { id: 'plan',         title: 'Plan',         icon: 'target',           commandId: 'budget.openPlan',         blurb: 'Budgets, recurring, reconcile, and trends.', nav: true },
   { id: 'goals',        title: 'Goals',        icon: 'flag',             commandId: 'budget.openGoals',        blurb: 'Savings targets and debt payoff with progress and a projected finish date.', nav: true },
@@ -403,7 +403,7 @@ function injectStyles() {
   background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
 }
 .budget-nav-row:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 .budget-nav-row .budget-icon {
@@ -432,20 +432,23 @@ function injectStyles() {
   justify-content: center;
   gap: 6px;
   width: 100%;
-  padding: 6px 10px;
   background: var(--vscode-button-secondaryBackground, #3a3a3a);
   color: var(--vscode-button-secondaryForeground, #ccc);
   border: 1px solid var(--vscode-panel-border, #555);
-  border-radius: var(--px-radius-sm, 3px);
   font-family: inherit;
-  font-size: var(--px-text-xs, 11px);
   cursor: pointer;
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .budget-sync-btn:hover {
   background: var(--vscode-button-secondaryHoverBackground, #4a4a4a);
 }
 .budget-sync-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 .budget-sync-btn .budget-icon { width: 14px; height: 14px; flex: 0 0 14px; }
@@ -519,16 +522,18 @@ function injectStyles() {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: var(--px-control-h);
   box-sizing: border-box;
-  padding: 0 10px;
   background: var(--vscode-button-secondaryBackground, #3a3a3a);
   color: var(--vscode-button-secondaryForeground, #ccc);
   border: 1px solid var(--vscode-panel-border, #555);
-  border-radius: var(--px-radius-sm, 3px);
   font-family: inherit;
-  font-size: var(--px-text-xs, 11px);
   cursor: pointer;
+  justify-content: center;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .budget-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
 .budget-btn[aria-pressed="true"] {
@@ -537,7 +542,7 @@ function injectStyles() {
   border-color: transparent;
 }
 .budget-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 .budget-btn-primary {
@@ -577,7 +582,7 @@ function injectStyles() {
 .budget-dd .ui-dropdown { width: 100%; min-width: 0; }
 .budget-table .budget-dd { min-width: 150px; }
 .budget-input:focus {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 
@@ -608,9 +613,9 @@ function injectStyles() {
   background: var(--vscode-editor-background);
   font-weight: 600;
   color: var(--vscode-descriptionForeground, #aaa);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--px-text-xs);
+  letter-spacing: normal;
+  text-transform: none;
   border-bottom: 3px double var(--vscode-panel-border, #2a2a2a);
 }
 .budget-table tbody tr:nth-child(even) {
@@ -647,9 +652,9 @@ function injectStyles() {
   gap: 4px;
   padding: 0 5px;
   border-radius: 2px;
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: var(--px-text-xs);
+  letter-spacing: normal;
+  text-transform: none;
   line-height: 15px;
   background: transparent;
   border: 1px solid var(--vscode-panel-border, #555);
@@ -697,21 +702,21 @@ function injectStyles() {
   transition: border-color 80ms ease, background 80ms ease, transform 80ms ease;
 }
 .budget-card-clickable:hover {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder);
   background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
 }
 .budget-card-clickable:focus-visible {
-  outline: 2px solid var(--vscode-focusBorder, #9333ea);
+  outline: 2px solid var(--vscode-focusBorder);
   outline-offset: 1px;
 }
 .budget-card-clickable:active {
   transform: translateY(1px);
 }
 .budget-card-label {
-  font-size: 10px;
+  font-size: var(--px-text-xs);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--vscode-descriptionForeground, #888);
 }
 .budget-card-value {
@@ -820,9 +825,9 @@ function injectStyles() {
   flex: 1 1 220px;
 }
 .budget-account-card .acct-kind {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
+  font-size: var(--px-text-xs);
+  text-transform: capitalize;
+  letter-spacing: normal;
   color: var(--vscode-descriptionForeground, #888);
 }
 .budget-account-card .acct-name {
@@ -898,7 +903,7 @@ function injectStyles() {
   font-family: inherit;
 }
 .budget-status-chip:hover {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder);
   background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
 }
 .budget-status-chip .dot {
@@ -926,7 +931,7 @@ function injectStyles() {
   font-family: inherit;
 }
 .acct-kind-select:hover { color: var(--vscode-foreground, #ddd); }
-.acct-kind-select:focus-visible { outline: 1px solid var(--vscode-focusBorder, #9333ea); }
+.acct-kind-select:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 .acct-kind-select option {
   background: var(--vscode-dropdown-background, var(--vscode-editor-background, #1e1e1e));
   color: var(--vscode-dropdown-foreground, var(--vscode-foreground, #ddd));
@@ -977,7 +982,7 @@ function injectStyles() {
   color: var(--vscode-foreground, #fff);
 }
 .budget-segmented-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder);
 }
 
 /* ═══ Icon button (heatmap month nav) ═══ */
@@ -1000,7 +1005,7 @@ function injectStyles() {
   color: var(--vscode-foreground, #ddd);
 }
 .budget-iconbtn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder);
 }
 
 /* ═══ Balance trend chart ═══ */
@@ -1123,7 +1128,7 @@ function injectStyles() {
   font-family: inherit;
 }
 .budget-filter-chip-btn:hover {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder);
   background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
 }
 .budget-filter-chip-caret {
@@ -1333,10 +1338,10 @@ function injectStyles() {
   position: relative;
 }
 .budget-heatmap-cell:hover {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder);
 }
 .budget-heatmap-cell:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;
 }
 .budget-heatmap-cell .day {
@@ -1347,7 +1352,7 @@ function injectStyles() {
   line-height: 1;
 }
 .budget-heatmap-cell.is-today {
-  border-color: var(--vscode-focusBorder, #9333ea);
+  border-color: var(--vscode-focusBorder);
 }
 .budget-heatmap-cell.is-today .day {
   opacity: 1;
@@ -1386,7 +1391,7 @@ function injectStyles() {
   font-variant-numeric: tabular-nums;
 }
 .budget-chart-hover {
-  stroke: var(--vscode-focusBorder, #9333ea);
+  stroke: var(--vscode-focusBorder);
   stroke-width: 1;
   stroke-dasharray: 3 3;
 }
@@ -1451,7 +1456,7 @@ function injectStyles() {
 .budget-drawer-close:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255,255,255,0.06))); color: var(--px-text, inherit); }
 .budget-drawer-body { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
 .budget-field { display: flex; flex-direction: column; gap: 5px; }
-.budget-field-label { font-size: var(--px-text-xs, 11px); font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-field-label { font-size: var(--px-text-xs, 11px); font-weight: 600; letter-spacing: normal; text-transform: none; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-field-hint { font-size: var(--px-text-xs, 11px); color: var(--px-text-faint, var(--vscode-descriptionForeground, #777)); }
 .budget-field .budget-input, .budget-field .budget-drawer-textarea, .budget-field .budget-dd { width: 100%; box-sizing: border-box; }
 .budget-field-row { display: flex; gap: 10px; }
@@ -1482,7 +1487,7 @@ function injectStyles() {
 
 /* ═══ Net Worth ═══ */
 .budget-networth-head { padding: 6px 2px 16px; }
-.budget-networth-label { font-size: var(--px-text-xs, 11px); text-transform: uppercase; letter-spacing: 0.05em; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-networth-label { font-size: var(--px-text-xs, 11px); text-transform: none; letter-spacing: normal; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-networth-value { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; margin-top: 2px; color: var(--px-text, var(--vscode-editor-foreground, #eee)); font-variant-numeric: tabular-nums; }
 .budget-networth-sub { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .budget-nw-chip {
@@ -1502,7 +1507,7 @@ function injectStyles() {
   display: flex; align-items: baseline; justify-content: space-between;
   padding: 0 2px 6px; border-bottom: 1px solid var(--px-divider, var(--vscode-panel-border, #2a2a2a));
 }
-.budget-nw-group-title { font-size: var(--px-text-xs, 11px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
+.budget-nw-group-title { font-size: var(--px-text-xs, 11px); font-weight: 700; text-transform: none; letter-spacing: normal; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-nw-group-total { font-size: var(--px-text-base, 13px); font-weight: 600; color: var(--px-text, inherit); font-variant-numeric: tabular-nums; }
 .budget-nw-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -1518,7 +1523,7 @@ function injectStyles() {
 .budget-nw-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: 0 0 auto; }
 .budget-nw-row-amt { font-size: var(--px-text-base, 13px); font-weight: 600; font-variant-numeric: tabular-nums; }
 .budget-nw-row-pct { font-size: var(--px-text-xs, 11px); color: var(--px-text-faint, var(--vscode-descriptionForeground, #777)); }
-.budget-nw-mgmt-head { font-size: var(--px-text-xs, 11px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); margin: 4px 2px 8px; }
+.budget-nw-mgmt-head { font-size: var(--px-text-xs, 11px); font-weight: 700; text-transform: none; letter-spacing: normal; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); margin: 4px 2px 8px; }
 
 /* ═══ Goals ═══ */
 .budget-goals { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
@@ -1531,7 +1536,7 @@ function injectStyles() {
 .budget-goal-card:hover { border-color: var(--px-border-strong, var(--vscode-focusBorder, #5b9bd5)); }
 .budget-goal-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .budget-goal-name { font-size: var(--px-text-md, 15px); font-weight: 600; color: var(--px-text, inherit); }
-.budget-goal-kind { font-size: var(--px-text-xs, 11px); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--px-accent, #569cd6); }
+.budget-goal-kind { font-size: var(--px-text-xs, 11px); font-weight: 600; text-transform: none; letter-spacing: normal; color: var(--px-accent-text); }
 .budget-goal-kind.is-debt { color: var(--px-warning, #dcaa5a); }
 .budget-goal-bar { height: 8px; border-radius: 999px; background: var(--px-bg-inset, rgba(255, 255, 255, 0.07)); overflow: hidden; }
 .budget-goal-fill { height: 100%; border-radius: 999px; background: var(--px-success, #6cbf8f); transition: width 320ms cubic-bezier(0.16, 1, 0.3, 1); }
@@ -1597,7 +1602,7 @@ function injectStyles() {
 .budget-catrow-amt { font-size: var(--px-text-base, 13px); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--px-text, inherit); }
 .budget-catrow-amt.is-over { color: var(--px-danger, #e06c66); }
 .budget-catrow-of { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
-.budget-catrow-tag { font-size: 9px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--px-text-faint, #777); border: 1px solid var(--px-border, rgba(255, 255, 255, 0.12)); border-radius: 3px; padding: 0 3px; margin-left: 4px; }
+.budget-catrow-tag { font-size: var(--px-text-xs); text-transform: none; letter-spacing: normal; color: var(--px-text-faint, #777); border: 1px solid var(--px-border, rgba(255, 255, 255, 0.12)); border-radius: 3px; padding: 0 3px; margin-left: 4px; }
 .budget-catrow-trend { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-catrow-trend.is-up { color: var(--px-danger, #e06c66); }
 .budget-catrow-trend.is-down { color: var(--px-success, #6cbf8f); }
@@ -3074,7 +3079,7 @@ function renderDashboardSection(body, api) {
     syncBanner.style.background = colors[state] || colors.info;
     syncBanner.style.borderLeft = state === 'error'
       ? '3px solid var(--vscode-charts-red, #a43b38)'
-      : (state === 'success' ? '3px solid var(--vscode-charts-green, #5da56e)' : '3px solid var(--vscode-focusBorder, #9333ea)');
+      : (state === 'success' ? '3px solid var(--vscode-charts-green, #5da56e)' : '3px solid var(--vscode-focusBorder)');
     syncBanner.innerHTML = html;
     syncBanner.style.display = '';
   }
@@ -3179,7 +3184,7 @@ function renderDashboardSection(body, api) {
     card.style.padding = '16px';
     card.style.background = 'var(--vscode-textBlockQuote-background, rgba(127,127,127,0.08))';
     card.innerHTML = `
-      <div class="budget-card-label" style="font-size:13px;text-transform:uppercase;letter-spacing:0.05em;">Welcome to Budget</div>
+      <div class="budget-card-label" style="font-size:var(--px-text-md);font-weight:600;">Welcome to Budget</div>
       <div class="budget-card-value" style="font-size:18px;margin-top:4px;">Set up in three steps.</div>
       <ol style="margin:12px 0 0 20px;padding:0;line-height:1.7;">
         <li><b>Connect Gmail:</b> make sure the <code>gmail-mcp-server</code> tool is enabled in Settings → MCP Servers.</li>
@@ -4831,7 +4836,7 @@ function buildCategoryBars(catRows, prevByCatId, onClick) {
 
     const meta = document.createElement('div'); meta.className = 'budget-catrow-meta';
     const ofBudget = hasBudget
-      ? `of ${escHtml(fmtMoney(budget))}${defaulted ? '<span class="budget-catrow-tag">last mo</span>' : ''}`
+      ? `of ${escHtml(fmtMoney(budget))}${defaulted ? '<span class="budget-catrow-tag">Last month</span>' : ''}`
       : 'no target';
     meta.innerHTML =
       `<div class="budget-catrow-amtline"><span class="budget-catrow-amt${over ? ' is-over' : ''}">${escHtml(fmtMoney(actual))}</span> <span class="budget-catrow-of">${ofBudget}</span></div>`;
@@ -7144,7 +7149,7 @@ function buildLine(points, opts) {
   const padL = 40, padR = 10, padT = 10, padB = 22;
   const innerW = width - padL - padR;
   const innerH = height - padT - padB;
-  const stroke = (opts && opts.color) || 'var(--px-accent, #9333ea)';
+  const stroke = (opts && opts.color) || 'var(--px-accent)';
 
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('width', String(width));

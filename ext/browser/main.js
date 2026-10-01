@@ -314,8 +314,8 @@ const CSS = `
 .br-progress > div { height: 100%; width: 0; background: var(--vscode-progressBar-background, var(--px-accent)); transition: width var(--px-dur-base, 180ms) var(--px-ease, ease), opacity var(--px-dur-fast, 120ms); }
 .br-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-editorWidget-background, var(--px-surface)); flex: 0 0 auto; }
 .br-bar .br-spacer { flex: 1; }
-.br-bar button, .br-panel button.br-action, .br-error button, .br-sidebar button.br-action, .br-newtab button.br-action { border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; border-radius: var(--parallx-radius-md, 6px); padding: 3px 10px; font-size: 12px; cursor: pointer; }
-.br-bar button:hover, .br-panel button.br-action:hover, .br-error button:hover, .br-sidebar button.br-action:hover, .br-newtab button.br-action:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
+.br-bar button, .br-panel button.br-action, .br-error button, .br-sidebar button.br-action, .br-newtab button.br-action, .br-page button.br-action { border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: var(--px-control-h-sm); padding: 0 10px; border-radius: var(--px-radius-sm); font-size: var(--px-text-sm); line-height: 1; }
+.br-bar button:hover, .br-panel button.br-action:hover, .br-error button:hover, .br-sidebar button.br-action:hover, .br-newtab button.br-action:hover, .br-page button.br-action:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .br-bar button.primary, .br-error button.primary { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, #fff); border-color: transparent; }
 .br-bar input[type="text"], .br-bar input[type="password"] { flex: 1; min-width: 0; border: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-input-background, var(--px-bg-inset)); color: inherit; font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 4px; outline: none; }
 .br-bar input[type="text"]:focus, .br-bar input[type="password"]:focus { border-color: var(--vscode-focusBorder, var(--px-accent)); }
@@ -372,7 +372,7 @@ const CSS = `
 .br-sidebar-top { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); }
 .br-sidebar-top button.br-action.primary { background: var(--vscode-button-background, var(--px-accent)); color: var(--vscode-button-foreground, #fff); border-color: transparent; flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .br-sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-.br-section-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.75; cursor: pointer; user-select: none; }
+.br-section-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px; font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: normal; opacity: 0.75; cursor: pointer; user-select: none; }
 .br-section-head .br-chevron { margin-left: auto; transition: transform var(--px-dur-fast, 120ms); display: inline-flex; }
 .br-section-head.is-collapsed .br-chevron { transform: rotate(-90deg); }
 .br-section-body { padding: 0 4px 6px; }
@@ -1583,7 +1583,7 @@ function buildBookmarksPage(ctx) {
       tr.appendChild(cell(hostOf(bm.url)));
       tr.appendChild(cell(fmtWhen(bm.created_at)));
       const act = el('td', 'num');
-      act.appendChild(iconBtn('trash-2', 'Remove Bookmark', async () => { await Bookmarks.remove(bm.url); for (const p of _panes.values()) if (p.url === bm.url) p.bookmarked = false; notifySidebar(); }));
+      act.appendChild(iconBtn('trash', 'Remove Bookmark', async () => { await Bookmarks.remove(bm.url); for (const p of _panes.values()) if (p.url === bm.url) p.bookmarked = false; notifySidebar(); }));
       tr.appendChild(act);
       t.appendChild(tr);
     }
@@ -1832,7 +1832,7 @@ function createSidebar(container) {
     try { rows = await Bookmarks.list(bookmarkQuery); } catch { rows = []; }
     if (!rows.length) { body.appendChild(el('div', 'br-empty', { text: bookmarkQuery ? 'No bookmarks match.' : 'No bookmarks yet.' })); return; }
     const list = el('div', 'br-list');
-    for (const bm of rows) list.appendChild(item(bm.title || bm.url, hostOf(bm.url), () => openTab(bm.url), 'star', [{ icon: 'trash-2', title: 'Remove Bookmark', handler: async () => { await Bookmarks.remove(bm.url); for (const p of _panes.values()) if (p.url === bm.url) { p.bookmarked = false; } notifySidebar(); } }]));
+    for (const bm of rows) list.appendChild(item(bm.title || bm.url, hostOf(bm.url), () => openTab(bm.url), 'star', [{ icon: 'trash', title: 'Remove Bookmark', handler: async () => { await Bookmarks.remove(bm.url); for (const p of _panes.values()) if (p.url === bm.url) { p.bookmarked = false; } notifySidebar(); } }]));
     body.appendChild(list);
     if (q.value) setTimeout(() => { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 0);
   });
@@ -1853,7 +1853,7 @@ function createSidebar(container) {
     for (const d of rows) {
       const stateText = d.state === 'completed' ? fmtBytes(d.received) : (d.state === 'progressing' ? `${fmtBytes(d.received)}${d.total ? ` of ${fmtBytes(d.total)}` : ''}` : d.state);
       const actions = [{ icon: 'external-link', title: 'Show In Folder', handler: () => { if (b) b.showDownload(d.path); } }];
-      if (d.state !== 'progressing' && d.path) actions.push({ icon: 'trash-2', title: 'Delete File', handler: () => deleteDownload(d) });
+      if (d.state !== 'progressing' && d.path) actions.push({ icon: 'trash', title: 'Delete File', handler: () => deleteDownload(d) });
       const row = item(d.filename, stateText, () => { if (b && d.state === 'completed') b.openDownload(d.path); }, 'download', actions);
       if (d.state === 'progressing' && d.total > 0) { const bar = el('div', 'br-dlbar'); const fill = el('div'); fill.style.width = `${Math.round((d.received / d.total) * 100)}%`; bar.appendChild(fill); row.appendChild(bar); }
       list.appendChild(row);

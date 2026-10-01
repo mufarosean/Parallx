@@ -8,6 +8,17 @@
 // ensures all such calls are scoped to the calling tool and tracked
 // for cleanup.
 
+import {
+  createButton as kitCreateButton,
+  createIconButton as kitCreateIconButton,
+  createPageHeader as kitCreatePageHeader,
+  createEmptyState as kitCreateEmptyState,
+  createSectionLabel as kitCreateSectionLabel,
+  type IKitButtonOptions,
+  type IKitIconButtonOptions,
+  type IKitPageHeaderOptions,
+  type IKitEmptyStateOptions,
+} from '../ui/kit.js';
 import { IDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import { rafThrottle } from '../platform/rafThrottle.js';
@@ -146,6 +157,11 @@ export interface ParallxApiObject {
       readonly title?: string;
     }): HTMLButtonElement;
     showContextMenu(anchor: ExtensionMenuAnchor, items: ReadonlyArray<IExtensionMenuItem>, options?: IExtensionMenuOptions): { dispose(): void };
+    createButton(container: HTMLElement | null, options: IKitButtonOptions): HTMLButtonElement;
+    createIconButton(container: HTMLElement | null, options: IKitIconButtonOptions): HTMLButtonElement;
+    createPageHeader(container: HTMLElement | null, options: IKitPageHeaderOptions): HTMLElement;
+    createEmptyState(container: HTMLElement | null, options: IKitEmptyStateOptions): HTMLElement;
+    createSectionLabel(container: HTMLElement | null, text: string): HTMLElement;
   };
   /** Register keybindings into the single workbench dispatcher (see `keybindings` namespace). */
   readonly keybindings: {
@@ -596,6 +612,14 @@ export function createToolApi(
       showContextMenu(anchor: ExtensionMenuAnchor, items: ReadonlyArray<IExtensionMenuItem>, options?: IExtensionMenuOptions): { dispose(): void } {
         return showExtensionContextMenu(anchor, items, options, (icon, c) => c.appendChild(createIconElement(icon, 14)));
       },
+      // THE chrome kit (src/ui/kit.ts): the same buttons, page header, empty
+      // state and section label the workbench draws. An extension that needs
+      // one of these calls it; it does not style its own.
+      createButton: (container: HTMLElement | null, options: IKitButtonOptions) => kitCreateButton(container, options),
+      createIconButton: (container: HTMLElement | null, options: IKitIconButtonOptions) => kitCreateIconButton(container, options),
+      createPageHeader: (container: HTMLElement | null, options: IKitPageHeaderOptions) => kitCreatePageHeader(container, options),
+      createEmptyState: (container: HTMLElement | null, options: IKitEmptyStateOptions) => kitCreateEmptyState(container, options),
+      createSectionLabel: (container: HTMLElement | null, text: string) => kitCreateSectionLabel(container, text),
     }),
 
     // Keybindings feed the SAME single dispatcher the built-in workbench uses.

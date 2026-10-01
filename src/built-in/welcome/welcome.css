@@ -118,8 +118,8 @@
 /* ── Recent section ── */
 .welcome-category-label {
   font-size: var(--px-text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--px-text-faint);
   margin-bottom: var(--px-space-1);
 }

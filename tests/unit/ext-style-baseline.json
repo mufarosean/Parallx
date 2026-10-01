@@ -1,0 +1,74 @@
+{
+  "browser": {
+    "rawColor": 9,
+    "pxFontSize": 38,
+    "uppercase": 0,
+    "emoji": 0,
+    "nativeConfirm": 0,
+    "nativeSelect": 0,
+    "retiredPurple": 0
+  },
+  "budget": {
+    "rawColor": 38,
+    "pxFontSize": 40,
+    "uppercase": 0,
+    "emoji": 5,
+    "nativeConfirm": 0,
+    "nativeSelect": 0,
+    "retiredPurple": 0
+  },
+  "concept-lab": {
+    "rawColor": 6,
+    "pxFontSize": 4,
+    "uppercase": 0,
+    "emoji": 0,
+    "nativeConfirm": 0,
+    "nativeSelect": 0,
+    "retiredPurple": 0
+  },
+  "creations-ai": {
+    "rawColor": 12,
+    "pxFontSize": 27,
+    "uppercase": 0,
+    "emoji": 1,
+    "nativeConfirm": 0,
+    "nativeSelect": 0,
+    "retiredPurple": 0
+  },
+  "flashcards": {
+    "rawColor": 24,
+    "pxFontSize": 0,
+    "uppercase": 0,
+    "emoji": 2,
+    "nativeConfirm": 0,
+    "nativeSelect": 0,
+    "retiredPurple": 0
+  },
+  "media-organizer": {
+    "rawColor": 173,
+    "pxFontSize": 138,
+    "uppercase": 2,
+    "emoji": 6,
+    "nativeConfirm": 0,
+    "nativeSelect": 0,
+    "retiredPurple": 0
+  },
+  "web-research": {
+    "rawColor": 0,
+    "pxFontSize": 0,
+    "uppercase": 0,
+    "emoji": 0,
+    "nativeConfirm": 0,
+    "nativeSelect": 0,
+    "retiredPurple": 0
+  },
+  "workspace-graph": {
+    "rawColor": 49,
+    "pxFontSize": 45,
+    "uppercase": 0,
+    "emoji": 4,
+    "nativeConfirm": 0,
+    "nativeSelect": 0,
+    "retiredPurple": 0
+  }
+}

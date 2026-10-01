@@ -1369,8 +1369,8 @@ export abstract class Layout extends Disposable {
   // ════════════════════════════════════════════════════════════════════════
 
   /**
-   * Rebuild the default shape from scratch: sidebar and panel shown at their
-   * default sizes, aux bar hidden, status bar shown. The same data the first
+   * Rebuild the default shape from scratch: sidebar shown at its default
+   * size, panel and aux bar hidden, status bar shown. The same data the first
    * boot uses, restored in place — parts are detached and re-seated, never
    * disposed.
    */
@@ -1380,7 +1380,7 @@ export abstract class Layout extends Disposable {
     const auxWas = this._auxBarVisible;
 
     this._sidebar.setVisible(true);
-    this._panel.setVisible(true);
+    this._panel.setVisible(false);
     this._auxiliaryBar.setVisible(false);
     this._auxBarVisible = false;
     this._lastSidebarWidth = DEFAULT_SIDEBAR_WIDTH;

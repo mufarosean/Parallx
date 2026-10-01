@@ -179,3 +179,90 @@ select:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   The kit (src/ui/kit.ts, api.ui) — one button, one page header, one section
+   label for every surface, built-in or extension. DESIGN_UNIFICATION.md §3:
+   three kinds, two sizes (28 / 24), one radius, the type scale's sm step.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.px-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--px-space-1);
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--px-radius-sm);
+  font: inherit;
+  font-size: var(--px-text-sm);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+}
+.px-btn:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.px-btn:disabled { opacity: 0.5; cursor: default; }
+.px-btn .svg-icon { display: inline-flex; flex-shrink: 0; }
+.px-btn .svg-icon svg { width: 16px; height: 16px; }
+
+.px-btn--sm { height: var(--px-control-h-sm); padding: 0 var(--px-space-2); }
+.px-btn--sm .svg-icon svg { width: 14px; height: 14px; }
+
+.px-btn--primary { background: var(--px-accent); color: var(--px-text-on-accent); }
+.px-btn--primary:hover:not(:disabled) { background: var(--px-accent-hover); }
+
+.px-btn--secondary { background: var(--px-bg-elevated); color: var(--px-text); border-color: var(--px-border); }
+.px-btn--secondary:hover:not(:disabled) { background: var(--px-surface-hover); border-color: var(--px-border-strong); }
+
+.px-btn--ghost { background: transparent; color: var(--px-text-secondary); }
+.px-btn--ghost:hover:not(:disabled) { background: var(--px-surface-hover); color: var(--px-text); }
+
+.px-btn--danger { background: transparent; color: var(--px-danger); border-color: color-mix(in srgb, var(--px-danger) 45%, transparent); }
+.px-btn--danger:hover:not(:disabled) { background: var(--px-danger-soft); }
+
+.px-btn--icon { width: var(--px-control-h); padding: 0; }
+.px-btn--icon.px-btn--sm { width: var(--px-control-h-sm); }
+
+/* Page header: title left; one primary, two secondary, ⋯ right. */
+.px-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--px-space-4);
+  padding: var(--px-space-5) var(--px-space-6) var(--px-space-4);
+}
+.px-page-header__titles { min-width: 0; }
+.px-page-header__title {
+  margin: 0;
+  font-size: var(--px-text-xl);
+  font-weight: 600;
+  line-height: var(--px-leading-tight);
+  color: var(--px-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-page-header__subtitle {
+  margin-top: 2px;
+  font-size: var(--px-text-sm);
+  color: var(--px-text-muted);
+}
+.px-page-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  flex-shrink: 0;
+}
+
+/* Section label: sentence case, never uppercase-tracked (POLISH pass 7). */
+.px-section-label {
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text-secondary);
+  padding: var(--px-space-2) 0 var(--px-space-1);
+}

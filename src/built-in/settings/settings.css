@@ -36,7 +36,7 @@
 }
 
 .settings-editor__title {
-  font-size: 1.1rem;
+  font-size: var(--px-text-lg);
   font-weight: 600;
   margin: 0;
   color: var(--vscode-foreground);
@@ -46,7 +46,7 @@
   background: transparent;
   border: none;
   color: var(--vscode-foreground);
-  font-size: 1.2rem;
+  font-size: var(--px-text-lg);
   line-height: 1;
   cursor: pointer;
   padding: 4px 8px;
@@ -136,8 +136,8 @@
   padding: 12px 12px 4px;
   font-size: var(--px-text-xs, 11px);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--px-text-faint);
   user-select: none;
 }
@@ -215,10 +215,10 @@
 }
 
 .settings-editor__category-title {
-  font-size: 0.8rem;
+  font-size: var(--px-text-base);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--px-text-muted);
   margin: 18px 0 8px;
   padding-bottom: 4px;
@@ -260,8 +260,8 @@
 }
 
 .settings-editor__row-scope {
-  font-size: 0.7rem;
-  text-transform: uppercase;
+  font-size: var(--px-text-xs);
+  text-transform: capitalize;
   padding: 1px 6px;
   border-radius: var(--parallx-radius-sm, 4px);
   background: var(--vscode-badge-background, rgba(128, 128, 128, 0.2));
@@ -269,12 +269,12 @@
 }
 
 .settings-editor__row-deprecated {
-  font-size: 0.7rem;
+  font-size: var(--px-text-xs);
   color: var(--vscode-editorWarning-foreground, #cca700);
 }
 
 .settings-editor__row-desc {
-  font-size: 0.85rem;
+  font-size: var(--px-text-base);
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.65));
   line-height: 1.4;
 }
@@ -292,7 +292,7 @@
 }
 
 .settings-editor__hint {
-  font-size: 0.75rem;
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
 }
 
@@ -300,10 +300,16 @@
   background: transparent;
   border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-panel-border, rgba(128, 128, 128, 0.25)));
   color: var(--vscode-foreground);
-  padding: 2px 10px;
-  font-size: 0.8rem;
-  border-radius: var(--parallx-radius-sm, 4px);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--px-control-h-sm);
+  padding: 0 10px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 
 .settings-editor__reset:hover {
@@ -318,18 +324,28 @@
 /* ── Action row (manager dialogs, export/import buttons) ───────────────── */
 
 .settings-editor__action {
-  background: var(--vscode-button-background, #0e639c);
-  border: 1px solid transparent;
-  color: var(--vscode-button-foreground, #ffffff);
-  padding: 4px 14px;
-  font-size: 0.85rem;
-  border-radius: var(--parallx-radius-sm, 4px);
+  /* Secondary: a settings page lists many actions, none of them THE action
+     of the page (three accent buttons in a row read as three alarms). */
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  color: var(--px-text);
+  font-weight: 500;
   cursor: pointer;
   font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--px-control-h);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 
 .settings-editor__action:hover {
-  background: var(--vscode-button-hoverBackground, #1177bb);
+  background: var(--px-surface-hover);
+  border-color: var(--px-border-strong);
 }
 
 .settings-editor__action:focus-visible {
@@ -343,7 +359,7 @@
   width: 100%;
   min-width: 280px;
   font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 0.85rem;
+  font-size: var(--px-text-base);
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground, var(--vscode-foreground));
   border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.25));
@@ -363,7 +379,7 @@
   width: 100%;
   min-width: 280px;
   font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 0.85rem;
+  font-size: var(--px-text-base);
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground, var(--vscode-foreground));
   border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.25));
@@ -378,7 +394,7 @@
 }
 
 .settings-editor__json-status {
-  font-size: 0.75rem;
+  font-size: var(--px-text-sm);
   color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
 }
 

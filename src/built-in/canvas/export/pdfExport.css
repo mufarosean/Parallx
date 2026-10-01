@@ -61,8 +61,8 @@
   margin-top: var(--px-space-2);
   font-size: var(--px-text-xs);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--px-text-faint);
 }
 

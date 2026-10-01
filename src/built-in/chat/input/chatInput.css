@@ -398,8 +398,8 @@
   font-size: var(--parallx-fontSize-sm);
   color: var(--vscode-descriptionForeground, #8b8b8b);
   padding: 4px 8px 2px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 /* HARNESS.md 2.3 — the gating truth line above the Careful toggle. */
@@ -620,8 +620,8 @@
   font-size: var(--parallx-fontSize-sm);
   font-weight: 600;
   color: var(--vscode-descriptionForeground, #8b8b8b);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
   user-select: none;
 }
 
@@ -1166,11 +1166,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
   font-weight: 600;
   color: var(--vscode-descriptionForeground, #8b8b8b);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .parallx-chat-context-group-title-count {
@@ -1292,11 +1292,11 @@
 }
 
 .parallx-chat-context-budget-title {
-  font-size: var(--parallx-fontSize-xs);
+  font-size: var(--px-text-xs);
   font-weight: 600;
   color: var(--vscode-descriptionForeground, #8b8b8b);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
   margin-bottom: 5px;
 }
 

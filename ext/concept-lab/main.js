@@ -5100,10 +5100,10 @@ const CL_CSS = `
   overflow-y: auto;
 }
 .cl-rail-label {
-  font-size: var(--px-text-2xs);
+  font-size: var(--px-text-xs);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--px-text-faint);
   margin-bottom: var(--px-space-2);
 }
@@ -5583,10 +5583,10 @@ const CL_CSS = `
 /* ── Sidebar ────────────────────────────────────────────────────────── */
 .cl-side { display: flex; flex-direction: column; gap: 2px; padding: var(--px-space-2); }
 .cl-side-level {
-  font-size: var(--px-text-2xs);
+  font-size: var(--px-text-xs);
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--px-text-faint);
   padding: var(--px-space-3) var(--px-space-2) var(--px-space-1);
 }

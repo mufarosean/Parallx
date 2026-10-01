@@ -70,12 +70,18 @@
   border: 1px solid var(--px-border);
   background: transparent;
   color: var(--px-text);
-  font-size: var(--px-text-sm);
   font-family: var(--px-font-ui);
-  padding: var(--px-space-1) var(--px-space-3);
-  border-radius: var(--px-radius-md);
   cursor: pointer;
   transition: background var(--px-dur-fast) var(--px-ease);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--px-control-h-sm);
+  padding: 0 10px;
+  border-radius: var(--px-radius-sm);
+  font-size: var(--px-text-sm);
+  line-height: 1;
 }
 .wfe__btn:hover { background: var(--px-surface-hover); }
 .wfe__btn:disabled { opacity: 0.5; cursor: default; }
@@ -136,8 +142,8 @@
 .wfe__palette-head {
   font-size: var(--px-text-xs);
   color: var(--px-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: normal;
   padding: var(--px-space-1);
 }
 
@@ -214,8 +220,8 @@
 .wfe-ins__head {
   font-size: var(--px-text-xs);
   color: var(--px-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: normal;
   margin: var(--px-space-2) 0;
 }
 .wfe-ins__head:first-child { margin-top: 0; }
@@ -280,8 +286,8 @@
 .wfe-card__kind {
   font-size: var(--px-text-xs);
   color: var(--px-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .wfe-card__title {

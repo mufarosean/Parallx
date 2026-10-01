@@ -582,21 +582,12 @@ export async function deactivate() {
 function renderMyView(container, api) {
   container.innerHTML = '';
   const root = document.createElement('div');
-  root.style.cssText = 'padding:12px;display:flex;flex-direction:column;gap:8px;color:var(--vscode-foreground);';
+  root.style.cssText = 'padding: var(--px-space-3); display: flex; flex-direction: column; gap: var(--px-space-2);';
 
-  const title = document.createElement('h3');
-  title.textContent = 'My View';
-  title.style.cssText = 'margin:0;font-size:13px;font-weight:600;';
-  root.appendChild(title);
-
-  const btn = document.createElement('button');
-  btn.textContent = 'Click me';
-  btn.style.cssText = 'padding:4px 10px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;border-radius:3px;cursor:pointer;';
-  btn.addEventListener('click', () => api.window.showInformationMessage('Clicked'));
-  root.appendChild(btn);
+  api.ui.createSectionLabel(root, 'My View');
+  api.ui.createButton(root, { label: 'Say Hello', size: 'sm', onClick: () => api.window.showInformationMessage('Hello.') });
 
   container.appendChild(root);
-
   return { dispose() { container.innerHTML = ''; } };
 }
 ```
@@ -708,8 +699,8 @@ api.editors.registerEditorProvider('myExt.editor', {
   createEditorPane(container, input) {
     container.innerHTML = '';
     const root = document.createElement('div');
-    root.style.cssText = 'padding:16px;color:var(--vscode-foreground);';
-    root.textContent = `Editor pane (input id: ${input?.id || '—'})`;
+    api.ui.createPageHeader(root, { title: 'My Ext', primary: { label: 'Refresh', icon: 'refresh-cw', onClick: () => {} } });
+    api.ui.createEmptyState(root, { headline: 'Nothing here yet.', hint: `Input id: ${input?.id || 'none'}.` });
     container.appendChild(root);
     return { dispose() { container.innerHTML = ''; } };
   },
@@ -742,356 +733,121 @@ Never hardcode colors, fonts, sizes, or spacing. **All visual rules live in Sect
 
 ## 6. UI Design Rules (mandatory)
 
-Parallx has a defined visual identity. Every extension MUST match it so the workbench feels coherent. **Treat this section as code, not advice — pick values from these tables, do not invent.**
+Parallx is one app, not a federation of tools. An extension supplies **content and actions**; the workbench supplies **every piece of chrome**: buttons, page headers, empty states, menus, dropdowns, dialogs, tokens. **If you are writing CSS for a button, a header, a menu or a dialog, stop: there is a component for it (Section 6.3).** The build checks this: `tests/unit/extStyleRatchet.test.ts` counts raw colours, pixel font sizes, uppercase labels, emoji, native `confirm()` and native `<select>` per extension and fails if a count rises. A new extension starts at zero.
 
-### 6.1 Brand identity (one-line summary)
+### 6.1 Identity (one paragraph)
 
-Dark-first, purple-accented, VS-Code-style desktop workbench. Primary brand color is **purple `#9333ea`**. Light, hc-dark, and hc-light themes exist — never assume dark.
+Calm, dense, dark-first desktop workbench in the spirit of Linear and Obsidian: graphite surfaces, **one accent colour** (user-chosen, Steel by default), quiet secondary text, one main action per screen. Light mode is a first-class peer, never an afterthought. **The Parallx mark is the only sign of AI**: no sparkles, robots or speech bubbles. There is no brand purple (the old `#9333ea` is retired).
 
 ### 6.2 Iron rules
 
-1. **Never write a hex color in JS or CSS.** Use a CSS variable from Section 6.4 or 6.5.
-2. **Never use emojis** in UI text, button labels, headings, or status messages. Use Lucide icons via `api.icons.createIconHtml(id)` (Section 4.7).
-3. **Never use inline SVG.** Use `api.icons.createIconHtml(id, size)`.
-4. **Never set a custom font-family.** Use the font tokens in Section 6.5.
-5. **Never use raw pixel values for spacing/radius/font-size.** Use the design tokens in Section 6.5.
-6. **Never use bright/saturated colors for status (red/green/yellow).** Use the semantic VS Code variables in Section 6.4.
-7. **Always render in a dark-mode-friendly way.** Test with the dark palette in your head — text on background must remain legible.
-8. **Never block the workbench with modals.** For confirmations use `api.window.showInformationMessage` with action buttons (Section 4.4).
-9. **Never use `position: fixed` or `position: absolute` outside your container.** Stay inside the `container` element passed to your view/editor provider.
-10. **Never set width/height in vh/vw.** The container is already sized — use `100%` or flex.
+1. **Chrome comes from the kit** (Section 6.3): `api.ui.createButton`, `createIconButton`, `createPageHeader`, `createEmptyState`, `createSectionLabel`, `createDropdown`, `showContextMenu`, and `api.window.showConfirmModal` for confirmations. Never clone them.
+2. **Never write a colour literal.** No hex, no `rgb()`/`rgba()` with numbers. Use the `--px-*` tokens in 6.4. (A data palette, such as category colours a user picks, is data, not styling.)
+3. **Never write a pixel font size.** Use `--px-text-*` (6.5). Six sizes; nothing between them.
+4. **Never set a font-family.** Inherit it (the user picks the app font in Appearance).
+5. **Controls sit on the height ladder:** 28px default, 24px dense, 22px panel-dense (`--px-control-h`, `-sm`, `-xs`). One radius for controls: `--px-radius-sm`.
+6. **No uppercase, no letter-spaced micro-labels.** Section labels are sentence case, `--px-text-sm`, weight 600, secondary colour (`createSectionLabel`).
+7. **One primary action per view.** Everything else is secondary, ghost, or behind ⋯ (the page header enforces this).
+8. **No emoji** in any UI string. Icons come from `api.icons.createIconHtml(id, size)`.
+9. **No native dialogs or selects:** no `confirm()`, `alert()`, `prompt()`, `<select>`.
+10. **Stay in your container.** No `position: fixed` outside it, no `vh`/`vw`, no z-index (menus and dialogs from the kit already sit on the workbench's popup layer).
 
-### 6.3 Two color systems — pick the right one
+### 6.3 The kit: use these, do not style your own
 
-Parallx exposes two parallel CSS variable systems. **Always prefer Parallx tokens (`--parallx-*`) when one exists; fall back to VS Code tokens (`--vscode-*`) for everything else.**
-
-| System | Prefix | Use for |
-|---|---|---|
-| Parallx design tokens | `--parallx-*` | Spacing, radius, font sizes, font families, shadows, icon sizes |
-| VS Code color tokens | `--vscode-*` | All colors (foreground, background, borders, hover, selection, errors) |
-
-Do NOT mix and match. Do NOT use `--parallx-*` for colors. Do NOT use `--vscode-*` for spacing.
-
-### 6.4 Color variables — the only colors you may use
-
-Every color in your UI MUST come from this list. If you need a color and it isn't here, fall back to `var(--vscode-foreground)` or `var(--vscode-descriptionForeground)`.
-
-**Text:**
-
-| Variable | Use for |
-|---|---|
-| `var(--vscode-foreground)` | Default body text |
-| `var(--vscode-descriptionForeground)` | Secondary / subdued text, captions, hints |
-| `var(--vscode-errorForeground)` | Error text only |
-| `var(--vscode-disabledForeground)` | Disabled text |
-| `var(--vscode-sideBarTitle-foreground)` | Sidebar section titles |
-
-**Backgrounds:**
-
-| Variable | Use for |
-|---|---|
-| `var(--vscode-editor-background)` | Main pane / editor body background |
-| `var(--vscode-sideBar-background)` | Sidebar view background |
-| `var(--vscode-input-background)` | Inputs, dropdowns, pill backgrounds |
-| `var(--vscode-list-hoverBackground)` | Row hover state |
-| `var(--vscode-list-activeSelectionBackground)` | Selected row background |
-| `var(--vscode-list-activeSelectionForeground)` | Selected row text |
-| `var(--vscode-menu-background)` | Floating menus, dropdowns |
-
-**Borders & focus:**
-
-| Variable | Use for |
-|---|---|
-| `var(--vscode-panel-border)` | Section dividers, card borders |
-| `var(--vscode-input-border)` | Input borders |
-| `var(--vscode-focusBorder)` | Focus ring (this IS the brand purple) |
-| `var(--vscode-contrastBorder, transparent)` | High-contrast outline (always include the fallback) |
-
-**Buttons:**
-
-| Variable | Use for |
-|---|---|
-| `var(--vscode-button-background)` | Primary button background |
-| `var(--vscode-button-foreground)` | Primary button text |
-| `var(--vscode-button-hoverBackground)` | Primary button hover |
-| `var(--vscode-button-secondaryBackground)` | Secondary button background |
-| `var(--vscode-button-secondaryForeground)` | Secondary button text |
-| `var(--vscode-button-secondaryHoverBackground)` | Secondary button hover |
-
-**Status / feedback (use sparingly):**
-
-| Variable | Use for |
-|---|---|
-| `var(--vscode-charts-green)` | Success indicators |
-| `var(--vscode-charts-red)` | Error indicators |
-| `var(--vscode-charts-yellow)` | Warning indicators |
-| `var(--vscode-charts-blue)` | Info indicators |
-| `var(--vscode-charts-purple)` | Brand-aligned highlight |
-
-### 6.5 Design tokens — the only sizes/fonts/spacings you may use
-
-All Parallx design tokens are exposed as CSS variables prefixed `--parallx-*`. Pick from these tables. **Do not write raw pixel values.**
-
-**Font family:**
-
-| Variable | Use for |
-|---|---|
-| `var(--parallx-fontFamily-ui)` | All UI chrome — sidebar, menus, buttons, status bar |
-| `var(--parallx-fontFamily-editor)` | Long-form / canvas content |
-| `var(--parallx-fontFamily-mono)` | Code blocks, file paths, IDs |
-
-**Font size:**
-
-| Variable | Pixels (dark default) | Use for |
-|---|---|---|
-| `var(--parallx-fontSize-xs)` | 10px | Badges, micro-labels |
-| `var(--parallx-fontSize-sm)` | 11px | Status bar, captions |
-| `var(--parallx-fontSize-base)` | 12px | Default UI text |
-| `var(--parallx-fontSize-md)` | 13px | Sidebar items, menu items |
-| `var(--parallx-fontSize-lg)` | 14px | Section headers |
-| `var(--parallx-fontSize-xl)` | 16px | Canvas body |
-| `var(--parallx-fontSize-2xl)` | 24px | Heading |
-| `var(--parallx-fontSize-3xl)` | 36px | Empty-state heading |
-
-**Spacing (use for padding, margin, gap):**
-
-| Variable | Pixels |
-|---|---|
-| `var(--parallx-spacing-1)` | 4px |
-| `var(--parallx-spacing-2)` | 8px |
-| `var(--parallx-spacing-3)` | 12px |
-| `var(--parallx-spacing-4)` | 16px |
-| `var(--parallx-spacing-6)` | 24px |
-| `var(--parallx-spacing-8)` | 32px |
-| `var(--parallx-spacing-12)` | 48px |
-| `var(--parallx-spacing-16)` | 64px |
-
-**Border radius:**
-
-| Variable | Pixels | Use for |
-|---|---|---|
-| `var(--parallx-radius-none)` | 0 | Sharp edges (rare) |
-| `var(--parallx-radius-sm)` | 3px | Buttons, inputs |
-| `var(--parallx-radius-md)` | 6px | Panels, sidebar items, cards |
-| `var(--parallx-radius-lg)` | 8px | Floating menus |
-| `var(--parallx-radius-xl)` | 12px | Chat bubbles, hero cards |
-| `var(--parallx-radius-full)` | 999px | Pills, badges, avatars |
-
-**Shadow (only for floating UI):**
-
-| Variable | Use for |
-|---|---|
-| `var(--parallx-shadow-sm)` | Tooltips, dropdowns |
-| `var(--parallx-shadow-md)` | Menus, floating widgets |
-| `var(--parallx-shadow-lg)` | Dialogs, large floating panels |
-
-**Icon size (set as `width`/`height` on icon spans):**
-
-| Variable | Pixels | Use for |
-|---|---|---|
-| `var(--parallx-icon-size-xs)` | 14px | Inline indicators next to text |
-| `var(--parallx-icon-size-sm)` | 16px | Tree items, badges (DEFAULT) |
-| `var(--parallx-icon-size-md)` | 18px | Action buttons |
-| `var(--parallx-icon-size-lg)` | 24px | Activity bar, toolbar |
-| `var(--parallx-icon-size-xl)` | 32px | Empty-state illustrations |
-
-### 6.6 Component recipes (copy verbatim)
-
-These are the canonical implementations. Do not deviate.
-
-**Primary button:**
 ```js
-const btn = document.createElement('button');
-btn.textContent = 'Save';
-btn.style.cssText = `
-  padding: var(--parallx-spacing-1) var(--parallx-spacing-3);
-  font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-md);
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  border: 1px solid var(--vscode-contrastBorder, transparent);
-  border-radius: var(--parallx-radius-sm);
-  cursor: pointer;
-`;
-btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--vscode-button-hoverBackground)'; });
-btn.addEventListener('mouseleave', () => { btn.style.background = 'var(--vscode-button-background)'; });
+// Page header: title; one primary, up to two secondary (extras move into ⋯); ⋯ for the rest.
+api.ui.createPageHeader(root, {
+  title: 'Budget',
+  subtitle: 'September 2026',
+  primary:   { label: 'Sync Now', icon: 'refresh-cw', onClick: () => sync() },
+  secondary: [{ label: 'Export', onClick: () => exportCsv() }],
+  more:      [{ label: 'Settings', icon: 'settings', onSelect: () => openSettings() }],
+});
+
+// Buttons: kind 'primary' | 'secondary' (default) | 'ghost' | 'danger'; size 'md' (28) | 'sm' (24).
+api.ui.createButton(toolbar, { label: 'Add Account', icon: 'plus', onClick: add });
+api.ui.createButton(row, { label: 'Remove', kind: 'danger', size: 'sm', onClick: remove });
+
+// Toolbar actions are icons with a tooltip (title is required).
+api.ui.createIconButton(toolbar, { icon: 'filter', title: 'Filter', onClick: openFilter });
+
+// Empty state: one headline, one hint, one way out.
+api.ui.createEmptyState(body, {
+  icon: 'inbox',
+  headline: 'No transactions yet.',
+  hint: 'Sync an account or import a CSV to see them here.',
+  action: { label: 'Import CSV', onClick: importCsv },
+});
+
+// Section label inside a page or sidebar.
+api.ui.createSectionLabel(sidebar, 'Accounts');
+
+// Choices: THE dropdown, never <select>. Menus: THE context menu.
+const dd = api.ui.createDropdown(row, { items, selected: 'month', ariaLabel: 'Period' });
+api.ui.showContextMenu(anchorEl, [{ label: 'Rename', icon: 'pencil', onSelect: rename }]);
+
+// Confirmations: the app's modal, never confirm().
+const ok = await api.window.showConfirmModal({ message: 'Delete this deck?', detail: 'Its 42 cards go too.', confirmLabel: 'Delete', danger: true });
 ```
 
-**Secondary button:** identical, but `--vscode-button-secondaryBackground/Foreground/HoverBackground`.
+If the kit lacks something you need, the kit grows (ask for it); the extension never clones a component.
 
-**Text input:**
-```js
-const input = document.createElement('input');
-input.type = 'text';
-input.style.cssText = `
-  padding: var(--parallx-spacing-1) var(--parallx-spacing-2);
-  font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-md);
-  background: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: var(--parallx-radius-sm);
-  outline: none;
-`;
-input.addEventListener('focus', () => { input.style.borderColor = 'var(--vscode-focusBorder)'; });
-input.addEventListener('blur',  () => { input.style.borderColor = 'var(--vscode-input-border, transparent)'; });
-```
+### 6.4 Colour tokens (the only colours you may use)
 
-**Sidebar section header:**
-```js
-const h = document.createElement('div');
-h.textContent = 'Items';
-h.style.cssText = `
-  padding: var(--parallx-spacing-2) var(--parallx-spacing-3);
-  font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--vscode-sideBarTitle-foreground);
-`;
-```
-
-**List row (with hover and selection):**
-```js
-const row = document.createElement('div');
-row.style.cssText = `
-  display: flex;
-  align-items: center;
-  gap: var(--parallx-spacing-2);
-  padding: var(--parallx-spacing-1) var(--parallx-spacing-3);
-  font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-md);
-  color: var(--vscode-foreground);
-  cursor: pointer;
-  border-radius: var(--parallx-radius-sm);
-`;
-row.addEventListener('mouseenter', () => { row.style.background = 'var(--vscode-list-hoverBackground)'; });
-row.addEventListener('mouseleave', () => { if (!row.dataset.selected) row.style.background = 'transparent'; });
-// On select:
-//   row.dataset.selected = '1';
-//   row.style.background = 'var(--vscode-list-activeSelectionBackground)';
-//   row.style.color = 'var(--vscode-list-activeSelectionForeground)';
-```
-
-**Icon next to text:**
-```js
-const row = document.createElement('div');
-row.style.cssText = 'display:flex; align-items:center; gap: var(--parallx-spacing-2);';
-row.innerHTML = api.icons.createIconHtml('folder', 16) + '<span>My Folder</span>';
-```
-
-**Pill / badge:**
-```js
-const pill = document.createElement('span');
-pill.textContent = '3';
-pill.style.cssText = `
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 var(--parallx-spacing-1);
-  font-family: var(--parallx-fontFamily-ui);
-  font-size: var(--parallx-fontSize-xs);
-  font-weight: 600;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  border-radius: var(--parallx-radius-full);
-`;
-```
-
-**Card (e.g. inside an editor pane):**
-```js
-const card = document.createElement('div');
-card.style.cssText = `
-  padding: var(--parallx-spacing-4);
-  background: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: var(--parallx-radius-md);
-`;
-```
-
-**Empty state:**
-```js
-const empty = document.createElement('div');
-empty.style.cssText = `
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--parallx-spacing-8) var(--parallx-spacing-4);
-  gap: var(--parallx-spacing-3);
-  color: var(--vscode-descriptionForeground);
-  text-align: center;
-`;
-empty.innerHTML = `
-  <span style="width: var(--parallx-icon-size-xl); height: var(--parallx-icon-size-xl); opacity: 0.6;">${api.icons.getIcon('inbox')}</span>
-  <div style="font-size: var(--parallx-fontSize-lg); color: var(--vscode-foreground);">No items yet</div>
-  <div style="font-size: var(--parallx-fontSize-md);">Add your first item to get started.</div>
-`;
-```
-
-### 6.7 Layout rules
-
-1. **Root containers in views/editors must be `display: flex; flex-direction: column; height: 100%; width: 100%;` and use `overflow: auto`** when content can grow.
-2. **Vertical rhythm:** between sibling blocks use `gap: var(--parallx-spacing-2)` (compact) or `gap: var(--parallx-spacing-3)` (default). Never inline `margin-bottom` on every child.
-3. **Padding:** `var(--parallx-spacing-3)` (12px) is the default container padding for sidebar views and dialogs. `var(--parallx-spacing-4)` (16px) for editor panes.
-4. **No fixed widths** on sidebar content. Always `width: 100%`. The container handles sizing.
-5. **Truncate long text:** `white-space: nowrap; overflow: hidden; text-overflow: ellipsis;`. Never wrap file paths or IDs.
-
-### 6.8 Iconography rules
-
-1. **Source:** Lucide only. Look up IDs via `api.icons.getAllIconIds()` if unsure.
-2. **Default size:** 16px for tree items, 18px for action buttons, 24px for activity-bar icons.
-3. **Color:** icons inherit `currentColor`. Set `color: var(--vscode-icon-foreground)` on the parent or let it inherit from text.
-4. **Activity bar icons (manifest `viewContainers[].icon`):** must be a single recognizable Lucide ID. Prefer concrete nouns: `wallet`, `image`, `folder`, `inbox`, `tag`, `calendar`, `chart-bar`, `bot`, `bookmark`, `database`, `file-text`, `image`, `video`, `music`.
-5. **Never** use raster images for icons.
-
-### 6.9 Voice & copy rules
-
-1. **Sentence case** for buttons and labels: `Add item`, not `Add Item` or `ADD ITEM`.
-2. **Title case** only for view names, editor tab titles, and command palette titles.
-3. **No exclamation marks.** No `!`. Replace `Saved!` with `Saved`.
-4. **No emojis** anywhere in UI strings, status messages, notifications, or tooltips.
-5. **Status bar text** uses `$(icon-id) Label` syntax — Parallx parses `$(...)` as Lucide icon references. Example: `$(circle) Idle`, `$(check) Synced`.
-6. **Notifications are short.** One sentence. Past-tense for completed actions (`Synced 12 items`), present-tense for failures (`Cannot reach server`).
-
-### 6.10 Density & motion
-
-1. **Compact by default.** Parallx is a workbench, not a marketing site. Row height for list items: 22–28px.
-2. **Avoid animations.** No CSS transitions on color/background longer than `120ms`. No keyframe animations except a subtle spinner.
-3. **Spinner pattern:**
-   ```js
-   const spin = document.createElement('span');
-   spin.innerHTML = api.icons.createIconHtml('loader-2', 16);
-   spin.style.cssText = 'display:inline-block; animation: parallx-spin 1s linear infinite;';
-   // The host already defines @keyframes parallx-spin in workbench.css.
-   ```
-
-### 6.11 Accessibility
-
-1. **Every interactive element MUST be keyboard-reachable.** Use real `<button>` and `<input>` elements, not `<div onclick>`.
-2. **Focus ring:** never set `outline: none` without replacing it. The default focus ring uses `var(--vscode-focusBorder)`.
-3. **Color is never the only signal.** Pair color with an icon or text label for status.
-4. **Contrast:** trust the theme variables — don't combine `--vscode-descriptionForeground` text with `--vscode-input-background` (low contrast). When in doubt, use `--vscode-foreground` on `--vscode-editor-background`.
-
-### 6.12 Quick reject test (apply before emitting CSS)
-
-If any line in your CSS matches one of these, fix it:
-
-| Bad | Replace with |
+| Token | Use for |
 |---|---|
-| `color: white` / `color: #fff` | `color: var(--vscode-foreground)` |
-| `background: black` / `background: #1e1e1e` | `background: var(--vscode-editor-background)` |
-| `border: 1px solid #333` | `border: 1px solid var(--vscode-panel-border)` |
-| `font-family: Arial, sans-serif` | `font-family: var(--parallx-fontFamily-ui)` |
-| `font-size: 14px` | `font-size: var(--parallx-fontSize-lg)` |
-| `padding: 8px` | `padding: var(--parallx-spacing-2)` |
-| `border-radius: 4px` | `border-radius: var(--parallx-radius-sm)` |
-| `box-shadow: 0 2px 4px rgba(0,0,0,.4)` | `box-shadow: var(--parallx-shadow-md)` |
-| Emoji (`✅`, `🚀`, `⚠️`, …) | `api.icons.createIconHtml('check' / 'rocket' / 'triangle-alert', 16)` |
-| Inline `<svg>` | `api.icons.createIconHtml('id', size)` |
+| `--px-text` | Body text, titles |
+| `--px-text-secondary` | Labels, secondary text, section labels |
+| `--px-text-muted` | Hints, captions, metadata |
+| `--px-text-faint` | Timestamps, placeholders (still ≥ 4.5:1) |
+| `--px-accent-text` | Accent used as text (links, an active label). Never `--px-accent` for text: it fails contrast in light mode |
+| `--px-bg` | Page background |
+| `--px-bg-elevated` | Cards, popovers, secondary buttons |
+| `--px-bg-inset` | Inputs, wells, code |
+| `--px-surface-hover` / `--px-surface-active` / `--px-surface-selected` | Row and control states |
+| `--px-border` / `--px-border-strong` | Edges of floating surfaces and inputs |
+| `--px-divider` | Separation inside a surface |
+| `--px-accent`, `--px-accent-hover`, `--px-accent-soft`, `--px-accent-faint` | Accent fills (the primary button, a selected chip) |
+| `--px-text-on-accent` | Text on an accent fill (picked per accent for contrast) |
+| `--px-danger`, `--px-success`, `--px-warning`, `--px-info` (+ `-soft`) | Status, sparingly |
+| `--px-shadow-sm` / `-md` / `-lg` | Floating surfaces only |
+
+Every token has a light-mode value. Test your surface in both (Settings › Appearance › Mode).
+
+### 6.5 Type, space, radius, controls
+
+**Type (`--px-text-*`):** `xs` 11 captions and timestamps · `sm` 12 secondary text, labels, buttons · `base` 13 body, rows, inputs · `md` 15 card and dialog titles · `lg` 18 section titles · `xl` 22 page titles. (`2xs` 10 exists for dense badges only.) Weights: 400 and 600.
+
+**Space (`--px-space-*`):** 1 = 4px, 2 = 8, 3 = 12, 4 = 16, 5 = 20, 6 = 24, 8 = 32.
+
+**Radius (`--px-radius-*`):** `sm` 4 controls and rows · `md` 6 cards and popovers · `lg` 10 large panels · `full` counts and avatars only.
+
+**Control height (`--px-control-h*`):** 28 default · `-sm` 24 dense · `-xs` 22 panel toolbars · `-lg` 32 hero actions only.
+
+### 6.6 Layout
+
+1. Every tab starts with `createPageHeader`. Content below it, padded `--px-space-6` horizontally.
+2. **Sidebar = navigation inside your tool**: its content (accounts, decks, folders, filters). Never the same destinations as your editor's own tabs, never a Settings row (settings live in the app's Settings, reached from the header's ⋯), never a full-width button at the bottom. The "new" action is a `+` icon button in the section label row.
+3. One main column per view; side panels only when the content is a list → detail.
+4. A view with nothing in it renders `createEmptyState`, centred in the area it describes.
+
+### 6.7 Icons
+
+1. Lucide ids via `api.icons.createIconHtml(id, size)`; 16px in rows and buttons, 14px in dense rows.
+2. **One concept, one icon** across the app: `trash` for delete, `plus` for new, `settings` for settings, `refresh-cw` for refresh, `ellipsis` for more, `pencil` for rename, `px-ai-mark` for anything that calls the AI, and only for that.
+3. Activity-bar icons are a single concrete noun: `wallet`, `image`, `folder`, `inbox`, `calendar`, `book-open`, `database`. Never `bot`, `sparkles` or `message-circle` (AI is the mark).
+
+### 6.8 Copy
+
+1. **Title Case for actions and titles** (buttons, menu items, tabs, page titles), with small joining words lowercase: `Add Account`, `Turn On`, `Import from CSV`, `Drawing and Painting`.
+2. **Sentences for everything else**: hints, empty states, errors, toasts. End them with a period.
+3. No exclamation marks, no emoji, no em dashes in labels, the ellipsis character `…` (not three dots) when an action opens a dialog.
+4. Say each thing once. A button that is obvious needs no hint under it.
+5. Never a dead end: a control that cannot run now says why in its tooltip and offers the fix in place (a "Turn On" action), not a toast after the click.
+
+### 6.9 Quick reject test (before emitting)
+
+Reject your own output if it contains any of: a `#` colour or `rgb(` with numbers; `font-size: <n>px`; `text-transform: uppercase`; `letter-spacing` on a label; an emoji; `confirm(` / `alert(` / `<select`; a hand-styled `<button>` where `api.ui.createButton` fits; more than one primary button in a view; `--vscode-*` or `--parallx-*` where a `--px-*` token exists.
 
 ---
 
@@ -1482,16 +1238,15 @@ Before responding to the user, verify each of these:
 - [ ] No TypeScript-only syntax in `main.js`.
 
 **UI / Design (Section 6):**
-- [ ] Zero hex colors, zero `rgb()`/`rgba()` with concrete numbers in CSS.
-- [ ] Every color is `var(--vscode-*)`.
-- [ ] Every spacing/radius/font-size/font-family is `var(--parallx-*)`.
-- [ ] Zero emojis in any UI string.
-- [ ] Zero inline `<svg>` — all icons via `api.icons.createIconHtml`.
-- [ ] Buttons use `<button>`, inputs use `<input>` (not `<div onclick>`).
-- [ ] Root container of every view/editor uses `width: 100%; height: 100%;`.
-- [ ] Activity-bar `viewContainers[].icon` is a real Lucide ID (Section 6.8 list).
-- [ ] Status bar text uses `$(icon-id) Label` form, no emoji.
-- [ ] Button labels are sentence case, no exclamation marks.
+- [ ] Buttons, page headers, empty states, section labels come from `api.ui` (6.3); no hand-styled chrome.
+- [ ] Zero colour literals; every colour is a `--px-*` token (6.4); accent as text uses `--px-accent-text`.
+- [ ] Zero pixel font sizes; every size is `--px-text-*` (6.5). No font-family set.
+- [ ] No `text-transform: uppercase`, no letter-spaced labels.
+- [ ] At most one primary button per view.
+- [ ] Zero emoji; icons via `api.icons.createIconHtml`; AI shown only by `px-ai-mark`.
+- [ ] No `confirm()` / `alert()` / `<select>`; the kit's modal and dropdown instead.
+- [ ] Actions and titles in Title Case; hints and messages are sentences with a period.
+- [ ] Checked in light mode as well as dark.
 
 If any box is unchecked, fix the code before responding.
 
