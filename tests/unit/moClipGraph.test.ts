@@ -21,7 +21,8 @@ function loadPure(): Record<string, any> {
   expect(b).toBeGreaterThan(a);
   const names = ['MO_CLIP_FILTERS', 'moClipFilterVf', 'moCropKeysAt', 'moCropVfSegment', 'moSimplifyTrackKeys', 'moFfEscapeText', 'moFfEscapePath',
     'moCaptionVf', 'moCaptionsVf', 'moBlurRegionsGraph', 'moAudioFxAf', 'moParseDetectLog', 'moDeadAirSegments', 'moSmartZoomKeys',
-    'moBoxTrackToKeys', 'moStageOutputDims', 'moEndCardInputs', 'moSegmentsGraph', 'moClipOutputTime'];
+    'moBoxTrackToKeys', 'moStageOutputDims', 'moEndCardInputs', 'moSegmentsGraph', 'moClipOutputTime',
+    'moTcStr', 'moParseTc', 'moTimelineStep', 'moClipSourceTime', 'moSplitSegments'];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   return new Function(src.slice(a, b) + `\nreturn { ${names.join(', ')} };`)();
 }
@@ -179,5 +180,44 @@ describe('output timeline', () => {
     expect(P.moClipOutputTime(segs, 5)).toBeCloseTo(2, 6);
     expect(P.moClipOutputTime(segs, 3)).toBeNull();
     expect(P.moClipOutputTime(null, 3)).toBe(3);
+  });
+});
+
+describe('editor timeline helpers', () => {
+  it('writes timecode with hundredths, hours from an hour up', () => {
+    expect(P.moTcStr(0)).toBe('0:00.00');
+    expect(P.moTcStr(83.456)).toBe('1:23.46');
+    expect(P.moTcStr(5423.2)).toBe('1:30:23.20');
+    expect(P.moTcStr(59.999)).toBe('1:00.00');
+    expect(P.moTcStr(-3)).toBe('0:00.00');
+  });
+  it('reads typed times and refuses anything else', () => {
+    expect(P.moParseTc('1:23.5')).toBeCloseTo(83.5, 6);
+    expect(P.moParseTc('1:30:23.20')).toBeCloseTo(5423.2, 6);
+    expect(P.moParseTc('83')).toBe(83);
+    expect(P.moParseTc(' 2,5 ')).toBeCloseTo(2.5, 6);
+    expect(P.moParseTc('abc')).toBeNull();
+    expect(P.moParseTc('1::2')).toBeNull();
+    expect(P.moParseTc('')).toBeNull();
+    expect(P.moParseTc(P.moTcStr(4321.37))).toBeCloseTo(4321.37, 6);
+  });
+  it('spaces ruler labels by zoom', () => {
+    expect(P.moTimelineStep(1000)).toBe(0.1);
+    expect(P.moTimelineStep(100)).toBe(1);
+    expect(P.moTimelineStep(0.15)).toBe(600); // two hours across ~1000 px
+  });
+  it('maps an output time back to the source', () => {
+    const segs = [{ in: 1, out: 2 }, { in: 4, out: 6 }];
+    expect(P.moClipSourceTime(segs, 0, 0.5)).toBeCloseTo(1.5, 6);
+    expect(P.moClipSourceTime(segs, 0, 2)).toBeCloseTo(5, 6);
+    expect(P.moClipSourceTime(segs, 0, 99)).toBe(6);
+    expect(P.moClipSourceTime(null, 10, 3)).toBe(13);
+    for (const t of [1.2, 4.5, 5.9]) expect(P.moClipSourceTime(segs, 0, P.moClipOutputTime(segs, t))).toBeCloseTo(t, 6);
+  });
+  it('splits the kept part under the playhead', () => {
+    expect(P.moSplitSegments([], 0, 10, 4)).toEqual([{ in: 0, out: 4 }, { in: 4, out: 10 }]);
+    expect(P.moSplitSegments([{ in: 5, out: 8 }, { in: 1, out: 3 }], 0, 10, 2)).toEqual([{ in: 5, out: 8 }, { in: 1, out: 2 }, { in: 2, out: 3 }]);
+    expect(P.moSplitSegments([{ in: 1, out: 3 }], 0, 10, 4)).toBeNull();
+    expect(P.moSplitSegments([], 0, 10, 0.01)).toBeNull();
   });
 });

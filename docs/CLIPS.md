@@ -51,6 +51,41 @@ program that turned a trimmer into a small editor and the recorder into a camera
 - The Pastel, Fade and Vintage looks now change the picture. They were lifting the
   input floor (crushing blacks) instead of the output floor.
 
+## The editor's layout (redesign 2026-10-01)
+
+Mockups: `docs/mockups/clip-editor-redesign.html`. The editor is a page, not a dialog
+in a tab:
+
+- **Toolbar**: file name, length and size; the estimate (format and size); Queue
+  (with a count); Export, with a menu for format, size and quality.
+- **Stage**: the video fills the left side. Under it the transport: Set In, frame
+  back, play, frame forward, Set Out, timecode, the clip's length (and its length
+  after speed), mute. On the Crop tab the aspect ratios and Preview Crop float on the
+  video.
+- **Inspector**: six tabs (Trim, Crop, Look, Blur, Text, Audio). A dot marks a tab
+  whose settings are in use. Trim holds the range in timecode (In, Out and an
+  editable Length), the segments, and Timing (Speed, Fit To Length, Reverse). Look is
+  a grid of swatches of the current frame.
+- **Timeline**: a ruler, the Video lane (thumbnails over the whole source; what
+  exports is bright, the rest dimmed; segments as numbered blocks), the Audio lane
+  (a peak envelope), and lanes for crop keyframes, blur windows and text windows.
+  Drag anywhere to scrub; drag bars to move them in time; S splits at the playhead.
+  Zoom with the slider or Ctrl+scroll; Fit shows everything. The ruler draws only
+  the ticks in view, and thumbnails come from key frames only on videos over two
+  minutes, so a two-hour session opens in seconds.
+- **Export menu**: preset chips, format, frame rate, size, mute; then encoding
+  (quality or target size, GPU; for GIF dither, loop, frame order, auto-optimize);
+  Add to Queue (Q) and Export. A GIF also gets the GIF frames row under the timeline
+  for per-frame delays and drops.
+- **Queue panel**: the batch, presets, Stop Editing. After an export a toast offers
+  Reveal and Copy Path.
+- Below 860px wide the inspector moves under the video; below 560px the timeline
+  keeps the Video and Audio lanes.
+
+The state, tracker and export pipeline are unchanged by the redesign. Fixed on the
+way: a single export ignored Fit To Length (only queued clips honoured it); the Smart
+Zoom hint showed on videos with no cursor path.
+
 ## How it fits together
 
 Everything beyond one plain range is ASSEMBLED first: the kept segments, each with
@@ -91,9 +126,15 @@ confirm on this machine.
 | 6 Shapes | oval and rounded regions through a feathered alpha mask (geq on the patch), Blur/Pixelate and shape as buttons; exported pixels checked: outside the oval untouched, inside blurred | shipped |
 | 5 Fixes | real-timestamp capture (short takes played fast), app dropdowns everywhere, Track switch on blur regions, real blur and mosaic previews, look previews matched to the export | shipped |
 | 4 Probe | clip scene in the screenshot probe, open-clip-editor command | shipped |
+| 8 Layout | page layout: toolbar, transport, tabbed inspector, zoomable lane timeline, Export menu, Queue panel; timecode fields; split at playhead; look swatches | shipped |
 | 7 Handles | oval and rounded regions could not be resized (the soft-edge mask hid the one corner handle and the outline); shape moved to an inner fill, active region gets an eight-handle frame; move + 4 resize directions measured on all three shapes with real mouse input | shipped |
 
 ## Known limits
+
+- Videos reach the editor (and every Media Organizer surface) through
+  `localFileToUrl`, which reads the whole file over IPC into a Blob. A multi-gigabyte
+  session is too much for that. The fix is a streaming file protocol with range
+  requests (next step, see the phase 2 plan below).
 
 - Follow the box captures the whole display, so long takes are larger on disk until
   the editor crops them.
@@ -101,3 +142,25 @@ confirm on this machine.
   to the single-range path.
 - Hotkeys are fixed combinations. If another program owns one, the toolbar still
   works and nothing is reported.
+
+## Phase 2: Clip Editor as a place of its own (planned)
+
+The owner records drawing and painting sessions and wants Media Organizer to be
+where they become content. Today the editor opens on one video and cuts it into
+clips. Phase 2 makes it a third Media Organizer surface:
+
+1. **Streaming video.** A `parallx-media://` protocol in the main process that
+   serves workspace files with HTTP range requests, confined to the open
+   workspace's roots, and `localFileToUrl` using it for video. Without this a long
+   session cannot even be previewed.
+2. **Clip Editor in the sidebar.** Opens an empty editor with a media bin: pick
+   videos (and clips already exported) from the library.
+3. **Many sources.** A segment carries its source path. The assembly step already
+   cuts segments into one near-lossless temp file, so the change is per-segment
+   `-i` inputs plus normalising size and frame rate before concat. Crop keys, blur
+   regions and text stay per segment or on the output timeline as today.
+4. **Timelapse tools for paintings.** Speed per segment (ramp through the slow
+   parts, linger on the reveal), a "finished painting" hold at the end, and a
+   before/after split.
+5. **Projects that persist.** The editor's state saved to the database so an edit
+   survives closing the app (today it lives in memory and the tab's view state).

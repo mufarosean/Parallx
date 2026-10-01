@@ -94,8 +94,24 @@ async function closeSettings(page) {
 
 async function shot(page, name) {
   await page.waitForTimeout(600);
+  // The hidden window makes no new frame while a <video> sits paused, and a
+  // screenshot waits for one: paused videos play (muted) for the shot, then
+  // pause again at the time they held.
+  const held = await page.evaluate(() => Array.from(document.querySelectorAll('video')).map((v, i) => {
+    if (!v.paused || v.readyState < 2) return null;
+    const st = { i, t: v.currentTime, muted: v.muted };
+    v.muted = true; v.play().catch(() => {});
+    return st;
+  }).filter(Boolean)).catch(() => []);
   const file = path.join(outDir, `${name}.png`);
   await page.screenshot({ path: file });
+  if (held.length) {
+    await page.evaluate((list) => {
+      const vids = document.querySelectorAll('video');
+      for (const st of list) { const v = vids[st.i]; if (!v) continue; v.pause(); v.muted = st.muted; try { v.currentTime = st.t; } catch { /* ignore */ } }
+    }, held).catch(() => {});
+    await page.waitForTimeout(150);
+  }
   console.log(`[probe] ${name} -> ${file}`);
 }
 
@@ -281,14 +297,24 @@ async function main() {
           });
           console.log(`[probe] clip stage @${label}: ${d}`);
         };
+        // The inspector's tabs (Trim, Crop, Look, Blur, Text, Audio); 'Export'
+        // opens the toolbar's Export menu.
         const openSection = async (title) => {
-          const head = page.locator('.mo-clip-acc-head', { has: page.locator('.mo-clip-acc-title', { hasText: title }) }).first();
-          if (!(await head.count())) { console.log(`[probe] clip: no section ${title}`); return false; }
-          const open = await head.evaluate((el) => el.parentElement.classList.contains('mo-open'));
-          if (!open) await head.evaluate((el) => { el.scrollIntoView({ block: 'center' }); el.click(); });
+          if (title === 'Export') {
+            const open = await page.evaluate(() => { const b = document.querySelector('.mo-ce-split-menu'); const pop = document.querySelector('.mo-ce-pop'); if (!b || !pop) return false; if (pop.style.display === 'none') b.click(); return true; });
+            await page.waitForTimeout(300);
+            return open;
+          }
+          const tab = page.locator(`.mo-ce-tab[title="${title}"]`).first();
+          if (!(await tab.count())) { console.log(`[probe] clip: no tab ${title}`); return false; }
+          await tab.evaluate((el) => el.click());
           await page.waitForTimeout(300);
           return true;
         };
+        const closeMenus = async () => page.evaluate(() => {
+          const pop = document.querySelector('.mo-ce-pop'); if (pop && pop.style.display !== 'none') document.querySelector('.mo-ce-split-menu')?.click();
+          const q = document.querySelector('.mo-ce-queue'); if (q && q.style.display !== 'none') q.querySelector('.mo-ce-queue-head button:last-child')?.click();
+        });
         const clickBtn = async (text) => {
           const btn = page.locator('.mo-clip-page button', { hasText: text }).first();
           if (!(await btn.count())) { console.log(`[probe] clip: no button ${text}`); return false; }
@@ -308,6 +334,13 @@ async function main() {
         await page.waitForTimeout(300);
         await clickBtn('Add Segment');
         await shot(page, 'clip-segments'); await stageState('clip-segments');
+        // Split at the playhead (S) inside the first segment.
+        await page.evaluate(() => { const v = document.querySelector('.mo-clip-page video'); if (v) { v.pause(); v.currentTime = 1.5; } });
+        await page.waitForTimeout(300); await page.locator('.mo-clip-page').first().focus().catch(() => {}); await page.keyboard.press('s');
+        await page.waitForTimeout(400);
+        const lanes = await page.evaluate(() => `blocks=${document.querySelectorAll('.mo-ce-block').length} dims=${document.querySelectorAll('.mo-ce-dim').length} thumbs=${document.querySelectorAll('.mo-ce-thumb').length} wave=${document.querySelector('.mo-ce-wave')?.style.display !== 'none'} ticks=${document.querySelectorAll('.mo-ce-tick').length} status="${document.querySelector('.mo-clip-status')?.textContent || ''}"`);
+        console.log(`[probe] clip timeline: ${lanes}`);
+        await shot(page, 'clip-split');
         // Blur: one region on the stage.
         if (await openSection('Blur')) {
           await clickBtn('Blur Region');
@@ -335,14 +368,14 @@ async function main() {
         }
         // Text: one caption.
         if (await openSection('Text')) {
-          await clickBtn('+ Text');
+          await clickBtn('Add Text');
           const capInput = page.locator('.mo-clip-page .mo-clip-input--grow').first();
           if (await capInput.count()) { await capInput.fill('Excess of loss, explained'); await capInput.dispatchEvent('input'); await page.waitForTimeout(400); }
           // Pause and park the playhead inside the caption's window so the
           // preview on the stage is in the shot.
           await page.evaluate(() => {
             const v = document.querySelector('.mo-clip-page video');
-            const sec = Array.from(document.querySelectorAll('.mo-clip-acc')).find((a) => (a.querySelector('.mo-clip-acc-title')?.textContent || '') === 'Text');
+            const sec = Array.from(document.querySelectorAll('.mo-ce-panel')).find((a) => (a.querySelector('.mo-ce-panel-title')?.textContent || '') === 'Text');
             const from = sec?.querySelector('input[type="number"]');
             if (v) { v.pause(); if (from) v.currentTime = parseFloat(from.value) + 0.3; }
           });
@@ -353,10 +386,7 @@ async function main() {
         // real rendered clip over the stage.
         if (await openSection('Look')) {
           const before = await page.evaluate(() => getComputedStyle(document.querySelector('.mo-clip-page video')).filter);
-          await page.evaluate(() => {
-            const sel = Array.from(document.querySelectorAll('.mo-clip-page select')).find((s) => Array.from(s.options).some((o) => o.value === 'vivid'));
-            if (sel) { sel.value = 'vivid'; sel.dispatchEvent(new Event('change', { bubbles: true })); }
-          });
+          await page.evaluate(() => { document.querySelector('.mo-ce-look[title="Vivid"]')?.click(); });
           await page.waitForTimeout(400);
           const after = await page.evaluate(() => getComputedStyle(document.querySelector('.mo-clip-page video')).filter);
           console.log(`[probe] clip filter preview: before="${before}" after="${after}"`);
@@ -375,7 +405,7 @@ async function main() {
             }
             console.log(`[probe] clip preview render: ${rendered} (${Math.round((Date.now() - t0) / 1000)}s)`);
             await shot(page, 'clip-render');
-            await page.keyboard.press('Escape');
+            await page.evaluate(() => { document.querySelector('.mo-render-preview-bar button')?.click(); });
             await page.waitForTimeout(300);
           }
         }
@@ -413,13 +443,39 @@ async function main() {
           console.log(`[probe] clip pixelate preview: ${mosaic}`);
           await shot(page, 'clip-pixelate');
         }
-        // Audio & Finish, then Export, so the whole program is visible.
+        // Crop: on, a 9:16 window, the floating bar on the stage.
+        if (await openSection('Crop')) {
+          await page.evaluate(() => { const c = document.querySelector('#mo-clip-crop'); if (c && !c.checked) c.click(); });
+          await page.waitForTimeout(300);
+          await page.evaluate(() => { Array.from(document.querySelectorAll('.mo-ce-float-btn')).find((b) => b.textContent === '9:16')?.click(); });
+          await page.waitForTimeout(300);
+          await shot(page, 'clip-crop');
+        }
+        // Audio, then the Export menu (MP4, then GIF with its frames row).
         if (await openSection('Audio')) await shot(page, 'clip-audio'); await stageState('clip-audio');
-        if (await openSection('Export')) await shot(page, 'clip-export'); await stageState('clip-export');
+        if (await openSection('Export')) {
+          await shot(page, 'clip-export'); await stageState('clip-export');
+          await page.evaluate(() => { Array.from(document.querySelectorAll('.mo-ce-pop .mo-ce-seg button')).find((b) => b.textContent === 'GIF')?.click(); });
+          await page.waitForTimeout(2_500);
+          await shot(page, 'clip-export-gif');
+          await clickBtn('Add to Queue');
+          await page.waitForTimeout(800);
+        }
+        await closeMenus();
+        await page.evaluate(() => document.querySelector('.mo-ce-toolbar .px-btn')?.click());
+        await page.waitForTimeout(400);
+        await shot(page, 'clip-queue');
+        await closeMenus();
+        // A narrow pane: the inspector moves under the video.
+        await page.setViewportSize({ width: 820, height: 900 }).catch(() => {});
+        await page.waitForTimeout(600);
+        await shot(page, 'clip-narrow');
+        await page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
+        await page.waitForTimeout(400);
         const summary = await page.evaluate(() => {
-          const rows = Array.from(document.querySelectorAll('.mo-clip-acc')).map((a) => {
-            const t = a.querySelector('.mo-clip-acc-title')?.textContent || '';
-            const s = a.querySelector('.mo-clip-acc-sum')?.textContent || '';
+          const rows = Array.from(document.querySelectorAll('.mo-ce-panel, .mo-ce-popgroup')).map((a) => {
+            const t = a.querySelector('.mo-ce-panel-title')?.textContent || '';
+            const s = a.querySelector('.mo-ce-sum')?.textContent || '';
             return `${t}${s ? ' [' + s + ']' : ''}`;
           });
           const segs = document.querySelectorAll('.mo-clip-segrow').length;
@@ -427,7 +483,7 @@ async function main() {
           const caps = document.querySelectorAll('.mo-caption').length;
           const status = document.querySelector('.mo-clip-status')?.textContent || '';
           const layer = document.querySelector('.mo-caption-layer');
-          const capRow = Array.from(document.querySelectorAll('.mo-clip-acc')).find((a) => (a.querySelector('.mo-clip-acc-title')?.textContent || '') === 'Text')?.querySelector('.mo-clip-segrow--stack');
+          const capRow = Array.from(document.querySelectorAll('.mo-ce-panel')).find((a) => (a.querySelector('.mo-ce-panel-title')?.textContent || '') === 'Text')?.querySelector('.mo-clip-segrow--stack');
           const nums = capRow ? Array.from(capRow.querySelectorAll('input[type="number"]')).map((i) => i.value).join('..') : 'none';
           const txt = capRow ? (capRow.querySelector('input[type="text"]')?.value || '') : '';
           const vt = document.querySelector('.mo-clip-page video')?.currentTime;

@@ -279,6 +279,17 @@
   --px-viewer-control:        rgba(255, 255, 255, 0.08);
   --px-viewer-control-hover:  rgba(255, 255, 255, 0.16);
   --px-viewer-line:           rgba(255, 255, 255, 0.14);
+
+  /* ── Tier 3 · Component — Clip editor ───────────────────────────────────
+     Media Organizer's clip editor: the video stage and the timeline's media
+     lanes stay dark like the viewer (they are pictures and sound, judged on
+     black); the chrome around them follows the theme. */
+  --px-clip-inspector-w:   304px;   /* the tabbed inspector column          */
+  --px-clip-lane-h:        28px;    /* audio, motion, blur and text lanes   */
+  --px-clip-lane-h-video:  46px;    /* the thumbnail lane                   */
+  --px-clip-lane-h-ruler:  22px;
+  --px-clip-head-w:        88px;    /* lane names                           */
+  --px-clip-dim:           rgba(0, 0, 0, 0.62);   /* source that will not export */
 }
 
 /* ============================================================================
