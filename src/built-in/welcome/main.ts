@@ -27,6 +27,9 @@ interface ParallxApi {
     appName: string;
     appVersion: string;
   };
+  workspace?: {
+    readonly workspaceFolders?: readonly unknown[];
+  };
   services: {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
@@ -189,10 +192,10 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   // Start = the product's loops, not file operations. Files still open from
   // the Explorer / quick open; the first screen sells what Parallx IS.
   const startItems = [
-    { icon: 'file-text', text: 'New canvas page', command: 'canvas.newPage' },
-    { icon: 'calendar', text: 'Open planner', command: 'planner.open' },
-    { icon: 'layout-dashboard', text: 'New dashboard', command: 'dashboard.newPage' },
-    { icon: 'folder', text: 'Open folder…', command: 'workbench.action.files.openFolder' },
+    { icon: 'file-text', text: 'New Page', command: 'canvas.newPage' },
+    { icon: 'calendar', text: 'Open Planner', command: 'planner.open' },
+    { icon: 'layout-dashboard', text: 'New Dashboard', command: 'dashboard.newPage' },
+    { icon: 'folder', text: 'Open Folder…', command: 'workbench.action.files.openFolder' },
   ];
 
   for (const item of startItems) {
@@ -346,11 +349,14 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
 
   wrapper.appendChild(columns);
 
-  // Footer
-  const footer = $('div');
-  footer.classList.add('welcome-footer');
-  footer.textContent = 'Tip: press Ctrl+Shift+P to open the Command Palette.';
-  wrapper.appendChild(footer);
+  // Footer: where the work lives, said once, plainly (the first thing a
+  // switcher asks). Only true once a folder is open.
+  if (api.workspace?.workspaceFolders?.length) {
+    const footer = $('div');
+    footer.classList.add('welcome-footer');
+    footer.textContent = 'Your pages and notes are saved in this workspace folder, on your computer.';
+    wrapper.appendChild(footer);
+  }
 
   container.appendChild(wrapper);
 
