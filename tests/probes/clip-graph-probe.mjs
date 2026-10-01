@@ -35,7 +35,8 @@ function loadPure() {
   const region = src.slice(a, b);
   const names = ['MO_CLIP_FILTERS', 'moClipFilterVf', 'moCropKeysAt', 'moCropKeyExpr', 'moZoomKeyExpr', 'moZoomPadDims', 'moCropVfSegment',
     'moSimplifyTrackKeys', 'moFfEscapeText', 'moFfEscapePath', 'MO_CAPTION_STYLES', 'moCaptionVf', 'moCaptionsVf', 'moBlurRegionsGraph',
-    'moAudioFxAf', 'moParseDetectLog', 'moDeadAirSegments', 'moSmartZoomKeys', 'moBoxTrackToKeys', 'moStageOutputDims', 'moEndCardInputs', 'moSegmentsGraph'];
+    'moAudioFxAf', 'moParseDetectLog', 'moDeadAirSegments', 'moSmartZoomKeys', 'moBoxTrackToKeys', 'moStageOutputDims', 'moEndCardInputs', 'moSegmentsGraph',
+    'moSequenceGraph'];
   return new Function(region + `\nreturn { ${names.join(', ')} };`)();
 }
 
@@ -249,6 +250,28 @@ async function main() {
     check('follow-the-box keys render', r.code === 0, r.code === 0 ? '' : r.err.slice(-300));
     const still = P.moBoxTrackToKeys([{ t: 0, x: 0.2, y: 0.2, w: 0.5, h: 0.5 }, { t: 3, x: 0.2, y: 0.2, w: 0.5, h: 0.5 }]);
     check('a box that never moved is a static crop', still && still.cropKeys.length === 0);
+  }
+
+  // ── 9. A project sequence: parts of different sizes, rates and audio join as one.
+  {
+    const a = path.join(OUT, 'seq-a.mp4');
+    const b = path.join(OUT, 'seq-b.mp4');
+    const c = path.join(OUT, 'seq-c.mp4');
+    await ff(['-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100', '-t', '2', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ac', '1', '-shortest', a]);
+    await ff(['-f', 'lavfi', '-i', 'smptebars=size=360x640:rate=24', '-t', '1.5', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-an', b]);
+    await ff(['-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=60', '-f', 'lavfi', '-i', 'sine=frequency=220:sample_rate=48000', '-t', '1', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ac', '2', '-shortest', c]);
+    const g = P.moSequenceGraph({ parts: [{ duration: 2, hasAudio: true }, { duration: 1.5, hasAudio: false }, { duration: 1, hasAudio: true }], w: 641, h: 360, fps: 30 });
+    const out = path.join(OUT, 'sequence.mp4');
+    const r = await ff(['-i', a, '-i', b, '-i', c, '-filter_complex', g.filterComplex, '-map', g.mapV, '-map', g.mapA,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', out]);
+    check('sequence joins mixed parts', r.code === 0, r.code === 0 ? '' : r.err.slice(-400));
+    const meta = r.code === 0 ? await ffprobe(out) : null;
+    const v = meta?.streams?.find((x) => x.codec_type === 'video');
+    const au = meta?.streams?.find((x) => x.codec_type === 'audio');
+    const dur = Number(meta?.format?.duration || 0);
+    check('sequence size is even and as asked', v && v.width === 642 && v.height === 360, v ? `${v.width}x${v.height}` : 'no video');
+    check('sequence keeps sound across a silent part', !!au, au ? 'audio stream present' : 'no audio');
+    check('sequence length is the sum of its parts', Math.abs(dur - g.durationSec) < 0.15, `${dur.toFixed(2)} s vs ${g.durationSec.toFixed(2)} s`);
   }
 
   return finish();

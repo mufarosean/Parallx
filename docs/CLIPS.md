@@ -129,10 +129,10 @@ extracted verbatim by the unit test and by the ffmpeg probe.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Pure clip math | `npx vitest run tests/unit/moClipGraph.test.ts` | 23 pass (timecode, split, captions per line and placed, project "edited" check) |
-| Real ffmpeg graphs | `node tests/probes/clip-graph-probe.mjs` | 34/34 |
+| Pure clip math | `npx vitest run tests/unit/moClipGraph.test.ts` | 24 pass (timecode, split, captions per line and placed, project "edited" check, sequence order, clip length, join graph) |
+| Real ffmpeg graphs | `node tests/probes/clip-graph-probe.mjs` | 38/38 (incl. a sequence of 640×360 sound, 360×640 silent and 1280×720 60 fps parts: even size, sound throughout, length = sum) |
 | Editor on screen | `node tests/probes/ui-screenshot-probe.mjs <out> clip` | split, cut, bring back, undo; blur, follow, pixelate; text dragged; a real MP4 export and a cancelled one (partial file removed); narrow sheet and tiny pane; 20 shots reviewed |
-| Clip projects | `node tests/probes/ui-screenshot-probe.mjs <out> project` | a project from two videos; In moved and a clip queued on the first; the second opens untouched; the first comes back as left; the app quit and started again: the project is in the sidebar and opens with the same In, Out and queued clip; Delete Project closes the tab and empties the list |
+| Clip projects | `node tests/probes/ui-screenshot-probe.mjs <out> project` | a project from two videos; In moved and a clip queued on the first; the second opens untouched; the first comes back as left; the app quit and started again: the project is in the sidebar and opens with the same In, Out and queued clip; a clip queued on each video lines up in the Sequence; a real export of both (9.36 s file = the two clips); a heavier export cancelled mid-render stops in about a second with ffmpeg gone and the partial file removed; double-click opens a clip for editing; Delete Project closes the tab and empties the list |
 | Media stream | `npx vitest run tests/unit/mediaStreamBridge.test.ts` | 9 pass |
 | Whole suite | `npx vitest run` | green apart from the four failures CLAUDE.md lists |
 | Recorder timing | hidden 2 s capture through the recorder's own argv + finalize | duration = wall clock within 40 ms |
@@ -154,6 +154,7 @@ confirm on this machine.
 | 6 Shapes | oval and rounded regions through a feathered alpha mask (geq on the patch), Blur/Pixelate and shape as buttons; exported pixels checked: outside the oval untouched, inside blurred | shipped |
 | 5 Fixes | real-timestamp capture (short takes played fast), app dropdowns everywhere, Track switch on blur regions, real blur and mosaic previews, look previews matched to the export | shipped |
 | 4 Probe | clip scene in the screenshot probe, open-clip-editor command | shipped |
+| 12 Sequence | the project's Sequence: queued clips from every video in order, reorder, leave out, edit; Export Sequence… renders, joins and encodes as one video with progress and Cancel; projects keep exported clips. Cancel now kills the running ffmpeg (editor and sequence): the bridge's promise.cancel never crossed the context bridge, so a long render used to run to its end; `terminal.cancelStream(streamId)` with a caller-named stream replaces it | shipped |
 | 11 Projects | Clip Projects in the sidebar; a project page with a bin of videos (library thumbnail or a frame from the stream, drag to reorder, remove) beside the editor; each video's edits and queued clips saved to the database as they settle and on leaving, until the project is deleted; Add to Clip Project in the library's right-click menu; New Clip Project… and Open Clip Project… commands; migration 029 | shipped |
 | 10 Mockup | everything the approved mockups show: undo/redo, loop, stage chips and floating bars, text as objects (multi-line, placed), split/cut/bring-back on the timeline, snap, selected-segment range, crop groups, text and blur editors, audio sliders, export presets/Source fps/loop/Sierra/max size/name, progress and Cancel on Export, queue ⋯ menu, GIF frames on the video lane, narrow sheet; Capture Frame without the old dialog; editor opens on the whole video | shipped |
 | 9 Streaming | parallx-media:// with range requests; video and audio stream from disk in every Media Organizer surface | shipped |
@@ -192,10 +193,22 @@ clips. Phase 2 makes it a third Media Organizer surface:
    (a file dialog) or the library's right-click menu (Add to Clip Project, one
    video or a selection). Only videos in the workspace are taken, as for Open
    Clip Editor. The bin closes to a rail on a narrow tab or on request.
-3. **Many sources.** A segment carries its source path. The assembly step already
-   cuts segments into one near-lossless temp file, so the change is per-segment
-   `-i` inputs plus normalising size and frame rate before concat. Crop keys, blur
-   regions and text stay per segment or on the output timeline as today.
+3. **Many sources: the project's Sequence (done 2026-10-01).** Above the videos in
+   the bin sits the Sequence: every clip queued on any of the project's videos, in
+   order (bin order, then queue order, until rearranged). Rows drag to reorder, a
+   switch leaves a clip out, double-click (or Edit Clip) opens its video with that
+   clip loaded for Update Clip. Format, size (as the first clip, 1080p, 720p,
+   square, vertical), frame rate and quality are kept with the project.
+   Export Sequence… renders each clip through the queue's own path
+   (`moExportClipPipeline`: cuts, crop and motion, look, blur, text, speed, audio
+   finish) to a near-lossless part at the sequence's frame rate, joins the parts
+   with `moSequenceGraph` (fitted inside the size with black bars, never
+   stretched; stereo 48 kHz; silence where a part has none; audio cut or padded to
+   each part's video so nothing drifts), and encodes the result through
+   `moExportClip`. Progress and Cancel sit on the button; an export keeps running
+   if the view changes and the view that comes back shows it. In a project,
+   exported clips stay in their queue (`opts.keepQueue`): they are the sequence.
+   The order and settings live in `mo_clip_projects.sequence_json`.
 4. **Timelapse tools for paintings.** Speed per segment (ramp through the slow
    parts, linger on the reveal), a "finished painting" hold at the end, and a
    before/after split.

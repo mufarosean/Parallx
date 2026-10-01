@@ -110,7 +110,9 @@ async function shot(page, name) {
     return st;
   }).filter(Boolean)).catch(() => []);
   const file = path.join(outDir, `${name}.png`);
-  await page.screenshot({ path: file });
+  // A still page in the hidden window sometimes makes no new frame; a missed
+  // shot is reported, not a reason to stop the scene.
+  const took = await page.screenshot({ path: file, timeout: 15_000 }).then(() => true, (e) => { console.log(`[probe] ${name}: no shot (${String(e).split('\n')[0]})`); return false; });
   if (held.length) {
     await page.evaluate((list) => {
       const vids = document.querySelectorAll('video');
@@ -118,7 +120,7 @@ async function shot(page, name) {
     }, held).catch(() => {});
     await page.waitForTimeout(150);
   }
-  console.log(`[probe] ${name} -> ${file}`);
+  if (took) console.log(`[probe] ${name} -> ${file}`);
 }
 
 async function enableMediaOrganizer(page) {
@@ -153,10 +155,18 @@ async function projectScene(appRoot, clip, clip2, errors) {
     const tcs = Array.from(panel ? panel.querySelectorAll('.mo-ce-tcfield') : []).map((i) => i.value);
     const name = document.querySelector('.mo-ce-name')?.textContent || '';
     const badge = document.querySelector('.mo-ce-toolbar .mo-ce-badge')?.textContent || '';
-    const rows = Array.from(document.querySelectorAll('.mo-cp-row')).map((r) => `${r.querySelector('.mo-cp-row-name')?.textContent}[${r.querySelector('.mo-cp-row-meta')?.textContent}]${r.classList.contains('mo-cp-row--active') ? '*' : ''}`);
+    const rows = Array.from(document.querySelectorAll('.mo-cp-bin .mo-cp-row')).map((r) => `${r.querySelector('.mo-cp-row-name')?.textContent}[${r.querySelector('.mo-cp-row-meta')?.textContent}]${r.classList.contains('mo-cp-row--active') ? '*' : ''}`);
     const sub = document.querySelector('.mo-cp-sub')?.textContent || '';
     const side = Array.from(document.querySelectorAll('.mo-cp-sidebar .mo-sidebar-item-label')).map((x) => x.textContent);
     return `editor=${name} trim=${tcs.join('..')} queue=${badge} bin=${rows.join(' | ')} sub="${sub}" sidebar=${side.join(',')}`;
+  });
+  const seqState = (page) => page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('.mo-cs-row')).map((r) => `${r.querySelector('.mo-cs-num')?.textContent}. ${r.querySelector('.mo-cp-row-name')?.textContent} [${r.querySelector('.mo-cp-row-meta')?.textContent}] ${r.querySelector('.mo-cs-len')?.textContent}`);
+    const meta = document.querySelector('.mo-cs .mo-ce-meta')?.textContent || '';
+    const btn = document.querySelector('.mo-cs-export')?.textContent || '';
+    const st = document.querySelector('.mo-cs-status')?.textContent || '';
+    const seqMeta = document.querySelector('.mo-cp-seqrow .mo-cp-row-meta')?.textContent || '';
+    return `meta="${meta}" bin="${seqMeta}" button="${btn}" status="${st}" rows=${rows.join(' | ')}`;
   });
   let { app, page } = await launchApp(appRoot, errors);
   try {
@@ -183,12 +193,67 @@ async function projectScene(appRoot, clip, clip2, errors) {
     console.log(`[probe] project @edited: ${await trimState(page)}`);
     await shot(page, 'project');
     // The second video opens untouched; the first comes back as it was left.
-    await page.locator('.mo-cp-row').nth(1).click();
+    await page.locator('.mo-cp-list .mo-cp-row').nth(1).click();
     await page.waitForTimeout(1_500);
     console.log(`[probe] project @second: ${await trimState(page)}`);
-    await page.locator('.mo-cp-row').nth(0).click();
+    await page.locator('.mo-cp-list .mo-cp-row').nth(0).click();
     await page.waitForTimeout(1_500);
     console.log(`[probe] project @back: ${await trimState(page)}`);
+    // A clip from the second video too; both line up in the Sequence.
+    await page.locator('.mo-cp-list .mo-cp-row').nth(1).click();
+    await page.waitForTimeout(1_500);
+    await page.evaluate(() => { const v = document.querySelector('.mo-clip-page video'); v.currentTime = 3; });
+    await page.waitForTimeout(400);
+    await page.locator('.mo-clip-page').first().focus();
+    await page.keyboard.press('i');
+    await page.waitForTimeout(300);
+    await page.keyboard.press('q');
+    await page.waitForTimeout(1_500);
+    await page.locator('.mo-cp-seqrow').click();
+    await page.waitForSelector('.mo-cs', { timeout: 10_000 });
+    await page.waitForTimeout(800);
+    console.log(`[probe] project @sequence: ${await seqState(page)}`);
+    await shot(page, 'project-sequence');
+    // Export it for real (the save dialog answers with a path in the workspace).
+    const seqOut = path.join(path.dirname(clip), 'probe-sequence.mp4');
+    await app.evaluate(({ dialog }, out) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: out }); }, seqOut);
+    const t0 = Date.now();
+    await page.locator('.mo-cs-export').click();
+    await page.waitForTimeout(1_500);
+    console.log(`[probe] project @exporting: ${await seqState(page)}`);
+    await page.waitForFunction(() => /^Exported|failed|cancelled/i.test(document.querySelector('.mo-cs-status')?.textContent || '') && !document.querySelector('.mo-cs-export.mo-ce-busy'), null, { timeout: 180_000 }).catch(() => {});
+    const pr = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,width,height', '-of', 'json', seqOut]);
+    let probeText = 'no file';
+    try { const j = JSON.parse(String(pr.stdout)); probeText = `duration=${Number(j.format.duration).toFixed(2)} streams=${j.streams.map((x) => x.codec_type + (x.width ? `:${x.width}x${x.height}` : '')).join(',')}`; } catch { /* no file */ }
+    console.log(`[probe] project @exported (${((Date.now() - t0) / 1000).toFixed(1)} s): ${await seqState(page)} file: ${probeText}`);
+    await shot(page, 'project-sequence-done');
+    // Cancel: a heavier second export (1920 × 1080 at 60 fps) is stopped
+    // mid-render; ffmpeg must die at once and the partial file go.
+    await page.evaluate(async () => {
+      const pick = async (aria, value) => {
+        const host = Array.from(document.querySelectorAll('.mo-cs-opts .mo-select')).find((h) => h.querySelector(`[aria-label="${aria}"]`));
+        if (host) { host.value = value; host.dispatchEvent(new Event('change', { bubbles: true })); }
+      };
+      await pick('Size', '1920x1080');
+      await pick('Frame rate', '60');
+    });
+    await page.evaluate(() => document.querySelector('.mo-cs-export').click());
+    await page.waitForFunction(() => /Rendering clip 2/.test(document.querySelector('.mo-cs-status')?.textContent || ''), null, { timeout: 60_000 }).catch(() => {});
+    console.log(`[probe] project @cancel before: ${await seqState(page)}`);
+    const tc = Date.now();
+    await page.evaluate(() => document.querySelector('.mo-cs-export').click());
+    await page.waitForFunction(() => /cancelled/i.test(document.querySelector('.mo-cs-status')?.textContent || '') && !document.querySelector('.mo-cs-export.mo-ce-busy'), null, { timeout: 60_000 }).catch(() => {});
+    const stopMs = Date.now() - tc;
+    const left = await fs.stat(seqOut).then(() => 'partial file left', () => 'partial file removed');
+    const ffLeft = spawnSync('pgrep', ['-f', 'part_001.mp4']).stdout.toString().trim();
+    console.log(`[probe] project @cancel: stopped in ${stopMs} ms, status="${await page.evaluate(() => document.querySelector('.mo-cs-status')?.textContent || '')}" ${left}, ffmpeg ${ffLeft ? 'still running' : 'gone'}`);
+    // Double-click a clip in the sequence: its video opens with that clip being edited.
+    await page.locator('.mo-cs-row').nth(1).dblclick();
+    await page.waitForSelector('.mo-cp .mo-clip-page', { timeout: 15_000 });
+    await page.waitForTimeout(1_200);
+    console.log(`[probe] project @edit clip: ${await trimState(page)} status="${await page.evaluate(() => Array.from(document.querySelectorAll('.mo-clip-page *')).map((e) => e.childElementCount === 0 ? e.textContent : '').find((t) => /^Editing clip/.test(t || '')) || 'no editing note')}"`);
+    await page.locator('.mo-cp-list .mo-cp-row').nth(0).click();
+    await page.waitForTimeout(1_200);
     // A narrow tab closes the bin to a rail.
     await page.setViewportSize({ width: 820, height: 900 }).catch(() => {});
     await page.waitForTimeout(800);
@@ -207,8 +272,14 @@ async function projectScene(appRoot, clip, clip2, errors) {
     await page.waitForTimeout(1_500);
     console.log(`[probe] project @restart: ${await trimState(page)}`);
     await shot(page, 'project-restart');
+    await page.locator('.mo-cp-seqrow').click();
+    await page.waitForSelector('.mo-cs', { timeout: 10_000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    console.log(`[probe] project @restart sequence: ${await seqState(page)}`);
+    await page.locator('.mo-cp-list .mo-cp-row').nth(0).click();
+    await page.waitForTimeout(1_200);
     // The Media Organizer sidebar lists the project.
-    await page.locator('.activity-bar [title="Media Organizer"], [aria-label="Media Organizer"]').first().click({ timeout: 3_000 }).catch((e) => console.log(`[probe] project: no Media Organizer view button (${String(e).split('\n')[0]})`));
+    await page.locator('.activity-bar-item[aria-label="Media Organizer"]').first().click({ timeout: 3_000 }).catch((e) => console.log(`[probe] project: no Media Organizer view button (${String(e).split('\n')[0]})`));
     await page.waitForTimeout(1_500);
     await shot(page, 'project-sidebar');
     // Delete it from the project's menu.

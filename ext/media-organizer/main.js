@@ -8080,6 +8080,53 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
 .mo-cp-foot { flex: none; padding: var(--px-space-2) var(--px-space-3) var(--px-space-3); border-top: 1px solid var(--px-divider); }
 .mo-cp-add { width: 100%; justify-content: center; }
 .mo-cp-sidebar { max-height: 200px; overflow-y: auto; }
+/* The sequence: a row above the videos, and a view of every queued clip in order. */
+.mo-cp-seqrow { margin: var(--px-space-1) var(--px-space-2) 0; flex: none; }
+.mo-cp-seqrow > .mo-cp-grip { visibility: hidden; }
+.mo-cp-thumb--seq { background: var(--px-accent-soft); color: var(--px-accent-text); }
+.mo-cp-row--busy .mo-cp-row-meta { color: var(--px-accent-text); }
+.mo-cp-list-label {
+  flex: none; padding: var(--px-space-3) var(--px-space-3) 0;
+  color: var(--px-text-muted); font-size: var(--px-text-sm); font-weight: 600;
+}
+.mo-cs {
+  position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--px-bg); color: var(--px-text);
+  font-family: var(--px-font-ui); font-size: var(--px-text-base);
+}
+.mo-cs-toolbar { flex: none; }
+.mo-cs-toolbar .mo-ce-name { max-width: none; }
+.mo-cs-export { position: relative; overflow: hidden; }
+.mo-cs-export.mo-ce-busy {
+  background: linear-gradient(90deg, var(--px-accent-strong) 0 var(--mo-ce-progress, 0%), var(--px-accent) var(--mo-ce-progress, 0%) 100%);
+  font-variant-numeric: tabular-nums;
+}
+.mo-cs-opts {
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-2) var(--px-space-4);
+  padding: var(--px-space-2) var(--px-space-3); border-bottom: 1px solid var(--px-divider);
+}
+.mo-cs-field { display: inline-flex; align-items: center; gap: var(--px-space-2); }
+.mo-cs-field-label { color: var(--px-text-muted); font-size: var(--px-text-sm); white-space: nowrap; }
+.mo-cs-field .mo-select { min-width: 120px; }
+.mo-cs-list {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: var(--px-space-2) var(--px-space-3); display: flex; flex-direction: column; gap: 2px;
+}
+.mo-cs-row { padding-right: var(--px-space-2); cursor: default; }
+.mo-cs-row .mo-cp-thumb { width: 80px; height: 45px; }
+.mo-cs-row--off .mo-cp-thumb, .mo-cs-row--off .mo-cp-row-text, .mo-cs-row--off .mo-cs-len, .mo-cs-row--off .mo-cs-num { opacity: 0.45; }
+.mo-cs-num { flex: none; min-width: 20px; text-align: right; color: var(--px-text-muted); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.mo-cs-len { flex: none; color: var(--px-text-secondary); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.mo-cs-row .mo-clip-check { flex: none; margin: 0 var(--px-space-1); }
+.mo-cs-status {
+  flex: none; min-height: 28px; padding: var(--px-space-1) var(--px-space-3);
+  border-top: 1px solid var(--px-divider); color: var(--px-text-muted); font-size: var(--px-text-sm);
+  display: flex; align-items: center;
+}
+.mo-cs-status { gap: var(--px-space-2); }
+.mo-cs-status-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-cs-empty { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: var(--px-space-6); }
+.mo-cs-empty .px-empty { max-width: 460px; }
 
 .mo-clip-unavailable {
   display: flex; align-items: center; justify-content: center;
@@ -19480,6 +19527,9 @@ const MoClipProjects = {
   async setActive(projectId, sourceId) {
     await db.run('UPDATE mo_clip_projects SET active_source_id = ? WHERE id = ?', [sourceId, projectId]);
   },
+  async saveSequence(projectId, seq) {
+    await db.run(`UPDATE mo_clip_projects SET sequence_json = ?, updated_at = datetime('now') WHERE id = ?`, [JSON.stringify(seq || []), projectId]);
+  },
   async saveSource(projectId, sourceId, state, queue) {
     await db.run('UPDATE mo_clip_project_sources SET state_json = ?, queue_json = ? WHERE id = ? AND project_id = ?',
       [JSON.stringify(state || null), JSON.stringify(queue || []), sourceId, projectId]);
@@ -19491,6 +19541,111 @@ async function moOpenClipProject(api, projectId, name) {
   let title = name;
   if (!title) { try { const p = await MoClipProjects.get(projectId); title = p ? p.name : ''; } catch { /* ignore */ } }
   await api.editors.openEditor({ typeId: 'media-organizer-clip', title: title || 'Clip Project', icon: 'clapperboard', instanceId: MO_CLIP_PROJECT_PREFIX + projectId });
+}
+
+/**
+ * Export a project's sequence as one video. Each clip renders through the
+ * queue's own path (moExportClipPipeline: its cuts, crop, look, blur, text,
+ * speed and audio finish) to a near-lossless part at the sequence's frame
+ * rate; one pass joins the parts at one size (moSequenceGraph); the joined
+ * file is encoded as asked through moExportClip.
+ * items: [{ path, clip }]. size: 'first' or { w, h }. Returns the out path.
+ */
+async function moExportSequence(api, { items, format, size, fps, crf, dither, loops, outPath, cancel, onProgress, onStage }) {
+  const sep = _isWindows ? '\\' : '/';
+  const base = getThumbDir(api);
+  if (!base) throw new Error('No workspace open');
+  if (!items || !items.length) throw new Error('The sequence is empty');
+  const workDir = base + sep + '.seqasm-' + Date.now();
+  await window.parallxElectron.fs.mkdir(workDir);
+  const prog = (pct) => { if (onProgress) onProgress(Math.max(0, Math.min(1, pct))); };
+  const metaCache = new Map();
+  const metaOf = async (p) => {
+    if (!metaCache.has(p)) metaCache.set(p, await extractVideoMeta(p));
+    return metaCache.get(p);
+  };
+  const N = items.length;
+  const F = Math.max(1, Math.round(Number(fps) || 30));
+  const fontFile = await moFindFontFile();
+  try {
+    const parts = [];
+    for (let i = 0; i < N; i++) {
+      if (cancel && cancel.cancelled) throw new Error('Cancelled');
+      const { path: src, clip: c } = items[i];
+      if (onStage) onStage(`Rendering clip ${i + 1} of ${N}`);
+      const meta = await metaOf(src);
+      const part = `${workDir}${sep}part_${String(i).padStart(3, '0')}.mp4`;
+      await moExportClipPipeline(api, {
+        videoPath: src, inPoint: c.inT, outPoint: c.outT,
+        segments: Array.isArray(c.segments) && c.segments.length >= 2 ? c.segments : null,
+        blurRegions: c.blurRegions || null,
+        captions: c.captions || null,
+        audioFx: c.audioFx || null,
+        endCard: c.endCard || null,
+        fontFile,
+        outPath: part,
+        format: 'mp4', fps: F, scalePct: 100,
+        speed: Number.isFinite(c.speed) && c.speed > 0 ? c.speed : 1,
+        reverse: !!c.reverse, mute: !!c.mute,
+        crf: 14, encodeMode: 'crf', hwAccel: 'off',
+        filter: c.filter || 'none', loops: 0,
+        crop: c.cropEnabled ? { ...c.cropNorm } : null,
+        cropKeys: c.cropEnabled && Array.isArray(c.cropKeys) && c.cropKeys.length >= 1 ? c.cropKeys : null,
+        srcW: (meta && meta.width) || c.srcW || 0,
+        srcH: (meta && meta.height) || c.srcH || 0,
+        frameEdits: null,
+        cancel,
+        onProgress: ({ pct }) => prog(((i + Math.max(0, Math.min(1, pct))) / N) * 0.8),
+      });
+      const pm = await extractVideoMeta(part);
+      if (!pm || !(pm.duration > 0)) throw new Error(`Clip ${i + 1} did not render`);
+      parts.push({ path: part, duration: pm.duration, hasAudio: !!pm.audioCodec, w: pm.width, h: pm.height });
+    }
+    if (cancel && cancel.cancelled) throw new Error('Cancelled');
+    if (onStage) onStage('Joining the clips');
+    const dims = size && size !== 'first' && size.w > 0 && size.h > 0 ? size : { w: parts[0].w || 1280, h: parts[0].h || 720 };
+    const g = moSequenceGraph({ parts, w: dims.w, h: dims.h, fps: F });
+    const joined = `${workDir}${sep}joined.mp4`;
+    const argv = [
+      '-hide_banner', '-loglevel', 'error', '-y',
+      ...parts.flatMap((p) => ['-i', p.path]),
+      '-filter_complex', g.filterComplex,
+      '-map', g.mapV, '-map', g.mapA,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '14', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart',
+      '-progress', 'pipe:1', '-nostats', joined,
+    ];
+    let buf = '', stderrTail = '';
+    const r = await moFfStream(cancel, { command: _toolPaths.ffmpeg, args: argv, timeout: 3600000 }, {
+      onStdout: (chunk) => {
+        buf += chunk;
+        let nl;
+        while ((nl = buf.indexOf('\n')) !== -1) {
+          const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+          if (line.startsWith('out_time_us=')) {
+            const us = parseInt(line.slice(12), 10);
+            if (Number.isFinite(us)) prog(0.8 + 0.1 * Math.min(1, (us / 1e6) / Math.max(0.05, g.durationSec)));
+          }
+        }
+      },
+      onStderr: (c) => { stderrTail = (stderrTail + c).slice(-4000); },
+    });
+    if (cancel && cancel.cancelled) throw new Error('Cancelled');
+    if (r.exitCode !== 0) throw new Error('join: ' + (stderrTail || `exit ${r.exitCode}`));
+    if (onStage) onStage('Encoding');
+    const res = await moExportClip(api, {
+      videoPath: joined, inPoint: 0, outPoint: g.durationSec,
+      outPath, format, fps: F, scalePct: 100, speed: 1, reverse: false, mute: false,
+      crf: Number.isFinite(crf) ? crf : 23, encodeMode: 'crf', hwAccel: 'off',
+      dither: dither || 'sierra2_4a', loops: Number.isFinite(loops) ? loops : 0, filter: 'none',
+      crop: null, cropKeys: null, captions: null, audioFx: null, srcW: g.w, srcH: g.h, frameEdits: null,
+      cancel,
+      onProgress: ({ pct }) => prog(0.9 + 0.1 * Math.max(0, Math.min(1, pct))),
+    });
+    return (res && res.outPath) || outPath;
+  } finally {
+    await window.parallxElectron.fs.delete(workDir, { useTrash: false }).catch(() => {});
+  }
 }
 
 function moClipProjectEditorId(projectId) {
@@ -19621,10 +19776,40 @@ function moClipProjectSummary(sources) {
   return parts.join(' · ');
 }
 
-// The project page: the bin of videos down the left, the editor on the one
-// that is open. Switching videos saves the one being left (the editor saves on
-// dispose) and opens the next where it was left.
+// A project's sequence export outlives its view: switching to a video or to
+// another tab leaves it running, and the view that comes back shows it.
+const _moSeqExports = new Map(); // projectId -> { scope, pct, stage, listeners: Set<fn> }
+
+function moSeqExportUpdate(projectId, patch) {
+  const e = _moSeqExports.get(projectId);
+  if (!e) return;
+  Object.assign(e, patch);
+  for (const fn of e.listeners) { try { fn(e); } catch { /* ignore */ } }
+}
+
+/** The saved sequence: its order and its export settings. */
+function moParseSequence(text) {
+  const raw = moParseJson(text, null);
+  const base = { items: [], format: 'mp4', size: 'first', fps: 30, crf: 23 };
+  if (Array.isArray(raw)) return { ...base, items: raw };
+  if (raw && typeof raw === 'object') {
+    return {
+      items: Array.isArray(raw.items) ? raw.items : [],
+      format: ['mp4', 'webm', 'gif'].includes(raw.format) ? raw.format : 'mp4',
+      size: typeof raw.size === 'string' ? raw.size : 'first',
+      fps: Number.isFinite(raw.fps) ? raw.fps : 30,
+      crf: Number.isFinite(raw.crf) ? raw.crf : 23,
+    };
+  }
+  return base;
+}
+
+// The project page: the bin of videos down the left, and on the right either
+// the editor on the open video or the project's sequence (every queued clip,
+// from every video, in order, to export as one). Switching saves the one
+// being left (the editor saves on dispose) and opens the next where it was left.
 function renderClipProject(container, api, projectId, input) {
+  const SEQ = 'seq'; // activeId while the sequence is open (stored as -1)
   const page = moEl('div', 'mo-cp');
   const bin = moEl('div', 'mo-cp-bin');
   const stage = moEl('div', 'mo-cp-stage');
@@ -19636,6 +19821,8 @@ function renderClipProject(container, api, projectId, input) {
   let sources = [];
   let activeId = null;
   let editor = null;
+  let seqView = null;
+  let seq = moParseSequence(null);
   let disposed = false;
   let loadGen = 0;
   let binClosed = false;
@@ -19649,6 +19836,7 @@ function renderClipProject(container, api, projectId, input) {
     const r = e.currentTarget.getBoundingClientRect();
     showContextMenu(r.left, r.bottom + 2, [
       { label: 'Add Videos…', handler: () => void addFromFiles() },
+      { label: 'Open Sequence', handler: () => openSequence() },
       { label: 'Rename Project…', handler: () => void renameProject() },
       { separator: true },
       { label: 'Delete Project…', danger: true, handler: () => void deleteProject() },
@@ -19657,13 +19845,27 @@ function renderClipProject(container, api, projectId, input) {
   api.ui.createIconButton(headBtns, { icon: 'panel-left-close', title: 'Hide the Videos', size: 'sm', onClick: () => setBinClosed(true, false) });
   head.append(moEl('span', 'mo-ce-ico', { innerHTML: moIcon('clapperboard', 16) }), nameEl, headBtns);
   const sub = moEl('div', 'mo-cp-sub');
+  // The sequence sits above the videos: what the project becomes.
+  const seqRow = moEl('div', 'mo-cp-row mo-cp-seqrow');
+  seqRow.tabIndex = 0;
+  seqRow.setAttribute('role', 'button');
+  const seqThumb = moEl('div', 'mo-cp-thumb mo-cp-thumb--seq', { innerHTML: moIcon('list-video', 16) });
+  const seqText = moEl('div', 'mo-cp-row-text');
+  const seqName = moEl('div', 'mo-cp-row-name', { textContent: 'Sequence' });
+  const seqMeta = moEl('div', 'mo-cp-row-meta');
+  seqText.append(seqName, seqMeta);
+  seqRow.append(moEl('span', 'mo-cp-grip'), seqThumb, seqText);
+  seqRow.title = 'Every queued clip, from every video, in order: exports as one video';
+  seqRow.addEventListener('click', () => { if (activeId !== SEQ) openSequence(); });
+  seqRow.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && activeId !== SEQ) { e.preventDefault(); openSequence(); } });
+  const listLabel = moEl('div', 'mo-cp-list-label', { textContent: 'Videos' });
   const list = moEl('div', 'mo-cp-list');
   list.setAttribute('role', 'listbox');
   list.setAttribute('aria-label', 'Videos in this project');
   const foot = moEl('div', 'mo-cp-foot');
   const addBtn = api.ui.createButton(foot, { label: 'Add Videos…', icon: 'plus', title: 'Add videos from your files. You can also right-click videos in the library and choose Add to Clip Project.', onClick: () => void addFromFiles() });
   addBtn.classList.add('mo-cp-add');
-  bin.append(head, sub, list, foot);
+  bin.append(head, sub, seqRow, listLabel, list, foot);
 
   // The closed bin is a rail with one button to bring it back.
   const rail = moEl('div', 'mo-cp-rail');
@@ -19685,9 +19887,14 @@ function renderClipProject(container, api, projectId, input) {
   });
   pageObs.observe(page);
 
-  function setStageEmpty(headline, hint, action) {
+  function closeStage() {
     if (editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; }
+    if (seqView) { try { seqView.dispose(); } catch { /* ignore */ } seqView = null; }
     stage.innerHTML = '';
+  }
+
+  function setStageEmpty(headline, hint, action) {
+    closeStage();
     const wrap = moEl('div', 'mo-cp-empty');
     api.ui.createEmptyState(wrap, { icon: 'clapperboard', headline, hint, action });
     stage.appendChild(wrap);
@@ -19700,11 +19907,49 @@ function renderClipProject(container, api, projectId, input) {
     return bits.join(' · ');
   }
 
+  // ── The sequence's data ──
+  function queueOf(s) {
+    const cached = _moClipProjectCache.get(s.id);
+    const q = cached ? cached.queue : moParseJson(s.queue_json, []);
+    return Array.isArray(q) ? q : [];
+  }
+  /** Bring the saved order up to date with the queues; save when it changed. */
+  function reconcileSequence() {
+    const before = JSON.stringify(seq.items);
+    seq.items = moSequenceOrder(seq.items, sources.map((s) => ({ id: s.id, queue: queueOf(s) })));
+    if (JSON.stringify(seq.items) !== before) saveSequence();
+  }
+  function saveSequence() {
+    MoClipProjects.saveSequence(projectId, seq).catch((err) => console.warn('[media-organizer] sequence save failed', err));
+  }
+  /** The sequence's entries with their video and clip, in order. */
+  function seqEntries() {
+    const out = [];
+    for (const e of seq.items) {
+      const s = sources.find((x) => x.id === e.s);
+      if (!s) continue;
+      const c = queueOf(s).find((x) => x.id === e.c);
+      if (!c) continue;
+      out.push({ e, s, c, len: moClipOutLength(c) });
+    }
+    return out;
+  }
+  function syncSeqRow() {
+    const list = seqEntries().filter((x) => !x.e.off);
+    const total = list.reduce((n, x) => n + x.len, 0);
+    seqMeta.textContent = list.length ? `${list.length} clip${list.length === 1 ? '' : 's'} · ${moTcStr(total)}` : 'Queued clips line up here';
+    seqRow.classList.toggle('mo-cp-row--active', activeId === SEQ);
+    seqRow.setAttribute('aria-pressed', activeId === SEQ ? 'true' : 'false');
+    const ex = _moSeqExports.get(projectId);
+    seqRow.classList.toggle('mo-cp-row--busy', !!ex);
+  }
+
   function renderBin() {
     nameEl.textContent = project ? project.name : '';
     nameEl.title = project ? project.name : '';
     sub.textContent = sources.length ? moClipProjectSummary(sources) : 'No videos yet';
     railCount.textContent = sources.length ? String(sources.length) : '';
+    syncSeqRow();
     list.innerHTML = '';
     if (!sources.length) {
       list.appendChild(moEl('div', 'mo-cp-list-empty', { textContent: 'Add the videos this project is made from.' }));
@@ -19746,7 +19991,7 @@ function renderClipProject(container, api, projectId, input) {
       });
       row.addEventListener('contextmenu', (e) => { e.preventDefault(); showRowMenu(s, idx, e.clientX, e.clientY); });
       // Reorder by dragging the grip.
-      grip.addEventListener('pointerdown', (e) => beginReorder(e, row, idx));
+      grip.addEventListener('pointerdown', (e) => beginDragReorder(e, list, '.mo-cp-row', idx, (to) => void move(idx, to)));
       list.appendChild(row);
     });
   }
@@ -19782,13 +20027,14 @@ function renderClipProject(container, api, projectId, input) {
     ].filter((a) => !a.disabled));
   }
 
-  function beginReorder(e, row, fromIdx) {
+  // Drag a row by its grip; drop places it before the row under the pointer.
+  function beginDragReorder(e, listEl, rowSel, fromIdx, onDrop) {
     if (e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
-    const rows = Array.from(list.querySelectorAll('.mo-cp-row'));
+    const rows = Array.from(listEl.querySelectorAll(rowSel));
     const rects = rows.map((r) => r.getBoundingClientRect());
     let toIdx = fromIdx;
-    row.classList.add('mo-cp-row--dragging');
+    if (rows[fromIdx]) rows[fromIdx].classList.add('mo-cp-row--dragging');
     const onMove = (ev) => {
       toIdx = rects.length - 1;
       for (let i = 0; i < rects.length; i++) { if (ev.clientY < rects[i].top + rects[i].height / 2) { toIdx = i; break; } }
@@ -19798,7 +20044,7 @@ function renderClipProject(container, api, projectId, input) {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       rows.forEach((r) => r.classList.remove('mo-cp-row--drop', 'mo-cp-row--dragging'));
-      if (toIdx !== fromIdx) void move(fromIdx, toIdx);
+      if (toIdx !== fromIdx) onDrop(toIdx);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -19816,7 +20062,7 @@ function renderClipProject(container, api, projectId, input) {
     const clips = s.queueCount ? ` Its ${s.queueCount} queued clip${s.queueCount === 1 ? '' : 's'} and edits go with it.` : (s.edited ? ' Its edits go with it.' : '');
     const pick = await api.window.showWarningMessage(`Remove "${s.name}" from this project?${clips} The video file stays where it is.`, { title: 'Remove' }, { title: 'Cancel' });
     if (!pick || pick.title !== 'Remove') return;
-    if (s.id === activeId && editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; activeId = null; }
+    if (s.id === activeId) { closeStage(); activeId = null; }
     try { await MoClipProjects.removeSource(projectId, s.id); } catch (err) { api.window.showErrorMessage('Could not remove the video: ' + (err && err.message || err)); }
   }
 
@@ -19843,18 +20089,19 @@ function renderClipProject(container, api, projectId, input) {
   async function deleteProject() {
     if (!project) return;
     await moDeleteClipProject(api, projectId, project.name, () => {
-      if (editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; }
+      const ex = _moSeqExports.get(projectId);
+      if (ex) { ex.scope.cancelled = true; for (const p of ex.scope.procs) { try { p.cancel(); } catch { /* ignore */ } } }
+      closeStage();
     });
   }
 
-  async function openSource(sourceId) {
+  async function openSource(sourceId, { editClipId = null } = {}) {
     const s = sources.find((x) => x.id === sourceId);
     if (!s || disposed) return;
-    if (editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; }
+    closeStage();
     activeId = s.id;
     renderBin();
     void MoClipProjects.setActive(projectId, s.id).catch(() => {});
-    stage.innerHTML = '';
     if (s.missing) {
       setStageEmpty('This video is not where it was', s.path, { label: 'Remove From Project…', onClick: () => void removeSource(s) });
       return;
@@ -19872,6 +20119,8 @@ function renderClipProject(container, api, projectId, input) {
     try {
       editor = moBuildClipEditor(api, stage, key, s.path, s.duration, 0, s.duration, {
         queueKey: key,
+        keepQueue: true,
+        editClipId,
         initialQueue: Array.isArray(queue) ? queue : [],
         initialState: state && typeof state === 'object' ? state : null,
         onPersist: ({ state: st, queue: q }) => {
@@ -19886,6 +20135,8 @@ function renderClipProject(container, api, projectId, input) {
             if (metaEl) metaEl.textContent = rowMeta(cur);
             sub.textContent = moClipProjectSummary(sources);
           }
+          reconcileSequence();
+          syncSeqRow();
           MoClipProjects.saveSource(projectId, s.id, st, q).catch((err) => console.warn('[media-organizer] project save failed', err));
         },
       });
@@ -19893,6 +20144,265 @@ function renderClipProject(container, api, projectId, input) {
       console.error('[media-organizer] project editor failed', err);
       setStageEmpty('Could not open this video', String(err && err.message || err));
     }
+  }
+
+  function openSequence() {
+    if (disposed) return;
+    closeStage();
+    activeId = SEQ;
+    renderBin();
+    void MoClipProjects.setActive(projectId, -1).catch(() => {});
+    reconcileSequence();
+    seqView = buildSequenceView();
+  }
+
+  // ── The sequence view ──
+  function buildSequenceView() {
+    const root = moEl('div', 'mo-cs mo-ce');
+    const ico = (name) => moEl('span', 'mo-ce-ico', { innerHTML: moIcon(name, 16) });
+    // Toolbar: the name, the total, Export.
+    const bar = moEl('div', 'mo-ce-toolbar mo-cs-toolbar');
+    const meta = moEl('span', 'mo-ce-meta');
+    bar.append(ico('list-video'), moEl('span', 'mo-ce-name', { textContent: 'Sequence' }), meta, moEl('span', 'mo-ce-spacer'));
+    const exportBtn = api.ui.createButton(bar, { label: 'Export Sequence…', kind: 'primary', title: 'Render every clip that is in and join them into one video' });
+    exportBtn.classList.add('mo-cs-export');
+    root.appendChild(bar);
+
+    // Output settings, kept with the project.
+    const optsRow = moEl('div', 'mo-cs-opts');
+    const field = (label, control, title) => {
+      const f = moEl('label', 'mo-cs-field');
+      if (title) f.title = title;
+      f.append(moEl('span', 'mo-cs-field-label', { textContent: label }), control);
+      optsRow.appendChild(f);
+      return f;
+    };
+    const fmtSel = moSelect([['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF']], seq.format, { ariaLabel: 'Format' });
+    const sizeSel = moSelect([
+      ['first', 'As the first clip'], ['1920x1080', '1920 × 1080'], ['1280x720', '1280 × 720'],
+      ['1080x1080', '1080 × 1080 square'], ['1080x1920', '1080 × 1920 vertical'], ['720x1280', '720 × 1280 vertical'],
+    ], seq.size, { ariaLabel: 'Size' });
+    const fpsSel = moSelect([['12', '12 fps'], ['15', '15 fps'], ['24', '24 fps'], ['30', '30 fps'], ['60', '60 fps']], String(seq.fps), { ariaLabel: 'Frame rate' });
+    const qSel = moSelect([['18', 'High'], ['23', 'Standard'], ['28', 'Small file']], String(seq.crf), { ariaLabel: 'Quality' });
+    field('Format', fmtSel);
+    field('Size', sizeSel, 'Clips of another shape are fitted inside, with black bars, never stretched.');
+    field('Frame rate', fpsSel);
+    const qField = field('Quality', qSel);
+    const syncQ = () => { qField.style.display = fmtSel.value === 'gif' ? 'none' : ''; };
+    syncQ();
+    const onOpt = () => {
+      seq.format = fmtSel.value;
+      seq.size = sizeSel.value;
+      seq.fps = parseInt(fpsSel.value, 10) || 30;
+      seq.crf = parseInt(qSel.value, 10) || 23;
+      syncQ();
+      saveSequence();
+    };
+    for (const el of [fmtSel, sizeSel, fpsSel, qSel]) el.addEventListener('change', onOpt);
+    root.appendChild(optsRow);
+
+    const listEl = moEl('div', 'mo-cs-list');
+    listEl.setAttribute('role', 'list');
+    root.appendChild(listEl);
+    const statusEl = moEl('div', 'mo-cs-status');
+    root.appendChild(statusEl);
+    stage.appendChild(root);
+
+    function render() {
+      const entries = seqEntries();
+      const inList = entries.filter((x) => !x.e.off);
+      const total = inList.reduce((n, x) => n + x.len, 0);
+      meta.textContent = entries.length
+        ? `${inList.length} of ${entries.length} clip${entries.length === 1 ? '' : 's'} · ${moTcStr(total)}`
+        : '';
+      if (!_moSeqExports.get(projectId)) exportBtn.disabled = inList.length === 0;
+      listEl.innerHTML = '';
+      if (!entries.length) {
+        const wrap = moEl('div', 'mo-cs-empty');
+        api.ui.createEmptyState(wrap, {
+          icon: 'list-video',
+          headline: 'No clips yet',
+          hint: 'Open a video, set up a clip and choose Add to Queue (Q). The queued clips of every video in the project line up here, in order, to export as one video.',
+          action: sources[0] ? { label: 'Open the First Video', onClick: () => void openSource(sources[0].id) } : undefined,
+        });
+        listEl.appendChild(wrap);
+        return;
+      }
+      // Each video's clips are numbered as in its own queue.
+      const nthInSource = new Map();
+      entries.forEach((x, idx) => {
+        const n = (nthInSource.get(x.s.id) || 0) + 1;
+        nthInSource.set(x.s.id, n);
+        const qIdx = queueOf(x.s).findIndex((c) => c.id === x.c.id);
+        const row = moEl('div', 'mo-cp-row mo-cs-row' + (x.e.off ? ' mo-cs-row--off' : ''));
+        row.setAttribute('role', 'listitem');
+        const grip = moEl('span', 'mo-cp-grip', { innerHTML: moIcon('grip-vertical', 12), title: 'Drag to reorder' });
+        const num = moEl('span', 'mo-cs-num', { textContent: String(idx + 1) });
+        const thumb = moEl('div', 'mo-cp-thumb');
+        if (x.c.thumb) {
+          const img = moEl('img', null, { alt: '' });
+          img.src = x.c.thumb;
+          thumb.classList.add('mo-cp-thumb--img');
+          thumb.appendChild(img);
+        } else {
+          thumb.appendChild(moEl('span', 'mo-ce-ico', { innerHTML: moIcon('film', 16) }));
+        }
+        const text = moEl('div', 'mo-cp-row-text');
+        const name = (x.c.name || '').trim() || `Clip ${qIdx >= 0 ? qIdx + 1 : n}`;
+        const bits = [x.s.name, `${moTcStr(x.c.inT || 0)} to ${moTcStr(x.c.outT || 0)}`];
+        if (Array.isArray(x.c.segments) && x.c.segments.length >= 2) bits.push(`${x.c.segments.length} parts`);
+        if (Number.isFinite(x.c.speed) && Math.abs(x.c.speed - 1) > 0.001) bits.push(`${x.c.speed >= 10 ? Math.round(x.c.speed) : Math.round(x.c.speed * 100) / 100}×`);
+        text.append(moEl('div', 'mo-cp-row-name', { textContent: name }), moEl('div', 'mo-cp-row-meta', { textContent: bits.join(' · '), title: x.s.path }));
+        const len = moEl('span', 'mo-cs-len', { textContent: moTcStr(x.len) });
+        const chk = document.createElement('input');
+        chk.type = 'checkbox'; chk.className = 'mo-clip-check'; chk.checked = !x.e.off;
+        chk.title = x.e.off ? 'Left out. Turn on to put it back in the sequence.' : 'In the sequence. Turn off to leave it out.';
+        chk.setAttribute('aria-label', `Include ${name}`);
+        chk.addEventListener('click', (e) => e.stopPropagation());
+        chk.addEventListener('change', () => setOff(x.e, !chk.checked));
+        const more = api.ui.createIconButton(null, { icon: 'ellipsis', title: 'Clip Actions', size: 'sm', onClick: (e) => {
+          e.stopPropagation();
+          const r = e.currentTarget.getBoundingClientRect();
+          showClipMenu(x, idx, entries.length, r.left, r.bottom + 2);
+        } });
+        more.classList.add('mo-cp-row-more');
+        row.append(grip, num, thumb, text, len, chk, more);
+        row.title = 'Double-click to edit this clip';
+        row.addEventListener('dblclick', () => void openSource(x.s.id, { editClipId: x.c.id }));
+        row.addEventListener('contextmenu', (e) => { e.preventDefault(); showClipMenu(x, idx, entries.length, e.clientX, e.clientY); });
+        grip.addEventListener('pointerdown', (e) => beginDragReorder(e, listEl, '.mo-cs-row', idx, (to) => moveEntry(idx, to)));
+        listEl.appendChild(row);
+      });
+    }
+    function setOff(entry, off) {
+      const it = seq.items.find((i) => i.s === entry.s && i.c === entry.c);
+      if (!it) return;
+      if (off) it.off = true; else delete it.off;
+      saveSequence(); render(); syncSeqRow();
+    }
+    function moveEntry(from, to) {
+      // Indices are over the resolvable entries; map them to seq.items.
+      const entries = seqEntries();
+      if (to < 0 || to >= entries.length || from === to) return;
+      const order = entries.map((x) => x.e);
+      const [m] = order.splice(from, 1);
+      order.splice(to, 0, m);
+      const rest = seq.items.filter((i) => !order.includes(i));
+      seq.items = order.concat(rest);
+      saveSequence(); render();
+    }
+    function showClipMenu(x, idx, count, px, py) {
+      showContextMenu(px, py, [
+        { label: 'Edit Clip', handler: () => void openSource(x.s.id, { editClipId: x.c.id }) },
+        { label: x.e.off ? 'Put Back in the Sequence' : 'Leave Out of the Sequence', handler: () => setOff(x.e, !x.e.off) },
+        { separator: true },
+        { label: 'Move to Start', handler: () => moveEntry(idx, 0), disabled: idx === 0 },
+        { label: 'Move Up', handler: () => moveEntry(idx, idx - 1), disabled: idx === 0 },
+        { label: 'Move Down', handler: () => moveEntry(idx, idx + 1), disabled: idx === count - 1 },
+        { label: 'Move to End', handler: () => moveEntry(idx, count - 1), disabled: idx === count - 1 },
+      ].filter((a) => !a.disabled));
+    }
+
+    // ── Export, with progress on the button; Cancel is the same button ──
+    function showExport(ex) {
+      if (ex) {
+        exportBtn.disabled = false;
+        exportBtn.classList.add('mo-ce-busy');
+        exportBtn.style.setProperty('--mo-ce-progress', (Math.max(0, Math.min(1, ex.pct || 0)) * 100).toFixed(1) + '%');
+        const lbl = exportBtn.querySelector('.px-btn__label');
+        if (lbl) lbl.textContent = `Cancel · ${Math.round((ex.pct || 0) * 100)}%`;
+        exportBtn.title = 'Exporting the sequence. Click to cancel.';
+        statusEl.textContent = ex.stage ? `${ex.stage}…` : '';
+      } else {
+        exportBtn.classList.remove('mo-ce-busy');
+        exportBtn.style.removeProperty('--mo-ce-progress');
+        const lbl = exportBtn.querySelector('.px-btn__label');
+        if (lbl) lbl.textContent = 'Export Sequence…';
+        exportBtn.title = 'Render every clip that is in and join them into one video';
+      }
+    }
+    const listener = (ex) => { if (_moSeqExports.get(projectId) === ex) showExport(ex); };
+    const attach = () => {
+      const ex = _moSeqExports.get(projectId);
+      if (ex) { ex.listeners.add(listener); showExport(ex); }
+    };
+    attach();
+
+    async function exportSequence() {
+      const running = _moSeqExports.get(projectId);
+      if (running) {
+        running.scope.cancelled = true;
+        for (const p of running.scope.procs) { try { p.cancel(); } catch { /* ignore */ } }
+        statusEl.textContent = 'Cancelling…';
+        return;
+      }
+      const entries = seqEntries().filter((x) => !x.e.off);
+      if (!entries.length) return;
+      const missing = entries.find((x) => x.s.missing);
+      if (missing) { api.window.showWarningMessage(`"${missing.s.name}" is not where it was. Remove it from the project or put the file back.`); return; }
+      if (!_toolPaths.ffmpeg) { try { await detectAllTools(); } catch { /* ignore */ } }
+      if (!_toolPaths.ffmpeg) { api.window.showErrorMessage('ffmpeg not available. Cannot export.'); return; }
+      const sep = _isWindows ? '\\' : '/';
+      const firstPath = entries[0].s.path;
+      const dir = firstPath.slice(0, firstPath.lastIndexOf(sep));
+      const ext = seq.format;
+      const stem = String(project ? project.name : 'sequence').trim().replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').slice(0, 64) || 'sequence';
+      const chosen = await window.parallxElectron.dialog.saveFile({
+        title: 'Export Sequence',
+        defaultPath: `${dir}${sep}${stem}.${ext}`,
+        filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+      });
+      if (!chosen) return;
+      const size = seq.size !== 'first' && /^\d+x\d+$/.test(seq.size)
+        ? { w: parseInt(seq.size.split('x')[0], 10), h: parseInt(seq.size.split('x')[1], 10) }
+        : 'first';
+      const scope = { procs: new Set(), cancelled: false };
+      const ex = { scope, pct: 0, stage: 'Starting', listeners: new Set() };
+      _moSeqExports.set(projectId, ex);
+      ex.listeners.add(listener);
+      showExport(ex);
+      syncSeqRow();
+      const outName = chosen.split(/[\\/]/).pop();
+      try {
+        const out = await moExportSequence(api, {
+          items: entries.map((x) => ({ path: x.s.path, clip: x.c })),
+          format: seq.format, size, fps: seq.fps, crf: seq.crf,
+          dither: 'sierra2_4a', loops: 0,
+          outPath: chosen, cancel: scope,
+          onProgress: (pct) => moSeqExportUpdate(projectId, { pct }),
+          onStage: (stageText) => moSeqExportUpdate(projectId, { stage: stageText }),
+        });
+        try { await moIndexExportedFile(out); } catch { /* the file is still there */ }
+        let sizeText = '';
+        try { const st = await window.parallxElectron.fs.stat(out); if (st && st.size) sizeText = ` · ${formatFileSize(st.size)}`; } catch { /* ignore */ }
+        // Said where the work is, like the editor's own note: no dialog to dismiss.
+        statusEl.textContent = '';
+        statusEl.append(moEl('span', 'mo-cs-status-text', { textContent: `Exported ${outName}${sizeText}`, title: out }));
+        api.ui.createButton(statusEl, { label: 'Show in Folder', kind: 'ghost', size: 'sm', onClick: () => { try { window.parallxElectron.shell.showItemInFolder(out); } catch { /* ignore */ } } });
+        if (api.statusBar) api.statusBar.setMessage(`Sequence exported: ${outName}`, 4000);
+      } catch (err) {
+        if (scope.cancelled) {
+          statusEl.textContent = 'Export cancelled.';
+          await window.parallxElectron.fs.delete(chosen, { useTrash: false }).catch(() => {});
+        } else {
+          statusEl.textContent = '';
+          api.window.showErrorMessage('Sequence export failed: ' + (err && err.message || err));
+        }
+      } finally {
+        _moSeqExports.delete(projectId);
+        if (!disposed) { showExport(null); render(); syncSeqRow(); }
+      }
+    }
+    exportBtn.addEventListener('click', () => void exportSequence());
+
+    render();
+    return {
+      render,
+      dispose() {
+        const ex = _moSeqExports.get(projectId);
+        if (ex) ex.listeners.delete(listener);
+      },
+    };
   }
 
   async function reload(preferId) {
@@ -19906,12 +20416,13 @@ function renderClipProject(container, api, projectId, input) {
     }
     if (disposed || gen !== loadGen) return;
     if (!p) {
-      if (editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; }
+      closeStage();
       bin.style.display = 'none'; rail.style.display = 'none';
       setStageEmpty('This project was deleted', 'Its videos and exported clips are still in your library.');
       return;
     }
     project = p;
+    seq = moParseSequence(p.sequence_json);
     // The tab follows a rename.
     if (input && typeof input.setName === 'function') { try { input.setName(p.name); } catch { /* ignore */ } }
     const old = new Map(sources.map((s) => [s.id, s]));
@@ -19933,16 +20444,22 @@ function renderClipProject(container, api, projectId, input) {
       };
     }));
     if (disposed || gen !== loadGen) return;
-    const want = preferId != null && sources.some((s) => s.id === preferId) ? preferId
-      : (activeId != null && sources.some((s) => s.id === activeId)) ? activeId
-      : (p.active_source_id != null && sources.some((s) => s.id === p.active_source_id)) ? p.active_source_id
+    reconcileSequence();
+    const has = (id) => sources.some((s) => s.id === id);
+    const want = preferId != null && has(preferId) ? preferId
+      : activeId === SEQ ? SEQ
+      : (activeId != null && has(activeId)) ? activeId
+      : p.active_source_id === -1 ? SEQ
+      : (p.active_source_id != null && has(p.active_source_id)) ? p.active_source_id
       : (sources[0] ? sources[0].id : null);
     renderBin();
     if (want == null) {
       activeId = null;
       setStageEmpty('Add the videos this project is made from',
-        'Each video keeps its own cuts, crops, text and queued clips, saved until you delete the project. You can also right-click videos in the library and choose Add to Clip Project.',
+        'Each video keeps its own cuts, crops, text and queued clips, saved until you delete the project. Queued clips from every video line up in the Sequence, to export as one video. You can also right-click videos in the library and choose Add to Clip Project.',
         { label: 'Add Videos…', icon: 'plus', onClick: () => void addFromFiles() });
+    } else if (want === SEQ) {
+      if (seqView) seqView.render(); else openSequence();
     } else if (want !== activeId || !editor) {
       await openSource(want);
     }
@@ -19961,7 +20478,7 @@ function renderClipProject(container, api, projectId, input) {
       disposed = true;
       document.removeEventListener('mo:clip-projects-changed', onChanged);
       try { pageObs.disconnect(); } catch { /* ignore */ }
-      if (editor) { try { editor.dispose(); } catch { /* ignore */ } editor = null; }
+      closeStage();
     },
   };
 }
@@ -20809,6 +21326,75 @@ function moSplitSegments(segments, inPoint, outPoint, t, minLen = 0.05) {
   return segs;
 }
 
+// ── Clip project sequence (docs/CLIPS.md, Phase 2) ──
+
+/** A queued clip's length once exported (seconds): what it keeps, its end card, at its speed. */
+function moClipOutLength(c) {
+  if (!c || typeof c !== 'object') return 0;
+  const segs = Array.isArray(c.segments) && c.segments.length >= 2 ? c.segments : null;
+  const kept = segs
+    ? segs.reduce((n, sg) => n + Math.max(0, (Number(sg.out) || 0) - (Number(sg.in) || 0)), 0)
+    : Math.max(0, (Number(c.outT) || 0) - (Number(c.inT) || 0));
+  const card = c.endCard && c.endCard.enabled ? Math.max(0, Number(c.endCard.seconds) || 0) : 0;
+  const sp = Number.isFinite(c.speed) && c.speed > 0 ? c.speed : 1;
+  return (kept + card) / sp;
+}
+
+/**
+ * A project's sequence: the saved order ({s: source id, c: clip id, off?})
+ * keeping only clips that still exist, then any clip not in it yet, in bin
+ * order and queue order. sources: [{ id, queue: [{ id }] }].
+ */
+function moSequenceOrder(saved, sources) {
+  const exists = new Map();
+  for (const src of Array.isArray(sources) ? sources : []) {
+    for (const c of Array.isArray(src && src.queue) ? src.queue : []) {
+      if (c && c.id != null) exists.set(`${src.id}:${c.id}`, { s: src.id, c: c.id });
+    }
+  }
+  const out = [];
+  const seen = new Set();
+  for (const e of Array.isArray(saved) ? saved : []) {
+    if (!e) continue;
+    const k = `${e.s}:${e.c}`;
+    if (!exists.has(k) || seen.has(k)) continue;
+    seen.add(k);
+    out.push(e.off ? { s: e.s, c: e.c, off: true } : { s: e.s, c: e.c });
+  }
+  for (const [k, v] of exists) {
+    if (!seen.has(k)) { seen.add(k); out.push({ s: v.s, c: v.c }); }
+  }
+  return out;
+}
+
+/**
+ * The graph that joins rendered parts into one video: every part scaled to
+ * fit W×H (letterboxed, never stretched), one frame rate, stereo 48 kHz
+ * audio, and silence of the part's length where a part has none. Audio is
+ * padded or cut to the part's video length so nothing drifts across joins.
+ * parts: [{ duration, hasAudio }].
+ */
+function moSequenceGraph({ parts, w, h, fps }) {
+  const W = Math.max(2, Math.round((Number(w) || 0) / 2) * 2);
+  const H = Math.max(2, Math.round((Number(h) || 0) / 2) * 2);
+  const F = Math.max(1, Math.round(Number(fps) || 30));
+  const chains = [];
+  const pairs = [];
+  let total = 0;
+  (parts || []).forEach((p, i) => {
+    const d = Math.max(0.04, Number(p.duration) || 0);
+    total += d;
+    const ds = d.toFixed(3);
+    chains.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=${F},format=yuv420p,setpts=PTS-STARTPTS[v${i}]`);
+    chains.push(p.hasAudio
+      ? `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${ds},asetpts=PTS-STARTPTS[a${i}]`
+      : `anullsrc=r=48000:cl=stereo,atrim=duration=${ds},aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${i}]`);
+    pairs.push(`[v${i}][a${i}]`);
+  });
+  chains.push(`${pairs.join('')}concat=n=${pairs.length}:v=1:a=1[v][a]`);
+  return { filterComplex: chains.join(';'), mapV: '[v]', mapA: '[a]', w: W, h: H, fps: F, durationSec: total };
+}
+
 // @mo-pure-end
 
 // ── Tracker core: ZNCC matching + variance-guided template selection ──
@@ -21048,10 +21634,16 @@ async function moExportClipPipeline(api, opts) {
 // start. No scope (every other caller): a plain run.
 function moFfStream(scope, payload, handlers) {
   if (scope && scope.cancelled) return Promise.resolve({ exitCode: -1, error: { code: 'CANCELLED', message: 'Cancelled' } });
-  const p = window.parallxElectron.terminal.execStream(payload, handlers);
+  const term = window.parallxElectron.terminal;
+  // The stream is named here so Cancel can stop the process itself: the
+  // cancel the bridge hangs on the promise does not survive the context
+  // bridge, and without a kill a long render ran to the end.
+  const streamId = `mo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const p = term.execStream({ ...payload, streamId }, handlers);
   if (scope && scope.procs) {
-    scope.procs.add(p);
-    p.then(() => scope.procs.delete(p), () => scope.procs.delete(p));
+    const proc = { cancel: () => (typeof term.cancelStream === 'function' ? term.cancelStream(streamId) : Promise.resolve()) };
+    scope.procs.add(proc);
+    p.then(() => scope.procs.delete(proc), () => scope.procs.delete(proc));
   }
   return p;
 }
@@ -25623,7 +26215,8 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       api.window.showInformationMessage(`Batch export: ${okCount} clip${okCount === 1 ? '' : 's'} written to ${outDir}` + (failCount ? ` (${failCount} failed)` : '') + cancelledTail + '.');
       // Auto-drain successfully-exported clips from the queue. Failed and
       // cancelled clips stay so the user can retry without re-adding them.
-      if (exportedIds.size > 0) {
+      // A project keeps its clips (they are its sequence, and its memory).
+      if (exportedIds.size > 0 && !opts.keepQueue) {
         for (let i = clipQueue.length - 1; i >= 0; i--) {
           if (exportedIds.has(clipQueue[i].id)) clipQueue.splice(i, 1);
         }
@@ -25849,6 +26442,19 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
       loadSnapshot(opts.initialState);
       if (Number.isFinite(opts.initialState.t)) preview.currentTime = Math.max(0, Math.min(duration, opts.initialState.t));
     } catch (err) { console.warn('[media-organizer] project state restore failed', err); }
+  }
+  // Or opens one of its queued clips for editing (from the project's sequence).
+  if (opts.editClipId != null) {
+    const ci = clipQueue.findIndex((x) => x.id === opts.editClipId);
+    if (ci >= 0) {
+      try {
+        editingId = clipQueue[ci].id;
+        loadSnapshot(clipQueue[ci]);
+        renderQueue();
+        updateAddBtnLabel();
+        status.textContent = `Editing clip ${ci + 1}. Choose Update Clip in the Queue when done.`;
+      } catch (err) { console.warn('[media-organizer] could not open the clip', err); }
+    }
   }
   showRecordingBanner();
   container.appendChild(overlay);

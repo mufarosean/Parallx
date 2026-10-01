@@ -22,7 +22,8 @@ function loadPure(): Record<string, any> {
   const names = ['MO_CLIP_FILTERS', 'moClipFilterVf', 'moCropKeysAt', 'moCropVfSegment', 'moSimplifyTrackKeys', 'moFfEscapeText', 'moFfEscapePath',
     'moCaptionVf', 'moCaptionsVf', 'moBlurRegionsGraph', 'moAudioFxAf', 'moParseDetectLog', 'moDeadAirSegments', 'moSmartZoomKeys',
     'moBoxTrackToKeys', 'moStageOutputDims', 'moEndCardInputs', 'moSegmentsGraph', 'moClipOutputTime',
-    'moTcStr', 'moParseTc', 'moTimelineStep', 'moClipSourceTime', 'moSplitSegments', 'moCaptionLayout', 'moClipStateEdited'];
+    'moTcStr', 'moParseTc', 'moTimelineStep', 'moClipSourceTime', 'moSplitSegments', 'moCaptionLayout', 'moClipStateEdited',
+    'moClipOutLength', 'moSequenceOrder', 'moSequenceGraph'];
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   return new Function(src.slice(a, b) + `\nreturn { ${names.join(', ')} };`)();
 }
@@ -254,5 +255,32 @@ describe('clip projects', () => {
     expect(P.moClipStateEdited({ ...fresh, speed: 8 }, 60)).toBe(true);
     expect(P.moClipStateEdited({ ...fresh, captions: [{ text: 'Day 3' }] }, 60)).toBe(true);
     expect(P.moClipStateEdited({ ...fresh, audioFx: { fadeIn: 1 } }, 60)).toBe(true);
+  });
+});
+
+describe('project sequence', () => {
+  it('measures a queued clip as it will export', () => {
+    expect(P.moClipOutLength({ inT: 2, outT: 6 })).toBeCloseTo(4, 6);
+    expect(P.moClipOutLength({ inT: 0, outT: 600, speed: 8 })).toBeCloseTo(75, 6);
+    expect(P.moClipOutLength({ inT: 0, outT: 9, segments: [{ in: 0, out: 2 }, { in: 5, out: 6 }] })).toBeCloseTo(3, 6);
+    expect(P.moClipOutLength({ inT: 0, outT: 4, endCard: { enabled: true, seconds: 3 } })).toBeCloseTo(7, 6);
+    expect(P.moClipOutLength(null)).toBe(0);
+  });
+  it('keeps the saved order, drops what is gone and adds what is new', () => {
+    const sources = [{ id: 1, queue: [{ id: 1 }, { id: 2 }] }, { id: 2, queue: [{ id: 1 }] }];
+    expect(P.moSequenceOrder([], sources)).toEqual([{ s: 1, c: 1 }, { s: 1, c: 2 }, { s: 2, c: 1 }]);
+    const saved = [{ s: 2, c: 1 }, { s: 9, c: 9 }, { s: 1, c: 2, off: true }, { s: 2, c: 1 }];
+    expect(P.moSequenceOrder(saved, sources)).toEqual([{ s: 2, c: 1 }, { s: 1, c: 2, off: true }, { s: 1, c: 1 }]);
+  });
+  it('joins parts at one even size, one rate, with silence where a part has none', () => {
+    const g = P.moSequenceGraph({ parts: [{ duration: 2, hasAudio: true }, { duration: 1.5, hasAudio: false }], w: 1081, h: 1919, fps: 29.97 });
+    expect(g.w).toBe(1082);
+    expect(g.h).toBe(1920);
+    expect(g.fps).toBe(30);
+    expect(g.durationSec).toBeCloseTo(3.5, 6);
+    expect(g.filterComplex).toContain('[0:a]aresample=48000');
+    expect(g.filterComplex).toContain('anullsrc=r=48000:cl=stereo,atrim=duration=1.500');
+    expect(g.filterComplex).not.toContain('[1:a]');
+    expect(g.filterComplex).toContain('[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]');
   });
 });

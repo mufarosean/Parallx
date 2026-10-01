@@ -580,7 +580,12 @@ contextBridge.exposeInMainWorld('parallxElectron', {
       // a fast-failing process (e.g. ENOENT on the command path) emits its
       // exit event before our listener is attached, and the promise hangs
       // forever.
-      const streamId = `xstream-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+      // A caller may name the stream (cancelStream needs the name: a promise
+      // crossing the context bridge loses any property set on it, so the
+      // promise.cancel below never reaches the renderer).
+      const streamId = (payload && typeof payload.streamId === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(payload.streamId))
+        ? payload.streamId
+        : `xstream-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
       let onDataHandler = null;
       let onExitHandler = null;
       let started = false;
@@ -624,6 +629,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
       };
       return promise;
     },
+    /** Stop a stream started by execStream with this payload.streamId (kills the process tree). */
+    cancelStream: (streamId) => ipcRenderer.invoke('terminal:execStream:cancel', String(streamId || '')),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
