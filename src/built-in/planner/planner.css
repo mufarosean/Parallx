@@ -204,17 +204,6 @@
 }
 .planner-pane__spacer { flex: 1 1 auto; min-width: var(--px-space-3); align-self: center; }
 
-/* Header is align-stretch so its children would all stretch too. Force
-   non-tab controls back to centered so they keep their fixed heights. */
-.planner-pane__header > .planner-todaybtn,
-.planner-pane__header > .planner-cnav,
-.planner-pane__header > .planner-cdate,
-.planner-pane__header > .planner-viewdrop,
-.planner-pane__header > .planner-cta,
-.planner-pane__header > .planner-iconbtn {
-  align-self: center;
-}
-
 /* Tabs — underline tabs. The underline is a real border-bottom pulled
    1px down onto the header's own border. */
 .planner-pane__tabs {
@@ -247,7 +236,18 @@
 }
 .planner-pane__tab--active .svg-icon { color: var(--px-accent-text); }
 
-.planner-pane__actions { display: flex; align-items: center; gap: var(--px-space-2); }
+/* The tab's toolbar takes the rest of the header, so a tab can lay its
+   controls out across the full width: the calendar puts its spacer between
+   the date navigation and the view controls, and on every tab the trailing
+   button (New Task, New Event) sits at the right edge. */
+.planner-pane__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.planner-pane__actions > :is(.planner-cta, .planner-btn):last-child { margin-left: auto; }
 
 .planner-pane__body {
   flex: 1 1 auto;
