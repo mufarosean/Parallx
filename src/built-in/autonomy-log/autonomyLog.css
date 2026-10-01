@@ -42,6 +42,12 @@
 }
 .autonomy-log-header {
   overflow: hidden;
+  container-type: inline-size;
+}
+/* A summary cut to "No a…" says nothing: below the width where it fits
+   beside the controls, leave it out instead of truncating it. */
+@container (max-width: 720px) {
+  .autonomy-log-summary { display: none; }
 }
 
 .autonomy-log-summary--unread {

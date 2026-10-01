@@ -6173,6 +6173,9 @@ function createEditorPane(container, input) {
       if (seq !== crumbSeq || state.disposed) return;
       crumbs.innerHTML = '';
       for (const n of nodes) crumbs.appendChild(n);
+      // At the top level the page's own heading already says "Decks"; a
+      // one-word breadcrumb above it is the same word twice.
+      header.style.display = nodes.length ? '' : 'none';
     };
     const crumb = (label, onClick) => {
       const node = el(onClick ? 'button' : 'span', onClick ? 'fc-crumb fc-crumb--link' : 'fc-crumb', label);
@@ -6181,7 +6184,7 @@ function createEditorPane(container, input) {
     };
     const sep = () => el('span', 'fc-crumb__sep', '/');
 
-    if (view === 'decks') { paint([crumb('Decks')]); return; }
+    if (view === 'decks') { paint([]); return; }
 
     const nodes = [crumb('Decks', () => setRoute({ view: 'decks' }))];
     if (route.deckId != null) {

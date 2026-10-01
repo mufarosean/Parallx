@@ -2128,11 +2128,10 @@ html, body {
   border: 1px solid transparent;
   border-radius: var(--parallx-radius-sm);
   background: transparent;
-  color: var(--vscode-foreground);
+  color: var(--px-text-secondary);
   font-size: var(--parallx-fontSize-base);
   font-family: var(--parallx-fontFamily-mono);
   cursor: pointer;
-  opacity: 0.6;
 }
 
 .search-option-btn:hover {
@@ -2163,7 +2162,6 @@ html, body {
   cursor: pointer;
   padding: 2px 4px;
   border-radius: var(--parallx-radius-sm);
-  opacity: 0.8;
 }
 
 .search-filters-toggle:hover {

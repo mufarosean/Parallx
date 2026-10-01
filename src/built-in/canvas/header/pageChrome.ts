@@ -1027,7 +1027,7 @@ export class PageChromeController {
         },
       },
       {
-        label: 'Export PDF',
+        label: 'Export as PDF',
         iconId: 'printer',
         action: async () => {
           this.dismissPopups();

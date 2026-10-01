@@ -105,6 +105,14 @@ interface TreeNode {
 // ─── State ───────────────────────────────────────────────────────────────────
 
 let _api: ParallxApi;
+
+/** The OS file manager's own name: Finder, File Explorer, or a plain phrase on Linux. */
+const REVEAL_LABEL = (() => {
+  const p = typeof navigator !== 'undefined' ? navigator.platform : '';
+  if (/Mac/i.test(p)) return 'Reveal in Finder';
+  if (/Win/i.test(p)) return 'Reveal in File Explorer';
+  return 'Open Containing Folder';
+})();
 let _context: ToolContext;
 let _showHidden = true;
 let _selectedNode: TreeNode | null = null;
@@ -1273,7 +1281,7 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
       items.push({ id: 'explorer.delete', label: 'Delete', keybinding: 'Delete', group: '4_edit' });
       items.push({ id: 'explorer.copyPath', label: 'Copy Path', group: '5_copy' });
       items.push({ id: 'explorer.copyRelativePath', label: 'Copy Relative Path', group: '5_copy' });
-      items.push({ id: 'explorer.revealInFileExplorer', label: 'Reveal in File Explorer', group: '6_reveal' });
+      items.push({ id: 'explorer.revealInFileExplorer', label: REVEAL_LABEL, group: '6_reveal' });
     } else {
       // Folder context — hide rename/delete for workspace root folders
       const isRootFolder = _roots.some(r => r.uri === node.uri);
@@ -1293,7 +1301,7 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
       }
       items.push({ id: 'explorer.copyPath', label: 'Copy Path', group: '4_copy' });
       items.push({ id: 'explorer.copyRelativePath', label: 'Copy Relative Path', group: '4_copy' });
-      items.push({ id: 'explorer.revealInFileExplorer', label: 'Reveal in File Explorer', group: '5_reveal' });
+      items.push({ id: 'explorer.revealInFileExplorer', label: REVEAL_LABEL, group: '5_reveal' });
       if (node.expanded) {
         items.push({ id: 'explorer.collapse', label: 'Collapse All', group: '6_collapse' });
       }
