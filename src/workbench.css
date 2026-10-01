@@ -420,10 +420,9 @@ html, body {
 }
 
 .sidebar-header-label {
-  font-size: var(--parallx-fontSize-sm);
+  font-size: var(--px-text-sm);
   font-weight: 600;
-  letter-spacing: 0.5px;
-  color: var(--vscode-sideBarTitle-foreground);
+  color: var(--px-text-secondary);
 }
 
 /* Sidebar header actions (VS Code: .title-actions in composite title) */
@@ -826,11 +825,9 @@ html, body {
 /* Quiet section title — no chunky accent underline. Reads like a Notion /
    Obsidian panel heading, letting the content below be the focus. */
 .auxiliary-bar-header-label {
-  font-size: var(--px-text-xs, 11px);
+  font-size: var(--px-text-sm);
   font-weight: 600;
-  text-transform: none;
-  letter-spacing: normal;
-  color: var(--px-text-muted);
+  color: var(--px-text-secondary);
   line-height: 1;
 }
 
@@ -956,9 +953,9 @@ html, body {
   box-sizing: border-box;
 }
 .container-box-title {
-  font-size: var(--px-text-xs);
-  letter-spacing: 0.4px;
-  color: var(--px-fg-muted, var(--vscode-sideBarTitle-foreground));
+  font-size: var(--px-text-sm);
+  font-weight: 600;
+  color: var(--px-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

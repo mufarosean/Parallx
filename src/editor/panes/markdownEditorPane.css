@@ -185,7 +185,7 @@
   margin-bottom: 16px;
   border-left: 4px solid;
   border-radius: var(--parallx-radius-sm);
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--px-text) 3%, transparent);
 }
 
 .markdown-content .markdown-alert-title {

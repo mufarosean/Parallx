@@ -677,7 +677,7 @@ export class TitlebarPart extends Part {
     commandCenter.setAttribute('role', 'button');
     commandCenter.setAttribute('tabindex', '0');
     commandCenter.title = 'Search & run commands';
-    commandCenter.innerHTML = `<span class="titlebar-command-center-icon" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.2"/><line x1="10.3" y1="10.3" x2="14" y2="14" stroke-linecap="round"/></svg></span><span class="titlebar-command-center-label">Search commands</span><span class="titlebar-command-center-kbd" aria-hidden="true"><kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>P</kbd></span>`;
+    commandCenter.innerHTML = `<span class="titlebar-command-center-icon" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.2"/><line x1="10.3" y1="10.3" x2="14" y2="14" stroke-linecap="round"/></svg></span><span class="titlebar-command-center-label">Search commands</span><span class="titlebar-command-center-kbd" aria-hidden="true"><kbd>${formatKeybindingForDisplay('ctrl+shift+p')}</kbd></span>`;
     commandCenter.addEventListener('click', () => {
       this._onDidClickCommandCenter.fire();
     });

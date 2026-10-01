@@ -34,7 +34,7 @@ describe('ContainerBox', () => {
     expect(box.isWaiting).toBe(false);
     expect(box.element.querySelector('.container-box-waiting-note')).toBeNull();
     expect(vc.element.parentElement).toBe(box.element.querySelector('.container-box-body'));
-    expect(box.element.querySelector('.container-box-title')?.textContent).toBe('CHAT');
+    expect(box.element.querySelector('.container-box-title')?.textContent).toBe('Chat');
 
     expect(box.unseat()).toBe(vc);
     expect(box.isWaiting).toBe(true);

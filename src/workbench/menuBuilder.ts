@@ -95,7 +95,7 @@ export class MenuBuilder extends Disposable {
       // on screen AREAS (parts are movable), see viewCommands.ts.
       { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Left Area', group: '2_appearance', order: 1 },
       { commandId: 'workbench.action.togglePanel', title: 'Toggle Bottom Area', group: '2_appearance', order: 2 },
-      { commandId: 'workbench.action.toggleMaximizedPanel', title: 'Maximize Panel', group: '2_appearance', order: 2.5 },
+      { commandId: 'workbench.action.toggleMaximizedPanel', title: 'Maximize Bottom Area', group: '2_appearance', order: 2.5 },
       { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Right Area', group: '2_appearance', order: 3 },
       { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
       { commandId: 'workbench.action.toggleZenMode', title: 'Zen Mode', group: '2_appearance', order: 5 },

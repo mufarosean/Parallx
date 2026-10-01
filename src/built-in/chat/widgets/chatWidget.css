@@ -950,7 +950,7 @@
   margin: 8px 0;
   border-left: 4px solid;
   border-radius: var(--px-radius-sm);
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--px-text) 3%, transparent);
 }
 
 .parallx-chat-markdown .markdown-alert-title {

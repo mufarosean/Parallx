@@ -985,8 +985,8 @@ export class PageChromeController {
     // ── Action buttons ──
     const actions: { label: string; iconId: string; action: () => void; danger?: boolean }[] = [
       {
-        label: 'Favorite',
-        iconId: 'star',
+        label: this._currentPage?.isFavorited ? 'Remove from Favorites' : 'Add to Favorites',
+        iconId: this._currentPage?.isFavorited ? 'star-filled' : 'star',
         action: () => {
           this._host.dataService.toggleFavorite(this._host.pageId);
           this.dismissPopups();
