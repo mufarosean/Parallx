@@ -1540,6 +1540,8 @@ function injectStyles() {
 
 /* ═══ Spending donut ═══ */
 .budget-donut-wrap { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 8px 0; }
+/* With nothing to chart, the empty message spans the row like every other empty state. */
+.budget-donut-wrap > .budget-empty { flex: 1 1 100%; }
 .budget-donut { width: 180px; height: 180px; flex: 0 0 auto; font-family: var(--vscode-font-family, inherit); }
 .budget-donut-seg { transition: opacity 120ms ease; }
 .budget-donut-seg:hover { opacity: 0.85; }

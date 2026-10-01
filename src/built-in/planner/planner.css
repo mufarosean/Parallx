@@ -318,6 +318,7 @@
 
 .planner-tasks__navlabel {
   flex: 1 1 auto;
+  text-align: left; /* a <button> centres its text; list labels read from the left */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
