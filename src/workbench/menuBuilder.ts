@@ -73,11 +73,12 @@ export class MenuBuilder extends Disposable {
    */
   registerDefaultMenuBarItems(): void {
     const defaultMenus = [
+      // Selection and Go were code-editor menus: Selection had no items at
+      // all and Go repeated the command palette. Their one useful entry
+      // (Go to File…) lives in File.
       { id: 'file', label: 'File', order: 10 },
       { id: 'edit', label: 'Edit', order: 20 },
-      { id: 'selection', label: 'Selection', order: 30 },
       { id: 'view', label: 'View', order: 40 },
-      { id: 'go', label: 'Go', order: 50 },
       { id: 'tools', label: 'Tools', order: 60 },
       { id: 'help', label: 'Help', order: 70 },
     ];
@@ -90,10 +91,12 @@ export class MenuBuilder extends Disposable {
     this._register(this._titlebar.registerMenuBarDropdownItems('view', [
       { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '1_nav', order: 1 },
       { commandId: 'settings.openAppearance', title: 'Appearance…', group: '2_appearance', order: 0 },
-      { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Sidebar', group: '2_appearance', order: 1 },
-      { commandId: 'workbench.action.togglePanel', title: 'Toggle Panel', group: '2_appearance', order: 2 },
+      // Same names as the commands and the title-bar buttons: the toggles act
+      // on screen AREAS (parts are movable), see viewCommands.ts.
+      { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Left Area', group: '2_appearance', order: 1 },
+      { commandId: 'workbench.action.togglePanel', title: 'Toggle Bottom Area', group: '2_appearance', order: 2 },
       { commandId: 'workbench.action.toggleMaximizedPanel', title: 'Maximize Panel', group: '2_appearance', order: 2.5 },
-      { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Auxiliary Bar', group: '2_appearance', order: 3 },
+      { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Right Area', group: '2_appearance', order: 3 },
       { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
       { commandId: 'workbench.action.toggleZenMode', title: 'Zen Mode', group: '2_appearance', order: 5 },
       { commandId: 'editor.toggleWordWrap', title: 'Word Wrap', group: '3_editor', order: 1, when: 'activeEditor' },
@@ -101,7 +104,12 @@ export class MenuBuilder extends Disposable {
 
     // Register dropdown items for File menu
     this._register(this._titlebar.registerMenuBarDropdownItems('file', [
+      // A page is the app's own document, so it leads; a text file is second.
+      // Its Ctrl+N only applies with the pages sidebar focused; the global
+      // Ctrl+N is New Text File, so no hint here rather than a wrong one.
+      { commandId: 'canvas.newPage', title: 'New Page', group: '1_new', order: 0, keybinding: '' },
       { commandId: 'file.newTextFile', title: 'New Text File', group: '1_new', order: 1 },
+      { commandId: 'workbench.action.quickOpen', title: 'Go to File…', group: '2_open', order: 0 },
       { commandId: 'file.openFile', title: 'Open File…', group: '2_open', order: 1 },
       { commandId: 'workspace.openFolder', title: 'Open Folder…', group: '2_open', order: 2 },
       { commandId: 'workspace.openRecent', title: 'Open Recent…', group: '2_open', order: 3 },
@@ -129,21 +137,20 @@ export class MenuBuilder extends Disposable {
       { commandId: 'edit.replace', title: 'Replace', group: '3_find', order: 2, when: 'activeEditor' },
     ]));
 
-    // Register dropdown items for Go menu
-    this._register(this._titlebar.registerMenuBarDropdownItems('go', [
-      { commandId: 'workbench.action.quickOpen', title: 'Go to File…', group: '1_go', order: 1 },
-      { commandId: 'workbench.action.showCommands', title: 'Go to Command…', group: '1_go', order: 2 },
-    ]));
-
     // Register dropdown items for Tools menu
     this._register(this._titlebar.registerMenuBarDropdownItems('tools', [
-      { commandId: 'tools.showInstalled', title: 'Tool Gallery', group: '1_tools', order: 1 },
+      // A launcher for the built-in tools, then the place to manage them.
+      { commandId: 'planner.open', title: 'Planner', group: '1_open', order: 1 },
+      { commandId: 'dashboard.open', title: 'Dashboard', group: '1_open', order: 2 },
+      { commandId: 'worksheet.open', title: 'Worksheets', group: '1_open', order: 3 },
+      { commandId: 'tools.showInstalled', title: 'Manage Tools…', group: '9_manage', order: 1 },
     ]));
 
     // Register dropdown items for Help menu
     this._register(this._titlebar.registerMenuBarDropdownItems('help', [
       { commandId: 'welcome.openWelcome', title: 'Welcome', group: '1_welcome', order: 1 },
-      { commandId: 'workbench.action.showCommands', title: 'Show All Commands', group: '2_commands', order: 1 },
+      { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '2_commands', order: 1 },
+      { commandId: 'workbench.action.openKeybindings', title: 'Keyboard Shortcuts', group: '2_commands', order: 2 },
     ]));
 
     console.log('[MenuBuilder] Default menu bar items registered (%d menus)', defaultMenus.length);
@@ -207,23 +214,10 @@ export class MenuBuilder extends Disposable {
         group: '1_commands',
       },
       {
-        id: 'manage.profiles',
-        label: 'Profiles',
-        group: '2_preferences',
-        disabled: true,
-      },
-      {
         id: 'settings.open',
         label: 'Settings',
         keybinding: this.keybindingHint('settings.open'),
         group: '2_preferences',
-      },
-      {
-        id: 'manage.extensions',
-        label: 'Extensions',
-        keybinding: 'Ctrl+Shift+X',
-        group: '2_preferences',
-        disabled: true,
       },
       {
         id: 'workbench.action.openKeybindings',
@@ -232,21 +226,9 @@ export class MenuBuilder extends Disposable {
         group: '2_preferences',
       },
       {
-        id: 'manage.tasks',
-        label: 'Tasks',
-        group: '2_preferences',
-        disabled: true,
-      },
-      {
         id: 'settings.openAppearance',
         label: 'Appearance…',
         group: '3_themes',
-      },
-      {
-        id: 'manage.checkUpdates',
-        label: 'Check for Updates…',
-        group: '4_updates',
-        disabled: true,
       },
     ];
 

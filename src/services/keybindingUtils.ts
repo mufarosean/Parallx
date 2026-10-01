@@ -79,39 +79,45 @@ export function normalizeKeybinding(key: string): string {
 
 /**
  * Convert a keybinding string to a human-readable display form.
- * Uses platform-appropriate modifier names.
+ * Uses platform-appropriate modifier names. Chords ("ctrl+k s") keep their
+ * space; letters and function keys are upper case ("Ctrl+K S", "Alt+F4"),
+ * so every menu, the palette and Keyboard Shortcuts show the same text.
  */
 export function formatKeybindingForDisplay(key: string): string {
   const isMac = navigator.platform?.toUpperCase().includes('MAC') ?? false;
-  const parts = key.split('+').map(p => p.trim());
-  const displayParts: string[] = [];
-
-  for (const part of parts) {
+  const NAMED: Record<string, string> = {
+    escape: 'Esc', esc: 'Esc', enter: 'Enter', return: 'Enter', tab: 'Tab', space: 'Space',
+    backspace: 'Backspace', delete: 'Delete', del: 'Delete', insert: 'Insert', home: 'Home', end: 'End',
+    pageup: 'PageUp', pagedown: 'PageDown',
+    arrowup: '↑', up: '↑', arrowdown: '↓', down: '↓', arrowleft: '←', left: '←', arrowright: '→', right: '→',
+  };
+  // Modifiers always in one order (Ctrl, Shift, Alt, Win), whatever order the
+  // binding was written in ("alt+ctrl+s" and "ctrl+alt+s" read the same).
+  const RANK: Record<string, number> = { ctrl: 0, control: 0, shift: 1, alt: 2, option: 2, meta: 3, cmd: 3, command: 3 };
+  const ordered = (parts: string[]): string[] => [...parts].sort((a, b) =>
+    (RANK[a.toLowerCase()] ?? 9) - (RANK[b.toLowerCase()] ?? 9));
+  const chord = (c: string): string => ordered(c.split('+').map(p => p.trim()).filter(Boolean)).map((part) => {
     const lower = part.toLowerCase();
     switch (lower) {
       case 'ctrl':
       case 'control':
-        displayParts.push(isMac ? '⌃' : 'Ctrl');
-        break;
+        return isMac ? '⌃' : 'Ctrl';
       case 'shift':
-        displayParts.push(isMac ? '⇧' : 'Shift');
-        break;
+        return isMac ? '⇧' : 'Shift';
       case 'alt':
       case 'option':
-        displayParts.push(isMac ? '⌥' : 'Alt');
-        break;
+        return isMac ? '⌥' : 'Alt';
       case 'meta':
       case 'cmd':
       case 'command':
-        displayParts.push(isMac ? '⌘' : 'Win');
-        break;
+        return isMac ? '⌘' : 'Win';
       default:
-        displayParts.push(part.charAt(0).toUpperCase() + part.slice(1));
-        break;
+        if (NAMED[lower]) return NAMED[lower];
+        if (part.length === 1 || /^f\d{1,2}$/i.test(part)) return part.toUpperCase();
+        return part.charAt(0).toUpperCase() + part.slice(1);
     }
-  }
-
-  return displayParts.join(isMac ? '' : '+');
+  }).join(isMac ? '' : '+');
+  return key.trim().split(/\s+/).map(chord).join(' ');
 }
 
 /**

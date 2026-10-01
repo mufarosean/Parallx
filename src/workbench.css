@@ -574,6 +574,10 @@ html, body {
   display: none; /* hidden — we use the standalone activity bar */
 }
 
+.activity-bar-item.activity-bar-item--user-hidden {
+  display: none;
+}
+
 .activity-bar-item {
   width: 48px;
   height: 44px;

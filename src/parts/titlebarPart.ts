@@ -7,6 +7,7 @@
 //
 // VS Code reference: src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
 
+import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
 import { Part } from './part.js';
 import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
@@ -410,20 +411,7 @@ export class TitlebarPart extends Part {
   }
 
   private _formatKeybinding(key: string): string {
-    // Convert normalized key to display format (Ctrl → ⌃ on Mac)
-    const isMac = navigator.platform?.startsWith('Mac') ?? false;
-    let display = key;
-    if (isMac) {
-      display = display.replace(/\bctrl\b/gi, '⌃').replace(/\balt\b/gi, '⌥')
-        .replace(/\bshift\b/gi, '⇧').replace(/\bmeta\b/gi, '⌘');
-    } else {
-      display = display.replace(/\bctrl\b/gi, 'Ctrl').replace(/\balt\b/gi, 'Alt')
-        .replace(/\bshift\b/gi, 'Shift').replace(/\bmeta\b/gi, 'Win');
-    }
-    // Capitalize key portions and replace + with delimiter
-    return display.split('+').map(p => p.trim())
-      .map(p => p.length === 1 ? p.toUpperCase() : p)
-      .join(isMac ? '' : '+');
+    return key ? formatKeybindingForDisplay(key) : '';
   }
 
   /** Handle Alt key to focus/unfocus menu bar (Windows/Linux convention). */

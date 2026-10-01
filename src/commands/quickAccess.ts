@@ -20,6 +20,7 @@
 //   Ctrl+P       → workbench.action.quickOpen      → show('')
 //   Escape       → dismiss
 
+import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { CommandService } from './commandRegistry.js';
@@ -280,8 +281,9 @@ class CommandsProvider implements IQuickAccessProvider {
           .map(i => i - labelOffset);
       }
 
-      const keybinding = desc.keybinding
+      const rawKey = desc.keybinding
         ?? keybindingContribution?.getKeybindingForCommand(desc.id)?.key;
+      const keybinding = rawKey ? formatKeybindingForDisplay(rawKey) : undefined;
 
       items.push({
         id: desc.id,
