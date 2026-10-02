@@ -135,3 +135,9 @@ Each of these streamlines a real loop without hiding a decision.
 Still open from the list above: pending-to-posted as an update rather than a
 second row, counterparty accounts for transfers, issuer presets, the second
 review table, balance-snapshot dedupe.
+
+## Later
+
+The redesign that followed (one tab, the month model, Review, Transactions,
+Plan, Merchants and Rules) is written up in
+`docs/BUDGET_REDESIGN_2026-10-02.md`.

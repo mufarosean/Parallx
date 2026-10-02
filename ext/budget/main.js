@@ -3672,6 +3672,9 @@ function renderAccountsSection(body, api) {
     if (!alive) return;
     headEl.innerHTML = ''; groupsEl.innerHTML = ''; mgmtEl.innerHTML = '';
 
+    // Where each balance comes from, and when it was last true.
+    const syncedFrom = (a) => `from balance emails${a.latest_balance_date ? ` · ${shortDate(a.latest_balance_date)}` : ''}`;
+    const typedBy = (m) => `you update it${m.as_of_date ? ` · ${shortDate(m.as_of_date)}` : ''}`;
     const [acctRows, manualRows, delta30row] = await Promise.all([
       db.all('SELECT * FROM v_account_latest_balance WHERE latest_balance_cents IS NOT NULL ORDER BY kind, last_four').catch(() => []),
       db.all("SELECT * FROM manual_balances WHERE archived=0 ORDER BY kind, asset_class, name").catch(() => []),
@@ -3696,21 +3699,21 @@ function renderAccountsSection(body, api) {
       const name = a.display_name || defaultAccountName(a.kind, a.last_four);
       if (a.kind === 'credit_card' && bal < 0) {
         liabilityTotal += -bal;
-        groups.liability.items.push({ name, amount: -bal, side: 'liability', sub: 'Credit card' });
+        groups.liability.items.push({ name, amount: -bal, side: 'liability', sub: 'Credit card', source: syncedFrom(a) });
       } else {
         assetTotal += bal;
-        groups.cash.items.push({ name, amount: bal, side: 'asset', sub: a.kind === 'savings' ? 'Savings' : a.kind === 'credit_card' ? 'Credit card' : 'Checking' });
+        groups.cash.items.push({ name, amount: bal, side: 'asset', sub: a.kind === 'savings' ? 'Savings' : a.kind === 'credit_card' ? 'Credit card' : 'Checking', source: syncedFrom(a) });
       }
     }
     for (const m of manualRows) {
       const val = Number(m.value_cents) || 0;
       if (m.kind === 'liability') {
         liabilityTotal += val;
-        groups.liability.items.push({ name: m.name, amount: val, side: 'liability', sub: manualClassLabel(m.asset_class), id: m.id });
+        groups.liability.items.push({ name: m.name, amount: val, side: 'liability', sub: manualClassLabel(m.asset_class), id: m.id, source: typedBy(m) });
       } else {
         assetTotal += val;
         const g = groups[m.asset_class] ? m.asset_class : 'other_asset';
-        groups[g].items.push({ name: m.name, amount: val, side: 'asset', sub: manualClassLabel(m.asset_class), id: m.id });
+        groups[g].items.push({ name: m.name, amount: val, side: 'asset', sub: manualClassLabel(m.asset_class), id: m.id, source: typedBy(m) });
       }
     }
     const netWorth = assetTotal - liabilityTotal;
@@ -3724,7 +3727,7 @@ function renderAccountsSection(body, api) {
     sub.innerHTML =
       `<span class="budget-nw-chip">Assets ${escHtml(fmtMoney(assetTotal))}</span>` +
       `<span class="budget-nw-chip is-liab">Liabilities ${escHtml(fmtMoney(liabilityTotal))}</span>` +
-      (d ? `<span class="budget-nw-chip ${d >= 0 ? 'is-up' : 'is-down'}">${d >= 0 ? '▲' : '▼'} ${escHtml(fmtMoney(Math.abs(d)))} · 30d tracked</span>` : '');
+      (d ? `<span class="budget-nw-chip ${d >= 0 ? 'is-up' : 'is-down'}" title="Synced accounts only; holdings you update are not tracked over time">Synced accounts ${d >= 0 ? 'up' : 'down'} ${escHtml(fmtMoney(Math.abs(d)))} in 30 days</span>` : '');
     headEl.appendChild(sub);
 
     if (acctRows.length === 0 && manualRows.length === 0) {
@@ -3748,7 +3751,7 @@ function renderAccountsSection(body, api) {
         const pct = (it.side === 'asset' && assetTotal > 0) ? Math.round(it.amount / assetTotal * 100) : null;
         rowEl.innerHTML =
           `<span class="budget-nw-row-main"><span class="budget-nw-row-name">${escHtml(it.name)}</span>` +
-          `<span class="budget-nw-row-sub">${escHtml(it.sub || '')}${it.id ? ' · manual' : ''}</span></span>` +
+          `<span class="budget-nw-row-sub">${escHtml([it.sub, it.source].filter(Boolean).join(' · '))}</span></span>` +
           `<span class="budget-nw-row-right"><span class="budget-nw-row-amt">${escHtml(fmtMoney(it.amount))}</span>` +
           (pct != null ? `<span class="budget-nw-row-pct">${pct}% of assets</span>` : '') + `</span>`;
         sec.appendChild(rowEl);
@@ -3794,7 +3797,7 @@ function renderAccountsSection(body, api) {
         const td4 = document.createElement('td'); td4.textContent = a.last_four ? '••' + a.last_four : '—'; tr.appendChild(td4);
         const tdTx = document.createElement('td'); tdTx.className = 'budget-amount'; tdTx.textContent = String(a.tx_count || 0); tr.appendChild(tdTx);
         const tdBal = document.createElement('td'); tdBal.className = 'budget-amount'; tdBal.textContent = a.bal != null ? fmtMoney(a.bal) : '—'; tr.appendChild(tdBal);
-        const tdDate = document.createElement('td'); tdDate.textContent = a.bal_date || '—'; tr.appendChild(tdDate);
+        const tdDate = document.createElement('td'); tdDate.textContent = a.bal_date ? shortDate(a.bal_date) : '—'; tr.appendChild(tdDate);
         const tdAct = document.createElement('td'); tdAct.style.display = 'flex'; tdAct.style.gap = '4px';
         tdAct.appendChild(makeButton(a.archived ? 'Unarchive' : 'Archive', {
           onClick: async () => {
@@ -3858,15 +3861,15 @@ function buildGoalCard(g, monthlySurplus, api, refresh) {
     detail = 'Complete';
   } else if (g.target_date) {
     const needed = goalMonthlyNeed(g);
-    if (needed == null) detail = `Past target date · ${fmtMoney(remaining)} to go`;
+    if (needed == null) detail = `Past its date · ${fmtMoney(remaining)} to go`;
     else {
       const onPace = monthlySurplus >= needed;
-      detail = `Need ${fmtMoney(needed)}/mo by ${fmtDate(g.target_date)} · ${onPace ? 'on pace' : 'behind'}`;
+      detail = `${fmtMoney(needed)} a month to make ${shortDate(g.target_date)} · ${onPace ? 'on pace' : 'behind'}`;
     }
   } else if (monthlySurplus > 0) {
     const months = Math.ceil(remaining / monthlySurplus);
     const dt = new Date(); dt.setMonth(dt.getMonth() + months);
-    detail = `~${dt.toLocaleString('en-US', { month: 'short', year: 'numeric' })} at ${fmtMoney(monthlySurplus)}/mo`;
+    detail = `About ${dt.toLocaleString('en-US', { month: 'short', year: 'numeric' })} at ${fmtMoney(monthlySurplus)} a month`;
   } else {
     detail = `${fmtMoney(remaining)} to go`;
   }
@@ -3993,7 +3996,7 @@ function renderGoalsSection(body, api) {
     const sub = document.createElement('div'); sub.className = 'budget-networth-sub';
     sub.innerHTML = `<span class="budget-nw-chip">${goals.length} goal${goals.length > 1 ? 's' : ''}</span>` +
       `<span class="budget-nw-chip">${escHtml(fmtMoney(totalCurrent))} of ${escHtml(fmtMoney(totalTarget))}</span>` +
-      (monthlySurplus > 0 ? `<span class="budget-nw-chip is-up">~${escHtml(fmtMoney(monthlySurplus))}/mo surplus</span>` : `<span class="budget-nw-chip is-down">No monthly surplus</span>`);
+      (monthlySurplus > 0 ? `<span class="budget-nw-chip is-up">About ${escHtml(fmtMoney(monthlySurplus))} a month left over</span>` : `<span class="budget-nw-chip is-down">Nothing left over in recent months</span>`);
     headEl.appendChild(sub);
     for (const g of goals) listEl.appendChild(buildGoalCard(g, monthlySurplus, api, refresh));
   }
