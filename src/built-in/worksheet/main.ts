@@ -20,6 +20,9 @@
 import type { IWorkbookData } from '@univerjs/core';
 import type { IWorksheetHost, SheetViewState } from './univerHost.js';
 import { renderMarkdown } from '../../ui/renderMarkdown.js';
+import { createButton, createEmptyState, createFilterChip, createIconButton, createPageHeader, createSectionLabel, createSegmented, type IKitAction } from '../../ui/kit.js';
+import { showExtensionContextMenu, type IExtensionMenuItem } from '../../ui/contextMenu.js';
+import { createIconElement } from '../../ui/iconRegistry.js';
 import {
   listItems, getItem, createItem, deleteItem, getOpenAttempt, getLatestWork, saveAttemptCells,
   discardOpenAttempt, completeAttempt, markAttemptWorked, saveAttemptReview, onWorksheetDataChanged,
@@ -32,12 +35,12 @@ import {
 } from './worksheetData.js';
 import { openXlsx } from './ooxml.js';
 import { detectProblems, readWorkbookTimeline, normalizeRating, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS, type ProblemImport, type WorkbookSnapshot } from './problemImport.js';
-import { createDashboardPane } from './dashboardPane.js';
+import { createDashboardPane, planDay, dayStrip } from './dashboardPane.js';
 import { planCampaign, campaignProgress, addDays, spanDays, workingDays, restDaysLabel, isCampaignProblem, WEEKDAY_LABELS } from './campaign.js';
 import { parseDisplayDecimals, DISPLAY_DECIMALS_CHOICES, DEFAULT_DISPLAY_DECIMALS } from './displayNumbers.js';
 import { indexPristine, solutionSegments as pureSolutionSegments, applySolutionVisibility as pureApplySolutionVisibility, type PristineIndex } from './solutionVisibility.js';
 import { syncRewards } from './rewardsSync.js';
-import { dayKey } from './progressInsights.js';
+import { dayKey, computeInsights } from './progressInsights.js';
 import { IDatabaseService } from '../../services/serviceTypes.js';
 import { buildPracticeSet, itemTags } from './practiceSession.js';
 import { itemToWorkbooks, workbookHasOnSheetQuestion, type GeneratedItem } from './itemFormat.js';
@@ -322,8 +325,10 @@ async function setDisplayDecimalsSetting(value: string): Promise<void> {
  *  buttons; same pattern as the flashcards study toolbar). Falls back to the
  *  word when the registry lacks the icon. */
 function iconBtn(iconId: string, label: string, opts: { hint?: string; primary?: boolean; danger?: boolean; onClick?: () => void } = {}): HTMLButtonElement {
-  const b = el('button', `ws-btn ws-btn--icon${opts.primary ? ' ws-btn--primary' : ''}${opts.danger ? ' ws-btn--danger' : ''}`) as HTMLButtonElement;
-  b.type = 'button';
+  // The kit's icon button; an accent glyph for the primary one, red on hover for a danger one.
+  const b = createIconButton(null, { icon: iconId, title: label });
+  if (opts.primary) b.classList.add('ws-icon--accent');
+  if (opts.danger) b.classList.add('ws-icon--danger');
   paintIconBtn(b, iconId, label, opts.hint);
   if (opts.onClick) b.addEventListener('click', opts.onClick);
   return b;
@@ -365,12 +370,12 @@ function starBtn(itemId: number, starred: boolean, onChange?: (on: boolean) => v
  *  two never read as one thing; stored on the quiz, so it goes with it. */
 const MARK_HINT = 'Flags this problem to come back to in this quiz. Marked problems show in Quiz Overview, and Next Marked jumps between them.';
 function paintMarkBtn(b: HTMLButtonElement, on: boolean): void {
-  paintIconBtn(b, 'flag', on ? 'Unmark Problem' : 'Mark For Later', on ? 'Takes the mark off this problem.' : MARK_HINT);
+  paintIconBtn(b, 'flag', on ? 'Unmark Problem' : 'Mark for Later', on ? 'Takes the mark off this problem.' : MARK_HINT);
   b.classList.toggle('ws-mark--on', on);
   b.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
 function markBtn(session: RunningPractice, itemId: number, onChange?: (on: boolean) => void): HTMLButtonElement {
-  const b = iconBtn('flag', 'Mark For Later');
+  const b = iconBtn('flag', 'Mark for Later');
   b.classList.add('ws-mark');
   paintMarkBtn(b, session.marked.has(itemId));
   b.addEventListener('click', (e) => {
@@ -380,6 +385,7 @@ function markBtn(session: RunningPractice, itemId: number, onChange?: (on: boole
     paintMarkBtn(b, on);
     void persistPractice();
     onChange?.(on);
+    for (const fn of _markListeners) { try { fn(); } catch { /* pane torn down */ } }
   });
   return b;
 }
@@ -431,12 +437,6 @@ function parseWorkbook(json: string): IWorkbookData | null {
   try { return JSON.parse(json) as IWorkbookData; } catch { return null; }
 }
 
-/** A page title whose explanation lives in its tooltip, so the page stays quiet. */
-function titled(text: string, hint: string): HTMLElement {
-  const t = el('div', 'ws-home__title', text);
-  t.title = hint;
-  return t;
-}
 function el(tag: string, className?: string, text?: string): HTMLElement {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -453,57 +453,75 @@ function createBankPane(container: HTMLElement) {
   const root = el('div', 'ws-pane ws-home');
   container.appendChild(root);
   let disposed = false;
+  let items: WorksheetItemSummary[] = [];
+  // The header and the filter bar stay put while you type; only the list
+  // and the counts repaint.
+  const headHost = el('div');
+  const barHost = el('div');
+  const listHost = el('div');
+  root.append(headHost, barHost, listHost);
+  let countEl: HTMLElement | null = null;
 
-  const render = async () => {
-    if (disposed) return;
-    const items = await listItems().catch(() => []);
-    if (disposed) return;
-    root.replaceChildren();
+  const shownProblems = () => items.filter((it) => it.paper && bankMatches(it, _bankFilters, _bankQuery));
 
-    const head = el('div', 'ws-home__head');
-    head.appendChild(titled('Problem Bank', 'Every problem by paper. Open a paper for its problems; click one to practice it.'));
-    root.appendChild(head);
+  const paintHeader = () => {
+    headHost.replaceChildren();
+    const problems = items.filter((it) => it.paper);
+    const rated = problems.filter((it) => normalizeRating(it.attemptState)).length;
+    const papers = new Set(problems.map((it) => it.paper)).size;
+    const noted = items.filter((it) => it.note);
+    const generated = items.filter((it) => !it.paper);
+    const shown = shownProblems();
+    createPageHeader(headHost, {
+      back: BACK_TO_HOME,
+      title: 'Problem Bank',
+      subtitle: problems.length ? `${problems.length} problems · ${rated} rated · ${papers} ${papers === 1 ? 'paper' : 'papers'}` : undefined,
+      secondary: noted.length ? [{ label: `Discuss Notes in Chat (${noted.length})`, icon: 'message-square', title: 'Stages every note, with its problem, paper and rating, in the chat. Add your question under the brief, then send.', onClick: () => void discussNotesInChat(items) }] : [],
+      primary: shown.length ? { label: 'Quiz These…', title: 'Opens the quiz builder with the problems shown here.', onClick: () => { _quizPreset = { ids: shown.map((it) => it.id), name: '' }; openBuilder(); } } : undefined,
+      more: generated.length ? [{ label: `Delete All Generated Items (${generated.length})…`, icon: 'trash-2', danger: true, onSelect: () => void deleteGeneratedItems(generated) }] : [],
+    });
+  };
 
-    if (items.length === 0) {
-      const empty = el('div', 'ws-empty');
-      empty.appendChild(el('div', 'ws-empty__headline', 'No practice items yet'));
-      empty.appendChild(el('div', 'ws-empty__hint',
-        'Click Generate Items to turn a PDF or pasted material into worked practice items with model solutions. The scratch sheet gives you the exam-faithful grid any time.'));
-      root.appendChild(empty);
-      return;
+  // One row per problem, but only inside the paper you open: 331 rows in a
+  // flat list is the workbook's 331 tabs all over again.
+  const itemRow = (item: WorksheetItemSummary, generated: boolean): HTMLElement => {
+    const row = el('div', 'ws-list__row ws-bankrow');
+    row.appendChild(starBtn(item.id, item.starred));
+    const info = el('button', 'ws-list__text') as HTMLButtonElement;
+    info.type = 'button';
+    const titleRow = el('span', 'ws-list__title');
+    titleRow.appendChild(document.createTextNode(item.title));
+    if (item.attemptState === 'open') titleRow.appendChild(el('span', 'ws-chip ws-chip--open', 'In progress'));
+    else if (item.attemptState) titleRow.appendChild(el('span', `ws-chip ws-chip--${stateClass(item.attemptState)}`, gradeLabel(item.attemptState)));
+    else titleRow.appendChild(el('span', 'ws-chip ws-chip--muted', 'Not rated'));
+    info.appendChild(titleRow);
+    const meta: string[] = [];
+    if (item.paper) meta.push([SOURCE_LABELS[item.source] ?? '', KIND_LABELS[item.kind] ?? '', item.quadrant ? QUADRANT_LABELS[item.quadrant] : ''].filter(Boolean).join(' · '));
+    else if (item.sourceLabel) meta.push(item.sourcePage > 0 ? `${item.sourceLabel} · p.${item.sourcePage}` : item.sourceLabel);
+    if (!item.paper && item.tags) meta.push(item.tags.split(',').filter(Boolean).map((t) => `#${t.trim()}`).join(' '));
+    if (item.attemptCount > 0) meta.push(`${item.attemptCount} ${item.attemptCount === 1 ? 'attempt' : 'attempts'}`);
+    if (item.seconds > 0) meta.push(fmtStudy(item.seconds));
+    if (item.lastAttemptAt > 0) meta.push(`last ${new Date(item.lastAttemptAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`);
+    info.appendChild(el('span', 'ws-list__meta', meta.join(' · ')));
+    // The note, in the row: what he told himself about this problem, where he picks it.
+    if (item.note) {
+      const n = el('span', 'ws-list__note');
+      n.append(createIconElement('notebook-pen', 12), document.createTextNode(item.note));
+      n.title = item.note;
+      info.appendChild(n);
     }
-
-    // One row per problem, but only inside the paper you open: 331 rows in
-    // a flat list is the workbook's 331 tabs all over again.
-    const itemRow = (item: WorksheetItemSummary, withDelete: boolean): HTMLElement => {
-      const row = el('div', 'ws-itemrow');
-      const info = el('div', 'ws-itemrow__info');
-      const titleRow = el('div', 'ws-itemrow__title', item.title);
-      if (item.attemptState === 'open') titleRow.appendChild(el('span', 'ws-chip ws-chip--open', 'In Progress'));
-      else if (item.attemptState) titleRow.appendChild(el('span', `ws-chip ws-chip--${stateClass(item.attemptState)}`, gradeLabel(item.attemptState)));
-      info.appendChild(titleRow);
-      const meta: string[] = [];
-      if (item.paper) meta.push([SOURCE_LABELS[item.source] ?? '', KIND_LABELS[item.kind] ?? '', item.quadrant ? QUADRANT_LABELS[item.quadrant] : ''].filter(Boolean).join(' · '));
-      else if (item.sourceLabel) meta.push(item.sourcePage > 0 ? `${item.sourceLabel} · p.${item.sourcePage}` : item.sourceLabel);
-      if (!item.paper && item.tags) meta.push(item.tags.split(',').filter(Boolean).map((t) => `#${t.trim()}`).join(' '));
-      if (item.attemptCount > 0) meta.push(`${item.attemptCount} ${item.attemptCount === 1 ? 'attempt' : 'attempts'}`);
-      if (item.seconds > 0) meta.push(fmtStudy(item.seconds));
-      if (item.lastAttemptAt > 0) meta.push(`last ${new Date(item.lastAttemptAt).toLocaleDateString()}`);
-      info.appendChild(el('div', 'ws-itemrow__meta', meta.join(' · ')));
-      // The note, in the row: what he told himself about this problem, where he picks it.
-      if (item.note) { const n = el('div', 'ws-itemrow__note', item.note); n.title = item.note; info.appendChild(n); }
-      info.addEventListener('click', () => void openWorksheet(`item:${item.id}`, item.title));
-      row.appendChild(starBtn(item.id, item.starred));
-      row.appendChild(info);
-      const actions = el('div', 'ws-itemrow__actions');
-      const openBtn = el('button', 'ws-btn') as HTMLButtonElement;
-      openBtn.textContent = 'Practice';
-      openBtn.addEventListener('click', () => void openWorksheet(`item:${item.id}`, item.title));
-      actions.appendChild(openBtn);
-      if (withDelete) {
-        const delBtn = el('button', 'ws-btn ws-btn--danger') as HTMLButtonElement;
-        delBtn.textContent = 'Delete';
-        delBtn.addEventListener('click', () => {
+    info.title = `Practice ${item.title}`;
+    info.addEventListener('click', () => void openWorksheet(`item:${item.id}`, item.title));
+    row.appendChild(info);
+    const actions = el('div', 'ws-list__end ws-list__hover');
+    createButton(actions, { label: 'Practice', size: 'sm', onClick: () => void openWorksheet(`item:${item.id}`, item.title) });
+    const more = createIconButton(actions, { icon: 'ellipsis', title: `More actions for ${item.title}`, size: 'sm' });
+    more.addEventListener('click', () => showMenu(more, [
+      { label: 'Quiz This Problem', icon: 'play', onSelect: () => startQuizWith([item.id], 0, item.title) },
+      { label: item.starred ? 'Unstar' : 'Star', icon: 'star', onSelect: () => void setItemStarred(item.id, !item.starred).catch(() => {}) },
+      ...(generated ? [
+        { separator: true },
+        { label: 'Delete Item…', icon: 'trash-2', danger: true, onSelect: () => {
           void (async () => {
             const ok = await _api?.window?.showConfirmModal?.({
               message: `Delete "${item.title}"?`,
@@ -513,28 +531,46 @@ function createBankPane(container: HTMLElement) {
             }) ?? false;
             if (ok) await deleteItem(item.id);
           })();
-        });
-        actions.appendChild(delBtn);
-      }
-      row.appendChild(actions);
-      return row;
-    };
+        } },
+      ] : []),
+    ]));
+    row.appendChild(actions);
+    return row;
+  };
 
-    // Search and filters live here now; the sidebar only navigates.
-    root.appendChild(bankFilterBar(items, () => void render()));
-    const filtering = _bankFilter !== 'all' || !!_bankQuery;
-    const problems = items.filter((it) => it.paper && bankMatches(it, _bankFilter, _bankQuery));
+  const paintList = () => {
+    listHost.replaceChildren();
+    paintHeader();
+    const all = items.filter((it) => it.paper);
+    const problems = shownProblems();
+    if (countEl) {
+      countEl.replaceChildren(document.createTextNode(`${problems.length} of ${all.length}`));
+      if (_bankFilters.size || _bankQuery) {
+        const clear = el('button', 'ws-linkbtn', 'Clear filters') as HTMLButtonElement;
+        clear.type = 'button';
+        clear.addEventListener('click', () => { _bankFilters.clear(); _bankQuery = ''; paintBar(); paintList(); });
+        countEl.append(document.createTextNode(' · '), clear);
+      }
+    }
+    const filtering = _bankFilters.size > 0 || !!_bankQuery;
     const generated = items.filter((it) => !it.paper);
     const byPaper = new Map<string, WorksheetItemSummary[]>();
-    for (const it of problems) { if (!byPaper.has(it.paper)) byPaper.set(it.paper, []); byPaper.get(it.paper)!.push(it); }
-    const list = el('div', 'ws-home__list');
+    for (const it of all) { if (!byPaper.has(it.paper)) byPaper.set(it.paper, []); byPaper.get(it.paper)!.push(it); }
+    const list = el('div', 'ws-list');
     for (const [key, group] of [...byPaper.entries()].sort((a, b) => paperLabel(a[0]).localeCompare(paperLabel(b[0])))) {
+      const shown = group.filter((it) => problems.includes(it));
       const rated = group.filter((it) => normalizeRating(it.attemptState)).length;
       const secs = group.reduce((n, it) => n + it.seconds, 0);
-      const head = el('div', 'ws-home__paper');
-      head.setAttribute('role', 'button');
-      head.appendChild(el('span', 'ws-home__papername', paperLabel(key)));
-      const bar = el('div', 'ws-bank__bar');
+      const open = filtering ? shown.length > 0 : _homeOpen.has(key);
+      const head = el('button', 'ws-list__row ws-list__group') as HTMLButtonElement;
+      head.type = 'button';
+      head.setAttribute('aria-expanded', String(open));
+      head.appendChild(createIconElement(open ? 'chevron-down' : 'chevron-right', 14));
+      head.appendChild(el('span', 'ws-list__title', paperLabel(key)));
+      if (filtering) head.appendChild(el('span', 'ws-list__meta', `${shown.length} shown`));
+      const end = el('span', 'ws-list__end');
+      const bar = el('span', 'ws-bank__bar');
+      bar.title = 'Easy, medium and hard, of the paper';
       for (const cls of ['easy', 'medium', 'hard'] as const) {
         const n = group.filter((it) => stateClass(it.attemptState) === cls).length;
         if (n === 0) continue;
@@ -542,34 +578,86 @@ function createBankPane(container: HTMLElement) {
         seg.style.width = `${(n / group.length) * 100}%`;
         bar.appendChild(seg);
       }
-      head.appendChild(bar);
-      head.appendChild(el('span', 'ws-home__papermeta', `${rated} of ${group.length} rated${secs > 0 ? ` · ${fmtStudy(secs)}` : ''}`));
-      head.addEventListener('click', () => { if (_homeOpen.has(key)) _homeOpen.delete(key); else _homeOpen.add(key); void render(); });
+      end.append(bar, el('span', 'ws-list__meta', `${rated} of ${group.length} rated${secs > 0 ? ` · ${fmtStudy(secs)}` : ''}`));
+      head.appendChild(end);
+      head.addEventListener('click', () => { if (_homeOpen.has(key)) _homeOpen.delete(key); else _homeOpen.add(key); paintList(); });
       list.appendChild(head);
-      if (filtering || _homeOpen.has(key)) {
-        const rows = el('div', 'ws-home__paperitems');
-        for (const it of group) rows.appendChild(itemRow(it, false));
-        list.appendChild(rows);
-      }
+      if (open) for (const it of (filtering ? shown : group)) list.appendChild(itemRow(it, false));
     }
     if (generated.length > 0) {
-      const head = el('div', 'ws-home__paper ws-home__paper--generated');
-      head.setAttribute('role', 'button');
-      head.appendChild(el('span', 'ws-home__papername', 'Generated Items'));
-      head.appendChild(el('span', 'ws-home__papermeta', `${generated.length} · not part of the workbook bank`));
-      head.addEventListener('click', () => { if (_homeOpen.has('__generated')) _homeOpen.delete('__generated'); else _homeOpen.add('__generated'); void render(); });
+      const open = _homeOpen.has('__generated');
+      const head = el('button', 'ws-list__row ws-list__group') as HTMLButtonElement;
+      head.type = 'button';
+      head.setAttribute('aria-expanded', String(open));
+      head.appendChild(createIconElement(open ? 'chevron-down' : 'chevron-right', 14));
+      head.appendChild(el('span', 'ws-list__title', 'Generated items'));
+      head.appendChild(el('span', 'ws-list__meta', `${generated.length} · not part of the workbook bank`));
+      head.addEventListener('click', () => { if (open) _homeOpen.delete('__generated'); else _homeOpen.add('__generated'); paintList(); });
       list.appendChild(head);
-      if (_homeOpen.has('__generated')) {
-        const rows = el('div', 'ws-home__paperitems');
-        const clear = el('button', 'ws-btn ws-btn--danger') as HTMLButtonElement;
-        clear.textContent = 'Delete All Generated Items';
-        clear.addEventListener('click', () => { void deleteGeneratedItems(generated); });
-        rows.appendChild(clear);
-        for (const it of generated) rows.appendChild(itemRow(it, true));
-        list.appendChild(rows);
-      }
+      if (open) for (const it of generated) list.appendChild(itemRow(it, true));
     }
-    root.appendChild(list);
+    listHost.appendChild(list);
+  };
+
+  const paintBar = () => {
+    barHost.replaceChildren();
+    if (items.length === 0) return;
+    const bar = el('div', 'ws-home__filters');
+    const search = el('label', 'ws-search');
+    search.appendChild(createIconElement('search', 14));
+    const input = el('input') as HTMLInputElement;
+    input.type = 'search';
+    input.placeholder = 'Search problems';
+    input.value = _bankQuery;
+    input.setAttribute('aria-label', 'Search problems');
+    let searchTimer: ReturnType<typeof setTimeout> | null = null;
+    input.addEventListener('input', () => {
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => { _bankQuery = input.value.trim(); paintList(); }, 120);
+    });
+    search.appendChild(input);
+    bar.appendChild(search);
+    // One chip per filter, grouped by what they filter on; several can be on.
+    // Within a group any may match, across groups all must.
+    const chips = el('div', 'ws-chips');
+    chips.setAttribute('role', 'group');
+    chips.setAttribute('aria-label', 'Filters');
+    const present = new Set<string>();
+    for (const it of items) { present.add(it.source); present.add(it.kind); }
+    const count = (f: string) => items.filter((it) => it.paper && bankMatches(it, new Set([f]), '')).length;
+    for (const [value, label] of BANK_FILTERS) {
+      if (([...BANK_FACETS.source, ...BANK_FACETS.kind] as readonly string[]).includes(value) && !present.has(value)) continue;
+      const withCount = value === 'starred' || value === 'noted' || value === 'incomplete';
+      createFilterChip(chips, {
+        label, count: withCount ? count(value) : undefined, pressed: _bankFilters.has(value),
+        onToggle: (on) => { if (on) _bankFilters.add(value); else _bankFilters.delete(value); paintList(); },
+      });
+    }
+    bar.appendChild(chips);
+    countEl = el('span', 'ws-home__summary');
+    bar.appendChild(countEl);
+    barHost.appendChild(bar);
+  };
+
+  const render = async () => {
+    if (disposed) return;
+    items = await listItems().catch(() => []);
+    if (disposed) return;
+    if (items.length === 0) {
+      headHost.replaceChildren();
+      createPageHeader(headHost, { back: BACK_TO_HOME, title: 'Problem Bank' });
+      barHost.replaceChildren();
+      listHost.replaceChildren();
+      createEmptyState(listHost, {
+        icon: 'library',
+        headline: 'No problems yet.',
+        hint: 'Import a practice workbook, or generate items from a PDF or pasted material.',
+        action: { label: 'Import Workbook…', onClick: () => void openWorksheet('excel-import', 'Import Workbook') },
+      });
+      return;
+    }
+    if (!barHost.firstChild) paintBar();
+    paintList();
   };
 
   void render();
@@ -616,17 +704,36 @@ function fmtSeconds(total: number): string {
 // choice survives a re-render (module state, like the scratch cache).
 
 const _bankOpen = new Set<string>();
-let _bankFilter = 'all';
+/** The bank's chips: any number on; within a facet any may match, across facets all must. */
+const _bankFilters = new Set<string>();
 let _bankQuery = '';
+const BANK_FACETS = {
+  status: ['starred', 'noted', 'incomplete'],
+  rating: ['easy', 'medium', 'hard'],
+  source: ['rf', 'cas'],
+  kind: ['quant', 'qual', 'essay'],
+} as const satisfies Record<string, readonly string[]>;
+const BANK_FILTERS: [string, string][] = [
+  ['starred', 'Starred'], ['noted', 'Noted'], ['incomplete', 'Incomplete'],
+  ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'],
+  ['rf', 'Rising Fellow'], ['cas', 'CAS Exam'],
+  ['quant', 'Quantitative'], ['qual', 'Qualitative'], ['essay', 'Essay'],
+];
 
-function bankMatches(item: WorksheetItemSummary, filter: string, query: string): boolean {
+function bankMatches(item: WorksheetItemSummary, filters: ReadonlySet<string>, query: string): boolean {
   const state = stateClass(item.attemptState);
-  if (filter === 'starred' && !item.starred) return false;
-  if (filter === 'noted' && !item.note) return false;
-  if (filter === 'incomplete' && !(item.attemptCount === 0 || item.attemptState === 'open')) return false;
-  if ((filter === 'easy' || filter === 'medium' || filter === 'hard') && state !== filter) return false;
-  if ((filter === 'rf' || filter === 'cas') && item.source !== filter) return false;
-  if ((filter === 'quant' || filter === 'qual' || filter === 'essay') && item.kind !== filter) return false;
+  const test = (f: string): boolean => {
+    if (f === 'starred') return !!item.starred;
+    if (f === 'noted') return !!item.note;
+    if (f === 'incomplete') return item.attemptCount === 0 || item.attemptState === 'open';
+    if (f === 'easy' || f === 'medium' || f === 'hard') return state === f;
+    if (f === 'rf' || f === 'cas') return item.source === f;
+    return item.kind === f;
+  };
+  for (const facet of Object.values(BANK_FACETS) as readonly (readonly string[])[]) {
+    const on = facet.filter((f) => filters.has(f));
+    if (on.length && !on.some(test)) return false;
+  }
   if (query) {
     const q = query.toLowerCase();
     const hay = `${item.title} ${item.sheetName} ${item.questionMd} ${paperLabel(item.paper)} ${item.note}`.toLowerCase();
@@ -646,52 +753,6 @@ async function deleteGeneratedItems(generated: WorksheetItemSummary[]): Promise<
   if (!ok) return;
   for (const it of generated) await deleteItem(it.id);
   _api?.activity?.note('deleted', `${generated.length} generated worksheet items`);
-}
-
-/** Search and filter chips for the Problem Bank page; the sidebar only navigates. */
-function bankFilterBar(items: WorksheetItemSummary[], onChange: () => void): HTMLElement {
-  const bar = el('div', 'ws-home__filters');
-  const search = el('input', 'ws-input ws-bank__search') as HTMLInputElement;
-  search.type = 'search';
-  search.placeholder = 'Search problems';
-  search.value = _bankQuery;
-  search.setAttribute('aria-label', 'Search problems');
-  let searchTimer: ReturnType<typeof setTimeout> | null = null;
-  search.addEventListener('input', () => {
-    if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { _bankQuery = search.value.trim(); onChange(); }, 120);
-  });
-  bar.appendChild(search);
-  const filters = el('div', 'ws-bank__filters');
-  const FILTERS: [string, string][] = [['all', 'All'], ['starred', 'Starred'], ['noted', 'Noted'], ['incomplete', 'Incomplete'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['rf', 'RF'], ['cas', 'CAS'], ['quant', 'Quant'], ['qual', 'Qual'], ['essay', 'Essay']];
-  const present = new Set<string>();
-  for (const it of items) { present.add(it.source); present.add(it.kind); }
-  for (const [value, label] of FILTERS) {
-    if ((value === 'rf' || value === 'cas' || value === 'quant' || value === 'qual' || value === 'essay') && !present.has(value)) continue;
-    const b = el('button', 'ws-bank__filter') as HTMLButtonElement;
-    b.type = 'button';
-    b.textContent = label;
-    b.setAttribute('aria-pressed', _bankFilter === value ? 'true' : 'false');
-    b.addEventListener('click', () => { _bankFilter = value; onChange(); });
-    filters.appendChild(b);
-  }
-  bar.appendChild(filters);
-  const problems = items.filter((it) => it.paper);
-  const shown = problems.filter((it) => bankMatches(it, _bankFilter, _bankQuery));
-  const rated = problems.filter((it) => normalizeRating(it.attemptState)).length;
-  bar.appendChild(el('span', 'ws-home__summary', `${shown.length} of ${problems.length} · ${rated} rated`));
-  // Every note, handed to the chat: staged with the notes attached, the
-  // question his (the same hand-off as Review in Chat).
-  const noted = items.filter((it) => it.note);
-  if (noted.length > 0) {
-    const b = el('button', 'ws-btn ws-btn--small') as HTMLButtonElement;
-    b.type = 'button';
-    b.textContent = `Discuss Notes In Chat (${noted.length})`;
-    b.title = 'Stages every note, with its problem, paper and rating, in the chat. Add your question under the brief, then send.';
-    b.addEventListener('click', () => void discussNotesInChat(items));
-    bar.appendChild(b);
-  }
-  return bar;
 }
 
 /** The bank in the sidebar: papers with their rating bars and counts, open to the problems, nothing else. */
@@ -795,7 +856,7 @@ function createSidebarView(container: HTMLElement) {
       nav.appendChild(b);
     };
     navItem('Home', 'home', 'home', 'Worksheets', 'Quiz, dashboard, bank, import, generate, scratch sheet');
-    navItem('Dashboard', 'layout-dashboard', 'dashboard', 'Dashboard', 'Progress, pace, the campaign, what to work on next');
+    navItem('Study Dashboard', 'gauge', 'dashboard', 'Study Dashboard', 'Progress, pace, the campaign, what to work on next');
     navItem('Quizzes', 'list-checks', 'quizzes', 'Quizzes', 'Every quiz, open and completed: resume, rename, copy, reopen, delete');
     navItem('Settings', 'settings', 'settings', 'Worksheets Settings', 'The campaign and the sheet appearance');
     root.appendChild(nav);
@@ -826,98 +887,113 @@ function createLauncherPane(container: HTMLElement) {
       getCampaign().catch(() => null),
       listAttemptHistory().catch(() => []),
     ]);
+    const rewards = await syncRewards(items, attempts, campaign).catch(() => null);
+    const open = await getOpenQuizSession().catch(() => null);
+    const quizzes = await listQuizSessions().catch(() => []);
     if (disposed || seq !== renderSeq) return;
-    root.replaceChildren();
-    // Home is where you continue and where you go (Mufaro, 2026-09-21: nine
-    // tiles with sentences and five columns of rows was a wall; a row of text
-    // links and a strip across a 2300px window was worse). One column of
-    // fixed width: the title, a row of small icon tiles, the continue strip,
-    // two short lists.
-    const col = el('div', 'ws-home__col');
-    root.appendChild(col);
-    col.appendChild(el('div', 'ws-home__title', 'Worksheets'));
-    const nav = el('div', 'ws-home__nav');
-    const go = (label: string, instanceId: string, tabTitle: string, hint: string, icon: string) => {
-      const b = el('button', 'ws-home__navtile') as HTMLButtonElement;
-      b.type = 'button';
-      b.title = hint;
-      const ic = el('span', 'ws-home__navicon');
-      try { ic.innerHTML = _api?.icons?.createIconHtml?.(icon, 18) ?? ''; } catch { /* label alone */ }
-      b.appendChild(ic);
-      b.appendChild(el('span', 'ws-home__navlabel', label));
-      b.addEventListener('click', () => void openWorksheet(instanceId, tabTitle));
-      nav.appendChild(b);
-    };
     const problems = items.filter((it) => it.paper);
     const rated = problems.filter((it) => normalizeRating(it.attemptState)).length;
     // Noted: what he told himself to review, newest note first.
     const noted = items.filter((it) => it.note).sort((a, b) => b.noteAt - a.noteAt);
-    go('Dashboard', 'dashboard', 'Dashboard', 'Progress, pace, what to work on next.', 'layout-dashboard');
-    go('Problem Bank', 'bank', 'Problem Bank', problems.length ? `${problems.length} problems · ${rated} rated${noted.length ? ` · ${noted.length} noted` : ''}` : 'Empty until you import a workbook.', 'library');
-    go('Quizzes', 'quizzes', 'Quizzes', 'Every quiz, open and completed, with its actions.', 'list-checks');
-    go('Import Workbook', 'excel-import', 'Import Workbook', 'A ProblemTrack workbook, every sheet as it is.', 'folder-input');
-    go('Generate Items', 'create', 'Generate Items', 'Practice items from a PDF or pasted material.', 'sparkles');
-    go('Scratch Sheet', 'scratch', 'Practice Sheet', 'The exam grid, blank.', 'table-2');
-    go('Settings', 'settings', 'Worksheets Settings', 'Campaign, exam date, XP to cash, sheet appearance, the study clock.', 'settings');
-    col.appendChild(nav);
-
-    // Continue: the campaign's line and the one action that matters now.
-    const rewards = await syncRewards(items, attempts, campaign).catch(() => null);
-    const open = await getOpenQuizSession().catch(() => null);
+    const ins = computeInsights(items, attempts);
+    const due = ins.due.filter((d) => isCampaignProblem(d.item)).map((d) => d.item.id);
+    const resume = open ? { name: open.name, position: Math.min(open.position, open.itemIds.length - 1), total: open.itemIds.length } : null;
+    const plan = await planDay(items, attempts, campaign, due, resume, rewards?.bonusXp ?? 0, {
+      startQuiz: (ids, startAt, name) => startQuizWith(ids, startAt, name),
+      resumeQuiz: () => { if (open) void openPastQuiz(open.id); },
+      studyFlashcards: () => studyFlashcards(),
+      openSettings: () => void openWorksheet('settings', 'Worksheets Settings'),
+    });
     if (disposed || seq !== renderSeq) return;
-    const cont = el('div', 'ws-home__continue');
-    let line = problems.length ? `${problems.length} problems in the bank, no campaign running.` : 'The bank is empty. Import a workbook to begin.';
-    if (campaign) {
-      const p = campaignProgress(campaign, items, attempts, Date.now(), rewards?.bonusXp ?? 0);
-      line = p.finished ? 'Campaign complete.' : p.restToday ? `Day ${p.dayIndex} of ${campaign.days} · Rest day` : `Day ${p.dayIndex} of ${campaign.days} · ${p.doneToday} of ${p.target} today`;
+    root.replaceChildren();
+    // Home is where you continue and where you go (Mufaro, 2026-09-21: nine
+    // tiles was a wall). The three places you go every day are cards with a
+    // live line; the ways to add problems sit in the header's Add menu.
+    const col = el('div', 'ws-home__col');
+    root.appendChild(col);
+    const header = createPageHeader(col, {
+      title: 'Worksheets',
+      subtitle: problems.length ? `${problems.length} problems · ${rated} rated${noted.length ? ` · ${noted.length} noted` : ''}` : 'The bank is empty. Import a workbook to begin.',
+      secondary: [{ label: 'Add Problems', icon: 'plus', onClick: () => {} }],
+      primary: problems.length ? { label: 'New Quiz', onClick: () => openBuilder() } : { label: 'Import Workbook…', onClick: () => void openWorksheet('excel-import', 'Import Workbook') },
+      more: [
+        ...(noted.length ? [{ label: `Discuss Notes in Chat (${noted.length})`, icon: 'message-square', onSelect: () => void discussNotesInChat(items) }] : []),
+        { label: 'Worksheets Settings', icon: 'settings', onSelect: () => void openWorksheet('settings', 'Worksheets Settings') },
+      ],
+    });
+    // Add Problems opens its menu under itself.
+    const add = header.querySelector<HTMLButtonElement>('.px-page-header__actions .px-btn--secondary');
+    if (add) {
+      add.appendChild(createIconElement('chevron-down', 12));
+      add.setAttribute('aria-haspopup', 'menu');
+      add.addEventListener('click', () => showMenu(add, [
+        { label: 'Import Workbook…', icon: 'folder-input', onSelect: () => void openWorksheet('excel-import', 'Import Workbook') },
+        { label: 'Generate Items…', icon: 'sparkles', onSelect: () => void openWorksheet('create', 'Generate Items') },
+        { separator: true },
+        { label: 'Open Scratch Sheet', icon: 'table-2', onSelect: () => void openWorksheet('scratch', 'Scratch Sheet') },
+      ]));
     }
-    cont.appendChild(el('div', 'ws-home__line', line));
-    const acts = el('div', 'ws-home__acts');
-    if (open) {
-      const b = el('button', 'ws-btn ws-btn--primary', `Resume ${open.name || 'Quiz'} (${Math.min(open.position + 1, open.itemIds.length)} of ${open.itemIds.length})`) as HTMLButtonElement;
-      b.type = 'button';
-      b.title = 'The open quiz you used last, where it stands.';
-      b.addEventListener('click', () => void openPastQuiz(open.id));
-      acts.appendChild(b);
-    }
-    if (!open && problems.length === 0) {
-      // Nothing to quiz yet: the one action that matters is the import.
-      const imp = el('button', 'ws-btn ws-btn--primary', 'Import Workbook') as HTMLButtonElement;
-      imp.type = 'button';
-      imp.title = 'A ProblemTrack workbook, every sheet as it is.';
-      imp.addEventListener('click', () => void openWorksheet('excel-import', 'Import Workbook'));
-      acts.appendChild(imp);
-    } else {
-      const start = el('button', open ? 'ws-btn ws-btn--quiet' : 'ws-btn ws-btn--primary', open ? 'New Quiz' : 'Start Quiz') as HTMLButtonElement;
-      start.type = 'button';
-      start.title = 'The quiz builder: papers, sources, kinds, a rating band, a length.';
-      start.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
-      acts.appendChild(start);
-    }
-    cont.appendChild(acts);
-    col.appendChild(cont);
 
-    // What you touched last, and what arrived last: two short lists, each row opens the item.
+    const dest = el('div', 'ws-home__dest');
+    const card = (label: string, line: string, icon: string, go: () => void) => {
+      const b = el('button', 'ws-home__destcard') as HTMLButtonElement;
+      b.type = 'button';
+      const ic = el('span', 'ws-home__desticon');
+      ic.appendChild(createIconElement(icon, 20));
+      const text = el('span', 'ws-home__desttext');
+      text.append(el('span', 'ws-home__desttitle', label), el('span', 'ws-home__destline', line));
+      b.append(ic, text);
+      b.addEventListener('click', go);
+      dest.appendChild(b);
+    };
+    const openCount = quizzes.filter((q) => !q.finishedAt).length;
+    card('Study Dashboard', ins.rated > 0 ? `${Math.round(ins.attempted * 100)}% attempted · ${Math.round(ins.score * 100)}% score` : 'Progress, pace, what to work on next', 'gauge', () => void openWorksheet('dashboard', 'Study Dashboard'));
+    card('Problem Bank', problems.length ? `${problems.length} problems in ${new Set(problems.map((it) => it.paper)).size} papers` : 'Empty until you import a workbook', 'library', () => void openWorksheet('bank', 'Problem Bank'));
+    card('Quizzes', quizzes.length ? `${openCount} open · ${quizzes.length - openCount} completed` : 'None yet', 'list-checks', () => void openWorksheet('quizzes', 'Quizzes'));
+    col.appendChild(dest);
+
+    // Today: the campaign's line, its days, and the day's one action.
+    const today = el('div', 'ws-home__today');
+    const text = el('div', 'ws-home__todaytext');
+    text.appendChild(el('div', 'ws-home__todaytitle', plan.title));
+    text.appendChild(el('div', 'ws-home__todayline', plan.line));
+    if (plan.progress) text.appendChild(dayStrip(plan.progress));
+    today.appendChild(text);
+    const acts = el('div', 'ws-home__todayacts');
+    const first = plan.actions.secondary.find((a) => !a.label.startsWith('Review Due Flashcards'));
+    if (first) createButton(acts, { label: first.label, title: first.title, onClick: () => first.onClick() });
+    if (plan.actions.primary) {
+      const a = plan.actions.primary;
+      createButton(acts, { label: a.label, icon: a.icon, title: a.title, kind: 'primary', onClick: () => a.onClick() });
+    }
+    if (acts.childElementCount) today.appendChild(acts);
+    col.appendChild(today);
+
+    // What you touched last, and what you told yourself to review: two short
+    // lists, each row opens the problem.
     const lists = el('div', 'ws-launch__lists');
     const listOf = (title: string, rows: WorksheetItemSummary[], meta: (it: WorksheetItemSummary) => string) => {
       if (rows.length === 0) return;
       const box = el('div', 'ws-launch__list');
-      box.appendChild(el('div', 'ws-launch__listtitle', title));
+      createSectionLabel(box, title);
+      const list = el('div', 'ws-list');
       for (const it of rows) {
-        const row = el('button', 'ws-launch__row') as HTMLButtonElement;
+        const row = el('button', 'ws-list__row') as HTMLButtonElement;
         row.type = 'button';
         row.appendChild(el('span', `ws-bank__dot ${stateClass(it.attemptState) || 'rest'}`));
-        const text = el('span', 'ws-launch__rowtext');
-        text.appendChild(el('span', 'ws-launch__rowtitle', it.title));
-        text.appendChild(el('span', 'ws-launch__rowmeta', meta(it)));
-        row.appendChild(text);
+        const t = el('span', 'ws-list__text');
+        t.appendChild(el('span', 'ws-list__title', it.title));
+        t.appendChild(el('span', 'ws-list__meta', meta(it)));
+        row.appendChild(t);
+        row.title = `Open ${it.title}`;
         row.addEventListener('click', () => void openWorksheet(`item:${it.id}`, it.title));
-        box.appendChild(row);
+        list.appendChild(row);
       }
+      box.appendChild(list);
       lists.appendChild(box);
     };
     const recent = items.filter((it) => it.lastAttemptAt > 0).sort((a, b) => b.lastAttemptAt - a.lastAttemptAt).slice(0, 5);
-    listOf('Recent', recent, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'In Progress' : gradeLabel(it.attemptState), whenCap(it.lastAttemptAt)].filter(Boolean).join(' · '));
+    listOf('Recent', recent, (it) => [it.paper ? paperLabel(it.paper) : it.sourceLabel, it.attemptState === 'open' ? 'In progress' : gradeLabel(it.attemptState), whenCap(it.lastAttemptAt)].filter(Boolean).join(' · '));
     listOf('Noted', noted.slice(0, 5), (it) => it.note);
     col.appendChild(lists);
   };
@@ -938,6 +1014,7 @@ function createSettingsPane(container: HTMLElement) {
   const root = el('div', 'ws-pane ws-settings');
   container.appendChild(root);
   let disposed = false;
+  const disposables: { dispose(): void }[] = [];
 
   const render = async () => {
     if (disposed) return;
@@ -947,14 +1024,39 @@ function createSettingsPane(container: HTMLElement) {
       listAttemptHistory().catch(() => []),
     ]);
     if (disposed) return;
+    for (const d of disposables.splice(0)) d.dispose();
     root.replaceChildren();
-    root.appendChild(titled('Worksheets Settings', 'The campaign and how the practice sheet looks.'));
+    createPageHeader(root, { back: BACK_TO_HOME, title: 'Worksheets Settings' });
+    const body = el('div', 'ws-settings__body');
+    root.appendChild(body);
+
+    // The app's settings layout: what a setting does on the left, the control on the right.
+    const card = (label: string) => {
+      createSectionLabel(body, label);
+      const c = el('div', 'ws-setcard');
+      body.appendChild(c);
+      return c;
+    };
+    const row = (host: HTMLElement, title: string, desc: string, control?: HTMLElement, labelFor?: string) => {
+      const r = el('div', 'ws-setrow');
+      const text = el('div', 'ws-setrow__text');
+      const t = el(labelFor ? 'label' : 'div', 'ws-setrow__title', title);
+      if (labelFor) (t as HTMLLabelElement).htmlFor = labelFor;
+      text.appendChild(t);
+      if (desc) text.appendChild(el('div', 'ws-setrow__desc', desc));
+      r.appendChild(text);
+      if (control) { control.classList.add('ws-setrow__control'); r.appendChild(control); }
+      host.appendChild(r);
+      return r;
+    };
+    const switchOf = (ariaLabel: string, items: { value: string; label: string }[], value: string, onChange: (v: string) => void) => {
+      const seg = createSegmented(null, { ariaLabel, items, value, onChange });
+      disposables.push(seg);
+      return seg.element;
+    };
 
     // The campaign: every problem in the bank in N days.
-    const camp = el('section', 'ws-settings__section');
-    const campTitle = el('div', 'ws-settings__sectiontitle', 'Campaign');
-    campTitle.title = 'Every problem in the bank in a set number of days, drawn across all papers. Each day gets its own draw, every rating earns XP, a full day keeps the streak, a paper is cleared when nothing in it is left.';
-    camp.appendChild(campTitle);
+    const camp = card('Campaign');
     // Essay sheets stay out: they are flashcards now.
     const problems = items.filter(isCampaignProblem);
     if (!campaign) {
@@ -962,14 +1064,13 @@ function createSettingsPane(container: HTMLElement) {
       // weekdays that carry no quota.
       const today = dayKey(Date.now());
       const rest = new Set<number>();
-      const row = el('div', 'ws-settings__row');
+      const perDay = el('span');
       const daysIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
       daysIn.type = 'number'; daysIn.min = '1'; daysIn.max = '365'; daysIn.value = '18';
-      daysIn.setAttribute('aria-label', 'Days');
+      daysIn.id = 'ws-camp-days';
       const endIn = el('input', 'ws-input ws-input--date') as HTMLInputElement;
       endIn.type = 'date'; endIn.min = today;
-      endIn.setAttribute('aria-label', 'Last Day');
-      const perDay = el('div', 'ws-settings__status');
+      endIn.id = 'ws-camp-end';
       const readDays = () => Math.max(1, Math.min(365, parseInt(daysIn.value, 10) || 18));
       const sync = () => {
         const d = readDays();
@@ -980,154 +1081,95 @@ function createSettingsPane(container: HTMLElement) {
         const off = restDaysLabel(plan.restDays);
         perDay.textContent = working === 0
           ? 'Every day in that span is a rest day.'
-          : `${plan.dailyTarget} a day over ${working} working ${working === 1 ? 'day' : 'days'}, ending ${fmtShortDay(endDay)}${off ? `, ${off}` : ''}`;
+          : `${plan.dailyTarget} a day over ${working} working ${working === 1 ? 'day' : 'days'}, ending ${fmtShortDay(endDay)}${off ? `, ${off}` : ''}.`;
       };
       daysIn.addEventListener('input', sync);
       endIn.addEventListener('change', () => {
         if (/^\d{4}-\d{2}-\d{2}$/.test(endIn.value)) daysIn.value = String(Math.max(1, Math.min(365, spanDays(today, endIn.value))));
         sync();
       });
-      row.append(el('span', 'ws-hint', 'Days'), daysIn, el('span', 'ws-hint', 'Last Day'), endIn);
-      camp.appendChild(row);
-      const restRow = el('div', 'ws-settings__row');
-      restRow.appendChild(el('span', 'ws-hint', 'Rest Days'));
-      const weekdays = el('div', 'ws-settings__weekdays');
+      const start = createButton(null, {
+        label: 'Start Campaign', kind: 'primary', disabled: problems.length === 0,
+        title: problems.length === 0 ? 'Import a workbook first.' : `${problems.length} problems, every one but the essay sheets, from today.`,
+        onClick: () => { void startCampaign(planCampaign(problems.length, readDays(), Date.now(), [...rest])); },
+      });
+      row(camp, 'No campaign running', 'Every problem in the bank in a set number of days, drawn across all papers. Each day gets its own draw, every rating earns XP, a full day keeps the streak.', start);
+      row(camp, 'Days', '', daysIn, daysIn.id);
+      row(camp, 'Last day', '', endIn, endIn.id);
+      const weekdays = el('div', 'ws-chips');
+      weekdays.setAttribute('role', 'group');
+      weekdays.setAttribute('aria-label', 'Rest days');
       for (const wd of [1, 2, 3, 4, 5, 6, 0]) {
-        const b = el('button', 'ws-chip ws-practicechip') as HTMLButtonElement;
-        b.type = 'button';
-        b.textContent = WEEKDAY_LABELS[wd].slice(0, 3);
-        b.title = `${WEEKDAY_LABELS[wd]}s carry no quota; the streak and the pace step over them`;
-        b.setAttribute('aria-pressed', 'false');
-        b.addEventListener('click', () => {
-          if (rest.has(wd)) rest.delete(wd); else if (rest.size < 6) rest.add(wd);
-          b.classList.toggle('ws-practicechip--active', rest.has(wd));
-          b.setAttribute('aria-pressed', String(rest.has(wd)));
-          sync();
+        createFilterChip(weekdays, {
+          label: WEEKDAY_LABELS[wd].slice(0, 3),
+          title: `${WEEKDAY_LABELS[wd]}s carry no quota; the streak and the pace step over them`,
+          onToggle: (on) => { if (on && rest.size < 6) rest.add(wd); else rest.delete(wd); sync(); },
         });
-        weekdays.appendChild(b);
       }
-      restRow.appendChild(weekdays);
-      camp.appendChild(restRow);
-      camp.appendChild(perDay);
+      const restRow = row(camp, 'Rest days', '', weekdays);
+      restRow.querySelector('.ws-setrow__text')!.appendChild(el('div', 'ws-setrow__desc')).appendChild(perDay);
       sync();
-      const start = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-      start.textContent = 'Start Campaign';
-      start.disabled = problems.length === 0;
-      start.title = problems.length === 0 ? 'Import a workbook first.' : `${problems.length} problems, every one but the essay sheets, from today.`;
-      start.addEventListener('click', () => { void startCampaign(planCampaign(problems.length, readDays(), Date.now(), [...rest])); });
-      camp.appendChild(start);
     } else {
       const p = campaignProgress(campaign, items, attempts);
       const off = restDaysLabel(campaign.restDays);
-      camp.appendChild(el('div', 'ws-settings__status', `Day ${p.dayIndex} of ${campaign.days} · ${p.done} of ${p.total} done · ${p.target} a day${off ? ` · ${off}` : ''} · ends ${fmtShortDay(addDays(campaign.startDay, campaign.days - 1))}`));
-      const end = el('button', 'ws-btn ws-btn--danger') as HTMLButtonElement;
-      end.textContent = 'End Campaign';
-      end.title = 'Stops the campaign. Ratings and attempts stay; the streak, XP and draws are dropped.';
-      end.addEventListener('click', () => {
-        if (end.dataset.armed !== '1') { end.dataset.armed = '1'; end.textContent = 'End It, Really'; setTimeout(() => { end.dataset.armed = ''; end.textContent = 'End Campaign'; }, 4000); return; }
-        void endCampaign();
+      const end = createButton(null, {
+        label: 'End Campaign…', kind: 'danger',
+        title: 'Stops the campaign. Ratings and attempts stay; the streak, XP and draws are dropped.',
+        onClick: () => {
+          void (async () => {
+            const ok = await _api?.window?.showConfirmModal?.({
+              message: 'End the campaign?',
+              detail: 'Ratings, attempts and study time stay on the problems. The streak, the XP and the daily draws are dropped. This cannot be undone.',
+              confirmLabel: 'End Campaign',
+              danger: true,
+            }) ?? false;
+            if (ok && !disposed) await endCampaign();
+          })();
+        },
       });
-      camp.appendChild(end);
+      row(camp, `Day ${p.dayIndex} of ${campaign.days}`, `${p.done} of ${p.total} done · ${p.target} a day${off ? ` · ${off}` : ''} · ends ${fmtShortDay(addDays(campaign.startDay, campaign.days - 1))}`, end);
     }
-    root.appendChild(camp);
 
     // The exam: the Dashboard counts the days to it.
-    const exam = el('section', 'ws-settings__section');
-    const examTitle = el('div', 'ws-settings__sectiontitle', 'Exam Date');
-    examTitle.title = 'The Dashboard shows the days left to it beside your progress.';
-    exam.appendChild(examTitle);
-    const examRow = el('div', 'ws-settings__row');
+    const examWrap = el('div', 'ws-setrow__inline');
     const examIn = el('input', 'ws-input ws-input--date') as HTMLInputElement;
     examIn.type = 'date';
+    examIn.id = 'ws-exam-date';
     examIn.value = getExamDate();
-    examIn.setAttribute('aria-label', 'Exam date');
     examIn.addEventListener('change', () => { void setExamDate(examIn.value).then(() => render()); });
-    examRow.appendChild(examIn);
-    if (getExamDate()) {
-      const clear = el('button', 'ws-btn ws-btn--small', 'Clear') as HTMLButtonElement;
-      clear.type = 'button';
-      clear.addEventListener('click', () => { void setExamDate('').then(() => render()); });
-      examRow.appendChild(clear);
-    }
-    exam.appendChild(examRow);
-    root.appendChild(exam);
+    examWrap.appendChild(examIn);
+    if (getExamDate()) createButton(examWrap, { label: 'Clear', kind: 'ghost', size: 'sm', onClick: () => { void setExamDate('').then(() => render()); } });
+    row(camp, 'Exam date', 'The Dashboard counts down to it.', examWrap, examIn.id);
 
     // XP as cash: what the campaign's points are worth, paid to yourself.
-    const cash = el('section', 'ws-settings__section');
-    const cashTitle = el('div', 'ws-settings__sectiontitle', 'XP To Cash');
-    cashTitle.title = 'Dollars per 100 XP. Set it and the Dashboard shows what your XP and each reward are worth; Cash Out there records what you paid yourself. 0 turns it off.';
-    cash.appendChild(cashTitle);
-    const cashRow = el('div', 'ws-settings__row');
-    cashRow.appendChild(el('span', 'ws-hint', 'Dollars per 100 XP'));
+    const cashWrap = el('div', 'ws-setrow__inline');
+    cashWrap.appendChild(el('span', 'ws-hint', '$'));
     const cashIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
     cashIn.type = 'number';
+    cashIn.id = 'ws-xp-cash';
     cashIn.min = '0';
     cashIn.step = '0.25';
     cashIn.value = String(getXpCashRate() || 0);
-    cashIn.setAttribute('aria-label', 'Dollars per 100 XP');
     cashIn.addEventListener('change', () => { const v = Math.max(0, Number(cashIn.value) || 0); void setXpCashRate(v).then(() => render()); });
-    cashRow.appendChild(cashIn);
-    cash.appendChild(cashRow);
-    root.appendChild(cash);
+    cashWrap.appendChild(cashIn);
+    row(camp, 'XP to cash', 'Dollars per 100 XP. The Dashboard then shows what your XP and each reward are worth, and Cash Out records what you paid yourself. 0 turns it off.', cashWrap, cashIn.id);
 
     // The sheet's look, independent of the app theme.
-    const look = el('section', 'ws-settings__section');
-    const lookTitle = el('div', 'ws-settings__sectiontitle', 'Sheet Appearance');
-    lookTitle.title = 'The practice sheet keeps its own theme. Light matches the real exam tool; App follows the workbench.';
-    look.appendChild(lookTitle);
-    const row = el('div', 'ws-settings__row');
-    const current = getSheetAppearance();
-    for (const [value, label] of [['light', 'Light'], ['dark', 'Dark'], ['app', 'Follow App']] as [SheetAppearance, string][]) {
-      const b = el('button', 'ws-chip ws-practicechip', label) as HTMLButtonElement;
-      b.type = 'button';
-      b.classList.toggle('ws-practicechip--active', current === value);
-      b.setAttribute('aria-pressed', current === value ? 'true' : 'false');
-      b.addEventListener('click', () => { void setSheetAppearance(value).then(() => render()); });
-      row.appendChild(b);
-    }
-    look.appendChild(row);
-    root.appendChild(look);
-
-    // Decimals: what a cell without a number format paints.
-    const nums = el('section', 'ws-settings__section');
-    const numsTitle = el('div', 'ws-settings__sectiontitle', 'Decimals Shown');
-    numsTitle.title = 'A cell without a number format shows at most this many decimals. The value itself and the cell editor keep full precision, and a number format set on a cell always wins.';
-    nums.appendChild(numsTitle);
-    const numsRow = el('div', 'ws-settings__row');
-    const currentDecimals = getDisplayDecimalsSetting();
-    for (const value of DISPLAY_DECIMALS_CHOICES) {
-      const b = el('button', 'ws-chip ws-practicechip', value === 'full' ? 'Full' : value) as HTMLButtonElement;
-      b.type = 'button';
-      b.classList.toggle('ws-practicechip--active', currentDecimals === value);
-      b.setAttribute('aria-pressed', currentDecimals === value ? 'true' : 'false');
-      b.addEventListener('click', () => { void setDisplayDecimalsSetting(value).then(() => render()); });
-      numsRow.appendChild(b);
-    }
-    nums.appendChild(numsRow);
-    root.appendChild(nums);
+    const sheet = card('Practice sheet');
+    row(sheet, 'Sheet appearance', 'Light matches the exam tool. Follow app uses the workbench theme.',
+      switchOf('Sheet appearance', [{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'app', label: 'Follow app' }], getSheetAppearance(), (v) => { void setSheetAppearance(v as SheetAppearance); }));
+    row(sheet, 'Decimals shown', 'A cell without a number format shows at most this many. The value and the cell editor keep full precision, and a format set on a cell always wins.',
+      switchOf('Decimals shown', DISPLAY_DECIMALS_CHOICES.map((v) => ({ value: v, label: v === 'full' ? 'Full' : v })), getDisplayDecimalsSetting(), (v) => { void setDisplayDecimalsSetting(v); }));
 
     // The study clock: when a stretch without input stops being study.
-    const clock = el('section', 'ws-settings__section');
-    const clockTitle = el('div', 'ws-settings__sectiontitle', 'Study Clock');
-    clockTitle.title = 'Study time counts while a problem or the quiz is on screen and you are active. After this many minutes without any input the stretch is taken back, so a break with the tab up counts for nothing. Reading keeps it running through the odd scroll.';
-    clock.appendChild(clockTitle);
-    const clockRow = el('div', 'ws-settings__row');
-    const currentIdle = getIdleMinutes();
-    for (const value of IDLE_MINUTES_CHOICES) {
-      const b = el('button', 'ws-chip ws-practicechip', `${value} Minutes Idle`) as HTMLButtonElement;
-      b.type = 'button';
-      b.classList.toggle('ws-practicechip--active', currentIdle === value);
-      b.setAttribute('aria-pressed', currentIdle === value ? 'true' : 'false');
-      b.addEventListener('click', () => { void setIdleMinutes(value).then(() => render()); });
-      clockRow.appendChild(b);
-    }
-    clock.appendChild(clockRow);
-    root.appendChild(clock);
+    const clock = card('Study clock');
+    row(clock, 'Stop counting after', 'Time counts while a problem or quiz is on screen and you are active. After this long with no input, the stretch is taken back, so a break with the tab up counts for nothing.',
+      switchOf('Stop counting after', IDLE_MINUTES_CHOICES.map((v) => ({ value: String(v), label: `${v} min` })), String(getIdleMinutes()), (v) => { void setIdleMinutes(Number(v)); }));
   };
 
   void render();
   const sub = onWorksheetDataChanged(() => void render());
-  return { dispose: () => { disposed = true; sub.dispose(); root.remove(); } };
+  return { dispose: () => { disposed = true; sub.dispose(); for (const d of disposables) d.dispose(); root.remove(); } };
 }
 
 // ── Generate pane (instanceId 'create') ─────────────────────────────────────
@@ -1137,13 +1179,19 @@ function createGeneratePane(container: HTMLElement) {
   container.appendChild(root);
   let disposed = false;
 
-  root.appendChild(titled('Generate Practice Items', 'Drop a PDF (past exams, study cookbooks) or paste material. Items are generated with givens and a worked model solution, then reviewed by you before anything is saved.'));
+  createPageHeader(root, {
+    back: BACK_TO_HOME,
+    title: 'Generate Items',
+    subtitle: 'Practice items with givens and a worked model answer, from a PDF or pasted material. Kept apart from the workbook.',
+  });
 
   const source = { text: '', label: '', uri: '', pageTexts: null as string[] | null };
   const status = el('div', 'ws-hint ws-create__status', 'No source loaded yet.');
 
-  const drop = el('div', 'ws-dropzone');
-  drop.appendChild(el('div', 'ws-dropzone__title', 'Drag a PDF or document here'));
+  const drop = el('div', 'ws-drop ws-dropzone');
+  const dropIcon = createIconElement('upload', 28);
+  dropIcon.classList.add('ws-drop__icon');
+  drop.append(dropIcon, el('div', 'ws-drop__head', 'Drop a PDF or document here'), el('div', 'ws-hint', 'From the Explorer or your files, or a page from the Canvas sidebar.'));
   const onDragOver = (e: DragEvent) => {
     e.preventDefault(); e.stopPropagation();
     if (e.dataTransfer) {
@@ -1263,9 +1311,10 @@ function createGeneratePane(container: HTMLElement) {
   countIn.min = '1'; countIn.max = '6'; countIn.value = '3';
   countIn.title = 'How many items to generate';
   controls.appendChild(countIn);
-  const genBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-  genBtn.textContent = 'Generate Items';
-  controls.appendChild(genBtn);
+  countIn.setAttribute('aria-label', 'How many items to generate');
+  guideIn.setAttribute('aria-label', 'Guidance');
+  const genBtn = createButton(controls, { label: 'Generate Items', icon: 'sparkles', kind: 'primary' });
+  const genLabel = genBtn.querySelector('.px-btn__label') as HTMLElement;
   root.appendChild(controls);
 
   const err = el('div', 'ws-error');
@@ -1289,7 +1338,7 @@ function createGeneratePane(container: HTMLElement) {
       }
       err.style.display = 'none';
       genBtn.disabled = true;
-      genBtn.textContent = 'Generating…';
+      genLabel.textContent = 'Generating…';
       try {
         const usingLoaded = !pasteIn.value.trim() && !!source.text;
         const items = await generateItems(_api.lm, text, {
@@ -1304,14 +1353,14 @@ function createGeneratePane(container: HTMLElement) {
         err.style.display = '';
       } finally {
         genBtn.disabled = false;
-        genBtn.textContent = 'Generate Items';
+        genLabel.textContent = 'Generate Items';
       }
     })();
   });
 
   const renderReview = (items: GeneratedItem[]) => {
     reviewHost.replaceChildren();
-    reviewHost.appendChild(el('div', 'ws-home__title', `Review ${items.length} generated ${items.length === 1 ? 'item' : 'items'}`));
+    createSectionLabel(reviewHost, `Review ${items.length} generated ${items.length === 1 ? 'item' : 'items'}`);
     reviewHost.appendChild(el('div', 'ws-hint', 'Edit titles and questions inline; drop anything weak. Nothing is saved until you click Save.'));
 
     const rows: { item: GeneratedItem; titleIn: HTMLInputElement; partIns: HTMLTextAreaElement[]; dropped: boolean; row: HTMLElement }[] = [];
@@ -1339,22 +1388,21 @@ function createGeneratePane(container: HTMLElement) {
       ];
       if (item.page) meta.push(`p.${item.page}`);
       if (item.tags.length) meta.push(item.tags.map((t) => `#${t}`).join(' '));
-      row.appendChild(el('div', 'ws-itemrow__meta', meta.join(' · ')));
+      row.appendChild(el('div', 'ws-list__meta', meta.join(' · ')));
       const entry = { item, titleIn, partIns, dropped: false, row };
-      const dropBtn = el('button', 'ws-btn ws-btn--danger') as HTMLButtonElement;
-      dropBtn.textContent = 'Drop';
+      const dropBtn = createButton(null, { label: 'Drop', kind: 'ghost', size: 'sm' });
+      const dropLabel = dropBtn.querySelector('.px-btn__label') as HTMLElement;
       dropBtn.addEventListener('click', () => {
         entry.dropped = !entry.dropped;
         row.classList.toggle('ws-genitem--dropped', entry.dropped);
-        dropBtn.textContent = entry.dropped ? 'Keep' : 'Drop';
+        dropLabel.textContent = entry.dropped ? 'Keep' : 'Drop';
       });
       row.appendChild(dropBtn);
       rows.push(entry);
       reviewHost.appendChild(row);
     }
 
-    const saveBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-    saveBtn.textContent = 'Save Items';
+    const saveBtn = createButton(null, { label: `Save ${items.length} ${items.length === 1 ? 'Item' : 'Items'}`, kind: 'primary' });
     saveBtn.addEventListener('click', () => {
       void (async () => {
         const keep = rows.filter((r) => !r.dropped && r.titleIn.value.trim());
@@ -1429,6 +1477,8 @@ interface RunningPractice {
   finishedAt: number | null;
 }
 let _practice: RunningPractice | null = null;
+/** Told when a problem is marked or unmarked, wherever the flag was clicked. */
+const _markListeners = new Set<() => void>();
 /** Open Quiz tabs, told when a different quiz begins so they show it. */
 const _practiceListeners = new Set<() => void>();
 
@@ -1484,7 +1534,7 @@ async function openPastQuiz(id: string): Promise<void> {
     index: row.finishedAt ? 0 : Math.max(0, Math.min(row.position, row.itemIds.length)),
   };
   for (const fn of _practiceListeners) { try { fn(); } catch { /* pane torn down */ } }
-  await openWorksheet('practice-run', 'Quiz');
+  await openWorksheet('practice-run', _practice?.name || 'Quiz');
 }
 /** The quiz an attempt rated now belongs to, when its problem is in the running quiz. */
 function quizSessionIdFor(itemId: number): string | undefined {
@@ -1499,7 +1549,7 @@ function startQuizWith(ids: number[], startAt = 0, name = ''): void {
   void (async () => {
     await beginPractice(ids, startAt, name);
     if (_api?.activity) _api.activity.note('started', `the quiz "${_practice?.name ?? name}" (${ids.length} ${ids.length === 1 ? 'problem' : 'problems'})`);
-    await openWorksheet('practice-run', 'Quiz');
+    await openWorksheet('practice-run', _practice?.name || 'Quiz');
   })();
 }
 
@@ -1513,15 +1563,13 @@ function createQuizzesPane(container: HTMLElement) {
   container.appendChild(root);
   let disposed = false;
   let renderSeq = 0;
-  root.appendChild(titled('Quizzes', 'Every quiz you made, open ones first. A quiz stays open until you complete it from its summary; its ratings stay on the problems either way.'));
-  const controls = el('div', 'ws-create__controls');
-  const newBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-  newBtn.textContent = 'New Quiz';
-  newBtn.title = 'The quiz builder: papers, sources, kinds, a rating band, a length, a name.';
-  newBtn.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
-  controls.appendChild(newBtn);
-  root.appendChild(controls);
-  const listHost = el('div', 'ws-summary__list');
+  createPageHeader(root, {
+    back: BACK_TO_HOME,
+    title: 'Quizzes',
+    subtitle: 'A quiz stays open until you complete it from its summary.',
+    primary: { label: 'New Quiz', icon: 'plus', title: 'The quiz builder: papers, sources, kinds, a rating band, a length, a name.', onClick: () => openBuilder() },
+  });
+  const listHost = el('div', 'ws-quizzes');
   root.appendChild(listHost);
 
   const render = async () => {
@@ -1530,10 +1578,26 @@ function createQuizzesPane(container: HTMLElement) {
     if (disposed || seq !== renderSeq) return;
     listHost.replaceChildren();
     if (sessions.length === 0) {
-      listHost.appendChild(el('div', 'ws-hint', 'No quizzes yet. New Quiz builds one; Home and the Dashboard start them from starred, due and drawn problems.'));
+      createEmptyState(listHost, {
+        icon: 'list-checks',
+        headline: 'No quizzes yet.',
+        hint: 'New Quiz builds one; Home and the Dashboard start them from starred, due and drawn problems.',
+        action: { label: 'New Quiz', onClick: () => openBuilder() },
+      });
       return;
     }
     const bankById = new Map(bank.map((i) => [i.id, i]));
+    const groups: { label: string; host: HTMLElement }[] = [];
+    const groupFor = (label: string) => {
+      let g = groups.find((x) => x.label === label);
+      if (!g) {
+        createSectionLabel(listHost, label);
+        g = { label, host: el('div', 'ws-list') };
+        listHost.appendChild(g.host);
+        groups.push(g);
+      }
+      return g.host;
+    };
     for (const q of sessions) {
       const grades = await getSessionGrades(q.itemIds, q.startedAt, q.id, q.finishedAt ?? null).catch(() => new Map<number, string>());
       if (disposed || seq !== renderSeq) return;
@@ -1544,36 +1608,47 @@ function createQuizzesPane(container: HTMLElement) {
         if (r === 'easy' || r === 'medium' || r === 'hard') counts[r]++; else unrated++;
       }
       const started = new Date(q.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-      // One line per quiz: name, state, counts; the date only when the name
-      // does not already say it (an auto-named quiz is its date).
-      const row = el('div', 'ws-quizrow');
-      row.appendChild(el('span', `ws-bank__dot ${q.finishedAt ? 'rest' : 'open'}`));
-      const info = el('div', 'ws-quizrow__info');
-      const nameEl = el('span', 'ws-quizrow__name', q.name || started);
-      info.appendChild(nameEl);
-      const status = q.finishedAt ? `Completed ${when(q.finishedAt)}` : q.position >= q.itemIds.length ? 'Open · At the Summary' : `Open · ${q.position + 1} of ${q.itemIds.length}`;
-      info.appendChild(el('span', `ws-chip ${q.finishedAt ? 'ws-chip--muted' : 'ws-chip--open'}`, status));
       const n = q.itemIds.length;
+      const row = el('div', 'ws-list__row ws-quizrow');
+      row.appendChild(el('span', `ws-bank__dot ${q.finishedAt ? 'rest' : 'open'}`));
+      const info = el('button', 'ws-list__text ws-quizrow__info') as HTMLButtonElement;
+      info.type = 'button';
+      const nameEl = el('span', 'ws-list__title', q.name || started);
+      info.appendChild(nameEl);
+      // The date only when the name does not already say it (an auto-named quiz is its date).
       const showStarted = !(q.name || '').includes(started);
-      info.appendChild(el('span', 'ws-quizrow__meta', [`${n} ${n === 1 ? 'problem' : 'problems'}`, `${counts.easy} Easy`, `${counts.medium} Medium`, `${counts.hard} Hard`, unrated ? `${unrated} Not Rated` : '', showStarted ? `Started ${started}` : ''].filter(Boolean).join(' · ')));
+      const tally = [`${n} ${n === 1 ? 'problem' : 'problems'}`, `${counts.easy} easy`, counts.medium ? `${counts.medium} medium` : '', `${counts.hard} hard`, unrated ? `${unrated} not rated` : ''].filter(Boolean);
+      const dated = q.finishedAt ? `completed ${when(q.finishedAt)}` : showStarted ? `started ${started}` : '';
+      info.appendChild(el('span', 'ws-list__meta', [...tally, dated].filter(Boolean).join(' · ')));
       info.title = q.finishedAt ? 'Open this completed quiz to review it.' : 'Resume this quiz where it stands.';
       info.addEventListener('click', () => void openPastQuiz(q.id));
       row.appendChild(info);
-      const actions = el('div', 'ws-quizrow__actions');
-      const act = (label: string, hint: string, onClick: () => void, danger = false) => {
-        const b = el('button', danger ? 'ws-btn ws-btn--small ws-btn--quiet ws-btn--danger' : 'ws-btn ws-btn--small ws-btn--quiet') as HTMLButtonElement;
-        b.textContent = label;
-        b.title = hint;
-        b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
-        actions.appendChild(b);
-      };
-      act(q.finishedAt ? 'Review' : 'Resume', q.finishedAt ? 'Open this completed quiz to review the work and the ratings.' : 'Continue this quiz where it stands.', () => void openPastQuiz(q.id));
-      act('Rename', 'Change the name this quiz is listed under.', () => {
+      const end = el('div', 'ws-list__end');
+      if (!q.finishedAt) {
+        const at = Math.min(q.position, n);
+        const prog = el('div', 'ws-quizrow__progress');
+        const bar = el('div', 'ws-bar');
+        const fill = el('span', 'ws-bar__fill');
+        fill.style.width = `${Math.round((at / Math.max(1, n)) * 100)}%`;
+        bar.appendChild(fill);
+        prog.append(bar, el('span', 'ws-list__meta', q.position >= n ? 'At the summary' : `${q.position + 1} of ${n}`));
+        end.appendChild(prog);
+      }
+      createButton(end, {
+        label: q.finishedAt ? 'Review' : 'Resume',
+        icon: q.finishedAt ? undefined : 'play',
+        kind: q.finishedAt ? 'secondary' : 'primary',
+        size: 'sm',
+        title: q.finishedAt ? 'Open this completed quiz to review the work and the ratings.' : 'Continue this quiz where it stands.',
+        onClick: () => void openPastQuiz(q.id),
+      });
+      const rename = () => {
         const input = el('input', 'ws-input') as HTMLInputElement;
         input.type = 'text';
         input.maxLength = 80;
         input.value = q.name;
         input.placeholder = 'Quiz name';
+        input.setAttribute('aria-label', 'Quiz name');
         let done = false;
         const commit = () => {
           if (done) return;
@@ -1592,27 +1667,31 @@ function createQuizzesPane(container: HTMLElement) {
         nameEl.replaceWith(input);
         input.focus();
         input.select();
-      });
-      act('Copy', 'A new open quiz over the same problems in the same order. Ratings start fresh for the copy.', () => startQuizWith(q.itemIds, 0, `${q.name || 'Quiz'} Copy`));
-      if (q.finishedAt) act('Reopen', 'Makes this completed quiz open again, at its last problem.', () => void reopenQuizSession(q.id).catch(() => {}));
-      act('Delete', 'Removes the quiz. The ratings it produced stay on the problems.', () => {
-        void (async () => {
-          const ok = await _api?.window?.showConfirmModal?.({
-            message: `Delete the quiz "${q.name || started}"?`,
-            detail: 'The quiz and its position are removed. Ratings and work on the problems are kept. This cannot be undone.',
-            confirmLabel: 'Delete Quiz',
-            danger: true,
-          }) ?? false;
-          if (!ok || disposed) return;
-          await deleteQuizSession(q.id).catch(() => {});
-          if (_practice?.id === q.id) {
-            _practice = null;
-            for (const fn of _practiceListeners) { try { fn(); } catch { /* pane torn down */ } }
-          }
-        })();
-      }, true);
-      row.appendChild(actions);
-      listHost.appendChild(row);
+      };
+      const remove = async () => {
+        const ok = await _api?.window?.showConfirmModal?.({
+          message: `Delete the quiz "${q.name || started}"?`,
+          detail: 'The quiz and its position are removed. Ratings and work on the problems are kept. This cannot be undone.',
+          confirmLabel: 'Delete Quiz',
+          danger: true,
+        }) ?? false;
+        if (!ok || disposed) return;
+        await deleteQuizSession(q.id).catch(() => {});
+        if (_practice?.id === q.id) {
+          _practice = null;
+          for (const fn of _practiceListeners) { try { fn(); } catch { /* pane torn down */ } }
+        }
+      };
+      const more = createIconButton(end, { icon: 'ellipsis', title: `More actions for ${q.name || started}`, size: 'sm' });
+      more.addEventListener('click', () => showMenu(more, [
+        { label: 'Rename…', icon: 'pencil', onSelect: rename },
+        { label: 'Copy as New Quiz', icon: 'copy', tooltip: 'A new open quiz over the same problems in the same order. Ratings start fresh for the copy.', onSelect: () => startQuizWith(q.itemIds, 0, `${q.name || 'Quiz'} Copy`) },
+        ...(q.finishedAt ? [{ label: 'Reopen', icon: 'rotate-ccw', tooltip: 'Makes this completed quiz open again, at its last problem.', onSelect: () => void reopenQuizSession(q.id).catch(() => {}) }] : []),
+        { separator: true },
+        { label: 'Delete Quiz…', icon: 'trash-2', danger: true, onSelect: () => void remove() },
+      ]));
+      row.appendChild(end);
+      groupFor(q.finishedAt ? 'Completed' : 'Open').appendChild(row);
     }
   };
   const sub = onWorksheetDataChanged(() => void render());
@@ -1621,85 +1700,106 @@ function createQuizzesPane(container: HTMLElement) {
 }
 
 function createPracticeConfigPane(container: HTMLElement) {
-  const root = el('div', 'ws-pane ws-create');
+  const root = el('div', 'ws-pane ws-create ws-builder');
   container.appendChild(root);
   let disposed = false;
+  const disposables: { dispose(): void }[] = [];
 
-  root.appendChild(titled('Start a Quiz', 'Choose papers, sources and kinds, a rating band, starred or not, a length, shuffle. Every rating you give lands on the problem and moves the dashboard.'));
+  createPageHeader(root, {
+    back: BACK_TO_HOME,
+    title: 'New Quiz',
+    subtitle: 'Choose what to draw from. Every rating you give lands on the problem.',
+  });
 
   // The workbook's Quiz Generator, as chips: which papers, which sources,
-  // which kinds, which rating band, how many. Generated items stay out
-  // unless their source chip is on.
-  const filters = { papers: new Set<string>(), sources: new Set<string>(), kinds: new Set<string>(), state: 'all', starred: 'any' as 'any' | 'starred' | 'unstarred', count: 10, shuffle: true };
+  // which kinds (several each), then one rating band and one starred choice.
+  // Generated items stay out unless their source chip is on.
+  const filters = { papers: new Set<string>(), sources: new Set<string>(), kinds: new Set<string>(), state: 'all', starred: 'any' as 'any' | 'starred' | 'unstarred' };
   let bank: WorksheetItemSummary[] = [];
-  // A set handed over from the Dashboard (Due Now, Keeps Going Wrong, Quick
-  // Wins): the filters then narrow within it, and the From chip says where it
-  // came from until cleared (Mufaro, 2026-09-21: the card is the way to its
-  // quiz, not a button under it).
+  // A set handed over from the Dashboard or the bank (Due Now, Quiz These…):
+  // the filters then narrow within it, and the From chip says where it came
+  // from until cleared.
   let presetIds: Set<number> | null = null;
   let presetName = '';
   const pool = (): WorksheetItemSummary[] => (presetIds ? bank.filter((it) => presetIds!.has(it.id)) : bank);
-  const fromLabel = el('div', 'ws-sidebar__label', 'From');
-  const fromHost = el('div', 'ws-create__controls');
 
-  const paperHost = el('div', 'ws-create__controls ws-practice__chips');
-  const sourceHost = el('div', 'ws-create__controls ws-practice__chips');
-  const kindHost = el('div', 'ws-create__controls ws-practice__chips');
-  const stateHost = el('div', 'ws-create__controls');
-  const starHost = el('div', 'ws-create__controls');
-  const optRow = el('div', 'ws-create__controls');
-  const matchLine = el('div', 'ws-hint');
-  const err = el('div', 'ws-error');
-  err.style.display = 'none';
+  const grid = el('div', 'ws-builder__grid');
+  const left = el('div', 'ws-builder__filters');
+  const side = el('div', 'ws-builder__side');
+  grid.append(left, side);
+  root.appendChild(grid);
+  const group = (label: string) => {
+    const g = el('div', 'ws-builder__group');
+    createSectionLabel(g, label);
+    const host = el('div', 'ws-chips');
+    host.setAttribute('role', 'group');
+    host.setAttribute('aria-label', label);
+    g.appendChild(host);
+    left.appendChild(g);
+    return { g, host };
+  };
+  const from = group('From');
+  const papers = group('Papers');
+  const sources = group('Sources');
+  const kinds = group('Kinds');
+  const ratingGroup = group('Rating');
+  const starGroup = group('Starred');
+  left.appendChild(el('div', 'ws-hint', 'No chip on in a group means every one in it.'));
 
-  root.append(fromLabel, fromHost);
-  root.appendChild(el('div', 'ws-sidebar__label', 'Papers'));
-  root.appendChild(paperHost);
-  root.appendChild(el('div', 'ws-sidebar__label', 'Sources'));
-  root.appendChild(sourceHost);
-  root.appendChild(el('div', 'ws-sidebar__label', 'Kinds'));
-  root.appendChild(kindHost);
-  root.appendChild(el('div', 'ws-sidebar__label', 'Rating'));
-  root.appendChild(stateHost);
-  root.appendChild(el('div', 'ws-sidebar__label', 'Starred'));
-  root.appendChild(starHost);
-  root.appendChild(el('div', 'ws-sidebar__label', 'Length'));
-  root.appendChild(optRow);
-  root.appendChild(matchLine);
-  root.appendChild(err);
-
-  const countIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
+  // The side card: what you will get, and how.
+  side.appendChild(el('div', 'ws-builder__label', 'Matching problems'));
+  const bigCount = el('div', 'ws-builder__count', '0');
+  const breakdown = el('div', 'ws-hint');
+  side.append(bigCount, breakdown);
+  const lenLabel = el('label', 'ws-builder__field');
+  lenLabel.appendChild(el('span', 'ws-builder__fieldlabel', 'Length'));
+  const stepper = el('div', 'ws-stepper');
+  const countIn = el('input', 'ws-stepper__value') as HTMLInputElement;
   countIn.type = 'number'; countIn.min = '1'; countIn.max = '100'; countIn.value = '10';
-  optRow.appendChild(countIn);
-  optRow.appendChild(el('span', 'ws-hint', 'Problems'));
-  const shuffleWrap = el('label', 'ws-hint') as HTMLLabelElement;
+  countIn.setAttribute('aria-label', 'Number of problems');
+  const ofLine = el('span', 'ws-hint');
+  let matching = 0;
+  const clampCount = () => {
+    const n = Math.max(1, Math.min(Math.max(1, matching), parseInt(countIn.value, 10) || 10));
+    countIn.value = String(n);
+  };
+  const minus = createIconButton(stepper, { icon: 'minus', title: 'Fewer', size: 'sm', onClick: () => { countIn.value = String((parseInt(countIn.value, 10) || 1) - 1); clampCount(); } });
+  stepper.appendChild(countIn);
+  const plus = createIconButton(stepper, { icon: 'plus', title: 'More', size: 'sm', onClick: () => { countIn.value = String((parseInt(countIn.value, 10) || 0) + 1); clampCount(); } });
+  void minus; void plus;
+  countIn.addEventListener('change', clampCount);
+  const lenRow = el('div', 'ws-builder__row');
+  lenRow.append(stepper, ofLine);
+  lenLabel.appendChild(lenRow);
+  side.appendChild(lenLabel);
+  const shuffleWrap = el('label', 'ws-builder__check') as HTMLLabelElement;
   const shuffleIn = el('input') as HTMLInputElement;
   shuffleIn.type = 'checkbox'; shuffleIn.checked = true;
-  shuffleWrap.append(shuffleIn, document.createTextNode(' Shuffle'));
-  optRow.appendChild(shuffleWrap);
-
-  // The quiz's name: what Home lists it under. Empty takes the filters.
-  root.appendChild(el('div', 'ws-sidebar__label', 'Name'));
-  const nameRow = el('div', 'ws-create__controls');
+  shuffleWrap.append(shuffleIn, document.createTextNode('Shuffle'));
+  side.appendChild(shuffleWrap);
+  // The quiz's name: what Home lists it under, filled from the choices until you type one.
+  const nameLabel = el('label', 'ws-builder__field');
+  nameLabel.appendChild(el('span', 'ws-builder__fieldlabel', 'Name'));
   const nameIn = el('input', 'ws-input') as HTMLInputElement;
   nameIn.type = 'text';
   nameIn.maxLength = 80;
   nameIn.title = 'The quiz is saved under this name and listed on Home until you complete it.';
-  nameRow.appendChild(nameIn);
-  root.appendChild(nameRow);
+  let nameEdited = false;
+  nameIn.addEventListener('input', () => { nameEdited = nameIn.value.trim().length > 0; });
+  nameLabel.appendChild(nameIn);
+  side.appendChild(nameLabel);
+  const startBtn = createButton(side, { label: 'Start Quiz', kind: 'primary' });
+  startBtn.classList.add('ws-builder__start');
+
   const filtersName = (): string => {
-    const papers = [...filters.papers].map(paperLabel);
-    const parts = [papers.length ? papers.join(', ') : 'All Papers'];
-    if (filters.state !== 'all') parts.push(filters.state.charAt(0).toUpperCase() + filters.state.slice(1));
-    if (filters.starred === 'starred') parts.push('Starred');
-    if (filters.starred === 'unstarred') parts.push('Not Starred');
+    const ps = [...filters.papers].map(paperLabel);
+    const parts = [presetIds ? presetName : ps.length ? ps.join(', ') : 'All papers'];
+    const STATE_WORDS: Record<string, string> = { incomplete: 'incomplete', unseen: 'never tried', easy: 'easy', medium: 'medium', hard: 'hard', struggling: 'medium or hard' };
+    if (STATE_WORDS[filters.state]) parts.push(STATE_WORDS[filters.state]);
+    if (filters.starred === 'starred') parts.push('starred');
+    if (filters.starred === 'unstarred') parts.push('not starred');
     return parts.join(' · ');
   };
-
-  const startBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-  startBtn.textContent = 'Start Quiz';
-  root.appendChild(startBtn);
-
   const currentFilters = () => ({
     tags: [] as string[],
     papers: [...filters.papers],
@@ -1711,85 +1811,76 @@ function createPracticeConfigPane(container: HTMLElement) {
     shuffle: shuffleIn.checked,
   });
 
-  const syncMatchLine = () => {
-    const matching = buildPracticeSet(pool(), { ...currentFilters(), count: 10_000, shuffle: false });
-    matchLine.textContent = `${matching.length} ${matching.length === 1 ? 'problem matches' : 'problems match'} the filters.`;
+  const syncSide = () => {
+    const ids = buildPracticeSet(pool(), { ...currentFilters(), count: 10_000, shuffle: false });
+    matching = ids.length;
+    bigCount.textContent = String(matching);
+    const byPaper = new Map<string, number>();
+    const byId = new Map(bank.map((it) => [it.id, it]));
+    for (const id of ids) { const p = byId.get(id)?.paper ?? ''; byPaper.set(p, (byPaper.get(p) ?? 0) + 1); }
+    breakdown.textContent = matching === 0 ? 'No problems match.' : [...byPaper.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([p, n]) => `${p ? paperLabel(p) : 'Generated'} ${n}`).join(' · ') + (byPaper.size > 4 ? ' · …' : '');
+    countIn.max = String(Math.max(1, matching));
+    if ((parseInt(countIn.value, 10) || 0) > matching && matching > 0) countIn.value = String(matching);
+    ofLine.textContent = `of ${matching}`;
+    startBtn.disabled = matching === 0;
+    if (!nameEdited) nameIn.value = filtersName();
   };
 
-  const chip = (label: string, active: boolean, onClick: () => void) => {
-    const b = el('button', 'ws-chip ws-practicechip') as HTMLButtonElement;
-    b.type = 'button';
-    b.textContent = label;
-    b.classList.toggle('ws-practicechip--active', active);
-    b.addEventListener('click', onClick);
-    return b;
-  };
-
-  const groupChips = (host: HTMLElement, values: [string, string, number][], selected: Set<string>, allLabel: string) => {
+  const multi = (host: HTMLElement, values: [string, string, number][], selected: Set<string>) => {
     host.replaceChildren();
-    host.appendChild(chip(allLabel, selected.size === 0, () => { selected.clear(); renderFilters(); }));
     for (const [value, label, n] of values) {
-      host.appendChild(chip(`${label} ${n}`, selected.has(value), () => {
-        if (selected.has(value)) selected.delete(value); else selected.add(value);
-        renderFilters();
-      }));
+      createFilterChip(host, { label, count: n, pressed: selected.has(value), onToggle: (on) => { if (on) selected.add(value); else selected.delete(value); syncSide(); } });
+    }
+    if (selected.size) {
+      createButton(host, { label: 'Clear', kind: 'ghost', size: 'sm', onClick: () => { selected.clear(); renderFilters(); } });
     }
   };
   const renderFilters = () => {
-    fromHost.replaceChildren();
-    fromLabel.style.display = presetIds ? '' : 'none';
-    fromHost.style.display = presetIds ? '' : 'none';
+    from.g.style.display = presetIds ? '' : 'none';
+    from.host.replaceChildren();
     if (presetIds) {
-      fromHost.appendChild(chip(`${presetName} ${pool().length}`, true, () => {}));
-      const clear = el('button', 'ws-btn ws-btn--small ws-btn--quiet', 'Clear') as HTMLButtonElement;
-      clear.type = 'button';
-      clear.title = 'Drop the set from the Dashboard and choose from the whole bank.';
-      clear.addEventListener('click', () => { presetIds = null; presetName = ''; renderFilters(); });
-      fromHost.appendChild(clear);
+      createFilterChip(from.host, { label: presetName, count: pool().length, pressed: true, title: 'The set handed over. Clear chooses from the whole bank.', onToggle: () => { presetIds = null; presetName = ''; renderFilters(); } });
     }
     const count = (pick: (it: WorksheetItemSummary) => string) => {
       const m = new Map<string, number>();
       for (const it of bank) { const k = pick(it); if (k) m.set(k, (m.get(k) ?? 0) + 1); }
       return m;
     };
-    const papers = count((it) => it.paper);
-    groupChips(paperHost, [...papers.entries()].sort((a, b) => paperLabel(a[0]).localeCompare(paperLabel(b[0]))).map(([k, n]) => [k, paperLabel(k), n]), filters.papers, 'All Papers');
-    const sources = count((it) => it.source || 'generated');
-    groupChips(sourceHost, [...sources.entries()].map(([k, n]) => [k, SOURCE_LABELS[k] ?? k, n] as [string, string, number]), filters.sources, 'All Sources');
-    const kinds = count((it) => it.kind);
-    groupChips(kindHost, [...kinds.entries()].map(([k, n]) => [k, KIND_LABELS[k] ?? k, n] as [string, string, number]), filters.kinds, 'All Kinds');
-    stateHost.replaceChildren();
-    for (const [value, label] of [['all', 'All Problems'], ['incomplete', 'Incomplete'], ['unseen', 'Never Tried'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['struggling', 'Medium or Hard']] as const) {
-      stateHost.appendChild(chip(label, filters.state === value, () => {
-        filters.state = value;
-        renderFilters();
-      }));
-    }
-    // Starred means all of them unless the length is lowered by hand.
-    const nStarred = bank.filter((it) => it.starred).length;
-    starHost.replaceChildren();
-    starHost.appendChild(chip('Any Problem', filters.starred === 'any', () => { filters.starred = 'any'; renderFilters(); }));
-    const starredChip = chip(`Starred ${nStarred}`, filters.starred === 'starred', () => {
-      filters.starred = 'starred';
-      if (nStarred > 0) countIn.value = String(Math.min(100, nStarred));
-      renderFilters();
+    multi(papers.host, [...count((it) => it.paper).entries()].sort((a, b) => paperLabel(a[0]).localeCompare(paperLabel(b[0]))).map(([k, n]) => [k, paperLabel(k), n]), filters.papers);
+    multi(sources.host, [...count((it) => it.source || 'generated').entries()].map(([k, n]) => [k, SOURCE_LABELS[k] ?? (k === 'generated' ? 'Generated' : k), n] as [string, string, number]), filters.sources);
+    multi(kinds.host, [...count((it) => it.kind).entries()].map(([k, n]) => [k, KIND_LABELS[k] ?? k, n] as [string, string, number]), filters.kinds);
+    syncSide();
+  };
+  const renderSwitches = () => {
+    // One rating band and one starred choice: switches, made once.
+    const rating = createSegmented(ratingGroup.host, {
+      ariaLabel: 'Rating',
+      items: [['all', 'Any'], ['unseen', 'Never tried'], ['incomplete', 'Incomplete'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['struggling', 'Medium or hard']].map(([value, label]) => ({ value, label })),
+      value: filters.state,
+      onChange: (v) => { filters.state = v; syncSide(); },
     });
-    starredChip.title = STAR_HINT;
-    starHost.appendChild(starredChip);
-    starHost.appendChild(chip(`Not Starred ${bank.length - nStarred}`, filters.starred === 'unstarred', () => { filters.starred = 'unstarred'; renderFilters(); }));
-    syncMatchLine();
+    const nStarred = bank.filter((it) => it.starred).length;
+    const star = createSegmented(starGroup.host, {
+      ariaLabel: 'Starred',
+      items: [{ value: 'any', label: 'Any' }, { value: 'starred', label: `Starred (${nStarred})` }, { value: 'unstarred', label: 'Not starred' }],
+      value: filters.starred,
+      onChange: (v) => {
+        filters.starred = v as 'any' | 'starred' | 'unstarred';
+        // Starred means all of them unless the length is lowered by hand.
+        if (v === 'starred' && nStarred > 0) countIn.value = String(Math.min(100, nStarred));
+        syncSide();
+      },
+    });
+    star.element.title = STAR_HINT;
+    disposables.push(rating, star);
   };
 
-  countIn.addEventListener('input', syncMatchLine);
-  shuffleIn.addEventListener('change', syncMatchLine);
+  countIn.addEventListener('input', () => { ofLine.textContent = `of ${matching}`; });
 
   startBtn.addEventListener('click', () => {
+    clampCount();
     const ids = buildPracticeSet(pool(), currentFilters());
-    if (ids.length === 0) {
-      err.textContent = 'No items match those filters.';
-      err.style.display = '';
-      return;
-    }
+    if (ids.length === 0) return;
     startQuizWith(ids, 0, nameIn.value.trim() || filtersName());
   });
 
@@ -1797,33 +1888,40 @@ function createPracticeConfigPane(container: HTMLElement) {
     bank = await listItems().catch(() => []);
     if (disposed) return;
     if (bank.length === 0) {
-      root.replaceChildren(el('div', 'ws-hint',
-        'The bank is empty. Import your practice workbook first.'));
+      grid.remove();
+      createEmptyState(root, {
+        icon: 'list-checks',
+        headline: 'The bank is empty.',
+        hint: 'Import your practice workbook first; a quiz draws from it.',
+        action: { label: 'Import Workbook…', onClick: () => void openWorksheet('excel-import', 'Import Workbook') },
+      });
       return;
     }
     // Generated items are left out until asked for, so a quiz is the workbook's problems by default.
     const realSources = new Set(bank.map((it) => it.source).filter(Boolean));
-    if (realSources.size > 0 && bank.some((it) => !it.source)) for (const s of realSources) filters.sources.add(s);
+    if (realSources.size > 0 && bank.some((it) => !it.source)) for (const src of realSources) filters.sources.add(src);
     if (_quizPreset) {
       for (const p of _quizPreset.papers ?? []) filters.papers.add(p);
       if (_quizPreset.state) filters.state = _quizPreset.state;
       if (_quizPreset.starred) filters.starred = _quizPreset.starred;
       if (_quizPreset.ids && _quizPreset.ids.length) {
         presetIds = new Set(_quizPreset.ids);
-        presetName = _quizPreset.name || 'Selection';
-        nameIn.value = presetName;
+        presetName = _quizPreset.name || 'Problem Bank selection';
         countIn.value = String(Math.min(100, _quizPreset.ids.length));
       }
       _quizPreset = null;
     }
+    renderSwitches();
     renderFilters();
   })();
 
-  return { dispose: () => { disposed = true; root.remove(); } };
+  return { dispose: () => { disposed = true; for (const d of disposables) d.dispose(); root.remove(); } };
 }
 
-function createPracticeRunPane(container: HTMLElement) {
+function createPracticeRunPane(container: HTMLElement, input?: { setName?(name: string): void }) {
   const root = el('div', 'ws-pane');
+  /** The tab carries the running quiz's name. */
+  const nameTab = (name: string) => { try { input?.setName?.(name || 'Quiz'); } catch { /* not a tool input */ } };
   container.appendChild(root);
   let disposed = false;
   let player: { dispose(): void } | null = null;
@@ -1832,6 +1930,7 @@ function createPracticeRunPane(container: HTMLElement) {
   let quizTicker: { dispose(): void } | null = null;
   /** Bumped by every change of what the player shows; a sheet still being staged for an older step is thrown away. */
   let serveSeq = 0;
+  let markCleanup: (() => void) | null = null;
   const bar = el('div', 'ws-sessionbar');
   const playerHost = el('div', 'ws-session__player');
   root.append(bar, playerHost);
@@ -1843,20 +1942,19 @@ function createPracticeRunPane(container: HTMLElement) {
     bar.style.display = 'none';
     bar.replaceChildren();
     playerHost.replaceChildren();
-    playerHost.appendChild(el('div', 'ws-hint', 'No quiz is running.'));
-    const row = el('div', 'ws-create__controls');
-    const dash = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-    dash.textContent = 'Dashboard';
-    dash.addEventListener('click', () => void openWorksheet('dashboard', 'Dashboard'));
-    const cfg = el('button', 'ws-btn') as HTMLButtonElement;
-    cfg.textContent = 'Start A Quiz';
-    cfg.addEventListener('click', () => void openWorksheet('practice', 'Quiz'));
-    row.append(dash, cfg);
-    playerHost.appendChild(row);
+    nameTab('Quiz');
+    createEmptyState(playerHost, {
+      icon: 'list-checks',
+      headline: 'No quiz is running.',
+      hint: 'Build one, or start one from the Study Dashboard or Quizzes.',
+      action: { label: 'New Quiz', onClick: () => openBuilder() },
+    });
   };
 
   const run = (session: RunningPractice) => {
     bar.style.display = '';
+    nameTab(session.name);
+    markCleanup?.();
     let view: 'sheet' | 'overview' = 'sheet';
     // Reviewing the overview or the summary is study too: it counts under
     // item 0 of this quiz, only while no problem sheet is on screen.
@@ -1923,6 +2021,7 @@ function createPracticeRunPane(container: HTMLElement) {
       const v = name.trim();
       if (!v || v === session.name) return;
       session.name = v;
+      nameTab(v);
       await renameQuizSession(session.id, v).catch(() => {});
     };
 
@@ -1933,17 +2032,17 @@ function createPracticeRunPane(container: HTMLElement) {
       bar.style.display = 'none';
       bar.replaceChildren();
       playerHost.replaceChildren();
-      // The summary finishes nothing. Complete Quiz below is the one way a
-      // quiz ends; until then it stays open and resumable, however many
-      // problems are rated.
+      // The summary finishes nothing. Complete Quiz is the one way a quiz
+      // ends; until then it stays open and resumable, however many problems
+      // are rated.
       if (disposed) return;
-      const wrap = el('div', 'ws-home');
-      const titleRow = el('div', 'ws-summary__head');
-      titleRow.appendChild(el('div', 'ws-home__title', `Quiz Summary · ${session.name || 'Quiz'}`));
-      titleRow.appendChild(el('span', 'ws-chip ws-chip--muted', session.finishedAt ? `Completed ${when(session.finishedAt)}` : 'Open'));
-      wrap.appendChild(titleRow);
-      const grades = await getSessionGrades(session.ids, session.startedAt, session.id, session.finishedAt ?? null);
-      const bank = await listItems().catch(() => []);
+      const wrap = el('div', 'ws-home ws-summary');
+      const [grades, bank, states] = await Promise.all([
+        getSessionGrades(session.ids, session.startedAt, session.id, session.finishedAt ?? null),
+        listItems().catch(() => []),
+        getSessionItemStates(session.ids, session.startedAt, session.id).catch(() => new Map<number, { grade: string; attempted: boolean; worked: boolean; seconds: number }>()),
+      ]);
+      if (disposed) return;
       const byId = new Map(bank.map((i) => [i.id, i]));
       // What this quiz rated, then what the problem already carried.
       const resolved = new Map<number, { grade: string; own: boolean }>();
@@ -1954,7 +2053,8 @@ function createPracticeRunPane(container: HTMLElement) {
         if (normalizeRating(prev)) resolved.set(id, { grade: prev, own: false });
       }
       const counts = { nailed: 0, partial: 0, missed: 0, ungraded: 0 };
-      const list = el('div', 'ws-summary__list');
+      let seconds = 0;
+      const list = el('div', 'ws-list');
       session.ids.forEach((id, i) => {
         const item = byId.get(id);
         const hit = resolved.get(id);
@@ -1964,22 +2064,32 @@ function createPracticeRunPane(container: HTMLElement) {
         else if (r === 'medium') counts.partial++;
         else if (r === 'hard') counts.missed++;
         else counts.ungraded++;
-        const row = el('div', 'ws-summary__row');
-        const info = el('div', 'ws-summary__info');
-        info.appendChild(el('span', 'ws-summary__num', String(i + 1)));
-        const title = el('div', 'ws-summary__title', item?.title ?? `Item ${id}`);
+        const row = el('button', 'ws-list__row') as HTMLButtonElement;
+        row.type = 'button';
+        row.appendChild(el('span', 'ws-list__idx', String(i + 1)));
+        row.appendChild(el('span', 'ws-list__title ws-list__grow', item?.title ?? `Item ${id}`));
         // Own rating, then an earlier one of his, then work without one, then
         // what the workbook carried: the summary never dresses a workbook
         // rating up as his.
-        if (grade && hit!.own) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, gradeLabelFor(grade)));
-        else if (grade && !item?.ratingImported) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} · Earlier`));
-        else if (item?.worked) title.appendChild(el('span', 'ws-chip ws-chip--open', 'Worked, Not Rated'));
-        else if (grade) title.appendChild(el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} · Workbook`));
-        else title.appendChild(el('span', 'ws-chip', session.skipped.has(id) ? 'Skipped' : 'Not Rated'));
-        if (session.marked.has(id)) title.appendChild(el('span', 'ws-chip ws-chip--marked', 'Marked'));
-        info.appendChild(title);
-        info.addEventListener('click', () => { _practice = session; view = 'sheet'; goTo(i); });
-        row.appendChild(info);
+        if (session.marked.has(id)) {
+          const flag = createIconElement('flag', 14);
+          flag.classList.add('ws-list__flag');
+          flag.setAttribute('role', 'img');
+          flag.setAttribute('aria-label', 'Marked for later');
+          row.appendChild(flag);
+        }
+        let pill: HTMLElement;
+        if (grade && hit!.own) pill = el('span', `ws-chip ws-chip--${stateClass(grade)}`, gradeLabelFor(grade));
+        else if (grade && !item?.ratingImported) pill = el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} earlier`);
+        else if (item?.worked) pill = el('span', 'ws-chip ws-chip--open', 'Worked, not rated');
+        else if (grade) pill = el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} in workbook`);
+        else pill = el('span', 'ws-chip ws-chip--muted', session.skipped.has(id) ? 'Skipped' : 'Not rated');
+        row.appendChild(pill);
+        const secs = states.get(id)?.seconds ?? 0;
+        seconds += secs;
+        row.appendChild(el('span', 'ws-list__time', secs ? fmtStudy(secs) : '–'));
+        row.title = `Open ${item?.title ?? 'this problem'}`;
+        row.addEventListener('click', () => { _practice = session; view = 'sheet'; goTo(i); });
         list.appendChild(row);
       });
       const tagRoll = new Map<string, { n: number; nailed: number }>();
@@ -1993,37 +2103,53 @@ function createPracticeRunPane(container: HTMLElement) {
           tagRoll.set(t, entry);
         }
       }
-      const line = [
-        `${counts.nailed} Easy`, `${counts.partial} Medium`, `${counts.missed} Hard`,
-        counts.ungraded ? `${counts.ungraded} Not Rated` : '',
-        session.marked.size ? `${session.marked.size} Marked For Later` : '',
-      ].filter(Boolean).join(' · ');
-      const countsLine = el('div', 'ws-hint', line);
-      // The per-tag rollup rides as the tooltip: twenty hashtags in a row was noise on screen.
-      if (tagRoll.size > 0) countsLine.title = `By tag (easy / seen): ${[...tagRoll.entries()].map(([t, e]) => `#${t} ${e.nailed}/${e.n}`).join(' · ')}`;
-      wrap.appendChild(countsLine);
-      // Actions above the list, in view without scrolling past every problem;
-      // navigation the tabs already give (Home, Dashboard, New Quiz) is not repeated.
-      const actions = el('div', 'ws-create__controls ws-summary__actions');
-      wrap.appendChild(actions);
-      wrap.appendChild(list);
-      const action = (label: string, hint: string, onClick: () => void, primary = false, quiet = false) => {
-        const b = el('button', primary ? 'ws-btn ws-btn--primary' : quiet ? 'ws-btn ws-btn--quiet' : 'ws-btn') as HTMLButtonElement;
-        b.textContent = label;
-        b.title = hint;
-        b.addEventListener('click', onClick);
-        actions.appendChild(b);
-      };
-      if (!session.finishedAt) {
-        action('Complete Quiz', 'Marks this quiz completed. Ratings stay on the problems; Reopen Quiz undoes it.', () => void completeQuiz(), true);
-        action('Back To Quiz', 'Continues where the quiz was. It stays open.', () => { _practice = session; goTo(session.ids.length - 1); });
-        if (session.marked.size > 0) action('Next Marked', 'Goes to the first problem you marked for later.', () => { _practice = session; goToMarked(-1); });
-      } else {
-        action('Reopen Quiz', 'Makes this completed quiz open again, at its last problem.', () => void reopenQuiz(), true);
+
+      const n = session.ids.length;
+      createPageHeader(wrap, {
+        back: { label: 'Quizzes', onClick: () => void openWorksheet('quizzes', 'Quizzes') },
+        title: session.name || 'Quiz',
+        subtitle: [`Quiz summary · ${n} ${n === 1 ? 'problem' : 'problems'}`, seconds ? fmtStudy(seconds) : '', session.finishedAt ? `completed ${when(session.finishedAt)}` : 'open'].filter(Boolean).join(' · '),
+        secondary: session.finishedAt ? [] : [{ label: 'Back to Quiz', title: 'Continues where the quiz was. It stays open.', onClick: () => { _practice = session; goTo(session.ids.length - 1); } }],
+        primary: session.finishedAt
+          ? { label: 'Reopen Quiz', title: 'Makes this completed quiz open again, at its last problem.', onClick: () => void reopenQuiz() }
+          : { label: 'Complete Quiz…', icon: 'check', title: 'Marks this quiz completed. Ratings stay on the problems; Reopen Quiz undoes it.', onClick: () => void completeQuiz() },
+        more: [
+          ...(!session.finishedAt && session.marked.size > 0 ? [{ label: `Next Marked (${session.marked.size})`, icon: 'skip-forward', onSelect: () => { _practice = session; goToMarked(-1); } }] : []),
+          { label: 'Quiz Overview', icon: 'list', onSelect: () => { _practice = session; session.index = Math.min(session.index, session.ids.length - 1); view = 'overview'; serve(); } },
+          { label: 'Copy as New Quiz', icon: 'copy', tooltip: 'A new open quiz over the same problems in the same order. Ratings start fresh for the copy.', onSelect: copyQuiz },
+        ],
+      });
+
+      // The quiz at a glance: one bar, then the counts it is made of.
+      const glance = el('div', 'ws-summary__glance');
+      const bar2 = el('div', 'ws-ratingbar');
+      bar2.setAttribute('role', 'img');
+      bar2.setAttribute('aria-label', `${counts.nailed} easy, ${counts.partial} medium, ${counts.missed} hard, ${counts.ungraded} not rated`);
+      for (const [cls, v] of [['easy', counts.nailed], ['medium', counts.partial], ['hard', counts.missed]] as const) {
+        if (!v) continue;
+        const seg = el('span', `ws-ratingbar__seg ws-ratingbar__seg--${cls}`);
+        seg.style.width = `${(v / Math.max(1, n)) * 100}%`;
+        bar2.appendChild(seg);
       }
-      action('Quiz Overview', 'Every problem in this quiz, with your ratings and notes; click one to reopen it.',
-        () => { _practice = session; session.index = Math.min(session.index, session.ids.length - 1); view = 'overview'; serve(); }, false, true);
-      action('Copy', 'A new open quiz over the same problems in the same order. Ratings start fresh for the copy.', copyQuiz, false, true);
+      glance.appendChild(bar2);
+      const legend = (cls: string, text: string) => {
+        const k = el('span', 'ws-summary__key');
+        k.append(el('span', `ws-bank__dot ${cls}`), document.createTextNode(text));
+        glance.appendChild(k);
+      };
+      legend('easy', `${counts.nailed} easy`);
+      legend('medium', `${counts.partial} medium`);
+      legend('hard', `${counts.missed} hard`);
+      legend('rest', `${counts.ungraded} not rated`);
+      if (session.marked.size) {
+        const k = el('span', 'ws-summary__key ws-summary__key--marked');
+        k.append(createIconElement('flag', 12), document.createTextNode(`${session.marked.size} marked`));
+        glance.appendChild(k);
+      }
+      // The per-tag rollup rides as the tooltip: twenty hashtags in a row was noise on screen.
+      if (tagRoll.size > 0) glance.title = `By tag (easy / seen): ${[...tagRoll.entries()].map(([t, e]) => `#${t} ${e.nailed}/${e.n}`).join(' · ')}`;
+      wrap.appendChild(glance);
+      wrap.appendChild(list);
       playerHost.appendChild(wrap);
     };
 
@@ -2047,7 +2173,7 @@ function createPracticeRunPane(container: HTMLElement) {
       if ((currentState.grade || currentState.attempted) && session.skipped.delete(id)) void persistPractice();
     };
     changeSub?.dispose();
-    changeSub = onWorksheetDataChanged(() => void refreshGradeNote());
+    changeSub = onWorksheetDataChanged(() => { void refreshGradeNote(); void paintDots(); });
 
     // Every move is stored, so a restart lands on the same item.
     const goTo = (index: number) => {
@@ -2084,6 +2210,7 @@ function createPracticeRunPane(container: HTMLElement) {
         countsLine.textContent = [`${counts.rated} rated`, `${counts.attempted} worked`, `${counts.skipped} skipped`, `${counts.untouched} not started`, counts.marked ? `${counts.marked} marked for later` : ''].filter(Boolean).join(' · ');
       };
       const rows: HTMLElement[] = [];
+      let paintCountsHook = paintCounts;
       session.ids.forEach((id, i) => {
         const item = byId.get(id);
         const st = states.get(id);
@@ -2097,8 +2224,8 @@ function createPracticeRunPane(container: HTMLElement) {
         // Work outranks an old rating here: working a problem is what counts
         // it for the day, and a rating that came in with the workbook is said
         // in those words so it is never mistaken for one given here.
-        const earlierText = item?.ratingImported ? `${gradeLabel(item.attemptState)} · Workbook` : `${gradeLabel(item?.attemptState ?? '')} · Earlier`;
-        const status = sessionGrade ? gradeLabel(st!.grade) : st?.worked ? 'Worked, Not Rated' : earlierGrade ? earlierText : st?.attempted ? 'Opened' : skipped ? 'Skipped' : 'Not Started';
+        const earlierText = item?.ratingImported ? `${gradeLabel(item.attemptState)} in workbook` : `${gradeLabel(item?.attemptState ?? '')} earlier`;
+        const status = sessionGrade ? gradeLabel(st!.grade) : st?.worked ? 'Worked, not rated' : earlierGrade ? earlierText : st?.attempted ? 'Opened' : skipped ? 'Skipped' : 'Not started';
         if (sessionGrade) counts.rated++; else if (st?.worked) counts.attempted++; else if (skipped) counts.skipped++; else counts.untouched++;
         const row = el('div', `ws-quiz__row${i === session.index ? ' ws-quiz__row--current' : ''}`);
         row.setAttribute('role', 'button');
@@ -2138,66 +2265,103 @@ function createPracticeRunPane(container: HTMLElement) {
           editor.style.display = open ? '' : 'none';
           if (open) ta.focus();
         });
-        row.appendChild(markBtn(session, id, (on) => { counts.marked += on ? 1 : -1; paintCounts(); }));
+        row.appendChild(markBtn(session, id, (on) => { counts.marked += on ? 1 : -1; paintCountsHook(); }));
         row.appendChild(starBtn(id, item?.starred ?? false));
         row.appendChild(editor);
         row.addEventListener('click', () => goTo(i));
         row.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === row) goTo(i); });
         rows.push(row);
       });
-      const head = el('div', 'ws-quiz__overviewhead');
-      // The quiz's name, renamed in place; its lifecycle actions beside it.
-      const titleRow = el('div', 'ws-quiz__title');
-      const nameEl = el('div', 'ws-home__title', session.name || 'Quiz Overview');
-      titleRow.appendChild(nameEl);
-      const small = (label: string, hint: string, onClick: () => void) => {
-        const b = el('button', 'ws-btn ws-btn--small ws-btn--quiet') as HTMLButtonElement;
-        b.textContent = label;
-        b.title = hint;
-        b.addEventListener('click', onClick);
-        titleRow.appendChild(b);
-        return b;
-      };
-      small('Rename', 'Give this quiz a name to find it again on Home.', () => {
-        const input = el('input', 'ws-input') as HTMLInputElement;
-        input.type = 'text';
-        input.maxLength = 80;
-        input.value = session.name;
-        input.placeholder = 'Quiz name';
-        const commit = () => { void renameQuiz(input.value).then(() => { nameEl.textContent = session.name || 'Quiz Overview'; input.replaceWith(nameEl); }); };
-        input.addEventListener('keydown', (e) => {
-          e.stopPropagation();
-          if (e.key === 'Enter') input.blur();
-          if (e.key === 'Escape') { input.value = session.name; input.blur(); }
-        });
-        input.addEventListener('blur', commit);
-        nameEl.replaceWith(input);
-        input.focus();
-        input.select();
-      });
-      small('Copy', 'A new open quiz over the same problems in the same order.', copyQuiz);
-      if (session.finishedAt) small('Reopen Quiz', 'Makes this completed quiz open again.', () => void reopenQuiz());
-      else small('Quiz Summary', 'The ratings so far, and Complete Quiz when you are done.', () => goTo(session.ids.length));
-      head.appendChild(titleRow);
-      head.appendChild(el('span', 'ws-chip ws-chip--muted', session.finishedAt ? `Completed ${when(session.finishedAt)}` : 'Open'));
+      // The kit header: the quiz's name (renamed from ⋯), the counts, the way
+      // back to the problem and on to the summary.
       paintCounts();
-      head.appendChild(countsLine);
-      wrap.appendChild(head);
-      for (const r of rows) wrap.appendChild(r);
+      const back = Math.min(session.index, session.ids.length - 1);
+      const header = createPageHeader(wrap, {
+        title: session.name || 'Quiz',
+        subtitle: countsLine.textContent ?? '',
+        secondary: [{ label: `Back to Problem ${back + 1}`, title: 'The problem you were on.', onClick: () => { view = 'sheet'; goTo(back); } }],
+        primary: session.finishedAt
+          ? { label: 'Reopen Quiz', title: 'Makes this completed quiz open again.', onClick: () => void reopenQuiz() }
+          : { label: 'Quiz Summary', title: 'The ratings so far, and Complete Quiz when you are done.', onClick: () => goTo(session.ids.length) },
+        more: [
+          { label: 'Rename…', icon: 'pencil', onSelect: () => {
+            const nameEl = header.querySelector('.px-page-header__title') as HTMLElement | null;
+            if (!nameEl) return;
+            const input = el('input', 'ws-input ws-input--title') as HTMLInputElement;
+            input.type = 'text';
+            input.maxLength = 80;
+            input.value = session.name;
+            input.placeholder = 'Quiz name';
+            input.setAttribute('aria-label', 'Quiz name');
+            const commit = () => { void renameQuiz(input.value).then(() => { nameEl.textContent = session.name || 'Quiz'; input.replaceWith(nameEl); }); };
+            input.addEventListener('keydown', (e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') input.blur();
+              if (e.key === 'Escape') { input.value = session.name; input.blur(); }
+            });
+            input.addEventListener('blur', commit);
+            nameEl.replaceWith(input);
+            input.focus();
+            input.select();
+          } },
+          { label: 'Copy as New Quiz', icon: 'copy', tooltip: 'A new open quiz over the same problems in the same order.', onSelect: copyQuiz },
+        ],
+      });
+      // The counts follow a mark set from a row.
+      const subEl = header.querySelector('.px-page-header__subtitle');
+      const repaint = paintCounts;
+      paintCountsHook = () => { repaint(); if (subEl) subEl.textContent = countsLine.textContent; };
+      const list = el('div', 'ws-list ws-quiz__list');
+      for (const r of rows) list.appendChild(r);
+      wrap.appendChild(list);
+    };
+
+    // One dot per problem: rated in its colour, worked in the accent, the
+    // rest quiet; the current one ringed. A click goes there.
+    const dots = el('div', 'ws-sessionbar__dots');
+    dots.setAttribute('role', 'group');
+    dots.setAttribute('aria-label', 'Problems in this quiz');
+    let dotsSeq = 0;
+    const paintDots = async () => {
+      const seq = ++dotsSeq;
+      const [states, bank] = await Promise.all([
+        getSessionItemStates(session.ids, session.startedAt, session.id).catch(() => new Map<number, { grade: string; attempted: boolean; worked: boolean; seconds: number }>()),
+        listItems().catch(() => []),
+      ]);
+      if (disposed || seq !== dotsSeq) return;
+      const byId = new Map(bank.map((i) => [i.id, i]));
+      dots.replaceChildren();
+      session.ids.forEach((id, i) => {
+        const st = states.get(id);
+        const item = byId.get(id);
+        const own = st?.grade ? normalizeRating(st.grade) : '';
+        const earlier = !own && item && !item.ratingImported ? normalizeRating(item.attemptState) : '';
+        const cls = own || earlier || (st?.worked ? 'open' : 'rest');
+        const words = own ? gradeLabel(st!.grade) : earlier ? `${gradeLabel(item!.attemptState)} earlier` : st?.worked ? 'worked' : session.skipped.has(id) ? 'skipped' : 'not started';
+        const d = el('button', `ws-sessionbar__dot ws-bank__dot ${cls}${i === session.index && view === 'sheet' ? ' ws-sessionbar__dot--current' : ''}`) as HTMLButtonElement;
+        d.type = 'button';
+        const label = `Problem ${i + 1}, ${words}${session.marked.has(id) ? ', marked' : ''}`;
+        d.setAttribute('aria-label', label);
+        d.title = `${item?.title ?? `Problem ${i + 1}`}: ${words}${session.marked.has(id) ? ', marked for later' : ''}`;
+        if (i === session.index) d.setAttribute('aria-current', 'step');
+        d.addEventListener('click', () => goTo(i));
+        dots.appendChild(d);
+      });
     };
 
     const paintBar = () => {
       bar.replaceChildren();
-      const prev = iconBtn('chevron-left', 'Previous Item', { onClick: () => goTo(session.index - 1) });
+      const prev = createIconButton(bar, { icon: 'chevron-left', title: 'Previous Problem', size: 'sm', onClick: () => goTo(session.index - 1) });
       prev.disabled = session.index === 0;
-      bar.appendChild(prev);
-      bar.appendChild(el('span', 'ws-sessionbar__pos', `${session.name ? `${session.name} · ` : ''}Item ${session.index + 1} of ${session.ids.length}`));
-      // Next sits with Previous, either side of the position: the pair reads
-      // as one control, and Skip keeps the far end to itself.
-      const last = session.index === session.ids.length - 1;
+      const pos = el('span', 'ws-sessionbar__pos');
+      pos.append(el('span', 'ws-sessionbar__name', session.name || 'Quiz'), el('span', 'ws-sessionbar__count', ` · ${session.index + 1} of ${session.ids.length}`));
+      bar.appendChild(pos);
       // The last Next opens the summary, where Complete Quiz is a separate
       // decision; nothing here finishes the quiz.
-      bar.appendChild(iconBtn(last ? 'check' : 'chevron-right', last ? 'Quiz Summary' : 'Next Item', { primary: true, onClick: () => goTo(session.index + 1) }));
+      const last = session.index === session.ids.length - 1;
+      createIconButton(bar, { icon: last ? 'check' : 'chevron-right', title: last ? 'Quiz Summary' : 'Next Problem', size: 'sm', onClick: () => goTo(session.index + 1) });
+      bar.appendChild(dots);
+      void paintDots();
       if (session.finishedAt) {
         const chip = el('span', 'ws-chip ws-chip--muted', 'Reviewing');
         chip.title = 'A completed quiz, reopened. Ratings you give still count on the problems; Reopen Quiz on the summary makes it open again.';
@@ -2207,33 +2371,36 @@ function createPracticeRunPane(container: HTMLElement) {
       bar.appendChild(gradeNote);
       const spacer = el('div'); spacer.style.flex = '1';
       bar.appendChild(spacer);
-      bar.appendChild(iconBtn(view === 'overview' ? 'eye' : 'list', view === 'overview' ? 'Back To Sheet' : 'Quiz Overview', {
-        hint: view === 'overview' ? 'Back to the problem you were on.' : 'Every problem in this quiz, with status, rating, time and notes; click one to jump to it.',
+      const overviewBtn = createButton(bar, {
+        label: 'Overview', icon: 'list', kind: 'ghost', size: 'sm',
+        title: view === 'overview' ? 'Back to the problem' : 'Every problem in this quiz, with status, rating, time and notes',
         onClick: () => { view = view === 'overview' ? 'sheet' : 'overview'; serve(); },
-      }));
-      // Mark For Later sits with Skip: both say "not now"; a mark says "come back".
-      // Next Marked carries its count, so it is a word button, shown only while there is one.
-      const nextMarkedBtn = el('button', 'ws-btn ws-btn--quiet ws-sessionbar__marked') as HTMLButtonElement;
-      nextMarkedBtn.type = 'button';
+      });
+      overviewBtn.setAttribute('aria-pressed', String(view === 'overview'));
+      // Next Marked carries its count, shown only while there is one.
+      const nextMarkedBtn = createButton(bar, { label: 'Next Marked', icon: 'skip-forward', kind: 'ghost', size: 'sm', title: 'Goes to the next problem you marked for later, round the quiz.', onClick: () => goToMarked(session.index) });
       const paintNextMarked = () => {
         const n = session.marked.size;
-        nextMarkedBtn.textContent = `Next Marked (${n})`;
-        nextMarkedBtn.title = 'Goes to the next problem you marked for later, round the quiz.';
+        const lbl = nextMarkedBtn.querySelector('.px-btn__label');
+        if (lbl) lbl.textContent = `Next Marked (${n})`;
         nextMarkedBtn.style.display = n ? '' : 'none';
       };
-      nextMarkedBtn.addEventListener('click', () => goToMarked(session.index));
       paintNextMarked();
-      bar.appendChild(markBtn(session, session.ids[session.index], paintNextMarked));
-      bar.appendChild(nextMarkedBtn);
+      markRepaint = () => { paintNextMarked(); void paintDots(); };
       // Skipping an item already rated or worked moves on without marking anything.
-      bar.appendChild(iconBtn('skip-forward', 'Skip Item', {
-        hint: 'Moves on without a rating. Rating or working the problem later clears the skip.',
+      createIconButton(bar, {
+        icon: 'chevron-last', title: 'Skip Problem', size: 'sm',
         onClick: () => {
           if (!(currentState?.grade || currentState?.attempted)) session.skipped.add(session.ids[session.index]);
           goTo(session.index + 1);
         },
-      }));
+      });
     };
+    /** Marks set from the problem's header repaint the bar. */
+    let markRepaint = () => {};
+    const onMark = () => markRepaint();
+    _markListeners.add(onMark);
+    markCleanup = () => _markListeners.delete(onMark);
 
     const serve = () => {
       if (disposed) return;
@@ -2284,6 +2451,7 @@ function createPracticeRunPane(container: HTMLElement) {
     dispose: () => {
       disposed = true;
       _practiceListeners.delete(onPractice);
+      markCleanup?.();
       changeSub?.dispose();
       quizTicker?.dispose();
       quizTicker = null;
@@ -2312,21 +2480,45 @@ function createExcelImportPane(container: HTMLElement) {
   container.appendChild(root);
   let disposed = false;
 
-  root.appendChild(titled('Import a Practice Workbook', 'A ProblemTrack-style workbook (one problem per sheet, named Paper.Source_NN, with a Solution marker) comes in as it is: every sheet with its formatting, the solution hidden until you reveal it, your ratings carried over. Other spreadsheets: Item/Answer sheet pairs and question-left, solution-right sheets are detected; anything else can be imported whole.'));
+  createPageHeader(root, {
+    back: BACK_TO_HOME,
+    title: 'Import Workbook',
+    subtitle: 'A practice workbook: one problem per sheet, named Paper.Source_NN.',
+  });
 
-  const pickRow = el('div', 'ws-create__controls');
-  const pickBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-  pickBtn.textContent = 'Choose Excel File…';
-  pickRow.appendChild(pickBtn);
-  const status = el('span', 'ws-hint');
-  pickRow.appendChild(status);
+  // Before a file: one place to choose it, and what will happen. After: a
+  // slim line with the file's status and Choose Another….
+  const pickRow = el('div', 'ws-drop');
+  const dropIcon = createIconElement('upload', 28);
+  dropIcon.classList.add('ws-drop__icon');
+  const dropHead = el('div', 'ws-drop__head', 'Choose an Excel workbook');
+  const dropHint = el('div', 'ws-hint', 'Every sheet comes in with its formatting, the solution hidden until you reveal it, your ratings carried over. Importing the same workbook again adds only new problems.');
+  dropHint.title = 'Other spreadsheets: Item/Answer sheet pairs and question-left, solution-right sheets are detected; anything else can be imported whole.';
+  const pickBtn = createButton(null, { label: 'Choose Excel File…', kind: 'primary' });
+  const status = el('span', 'ws-hint ws-drop__status');
+  pickRow.append(dropIcon, dropHead, dropHint, pickBtn, status);
   root.appendChild(pickRow);
+  /** Once a workbook is read, the chooser shrinks to a line. */
+  const compactPicker = () => {
+    pickRow.classList.add('ws-drop--compact');
+    const lbl = pickBtn.querySelector('.px-btn__label');
+    if (lbl) lbl.textContent = 'Choose Another…';
+    pickBtn.className = 'px-btn px-btn--secondary';
+  };
+  // The import's one action, in a footer that says what it will do.
+  const footer = el('div', 'ws-footbar');
+  const footNote = el('span', 'ws-hint');
+  footer.appendChild(footNote);
+  const footHost = el('div', 'ws-footbar__actions');
+  footer.appendChild(footHost);
+  footer.style.display = 'none';
 
   const err = el('div', 'ws-error');
   err.style.display = 'none';
   root.appendChild(err);
   const listHost = el('div', 'ws-create__review');
   root.appendChild(listHost);
+  root.appendChild(footer);
 
   const renderSelection = (items: ExcelItem[], leftovers: GridSheet[], filePath: string, fileLabel: string) => {
     listHost.replaceChildren();
@@ -2345,29 +2537,23 @@ function createExcelImportPane(container: HTMLElement) {
       const meta: string[] = [];
       if (item.points > 0) meta.push(`${item.points} pts`);
       meta.push(item.kind === 'pair' ? 'Item + Answer sheets' : item.kind === 'split' ? 'solution alongside' : 'whole sheet');
-      line.appendChild(el('span', 'ws-itemrow__meta', meta.join(' · ')));
+      line.appendChild(el('span', 'ws-list__meta', meta.join(' · ')));
       row.appendChild(line);
       host.appendChild(row);
       rows.push({ item, include, box });
     };
 
     if (items.length > 0) {
-      const head = el('div', 'ws-home__title', `${items.length} practice ${items.length === 1 ? 'item' : 'items'} detected`);
-      listHost.appendChild(head);
+      createSectionLabel(listHost, `${items.length} practice ${items.length === 1 ? 'item' : 'items'} detected`);
       const toggles = el('div', 'ws-create__controls');
-      const allBtn = el('button', 'ws-btn') as HTMLButtonElement;
-      allBtn.textContent = 'Select All';
-      allBtn.addEventListener('click', () => { for (const r of rows) if (r.item.kind !== 'whole') r.box.checked = true; });
-      const noneBtn = el('button', 'ws-btn') as HTMLButtonElement;
-      noneBtn.textContent = 'Select None';
-      noneBtn.addEventListener('click', () => { for (const r of rows) r.box.checked = false; });
-      toggles.append(allBtn, noneBtn);
+      createButton(toggles, { label: 'Select All', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) if (r.item.kind !== 'whole') r.box.checked = true; } });
+      createButton(toggles, { label: 'Select None', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) r.box.checked = false; } });
       listHost.appendChild(toggles);
       for (const item of items) addRow(item, true, listHost);
     }
     if (leftovers.length > 0) {
-      listHost.appendChild(el('div', 'ws-home__title', `Other sheets (${leftovers.length})`));
-      listHost.appendChild(el('div', 'ws-hint', 'No question/solution structure detected - tick any to import the whole sheet as a practice surface.'));
+      createSectionLabel(listHost, `Other sheets (${leftovers.length})`);
+      listHost.appendChild(el('div', 'ws-hint', 'No question and solution found. Tick any to import the whole sheet as a practice surface.'));
       for (const sheet of leftovers) addRow(wholeSheetItem(sheet, fileLabel), false, listHost);
     }
     if (items.length === 0 && leftovers.length === 0) {
@@ -2375,8 +2561,12 @@ function createExcelImportPane(container: HTMLElement) {
       return;
     }
 
-    const importBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-    importBtn.textContent = 'Import Selected Items';
+    footHost.replaceChildren();
+    const importBtn = createButton(footHost, { label: 'Import Selected Items', kind: 'primary' });
+    const countSelected = () => { const n = rows.filter((r) => r.box.checked).length; footNote.textContent = `${n} selected`; const l = importBtn.querySelector('.px-btn__label'); if (l) l.textContent = n ? `Import ${n} ${n === 1 ? 'Item' : 'Items'}` : 'Import Selected Items'; };
+    listHost.onchange = () => countSelected();
+    footer.style.display = '';
+    countSelected();
     importBtn.addEventListener('click', () => {
       void (async () => {
         const keep = rows.filter((r) => r.box.checked);
@@ -2401,7 +2591,7 @@ function createExcelImportPane(container: HTMLElement) {
               tags: r.item.tags,
             });
             done++;
-            if (done % 10 === 0) status.textContent = `Importing - ${done} / ${keep.length}…`;
+            if (done % 10 === 0) status.textContent = `Importing ${done} of ${keep.length}…`;
           }
           _api?.activity?.note('imported', `${keep.length} worksheet practice ${keep.length === 1 ? 'item' : 'items'}`, fileLabel);
           await _api?.window?.showInformationMessage?.(`Imported ${keep.length} ${keep.length === 1 ? 'item' : 'items'}.`);
@@ -2413,7 +2603,6 @@ function createExcelImportPane(container: HTMLElement) {
         }
       })();
     });
-    listHost.appendChild(importBtn);
   };
 
   /** Problem Bank import: problems grouped by paper, already-imported ones marked. */
@@ -2428,18 +2617,22 @@ function createExcelImportPane(container: HTMLElement) {
     }
     if (disposed) return;
     const rows: { problem: ProblemImport; box: HTMLInputElement }[] = [];
+    // The footer says what Import will do; with nothing new it brings the history.
+    const countSelected = () => {
+      const n = rows.filter((r) => r.box.checked && !existing.has(r.problem.sheetName)).length;
+      const papersOn = new Set(rows.filter((r) => r.box.checked && !existing.has(r.problem.sheetName)).map((r) => r.problem.paper)).size;
+      footNote.textContent = n ? `${n} selected · ${papersOn} ${papersOn === 1 ? 'paper' : 'papers'}` : timeline.length ? 'Nothing new selected' : 'Nothing selected';
+      const l = importBtn.querySelector('.px-btn__label');
+      if (l) l.textContent = n ? `Import ${n} ${n === 1 ? 'Problem' : 'Problems'}` : timeline.length > 0 ? 'Import Dashboard History' : 'Import Selected Problems';
+    };
+    listHost.onchange = () => countSelected();
     const rated = problems.filter((p) => p.rating).length;
     const fresh = problems.length - existing.size;
-    listHost.appendChild(el('div', 'ws-home__title', `${problems.length} problems in ${fileLabel}`));
+    createSectionLabel(listHost, `${problems.length} problems in ${fileLabel}`);
     listHost.appendChild(el('div', 'ws-hint', `${fresh} new, ${existing.size} already in the bank, ${rated} with a rating to carry over${timeline.length ? `, ${timeline.length} ${timeline.length === 1 ? 'day' : 'days'} of dashboard history` : ''}.`));
     const toggles = el('div', 'ws-create__controls');
-    const allBtn = el('button', 'ws-btn') as HTMLButtonElement;
-    allBtn.textContent = 'Select New';
-    allBtn.addEventListener('click', () => { for (const r of rows) r.box.checked = !existing.has(r.problem.sheetName); });
-    const noneBtn = el('button', 'ws-btn') as HTMLButtonElement;
-    noneBtn.textContent = 'Select None';
-    noneBtn.addEventListener('click', () => { for (const r of rows) r.box.checked = false; });
-    toggles.append(allBtn, noneBtn);
+    createButton(toggles, { label: 'Select New', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) r.box.checked = !existing.has(r.problem.sheetName); countSelected(); } });
+    createButton(toggles, { label: 'Select None', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) r.box.checked = false; countSelected(); } });
     listHost.appendChild(toggles);
     const byPaper = new Map<string, ProblemImport[]>();
     for (const p of problems) { if (!byPaper.has(p.paper)) byPaper.set(p.paper, []); byPaper.get(p.paper)!.push(p); }
@@ -2461,9 +2654,10 @@ function createExcelImportPane(container: HTMLElement) {
         row.appendChild(box);
         row.appendChild(el('span', 'ws-xlrow__title', p.title));
         const meta = [SOURCE_LABELS[p.source] ?? p.source, KIND_LABELS[p.kind] ?? p.kind, p.quadrant ? QUADRANT_LABELS[p.quadrant] : ''].filter(Boolean).join(' · ');
-        row.appendChild(el('span', 'ws-itemrow__meta', meta));
+        row.appendChild(el('span', 'ws-list__meta', meta));
         if (p.rating) row.appendChild(el('span', `ws-chip ws-chip--${p.rating}`, ratingLabel(p.rating)));
-        if (existing.has(p.sheetName)) row.appendChild(el('span', 'ws-chip ws-chip--muted', 'In Bank'));
+        if (existing.has(p.sheetName)) row.appendChild(el('span', 'ws-chip ws-chip--muted', 'In the bank'));
+        else row.appendChild(el('span', 'ws-chip ws-chip--open', 'New'));
         if (p.stats.imagesSkipped > 0) row.appendChild(el('span', 'ws-chip ws-chip--muted', `${p.stats.imagesSkipped} picture${p.stats.imagesSkipped === 1 ? '' : 's'} not shown`));
         group.appendChild(row);
         rows.push({ problem: p, box });
@@ -2472,10 +2666,10 @@ function createExcelImportPane(container: HTMLElement) {
       groupBox.addEventListener('change', () => { for (const b of groupRows) b.checked = groupBox.checked; });
       listHost.appendChild(group);
     }
-    const importBtn = el('button', 'ws-btn ws-btn--primary') as HTMLButtonElement;
-    // With nothing new to bring in, the button says what it will actually do.
-    importBtn.textContent = fresh === 0 && timeline.length > 0 ? 'Import Dashboard History' : 'Import Selected Problems';
-    importBtn.style.marginTop = 'var(--px-space-3)';
+    footHost.replaceChildren();
+    const importBtn = createButton(footHost, { label: 'Import Selected Problems', kind: 'primary' });
+    footer.style.display = '';
+    countSelected();
     importBtn.addEventListener('click', () => {
       void (async () => {
         const keep = rows.filter((r) => r.box.checked);
@@ -2495,7 +2689,7 @@ function createExcelImportPane(container: HTMLElement) {
             });
             if (id != null && p.rating) { await recordImportedRating(id, p.rating, Date.now()); carried++; }
             done++;
-            if (done % 10 === 0) status.textContent = `Importing ${done} / ${keep.length}…`;
+            if (done % 10 === 0) status.textContent = `Importing ${done} of ${keep.length}…`;
           }
           // The workbook's own dashboard history, so the timeline starts where his did.
           for (const s of timeline) await upsertProgressSnapshot(s.day, s.attempted, s.score, 'workbook');
@@ -2551,6 +2745,7 @@ function createExcelImportPane(container: HTMLElement) {
             if (problems.length > 0) {
               const timeline = await readWorkbookTimeline(book).catch(() => [] as WorkbookSnapshot[]);
               status.textContent = `${fileLabel}: ${problems.length} problems found${timeline.length ? `, ${timeline.length} days of history` : ''}.`;
+              compactPicker();
               // A failure listing the problems is shown, never swallowed into the legacy path.
               try {
                 await renderProblems(problems, filePath, fileLabel, timeline);
@@ -2575,6 +2770,7 @@ function createExcelImportPane(container: HTMLElement) {
         const { items, leftovers } = detectExcelItems(sheets, fileLabel.replace(/\.(xlsx|xlsm|xls)$/i, ''));
         const leftoverSheets = sheets.filter((s) => leftovers.includes(s.name));
         status.textContent = `${fileLabel}: ${sheets.length} sheets, ${items.length} items detected.`;
+        compactPicker();
         renderSelection(items, leftoverSheets, filePath, fileLabel);
       } catch (e) {
         status.textContent = '';
@@ -2789,7 +2985,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         const gradeWrap = el('span', 'ws-item__grades');
         gradeWrap.appendChild(el('span', 'ws-item__gradeprompt', 'How did it go?'));
         for (const [grade, label] of [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']] as const) {
-          const b = el('button', `ws-btn ws-btn--grade ws-btn--grade-${grade}`) as HTMLButtonElement;
+          const b = el('button', `px-btn px-btn--secondary px-btn--sm ws-grade ws-grade--${grade}`) as HTMLButtonElement;
           b.textContent = label;
           b.addEventListener('click', () => {
             void (async () => {
@@ -2804,7 +3000,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
         }
         sol.appendChild(gradeWrap);
       } else {
-        const again = el('button', 'ws-btn') as HTMLButtonElement;
+        const again = el('button', 'px-btn px-btn--secondary') as HTMLButtonElement;
         again.textContent = 'Try Again';
         again.title = 'Start a fresh attempt from the original sheet.';
         again.addEventListener('click', () => {
@@ -2831,7 +3027,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       // M99 S6 — AI critique of the work vs the model solution. Feedback,
       // never a score: CAS grades method, and false precision misleads.
       const reviewWrap = el('div', 'ws-item__review');
-      const reviewBtn = el('button', 'ws-btn') as HTMLButtonElement;
+      const reviewBtn = el('button', 'px-btn px-btn--secondary') as HTMLButtonElement;
       reviewBtn.textContent = 'Review in Chat';
       reviewBtn.title = 'Stages your cells, the model solution and a review brief in the chat. Add your question under the brief, then send.';
       const reviewOut = el('div', 'ws-item__reviewout');
@@ -3016,40 +3212,49 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       // A lit button is the one sign of a rating given here; the chip speaks
       // only when the buttons cannot say it, in the accent, never a grade colour.
       const status = ownRating ? null
-        : worked ? { text: 'Worked, Not Rated', cls: 'ws-chip--open', hint: ratingImported ? `Counts as done for the day. Your workbook rated this ${ratingLabel(latestRating)}; rate it here to score it and set when it comes back.` : 'Counts as done for the day. A rating scores it and sets when it comes back.' }
-          : ratingImported ? { text: `${ratingLabel(latestRating)} In Your Workbook`, cls: 'ws-chip--muted', hint: 'Carried in with the import. It counts for the campaign once you work it here or rate it again.' }
+        : worked ? { text: 'Worked, not rated', cls: 'ws-chip--open', hint: ratingImported ? `Counts as done for the day. Your workbook rated this ${ratingLabel(latestRating)}; rate it here to score it and set when it comes back.` : 'Counts as done for the day. A rating scores it and sets when it comes back.' }
+          : ratingImported ? { text: `${ratingLabel(latestRating)} in your workbook`, cls: 'ws-chip--muted', hint: 'Carried in with the import. It counts for the campaign once you work it here or rate it again.' }
             : null;
       if (status) {
         const chip = el('span', `ws-chip ${status.cls} ws-problem__status`, status.text);
         chip.title = status.hint;
         titleRow.appendChild(chip);
       }
-      const rate = el('div', 'ws-problem__rate');
-      rate.appendChild(el('span', 'ws-problem__ratelabel', 'Rate'));
-      for (const grade of ['easy', 'medium', 'hard'] as const) {
-        const b = el('button', `ws-btn ws-btn--grade ws-btn--grade-${grade}`) as HTMLButtonElement;
-        b.textContent = ratingLabel(grade);
-        b.setAttribute('aria-pressed', ownRating === grade ? 'true' : 'false');
-        b.title = `Rate this problem ${ratingLabel(grade)}. Your rating feeds the dashboard and the quiz filters.`;
-        b.addEventListener('click', () => {
-          void (async () => {
-            await persistWorking();
-            await completeAttempt(problem.id, grade, lastSavedCells, { seconds: problemSeconds, sessionId: quizSessionIdFor(problem.id) });
-            _api?.activity?.note('practiced', `problem "${problem.title}"`, `rated ${ratingLabel(grade)}`);
-            latestRating = grade;
-            ratingImported = false;
-            if (ratingCell) {
-              ratingWrite = true;
-              host?.setCellText(ratingCell.row, ratingCell.col, ratingLabel(grade));
-              setTimeout(() => { ratingWrite = false; }, 100);
-            }
-            paintHeader();
-          })();
-        });
-        rate.appendChild(b);
-      }
-      titleRow.appendChild(rate);
+      titleRow.appendChild(el('span', 'ws-vdiv'));
+      // The rating is one choice of three: the switch. A click on the lit
+      // one rates again (a later sitting), so the click is caught before the
+      // switch decides it is no change.
+      const rateWith = (grade: 'easy' | 'medium' | 'hard') => {
+        void (async () => {
+          await persistWorking();
+          await completeAttempt(problem.id, grade, lastSavedCells, { seconds: problemSeconds, sessionId: quizSessionIdFor(problem.id) });
+          _api?.activity?.note('practiced', `problem "${problem.title}"`, `rated ${ratingLabel(grade)}`);
+          latestRating = grade;
+          ratingImported = false;
+          if (ratingCell) {
+            ratingWrite = true;
+            host?.setCellText(ratingCell.row, ratingCell.col, ratingLabel(grade));
+            setTimeout(() => { ratingWrite = false; }, 100);
+          }
+          paintHeader();
+        })();
+      };
+      const rate = createSegmented(titleRow, {
+        ariaLabel: 'Rate this problem',
+        items: (['easy', 'medium', 'hard'] as const).map((g) => ({ value: g, label: ratingLabel(g) })),
+        value: ownRating || '',
+        onChange: (v) => rateWith(v as 'easy' | 'medium' | 'hard'),
+      });
+      rate.element.classList.add('ws-rate');
+      rate.element.title = 'Your rating feeds the dashboard and the quiz filters.';
+      rate.element.addEventListener('click', (e) => {
+        const seg = (e.target as HTMLElement).closest<HTMLElement>('[data-value]');
+        if (seg?.classList.contains('ui-segmented-control__segment--active') && seg.dataset.value === ownRating) rateWith(ownRating as 'easy' | 'medium' | 'hard');
+      }, true);
+      titleRow.appendChild(el('span', 'ws-vdiv'));
       titleRow.appendChild(starBtn(problem.id, starred, (on) => { starred = on; }));
+      // The flag belongs to a quiz: shown only while this problem is in the running one.
+      if (_practice && _practice.ids.includes(problem.id)) titleRow.appendChild(markBtn(_practice, problem.id));
       const noteBtn = iconBtn('notebook-pen', problemNote ? 'Edit Note' : 'Add Note', {
         hint: problemNote || 'A note on this problem, kept with it across quizzes and shown in the bank.',
         onClick: () => { const open = noteHost.style.display === 'none'; noteHost.style.display = open ? '' : 'none'; if (open) noteArea.focus(); },
@@ -3057,63 +3262,68 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
       noteBtn.classList.toggle('ws-note--on', !!problemNote);
       noteBtn.setAttribute('aria-pressed', problemNote ? 'true' : 'false');
       titleRow.appendChild(noteBtn);
-      titleRow.appendChild(makeSheetThemeButton());
-      titleRow.appendChild(iconBtn('file-spreadsheet', 'Export to Excel', {
-        hint: 'Saves this sheet as a real .xlsx, values and formulas, in your Downloads folder.',
-        onClick: () => {
-          const name = (problem.sheetName || problem.title || 'problem').replace(/[^\w\- .]+/g, '').trim() || 'problem';
-          if (!host?.exportToXlsx(name)) void _api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
-        },
-      }));
-      const resetBtn = iconBtn('rotate-ccw', 'Reset Work', { danger: true, hint: 'Clears your work and the timer; the problem returns to the sheet as imported. Ratings stay.' });
-      resetBtn.addEventListener('click', () => {
-        void (async () => {
-          const ok = await _api?.window?.showConfirmModal?.({
-            message: 'Reset your work on this problem?',
-            detail: 'Everything you typed on this sheet is discarded. Your ratings and study time are kept. This cannot be undone.',
-            confirmLabel: 'Reset Work',
-            danger: true,
-          }) ?? false;
-          if (!ok || disposed) return;
-          lastSavedCells = '';
-          _workingCache.delete(instanceId);
-          await discardOpenAttempt(problem.id);
-          await mountSheet(applyRatingCell(applySolutionVisibility(parseWorkbook(problem.sheetJson) as IWorkbookData, revealed), latestRating));
-          lastSavedCells = await settledSnapshotJson();
-        })();
-      });
-      titleRow.appendChild(resetBtn);
       if (problem.solutionCol >= 0 || problem.solutionRow >= 0) {
-        const revealBtn = revealed
-          ? iconBtn('eye-off', 'Hide Solution', { hint: 'Hides the worked solution again. Your work stays.' })
-          : iconBtn('eye', 'Reveal Solution', { primary: true, hint: 'Shows the worked solution beside your work, as in the workbook.' });
-        revealBtn.addEventListener('click', () => {
-          void (async () => {
-            const live = host?.getSnapshot();
-            if (!live || !host) return;
-            revealed = !revealed;
-            // In place: the engine hides or shows the solution columns itself,
-            // so the canvas, scroll and selection stay. Remounting on an
-            // edited snapshot redrew the whole sheet (the flash). The remount
-            // remains only as the fallback when the engine refuses.
-            const segs = solutionSegments(live);
-            const h = host;
-            const inPlace = segs.length > 0 && segs.every((seg) => h.setColumnsHidden(seg.start, seg.last - seg.start + 1, !revealed));
-            if (!inPlace) await mountSheet(applySolutionVisibility(live, revealed));
-            // Revealing is not work. With work on the sheet the column state
-            // is saved alongside it; without any, the baseline moves instead,
-            // so a look at the solution never writes an attempt.
-            if (worked) { lastSavedCells = ''; await persistWorking(); }
-            else lastSavedCells = JSON.stringify(host?.getSnapshot() ?? null);
-            paintHeader();
-          })();
+        // Revealing changes the whole sheet, so it says so in words.
+        createButton(titleRow, {
+          label: revealed ? 'Hide Solution' : 'Reveal Solution',
+          icon: revealed ? 'eye-off' : 'eye',
+          title: revealed ? 'Hides the worked solution again. Your work stays.' : 'Shows the worked solution beside your work, as in the workbook.',
+          onClick: () => {
+            void (async () => {
+              const live = host?.getSnapshot();
+              if (!live || !host) return;
+              revealed = !revealed;
+              // In place: the engine hides or shows the solution columns
+              // itself, so the canvas, scroll and selection stay. The remount
+              // remains only as the fallback when the engine refuses.
+              const segs = solutionSegments(live);
+              const h = host;
+              const inPlace = segs.length > 0 && segs.every((seg) => h.setColumnsHidden(seg.start, seg.last - seg.start + 1, !revealed));
+              if (!inPlace) await mountSheet(applySolutionVisibility(live, revealed));
+              // Revealing is not work. With work on the sheet the column state
+              // is saved alongside it; without any, the baseline moves instead,
+              // so a look at the solution never writes an attempt.
+              if (worked) { lastSavedCells = ''; await persistWorking(); }
+              else lastSavedCells = JSON.stringify(host?.getSnapshot() ?? null);
+              paintHeader();
+            })();
+          },
         });
-        titleRow.appendChild(revealBtn);
       }
+      // The rest of the sheet's tools, behind ⋯.
+      const resetWork = async () => {
+        const ok = await _api?.window?.showConfirmModal?.({
+          message: 'Reset your work on this problem?',
+          detail: 'Everything you typed on this sheet is discarded. Your ratings and study time are kept. This cannot be undone.',
+          confirmLabel: 'Reset Work',
+          danger: true,
+        }) ?? false;
+        if (!ok || disposed) return;
+        lastSavedCells = '';
+        _workingCache.delete(instanceId);
+        await discardOpenAttempt(problem.id);
+        await mountSheet(applyRatingCell(applySolutionVisibility(parseWorkbook(problem.sheetJson) as IWorkbookData, revealed), latestRating));
+        lastSavedCells = await settledSnapshotJson();
+      };
+      const moreBtn = createIconButton(titleRow, { icon: 'ellipsis', title: 'More Actions' });
+      moreBtn.addEventListener('click', () => {
+        const dark = resolveSheetDark();
+        showMenu(moreBtn, [
+          { label: dark ? 'Light Sheet' : 'Dark Sheet', icon: dark ? 'sun' : 'moon', tooltip: 'Flips this practice sheet only. Light matches the real exam surface.', onSelect: () => void setSheetAppearance(dark ? 'light' : 'dark') },
+          { label: 'Export to Excel', icon: 'file-spreadsheet', tooltip: 'Saves this sheet as a real .xlsx, values and formulas, in your Downloads folder.', onSelect: () => {
+            const name = (problem.sheetName || problem.title || 'problem').replace(/[^\w\- .]+/g, '').trim() || 'problem';
+            if (!host?.exportToXlsx(name)) void _api?.window?.showInformationMessage?.('Nothing on the sheet to export yet.');
+          } },
+          ...(instanceId.startsWith('item:') && _practice?.ids.includes(problem.id) ? [{ label: 'Open Problem in Its Own Tab', icon: 'file-spreadsheet', onSelect: () => void openWorksheet(`item:${problem.id}`, problem.title) }] : []),
+          { label: 'Show in Problem Bank', icon: 'library', onSelect: () => void openWorksheet('bank', 'Problem Bank') },
+          { separator: true },
+          { label: 'Reset Work…', icon: 'rotate-ccw', danger: true, tooltip: 'Clears your work and the timer; the problem returns to the sheet as imported. Ratings stay.', onSelect: () => void resetWork() },
+        ]);
+      });
       header.replaceChildren(titleRow, noteHost);
       if (revealed && _api?.lm) {
         const reviewWrap = el('div', 'ws-item__review');
-        const reviewBtn = el('button', 'ws-btn') as HTMLButtonElement;
+        const reviewBtn = el('button', 'px-btn px-btn--secondary') as HTMLButtonElement;
         reviewBtn.textContent = 'Review in Chat';
         reviewBtn.title = 'Stages your cells, the worked solution and a review brief in the chat. Add your question under the brief, then send.';
         const reviewOut = el('div', 'ws-item__reviewout');
@@ -3293,13 +3503,41 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
 
 // ── Open helper ─────────────────────────────────────────────────────────────
 
+/** Each Worksheets tab carries the icon of its Home card, so two tabs never
+ *  look alike (the app's Dashboard and this one, the builder and a quiz). */
+const TAB_ICONS: Record<string, string> = {
+  home: 'table', dashboard: 'gauge', bank: 'library', quizzes: 'list-checks', practice: 'plus',
+  'practice-run': 'list-checks', settings: 'settings', create: 'sparkles', 'excel-import': 'folder-input', scratch: 'table-2',
+};
+function tabIconHtml(instanceId: string): string {
+  const id = TAB_ICONS[instanceId] ?? (instanceId.startsWith('item:') ? 'file-spreadsheet' : 'table');
+  try { return _api?.icons?.createIconHtml?.(id, 14) || WS_ICON_SVG; } catch { return WS_ICON_SVG; }
+}
+
 async function openWorksheet(instanceId: string, title: string): Promise<void> {
   await _api?.editors.openEditor({
     typeId: 'worksheet',
     title,
-    iconHtml: WS_ICON_SVG,
+    iconHtml: tabIconHtml(instanceId),
     instanceId,
   });
+}
+
+/** The day's other quest: the flashcards extension's due cards. */
+function studyFlashcards(): void {
+  const cmds = (_api as unknown as { commands?: { executeCommand?: (id: string) => Promise<unknown> } } | null)?.commands;
+  if (cmds?.executeCommand) void cmds.executeCommand('flashcards.study').catch(() => void _api?.window?.showInformationMessage?.('Flashcards is not available in this workspace.'));
+}
+
+/** The page every Worksheets tab links back to. */
+const BACK_TO_HOME: IKitAction = { label: 'Worksheets', onClick: () => void openWorksheet('home', 'Worksheets') };
+const openBuilder = () => void openWorksheet('practice', 'New Quiz');
+/** The quiz tab: one tab for the running quiz, named after it. */
+const openQuizTab = () => void openWorksheet('practice-run', _practice?.name || 'Quiz');
+
+/** The app's menu, anchored under a button, icons from the registry. */
+function showMenu(anchor: HTMLElement, items: IExtensionMenuItem[]): void {
+  showExtensionContextMenu(anchor, items, { anchorPosition: 'below' }, (icon, c) => c.appendChild(createIconElement(icon, 14)));
 }
 
 // ── Activation ──────────────────────────────────────────────────────────────
@@ -3349,18 +3587,19 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         if (instanceId === 'create') return createGeneratePane(container);
         if (instanceId === 'excel-import') return createExcelImportPane(container);
         if (instanceId === 'practice') return createPracticeConfigPane(container);
-        if (instanceId === 'practice-run') return createPracticeRunPane(container);
+        if (instanceId === 'practice-run') return createPracticeRunPane(container, input as { setName?(name: string): void } | undefined);
         if (instanceId === 'quizzes') return createQuizzesPane(container);
         if (instanceId === 'dashboard') {
           return createDashboardPane(container, {
             openItem: (id, title) => void openWorksheet(`item:${id}`, title),
             startQuiz: (ids, startAt, name) => startQuizWith(ids, startAt, name),
-            resumeQuiz: () => void openWorksheet('practice-run', 'Quiz'),
+            resumeQuiz: () => openQuizTab(),
             openQuiz: (id) => void openPastQuiz(id),
             renderIcon: (id, size) => { try { return _api?.icons?.createIconHtml?.(id, size) ?? ''; } catch { return ''; } },
-            configureQuiz: (preset) => { _quizPreset = preset; void openWorksheet('practice', 'Quiz'); },
+            configureQuiz: (preset) => { _quizPreset = preset; openBuilder(); },
             importWorkbook: () => void openWorksheet('excel-import', 'Import Workbook'),
             openSettings: () => void openWorksheet('settings', 'Worksheets Settings'),
+            openHome: () => BACK_TO_HOME.onClick(),
             examDate: () => getExamDate(),
             xpCashRate: () => getXpCashRate(),
             cashOut: async (xp, cents) => {
@@ -3374,10 +3613,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
               await recordXpCashout(xp, cents);
               _api?.activity?.note('cashed out', `${xp} XP for $${dollars}`);
             },
-            studyFlashcards: () => {
-              const cmds = (_api as unknown as { commands?: { executeCommand?: (id: string) => Promise<unknown> } } | null)?.commands;
-              if (cmds?.executeCommand) void cmds.executeCommand('flashcards.study').catch(() => void _api?.window?.showInformationMessage?.('Flashcards is not available in this workspace.'));
-            },
+            studyFlashcards: () => studyFlashcards(),
           });
         }
         return createSheetPane(container, instanceId);
@@ -3395,7 +3631,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
     api.commands.registerCommand('worksheet.open', () => openWorksheet('home', 'Worksheets')),
   );
   context.subscriptions.push(
-    api.commands.registerCommand('worksheet.openScratch', () => openWorksheet('scratch', 'Practice Sheet')),
+    api.commands.registerCommand('worksheet.openScratch', () => openWorksheet('scratch', 'Scratch Sheet')),
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.generate', () => openWorksheet('create', 'Generate Items')),
@@ -3410,10 +3646,10 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
     }),
   );
   context.subscriptions.push(
-    api.commands.registerCommand('worksheet.practice', () => openWorksheet('practice', 'Quiz')),
+    api.commands.registerCommand('worksheet.practice', () => openWorksheet('practice', 'New Quiz')),
   );
   context.subscriptions.push(
-    api.commands.registerCommand('worksheet.dashboard', () => openWorksheet('dashboard', 'Dashboard')),
+    api.commands.registerCommand('worksheet.dashboard', () => openWorksheet('dashboard', 'Study Dashboard')),
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.quizzes', () => openWorksheet('quizzes', 'Quizzes')),

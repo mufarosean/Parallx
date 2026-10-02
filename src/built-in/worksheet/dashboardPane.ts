@@ -13,6 +13,7 @@ import { campaignProgress, campaignDone, drawToday, dayStory, addDays, restDaysL
 import { syncRewards, type RewardState } from './rewardsSync.js';
 import { REWARDS } from './rewards.js';
 import { paperLabel, ratingLabel, normalizeRating, QUADRANT_LABELS } from './problemImport.js';
+import { createButton, createEmptyState, createPageHeader, type IKitAction } from '../../ui/kit.js';
 
 export interface DashboardActions {
   openItem(id: number, title: string): void;
@@ -37,6 +38,8 @@ export interface DashboardActions {
   studyFlashcards(): void;
   /** Worksheets Settings: where a campaign is set up and ended. */
   openSettings(): void;
+  /** Worksheets Home, the page every Worksheets tab belongs to. */
+  openHome?(): void;
 }
 
 function el(tag: string, className?: string, text?: string): HTMLElement {
@@ -368,30 +371,41 @@ function storyRow(story: DayStory, p: CampaignProgress): HTMLElement | null {
   return row;
 }
 
-async function campaignSection(root: HTMLElement, items: InsightItem[], attempts: InsightAttempt[], campaign: Campaign | null, due: number[], resume: QuizResume, bonusXp: number, actions: DashboardActions, tip: Tip, studyByDay: ReadonlyMap<string, number>, cash: { xp: number; cents: number }): Promise<boolean> {
+/** The day's actions, for a page header: one primary, the rest secondary. */
+export interface DayActions {
+  primary?: IKitAction;
+  secondary: IKitAction[];
+  /** Overrides the day (Draw Anyway on a rest day): drawn quietly in the card. */
+  quiet: IKitAction[];
+}
+
+/** What today asks for: the campaign's numbers, today's saved draw and the
+ *  actions that follow from them. Home and the Dashboard both draw from this,
+ *  so the day's one action is the same in both places. */
+export interface DayPlan {
+  readonly campaign: Campaign | null;
+  readonly progress: CampaignProgress | null;
+  /** One line: "Day 8 of 22 · Rest day". */
+  readonly title: string;
+  /** The day's sentence. */
+  readonly line: string;
+  readonly drawPapers: number;
+  readonly actions: DayActions;
+}
+
+export async function planDay(items: InsightItem[], attempts: InsightAttempt[], campaign: Campaign | null, due: number[], resume: QuizResume, bonusXp: number, actions: Pick<DashboardActions, 'startQuiz' | 'resumeQuiz' | 'studyFlashcards' | 'openSettings'>, now = Date.now()): Promise<DayPlan> {
   const problems = items.filter(isCampaignProblem);
-  const sec = el('section', 'ws-camp');
-  root.appendChild(sec);
+  const out: DayActions = { secondary: [], quiet: [] };
   // A quiz left unfinished comes first, wherever it came from: resuming
   // keeps its order and lets you go back to what you rated.
-  const resumeBtn = () => {
-    const b = btn(`Resume ${resume!.name || 'Quiz'} (${resume!.position + 1} of ${resume!.total})`, 'ws-btn ws-btn--primary', () => actions.resumeQuiz());
-    b.title = 'The open quiz you used last, where it stands. Every open quiz is listed on Home.';
-    return b;
-  };
+  if (resume) out.primary = { label: `Resume ${resume.name || 'Quiz'} (${resume.position + 1} of ${resume.total})`, icon: 'play', title: 'The open quiz you used last, where it stands.', onClick: () => actions.resumeQuiz() };
+  const add = (a: IKitAction) => { if (!out.primary) out.primary = a; else out.secondary.push(a); };
 
   if (!campaign) {
-    // No campaign: one quiet line. Setting one up is a Settings matter.
-    sec.classList.add('ws-camp--idle');
-    sec.appendChild(el('span', 'ws-hint', `No campaign running. ${problems.length} problems in the bank.`));
-    const setup = btn('Set Up Campaign', 'ws-btn ws-btn--small', () => actions.openSettings());
-    setup.title = 'Every problem in the bank in a set number of days, drawn across all papers';
-    sec.appendChild(setup);
-    if (resume) sec.appendChild(resumeBtn());
-    return false;
+    out.secondary.push({ label: 'Set Up Campaign…', title: 'Every problem in the bank in a set number of days, drawn across all papers', onClick: () => actions.openSettings() });
+    return { campaign, progress: null, title: 'No campaign running', line: `${problems.length} problems in the bank.`, drawPapers: 0, actions: out };
   }
 
-  const now = Date.now();
   const today = dayKey(now);
   const p = campaignProgress(campaign, items, attempts, now, bonusXp);
   const byId = new Map(items.map((i) => [i.id, i]));
@@ -415,19 +429,85 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
   }
   const drawLeft = draw.filter((id) => !done.has(id));
   const drawPapers = new Set(drawLeft.map((id) => byId.get(id)?.paper).filter(Boolean)).size;
+
+  // Today's quiz is the whole draw, rated problems included, opened at the
+  // first one not yet rated; once the quota is met the rest stays as a lead.
+  if (p.restToday && !p.finished) {
+    if (due.length > 0) add({ label: `Quiz Due Problems (${due.length})`, onClick: () => actions.startQuiz(due, 0, 'Due Problems') });
+    if (p.remaining > 0) out.quiet.push({
+      label: 'Draw Anyway',
+      title: 'New problems on a rest day. They count toward the campaign, not toward a quota.',
+      onClick: () => {
+        const ids = drawToday(campaign, items, attempts, p.target, today);
+        if (ids.length) actions.startQuiz(ids, 0, `Day ${p.dayIndex} Rest Day Draw`);
+      },
+    });
+  } else if (drawLeft.length > 0) {
+    const startAt = Math.max(0, draw.findIndex((id) => !done.has(id)));
+    add({ label: p.leftToday > 0 ? `Start Today's Quiz (${drawLeft.length} left)` : `Keep Going (${drawLeft.length})`, onClick: () => actions.startQuiz(draw, startAt, `Day ${p.dayIndex} Draw`) });
+  } else if (!p.finished && p.remaining > 0) {
+    add({ label: 'Draw More For Today', onClick: () => {
+      const extra = drawToday(campaign, items, attempts, p.target, `${today}+`);
+      if (extra.length) actions.startQuiz(extra, 0, `Day ${p.dayIndex} Extra Draw`);
+    } });
+  }
+  // Worked without a rating of his own: counted already, and one click from
+  // the rating that scores them, so the tally's chip is never a dead end.
+  const unrated = problems.filter((it) => it.worked && (it.ratingImported || !normalizeRating(it.attemptState))).map((it) => it.id);
+  if (unrated.length > 0 && !p.finished) add({ label: `Rate Worked Problems (${unrated.length})`, title: 'Problems you worked without rating. They count already; a rating scores them and sets when they come back.', onClick: () => actions.startQuiz(unrated, 0, 'Worked, Not Rated') });
+  out.secondary.push({ label: 'Review Due Flashcards', onClick: () => actions.studyFlashcards() });
+
+  const title = p.finished ? 'Campaign complete' : p.dayIndex > campaign.days ? `Day ${p.dayIndex}, ${p.dayIndex - campaign.days} past the plan` : p.restToday ? `Day ${p.dayIndex} of ${campaign.days} · Rest day` : `Day ${p.dayIndex} of ${campaign.days} · ${p.doneToday} of ${p.target} today`;
+  const pace = p.delta === 0 ? 'on pace' : p.delta > 0 ? `${p.delta} ahead` : `${-p.delta} behind`;
+  const line = p.finished ? 'Nothing left to draw. The bank is yours.'
+    : `${p.done} of ${p.total} done · ${pace}${p.restToday && due.length ? ` · ${due.length} ${due.length === 1 ? 'problem' : 'problems'} due for a repeat` : ''}`;
+  return { campaign, progress: p, title, line, drawPapers, actions: out };
+}
+
+/** One square per planned day; the tooltip says the day and how it went. */
+export function dayStrip(p: CampaignProgress, tip?: Tip): HTMLElement {
+  const strip = el('div', 'ws-camp__strip');
+  strip.setAttribute('role', 'img');
+  strip.setAttribute('aria-label', `${p.fullDays} full days of ${p.workingDays}`);
+  for (const d of p.days) {
+    const sq = el('span', `ws-camp__day ws-camp__day--${d.state}${d.rest && d.state !== 'rest' ? ' ws-camp__day--rest' : ''}`);
+    const lines = [fmtDay(d.day, true), d.rest ? (d.done > 0 ? `Rest day, ${d.done} done` : 'Rest day') : d.state === 'future' ? `Day ${d.index}` : `${d.done} of ${d.target}`];
+    if (tip) {
+      sq.addEventListener('mousemove', (e) => tip.show(e.clientX, e.clientY, lines));
+      sq.addEventListener('mouseleave', () => tip.hide());
+    } else sq.title = lines.join(', ');
+    strip.appendChild(sq);
+  }
+  return strip;
+}
+
+/** The campaign card: today, the plan, the level. Its actions go to the page header. */
+function campaignSection(root: HTMLElement, items: InsightItem[], attempts: InsightAttempt[], plan: DayPlan, due: number[], actions: DashboardActions, tip: Tip, studyByDay: ReadonlyMap<string, number>, cash: { xp: number; cents: number }): void {
+  const { campaign, progress: p } = plan;
+  const problems = items.filter(isCampaignProblem);
+  const sec = el('section', 'ws-camp');
+  root.appendChild(sec);
+
+  if (!campaign || !p) {
+    // No campaign: one quiet line. Setting one up is in the header.
+    sec.classList.add('ws-camp--idle');
+    sec.appendChild(el('span', 'ws-hint', `No campaign running. ${problems.length} problems in the bank.`));
+    return;
+  }
+
+  const now = Date.now();
   const endDay = addDays(campaign.startDay, campaign.days - 1);
   const off = restDaysLabel(campaign.restDays);
 
   // Three columns, the same facts as before, each in its own place: today,
-  // the plan, the level with the actions (Mufaro, 2026-09-21: "busy,
-  // imbalanced"). The per-paper chips went: the paper bars below say it.
+  // the plan, the level (Mufaro, 2026-09-21: "busy, imbalanced").
   const grid = el('div', 'ws-camp__grid');
   sec.appendChild(grid);
   const colToday = el('div', 'ws-camp__col ws-camp__col--today');
   const colPlan = el('div', 'ws-camp__col ws-camp__col--plan');
   const colLevel = el('div', 'ws-camp__col ws-camp__col--level');
   grid.append(colToday, colPlan, colLevel);
-  const planTitle = el('div', 'ws-camp__title', p.finished ? 'Campaign Complete' : p.dayIndex > campaign.days ? `Day ${p.dayIndex}, ${p.dayIndex - campaign.days} past the plan` : `Day ${p.dayIndex} of ${campaign.days}`);
+  const planTitle = el('div', 'ws-camp__title', p.finished ? 'Campaign complete' : p.dayIndex > campaign.days ? `Day ${p.dayIndex}, ${p.dayIndex - campaign.days} past the plan` : `Day ${p.dayIndex} of ${campaign.days}`);
   // The plan's sentence is the tooltip; the stats under it say the rest.
   planTitle.title = p.finished
     ? `Every one of the ${p.total} problems, rated in this campaign.`
@@ -442,7 +522,7 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
   fill.style.width = `${Math.min(100, Math.round(((p.xp - p.level.floor) / span) * 100))}%`;
   xpbar.appendChild(fill);
   lvl.appendChild(xpbar);
-  lvl.appendChild(el('div', 'ws-camp__xp', p.level.level >= LEVEL_TITLES.length ? `${p.xp} XP` : `${p.xp} XP, ${p.level.nextAt - p.xp} to Level ${p.level.level + 1}`));
+  lvl.appendChild(el('div', 'ws-camp__xp', p.level.level >= LEVEL_TITLES.length ? `${p.xp} XP` : `${p.xp} XP, ${p.level.nextAt - p.xp} to level ${p.level.level + 1}`));
   // XP as cash, at the rate set: what is left to cash out, and Cash Out.
   const rate = actions.xpCashRate?.() ?? 0;
   if (rate > 0) {
@@ -452,31 +532,34 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
     const worth = el('span', 'ws-camp__xp', `$${(cents / 100).toFixed(2)} to cash out`);
     worth.title = `${availXp} XP at $${rate} per 100 XP.${cash.cents ? ` Cashed out so far: $${(cash.cents / 100).toFixed(2)} for ${cash.xp} XP.` : ''}`;
     cashRow.appendChild(worth);
-    if (availXp > 0 && actions.cashOut) cashRow.appendChild(btn('Cash Out', 'ws-btn ws-btn--small', () => void actions.cashOut!(availXp, cents)));
+    if (availXp > 0 && actions.cashOut) createButton(cashRow, { label: 'Cash Out…', size: 'sm', onClick: () => void actions.cashOut!(availXp, cents) });
     lvl.appendChild(cashRow);
   }
   colLevel.appendChild(lvl);
+  if (plan.actions.quiet.length) {
+    const quiet = el('div', 'ws-camp__more');
+    for (const a of plan.actions.quiet) createButton(quiet, { label: a.label, title: a.title, kind: 'ghost', size: 'sm', onClick: () => a.onClick() });
+    colLevel.appendChild(quiet);
+  }
 
-  const todayRow = colToday;
-  todayRow.appendChild(el('div', 'ws-camp__label', 'Today'));
+  colToday.appendChild(el('div', 'ws-camp__label', 'Today'));
   const big = el('div', 'ws-camp__big');
   if (p.restToday && !p.finished) big.appendChild(document.createTextNode('Rest'));
   else {
     big.appendChild(document.createTextNode(String(p.doneToday)));
     big.appendChild(el('span', 'ws-camp__of', ` / ${p.target}`));
   }
-  todayRow.appendChild(big);
+  colToday.appendChild(big);
   const text = el('div', 'ws-camp__todaytext');
   const story = dayStory(campaign, items, attempts, now, studyByDay);
   const line = p.finished ? 'Nothing left to draw. The bank is yours.'
     : p.restToday ? (due.length > 0 ? `Rest day. ${due.length} ${due.length === 1 ? 'problem is' : 'problems are'} due for a repeat.` : 'Rest day. Nothing is due for a repeat.')
     : p.leftToday === 0 ? (story.bestToday ? `Day ${p.dayIndex} done. Your best day yet.` : `Day ${p.dayIndex} done. Anything more is a lead you keep.`)
-      : p.doneToday === 0 ? `${p.leftToday} problems today, drawn across ${drawPapers} ${drawPapers === 1 ? 'paper' : 'papers'}.`
+      : p.doneToday === 0 ? `${p.leftToday} problems today, drawn across ${plan.drawPapers} ${plan.drawPapers === 1 ? 'paper' : 'papers'}.`
         : `${p.leftToday} to go today.`;
   // The day's sentence is the big number's tooltip.
   big.title = line;
-  // The campaign's numbers as four labelled stats under the plan, not a
-  // lowercase run-on line.
+  // The campaign's numbers as four labelled stats under the plan.
   const stats = el('div', 'ws-camp__stats');
   const stat = (label: string, value: string) => {
     const s = el('div', 'ws-camp__stat');
@@ -487,62 +570,12 @@ async function campaignSection(root: HTMLElement, items: InsightItem[], attempts
   stat('Done', `${p.done} of ${p.total}`);
   stat('Pace', p.delta === 0 ? 'On pace' : p.delta > 0 ? `${p.delta} ahead` : `${-p.delta} behind`);
   stat('Streak', p.streak > 0 ? `${p.streak} ${p.streak === 1 ? 'day' : 'days'}` : 'None yet');
-  stat('Papers Cleared', `${p.clearedPapers.length} of ${p.papers.length}`);
+  stat('Papers cleared', `${p.clearedPapers.length} of ${p.papers.length}`);
   colPlan.appendChild(stats);
   const tally = storyRow(story, p);
   if (tally) text.appendChild(tally);
-  todayRow.appendChild(text);
-  // One primary action; the rest are quiet words in a row under it.
-  const acts = el('div', 'ws-camp__actions');
-  const more = el('div', 'ws-camp__more');
-  const place = (b: HTMLElement) => { (b.classList.contains('ws-btn--primary') ? acts : more).appendChild(b); };
-  if (resume) acts.appendChild(resumeBtn());
-  const primary = resume ? 'ws-btn ws-btn--quiet' : 'ws-btn ws-btn--primary';
-  // Today's quiz is the whole draw, rated problems included, opened at the
-  // first one not yet rated; once the quota is met the rest stays as a lead.
-  if (p.restToday && !p.finished) {
-    if (due.length > 0) place(btn(`Quiz Due Problems (${due.length})`, primary, () => actions.startQuiz(due, 0, 'Due Problems')));
-    if (p.remaining > 0) {
-      const anyway = btn('Draw Anyway', 'ws-btn ws-btn--quiet', () => {
-        const ids = drawToday(campaign, items, attempts, p.target, today);
-        if (ids.length) actions.startQuiz(ids, 0, `Day ${p.dayIndex} Rest Day Draw`);
-      });
-      anyway.title = 'New problems on a rest day. They count toward the campaign, not toward a quota.';
-      place(anyway);
-    }
-  } else if (drawLeft.length > 0) {
-    const startAt = Math.max(0, draw.findIndex((id) => !done.has(id)));
-    place(btn(p.leftToday > 0 ? `Start Today's Quiz (${drawLeft.length} left)` : `Keep Going (${drawLeft.length})`, primary, () => actions.startQuiz(draw, startAt, `Day ${p.dayIndex} Draw`)));
-  } else if (!p.finished && p.remaining > 0) place(btn('Draw More For Today', primary, () => {
-    const extra = drawToday(campaign, items, attempts, p.target, `${today}+`);
-    if (extra.length) actions.startQuiz(extra, 0, `Day ${p.dayIndex} Extra Draw`);
-  }));
-  // Worked without a rating of his own: counted already, and one click from
-  // the rating that scores them, so the tally's chip is never a dead end.
-  const unrated = problems.filter((it) => it.worked && (it.ratingImported || !normalizeRating(it.attemptState))).map((it) => it.id);
-  if (unrated.length > 0 && !p.finished) {
-    const rateBtn = btn(`Rate Worked Problems (${unrated.length})`, 'ws-btn ws-btn--quiet', () => actions.startQuiz(unrated, 0, 'Worked, Not Rated'));
-    rateBtn.title = 'Problems you worked without rating. They count already; a rating scores them and sets when they come back.';
-    place(rateBtn);
-  }
-  place(btn('Review Due Flashcards', 'ws-btn ws-btn--quiet', () => actions.studyFlashcards()));
-  if (more.childElementCount) acts.appendChild(more);
-  colLevel.appendChild(acts);
-
-  // One square per planned day.
-  const strip = el('div', 'ws-camp__strip');
-  strip.setAttribute('role', 'img');
-  strip.setAttribute('aria-label', `${p.fullDays} full days of ${p.workingDays}`);
-  for (const d of p.days) {
-    const sq = el('span', `ws-camp__day ws-camp__day--${d.state}${d.rest && d.state !== 'rest' ? ' ws-camp__day--rest' : ''}`);
-    const lines = [fmtDay(d.day, true), d.rest ? (d.done > 0 ? `Rest day, ${d.done} done` : 'Rest day') : d.state === 'future' ? `Day ${d.index}` : `${d.done} of ${d.target}`];
-    sq.addEventListener('mousemove', (e) => tip.show(e.clientX, e.clientY, lines));
-    sq.addEventListener('mouseleave', () => tip.hide());
-    strip.appendChild(sq);
-  }
-  colPlan.appendChild(strip);
-
-  return true;
+  colToday.appendChild(text);
+  colPlan.appendChild(dayStrip(p, tip));
 }
 
 // ── The pane ────────────────────────────────────────────────────────────────
@@ -601,20 +634,20 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     const root = content;
     const ins: Insights = computeInsights(items, attempts, snapshots);
 
-    const head = el('div', 'ws-dash__head');
-    const title = el('div', 'ws-home__title', 'Dashboard');
-    title.title = 'Every rating you give moves these numbers. The score counts Easy in full, Medium half, Hard nothing.';
-    head.appendChild(title);
-    root.appendChild(head);
+    // The kit header: back to Worksheets, the day in a line, the day's
+    // actions on the right. Drawn once the plan is known.
+    const headHost = el('div', 'ws-dash__head');
+    root.appendChild(headHost);
+    const back = actions.openHome ? { label: 'Worksheets', onClick: () => actions.openHome!() } : undefined;
 
     if (ins.totalProblems === 0) {
-      const empty = el('div', 'ws-empty');
-      empty.appendChild(el('div', 'ws-empty__headline', 'No problems in the bank yet.'));
-      empty.appendChild(el('div', 'ws-empty__hint', 'Import your practice workbook and the dashboard fills in from its ratings and history.'));
-      const b = btn('Import Workbook', 'ws-btn ws-btn--primary', () => actions.importWorkbook());
-      b.style.marginTop = 'var(--px-space-3)';
-      empty.appendChild(b);
-      root.appendChild(empty);
+      createPageHeader(headHost, { back, title: 'Study Dashboard' });
+      createEmptyState(root, {
+        icon: 'gauge',
+        headline: 'No problems in the bank yet.',
+        hint: 'Import your practice workbook and the dashboard fills in from its ratings and history.',
+        action: { label: 'Import Workbook…', onClick: () => actions.importWorkbook() },
+      });
       return;
     }
 
@@ -626,9 +659,24 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     if (disposed || seq !== renderSeq) return;
     const cash = campaign ? await getXpCashouts(campaign.startedAt).catch(() => ({ xp: 0, cents: 0, count: 0 })) : { xp: 0, cents: 0, count: 0 };
     if (disposed || seq !== renderSeq) return;
-    await campaignSection(root, items, attempts, campaign, ins.due.filter((d) => isCampaignProblem(d.item)).map((d) => d.item.id), resume, rewards?.bonusXp ?? 0, actions, tip, studyByDay, cash);
+    const dueIds = ins.due.filter((d) => isCampaignProblem(d.item)).map((d) => d.item.id);
+    const plan = await planDay(items, attempts, campaign, dueIds, resume, rewards?.bonusXp ?? 0, actions);
     if (disposed || seq !== renderSeq) return;
-    if (disposed) return;
+    const examDate = actions.examDate?.() ?? '';
+    const now = Date.now();
+    const examDays = examDate ? Math.round((Date.parse(`${examDate}T00:00:00`) - Date.parse(`${dayKey(now)}T00:00:00`)) / DAY_MS) : null;
+    const examLine = examDays === null ? 'exam date not set' : examDays > 0 ? `exam in ${examDays} ${examDays === 1 ? 'day' : 'days'}` : examDays === 0 ? 'exam today' : `exam was ${fmtDay(examDate, true)}`;
+    const p = plan.progress;
+    const sub = p ? [p.finished ? 'Campaign complete' : `Day ${p.dayIndex} of ${plan.campaign!.days}`, p.restToday && !p.finished ? 'rest day' : '', examLine].filter(Boolean).join(' · ') : `No campaign running · ${examLine}`;
+    createPageHeader(headHost, {
+      back,
+      title: 'Study Dashboard',
+      subtitle: sub,
+      primary: plan.actions.primary,
+      secondary: plan.actions.secondary,
+      more: [{ label: 'Worksheets Settings', icon: 'settings', onSelect: () => actions.openSettings() }],
+    });
+    campaignSection(root, items, attempts, plan, dueIds, actions, tip, studyByDay, cash);
 
     // Headline numbers.
     const tiles = el('div', 'ws-dash__tiles');
@@ -638,27 +686,29 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     // quiz on screen while active, whatever the cells did (2026-09-21).
     let studied = 0;
     for (const s of studyByDay.values()) studied += s;
-    tiles.appendChild(tile('Time Studied', fmtStudyTime(studied), 'With a problem or the quiz on screen. Idle stretches taken back.'));
-    const now = Date.now();
-    tiles.appendChild(tile('Rated This Week', String(ins.ratedThisWeek), 'Ratings in the last 7 days'));
-    // Days to the exam, from Settings.
-    const examDate = actions.examDate?.() ?? '';
-    if (examDate) {
-      const days = Math.round((Date.parse(`${examDate}T00:00:00`) - Date.parse(`${dayKey(now)}T00:00:00`)) / DAY_MS);
-      tiles.appendChild(tile('Days To Exam', days > 0 ? String(days) : days === 0 ? 'Today' : '–', days >= 0 ? fmtDay(examDate, true) : `Was ${fmtDay(examDate, true)}`));
+    tiles.appendChild(tile('Time studied', fmtStudyTime(studied), 'With a problem or the quiz on screen. Idle stretches taken back.'));
+    tiles.appendChild(tile('Rated this week', String(ins.ratedThisWeek), 'Ratings in the last 7 days'));
+    // Days to the exam, from Settings; unset, the tile is the way to set it.
+    if (examDays !== null) {
+      tiles.appendChild(tile('Days to exam', examDays > 0 ? String(examDays) : examDays === 0 ? 'Today' : '–', examDays >= 0 ? fmtDay(examDate, true) : `Was ${fmtDay(examDate, true)}`));
     } else {
-      tiles.appendChild(tile('Days To Exam', '–', 'Set the exam date in Settings'));
+      const t = tile('Days to exam', '', 'The Dashboard counts down to the exam date set in Settings');
+      const set = el('button', 'ws-dash__tilelink', 'Set exam date…') as HTMLButtonElement;
+      set.type = 'button';
+      set.addEventListener('click', () => actions.openSettings());
+      t.querySelector('.ws-dash__tilevalue')?.replaceWith(set);
+      tiles.appendChild(t);
     }
     root.appendChild(tiles);
 
     // Rewards: earned first, then what is still out there.
     // What next.
-    root.appendChild(el('div', 'ws-dash__sectiontitle', 'Work On Next'));
+    root.appendChild(el('div', 'ws-dash__sectiontitle', 'Work on next'));
     const grid = el('div', 'ws-dash__grid');
     root.appendChild(grid);
     const LIMIT = 5;
 
-    const due = card('Due Now', 'Hard comes back after 3 days, Medium after 7', ins.due.length ? () => actions.configureQuiz({ ids: ins.due.map((d) => d.item.id), name: 'Due Problems' }) : undefined);
+    const due = card('Due now', 'Hard comes back after 3 days, Medium after 7', ins.due.length ? () => actions.configureQuiz({ ids: ins.due.map((d) => d.item.id), name: 'Due Problems' }) : undefined);
     if (ins.due.length === 0) due.body.appendChild(el('div', 'ws-dash__cardempty', 'Nothing is due. Rate something Hard or Medium and it returns here.'));
     for (const d of ins.due.slice(0, LIMIT)) {
       due.body.appendChild(problemRow(d.item, `${ratingLabel(d.rating)} ${daysAgoLabel(d.daysAgo)}`, d.rating, () => actions.openItem(d.item.id, d.item.title)));
@@ -666,7 +716,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     if (ins.due.length > LIMIT) due.body.appendChild(el('div', 'ws-dash__more', `and ${ins.due.length - LIMIT} more`));
     grid.appendChild(due.root);
 
-    const strug = card('Keeps Going Wrong', 'Rated Hard twice or more, still not Easy', ins.struggling.length ? () => actions.configureQuiz({ ids: ins.struggling.map((s) => s.item.id), name: 'Keeps Going Wrong' }) : undefined);
+    const strug = card('Keeps going wrong', 'Rated Hard twice or more, still not Easy', ins.struggling.length ? () => actions.configureQuiz({ ids: ins.struggling.map((s) => s.item.id), name: 'Keeps Going Wrong' }) : undefined);
     if (ins.struggling.length === 0) strug.body.appendChild(el('div', 'ws-dash__cardempty', 'Nothing has been rated Hard twice.'));
     for (const s of ins.struggling.slice(0, LIMIT)) {
       strug.body.appendChild(problemRow(s.item, `Hard ${s.hardCount} of ${s.attempts} ${s.attempts === 1 ? 'attempt' : 'attempts'}`, 'hard', () => actions.openItem(s.item.id, s.item.title)));
@@ -674,7 +724,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     if (ins.struggling.length > LIMIT) strug.body.appendChild(el('div', 'ws-dash__more', `and ${ins.struggling.length - LIMIT} more`));
     grid.appendChild(strug.root);
 
-    const weak = card('Weakest Papers', 'Lowest score once three are rated, else least covered');
+    const weak = card('Weakest papers', 'Lowest score once three are rated, else least covered');
     for (const p of ins.weakestPapers.slice(0, 5)) {
       // The paper row is the way to its quiz; no button beside each one.
       const row = btn('', 'ws-dash__paperline', () => actions.configureQuiz({ papers: [p.paper] }));
@@ -687,7 +737,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     }
     grid.appendChild(weak.root);
 
-    const wins = card('Quick Wins', "The workbook's Easy & Likely problems never tried", ins.quickWins.length ? () => actions.configureQuiz({ ids: ins.quickWins.map((q) => q.id), name: 'Quick Wins' }) : undefined);
+    const wins = card('Quick wins', "The workbook's Easy & Likely problems never tried", ins.quickWins.length ? () => actions.configureQuiz({ ids: ins.quickWins.map((q) => q.id), name: 'Quick Wins' }) : undefined);
     const hasQuadrants = items.some((it) => it.quadrant > 0);
     if (!hasQuadrants) wins.body.appendChild(el('div', 'ws-dash__cardempty', 'The workbook did not carry quadrants for these problems.'));
     else if (ins.quickWins.length === 0) wins.body.appendChild(el('div', 'ws-dash__cardempty', `Every ${QUADRANT_LABELS[1]} problem has been tried.`));
@@ -710,13 +760,13 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     grid.appendChild(star.root);
 
     // Papers, weakest first.
-    root.appendChild(el('div', 'ws-dash__sectiontitle', 'Progress By Paper'));
+    root.appendChild(el('div', 'ws-dash__sectiontitle', 'Progress by paper'));
     const papers = el('div', 'ws-dash__papers');
     paperBars(papers, ins.weakestPapers, items, tip, actions);
     root.appendChild(papers);
 
     // Over time.
-    root.appendChild(el('div', 'ws-dash__sectiontitle', 'Progress Over Time'));
+    root.appendChild(el('div', 'ws-dash__sectiontitle', 'Progress over time'));
     const charts = el('div', 'ws-dash__charts');
     root.appendChild(charts);
     cleanups.push(lineChart(charts, 'Attempted', ins.timeline.map((p) => ({ day: p.day, value: p.attempted, source: p.source })), 0.8, tip));
@@ -743,7 +793,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
       if (rated > 0 && secs > 0) perProblem.push({ day, value: secs / rated / 60, source: 'attempts' });
     }
     const top = Math.max(10, Math.ceil(Math.max(0, ...perProblem.map((p) => p.value)) / 10) * 10);
-    cleanups.push(lineChart(charts, 'Minutes Per Problem', perProblem, null, tip, { max: top, fmt: (v) => `${Math.round(v)}m` }));
+    cleanups.push(lineChart(charts, 'Minutes per problem', perProblem, null, tip, { max: top, fmt: (v) => `${Math.round(v)}m` }));
 
     // Rewards last: milestones as a row of chips, each worth its XP and, at
     // the rate set, its cash (Mufaro, 2026-09-21: "should be at the bottom").

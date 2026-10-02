@@ -48,75 +48,28 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 
 /* ── Shared buttons ── */
 
-.ws-btn {
-  padding: 4px 12px;
-  font-size: var(--px-text-sm);
-  color: var(--px-text);
-  background: var(--px-bg-elevated);
-  border: 1px solid var(--px-border-strong);
-  border-radius: var(--px-radius-sm);
-  cursor: pointer;
-}
-.ws-btn:hover { border-color: var(--px-base-35); }
-.ws-btn--primary {
-  color: var(--px-text-on-accent);
-  background: var(--px-accent);
-  border-color: transparent;
-  font-weight: 600;
-}
-.ws-btn--primary:hover { background: var(--px-accent-hover); border-color: transparent; }
-.ws-btn--danger:hover { color: var(--px-danger); border-color: var(--px-danger); }
 /* Icon buttons: the bar's actions as glyphs, the word in the tooltip. */
 /* Icon buttons are bare glyphs, the workbench's title-action look (the chat
    header's +, history, settings): no box, a hover wash, 14px icon. A boxed
    28px icon on every action read as slop (Mufaro, 2026-09-21). A primary
    icon button is an accent glyph, a danger one turns red on hover; the
    on-states (star, mark, note) are the accent glyph too. */
-.ws-btn--icon { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--px-text-secondary); background: transparent; border-color: transparent; }
-.ws-btn--icon svg { width: 14px; height: 14px; }
-.ws-btn--icon:hover { color: var(--px-text); background: var(--px-surface-hover); border-color: transparent; }
-.ws-btn--icon.ws-btn--primary { color: var(--px-accent-text); background: transparent; }
-.ws-btn--icon.ws-btn--primary:hover { color: var(--px-accent-text); background: var(--px-surface-hover); border-color: transparent; }
-.ws-btn--icon.ws-btn--danger:hover { color: var(--px-danger); background: var(--px-surface-hover); border-color: transparent; }
-.ws-btn--icon:disabled { opacity: 0.4; cursor: default; }
-.ws-btn--icon:disabled:hover { background: transparent; border-color: transparent; color: var(--px-text-secondary); }
+
 /* A quiet word button: the same bare look for a word beside glyphs (Next
    Marked in the session bar, Rename / Copy / Quiz Summary by a title). */
-.ws-btn--quiet { background: transparent; border-color: transparent; color: var(--px-text-secondary); }
-.ws-btn--quiet:hover { background: var(--px-surface-hover); border-color: transparent; color: var(--px-text); }
+
 /* The star (a bookmark on the problem) and the mark (a flag inside one quiz):
    on = accent stroke, the app's pressed look, never a filled glyph (Mufaro,
    2026-09-21: the filled amber star read as an emoji). */
-.ws-btn--icon.ws-star--on, .ws-btn--icon.ws-star--on:hover,
-.ws-btn--icon.ws-mark--on, .ws-btn--icon.ws-mark--on:hover,
-.ws-btn--icon.ws-note--on, .ws-btn--icon.ws-note--on:hover { color: var(--px-accent-text); }
+
 /* The note editor under a problem's header, opened by the note button. */
 .ws-item__note { margin-top: var(--px-space-2); }
-.ws-itemrow > .ws-star { opacity: 0.45; }
-.ws-itemrow:hover > .ws-star, .ws-itemrow:focus-within > .ws-star, .ws-itemrow > .ws-star--on { opacity: 1; }
 
 /* ── Item browser ── */
 
 .ws-home { padding: var(--px-space-6); overflow-y: auto; }
-.ws-home__head { display: flex; align-items: center; gap: var(--px-space-2); margin-bottom: var(--px-space-4); }
 .ws-home__title { font-size: var(--px-text-xl); font-weight: 600; letter-spacing: -0.01em; }
-.ws-home__list { display: flex; flex-direction: column; gap: var(--px-space-2); }
-
-.ws-itemrow {
-  display: flex; align-items: center; gap: var(--px-space-3);
-  padding: var(--px-space-3) var(--px-space-4);
-  background: var(--px-bg-elevated);
-  border: 1px solid var(--px-border);
-  border-radius: var(--px-radius-md);
-}
-.ws-itemrow__info { flex: 1; min-width: 0; cursor: pointer; }
-.ws-itemrow__title { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); }
-.ws-itemrow__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
 /* The student's note on the problem, two lines at most; the tooltip carries the rest. */
-.ws-itemrow__note { font-size: var(--px-text-xs); color: var(--px-text-secondary); margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
-.ws-itemrow__actions { display: flex; gap: var(--px-space-1); flex: 0 0 auto; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
-.ws-itemrow:hover .ws-itemrow__actions,
-.ws-itemrow:focus-within .ws-itemrow__actions { opacity: 1; }
 
 .ws-chip {
   display: inline-block; margin-left: var(--px-space-2); padding: 1px 7px;
@@ -172,24 +125,14 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 }
 .ws-item__grades { display: flex; align-items: center; gap: var(--px-space-1); margin-left: auto; }
 .ws-item__gradeprompt { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-right: var(--px-space-1); }
-.ws-btn--grade-nailed:hover { color: var(--px-success); border-color: var(--px-success); }
-.ws-btn--grade-partial:hover { color: var(--px-warning); border-color: var(--px-warning); }
-.ws-btn--grade-missed:hover { color: var(--px-danger); border-color: var(--px-danger); }
-.ws-btn--grade-easy:hover, .ws-btn--grade-easy[aria-pressed="true"] { color: var(--px-success); border-color: var(--px-success); }
-.ws-btn--grade-medium:hover, .ws-btn--grade-medium[aria-pressed="true"] { color: var(--px-warning); border-color: var(--px-warning); }
-.ws-btn--grade-hard:hover, .ws-btn--grade-hard[aria-pressed="true"] { color: var(--px-danger); border-color: var(--px-danger); }
 /* The problem tab: a compact header row with the paper, the timer and the rating. */
 .ws-problem__meta { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .ws-problem__timer { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; color: var(--px-text-muted); font-size: var(--px-text-sm); }
 .ws-problem__status { margin-left: var(--px-space-2); }
 .ws-problem__rate { display: flex; align-items: center; gap: var(--px-space-1); margin-left: var(--px-space-2); }
-.ws-problem__rate .ws-btn { padding: 2px 10px; }
 .ws-problem__ratelabel { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-right: var(--px-space-1); }
 /* The bank in the sidebar: papers with counts, rating dots, filters. */
-.ws-bank__search { width: 100%; box-sizing: border-box; margin-bottom: var(--px-space-2); }
-.ws-bank__filters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--px-space-2); }
-.ws-bank__filter { border: 1px solid var(--px-border); background: transparent; color: var(--px-text-muted); border-radius: var(--px-radius-sm); padding: 1px 8px; font-size: var(--px-text-xs); cursor: pointer; font: inherit; }
-.ws-bank__filter[aria-pressed="true"] { color: var(--px-accent-text); border-color: var(--px-accent); }
+
 .ws-bank__paper { display: flex; align-items: center; gap: var(--px-space-2); padding: 4px 6px; cursor: pointer; border-radius: var(--px-radius-sm); user-select: none; }
 .ws-bank__paper:hover { background: var(--px-surface-hover); }
 .ws-bank__papername { flex: 1; min-width: 0; font-weight: 600; font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -217,12 +160,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-bank__dot--workbook.hard { color: var(--px-danger); }
 .ws-bank__summary { font-size: var(--px-text-xs); color: var(--px-text-muted); margin: var(--px-space-1) 0 var(--px-space-2); }
 /* The Problem Bank page: papers as openable rows, problems inside. */
-.ws-home__paper { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-3); margin-top: var(--px-space-1); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); cursor: pointer; user-select: none; background: var(--px-bg-elevated); }
-.ws-home__paper:hover { border-color: var(--px-border-strong); }
-.ws-home__paper--generated { margin-top: var(--px-space-5); background: transparent; }
-.ws-home__papername { flex: 1; min-width: 0; font-weight: 600; font-size: var(--px-text-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ws-home__papermeta { flex: 0 0 15em; text-align: right; font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
-.ws-home__paperitems { padding: var(--px-space-1) 0 var(--px-space-2) var(--px-space-4); display: flex; flex-direction: column; gap: var(--px-space-1); }
+
 .ws-bank__paper--generated { margin-top: var(--px-space-3); color: var(--px-text-muted); }
 /* Import: problems grouped by paper with a checkbox each. */
 .ws-import__group { margin-top: var(--px-space-3); }
@@ -279,7 +217,6 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
   transition: border-color var(--px-dur-fast) var(--px-ease), background-color var(--px-dur-fast) var(--px-ease);
 }
 .ws-dropzone--over { border-color: var(--px-accent); background: var(--px-accent-soft); }
-.ws-dropzone__title { font-size: var(--px-text-sm); font-weight: 600; }
 
 .ws-create__review { display: flex; flex-direction: column; gap: var(--px-space-2); margin-top: var(--px-space-2); }
 .ws-genitem {
@@ -297,13 +234,11 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
   font-size: var(--px-text-xs); font-weight: 700; text-transform: none;
   letter-spacing: normal; color: var(--px-text-muted);
 }
-.ws-genitem .ws-btn--danger { align-self: flex-start; }
 
 /* ── Sidebar view ── */
 
 .ws-sidebar { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-3); overflow-y: auto; height: 100%; }
 .ws-sidebar__actions { display: flex; flex-direction: column; gap: var(--px-space-1); }
-.ws-btn--block { width: 100%; text-align: center; }
 .ws-sidebar__label {
   margin-top: var(--px-space-2);
   font-size: var(--px-text-xs); font-weight: 700; text-transform: none;
@@ -324,15 +259,6 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 /* ── Practice sessions ── */
 
 .ws-practice__chips { flex-wrap: wrap; }
-.ws-practicechip {
-  /* A choice, not a status chip: sized like every other dense control. */
-  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
-  height: var(--px-control-h-sm); padding: 0 var(--px-space-2); vertical-align: middle;
-  border-radius: var(--px-radius-sm); font-size: var(--px-text-sm); font-weight: 500;
-  cursor: pointer; border: 1px solid var(--px-border); margin-left: 0;
-}
-.ws-practicechip:hover { border-color: var(--px-border-strong); }
-.ws-practicechip--active { color: var(--px-accent-text); background: var(--px-accent-soft); border-color: var(--px-accent); }
 .ws-sessionbar {
   display: flex; align-items: center; gap: var(--px-space-2);
   padding: var(--px-space-2) var(--px-space-4);
@@ -406,25 +332,10 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-dash__card--link { cursor: pointer; }
 .ws-dash__card--link:hover, .ws-dash__card--link:focus-visible { border-color: var(--px-accent); outline: none; }
 /* The quiz summary: a flat list, one line per problem. */
-.ws-summary__head { display: flex; align-items: center; gap: var(--px-space-3); }
-.ws-summary__actions { margin: var(--px-space-2) 0; }
-.ws-summary__list { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); overflow: hidden; }
-.ws-summary__row { display: flex; align-items: center; border-bottom: 1px solid var(--px-divider, var(--px-border)); }
-.ws-summary__row:last-child { border-bottom: 0; }
-.ws-summary__row:hover { background: var(--px-surface-hover); }
-.ws-summary__info { display: flex; align-items: center; gap: var(--px-space-3); flex: 1; min-width: 0; padding: 6px var(--px-space-3); cursor: pointer; }
-.ws-summary__num { color: var(--px-text-muted); font-variant-numeric: tabular-nums; min-width: 2em; text-align: right; font-size: var(--px-text-sm); }
-.ws-summary__title { font-size: var(--px-text-sm); font-weight: 500; display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; }
+
 /* Home: a row of destinations, the continue strip, two short lists. */
 /* Home is a centred column on any window: a launcher is a page, not a corner. */
 .ws-home__col { width: 100%; max-width: 1120px; margin: 0 auto; padding-top: var(--px-space-4); }
-.ws-home__nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: var(--px-space-2); margin: var(--px-space-3) 0 var(--px-space-4); }
-.ws-home__navtile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: var(--px-space-3) var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; font-size: var(--px-text-sm); cursor: pointer; min-height: 76px; }
-.ws-home__navtile:hover, .ws-home__navtile:focus-visible { border-color: var(--px-accent); background: var(--px-surface-hover); outline: none; }
-.ws-home__navicon { display: inline-flex; color: var(--px-text-secondary); }
-.ws-home__navicon svg { width: 20px; height: 20px; }
-.ws-home__navtile:hover .ws-home__navicon { color: var(--px-accent-text); }
-.ws-home__navlabel { white-space: nowrap; }
 .ws-home__continue { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-4); flex-wrap: wrap; padding: var(--px-space-3) var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); }
 .ws-home__line { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); }
 .ws-home__acts { display: flex; align-items: center; gap: var(--px-space-2); }
@@ -433,11 +344,6 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-quizrow:last-child { border-bottom: 0; }
 .ws-quizrow:hover { background: var(--px-surface-hover); }
 .ws-quizrow__info { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; cursor: pointer; }
-.ws-quizrow__name { font-weight: 600; font-size: var(--px-text-sm); }
-.ws-quizrow__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
-.ws-quizrow__actions { display: flex; gap: 2px; flex: 0 0 auto; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
-.ws-quizrow:hover .ws-quizrow__actions, .ws-quizrow:focus-within .ws-quizrow__actions { opacity: 1; }
-.ws-btn--small { padding: 2px 10px; font-size: var(--px-text-xs); }
 .ws-bank__dot.rest { background: color-mix(in srgb, var(--px-text-muted) 35%, transparent); }
 /* Progress By Paper: horizontal stacked bars, the three status inks, a surface gap between segments. */
 .ws-dash__papers { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); padding: var(--px-space-3) var(--px-space-4); display: flex; flex-direction: column; gap: 6px; }
@@ -515,7 +421,6 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-camp__tallylabel { font-size: var(--px-text-xs); text-transform: none; letter-spacing: normal; color: var(--px-text-muted); margin-right: 2px; }
 .ws-camp__tally .ws-chip { margin-left: 0; }
 .ws-camp__foot { display: flex; justify-content: flex-end; }
-.ws-camp--idle > .ws-btn { align-self: flex-start; }
 
 /* ── Sidebar as navigation: Home, Settings, then the bank snapshot that opens as a tab ── */
 .ws-nav { display: flex; flex-direction: column; gap: 2px; }
@@ -528,23 +433,11 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-side__sectioncount { font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 /* Home: a launcher of tiles, one per thing you can do here. */
 .ws-launch { padding: var(--px-space-6); overflow-y: auto; }
-.ws-launch__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--px-space-3); margin-top: var(--px-space-4); }
-.ws-launch__tile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; text-align: left; cursor: pointer; min-height: 84px; }
-.ws-launch__tile:hover, .ws-launch__tile:focus-visible { border-color: var(--px-border-strong); background: var(--px-surface-hover); outline: none; }
-.ws-launch__tile--primary { border-color: var(--px-accent); }
-.ws-launch__tiletitle { font-size: var(--px-text-md); font-weight: 600; }
-.ws-launch__tiledesc { font-size: var(--px-text-sm); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 /* Settings: sections with a heading and its controls, nothing else. */
 .ws-settings { padding: var(--px-space-6); overflow-y: auto; display: flex; flex-direction: column; gap: var(--px-space-5); }
-.ws-settings__section { display: flex; flex-direction: column; gap: var(--px-space-2); padding-top: var(--px-space-4); border-top: 1px solid var(--px-border); }
-.ws-settings__section > .ws-btn { align-self: flex-start; }
-.ws-settings__sectiontitle { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
-.ws-settings__row { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
-.ws-settings__weekdays { display: flex; gap: 4px; flex-wrap: wrap; }
 
 /* ── Quiz overview: every problem, its status, its note, a click to jump ── */
 .ws-quiz__overview { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-4) var(--px-space-5); overflow-y: auto; }
-.ws-quiz__overviewhead { display: flex; align-items: baseline; gap: var(--px-space-3); flex-wrap: wrap; margin-bottom: var(--px-space-2); }
 .ws-quiz__row { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) auto auto auto auto auto; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); background: var(--px-bg-elevated); cursor: pointer; color: var(--px-text); }
 .ws-quiz__row:hover { border-color: var(--px-base-35); }
 .ws-quiz__row:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
@@ -566,29 +459,181 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-reward--locked .ws-reward__icon { color: var(--px-text-muted); }
 .ws-reward__icon svg { width: 16px; height: 16px; }
 .ws-reward__title { font-weight: 500; font-size: var(--px-text-sm); white-space: nowrap; }
-.ws-settings__status { font-size: var(--px-text-sm); color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
 /* The dashboard without a campaign: one quiet line. */
 .ws-camp--idle { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-4); }
 .ws-camp--idle .ws-hint { margin: 0; }
 /* The bank page's filter row, moved here from the sidebar. */
 .ws-home__filters { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; margin-bottom: var(--px-space-3); }
-.ws-home__filters .ws-bank__search { width: 220px; margin: 0; }
-.ws-home__filters .ws-bank__filters { margin: 0; }
 .ws-home__summary { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-left: auto; font-variant-numeric: tabular-nums; }
 
 /* Home lists: recent and newly added, rows that open the item. */
 .ws-launch__lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--px-space-4); margin-top: var(--px-space-5); }
 .ws-launch__list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ws-launch__listtitle { font-size: var(--px-text-xs); font-weight: 600; text-transform: none; letter-spacing: normal; color: var(--px-text-muted); padding: 0 var(--px-space-2); margin-bottom: var(--px-space-1); }
-.ws-launch__row { display: flex; align-items: center; gap: var(--px-space-2); width: 100%; padding: 5px var(--px-space-2); border: 0; border-radius: var(--px-radius-sm); background: transparent; color: var(--px-text); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
-.ws-launch__row:hover, .ws-launch__row:focus-visible { background: var(--px-surface-hover); outline: none; }
-.ws-launch__rowtext { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.ws-launch__rowtitle { font-size: var(--px-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ws-launch__rowmeta { font-size: var(--px-text-xs); color: var(--px-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* Scrolling pages keep a scrollbar gutter on BOTH edges, so the content sits centred: without it the right
    padding reads wider than the left by the width of the scrollbar. */
 .ws-dash, .ws-launch, .ws-settings, .ws-home, .ws-create, .ws-pane--scroll { scrollbar-gutter: stable both-edges; }
 
 /* The quiz overview title: the name with its lifecycle actions beside it. */
-.ws-quiz__title { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
-.ws-quiz__title .ws-input { min-width: 240px; }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Kit alignment (2026-10-02, docs/mockups/worksheets.html and the Claude
+   Design canvas "Worksheets Redesign"). Buttons, headers, chips and switches
+   are the kit's; what follows is only the Worksheets layout around them.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* The kit header sits inside a pane that already has its gutter. */
+.ws-pane .px-page-header { padding: 0 0 var(--px-space-4); align-items: flex-end; }
+.ws-quiz__overview > .px-page-header { padding-top: var(--px-space-2); }
+
+/* Icon buttons: an accent glyph for the primary one, red on hover for a
+   danger one; the on-states (star, mark, note) are the accent glyph too. */
+.px-btn.ws-icon--accent { color: var(--px-accent-text); }
+.px-btn.ws-icon--danger:hover:not(:disabled) { color: var(--px-danger); }
+.px-btn.ws-star--on, .px-btn.ws-mark--on, .px-btn.ws-note--on { color: var(--px-accent-text); background: var(--px-accent-faint); }
+.ws-vdiv { width: 1px; height: 18px; background: var(--px-divider); margin: 0 2px; flex: 0 0 auto; }
+.ws-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ws-linkbtn { border: 0; background: none; padding: 0; font: inherit; color: var(--px-accent-text); cursor: pointer; }
+.ws-linkbtn:hover { text-decoration: underline; }
+
+/* Lists: one bordered box of rows, actions at the end, shown on hover. */
+.ws-list { display: flex; flex-direction: column; border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); overflow: hidden; }
+.ws-list__row {
+  display: flex; align-items: center; gap: var(--px-space-3);
+  box-sizing: border-box; width: 100%; min-height: 40px;
+  padding: 6px var(--px-space-3);
+  border: 0; border-top: 1px solid var(--px-divider);
+  background: transparent; color: var(--px-text); font: inherit; text-align: left;
+}
+.ws-list__row:first-child { border-top: 0; }
+.ws-list__row:hover { background: var(--px-surface-hover); }
+button.ws-list__row { cursor: pointer; }
+button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: 2px solid var(--px-accent); outline-offset: -2px; }
+.ws-list__text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ws-list__title { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; font-size: var(--px-text-base); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-list__title .ws-chip { margin-left: 0; }
+.ws-list__meta { font-size: var(--px-text-xs); color: var(--px-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.ws-list__note { display: flex; align-items: center; gap: 4px; font-size: var(--px-text-xs); color: var(--px-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-list__note .svg-icon { flex: 0 0 auto; color: var(--px-text-muted); }
+.ws-list__end { margin-left: auto; display: flex; align-items: center; gap: var(--px-space-2); flex: 0 0 auto; }
+.ws-list__hover { opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
+.ws-list__row:hover .ws-list__hover, .ws-list__row:focus-within .ws-list__hover { opacity: 1; }
+.ws-list__group { background: color-mix(in srgb, var(--px-text) 3%, transparent); }
+.ws-list__group .svg-icon { color: var(--px-text-muted); }
+.ws-list__group .ws-bank__bar { width: 90px; }
+.ws-list__group .ws-list__title { flex: 0 1 auto; }
+.ws-list__idx { width: 1.6em; flex: 0 0 auto; text-align: right; font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.ws-list__grow { flex: 1; min-width: 0; }
+.ws-list__time { width: 44px; flex: 0 0 auto; text-align: right; font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.ws-list__flag { color: var(--px-accent-text); }
+.ws-bankrow > .ws-star { opacity: 0.45; }
+.ws-bankrow:hover > .ws-star, .ws-bankrow:focus-within > .ws-star, .ws-bankrow > .ws-star--on { opacity: 1; }
+.ws-bar { height: 6px; border-radius: 3px; background: var(--px-surface-hover); overflow: hidden; }
+.ws-bar__fill { display: block; height: 100%; background: var(--px-accent); }
+
+/* Home: three destination cards, today's card, two short lists. */
+.ws-home__dest { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--px-space-3); }
+.ws-home__destcard { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--px-dur-fast) var(--px-ease), background-color var(--px-dur-fast) var(--px-ease); }
+.ws-home__destcard:hover { border-color: var(--px-border-strong); background: var(--px-surface-hover); }
+.ws-home__destcard:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.ws-home__desticon { width: 40px; height: 40px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; border-radius: var(--px-radius-lg); background: var(--px-accent-faint); color: var(--px-accent-text); }
+.ws-home__desttext { display: flex; flex-direction: column; min-width: 0; }
+.ws-home__desttitle { font-size: var(--px-text-md); font-weight: 600; }
+.ws-home__destline { font-size: var(--px-text-sm); color: var(--px-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-home__today { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-3) var(--px-space-4); margin-top: var(--px-space-3); padding: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); }
+.ws-home__todaytext { flex: 1 1 280px; min-width: 0; }
+.ws-home__todaytitle { font-size: var(--px-text-md); font-weight: 600; }
+.ws-home__todayline { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.ws-home__today .ws-camp__strip { margin-top: var(--px-space-2); }
+.ws-home__todayacts { display: flex; flex-wrap: wrap; gap: var(--px-space-2); }
+.ws-launch__list > .px-section-label { padding-top: 0; }
+
+/* The quiz bar: position, the problem dots, the tools. */
+.ws-sessionbar__name { font-weight: 600; }
+.ws-sessionbar__count { color: var(--px-text-muted); font-weight: 400; }
+.ws-sessionbar__dots { display: flex; align-items: center; gap: 7px; margin: 0 var(--px-space-2); flex-wrap: wrap; }
+.ws-sessionbar__dot { width: 9px; height: 9px; padding: 0; border: 0; cursor: pointer; }
+.ws-sessionbar__dot:hover { transform: scale(1.25); }
+.ws-sessionbar__dot--current { box-shadow: 0 0 0 2px var(--px-bg), 0 0 0 3.5px var(--px-accent); }
+.ws-sessionbar__dot:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 2px; }
+.ws-sessionbar .px-btn[aria-pressed="true"] { color: var(--px-accent-text); background: var(--px-accent-faint); }
+
+/* The rating switch lights in the rating's colour. */
+.ws-rate .ui-segmented-control__segment--active[data-value="easy"] { color: var(--px-success); background: color-mix(in srgb, var(--px-success) 18%, transparent); }
+.ws-rate .ui-segmented-control__segment--active[data-value="medium"] { color: var(--px-warning); background: color-mix(in srgb, var(--px-warning) 18%, transparent); }
+.ws-rate .ui-segmented-control__segment--active[data-value="hard"] { color: var(--px-danger); background: color-mix(in srgb, var(--px-danger) 16%, transparent); }
+.ws-grade[aria-pressed="true"].ws-grade--easy { color: var(--px-success); border-color: var(--px-success); }
+.ws-grade[aria-pressed="true"].ws-grade--medium { color: var(--px-warning); border-color: var(--px-warning); }
+.ws-grade[aria-pressed="true"].ws-grade--hard { color: var(--px-danger); border-color: var(--px-danger); }
+
+/* Quiz overview rows sit in one list. */
+.ws-quiz__list .ws-quiz__row { border: 0; border-top: 1px solid var(--px-divider); border-radius: 0; background: transparent; }
+.ws-quiz__list .ws-quiz__row:first-child { border-top: 0; }
+.ws-quiz__list .ws-quiz__row:hover { background: var(--px-surface-hover); }
+.ws-quiz__list .ws-quiz__row--current { background: var(--px-surface-selected); }
+
+/* Quiz summary: the ratings at a glance, then the rows. */
+.ws-summary__glance { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-2) var(--px-space-4); margin-bottom: var(--px-space-3); padding: var(--px-space-3) var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); }
+.ws-ratingbar { flex: 1 1 240px; display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--px-surface-hover); }
+.ws-ratingbar__seg--easy { background: var(--px-success); }
+.ws-ratingbar__seg--medium { background: var(--px-warning); }
+.ws-ratingbar__seg--hard { background: var(--px-danger); }
+.ws-summary__key { display: inline-flex; align-items: center; gap: 5px; font-size: var(--px-text-sm); color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
+.ws-summary__key--marked { color: var(--px-accent-text); }
+
+/* Quizzes: open ones carry their progress. */
+.ws-quizzes > .px-section-label:not(:first-child) { margin-top: var(--px-space-3); }
+.ws-quizrow__progress { width: 130px; display: flex; flex-direction: column; gap: 3px; }
+
+/* The Problem Bank's toolbar: search, chips, the count. */
+.ws-search { display: flex; align-items: center; gap: 6px; width: 240px; height: var(--px-control-h); padding: 0 8px; box-sizing: border-box; border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); background: var(--px-bg-inset); color: var(--px-text-faint); }
+.ws-search:focus-within { border-color: var(--px-accent); }
+.ws-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; outline: none; color: var(--px-text); font: inherit; font-size: var(--px-text-sm); }
+.ws-home__filters .ws-chips { flex: 1 1 360px; }
+
+/* New Quiz: filters on the left, what you will get on the right. */
+.ws-builder { container-type: inline-size; }
+.ws-builder__grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--px-space-6); align-items: start; }
+.ws-builder__group { padding: var(--px-space-2) 0 var(--px-space-3); border-top: 1px solid var(--px-divider); }
+.ws-builder__group:first-child { border-top: 0; padding-top: 0; }
+.ws-builder__group > .px-section-label { padding-top: 0; }
+.ws-builder__side { position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); }
+.ws-builder__label { font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.ws-builder__count { font-size: var(--px-text-xl); font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ws-builder__field { display: flex; flex-direction: column; gap: 4px; margin-top: var(--px-space-2); }
+.ws-builder__fieldlabel { font-size: var(--px-text-sm); font-weight: 500; color: var(--px-text-secondary); }
+.ws-builder__row { display: flex; align-items: center; gap: var(--px-space-2); }
+.ws-builder__check { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-2); font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+.ws-builder__start { width: 100%; margin-top: var(--px-space-3); }
+.ws-stepper { display: inline-flex; align-items: center; height: var(--px-control-h); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); background: var(--px-bg-inset); }
+.ws-stepper__value { width: 44px; height: 100%; box-sizing: border-box; padding: 0; border: 0; border-left: 1px solid var(--px-border); border-right: 1px solid var(--px-border); background: transparent; color: var(--px-text); font: inherit; text-align: center; -moz-appearance: textfield; appearance: textfield; }
+.ws-stepper__value::-webkit-outer-spin-button, .ws-stepper__value::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+@container (max-width: 680px) {
+  .ws-builder__grid { grid-template-columns: minmax(0, 1fr); }
+  .ws-builder__side { position: static; order: -1; }
+}
+
+/* Settings: what a setting does on the left, the control on the right. */
+.ws-settings__body { max-width: 880px; }
+.ws-setcard { padding: 0 var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); margin-bottom: var(--px-space-3); }
+.ws-setrow { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--px-space-2) var(--px-space-6); padding: var(--px-space-3) 0; border-top: 1px solid var(--px-divider); }
+.ws-setrow:first-child { border-top: 0; }
+.ws-setrow__text { flex: 1 1 260px; min-width: 0; }
+.ws-setrow__title { display: block; font-weight: 600; color: var(--px-text); }
+.ws-setrow__desc { margin-top: 2px; max-width: 64ch; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.ws-setrow__control { flex: 0 0 auto; }
+.ws-setrow__inline { display: flex; align-items: center; gap: var(--px-space-2); }
+
+/* Import and Generate: one place to choose a source; a footer for the action. */
+.ws-drop { display: flex; flex-direction: column; align-items: center; gap: var(--px-space-2); padding: var(--px-space-8) var(--px-space-4); border: 1.5px dashed var(--px-border-strong); border-radius: var(--px-radius-lg); text-align: center; color: var(--px-text-muted); }
+.ws-drop__icon { color: var(--px-text-faint); }
+.ws-drop__head { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); }
+.ws-drop > .ws-hint { max-width: 60ch; }
+.ws-drop--compact { flex-direction: row; justify-content: flex-start; padding: var(--px-space-2) var(--px-space-3); border-style: solid; border-width: 1px; text-align: left; }
+.ws-drop--compact > .ws-drop__icon, .ws-drop--compact > .ws-drop__head, .ws-drop--compact > .ws-hint:not(.ws-drop__status) { display: none; }
+.ws-footbar { position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--px-space-3); margin-top: var(--px-space-4); padding: var(--px-space-3) 0; border-top: 1px solid var(--px-divider); background: var(--px-bg); }
+.ws-footbar__actions { margin-left: auto; display: flex; gap: var(--px-space-2); }
+
+/* Dashboard: the unset exam date is the way to set it. */
+.ws-dash__tilelink { margin-top: 6px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--px-accent-text); cursor: pointer; }
+.ws-dash__tilelink:hover { text-decoration: underline; }
