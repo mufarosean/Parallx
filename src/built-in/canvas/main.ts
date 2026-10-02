@@ -20,7 +20,7 @@ import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService,
 import { ILanguageModelToolsService } from '../../services/chatTypes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITools.js';
-import { CANVAS_AI_PAGE_FULL_WIDTH_KEY, CANVAS_AI_PAGE_SMALL_TEXT_KEY } from './ai/pageTools.js';
+import { CANVAS_AI_PAGE_FULL_WIDTH_KEY, CANVAS_AI_PAGE_SMALL_TEXT_KEY, createEditPageTool } from './ai/pageTools.js';
 import { getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { CANVAS_DEFAULT_FONT_KEY, CANVAS_CUSTOM_FONTS_KEY, FALLBACK_FONT_ID, loadCustomFonts } from './config/fontRegistry.js';
 import { markdownToTiptapJson } from './markdownImport.js';
@@ -412,37 +412,39 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     const editorService = api.services.has(IEditorService)
       ? api.services.get<import('../../services/serviceTypes.js').IEditorService>(IEditorService)
       : undefined;
+    const pageMutationNotifier = async (pageId: string, kind: 'created' | 'updated' | 'deleted'): Promise<void> => {
+      // This notifier is the SOLE path by which AI page tools announce their
+      // mutations — mark the page so downstream signal consumers (habit
+      // detection, the capability meter's HUMAN denominator) don't count the
+      // agent's own work as the user's. Timed removal covers deferred events.
+      _aiMutatedPageIds.add(pageId);
+      setTimeout(() => _aiMutatedPageIds.delete(pageId), 5_000);
+      // Cancel any pending auto-save before the reload fires. The debounced
+      // save holds pre-AI content; if it fires after notifyExternalPageMutation
+      // updates _knownRevisions to the AI's new revision it silently succeeds
+      // and overwrites the AI's write. Cancelling it here eliminates the race.
+      if (kind === 'updated') _dataService?.cancelPendingSave(pageId);
+      // Deterministic ordering: AWAIT the mutation notification (which drives
+      // the open editor's surgical reload) before any focus side-effect. The
+      // old fire-and-forget raced openPageInEditor on the same tick — the
+      // open-editor path could re-read + focus mid-reload and the update never
+      // visibly landed.
+      try { await _dataService?.notifyExternalPageMutation(pageId, kind); }
+      catch (err) { console.warn('[Canvas] notifyExternalPageMutation failed for', pageId, err); }
+      // Surface what the AI did: open the page — but DON'T re-open/steal focus
+      // when it's already open; the surgical reload above has updated it live.
+      if (kind !== 'deleted' && !_editorProvider?.isPageOpen(pageId)) {
+        void openPageInEditor(pageId);
+      }
+    };
+
     const canvasToolDisposables = registerCanvasAITools({
       toolsService,
       db,
       getCurrentPageId: () => canvasPageIdFromEditorId(editorService?.activeEditor?.id),
       workspaceRoot: api.workspace.workspaceFolders?.[0]?.uri,
       templateApi: api,
-      pageMutationNotifier: async (pageId, kind) => {
-        // This notifier is the SOLE path by which AI page tools announce their
-        // mutations — mark the page so downstream signal consumers (habit
-        // detection, the capability meter's HUMAN denominator) don't count the
-        // agent's own work as the user's. Timed removal covers deferred events.
-        _aiMutatedPageIds.add(pageId);
-        setTimeout(() => _aiMutatedPageIds.delete(pageId), 5_000);
-        // Cancel any pending auto-save before the reload fires. The debounced
-        // save holds pre-AI content; if it fires after notifyExternalPageMutation
-        // updates _knownRevisions to the AI's new revision it silently succeeds
-        // and overwrites the AI's write. Cancelling it here eliminates the race.
-        if (kind === 'updated') _dataService?.cancelPendingSave(pageId);
-        // Deterministic ordering: AWAIT the mutation notification (which drives
-        // the open editor's surgical reload) before any focus side-effect. The
-        // old fire-and-forget raced openPageInEditor on the same tick — the
-        // open-editor path could re-read + focus mid-reload and the update never
-        // visibly landed.
-        try { await _dataService?.notifyExternalPageMutation(pageId, kind); }
-        catch (err) { console.warn('[Canvas] notifyExternalPageMutation failed for', pageId, err); }
-        // Surface what the AI did: open the page — but DON'T re-open/steal focus
-        // when it's already open; the surgical reload above has updated it live.
-        if (kind !== 'deleted' && !_editorProvider?.isPageOpen(pageId)) {
-          void openPageInEditor(pageId);
-        }
-      },
+      pageMutationNotifier,
       // Capture a revert point BEFORE a destructive AI edit lands (canvas_edit_page
       // replace), so wiping a page is always recoverable from version history.
       pageCheckpoint: (pageId) => _dataService?.checkpointPageNow(pageId, 'ai'),
@@ -531,6 +533,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         }
       },
     });
+    // Edit mode's Accept: apply an accepted page proposal through the same
+    // path canvas_edit_page takes (checkpoint first, then the write, then the
+    // live reload), so an accepted edit lands and can be undone from history.
+    const applyEditTool = createEditPageTool(db, pageMutationNotifier, (pageId) => _dataService?.checkpointPageNow(pageId, 'ai'));
+    context.subscriptions.push(api.commands.registerCommand('canvas.applyEditProposal', async (...args: unknown[]) => {
+      const pageId = String(args[0] ?? '');
+      const markdown = String(args[1] ?? '');
+      if (!pageId || !markdown.trim()) return false;
+      const res = await applyEditTool.handler({ pageId, markdown, mode: 'replace' }, { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() { /* none */ } }) } as never);
+      return !res.isError;
+    }));
     for (const d of canvasToolDisposables) context.subscriptions.push(d);
   }
 

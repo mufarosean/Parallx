@@ -9,6 +9,7 @@
 //   3. Register the chat view in the Auxiliary Bar
 //   4. Register chat commands (toggle, new session, clear, stop, focus)
 
+import type { EditApplyEventDetail } from './chatTypes.js';
 import { commandPrefix } from '../../services/commandRules.js';
 import { ALWAYS_REQUIRE_CONFIRMATION } from '../../services/permissionService.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
@@ -321,6 +322,25 @@ let _loadWriterIgnore: (() => Promise<unknown>) | undefined;
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
   _api = api;
+
+  // Edit mode's Accept: the proposal card dispatches parallx-edit-apply; a
+  // page-level proposal is applied through canvas.applyEditProposal (which
+  // checkpoints first, so it can be undone from the page's history).
+  const onEditApply = (e: globalThis.Event): void => {
+    const proposal = (e as CustomEvent<EditApplyEventDetail>).detail?.proposal;
+    if (!proposal) return;
+    if (proposal.operation !== 'update' || proposal.blockId) {
+      void api.window.showWarningMessage('This kind of change cannot be applied from the chat yet.');
+      return;
+    }
+    void (async () => {
+      let ok = false;
+      try { ok = !!(await api.commands.executeCommand('canvas.applyEditProposal', proposal.pageId, proposal.after)); } catch { ok = false; }
+      if (!ok) void api.window.showWarningMessage('Could not apply the change to the page. Nothing was changed.');
+    })();
+  };
+  document.addEventListener('parallx-edit-apply', onEditApply);
+  context.subscriptions.push({ dispose: () => document.removeEventListener('parallx-edit-apply', onEditApply) });
 
   // ── M86: dashboard widget contribution ──
   //

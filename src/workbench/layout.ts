@@ -35,6 +35,7 @@ import type {
 } from '../layout/layoutModel.js';
 import type { IGridView } from '../layout/gridView.js';
 import { PartDragController } from './partDrag.js';
+import { animatePartIn, animatePartOut, tween } from './partMotion.js';
 import type { PartDropZone } from './partDrag.js';
 import { PartRegistry } from '../parts/partRegistry.js';
 import { TitlebarPart, titlebarPartDescriptor } from '../parts/titlebarPart.js';
@@ -235,6 +236,8 @@ export abstract class Layout extends Disposable {
   protected _lastAuxBarWidth: number = DEFAULT_AUX_BAR_WIDTH;
   /** Whether the panel is currently maximized (occupying all vertical space). */
   protected _panelMaximized = false;
+  private _sidebarClosing = false;
+  private _cancelPanelTween: (() => void) | undefined;
   /** Whether Zen Mode is active (all chrome hidden). */
   protected _zenMode = false;
   /** Pre–Zen-Mode visibility snapshot for restore. */
@@ -871,6 +874,8 @@ export abstract class Layout extends Disposable {
    * When shown, it appears at the right edge of the body.
    */
   toggleAuxiliaryBar(): void {
+    // Hiding stays synchronous: callers read visibility straight after.
+    // Showing slides the content in from its edge.
     this._withTrackingSuspended(() => {
       if (this._auxBarVisible) {
         const currentWidth = this._grid.getViewRect(this._auxiliaryBar.id)?.width;
@@ -896,6 +901,7 @@ export abstract class Layout extends Disposable {
       this._relayoutBody();
     });
     this._layoutViewContainers();
+    if (this._auxBarVisible) animatePartIn(this._auxiliaryBar.element, 'right');
     this._onDidChangePartVisibility.fire({
       partId: PartId.AuxiliaryBar,
       visible: this._auxBarVisible,
@@ -912,6 +918,7 @@ export abstract class Layout extends Disposable {
     const el = this._sidebar.element;
 
     if (this._sidebar.visible) {
+      if (this._sidebarClosing) return;
       // Its real width and height, whichever way its branch runs, and its
       // place, recorded NOW: the removal below waits for the animation, and
       // an area hide removes the neighbours in the meantime. Recording in
@@ -923,13 +930,9 @@ export abstract class Layout extends Disposable {
       this._recordPlacement(this._sidebar.id);
 
       // Animate out, then remove from grid
-      el.classList.add('sidebar-animating', 'sidebar-collapsed');
-      let finished = false;
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        el.removeEventListener('transitionend', finish);
-        el.classList.remove('sidebar-animating', 'sidebar-collapsed');
+      this._sidebarClosing = true;
+      animatePartOut(el, 'left', () => {
+        this._sidebarClosing = false;
         this._withTrackingSuspended(() => {
           this._grid.removeView(this._sidebar.id);
           this._sidebar.setVisible(false);
@@ -937,14 +940,10 @@ export abstract class Layout extends Disposable {
         });
         this._layoutViewContainers();
         this._onDidChangePartVisibility.fire({ partId: PartId.Sidebar, visible: false });
-      };
-      el.addEventListener('transitionend', finish, { once: true });
-      // Safety fallback in case transitionend is missed
-      setTimeout(finish, 200);
+      });
     } else {
       // Add at the left edge, then animate in
       this._sidebar.setVisible(true);
-      el.classList.add('sidebar-animating', 'sidebar-collapsed');
       this._withTrackingSuspended(() => {
         this._placePart(this._sidebar, this._recalledSize(this._sidebar.id, this._lastSidebarWidth, this._lastSidebarHeight), () => {
           this._grid.addView(this._sidebar, this._lastSidebarWidth);
@@ -955,14 +954,7 @@ export abstract class Layout extends Disposable {
         this._relayoutBody();
       });
       this._layoutViewContainers();
-
-      // Force reflow so the initial collapsed state is rendered before removing the class
-      void el.offsetWidth;
-      el.classList.remove('sidebar-collapsed');
-      el.addEventListener('transitionend', () => {
-        el.classList.remove('sidebar-animating');
-      }, { once: true });
-      setTimeout(() => el.classList.remove('sidebar-animating'), 200);
+      animatePartIn(el, 'left');
       this._onDidChangePartVisibility.fire({ partId: PartId.Sidebar, visible: true });
     }
   }
@@ -974,6 +966,8 @@ export abstract class Layout extends Disposable {
    * Remembers height before collapse and restores it on expand.
    */
   togglePanel(): void {
+    // Hiding stays synchronous (see toggleAuxiliaryBar); showing slides up.
+    this._cancelPanelTween?.();
     this._withTrackingSuspended(() => {
       if (this._panel.visible) {
         const currentHeight = this._grid.getViewRect(this._panel.id)?.height;
@@ -999,6 +993,7 @@ export abstract class Layout extends Disposable {
       }
     });
     this._layoutViewContainers();
+    if (this._panel.visible) animatePartIn(this._panel.element, 'bottom');
     this._onDidChangePartVisibility.fire({
       partId: PartId.Panel,
       visible: this._panel.visible,
@@ -1037,20 +1032,26 @@ export abstract class Layout extends Disposable {
       }
 
       if (this._panelMaximized) {
-        this._grid.resizeView(this._panel.id, this._lastPanelHeight);
         this._panelMaximized = false;
       } else {
         const currentHeight = this._grid.getViewSize(this._panel.id);
         if (currentHeight !== undefined && currentHeight > 0) {
           this._lastPanelHeight = currentHeight;
         }
-        // Shrinking the editor to a strip grows the panel by the same
-        // amount: the two share a branch, and the resize is zero-sum
-        // within it.
-        this._grid.resizeView(this._editor.id, MAXIMIZED_EDITOR_MIN);
         this._panelMaximized = true;
       }
     });
+    // Glide between the two heights. Shrinking the editor to a strip grows
+    // the panel by the same amount: the two share a branch, and the resize
+    // is zero-sum within it.
+    const viewId = this._panelMaximized ? this._editor.id : this._panel.id;
+    const from = this._grid.getViewSize(viewId) ?? 0;
+    const to = this._panelMaximized ? MAXIMIZED_EDITOR_MIN : this._lastPanelHeight;
+    this._cancelPanelTween?.();
+    this._cancelPanelTween = tween(from, to, (h) => this._withTrackingSuspended(() => {
+      this._grid.resizeView(viewId, Math.round(h));
+      this._relayoutBody();
+    }));
     this._onDidChangePanelMaximized.fire(this._panelMaximized);
     this._layoutViewContainers();
   }

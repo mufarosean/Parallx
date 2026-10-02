@@ -300,13 +300,17 @@ html, body {
   overflow: hidden;
 }
 
-/* Sidebar collapse / expand animation */
-.part-workbench-parts-sidebar.sidebar-animating {
-  transition: opacity var(--px-dur-base) var(--px-ease), transform var(--px-dur-base) var(--px-ease);
+/* Areas arriving and leaving (src/workbench/partMotion.ts): the content
+   slides in from its own edge while the grid makes room. */
+.part-animating {
+  transition: opacity var(--px-dur-slow) var(--px-ease), transform var(--px-dur-slow) var(--px-ease);
 }
-.part-workbench-parts-sidebar.sidebar-collapsed {
-  opacity: 0;
-  transform: translateX(-12px);
+.part-collapsed { opacity: 0; }
+.part-collapsed--left { transform: translateX(-12px); }
+.part-collapsed--right { transform: translateX(12px); }
+.part-collapsed--bottom { transform: translateY(12px); }
+@media (prefers-reduced-motion: reduce) {
+  .part-animating { transition: none; }
 }
 
 /* Standard horizontal inset for all sidebar/aux chrome — keep L and R equal so
