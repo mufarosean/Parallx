@@ -17,6 +17,7 @@ import {
   parseJsonLoose, extractCompletedFields, parseCanonFacts, parseTwistedCanon, canonCounts,
   sheetFromCharacter, characterFromSheet, lineageOf, stripDashes,
 } from './studio-core.js';
+import { createPortrait, updatePortrait, hueOf, PORTRAIT_HUES, createDots, CREATIONS_PARTS_CSS } from './portrait.js';
 
 const STYLE_ID = 'creations-studio-styles';
 const AUTOSAVE_MS = 800;
@@ -27,9 +28,37 @@ export function injectStudioStyles() {
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-.cs { max-width: 780px; margin: 0 auto; padding: var(--px-space-4) var(--px-space-5) var(--px-space-8); display: flex; flex-direction: column; gap: var(--px-space-4); color: var(--px-text); font-family: var(--px-font-ui); }
+.cs { container-type: inline-size; max-width: 1180px; margin: 0 auto; padding: var(--px-space-4) var(--px-space-5) var(--px-space-8); display: flex; flex-direction: column; gap: var(--px-space-4); color: var(--px-text); font-family: var(--px-font-ui); box-sizing: border-box; }
+.cs-hero { display: flex; align-items: center; gap: var(--px-space-4); padding-bottom: var(--px-space-4); border-bottom: 1px solid var(--px-divider); }
+.cs-hero-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cs-portrait-btn { position: relative; flex: none; border: 0; background: none; padding: 0; cursor: pointer; border-radius: var(--px-radius-lg); }
+.cs-portrait-btn:focus-visible { outline: none; box-shadow: var(--px-ring); }
+.cs-portrait-edit { position: absolute; right: -4px; bottom: -4px; width: 20px; height: 20px; border-radius: var(--px-radius-full); border: 2px solid var(--px-bg); background: var(--px-bg-elevated); color: var(--px-text-secondary); display: inline-flex; align-items: center; justify-content: center; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
+.cs-portrait-btn:hover .cs-portrait-edit, .cs-portrait-btn:focus-visible .cs-portrait-edit { opacity: 1; }
+.cs-tagline { font-size: var(--px-text-md); color: var(--px-text-secondary); min-height: 1.4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-tagline:empty::before { content: 'A tagline appears here once the sheet has one.'; color: var(--px-text-faint); }
+.cs-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--px-space-5); align-items: start; }
+.cs-main, .cs-side { display: flex; flex-direction: column; gap: var(--px-space-4); min-width: 0; }
+.cs-side { position: sticky; top: var(--px-space-4); }
+.cs-side .cs-section { border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); padding: var(--px-space-3); }
+.cs-progress { height: 3px; border-radius: 2px; background: var(--px-surface-hover); overflow: hidden; display: none; }
+.cs-progress > i { display: block; height: 100%; width: 0; background: var(--px-accent); transition: width var(--px-dur-base) var(--px-ease-out); }
+.cs--writing .cs-progress { display: block; }
+.cs-row-state { display: none; align-items: center; gap: 6px; font-size: var(--px-text-xs); font-weight: 400; color: var(--px-text-muted); }
+.cs-row--queued .cs-row-state, .cs-row--writing .cs-row-state { display: inline-flex; }
+.cs-row-skel { grid-area: text; display: none; flex-direction: column; gap: 8px; padding: 8px var(--px-space-2); }
+.cs-row--queued .cs-row-skel { display: flex; }
+.cs-row--queued .cs-row-text { display: none; }
+.cs-row--queued { border-style: dashed; background: transparent; }
+.cs-row--writing { border-color: var(--px-border-strong); }
+.cs-try-you { align-self: flex-end; max-width: 85%; padding: 6px 10px; border-radius: 12px 12px 4px 12px; background: var(--px-accent-faint); font-size: var(--px-text-sm); }
+.cs-try-you:empty { display: none; }
+.cs-try-said { display: flex; gap: var(--px-space-2); align-items: flex-end; }
+.cs-try-said:has(.cs-try-reply:empty) { display: none; }
+.cs-try-thread { display: flex; flex-direction: column; gap: var(--px-space-2); }
+@container (max-width: 860px) { .cs-cols { grid-template-columns: minmax(0, 1fr); } .cs-side { position: static; } }
 .cs-bar { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
-.cs-title { flex: 1 1 220px; min-width: 0; font-size: var(--px-text-xl); font-weight: 600; background: transparent; border: 0; border-bottom: 1px solid transparent; color: var(--px-text); padding: var(--px-space-1) 0; outline: none; font-family: inherit; }
+.cs-title { flex: 1 1 220px; min-width: 0; font-size: var(--px-text-xl); letter-spacing: -.01em; font-weight: 600; background: transparent; border: 0; border-bottom: 1px solid transparent; color: var(--px-text); padding: var(--px-space-1) 0; outline: none; font-family: inherit; }
 .cs-title:hover { border-bottom-color: var(--px-border); }
 .cs-title:focus { border-bottom-color: var(--px-accent); }
 .cs-title::placeholder { color: var(--px-text-faint); font-weight: 500; }
@@ -78,22 +107,22 @@ export function injectStudioStyles() {
 .cs-add { display: flex; gap: var(--px-space-2); flex-wrap: wrap; }
 .cs-inline { display: flex; gap: var(--px-space-2); align-items: flex-start; }
 .cs-inline .cs-input, .cs-inline .cs-textarea { flex: 1; }
-.cs-rows { display: flex; flex-direction: column; }
-.cs-row { display: grid; grid-template-columns: 132px minmax(0, 1fr) auto; gap: var(--px-space-3); padding: var(--px-space-2) 0; border-bottom: 1px solid var(--px-divider); align-items: start; }
-.cs-row-label { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); padding-top: 7px; display: flex; align-items: center; gap: var(--px-space-1); min-width: 0; }
-.cs-row-lock { color: var(--px-accent-text); display: inline-flex; }
-.cs-row-text { width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-base); line-height: 1.5; padding: 6px var(--px-space-2); resize: none; overflow: hidden; min-height: 34px; }
+.cs-rows { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.cs-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'label acts' 'text text' 'err err'; column-gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-3) var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); align-items: center; }
+.cs-row-label { grid-area: label; font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-secondary); display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; min-height: 24px; }
+.cs-row-lock { color: var(--px-accent-text); background: var(--px-accent-faint); border-radius: var(--px-radius-full); padding: 0 7px; line-height: 18px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.cs-row-text { grid-area: text; width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-base); line-height: 1.5; padding: 6px var(--px-space-2); resize: none; overflow: hidden; min-height: 34px; }
 .cs-row-text:hover { border-color: var(--px-border); }
 .cs-row-text:focus { outline: none; border-color: var(--px-accent); background: var(--px-bg-inset); }
 .cs-row-text::placeholder { color: var(--px-text-faint); }
 .cs-row--busy .cs-row-text { opacity: .55; }
-.cs-row-actions { display: flex; gap: 2px; padding-top: 5px; opacity: 0; transition: opacity .12s; }
+.cs-row-actions { grid-area: acts; display: flex; gap: 2px; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
 .cs-row:hover .cs-row-actions, .cs-row:focus-within .cs-row-actions, .cs-row--locked .cs-row-actions, .cs-row--undo .cs-row-actions { opacity: 1; }
 .cs-icon-btn { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--px-text-muted); border-radius: var(--px-radius-xs); cursor: pointer; padding: 0; }
 .cs-icon-btn:hover { background: var(--px-bg-inset); color: var(--px-text); }
 .cs-icon-btn:disabled { opacity: .4; cursor: default; }
 .cs-icon-btn[aria-pressed="true"] { color: var(--px-accent-text); }
-.cs-row-error { grid-column: 2 / 4; display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-danger); }
+.cs-row-error { grid-area: err; display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-danger); }
 .cs-canon { display: flex; flex-direction: column; gap: 2px; }
 .cs-fact { display: flex; gap: var(--px-space-2); font-size: var(--px-text-sm); line-height: 1.45; padding: 2px 0; cursor: pointer; }
 .cs-fact-mark { width: 8px; height: 8px; border-radius: var(--px-radius-full); background: var(--px-divider); flex: 0 0 auto; margin-top: 7px; }
@@ -107,13 +136,14 @@ export function injectStudioStyles() {
 .cs-legend i { width: 8px; height: 8px; border-radius: var(--px-radius-full); display: inline-block; background: var(--px-divider); }
 .cs-legend i.changed { background: var(--px-accent); }
 .cs-legend i.added { background: var(--px-success); }
-.cs-try-reply { background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); padding: var(--px-space-3); font-size: var(--px-text-base); line-height: 1.5; white-space: pre-wrap; min-height: 20px; }
+.cs-try-reply { flex: 1; min-width: 0; background: var(--px-bg-inset); border: 1px solid var(--px-border); border-radius: 12px 12px 12px 4px; padding: var(--px-space-3); font-size: var(--px-text-base); line-height: 1.5; white-space: pre-wrap; min-height: 20px; }
 .cs-try-reply:empty { display: none; }
 .cs-dials { display: flex; flex-direction: column; gap: 6px; }
 .cs-engine { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); color: var(--px-text-muted); flex-wrap: wrap; }
 .cs-hint { font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .cs-back { margin: var(--px-space-3) var(--px-space-5) 0; }
 .cs-labelrow { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); }
+${CREATIONS_PARTS_CSS}
 `;
   document.head.appendChild(style);
 }
@@ -157,6 +187,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     saveTimer: null,
     savedOnce: !!ctx.fileName,
     engine: { modelId: '', numCtx: 0 },
+    hue: null,
   };
   const rows = {};
 
@@ -181,17 +212,35 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   twistAgainBtn.style.display = 'none';
   actions.append(chatBtn, exportBtn, behaviourBtn, twistAgainBtn);
   bar.append(title, status, actions);
-  root.appendChild(bar);
+  // The hero: the portrait (click to change its colour), the name bar, the tagline.
+  const hero = el('div', 'cs-hero');
+  const portraitBtn = el('button', 'cs-portrait-btn');
+  portraitBtn.type = 'button';
+  portraitBtn.title = 'Change colour';
+  portraitBtn.setAttribute('aria-label', 'Change colour');
+  const portrait = createPortrait('', { size: 64 });
+  portraitBtn.append(portrait, el('span', 'cs-portrait-edit', { html: icon('palette', 11) }));
+  portraitBtn.addEventListener('click', () => pickHue());
+  const heroText = el('div', 'cs-hero-text');
+  const taglineLine = el('div', 'cs-tagline');
+  heroText.append(bar, taglineLine);
+  hero.append(portraitBtn, heroText);
+  root.appendChild(hero);
   const crumbs = el('div', 'cs-crumbs');
   crumbs.style.display = 'none';
   root.appendChild(crumbs);
   const errorLine = el('div', 'cs-error');
   errorLine.style.display = 'none';
   root.appendChild(errorLine);
+  const cols = el('div', 'cs-cols');
+  const mainCol = el('div', 'cs-main');
+  const sideCol = el('div', 'cs-side');
+  cols.append(mainCol, sideCol);
+  root.appendChild(cols);
 
   // ── Make ───────────────────────────────────────────────────────────────
   const make = section('Make', 'Concept, sources, a Twist, the dials.');
-  root.appendChild(make.root);
+  mainCol.appendChild(make.root);
   const modes = el('div', 'cs-modes');
   const modeBtn = (key, label) => {
     const b = el('button', 'cs-mode', { text: label });
@@ -268,12 +317,17 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   const genBtn = button('Generate', 'sparkles', () => void generate(), true);
   genBtn.title = 'Write the whole sheet. Locked rows stay as they are.';
   makeActions.append(genBtn, diceBtn);
+  diceBtn.classList.add('cr-dice');
   make.body.appendChild(makeActions);
+  const progress = el('div', 'cs-progress');
+  const progressFill = el('i');
+  progress.appendChild(progressFill);
+  make.body.appendChild(progress);
 
   // ── Canon ──────────────────────────────────────────────────────────────
   const canon = section('Canon', '');
   canon.root.style.display = 'none';
-  root.appendChild(canon.root);
+  mainCol.appendChild(canon.root);
   const legend = el('div', 'cs-legend');
   legend.innerHTML = '<span><i></i>Kept</span><span><i class="changed"></i>Changed</span><span><i class="added"></i>Added</span><span>Click a fact to leave it out</span>';
   const canonList = el('div', 'cs-canon');
@@ -281,7 +335,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
 
   // ── Sheet ──────────────────────────────────────────────────────────────
   const sheetSec = section('Sheet', 'Edit in place. Lock a row and nothing regenerates it.');
-  root.appendChild(sheetSec.root);
+  mainCol.appendChild(sheetSec.root);
   const rowsHost = el('div', 'cs-rows');
   sheetSec.body.appendChild(rowsHost);
   for (const f of STUDIO_FIELDS) {
@@ -291,7 +345,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
 
   // ── Try A Line ─────────────────────────────────────────────────────────
   const trySec = section('Try A Line', 'Say something to them and hear the voice before you commit to it.');
-  root.appendChild(trySec.root);
+  sideCol.appendChild(trySec.root);
   const tryRow = el('div', 'cs-inline');
   const tryInput = el('input', 'cs-input');
   tryInput.type = 'text';
@@ -301,7 +355,13 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   tryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); void tryLine(); } });
   tryRow.append(tryInput, tryBtn);
   const tryReply = el('div', 'cs-try-reply');
-  trySec.body.append(tryRow, tryReply);
+  const tryYou = el('div', 'cs-try-you');
+  const trySaid = el('div', 'cs-try-said');
+  const tryPortrait = createPortrait('', { size: 28 });
+  trySaid.append(tryPortrait, tryReply);
+  const tryThread = el('div', 'cs-try-thread');
+  tryThread.append(tryYou, trySaid);
+  trySec.body.append(tryThread, tryRow);
 
   // ── Helpers: DOM ───────────────────────────────────────────────────────
   function button(label, iconName, onClick, primary = false) {
@@ -342,6 +402,59 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     area.style.height = 'auto';
     area.style.height = `${Math.max(area.scrollHeight, 34)}px`;
   }
+  function paintPortrait() {
+    const hue = hueOf({ name: state.sheet.name, hue: state.hue });
+    updatePortrait(portrait, state.sheet.name, hue);
+    updatePortrait(tryPortrait, state.sheet.name, hue);
+  }
+  function pickHue() {
+    const show = parallx.ui?.showContextMenu;
+    if (!show) return;
+    show(portraitBtn, [
+      { label: 'From The Name', checked: state.hue == null, onSelect: () => { state.hue = null; paintPortrait(); markDirty(); } },
+      { separator: true },
+      ...PORTRAIT_HUES.map((h) => ({ label: h.label, checked: state.hue === h.hue, onSelect: () => { state.hue = h.hue; paintPortrait(); markDirty(); } })),
+    ], { anchorPosition: 'below' });
+  }
+  // While the sheet streams in: rows still to come shimmer, the next one says
+  // Writing, each one that lands glows briefly. Cleared when the run ends.
+  function beginWriting(keys) {
+    root.classList.add('cs--writing');
+    keys.forEach((k, i) => {
+      const r = rows[k];
+      if (!r) return;
+      r.row.classList.add('cs-row--queued');
+      r.state.replaceChildren(document.createTextNode(i === 0 ? 'Writing' : 'Up next'));
+      if (i === 0) { r.row.classList.add('cs-row--writing'); r.state.appendChild(createDots()); }
+    });
+    progressFill.style.width = '0%';
+  }
+  function landRow(key, pending, total) {
+    const r = rows[key];
+    if (r) {
+      r.row.classList.remove('cs-row--queued', 'cs-row--writing');
+      r.state.replaceChildren();
+      r.row.classList.remove('cr-fresh');
+      void r.row.offsetWidth;
+      r.row.classList.add('cr-fresh');
+    }
+    const next = pending.find((k) => rows[k]?.row.classList.contains('cs-row--queued'));
+    if (next) {
+      const n = rows[next];
+      n.row.classList.add('cs-row--writing');
+      n.state.replaceChildren(document.createTextNode('Writing'), createDots());
+    }
+    const done = total - pending.filter((k) => rows[k]?.row.classList.contains('cs-row--queued')).length;
+    progressFill.style.width = `${Math.round((done / Math.max(total, 1)) * 100)}%`;
+    setStatus(`Writing ${done} of ${total}`, 'accent');
+  }
+  function endWriting() {
+    root.classList.remove('cs--writing');
+    for (const k of Object.keys(rows)) {
+      rows[k].row.classList.remove('cs-row--queued', 'cs-row--writing');
+      rows[k].state.replaceChildren();
+    }
+  }
   function setStatus(text, tone = '') {
     status.textContent = text;
     status.className = `cs-chip${tone ? ` cs-chip--${tone}` : ''}`;
@@ -359,16 +472,18 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     row.dataset.key = f.key;
     const label = el('div', 'cs-row-label');
     label.appendChild(el('span', null, { text: f.label }));
-    const lockMark = el('span', 'cs-row-lock', { html: icon('lock', 11) });
-    lockMark.title = 'Locked';
+    const lockMark = el('span', 'cs-row-lock', { html: `${icon('lock', 10)}<span>Kept</span>` });
+    lockMark.title = 'Locked: Generate and Reroll leave it alone';
     lockMark.style.display = 'none';
     label.appendChild(lockMark);
+    const rowState = el('span', 'cs-row-state');
+    label.appendChild(rowState);
     label.title = f.hint || '';
     const area = el('textarea', 'cs-row-text');
     area.rows = f.rows;
     area.placeholder = f.hint || '';
     area.setAttribute('aria-label', f.label);
-    area.addEventListener('input', () => { state.sheet[f.key] = area.value; autogrow(area); hideUndo(f.key); markDirty(); });
+    area.addEventListener('input', () => { state.sheet[f.key] = area.value; autogrow(area); hideUndo(f.key); if (f.key === 'tagline') taglineLine.textContent = area.value.trim(); markDirty(); });
     const acts = el('div', 'cs-row-actions');
     const undoBtn = iconButton('undo-2', `Undo the last reroll of ${f.label.toLowerCase()}`, () => undoReroll(f.key));
     undoBtn.style.display = 'none';
@@ -378,17 +493,23 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     acts.append(undoBtn, lockBtn, rerollBtn);
     const err = el('div', 'cs-row-error');
     err.style.display = 'none';
-    row.append(label, area, acts, err);
-    rows[f.key] = { row, area, lockBtn, rerollBtn, undoBtn, lockMark, err, label: f.label };
+    const skel = el('div', 'cs-row-skel');
+    skel.append(el('span', 'cr-skel'), el('span', 'cr-skel'));
+    skel.children[0].style.width = '92%';
+    skel.children[1].style.width = '64%';
+    row.append(label, area, acts, err, skel);
+    rows[f.key] = { row, area, lockBtn, rerollBtn, undoBtn, lockMark, err, label: f.label, state: rowState };
     return row;
   }
   function setField(key, value, opts = {}) {
     state.sheet[key] = value;
     if (key === 'name') {
       if (!opts.fromTitle) title.value = value;
+      paintPortrait();
     } else if (rows[key]) {
       rows[key].area.value = value;
       autogrow(rows[key].area);
+      if (key === 'tagline') taglineLine.textContent = value.trim();
     }
     if (!opts.silent) markDirty();
   }
@@ -769,12 +890,15 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       // model choose.
       const keepName = !!state.sheet.name.trim();
       const filled = new Set();
+      const pending = STUDIO_KEYS.filter((k) => k !== 'name' && rows[k] && !state.locks.has(k));
+      beginWriting(pending);
       const { parsed } = await streamJson(modelId, numCtx, buildSheetMessages(context()), (raw) => {
         const done = extractCompletedFields(raw);
         for (const [k, v] of Object.entries(done)) {
           if (filled.has(k) || state.locks.has(k) || (k === 'name' && keepName)) continue;
           filled.add(k);
           setField(k, cleanFieldValue(k, v), { silent: true });
+          if (pending.includes(k)) landRow(k, pending, pending.length);
         }
       });
       if (!parsed || typeof parsed.name !== 'string') throw new Error('The model did not return a character. Try again, or pick another model.');
@@ -787,6 +911,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       showError(`Could not generate: ${err?.message || String(err)}`, () => void generate());
       refreshStatus();
     } finally {
+      endWriting();
       state.busy = false;
       genBtn.disabled = false;
     }
@@ -821,6 +946,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     state.busy = true;
     tryBtn.disabled = true;
     tryReply.textContent = '';
+    tryYou.textContent = line;
     try {
       const { modelId, numCtx } = await resolveModel();
       const stream = parallx.lm.sendChatRequest(modelId, buildTryLineMessages(state.sheet, line), { temperature: 0.85, think: false, numCtx });
@@ -878,6 +1004,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       if (!state.base) state.base = deps.createCharacterJson({ initialMessages: '' });
       if (!state.fileName) state.fileName = `character-${deps.generateId().slice(0, 8)}.json`;
       const data = characterFromSheet(state.sheet, state.base, studioBlock());
+      if (state.hue != null) data.hue = state.hue; else delete data.hue;
       await deps.ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'characters']);
       await deps.saveCharacter(fs, workspaceUri, state.fileName, data);
       state.base = data;
@@ -953,6 +1080,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
         return;
       }
       const st = state.base.studio || {};
+      state.hue = Number.isFinite(Number(state.base.hue)) && state.base.hue !== null && state.base.hue !== '' ? Number(state.base.hue) : null;
       state.sheet = sheetFromCharacter(state.base);
       state.mode = st.mode === 'sources' ? 'sources' : 'concept';
       state.concept = st.concept || '';
@@ -974,6 +1102,10 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       state.canon = state.baseFacts.map((text) => ({ text, status: 'kept', was: '' }));
       state.concept = ctx.from.concept || '';
       state.mode = 'sources';
+    } else if (ctx.concept) {
+      // Home's Make Character and Surprise Me: a concept to write from at once.
+      state.concept = String(ctx.concept);
+      state.mode = 'concept';
     }
     title.value = state.sheet.name;
     conceptArea.value = state.concept; autogrow(conceptArea);
@@ -984,8 +1116,10 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     renderCanon();
     state.dirty = false;
     refreshStatus();
+    paintPortrait();
     await renderCrumbs();
     await loadEngine();
+    if (ctx.autoGenerate && !ctx.fileName && state.concept.trim() && !state.disposed) { void generate(); return; }
     if (!ctx.fileName) title.focus();
   }
   function toggleLockSilently(key) {

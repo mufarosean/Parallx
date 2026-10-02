@@ -308,6 +308,14 @@
   --px-edit-knob:         var(--px-base-100);  /* slider knob                 */
   --px-edit-clip-hi:      #ff5a4f;  /* clipped highlights, on the photo       */
   --px-edit-clip-lo:      #4f8dff;  /* clipped shadows, on the photo          */
+
+  /* ── Tier 3 · Component — Creations portrait ────────────────────────────
+     A character has no picture: their initials sit on a quiet tone of a hue
+     taken from their name (set as --cr-hue on the portrait). The hue shows
+     on the portrait only; everything around it stays neutral. */
+  --px-portrait-s:        18%;      /* saturation of the tone               */
+  --px-portrait-l:        30%;      /* lightness of the tone                */
+  --px-portrait-ink-l:    86%;      /* lightness of the initials            */
 }
 
 /* ============================================================================
@@ -429,6 +437,11 @@
 
   /* Image editor: a white knob with an edge, not a heavy ink dot. */
   --px-edit-knob:       #ffffff;
+
+  /* Creations portrait: a pale tone with dark initials. */
+  --px-portrait-s:      26%;
+  --px-portrait-l:      86%;
+  --px-portrait-ink-l:  30%;
 }
 
 /* Light Warm — warm-tinted paper. */

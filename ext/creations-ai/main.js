@@ -10,7 +10,10 @@
 
 import { renderStudioPane } from './studio.js';
 import { renderStoriesPage, listStories } from './story.js';
-import { renderTablesPage, attachTableRoll } from './tables.js';
+import { renderTablesPage, attachTableRoll, listTables, loadTable } from './tables.js';
+import { roll as rollTable } from './tables-core.js';
+import { storyWords } from './story-core.js';
+import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock } from './chat-memory.js';
 
 // The workspace data folder keeps its original name: every character, thread,
@@ -1992,6 +1995,102 @@ function injectStyles() {
 /* Legacy chat-settings rows sized their selects flex:1 capped at 280px —
    the themed wrapper must match or the row layout collapses. */
 .tg-cs-row .tg-dd { flex: 1; max-width: 280px; width: auto; }
+${CREATIONS_PARTS_CSS}
+/* ═══ The redesign (docs/CREATIONS_AI.md, Redesign 2026-10-02) ═══
+   Neutral surfaces from the --px-* tokens; a character's hue lives only on
+   its portrait; the accent marks the one main action. */
+.cr-home { container-type: inline-size; max-width: 1180px; margin: 0 auto; padding: var(--px-space-6) var(--px-space-6) var(--px-space-8); display: flex; flex-direction: column; gap: var(--px-space-6); color: var(--px-text); font-family: var(--px-font-ui); box-sizing: border-box; }
+.cr-hero { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--px-space-6); align-items: start; }
+.cr-hero:has(.cr-roll[style*="none"]) { grid-template-columns: minmax(0, 1fr); }
+.cr-hero-title { margin: 0 0 var(--px-space-3); font-size: var(--px-text-xl); font-weight: 600; line-height: var(--px-leading-tight); letter-spacing: -.01em; }
+.cr-prompt { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-2) var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); }
+.cr-prompt:focus-within { border-color: var(--px-accent); }
+.cr-prompt-icon { display: inline-flex; color: var(--px-text-muted); }
+.cr-prompt-input { flex: 1; min-width: 0; height: var(--px-control-h-lg); border: 0; background: transparent; outline: none; color: var(--px-text); font: inherit; font-size: var(--px-text-md); }
+.cr-prompt-input::placeholder { color: var(--px-text-faint); }
+.cr-tries { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-2); }
+.cr-tries-label { font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.cr-try { height: var(--px-control-h-sm); padding: 0 var(--px-space-3); border-radius: var(--px-radius-full); border: 1px solid var(--px-border); background: transparent; color: var(--px-text-secondary); font: inherit; font-size: var(--px-text-xs); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-try:hover { border-color: var(--px-border-strong); background: var(--px-surface-hover); color: var(--px-text); }
+.cr-roll { border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); padding: var(--px-space-3) var(--px-space-4); display: flex; flex-direction: column; gap: var(--px-space-2); }
+.cr-roll-head { display: flex; align-items: center; justify-content: space-between; }
+.cr-roll-label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; min-width: 0; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.cr-roll-text { font-size: var(--px-text-md); font-weight: 500; line-height: 1.45; }
+.cr-roll-actions { display: flex; gap: var(--px-space-1); align-items: center; }
+.cr-quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--px-space-3); }
+.cr-quick-card { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.cr-quick-card:hover { border-color: var(--px-border-strong); background: var(--px-surface-hover); }
+.cr-quick-icon { flex: none; width: 36px; height: 36px; border-radius: var(--px-radius-md); display: inline-flex; align-items: center; justify-content: center; background: var(--px-surface-hover); color: var(--px-text-secondary); }
+.cr-quick-text { display: flex; flex-direction: column; min-width: 0; }
+.cr-quick-title { font-weight: 600; font-size: var(--px-text-base); }
+.cr-quick-hint { font-size: var(--px-text-xs); color: var(--px-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-section { display: flex; flex-direction: column; gap: var(--px-space-3); }
+.cr-section-head { display: flex; align-items: center; justify-content: space-between; }
+.cr-section-title { margin: 0; font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
+.cr-section-link { border: 0; background: none; padding: 0; color: var(--px-accent-text); font: inherit; font-size: var(--px-text-sm); cursor: pointer; }
+.cr-section-link:hover { text-decoration: underline; }
+.cr-continue { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--px-space-3); }
+.cr-cont-card { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-3) var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.cr-cont-card:hover { border-color: var(--px-border-strong); }
+.cr-cont-book { flex: none; width: 44px; height: 44px; border-radius: var(--px-radius-md); display: inline-flex; align-items: center; justify-content: center; background: var(--px-surface-hover); color: var(--px-text-secondary); }
+.cr-cont-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cr-cont-top { display: flex; align-items: baseline; gap: var(--px-space-2); min-width: 0; }
+.cr-cont-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-cont-meta { font-size: var(--px-text-xs); color: var(--px-text-faint); white-space: nowrap; }
+.cr-cont-line { color: var(--px-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-cont-go { flex: none; height: var(--px-control-h); padding: 0 12px; display: inline-flex; align-items: center; border-radius: var(--px-radius-sm); border: 1px solid var(--px-border); font-size: var(--px-text-sm); font-weight: 500; }
+.cr-cont-card:first-child .cr-cont-go { background: var(--px-accent); border-color: var(--px-accent); color: var(--px-text-on-accent); }
+.cr-cast { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--px-space-3); }
+.cr-cast > .px-empty { grid-column: 1 / -1; }
+.cr-cast-card { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); cursor: pointer; min-width: 0; outline: none; }
+.cr-cast-card:hover, .cr-cast-card:focus-visible { border-color: var(--px-border-strong); }
+.cr-cast-card:focus-visible { box-shadow: var(--px-ring); }
+.cr-cast-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: var(--px-space-1); }
+.cr-cast-tag { font-size: var(--px-text-xs); color: var(--px-text-muted); line-height: 1.4; height: calc(1.4em * 2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cr-cast-chat { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; border: 0; background: none; padding: 0; color: var(--px-text-muted); font: inherit; font-size: var(--px-text-xs); font-weight: 500; cursor: pointer; }
+.cr-cast-chat:hover { color: var(--px-text); }
+.cr-cast-page { height: 100%; overflow: auto; color: var(--px-text); font-family: var(--px-font-ui); }
+.cr-gallery { container-type: inline-size; max-width: 1180px; margin: 0 auto; padding: var(--px-space-5) var(--px-space-6) var(--px-space-8); box-sizing: border-box; }
+.cr-gallery-tools { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; margin: var(--px-space-4) 0; }
+.cr-search { display: inline-flex; align-items: center; gap: 6px; height: var(--px-control-h); padding: 0 var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); background: var(--px-bg-inset); color: var(--px-text-muted); width: 220px; box-sizing: border-box; }
+.cr-search:focus-within { border-color: var(--px-accent); }
+.cr-search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: var(--px-text); font: inherit; font-size: var(--px-text-sm); }
+.cr-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--px-space-4); }
+.cr-grid > .px-empty { grid-column: 1 / -1; }
+.cr-card { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); cursor: pointer; min-width: 0; outline: none; }
+.cr-card:hover, .cr-card:focus-visible { border-color: var(--px-border-strong); }
+.cr-card:focus-visible { box-shadow: var(--px-ring); }
+.cr-card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--px-space-1); }
+.cr-card-top-right { display: flex; align-items: center; gap: var(--px-space-1); opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
+.cr-card:hover .cr-card-top-right, .cr-card:focus-within .cr-card-top-right { opacity: 1; }
+.cr-card-name { font-weight: 600; font-size: var(--px-text-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-card-tag { font-size: var(--px-text-sm); color: var(--px-text-muted); line-height: 1.45; height: calc(1.45em * 2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cr-card-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); border-top: 1px solid var(--px-divider); padding-top: var(--px-space-2); margin-top: auto; }
+.cr-card-meta { font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.cr-grid--lore { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cr-lore-card { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); cursor: pointer; min-width: 0; outline: none; }
+.cr-lore-card:hover, .cr-lore-card:focus-visible { border-color: var(--px-border-strong); }
+.cr-lore-icon { flex: none; width: 32px; height: 32px; border-radius: var(--px-radius-md); display: inline-flex; align-items: center; justify-content: center; background: var(--px-surface-hover); color: var(--px-text-secondary); }
+.cr-lore-text { flex: 1; min-width: 0; }
+.cr-lore-text .cr-card-name { font-size: var(--px-text-base); }
+.cr-detail-host { min-height: 0; }
+.cr-back { display: inline-flex; align-items: center; gap: 2px; margin: var(--px-space-4) 0 0 var(--px-space-5); border: 0; background: none; padding: 0; color: var(--px-text-muted); font: inherit; font-size: var(--px-text-sm); cursor: pointer; }
+.cr-back:hover { color: var(--px-text); }
+@container (max-width: 980px) { .cr-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .cr-grid--lore { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 720px) { .cr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 460px) { .cr-grid, .cr-grid--lore { grid-template-columns: minmax(0, 1fr); } .cr-search { width: 100%; } }
+@container (max-width: 900px) {
+  .cr-hero { grid-template-columns: minmax(0, 1fr); }
+  .cr-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cr-cast { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (max-width: 560px) {
+  .cr-home { padding: var(--px-space-4); }
+  .cr-continue, .cr-quick { grid-template-columns: minmax(0, 1fr); }
+  .cr-cast { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cr-prompt { flex-wrap: wrap; }
+  .cr-prompt-input { flex-basis: 100%; }
+}
   `;
   document.head.appendChild(style);
 }
@@ -7740,366 +7839,584 @@ function renderChatEditor(container, parallx, input) {
 // SECTION 10B: HOME PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Concepts Surprise Me and the Try chips draw from: short, specific, a little odd.
+const HOME_CONCEPTS = [
+  'A lighthouse keeper who collects other people’s secrets',
+  'A retired assassin who runs a very good bakery',
+  'Someone who only speaks in weather reports',
+  'A smuggler who draws her own sea charts and lies on half of them',
+  'A lapsed monk who still keeps the hours, mostly out of spite',
+  'A detective in a city that floods every Thursday',
+  'A ship’s AI with strong opinions about the captain’s music',
+  'A duelist who has lost every duel but the important ones',
+  'A hedge witch who charges in gossip, not coin',
+  'A museum night guard who is sure one painting is watching him',
+  'A cartographer of dreams who is running out of blank paper',
+  'A tired dragon who now works as a tax auditor',
+  'A wedding planner for families who hate each other',
+  'A beekeeper who believes the bees elected her',
+  'A ghost who is embarrassed about how she died',
+  'A chess hustler who never loses to children, on principle',
+  'A radio host who is the last voice on the night shift',
+  'A knight sworn to protect a very small and ungrateful goose',
+];
+
+// The Home's Make Character hands its concept to the Characters page. If that
+// page is already open it takes the concept at once; otherwise it reads it on render.
+let _pendingStudio = null;
+let _liveCharacters = null;
+function makeCharacterFrom(parallx, concept) {
+  _pendingStudio = { concept: String(concept || '').trim(), autoGenerate: !!String(concept || '').trim() };
+  if (_liveCharacters) { const p = _pendingStudio; _pendingStudio = null; _liveCharacters.openStudio(p); }
+  void parallx.commands.executeCommand('textGenerator.newCharacter');
+}
+
+/** The last line said in a chat, without touching the file (no migration writes). */
+async function lastChatLine(fs, workspaceUri, threadId) {
+  try {
+    const { content } = await fs.readFile(resolveUri(workspaceUri, `${EXT_ROOT}/threads/${threadId}/messages.jsonl`));
+    const lines = String(content || '').trim().split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const m = JSON.parse(lines[i]);
+        const who = m.author || (m.role === 'assistant' ? 'ai' : m.role);
+        if ((who === 'ai' || who === 'user') && m.hiddenFrom !== 'user' && String(m.content || '').trim()) {
+          return { text: String(m.content).replace(/\s+/g, ' ').trim(), count: lines.length };
+        }
+      } catch { /* a torn line */ }
+    }
+    return { text: '', count: lines.length };
+  } catch { return { text: '', count: 0 }; }
+}
+
+function openCharacterTab(parallx, fileName, name) {
+  return parallx.editors.openEditor({ typeId: 'text-generator-character-editor', title: name, icon: 'user', instanceId: fileName });
+}
+async function startChatWith(parallx, fs, workspaceUri, fileName, name) {
+  const thread = await createThread(fs, workspaceUri, fileName, null);
+  _refreshSidebar?.();
+  await parallx.editors.openEditor({ typeId: 'text-generator-chat', title: name, icon: 'message-circle', instanceId: thread.id });
+}
+
 function renderHomePage(container, parallx) {
   injectStyles();
+  const ui = parallx.ui;
   const fs = parallx.workspace?.fs;
   const workspaceUri = parallx.workspace?.workspaceFolders?.[0]?.uri;
-  const root = el('div', 'tg-page');
+  const root = el('div', 'cr-home');
   container.appendChild(root);
-  const header = el('div', 'tg-page-header');
-  header.innerHTML = icon('sparkles', 28);
-  const info = el('div', 'tg-page-header-info');
-  info.appendChild(el('div', 'tg-page-header-title', { text: 'Creations AI' }));
-  info.appendChild(el('div', 'tg-page-header-subtitle', { text: 'Characters, roleplay, and the worlds they live in.' }));
-  header.appendChild(info);
-  root.appendChild(header);
-  const content = el('div', 'tg-page-content');
-  root.appendChild(content);
+  const pick = (n) => [...HOME_CONCEPTS].sort(() => Math.random() - 0.5).slice(0, n);
 
-  // One launcher per kind of creation. Setup lives on Settings, not here.
-  const launch = el('div', 'tg-page-section');
-  launch.appendChild(el('div', 'tg-page-section-title', { text: 'Make Something' }));
-  const actions = el('div', 'tg-quick-actions');
-  const quickAction = (iconName, label, command, hint) => {
-    const btn = el('button', 'tg-quick-action');
-    btn.innerHTML = icon(iconName, 14) + ` <span>${label}</span>`;
-    btn.title = hint;
-    btn.addEventListener('click', () => parallx.commands.executeCommand(command));
-    return btn;
+  // ── Hero: who do you want to meet? ──
+  const hero = el('div', 'cr-hero');
+  const ask = el('div', 'cr-hero-ask');
+  ask.appendChild(el('h1', 'cr-hero-title', { text: 'Who do you want to meet?' }));
+  const prompt = el('div', 'cr-prompt');
+  prompt.appendChild(el('span', 'cr-prompt-icon', { html: icon('sparkles', 18) }));
+  const conceptInput = el('input', 'cr-prompt-input');
+  conceptInput.type = 'text';
+  conceptInput.placeholder = pick(1)[0];
+  conceptInput.setAttribute('aria-label', 'Describe a character');
+  prompt.appendChild(conceptInput);
+  const surprise = ui.createButton(prompt, { label: 'Surprise Me', kind: 'ghost', icon: 'dices', title: 'Fill in a concept at random', onClick: () => { conceptInput.value = pick(1)[0]; conceptInput.focus(); } });
+  surprise.classList.add('cr-dice');
+  ui.createButton(prompt, { label: 'Make Character', kind: 'primary', icon: 'wand-sparkles', title: 'Open the Studio and write this character', onClick: () => makeCharacterFrom(parallx, conceptInput.value || conceptInput.placeholder) });
+  conceptInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); makeCharacterFrom(parallx, conceptInput.value || conceptInput.placeholder); } });
+  ask.appendChild(prompt);
+  const tries = el('div', 'cr-tries');
+  tries.appendChild(el('span', 'cr-tries-label', { text: 'Try' }));
+  for (const c of pick(2)) {
+    const b = el('button', 'cr-try', { text: c });
+    b.type = 'button';
+    b.addEventListener('click', () => { conceptInput.value = c; conceptInput.focus(); });
+    tries.appendChild(b);
+  }
+  ask.appendChild(tries);
+  hero.appendChild(ask);
+  const rollHost = el('div', 'cr-roll');
+  rollHost.style.display = 'none';
+  hero.appendChild(rollHost);
+  root.appendChild(hero);
+
+  // ── Quick start ──
+  const quick = el('div', 'cr-quick');
+  const quickCard = (iconName, label, hint, onClick) => {
+    const b = el('button', 'cr-quick-card');
+    b.type = 'button';
+    b.appendChild(el('span', 'cr-quick-icon', { html: icon(iconName, 18) }));
+    const t = el('span', 'cr-quick-text');
+    t.appendChild(el('span', 'cr-quick-title', { text: label }));
+    t.appendChild(el('span', 'cr-quick-hint', { text: hint }));
+    b.appendChild(t);
+    b.addEventListener('click', onClick);
+    return b;
   };
-  actions.append(
-    quickAction('sparkles', 'New Character', 'textGenerator.newCharacter', 'A character from a concept, from sources, or from sources with a Twist'),
-    quickAction('message-circle', 'New Roleplay', 'textGenerator.newChat', 'A chat with one of your characters'),
-    quickAction('book-open', 'New Story', 'textGenerator.newStory', 'A story written in beats you steer'),
-    quickAction('dices', 'New Table', 'textGenerator.newTable', 'A random table in the Perchance list grammar'),
+  quick.append(
+    quickCard('user', 'New Character', 'Start from a line or a few sources', () => makeCharacterFrom(parallx, '')),
+    quickCard('message-circle', 'New Roleplay', 'Put one of your cast in a scene', () => void parallx.commands.executeCommand('textGenerator.newChat')),
+    quickCard('book-open', 'New Story', 'Write it beat by beat, together', () => void parallx.commands.executeCommand('textGenerator.newStory')),
+    quickCard('dices', 'New Table', 'Make a list worth rolling on', () => void parallx.commands.executeCommand('textGenerator.newTable')),
   );
-  launch.appendChild(actions);
-  content.appendChild(launch);
-  if (!fs || !workspaceUri) return { dispose() { container.innerHTML = ''; } };
+  root.appendChild(quick);
 
-  const recentSection = (titleText) => {
-    const section = el('div', 'tg-page-section');
-    section.appendChild(el('div', 'tg-page-section-title', { text: titleText }));
-    const list = el('div', 'tg-recent-list');
-    section.appendChild(list);
-    content.appendChild(section);
-    return list;
+  if (!fs || !workspaceUri) {
+    ui.createEmptyState(root, { headline: 'No workspace is open.', hint: 'Open a folder to keep characters, chats and stories in it.', icon: 'folder' });
+    return { dispose() { container.innerHTML = ''; } };
+  }
+
+  const section = (label) => {
+    const sec = el('div', 'cr-section');
+    const head = el('div', 'cr-section-head');
+    head.appendChild(el('h2', 'cr-section-title', { text: label }));
+    sec.appendChild(head);
+    const body = el('div');
+    sec.appendChild(body);
+    root.appendChild(sec);
+    return { sec, head, body };
   };
-  const chatsList = recentSection('Recent Chats');
-  const charsList = recentSection('Characters');
-  const storiesList = recentSection('Stories');
-  const row = (label, time, onClick) => {
-    const r = el('div', 'tg-recent-row');
-    r.appendChild(el('span', 'tg-recent-row-label', { text: label }));
-    if (time) r.appendChild(el('span', 'tg-recent-row-time', { text: time }));
-    r.addEventListener('click', onClick);
-    return r;
-  };
-  const empty = (list, text) => list.appendChild(el('div', 'tg-empty', { text }));
+  const cont = section('Pick up where you left off');
+  cont.body.className = 'cr-continue';
+  const cast = section('Your cast');
+  cast.body.className = 'cr-cast';
+
   let disposed = false;
+  let rollToken = 0;
+  async function rollOnHome(settings) {
+    const token = ++rollToken;
+    if (settings.homeTableRoll === false) { rollHost.style.display = 'none'; return; }
+    const deps = studioDeps();
+    const tables = await listTables(fs, workspaceUri, deps).catch(() => []);
+    if (disposed || token !== rollToken) return;
+    if (tables.length === 0) { rollHost.style.display = 'none'; return; }
+    const table = tables[Math.floor(Math.random() * tables.length)];
+    let text = '';
+    try {
+      const { content } = await fs.readFile(resolveUri(workspaceUri, `${EXT_ROOT}/tables/${table.fileName}`));
+      const loaded = await loadTable(fs, workspaceUri, deps, String(content));
+      text = rollTable(loaded.gen, 1, 'output', { imports: loaded.imports }).results[0] || '';
+    } catch { text = ''; }
+    if (disposed || token !== rollToken) return;
+    if (!String(text).trim()) { rollHost.style.display = 'none'; return; }
+    rollHost.replaceChildren();
+    const head = el('div', 'cr-roll-head');
+    head.appendChild(el('span', 'cr-roll-label', { html: `${icon('dices', 13)}<span></span>` }));
+    head.querySelector('.cr-roll-label span').textContent = `${titleCaseName(table.name)} rolled`;
+    const again = ui.createIconButton(head, { icon: 'dices', title: 'Roll another table', size: 'sm', onClick: () => void rollOnHome(settings) });
+    again.classList.add('cr-dice');
+    rollHost.appendChild(head);
+    rollHost.appendChild(el('div', 'cr-roll-text', { text: String(text) }));
+    const acts = el('div', 'cr-roll-actions');
+    ui.createButton(acts, { label: 'Use As A Concept', kind: 'secondary', size: 'sm', icon: 'user', onClick: () => { conceptInput.value = String(text); conceptInput.focus(); } });
+    ui.createIconButton(acts, { icon: 'copy', title: 'Copy', size: 'sm', onClick: () => { void navigator.clipboard?.writeText(String(text)); showToastLite('Copied'); } });
+    rollHost.appendChild(acts);
+    rollHost.style.display = '';
+  }
+
   async function load() {
-    const [threads, characters, stories] = await Promise.all([
+    const [threads, characters, stories, settings] = await Promise.all([
       listThreads(fs, workspaceUri).catch(() => []),
       scanCharacters(fs, workspaceUri).catch(() => []),
       listStories(fs, workspaceUri, studioDeps()).catch(() => []),
+      loadSettings(fs, workspaceUri).catch(() => ({ ...DEFAULT_SETTINGS })),
     ]);
     if (disposed) return;
-    chatsList.innerHTML = ''; charsList.innerHTML = ''; storiesList.innerHTML = '';
-    if (threads.length === 0) empty(chatsList, 'No chats yet. New Roleplay starts one.');
-    for (const th of threads.slice(0, 5)) {
-      chatsList.appendChild(row(th.title || 'Untitled', formatTimeAgo(th.updatedAt), () => parallx.editors.openEditor({ typeId: 'text-generator-chat', title: th.title || 'Chat', icon: 'message-circle', instanceId: th.id })));
+    const byFile = new Map(characters.map((c) => [c.fileName, c]));
+
+    // Continue: the newest chat and the newest story.
+    cont.body.replaceChildren();
+    const lastThread = threads[0];
+    if (lastThread) {
+      const file = lastThread.characters?.[0]?.file;
+      const ch = file ? byFile.get(file) : null;
+      const name = ch?.frontmatter.name || lastThread.title || 'Chat';
+      const card = el('button', 'cr-cont-card');
+      card.type = 'button';
+      card.appendChild(createPortrait(name, { size: 44, hue: ch ? hueOf(ch.rawData) : null }));
+      const t = el('span', 'cr-cont-text');
+      const top = el('span', 'cr-cont-top');
+      top.appendChild(el('span', 'cr-cont-name', { text: name }));
+      top.appendChild(el('span', 'cr-cont-meta', { text: `Chat · ${formatAgoWords(lastThread.updatedAt)}` }));
+      t.appendChild(top);
+      const line = el('span', 'cr-cont-line', { text: lastThread.title || '' });
+      t.appendChild(line);
+      card.appendChild(t);
+      card.appendChild(el('span', 'cr-cont-go', { text: 'Continue' }));
+      card.addEventListener('click', () => void parallx.editors.openEditor({ typeId: 'text-generator-chat', title: lastThread.title || name, icon: 'message-circle', instanceId: lastThread.id }));
+      cont.body.appendChild(card);
+      void lastChatLine(fs, workspaceUri, lastThread.id).then(({ text }) => { if (!disposed && text) line.textContent = `“${text}”`; });
     }
-    if (characters.length === 0) empty(charsList, 'No characters yet. New Character opens the Studio.');
-    for (const ch of characters.slice(0, 8)) {
-      const name = ch.frontmatter.name || ch.fileName;
-      charsList.appendChild(row(name, '', () => parallx.editors.openEditor({ typeId: 'text-generator-character-editor', title: name, icon: 'user', instanceId: ch.fileName })));
+    const lastStory = stories[0];
+    if (lastStory) {
+      const { fileName, story } = lastStory;
+      const card = el('button', 'cr-cont-card');
+      card.type = 'button';
+      card.appendChild(el('span', 'cr-cont-book', { html: icon('book-open', 20) }));
+      const t = el('span', 'cr-cont-text');
+      const top = el('span', 'cr-cont-top');
+      top.appendChild(el('span', 'cr-cont-name', { text: story.title || 'Untitled' }));
+      const chapters = Array.isArray(story.chapters) ? story.chapters.length : 0;
+      const words = Array.isArray(story.beats) ? storyWords(story) : 0;
+      top.appendChild(el('span', 'cr-cont-meta', { text: [chapters ? `Chapter ${chapters}` : '', `${words.toLocaleString()} words`].filter(Boolean).join(' · ') }));
+      t.appendChild(top);
+      t.appendChild(el('span', 'cr-cont-line', { text: story.brief?.premise || `Edited ${formatAgoWords(story.updatedAt)}` }));
+      card.appendChild(t);
+      card.appendChild(el('span', 'cr-cont-go', { text: 'Keep Writing' }));
+      card.addEventListener('click', () => void parallx.editors.openEditor({ typeId: 'text-generator-story', title: story.title || 'Story', icon: 'book-open', instanceId: fileName }));
+      cont.body.appendChild(card);
     }
-    if (stories.length === 0) empty(storiesList, 'No stories yet. New Story starts one.');
-    for (const { fileName, story } of stories.slice(0, 5)) {
-      storiesList.appendChild(row(story.title || 'Untitled', formatTimeAgo(story.updatedAt), () => parallx.editors.openEditor({ typeId: 'text-generator-story', title: story.title || 'Story', icon: 'book-open', instanceId: fileName })));
+    cont.sec.style.display = (lastThread || lastStory) ? '' : 'none';
+
+    // Your cast.
+    cast.head.querySelector('.cr-section-link')?.remove();
+    if (characters.length > 6) {
+      const all = el('button', 'cr-section-link', { text: `See All ${characters.length}` });
+      all.type = 'button';
+      all.addEventListener('click', () => void parallx.commands.executeCommand('textGenerator.openCharacters'));
+      cast.head.appendChild(all);
     }
+    cast.body.replaceChildren();
+    if (characters.length === 0) {
+      ui.createEmptyState(cast.body, { headline: 'No characters yet.', hint: 'Describe someone above, or press Surprise Me.', icon: 'users' });
+    }
+    const recent = [...characters].sort((a, b) => (b.rawData?.updatedAt || 0) - (a.rawData?.updatedAt || 0)).slice(0, 6);
+    for (const ch of recent) {
+      const name = ch.frontmatter.name || ch.fileName.replace(/\.(md|json)$/, '');
+      const card = el('div', 'cr-cast-card');
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-label', `Open ${name}`);
+      card.appendChild(createPortrait(name, { size: 44, hue: hueOf(ch.rawData) }));
+      card.appendChild(el('div', 'cr-cast-name', { text: name }));
+      card.appendChild(el('div', 'cr-cast-tag', { text: characterTagline(ch.rawData) }));
+      const chat = el('button', 'cr-cast-chat', { html: `${icon('message-circle', 13)}<span>Chat</span>` });
+      chat.type = 'button';
+      chat.addEventListener('click', (e) => { e.stopPropagation(); void startChatWith(parallx, fs, workspaceUri, ch.fileName, name); });
+      card.appendChild(chat);
+      const open = () => void openCharacterTab(parallx, ch.fileName, name);
+      card.addEventListener('click', open);
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      cast.body.appendChild(card);
+    }
+    if (rollToken === 0) void rollOnHome(settings);
   }
   void load();
   let sub = null;
-  try { sub = parallx.workspace?.onDidFilesChange?.(() => { void load(); }) || null; } catch { sub = null; }
+  try { sub = parallx.workspace?.onDidFilesChange?.((events) => { if (!events || events.some?.((e) => String(e.uri || '').includes('/text-generator/'))) void load(); }) || null; } catch { sub = null; }
   return { dispose() { disposed = true; try { sub?.dispose?.(); } catch { /* gone */ } container.innerHTML = ''; } };
+}
+
+/** A table's file name as words: tavern-rumours → Tavern Rumours. */
+function titleCaseName(slug) {
+  return String(slug || '').replace(/[-_]+/g, ' ').replace(/\b[a-z]/g, (c) => c.toUpperCase()).trim();
+}
+
+/** "2 hours ago", "yesterday": the Home reads in words. */
+function formatAgoWords(ts) {
+  if (!ts) return 'a while ago';
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days} days ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
+/** The line under a character's name: the Studio's tagline, else the start of their instruction. */
+function characterTagline(data) {
+  const t = String(data?.studio?.sheet?.tagline || data?.tagline || '').trim();
+  if (t) return t;
+  const role = String(data?.roleInstruction || '').replace(/\s+/g, ' ').trim();
+  return role ? (role.length > 110 ? `${role.slice(0, 107)}…` : role) : 'No tagline yet';
 }
 
 function renderCharactersPage(container, parallx, input) {
   injectStyles();
-
+  const ui = parallx.ui;
   const fs = parallx.workspace?.fs;
   const workspaceUri = parallx.workspace?.workspaceFolders?.[0]?.uri;
-  // Master-detail consolidation: the roster and the character editor are
-  // ONE surface now. When opened via the legacy character-editor typeId,
-  // instanceId is a character fileName to preselect; the roster typeId
-  // passes a non-file instanceId ('characters') and starts unselected.
+  // One surface for the cast: a gallery of cards, and a character opened
+  // from it fills the page with the Studio (a back link returns). When opened
+  // via the character-editor typeId, instanceId is a character fileName to
+  // open; 'new' opens a blank Studio; anything else starts on the gallery.
   const rawInstance = input?.instanceId || input?.id || '';
   const preselect = /\.(md|json)$/.test(rawInstance) ? rawInstance : null;
 
-  const root = el('div', 'tg-cc');
+  const root = el('div', 'cr-cast-page');
   container.appendChild(root);
-
   if (!fs || !workspaceUri) {
-    root.appendChild(el('div', 'tg-empty', { text: 'Open a workspace to manage characters.' }));
+    ui.createEmptyState(root, { headline: 'No workspace is open.', hint: 'Open a folder to keep characters in it.', icon: 'users' });
     return { dispose() { container.innerHTML = ''; } };
   }
 
-  // ── Left rail: characters + lorebooks ──
-  const rail = el('div', 'tg-cc-rail');
-  const railHead = el('div', 'tg-cc-rail-head');
-  railHead.appendChild(el('span', 'tg-cc-rail-title', { text: 'Characters' }));
-  const forgeBtn = el('button', 'tg-cc-rail-add', { html: icon('sparkles', 14) });
-  forgeBtn.title = 'New Character';
-  forgeBtn.addEventListener('click', () => openStudioNew());
-  railHead.appendChild(forgeBtn);
-  const newCharBtn = el('button', 'tg-cc-rail-add', { html: icon('plus', 14) });
-  newCharBtn.title = 'New Blank Character';
-  railHead.appendChild(newCharBtn);
-  rail.appendChild(railHead);
-  const charList = el('div', 'tg-cc-list');
-  rail.appendChild(charList);
+  const galleryView = el('div', 'cr-gallery');
+  const detailView = el('div', 'cr-detail');
+  root.append(galleryView, detailView);
 
-  const loreHead = el('div', 'tg-cc-rail-head');
-  loreHead.appendChild(el('span', 'tg-cc-rail-title', { text: 'Lorebooks' }));
-  const newLoreBtn = el('button', 'tg-cc-rail-add', { html: icon('plus', 14) });
-  newLoreBtn.title = 'Create new lorebook';
-  loreHead.appendChild(newLoreBtn);
-  rail.appendChild(loreHead);
-  const loreList = el('div', 'tg-cc-list tg-cc-list--lore');
-  rail.appendChild(loreList);
-
-  // ── Right pane: the character editor, embedded ──
-  const pane = el('div', 'tg-cc-pane');
-  root.append(rail, pane);
-
-  let selectedFile; // undefined until the first selectCharacter call
+  let view = 'characters';
+  let query = '';
   let paneEditor = null;
-  // What the pane shows: the Studio (the one surface for a character) or the
-  // chat behaviour form behind it. Clicking a character's row from the form
-  // brings the Studio back.
-  let paneMode = null;
-  const rowByFile = new Map();
-  const clearPane = () => {
+  let openFile = null;
+  let disposed = false;
+  let chars = [];
+  let lorebooks = [];
+  let chatCounts = new Map();
+
+  // ── Gallery header ──
+  const header = ui.createPageHeader(galleryView, {
+    title: 'Characters',
+    back: { label: 'Creations', onClick: () => void parallx.commands.executeCommand('textGenerator.openHome') },
+    subtitle: ' ',
+    primary: { label: 'New Character', icon: 'plus', onClick: () => openStudioNew() },
+    secondary: [{ label: 'Surprise Me', icon: 'dices', title: 'A new character from a concept picked at random', onClick: () => openStudio({ concept: HOME_CONCEPTS[Math.floor(Math.random() * HOME_CONCEPTS.length)], autoGenerate: true }) }],
+  });
+  const subtitleEl = header.querySelector('.px-page-header__subtitle');
+  const tools = el('div', 'cr-gallery-tools');
+  const seg = ui.createSegmented(tools, {
+    ariaLabel: 'Show',
+    items: [{ value: 'characters', label: 'Characters' }, { value: 'lorebooks', label: 'Lorebooks' }],
+    value: view,
+    onChange: (v) => { view = v; renderGallery(); },
+  });
+  const search = el('label', 'cr-search');
+  search.innerHTML = icon('search', 14);
+  const searchInput = el('input');
+  searchInput.type = 'text';
+  searchInput.placeholder = 'Search';
+  searchInput.setAttribute('aria-label', 'Search characters');
+  searchInput.addEventListener('input', () => { query = searchInput.value.trim().toLowerCase(); renderGallery(); });
+  search.appendChild(searchInput);
+  tools.appendChild(search);
+  const newLore = ui.createButton(tools, { label: 'New Lorebook', kind: 'secondary', icon: 'plus', onClick: () => void createLorebook() });
+  galleryView.appendChild(tools);
+  const grid = el('div', 'cr-grid');
+  galleryView.appendChild(grid);
+
+  // ── Detail: the Studio, full width ──
+  const back = el('button', 'cr-back', { html: `${icon('chevron-left', 14)}<span>Characters</span>` });
+  back.type = 'button';
+  back.addEventListener('click', () => showGallery());
+  const detailHost = el('div', 'cr-detail-host');
+  detailView.append(back, detailHost);
+
+  const clearDetail = () => {
     if (paneEditor) { try { paneEditor.dispose?.(); } catch { /* already disposed */ } paneEditor = null; }
-    pane.innerHTML = '';
-    paneMode = null;
+    detailHost.replaceChildren();
   };
-  const markActive = () => { for (const [f, row] of rowByFile) row.classList.toggle('tg-cc-row--active', f === selectedFile); };
+  function showGallery() {
+    clearDetail();
+    openFile = null;
+    detailView.style.display = 'none';
+    galleryView.style.display = '';
+    void refresh();
+  }
+  const showDetail = () => { galleryView.style.display = 'none'; detailView.style.display = ''; root.scrollTop = 0; };
   const studioCtx = (extra) => ({
     fs, workspaceUri,
-    // The Studio autosaves; the first save of a new character is the moment
-    // the rail learns about it. The pane is not re-rendered: the Studio is
-    // already showing that character.
-    onCreated: async (fileName) => { selectedFile = fileName; await refreshRail(); markActive(); _refreshSidebar?.(); },
-    // Every later save: the row's name follows the sheet, and so does the sidebar.
-    onSaved: (fileName, name) => {
-      const label = rowByFile.get(fileName)?.querySelector('.tg-cc-row-name');
-      if (label && name) label.textContent = name;
-      _refreshSidebar?.();
-    },
-    openChat: (fileName, name) => startChatWithCharacter(fileName, name),
+    onCreated: async (fileName) => { openFile = fileName; _refreshSidebar?.(); },
+    onSaved: () => { _refreshSidebar?.(); },
+    openChat: (fileName, name) => void startChatWith(parallx, fs, workspaceUri, fileName, name),
     openChatBehaviour: (fileName) => openBehaviour(fileName),
-    openCharacter: (fileName) => { selectedFile = null; selectCharacter(fileName); },
+    openCharacter: (fileName) => selectCharacter(fileName),
     openNew: (from) => openStudioNew(from),
     ...extra,
   });
   function selectCharacter(fileName) {
-    if (selectedFile === fileName && paneMode === 'studio') return;
-    clearPane();
-    selectedFile = fileName || null;
-    markActive();
-    if (!selectedFile) {
-      const empty = el('div', 'tg-cc-empty px-empty');
-      empty.appendChild(el('div', null, { html: icon('users', 32) }));
-      empty.appendChild(el('div', 'px-empty__headline', { text: 'Nothing open' }));
-      empty.appendChild(el('div', 'px-empty__hint', { text: 'Pick a character, or make a new one.' }));
-      pane.appendChild(empty);
-      return;
-    }
-    paneMode = 'studio';
-    paneEditor = renderStudioPane(pane, parallx, studioCtx({ fileName: selectedFile }), studioDeps());
+    if (!fileName) { showGallery(); return; }
+    clearDetail();
+    openFile = fileName;
+    showDetail();
+    paneEditor = renderStudioPane(detailHost, parallx, studioCtx({ fileName }), studioDeps());
   }
   function openBehaviour(fileName) {
-    clearPane();
-    selectedFile = fileName;
-    markActive();
-    paneMode = 'behaviour';
-    const back = el('button', 'cs-btn cs-btn--quiet cs-back', { html: `${icon('arrow-left', 14)}<span>Back To Studio</span>` });
-    back.addEventListener('click', () => { selectedFile = null; selectCharacter(fileName); });
-    pane.appendChild(back);
-    paneEditor = renderCharacterEditor(pane, parallx, { instanceId: fileName });
+    clearDetail();
+    openFile = fileName;
+    showDetail();
+    const toStudio = ui.createButton(detailHost, { label: 'Back To Studio', kind: 'ghost', icon: 'arrow-left', onClick: () => selectCharacter(fileName) });
+    toStudio.classList.add('cs-back');
+    paneEditor = renderCharacterEditor(detailHost, parallx, { instanceId: fileName });
   }
-  function openStudioNew(from = null) {
-    clearPane();
-    selectedFile = null;
-    markActive();
-    paneMode = 'studio';
-    paneEditor = renderStudioPane(pane, parallx, studioCtx({ fileName: null, from }), studioDeps());
+  function openStudioNew(from = null) { openStudio({ from }); }
+  function openStudio({ from = null, concept = '', autoGenerate = false } = {}) {
+    clearDetail();
+    openFile = null;
+    showDetail();
+    paneEditor = renderStudioPane(detailHost, parallx, studioCtx({ fileName: null, from, concept, autoGenerate }), studioDeps());
   }
 
-  async function startChatWithCharacter(fileName, name) {
-    const thread = await createThread(fs, workspaceUri, fileName, null);
-    _refreshSidebar?.();
-    await parallx.editors.openEditor({
-      typeId: 'text-generator-chat',
-      title: name,
-      icon: 'message-circle',
-      instanceId: thread.id,
-    });
+  function menuFor(ch, name) {
+    return [
+      { label: 'Open', icon: 'user', onSelect: () => selectCharacter(ch.fileName) },
+      { label: 'Start A Chat', icon: 'message-circle', onSelect: () => void startChatWith(parallx, fs, workspaceUri, ch.fileName, name) },
+      { separator: true },
+      { label: 'Duplicate', icon: 'copy', onSelect: () => void duplicate(ch) },
+      { label: 'Export As Markdown…', icon: 'file-down', onSelect: () => void exportOne(ch) },
+      { separator: true },
+      { label: 'Delete…', icon: 'trash', danger: true, onSelect: () => void remove(ch, name) },
+    ];
   }
-
-  function railAction(iconName, title, handler, danger = false) {
-    const btn = el('button', `tg-cc-row-action${danger ? ' tg-cc-row-action--danger' : ''}`, { html: icon(iconName, 12) });
-    btn.title = title;
-    btn.addEventListener('click', (e) => { e.stopPropagation(); handler(); });
-    return btn;
-  }
-
-  async function refreshRail() {
-    charList.innerHTML = '';
-    loreList.innerHTML = '';
-    rowByFile.clear();
-
-    const chars = await scanCharacters(fs, workspaceUri);
-    if (chars.length === 0) {
-      charList.appendChild(el('div', 'tg-cc-list-empty', { text: 'No characters yet.' }));
-    }
-    for (const ch of chars) {
-      const name = ch.frontmatter.name || ch.fileName.replace(/\.(md|json)$/, '');
-      const row = el('div', 'tg-cc-row');
-      rowByFile.set(ch.fileName, row);
-      if (ch.fileName === selectedFile) row.classList.add('tg-cc-row--active');
-      row.appendChild(el('span', 'tg-cc-row-icon', { html: icon('user', 14) }));
-      row.appendChild(el('span', 'tg-cc-row-name', { text: name }));
-
-      const rowActions = el('span', 'tg-cc-row-actions');
-      rowActions.appendChild(railAction('message-circle', 'Start a chat', () => {
-        startChatWithCharacter(ch.fileName, name).catch((err) => console.warn('[TextGenerator] Start chat failed:', err));
-      }));
-      rowActions.appendChild(railAction('copy', 'Duplicate', async () => {
-        const dir = resolveUri(workspaceUri, `${EXT_ROOT}/characters`);
-        try {
-          const { content: srcContent } = await fs.readFile(resolveUri(dir, ch.fileName));
-          let dupeData;
-          if (ch.fileName.endsWith('.json')) {
-            dupeData = JSON.parse(srcContent);
-          } else {
-            dupeData = migrateCharacterMdToJson(srcContent, ch.fileName);
-          }
-          const id = generateId().slice(0, 8);
-          dupeData.id = 'char-' + id;
-          dupeData.name = (dupeData.name || 'Character') + ' (copy)';
-          dupeData.createdAt = Date.now();
-          dupeData.updatedAt = Date.now();
-          const dupeName = ch.fileName.replace(/\.(json|md)$/, '') + `-copy-${id}.json`;
-          await fs.writeFile(resolveUri(dir, dupeName), JSON.stringify(dupeData, null, 2));
-          await refreshRail();
-          selectCharacter(dupeName);
-        } catch (err) { console.warn('[TextGenerator] Duplicate failed:', err); }
-      }));
-      rowActions.appendChild(railAction('file-down', 'Export As Markdown', async () => {
-        const dir = resolveUri(workspaceUri, `${EXT_ROOT}/characters`);
-        try {
-          const { content } = await fs.readFile(resolveUri(dir, ch.fileName));
-          const data = ch.fileName.endsWith('.json') ? JSON.parse(content) : migrateCharacterMdToJson(content, ch.fileName);
-          await exportCharacterToMarkdown(data);
-        } catch (err) {
-          console.warn('[TextGenerator] Export failed:', err);
-          showToastLite('Export failed: ' + (err?.message || String(err)));
-        }
-      }));
-      rowActions.appendChild(railAction('trash', 'Delete', async () => {
-        const choice = await parallx.window.showWarningMessage(`Delete "${name}"? This cannot be undone.`, { title: 'Delete' });
-        if (!choice || choice.title !== 'Delete') return;
-        try {
-          if (selectedFile === ch.fileName) { try { paneEditor?.abandon?.(); } catch { /* gone */ } }
-          await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/characters/${ch.fileName}`));
-          if (selectedFile === ch.fileName) selectCharacter(null);
-          await refreshRail();
-          _refreshSidebar?.();
-        } catch { /* ignore */ }
-      }, true));
-      row.appendChild(rowActions);
-
-      row.addEventListener('click', () => selectCharacter(ch.fileName));
-      charList.appendChild(row);
-    }
-
-    const lorebooks = await scanLorebooks(fs, workspaceUri);
-    if (lorebooks.length === 0) {
-      loreList.appendChild(el('div', 'tg-cc-list-empty', { text: 'No lorebooks yet.' }));
-    }
-    for (const lb of lorebooks) {
-      const loreParsed = parseFrontmatter(lb.content);
-      const loreName = loreParsed.frontmatter.name || lb.fileName.replace('.md', '');
-      const row = el('div', 'tg-cc-row');
-      row.appendChild(el('span', 'tg-cc-row-icon', { html: icon('book-open', 14) }));
-      row.appendChild(el('span', 'tg-cc-row-name', { text: loreName }));
-
-      const rowActions = el('span', 'tg-cc-row-actions');
-      rowActions.appendChild(railAction('copy', 'Duplicate', async () => {
-        const dir = resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks`);
-        try {
-          const { content: srcContent } = await fs.readFile(resolveUri(dir, lb.fileName));
-          // Append (copy) to the frontmatter name if present
-          let dupeContent = srcContent;
-          const nameMatch = dupeContent.match(/^(---[\s\S]*?\nname:\s*)(.+)(\n[\s\S]*?---)/);
-          if (nameMatch) {
-            dupeContent = dupeContent.replace(nameMatch[0], nameMatch[1] + nameMatch[2].trim() + ' (copy)' + nameMatch[3]);
-          }
-          const id = generateId().slice(0, 8);
-          const dupeName = lb.fileName.replace('.md', '') + `-copy-${id}.md`;
-          await fs.writeFile(resolveUri(dir, dupeName), dupeContent);
-          await refreshRail();
-        } catch (err) { console.warn('[TextGenerator] Lorebook duplicate failed:', err); }
-      }));
-      rowActions.appendChild(railAction('trash', 'Delete', async () => {
-        const choice = await parallx.window.showWarningMessage(`Delete the lorebook "${loreName}"? This cannot be undone.`, { title: 'Delete' });
-        if (!choice || choice.title !== 'Delete') return;
-        try {
-          await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lb.fileName}`));
-          await refreshRail();
-        } catch { /* ignore */ }
-      }, true));
-      row.appendChild(rowActions);
-
-      row.addEventListener('click', () => {
-        parallx.editors.openFileEditor(resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lb.fileName}`));
-      });
-      loreList.appendChild(row);
-    }
-  }
-
-  newCharBtn.addEventListener('click', async () => {
+  async function duplicate(ch) {
     const dir = resolveUri(workspaceUri, `${EXT_ROOT}/characters`);
-    await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'characters']);
-    const id = generateId().slice(0, 8);
-    const fileName = `character-${id}.json`;
-    const newChar = createCharacterJson();
-    await fs.writeFile(resolveUri(dir, fileName), JSON.stringify(newChar, null, 2));
-    await refreshRail();
-    selectCharacter(fileName);
-  });
-
-  newLoreBtn.addEventListener('click', async () => {
+    try {
+      const { content: srcContent } = await fs.readFile(resolveUri(dir, ch.fileName));
+      const dupeData = ch.fileName.endsWith('.json') ? JSON.parse(srcContent) : migrateCharacterMdToJson(srcContent, ch.fileName);
+      const id = generateId().slice(0, 8);
+      dupeData.id = 'char-' + id;
+      dupeData.name = (dupeData.name || 'Character') + ' (copy)';
+      dupeData.createdAt = Date.now();
+      dupeData.updatedAt = Date.now();
+      const dupeName = ch.fileName.replace(/\.(json|md)$/, '') + `-copy-${id}.json`;
+      await fs.writeFile(resolveUri(dir, dupeName), JSON.stringify(dupeData, null, 2));
+      await refresh();
+    } catch (err) { console.warn('[TextGenerator] Duplicate failed:', err); }
+  }
+  async function exportOne(ch) {
+    try {
+      const { content } = await fs.readFile(resolveUri(workspaceUri, `${EXT_ROOT}/characters/${ch.fileName}`));
+      const data = ch.fileName.endsWith('.json') ? JSON.parse(content) : migrateCharacterMdToJson(content, ch.fileName);
+      await exportCharacterToMarkdown(data);
+    } catch (err) {
+      console.warn('[TextGenerator] Export failed:', err);
+      showToastLite('Export failed: ' + (err?.message || String(err)));
+    }
+  }
+  async function remove(ch, name) {
+    const choice = await parallx.window.showWarningMessage(`Delete "${name}"? This cannot be undone.`, { title: 'Delete' });
+    if (!choice || choice.title !== 'Delete') return;
+    try {
+      await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/characters/${ch.fileName}`));
+      await refresh();
+      _refreshSidebar?.();
+    } catch { /* ignore */ }
+  }
+  async function createLorebook() {
     const dir = resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks`);
     await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'lorebooks']);
-    const id = generateId().slice(0, 8);
-    const fileName = `lorebook-${id}.md`;
+    const fileName = `lorebook-${generateId().slice(0, 8)}.md`;
     await fs.writeFile(resolveUri(dir, fileName), LOREBOOK_TEMPLATE);
-    await refreshRail();
+    await refresh();
     await parallx.editors.openFileEditor(resolveUri(dir, fileName));
-  });
+  }
+  async function duplicateLore(lb) {
+    const dir = resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks`);
+    try {
+      const { content: srcContent } = await fs.readFile(resolveUri(dir, lb.fileName));
+      let dupeContent = srcContent;
+      const nameMatch = dupeContent.match(/^(---[\s\S]*?\nname:\s*)(.+)(\n[\s\S]*?---)/);
+      if (nameMatch) dupeContent = dupeContent.replace(nameMatch[0], nameMatch[1] + nameMatch[2].trim() + ' (copy)' + nameMatch[3]);
+      await fs.writeFile(resolveUri(dir, lb.fileName.replace('.md', '') + `-copy-${generateId().slice(0, 8)}.md`), dupeContent);
+      await refresh();
+    } catch (err) { console.warn('[TextGenerator] Lorebook duplicate failed:', err); }
+  }
+  async function removeLore(lb, loreName) {
+    const choice = await parallx.window.showWarningMessage(`Delete the lorebook "${loreName}"? This cannot be undone.`, { title: 'Delete' });
+    if (!choice || choice.title !== 'Delete') return;
+    try { await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lb.fileName}`)); await refresh(); } catch { /* ignore */ }
+  }
 
-  refreshRail().then(() => {
-    if (rawInstance === 'new') openStudioNew();
-    else selectCharacter(preselect || null);
-  }).catch((err) => console.warn('[TextGenerator] Characters rail load failed:', err));
+  function moreButton(host, label, items) {
+    const b = ui.createIconButton(host, { icon: 'more-horizontal', title: `More actions for ${label}`, size: 'sm', onClick: (e) => { e.stopPropagation(); ui.showContextMenu(b, items, { anchorPosition: 'below' }); } });
+    return b;
+  }
+  function renderGallery() {
+    const isLore = view === 'lorebooks';
+    seg.value = view;
+    searchInput.setAttribute('aria-label', isLore ? 'Search lorebooks' : 'Search characters');
+    newLore.style.display = isLore ? '' : 'none';
+    const chats = [...chatCounts.values()].reduce((a, b) => a + b, 0);
+    if (subtitleEl) subtitleEl.textContent = [`${chars.length} character${chars.length === 1 ? '' : 's'}`, `${lorebooks.length} lorebook${lorebooks.length === 1 ? '' : 's'}`, `${chats} chat${chats === 1 ? '' : 's'}`].join(' · ');
+    grid.replaceChildren();
+    grid.classList.toggle('cr-grid--lore', isLore);
+    if (isLore) {
+      const list = lorebooks.filter((lb) => !query || lb.name.toLowerCase().includes(query));
+      if (lorebooks.length === 0) ui.createEmptyState(grid, { headline: 'No lorebooks yet.', hint: 'A lorebook holds places, people and rules your chats can draw on.', icon: 'book-open', action: { label: 'New Lorebook', onClick: () => void createLorebook() } });
+      else if (list.length === 0) ui.createEmptyState(grid, { headline: 'Nothing matches.', hint: 'Try another word.', icon: 'search' });
+      for (const lb of list) {
+        const card = el('div', 'cr-lore-card');
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
+        card.setAttribute('aria-label', `Open ${lb.name}`);
+        card.appendChild(el('span', 'cr-lore-icon', { html: icon('book-open', 16) }));
+        const t = el('div', 'cr-lore-text');
+        t.appendChild(el('div', 'cr-card-name', { text: lb.name }));
+        t.appendChild(el('div', 'cr-card-meta', { text: `${lb.entries} entr${lb.entries === 1 ? 'y' : 'ies'}` }));
+        card.appendChild(t);
+        moreButton(card, lb.name, [
+          { label: 'Duplicate', icon: 'copy', onSelect: () => void duplicateLore(lb) },
+          { separator: true },
+          { label: 'Delete…', icon: 'trash', danger: true, onSelect: () => void removeLore(lb, lb.name) },
+        ]);
+        const open = () => void parallx.editors.openFileEditor(resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lb.fileName}`));
+        card.addEventListener('click', open);
+        card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+        grid.appendChild(card);
+      }
+      return;
+    }
+    const list = chars.filter((ch) => !query || `${ch.frontmatter.name} ${characterTagline(ch.rawData)}`.toLowerCase().includes(query));
+    if (chars.length === 0) ui.createEmptyState(grid, { headline: 'No characters yet.', hint: 'New Character opens the Studio; Surprise Me makes one from a random concept.', icon: 'users', action: { label: 'New Character', onClick: () => openStudioNew() } });
+    else if (list.length === 0) ui.createEmptyState(grid, { headline: 'Nothing matches.', hint: 'Try another word.', icon: 'search' });
+    for (const ch of list) {
+      const name = ch.frontmatter.name || ch.fileName.replace(/\.(md|json)$/, '');
+      const card = el('div', 'cr-card');
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-label', `Open ${name}`);
+      const top = el('div', 'cr-card-top');
+      top.appendChild(createPortrait(name, { size: 56, hue: hueOf(ch.rawData) }));
+      const topRight = el('div', 'cr-card-top-right');
+      moreButton(topRight, name, menuFor(ch, name));
+      top.appendChild(topRight);
+      card.appendChild(top);
+      card.appendChild(el('div', 'cr-card-name', { text: name }));
+      card.appendChild(el('div', 'cr-card-tag', { text: characterTagline(ch.rawData) }));
+      const foot = el('div', 'cr-card-foot');
+      const n = chatCounts.get(ch.fileName) || 0;
+      foot.appendChild(el('span', 'cr-card-meta', { text: n ? `${n} chat${n === 1 ? '' : 's'}` : 'No chats yet' }));
+      ui.createButton(foot, { label: 'Chat', kind: 'secondary', size: 'sm', icon: 'message-circle', onClick: (e) => { e.stopPropagation(); void startChatWith(parallx, fs, workspaceUri, ch.fileName, name); } });
+      card.appendChild(foot);
+      card.addEventListener('click', () => selectCharacter(ch.fileName));
+      card.addEventListener('keydown', (e) => { if (e.target === card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectCharacter(ch.fileName); } });
+      grid.appendChild(card);
+    }
+  }
+  async function refresh() {
+    const [c, lbs, threads] = await Promise.all([
+      scanCharacters(fs, workspaceUri).catch(() => []),
+      scanLorebooks(fs, workspaceUri).catch(() => []),
+      listThreads(fs, workspaceUri).catch(() => []),
+    ]);
+    if (disposed) return;
+    chars = c.sort((a, b) => (b.rawData?.updatedAt || 0) - (a.rawData?.updatedAt || 0));
+    lorebooks = lbs.map((lb) => {
+      const parsed = parseFrontmatter(lb.content);
+      let entries = 0;
+      try { entries = parseLoreEntries(lb.content).length; } catch { entries = 0; }
+      return { fileName: lb.fileName, name: parsed.frontmatter.name || lb.fileName.replace('.md', ''), entries };
+    });
+    chatCounts = new Map();
+    for (const th of threads) for (const ref of th.characters || []) chatCounts.set(ref.file, (chatCounts.get(ref.file) || 0) + 1);
+    renderGallery();
+  }
+
+  _liveCharacters = { openStudio: (p) => openStudio(p), __root: root };
+  detailView.style.display = 'none';
+  void refresh().then(() => {
+    if (disposed) return;
+    const pending = _pendingStudio;
+    _pendingStudio = null;
+    if (pending) openStudio(pending);
+    else if (rawInstance === 'new') openStudioNew();
+    else if (preselect) selectCharacter(preselect);
+  }).catch((err) => console.warn('[TextGenerator] Characters load failed:', err));
 
   return {
     dispose() {
-      if (paneEditor) { try { paneEditor.dispose?.(); } catch { /* already disposed */ } paneEditor = null; }
+      disposed = true;
+      if (_liveCharacters?.openStudio && _liveCharacters.__root === root) _liveCharacters = null;
+      clearDetail();
       container.innerHTML = '';
     },
   };
@@ -9582,7 +9899,7 @@ export function activate(parallx, context) {
   const openHomeCmd = parallx.commands.registerCommand('textGenerator.openHome', () => {
     parallx.editors.openEditor({
       typeId: 'text-generator-home',
-      title: 'Text Generator',
+      title: 'Creations',
       icon: 'px-ai-mark',
       instanceId: 'home',
     });
@@ -9646,14 +9963,14 @@ export function activate(parallx, context) {
   if (parallx.workspaceGraph && typeof parallx.workspaceGraph.registerProvider === 'function') {
     context.subscriptions.push(parallx.workspaceGraph.registerProvider({
       id: 'text-generator',
-      displayName: 'Text Generator',
+      displayName: 'Creations',
       async snapshot() {
         if (!fs || !workspaceUri) return { nodes: [], edges: [] };
         try {
           const rootId = 'tg:root';
           const nodes = [{
             id: rootId,
-            label: 'Text Generator',
+            label: 'Creations',
             domain: 'chat',
             icon: 'message-circle',
             weight: 6,
