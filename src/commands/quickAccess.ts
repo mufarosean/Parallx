@@ -21,6 +21,7 @@
 //   Escape       → dismiss
 
 import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
+import { glideHighlight } from '../ui/glide.js';
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { CommandService } from './commandRegistry.js';
@@ -1217,6 +1218,9 @@ export class QuickAccessWidget extends Disposable {
   private _updateSelection(): void {
     if (!this._listEl) return;
     const rows = this._listEl.querySelectorAll('.command-palette-item');
+    const from = this._listEl.querySelector('.command-palette-item.selected') as HTMLElement | null;
+    const to = (rows[this._selectedIndex] as HTMLElement | undefined) ?? null;
+    glideHighlight(this._listEl, from, to, 'command-palette-glide');
     rows.forEach((row, i) => {
       row.classList.toggle('selected', i === this._selectedIndex);
       row.setAttribute('aria-selected', i === this._selectedIndex ? 'true' : 'false');

@@ -252,7 +252,17 @@ export class NotificationService extends Disposable {
       : 'translateX(-20px)';
 
     setTimeout(() => {
-      entry.element.remove();
+      // Drain: the faded toast closes its gap so the stack settles instead
+      // of jumping (notificationService.css), then it leaves the DOM.
+      const el = entry.element;
+      if (el.isConnected && !el.classList.contains('parallx-notification--prompt')) {
+        el.style.height = `${el.offsetHeight}px`;
+        void el.offsetHeight;
+        el.classList.add('parallx-notification--draining');
+        setTimeout(() => el.remove(), 240);
+      } else {
+        el.remove();
+      }
       this._activeNotifications.delete(id);
       this._onDidChangeCount.fire(this._activeNotifications.size);
       entry.resolve({ action });

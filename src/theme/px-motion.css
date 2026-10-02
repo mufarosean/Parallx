@@ -48,6 +48,61 @@
   animation: px-rise-in var(--px-dur-base) var(--px-ease-out);
 }
 
+/* ── Continuity (M7): tabs, lists, folders ─────────────────────────────────
+   Tabs grow in and shrink shut (tabBar.ts marks them); a moving selection
+   slides between rows (ui/glide.ts); a folder's rows unfold top to bottom
+   (explorer). Calm: short, ease-out, no bounce. */
+@keyframes px-tab-grow {
+  from { flex-basis: 0; width: 0; padding-left: 0; padding-right: 0; opacity: 0; }
+}
+@keyframes px-tab-shrink {
+  to { flex-basis: 0; width: 0; padding-left: 0; padding-right: 0; opacity: 0; border-width: 0; }
+}
+.ui-tab--entering {
+  overflow: hidden;
+  animation: px-tab-grow var(--px-dur-base) var(--px-ease-out);
+}
+.ui-tab--leaving {
+  overflow: hidden;
+  pointer-events: none;
+  animation: px-tab-shrink var(--px-dur-base) var(--px-ease-out) forwards;
+}
+
+.px-glide {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  transition: transform var(--px-dur-fast) var(--px-ease-out),
+              height var(--px-dur-fast) var(--px-ease-out);
+}
+.px-glide-target { background-color: transparent !important; }
+.px-glide-target::before { opacity: 0; }
+.command-palette-item { position: relative; z-index: 1; }
+.command-palette-glide { background: var(--vscode-quickInputList-focusBackground); }
+.tree-node { z-index: 1; }
+.tree-glide {
+  border-radius: var(--px-radius-sm);
+  background-color: var(--px-surface-selected);
+}
+.tree-glide::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent);
+}
+
+@keyframes px-unfold {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+.tree-node--unfold {
+  animation: px-unfold var(--px-dur-base) var(--px-ease-out) backwards;
+  animation-delay: calc(var(--unfold-i, 0) * 18ms);
+}
+
 /* ── Reduced motion — honor the OS setting completely ────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,

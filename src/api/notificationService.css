@@ -431,3 +431,19 @@
   color: var(--px-text-muted);
   font-size: var(--px-text-sm);
 }
+
+/* A dismissed toast closes its slot (height and the stack gap) so the rest
+   of the stack settles smoothly instead of jumping. */
+.parallx-notification--draining {
+  height: 0 !important;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: calc(-1 * var(--px-space-2));
+  border-width: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: height var(--px-dur-base) var(--px-ease-out),
+              padding var(--px-dur-base) var(--px-ease-out),
+              margin var(--px-dur-base) var(--px-ease-out);
+}

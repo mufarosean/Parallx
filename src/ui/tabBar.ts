@@ -315,14 +315,40 @@ export class TabBar extends Disposable {
   // ─── Internal: Rebuild ─────────────────────────────────────────────────
 
   private _rebuild(): void {
+    // Continuity: a tab that is new since the last paint grows in, and a tab
+    // that went away leaves a ghost that shrinks shut, so the row makes room
+    // instead of jumping. The first paint (and a bar going empty) just lands.
+    const before = [...this._tabElements.entries()];
+    const nextIds = new Set(this._items.map((i) => i.id));
+    const animate = before.length > 0 && this._items.length > 0 && !TabBar._still();
+    const leaving = animate
+      ? before.map(([id, el], index) => ({ id, el, index })).filter((t) => !nextIds.has(t.id))
+      : [];
+
     clearNode(this._tabsWrap);
     this._tabElements.clear();
     this._tabListeners.clear();
 
+    const had = new Set(before.map(([id]) => id));
     for (const item of this._items) {
       const tab = this._createTab(item);
+      if (animate && !had.has(item.id)) {
+        tab.classList.add('ui-tab--entering');
+        TabBar._settle(tab, () => tab.classList.remove('ui-tab--entering'));
+      }
       this._tabElements.set(item.id, tab);
       this._tabsWrap.appendChild(tab);
+    }
+
+    for (const ghost of leaving) {
+      const el = ghost.el;
+      el.classList.remove('ui-tab--active', 'ui-tab--entering');
+      el.classList.add('ui-tab--leaving');
+      el.setAttribute('aria-hidden', 'true');
+      el.removeAttribute('role');
+      const ref = this._tabsWrap.children[ghost.index] ?? null;
+      this._tabsWrap.insertBefore(el, ref);
+      TabBar._settle(el, () => el.remove());
     }
 
     // Re-apply active state
@@ -336,6 +362,21 @@ export class TabBar extends Disposable {
 
     // Update scroll buttons after rebuild
     requestAnimationFrame(() => this._updateScrollButtons());
+  }
+
+  /** Reduced motion, an unseen window, or no layout engine: no tab motion. */
+  private static _still(): boolean {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+    if (document.visibilityState !== 'visible') return true;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  /** Run `then` when the element's animation ends, or shortly after anyway. */
+  private static _settle(el: HTMLElement, then: () => void): void {
+    let done = false;
+    const finish = (): void => { if (!done) { done = true; then(); } };
+    el.addEventListener('animationend', finish, { once: true });
+    setTimeout(finish, 400);
   }
 
   private _clearDropIndicators(): void {

@@ -17,6 +17,7 @@ import type { LinksApi } from '../../links/linksApi.js';
 import type { WidgetTypeRegistration } from '../../api/bridges/dashboardBridge.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
 import { $ } from '../../ui/dom.js';
+import { glideHighlight } from '../../ui/glide.js';
 import { getFileTypeIcon, getFolderIcon } from '../../ui/iconRegistry.js';
 import { RECENT_ITEMS_WIDGET, setupRecentItemsTracking } from './recentItemsWidget.js';
 
@@ -424,6 +425,9 @@ function scheduleRender(): void {
   });
 }
 
+/** A folder the user just expanded; its rows unfold on the next paint. */
+let _unfoldUri: string | null = null;
+
 function renderTree(): void {
   if (!_treeContainer) return;
   if (_inlineEditActive) return; // Don't rebuild while inline create/rename is active
@@ -451,6 +455,18 @@ function renderTree(): void {
   // Single DOM swap: remove old children and append the new fragment
   _treeContainer.innerHTML = '';
   _treeContainer.appendChild(fragment);
+
+  // A folder just opened: its rows unfold in, top to bottom (explorer.css).
+  if (_unfoldUri && !_treeContainer.querySelector(`.tree-loading`)) {
+    const prefix = _unfoldUri.endsWith('/') ? _unfoldUri : `${_unfoldUri}/`;
+    let i = 0;
+    for (const row of Array.from(_treeContainer.querySelectorAll<HTMLElement>('.tree-node[data-uri]'))) {
+      if (!(row.getAttribute('data-uri') ?? '').startsWith(prefix)) continue;
+      row.classList.add('tree-node--unfold');
+      row.style.setProperty('--unfold-i', String(Math.min(i++, 10)));
+    }
+    _unfoldUri = null;
+  }
 
   // Restore scroll position and selection
   _treeContainer.scrollTop = scrollTop;
@@ -623,6 +639,7 @@ function createErrorElement(node: TreeNode, depth: number): HTMLElement {
 // ─── Tree Operations ─────────────────────────────────────────────────────────
 
 function selectNode(node: TreeNode): void {
+  const prevEl = _selectedNode?.element ?? null;
   // Deselect previous
   if (_selectedNode?.element) {
     _selectedNode.element.classList.remove('tree-node--selected');
@@ -631,6 +648,8 @@ function selectNode(node: TreeNode): void {
   if (node.element) {
     node.element.classList.add('tree-node--selected');
     node.element.scrollIntoView({ block: 'nearest' });
+    // The selection slides from the old row to the new one.
+    if (_treeContainer) glideHighlight(_treeContainer, prevEl, node.element, 'tree-glide');
   }
 }
 
@@ -638,6 +657,8 @@ async function toggleExpand(node: TreeNode): Promise<void> {
   if (node.type !== FILE_TYPE_DIRECTORY) return;
 
   node.expanded = !node.expanded;
+  // The next paint lets this folder's contents unfold (renderTree).
+  _unfoldUri = node.expanded ? node.uri : null;
 
   if (node.expanded && !node.loaded) {
     await loadChildren(node);
