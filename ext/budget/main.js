@@ -551,6 +551,43 @@ function injectStyles() {
 .budget-ov-when { width: 52px; flex: 0 0 52px; color: var(--px-text-faint); font-size: var(--px-text-sm); }
 .budget-ov-grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ═══ Plan › Budgets ═══ */
+.budget-pl { display: flex; flex-direction: column; gap: var(--px-space-4); max-width: 920px; }
+.budget-pl-bar { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
+.budget-pl-acts { margin-left: auto; display: flex; gap: var(--px-space-2); }
+.budget-pl-card { gap: var(--px-space-3); }
+.budget-pl-stack { display: flex; height: 10px; border-radius: var(--px-radius-full); overflow: hidden; background: var(--px-divider); }
+.budget-pl-seg { display: block; height: 100%; }
+.budget-pl-seg.is-bills, .budget-pl-key.is-bills { background: var(--px-text-muted); }
+.budget-pl-seg.is-everyday, .budget-pl-key.is-everyday { background: var(--px-accent); }
+.budget-pl-seg.is-goals, .budget-pl-key.is-goals { background: var(--px-success); }
+.budget-pl-legend { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-4); font-size: var(--px-text-sm); }
+.budget-pl-legend > span { display: inline-flex; align-items: center; gap: var(--px-space-1); }
+.budget-pl-key { width: 8px; height: 8px; border-radius: var(--px-radius-full); display: inline-block; }
+.budget-pl-group { display: flex; flex-direction: column; border-top: 1px solid var(--px-divider); padding-top: var(--px-space-3); }
+.budget-pl-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--px-space-3); margin-bottom: var(--px-space-1); }
+.budget-pl-title { font-weight: 600; }
+.budget-pl-amt { font-weight: 600; white-space: nowrap; }
+.budget-pl-line { display: flex; align-items: center; gap: var(--px-space-3); min-height: 30px; }
+.budget-pl-cat {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 120px 150px; align-items: center; gap: var(--px-space-3);
+  min-height: 44px; border-top: 1px solid var(--px-divider);
+}
+.budget-pl-cat:first-of-type { border-top: 0; }
+@container (max-width: 680px) {
+  .budget-pl-cat { grid-template-columns: minmax(0, 1fr) 110px; }
+  .budget-pl-use, .budget-pl-spent { grid-column: 1 / -1; }
+}
+.budget-pl-catname { display: flex; flex-direction: column; min-width: 0; }
+.budget-pl-cattop { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; }
+.budget-pl-input { width: 100%; box-sizing: border-box; height: 28px; text-align: right; font-size: var(--px-text-sm); }
+.budget-pl-spent { display: flex; flex-direction: column; gap: 4px; text-align: right; font-size: var(--px-text-sm); }
+.budget-pl-left {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--px-space-3);
+  padding: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
+}
+.budget-pl-left.is-over { border-color: var(--px-danger); }
+
 /* ═══ Transactions ═══ */
 .budget-tx { display: flex; flex-direction: column; gap: var(--px-space-2); max-width: 1180px; }
 .budget-tx-bar { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
@@ -2850,19 +2887,7 @@ function renderTransactionsSection(body, api) {
   let seq = 0;
 
   function drawMonth() {
-    monthHost.replaceChildren();
-    const prev = api.ui.createIconButton(monthHost, { icon: 'chevron-left', title: 'Previous Month' });
-    const label = document.createElement('span');
-    label.className = 'budget-ov-month-label';
-    label.textContent = monthRange(monthKey).label;
-    monthHost.appendChild(label);
-    const next = api.ui.createIconButton(monthHost, { icon: 'chevron-right', title: 'Next Month' });
-    const go = (delta) => { monthKey = monthShift(monthKey, delta); dayYmd = null; drawMonth(); void refresh(); };
-    prev.addEventListener('click', () => go(-1));
-    next.addEventListener('click', () => go(1));
-    if (monthKey !== monthRange().key) {
-      api.ui.createButton(monthHost, { label: 'This Month', kind: 'ghost', size: 'sm', onClick: () => { monthKey = monthRange().key; dayYmd = null; drawMonth(); void refresh(); } });
-    }
+    drawMonthNav(monthHost, api, monthKey, (k) => { monthKey = k; dayYmd = null; drawMonth(); void refresh(); });
   }
 
   async function populateAccountSelect() {
@@ -3757,6 +3782,7 @@ function renderCategoriesSection(body, api) {
 // up, everyday spending by category, the accounts. Everything is a way in:
 // each count opens the rows behind it.
 let _overviewMonth = null;
+let _planMonth = null; // Plan › Budgets month, kept while switching views
 
 function renderOverviewSection(body, api) {
   const root = document.createElement('div');
@@ -3815,11 +3841,7 @@ async function readOverview(monthKey) {
     `SELECT COALESCE(SUM(-amount_cents),0) AS cents FROM transactions
       WHERE status='confirmed' AND tx_type='deposit' AND transaction_date >= ? AND transaction_date <= ?`,
     [r.start, r.end]);
-  const prev = monthRange(monthShift(r.key, -3));
-  const incomePrev = await db.get(
-    `SELECT COALESCE(SUM(-amount_cents),0) AS cents FROM transactions
-      WHERE status='confirmed' AND tx_type='deposit' AND transaction_date >= ? AND transaction_date < ?`,
-    [prev.start, r.start]);
+  const incomeExpectedCents = await readExpectedIncome(r.key);
   const daily = await db.all(
     `SELECT transaction_date AS d, COALESCE(SUM(amount_cents),0) AS cents FROM transactions
       WHERE status='confirmed' AND tx_type IN ('purchase','fee') AND transaction_date >= ? AND transaction_date <= ?
@@ -3854,7 +3876,7 @@ async function readOverview(monthKey) {
     ...plan,
     hasAny: (Number(anyRow?.n) || 0) > 0 || !!lastAt,
     incomeCents: Number(income?.cents) || 0,
-    incomeExpectedCents: Math.round((Number(incomePrev?.cents) || 0) / 3),
+    incomeExpectedCents,
     cumulative,
     transfersAi: Number(transfersAi?.n) || 0,
     review,
@@ -3867,19 +3889,7 @@ async function readOverview(monthKey) {
 
 function drawMonthBar(root, data, api, redraw) {
   const bar = document.createElement('div');
-  bar.className = 'budget-ov-month';
-  const prev = api.ui.createIconButton(bar, { icon: 'chevron-left', title: 'Previous Month' });
-  const label = document.createElement('span');
-  label.className = 'budget-ov-month-label';
-  label.textContent = data.range.label;
-  bar.appendChild(label);
-  const next = api.ui.createIconButton(bar, { icon: 'chevron-right', title: 'Next Month' });
-  const go = (delta) => { _overviewMonth = monthShift(data.range.key, delta); redraw(); };
-  prev.addEventListener('click', () => go(-1));
-  next.addEventListener('click', () => go(1));
-  if (data.range.key !== monthRange().key) {
-    api.ui.createButton(bar, { label: 'This Month', kind: 'ghost', size: 'sm', onClick: () => { _overviewMonth = null; redraw(); } });
-  }
+  drawMonthNav(bar, api, data.range.key, (k) => { _overviewMonth = k === monthRange().key ? null : k; redraw(); });
   root.appendChild(bar);
 }
 
@@ -6747,11 +6757,9 @@ function buildGoalCard(g, monthlySurplus, api, refresh) {
   if (remaining <= 0) {
     detail = 'Complete';
   } else if (g.target_date) {
-    const days = Math.ceil((new Date(g.target_date).getTime() - Date.now()) / 86400000);
-    if (days < 0) detail = `Past target date · ${fmtMoney(remaining)} to go`;
+    const needed = goalMonthlyNeed(g);
+    if (needed == null) detail = `Past target date · ${fmtMoney(remaining)} to go`;
     else {
-      const monthsLeft = Math.max(0.5, days / 30.4);
-      const needed = Math.ceil(remaining / monthsLeft);
       const onPace = monthlySurplus >= needed;
       detail = `Need ${fmtMoney(needed)}/mo by ${fmtDate(g.target_date)} · ${onPace ? 'on pace' : 'behind'}`;
     }
@@ -7165,273 +7173,346 @@ function renderReportsSection(body, api) {
 
 // ─── Section: Budgets ──────────────────────────────────────────────────────
 
-function renderBudgetsSection(body, api) {
-  let monthKey = monthRange().key;
+// What a goal needs set aside each month to make its date: what is left,
+// spread over the months to the target date. null when it has no date, is
+// complete, or the date has passed. The goal cards and Plan both use it.
+function goalMonthlyNeed(goal, nowMs = Date.now()) {
+  const remaining = Math.max(0, (Number(goal.target_cents) || 0) - Math.max(0, Number(goal.current_cents) || 0));
+  if (remaining <= 0 || !goal.target_date) return null;
+  const days = Math.ceil((new Date(goal.target_date).getTime() - nowMs) / 86400000);
+  if (!Number.isFinite(days) || days < 0) return null;
+  return Math.ceil(remaining / Math.max(0.5, days / 30.4));
+}
 
-  const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  const picker = makeMonthPicker(monthKey, (k) => { monthKey = k; void refresh(); });
-  toolbar.appendChild(picker.el);
-  const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  toolbar.appendChild(makeButton('Copy from Previous Month', {
-    onClick: async () => {
-      const prev = monthShift(monthKey, -1);
-      const prevRows = await db.all('SELECT category_id, limit_cents FROM budgets WHERE month_key=?', [prev]);
-      if (!prevRows || prevRows.length === 0) {
-        await api.window?.showInformationMessage?.('No budgets in ' + prev + ' to copy.');
-        return;
-      }
-      const now = new Date().toISOString();
-      for (const p of prevRows) {
-        await db.run(
-          `INSERT OR REPLACE INTO budgets (id, category_id, month_key, limit_cents, rollover_cents, created_at, updated_at)
-           VALUES (COALESCE((SELECT id FROM budgets WHERE category_id=? AND month_key=?), ?), ?, ?, ?, 0, ?, ?)`,
-          [p.category_id, monthKey, crypto.randomUUID(), p.category_id, monthKey, p.limit_cents, now, now],
-        );
-      }
-      await refresh();
-    },
-  }));
-  toolbar.appendChild(makeButton('Plan Next Month', {
-    primary: true,
-    onClick: () => {
-      monthKey = monthShift(monthRange().key, 1);
-      picker.setKey?.(monthKey);
-      void refresh();
-    },
-  }));
-  toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
-  body.appendChild(toolbar);
+// One month as an allocation of expected income. Limits already hold the
+// bills (rent sits inside Housing's limit), so everyday is limits less the
+// bills. Bills are committed even before limits are set, so what is
+// committed is the larger of the two, and what has no job yet is income
+// less that and less the goal needs: bills + everyday + goals + the rest
+// always add up to the income.
+function computeAllocation({ incomeCents, limitCents, billsCents, goalsCents }) {
+  const income = Math.max(0, Number(incomeCents) || 0);
+  const limits = Math.max(0, Number(limitCents) || 0);
+  const bills = Math.max(0, Number(billsCents) || 0);
+  const goals = Math.max(0, Number(goalsCents) || 0);
+  const everyday = Math.max(0, limits - bills);
+  return {
+    incomeCents: income,
+    billsCents: bills,
+    everydayCents: everyday,
+    goalsCents: goals,
+    unassignedCents: income - bills - everyday - goals,
+  };
+}
 
-  // Planning note — explains suggestions when a FUTURE month is selected.
-  const planNote = document.createElement('div');
-  planNote.className = 'budget-plan-note';
-  planNote.style.display = 'none';
-  body.appendChild(planNote);
+// Expected income for a month: the average of the three completed months
+// before it (never counting a month still running). Overview and Plan share it.
+async function readExpectedIncome(monthKey) {
+  const nowKey = monthRange().key;
+  const anchor = monthKey && monthKey < nowKey ? monthKey : nowKey;
+  const from = monthRange(monthShift(anchor, -3)).start;
+  const to = monthRange(anchor).start;
+  const row = await db.get(
+    `SELECT COALESCE(SUM(-amount_cents),0) AS cents FROM transactions
+      WHERE status='confirmed' AND tx_type='deposit' AND transaction_date >= ? AND transaction_date < ?`,
+    [from, to]).catch(() => null);
+  return Math.round((Number(row?.cents) || 0) / 3);
+}
 
-  const summary = document.createElement('div'); summary.className = 'budget-cards'; body.appendChild(summary);
-  const tableWrap = document.createElement('div'); body.appendChild(tableWrap);
-
-  let alive = true;
-  async function refresh() {
-    if (!alive) return;
-    summary.innerHTML = ''; tableWrap.innerHTML = '';
-
-    const rows = await evalBudgetStatus(monthKey);
-
-    const todayKey = monthRange().key;
-    const isFuture = monthKey > todayKey;
-    const isCurrent = monthKey === todayKey;
-    const plan = isFuture ? await computePlanSuggestions() : null;
-
-    // Shared limit writer (used by the input and the suggestion links).
-    async function writeLimit(categoryId, cents) {
-      const now = new Date().toISOString();
-      if (cents > 0) {
-        const existing = await db.get('SELECT id FROM budgets WHERE category_id=? AND month_key=?', [categoryId, monthKey]);
-        if (existing) {
-          await db.run('UPDATE budgets SET limit_cents=?, updated_at=? WHERE id=?', [cents, now, existing.id]);
-        } else {
-          await db.run(
-            `INSERT INTO budgets (id, category_id, month_key, limit_cents, created_at, updated_at) VALUES (?,?,?,?,?,?)`,
-            [crypto.randomUUID(), categoryId, monthKey, cents, now, now],
-          );
-        }
-      } else {
-        await db.run('DELETE FROM budgets WHERE category_id=? AND month_key=?', [categoryId, monthKey]);
-      }
-    }
-
-    let totalLimit = 0, totalSpent = 0, overCount = 0, nearCount = 0;
-    for (const r of rows) {
-      totalLimit += Number(r.effective_limit_cents) || 0;
-      totalSpent += Number(r.spent_cents) || 0;
-      if (r.status === 'over') overCount++;
-      else if (r.status === 'near') nearCount++;
-    }
-
-    if (isFuture && plan) {
-      // ── Planning mode: history + commitments → suggested envelopes. ──
-      const [y, m] = monthKey.split('-').map(Number);
-      const monthName = new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
-      planNote.style.display = '';
-      planNote.innerHTML = '';
-      planNote.appendChild(document.createTextNode(
-        `Planning ${monthName}. Suggestions blend your last three completed months ` +
-        `(weighted toward recent) with detected recurring commitments, rounded up to the nearest $5. ` +
-        `Click a suggestion to set it as the limit. `
-      ));
-      const applyAll = makeButton('Apply All Suggestions', {
-        onClick: async () => {
-          let applied = 0;
-          for (const r of rows) {
-            const h = plan.hist.get(r.id) || { m1: 0, m2: 0, m3: 0 };
-            const rec = plan.recurring.get(r.id) || 0;
-            const sug = suggestLimitCents(h.m1, h.m2, h.m3, rec);
-            const has = (Number(r.effective_limit_cents) || 0) > 0;
-            if (sug > 0 && !has) { await writeLimit(r.id, sug); applied++; }
-          }
-          await api.window?.showInformationMessage?.(
-            applied > 0 ? `Applied ${applied} suggested limit(s). Existing limits were left untouched.`
-                        : 'Nothing to apply. Every category with history already has a limit.');
-          await refresh();
-        },
-      });
-      applyAll.style.marginLeft = '6px';
-      planNote.appendChild(applyAll);
-
-      let recurringTotal = 0;
-      for (const v of plan.recurring.values()) recurringTotal += v;
-      const leftover = plan.expectedIncomeCents - totalLimit;
-      summary.appendChild(makeCard('Expected Income', fmtMoney(plan.expectedIncomeCents), '3-month average of deposits'));
-      summary.appendChild(makeCard('Planned Budgets', fmtMoney(totalLimit), `${rows.filter(r => r.effective_limit_cents > 0).length} categories with a limit`));
-      summary.appendChild(makeCard('Recurring Committed', fmtMoney(recurringTotal), 'Detected subscriptions and bills'));
-      summary.appendChild(makeCard('Left to Allocate', fmtLedger(leftover), leftover < 0 ? 'Planned over expected income' : 'Unbudgeted income'));
-    } else {
-      planNote.style.display = 'none';
-      const remaining = totalLimit - totalSpent;
-      summary.appendChild(makeCard('Budget Total', fmtMoney(totalLimit), `${rows.filter(r => r.effective_limit_cents > 0).length} Categories with a Limit`));
-      summary.appendChild(makeCard('Expenses So Far', fmtMoney(totalSpent), totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) + '% of Budget' : ''));
-      summary.appendChild(makeCard('Remaining', fmtLedger(remaining), remaining < 0 ? 'Over Budget' : ''));
-      summary.appendChild(makeCard('Alerts', String(overCount + nearCount), `${overCount} Over, ${nearCount} Near`));
-    }
-
-    // Even-pace tick position for the running month's bullet bars.
-    let paceFrac = null;
-    if (isCurrent) {
-      const range = monthRange(monthKey);
-      const daysInMonth = Number(range.end.slice(8, 10));
-      paceFrac = Math.min(1, ctToday().getDate() / daysInMonth);
-    }
-
-    const table = document.createElement('table'); table.className = 'budget-table';
-    table.innerHTML = isFuture
-      ? `<thead><tr><th>Category</th><th style="text-align:right">3-Mo Avg</th><th style="text-align:right">Last Month</th><th style="text-align:right">Recurring</th><th style="text-align:right">Suggested</th><th style="text-align:right">Limit</th></tr></thead>`
-      : `<thead><tr><th>Category</th><th style="text-align:right">Limit</th><th style="text-align:right">Expenses</th><th>Progress</th><th style="text-align:right">Remaining</th><th>Status</th></tr></thead>`;
-    const tb = document.createElement('tbody');
-
-    let sumSuggested = 0, sumRecurring = 0, sumAvg = 0, sumLast = 0;
-
-    for (const r of rows) {
-      const tr = document.createElement('tr');
-
-      const tdName = document.createElement('td');
-      tdName.innerHTML = `<span class="budget-cat-swatch" style="background:${escHtml(r.color || '#888')}"></span>${escHtml(r.name)}`;
-      tdName.style.cursor = 'pointer';
-      tdName.title = 'View transactions in ' + r.name;
-      tdName.addEventListener('click', () => {
-        _navState.txFilter = { categoryId: r.id, monthKey, type: 'spend' };
-        api.commands.executeCommand('budget.openTransactions').catch(() => {});
-      });
-      tr.appendChild(tdName);
-
-      // The editable limit cell is shared by both modes.
-      const tdLimit = document.createElement('td'); tdLimit.style.textAlign = 'right';
-      const limitInput = document.createElement('input');
-      limitInput.type = 'number'; limitInput.step = '1'; limitInput.min = '0';
-      limitInput.className = 'budget-input'; limitInput.style.width = '100px'; limitInput.style.textAlign = 'right';
-      limitInput.value = r.effective_limit_cents > 0 ? (r.effective_limit_cents / 100).toFixed(2) : '';
-      limitInput.placeholder = '—';
-      limitInput.addEventListener('change', async () => {
-        const cents = Math.round(parseFloat(limitInput.value || '0') * 100) || 0;
-        try {
-          await writeLimit(r.id, cents);
-          await refresh();
-        } catch (e) {
-          await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e)));
-        }
-      });
-      tdLimit.appendChild(limitInput);
-
-      if (isFuture && plan) {
-        const h = plan.hist.get(r.id) || { m1: 0, m2: 0, m3: 0 };
-        const rec = plan.recurring.get(r.id) || 0;
-        const avg3 = Math.round((h.m1 + h.m2 + h.m3) / 3);
-        const sug = suggestLimitCents(h.m1, h.m2, h.m3, rec);
-        sumSuggested += sug; sumRecurring += rec; sumAvg += avg3; sumLast += h.m1;
-
-        const tdAvg = document.createElement('td'); tdAvg.className = 'budget-amount';
-        tdAvg.textContent = avg3 > 0 ? fmtMoney(avg3) : '—';
-        tr.appendChild(tdAvg);
-
-        const tdLast = document.createElement('td'); tdLast.className = 'budget-amount';
-        tdLast.textContent = h.m1 > 0 ? fmtMoney(h.m1) : '—';
-        tr.appendChild(tdLast);
-
-        const tdRec = document.createElement('td'); tdRec.className = 'budget-amount';
-        tdRec.textContent = rec > 0 ? fmtMoney(rec) : '—';
-        tr.appendChild(tdRec);
-
-        const tdSug = document.createElement('td'); tdSug.style.textAlign = 'right';
-        if (sug > 0) {
-          const link = document.createElement('span');
-          link.className = 'budget-plan-suggest';
-          link.textContent = fmtMoney(sug);
-          link.title = 'Set this as the limit';
-          link.addEventListener('click', async () => {
-            try { await writeLimit(r.id, sug); await refresh(); }
-            catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
-          });
-          tdSug.appendChild(link);
-        } else {
-          tdSug.innerHTML = '<span class="budget-plan-basis">no history</span>';
-        }
-        tr.appendChild(tdSug);
-        tr.appendChild(tdLimit);
-      } else {
-        tr.appendChild(tdLimit);
-
-        const tdSpent = document.createElement('td'); tdSpent.className = 'budget-amount';
-        tdSpent.textContent = fmtMoney(r.spent_cents); tr.appendChild(tdSpent);
-
-        const tdProg = document.createElement('td');
-        const eff = Number(r.effective_limit_cents) || 0;
-        if (eff > 0) {
-          tdProg.appendChild(makeBulletBar(r.spent_cents, eff, r.status, paceFrac));
-        }
-        tr.appendChild(tdProg);
-
-        const tdRem = document.createElement('td');
-        tdRem.className = 'budget-amount';
-        const rem = (Number(r.effective_limit_cents) || 0) - (Number(r.spent_cents) || 0);
-        tdRem.textContent = eff > 0 ? fmtLedger(rem) : '—';
-        if (rem < 0) tdRem.classList.add('negative');
-        tr.appendChild(tdRem);
-
-        const tdStatus = document.createElement('td');
-        const cls = r.status === 'over' ? 'review' : (r.status === 'near' ? 'low' : 'confirmed');
-        tdStatus.innerHTML = eff > 0 ? `<span class="budget-pill ${cls}">${escHtml(titleCaseToken(r.status))}</span>` : '<span style="color:var(--vscode-descriptionForeground,#888)">No Limit</span>';
-        tr.appendChild(tdStatus);
-      }
-
-      tb.appendChild(tr);
-    }
-
-    // Ledger totals row — the double rule closes the register.
-    const trTotal = document.createElement('tr');
-    trTotal.className = 'budget-total-row';
-    if (isFuture && plan) {
-      trTotal.innerHTML = `<td>Total</td>`
-        + `<td class="budget-amount">${escHtml(fmtMoney(sumAvg))}</td>`
-        + `<td class="budget-amount">${escHtml(fmtMoney(sumLast))}</td>`
-        + `<td class="budget-amount">${escHtml(fmtMoney(sumRecurring))}</td>`
-        + `<td class="budget-amount">${escHtml(fmtMoney(sumSuggested))}</td>`
-        + `<td class="budget-amount">${escHtml(fmtMoney(totalLimit))}</td>`;
-    } else {
-      const remaining = totalLimit - totalSpent;
-      trTotal.innerHTML = `<td>Total</td>`
-        + `<td class="budget-amount">${escHtml(fmtMoney(totalLimit))}</td>`
-        + `<td class="budget-amount">${escHtml(fmtMoney(totalSpent))}</td>`
-        + `<td></td>`
-        + `<td class="budget-amount${remaining < 0 ? ' negative' : ''}">${escHtml(fmtLedger(remaining))}</td>`
-        + `<td></td>`;
-    }
-    tb.appendChild(trTotal);
-
-    table.appendChild(tb);
-    tableWrap.appendChild(table);
+// The month arrows Overview, Transactions and Plan share.
+function drawMonthNav(host, api, monthKey, go) {
+  host.replaceChildren();
+  host.classList.add('budget-ov-month');
+  const prev = api.ui.createIconButton(host, { icon: 'chevron-left', title: 'Previous Month' });
+  const label = document.createElement('span');
+  label.className = 'budget-ov-month-label';
+  label.textContent = monthRange(monthKey).label;
+  host.appendChild(label);
+  const next = api.ui.createIconButton(host, { icon: 'chevron-right', title: 'Next Month' });
+  prev.addEventListener('click', () => go(monthShift(monthKey, -1)));
+  next.addEventListener('click', () => go(monthShift(monthKey, 1)));
+  if (monthKey !== monthRange().key) {
+    api.ui.createButton(host, { label: 'This Month', kind: 'ghost', size: 'sm', onClick: () => go(monthRange().key) });
   }
-  void refresh();
-  return () => { alive = false; };
+}
+
+function monthName(key) {
+  const r = monthRange(key);
+  return new Date(r.year, r.month0, 1).toLocaleString('en-US', { month: 'long' });
+}
+
+// Plan › Budgets: the month as one allocation. Income expected, the bills
+// already committed, the everyday limits, what the goals need, and what has
+// no job yet. "Left to spend" is the same number the sidebar shows.
+function renderBudgetsSection(body, api) {
+  let monthKey = _planMonth || monthRange().key;
+  const root = document.createElement('div');
+  root.className = 'budget-pl';
+  body.appendChild(root);
+  let alive = true;
+  let seq = 0;
+
+  async function writeLimit(categoryId, cents) {
+    const now = new Date().toISOString();
+    if (cents > 0) {
+      const existing = await db.get('SELECT id FROM budgets WHERE category_id=? AND month_key=?', [categoryId, monthKey]);
+      if (existing) await db.run('UPDATE budgets SET limit_cents=?, updated_at=? WHERE id=?', [cents, now, existing.id]);
+      else await db.run(`INSERT INTO budgets (id, category_id, month_key, limit_cents, created_at, updated_at) VALUES (?,?,?,?,?,?)`,
+        [crypto.randomUUID(), categoryId, monthKey, cents, now, now]);
+    } else {
+      await db.run('DELETE FROM budgets WHERE category_id=? AND month_key=?', [categoryId, monthKey]);
+    }
+  }
+
+  async function copyPrevious() {
+    const prev = monthShift(monthKey, -1);
+    const prevRows = await db.all('SELECT category_id, limit_cents FROM budgets WHERE month_key=?', [prev]);
+    if (!prevRows || prevRows.length === 0) {
+      await api.window?.showInformationMessage?.(`${monthName(prev)} has no limits to copy.`);
+      return;
+    }
+    const now = new Date().toISOString();
+    for (const p of prevRows) {
+      await db.run(
+        `INSERT OR REPLACE INTO budgets (id, category_id, month_key, limit_cents, rollover_cents, created_at, updated_at)
+         VALUES (COALESCE((SELECT id FROM budgets WHERE category_id=? AND month_key=?), ?), ?, ?, ?, 0, ?, ?)`,
+        [p.category_id, monthKey, crypto.randomUUID(), p.category_id, monthKey, p.limit_cents, now, now]);
+    }
+    notifyLedgerChanged();
+  }
+
+  function go(k) { monthKey = k; _planMonth = k === monthRange().key ? null : k; void draw(); }
+
+  async function draw() {
+    if (!alive) return;
+    const mySeq = ++seq;
+    let plan, income, goals, sugg;
+    try {
+      plan = await readMonthPlan(monthKey);
+      income = await readExpectedIncome(monthKey);
+      goals = await db.all(`SELECT id, name, kind, target_cents, current_cents, target_date FROM goals WHERE archived = 0 ORDER BY sort_order, name`).catch(() => []);
+      sugg = await computePlanSuggestions();
+    } catch (err) {
+      if (mySeq === seq) root.replaceChildren(emptyState('The plan could not be read: ' + (err instanceof Error ? err.message : String(err))));
+      return;
+    }
+    if (!alive || mySeq !== seq) return;
+    // A limit typed then Tab: the redraw keeps focus on the field it moved to.
+    const focusables = () => [...root.querySelectorAll('input, button')];
+    const focusAt = root.contains(document.activeElement) ? focusables().indexOf(document.activeElement) : -1;
+    const nowKey = monthRange().key;
+    const isFuture = monthKey > nowKey;
+    const isCurrent = monthKey === nowKey;
+    const billsCents = plan.bills.reduce((a, b) => a + (b.paid ? b.paidCents : b.toComeCents), 0);
+    const needs = goals.map(g => ({ g, need: goalMonthlyNeed(g) }));
+    const goalsCents = needs.reduce((a, x) => a + (x.need || 0), 0);
+    const alloc = computeAllocation({ incomeCents: income, limitCents: plan.limitCents, billsCents, goalsCents });
+
+    root.replaceChildren();
+
+    // Month and actions.
+    const bar = document.createElement('div');
+    bar.className = 'budget-pl-bar';
+    const nav = document.createElement('div');
+    drawMonthNav(nav, api, monthKey, go);
+    bar.appendChild(nav);
+    const acts = document.createElement('div');
+    acts.className = 'budget-pl-acts';
+    api.ui.createButton(acts, { label: `Copy ${monthName(monthShift(monthKey, -1))}`, title: `Use ${monthName(monthShift(monthKey, -1))}'s limits for ${monthName(monthKey)}`, onClick: () => void copyPrevious() });
+    if (isCurrent) api.ui.createButton(acts, { label: `Plan ${monthName(monthShift(monthKey, 1))}`, onClick: () => go(monthShift(monthKey, 1)) });
+    bar.appendChild(acts);
+    root.appendChild(bar);
+
+    // Where the month stands: the sidebar's number, explained.
+    if (!isFuture && plan.limitCents > 0) {
+      const now = document.createElement('div');
+      now.className = 'budget-ov-card budget-pl-now';
+      const big = document.createElement('div');
+      big.className = 'budget-ov-left';
+      const v = document.createElement('span');
+      v.className = 'budget-ov-big budget-num' + (plan.leftCents < 0 ? ' budget-ov-bad' : '');
+      v.textContent = fmtMoney(plan.leftCents);
+      const l = document.createElement('span');
+      l.className = 'budget-ov-muted';
+      l.textContent = isCurrent ? 'left to spend' : 'left at the end of the month';
+      big.append(v, l);
+      const how = document.createElement('div');
+      how.className = 'budget-ov-note';
+      how.textContent = `${fmtMoney(plan.limitCents)} in limits, less ${fmtMoney(plan.spentCents)} spent`
+        + (plan.billsToComeCents > 0 ? ` and ${fmtMoney(plan.billsToComeCents)} of bills still to come.` : '.');
+      now.append(big, how);
+      root.appendChild(now);
+    }
+
+    // The allocation.
+    const card = document.createElement('div');
+    card.className = 'budget-ov-card budget-pl-card';
+    root.appendChild(card);
+    const total = Math.max(alloc.incomeCents, alloc.billsCents + alloc.everydayCents + alloc.goalsCents, 1);
+    const stack = document.createElement('div');
+    stack.className = 'budget-pl-stack';
+    stack.setAttribute('role', 'img');
+    stack.setAttribute('aria-label', `Bills ${fmtMoney(alloc.billsCents)}, everyday ${fmtMoney(alloc.everydayCents)}, goals ${fmtMoney(alloc.goalsCents)} of ${fmtMoney(alloc.incomeCents)} expected income`);
+    for (const [cls, cents] of [['is-bills', alloc.billsCents], ['is-everyday', alloc.everydayCents], ['is-goals', alloc.goalsCents]]) {
+      const seg = document.createElement('span');
+      seg.className = 'budget-pl-seg ' + cls;
+      seg.style.width = `${(cents / total) * 100}%`;
+      stack.appendChild(seg);
+    }
+    card.appendChild(stack);
+    const legend = document.createElement('div');
+    legend.className = 'budget-pl-legend';
+    for (const [cls, name, cents] of [['is-bills', 'Bills', alloc.billsCents], ['is-everyday', 'Everyday', alloc.everydayCents], ['is-goals', 'Goals', alloc.goalsCents]]) {
+      const item = document.createElement('span');
+      const sw = document.createElement('span'); sw.className = 'budget-pl-key ' + cls;
+      const t = document.createElement('span'); t.textContent = `${name} `;
+      const n = document.createElement('span'); n.className = 'budget-num'; n.textContent = fmtMoney(cents);
+      item.append(sw, t, n);
+      legend.appendChild(item);
+    }
+    const of = document.createElement('span');
+    of.className = 'budget-ov-faint';
+    of.textContent = alloc.incomeCents > 0 ? `of ${fmtMoney(alloc.incomeCents)} expected income` : 'No income recorded in the last three months';
+    legend.appendChild(of);
+    card.appendChild(legend);
+
+    const group = (title, hint, cents) => {
+      const g = document.createElement('div');
+      g.className = 'budget-pl-group';
+      const h = document.createElement('div');
+      h.className = 'budget-pl-head';
+      const left = document.createElement('div');
+      const t = document.createElement('div'); t.className = 'budget-pl-title'; t.textContent = title;
+      const s = document.createElement('div'); s.className = 'budget-ov-faint'; s.textContent = hint;
+      left.append(t, s);
+      const amt = document.createElement('div'); amt.className = 'budget-num budget-pl-amt'; amt.textContent = fmtMoney(cents);
+      h.append(left, amt);
+      g.appendChild(h);
+      card.appendChild(g);
+      return g;
+    };
+
+    group('Income expected', 'The average of the last three completed months', alloc.incomeCents);
+
+    const bills = group('Bills', 'From Bills, counted as already spent', alloc.billsCents);
+    const dueBills = plan.bills.filter(b => b.paid || b.toComeCents > 0);
+    const billLine = document.createElement('div');
+    billLine.className = 'budget-pl-line';
+    const names = document.createElement('span');
+    names.className = 'budget-ov-grow budget-ov-muted';
+    names.textContent = dueBills.length ? dueBills.map(b => b.name).join(', ') : 'No bills due this month.';
+    billLine.appendChild(names);
+    linkButton(billLine, 'See Bills', () => openBudgetSection(api, 'plan', 'bills'));
+    bills.appendChild(billLine);
+
+    const cats = group('Everyday', 'Your limits, less the bills inside them. Suggestions come from the last three months.', alloc.everydayCents);
+    const billsByCat = new Map();
+    for (const b of dueBills) billsByCat.set(b.categoryId, (billsByCat.get(b.categoryId) || 0) + (b.paid ? b.paidCents : b.toComeCents));
+    for (const r of plan.categories) {
+      const row = document.createElement('div');
+      row.className = 'budget-pl-cat';
+      const nameCol = document.createElement('div');
+      nameCol.className = 'budget-pl-catname';
+      const top = document.createElement('span');
+      top.className = 'budget-pl-cattop';
+      const dot = document.createElement('span'); dot.className = 'budget-dot'; dot.style.background = r.color || 'var(--px-text-faint)';
+      const nm = document.createElement('span'); nm.className = 'budget-ov-grow'; nm.textContent = r.name;
+      top.append(dot, nm);
+      nameCol.appendChild(top);
+      const sub = document.createElement('span');
+      sub.className = 'budget-ov-faint';
+      const parts = [];
+      const inBills = billsByCat.get(r.id) || 0;
+      if (inBills) parts.push(`includes ${fmtMoney(inBills)} of bills`);
+      const h = sugg.hist.get(r.id) || { m1: 0, m2: 0, m3: 0 };
+      const suggested = suggestLimitCents(h.m1, h.m2, h.m3, sugg.recurring.get(r.id) || 0);
+      if (suggested > 0) parts.push(`suggested ${fmtMoney(suggested)}`);
+      sub.textContent = parts.join(' · ');
+      if (parts.length) nameCol.appendChild(sub);
+
+      const input = document.createElement('input');
+      input.type = 'number'; input.step = '1'; input.min = '0';
+      input.className = 'budget-input budget-pl-input';
+      input.setAttribute('aria-label', `${r.name} limit for ${monthName(monthKey)}`);
+      input.placeholder = 'No limit';
+      input.value = r.effective_limit_cents > 0 ? (r.effective_limit_cents / 100).toFixed(2) : '';
+      input.addEventListener('change', async () => {
+        const cents = Math.round(parseFloat(input.value || '0') * 100) || 0;
+        try { await writeLimit(r.id, cents); notifyLedgerChanged(); }
+        catch (e) { await api.window?.showErrorMessage?.('The limit was not saved: ' + (e instanceof Error ? e.message : String(e))); }
+      });
+
+      const useCol = document.createElement('div');
+      useCol.className = 'budget-pl-use';
+      if (suggested > 0 && suggested !== r.effective_limit_cents) {
+        api.ui.createButton(useCol, { label: 'Use Suggested', kind: 'ghost', size: 'sm', title: `Set ${fmtMoney(suggested)}`, onClick: async () => {
+          try { await writeLimit(r.id, suggested); notifyLedgerChanged(); }
+          catch (e) { await api.window?.showErrorMessage?.('The limit was not saved: ' + (e instanceof Error ? e.message : String(e))); }
+        } });
+      }
+
+      const spentCol = document.createElement('div');
+      spentCol.className = 'budget-pl-spent';
+      if (!isFuture) {
+        const eff = Number(r.effective_limit_cents) || 0;
+        const st = document.createElement('span');
+        st.className = 'budget-num' + (eff > 0 && r.spent_cents > eff ? ' budget-ov-bad' : ' budget-ov-muted');
+        st.textContent = `${fmtMoney(r.spent_cents)} spent`;
+        spentCol.appendChild(st);
+        if (eff > 0) {
+          const barEl = document.createElement('span'); barEl.className = 'budget-ov-bar';
+          const fill = document.createElement('span'); fill.className = 'budget-ov-fill' + (r.spent_cents > eff ? ' is-over' : '');
+          fill.style.width = `${Math.min(100, (r.spent_cents / eff) * 100)}%`;
+          barEl.appendChild(fill);
+          spentCol.appendChild(barEl);
+        }
+      }
+      row.append(nameCol, useCol, input, spentCol);
+      cats.appendChild(row);
+    }
+
+    const goalsGroup = group('Goals', 'What each goal needs a month to make its date', alloc.goalsCents);
+    if (!goals.length) {
+      const none = document.createElement('div');
+      none.className = 'budget-pl-line';
+      const t = document.createElement('span'); t.className = 'budget-ov-grow budget-ov-muted'; t.textContent = 'No goals yet.';
+      none.appendChild(t);
+      linkButton(none, 'Net Worth and Goals', () => openBudgetSection(api, 'worth'));
+      goalsGroup.appendChild(none);
+    }
+    for (const { g, need } of needs) {
+      const line = document.createElement('div');
+      line.className = 'budget-pl-line';
+      const n = document.createElement('span'); n.className = 'budget-ov-grow'; n.textContent = g.name;
+      const d = document.createElement('span'); d.className = 'budget-ov-faint';
+      const remaining = Math.max(0, (Number(g.target_cents) || 0) - Math.max(0, Number(g.current_cents) || 0));
+      d.textContent = remaining <= 0 ? 'Complete'
+        : need != null ? `${fmtMoney(need)} a month to make ${shortDate(g.target_date)}`
+        : g.target_date ? 'Past its date' : 'No date set';
+      line.append(n, d);
+      goalsGroup.appendChild(line);
+    }
+
+    // What has no job yet.
+    const left = document.createElement('div');
+    left.className = 'budget-pl-left' + (alloc.unassignedCents < 0 ? ' is-over' : '');
+    const lt = document.createElement('div');
+    const ln = document.createElement('div'); ln.className = 'budget-pl-title';
+    ln.textContent = alloc.unassignedCents >= 0 ? 'Not yet given a job' : 'Planned past your income';
+    const lh = document.createElement('div'); lh.className = 'budget-ov-faint';
+    lh.textContent = alloc.unassignedCents >= 0 ? 'Leave it as a cushion, or put it toward a goal.' : 'Lower a limit until this is zero or more.';
+    lt.append(ln, lh);
+    const la = document.createElement('div'); la.className = 'budget-num budget-pl-amt' + (alloc.unassignedCents < 0 ? ' budget-ov-bad' : '');
+    la.textContent = fmtMoney(alloc.unassignedCents);
+    left.append(lt, la);
+    card.appendChild(left);
+    if (focusAt >= 0) focusables()[focusAt]?.focus();
+  }
+
+  const offLedger = onLedgerChanged(() => void draw());
+  const offSync = onSyncEvent((e) => { if (e.kind === 'complete') void draw(); });
+  void draw();
+  return () => { alive = false; offLedger(); offSync(); };
 }
 
 // ─── Section: Recurring ────────────────────────────────────────────────────
@@ -9028,6 +9109,25 @@ function computeMonthPlan(m) {
 
 // Active bills for a month: each with whether it was paid this month and its
 // amount (what was paid, else its usual amount when it falls due this month).
+// How many times a bill falls due inside a range, stepping from its next due
+// date by its cadence. A month ahead of the current one is planned from this.
+function billDueCount(nextDue, cadence, range) {
+  if (!nextDue || !/^\d{4}-\d{2}-\d{2}$/.test(nextDue)) return 0;
+  const step = { weekly: [0, 7], biweekly: [0, 14], monthly: [1, 0], quarterly: [3, 0], yearly: [12, 0] }[cadence];
+  if (!step) return nextDue >= range.start && nextDue <= range.end ? 1 : 0;
+  const [y, m, d] = nextDue.split('-').map(Number);
+  let n = 0;
+  for (let i = 0; i < 400; i++) {
+    const dt = new Date(y, m - 1 + step[0] * i, d + step[1] * i);
+    // A month that has no such day (the 31st) falls on its last day.
+    if (step[0] && dt.getDate() !== d) dt.setDate(0);
+    const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    if (iso > range.end) break;
+    if (iso >= range.start) n++;
+  }
+  return n;
+}
+
 async function readMonthBills(range, todayIso) {
   const series = await db.all(
     `SELECT id, merchant_pattern, display_name, category_id, cadence, avg_amount_cents, last_amount_cents, next_due_date, detection_confidence
@@ -9047,6 +9147,9 @@ async function readMonthBills(range, todayIso) {
     const usual = Number(s.last_amount_cents) || Number(s.avg_amount_cents) || 0;
     const due = s.next_due_date || null;
     const dueThisMonth = !!due && due >= range.start && due <= range.end;
+    // A month still ahead: every time the bill falls due in it is to come.
+    const ahead = range.start > localYmd(new Date());
+    const aheadCount = ahead ? billDueCount(due, s.cadence, range) : 0;
     out.push({
       id: s.id,
       name: s.display_name || s.merchant_pattern,
@@ -9055,7 +9158,8 @@ async function readMonthBills(range, todayIso) {
       paidCents,
       paidOn: paid?.last || null,
       dueDate: due,
-      toComeCents: paidCents > 0 || !dueThisMonth || (todayIso && due < todayIso) ? 0 : usual,
+      toComeCents: ahead ? usual * aheadCount
+        : paidCents > 0 || !dueThisMonth || (todayIso && due < todayIso) ? 0 : usual,
       usualCents: usual,
       unsure: s.detection_confidence === 'low',
     });
@@ -11787,6 +11891,9 @@ export const __testables = {
   txAmountView,
   splitTxNotes,
   txOrigin,
+  billDueCount,
+  goalMonthlyNeed,
+  computeAllocation,
   budgetStreamWithStall,
   BudgetLmStallError,
   median,
