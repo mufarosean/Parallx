@@ -267,6 +267,30 @@ export const AUTONOMY_LOG_MANIFEST: IToolManifest = {
   },
 };
 
+// ── Agents (the right-sidebar home for background work) ──────────────────
+
+export const AGENTS_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.agents',
+  name: 'Agents',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'What the AI is doing on its own: approvals waiting on you, running tasks, routines coming up, and what finished today.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'agents.show', title: 'Agents: Show',
+        aiInvocable: true, aiDescription: 'Reveal the Agents view: approvals, running tasks, upcoming routines.' },
+    ],
+    viewContainers: [
+      { id: 'agents-container', title: 'Agents', icon: 'px-automations', location: 'auxiliaryBar' as const },
+    ],
+    views: [{ id: 'view.agents', name: 'Agents', defaultContainerId: 'agents-container' }],
+  },
+};
+
 // ── Tool Gallery ─────────────────────────────────────────────────────────
 
 export const TOOL_GALLERY_MANIFEST: IToolManifest = {

@@ -1,0 +1,170 @@
+/* Agents — the right-sidebar home for background work (main.ts). */
+
+.agents-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--px-bg);
+  color: var(--px-text);
+  font-size: var(--px-text-sm);
+}
+
+.agents-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-3);
+  border-bottom: 1px solid var(--px-border);
+}
+
+/* The background switch: on = agents may run on their own. */
+.agents-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-xs);
+  cursor: pointer;
+}
+.agents-switch__track {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--px-radius-full);
+  background: var(--px-border-strong);
+  cursor: pointer;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
+}
+.agents-switch__track[aria-checked="true"] { background: var(--px-accent); }
+.agents-switch__track:disabled { opacity: 0.5; cursor: default; }
+.agents-switch__track:focus-visible { outline: 2px solid var(--px-ring-accent); outline-offset: 2px; }
+.agents-switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-bg-elevated);
+  transition: transform var(--px-dur-base) var(--px-ease-out);
+}
+.agents-switch__track[aria-checked="true"] .agents-switch__knob { transform: translateX(12px); }
+
+.agents-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--px-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-4);
+}
+
+.agents-paused {
+  padding: var(--px-space-2) var(--px-space-3);
+  border-radius: var(--px-radius-md);
+  background: var(--px-warning-soft);
+  color: var(--px-text);
+  font-size: var(--px-text-xs);
+  line-height: 1.5;
+}
+/* Paused: what would run dims, what needs you does not. */
+.agents-view--paused .agents-section:not(.agents-section--needs) { opacity: 0.6; transition: opacity var(--px-dur-base) var(--px-ease); }
+
+.agents-section { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.agents-section > .px-section-label { margin: 0; }
+
+.agents-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-1);
+  padding: var(--px-space-2) var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated);
+  animation: agents-in var(--px-dur-base) var(--px-ease-out);
+}
+.agents-card--needs { border-color: var(--px-warning); }
+.agents-card__line { line-height: 1.45; }
+.agents-card__name { font-weight: 600; }
+.agents-card__what { color: var(--px-text-secondary); }
+.agents-card__detail, .agents-card__step {
+  color: var(--px-text-muted);
+  font-size: var(--px-text-xs);
+  overflow-wrap: anywhere;
+}
+.agents-card__top { display: flex; align-items: center; gap: var(--px-space-2); }
+.agents-card__top .agents-card__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agents-card__count { color: var(--px-text-muted); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
+.agents-card__actions { display: flex; flex-wrap: wrap; gap: var(--px-space-1); margin-top: var(--px-space-1); }
+
+.agents-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent);
+}
+.agents-card--working .agents-dot { animation: agents-breathe 1.4s ease-in-out infinite; }
+.agents-card--waiting .agents-dot { background: var(--px-warning); }
+.agents-card--paused .agents-dot { background: var(--px-text-faint); }
+
+.agents-progress {
+  height: 3px;
+  margin-top: var(--px-space-1);
+  border-radius: var(--px-radius-full);
+  background: var(--px-surface-hover);
+  overflow: hidden;
+}
+.agents-progress__fill {
+  height: 100%;
+  background: var(--px-accent);
+  border-radius: inherit;
+  transition: width var(--px-dur-slow) var(--px-ease-out);
+}
+
+.agents-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--px-space-2);
+  padding: var(--px-space-1) 0;
+}
+.agents-row__when {
+  flex: none;
+  min-width: 76px;
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.agents-row__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.agents-row__name { font-weight: 500; }
+.agents-row__what {
+  color: var(--px-text-muted);
+  font-size: var(--px-text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agents-row__at { flex: none; color: var(--px-text-muted); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
+.agents-row__icon { flex: none; align-self: center; color: var(--px-success); }
+.agents-row--failed .agents-row__icon { color: var(--px-danger); }
+.agents-row--stopped .agents-row__icon { color: var(--px-text-faint); }
+
+.agents-foot { display: flex; justify-content: flex-start; margin-top: auto; }
+
+@keyframes agents-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes agents-breathe {
+  0%, 100% { opacity: 0.35; transform: scale(0.8); }
+  50%      { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agents-card, .agents-card--working .agents-dot { animation: none; }
+}

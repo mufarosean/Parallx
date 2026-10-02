@@ -68,9 +68,14 @@ export function createChatView(
   // Register this widget as the active widget for command dispatch
   setActiveWidget(widget);
 
+  // The aux header is shared by every right-sidebar container (Chat,
+  // Agents, …); Chat's buttons belong there only while Chat is the one
+  // showing. A hidden container lays the view out at 0×0.
+  const auxActions = titleActionsSlot?.classList.contains('parallx-chat-title-actions') ? titleActionsSlot : null;
   const resizeObserver = new ResizeObserver((entries) => {
     for (const entry of entries) {
       const { width, height } = entry.contentRect;
+      if (auxActions) auxActions.style.display = width === 0 && height === 0 ? 'none' : '';
       widget.layout(width, height);
     }
   });

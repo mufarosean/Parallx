@@ -170,6 +170,7 @@ import * as ChatTool from '../built-in/chat/main.js';
 import * as AISettingsTool from '../built-in/ai-settings/main.js';
 import * as DiagnosticsTool from '../built-in/diagnostics/main.js';
 import * as AutonomyLogTool from '../built-in/autonomy-log/main.js';
+import * as AgentsTool from '../built-in/agents/main.js';
 import * as ThemeEditorTool from '../built-in/theme-editor/main.js';
 import * as SettingsTool from '../built-in/settings/main.js';
 import * as DashboardTool from '../built-in/dashboard/main.js';
@@ -190,6 +191,7 @@ import {
   AI_SETTINGS_MANIFEST,
   DIAGNOSTICS_MANIFEST,
   AUTONOMY_LOG_MANIFEST,
+  AGENTS_MANIFEST,
   THEME_EDITOR_MANIFEST,
   SETTINGS_MANIFEST,
   DASHBOARD_MANIFEST,
@@ -3957,6 +3959,8 @@ export class Workbench extends Layout {
       { manifest: TOOL_GALLERY_MANIFEST, module: ToolGalleryTool },
       { manifest: CANVAS_MANIFEST, module: CanvasTool },
       { manifest: CHAT_MANIFEST, module: ChatTool },
+      // After Chat: the second right-sidebar icon, under Chat, which stays default.
+      { manifest: AGENTS_MANIFEST, module: AgentsTool },
       { manifest: AI_SETTINGS_MANIFEST, module: AISettingsTool },
       { manifest: THEME_EDITOR_MANIFEST, module: ThemeEditorTool },
       // Phase D step 8: activation-order CONSTRAINTS are declared as

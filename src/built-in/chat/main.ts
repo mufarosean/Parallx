@@ -2874,6 +2874,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       if (layout && !layout.isVisible('workbench.parts.auxiliarybar')) {
         api.commands.executeCommand('workbench.action.toggleAuxiliaryBar');
       }
+      // The right sidebar may be showing Agents: bring Chat to the front.
+      void api.commands.executeCommand('workbench.view.show', 'view.chat').catch(() => undefined);
     }),
   );
 
