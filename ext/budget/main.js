@@ -22,13 +22,9 @@ const _disposables = [];
 
 // Cross-view nav state — Dashboard sets this when the user clicks a category
 // slice; Transactions reads & clears it on next render. Cleared after consumption.
-// `planTab` / `settingsTab` are consumed by the Plan / Settings wrapper sections
-// so palette commands like `budget.openCategories` deep-link to the right tab.
-const _navState = { txFilter: null, planTab: null, settingsTab: null };
-// Live Plan / Settings wrappers by navStateKey → their tab switcher. A palette
-// deep link into a wrapper that is already open re-uses its editor, which does
-// not re-render, so the command switches the tab through this instead.
-const _liveTabWrappers = new Map();
+// `section` / `planView` carry a deep link into a Budget editor that is not
+// open yet; an open one is switched directly (openBudgetSection).
+const _navState = { txFilter: null, section: null, planView: null };
 
 // ─── Cross-view sync event bus ────────────────────────────────────────────
 //
@@ -295,46 +291,79 @@ async function hideReviewedTransaction(txId, reason = '') {
   );
 }
 
+// ─── Sections of the one Budget editor ─────────────────────────────────────
+//
+// Budget opens as ONE editor tab ('budget:main') whose content switches; the
+// sidebar lists the `nav` sections. Sync Log and Import / Export are reached
+// from the page header's ⋯ menu. Every older `budget.open*` command still
+// works: COMMAND_ROUTES maps it to a section (and a Plan view).
 const SECTIONS = [
-  { id: 'dashboard',    title: 'Overview',     icon: 'layout-dashboard', commandId: 'budget.openDashboard',    blurb: 'Tracked Balances, Month-to-Date Expenses & Income, Top Categories.', nav: true },
-  { id: 'accounts',     title: 'Net Worth',    icon: 'landmark',         commandId: 'budget.openAccounts',     blurb: 'Net worth: accounts, investments, real estate, vehicles, and liabilities.', nav: true },
-  { id: 'transactions', title: 'Transactions', icon: 'list',             commandId: 'budget.openTransactions', blurb: 'Searchable, filterable ledger of every imported transaction.', nav: true },
-  { id: 'plan',         title: 'Plan',         icon: 'target',           commandId: 'budget.openPlan',         blurb: 'Budgets, recurring, reconcile, and trends.', nav: true },
-  { id: 'goals',        title: 'Goals',        icon: 'flag',             commandId: 'budget.openGoals',        blurb: 'Savings targets and debt payoff with progress and a projected finish date.', nav: true },
-  { id: 'settings',     title: 'Settings',     icon: 'settings',         commandId: 'budget.openSettings',     blurb: 'Categories, rules, review queue, sync log, import/export.', nav: true },
-
-  // Hidden sections — kept registered so the editor router and palette commands
-  // continue to work. Sidebar suppresses them via `nav: false`. They are
-  // rendered inside the Plan / Settings wrappers as tabs.
-  { id: 'budgets',      title: 'Budgets',      icon: 'target',           commandId: 'budget.openBudgets',      blurb: 'Per-category monthly limits with alerts and rollover.', nav: false },
-  { id: 'recurring',    title: 'Recurring',    icon: 'repeat',           commandId: 'budget.openRecurring',    blurb: 'Detected subscriptions and recurring bills with upcoming-due dates.', nav: false },
-  { id: 'cashflow',     title: 'Cash Flow',    icon: 'trending-up',      commandId: 'budget.openCashFlow',     blurb: 'Monthly Income vs Expenses with Savings Rate Over Time.', nav: false },
-  { id: 'reports',      title: 'Reports',      icon: 'pie-chart',        commandId: 'budget.openReports',      blurb: 'Top merchants, category breakdown, and trends over a selected window.', nav: false },
-  { id: 'rules',        title: 'Rules',        icon: 'filter',           commandId: 'budget.openRules',        blurb: 'Merchant→category rules. Auto-learned from your overrides; manually editable.', nav: false },
-  { id: 'reconcile',    title: 'Reconcile',    icon: 'check-circle',     commandId: 'budget.openReconcile',    blurb: 'Compare your real statement balance against derived activity.', nav: false },
-  { id: 'categories',   title: 'Categories',   icon: 'tag',              commandId: 'budget.openCategories',   blurb: 'Manage your category list: colour, kind, and monthly limits.', nav: false },
-  { id: 'reviewQueue',  title: 'Review Queue', icon: 'inbox',            commandId: 'budget.openReviewQueue',  blurb: 'AI-flagged low-confidence imports awaiting your confirmation.', nav: false },
-  { id: 'syncLog',      title: 'Sync Log',     icon: 'scroll-text',      commandId: 'budget.openSyncLog',      blurb: 'Per-message trace of the last few sync runs.', nav: false },
-  { id: 'importExport', title: 'Import / Export', icon: 'arrow-up-down',  commandId: 'budget.openImportExport', blurb: 'Paste a CSV to import, or export your full ledger as CSV.', nav: false },
+  { id: 'overview',     title: 'Overview',            icon: 'layout-dashboard', nav: true },
+  { id: 'review',       title: 'Review',              icon: 'inbox',            nav: true },
+  { id: 'transactions', title: 'Transactions',        icon: 'list',             nav: true },
+  { id: 'plan',         title: 'Plan',                icon: 'target',           nav: true },
+  { id: 'worth',        title: 'Net Worth and Goals', icon: 'landmark',         nav: true },
+  { id: 'rules',        title: 'Merchants and Rules', icon: 'filter',           nav: true },
+  { id: 'categories',   title: 'Categories',          icon: 'tag',              nav: true },
+  { id: 'syncLog',      title: 'Sync Log',            icon: 'scroll-text',      nav: false },
+  { id: 'importExport', title: 'Import / Export',     icon: 'arrow-up-down',    nav: false },
 ];
 
-// Maps wrapper section id → { tabId of inner section } for cross-nav and to
-// re-route the legacy `budget.openX` commands into a wrapper + tab selection.
-// When the user (or any code) executes one of these, M64 routes it to the
-// wrapper section and pre-selects the named tab.
-const PLAN_TABS     = ['budgets', 'recurring', 'reconcile', 'cashflow', 'reports'];
-const SETTINGS_TABS = ['categories', 'rules', 'reviewQueue', 'syncLog', 'importExport'];
-function wrapperForSection(sectionId) {
-  if (PLAN_TABS.includes(sectionId))     return { wrapper: 'plan',     tab: sectionId };
-  if (SETTINGS_TABS.includes(sectionId)) return { wrapper: 'settings', tab: sectionId };
-  return null;
+// Command → [section, Plan view]. Kept for the palette, chat tools and deep links.
+const COMMAND_ROUTES = {
+  'budget.openDashboard':    ['overview'],
+  'budget.openReviewQueue':  ['review'],
+  'budget.openTransactions': ['transactions'],
+  'budget.openPlan':         ['plan'],
+  'budget.openBudgets':      ['plan', 'budgets'],
+  'budget.openRecurring':    ['plan', 'bills'],
+  'budget.openCashFlow':     ['plan', 'trends'],
+  'budget.openReports':      ['plan', 'trends'],
+  'budget.openReconcile':    ['plan', 'reconcile'],
+  'budget.openAccounts':     ['worth'],
+  'budget.openGoals':        ['worth'],
+  'budget.openRules':        ['rules'],
+  'budget.openCategories':   ['categories'],
+  'budget.openSyncLog':      ['syncLog'],
+  'budget.openImportExport': ['importExport'],
+};
+
+// Editors restored from before the one-editor change carry their old section id.
+const LEGACY_SECTION = {
+  dashboard: ['overview'], accounts: ['worth'], goals: ['worth'], settings: ['categories'],
+  budgets: ['plan', 'budgets'], recurring: ['plan', 'bills'], cashflow: ['plan', 'trends'],
+  reports: ['plan', 'trends'], reconcile: ['plan', 'reconcile'], reviewQueue: ['review'],
+};
+
+function routeForInstanceId(instanceId) {
+  const idx = (instanceId || '').lastIndexOf(':');
+  const id = idx >= 0 ? instanceId.slice(idx + 1) : instanceId || '';
+  if (SECTIONS.some(s => s.id === id)) return [id];
+  return LEGACY_SECTION[id] || ['overview'];
 }
 
-function sectionByEditorInstanceId(instanceId) {
-  // Editor instanceId convention: 'budget:<sectionId>'.
-  const idx = (instanceId || '').indexOf(':');
-  const sectionId = idx >= 0 ? instanceId.slice(idx + 1) : instanceId || '';
-  return SECTIONS.find(s => s.id === sectionId) || null;
+// The section the open Budget editor shows, and who wants to know (the sidebar).
+let _currentSection = 'overview';
+const _sectionListeners = new Set();
+let _liveEditorShow = null;
+function _setCurrentSection(id) {
+  _currentSection = id;
+  for (const fn of _sectionListeners) { try { fn(id); } catch { /* listener errors stay local */ } }
+}
+
+// Ledger changed outside a sync (a review verdict, an edit): views refresh.
+const _ledgerListeners = new Set();
+function notifyLedgerChanged() {
+  for (const fn of _ledgerListeners) { try { fn(); } catch { /* listener errors stay local */ } }
+}
+function onLedgerChanged(fn) { _ledgerListeners.add(fn); return () => _ledgerListeners.delete(fn); }
+
+async function openBudgetSection(api, sectionId, view) {
+  _navState.section = sectionId;
+  _navState.planView = view || null;
+  if (_liveEditorShow) { _liveEditorShow(sectionId, view || null); }
+  await api.editors.openEditor({ typeId: 'budget.editor', title: 'Budget', icon: 'wallet', instanceId: 'budget:main' });
+  // A freshly mounted editor consumed _navState; an open one was switched above.
 }
 
 // ─── Stylesheet (injected once) ────────────────────────────────────────────
@@ -367,129 +396,94 @@ function injectStyles() {
   --budget-mono: var(--vscode-editor-font-family, 'Consolas', 'SF Mono', monospace);
 }
 
-/* ═══ Sidebar nav ═══ */
+/* ═══ Sidebar: the month at a glance, the sections, the sync line ═══ */
 .budget-nav {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-  color: var(--vscode-sideBar-foreground, var(--vscode-editor-foreground));
-  font-family: var(--vscode-font-family, system-ui, sans-serif);
-  font-size: var(--px-text-base, 13px);
+  padding: var(--px-space-2);
+  box-sizing: border-box;
+  gap: var(--px-space-3);
+  color: var(--px-text);
+  font-size: var(--px-text-base);
   overflow: hidden;
 }
-.budget-nav-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 0;
+.budget-glance {
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-1);
+  padding: var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated);
 }
+.budget-glance-label { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
+.budget-glance-big { color: var(--px-text-muted); font-size: var(--px-text-sm); }
+.budget-glance-big .budget-num { font-size: var(--px-text-lg); font-weight: 600; color: var(--px-text); margin-right: 2px; }
+.budget-glance-bar { height: 6px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; }
+.budget-glance-fill { height: 100%; background: var(--px-accent); border-radius: var(--px-radius-full); transition: width var(--px-dur-base, 200ms) var(--px-ease, ease); }
+.budget-glance-fill.is-over { background: var(--px-danger); }
+.budget-glance-hint { font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.budget-nav-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
 .budget-nav-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--px-space-2);
   width: 100%;
-  padding: 5px 12px;
-  border: none;
+  height: var(--px-control-h);
+  padding: 0 var(--px-space-2);
+  border: 0;
+  border-radius: var(--px-radius-sm);
   background: transparent;
-  color: inherit;
+  color: var(--px-text-secondary);
   font: inherit;
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.budget-nav-row:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
+.budget-nav-row:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.budget-nav-row[aria-current="page"] { background: var(--px-surface-selected); color: var(--px-text); font-weight: 600; }
+.budget-nav-row:focus-visible { outline: 1px solid var(--px-accent); outline-offset: -1px; }
+.budget-nav-row .budget-icon { display: inline-flex; width: 16px; height: 16px; flex: 0 0 16px; color: var(--px-text-muted); }
+.budget-nav-row .budget-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.budget-nav-count {
+  min-width: 18px; height: 18px; padding: 0 6px; box-sizing: border-box;
+  border-radius: var(--px-radius-full);
+  background: var(--px-warning-soft); color: var(--px-warning);
+  font-size: var(--px-text-2xs); font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.budget-nav-row:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-.budget-nav-row .budget-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  color: var(--vscode-icon-foreground, #cccccc);
-}
-.budget-nav-row .budget-label {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.budget-nav-count[hidden] { display: none; }
 .budget-nav-footer {
   flex-shrink: 0;
-  padding: 8px 10px;
-  border-top: 1px solid var(--vscode-panel-border, #2a2a2a);
+  display: flex; align-items: center; gap: var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-1) 0;
+  border-top: 1px solid var(--px-divider);
 }
-.budget-sync-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  background: var(--vscode-button-secondaryBackground, #3a3a3a);
-  color: var(--vscode-button-secondaryForeground, #ccc);
-  border: 1px solid var(--vscode-panel-border, #555);
-  font-family: inherit;
-  cursor: pointer;
-  box-sizing: border-box;
-  height: var(--px-control-h);
-  padding: 0 12px;
-  border-radius: var(--px-radius-sm);
-  font-size: var(--px-text-sm);
-  line-height: 1;
-}
-.budget-sync-btn:hover {
-  background: var(--vscode-button-secondaryHoverBackground, #4a4a4a);
-}
-.budget-sync-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-.budget-sync-btn .budget-icon { width: 14px; height: 14px; flex: 0 0 14px; }
+.budget-nav-status { flex: 1; min-width: 0; font-size: var(--px-text-xs); color: var(--px-text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ═══ Editor pane ═══ */
+/* ═══ The Budget editor ═══ */
 .budget-editor {
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: auto;
-  background: var(--vscode-editor-background);
-  color: var(--vscode-editor-foreground);
-  font-family: var(--vscode-font-family, system-ui, sans-serif);
-  font-size: var(--px-text-base, 13px);
+  background: var(--px-bg);
+  color: var(--px-text);
+  font-size: var(--px-text-base);
   box-sizing: border-box;
 }
-.budget-editor-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 16px 24px 10px 24px;
-  border-bottom: 3px double var(--vscode-panel-border, #2a2a2a);
-}
-.budget-editor-header .budget-icon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  color: var(--vscode-icon-foreground, #cccccc);
-}
-.budget-editor-title {
-  margin: 0;
-  font-size: var(--px-text-xl);
-  font-weight: 600;
-}
+/* The kit page header pads itself; the body lines up under its title. */
+.budget-editor-head { padding: 0; }
 .budget-editor-body {
   flex: 1;
-  padding: 20px 24px;
+  padding: 0 var(--px-space-6) var(--px-space-6);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--px-space-3);
 }
+.budget-plan-switch { display: flex; }
+.budget-worth-goals { display: flex; flex-direction: column; gap: var(--px-space-3); margin-top: var(--px-space-4); }
 .budget-editor-blurb {
   margin: 0;
   font-size: var(--px-text-base, 13px);
@@ -1693,24 +1687,31 @@ function makeIcon(api, name, size) {
   return api.icons.createIconHtml(name, size || 16);
 }
 
-// ─── Sidebar nav view ──────────────────────────────────────────────────────
+// ─── Sidebar ───────────────────────────────────────────────────────────────
+//
+// The month at a glance (what is left to spend), the sections with the review
+// count, and the sync status with one Sync Now. Refreshes on sync and ledger
+// changes.
 function renderSidebarNav(container, api) {
   injectStyles();
-
   const root = document.createElement('div');
   root.className = 'budget-nav';
 
-  const list = document.createElement('div');
+  const glance = document.createElement('div');
+  glance.className = 'budget-glance';
+  root.appendChild(glance);
+
+  const list = document.createElement('nav');
   list.className = 'budget-nav-list';
+  list.setAttribute('aria-label', 'Budget');
   root.appendChild(list);
 
+  const rows = new Map();
   for (const section of SECTIONS) {
     if (section.nav === false) continue;
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'budget-nav-row';
-    row.title = section.title;
-
     const iconHtml = makeIcon(api, section.icon, 16);
     if (iconHtml) {
       const iconWrap = document.createElement('span');
@@ -1718,118 +1719,225 @@ function renderSidebarNav(container, api) {
       iconWrap.innerHTML = iconHtml;
       row.appendChild(iconWrap);
     }
-
     const label = document.createElement('span');
     label.className = 'budget-label';
     label.textContent = section.title;
     row.appendChild(label);
-
+    const count = document.createElement('span');
+    count.className = 'budget-nav-count';
+    count.hidden = true;
+    row.appendChild(count);
     row.addEventListener('click', () => {
-      api.commands.executeCommand(section.commandId).catch(err => {
-        console.error('[Budget] open section failed:', err);
-      });
+      openBudgetSection(api, section.id).catch(err => console.error('[Budget] open section failed:', err));
     });
-
     list.appendChild(row);
+    rows.set(section.id, { row, count });
   }
 
-  // Footer: Sync now
   const footer = document.createElement('div');
   footer.className = 'budget-nav-footer';
-  const syncBtn = document.createElement('button');
-  syncBtn.type = 'button';
-  syncBtn.className = 'budget-sync-btn';
-  const syncIconHtml = makeIcon(api, 'cloud-download', 14);
-  if (syncIconHtml) {
-    const ic = document.createElement('span');
-    ic.className = 'budget-icon';
-    ic.innerHTML = syncIconHtml;
-    syncBtn.appendChild(ic);
-  }
-  const syncLabel = document.createElement('span');
-  syncLabel.textContent = 'Sync Now';
-  syncBtn.appendChild(syncLabel);
-  syncBtn.addEventListener('click', () => {
-    api.commands.executeCommand('budget.sync').catch(err => {
-      console.error('[Budget] sync failed:', err);
-    });
-  });
-  footer.appendChild(syncBtn);
+  const status = document.createElement('div');
+  status.className = 'budget-nav-status';
+  footer.appendChild(status);
+  const syncBtn = api.ui.createIconButton(footer, { icon: 'refresh-cw', title: 'Sync Now' });
+  syncBtn.addEventListener('click', () => { api.commands.executeCommand('budget.sync').catch(err => console.error('[Budget] sync failed:', err)); });
   root.appendChild(footer);
+
+  const markCurrent = (id) => {
+    for (const [sid, r] of rows) {
+      if (sid === id) r.row.setAttribute('aria-current', 'page'); else r.row.removeAttribute('aria-current');
+    }
+  };
+  markCurrent(_currentSection);
+
+  let disposed = false;
+  async function refresh() {
+    if (disposed || !_dbBridge) return;
+    try {
+      const [g, review, sync] = await Promise.all([readMonthGlance(), countReview(), readSyncStatus()]);
+      if (disposed) return;
+      renderGlance(glance, g);
+      const rc = rows.get('review');
+      if (rc) { rc.count.hidden = !review; rc.count.textContent = String(review); }
+      status.textContent = sync;
+    } catch (err) {
+      console.warn('[Budget] sidebar refresh failed:', err);
+    }
+  }
+  function onSync(evt) {
+    if (evt.kind === 'start') status.textContent = 'Syncing with Gmail…';
+    else if (evt.kind === 'progress' && evt.stage) status.textContent = `Syncing: ${evt.stage}…`;
+    else refresh();
+  }
+  const offSync = onSyncEvent(onSync);
+  const offLedger = onLedgerChanged(refresh);
+  _sectionListeners.add(markCurrent);
+  refresh();
 
   container.appendChild(root);
   return {
-    dispose() { try { container.removeChild(root); } catch { /* container already gone */ } },
+    dispose() {
+      disposed = true;
+      offSync(); offLedger(); _sectionListeners.delete(markCurrent);
+      try { container.removeChild(root); } catch { /* container already gone */ }
+    },
   };
 }
 
-// ─── Editor pane — placeholder shell ───────────────────────────────────────
+function renderGlance(host, g) {
+  host.innerHTML = '';
+  const label = document.createElement('div');
+  label.className = 'budget-glance-label';
+  label.textContent = g.monthName;
+  host.appendChild(label);
+  const big = document.createElement('div');
+  big.className = 'budget-glance-big';
+  if (g.limitCents > 0) {
+    const n = document.createElement('span');
+    n.className = 'budget-num';
+    n.textContent = fmtMoney(Math.abs(g.leftCents));
+    big.appendChild(n);
+    big.appendChild(document.createTextNode(g.leftCents >= 0 ? ' left to spend' : ' over plan'));
+    host.appendChild(big);
+    const bar = document.createElement('div');
+    bar.className = 'budget-glance-bar';
+    const fill = document.createElement('div');
+    fill.className = 'budget-glance-fill' + (g.leftCents < 0 ? ' is-over' : '');
+    fill.style.width = `${Math.max(0, Math.min(100, g.usedPct))}%`;
+    bar.appendChild(fill);
+    host.appendChild(bar);
+    const hint = document.createElement('div');
+    hint.className = 'budget-glance-hint';
+    hint.textContent = g.daysLeft > 0 && g.leftCents > 0
+      ? `${g.daysLeft} day${g.daysLeft === 1 ? '' : 's'} left · about ${fmtMoney(Math.floor(g.leftCents / g.daysLeft / 100) * 100).replace(/\.00$/, '')} a day`
+      : `${g.daysLeft} day${g.daysLeft === 1 ? '' : 's'} left`;
+    host.appendChild(hint);
+  } else {
+    big.textContent = 'No plan for this month yet.';
+    host.appendChild(big);
+  }
+}
+
+async function countReview() {
+  const r = await db.get(`SELECT COUNT(*) AS n FROM transactions WHERE status='review'`);
+  return Number(r?.n) || 0;
+}
+
+async function readSyncStatus() {
+  const last = (await getSyncStateValue('last_run_at')) || (await getSyncStateValue('last_synced_at'));
+  if (!last) return 'Not synced yet';
+  const d = new Date(last);
+  if (Number.isNaN(d.getTime())) return 'Synced';
+  const today = new Date();
+  const same = d.toDateString() === today.toDateString();
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return same ? `Synced at ${time}` : `Synced ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
+// ─── The Budget editor ─────────────────────────────────────────────────────
 //
-// Single editor provider. Routes by instanceId 'budget:<sectionId>'.
-// Each section will be replaced by a real renderer in P2+.
+// One tab. A page header per section (title, the section's one main action,
+// ⋯ with sync, logs, import and settings), then the section's content.
 function renderEditorPane(container, api, input) {
   injectStyles();
-  const section = sectionByEditorInstanceId(input && (input.instanceId || input.id));
-
+  const instanceId = String((input && (input.instanceId || input.id)) || '');
+  // A tab restored from before Budget became one tab ('budget:dashboard',
+  // 'budget:goals', …): open its section in the Budget tab, then close it.
+  if (instanceId && !instanceId.endsWith('budget:main')) {
+    const note = emptyState('Budget now opens in one tab.');
+    container.appendChild(note);
+    const [sid, view] = routeForInstanceId(instanceId);
+    const legacyKey = instanceId.slice(instanceId.lastIndexOf('budget:'));
+    setTimeout(async () => {
+      try {
+        await openBudgetSection(api, sid, view);
+        const old = (api.editors.openEditors || []).find(e => e.id.endsWith(legacyKey));
+        if (old) await api.editors.closeEditor(old.id);
+      } catch (err) { console.warn('[Budget] could not fold an old tab into Budget:', err); }
+    }, 0);
+    return { dispose() { try { container.removeChild(note); } catch { /* gone */ } } };
+  }
   const el = document.createElement('div');
   el.className = 'budget-editor';
-
-  // Header
-  const header = document.createElement('div');
-  header.className = 'budget-editor-header';
-  const headerIconHtml = makeIcon(api, section ? section.icon : 'wallet', 20);
-  if (headerIconHtml) {
-    const ic = document.createElement('span');
-    ic.className = 'budget-icon';
-    ic.innerHTML = headerIconHtml;
-    header.appendChild(ic);
-  }
-  const heading = document.createElement('h2');
-  heading.className = 'budget-editor-title';
-  heading.textContent = section ? section.title : 'Budget';
-  header.appendChild(heading);
-  el.appendChild(header);
-
-  // Body
+  const head = document.createElement('div');
+  head.className = 'budget-editor-head';
   const body = document.createElement('div');
   body.className = 'budget-editor-body';
+  el.append(head, body);
+  container.appendChild(el);
 
-  // Per-section renderer. Each returns nothing; mutates `body` directly.
-  // When a section is unknown we fall back to a tiny placeholder.
-  const sectionId = section ? section.id : '';
   let cleanup = null;
-  if (sectionId === 'dashboard')          cleanup = renderDashboardSection(body, api);
-  else if (sectionId === 'plan')          cleanup = renderPlanSection(body, api);
-  else if (sectionId === 'settings')      cleanup = renderSettingsSection(body, api);
-  else if (sectionId === 'accounts')      cleanup = renderAccountsSection(body, api);
-  else if (sectionId === 'goals')         cleanup = renderGoalsSection(body, api);
-  else if (sectionId === 'transactions')  cleanup = renderTransactionsSection(body, api);
-  else if (sectionId === 'budgets')       cleanup = renderBudgetsSection(body, api);
-  else if (sectionId === 'recurring')     cleanup = renderRecurringSection(body, api);
-  else if (sectionId === 'cashflow')      cleanup = renderCashFlowSection(body, api);
-  else if (sectionId === 'reports')       cleanup = renderReportsSection(body, api);
-  else if (sectionId === 'rules')         cleanup = renderRulesSection(body, api);
-  else if (sectionId === 'reconcile')     cleanup = renderReconcileSection(body, api);
-  else if (sectionId === 'categories')    cleanup = renderCategoriesSection(body, api);
-  else if (sectionId === 'reviewQueue')   cleanup = renderReviewQueueSection(body, api);
-  else if (sectionId === 'syncLog')       cleanup = renderSyncLogSection(body, api);
-  else if (sectionId === 'importExport')  cleanup = renderImportExportSection(body, api);
-  else {
-    const tag = document.createElement('div');
-    tag.className = 'budget-editor-tag';
-    tag.textContent = 'Unknown Section';
-    body.appendChild(tag);
+  function moreItems() {
+    return [
+      { label: 'Sync Now', icon: 'refresh-cw', onSelect: () => api.commands.executeCommand('budget.sync') },
+      { label: 'Sync Log', icon: 'scroll-text', onSelect: () => show('syncLog') },
+      { label: 'Import / Export', icon: 'arrow-up-down', onSelect: () => show('importExport') },
+      { label: 'Reprocess History…', onSelect: () => api.commands.executeCommand('budget.reprocessHistory') },
+      { separator: true },
+      { label: 'Budget Settings…', icon: 'settings', onSelect: () => api.commands.executeCommand('settings.open', 'schema:Budget') },
+    ];
+  }
+  function show(sectionId, view) {
+    const section = SECTIONS.find(s => s.id === sectionId) || SECTIONS[0];
+    if (typeof cleanup === 'function') { try { cleanup(); } catch { /* best-effort */ } }
+    cleanup = null;
+    head.innerHTML = '';
+    body.innerHTML = '';
+    body.dataset.section = section.id;
+    _setCurrentSection(section.id);
+    const back = section.nav === false ? { label: 'Overview', onClick: () => show('overview') } : undefined;
+    api.ui.createPageHeader(head, { title: section.title, back, more: moreItems() });
+    try {
+      cleanup = renderSection(section.id, body, api, view) || null;
+    } catch (e) {
+      console.error('[Budget] section render failed:', section.id, e);
+      body.appendChild(emptyState('This page could not be drawn: ' + (e instanceof Error ? e.message : String(e))));
+    }
+    body.scrollTop = 0;
   }
 
-  el.appendChild(body);
+  const [startId, startView] = _navState.section
+    ? [_navState.section, _navState.planView]
+    : ['overview', null];
+  _navState.section = null;
+  _navState.planView = null;
+  _liveEditorShow = show;
+  show(startId, startView);
 
-  container.appendChild(el);
   return {
     dispose() {
+      if (_liveEditorShow === show) _liveEditorShow = null;
       try { if (typeof cleanup === 'function') cleanup(); } catch { /* best-effort */ }
       try { container.removeChild(el); } catch { /* container already gone */ }
     },
   };
+}
+
+function renderSection(id, body, api, view) {
+  switch (id) {
+    case 'overview':     return renderDashboardSection(body, api);
+    case 'review':       return renderReviewQueueSection(body, api);
+    case 'transactions': return renderTransactionsSection(body, api);
+    case 'plan':         return renderPlanSection(body, api, view);
+    case 'worth':        return renderWorthSection(body, api);
+    case 'rules':        return renderRulesSection(body, api);
+    case 'categories':   return renderCategoriesSection(body, api);
+    case 'syncLog':      return renderSyncLogSection(body, api);
+    case 'importExport': return renderImportExportSection(body, api);
+    default:             return renderDashboardSection(body, api);
+  }
+}
+
+// Net Worth and Goals: one page, accounts first.
+function renderWorthSection(body, api) {
+  const top = document.createElement('div');
+  const goals = document.createElement('div');
+  goals.className = 'budget-worth-goals';
+  body.append(top, goals);
+  const a = renderAccountsSection(top, api);
+  api.ui.createSectionLabel(goals, 'Goals');
+  const g = renderGoalsSection(goals, api);
+  return () => { if (typeof a === 'function') a(); if (typeof g === 'function') g(); };
 }
 
 // ─── Display helpers ───────────────────────────────────────────────────────
@@ -7864,6 +7972,111 @@ async function importCsvText(text) {
   return { inserted, skipped, errors };
 }
 
+// ─── The month: what is left, with bills counted as committed ──────────────
+//
+// One model for the sidebar and Overview. Bills (active recurring series) are
+// money already promised: a bill paid on the 1st is not "pace", and a bill not
+// yet paid is not "left". So:
+//   left            = limits − spent so far − bills still to come
+//   everyday budget = limits − all of this month's bills (paid + to come)
+//   everyday spent  = spent − bills paid
+// Pace compares everyday spent with an even share of the everyday budget, and
+// only says "projected" once a week of the month has passed.
+function computeMonthPlan(m) {
+  const limit = Math.max(0, m.limitCents | 0);
+  const spent = Math.max(0, m.spentCents | 0);
+  const billsPaid = Math.max(0, Math.min(spent, m.billsPaidCents | 0));
+  const billsToCome = Math.max(0, m.billsToComeCents | 0);
+  const days = Math.max(1, m.daysInMonth | 0);
+  const day = Math.max(0, Math.min(days, m.dayOfMonth | 0));
+  const everydayBudget = Math.max(0, limit - billsPaid - billsToCome);
+  const everydaySpent = spent - billsPaid;
+  const left = limit - spent - billsToCome;
+  const evenByNow = Math.round(everydayBudget * (day / days));
+  const projected = day >= 7 ? Math.round((everydaySpent / day) * days) : null;
+  let pace = 'none';
+  if (limit > 0 && day > 0) {
+    if (everydaySpent > everydayBudget) pace = 'over';
+    else if (projected !== null && projected > everydayBudget) pace = 'ahead';
+    else if (everydaySpent <= evenByNow) pace = 'under';
+    else pace = 'ahead';
+  }
+  return {
+    limitCents: limit, spentCents: spent, billsPaidCents: billsPaid, billsToComeCents: billsToCome,
+    everydayBudgetCents: everydayBudget, everydaySpentCents: everydaySpent, leftCents: left,
+    evenByNowCents: evenByNow, projectedCents: projected, pace,
+    daysLeft: Math.max(0, days - day), dayOfMonth: day, daysInMonth: days,
+    usedPct: limit > 0 ? Math.round(((limit - left) / limit) * 100) : 0,
+  };
+}
+
+// Active bills for a month: each with whether it was paid this month and its
+// amount (what was paid, else its usual amount when it falls due this month).
+async function readMonthBills(range, todayIso) {
+  const series = await db.all(
+    `SELECT id, merchant_pattern, display_name, category_id, cadence, avg_amount_cents, last_amount_cents, next_due_date, detection_confidence
+       FROM recurring_series WHERE cancelled = 0`);
+  const out = [];
+  for (const s of series) {
+    const pat = String(s.merchant_pattern || '').toLowerCase();
+    const paid = await db.get(
+      `SELECT COALESCE(SUM(t.amount_cents),0) AS cents, MAX(t.transaction_date) AS last
+         FROM transactions t
+        WHERE t.status='confirmed' AND t.tx_type IN ('purchase','fee')
+          AND t.transaction_date >= ? AND t.transaction_date <= ?
+          AND (t.id IN (SELECT transaction_id FROM recurring_occurrences WHERE series_id = ?)
+               OR (? <> '' AND LOWER(COALESCE(t.merchant,'')) LIKE '%' || ? || '%'))`,
+      [range.start, range.end, s.id, pat, pat]);
+    const paidCents = Number(paid?.cents) || 0;
+    const usual = Number(s.last_amount_cents) || Number(s.avg_amount_cents) || 0;
+    const due = s.next_due_date || null;
+    const dueThisMonth = !!due && due >= range.start && due <= range.end;
+    out.push({
+      id: s.id,
+      name: s.display_name || s.merchant_pattern,
+      categoryId: s.category_id,
+      paid: paidCents > 0,
+      paidCents,
+      paidOn: paid?.last || null,
+      dueDate: due,
+      toComeCents: paidCents > 0 || !dueThisMonth || (todayIso && due < todayIso) ? 0 : usual,
+      usualCents: usual,
+      unsure: s.detection_confidence === 'low',
+    });
+  }
+  return out;
+}
+
+async function readMonthPlan(monthKey) {
+  const range = monthRange(monthKey);
+  const now = ctParts(new Date());
+  const nowKey = `${now.y}-${String(now.m).padStart(2, '0')}`;
+  const daysInMonth = Number(range.end.slice(8, 10));
+  const day = range.key === nowKey ? now.d : range.key < nowKey ? daysInMonth : 0;
+  const todayIso = range.key === nowKey ? `${nowKey}-${String(now.d).padStart(2, '0')}` : null;
+  const statuses = await evalBudgetStatus(range.key);
+  const limitCents = statuses.reduce((a, r) => a + (Number(r.effective_limit_cents) || 0), 0);
+  const spentRow = await db.get(
+    `SELECT COALESCE(SUM(amount_cents),0) AS cents FROM transactions
+      WHERE status='confirmed' AND tx_type IN ('purchase','fee') AND transaction_date >= ? AND transaction_date <= ?`,
+    [range.start, range.end]);
+  const bills = await readMonthBills(range, todayIso);
+  const plan = computeMonthPlan({
+    limitCents,
+    spentCents: Number(spentRow?.cents) || 0,
+    billsPaidCents: bills.reduce((a, b) => a + b.paidCents, 0),
+    billsToComeCents: bills.reduce((a, b) => a + b.toComeCents, 0),
+    daysInMonth,
+    dayOfMonth: day,
+  });
+  return { ...plan, range, categories: statuses, bills };
+}
+
+async function readMonthGlance() {
+  const p = await readMonthPlan();
+  return { ...p, monthName: new Date(p.range.year, p.range.month0, 1).toLocaleString('en-US', { month: 'long' }) };
+}
+
 // ─── Budget alert helper ────────────────────────────────────────────────────
 //
 // Returns per-category status for a given month.
@@ -9884,96 +10097,41 @@ async function budgetToolUpsertRule(args) {
   };
 }
 
-// ─── Wrapper sections (M64) ────────────────────────────────────────────────
+// ─── Plan ──────────────────────────────────────────────────────────────────
 //
-// Plan and Settings are tab-strip wrappers around existing per-section
-// renderers. They were introduced in M64 to collapse a 13-entry sidebar into
-// 4 cohesive surfaces. The inner renderers are unchanged; this code only
-// hosts them.
-
-function renderTabbedWrapper(body, api, opts) {
-  // opts: { tabs: [{id,title,renderer}], navStateKey: string, defaultTab: string }
-  const incoming = _navState[opts.navStateKey];
-  _navState[opts.navStateKey] = null;
-  let activeId = (incoming && opts.tabs.some(t => t.id === incoming)) ? incoming : opts.defaultTab;
-
-  const strip = document.createElement('div');
-  strip.className = 'budget-toolbar';
-  strip.style.gap = '4px';
-  strip.style.flexWrap = 'wrap';
-  strip.style.borderBottom = '1px solid var(--vscode-panel-border, rgba(127,127,127,0.18))';
-  strip.style.paddingBottom = '8px';
-  strip.style.marginBottom = '12px';
-
+// One page with a switch between its views: the month's budgets, the bills
+// (recurring), trends (cash flow and reports) and reconcile.
+const PLAN_VIEWS = [
+  { value: 'budgets',   label: 'Budgets' },
+  { value: 'bills',     label: 'Bills' },
+  { value: 'trends',    label: 'Trends' },
+  { value: 'reconcile', label: 'Reconcile' },
+];
+function renderPlanSection(body, api, view) {
+  let active = PLAN_VIEWS.some(v => v.value === view) ? view : 'budgets';
+  const bar = document.createElement('div');
+  bar.className = 'budget-plan-switch';
   const content = document.createElement('div');
-
-  let activeCleanup = null;
-
-  function mount(id) {
-    activeId = id;
-    if (typeof activeCleanup === 'function') {
-      try { activeCleanup(); } catch { /* best-effort */ }
-    }
-    activeCleanup = null;
+  body.append(bar, content);
+  let cleanup = null;
+  function mount(v) {
+    active = v;
+    if (typeof cleanup === 'function') { try { cleanup(); } catch { /* best-effort */ } }
+    cleanup = null;
     content.innerHTML = '';
-    for (const btn of strip.querySelectorAll('button')) {
-      btn.setAttribute('aria-pressed', btn.dataset.tabId === id ? 'true' : 'false');
-    }
-    const tab = opts.tabs.find(t => t.id === id);
-    if (!tab) return;
-    try {
-      activeCleanup = tab.renderer(content, api) || null;
-    } catch (e) {
-      console.error('[Budget] tab render failed:', tab.id, e);
-      content.appendChild(emptyState('Failed to render: ' + (e instanceof Error ? e.message : String(e))));
-    }
+    const parts = [];
+    if (v === 'budgets') parts.push(renderBudgetsSection(content, api));
+    else if (v === 'bills') parts.push(renderRecurringSection(content, api));
+    else if (v === 'trends') {
+      const a = document.createElement('div'); const b = document.createElement('div');
+      content.append(a, b);
+      parts.push(renderCashFlowSection(a, api), renderReportsSection(b, api));
+    } else if (v === 'reconcile') parts.push(renderReconcileSection(content, api));
+    cleanup = () => { for (const p of parts) if (typeof p === 'function') p(); };
   }
-
-  for (const tab of opts.tabs) {
-    const b = makeButton(tab.title, { onClick: () => mount(tab.id) });
-    b.dataset.tabId = tab.id;
-    strip.appendChild(b);
-  }
-
-  body.appendChild(strip);
-  body.appendChild(content);
-  mount(activeId);
-  _liveTabWrappers.set(opts.navStateKey, mount);
-
-  return () => {
-    if (_liveTabWrappers.get(opts.navStateKey) === mount) _liveTabWrappers.delete(opts.navStateKey);
-    if (typeof activeCleanup === 'function') {
-      try { activeCleanup(); } catch { /* best-effort */ }
-    }
-  };
-}
-
-function renderPlanSection(body, api) {
-  return renderTabbedWrapper(body, api, {
-    navStateKey: 'planTab',
-    defaultTab: 'budgets',
-    tabs: [
-      { id: 'budgets',   title: 'Budgets',    renderer: renderBudgetsSection   },
-      { id: 'recurring', title: 'Recurring',  renderer: renderRecurringSection },
-      { id: 'cashflow',  title: 'Cash Flow',  renderer: renderCashFlowSection  },
-      { id: 'reports',   title: 'Reports',    renderer: renderReportsSection   },
-      { id: 'reconcile', title: 'Reconcile',  renderer: renderReconcileSection },
-    ],
-  });
-}
-
-function renderSettingsSection(body, api) {
-  return renderTabbedWrapper(body, api, {
-    navStateKey: 'settingsTab',
-    defaultTab: 'categories',
-    tabs: [
-      { id: 'categories',   title: 'Categories',      renderer: renderCategoriesSection   },
-      { id: 'rules',        title: 'Rules',           renderer: renderRulesSection        },
-      { id: 'reviewQueue',  title: 'Review Queue',    renderer: renderReviewQueueSection  },
-      { id: 'syncLog',      title: 'Sync Log',        renderer: renderSyncLogSection      },
-      { id: 'importExport', title: 'Import / Export', renderer: renderImportExportSection },
-    ],
-  });
+  api.ui.createSegmented(bar, { ariaLabel: 'Plan view', items: PLAN_VIEWS, value: active, onChange: mount });
+  mount(active);
+  return () => { if (typeof cleanup === 'function') cleanup(); };
 }
 
 // ─── activate() ────────────────────────────────────────────────────────────
@@ -10058,43 +10216,27 @@ export async function activate(api, context) {
     }
   }
 
-  // ── "Open <section>" commands ────────────────────────────────────────
-  // Top-level sidebar sections open directly. Sections wrapped under Plan or
-  // Settings (M64) re-route to the wrapper editor and pre-select the tab via
-  // _navState — preserves every existing palette/deep-link entry point.
-  for (const section of SECTIONS) {
-    const sectionId = section.id;
-    const title = section.title;
-    const icon = section.icon;
-    const wrap = wrapperForSection(sectionId);
-    _disposables.push(api.commands.registerCommand(section.commandId, async () => {
-      if (wrap) {
-        if (wrap.wrapper === 'plan')     _navState.planTab     = wrap.tab;
-        if (wrap.wrapper === 'settings') _navState.settingsTab = wrap.tab;
-        const wrapperSection = SECTIONS.find(s => s.id === wrap.wrapper);
-        await api.editors.openEditor({
-          typeId: 'budget.editor',
-          title: wrapperSection ? wrapperSection.title : wrap.wrapper,
-          icon:  wrapperSection ? wrapperSection.icon  : icon,
-          instanceId: 'budget:' + wrap.wrapper,
-        });
-        // A freshly rendered wrapper consumed the tab already; an open one did not.
-        const navKey = wrap.wrapper === 'plan' ? 'planTab' : 'settingsTab';
-        const live = _liveTabWrappers.get(navKey);
-        if (_navState[navKey] && live) {
-          live(_navState[navKey]);
-          _navState[navKey] = null;
-        }
-        return;
-      }
-      await api.editors.openEditor({
-        typeId: 'budget.editor',
-        title,
-        icon,
-        instanceId: 'budget:' + sectionId,
-      });
-    }));
+  // ── "Open <section>" commands: all into the one Budget editor ────────
+  for (const [commandId, route] of Object.entries(COMMAND_ROUTES)) {
+    _disposables.push(api.commands.registerCommand(commandId, () => openBudgetSection(api, route[0], route[1])));
   }
+  // Tabs restored from before Budget became one tab ('budget:dashboard', …)
+  // close; the one that was in front opens its section in the Budget tab.
+  setTimeout(async () => {
+    try {
+      const old = (api.editors.openEditors || []).filter(e => /:budget\.editor:budget:(?!main$)[\w]+$/.test(e.id));
+      if (!old.length) return;
+      const front = old.find(e => e.isActive);
+      if (front) {
+        const [sid, view] = routeForInstanceId(front.id);
+        await openBudgetSection(api, sid, view);
+      }
+      for (const e of old) await api.editors.closeEditor(e.id);
+    } catch (err) { console.warn('[Budget] could not fold old tabs into Budget:', err); }
+  }, 1500);
+
+  // Budget's own settings live in the app's Settings.
+  _disposables.push(api.commands.registerCommand('budget.openSettings', () => api.commands.executeCommand('settings.open', 'schema:Budget')));
 
   // ── Sync entry-points ────────────────────────────────────────────────
   // Three surfaces share one deterministic engine (budgetSync):
@@ -10609,6 +10751,7 @@ export async function deactivate() {
 // Pure helpers (no api/db/DOM dependency) are re-exported so they can be
 // imported by vitest. The blob-URL loader ignores extra named exports.
 export const __testables = {
+  computeMonthPlan,
   budgetStreamWithStall,
   BudgetLmStallError,
   median,
