@@ -10,8 +10,9 @@
 //   History   every background run, newest first (agentsHistory.ts);
 //   Mind      what it believes, habits it noticed, what it may do without
 //             asking (agentsMind.ts).
-// The header switch is the global pause (FLAG_PAUSED_GLOBAL). This replaced
-// the Autonomy Log panel, which kept the same things in a second place.
+// What agents may do on their own (the global pause included) is set in
+// Settings › Agents, registered here (agentsSettings.ts). This replaced the
+// Autonomy Log panel, which kept the same things in a second place.
 
 import './agents.css';
 
@@ -25,11 +26,12 @@ import type { IAgentsSnapshot } from './agentsModel.js';
 import { agentsViewInFront, startAgentsPresence } from './agentsPresence.js';
 import { AGENT_RUN_EDITOR, renderAgentRun } from './agentsRun.js';
 import { renderRoutineForm } from './agentsRoutine.js';
-import { answerApproval, isPaused, onAnyChange, readSnapshot, resolveServices, setPaused, svc, type ParallxApi } from './agentsServices.js';
+import { answerApproval, isPaused, onAnyChange, readSnapshot, resolveServices, svc, type ParallxApi } from './agentsServices.js';
 import { heartbeatActions, handledHeartbeat, isActionableHeartbeat, renderHistory } from './agentsHistory.js';
 import { renderRoutines } from './agentsRoutines.js';
 import { renderMind } from './agentsMind.js';
 import { WorkflowEditorPane } from './workflowEditorPane.js';
+import { AGENTS_SETTINGS_GROUP, registerAgentsSettings } from './agentsSettings.js';
 import { ISettingsRegistryService, ICanvasPageQueryService } from '../../services/serviceTypes.js';
 import { ILanguageModelToolsService, ILanguageModelsService } from '../../services/chatTypes.js';
 import { isBrowserToolName } from '../../services/browserAutomationTypes.js';
@@ -42,6 +44,18 @@ let _showTab: ((tab: AgentsTab) => void) | undefined;
 
 export function activate(api: ParallxApi, context: ToolContext): void {
   resolveServices(api);
+  // Settings › Agents: this built-in owns its section like any other.
+  try {
+    if (api.services.has(ISettingsRegistryService)) {
+      registerAgentsSettings(
+        api.services.get<import('../../services/settingsRegistryService.js').ISettingsRegistryService>(ISettingsRegistryService),
+        svc.flags,
+        svc.config,
+      );
+    }
+  } catch (err) { console.warn('[Agents] settings registration failed:', err); }
+  context.subscriptions.push(api.commands.registerCommand('agents.openSettings', (...args: unknown[]) =>
+    api.commands.executeCommand('settings.open', typeof args[0] === 'string' ? args[0] : AGENTS_SETTINGS_GROUP)));
   context.subscriptions.push(api.views.registerViewProvider('view.agents', {
     createView(container: HTMLElement): IDisposable {
       return renderAgentsView(container, api);
@@ -161,26 +175,6 @@ function registerWorkflows(api: ParallxApi, context: ToolContext): void {
     return wf.id;
   }));
 
-  // The attention budget's schema: registered here (idempotently) because
-  // the settings registry is alive at tool activation; the service reads it
-  // lazily through its observers (autonomyBootstrap).
-  try {
-    if (api.services.has(ISettingsRegistryService)) {
-      const registry = api.services.get<import('../../services/settingsRegistryService.js').ISettingsRegistryService>(ISettingsRegistryService);
-      if (!registry.getSchema('workflows.attentionInterruptionsPerDay')) {
-        registry.register({
-          key: 'workflows.attentionInterruptionsPerDay',
-          type: 'number',
-          default: 6,
-          min: 0,
-          max: 50,
-          scope: 'workspace',
-          description: 'How many times a day attention-class workflows may interrupt you automatically. Held firings are recorded in their run history.',
-          category: 'Autonomy',
-        });
-      }
-    }
-  } catch { /* settings registry unavailable: the default budget applies */ }
 }
 
 /** Heartbeat findings from the last day you haven't acted on: they belong
@@ -202,20 +196,11 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
   const root = $('div.agents-view');
   container.appendChild(root);
 
-  // ── New Routine and the background switch ──
-  // The sidebar header already says "Agents"; this row holds the controls.
+  // ── New Routine. Running in the background is a setting (Settings ›
+  // Agents); when it is off, the body says so with a way there. ──
   const head = $('div.agents-head');
   createIconButton(head, { icon: 'plus', title: 'New Routine', size: 'sm', onClick: () => openRoutine() });
-  const sw = $('label.agents-switch');
-  const swText = $('span'); swText.textContent = 'Run in the background';
-  const swBtn = document.createElement('button');
-  swBtn.type = 'button';
-  swBtn.className = 'agents-switch__track';
-  swBtn.setAttribute('role', 'switch');
-  swBtn.setAttribute('aria-label', 'Run agents in the background');
-  swBtn.appendChild($('span.agents-switch__knob'));
-  sw.append(swText, swBtn);
-  head.appendChild(sw);
+  createIconButton(head, { icon: 'settings', title: 'Agent Settings', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openSettings'); } });
   root.appendChild(head);
 
   const tabs = $('div.agents-tabs');
@@ -255,11 +240,6 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
   _openRoutine = openRoutine;
   _showTab = (tab) => { tabSwitch.value = tab; currentTab = tab; repaint(); };
 
-  swBtn.addEventListener('click', () => {
-    resolveServices(api);
-    if (!svc.flags) return;
-    void setPaused(!isPaused()).then(repaint);
-  });
 
   const act = (key: string, work: () => Promise<unknown>): void => {
     if (busy.has(key)) return;
@@ -275,19 +255,12 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
   };
 
   function paint(s: IAgentsSnapshot): void {
-    const live = !s.paused;
-    swBtn.setAttribute('aria-checked', String(live));
-    swBtn.disabled = !svc.flags;
     root.classList.toggle('agents-view--paused', s.paused);
 
     // Rebuild the body; sections keep their order, so nothing jumps.
     body.replaceChildren();
 
-    if (s.paused) {
-      const note = $('div.agents-paused');
-      note.textContent = 'Agents are paused. Routines and the heartbeat wait until you turn this back on; anything running stops after its current step.';
-      body.appendChild(note);
-    }
+    if (s.paused) pausedNotice(body, api);
 
     const nothing = !s.needsYou.length && !s.running.length && !s.upcoming.length && !s.done.length && !openFindings().length;
     if (nothing) {
@@ -414,11 +387,10 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
       // The other tabs draw themselves; the switch and paused note stay true.
       resolveServices(api);
       const paused = isPaused();
-      swBtn.setAttribute('aria-checked', String(!paused));
-      swBtn.disabled = !svc.flags;
       root.classList.toggle('agents-view--paused', paused);
       const keep = body.scrollTop;
       body.replaceChildren();
+      if (paused) pausedNotice(body, api);
       if (currentTab === 'routines') renderRoutines(body, api, openRoutine, repaint);
       else if (currentTab === 'history') renderHistory(body, api, repaint);
       else renderMind(body, api, repaint);
@@ -464,6 +436,16 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
       root.remove();
     },
   };
+}
+
+/** Agents are paused: one quiet line, and the way to the setting. */
+function pausedNotice(host: HTMLElement, api: ParallxApi): void {
+  const note = $('div.agents-paused');
+  const text = $('span.agents-paused__text');
+  text.textContent = 'Agents are paused. Nothing runs on its own until Run In The Background is back on.';
+  note.appendChild(text);
+  createButton(note, { label: 'Open Settings', kind: 'ghost', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openSettings', 'schema:Agents'); } });
+  host.appendChild(note);
 }
 
 function section(parent: HTMLElement, label: string, extra = ''): HTMLElement {

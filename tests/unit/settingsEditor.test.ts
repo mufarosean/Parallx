@@ -35,7 +35,7 @@ async function setup(
     default: false,
     scope: 'user',
     description: 'A boolean autonomy flag for testing',
-    category: 'Autonomy',
+    category: 'Agent',
   });
   registry.register({
     key: 'autonomy.heartbeat.intervalMs',
@@ -43,7 +43,7 @@ async function setup(
     default: 60000,
     scope: 'user',
     description: 'Heartbeat interval in milliseconds',
-    category: 'Autonomy',
+    category: 'Agent',
     min: 1000,
     max: 600000,
   });
@@ -53,7 +53,7 @@ async function setup(
     default: 'always-ask',
     scope: 'user',
     description: 'Subagent spawn approval mode',
-    category: 'Autonomy',
+    category: 'Agent',
     enumValues: ['always-ask', 'session-allow', 'remember'],
   });
   registry.register({
@@ -106,15 +106,15 @@ describe('SettingsEditor — D2', () => {
     );
     // 'Canvas' is a single-member group → renders flat under the group name.
     expect(items).toContain('Canvas');
-    // 'Autonomy' is claimed by the AI group; as its only present member the
+    // 'Agent' is claimed by the AI group; as its only present member the
     // group collapses to one flat item carrying the GROUP's name.
     expect(items).toContain('AI');
-    expect(items).not.toContain('Autonomy');
+    expect(items).not.toContain('Agent');
     editor.dispose();
   });
 
   it('renders group headers when a group has multiple members', async () => {
-    // Autonomy + Persona are both AI-group members → header + two children.
+    // Agent + Persona are both AI-group members → header + two children.
     const { editor } = await setup([{
       key: 'persona.name',
       type: 'string',
@@ -126,7 +126,19 @@ describe('SettingsEditor — D2', () => {
     const headers = Array.from(document.querySelectorAll('.settings-editor__nav-group')).map((n) => n.textContent);
     expect(headers).toContain('AI');
     const children = Array.from(document.querySelectorAll('.settings-editor__nav-item--child')).map((n) => n.textContent);
-    expect(children).toEqual(expect.arrayContaining(['Autonomy', 'Persona']));
+    expect(children).toEqual(expect.arrayContaining(['Agent', 'Persona']));
+    editor.dispose();
+  });
+
+  it('gives Agents its own group, with its sections as children', async () => {
+    const { editor } = await setup([
+      { key: 'agents.runInBackground', type: 'boolean', default: true, scope: 'workspace', description: 'Run in the background', category: 'Agents' },
+      { key: 'agents.heartbeat.enabled', type: 'boolean', default: false, scope: 'workspace', description: 'Heartbeat', category: 'Agents / Heartbeat' },
+    ]);
+    const headers = Array.from(document.querySelectorAll('.settings-editor__nav-group')).map((n) => n.textContent);
+    expect(headers).toContain('Agents');
+    const children = Array.from(document.querySelectorAll('.settings-editor__nav-item--child')).map((n) => n.textContent);
+    expect(children).toEqual(expect.arrayContaining(['General', 'Heartbeat']));
     editor.dispose();
   });
 
@@ -195,7 +207,7 @@ describe('SettingsEditor — D2', () => {
 
   it('re-renders when registry fires onDidChange', async () => {
     const { editor, registry } = await setup();
-    // Select the AI item (Autonomy's group) so its rows are the visible page.
+    // Select the AI item (the Agent category's group) so its rows are the visible page.
     const aiItem = Array.from(document.querySelectorAll<HTMLElement>('.settings-editor__nav-item'))
       .find((n) => n.textContent === 'AI')!;
     aiItem.click();

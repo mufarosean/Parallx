@@ -431,9 +431,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       category: 'AI',
     });
 
-    // Bind the autonomy flags. (The non-flag autonomy settings the runtime reads
-    // live in the unified AI config — the old unwired substrate schemas were removed.)
-    registerAutonomyFlagSettings(settingsRegistry, autonomyFlags);
+    // Bind the canvas and indexing flags. The autonomy ones belong to the
+    // Agents built-in, which registers them in its own Settings section.
+    registerAutonomyFlagSettings(settingsRegistry, autonomyFlags, 'other');
 
     // (canvas.propertyBar.collapsed removed — the legacy property bar is
     // retired; properties live in databases now.)
@@ -474,13 +474,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         description: 'Configure individual sub-agents (model, max iterations, custom instructions).',
         actionLabel: 'Manage Agents…',
         command: 'aiSettings.manageAgents',
-      },
-      {
-        key: 'autonomy.cron.jobs.manage',
-        category: 'Autonomy',
-        description: 'View and edit the scheduled cron jobs for this workspace.',
-        actionLabel: 'Manage Cron Jobs…',
-        command: 'aiSettings.manageCron',
       },
       {
         key: 'workspace.exportConfig',

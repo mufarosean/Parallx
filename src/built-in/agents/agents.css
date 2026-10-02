@@ -20,41 +20,6 @@
   border-bottom: 1px solid var(--px-border);
 }
 
-/* The background switch: on = agents may run on their own. */
-.agents-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--px-space-2);
-  color: var(--px-text-secondary);
-  font-size: var(--px-text-xs);
-  cursor: pointer;
-}
-.agents-switch__track {
-  position: relative;
-  width: 28px;
-  height: 16px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--px-radius-full);
-  background: var(--px-border-strong);
-  cursor: pointer;
-  transition: background-color var(--px-dur-fast) var(--px-ease);
-}
-.agents-switch__track[aria-checked="true"] { background: var(--px-accent); }
-.agents-switch__track:disabled { opacity: 0.5; cursor: default; }
-.agents-switch__track:focus-visible { outline: 2px solid var(--px-ring-accent); outline-offset: 2px; }
-.agents-switch__knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: var(--px-radius-full);
-  background: var(--px-bg-elevated);
-  transition: transform var(--px-dur-base) var(--px-ease-out);
-}
-.agents-switch__track[aria-checked="true"] .agents-switch__knob { transform: translateX(12px); }
-
 .agents-body {
   flex: 1;
   min-height: 0;
@@ -66,6 +31,9 @@
 }
 
 .agents-paused {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
   padding: var(--px-space-2) var(--px-space-3);
   border-radius: var(--px-radius-md);
   background: var(--px-warning-soft);
@@ -457,3 +425,5 @@
 .agents-mind__fill { display: block; height: 100%; background: var(--px-accent); border-radius: inherit; }
 .agents-mind__text { flex: 1; min-width: 0; line-height: 1.45; overflow-wrap: anywhere; }
 .agents-row > .px-btn { flex: none; align-self: center; }
+
+.agents-paused__text { flex: 1; min-width: 0; }

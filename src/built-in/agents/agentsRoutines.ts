@@ -110,7 +110,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
   const foot = $('div.agents-rt__level');
   const lv = $('span'); lv.textContent = level ? `How much it may do alone: ${level.replace(/-/g, ' ')}` : '';
   foot.appendChild(lv);
-  createButton(foot, { label: 'Settings', kind: 'ghost', size: 'sm', onClick: () => run('aiSettings.manageAgents') });
+  createButton(foot, { label: 'Heartbeat Settings…', kind: 'ghost', size: 'sm', onClick: () => run('agents.openSettings', 'schema:Agents / Heartbeat') });
   top.appendChild(foot);
   host.appendChild(top);
 

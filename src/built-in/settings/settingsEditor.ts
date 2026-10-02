@@ -82,9 +82,14 @@ const NAV_GROUP_DEFS: readonly { id: string; label: string; members: readonly st
       'panel:ai',                    // the AI & Models managers panel → "Overview"
       'schema:AI',                   // provider enable toggles → "Providers"
       'schema:Model', 'schema:Agent', 'schema:Chat', 'schema:Persona',
-      'schema:Autonomy', 'schema:Autonomy / Surfaces',
       'schema:Retrieval', 'schema:Indexing', 'schema:Suggestions',
       'schema:Tools', 'schema:Integrations', 'schema:Web Research',
+    ],
+  },
+  {
+    id: 'agents', label: 'Agents', members: [
+      'schema:Agents', 'schema:Agents / Heartbeat', 'schema:Agents / Routines',
+      'schema:Agents / Helpers', 'schema:Agents / Where Results Go',
     ],
   },
   { id: 'extensions', label: 'Extensions',         members: [] }, // catch-all
@@ -96,7 +101,11 @@ const NAV_GROUP_DEFS: readonly { id: string; label: string; members: readonly st
 const NAV_DISPLAY_OVERRIDES: Record<string, string> = {
   'panel:ai': 'Overview',
   'schema:AI': 'Providers',
-  'schema:Autonomy / Surfaces': 'Surfaces',
+  'schema:Agents': 'General',
+  'schema:Agents / Heartbeat': 'Heartbeat',
+  'schema:Agents / Routines': 'Routines',
+  'schema:Agents / Helpers': 'Helpers',
+  'schema:Agents / Where Results Go': 'Where Results Go',
 };
 
 /**
