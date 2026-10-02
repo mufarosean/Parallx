@@ -1879,6 +1879,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             chatServiceForSubagent.purgeEphemeralSession(handle),
           sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
           cancelRequest: (sid) => chatService.cancelRequest(sid),
+          updateSessionModel: (sid, modelId) => chatService.updateSessionModel(sid, modelId),
           getSession: (sid) => chatService.getSession(sid),
         },
         getParentSessionId,
@@ -3074,11 +3075,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // ── 7. Set context keys ──
 
+  // A context key has no dispose(): pushing the key itself made every
+  // deactivation log "subs[i].dispose is not a function". Reset it instead.
   const chatVisibleKey = api.context.createContextKey('chatVisible', false);
-  context.subscriptions.push(chatVisibleKey as unknown as IDisposable);
+  context.subscriptions.push({ dispose: () => chatVisibleKey.reset() });
 
   const chatIsStreamingKey = api.context.createContextKey('chatIsStreaming', false);
-  context.subscriptions.push(chatIsStreamingKey as unknown as IDisposable);
+  context.subscriptions.push({ dispose: () => chatIsStreamingKey.reset() });
 
   // Expose streaming key setter for the chat widget to update
   _chatIsStreamingKey = chatIsStreamingKey;

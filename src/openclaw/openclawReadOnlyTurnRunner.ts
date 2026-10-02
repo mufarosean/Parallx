@@ -145,7 +145,7 @@ export async function runOpenclawReadOnlyTurn(
   // The turn's cancel closes the model request itself (Stop frees the engine).
   const turnAbort = new AbortController();
   if (token.isCancellationRequested) turnAbort.abort();
-  const cancelSub = token.onCancellationRequested(() => turnAbort.abort());
+  const cancelSub = token.onCancellationRequested?.(() => turnAbort.abort());
 
   try {
     let iterationsRemaining = maxIterations;
@@ -311,7 +311,7 @@ export async function runOpenclawReadOnlyTurn(
       iterationsRemaining -= 1;
     }
   } finally {
-    cancelSub.dispose();
+    cancelSub?.dispose();
   }
 
   // Iteration budget exhausted or cancelled

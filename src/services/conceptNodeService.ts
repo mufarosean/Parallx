@@ -229,7 +229,8 @@ export class ConceptNodeService extends Disposable {
       const stream = this._languageModels.sendChatRequestForModel(
         modelId,
         messages,
-        { temperature: 0.2, maxTokens: LABEL_MAX_TOKENS },
+        // Automatic background work: waits while you chat (engine broker).
+        { temperature: 0.2, maxTokens: LABEL_MAX_TOKENS, engine: { priority: 'maintenance', label: 'Naming clusters' } },
         signal,
       );
       for await (const chunk of stream) {

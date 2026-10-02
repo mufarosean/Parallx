@@ -116,6 +116,8 @@ export interface ISubagentChatService {
   purgeEphemeralSession(handle: IEphemeralSessionHandle): void;
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<unknown>;
   cancelRequest?(sessionId: string): void;
+  /** Run the helper on the model it asked for. */
+  updateSessionModel?(sessionId: string, modelId: string): void;
   getSession(sessionId: string): { messages: readonly { response: IChatAssistantResponse }[] } | undefined;
 }
 
@@ -218,12 +220,17 @@ export function createSubagentTurnExecutor(
       firstUserMessage: task,
       // M91 — keep the transcript so subagent runs are reopenable like chat.
       archiveOrigin: 'subagent',
+      label: task.length > 60 ? `${task.slice(0, 59)}…` : task,
+      spawnedBy: control?.parentRunId,
     };
 
     const handle = opts.chatService.createEphemeralSession(parentId, seed);
     // The spawner's Stop and time limit end the turn itself (which closes the
     // model request), not just the wait for it.
     control?.onSession?.(handle.sessionId);
+    // The model the spawn asked for (it used to be dropped); unknown models
+    // fall back to the run's pinned one at send time.
+    if (model) { try { opts.chatService.updateSessionModel?.(handle.sessionId, model); } catch { /* keep the pinned model */ } }
     const onAbort = () => { try { opts.chatService.cancelRequest?.(handle.sessionId); } catch { /* best-effort */ } };
     control?.signal.addEventListener('abort', onAbort, { once: true });
     _subagentDepth += 1;

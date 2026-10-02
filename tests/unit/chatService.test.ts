@@ -462,7 +462,7 @@ describe('ChatService', () => {
         { role: 'user', content: 'Hello from default' },
         { role: 'assistant', content: 'Hello from default agent' },
         { role: 'user', content: 'Bridge content' },
-      ], { think: false }, undefined);
+      ], { think: false, engine: { runId: expect.any(String) } }, undefined);
       expect(session.messages.at(-1)?.response.parts.some((part: any) => part.kind === ChatContentPartKind.Markdown && part.content === 'sent:Bridge content')).toBe(true);
       expect(traceReporter).toHaveBeenCalledWith(expect.objectContaining({
         checkpoint: 'prompt-envelope',

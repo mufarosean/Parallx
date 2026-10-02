@@ -29,7 +29,18 @@ import { FLAG_PAUSED_GLOBAL, type AutonomyFeatureFlagsService } from '../../serv
 import { ICronService, type CronService, type ICronJob } from '../../openclaw/openclawCronService.js';
 import type { IHeartbeatState } from '../../openclaw/openclawHeartbeatRunner.js';
 import type { AgentApprovalResolution } from '../../agent/agentTypes.js';
-import { buildAgentsSnapshot, type IAgentsSnapshot } from './agentsModel.js';
+import { buildAgentsSnapshot, type IAgentsSnapshot, type ILiveRun } from './agentsModel.js';
+import { IChatService, ILanguageModelsService } from '../../services/chatTypes.js';
+import type { ILanguageModelsService as ILms } from '../../services/chatTypes.js';
+import type { Event } from '../../platform/events.js';
+import type { IActiveBackgroundRun } from '../../services/chatService.js';
+
+/** The part of the chat service that knows which background runs are going. */
+export interface IAgentsChatRuns {
+  readonly onDidChangeRuns?: Event<void>;
+  getActiveRuns?(): readonly IActiveBackgroundRun[];
+  cancelRequest(sessionId: string): void;
+}
 
 export interface ParallxApi {
   views: {
@@ -82,6 +93,8 @@ export interface IAgentsServices {
   workflows?: WorkflowService;
   patterns?: IPatternMemory;
   config?: IUnifiedConfig;
+  chat?: IAgentsChatRuns;
+  models?: ILms;
 }
 
 export const svc: IAgentsServices = {};
@@ -98,6 +111,30 @@ export function resolveServices(api: ParallxApi): void {
   svc.workflows ??= get<WorkflowService>(IWorkflowService);
   svc.patterns ??= get<IPatternMemory>(IAutonomyPatternMemoryService);
   svc.config ??= get<IUnifiedConfig>(IUnifiedAIConfigService);
+  svc.chat ??= get<IAgentsChatRuns>(IChatService);
+  svc.models ??= get<ILms>(ILanguageModelsService);
+}
+
+/**
+ * Background runs going now, with where each stands with the model: queued
+ * behind your chat, queued behind another run, or working.
+ */
+export function readLiveRuns(): readonly ILiveRun[] {
+  const runs = svc.chat?.getActiveRuns?.() ?? [];
+  const broker = svc.models?.getEngineBroker?.();
+  const held = new Set((broker?.snapshot() ?? []).filter((e) => e.held).map((e) => e.engine));
+  return runs.map((r) => {
+    const state = broker?.getRunState(r.runId);
+    return {
+      runId: r.runId,
+      origin: r.origin,
+      label: r.label,
+      startedAt: r.startedAt,
+      engine: state,
+      behindChat: state === 'waiting' && held.size > 0,
+      preemptions: broker?.preemptions(r.runId) ?? 0,
+    };
+  });
 }
 
 /** Subscribe to every source of change; returns one disposable. */
@@ -112,6 +149,9 @@ export function onAnyChange(listener: () => void): IDisposable {
   if (svc.workflows) subs.push(svc.workflows.onDidChangeWorkflows(() => listener()));
   if (svc.patterns) subs.push(svc.patterns.onDidChange(() => listener()));
   if (svc.config) subs.push(svc.config.onDidChangeConfig(() => listener()));
+  if (svc.chat?.onDidChangeRuns) subs.push(svc.chat.onDidChangeRuns(() => listener()));
+  const broker = svc.models?.getEngineBroker?.();
+  if (broker) subs.push(broker.onDidChange(() => listener()));
   return { dispose: () => { for (const d of subs) d.dispose(); } };
 }
 
@@ -233,6 +273,7 @@ export async function readSnapshot(api: ParallxApi): Promise<IAgentsSnapshot> {
     workflows: (svc.workflows?.workflows ?? [])
       .filter((w) => w.enabled && w.source !== 'suggested')
       .map((w) => ({ id: w.id, name: w.name, nextRunAt: svc.workflows!.nextRunAt(w.id), what: w.description ?? '' })),
+    live: readLiveRuns(),
   });
 }
 

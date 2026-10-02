@@ -983,7 +983,7 @@ async function executeModelStream(
   // unseen until the step would have finished.
   const abort = new AbortController();
   if (token.isCancellationRequested) abort.abort();
-  const cancelSub = token.onCancellationRequested(() => abort.abort());
+  const cancelSub = token.onCancellationRequested?.(() => abort.abort());
   try {
     for await (const chunk of sendChatRequest(messages, options, abort.signal)) {
       if (token.isCancellationRequested) break;
@@ -1004,7 +1004,7 @@ async function executeModelStream(
       }
     }
   } finally {
-    cancelSub.dispose();
+    cancelSub?.dispose();
   }
 
   return { markdown, thinking, toolCalls, promptTokens, completionTokens };

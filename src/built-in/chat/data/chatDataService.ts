@@ -2054,6 +2054,30 @@ export class ChatDataService {
   // Builder Methods
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /** Background runs waiting for the model, and where the active model sits. */
+  private _buildEngineStatus(): IChatWidgetServices['engineStatus'] {
+    const lms = this._d.languageModelsService;
+    const broker = lms.getEngineBroker?.();
+    if (!broker) return undefined;
+    const provider = this._d.ollamaProvider as Partial<Pick<OllamaProvider, 'getPlacements' | 'onDidChangePlacement'>>;
+    const onDidChange = (listener: () => void) => {
+      const a = broker.onDidChange(listener);
+      const b = provider.onDidChangePlacement?.(listener);
+      return { dispose: () => { a.dispose(); b?.dispose(); } };
+    };
+    return {
+      get: () => {
+        const active = lms.getActiveModel();
+        const engine = active ? lms.getEngineForModel?.(active) : undefined;
+        const snap = engine ? broker.snapshot(engine)[0] : undefined;
+        const waiting = snap ? snap.queued.filter((t) => t.priority !== 'interactive').length : 0;
+        const where = engine === 'ollama' ? provider.getPlacements?.().find((p) => p.modelId === active)?.where : undefined;
+        return { waiting, where };
+      },
+      onDidChange: onDidChange as unknown as NonNullable<IChatWidgetServices['engineStatus']>['onDidChange'],
+    };
+  }
+
   buildWidgetServices(): IChatWidgetServices {
     const agentTaskServices = buildChatAgentTaskWidgetServices({
       agentSessionService: this._d.agentSessionService,
@@ -2196,6 +2220,7 @@ export class ChatDataService {
     return {
       ...requestServices,
       ...pickerServices,
+      engineStatus: this._buildEngineStatus(),
       ...attachmentServices,
       ...sessionServices,
       ...agentTaskServices,

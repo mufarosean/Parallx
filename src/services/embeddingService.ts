@@ -101,6 +101,18 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
   private readonly _onDidFinishEmbedding = this._register(new Emitter<{ count: number; durationMs: number }>());
   readonly onDidFinishEmbedding: Event<{ count: number; durationMs: number }> = this._onDidFinishEmbedding.event;
 
+  private _yieldToChat: ((signal?: AbortSignal) => Promise<void>) | undefined;
+
+  /**
+   * Indexing yields to chat: batch document embeddings wait while a chat
+   * turn holds the model engine (AGENT_RUNTIME_DESIGN.md, maintenance
+   * class). Query and single-document embeddings are part of chat turns
+   * (retrieval, memory) and never wait.
+   */
+  setYieldToChat(fn: ((signal?: AbortSignal) => Promise<void>) | undefined): void {
+    this._yieldToChat = fn;
+  }
+
   constructor(baseUrl = DEFAULT_BASE_URL, model = DEFAULT_MODEL) {
     super();
     this._baseUrl = baseUrl;
@@ -138,6 +150,8 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
       if (cached) { return cached; }
     }
 
+    // Not gated: a chat turn's own compaction stores its summary through
+    // here, and must not wait on the lease it holds.
     const results = await this._embedBatch([`search_document: ${text}`]);
     const embedding = results[0];
 
@@ -199,7 +213,8 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
       (idx) => `search_document: ${texts[idx]}`,
     );
 
-    // Batch embed
+    // Batch embed, after any chat turn in progress
+    await this._yieldToChat?.(signal);
     const embeddings = await this._embedBatch(prefixedTexts, signal);
 
     // Merge results and update cache

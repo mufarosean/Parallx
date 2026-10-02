@@ -407,6 +407,19 @@ export interface IInitCommandServices {
 // Widget & UI Service Interfaces
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/** What the engine chip says about the model engine (AGENT_RUNTIME_DESIGN.md §6). */
+export interface IEngineStatus {
+  /** Background runs queued for the model. */
+  readonly waiting: number;
+  /** Where the active model sits, when it is loaded on this machine. */
+  readonly where?: 'gpu' | 'partial' | 'cpu';
+}
+
+export interface IEngineStatusServices {
+  get(): IEngineStatus;
+  readonly onDidChange: Event<void>;
+}
+
 /** Service accessor passed from the activation layer to ChatWidget. */
 export interface IChatWidgetServices {
   readonly sendRequest: (sessionId: string, message: string, options?: IChatSendRequestOptions) => Promise<void>;
@@ -419,6 +432,8 @@ export interface IChatWidgetServices {
   readonly openAiSettings?: () => void;
   readonly modelPicker?: IModelPickerServices;
   readonly modePicker?: IModePickerServices;
+  /** The model engine right now: background runs waiting, and where the model sits. */
+  readonly engineStatus?: IEngineStatusServices;
   readonly attachmentServices?: IAttachmentServices;
   readonly getSession?: (sessionId: string) => IChatSession | undefined;
   readonly getSessions?: () => readonly IChatSession[];

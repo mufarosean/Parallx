@@ -164,6 +164,7 @@ export function createBackgroundPromptRunner(
       // M91 — archive the run's transcript under its origin (e.g. 'dashboard')
       // so it's reopenable from the autonomy log like a chat session.
       archiveOrigin: origin,
+      label: typeof req.originLabel === 'string' && req.originLabel.trim() ? req.originLabel.trim() : undefined,
     });
     if (req.modelId) {
       deps.chatService.updateSessionModel?.(handle.sessionId, req.modelId);

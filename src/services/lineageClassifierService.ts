@@ -375,7 +375,8 @@ export class LineageClassifierService extends Disposable {
       const stream = this._languageModels.sendChatRequestForModel(
         modelId,
         messages,
-        { temperature: 0.1, format: 'json', maxTokens: 200 },
+        // Automatic background work: waits while you chat (engine broker).
+        { temperature: 0.1, format: 'json', maxTokens: 200, engine: { priority: 'maintenance', label: 'Linking pages' } },
         signal,
       );
       for await (const chunk of stream) {

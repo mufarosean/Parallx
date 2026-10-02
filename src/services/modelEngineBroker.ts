@@ -108,6 +108,11 @@ export interface IModelEngineBroker {
   snapshot(engine?: string): readonly IEngineSnapshot[];
   /** The model and context size last sent to an engine (what it has loaded). */
   loadedShape(engine: string): { readonly modelId: string; readonly numCtx: number } | undefined;
+  /**
+   * Maintenance work (indexing embeddings): resolves once no chat holds the
+   * engine, so indexing never competes with you for the GPU.
+   */
+  whenIdle(engine: string, signal?: AbortSignal): Promise<void>;
 }
 
 /** Concurrency for background tickets on one engine. Learned later; 1 until proven. */
@@ -158,6 +163,7 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   private _classifier: ((runId: string) => EnginePriority | undefined) | undefined;
   private readonly _runs = new Map<string, IRunBook>();
   private readonly _shape = new Map<string, { modelId: string; numCtx: number }>();
+  private readonly _idleWaiters = new Set<{ engine: string; resolve: () => void }>();
   private _changeQueued = false;
 
   constructor(
@@ -336,8 +342,14 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
     const now = this._now();
     let wakeAt = Infinity;
     const engines = new Set([...this._tickets].map((t) => t.engine));
+    for (const w of this._idleWaiters) engines.add(w.engine);
     for (const engine of engines) {
       const blockedUntil = this._blockedUntil(engine, now);
+      if (blockedUntil === 0) {
+        for (const w of [...this._idleWaiters]) {
+          if (w.engine === engine) { this._idleWaiters.delete(w); w.resolve(); }
+        }
+      }
       if (blockedUntil === Infinity) continue; // a lease or interactive call; its end pumps
       if (blockedUntil > now) { wakeAt = Math.min(wakeAt, blockedUntil); continue; }
       const queued = [...this._tickets]
@@ -404,11 +416,26 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
     });
   }
 
+  whenIdle(engine: string, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return Promise.reject(abortError());
+    if (this._blockedUntil(engine, this._now()) === 0) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const waiter = {
+        engine,
+        resolve: () => { signal?.removeEventListener('abort', onAbort); resolve(); },
+      };
+      const onAbort = () => { this._idleWaiters.delete(waiter); reject(abortError()); };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      this._idleWaiters.add(waiter);
+      this._pump();
+    });
+  }
+
   noteUserActivity(): void {
     this._typingUntil = this._now() + TYPING_HOLD_MS;
     // Typing does not stop work already running; it only keeps the queue
     // still so a reply you are writing finds the engine free.
-    if ([...this._tickets].some((t) => t.state === 'queued')) this._pump();
+    if ([...this._tickets].some((t) => t.state === 'queued') || this._idleWaiters.size) this._pump();
   }
 
   // ── Policy ──

@@ -212,4 +212,23 @@ describe('ModelEngineBroker', () => {
     await call({ numCtx: 200000, engine: { priority: 'scheduled' } }, 'bg-big');   // needs more: keeps it
     expect(log[log.length - 1].options?.numCtx).toBe(200000);
   });
+
+  it('maintenance work waits for chat to let go, and can be cancelled', async () => {
+    vi.useFakeTimers();
+    const b = new ModelEngineBroker();
+    await b.whenIdle('ollama'); // free now
+    const lease = b.beginInteractive('ollama');
+    let idle = false;
+    const p = b.whenIdle('ollama').then(() => { idle = true; });
+    const a = new AbortController();
+    const cancelled = b.whenIdle('ollama', a.signal);
+    a.abort();
+    await expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(idle).toBe(false);
+    lease.dispose();
+    await vi.advanceTimersByTimeAsync(LEASE_GRACE_MS + 50);
+    await p;
+    expect(idle).toBe(true);
+  });
 });

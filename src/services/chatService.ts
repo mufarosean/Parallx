@@ -106,6 +106,18 @@ export interface IEphemeralSessionSeed {
    * the pre-M91 behavior (purge with no transcript).
    */
   readonly archiveOrigin?: string;
+  /** Words for this run in the Agents view ("Morning Brief"). */
+  readonly label?: string;
+  /** The run (session id) that spawned this one, for a helper. */
+  readonly spawnedBy?: string;
+}
+
+/** A background run in progress (an ephemeral session with a turn running). */
+export interface IActiveBackgroundRun {
+  readonly runId: string;
+  readonly origin?: string;
+  readonly label?: string;
+  readonly startedAt: number;
 }
 
 /**
@@ -663,6 +675,9 @@ export class ChatService extends Disposable implements IChatService {
   private readonly _ephemeralSystemPrompts = new Map<string, string>();
   /** Helpers spawned while your chat turn waited on them (they count as chat). */
   private readonly _interactiveHelpers = new Set<string>();
+  /** Background runs: label, and when their current turn started. */
+  private readonly _runLabels = new Map<string, string>();
+  private readonly _runStarted = new Map<string, number>();
   /** M91 — ephemeral sessions to archive at purge (id → origin tag). */
   private readonly _ephemeralArchiveOrigins = new Map<string, string>();
 
@@ -1146,8 +1161,13 @@ export class ChatService extends Disposable implements IChatService {
     this._sessions.set(id, session);
     // A helper spawned while your chat turn is running is one you are
     // waiting on: it shares the turn's place at the front of the queue.
-    if (session.origin === 'subagent' && parent && !isEphemeralSessionId(parent.id) && parent.requestInProgress) {
-      this._interactiveHelpers.add(id);
+    // When the spawning run is known it decides; otherwise the chat this
+    // helper forks from being mid-turn is the sign you are waiting on it.
+    if (session.origin === 'subagent') {
+      const waitedOnByYou = seed.spawnedBy
+        ? !isEphemeralSessionId(seed.spawnedBy) || this._interactiveHelpers.has(seed.spawnedBy)
+        : !!parent && !isEphemeralSessionId(parent.id) && parent.requestInProgress;
+      if (waitedOnByYou) this._interactiveHelpers.add(id);
     }
     // Apply the seed's system-prompt override for this session (consumed in
     // sendRequest's prompt assembly). This is what gives the autonomy layer its
@@ -1155,6 +1175,7 @@ export class ChatService extends Disposable implements IChatService {
     if (typeof seed.systemMessage === 'string' && seed.systemMessage.trim().length > 0) {
       this._ephemeralSystemPrompts.set(id, seed.systemMessage);
     }
+    if (typeof seed.label === 'string' && seed.label.trim()) this._runLabels.set(id, seed.label.trim());
     // M91 — remember to archive this run's transcript at purge time.
     if (typeof seed.archiveOrigin === 'string' && seed.archiveOrigin.trim().length > 0) {
       this._ephemeralArchiveOrigins.set(id, seed.archiveOrigin.trim());
@@ -1207,12 +1228,28 @@ export class ChatService extends Disposable implements IChatService {
     this._pendingPersistIds.delete(sessionId);
     this._ephemeralSystemPrompts.delete(sessionId);
     this._interactiveHelpers.delete(sessionId);
+    this._runLabels.delete(sessionId);
+    if (this._runStarted.delete(sessionId)) this._onDidChangeRuns.fire();
     this._languageModelsService.getEngineBroker?.().forgetRun(sessionId);
     this._ephemeralArchiveOrigins.delete(sessionId);
     // No onDidDeleteSession event — listeners never saw this session created.
   }
 
   // ── M91 — autonomous run archive (read surface) ──
+
+  /** Fires when a background run starts or ends a turn. */
+  private readonly _onDidChangeRuns = this._register(new Emitter<void>());
+  readonly onDidChangeRuns: Event<void> = this._onDidChangeRuns.event;
+
+  /** Background runs with a turn in progress, oldest first. */
+  getActiveRuns(): readonly IActiveBackgroundRun[] {
+    return [...this._runStarted].map(([runId, startedAt]) => ({
+      runId,
+      startedAt,
+      origin: (this._sessions.get(runId) as { origin?: string } | undefined)?.origin,
+      label: this._runLabels.get(runId),
+    }));
+  }
 
   private readonly _onDidArchiveRun = this._register(new Emitter<void>());
   /** Fires after an autonomous run's transcript is archived. */
@@ -1338,6 +1375,7 @@ export class ChatService extends Disposable implements IChatService {
     // Your chat turn holds the model engine for its whole length, tool steps
     // included: background work waits, and any already running gives way.
     const engineLease = isEphemeralSessionId(sessionId) ? undefined : this._beginEngineLease(session.modelId);
+    if (isEphemeralSessionId(sessionId)) { this._runStarted.set(sessionId, Date.now()); this._onDidChangeRuns.fire(); }
 
     // Everything from here on ends in onDidCompleteRequest, however it ends.
     try {
@@ -1427,7 +1465,7 @@ export class ChatService extends Disposable implements IChatService {
         buildPromptEnvelope: buildRuntimePromptEnvelope,
         sendPrompt: (systemPrompt: string, userContent: string, requestOptions?: IChatRequestOptions, signal?: AbortSignal) => this._languageModelsService.sendChatRequest(
           buildRuntimePromptEnvelope(systemPrompt, userContent),
-          requestOptions,
+          { ...(requestOptions ?? {}), engine: requestOptions?.engine ?? { runId: sessionId } },
           signal,
         ),
       },
@@ -1462,6 +1500,12 @@ export class ChatService extends Disposable implements IChatService {
           responseIsIncomplete: true,
         },
       };
+    }
+
+    // A background run that was stopped (Stop in Agents, its time limit) says
+    // so, instead of passing for a finished run with no answer.
+    if (cts.token.isCancellationRequested && !result.errorDetails && isEphemeralSessionId(sessionId)) {
+      result = { ...result, errorDetails: { message: 'The run was stopped before it finished.', responseIsIncomplete: true } };
     }
 
     // 10b. Render errorDetails as a warning part so it's visible in the chat UI
@@ -1531,6 +1575,7 @@ export class ChatService extends Disposable implements IChatService {
     return result;
     } finally {
       engineLease?.dispose();
+      if (this._runStarted.delete(sessionId)) this._onDidChangeRuns.fire();
       this._onDidCompleteRequest.fire({ sessionId, turnId: requestId });
     }
   }

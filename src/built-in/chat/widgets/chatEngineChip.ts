@@ -14,7 +14,7 @@
 
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
-import type { IModelPickerServices } from '../chatTypes.js';
+import type { IEngineStatus, IEngineStatusServices, IModelPickerServices } from '../chatTypes.js';
 import type { ITokenBreakdown } from './chatTokenStatusBar.js';
 
 /** The sizes offered, in tokens. 0 = the model's own default. */
@@ -30,6 +30,19 @@ export interface IEngineChipOptions {
   readonly onPickContext: (tokens: number) => void;
   readonly getUsage: () => ITokenBreakdown | undefined;
   readonly openUsageDetails: (anchor: HTMLElement) => void;
+  /** Background runs waiting for the model, and where it sits. */
+  readonly engineStatus?: IEngineStatusServices;
+}
+
+/** The engine in words, for the popover. Test seam. */
+export function engineLines(s: IEngineStatus | undefined): string[] {
+  if (!s) return [];
+  const out: string[] = [];
+  if (s.where === 'gpu') out.push('On the graphics card');
+  else if (s.where === 'partial') out.push('Partly on the CPU, so slower. A smaller size may fit on the graphics card.');
+  else if (s.where === 'cpu') out.push('On the CPU, so slow');
+  if (s.waiting > 0) out.push(`${s.waiting === 1 ? '1 background run waits' : `${s.waiting} background runs wait`} until your chat is done`);
+  return out;
 }
 
 type ModelRow = { id: string; displayName: string; parameterSize: string; contextLength: number };
@@ -60,6 +73,7 @@ export class ChatEngineChip extends Disposable {
   private readonly _chip: HTMLButtonElement;
   private readonly _ring: SVGCircleElement;
   private readonly _label: HTMLSpanElement;
+  private readonly _queue: HTMLSpanElement;
   private _pop: HTMLElement | undefined;
   private _detach: (() => void) | undefined;
   private _models: readonly ModelRow[] = [];
@@ -75,10 +89,15 @@ export class ChatEngineChip extends Disposable {
     this._ring = this._chip.querySelector('.parallx-chat-engine-ring-fill') as SVGCircleElement;
     this._label = document.createElement('span');
     this._chip.appendChild(this._label);
+    this._queue = document.createElement('span');
+    this._queue.className = 'parallx-chat-engine-queue';
+    this._queue.hidden = true;
+    this._chip.appendChild(this._queue);
     container.appendChild(this._chip);
     this._register(toDisposable(() => { this._close(); this._chip.remove(); }));
     this._chip.addEventListener('click', () => { if (this._pop) this._close(); else void this._open(); });
     this._register(_o.models.onDidChangeModels(() => this.refresh()));
+    if (_o.engineStatus) this._register(_o.engineStatus.onDidChange(() => this.refresh()));
     this.refresh();
   }
 
@@ -93,9 +112,16 @@ export class ChatEngineChip extends Disposable {
     this._ring.setAttribute('stroke-dasharray', `${(pct * c).toFixed(1)} ${c.toFixed(1)}`);
     this._chip.classList.toggle('parallx-chat-engine-chip--warn', pct > 0.7 && pct <= 0.9);
     this._chip.classList.toggle('parallx-chat-engine-chip--full', pct > 0.9);
-    this._chip.title = usage
+    const engine = this._o.engineStatus?.get();
+    const waiting = engine?.waiting ?? 0;
+    this._queue.hidden = waiting === 0;
+    this._queue.textContent = waiting > 0 ? `${waiting} waiting` : '';
+    this._chip.classList.toggle('parallx-chat-engine-chip--slow', engine?.where === 'partial' || engine?.where === 'cpu');
+    const base = usage
       ? `${shortModelName(active)}: ${formatTokens(usage.total)} of ${formatTokens(usage.contextLength)} used`
       : 'Model and context size';
+    const lines = engineLines(engine);
+    this._chip.title = lines.length ? `${base}\n${lines.join('\n')}` : base;
     if (this._pop) this._renderUsage(this._pop);
   }
 
@@ -213,6 +239,9 @@ export class ChatEngineChip extends Disposable {
     if (!host) return;
     host.replaceChildren();
     const u = this._o.getUsage();
+    for (const line of engineLines(this._o.engineStatus?.get())) {
+      host.appendChild($('div.parallx-chat-engine-hint.parallx-chat-engine-status', line));
+    }
     const head = $('div.parallx-chat-engine-row');
     head.appendChild($('span.parallx-chat-engine-title', 'This chat'));
     head.appendChild($('span.parallx-chat-engine-value', u && u.contextLength ? `${u.isReal ? '' : '~'}${formatTokens(u.total)} of ${formatTokens(u.contextLength)} used` : 'Nothing yet'));

@@ -305,6 +305,17 @@ export function registerIndexingServices(
   const sessionManager = services.has(ISessionManager) ? services.get(ISessionManager) : undefined;
 
   const embeddingService = new EmbeddingService();
+  // Indexing yields to chat: batches wait while a chat turn holds the local
+  // engine, at most a minute (so nothing can wait on it forever).
+  if (services.has(ILanguageModelsService)) {
+    const broker = services.get(ILanguageModelsService).getEngineBroker?.();
+    if (broker) {
+      embeddingService.setYieldToChat((signal) => Promise.race([
+        broker.whenIdle('ollama', signal),
+        new Promise<void>((resolve) => setTimeout(resolve, 60_000)),
+      ]));
+    }
+  }
   const chunkingService = new ChunkingService();
   const vectorStoreService = new VectorStoreService(databaseService);
   const documentExtractionService = new DocumentExtractionService();

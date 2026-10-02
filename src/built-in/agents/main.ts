@@ -341,8 +341,10 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
         {
           const bar = $('div.agents-card__actions');
           const waiting = busy.has(r.taskId);
-          createButton(bar, { label: 'Watch', kind: 'secondary', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openRun', r.taskId, r.name); } });
-          if (!r.action) { /* waiting on you, or already pausing */ } else if (r.action === 'pause') {
+          if (r.kind !== 'run') createButton(bar, { label: 'Watch', kind: 'secondary', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openRun', r.taskId, r.name); } });
+          if (!r.action) { /* waiting on you, or already pausing */ } else if (r.action === 'stop') {
+            createButton(bar, { label: 'Stop', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop this run now', onClick: () => act(r.taskId, async () => { svc.chat?.cancelRequest(r.taskId); }) });
+          } else if (r.action === 'pause') {
             createButton(bar, { label: 'Pause', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop after the current step', onClick: () => act(r.taskId, () => svc.sessions!.requestStopAfterCurrentStep(r.taskId)) });
           } else {
             createButton(bar, { label: 'Continue', kind: 'secondary', size: 'sm', disabled: waiting, onClick: () => act(r.taskId, async () => { await svc.sessions!.continueTask(r.taskId); await svc.execution?.runTask(r.taskId); }) });

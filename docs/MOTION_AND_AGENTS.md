@@ -145,4 +145,21 @@ and `autonomyLog.clear` act on History; `agents.showRoutines` and
 - Budget's Reclassify Untyped now runs as one background agent turn (it used
   to call the scheduler with fields it does not accept, so it never ran).
 
+## Chat comes first: the model engine broker (2026-10-02, later)
+
+`docs/AGENT_RUNTIME_DESIGN.md` §8 has the details. In short:
+
+- Every model call goes through one broker. On a local engine your chat
+  never waits behind background work: routines, the heartbeat, scheduled
+  jobs and helpers queue behind it, and one already running gives way (its
+  request is closed) and starts again after your reply, with the same
+  answer it would have given.
+- Stop really stops: the model request closes, so the GPU is free at once.
+- Background runs keep the model they started with, adopt the context size
+  your chat loaded (no reloads), have an output cap and working-time limits
+  that leave out time spent waiting.
+- Agents › Now shows background runs as they go ("Waiting for the model,
+  behind your chat"), with Stop. The engine chip says "1 waiting" and turns
+  amber when the model is partly on the CPU.
+
 Next: persistent agents (`docs/AGENTS_PROPOSAL.md`).

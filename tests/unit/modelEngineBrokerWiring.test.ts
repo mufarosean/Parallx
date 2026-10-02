@@ -107,6 +107,30 @@ describe('model engine broker wiring', () => {
     s.service.purgeEphemeralSession(outside);
   });
 
+  it('a helper takes the class of the run that spawned it', async () => {
+    const s = await setup();
+    const chat = s.service.createSession(undefined, LOCAL);
+    const routine = s.service.createEphemeralSession(chat.id, { archiveOrigin: 'workflow' });
+    const ofChat = s.service.createEphemeralSession(chat.id, { archiveOrigin: 'subagent', spawnedBy: chat.id });
+    const ofRoutine = s.service.createEphemeralSession(chat.id, { archiveOrigin: 'subagent', spawnedBy: routine.sessionId });
+    const ofHelper = s.service.createEphemeralSession(chat.id, { archiveOrigin: 'subagent', spawnedBy: ofChat.sessionId });
+    expect(s.service.classifyRun(ofChat.sessionId)).toBe('interactive');
+    expect(s.service.classifyRun(ofRoutine.sessionId)).toBe('helper');
+    expect(s.service.classifyRun(ofHelper.sessionId)).toBe('interactive');
+  });
+
+  it('a background run keeps its own model; your chat follows the picker', async () => {
+    const s = await setup();
+    const chat = s.service.createSession(undefined, LOCAL);
+    s.lms.setActiveModel(LOCAL);
+    const bg = s.service.createEphemeralSession(chat.id, { archiveOrigin: 'workflow' });
+    s.service.updateSessionModel(bg.sessionId, CLOUD);
+    await collect(s.lms.sendChatRequest([{ role: 'user', content: 'x' }], { engine: { runId: bg.sessionId } }));
+    expect(s.cloud.calls.length).toBe(1);
+    await collect(s.lms.sendChatRequest([{ role: 'user', content: 'x' }], { engine: { runId: chat.id } }));
+    expect(s.local.calls.length).toBe(1);
+  });
+
   it('a chat turn on a cloud model does not hold the local engine', async () => {
     const s = await setup();
     const chat = s.service.createSession(undefined, CLOUD);

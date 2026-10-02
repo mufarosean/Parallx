@@ -250,6 +250,7 @@ export function createCronTurnExecutor(
       firstUserMessage: userMessage,
       // M91 — keep the transcript so cron runs are reopenable like chat.
       archiveOrigin: 'cron',
+      label: job.name,
     });
 
     let thrownError: unknown;

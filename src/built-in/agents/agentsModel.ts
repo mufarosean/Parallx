@@ -18,6 +18,36 @@ export interface IAgentsInputs {
   readonly rows: readonly IRailRow[];
   /** Enabled workflows and their next run (Routines that are not cron jobs). */
   readonly workflows?: readonly { readonly id: string; readonly name: string; readonly nextRunAt: number | null; readonly what: string }[];
+  /** Background runs with a turn in progress, and where each stands with the model. */
+  readonly live?: readonly ILiveRun[];
+}
+
+export interface ILiveRun {
+  readonly runId: string;
+  readonly origin?: string;
+  readonly label?: string;
+  readonly startedAt: number;
+  /** waiting = queued for the model; working = on it, or running tools. */
+  readonly engine?: 'waiting' | 'working';
+  /** Your chat holds the model right now. */
+  readonly behindChat?: boolean;
+  /** Times it gave way to your chat. */
+  readonly preemptions?: number;
+}
+
+const ORIGIN_NAMES: Record<string, string> = {
+  heartbeat: 'Heartbeat',
+  cron: 'Scheduled job',
+  workflow: 'Routine',
+  subagent: 'Helper',
+  dashboard: 'Dashboard refresh',
+};
+
+/** What a live run is doing, in words. Test seam. */
+export function liveRunStep(run: ILiveRun): string {
+  if (run.engine === 'waiting') return run.behindChat ? 'Waiting for the model, behind your chat' : 'Waiting for the model';
+  const gaveWay = run.preemptions ? ` (paused ${run.preemptions === 1 ? 'once' : `${run.preemptions} times`} for your chat)` : '';
+  return `Working${gaveWay}`;
 }
 
 export interface INeedsYouItem {
@@ -29,6 +59,8 @@ export interface INeedsYouItem {
 }
 
 export interface IRunningItem {
+  /** A delegated task, or a background run (heartbeat, routine, helper). */
+  readonly kind?: 'task' | 'run';
   readonly taskId: string;
   readonly name: string;
   readonly step: string;
@@ -36,7 +68,7 @@ export interface IRunningItem {
   readonly total: number;
   readonly state: 'working' | 'waiting' | 'paused';
   /** What the one action button does. */
-  readonly action: 'pause' | 'continue' | null;
+  readonly action: 'pause' | 'continue' | 'stop' | null;
 }
 
 export interface IUpcomingItem {
@@ -148,6 +180,18 @@ export function buildAgentsSnapshot(input: IAgentsInputs, now: number = Date.now
         action: paused ? 'continue' : waiting || task.stopAfterCurrentStep ? null : 'pause',
       };
     });
+  for (const run of [...(input.live ?? [])].sort((a, b) => a.startedAt - b.startedAt)) {
+    running.push({
+      kind: 'run',
+      taskId: run.runId,
+      name: run.label ? shorten(run.label, 60) : ORIGIN_NAMES[run.origin ?? ''] ?? 'Background task',
+      step: liveRunStep(run),
+      done: 0,
+      total: 0,
+      state: run.engine === 'waiting' ? 'waiting' : 'working',
+      action: 'stop',
+    });
+  }
 
   const upcoming: IUpcomingItem[] = [];
   for (const job of input.jobs) {

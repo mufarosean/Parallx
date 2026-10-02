@@ -70,7 +70,26 @@ interface OllamaPsResponse {
     name: string;
     model: string;
     size: number;
+    /** Bytes of the model held in graphics memory (the rest is in system RAM). */
+    size_vram?: number;
+    /** The context size it is loaded at. */
+    context_length?: number;
   }[];
+}
+
+/** Where a loaded model sits, from Ollama's /api/ps. */
+export interface IOllamaPlacement {
+  readonly modelId: string;
+  /** gpu = all in graphics memory; partial = some layers on the CPU (slower); cpu = none on the GPU. */
+  readonly where: 'gpu' | 'partial' | 'cpu';
+  readonly contextLength?: number;
+}
+
+/** Read /api/ps sizes as a placement. Test seam. */
+export function placementOf(m: { name: string; size: number; size_vram?: number; context_length?: number }): IOllamaPlacement {
+  const vram = typeof m.size_vram === 'number' ? m.size_vram : m.size;
+  const where = vram <= 0 ? 'cpu' : vram >= m.size * 0.99 ? 'gpu' : 'partial';
+  return { modelId: m.name, where, contextLength: m.context_length && m.context_length > 0 ? m.context_length : undefined };
 }
 
 interface OllamaChatChunk {
@@ -130,6 +149,16 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   private _lastStatus: IProviderStatus = { available: false };
   private _consecutiveFailures = 0;
   private _loadedModels: string[] = [];
+  private _placements: readonly IOllamaPlacement[] = [];
+  private _placementKey = '';
+  private readonly _onDidChangePlacement = this._register(new Emitter<void>());
+  /** Fires when a loaded model's place (GPU, partly CPU) or size changes. */
+  readonly onDidChangePlacement: Event<void> = this._onDidChangePlacement.event;
+
+  /** Where each loaded model sits (last /api/ps answer). */
+  getPlacements(): readonly IOllamaPlacement[] {
+    return this._placements;
+  }
   private _hasEverConnected = false;
 
   /** True while in the startup burst window (fast polling). */
@@ -667,6 +696,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       // break) must close the request too: otherwise Ollama keeps
       // generating into a socket nobody reads, holding its only slot.
       controller.abort();
+      // A request may have just loaded (or reloaded) the model: look again
+      // at where it sits, so the chip's "on GPU" is current.
+      setTimeout(() => { void this._pollLoadedModels(); }, 500);
     }
   }
 
@@ -912,6 +944,13 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
         METADATA_TIMEOUT_MS,
       );
       const newLoaded = data.models.map((m) => m.name);
+      const placements = data.models.map(placementOf);
+      const key = JSON.stringify(placements);
+      if (key !== this._placementKey) {
+        this._placementKey = key;
+        this._placements = placements;
+        this._onDidChangePlacement.fire();
+      }
       const changed =
         newLoaded.length !== this._loadedModels.length ||
         newLoaded.some((name, i) => name !== this._loadedModels[i]);

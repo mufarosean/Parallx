@@ -576,4 +576,22 @@ describe('SubagentSpawner: time limit and Stop reach the turn', () => {
       vi.useRealTimers();
     }
   });
+
+  it("stopping the parent turn stops the helper", async () => {
+    let signal: AbortSignal | undefined;
+    const executor = vi.fn((_t: string, _m: string | null, _p: unknown, control?: { signal: AbortSignal; parentRunId?: string }) => {
+      signal = control?.signal;
+      expect(control?.parentRunId).toBe('chat-1');
+      return new Promise<string>(() => {});
+    });
+    const spawner = new SubagentSpawner(executor as any, null, 1);
+    const parent = new AbortController();
+    const p = spawner.spawn(createParams({ parentRunId: 'chat-1', signal: parent.signal }));
+    await new Promise((r) => setTimeout(r, 5));
+    parent.abort();
+    const r = await p;
+    expect(r.status).toBe('failed');
+    expect(r.error).toMatch(/stopped/);
+    expect(signal?.aborted).toBe(true);
+  });
 });

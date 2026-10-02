@@ -97,6 +97,14 @@ export interface ISubagentSpawnParams {
    * tool policy pipeline; empty/absent = no extra restriction.
    */
   readonly tools?: readonly string[];
+  /**
+   * The run that asked (its session id). A helper of your chat turn shares
+   * the turn's place in the model queue; a helper of a background run waits
+   * behind chat (AGENT_RUNTIME_DESIGN.md §4).
+   */
+  readonly parentRunId?: string;
+  /** The parent turn's cancel: stopping the parent stops the helper. */
+  readonly signal?: AbortSignal;
 }
 
 /** The per-spawn policy the executor registers for the ephemeral session. */
@@ -162,6 +170,8 @@ export type SubagentTurnExecutor = (
  */
 export interface ISubagentTurnControl {
   readonly signal: AbortSignal;
+  /** The run that spawned this helper (see ISubagentSpawnParams.parentRunId). */
+  readonly parentRunId?: string;
   onSession?(sessionId: string): void;
 }
 
@@ -475,6 +485,8 @@ export class SubagentSpawner implements IDisposable {
         run.timeoutMs,
         { profile: params.profile, tools: params.tools },
         run.id,
+        params.parentRunId,
+        params.signal,
       );
 
       // Step 4: Mark completed
@@ -617,11 +629,24 @@ export class SubagentSpawner implements IDisposable {
     timeoutMs: number,
     policy?: ISubagentSessionPolicy,
     runId?: string,
+    parentRunId?: string,
+    parentSignal?: AbortSignal,
   ): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       let settled = false;
       const controller = new AbortController();
       if (runId) this._controllers.set(runId, controller);
+      // Stopping the parent turn stops the helper too.
+      const onParentAbort = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (runId) this._controllers.delete(runId);
+        controller.abort();
+        reject(new Error('Sub-agent cancelled: the turn that asked for it was stopped.'));
+      };
+      if (parentSignal?.aborted) { queueMicrotask(onParentAbort); }
+      parentSignal?.addEventListener('abort', onParentAbort, { once: true });
       let sessionId: string | undefined;
       const startedAt = Date.now();
 
@@ -640,8 +665,9 @@ export class SubagentSpawner implements IDisposable {
       };
       timer = setTimeout(check, timeoutMs);
 
-      this._executor(task, model, policy, { signal: controller.signal, onSession: (id) => { sessionId = id; } })
+      this._executor(task, model, policy, { signal: controller.signal, parentRunId, onSession: (id) => { sessionId = id; } })
         .then(result => {
+          parentSignal?.removeEventListener('abort', onParentAbort);
           if (runId) this._controllers.delete(runId);
           if (!settled) {
             settled = true;
@@ -650,6 +676,7 @@ export class SubagentSpawner implements IDisposable {
           }
         })
         .catch(err => {
+          parentSignal?.removeEventListener('abort', onParentAbort);
           if (runId) this._controllers.delete(runId);
           if (!settled) {
             settled = true;

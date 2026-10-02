@@ -3060,6 +3060,14 @@
 .parallx-chat-engine-ring-fill { stroke: var(--px-accent, #569cd6); transition: stroke-dasharray var(--px-dur-slow) var(--px-ease); }
 .parallx-chat-engine-chip--warn .parallx-chat-engine-ring-fill { stroke: var(--px-warning, #dcaa5a); }
 .parallx-chat-engine-chip--full .parallx-chat-engine-ring-fill { stroke: var(--px-danger, #e06c66); }
+/* Background runs waiting for the model behind your chat. */
+.parallx-chat-engine-queue {
+  padding: 0 6px; border-radius: var(--px-radius-full, 999px);
+  background: var(--px-surface-hover, #2b2e34); color: var(--px-text-muted, #9aa0aa);
+  font-size: var(--px-text-2xs, 10px); line-height: 16px;
+}
+.parallx-chat-engine-queue[hidden] { display: none; }
+.parallx-chat-engine-chip--slow { border-color: var(--px-warning, #dcaa5a); }
 .parallx-chat-engine-pop {
   position: fixed; z-index: 1000; width: 380px; max-width: calc(100vw - 16px); box-sizing: border-box;
   padding: 10px; border-radius: var(--px-radius-lg, 10px);

@@ -392,6 +392,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
           onPickContext: (tokens) => { this._contextPicker?.setActiveContextWindow(tokens > 0 ? tokens : undefined); this._applyContextWindow(tokens); },
           getUsage: () => tokenBar.lastBreakdown,
           openUsageDetails: (anchor) => tokenBar.openDetails(anchor),
+          engineStatus: services.engineStatus,
         }));
         this._register(tokenBar.onDidUpdate(() => chip.refresh()));
         this._register(services.onDidChangeSession(() => chip.refresh()));

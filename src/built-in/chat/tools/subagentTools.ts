@@ -22,6 +22,7 @@ import type {
   IChatTool,
   ICancellationToken,
   IToolResult,
+  IChatToolInvocationCallContext,
 } from '../../../services/chatTypes.js';
 import type {
   SubagentSpawner,
@@ -111,7 +112,7 @@ export function createSessionsSpawnTool(
     permissionLevel: subagentToolPermissionLevel(name),
     category: 'subagent',
     source: 'built-in',
-    handler: async (args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> => {
+    handler: async (args: Record<string, unknown>, token: ICancellationToken, invocation?: IChatToolInvocationCallContext): Promise<IToolResult> => {
       if (!spawner) {
         return failure('Subagent spawner not available');
       }
@@ -141,15 +142,26 @@ export function createSessionsSpawnTool(
       const profileRaw = readString(args.profile);
       const profile = profileRaw === 'reader' || profileRaw === 'worker' ? profileRaw : undefined;
 
-      const result = await spawner.spawn({
-        task,
-        label,
-        model,
-        runTimeoutSeconds,
-        callerDepth,
-        profile,
-        tools: tools && tools.length > 0 ? tools : undefined,
-      });
+      // Stop on the parent turn stops the helper (and frees the model).
+      const abort = new AbortController();
+      if (token.isCancellationRequested) abort.abort();
+      const cancelSub = token.onCancellationRequested?.(() => abort.abort());
+      let result;
+      try {
+        result = await spawner.spawn({
+          task,
+          label,
+          model,
+          runTimeoutSeconds,
+          callerDepth,
+          profile,
+          tools: tools && tools.length > 0 ? tools : undefined,
+          parentRunId: invocation?.sessionId,
+          signal: abort.signal,
+        });
+      } finally {
+        cancelSub?.dispose();
+      }
 
       if (result.status !== 'completed') {
         return failure(result.error ?? `Subagent ${result.status}`);

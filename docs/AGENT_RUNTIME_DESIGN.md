@@ -185,3 +185,33 @@ proposal) and a model tier (main or quick).
 
 Each step: unit tests for the broker (priority order, lease, preemption
 decisions, resume), a fake streaming provider for timing, and an in-app check.
+
+## 8. What is built (2026-10-02)
+
+Code: `src/services/modelEngineBroker.ts` (the broker), wired in
+`languageModelsService.ts` (every model call), `chatService.ts` (classes,
+the chat lease, pinned models, live runs) and the default participant (every
+call a turn makes carries its run id).
+
+| Design | Built | Notes |
+|---|---|---|
+| One broker for every call | Yes | Chat, background prompts, routines, heartbeat, scheduled jobs, helpers, compaction, inline AI, PDF and notebook AI, extensions (`parallx.lm`). Untagged calls count as interactive. Cloud providers pass through. |
+| Priority classes | Yes | interactive, resumed (class exists, nothing uses it yet), scheduled, helper, maintenance. |
+| Interactive lease | Yes | Held for the whole chat turn on the engine of the chat's model, 4 s grace after, and 4 s after each keystroke in a chat box. |
+| Preempt and resume | Yes, simpler | Background output is **buffered** until the call completes, so a preempted call is retried from scratch and the run gets one clean answer. No `Preempted` signal, and the agent loop needed no change. |
+| "Nearly done, let it finish" | **Dropped** | How much a call has left to write is unknowable; the retry costs at most one step. |
+| Real cancel | Yes | The agent loop and the read-only loop pass the turn's signal; the provider closes the request when its reader stops; Stop in Agents, a parent's Stop, and every time limit cancel the turn itself. |
+| Working-time clocks | Yes | Helpers (120 s), background prompts and routines (240-300 s), heartbeat and scheduled jobs (10 min, new) leave out time spent waiting. |
+| Output cap | Yes | 8192 tokens for background calls that name none (thinking counts). |
+| Runs pin their model | Yes | At start, or the routine's / helper's own model. A routine's context size is its prompt budget. |
+| Loaded shape | Yes | Chat sets the size; everyone else adopts it when theirs is smaller or unnamed. A background call that needs more keeps its size (it only runs while chat is idle). |
+| Other-model fallback | Removed | A load error now says the model may not fit at this context size. |
+| Engine profiles | Partly | `/api/ps` placement (on GPU, partly on CPU, on CPU) in the engine chip. Learned parallelism, measured speeds and co-residence are **not built**: background work runs one at a time on any model (always safe), and chat is never queued behind anything, so nothing needs them yet. |
+| Maintenance class | Yes | Indexing batches wait while chat holds the engine (at most a minute); the page-link and cluster-name classifiers queue as maintenance. Query and single-document embeddings are part of chat turns and never wait. |
+| Spawn as child runs | Yes, at depth 1 | A helper takes its class from the run that spawned it (`spawnedBy`), honours its model, and stops with its parent. Depth stays 1 until agent hand-offs (`AGENTS_PROPOSAL.md`) need 2. |
+| What you see | Yes | Agents › Now lists background runs with "Waiting for the model, behind your chat", "Working (paused once for your chat)" and Stop; the status bar follows; the engine chip shows "1 waiting" and turns amber when the model is partly on the CPU. |
+
+Checked in the app against a fake Ollama with one slot: a routine streaming
+when you send a message has its request closed within 35 ms, your message
+starts at once, and the routine starts again 4.0 s after your reply ends and
+returns one clean answer.
