@@ -20,6 +20,7 @@ import { TableKeyboardPolicy } from '../extensions/tableKeyboardPolicy.js';
 import { Dataview } from '../extensions/dataviewNode.js';
 import { structuralInvariantPlugin } from '../plugins/structuralInvariantPlugin.js';
 import { structuralRepairPlugin } from '../plugins/structuralRepair.js';
+import { aiEditMarksPlugin } from '../plugins/aiEditMarks.js';
 import {
   getNodePlaceholder,
   getBlockExtensions,
@@ -158,6 +159,12 @@ const HistoryAwareAutoJoiner = Extension.create({
       }),
     ];
   },
+});
+
+/** Margin marks for an AI edit under review (plugins/aiEditMarks.ts). */
+const AiEditMarks = Extension.create({
+  name: 'aiEditMarks',
+  addProseMirrorPlugins() { return [aiEditMarksPlugin()]; },
 });
 
 /**
@@ -445,6 +452,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     }),
     HistoryAwareTrailingNode,
     AiPresenceShimmer,
+    AiEditMarks,
 
     // ── 2. Block extensions from registry ──
     ...getBlockExtensions(registryContext),

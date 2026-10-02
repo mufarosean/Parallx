@@ -151,6 +151,7 @@ const GATE_RULES: Record<string, string[]> = {
   'plugins/columnDropPlugin.ts':           ['config/blockStateRegistry/blockStateRegistry'],
   'plugins/columnResizePlugin.ts':         [],  // zero canvas imports
   'plugins/structuralRepair.ts':           [],  // M85 — zero canvas imports (PM only)
+  'plugins/aiEditMarks.ts':                [],  // PM only
 
   // ── HandleRegistry children ─────────────────────────────────────────────
   'handles/blockHandles.ts':               ['handles/handleRegistry', 'handles/handleGeometry'],

@@ -4909,6 +4909,82 @@
   50% { opacity: 1; }
 }
 
+/* ── Reviewing an AI edit (plugins/aiEditMarks.ts + _openAiReview) ──
+   Margin marks: a 3px bar in the gutter, drawn with two outer shadows (the
+   first paints the gap in the page colour) so no block's own ::before or
+   ::after is touched. Green added, accent rewritten, red on its way out. */
+.canvas-ai-mark {
+  --canvas-ai-mark: var(--px-accent);
+  box-shadow:
+    -9px 0 0 0 var(--vscode-editor-background),
+    -16px 0 0 -4px var(--canvas-ai-mark);
+  transition: box-shadow var(--px-dur-base) var(--px-ease);
+}
+.canvas-ai-mark--added { --canvas-ai-mark: var(--px-success); animation: canvas-ai-arrive var(--px-dur-slow) var(--px-ease-out); }
+.canvas-ai-mark--changed { animation: canvas-ai-arrive var(--px-dur-slow) var(--px-ease-out); }
+.canvas-ai-mark--removing {
+  --canvas-ai-mark: var(--px-danger);
+  text-decoration: line-through;
+  text-decoration-color: var(--px-danger);
+  opacity: 0.55;
+  transition: opacity var(--px-dur-base) var(--px-ease);
+}
+@keyframes canvas-ai-arrive {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The status pill while Chat writes, which grows into the Keep/Undo bar. */
+.canvas-ai-review {
+  position: absolute;
+  left: 50%;
+  bottom: var(--px-space-5);
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  max-width: min(480px, calc(100% - 2 * var(--px-space-4)));
+  box-sizing: border-box;
+  padding: var(--px-space-2) var(--px-space-2) var(--px-space-2) var(--px-space-4);
+  border: 1px solid var(--px-border-strong);
+  border-radius: var(--px-radius-lg);
+  background: var(--px-bg-elevated);
+  box-shadow: var(--px-shadow-lg);
+  color: var(--px-text);
+  font-size: var(--px-text-sm);
+  animation: canvas-ai-review-in var(--px-dur-base) var(--px-ease-out);
+}
+.canvas-ai-review--writing {
+  padding: var(--px-space-1) var(--px-space-3);
+  border-color: transparent;
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent-soft);
+  color: var(--px-accent-text);
+  box-shadow: none;
+}
+.canvas-ai-review--leaving {
+  opacity: 0;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
+}
+.canvas-ai-review__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent);
+  animation: canvas-ai-writing-pulse 1.4s ease-in-out infinite;
+}
+.canvas-ai-review__text { flex: 1; min-width: 0; }
+.canvas-ai-review__title { font-weight: 600; }
+.canvas-ai-review__hint { color: var(--px-text-secondary); font-size: var(--px-text-xs); }
+@keyframes canvas-ai-review-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-ai-mark--added, .canvas-ai-mark--changed, .canvas-ai-review, .canvas-ai-review__dot { animation: none; }
+}
+
 /* ───────────────────────────────────────────────────────────────────
    Version history panel
    ─────────────────────────────────────────────────────────────────── */

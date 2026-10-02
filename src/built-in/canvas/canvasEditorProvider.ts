@@ -29,7 +29,9 @@
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { ICanvasDataService } from './canvasTypes.js';
-import { diffTopLevel, computeReplaceRange } from './canvasDocDiff.js';
+import { diffTopLevel, computeReplaceRange, classifySpan, type ISpanClassification } from './canvasDocDiff.js';
+import { setAiEditMarks, getAiEditSpan, type IAiEditMark } from './plugins/aiEditMarks.js';
+import { createButton } from '../../ui/kit.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
@@ -264,6 +266,18 @@ export class CanvasEditorProvider {
    *  redundant focus-steal when an AI edit targets an already-open page. */
   isPageOpen(pageId: string): boolean {
     return this._pageMenuHandlers.has(pageId);
+  }
+
+  /** Pages Chat's page tools just wrote, so the open pane's next reload shows
+   *  the edit with margin marks and a Keep/Undo bar (see _animateExternalDoc). */
+  private readonly _aiEditPending = new Map<string, number>();
+  markAiEdit(pageId: string): void {
+    this._aiEditPending.set(pageId, Date.now() + 10_000);
+  }
+  takeAiEdit(pageId: string): boolean {
+    const until = this._aiEditPending.get(pageId);
+    this._aiEditPending.delete(pageId);
+    return until !== undefined && until > Date.now();
   }
 
   get window(): CanvasWindowApi | undefined {
@@ -1043,6 +1057,9 @@ class CanvasEditorPane implements IDisposable {
   ): Promise<boolean> {
     const editor = this._editor;
     if (!editor) return false;
+    // Was this reload Chat's page tool? Only then do the marks and the
+    // Keep/Undo bar appear; sidebar ops and other writers just stream in.
+    const aiEdit = this._provider.takeAiEdit(this._pageId);
     try {
       const view = editor.view;
       const state = view.state;
@@ -1057,51 +1074,101 @@ class CanvasEditorPane implements IDisposable {
       const sel = state.selection;
       const cursorBlock = sel.$from.depth > 0 ? sel.$from.index(0) : -1;
       if (view.hasFocus() && cursorBlock >= diff.start && cursorBlock < diff.oldEnd) {
+        if (aiEdit) this._endAiReview();
         return this._applyExternalDoc(newDocJson);
       }
 
       const posOf = (doc: typeof state.doc, index: number): number => {
         let p = 0; for (let i = 0; i < index; i++) p += doc.child(i).nodeSize; return p;
       };
-      const from = posOf(state.doc, diff.start);
-      const to = posOf(state.doc, Math.min(diff.oldEnd, state.doc.childCount));
+      let from = posOf(state.doc, diff.start);
+      let to = posOf(state.doc, Math.min(diff.oldEnd, state.doc.childCount));
 
-      const newNodes = newChildren.slice(diff.start, diff.newEnd)
-        .map((j) => { try { return view.state.schema.nodeFromJSON(j); } catch { return null; } })
-        .filter((n): n is NonNullable<typeof n> => !!n);
+      const oldSpan = oldChildren.slice(diff.start, diff.oldEnd);
+      const newSpan = newChildren.slice(diff.start, diff.newEnd);
+      const parsed = newSpan.map((j) => { try { return view.state.schema.nodeFromJSON(j); } catch { return null; } });
+      // Compare schema-normalized JSON: the stored doc can omit default attrs
+      // the editor fills in, which would make every block look rewritten.
+      const marks = aiEdit
+        ? classifySpan(oldSpan, parsed.map((n, i) => (n ? n.toJSON() : newSpan[i])))
+        : null;
+      const items = parsed
+        .map((node, i) => ({ node, kind: marks?.kinds[i] ?? null, before: marks?.before[i] }))
+        .filter((it): it is { node: NonNullable<typeof it.node>; kind: 'added' | 'changed' | null; before: string | undefined } => !!it.node);
+      const still = typeof window.matchMedia !== 'function'
+        || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      // Pure removal (no new blocks): just delete the span.
-      if (newNodes.length === 0) {
-        if (to > from) {
-          const del = state.tr.delete(from, to);
-          del.setMeta('addToHistory', false).setMeta('canvasExternalApply', true);
-          view.dispatch(del);
-        }
-        return true;
+      if (aiEdit) {
+        this._endAiReview();
+        this._showAiStatus('writing');
       }
-
-      // Soft "AI is writing" pulse on the pane edge for the duration of the
-      // animation (the .canvas-ai-writing rule); always cleared in finally.
       this._editorContainer?.classList.add('canvas-ai-writing');
       try {
+        // Blocks on their way out are struck through for a moment first, so a
+        // removal is something you see rather than something you notice later.
+        if (marks && marks.removed.length && !still) {
+          const out: IAiEditMark[] = [];
+          let firstAt = -1;
+          for (const i of marks.removed) {
+            const child = state.doc.child(diff.start + i);
+            const id = (child.attrs as { id?: unknown }).id;
+            if (typeof id !== 'string' || !id) continue;
+            out.push({ id, kind: 'removing' });
+            if (firstAt < 0) firstAt = posOf(state.doc, diff.start + i);
+          }
+          view.dispatch(setAiEditMarks(state.tr, { add: out }).setMeta('addToHistory', false));
+          try {
+            const dom = firstAt >= 0 ? view.nodeDOM(firstAt) : null;
+            if (dom instanceof HTMLElement) dom.scrollIntoView({ block: 'nearest' });
+          } catch { /* best effort */ }
+          await new Promise((r) => setTimeout(r, 560));
+          if (this._disposed || !isCurrent()) return false;
+          // The user typed meanwhile: the doc no longer matches the diff.
+          if (!view.state.doc.eq(state.doc)) {
+            view.dispatch(setAiEditMarks(view.state.tr, { clear: true }).setMeta('addToHistory', false));
+            return this._applyExternalDoc(newDocJson);
+          }
+          from = posOf(view.state.doc, diff.start);
+          to = posOf(view.state.doc, Math.min(diff.oldEnd, view.state.doc.childCount));
+        }
+
+        const markOf = (it: typeof items[number]): IAiEditMark[] => {
+          const id = (it.node.attrs as { id?: unknown }).id;
+          return it.kind && typeof id === 'string' && id ? [{ id, kind: it.kind, before: it.before }] : [];
+        };
+
+        // Pure removal (no new blocks): just delete the span.
+        if (items.length === 0) {
+          if (to > from) {
+            const del = view.state.tr.delete(from, to);
+            del.setMeta('addToHistory', false).setMeta('canvasExternalApply', true);
+            if (marks) setAiEditMarks(del, { add: [], span: { from, to: from } });
+            view.dispatch(del);
+          }
+          if (marks) this._openAiReview(oldSpan, marks);
+          return true;
+        }
+
         // Swap the whole old span for the FIRST new block in one transaction (so
         // the doc is never momentarily empty — ProseMirror's schema requires ≥1
         // block), then TYPE the remaining blocks in one at a time. ProseMirror
         // maps a selection outside the span through each transaction, so a cursor
         // elsewhere stays put.
-        const first = state.tr.replaceWith(from, to, newNodes[0]);
+        const first = view.state.tr.replaceWith(from, to, items[0].node);
         first.setMeta('addToHistory', false).setMeta('canvasExternalApply', true);
+        let insertPos = from + items[0].node.nodeSize;
+        if (marks) setAiEditMarks(first, { add: markOf(items[0]), span: { from, to: insertPos } });
         view.dispatch(first);
-        let insertPos = from + newNodes[0].nodeSize;
-        const per = Math.max(18, Math.min(80, Math.floor(1900 / Math.max(1, newNodes.length))));
-        for (let i = 1; i < newNodes.length; i++) {
+        const per = Math.max(18, Math.min(80, Math.floor(1900 / Math.max(1, items.length))));
+        for (let i = 1; i < items.length; i++) {
           await new Promise((r) => setTimeout(r, per));
           if (this._disposed || !isCurrent()) return false;
-          const node = newNodes[i];
-          const tr = view.state.tr.insert(insertPos, node);
+          const it = items[i];
+          const tr = view.state.tr.insert(insertPos, it.node);
           tr.setMeta('addToHistory', false).setMeta('canvasExternalApply', true);
+          if (marks) setAiEditMarks(tr, { add: markOf(it), span: { from, to: insertPos + it.node.nodeSize } });
           view.dispatch(tr);
-          insertPos += node.nodeSize;
+          insertPos += it.node.nodeSize;
           // Keep the growing edit in view without disturbing the user's selection.
           try {
             const at = view.domAtPos(Math.min(insertPos, view.state.doc.content.size));
@@ -1109,14 +1176,133 @@ class CanvasEditorPane implements IDisposable {
             el?.scrollIntoView({ block: 'nearest' });
           } catch { /* best effort */ }
         }
+        if (marks) this._openAiReview(oldSpan, marks);
         return true;
       } finally {
         this._editorContainer?.classList.remove('canvas-ai-writing');
+        if (aiEdit && !this._aiReview) this._hideAiStatus();
       }
     } catch (err) {
       console.warn(`[CanvasEditorPane] Stream-apply failed for "${this._pageId}", falling back:`, err);
+      if (aiEdit) this._endAiReview();
       try { return this._applyExternalDoc(newDocJson); } catch { return false; }
     }
+  }
+
+  // ── Reviewing an AI edit: Keep or Undo ──
+  //
+  // One floating element at the foot of the page. While Chat writes it reads
+  // "Chat is editing this page"; when the edit lands it grows into the review
+  // bar with what changed and Undo / Keep. Undo puts the old blocks back as an
+  // ordinary edit (saved, and itself undoable); Ctrl+Z does the same while
+  // the page is still exactly as Chat left it.
+
+  private _aiStatusEl: HTMLElement | null = null;
+  private _aiReview: { oldSpan: readonly unknown[]; doc: import('@tiptap/pm/model').Node; onKey: (e: KeyboardEvent) => void } | null = null;
+
+  private _showAiStatus(mode: 'writing' | 'review', title = '', hint = ''): HTMLElement {
+    let root = this._aiStatusEl;
+    if (!root) {
+      if (getComputedStyle(this._container).position === 'static') this._container.style.position = 'relative';
+      root = $('div.canvas-ai-review');
+      root.setAttribute('role', 'status');
+      this._container.appendChild(root);
+      this._aiStatusEl = root;
+    }
+    root.classList.remove('canvas-ai-review--leaving');
+    root.classList.toggle('canvas-ai-review--writing', mode === 'writing');
+    root.replaceChildren();
+    if (mode === 'writing') {
+      root.appendChild($('span.canvas-ai-review__dot'));
+      root.appendChild(document.createTextNode('Chat is editing this page'));
+      return root;
+    }
+    const text = $('div.canvas-ai-review__text');
+    const t = $('div.canvas-ai-review__title'); t.textContent = title;
+    const h = $('div.canvas-ai-review__hint'); h.textContent = hint;
+    text.append(t, h);
+    root.appendChild(text);
+    return root;
+  }
+
+  private _hideAiStatus(): void {
+    const root = this._aiStatusEl;
+    if (!root) return;
+    this._aiStatusEl = null;
+    root.classList.add('canvas-ai-review--leaving');
+    setTimeout(() => root.remove(), 200);
+  }
+
+  private _openAiReview(oldSpan: readonly unknown[], marks: ISpanClassification): void {
+    const view = this._editor?.view;
+    if (!view || this._disposed) return;
+    const added = marks.kinds.filter((k) => k === 'added').length;
+    const changed = marks.kinds.filter((k) => k === 'changed').length;
+    const removed = marks.removed.length;
+    const total = added + changed + removed;
+    if (total === 0) { this._hideAiStatus(); return; }
+    const parts: string[] = [];
+    if (added) parts.push(`${added} added`);
+    if (changed) parts.push(`${changed} rewritten`);
+    if (removed) parts.push(`${removed} removed`);
+    const hint = `${parts.join(' · ')}.${changed ? ' Hover a blue mark for the old text.' : ''}`;
+    const root = this._showAiStatus('review', `Chat changed ${total} block${total === 1 ? '' : 's'}`, hint);
+    createButton(root, { label: 'Undo', kind: 'secondary', size: 'sm', title: 'Put the page back the way it was (Ctrl+Z)', onClick: () => this._undoAiEdit() });
+    createButton(root, { label: 'Keep', kind: 'primary', size: 'sm', onClick: () => this._endAiReview() });
+
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+      const v = this._editor?.view;
+      if (!v || !this._aiReview || !v.state.doc.eq(this._aiReview.doc)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this._undoAiEdit();
+    };
+    this._editorContainer?.addEventListener('keydown', onKey, true);
+    this._aiReview = { oldSpan, doc: view.state.doc, onKey };
+  }
+
+  /** Keep: the marks go, the bar goes. Also how a review ends when anything
+   *  supersedes it (a newer edit, closing the page). */
+  private _endAiReview(): void {
+    const review = this._aiReview;
+    this._aiReview = null;
+    if (review) this._editorContainer?.removeEventListener('keydown', review.onKey, true);
+    const view = this._editor?.view;
+    if (view && !view.isDestroyed && getAiEditSpan(view.state)) {
+      view.dispatch(setAiEditMarks(view.state.tr, { clear: true }).setMeta('addToHistory', false));
+    }
+    this._hideAiStatus();
+  }
+
+  private _undoAiEdit(): void {
+    const review = this._aiReview;
+    const view = this._editor?.view;
+    if (!review || !view) return;
+    const span = getAiEditSpan(view.state);
+    if (span) {
+      try {
+        const schema = view.state.schema;
+        const nodes = review.oldSpan.map((j) => schema.nodeFromJSON(j));
+        // When the edit ran to the end of the page, take the end with it, so
+        // the empty line the editor keeps at the foot isn't doubled.
+        const doc = view.state.doc;
+        let onlyEmptyAfter = true;
+        doc.forEach((child, offset) => {
+          if (offset >= span.to && (child.type.name !== 'paragraph' || child.content.size > 0)) onlyEmptyAfter = false;
+        });
+        const to = onlyEmptyAfter ? doc.content.size : span.to;
+        // A page is never left with no blocks at all.
+        if (nodes.length === 0 && span.from === 0 && to >= doc.content.size) {
+          nodes.push(schema.nodes['paragraph'].create());
+        }
+        const tr = view.state.tr.replaceWith(span.from, to, nodes);
+        view.dispatch(setAiEditMarks(tr, { clear: true }));
+      } catch (err) {
+        console.warn(`[CanvasEditorPane] Undo of the AI edit failed for "${this._pageId}":`, err);
+      }
+    }
+    this._endAiReview();
   }
 
   // ══════════════════════════════════════════════════════════════════════════════  // Dispose
@@ -1139,6 +1325,10 @@ class CanvasEditorPane implements IDisposable {
     if (this._disposed) return;
     this._disposed = true;
 
+    this._aiStatusEl?.remove();
+    this._aiStatusEl = null;
+    if (this._aiReview) this._editorContainer?.removeEventListener('keydown', this._aiReview.onKey, true);
+    this._aiReview = null;
     this._menuRegistry?.hideAll();
     this._blockHandles?.hide();
     this._blockSelection?.clear();

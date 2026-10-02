@@ -424,6 +424,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       // updates _knownRevisions to the AI's new revision it silently succeeds
       // and overwrites the AI's write. Cancelling it here eliminates the race.
       if (kind === 'updated') _dataService?.cancelPendingSave(pageId);
+      if (kind === 'updated') _editorProvider?.markAiEdit(pageId);
       // Deterministic ordering: AWAIT the mutation notification (which drives
       // the open editor's surgical reload) before any focus side-effect. The
       // old fire-and-forget raced openPageInEditor on the same tick — the
