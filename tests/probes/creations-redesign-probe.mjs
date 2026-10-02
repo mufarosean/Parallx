@@ -121,6 +121,7 @@ async function main() {
   }, label).then((t) => console.log(`[probe] ${t}`)).catch((e) => console.log(`[probe] describe ${label} failed: ${e}`));
   const click = async (selector, text) => {
     const loc = text ? page.locator(selector, { hasText: text }).first() : page.locator(selector).first();
+    await loc.waitFor({ state: 'visible', timeout: 6_000 }).catch(() => {});
     if (!(await loc.count())) { console.log(`[probe] nothing to click: ${selector} ${text || ''}`); return false; }
     await loc.click().catch((e) => console.log(`[probe] click failed ${selector}: ${String(e).split('\n')[0]}`));
     await page.waitForTimeout(1_200);
@@ -144,6 +145,7 @@ async function main() {
       ['studio', async () => { await run('textGenerator.openCharacters'); await click('.cr-gallery-tools button', 'Characters'); await click('.cr-card', 'Mara Vell'); }],
       ['studio-new', async () => { await run('textGenerator.newCharacter'); }],
       ['chat', async () => { await run('textGenerator.openHome'); await click('.cr-cont-card', 'Mara Vell'); }],
+      ['chat-memory', async () => { await click('button[aria-label="Memory"]'); const m = page.locator('.tg-msg--ai').nth(1); if (await m.count()) await m.hover().catch(() => {}); }],
       ['story', async () => { await run('textGenerator.openHome'); await click('.cr-cont-card', 'The Salt Road'); }],
       ['tables', async () => { await run('textGenerator.openTables'); }],
       ['settings', async () => { await run('textGenerator.openSettings'); }],

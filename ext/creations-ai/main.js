@@ -2079,6 +2079,65 @@ ${CREATIONS_PARTS_CSS}
 @container (max-width: 980px) { .cr-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .cr-grid--lore { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (max-width: 720px) { .cr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (max-width: 460px) { .cr-grid, .cr-grid--lore { grid-template-columns: minmax(0, 1fr); } .cr-search { width: 100%; } }
+/* Chat: who you are talking to, the scene now, messages as a conversation. */
+.tg-chat { background: var(--px-bg); font-family: var(--px-font-ui); }
+.tg-chat-toolbar { background: var(--px-bg); border-bottom: 1px solid var(--px-divider); padding: var(--px-space-2) var(--px-space-5); gap: var(--px-space-2); }
+.cr-chat-head { display: flex; align-items: center; gap: var(--px-space-3); min-width: 0; }
+.cr-chat-faces { display: flex; }
+.cr-chat-faces .cr-portrait + .cr-portrait { margin-left: -8px; box-shadow: 0 0 0 2px var(--px-bg); }
+.cr-chat-head-text { min-width: 0; display: flex; flex-direction: column; }
+.cr-chat-head-name { font-weight: 600; font-size: var(--px-text-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-chat-head .tg-chat-toolbar-charname { font-size: var(--px-text-xs); font-weight: 400; color: var(--px-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-now { display: flex; align-items: center; gap: var(--px-space-3); margin: var(--px-space-3) auto 0; width: calc(100% - 2 * var(--px-space-5)); max-width: 860px; box-sizing: border-box; padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; font-size: var(--px-text-sm); text-align: left; cursor: pointer; flex-shrink: 0; }
+.cr-now:hover { border-color: var(--px-border-strong); }
+.cr-now-label { font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-muted); }
+.cr-now-place { font-weight: 500; }
+.cr-now-bit { color: var(--px-text-secondary); }
+.tg-messages { padding: var(--px-space-4) 0; }
+.tg-msg { max-width: 860px; margin: 0 auto; padding: var(--px-space-2) var(--px-space-5); gap: var(--px-space-3); box-sizing: border-box; }
+.tg-msg-face { margin-top: 20px; }
+.tg-msg-name { font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-secondary); }
+.tg-msg-body { font-size: var(--px-text-base); line-height: 1.6; max-width: 100%; }
+.tg-msg--ai .tg-msg-body { align-self: flex-start; padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-radius: 4px var(--px-radius-xl) var(--px-radius-xl) var(--px-radius-xl); background: var(--px-bg-elevated); }
+.tg-msg--user { flex-direction: row-reverse; }
+.tg-msg--user .tg-msg-content-wrap { align-items: flex-end; }
+.tg-msg--user .tg-msg-body { padding: var(--px-space-2) var(--px-space-3); border-radius: var(--px-radius-xl) 4px var(--px-radius-xl) var(--px-radius-xl); background: var(--px-accent-faint); border: 1px solid var(--px-accent-soft); max-width: min(100%, 620px); }
+.tg-msg--user .tg-msg-name-row { justify-content: flex-end; }
+.tg-msg--ai .tg-msg-content-wrap, .tg-msg--user .tg-msg-content-wrap { max-width: min(100%, 680px); }
+.tg-msg-body--editing { width: 100%; box-sizing: border-box; }
+.tg-msg-inline-actions { position: absolute; top: 0; right: var(--px-space-5); height: auto; margin: 0; padding: 2px; gap: 1px; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); box-shadow: var(--px-shadow-md); z-index: 2; }
+.tg-msg--user .tg-msg-inline-actions { right: auto; left: var(--px-space-5); }
+.tg-msg:focus-within .tg-msg-inline-actions { visibility: visible; }
+.tg-msg-action-btn { width: 24px; height: 24px; border-radius: var(--px-radius-xs); color: var(--px-text-muted); }
+.tg-msg-action-btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.tg-variant-nav { visibility: visible; margin-left: var(--px-space-1); padding-left: var(--px-space-1); border-left: 1px solid var(--px-divider); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.tg-msg--streaming .tg-msg-body::after { content: ''; display: inline-block; width: 2px; height: 1em; vertical-align: -2px; margin-left: 2px; background: var(--px-accent); animation: cr-blink 1s steps(1) infinite; }
+.cr-still .tg-msg--streaming .tg-msg-body::after { animation: none; }
+@media (prefers-reduced-motion: reduce) { .tg-msg--streaming .tg-msg-body::after { animation: none; } }
+.tg-msg--system .tg-msg-body, .tg-msg--scenario .tg-msg-body { color: var(--px-text-muted); }
+.tg-input-wrap { padding: var(--px-space-2) var(--px-space-5) var(--px-space-4); border-top: 0; background: var(--px-bg); }
+.tg-input-card { max-width: 860px; margin: 0 auto; width: 100%; box-sizing: border-box; border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); }
+.tg-input-card:focus-within { border-color: var(--px-accent); box-shadow: none; }
+.tg-shortcut-bar { gap: var(--px-space-1); padding: var(--px-space-1) var(--px-space-2) var(--px-space-2); border-top: 0; }
+.tg-shortcut-btn { height: var(--px-control-h-sm); padding: 0 var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-full); color: var(--px-text-secondary); font-family: var(--px-font-ui); font-size: var(--px-text-xs); }
+.tg-shortcut-btn:hover { background: var(--px-surface-hover); border-color: var(--px-border-strong); color: var(--px-text); }
+.tg-shortcut-btn--add { border-style: dashed; }
+.cr-chat-body { flex: 1; min-height: 0; display: flex; }
+.cr-chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cr-memory { flex: 0 0 300px; border-left: 1px solid var(--px-divider); background: var(--px-bg-elevated); padding: var(--px-space-3) var(--px-space-4); display: flex; flex-direction: column; gap: var(--px-space-3); overflow-y: auto; box-sizing: border-box; }
+.cr-memory-head { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); }
+.cr-memory-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.cr-memory-open { border: 0; background: none; padding: 0; color: var(--px-accent-text); font: inherit; font-size: var(--px-text-xs); cursor: pointer; }
+.cr-memory-open:hover { text-decoration: underline; }
+.cr-memory-seg { align-self: stretch; }
+.cr-memory-seg button { flex: 1; }
+.cr-memory-list { display: flex; flex-direction: column; }
+.cr-memory-item { padding: var(--px-space-2) 0; border-top: 1px solid var(--px-divider); font-size: var(--px-text-sm); color: var(--px-text-secondary); line-height: 1.45; }
+.cr-memory-item:first-child { border-top: 0; }
+.cr-memory-empty { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.cr-memory-hint { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-3); border: 1px dashed var(--px-border-strong); border-radius: var(--px-radius-md); color: var(--px-text-muted); font-size: var(--px-text-xs); margin-top: auto; }
+@container (max-width: 760px) { .cr-memory { display: none !important; } }
+.tg-chat { container-type: inline-size; }
 @container (max-width: 900px) {
   .cr-hero { grid-template-columns: minmax(0, 1fr); }
   .cr-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -4992,19 +5051,77 @@ function renderChatEditor(container, parallx, input) {
   // The memory file, opened in the editor: Facts, Timeline, Notes. What the
   // model must not forget, in the user's hands.
   const memoryBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('brain', 16) });
-  memoryBtn.title = 'Memory: the facts and timeline this chat keeps. Open and edit.';
-  memoryBtn.addEventListener('click', () => {
-    void (async () => {
-      try {
-        await loadThreadMemory(fs, workspaceUri, threadId);
-        await parallx.editors.openFileEditor(_memoryFileUri(workspaceUri, threadId, 'memories.md'));
-      } catch (err) {
-        console.warn('[TextGenerator] Could not open the memory file:', err);
-      }
-    })();
-  });
-  toolbar.append(modelLabel, modelSelect.element, ctxLabel, ctxSelect.element, spacer, tokenCountEl, memoryBtn, sceneBtn, viewPromptBtn, summaryEl);
+  memoryBtn.title = 'Memory: the facts and timeline this chat keeps';
+  memoryBtn.setAttribute('aria-label', 'Memory');
+  const openMemoryFile = async () => {
+    try {
+      await loadThreadMemory(fs, workspaceUri, threadId);
+      await parallx.editors.openFileEditor(_memoryFileUri(workspaceUri, threadId, 'memories.md'));
+    } catch (err) {
+      console.warn('[TextGenerator] Could not open the memory file:', err);
+    }
+  };
+  // The Memory panel beside the chat: what this chat keeps, read from
+  // memories.md (the file stays the source of truth; Open edits it).
+  const memoryPanel = el('aside', 'cr-memory');
+  memoryPanel.setAttribute('aria-label', 'Memory');
+  const memHead = el('div', 'cr-memory-head');
+  memHead.appendChild(el('span', 'cr-memory-title', { html: `${icon('brain', 15)}<span>Memory</span>` }));
+  const memOpen = el('button', 'cr-memory-open', { text: 'Open memories.md' });
+  memOpen.type = 'button';
+  memOpen.addEventListener('click', () => void openMemoryFile());
+  memHead.appendChild(memOpen);
+  memoryPanel.appendChild(memHead);
+  let memTab = 'facts';
+  const memSeg = parallx.ui?.createSegmented
+    ? parallx.ui.createSegmented(memoryPanel, { ariaLabel: 'Memory section', items: [{ value: 'facts', label: 'Facts' }, { value: 'timeline', label: 'Timeline' }, { value: 'notes', label: 'Notes' }], value: memTab, onChange: (v) => { memTab = v; void renderMemoryPanel(); } })
+    : null;
+  memSeg?.element.classList.add('cr-memory-seg');
+  const memList = el('div', 'cr-memory-list');
+  memoryPanel.appendChild(memList);
+  memoryPanel.appendChild(el('div', 'cr-memory-hint', { html: `${icon('pin', 13)}<span>Pin a message to remember it</span>` }));
+  let memoryOpen = false;
+  try { memoryOpen = localStorage.getItem('creations.memoryPanel') === '1'; } catch { memoryOpen = false; }
+  async function renderMemoryPanel() {
+    if (!memoryOpen) return;
+    let parts = { facts: [], beats: [], notes: '' };
+    try { parts = await loadThreadMemory(fs, workspaceUri, threadId); } catch { /* empty */ }
+    const items = memTab === 'facts' ? parts.facts.map((f) => f.text)
+      : memTab === 'timeline' ? parts.beats.map((b) => b.text)
+        : String(parts.notes || '').split(/\n+/).map((l) => l.trim()).filter(Boolean);
+    memList.replaceChildren();
+    if (!items.length) {
+      memList.appendChild(el('div', 'cr-memory-empty', { text: memTab === 'facts' ? 'No facts yet. They gather as the chat goes on.' : memTab === 'timeline' ? 'No beats yet.' : 'No notes. Open memories.md to write some.' }));
+      return;
+    }
+    for (const text of (memTab === 'timeline' ? items.slice(-40).reverse() : items.slice(0, 60))) {
+      memList.appendChild(el('div', 'cr-memory-item', { text }));
+    }
+  }
+  function setMemoryOpen(open) {
+    memoryOpen = open;
+    memoryPanel.style.display = open ? '' : 'none';
+    memoryBtn.classList.toggle('tg-chat-toolbar-btn--active', open);
+    memoryBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+    try { localStorage.setItem('creations.memoryPanel', open ? '1' : '0'); } catch { /* per-viewer nicety */ }
+    if (open) void renderMemoryPanel();
+  }
+  memoryBtn.addEventListener('click', () => setMemoryOpen(!memoryOpen));
+  // Who you are talking to: their portraits and names, the chat's title under them.
+  const chatHead = el('div', 'cr-chat-head');
+  const chatHeadFaces = el('div', 'cr-chat-faces');
+  const chatHeadText = el('div', 'cr-chat-head-text');
+  const chatHeadName = el('div', 'cr-chat-head-name');
+  chatHeadText.append(chatHeadName, summaryEl);
+  chatHead.append(chatHeadFaces, chatHeadText);
+  toolbar.append(chatHead, spacer, modelLabel, modelSelect.element, ctxLabel, ctxSelect.element, tokenCountEl, memoryBtn, sceneBtn, viewPromptBtn);
   root.appendChild(toolbar);
+  // Now: where and when the scene stands, one line; click to edit it.
+  const nowStrip = el('button', 'cr-now');
+  nowStrip.type = 'button';
+  nowStrip.title = 'Edit the scene';
+  nowStrip.style.display = 'none';
+  root.appendChild(nowStrip);
 
   // ── Scene state panel (collapsible) ──
   // Editable inline so the user can fix a confused scene without scrolling
@@ -5062,6 +5179,7 @@ function renderChatEditor(container, parallx, input) {
     const sceneStateToSave = empty ? null : next;
     if (!thread) return;
     thread.sceneState = sceneStateToSave;
+    renderChatHead();
     void surfaceSaveError(
       updateThreadMeta(fs, workspaceUri, threadId, { sceneState: sceneStateToSave }),
       parallx,
@@ -5079,6 +5197,7 @@ function renderChatEditor(container, parallx, input) {
     scenePresent.input.value = '';
     _persistSceneFromInputs();
   });
+  nowStrip.addEventListener('click', () => sceneBtn.click());
   sceneBtn.addEventListener('click', () => {
     const willShow = scenePanel.style.display === 'none';
     scenePanel.style.display = willShow ? '' : 'none';
@@ -5178,6 +5297,13 @@ function renderChatEditor(container, parallx, input) {
   inputCard.appendChild(shortcutBar);
   inputWrap.appendChild(inputCard);
   root.appendChild(inputWrap);
+  // The chat column and the Memory panel side by side.
+  const chatBody = el('div', 'cr-chat-body');
+  const chatMain = el('div', 'cr-chat-main');
+  chatMain.append(nowStrip, scenePanel, messagesEl, inputWrap);
+  chatBody.append(chatMain, memoryPanel);
+  root.appendChild(chatBody);
+  setMemoryOpen(memoryOpen);
 
   let thread = null;
   let characters = [];
@@ -5380,12 +5506,28 @@ function renderChatEditor(container, parallx, input) {
   }
 
   function getThreadSummary() {
-    const roster = characters.map((char) => getCharacterName(char)).join(', ');
-    return thread?.title ? `${thread.title} • ${roster}` : roster;
+    const count = messageHistory.length;
+    return [thread?.title || '', `${count} message${count === 1 ? '' : 's'}`].filter(Boolean).join(' \u00B7 ');
+  }
+  function characterHue(fileOrChar) {
+    const ch = typeof fileOrChar === 'string' ? getCharacterByFile(fileOrChar) : fileOrChar;
+    return ch ? hueOf(ch.rawData || { name: getCharacterName(ch) }) : null;
+  }
+  function renderChatHead() {
+    const names = characters.map((char) => getCharacterName(char));
+    chatHeadName.textContent = names.length ? names.join(', ') : 'Chat';
+    chatHeadFaces.replaceChildren(...characters.slice(0, 3).map((char) => createPortrait(getCharacterName(char), { size: 32, hue: characterHue(char) })));
+    const sc = thread?.sceneState;
+    const bits = sc && typeof sc === 'object' ? [sc.location, sc.time, sc.mood].filter((v) => typeof v === 'string' && v.trim()) : [];
+    if (bits.length) {
+      nowStrip.replaceChildren(el('span', 'cr-now-label', { text: 'Now' }), ...bits.map((b, i) => el('span', i === 0 ? 'cr-now-place' : 'cr-now-bit', { text: b })));
+      nowStrip.style.display = '';
+    } else nowStrip.style.display = 'none';
   }
 
   function updateChrome() {
     summaryEl.textContent = getThreadSummary();
+    renderChatHead();
     if (lastAssembledContext) {
       const warns = lastAssembledContext.warnings || [];
       tokenCountEl.textContent = `~${lastAssembledContext.estimatedTokens} tokens`;
@@ -6106,6 +6248,8 @@ function renderChatEditor(container, parallx, input) {
             // Matches user intent: "delete means the AI forgets."
             sources: target.id ? [target.id] : [],
           }]);
+          try { await mergeThreadMemory(fs, workspaceUri, threadId, { facts: [{ category: 'event', text: factText }] }); } catch { /* the jsonl pin above still holds */ }
+          void renderMemoryPanel();
           showToast('Pinned to memory');
         } catch (err) {
           console.warn('[TextGenerator] Failed to pin memory:', err);
@@ -6367,6 +6511,12 @@ function renderChatEditor(container, parallx, input) {
 
     }
 
+    if (msg.author === 'ai' && msg.kind !== 'ooc') {
+      const who = msg.characterFile ? getCharacterByFile(msg.characterFile) : null;
+      const face = createPortrait(getVisibleName(msg), { size: 32, hue: who ? characterHue(who) : null });
+      face.classList.add('tg-msg-face');
+      messageEl.appendChild(face);
+    }
     const contentWrap = el('div', 'tg-msg-content-wrap');
     contentWrap.appendChild(nameRow);
     const body = el('div', 'tg-msg-body', { html: renderMessageMarkup(msg.content || '') });
