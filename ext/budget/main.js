@@ -551,6 +551,56 @@ function injectStyles() {
 .budget-ov-when { width: 52px; flex: 0 0 52px; color: var(--px-text-faint); font-size: var(--px-text-sm); }
 .budget-ov-grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ═══ Transactions ═══ */
+.budget-tx { display: flex; flex-direction: column; gap: var(--px-space-2); max-width: 1180px; }
+.budget-tx-bar { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
+.budget-tx-search { min-width: 200px; height: 28px; font-size: var(--px-text-sm); }
+.budget-tx-add { margin-left: auto; }
+.budget-ov-month[hidden], .budget-tx-allmonths[hidden] { display: none; }
+.budget-tx-allmonths { text-align: left; min-width: 0; padding: 0 var(--px-space-1); }
+.budget-tx-chips { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
+.budget-tx-narrow { display: inline-flex; gap: var(--px-space-2); flex-wrap: wrap; }
+.budget-tx-narrow:not(:empty) { padding-left: var(--px-space-2); border-left: 1px solid var(--px-divider); }
+.budget-tx-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 170px 170px 110px; align-items: center; gap: var(--px-space-3);
+  padding: 0 var(--px-space-3); box-sizing: border-box; width: 100%;
+}
+@container (max-width: 760px) {
+  .budget-tx-row { grid-template-columns: minmax(0, 1fr) 130px 96px; }
+  .budget-tx-row > :nth-child(3) { display: none; }
+}
+.budget-tx-cols { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); margin-top: var(--px-space-2); }
+.budget-tx-list { display: flex; flex-direction: column; }
+.budget-tx-day {
+  display: flex; justify-content: space-between; gap: var(--px-space-3);
+  padding: var(--px-space-3) var(--px-space-3) var(--px-space-1);
+  font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-muted);
+}
+.budget-tx-item {
+  min-height: 44px; border: 0; border-radius: var(--px-radius-md); background: none;
+  color: var(--px-text); font: inherit; text-align: left; cursor: pointer;
+}
+.budget-tx-item:hover { background: var(--px-surface-hover); }
+.budget-tx-item:focus-visible { outline: 1px solid var(--px-accent); outline-offset: -1px; }
+.budget-tx-who { display: flex; flex-direction: column; min-width: 0; }
+.budget-tx-who > :first-child { font-weight: 500; }
+.budget-tx-cat { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; }
+.budget-tx-warn { color: var(--px-warning); }
+.budget-dot-empty { box-shadow: inset 0 0 0 1px var(--px-border-strong); }
+.budget-tx-amt { text-align: right; }
+.budget-tx-amt.is-out { color: var(--px-text); }
+.budget-tx-amt.is-in { color: var(--px-success); }
+.budget-tx-amt.is-move { color: var(--px-text-muted); }
+.budget-tx-more { padding: var(--px-space-3); }
+.budget-how { display: flex; flex-direction: column; gap: var(--px-space-1); padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); }
+.budget-how-step { display: flex; gap: var(--px-space-2); padding: var(--px-space-1) 0; }
+.budget-how-icon {
+  width: 22px; height: 22px; flex: 0 0 22px; border-radius: var(--px-radius-full);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--px-surface-hover); color: var(--px-text-secondary);
+}
+.budget-how-text { display: flex; flex-direction: column; min-width: 0; font-size: var(--px-text-sm); }
+
 /* ═══ Review ═══ */
 .budget-rv { max-width: 1180px; }
 .budget-rv-undo {
@@ -2409,15 +2459,11 @@ async function openTxEditor(api, opts = {}) {
   const head = document.createElement('div'); head.className = 'budget-drawer-head';
   const titleWrap = document.createElement('div'); titleWrap.style.flex = '1';
   const title = document.createElement('h3'); title.className = 'budget-drawer-title';
-  title.textContent = isCreate ? 'Add transaction' : 'Edit transaction';
+  title.textContent = isCreate ? 'Add Transaction' : 'Edit Transaction';
   titleWrap.appendChild(title);
-  if (!isCreate && row.gmail_message_id) {
+  if (!isCreate) {
     const sub = document.createElement('div'); sub.className = 'budget-drawer-sub';
-    sub.textContent = 'Imported from email';
-    titleWrap.appendChild(sub);
-  } else if (!isCreate) {
-    const sub = document.createElement('div'); sub.className = 'budget-drawer-sub';
-    sub.textContent = 'Manual entry';
+    sub.textContent = { email: 'Imported from email', 'email-gone': 'Imported from email', csv: 'Imported from a CSV', manual: 'Added by hand' }[txOrigin(row)];
     titleWrap.appendChild(sub);
   }
   head.appendChild(titleWrap);
@@ -2483,7 +2529,11 @@ async function openTxEditor(api, opts = {}) {
 
   const notesInput = document.createElement('textarea');
   notesInput.className = 'budget-drawer-textarea'; notesInput.placeholder = 'Notes (optional)';
-  notesInput.value = row?.notes || '';
+  // The sync's own tags ([cross-check: …], [possible duplicate of …],
+  // [hidden: …]) stay stored for Review and How It Got Here, but out of the
+  // note the user edits; save puts them back.
+  const { note: userNote, tags: systemTags } = splitTxNotes(row?.notes);
+  notesInput.value = userNote;
 
   form.appendChild(field('Merchant', merchantInput));
   const row1 = document.createElement('div'); row1.className = 'budget-field-row';
@@ -2498,6 +2548,10 @@ async function openTxEditor(api, opts = {}) {
   form.appendChild(field('Status', statusSel));
   form.appendChild(field('Notes', notesInput));
   drawer.appendChild(form);
+  if (!isCreate) {
+    // Filled in after the drawer is up; the form does not wait on it.
+    void readTxHistory(row).then((steps) => { if (overlay.isConnected) drawTxHistory(api, form, steps); }).catch(() => {});
+  }
 
   // Footer
   const foot = document.createElement('div'); foot.className = 'budget-drawer-foot';
@@ -2532,7 +2586,7 @@ async function openTxEditor(api, opts = {}) {
     const txType = typeSel.value;
     const categoryId = catSel.value || null;
     const accountId = acctSel.value || null;
-    const notes = notesInput.value.trim() || null;
+    const notes = [notesInput.value.trim(), ...systemTags].filter(Boolean).join(' ') || null;
     const status = forceStatus || statusSel.value || 'confirmed';
     const now = new Date().toISOString();
     const categoryChanged = (categoryId !== (row?.category_id || null));
@@ -2542,8 +2596,8 @@ async function openTxEditor(api, opts = {}) {
           `INSERT INTO transactions
              (id, gmail_message_id, merchant, amount_cents, transaction_date, tx_type,
               category_id, account_id, notes, status, categorization_source, user_overridden,
-              created_at, updated_at, tx_type_source)
-           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 1, ?, ?, 'manual')`,
+              created_at, updated_at, tx_type_source, source)
+           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 1, ?, ?, 'manual', 'manual')`,
           [crypto.randomUUID(), merchant || null, cents, dateYmd, txType, categoryId, accountId, notes, status, now, now],
         );
       } else {
@@ -2565,7 +2619,7 @@ async function openTxEditor(api, opts = {}) {
     foot.appendChild(makeButton('Confirm', { primary: true, onClick: () => save('confirmed') }));
     foot.appendChild(makeButton('Save', { onClick: () => save() }));
   } else {
-    foot.appendChild(makeButton(isCreate ? 'Add transaction' : 'Save', { primary: true, onClick: () => save() }));
+    foot.appendChild(makeButton(isCreate ? 'Add Transaction' : 'Save', { primary: true, onClick: () => save() }));
   }
   drawer.appendChild(foot);
 
@@ -2573,305 +2627,401 @@ async function openTxEditor(api, opts = {}) {
   merchantInput.focus();
 }
 
+// "How it got here": where a row came from, who typed it, who put it in its
+// category, and where it stands now. Every line is read from the row and
+// its email; nothing is guessed.
+const TX_NOTE_TAG = /\[(?:cross-check: |possible duplicate of |hidden: )[^\]]*\]/g;
+function splitTxNotes(notes) {
+  const text = String(notes || '');
+  const tags = text.match(TX_NOTE_TAG) || [];
+  return { note: text.replace(TX_NOTE_TAG, ' ').replace(/\s+/g, ' ').trim(), tags };
+}
+
+// Where a row came from. A row whose email was cleaned up keeps the AI's
+// marks, so it still reads as imported, not as typed by hand.
+function txOrigin(row) {
+  if (row.source === 'csv') return 'csv';
+  if (row.gmail_message_id) return 'email';
+  if (row.source === 'manual') return 'manual';
+  if (row.tx_type_source === 'ai' || row.tx_type_source === 'subject') return 'email-gone';
+  return 'manual';
+}
+
+async function readTxHistory(row) {
+  const steps = [];
+  const when = (iso) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  };
+  // 1. Where it came from.
+  const email = row.gmail_message_id
+    ? await db.get('SELECT raw_subject, received_at FROM email_imports WHERE gmail_message_id=?', [row.gmail_message_id]).catch(() => null)
+    : null;
+  const origin = txOrigin(row);
+  if (email) {
+    steps.push({ icon: 'mail', what: `An email, ${when(email.received_at)}`, detail: email.raw_subject ? `“${email.raw_subject}”` : '' });
+  } else if (origin === 'csv') {
+    steps.push({ icon: 'file-text', what: 'Imported from a CSV', detail: when(row.created_at) });
+  } else if (origin === 'email' || origin === 'email-gone') {
+    steps.push({ icon: 'mail', what: 'An email', detail: 'The email itself is no longer stored.' });
+  } else {
+    steps.push({ icon: 'user', what: 'Added by hand', detail: when(row.created_at) });
+  }
+  // 2. Who typed it.
+  const type = txTypeLabel(row.tx_type, row.amount_cents);
+  const conf = { high: 'High confidence.', medium: 'Medium confidence.', low: 'Low confidence.' }[row.ai_confidence] || '';
+  if (row.tx_type_source === 'ai') steps.push({ icon: 'sparkles', what: `The AI read it as ${type}`, detail: conf });
+  else if (row.tx_type_source === 'subject') steps.push({ icon: 'mail', what: `The email subject marked it as ${type}`, detail: '' });
+  else if (row.tx_type_source === 'csv') steps.push({ icon: 'file-text', what: `The CSV said ${type}`, detail: '' });
+  else if (row.tx_type_source === 'manual') steps.push({ icon: 'user', what: `You set the type to ${type}`, detail: '' });
+  // 3. Who put it in its category.
+  const cat = row.category_id ? await db.get('SELECT name FROM categories WHERE id=?', [row.category_id]).catch(() => null) : null;
+  const catName = cat ? cat.name : null;
+  if (!catName) {
+    steps.push({ icon: 'tag', what: 'No category yet', detail: row.status === 'review' ? 'Pick one in Review.' : '' });
+  } else if (row.categorization_source === 'rule') {
+    const rule = row.matched_rule_id
+      ? await db.get('SELECT pattern, hits, auto_created FROM categorization_rules WHERE id=?', [row.matched_rule_id]).catch(() => null)
+      : null;
+    steps.push(rule
+      ? { icon: 'filter', what: `${catName}, by ${rule.auto_created ? 'a learned rule' : 'your rule'} “${rule.pattern}”`, detail: `${Number(rule.hits) || 0} match${Number(rule.hits) === 1 ? '' : 'es'} so far.` }
+      : { icon: 'filter', what: `${catName}, by a rule`, detail: 'That rule has since been deleted.' });
+  } else if (row.categorization_source === 'ai') {
+    steps.push({ icon: 'sparkles', what: `The AI put it in ${catName}`, detail: '' });
+  } else if (row.categorization_source === 'manual') {
+    steps.push({ icon: 'user', what: `You put it in ${catName}`, detail: '' });
+  } else {
+    steps.push({ icon: 'tag', what: catName, detail: 'Set before Budget kept track of who set it.' });
+  }
+  // 4. Where it stands.
+  if (row.status === 'review') {
+    steps.push({ icon: 'inbox', what: 'Waiting in Review', detail: reviewReason(row).why });
+  } else if (row.status === 'hidden') {
+    const m = /\[hidden: ([^\]]+)\]/.exec(row.notes || '');
+    const why = m ? ({ duplicate: 'As a duplicate.', ignored: 'You ignored it.' }[m[1]] || `Reason: ${m[1]}.`) : '';
+    steps.push({ icon: 'eye-off', what: 'Hidden, not counted', detail: why });
+  }
+  return steps;
+}
+
+function drawTxHistory(api, host, steps) {
+  const wrap = document.createElement('div');
+  wrap.className = 'budget-how';
+  const label = document.createElement('div');
+  label.className = 'budget-ov-label';
+  label.textContent = 'How it got here';
+  wrap.appendChild(label);
+  for (const s of steps) {
+    const row = document.createElement('div');
+    row.className = 'budget-how-step';
+    const ic = document.createElement('span');
+    ic.className = 'budget-how-icon';
+    ic.innerHTML = makeIcon(api, s.icon, 14);
+    const text = document.createElement('span');
+    text.className = 'budget-how-text';
+    const w = document.createElement('span'); w.textContent = s.what;
+    text.appendChild(w);
+    if (s.detail) { const d = document.createElement('span'); d.className = 'budget-ov-faint'; d.textContent = s.detail; text.appendChild(d); }
+    row.append(ic, text);
+    wrap.appendChild(row);
+  }
+  host.appendChild(wrap);
+}
+
+// The Transactions page's quick filters. `status` and `type` are what each
+// one selects; deep links ({type, status} in _navState.txFilter) map onto them.
+const TX_VIEWS = [
+  { id: 'all',      label: 'All',          status: 'live',      type: 'all' },
+  { id: 'spend',    label: 'Spending',     status: 'live',      type: 'spend' },
+  { id: 'income',   label: 'Income',       status: 'live',      type: 'deposit' },
+  { id: 'transfer', label: 'Transfers',    status: 'live',      type: 'transfer' },
+  { id: 'review',   label: 'Needs Review', status: 'review',    type: 'all' },
+  { id: 'hidden',   label: 'Hidden',       status: 'hidden',    type: 'all' },
+];
+
+function txViewFor(incoming) {
+  if (!incoming) return 'all';
+  if (incoming.status === 'review') return 'review';
+  if (incoming.status === 'hidden') return 'hidden';
+  if (incoming.type === 'spend' || incoming.type === 'purchase' || incoming.type === 'fee') return 'spend';
+  if (incoming.type === 'deposit') return 'income';
+  if (incoming.type === 'transfer') return 'transfer';
+  return 'all';
+}
+
+function dayHeading(iso) {
+  const d = new Date(String(iso).slice(0, 10) + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return String(iso || '');
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+// How a row reads in the ledger: money in is marked + and green, a transfer
+// is muted (it moves money between your accounts), spending is plain text.
+function txAmountView(r) {
+  const cents = Number(r.amount_cents) || 0;
+  if (r.tx_type === 'transfer') return { text: fmtMoney(Math.abs(cents)), tone: 'move' };
+  if (cents < 0) return { text: '+' + fmtMoney(-cents), tone: 'in' };
+  return { text: fmtMoney(cents), tone: 'out' };
+}
+
 function renderTransactionsSection(body, api) {
-  // Pop any nav-state that Dashboard may have set so this view filters
-  // immediately on open. Cleared after first read.
+  // Deep links (an Overview category, a chart slice, a Review link) arrive
+  // in _navState.txFilter and are read once.
   const incoming = _navState.txFilter;
   _navState.txFilter = null;
 
-  let statusFilter = (incoming && incoming.status) || 'all';                    // all | confirmed | review | hidden
-  // Default 'all' so newly-imported deposits, transfers, and fees are visible
-  // without the user having to discover the type filter dropdown.
-  // Dashboard category clicks still pass type='spend' explicitly.
-  let typeFilter   = (incoming && incoming.type) || 'all';
-  let monthKey     = (incoming && incoming.monthKey) || monthRange().key;
-  let categoryId   = (incoming && incoming.categoryId) || null;
-  let accountId    = (incoming && incoming.accountId)  || null;
-  let dayYmd       = (incoming && incoming.dayYmd)     || null;
-  let search       = (incoming && incoming.merchant) || '';
+  let view       = txViewFor(incoming);
+  let monthKey   = (incoming && incoming.monthKey) || monthRange().key;
+  let categoryId = (incoming && incoming.categoryId) || null;
+  let accountId  = (incoming && incoming.accountId)  || null;
+  let dayYmd     = (incoming && incoming.dayYmd)     || null;
+  let search     = (incoming && incoming.merchant)   || '';
+  // A link for fees only, or purchases only, narrows Spending further.
+  let typeOnly   = incoming && (incoming.type === 'purchase' || incoming.type === 'fee') ? incoming.type : null;
 
-  const toolbar = document.createElement('div');
-  toolbar.className = 'budget-toolbar';
+  const root = document.createElement('div');
+  root.className = 'budget-tx';
+  body.appendChild(root);
 
-  // Month picker
-  const picker = makeMonthPicker(monthKey, (k) => { monthKey = k; dayYmd = null; void refresh(); });
-  toolbar.appendChild(picker.el);
-
-  // Search
+  // Month, search, account, Add.
+  const bar = document.createElement('div');
+  bar.className = 'budget-tx-bar';
+  const monthHost = document.createElement('div');
+  monthHost.className = 'budget-ov-month';
+  bar.appendChild(monthHost);
+  const allMonthsNote = document.createElement('span');
+  allMonthsNote.className = 'budget-ov-month-label budget-tx-allmonths';
+  allMonthsNote.textContent = 'Every month';
+  allMonthsNote.hidden = true;
+  bar.appendChild(allMonthsNote);
   const searchInput = document.createElement('input');
   searchInput.type = 'search';
-  searchInput.className = 'budget-input';
-  searchInput.placeholder = 'Search Merchant…';
-  searchInput.style.minWidth = '160px';
+  searchInput.className = 'budget-input budget-tx-search';
+  searchInput.placeholder = 'Search merchants';
+  searchInput.setAttribute('aria-label', 'Search merchants');
   searchInput.value = search;
-  searchInput.addEventListener('input', () => { search = searchInput.value; void refresh(); });
-  toolbar.appendChild(searchInput);
+  let searchTimer = null;
+  searchInput.addEventListener('input', () => {
+    search = searchInput.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => void refresh(), 150);
+  });
+  bar.appendChild(searchInput);
+  const acctSlot = document.createElement('span');
+  acctSlot.className = 'budget-dd-slot';
+  bar.appendChild(acctSlot);
+  const addHost = document.createElement('span');
+  addHost.className = 'budget-tx-add';
+  api.ui.createButton(addHost, { label: 'Add Transaction…', icon: 'plus', onClick: () => void openTxEditor(api, { onSaved: refresh }) });
+  bar.appendChild(addHost);
+  root.appendChild(bar);
 
-  // Type filter
-  const typeSel = makeDropdown([
-    ['all', 'All types'],
-    ['spend', 'Expenses (purchases + fees)'],
-    ['purchase', 'Purchases & refunds'],
-    ['deposit', 'Deposits'],
-    ['transfer', 'Transfers'],
-    ['fee', 'Fees'],
-  ].map(([value, label]) => ({ value, label })), typeFilter, (v) => { typeFilter = v; void refresh(); });
-  toolbar.appendChild(typeSel);
-
-  // Account filter (populated async into this slot)
-  const acctSlot = document.createElement('span'); acctSlot.className = 'budget-dd-slot';
-  toolbar.appendChild(acctSlot);
-
-  // Status filter buttons
-  const statusFilters = document.createElement('div');
-  statusFilters.style.display = 'flex';
-  statusFilters.style.gap = '4px';
-  for (const f of [['all','All'],['confirmed','Confirmed'],['review','Review'],['hidden','Hidden']]) {
-    const b = makeButton(f[1], { onClick: () => { statusFilter = f[0]; updatePressed(); void refresh(); } });
-    b.dataset.filter = f[0];
-    statusFilters.appendChild(b);
-  }
-  function updatePressed() {
-    statusFilters.querySelectorAll('button').forEach(btn => {
-      btn.setAttribute('aria-pressed', btn.dataset.filter === statusFilter ? 'true' : 'false');
+  // Quick filters, and the narrowing a link brought (category, day, type).
+  const chipsBar = document.createElement('div');
+  chipsBar.className = 'budget-tx-chips';
+  root.appendChild(chipsBar);
+  const chips = new Map();
+  for (const v of TX_VIEWS) {
+    const chip = api.ui.createFilterChip(chipsBar, {
+      label: v.label,
+      pressed: v.id === view,
+      onToggle: () => { view = v.id; if (v.id !== 'spend') typeOnly = null; syncChips(); void refresh(); },
     });
+    chips.set(v.id, chip);
   }
-  updatePressed();
+  function syncChips() { for (const [id, chip] of chips) chip.pressed = id === view; }
+  const narrowHost = document.createElement('span');
+  narrowHost.className = 'budget-tx-narrow';
+  chipsBar.appendChild(narrowHost);
 
-  toolbar.appendChild(statusFilters);
-  const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  toolbar.appendChild(makeButton('Add', {
-    iconHtml: makeIcon(api, 'plus', 12),
-    onClick: () => void openTxEditor(api, { onSaved: refresh }),
-  }));
-  toolbar.appendChild(makeButton('Refresh', {
-    iconHtml: makeIcon(api, 'refresh-cw', 12),
-    onClick: () => void refresh(),
-  }));
-  toolbar.appendChild(makeButton('Sync Now', {
-    primary: true,
-    iconHtml: makeIcon(api, 'cloud-download', 12),
-    onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
-  }));
-  body.appendChild(toolbar);
-
-  // Active-filter pills (e.g. category came from Dashboard click)
-  const pillsBar = document.createElement('div');
-  pillsBar.style.display = 'flex'; pillsBar.style.gap = '6px'; pillsBar.style.flexWrap = 'wrap';
-  body.appendChild(pillsBar);
-
-  const tableWrap = document.createElement('div');
-  body.appendChild(tableWrap);
+  const head = document.createElement('div');
+  head.className = 'budget-tx-row budget-tx-cols';
+  for (const [t, cls] of [['Merchant', ''], ['Category', ''], ['Account', ''], ['Amount', 'budget-tx-amt']]) {
+    const s = document.createElement('span'); s.textContent = t; if (cls) s.className = cls; head.appendChild(s);
+  }
+  root.appendChild(head);
+  const list = document.createElement('div');
+  list.className = 'budget-tx-list';
+  root.appendChild(list);
 
   let alive = true;
   let categoriesList = [];
   let accountsList = [];
+  let seq = 0;
+
+  function drawMonth() {
+    monthHost.replaceChildren();
+    const prev = api.ui.createIconButton(monthHost, { icon: 'chevron-left', title: 'Previous Month' });
+    const label = document.createElement('span');
+    label.className = 'budget-ov-month-label';
+    label.textContent = monthRange(monthKey).label;
+    monthHost.appendChild(label);
+    const next = api.ui.createIconButton(monthHost, { icon: 'chevron-right', title: 'Next Month' });
+    const go = (delta) => { monthKey = monthShift(monthKey, delta); dayYmd = null; drawMonth(); void refresh(); };
+    prev.addEventListener('click', () => go(-1));
+    next.addEventListener('click', () => go(1));
+    if (monthKey !== monthRange().key) {
+      api.ui.createButton(monthHost, { label: 'This Month', kind: 'ghost', size: 'sm', onClick: () => { monthKey = monthRange().key; dayYmd = null; drawMonth(); void refresh(); } });
+    }
+  }
 
   async function populateAccountSelect() {
     accountsList = await db.all('SELECT id, last_four, kind, display_name FROM accounts WHERE archived=0 ORDER BY kind, last_four').catch(() => []);
-    const opts = [{ value: '', label: 'All Accounts' }].concat(
+    const opts = [{ value: '', label: 'All accounts' }].concat(
       accountsList.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) })));
-    acctSlot.innerHTML = '';
-    acctSlot.appendChild(makeDropdown(opts, accountId || '', (v) => { accountId = v || null; void refresh(); }));
+    acctSlot.replaceChildren(makeDropdown(opts, accountId || '', (v) => { accountId = v || null; void refresh(); }, { ariaLabel: 'Account' }));
   }
 
-  function rebuildPills() {
-    pillsBar.innerHTML = '';
+  // A link's narrowing shows as pressed chips; clicking one lets it go.
+  function drawNarrowing() {
+    narrowHost.replaceChildren();
+    const add = (label, clear) => api.ui.createFilterChip(narrowHost, {
+      label, pressed: true, title: 'Click to remove this filter',
+      onToggle: () => { clear(); drawNarrowing(); void refresh(); },
+    });
     if (categoryId) {
       const cat = categoriesList.find(c => c.id === categoryId);
-      const pill = document.createElement('span'); pill.className = 'budget-pill';
-      pill.style.background = (cat && cat.color) || '#666';
-      pill.style.cursor = 'pointer';
-      pill.title = 'Click to clear category filter';
-      pill.textContent = (cat ? cat.name : 'category') + ' ✕';
-      pill.addEventListener('click', () => { categoryId = null; rebuildPills(); void refresh(); });
-      pillsBar.appendChild(pill);
+      add(cat ? cat.name : 'One category', () => { categoryId = null; });
     }
+    if (dayYmd) add(shortDate(dayYmd), () => { dayYmd = null; });
+    if (typeOnly) add(typeOnly === 'fee' ? 'Fees only' : 'Purchases only', () => { typeOnly = null; });
   }
 
   async function refresh() {
     if (!alive) return;
-    tableWrap.innerHTML = '';
+    const mySeq = ++seq;
+    const v = TX_VIEWS.find(x => x.id === view) || TX_VIEWS[0];
     const range = monthRange(monthKey);
-    const where = [];
-    const params = [];
-
-    where.push('t.transaction_date >= ?'); params.push(range.start);
-    where.push('t.transaction_date <= ?'); params.push(range.end);
-    if (dayYmd) { where.push('t.transaction_date = ?'); params.push(dayYmd); }
-
-    if (statusFilter !== 'all') { where.push('t.status = ?'); params.push(statusFilter); }
-    else { where.push("t.status IN ('confirmed','review','hidden')"); }
-
-    if (typeFilter === 'spend') {
-      where.push("t.tx_type IN ('purchase','fee')");
-    } else if (typeFilter !== 'all') {
-      where.push('t.tx_type = ?'); params.push(typeFilter);
-    }
-
+    // Needs Review spans every month, the same rows the sidebar counts.
+    const allMonths = v.id === 'review';
+    monthHost.hidden = allMonths;
+    allMonthsNote.hidden = !allMonths;
+    const where = allMonths ? ['1=1'] : ['t.transaction_date >= ?', 't.transaction_date <= ?'];
+    const params = allMonths ? [] : [range.start, range.end];
+    if (dayYmd && !allMonths) { where.push('t.transaction_date = ?'); params.push(dayYmd); }
+    if (v.status === 'live') where.push("t.status IN ('confirmed','review')");
+    else { where.push('t.status = ?'); params.push(v.status); }
+    if (typeOnly) { where.push('t.tx_type = ?'); params.push(typeOnly); }
+    else if (v.type === 'spend') where.push("t.tx_type IN ('purchase','fee')");
+    else if (v.type !== 'all') { where.push('t.tx_type = ?'); params.push(v.type); }
     if (categoryId) { where.push('t.category_id = ?'); params.push(categoryId); }
     if (accountId)  { where.push('t.account_id = ?'); params.push(accountId); }
     if (search.trim()) { where.push('LOWER(t.merchant) LIKE ?'); params.push(`%${search.trim().toLowerCase()}%`); }
 
-    const sql = `
-      SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.status, t.ai_confidence,
-             t.card_last_four, t.tx_type, t.category_id, t.account_id,
-             t.categorization_source, t.matched_rule_id, t.tx_type_source,
-             c.name AS category_name, c.color AS category_color,
-             a.kind AS account_kind, a.display_name AS account_name, a.last_four AS account_last_four
-        FROM transactions t
-        LEFT JOIN categories c ON c.id = t.category_id
-        LEFT JOIN accounts   a ON a.id = t.account_id
-       WHERE ${where.join(' AND ')}
-       ORDER BY t.transaction_date DESC, t.created_at DESC
-       LIMIT 500`;
     let rows;
-    try { rows = await db.all(sql, params); }
-    catch (e) { tableWrap.appendChild(emptyState('Query error: ' + (e instanceof Error ? e.message : String(e)))); return; }
-
-    // Cache categories for the per-row dropdown.
-    try { categoriesList = await db.all(`SELECT id, name, color, kind FROM categories WHERE archived=0 ORDER BY kind, sort_order, name`); }
-    catch { categoriesList = []; }
-    rebuildPills();
-
-    if (!rows || rows.length === 0) { tableWrap.appendChild(emptyState('No transactions in this view.')); return; }
-
-    const table = document.createElement('table');
-    table.className = 'budget-table';
-    table.innerHTML = `
-      <thead><tr>
-        <th>Date</th><th>Merchant</th><th>Type</th><th>Account</th><th>Category</th>
-        <th style="text-align:right">Amount</th>
-        <th>Status</th><th>Conf</th><th>Actions</th>
-      </tr></thead>`;
-    const tbody = document.createElement('tbody');
-    for (const r of rows) {
-      const tr = document.createElement('tr');
-      tr.classList.add('budget-row-clickable');
-      tr.addEventListener('click', () => void openTxEditor(api, { id: r.id, onSaved: refresh }));
-      const cents = Number(r.amount_cents) || 0;
-      const amtCls = cents < 0 ? 'positive' : (cents > 0 ? 'negative' : '');
-
-      const tdDate = document.createElement('td'); tdDate.textContent = fmtDate(r.transaction_date);
-      const tdMerch = document.createElement('td'); tdMerch.textContent = r.merchant || '—';
-      const tdType = document.createElement('td');
-      // Display labels stay user-facing while stored tx_type values remain
-      // compact and backwards-compatible.
-      const displayType = txTypeLabel(r.tx_type, cents);
-      tdType.innerHTML = displayType ? `<span class="budget-pill">${escHtml(displayType)}</span>` : '<span class="budget-pill hidden">—</span>';
-      tdType.appendChild(typeSourceBadge(r.tx_type_source));
-      const tdAcct = document.createElement('td');
-      tdAcct.textContent = r.account_name || (r.account_last_four ? '••' + r.account_last_four : (r.card_last_four ? '••' + r.card_last_four : '—'));
-      tdAcct.style.fontSize = '11px';
-      tdAcct.style.color = 'var(--vscode-descriptionForeground, #aaa)';
-
-      const tdCat = document.createElement('td');
-      tdCat.addEventListener('click', (e) => e.stopPropagation());
-      const sel = makeDropdown(categoryOptions(categoriesList), r.category_id || '', async (val) => {
-        try {
-          await db.run(
-            `UPDATE transactions
-                SET category_id=?, user_overridden=1,
-                    categorization_source='manual', matched_rule_id=NULL,
-                    updated_at=?
-              WHERE id=?`,
-            [val || null, new Date().toISOString(), r.id],
-          );
-          // Learn from override: future imports for this merchant skip the LLM.
-          await learnExpenseRuleFromOverride(r.merchant, val || null);
-        } catch (e) {
-          await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e)));
-          await refresh();
-        }
-      });
-      tdCat.appendChild(sel);
-
-      // Source badge — tells the user *why* this row landed in this category.
-      // 'rule'   : a saved categorization_rules row matched (deterministic).
-      // 'ai'     : the LLM picked it on this sync; promotable to a rule.
-      // 'manual' : user typed/selected this category themselves.
-      // 'seed'   : pre-audit-trail row (categorized before tracking existed).
-      // null     : uncategorized.
-      const src = r.categorization_source;
-      if (src) {
-        const badge = document.createElement('span');
-        badge.className = 'budget-pill';
-        badge.style.marginLeft = '6px';
-        badge.style.fontSize = '9px';
-        badge.style.opacity = '0.75';
-        const labels = { rule: 'R', ai: 'AI', manual: 'M', seed: 'S' };
-        const titles = {
-          rule:   'Matched a saved rule',
-          ai:     'Categorized by AI on import',
-          manual: 'You set this category',
-          seed:   'Categorized before audit trail (pre-migration)',
-        };
-        badge.textContent = labels[src] || src;
-        badge.title = titles[src] || src;
-        tdCat.appendChild(badge);
-      }
-
-      const tdAmt = document.createElement('td');
-      tdAmt.className = 'budget-amount ' + amtCls;
-      // Register convention: outflows plain, inflows marked "+" (green).
-      tdAmt.textContent = cents < 0 ? '+' + fmtMoney(-cents) : fmtMoney(cents);
-      const tdStatus = document.createElement('td');
-      tdStatus.innerHTML = `<span class="budget-pill ${escHtml(r.status)}">${escHtml(statusLabel(r.status))}</span>`;
-      const tdConf = document.createElement('td');
-      tdConf.innerHTML = r.ai_confidence ? `<span class="budget-pill ${escHtml(r.ai_confidence)}">${escHtml(confidenceLabel(r.ai_confidence))}</span>` : '';
-      const tdActions = document.createElement('td');
-      tdActions.className = 'budget-row-actions';
-      tdActions.addEventListener('click', (e) => e.stopPropagation());
-      if (r.status === 'review') {
-        const confirmBtn = makeButton('Confirm', {
-          primary: true,
-          onClick: async () => {
-            try {
-              await confirmReviewedTransaction(r.id, sel.value || null, r.merchant);
-              await refresh();
-            } catch (e) {
-              await api.window?.showErrorMessage?.('Confirm failed: ' + (e instanceof Error ? e.message : String(e)));
-            }
-          },
-        });
-        const hideBtn = makeButton('Hide', {
-          onClick: async () => {
-            try {
-              await hideReviewedTransaction(r.id);
-              await refresh();
-            } catch (e) {
-              await api.window?.showErrorMessage?.('Hide failed: ' + (e instanceof Error ? e.message : String(e)));
-            }
-          },
-        });
-        tdActions.appendChild(confirmBtn);
-        tdActions.appendChild(hideBtn);
-      } else {
-        // Confirmed / hidden rows have no pending action — offer a quiet Edit
-        // affordance (revealed on hover) instead of a meaningless dash. The
-        // whole row is clickable too; this just makes it discoverable.
-        const editBtn = makeButton('Edit', { onClick: () => void openTxEditor(api, { id: r.id, onSaved: refresh }) });
-        editBtn.classList.add('budget-row-edit');
-        tdActions.appendChild(editBtn);
-      }
-
-      tr.appendChild(tdDate); tr.appendChild(tdMerch); tr.appendChild(tdType); tr.appendChild(tdAcct);
-      tr.appendChild(tdCat); tr.appendChild(tdAmt); tr.appendChild(tdStatus); tr.appendChild(tdConf); tr.appendChild(tdActions);
-      tbody.appendChild(tr);
+    let reviewCount = 0;
+    try {
+      categoriesList = await db.all(`SELECT id, name, color, kind FROM categories WHERE archived=0 ORDER BY kind, sort_order, name`).catch(() => []);
+      rows = await db.all(`
+        SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.status, t.tx_type, t.notes,
+               t.ai_confidence, t.card_last_four,
+               c.name AS category_name, c.color AS category_color,
+               a.kind AS account_kind, a.display_name AS account_name, a.last_four AS account_last_four
+          FROM transactions t
+          LEFT JOIN categories c ON c.id = t.category_id
+          LEFT JOIN accounts   a ON a.id = t.account_id
+         WHERE ${where.join(' AND ')}
+         ORDER BY t.transaction_date DESC, t.created_at DESC
+         LIMIT 500`, params);
+      reviewCount = await countReview();
+    } catch (e) {
+      if (mySeq === seq) list.replaceChildren(emptyState('The ledger could not be read: ' + (e instanceof Error ? e.message : String(e))));
+      return;
     }
-    table.appendChild(tbody);
-    tableWrap.appendChild(table);
+    if (!alive || mySeq !== seq) return;
+    chips.get('review')?.setCount(reviewCount || undefined);
+    drawNarrowing();
+    list.replaceChildren();
+    if (rows.length === 0) {
+      list.appendChild(emptyState(allMonths ? 'Nothing is waiting for review.'
+        : search.trim() || categoryId || accountId || dayYmd ? `Nothing in ${range.label} matches these filters.`
+        : `Nothing in ${range.label} here.`));
+      return;
+    }
+    let lastDay = null;
+    for (const r of rows) {
+      if (r.transaction_date !== lastDay) {
+        lastDay = r.transaction_date;
+        const spent = rows
+          .filter(x => x.transaction_date === lastDay && x.status === 'confirmed' && (x.tx_type === 'purchase' || x.tx_type === 'fee'))
+          .reduce((a, x) => a + (Number(x.amount_cents) || 0), 0);
+        const dh = document.createElement('div');
+        dh.className = 'budget-tx-day';
+        const dl = document.createElement('span'); dl.textContent = dayHeading(lastDay);
+        const dt = document.createElement('span'); dt.className = 'budget-num';
+        dt.textContent = spent > 0 ? `${fmtMoney(spent)} spent` : '';
+        dh.append(dl, dt);
+        list.appendChild(dh);
+      }
+      list.appendChild(drawRow(r));
+    }
+    if (rows.length === 500) {
+      const more = document.createElement('div');
+      more.className = 'budget-ov-faint budget-tx-more';
+      more.textContent = 'Showing the latest 500. Search or filter to find older ones.';
+      list.appendChild(more);
+    }
   }
 
-  void populateAccountSelect().then(refresh);
-  // Auto-refresh on completed syncs from any other surface.
-  const offBus = onSyncEvent((evt) => {
-    if (evt.kind === 'complete') void refresh();
-  });
-  return () => { alive = false; offBus(); };
-}
+  function drawRow(r) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'budget-tx-row budget-tx-item';
+    b.addEventListener('click', () => void openTxEditor(api, { id: r.id, onSaved: refresh }));
 
-// ─── Section: Review Queue ─────────────────────────────────────────────────
+    const who = document.createElement('span');
+    who.className = 'budget-tx-who';
+    const name = document.createElement('span');
+    name.className = 'budget-ov-grow';
+    name.textContent = r.merchant || 'No payee';
+    who.appendChild(name);
+    const subText = r.status === 'review' ? reviewReason(r).tag
+      : r.status === 'hidden' ? 'Hidden'
+      : (r.tx_type === 'purchase' && Number(r.amount_cents) >= 0) ? ''
+      : txTypeLabel(r.tx_type, r.amount_cents) === r.category_name ? '' : txTypeLabel(r.tx_type, r.amount_cents);
+    if (subText) {
+      const sub = document.createElement('span');
+      sub.className = 'budget-ov-faint' + (r.status === 'review' ? ' budget-tx-warn' : '');
+      sub.textContent = subText;
+      who.appendChild(sub);
+    }
+
+    const cat = document.createElement('span');
+    cat.className = 'budget-tx-cat';
+    if (r.status === 'review') {
+      cat.classList.add('budget-tx-warn');
+      cat.textContent = 'Needs review';
+    } else {
+      const dot = document.createElement('span');
+      dot.className = 'budget-dot';
+      dot.style.background = r.category_name ? (r.category_color || 'var(--px-text-faint)') : 'transparent';
+      if (!r.category_name) dot.classList.add('budget-dot-empty');
+      const n = document.createElement('span');
+      n.className = 'budget-ov-grow' + (r.category_name ? '' : ' budget-ov-faint');
+      n.textContent = r.category_name || 'No category';
+      cat.append(dot, n);
+    }
+
+    const acct = document.createElement('span');
+    acct.className = 'budget-ov-faint budget-ov-grow';
+    acct.textContent = r.account_name ? r.account_name + (r.account_last_four ? ` ••${r.account_last_four}` : '')
+      : (r.account_last_four || r.card_last_four) ? `••${r.account_last_four || r.card_last_four}` : '';
+
+    const amt = document.createElement('span');
+    const a = txAmountView(r);
+    amt.className = `budget-num budget-tx-amt is-${a.tone}`;
+    amt.textContent = a.text;
+
+    b.append(who, cat, acct, amt);
+    return b;
+  }
+
+  drawMonth();
+  void populateAccountSelect().then(refresh);
+  const offBus = onSyncEvent((evt) => { if (evt.kind === 'complete') void refresh(); });
+  const offLedger = onLedgerChanged(() => void refresh());
+  return () => { alive = false; clearTimeout(searchTimer); offBus(); offLedger(); };
+}
 
 // ─── Section: Review ───────────────────────────────────────────────────────
 //
@@ -11633,6 +11783,10 @@ export const __testables = {
   reviewDefaultVerdict,
   reviewRuleFor,
   reviewTypeSource,
+  txViewFor,
+  txAmountView,
+  splitTxNotes,
+  txOrigin,
   budgetStreamWithStall,
   BudgetLmStallError,
   median,
