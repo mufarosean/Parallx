@@ -484,6 +484,69 @@ function injectStyles() {
 }
 .budget-plan-switch { display: flex; }
 .budget-worth-goals { display: flex; flex-direction: column; gap: var(--px-space-3); margin-top: var(--px-space-4); }
+
+/* Shared: amounts line up, links read as links, a category's colour dot. */
+.budget-num { font-variant-numeric: tabular-nums; }
+.budget-link {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  color: var(--px-accent-text); font: inherit; font-size: var(--px-text-sm); text-align: left;
+}
+.budget-link:hover { text-decoration: underline; }
+.budget-link:focus-visible { outline: 1px solid var(--px-accent); outline-offset: 2px; border-radius: var(--px-radius-sm); }
+.budget-dot { width: 8px; height: 8px; border-radius: var(--px-radius-full); flex: 0 0 8px; display: inline-block; }
+
+/* ═══ Overview ═══ */
+.budget-ov { display: flex; flex-direction: column; gap: var(--px-space-4); max-width: 1180px; }
+.budget-ov-month { display: flex; align-items: center; gap: var(--px-space-1); }
+.budget-ov-month-label { font-weight: 600; padding: 0 var(--px-space-2); min-width: 130px; text-align: center; }
+.budget-ov-card {
+  background: var(--px-bg-elevated);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  padding: var(--px-space-4);
+  display: flex; flex-direction: column; gap: var(--px-space-2);
+  min-width: 0;
+}
+.budget-ov-sync { flex-direction: row; align-items: center; flex-wrap: wrap; gap: var(--px-space-4); padding: var(--px-space-3) var(--px-space-4); }
+.budget-ov-sync-head { display: flex; flex-direction: column; min-width: 180px; }
+.budget-ov-sync-items { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-4); flex: 1; min-width: 0; }
+.budget-ov-sync-act { margin-left: auto; }
+.budget-ov-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--px-space-4); align-items: start; }
+@container (max-width: 820px) { .budget-ov-grid { grid-template-columns: minmax(0, 1fr); } }
+.budget-editor { container-type: inline-size; }
+.budget-ov-col { display: flex; flex-direction: column; gap: var(--px-space-4); min-width: 0; }
+.budget-ov-label { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
+.budget-ov-muted { color: var(--px-text-muted); }
+.budget-ov-faint { color: var(--px-text-faint); font-size: var(--px-text-sm); }
+.budget-ov-bad { color: var(--px-danger); }
+.budget-ov-left { display: flex; align-items: baseline; gap: var(--px-space-2); flex-wrap: wrap; }
+.budget-ov-big { font-size: var(--px-text-xl); font-weight: 600; }
+.budget-ov-chart { width: 100%; height: 80px; display: block; border-bottom: 1px solid var(--px-divider); }
+.budget-ov-even { stroke: var(--px-border-strong); stroke-width: 1.5; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+.budget-ov-spent { fill: none; stroke: var(--px-accent); stroke-width: 2.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.budget-ov-spent.is-ahead { stroke: var(--px-warning); }
+.budget-ov-axis { display: flex; justify-content: space-between; font-size: var(--px-text-xs); color: var(--px-text-faint); }
+.budget-ov-note { font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+.budget-ov-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--px-space-4); }
+.budget-ov-fact { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.budget-ov-value { font-size: var(--px-text-md); font-weight: 600; }
+.budget-ov-head { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); }
+.budget-ov-cat {
+  display: grid; grid-template-columns: 8px 110px minmax(0, 1fr) 170px; align-items: center; gap: var(--px-space-3);
+  min-height: 32px; padding: 0 var(--px-space-2); margin: 0 calc(-1 * var(--px-space-2));
+  border: 0; border-top: 1px solid var(--px-divider); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.budget-ov-cat:hover { background: var(--px-surface-hover); }
+.budget-ov-cat:focus-visible { outline: 1px solid var(--px-accent); outline-offset: -1px; }
+.budget-ov-cat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.budget-ov-bar { height: 6px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; }
+.budget-ov-fill { display: block; height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); }
+.budget-ov-fill.is-over { background: var(--px-danger); }
+.budget-ov-cat-amt { text-align: right; white-space: nowrap; }
+.budget-ov-cat-amt .budget-ov-faint { font-size: inherit; }
+.budget-ov-row { display: flex; align-items: center; gap: var(--px-space-3); min-height: 32px; border-top: 1px solid var(--px-divider); }
+.budget-ov-when { width: 52px; flex: 0 0 52px; color: var(--px-text-faint); font-size: var(--px-text-sm); }
+.budget-ov-grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .budget-editor-blurb {
   margin: 0;
   font-size: var(--px-text-base, 13px);
@@ -1915,7 +1978,7 @@ function renderEditorPane(container, api, input) {
 
 function renderSection(id, body, api, view) {
   switch (id) {
-    case 'overview':     return renderDashboardSection(body, api);
+    case 'overview':     return renderOverviewSection(body, api);
     case 'review':       return renderReviewQueueSection(body, api);
     case 'transactions': return renderTransactionsSection(body, api);
     case 'plan':         return renderPlanSection(body, api, view);
@@ -1924,7 +1987,7 @@ function renderSection(id, body, api, view) {
     case 'categories':   return renderCategoriesSection(body, api);
     case 'syncLog':      return renderSyncLogSection(body, api);
     case 'importExport': return renderImportExportSection(body, api);
-    default:             return renderDashboardSection(body, api);
+    default:             return renderOverviewSection(body, api);
   }
 }
 
@@ -3140,6 +3203,396 @@ function renderCategoriesSection(body, api) {
 }
 
 // ─── Section: Dashboard ────────────────────────────────────────────────────
+
+// ─── Overview ───────────────────────────────────────────────────────────────
+//
+// What is left this month (bills counted as committed), how everyday spending
+// is pacing, what the last sync did and what waits for you, the bills coming
+// up, everyday spending by category, the accounts. Everything is a way in:
+// each count opens the rows behind it.
+let _overviewMonth = null;
+
+function renderOverviewSection(body, api) {
+  const root = document.createElement('div');
+  root.className = 'budget-ov';
+  body.appendChild(root);
+  let disposed = false;
+
+  async function draw() {
+    if (disposed) return;
+    const monthKey = _overviewMonth || monthRange().key;
+    let data;
+    try { data = await readOverview(monthKey); }
+    catch (err) {
+      root.replaceChildren(emptyState('The overview could not be read: ' + (err instanceof Error ? err.message : String(err))));
+      return;
+    }
+    if (disposed) return;
+    root.replaceChildren();
+    if (!data.hasAny) {
+      api.ui.createEmptyState(root, {
+        icon: 'wallet',
+        headline: 'Nothing in the ledger yet.',
+        hint: 'Sync your transaction emails from Gmail, or import a CSV, to see the month here.',
+        action: { label: 'Sync Now', onClick: () => api.commands.executeCommand('budget.sync') },
+      });
+      return;
+    }
+    drawMonthBar(root, data, api, draw);
+    drawSyncStrip(root, data, api);
+    const grid = document.createElement('div');
+    grid.className = 'budget-ov-grid';
+    const main = document.createElement('div');
+    main.className = 'budget-ov-col';
+    const side = document.createElement('div');
+    side.className = 'budget-ov-col';
+    grid.append(main, side);
+    root.appendChild(grid);
+    drawLeftCard(main, data);
+    drawFacts(main, data, api);
+    drawCategories(main, data, api);
+    drawComingUp(side, data, api);
+    drawAccounts(side, data, api);
+  }
+
+  const offSync = onSyncEvent((e) => { if (e.kind === 'complete' || e.kind === 'error') draw(); });
+  const offLedger = onLedgerChanged(draw);
+  draw();
+  return () => { disposed = true; offSync(); offLedger(); };
+}
+
+async function readOverview(monthKey) {
+  const plan = await readMonthPlan(monthKey);
+  const r = plan.range;
+  const anyRow = await db.get(`SELECT COUNT(*) AS n FROM transactions`);
+  const income = await db.get(
+    `SELECT COALESCE(SUM(-amount_cents),0) AS cents FROM transactions
+      WHERE status='confirmed' AND tx_type='deposit' AND transaction_date >= ? AND transaction_date <= ?`,
+    [r.start, r.end]);
+  const prev = monthRange(monthShift(r.key, -3));
+  const incomePrev = await db.get(
+    `SELECT COALESCE(SUM(-amount_cents),0) AS cents FROM transactions
+      WHERE status='confirmed' AND tx_type='deposit' AND transaction_date >= ? AND transaction_date < ?`,
+    [prev.start, r.start]);
+  const daily = await db.all(
+    `SELECT transaction_date AS d, COALESCE(SUM(amount_cents),0) AS cents FROM transactions
+      WHERE status='confirmed' AND tx_type IN ('purchase','fee') AND transaction_date >= ? AND transaction_date <= ?
+      GROUP BY transaction_date`,
+    [r.start, r.end]);
+  const transfersAi = await db.get(
+    `SELECT COUNT(*) AS n FROM transactions WHERE status='confirmed' AND tx_type='transfer' AND tx_type_source='ai'
+      AND transaction_date >= ? AND transaction_date <= ?`, [r.start, r.end]);
+  const review = await countReview();
+  let last = null;
+  try { last = await getSyncStateValue('last_run_status'); } catch { last = null; }
+  const lastAt = (await getSyncStateValue('last_run_at')) || null;
+  const accounts = await db.all(
+    `SELECT v.account_id, v.last_four, v.kind, v.display_name, v.latest_balance_cents
+       FROM v_account_latest_balance v JOIN accounts a ON a.id = v.account_id
+      WHERE a.archived = 0 AND v.latest_balance_cents IS NOT NULL ORDER BY v.kind, v.last_four`);
+  const goals = await db.get(`SELECT COUNT(*) AS n, COALESCE(SUM(current_cents),0) AS cur, COALESCE(SUM(target_cents),0) AS tgt FROM goals WHERE archived = 0`);
+
+  // Everyday spending by day: each bill's payment comes off the day it was paid.
+  const byDay = new Map(daily.map(x => [x.d, Number(x.cents) || 0]));
+  for (const b of plan.bills) {
+    if (b.paidOn && byDay.has(b.paidOn)) byDay.set(b.paidOn, Math.max(0, byDay.get(b.paidOn) - b.paidCents));
+  }
+  const cumulative = [];
+  let run = 0;
+  for (let d = 1; d <= plan.dayOfMonth; d++) {
+    const iso = `${r.key}-${String(d).padStart(2, '0')}`;
+    run += byDay.get(iso) || 0;
+    cumulative.push(run);
+  }
+  return {
+    ...plan,
+    hasAny: (Number(anyRow?.n) || 0) > 0 || !!lastAt,
+    incomeCents: Number(income?.cents) || 0,
+    incomeExpectedCents: Math.round((Number(incomePrev?.cents) || 0) / 3),
+    cumulative,
+    transfersAi: Number(transfersAi?.n) || 0,
+    review,
+    last: last && typeof last === 'object' ? last : null,
+    lastAt,
+    accounts,
+    goals: { n: Number(goals?.n) || 0, cur: Number(goals?.cur) || 0, tgt: Number(goals?.tgt) || 0 },
+  };
+}
+
+function drawMonthBar(root, data, api, redraw) {
+  const bar = document.createElement('div');
+  bar.className = 'budget-ov-month';
+  const prev = api.ui.createIconButton(bar, { icon: 'chevron-left', title: 'Previous Month' });
+  const label = document.createElement('span');
+  label.className = 'budget-ov-month-label';
+  label.textContent = data.range.label;
+  bar.appendChild(label);
+  const next = api.ui.createIconButton(bar, { icon: 'chevron-right', title: 'Next Month' });
+  const go = (delta) => { _overviewMonth = monthShift(data.range.key, delta); redraw(); };
+  prev.addEventListener('click', () => go(-1));
+  next.addEventListener('click', () => go(1));
+  if (data.range.key !== monthRange().key) {
+    api.ui.createButton(bar, { label: 'This Month', kind: 'ghost', size: 'sm', onClick: () => { _overviewMonth = null; redraw(); } });
+  }
+  root.appendChild(bar);
+}
+
+function linkButton(host, text, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'budget-link';
+  b.textContent = text;
+  b.addEventListener('click', onClick);
+  host.appendChild(b);
+  return b;
+}
+
+function drawSyncStrip(root, data, api) {
+  if (!data.lastAt && !data.review) return;
+  const strip = document.createElement('div');
+  strip.className = 'budget-ov-card budget-ov-sync';
+  const head = document.createElement('div');
+  head.className = 'budget-ov-sync-head';
+  const t = document.createElement('div');
+  t.className = 'budget-ov-label';
+  t.textContent = 'The last sync';
+  const when = document.createElement('div');
+  when.className = 'budget-ov-faint';
+  when.textContent = data.lastAt ? describeWhen(data.lastAt) : 'Not synced yet';
+  head.append(t, when);
+  strip.appendChild(head);
+  const items = document.createElement('div');
+  items.className = 'budget-ov-sync-items';
+  const last = data.last;
+  if (last && last.ok === false) {
+    const err = document.createElement('span');
+    err.className = 'budget-ov-bad';
+    err.textContent = `It failed: ${last.error || 'unknown error'}.`;
+    items.appendChild(err);
+    linkButton(items, 'Open Sync Log', () => openBudgetSection(api, 'syncLog'));
+  } else if (last) {
+    const n = document.createElement('span');
+    n.textContent = `${Number(last.confirmed) || 0} new`;
+    items.appendChild(n);
+  }
+  if (data.transfersAi) {
+    linkButton(items, `${data.transfersAi} transfer${data.transfersAi === 1 ? '' : 's'} the AI typed this month`, () => {
+      _navState.txFilter = { monthKey: data.range.key, type: 'transfer' };
+      openBudgetSection(api, 'transactions');
+    }).title = 'Kept out of spending. A wrong one hides an expense.';
+  }
+  if (last && Number(last.duplicates) > 0) {
+    linkButton(items, `${last.duplicates} possible duplicate${Number(last.duplicates) === 1 ? '' : 's'}`, () => openBudgetSection(api, 'review'));
+  }
+  if (last && Number(last.rulesLearned) > 0) {
+    linkButton(items, `${last.rulesLearned} rule${Number(last.rulesLearned) === 1 ? '' : 's'} learned`, () => openBudgetSection(api, 'rules'));
+  }
+  strip.appendChild(items);
+  if (data.review) {
+    const act = document.createElement('div');
+    act.className = 'budget-ov-sync-act';
+    api.ui.createButton(act, { label: `Review ${data.review}`, kind: 'primary', onClick: () => openBudgetSection(api, 'review') });
+    strip.appendChild(act);
+  }
+  root.appendChild(strip);
+}
+
+function describeWhen(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const same = d.toDateString() === new Date().toDateString();
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return same ? `Today at ${time}, from Gmail` : `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${time}, from Gmail`;
+}
+
+function paceSentence(p) {
+  if (p.limitCents <= 0) return 'Set limits in Plan to see what is left and how spending is pacing.';
+  const everyday = fmtMoney(p.everydaySpentCents);
+  if (p.dayOfMonth === 0) return 'This month has not started yet.';
+  if (p.pace === 'over') return `Everyday spending is ${fmtMoney(p.everydaySpentCents - p.everydayBudgetCents)} past its budget of ${fmtMoney(p.everydayBudgetCents)}.`;
+  if (p.projectedCents === null) {
+    return `${p.dayOfMonth} day${p.dayOfMonth === 1 ? '' : 's'} in: ${everyday} of everyday spending, ${p.everydaySpentCents <= p.evenByNowCents ? 'under' : 'over'} an even pace. Bills are counted as committed, not as pace.`;
+  }
+  if (p.pace === 'ahead') return `At this rate everyday spending reaches ${fmtMoney(p.projectedCents)} by the end of the month, past its ${fmtMoney(p.everydayBudgetCents)}.`;
+  return `At this rate everyday spending ends near ${fmtMoney(p.projectedCents)}, inside its ${fmtMoney(p.everydayBudgetCents)}.`;
+}
+
+function drawLeftCard(col, data) {
+  const card = document.createElement('div');
+  card.className = 'budget-ov-card';
+  const top = document.createElement('div');
+  top.className = 'budget-ov-left';
+  const big = document.createElement('span');
+  big.className = 'budget-ov-big budget-num';
+  big.textContent = fmtMoney(Math.abs(data.leftCents));
+  const what = document.createElement('span');
+  what.className = 'budget-ov-muted';
+  what.textContent = data.limitCents > 0
+    ? (data.leftCents >= 0 ? `left to spend, of ${fmtMoney(data.limitCents)} planned` : `over the ${fmtMoney(data.limitCents)} planned`)
+    : 'spent so far';
+  if (data.limitCents <= 0) big.textContent = fmtMoney(data.spentCents);
+  top.append(big, what);
+  card.appendChild(top);
+
+  if (data.limitCents > 0 && data.everydayBudgetCents > 0) {
+    const days = data.daysInMonth;
+    const max = Math.max(data.everydayBudgetCents, data.cumulative[data.cumulative.length - 1] || 0, 1);
+    const W = 600, H = 80;
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('class', 'budget-ov-chart');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', `Everyday spending so far, ${fmtMoney(data.everydaySpentCents)}, against an even pace to ${fmtMoney(data.everydayBudgetCents)}`);
+    const even = document.createElementNS(ns, 'line');
+    even.setAttribute('x1', '0'); even.setAttribute('y1', String(H));
+    even.setAttribute('x2', String(W)); even.setAttribute('y2', String(H - (data.everydayBudgetCents / max) * (H - 4)));
+    even.setAttribute('class', 'budget-ov-even');
+    svg.appendChild(even);
+    if (data.cumulative.length) {
+      const pts = ['0,' + H].concat(data.cumulative.map((c, i) => `${((i + 1) / days) * W},${H - (c / max) * (H - 4)}`));
+      const line = document.createElementNS(ns, 'polyline');
+      line.setAttribute('points', pts.join(' '));
+      line.setAttribute('class', 'budget-ov-spent' + (data.pace === 'over' || data.pace === 'ahead' ? ' is-ahead' : ''));
+      svg.appendChild(line);
+    }
+    card.appendChild(svg);
+    const axis = document.createElement('div');
+    axis.className = 'budget-ov-axis';
+    const short = new Date(data.range.year, data.range.month0, 1).toLocaleString('en-US', { month: 'short' });
+    axis.innerHTML = '';
+    for (const t of [`${short} 1`, `Even pace to ${fmtMoney(data.everydayBudgetCents)}`, `${short} ${days}`]) {
+      const s = document.createElement('span'); s.textContent = t; axis.appendChild(s);
+    }
+    card.appendChild(axis);
+  }
+  const note = document.createElement('div');
+  note.className = 'budget-ov-note';
+  note.textContent = paceSentence(data);
+  card.appendChild(note);
+  col.appendChild(card);
+}
+
+function fact(host, label, value, hint) {
+  const f = document.createElement('div');
+  f.className = 'budget-ov-fact';
+  const l = document.createElement('div'); l.className = 'budget-ov-label'; l.textContent = label;
+  const v = document.createElement('div'); v.className = 'budget-ov-value budget-num'; v.textContent = value;
+  const h = document.createElement('div'); h.className = 'budget-ov-faint'; h.textContent = hint;
+  f.append(l, v, h);
+  host.appendChild(f);
+}
+
+function drawFacts(col, data) {
+  const card = document.createElement('div');
+  card.className = 'budget-ov-card budget-ov-facts';
+  fact(card, 'Income', fmtMoney(data.incomeCents),
+    data.incomeExpectedCents > 0 ? `of about ${fmtMoney(data.incomeExpectedCents)} in a usual month` : 'this month');
+  const toCome = data.billsToComeCents;
+  fact(card, 'Bills', `${fmtMoney(data.billsPaidCents)} paid`, toCome > 0 ? `${fmtMoney(toCome)} still to come` : 'nothing more due this month');
+  fact(card, 'Goals', data.goals.tgt > 0 ? `${Math.round((data.goals.cur / data.goals.tgt) * 100)}%` : 'None yet',
+    data.goals.tgt > 0 ? `${fmtMoney(data.goals.cur)} of ${fmtMoney(data.goals.tgt)} across ${data.goals.n}` : 'add one in Net Worth and Goals');
+  col.appendChild(card);
+}
+
+function drawCategories(col, data, api) {
+  const rows = data.categories.filter(c => (Number(c.effective_limit_cents) || 0) > 0)
+    .sort((a, b) => b.pct - a.pct);
+  if (!rows.length) return;
+  const card = document.createElement('div');
+  card.className = 'budget-ov-card';
+  const head = document.createElement('div');
+  head.className = 'budget-ov-head';
+  const l = document.createElement('span'); l.className = 'budget-ov-label'; l.textContent = 'Spending by category';
+  head.appendChild(l);
+  linkButton(head, 'Edit Plan', () => openBudgetSection(api, 'plan', 'budgets'));
+  card.appendChild(head);
+  for (const c of rows) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'budget-ov-cat';
+    row.title = `Open ${c.name} transactions`;
+    const dot = document.createElement('span'); dot.className = 'budget-dot'; dot.style.background = c.color || 'var(--px-text-faint)';
+    const name = document.createElement('span'); name.className = 'budget-ov-cat-name'; name.textContent = c.name;
+    const bar = document.createElement('span'); bar.className = 'budget-ov-bar';
+    const fill = document.createElement('span'); fill.className = 'budget-ov-fill' + (c.status === 'over' ? ' is-over' : '');
+    fill.style.width = `${Math.min(100, Math.round(c.pct * 100))}%`;
+    fill.style.background = c.status === 'over' ? '' : (c.color || '');
+    bar.appendChild(fill);
+    const amt = document.createElement('span'); amt.className = 'budget-ov-cat-amt budget-num';
+    const sp = document.createElement('strong'); sp.textContent = fmtMoney(c.spent_cents);
+    const of = document.createElement('span'); of.className = 'budget-ov-faint'; of.textContent = ` of ${fmtMoney(c.effective_limit_cents)}`;
+    amt.append(sp, of);
+    row.append(dot, name, bar, amt);
+    row.addEventListener('click', () => {
+      _navState.txFilter = { categoryId: c.id, monthKey: data.range.key, type: 'spend' };
+      openBudgetSection(api, 'transactions');
+    });
+    card.appendChild(row);
+  }
+  col.appendChild(card);
+}
+
+function drawComingUp(col, data, api) {
+  const card = document.createElement('div');
+  card.className = 'budget-ov-card';
+  const head = document.createElement('div');
+  head.className = 'budget-ov-head';
+  const l = document.createElement('span'); l.className = 'budget-ov-label'; l.textContent = 'Bills';
+  head.appendChild(l);
+  linkButton(head, 'All Bills', () => openBudgetSection(api, 'plan', 'bills'));
+  card.appendChild(head);
+  const bills = data.bills.slice().sort((a, b) => (a.paid === b.paid ? String(a.dueDate || a.paidOn).localeCompare(String(b.dueDate || b.paidOn)) : a.paid ? 1 : -1));
+  if (!bills.length) {
+    const none = document.createElement('div'); none.className = 'budget-ov-faint'; none.textContent = 'No bills found yet. They show up after a few months of the same charge.';
+    card.appendChild(none);
+  }
+  for (const b of bills) {
+    const row = document.createElement('div');
+    row.className = 'budget-ov-row';
+    const when = document.createElement('span'); when.className = 'budget-ov-when budget-num';
+    const date = b.paid ? b.paidOn : b.dueDate;
+    when.textContent = date ? new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    const name = document.createElement('span'); name.className = 'budget-ov-grow';
+    name.textContent = b.name;
+    if (b.paid || b.unsure) {
+      const tag = document.createElement('span'); tag.className = 'budget-ov-faint';
+      tag.textContent = b.paid ? ' · paid' : ' · not sure yet';
+      name.appendChild(tag);
+    }
+    const amt = document.createElement('span'); amt.className = 'budget-num' + (b.paid ? ' budget-ov-faint' : '');
+    amt.textContent = fmtMoney(b.paid ? b.paidCents : b.usualCents);
+    row.append(when, name, amt);
+    card.appendChild(row);
+  }
+  col.appendChild(card);
+}
+
+function drawAccounts(col, data, api) {
+  if (!data.accounts.length) return;
+  const card = document.createElement('div');
+  card.className = 'budget-ov-card';
+  const head = document.createElement('div');
+  head.className = 'budget-ov-head';
+  const l = document.createElement('span'); l.className = 'budget-ov-label'; l.textContent = 'Accounts';
+  head.appendChild(l);
+  linkButton(head, 'Net Worth', () => openBudgetSection(api, 'worth'));
+  card.appendChild(head);
+  for (const a of data.accounts) {
+    const row = document.createElement('div');
+    row.className = 'budget-ov-row';
+    const name = document.createElement('span'); name.className = 'budget-ov-grow';
+    name.textContent = a.display_name || 'Account';
+    if (a.last_four) { const f = document.createElement('span'); f.className = 'budget-ov-faint'; f.textContent = ` ••${a.last_four}`; name.appendChild(f); }
+    const bal = Number(a.latest_balance_cents) || 0;
+    const amt = document.createElement('span'); amt.className = 'budget-num';
+    amt.textContent = a.kind === 'credit_card' ? `${fmtMoney(Math.abs(bal))} owed` : fmtMoney(bal);
+    row.append(name, amt);
+    card.appendChild(row);
+  }
+  col.appendChild(card);
+}
 
 function renderDashboardSection(body, api) {
   let monthKey = monthRange().key;
@@ -8970,7 +9423,11 @@ async function budgetSync(api) {
     // Auto-promote stable AI categorizations into deterministic rules.
     try {
       const promoted = await promoteAiCategorizationsToRules(runId);
-      if (promoted > 0) counts.rulesLearned = promoted;
+      if (promoted > 0) {
+        counts.rulesLearned = promoted;
+        // The run status was saved before promotion; record what it learned.
+        await db.run(`INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_run_status', ?)`, [JSON.stringify({ ok: true, ...counts })]);
+      }
     } catch (e) {
       await syncLog(runId, 'warn', 'promote', 'Rule promotion failed: ' + (e instanceof Error ? e.message : String(e)));
     }
