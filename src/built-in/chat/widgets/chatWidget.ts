@@ -21,6 +21,7 @@ import { ChatInputPart } from '../input/chatInputPart.js';
 import { chatIcons } from '../chatIcons.js';
 import { ChatListRenderer } from '../rendering/chatListRenderer.js';
 import { renderAgentTaskRail } from '../rendering/chatTaskCards.js';
+import { ChatEngineChip } from './chatEngineChip.js';
 import { ChatTokenStatusBar } from './chatTokenStatusBar.js';
 import { ChatModelPicker } from '../pickers/chatModelPicker.js';
 import { ChatModePicker, MODE_META } from '../pickers/chatModePicker.js';
@@ -345,13 +346,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     if (services.modelPicker) {
       const picker = this._register(new ChatModelPicker(pickerSlot, services.modelPicker));
-      this._register(picker.onDidSelectModel((modelId) => {
-        // Sync the session's persisted modelId when user picks a different model
-        if (this._session && this._session.modelId !== modelId) {
-          this._session.modelId = modelId;
-          this._services.updateSessionModel?.(this._session.id, modelId);
-        }
-      }));
+      this._register(picker.onDidSelectModel((modelId) => this._syncSessionModel(modelId)));
       this._register(services.modelPicker.onDidChangeModels(() => {
         void this._syncVisionSupport();
       }));
@@ -360,19 +355,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Context-window picker — lets the user clamp `num_ctx` per session so
     // heavy reasoning models keep their KV cache in VRAM.
     this._contextPicker = this._register(new ChatContextWindowPicker(pickerSlot, {
-      onPick: (contextWindow: number) => {
-        // Push to provider first so getCachedContextLength reflects the
-        // new value when ChatService fires onDidChangeSession (the token
-        // bar listens to that event and re-reads the provider).
-        this._services.setContextLengthOverride?.(contextWindow);
-        if (this._session) {
-          // Service owns the session object: it compares old vs new and
-          // skips the write if unchanged, so we must NOT pre-mutate
-          // `this._session.contextWindowOverride` here.
-          const value = contextWindow > 0 ? contextWindow : undefined;
-          this._services.updateSessionContextWindow?.(this._session.id, value);
-        }
-      },
+      onPick: (contextWindow: number) => this._applyContextWindow(contextWindow),
     }));
     this._contextPicker.setActiveContextWindow(this._session?.contextWindowOverride);
 
@@ -397,6 +380,23 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Token usage indicator — mounted in the input toolbar (replaces Configure AI wrench)
     if (services.tokenBarServices) {
       const tokenBar = this._register(new ChatTokenStatusBar(services.tokenBarServices));
+      // The engine chip: model, context size and usage in one control. The
+      // three it stands for keep running underneath (session sync, provider
+      // override, usage math) but are not shown.
+      if (services.modelPicker) {
+        const modelServices = services.modelPicker;
+        const chip = this._register(new ChatEngineChip(pickerSlot, {
+          models: modelServices,
+          onSelectModel: (modelId) => { modelServices.setActiveModel(modelId); this._syncSessionModel(modelId); },
+          getContextOverride: () => this._session?.contextWindowOverride,
+          onPickContext: (tokens) => { this._contextPicker?.setActiveContextWindow(tokens > 0 ? tokens : undefined); this._applyContextWindow(tokens); },
+          getUsage: () => tokenBar.lastBreakdown,
+          openUsageDetails: (anchor) => tokenBar.openDetails(anchor),
+        }));
+        this._register(tokenBar.onDidUpdate(() => chip.refresh()));
+        this._register(services.onDidChangeSession(() => chip.refresh()));
+        pickerSlot.classList.add('parallx-chat-engine-on');
+      }
       this._inputPart.mountTokenMeter(tokenBar.element);
       tokenBar.update().catch(() => {});
       // onDidChangeSession fires once per stream chunk; update() walks the
@@ -756,6 +756,29 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       console.error('[ChatWidget] Regenerate failed:', err);
     } finally {
       this._inputPart.setStreaming(false);
+    }
+  }
+
+  /** A picked model becomes the session's (persisted), whichever control picked it. */
+  private _syncSessionModel(modelId: string): void {
+    if (this._session && this._session.modelId !== modelId) {
+      this._session.modelId = modelId;
+      this._services.updateSessionModel?.(this._session.id, modelId);
+    }
+  }
+
+  /** A picked context size: provider first, then the session. */
+  private _applyContextWindow(contextWindow: number): void {
+    // Push to provider first so getCachedContextLength reflects the
+    // new value when ChatService fires onDidChangeSession (the token
+    // bar listens to that event and re-reads the provider).
+    this._services.setContextLengthOverride?.(contextWindow);
+    if (this._session) {
+      // Service owns the session object: it compares old vs new and
+      // skips the write if unchanged, so we must NOT pre-mutate
+      // `this._session.contextWindowOverride` here.
+      const value = contextWindow > 0 ? contextWindow : undefined;
+      this._services.updateSessionContextWindow?.(this._session.id, value);
     }
   }
 

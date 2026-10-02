@@ -18,6 +18,7 @@
 // which calls Ollama's /api/show endpoint to read the model's native context_length.
 
 import { Disposable, toDisposable, type IDisposable } from '../../../platform/lifecycle.js';
+import { Emitter } from '../../../platform/events.js';
 import { layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { $ } from '../../../ui/dom.js';
 
@@ -34,7 +35,7 @@ interface ITokenSubItem {
 }
 
 /** Breakdown of token usage by category. */
-interface ITokenBreakdown {
+export interface ITokenBreakdown {
   /** Total tokens used (real from Ollama when available, else estimated). */
   total: number;
   /** Context window size in tokens. */
@@ -119,10 +120,19 @@ export class ChatTokenStatusBar extends Disposable {
   /** Get the DOM element to insert into a status bar item's label. */
   get element(): HTMLElement { return this._root; }
 
+  /** The last computed usage, for the engine chip (chatEngineChip.ts). */
+  get lastBreakdown(): ITokenBreakdown | undefined { return this._lastBreakdown; }
+  private readonly _onDidUpdate = this._register(new Emitter<ITokenBreakdown>());
+  readonly onDidUpdate = this._onDidUpdate.event;
+
+  /** Open the detailed usage popup over `anchor` (the engine chip's Details link). */
+  openDetails(anchor?: HTMLElement): void { this._dismissPopup(); this._showPopup(anchor); }
+
   /** Refresh the status bar display and cache the breakdown. */
   async update(): Promise<void> {
     const breakdown = await this._computeBreakdown();
     this._lastBreakdown = breakdown;
+    this._onDidUpdate.fire(breakdown);
 
     // Update ring
     this._ring.innerHTML = this._buildRingSvg(breakdown.percentage);
@@ -376,7 +386,7 @@ export class ChatTokenStatusBar extends Disposable {
     }
   }
 
-  private _showPopup(): void {
+  private _showPopup(anchor?: HTMLElement): void {
     if (this._popupElement) return;
 
     const breakdown = this._lastBreakdown ?? {
@@ -393,13 +403,13 @@ export class ChatTokenStatusBar extends Disposable {
     this._popupElement = popup;
 
     // Position above the indicator
-    this._popupAnchorRect = this._root.getBoundingClientRect();
+    this._popupAnchorRect = (anchor ?? this._root).getBoundingClientRect();
     layoutPopup(popup, this._popupAnchorRect, { position: 'above', gap: 4, margin: 8 });
 
     // Dismissal contract (Escape, outside pointer, window blur). The root is
     // part of the popup's roots so a click on the indicator reaches
     // _togglePopup instead of dismiss-then-reopen.
-    const detach = attachPopupDismiss([popup, this._root], () => this._dismissPopup());
+    const detach = attachPopupDismiss(anchor ? [popup, this._root, anchor] : [popup, this._root], () => this._dismissPopup());
     this._dismissListener = toDisposable(detach);
   }
 

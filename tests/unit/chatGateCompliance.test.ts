@@ -111,6 +111,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'widgets/autonomyActivityWidget.ts': [],  // M86 — dashboard widget contribution (contract types from api/bridges, outside chat)
   'widgets/chatSessionSidebar.ts': ['chatIcons'],
   'widgets/chatTokenStatusBar.ts': ['chatIcons'],
+  'widgets/chatEngineChip.ts':     ['widgets/'],  // model + context + usage in one chip
   'widgets/chatView.ts':          ['providers/', 'widgets/'],
   'widgets/chatWidget.ts':        ['chatIcons', 'input/', 'rendering/', 'pickers/', 'providers/', 'widgets/'],
 
