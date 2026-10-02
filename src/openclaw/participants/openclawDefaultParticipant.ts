@@ -7,6 +7,7 @@ import type {
   IChatResponseStream,
   ICancellationToken,
   IChatFollowup,
+  IChatRequestOptions,
 } from '../../services/chatTypes.js';
 import { ChatMode, ChatContentPartKind, isChatFileAttachment, isChatCanvasBlockAttachment } from '../../services/chatTypes.js';
 import { isChatSelectionAttachment } from '../../services/selectionActionTypes.js';
@@ -144,8 +145,33 @@ export function createOpenclawDefaultParticipant(
   };
 }
 
+/**
+ * Every model call this turn makes carries the turn's session id, so the
+ * model engine broker can tell a background run's calls (heartbeat,
+ * routines, helpers) from your chat's and order them (AGENT_RUNTIME_DESIGN.md).
+ */
+export function tagTurnModelCalls(services: IDefaultParticipantServices, runId: string): IDefaultParticipantServices {
+  const tag = <T extends { engine?: IChatRequestOptions['engine'] }>(o: T | undefined): T =>
+    (o?.engine ? o : { ...(o ?? {}), engine: { runId } }) as T;
+  const forModel = services.sendChatRequestForModel;
+  const summarize = services.sendSummarizationRequest;
+  return {
+    ...services,
+    sendChatRequest: (messages, options, signal) => services.sendChatRequest(messages, tag(options), signal),
+    sendSummarizationRequest: summarize
+      ? (messages, signal, options) => summarize.call(services, messages, signal, tag(options))
+      : undefined,
+    sendChatRequestForModel: forModel
+      ? (modelId) => {
+        const send = forModel.call(services, modelId);
+        return (messages, options, signal) => send(messages, tag(options), signal);
+      }
+      : undefined,
+  };
+}
+
 async function runOpenclawDefaultTurn(
-  services: IDefaultParticipantServices,
+  untaggedServices: IDefaultParticipantServices,
   commandRegistry: IOpenclawCommandRegistryFacade,
   request: IChatParticipantRequest,
   context: IChatParticipantContext,
@@ -154,6 +180,7 @@ async function runOpenclawDefaultTurn(
   getFollowupState?: (sessionId: string) => IOpenclawFollowupSessionState | undefined,
   agentIdForResolve: string = 'default',
 ): Promise<IChatParticipantResult> {
+  const services = context.sessionId ? tagTurnModelCalls(untaggedServices, context.sessionId) : untaggedServices;
   const initResult = await tryHandleOpenclawInitCommand(services, request.command, response);
   if (initResult) {
     return initResult;

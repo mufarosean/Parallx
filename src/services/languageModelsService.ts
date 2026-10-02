@@ -19,6 +19,8 @@ import { toDisposable } from '../platform/lifecycle.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
 import type { IStorage } from '../platform/storage.js';
+import { ModelEngineBroker } from './modelEngineBroker.js';
+import type { IModelEngineBroker } from './modelEngineBroker.js';
 import type {
   ILanguageModelsService,
   ILanguageModelProvider,
@@ -66,6 +68,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
   // ── Active model ──
 
   private _activeModelId: string | undefined;
+  private readonly _broker = this._register(new ModelEngineBroker());
 
   // ── Storage (optional — late-bound via setStorage) ──
 
@@ -364,7 +367,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     }
 
     try {
-      yield* provider.sendChatRequest(modelId, messages, options, signal);
+      yield* this._viaBroker(provider, modelId, messages, options, signal);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         // Request was cancelled — not an error
@@ -411,7 +414,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     }
 
     try {
-      yield* provider.sendChatRequest(modelId, messages, options, signal);
+      yield* this._viaBroker(provider, modelId, messages, options, signal);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         return;
@@ -420,6 +423,41 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
         `Chat request failed for model '${modelId}': ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  }
+
+  // ── Engine broker ──
+
+  /** Every model call: the broker orders it (chat first) and may pause it. */
+  private _viaBroker(
+    provider: ILanguageModelProvider,
+    modelId: string,
+    messages: readonly IChatMessage[],
+    options: IChatRequestOptions | undefined,
+    signal: AbortSignal | undefined,
+  ): AsyncIterable<IChatResponseChunk> {
+    return this._broker.request(
+      { engine: provider.id, gated: provider.local === true, modelId, options, signal },
+      (opts, sig) => provider.sendChatRequest(modelId, messages, opts, sig),
+    );
+  }
+
+  getEngineBroker(): IModelEngineBroker {
+    return this._broker;
+  }
+
+  getEngineForModel(modelId: string): string | undefined {
+    return this._modelToProvider.get(modelId);
+  }
+
+  /** Route a provider call made outside this service (a pane holding the provider). */
+  sendViaBroker(
+    provider: ILanguageModelProvider,
+    modelId: string,
+    messages: readonly IChatMessage[],
+    options?: IChatRequestOptions,
+    signal?: AbortSignal,
+  ): AsyncIterable<IChatResponseChunk> {
+    return this._viaBroker(provider, modelId, messages, options, signal);
   }
 
   // ── Provider Status ──

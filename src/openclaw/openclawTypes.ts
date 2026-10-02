@@ -251,7 +251,7 @@ export interface IDefaultParticipantServices {
   maxIterations?: number;
   networkTimeout?: number;
   getModelContextLength?(): number;
-  sendSummarizationRequest?(messages: readonly IChatMessage[], signal?: AbortSignal, options?: { readonly numCtx?: number }): AsyncIterable<IChatResponseChunk>;
+  sendSummarizationRequest?(messages: readonly IChatMessage[], signal?: AbortSignal, options?: { readonly numCtx?: number; readonly engine?: IChatRequestOptions['engine'] }): AsyncIterable<IChatResponseChunk>;
   getFileCount?(): Promise<number>;
   isRAGAvailable?(): boolean;
   isIndexing?(): boolean;

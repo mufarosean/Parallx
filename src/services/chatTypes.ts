@@ -116,6 +116,12 @@ export interface IChatRequestOptions {
    * Upstream: wrapOllamaCompatNumCtx injects num_ctx matching the token budget.
    */
   readonly numCtx?: number;
+  /**
+   * Who is asking, for the model engine broker (docs/AGENT_RUNTIME_DESIGN.md):
+   * the run this call belongs to and, optionally, its priority class. Not
+   * sent to the provider. Untagged calls count as interactive.
+   */
+  readonly engine?: import('./modelEngineBroker.js').IEngineCallTag;
 }
 
 /**
@@ -1194,6 +1200,11 @@ export interface ILanguageModelProvider {
   getModelInfo(modelId: string): Promise<ILanguageModelInfo>;
   /** Optional: fires when the provider's connectivity status changes. */
   readonly onDidChangeStatus?: Event<IProviderStatus>;
+  /**
+   * Runs on this machine: its calls share one engine (one GPU), so they go
+   * through the broker's priority queue. Cloud providers leave this unset.
+   */
+  readonly local?: boolean;
 }
 
 // ── ILanguageModelsService ──
@@ -1250,6 +1261,10 @@ export interface ILanguageModelsService extends IDisposable {
   ): AsyncIterable<IChatResponseChunk>;
   /** Check provider availability. */
   checkStatus(): Promise<IProviderStatus>;
+  /** The broker every model call goes through (priorities, chat lease). */
+  getEngineBroker?(): import('./modelEngineBroker.js').IModelEngineBroker;
+  /** The engine (provider id) a model runs on, if known. */
+  getEngineForModel?(modelId: string): string | undefined;
 }
 
 export const ILanguageModelsService = createServiceIdentifier<ILanguageModelsService>('ILanguageModelsService');

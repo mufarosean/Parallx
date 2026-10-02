@@ -142,167 +142,176 @@ export async function runOpenclawReadOnlyTurn(
   let totalToolCalls = 0;
   const loopSafety = new ChatToolLoopSafety();
 
-  let iterationsRemaining = maxIterations;
-  while (iterationsRemaining >= 0 && !token.isCancellationRequested) {
-    let markdown = '';
-    let thinking = '';
-    let promptTokens: number | undefined;
-    let completionTokens: number | undefined;
-    const toolCalls: Array<{ function: { name: string; arguments: Record<string, unknown> } }> = [];
+  // The turn's cancel closes the model request itself (Stop frees the engine).
+  const turnAbort = new AbortController();
+  if (token.isCancellationRequested) turnAbort.abort();
+  const cancelSub = token.onCancellationRequested(() => turnAbort.abort());
 
-    try {
-      // D4: Fire before-model-call hook
-      const modelName = options.modelName ?? 'unknown';
-      const hookMessages = options.messageObserver ? messages.map(m => ({ role: m.role, content: m.content })) : undefined;
-      if (options.messageObserver?.onBeforeModelCall && hookMessages) {
-        try { options.messageObserver.onBeforeModelCall(hookMessages, modelName); } catch (e) { console.warn('[D4] Message hook error:', e); }
+  try {
+    let iterationsRemaining = maxIterations;
+    while (iterationsRemaining >= 0 && !token.isCancellationRequested) {
+      let markdown = '';
+      let thinking = '';
+      let promptTokens: number | undefined;
+      let completionTokens: number | undefined;
+      const toolCalls: Array<{ function: { name: string; arguments: Record<string, unknown> } }> = [];
+
+      try {
+        // D4: Fire before-model-call hook
+        const modelName = options.modelName ?? 'unknown';
+        const hookMessages = options.messageObserver ? messages.map(m => ({ role: m.role, content: m.content })) : undefined;
+        if (options.messageObserver?.onBeforeModelCall && hookMessages) {
+          try { options.messageObserver.onBeforeModelCall(hookMessages, modelName); } catch (e) { console.warn('[D4] Message hook error:', e); }
+        }
+        const modelCallStart = Date.now();
+        for await (const chunk of sendChatRequest(messages, effectiveRequestOptions, turnAbort.signal)) {
+          if (token.isCancellationRequested) {
+            break;
+          }
+          markdown += chunk.content;
+          if (chunk.thinking) {
+            thinking += chunk.thinking;
+            response.thinking(chunk.thinking);
+          }
+          if (chunk.toolCalls) {
+            toolCalls.push(...chunk.toolCalls);
+          }
+          if (typeof chunk.promptEvalCount === 'number') {
+            promptTokens = chunk.promptEvalCount;
+          }
+          if (typeof chunk.evalCount === 'number') {
+            completionTokens = chunk.evalCount;
+          }
+        }
+        // D4: Fire after-model-call hook (reuses snapshot from before-hook)
+        if (options.messageObserver?.onAfterModelCall && hookMessages) {
+          try { options.messageObserver.onAfterModelCall(hookMessages, modelName, Date.now() - modelCallStart); } catch (e) { console.warn('[D4] Message hook error:', e); }
+        }
+      } catch (error) {
+        // Transient → exponential backoff → retry
+        if (isTransientError(error) && transientRetries < MAX_TRANSIENT_RETRIES) {
+          const backoff = transientDelay(transientRetries);
+          response.progress(`Transient error, retrying in ${backoff}ms...`);
+          await delay(backoff);
+          transientRetries++;
+          continue;
+        }
+
+        // Timeout → retry (no compaction available for readonly participants)
+        if (isTimeoutError(error) && timeoutRetries < MAX_TIMEOUT_RETRIES) {
+          response.progress(`Timeout, retrying (${timeoutRetries + 1}/${MAX_TIMEOUT_RETRIES})...`);
+          timeoutRetries++;
+          continue;
+        }
+
+        throw error;
       }
-      const modelCallStart = Date.now();
-      for await (const chunk of sendChatRequest(messages, effectiveRequestOptions)) {
-        if (token.isCancellationRequested) {
+
+      // Report token usage
+      if (typeof promptTokens === 'number' && typeof completionTokens === 'number') {
+        response.reportTokenUsage(promptTokens, completionTokens);
+      }
+
+      // No tool calls → turn complete
+      if (toolCalls.length === 0) {
+        if (markdown) {
+          response.markdown(markdown);
+        }
+        return {
+          markdown,
+          thinking,
+          toolCallCount: totalToolCalls,
+          promptTokens,
+          completionTokens,
+          durationMs: Date.now() - turnStartMs,
+          transientRetries,
+          timeoutRetries,
+          completed: true,
+        };
+      }
+
+      // Tool calls present but no invocation handler
+      if (!options.invokeToolWithRuntimeControl) {
+        response.warning('Readonly participant received tool calls, but runtime-controlled tool invocation is not available.');
+        if (markdown) {
+          response.markdown(markdown);
+        }
+        return {
+          markdown,
+          thinking,
+          toolCallCount: totalToolCalls,
+          promptTokens,
+          completionTokens,
+          durationMs: Date.now() - turnStartMs,
+          transientRetries,
+          timeoutRetries,
+          completed: false,
+        };
+      }
+
+      // Execute tool calls and feed results back
+      // Batch-collect results before appending to messages to avoid partial state
+      // if loop safety blocks mid-iteration (matches openclawAttempt.ts pattern).
+      const toolResultMessages: IChatMessage[] = [];
+      let loopBlocked = false;
+
+      for (const toolCall of toolCalls) {
+        const toolName = toolCall.function.name;
+
+        // Safety: detect infinite tool loops
+        const safety = loopSafety.record(toolName, toolCall.function.arguments);
+        if (safety.blocked) {
+          response.warning(`Stopped: repeated identical ${toolName} calls detected.`);
+          loopBlocked = true;
           break;
         }
-        markdown += chunk.content;
-        if (chunk.thinking) {
-          thinking += chunk.thinking;
-          response.thinking(chunk.thinking);
+
+        totalToolCalls++;
+        // D4: Fire before-tool hook
+        // INVARIANT: Readonly tools are always-allowed with no approval flow — only onValidated + onExecuted fire.
+        const hookMetadata = { name: toolName, permissionLevel: 'always-allowed' as const, enabled: true, requiresApproval: false, autoApproved: true, approvalSource: 'default' as const, source: 'built-in' as const };
+        if (options.toolObserver?.onValidated) {
+          try { options.toolObserver.onValidated(hookMetadata); } catch (e) { console.warn('[D4] Readonly tool hook error:', e); }
         }
-        if (chunk.toolCalls) {
-          toolCalls.push(...chunk.toolCalls);
+        // No acceptsImages: this loop sends tool results as text only, so a tool
+        // that makes an image for the model (browserCapture) refuses here.
+        // An argument the offered schema does not declare is refused, not dropped (toolArgumentCheck.ts).
+        const definition = options.tools.find((d) => d.name === toolName);
+        const argumentProblem = definition
+          ? describeUndeclaredArguments(definition.name, definition.parameters, toolCall.function.arguments)
+          : undefined;
+        const toolResult = argumentProblem
+          ? { content: argumentProblem, isError: true }
+          : await options.invokeToolWithRuntimeControl(toolName, toolCall.function.arguments, token, undefined, options.sessionId);
+        // D4: Fire after-tool hook (approval hooks skipped — readonly tools have no approval flow)
+        if (options.toolObserver?.onExecuted) {
+          try { options.toolObserver.onExecuted(hookMetadata, toolResult); } catch (e) { console.warn('[D4] Readonly tool hook error:', e); }
         }
-        if (typeof chunk.promptEvalCount === 'number') {
-          promptTokens = chunk.promptEvalCount;
-        }
-        if (typeof chunk.evalCount === 'number') {
-          completionTokens = chunk.evalCount;
-        }
-      }
-      // D4: Fire after-model-call hook (reuses snapshot from before-hook)
-      if (options.messageObserver?.onAfterModelCall && hookMessages) {
-        try { options.messageObserver.onAfterModelCall(hookMessages, modelName, Date.now() - modelCallStart); } catch (e) { console.warn('[D4] Message hook error:', e); }
-      }
-    } catch (error) {
-      // Transient → exponential backoff → retry
-      if (isTransientError(error) && transientRetries < MAX_TRANSIENT_RETRIES) {
-        const backoff = transientDelay(transientRetries);
-        response.progress(`Transient error, retrying in ${backoff}ms...`);
-        await delay(backoff);
-        transientRetries++;
-        continue;
+        // Defensive: same MCP-shape unwrap as openclawAttempt — extensions
+        // returning `[{ type: 'text', text }]` instead of plain string would
+        // otherwise trip Ollama's HTTP 400.
+        toolResultMessages.push({ role: 'tool', content: normalizeToolResultContent(toolResult.content, toolName), toolName });
       }
 
-      // Timeout → retry (no compaction available for readonly participants)
-      if (isTimeoutError(error) && timeoutRetries < MAX_TIMEOUT_RETRIES) {
-        response.progress(`Timeout, retrying (${timeoutRetries + 1}/${MAX_TIMEOUT_RETRIES})...`);
-        timeoutRetries++;
-        continue;
+      // Batch-append: one assistant message + all collected tool result messages
+      if (toolResultMessages.length > 0) {
+        messages.push({
+          role: 'assistant',
+          content: markdown,
+          toolCalls,
+          thinking,
+        });
+        messages.push(...toolResultMessages);
       }
 
-      throw error;
-    }
-
-    // Report token usage
-    if (typeof promptTokens === 'number' && typeof completionTokens === 'number') {
-      response.reportTokenUsage(promptTokens, completionTokens);
-    }
-
-    // No tool calls → turn complete
-    if (toolCalls.length === 0) {
-      if (markdown) {
-        response.markdown(markdown);
-      }
-      return {
-        markdown,
-        thinking,
-        toolCallCount: totalToolCalls,
-        promptTokens,
-        completionTokens,
-        durationMs: Date.now() - turnStartMs,
-        transientRetries,
-        timeoutRetries,
-        completed: true,
-      };
-    }
-
-    // Tool calls present but no invocation handler
-    if (!options.invokeToolWithRuntimeControl) {
-      response.warning('Readonly participant received tool calls, but runtime-controlled tool invocation is not available.');
-      if (markdown) {
-        response.markdown(markdown);
-      }
-      return {
-        markdown,
-        thinking,
-        toolCallCount: totalToolCalls,
-        promptTokens,
-        completionTokens,
-        durationMs: Date.now() - turnStartMs,
-        transientRetries,
-        timeoutRetries,
-        completed: false,
-      };
-    }
-
-    // Execute tool calls and feed results back
-    // Batch-collect results before appending to messages to avoid partial state
-    // if loop safety blocks mid-iteration (matches openclawAttempt.ts pattern).
-    const toolResultMessages: IChatMessage[] = [];
-    let loopBlocked = false;
-
-    for (const toolCall of toolCalls) {
-      const toolName = toolCall.function.name;
-
-      // Safety: detect infinite tool loops
-      const safety = loopSafety.record(toolName, toolCall.function.arguments);
-      if (safety.blocked) {
-        response.warning(`Stopped: repeated identical ${toolName} calls detected.`);
-        loopBlocked = true;
+      if (loopBlocked) {
         break;
       }
 
-      totalToolCalls++;
-      // D4: Fire before-tool hook
-      // INVARIANT: Readonly tools are always-allowed with no approval flow — only onValidated + onExecuted fire.
-      const hookMetadata = { name: toolName, permissionLevel: 'always-allowed' as const, enabled: true, requiresApproval: false, autoApproved: true, approvalSource: 'default' as const, source: 'built-in' as const };
-      if (options.toolObserver?.onValidated) {
-        try { options.toolObserver.onValidated(hookMetadata); } catch (e) { console.warn('[D4] Readonly tool hook error:', e); }
-      }
-      // No acceptsImages: this loop sends tool results as text only, so a tool
-      // that makes an image for the model (browserCapture) refuses here.
-      // An argument the offered schema does not declare is refused, not dropped (toolArgumentCheck.ts).
-      const definition = options.tools.find((d) => d.name === toolName);
-      const argumentProblem = definition
-        ? describeUndeclaredArguments(definition.name, definition.parameters, toolCall.function.arguments)
-        : undefined;
-      const toolResult = argumentProblem
-        ? { content: argumentProblem, isError: true }
-        : await options.invokeToolWithRuntimeControl(toolName, toolCall.function.arguments, token, undefined, options.sessionId);
-      // D4: Fire after-tool hook (approval hooks skipped — readonly tools have no approval flow)
-      if (options.toolObserver?.onExecuted) {
-        try { options.toolObserver.onExecuted(hookMetadata, toolResult); } catch (e) { console.warn('[D4] Readonly tool hook error:', e); }
-      }
-      // Defensive: same MCP-shape unwrap as openclawAttempt — extensions
-      // returning `[{ type: 'text', text }]` instead of plain string would
-      // otherwise trip Ollama's HTTP 400.
-      toolResultMessages.push({ role: 'tool', content: normalizeToolResultContent(toolResult.content, toolName), toolName });
+      iterationsRemaining -= 1;
     }
-
-    // Batch-append: one assistant message + all collected tool result messages
-    if (toolResultMessages.length > 0) {
-      messages.push({
-        role: 'assistant',
-        content: markdown,
-        toolCalls,
-        thinking,
-      });
-      messages.push(...toolResultMessages);
-    }
-
-    if (loopBlocked) {
-      break;
-    }
-
-    iterationsRemaining -= 1;
+  } finally {
+    cancelSub.dispose();
   }
 
   // Iteration budget exhausted or cancelled

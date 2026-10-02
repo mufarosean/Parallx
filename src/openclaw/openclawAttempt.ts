@@ -978,23 +978,33 @@ async function executeModelStream(
   let completionTokens: number | undefined;
   const toolCalls: IToolCall[] = [];
 
-  for await (const chunk of sendChatRequest(messages, options)) {
-    if (token.isCancellationRequested) break;
+  // The turn's cancel reaches the model call: Stop or a timeout closes the
+  // HTTP request, so the engine is free at once instead of generating on
+  // unseen until the step would have finished.
+  const abort = new AbortController();
+  if (token.isCancellationRequested) abort.abort();
+  const cancelSub = token.onCancellationRequested(() => abort.abort());
+  try {
+    for await (const chunk of sendChatRequest(messages, options, abort.signal)) {
+      if (token.isCancellationRequested) break;
 
-    markdown += chunk.content;
-    if (chunk.thinking) {
-      thinking += chunk.thinking;
-      response.thinking(chunk.thinking);
+      markdown += chunk.content;
+      if (chunk.thinking) {
+        thinking += chunk.thinking;
+        response.thinking(chunk.thinking);
+      }
+      if (chunk.toolCalls) {
+        toolCalls.push(...chunk.toolCalls);
+      }
+      if (typeof chunk.promptEvalCount === 'number') {
+        promptTokens = chunk.promptEvalCount;
+      }
+      if (typeof chunk.evalCount === 'number') {
+        completionTokens = chunk.evalCount;
+      }
     }
-    if (chunk.toolCalls) {
-      toolCalls.push(...chunk.toolCalls);
-    }
-    if (typeof chunk.promptEvalCount === 'number') {
-      promptTokens = chunk.promptEvalCount;
-    }
-    if (typeof chunk.evalCount === 'number') {
-      completionTokens = chunk.evalCount;
-    }
+  } finally {
+    cancelSub.dispose();
   }
 
   return { markdown, thinking, toolCalls, promptTokens, completionTokens };

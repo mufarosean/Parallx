@@ -838,8 +838,11 @@ export class ChatDataService {
     // conversation is at the window's edge. Sent without num_ctx it fell back
     // to the provider default and was truncated or rejected on exactly the
     // sessions that needed it. The caller passes the session's own budget.
-    const requestOptions: IChatRequestOptions | undefined = options?.numCtx && options.numCtx > 0
-      ? { numCtx: options.numCtx }
+    const requestOptions: IChatRequestOptions | undefined = (options?.numCtx && options.numCtx > 0) || options?.engine
+      ? {
+        ...(options?.numCtx && options.numCtx > 0 ? { numCtx: options.numCtx } : {}),
+        ...(options?.engine ? { engine: options.engine } : {}),
+      }
       : undefined;
     // Compaction uses the selected model's registered provider just like a
     // normal turn. Posting a non-Ollama model ID directly to Ollama loses

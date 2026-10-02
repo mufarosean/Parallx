@@ -521,6 +521,20 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const agentService = api.services.get<import('../../services/chatTypes.js').IChatAgentService>(IChatAgentService);
   const modeService = api.services.get<import('../../services/chatTypes.js').IChatModeService>(IChatModeService);
 
+  // Typing in a chat box tells the model engine broker you are about to
+  // send: queued background work stays still a moment longer.
+  {
+    const engineBroker = languageModelsService.getEngineBroker?.();
+    if (engineBroker) {
+      const onInput = (e: globalThis.Event) => {
+        const t = e.target as Element | null;
+        if (t?.classList?.contains('parallx-chat-input-textarea')) engineBroker.noteUserActivity();
+      };
+      document.addEventListener('input', onInput, true);
+      context.subscriptions.push({ dispose: () => document.removeEventListener('input', onInput, true) });
+    }
+  }
+
   // Sessions are restored by the workbench in Phase 5 (after DB binds).
   // No need to call restoreSessions() here — it would duplicate the work
   // and was the secondary path through which unscoped sessions could leak.
@@ -1305,7 +1319,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     } : undefined,
     sendChatRequestForModel: _ollamaProvider ? (modelId: string) => {
       return (messages: Parameters<typeof dataService.sendChatRequest>[0], options?: Parameters<typeof dataService.sendChatRequest>[1], signal?: AbortSignal) =>
-        _ollamaProvider!.sendChatRequest(modelId, messages as any, options as any, signal);
+        languageModelsService.sendChatRequestForModel(modelId, messages, options, signal);
     } : undefined,
     // D3: Diagnostics service
     diagnosticsService: api.services.has(IDiagnosticsService)
@@ -3101,8 +3115,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         retrieveContext?: (query: string) => Promise<string | undefined>;
       } = {
         sendChatRequest: (messages, options, signal) => {
+          // Through the model service, so the call takes its place in the
+          // engine broker's order (and works for any provider's model).
           const modelId = languageModelsService.getActiveModel() ?? '';
-          return _ollamaProvider!.sendChatRequest(modelId, messages, options, signal);
+          return languageModelsService.sendChatRequestForModel(modelId, messages, options, signal);
         },
         retrieveContext: retrievalService && indexingPipelineService
           ? async (query: string): Promise<string | undefined> => {

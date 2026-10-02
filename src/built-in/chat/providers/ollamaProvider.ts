@@ -119,6 +119,7 @@ const HEALTH_STARTUP_WINDOW_MS = 15_000;
 export class OllamaProvider extends Disposable implements ILanguageModelProvider {
 
   readonly id = 'ollama';
+  readonly local = true;
   readonly displayName = 'Ollama';
 
   private readonly _baseUrl: string;
@@ -662,6 +663,10 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       }
     } finally {
       reader.releaseLock();
+      // A consumer that stops reading (Stop, a timeout, a preemption, a
+      // break) must close the request too: otherwise Ollama keeps
+      // generating into a socket nobody reads, holding its only slot.
+      controller.abort();
     }
   }
 

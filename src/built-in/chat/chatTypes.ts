@@ -83,6 +83,8 @@ export interface ISummarizationRequestOptions {
   /** The session's context window, sent as num_ctx so the summarizer sees
    *  the same window the conversation it is folding was running in. */
   readonly numCtx?: number;
+  /** The run asking (model engine broker); see IChatRequestOptions.engine. */
+  readonly engine?: import('../../services/modelEngineBroker.js').IEngineCallTag;
 }
 
 export interface IDefaultParticipantServices {

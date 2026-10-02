@@ -13,6 +13,7 @@ import { Emitter } from '../platform/events.js';
 import { URI } from '../platform/uri.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
+import type { EnginePriority } from './modelEngineBroker.js';
 import { ChatContentPartKind } from './chatTypes.js';
 import { isTurnTainted } from '../openclaw/openclawToolPolicy.js';
 import { parseChatRequest } from '../built-in/chat/input/chatRequestParser.js';
@@ -660,6 +661,8 @@ export class ChatService extends Disposable implements IChatService {
    * system prompt for that session only; regular chat is never touched.
    */
   private readonly _ephemeralSystemPrompts = new Map<string, string>();
+  /** Helpers spawned while your chat turn waited on them (they count as chat). */
+  private readonly _interactiveHelpers = new Set<string>();
   /** M91 — ephemeral sessions to archive at purge (id → origin tag). */
   private readonly _ephemeralArchiveOrigins = new Map<string, string>();
 
@@ -728,6 +731,10 @@ export class ChatService extends Disposable implements IChatService {
     this._modeService = modeService;
     this._languageModelsService = languageModelsService;
     this._database = database;
+
+    // The model engine broker orders calls by who is asking: tell it how to
+    // read a run id (a session id) as a priority class.
+    languageModelsService.getEngineBroker?.().setClassifier((runId) => this.classifyRun(runId));
 
     // Ensure tables exist (fire and forget — errors are non-fatal)
     if (database) {
@@ -1129,6 +1136,11 @@ export class ChatService extends Disposable implements IChatService {
     };
 
     this._sessions.set(id, session);
+    // A helper spawned while your chat turn is running is one you are
+    // waiting on: it shares the turn's place at the front of the queue.
+    if (session.origin === 'subagent' && parent && !isEphemeralSessionId(parent.id) && parent.requestInProgress) {
+      this._interactiveHelpers.add(id);
+    }
     // Apply the seed's system-prompt override for this session (consumed in
     // sendRequest's prompt assembly). This is what gives the autonomy layer its
     // own system prompt instead of running on the bare chat default.
@@ -1186,6 +1198,8 @@ export class ChatService extends Disposable implements IChatService {
     this._sessions.delete(sessionId);
     this._pendingPersistIds.delete(sessionId);
     this._ephemeralSystemPrompts.delete(sessionId);
+    this._interactiveHelpers.delete(sessionId);
+    this._languageModelsService.getEngineBroker?.().forgetRun(sessionId);
     this._ephemeralArchiveOrigins.delete(sessionId);
     // No onDidDeleteSession event — listeners never saw this session created.
   }
@@ -1312,6 +1326,10 @@ export class ChatService extends Disposable implements IChatService {
     // 6. Create cancellation token
     const cts = new CancellationTokenSource(requestId);
     this._activeCancellations.set(sessionId, cts);
+
+    // Your chat turn holds the model engine for its whole length, tool steps
+    // included: background work waits, and any already running gives way.
+    const engineLease = isEphemeralSessionId(sessionId) ? undefined : this._beginEngineLease(session.modelId);
 
     // Everything from here on ends in onDidCompleteRequest, however it ends.
     try {
@@ -1504,8 +1522,31 @@ export class ChatService extends Disposable implements IChatService {
 
     return result;
     } finally {
+      engineLease?.dispose();
       this._onDidCompleteRequest.fire({ sessionId, turnId: requestId });
     }
+  }
+
+  private _beginEngineLease(modelId: string | undefined): IDisposable | undefined {
+    const lms = this._languageModelsService;
+    const broker = lms.getEngineBroker?.();
+    const model = modelId || lms.getActiveModel();
+    const engine = model ? lms.getEngineForModel?.(model) : undefined;
+    return broker && engine ? broker.beginInteractive(engine) : undefined;
+  }
+
+  /**
+   * The model engine's priority class for a run (docs/AGENT_RUNTIME_DESIGN.md):
+   * your chat sessions, and helpers your chat turn waits on, are interactive;
+   * helpers of background runs are helpers; every other background run
+   * (heartbeat, routines, scheduled jobs, dashboards) is scheduled.
+   */
+  classifyRun(runId: string): EnginePriority | undefined {
+    if (!isEphemeralSessionId(runId)) return 'interactive';
+    const session = this._sessions.get(runId);
+    if (!session) return undefined;
+    if (session.origin === 'subagent') return this._interactiveHelpers.has(runId) ? 'interactive' : 'helper';
+    return 'scheduled';
   }
 
   /** Cancel the in-progress request for a session. */
