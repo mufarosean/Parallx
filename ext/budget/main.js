@@ -10135,24 +10135,20 @@ export async function activate(api, context) {
   // in M80; classification now goes through the same skill+tools path as
   // the main sync flow.
   _disposables.push(api.commands.registerCommand('budget.reclassifyUntyped', async () => {
-    if (!api.cron || typeof api.cron.upsertJob !== 'function') {
-      await api.window?.showWarningMessage?.('Scheduler capability not available. Cannot dispatch an agent turn.');
-      return;
-    }
+    // One background agent turn, now. (This used to go through the job
+    // scheduler with fields it does not accept and no schedule, so it
+    // never ran.) The run shows up in Agents › History.
+    const text = 'Use budget.queryTransactions with status=confirmed to find transactions whose tx_type is missing (null). For each row, look up the originating email if needed and call budget.updateTransaction to set tx_type to purchase, deposit, transfer, fee, or other. Skip rows where you cannot determine the type with confidence and leave them untyped. Cap the run at 200 rows.';
     try {
-      await api.cron.upsertJob({
-        id: `budget.reclassify.oneshot.${Date.now()}`,
-        title: 'Budget: reclassify untyped transactions',
-        kind: 'agentTurn',
-        runOnce: true,
-        payload: {
-          agentTurn: 'Use budget.queryTransactions with status=confirmed to find transactions whose tx_type is missing (null). For each row, look up the originating email if needed and call budget.updateTransaction to set tx_type to purchase, deposit, transfer, fee, or other. Skip rows where you cannot determine the type with confidence and leave them untyped. Cap the run at 200 rows.',
-        },
-      });
-      await api.window?.showInformationMessage?.('Dispatched: agent will reclassify untyped transactions in the background.');
+      void api.commands.executeCommand('chat.runBackgroundPrompt', { text, origin: 'agent' })
+        .catch(async (err) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          await api.window?.showErrorMessage?.(`Reclassify failed: ${msg}`);
+        });
+      await api.window?.showInformationMessage?.('Reclassifying untyped transactions in the background. Follow it in Agents › History.');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await api.window?.showErrorMessage?.(`Could not dispatch reclassify: ${msg}`);
+      await api.window?.showErrorMessage?.(`Could not start reclassify: ${msg}`);
     }
   }));
 

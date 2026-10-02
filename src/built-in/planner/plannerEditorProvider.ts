@@ -13,7 +13,6 @@ import { googleSync } from './sync/googleClient.js';
 import { takePendingPlannerTab } from './plannerNavState.js';
 import { buildSimpleRRule, describeRRule, rruleToPreset } from './plannerRecurrence.js';
 import { packLanes } from './plannerLayout.js';
-import { PlannerScheduledController, type WorkflowServiceLike } from './plannerScheduled.js';
 import { PlannerTodayView, isLate, isOverdue, quickPlanOptions } from './plannerToday.js';
 import { Dropdown, type IDropdownItem } from '../../ui/dropdown.js';
 import { createIconElement, getIcon } from '../../ui/iconRegistry.js';
@@ -47,11 +46,6 @@ interface PlannerEditorApi {
     showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
   };
-  /** Lazy handle to the workflow service for the Scheduled tab. Null until
-   *  the autonomy bootstrap has registered it (activation order). */
-  workflows?: {
-    get(): WorkflowServiceLike | null;
-  };
   /** The activity journal: the planner narrates the user's own task work. */
   activity?: {
     note(n: { actor?: 'user' | 'ai' | 'system'; source: string; verb: string; object: string; detail?: string; ref?: string }): void;
@@ -71,7 +65,7 @@ export interface IDayLoadProviderLike {
   onDidChange?(listener: () => void): { dispose(): void };
 }
 
-type Tab = 'today' | 'tasks' | 'calendar' | 'scheduled';
+type Tab = 'today' | 'tasks' | 'calendar';
 type CalendarView = 'month' | 'week' | 'day';
 
 /** Widest pane that gets the compact layout. Mirrors the `compact` step in
@@ -251,8 +245,8 @@ class PlannerEditorPane implements IDisposable {
     const vs = this._api.viewState;
     if (vs) {
       const savedTab = vs.get<string>('planner.activeTab', 'today');
-      if (savedTab === 'today' || savedTab === 'tasks' || savedTab === 'calendar' || savedTab === 'scheduled') this._activeTab = savedTab;
-      else if (savedTab === 'automations') this._activeTab = 'scheduled'; // the retired tab's saved state
+      // 'scheduled' and 'automations' were retired tabs: routines live in Agents.
+      if (savedTab === 'today' || savedTab === 'tasks' || savedTab === 'calendar') this._activeTab = savedTab;
       const savedView = vs.get<string>('planner.calendarView', 'month');
       if (savedView === 'month' || savedView === 'week' || savedView === 'day') {
         this._calendarView = savedView;
@@ -318,7 +312,7 @@ class PlannerEditorPane implements IDisposable {
     const onFocusTab = (e: Event) => {
       if (!this._root?.isConnected) return;
       const tab = (e as CustomEvent<{ tab?: Tab }>).detail?.tab;
-      if (tab === 'today' || tab === 'tasks' || tab === 'calendar' || tab === 'scheduled') this._setTab(tab);
+      if (tab === 'today' || tab === 'tasks' || tab === 'calendar') this._setTab(tab);
     };
     document.addEventListener('parallx.planner.focusTab', onFocusTab);
 
@@ -461,7 +455,6 @@ class PlannerEditorPane implements IDisposable {
       { key: 'today',     label: 'Today',     icon: 'sun' },
       { key: 'tasks',     label: 'Tasks',     icon: 'list-checks' },
       { key: 'calendar',  label: 'Calendar',  icon: 'calendar' },
-      { key: 'scheduled', label: 'Scheduled', icon: 'calendar-clock' },
     ];
     for (const t of tabsConfig) {
       const tab = el('button', 'planner-pane__tab');
@@ -568,8 +561,6 @@ class PlannerEditorPane implements IDisposable {
       await this._renderTodayTab(nextBody, nextActions);
     } else if (this._activeTab === 'tasks') {
       await this._renderTasksTab(nextBody, nextActions);
-    } else if (this._activeTab === 'scheduled') {
-      await this._renderScheduledTab(nextBody, nextActions);
     } else {
       await this._renderCalendarTab(nextBody, nextActions);
     }
@@ -610,23 +601,6 @@ class PlannerEditorPane implements IDisposable {
       this._disposables.push(this._today);
     }
     await this._today.render(body, actions);
-  }
-
-  // ── Automations tab (M93) ────────────────────────────────────────────
-
-  private _scheduled: PlannerScheduledController | null = null;
-
-  private async _renderScheduledTab(body: HTMLElement, actions: HTMLElement): Promise<void> {
-    if (!this._scheduled) {
-      this._scheduled = new PlannerScheduledController({
-        getWorkflows: () => this._api.workflows?.get() ?? null,
-        commands: this._api.commands,
-        isActive: () => !this._disposed && this._activeTab === 'scheduled',
-        viewState: this._api.viewState,
-      });
-      this._disposables.push(this._scheduled);
-    }
-    await this._scheduled.render(body, actions);
   }
 
   // ── Tasks tab ────────────────────────────────────────────────────────

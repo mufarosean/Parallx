@@ -26,7 +26,7 @@ import type { IAgentsSnapshot } from './agentsModel.js';
 import { agentsViewInFront, startAgentsPresence } from './agentsPresence.js';
 import { AGENT_RUN_EDITOR, renderAgentRun } from './agentsRun.js';
 import { renderRoutineForm } from './agentsRoutine.js';
-import { answerApproval, isPaused, onAnyChange, readSnapshot, resolveServices, svc, type ParallxApi } from './agentsServices.js';
+import { answerApproval, convertScheduledJobs, isPaused, onAnyChange, readSnapshot, resolveServices, svc, type ParallxApi } from './agentsServices.js';
 import { heartbeatActions, handledHeartbeat, isActionableHeartbeat, renderHistory } from './agentsHistory.js';
 import { renderRoutines } from './agentsRoutines.js';
 import { renderMind } from './agentsMind.js';
@@ -101,6 +101,22 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(api.commands.registerCommand('autonomyLog.clear', () => { resolveServices(api); svc.log?.clear(); }));
 
   registerWorkflows(api, context);
+
+  // One model for routines: convert the scheduled jobs the user made into
+  // routines once the services are up (they register after this built-in
+  // when the workspace loads), and again shortly after for late arrivals.
+  const convert = (): void => {
+    resolveServices(api);
+    const n = convertScheduledJobs();
+    if (n) console.info(`[Agents] converted ${n} scheduled job(s) into routines`);
+  };
+  convert();
+  const late = setTimeout(() => {
+    convert();
+    // Jobs loaded from disk later (a workspace switch) arrive as a bulk change.
+    if (svc.cron) context.subscriptions.push(svc.cron.onDidChangeJobs((e) => { if (e.kind === 'bulk') convert(); }));
+  }, 4000);
+  context.subscriptions.push({ dispose: () => clearTimeout(late) });
 }
 
 /** The workflow editor (a document tab) and its commands. */
@@ -164,7 +180,7 @@ function registerWorkflows(api: ParallxApi, context: ToolContext): void {
     resolveServices(api);
     if (!svc.workflows) return null;
     const wf = svc.workflows.addWorkflow({
-      name: 'Untitled Workflow',
+      name: 'Untitled Routine',
       class: 'quiet',
       enabled: false,
       source: 'user',

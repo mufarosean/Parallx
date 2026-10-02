@@ -7,6 +7,13 @@ below is built from shipped features: the bundled extensions
 **Canvas** (rich-text pages with blocks, tables, tasks, embeds), and
 **AI Tools** (built-in tools + MCP servers).
 
+> **Scheduled jobs are routines now (2026-10-02).** Where a recipe says
+> "Manage cron jobs…", "Autonomy → Cron" or gives a cron line, use
+> **Agents › Routines › New Routine…** (what to do, days and time, the page
+> it writes into) or **Build Steps…** for anything the form can't say.
+> Whether anything runs on its own is **Settings › Agents › Run In The
+> Background**.
+
 Most workflows combine three or four of these. The pillar tags at the top
 of each recipe show which parts you'll touch.
 

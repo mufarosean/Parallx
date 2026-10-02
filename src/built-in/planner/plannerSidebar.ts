@@ -25,14 +25,13 @@ interface SidebarApi {
   };
 }
 
-type NavKey = 'today' | 'calendar' | 'tasks' | 'scheduled' | 'settings';
+type NavKey = 'today' | 'calendar' | 'tasks' | 'settings';
 
 /** Registry icon ids (ui/iconRegistry), the same ids the pane's tabs use. */
 const ICONS: Record<NavKey, string> = {
   today: 'sun',
   calendar: 'calendar',
   tasks: 'list-checks',
-  scheduled: 'calendar-clock',
   settings: 'settings',
 };
 
@@ -77,11 +76,6 @@ export class PlannerSidebar implements IDisposable {
         key: 'tasks',
         label: 'Tasks',
         onClick: () => void this._openTab('tasks'),
-      },
-      {
-        key: 'scheduled',
-        label: 'Scheduled',
-        onClick: () => void this._openTab('scheduled'),
       },
       {
         key: 'settings',
@@ -189,7 +183,7 @@ export class PlannerSidebar implements IDisposable {
     });
   }
 
-  private async _openTab(tab: 'today' | 'calendar' | 'tasks' | 'scheduled'): Promise<void> {
+  private async _openTab(tab: 'today' | 'calendar' | 'tasks'): Promise<void> {
     try {
       this._setActive(tab);
       // Record the target tab BEFORE opening so a first-open pane initialises to

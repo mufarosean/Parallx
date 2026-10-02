@@ -181,7 +181,7 @@ export class WorkflowEditorPane implements IDisposable {
     header.appendChild(icon);
 
     this._nameInput = $('input.wfe__name') as HTMLInputElement;
-    this._nameInput.placeholder = 'Untitled Workflow';
+    this._nameInput.placeholder = 'Untitled Routine';
     this._nameInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Enter' || e.key === 'Escape') this._nameInput.blur();
@@ -208,7 +208,7 @@ export class WorkflowEditorPane implements IDisposable {
         { value: 'attention', label: 'Attention' },
         { value: 'destructive', label: 'Destructive' },
       ],
-      ariaLabel: 'Workflow class',
+      ariaLabel: 'Routine class',
     });
     this._disposables.push(this._classDropdown.onDidChange((v) => {
       this._commit({ class: v as WorkflowClass });
@@ -318,7 +318,7 @@ export class WorkflowEditorPane implements IDisposable {
       this._root.classList.add('wfe--gone');
       this._canvasHost.textContent = '';
       const gone = $('div.wfe__gone');
-      gone.textContent = 'This workflow no longer exists.';
+      gone.textContent = 'This routine no longer exists.';
       this._canvasHost.appendChild(gone);
       this._canvas?.dispose();
       this._canvas = null;
@@ -560,7 +560,7 @@ export class WorkflowEditorPane implements IDisposable {
     if (this._doc.nodes.length > 2 || runs.length > 0) return;
     const coach = $('div.wfe__coach');
     const title = $('div.wfe__coach-title');
-    title.textContent = 'Build your workflow';
+    title.textContent = 'Build your routine';
     coach.appendChild(title);
     const steps = [
       'Add steps from the rail on the left.',
@@ -679,7 +679,7 @@ export class WorkflowEditorPane implements IDisposable {
       case 'trigger.schedule': this._scheduleFields(node.id, node.spec); break;
       case 'trigger.manual': {
         const note = $('div.wfe-ins__note');
-        note.textContent = 'Fires from the Run Now button, here or on the workflow’s row in the panel.';
+        note.textContent = 'Runs when you press Run Now, here or on the routine’s row in Agents › Routines.';
         this._inspector.appendChild(note);
         break;
       }
@@ -695,7 +695,7 @@ export class WorkflowEditorPane implements IDisposable {
       case 'control.cooldown': {
         this._numberField('Hours', node.hours, 0, 24 * 30, (v) => this._patchNode(node.id, { hours: v }));
         this._textField('Ledger Key', node.key ?? '', (v) => this._patchNode(node.id, { key: v.trim() || undefined }),
-          'workflows sharing a key share the cooldown');
+          'routines sharing a key share the cooldown');
         break;
       }
       case 'context.facts': {
@@ -801,7 +801,7 @@ export class WorkflowEditorPane implements IDisposable {
   /** Nothing selected: workflow-level settings (the arbiter's knobs). */
   private _paintWorkflowInspector(): void {
     if (!this._doc) return;
-    this._inspector.appendChild(this._sectionHead('Workflow'));
+    this._inspector.appendChild(this._sectionHead('Routine'));
     const note = $('div.wfe-ins__note');
     note.textContent = 'Select a node to edit it. Drag from a node’s dot to connect. Delete removes the selection.';
     this._inspector.appendChild(note);
@@ -816,7 +816,7 @@ export class WorkflowEditorPane implements IDisposable {
     const modelDd = createDropdownHandle(modelWrap, {
       items: [{ value: '', label: 'Active Model (default)' }],
       selected: this._doc.model ?? '',
-      ariaLabel: 'Model for this workflow',
+      ariaLabel: 'Model for this routine',
     });
     this._inspector.appendChild(modelWrap);
     void (async () => {
@@ -858,7 +858,7 @@ export class WorkflowEditorPane implements IDisposable {
     });
     wrap.appendChild(input);
     const h = $('div.wfe-ins__hint');
-    h.textContent = 'Workflows sharing a group never run at the same time.';
+    h.textContent = 'Routines sharing a group never run at the same time.';
     wrap.appendChild(h);
     this._inspector.appendChild(wrap);
   }

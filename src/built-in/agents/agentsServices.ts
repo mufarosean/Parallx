@@ -26,7 +26,7 @@ import type {
 } from '../../services/serviceTypes.js';
 import type { IAutonomyTaskRailService as IRail, IRailRow } from '../../services/autonomyTaskRailService.js';
 import { FLAG_PAUSED_GLOBAL, type AutonomyFeatureFlagsService } from '../../services/autonomyFeatureFlags.js';
-import { ICronService, type CronService } from '../../openclaw/openclawCronService.js';
+import { ICronService, type CronService, type ICronJob } from '../../openclaw/openclawCronService.js';
 import type { IHeartbeatState } from '../../openclaw/openclawHeartbeatRunner.js';
 import type { AgentApprovalResolution } from '../../agent/agentTypes.js';
 import { buildAgentsSnapshot, type IAgentsSnapshot } from './agentsModel.js';
@@ -123,6 +123,45 @@ export async function answerApproval(taskId: string, requestId: string, resoluti
   if (resolution === 'approve-once' || resolution === 'approve-for-task' || task.status === 'planning') {
     await svc.execution?.runTask(taskId);
   }
+}
+
+/**
+ * Whether a scheduled job is one the user made and a routine can express:
+ * a recurring agent turn. Jobs extensions own (dotted ids such as
+ * `flashcards.daily`), one-shots, self-deleting jobs and system events stay
+ * on the internal scheduler. Test seam.
+ */
+export function isConvertibleJob(job: Pick<ICronJob, 'name' | 'schedule' | 'payload' | 'deleteAfterRun'>): boolean {
+  if (!job.payload.agentTurn?.trim() || job.payload.systemEvent) return false;
+  if (job.deleteAfterRun || job.schedule.at) return false;
+  if (/^[\w-]+(\.[\w-]+)+$/.test(job.name)) return false;
+  return true;
+}
+
+/**
+ * One model for routines: a scheduled job the user made becomes a routine
+ * (a workflow) and the job is removed in the same step, so it can never run
+ * twice. Jobs already converted earlier (by Open As Workflow, which used to
+ * leave the job running) lose their leftover job. Safe to call repeatedly.
+ */
+export function convertScheduledJobs(): number {
+  const cron = svc.cron;
+  const wf = svc.workflows;
+  if (!cron || !wf) return 0;
+  const converted = new Set(wf.workflows.map((w) => w.migratedFromCronId).filter((x): x is string => !!x));
+  let n = 0;
+  for (const job of [...cron.jobs]) {
+    if (converted.has(job.id)) { cron.removeJob(job.id); n++; continue; }
+    if (!isConvertibleJob(job)) continue;
+    try {
+      wf.migrateCronJob(job);
+      cron.removeJob(job.id);
+      n++;
+    } catch (err) {
+      console.warn('[Agents] could not convert a scheduled job:', job.name, err);
+    }
+  }
+  return n;
 }
 
 export function isPaused(): boolean {

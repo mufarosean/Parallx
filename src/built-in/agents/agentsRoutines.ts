@@ -1,10 +1,12 @@
 // agentsRoutines.ts — Routines in Agents: everything that runs on its own.
 //
-// Replaces the Autonomy Log panel's status strip and Workflows tab. Top to
-// bottom: the heartbeat and whether schedules may run, routines the AI
-// suggested (nothing runs until you add one), your routines (workflows and
-// scheduled jobs: run now, edit, turn off, delete; click one for its last
-// run), and ways to add one (New Routine, a blank workflow, a template).
+// One list for everything that runs on its own. Every routine is a workflow
+// (the step editor is how you see and change its steps); the only other
+// entries are jobs an extension or Chat scheduled on the internal
+// scheduler, labelled as such. Top to bottom: the heartbeat, routines the
+// AI suggested (nothing runs until you add one), your routines (run now,
+// edit steps, turn off, delete; click one for its last run), and ways to
+// add one (New Routine, Build Steps, a template).
 
 import { $ } from '../../ui/dom.js';
 import { createButton, createSectionLabel } from '../../ui/kit.js';
@@ -54,7 +56,17 @@ function runWords(run: WorkflowRun): string {
 function triggerWords(wf: WorkflowDoc): string {
   const triggers = wf.nodes.filter(isTriggerNode);
   if (triggers.length === 0) return 'Draft, no trigger yet';
-  return triggers.map((t) => describeTriggerNode(t)).join(' · ');
+  return triggers.map((t) => (t.kind === 'trigger.schedule' && t.spec.kind === 'cron'
+    ? describeRoutineCron(t.spec.expr) ?? describeTriggerNode(t)
+    : describeTriggerNode(t))).join(' · ');
+}
+
+/** Who owns a job left on the internal scheduler: an extension (its id is
+ *  namespaced, `flashcards.daily`) or Chat (the AI scheduled it). */
+function jobOwner(job: ICronJob): string {
+  const m = /^([\w-]+)\./.exec(job.name);
+  if (m && !/\s/.test(job.name)) return `From ${m[1].charAt(0).toUpperCase()}${m[1].slice(1)}`;
+  return 'Made By Chat';
 }
 
 function jobWords(job: ICronJob): string {
@@ -101,11 +113,6 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
     });
   }
   const cronOn = svc.flags?.isEnabled(FLAG_CRON_ENABLED) ?? false;
-  if (!paused && !cronOn) {
-    statusCard(top, 'off', 'Scheduled routines', 'Off. Routines below will not run on their schedule until this is on.', {
-      label: 'Turn On', run: () => { void svc.flags?.setEnabled(FLAG_CRON_ENABLED, true); },
-    });
-  }
   const level = svc.config?.getEffectiveConfig().heartbeat.autonomy;
   const foot = $('div.agents-rt__level');
   const lv = $('span'); lv.textContent = level ? `How much it may do alone: ${level.replace(/-/g, ' ')}` : '';
@@ -161,13 +168,13 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
       name: wf.name,
       line: [triggerWords(wf), last ? `last ${runWords(last)} ${ago(last.startedAt)}` : '', next ? `next ${formatWhen(next, Date.now())}` : ''].filter(Boolean).join(' · '),
       failed: last?.status === 'error',
-      chips: [wf.class === 'destructive' ? 'Asks first' : '', wf.source === 'migrated-cron' ? 'From a schedule' : ''].filter(Boolean),
+      chips: [wf.class === 'destructive' ? 'Asks First' : ''].filter(Boolean),
       trace: last ? [`${new Date(last.startedAt).toLocaleString()} · ${last.trigger.summary}`, ...last.nodes.map((n) => `${n.label}: ${n.status}${n.error ? `, ${n.error}` : n.summary ? `, ${n.summary}` : ''}`)] : undefined,
       repaint,
     });
     const bar = row.querySelector('.agents-card__actions') as HTMLElement;
     createButton(bar, { label: 'Run Now', kind: 'secondary', size: 'sm', onClick: () => { void service.runNow(wf.id).catch((err) => console.warn('[Agents] workflow run failed:', err)).finally(repaint); } });
-    createButton(bar, { label: 'Edit', kind: 'ghost', size: 'sm', onClick: () => run('workflows.openEditor', wf.id) });
+    createButton(bar, { label: 'Edit Steps', kind: 'ghost', size: 'sm', onClick: () => run('workflows.openEditor', wf.id) });
     createButton(bar, { label: wf.enabled ? 'Turn Off' : 'Turn On', kind: 'ghost', size: 'sm', onClick: () => { try { service.setEnabled(wf.id, !wf.enabled); } catch { /* repaint */ } } });
     createButton(bar, {
       label: 'Delete…', kind: 'ghost', size: 'sm',
@@ -186,21 +193,17 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
       key: `job:${job.id}`,
       on: job.enabled,
       name: job.name,
-      line: [jobWords(job), last ? `last ${last.success ? 'ran fine' : 'failed'} ${ago(last.firedAt)}` : '', job.enabled && job.nextRunAt ? `next ${formatWhen(job.nextRunAt, Date.now())}` : ''].filter(Boolean).join(' · '),
+      line: [jobWords(job), last ? `last ${last.success ? 'ran fine' : 'failed'} ${ago(last.firedAt)}` : '',
+        !cronOn && job.enabled ? 'waits until Scheduled Jobs is on in Settings'
+          : job.enabled && job.nextRunAt ? `next ${formatWhen(job.nextRunAt, Date.now())}` : ''].filter(Boolean).join(' · '),
       failed: last ? !last.success : false,
-      chips: [],
+      chips: [jobOwner(job)],
       trace: job.description || job.payload.agentTurn ? [job.description || job.payload.agentTurn || ''] : undefined,
       repaint,
     });
     const bar = row.querySelector('.agents-card__actions') as HTMLElement;
     createButton(bar, { label: 'Run Now', kind: 'secondary', size: 'sm', onClick: () => { void cron.runJob(job.id).catch((err) => console.warn('[Agents] routine run failed:', err)).finally(repaint); } });
     createButton(bar, { label: job.enabled ? 'Turn Off' : 'Turn On', kind: 'ghost', size: 'sm', onClick: () => { try { cron.updateJob(job.id, { enabled: !job.enabled }); } catch { /* repaint */ } } });
-    if (svc.workflows) {
-      createButton(bar, {
-        label: 'Open As Workflow', kind: 'ghost', size: 'sm', title: 'Turn it into a workflow you can see and edit step by step. The schedule stays until you delete it.',
-        onClick: () => { try { const doc = svc.workflows!.migrateCronJob(job); run('workflows.openEditor', doc.id); } catch (err) { console.warn('[Agents] could not convert:', err); } },
-      });
-    }
     createButton(bar, {
       label: 'Delete…', kind: 'ghost', size: 'sm',
       onClick: () => {
@@ -216,7 +219,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
   createSectionLabel(add, 'Add a routine');
   const choices = $('div.agents-rt__add');
   createButton(choices, { label: 'New Routine…', kind: 'primary', size: 'sm', title: 'Say what to do and when', onClick: openNewRoutine });
-  if (svc.workflows) createButton(choices, { label: 'Blank Workflow', kind: 'secondary', size: 'sm', title: 'Draw the steps yourself', onClick: () => run('workflows.new') });
+  if (svc.workflows) createButton(choices, { label: 'Build Steps…', kind: 'secondary', size: 'sm', title: 'Draw the steps yourself: triggers, context, agents, notifications', onClick: () => run('workflows.new') });
   add.appendChild(choices);
   if (svc.workflows) {
     const hint = $('div.agents-rt__hint'); hint.textContent = 'Or start from one of these:';

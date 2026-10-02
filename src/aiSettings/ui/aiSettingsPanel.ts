@@ -3,7 +3,7 @@
 // M61 Phase 5: trimmed to a managers-only sidebar. The unified Settings
 // overlay (`Ctrl+Alt+S` → `settings.open`) is the canonical editor for
 // every value-shaped setting; this panel now only hosts the manager
-// sections (Model, Tools, MCP servers, Agent, Cron, Web Research) that
+// sections (Model, Tools, MCP servers, Agent, Web Research) that
 // action rows in the overlay deep-link to. Persona / Chat / Retrieval /
 // Indexing / Suggestions / Heartbeat / Advanced / Preview sections, the
 // PresetSwitcher, and the profiles concept have been removed.
@@ -21,7 +21,6 @@ import type { ILanguageModelsService } from '../../services/chatTypes.js';
 import type { IUnifiedAIConfigService } from '../unifiedConfigTypes.js';
 import type { SettingsSection } from './sectionBase.js';
 import { AgentSection } from './sections/agentSection.js';
-import { CronSection } from './sections/cronSection.js';
 import { ToolsSection } from './sections/toolsSection.js';
 import { McpSection } from './sections/mcpSection.js';
 import { ModelSection } from './sections/modelSection.js';
@@ -53,11 +52,14 @@ export class AISettingsPanel extends Disposable {
     private readonly _mcpClientService?: IMcpClientService,
     _autonomyFlagsService?: IAutonomyFeatureFlagsService,
     private readonly _globalStorage?: IStorage,
-    private readonly _cronService?: CronService,
-    private readonly _notificationService?: NotificationService,
+    // Kept for callers; scheduled jobs moved to Agents › Routines.
+    _cronService?: CronService,
+    _notificationService?: NotificationService,
   ) {
     super();
     void _autonomyFlagsService;
+    void _cronService;
+    void _notificationService;
 
     // Root two-column layout
     this.element = $('div.ai-settings-panel');
@@ -92,7 +94,6 @@ export class AISettingsPanel extends Disposable {
     this._sections = [
       this._register(new ModelSection(this._service, this._unifiedConfigService, this._languageModelsService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
-      this._register(new CronSection(this._service, this._cronService, this._notificationService)),
       this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
       this._register(new McpSection(this._service, this._mcpClientService)),
       this._register(new WebResearchSection(this._service, this._globalStorage)),
@@ -129,7 +130,6 @@ export class AISettingsPanel extends Disposable {
     const navSections = [
       { id: 'model', label: 'Model' },
       { id: 'agent', label: 'Agent' },
-      { id: 'cron', label: 'Scheduled Jobs' },
       { id: 'tools', label: 'Tools' },
       { id: 'mcp', label: 'MCP Servers' },
       { id: 'web-research', label: 'Web Research' },

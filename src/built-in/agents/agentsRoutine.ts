@@ -1,13 +1,14 @@
 // agentsRoutine.ts — the New Routine form, inside the Agents view.
 //
-// A routine is a scheduled agent turn (the cron service): what it should
-// do, on which days, at what time, and optionally the page it writes its
-// result into. The next three runs are shown as you choose, and Try It
+// A routine is a workflow: a schedule step and an agent step (routineDoc).
+// The form asks what it should do, on which days, at what time, and
+// optionally the page it writes its result into. The next three runs are shown as you choose, and Try It
 // Once Now saves the routine and runs it straight away.
 
 import { $ } from '../../ui/dom.js';
 import { createButton, createSectionLabel } from '../../ui/kit.js';
 import { svc } from './agentsServices.js';
+import type { WorkflowDoc } from '../../services/workflows/workflowTypes.js';
 
 const DAYS: readonly { label: string; dow: number }[] = [
   { label: 'Mon', dow: 1 }, { label: 'Tue', dow: 2 }, { label: 'Wed', dow: 3 },
@@ -157,17 +158,17 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
     const task = what.value.trim();
     if (!task) { error.textContent = 'Say what it should do.'; what.focus(); return; }
     if (!t || days.size === 0) { error.textContent = 'Pick at least one day and a time.'; return; }
-    if (!svc.cron) { error.textContent = 'Routines are not available in this workspace.'; return; }
-    const params = {
+    const wf = svc.workflows;
+    if (!wf) { error.textContent = 'Routines are not available in this workspace.'; return; }
+    const doc = routineDoc({
       name: name.value.trim() || task.split(/\n|[.!?]\s/)[0].slice(0, 48),
-      schedule: { cron: routineCron(days, t[0], t[1]) },
-      payload: { agentTurn: routinePrompt(task, page.value) },
-      description: task.length > 90 ? `${task.slice(0, 89)}…` : task,
-      enabled: true,
-    };
+      task,
+      page: page.value,
+      cron: routineCron(days, t[0], t[1]),
+    });
     try {
-      if (savedId) svc.cron.updateJob(savedId, params);
-      else savedId = svc.cron.addJob(params).id;
+      if (savedId) wf.updateWorkflow(savedId, doc);
+      else savedId = wf.addWorkflow(doc).id;
     } catch (err) {
       error.textContent = err instanceof Error ? err.message : 'Could not save the routine.';
       return;
@@ -175,7 +176,7 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
     if (runNow) {
       tryNow.disabled = true;
       saveBtn.disabled = true;
-      void svc.cron.runJob(savedId)
+      void wf.runNow(savedId)
         .catch((err) => { error.textContent = err instanceof Error ? err.message : 'The test run failed.'; })
         .finally(() => onClose(true));
       return;
@@ -187,6 +188,26 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
   host.appendChild(form);
   setTimeout(() => name.focus(), 0);
   return () => form.remove();
+}
+
+/**
+ * The routine the form makes: one schedule step and one agent step, a
+ * workflow like any other, so Edit Steps opens it in the step editor and
+ * it runs on the same engine as every routine. Test seam.
+ */
+export function routineDoc(r: { name: string; task: string; page: string; cron: string }): Omit<WorkflowDoc, 'id' | 'createdAt' | 'updatedAt'> {
+  return {
+    name: r.name,
+    description: r.task.length > 90 ? `${r.task.slice(0, 89)}…` : r.task,
+    class: 'quiet',
+    enabled: true,
+    source: 'user',
+    nodes: [
+      { id: 'when', label: 'When', kind: 'trigger.schedule', spec: { kind: 'cron', expr: r.cron }, x: 60, y: 120 },
+      { id: 'do', label: 'Do It', kind: 'action.agentTurn', prompt: routinePrompt(r.task, r.page), x: 320, y: 120 },
+    ],
+    edges: [{ from: 'when', to: 'do' }],
+  };
 }
 
 /** A routine's schedule in words: "Weekdays at 07:45", "Mon, Thu at 18:00".

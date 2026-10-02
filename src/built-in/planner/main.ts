@@ -27,9 +27,7 @@ import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 import { PlannerSyncOrchestrator } from './sync/plannerSyncOrchestrator.js';
 import { GoogleCalendarSyncProvider, GOOGLE_PROVIDER_ID } from './sync/googleCalendarSyncProvider.js';
 import { googleSync } from './sync/googleClient.js';
-import { IWorkflowService, type WorkflowService } from '../../services/workflows/workflowService.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
-import type { WorkflowServiceLike } from './plannerScheduled.js';
 
 // ─── API surface ────────────────────────────────────────────────────────────
 
@@ -288,20 +286,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // 4. Editor pane (Tasks + Calendar + Automations tabs).
-  //
-  // M93 — the Automations tab drives the workspace CronService. The chat
-  // built-in registers it in DI during ITS activation; built-ins activate in
-  // parallel, so resolve lazily on every access and return null until it
-  // exists (the tab renders a "still starting" state).
-  const getWorkflowService = (): WorkflowServiceLike | null => {
-    try {
-      if (!api.services.has(IWorkflowService)) return null;
-      return api.services.get<WorkflowService>(IWorkflowService) as unknown as WorkflowServiceLike;
-    } catch {
-      return null;
-    }
-  };
+  // 4. Editor pane (Today + Tasks + Calendar). Routines live in Agents.
   const activityJournal = api.services.has(IActivityJournalService)
     ? api.services.get<import('../../services/activityJournalService.js').IActivityJournalService>(IActivityJournalService)
     : null;
@@ -315,7 +300,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       get: <T>(key: string, defaultValue: T): T => context.workspaceState.get<T>(key, defaultValue),
       set: (key: string, value: unknown): void => { void context.workspaceState.update(key, value); },
     },
-    workflows: { get: getWorkflowService },
     activity: activityJournal ? { note: (n) => activityJournal.note(n as never) } : undefined,
     dayLoads: { get: () => [..._dayLoadProviders.values()] },
   }, _orchestrator ?? undefined);

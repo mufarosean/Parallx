@@ -121,3 +121,28 @@ and `autonomyLog.clear` act on History; `agents.showRoutines` and
 - Not covered live: a real model driving an agent task end to end (the test app
   has no model), so approvals and running tasks were seeded through the
   services.
+
+## Settings › Agents and one routine model (2026-10-02, later)
+
+- **Settings › Agents** (`agents/agentsSettings.ts`): the Agents built-in
+  registers its own section like any other built-in. General (Run In The
+  Background, the global pause), Heartbeat (on, how often, what it may do
+  alone, thresholds), Routines (interruptions per day, scheduled jobs),
+  Helpers, Where Results Go. The sidebar switch is gone; when paused, Agents
+  shows one line with Open Settings. Dead flags (heartbeat.enabled,
+  rail.enabled) have no rows.
+- **One routine model**: New Routine makes a workflow (`routineDoc`: a
+  schedule step and an agent step). Scheduled jobs the user made convert
+  into routines once and the job is removed in the same step
+  (`convertScheduledJobs`), which also ends the double run "Open As
+  Workflow" used to cause. Jobs extensions own (dotted ids) and one-shots
+  stay on the internal scheduler and show in Routines labelled From
+  <Extension> or Made By Chat.
+- Removed duplicates: AI Settings › Scheduled Jobs (`aiSettings.manageCron`
+  now opens Agents › Routines) and the planner's Scheduled tab.
+- The step editor says "routine"; Routines offers New Routine…, Build
+  Steps… and templates.
+- Budget's Reclassify Untyped now runs as one background agent turn (it used
+  to call the scheduler with fields it does not accept, so it never ran).
+
+Next: persistent agents (`docs/AGENTS_PROPOSAL.md`).

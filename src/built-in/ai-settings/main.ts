@@ -193,7 +193,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     api.commands.registerCommand('aiSettings.manageTools', () => _openSection('tools')),
     api.commands.registerCommand('aiSettings.manageMcp', () => _openSection('mcp')),
     api.commands.registerCommand('aiSettings.manageAgents', () => _openSection('agent')),
-    api.commands.registerCommand('aiSettings.manageCron', () => _openSection('cron')),
+    // Scheduled jobs are routines now, listed in Agents › Routines.
+    api.commands.registerCommand('aiSettings.manageCron', () => api.commands.executeCommand('agents.showRoutines')),
   );
 
   async function openCanonicalMemoryFile(relativePathPromise: Promise<string> | string): Promise<void> {

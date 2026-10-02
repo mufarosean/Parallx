@@ -40,3 +40,27 @@ describe('new routine helpers', () => {
     expect(routinePrompt('Sum up the day', 'Daily Brief')).toContain('canvas page "Daily Brief"');
   });
 });
+
+import { routineDoc, describeRoutineCron } from '../../src/built-in/agents/agentsRoutine';
+import { isConvertibleJob } from '../../src/built-in/agents/agentsServices';
+import { validateWorkflow } from '../../src/services/workflows/workflowGraph';
+
+describe('one routine model', () => {
+  it('New Routine makes a valid two-step workflow', () => {
+    const doc = routineDoc({ name: 'Evening Review', task: 'Sum up the day', page: 'Daily Brief', cron: '0 18 * * 1,2,3,4,5' });
+    expect(doc.source).toBe('user');
+    expect(doc.nodes.map((n) => n.kind)).toEqual(['trigger.schedule', 'action.agentTurn']);
+    expect(validateWorkflow({ ...doc, id: 'x', createdAt: 0, updatedAt: 0 }).errors).toEqual([]);
+    expect(describeRoutineCron('0 18 * * 1,2,3,4,5')).toBe('Weekdays at 18:00');
+  });
+
+  it('converts only recurring agent turns the user made', () => {
+    const job = (o: Record<string, unknown>) => ({ name: 'Evening Review', schedule: { cron: '0 18 * * *' }, payload: { agentTurn: 'Sum up' }, ...o }) as never;
+    expect(isConvertibleJob(job({}))).toBe(true);
+    expect(isConvertibleJob(job({ name: 'flashcards.daily' }))).toBe(false);
+    expect(isConvertibleJob(job({ schedule: { at: '2026-10-03T09:00' } }))).toBe(false);
+    expect(isConvertibleJob(job({ deleteAfterRun: true }))).toBe(false);
+    expect(isConvertibleJob(job({ payload: { systemEvent: { kind: 'x' } } }))).toBe(false);
+    expect(isConvertibleJob(job({ payload: {} }))).toBe(false);
+  });
+});
