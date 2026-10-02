@@ -9,7 +9,7 @@
 // externally deleted workflow degrades to a clear message.
 
 import { describe, expect, it, vi } from 'vitest';
-import { WorkflowEditorPane } from '../../src/built-in/autonomy-log/workflowEditorPane';
+import { WorkflowEditorPane } from '../../src/built-in/agents/workflowEditorPane';
 import { WorkflowService } from '../../src/services/workflows/workflowService';
 import type { WorkflowExecutionDeps } from '../../src/services/workflows/workflowRunner';
 import type { WorkflowNode } from '../../src/services/workflows/workflowTypes';

@@ -112,7 +112,7 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
   when.append(whenLabel, whenRow);
   form.appendChild(when);
 
-  form.appendChild(field('Where it writes', page, 'agents-routine-page', 'A canvas page for the result. Leave empty to keep it in the Autonomy Log only.'));
+  form.appendChild(field('Where it writes', page, 'agents-routine-page', 'A canvas page for the result. Leave empty to keep it in History only.'));
 
   const nextBox = $('div.agents-routine__next');
   createSectionLabel(nextBox, 'Next runs');
@@ -187,4 +187,19 @@ export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) =
   host.appendChild(form);
   setTimeout(() => name.focus(), 0);
   return () => form.remove();
+}
+
+/** A routine's schedule in words: "Weekdays at 07:45", "Mon, Thu at 18:00".
+ *  Falls back to null for shapes this form does not make. Test seam. */
+export function describeRoutineCron(expr: string | undefined): string | null {
+  const m = /^(\d{1,2}) (\d{1,2}) \* \* ([\d,]+|\*)$/.exec((expr ?? '').trim());
+  if (!m) return null;
+  const time = `${m[2].padStart(2, '0')}:${m[1].padStart(2, '0')}`;
+  if (m[3] === '*') return `Every day at ${time}`;
+  const days = new Set(m[3].split(',').map(Number));
+  if (days.size === 7) return `Every day at ${time}`;
+  if (days.size === 5 && [1, 2, 3, 4, 5].every((d) => days.has(d))) return `Weekdays at ${time}`;
+  if (days.size === 2 && days.has(0) && days.has(6)) return `Weekends at ${time}`;
+  const names = DAYS.filter((d) => days.has(d.dow)).map((d) => d.label);
+  return `${names.join(', ')} at ${time}`;
 }

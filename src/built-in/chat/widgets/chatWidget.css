@@ -3041,13 +3041,6 @@
 .archived-run-msg--user { background: var(--px-surface, #2a2a2a); color: var(--px-text-muted, #bbb); white-space: pre-wrap; }
 .archived-run-msg--assistant { background: transparent; color: var(--px-text, #ddd); }
 
-.autonomy-log-entry__viewrun {
-  margin-top: 6px; background: none; border: none;
-  color: var(--vscode-textLink-foreground, #3794ff);
-  cursor: pointer; font-size: var(--parallx-fontSize-sm, 11px); padding: 2px 0;
-}
-.autonomy-log-entry__viewrun:hover { text-decoration: underline; }
-
 /* ── The engine chip (chatEngineChip.ts): model, context and usage in one ── */
 .parallx-chat-engine-on > .parallx-chat-model-picker,
 .parallx-chat-engine-on > .parallx-chat-ctx-picker,

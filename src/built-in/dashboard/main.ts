@@ -572,7 +572,7 @@ async function _headlessWidgetRefresh(api: ParallxApi, widgetId: string): Promis
     if (typeReg.category === 'ai' && fresh && fresh.cachedAt === prevCachedAt) {
       await _dataService.setWidgetError(row.id,
         'The refresh turn completed but never delivered content to this widget '
-        + '(dashboard_render_widget was not called). Check the Autonomy Log for the full run.');
+        + '(dashboard_render_widget was not called). Check History in Agents for the full run.');
       return;
     }
     await _dataService.clearWidgetError(row.id);

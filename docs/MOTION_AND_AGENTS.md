@@ -51,8 +51,7 @@ app, and that work the AI does on its own is visible and steerable.
   (`AGENTS_MANIFEST`, icon `px-automations`). Sections by urgency: Needs you
   (Allow / Allow This Task / Reject), Running now (step, progress, Watch,
   Pause / Continue), Coming up (routines and the heartbeat), Done today. The
-  header switch is the global pause (`FLAG_PAUSED_GLOBAL`). The Autonomy Log
-  stays in the panel for the full history.
+  header switch is the global pause (`FLAG_PAUSED_GLOBAL`).
 - `agentsModel.ts` turns the services' state into the four sections (pure,
   tested); `agentsServices.ts` resolves the services lazily and answers
   approvals the way Chat's task cards do.
@@ -73,6 +72,33 @@ app, and that work the AI does on its own is visible and steerable.
   what to do, days and time, the page it writes into, the next three runs, Try It
   Once Now. Saved as a cron job. The mockup's "ask me first" choice is not built:
   scheduled jobs have no per-job approval policy to back it.
+
+## One home for autonomy (Autonomy Log folded into Agents)
+
+The Autonomy Log panel kept the same things as Agents in a second place, so
+it is gone: everything autonomous lives in Agents, in four tabs.
+
+- **Now**: what needs you (approvals and heartbeat findings with Do It / Tell
+  Me More / Dismiss), running now, coming up (routines, workflows, the
+  heartbeat), done today.
+- **Routines** (`agentsRoutines.ts`): the heartbeat (Wake Now, Turn On) and the
+  scheduled-routines switch; routines the AI suggested (Add / Review / Dismiss);
+  your routines, workflows and scheduled jobs alike (Run Now, Edit, Turn Off,
+  Open As Workflow, Delete; click one for its last run); New Routine, a blank
+  workflow, or a template.
+- **History** (`agentsHistory.ts`): every background run in one stream (the
+  old Live and History modes), filtered by All / Heartbeat / Routines /
+  Helpers; unread marks, failures, the model, View Full Run, Mark All Read,
+  Clear. Reads delivered results from the log and run records from the task
+  rail when it exists (`readRunRows`).
+- **Mind** (`agentsMind.ts`): the meters in words, beliefs you can forget (or
+  all of them), habits it noticed, and what it may do without asking (the
+  old Patterns tab, with Revoke).
+
+The workflow editor moved with it (`agents/workflowEditorPane.ts`). Command
+ids are kept: `workflows.showPanel` opens Routines, `autonomyLog.markAllRead`
+and `autonomyLog.clear` act on History; `agents.showRoutines` and
+`agents.showHistory` are new.
 
 ## M7: continuity in the everyday pieces
 

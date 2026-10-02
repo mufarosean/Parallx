@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { _isActionableHeartbeat, _heartbeatSeedPrompt } from '../../src/built-in/autonomy-log/main';
+import { isActionableHeartbeat as _isActionableHeartbeat, heartbeatSeedPrompt as _heartbeatSeedPrompt } from '../../src/built-in/agents/agentsHistory';
 
 type Entry = Parameters<typeof _isActionableHeartbeat>[0];
 

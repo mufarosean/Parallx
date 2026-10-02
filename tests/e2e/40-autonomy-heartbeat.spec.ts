@@ -2,9 +2,9 @@
  * Autonomy / Heartbeat — engage the live autonomy system from the user's seat.
  *
  * This is an OBSERVATION test, not a pass/fail gate: it opens a clean workspace,
- * opens the Autonomy Log, enables the heartbeat, fires a real review ("Wake
+ * opens Agents (Routines), turns the heartbeat on, fires a real review ("Wake
  * now"), and captures what the system actually does — the status board, any
- * autonomy-log entries, the heartbeat executor's own console decisions
+ * Agents History entries, the heartbeat executor's own console decisions
  * (NOOP / NOTE / ACT), and a screenshot. The review runs a real LLM turn through
  * the local model, so this exercises the whole awareness loop end to end.
  *
@@ -19,42 +19,35 @@ import type { Page, ElectronApplication } from '@playwright/test';
 
 const ARTIFACT_DIR = path.join(process.cwd(), 'test-results', 'autonomy-heartbeat');
 
-/** Open the Autonomy Log panel view via the command palette, with fallbacks. */
-async function openAutonomyLog(page: Page): Promise<boolean> {
-  if (await page.locator('.autonomy-log-container').isVisible().catch(() => false)) return true;
-  // Command palette → "Autonomy Log".
-  for (const combo of ['Control+Shift+P', 'F1', 'Control+P']) {
-    await page.keyboard.press(combo);
-    const input = page.locator('input.quick-input-box, .quick-input-widget input, input[placeholder*="ommand"]').first();
-    if (await input.isVisible().catch(() => false)) {
-      await input.fill('Autonomy Log');
-      await page.waitForTimeout(400);
-      await page.keyboard.press('Enter');
-      await page.waitForTimeout(800);
-      if (await page.locator('.autonomy-log-container').isVisible().catch(() => false)) return true;
-    }
-    await page.keyboard.press('Escape').catch(() => {});
-  }
-  // Fallback: click a panel tab labelled "Autonomy Log".
-  const tab = page.locator('[role="tab"], .tab, .panel-tab').filter({ hasText: 'Autonomy Log' }).first();
-  if (await tab.isVisible().catch(() => false)) {
-    await tab.click();
-    await page.waitForTimeout(500);
-  }
-  return page.locator('.autonomy-log-container').isVisible().catch(() => false);
+/** Run a workbench command from inside the window. */
+async function runCommand(page: Page, id: string): Promise<void> {
+  await page.evaluate(async (cmd) => {
+    const wb = (window as unknown as { __parallx_workbench__?: { _services: { get(x: { id: string }): { executeCommand(id: string): Promise<unknown> } } } }).__parallx_workbench__;
+    await wb?._services.get({ id: 'ICommandService' }).executeCommand(cmd);
+  }, id);
+  await page.waitForTimeout(800);
 }
 
-/** The status-strip cell whose name matches `label` (e.g. "Heartbeat"). */
-function statusRow(page: Page, label: string) {
-  return page.locator('.as-cell').filter({ hasText: label }).first();
+/** Open Agents on a tab (autonomy lives there; the old panel is gone). */
+async function openAgents(page: Page, tab: 'Routines' | 'History' | 'Mind'): Promise<boolean> {
+  await runCommand(page, 'agents.show');
+  const seg = page.locator('.agents-tabs').getByText(tab, { exact: true }).first();
+  if (await seg.isVisible().catch(() => false)) await seg.click();
+  await page.waitForTimeout(700);
+  return page.locator('.agents-view').isVisible().catch(() => false);
 }
-/** The cell's state, read from its dot class: 'on' | 'off' | 'paused' | 'alert' | ''. */
+
+/** The Routines status card whose name matches `label` (e.g. "Heartbeat"). */
+function statusRow(page: Page, label: string) {
+  return page.locator('.agents-rt__status').filter({ hasText: label }).first();
+}
+/** The card's state, read from its class: 'on' | 'off' | 'paused' | ''. */
 async function rowState(page: Page, label: string): Promise<string> {
-  const cls = (await statusRow(page, label).locator('.as-cell__dot').first().getAttribute('class').catch(() => '')) ?? '';
-  return /is-(on|off|paused|alert)/.exec(cls)?.[1] ?? '';
+  const cls = (await statusRow(page, label).getAttribute('class').catch(() => '')) ?? '';
+  return /agents-rt__status--(on|off|paused)/.exec(cls)?.[1] ?? '';
 }
 async function rowDetail(page: Page, label: string): Promise<string> {
-  return (await statusRow(page, label).locator('.as-cell__detail').first().textContent().catch(() => '')) ?? '';
+  return (await statusRow(page, label).locator('.agents-rt__line').first().textContent().catch(() => '')) ?? '';
 }
 
 test.describe('Autonomy / Heartbeat (live)', () => {
@@ -90,22 +83,24 @@ test.describe('Autonomy / Heartbeat (live)', () => {
         await window.waitForTimeout(6000); // let the session register (+ model start)
       }
 
-      const opened = await openAutonomyLog(window);
-      expect(opened, 'Autonomy Log panel should open').toBeTruthy();
+      const opened = await openAgents(window, 'Routines');
+      expect(opened, 'Agents should open on Routines').toBeTruthy();
 
       // ── Enable the heartbeat if it's off ──
       await statusRow(window, 'Heartbeat').waitFor({ state: 'visible', timeout: 10_000 });
       const badgeBefore = await rowState(window, 'Heartbeat');
       if (badgeBefore === 'off') {
-        await statusRow(window, 'Heartbeat').locator('.as-cell__action', { hasText: 'Enable' }).first().click();
+        await statusRow(window, 'Heartbeat').locator('.px-btn', { hasText: 'Turn On' }).first().click();
         await window.waitForTimeout(1500);
       }
       const badgeAfter = await rowState(window, 'Heartbeat');
       const detailAfter = await rowDetail(window, 'Heartbeat');
 
       // ── Fire a real review (Wake now) and watch ──
-      const logCountBefore = await window.locator('.autonomy-log-entry').count().catch(() => 0);
-      const wakeBtn = statusRow(window, 'Heartbeat').locator('.as-cell__action', { hasText: 'Wake' }).first();
+      await openAgents(window, 'History');
+      const logCountBefore = await window.locator('.agents-hist__row').count().catch(() => 0);
+      await openAgents(window, 'Routines');
+      const wakeBtn = statusRow(window, 'Heartbeat').locator('.px-btn', { hasText: 'Wake' }).first();
       let woke = false;
       if (await wakeBtn.isVisible().catch(() => false)) {
         await wakeBtn.click();
@@ -115,29 +110,22 @@ test.describe('Autonomy / Heartbeat (live)', () => {
       // Give the review a real-turn window to run (LLM through the local model).
       await window.waitForTimeout(45_000);
 
-      const logCountAfter = await window.locator('.autonomy-log-entry').count().catch(() => 0);
-      const newEntries = await window.locator('.autonomy-log-entry').allTextContents().catch(() => []);
+      await openAgents(window, 'History');
+      const logCountAfter = await window.locator('.agents-hist__row').count().catch(() => 0);
+      const newEntries = await window.locator('.agents-hist__row').allTextContents().catch(() => []);
 
-      // The Mind cell — the visible inner model (Build-3): plain-language
-      // beliefs/routines summary pulled from parallx.mind.status; state dot
-      // goes is-alert only when the ledger fails verification.
-      const mindBadge = await rowState(window, 'Mind');
-      const mindDetail = await rowDetail(window, 'Mind');
-
-      // Build-9: the EDITABLE mind — click the Mind row to open the beliefs panel,
-      // then forget a belief and confirm it's gone.
+      // The Mind tab: the visible inner model, said in words. Forget a belief
+      // and confirm it's gone (the mind is editable).
       const mindEditable = { panelOpened: false, beliefsBefore: 0, beliefsAfter: 0 };
-      const mindRow = statusRow(window, 'Mind');
-      if (await mindRow.isVisible().catch(() => false)) {
-        await mindRow.click();
+      mindEditable.panelOpened = await openAgents(window, 'Mind');
+      await window.waitForTimeout(900);
+      const mindBadge = '';
+      const mindDetail = (await window.locator('.agents-mind__meters').textContent().catch(() => '')) ?? '';
+      mindEditable.beliefsBefore = await window.locator('.agents-mind__belief').count().catch(() => 0);
+      if (mindEditable.beliefsBefore > 0) {
+        await window.locator('.agents-mind__belief').first().locator('.px-btn', { hasText: 'Forget' }).click();
         await window.waitForTimeout(900);
-        mindEditable.panelOpened = await window.locator('.autonomy-mind-panel').isVisible().catch(() => false);
-        mindEditable.beliefsBefore = await window.locator('.autonomy-mind-belief').count().catch(() => 0);
-        if (mindEditable.beliefsBefore > 0) {
-          await window.locator('.autonomy-mind-belief').first().locator('.autonomy-mind-belief__forget').click();
-          await window.waitForTimeout(700);
-          mindEditable.beliefsAfter = await window.locator('.autonomy-mind-belief').count().catch(() => 0);
-        }
+        mindEditable.beliefsAfter = await window.locator('.agents-mind__belief').count().catch(() => 0);
       }
 
       const observation = {

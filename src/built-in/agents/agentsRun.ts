@@ -62,7 +62,7 @@ export function renderAgentRun(container: HTMLElement, taskId: string, api: Para
     root.replaceChildren();
     if (!task) {
       const gone = $('div.agents-run__gone');
-      gone.textContent = 'This task is no longer around. Finished tasks keep their record in the Autonomy Log.';
+      gone.textContent = 'This task is no longer around. Finished tasks keep their record in History, in Agents.';
       root.appendChild(gone);
       return;
     }

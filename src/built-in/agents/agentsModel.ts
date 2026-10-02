@@ -16,6 +16,8 @@ export interface IAgentsInputs {
   readonly jobs: readonly ICronJob[];
   readonly heartbeat?: { readonly enabled: boolean; readonly nextDueMs: number; readonly intervalMs: number };
   readonly rows: readonly IRailRow[];
+  /** Enabled workflows and their next run (Routines that are not cron jobs). */
+  readonly workflows?: readonly { readonly id: string; readonly name: string; readonly nextRunAt: number | null; readonly what: string }[];
 }
 
 export interface INeedsYouItem {
@@ -165,11 +167,18 @@ export function buildAgentsSnapshot(input: IAgentsInputs, now: number = Date.now
       what: `Looks over what changed, ${every(input.heartbeat.intervalMs)}`,
     });
   }
+  for (const wf of input.workflows ?? []) {
+    if (wf.nextRunAt === null || wf.nextRunAt < now - 60_000) continue;
+    upcoming.push({ at: wf.nextRunAt, when: formatWhen(wf.nextRunAt, now), name: wf.name, what: shorten(wf.what, 80) });
+  }
   upcoming.sort((a, b) => a.at - b.at);
 
   // Done today: one row per run. The history keeps both the delivered result
   // (live) and the structured event for many runs; the live row wins.
-  const jobName = new Map(input.jobs.map((j) => [j.id, j.name]));
+  const jobName = new Map<string, string>([
+    ...input.jobs.map((j) => [j.id, j.name] as [string, string]),
+    ...(input.workflows ?? []).map((w) => [w.id, w.name] as [string, string]),
+  ]);
   const done: IDoneItem[] = [];
   const liveAt: { at: number; trigger: string }[] = [];
   for (const row of input.rows) {
@@ -182,7 +191,11 @@ export function buildAgentsSnapshot(input: IAgentsInputs, now: number = Date.now
         at,
         when: hhmm(at),
         name: typeof metaName === 'string' && metaName ? metaName : labelForTrigger(row.trigger),
-        what: shorten(row.requestText || row.content, 70),
+        what: (() => {
+          const w = shorten(row.requestText || row.content, 70);
+          const n = typeof metaName === 'string' && metaName ? metaName : labelForTrigger(row.trigger);
+          return w === n ? shorten(row.content, 70) : w;
+        })(),
         result: row.liveEntry.metadata?.['error'] === true || row.outcome === 'error' ? 'failed'
           : row.outcome === 'cancelled' || row.outcome === 'budget' || row.outcome === 'gated' ? 'stopped' : 'ok',
       });

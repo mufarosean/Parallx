@@ -299,3 +299,161 @@
 @media (prefers-reduced-motion: reduce) {
   .agents-status--working .agents-status__dot, .agents-run__step--running .agents-run__step-icon svg, .agents-routine { animation: none; }
 }
+
+/* ── Tabs: Now · Routines · History · Mind ── */
+.agents-tabs {
+  flex: none;
+  padding: var(--px-space-2) var(--px-space-3);
+  border-bottom: 1px solid var(--px-border);
+}
+.agents-tabs > * { width: 100%; }
+.agents-dot--off { background: var(--px-text-faint); }
+.agents-card__finding {
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Routines (agentsRoutines.ts) ── */
+.agents-rt__status {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  padding: var(--px-space-2) var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated);
+}
+.agents-rt__status--off .agents-dot, .agents-rt__status--paused .agents-dot { background: var(--px-text-faint); }
+.agents-rt__status-text { flex: 1; min-width: 0; }
+.agents-rt__name { font-weight: 600; }
+.agents-rt__line { display: block; color: var(--px-text-muted); font-size: var(--px-text-xs); line-height: 1.45; }
+.agents-rt__line--failed { color: var(--px-danger); }
+.agents-rt__hint { color: var(--px-text-muted); font-size: var(--px-text-xs); line-height: 1.5; }
+.agents-rt__level { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.agents-rt__row--off .agents-card__name { color: var(--px-text-secondary); }
+.agents-rt__row--openable .agents-card__top { cursor: pointer; }
+.agents-rt__chev { flex: none; color: var(--px-text-faint); }
+.agents-rt__chip {
+  flex: none;
+  padding: 0 var(--px-space-1);
+  border-radius: var(--px-radius-sm);
+  background: var(--px-surface-hover);
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-2xs);
+}
+.agents-rt__trace {
+  margin-top: var(--px-space-1);
+  padding: var(--px-space-1) var(--px-space-2);
+  border-left: 2px solid var(--px-border);
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.agents-rt__add { display: flex; flex-wrap: wrap; gap: var(--px-space-1); }
+.agents-rt__tpl {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-2);
+  width: 100%;
+  padding: var(--px-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--px-radius-md);
+  background: transparent;
+  color: var(--px-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
+}
+.agents-rt__tpl:hover { background: var(--px-surface-hover); border-color: var(--px-border); }
+.agents-rt__tpl:focus-visible { outline: 2px solid var(--px-ring-accent); outline-offset: 1px; }
+.agents-rt__tpl-icon {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 2px;
+  color: var(--px-text-secondary);
+}
+.agents-rt__tpl-text { min-width: 0; display: flex; flex-direction: column; }
+
+/* ── History (agentsHistory.ts) ── */
+.agents-hist__head > * { width: 100%; }
+.agents-hist__tools { display: flex; align-items: center; gap: var(--px-space-1); }
+.agents-hist__count { flex: 1; color: var(--px-accent-text); font-size: var(--px-text-xs); font-weight: 600; }
+.agents-hist__list { display: flex; flex-direction: column; gap: var(--px-space-1); }
+.agents-hist__empty { color: var(--px-text-muted); font-size: var(--px-text-xs); padding: var(--px-space-2) 0; }
+.agents-hist__row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--px-space-2) var(--px-space-2) var(--px-space-2) var(--px-space-3);
+  border-radius: var(--px-radius-md);
+  cursor: default;
+  transition: background-color var(--px-dur-fast) var(--px-ease);
+}
+.agents-hist__row:hover { background: var(--px-surface-hover); }
+.agents-hist__row:has(.agents-hist__body) { cursor: pointer; }
+/* Unread: a small accent rail at the left edge. */
+.agents-hist__row--unread::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent);
+}
+.agents-hist__top { display: flex; align-items: center; gap: var(--px-space-2); }
+.agents-hist__icon { flex: none; color: var(--px-success); }
+.agents-hist__row--failed .agents-hist__icon { color: var(--px-danger); }
+.agents-hist__who { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agents-hist__at { flex: none; color: var(--px-text-muted); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
+.agents-hist__title { color: var(--px-text-secondary); font-size: var(--px-text-xs); overflow-wrap: anywhere; }
+.agents-hist__body {
+  color: var(--px-text);
+  font-size: var(--px-text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.agents-hist__row--open .agents-hist__body { display: block; -webkit-line-clamp: unset; }
+.agents-hist__meta { color: var(--px-text-faint); font-size: var(--px-text-2xs); }
+.agents-hist__row--failed .agents-hist__meta { color: var(--px-danger); }
+.agents-hist__actions { display: flex; flex-wrap: wrap; gap: var(--px-space-1); margin-top: var(--px-space-1); }
+
+/* ── Mind (agentsMind.ts) ── */
+.agents-mind { display: flex; flex-direction: column; gap: var(--px-space-4); }
+.agents-mind__meters {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--px-space-2) var(--px-space-3);
+  border-radius: var(--px-radius-md);
+  background: var(--px-surface-hover);
+  color: var(--px-text-secondary);
+  font-size: var(--px-text-xs);
+}
+.agents-mind__belief { display: flex; align-items: center; gap: var(--px-space-2); padding: 2px 0; }
+.agents-mind__bar {
+  flex: none;
+  width: 36px;
+  height: 4px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-surface-hover);
+  overflow: hidden;
+}
+.agents-mind__fill { display: block; height: 100%; background: var(--px-accent); border-radius: inherit; }
+.agents-mind__text { flex: 1; min-width: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.agents-row > .px-btn { flex: none; align-self: center; }

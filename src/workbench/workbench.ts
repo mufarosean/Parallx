@@ -169,7 +169,6 @@ import * as CanvasTool from '../built-in/canvas/main.js';
 import * as ChatTool from '../built-in/chat/main.js';
 import * as AISettingsTool from '../built-in/ai-settings/main.js';
 import * as DiagnosticsTool from '../built-in/diagnostics/main.js';
-import * as AutonomyLogTool from '../built-in/autonomy-log/main.js';
 import * as AgentsTool from '../built-in/agents/main.js';
 import * as ThemeEditorTool from '../built-in/theme-editor/main.js';
 import * as SettingsTool from '../built-in/settings/main.js';
@@ -190,7 +189,6 @@ import {
   CHAT_MANIFEST,
   AI_SETTINGS_MANIFEST,
   DIAGNOSTICS_MANIFEST,
-  AUTONOMY_LOG_MANIFEST,
   AGENTS_MANIFEST,
   THEME_EDITOR_MANIFEST,
   SETTINGS_MANIFEST,
@@ -3956,13 +3954,12 @@ export class Workbench extends Layout {
       { manifest: SEARCH_MANIFEST, module: SearchTool },
       { manifest: WELCOME_MANIFEST, module: WelcomeTool },
       // Terminal before Output so the panel tab order reads
-      // Terminal · Output · Indexing · AI Diagnostics · Autonomy Log.
+      // Terminal · Output · Indexing · AI Diagnostics.
       { manifest: TERMINAL_MANIFEST, module: TerminalTool },
       { manifest: OUTPUT_MANIFEST, module: OutputTool },
       { manifest: INDEXING_LOG_MANIFEST, module: IndexingLogTool },
       { manifest: ACTIVITY_LOG_MANIFEST, module: ActivityLogTool },
       { manifest: DIAGNOSTICS_MANIFEST, module: DiagnosticsTool },
-      { manifest: AUTONOMY_LOG_MANIFEST, module: AutonomyLogTool },
       { manifest: TOOL_GALLERY_MANIFEST, module: ToolGalleryTool },
       { manifest: CANVAS_MANIFEST, module: CanvasTool },
       { manifest: CHAT_MANIFEST, module: ChatTool },

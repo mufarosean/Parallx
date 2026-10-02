@@ -938,7 +938,7 @@ class DashboardEditorPane implements IDisposable {
       if (undelivered) {
         throw new Error(
           'The refresh turn completed but never delivered content to this widget '
-          + '(dashboard_render_widget was not called). Check the Autonomy Log for the full run.');
+          + '(dashboard_render_widget was not called). Check History in Agents for the full run.');
       }
       if (output === null) {
         await this._data.clearWidgetError(widgetId);
