@@ -59,9 +59,9 @@ async function home(page) {
   await page.waitForSelector('.ws-home__nav', { timeout: 60_000 });
   await page.waitForTimeout(800);
 }
-// Home's destinations are a row of quiet buttons; its actions sit in the continue strip.
+// Home's destinations are a row of tiles; its actions sit in the continue strip.
 async function tile(page, title) {
-  await page.locator('.ws-home__nav .ws-btn', { hasText: title }).first().click();
+  await page.locator('.ws-home__nav button', { hasText: title }).first().click();
   await page.waitForTimeout(1_200);
 }
 
@@ -91,8 +91,17 @@ async function main() {
   const shot = async (name, opts = {}) => {
     const f = path.join(outDir, name);
     for (let attempt = 1; attempt <= 2; attempt++) {
+      // The hidden window draws no frame until something changes: nudge a
+      // 1 px dot so the screenshot has a frame to take.
+      await page.evaluate(() => { const d = document.getElementById('__probe_repaint') || document.body.appendChild(Object.assign(document.createElement('div'), { id: '__probe_repaint', style: 'position:fixed;right:0;bottom:0;width:1px;height:1px;pointer-events:none' })); d.style.opacity = d.style.opacity === '0.01' ? '0.02' : '0.01'; }).catch(() => {});
       try { await page.screenshot({ path: f, timeout: 15_000, animations: 'disabled', ...opts }); console.log(`[probe] screenshot -> ${f}`); return; }
-      catch (e) { if (attempt === 2) console.log(`[probe] screenshot FAILED ${name}: ${String(e).split('\n')[0]}`); else await page.waitForTimeout(1_500); }
+      catch (e) {
+        if (attempt === 2) { console.log(`[probe] screenshot FAILED ${name}: ${String(e).split('\n')[0]}`); break; }
+        // Still no frame: a 1 px resize forces layout and a new frame.
+        const vp = page.viewportSize();
+        if (vp) { await page.setViewportSize({ width: vp.width + 1, height: vp.height }).catch(() => {}); await page.waitForTimeout(300); await page.setViewportSize(vp).catch(() => {}); }
+        await page.waitForTimeout(1_000);
+      }
     }
   };
   try {
@@ -162,6 +171,26 @@ async function main() {
     await tile(page, 'Settings');
     await page.waitForTimeout(1_000);
     await shot('13-settings.png');
+
+    // Light mode and a narrow window, over the screens most used.
+    await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
+    await home(page);
+    await shot('14-home-light.png');
+    await tile(page, 'Dashboard');
+    await page.waitForSelector('.ws-dash__tiles', { timeout: 60_000 });
+    await page.waitForTimeout(1_200);
+    await shot('15-dashboard-light.png');
+    await home(page);
+    await tile(page, 'Problem Bank');
+    await page.waitForTimeout(1_000);
+    await shot('16-bank-light.png');
+    await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'dark'));
+    await page.setViewportSize({ width: 820, height: 900 }).catch(() => {});
+    await home(page);
+    await shot('17-home-narrow.png');
+    await tile(page, 'Problem Bank');
+    await page.waitForTimeout(1_000);
+    await shot('18-bank-narrow.png');
   } finally {
     console.log(`[probe] renderer errors: ${errors.length}`);
     for (const e of errors.slice(0, 20)) console.log('  ' + e);
