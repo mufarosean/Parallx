@@ -14,6 +14,12 @@ import {
   createPageHeader as kitCreatePageHeader,
   createEmptyState as kitCreateEmptyState,
   createSectionLabel as kitCreateSectionLabel,
+  createFilterChip as kitCreateFilterChip,
+  createSegmented as kitCreateSegmented,
+  type IKitFilterChipOptions,
+  type IKitFilterChip,
+  type IKitSegmentedOptions,
+  type IKitSegmented,
   type IKitButtonOptions,
   type IKitIconButtonOptions,
   type IKitPageHeaderOptions,
@@ -162,6 +168,8 @@ export interface ParallxApiObject {
     createPageHeader(container: HTMLElement | null, options: IKitPageHeaderOptions): HTMLElement;
     createEmptyState(container: HTMLElement | null, options: IKitEmptyStateOptions): HTMLElement;
     createSectionLabel(container: HTMLElement | null, text: string): HTMLElement;
+    createFilterChip(container: HTMLElement | null, options: IKitFilterChipOptions): IKitFilterChip;
+    createSegmented(container: HTMLElement | null, options: IKitSegmentedOptions): IKitSegmented;
   };
   /** Register keybindings into the single workbench dispatcher (see `keybindings` namespace). */
   readonly keybindings: {
@@ -620,6 +628,8 @@ export function createToolApi(
       createPageHeader: (container: HTMLElement | null, options: IKitPageHeaderOptions) => kitCreatePageHeader(container, options),
       createEmptyState: (container: HTMLElement | null, options: IKitEmptyStateOptions) => kitCreateEmptyState(container, options),
       createSectionLabel: (container: HTMLElement | null, text: string) => kitCreateSectionLabel(container, text),
+      createFilterChip: (container: HTMLElement | null, options: IKitFilterChipOptions) => kitCreateFilterChip(container, options),
+      createSegmented: (container: HTMLElement | null, options: IKitSegmentedOptions) => kitCreateSegmented(container, options),
     }),
 
     // Keybindings feed the SAME single dispatcher the built-in workbench uses.

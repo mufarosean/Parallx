@@ -259,6 +259,52 @@ select:disabled {
   flex-shrink: 0;
 }
 
+/* Back link above a page title: the page this one belongs to. */
+.px-page-header__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 0 var(--px-space-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  cursor: pointer;
+}
+.px-page-header__back:hover { color: var(--px-text); }
+.px-page-header__back:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; border-radius: var(--px-radius-xs); }
+
+/* Filter chip (kit createFilterChip): narrows a list; several can be on.
+   Pressed is aria-pressed, drawn as the accent tint with a tick. */
+.px-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  height: var(--px-control-h-sm);
+  padding: 0 10px;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-full);
+  background: transparent;
+  color: var(--px-text-secondary);
+  font: inherit;
+  font-size: var(--px-text-sm);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
+}
+.px-chip:hover { background: var(--px-surface-hover); border-color: var(--px-border-strong); color: var(--px-text); }
+.px-chip:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.px-chip__count { color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.px-chip__tick { display: none; }
+.px-chip[aria-pressed="true"] { background: var(--px-accent-soft); border-color: transparent; color: var(--px-accent-text); }
+.px-chip[aria-pressed="true"] .px-chip__count { color: inherit; opacity: 0.75; }
+.px-chip[aria-pressed="true"] .px-chip__tick { display: inline-flex; }
+
 /* Section label: sentence case, never uppercase-tracked (POLISH pass 7). */
 .px-section-label {
   font-size: var(--px-text-sm);

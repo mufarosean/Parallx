@@ -13,6 +13,7 @@
 
 import { createIconElement } from './iconRegistry.js';
 import { showExtensionContextMenu, type IExtensionMenuItem } from './contextMenu.js';
+import { SegmentedControl } from './segmentedControl.js';
 
 export type ButtonKind = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'md' | 'sm';
@@ -50,6 +51,8 @@ export interface IKitAction {
 
 export interface IKitPageHeaderOptions {
   readonly title: string;
+  /** A link above the title back to the page this one belongs to ("Worksheets ›"). */
+  readonly back?: IKitAction;
   /** One quiet line under the title. */
   readonly subtitle?: string;
   /** The one main action of the page. */
@@ -58,6 +61,41 @@ export interface IKitPageHeaderOptions {
   readonly secondary?: readonly IKitAction[];
   /** Everything else, behind ⋯. */
   readonly more?: readonly IExtensionMenuItem[];
+}
+
+export interface IKitFilterChipOptions {
+  readonly label: string;
+  /** A count drawn after the label in a fainter tone. */
+  readonly count?: number;
+  readonly pressed?: boolean;
+  readonly title?: string;
+  /** Called with the new pressed state after a click. */
+  readonly onToggle?: (pressed: boolean) => void;
+}
+
+export interface IKitFilterChip {
+  readonly element: HTMLButtonElement;
+  pressed: boolean;
+  setCount(count: number | undefined): void;
+}
+
+export interface IKitSegmentedItem {
+  readonly value: string;
+  readonly label: string;
+}
+
+export interface IKitSegmentedOptions {
+  readonly items: readonly IKitSegmentedItem[];
+  readonly value?: string;
+  /** Required: the group's name for screen readers. */
+  readonly ariaLabel: string;
+  readonly onChange?: (value: string) => void;
+}
+
+export interface IKitSegmented {
+  readonly element: HTMLElement;
+  value: string;
+  dispose(): void;
 }
 
 export interface IKitEmptyStateOptions {
@@ -102,6 +140,62 @@ export function createIconButton(container: HTMLElement | null | undefined, opti
   if (options.disabled) btn.disabled = true;
   if (options.onClick) btn.addEventListener('click', options.onClick);
   return mount(container, btn);
+}
+
+/**
+ * A filter chip: narrows a list, several can be on at once. Pressed state is
+ * aria-pressed (the CSS keys on it), so screen readers hear on and off.
+ * One of a few exclusive choices is a segmented switch instead.
+ */
+export function createFilterChip(container: HTMLElement | null | undefined, options: IKitFilterChipOptions): IKitFilterChip {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'px-chip';
+  const tick = createIconElement('check', 12);
+  tick.classList.add('px-chip__tick');
+  btn.appendChild(tick);
+  const label = document.createElement('span');
+  label.className = 'px-chip__label';
+  label.textContent = options.label;
+  btn.appendChild(label);
+  const count = document.createElement('span');
+  count.className = 'px-chip__count';
+  btn.appendChild(count);
+  if (options.title) btn.title = options.title;
+  const chip: IKitFilterChip = {
+    element: btn,
+    get pressed() { return btn.getAttribute('aria-pressed') === 'true'; },
+    set pressed(on: boolean) { btn.setAttribute('aria-pressed', String(on)); },
+    setCount(n) { count.textContent = n === undefined ? '' : String(n); count.hidden = n === undefined; },
+  };
+  chip.pressed = !!options.pressed;
+  chip.setCount(options.count);
+  btn.addEventListener('click', () => {
+    chip.pressed = !chip.pressed;
+    options.onToggle?.(chip.pressed);
+  });
+  mount(container, btn);
+  return chip;
+}
+
+/** A segmented switch: one choice of a few (a setting, a rating, Any / Starred). */
+export function createSegmented(container: HTMLElement | null | undefined, options: IKitSegmentedOptions): IKitSegmented {
+  const host = document.createElement('div');
+  const control = new SegmentedControl(host, {
+    segments: options.items,
+    selected: options.value ?? options.items[0]?.value,
+    ariaLabel: options.ariaLabel,
+  });
+  const element = control.element;
+  element.remove();
+  if (options.onChange) control.onDidChange(options.onChange);
+  mount(container, element);
+  return {
+    element,
+    get value() { return control.value; },
+    set value(v: string) { control.value = v; },
+    dispose() { control.dispose(); element.remove(); },
+  };
 }
 
 export function createSectionLabel(container: HTMLElement | null | undefined, text: string): HTMLElement {
@@ -149,6 +243,17 @@ export function createPageHeader(container: HTMLElement | null | undefined, opti
 
   const titles = document.createElement('div');
   titles.className = 'px-page-header__titles';
+  if (options.back) {
+    const back = options.back;
+    const a = document.createElement('button');
+    a.type = 'button';
+    a.className = 'px-page-header__back';
+    a.textContent = back.label;
+    a.appendChild(createIconElement('chevron-right', 12));
+    if (back.title) a.title = back.title;
+    a.addEventListener('click', () => back.onClick());
+    titles.appendChild(a);
+  }
   const h = document.createElement('h1');
   h.className = 'px-page-header__title';
   h.textContent = options.title;

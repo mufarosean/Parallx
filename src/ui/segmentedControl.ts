@@ -122,6 +122,7 @@ export class SegmentedControl extends Disposable {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'ui-segmented-control__segment';
+      btn.dataset.value = seg.value;
       btn.textContent = seg.label;
       btn.setAttribute('role', 'radio');
       btn.setAttribute('aria-checked', String(seg.value === this._selectedValue));

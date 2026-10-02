@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
 
-import { createButton, createEmptyState, createIconButton, createPageHeader, createSectionLabel } from '../../src/ui/kit';
+import { createButton, createEmptyState, createFilterChip, createIconButton, createPageHeader, createSectionLabel, createSegmented } from '../../src/ui/kit';
 
 describe('ui kit — the one set of chrome components', () => {
   it('a button carries its kind and size as classes, secondary/md by default', () => {
@@ -66,5 +66,38 @@ describe('ui kit — the one set of chrome components', () => {
     const l = createSectionLabel(null, 'Recent');
     expect(l.className).toBe('px-section-label');
     expect(l.textContent).toBe('Recent');
+  });
+
+  it('a filter chip toggles aria-pressed and reports the new state', () => {
+    const onToggle = vi.fn();
+    const chip = createFilterChip(null, { label: 'Noted', count: 5, onToggle });
+    expect(chip.element.getAttribute('aria-pressed')).toBe('false');
+    expect(chip.element.textContent).toBe('Noted5');
+    chip.element.click();
+    expect(chip.pressed).toBe(true);
+    expect(onToggle).toHaveBeenCalledWith(true);
+    chip.setCount(undefined);
+    expect((chip.element.querySelector('.px-chip__count') as HTMLElement).hidden).toBe(true);
+  });
+
+  it('a segmented switch is a named radiogroup that reports changes', () => {
+    const host = document.createElement('div');
+    const onChange = vi.fn();
+    const seg = createSegmented(host, { ariaLabel: 'Rating', items: [{ value: 'easy', label: 'Easy' }, { value: 'hard', label: 'Hard' }], value: 'easy', onChange });
+    expect(seg.element.parentElement).toBe(host);
+    expect(seg.element.getAttribute('role')).toBe('radiogroup');
+    expect(seg.element.getAttribute('aria-label')).toBe('Rating');
+    (host.querySelector('[data-value="hard"]') as HTMLButtonElement).click();
+    expect(onChange).toHaveBeenCalledWith('hard');
+    expect(seg.value).toBe('hard');
+  });
+
+  it('a page header can link back to the page it belongs to', () => {
+    const back = vi.fn();
+    const header = createPageHeader(null, { title: 'Problem Bank', back: { label: 'Worksheets', onClick: back } });
+    const link = header.querySelector('.px-page-header__back') as HTMLButtonElement;
+    expect(link.textContent).toBe('Worksheets');
+    link.click();
+    expect(back).toHaveBeenCalledOnce();
   });
 });

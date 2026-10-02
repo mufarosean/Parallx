@@ -2,23 +2,24 @@
 
 .ui-segmented-control {
   display: inline-flex;
-  border-radius: var(--parallx-radius-md);
+  box-sizing: border-box;
+  border-radius: var(--px-radius-md);
   overflow: hidden;
-  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
-  background: var(--vscode-input-background, #3c3c3c);
+  border: 1px solid var(--px-border);
+  background: var(--px-bg-inset);
   padding: 2px;
   gap: 2px;
 }
 
 .ui-segmented-control__segment {
-  padding: 4px 14px;
-  font-size: var(--parallx-fontSize-base);
+  padding: 2px 12px;
+  font-size: var(--px-text-sm);
   font-family: inherit;
-  line-height: 20px;
-  color: var(--vscode-descriptionForeground, #999);
+  line-height: 18px;
+  color: var(--px-text-muted);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--px-radius-sm);
   cursor: pointer;
   outline: none;
   white-space: nowrap;
@@ -27,26 +28,26 @@
 }
 
 .ui-segmented-control__segment:hover {
-  color: var(--vscode-foreground, #ccc);
+  color: var(--px-text);
   background: color-mix(in srgb, var(--px-text) 5%, transparent);
 }
 
 .ui-segmented-control__segment:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
+  outline: 2px solid var(--px-accent);
+  outline-offset: -2px;
   z-index: 1;
 }
 
 /* ── Active segment ── */
 
 .ui-segmented-control__segment--active {
-  color: var(--vscode-foreground, #fff);
-  background: color-mix(in srgb, var(--px-text) 10%, transparent);
+  color: var(--px-text);
+  background: var(--px-surface-active);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .ui-segmented-control__segment--active:hover {
-  background: color-mix(in srgb, var(--px-text) 12%, transparent);
+  background: var(--px-surface-active);
 }
 
 /* ── Disabled ── */

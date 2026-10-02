@@ -615,6 +615,8 @@ export namespace ui {
   }
   export interface PageHeaderOptions {
     readonly title: string;
+    /** A link above the title back to the page this one belongs to. */
+    readonly back?: Action;
     readonly subtitle?: string;
     /** The page's one main action. */
     readonly primary?: Action;
@@ -639,6 +641,38 @@ export namespace ui {
 
   /** A section label inside a page or sidebar: sentence case, never uppercase. */
   export function createSectionLabel(container: HTMLElement | null, text: string): HTMLElement;
+
+  export interface FilterChipOptions {
+    readonly label: string;
+    /** Drawn after the label in a fainter tone. */
+    readonly count?: number;
+    readonly pressed?: boolean;
+    readonly title?: string;
+    /** Called with the new pressed state after a click. */
+    readonly onToggle?: (pressed: boolean) => void;
+  }
+  export interface FilterChip {
+    readonly element: HTMLButtonElement;
+    pressed: boolean;
+    setCount(count: number | undefined): void;
+  }
+  /** A filter chip: narrows a list; several can be on at once (aria-pressed). */
+  export function createFilterChip(container: HTMLElement | null, options: FilterChipOptions): FilterChip;
+
+  export interface SegmentedOptions {
+    readonly items: readonly { readonly value: string; readonly label: string }[];
+    readonly value?: string;
+    /** Required: the group's name for screen readers. */
+    readonly ariaLabel: string;
+    readonly onChange?: (value: string) => void;
+  }
+  export interface Segmented {
+    readonly element: HTMLElement;
+    value: string;
+    dispose(): void;
+  }
+  /** A segmented switch: one choice of a few (a setting, a rating, Any / Starred). */
+  export function createSegmented(container: HTMLElement | null, options: SegmentedOptions): Segmented;
 }
 
 /**

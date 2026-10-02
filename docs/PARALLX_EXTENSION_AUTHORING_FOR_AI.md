@@ -741,7 +741,7 @@ Calm, dense, dark-first desktop workbench in the spirit of Linear and Obsidian: 
 
 ### 6.2 Iron rules
 
-1. **Chrome comes from the kit** (Section 6.3): `api.ui.createButton`, `createIconButton`, `createPageHeader`, `createEmptyState`, `createSectionLabel`, `createDropdown`, `showContextMenu`, and `api.window.showConfirmModal` for confirmations. Never clone them.
+1. **Chrome comes from the kit** (Section 6.3): `api.ui.createButton`, `createIconButton`, `createPageHeader`, `createEmptyState`, `createSectionLabel`, `createFilterChip`, `createSegmented`, `createDropdown`, `showContextMenu`, and `api.window.showConfirmModal` for confirmations. Never clone them.
 2. **Never write a colour literal.** No hex, no `rgb()`/`rgba()` with numbers. Use the `--px-*` tokens in 6.4. (A data palette, such as category colours a user picks, is data, not styling.)
 3. **Never write a pixel font size.** Use `--px-text-*` (6.5). Six sizes; nothing between them.
 4. **Never set a font-family.** Inherit it (the user picks the app font in Appearance).
@@ -781,6 +781,15 @@ api.ui.createEmptyState(body, {
 
 // Section label inside a page or sidebar.
 api.ui.createSectionLabel(sidebar, 'Accounts');
+
+// Filters that narrow a list (several on at once): chips. aria-pressed carries the state.
+const noted = api.ui.createFilterChip(bar, { label: 'Noted', count: 5, onToggle: (on) => refilter() });
+
+// One choice of a few (a setting, a rating): the segmented switch.
+api.ui.createSegmented(row, { ariaLabel: 'Sheet appearance', items: [{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }], value: 'light', onChange: save });
+
+// A sub-page links back to the page it belongs to.
+api.ui.createPageHeader(root, { title: 'Problem Bank', back: { label: 'Worksheets', onClick: openHome } });
 
 // Choices: THE dropdown, never <select>. Menus: THE context menu.
 const dd = api.ui.createDropdown(row, { items, selected: 'month', ariaLabel: 'Period' });
