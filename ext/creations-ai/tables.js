@@ -25,10 +25,21 @@ export function injectTablesStyles() {
 .tb-editor { width: 100%; box-sizing: border-box; min-height: 260px; font-family: var(--px-font-mono); font-size: var(--px-text-sm); line-height: 1.5; background: var(--px-bg-inset); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); color: var(--px-text); padding: var(--px-space-3); resize: vertical; white-space: pre; overflow: auto; tab-size: 2; }
 .tb-editor:focus { outline: none; border-color: var(--px-accent); }
 .tb-controls { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; font-size: var(--px-text-sm); color: var(--px-text-muted); }
-.tb-results { display: flex; flex-direction: column; }
-.tb-result { display: flex; align-items: flex-start; gap: var(--px-space-2); padding: var(--px-space-2) 0; border-bottom: 1px solid var(--px-divider); font-size: var(--px-text-md); line-height: 1.5; }
+.tb-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); gap: var(--px-space-5); align-items: start; }
+.tb-cols > .cs-section { border-top: 0; padding-top: 0; }
+.tb-roll-sec { position: sticky; top: var(--px-space-4); }
+.tb-roll-big { height: var(--px-control-h-lg); padding: 0 var(--px-space-4); font-size: var(--px-text-md); font-weight: 600; }
+.tb-results { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.tb-result { display: flex; align-items: flex-start; gap: var(--px-space-2); padding: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); font-size: var(--px-text-md); line-height: 1.5; }
+.tb-result-num { flex: none; width: 22px; height: 22px; border-radius: var(--px-radius-sm); background: var(--px-surface-hover); color: var(--px-text-muted); font-size: var(--px-text-xs); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.tb-result:first-child { border-color: var(--px-border-strong); }
+.tb-result:first-child .tb-result-text { font-weight: 500; }
+.tb-history { display: flex; flex-direction: column; margin-top: var(--px-space-3); }
+.tb-history-title { font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-secondary); margin-bottom: var(--px-space-1); }
+.tb-history-row { padding: 6px 0; border-top: 1px solid var(--px-divider); font-size: var(--px-text-sm); color: var(--px-text-muted); }
+@container (max-width: 820px) { .tb-cols { grid-template-columns: minmax(0, 1fr); } .tb-roll-sec { position: static; } }
 .tb-result-text { flex: 1; min-width: 0; white-space: pre-wrap; }
-.tb-result-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+.tb-result-actions { display: flex; gap: 2px; opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
 .tb-result:hover .tb-result-actions, .tb-result:focus-within .tb-result-actions { opacity: 1; }
 .tb-roll { display: inline-flex; align-items: center; }
 `;
@@ -128,6 +139,7 @@ export function renderTablesPage(container, parallx, input, deps) {
       rowByName.set(t.name, row);
       row.appendChild(el('span', 'tg-cc-row-icon', { html: icon('dices', 14) }));
       row.appendChild(el('span', 'tg-cc-row-name', { text: t.name }));
+      row.title = t.name;
       const acts = el('span', 'tg-cc-row-actions');
       const del = el('button', 'tg-cc-row-action tg-cc-row-action--danger', { html: icon('trash', 12) });
       del.title = 'Delete';
@@ -178,6 +190,7 @@ export function renderTablesPage(container, parallx, input, deps) {
   refreshRail().then(() => {
     if (rawInstance === 'new') void createTable();
     else if (rawInstance && rawInstance !== 'tables') open(tableName(rawInstance));
+    else if (rowByName.size) open([...rowByName.keys()][0]);
     else showEmpty();
   }).catch((err) => console.warn('[Creations] Tables rail failed:', err));
   return { dispose() { clearPane(); container.innerHTML = ''; } };
@@ -199,8 +212,10 @@ export function renderTablePane(container, parallx, ctx, deps) {
   bar.appendChild(status);
   root.appendChild(bar);
 
+  const cols = el('div', 'tb-cols');
+  root.appendChild(cols);
   const editorSec = section('Source', 'Lists, one per block. Indent the items. The first list, or output, is what rolls.');
-  root.appendChild(editorSec.root);
+  cols.appendChild(editorSec.root);
   const editor = el('textarea', 'tb-editor');
   editor.spellcheck = false;
   editor.setAttribute('aria-label', 'Table source');
@@ -219,14 +234,31 @@ export function renderTablePane(container, parallx, ctx, deps) {
   editorSec.body.append(editor, errors);
 
   const rollSec = section('Roll', '');
-  root.appendChild(rollSec.root);
+  rollSec.root.classList.add('tb-roll-sec');
+  cols.appendChild(rollSec.root);
   const controls = el('div', 'tb-controls');
   const rollBtn = button('Roll', 'dices', () => void doRoll(), true);
+  rollBtn.classList.add('tb-roll-big', 'cr-dice');
   const countSel = tgSelect(parallx, { layout: 'inline', title: 'How many results', items: COUNTS.map((n) => ({ value: String(n), label: `${n}` })), value: '5', onChange: (v) => { state.count = Number(v) || 5; } });
   const listSel = tgSelect(parallx, { layout: 'inline', title: 'Which list to roll', items: [{ value: 'output', label: 'output' }], value: 'output', onChange: (v) => { state.list = v || 'output'; } });
   controls.append(rollBtn, el('span', null, { text: 'times' }), countSel.element, el('span', null, { text: 'from' }), listSel.element);
   const results = el('div', 'tb-results');
-  rollSec.body.append(controls, results);
+  const history = el('div', 'tb-history');
+  history.style.display = 'none';
+  rollSec.body.append(controls, results, history);
+  const earlier = [];
+  function remember(list) {
+    for (const t of list.slice(0, 3)) if (t && !earlier.includes(t)) earlier.unshift(t);
+    earlier.length = Math.min(earlier.length, 6);
+  }
+  function renderHistory(skip) {
+    const rows = earlier.filter((t) => !skip.includes(t)).slice(0, 4);
+    history.replaceChildren();
+    if (!rows.length) { history.style.display = 'none'; return; }
+    history.appendChild(el('div', 'tb-history-title', { text: 'Earlier rolls' }));
+    for (const t of rows) history.appendChild(el('div', 'tb-history-row', { text: t }));
+    history.style.display = '';
+  }
 
   function button(label, iconName, onClick, primary = false) {
     const b = el('button', `cs-btn${primary ? ' cs-btn--primary' : ''}`, { html: `${icon(iconName, 14)}<span>${label}</span>` });
@@ -270,15 +302,20 @@ export function renderTablePane(container, parallx, ctx, deps) {
       const loaded = await loadTable(fs, workspaceUri, deps, state.source);
       const r = roll(loaded.gen, state.count, state.list, { imports: loaded.imports });
       showErrors([...loaded.errors, ...r.errors]);
-      results.replaceChildren(...r.results.map((text) => resultRow(text, loaded)));
+      const before = [...results.querySelectorAll('.tb-result-text')].map((n) => n.textContent || '');
+      remember(before);
+      results.replaceChildren(...r.results.map((text, i) => resultRow(text, loaded, i)));
+      results.firstElementChild?.classList.add('cr-fresh');
+      renderHistory(r.results);
       rollSec.setMeta(`${r.results.length} ${r.results.length === 1 ? 'result' : 'results'} from ${state.list}`);
     } finally {
       state.rolling = false;
       rollBtn.disabled = false;
     }
   }
-  function resultRow(text, loaded) {
+  function resultRow(text, loaded, i = 0) {
     const row = el('div', 'tb-result');
+    row.appendChild(el('span', 'tb-result-num', { text: String(i + 1) }));
     const t = el('span', 'tb-result-text', { text });
     const acts = el('div', 'tb-result-actions');
     acts.appendChild(iconButton('copy', 'Copy this result', () => { try { void navigator.clipboard?.writeText(t.textContent || ''); } catch { /* no clipboard */ } }));

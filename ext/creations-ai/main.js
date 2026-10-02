@@ -2014,7 +2014,7 @@ ${CREATIONS_PARTS_CSS}
 .cr-try:hover { border-color: var(--px-border-strong); background: var(--px-surface-hover); color: var(--px-text); }
 .cr-roll { border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); padding: var(--px-space-3) var(--px-space-4); display: flex; flex-direction: column; gap: var(--px-space-2); }
 .cr-roll-head { display: flex; align-items: center; justify-content: space-between; }
-.cr-roll-label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; min-width: 0; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.cr-roll-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .cr-roll-text { font-size: var(--px-text-md); font-weight: 500; line-height: 1.45; }
 .cr-roll-actions { display: flex; gap: var(--px-space-1); align-items: center; }
 .cr-quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--px-space-3); }
@@ -2138,6 +2138,12 @@ ${CREATIONS_PARTS_CSS}
 .cr-memory-hint { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-3); border: 1px dashed var(--px-border-strong); border-radius: var(--px-radius-md); color: var(--px-text-muted); font-size: var(--px-text-xs); margin-top: auto; }
 @container (max-width: 760px) { .cr-memory { display: none !important; } }
 .tg-chat { container-type: inline-size; }
+.cr-settings-head { padding: var(--px-space-5) var(--px-space-6) 0; max-width: 820px; }
+.cr-feel { max-width: 640px; margin-bottom: var(--px-space-6); }
+.cr-feel-row { display: flex; align-items: center; gap: var(--px-space-5); padding: var(--px-space-3) 0; border-top: 1px solid var(--px-divider); }
+.cr-feel-text { flex: 1; min-width: 0; }
+.cr-feel-label { font-weight: 500; }
+.cr-feel-hint { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 2px; }
 @container (max-width: 900px) {
   .cr-hero { grid-template-columns: minmax(0, 1fr); }
   .cr-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -8149,8 +8155,7 @@ function renderHomePage(container, parallx) {
     if (!String(text).trim()) { rollHost.style.display = 'none'; return; }
     rollHost.replaceChildren();
     const head = el('div', 'cr-roll-head');
-    head.appendChild(el('span', 'cr-roll-label', { html: `${icon('dices', 13)}<span></span>` }));
-    head.querySelector('.cr-roll-label span').textContent = `${titleCaseName(table.name)} rolled`;
+    head.appendChild(el('span', 'cr-roll-label', { text: `${titleCaseName(table.name)} rolled` }));
     const again = ui.createIconButton(head, { icon: 'dices', title: 'Roll another table', size: 'sm', onClick: () => void rollOnHome(settings) });
     again.classList.add('cr-dice');
     rollHost.appendChild(head);
@@ -8699,7 +8704,15 @@ const DEFAULT_SETTINGS = {
   // The Story Writer's own model and context picks.
   storyModelId: '',
   storyContextWindow: 0,
+  // Feel: streaming motion and the Home's table roll.
+  showWritingMotion: true,
+  homeTableRoll: true,
 };
+
+/** Motion off: `.cr-still` on the body stops every Creations animation. */
+function applyFeel(settings) {
+  try { document.body.classList.toggle('cr-still', settings?.showWritingMotion === false); } catch { /* no DOM */ }
+}
 
 async function loadSettings(fs, workspaceUri) {
   const path = resolveUri(workspaceUri, `${EXT_ROOT}/settings.json`);
@@ -8726,14 +8739,13 @@ function renderSettingsPage(container, parallx) {
   const root = el('div', 'tg-page');
   container.appendChild(root);
 
-  // Header
-  const header = el('div', 'tg-page-header');
-  header.innerHTML = icon('sliders', 28);
-  const info = el('div', 'tg-page-header-info');
-  info.appendChild(el('div', 'tg-page-header-title', { text: 'Settings' }));
-  info.appendChild(el('div', 'tg-page-header-subtitle', { text: 'Token budgets, defaults, and what the Studio keeps from a source.' }));
-  header.appendChild(info);
-  root.appendChild(header);
+  const headerHost = el('div', 'cr-settings-head');
+  root.appendChild(headerHost);
+  parallx.ui.createPageHeader(headerHost, {
+    title: 'Creations Settings',
+    back: { label: 'Creations', onClick: () => void parallx.commands.executeCommand('textGenerator.openHome') },
+    subtitle: 'How it feels, the defaults for new chats and stories, and the token budget.',
+  });
 
   const content = el('div', 'tg-page-content');
   root.appendChild(content);
@@ -8742,6 +8754,33 @@ function renderSettingsPage(container, parallx) {
     content.appendChild(el('div', 'tg-empty', { text: 'Open a workspace to configure settings.' }));
     return { dispose() { container.innerHTML = ''; } };
   }
+
+  // Feel: saved the moment they change.
+  const feel = el('div', 'cr-feel');
+  feel.appendChild(el('div', 'tg-page-section-title', { text: 'Feel' }));
+  const feelRow = (label, hint, key) => {
+    const row = el('div', 'cr-feel-row');
+    const text = el('div', 'cr-feel-text');
+    text.appendChild(el('div', 'cr-feel-label', { text: label }));
+    text.appendChild(el('div', 'cr-feel-hint', { text: hint }));
+    row.appendChild(text);
+    const seg = parallx.ui.createSegmented(row, {
+      ariaLabel: label,
+      items: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
+      value: 'on',
+      onChange: async (v) => {
+        const cur = await loadSettings(fs, workspaceUri);
+        const next = { ...cur, [key]: v === 'on' };
+        await saveSettings(fs, workspaceUri, next);
+        applyFeel(next);
+      },
+    });
+    feel.appendChild(row);
+    return seg;
+  };
+  const motionSeg = feelRow('Show writing as it arrives', 'Text streams in with a cursor, and fields still to come shimmer. Off keeps everything still.', 'showWritingMotion');
+  const rollSeg = feelRow('Roll a table on Home', 'Home shows a fresh roll from one of your tables each time it opens.', 'homeTableRoll');
+  content.appendChild(feel);
 
   const form = el('div', 'tg-settings-form');
   content.appendChild(form);
@@ -8864,6 +8903,8 @@ function renderSettingsPage(container, parallx) {
 
   async function load() {
     const s = await loadSettings(fs, workspaceUri);
+    motionSeg.value = s.showWritingMotion === false ? 'off' : 'on';
+    rollSeg.value = s.homeTableRoll === false ? 'off' : 'on';
     charBudget.value = s.tokenBudgetCharacter;
     loreBudget.value = s.tokenBudgetLore;
     histBudget.value = s.tokenBudgetHistory;
@@ -9921,6 +9962,11 @@ A reference for the world of Victorian-era science and invention.
 export function activate(parallx, context) {
   console.log('[TextGenerator] Extension activated');
   _parallx = parallx;
+  {
+    const fs0 = parallx.workspace?.fs;
+    const ws0 = parallx.workspace?.workspaceFolders?.[0]?.uri;
+    if (fs0 && ws0) void loadSettings(fs0, ws0).then(applyFeel).catch(() => {});
+  }
 
   // Sidebar view
   const viewDisposable = parallx.views.registerViewProvider('textGenerator.home', {

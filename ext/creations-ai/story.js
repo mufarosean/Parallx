@@ -11,6 +11,7 @@
 // Pure parts live in story-core.js. tests/unit/creationsStoryPane.test.ts
 // drives this file with a stubbed model and file system.
 
+import { createPortrait, hueOf } from './portrait.js';
 import { injectStudioStyles } from './studio.js';
 import {
   newStory, emptyBrief, POVS, TENSES, BEAT_LENGTHS, castEntryFromCharacter,
@@ -29,30 +30,44 @@ export function injectStoryStyles() {
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-.st { max-width: 860px; }
+.st { max-width: 1180px; }
+.st-cols { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: var(--px-space-5); align-items: start; }
+.st-manuscript { min-width: 0; max-width: 680px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: var(--px-space-4); }
+.st-side { display: flex; flex-direction: column; gap: var(--px-space-3); position: sticky; top: var(--px-space-4); min-width: 0; }
+.st-side .cs-section { border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); padding: var(--px-space-3); }
+.st-side .st-grid { grid-template-columns: minmax(0, 1fr); }
+.st-cast .cr-portrait { order: -1; margin-right: 4px; }
+.st-composer-card { border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); padding: var(--px-space-2) var(--px-space-2) var(--px-space-2) var(--px-space-3); display: flex; flex-direction: column; gap: var(--px-space-2); }
+.st-composer-card:focus-within { border-color: var(--px-accent); }
+.st-directions { display: flex; flex-wrap: wrap; gap: var(--px-space-1); }
+.st-direction { height: var(--px-control-h-sm); padding: 0 var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-full); background: transparent; color: var(--px-text-secondary); font: inherit; font-size: var(--px-text-xs); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.st-direction:hover { border-color: var(--px-border-strong); background: var(--px-surface-hover); color: var(--px-text); }
+@container (max-width: 760px) { .st-cols { grid-template-columns: minmax(0, 1fr); } .st-side { position: static; order: -1; } }
 .st-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--px-space-3); }
 .st-cast { display: flex; flex-wrap: wrap; gap: var(--px-space-1); align-items: center; }
 .st-cast .cs-chip { line-height: 22px; padding-right: 2px; }
 .st-cast .cs-icon-btn { width: 18px; height: 18px; }
-.st-chapter { border-top: 1px solid var(--px-divider); padding-top: var(--px-space-3); }
+.st-chapter { padding-top: var(--px-space-2); }
 .st-chapter-head { display: flex; align-items: center; gap: var(--px-space-2); }
-.st-chapter-title { flex: 1; min-width: 0; font-size: var(--px-text-lg); font-weight: 600; background: transparent; border: 0; border-bottom: 1px solid transparent; color: var(--px-text); padding: 2px 0; outline: none; font-family: inherit; }
+.st-chapter-title { flex: 1; min-width: 0; font-size: var(--px-text-xl); letter-spacing: -.01em; font-weight: 600; background: transparent; border: 0; border-bottom: 1px solid transparent; color: var(--px-text); padding: 2px 0; outline: none; font-family: inherit; }
 .st-chapter-title:hover { border-bottom-color: var(--px-border); }
 .st-chapter-title:focus { border-bottom-color: var(--px-accent); }
 .st-chapter-meta { font-size: var(--px-text-xs); color: var(--px-text-muted); white-space: nowrap; }
 .st-beats { display: flex; flex-direction: column; }
-.st-beat { position: relative; padding: var(--px-space-2) 0; border-bottom: 1px solid var(--px-divider); }
-.st-beat-text { width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-md); line-height: 1.65; padding: 6px var(--px-space-2); resize: none; overflow: hidden; min-height: 40px; }
-.st-beat-text:hover { border-color: var(--px-border); }
+.st-beat { position: relative; padding: 2px 0; }
+.st-beat-text { width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-md); line-height: 1.75; padding: var(--px-space-2) var(--px-space-3); resize: none; overflow: hidden; min-height: 40px; border-radius: var(--px-radius-md); }
+.st-beat-text:hover { border-color: var(--px-border); background: var(--px-bg-elevated); }
 .st-beat-text:focus { outline: none; border-color: var(--px-accent); background: var(--px-bg-inset); }
 .st-beat--live .st-beat-text { color: var(--px-text-secondary); }
-.st-beat-actions { display: flex; gap: 2px; justify-content: flex-end; opacity: 0; transition: opacity .12s; margin-top: 2px; }
+.st-beat-actions { position: absolute; top: -12px; right: 0; display: flex; gap: 1px; padding: 2px; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); box-shadow: var(--px-shadow-md); opacity: 0; pointer-events: none; transition: opacity var(--px-dur-fast) var(--px-ease); z-index: 2; }
+.st-beat:hover .st-beat-actions, .st-beat:focus-within .st-beat-actions, .st-beat--undo .st-beat-actions, .st-beat--rewriting .st-beat-actions { pointer-events: auto; }
 .st-beat:hover .st-beat-actions, .st-beat:focus-within .st-beat-actions, .st-beat--undo .st-beat-actions, .st-beat--rewriting .st-beat-actions { opacity: 1; }
 .st-beat-steer { display: flex; gap: var(--px-space-2); margin-top: var(--px-space-1); }
 .st-beat-steer .cs-input { flex: 1; }
 .st-beat-error { font-size: var(--px-text-xs); color: var(--px-danger); display: flex; gap: var(--px-space-2); align-items: center; margin-top: var(--px-space-1); }
-.st-composer { display: flex; gap: var(--px-space-2); align-items: center; padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); }
-.st-composer .cs-input { flex: 1; }
+.st-composer { display: flex; gap: var(--px-space-2); align-items: center; }
+.st-composer .cs-input { flex: 1; border: 0; background: transparent; padding-left: 0; font-size: var(--px-text-md); }
+.st-composer .cs-input:focus { border: 0; }
 .st-empty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: var(--px-space-4) 0; }
 .st-memory { min-height: 80px; font-size: var(--px-text-sm); }
 `;
@@ -218,10 +233,16 @@ export function renderStoryPane(container, parallx, ctx, deps) {
   const errorLine = el('div', 'cs-error');
   errorLine.style.display = 'none';
   root.appendChild(errorLine);
+  // The manuscript in the middle, the brief and memory beside it.
+  const cols = el('div', 'st-cols');
+  const manuscript = el('div', 'st-manuscript');
+  const side = el('div', 'st-side');
+  cols.append(manuscript, side);
+  root.appendChild(cols);
 
   // ── Brief ──────────────────────────────────────────────────────────────
   const brief = section('Brief', 'Premise, setting, cast, style, point of view. The writer reads it every beat.');
-  root.appendChild(brief.root);
+  side.appendChild(brief.root);
   const b = state.story.brief;
   const premise = textarea('Premise', 'What the story is about, in a sentence or three.', 3, (v) => { state.story.brief.premise = v; });
   const premiseRoll = deps.tableRoll ? deps.tableRoll(premise.area) : null;
@@ -259,7 +280,7 @@ export function renderStoryPane(container, parallx, ctx, deps) {
 
   // ── Memory ─────────────────────────────────────────────────────────────
   const memory = section('Story Memory', 'What has happened, kept short so the writer never forgets past its context.', true);
-  root.appendChild(memory.root);
+  side.appendChild(memory.root);
   const memoryArea = el('textarea', 'cs-textarea st-memory');
   memoryArea.rows = 4;
   memoryArea.placeholder = 'Written from the beats as they go. Edit it if the writer got something wrong.';
@@ -273,13 +294,13 @@ export function renderStoryPane(container, parallx, ctx, deps) {
 
   // ── Chapters and beats ─────────────────────────────────────────────────
   const chaptersHost = el('div');
-  root.appendChild(chaptersHost);
+  manuscript.appendChild(chaptersHost);
 
   // ── Composer ───────────────────────────────────────────────────────────
   const composer = el('div', 'st-composer');
   const direction = el('input', 'cs-input');
   direction.type = 'text';
-  direction.placeholder = 'Direction for the next beat, if any';
+  direction.placeholder = 'What happens next?';
   direction.setAttribute('aria-label', 'Direction for the next beat');
   direction.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); void writeBeat(); } });
   const continueBtn = button('Continue', 'sparkles', () => void writeBeat(), true);
@@ -287,7 +308,24 @@ export function renderStoryPane(container, parallx, ctx, deps) {
   const stopBtn = button('Stop', 'square', () => { state.stop = true; });
   stopBtn.style.display = 'none';
   composer.append(direction, continueBtn, stopBtn);
-  root.appendChild(composer);
+  // Directions to reach for: a click fills the line, Continue writes it.
+  const directions = el('div', 'st-directions');
+  const DIRECTIONS = [
+    ['Raise The Stakes', 'sparkles', 'Raise the stakes: something goes wrong or costs more than expected.'],
+    ['A Quiet Moment', 'feather', 'A quiet moment: let the characters breathe and notice each other.'],
+    ['Plot Twist', 'dices', 'A twist: reveal something that changes how this scene reads.'],
+    ['Time Skip', 'clock', 'Skip ahead to the next important moment.'],
+  ];
+  for (const [label, iconName, text] of DIRECTIONS) {
+    const chip = el('button', 'st-direction', { html: `${icon(iconName, 12)}<span>${label}</span>` });
+    chip.type = 'button';
+    chip.title = text;
+    chip.addEventListener('click', () => { direction.value = text; direction.focus(); });
+    directions.appendChild(chip);
+  }
+  const composerCard = el('div', 'st-composer-card');
+  composerCard.append(directions, composer);
+  manuscript.appendChild(composerCard);
 
   // ── Helpers ────────────────────────────────────────────────────────────
   function button(label, iconName, onClick, primary = false) {
@@ -359,8 +397,10 @@ export function renderStoryPane(container, parallx, ctx, deps) {
   function renderCast() {
     castRow.replaceChildren();
     for (const c of state.story.brief.cast) {
-      const chip = el('span', 'cs-chip cs-chip--accent', { text: c.name });
+      const chip = el('span', 'cs-chip', { text: c.name });
       chip.title = c.tagline || c.portrait || '';
+      const known = state.characters.find((x) => x.fileName === c.fileName);
+      chip.appendChild(createPortrait(c.name, { size: 18, hue: known ? hueOf(known.rawData) : null }));
       chip.appendChild(iconButton('x', `Remove ${c.name} from the cast`, () => { state.story.brief.cast = state.story.brief.cast.filter((x) => x !== c); renderCast(); markDirty(); }));
       castRow.appendChild(chip);
     }

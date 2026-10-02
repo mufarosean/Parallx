@@ -371,6 +371,66 @@ Not built: proposals shown as a kept/changed/added diff before they land
 (the file itself is the review for now), and a consistency check on a
 reply against Facts. Both are next if the file alone is not enough.
 
+## Redesign (built 2026-10-02)
+
+Mockup: the Claude Design canvas "Creations Redesign"
+(https://claude.ai/artifact/CQ1iYpSNpb5ptJu3iZXuSg), after the owner asked
+for it calmer: colour on portraits only. The aim was a surface that feels
+usable and alive without getting loud.
+
+- **Portraits.** A character has no picture: their initials on a quiet tone
+  of a hue taken from their name (`portrait.js`, Tier 3 `--px-portrait-*`
+  tokens, a light pair for light mode). The hue shows on the portrait and
+  nowhere else; cards, bubbles and panels stay neutral, and the accent marks
+  the one main action. Clicking the Studio portrait picks another hue (saved
+  as `hue` on the character; From The Name clears it).
+- **Home.** "Who do you want to meet?" with a concept line, Surprise Me and
+  two Try chips; Make Character opens the Studio and writes the sheet at
+  once. A roll from one of your tables (Use As A Concept, Copy, roll again),
+  four quick-start cards, the newest chat (its last line) and story to pick
+  up, and your cast as cards. The tab is titled Creations.
+- **Characters.** A gallery of cards (portrait, tagline, chat count, Chat,
+  a ⋯ menu with Open, Start A Chat, Duplicate, Export As Markdown…,
+  Delete…), search, and Characters | Lorebooks. Opening a card fills the page
+  with the Studio; a back link returns. The rail and "Nothing open" are gone.
+- **Studio.** A header with the portrait, the name and the tagline; the sheet
+  rows are cards; Try A Line sits beside the sheet as a short exchange. While
+  the sheet streams in, rows still to come shimmer, the next one says
+  Writing, each that lands glows briefly, and the status counts "Writing 3
+  of 11" over a thin progress bar.
+- **Chat.** A header with who you are talking to and the message count; a Now
+  line when the scene has a place, time or mood (click to edit it). Character
+  messages in a neutral bubble beside their portrait, yours in the accent on
+  the right; message actions float in a bar on hover; the composer is a card
+  and its turn buttons are chips. The brain button opens a Memory panel
+  beside the chat (Facts, Timeline, Notes from `memories.md`, Open
+  memories.md); a pinned message lands in Facts.
+- **Story Writer.** The chapters read as a manuscript; the Brief and Story
+  Memory sit beside it (above it under 760 px). The composer asks "What
+  happens next?" with four direction chips (Raise The Stakes, A Quiet
+  Moment, Plot Twist, Time Skip) that fill the line. Cast chips carry
+  portraits.
+- **Tables.** The editor and the roll side by side; a larger Roll; results as
+  numbered cards, the newest glowing; Earlier rolls under them. The page
+  opens the first table instead of an empty pane.
+- **Settings.** The kit page header (Creations Settings) and a Feel section,
+  saved on change: Show writing as it arrives (off adds `.cr-still` and stops
+  every animation; reduced motion stops them too) and Roll a table on Home.
+
+Departures from the mockup, on purpose:
+- No word goal on the Story Writer, and no genre filter chips in the gallery:
+  stories have no goal and characters carry no genres. Search stands in.
+- The chat's chips are its existing turn buttons (who speaks next) and the
+  character's own shortcut buttons; the mockup's sample shortcuts were
+  invented.
+- Tables keep the 1 / 5 / 10 / 20 dropdown and their file names.
+- The Memory panel hides under 760 px; the brain button still toggles it.
+- The rest of the Settings form (budgets, defaults) is unchanged.
+
+Probe: `node tests/probes/creations-redesign-probe.mjs <outDir>` seeds
+characters, a chat, a story, a table and a lorebook, then shoots every
+surface in dark, light and a narrow pane.
+
 ## Gates, whole program
 
 Unit suite: 405 files, 6414 tests green after the rename, of which
