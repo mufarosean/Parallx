@@ -417,12 +417,18 @@
 
 /* ── PDF.js Viewer theme overrides ─────────────────────────────────────── */
 
-/* Page background — keep white for readability (PDFs are authored on white) */
+/* Page background — keep white for readability (PDFs are authored on white).
+   The page shell carries pdf.js's 9px transparent border (--page-border, which
+   its layout math counts), so a shadow on .page outlines a box 9px OUTSIDE the
+   white sheet: a gap, then a dark frame. The shadow goes on the canvas
+   wrapper, which is exactly the sheet. */
 .pdf-editor-pane .pdfViewer .page {
   background-color: #fff;
-  box-shadow: 0 1px 4px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.35)), 0 0 0 1px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.08));
   margin: 8px auto;
-  border-radius: 2px;
+}
+
+.pdf-editor-pane .pdfViewer .page .canvasWrapper {
+  box-shadow: 0 0 0 1px var(--px-divider), var(--px-shadow-md);
 }
 
 /* Page gap via padding on pdfViewer */
@@ -810,7 +816,9 @@
 
 /* ── Night reading (invert colors) ─────────────────────────────────────── */
 
-.pdf-viewer-container.pdf-reading-dark .pdfViewer .page .canvasWrapper {
+/* On the canvases, not the wrapper: a filter on the wrapper would invert its
+   page shadow into a white glow. */
+.pdf-viewer-container.pdf-reading-dark .pdfViewer .page .canvasWrapper canvas {
   filter: invert(1) hue-rotate(180deg);
 }
 
@@ -818,10 +826,12 @@
   background-color: #1c1c1c;
 }
 
-/* Search highlight colors */
+/* Search highlight colors. Matches sit on the white sheet (never the app
+   theme), so the alphas are fixed: every match a warm wash, the current one
+   the accent — two colours, so the current match is findable. */
 .pdf-editor-pane .textLayer .highlight {
-  --highlight-bg-color: var(--vscode-editor-findMatchHighlightBackground, rgba(230, 175, 46, 0.35));
-  --highlight-selected-bg-color: var(--vscode-editor-findMatchBackground, rgba(80, 145, 230, 0.45));
+  --highlight-bg-color: rgba(var(--px-yellow-rgb), 0.45);
+  --highlight-selected-bg-color: rgba(var(--px-accent-rgb), 0.55);
 }
 
 /* Annotation layer links */

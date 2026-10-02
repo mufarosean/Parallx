@@ -1757,7 +1757,7 @@ export class PdfEditorPane extends EditorPane {
             { id: 'pdf.scroll.page',       label: 'Single Page', renderIcon: checked(scroll === ScrollMode.PAGE) },
           ],
         },
-        { id: 'pdf.print', label: 'Print…', keybinding: 'Ctrl+P', group: 'doc' },
+        { id: 'pdf.print', label: 'Print…', group: 'doc' },
         { id: 'pdf.openExternal', label: 'Open in System Viewer', group: 'doc' },
       ],
       anchor: { x: r.left, y: r.bottom + 4 },
@@ -2277,6 +2277,11 @@ export class PdfEditorPane extends EditorPane {
           this._pdfViewer!.currentPageNumber = restoredPage;
         }
         if (pending) this._applyPendingViewState();
+        // Setting the scale re-anchors the current page at its sheet's top
+        // edge, past the viewer padding and pdf.js's page border, so page 1
+        // opened flush under the toolbar. A fresh open at page 1 starts at
+        // the very top instead.
+        else if (restoredPage <= 1 && this._viewerContainer) this._viewerContainer.scrollTop = 0;
 
         this._zoomInput.value = `${Math.round(this._pdfViewer!.currentScale * 100)}%`;
         this._updateFitButton();
@@ -2780,20 +2785,19 @@ export class PdfEditorPane extends EditorPane {
 
   // ── Keyboard ─────────────────────────────────────────────────────────
 
-  private _onKeyDown(e: KeyboardEvent): void {
-    // Ctrl+F — toggle search
-    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-      this._toggleSearch(true);
-      e.preventDefault();
-      return;
-    }
+  /**
+   * Ctrl+F. The workbench keybinding service owns Ctrl+F (edit.find): it
+   * catches the key in the capture phase, stops it, and calls showFind() on
+   * the active pane — so the pane's own keydown never sees it.
+   */
+  showFind(): void {
+    this._toggleSearch(true);
+  }
 
-    // Ctrl+P — print
-    if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
-      this._print();
-      e.preventDefault();
-      return;
-    }
+  private _onKeyDown(e: KeyboardEvent): void {
+    // Ctrl+F and Ctrl+P never arrive here: the workbench keybinding service
+    // takes them first (edit.find → showFind() above; Ctrl+P is Go to File).
+    // Print lives in the ⋯ menu.
 
     // Don't intercept keyboard when search input or page input is focused
     if (document.activeElement === this._searchInput ||

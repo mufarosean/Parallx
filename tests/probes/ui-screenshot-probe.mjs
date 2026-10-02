@@ -665,13 +665,14 @@ async function pdfScene(appRoot, workspace, errors) {
     });
     await page.evaluate(() => Array.from(document.querySelectorAll('.tree-node, [role="treeitem"], .explorer-item')).find((r) => /README\.md/.test(r.textContent || ''))?.click());
     await page.waitForTimeout(300);
-    const opened = await page.evaluate(() => {
+    // A real double-click on the explorer row, the way a person opens it.
+    const rowAt = await page.evaluate(() => {
       const row = Array.from(document.querySelectorAll('[role="treeitem"], .tree-node, .explorer-item')).find((r) => /probe-reading\.pdf/.test(r.textContent || ''));
-      if (!row) return false;
-      row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-      return true;
+      if (!row) return null;
+      const r = row.getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 };
     });
+    if (rowAt) await page.mouse.dblclick(rowAt.x, rowAt.y);
+    const opened = !!rowAt;
     if (!opened) {
       await page.keyboard.press('Control+P');
       await page.waitForTimeout(600);
@@ -687,7 +688,8 @@ async function pdfScene(appRoot, workspace, errors) {
       const pg = document.querySelector('.pdfViewer .page'); const cs = getComputedStyle(pg); const r = pg.getBoundingClientRect();
       const cw = pg.querySelector('.canvasWrapper')?.getBoundingClientRect();
       const hit = document.elementFromPoint(r.left + 4, r.top + 200);
-      return `page=${Math.round(r.left)}..${Math.round(r.right)} top=${Math.round(r.top)} border="${cs.borderLeftWidth} ${cs.borderLeftStyle} ${cs.borderLeftColor}" bg=${cs.backgroundColor} clip=${cs.backgroundClip} shadow="${cs.boxShadow}" canvas=${Math.round(cw?.left)}..${Math.round(cw?.right)} hitAtBorder=${hit?.className} viewerPad="${getComputedStyle(document.querySelector('.pdfViewer')).padding}" containerBg=${getComputedStyle(document.querySelector('.pdf-viewer-container')).backgroundColor}`;
+      const ct = document.querySelector('.pdf-viewer-container');
+      return `scrollTop=${ct.scrollTop} containerTop=${Math.round(ct.getBoundingClientRect().top)} cwShadow="${cw ? getComputedStyle(pg.querySelector('.canvasWrapper')).boxShadow : ''}" page=${Math.round(r.left)}..${Math.round(r.right)} top=${Math.round(r.top)} border="${cs.borderLeftWidth} ${cs.borderLeftStyle} ${cs.borderLeftColor}" bg=${cs.backgroundColor} clip=${cs.backgroundClip} shadow="${cs.boxShadow}" canvas=${Math.round(cw?.left)}..${Math.round(cw?.right)} hitAtBorder=${hit?.className} viewerPad="${getComputedStyle(document.querySelector('.pdfViewer')).padding}" containerBg=${getComputedStyle(document.querySelector('.pdf-viewer-container')).backgroundColor}`;
     })}`);
     await shot(page, 'pdf');
     // The toolbar buttons carry no accessible name (tooltip only): find them by place.
@@ -725,6 +727,10 @@ async function pdfScene(appRoot, workspace, errors) {
     await page.keyboard.type('tail factor');
     await page.waitForTimeout(1_500);
     console.log(`[probe] pdf find: ${await state()}`);
+    console.log(`[probe] pdf find colours: ${await page.evaluate(() => {
+      const all = document.querySelector('.textLayer .highlight:not(.selected)'); const sel = document.querySelector('.textLayer .highlight.selected');
+      return `match=${all ? getComputedStyle(all).backgroundColor : 'none'} current=${sel ? getComputedStyle(sel).backgroundColor : 'none'} var=${getComputedStyle(document.documentElement).getPropertyValue('--vscode-editor-findMatchHighlightBackground')}|${getComputedStyle(document.documentElement).getPropertyValue('--vscode-editor-findMatchBackground')}`;
+    })}`);
     await shot(page, 'pdf-find');
     await page.keyboard.press('Escape');
     await clickBtn('More actions');
