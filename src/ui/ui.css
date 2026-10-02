@@ -338,6 +338,29 @@
   font-size: var(--parallx-fontSize-base);
 }
 
+/* The AI is writing into this tab: a breathing accent dot in the same
+   right slot as the dirty dot, swapped for the close button on hover. */
+.ui-tab-ai {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: var(--px-radius-full);
+  background: var(--px-accent);
+  animation: ui-tab-ai-breathe 1.4s ease-in-out infinite;
+}
+.ui-tab-ai ~ .ui-tab-dirty { display: none; }
+.ui-tab:hover .ui-tab-ai { display: none; }
+@keyframes ui-tab-ai-breathe {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-tab-ai { animation: none; }
+}
+
 .ui-tab-close {
   /* Out of layout flow so it never reserves space — the title stays centered
      and balanced. Revealed only on tab hover (or while the tab is dirty). */

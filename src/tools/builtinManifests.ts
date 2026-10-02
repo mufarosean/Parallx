@@ -283,7 +283,11 @@ export const AGENTS_MANIFEST: IToolManifest = {
     commands: [
       { id: 'agents.show', title: 'Agents: Show',
         aiInvocable: true, aiDescription: 'Reveal the Agents view: approvals, running tasks, upcoming routines.' },
+      // Not aiInvocable: making a routine is the user's call (the model has its own cron tools).
+      { id: 'agents.newRoutine', title: 'Agents: New Routine…' },
+      { id: 'agents.openRun', title: 'Agents: Watch Run' },
     ],
+    editors: [{ typeId: 'agents-run', displayName: 'Agent Run' }],
     viewContainers: [
       { id: 'agents-container', title: 'Agents', icon: 'px-automations', location: 'auxiliaryBar' as const },
     ],

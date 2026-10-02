@@ -35,6 +35,8 @@ export interface ITabBarItem {
   readonly decorations?: {
     readonly dirty?: boolean;
     readonly pinned?: boolean;
+    /** The AI is writing into this tab's content right now. */
+    readonly aiWriting?: boolean;
   };
 }
 
@@ -369,6 +371,14 @@ export class TabBar extends Disposable {
     // Label
     const labelEl = $('span.ui-tab-label', item.label);
     tab.appendChild(labelEl);
+
+    // The AI is writing here: a breathing dot (tabBar.css)
+    if (item.decorations?.aiWriting) {
+      const aiEl = $('span.ui-tab-ai');
+      aiEl.setAttribute('aria-label', 'AI is writing');
+      setupTooltip(aiEl, 'AI is writing');
+      tab.appendChild(aiEl);
+    }
 
     // Dirty indicator
     if (item.decorations?.dirty) {

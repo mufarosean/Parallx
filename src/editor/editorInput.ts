@@ -42,6 +42,8 @@ export interface IEditorInput extends IDisposable {
 
   /** Whether this input has unsaved changes. */
   readonly isDirty: boolean;
+  /** The AI is writing into this editor right now (tab shows a dot). */
+  readonly isAiWriting?: boolean;
 
   /** Fires when the dirty state changes. */
   readonly onDidChangeDirty: Event<boolean>;
@@ -118,6 +120,22 @@ export abstract class EditorInput extends Disposable implements IEditorInput {
     if (this._isDirty === dirty) return;
     this._isDirty = dirty;
     this._onDidChangeDirty.fire(dirty);
+  }
+
+  // ── AI writing ──
+  // True while the AI writes into this editor's content (a live canvas edit);
+  // the tab shows a quiet breathing dot. Re-renders through the label event.
+
+  private _isAiWriting = false;
+
+  get isAiWriting(): boolean {
+    return this._isAiWriting;
+  }
+
+  setAiWriting(on: boolean): void {
+    if (this._isAiWriting === on) return;
+    this._isAiWriting = on;
+    this._onDidChangeLabel.fire();
   }
 
   // ── Label change ──

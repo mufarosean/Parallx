@@ -13,67 +13,14 @@ import './agents.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
-import { createButton, createEmptyState, createSectionLabel } from '../../ui/kit.js';
+import { createButton, createEmptyState, createIconButton, createSectionLabel } from '../../ui/kit.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
-import {
-  IAgentApprovalService,
-  IAgentExecutionService,
-  IAgentSessionService,
-  IAutonomyFeatureFlagsService,
-  IAutonomyTaskRailService,
-} from '../../services/serviceTypes.js';
-import type {
-  IAgentApprovalService as IApprovals,
-  IAgentExecutionService as IExecution,
-  IAgentSessionService as ISessions,
-} from '../../services/serviceTypes.js';
-import type { IAutonomyTaskRailService as IRail, IRailRow } from '../../services/autonomyTaskRailService.js';
-import { FLAG_PAUSED_GLOBAL, type AutonomyFeatureFlagsService } from '../../services/autonomyFeatureFlags.js';
-import { ICronService, type CronService } from '../../openclaw/openclawCronService.js';
-import type { IHeartbeatState } from '../../openclaw/openclawHeartbeatRunner.js';
 import type { AgentApprovalResolution } from '../../agent/agentTypes.js';
-import { buildAgentsSnapshot, type IAgentsSnapshot } from './agentsModel.js';
-
-interface ParallxApi {
-  views: {
-    registerViewProvider(
-      viewId: string,
-      provider: { createView(container: HTMLElement): IDisposable },
-      options?: { name?: string; icon?: string },
-    ): IDisposable;
-  };
-  commands: {
-    registerCommand(commandId: string, handler: (...args: unknown[]) => unknown): IDisposable;
-    executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
-  };
-  services: {
-    has(id: unknown): boolean;
-    get<T>(id: unknown): T;
-  };
-}
-
-interface IServices {
-  sessions?: ISessions;
-  approvals?: IApprovals;
-  execution?: IExecution;
-  flags?: AutonomyFeatureFlagsService;
-  cron?: CronService;
-  rail?: IRail;
-}
-
-const svc: IServices = {};
-
-/** The autonomy services can register after this view activates, so they
- *  are resolved again at every render; a found instance is never dropped. */
-function resolveServices(api: ParallxApi): void {
-  const get = <T>(id: unknown): T | undefined => (api.services.has(id) ? api.services.get<T>(id) : undefined);
-  svc.sessions ??= get<ISessions>(IAgentSessionService);
-  svc.approvals ??= get<IApprovals>(IAgentApprovalService);
-  svc.execution ??= get<IExecution>(IAgentExecutionService);
-  svc.flags ??= get<AutonomyFeatureFlagsService>(IAutonomyFeatureFlagsService);
-  svc.cron ??= get<CronService>(ICronService);
-  svc.rail ??= get<IRail>(IAutonomyTaskRailService);
-}
+import type { IAgentsSnapshot } from './agentsModel.js';
+import { agentsViewInFront, startAgentsPresence } from './agentsPresence.js';
+import { AGENT_RUN_EDITOR, renderAgentRun } from './agentsRun.js';
+import { renderRoutineForm } from './agentsRoutine.js';
+import { answerApproval, isPaused, onAnyChange, readSnapshot, resolveServices, setPaused, svc, type ParallxApi } from './agentsServices.js';
 
 export function activate(api: ParallxApi, context: ToolContext): void {
   resolveServices(api);
@@ -82,41 +29,46 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       return renderAgentsView(container, api);
     },
   }));
-  context.subscriptions.push(api.commands.registerCommand('agents.show', async () => {
+  // Show View on a right-sidebar container that is already in front flips
+  // back to Chat, so only ask when Agents isn't showing.
+  const reveal = async (): Promise<void> => {
+    if (agentsViewInFront()) return;
     await api.commands.executeCommand('workbench.view.show', 'view.agents').catch(() => undefined);
+  };
+  context.subscriptions.push(api.commands.registerCommand('agents.show', reveal));
+  context.subscriptions.push(api.commands.registerCommand('agents.newRoutine', async () => {
+    await reveal();
+    _openRoutine?.();
   }));
+  // The run tab: one task's plan, live, with a note box to steer it.
+  context.subscriptions.push(api.editors.registerEditorProvider(AGENT_RUN_EDITOR, {
+    createEditorPane(container: HTMLElement, input?: unknown): IDisposable {
+      const obj = input as { instanceId?: string; id?: string } | undefined;
+      return renderAgentRun(container, obj?.instanceId ?? obj?.id ?? '', api);
+    },
+  }));
+  context.subscriptions.push(api.commands.registerCommand('agents.openRun', async (...args: unknown[]) => {
+    const taskId = String(args[0] ?? '');
+    const title = typeof args[1] === 'string' && args[1] ? args[1] : 'Agent Run';
+    if (taskId) await api.editors.openEditor({ typeId: AGENT_RUN_EDITOR, title, icon: 'px-automations', instanceId: taskId });
+  }));
+  context.subscriptions.push(startAgentsPresence(api));
 }
+
+/** The mounted view's "open the New Routine form", for the command. */
+let _openRoutine: (() => void) | undefined;
 
 export function deactivate(): void { /* the view disposes itself */ }
-
-async function readSnapshot(api: ParallxApi): Promise<IAgentsSnapshot> {
-  resolveServices(api);
-  const tasks = (svc.sessions?.listActiveWorkspaceTasks() ?? []).map((task) => ({
-    task,
-    steps: svc.sessions?.getPlanSteps(task.id) ?? [],
-  }));
-  let rows: readonly IRailRow[] = [];
-  try { rows = (await svc.rail?.readRows({ sinceDays: 1, limit: 80 })) ?? []; } catch { /* history is optional */ }
-  let heartbeat: IHeartbeatState | undefined;
-  try { heartbeat = await api.commands.executeCommand<IHeartbeatState>('parallx.heartbeat.status'); } catch { /* no heartbeat */ }
-  return buildAgentsSnapshot({
-    paused: svc.flags?.isEnabled(FLAG_PAUSED_GLOBAL) ?? false,
-    tasks,
-    approvals: svc.approvals?.listPendingApprovalRequests() ?? [],
-    jobs: svc.cron?.jobs ?? [],
-    heartbeat: heartbeat && typeof heartbeat.nextDueMs === 'number' ? heartbeat : undefined,
-    rows,
-  });
-}
 
 function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable {
   let store = new DisposableStore();
   const root = $('div.agents-view');
   container.appendChild(root);
 
-  // ── The background switch ──
-  // The sidebar header already says "Agents"; this row holds the switch.
+  // ── New Routine and the background switch ──
+  // The sidebar header already says "Agents"; this row holds the controls.
   const head = $('div.agents-head');
+  createIconButton(head, { icon: 'plus', title: 'New Routine', size: 'sm', onClick: () => openRoutine() });
   const sw = $('label.agents-switch');
   const swText = $('span'); swText.textContent = 'Run in the background';
   const swBtn = document.createElement('button');
@@ -135,13 +87,26 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
   let disposed = false;
   let pending = false;
   let busy = new Set<string>();
+  // While the New Routine form is open the body is the form; repaints wait.
+  let closeRoutine: (() => void) | null = null;
+  const openRoutine = (): void => {
+    if (closeRoutine) return;
+    resolveServices(api);
+    body.replaceChildren();
+    root.classList.add('agents-view--form');
+    closeRoutine = renderRoutineForm(body, () => {
+      closeRoutine?.();
+      closeRoutine = null;
+      root.classList.remove('agents-view--form');
+      repaint();
+    });
+  };
+  _openRoutine = openRoutine;
 
   swBtn.addEventListener('click', () => {
     resolveServices(api);
-    const flags = svc.flags;
-    if (!flags) return;
-    const paused = flags.isEnabled(FLAG_PAUSED_GLOBAL);
-    void flags.setEnabled(FLAG_PAUSED_GLOBAL, !paused).then(repaint);
+    if (!svc.flags) return;
+    void setPaused(!isPaused()).then(repaint);
   });
 
   const act = (key: string, work: () => Promise<unknown>): void => {
@@ -154,12 +119,7 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
   };
 
   const resolveApproval = (taskId: string, requestId: string, resolution: AgentApprovalResolution): void => {
-    act(requestId, async () => {
-      const task = await svc.sessions!.resolveTaskApproval(taskId, requestId, resolution);
-      if (resolution === 'approve-once' || resolution === 'approve-for-task' || task.status === 'planning') {
-        await svc.execution?.runTask(taskId);
-      }
-    });
+    act(requestId, () => answerApproval(taskId, requestId, resolution));
   };
 
   function paint(s: IAgentsSnapshot): void {
@@ -225,10 +185,11 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
           track.appendChild(fill);
           card.appendChild(track);
         }
-        if (r.action) {
+        {
           const bar = $('div.agents-card__actions');
           const waiting = busy.has(r.taskId);
-          if (r.action === 'pause') {
+          createButton(bar, { label: 'Watch', kind: 'secondary', size: 'sm', onClick: () => { void api.commands.executeCommand('agents.openRun', r.taskId, r.name); } });
+          if (!r.action) { /* waiting on you, or already pausing */ } else if (r.action === 'pause') {
             createButton(bar, { label: 'Pause', kind: 'secondary', size: 'sm', disabled: waiting, title: 'Stop after the current step', onClick: () => act(r.taskId, () => svc.sessions!.requestStopAfterCurrentStep(r.taskId)) });
           } else {
             createButton(bar, { label: 'Continue', kind: 'secondary', size: 'sm', disabled: waiting, onClick: () => act(r.taskId, async () => { await svc.sessions!.continueTask(r.taskId); await svc.execution?.runTask(r.taskId); }) });
@@ -286,17 +247,13 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
     setTimeout(() => {
       pending = false;
       if (disposed) return;
-      void readSnapshot(api).then((s) => { if (!disposed) paint(s); });
+      void readSnapshot(api).then((s) => { if (!disposed && !closeRoutine) paint(s); });
     }, 60);
   }
 
   const listen = (): void => {
     resolveServices(api);
-    if (svc.sessions) store.add(svc.sessions.onDidChangeTasks(() => repaint()));
-    if (svc.approvals) store.add(svc.approvals.onDidChangeApprovalRequests(() => repaint()));
-    if (svc.flags) store.add(svc.flags.onDidChange(() => repaint()));
-    if (svc.cron) store.add(svc.cron.onDidChangeJobs(() => repaint()));
-    if (svc.rail) store.add(svc.rail.onDidChange(() => repaint()));
+    store.add(onAnyChange(repaint));
   };
   listen();
   // Services that registered after this view: pick them up once, shortly after.
@@ -317,6 +274,7 @@ function renderAgentsView(container: HTMLElement, api: ParallxApi): IDisposable 
   return {
     dispose(): void {
       disposed = true;
+      if (_openRoutine === openRoutine) _openRoutine = undefined;
       clearTimeout(heal);
       clearInterval(tick);
       busy = new Set();

@@ -19,7 +19,7 @@ describe('Agents view model', () => {
       approvals: [{ id: 'r1', taskId: 't', status: 'pending', summary: 'Move 6 notes into Archive', explanation: '', toolName: 'fs_move', affectedTargets: ['a.md', 'b.md', 'c.md', 'd.md'], createdAt: iso(NOW) } as never],
       jobs: [], rows: [],
     }, NOW);
-    expect(s.needsYou[0]).toMatchObject({ who: 'Tidy the inbox.', what: 'Move 6 notes into Archive', detail: 'a.md, b.md and 2 more' });
+    expect(s.needsYou[0]).toMatchObject({ who: 'Tidy the inbox', what: 'Move 6 notes into Archive', detail: 'a.md, b.md and 2 more' });
     expect(s.running[0]).toMatchObject({ state: 'waiting', step: 'Waiting for your OK', action: null });
   });
 

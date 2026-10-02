@@ -576,6 +576,7 @@ export class EditorGroupView extends Disposable implements IGridView {
         decorations: {
           dirty: editor.isDirty,
           pinned: this.model.isSticky(i),
+          aiWriting: editor.isAiWriting === true,
         },
       };
     });

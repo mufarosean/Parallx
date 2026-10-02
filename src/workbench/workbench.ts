@@ -3252,7 +3252,14 @@ export class Workbench extends Layout {
       configurationService: this._configService,
       commandContributionProcessor: commandContribution,
       viewContributionProcessor: this._viewContribution,
-      badgeHost: this._activityBarPart,
+      // Badges land on whichever ribbon carries the icon (Agents lives on the right).
+      badgeHost: {
+        setBadge: (iconId: string, badge: { count?: number; dot?: boolean } | undefined): void => {
+          const right = this._activityBarRight;
+          if (right?.hasIcon(iconId)) right.setBadge(iconId, badge);
+          else this._activityBarPart.setBadge(iconId, badge);
+        },
+      },
       statusBarPart: this._statusBar as unknown as StatusBarPart,
       themeService: this._services.has(IThemeService) ? this._services.get(IThemeService) : undefined,
       toolEnablementService: undefined as any, // Placeholder — set after enablement service is created

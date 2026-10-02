@@ -70,7 +70,7 @@ export function shorten(text: string, max = 64): string {
 /** First sentence-ish line of a goal or prompt, as a name. */
 export function nameFrom(text: string, fallback: string): string {
   const first = text.split(/\n|(?<=[.!?])\s/)[0] ?? '';
-  const s = shorten(first, 48);
+  const s = shorten(first, 48).replace(/[.!?;:,]+$/, '');
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : fallback;
 }
 

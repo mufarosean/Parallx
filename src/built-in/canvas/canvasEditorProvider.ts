@@ -1101,6 +1101,7 @@ class CanvasEditorPane implements IDisposable {
       if (aiEdit) {
         this._endAiReview();
         this._showAiStatus('writing');
+        this._setTabAiWriting(true);
       }
       this._editorContainer?.classList.add('canvas-ai-writing');
       try {
@@ -1181,6 +1182,7 @@ class CanvasEditorPane implements IDisposable {
       } finally {
         this._editorContainer?.classList.remove('canvas-ai-writing');
         if (aiEdit && !this._aiReview) this._hideAiStatus();
+        if (aiEdit) this._setTabAiWriting(false);
       }
     } catch (err) {
       console.warn(`[CanvasEditorPane] Stream-apply failed for "${this._pageId}", falling back:`, err);
@@ -1198,6 +1200,15 @@ class CanvasEditorPane implements IDisposable {
   // the page is still exactly as Chat left it.
 
   private _aiStatusEl: HTMLElement | null = null;
+  private _tabAiTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** The tab's AI dot: on while Chat writes, lingering a moment after. */
+  private _setTabAiWriting(on: boolean): void {
+    const input = this._input as { setAiWriting?(on: boolean): void } | undefined;
+    if (this._tabAiTimer) { clearTimeout(this._tabAiTimer); this._tabAiTimer = null; }
+    if (on) { input?.setAiWriting?.(true); return; }
+    this._tabAiTimer = setTimeout(() => { this._tabAiTimer = null; input?.setAiWriting?.(false); }, 1200);
+  }
   private _aiReview: { oldSpan: readonly unknown[]; doc: import('@tiptap/pm/model').Node; onKey: (e: KeyboardEvent) => void } | null = null;
 
   private _showAiStatus(mode: 'writing' | 'review', title = '', hint = ''): HTMLElement {
@@ -1327,6 +1338,8 @@ class CanvasEditorPane implements IDisposable {
 
     this._aiStatusEl?.remove();
     this._aiStatusEl = null;
+    if (this._tabAiTimer) clearTimeout(this._tabAiTimer);
+    (this._input as { setAiWriting?(on: boolean): void } | undefined)?.setAiWriting?.(false);
     if (this._aiReview) this._editorContainer?.removeEventListener('keydown', this._aiReview.onKey, true);
     this._aiReview = null;
     this._menuRegistry?.hideAll();
