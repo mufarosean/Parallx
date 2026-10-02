@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Viewer Alignment</title>
+<style>
+/* Mockup: the PDF viewer's surfaces that still predate the house style,
+   today beside a proposal built from parts the app already has (the text
+   editor's find widget, the canvas selection bubble, kit buttons, the
+   segmented switch). Tokens from src/theme/px-tokens.css (Slate dark).
+   Static. The toolbar and the page itself are already aligned (2026-10-02
+   fixes) and are only drawn for context. */
+:root {
+  --px-base-00:#16171a; --px-base-05:#1a1c1f; --px-base-10:#1f2125; --px-base-15:#24262b;
+  --px-base-20:#2b2e34; --px-base-25:#33363d; --px-base-30:#41454d; --px-base-40:#838893;
+  --px-base-60:#9ea3ad; --px-base-70:#c0c4cc; --px-base-100:#e8eaee;
+  --px-accent:hsl(205 64% 60%); --px-accent-soft:hsl(205 64% 60% / .15); --px-accent-faint:hsl(205 64% 60% / .08); --px-accent-text:hsl(205 64% 67%);
+  --px-bg:var(--px-base-00); --px-bg-elevated:var(--px-base-10); --px-bg-inset:var(--px-base-15);
+  --px-surface-hover:var(--px-base-20); --px-surface-selected:rgba(86,156,214,.16);
+  --px-text:var(--px-base-100); --px-text-secondary:var(--px-base-70); --px-text-muted:var(--px-base-60); --px-text-faint:var(--px-base-40);
+  --px-border:var(--px-base-25); --px-border-strong:var(--px-base-30); --px-divider:var(--px-base-20);
+  --px-danger:#e06c6c; --px-on-accent:#0d1620;
+  --px-shadow-md:0 4px 14px -3px rgba(0,0,0,.42),0 1px 3px rgba(0,0,0,.30);
+  --old-widget:#252526; --old-border:#454545; --old-input:#3c3c3c; --old-blue:#0e639c; --old-navy:#094771; --old-focus:#007fd4;
+  --px-font-ui:'Inter','Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: #0c0d0f; color: var(--px-text); font: 13px/1.45 var(--px-font-ui); }
+.page { max-width: 1180px; margin: 0 auto; padding: 32px 16px 80px; }
+h1 { font-size: 22px; margin: 0 0 6px; font-weight: 600; }
+h2 { font-size: 18px; margin: 44px 0 6px; font-weight: 600; }
+p, li { color: var(--px-text-secondary); max-width: 82ch; }
+.notes { margin: 10px 0 0; padding-left: 18px; font-size: 12.5px; }
+.notes li { margin: 3px 0; }
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+svg.i.s14 { width: 14px; height: 14px; } svg.i.s13 { width: 13px; height: 13px; }
+
+/* side-by-side comparison */
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+@media (max-width: 860px) { .pair { grid-template-columns: 1fr; } }
+.cell { border: 1px solid #26282d; border-radius: 8px; overflow: hidden; background: var(--px-bg); }
+.cap { font-size: 11.5px; font-weight: 600; padding: 7px 12px; border-bottom: 1px solid #26282d; color: var(--px-text-muted); background: #121316; }
+.cap.new { color: var(--px-accent-text); }
+.stage { position: relative; background: var(--px-bg); min-height: 250px; padding: 18px; overflow: hidden; }
+.sheet { background: #fff; color: #222; width: 320px; margin: 30px auto 0; padding: 22px 26px; font: 9.5px/1.5 Georgia, serif; box-shadow: 0 0 0 1px var(--px-divider), var(--px-shadow-md); }
+.sheet h4 { font-size: 15px; margin: 0 0 8px; }
+.sheet p { color: #222; margin: 0 0 6px; max-width: none; }
+.m1 { background: rgba(220,170,90,.45); } .mc { background: rgba(86,156,214,.55); }
+.sel { background: rgba(86,156,214,.35); }
+.hl { background: rgba(255,214,64,.55); }
+.tag { position: absolute; width: 18px; height: 18px; border-radius: 50%; background: #e0b84e; color: #1a1300; font: 700 10.5px/18px var(--px-font-ui); text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+
+/* app-style parts */
+.ib { width: 26px; height: 26px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; color: var(--px-text-secondary); flex: none; }
+.ib.on { color: var(--px-accent-text); background: var(--px-accent-faint); }
+.ib.sm { width: 22px; height: 22px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 4px; font-size: 12px; white-space: nowrap; }
+.btn.ghost { color: var(--px-text-secondary); }
+.btn.primary { background: var(--px-accent); color: var(--px-on-accent); width: 28px; padding: 0; justify-content: center; }
+.input { height: 26px; border: 1px solid var(--px-border-strong); border-radius: 4px; background: var(--px-bg-inset); color: var(--px-text); font-size: 12.5px; padding: 0 8px; display: flex; align-items: center; }
+.input.focus { border-color: var(--px-accent); }
+.ph { color: var(--px-text-faint); }
+.sl { font-size: 12px; font-weight: 600; color: var(--px-text); }
+.muted { color: var(--px-text-muted); font-size: 12px; }
+
+/* find: today = full-width strip; new = the app's floating find widget */
+.oldfind { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border-bottom: 1px solid var(--px-divider); margin: -18px -18px 0; }
+.oldfind .in { width: 230px; height: 22px; border: 1px solid var(--old-focus); background: var(--old-input); border-radius: 3px; font-size: 12px; padding: 2px 6px; color: #ccc; }
+.findw { position: absolute; top: 0; right: 18px; display: flex; align-items: center; gap: 4px; padding: 5px 6px; background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-top: none; border-radius: 0 0 6px 6px; box-shadow: var(--px-shadow-md); }
+.findw .input { width: 190px; justify-content: space-between; padding-right: 3px; }
+.tog { font: 600 10.5px var(--px-font-ui); width: 20px; height: 18px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; color: var(--px-text-muted); }
+.tog.on { color: var(--px-accent-text); background: var(--px-accent-soft); }
+.count { font-size: 11.5px; color: var(--px-text-muted); min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* side panel */
+.split { display: grid; grid-template-columns: 210px 1fr; min-height: 300px; }
+.oldside { background: #252526; border-right: 1px solid var(--old-border); font-size: 12.5px; }
+.oldside .h { height: 30px; line-height: 30px; padding: 0 12px; font-weight: 600; color: #bbb; border-bottom: 1px solid var(--old-border); font-size: 12px; }
+.oldthumb { margin: 8px auto; width: 92px; padding: 4px; border-radius: 4px; text-align: center; color: #999; font-size: 10.5px; }
+.oldthumb.act { background: var(--old-navy); }
+.thumbpg { width: 80px; height: 104px; background: #fff; margin: 0 auto 3px; border: 1px solid var(--old-border); }
+.newside { background: var(--px-bg); border-right: 1px solid var(--px-divider); }
+.newside .h { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--px-divider); }
+.seg { display: inline-flex; padding: 2px; border-radius: 6px; background: var(--px-bg-inset); gap: 2px; width: 100%; }
+.seg span { flex: 1; text-align: center; font-size: 12px; padding: 3px 8px; border-radius: 4px; color: var(--px-text-muted); }
+.seg span.on { background: var(--px-base-25); color: var(--px-text); }
+.orow { display: flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; font-size: 12.5px; color: var(--px-text-secondary); border-radius: 4px; margin: 1px 6px; }
+.orow.sub { padding-left: 30px; }
+.orow.cur { background: var(--px-surface-selected); color: var(--px-text); }
+.orow .pg { margin-left: auto; font-size: 11px; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.nthumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; }
+.nthumb { text-align: center; font-size: 11px; color: var(--px-text-muted); }
+.nthumb .thumbpg { width: 100%; height: 96px; border: 1px solid var(--px-divider); }
+.nthumb.act .thumbpg { box-shadow: 0 0 0 2px var(--px-accent); border-color: transparent; }
+.nthumb.act { color: var(--px-accent-text); }
+
+/* selection: today = 11-row menu; new = bubble */
+.menu { position: absolute; background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: 6px; box-shadow: var(--px-shadow-md); padding: 4px 0; font-size: 12.5px; min-width: 200px; }
+.menu div { padding: 3px 12px; color: var(--px-text); display: flex; justify-content: space-between; gap: 18px; }
+.menu hr { border: 0; border-top: 1px solid var(--px-divider); margin: 4px 0; }
+.menu .k { color: var(--px-text-faint); font-size: 11.5px; }
+.bubble { position: absolute; display: flex; align-items: center; gap: 2px; padding: 4px 6px; background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: 8px; box-shadow: var(--px-shadow-md); white-space: nowrap; }
+.dot { width: 16px; height: 16px; border-radius: 50%; margin: 0 2px; flex: none; }
+.vsep { width: 1px; height: 18px; background: var(--px-divider); margin: 0 4px; }
+
+/* highlight panel */
+.oldpop { position: absolute; width: 300px; padding: 12px; background: var(--old-widget); border: 1px solid #3c3c3c; border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+.oldpop .sw { display: flex; gap: 6px; }
+.oldpop .sw i { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; }
+.oldpop .ta { margin-top: 8px; height: 76px; background: var(--old-input); border: 1px solid #3c3c3c; border-radius: 4px; font-size: 12px; padding: 6px; color: #8b8b8b; }
+.oldpop .row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+.oldpop .ask { flex: 1; height: 28px; background: var(--old-input); border: 1px solid #3c3c3c; border-radius: 4px; font-size: 12px; padding: 6px; color: #8b8b8b; }
+.oldpop .send { width: 28px; height: 28px; border-radius: 4px; background: var(--old-blue); }
+.newpop { position: absolute; width: 310px; background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: 8px; box-shadow: var(--px-shadow-md); }
+.newpop .top { display: flex; align-items: center; gap: 2px; padding: 8px 8px 8px 10px; border-bottom: 1px solid var(--px-divider); }
+.newpop .body { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.newpop .ta { height: 64px; border: 1px solid var(--px-border-strong); border-radius: 4px; background: var(--px-bg-inset); font-size: 12.5px; padding: 6px 8px; color: var(--px-text-faint); }
+.dot.ring { box-shadow: 0 0 0 2px var(--px-bg-elevated), 0 0 0 4px var(--px-accent); }
+
+.c1 { background:#f2c94c; } .c2 { background:#6fcf7a; } .c3 { background:#62a9f5; } .c4 { background:#f07cb4; } .c5 { background:#f2a24a; }
+.o1 { background:rgba(255,214,64,.40); } .o2 { background:rgba(118,214,122,.40); } .o3 { background:rgba(96,170,255,.38); } .o4 { background:rgba(255,128,191,.38); } .o5 { background:rgba(255,167,64,.40); }
+
+table { border-collapse: collapse; margin-top: 12px; font-size: 12.5px; width: 100%; max-width: 1000px; }
+td, th { border-bottom: 1px solid #26282d; padding: 7px 10px 7px 0; text-align: left; vertical-align: top; color: var(--px-text-secondary); }
+th { color: var(--px-text); font-weight: 600; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+  <symbol id="down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+  <symbol id="ai" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+  <symbol id="canvas" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M12 12v6M9 15h6"/></symbol>
+  <symbol id="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
+  <symbol id="send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+</svg>
+<div class="page">
+  <h1>PDF viewer: bringing the rest in line</h1>
+  <p>The toolbar and the page are already in the house style; the fixes on 2026-10-02 took the dark frame off the page, gave page 1 its top margin, made Ctrl+F open Find and set the current match apart. What follows is the rest: the find bar, the side panels, what happens when you select text, and the highlight panel. Each one is shown today beside a proposal that reuses a part the app already has.</p>
+
+  <!-- 1. Find -->
+  <h2>1. Find</h2>
+  <p>Today a full-width strip pushes the page down, with the old input colours. Proposed: the same floating find widget the text editor uses, top right over the page, so Find looks and behaves the same everywhere. pdf.js already supports match case and whole word; the widget's two toggles turn them on.</p>
+  <div class="pair">
+    <div class="cell"><div class="cap">Today</div>
+      <div class="stage">
+        <div class="oldfind"><span class="in">tail factor</span><span class="muted" style="color:#999">1 of 64</span>
+          <span class="ib sm"><svg class="i s14"><use href="#up"/></svg></span><span class="ib sm"><svg class="i s14"><use href="#down"/></svg></span><span class="ib sm"><svg class="i s14"><use href="#x"/></svg></span></div>
+        <div class="sheet" style="margin-top:20px"><h4>1. Introduction</h4><p>Excess loss development follows the reported pattern closely in the early years and then flattens. The <span class="mc">tail factor</span> is chosen from the industry curve.</p><p>Excess loss development follows the reported pattern. The <span class="m1">tail factor</span> is checked against the company triangle.</p></div>
+      </div></div>
+    <div class="cell"><div class="cap new">Proposed: the app's find widget</div>
+      <div class="stage">
+        <div class="findw"><span class="input focus">tail factor<span><span class="tog">Aa</span><span class="tog">ab</span></span></span><span class="count">1 of 64</span>
+          <span class="ib sm"><svg class="i s14"><use href="#up"/></svg></span><span class="ib sm"><svg class="i s14"><use href="#down"/></svg></span><span class="ib sm"><svg class="i s14"><use href="#x"/></svg></span></div>
+        <div class="sheet"><h4>1. Introduction</h4><p>Excess loss development follows the reported pattern closely in the early years and then flattens. The <span class="mc">tail factor</span> is chosen from the industry curve.</p><p>Excess loss development follows the reported pattern. The <span class="m1">tail factor</span> is checked against the company triangle.</p></div>
+      </div></div>
+  </div>
+  <ul class="notes"><li>No Replace row: a PDF is read-only. Enter / Shift+Enter step through matches, Escape closes, as in the text editor.</li><li>"No matches" shows in the count, not as a red input.</li></ul>
+
+  <!-- 2. Side panels -->
+  <h2>2. Outline and pages</h2>
+  <p>Today Outline and Pages are two separate panels with two toolbar buttons, old colours, and the current page marked in old navy. Proposed: one panel with an Outline | Pages switch (the same segmented control the Atelier sidebar uses), rows in the house style, and the current section or page marked with the accent. One toolbar button opens it, and it remembers which side you last used.</p>
+  <div class="pair">
+    <div class="cell"><div class="cap">Today</div>
+      <div class="split">
+        <div class="oldside"><div class="h">Pages</div><div class="oldthumb act"><div class="thumbpg"></div>1</div><div class="oldthumb"><div class="thumbpg"></div>2</div></div>
+        <div class="stage" style="min-height:300px"><div class="sheet" style="width:240px;margin-top:6px"><h4>1. Introduction</h4><p>Excess loss development follows the reported pattern closely in the early years and then flattens.</p></div></div>
+      </div></div>
+    <div class="cell"><div class="cap new">Proposed: one panel, Outline | Pages</div>
+      <div class="split">
+        <div class="newside"><div class="h"><div class="seg"><span class="on">Outline</span><span>Pages</span></div></div>
+          <div style="padding:6px 0">
+            <div class="orow"><svg class="i s13" style="transform:rotate(90deg);color:var(--px-text-faint)"><use href="#chev"/></svg>1. Introduction<span class="pg">1</span></div>
+            <div class="orow sub cur">1.1 Method<span class="pg">1</span></div>
+            <div class="orow sub">1.2 Results<span class="pg">1</span></div>
+            <div class="orow"><svg class="i s13" style="color:var(--px-text-faint)"><use href="#chev"/></svg>2. Data<span class="pg">2</span></div>
+            <div class="orow"><svg class="i s13" style="color:var(--px-text-faint)"><use href="#chev"/></svg>3. Development<span class="pg">3</span></div>
+          </div></div>
+        <div class="stage" style="min-height:300px"><div class="sheet" style="width:240px;margin-top:6px"><h4>1. Introduction</h4><p>Excess loss development follows the reported pattern closely in the early years and then flattens.</p></div></div>
+      </div></div>
+  </div>
+  <div class="pair" style="grid-template-columns: 1fr 1fr">
+    <div></div>
+    <div class="cell"><div class="cap new">Proposed: the Pages side</div>
+      <div class="split" style="min-height:220px">
+        <div class="newside"><div class="h"><div class="seg"><span>Outline</span><span class="on">Pages</span></div></div>
+          <div class="nthumbs"><div class="nthumb act"><div class="thumbpg"></div>1</div><div class="nthumb"><div class="thumbpg"></div>2</div><div class="nthumb"><div class="thumbpg"></div>3</div><div class="nthumb"><div class="thumbpg"></div>4</div></div></div>
+        <div class="stage"></div>
+      </div></div>
+  </div>
+  <ul class="notes"><li>Page numbers beside outline rows; the row for where you are reading follows the scroll.</li><li>A document without an outline opens straight to Pages (today the Outline button just sits disabled).</li><li>Two pages across in a wider panel; the panel keeps its drag-to-resize edge.</li></ul>
+
+  <!-- 3. Selection -->
+  <h2>3. Selecting text</h2>
+  <p>Today every selection pops a 13-row menu over the page, five rows of which are highlight colours. Proposed: a small bubble above the selection, like the one on a canvas page, with the things people do most. Everything else moves to the right-click menu, which shrinks to eight rows with a Highlight submenu.</p>
+  <div class="pair">
+    <div class="cell"><div class="cap">Today: on every selection</div>
+      <div class="stage" style="min-height:420px">
+        <div class="sheet" style="margin:0 0 0 10px;width:300px"><h4>1. Introduction</h4><p>Excess loss development follows the reported pattern closely. <span class="sel">The tail factor is chosen from the industry curve</span> and checked against the company triangle.</p><p>Excess loss development follows the reported pattern closely in the early years and then flattens.</p></div>
+        <div class="menu" style="left:200px;top:72px">
+          <div>Copy<span class="k">Ctrl+C</span></div><hr><div>Highlight</div><div>Highlight Yellow</div><div>Highlight Green</div><div>Highlight Blue</div><div>Highlight Pink</div><div>Highlight Orange</div><hr><div>Find in Document<span class="k">Ctrl+F</span></div><div>Add to Canvas Note</div><div>Capture Region to Canvas</div><hr><div>Ask AI about Selection</div><div>Send Selection to Chat</div><div>Create Flashcard from Selection</div>
+        </div>
+      </div></div>
+    <div class="cell"><div class="cap new">Proposed: bubble on select, short menu on right-click</div>
+      <div class="stage" style="min-height:420px">
+        <div class="sheet" style="margin:46px 0 0 10px;width:300px"><h4>1. Introduction</h4><p>Excess loss development follows the reported pattern closely. <span class="sel">The tail factor is chosen from the industry curve</span> and checked against the company triangle.</p><p>Excess loss development follows the reported pattern closely in the early years and then flattens.</p></div>
+        <div class="bubble" style="left:34px;top:44px">
+          <span class="dot c1"></span><span class="dot c2"></span><span class="dot c3"></span><span class="dot c4"></span><span class="dot c5"></span>
+          <span class="vsep"></span>
+          <span class="ib" title="Copy"><svg class="i"><use href="#copy"/></svg></span>
+          <span class="ib" title="Ask AI"><svg class="i"><use href="#ai"/></svg></span>
+          <span class="ib" title="Add to Canvas Note"><svg class="i"><use href="#canvas"/></svg></span>
+          <span class="ib" title="More"><svg class="i"><use href="#more"/></svg></span>
+        </div>
+        <div class="menu" style="left:250px;top:150px;min-width:190px">
+          <div>Copy<span class="k">Ctrl+C</span></div><div>Highlight<svg class="i s13"><use href="#chev"/></svg></div><div>Find in Document</div><hr><div>Add to Canvas Note</div><div>Capture Region to Canvas</div><hr><div>Ask AI About Selection</div><div>Send to Chat</div><div>Create Flashcard…</div>
+        </div>
+      </div></div>
+  </div>
+  <ul class="notes"><li>A colour dot highlights straight away in that colour; the last one used is remembered, as now.</li><li>The bubble's ⋯ opens the same short menu. Nothing is lost: every action from today is still one or two clicks away.</li><li>The bubble hides while you drag and appears on release, so it never covers what you are still selecting.</li></ul>
+
+  <!-- 4. Highlight panel -->
+  <h2>4. The highlight panel</h2>
+  <p>Opened from the tab beside a highlight. Today: see-through colour dots that turn muddy on the dark panel, an old blue ring and send button, a red Delete link at the bottom. Proposed: solid dots with an accent ring, Delete as an icon button in the panel's top row, the note and the question in the house inputs, and send in the accent.</p>
+  <div class="pair">
+    <div class="cell"><div class="cap">Today</div>
+      <div class="stage" style="min-height:300px">
+        <div class="oldpop" style="left:30px;top:20px">
+          <div class="sw"><i class="o1" style="border-color:var(--old-focus)"></i><i class="o2"></i><i class="o3"></i><i class="o4"></i><i class="o5"></i></div>
+          <div class="ta">Add a note…</div>
+          <div style="border-top:1px solid #3c3c3c;margin-top:8px;padding-top:8px;font-size:12px;font-weight:600;color:#999">Discuss</div>
+          <div class="row"><div class="ask">Ask AI about this passage…</div><div class="send"></div></div>
+          <div style="text-align:right;margin-top:8px;font-size:12px;color:#f48771">Delete</div>
+        </div>
+      </div></div>
+    <div class="cell"><div class="cap new">Proposed</div>
+      <div class="stage" style="min-height:300px">
+        <div class="newpop" style="left:30px;top:20px">
+          <div class="top"><span class="dot c1 ring"></span><span class="dot c2"></span><span class="dot c3"></span><span class="dot c4"></span><span class="dot c5"></span><span style="flex:1"></span>
+            <span class="ib" title="Delete Highlight"><svg class="i"><use href="#trash"/></svg></span></div>
+          <div class="body">
+            <div class="ta">Add a note…</div>
+            <div style="display:flex;align-items:center;justify-content:space-between"><span class="sl">Discuss</span><span class="btn ghost"><svg class="i s14"><use href="#chat"/></svg>Continue in Chat</span></div>
+            <div style="display:flex;gap:6px"><div class="input" style="flex:1"><span class="ph">Ask about this passage…</span></div><span class="btn primary"><svg class="i s14"><use href="#send"/></svg></span></div>
+          </div>
+        </div>
+      </div></div>
+  </div>
+  <ul class="notes"><li>Delete stays one click but leaves the reading path; Ctrl+Z still brings a highlight back.</li><li>"Continue in Chat" appears once there is a conversation, as now.</li></ul>
+
+  <h2>What changes</h2>
+  <table>
+    <tr><th>Part</th><th>Change</th><th>Reuses</th></tr>
+    <tr><td>Find</td><td>Floating widget over the page; match case and whole word toggles; count shows "No matches"</td><td>The text editor's find widget look; pdf.js find options</td></tr>
+    <tr><td>Outline / Pages</td><td>One panel with a switch; page numbers on outline rows; the current section follows reading; one toolbar button</td><td>Segmented switch; list row and selected tokens</td></tr>
+    <tr><td>Selecting text</td><td>Bubble with colours, Copy, Ask AI, Add to Canvas, ⋯; right-click menu cut from 13 rows to 8 with a Highlight submenu</td><td>Canvas selection bubble; context menu submenus</td></tr>
+    <tr><td>Highlight panel</td><td>Solid dots and accent ring; Delete as an icon button; house inputs; accent send</td><td>Kit icon and ghost buttons; input skin</td></tr>
+    <tr><td>Toolbar</td><td>No visual change; each button gets an accessible name (today tooltip only)</td><td>—</td></tr>
+  </table>
+</div>
+</body>
+</html>
