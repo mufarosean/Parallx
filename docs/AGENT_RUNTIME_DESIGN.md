@@ -197,7 +197,7 @@ call a turn makes carries its run id).
 |---|---|---|
 | One broker for every call | Yes | Chat, background prompts, routines, heartbeat, scheduled jobs, helpers, compaction, inline AI, PDF and notebook AI, extensions (`parallx.lm`). Untagged calls count as interactive. Cloud providers pass through. |
 | Priority classes | Yes | interactive, resumed (class exists, nothing uses it yet), scheduled, helper, maintenance. |
-| Interactive lease | Yes | Held for the whole chat turn on the engine of the chat's model, 4 s grace after, and 4 s after each keystroke in a chat box. |
+| Interactive lease | Yes | Held for the whole chat turn on the engine of the chat's model, 4 s grace after, and 4 s after each keystroke in a chat box. A turn that has not called the model for 90 s (it waits on your approval, or on a long tool) stops holding it; its next call takes the engine back at once. |
 | Preempt and resume | Yes, simpler | Background output is **buffered** until the call completes, so a preempted call is retried from scratch and the run gets one clean answer. No `Preempted` signal, and the agent loop needed no change. |
 | "Nearly done, let it finish" | **Dropped** | How much a call has left to write is unknowable; the retry costs at most one step. |
 | Real cancel | Yes | The agent loop and the read-only loop pass the turn's signal; the provider closes the request when its reader stops; Stop in Agents, a parent's Stop, and every time limit cancel the turn itself. |

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { ModelEngineBroker, BACKGROUND_MAX_TOKENS, LEASE_GRACE_MS } from '../../src/services/modelEngineBroker';
+import { ModelEngineBroker, BACKGROUND_MAX_TOKENS, LEASE_GRACE_MS, LEASE_IDLE_MS } from '../../src/services/modelEngineBroker';
 import type { EngineStart, EnginePriority } from '../../src/services/modelEngineBroker';
 import type { IChatRequestOptions, IChatResponseChunk } from '../../src/services/chatTypes';
 
@@ -230,5 +230,25 @@ describe('ModelEngineBroker', () => {
     await vi.advanceTimersByTimeAsync(LEASE_GRACE_MS + 50);
     await p;
     expect(idle).toBe(true);
+  });
+
+  it('a chat turn that stops using the model (waiting on your approval) lets background work run, and takes it back on its next call', async () => {
+    vi.useFakeTimers();
+    const b = new ModelEngineBroker();
+    const log: ICallLog[] = [];
+    const lease = b.beginInteractive('ollama');
+    const bg = collect(b.request(req('scheduled', 'r'), fakeStart(log, 'b', 3, 1000)));
+    await vi.advanceTimersByTimeAsync(LEASE_IDLE_MS - 1000);
+    expect(log.length).toBe(0);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(log.length).toBe(1); // started after the turn went quiet
+    // The turn speaks again: the background call gives way.
+    const chat = collect(b.request(req('interactive', 'chat'), fakeStart(log, 'c', 1, 10)));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(await chat).toBe('c0');
+    expect(log[0].aborted).toBe(true);
+    lease.dispose();
+    await vi.advanceTimersByTimeAsync(LEASE_GRACE_MS + 4000);
+    expect(await bg).toBe('b0b1b2');
   });
 });

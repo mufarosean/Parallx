@@ -34,6 +34,8 @@ const RANK: Record<EnginePriority, number> = { interactive: 0, resumed: 1, sched
 
 /** After a chat turn ends, background work waits this long (you may reply). */
 export const LEASE_GRACE_MS = 4_000;
+/** A chat turn that has not used the model for this long stops holding it. */
+export const LEASE_IDLE_MS = 90_000;
 /** Typing in chat holds background work this long after each keystroke. */
 export const TYPING_HOLD_MS = 4_000;
 /** Output cap for a background call that names none (thinking counts too). */
@@ -163,6 +165,8 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   private _classifier: ((runId: string) => EnginePriority | undefined) | undefined;
   private readonly _runs = new Map<string, IRunBook>();
   private readonly _shape = new Map<string, { modelId: string; numCtx: number }>();
+  /** Last time a chat turn used each engine (lease start, its calls). */
+  private readonly _leaseActivity = new Map<string, number>();
   private readonly _idleWaiters = new Set<{ engine: string; resolve: () => void }>();
   private _changeQueued = false;
 
@@ -234,6 +238,7 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
     req.signal?.addEventListener('abort', onCallerAbort, { once: true });
     ticket.controller = controller;
     ticket.state = 'running';
+    this._leaseActivity.set(ticket.engine, this._now());
     this._tickets.add(ticket);
     this._book(ticket.runId, (b) => { b.inFlight++; });
     this._preemptBackground(ticket.engine);
@@ -244,6 +249,7 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
       req.signal?.removeEventListener('abort', onCallerAbort);
       // A consumer that stops early must not leave the generation running.
       controller.abort();
+      this._leaseActivity.set(ticket.engine, this._now());
       this._finish(ticket);
     }
   }
@@ -380,11 +386,17 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
 
   /** 0 = free now; a time = free then; Infinity = held until something ends. */
   private _blockedUntil(engine: string, now: number): number {
-    if ((this._leases.get(engine) ?? 0) > 0) return Infinity;
     for (const t of this._tickets) {
       if (t.engine === engine && t.priority === 'interactive' && t.state === 'running') return Infinity;
     }
-    const hold = Math.max(this._holdUntil.get(engine) ?? 0, this._typingUntil);
+    let hold = Math.max(this._holdUntil.get(engine) ?? 0, this._typingUntil);
+    // A chat turn holds the engine, but only while it uses it: a turn that
+    // has made no model call for LEASE_IDLE_MS (it waits on your approval,
+    // or on a long tool) lets background work run. Its next model call
+    // takes the engine back at once.
+    if ((this._leases.get(engine) ?? 0) > 0) {
+      hold = Math.max(hold, (this._leaseActivity.get(engine) ?? now) + LEASE_IDLE_MS);
+    }
     return hold > now ? hold : 0;
   }
 
@@ -401,6 +413,7 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   // ── Lease ──
 
   beginInteractive(engine: string): IDisposable {
+    this._leaseActivity.set(engine, this._now());
     this._leases.set(engine, (this._leases.get(engine) ?? 0) + 1);
     this._preemptBackground(engine);
     this._changed();

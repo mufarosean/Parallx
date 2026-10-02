@@ -310,10 +310,17 @@ export function registerIndexingServices(
   if (services.has(ILanguageModelsService)) {
     const broker = services.get(ILanguageModelsService).getEngineBroker?.();
     if (broker) {
-      embeddingService.setYieldToChat((signal) => Promise.race([
-        broker.whenIdle('ollama', signal),
-        new Promise<void>((resolve) => setTimeout(resolve, 60_000)),
-      ]));
+      embeddingService.setYieldToChat(async (signal) => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            broker.whenIdle('ollama', signal),
+            new Promise<void>((resolve) => { timer = setTimeout(resolve, 60_000); }),
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      });
     }
   }
   const chunkingService = new ChunkingService();

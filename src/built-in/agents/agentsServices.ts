@@ -150,8 +150,19 @@ export function onAnyChange(listener: () => void): IDisposable {
   if (svc.patterns) subs.push(svc.patterns.onDidChange(() => listener()));
   if (svc.config) subs.push(svc.config.onDidChangeConfig(() => listener()));
   if (svc.chat?.onDidChangeRuns) subs.push(svc.chat.onDidChangeRuns(() => listener()));
+  // The broker changes on every model call, your chat's included. Only a
+  // change in where a background run stands is news here (and a read of the
+  // run history on each of your chat's steps would be waste).
   const broker = svc.models?.getEngineBroker?.();
-  if (broker) subs.push(broker.onDidChange(() => listener()));
+  if (broker) {
+    let last = '';
+    const key = () => readLiveRuns().map((r) => `${r.runId}:${r.engine ?? ''}:${r.behindChat ? 1 : 0}:${r.preemptions ?? 0}`).join('|');
+    last = key();
+    subs.push(broker.onDidChange(() => {
+      const next = key();
+      if (next !== last) { last = next; listener(); }
+    }));
+  }
   return { dispose: () => { for (const d of subs) d.dispose(); } };
 }
 

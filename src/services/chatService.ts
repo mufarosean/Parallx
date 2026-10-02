@@ -1583,8 +1583,11 @@ export class ChatService extends Disposable implements IChatService {
   private _beginEngineLease(modelId: string | undefined): IDisposable | undefined {
     const lms = this._languageModelsService;
     const broker = lms.getEngineBroker?.();
-    const model = modelId || lms.getActiveModel();
-    const engine = model ? lms.getEngineForModel?.(model) : undefined;
+    // The session's model when it is still installed, else the active one
+    // (the model the turn will actually run on).
+    const active = lms.getActiveModel();
+    const engine = (modelId ? lms.getEngineForModel?.(modelId) : undefined)
+      ?? (active ? lms.getEngineForModel?.(active) : undefined);
     return broker && engine ? broker.beginInteractive(engine) : undefined;
   }
 
