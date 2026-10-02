@@ -56,14 +56,42 @@ async function boot(appRoot) {
 }
 async function home(page) {
   await runCommand(page, 'worksheet.open');
-  await page.waitForSelector('.ws-home__nav', { timeout: 60_000 });
+  await page.waitForSelector('.ws-home__dest', { timeout: 60_000 });
   await page.waitForTimeout(800);
 }
-// Home's destinations are a row of tiles; its actions sit in the continue strip.
+// Home's three destinations are cards; the rest open by command.
+const TILE_COMMANDS = { 'Settings': 'worksheet.settings', 'Import Workbook': 'worksheet.importExcel', 'Generate Items': 'worksheet.generate' };
 async function tile(page, title) {
-  await page.locator('.ws-home__nav button', { hasText: title }).first().click();
+  if (TILE_COMMANDS[title]) await runCommand(page, TILE_COMMANDS[title]);
+  else await page.locator('.ws-home__destcard', { hasText: title }).first().click();
   await page.waitForTimeout(1_200);
 }
+/** What a screen says to a probe reader: its header, its buttons, its tab. */
+async function describe(page, label) {
+  const d = await page.evaluate(() => {
+    const vis = (e) => e && e.offsetParent !== null;
+    const pane = [...document.querySelectorAll('.ws-pane')].filter(vis).pop();
+    const h = pane?.querySelector('.px-page-header');
+    const tab = document.querySelector('.tab.active, .editor-tab.active, [role="tab"][aria-selected="true"]');
+    return {
+      tab: tab?.textContent?.trim() ?? '',
+      title: h?.querySelector('.px-page-header__title')?.textContent ?? '',
+      sub: h?.querySelector('.px-page-header__subtitle')?.textContent ?? '',
+      back: h?.querySelector('.px-page-header__back')?.textContent ?? '',
+      actions: [...(h?.querySelectorAll('.px-page-header__actions > button') ?? [])].map((b) => b.textContent.trim() || b.getAttribute('aria-label')).join(' | '),
+      unlabelled: [...(pane?.querySelectorAll('button') ?? [])].filter((b) => vis(b) && !b.textContent.trim() && !b.getAttribute('aria-label')).length,
+      overflowX: pane ? pane.scrollWidth - pane.clientWidth : 0,
+    };
+  });
+  console.log(`[probe] ${label}: tab="${d.tab}" back="${d.back}" title="${d.title}" sub="${d.sub}" actions=[${d.actions}] unlabelled=${d.unlabelled} overflowX=${d.overflowX}`);
+}
+async function openMenu(page, btn) {
+  await btn.click();
+  await page.waitForSelector('.context-menu', { timeout: 5_000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  return page.evaluate(() => [...document.querySelectorAll('.context-menu .context-menu-item, .context-menu [role="menuitem"]')].map((e) => e.textContent.trim()).filter(Boolean).join(' | '));
+}
+async function closeMenu(page) { await page.keyboard.press('Escape'); await page.waitForTimeout(200); }
 
 async function main() {
   await fs.mkdir(outDir, { recursive: true });
@@ -93,6 +121,8 @@ async function main() {
     for (let attempt = 1; attempt <= 2; attempt++) {
       // The hidden window draws no frame until something changes: nudge a
       // 1 px dot so the screenshot has a frame to take.
+      // A pointer move also wakes the compositor where the dot alone does not.
+      await page.mouse.move(600 + attempt * 7, 400 + attempt * 5).catch(() => {});
       await page.evaluate(() => { const d = document.getElementById('__probe_repaint') || document.body.appendChild(Object.assign(document.createElement('div'), { id: '__probe_repaint', style: 'position:fixed;right:0;bottom:0;width:1px;height:1px;pointer-events:none' })); d.style.opacity = d.style.opacity === '0.01' ? '0.02' : '0.01'; }).catch(() => {});
       try { await page.screenshot({ path: f, timeout: 15_000, animations: 'disabled', ...opts }); console.log(`[probe] screenshot -> ${f}`); return; }
       catch (e) {
@@ -106,7 +136,10 @@ async function main() {
   };
   try {
     await home(page);
+    await describe(page, 'home');
     await shot('01-home.png');
+    const add = page.locator('.px-page-header__actions .px-btn--secondary', { hasText: 'Add Problems' }).first();
+    if (await add.count()) { console.log('[probe] add menu: ' + await openMenu(page, add)); await shot('01c-home-add-menu.png'); await closeMenu(page); }
     // Home at a wide window, where a stretched layout shows.
     await page.setViewportSize({ width: 2300, height: 950 }).catch(() => {});
     await page.waitForTimeout(600);
@@ -114,9 +147,10 @@ async function main() {
     await page.setViewportSize({ width: 1500, height: 950 }).catch(() => {});
     await page.waitForTimeout(400);
 
-    await tile(page, 'Dashboard');
+    await tile(page, 'Study Dashboard');
     await page.waitForSelector('.ws-dash__tiles', { timeout: 60_000 });
     await page.waitForTimeout(1_500);
+    await describe(page, 'dashboard');
     await shot('02-dashboard-top.png');
     await page.setViewportSize({ width: 1500, height: 2300 }).catch(() => {});
     await page.waitForTimeout(1_200);
@@ -127,56 +161,98 @@ async function main() {
     await home(page);
     await tile(page, 'Problem Bank');
     await page.waitForSelector('.ws-home__filters', { timeout: 30_000 });
+    await describe(page, 'bank');
     await shot('04-bank.png');
-    const noted = page.locator('.ws-bank__filter', { hasText: 'Noted' }).first();
-    if (await noted.count()) { await noted.click(); await page.waitForTimeout(800); await shot('05-bank-noted.png'); }
+    const noted = page.locator('.px-chip', { hasText: 'Noted' }).first();
+    if (await noted.count()) {
+      await noted.click(); await page.waitForTimeout(800);
+      await describe(page, 'bank noted');
+      await page.locator('.ws-bankrow').nth(1).hover().catch(() => {});
+      await page.waitForTimeout(300);
+      await shot('05-bank-noted.png');
+      const rowMore = page.locator('.ws-bankrow').nth(1).locator('.px-btn--icon').last();
+      if (await rowMore.count()) { console.log('[probe] bank row menu: ' + await openMenu(page, rowMore)); await shot('05b-bank-row-menu.png'); await closeMenu(page); }
+      // Quiz These… hands the shown problems to the builder.
+      const these = page.locator('.px-page-header .px-btn--primary', { hasText: 'Quiz These' }).first();
+      if (await these.count()) { await these.click(); await page.waitForTimeout(1_200); await describe(page, 'builder from bank'); await shot('05c-builder-from-bank.png'); }
+      await runCommand(page, 'worksheet.bank'); await page.waitForTimeout(800);
+      const notedOn = page.locator('.px-chip[aria-pressed="true"]', { hasText: 'Noted' }).first();
+      if (await notedOn.count()) { await notedOn.click(); await page.waitForTimeout(400); }
+    }
 
     await home(page);
-    await page.locator('.ws-home__acts .ws-btn', { hasText: /Start Quiz|New Quiz/ }).first().click();
+    await page.locator('.px-page-header .px-btn--primary', { hasText: 'New Quiz' }).first().click();
     await page.waitForTimeout(1_200);
+    await describe(page, 'builder');
     await shot('06-quiz-builder.png');
 
     await home(page);
     await tile(page, 'Quizzes');
     await page.waitForTimeout(1_200);
+    await describe(page, 'quizzes');
+    await page.locator('.ws-quizrow').last().hover().catch(() => {});
+    const qMore = page.locator('.ws-quizrow').last().locator('.px-btn--icon').last();
+    if (await qMore.count()) { console.log('[probe] quiz row menu: ' + await openMenu(page, qMore)); }
     await shot('07-quizzes.png');
+    await closeMenu(page);
 
     // The open quiz, from Home's Resume button.
     await home(page);
-    const quizRow = page.locator('.ws-home__acts .ws-btn', { hasText: 'Resume' }).first();
+    const quizRow = page.locator('.ws-home__todayacts .px-btn', { hasText: 'Resume' }).first();
     if (await quizRow.count()) {
       await quizRow.click();
       await page.waitForSelector('.ws-sessionbar', { timeout: 60_000 });
       await page.waitForSelector('.ws-item__title', { timeout: 60_000 }).catch(() => {});
       await page.waitForTimeout(5_000);
+      await describe(page, 'sheet');
+      console.log('[probe] sheet header: ' + await page.evaluate(() => [...document.querySelectorAll('.ws-item__titlerow button')].filter((b) => b.offsetParent).map((b) => b.textContent.trim() || b.getAttribute('aria-label')).join(' | ')));
+      console.log('[probe] quiz dots: ' + await page.evaluate(() => [...document.querySelectorAll('.ws-sessionbar__dot')].map((d) => d.getAttribute('aria-label')).join(' | ')));
       await shot('08-sheet.png');
-      const noteBtn = page.locator('[aria-label="Add Note"], [aria-label="Edit Note"]').first();
-      if (await noteBtn.count()) { await noteBtn.click(); await page.waitForTimeout(500); await shot('09-sheet-note.png'); }
-      const overview = page.locator('[aria-label="Quiz Overview"]').first();
+      const noteBtn = page.locator('.ws-item__titlerow [aria-label="Add Note"], .ws-item__titlerow [aria-label="Edit Note"]').first();
+      if (await noteBtn.count()) { await noteBtn.click(); await page.waitForTimeout(500); await shot('09-sheet-note.png'); await noteBtn.click(); }
+      const sheetMore = page.locator('.ws-item__titlerow [aria-label="More Actions"]').first();
+      if (await sheetMore.count()) { console.log('[probe] sheet menu: ' + await openMenu(page, sheetMore)); await shot('09b-sheet-menu.png'); await closeMenu(page); }
+      // Rate from the switch: the segment lights and the dot follows.
+      const easy = page.locator('.ws-rate [data-value="easy"]').first();
+      if (await easy.count()) {
+        await easy.click(); await page.waitForTimeout(1_500);
+        console.log('[probe] rated: ' + await page.evaluate(() => document.querySelector('.ws-rate .ui-segmented-control__segment--active')?.textContent ?? 'none') + ' | dot: ' + await page.evaluate(() => document.querySelector('.ws-sessionbar__dot--current')?.getAttribute('aria-label') ?? ''));
+        await shot('09c-sheet-rated.png');
+      }
+      const overview = page.locator('.ws-sessionbar .px-btn', { hasText: 'Overview' }).first();
       if (await overview.count()) {
         await overview.click();
         await page.waitForSelector('.ws-quiz__overview', { timeout: 30_000 });
         await page.waitForTimeout(1_000);
+        await describe(page, 'overview');
         await shot('10-overview.png');
         const editNote = page.locator('.ws-quiz__row [aria-label="Edit Note"], .ws-quiz__row [aria-label="Add Note"]').first();
         if (await editNote.count()) { await editNote.click(); await page.waitForTimeout(400); await shot('11-overview-note.png'); }
-        const summary = page.locator('.ws-btn--small', { hasText: 'Quiz Summary' }).first();
-        if (await summary.count()) { await summary.click(); await page.waitForTimeout(1_200); await shot('12-summary.png'); }
+        const summary = page.locator('.px-page-header .px-btn--primary', { hasText: 'Quiz Summary' }).first();
+        if (await summary.count()) { await summary.click(); await page.waitForTimeout(1_500); await describe(page, 'summary'); await shot('12-summary.png'); }
       }
     } else {
-      console.log('[probe] no quiz row on Home');
+      console.log('[probe] no Resume on Home');
     }
 
-    await home(page);
     await tile(page, 'Settings');
     await page.waitForTimeout(1_000);
+    await describe(page, 'settings');
     await shot('13-settings.png');
+    await tile(page, 'Import Workbook');
+    await page.waitForTimeout(800);
+    await describe(page, 'import');
+    await shot('13b-import.png');
+    await tile(page, 'Generate Items');
+    await page.waitForTimeout(800);
+    await describe(page, 'generate');
+    await shot('13c-generate.png');
 
     // Light mode and a narrow window, over the screens most used.
     await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
     await home(page);
     await shot('14-home-light.png');
-    await tile(page, 'Dashboard');
+    await tile(page, 'Study Dashboard');
     await page.waitForSelector('.ws-dash__tiles', { timeout: 60_000 });
     await page.waitForTimeout(1_200);
     await shot('15-dashboard-light.png');
@@ -187,10 +263,20 @@ async function main() {
     await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'dark'));
     await page.setViewportSize({ width: 820, height: 900 }).catch(() => {});
     await home(page);
+    await describe(page, 'home narrow');
     await shot('17-home-narrow.png');
     await tile(page, 'Problem Bank');
     await page.waitForTimeout(1_000);
+    await describe(page, 'bank narrow');
     await shot('18-bank-narrow.png');
+    await runCommand(page, 'worksheet.practice');
+    await page.waitForTimeout(1_200);
+    await describe(page, 'builder narrow');
+    await shot('19-builder-narrow.png');
+    await tile(page, 'Settings');
+    await page.waitForTimeout(800);
+    await describe(page, 'settings narrow');
+    await shot('20-settings-narrow.png');
   } finally {
     console.log(`[probe] renderer errors: ${errors.length}`);
     for (const e of errors.slice(0, 20)) console.log('  ' + e);

@@ -165,7 +165,8 @@ export function createFilterChip(container: HTMLElement | null | undefined, opti
   const chip: IKitFilterChip = {
     element: btn,
     get pressed() { return btn.getAttribute('aria-pressed') === 'true'; },
-    set pressed(on: boolean) { btn.setAttribute('aria-pressed', String(on)); },
+    // The icon helper sets display inline, so the tick is shown and hidden here.
+    set pressed(on: boolean) { btn.setAttribute('aria-pressed', String(on)); tick.style.display = on ? 'inline-flex' : 'none'; },
     setCount(n) { count.textContent = n === undefined ? '' : String(n); count.hidden = n === undefined; },
   };
   chip.pressed = !!options.pressed;

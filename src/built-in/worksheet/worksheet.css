@@ -340,10 +340,6 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-home__line { font-size: var(--px-text-md); font-weight: 600; color: var(--px-text); }
 .ws-home__acts { display: flex; align-items: center; gap: var(--px-space-2); }
 /* Quizzes: one line per quiz, actions on hover. */
-.ws-quizrow { display: flex; align-items: center; gap: var(--px-space-3); padding: 6px var(--px-space-3); border-bottom: 1px solid var(--px-divider, var(--px-border)); }
-.ws-quizrow:last-child { border-bottom: 0; }
-.ws-quizrow:hover { background: var(--px-surface-hover); }
-.ws-quizrow__info { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; cursor: pointer; }
 .ws-bank__dot.rest { background: color-mix(in srgb, var(--px-text-muted) 35%, transparent); }
 /* Progress By Paper: horizontal stacked bars, the three status inks, a surface gap between segments. */
 .ws-dash__papers { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); padding: var(--px-space-3) var(--px-space-4); display: flex; flex-direction: column; gap: 6px; }
@@ -525,7 +521,7 @@ button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: 2px s
 .ws-list__idx { width: 1.6em; flex: 0 0 auto; text-align: right; font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
 .ws-list__grow { flex: 1; min-width: 0; }
 .ws-list__time { width: 44px; flex: 0 0 auto; text-align: right; font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
-.ws-list__flag { color: var(--px-accent-text); }
+.ws-list__flag { width: 16px; flex: 0 0 auto; display: inline-flex; justify-content: center; color: var(--px-accent-text); }
 .ws-bankrow > .ws-star { opacity: 0.45; }
 .ws-bankrow:hover > .ws-star, .ws-bankrow:focus-within > .ws-star, .ws-bankrow > .ws-star--on { opacity: 1; }
 .ws-bar { height: 6px; border-radius: 3px; background: var(--px-surface-hover); overflow: hidden; }
@@ -637,3 +633,5 @@ button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: 2px s
 /* Dashboard: the unset exam date is the way to set it. */
 .ws-dash__tilelink { margin-top: 6px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--px-accent-text); cursor: pointer; }
 .ws-dash__tilelink:hover { text-decoration: underline; }
+/* A long switch (the rating bands) wraps rather than run off a narrow pane. */
+.ws-builder .ui-segmented-control { flex-wrap: wrap; max-width: 100%; }

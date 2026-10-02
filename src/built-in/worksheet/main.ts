@@ -2071,13 +2071,14 @@ function createPracticeRunPane(container: HTMLElement, input?: { setName?(name: 
         // Own rating, then an earlier one of his, then work without one, then
         // what the workbook carried: the summary never dresses a workbook
         // rating up as his.
+        // The flag keeps its own column, so the pills line up.
+        const flagSlot = el('span', 'ws-list__flag');
         if (session.marked.has(id)) {
-          const flag = createIconElement('flag', 14);
-          flag.classList.add('ws-list__flag');
-          flag.setAttribute('role', 'img');
-          flag.setAttribute('aria-label', 'Marked for later');
-          row.appendChild(flag);
+          flagSlot.appendChild(createIconElement('flag', 14));
+          flagSlot.setAttribute('role', 'img');
+          flagSlot.setAttribute('aria-label', 'Marked for later');
         }
+        row.appendChild(flagSlot);
         let pill: HTMLElement;
         if (grade && hit!.own) pill = el('span', `ws-chip ws-chip--${stateClass(grade)}`, gradeLabelFor(grade));
         else if (grade && !item?.ratingImported) pill = el('span', `ws-chip ws-chip--${stateClass(grade)}`, `${gradeLabelFor(grade)} earlier`);

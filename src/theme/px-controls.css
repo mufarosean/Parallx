@@ -300,10 +300,8 @@ select:disabled {
 .px-chip:hover { background: var(--px-surface-hover); border-color: var(--px-border-strong); color: var(--px-text); }
 .px-chip:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
 .px-chip__count { color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
-.px-chip__tick { display: none; }
 .px-chip[aria-pressed="true"] { background: var(--px-accent-soft); border-color: transparent; color: var(--px-accent-text); }
 .px-chip[aria-pressed="true"] .px-chip__count { color: inherit; opacity: 0.75; }
-.px-chip[aria-pressed="true"] .px-chip__tick { display: inline-flex; }
 
 /* Section label: sentence case, never uppercase-tracked (POLISH pass 7). */
 .px-section-label {

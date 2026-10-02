@@ -151,7 +151,7 @@ function makeTooltip(pane: HTMLElement): { show(x: number, y: number, lines: str
 
 function paperBars(host: HTMLElement, papers: PaperProgress[], items: readonly InsightItem[], tip: ReturnType<typeof makeTooltip>, actions: DashboardActions): void {
   const legend = el('div', 'ws-dash__legend');
-  for (const [cls, label] of [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['rest', 'Not Rated']]) {
+  for (const [cls, label] of [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['rest', 'Not rated']]) {
     const item = el('span', 'ws-dash__legenditem');
     item.appendChild(el('span', `ws-dash__swatch ${cls}`));
     item.appendChild(document.createTextNode(label));
@@ -168,7 +168,7 @@ function paperBars(host: HTMLElement, papers: PaperProgress[], items: readonly I
     bar.setAttribute('aria-label', `${paperLabel(p.paper)}: ${p.easy} easy, ${p.medium} medium, ${p.hard} hard, ${p.total - p.rated} not rated`);
     // Each segment is a quiz: the red of a paper opens its Hard problems
     // (Mufaro, 2026-09-21), the grey its problems never rated.
-    const segNames: Record<string, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard', rest: 'Not Rated' };
+    const segNames: Record<string, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard', rest: 'Not rated' };
     const segIds = (cls: string) => items
       .filter((it) => it.paper === p.paper && (cls === 'rest' ? !normalizeRating(it.attemptState) : normalizeRating(it.attemptState) === cls))
       .map((it) => it.id);
@@ -334,37 +334,37 @@ function storyRow(story: DayStory, p: CampaignProgress): HTMLElement | null {
     row.appendChild(c);
   };
   const split = (t: { easy: number; medium: number; hard: number; unrated: number }) => {
-    if (t.easy) chip('ws-chip--easy', `${t.easy} Easy`);
-    if (t.medium) chip('ws-chip--medium', `${t.medium} Medium`);
-    if (t.hard) chip('ws-chip--hard', `${t.hard} Hard`);
+    if (t.easy) chip('ws-chip--easy', `${t.easy} easy`);
+    if (t.medium) chip('ws-chip--medium', `${t.medium} medium`);
+    if (t.hard) chip('ws-chip--hard', `${t.hard} hard`);
     // Worked and never rated: it counts for the day, and saying so is the
     // only way the missing rating is ever visible.
-    if (t.unrated) chip('ws-chip--open', `${t.unrated} Worked, Not Rated`, 'Counted for the day. Rating them scores them and sets when they come back.');
+    if (t.unrated) chip('ws-chip--open', `${t.unrated} worked, not rated`, 'Counted for the day. Rating them scores them and sets when they come back.');
   };
   const xpTip = `${XP_PER_PROBLEM} a problem, ${XP_EASY_BONUS} more for Easy, ${XP_FULL_DAY} for a full day`;
   if (p.restToday) {
     const w = story.week;
     if (w.done === 0) return null;
-    row.appendChild(el('span', 'ws-camp__tallylabel', 'This Week'));
-    chip('ws-chip--muted', `${w.done} Done`);
+    row.appendChild(el('span', 'ws-camp__tallylabel', 'This week'));
+    chip('ws-chip--muted', `${w.done} done`);
     split(w);
     if (w.seconds >= 60) chip('ws-chip--muted', fmtStudyTime(w.seconds));
-    if (w.fullDays) chip('ws-chip--muted', `${w.fullDays} Full ${w.fullDays === 1 ? 'Day' : 'Days'}`);
-    if (w.papers > 1) chip('ws-chip--muted', `${w.papers} Papers`);
+    if (w.fullDays) chip('ws-chip--muted', `${w.fullDays} full ${w.fullDays === 1 ? 'day' : 'days'}`);
+    if (w.papers > 1) chip('ws-chip--muted', `${w.papers} papers`);
     return row;
   }
   const t = story.today;
   if (t.done > 0) {
     split(t);
     if (t.seconds >= 60) chip('ws-chip--muted', fmtStudyTime(t.seconds));
-    if (t.papers > 1) chip('ws-chip--muted', `${t.papers} Papers`);
+    if (t.papers > 1) chip('ws-chip--muted', `${t.papers} papers`);
     chip('ws-chip--muted', `+${t.xp} XP`, xpTip);
     return row;
   }
   const last = story.last;
   if (!last) return null;
   row.appendChild(el('span', 'ws-camp__tallylabel', story.lastAgo === 1 ? 'Yesterday' : fmtDay(last.day)));
-  chip('ws-chip--muted', `${last.done} Done`);
+  chip('ws-chip--muted', `${last.done} done`);
   split(last);
   if (last.seconds >= 60) chip('ws-chip--muted', fmtStudyTime(last.seconds));
   chip('ws-chip--muted', `+${last.xp} XP`, xpTip);
@@ -742,7 +742,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     if (!hasQuadrants) wins.body.appendChild(el('div', 'ws-dash__cardempty', 'The workbook did not carry quadrants for these problems.'));
     else if (ins.quickWins.length === 0) wins.body.appendChild(el('div', 'ws-dash__cardempty', `Every ${QUADRANT_LABELS[1]} problem has been tried.`));
     for (const q of ins.quickWins.slice(0, LIMIT)) {
-      wins.body.appendChild(problemRow(q, 'Never Tried', 'rest', () => actions.openItem(q.id, q.title)));
+      wins.body.appendChild(problemRow(q, 'Never tried', 'rest', () => actions.openItem(q.id, q.title)));
     }
     if (ins.quickWins.length > LIMIT) wins.body.appendChild(el('div', 'ws-dash__more', `and ${ins.quickWins.length - LIMIT} more`));
     grid.appendChild(wins.root);
@@ -754,7 +754,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     for (const s of starred.slice(0, LIMIT)) {
       const r = normalizeRating(s.attemptState);
       const open = s.attemptState === 'open';
-      star.body.appendChild(problemRow(s, open ? 'In Progress' : r ? ratingLabel(r) : 'Never Tried', open ? 'open' : r || 'rest', () => actions.openItem(s.id, s.title)));
+      star.body.appendChild(problemRow(s, open ? 'In progress' : r ? ratingLabel(r) : 'Never tried', open ? 'open' : r || 'rest', () => actions.openItem(s.id, s.title)));
     }
     if (starred.length > LIMIT) star.body.appendChild(el('div', 'ws-dash__more', `and ${starred.length - LIMIT} more`));
     grid.appendChild(star.root);
