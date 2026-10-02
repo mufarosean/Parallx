@@ -17,7 +17,7 @@ function loadRegion(): string {
   return src.slice(a, b);
 }
 
-const NAMES = ['moGridInstance', 'moKindForMediaType', 'moShuffleOrderExpr', 'moScopeTitle', 'moFolderName', 'moFolderParent', 'moActiveFilterCount', 'moFeedGroupKey', 'moFeedGroupLabel'];
+const NAMES = ['moGridInstance', 'moKindForMediaType', 'moMediaTypeSet', 'moMediaTypeValue', 'moMediaTypeQuery', 'moShuffleOrderExpr', 'moScopeTitle', 'moFolderName', 'moFolderParent', 'moActiveFilterCount', 'moFeedGroupKey', 'moFeedGroupLabel'];
 // eslint-disable-next-line @typescript-eslint/no-implied-eval
 const P: Record<string, any> = new Function(loadRegion() + `\nreturn { ${NAMES.join(', ')} };`)();
 
@@ -49,6 +49,30 @@ describe('moGridInstance', () => {
   it('opens a smart album as the whole library in a grid, carrying its id', () => {
     expect(P.moGridInstance('grid:smart:4')).toEqual({ filterType: 'all', filterId: null, filterTagPath: null, mediaType: null, displayMode: 'grid', smartId: 4 });
     expect(P.moGridInstance('grid:smart:x').smartId).toBeUndefined();
+  });
+});
+
+describe('media type pills', () => {
+  it('all three is the default and reads back as all', () => {
+    expect([...P.moMediaTypeSet('all')]).toEqual(['photos', 'gifs', 'videos']);
+    expect([...P.moMediaTypeSet(null)]).toEqual(['photos', 'gifs', 'videos']);
+    expect(P.moMediaTypeValue(new Set(['videos', 'photos', 'gifs']))).toBe('all');
+    expect(P.moMediaTypeValue(new Set(['videos', 'photos']))).toBe('photos,videos');
+    expect([...P.moMediaTypeSet('gifs')]).toEqual(['gifs']);
+  });
+  it('maps any subset onto the photos query, the videos query or both, with the photo kind', () => {
+    expect(P.moMediaTypeQuery('all')).toEqual({ effective: 'all', kind: null });
+    expect(P.moMediaTypeQuery('photos')).toEqual({ effective: 'photos', kind: 'still' });
+    expect(P.moMediaTypeQuery('gifs')).toEqual({ effective: 'photos', kind: 'gif' });
+    expect(P.moMediaTypeQuery('photos,gifs')).toEqual({ effective: 'photos', kind: null });
+    expect(P.moMediaTypeQuery('videos')).toEqual({ effective: 'videos', kind: null });
+    expect(P.moMediaTypeQuery('photos,videos')).toEqual({ effective: 'all', kind: 'still' });
+    expect(P.moMediaTypeQuery('gifs,videos')).toEqual({ effective: 'all', kind: 'gif' });
+  });
+  it('a narrowed type counts as an active filter', () => {
+    const base = { tagIds: [], excludeTagIds: [], ratingMin: null, dateFrom: null, dateTo: null };
+    expect(P.moActiveFilterCount({ filters: base, mediaType: 'all' })).toBe(0);
+    expect(P.moActiveFilterCount({ filters: base, mediaType: 'photos,videos' })).toBe(1);
   });
 });
 
@@ -100,9 +124,10 @@ describe('library page header', () => {
     expect(P.moFolderParent('Kyoto')).toBe('');
   });
 
-  it('counts the Filters panel only (the media type is its own switch)', () => {
+  it('counts every pill that narrows the view, the media type included', () => {
     const f = { tagIds: [1, 2], excludeTagIds: [], ratingMin: 3, dateFrom: '2026-01-01', dateTo: '2026-02-01' };
-    expect(P.moActiveFilterCount({ filters: f, mediaType: 'videos' })).toBe(3);
+    expect(P.moActiveFilterCount({ filters: f, mediaType: 'videos' })).toBe(4);
+    expect(P.moActiveFilterCount({ filters: f, mediaType: 'all' })).toBe(3);
     expect(P.moActiveFilterCount({ filters: { tagIds: [], excludeTagIds: [], ratingMin: null, dateFrom: null, dateTo: null } })).toBe(0);
   });
 });

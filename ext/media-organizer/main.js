@@ -5947,8 +5947,8 @@ kbd.mo-key {
 .mo-filter-pill-x { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--px-radius-full); color: var(--px-text-muted); }
 .mo-filter-pill-x:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .mo-filter-pills-sep { width: 1px; height: 16px; background: var(--px-divider); margin: 0 var(--px-space-1); flex: none; }
-.mo-filter-chip-bar .mo-filter-type { border-color: transparent; background: transparent; padding: 0; height: var(--px-control-h-sm); }
-.mo-filter-chip-bar .mo-filter-type .mo-segment-btn.active { background: var(--px-surface-selected); box-shadow: none; color: var(--px-text); }
+.mo-filter-types { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-1) var(--px-space-2); }
+.mo-filter-pill--type.is-set { padding-right: var(--px-space-3); }
 .mo-filter-pills-clear { height: var(--px-control-h-sm); padding: 0 var(--px-space-2); border: 0; background: transparent; color: var(--px-text-muted); font: inherit; font-size: var(--px-text-sm); cursor: pointer; border-radius: var(--px-radius-sm); }
 .mo-filter-pills-clear:hover { color: var(--px-text); background: var(--px-surface-hover); }
 /* The picker a pill opens. */
@@ -11805,7 +11805,8 @@ function moFolderParent(p) {
 function moActiveFilterCount(state) {
   const f = state.filters;
   return (f.tagIds.length > 0 ? 1 : 0) + (f.excludeTagIds.length > 0 ? 1 : 0)
-    + (f.ratingMin != null ? 1 : 0) + (f.dateFrom || f.dateTo ? 1 : 0);
+    + (f.ratingMin != null ? 1 : 0) + (f.dateFrom || f.dateTo ? 1 : 0)
+    + (state.mediaType && state.mediaType !== 'all' ? 1 : 0);
 }
 /** Sorts that order by a date, the only ones a date group can follow. */
 const MO_DATE_SORTS = new Set(['created_at', 'taken_at', 'file_mod_time']);
@@ -11837,6 +11838,29 @@ function moFeedGroupLabel(key) {
   return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
 /** The kind a media-type filter narrows the photos query to: stills, GIFs, or nothing. */
+/** The media types a view shows. 'all' (the default) is all three; a narrowed
+ *  view keeps its subset comma-joined ('photos,videos'), so a single type reads
+ *  as before ('gifs'). */
+const MO_MEDIA_TYPES = ['photos', 'gifs', 'videos'];
+function moMediaTypeSet(mediaType) {
+  if (!mediaType || mediaType === 'all') return new Set(MO_MEDIA_TYPES);
+  const set = new Set(String(mediaType).split(',').filter((t) => MO_MEDIA_TYPES.includes(t)));
+  return set.size ? set : new Set(MO_MEDIA_TYPES);
+}
+function moMediaTypeValue(set) {
+  return set.size >= MO_MEDIA_TYPES.length ? 'all' : MO_MEDIA_TYPES.filter((t) => set.has(t)).join(',');
+}
+/** Which query a set of types needs: the photos one, the videos one or both,
+ *  and the photo kind (stills or GIFs) when only one of the two is on. */
+function moMediaTypeQuery(mediaType) {
+  const set = moMediaTypeSet(mediaType);
+  const photos = set.has('photos');
+  const gifs = set.has('gifs');
+  const kind = photos && !gifs ? 'still' : gifs && !photos ? 'gif' : null;
+  if (!set.has('videos')) return { effective: 'photos', kind };
+  if (!photos && !gifs) return { effective: 'videos', kind: null };
+  return { effective: 'all', kind };
+}
 function moKindForMediaType(mediaType) {
   return mediaType === 'gifs' ? 'gif' : (mediaType === 'photos' ? 'still' : null);
 }
@@ -12065,20 +12089,41 @@ function renderGridBrowser(container, api, input) {
   // Media type is a filter of the view, in every scope (it used to be three
   // sidebar entries, and a row of chips the Home tab alone had). It lives in
   // the filter panel with the other filters; an active one shows as a chip.
-  const typeGroup = moEl('div', 'mo-segment');
+  // Photos, GIFs and Videos are filter pills like Tags, Favorites and Date:
+  // all three are on by default, a click takes one out or puts it back, and
+  // the last one on stays on (a view of nothing is not a choice).
+  const typeGroup = moEl('div', 'mo-filter-types');
   typeGroup.setAttribute('role', 'group');
   typeGroup.setAttribute('aria-label', 'Media type');
   const typeChips = new Map();
-  const TYPE_TITLES = { all: 'Everything in this view', photos: 'Photos only, no GIFs or videos', gifs: 'GIFs only', videos: 'Videos only' };
-  for (const [k, label] of [['all', 'All'], ['photos', 'Photos'], ['gifs', 'GIFs'], ['videos', 'Videos']]) {
-    const b = moEl('button', 'mo-segment-btn', { type: 'button', textContent: label, title: TYPE_TITLES[k] });
-    b.addEventListener('click', () => { if (state.mediaType === k) return; state.mediaType = k; syncTypeChips(); state.currentPage = 1; loadPage(); });
+  const TYPE_PILLS = [['photos', 'image', 'Photos', 'Still photos'], ['gifs', 'image-play', 'GIFs', 'Animated GIFs'], ['videos', 'film', 'Videos', 'Videos']];
+  for (const [k, icon, label, what] of TYPE_PILLS) {
+    const b = moEl('button', 'mo-filter-pill mo-filter-pill--type', { type: 'button', 'data-pill': k });
+    b.insertAdjacentHTML('beforeend', moIcon(icon, 12));
+    b.appendChild(moEl('span', null, { textContent: label }));
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const set = moMediaTypeSet(state.mediaType);
+      if (set.has(k)) { if (set.size === 1) return; set.delete(k); } else set.add(k);
+      state.mediaType = moMediaTypeValue(set);
+      syncTypeChips();
+      updateFilterBadge();
+      state.currentPage = 1; loadPage();
+    });
+    b._what = what;
     typeGroup.appendChild(b);
     typeChips.set(k, b);
   }
-  function syncTypeChips() { for (const [k, el] of typeChips) el.classList.toggle('active', state.mediaType === k); }
+  function syncTypeChips() {
+    const set = moMediaTypeSet(state.mediaType);
+    for (const [k, el] of typeChips) {
+      const on = set.has(k);
+      el.classList.toggle('is-set', on);
+      el.setAttribute('aria-pressed', String(on));
+      el.title = on ? (set.size === 1 ? `${el._what} only (turn another type on first)` : `Showing ${el._what.toLowerCase()} (click to hide them)`) : `Show ${el._what.toLowerCase()} too`;
+    }
+  }
   syncTypeChips();
-  typeGroup.classList.add('mo-filter-type');
 
   // How it's sorted: one menu. The field, the direction, Group By Date, and
   // Shuffle Again while the order is Shuffled.
@@ -12255,9 +12300,8 @@ function renderGridBrowser(container, api, input) {
     }
     const tagMap = new Map((_filterTagCache || []).map(t => [t.id, t.name]));
     const f = state.filters;
-    // What kind of media leads the row (All, Photos, GIFs, Videos), then the filters.
+    // What kind of media leads the row (Photos, GIFs, Videos), then the filters.
     chipBar.appendChild(typeGroup);
-    chipBar.appendChild(moEl('span', 'mo-filter-pills-sep'));
     // A tag branch (Face › Portrait) is the view's scope; say so, read-only.
     if (filterType === 'tag' && filterTagPath && filterTagPath.length > 1) {
       chipBar.appendChild(moEl('span', 'mo-filter-chip mo-filter-chip--scope', { textContent: filterTagPath.map((id) => tagMap.get(id) || `#${id}`).join(' › ') }));
@@ -13093,8 +13137,7 @@ function renderGridBrowser(container, api, input) {
     // stills and GIFs the GIF kind, both the photos query narrowed by kind
     // (applyFilterCriteria); Videos the videos query; All both.
     const requestedMediaType = parsed.type || state.mediaType;
-    const effectiveMediaType = requestedMediaType === 'gifs' ? 'photos' : requestedMediaType;
-    const kindFilter = moKindForMediaType(requestedMediaType);
+    const { effective: effectiveMediaType, kind: kindFilter } = moMediaTypeQuery(requestedMediaType);
 
     // Search text fed into the legacy LIKE path is only the leftover free text
     // when FTS is NOT used (we'll prefer FTS for free text). Pass empty when FTS is used.

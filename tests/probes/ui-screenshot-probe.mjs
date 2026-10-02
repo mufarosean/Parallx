@@ -423,6 +423,20 @@ async function moFiltersScene(appRoot, workspace, errors) {
     await page.waitForTimeout(1_500);
     log('start', `${await pills()} / ${await count()}`);
     await shot(page, 'filters-pills');
+    // Photos, GIFs and Videos are pills too: all on, a click takes one out, the last stays.
+    await pill('videos');
+    await page.waitForTimeout(1_200);
+    log('videos off', `${await pills()} / ${await count()}`);
+    await pill('gifs');
+    await page.waitForTimeout(1_200);
+    log('photos only', `${await pills()} / ${await count()}`);
+    await pill('photos');
+    await page.waitForTimeout(800);
+    log('last one stays', `${await pills()} / ${await count()}`);
+    await shot(page, 'filters-type-pills');
+    await page.evaluate(() => document.querySelector('.mo-filter-pills-clear')?.click());
+    await page.waitForTimeout(1_200);
+    log('types back', `${await pills()} / ${await count()}`);
     await pill('tags');
     await page.waitForTimeout(800);
     await row('beach');
