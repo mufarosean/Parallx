@@ -264,24 +264,27 @@ function categoryKindForTxType(txType) {
   return t ? t.kind : 'expense';
 }
 
+// Returns what learnRuleFromOverride changed (for Undo), or null.
 async function learnExpenseRuleFromOverride(merchant, categoryId) {
   if (categoryId && merchant) {
     try {
       const cat = await db.get('SELECT kind FROM categories WHERE id=?', [categoryId]);
       if (!cat || cat.kind === 'expense') {
-        await learnRuleFromOverride(merchant, categoryId);
+        return await learnRuleFromOverride(merchant, categoryId);
       }
     } catch { /* best-effort */ }
   }
+  return null;
 }
 
-async function confirmReviewedTransaction(txId, categoryId, merchant, txType = null) {
+// `learn: false` confirms without teaching a rule (Review's "Remember" off).
+async function confirmReviewedTransaction(txId, categoryId, merchant, txType = null, { learn = true } = {}) {
   const sets = ["status='confirmed'", 'user_overridden=1', 'category_id=?', "categorization_source='manual'", 'matched_rule_id=NULL', 'updated_at=?'];
   const params = [categoryId || null, new Date().toISOString()];
   if (txType) { sets.push('tx_type=?', "tx_type_source='manual'"); params.push(txType); }
   params.push(txId);
   await db.run(`UPDATE transactions SET ${sets.join(', ')} WHERE id=?`, params);
-  await learnExpenseRuleFromOverride(merchant, categoryId);
+  return learn ? await learnExpenseRuleFromOverride(merchant, categoryId) : null;
 }
 
 async function hideReviewedTransaction(txId, reason = '') {
@@ -547,6 +550,46 @@ function injectStyles() {
 .budget-ov-row { display: flex; align-items: center; gap: var(--px-space-3); min-height: 32px; border-top: 1px solid var(--px-divider); }
 .budget-ov-when { width: 52px; flex: 0 0 52px; color: var(--px-text-faint); font-size: var(--px-text-sm); }
 .budget-ov-grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ═══ Review ═══ */
+.budget-rv { max-width: 1180px; }
+.budget-rv-undo {
+  max-width: 1180px; box-sizing: border-box;
+  display: flex; align-items: center; gap: var(--px-space-2);
+  padding: var(--px-space-1) var(--px-space-2) var(--px-space-1) var(--px-space-4);
+  border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated); font-size: var(--px-text-sm);
+}
+.budget-rv-undo[hidden] { display: none; }
+.budget-rv-grid { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); gap: var(--px-space-4); align-items: start; }
+@container (max-width: 720px) { .budget-rv-grid { grid-template-columns: minmax(0, 1fr); } }
+.budget-rv-side { display: flex; flex-direction: column; gap: var(--px-space-2); min-width: 0; }
+.budget-rv-list { display: flex; flex-direction: column; gap: 2px; }
+.budget-rv-item {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; box-sizing: border-box;
+  padding: var(--px-space-2) var(--px-space-3);
+  border: 1px solid transparent; border-radius: var(--px-radius-md);
+  background: none; color: var(--px-text); font: inherit; text-align: left; cursor: pointer;
+}
+.budget-rv-item:hover { background: var(--px-surface-hover); }
+.budget-rv-item[aria-current="true"] { background: var(--px-bg-elevated); border-color: var(--px-border-strong); }
+.budget-rv-item:focus-visible { outline: 1px solid var(--px-accent); outline-offset: -1px; }
+.budget-rv-item-top { display: flex; gap: var(--px-space-2); min-width: 0; }
+.budget-rv-tag { font-size: var(--px-text-sm); color: var(--px-warning); }
+.budget-rv-card { gap: var(--px-space-4); padding: var(--px-space-5); }
+.budget-rv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--px-space-3); }
+.budget-rv-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.budget-rv-name { font-size: var(--px-text-lg); font-weight: 600; overflow-wrap: anywhere; }
+.budget-rv-block { display: flex; flex-direction: column; gap: var(--px-space-1); }
+.budget-rv-compare { display: flex; flex-direction: column; gap: var(--px-space-1); padding: var(--px-space-3); border-radius: var(--px-radius-md); background: var(--px-surface-hover); }
+.budget-rv-compare-row { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: var(--px-space-2); }
+.budget-rv-verdict { overflow-x: auto; }
+.budget-rv-cat { max-width: 280px; }
+.budget-rv-remember { display: flex; flex-direction: column; gap: 2px; margin-top: var(--px-space-1); }
+.budget-rv-check { display: inline-flex; align-items: center; gap: var(--px-space-2); cursor: pointer; }
+.budget-rv-check input { accent-color: var(--px-accent); margin: 0; }
+.budget-rv-actions { display: flex; align-items: center; gap: var(--px-space-2); padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); }
+.budget-rv-pos { margin-left: auto; }
 .budget-editor-blurb {
   margin: 0;
   font-size: var(--px-text-base, 13px);
@@ -2471,6 +2514,7 @@ async function openTxEditor(api, opts = {}) {
       try {
         await budgetToolDeleteTransaction({ id: opts.id, reason: 'deleted from editor' });
         close(); opts.onSaved?.();
+        notifyLedgerChanged();
       } catch (e) { await api.window?.showErrorMessage?.('Delete failed: ' + (e instanceof Error ? e.message : String(e))); }
     } });
     foot.appendChild(delBtn);
@@ -2511,6 +2555,7 @@ async function openTxEditor(api, opts = {}) {
       }
       if (categoryChanged && categoryId && merchant) await learnExpenseRuleFromOverride(merchant, categoryId);
       close(); opts.onSaved?.();
+      notifyLedgerChanged();
     } catch (e) {
       await api.window?.showErrorMessage?.('Save failed: ' + (e instanceof Error ? e.message : String(e)));
     }
@@ -2828,146 +2873,497 @@ function renderTransactionsSection(body, api) {
 
 // ─── Section: Review Queue ─────────────────────────────────────────────────
 
-function renderReviewQueueSection(body, api) {
-  const toolbar = document.createElement('div');
-  toolbar.className = 'budget-toolbar';
-  const refreshBtn = makeButton('Refresh', {
-    iconHtml: makeIcon(api, 'refresh-cw', 12),
-    onClick: () => void refresh(),
-  });
-  toolbar.appendChild(refreshBtn);
-  body.appendChild(toolbar);
+// ─── Section: Review ───────────────────────────────────────────────────────
+//
+// One row at a time: why it is here, what it is (the verdict), its category,
+// and whether to remember the choice as a rule. The list on the left is the
+// queue; Confirm moves to the next row and offers Undo.
 
-  const tableWrap = document.createElement('div');
-  body.appendChild(tableWrap);
+const REVIEW_VERDICTS = [
+  ...TX_TYPES.map(t => ({ value: t.value, label: t.label })),
+  { value: 'duplicate', label: 'Duplicate' },
+  { value: 'ignore', label: 'Ignore' },
+];
 
-  let alive = true;
-  let categories = [];
+function shortDate(iso) {
+  if (!iso) return '';
+  const d = new Date(String(iso).slice(0, 10) + 'T00:00:00');
+  return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
-  async function refresh() {
-    if (!alive) return;
-    tableWrap.innerHTML = '';
-    try {
-      categories = await db.all(
-        `SELECT id, name, color, kind FROM categories WHERE archived=0 ORDER BY kind, sort_order, name`,
-      );
-    } catch { categories = []; }
+function reviewAccountLabel(r) {
+  if (r.account_name) return r.account_name + (r.account_last_four ? ` ••${r.account_last_four}` : '');
+  if (r.account_last_four || r.card_last_four) return `••${r.account_last_four || r.card_last_four}`;
+  return '';
+}
 
-    let rows;
-    try {
-      rows = await db.all(`
-        SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.ai_confidence, t.category_id, t.tx_type,
-               t.notes, t.tx_type_source,
-               t.card_last_four, e.raw_subject, e.raw_snippet
-          FROM transactions t
-          LEFT JOIN email_imports e ON e.gmail_message_id = t.gmail_message_id
-         WHERE t.status = 'review'
-         ORDER BY t.transaction_date DESC, t.created_at DESC
-         LIMIT 200`);
-    } catch (e) {
-      tableWrap.appendChild(emptyState('Query error: ' + (e instanceof Error ? e.message : String(e))));
-      return;
-    }
-    if (!rows || rows.length === 0) {
-      tableWrap.appendChild(emptyState('Nothing to review. The review queue is empty.'));
-      return;
-    }
+function reviewDuplicateOf(notes) {
+  const m = /\[possible duplicate of ([^\]]+)\]/.exec(notes || '');
+  return m ? m[1].trim() : null;
+}
 
-    const table = document.createElement('table');
-    table.className = 'budget-table';
-    table.innerHTML = `
-      <thead><tr>
-        <th>Date</th><th>Merchant / Email</th><th>Type</th>
-        <th style="text-align:right">Amount</th>
-        <th>Category</th><th>Actions</th>
-      </tr></thead>`;
-    const tbody = document.createElement('tbody');
-    for (const r of rows) {
-      const tr = document.createElement('tr');
-      tr.classList.add('budget-row-clickable');
-      tr.addEventListener('click', () => void openTxEditor(api, { id: r.id, onSaved: refresh }));
-      const tdDate = document.createElement('td'); tdDate.textContent = fmtDate(r.transaction_date); tr.appendChild(tdDate);
-      const tdMerch = document.createElement('td');
-      const mTitle = document.createElement('div'); mTitle.textContent = r.merchant || '(parse failed)'; tdMerch.appendChild(mTitle);
-      if (r.raw_subject) {
-        const sub = document.createElement('div');
-        sub.style.fontSize = '10px';
-        sub.style.color = 'var(--vscode-descriptionForeground, #888)';
-        sub.textContent = r.raw_subject;
-        tdMerch.appendChild(sub);
-      }
-      tr.appendChild(tdMerch);
-      const tdType = document.createElement('td');
-      // The verdict is the type: choose it, then Confirm. The badge says who
-      // chose the current one; the line under it says why the row is here.
-      tdType.addEventListener('click', (e) => e.stopPropagation());
-      const typeSel = makeDropdown(TX_TYPES.map((t) => ({ value: t.value, label: t.label })), r.tx_type || 'purchase');
-      tdType.appendChild(typeSel);
-      tdType.appendChild(typeSourceBadge(r.tx_type_source));
-      const isDupe = /\[possible duplicate of /.test(r.notes || '');
-      if (r.notes && /\[(cross-check|possible duplicate)/.test(r.notes)) {
-        const why = document.createElement('div');
-        why.style.fontSize = '10px';
-        why.style.marginTop = '3px';
-        why.style.color = 'var(--vscode-descriptionForeground, #aaa)';
-        why.textContent = r.notes.replace(/\[cross-check: /, 'Flagged: ').replace(/\[possible duplicate of ([^\]]+)\]/, 'Possible duplicate of $1').replace(/[\[\]]/g, '');
-        tdType.appendChild(why);
-      }
-      tr.appendChild(tdType);
-      const tdAmt = document.createElement('td'); tdAmt.className = 'budget-amount';
-      tdAmt.textContent = fmtMoney(r.amount_cents);
-      tr.appendChild(tdAmt);
-
-      const tdCat = document.createElement('td');
-      tdCat.addEventListener('click', (e) => e.stopPropagation());
-      const sel = makeDropdown(categoryOptions(categories, 'Choose a category…'), r.category_id || '');
-      tdCat.appendChild(sel);
-      tr.appendChild(tdCat);
-
-      const tdAct = document.createElement('td');
-      tdAct.className = 'budget-row-actions';
-      tdAct.addEventListener('click', (e) => e.stopPropagation());
-      const confirmBtn = makeButton('Confirm', {
-        primary: true,
-        onClick: async () => {
-          try {
-            await confirmReviewedTransaction(r.id, sel.value || null, r.merchant, typeSel.value || null);
-            await refresh();
-          } catch (e) {
-            await api.window?.showErrorMessage?.('Confirm failed: ' + (e instanceof Error ? e.message : String(e)));
-          }
-        },
-      });
-      const hideBtn = makeButton('Hide', {
-        onClick: async () => {
-          try {
-            await hideReviewedTransaction(r.id);
-            await refresh();
-          } catch (e) {
-            await api.window?.showErrorMessage?.('Hide failed: ' + (e instanceof Error ? e.message : String(e)));
-          }
-        },
-      });
-      tdAct.appendChild(confirmBtn);
-      if (isDupe) {
-        // One key for the common case: the second email about one charge.
-        tdAct.appendChild(makeButton('Duplicate', {
-          onClick: async () => {
-            try { await hideReviewedTransaction(r.id, 'duplicate'); await refresh(); }
-            catch (e) { await api.window?.showErrorMessage?.('Hide failed: ' + (e instanceof Error ? e.message : String(e))); }
-          },
-        }));
-      }
-      tdAct.appendChild(hideBtn);
-      tr.appendChild(tdAct);
-
-      tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
-    tableWrap.appendChild(table);
+// Why the sync sent a row here: a short tag for the list and a sentence.
+// Read from the notes the sync wrote and the AI's confidence.
+function reviewReason(r) {
+  const notes = r.notes || '';
+  const merchant = r.merchant || 'the payee';
+  if (reviewDuplicateOf(notes)) {
+    return { tag: 'Possible duplicate', why: 'The same amount and payee is already in the ledger within two days, from a different email.' };
   }
-  void refresh();
-  return () => { alive = false; };
+  if (/\[cross-check:/.test(notes)) {
+    if (/payee looks external/.test(notes)) {
+      return { tag: 'Transfer to a person?', why: `It was typed as a transfer, but ${merchant} does not look like one of your accounts. Money sent to a person is usually spending.` };
+    }
+    if (/merchant=NULL/.test(notes)) {
+      return { tag: 'No payee', why: 'The email did not name who was paid, so the type could not be checked.' };
+    }
+    if (/tx_type=deposit/.test(notes)) {
+      return { tag: 'Income or money out?', why: 'It was typed as income, but the amount reads as money going out.' };
+    }
+    return { tag: 'Did not add up', why: 'The type and the amount did not agree when the sync checked them.' };
+  }
+  if (r.ai_confidence === 'low') {
+    return { tag: 'AI unsure', why: 'The AI was not sure what this is, so it was not counted yet.' };
+  }
+  return { tag: 'To check', why: 'The sync set this aside for you to check before it is counted.' };
+}
+
+function reviewTypeSource(r) {
+  const label = txTypeLabel(r.tx_type, r.amount_cents);
+  const unsure = r.ai_confidence === 'low' ? ', and was not sure' : '';
+  switch (r.tx_type_source) {
+    case 'ai':      return `The AI typed it as ${label}${unsure}.`;
+    case 'subject': return `The email subject typed it as ${label}.`;
+    case 'csv':     return `It came from a CSV as ${label}.`;
+    case 'manual':  return `You typed it as ${label}.`;
+    default:        return `It is typed as ${label}${unsure}.`;
+  }
+}
+
+// The verdict a row opens with: Duplicate when it was flagged as one,
+// otherwise the type it already has.
+function reviewDefaultVerdict(r) {
+  if (reviewDuplicateOf(r.notes)) return 'duplicate';
+  return TX_TYPE_VALUES.includes(r.tx_type) ? r.tx_type : 'purchase';
+}
+
+// What a rule would do for this merchant today: the first active rule that
+// matches wins (highest priority first), the same order the sync uses.
+function reviewRuleFor(rules, merchant) {
+  for (const rule of rules) if (ruleMatchesMerchant(rule, merchant)) return rule;
+  return null;
+}
+
+function renderReviewQueueSection(body, api) {
+  // What the last Confirm did, with Undo. In the page, not a modal prompt:
+  // the next row is already up and the user keeps going.
+  const undoBar = document.createElement('div');
+  undoBar.className = 'budget-rv-undo';
+  undoBar.setAttribute('role', 'status');
+  undoBar.hidden = true;
+  const root = document.createElement('div');
+  root.className = 'budget-rv';
+  body.append(undoBar, root);
+  let undoTimer = null;
+  function hideUndo() {
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+    undoBar.hidden = true;
+    undoBar.replaceChildren();
+  }
+  function showUndo(message, onUndo) {
+    hideUndo();
+    const text = document.createElement('span');
+    text.className = 'budget-ov-grow';
+    text.textContent = message;
+    undoBar.appendChild(text);
+    api.ui.createButton(undoBar, { label: 'Undo', kind: 'ghost', size: 'sm', onClick: () => { hideUndo(); void onUndo(); } });
+    api.ui.createIconButton(undoBar, { icon: 'x', title: 'Dismiss' }).addEventListener('click', hideUndo);
+    undoBar.hidden = false;
+    undoTimer = setTimeout(hideUndo, 12000);
+  }
+
+  let disposed = false;
+  let rows = [];
+  let categories = [];
+  let rules = [];
+  let currentId = null;
+  let taught = 0;
+  let drawSeq = 0; // a newer draw wins; an older one stops at its next await
+  const drafts = new Map(); // row id → { verdict, categoryId, remember }
+
+  function draftFor(r) {
+    let d = drafts.get(r.id);
+    if (!d) {
+      const verdict = reviewDefaultVerdict(r);
+      d = { verdict, categoryId: categoryFor(r, verdict, r.category_id), remember: true };
+      drafts.set(r.id, d);
+    }
+    return d;
+  }
+
+  // Keep a category that fits the type; otherwise the only one of that kind.
+  function categoryFor(r, verdict, current) {
+    if (!TX_TYPE_VALUES.includes(verdict)) return null;
+    const kind = categoryKindForTxType(verdict);
+    const fits = categories.filter(c => c.kind === kind);
+    if (current && fits.some(c => c.id === current)) return current;
+    return fits.length === 1 ? fits[0].id : null;
+  }
+
+  async function load() {
+    categories = await db.all(`SELECT id, name, color, kind FROM categories WHERE archived=0 ORDER BY kind, sort_order, name`).catch(() => []);
+    rules = await db.all(
+      `SELECT id, pattern, match_type, category_id, priority, auto_created FROM categorization_rules
+        WHERE active = 1 ORDER BY priority DESC, length(pattern) DESC, created_at ASC`).catch(() => []);
+    rows = await db.all(`
+      SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.ai_confidence, t.category_id,
+             t.tx_type, t.tx_type_source, t.notes, t.card_last_four,
+             a.display_name AS account_name, a.last_four AS account_last_four, e.raw_subject
+        FROM transactions t
+        LEFT JOIN accounts a ON a.id = t.account_id
+        LEFT JOIN email_imports e ON e.gmail_message_id = t.gmail_message_id
+       WHERE t.status = 'review'
+       ORDER BY t.transaction_date DESC, t.created_at DESC
+       LIMIT 200`);
+  }
+
+  async function draw() {
+    if (disposed) return;
+    const seq = ++drawSeq;
+    try { await load(); }
+    catch (err) {
+      root.replaceChildren(emptyState('The review queue could not be read: ' + (err instanceof Error ? err.message : String(err))));
+      return;
+    }
+    if (disposed || seq !== drawSeq) return;
+    root.replaceChildren();
+    for (const id of [...drafts.keys()]) if (!rows.some(r => r.id === id)) drafts.delete(id);
+    if (rows.length === 0) {
+      currentId = null;
+      api.ui.createEmptyState(root, {
+        icon: 'inbox',
+        headline: 'Nothing to review.',
+        hint: taught
+          ? `You taught it ${taught} rule${taught === 1 ? '. It applies' : 's. They apply'} from the next sync.`
+          : 'Everything the sync brought in is counted.',
+        action: { label: 'Back to Overview', onClick: () => openBudgetSection(api, 'overview') },
+      });
+      return;
+    }
+    if (!rows.some(r => r.id === currentId)) currentId = rows[0].id;
+    const grid = document.createElement('div');
+    grid.className = 'budget-rv-grid';
+    drawList(grid);
+    await drawItem(grid, rows.find(r => r.id === currentId), seq);
+    if (disposed || seq !== drawSeq) return;
+    root.appendChild(grid);
+  }
+
+  function select(id) {
+    currentId = id;
+    void draw();
+  }
+
+  function drawList(grid) {
+    const side = document.createElement('div');
+    side.className = 'budget-rv-side';
+    const hint = document.createElement('div');
+    hint.className = 'budget-ov-faint';
+    hint.textContent = `${rows.length} to look at`;
+    side.appendChild(hint);
+    const list = document.createElement('div');
+    list.className = 'budget-rv-list';
+    list.setAttribute('role', 'list');
+    for (const r of rows) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'budget-rv-item';
+      b.setAttribute('role', 'listitem');
+      if (r.id === currentId) b.setAttribute('aria-current', 'true');
+      const top = document.createElement('span');
+      top.className = 'budget-rv-item-top';
+      const name = document.createElement('span');
+      name.className = 'budget-ov-grow';
+      name.textContent = r.merchant || 'No payee';
+      const amt = document.createElement('span');
+      amt.className = 'budget-num';
+      amt.textContent = fmtMoney(r.amount_cents);
+      top.append(name, amt);
+      const tag = document.createElement('span');
+      tag.className = 'budget-rv-tag';
+      tag.textContent = reviewReason(r).tag;
+      b.append(top, tag);
+      b.addEventListener('click', () => select(r.id));
+      b.addEventListener('keydown', (e) => {
+        const i = rows.findIndex(x => x.id === r.id);
+        const j = e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? i - 1 : -1;
+        if (j < 0 || j >= rows.length) return;
+        e.preventDefault();
+        select(rows[j].id);
+        requestAnimationFrame(() => root.querySelector('.budget-rv-item[aria-current="true"]')?.focus());
+      });
+      list.appendChild(b);
+    }
+    side.appendChild(list);
+    grid.appendChild(side);
+  }
+
+  async function drawItem(grid, r, seq) {
+    const d = draftFor(r);
+    const card = document.createElement('div');
+    card.className = 'budget-ov-card budget-rv-card';
+    grid.appendChild(card);
+
+    // Who and how much.
+    const head = document.createElement('div');
+    head.className = 'budget-rv-head';
+    const who = document.createElement('div');
+    who.className = 'budget-rv-who';
+    const name = document.createElement('div');
+    name.className = 'budget-rv-name';
+    name.textContent = r.merchant || 'No payee';
+    const meta = document.createElement('div');
+    meta.className = 'budget-ov-faint';
+    meta.textContent = [shortDate(r.transaction_date), reviewAccountLabel(r)].filter(Boolean).join(' · ');
+    who.append(name, meta);
+    const amount = document.createElement('div');
+    amount.className = 'budget-ov-big budget-num';
+    amount.textContent = fmtMoney(r.amount_cents);
+    head.append(who, amount);
+    card.appendChild(head);
+
+    // Why it is here.
+    const why = document.createElement('div');
+    why.className = 'budget-rv-block';
+    const whyLabel = document.createElement('div');
+    whyLabel.className = 'budget-ov-label';
+    whyLabel.textContent = 'Why it is here';
+    const whyText = document.createElement('div');
+    whyText.textContent = reviewReason(r).why;
+    why.append(whyLabel, whyText);
+    if (r.raw_subject) {
+      const subj = document.createElement('div');
+      subj.className = 'budget-ov-faint';
+      subj.textContent = `From the email: “${r.raw_subject}”`;
+      why.appendChild(subj);
+    }
+    card.appendChild(why);
+
+    const dupId = reviewDuplicateOf(r.notes);
+    if (dupId) {
+      const orig = await db.get(
+        `SELECT t.merchant, t.amount_cents, t.transaction_date, t.status, e.raw_subject
+           FROM transactions t LEFT JOIN email_imports e ON e.gmail_message_id = t.gmail_message_id
+          WHERE t.id = ?`, [dupId]).catch(() => null);
+      if (disposed || seq !== drawSeq) return;
+      const cmp = document.createElement('div');
+      cmp.className = 'budget-rv-compare';
+      const line = (label, x) => {
+        const row = document.createElement('div');
+        row.className = 'budget-rv-compare-row';
+        const l = document.createElement('span');
+        l.className = 'budget-ov-label';
+        l.textContent = label;
+        const v = document.createElement('span');
+        v.textContent = x
+          ? `${x.merchant || 'No payee'} · ${fmtMoney(x.amount_cents)} · ${shortDate(x.transaction_date)}${x.raw_subject ? ` · email “${x.raw_subject}”` : ''}`
+          : 'That row is no longer in the ledger.';
+        row.append(l, v);
+        cmp.appendChild(row);
+      };
+      line('This one', r);
+      line(orig && orig.status === 'review' ? 'Also waiting for review' : 'Already in the ledger', orig && orig.status !== 'deleted' ? orig : null);
+      card.appendChild(cmp);
+    }
+
+    // What it is.
+    const what = document.createElement('div');
+    what.className = 'budget-rv-block';
+    const whatLabel = document.createElement('div');
+    whatLabel.className = 'budget-ov-label';
+    whatLabel.textContent = 'What it is';
+    what.appendChild(whatLabel);
+    const seg = document.createElement('div');
+    seg.className = 'budget-rv-verdict';
+    what.appendChild(seg);
+    api.ui.createSegmented(seg, {
+      ariaLabel: 'What it is',
+      items: REVIEW_VERDICTS.filter(v => v.value !== 'duplicate' || dupId),
+      value: d.verdict,
+      onChange: (v) => {
+        d.verdict = v;
+        d.categoryId = categoryFor(r, v, d.categoryId);
+        drawChoice();
+      },
+    });
+    const said = document.createElement('div');
+    said.className = 'budget-ov-faint';
+    said.textContent = reviewTypeSource(r);
+    what.appendChild(said);
+    card.appendChild(what);
+
+    // Category, the rule, and the explanation that change with the verdict.
+    const choice = document.createElement('div');
+    choice.className = 'budget-rv-block';
+    card.appendChild(choice);
+
+    function drawChoice() { drawChoiceBody(); syncConfirm(); }
+    function drawChoiceBody() {
+      choice.replaceChildren();
+      const v = d.verdict;
+      if (v === 'duplicate' || v === 'ignore') {
+        const note = document.createElement('div');
+        note.className = 'budget-ov-note';
+        note.textContent = v === 'duplicate'
+          ? 'Duplicate hides this row and keeps the other one. The reason is noted on it.'
+          : 'Ignore hides this row. It is not counted anywhere, and you can find it under Hidden in Transactions.';
+        choice.appendChild(note);
+        return;
+      }
+      const catLabel = document.createElement('div');
+      catLabel.className = 'budget-ov-label';
+      catLabel.textContent = 'Category';
+      const dd = makeDropdown(
+        scopedCategoryOptions(categories, v, d.categoryId, 'Choose a category…'),
+        d.categoryId || '',
+        (val) => { d.categoryId = val || null; drawRemember(); syncConfirm(); },
+        { ariaLabel: 'Category', className: 'budget-rv-cat' },
+      );
+      choice.append(catLabel, dd);
+      const remember = document.createElement('div');
+      remember.className = 'budget-rv-remember';
+      choice.appendChild(remember);
+
+      function drawRemember() {
+        remember.replaceChildren();
+        // Rules sort expenses only (the sync applies them to purchases), so
+        // only an Expense with a category can be remembered.
+        if (v !== 'purchase' || !d.categoryId || !r.merchant || String(r.merchant).trim().length < 2) return;
+        const cat = categories.find(c => c.id === d.categoryId);
+        if (!cat || cat.kind !== 'expense') return;
+        const rule = reviewRuleFor(rules, r.merchant);
+        const ruleCat = rule && categories.find(c => c.id === rule.category_id);
+        if (rule && rule.category_id === d.categoryId) {
+          remember.className = 'budget-rv-remember budget-ov-faint';
+          remember.textContent = `A rule already puts ${r.merchant} in ${cat.name}.`;
+          return;
+        }
+        if (rule && !rule.auto_created) {
+          remember.className = 'budget-rv-remember budget-ov-faint';
+          remember.textContent = `Your rule “${rule.pattern}” puts ${r.merchant} in ${ruleCat ? ruleCat.name : 'another category'}. Change it in Merchants and Rules.`;
+          return;
+        }
+        remember.className = 'budget-rv-remember';
+        const label = document.createElement('label');
+        label.className = 'budget-rv-check';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = d.remember;
+        box.addEventListener('change', () => { d.remember = box.checked; });
+        const text = document.createElement('span');
+        text.textContent = `Remember: ${r.merchant} goes in ${cat.name}`;
+        label.append(box, text);
+        const sub = document.createElement('div');
+        sub.className = 'budget-ov-faint';
+        sub.textContent = rule
+          ? `Changes the learned rule from ${ruleCat ? ruleCat.name : 'its category'}. It applies from the next sync.`
+          : 'Adds a rule. It applies from the next sync.';
+        remember.append(label, sub);
+      }
+      drawRemember();
+    }
+
+    // Confirm, Skip, where we are.
+    const acts = document.createElement('div');
+    acts.className = 'budget-rv-actions';
+    const confirmBtn = api.ui.createButton(acts, { label: 'Confirm', kind: 'primary', onClick: () => void confirmRow(r, d) });
+    function syncConfirm() {
+      const missing = needsCategory(d) && !d.categoryId;
+      confirmBtn.disabled = missing;
+      confirmBtn.title = missing ? 'Choose a category first.' : '';
+    }
+    drawChoice();
+    if (rows.length > 1) {
+      api.ui.createButton(acts, { label: 'Skip', onClick: () => select(nextId(r.id)) });
+    }
+    const pos = document.createElement('span');
+    pos.className = 'budget-ov-faint budget-rv-pos';
+    pos.textContent = `${rows.findIndex(x => x.id === r.id) + 1} of ${rows.length}`;
+    acts.appendChild(pos);
+    card.appendChild(acts);
+  }
+
+  // Transfers may stay uncategorized; everything counted needs a category.
+  function needsCategory(d) {
+    return d.verdict === 'purchase' || d.verdict === 'fee' || d.verdict === 'deposit';
+  }
+
+  function nextId(id) {
+    const i = rows.findIndex(x => x.id === id);
+    return rows.length > 1 ? rows[(i + 1) % rows.length].id : null;
+  }
+
+  let saving = false;
+  async function confirmRow(r, d) {
+    if (saving) return; // a double click saves once
+    saving = true;
+    try { await saveRow(r, d); } finally { saving = false; }
+  }
+
+  async function saveRow(r, d) {
+    const v = d.verdict;
+    if (needsCategory(d) && !d.categoryId) return;
+    const before = await db.get(
+      `SELECT status, category_id, tx_type, tx_type_source, categorization_source, matched_rule_id, user_overridden, notes, updated_at
+         FROM transactions WHERE id = ?`, [r.id]).catch(() => null);
+    let ruleChange = null;
+    let what;
+    try {
+      if (v === 'duplicate') {
+        await hideReviewedTransaction(r.id, 'duplicate');
+        what = 'hidden as a duplicate';
+      } else if (v === 'ignore') {
+        await hideReviewedTransaction(r.id, 'ignored');
+        what = 'hidden';
+      } else {
+        ruleChange = await confirmReviewedTransaction(r.id, d.categoryId, r.merchant, v, { learn: v === 'purchase' && d.remember });
+        const cat = categories.find(c => c.id === d.categoryId);
+        const label = TX_TYPES.find(t => t.value === v)?.label || v;
+        what = `saved as ${label}${cat ? ` in ${cat.name}` : ''}`;
+      }
+    } catch (e) {
+      await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e)));
+      return;
+    }
+    if (ruleChange) taught++;
+    currentId = nextId(r.id);
+    drafts.delete(r.id);
+    notifyLedgerChanged(); // this page redraws too, on the next row
+    const ruleNote = !ruleChange ? '' : ruleChange.created ? ' A rule was added.' : ' The learned rule was changed.';
+    showUndo(`${r.merchant || 'The row'} ${what}.${ruleNote}`, async () => {
+      if (!before) return;
+      try {
+        await db.run(
+          `UPDATE transactions SET status=?, category_id=?, tx_type=?, tx_type_source=?, categorization_source=?,
+                  matched_rule_id=?, user_overridden=?, notes=?, updated_at=? WHERE id=?`,
+          [before.status, before.category_id, before.tx_type, before.tx_type_source, before.categorization_source,
+           before.matched_rule_id, before.user_overridden, before.notes, before.updated_at, r.id]);
+        await undoLearnedRule(ruleChange);
+        if (ruleChange) taught = Math.max(0, taught - 1);
+      } catch (e) {
+        await api.window?.showErrorMessage?.('Could not undo: ' + (e instanceof Error ? e.message : String(e)));
+        return;
+      }
+      currentId = r.id;
+      drafts.set(r.id, d);
+      notifyLedgerChanged();
+    });
+  }
+
+  const offSync = onSyncEvent((e) => { if (e.kind === 'complete' || e.kind === 'error') void draw(); });
+  const offLedger = onLedgerChanged(() => void draw());
+  void draw();
+  return () => { disposed = true; hideUndo(); offSync(); offLedger(); };
 }
 
 // ─── Section: Sync Log ─────────────────────────────────────────────────────
@@ -7405,6 +7801,7 @@ function renderImportExportSection(body, api) {
     setStatus('Importing…');
     try {
       const r = await importCsvText(text);
+      if (r.inserted) notifyLedgerChanged();
       const parts = [`Imported ${r.inserted} row${r.inserted === 1 ? '' : 's'}`];
       if (r.skipped) parts.push(`${r.skipped} skipped (duplicates)`);
       if (r.errors)  parts.push(`${r.errors} error${r.errors === 1 ? '' : 's'}`);
@@ -7904,9 +8301,9 @@ async function applyRules(merchant, rules) {
 // (or strengthens an existing one) so future imports for the same merchant
 // land in the chosen category without an LLM call.
 async function learnRuleFromOverride(merchant, categoryId) {
-  if (!merchant || !categoryId) return;
+  if (!merchant || !categoryId) return null;
   const cleanMerchant = String(merchant).trim();
-  if (cleanMerchant.length < 2) return;
+  if (cleanMerchant.length < 2) return null;
 
   // Look for an existing exact-match auto rule for this merchant.
   const existing = await db.get(
@@ -7919,18 +8316,33 @@ async function learnRuleFromOverride(merchant, categoryId) {
   if (existing) {
     if (existing.category_id !== categoryId) {
       // User changed their mind; redirect the auto rule.
+      const prev = await db.get('SELECT category_id, hits, updated_at FROM categorization_rules WHERE id = ?', [existing.id]);
       await db.run(
         `UPDATE categorization_rules SET category_id = ?, updated_at = ?, hits = 0 WHERE id = ?`,
         [categoryId, now, existing.id],
       );
+      return { ruleId: existing.id, created: false, prev };
     }
-    return;
+    return null;
   }
+  const id = crypto.randomUUID();
   await db.run(
     `INSERT INTO categorization_rules (id, pattern, match_type, category_id, priority, auto_created, active, created_at, updated_at)
      VALUES (?, ?, 'exact', ?, 50, 1, 1, ?, ?)`,
-    [crypto.randomUUID(), cleanMerchant, categoryId, now, now],
+    [id, cleanMerchant, categoryId, now, now],
   );
+  return { ruleId: id, created: true, prev: null };
+}
+
+// Puts a rule back the way learnRuleFromOverride found it.
+async function undoLearnedRule(change) {
+  if (!change) return;
+  if (change.created) {
+    await db.run('DELETE FROM categorization_rules WHERE id = ?', [change.ruleId]);
+  } else if (change.prev) {
+    await db.run('UPDATE categorization_rules SET category_id = ?, hits = ?, updated_at = ? WHERE id = ?',
+      [change.prev.category_id, change.prev.hits, change.prev.updated_at, change.ruleId]);
+  }
 }
 
 // Auto-promotion: if the AI has independently labeled the same merchant with
@@ -8303,6 +8715,7 @@ async function reprocessHistory(api) {
     }
   }
 
+  notifyLedgerChanged();
   return { updated, errors, total: legacyRows.length, categorized, ambiguous };
 }
 
@@ -9505,6 +9918,11 @@ function _toolOk(payload) {
 }
 function _toolErr(message) {
   return { content: String(message), isError: true };
+}
+// A chat tool changed the ledger: the open Budget views redraw.
+function afterLedgerWrite(result) {
+  if (result && !result.isError) notifyLedgerChanged();
+  return result;
 }
 
 async function budgetToolGetLastSyncCursor() {
@@ -10874,6 +11292,7 @@ export async function activate(api, context) {
         handler: async (args) => {
           try {
             const out = await budgetToolSetBudget(args || {});
+            notifyLedgerChanged();
             return { content: JSON.stringify(out) };
           } catch (err) {
             return { content: err instanceof Error ? err.message : String(err), isError: true };
@@ -10897,6 +11316,7 @@ export async function activate(api, context) {
         handler: async (args) => {
           try {
             const out = await budgetToolUpsertRule(args || {});
+            notifyLedgerChanged();
             return { content: JSON.stringify(out) };
           } catch (err) {
             return { content: err instanceof Error ? err.message : String(err), isError: true };
@@ -10983,19 +11403,19 @@ export async function activate(api, context) {
           },
         },
         requiresConfirmation: true,
-        handler: async (args) => budgetToolUpdateTransaction(args || {}),
+        handler: async (args) => afterLedgerWrite(await budgetToolUpdateTransaction(args || {})),
       }));
       _disposables.push(api.chat.registerTool('budget.deleteTransaction', {
         description: 'Soft-delete a transaction (moves it to transactions_trash for 30 days, then auto-purges). Recoverable via budget.restoreTransaction.',
         parameters: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
         requiresConfirmation: true,
-        handler: async (args) => budgetToolDeleteTransaction(args || {}),
+        handler: async (args) => afterLedgerWrite(await budgetToolDeleteTransaction(args || {})),
       }));
       _disposables.push(api.chat.registerTool('budget.restoreTransaction', {
         description: 'Restore a soft-deleted transaction from trash back to the ledger.',
         parameters: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
         requiresConfirmation: true,
-        handler: async (args) => budgetToolRestoreTransaction(args || {}),
+        handler: async (args) => afterLedgerWrite(await budgetToolRestoreTransaction(args || {})),
       }));
       _disposables.push(api.chat.registerTool('budget.resolveReview', {
         description: 'Resolve a pending-review row: mark the original transaction confirmed (optionally with edits) and clear it from pending_review.',
@@ -11012,7 +11432,7 @@ export async function activate(api, context) {
           },
         },
         requiresConfirmation: true,
-        handler: async (args) => budgetToolResolveReview(args || {}),
+        handler: async (args) => afterLedgerWrite(await budgetToolResolveReview(args || {})),
       }));
 
       // Taxonomy management — categories and categorization rules.
@@ -11027,7 +11447,7 @@ export async function activate(api, context) {
           },
         },
         requiresConfirmation: true,
-        handler: async (args) => budgetToolCreateCategory(args || {}),
+        handler: async (args) => afterLedgerWrite(await budgetToolCreateCategory(args || {})),
       }));
       _disposables.push(api.chat.registerTool('budget.renameCategory', {
         description: 'Rename a category (existing transactions keep their category_id, just the display name changes).',
@@ -11037,13 +11457,13 @@ export async function activate(api, context) {
           properties: { from: { type: 'string' }, to: { type: 'string' } },
         },
         requiresConfirmation: true,
-        handler: async (args) => budgetToolRenameCategory(args || {}),
+        handler: async (args) => afterLedgerWrite(await budgetToolRenameCategory(args || {})),
       }));
       _disposables.push(api.chat.registerTool('budget.deleteCategory', {
         description: 'Archive a category. Transactions previously assigned to it keep their category_id (the category row remains, archived=1). No data is lost.',
         parameters: { type: 'object', required: ['name'], properties: { name: { type: 'string' } } },
         requiresConfirmation: true,
-        handler: async (args) => budgetToolDeleteCategory(args || {}),
+        handler: async (args) => afterLedgerWrite(await budgetToolDeleteCategory(args || {})),
       }));
       _disposables.push(api.chat.registerTool('budget.createCategorizationRule', {
         description: 'Create a merchant→category rule. The agent should add a rule whenever it categorizes a recurring/obvious merchant, so the next sync skips the LLM call and the user does not have to confirm again.',
@@ -11057,13 +11477,13 @@ export async function activate(api, context) {
           },
         },
         requiresConfirmation: true,
-        handler: async (args) => budgetToolCreateCategorizationRule(args || {}),
+        handler: async (args) => afterLedgerWrite(await budgetToolCreateCategorizationRule(args || {})),
       }));
       _disposables.push(api.chat.registerTool('budget.deleteCategorizationRule', {
         description: 'Delete a categorization rule by id.',
         parameters: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
         requiresConfirmation: true,
-        handler: async (args) => budgetToolDeleteCategorizationRule(args || {}),
+        handler: async (args) => afterLedgerWrite(await budgetToolDeleteCategorizationRule(args || {})),
       }));
     } catch (e) {
       console.warn('[Budget] chat tool registration failed:', e);
@@ -11209,6 +11629,10 @@ export async function deactivate() {
 // imported by vitest. The blob-URL loader ignores extra named exports.
 export const __testables = {
   computeMonthPlan,
+  reviewReason,
+  reviewDefaultVerdict,
+  reviewRuleFor,
+  reviewTypeSource,
   budgetStreamWithStall,
   BudgetLmStallError,
   median,
