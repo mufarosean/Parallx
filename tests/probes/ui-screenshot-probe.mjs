@@ -14,7 +14,7 @@
 // Why this exists: static analysis and vitest both passed while the mindmap
 // board was dead on screen (2026-08-31). UI ships after a capture, not before.
 
-import { _electron as electron } from 'playwright';
+import { _electron as electron, chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -26,7 +26,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-probe-shots'));
 const requested = process.argv.slice(3);
-const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'motrash', 'mofav', 'mofilters', 'moart', 'settings', 'appearance'];
+const ALL_SCENES = ['boot', 'welcome', 'watermark', 'chrome', 'chat', 'autonomy', 'dashboard', 'planner', 'canvas', 'clip', 'project', 'timelapse', 'image', 'sidebar', 'moaudit', 'motrash', 'mofav', 'mofilters', 'moart', 'pdf', 'settings', 'appearance'];
 const scenes = requested.length ? requested : ALL_SCENES;
 
 function launchEnv(appRoot) {
@@ -643,6 +643,143 @@ async function moArtScene(appRoot, workspace, errors) {
 
 // Favorites in place of star ratings: a card's star, the F key, the menu,
 // the Favorites view and filter, the detail page, and old ratings migrated.
+// The PDF viewer: a generated four-page PDF with an outline, opened from the
+// explorer. Toolbar, thumbnails, outline, find, menus, a highlight and its
+// panel, night reading, light mode and a narrow window.
+async function pdfScene(appRoot, workspace, errors) {
+  const pdfPath = path.join(workspace, 'probe-reading.pdf');
+  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  try {
+    const p = await browser.newPage();
+    const para = 'Excess loss development follows the reported pattern closely in the early years and then flattens. The tail factor is chosen from the industry curve and checked against the company triangle. ';
+    const sec = (n, t) => `<h1>${n}. ${t}</h1><p>${para.repeat(6)}</p><h2>${n}.1 Method</h2><p>${para.repeat(5)}</p><h2>${n}.2 Results</h2><p>${para.repeat(5)}</p>`;
+    await p.setContent(`<html><body style="font:12pt Georgia;margin:0">${[['Introduction'], ['Data'], ['Development'], ['Conclusions']].map(([t], i) => `<section style="page-break-after:always">${sec(i + 1, t)}</section>`).join('')}</body></html>`);
+    await p.pdf({ path: pdfPath, format: 'Letter', margin: { top: '1in', bottom: '1in', left: '1in', right: '1in' }, tagged: true, outline: true });
+  } finally { await browser.close(); }
+  const { app, page } = await launchApp(appRoot, errors);
+  try {
+    const state = () => page.evaluate(() => {
+      const tb = document.querySelector('.pdf-toolbar');
+      const btns = tb ? Array.from(tb.querySelectorAll('button')).map((b) => `${b.getAttribute('aria-label') || b.title || '?'}${b.disabled ? '(off)' : ''}${b.classList.contains('active') ? '*' : ''}`) : [];
+      return `toolbar=${tb?.clientWidth}/${tb?.scrollWidth} page="${document.querySelector('.pdf-toolbar-page-input')?.value}/${document.querySelector('.pdf-toolbar-page-total')?.textContent}" zoom="${document.querySelector('.pdf-toolbar-zoom-input')?.value}" btns=[${btns.join(', ')}] outline=${document.querySelectorAll('.pdf-outline-title').length} thumbs=${document.querySelectorAll('.pdf-thumbnail-item').length} match="${document.querySelector('.pdf-search-match-count')?.textContent || ''}"`;
+    });
+    await page.evaluate(() => Array.from(document.querySelectorAll('.tree-node, [role="treeitem"], .explorer-item')).find((r) => /README\.md/.test(r.textContent || ''))?.click());
+    await page.waitForTimeout(300);
+    const opened = await page.evaluate(() => {
+      const row = Array.from(document.querySelectorAll('[role="treeitem"], .tree-node, .explorer-item')).find((r) => /probe-reading\.pdf/.test(r.textContent || ''));
+      if (!row) return false;
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      return true;
+    });
+    if (!opened) {
+      await page.keyboard.press('Control+P');
+      await page.waitForTimeout(600);
+      await page.keyboard.type('probe-reading.pdf');
+      await page.waitForTimeout(800);
+      await page.keyboard.press('Enter');
+    }
+    await page.waitForSelector('.pdf-editor-pane .pdfViewer .page canvas', { timeout: 20_000 });
+    await page.waitForTimeout(2_500);
+    console.log(`[probe] pdf: ${await state()}`);
+    console.log(`[probe] pdf focus after open: ${await page.evaluate(() => { const a = document.activeElement; return `${a?.tagName}.${a?.className?.toString().slice(0, 40)} inPane=${!!a?.closest('.pdf-editor-pane')}`; })}`);
+    console.log(`[probe] pdf page box: ${await page.evaluate(() => {
+      const pg = document.querySelector('.pdfViewer .page'); const cs = getComputedStyle(pg); const r = pg.getBoundingClientRect();
+      const cw = pg.querySelector('.canvasWrapper')?.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + 4, r.top + 200);
+      return `page=${Math.round(r.left)}..${Math.round(r.right)} top=${Math.round(r.top)} border="${cs.borderLeftWidth} ${cs.borderLeftStyle} ${cs.borderLeftColor}" bg=${cs.backgroundColor} clip=${cs.backgroundClip} shadow="${cs.boxShadow}" canvas=${Math.round(cw?.left)}..${Math.round(cw?.right)} hitAtBorder=${hit?.className} viewerPad="${getComputedStyle(document.querySelector('.pdfViewer')).padding}" containerBg=${getComputedStyle(document.querySelector('.pdf-viewer-container')).backgroundColor}`;
+    })}`);
+    await shot(page, 'pdf');
+    // The toolbar buttons carry no accessible name (tooltip only): find them by place.
+    const clickBtn = async (label) => {
+      await page.evaluate((l) => {
+        const right = Array.from(document.querySelectorAll('.pdf-toolbar > .pdf-toolbar-cluster')).pop();
+        const order = ['Find', 'Outline', 'Thumbnails', 'Night reading (invert colors)', 'More actions'];
+        const b = l === 'Zoom presets' ? document.querySelector('.pdf-toolbar-zoom-preset') : right?.querySelectorAll(':scope > button')[order.indexOf(l)];
+        b?.click();
+      }, label);
+      await page.waitForTimeout(900);
+    };
+    await clickBtn('Thumbnails');
+    await page.waitForTimeout(1_200);
+    await shot(page, 'pdf-thumbnails');
+    await clickBtn('Thumbnails');
+    await clickBtn('Outline');
+    console.log(`[probe] pdf outline: ${await state()}`);
+    await shot(page, 'pdf-outline');
+    await clickBtn('Outline');
+    await page.keyboard.press('Control+f');
+    await page.waitForTimeout(400);
+    console.log(`[probe] pdf Ctrl+F without clicking the page: bar shown=${await page.evaluate(() => { const b = document.querySelector('.pdf-search-bar'); return !!b && b.style.display !== 'none' && !!b.offsetParent; })}`);
+    // Click into the page (its margin, away from text), then Ctrl+F.
+    await page.evaluate(() => { const r = document.querySelector('.pdfViewer .page').getBoundingClientRect(); window.__pdfClick = { x: r.left + 20, y: r.top + 20 }; });
+    const pc = await page.evaluate(() => window.__pdfClick);
+    await page.mouse.click(pc.x, pc.y);
+    await page.waitForTimeout(300);
+    console.log(`[probe] pdf focus after clicking the page: ${await page.evaluate(() => { const a = document.activeElement; return `${a?.tagName}.${a?.className?.toString().slice(0, 40)} inPane=${!!a?.closest('.pdf-editor-pane')}`; })}`);
+    await page.keyboard.press('Control+f');
+    await page.waitForTimeout(400);
+    const barUp = await page.evaluate(() => { const b = document.querySelector('.pdf-search-bar'); return !!b && !!b.offsetParent; });
+    console.log(`[probe] pdf Ctrl+F after clicking the page: bar shown=${barUp}`);
+    if (!barUp) { await clickBtn('Find'); await page.waitForTimeout(400); }
+    await page.keyboard.type('tail factor');
+    await page.waitForTimeout(1_500);
+    console.log(`[probe] pdf find: ${await state()}`);
+    await shot(page, 'pdf-find');
+    await page.keyboard.press('Escape');
+    await clickBtn('More actions');
+    await shot(page, 'pdf-more');
+    await page.keyboard.press('Escape');
+    await page.mouse.click(5, 450);
+    await clickBtn('Zoom presets');
+    await shot(page, 'pdf-zoom-presets');
+    await page.keyboard.press('Escape');
+    await page.mouse.click(5, 450);
+    // Select a line of text on page 1 and open the selection menu.
+    const box = await page.evaluate(() => {
+      const spans = Array.from(document.querySelectorAll('.pdfViewer .page[data-page-number="1"] .textLayer span')).filter((s) => (s.textContent || '').length > 30);
+      const s = spans[2]; if (!s) return null;
+      const r = s.getBoundingClientRect(); return { x: r.left + 2, y: r.top + r.height / 2, w: r.width };
+    });
+    if (box) {
+      await page.mouse.move(box.x, box.y);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.w * 0.7, box.y, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(800);
+      await shot(page, 'pdf-selection-menu');
+      const hl = await page.evaluate(() => { const it = Array.from(document.querySelectorAll('.context-menu .context-menu-item')).find((r) => /^Highlight$/.test(r.querySelector('.context-menu-item-label')?.textContent || '')); if (!it) return false; it.click(); return true; });
+      await page.waitForTimeout(900);
+      console.log(`[probe] pdf highlight made: ${hl}, boxes=${await page.evaluate(() => document.querySelectorAll('.pdf-highlight-box').length)}`);
+      await page.mouse.move(box.x + 40, box.y + 30);
+      await page.waitForTimeout(400);
+      const tab = await page.evaluate(() => { const t = document.querySelector('.pdf-highlight-tab'); if (!t) return null; const r = t.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+      if (tab) { await page.mouse.click(tab.x, tab.y); await page.waitForTimeout(900); await shot(page, 'pdf-highlight-panel'); await page.mouse.click(700, 120); await page.waitForTimeout(400); }
+    }
+    await clickBtn('Night reading (invert colors)');
+    await shot(page, 'pdf-night');
+    await clickBtn('Night reading (invert colors)');
+    await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
+    await page.waitForTimeout(800);
+    await clickBtn('Outline');
+    await shot(page, 'pdf-light');
+    await page.keyboard.press('Control+f');
+    await page.waitForTimeout(400);
+    await page.keyboard.type('zzzz');
+    await page.waitForTimeout(1_000);
+    await shot(page, 'pdf-light-find-none');
+    await page.keyboard.press('Escape');
+    await clickBtn('Outline');
+    await page.evaluate(() => document.documentElement.removeAttribute('data-px-mode'));
+    await resizeWindow(page, 760, 820);
+    await page.waitForTimeout(1_200);
+    console.log(`[probe] pdf narrow: ${await state()}`);
+    await shot(page, 'pdf-narrow');
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 async function moFavScene(appRoot, workspace, errors) {
   const media = path.join(workspace, 'favtest');
   await fs.mkdir(media, { recursive: true });
@@ -1176,6 +1313,17 @@ async function main() {
     await scene('moart', () => moArtScene(appRoot, workspace, errs));
     const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
     if (real.length) { console.log(`[probe] moart: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
+    if (scenes.length === 1) {
+      await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
+      return;
+    }
+  }
+  if (scenes.includes('pdf')) {
+    const errs = [];
+    await scene('pdf', () => pdfScene(appRoot, workspace, errs));
+    const real = errs.filter((e) => !/ERR_CONNECTION_REFUSED|Ollama/.test(e));
+    if (real.length) { console.log(`[probe] pdf: ${real.length} renderer error(s)`); for (const e of real) console.log(`  ${e}`); }
     if (scenes.length === 1) {
       await fs.rm(appRoot, { recursive: true, force: true }).catch(() => {});
       await fs.rm(workspace, { recursive: true, force: true }).catch(() => {});
