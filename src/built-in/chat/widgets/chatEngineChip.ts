@@ -17,8 +17,18 @@ import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import type { IEngineStatus, IEngineStatusServices, IModelPickerServices } from '../chatTypes.js';
 import type { ITokenBreakdown } from './chatTokenStatusBar.js';
 
-/** The sizes offered, in tokens. 0 = the model's own default. */
-const SIZES: readonly number[] = [4_096, 8_192, 16_384, 32_768, 65_536, 131_072, 262_144];
+/** The sizes offered, in tokens. 0 = the model's own default. 160K is the
+ *  size a 27B dense-and-linear model fits on a 32 GB card; the model's own
+ *  maximum is added when it is not one of these. */
+const SIZES: readonly number[] = [4_096, 8_192, 16_384, 32_768, 65_536, 131_072, 163_840, 262_144];
+
+/** The sizes a model can take: the standard ones up to its maximum, plus the maximum itself. Test seam. */
+export function contextSizesFor(max: number | undefined): number[] {
+  const cap = max && max > 0 ? max : SIZES[SIZES.length - 1];
+  const out = SIZES.filter((s) => s <= cap);
+  if (max && max > 0 && !out.includes(max)) out.push(max);
+  return out;
+}
 
 export interface IEngineChipOptions {
   readonly models: IModelPickerServices;
@@ -193,8 +203,7 @@ export class ChatEngineChip extends Disposable {
     const host = pop.querySelector('.parallx-chat-engine-ctx') as HTMLElement;
     host.replaceChildren();
     const active = this._models.find((m) => m.id === this._o.models.getActiveModel());
-    const max = active?.contextLength || SIZES[SIZES.length - 1];
-    const sizes = SIZES.filter((s) => s <= max);
+    const sizes = contextSizesFor(active?.contextLength);
     if (sizes.length === 0) return;
     const override = this._o.getContextOverride();
     const current = override && override > 0 ? override : 0;

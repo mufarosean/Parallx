@@ -388,7 +388,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
         const chip = this._register(new ChatEngineChip(pickerSlot, {
           models: modelServices,
           onSelectModel: (modelId) => { modelServices.setActiveModel(modelId); this._syncSessionModel(modelId); },
-          getContextOverride: () => this._session?.contextWindowOverride,
+          // Before the chat has a session (a new chat), the pick lives in the
+          // picker and goes onto the session with the first message.
+          getContextOverride: () => this._session?.contextWindowOverride
+            ?? (this._contextPicker?.getActiveContextWindow() || undefined),
           onPickContext: (tokens) => { this._contextPicker?.setActiveContextWindow(tokens > 0 ? tokens : undefined); this._applyContextWindow(tokens); },
           getUsage: () => tokenBar.lastBreakdown,
           openUsageDetails: (anchor) => tokenBar.openDetails(anchor),
