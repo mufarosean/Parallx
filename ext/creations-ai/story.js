@@ -24,6 +24,8 @@ const AUTOSAVE_MS = 800;
 const MEMORY_EVERY = 4;
 const STORIES_DIR = 'stories';
 
+const FIELD_SIZING = typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('field-sizing', 'content');
+
 export function injectStoryStyles() {
   injectStudioStyles();
   if (document.getElementById(STYLE_ID)) return;
@@ -55,7 +57,7 @@ export function injectStoryStyles() {
 .st-chapter-meta { font-size: var(--px-text-xs); color: var(--px-text-muted); white-space: nowrap; }
 .st-beats { display: flex; flex-direction: column; }
 .st-beat { position: relative; padding: 2px 0; }
-.st-beat-text { width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-md); line-height: 1.75; padding: var(--px-space-2) var(--px-space-3); resize: none; overflow: hidden; min-height: 40px; border-radius: var(--px-radius-md); }
+.st-beat-text { width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-md); line-height: 1.75; padding: var(--px-space-2) var(--px-space-3); resize: none; overflow: hidden; min-height: 40px; border-radius: var(--px-radius-md); field-sizing: content; }
 .st-beat-text:hover { border-color: var(--px-border); background: var(--px-bg-elevated); }
 .st-beat-text:focus { outline: none; border-color: var(--px-accent); background: var(--px-bg-inset); }
 .st-beat--live .st-beat-text { color: var(--px-text-secondary); }
@@ -350,7 +352,12 @@ export function renderStoryPane(container, parallx, ctx, deps) {
     shead.addEventListener('click', () => sroot.classList.toggle('cs-section--closed'));
     return { root: sroot, body, meta: m, open: () => sroot.classList.remove('cs-section--closed'), close: () => sroot.classList.add('cs-section--closed'), setMeta: (t) => { m.textContent = t; } };
   }
-  function autogrow(area) { area.style.height = 'auto'; area.style.height = `${Math.max(area.scrollHeight, 34)}px`; }
+  function autogrow(area) {
+    if (FIELD_SIZING) { area.style.height = ''; return; }
+    if (!area.offsetParent) return;
+    area.style.height = 'auto';
+    area.style.height = `${Math.max(area.scrollHeight, 34)}px`;
+  }
   function textarea(label, placeholder, rows, onInput) {
     const field = el('div', 'cs-field');
     field.appendChild(el('div', 'cs-label', { text: label }));

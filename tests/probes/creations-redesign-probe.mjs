@@ -19,7 +19,7 @@ const now = Date.now();
 const H = 3_600_000;
 const sheet = (o) => ({ name: '', tagline: '', description: '', appearance: '', personality: '', voice: '', backstory: '', drives: '', secrets: '', relationships: '', exampleDialogue: '', reminder: '', ...o });
 const CHARACTERS = [
-  ['mara-vell.json', { name: 'Mara Vell', updatedAt: now - 2 * H, studio: { mode: 'concept', concept: 'A smuggler who draws her own sea charts', locks: ['tagline'], sheet: sheet({ name: 'Mara Vell', tagline: 'Smuggler cartographer who maps the routes nobody admits exist.', description: 'Mara runs contraband along the Salt Coast with charts she drew herself, half of them wrong on purpose.', personality: 'Wry, quick to laugh at the wrong moment, slow to forgive.', voice: 'Short, salty sentences. Calls people love when she is annoyed.' }) } }],
+  ['mara-vell.json', { name: 'Mara Vell', updatedAt: now - 2 * H, studio: { mode: 'concept', concept: 'A smuggler who draws her own sea charts', locks: ['tagline'], sheet: sheet({ name: 'Mara Vell', tagline: 'Smuggler cartographer who maps the routes nobody admits exist.', description: 'Mara runs contraband along the Salt Coast with charts she drew herself, half of them wrong on purpose. She is owed favours in every harbour from Port Ardent to the Glass Shoals and trusts none of them. She keeps a ledger of every lie she has told, in a cipher only she can read, and she reads it on the nights the sea is too loud to sleep.\n\nShe learned the trade from her aunt, who drowned with the old city, and she has never forgiven the harbourmaster for closing the sea wall that night.', personality: 'Wry, quick to laugh at the wrong moment, slow to forgive.', voice: 'Short, salty sentences. Calls people love when she is annoyed.' }) } }],
   ['brother-oswin.json', { name: 'Brother Oswin', updatedAt: now - 5 * H, studio: { sheet: sheet({ name: 'Brother Oswin', tagline: 'Lapsed monk who still keeps the hours, mostly out of spite.' }) } }],
   ['kestrel.json', { name: 'Kestrel', updatedAt: now - 9 * H, studio: { sheet: sheet({ name: 'Kestrel', tagline: 'Sky-ship deckhand with a grudge against gravity.' }) } }],
   ['inspector-okafor.json', { name: 'Inspector Okafor', updatedAt: now - 30 * H, studio: { sheet: sheet({ name: 'Inspector Okafor', tagline: 'Patient detective in a city that floods every Thursday.' }) } }],
@@ -117,7 +117,8 @@ async function main() {
     const unlabelled = buttons.filter((b) => !(b.textContent || '').trim() && !b.getAttribute('aria-label') && !b.title).length;
     const over = [...pane.querySelectorAll('*')].filter((e) => vis(e) && e.scrollWidth > e.clientWidth + 2 && getComputedStyle(e).overflowX === 'visible' && e.clientWidth > 0).length;
     const portraits = [...pane.querySelectorAll('.cr-portrait')].filter(vis).length;
-    return `${label}: heads=[${heads.join(' | ')}] portraits=${portraits} buttons=[${[...new Set(words)].slice(0, 24).join(' | ')}] unlabelled=${unlabelled} overflowX=${pane.scrollWidth > pane.clientWidth + 2 ? 'yes' : 'no'} (${over})`;
+    const clipped = [...pane.querySelectorAll('textarea')].filter((t) => vis(t) && t.scrollHeight > t.clientHeight + 2).length;
+    return `${label}: heads=[${heads.join(' | ')}] portraits=${portraits} clippedTextareas=${clipped} buttons=[${[...new Set(words)].slice(0, 24).join(' | ')}] unlabelled=${unlabelled} overflowX=${pane.scrollWidth > pane.clientWidth + 2 ? 'yes' : 'no'} (${over})`;
   }, label).then((t) => console.log(`[probe] ${t}`)).catch((e) => console.log(`[probe] describe ${label} failed: ${e}`));
   const click = async (selector, text) => {
     const loc = text ? page.locator(selector, { hasText: text }).first() : page.locator(selector).first();

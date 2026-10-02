@@ -96,7 +96,7 @@ export function injectStudioStyles() {
 .cs-field { display: flex; flex-direction: column; gap: var(--px-space-1); }
 .cs-label { font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-secondary); }
 .cs-textarea, .cs-input { width: 100%; box-sizing: border-box; background: var(--px-bg-inset); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-base); line-height: 1.5; padding: var(--px-space-2) var(--px-space-3); }
-.cs-textarea { resize: none; overflow: hidden; min-height: 40px; }
+.cs-textarea { resize: none; overflow: hidden; min-height: 40px; field-sizing: content; }
 .cs-textarea:focus, .cs-input:focus { outline: none; border-color: var(--px-accent); }
 .cs-textarea::placeholder, .cs-input::placeholder { color: var(--px-text-faint); }
 .cs-sources { display: flex; flex-direction: column; }
@@ -111,7 +111,7 @@ export function injectStudioStyles() {
 .cs-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'label acts' 'text text' 'err err'; column-gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-3) var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); align-items: center; }
 .cs-row-label { grid-area: label; font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-secondary); display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; min-height: 24px; }
 .cs-row-lock { color: var(--px-accent-text); background: var(--px-accent-faint); border-radius: var(--px-radius-full); padding: 0 7px; line-height: 18px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
-.cs-row-text { grid-area: text; width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-base); line-height: 1.5; padding: 6px var(--px-space-2); resize: none; overflow: hidden; min-height: 34px; }
+.cs-row-text { grid-area: text; width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-base); line-height: 1.5; padding: 6px var(--px-space-2); resize: none; overflow: hidden; min-height: 34px; field-sizing: content; }
 .cs-row-text:hover { border-color: var(--px-border); }
 .cs-row-text:focus { outline: none; border-color: var(--px-accent); background: var(--px-bg-inset); }
 .cs-row-text::placeholder { color: var(--px-text-faint); }
@@ -147,6 +147,8 @@ ${CREATIONS_PARTS_CSS}
 `;
   document.head.appendChild(style);
 }
+
+const FIELD_SIZING = typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('field-sizing', 'content');
 
 const SOURCE_ICONS = { link: 'link', canvas: 'file-text', file: 'file', text: 'clipboard' };
 
@@ -398,7 +400,12 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       setMeta: (text) => { m.textContent = text; },
     };
   }
+  // Boxes size to their text with CSS field-sizing. Only where that is
+  // missing is the height measured, and never while the box is hidden (a
+  // hidden box measures 0 and would lock at one line).
   function autogrow(area) {
+    if (FIELD_SIZING) { area.style.height = ''; return; }
+    if (!area.offsetParent) return;
     area.style.height = 'auto';
     area.style.height = `${Math.max(area.scrollHeight, 34)}px`;
   }
