@@ -121,8 +121,8 @@ async function main() {
     for (let attempt = 1; attempt <= 2; attempt++) {
       // The hidden window draws no frame until something changes: nudge a
       // 1 px dot so the screenshot has a frame to take.
-      // A pointer move also wakes the compositor where the dot alone does not.
-      await page.mouse.move(600 + attempt * 7, 400 + attempt * 5).catch(() => {});
+      // On a retry a pointer move wakes the compositor where the dot alone does not.
+      if (attempt > 1) await page.mouse.move(600, 400).catch(() => {});
       await page.evaluate(() => { const d = document.getElementById('__probe_repaint') || document.body.appendChild(Object.assign(document.createElement('div'), { id: '__probe_repaint', style: 'position:fixed;right:0;bottom:0;width:1px;height:1px;pointer-events:none' })); d.style.opacity = d.style.opacity === '0.01' ? '0.02' : '0.01'; }).catch(() => {});
       try { await page.screenshot({ path: f, timeout: 15_000, animations: 'disabled', ...opts }); console.log(`[probe] screenshot -> ${f}`); return; }
       catch (e) {
