@@ -104,8 +104,10 @@ the `@file` and `@selection` mentions.
 1. Drop the PDF into your workspace folder. Open it in the Parallx
    PDF viewer.
 2. Open AI Chat (`Ctrl+Shift+L`), select **Ask** mode.
-3. As you read, attach the page or selection to the chat with `@file`
-   or copy-paste a quote.
+3. As you read, select a passage: the bubble over it has **Ask AI About
+   Selection** (a discussion kept on that highlight) and, under ⋯, **Send to
+   Chat**. Or attach the page with `@file`. The side panel (Outline | Pages)
+   marks the section you are in.
 4. Use prompts like:
    - *"Explain what the author means by [term] in plain language."*
    - *"What's the strongest counterargument to the claim on page 12?"*

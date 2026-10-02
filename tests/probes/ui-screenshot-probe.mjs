@@ -661,7 +661,7 @@ async function pdfScene(appRoot, workspace, errors) {
     const state = () => page.evaluate(() => {
       const tb = document.querySelector('.pdf-toolbar');
       const btns = tb ? Array.from(tb.querySelectorAll('button')).map((b) => `${b.getAttribute('aria-label') || b.title || '?'}${b.disabled ? '(off)' : ''}${b.classList.contains('active') ? '*' : ''}`) : [];
-      return `toolbar=${tb?.clientWidth}/${tb?.scrollWidth} page="${document.querySelector('.pdf-toolbar-page-input')?.value}/${document.querySelector('.pdf-toolbar-page-total')?.textContent}" zoom="${document.querySelector('.pdf-toolbar-zoom-input')?.value}" btns=[${btns.join(', ')}] outline=${document.querySelectorAll('.pdf-outline-title').length} thumbs=${document.querySelectorAll('.pdf-thumbnail-item').length} match="${document.querySelector('.pdf-search-match-count')?.textContent || ''}"`;
+      return `toolbar=${tb?.clientWidth}/${tb?.scrollWidth} page="${document.querySelector('.pdf-toolbar-page-input')?.value}/${document.querySelector('.pdf-toolbar-page-total')?.textContent}" zoom="${document.querySelector('.pdf-toolbar-zoom-input')?.value}" btns=[${btns.join(', ')}] outline=${document.querySelectorAll('.pdf-outline-title').length} thumbs=${document.querySelectorAll('.pdf-thumbnail-item').length} match="${document.querySelector('.pdf-find-count')?.textContent || ''}"`;
     });
     await page.evaluate(() => Array.from(document.querySelectorAll('.tree-node, [role="treeitem"], .explorer-item')).find((r) => /README\.md/.test(r.textContent || ''))?.click());
     await page.waitForTimeout(300);
@@ -692,94 +692,118 @@ async function pdfScene(appRoot, workspace, errors) {
       return `scrollTop=${ct.scrollTop} containerTop=${Math.round(ct.getBoundingClientRect().top)} cwShadow="${cw ? getComputedStyle(pg.querySelector('.canvasWrapper')).boxShadow : ''}" page=${Math.round(r.left)}..${Math.round(r.right)} top=${Math.round(r.top)} border="${cs.borderLeftWidth} ${cs.borderLeftStyle} ${cs.borderLeftColor}" bg=${cs.backgroundColor} clip=${cs.backgroundClip} shadow="${cs.boxShadow}" canvas=${Math.round(cw?.left)}..${Math.round(cw?.right)} hitAtBorder=${hit?.className} viewerPad="${getComputedStyle(document.querySelector('.pdfViewer')).padding}" containerBg=${getComputedStyle(document.querySelector('.pdf-viewer-container')).backgroundColor}`;
     })}`);
     await shot(page, 'pdf');
-    // The toolbar buttons carry no accessible name (tooltip only): find them by place.
     const clickBtn = async (label) => {
-      await page.evaluate((l) => {
-        const right = Array.from(document.querySelectorAll('.pdf-toolbar > .pdf-toolbar-cluster')).pop();
-        const order = ['Find', 'Outline', 'Thumbnails', 'Night reading (invert colors)', 'More actions'];
-        const b = l === 'Zoom presets' ? document.querySelector('.pdf-toolbar-zoom-preset') : right?.querySelectorAll(':scope > button')[order.indexOf(l)];
-        b?.click();
-      }, label);
+      const ok = await page.evaluate((l) => { const b = document.querySelector(`.pdf-toolbar [aria-label="${l}"]`); b?.click(); return !!b; }, label);
+      if (!ok) console.log(`[probe] pdf: no toolbar button "${label}"`);
       await page.waitForTimeout(900);
     };
-    await clickBtn('Thumbnails');
-    await page.waitForTimeout(1_200);
-    await shot(page, 'pdf-thumbnails');
-    await clickBtn('Thumbnails');
-    await clickBtn('Outline');
-    console.log(`[probe] pdf outline: ${await state()}`);
+    const panel = () => page.evaluate(() => {
+      const p = document.querySelector('.pdf-side-panel');
+      const seg = Array.from(document.querySelectorAll('.pdf-side-panel .ui-segmented-control__segment')).map((b) => `${b.textContent}${b.classList.contains('ui-segmented-control__segment--active') ? '*' : ''}`).join('|');
+      const pages = Array.from(document.querySelectorAll('.pdf-outline-page')).map((x) => x.textContent).join(',');
+      return `open=${!!p?.offsetParent} seg=${seg} outlinePages=[${pages}] current="${document.querySelector('.pdf-outline-item.is-current .pdf-outline-title')?.textContent || ''}" thumbActive=${document.querySelector('.pdf-thumbnail-active .pdf-thumbnail-label')?.textContent}`;
+    });
+    console.log(`[probe] pdf toolbar names: ${await page.evaluate(() => Array.from(document.querySelectorAll('.pdf-toolbar button, .pdf-toolbar input')).map((b) => b.getAttribute('aria-label') || '?').join(' | '))}`);
+    // Side panel: Outline, then Pages.
+    await clickBtn('Outline And Pages');
+    console.log(`[probe] pdf panel: ${await panel()}`);
     await shot(page, 'pdf-outline');
-    await clickBtn('Outline');
+    // Read on: page 3, so the current section moves.
+    await page.evaluate(() => { const v = document.querySelector('.pdf-viewer-container'); const p3 = document.querySelector('.pdfViewer .page[data-page-number="3"]'); v.scrollTop = p3.offsetTop + 40; });
+    await page.waitForTimeout(900);
+    console.log(`[probe] pdf panel at page 3: ${await panel()}`);
+    await shot(page, 'pdf-outline-p3');
+    await page.evaluate(() => Array.from(document.querySelectorAll('.pdf-side-panel .ui-segmented-control__segment')).find((b) => b.textContent === 'Pages')?.click());
+    await page.waitForTimeout(1_500);
+    console.log(`[probe] pdf panel pages: ${await panel()}`);
+    await shot(page, 'pdf-pages');
+    await clickBtn('Outline And Pages');
+    await page.evaluate(() => { document.querySelector('.pdf-viewer-container').scrollTop = 0; });
+    await page.waitForTimeout(600);
+    // Find, from Ctrl+F with focus in the explorer.
     await page.keyboard.press('Control+f');
     await page.waitForTimeout(400);
-    console.log(`[probe] pdf Ctrl+F without clicking the page: bar shown=${await page.evaluate(() => { const b = document.querySelector('.pdf-search-bar'); return !!b && b.style.display !== 'none' && !!b.offsetParent; })}`);
-    // Click into the page (its margin, away from text), then Ctrl+F.
-    await page.evaluate(() => { const r = document.querySelector('.pdfViewer .page').getBoundingClientRect(); window.__pdfClick = { x: r.left + 20, y: r.top + 20 }; });
-    const pc = await page.evaluate(() => window.__pdfClick);
-    await page.mouse.click(pc.x, pc.y);
-    await page.waitForTimeout(300);
-    console.log(`[probe] pdf focus after clicking the page: ${await page.evaluate(() => { const a = document.activeElement; return `${a?.tagName}.${a?.className?.toString().slice(0, 40)} inPane=${!!a?.closest('.pdf-editor-pane')}`; })}`);
-    await page.keyboard.press('Control+f');
-    await page.waitForTimeout(400);
-    const barUp = await page.evaluate(() => { const b = document.querySelector('.pdf-search-bar'); return !!b && !!b.offsetParent; });
-    console.log(`[probe] pdf Ctrl+F after clicking the page: bar shown=${barUp}`);
-    if (!barUp) { await clickBtn('Find'); await page.waitForTimeout(400); }
     await page.keyboard.type('tail factor');
     await page.waitForTimeout(1_500);
     console.log(`[probe] pdf find: ${await state()}`);
-    console.log(`[probe] pdf find colours: ${await page.evaluate(() => {
-      const all = document.querySelector('.textLayer .highlight:not(.selected)'); const sel = document.querySelector('.textLayer .highlight.selected');
-      return `match=${all ? getComputedStyle(all).backgroundColor : 'none'} current=${sel ? getComputedStyle(sel).backgroundColor : 'none'} var=${getComputedStyle(document.documentElement).getPropertyValue('--vscode-editor-findMatchHighlightBackground')}|${getComputedStyle(document.documentElement).getPropertyValue('--vscode-editor-findMatchBackground')}`;
-    })}`);
     await shot(page, 'pdf-find');
+    await page.evaluate(() => document.querySelectorAll('.pdf-find-toggle')[1]?.click());
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('tail fact');
+    await page.waitForTimeout(1_200);
+    console.log(`[probe] pdf find whole word "tail fact": ${await state()}`);
+    await shot(page, 'pdf-find-none');
     await page.keyboard.press('Escape');
-    await clickBtn('More actions');
-    await shot(page, 'pdf-more');
-    await page.keyboard.press('Escape');
-    await page.mouse.click(5, 450);
-    await clickBtn('Zoom presets');
-    await shot(page, 'pdf-zoom-presets');
-    await page.keyboard.press('Escape');
-    await page.mouse.click(5, 450);
-    // Select a line of text on page 1 and open the selection menu.
+    await page.waitForTimeout(300);
+    console.log(`[probe] pdf find closed: shown=${await page.evaluate(() => !!document.querySelector('.pdf-find-widget')?.offsetParent)}`);
+    // Select a line: the bubble.
     const box = await page.evaluate(() => {
       const spans = Array.from(document.querySelectorAll('.pdfViewer .page[data-page-number="1"] .textLayer span')).filter((s) => (s.textContent || '').length > 30);
-      const s = spans[2]; if (!s) return null;
+      const s = spans[3]; if (!s) return null;
       const r = s.getBoundingClientRect(); return { x: r.left + 2, y: r.top + r.height / 2, w: r.width };
     });
     if (box) {
-      await page.mouse.move(box.x, box.y);
-      await page.mouse.down();
-      await page.mouse.move(box.x + box.w * 0.7, box.y, { steps: 8 });
-      await page.mouse.up();
-      await page.waitForTimeout(800);
-      await shot(page, 'pdf-selection-menu');
-      const hl = await page.evaluate(() => { const it = Array.from(document.querySelectorAll('.context-menu .context-menu-item')).find((r) => /^Highlight$/.test(r.querySelector('.context-menu-item-label')?.textContent || '')); if (!it) return false; it.click(); return true; });
+      const select = async () => {
+        await page.mouse.move(box.x, box.y);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.w * 0.7, box.y, { steps: 8 });
+        await page.mouse.up();
+        // The hidden window draws no frame on its own, and the bubble waits
+        // for one: nudge a repaint.
+        await page.evaluate(() => { const d = document.getElementById('__probe_repaint') || document.body.appendChild(Object.assign(document.createElement('div'), { id: '__probe_repaint' })); d.style.opacity = d.style.opacity === '0.01' ? '0.02' : '0.01'; });
+        await page.screenshot({ timeout: 4_000 }).catch(() => {});
+        await page.waitForTimeout(500);
+      };
+      await select();
+      console.log(`[probe] pdf bubble: ${await page.evaluate(() => { const b = document.querySelector('.pdf-selection-bubble'); return b ? Array.from(b.querySelectorAll('button')).map((x) => x.getAttribute('aria-label')).join(' | ') : 'NONE'; })}, menu=${await page.evaluate(() => !!document.querySelector('.context-menu'))}`);
+      await shot(page, 'pdf-bubble');
+      // Right-click the selection: the short menu, Highlight submenu open.
+      await page.mouse.click(box.x + box.w * 0.3, box.y, { button: 'right' });
+      await page.waitForTimeout(600);
+      const rows = await page.evaluate(() => { const m = Array.from(document.querySelectorAll('.context-menu')).pop(); return m ? Array.from(m.querySelectorAll('.context-menu-item-label')).map((x) => x.textContent).join(' | ') : 'NO MENU'; });
+      console.log(`[probe] pdf right-click menu: ${rows}`);
+      const hi = await page.evaluate(() => { const r = Array.from(document.querySelectorAll('.context-menu .context-menu-item')).find((x) => x.querySelector('.context-menu-item-label')?.textContent === 'Highlight'); if (!r) return null; const b = r.getBoundingClientRect(); return { x: b.left + 30, y: b.top + b.height / 2 }; });
+      if (hi) { await page.mouse.move(hi.x, hi.y); await page.waitForTimeout(700); }
+      await shot(page, 'pdf-menu');
+      await page.keyboard.press('Escape');
+      await page.mouse.click(5, 450);
+      await page.waitForTimeout(300);
+      // Highlight from the bubble (green), then open its panel.
+      await select();
+      await page.evaluate(() => document.querySelector('.pdf-selection-bubble [aria-label="Highlight Green"]')?.click());
       await page.waitForTimeout(900);
-      console.log(`[probe] pdf highlight made: ${hl}, boxes=${await page.evaluate(() => document.querySelectorAll('.pdf-highlight-box').length)}`);
+      console.log(`[probe] pdf highlight made: boxes=${await page.evaluate(() => document.querySelectorAll('.pdf-highlight-box').length)} bubbleGone=${await page.evaluate(() => !document.querySelector('.pdf-selection-bubble'))}`);
       await page.mouse.move(box.x + 40, box.y + 30);
       await page.waitForTimeout(400);
       const tab = await page.evaluate(() => { const t = document.querySelector('.pdf-highlight-tab'); if (!t) return null; const r = t.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
-      if (tab) { await page.mouse.click(tab.x, tab.y); await page.waitForTimeout(900); await shot(page, 'pdf-highlight-panel'); await page.mouse.click(700, 120); await page.waitForTimeout(400); }
+      if (tab) {
+        await page.mouse.click(tab.x, tab.y); await page.waitForTimeout(900);
+        await shot(page, 'pdf-highlight-panel');
+        await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
+        await page.waitForTimeout(600);
+        await shot(page, 'pdf-highlight-panel-light');
+        await page.evaluate(() => document.documentElement.removeAttribute('data-px-mode'));
+        await page.mouse.click(700, 160); await page.waitForTimeout(400);
+      }
     }
-    await clickBtn('Night reading (invert colors)');
+    await clickBtn('Night Reading');
     await shot(page, 'pdf-night');
-    await clickBtn('Night reading (invert colors)');
+    await clickBtn('Day Reading');
     await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
     await page.waitForTimeout(800);
-    await clickBtn('Outline');
-    await shot(page, 'pdf-light');
+    await clickBtn('Outline And Pages');
+    await page.evaluate(() => Array.from(document.querySelectorAll('.pdf-side-panel .ui-segmented-control__segment')).find((b) => b.textContent === 'Outline')?.click());
+    await page.waitForTimeout(600);
     await page.keyboard.press('Control+f');
-    await page.waitForTimeout(400);
-    await page.keyboard.type('zzzz');
-    await page.waitForTimeout(1_000);
-    await shot(page, 'pdf-light-find-none');
+    await page.waitForTimeout(300);
+    await page.keyboard.type('tail factor');
+    await page.waitForTimeout(1_200);
+    await shot(page, 'pdf-light');
     await page.keyboard.press('Escape');
-    await clickBtn('Outline');
     await page.evaluate(() => document.documentElement.removeAttribute('data-px-mode'));
     await resizeWindow(page, 760, 820);
     await page.waitForTimeout(1_200);
-    console.log(`[probe] pdf narrow: ${await state()}`);
+    console.log(`[probe] pdf narrow: ${await state()} ${await panel()}`);
     await shot(page, 'pdf-narrow');
   } finally {
     await app.close().catch(() => {});

@@ -52,6 +52,7 @@ import { toDisposable } from '../../platform/lifecycle.js';
 import type { IStorage } from '../../platform/storage.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 import { setupTooltip } from '../../ui/tooltip.js';
+import { SegmentedControl } from '../../ui/segmentedControl.js';
 import type { IChatMessage, IChatResponseChunk } from '../../services/chatTypes.js';
 
 // Inline-AI provider shape (chat extension's `chat.getInlineAIProvider`).
@@ -91,6 +92,12 @@ const ICON = {
   fitPage:      getIcon('fit-page')!,
   search:       getIcon('search')!,
   listTree:     getIcon('list-tree')!,
+  panelLeft:    getIcon('panel-left')!,
+  trash:        getIcon('trash-2')!,
+  copy:         getIcon('copy')!,
+  send:         getIcon('send')!,
+  canvasNote:   getIcon('file-plus')!,
+  messages:     getIcon('message-square')!,
   grid:         getIcon('grid')!,
   more:         getIcon('ellipsis')!,
   check:        getIcon('check')!,
@@ -116,6 +123,10 @@ const HIGHLIGHT_COLORS: ReadonlyArray<{ key: string; label: string; rgba: string
 ];
 function highlightRgba(key: string): string {
   return (HIGHLIGHT_COLORS.find((c) => c.key === key) ?? HIGHLIGHT_COLORS[0]).rgba;
+}
+/** The same colour at full strength, for swatches (a see-through dot turns muddy on a dark panel). */
+function highlightSolid(rgba: string): string {
+  return rgba.replace(/^rgba\((\s*\d+\s*,\s*\d+\s*,\s*\d+)\s*,\s*[\d.]+\s*\)$/, 'rgb($1)');
 }
 
 // ─── Outline types ───────────────────────────────────────────────────────
@@ -197,14 +208,14 @@ export class PdfEditorPane extends EditorPane {
   private _paneContainer: HTMLElement | null = null;
   private _errorEl!: HTMLElement;
   private _activeContextMenu: ContextMenu | null = null;
+  private _selectionBubble: HTMLElement | null = null;
   private _capturedSelection = '';  // text captured at context-menu show time
 
   // Toolbar elements
   private _pageInput!: HTMLInputElement;
   private _pageLabelEl!: HTMLElement;
   private _pageTotalEl!: HTMLElement;
-  private _outlineBtn!: HTMLButtonElement;
-  private _thumbBtn!: HTMLButtonElement;
+  private _panelBtn!: HTMLButtonElement;
   private _invertBtn!: HTMLButtonElement;
   private _fitBtn!: HTMLButtonElement;
   private _zoomInput!: HTMLInputElement;
@@ -213,10 +224,22 @@ export class PdfEditorPane extends EditorPane {
   private _searchInput!: HTMLInputElement;
   private _matchCountEl!: HTMLElement;
   private _searchVisible = false;
+  private _findCaseSensitive = false;
+  private _findWholeWord = false;
 
-  // Outline
+  // Side panel (Outline | Pages). _outlineVisible / _thumbnailVisible say
+  // which side is showing while the panel is open.
+  private _panelOpen = false;
+  private _panelSide: 'outline' | 'pages' = 'outline';
+  private _panelSwitch!: SegmentedControl;
+  private _outlineView!: HTMLElement;
+  private _outlineEmpty!: HTMLElement;
   private _outlineVisible = false;
   private _outline: PdfOutlineItem[] | null = null;
+  private _outlineRows: { row: HTMLElement; page: number; top: number | null }[] = [];
+  private _currentOutlineRow: HTMLElement | null = null;
+  private _viewTopPage = 1;
+  private _viewTop: number | null = null;
 
   // Thumbnails
   private _thumbnailVisible = false;
@@ -449,60 +472,74 @@ export class PdfEditorPane extends EditorPane {
     this._buildToolbar();
     container.appendChild(this._toolbar);
 
-    // Search bar (hidden by default)
+    // Find widget (hidden by default): floats over the top right of the
+    // viewer, like the text editor's, so it never pushes the page down.
     this._searchBar = $('div');
-    this._searchBar.classList.add('pdf-search-bar');
+    this._searchBar.classList.add('pdf-find-widget');
     this._buildSearchBar();
     hide(this._searchBar);
-    container.appendChild(this._searchBar);
 
     // Body: outline + viewer
     const body = $('div');
     body.classList.add('pdf-body');
     container.appendChild(body);
 
-    // Outline sidebar (hidden by default)
+    // Side panel (hidden by default): Outline and Pages in one panel with
+    // a switch, so one toolbar button opens it and it keeps one width.
     this._outlineSidebar = $('div');
-    this._outlineSidebar.classList.add('pdf-outline-sidebar');
+    this._outlineSidebar.classList.add('pdf-side-panel');
     hide(this._outlineSidebar);
     body.appendChild(this._outlineSidebar);
 
-    // Outline resize sash (hidden with sidebar)
+    const panelHeader = $('div');
+    panelHeader.classList.add('pdf-side-panel-header');
+    this._outlineSidebar.appendChild(panelHeader);
+    this._panelSwitch = this._register(new SegmentedControl(panelHeader, {
+      segments: [{ value: 'outline', label: 'Outline' }, { value: 'pages', label: 'Pages' }],
+      selected: this._panelSide,
+      ariaLabel: 'Show',
+    }));
+    this._register(this._panelSwitch.onDidChange((v) => {
+      this._setPanelSide(v === 'pages' ? 'pages' : 'outline', true);
+    }));
+
+    this._outlineView = $('div');
+    this._outlineView.classList.add('pdf-side-panel-view', 'pdf-outline-view');
+    this._outlineSidebar.appendChild(this._outlineView);
+
+    this._outlineTree = $('div');
+    this._outlineTree.classList.add('pdf-outline-tree');
+    this._outlineView.appendChild(this._outlineTree);
+
+    this._outlineEmpty = $('div');
+    this._outlineEmpty.classList.add('pdf-side-panel-empty');
+    this._outlineEmpty.textContent = 'This document has no outline.';
+    hide(this._outlineEmpty);
+    this._outlineView.appendChild(this._outlineEmpty);
+
+    // Thumbnails: the Pages side of the same panel. _thumbnailSidebar is the
+    // view that shows and hides; the list inside it scrolls.
+    this._thumbnailSidebar = $('div');
+    this._thumbnailSidebar.classList.add('pdf-side-panel-view', 'pdf-pages-view');
+    this._outlineSidebar.appendChild(this._thumbnailSidebar);
+
+    this._thumbnailList = $('div');
+    this._thumbnailList.classList.add('pdf-thumbnail-list');
+    this._thumbnailSidebar.appendChild(this._thumbnailList);
+
+    // Resize edge for the panel (hidden with it)
     this._outlineSash = $('div');
     this._outlineSash.classList.add('pdf-outline-sash');
     hide(this._outlineSash);
     this._wireOutlineSash();
     body.appendChild(this._outlineSash);
 
-    const outlineHeader = $('div');
-    outlineHeader.classList.add('pdf-outline-header');
-    outlineHeader.textContent = 'Outline';
-    this._outlineSidebar.appendChild(outlineHeader);
-
-    this._outlineTree = $('div');
-    this._outlineTree.classList.add('pdf-outline-tree');
-    this._outlineSidebar.appendChild(this._outlineTree);
-
-    // Thumbnail sidebar (hidden by default)
-    this._thumbnailSidebar = $('div');
-    this._thumbnailSidebar.classList.add('pdf-thumbnail-sidebar');
-    hide(this._thumbnailSidebar);
-    body.appendChild(this._thumbnailSidebar);
-
-    const thumbHeader = $('div');
-    thumbHeader.classList.add('pdf-outline-header');
-    thumbHeader.textContent = 'Pages';
-    this._thumbnailSidebar.appendChild(thumbHeader);
-
-    this._thumbnailList = $('div');
-    this._thumbnailList.classList.add('pdf-thumbnail-list');
-    this._thumbnailSidebar.appendChild(this._thumbnailList);
-
     // Viewer wrapper (flex child that takes remaining space;
     // provides position: relative context for the absolutely-positioned container)
     const viewerWrapper = document.createElement('div');
     viewerWrapper.classList.add('pdf-viewer-wrapper');
     body.appendChild(viewerWrapper);
+    viewerWrapper.appendChild(this._searchBar);
 
     // Viewer container (scrollable region — PDFViewer binds to this)
     // Must be position: absolute per PDFViewer constructor requirement
@@ -530,6 +567,8 @@ export class PdfEditorPane extends EditorPane {
     // Wire text selection context menu (shows on mouseup via shared ContextMenu)
     this._wireSelectionOverlay();
     this._wireContextMenu();
+    // The bubble lives on <body>; it must not outlive the pane.
+    this._register(toDisposable(() => this._dismissSelectionBubble()));
 
     container.tabIndex = 0;
     container.addEventListener('keydown', (e) => this._onKeyDown(e));
@@ -1041,7 +1080,8 @@ export class PdfEditorPane extends EditorPane {
       const sw = document.createElement('button');
       sw.classList.add('pdf-highlight-swatch');
       if (c.key === hl.color) sw.classList.add('selected');
-      sw.style.backgroundColor = c.rgba;
+      sw.style.backgroundColor = highlightSolid(c.rgba);
+      sw.setAttribute('aria-label', c.label);
       setupTooltip(sw, c.label);
       sw.addEventListener('click', () => {
         hl.color = c.key;
@@ -1053,7 +1093,22 @@ export class PdfEditorPane extends EditorPane {
       });
       swatches.appendChild(sw);
     }
+    // Delete sits at the end of the colour row, out of the reading path; Ctrl+Z
+    // still brings the highlight back.
+    const spacer = document.createElement('span');
+    spacer.classList.add('pdf-highlight-spacer');
+    const del = this._btn(ICON.trash, 'Delete Highlight');
+    del.classList.add('pdf-highlight-delete');
+    del.addEventListener('click', () => {
+      this._deleteHighlight(hl.id);
+      this._dismissHighlightPopover();
+    });
+    swatches.append(spacer, del);
     pop.appendChild(swatches);
+
+    const body = document.createElement('div');
+    body.classList.add('pdf-highlight-body');
+    pop.appendChild(body);
 
     const ta = document.createElement('textarea');
     ta.classList.add('pdf-highlight-note');
@@ -1063,7 +1118,7 @@ export class PdfEditorPane extends EditorPane {
       hl.note = ta.value;
       this._saveHighlights();
     });
-    pop.appendChild(ta);
+    body.appendChild(ta);
 
     // M84: linked canvas pages — open them in the canvas editor.
     if (hl.canvasLinks && hl.canvasLinks.length > 0) {
@@ -1083,23 +1138,11 @@ export class PdfEditorPane extends EditorPane {
         });
         section.appendChild(row);
       }
-      pop.appendChild(section);
+      body.appendChild(section);
     }
 
     // M84: AI discussion thread anchored to this highlight.
-    this._buildHighlightThreadSection(pop, hl);
-
-    const footer = document.createElement('div');
-    footer.classList.add('pdf-highlight-popover-footer');
-    const del = document.createElement('button');
-    del.classList.add('pdf-highlight-delete');
-    del.textContent = 'Delete';
-    del.addEventListener('click', () => {
-      this._deleteHighlight(hl.id);
-      this._dismissHighlightPopover();
-    });
-    footer.appendChild(del);
-    pop.appendChild(footer);
+    this._buildHighlightThreadSection(body, hl);
 
     document.body.appendChild(pop);
     // Hide until positioned so it never paints once at its default flow
@@ -1174,14 +1217,14 @@ export class PdfEditorPane extends EditorPane {
     header.classList.add('pdf-highlight-thread-header');
     const label = document.createElement('div');
     label.classList.add('pdf-highlight-section-label');
-    label.innerHTML = `<span class="pdf-highlight-section-icon">${ICON.sparkles}</span> Discuss`;
+    label.textContent = 'Discuss';
     header.appendChild(label);
 
     // "Continue in Chat" — hand the passage + full thread to the main chat
     // panel for a larger conversation (mirrors canvas inline-AI "Send to Chat").
     const continueBtn = document.createElement('button');
     continueBtn.classList.add('pdf-highlight-continue-chat');
-    continueBtn.innerHTML = `<span class="pdf-highlight-continue-icon">${ICON.openExtSm}</span> Continue in Chat`;
+    continueBtn.innerHTML = `<span class="pdf-highlight-continue-icon">${ICON.messages}</span>Continue in Chat`;
     setupTooltip(continueBtn, 'Open this discussion in the main chat panel');
     continueBtn.addEventListener('click', () => {
       this._continueHighlightInChat(hl);
@@ -1213,10 +1256,12 @@ export class PdfEditorPane extends EditorPane {
     const input = document.createElement('textarea');
     input.classList.add('pdf-highlight-ask');
     input.rows = 1;
-    input.placeholder = 'Ask AI about this passage\u2026';
+    input.placeholder = 'Ask about this passage\u2026';
+    input.setAttribute('aria-label', 'Ask AI about this passage');
     const sendBtn = document.createElement('button');
     sendBtn.classList.add('pdf-highlight-ask-send');
-    sendBtn.innerHTML = ICON.chat;
+    sendBtn.innerHTML = ICON.send;
+    sendBtn.setAttribute('aria-label', 'Ask AI');
     setupTooltip(sendBtn, 'Ask AI');
     inputRow.appendChild(input);
     inputRow.appendChild(sendBtn);
@@ -1581,7 +1626,7 @@ export class PdfEditorPane extends EditorPane {
     const nav = $('div');
     nav.classList.add('pdf-toolbar-cluster');
 
-    const prev = this._btn(ICON.chevronLeft, 'Previous page');
+    const prev = this._btn(ICON.chevronLeft, 'Previous Page');
     prev.addEventListener('click', () => this._pdfViewer?.previousPage());
 
     const pagePill = $('div');
@@ -1590,6 +1635,7 @@ export class PdfEditorPane extends EditorPane {
     this._pageInput = document.createElement('input');
     this._pageInput.type = 'text';
     this._pageInput.classList.add('pdf-toolbar-page-input', 'px-input-bare');
+    this._pageInput.setAttribute('aria-label', 'Page number');
     this._pageInput.value = '1';
     this._pageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -1620,7 +1666,7 @@ export class PdfEditorPane extends EditorPane {
 
     pagePill.append(this._pageInput, sep, this._pageTotalEl, this._pageLabelEl);
 
-    const next = this._btn(ICON.chevronRight, 'Next page');
+    const next = this._btn(ICON.chevronRight, 'Next Page');
     next.addEventListener('click', () => this._pdfViewer?.nextPage());
 
     nav.append(prev, pagePill, next);
@@ -1629,7 +1675,7 @@ export class PdfEditorPane extends EditorPane {
     const zoom = $('div');
     zoom.classList.add('pdf-toolbar-cluster');
 
-    const zoomOut = this._btn(ICON.zoomOut, 'Zoom out');
+    const zoomOut = this._btn(ICON.zoomOut, 'Zoom Out');
     zoomOut.addEventListener('click', () => this._pdfViewer?.decreaseScale());
 
     // One pill: editable % input + preset dropdown chevron.
@@ -1641,6 +1687,7 @@ export class PdfEditorPane extends EditorPane {
     this._zoomInput.classList.add('px-input-bare');
     this._zoomInput.classList.add('pdf-toolbar-zoom-input');
     this._zoomInput.value = '100%';
+    this._zoomInput.setAttribute('aria-label', 'Zoom level');
     setupTooltip(this._zoomInput, 'Zoom level (type a % and press Enter)');
     this._zoomInput.addEventListener('focus', () => this._zoomInput.select());
     this._zoomInput.addEventListener('keydown', (e) => {
@@ -1649,7 +1696,7 @@ export class PdfEditorPane extends EditorPane {
     });
     this._zoomInput.addEventListener('blur', () => this._syncZoomInput());
 
-    const zoomPreset = this._btn(ICON.chevronDownSm, 'Zoom presets');
+    const zoomPreset = this._btn(ICON.chevronDownSm, 'Zoom Presets');
     zoomPreset.classList.add('pdf-toolbar-zoom-preset');
     zoomPreset.addEventListener('click', (e) => {
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -1658,11 +1705,11 @@ export class PdfEditorPane extends EditorPane {
 
     zoomPill.append(this._zoomInput, zoomPreset);
 
-    const zoomIn = this._btn(ICON.zoomIn, 'Zoom in');
+    const zoomIn = this._btn(ICON.zoomIn, 'Zoom In');
     zoomIn.addEventListener('click', () => this._pdfViewer?.increaseScale());
 
     // Single fit button that alternates between the two fit modes.
-    this._fitBtn = this._btn(ICON.fitWidth, 'Fit width');
+    this._fitBtn = this._btn(ICON.fitWidth, 'Fit Width');
     this._fitBtn.addEventListener('click', () => this._toggleFitMode());
 
     zoom.append(zoomOut, zoomPill, zoomIn, this._fitBtn);
@@ -1678,23 +1725,20 @@ export class PdfEditorPane extends EditorPane {
     const searchBtn = this._btn(ICON.search, 'Find (Ctrl+F)');
     searchBtn.addEventListener('click', () => this._toggleSearch());
 
-    this._outlineBtn = this._btn(ICON.listTree, 'Outline');
-    this._outlineBtn.disabled = true; // enabled when a document provides one
-    this._outlineBtn.addEventListener('click', () => this._toggleOutline());
+    this._panelBtn = this._btn(ICON.panelLeft, 'Outline And Pages');
+    this._panelBtn.setAttribute('aria-pressed', 'false');
+    this._panelBtn.addEventListener('click', () => this._togglePanel());
 
-    this._thumbBtn = this._btn(ICON.grid, 'Thumbnails');
-    this._thumbBtn.addEventListener('click', () => this._toggleThumbnails());
-
-    this._invertBtn = this._btn(ICON.moon, 'Night reading (invert colors)');
+    this._invertBtn = this._btn(ICON.moon, 'Night Reading');
     this._invertBtn.addEventListener('click', () => this._toggleReadingDark());
 
     // Rarely-used actions live in the ⋯ menu (rotate, spread, scroll, print, open).
-    const moreBtn = this._btn(ICON.more, 'More actions');
+    const moreBtn = this._btn(ICON.more, 'More Actions');
     moreBtn.addEventListener('click', (e) => {
       this._showOverflowMenu(e.currentTarget as HTMLElement);
     });
 
-    right.append(searchBtn, this._outlineBtn, this._thumbBtn, this._invertBtn, moreBtn);
+    right.append(searchBtn, this._panelBtn, this._invertBtn, moreBtn);
 
     this._toolbar.append(nav, zoom, spacer, right);
   }
@@ -1711,7 +1755,7 @@ export class PdfEditorPane extends EditorPane {
     if (!this._fitBtn) return;
     const isWidth = this._pdfViewer?.currentScaleValue === 'page-width';
     this._fitBtn.innerHTML = isWidth ? ICON.fitPage : ICON.fitWidth;
-    setupTooltip(this._fitBtn, isWidth ? 'Fit page' : 'Fit width');
+    this._label(this._fitBtn, isWidth ? 'Fit Page' : 'Fit Width');
   }
 
   // ── Overflow menu (rotate / spread / scroll / print / open) ────────────
@@ -1789,17 +1833,31 @@ export class PdfEditorPane extends EditorPane {
     const b = document.createElement('button');
     b.classList.add('pdf-toolbar-btn');
     b.innerHTML = svgOrText;
-    setupTooltip(b, title);
+    this._label(b, title);
     return b;
+  }
+
+  /** Name a button for screen readers and its tooltip, together. */
+  private _label(b: HTMLElement, title: string): void {
+    b.setAttribute('aria-label', title);
+    setupTooltip(b, title);
   }
 
   // ── Search bar ───────────────────────────────────────────────────────
 
   private _buildSearchBar(): void {
+    // The field: input plus the match-case / whole-word toggles, in one
+    // bordered box (the app's find widget layout, without Replace: a PDF is
+    // read-only).
+    const field = $('div');
+    field.classList.add('pdf-find-field');
+
     this._searchInput = document.createElement('input');
     this._searchInput.type = 'text';
-    this._searchInput.classList.add('pdf-search-input');
-    this._searchInput.placeholder = 'Find in document… (Ctrl+F)';
+    this._searchInput.classList.add('pdf-find-input', 'px-input-bare');
+    this._searchInput.placeholder = 'Find';
+    this._searchInput.spellcheck = false;
+    this._searchInput.setAttribute('aria-label', 'Find in document');
     this._searchInput.addEventListener('input', () => this._dispatchFind('find'));
     this._searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -1812,26 +1870,40 @@ export class PdfEditorPane extends EditorPane {
       }
     });
 
-    this._matchCountEl = $('span');
-    this._matchCountEl.classList.add('pdf-search-match-count');
+    const toggle = (text: string, label: string, get: () => boolean, set: (v: boolean) => void): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.classList.add('pdf-find-toggle');
+      b.textContent = text;
+      b.setAttribute('aria-label', label);
+      b.setAttribute('aria-pressed', 'false');
+      setupTooltip(b, label);
+      b.addEventListener('click', () => {
+        set(!get());
+        b.classList.toggle('active', get());
+        b.setAttribute('aria-pressed', String(get()));
+        this._dispatchFind('find');
+        this._searchInput.focus();
+      });
+      return b;
+    };
+    const caseBtn = toggle('Aa', 'Match Case', () => this._findCaseSensitive, (v) => { this._findCaseSensitive = v; });
+    const wordBtn = toggle('Ab|', 'Match Whole Word', () => this._findWholeWord, (v) => { this._findWholeWord = v; });
+    field.append(this._searchInput, caseBtn, wordBtn);
 
-    const prevMatch = this._btn(ICON.chevronUp, 'Previous match');
-    prevMatch.classList.add('pdf-search-btn');
+    this._matchCountEl = $('span');
+    this._matchCountEl.classList.add('pdf-find-count');
+    this._matchCountEl.setAttribute('aria-live', 'polite');
+
+    const prevMatch = this._btn(ICON.chevronUp, 'Previous Match (Shift+Enter)');
     prevMatch.addEventListener('click', () => this._dispatchFind('again', true));
 
-    const nextMatch = this._btn(ICON.chevronDown, 'Next match');
-    nextMatch.classList.add('pdf-search-btn');
+    const nextMatch = this._btn(ICON.chevronDown, 'Next Match (Enter)');
     nextMatch.addEventListener('click', () => this._dispatchFind('again', false));
 
-    const closeBtn = this._btn(ICON.close, 'Close search');
-    closeBtn.classList.add('pdf-search-btn');
+    const closeBtn = this._btn(ICON.close, 'Close (Escape)');
     closeBtn.addEventListener('click', () => this._toggleSearch(false));
 
-    this._searchBar.append(
-      this._searchInput,
-      this._matchCountEl,
-      prevMatch, nextMatch, closeBtn,
-    );
+    this._searchBar.append(field, this._matchCountEl, prevMatch, nextMatch, closeBtn);
   }
 
   private _toggleSearch(forceState?: boolean): void {
@@ -1858,8 +1930,8 @@ export class PdfEditorPane extends EditorPane {
       source: this,
       type,
       query: this._searchInput.value,
-      caseSensitive: false,
-      entireWord: false,
+      caseSensitive: this._findCaseSensitive,
+      entireWord: this._findWholeWord,
       highlightAll: true,
       findPrevious,
     });
@@ -1867,25 +1939,60 @@ export class PdfEditorPane extends EditorPane {
 
   // ── Outline sidebar ──────────────────────────────────────────────────
 
-  private _toggleOutline(forceState?: boolean): void {
-    this._outlineVisible = (forceState ?? !this._outlineVisible) && !!this._outline;
-    this._outlineBtn?.classList.toggle('active', this._outlineVisible);
-    if (this._outlineVisible && this._outline) {
-      show(this._outlineSidebar);
-      show(this._outlineSash);
-      // Restore persisted width
-      this._globalStorage?.get('parallx.pdfOutlineWidth').then(stored => {
-        if (stored) {
-          const w = parseInt(stored, 10);
-          if (w >= 150 && w <= 500) {
-            this._outlineSidebar.style.width = `${w}px`;
-          }
-        }
-      });
-    } else {
+  /** Open or close the side panel, on whichever side it last showed. */
+  private _togglePanel(forceState?: boolean): void {
+    this._panelOpen = forceState ?? !this._panelOpen;
+    this._applyPanel();
+  }
+
+  /** Show one side of the panel (opening it); `remember` keeps the choice. */
+  private _setPanelSide(side: 'outline' | 'pages', remember = false): void {
+    this._panelSide = side;
+    this._panelSwitch.value = side;
+    if (remember) this._globalStorage?.set('parallx.pdfPanelSide', side); // fire-and-forget
+    this._panelOpen = true;
+    this._applyPanel();
+  }
+
+  private _applyPanel(): void {
+    const open = this._panelOpen;
+    this._outlineVisible = open && this._panelSide === 'outline';
+    this._thumbnailVisible = open && this._panelSide === 'pages';
+    this._panelBtn?.classList.toggle('active', open);
+    this._panelBtn?.setAttribute('aria-pressed', String(open));
+    if (!open) {
       hide(this._outlineSidebar);
       hide(this._outlineSash);
+      return;
     }
+    show(this._outlineSidebar);
+    show(this._outlineSash);
+    this._outlineView.style.display = this._outlineVisible ? '' : 'none';
+    this._thumbnailSidebar.style.display = this._thumbnailVisible ? '' : 'none';
+    const hasOutline = !!this._outline?.length;
+    this._outlineTree.style.display = hasOutline ? '' : 'none';
+    this._outlineEmpty.style.display = hasOutline ? 'none' : '';
+    if (this._thumbnailVisible) {
+      this._observeThumbnails();
+      this._activeThumb?.scrollIntoView({ block: 'nearest' });
+    }
+    if (this._outlineVisible) this._currentOutlineRow?.scrollIntoView({ block: 'nearest' });
+    // Restore persisted width
+    this._globalStorage?.get('parallx.pdfOutlineWidth').then(stored => {
+      if (stored) {
+        const w = parseInt(stored, 10);
+        if (w >= 150 && w <= 500) {
+          this._outlineSidebar.style.width = `${w}px`;
+        }
+      }
+    });
+  }
+
+  /** T: show the pages, or close the panel when they already show. */
+  private _toggleThumbnails(forceState?: boolean): void {
+    const want = forceState ?? !this._thumbnailVisible;
+    if (want) this._setPanelSide('pages');
+    else this._togglePanel(false);
   }
 
   /** Wire drag-to-resize on the outline sash. */
@@ -1920,8 +2027,75 @@ export class PdfEditorPane extends EditorPane {
 
   private _renderOutline(outline: PdfOutlineItem[]): void {
     this._outlineTree.replaceChildren();
+    this._outlineRows = [];
+    this._currentOutlineRow = null;
     this._buildOutlineNodes(outline, this._outlineTree, 0);
     this._wireOutlineKeyboard();
+    void this._resolveOutlinePages();
+  }
+
+  /**
+   * Each outline row learns its page number (shown at the row's end) once the
+   * destinations resolve; the rows then mark where the reader is.
+   */
+  private async _resolveOutlinePages(): Promise<void> {
+    const doc = this._pdfDoc;
+    if (!doc) return;
+    const rows = Array.from(this._outlineTree.querySelectorAll<HTMLElement>('.pdf-outline-item'));
+    const found: { row: HTMLElement; page: number; top: number | null }[] = [];
+    for (const row of rows) {
+      const dest = (row as any).__pdfDest as string | any[] | undefined;
+      if (!dest) continue;
+      try {
+        const explicit = typeof dest === 'string' ? await doc.getDestination(dest) : dest;
+        const ref = explicit?.[0];
+        const index = ref == null ? -1
+          : typeof ref === 'number' ? ref
+          : await doc.getPageIndex(ref);
+        if (index < 0 || doc !== this._pdfDoc) continue;
+        const page = index + 1;
+        const pageEl = row.querySelector('.pdf-outline-page');
+        if (pageEl) pageEl.textContent = this._pageLabels?.[index] ?? String(page);
+        // Where on the page the entry starts (PDF units, measured up from the
+        // bottom), when the destination says: XYZ carries it third, FitH and
+        // FitBH second.
+        const kind = explicit?.[1]?.name;
+        const rawTop = kind === 'XYZ' ? explicit?.[3] : (kind === 'FitH' || kind === 'FitBH') ? explicit?.[2] : null;
+        found.push({ row, page, top: typeof rawTop === 'number' ? rawTop : null });
+      } catch { /* a broken destination just has no page number */ }
+    }
+    if (doc !== this._pdfDoc) return;
+    this._outlineRows = found;
+    this._markCurrentOutlineRow(this._viewTopPage, this._viewTop);
+  }
+
+  /**
+   * The current section: the last outline entry (in outline order) that
+   * starts above the top of the view or just under it (a heading near the
+   * top of the view is the one being read): within a third of the view, and
+   * at most an inch and a half, so a zoomed-out view showing a whole page
+   * does not jump to its last heading. `viewTop` is the PDF y at the view's
+   * top edge; null means the top of the page. Before the first entry, the
+   * first entry.
+   */
+  private _markCurrentOutlineRow(pageNum: number, viewTop: number | null): void {
+    // CSS px = PDF pt × scale × 96/72.
+    const scale = (this._pdfViewer?.currentScale ?? 1) * (96 / 72);
+    const SLACK = Math.min((this._viewerContainer?.clientHeight ?? 0) / 3 / scale, 108);
+    let best: HTMLElement | null = null;
+    for (const { row, page, top } of this._outlineRows) {
+      const started = page < pageNum
+        || (page === pageNum && (top === null || viewTop === null || top + SLACK >= viewTop));
+      if (started) best = row;
+    }
+    best ??= this._outlineRows[0]?.row ?? null;
+    if (best === this._currentOutlineRow) return;
+    this._currentOutlineRow?.classList.remove('is-current');
+    this._currentOutlineRow = best;
+    if (best) {
+      best.classList.add('is-current');
+      if (this._outlineVisible && best.offsetParent) best.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   private _buildOutlineNodes(
@@ -1960,6 +2134,10 @@ export class PdfEditorPane extends EditorPane {
       if (item.bold) title.style.fontWeight = 'bold';
       if (item.italic) title.style.fontStyle = 'italic';
       row.appendChild(title);
+
+      const pageEl = $('span');
+      pageEl.classList.add('pdf-outline-page');
+      row.appendChild(pageEl);
       parent.appendChild(row);
 
       // Build children container and wire collapse
@@ -2189,6 +2367,15 @@ export class PdfEditorPane extends EditorPane {
 
       // ── Listen to viewer events ────────────────────────────────────
 
+      // Where the view's top edge is, for the outline's current section.
+      this._eventBus.on('updateviewarea', (evt: any) => {
+        const loc = evt?.location;
+        if (!loc) return;
+        this._viewTopPage = loc.pageNumber;
+        this._viewTop = typeof loc.top === 'number' ? loc.top : null;
+        this._markCurrentOutlineRow(this._viewTopPage, this._viewTop);
+      });
+
       this._eventBus.on('pagechanging', (evt: any) => {
         const pageNum = evt.pageNumber;
         this._pageInput.value = String(pageNum);
@@ -2227,9 +2414,9 @@ export class PdfEditorPane extends EditorPane {
         const { state, matchesCount } = evt;
         if (state === FindState.NOT_FOUND) {
           this._matchCountEl.textContent = 'No matches';
-          this._searchInput.classList.add('pdf-search-not-found');
+          this._searchBar.classList.add('is-not-found');
         } else {
-          this._searchInput.classList.remove('pdf-search-not-found');
+          this._searchBar.classList.remove('is-not-found');
           if (matchesCount) {
             const { current, total } = matchesCount;
             this._matchCountEl.textContent = total > 0 ? `${current} of ${total}` : '';
@@ -2314,16 +2501,21 @@ export class PdfEditorPane extends EditorPane {
       // ── Load outline ───────────────────────────────────────────────
 
       const outline = await this._pdfDoc.getOutline() as PdfOutlineItem[] | null;
+      // The panel opens on the side last chosen, except that a document
+      // with no outline opens on its pages.
+      const storedSide = await this._globalStorage?.get('parallx.pdfPanelSide');
       if (outline?.length) {
         this._outline = outline;
         this._renderOutline(outline);
-        this._outlineBtn.disabled = false;
-        setupTooltip(this._outlineBtn, 'Outline');
+        this._panelSide = storedSide === 'pages' ? 'pages' : 'outline';
       } else {
         this._outline = null;
-        this._outlineBtn.disabled = true;
-        setupTooltip(this._outlineBtn, 'No outline in this document');
+        this._outlineTree.replaceChildren();
+        this._outlineRows = [];
+        this._panelSide = 'pages';
       }
+      this._panelSwitch.value = this._panelSide;
+      if (this._panelOpen) this._applyPanel();
 
       // ── Build thumbnails ───────────────────────────────────────────
 
@@ -2397,10 +2589,8 @@ export class PdfEditorPane extends EditorPane {
     if (this._invertBtn) {
       this._invertBtn.classList.toggle('active', this._readingDark);
       this._invertBtn.innerHTML = this._readingDark ? ICON.sun : ICON.moon;
-      setupTooltip(
-        this._invertBtn,
-        this._readingDark ? 'Day reading (normal colors)' : 'Night reading (invert colors)',
-      );
+      this._label(this._invertBtn, this._readingDark ? 'Day Reading' : 'Night Reading');
+      this._invertBtn.setAttribute('aria-pressed', String(this._readingDark));
     }
   }
 
@@ -2412,18 +2602,6 @@ export class PdfEditorPane extends EditorPane {
   }
 
   // ── Thumbnail sidebar ────────────────────────────────────────────────
-
-  private _toggleThumbnails(forceState?: boolean): void {
-    this._thumbnailVisible = forceState ?? !this._thumbnailVisible;
-    this._thumbBtn?.classList.toggle('active', this._thumbnailVisible);
-    if (this._thumbnailVisible) {
-      show(this._thumbnailSidebar);
-      // Re-observe thumbnails for lazy rendering
-      this._observeThumbnails();
-    } else {
-      hide(this._thumbnailSidebar);
-    }
-  }
 
   private _buildThumbnails(pdfDoc: pdfjsLib.PDFDocumentProxy): void {
     this._thumbnailList.replaceChildren();
@@ -2498,7 +2676,7 @@ export class PdfEditorPane extends EditorPane {
     try {
       const page = await this._pdfDoc.getPage(pageNum);
       const baseViewport = page.getViewport({ scale: 1 });
-      const thumbWidth = 120;
+      const thumbWidth = 200; // drawn larger than shown, so it stays crisp in a wide panel
       const scale = thumbWidth / baseViewport.width;
       const viewport = page.getViewport({ scale });
 
@@ -2597,6 +2775,9 @@ export class PdfEditorPane extends EditorPane {
 
     // Show shared ContextMenu on mouseup when text is selected
     this._viewerContainer.addEventListener('mouseup', (e) => {
+      // Left button only: a right-click's release would otherwise replace
+      // the menu it just opened with the bubble.
+      if (e.button !== 0) return;
       // Ignore mouseups that originate from our own overlay UI (highlight
       // margin tabs, the highlight popover, or the context menu itself) so
       // clicking those never re-triggers the text-selection context menu.
@@ -2609,12 +2790,27 @@ export class PdfEditorPane extends EditorPane {
         const text = sel?.toString()?.trim() ?? '';
         if (text.length > 0) {
           this._capturedSelection = text;
-          this._showSelectionMenu(e.clientX, e.clientY);
+          this._showSelectionBubble();
         } else {
           this._capturedSelection = '';
           this._dismissContextMenu();
         }
       });
+    }, { signal: controller.signal });
+
+    // A new press on the page starts a new selection: the bubble goes until
+    // the button is released.
+    this._viewerContainer.addEventListener('mousedown', (e) => {
+      if (e.button === 0) this._dismissSelectionBubble();
+    }, { signal: controller.signal });
+
+    // Right-click on a selection: the full (short) menu.
+    this._viewerContainer.addEventListener('contextmenu', (e) => {
+      const text = window.getSelection()?.toString()?.trim() ?? '';
+      if (!text) return;
+      e.preventDefault();
+      this._capturedSelection = text;
+      this._showSelectionMenu(e.clientX, e.clientY);
     }, { signal: controller.signal });
 
     // Dismiss on scroll
@@ -2624,71 +2820,122 @@ export class PdfEditorPane extends EditorPane {
     }, { signal: controller.signal });
   }
 
-  private _showSelectionMenu(x: number, y: number): void {
+  /**
+   * The bubble over a fresh selection: highlight colours, Copy, Ask AI, Add to
+   * Canvas Note, and ⋯ for the rest (the right-click menu). Shown on release,
+   * never while dragging, so it never covers what is still being selected.
+   */
+  private _showSelectionBubble(): void {
     this._dismissContextMenu();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    if (!rect.width && !rect.height) return;
+
+    const bubble = document.createElement('div');
+    bubble.classList.add('pdf-selection-bubble');
+    bubble.setAttribute('role', 'toolbar');
+    bubble.setAttribute('aria-label', 'Selection');
+    // Pressing a bubble button must not collapse the selection it acts on.
+    bubble.addEventListener('mousedown', (e) => e.preventDefault());
+
+    for (const c of HIGHLIGHT_COLORS) {
+      const dot = document.createElement('button');
+      dot.classList.add('pdf-selection-dot');
+      dot.style.backgroundColor = highlightSolid(c.rgba);
+      dot.setAttribute('aria-label', `Highlight ${c.label}`);
+      setupTooltip(dot, `Highlight ${c.label}`);
+      dot.addEventListener('click', () => {
+        this._createHighlightFromSelection(c.key);
+        this._dismissContextMenu();
+      });
+      bubble.appendChild(dot);
+    }
+    const sep = document.createElement('span');
+    sep.classList.add('pdf-selection-sep');
+    bubble.appendChild(sep);
+
+    const act = (icon: string, label: string, run: () => void): void => {
+      const b = this._btn(icon, label);
+      b.addEventListener('click', () => { run(); });
+      bubble.appendChild(b);
+    };
+    act(ICON.copy, 'Copy (Ctrl+C)', () => {
+      if (this._capturedSelection) void navigator.clipboard.writeText(this._capturedSelection);
+      this._dismissContextMenu();
+    });
+    act(ICON.sparkles, 'Ask AI About Selection', () => { this._dismissContextMenu(); this._askAIAboutSelection(); });
+    act(ICON.canvasNote, 'Add to Canvas Note', () => { this._dismissContextMenu(); this._captureSelectionToCanvas(); });
+    act(ICON.more, 'More Actions', () => {
+      const r = bubble.getBoundingClientRect();
+      this._showSelectionMenu(r.right - 4, r.bottom + 4, true);
+    });
+
+    document.body.appendChild(bubble);
+    bubble.style.visibility = 'hidden';
+    const margin = 8;
+    const bw = bubble.offsetWidth;
+    const bh = bubble.offsetHeight;
+    const host = this._viewerContainer.getBoundingClientRect();
+    let left = Math.max(margin, Math.min(rect.left, window.innerWidth - bw - margin));
+    // Above the selection; below it when there is no room under the toolbar.
+    let top = rect.top - bh - 8;
+    if (top < host.top + 4) top = rect.bottom + 8;
+    top = Math.max(margin, Math.min(top, window.innerHeight - bh - margin));
+    left = Math.round(left);
+    bubble.style.left = `${left}px`;
+    bubble.style.top = `${Math.round(top)}px`;
+    bubble.style.visibility = '';
+    this._selectionBubble = bubble;
+  }
+
+  private _dismissSelectionBubble(): void {
+    this._selectionBubble?.remove();
+    this._selectionBubble = null;
+  }
+
+  /**
+   * The menu for a selection (right-click, or the bubble's ⋯). Highlight
+   * colours sit in a submenu; `keepBubble` leaves the bubble up behind it.
+   */
+  private _showSelectionMenu(x: number, y: number, keepBubble = false): void {
+    if (this._activeContextMenu) { this._activeContextMenu.dispose(); this._activeContextMenu = null; }
+    if (!keepBubble) this._dismissSelectionBubble();
 
     const hasSel = this._capturedSelection.length > 0;
+    const colourDot = (rgba: string) => (el: HTMLElement) => {
+      el.style.display = 'inline-flex';
+      el.style.alignItems = 'center';
+      el.style.width = '16px';
+      const dot = document.createElement('span');
+      dot.classList.add('pdf-menu-dot');
+      dot.style.backgroundColor = highlightSolid(rgba);
+      el.appendChild(dot);
+    };
 
     const menu = ContextMenu.show({
       items: [
-        {
-          id: 'pdf.copy',
-          label: 'Copy',
-          keybinding: 'Ctrl+C',
-          disabled: !hasSel,
-        },
+        { id: 'pdf.copy', label: 'Copy', keybinding: 'Ctrl+C', disabled: !hasSel },
         {
           id: 'pdf.highlight',
           label: 'Highlight',
           disabled: !hasSel,
-          group: 'highlight',
+          submenu: HIGHLIGHT_COLORS.map((c) => ({
+            id: `pdf.highlight.${c.key}`,
+            label: c.label,
+            renderIcon: colourDot(c.rgba),
+          })),
         },
-        ...HIGHLIGHT_COLORS.map((c) => ({
-          id: `pdf.highlight.${c.key}`,
-          label: `Highlight ${c.label}`,
-          disabled: !hasSel,
-          group: 'highlight',
-        })),
-        {
-          id: 'pdf.findInDocument',
-          label: 'Find in Document',
-          keybinding: 'Ctrl+F',
-          disabled: !hasSel,
-        },
-        {
-          id: 'canvas.captureNote',
-          label: 'Add to Canvas Note',
-          disabled: !hasSel,
-          group: 'canvas',
-        },
-        {
-          id: 'canvas.captureImage',
-          label: 'Capture Region to Canvas',
-          disabled: !hasSel,
-          group: 'canvas',
-        },
+        { id: 'pdf.findInDocument', label: 'Find in Document', disabled: !hasSel },
+        { id: 'canvas.captureNote', label: 'Add to Canvas Note', disabled: !hasSel, group: 'canvas' },
+        { id: 'canvas.captureImage', label: 'Capture Region to Canvas', disabled: !hasSel, group: 'canvas' },
         // Inline AI — discuss the selection on the page (creates a highlight
         // and opens its review panel focused on the AI input).
-        {
-          id: 'ai.askInline',
-          label: 'Ask AI about Selection',
-          disabled: !hasSel,
-          group: 'ai',
-        },
-        {
-          id: 'ai.addToChat',
-          label: 'Send Selection to Chat',
-          disabled: !hasSel,
-          group: 'ai',
-        },
+        { id: 'ai.askInline', label: 'Ask AI About Selection', disabled: !hasSel, group: 'ai' },
+        { id: 'ai.addToChat', label: 'Send to Chat', disabled: !hasSel, group: 'ai' },
         // Routed through the selection-action dispatcher to the flashcards
         // extension's 'create-flashcard' handler (deck pick + AI generation).
-        {
-          id: 'flashcards.capture',
-          label: 'Create Flashcard from Selection',
-          disabled: !hasSel,
-          group: 'ai',
-        },
+        { id: 'flashcards.capture', label: 'Create Flashcard…', disabled: !hasSel, group: 'ai' },
       ],
       anchor: { x, y },
     });
@@ -2720,6 +2967,7 @@ export class PdfEditorPane extends EditorPane {
       } else if (e.item.id === 'flashcards.capture') {
         this._dispatchSelectionAction('create-flashcard');
       }
+      this._dismissSelectionBubble();
     });
 
     this._activeContextMenu = menu;
@@ -2776,11 +3024,13 @@ export class PdfEditorPane extends EditorPane {
     );
   }
 
+  /** Dismiss the selection menu and the selection bubble. */
   private _dismissContextMenu(): void {
     if (this._activeContextMenu) {
       this._activeContextMenu.dispose();
       this._activeContextMenu = null;
     }
+    this._dismissSelectionBubble();
   }
 
   // ── Keyboard ─────────────────────────────────────────────────────────
@@ -2834,8 +3084,7 @@ export class PdfEditorPane extends EditorPane {
         if (this._pdfViewer) { this._pdfViewer.currentPageNumber = this._pdfViewer.pagesCount; e.preventDefault(); } break;
       case 'Escape':
         if (this._searchVisible) { this._toggleSearch(false); e.preventDefault(); }
-        if (this._outlineVisible) { this._toggleOutline(false); e.preventDefault(); }
-        if (this._thumbnailVisible) { this._toggleThumbnails(false); e.preventDefault(); }
+        else if (this._panelOpen) { this._togglePanel(false); e.preventDefault(); }
         break;
     }
   }
@@ -2890,6 +3139,7 @@ export class PdfEditorPane extends EditorPane {
     // the previous document must not apply to it.
     this._pagesInited = false;
     this._pendingViewState = null;
+    this._dismissContextMenu();
     if (this._resizeTimer) { clearTimeout(this._resizeTimer); this._resizeTimer = null; }
 
     // Flush + tear down highlight state
@@ -2933,6 +3183,10 @@ export class PdfEditorPane extends EditorPane {
     this._searchVisible = false;
     this._outlineVisible = false;
     this._thumbnailVisible = false;
+    this._outlineRows = [];
+    this._currentOutlineRow = null;
+    this._viewTopPage = 1;
+    this._viewTop = null;
   }
 
   private _showError(msg: string): void {
