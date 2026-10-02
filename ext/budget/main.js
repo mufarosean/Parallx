@@ -1,17 +1,19 @@
-// Budget extension — main.js (M63 P1 scaffold)
+// Budget extension — main.js
 //
-// Per the Milestone 63 plan (docs/Parallx_Milestone_63.md):
-//   • Single bundled module, no runtime build step.
+//   • One module plus ./skills/budget-sync.js; no runtime build step.
 //   • Per-extension SQLite via api.database. Migrations under ./db/migrations.
 //   • Money is INTEGER cents (D3). Dates are 'YYYY-MM-DD' local (D4).
 //
-// UX shape (matches media-organizer):
-//   • Sidebar contributes one nav view ('budget.nav') — a list of sections
-//     (Dashboard, Transactions, Review Queue, Sync Log, Categories).
-//   • Each section opens as an editor tab via a single editor provider
-//     ('budget.editor'), routed by instanceId 'budget:<section>'.
-//   • Sync is a command. Until P0 (api.mcp + api.cron) lands, it surfaces a
-//     clear notification rather than firing.
+// UX shape:
+//   • The sidebar ('budget.nav') shows the month at a glance (what is left to
+//     spend), the sections, the review count, and the sync status.
+//   • Budget opens as ONE editor tab ('budget:main') whose content switches
+//     between Overview, Review, Transactions, Plan, Net Worth and Goals,
+//     Merchants and Rules, Categories, and (from ⋯) Sync Log and Import / Export.
+//   • Every number about the month comes from readMonthPlan(), so the sidebar,
+//     Overview and Plan cannot disagree.
+
+import { BUDGET_SYNC_SKILL } from './skills/budget-sync.js';
 
 // ─── Module-level state ────────────────────────────────────────────────────
 let _activated = false;
@@ -138,7 +140,10 @@ async function ensureDatabase(api) {
 //
 // Idempotent: only runs when categories table is empty. User may rename,
 // recolour, archive, or delete these freely — re-sync never re-creates them.
+// Seeded into a new ledger only. Housing holds rent or a mortgage, the one
+// bill large enough to drown out everything else in Utilities.
 const DEFAULT_CATEGORIES = [
+  { name: 'Housing',       color: '#8a7cd8', icon: 'house',             kind: 'expense',  sort: 5 },
   { name: 'Groceries',     color: '#5cb87a', icon: 'shopping-cart',     kind: 'expense',  sort: 10 },
   { name: 'Dining',        color: '#e8924a', icon: 'utensils',          kind: 'expense',  sort: 20 },
   { name: 'Transport',     color: '#5b8fd6', icon: 'car',               kind: 'expense',  sort: 30 },
@@ -165,15 +170,7 @@ async function seedDefaultCategoriesIfEmpty() {
   }
 }
 
-// ─── Section registry ──────────────────────────────────────────────────────
-//
-// One source of truth for: sidebar nav items, editor routing, and command IDs.
-//
-// `nav: true` controls whether the section appears in the sidebar nav list.
-// M64 collapsed 13 sidebar entries to 4 by introducing two wrapper sections
-// (Plan, Settings) that render the existing per-section renderers as tabs.
-// Every existing section is still reachable via its open command and via the
-// wrapper's tabs — the data and per-section state are unchanged.
+// ─── Labels ────────────────────────────────────────────────────────────────
 const CATEGORY_KIND_OPTIONS = [
   { value: 'expense', label: 'Expense' },
   { value: 'income', label: 'Income' },
@@ -185,18 +182,6 @@ const ACCOUNT_KIND_LABELS = {
   credit_card: 'Credit Card',
   other: 'Account',
 };
-const STATUS_LABELS = {
-  confirmed: 'Confirmed',
-  review: 'Review',
-  hidden: 'Hidden',
-  deleted: 'Deleted',
-};
-const CONFIDENCE_LABELS = {
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
-};
-
 function titleCaseToken(value) {
   return String(value || '')
     .replace(/[_-]+/g, ' ')
@@ -223,40 +208,10 @@ const TX_TYPES = [
 ];
 const TX_TYPE_VALUES = TX_TYPES.map(t => t.value);
 
-// Who decided the type: the model on import, the email subject on
-// Reprocess, the user, or a CSV. Shown beside the type the way the
-// category's source is, so an AI transfer never passes for a user's.
-const TX_TYPE_SOURCE_LABELS = { ai: 'AI', subject: 'S', manual: 'M', csv: 'C' };
-const TX_TYPE_SOURCE_TITLES = {
-  ai: 'Type chosen by the AI on import',
-  subject: 'Type read from the email subject on Reprocess',
-  manual: 'You set this type',
-  csv: 'Type from a CSV import',
-};
-function typeSourceBadge(src) {
-  const span = document.createElement('span');
-  if (!src || !TX_TYPE_SOURCE_LABELS[src]) return span;
-  span.className = 'budget-pill';
-  span.style.marginLeft = '6px';
-  span.style.fontSize = '9px';
-  span.style.opacity = '0.75';
-  span.textContent = TX_TYPE_SOURCE_LABELS[src];
-  span.title = TX_TYPE_SOURCE_TITLES[src];
-  return span;
-}
-
 function txTypeLabel(txType, amountCents = 0) {
   if (txType === 'purchase' && Number(amountCents) < 0) return 'Refund';
   const t = TX_TYPES.find(x => x.value === txType);
   return t ? t.label : titleCaseToken(txType || 'Unknown');
-}
-
-function statusLabel(status) {
-  return STATUS_LABELS[status] || titleCaseToken(status || '');
-}
-
-function confidenceLabel(confidence) {
-  return CONFIDENCE_LABELS[confidence] || titleCaseToken(confidence || '');
 }
 
 function categoryKindForTxType(txType) {
@@ -396,9 +351,7 @@ function injectStyles() {
   --vscode-charts-yellow: #a9912b;
   --vscode-charts-purple: #784d96;
   /* Ledger typography: amounts render in the editor's mono face. */
-  --budget-mono: var(--vscode-editor-font-family, 'Consolas', 'SF Mono', monospace);
 }
-
 /* ═══ Sidebar: the month at a glance, the sections, the sync line ═══ */
 .budget-nav {
   display: flex;
@@ -464,7 +417,6 @@ function injectStyles() {
   border-top: 1px solid var(--px-divider);
 }
 .budget-nav-status { flex: 1; min-width: 0; font-size: var(--px-text-xs); color: var(--px-text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 /* ═══ The Budget editor ═══ */
 .budget-editor {
   display: flex;
@@ -487,7 +439,6 @@ function injectStyles() {
 }
 .budget-plan-switch { display: flex; }
 .budget-worth-goals { display: flex; flex-direction: column; gap: var(--px-space-3); margin-top: var(--px-space-4); }
-
 /* Shared: amounts line up, links read as links, a category's colour dot. */
 .budget-num { font-variant-numeric: tabular-nums; }
 .budget-link {
@@ -497,7 +448,6 @@ function injectStyles() {
 .budget-link:hover { text-decoration: underline; }
 .budget-link:focus-visible { outline: 1px solid var(--px-accent); outline-offset: 2px; border-radius: var(--px-radius-sm); }
 .budget-dot { width: 8px; height: 8px; border-radius: var(--px-radius-full); flex: 0 0 8px; display: inline-block; }
-
 /* ═══ Overview ═══ */
 .budget-ov { display: flex; flex-direction: column; gap: var(--px-space-4); max-width: 1180px; }
 .budget-ov-month { display: flex; align-items: center; gap: var(--px-space-1); }
@@ -515,7 +465,9 @@ function injectStyles() {
 .budget-ov-sync-items { display: flex; align-items: center; flex-wrap: wrap; gap: var(--px-space-4); flex: 1; min-width: 0; }
 .budget-ov-sync-act { margin-left: auto; }
 .budget-ov-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--px-space-4); align-items: start; }
-@container (max-width: 820px) { .budget-ov-grid { grid-template-columns: minmax(0, 1fr); } }
+@container (max-width: 820px) {
+.budget-ov-grid { grid-template-columns: minmax(0, 1fr); }
+}
 .budget-editor { container-type: inline-size; }
 .budget-ov-col { display: flex; flex-direction: column; gap: var(--px-space-4); min-width: 0; }
 .budget-ov-label { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
@@ -550,6 +502,34 @@ function injectStyles() {
 .budget-ov-row { display: flex; align-items: center; gap: var(--px-space-3); min-height: 32px; border-top: 1px solid var(--px-divider); }
 .budget-ov-when { width: 52px; flex: 0 0 52px; color: var(--px-text-faint); font-size: var(--px-text-sm); }
 .budget-ov-grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ═══ Merchants and Rules ═══ */
+.budget-ru { display: flex; flex-direction: column; gap: var(--px-space-4); max-width: 980px; }
+.budget-ru-top { display: flex; align-items: flex-start; gap: var(--px-space-4); }
+.budget-ru-help { margin: 0; flex: 1; max-width: 640px; }
+.budget-ru-form { gap: var(--px-space-3); }
+.budget-ru-field { display: grid; grid-template-columns: 140px auto minmax(0, 1fr); align-items: center; gap: var(--px-space-2); }
+.budget-ru-field > :last-child:nth-child(2) { grid-column: 2 / -1; }
+.budget-ru-input { height: 28px; font-size: var(--px-text-sm); min-width: 0; }
+.budget-ru-cat { max-width: 280px; }
+.budget-ru-dry { display: flex; flex-direction: column; gap: 2px; padding: var(--px-space-3); border-radius: var(--px-radius-md); background: var(--px-surface-hover); font-size: var(--px-text-sm); }
+.budget-ru-change { display: grid; grid-template-columns: minmax(0, 1fr) auto 32px; gap: var(--px-space-3); align-items: center; }
+.budget-ru-change > :last-child { text-align: right; }
+.budget-ru-acts { display: flex; justify-content: flex-end; gap: var(--px-space-2); }
+.budget-ru-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--px-space-1); }
+.budget-ru-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 170px 70px 100px 110px; align-items: center; gap: var(--px-space-3);
+  min-height: 40px; padding: 0 var(--px-space-3); border-top: 1px solid var(--px-divider);
+}
+.budget-ru-row.is-off { opacity: 0.6; }
+.budget-ru-cols { min-height: 28px; border-top: 0; font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
+.budget-ru-who { display: flex; flex-direction: column; min-width: 0; }
+.budget-ru-more { display: flex; justify-content: flex-end; }
+@container (max-width: 700px) {
+  .budget-ru-row { grid-template-columns: minmax(0, 1fr) 120px 90px; }
+  .budget-ru-row > :nth-child(3), .budget-ru-row > :nth-child(4) { display: none; }
+  .budget-ru-field { grid-template-columns: minmax(0, 1fr); }
+  .budget-ru-field > :last-child:nth-child(2) { grid-column: auto; }
+}
 
 /* ═══ Plan › Budgets ═══ */
 .budget-pl { display: flex; flex-direction: column; gap: var(--px-space-4); max-width: 920px; }
@@ -575,8 +555,8 @@ function injectStyles() {
 }
 .budget-pl-cat:first-of-type { border-top: 0; }
 @container (max-width: 680px) {
-  .budget-pl-cat { grid-template-columns: minmax(0, 1fr) 110px; }
-  .budget-pl-use, .budget-pl-spent { grid-column: 1 / -1; }
+.budget-pl-cat { grid-template-columns: minmax(0, 1fr) 110px; }
+.budget-pl-use, .budget-pl-spent { grid-column: 1 / -1; }
 }
 .budget-pl-catname { display: flex; flex-direction: column; min-width: 0; }
 .budget-pl-cattop { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; }
@@ -587,7 +567,6 @@ function injectStyles() {
   padding: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
 }
 .budget-pl-left.is-over { border-color: var(--px-danger); }
-
 /* ═══ Transactions ═══ */
 .budget-tx { display: flex; flex-direction: column; gap: var(--px-space-2); max-width: 1180px; }
 .budget-tx-bar { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
@@ -603,8 +582,8 @@ function injectStyles() {
   padding: 0 var(--px-space-3); box-sizing: border-box; width: 100%;
 }
 @container (max-width: 760px) {
-  .budget-tx-row { grid-template-columns: minmax(0, 1fr) 130px 96px; }
-  .budget-tx-row > :nth-child(3) { display: none; }
+.budget-tx-row { grid-template-columns: minmax(0, 1fr) 130px 96px; }
+.budget-tx-row > :nth-child(3) { display: none; }
 }
 .budget-tx-cols { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); margin-top: var(--px-space-2); }
 .budget-tx-list { display: flex; flex-direction: column; }
@@ -637,7 +616,6 @@ function injectStyles() {
   background: var(--px-surface-hover); color: var(--px-text-secondary);
 }
 .budget-how-text { display: flex; flex-direction: column; min-width: 0; font-size: var(--px-text-sm); }
-
 /* ═══ Review ═══ */
 .budget-rv { max-width: 1180px; }
 .budget-rv-undo {
@@ -649,7 +627,9 @@ function injectStyles() {
 }
 .budget-rv-undo[hidden] { display: none; }
 .budget-rv-grid { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); gap: var(--px-space-4); align-items: start; }
-@container (max-width: 720px) { .budget-rv-grid { grid-template-columns: minmax(0, 1fr); } }
+@container (max-width: 720px) {
+.budget-rv-grid { grid-template-columns: minmax(0, 1fr); }
+}
 .budget-rv-side { display: flex; flex-direction: column; gap: var(--px-space-2); min-width: 0; }
 .budget-rv-list { display: flex; flex-direction: column; gap: 2px; }
 .budget-rv-item {
@@ -675,6 +655,7 @@ function injectStyles() {
 .budget-rv-remember { display: flex; flex-direction: column; gap: 2px; margin-top: var(--px-space-1); }
 .budget-rv-check { display: inline-flex; align-items: center; gap: var(--px-space-2); cursor: pointer; }
 .budget-rv-check input { accent-color: var(--px-accent); margin: 0; }
+.budget-rv-check[hidden] { display: none; }
 .budget-rv-actions { display: flex; align-items: center; gap: var(--px-space-2); padding-top: var(--px-space-3); border-top: 1px solid var(--px-divider); }
 .budget-rv-pos { margin-left: auto; }
 .budget-editor-blurb {
@@ -684,19 +665,6 @@ function injectStyles() {
   line-height: 1.55;
   max-width: 680px;
 }
-.budget-editor-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  background: var(--vscode-input-background, rgba(255,255,255,0.04));
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
-  border-radius: var(--px-radius-sm, 3px);
-  font-size: var(--px-text-xs, 11px);
-  color: var(--vscode-descriptionForeground, #888);
-  width: fit-content;
-}
-
 /* ═══ Section toolbar + content ═══ */
 .budget-toolbar {
   display: flex;
@@ -739,7 +707,6 @@ function injectStyles() {
 }
 .budget-btn-primary:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
 .budget-btn .budget-icon { width: 12px; height: 12px; flex: 0 0 12px; }
-
 .budget-input {
   background: var(--vscode-input-background, rgba(255,255,255,0.04));
   color: var(--vscode-input-foreground, #ccc);
@@ -749,13 +716,11 @@ function injectStyles() {
   font: inherit;
   font-size: var(--px-text-xs, 11px);
 }
-
 /* The ~40 lines of .budget-select styling that used to sit here are gone with the
    last native <select> in this extension — including the appearance:none +
    gradient-arrow trick and the option/optgroup colours, which only ever existed
    because a Chromium-drawn <select> popup cannot be themed. That is the reason
    for the rule; there is nothing left here to theme around. */
-
 /* ═══ Dropdown host ═══
    The dropdown itself is the core .ui-dropdown component, mounted inside this
    wrapper by makeDropdown(). ~45 lines of trigger/menu/option styling used to
@@ -772,14 +737,12 @@ function injectStyles() {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
-
 .budget-empty {
   padding: 40px 20px;
   text-align: center;
   color: var(--px-text-muted);
   font-size: var(--px-text-sm);
 }
-
 /* Tables — the ledger register. Ruled hairlines, small-caps column heads
    under a double rule (classic accounting), amounts right-aligned in the
    mono face, faint alternating row tint like ruled ledger paper. */
@@ -817,21 +780,14 @@ function injectStyles() {
   border-bottom: none;
   font-weight: 600;
 }
-.budget-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 132px;
-}
 .budget-amount {
-  font-family: var(--budget-mono);
+  font-variant-numeric: tabular-nums;
   font-variant-numeric: tabular-nums lining-nums;
   text-align: right;
   white-space: nowrap;
 }
 .budget-amount.negative { color: var(--vscode-charts-red, #a43b38); }
 .budget-amount.positive { color: var(--vscode-charts-green, #5da56e); }
-
 /* Status tags — quiet outline chips, uppercase, square. No filled pills. */
 .budget-pill {
   display: inline-flex;
@@ -855,7 +811,7 @@ function injectStyles() {
   border-color: var(--vscode-charts-green, #5da56e);
   color: var(--px-success);
 }
-.budget-pill.hidden  { opacity: 0.7; }
+.budget-pill.hidden { opacity: 0.7; }
 .budget-pill.deleted {
   border-color: var(--vscode-charts-red, #a43b38);
   color: var(--px-danger);
@@ -864,7 +820,6 @@ function injectStyles() {
   border-color: var(--vscode-charts-blue, #5a8bca);
   color: var(--vscode-charts-blue, #5a8bca);
 }
-
 .budget-cat-swatch {
   display: inline-block;
   width: 9px; height: 9px;
@@ -872,7 +827,6 @@ function injectStyles() {
   margin-right: 6px;
   vertical-align: middle;
 }
-
 /* Summary cards — ruled panels, not floating chips: square corners, a
    heavier top rule, small-caps label, mono figure. */
 .budget-cards {
@@ -910,7 +864,7 @@ function injectStyles() {
   font-size: 24px;
   font-weight: 600;
   margin-top: 6px;
-  font-family: var(--budget-mono);
+  font-variant-numeric: tabular-nums;
   font-variant-numeric: tabular-nums lining-nums;
   color: var(--vscode-foreground, #ddd);
 }
@@ -920,7 +874,6 @@ function injectStyles() {
   color: var(--vscode-descriptionForeground, #888);
   margin-top: 2px;
 }
-
 .budget-cat-bar {
   display: grid;
   grid-template-columns: 110px 1fr 70px;
@@ -944,7 +897,6 @@ function injectStyles() {
   font-variant-numeric: tabular-nums;
   color: var(--vscode-descriptionForeground, #aaa);
 }
-
 .budget-section {
   display: flex;
   flex-direction: column;
@@ -958,572 +910,57 @@ function injectStyles() {
   font-weight: 600;
   color: var(--px-text);
 }
-
 .budget-log-row {
-  font-family: var(--budget-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
 }
 .budget-log-row.warn  td { color: var(--vscode-charts-yellow, #a9912b); }
 .budget-log-row.error td { color: var(--vscode-charts-red, #a43b38); }
-
 /* ═══ Month picker ═══ */
-.budget-month-picker {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 4px;
-  background: var(--vscode-input-background, rgba(255,255,255,0.04));
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
-  border-radius: var(--px-radius-sm, 3px);
-  font-size: var(--px-text-xs, 11px);
-}
 .budget-month-picker .label {
   min-width: 110px;
   text-align: center;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.budget-month-picker button {
-  background: transparent;
-  border: none;
-  color: var(--vscode-icon-foreground, #ccc);
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 2px;
-  font: inherit;
-}
-.budget-month-picker button:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
-}
-.budget-month-picker button:disabled { opacity: .35; cursor: default; }
-
 /* ═══ Account card ═══ */
-.budget-account-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 14px;
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
-  border-radius: var(--px-radius-md, 4px);
-  background: var(--vscode-input-background, rgba(255,255,255,0.02));
-  min-width: 200px;
-  flex: 1 1 220px;
-}
-.budget-account-card .acct-kind {
-  font-size: var(--px-text-xs);
-  text-transform: capitalize;
-  letter-spacing: normal;
-  color: var(--vscode-descriptionForeground, #888);
-}
-.budget-account-card .acct-name {
-  font-size: 13px;
-  font-weight: 600;
-}
-.budget-account-card .acct-balance {
-  font-size: 20px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  margin-top: 4px;
-}
 .budget-account-card .acct-balance.credit { color: var(--vscode-charts-orange, #fb923c); }
-.budget-account-card .acct-meta {
-  font-size: 10px;
-  color: var(--vscode-descriptionForeground, #888);
-}
-.budget-accounts-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.budget-accounts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-  margin-top: 8px;
-}
-
 /* ═══ Hero cards (M64 P2) — equal-height grid ═══ */
-.budget-hero-cards {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-}
 .budget-hero-cards .budget-card {
   display: flex;
   flex-direction: column;
   min-height: 96px;
 }
-.budget-card-spark {
-  margin-top: 6px;
-  margin-left: -4px;
-  opacity: .85;
-}
-.budget-spark { display: block; }
-
 /* ═══ Toolbar meta ═══ */
-.budget-toolbar-meta {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground, #888);
-  margin-right: 8px;
-  white-space: nowrap;
-}
-
 /* ═══ Status chips (above hero cards) ═══ */
-.budget-status-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0 0 10px 0;
-}
-.budget-status-chip {
-  appearance: none;
-  background: var(--vscode-input-background, rgba(255,255,255,0.04));
-  border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
-  color: var(--vscode-foreground, #ddd);
-  border-radius: 999px;
-  padding: 4px 10px 4px 8px;
-  font-size: 11px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-family: inherit;
-}
-.budget-status-chip:hover {
-  border-color: var(--vscode-focusBorder);
-  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
-}
 .budget-status-chip .dot {
   width: 6px; height: 6px; border-radius: 50%;
 }
-.budget-status-chip--review .dot   { background: var(--vscode-charts-orange, #f97316); }
-.budget-status-chip--untyped .dot  { background: var(--vscode-charts-yellow, #eab308); }
-
+.budget-status-chip--review .dot { background: var(--vscode-charts-orange, #f97316); }
+.budget-status-chip--untyped .dot { background: var(--vscode-charts-yellow, #eab308); }
 /* ═══ Account card kind selector ═══ */
-.acct-kind-row {
-  display: flex; align-items: center;
-  margin-bottom: 2px;
-}
-.acct-kind-select {
-  appearance: none;
-  background: transparent;
-  border: none;
-  color: var(--vscode-descriptionForeground, #888);
-  font-size: 11px;
-  text-transform: none;
-  letter-spacing: 0;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-  font-family: inherit;
-}
-.acct-kind-select:hover { color: var(--vscode-foreground, #ddd); }
-.acct-kind-select:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
-.acct-kind-select option {
-  background: var(--vscode-dropdown-background, var(--vscode-editor-background, #1e1e1e));
-  color: var(--vscode-dropdown-foreground, var(--vscode-foreground, #ddd));
-}
-
 /* ═══ Section heading ═══ */
-.budget-section-h {
-  font-size: var(--px-text-sm);
-  font-weight: 600;
-  color: var(--px-text);
-  margin: 0 0 10px 0;
-}
-
 /* ═══ Segmented control (range pills, mode toggles) ═══ */
-.budget-segmented {
-  display: inline-flex;
-  gap: 0;
-  border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.10));
-  border-radius: 6px;
-  padding: 2px;
-  background: var(--vscode-input-background, rgba(255,255,255,0.04));
-  font-family: var(--vscode-font-family, inherit);
-}
-.budget-segmented-btn {
-  appearance: none;
-  background: transparent;
-  border: none;
-  color: var(--vscode-descriptionForeground, #aaa);
-  height: var(--px-control-h-sm);
-  box-sizing: border-box;
-  padding: 0 12px;
-  font-size: var(--px-text-sm);
-  font-weight: 500;
-  cursor: pointer;
-  border-radius: 4px;
-  font-family: inherit;
-  transition: background 0.12s, color 0.12s;
-  letter-spacing: 0.2px;
-}
-.budget-segmented-btn:hover {
-  color: var(--vscode-foreground, #ddd);
-}
-.budget-segmented-btn[aria-pressed="true"] {
-  background: var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.10));
-  color: var(--vscode-foreground, #fff);
-}
-.budget-segmented-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-}
-
 /* ═══ Icon button (heatmap month nav) ═══ */
-.budget-iconbtn {
-  appearance: none;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--vscode-descriptionForeground, #aaa);
-  width: 24px; height: 24px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 11px;
-  font-family: inherit;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.budget-iconbtn:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
-  color: var(--vscode-foreground, #ddd);
-}
-.budget-iconbtn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-}
-
 /* ═══ Balance trend chart ═══ */
-.budget-trend-wrap {
-  position: relative;
-  max-width: 100%;
-  font-family: var(--vscode-font-family, inherit);
-}
-.budget-trend-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-.budget-trend-title {
-  font-size: var(--px-text-sm);
-  font-weight: 600;
-  color: var(--px-text);
-}
-.budget-trend-chart-host {
-  position: relative;
-  width: 100%;
-}
-.budget-trend-chart {
-  width: 100%;
-  height: 240px;
-  display: block;
-  font-family: var(--vscode-font-family, system-ui, sans-serif);
-}
-.budget-trend-tip {
-  position: absolute;
-  background: var(--vscode-editorHoverWidget-background, rgba(20,20,28,0.96));
-  border: 1px solid var(--vscode-editorHoverWidget-border, rgba(255,255,255,0.12));
-  border-radius: 4px;
-  padding: 8px 10px;
-  font-size: 11px;
-  pointer-events: none;
-  white-space: nowrap;
-  z-index: 5;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.45);
-  font-variant-numeric: tabular-nums;
-}
 .budget-trend-tip .d { font-weight: 600; margin-bottom: 4px; }
 .budget-trend-tip .sw {
   display: inline-block; width: 8px; height: 8px;
   border-radius: 2px; margin-right: 6px; vertical-align: middle;
 }
-.budget-trend-delta {
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  margin-left: auto;
-}
-.budget-trend-delta.is-up   { color: var(--vscode-charts-green, #22c55e); }
+.budget-trend-delta.is-up { color: var(--vscode-charts-green, #22c55e); }
 .budget-trend-delta.is-down { color: var(--vscode-charts-red,   #f87171); }
-
 /* ═══ Cash-flow chart (M64 P3 redesign) ═══ */
-.budget-cashflow-wrap {
-  position: relative;
-  max-width: 100%;
-  font-family: var(--vscode-font-family, inherit);
-}
-.budget-cashflow-bar {
-  cursor: pointer;
-  transition: opacity 0.12s;
-}
-.budget-cashflow-bar:hover {
-  opacity: 0.85;
-}
-.budget-chart-baseline {
-  stroke: var(--vscode-panel-border, rgba(255,255,255,0.18));
-  stroke-width: 1;
-  shape-rendering: crispEdges;
-}
-
 /* ═══ Headline narrative ═══ */
-.budget-headline {
-  font-size: 22px;
-  font-weight: 500;
-  line-height: 1.4;
-  color: var(--vscode-foreground, #ddd);
-  letter-spacing: -0.015em;
-  margin: 8px 0 24px;
-  font-family: var(--vscode-font-family, inherit);
-  max-width: 880px;
-}
-.budget-headline-up   { color: var(--vscode-charts-green, #22c55e); font-weight: 600; }
-.budget-headline-down { color: var(--vscode-charts-red,   #f87171); font-weight: 600; }
-.budget-headline-neutral { color: var(--vscode-foreground, #ddd); }
-
 /* ═══ Filter chip (account multi-select) ═══ */
-.budget-filter-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin: 4px 0 12px;
-}
-.budget-filter-chip {
-  position: relative;
-  display: inline-block;
-  font-family: var(--vscode-font-family, inherit);
-}
-.budget-filter-chip-btn {
-  appearance: none;
-  background: var(--vscode-input-background, rgba(255,255,255,0.04));
-  border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
-  color: var(--vscode-foreground, #ddd);
-  border-radius: 999px;
-  padding: 4px 8px 4px 12px;
-  font-size: 11px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: inherit;
-}
-.budget-filter-chip-btn:hover {
-  border-color: var(--vscode-focusBorder);
-  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
-}
-.budget-filter-chip-caret {
-  font-size: 9px;
-  color: var(--vscode-descriptionForeground, #888);
-}
-.budget-filter-chip-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 4px;
-  min-width: 220px;
-  max-height: 320px;
-  overflow-y: auto;
-  background: var(--vscode-editorHoverWidget-background, rgba(20,20,28,0.98));
-  border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
-  border-radius: 6px;
-  padding: 4px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.45);
-  z-index: 20;
-}
-.budget-filter-chip-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  border-radius: 4px;
-}
-.budget-filter-chip-item:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
-}
-.budget-filter-chip-item input { margin: 0; }
-
 /* (Category budget bars styled further down — see "Category budget bars".) */
-
 /* ═══ Allocation bar (single stacked bar over Accounts) ═══ */
-.budget-alloc {
-  margin: 4px 0 12px;
-  font-family: var(--vscode-font-family, inherit);
-}
-.budget-alloc-bar {
-  display: flex;
-  height: 14px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--vscode-input-background, rgba(255,255,255,0.04));
-  border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.10));
-}
-.budget-alloc-seg {
-  height: 100%;
-  transition: filter 0.12s;
-}
-.budget-alloc-seg:hover {
-  filter: brightness(1.15);
-}
-.budget-alloc-legend {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-top: 6px;
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground, #aaa);
-  font-variant-numeric: tabular-nums;
-}
-.budget-alloc-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
 .budget-alloc-legend-item .sw {
   width: 8px; height: 8px; border-radius: 2px; display: inline-block;
 }
-.budget-alloc-legend-item b { color: var(--vscode-foreground, #ddd); font-weight: 600; }
-
 /* ═══ Needs attention panel ═══ */
-.budget-attention {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-family: var(--vscode-font-family, inherit);
-}
-.budget-attn-row {
-  appearance: none;
-  background: var(--vscode-input-background, rgba(255,255,255,0.03));
-  border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.10));
-  border-left: 3px solid var(--vscode-descriptionForeground, rgba(255,255,255,0.20));
-  color: var(--vscode-foreground, #ddd);
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-}
-.budget-attn-row.is-error { border-left-color: var(--vscode-charts-red, #f87171); }
-.budget-attn-row.is-warn  { border-left-color: var(--vscode-charts-orange, #f97316); }
-.budget-attn-row.is-info  { border-left-color: var(--vscode-charts-blue, #3b82f6); }
-.budget-attn-row:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
-}
-.budget-attn-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--vscode-descriptionForeground, rgba(255,255,255,0.30));
-}
-.budget-attn-row.is-error .budget-attn-dot { background: var(--vscode-charts-red, #f87171); }
-.budget-attn-row.is-warn  .budget-attn-dot { background: var(--vscode-charts-orange, #f97316); }
-.budget-attn-row.is-info  .budget-attn-dot { background: var(--vscode-charts-blue, #3b82f6); }
-.budget-attn-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.budget-attn-hint { font-size: var(--px-text-xs, 11px); font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--px-text-faint, var(--vscode-descriptionForeground, #777)); }
-.budget-attn-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.budget-attn-title {
-  font-size: 12px; font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.budget-attn-sub {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground, #888);
-}
-.budget-attn-action {
-  font-size: 11px;
-  color: var(--vscode-textLink-foreground, #3794ff);
-  white-space: nowrap;
-}
-
 /* ═══ Two-column dashboard layout ═══ */
-.budget-twocol {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-}
-@media (max-width: 920px) {
-  .budget-twocol { grid-template-columns: 1fr; }
-}
-
 /* ═══ Daily heatmap ═══ */
-.budget-heatmap-wrap {
-  max-width: 460px;
-  font-family: var(--vscode-font-family, inherit);
-}
-.budget-heatmap-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-.budget-heatmap-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-.budget-heatmap-month {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--vscode-foreground, #ddd);
-  min-width: 130px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-.budget-heatmap-total {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground, #888);
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-}
-.budget-heatmap-dow-row {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 3px;
-  margin-bottom: 4px;
-}
-.budget-heatmap-dow {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--vscode-descriptionForeground, #888);
-  text-align: center;
-  padding: 2px 0;
-  letter-spacing: 0.4px;
-}
-.budget-heatmap-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 3px;
-}
-.budget-heatmap-cell {
-  appearance: none;
-  border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
-  border-radius: 3px;
-  padding: 4px 5px;
-  aspect-ratio: 1 / 1;
-  height: auto;
-  background: transparent;
-  color: var(--vscode-foreground, #ddd);
-  cursor: pointer;
-  font-family: inherit;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  text-align: left;
-  font-size: 10px;
-  transition: border-color 0.1s, background 0.1s;
-  position: relative;
-}
-.budget-heatmap-cell:hover {
-  border-color: var(--vscode-focusBorder);
-}
-.budget-heatmap-cell:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
-}
 .budget-heatmap-cell .day {
   font-size: 10px;
   font-weight: 500;
@@ -1531,35 +968,11 @@ function injectStyles() {
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
-.budget-heatmap-cell.is-today {
-  border-color: var(--vscode-focusBorder);
-}
 .budget-heatmap-cell.is-today .day {
   opacity: 1;
   font-weight: 700;
 }
-.budget-heatmap-cell.is-blank {
-  background: transparent;
-  border-color: transparent;
-  cursor: default;
-  pointer-events: none;
-}
 /* Discrete intensity buckets — five steps look more honest than a smooth gradient. */
-.budget-heatmap-cell.mode-spend.bucket-1 { background: color-mix(in srgb, var(--vscode-charts-red, #f87171) 16%, transparent); }
-.budget-heatmap-cell.mode-spend.bucket-2 { background: color-mix(in srgb, var(--vscode-charts-red, #f87171) 32%, transparent); }
-.budget-heatmap-cell.mode-spend.bucket-3 { background: color-mix(in srgb, var(--vscode-charts-red, #f87171) 52%, transparent); }
-.budget-heatmap-cell.mode-spend.bucket-4 { background: color-mix(in srgb, var(--vscode-charts-red, #f87171) 78%, transparent); }
-.budget-heatmap-cell.mode-income.bucket-1 { background: color-mix(in srgb, var(--vscode-charts-green, #22c55e) 16%, transparent); }
-.budget-heatmap-cell.mode-income.bucket-2 { background: color-mix(in srgb, var(--vscode-charts-green, #22c55e) 32%, transparent); }
-.budget-heatmap-cell.mode-income.bucket-3 { background: color-mix(in srgb, var(--vscode-charts-green, #22c55e) 52%, transparent); }
-.budget-heatmap-cell.mode-income.bucket-4 { background: color-mix(in srgb, var(--vscode-charts-green, #22c55e) 78%, transparent); }
-.budget-heatmap-loading {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground, #888);
-  padding: 12px 0;
-  grid-column: 1 / -1;
-}
-
 /* ═══ SVG chart accents ═══ */
 .budget-chart-bar { cursor: pointer; transition: opacity 0.12s; }
 .budget-chart-bar:hover { opacity: .82; }
@@ -1567,19 +980,8 @@ function injectStyles() {
 .budget-chart-axis {
   fill: var(--vscode-descriptionForeground, #888);
   font-size: 11px;
-  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  font-family: inherit;
   font-variant-numeric: tabular-nums;
-}
-.budget-chart-hover {
-  stroke: var(--vscode-focusBorder);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-}
-.budget-chart-dot {
-  fill: var(--vscode-charts-green, #22c55e);
-  stroke: var(--vscode-editor-background, #1e1e1e);
-  stroke-width: 2;
-  pointer-events: none;
 }
 .budget-chart-legend {
   display: flex;
@@ -1589,12 +991,7 @@ function injectStyles() {
   color: var(--vscode-descriptionForeground, #aaa);
   margin-top: 10px;
   flex-wrap: wrap;
-  font-family: var(--vscode-font-family, inherit);
-}
-.budget-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  font-family: inherit;
 }
 .budget-chart-legend .swatch {
   display: inline-block;
@@ -1602,7 +999,6 @@ function injectStyles() {
   border-radius: 1px;
   vertical-align: middle;
 }
-
 /* ═══ Transaction editor drawer ═══ */
 .budget-drawer-overlay {
   position: fixed; inset: 0; z-index: 1000;
@@ -1662,9 +1058,7 @@ function injectStyles() {
 .budget-btn-danger:hover { background: var(--px-danger, #e06c66); color: #fff; }
 .budget-table tbody tr.budget-row-clickable { cursor: pointer; }
 .budget-table tbody tr.budget-row-clickable:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255,255,255,0.05))); }
-.budget-row-edit { opacity: 0; transition: opacity 120ms ease; }
 .budget-table tbody tr:hover .budget-row-edit, .budget-table tbody tr:focus-within .budget-row-edit { opacity: 1; }
-
 /* ═══ Net Worth ═══ */
 .budget-networth-head { padding: 6px 2px 16px; }
 .budget-networth-label { font-size: var(--px-text-xs, 11px); text-transform: none; letter-spacing: normal; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
@@ -1704,7 +1098,6 @@ function injectStyles() {
 .budget-nw-row-amt { font-size: var(--px-text-base, 13px); font-weight: 600; font-variant-numeric: tabular-nums; }
 .budget-nw-row-pct { font-size: var(--px-text-xs, 11px); color: var(--px-text-faint, var(--vscode-descriptionForeground, #777)); }
 .budget-nw-mgmt-head { font-size: var(--px-text-xs, 11px); font-weight: 700; text-transform: none; letter-spacing: normal; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); margin: 4px 2px 8px; }
-
 /* ═══ Goals ═══ */
 .budget-goals { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
 .budget-goal-card {
@@ -1724,25 +1117,9 @@ function injectStyles() {
 .budget-goal-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .budget-goal-amt { font-size: var(--px-text-sm, 12px); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--px-text, inherit); }
 .budget-goal-proj { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
-
 /* ═══ Spending donut ═══ */
-.budget-donut-wrap { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 8px 0; }
 /* With nothing to chart, the empty message spans the row like every other empty state. */
 .budget-donut-wrap > .budget-empty { flex: 1 1 100%; }
-.budget-donut { width: 180px; height: 180px; flex: 0 0 auto; font-family: var(--vscode-font-family, inherit); }
-.budget-donut-seg { transition: opacity 120ms ease; }
-.budget-donut-seg:hover { opacity: 0.85; }
-.budget-donut-total { fill: var(--px-text, var(--vscode-editor-foreground, #eee)); font-size: 22px; font-weight: 700; }
-.budget-donut-clabel { fill: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); font-size: 11px; }
-.budget-donut-legend { flex: 1 1 240px; min-width: 220px; display: flex; flex-direction: column; gap: 2px; }
-.budget-donut-leg { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; text-align: left; padding: 5px 6px; border: none; background: transparent; color: inherit; font: inherit; border-radius: var(--px-radius-sm, 4px); }
-.budget-donut-leg.is-click { cursor: pointer; }
-.budget-donut-leg.is-click:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05))); }
-.budget-donut-sw { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
-.budget-donut-leg-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--px-text-sm, 12px); }
-.budget-donut-leg-pct { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); width: 34px; text-align: right; }
-.budget-donut-leg-amt { font-size: var(--px-text-sm, 12px); font-weight: 600; font-variant-numeric: tabular-nums; width: 80px; text-align: right; }
-
 /* ═══ Recurring / subscriptions list ═══ */
 .budget-recur { display: flex; flex-direction: column; margin-top: 14px; border: 1px solid var(--px-border, var(--vscode-panel-border, #2a2a2a)); border-radius: var(--px-radius-md, 6px); overflow: hidden; }
 .budget-recur-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--px-chrome-line, rgba(255, 255, 255, 0.04)); }
@@ -1760,40 +1137,14 @@ function injectStyles() {
 .budget-recur-due { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-recur-acts { display: flex; gap: 6px; flex: 0 0 auto; opacity: 0; transition: opacity 120ms ease; }
 .budget-recur-row:hover .budget-recur-acts, .budget-recur-row:focus-within .budget-recur-acts { opacity: 1; }
-
 /* ═══ Category budget bars (actual vs target vs prior) ═══ */
-.budget-catbars { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
-.budget-catrow {
-  display: grid; grid-template-columns: 150px 1fr auto; align-items: center; gap: 16px;
-  width: 100%; box-sizing: border-box; text-align: left; padding: 9px 8px;
-  border: none; background: transparent; color: inherit; font: inherit; cursor: pointer;
-  border-radius: var(--px-radius-sm, 4px);
-}
-.budget-catrow:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04))); }
-.budget-catrow-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .budget-catrow-left .budget-cat-swatch { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
-.budget-catrow-name { font-size: var(--px-text-base, 13px); color: var(--px-text, inherit); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.budget-catrow-barwrap { min-width: 0; }
-.budget-catrow-track { position: relative; height: 8px; border-radius: 999px; background: var(--px-bg-inset, rgba(255, 255, 255, 0.07)); overflow: hidden; }
-.budget-catrow-track.is-untracked { background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0 5px, transparent 5px 10px); }
-.budget-catrow-fill { height: 100%; border-radius: 999px; background: var(--px-text-faint, rgba(255, 255, 255, 0.42)); transition: width 320ms cubic-bezier(0.16, 1, 0.3, 1); }
-.budget-catrow-fill.is-near { background: var(--px-warning, #dcaa5a); }
 .budget-catrow-fill.is-over { background: var(--px-danger, #e06c66); }
-.budget-catrow-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; min-width: 150px; }
-.budget-catrow-amtline { display: flex; align-items: baseline; gap: 5px; }
-.budget-catrow-amt { font-size: var(--px-text-base, 13px); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--px-text, inherit); }
 .budget-catrow-amt.is-over { color: var(--px-danger, #e06c66); }
-.budget-catrow-of { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
-.budget-catrow-tag { font-size: var(--px-text-xs); text-transform: none; letter-spacing: normal; color: var(--px-text-faint, #777); border: 1px solid var(--px-border, rgba(255, 255, 255, 0.12)); border-radius: 3px; padding: 0 3px; margin-left: 4px; }
-.budget-catrow-trend { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-catrow-trend.is-up { color: var(--px-danger, #e06c66); }
 .budget-catrow-trend.is-down { color: var(--px-success, #6cbf8f); }
-
 /* ═══ M93 ledger components ═══ */
-
 /* Category progress tracks — square ruled bars, not rounded pills. */
-.budget-catrow-track { border-radius: 1px; }
-.budget-catrow-fill  { border-radius: 1px; }
 .bar-track {
   height: 6px;
   background: color-mix(in srgb, var(--vscode-foreground, #ddd) 7%, transparent);
@@ -1801,76 +1152,13 @@ function injectStyles() {
   overflow: hidden;
 }
 .bar-fill { height: 100%; border-radius: 1px; }
-
 /* Insights register — ruled rows, typographic glyph column, mono amounts. */
-.budget-insights { display: flex; flex-direction: column; }
-.budget-insight-row {
-  display: grid;
-  grid-template-columns: 18px 1fr auto;
-  align-items: baseline;
-  gap: 10px;
-  padding: 7px 4px;
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border, #2a2a2a) 55%, transparent);
-  cursor: pointer;
-  font-size: var(--px-text-xs, 11px);
-}
-.budget-insight-row:last-child { border-bottom: none; }
-.budget-insight-row:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04)); }
-.budget-insight-glyph {
-  font-family: var(--budget-mono);
-  font-size: 11px;
-  text-align: center;
-  color: var(--vscode-descriptionForeground, #888);
-}
-.budget-insight-row.is-warn  .budget-insight-glyph { color: var(--vscode-charts-orange, #965719); }
-.budget-insight-row.is-alert .budget-insight-glyph { color: var(--vscode-charts-red, #a43b38); }
-.budget-insight-row.is-good  .budget-insight-glyph { color: var(--vscode-charts-green, #5da56e); }
-.budget-insight-title { color: var(--vscode-foreground, #ddd); }
 .budget-insight-title .sub { color: var(--vscode-descriptionForeground, #888); }
-.budget-insight-amt {
-  font-family: var(--budget-mono);
-  font-variant-numeric: tabular-nums lining-nums;
-  text-align: right;
-  color: var(--vscode-foreground, #ddd);
-  white-space: nowrap;
-}
 .budget-insight-amt.negative { color: var(--vscode-charts-red, #a43b38); }
 .budget-insight-amt.positive { color: var(--vscode-charts-green, #5da56e); }
-
 /* Bullet bar (budget vs actual): track = limit, fill = spent, tick = pace. */
-.budget-bullet { position: relative; height: 10px; min-width: 160px;
-  background: color-mix(in srgb, var(--vscode-foreground, #ddd) 7%, transparent);
-  border-radius: 1px; overflow: visible; }
-.budget-bullet-fill { position: absolute; left: 0; top: 2px; bottom: 2px;
-  background: color-mix(in srgb, var(--vscode-foreground, #ddd) 42%, transparent);
-  border-radius: 1px; }
-.budget-bullet-fill.is-near { background: var(--vscode-charts-yellow, #a9912b); }
 .budget-bullet-fill.is-over { background: var(--vscode-charts-red, #a43b38); }
-.budget-bullet-pace { position: absolute; top: -2px; bottom: -2px; width: 2px;
-  background: var(--vscode-foreground, #ddd); opacity: 0.75; }
-
 /* Next-month planning */
-.budget-plan-note {
-  font-size: var(--px-text-xs, 11px);
-  color: var(--vscode-descriptionForeground, #888);
-  padding: 6px 10px;
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
-  border-left: 3px solid var(--vscode-charts-blue, #5a8bca);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--vscode-foreground, #ddd) 1.5%, var(--vscode-editor-background));
-}
-.budget-plan-suggest {
-  font-family: var(--budget-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--vscode-charts-blue, #5a8bca);
-  cursor: pointer;
-  text-decoration: underline dotted;
-  text-underline-offset: 2px;
-  white-space: nowrap;
-}
-.budget-plan-suggest:hover { color: var(--vscode-foreground, #ddd); }
-.budget-plan-basis { font-size: 10px; color: var(--vscode-descriptionForeground, #888); white-space: nowrap; }
-
 `;
   document.head.appendChild(style);
 }
@@ -2142,18 +1430,6 @@ function fmtMoney(cents) {
   const dollars = Math.floor(abs / 100);
   const c = String(abs % 100).padStart(2, '0');
   return `${sign}$${dollars.toLocaleString('en-US')}.${c}`;
-}
-
-// Accounting notation: negatives wrap in parentheses — "(1,234.56)" — the
-// classic ledger convention. Doubles as a colorblind-safe secondary encoding
-// for every red negative in the register.
-function fmtLedger(cents) {
-  const n = Number(cents) || 0;
-  const abs = Math.abs(n);
-  const dollars = Math.floor(abs / 100);
-  const c = String(abs % 100).padStart(2, '0');
-  const body = `$${dollars.toLocaleString('en-US')}.${c}`;
-  return n < 0 ? `(${body})` : body;
 }
 
 function fmtDate(d) {
@@ -3543,32 +2819,11 @@ function renderReviewQueueSection(body, api) {
 
 // ─── Section: Sync Log ─────────────────────────────────────────────────────
 
+// Sync Now, Reprocess History… and Import / Export live in the sidebar and
+// the header's ⋯; this page is the record. It redraws when a sync ends.
 function renderSyncLogSection(body, api) {
-  const toolbar = document.createElement('div');
-  toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('Refresh', {
-    iconHtml: makeIcon(api, 'refresh-cw', 12),
-    onClick: () => void refresh(),
-  }));
-  toolbar.appendChild(makeButton('Sync Now', {
-    primary: true,
-    iconHtml: makeIcon(api, 'cloud-download', 12),
-    onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
-  }));
-  toolbar.appendChild(makeButton('Reprocess History', {
-    onClick: () => api.commands.executeCommand('budget.reprocessHistory').finally(() => refresh()),
-  }));
-  toolbar.appendChild(makeButton('Export CSV', {
-    onClick: () => api.commands.executeCommand('budget.exportCsv'),
-  }));
-  toolbar.appendChild(makeButton('Import CSV', {
-    onClick: () => api.commands.executeCommand('budget.importCsv').finally(() => refresh()),
-  }));
-  body.appendChild(toolbar);
-
   const statusEl = document.createElement('div');
-  statusEl.className = 'budget-card';
-  statusEl.style.maxWidth = '520px';
+  statusEl.className = 'budget-ov-card budget-synclog-status';
   body.appendChild(statusEl);
 
   const tableWrap = document.createElement('div');
@@ -3577,26 +2832,35 @@ function renderSyncLogSection(body, api) {
   let alive = true;
   async function refresh() {
     if (!alive) return;
-    statusEl.innerHTML = '';
+    statusEl.replaceChildren();
     let last;
     try { last = await getSyncStateValue('last_run_status'); } catch { last = null; }
+    const lastAt = await getSyncStateValue('last_run_at');
     const lastSyncedAt = await getSyncStateValue('last_synced_at');
-    const lab = document.createElement('div'); lab.className = 'budget-card-label'; lab.textContent = 'Last Run';
-    const val = document.createElement('div'); val.className = 'budget-card-value';
-    val.style.fontSize = '13px';
+    const lab = document.createElement('div'); lab.className = 'budget-ov-label';
+    lab.textContent = 'The last sync' + (lastAt ? ` · ${describeWhen(lastAt)}` : '');
+    const val = document.createElement('div');
     if (last && typeof last === 'object') {
       if (last.ok) {
-        val.textContent = `OK: confirmed ${last.confirmed||0}, review ${last.review||0}, snapshots ${last.snapshot||0}`;
+        const n = (k) => Number(last[k]) || 0;
+        val.textContent = [`${n('confirmed')} new`, `${n('review')} to review`,
+          n('duplicates') ? `${n('duplicates')} possible duplicate${n('duplicates') === 1 ? '' : 's'}` : '',
+          n('snapshot') ? `${n('snapshot')} balance${n('snapshot') === 1 ? '' : 's'} read` : '',
+          n('rulesLearned') ? `${n('rulesLearned')} rule${n('rulesLearned') === 1 ? '' : 's'} learned` : '',
+        ].filter(Boolean).join(', ') + '.';
       } else {
-        val.textContent = 'Failed: ' + (last.error || 'unknown');
-        val.style.color = 'var(--vscode-charts-red, #f87171)';
+        val.className = 'budget-ov-bad';
+        val.textContent = `It failed: ${last.error || 'unknown error'}.`;
       }
     } else {
-      val.textContent = 'No Sync Recorded Yet';
+      val.textContent = 'No sync recorded yet.';
     }
-    const sub = document.createElement('div'); sub.className = 'budget-card-sub';
-    sub.textContent = lastSyncedAt ? `Cursor: ${lastSyncedAt}` : 'No cursor. The first sync will fetch the configured window.';
-    statusEl.appendChild(lab); statusEl.appendChild(val); statusEl.appendChild(sub);
+    const sub = document.createElement('div'); sub.className = 'budget-ov-faint';
+    const cursor = lastSyncedAt ? new Date(lastSyncedAt) : null;
+    sub.textContent = cursor && !Number.isNaN(cursor.getTime())
+      ? `The next sync reads email received after ${cursor.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`
+      : 'The first sync reads the window set in Budget Settings.';
+    statusEl.append(lab, val, sub);
 
     tableWrap.innerHTML = '';
     let rows;
@@ -3606,7 +2870,7 @@ function renderSyncLogSection(body, api) {
       tableWrap.appendChild(emptyState('Query error: ' + (e instanceof Error ? e.message : String(e))));
       return;
     }
-    if (!rows || rows.length === 0) { tableWrap.appendChild(emptyState('Sync log is empty.')); return; }
+    if (!rows || rows.length === 0) { tableWrap.appendChild(emptyState('Nothing logged yet. Each sync writes its steps here.')); return; }
     const table = document.createElement('table');
     table.className = 'budget-table';
     table.innerHTML = `<thead><tr><th>Time</th><th>Level</th><th>Stage</th><th>Message</th></tr></thead>`;
@@ -3616,7 +2880,7 @@ function renderSyncLogSection(body, api) {
       tr.className = 'budget-log-row ' + (r.level || 'info');
       tr.innerHTML = `
         <td>${escHtml(String(r.ts).slice(11, 19))}</td>
-        <td>${escHtml(r.level)}</td>
+        <td>${escHtml({ info: 'Info', warn: 'Warning', error: 'Error' }[r.level] || r.level)}</td>
         <td>${escHtml(r.stage || '')}</td>
         <td>${escHtml(r.message)}</td>`;
       tbody.appendChild(tr);
@@ -3636,15 +2900,11 @@ function renderSyncLogSection(body, api) {
 function renderCategoriesSection(body, api) {
   const toolbar = document.createElement('div');
   toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('Refresh', {
-    iconHtml: makeIcon(api, 'refresh-cw', 12),
-    onClick: () => void refresh(),
-  }));
-  toolbar.appendChild(makeButton('Add Category', {
+  toolbar.appendChild(makeButton('Add Category…', {
     primary: true,
     iconHtml: makeIcon(api, 'plus', 12),
     onClick: async () => {
-      const name = (await api.window?.showInputBox?.({ prompt: 'Category Name', placeHolder: 'e.g. Pets' }) || '').trim();
+      const name = (await api.window?.showInputBox?.({ prompt: 'Category name', placeHolder: 'e.g. Pets' }) || '').trim();
       if (!name) return;
       try {
         const lastSort = (await db.get('SELECT MAX(sort_order) AS m FROM categories'))?.m ?? 0;
@@ -3652,7 +2912,7 @@ function renderCategoriesSection(body, api) {
           `INSERT INTO categories (id, name, color, icon, kind, sort_order) VALUES (?,?,?,?,?,?)`,
           [crypto.randomUUID(), name, '#94a3b8', 'circle', 'expense', Number(lastSort) + 10],
         );
-        await refresh();
+        notifyLedgerChanged();
       } catch (e) {
         await api.window?.showErrorMessage?.('Add failed: ' + (e instanceof Error ? e.message : String(e)));
       }
@@ -3684,8 +2944,8 @@ function renderCategoriesSection(body, api) {
     table.innerHTML = `
       <thead><tr>
         <th>Name</th><th>Color</th><th>Kind</th>
-        <th style="text-align:right">Monthly Limit</th>
-        <th style="text-align:right">Tx</th><th>Status</th><th>Actions</th>
+        <th style="text-align:right" title="Used in any month that has no limit of its own in Plan">Default limit</th>
+        <th style="text-align:right">Transactions</th><th>Status</th><th>Actions</th>
       </tr></thead>`;
     const tbody = document.createElement('tbody');
     for (const r of rows) {
@@ -3731,7 +2991,7 @@ function renderCategoriesSection(body, api) {
         const v = limitInput.value.trim();
         const cents = v === '' ? null : Math.round(Number(v) * 100);
         if (cents !== null && !Number.isFinite(cents)) { limitInput.value = r.monthly_limit_cents != null ? String(r.monthly_limit_cents/100) : ''; return; }
-        try { await db.run(`UPDATE categories SET monthly_limit_cents=? WHERE id=?`, [cents, r.id]); }
+        try { await db.run(`UPDATE categories SET monthly_limit_cents=? WHERE id=?`, [cents, r.id]); notifyLedgerChanged(); }
         catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
       });
       tdLimit.appendChild(limitInput);
@@ -3748,17 +3008,17 @@ function renderCategoriesSection(body, api) {
 
       // Actions
       const tdAct = document.createElement('td'); tdAct.style.display = 'flex'; tdAct.style.gap = '4px';
-      tdAct.appendChild(makeButton('Rename', {
+      tdAct.appendChild(makeButton('Rename…', {
         onClick: async () => {
-          const next = (await api.window?.showInputBox?.({ prompt: 'New Name', value: r.name }) || '').trim();
+          const next = (await api.window?.showInputBox?.({ prompt: 'New name', value: r.name }) || '').trim();
           if (!next || next === r.name) return;
-          try { await db.run(`UPDATE categories SET name=? WHERE id=?`, [next, r.id]); await refresh(); }
+          try { await db.run(`UPDATE categories SET name=? WHERE id=?`, [next, r.id]); notifyLedgerChanged(); }
           catch (e) { await api.window?.showErrorMessage?.('Rename failed: ' + (e instanceof Error ? e.message : String(e))); }
         },
       }));
       tdAct.appendChild(makeButton(r.archived ? 'Unarchive' : 'Archive', {
         onClick: async () => {
-          try { await db.run(`UPDATE categories SET archived=? WHERE id=?`, [r.archived ? 0 : 1, r.id]); await refresh(); }
+          try { await db.run(`UPDATE categories SET archived=? WHERE id=?`, [r.archived ? 0 : 1, r.id]); notifyLedgerChanged(); }
           catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
         },
       }));
@@ -3770,7 +3030,8 @@ function renderCategoriesSection(body, api) {
     tableWrap.appendChild(table);
   }
   void refresh();
-  return () => { alive = false; };
+  const offLedger = onLedgerChanged(() => void refresh());
+  return () => { alive = false; offLedger(); };
 }
 
 // ─── Section: Dashboard ────────────────────────────────────────────────────
@@ -4150,790 +3411,6 @@ function drawAccounts(col, data, api) {
   col.appendChild(card);
 }
 
-function renderDashboardSection(body, api) {
-  let monthKey = monthRange().key;
-
-  const toolbar = document.createElement('div');
-  toolbar.className = 'budget-toolbar';
-  const picker = makeMonthPicker(monthKey, (k) => { monthKey = k; void refresh(); });
-  toolbar.appendChild(picker.el);
-  const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  // Tiny last-sync indicator on the toolbar replaces the bulky "Last sync"
-  // card that used to crowd the headline row in M64.
-  const lastSyncMeta = document.createElement('span');
-  lastSyncMeta.className = 'budget-toolbar-meta';
-  toolbar.appendChild(lastSyncMeta);
-  const toolbarSyncBtn = makeButton('Sync Now', {
-    primary: true,
-    iconHtml: makeIcon(api, 'cloud-download', 12),
-    onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
-  });
-  toolbar.appendChild(toolbarSyncBtn);
-  body.appendChild(toolbar);
-
-  // Sync status banner — sticky surface so the user always knows whether the
-  // last sync ran, is running, succeeded, or failed. Updates live via the
-  // sync event bus; bridges the gap when host toasts aren't visible enough.
-  const syncBanner = document.createElement('div');
-  syncBanner.className = 'budget-card';
-  syncBanner.style.maxWidth = '100%';
-  syncBanner.style.padding = '8px 12px';
-  syncBanner.style.marginBottom = '8px';
-  syncBanner.style.display = 'none';
-  body.appendChild(syncBanner);
-
-  function setBanner(state, html) {
-    const colors = {
-      info:    'var(--vscode-textBlockQuote-background, rgba(127,127,127,0.08))',
-      running: 'var(--vscode-textBlockQuote-background, rgba(127,127,127,0.08))',
-      success: 'color-mix(in srgb, var(--vscode-charts-green, #5da56e) 12%, transparent)',
-      error:   'color-mix(in srgb, var(--vscode-charts-red, #a43b38) 16%, transparent)',
-    };
-    syncBanner.style.background = colors[state] || colors.info;
-    syncBanner.style.borderLeft = state === 'error'
-      ? '3px solid var(--vscode-charts-red, #a43b38)'
-      : (state === 'success' ? '3px solid var(--vscode-charts-green, #5da56e)' : '3px solid var(--vscode-focusBorder)');
-    syncBanner.innerHTML = html;
-    syncBanner.style.display = '';
-  }
-  // Helper: render a progress banner showing real per-message counters so
-  // the user sees actual work, not just an opaque "Syncing…" spinner.
-  function _runningBanner(detail) {
-    const d = detail || {};
-    const processed = typeof d.processed === 'number' ? d.processed : 0;
-    const total = typeof d.total === 'number' ? d.total : 0;
-    const confirmed = d.confirmed || 0;
-    const review = d.review || 0;
-    const skipped = d.skipped || 0;
-    if (total > 0) {
-      return `<b>Syncing Gmail…</b> ${processed} of ${total} emails processed` +
-        ` (${confirmed} confirmed, ${review} for review` +
-        (skipped ? `, ${skipped} already imported` : '') + ').';
-    }
-    return '<b>Syncing Gmail…</b> Fetching new transaction emails and categorizing them.';
-  }
-  if (_lastSyncEvent && (_lastSyncEvent.kind === 'start' || _lastSyncEvent.kind === 'progress')) {
-    setBanner('running', _runningBanner(_lastSyncEvent.detail));
-  }
-  const offBus = onSyncEvent((evt) => {
-    if (evt.kind === 'start') {
-      setBanner('running', _runningBanner());
-    } else if (evt.kind === 'progress') {
-      setBanner('running', _runningBanner(evt.detail));
-    } else if (evt.kind === 'complete') {
-      const c = evt.counts || {};
-      setBanner('success',
-        `<b>Sync complete:</b> ${c.confirmed||0} new transaction(s) confirmed and categorized, ${c.review||0} flagged for review, ${c.snapshot||0} balance snapshot(s) recorded` +
-        ((c.skipped||0) ? `, ${c.skipped} skipped (already imported)` : '') +
-        ((c.errors||0) ? `, <span style="color:var(--vscode-charts-red,#a43b38)">${c.errors} error(s)</span>` : '') +
-        ((c.stalled||0) ? `, <span style="color:var(--vscode-charts-red,#a43b38)">${c.stalled} stalled (model went quiet; the next sync retries them)</span>` : '') +
-        '.');
-      void refresh();
-    } else if (evt.kind === 'error') {
-      setBanner('error',
-        `<b>Sync failed:</b> ${escHtml(evt.message || 'unknown error')}. Check Settings → MCP Servers to confirm Gmail is connected, then try again.`);
-    }
-  });
-  // ── Dashboard layout (M64 P3 redesign) ──────────────────────────────
-  // Single shared scope object — every widget below honours it. When the
-  // user changes the month picker or the account-filter chip, refresh()
-  // re-runs and every chart, KPI, and list recomputes. That cross-visual
-  // interactivity is the analytical-dashboard contract (Few/Yigitbasioglu).
-  const _state = {
-    monthKey,
-    accountIds: null,           // null = all accounts
-    cashFlowRange: '6m',
-  };
-
-  // Filter row (account multi-select).
-  const filterRow = document.createElement('div');
-  filterRow.className = 'budget-filter-row';
-  body.appendChild(filterRow);
-
-  // KPI strip — 4 cards, each with a comparison anchor.
-  const cards = document.createElement('div');
-  cards.className = 'budget-cards budget-hero-cards';
-  body.appendChild(cards);
-
-  // Month in review — spending-pace chart + computed insights register.
-  const insightsSection = document.createElement('div');
-  insightsSection.className = 'budget-section';
-  body.appendChild(insightsSection);
-
-  // Top categories — full-width, the answer to "where did the money go".
-  const catSection = document.createElement('div');
-  catSection.className = 'budget-section';
-  body.appendChild(catSection);
-
-  // Money-in-vs-out chart (multi-month context, demoted from primary).
-  const cashflowSection = document.createElement('div');
-  cashflowSection.className = 'budget-section';
-  body.appendChild(cashflowSection);
-
-  // Accounts: allocation bar + cards grid.
-  const accountsSection = document.createElement('div');
-  accountsSection.className = 'budget-section';
-  body.appendChild(accountsSection);
-
-  // Needs-attention panel — replaces the dead "Recent transactions" list.
-  const attentionSection = document.createElement('div');
-  attentionSection.className = 'budget-section';
-  body.appendChild(attentionSection);
-
-  // Onboarding banner — shown only on first run, before any sync.
-  const onboardingWrap = document.createElement('div');
-  body.insertBefore(onboardingWrap, cards);
-
-  async function renderOnboarding() {
-    onboardingWrap.innerHTML = '';
-    // Skip if user has any confirmed transactions OR has run a sync.
-    const txCount = await db.get(`SELECT COUNT(*) AS n FROM transactions`).catch(() => ({ n: 0 }));
-    const lastSync = (await getSyncStateValue('last_run_at')) || (await getSyncStateValue('last_synced_at'));
-    toolbarSyncBtn.style.display = '';
-    if ((Number(txCount?.n) || 0) > 0 || lastSync) return;
-
-    const card = document.createElement('div');
-    card.className = 'budget-card';
-    card.style.maxWidth = '720px';
-    card.style.padding = '16px';
-    card.style.background = 'var(--vscode-textBlockQuote-background, rgba(127,127,127,0.08))';
-    card.innerHTML = `
-      <div class="budget-card-label" style="font-size:var(--px-text-md);font-weight:600;">Welcome to Budget</div>
-      <div style="font-size:var(--px-text-lg);font-weight:600;margin-top:4px;color:var(--px-text);">Set up in three steps.</div>
-      <ol style="margin:12px 0 0 20px;padding:0;line-height:1.7;">
-        <li><b>Connect Gmail:</b> make sure the <code>gmail-mcp-server</code> tool is enabled in Settings → MCP Servers.</li>
-        <li><b>Run your first sync:</b> pull transaction emails and let the AI categorize them.</li>
-        <li><b>Set budgets:</b> give yourself monthly limits per category in the Budgets tab.</li>
-      </ol>
-      <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;"></div>`;
-    const actions = card.lastElementChild;
-    const syncBtn = makeButton('Run First Sync', {
-      primary: true,
-      onClick: async () => {
-        syncBtn.setAttribute('disabled', 'true');
-        try {
-          await api.commands.executeCommand('budget.sync');
-        } finally {
-          await refresh();
-        }
-      },
-    });
-    actions.appendChild(syncBtn);
-    actions.appendChild(makeButton('Open Budgets', {
-      onClick: () => api.commands.executeCommand('budget.openBudgets'),
-    }));
-    actions.appendChild(makeButton('Dismiss', {
-      onClick: async () => {
-        // Mark dismissed by writing a sync_state flag — uses the existing per-workspace store.
-        try {
-          await db.run(
-            `INSERT INTO sync_state (key, value, updated_at) VALUES ('onboarding_dismissed', '1', ?)
-             ON CONFLICT(key) DO UPDATE SET value='1', updated_at=excluded.updated_at`,
-            [new Date().toISOString()],
-          );
-        } catch { /* table may not exist on first ever run; ignore */ }
-        onboardingWrap.innerHTML = '';
-        toolbarSyncBtn.style.display = '';
-      },
-    }));
-    // Honour dismissed flag.
-    const dismissed = await getSyncStateValue('onboarding_dismissed').catch(() => null);
-    if (dismissed) return;
-    onboardingWrap.appendChild(card);
-    // One primary action per screen: while the welcome card offers
-    // "Run First Sync", the toolbar's Sync Now steps aside.
-    toolbarSyncBtn.style.display = 'none';
-  }
-
-  let alive = true;
-
-  async function refresh() {
-    if (!alive) return;
-    _state.monthKey = monthKey;
-    filterRow.innerHTML = '';
-    cards.innerHTML = '';
-    insightsSection.innerHTML = '';
-    cashflowSection.innerHTML = '';
-    catSection.innerHTML = '';
-    accountsSection.innerHTML = '';
-    attentionSection.innerHTML = '';
-    lastSyncMeta.textContent = '';
-    await renderOnboarding();
-    // Month in review — independent of the account filter by design: pace
-    // and insights read the whole ledger so the register always reconciles.
-    try { await renderMonthInsights(insightsSection, api, monthKey); } catch (e) { console.warn('[Budget] insights failed:', e); }
-
-    const range = monthRange(monthKey);
-    _state.range = range;
-    const acctC = _acctClause(_state, '');
-    const acctT = _acctClause(_state, 't');
-
-    // ── Account list (drives the filter chip + cards grid + allocation).
-    let allAccounts = [];
-    try { allAccounts = await db.all('SELECT id, last_four, kind, display_name, archived FROM accounts WHERE archived = 0 ORDER BY kind, last_four'); } catch { allAccounts = []; }
-    let acctRows = [];
-    try {
-      const acctView = _state.accountIds && _state.accountIds.length > 0
-        ? `SELECT * FROM v_account_latest_balance WHERE latest_balance_cents IS NOT NULL AND account_id IN (${_state.accountIds.map(() => '?').join(',')}) ORDER BY kind, last_four`
-        : 'SELECT * FROM v_account_latest_balance WHERE latest_balance_cents IS NOT NULL ORDER BY kind, last_four';
-      acctRows = await db.all(acctView, _state.accountIds && _state.accountIds.length > 0 ? _state.accountIds : []);
-    } catch { acctRows = []; }
-    let cash = 0, credit = 0;
-    for (const a of acctRows) {
-      const bal = Number(a.latest_balance_cents) || 0;
-      if (a.kind === 'credit_card') credit += bal; else cash += bal;
-    }
-    // Fold in manual assets/liabilities so the headline is true net worth.
-    let manualNet = 0;
-    try {
-      const mr = await db.get("SELECT COALESCE(SUM(CASE WHEN kind='asset' THEN value_cents ELSE -value_cents END),0) AS net FROM manual_balances WHERE archived=0");
-      manualNet = Number(mr?.net) || 0;
-    } catch { /* table may not exist on older DBs */ }
-    const netWorth = cash + credit + manualNet;
-
-    // ── Filter chip row (account multi-select).
-    if (allAccounts.length > 0) {
-      filterRow.appendChild(buildAccountFilter(api, allAccounts, _state, refresh));
-    }
-
-    // ── Aggregates for KPIs (current month + previous month).
-    const sumRow = await db.get(
-      `SELECT COALESCE(SUM(CASE WHEN tx_type IN ('purchase','fee') THEN amount_cents ELSE 0 END),0) AS spend,
-              COALESCE(SUM(CASE WHEN tx_type='deposit' THEN ABS(amount_cents) ELSE 0 END),0) AS income,
-              COUNT(CASE WHEN tx_type IN ('purchase','fee','deposit') THEN 1 END) AS n
-         FROM transactions
-        WHERE status='confirmed' AND transaction_date >= ? AND transaction_date <= ?${acctC.clause}`,
-      [range.start, range.end, ...acctC.params],
-    ) || { spend: 0, income: 0, n: 0 };
-    const totalSpend = Number(sumRow.spend) || 0;
-    const totalIncome = Number(sumRow.income) || 0;
-
-    let prevSpend = 0, prevIncome = 0;
-    try {
-      const prevRange = monthRange(monthShift(monthKey, -1));
-      const prevRow = await db.get(
-        `SELECT COALESCE(SUM(CASE WHEN tx_type IN ('purchase','fee') THEN amount_cents ELSE 0 END),0) AS spend,
-                COALESCE(SUM(CASE WHEN tx_type='deposit' THEN ABS(amount_cents) ELSE 0 END),0) AS income
-           FROM transactions
-          WHERE status='confirmed' AND transaction_date >= ? AND transaction_date <= ?${acctC.clause}`,
-        [prevRange.start, prevRange.end, ...acctC.params],
-      );
-      prevSpend  = Number(prevRow?.spend)  || 0;
-      prevIncome = Number(prevRow?.income) || 0;
-    } catch { /* best effort */ }
-
-    // ── Tracked balance 30-day delta (for KPI anchor).
-    let netDelta30 = 0;
-    try {
-      const r30 = await db.get(`
-        WITH d_now AS (
-          SELECT a.id, (SELECT bs.balance_cents FROM balance_snapshots bs
-                       WHERE bs.account_id=a.id ORDER BY bs.snapshot_date DESC, bs.created_at DESC LIMIT 1) AS bal
-            FROM accounts a WHERE a.archived = 0
-        ),
-        d_then AS (
-          SELECT a.id, (SELECT bs.balance_cents FROM balance_snapshots bs
-                       WHERE bs.account_id=a.id AND bs.snapshot_date <= date('now','-30 days')
-                       ORDER BY bs.snapshot_date DESC, bs.created_at DESC LIMIT 1) AS bal
-            FROM accounts a WHERE a.archived = 0
-        )
-        SELECT
-          (SELECT COALESCE(SUM(bal),0) FROM d_now)  -
-          (SELECT COALESCE(SUM(bal),0) FROM d_then) AS delta`);
-      netDelta30 = Number(r30?.delta) || 0;
-    } catch { /* ignore */ }
-
-    // ── Top categories this month + previous month for delta.
-    let catRows = [];
-    try {
-      catRows = await db.all(`
-        SELECT c.id, c.name, c.color, c.monthly_limit_cents,
-               COALESCE(SUM(t.amount_cents), 0) AS spend
-          FROM categories c
-          LEFT JOIN transactions t
-            ON t.category_id = c.id AND t.status='confirmed'
-           AND t.tx_type IN ('purchase','fee')
-           AND t.transaction_date >= ? AND t.transaction_date <= ?${acctT.clause}
-         WHERE c.archived = 0 AND c.kind='expense'
-         GROUP BY c.id
-         ORDER BY spend DESC, c.sort_order ASC`,
-        [range.start, range.end, ...acctT.params],
-      );
-    } catch { catRows = []; }
-    let prevByCatId = new Map();
-    try {
-      const prevRange = monthRange(monthShift(monthKey, -1));
-      const rows = await db.all(`
-        SELECT t.category_id AS id, COALESCE(SUM(t.amount_cents),0) AS spend
-          FROM transactions t
-         WHERE t.status='confirmed' AND t.tx_type IN ('purchase','fee')
-           AND t.transaction_date >= ? AND t.transaction_date <= ?${acctT.clause}
-         GROUP BY t.category_id`,
-        [prevRange.start, prevRange.end, ...acctT.params]);
-      prevByCatId = new Map(rows.map(r => [r.id, Number(r.spend) || 0]));
-    } catch { /* ignore */ }
-    // Top category by absolute MoM delta (for the headline narrative).
-    let topCatName = null, topCatDelta = 0;
-    for (const r of catRows) {
-      const sp = Number(r.spend) || 0;
-      const pp = Number(prevByCatId.get(r.id) || 0);
-      const d = sp - pp;
-      if (Math.abs(d) > Math.abs(topCatDelta)) { topCatDelta = d; topCatName = r.name; }
-    }
-
-    // ── Last sync indicator.
-    const lastRunAt    = await getSyncStateValue('last_run_at');
-    const lastSyncedAt = await getSyncStateValue('last_synced_at');
-    const lastSyncDisplaySrc = lastRunAt || lastSyncedAt;
-    const lastRunStatus = await getSyncStateValue('last_run_status');
-    const lastSyncSub = lastRunStatus && typeof lastRunStatus === 'object'
-      ? (lastRunStatus.ok
-        ? `${lastRunStatus.confirmed||0} new · ${lastRunStatus.review||0} review`
-        : 'Last run failed')
-      : '';
-    if (lastSyncDisplaySrc) {
-      lastSyncMeta.textContent = `Last sync ${fmtRelativeTime(lastSyncDisplaySrc)}` + (lastSyncSub ? ` · ${lastSyncSub}` : '');
-    } else {
-      lastSyncMeta.textContent = 'Never Synced';
-    }
-
-    // ── KPI strip — Income · Expenses · Net Income (this month vs last).
-    // Net worth lives on its own view; it would be misleading here because the
-    // dashboard only sees synced (e.g. Chase) transactions, not 401k / IRA /
-    // mortgage / HSA.
-    const netIncome = totalIncome - totalSpend;
-    const prevNet = prevIncome - prevSpend;
-
-    cards.appendChild(makeCard('Income', fmtMoney(totalIncome),
-      (prevIncome ? `vs ${fmtMoney(prevIncome)} last month` : (totalIncome > 0 ? 'Deposits this month' : 'No income yet')),
-      {
-        title: 'View Deposits',
-        onClick: () => {
-          _navState.txFilter = { monthKey, type: 'deposit' };
-          api.commands.executeCommand('budget.openTransactions').catch(() => {});
-        },
-      }));
-
-    cards.appendChild(makeCard('Expenses', fmtMoney(totalSpend),
-      (prevSpend ? `vs ${fmtMoney(prevSpend)} last month` : `${sumRow.n} transactions`),
-      {
-        title: 'View Expense Transactions',
-        onClick: () => {
-          _navState.txFilter = { monthKey, type: 'spend' };
-          api.commands.executeCommand('budget.openTransactions').catch(() => {});
-        },
-      }));
-
-    cards.appendChild(makeCard('Net Income', fmtMoney(netIncome),
-      ((prevIncome || prevSpend) ? `vs ${fmtMoney(prevNet)} last month` : 'Income − expenses')));
-
-    // ── Goals progress card (only when goals exist).
-    try {
-      const goals = await db.all('SELECT target_cents, current_cents FROM goals WHERE archived=0').catch(() => []);
-      if (goals && goals.length) {
-        const tt = goals.reduce((s, g) => s + (Number(g.target_cents) || 0), 0);
-        const tc = goals.reduce((s, g) => s + (Number(g.current_cents) || 0), 0);
-        const pct = tt > 0 ? Math.round(tc / tt * 100) : 0;
-        cards.appendChild(makeCard('Goals', `${pct}%`,
-          `${goals.length} goal${goals.length > 1 ? 's' : ''} · ${fmtMoney(tc)} of ${fmtMoney(tt)}`,
-          { title: 'Open Goals', onClick: () => api.commands.executeCommand('budget.openGoals').catch(() => {}) }));
-      }
-    } catch { /* goals table may not exist on older DBs */ }
-
-    // ── Cash flow chart (PRIMARY CHART — replaces the old balance-trend
-    // line as the dashboard's headline visualization). Bars per month,
-    // income above zero, spend below zero, net line overlay. The canonical
-    // analytical-finance chart.
-    cashflowSection.appendChild(buildCashFlowChart(api, _state, refresh));
-
-    // ── Top categories (full width, sorted desc by spend).
-    const catH = document.createElement('h3'); catH.className = 'budget-section-h'; catH.textContent = 'Where It Went';
-    catSection.appendChild(catH);
-    catSection.appendChild(buildSpendDonut(catRows, totalSpend, range.label.split(' ')[0], (slice) => {
-      _navState.txFilter = { categoryId: slice.id, monthKey, type: 'spend' };
-      api.commands.executeCommand('budget.openTransactions').catch(() => {});
-    }));
-    const budH = document.createElement('h3'); budH.className = 'budget-section-h'; budH.textContent = 'Spending vs Budget'; budH.style.marginTop = '22px';
-    catSection.appendChild(budH);
-    catSection.appendChild(buildCategoryBars(catRows, prevByCatId, (slice) => {
-      _navState.txFilter = { categoryId: slice.id, monthKey, type: 'spend' };
-      api.commands.executeCommand('budget.openTransactions').catch(() => {});
-    }));
-
-    // ── Accounts: allocation bar + cards grid.
-    if (acctRows.length > 0) {
-      const h = document.createElement('h3'); h.className = 'budget-section-h'; h.textContent = 'Accounts';
-      accountsSection.appendChild(h);
-      accountsSection.appendChild(buildAllocationBar(acctRows));
-      const grid = document.createElement('div');
-      grid.className = 'budget-accounts-grid';
-      for (const a of acctRows) grid.appendChild(buildAccountCard(a, api, refresh));
-      accountsSection.appendChild(grid);
-    }
-
-    // ── Needs attention (replaces the dead "Recent transactions" list).
-    attentionSection.appendChild(await buildNeedsAttention(api, _state));
-  }
-  void refresh();
-  return () => { alive = false; offBus(); };
-}
-
-function buildAccountCard(a, api, onChanged) {
-  const card = document.createElement('div'); card.className = 'budget-account-card';
-
-  // Kind label is now an inline editor — fixes the M64-reported bug where a
-  // savings account ending 6307 was permanently labelled "Checking" because
-  // the auto-classifier guessed wrong from a daily-summary email and there
-  // was no UI to correct it.
-  const kindHeader = document.createElement('div'); kindHeader.className = 'acct-kind-row';
-  const kindSel = makeDropdown(
-    Object.entries(ACCOUNT_KIND_LABELS).map(([value, label]) => ({ value, label })),
-    a.kind,
-    async (val) => {
-      try {
-        await db.run('UPDATE accounts SET kind=?, updated_at=? WHERE id=?',
-          [val, new Date().toISOString(), a.account_id || a.id]);
-        if (typeof onChanged === 'function') await onChanged();
-      } catch (err) {
-        await api.window?.showErrorMessage?.('Could not update account kind: ' + (err instanceof Error ? err.message : String(err)));
-      }
-    });
-  kindHeader.appendChild(kindSel);
-
-  const name = document.createElement('div'); name.className = 'acct-name';
-  name.textContent = a.display_name || defaultAccountName(a.kind, a.last_four);
-  const bal = document.createElement('div'); bal.className = 'acct-balance';
-  if (a.kind === 'credit_card') bal.classList.add('credit');
-  bal.textContent = a.latest_balance_cents != null ? fmtMoney(a.latest_balance_cents) : '—';
-  const meta = document.createElement('div'); meta.className = 'acct-meta';
-  meta.textContent = a.latest_balance_date ? `As of ${a.latest_balance_date}` : 'No balance reported yet';
-  card.appendChild(kindHeader); card.appendChild(name); card.appendChild(bal); card.appendChild(meta);
-  card.style.cursor = 'pointer';
-  card.title = 'Click to view transactions on this account';
-  card.addEventListener('click', () => {
-    _navState.txFilter = { accountId: a.account_id || a.id, monthKey: monthRange().key, type: 'all' };
-    api.commands.executeCommand('budget.openTransactions').catch(() => {});
-  });
-  return card;
-}
-
-// ─── Chart builders (M64 P2) ──────────────────────────────────────────────
-
-function fmtRelativeTime(iso) {
-  if (!iso) return 'never';
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return 'never';
-  const diff = Date.now() - t;
-  if (diff < 60_000) return 'just now';
-  const mins = Math.round(diff / 60_000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.round(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString('en-US', { timeZone: BUDGET_TZ });
-}
-
-function buildSparkline(values, opts) {
-  const w = (opts && opts.width)  || 200;
-  const h = (opts && opts.height) || 36;
-  const accent = (opts && opts.accent) || 'var(--vscode-charts-green, #22c55e)';
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('width', String(w));
-  svg.setAttribute('height', String(h));
-  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-  svg.classList.add('budget-spark');
-  if (!values || values.length < 2) return svg;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const stepX = w / (values.length - 1);
-  const pts = values.map((v, i) => {
-    const x = i * stepX;
-    const y = h - 2 - ((v - min) / range) * (h - 4);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  // Subtle area fill anchored to the bottom of the sparkline (not to $0) —
-  // when min and max are near each other, anchoring to 0 makes the fill a
-  // huge slab unrelated to the data.
-  const fill = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-  fill.setAttribute('points', `0,${h} ${pts.join(' ')} ${w},${h}`);
-  fill.setAttribute('fill', accent);
-  fill.setAttribute('opacity', '0.18');
-  svg.appendChild(fill);
-  const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-  line.setAttribute('points', pts.join(' '));
-  line.setAttribute('fill', 'none');
-  line.setAttribute('stroke', accent);
-  line.setAttribute('stroke-width', '1.5');
-  line.setAttribute('stroke-linejoin', 'round');
-  svg.appendChild(line);
-  return svg;
-}
-
-function buildBalanceTrendChart(rows) {
-  // rows: [{ d: 'YYYY-MM-DD', cash, credit, net }] — caller passes the full
-  // history (currently up to 90 days). The chart manages its own visible
-  // range internally via a range selector (7D / 30D / 90D / ALL).
-  //
-  // Design notes (see /memories/repo/finance-ui-design-principles.md):
-  //   - Y axis is auto-scaled with 8% headroom — line charts crop the Y
-  //     axis (Carbon).
-  //   - SVG text gets an explicit `font-family` — defaulting to the
-  //     browser's serif fallback was the "weird fonts" complaint.
-  //   - Range selector is mandatory for a time-series chart.
-  //   - Hover crosshair + tooltip = progressive disclosure.
-
-  const wrap = document.createElement('div');
-  wrap.className = 'budget-trend-wrap';
-
-  // ── Range selector ──────────────────────────────────────────────────
-  const totalDays = rows.length;
-  const ranges = [
-    { id: '7d',  label: '7D',  days: 7  },
-    { id: '30d', label: '30D', days: 30 },
-    { id: '90d', label: '90D', days: 90 },
-    { id: 'all', label: 'All', days: Infinity },
-  ];
-  let activeId = totalDays >= 90 ? '90d' : (totalDays >= 30 ? '30d' : 'all');
-
-  const header = document.createElement('div');
-  header.className = 'budget-trend-header';
-  const title = document.createElement('div');
-  title.className = 'budget-trend-title';
-  title.textContent = 'Balance Trend';
-  header.appendChild(title);
-  const seg = document.createElement('div');
-  seg.className = 'budget-segmented';
-  for (const r of ranges) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'budget-segmented-btn';
-    b.textContent = r.label;
-    b.dataset.id = r.id;
-    b.addEventListener('click', () => { activeId = r.id; render(); });
-    seg.appendChild(b);
-  }
-  header.appendChild(seg);
-  wrap.appendChild(header);
-
-  // ── Chart container ─────────────────────────────────────────────────
-  const chartHost = document.createElement('div');
-  chartHost.className = 'budget-trend-chart-host';
-  wrap.appendChild(chartHost);
-
-  // ── Legend (bottom) ─────────────────────────────────────────────────
-  const legend = document.createElement('div');
-  legend.className = 'budget-chart-legend';
-  wrap.appendChild(legend);
-
-  function render() {
-    chartHost.innerHTML = '';
-    legend.innerHTML = '';
-    // Highlight the active range button.
-    seg.querySelectorAll('.budget-segmented-btn').forEach(b => {
-      b.setAttribute('aria-pressed', b.dataset.id === activeId ? 'true' : 'false');
-    });
-
-    const def = ranges.find(r => r.id === activeId) || ranges[2];
-    const visible = def.days >= rows.length ? rows : rows.slice(rows.length - def.days);
-    if (visible.length < 2) {
-      const empty = document.createElement('div');
-      empty.className = 'budget-empty';
-      empty.textContent = 'Not enough balance snapshots in this range yet.';
-      chartHost.appendChild(empty);
-      return;
-    }
-
-    const W = 760, H = 240;
-    const padL = 64, padR = 16, padT = 16, padB = 32;
-    const innerW = W - padL - padR;
-    const innerH = H - padT - padB;
-
-    const dates   = visible.map(r => r.d);
-    const nets    = visible.map(r => Number(r.net) || 0);
-    const cashs   = visible.map(r => Number(r.cash) || 0);
-    const credits = visible.map(r => Number(r.credit) || 0);
-    const hasCredit = credits.some(v => Math.abs(v) > 0);
-    const cashEqualsNet = nets.every((v, i) => v === cashs[i]);
-    const showCash = !cashEqualsNet && cashs.some(v => Math.abs(v) > 0);
-
-    // Auto-scale Y. Pad by 8% so the line never touches the top/bottom.
-    const allValues = [...nets];
-    if (showCash) allValues.push(...cashs);
-    if (hasCredit) allValues.push(...credits);
-    const dataMin = Math.min(...allValues);
-    const dataMax = Math.max(...allValues);
-    const span = Math.max(dataMax - dataMin, Math.abs(dataMax) * 0.02 || 1);
-    const minV = dataMin - span * 0.08;
-    const maxV = dataMax + span * 0.08;
-    const vRange = (maxV - minV) || 1;
-    const stepX = visible.length > 1 ? innerW / (visible.length - 1) : innerW;
-
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    // .budget-trend-chart sets font-family — CRITICAL or SVG <text> falls
-    // back to a serif on Windows.
-    svg.classList.add('budget-trend-chart');
-    chartHost.appendChild(svg);
-
-    // Gridlines + Y-axis labels (5 rows).
-    for (let i = 0; i <= 4; i++) {
-      const y = padT + (innerH * i / 4);
-      const v = maxV - (vRange * i / 4);
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', String(padL));
-      line.setAttribute('x2', String(W - padR));
-      line.setAttribute('y1', String(y)); line.setAttribute('y2', String(y));
-      line.classList.add('budget-chart-grid');
-      svg.appendChild(line);
-      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      lbl.setAttribute('x', String(padL - 8));
-      lbl.setAttribute('y', String(y + 4));
-      lbl.setAttribute('text-anchor', 'end');
-      lbl.classList.add('budget-chart-axis');
-      lbl.textContent = fmtAxisMoney(v);
-      svg.appendChild(lbl);
-    }
-
-    // X labels — first, ~quarter, ~half, ~three-quarter, last.
-    const xPicks = visible.length >= 5
-      ? [0, Math.floor(visible.length*0.25), Math.floor(visible.length*0.5),
-         Math.floor(visible.length*0.75), visible.length-1]
-      : visible.map((_, i) => i);
-    const seenLabels = new Set();
-    for (const i of xPicks) {
-      if (seenLabels.has(i)) continue;
-      seenLabels.add(i);
-      const x = padL + i * stepX;
-      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      lbl.setAttribute('x', String(x));
-      lbl.setAttribute('y', String(H - 10));
-      lbl.setAttribute('text-anchor', 'middle');
-      lbl.classList.add('budget-chart-axis');
-      lbl.textContent = formatTrendDateLabel(dates[i] || '', def.days);
-      svg.appendChild(lbl);
-    }
-
-    function plot(values, color, dashed) {
-      const pts = values.map((v, i) => {
-        const x = padL + i * stepX;
-        const y = padT + innerH - ((v - minV) / vRange) * innerH;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      });
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-      line.setAttribute('points', pts.join(' '));
-      line.setAttribute('fill', 'none');
-      line.setAttribute('stroke', color);
-      line.setAttribute('stroke-width', '2');
-      line.setAttribute('stroke-linejoin', 'round');
-      if (dashed) line.setAttribute('stroke-dasharray', '4 3');
-      svg.appendChild(line);
-    }
-    plot(nets, 'var(--vscode-charts-green, #22c55e)');
-    if (showCash)   plot(cashs,   'var(--vscode-charts-blue, #3b82f6)',   true);
-    if (hasCredit)  plot(credits, 'var(--vscode-charts-orange, #f97316)', true);
-
-    // Hover crosshair + dot + tooltip.
-    const hover = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    hover.setAttribute('y1', String(padT));
-    hover.setAttribute('y2', String(padT + innerH));
-    hover.setAttribute('class', 'budget-chart-hover');
-    hover.style.display = 'none';
-    svg.appendChild(hover);
-    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    dot.setAttribute('r', '3.5');
-    dot.setAttribute('class', 'budget-chart-dot');
-    dot.style.display = 'none';
-    svg.appendChild(dot);
-    const tip = document.createElement('div');
-    tip.className = 'budget-trend-tip';
-    tip.style.display = 'none';
-    chartHost.appendChild(tip);
-    svg.addEventListener('mousemove', (e) => {
-      const rect = svg.getBoundingClientRect();
-      const px = (e.clientX - rect.left) / rect.width * W;
-      const idx = Math.max(0, Math.min(visible.length - 1, Math.round((px - padL) / stepX)));
-      const x = padL + idx * stepX;
-      const r = visible[idx];
-      const y = padT + innerH - ((r.net - minV) / vRange) * innerH;
-      hover.setAttribute('x1', String(x)); hover.setAttribute('x2', String(x));
-      hover.style.display = '';
-      dot.setAttribute('cx', String(x)); dot.setAttribute('cy', String(y));
-      dot.style.display = '';
-      let html = `<div class="d">${escHtml(r.d)}</div>
-        <div><span class="sw" style="background:var(--vscode-charts-green,#22c55e)"></span>Net ${escHtml(fmtMoney(r.net))}</div>`;
-      if (showCash)  html += `<div><span class="sw" style="background:var(--vscode-charts-blue,#3b82f6)"></span>Cash ${escHtml(fmtMoney(r.cash))}</div>`;
-      if (hasCredit) html += `<div><span class="sw" style="background:var(--vscode-charts-orange,#f97316)"></span>Credit ${escHtml(fmtMoney(r.credit))}</div>`;
-      tip.innerHTML = html;
-      tip.style.display = '';
-      const tipPx = (x / W) * rect.width;
-      tip.style.left = Math.min(Math.max(tipPx + 12, 8), rect.width - 180) + 'px';
-      tip.style.top  = '8px';
-    });
-    svg.addEventListener('mouseleave', () => {
-      hover.style.display = 'none';
-      dot.style.display = 'none';
-      tip.style.display = 'none';
-    });
-
-    // Legend — only show series we actually drew.
-    legend.innerHTML = '';
-    legend.appendChild(legendItem('Tracked Balance', 'var(--vscode-charts-green, #22c55e)'));
-    if (showCash)  legend.appendChild(legendItem('Cash', 'var(--vscode-charts-blue, #3b82f6)'));
-    if (hasCredit) legend.appendChild(legendItem('Credit Owed', 'var(--vscode-charts-orange, #f97316)'));
-
-    // Headline delta — "+$1,234 over 30D".
-    const first = visible[0].net;
-    const last  = visible[visible.length - 1].net;
-    const delta = last - first;
-    const deltaEl = document.createElement('span');
-    deltaEl.className = 'budget-trend-delta ' + (delta >= 0 ? 'is-up' : 'is-down');
-    deltaEl.textContent = `${delta >= 0 ? '+' : '−'}${fmtMoney(Math.abs(delta))} over ${def.label}`;
-    legend.appendChild(deltaEl);
-  }
-
-  render();
-  return wrap;
-}
-
-function legendItem(text, color) {
-  const span = document.createElement('span');
-  span.className = 'budget-legend-item';
-  const sw = document.createElement('span');
-  sw.className = 'swatch';
-  sw.style.background = color;
-  span.appendChild(sw);
-  span.appendChild(document.createTextNode(text));
-  return span;
-}
-
-function fmtAxisMoney(cents) {
-  const n = Math.round(Number(cents) || 0) / 100;
-  const abs = Math.abs(n);
-  const sign = n < 0 ? '−' : '';
-  if (abs >= 1_000_000) return sign + '$' + (abs / 1_000_000).toFixed(1) + 'M';
-  if (abs >= 10_000)    return sign + '$' + Math.round(abs / 1000) + 'k';
-  if (abs >= 1_000)     return sign + '$' + (abs / 1000).toFixed(1) + 'k';
-  return sign + '$' + Math.round(abs);
-}
-
-function formatTrendDateLabel(ymd, days) {
-  if (!ymd) return '';
-  const [y, m, d] = ymd.split('-');
-  if (days <= 14) return `${m}/${d}`;
-  // Show "May 15" for multi-month ranges.
-  const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m) - 1] || m;
-  return `${monthShort} ${Number(d)}`;
-}
-
-// ═══ M93: Month in review — pace chart + computed insights ═══════════════════
-//
-// Everything here is DETERMINISTIC arithmetic over the ledger — no model in
-// the loop. Insights are the kind a paper-era bookkeeper would pencil in the
-// margin: pace against budget, categories running hot, subscriptions that
-// crept, bills coming due, first-time merchants, the savings rate.
-
 // Monthly-ized cost of a recurring series, in cents.
 function recurringMonthlyCents(cadence, avgCents) {
   const a = Math.max(0, Number(avgCents) || 0);
@@ -5018,1377 +3495,6 @@ async function computePlanSuggestions() {
   return { hist, recurring, expectedIncomeCents, windowKeys: [k1, k2, k3] };
 }
 
-// Bullet bar: track = the limit, fill = spent, tick = where an even-paced
-// month would be today. Status coloring mirrors evalBudgetStatus.
-function makeBulletBar(spentCents, limitCents, status, paceFrac) {
-  const wrap = document.createElement('div');
-  wrap.className = 'budget-bullet';
-  const limit = Math.max(0, Number(limitCents) || 0);
-  const spent = Math.max(0, Number(spentCents) || 0);
-  const fill = document.createElement('div');
-  fill.className = 'budget-bullet-fill'
-    + (status === 'over' ? ' is-over' : (status === 'near' ? ' is-near' : ''));
-  const pct = limit > 0 ? Math.min(1, spent / limit) : 0;
-  fill.style.width = (pct * 100).toFixed(1) + '%';
-  wrap.appendChild(fill);
-  if (limit > 0 && Number.isFinite(paceFrac) && paceFrac > 0 && paceFrac < 1) {
-    const tick = document.createElement('div');
-    tick.className = 'budget-bullet-pace';
-    tick.style.left = (Math.min(1, paceFrac) * 100).toFixed(1) + '%';
-    tick.title = 'Even-pace point for today';
-    wrap.appendChild(tick);
-  }
-  return wrap;
-}
-
-// The insights register: computed rows, each linking to the view that acts
-// on it. Returns [] quietly when the ledger is too thin to say anything.
-async function computeBudgetInsights(api, monthKey) {
-  const out = [];
-  const curKey = monthRange().key;
-  const isCurrent = monthKey === curKey;
-  const range = monthRange(monthKey);
-  const today = ctToday();
-  const daysInMonth = Number(range.end.slice(8, 10));
-  const dayOfMonth = isCurrent ? Math.min(daysInMonth, today.getDate()) : daysInMonth;
-  const elapsed = Math.max(0.02, dayOfMonth / daysInMonth);
-
-  const openTx = (filter) => {
-    _navState.txFilter = Object.assign({ monthKey }, filter || {});
-    api.commands.executeCommand('budget.openTransactions').catch(() => {});
-  };
-
-  // Ledger aggregates for the month.
-  let agg = { spend: 0, income: 0 };
-  try {
-    agg = await db.get(
-      `SELECT COALESCE(SUM(CASE WHEN tx_type IN ('purchase','fee') THEN amount_cents ELSE 0 END),0) AS spend,
-              COALESCE(SUM(CASE WHEN tx_type='deposit' THEN ABS(amount_cents) ELSE 0 END),0) AS income
-         FROM transactions
-        WHERE status='confirmed' AND transaction_date >= ? AND transaction_date <= ?`,
-      [range.start, range.end]) || agg;
-  } catch { /* empty ledger */ }
-  const spend = Number(agg.spend) || 0;
-  const income = Number(agg.income) || 0;
-  if (spend === 0 && income === 0) return out;
-
-  // 1. Pace against budget (current month only — otherwise it is history).
-  let budgetTotal = 0;
-  try {
-    const b = await db.get('SELECT COALESCE(SUM(limit_cents),0) AS t FROM budgets WHERE month_key=?', [monthKey]);
-    budgetTotal = Number(b?.t) || 0;
-  } catch { /* none */ }
-  if (isCurrent && budgetTotal > 0) {
-    const projected = Math.round(spend / elapsed);
-    const diff = projected - budgetTotal;
-    out.push({
-      sev: diff > 0 ? (diff > budgetTotal * 0.1 ? 'alert' : 'warn') : 'good',
-      glyph: diff > 0 ? '▲' : '▼',
-      text: diff > 0
-        ? `On pace to finish ${fmtMoney(Math.abs(diff))} over budget`
-        : `On pace to finish ${fmtMoney(Math.abs(diff))} under budget`,
-      sub: `${fmtMoney(spend)} spent by day ${dayOfMonth} of ${daysInMonth} · projected ${fmtMoney(projected)} of ${fmtMoney(budgetTotal)}`,
-      amountCents: diff > 0 ? -diff : Math.abs(diff),
-      onClick: () => api.commands.executeCommand('budget.openBudgets').catch(() => {}),
-    });
-  }
-
-  // 2. Category movers vs the 3-completed-month average (pace-adjusted for
-  //    the running month so mid-month numbers compare fairly).
-  try {
-    const k1 = monthShift(curKey, -1), k3 = monthShift(curKey, -3);
-    const rPrev1 = monthRange(k1), rPrev3 = monthRange(k3);
-    const histRows = await db.all(
-      `SELECT category_id, COALESCE(SUM(amount_cents),0)/3.0 AS avg_net
-         FROM transactions
-        WHERE status='confirmed' AND tx_type IN ('purchase','fee')
-          AND transaction_date >= ? AND transaction_date <= ?
-        GROUP BY category_id`,
-      [rPrev3.start, rPrev1.end]);
-    const avgBy = new Map(histRows.map(r => [r.category_id || '', Math.max(0, Number(r.avg_net) || 0)]));
-    const nowRows = await db.all(
-      `SELECT t.category_id, c.name, COALESCE(SUM(t.amount_cents),0) AS net
-         FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
-        WHERE t.status='confirmed' AND t.tx_type IN ('purchase','fee')
-          AND t.transaction_date >= ? AND t.transaction_date <= ?
-        GROUP BY t.category_id`,
-      [range.start, range.end]);
-    const movers = [];
-    for (const r of nowRows) {
-      const avg = avgBy.get(r.category_id || '') || 0;
-      if (avg < 2000) continue; // no meaningful baseline (< $20/mo)
-      const paceAdjusted = isCurrent ? (Number(r.net) || 0) / elapsed : (Number(r.net) || 0);
-      const delta = paceAdjusted - avg;
-      if (Math.abs(delta) < Math.max(2000, avg * 0.25)) continue;
-      movers.push({ name: r.name || 'Uncategorized', categoryId: r.category_id, delta, avg, paceAdjusted });
-    }
-    movers.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-    for (const mv of movers.slice(0, 3)) {
-      const up = mv.delta > 0;
-      const pct = Math.round(Math.abs(mv.delta) / mv.avg * 100);
-      out.push({
-        sev: up ? 'warn' : 'good',
-        glyph: up ? '▲' : '▼',
-        text: `${mv.name} running ${pct}% ${up ? 'above' : 'below'} its 3-month average`,
-        sub: `${isCurrent ? 'pace-adjusted ' : ''}${fmtMoney(Math.round(mv.paceAdjusted))} vs usual ${fmtMoney(Math.round(mv.avg))}`,
-        amountCents: up ? -Math.round(Math.abs(mv.delta)) : Math.round(Math.abs(mv.delta)),
-        onClick: () => openTx({ categoryId: mv.categoryId, type: 'spend' }),
-      });
-    }
-  } catch { /* thin history */ }
-
-  // 3. Recurring price creep — last charge ≥ 8% above the series average.
-  try {
-    const creep = await db.all(
-      `SELECT display_name, merchant_pattern, avg_amount_cents, last_amount_cents
-         FROM recurring_series
-        WHERE cancelled=0 AND occurrence_count >= 3
-          AND last_amount_cents IS NOT NULL AND avg_amount_cents > 0
-          AND last_amount_cents > avg_amount_cents * 1.08
-        ORDER BY (last_amount_cents - avg_amount_cents) DESC LIMIT 3`);
-    for (const r of creep) {
-      const name = r.display_name || r.merchant_pattern;
-      const d = (Number(r.last_amount_cents) || 0) - (Number(r.avg_amount_cents) || 0);
-      out.push({
-        sev: 'warn',
-        glyph: '▲',
-        text: `${name} charged ${fmtMoney(r.last_amount_cents)}, up from its usual ${fmtMoney(r.avg_amount_cents)}`,
-        sub: 'Recurring price increase',
-        amountCents: -d,
-        onClick: () => api.commands.executeCommand('budget.openRecurring').catch(() => {}),
-      });
-    }
-  } catch { /* no recurring table content */ }
-
-  // 4. Bills due in the next 14 days (current month only).
-  if (isCurrent) {
-    try {
-      const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      const horizon = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 14);
-      const horizonYmd = `${horizon.getFullYear()}-${String(horizon.getMonth() + 1).padStart(2, '0')}-${String(horizon.getDate()).padStart(2, '0')}`;
-      const due = await db.get(
-        `SELECT COUNT(*) AS n, COALESCE(SUM(avg_amount_cents),0) AS total
-           FROM recurring_series
-          WHERE cancelled=0 AND next_due_date >= ? AND next_due_date <= ?`,
-        [todayYmd, horizonYmd]);
-      if (due && Number(due.n) > 0) {
-        out.push({
-          sev: 'info',
-          glyph: '◆',
-          text: `${due.n} recurring bill${Number(due.n) === 1 ? '' : 's'} due in the next 14 days`,
-          sub: 'Committed, not yet charged',
-          amountCents: -(Number(due.total) || 0),
-          onClick: () => api.commands.executeCommand('budget.openRecurring').catch(() => {}),
-        });
-      }
-    } catch { /* ignore */ }
-  }
-
-  // 5. First-time merchants with real money behind them.
-  try {
-    const firsts = await db.all(
-      `SELECT merchant, SUM(amount_cents) AS total
-         FROM transactions
-        WHERE status='confirmed' AND tx_type IN ('purchase','fee') AND merchant IS NOT NULL
-          AND transaction_date >= ? AND transaction_date <= ?
-          AND merchant NOT IN (
-            SELECT DISTINCT merchant FROM transactions
-             WHERE status='confirmed' AND merchant IS NOT NULL AND transaction_date < ?)
-        GROUP BY merchant HAVING total >= 2500
-        ORDER BY total DESC LIMIT 1`,
-      [range.start, range.end, range.start]);
-    if (firsts && firsts.length > 0) {
-      const f = firsts[0];
-      out.push({
-        sev: 'info',
-        glyph: '+',
-        text: `New merchant: ${f.merchant}`,
-        sub: 'First appearance in the ledger this month',
-        amountCents: -(Number(f.total) || 0),
-        onClick: () => openTx({ merchant: f.merchant }),
-      });
-    }
-  } catch { /* ignore */ }
-
-  // 6. Savings rate vs previous month.
-  if (income > 0) {
-    try {
-      const prevR = monthRange(monthShift(monthKey, -1));
-      const prev = await db.get(
-        `SELECT COALESCE(SUM(CASE WHEN tx_type IN ('purchase','fee') THEN amount_cents ELSE 0 END),0) AS spend,
-                COALESCE(SUM(CASE WHEN tx_type='deposit' THEN ABS(amount_cents) ELSE 0 END),0) AS income
-           FROM transactions
-          WHERE status='confirmed' AND transaction_date >= ? AND transaction_date <= ?`,
-        [prevR.start, prevR.end]);
-      const rate = (income - spend) / income;
-      const prevIncome2 = Number(prev?.income) || 0;
-      if (prevIncome2 > 0 && !isCurrent) {
-        const prevRate = (prevIncome2 - (Number(prev?.spend) || 0)) / prevIncome2;
-        const up = rate >= prevRate;
-        out.push({
-          sev: up ? 'good' : 'warn',
-          glyph: '%',
-          text: `Savings rate ${Math.round(rate * 100)}% (${up ? 'up from' : 'down from'} ${Math.round(prevRate * 100)}%)`,
-          sub: `Kept ${fmtMoney(income - spend)} of ${fmtMoney(income)} income`,
-          amountCents: null,
-          onClick: () => api.commands.executeCommand('budget.openCashFlow').catch(() => {}),
-        });
-      }
-    } catch { /* ignore */ }
-  }
-
-  return out;
-}
-
-// Renders the "Month in review" section: pace chart on top, insight register
-// below. Skips itself entirely when the ledger has nothing for the month.
-async function renderMonthInsights(section, api, monthKey) {
-  const curKey = monthRange().key;
-  const isCurrent = monthKey === curKey;
-  const range = monthRange(monthKey);
-  const daysInMonth = Number(range.end.slice(8, 10));
-  const today = ctToday();
-  const dayOfMonth = isCurrent ? Math.min(daysInMonth, today.getDate()) : daysInMonth;
-
-  // Daily cumulative spend.
-  let dayRows = [];
-  try {
-    dayRows = await db.all(
-      `SELECT transaction_date AS d, COALESCE(SUM(amount_cents),0) AS net
-         FROM transactions
-        WHERE status='confirmed' AND tx_type IN ('purchase','fee')
-          AND transaction_date >= ? AND transaction_date <= ?
-        GROUP BY transaction_date ORDER BY transaction_date ASC`,
-      [range.start, range.end]);
-  } catch { dayRows = []; }
-
-  const insights = await computeBudgetInsights(api, monthKey);
-  if (dayRows.length === 0 && insights.length === 0) return;
-
-  const h3 = document.createElement('h3');
-  h3.textContent = 'Month in Review';
-  section.appendChild(h3);
-
-  // ── Pace chart ──
-  let budgetTotal = 0;
-  try {
-    const b = await db.get('SELECT COALESCE(SUM(limit_cents),0) AS t FROM budgets WHERE month_key=?', [monthKey]);
-    budgetTotal = Number(b?.t) || 0;
-  } catch { /* none */ }
-  // Reference pace: the month's budget, else the 3-completed-month average.
-  let refTotal = budgetTotal;
-  let refLabel = 'Budget pace';
-  if (refTotal <= 0) {
-    try {
-      const k1 = monthShift(curKey, -1), k3 = monthShift(curKey, -3);
-      const avg = await db.get(
-        `SELECT COALESCE(SUM(amount_cents),0)/3.0 AS a
-           FROM transactions
-          WHERE status='confirmed' AND tx_type IN ('purchase','fee')
-            AND transaction_date >= ? AND transaction_date <= ?`,
-        [monthRange(k3).start, monthRange(k1).end]);
-      refTotal = Math.round(Number(avg?.a) || 0);
-      refLabel = '3-month average pace';
-    } catch { /* none */ }
-  }
-
-  if (dayRows.length > 0) {
-    const byDay = new Map(dayRows.map(r => [Number(r.d.slice(8, 10)), Number(r.net) || 0]));
-    const cum = [];
-    let running = 0;
-    for (let d = 1; d <= dayOfMonth; d++) {
-      running += Math.max(0, byDay.get(d) || 0);
-      cum.push(running);
-    }
-    const spentToDate = running;
-    const projected = isCurrent && dayOfMonth < daysInMonth
-      ? Math.round(spentToDate / Math.max(1, dayOfMonth) * daysInMonth)
-      : spentToDate;
-
-    const chartHost = document.createElement('div');
-    chartHost.className = 'budget-trend-chart-host';
-    chartHost.style.position = 'relative';
-    section.appendChild(chartHost);
-
-    const W = 760, H = 200;
-    const padL = 64, padR = 16, padT = 14, padB = 28;
-    const innerW = W - padL - padR, innerH = H - padT - padB;
-    const maxV = Math.max(spentToDate, projected, refTotal, 1) * 1.06;
-    const xFor = (day) => padL + ((day - 1) / Math.max(1, daysInMonth - 1)) * innerW;
-    const yFor = (v) => padT + innerH - (v / maxV) * innerH;
-
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    svg.classList.add('budget-trend-chart');
-    chartHost.appendChild(svg);
-
-    for (let i = 0; i <= 4; i++) {
-      const v = maxV * (1 - i / 4);
-      const y = yFor(v);
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', String(padL)); line.setAttribute('x2', String(W - padR));
-      line.setAttribute('y1', String(y)); line.setAttribute('y2', String(y));
-      line.classList.add('budget-chart-grid');
-      svg.appendChild(line);
-      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      lbl.setAttribute('x', String(padL - 8)); lbl.setAttribute('y', String(y + 4));
-      lbl.setAttribute('text-anchor', 'end');
-      lbl.classList.add('budget-chart-axis');
-      lbl.textContent = fmtAxisMoney(v);
-      svg.appendChild(lbl);
-    }
-    for (const day of [1, Math.round(daysInMonth / 2), daysInMonth]) {
-      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      lbl.setAttribute('x', String(xFor(day))); lbl.setAttribute('y', String(H - 10));
-      lbl.setAttribute('text-anchor', 'middle');
-      lbl.classList.add('budget-chart-axis');
-      lbl.textContent = String(day);
-      svg.appendChild(lbl);
-    }
-
-    const mkPath = (pts, cls, stroke, dash) => {
-      const p = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-      p.setAttribute('points', pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '));
-      p.setAttribute('fill', 'none');
-      p.setAttribute('stroke', stroke);
-      p.setAttribute('stroke-width', '2');
-      p.setAttribute('stroke-linejoin', 'round');
-      if (dash) p.setAttribute('stroke-dasharray', dash);
-      svg.appendChild(p);
-      return p;
-    };
-
-    // Reference pace line (neutral, dashed): even spend across the month.
-    if (refTotal > 0) {
-      mkPath([[xFor(1), yFor(refTotal / daysInMonth)], [xFor(daysInMonth), yFor(refTotal)]],
-        '', 'var(--vscode-descriptionForeground, #888)', '5 4');
-    }
-    // Actual cumulative spend.
-    mkPath(cum.map((v, i) => [xFor(i + 1), yFor(v)]), '', 'var(--vscode-charts-blue, #5a8bca)');
-    // Projection (dotted continuation) for the running month.
-    if (isCurrent && dayOfMonth < daysInMonth) {
-      mkPath([[xFor(dayOfMonth), yFor(spentToDate)], [xFor(daysInMonth), yFor(projected)]],
-        '', 'var(--vscode-charts-blue, #5a8bca)', '2 4');
-    }
-
-    // Hover: nearest-day crosshair + tooltip.
-    const hover = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    hover.setAttribute('y1', String(padT)); hover.setAttribute('y2', String(padT + innerH));
-    hover.setAttribute('class', 'budget-chart-hover');
-    hover.style.display = 'none';
-    svg.appendChild(hover);
-    const tip = document.createElement('div');
-    tip.className = 'budget-trend-tip';
-    tip.style.display = 'none';
-    chartHost.appendChild(tip);
-    svg.addEventListener('mousemove', (e) => {
-      const rect = svg.getBoundingClientRect();
-      const px = (e.clientX - rect.left) / rect.width * W;
-      const day = Math.max(1, Math.min(dayOfMonth, Math.round((px - padL) / innerW * (daysInMonth - 1)) + 1));
-      const x = xFor(day);
-      hover.setAttribute('x1', String(x)); hover.setAttribute('x2', String(x));
-      hover.style.display = '';
-      const v = cum[day - 1] || 0;
-      const paceV = refTotal > 0 ? Math.round(refTotal * day / daysInMonth) : null;
-      tip.innerHTML = `<div class="d">${escHtml(range.start.slice(0, 8))}${String(day).padStart(2, '0')}</div>`
-        + `<div><span class="sw" style="background:var(--vscode-charts-blue,#5a8bca)"></span>Spent ${escHtml(fmtMoney(v))}</div>`
-        + (paceV != null ? `<div><span class="sw" style="background:var(--vscode-descriptionForeground,#888)"></span>${escHtml(refLabel)} ${escHtml(fmtMoney(paceV))}</div>` : '');
-      tip.style.display = '';
-      const tipPx = (x / W) * rect.width;
-      tip.style.left = Math.min(Math.max(tipPx + 12, 8), rect.width - 190) + 'px';
-      tip.style.top = '8px';
-    });
-    svg.addEventListener('mouseleave', () => { hover.style.display = 'none'; tip.style.display = 'none'; });
-
-    const legend = document.createElement('div');
-    legend.className = 'budget-chart-legend';
-    legend.appendChild(legendItem('Spent to date', 'var(--vscode-charts-blue, #5a8bca)'));
-    if (refTotal > 0) legend.appendChild(legendItem(refLabel, 'var(--vscode-descriptionForeground, #888)'));
-    if (isCurrent && dayOfMonth < daysInMonth) {
-      const proj = document.createElement('span');
-      proj.className = 'budget-legend-item';
-      proj.textContent = `Projected month-end: ${fmtMoney(projected)}`;
-      legend.appendChild(proj);
-    }
-    section.appendChild(legend);
-  }
-
-  // ── Insight register ──
-  if (insights.length > 0) {
-    const list = document.createElement('div');
-    list.className = 'budget-insights';
-    for (const ins of insights) {
-      const row = document.createElement('div');
-      row.className = 'budget-insight-row'
-        + (ins.sev === 'warn' ? ' is-warn' : ins.sev === 'alert' ? ' is-alert' : ins.sev === 'good' ? ' is-good' : '');
-      const glyph = document.createElement('span');
-      glyph.className = 'budget-insight-glyph';
-      glyph.textContent = ins.glyph || '·';
-      const text = document.createElement('span');
-      text.className = 'budget-insight-title';
-      text.innerHTML = escHtml(ins.text) + (ins.sub ? ` <span class="sub">· ${escHtml(ins.sub)}</span>` : '');
-      const amt = document.createElement('span');
-      amt.className = 'budget-insight-amt';
-      if (ins.amountCents != null) {
-        amt.textContent = fmtLedger(ins.amountCents);
-        if (ins.amountCents < 0) amt.classList.add('negative');
-        else if (ins.amountCents > 0) amt.classList.add('positive');
-      }
-      row.appendChild(glyph); row.appendChild(text); row.appendChild(amt);
-      if (typeof ins.onClick === 'function') row.addEventListener('click', ins.onClick);
-      list.appendChild(row);
-    }
-    section.appendChild(list);
-  }
-}
-
-function buildDailyHeatmap(opts) {
-  // opts: { initialYear, initialMonth0, queryFn(year, month0) -> Promise<rows>,
-  //         onDayClick(ymd), hideNav (bool) }
-  // Self-contained calendar with optional prev/next month nav and a spend/
-  // income toggle. When `hideNav` is true the caller drives the visible
-  // month externally via wrap.setMonth(year, month0) — so the dashboard's
-  // single scope can move every widget at once.
-
-  const wrap = document.createElement('div');
-  wrap.className = 'budget-heatmap-wrap';
-
-  let year = opts.initialYear;
-  let month0 = opts.initialMonth0;
-  let mode = 'spend';
-  let byDay = new Map();
-
-  // ── Header: prev / month label / next, then mode toggle ─────────────
-  const header = document.createElement('div');
-  header.className = 'budget-heatmap-header';
-
-  const nav = document.createElement('div');
-  nav.className = 'budget-heatmap-nav';
-  const monthLbl = document.createElement('span');
-  monthLbl.className = 'budget-heatmap-month';
-  if (opts.hideNav) {
-    nav.appendChild(monthLbl);
-  } else {
-    const prev = document.createElement('button');
-    prev.type = 'button'; prev.className = 'budget-iconbtn';
-    prev.setAttribute('aria-label', 'Previous month');
-    prev.textContent = '◀';
-    prev.addEventListener('click', () => goto(-1));
-    const next = document.createElement('button');
-    next.type = 'button'; next.className = 'budget-iconbtn';
-    next.setAttribute('aria-label', 'Next month');
-    next.textContent = '▶';
-    next.addEventListener('click', () => goto(+1));
-    nav.appendChild(prev); nav.appendChild(monthLbl); nav.appendChild(next);
-  }
-  header.appendChild(nav);
-
-  const seg = document.createElement('div');
-  seg.className = 'budget-segmented';
-  const btnSpend = document.createElement('button');
-  btnSpend.type = 'button'; btnSpend.className = 'budget-segmented-btn';
-  btnSpend.textContent = 'Expenses';
-  btnSpend.addEventListener('click', () => { mode = 'spend'; draw(); });
-  const btnIncome = document.createElement('button');
-  btnIncome.type = 'button'; btnIncome.className = 'budget-segmented-btn';
-  btnIncome.textContent = 'Income';
-  btnIncome.addEventListener('click', () => { mode = 'income'; draw(); });
-  seg.appendChild(btnSpend); seg.appendChild(btnIncome);
-  header.appendChild(seg);
-
-  const totalLbl = document.createElement('span');
-  totalLbl.className = 'budget-heatmap-total';
-  header.appendChild(totalLbl);
-  wrap.appendChild(header);
-
-  // ── Day-of-week row (single, persistent) ────────────────────────────
-  const dowRow = document.createElement('div');
-  dowRow.className = 'budget-heatmap-dow-row';
-  for (const d of ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']) {
-    const c = document.createElement('div');
-    c.className = 'budget-heatmap-dow';
-    c.textContent = d;
-    dowRow.appendChild(c);
-  }
-  wrap.appendChild(dowRow);
-
-  // ── Grid ─────────────────────────────────────────────────────────────
-  const grid = document.createElement('div');
-  grid.className = 'budget-heatmap-grid';
-  wrap.appendChild(grid);
-
-  async function goto(deltaMonths) {
-    let m = month0 + deltaMonths;
-    let y = year;
-    while (m < 0)  { m += 12; y -= 1; }
-    while (m > 11) { m -= 12; y += 1; }
-    year = y; month0 = m;
-    await reload();
-  }
-
-  async function reload() {
-    grid.innerHTML = '<div class="budget-heatmap-loading">Loading…</div>';
-    try {
-      const rows = await opts.queryFn(year, month0);
-      byDay = new Map();
-      for (const r of (rows || [])) byDay.set(String(r.d).slice(0, 10), r);
-    } catch {
-      byDay = new Map();
-    }
-    draw();
-  }
-
-  function draw() {
-    grid.innerHTML = '';
-    btnSpend.setAttribute('aria-pressed',  mode === 'spend'  ? 'true' : 'false');
-    btnIncome.setAttribute('aria-pressed', mode === 'income' ? 'true' : 'false');
-    const monthName = ['January','February','March','April','May','June','July','August','September','October','November','December'][month0];
-    monthLbl.textContent = `${monthName} ${year}`;
-
-    const first = new Date(year, month0, 1);
-    const startDow = first.getDay();
-    const lastDay = new Date(year, month0 + 1, 0).getDate();
-
-    // Compute max + total in this view.
-    let max = 0, total = 0;
-    for (let d = 1; d <= lastDay; d++) {
-      const ymd = `${year}-${String(month0+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const v = Number((byDay.get(ymd) || {})[mode]) || 0;
-      if (v > max) max = v;
-      total += v;
-    }
-    const modeLabel = mode === 'spend' ? 'Expenses' : 'Income';
-    const otherModeLabel = mode === 'spend' ? 'Income' : 'Expenses';
-    totalLbl.textContent = `${monthName.slice(0,3)} ${modeLabel}: ${fmtMoney(total)}`;
-
-    // Bucketed intensity (5 buckets) — discrete steps read better than a
-    // continuous gradient.
-    function bucket(v) {
-      if (max <= 0 || v <= 0) return 0;
-      const r = v / max;
-      if (r > 0.75) return 4;
-      if (r > 0.5)  return 3;
-      if (r > 0.25) return 2;
-      return 1;
-    }
-
-    // Leading blanks.
-    for (let i = 0; i < startDow; i++) {
-      const blank = document.createElement('div');
-      blank.className = 'budget-heatmap-cell is-blank';
-      grid.appendChild(blank);
-    }
-
-    const today = todayYmd();
-    for (let d = 1; d <= lastDay; d++) {
-      const ymd = `${year}-${String(month0+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const r = byDay.get(ymd);
-      const v = r ? Number(r[mode]) || 0 : 0;
-      const otherV = r ? Number(r[mode === 'spend' ? 'income' : 'spend']) || 0 : 0;
-      const cell = document.createElement('button');
-      cell.type = 'button';
-      cell.className = `budget-heatmap-cell mode-${mode} bucket-${bucket(v)}`;
-      if (ymd === today) cell.classList.add('is-today');
-      cell.title = v > 0
-        ? `${ymd} · ${fmtMoney(v)}` + (otherV > 0 ? ` (${otherModeLabel} ${fmtMoney(otherV)})` : '')
-        : `${ymd} · no activity`;
-      cell.innerHTML = `<span class="day">${d}</span>`;
-      cell.addEventListener('click', () => {
-        if (typeof opts.onDayClick === 'function') opts.onDayClick(ymd);
-      });
-      grid.appendChild(cell);
-    }
-
-    // Trailing blanks to round out the last week.
-    const totalCells = startDow + lastDay;
-    const trailing = (7 - (totalCells % 7)) % 7;
-    for (let i = 0; i < trailing; i++) {
-      const blank = document.createElement('div');
-      blank.className = 'budget-heatmap-cell is-blank';
-      grid.appendChild(blank);
-    }
-  }
-
-  // Initial load.
-  reload();
-  wrap.setMonth = async (y, m0) => {
-    if (year === y && month0 === m0) return;
-    year = y; month0 = m0;
-    await reload();
-  };
-  return wrap;
-}
-
-// ─── Dashboard widgets (M64 P3 redesign) ───────────────────────────────────
-//
-// Built from the structural research in
-// /memories/repo/finance-ui-design-principles.md. Every widget below honours
-// the dashboard's shared scope object (active month + account filter), so
-// changing one filter chip recomputes every card and chart in lock-step.
-// That cross-visual interactivity is what turns a "wall of widgets" into an
-// analytical dashboard (Yigitbasioglu 2012, Few 2006).
-
-// Build a SQL fragment + params for "WHERE … AND account_id IN (...)".
-// Returns { clause: ' AND account_id IN (?,?)', params: [...] } or empty when
-// the user has all accounts selected (state.accountIds === null).
-function _acctClause(state, alias) {
-  const ids = state && Array.isArray(state.accountIds) ? state.accountIds : null;
-  if (!ids || ids.length === 0) return { clause: '', params: [] };
-  const col = alias ? `${alias}.account_id` : 'account_id';
-  return { clause: ` AND ${col} IN (${ids.map(() => '?').join(',')})`, params: ids.slice() };
-}
-
-// Cash-flow chart (the canonical analytical-finance chart): bars per period
-// with income above zero and spend below zero, plus a net-line overlay.
-// The widget owns its own range selector (3M / 6M / 12M / YTD) — that range
-// is INDEPENDENT of the dashboard's month scope, because cash flow is by
-// definition a multi-month comparison. Every other widget on the page
-// follows the dashboard's single month.
-// "Nice" axis numbers so gridlines land on round, human intervals
-// (Heckbert's loose-label algorithm) instead of arbitrary data fractions.
-function niceNum(range, round) {
-  if (!(range > 0)) return 1;
-  const exp = Math.floor(Math.log10(range));
-  const f = range / Math.pow(10, exp);
-  let nf;
-  if (round) nf = f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10;
-  else       nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
-  return nf * Math.pow(10, exp);
-}
-function niceTicks(min, max, maxTicks) {
-  if (min === max) max = min + 1;
-  const range = niceNum(max - min, false);
-  const step = niceNum(range / Math.max(1, maxTicks - 1), true);
-  const niceMin = Math.floor(min / step) * step;
-  const niceMax = Math.ceil(max / step) * step;
-  const ticks = [];
-  for (let v = niceMin; v <= niceMax + step * 0.5; v += step) ticks.push(Math.round(v));
-  return ticks;
-}
-
-function buildCashFlowChart(api, state, refresh) {
-  const wrap = document.createElement('div');
-  wrap.className = 'budget-cashflow-wrap';
-
-  const ranges = [
-    { id: '3m',  label: '3M',  months: 3  },
-    { id: '6m',  label: '6M',  months: 6  },
-    { id: '12m', label: '12M', months: 12 },
-    { id: 'ytd', label: 'YTD', months: 0  }, // computed below
-  ];
-
-  const header = document.createElement('div');
-  header.className = 'budget-trend-header';
-  const title = document.createElement('div');
-  title.className = 'budget-trend-title';
-  title.textContent = 'Income vs Expenses';
-  header.appendChild(title);
-
-  const seg = document.createElement('div');
-  seg.className = 'budget-segmented';
-  for (const r of ranges) {
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'budget-segmented-btn';
-    b.textContent = r.label;
-    b.setAttribute('aria-pressed', state.cashFlowRange === r.id ? 'true' : 'false');
-    b.addEventListener('click', () => {
-      state.cashFlowRange = r.id;
-      seg.querySelectorAll('.budget-segmented-btn').forEach(x =>
-        x.setAttribute('aria-pressed', x.textContent === r.label ? 'true' : 'false'));
-      void render();
-    });
-    seg.appendChild(b);
-  }
-  header.appendChild(seg);
-  wrap.appendChild(header);
-
-  const chartHost = document.createElement('div');
-  chartHost.className = 'budget-trend-chart-host';
-  wrap.appendChild(chartHost);
-
-  const legend = document.createElement('div');
-  legend.className = 'budget-chart-legend';
-  legend.appendChild(legendItem('Income', 'var(--vscode-charts-green, #22c55e)'));
-  legend.appendChild(legendItem('Expenses',  'var(--vscode-charts-red,   #f87171)'));
-  legend.appendChild(legendItem('Net',    'var(--vscode-charts-blue,  #3b82f6)'));
-  wrap.appendChild(legend);
-
-  async function render() {
-    chartHost.innerHTML = '';
-    const def = ranges.find(r => r.id === state.cashFlowRange) || ranges[1];
-    const today = ctToday();
-    let firstStart;
-    let monthsBackN;
-    if (def.id === 'ytd') {
-      firstStart = `${today.getFullYear()}-01-01`;
-      monthsBackN = today.getMonth() + 1;
-    } else {
-      const back = def.months - 1;
-      const d = new Date(today.getFullYear(), today.getMonth() - back, 1);
-      firstStart = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
-      monthsBackN = def.months;
-    }
-
-    const acct = _acctClause(state, '');
-    let rows;
-    try {
-      rows = await db.all(
-        `SELECT strftime('%Y-%m', transaction_date) AS m,
-                COALESCE(SUM(CASE WHEN tx_type IN ('purchase','fee') THEN amount_cents ELSE 0 END),0) AS spend,
-                COALESCE(SUM(CASE WHEN tx_type='deposit' THEN ABS(amount_cents) ELSE 0 END),0) AS income
-           FROM transactions
-          WHERE status='confirmed' AND transaction_date >= ?${acct.clause}
-          GROUP BY m
-          ORDER BY m ASC`,
-        [firstStart, ...acct.params]);
-    } catch { rows = []; }
-
-    // Fill in zero months so the bar pattern is contiguous.
-    const byMonth = new Map((rows || []).map(r => [r.m, r]));
-    const labels = [];
-    const incomes = [];
-    const spends = [];
-    const nets = [];
-    for (let i = monthsBackN - 1; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      const r = byMonth.get(k) || { income: 0, spend: 0 };
-      labels.push(d.toLocaleString('en-US', { month: 'short' }));
-      incomes.push(Number(r.income) || 0);
-      spends.push(Number(r.spend) || 0);
-      nets.push((Number(r.income) || 0) - (Number(r.spend) || 0));
-    }
-
-    const W = 760, H = 180;
-    const padL = 56, padR = 16, padT = 12, padB = 28;
-    const innerW = W - padL - padR;
-    const innerH = H - padT - padB;
-    const groupCount = labels.length || 1;
-    const groupW = innerW / groupCount;
-    const barW = Math.max(6, Math.min(28, (groupW - 8) / 2));
-
-    // Bars are both POSITIVE — colour distinguishes income (green) from
-    // expenses (red). The axis is 0-based with round, standard intervals; the
-    // floor drops below 0 only when a month is genuinely net-negative.
-    const maxData = Math.max(0, ...incomes, ...spends, ...nets) || 100000; // ≥ $1k floor for an empty chart
-    const minData = Math.min(0, ...nets);
-    const ticks = niceTicks(minData, maxData, 5);
-    const minV = ticks[0];
-    const maxV = ticks[ticks.length - 1];
-    const vRange = (maxV - minV) || 1;
-    function yFor(v) { return padT + innerH - ((v - minV) / vRange) * innerH; }
-    const yZero = yFor(0);
-
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    svg.classList.add('budget-trend-chart');
-    chartHost.appendChild(svg);
-
-    // Gridlines at round tick values.
-    for (const tv of ticks) {
-      const y = yFor(tv);
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', String(padL)); line.setAttribute('x2', String(W - padR));
-      line.setAttribute('y1', String(y));    line.setAttribute('y2', String(y));
-      line.classList.add('budget-chart-grid');
-      svg.appendChild(line);
-      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      lbl.setAttribute('x', String(padL - 8));
-      lbl.setAttribute('y', String(y + 4));
-      lbl.setAttribute('text-anchor', 'end');
-      lbl.classList.add('budget-chart-axis');
-      lbl.textContent = fmtAxisMoney(tv);
-      svg.appendChild(lbl);
-    }
-    // Zero baseline (slightly heavier).
-    const base = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    base.setAttribute('x1', String(padL)); base.setAttribute('x2', String(W - padR));
-    base.setAttribute('y1', String(yZero)); base.setAttribute('y2', String(yZero));
-    base.classList.add('budget-chart-baseline');
-    svg.appendChild(base);
-
-    // Bars + month labels.
-    for (let i = 0; i < groupCount; i++) {
-      const cx = padL + i * groupW + groupW / 2;
-      const incY  = yFor(incomes[i]);
-      const incH  = Math.max(0, yZero - incY);
-      const spdY  = yFor(spends[i]);
-      const spdH  = Math.max(0, yZero - spdY);
-
-      // Income bar (green, left).
-      if (incomes[i] > 0) {
-        const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        r.setAttribute('x', String(cx - barW - 1));
-        r.setAttribute('y', String(incY));
-        r.setAttribute('width', String(barW));
-        r.setAttribute('height', String(incH));
-        r.setAttribute('rx', '2');
-        r.setAttribute('fill', 'var(--vscode-charts-green, #22c55e)');
-        r.classList.add('budget-cashflow-bar');
-        r.addEventListener('click', () => {
-          const today2 = ctToday();
-          const d = new Date(today2.getFullYear(), today2.getMonth() - (groupCount - 1 - i), 1);
-          const mk = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-          _navState.txFilter = { monthKey: mk, type: 'deposit' };
-          api.commands.executeCommand('budget.openTransactions').catch(() => {});
-        });
-        const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-        t.textContent = `${labels[i]} income: ${fmtMoney(incomes[i])}`;
-        r.appendChild(t);
-        svg.appendChild(r);
-      }
-      // Expense bar (red, right).
-      if (spends[i] > 0) {
-        const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        r.setAttribute('x', String(cx + 1));
-        r.setAttribute('y', String(spdY));
-        r.setAttribute('width', String(barW));
-        r.setAttribute('height', String(spdH));
-        r.setAttribute('rx', '2');
-        r.setAttribute('fill', 'var(--vscode-charts-red, #f87171)');
-        r.classList.add('budget-cashflow-bar');
-        r.addEventListener('click', () => {
-          const today2 = ctToday();
-          const d = new Date(today2.getFullYear(), today2.getMonth() - (groupCount - 1 - i), 1);
-          const mk = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-          _navState.txFilter = { monthKey: mk, type: 'spend' };
-          api.commands.executeCommand('budget.openTransactions').catch(() => {});
-        });
-        const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-        t.textContent = `${labels[i]} Expenses: ${fmtMoney(spends[i])}`;
-        r.appendChild(t);
-        svg.appendChild(r);
-      }
-
-      // Month label.
-      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      lbl.setAttribute('x', String(cx));
-      lbl.setAttribute('y', String(H - 10));
-      lbl.setAttribute('text-anchor', 'middle');
-      lbl.classList.add('budget-chart-axis');
-      lbl.textContent = labels[i];
-      svg.appendChild(lbl);
-    }
-
-    // Net line overlay.
-    if (groupCount >= 2) {
-      const pts = nets.map((v, i) => {
-        const cx = padL + i * groupW + groupW / 2;
-        return `${cx.toFixed(1)},${yFor(v).toFixed(1)}`;
-      });
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-      line.setAttribute('points', pts.join(' '));
-      line.setAttribute('fill', 'none');
-      line.setAttribute('stroke', 'var(--vscode-charts-blue, #3b82f6)');
-      line.setAttribute('stroke-width', '2');
-      line.setAttribute('stroke-linejoin', 'round');
-      svg.appendChild(line);
-      // Net dots.
-      for (let i = 0; i < groupCount; i++) {
-        const cx = padL + i * groupW + groupW / 2;
-        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        c.setAttribute('cx', String(cx));
-        c.setAttribute('cy', String(yFor(nets[i])));
-        c.setAttribute('r', '3');
-        c.setAttribute('fill', 'var(--vscode-charts-blue, #3b82f6)');
-        const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-        t.textContent = `${labels[i]} net: ${fmtMoney(nets[i])}`;
-        c.appendChild(t);
-        svg.appendChild(c);
-      }
-    }
-  }
-
-  void render();
-  return wrap;
-}
-
-// Horizontal category bars — replaces the donut. Bars sorted desc by spend,
-// each row shows: swatch · name · bar (with budget overlay) · amount + MoM
-// delta. Bars are the right tool here because length encoding is the single
-// most accurate preattentive attribute (Cleveland-McGill, Few 2006). A
-// donut over 8 slices is unreadable; bars sorted desc are not.
-function buildCategoryBars(catRows, prevByCatId, onClick) {
-  const wrap = document.createElement('div');
-  wrap.className = 'budget-catbars';
-
-  // The bar's track is the BUDGET TARGET; the fill is actual spend so far.
-  // Target = the category's monthly limit, or (when none is set) last month's
-  // spend as a sensible default. Categories with no spend, no target, and no
-  // history are dropped so the list stays informative.
-  const items = (catRows || []).map(r => {
-    const actual = Number(r.spend) || 0;
-    const explicit = Number(r.monthly_limit_cents) || 0;
-    const prior = Number((prevByCatId && prevByCatId.get(r.id)) || 0);
-    const budget = explicit > 0 ? explicit : prior;
-    return { r, actual, prior, budget, defaulted: explicit <= 0 && prior > 0 };
-  }).filter(x => x.actual > 0 || x.budget > 0)
-    .sort((a, b) => b.actual - a.actual || b.budget - a.budget);
-
-  if (items.length === 0) {
-    wrap.appendChild(emptyState('No category spending or budgets yet.'));
-    return wrap;
-  }
-
-  for (const x of items) {
-    const { r, actual, prior, budget, defaulted } = x;
-    const hasBudget = budget > 0;
-    const ratio = hasBudget ? actual / budget : 0;
-    const over = hasBudget && actual > budget;
-    const near = hasBudget && !over && ratio >= 0.8;
-    const fillPct = hasBudget ? Math.min(100, Math.round(ratio * 100)) : 0;
-
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'budget-catrow';
-    row.title = `Open ${r.name} transactions`;
-
-    const left = document.createElement('div'); left.className = 'budget-catrow-left';
-    left.innerHTML = `<span class="budget-cat-swatch" style="background:${escHtml(r.color || '#888')}"></span><span class="budget-catrow-name">${escHtml(r.name)}</span>`;
-
-    const barWrap = document.createElement('div'); barWrap.className = 'budget-catrow-barwrap';
-    const track = document.createElement('div'); track.className = 'budget-catrow-track' + (hasBudget ? '' : ' is-untracked');
-    const fill = document.createElement('div'); fill.className = 'budget-catrow-fill' + (over ? ' is-over' : near ? ' is-near' : '');
-    fill.style.width = fillPct + '%';
-    track.appendChild(fill); barWrap.appendChild(track);
-
-    const meta = document.createElement('div'); meta.className = 'budget-catrow-meta';
-    const ofBudget = hasBudget
-      ? `of ${escHtml(fmtMoney(budget))}${defaulted ? '<span class="budget-catrow-tag">Last month</span>' : ''}`
-      : 'no target';
-    meta.innerHTML =
-      `<div class="budget-catrow-amtline"><span class="budget-catrow-amt${over ? ' is-over' : ''}">${escHtml(fmtMoney(actual))}</span> <span class="budget-catrow-of">${ofBudget}</span></div>`;
-
-    row.appendChild(left); row.appendChild(barWrap); row.appendChild(meta);
-    row.addEventListener('click', () => onClick && onClick(r));
-    wrap.appendChild(row);
-  }
-  return wrap;
-}
-
-// Single horizontal stacked bar showing how tracked balances are distributed across
-// account kinds. A 100% stacked bar is the right chart for "what fraction of
-// X is in each bucket" — better than a pie because the eye compares lengths,
-// not angles (NN/g preattentive).
-function buildAllocationBar(acctRows) {
-  const wrap = document.createElement('div');
-  wrap.className = 'budget-alloc';
-
-  let cash = 0, savings = 0, credit = 0, other = 0;
-  for (const a of acctRows || []) {
-    const bal = Number(a.latest_balance_cents) || 0;
-    if (a.kind === 'credit_card')      credit  += Math.abs(Math.min(bal, 0));
-    else if (a.kind === 'savings')     savings += Math.max(bal, 0);
-    else if (a.kind === 'checking')    cash    += Math.max(bal, 0);
-    else                                other   += Math.max(bal, 0);
-  }
-  const total = cash + savings + credit + other;
-  if (total <= 0) return wrap;
-
-  const seg = (cls, label, amount, color) => {
-    if (amount <= 0) return;
-    const pct = (amount / total) * 100;
-    const s = document.createElement('div');
-    s.className = `budget-alloc-seg ${cls}`;
-    s.style.width = pct.toFixed(2) + '%';
-    s.style.background = color;
-    s.title = `${label}: ${fmtMoney(amount)} (${pct.toFixed(1)}%)`;
-    bar.appendChild(s);
-    const li = document.createElement('span');
-    li.className = 'budget-alloc-legend-item';
-    li.innerHTML = `<span class="sw" style="background:${escHtml(color)}"></span>${escHtml(label)} <b>${escHtml(fmtMoney(amount))}</b>`;
-    legend.appendChild(li);
-  };
-
-  const bar = document.createElement('div');
-  bar.className = 'budget-alloc-bar';
-  const legend = document.createElement('div');
-  legend.className = 'budget-alloc-legend';
-
-  seg('is-cash',    'Cash',         cash,    'var(--vscode-charts-blue,   #3b82f6)');
-  seg('is-savings', 'Savings',      savings, 'var(--vscode-charts-green,  #22c55e)');
-  seg('is-other',   'Other',        other,   'var(--vscode-charts-purple, #a855f7)');
-  seg('is-credit',  'Credit Owed',  credit,  'var(--vscode-charts-red,    #f87171)');
-
-  wrap.appendChild(bar);
-  wrap.appendChild(legend);
-  return wrap;
-}
-
-// Needs-attention panel — replaces the dead "Recent transactions" list.
-// Every item is one click from action: reclassify, review, or filter to the
-// at-risk category. This is the operational counterpart to the analytical
-// charts above (Eckerson 2010).
-async function buildNeedsAttention(api, scope) {
-  const wrap = document.createElement('div');
-  wrap.className = 'budget-attention';
-
-  const items = [];
-
-  // 1. Untyped this month — needs reclassify.
-  try {
-    const acct = _acctClause(scope, '');
-    const r = await db.get(
-      `SELECT COUNT(*) AS n, COALESCE(SUM(amount_cents),0) AS sum_cents
-         FROM transactions
-        WHERE status='confirmed' AND tx_type IS NULL
-          AND transaction_date >= ? AND transaction_date <= ?${acct.clause}`,
-      [scope.range.start, scope.range.end, ...acct.params]);
-    if (r && Number(r.n) > 0) {
-      items.push({
-        kind: 'warn',
-        title: `${r.n} Untyped Transactions`,
-        sub: `${fmtMoney(r.sum_cents)} Pending Classification`,
-        action: 'Reclassify',
-        onClick: () => api.commands.executeCommand('budget.reclassifyUntyped').catch(() => {}),
-      });
-    }
-  } catch { /* ignore */ }
-
-  // 2. Review queue.
-  try {
-    const r = await db.get(`SELECT COUNT(*) AS n FROM transactions WHERE status='review'`);
-    if (r && Number(r.n) > 0) {
-      items.push({
-        kind: 'warn',
-        title: `${r.n} For Review`,
-        sub: 'AI flagged these for confirmation',
-        action: 'Open Review',
-        onClick: () => {
-          _navState.txFilter = { monthKey: scope.monthKey, type: 'all', status: 'review' };
-          api.commands.executeCommand('budget.openTransactions').catch(() => {});
-        },
-      });
-    }
-  } catch { /* ignore */ }
-
-  // What the AI decided, laid out where it can be checked: the transfers it
-  // typed this month (a wrong one hides an expense from every total), the
-  // duplicates it flagged, the rules it learned. Nothing the model does is
-  // only in the sync log.
-  try {
-    const acct = _acctClause(scope, '');
-    const r = await db.get(
-      `SELECT COUNT(*) AS n, COALESCE(SUM(amount_cents),0) AS sum_cents FROM transactions
-        WHERE status='confirmed' AND tx_type='transfer' AND tx_type_source='ai'
-          AND transaction_date >= ? AND transaction_date <= ?${acct.clause}`,
-      [scope.range.start, scope.range.end, ...acct.params]);
-    if (r && Number(r.n) > 0) {
-      items.push({
-        kind: 'warn',
-        title: `${r.n} Transfers The AI Typed`,
-        sub: `${fmtMoney(Math.abs(Number(r.sum_cents) || 0))} kept out of spending. A wrong one hides an expense.`,
-        action: 'Check',
-        onClick: () => {
-          _navState.txFilter = { monthKey: scope.monthKey, type: 'transfer' };
-          api.commands.executeCommand('budget.openTransactions').catch(() => {});
-        },
-      });
-    }
-    const last = await getSyncStateValue('last_run_status');
-    if (last && typeof last === 'object') {
-      if (Number(last.duplicates) > 0) {
-        items.push({
-          kind: 'warn',
-          title: `${last.duplicates} Possible Duplicates`,
-          sub: 'Flagged on the last sync, waiting in review',
-          action: 'Open Review',
-          onClick: () => api.commands.executeCommand('budget.openReviewQueue').catch(() => {}),
-        });
-      }
-      if (Number(last.rulesLearned) > 0) {
-        items.push({
-          kind: 'warn',
-          title: `${last.rulesLearned} Rules Learned`,
-          sub: 'From repeated AI categorisations on the last sync',
-          action: 'Open Rules',
-          onClick: () => api.commands.executeCommand('budget.openRules').catch(() => {}),
-        });
-      }
-    }
-  } catch { /* ignore */ }
-
-  // 3. Categories at >= 80% of monthly limit (this month).
-  try {
-    const acct = _acctClause(scope, 't');
-    const rows = await db.all(
-      `SELECT c.id, c.name, c.color, c.monthly_limit_cents,
-              COALESCE(SUM(t.amount_cents),0) AS spend
-         FROM categories c
-         LEFT JOIN transactions t
-           ON t.category_id = c.id AND t.status='confirmed'
-          AND t.tx_type IN ('purchase','fee')
-          AND t.transaction_date >= ? AND t.transaction_date <= ?${acct.clause}
-        WHERE c.archived = 0 AND c.kind = 'expense' AND c.monthly_limit_cents > 0
-        GROUP BY c.id`,
-      [scope.range.start, scope.range.end, ...acct.params]);
-    for (const r of rows || []) {
-      const spend = Number(r.spend) || 0;
-      const limit = Number(r.monthly_limit_cents) || 0;
-      if (limit <= 0) continue;
-      const pct = spend / limit;
-      if (pct >= 1) {
-        items.push({
-          kind: 'error',
-          title: `${r.name} over budget`,
-          sub: `${fmtMoney(spend)} of ${fmtMoney(limit)} (${Math.round(pct * 100)}%)`,
-          color: r.color,
-          action: 'View',
-          onClick: () => {
-            _navState.txFilter = { categoryId: r.id, monthKey: scope.monthKey, type: 'spend' };
-            api.commands.executeCommand('budget.openTransactions').catch(() => {});
-          },
-        });
-      } else if (pct >= 0.8) {
-        items.push({
-          kind: 'warn',
-          title: `${r.name} Near Budget`,
-          sub: `${fmtMoney(spend)} of ${fmtMoney(limit)} (${Math.round(pct * 100)}%)`,
-          color: r.color,
-          action: 'View',
-          onClick: () => {
-            _navState.txFilter = { categoryId: r.id, monthKey: scope.monthKey, type: 'spend' };
-            api.commands.executeCommand('budget.openTransactions').catch(() => {});
-          },
-        });
-      }
-    }
-  } catch { /* ignore */ }
-
-  // 4. New merchants this month — first time we've ever seen them.
-  try {
-    const acct = _acctClause(scope, '');
-    const rows = await db.all(
-      `SELECT merchant, MIN(transaction_date) AS first_date,
-              COUNT(*) AS n,
-              SUM(CASE WHEN tx_type IN ('purchase','fee') THEN amount_cents ELSE 0 END) AS spend
-         FROM transactions
-        WHERE status='confirmed' AND merchant IS NOT NULL AND merchant <> ''${acct.clause}
-        GROUP BY merchant
-       HAVING first_date >= ? AND first_date <= ?
-        ORDER BY spend DESC
-        LIMIT 5`,
-      [...acct.params, scope.range.start, scope.range.end]);
-    for (const r of rows || []) {
-      const spend = Number(r.spend) || 0;
-      if (spend <= 0) continue;
-      items.push({
-        kind: 'info',
-        title: `New merchant: ${r.merchant}`,
-        sub: `${r.n} transaction${r.n > 1 ? 's' : ''} · ${fmtMoney(spend)}`,
-        action: 'View',
-        onClick: () => {
-          _navState.txFilter = { monthKey: scope.monthKey, type: 'all', merchant: r.merchant };
-          api.commands.executeCommand('budget.openTransactions').catch(() => {});
-        },
-      });
-    }
-  } catch { /* ignore */ }
-
-  // 5. Largest single expense this month — flags an unusually big hit when it
-  // is a meaningful share of the month's spend.
-  try {
-    const acct = _acctClause(scope, '');
-    const big = await db.get(
-      `SELECT merchant, amount_cents FROM transactions
-        WHERE status='confirmed' AND tx_type IN ('purchase','fee')
-          AND transaction_date >= ? AND transaction_date <= ?${acct.clause}
-        ORDER BY amount_cents DESC LIMIT 1`,
-      [scope.range.start, scope.range.end, ...acct.params]);
-    const amt = big ? Number(big.amount_cents) || 0 : 0;
-    if (big && amt > 0) {
-      const totalRow = await db.get(
-        `SELECT COALESCE(SUM(amount_cents),0) AS s FROM transactions
-          WHERE status='confirmed' AND tx_type IN ('purchase','fee')
-            AND transaction_date >= ? AND transaction_date <= ?${acct.clause}`,
-        [scope.range.start, scope.range.end, ...acct.params]);
-      const total = Number(totalRow?.s) || 0;
-      if (total > 0 && amt / total >= 0.15) {
-        items.push({
-          kind: 'info',
-          title: `Largest charge: ${big.merchant || 'Unknown'}`,
-          sub: `${fmtMoney(amt)} · ${Math.round(amt / total * 100)}% of this month's spend`,
-          action: 'View',
-          onClick: () => {
-            _navState.txFilter = { monthKey: scope.monthKey, type: 'spend', merchant: big.merchant || undefined };
-            api.commands.executeCommand('budget.openTransactions').catch(() => {});
-          },
-        });
-      }
-    }
-  } catch { /* ignore */ }
-
-  if (items.length === 0) {
-    wrap.appendChild(emptyState('Nothing needs your attention this month. Nice.'));
-    return wrap;
-  }
-
-  // Two distinct buckets so the user knows what to *do* vs what's just FYI:
-  //   alerts   — over/near budget, review queue → action recommended.
-  //   insights — new merchant, largest charge   → awareness only, no action.
-  const order = { error: 0, warn: 1 };
-  const alerts = items.filter(it => it.kind === 'error' || it.kind === 'warn').sort((a, b) => order[a.kind] - order[b.kind]);
-  const insights = items.filter(it => it.kind === 'info');
-
-  function renderGroup(heading, hint, list) {
-    if (!list.length) return;
-    const h = document.createElement('h3');
-    h.className = 'budget-section-h budget-attn-h';
-    h.innerHTML = `${escHtml(heading)}<span class="budget-attn-hint">${escHtml(hint)}</span>`;
-    wrap.appendChild(h);
-    for (const it of list) {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = `budget-attn-row is-${it.kind}`;
-      row.innerHTML = `
-        <span class="budget-attn-dot"${it.color ? ` style="background:${escHtml(it.color)}"` : ''}></span>
-        <span class="budget-attn-text">
-          <span class="budget-attn-title">${escHtml(it.title)}</span>
-          <span class="budget-attn-sub">${escHtml(it.sub || '')}</span>
-        </span>
-        <span class="budget-attn-action">${escHtml(it.action || 'View')} →</span>`;
-      if (it.onClick) row.addEventListener('click', it.onClick);
-      wrap.appendChild(row);
-    }
-  }
-
-  renderGroup('Needs attention', 'Action recommended', alerts);
-  renderGroup('Insights', 'Awareness only, nothing to do', insights);
-  return wrap;
-}
-
-// Headline narrative — the one sentence at the top of the dashboard. The
-// research is unanimous: lead with the takeaway, not the data
-// (Refactoring UI, Copilot.money). When we can't compute a meaningful
-// delta yet (no prior month) we fall back to a neutral summary.
-function buildHeadlineNarrative({ totalSpend, prevSpend, totalIncome, prevIncome, topCatName, topCatDelta, monthLabel }) {
-  const el = document.createElement('div');
-  el.className = 'budget-headline';
-
-  const parts = [];
-  if (totalSpend > 0 && prevSpend > 0) {
-    const pct = Math.round(((totalSpend - prevSpend) / prevSpend) * 100);
-    if (Math.abs(pct) >= 5) {
-      const dir = pct > 0 ? 'up' : 'down';
-      let line = `Expenses ${dir === 'up' ? 'Up' : 'Down'} ${Math.abs(pct)}% in ${monthLabel}`;
-      if (topCatName && topCatDelta) {
-        const sign = topCatDelta >= 0 ? '+' : '−';
-        line += `, driven by ${topCatName} (${sign}${fmtMoney(Math.abs(topCatDelta))})`;
-      }
-      parts.push({ text: line + '.', tone: pct > 0 ? 'down' : 'up' });
-    } else {
-      parts.push({ text: `Expenses roughly flat vs Last Month (${pct >= 0 ? '+' : ''}${pct}%).`, tone: 'neutral' });
-    }
-  } else if (totalSpend > 0) {
-    parts.push({ text: `${monthLabel}: ${fmtMoney(totalSpend)} in Expenses so far.`, tone: 'neutral' });
-  } else {
-    parts.push({ text: `No activity in ${monthLabel} yet.`, tone: 'neutral' });
-  }
-
-  if (totalIncome > 0 && prevIncome > 0) {
-    const inDelta = totalIncome - prevIncome;
-    if (Math.abs(inDelta) > 1000) {
-      const sign = inDelta >= 0 ? '+' : '−';
-      parts.push({ text: ` Income ${sign}${fmtMoney(Math.abs(inDelta))} Month over Month.`, tone: inDelta >= 0 ? 'up' : 'down' });
-    }
-  }
-
-  for (const p of parts) {
-    const span = document.createElement('span');
-    span.className = `budget-headline-${p.tone}`;
-    span.textContent = p.text;
-    el.appendChild(span);
-  }
-  return el;
-}
-
-// Account filter chip — multi-select dropdown. When the user picks a subset
-// every widget below recomputes on the next refresh tick (this is the
-// cross-visual interactivity Few/Yigitbasioglu identified as the single
-// most impactful BI dashboard feature).
-function buildAccountFilter(api, allAccounts, state, refresh) {
-  const wrap = document.createElement('div');
-  wrap.className = 'budget-filter-chip';
-
-  function label() {
-    if (!state.accountIds || state.accountIds.length === 0) {
-      return `All Accounts (${allAccounts.length})`;
-    }
-    if (state.accountIds.length === 1) {
-      const a = allAccounts.find(x => x.id === state.accountIds[0]);
-      return a ? (a.display_name || `${a.kind} •••${a.last_four}`) : '1 account';
-    }
-    return `${state.accountIds.length} Accounts`;
-  }
-
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'budget-filter-chip-btn';
-  btn.setAttribute('aria-haspopup', 'true');
-  btn.innerHTML = `<span class="budget-filter-chip-label"></span><span class="budget-filter-chip-caret">▾</span>`;
-  btn.querySelector('.budget-filter-chip-label').textContent = label();
-  wrap.appendChild(btn);
-
-  const menu = document.createElement('div');
-  menu.className = 'budget-filter-chip-menu';
-  menu.style.display = 'none';
-  wrap.appendChild(menu);
-
-  function buildMenu() {
-    menu.innerHTML = '';
-    const all = document.createElement('label');
-    all.className = 'budget-filter-chip-item';
-    const allInput = document.createElement('input');
-    allInput.type = 'checkbox';
-    allInput.checked = !state.accountIds || state.accountIds.length === 0;
-    allInput.addEventListener('change', () => {
-      state.accountIds = null;
-      buildMenu();
-      btn.querySelector('.budget-filter-chip-label').textContent = label();
-      void refresh();
-    });
-    all.appendChild(allInput);
-    const allLbl = document.createElement('span');
-    allLbl.textContent = 'All Accounts';
-    all.appendChild(allLbl);
-    menu.appendChild(all);
-
-    for (const a of allAccounts) {
-      const row = document.createElement('label');
-      row.className = 'budget-filter-chip-item';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      const isOn = !state.accountIds || state.accountIds.includes(a.id);
-      cb.checked = isOn;
-      cb.addEventListener('change', () => {
-        const cur = new Set(state.accountIds && state.accountIds.length > 0 ? state.accountIds : allAccounts.map(x => x.id));
-        if (cb.checked) cur.add(a.id); else cur.delete(a.id);
-        if (cur.size === 0 || cur.size === allAccounts.length) state.accountIds = null;
-        else state.accountIds = Array.from(cur);
-        buildMenu();
-        btn.querySelector('.budget-filter-chip-label').textContent = label();
-        void refresh();
-      });
-      row.appendChild(cb);
-      const span = document.createElement('span');
-      const name = a.display_name || `${a.kind.replace('_',' ')} •••${a.last_four || '????'}`;
-      span.textContent = name;
-      row.appendChild(span);
-      menu.appendChild(row);
-    }
-  }
-  buildMenu();
-
-  btn.addEventListener('click', () => {
-    menu.style.display = (menu.style.display === 'none') ? '' : 'none';
-  });
-  document.addEventListener('click', (e) => {
-    if (!wrap.contains(e.target)) menu.style.display = 'none';
-  });
-
-  return wrap;
-}
-
 function makeCard(label, value, sub, opts) {
   const c = document.createElement('div'); c.className = 'budget-card';
   const l = document.createElement('div'); l.className = 'budget-card-label'; l.textContent = label;
@@ -6446,7 +3552,7 @@ async function openManualBalanceEditor(api, opts = {}) {
 
   const head = document.createElement('div'); head.className = 'budget-drawer-head';
   const title = document.createElement('h3'); title.className = 'budget-drawer-title'; title.style.flex = '1';
-  title.textContent = isCreate ? 'Add asset / liability' : 'Edit holding';
+  title.textContent = isCreate ? 'Add Asset or Debt' : 'Edit Holding';
   head.appendChild(title);
   const closeBtn = document.createElement('button'); closeBtn.className = 'budget-drawer-close'; closeBtn.type = 'button';
   closeBtn.innerHTML = makeIcon(api, 'x', 16) || '✕'; closeBtn.addEventListener('click', close);
@@ -6551,16 +3657,9 @@ async function openManualBalanceEditor(api, opts = {}) {
 
 function renderAccountsSection(body, api) {
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('Add asset / liability', {
+  toolbar.appendChild(makeButton('Add Asset or Debt…', {
     iconHtml: makeIcon(api, 'plus', 12),
     onClick: () => void openManualBalanceEditor(api, { onSaved: refresh }),
-  }));
-  const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
-  toolbar.appendChild(makeButton('Sync Now', {
-    primary: true,
-    iconHtml: makeIcon(api, 'cloud-download', 12),
-    onClick: () => api.commands.executeCommand('budget.sync').finally(() => refresh()),
   }));
   body.appendChild(toolbar);
 
@@ -6671,7 +3770,7 @@ function renderAccountsSection(body, api) {
     if (allRows.length) {
       const h = document.createElement('div'); h.className = 'budget-nw-mgmt-head'; h.textContent = 'Synced accounts'; mgmtEl.appendChild(h);
       const table = document.createElement('table'); table.className = 'budget-table';
-      table.innerHTML = `<thead><tr><th>Name</th><th>Kind</th><th>Last 4</th><th>Tx</th><th style="text-align:right">Latest balance</th><th>As of</th><th>Actions</th></tr></thead>`;
+      table.innerHTML = `<thead><tr><th>Name</th><th>Kind</th><th>Last 4</th><th>Transactions</th><th style="text-align:right">Latest balance</th><th>As of</th><th>Actions</th></tr></thead>`;
       const tb = document.createElement('tbody');
       for (const a of allRows) {
         const tr = document.createElement('tr');
@@ -6709,7 +3808,8 @@ function renderAccountsSection(body, api) {
     }
   }
   void refresh();
-  return () => { alive = false; };
+  const offLedger = onLedgerChanged(() => void refresh());
+  return () => { alive = false; offLedger(); };
 }
 
 // ─── Savings & debt goals ──────────────────────────────────────────────────
@@ -6795,7 +3895,7 @@ async function openGoalEditor(api, opts = {}) {
 
   const head = document.createElement('div'); head.className = 'budget-drawer-head';
   const title = document.createElement('h3'); title.className = 'budget-drawer-title'; title.style.flex = '1';
-  title.textContent = isCreate ? 'New goal' : 'Edit goal';
+  title.textContent = isCreate ? 'New Goal' : 'Edit Goal';
   head.appendChild(title);
   const closeBtn = document.createElement('button'); closeBtn.className = 'budget-drawer-close'; closeBtn.type = 'button';
   closeBtn.innerHTML = makeIcon(api, 'x', 16) || '✕'; closeBtn.addEventListener('click', close); head.appendChild(closeBtn);
@@ -6869,9 +3969,8 @@ async function openGoalEditor(api, opts = {}) {
 
 function renderGoalsSection(body, api) {
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('New goal', { iconHtml: makeIcon(api, 'plus', 12), onClick: () => void openGoalEditor(api, { onSaved: refresh }) }));
+  toolbar.appendChild(makeButton('New Goal…', { iconHtml: makeIcon(api, 'plus', 12), onClick: () => void openGoalEditor(api, { onSaved: refresh }) }));
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
   body.appendChild(toolbar);
 
   const headEl = document.createElement('div'); headEl.className = 'budget-section'; body.appendChild(headEl);
@@ -6900,62 +3999,11 @@ function renderGoalsSection(body, api) {
   }
   void refresh();
   const offBus = onSyncEvent((evt) => { if (evt.kind === 'complete') void refresh(); });
-  return () => { alive = false; offBus(); };
+  const offLedger = onLedgerChanged(() => void refresh());
+  return () => { alive = false; offBus(); offLedger(); };
 }
 
 // ─── Spending donut (category breakdown ring for the Overview) ──────────────
-
-function buildSpendDonut(catRows, totalSpend, centerLabel, onSlice) {
-  const wrap = document.createElement('div'); wrap.className = 'budget-donut-wrap';
-  let slices = (catRows || []).map(r => ({ id: r.id, name: r.name, color: r.color || '#98a2b3', spend: Number(r.spend) || 0 })).filter(s => s.spend > 0).sort((a, b) => b.spend - a.spend);
-  const total = totalSpend || slices.reduce((s, x) => s + x.spend, 0);
-  if (!slices.length || total <= 0) { wrap.appendChild(emptyState('No spending in this period yet.')); return wrap; }
-
-  // Collapse a long tail into "Other" so the ring stays legible.
-  const MAXSEG = 8;
-  if (slices.length > MAXSEG) {
-    const head = slices.slice(0, MAXSEG - 1);
-    const otherSpend = slices.slice(MAXSEG - 1).reduce((s, x) => s + x.spend, 0);
-    slices = [...head, { id: null, name: 'Other', color: '#98a2b3', spend: otherSpend }];
-  }
-
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const size = 180, stroke = 22, r = (size - stroke) / 2, cx = size / 2, cy = size / 2, C = 2 * Math.PI * r;
-  const svg = document.createElementNS(svgNS, 'svg'); svg.setAttribute('viewBox', `0 0 ${size} ${size}`); svg.classList.add('budget-donut');
-  const track = document.createElementNS(svgNS, 'circle');
-  track.setAttribute('cx', cx); track.setAttribute('cy', cy); track.setAttribute('r', r);
-  track.setAttribute('fill', 'none'); track.setAttribute('stroke', 'var(--px-bg-inset, rgba(255,255,255,0.06))'); track.setAttribute('stroke-width', stroke);
-  svg.appendChild(track);
-  const g = document.createElementNS(svgNS, 'g'); g.setAttribute('transform', `rotate(-90 ${cx} ${cy})`); svg.appendChild(g);
-  let acc = 0;
-  for (const s of slices) {
-    const len = (s.spend / total) * C;
-    const c = document.createElementNS(svgNS, 'circle');
-    c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', r);
-    c.setAttribute('fill', 'none'); c.setAttribute('stroke', s.color); c.setAttribute('stroke-width', stroke);
-    c.setAttribute('stroke-dasharray', `${len} ${C - len}`); c.setAttribute('stroke-dashoffset', `${-acc}`);
-    c.classList.add('budget-donut-seg'); g.appendChild(c); acc += len;
-  }
-  const t1 = document.createElementNS(svgNS, 'text'); t1.setAttribute('x', cx); t1.setAttribute('y', cy - 2); t1.setAttribute('text-anchor', 'middle'); t1.classList.add('budget-donut-total'); t1.textContent = fmtMoney(total);
-  const t2 = document.createElementNS(svgNS, 'text'); t2.setAttribute('x', cx); t2.setAttribute('y', cy + 16); t2.setAttribute('text-anchor', 'middle'); t2.classList.add('budget-donut-clabel'); t2.textContent = centerLabel || 'spent';
-  svg.appendChild(t1); svg.appendChild(t2);
-
-  const legend = document.createElement('div'); legend.className = 'budget-donut-legend';
-  for (const s of slices) {
-    const pct = Math.round(s.spend / total * 100);
-    const rowEl = document.createElement(s.id ? 'button' : 'div'); rowEl.className = 'budget-donut-leg' + (s.id ? ' is-click' : '');
-    if (s.id) { rowEl.type = 'button'; rowEl.addEventListener('click', () => onSlice && onSlice(s)); }
-    rowEl.innerHTML = `<span class="budget-donut-sw" style="background:${escHtml(s.color)}"></span>` +
-      `<span class="budget-donut-leg-name">${escHtml(s.name)}</span>` +
-      `<span class="budget-donut-leg-pct">${pct}%</span>` +
-      `<span class="budget-donut-leg-amt">${escHtml(fmtMoney(s.spend))}</span>`;
-    legend.appendChild(rowEl);
-  }
-  wrap.appendChild(svg); wrap.appendChild(legend);
-  return wrap;
-}
-
-// ─── Section: Cash Flow ────────────────────────────────────────────────────
 
 function renderCashFlowSection(body, api) {
   let monthsBackN = 6;
@@ -6967,7 +4015,6 @@ function renderCashFlowSection(body, api) {
     (val) => { monthsBackN = Number(val) || 6; void refresh(); });
   toolbar.appendChild(rangeSel);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
   body.appendChild(toolbar);
 
   const cards = document.createElement('div'); cards.className = 'budget-cards'; body.appendChild(cards);
@@ -7007,9 +4054,9 @@ function renderCashFlowSection(body, api) {
       savingsPoints.push({ label: m.label.split(' ')[0].slice(0, 3), value: (income - spend) / 100 });
     }
 
-    cards.appendChild(makeCard(`Total Income (${monthsBackN} Months)`, fmtMoney(totalIn), ''));
-    cards.appendChild(makeCard(`Total Expenses (${monthsBackN} Months)`, fmtMoney(totalOut), ''));
-    cards.appendChild(makeCard(`Average Savings Rate`, totalIn > 0 ? `${Math.round(((totalIn - totalOut) / totalIn) * 100)}%` : '—',
+    cards.appendChild(makeCard(`Total income (${monthsBackN} months)`, fmtMoney(totalIn), ''));
+    cards.appendChild(makeCard(`Total expenses (${monthsBackN} months)`, fmtMoney(totalOut), ''));
+    cards.appendChild(makeCard('Average savings rate', totalIn > 0 ? `${Math.round(((totalIn - totalOut) / totalIn) * 100)}%` : '—',
       totalIn > 0 ? `Net ${fmtMoney(totalIn - totalOut)}` : ''));
 
     const h1 = document.createElement('h3'); h1.textContent = 'Income vs Expenses'; chartWrap.appendChild(h1);
@@ -7049,7 +4096,8 @@ function renderCashFlowSection(body, api) {
     tableWrap.appendChild(table);
   }
   void refresh();
-  return () => { alive = false; };
+  const offLedger = onLedgerChanged(() => void refresh());
+  return () => { alive = false; offLedger(); };
 }
 
 // ─── Section: Reports ──────────────────────────────────────────────────────
@@ -7064,7 +4112,6 @@ function renderReportsSection(body, api) {
     (val) => { monthsBackN = Number(val) || 3; void refresh(); });
   toolbar.appendChild(rangeSel);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
   body.appendChild(toolbar);
 
   const merchSection = document.createElement('div'); merchSection.className = 'budget-section'; body.appendChild(merchSection);
@@ -7168,7 +4215,8 @@ function renderReportsSection(body, api) {
     trendSection.appendChild(buildLine(points, { width: 720, height: 160, color: 'var(--vscode-charts-red, #a43b38)' }));
   }
   void refresh();
-  return () => { alive = false; };
+  const offLedger = onLedgerChanged(() => void refresh());
+  return () => { alive = false; offLedger(); };
 }
 
 // ─── Section: Budgets ──────────────────────────────────────────────────────
@@ -7537,7 +4585,6 @@ function renderRecurringSection(body, api) {
   cancelToggle.setAttribute('aria-pressed', 'false');
   toolbar.appendChild(cancelToggle);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
   body.appendChild(toolbar);
 
   const summary = document.createElement('div'); summary.className = 'budget-cards'; body.appendChild(summary);
@@ -7583,12 +4630,12 @@ function renderRecurringSection(body, api) {
     const next30 = active.filter(r => r.next_due_date && r.next_due_date <= addDays(today, 30));
     const next30Total = next30.reduce((s, r) => s + (Number(r.avg_amount_cents) || 0), 0);
 
-    summary.appendChild(makeCard('Active subscriptions', String(active.length), 'Detected recurring charges'));
-    summary.appendChild(makeCard('Monthly burn', fmtMoney(Math.round(totalMonthly)), 'Cadence-normalized average'));
+    summary.appendChild(makeCard('Active bills', String(active.length), 'Found from repeating charges'));
+    summary.appendChild(makeCard('Bills a month', fmtMoney(Math.round(totalMonthly)), 'Each usual amount, spread over a month'));
     summary.appendChild(makeCard('Due in 30 days', String(next30.length), next30.length ? `~${fmtMoney(Math.round(next30Total))} upcoming` : 'Nothing due soon'));
 
     if (all.length === 0) {
-      listWrap.appendChild(emptyState('No recurring series detected yet. Sync more transactions, then click Detect now.'));
+      listWrap.appendChild(emptyState('No bills found yet. Sync more transactions, then choose Detect Now.'));
       return;
     }
 
@@ -7631,176 +4678,331 @@ function renderRecurringSection(body, api) {
     }
   }
   void refresh();
-  return () => { alive = false; };
+  const offLedger = onLedgerChanged(() => void refresh());
+  return () => { alive = false; offLedger(); };
 }
 
 // ─── Section: Rules ────────────────────────────────────────────────────────
 
+// What a rule would do to the ledger before it is saved. `rows` are past
+// confirmed purchases ({merchant, category_id, categorization_source}). A row
+// whose category you set by hand is never changed by a rule; it is counted
+// as kept. Changes are grouped by merchant and the category they leave.
+function ruleDryRun(probe, rows, categoryId) {
+  const groups = new Map();
+  let matched = 0, changing = 0, keptManual = 0;
+  for (const r of rows) {
+    if (!ruleMatchesMerchant(probe, r.merchant)) continue;
+    matched++;
+    if (r.category_id === categoryId) continue;
+    if (r.categorization_source === 'manual') { keptManual++; continue; }
+    changing++;
+    const key = `${r.merchant}\u0000${r.category_id || ''}`;
+    const g = groups.get(key) || { merchant: r.merchant, fromId: r.category_id || null, n: 0 };
+    g.n++;
+    groups.set(key, g);
+  }
+  return { matched, changing, keptManual, changes: [...groups.values()].sort((a, b) => b.n - a.n) };
+}
+
+const RULE_MATCH_LABELS = { contains: 'contains', exact: 'is exactly', regex: 'matches the pattern' };
+
+function ruleMadeBy(r) {
+  if (!r.auto_created) return 'You';
+  return Number(r.priority) === 50 ? 'Learned' : 'Automatic';
+}
+
+// Merchants and Rules: every rule, and every merchant still left to the AI.
+// A rule decides the category before the AI is asked.
 function renderRulesSection(body, api) {
-  const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('+ New Rule', {
-    primary: true,
-    onClick: () => { showEditor(null); },
-  }));
-  const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
-  body.appendChild(toolbar);
+  const root = document.createElement('div');
+  root.className = 'budget-ru';
+  body.appendChild(root);
 
-  const help = document.createElement('div');
-  help.style.fontSize = '12px'; help.style.color = 'var(--vscode-descriptionForeground,#888)'; help.style.marginBottom = '8px';
-  help.textContent = 'Rules apply BEFORE the AI categorizer. Higher priority wins. Auto-rules (priority 50) come from your overrides.';
-  body.appendChild(help);
+  const top = document.createElement('div');
+  top.className = 'budget-ru-top';
+  const help = document.createElement('p');
+  help.className = 'budget-ov-note budget-ru-help';
+  help.textContent = 'A rule decides the category before the AI is asked. Merchants without a rule are left to the AI; three matching AI answers make a learned rule, as long as none disagree.';
+  top.appendChild(help);
+  const newHost = document.createElement('div');
+  api.ui.createButton(newHost, { label: 'New Rule…', kind: 'primary', icon: 'plus', onClick: () => showEditor(null) });
+  top.appendChild(newHost);
+  root.appendChild(top);
 
-  const editorWrap = document.createElement('div'); body.appendChild(editorWrap);
-  const tableWrap = document.createElement('div'); body.appendChild(tableWrap);
+  const editorWrap = document.createElement('div');
+  root.appendChild(editorWrap);
+  const rulesWrap = document.createElement('div');
+  root.appendChild(rulesWrap);
+  const aiWrap = document.createElement('div');
+  root.appendChild(aiWrap);
 
   let alive = true;
-  let categoriesList = [];
+  let categories = [];
+  const catName = (id) => categories.find(c => c.id === id)?.name || 'No category';
 
-  function showEditor(rule) {
-    editorWrap.innerHTML = '';
-    const form = document.createElement('div');
-    form.style.padding = '12px'; form.style.border = '1px solid var(--vscode-panel-border, #444)'; form.style.marginBottom = '12px';
-    form.style.display = 'grid'; form.style.gridTemplateColumns = 'auto 1fr'; form.style.gap = '6px 10px'; form.style.maxWidth = '640px';
+  async function pastPurchases() {
+    return db.all(`SELECT merchant, category_id, categorization_source FROM transactions
+                    WHERE status='confirmed' AND tx_type='purchase' AND merchant IS NOT NULL`).catch(() => []);
+  }
 
-    const patternInp = document.createElement('input'); patternInp.className = 'budget-input'; patternInp.placeholder = 'STARBUCKS';
-    patternInp.value = rule ? rule.pattern : '';
+  // The rule form, with the dry run that says what saving would change.
+  function showEditor(rule, preset) {
+    editorWrap.replaceChildren();
+    const card = document.createElement('div');
+    card.className = 'budget-ov-card budget-ru-form';
+    const title = document.createElement('div');
+    title.className = 'budget-pl-title';
+    title.textContent = rule ? 'Edit Rule' : 'New Rule';
+    card.appendChild(title);
 
-    const matchSel = makeDropdown(
-      ['contains', 'exact', 'regex'].map(v => ({ value: v, label: v })),
-      rule ? rule.match_type : 'contains');
-
-    const catSel = makeDropdown(categoryOptions(categoriesList, 'Choose a category…'), rule ? (rule.category_id || '') : '');
-
-    const prioInp = document.createElement('input'); prioInp.type = 'number'; prioInp.className = 'budget-input';
-    prioInp.value = rule ? String(rule.priority) : '100';
-
-    form.appendChild(Object.assign(document.createElement('label'), { textContent: 'Pattern' })); form.appendChild(patternInp);
-    form.appendChild(Object.assign(document.createElement('label'), { textContent: 'Match type' })); form.appendChild(matchSel);
-    form.appendChild(Object.assign(document.createElement('label'), { textContent: 'Category' })); form.appendChild(catSel);
-    // Dry run: what the rule would match in the ledger as typed, before it is saved.
-    const preview = document.createElement('div');
-    preview.style.fontSize = '11px';
-    preview.style.color = 'var(--vscode-descriptionForeground, #aaa)';
-    form.appendChild(Object.assign(document.createElement('label'), { textContent: 'Matches' })); form.appendChild(preview);
-    let previewTimer = null;
-    const runPreview = async () => {
-      const pattern = patternInp.value.trim();
-      if (!pattern) { preview.textContent = 'Type a pattern to see what it would match.'; return; }
-      try {
-        const rows = await db.all(`SELECT t.merchant, c.name AS category FROM transactions t LEFT JOIN categories c ON c.id = t.category_id WHERE t.status='confirmed' AND t.merchant IS NOT NULL`);
-        const probe = { pattern, match_type: matchSel.value };
-        const byCat = new Map();
-        let n = 0;
-        for (const r of rows) {
-          if (!ruleMatchesMerchant(probe, r.merchant)) continue;
-          n++;
-          const k = r.category || 'Uncategorised';
-          byCat.set(k, (byCat.get(k) || 0) + 1);
-        }
-        const top = [...byCat.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} ${v}`).join(', ');
-        preview.textContent = n === 0 ? 'Matches nothing in the ledger.' : `Matches ${n} past ${n === 1 ? 'transaction' : 'transactions'}${top ? ` (now: ${top})` : ''}.`;
-      } catch (e) { preview.textContent = 'Preview failed: ' + (e instanceof Error ? e.message : String(e)); }
-    };
-    const schedulePreview = () => { if (previewTimer) clearTimeout(previewTimer); previewTimer = setTimeout(() => void runPreview(), 250); };
-    patternInp.addEventListener('input', schedulePreview);
-    void runPreview();
-    form.appendChild(Object.assign(document.createElement('label'), { textContent: 'Priority' })); form.appendChild(prioInp);
-
-    const actions = document.createElement('div'); actions.style.gridColumn = '1 / -1'; actions.style.display = 'flex'; actions.style.gap = '6px'; actions.style.marginTop = '4px';
-    const saveBtn = makeButton(rule ? 'Save' : 'Create', {
-      primary: true,
-      onClick: async () => {
-        const pattern = patternInp.value.trim();
-        const categoryId = catSel.value;
-        if (!pattern) { await api.window?.showWarningMessage?.('Pattern required.'); return; }
-        if (!categoryId) { await api.window?.showWarningMessage?.('Category required.'); return; }
-        const now = new Date().toISOString();
-        try {
-          if (rule) {
-            await db.run(
-              `UPDATE categorization_rules SET pattern=?, match_type=?, category_id=?, priority=?, updated_at=? WHERE id=?`,
-              [pattern, matchSel.value, categoryId, parseInt(prioInp.value, 10) || 100, now, rule.id],
-            );
-          } else {
-            await db.run(
-              `INSERT INTO categorization_rules (id, pattern, match_type, category_id, priority, auto_created, active, created_at, updated_at)
-               VALUES (?,?,?,?,?,0,1,?,?)`,
-              [crypto.randomUUID(), pattern, matchSel.value, categoryId, parseInt(prioInp.value, 10) || 100, now, now],
-            );
-          }
-          editorWrap.innerHTML = '';
-          await refresh();
-        } catch (e) {
-          await api.window?.showErrorMessage?.('Save failed: ' + (e instanceof Error ? e.message : String(e)));
-        }
-      },
+    let matchType = rule ? rule.match_type : (preset?.matchType || 'contains');
+    const rowA = document.createElement('div');
+    rowA.className = 'budget-ru-field';
+    const la = document.createElement('span'); la.className = 'budget-ov-label'; la.textContent = 'When the merchant';
+    const seg = document.createElement('div');
+    api.ui.createSegmented(seg, {
+      ariaLabel: 'How the merchant is matched',
+      items: [{ value: 'contains', label: 'Contains' }, { value: 'exact', label: 'Is Exactly' }, { value: 'regex', label: 'Matches Pattern' }],
+      value: matchType,
+      onChange: (v) => { matchType = v; schedule(); },
     });
-    const cancelBtn = makeButton('Cancel', { onClick: () => { editorWrap.innerHTML = ''; } });
-    actions.appendChild(saveBtn); actions.appendChild(cancelBtn);
-    form.appendChild(actions);
-    editorWrap.appendChild(form);
+    const patternInp = document.createElement('input');
+    patternInp.className = 'budget-input budget-ru-input';
+    patternInp.setAttribute('aria-label', 'Merchant text');
+    patternInp.placeholder = 'e.g. BLUE BOTTLE';
+    patternInp.value = rule ? rule.pattern : (preset?.pattern || '');
+    rowA.append(la, seg, patternInp);
+    card.appendChild(rowA);
+
+    const rowB = document.createElement('div');
+    rowB.className = 'budget-ru-field';
+    const lb = document.createElement('span'); lb.className = 'budget-ov-label'; lb.textContent = 'File it under';
+    const catSel = makeDropdown(categoryOptions(categories, 'Choose a category…'),
+      rule ? (rule.category_id || '') : (preset?.categoryId || ''), () => schedule(), { ariaLabel: 'Category', className: 'budget-ru-cat' });
+    rowB.append(lb, catSel);
+    card.appendChild(rowB);
+
+    const dry = document.createElement('div');
+    dry.className = 'budget-ru-dry';
+    card.appendChild(dry);
+
+    const pastLabel = document.createElement('label');
+    pastLabel.className = 'budget-rv-check';
+    const pastBox = document.createElement('input');
+    pastBox.type = 'checkbox';
+    const pastText = document.createElement('span');
+    pastText.textContent = 'Also change the past ones';
+    pastLabel.append(pastBox, pastText);
+    card.appendChild(pastLabel);
+
+    let lastDry = null;
+    let timer = null;
+    function schedule() { clearTimeout(timer); timer = setTimeout(() => void runDry(), 200); }
+    async function runDry() {
+      const pattern = patternInp.value.trim();
+      const categoryId = catSel.value || null;
+      dry.replaceChildren();
+      const head = document.createElement('div'); head.className = 'budget-ov-label'; head.textContent = 'Before you save';
+      dry.appendChild(head);
+      const line = document.createElement('div');
+      dry.appendChild(line);
+      if (!pattern) { line.className = 'budget-ov-faint'; line.textContent = 'Type the merchant text to see what it would match.'; lastDry = null; pastLabel.hidden = true; return; }
+      if (matchType === 'regex') { try { new RegExp(pattern, 'i'); } catch { line.className = 'budget-ov-bad'; line.textContent = 'That pattern is not valid.'; lastDry = null; pastLabel.hidden = true; return; } }
+      const result = ruleDryRun({ pattern, match_type: matchType }, await pastPurchases(), categoryId);
+      if (!alive) return;
+      lastDry = result;
+      line.className = '';
+      line.textContent = result.matched === 0
+        ? 'It matches nothing in the ledger yet. It will apply to new imports.'
+        : !categoryId ? `It matches ${result.matched} past purchase${result.matched === 1 ? '' : 's'}. Choose a category to see what would change.`
+        : `It matches ${result.matched} past purchase${result.matched === 1 ? '' : 's'}; ${result.changing} would change category.`
+          + (result.keptManual ? ` ${result.keptManual} you set by hand stay as they are.` : '');
+      for (const c of categoryId ? result.changes.slice(0, 6) : []) {
+        const row = document.createElement('div');
+        row.className = 'budget-ru-change';
+        const m = document.createElement('span'); m.className = 'budget-ov-grow'; m.textContent = c.merchant;
+        const t = document.createElement('span'); t.className = 'budget-ov-muted'; t.textContent = `${catName(c.fromId)} → ${catName(categoryId)}`;
+        const n = document.createElement('span'); n.className = 'budget-num budget-ov-faint'; n.textContent = String(c.n);
+        row.append(m, t, n);
+        dry.appendChild(row);
+      }
+      if (categoryId && result.changes.length > 6) {
+        const more = document.createElement('div'); more.className = 'budget-ov-faint';
+        more.textContent = `And ${result.changes.length - 6} more merchants.`;
+        dry.appendChild(more);
+      }
+      pastLabel.hidden = !(categoryId && result.changing > 0);
+      pastText.textContent = `Also change the past ${result.changing === 1 ? 'one' : result.changing}`;
+    }
+    patternInp.addEventListener('input', schedule);
+
+    const acts = document.createElement('div');
+    acts.className = 'budget-ru-acts';
+    api.ui.createButton(acts, { label: 'Cancel', onClick: () => editorWrap.replaceChildren() });
+    api.ui.createButton(acts, { label: 'Save Rule', kind: 'primary', onClick: () => void save() });
+    card.appendChild(acts);
+    editorWrap.appendChild(card);
+    void runDry();
+    patternInp.focus();
+
+    async function save() {
+      const pattern = patternInp.value.trim();
+      const categoryId = catSel.value || null;
+      if (!pattern || !categoryId) { await api.window?.showWarningMessage?.('A rule needs the merchant text and a category.'); return; }
+      if (matchType === 'regex') { try { new RegExp(pattern, 'i'); } catch { await api.window?.showWarningMessage?.('That pattern is not valid.'); return; } }
+      const now = new Date().toISOString();
+      let id = rule ? rule.id : crypto.randomUUID();
+      try {
+        if (rule) {
+          // Saving a learned rule makes it yours: it no longer gives way.
+          await db.run(`UPDATE categorization_rules SET pattern=?, match_type=?, category_id=?, priority=100, auto_created=0, updated_at=? WHERE id=?`,
+            [pattern, matchType, categoryId, now, rule.id]);
+        } else {
+          await db.run(`INSERT INTO categorization_rules (id, pattern, match_type, category_id, priority, auto_created, active, created_at, updated_at)
+                        VALUES (?,?,?,?,100,0,1,?,?)`, [id, pattern, matchType, categoryId, now, now]);
+        }
+        let changed = 0;
+        if (!pastLabel.hidden && pastBox.checked) {
+          const rows = await db.all(`SELECT id, merchant, category_id, categorization_source FROM transactions
+                                      WHERE status='confirmed' AND tx_type='purchase' AND merchant IS NOT NULL`);
+          const probe = { pattern, match_type: matchType };
+          for (const r of rows) {
+            if (!ruleMatchesMerchant(probe, r.merchant) || r.category_id === categoryId || r.categorization_source === 'manual') continue;
+            await db.run(`UPDATE transactions SET category_id=?, categorization_source='rule', matched_rule_id=?, updated_at=? WHERE id=?`,
+              [categoryId, id, now, r.id]);
+            changed++;
+          }
+        }
+        editorWrap.replaceChildren();
+        notifyLedgerChanged();
+        if (changed) await api.window?.showInformationMessage?.(`Rule saved. ${changed} past purchase${changed === 1 ? '' : 's'} moved to ${catName(categoryId)}.`);
+      } catch (e) {
+        await api.window?.showErrorMessage?.('The rule was not saved: ' + (e instanceof Error ? e.message : String(e)));
+      }
+    }
+  }
+
+  function head(host, title, hint) {
+    const h = document.createElement('div');
+    h.className = 'budget-ru-head';
+    const t = document.createElement('div'); t.className = 'budget-pl-title'; t.textContent = title;
+    h.appendChild(t);
+    if (hint) { const s = document.createElement('div'); s.className = 'budget-ov-faint'; s.textContent = hint; h.appendChild(s); }
+    host.appendChild(h);
+  }
+
+  function cols(host, labels) {
+    const r = document.createElement('div');
+    r.className = 'budget-ru-row budget-ru-cols';
+    for (const l of labels) { const s = document.createElement('span'); s.textContent = l; r.appendChild(s); }
+    host.appendChild(r);
   }
 
   async function refresh() {
     if (!alive) return;
-    tableWrap.innerHTML = '';
-    categoriesList = await db.all('SELECT id, name, color FROM categories WHERE archived=0 ORDER BY sort_order, name');
-
+    categories = await db.all('SELECT id, name, color, kind FROM categories WHERE archived=0 ORDER BY kind, sort_order, name').catch(() => []);
     const rules = await db.all(`
-      SELECT r.*,
-             c.name AS category_name, c.color AS category_color,
+      SELECT r.*, c.name AS category_name, c.color AS category_color,
              (SELECT COUNT(*) FROM transactions t WHERE t.matched_rule_id = r.id) AS matches
-        FROM categorization_rules r
-        LEFT JOIN categories c ON c.id = r.category_id
-       ORDER BY r.active DESC, r.priority DESC, r.hits DESC`);
+        FROM categorization_rules r LEFT JOIN categories c ON c.id = r.category_id
+       ORDER BY r.active DESC, r.auto_created ASC, r.priority DESC, r.pattern COLLATE NOCASE`).catch(() => []);
+    const aiRows = await db.all(`
+      SELECT t.merchant, t.category_id, COUNT(*) AS n
+        FROM transactions t
+       WHERE t.status='confirmed' AND t.tx_type='purchase' AND t.categorization_source='ai' AND t.merchant IS NOT NULL
+       GROUP BY LOWER(t.merchant), t.category_id`).catch(() => []);
+    if (!alive) return;
 
-    if (rules.length === 0) {
-      tableWrap.appendChild(emptyState('No rules yet. Click "+ New Rule" or override a transaction\'s category to learn one automatically.'));
-      return;
+    rulesWrap.replaceChildren();
+    head(rulesWrap, 'Rules', rules.length ? '' : 'None yet. Make one here, or let Review and repeated AI answers teach them.');
+    if (rules.length) {
+      cols(rulesWrap, ['Merchant', 'Category', 'Used', 'Made by', '']);
+      for (const r of rules) {
+        const row = document.createElement('div');
+        row.className = 'budget-ru-row' + (r.active ? '' : ' is-off');
+        const who = document.createElement('span');
+        who.className = 'budget-ru-who';
+        const p = document.createElement('span'); p.className = 'budget-ov-grow'; p.textContent = r.pattern;
+        const m = document.createElement('span'); m.className = 'budget-ov-faint';
+        m.textContent = `${RULE_MATCH_LABELS[r.match_type] || r.match_type}${r.active ? '' : ' · turned off'}`;
+        who.append(p, m);
+        const cat = document.createElement('span');
+        cat.className = 'budget-tx-cat';
+        const dot = document.createElement('span'); dot.className = 'budget-dot'; dot.style.background = r.category_color || 'var(--px-text-faint)';
+        const cn = document.createElement('span'); cn.className = 'budget-ov-grow'; cn.textContent = r.category_name || 'Category deleted';
+        cat.append(dot, cn);
+        const used = document.createElement('span');
+        used.className = 'budget-num budget-ov-muted';
+        used.textContent = String(Number(r.matches) || 0);
+        used.title = `${Number(r.matches) || 0} transactions carry this rule; it fired ${Number(r.hits) || 0} times during syncs`;
+        const by = document.createElement('span'); by.className = 'budget-ov-muted'; by.textContent = ruleMadeBy(r);
+        const more = document.createElement('span');
+        more.className = 'budget-ru-more';
+        const btn = api.ui.createIconButton(more, { icon: 'ellipsis', title: 'Rule Actions' });
+        btn.addEventListener('click', () => api.ui.showContextMenu(btn, [
+          { label: 'Edit…', onSelect: () => showEditor(r) },
+          { label: r.active ? 'Turn Off' : 'Turn On', onSelect: async () => {
+            await db.run('UPDATE categorization_rules SET active=?, updated_at=? WHERE id=?', [r.active ? 0 : 1, new Date().toISOString(), r.id]);
+            notifyLedgerChanged();
+          } },
+          { separator: true },
+          { label: 'Delete…', danger: true, onSelect: async () => {
+            const ok = await api.window.showConfirmModal({
+              message: `Delete the rule “${r.pattern}”?`,
+              detail: 'Past transactions keep their category. New imports go back to the AI.',
+              confirmLabel: 'Delete Rule', danger: true,
+            });
+            if (!ok) return;
+            await db.run('DELETE FROM categorization_rules WHERE id=?', [r.id]);
+            notifyLedgerChanged();
+          } },
+        ]));
+        row.append(who, cat, used, by, more);
+        rulesWrap.appendChild(row);
+      }
     }
 
-    const table = document.createElement('table'); table.className = 'budget-table';
-    table.innerHTML = `<thead><tr><th>Pattern</th><th>Match</th><th>Category</th><th>Priority</th><th>Source</th><th>Hits</th><th>Matches</th><th>Active</th><th>Actions</th></tr></thead>`;
-    const tb = document.createElement('tbody');
-    for (const r of rules) {
-      const tr = document.createElement('tr');
-      if (!r.active) tr.style.opacity = '0.5';
-      const sourcePill = r.auto_created
-        ? (r.priority === 50 ? '<span class="budget-pill" title="Auto-promoted from repeated AI categorizations">ai-learned</span>'
-                              : '<span class="budget-pill">auto</span>')
-        : '<span class="budget-pill">manual</span>';
-      tr.innerHTML = `
-        <td><code>${escHtml(r.pattern)}</code></td>
-        <td><span class="budget-pill">${escHtml(r.match_type)}</span></td>
-        <td>${r.category_name ? `<span class="budget-cat-swatch" style="background:${escHtml(r.category_color || '#888')}"></span>${escHtml(r.category_name)}` : '<em>missing</em>'}</td>
-        <td class="budget-amount">${r.priority}</td>
-        <td>${sourcePill}</td>
-        <td class="budget-amount" title="Times this rule fired during sync">${r.hits}</td>
-        <td class="budget-amount" title="Existing transactions tagged by this rule">${r.matches}</td>
-        <td>${r.active ? '✓' : '—'}</td>`;
-      const tdAct = document.createElement('td'); tdAct.style.display = 'flex'; tdAct.style.gap = '4px';
-      tdAct.appendChild(makeButton('Edit', { onClick: () => showEditor(r) }));
-      tdAct.appendChild(makeButton(r.active ? 'Disable' : 'Enable', {
-        onClick: async () => {
-          await db.run('UPDATE categorization_rules SET active=?, updated_at=? WHERE id=?', [r.active ? 0 : 1, new Date().toISOString(), r.id]);
-          await refresh();
-        },
-      }));
-      tdAct.appendChild(makeButton('Delete', {
-        onClick: async () => {
-          await db.run('DELETE FROM categorization_rules WHERE id=?', [r.id]);
-          await refresh();
-        },
-      }));
-      tr.appendChild(tdAct);
-      tb.appendChild(tr);
+    // Merchants still left to the AI: no active rule matches them.
+    const active = rules.filter(r => r.active);
+    const byMerchant = new Map();
+    for (const x of aiRows) {
+      if (reviewRuleFor(active, x.merchant)) continue;
+      const key = String(x.merchant).toLowerCase();
+      const g = byMerchant.get(key) || { merchant: x.merchant, n: 0, cats: new Map() };
+      g.n += Number(x.n) || 0;
+      g.cats.set(x.category_id, (g.cats.get(x.category_id) || 0) + (Number(x.n) || 0));
+      byMerchant.set(key, g);
     }
-    table.appendChild(tb);
-    tableWrap.appendChild(table);
+    const left = [...byMerchant.values()].sort((a, b) => b.n - a.n);
+    aiWrap.replaceChildren();
+    head(aiWrap, 'Left to the AI', left.length ? 'Each import asks the AI again. A rule makes it certain and free.' : 'Every merchant the AI has sorted is covered by a rule.');
+    if (left.length) {
+      cols(aiWrap, ['Merchant', 'The AI said', 'Times', '', '']);
+      for (const g of left.slice(0, 60)) {
+        const [topCat] = [...g.cats.entries()].sort((a, b) => b[1] - a[1])[0];
+        const row = document.createElement('div');
+        row.className = 'budget-ru-row';
+        const who = document.createElement('span'); who.className = 'budget-ru-who';
+        const p = document.createElement('span'); p.className = 'budget-ov-grow'; p.textContent = g.merchant;
+        who.appendChild(p);
+        if (g.cats.size > 1) { const m = document.createElement('span'); m.className = 'budget-ov-faint'; m.textContent = `${g.cats.size} different categories`; who.appendChild(m); }
+        const cat = document.createElement('span'); cat.className = 'budget-ov-muted budget-ov-grow'; cat.textContent = catName(topCat);
+        const n = document.createElement('span'); n.className = 'budget-num budget-ov-muted'; n.textContent = String(g.n);
+        const blank = document.createElement('span');
+        const act = document.createElement('span');
+        act.className = 'budget-ru-more';
+        linkButton(act, 'Make a Rule…', () => showEditor(null, { pattern: g.merchant, matchType: 'exact', categoryId: topCat }));
+        row.append(who, cat, n, blank, act);
+        aiWrap.appendChild(row);
+      }
+    }
   }
+
   void refresh();
-  return () => { alive = false; };
+  const offLedger = onLedgerChanged(() => void refresh());
+  const offSync = onSyncEvent((e) => { if (e.kind === 'complete') void refresh(); });
+  return () => { alive = false; offLedger(); offSync(); };
 }
 
 // ─── Section: Reconcile ────────────────────────────────────────────────────
@@ -7812,7 +5014,6 @@ function renderReconcileSection(body, api) {
   const acctSlot = document.createElement('span'); acctSlot.className = 'budget-dd-slot';
   toolbar.appendChild(acctSlot);
   const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  toolbar.appendChild(makeButton('Refresh', { iconHtml: makeIcon(api, 'refresh-cw', 12), onClick: () => void refresh() }));
   body.appendChild(toolbar);
 
   const summary = document.createElement('div'); summary.className = 'budget-cards'; body.appendChild(summary);
@@ -7872,11 +5073,11 @@ function renderReconcileSection(body, api) {
     ) || { net_out: 0 };
     const derived = baseBalance - (Number(flow.net_out) || 0);
 
-    summary.appendChild(makeCard('Latest Snapshot', latestSnap ? fmtMoney(latestSnap.balance_cents) : '—', latestSnap ? `As of ${latestSnap.snapshot_date}` : 'No Snapshots'));
-    summary.appendChild(makeCard('Derived Balance', fmtMoney(derived), lastRecon ? `Since ${lastRecon.reconciled_at}` : 'All Time'));
+    summary.appendChild(makeCard('Latest snapshot', latestSnap ? fmtMoney(latestSnap.balance_cents) : '—', latestSnap ? `As of ${shortDate(latestSnap.snapshot_date)}` : 'No snapshots yet'));
+    summary.appendChild(makeCard('Derived balance', fmtMoney(derived), lastRecon ? `Since ${shortDate(lastRecon.reconciled_at)}` : 'All time'));
     if (latestSnap) {
       const off = Number(latestSnap.balance_cents) - derived;
-      summary.appendChild(makeCard('Snapshot vs Derived', fmtMoney(off), Math.abs(off) < 100 ? 'Within $1' : 'Investigate'));
+      summary.appendChild(makeCard('Snapshot vs derived', fmtMoney(off), Math.abs(off) < 100 ? 'Within $1' : 'Worth a look'));
     }
 
     // Form
@@ -7885,7 +5086,7 @@ function renderReconcileSection(body, api) {
     const dateInp = document.createElement('input'); dateInp.type = 'date'; dateInp.className = 'budget-input'; dateInp.value = todayYmd();
     const balInp = document.createElement('input'); balInp.type = 'number'; balInp.step = '0.01'; balInp.placeholder = 'Statement Balance ($)'; balInp.className = 'budget-input'; balInp.style.width = '180px';
     if (latestSnap) balInp.value = (Number(latestSnap.balance_cents) / 100).toFixed(2);
-    const noteInp = document.createElement('input'); noteInp.type = 'text'; noteInp.placeholder = 'Note (Optional)'; noteInp.className = 'budget-input'; noteInp.style.flex = '1'; noteInp.style.minWidth = '160px';
+    const noteInp = document.createElement('input'); noteInp.type = 'text'; noteInp.placeholder = 'Note (optional)'; noteInp.className = 'budget-input'; noteInp.style.flex = '1'; noteInp.style.minWidth = '160px';
     const saveBtn = makeButton('Reconcile', {
       primary: true,
       onClick: async () => {
@@ -7933,7 +5134,8 @@ function renderReconcileSection(body, api) {
   }
 
   void refresh();
-  return () => { alive = false; };
+  const offLedger = onLedgerChanged(() => void refresh());
+  return () => { alive = false; offLedger(); };
 }
 
 // ─── Section: Import / Export ──────────────────────────────────────────────
@@ -8236,17 +5438,6 @@ function buildDonut(slices, total) {
   return wrap;
 }
 
-// Optional onSliceClick adds an interactive cursor and fires when a slice is hit.
-function bindDonutClicks(donutEl, slices, onSliceClick) {
-  if (typeof onSliceClick !== 'function') return;
-  const paths = donutEl.querySelectorAll('path');
-  paths.forEach((path, i) => {
-    if (!slices[i]) return;
-    path.style.cursor = 'pointer';
-    path.addEventListener('click', () => onSliceClick(slices[i]));
-  });
-}
-
 // Vertical bar chart. `series` is [{label, values:[{name,value,color}]}],
 // where each entry is one X position rendering one or more grouped bars.
 // Use single bar per group by passing `[{name,value,color}]` of length 1.
@@ -8434,42 +5625,6 @@ function fmtMoneyShort(cents) {
   if (n >= 100000) return '$' + Math.round(n / 100000) + 'K';
   return fmtMoney(cents);
 }
-
-// Month picker — returns {el, getKey, setKey} where key is "YYYY-MM".
-function makeMonthPicker(initialKey, onChange) {
-  const el = document.createElement('div');
-  el.className = 'budget-month-picker';
-  const back = document.createElement('button'); back.type = 'button'; back.title = 'Previous month'; back.textContent = '◀';
-  const label = document.createElement('div'); label.className = 'label';
-  const fwd = document.createElement('button'); fwd.type = 'button'; fwd.title = 'Next month'; fwd.textContent = '▶';
-  el.appendChild(back); el.appendChild(label); el.appendChild(fwd);
-
-  let key = initialKey || monthRange().key;
-  const todayKey = monthRange().key;
-
-  function update() {
-    label.textContent = monthRange(key).label;
-    fwd.disabled = key >= todayKey;
-  }
-  back.addEventListener('click', () => { key = monthShift(key, -1); update(); onChange && onChange(key); });
-  fwd.addEventListener('click', () => { if (key < todayKey) { key = monthShift(key, +1); update(); onChange && onChange(key); } });
-  update();
-
-  return { el, getKey: () => key, setKey: (k) => { key = k; update(); } };
-}
-
-// ─── Categorization rules engine ────────────────────────────────────────────
-//
-// Strategy:
-//   • On every override (user changes a category) we record / strengthen a rule
-//     for that merchant→category pair (auto-learned, low priority).
-//   • On every sync, BEFORE asking the AI, we apply rules in priority order.
-//     Match wins. Hits get incremented for transparency.
-//   • User can edit rules manually in the Rules view. Manual rules default to
-//     priority 100 so they always beat auto-learned (priority 50) suggestions.
-//
-// Match types: 'exact' (LOWER==), 'contains' (LIKE), 'regex' (JS-side).
-// All matches are case-insensitive.
 
 async function loadActiveRules() {
   try {
@@ -10128,26 +7283,21 @@ async function _seedBudgetSyncSkill(api) {
     const fsApi = api.requestCapability && api.requestCapability('fs', { scope: 'workspace-files', modes: ['read', 'write'] });
     const folders = api.workspace && api.workspace.workspaceFolders;
     if (!fsApi || !folders || folders.length === 0) return;
+    // The fs capability takes file:// URIs under the workspace, not relative paths.
+    const root = String(folders[0].uri);
+    const at = (rel) => root + (root.endsWith('/') ? '' : '/') + rel;
 
     const skillRel = '.parallx/skills/budget-sync/SKILL.md';
     if (typeof fsApi.exists === 'function') {
-      const present = await fsApi.exists(skillRel).catch(() => false);
+      const present = await fsApi.exists(at(skillRel)).catch(() => false);
       if (present) return;
     }
-
-    const nodeFs = require('node:fs/promises');
-    const nodePath = require('node:path');
-    const bundled = nodePath.join(_toolPath, 'skills', 'budget-sync.md');
-    let content;
-    try { content = await nodeFs.readFile(bundled, 'utf8'); }
-    catch (e) { console.warn('[Budget] bundled skill missing:', e && e.message); return; }
-
     if (typeof fsApi.mkdir === 'function') {
-      try { await fsApi.mkdir('.parallx'); } catch {}
-      try { await fsApi.mkdir('.parallx/skills'); } catch {}
-      try { await fsApi.mkdir('.parallx/skills/budget-sync'); } catch {}
+      for (const dir of ['.parallx', '.parallx/skills', '.parallx/skills/budget-sync']) {
+        try { await fsApi.mkdir(at(dir)); } catch { /* already there */ }
+      }
     }
-    await fsApi.writeFile(skillRel, content);
+    await fsApi.writeFile(at(skillRel), BUDGET_SYNC_SKILL);
   } catch (err) {
     console.warn('[Budget] skill seed failed:', err && err.message);
   }
@@ -11892,6 +9042,7 @@ export const __testables = {
   splitTxNotes,
   txOrigin,
   billDueCount,
+  ruleDryRun,
   goalMonthlyNeed,
   computeAllocation,
   budgetStreamWithStall,

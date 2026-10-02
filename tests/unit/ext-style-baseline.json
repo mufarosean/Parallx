@@ -9,10 +9,10 @@
     "retiredPurple": 0
   },
   "budget": {
-    "rawColor": 37,
-    "pxFontSize": 38,
+    "rawColor": 30,
+    "pxFontSize": 12,
     "uppercase": 0,
-    "emoji": 4,
+    "emoji": 3,
     "nativeConfirm": 0,
     "nativeSelect": 0,
     "retiredPurple": 0
