@@ -1717,6 +1717,106 @@
 .parallx-chat-tool-node--error .parallx-chat-tool-node-marker::after { display: none; }
 .parallx-chat-tool-node--error .parallx-chat-tool-node-marker { color: var(--px-danger, #e06c66); }
 
+/* A settled turn's steps fold into one line (foldToolRuns). */
+.parallx-chat-tool-fold-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 2px 0; padding: 2px 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, #9ea3ad);
+  transition: color var(--px-dur-fast) var(--px-ease);
+}
+.parallx-chat-tool-fold-toggle:hover { color: var(--px-text, #e8eaee); }
+.parallx-chat-tool-fold-caret {
+  width: 0; height: 0; border-left: 4px solid currentColor; border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent;
+  transition: transform var(--px-dur-base) var(--px-ease);
+}
+.parallx-chat-tool-fold--open .parallx-chat-tool-fold-caret { transform: rotate(90deg); }
+.parallx-chat-tool-fold-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--px-dur-slow) var(--px-ease); }
+.parallx-chat-tool-fold--open .parallx-chat-tool-fold-body { grid-template-rows: 1fr; }
+.parallx-chat-tool-fold-clip { overflow: hidden; min-height: 0; }
+.parallx-chat-tool-fold-clip > .parallx-chat-tool-invocation { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .parallx-chat-tool-fold-body, .parallx-chat-tool-fold-caret { transition: none; }
+}
+
+/* ── Asking for your OK: a node on the same spine (chatApproval.ts) ── */
+.parallx-chat-approval { margin: 0 22px; max-width: min(920px, calc(100% - 44px)); max-height: 640px; box-sizing: border-box; }
+.parallx-chat-approval--asking .parallx-chat-tool-node-marker::after {
+  background: var(--px-warning, #dcaa5a);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--px-warning, #dcaa5a) 30%, transparent);
+}
+.parallx-chat-approval--allowed .parallx-chat-tool-node-marker::after { background: var(--px-accent, #569cd6); }
+.parallx-chat-approval--rejected .parallx-chat-tool-node-marker::after { background: var(--px-text-faint, #686d77); }
+.parallx-chat-approval-meta { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, #9ea3ad); }
+.parallx-chat-approval--asking .parallx-chat-approval-meta { color: var(--px-warning, #dcaa5a); }
+.parallx-chat-approval-card {
+  margin: 6px 0 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--px-border-strong, #41454d);
+  border-radius: var(--px-radius-lg, 10px);
+  background: var(--px-bg-elevated, #1f2125);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: parallx-node-bloom var(--px-dur-slow) var(--px-ease-out) both;
+}
+.parallx-chat-approval-intent { font-size: var(--px-text-sm, 12px); color: var(--px-text-secondary, #c0c4cc); }
+.parallx-chat-approval-preview {
+  font-family: var(--px-font-mono, monospace);
+  font-size: var(--px-text-xs, 11px);
+  line-height: 1.6;
+  padding: 6px 9px;
+  border-radius: var(--px-radius-sm, 4px);
+  background: var(--px-bg-inset, #16171a);
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--px-text-muted, #9ea3ad);
+}
+.parallx-chat-approval-preview--add .parallx-chat-approval-line { color: var(--px-success, #6cbf8f); }
+.parallx-chat-approval-preview--cmd .parallx-chat-approval-line { color: var(--px-text, #e8eaee); }
+.parallx-chat-approval-reason { font-size: var(--px-text-xs, 11px); color: var(--px-text-muted, #9ea3ad); }
+.parallx-chat-approval-buttons { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.parallx-chat-approval-btn {
+  height: var(--px-control-h, 28px);
+  padding: 0 12px;
+  border-radius: var(--px-radius-sm, 4px);
+  font: inherit;
+  font-size: var(--px-text-sm, 12px);
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--px-border, #33363d);
+  background: transparent;
+  color: var(--px-text, #e8eaee);
+  transition: background-color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-fast) var(--px-ease-spring);
+}
+.parallx-chat-approval-btn:hover { background: var(--px-surface-hover, #2b2e34); }
+.parallx-chat-approval-btn:active { transform: scale(0.96); }
+.parallx-chat-approval-btn--primary { background: var(--px-accent, #569cd6); border-color: var(--px-accent, #569cd6); color: var(--px-text-on-accent, #0d1620); }
+.parallx-chat-approval-btn--primary:hover { background: var(--px-accent-hover, #6aaee2); }
+.parallx-chat-approval-always {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--px-text-xs, 11px);
+  color: var(--px-text-muted, #9ea3ad);
+  cursor: pointer;
+}
+.parallx-chat-approval-always:hover { color: var(--px-text, #e8eaee); text-decoration: underline; }
+.parallx-chat-approval--leaving {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  padding-top: 0;
+  padding-bottom: 0;
+  transition: opacity var(--px-dur-base) var(--px-ease), max-height var(--px-dur-slow) var(--px-ease), padding var(--px-dur-slow) var(--px-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .parallx-chat-approval-card { animation: none; }
+}
+
 @keyframes parallx-node-bloom {
   from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: none; }

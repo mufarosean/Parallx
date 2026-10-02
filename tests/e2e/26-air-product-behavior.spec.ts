@@ -355,9 +355,9 @@ test.describe('AIR Product Behavior', () => {
     await expect(card.locator('.parallx-chat-agent-task-summary')).toContainText('Waiting for approval before the next workspace action can run');
     await expect(card.locator('.parallx-chat-agent-task-summary')).toContainText('Write the updated claims guide');
     await expect(card.locator('.parallx-chat-agent-approval-card')).toContainText('Claims Guide.md');
-    await expect(card.locator('.parallx-chat-agent-approval-card')).toContainText('Approve once only allows this single action');
+    await expect(card.locator('.parallx-chat-agent-approval-card')).toContainText('Allow lets only this step run');
 
-    await card.locator('.parallx-chat-agent-approval-button', { hasText: 'Deny' }).click();
+    await card.locator('.parallx-chat-agent-approval-button', { hasText: 'Reject' }).click();
 
     await expect(card.locator('.parallx-chat-agent-task-status')).toHaveText('Blocked');
     await expect(card.locator('.parallx-chat-agent-task-summary')).toContainText('Task is blocked because an approval was denied');
@@ -399,7 +399,7 @@ test.describe('AIR Product Behavior', () => {
     const card = await waitForTaskCard(window, 'Refresh the claims docs');
     await expect(card.locator('.parallx-chat-agent-task-status')).toHaveText('Awaiting approval');
 
-    await card.locator('.parallx-chat-agent-approval-button', { hasText: 'Approve once' }).click();
+    await card.locator('.parallx-chat-agent-approval-button', { hasText: /^Allow$/ }).click();
 
     await expect(card.locator('.parallx-chat-agent-task-status')).toHaveText('Completed');
     await expect(card.locator('.parallx-chat-agent-task-summary')).toContainText('Workspace update complete');

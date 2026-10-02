@@ -146,6 +146,51 @@ function appendInlineCode(text: string, parent: HTMLElement): void {
  * safe-markdown subset of `text`. Stacks text paragraphs and code blocks as
  * siblings (a <pre> can't live inside the <p>).
  */
+/**
+ * A finished turn's tool steps fold into one line, "Used 3 tools", that opens
+ * to show them. Only runs of two or more consecutive steps fold; a single
+ * step stays as it is. Called once a turn has settled, never while streaming.
+ */
+export function foldToolRuns(body: HTMLElement): void {
+  const kids = Array.from(body.children) as HTMLElement[];
+  let run: HTMLElement[] = [];
+  const flush = (): void => {
+    if (run.length >= 2) {
+      const failed = run.filter((n) => n.classList.contains('parallx-chat-tool-node--error')).length;
+      const fold = document.createElement('div');
+      fold.className = 'parallx-chat-tool-fold';
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'parallx-chat-tool-fold-toggle';
+      toggle.setAttribute('aria-expanded', 'false');
+      const caret = document.createElement('span');
+      caret.className = 'parallx-chat-tool-fold-caret';
+      caret.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span');
+      label.textContent = `Used ${run.length} tools${failed ? `, ${failed} failed` : ''}`;
+      toggle.append(caret, label);
+      const inner = document.createElement('div');
+      inner.className = 'parallx-chat-tool-fold-body';
+      const clip = document.createElement('div');
+      clip.className = 'parallx-chat-tool-fold-clip';
+      run[0].before(fold);
+      for (const n of run) clip.appendChild(n);
+      inner.appendChild(clip);
+      fold.append(toggle, inner);
+      toggle.addEventListener('click', () => {
+        const open = fold.classList.toggle('parallx-chat-tool-fold--open');
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    }
+    run = [];
+  };
+  for (const k of kids) {
+    if (k.classList.contains('parallx-chat-tool-invocation') && !k.classList.contains('parallx-chat-approval')) run.push(k);
+    else flush();
+  }
+  flush();
+}
+
 function renderUserSafeMarkdown(text: string, body: HTMLElement, pill?: HTMLElement): void {
   const blocks = parseUserSafeBlocks(text);
   let pillPlaced = !pill;
@@ -450,6 +495,7 @@ export class ChatListRenderer extends Disposable {
       for (let k = 0; k < response.parts.length; k++) {
         body.appendChild(renderContentPart(response.parts[k]));
       }
+      foldToolRuns(body);
 
       // Add message actions bar now that streaming is complete
       this._addMessageActions(lastPair.assistantEl, body, latestRequest, true);
@@ -761,6 +807,7 @@ export class ChatListRenderer extends Disposable {
       }
     }
 
+    if (response.isComplete && !isStreaming) foldToolRuns(body);
     root.appendChild(body);
 
     // Message actions bar (copy) — only shown on completed responses

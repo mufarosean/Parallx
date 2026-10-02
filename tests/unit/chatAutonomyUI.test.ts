@@ -102,10 +102,10 @@ describe('chat autonomy UI', () => {
     document.body.appendChild(rail);
 
     expect(rail.textContent).toContain('Update the claims guide');
-    expect(rail.textContent).toContain('Approve once');
+    expect(rail.textContent).toContain('Allow');
     expect(rail.textContent).toContain('Waiting for approval before the next workspace action can run: Write the updated guide.');
-    expect(rail.textContent).toContain('Approve once only allows this single action.');
-    expect(rail.textContent).toContain('Review the pending approval below. Approve once to allow only this action, or deny it to keep the task blocked.');
+    expect(rail.textContent).toContain('Allow lets only this step run.');
+    expect(rail.textContent).toContain('Review the step below. Allow lets only this step run, or Reject keeps the task waiting.');
     expect(rail.textContent).toContain('Approval requested for fs_write_file.');
     expect(rail.querySelector('.parallx-chat-agent-task-details')).toBeTruthy();
   });

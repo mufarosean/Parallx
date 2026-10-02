@@ -72,6 +72,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'pickers/chatModePicker.ts':  ['chatIcons'],
   'pickers/chatContextWindowPicker.ts': ['chatIcons'],
   // ── rendering/ — message rendering ──────────────────────────────────────
+  'rendering/chatApproval.ts':      [],  // the one approval node (live prompt + transcript)
   'rendering/chatCodeActions.ts':   [],
   'rendering/chatContentParts.ts':  ['chatIcons', 'rendering/'],
   'archivedRunViewer.ts':           ['rendering/'],  // M91 — read-only archived-run transcript viewer

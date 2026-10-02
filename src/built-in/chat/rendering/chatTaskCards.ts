@@ -129,10 +129,10 @@ function renderApprovalRequest(taskId: string, request: AgentApprovalRequest): H
   }
 
   const actions = $('div.parallx-chat-agent-approval-actions');
-  actions.appendChild(_approvalButton('Approve once', taskId, request.id, 'approve-once'));
-  actions.appendChild(_approvalButton('Approve task', taskId, request.id, 'approve-for-task'));
-  actions.appendChild(_approvalButton('Deny', taskId, request.id, 'deny'));
-  actions.appendChild(_approvalButton('Cancel task', taskId, request.id, 'cancel-task'));
+  actions.appendChild(_approvalButton('Allow', taskId, request.id, 'approve-once'));
+  actions.appendChild(_approvalButton('Allow This Task', taskId, request.id, 'approve-for-task'));
+  actions.appendChild(_approvalButton('Reject', taskId, request.id, 'deny'));
+  actions.appendChild(_approvalButton('Stop Task', taskId, request.id, 'cancel-task'));
   root.appendChild(actions);
 
   return root;
@@ -325,8 +325,8 @@ function buildRecommendedNextStep(
   if (pendingApprovals.length > 0) {
     const nextApproval = pendingApprovals[0];
     return nextApproval.scope === 'task'
-      ? 'Review the pending approval below. Approve task to allow the remaining task actions, or deny it to keep the task blocked.'
-      : 'Review the pending approval below. Approve once to allow only this action, or deny it to keep the task blocked.';
+      ? 'Review the step below. Allow This Task lets the rest of the task run, or Reject keeps it waiting.'
+      : 'Review the step below. Allow lets only this step run, or Reject keeps the task waiting.';
   }
 
   if (task.status === 'blocked') {
@@ -375,10 +375,10 @@ function buildDiagnosticsIntro(
 
 function buildApprovalScopeHint(request: AgentApprovalRequest): string {
   if (request.scope === 'task') {
-    return 'Approve task allows the remaining approval-scoped actions in this task.';
+    return 'Allow This Task lets the rest of this task run without asking again.';
   }
 
-  return 'Approve once only allows this single action.';
+  return 'Allow lets only this step run.';
 }
 
 function buildBlockedSummary(task: AgentTaskRecord): string {

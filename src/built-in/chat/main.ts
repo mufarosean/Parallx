@@ -9,6 +9,8 @@
 //   3. Register the chat view in the Auxiliary Bar
 //   4. Register chat commands (toggle, new session, clear, stop, focus)
 
+import { readToolIntent } from '../../services/toolIntent.js';
+import { buildApprovalNode } from './rendering/chatApproval.js';
 import type { EditApplyEventDetail } from './chatTypes.js';
 import { commandPrefix } from '../../services/commandRules.js';
 import { ALWAYS_REQUIRE_CONFIRMATION } from '../../services/permissionService.js';
@@ -1439,82 +1441,31 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             return;
           }
 
-          const card = document.createElement('div');
-          card.className = 'parallx-chat-confirmation';
-
-          // Message
-          const msg = document.createElement('div');
-          msg.className = 'parallx-chat-confirmation-message';
-          msg.textContent = `"${toolName}" wants to run. ${toolDescription}`;
-          card.appendChild(msg);
-
-          // Args summary
-          if (args && Object.keys(args).length > 0) {
-            const argsBlock = document.createElement('div');
-            argsBlock.className = 'parallx-chat-confirmation-args';
-            const pre = document.createElement('pre');
-            pre.textContent = Object.entries(args)
-              .map(([k, v]) => {
-                const val = typeof v === 'string'
-                  ? (v.length > 80 ? v.slice(0, 80) + '…' : v)
-                  : JSON.stringify(v);
-                return `${k}: ${val}`;
-              })
-              .join('\n');
-            argsBlock.appendChild(pre);
-            card.appendChild(argsBlock);
-          }
-
-          // Forced-approval explanation (color gate etc.) — without it,
-          // repeat prompts read as "Always allow is broken".
-          if (forcedReason) {
-            const reason = document.createElement('div');
-            reason.className = 'parallx-chat-confirmation-reason';
-            reason.textContent = forcedReason;
-            card.appendChild(reason);
-          }
-
-          // Button bar
-          const buttonBar = document.createElement('div');
-          buttonBar.className = 'parallx-chat-confirmation-buttons';
-
           // The shell's grants are per command FAMILY (`npm`, `git`), never
           // the whole tool; other belt tools (delete) offer no standing
           // grant at all, because the belt would silently ignore it.
           const family = toolName === 'terminal_run_command' ? commandPrefix(String(args?.['command'] ?? '')) : '';
-          const onBelt = ALWAYS_REQUIRE_CONFIRMATION.has(toolName);
-          const decisions: Array<{ label: string; cls: string; decision: ToolGrantDecision }> = [
-            { label: 'Allow Once', cls: 'parallx-chat-confirmation-btn--accept', decision: 'allow-once' },
-            ...(family
-              ? [
-                { label: `Allow ${family} This Session`, cls: 'parallx-chat-confirmation-btn--session', decision: 'allow-session' as const },
-                { label: `Always Allow ${family}`, cls: 'parallx-chat-confirmation-btn--always', decision: 'always-allow' as const },
-              ]
-              : onBelt
-                ? []
-                : [
-                  { label: 'Allow For Session', cls: 'parallx-chat-confirmation-btn--session', decision: 'allow-session' as const },
-                  { label: 'Always Allow', cls: 'parallx-chat-confirmation-btn--always', decision: 'always-allow' as const },
-                ]),
-            { label: 'Reject', cls: 'parallx-chat-confirmation-btn--reject', decision: 'reject' },
-          ];
-
-          for (const { label, cls, decision } of decisions) {
-            const btn = document.createElement('button');
-            btn.className = `parallx-chat-confirmation-btn ${cls}`;
-            btn.textContent = label;
-            btn.type = 'button';
-            btn.addEventListener('click', () => {
-              card.remove();
+          const onBelt = ALWAYS_REQUIRE_CONFIRMATION.has(toolName) && !family;
+          const card = buildApprovalNode({
+            toolName,
+            args,
+            message: readToolIntent(toolName, args) || toolDescription,
+            reason: forcedReason,
+            family: family || undefined,
+            onBelt,
+            onDecide: (decision) => {
               resolve(decision);
-            });
-            buttonBar.appendChild(btn);
-          }
-
-          card.appendChild(buttonBar);
+              // The settled line stays a moment, then folds away: the tool's
+              // own step takes over on the spine.
+              setTimeout(() => {
+                card.classList.add('parallx-chat-approval--leaving');
+                setTimeout(() => card.remove(), 320);
+              }, 1200);
+            },
+          });
           chatContainer.appendChild(card);
 
-          // Scroll the card into view
+          // Bring it into view
           card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         });
       },

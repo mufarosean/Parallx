@@ -10,6 +10,7 @@
 
 import 'katex/dist/katex.min.css';
 import { argsWithoutIntent, readToolIntent } from '../../../services/toolIntent.js';
+import { buildApprovalNode, settleApprovalNode } from './chatApproval.js';
 
 import MarkdownIt from 'markdown-it';
 import markdownItMark from 'markdown-it-mark';
@@ -1488,50 +1489,27 @@ function _truncate(text: string, max: number): string {
 // ── Confirmation (Cap 6 Task 6.4, M11 Task 2.1) ──
 
 function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
-  const root = $('div.parallx-chat-confirmation');
+  // The approval is a node on the step spine (chatApproval.ts), the same
+  // one the live prompt shows; once answered it settles to one line.
+  if (part.grantDecision || part.onGrant) {
+    const node = buildApprovalNode({
+      toolName: part.toolName ?? 'tool',
+      args: part.toolArgs,
+      message: part.message,
+      onDecide: (decision) => {
+        part.grantDecision = decision;
+        part.isAccepted = decision !== 'reject';
+        part.onGrant?.(decision);
+      },
+    });
+    if (part.grantDecision) settleApprovalNode(node, part.grantDecision);
+    return node;
+  }
 
+  const root = $('div.parallx-chat-confirmation');
   const message = $('div.parallx-chat-confirmation-message');
   message.textContent = part.message;
   root.appendChild(message);
-
-  // HARNESS.md §2.1 — lead the approval with the model's stated intent, so
-  // the user decides on "what this does", not on a raw argument dump.
-  const confirmIntent = readToolIntent(part.toolName, part.toolArgs);
-  if (confirmIntent) {
-    const intentLine = $('div.parallx-chat-confirmation-intent');
-    intentLine.textContent = confirmIntent;
-    root.appendChild(intentLine);
-  }
-
-  // Show tool arguments summary when available (M11 Task 2.1); the intent
-  // line already shows its field.
-  const confirmArgEntries = argsWithoutIntent(part.toolName, part.toolArgs);
-  if (confirmArgEntries.length > 0) {
-    const argsBlock = $('div.parallx-chat-confirmation-args');
-    const argsSummary = confirmArgEntries
-      .map(([k, v]) => `${k}: ${typeof v === 'string' ? _truncate(v, 80) : JSON.stringify(v)}`)
-      .join('\n');
-    const pre = document.createElement('pre');
-    pre.textContent = argsSummary;
-    argsBlock.appendChild(pre);
-    root.appendChild(argsBlock);
-  }
-
-  // If already decided (3-tier grant), show result
-  if (part.grantDecision) {
-    const result = $('span.parallx-chat-confirmation-result');
-    const labels: Record<string, { text: string; cls: string }> = {
-      'allow-once': { text: '✓ Allowed (once)', cls: 'parallx-chat-confirmation-result--accepted' },
-      'allow-session': { text: '✓ Allowed (session)', cls: 'parallx-chat-confirmation-result--accepted' },
-      'always-allow': { text: '✓ Always allowed', cls: 'parallx-chat-confirmation-result--accepted' },
-      'reject': { text: '✗ Rejected', cls: 'parallx-chat-confirmation-result--rejected' },
-    };
-    const info = labels[part.grantDecision] ?? { text: '✓ Allowed', cls: 'parallx-chat-confirmation-result--accepted' };
-    result.textContent = info.text;
-    result.classList.add(info.cls);
-    root.appendChild(result);
-    return root;
-  }
 
   // If already decided (legacy flow), show result
   if (part.isAccepted !== undefined) {
@@ -1543,34 +1521,6 @@ function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
         : 'parallx-chat-confirmation-result--rejected',
     );
     root.appendChild(result);
-    return root;
-  }
-
-  // Grant buttons (M11 Task 2.1 — 3-tier flow)
-  if (part.onGrant) {
-    const buttonBar = $('div.parallx-chat-confirmation-buttons');
-
-    const makeBtn = (label: string, cls: string, decision: import('../../../services/chatTypes.js').ToolGrantDecision): void => {
-      const btn = document.createElement('button');
-      btn.className = `parallx-chat-confirmation-btn ${cls}`;
-      btn.textContent = label;
-      btn.type = 'button';
-      btn.addEventListener('click', () => {
-        part.grantDecision = decision;
-        // Also set legacy field for backward compat
-        part.isAccepted = decision !== 'reject';
-        part.onGrant!(decision);
-        _replaceWithGrantResult(root, decision);
-      });
-      buttonBar.appendChild(btn);
-    };
-
-    makeBtn('Allow once', 'parallx-chat-confirmation-btn--accept', 'allow-once');
-    makeBtn('Allow for session', 'parallx-chat-confirmation-btn--session', 'allow-session');
-    makeBtn('Always allow', 'parallx-chat-confirmation-btn--always', 'always-allow');
-    makeBtn('Reject', 'parallx-chat-confirmation-btn--reject', 'reject');
-
-    root.appendChild(buttonBar);
     return root;
   }
 
@@ -1602,24 +1552,6 @@ function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
   return root;
 }
 
-function _replaceWithGrantResult(root: HTMLElement, decision: import('../../../services/chatTypes.js').ToolGrantDecision): void {
-  // Remove buttons, show result text
-  const buttonBar = root.querySelector('.parallx-chat-confirmation-buttons');
-  if (buttonBar) { buttonBar.remove(); }
-
-  const labels: Record<string, { text: string; cls: string }> = {
-    'allow-once': { text: '✓ Allowed (once)', cls: 'parallx-chat-confirmation-result--accepted' },
-    'allow-session': { text: '✓ Allowed (session)', cls: 'parallx-chat-confirmation-result--accepted' },
-    'always-allow': { text: '✓ Always allowed', cls: 'parallx-chat-confirmation-result--accepted' },
-    'reject': { text: '✗ Rejected', cls: 'parallx-chat-confirmation-result--rejected' },
-  };
-  const info = labels[decision] ?? { text: '✓ Allowed', cls: 'parallx-chat-confirmation-result--accepted' };
-
-  const result = $('span.parallx-chat-confirmation-result');
-  result.textContent = info.text;
-  result.classList.add(info.cls);
-  root.appendChild(result);
-}
 
 function _replaceWithResult(root: HTMLElement, accepted: boolean): void {
   // Remove buttons, show result text
