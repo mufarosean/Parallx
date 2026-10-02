@@ -6376,7 +6376,7 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   flex-shrink: 0;
 }
 .mo-detail-header-title {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   font-size: var(--px-text-md);
   font-weight: 600;
@@ -6388,8 +6388,9 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   display: flex;
   align-items: center;
   gap: var(--px-space-1);
-  flex-shrink: 0;
+  flex-shrink: 0;  margin-left: auto;
 }
+.mo-detail-header-meta { flex: none; font-size: var(--px-text-sm); color: var(--px-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mo-detail-body {
   display: flex;
   flex: 1;
@@ -7076,6 +7077,8 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   overflow: hidden;
   position: relative;
 }
+.mo-lightbox-content .mo-lb-player { width: 90%; height: 90%; }
+.mo-lightbox-content .mo-lb-player video { max-width: none; max-height: none; }
 .mo-lightbox-content img,
 .mo-lightbox-content video {
   max-width: 90%;
@@ -7379,197 +7382,68 @@ button.mo-view-row:hover { background: var(--vscode-list-hoverBackground, var(--
   white-space: nowrap;
 }
 
-/* ═══ M59 Phase 1: custom video player + clip dialog + WebP review ═══ */
-.mo-player {
-  position: relative; width: 100%; height: 100%; background: #000;
-  overflow: hidden; outline: none;
-}
-.mo-player-video {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: contain; background: #000;
-}
-.mo-player-preview-vid {
-  position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0;
-  pointer-events: none;
-}
-.mo-player-topbar {
-  position: absolute; top: 0; left: 0; right: 0; padding: 8px 12px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
-  color: #fff; display: flex; gap: 12px; align-items: baseline;
-  pointer-events: none; transition: opacity 200ms;
-  z-index: 2;
-}
-.mo-player-title { font-weight: 500; font-size: 13px; flex: 1;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.mo-player-meta { font-size: 11px; opacity: 0.8; }
-.mo-player-bottombar {
-  position: absolute; bottom: 0; left: 0; right: 0; padding: 4px 12px 8px;
-  background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
-  display: flex; flex-direction: column; gap: 4px;
-  transition: opacity 200ms; z-index: 2;
-}
-.mo-player-rail {
-  position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
-  display: flex; flex-direction: column; gap: 6px;
-  transition: opacity 200ms; z-index: 2;
-}
-.mo-player-chrome-hidden .mo-player-topbar,
-.mo-player-chrome-hidden .mo-player-bottombar,
-.mo-player-chrome-hidden .mo-player-rail {
-  opacity: 0; pointer-events: none;
-}
-.mo-player-progrow {
-  position: relative; padding: 8px 0 4px;
-}
-.mo-player-progress {
-  position: relative; height: 5px; background: rgba(255,255,255,0.2);
-  border-radius: 3px; cursor: pointer;
-}
-.mo-player-progress:hover { height: 7px; transition: height 100ms; }
-.mo-player-progress-buf,
-.mo-player-progress-played,
-.mo-player-loop-range {
-  position: absolute; top: 0; left: 0; height: 100%; border-radius: 3px;
-  pointer-events: none;
-}
-.mo-player-progress-buf { background: rgba(255,255,255,0.35); width: 0; }
-.mo-player-progress-played {
-  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  width: 0; z-index: 1;
-}
-.mo-player-loop-range {
-  background: rgba(255, 200, 0, 0.35);
-  z-index: 0; display: none;
-}
-.mo-player-mark {
-  position: absolute; top: -2px; bottom: -2px; width: 2px;
-  background: rgba(255, 200, 0, 0.9); pointer-events: none;
-  z-index: 2; display: none;
-}
-.mo-player-progress-thumb {
-  position: absolute; top: 50%; transform: translate(-50%, -50%);
-  width: 11px; height: 11px; border-radius: 50%;
-  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  border: 2px solid #fff; display: none; z-index: 3;
-  pointer-events: none;
-}
-.mo-player-hover {
-  position: absolute; bottom: 100%; transform: translateX(-50%);
-  background: rgba(0,0,0,0.85); padding: 4px; border-radius: 4px;
-  display: none; pointer-events: none; margin-bottom: 6px;
-}
-.mo-player-hover-canvas {
-  display: block; width: 160px; height: 90px; border-radius: 2px;
-  background: #222;
-}
-.mo-player-hover-time {
-  text-align: center; font-size: 10px; color: #fff; margin-top: 2px;
-  font-variant-numeric: tabular-nums;
-}
-.mo-player-ctrlrow {
-  display: flex; gap: 6px; align-items: center;
-}
-.mo-player-spacer { flex: 1 1 auto; }
-.mo-player-btn {
-  background: transparent; border: 0; color: #fff; cursor: pointer;
-  padding: 4px 6px; border-radius: 4px; display: inline-flex;
-  align-items: center; justify-content: center; min-width: 28px; height: 28px;
-}
-.mo-player-btn:hover { background: rgba(255,255,255,0.15); }
-.mo-player-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
-.mo-player-btn-active { color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); }
-.mo-player-time {
-  color: #fff; font-size: 12px; font-variant-numeric: tabular-nums;
-  margin: 0 8px; opacity: 0.9;
-}
-.mo-player-speed { position: relative; }
-.mo-player-speed-btn { font-size: 12px; min-width: 36px; }
-.mo-player-speed-menu {
-  position: absolute; bottom: 32px; left: 0; background: rgba(0,0,0,0.92);
-  border: 1px solid rgba(255,255,255,0.1); border-radius: 4px;
-  padding: 4px; display: flex; flex-direction: column; gap: 2px;
-  z-index: 10; min-width: 60px;
-}
-.mo-player-speed-item {
-  background: transparent; border: 0; color: #fff; cursor: pointer;
-  padding: 4px 8px; text-align: left; font-size: 12px; border-radius: 3px;
-}
-.mo-player-speed-item:hover { background: rgba(255,255,255,0.15); }
-.mo-player-speed-item:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: -1px; }
-.mo-hidden { display: none !important; }
-.mo-player-vol { display: flex; align-items: center; gap: 4px; }
-.mo-player-vol-slider {
-  width: 60px; height: 4px; cursor: pointer; accent-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-}
-.mo-player-rail-btn {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.15);
-  color: #fff; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-}
-.mo-player-rail-btn:hover { background: rgba(0,0,0,0.85); border-color: rgba(255,255,255,0.3); }
-.mo-player-rail-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--px-accent, var(--mo-accent))); outline-offset: 2px; }
-.mo-player-rail-btn:disabled { opacity: 0.4; cursor: default; }
-.mo-player-rail-btn.mo-active {
-  background: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-}
-
-/* M59 P10 / F16 — Filmstrip thumbnail row.
-   Renders above the bottom bar so it tucks beside the existing chrome
-   without colliding with the seek hover preview or the action rail. */
-.mo-player-filmstrip {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 64px; /* sit just above the bottombar */
-  display: flex;
-  gap: 2px;
-  padding: 4px 8px;
-  background: rgba(0, 0, 0, 0.55);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  z-index: 2;
-}
-.mo-player-chrome-hidden .mo-player-filmstrip { display: none; }
-.mo-player-fs-thumb {
-  flex: 0 0 auto;
-  width: 96px;
-  height: 54px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--parallx-radius-sm, 3px);
-  background: #000;
-  cursor: pointer;
-  position: relative;
-  transition: border-color 0.1s, transform 0.1s;
-}
-.mo-player-fs-thumb:hover {
-  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  transform: translateY(-1px);
-}
-.mo-player-fs-thumb.mo-active {
-  border-color: var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-  box-shadow: 0 0 0 1px var(--vscode-focusBorder, var(--px-accent, var(--mo-accent)));
-}
-.mo-player-fs-thumb canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-  border-radius: var(--parallx-radius-sm, 3px);
-}
-.mo-player-fs-thumb .mo-fs-time {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  font-size: 10px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 0 4px;
-  border-radius: 2px;
-  font-variant-numeric: tabular-nums;
-}
+/* ═══ The video player (buildVideoPlayer): the picture alone in the stage,
+   a dock under it with the filmstrip scrubber and one row of controls. The
+   stage is dark like the viewer; the dock follows the theme on a page and
+   takes the viewer's colours in the library viewer. In fullscreen the dock
+   floats over the picture. ═══ */
+.mo-player { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; outline: none;
+  --mo-pl-ink: var(--px-text); --mo-pl-muted: var(--px-text-muted); --mo-pl-bg: var(--px-bg); --mo-pl-line: var(--px-divider); --mo-pl-hover: var(--px-surface-hover); }
+.mo-player--viewer { --mo-pl-ink: var(--px-viewer-ink); --mo-pl-muted: var(--px-viewer-ink-muted); --mo-pl-bg: transparent; --mo-pl-line: var(--px-viewer-line); --mo-pl-hover: var(--px-viewer-control-hover); }
+.mo-player-stage { position: relative; flex: 1 1 auto; min-height: 0; background: var(--px-viewer-scrim); }
+.mo-player--viewer .mo-player-stage { background: transparent; }
+.mo-player-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; cursor: pointer; }
+.mo-player-preview-vid { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.mo-player-dock { flex: none; display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-3) var(--px-space-2); background: var(--mo-pl-bg); border-top: 1px solid var(--mo-pl-line); color: var(--mo-pl-ink); transition: opacity var(--px-dur-base) var(--px-ease); }
+.mo-player--viewer .mo-player-dock { border-top: 0; padding-left: 0; padding-right: 0; }
+/* The filmstrip is the scrubber. */
+.mo-player-strip { position: relative; height: 40px; border-radius: var(--px-radius-sm); background: var(--px-viewer-control); cursor: pointer; touch-action: none; user-select: none; }
+.mo-player-strip-frames { position: absolute; inset: 0; display: flex; overflow: hidden; border-radius: var(--px-radius-sm); }
+.mo-player-strip-frame { flex: 1 1 0; min-width: 0; height: 100%; object-fit: cover; display: block; border-right: 1px solid var(--px-viewer-line); }
+.mo-player-strip-frame:last-child { border-right: 0; }
+.mo-player-strip-range { position: absolute; top: 0; bottom: 0; display: none; border: 2px solid var(--px-accent); border-radius: var(--px-radius-sm); background: var(--px-accent-faint); pointer-events: none; }
+.mo-player-strip-range.mo-shown { display: block; }
+.mo-player-strip-head { position: absolute; top: -3px; bottom: -3px; left: 0; width: 2px; margin-left: -1px; background: var(--mo-pl-ink); box-shadow: 0 0 0 1px var(--px-viewer-scrim); pointer-events: none; }
+.mo-player-strip-head::before { content: ''; position: absolute; top: 0; left: -4px; width: 10px; height: 6px; border-radius: 0 0 var(--px-radius-xs) var(--px-radius-xs); background: var(--mo-pl-ink); }
+.mo-player-strip-hover { position: absolute; bottom: calc(100% + var(--px-space-2)); display: none; transform: translateX(-50%); pointer-events: none; z-index: 3; text-align: center; }
+.mo-player-strip-hover.mo-shown { display: block; }
+.mo-player-strip-hover canvas { display: block; width: 160px; height: 90px; border-radius: var(--px-radius-sm); border: 1px solid var(--px-viewer-line); background: var(--px-viewer-scrim); box-shadow: var(--px-shadow-md); }
+.mo-player-strip-hover-time { display: inline-block; margin-top: var(--px-space-1); padding: 0 var(--px-space-1); border-radius: var(--px-radius-xs); background: var(--px-viewer-bar); color: var(--px-viewer-ink); font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
+/* The controls row: the clip editor's transport. */
+.mo-player-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--px-space-1); min-height: 30px; min-width: 0; }
+.mo-player-readout { margin: 0 var(--px-space-2); color: var(--mo-pl-muted); font-size: var(--px-text-sm); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mo-player-readout b { color: var(--mo-pl-ink); font-weight: 600; }
+.mo-player-sep { width: 1px; height: 16px; background: var(--mo-pl-line); margin: 0 var(--px-space-1); flex: none; }
+.mo-player-spacer { flex: 1 1 auto; min-width: var(--px-space-2); }
+.mo-player-row .px-btn { flex: none; }
+.mo-player-row .px-btn__label { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mo-player-row .px-btn.mo-active { background: var(--px-surface-selected); color: var(--mo-pl-ink); }
+.mo-player--viewer .mo-player-row .px-btn--ghost { color: var(--px-viewer-ink-muted); }
+.mo-player--viewer .mo-player-row .px-btn--ghost:hover:not(:disabled) { background: var(--px-viewer-control-hover); color: var(--px-viewer-ink); }
+.mo-player--viewer .mo-player-row .px-btn.mo-active { background: var(--px-viewer-control-hover); color: var(--px-viewer-ink); }
+.mo-player--compact .mo-player-collapsible .px-btn__label { display: none; }
+.mo-player--compact .mo-player-readout { margin: 0 var(--px-space-1); }
+.mo-player--compact .mo-player-row { column-gap: 2px; }
+.mo-player--compact .mo-player-sep { margin: 0 2px; }
+.mo-player--viewer .mo-player-speed .ui-dropdown__button, .mo-player--fullscreen .mo-player-speed .ui-dropdown__button { background: var(--px-viewer-control); color: var(--px-viewer-ink); border-color: var(--px-viewer-line); }
+.mo-player-speed { flex: none; }
+.mo-player-speed .ui-dropdown { min-width: 0; width: 64px; }
+.mo-player-speed .ui-dropdown__button { height: 26px; font-size: var(--px-text-sm); }
+.mo-player-vol { position: relative; display: flex; align-items: center; flex: none; }
+.mo-player-vol-slider { width: 0; opacity: 0; margin: 0; accent-color: var(--px-accent); transition: width var(--px-dur-fast) var(--px-ease), opacity var(--px-dur-fast) var(--px-ease); }
+.mo-player-vol:hover .mo-player-vol-slider, .mo-player-vol:focus-within .mo-player-vol-slider { width: 72px; opacity: 1; margin: 0 var(--px-space-1); }
+/* Fullscreen: the picture alone, the dock floating over its foot. */
+.mo-player--fullscreen { background: var(--px-viewer-scrim); --mo-pl-ink: var(--px-viewer-ink); --mo-pl-muted: var(--px-viewer-ink-muted); --mo-pl-line: var(--px-viewer-line); }
+.mo-player--fullscreen .mo-player-stage { position: absolute; inset: 0; background: transparent; }
+.mo-player--fullscreen .mo-player-dock { position: absolute; left: 50%; bottom: var(--px-space-4); transform: translateX(-50%); width: min(1100px, calc(100% - var(--px-space-8))); border: 1px solid var(--px-viewer-line); border-radius: var(--px-radius-lg); background: var(--px-viewer-bar); padding: var(--px-space-2) var(--px-space-3); box-shadow: var(--px-shadow-lg); }
+.mo-player--fullscreen .mo-player-row .px-btn--ghost { color: var(--px-viewer-ink-muted); }
+.mo-player--fullscreen .mo-player-row .px-btn--ghost:hover:not(:disabled) { background: var(--px-viewer-control-hover); color: var(--px-viewer-ink); }
+.mo-player--fullscreen.mo-player-chrome-hidden .mo-player-dock { opacity: 0; pointer-events: none; }
+.mo-player--fullscreen.mo-player-chrome-hidden .mo-player-video { cursor: none; }
+/* A file that will not play: the reason and Open Externally. */
+.mo-player-error { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--px-space-2); padding: var(--px-space-6); text-align: center; background: var(--px-viewer-scrim); color: var(--px-viewer-ink); }
+.mo-player-error-title { font-size: var(--px-text-md); font-weight: 600; }
+.mo-player-error-detail { font-size: var(--px-text-sm); color: var(--px-viewer-ink-muted); max-width: 480px; }
 
 /* ─── Clip / WebP modal ─── */
 .mo-modal-overlay {
@@ -10426,7 +10300,10 @@ function moShowShortcutsCheatSheet() {
       [['+', '−'], 'Zoom in / out'],
       [['0'], 'Reset zoom'],
       [['Space', 'K'], 'Play / pause (video)'],
-      [['J', 'L'], 'Step back / forward (video)'],
+      [['J', 'L'], 'Back / forward 5 seconds (video)'],
+      [[',', '.'], 'Previous / next frame (video)'],
+      [['[', ']'], 'Mark In / Out (video)'],
+      [['M'], 'Mute (video)'],
       [['Esc'], 'Close'],
     ]},
     // Registered through the keybinding service (activate), live while the Edit Image tab is the active one.
@@ -15298,6 +15175,7 @@ function renderDetailEditor(container, api, input) {
 
   async function loadAndRender() {
     if (bodyEl._moKeydownCleanup) { bodyEl._moKeydownCleanup(); bodyEl._moKeydownCleanup = null; }
+    if (currentCtx && currentCtx._player) { currentCtx._player.dispose(); currentCtx._player = null; }
     const ctx = await loadDetailData(type, id);
     if (!ctx) {
       root.innerHTML = '';
@@ -15319,6 +15197,7 @@ function renderDetailEditor(container, api, input) {
   return {
     dispose() {
       if (bodyEl._moKeydownCleanup) bodyEl._moKeydownCleanup();
+      if (currentCtx && currentCtx._player) { currentCtx._player.dispose(); currentCtx._player = null; }
       // Clear any pending save timers from editable fields
       const tabContent = root.querySelector('.mo-detail-tab-content');
       if (tabContent && tabContent._moSaveTimers) {
@@ -15337,6 +15216,18 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
   const titleText = ctx.entity.title || (ctx.primaryFile ? ctx.primaryFile.basename : `${ctx.type} #${ctx.entity.id}`);
   const titleEl = moEl('span', 'mo-detail-header-title', { textContent: titleText });
   headerEl.appendChild(titleEl);
+  // A video's size and length sit beside its name (the player no longer
+  // repeats the name over the picture).
+  if (ctx.type === 'video') {
+    const vf = ctx.videoFile || {};
+    const w = vf.width || ctx.entity.width;
+    const h = vf.height || ctx.entity.height;
+    const d = vf.duration || ctx.entity.duration;
+    const bits = [];
+    if (w && h) bits.push(`${w} \u00d7 ${h}`);
+    if (d) bits.push(moTimeStr(d));
+    if (bits.length) headerEl.appendChild(moEl('span', 'mo-detail-header-meta', { textContent: bits.join(' \u00b7 ') }));
+  }
 
   // The kit's buttons: Edit Image labelled (the one action that opens
   // somewhere else), the rest icon buttons with their names as tooltips.
@@ -15379,6 +15270,10 @@ function buildDetailHeader(ctx, api, headerEl, callbacks) {
   // Edit Image (docs/IMAGE_EDITOR.md): still photos only.
   if (ctx.type === 'photo' && ctx.fullPath && !moIsGifPath(ctx.primaryFile && ctx.primaryFile.basename)) {
     api.ui.createButton(actions, { label: 'Edit Image', icon: 'sliders-horizontal', kind: 'secondary', onClick: () => { void moOpenImageEditor(api, ctx.entity.id); } });
+  }
+  // Edit Clip: the clip editor on this video, with the player's marks as the trim.
+  if (ctx.type === 'video' && ctx.fullPath) {
+    api.ui.createButton(actions, { label: 'Edit Clip', icon: 'clapperboard', kind: 'secondary', title: 'Open in the clip editor; the marked range becomes the trim', onClick: () => { moEditClipFromPlayer(api, ctx.fullPath, ctx._player, (ctx.videoFile && ctx.videoFile.duration) || ctx.entity.duration || 0); } });
   }
   headerEl.appendChild(actions);
 }
@@ -15443,7 +15338,9 @@ function buildMediaPreview(ctx) {
     return wrap;
   }
   if (ctx.type === 'video') {
-    buildVideoPlayer(wrap, ctx.fullPath, ctx);
+    const host = moEl('div', 'mo-detail-player');
+    wrap.appendChild(host);
+    ctx._player = buildVideoPlayer(host, ctx.fullPath, ctx);
   } else {
     buildPhotoPreview(wrap, ctx.fullPath);
   }
@@ -15537,10 +15434,18 @@ function buildPhotoPreview(container, fullPath) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// M59 Phase 1: Custom video player
-// Replaces native <video controls> with a ScreenToGif/YouTube-style player.
-// Features: hover-preview thumbs, A-B loop, in/out trim markers, frame-by-frame
-// stepping, J/K/L hotkeys, speed picker, capture frame, set as cover, trim→export.
+// The video player (buildVideoPlayer, below moTimeStr).
+
+// Edit Clip from a player: the clip editor on the video, the marks (when
+// set) as its In and Out, the whole video otherwise.
+function moEditClipFromPlayer(api, fullPath, player, fallbackDuration) {
+  const m = player ? player.getMarks() : { inPoint: null, outPoint: null, duration: 0 };
+  const dur = m.duration || fallbackDuration || 0;
+  const a = m.inPoint != null ? m.inPoint : 0;
+  const b = m.outPoint != null ? m.outPoint : dur;
+  if (player) { try { player.video.pause(); } catch { /* ignore */ } }
+  void moOpenClipDialog(api, fullPath, dur, a, b);
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 function moTimeStr(secs, withMs = false) {
@@ -15556,369 +15461,151 @@ function moTimeStr(secs, withMs = false) {
   return `${base}.${String(ms).padStart(3, '0')}`;
 }
 
-function buildVideoPlayer(container, fullPath, ctx) {
+// The video player, on a video's page and in the library viewer (the
+// approved mockup, docs/mockups/atelier-video-player.html, option B): the
+// picture alone in the stage, and under it a filmstrip that is the scrubber
+// (the marked range and the playhead on it, a frame preview on hover) and
+// one row of controls that never hides, the clip editor's transport. In
+// fullscreen the same dock floats over the picture and hides when idle.
+// opts.mode 'viewer' is the library viewer: viewer colours, and the viewer
+// owns the arrow keys and F (handleKey leaves them alone).
+// Returns { video, getMarks(), handleKey(e), dispose() }.
+function buildVideoPlayer(container, fullPath, ctx, opts = {}) {
+  const api = _api;
+  const viewer = opts.mode === 'viewer';
   container.classList.add('mo-player');
-  container.tabIndex = 0; // make focusable for keyboard
+  if (viewer) container.classList.add('mo-player--viewer');
+  container.tabIndex = 0; // focusable for the keys
 
+  // ── Stage ──
+  const stage = moEl('div', 'mo-player-stage');
   const video = document.createElement('video');
-
   video.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
   video.preload = 'metadata';
   video.draggable = false;
   video.controls = false;
   video.className = 'mo-player-video';
-  container.appendChild(video);
-
-  // Hidden seek-preview video (separate element so seeking it doesn't disturb playback)
+  stage.appendChild(video);
+  // Hidden seek-preview video (its own element, so seeking it leaves playback alone).
   const previewVid = document.createElement('video');
-  previewVid.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
+  previewVid.crossOrigin = 'anonymous';
   previewVid.preload = 'metadata';
   previewVid.muted = true;
   previewVid.className = 'mo-player-preview-vid';
-  container.appendChild(previewVid);
+  stage.appendChild(previewVid);
+  container.appendChild(stage);
 
-  // ── Top bar (auto-hide) ──
-  const topBar = moEl('div', 'mo-player-topbar');
-  const titleEl = moEl('div', 'mo-player-title');
-  const filename = (ctx && ctx.primaryFile && ctx.primaryFile.basename) || (fullPath.split(/[\\/]/).pop() || '');
-  titleEl.textContent = filename;
-  const metaEl = moEl('div', 'mo-player-meta');
-  topBar.append(titleEl, metaEl);
-  container.appendChild(topBar);
-
-  // ── Bottom bar (auto-hide) ──
-  const bottomBar = moEl('div', 'mo-player-bottombar');
-  // Progress row
-  const progRow = moEl('div', 'mo-player-progrow');
-  const progress = moEl('div', 'mo-player-progress');
-  const progBuf = moEl('div', 'mo-player-progress-buf');
-  const progPlayed = moEl('div', 'mo-player-progress-played');
-  const inMark = moEl('div', 'mo-player-mark mo-player-mark-in');
-  const outMark = moEl('div', 'mo-player-mark mo-player-mark-out');
-  const loopRange = moEl('div', 'mo-player-loop-range');
-  const progThumb = moEl('div', 'mo-player-progress-thumb');
-  progress.append(progBuf, progPlayed, loopRange, inMark, outMark, progThumb);
-  // Hover preview
-  const hoverWrap = moEl('div', 'mo-player-hover');
+  // ── Dock: filmstrip, then the transport ──
+  const dock = moEl('div', 'mo-player-dock');
+  const strip = moEl('div', 'mo-player-strip', { title: '' });
+  const frames = moEl('div', 'mo-player-strip-frames');
+  const range = moEl('div', 'mo-player-strip-range');
+  const head = moEl('div', 'mo-player-strip-head');
+  const hover = moEl('div', 'mo-player-strip-hover');
   const hoverCanvas = document.createElement('canvas');
   hoverCanvas.width = 160; hoverCanvas.height = 90;
-  hoverCanvas.className = 'mo-player-hover-canvas';
-  const hoverTime = moEl('div', 'mo-player-hover-time');
-  hoverWrap.append(hoverCanvas, hoverTime);
-  progRow.append(progress, hoverWrap);
-  bottomBar.appendChild(progRow);
+  const hoverTime = moEl('div', 'mo-player-strip-hover-time');
+  hover.append(hoverCanvas, hoverTime);
+  strip.append(frames, range, head, hover);
+  dock.appendChild(strip);
 
-  // Controls row
-  const ctrlRow = moEl('div', 'mo-player-ctrlrow');
-  const mkBtn = (icon, title, onClick) => {
-    const b = moEl('button', 'mo-player-btn', { title });
-    b.innerHTML = moIcon(icon, 14);
-    b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
-    return b;
-  };
+  const row = moEl('div', 'mo-player-row');
+  const iconBtn = (icon, title, onClick) => api.ui.createIconButton(row, { icon, title, size: 'sm', onClick: (e) => { e.stopPropagation(); onClick(); } });
+  const textBtn = (label, icon, title, onClick) => api.ui.createButton(row, { label, icon, title, kind: 'ghost', size: 'sm', onClick: (e) => { e.stopPropagation(); onClick(); } });
+  const sep = () => row.appendChild(moEl('span', 'mo-player-sep'));
 
-  const playBtn = mkBtn('play', 'Play / Pause (Space)', () => togglePlay());
-  const skipBackBtn = mkBtn('chevron-left', 'Skip back 5s (J / ←)', () => seekBy(-5));
-  const skipFwdBtn = mkBtn('chevron-right', 'Skip forward 5s (L / →)', () => seekBy(5));
-  const frameBackBtn = mkBtn('debug-step-back', 'Previous frame (,)', () => stepFrame(-1));
-  const frameFwdBtn = mkBtn('debug-step-over', 'Next frame (.)', () => stepFrame(1));
-
-  const timeDisp = moEl('div', 'mo-player-time');
-  timeDisp.textContent = '0:00 / 0:00';
-
-  // Speed picker
-  const speedWrap = moEl('div', 'mo-player-speed');
-  const speedBtn = moEl('button', 'mo-player-btn mo-player-speed-btn', { title: 'Playback speed', textContent: '1×' });
-  const speedMenu = moEl('div', 'mo-player-speed-menu mo-hidden');
-  const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8, 16];
-  speeds.forEach(s => {
-    const item = moEl('button', 'mo-player-speed-item', { textContent: s + '×' });
-    item.addEventListener('click', (e) => {
-      e.stopPropagation();
-      video.playbackRate = s;
-      speedBtn.textContent = s + '×';
-      speedMenu.classList.add('mo-hidden');
-    });
-    speedMenu.appendChild(item);
-  });
-  speedBtn.addEventListener('click', (e) => { e.stopPropagation(); speedMenu.classList.toggle('mo-hidden'); });
-  speedWrap.append(speedBtn, speedMenu);
-
-  // Volume
+  const playBtn = iconBtn('play', 'Play (Space)', () => togglePlay());
+  iconBtn('rotate-ccw', 'Back 5 seconds (J)', () => seekBy(-5));
+  iconBtn('rotate-cw', 'Forward 5 seconds (L)', () => seekBy(5));
+  iconBtn('step-back', 'Previous frame (,)', () => stepFrame(-1));
+  iconBtn('step-forward', 'Next frame (.)', () => stepFrame(1));
+  const readout = moEl('span', 'mo-player-readout');
+  row.appendChild(readout);
+  sep();
+  const inBtn = textBtn('In', 'arrow-right-to-line', 'Mark In at the playhead ([)', () => setInPoint());
+  const outBtn = textBtn('Out', 'arrow-left-to-line', 'Mark Out at the playhead (])', () => setOutPoint());
+  const clearBtn = iconBtn('x', 'Clear the marks', () => clearMarks());
+  const loopBtn = textBtn('Loop', 'repeat', 'Loop between the marks, or the whole video when none are set', () => toggleLoop());
+  loopBtn.classList.add('mo-player-collapsible');
+  row.appendChild(moEl('span', 'mo-player-spacer'));
+  const saveFrameBtn = textBtn('Save Frame', 'camera', 'Save this frame as a photo, next to the video', () => { void moCaptureFrame(api, fullPath, video.currentTime); });
+  const coverBtn = textBtn('Set Cover', 'image', 'Use this frame as the video’s picture in the library', () => { void setCover(); });
+  saveFrameBtn.classList.add('mo-player-collapsible');
+  coverBtn.classList.add('mo-player-collapsible');
+  sep();
+  const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 8, 16];
+  const speedDd = moDropdown({ items: SPEEDS.map((s) => ({ value: String(s), label: `${s}×` })), selected: '1', ariaLabel: 'Playback speed', className: 'mo-player-speed' });
+  speedDd.onChange = (v) => { const s = parseFloat(v); if (Number.isFinite(s) && s > 0) video.playbackRate = s; };
+  row.appendChild(speedDd.el);
   const volWrap = moEl('div', 'mo-player-vol');
-  const muteBtn = mkBtn('unmute', 'Mute (M)', () => { video.muted = !video.muted; updateVolIcon(); });
+  const muteBtn = api.ui.createIconButton(volWrap, { icon: 'volume-2', title: 'Mute (M)', size: 'sm', onClick: (e) => { e.stopPropagation(); video.muted = !video.muted; updateVolIcon(); } });
   const volSlider = document.createElement('input');
   volSlider.type = 'range'; volSlider.min = '0'; volSlider.max = '1'; volSlider.step = '0.01'; volSlider.value = '1';
   volSlider.className = 'mo-player-vol-slider';
+  volSlider.setAttribute('aria-label', 'Volume');
   volSlider.addEventListener('input', () => { video.volume = parseFloat(volSlider.value); video.muted = video.volume === 0; updateVolIcon(); });
-  volWrap.append(muteBtn, volSlider);
+  volWrap.appendChild(volSlider);
+  row.appendChild(volWrap);
+  const fsBtn = iconBtn('maximize', viewer ? 'Fullscreen' : 'Fullscreen (F)', () => toggleFullscreen());
+  dock.appendChild(row);
+  container.appendChild(dock);
+
   function updateVolIcon() {
-    muteBtn.innerHTML = moIcon(video.muted || video.volume === 0 ? 'mute' : 'unmute', 14);
+    const off = video.muted || video.volume === 0;
+    muteBtn.innerHTML = moIcon(off ? 'volume-x' : 'volume-2', 14);
+    muteBtn.title = off ? 'Unmute (M)' : 'Mute (M)';
   }
 
-  // In/out + A-B loop
-  const inBtn = mkBtn('bookmark', 'Set in point ([)', () => setInPoint());
-  const outBtn = mkBtn('bookmark', 'Set out point (])', () => setOutPoint());
-  outBtn.style.transform = 'scaleX(-1)';
-  const loopBtn = mkBtn('refresh', 'Toggle A-B loop', () => toggleLoop());
-
-  const fsBtn = mkBtn('screen-full', 'Fullscreen (F)', () => toggleFullscreen());
-
-  // Flexible spacer pushes the right-side cluster to the far edge of the bar.
-  const spacer = moEl('div', 'mo-player-spacer');
-
-  // Left cluster: transport + time. Right cluster: in/out, loop, volume, speed, fullscreen.
-  ctrlRow.append(
-    playBtn, skipBackBtn, frameBackBtn, frameFwdBtn, skipFwdBtn, timeDisp,
-    spacer,
-    inBtn, outBtn, loopBtn, volWrap, speedWrap, fsBtn,
-  );
-  bottomBar.appendChild(ctrlRow);
-  container.appendChild(bottomBar);
-
-  // ── Right action rail ──
-  const rail = moEl('div', 'mo-player-rail');
-  const captureBtn = moEl('button', 'mo-player-rail-btn', { title: 'Save this frame as a photo (next to the video)' });
-  captureBtn.innerHTML = moIcon('device-camera', 14);
-  captureBtn.addEventListener('click', (e) => { e.stopPropagation(); void moCaptureFrame(_api, fullPath, video.currentTime); });
-
-  const coverBtn = moEl('button', 'mo-player-rail-btn', { title: 'Set as cover frame' });
-  coverBtn.innerHTML = moIcon('image', 14);
-  coverBtn.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    const fileId = ctx && ctx.primaryFile && ctx.primaryFile.id;
-    if (!fileId) {
-      _api && _api.window.showWarningMessage('Cannot set cover. The video file is not indexed yet.');
-      return;
-    }
-    coverBtn.disabled = true;
-    try {
-      // Checksum lives in mo_fingerprints (type='md5'), keyed by file_id —
-      // mo_videos has no checksum column. Fetch lazily; if the md5 fingerprint
-      // hasn't been computed yet, fall back to computing it now so the user
-      // never sees the old "no fingerprint yet" dead-end.
-      let row = await db.get(
-        `SELECT value FROM mo_fingerprints WHERE file_id = ? AND type = 'md5'`,
-        [fileId]
-      );
-      let checksum = row && row.value;
-      if (!checksum) {
-        try {
-          checksum = await computeMD5(fullPath);
-          if (checksum) {
-            await FingerprintQueries.upsert({ fileId, type: 'md5', value: checksum });
-          }
-        } catch { /* fall through to error message below */ }
-      }
-      if (!checksum) {
-        _api && _api.window.showWarningMessage('Cannot set cover. The video fingerprint could not be computed.');
-        return;
-      }
-      const r = await generateVideoCoverFrame(
-        checksum, fullPath, video.duration || 0, _api, true, video.currentTime,
-        video.videoWidth || 0, video.videoHeight || 0
-      );
-      if (r && r.generated) _api.window.showInformationMessage('Cover frame updated.');
-      else _api.window.showErrorMessage('Failed to update cover frame.');
-    } catch (err) {
-      _api.window.showErrorMessage('Cover update error: ' + (err && err.message || err));
-    } finally { coverBtn.disabled = false; }
-  });
-
-  const trimBtn = moEl('button', 'mo-player-rail-btn', { title: 'Trim → export clip / GIF' });
-  trimBtn.innerHTML = moIcon('split-horizontal', 14);
-  trimBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const inT = inPoint != null ? inPoint : 0;
-    const outT = outPoint != null ? outPoint : (video.duration || 0);
-    void moOpenClipDialog(_api, fullPath, video.duration || 0, inT, outT);
-  });
-
-  // M59 P10 / F16 — Filmstrip toggle. Rendered next to the existing rail
-  // buttons so the player chrome stays a single coherent surface.
-  const filmstripBtn = moEl('button', 'mo-player-rail-btn', { title: 'Toggle filmstrip' });
-  filmstripBtn.innerHTML = moIcon('gallery-thumbnails', 14);
-  filmstripBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    setFilmstripVisible(!filmstripVisible, /* persist */ true);
-  });
-
-  rail.append(captureBtn, coverBtn, trimBtn, filmstripBtn);
-  container.appendChild(rail);
-
-  // ── Filmstrip surface ──
-  // The filmstrip element lives inside the player so it inherits the
-  // chrome-hidden behaviour (auto-hide with the rest of the controls).
-  const filmstrip = moEl('div', 'mo-player-filmstrip mo-hidden');
-  container.appendChild(filmstrip);
-  let filmstripVisible = false;
-  let filmstripPopulated = false;
-  let filmstripGeneration = 0; // increments to abort in-flight generations
-
-  function setFilmstripVisible(visible, persist) {
-    filmstripVisible = visible;
-    filmstrip.classList.toggle('mo-hidden', !visible);
-    filmstripBtn.classList.toggle('mo-active', visible);
-    if (visible && !filmstripPopulated && (video.duration || 0) > 0) {
-      populateFilmstrip();
-    }
-    if (persist) {
-      moSetSetting('video_filmstrip_default', visible ? '1' : '0').catch(() => {});
-    }
-  }
-
-  /**
-   * Generate N evenly-spaced thumbnails by seeking a dedicated offscreen
-   * <video> and drawing each frame into a canvas. We use a separate element
-   * (not previewVid) because previewVid is owned by the hover-preview path
-   * and we don't want to fight it for seek state.
-   */
-  async function populateFilmstrip() {
-    if (filmstripPopulated) return;
-    filmstripPopulated = true;
-    const myGen = ++filmstripGeneration;
-    filmstrip.innerHTML = '';
-    const dur = video.duration || 0;
-    if (dur <= 0) { filmstripPopulated = false; return; }
-    // Roughly 1 thumb per ~12s, clamped to 6..24 thumbs total.
-    const n = Math.max(6, Math.min(24, Math.round(dur / 12)));
-
-    const fsVid = document.createElement('video');
-
-    fsVid.crossOrigin = 'anonymous'; // streamed frames stay drawable (parallx-media://)
-    fsVid.preload = 'metadata';
-    fsVid.muted = true;
-    fsVid.playsInline = true;
-    fsVid.src = video.src;
-
-    const thumbs = [];
-    for (let i = 0; i < n; i++) {
-      const t = (dur * (i + 0.5)) / n;
-      const thumb = moEl('div', 'mo-player-fs-thumb');
-      const cv = document.createElement('canvas');
-      cv.width = 192; cv.height = 108;
-      thumb.appendChild(cv);
-      const tLabel = moEl('span', 'mo-fs-time', { textContent: moTimeStr(t) });
-      thumb.appendChild(tLabel);
-      thumb.addEventListener('click', () => {
-        try { video.currentTime = t; } catch { /* ignore */ }
-      });
-      filmstrip.appendChild(thumb);
-      thumbs.push({ thumb, canvas: cv, t });
-    }
-
-    await new Promise((resolve) => {
-      const onMeta = () => { fsVid.removeEventListener('loadedmetadata', onMeta); resolve(); };
-      if (fsVid.readyState >= 1) resolve();
-      else fsVid.addEventListener('loadedmetadata', onMeta);
-    });
-    if (myGen !== filmstripGeneration) return; // aborted
-
-    for (const t of thumbs) {
-      if (myGen !== filmstripGeneration) return;
-      try {
-        await new Promise((resolve) => {
-          const onSeeked = () => { fsVid.removeEventListener('seeked', onSeeked); resolve(); };
-          fsVid.addEventListener('seeked', onSeeked);
-          try { fsVid.currentTime = t.t; } catch { resolve(); }
-        });
-        if (myGen !== filmstripGeneration) return;
-        const ctx2d = t.canvas.getContext('2d');
-        if (ctx2d) ctx2d.drawImage(fsVid, 0, 0, t.canvas.width, t.canvas.height);
-      } catch { /* skip this thumb on failure */ }
-    }
-    // Release the offscreen video.
-    try { fsVid.removeAttribute('src'); fsVid.load(); } catch { /* ignore */ }
-  }
-
-  // Update active highlight as playback progresses.
-  function updateFilmstripActive() {
-    if (!filmstripVisible || !filmstripPopulated) return;
-    const dur = video.duration || 0;
-    if (dur <= 0) return;
-    const children = filmstrip.children;
-    const n = children.length;
-    if (!n) return;
-    const idx = Math.min(n - 1, Math.floor((video.currentTime / dur) * n));
-    for (let i = 0; i < n; i++) {
-      children[i].classList.toggle('mo-active', i === idx);
-    }
-  }
-  video.addEventListener('timeupdate', updateFilmstripActive);
-
-  // Restore persisted toggle once metadata loads (so we know duration > 0).
-  (async () => {
-    try {
-      const pref = await moGetSetting('video_filmstrip_default', '0');
-      if (pref === '1') {
-        const tryShow = () => {
-          if ((video.duration || 0) > 0) setFilmstripVisible(true, /* persist */ false);
-          else video.addEventListener('loadedmetadata', () => setFilmstripVisible(true, false), { once: true });
-        };
-        tryShow();
-      }
-    } catch { /* ignore */ }
-  })();
+  // Labelled buttons fold to icons when the player is narrow.
+  const ro = new ResizeObserver(() => { container.classList.toggle('mo-player--compact', container.clientWidth < 940); });
+  ro.observe(container);
 
   // ── State ──
   let inPoint = null;
   let outPoint = null;
   let loopActive = false;
-  let nominalFps = 30; // updated from ffprobe later if available
+  let nominalFps = 30;
+  let disposed = false;
 
-  // Load video src (the preview copy when the codec needs one). The codec
-  // pre-flight below runs first; the load waits one microtask for it.
+  // ── Loading (a preview copy when the codec needs one) ──
   let _previewCopy = null;
-  Promise.resolve().then(() => (_previewCopy ? _previewCopy.then((p) => (p ? localFileToUrl(p) : null)) : localFileToUrl(fullPath))).then(url => {
-    if (!url) { if (!_previewCopy) _showPlayerError('Failed to read video file', 'The file could not be read from disk. It may be locked, deleted, or larger than 512 MB.'); return; }
+  Promise.resolve().then(() => (_previewCopy ? _previewCopy.then((p) => (p ? localFileToUrl(p) : null)) : localFileToUrl(fullPath))).then((url) => {
+    if (disposed) return;
+    if (!url) { if (!_previewCopy) showError('Failed to read video file', 'The file could not be read from disk. It may be locked, deleted, or larger than 512 MB.'); return; }
     video.src = url;
     previewVid.src = url;
     video.load();
+    if (opts.autoplay) video.play().catch(() => {});
   });
 
-  // Render an in-player error overlay with a clear reason and an
-  // "Open Externally" fallback. Replaces the old `container.textContent`
-  // wipe which destroyed every child node (toolbar, etc) and gave the
-  // user no way to actually watch their file.
-  function _showPlayerError(title, detail) {
-    const overlay = moEl('div', 'mo-player-error');
-    overlay.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;background:rgba(0,0,0,0.85);color:var(--vscode-foreground);text-align:center;z-index:50;';
-    const t = moEl('div'); t.style.cssText = 'font-size:14px;font-weight:600;'; t.textContent = title;
-    const d = moEl('div'); d.style.cssText = 'font-size:12px;opacity:0.8;max-width:480px;line-height:1.4;'; d.textContent = detail || '';
-    const btn = moEl('button', 'mo-btn mo-btn-primary');
-    btn.style.cssText = 'margin-top:8px;padding:6px 14px;';
-    btn.textContent = 'Open externally';
-    btn.addEventListener('click', () => {
-      window.parallxElectron.shell.openPath(fullPath).catch(() => {});
-    });
-    overlay.append(t, d, btn);
-    container.appendChild(overlay);
+  // An error over the stage with the reason and Open Externally, so the
+  // file can still be watched.
+  function showError(title, detail) {
+    const box = moEl('div', 'mo-player-error');
+    box.appendChild(moEl('div', 'mo-player-error-title', { textContent: title }));
+    if (detail) box.appendChild(moEl('div', 'mo-player-error-detail', { textContent: detail }));
+    api.ui.createButton(box, { label: 'Open Externally', kind: 'secondary', onClick: () => { window.parallxElectron.shell.openPath(fullPath).catch(() => {}); } });
+    stage.appendChild(box);
   }
 
-  // Detect codecs Chromium's <video> element refuses to decode in mp4
-  // containers. Even a small file (<50 MB) silently shows a black frame
-  // when the codec is HEVC/H.265 or AV1 — there's no decoder error,
-  // just no pixels. We have the codec from ffprobe at scan time, so
-  // pre-flight against a known-bad list before even loading the blob.
+  // Codecs Chromium will not decode in mp4 show a black frame with no
+  // error; the codec is known from the scan, so check before loading. HEVC
+  // from a phone, most often, plays from a preview copy made by ffmpeg in
+  // the cache; the original is untouched and exports still read it.
   const _CODEC_UNSUPPORTED = new Set(['hevc', 'h265', 'vp8', 'mpeg4', 'mpeg2video', 'wmv3', 'vc1', 'prores']);
   const codec = String((ctx && ((ctx.videoFile && ctx.videoFile.codec) || (ctx.entity && ctx.entity.codec))) || '').toLowerCase();
-  // A codec Chromium cannot decode (HEVC from a phone, most often) plays
-  // from a preview copy made by ffmpeg in the cache; the original file is
-  // untouched and exports still read it (M104 Part C).
   if (codec && _CODEC_UNSUPPORTED.has(codec) && !moCanPlayCodec(codec)) {
     if (!_toolPaths.ffmpeg) {
-      _showPlayerError(
-        `Codec "${codec}" is not supported by the in-app player`,
-        'Chromium\u2019s built-in video element cannot decode this codec. Install ffmpeg for a preview copy, or open it in your system player.'
-      );
-      return;
+      showError(`Codec "${codec}" is not supported by the in-app player`, 'Chromium’s built-in video element cannot decode this codec. Install ffmpeg for a preview copy, or open it in your system player.');
+    } else {
+      const note = moEl('div', 'mo-player-preview-note', { textContent: 'Making a preview copy for playback. The original file is untouched.' });
+      stage.appendChild(note);
+      _previewCopy = moVideoPreviewCopy(fullPath, api).then((p) => { note.remove(); if (!p) showError(`Codec "${codec}" is not supported by the in-app player`, 'The preview copy could not be made. Open it in your system player.'); return p; });
     }
-    const note = moEl('div', 'mo-player-preview-note', { textContent: 'Making a preview copy for playback. The original file is untouched.' });
-    container.appendChild(note);
-    _previewCopy = moVideoPreviewCopy(fullPath, _api).then((p) => { note.remove(); if (!p) _showPlayerError(`Codec "${codec}" is not supported by the in-app player`, 'The preview copy could not be made. Open it in your system player.'); return p; });
   }
 
   video.addEventListener('error', () => {
+    if (disposed || !video.getAttribute('src')) return;
     const err = video.error;
     let detail = 'The video could not be decoded.';
     if (err) {
@@ -15926,210 +15613,305 @@ function buildVideoPlayer(container, fullPath, ctx) {
         case 1: detail = 'Loading was aborted.'; break;
         case 2: detail = 'Network error while loading.'; break;
         case 3: detail = 'The video is corrupt or the decoder failed.'; break;
-        case 4: detail = `The codec "${codec || 'unknown'}" is not supported by the in-app player. Open externally to play.`; break;
+        case 4: detail = `The codec "${codec || 'unknown'}" is not supported by the in-app player. Open it externally to play.`; break;
       }
     }
-    _showPlayerError('Cannot play this video', detail);
+    showError('Cannot play this video', detail);
   });
 
   video.addEventListener('loadedmetadata', () => {
-    metaEl.textContent = `${video.videoWidth || '?'}×${video.videoHeight || '?'}  ·  ${moTimeStr(video.duration)}`;
-    timeDisp.textContent = `0:00 / ${moTimeStr(video.duration)}`;
-    if (ctx && ctx.entity && ctx.entity.frame_rate) nominalFps = ctx.entity.frame_rate;
+    const fr = ctx && ctx.entity && ctx.entity.frame_rate;
+    if (fr) nominalFps = fr;
+    refreshTime();
+    refreshMarks();
+    void populateFrames();
   });
 
-  function setPlayingClass() {
+  function syncPlay() {
     container.classList.toggle('mo-player-playing', !video.paused);
     playBtn.innerHTML = moIcon(video.paused ? 'play' : 'pause', 14);
+    playBtn.title = video.paused ? 'Play (Space)' : 'Pause (Space)';
+    playBtn.setAttribute('aria-label', playBtn.title);
   }
-  video.addEventListener('play', setPlayingClass);
-  video.addEventListener('pause', setPlayingClass);
+  video.addEventListener('play', syncPlay);
+  video.addEventListener('pause', syncPlay);
 
   function refreshTime() {
     const cur = video.currentTime || 0;
     const dur = video.duration || 0;
-    timeDisp.textContent = `${moTimeStr(cur)} / ${moTimeStr(dur)}`;
-    if (dur > 0) progPlayed.style.width = ((cur / dur) * 100) + '%';
-    // Update buffered range
-    try {
-      if (video.buffered.length > 0 && dur > 0) {
-        const end = video.buffered.end(video.buffered.length - 1);
-        progBuf.style.width = ((end / dur) * 100) + '%';
-      }
-    } catch {}
-    // A-B loop logic
-    if (loopActive && inPoint != null && outPoint != null && cur >= outPoint) {
-      video.currentTime = inPoint;
+    readout.innerHTML = '';
+    readout.appendChild(moEl('b', null, { textContent: moTcStr(cur) }));
+    readout.appendChild(document.createTextNode(` / ${moTcStr(dur)}`));
+    if (dur > 0) head.style.left = ((cur / dur) * 100) + '%';
+    if (loopActive) {
+      const [a, b] = loopBounds();
+      if (cur >= b - 0.01 || cur < a - 0.05) { try { video.currentTime = a; } catch { /* ignore */ } }
     }
   }
   video.addEventListener('timeupdate', refreshTime);
-  video.addEventListener('progress', refreshTime);
+  video.addEventListener('seeked', refreshTime);
+  video.addEventListener('ended', () => {
+    if (loopActive) { const [a] = loopBounds(); try { video.currentTime = a; } catch { /* ignore */ } video.play().catch(() => {}); }
+  });
 
   function togglePlay() {
-    if (video.paused) video.play().catch(() => {});
-    else video.pause();
+    if (video.paused) {
+      if (loopActive) {
+        const [a, b] = loopBounds();
+        if (video.currentTime < a || video.currentTime >= b - 0.02) { try { video.currentTime = a; } catch { /* ignore */ } }
+      }
+      video.play().catch(() => {});
+    } else video.pause();
   }
-
   function seekBy(delta) {
     const dur = video.duration || 0;
     video.currentTime = Math.max(0, Math.min(dur, (video.currentTime || 0) + delta));
   }
-
   function stepFrame(dir) {
     video.pause();
-    const step = 1 / Math.max(1, nominalFps);
-    seekBy(dir * step);
+    seekBy(dir / Math.max(1, nominalFps));
   }
 
+  // ── Marks and loop ──
+  function loopBounds() {
+    const dur = video.duration || 0;
+    return [inPoint != null ? inPoint : 0, outPoint != null ? outPoint : dur];
+  }
   function setInPoint() {
     inPoint = video.currentTime;
-    if (outPoint != null && inPoint > outPoint) outPoint = null;
+    if (outPoint != null && inPoint >= outPoint) outPoint = null;
     refreshMarks();
   }
   function setOutPoint() {
     outPoint = video.currentTime;
-    if (inPoint != null && outPoint < inPoint) inPoint = null;
+    if (inPoint != null && outPoint <= inPoint) inPoint = null;
     refreshMarks();
   }
-  function toggleLoop() {
-    if (inPoint == null || outPoint == null) {
-      _api && _api.window.showWarningMessage('Set in ([) and out (]) points first.');
-      return;
-    }
-    loopActive = !loopActive;
-    loopBtn.classList.toggle('mo-player-btn-active', loopActive);
+  function clearMarks() {
+    inPoint = null; outPoint = null;
+    refreshMarks();
+  }
+  function setBtnLabel(btn, text) {
+    const l = btn.querySelector('.px-btn__label');
+    if (l) l.textContent = text;
   }
   function refreshMarks() {
     const dur = video.duration || 0;
-    if (inPoint != null && dur > 0) { inMark.style.left = ((inPoint / dur) * 100) + '%'; inMark.style.display = 'block'; }
-    else inMark.style.display = 'none';
-    if (outPoint != null && dur > 0) { outMark.style.left = ((outPoint / dur) * 100) + '%'; outMark.style.display = 'block'; }
-    else outMark.style.display = 'none';
-    if (inPoint != null && outPoint != null && dur > 0) {
-      const a = (inPoint / dur) * 100;
-      const b = (outPoint / dur) * 100;
-      loopRange.style.left = a + '%';
-      loopRange.style.width = (b - a) + '%';
-      loopRange.style.display = 'block';
-    } else loopRange.style.display = 'none';
+    setBtnLabel(inBtn, inPoint != null ? `In ${moTcStr(inPoint)}` : 'In');
+    setBtnLabel(outBtn, outPoint != null ? `Out ${moTcStr(outPoint)}` : 'Out');
+    inBtn.classList.toggle('mo-active', inPoint != null);
+    outBtn.classList.toggle('mo-active', outPoint != null);
+    clearBtn.classList.toggle('mo-hidden', inPoint == null && outPoint == null);
+    if (dur > 0 && (inPoint != null || outPoint != null)) {
+      const [a, b] = loopBounds();
+      range.style.left = ((a / dur) * 100) + '%';
+      range.style.width = (((b - a) / dur) * 100) + '%';
+      range.classList.add('mo-shown');
+    } else range.classList.remove('mo-shown');
+  }
+  function toggleLoop() {
+    loopActive = !loopActive;
+    loopBtn.classList.toggle('mo-active', loopActive);
+    loopBtn.setAttribute('aria-pressed', String(loopActive));
   }
 
-  function toggleFullscreen() {
-    if (document.fullscreenElement === container) document.exitFullscreen();
-    else container.requestFullscreen().catch(() => {});
+  async function setCover() {
+    const fileId = ctx && ctx.primaryFile && ctx.primaryFile.id;
+    if (!fileId) { api.window.showWarningMessage('Cannot set the cover. The video file is not indexed yet.'); return; }
+    coverBtn.disabled = true;
+    try {
+      // The checksum lives in mo_fingerprints (type md5); compute it now when
+      // the scan has not yet.
+      const row0 = await db.get(`SELECT value FROM mo_fingerprints WHERE file_id = ? AND type = 'md5'`, [fileId]);
+      let checksum = row0 && row0.value;
+      if (!checksum) {
+        try {
+          checksum = await computeMD5(fullPath);
+          if (checksum) await FingerprintQueries.upsert({ fileId, type: 'md5', value: checksum });
+        } catch { /* reported below */ }
+      }
+      if (!checksum) { api.window.showWarningMessage('Cannot set the cover. The video fingerprint could not be computed.'); return; }
+      const r = await generateVideoCoverFrame(checksum, fullPath, video.duration || 0, api, true, video.currentTime, video.videoWidth || 0, video.videoHeight || 0);
+      if (r && r.generated) api.window.showInformationMessage('Cover updated.');
+      else api.window.showErrorMessage('Failed to update the cover.');
+    } catch (err) {
+      api.window.showErrorMessage('Cover update error: ' + (err && err.message || err));
+    } finally { coverBtn.disabled = false; }
   }
 
-  // ── Progress bar interaction ──
-  function pctFromEvent(e) {
-    const r = progress.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-  }
-  progress.addEventListener('click', (e) => {
+  // ── Filmstrip frames: one offscreen <video> seeks and draws each ──
+  let framesGen = 0;
+  async function populateFrames() {
+    const myGen = ++framesGen;
     const dur = video.duration || 0;
-    if (dur > 0) video.currentTime = pctFromEvent(e) * dur;
-  });
+    if (dur <= 0 || !video.src) return;
+    const n = Math.max(8, Math.min(24, Math.round((strip.clientWidth || 640) / 72)));
+    frames.innerHTML = '';
+    const cells = [];
+    for (let i = 0; i < n; i++) {
+      const cv = document.createElement('canvas');
+      cv.width = 128; cv.height = 72;
+      cv.className = 'mo-player-strip-frame';
+      frames.appendChild(cv);
+      cells.push({ cv, t: (dur * (i + 0.5)) / n });
+    }
+    const fv = document.createElement('video');
+    fv.crossOrigin = 'anonymous';
+    fv.preload = 'metadata';
+    fv.muted = true;
+    fv.playsInline = true;
+    fv.src = video.src;
+    await new Promise((resolve) => {
+      if (fv.readyState >= 1) { resolve(); return; }
+      fv.addEventListener('loadedmetadata', resolve, { once: true });
+      fv.addEventListener('error', resolve, { once: true });
+    });
+    for (const c of cells) {
+      if (disposed || myGen !== framesGen) break;
+      try {
+        await new Promise((resolve) => {
+          const done = () => { clearTimeout(t); resolve(); };
+          const t = setTimeout(done, 4000);
+          fv.addEventListener('seeked', done, { once: true });
+          try { fv.currentTime = c.t; } catch { done(); }
+        });
+        const c2 = c.cv.getContext('2d');
+        if (c2) c2.drawImage(fv, 0, 0, c.cv.width, c.cv.height);
+      } catch { /* this frame stays blank */ }
+    }
+    try { fv.removeAttribute('src'); fv.load(); } catch { /* ignore */ }
+  }
 
-  // Scrub listeners are SESSION-SCOPED (attach on mousedown, detach on
-  // mouseup) — permanent window listeners here leaked per editor open.
+  // ── Scrubbing on the filmstrip ──
+  function pctAt(clientX) {
+    const r = strip.getBoundingClientRect();
+    return r.width > 0 ? Math.max(0, Math.min(1, (clientX - r.left) / r.width)) : 0;
+  }
   let scrubbing = false;
-  const onScrubMove = (e) => {
-    if (!scrubbing) return;
-    const dur = video.duration || 0;
-    if (dur > 0) video.currentTime = pctFromEvent(e) * dur;
-  };
-  const onScrubUp = () => {
-    scrubbing = false;
-    window.removeEventListener('mousemove', onScrubMove);
-    window.removeEventListener('mouseup', onScrubUp);
-  };
-  progress.addEventListener('mousedown', (e) => {
-    scrubbing = true;
-    e.preventDefault();
-    window.addEventListener('mousemove', onScrubMove);
-    window.addEventListener('mouseup', onScrubUp);
-  });
-
-  // Hover preview thumbnail
-  let previewSeekToken = 0;
-  progress.addEventListener('mousemove', (e) => {
+  strip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
     const dur = video.duration || 0;
     if (dur <= 0) return;
-    const pct = pctFromEvent(e);
+    scrubbing = true;
+    strip.setPointerCapture(e.pointerId);
+    video.currentTime = pctAt(e.clientX) * dur;
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  strip.addEventListener('pointerup', (e) => {
+    scrubbing = false;
+    try { strip.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+  });
+  let previewToken = 0;
+  strip.addEventListener('pointermove', (e) => {
+    const dur = video.duration || 0;
+    if (dur <= 0) return;
+    const pct = pctAt(e.clientX);
     const t = pct * dur;
-    hoverWrap.style.display = 'block';
-    const r = progress.getBoundingClientRect();
-    hoverWrap.style.left = (e.clientX - r.left) + 'px';
-    hoverTime.textContent = moTimeStr(t);
-    progThumb.style.left = (pct * 100) + '%';
-    progThumb.style.display = 'block';
-
-    const myToken = ++previewSeekToken;
-    try { previewVid.currentTime = t; } catch {}
-    const onSeeked = () => {
-      previewVid.removeEventListener('seeked', onSeeked);
-      if (myToken !== previewSeekToken) return;
-      try {
-        const cctx = hoverCanvas.getContext('2d');
-        cctx.drawImage(previewVid, 0, 0, hoverCanvas.width, hoverCanvas.height);
-      } catch {}
-    };
-    previewVid.addEventListener('seeked', onSeeked);
+    if (scrubbing) video.currentTime = t;
+    hover.classList.add('mo-shown');
+    hover.style.left = (pct * 100) + '%';
+    hoverTime.textContent = moTcStr(t);
+    const my = ++previewToken;
+    previewVid.addEventListener('seeked', () => {
+      if (my !== previewToken) return;
+      try { hoverCanvas.getContext('2d').drawImage(previewVid, 0, 0, hoverCanvas.width, hoverCanvas.height); } catch { /* ignore */ }
+    }, { once: true });
+    try { previewVid.currentTime = t; } catch { /* ignore */ }
   });
-  progress.addEventListener('mouseleave', () => {
-    hoverWrap.style.display = 'none';
-    progThumb.style.display = 'none';
-  });
+  strip.addEventListener('pointerleave', () => { if (!scrubbing) hover.classList.remove('mo-shown'); });
 
-  // ── Click-to-pause / dblclick fullscreen on video itself ──
+  // ── The picture: click plays or pauses, double-click is fullscreen ──
   video.addEventListener('click', () => togglePlay());
   video.addEventListener('dblclick', () => toggleFullscreen());
 
-  // ── Auto-hide top/bottom bars after 2.5s idle ──
+  function toggleFullscreen() {
+    if (document.fullscreenElement === container) document.exitFullscreen().catch(() => {});
+    else container.requestFullscreen().catch(() => {});
+  }
+  const onFsChange = () => {
+    const fs = document.fullscreenElement === container;
+    container.classList.toggle('mo-player--fullscreen', fs);
+    fsBtn.innerHTML = moIcon(fs ? 'minimize' : 'maximize', 14);
+    fsBtn.title = fs ? 'Exit Fullscreen' : (viewer ? 'Fullscreen' : 'Fullscreen (F)');
+    if (fs) showChrome(); else container.classList.remove('mo-player-chrome-hidden');
+  };
+  document.addEventListener('fullscreenchange', onFsChange);
+
+  // In fullscreen the floating dock hides after a moment of stillness while playing.
   let hideTimer = null;
   function showChrome() {
     container.classList.remove('mo-player-chrome-hidden');
     if (hideTimer) clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
-      if (!video.paused) container.classList.add('mo-player-chrome-hidden');
+      if (!video.paused && document.fullscreenElement === container) container.classList.add('mo-player-chrome-hidden');
     }, 2500);
   }
   container.addEventListener('mousemove', showChrome);
-  container.addEventListener('mouseleave', () => { if (!video.paused) container.classList.add('mo-player-chrome-hidden'); });
-  showChrome();
 
-  // ── Keyboard shortcuts (only when player has focus or is fullscreen) ──
-  function isFocused() {
-    return document.activeElement === container || document.fullscreenElement === container;
-  }
-  const keyHandler = (e) => {
-    if (!isFocused()) return;
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  // ── Keys ──
+  // The page: while the player has focus (or is fullscreen). The viewer
+  // passes its keys through handleKey first and keeps arrows, F and digits.
+  function handleKey(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return false;
+    const k = e.key;
     let handled = true;
-    switch (e.key) {
+    switch (k) {
       case ' ': case 'k': case 'K': togglePlay(); break;
-      case 'j': case 'J': seekBy(-10); break;
-      case 'l': case 'L': seekBy(10); break;
-      case 'ArrowLeft': seekBy(e.shiftKey ? -1 : -5); break;
-      case 'ArrowRight': seekBy(e.shiftKey ? 1 : 5); break;
+      case 'j': case 'J': seekBy(-5); break;
+      case 'l': case 'L': seekBy(5); break;
       case ',': stepFrame(-1); break;
       case '.': stepFrame(1); break;
       case '[': setInPoint(); break;
       case ']': setOutPoint(); break;
       case 'm': case 'M': video.muted = !video.muted; updateVolIcon(); break;
-      case 'f': case 'F': toggleFullscreen(); break;
-      case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
-        if (video.duration) video.currentTime = video.duration * (parseInt(e.key, 10) / 10);
-        break;
       default: handled = false;
     }
+    if (!handled && !viewer) {
+      handled = true;
+      switch (k) {
+        case 'ArrowLeft': seekBy(e.shiftKey ? -1 : -5); break;
+        case 'ArrowRight': seekBy(e.shiftKey ? 1 : 5); break;
+        case 'f': case 'F': toggleFullscreen(); break;
+        case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+          if (video.duration) video.currentTime = video.duration * (parseInt(k, 10) / 10);
+          break;
+        default: handled = false;
+      }
+    }
     if (handled) { e.preventDefault(); e.stopPropagation(); }
+    return handled;
+  }
+  const onContainerKey = (e) => {
+    if (viewer) return; // the viewer routes its keys itself
+    if (document.activeElement !== container && document.fullscreenElement !== container) return;
+    handleKey(e);
   };
-  container.addEventListener('keydown', keyHandler);
-
-  // ── Click container to focus for keyboard ──
-  container.addEventListener('mousedown', () => container.focus());
+  container.addEventListener('keydown', onContainerKey);
+  container.addEventListener('mousedown', (e) => { if (!(e.target instanceof HTMLInputElement)) container.focus({ preventScroll: true }); });
 
   updateVolIcon();
+  syncPlay();
+  refreshTime();
+  refreshMarks();
+
+  return {
+    video,
+    getMarks() { return { inPoint, outPoint, duration: video.duration || 0 }; },
+    handleKey,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      framesGen++;
+      try { video.pause(); } catch { /* ignore */ }
+      if (hideTimer) clearTimeout(hideTimer);
+      ro.disconnect();
+      document.removeEventListener('fullscreenchange', onFsChange);
+      speedDd.dispose();
+      try { video.removeAttribute('src'); video.load(); previewVid.removeAttribute('src'); previewVid.load(); } catch { /* ignore */ }
+    },
+  };
 }
 
 
@@ -17218,12 +17000,23 @@ function openLightbox(items, startIndex, resolveFilePath) {
   chatBtn.addEventListener('click', () => { const it = items[currentIdx]; if (it) void moAttachItemsToChat([it]); });
   const upscaleBtn = moEl('button', null, { type: 'button', title: 'Upscale this photo with Real-ESRGAN. The original is never changed.', innerHTML: moIcon('maximize-2', 14) + '<span>Upscale…</span>' });
   upscaleBtn.addEventListener('click', () => { const it = items[currentIdx]; if (it && _api) void moUpscaleItems([it], _api, null); });
-  bar.append(chatBtn, upscaleBtn);
+  // Edit Clip (videos): the clip editor on this video, the marks as the trim.
+  const editClipBtn = moEl('button', null, { type: 'button', title: 'Open in the clip editor; the marked range becomes the trim', innerHTML: moIcon('clapperboard', 14) + '<span>Edit Clip</span>' });
+  editClipBtn.addEventListener('click', () => {
+    const it = items[currentIdx];
+    if (!it || !_api || !activePlayer || !activePlayerPath) return;
+    const path = activePlayerPath;
+    const player = activePlayer;
+    const marks = player.getMarks();
+    dismissLightbox();
+    moEditClipFromPlayer(_api, path, { getMarks: () => marks, video: player.video }, it.duration || 0);
+  });
+  bar.append(chatBtn, upscaleBtn, editClipBtn);
   overlay.appendChild(bar);
 
   // Zoom helpers
   function applyZoom() {
-    if (!mediaEl) return;
+    if (!mediaEl || activePlayer) return;
     mediaEl.style.transform = `scale(${lbZoom}) translate(${lbPanX / lbZoom}px, ${lbPanY / lbZoom}px)`;
     const isZoomed = Math.abs(lbZoom - 1) > 0.01;
     content.classList.toggle('mo-lb-zoomed', isZoomed);
@@ -17247,7 +17040,7 @@ function openLightbox(items, startIndex, resolveFilePath) {
   content.addEventListener('wheel', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!mediaEl) return;
+    if (!mediaEl || activePlayer) return;
 
     const oldZoom = lbZoom;
     const delta = e.deltaY < 0 ? LB_ZOOM_STEP : -LB_ZOOM_STEP;
@@ -17272,6 +17065,7 @@ function openLightbox(items, startIndex, resolveFilePath) {
 
   // Double-click to reset zoom
   content.addEventListener('dblclick', (e) => {
+    if (activePlayer) return; // a video: double-click is the player's fullscreen
     if (e.target === closeBtn || e.target === prevBtn || e.target === nextBtn) return;
     e.preventDefault();
     if (Math.abs(lbZoom - 1) > 0.01) {
@@ -17312,6 +17106,9 @@ function openLightbox(items, startIndex, resolveFilePath) {
 
   // Media display element
   let mediaEl = null;
+  // A video plays in the player (buildVideoPlayer); this is its handle.
+  let activePlayer = null;
+  let activePlayerPath = null;
   // Preload cache
   const preloadCache = new Map();
 
@@ -17332,7 +17129,11 @@ function openLightbox(items, startIndex, resolveFilePath) {
     const cacheKey = `${item.type}:${item.id}`;
 
     // Remove old media
+    if (activePlayer) { activePlayer.dispose(); activePlayer = null; activePlayerPath = null; }
     if (mediaEl) { mediaEl.remove(); mediaEl = null; }
+    content.classList.toggle('mo-lb-video', item.type === 'video');
+    upscaleBtn.style.display = item.type === 'video' ? 'none' : '';
+    editClipBtn.style.display = item.type === 'video' ? '' : 'none';
 
     // Reset zoom when changing items
     resetZoom();
@@ -17356,11 +17157,14 @@ function openLightbox(items, startIndex, resolveFilePath) {
 
     if (cached) {
       if (cached.type === 'video') {
-        mediaEl = moEl('video');
-        mediaEl.src = cached.url;
-        mediaEl.controls = true;
-        mediaEl.autoplay = true;
-        mediaEl.draggable = false;
+        // The same player as a video's page, in the viewer's colours.
+        // Its page's data gives the codec (a preview copy when needed), the
+        // frame rate and the file (for Set Cover).
+        const vctx = await loadDetailData('video', item.id).catch(() => null);
+        if (idx !== currentIdx || !_activeLightbox) return; // moved on while loading
+        mediaEl = moEl('div', 'mo-lb-player');
+        activePlayerPath = (vctx && vctx.fullPath) || resolvedPath || cached.sourcePath;
+        activePlayer = buildVideoPlayer(mediaEl, activePlayerPath, vctx || { entity: { id: item.id } }, { mode: 'viewer', autoplay: true });
       } else {
         mediaEl = moEl('img');
         mediaEl.src = cached.url;
@@ -17443,7 +17247,11 @@ function openLightbox(items, startIndex, resolveFilePath) {
 
   function onKey(e) {
     e.stopPropagation(); // Prevent Parallx keybinding service from intercepting
+    // Escape in fullscreen leaves fullscreen only (the browser does that).
+    if (e.key === 'Escape' && document.fullscreenElement) return;
     if (e.key === 'Escape') { dismissLightbox(); e.preventDefault(); return; }
+    // A video's keys (Space, J, L, comma, period, brackets, M) go to its player.
+    if (activePlayer && activePlayer.handleKey(e)) return;
     if (e.key === 'ArrowLeft') { navigate(-1); e.preventDefault(); return; }
     if (e.key === 'ArrowRight') { navigate(1); e.preventDefault(); return; }
     // Zoom keys: +/- and 0 to reset
@@ -17500,6 +17308,7 @@ function openLightbox(items, startIndex, resolveFilePath) {
       document.removeEventListener('mousemove', onDragMove);
       document.removeEventListener('mouseup', onDragEnd);
       if (slideshowTimer) clearInterval(slideshowTimer);
+      if (activePlayer) { activePlayer.dispose(); activePlayer = null; }
     }
   };
 

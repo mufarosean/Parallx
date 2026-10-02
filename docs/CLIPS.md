@@ -112,6 +112,41 @@ choose-where version. Fixed on the way: a single export ignored Fit To Length; t
 Smart Zoom hint showed without a cursor path; one remaining segment exported the stale
 In/Out instead of itself (a lone segment now folds back into the range).
 
+## The video player (redesign 2026-10-02)
+
+Watching a video, before any editing, uses one player in two places: a video's
+page and the library viewer (View Full Size). It is
+option B of `docs/mockups/atelier-video-player.html`, the clip editor's transport
+brought to the page.
+
+- **The stage** holds the picture alone; nothing floats over it. Click plays or
+  pauses, double-click is fullscreen.
+- **The filmstrip is the scrubber**: frames across the whole video, the playhead,
+  the marked range in the accent colour, and a frame preview with its time on hover.
+  Click or drag to seek.
+- **One row of controls that never hides**: Play, back and forward 5 seconds,
+  previous and next frame, the time in hundredths, In and Out (named, with their
+  times, and a × to clear them), Loop (between the marks, or the whole video),
+  Save Frame, Set Cover, speed (0.25× to 16×), volume and fullscreen. Under about
+  940 px the labelled buttons fold to icons, and a narrower row wraps rather than
+  cutting anything off.
+- **Edit Clip** opens the clip editor on the video with the marks as its In and Out
+  (the whole video when none are set). On the page it sits in the header where Edit
+  Image is on a photo; in the viewer it is in the bottom bar, in place of Upscale.
+  The page header shows the name once, with size and length beside it.
+- **Keys**: Space or K play, J and L 5 seconds, comma and period one frame, [ and ]
+  mark In and Out, M mutes. On the page the arrows seek, F is fullscreen and the
+  digits jump to tenths; in the viewer the arrows still move between items, F still
+  favourites and the digits still set colour labels.
+- **Fullscreen**: the same dock floats over the foot of the picture in the viewer's
+  colours and hides after a moment of stillness while playing.
+- The stage stays dark in both modes; the dock follows the theme on the page and
+  takes the viewer's colours in the viewer.
+
+`buildVideoPlayer(container, path, ctx, { mode, autoplay })` returns
+`{ video, getMarks(), handleKey(e), dispose() }`; the page disposes it on close and
+reload, the viewer on every move and on close. The probe scene `moart` drives both.
+
 ## How it fits together
 
 Everything beyond one plain range is ASSEMBLED first: the kept segments, each with
