@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Worksheets Alignment</title>
+<style>
+/* Mockup: every Worksheets screen rebuilt from the app's own parts (kit
+   buttons and page header, the segmented switch, list rows, the ⋯ menu),
+   plus one new kit part, the filter chip. Tokens from src/theme/px-tokens.css
+   (Slate dark; one light frame at the end). Static. The data matches the
+   synthetic bank in tests/probes/worksheet-seed.cjs. Today's screens are in
+   the screens probe (tests/probes/worksheet-screens-probe.mjs). */
+:root {
+  --px-base-00:#16171a; --px-base-05:#1a1c1f; --px-base-10:#1f2125; --px-base-15:#24262b;
+  --px-base-20:#2b2e34; --px-base-25:#33363d; --px-base-30:#41454d; --px-base-35:#4a4f58; --px-base-40:#838893;
+  --px-base-60:#9ea3ad; --px-base-70:#c0c4cc; --px-base-100:#e8eaee;
+  --px-accent:hsl(205 64% 60%); --px-accent-hover:hsl(205 64% 66%); --px-accent-soft:hsl(205 64% 60% / .16); --px-accent-faint:hsl(205 64% 60% / .08); --px-accent-text:hsl(205 64% 67%);
+  --px-bg:var(--px-base-00); --px-bg-raised:var(--px-base-05); --px-bg-elevated:var(--px-base-10); --px-bg-inset:var(--px-base-15);
+  --px-surface-hover:var(--px-base-20); --px-surface-selected:hsl(205 64% 60% / .16);
+  --px-text:var(--px-base-100); --px-text-secondary:var(--px-base-70); --px-text-muted:var(--px-base-60); --px-text-faint:var(--px-base-40);
+  --px-border:var(--px-base-25); --px-border-strong:var(--px-base-30); --px-divider:var(--px-base-20);
+  --px-on-accent:#0d1620;
+  --g:108,191,143; --y:220,170,90; --r:224,108,102;
+  --px-success:rgb(var(--g)); --px-warning:rgb(var(--y)); --px-danger:rgb(var(--r));
+  --px-shadow-md:0 4px 14px -3px rgba(0,0,0,.42),0 1px 3px rgba(0,0,0,.30);
+  --px-font-ui:'Inter','Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+  --page:#0c0d0f; --frame-line:#26282d;
+}
+.light {
+  --px-base-00:#f4f5f7; --px-base-05:#eceef1; --px-base-10:#ffffff; --px-base-15:#eaecf0; --px-base-20:#e2e5ea;
+  --px-base-25:#d6dae1; --px-base-30:#c3c9d2; --px-base-35:#b1b8c2; --px-base-40:#656c78; --px-base-60:#555b64; --px-base-70:#3c414a; --px-base-100:#1b1d21;
+  --px-accent:hsl(205 64% 42%); --px-accent-hover:hsl(205 64% 36%); --px-accent-soft:hsl(205 64% 42% / .12); --px-accent-faint:hsl(205 64% 42% / .06); --px-accent-text:hsl(205 70% 34%);
+  --px-surface-selected:hsl(205 64% 42% / .12); --px-on-accent:#fff;
+  --g:33,122,80; --y:142,100,21; --r:194,60,54;
+  --px-shadow-md:0 4px 14px -3px rgba(20,30,40,.16),0 1px 3px rgba(20,30,40,.10);
+  --px-bg:var(--px-base-00); --px-bg-raised:var(--px-base-05); --px-bg-elevated:var(--px-base-10); --px-bg-inset:var(--px-base-15);
+  --px-surface-hover:var(--px-base-20);
+  --px-text:var(--px-base-100); --px-text-secondary:var(--px-base-70); --px-text-muted:var(--px-base-60); --px-text-faint:var(--px-base-40);
+  --px-border:var(--px-base-25); --px-border-strong:var(--px-base-30); --px-divider:var(--px-base-20);
+  --px-success:rgb(var(--g)); --px-warning:rgb(var(--y)); --px-danger:rgb(var(--r));
+  color: var(--px-text);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--px-text); font: 13px/1.45 var(--px-font-ui); }
+.doc { max-width: 1240px; margin: 0 auto; padding: 32px 16px 96px; }
+.doc > h1 { font-size: 24px; margin: 0 0 6px; font-weight: 600; }
+.doc > h2 { font-size: 19px; margin: 56px 0 6px; font-weight: 600; }
+.doc > p, .doc li { color: var(--px-text-secondary); max-width: 86ch; }
+.doc > p { margin: 4px 0; }
+.notes { margin: 12px 0 0; padding-left: 18px; font-size: 12.5px; }
+.notes li { margin: 3px 0; }
+.notes b { color: var(--px-text); font-weight: 600; }
+.toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 14px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
+.toc a { color: var(--px-accent-text); text-decoration: none; }
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+svg.s14 { width: 14px; height: 14px; } svg.s12 { width: 12px; height: 12px; } svg.s20 { width: 20px; height: 20px; } svg.s28 { width: 28px; height: 28px; stroke-width: 1.4; }
+
+/* ── window frame: tab strip + editor ── */
+.win { margin-top: 14px; border: 1px solid var(--frame-line); border-radius: 8px; overflow-x: auto; overflow-y: hidden; max-width: 100%; background: var(--px-bg); color: var(--px-text); }
+.win.light { --frame-line: #c9ced6; }
+.tabs { display: flex; align-items: stretch; height: 35px; background: var(--px-bg-raised); border-bottom: 1px solid var(--px-divider); overflow: hidden; }
+.tab { display: flex; align-items: center; gap: 7px; padding: 0 14px; font-size: 12.5px; color: var(--px-text-muted); border-right: 1px solid var(--px-divider); white-space: nowrap; }
+.tab.on { background: var(--px-bg); color: var(--px-text); font-weight: 600; box-shadow: inset 0 1px 0 var(--px-accent); }
+.tab .x { opacity: 0; }
+.tab.on .x { opacity: .7; }
+.ed { position: relative; height: 640px; overflow: hidden; min-width: 760px; }
+.narrowwrap .ed, .cmp .ed { min-width: 0; }
+.ed.tall { height: auto; }
+.ed.auto { height: auto; }
+.scroll { padding: 0 32px 28px; }
+
+/* ── kit parts ── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 28px; padding: 0 12px; border: 1px solid transparent; border-radius: 4px; font-size: 12.5px; font-weight: 500; white-space: nowrap; line-height: 1; }
+.btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
+.btn.primary { background: var(--px-accent); color: var(--px-on-accent); }
+.btn.secondary { background: var(--px-bg-elevated); color: var(--px-text); border-color: var(--px-border); }
+.btn.ghost { color: var(--px-text-secondary); }
+.btn.danger { color: var(--px-danger); border-color: rgba(var(--r), .45); }
+.btn.icon { width: 28px; padding: 0; }
+.btn.icon.sm { width: 24px; }
+.btn.on { color: var(--px-accent-text); background: var(--px-accent-faint); }
+.btn.hov { background: var(--px-surface-hover); color: var(--px-text); }
+.ph { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 0 14px; }
+.ph .crumb { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--px-text-muted); margin-bottom: 4px; }
+.ph .crumb a { color: var(--px-text-muted); text-decoration: none; }
+.ph h3 { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.25; }
+.ph .sub { margin-top: 2px; font-size: 12.5px; color: var(--px-text-muted); }
+.ph .acts { display: flex; align-items: center; gap: 8px; flex: none; padding-top: 18px; }
+.ph.nocrumb .acts { padding-top: 0; }
+.sl { font-size: 12.5px; font-weight: 600; color: var(--px-text-secondary); padding: 8px 0 6px; }
+.muted { color: var(--px-text-muted); }
+.faint { color: var(--px-text-faint); }
+.xs { font-size: 11.5px; }
+.num { font-variant-numeric: tabular-nums; }
+.input { display: flex; align-items: center; gap: 6px; height: 28px; border: 1px solid var(--px-border-strong); border-radius: 4px; background: var(--px-bg-inset); color: var(--px-text); font-size: 12.5px; padding: 0 8px; }
+.input .phd { color: var(--px-text-faint); }
+.input.focus { border-color: var(--px-accent); box-shadow: 0 0 0 1px var(--px-accent); }
+.seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 6px; background: var(--px-bg-inset); border: 1px solid var(--px-border); }
+.seg span { padding: 3px 12px; font-size: 12px; line-height: 18px; border-radius: 4px; color: var(--px-text-muted); white-space: nowrap; }
+.seg span.on { background: var(--px-base-25); color: var(--px-text); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.light .seg span.on { background: #fff; }
+.seg.rate span.on.e { background: rgba(var(--g), .2); color: var(--px-success); }
+.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--px-text-secondary); }
+.toggle i { width: 28px; height: 16px; border-radius: 8px; background: var(--px-base-30); position: relative; }
+.toggle i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
+.toggle.on i { background: var(--px-accent); }
+.toggle.on i::after { left: 14px; }
+.check { width: 15px; height: 15px; border-radius: 3px; border: 1px solid var(--px-border-strong); background: var(--px-bg-inset); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.check.on { background: var(--px-accent); border-color: var(--px-accent); color: var(--px-on-accent); }
+
+/* new kit part: the filter chip */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--px-border); background: transparent; font-size: 12px; color: var(--px-text-secondary); white-space: nowrap; }
+.chip .n { color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.chip.on { background: var(--px-accent-soft); border-color: transparent; color: var(--px-accent-text); }
+.chip.on .n { color: var(--px-accent-text); opacity: .75; }
+.chip.hov { background: var(--px-surface-hover); color: var(--px-text); }
+.chip.add { border-style: dashed; color: var(--px-text-muted); }
+
+/* status pills (the app's badge) */
+.pill { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.pill.e { background: rgba(var(--g), .16); color: var(--px-success); }
+.pill.m { background: rgba(var(--y), .16); color: var(--px-warning); }
+.pill.h { background: rgba(var(--r), .16); color: var(--px-danger); }
+.pill.n { background: var(--px-base-20); color: var(--px-text-muted); }
+.pill.a { background: var(--px-accent-soft); color: var(--px-accent-text); }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.dot.e { background: var(--px-success); } .dot.m { background: var(--px-warning); } .dot.h { background: var(--px-danger); } .dot.n { background: var(--px-base-30); } .dot.a { background: var(--px-accent); }
+
+/* list rows and cards */
+.card { background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: 8px; }
+.list { background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: 8px; overflow: hidden; }
+.row { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 12px; border-top: 1px solid var(--px-divider); font-size: 12.5px; }
+.row:first-child { border-top: none; }
+.row.hov { background: var(--px-surface-hover); }
+.row.sel { background: var(--px-surface-selected); }
+.row .t { font-weight: 600; color: var(--px-text); white-space: nowrap; }
+.row .m { color: var(--px-text-muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.row .grow { flex: 1; min-width: 0; }
+.row .two { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+.row .end { margin-left: auto; display: flex; align-items: center; gap: 4px; flex: none; }
+.row .idx { width: 18px; text-align: right; color: var(--px-text-faint); font-size: 11.5px; font-variant-numeric: tabular-nums; flex: none; }
+.row .acts { display: flex; gap: 2px; opacity: 0; }
+.row.hov .acts { opacity: 1; }
+.bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--px-base-20); }
+.bar b { display: block; height: 100%; }
+.bar .e { background: var(--px-success); } .bar .m { background: var(--px-warning); } .bar .h { background: var(--px-danger); }
+.menu { position: absolute; z-index: 3; min-width: 190px; padding: 4px 0; background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: 6px; box-shadow: var(--px-shadow-md); font-size: 12.5px; }
+.menu div { display: flex; align-items: center; gap: 8px; padding: 4px 12px; color: var(--px-text); }
+.menu div.hov { background: var(--px-surface-selected); }
+.menu div.dan { color: var(--px-danger); }
+.menu .k { margin-left: auto; color: var(--px-text-faint); font-size: 11.5px; }
+.menu hr { border: 0; border-top: 1px solid var(--px-divider); margin: 4px 0; }
+.tip { position: absolute; z-index: 4; padding: 4px 8px; border-radius: 4px; background: var(--px-base-25); border: 1px solid var(--px-border-strong); font-size: 12px; color: var(--px-text); box-shadow: var(--px-shadow-md); white-space: nowrap; }
+
+/* home */
+.dest { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.destc { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 8px; background: var(--px-bg-elevated); border: 1px solid var(--px-border); }
+.destc.hov { border-color: var(--px-border-strong); background: var(--px-surface-hover); }
+.destc .ic { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--px-accent-faint); color: var(--px-accent-text); flex: none; }
+.destc .t { font-weight: 600; font-size: 13.5px; }
+.destc .m { font-size: 12px; color: var(--px-text-muted); }
+.today { display: flex; align-items: center; gap: 16px; padding: 14px 16px; margin-top: 12px; }
+.today .t { font-size: 15px; font-weight: 600; }
+.today .days { display: flex; gap: 3px; margin-top: 6px; }
+.today .days i { width: 10px; height: 10px; border-radius: 2px; background: var(--px-base-25); }
+.today .days i.e { background: var(--px-success); } .today .days i.m { background: var(--px-warning); } .today .days i.c { box-shadow: inset 0 0 0 1.5px var(--px-accent); background: transparent; }
+.twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+
+/* dashboard */
+.hero { display: grid; grid-template-columns: 1.05fr 1.2fr 1fr; gap: 24px; padding: 16px 18px; }
+.hero .big { font-size: 34px; font-weight: 700; line-height: 1.1; margin: 2px 0 8px; }
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-top: 6px; }
+.kv b { display: block; font-size: 14px; }
+.kv span { font-size: 11.5px; color: var(--px-text-muted); }
+.stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 12px; }
+.stat { padding: 10px 14px; }
+.stat .l { font-size: 11.5px; color: var(--px-text-muted); }
+.stat .v { font-size: 20px; font-weight: 600; margin-top: 2px; }
+.wcols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.wcol { padding: 12px 14px; font-size: 12px; }
+.wcol .h { font-weight: 600; font-size: 12.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.wcol .it { display: flex; gap: 7px; align-items: baseline; margin-bottom: 7px; }
+.wcol .it .dot { transform: translateY(-1px); }
+.wcol .it small { display: block; color: var(--px-text-muted); font-size: 11px; }
+.prow { display: grid; grid-template-columns: 90px 1fr 92px; gap: 12px; align-items: center; font-size: 12.5px; padding: 4px 0; }
+
+/* sheet */
+.sessbar { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border-bottom: 1px solid var(--px-divider); background: var(--px-bg); }
+.itemhead { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--px-divider); }
+.itemhead .t { font-size: 15px; font-weight: 600; }
+.vdiv { width: 1px; height: 18px; background: var(--px-divider); margin: 0 4px; }
+.timer { font-size: 12.5px; color: var(--px-text-muted); font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 4px; }
+.univer { background: #fff; color: #1f1f1f; }
+.univer .rib { display: flex; gap: 16px; padding: 7px 16px 0; font-size: 13px; color: #333; }
+.univer .rib b { color: #2b6fd6; font-weight: 500; border-bottom: 2px solid #2b6fd6; padding-bottom: 5px; }
+.univer .tools { height: 36px; border-bottom: 1px solid #e3e3e3; display: flex; align-items: center; gap: 14px; padding: 0 16px; color: #555; font-size: 12px; }
+.univer .tools span { width: 14px; height: 14px; border-radius: 2px; background: #d9dce1; display: inline-block; }
+.univer .fx { height: 26px; border-bottom: 1px solid #e3e3e3; font-size: 12px; display: flex; align-items: center; gap: 12px; padding: 0 8px; }
+.grid { display: grid; grid-template-columns: 40px repeat(9, minmax(0, 1fr)); font-size: 12.5px; }
+.grid div { height: 23px; border-right: 1px solid #ececec; border-bottom: 1px solid #ececec; padding: 2px 4px; white-space: nowrap; overflow: visible; }
+.grid .hd { background: #f5f6f7; color: #666; text-align: center; font-size: 11.5px; }
+.grid .r { text-align: right; }
+.notepanel { margin: 10px 16px; }
+.notepanel .ta { min-height: 54px; padding: 8px 10px; border: 1px solid var(--px-border-strong); border-radius: 4px; background: var(--px-bg-inset); font-size: 12.5px; }
+
+/* settings */
+.set { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; padding: 14px 0; border-top: 1px solid var(--px-divider); }
+.set:first-of-type { border-top: none; }
+.set .l { font-weight: 600; font-size: 13px; }
+.set .d { font-size: 12px; color: var(--px-text-muted); margin-top: 2px; max-width: 64ch; }
+.setgroup { margin-top: 6px; }
+.setgroup + .setgroup { margin-top: 18px; }
+
+/* builder */
+.builder { display: grid; grid-template-columns: 1fr 300px; gap: 24px; align-items: start; }
+.fgroup { padding: 10px 0 12px; border-top: 1px solid var(--px-divider); }
+.fgroup:first-child { border-top: none; padding-top: 0; }
+.fgroup .sl { padding-top: 0; }
+.side { padding: 16px; position: sticky; top: 0; }
+.side .big { font-size: 26px; font-weight: 700; }
+.field { margin-top: 12px; }
+.field label { display: block; font-size: 12px; color: var(--px-text-secondary); margin-bottom: 4px; font-weight: 500; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--px-border-strong); border-radius: 4px; background: var(--px-bg-inset); height: 28px; }
+.stepper span { width: 28px; text-align: center; color: var(--px-text-muted); }
+.stepper b { width: 40px; text-align: center; font-weight: 500; border-left: 1px solid var(--px-border); border-right: 1px solid var(--px-border); line-height: 26px; }
+
+/* import */
+.drop { border: 1.5px dashed var(--px-border-strong); border-radius: 10px; padding: 34px 16px; text-align: center; color: var(--px-text-muted); }
+.drop .h { color: var(--px-text); font-weight: 600; font-size: 14px; margin: 8px 0 2px; }
+.footbar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 10px; padding: 10px 32px; background: var(--px-bg-raised); border-top: 1px solid var(--px-divider); }
+
+/* comparisons */
+.cmp { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 12px; }
+.cmp .cell { min-width: 0; overflow-x: auto; border: 1px solid var(--frame-line); border-radius: 8px; overflow: hidden; }
+.cmp .cap { font-size: 11.5px; font-weight: 600; padding: 7px 12px; border-bottom: 1px solid var(--frame-line); color: var(--px-text-muted); background: #121316; }
+.cmp .cap.new { color: var(--px-accent-text); }
+table.t { width: 100%; display: block; overflow-x: auto; border-collapse: collapse; margin-top: 12px; font-size: 12.5px; }
+table.t th, table.t td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--px-divider); vertical-align: top; }
+table.t th { color: var(--px-text-muted); font-weight: 600; font-size: 12px; }
+table.t td:first-child { color: var(--px-text); white-space: nowrap; }
+table.t td { color: var(--px-text-secondary); }
+.old { color: var(--px-text-faint); text-decoration: line-through; }
+.narrowwrap { display: grid; grid-template-columns: 430px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .cmp, .narrowwrap, .twocol { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></symbol>
+    <symbol id="i-dash" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+    <symbol id="i-lib" viewBox="0 0 24 24"><path d="m16 6 4 14M12 6v14M8 8v12M4 4v16"/></symbol>
+    <symbol id="i-checks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8"/></symbol>
+    <symbol id="i-import" viewBox="0 0 24 24"><path d="M2 9V5a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"/><path d="M2 13h10M9 10l3 3-3 3"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M9.9 15.5A2 2 0 0 0 8.5 14.1L2.4 12.5a.5.5 0 0 1 0-1l6.1-1.6a2 2 0 0 0 1.4-1.4l1.6-6.1a.5.5 0 0 1 1 0l1.6 6.1a2 2 0 0 0 1.4 1.4l6.1 1.6a.5.5 0 0 1 0 1l-6.1 1.6a2 2 0 0 0-1.4 1.4l-1.6 6.1a.5.5 0 0 1-1 0z"/></symbol>
+    <symbol id="i-sheet" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.8l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.8l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4M2 6h4M2 10h4M2 14h4M2 18h4"/><path d="M21.4 5.6a2.1 2.1 0 1 0-3-3l-5 5a2 2 0 0 0-.5.9l-.8 2.8 2.8-.8a2 2 0 0 0 .9-.5z"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.8 9.8 0 0 0-6.7 2.7L3 8"/><path d="M3 3v5h5"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="m6 4 10 8-10 8zM19 5v14"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.3 19a10 10 0 1 1 17.4 0"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h6M8 13h2M14 13h2M8 17h2M14 17h2"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.7V17c0 .6-.5 1-1 1.2C7.9 18.8 7 20.2 7 22M14 14.7V17c0 .6.5 1 1 1.2 1.1.6 2 2 2 3.8M18 2H6v7a6 6 0 0 0 12 0z"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3.3.5 1.4 1.5 2.8 2.5 2.8"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+  </defs>
+</svg>
+
+<div class="doc">
+<h1>Worksheets, aligned with the app</h1>
+<p>Every Worksheets screen redrawn with the parts the rest of Parallx already uses: kit buttons (primary, secondary, ghost, danger), the kit page header, the segmented switch, list rows with actions on hover, the ⋯ menu. One part is new, the filter chip, and it would be registered in the kit so the Atelier and Media Organizer filters can use it too. The data is the screens probe's test bank.</p>
+<p>What stays as it is: what each screen does, the order you work in, the light practice sheet (Settings → Sheet appearance), the Dashboard's content and charts.</p>
+<ul class="toc">
+  <li><a href="#parts">0. Shared parts</a></li><li><a href="#tabs">1. Tabs</a></li><li><a href="#home">2. Home</a></li><li><a href="#dash">3. Dashboard</a></li><li><a href="#bank">4. Problem Bank</a></li><li><a href="#builder">5. New Quiz</a></li><li><a href="#quizzes">6. Quizzes</a></li><li><a href="#sheet">7. Problem sheet</a></li><li><a href="#overview">8. Quiz overview</a></li><li><a href="#summary">9. Quiz summary</a></li><li><a href="#import">10. Import Workbook</a></li><li><a href="#generate">11. Generate Items</a></li><li><a href="#settings">12. Settings</a></li><li><a href="#light">13. Light and narrow</a></li><li><a href="#copy">14. Copy changes</a></li>
+</ul>
+
+<!-- ═══════════════ 0. parts ═══════════════ -->
+<h2 id="parts">0. Shared parts</h2>
+<p>Today Worksheets draws its own button (41 places), its own chips and its own headers. Each one maps to a kit part, so the house rules (two sizes, one radius, one pressed state) hold here too.</p>
+<div class="cmp">
+  <div class="cell"><div class="cap">Today: Worksheets' own parts</div>
+    <div style="padding:16px;background:var(--px-bg);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span class="btn sm" style="background:var(--px-accent);color:var(--px-on-accent);border-radius:3px;height:22px">Start Quiz</span>
+        <span class="btn sm" style="border:1px solid var(--px-border-strong);border-radius:3px;height:22px">Back To Quiz</span>
+        <span class="btn sm" style="height:22px;color:var(--px-text)">Quiz Overview</span>
+        <span class="btn sm" style="height:22px;color:var(--px-text)">Copy</span>
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        <span style="border:1px solid var(--px-accent);color:var(--px-accent-text);border-radius:3px;padding:1px 8px;font-size:12px">All Papers</span>
+        <span style="border:1px solid var(--px-border);color:var(--px-text-muted);border-radius:3px;padding:1px 8px;font-size:12px">Brosius 8</span>
+        <span style="border:1px solid var(--px-border);color:var(--px-text-muted);border-radius:3px;padding:1px 8px;font-size:12px">Clark 8</span>
+        <span style="border:1px solid var(--px-border);color:var(--px-text-muted);border-radius:3px;padding:1px 8px;font-size:12px">Meyers 8</span>
+      </div>
+      <div style="display:flex;gap:4px">
+        <span style="border:1px solid var(--px-accent);color:var(--px-accent-text);border-radius:3px;padding:1px 8px;font-size:12px">Light</span>
+        <span style="border:1px solid var(--px-border);color:var(--px-text-muted);border-radius:3px;padding:1px 8px;font-size:12px">Dark</span>
+        <span style="border:1px solid var(--px-border);color:var(--px-text-muted);border-radius:3px;padding:1px 8px;font-size:12px">Follow App</span>
+      </div>
+      <div class="muted xs">One look for actions, filters and settings choices; buttons 22 px; 3 px corners; plain-text buttons beside bordered ones.</div>
+    </div>
+  </div>
+  <div class="cell"><div class="cap new">Proposed: the kit</div>
+    <div style="padding:16px;background:var(--px-bg);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="btn primary">Start Quiz</span>
+        <span class="btn secondary">Back to Quiz</span>
+        <span class="btn ghost">Overview</span>
+        <span class="btn ghost icon"><svg class="i"><use href="#i-more"/></svg></span>
+        <span class="btn danger sm">End Campaign</span>
+      </div>
+      <div class="chips">
+        <span class="chip on"><svg class="i s12"><use href="#i-check"/></svg>All papers</span>
+        <span class="chip">Brosius <span class="n">8</span></span>
+        <span class="chip hov">Clark <span class="n">8</span></span>
+        <span class="chip">Meyers <span class="n">8</span></span>
+      </div>
+      <div><span class="seg"><span class="on">Light</span><span>Dark</span><span>Follow app</span></span></div>
+      <div class="muted xs"><b style="color:var(--px-text-secondary)">Buttons</b> are actions (28 / 24 px). <b style="color:var(--px-text-secondary)">Chips</b> filter a list and can be several at once. <b style="color:var(--px-text-secondary)">The switch</b> picks one of a few settings. New kit part: <code>createFilterChip</code> (Tier 3 block, <code>.px-chip</code>).</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ 1. tabs ═══════════════ -->
+<h2 id="tabs">1. Tabs you can tell apart</h2>
+<p>Every Worksheets screen opens its own tab with the same sheet icon, and two pairs share a name: the app's Dashboard and Worksheets' Dashboard, the quiz builder and an open quiz. Each tab gets the icon of its Home card and a name of its own; an open quiz is named after the quiz.</p>
+<div class="cmp">
+  <div class="cell"><div class="cap">Today</div>
+    <div class="tabs" style="border-bottom:none">
+      <div class="tab"><svg class="i s14"><use href="#i-dash"/></svg>Dashboard</div>
+      <div class="tab"><svg class="i s14"><use href="#i-sheet"/></svg>Worksheets</div>
+      <div class="tab"><svg class="i s14"><use href="#i-sheet"/></svg>Dashboard</div>
+      <div class="tab"><svg class="i s14"><use href="#i-sheet"/></svg>Quiz</div>
+      <div class="tab on"><svg class="i s14"><use href="#i-sheet"/></svg>Quiz</div>
+    </div>
+  </div>
+  <div class="cell"><div class="cap new">Proposed</div>
+    <div class="tabs" style="border-bottom:none">
+      <div class="tab"><svg class="i s14"><use href="#i-dash"/></svg>Dashboard</div>
+      <div class="tab"><svg class="i s14"><use href="#i-home"/></svg>Worksheets</div>
+      <div class="tab"><svg class="i s14"><use href="#i-gauge"/></svg>Study Dashboard</div>
+      <div class="tab"><svg class="i s14"><use href="#i-plus"/></svg>New Quiz</div>
+      <div class="tab on"><svg class="i s14"><use href="#i-checks"/></svg>Day 8 Draw</div>
+    </div>
+  </div>
+</div>
+<table class="t">
+  <tr><th>Screen</th><th>Tab today</th><th>Proposed tab</th><th>Icon</th></tr>
+  <tr><td>Home</td><td>Worksheets</td><td>Worksheets</td><td>table (unchanged)</td></tr>
+  <tr><td>Dashboard</td><td>Dashboard</td><td>Study Dashboard</td><td>gauge</td></tr>
+  <tr><td>Problem Bank</td><td>Problem Bank</td><td>Problem Bank</td><td>library</td></tr>
+  <tr><td>Quiz builder</td><td>Quiz</td><td>New Quiz</td><td>plus</td></tr>
+  <tr><td>Quizzes</td><td>Quizzes</td><td>Quizzes</td><td>list-checks</td></tr>
+  <tr><td>Open quiz (sheet, overview, summary)</td><td>Quiz</td><td>the quiz's name, e.g. Day 8 Draw</td><td>list-checks</td></tr>
+  <tr><td>A problem from the bank</td><td>the problem</td><td>the problem, e.g. RF Brosius - 2</td><td>file-spreadsheet</td></tr>
+  <tr><td>Import, Generate, Scratch, Settings</td><td>as today</td><td>Import Workbook, Generate Items, Scratch Sheet, Worksheets Settings</td><td>their Home icons</td></tr>
+</table>
+
+<!-- ═══════════════ 2. home ═══════════════ -->
+<h2 id="home">2. Home</h2>
+<p>Seven equal tiles today give Settings the same weight as the Dashboard. The three places you go every day stay as cards with a line of live status; the three ways to add problems move to an Add menu in the header, and Settings to the ⋯ menu. Today's campaign strip becomes one card with the week's dots and the day's action.</p>
+<div class="win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-home"/></svg>Worksheets<svg class="i s12 x"><use href="#i-x"/></svg></div><div class="tab"><svg class="i s14"><use href="#i-dash"/></svg>Dashboard</div></div>
+  <div class="ed">
+    <div class="scroll">
+      <div class="ph nocrumb">
+        <div><h3>Worksheets</h3><div class="sub">48 problems · 28 rated · 5 noted</div></div>
+        <div class="acts">
+          <span class="btn secondary"><svg class="i s14"><use href="#i-plus"/></svg>Add Problems<svg class="i s12"><use href="#i-down"/></svg></span>
+          <span class="btn primary">New Quiz</span>
+          <span class="btn ghost icon"><svg class="i"><use href="#i-more"/></svg></span>
+        </div>
+      </div>
+      <div class="menu" style="right:118px;top:62px">
+        <div class="hov"><svg class="i s14"><use href="#i-import"/></svg>Import Workbook…</div>
+        <div><svg class="i s14"><use href="#i-spark"/></svg>Generate Items…</div>
+        <hr>
+        <div><svg class="i s14"><use href="#i-sheet"/></svg>Open Scratch Sheet</div>
+      </div>
+      <div class="dest">
+        <div class="destc"><div class="ic"><svg class="i s20"><use href="#i-gauge"/></svg></div><div><div class="t">Study Dashboard</div><div class="m">58% attempted · 59% score</div></div></div>
+        <div class="destc hov"><div class="ic"><svg class="i s20"><use href="#i-lib"/></svg></div><div><div class="t">Problem Bank</div><div class="m">48 problems in 6 papers</div></div></div>
+        <div class="destc"><div class="ic"><svg class="i s20"><use href="#i-checks"/></svg></div><div><div class="t">Quizzes</div><div class="m">1 open · 1 completed</div></div></div>
+      </div>
+      <div class="card today">
+        <div style="flex:1">
+          <div class="t">Day 8 of 22 · Rest day</div>
+          <div class="muted" style="font-size:12px">17 of 48 done · 1 behind pace · 10 problems due for a repeat</div>
+          <div class="days"><i class="e"></i><i class="m"></i><i class="e"></i><i class="m"></i><i class="e"></i><i class="m"></i><i class="e"></i><i class="c"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <span class="btn secondary">Quiz Due Problems (10)</span>
+        <span class="btn primary"><svg class="i s14"><use href="#i-play"/></svg>Resume Day 8 Draw</span>
+      </div>
+      <div class="twocol">
+        <div>
+          <div class="sl">Recent</div>
+          <div class="list">
+            <div class="row"><span class="dot h"></span><div class="two"><span class="t">RF Brosius - 8</span><span class="m">Brosius · Hard · Today</span></div></div>
+            <div class="row hov"><span class="dot e"></span><div class="two"><span class="t">RF Siewert - 5</span><span class="m">Siewert · Easy · Today</span></div><div class="end"><span class="btn ghost sm">Practice</span></div></div>
+            <div class="row"><span class="dot h"></span><div class="two"><span class="t">RF Meyers - 5</span><span class="m">Meyers · Hard · Yesterday</span></div></div>
+            <div class="row"><span class="dot e"></span><div class="two"><span class="t">RF Meyers - 6</span><span class="m">Meyers · Easy · Yesterday</span></div></div>
+            <div class="row"><span class="dot e"></span><div class="two"><span class="t">RF Brosius - 6</span><span class="m">Brosius · Easy · 2 days ago</span></div></div>
+          </div>
+        </div>
+        <div>
+          <div class="sl">Noted</div>
+          <div class="list">
+            <div class="row"><span class="dot h"></span><div class="two"><span class="t">RF Brosius - 1</span><span class="m">Review the tail factor derivation</span></div></div>
+            <div class="row"><span class="dot n"></span><div class="two"><span class="t">RF Brosius - 2</span><span class="m">Watch the units: $000s</span></div></div>
+            <div class="row"><span class="dot e"></span><div class="two"><span class="t">RF Brosius - 3</span><span class="m">Compare with Mack: the variance term</span></div></div>
+            <div class="row"><span class="dot e"></span><div class="two"><span class="t">RF Brosius - 4</span><span class="m">Never remember the formula for the bias adjustment</span></div></div>
+            <div class="row"><span class="dot h"></span><div class="two"><span class="t">RF Brosius - 5</span><span class="m">Do again before the exam</span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li><b>Header</b> is the kit page header: the count line that today hides in a tooltip becomes the subtitle; New Quiz is the one primary action.</li>
+  <li><b>Add Problems ▾</b> holds Import Workbook…, Generate Items… and Open Scratch Sheet. <b>⋯</b> holds Worksheets Settings and Discuss Notes in Chat.</li>
+  <li><b>Today card</b> shows the campaign day, the 22 day dots from the Dashboard and the day's one action. On a rest day with nothing open it offers Quiz Due Problems; with no campaign it reads "No campaign running" and offers Start Campaign….</li>
+  <li><b>Recent and Noted</b> become list rows; Practice appears on hover, the whole row still opens the problem.</li>
+</ul>
+
+<!-- ═══════════════ 3. dashboard ═══════════════ -->
+<h2 id="dash">3. Study Dashboard</h2>
+<p>The content stays. The header becomes the kit's, so the day's action sits top right as everywhere else; section labels go to sentence case; chips and the rewards row use the kit chip; "and 5 more" becomes a link.</p>
+<div class="win">
+  <div class="tabs"><div class="tab"><svg class="i s14"><use href="#i-home"/></svg>Worksheets</div><div class="tab on"><svg class="i s14"><use href="#i-gauge"/></svg>Study Dashboard<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+  <div class="ed tall">
+    <div class="scroll">
+      <div class="ph">
+        <div><div class="crumb"><a>Worksheets</a><svg class="i s12"><use href="#i-right"/></svg></div><h3>Study Dashboard</h3><div class="sub">Day 8 of 22 · rest day · exam date not set</div></div>
+        <div class="acts">
+          <span class="btn secondary">Review Due Flashcards</span>
+          <span class="btn secondary">Quiz Due Problems (10)</span>
+          <span class="btn primary"><svg class="i s14"><use href="#i-play"/></svg>Resume Day 8 Draw</span>
+          <span class="btn ghost icon"><svg class="i"><use href="#i-more"/></svg></span>
+        </div>
+      </div>
+      <div class="card hero">
+        <div>
+          <div class="muted xs">Today</div>
+          <div class="big">Rest</div>
+          <div class="muted xs" style="margin-bottom:6px">This week</div>
+          <div class="chips">
+            <span class="pill n">13 done</span><span class="pill e">7 easy</span><span class="pill h">5 hard</span><span class="pill a">1 worked, not rated</span><span class="pill n">10h 29m</span><span class="pill n">2 full days</span><span class="pill n">6 papers</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-weight:600;font-size:15px">Day 8 of 22</div>
+          <div class="kv"><div><b>17 of 48</b><span>Done</span></div><div><b>1 behind</b><span>Pace</span></div><div><b>None yet</b><span>Streak</span></div><div><b>0 of 6</b><span>Papers cleared</span></div></div>
+          <div class="today" style="padding:0;margin-top:10px"><div class="days"><i class="e"></i><i class="m"></i><i class="e"></i><i class="m"></i><i class="e"></i><i class="m"></i><i class="e"></i><i class="c"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        </div>
+        <div>
+          <div class="muted xs">Level 2</div>
+          <div style="font-weight:600;font-size:15px">Showing Up</div>
+          <div class="bar" style="margin:8px 0 4px;width:85%"><b style="width:74%;background:var(--px-accent)"></b></div>
+          <div class="muted xs">445 XP · 155 to level 3</div>
+          <div style="margin-top:12px"><span class="btn ghost sm" style="padding-left:0">Draw Anyway</span></div>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="card stat"><div class="l">Attempted</div><div class="v">58%</div></div>
+        <div class="card stat"><div class="l">Score</div><div class="v">59%</div></div>
+        <div class="card stat"><div class="l">Time studied</div><div class="v">19h 50m</div></div>
+        <div class="card stat"><div class="l">Rated this week</div><div class="v">16</div></div>
+        <div class="card stat"><div class="l">Days to exam</div><div class="v" style="font-size:13px;margin-top:6px"><a style="color:var(--px-accent-text)">Set exam date…</a></div></div>
+      </div>
+      <div class="sl" style="margin-top:16px">Work on next</div>
+      <div class="wcols">
+        <div class="card wcol"><div class="h">Due now <span class="pill n">10</span></div>
+          <div class="it"><span class="dot h"></span><div>RF Meyers - 3<small>Hard · 11 days ago</small></div></div>
+          <div class="it"><span class="dot m"></span><div>RF Siewert - 3<small>Medium · 11 days ago</small></div></div>
+          <div class="it"><span class="dot m"></span><div>RF Meyers - 1<small>Medium · 10 days ago</small></div></div>
+          <div class="it"><span class="dot h"></span><div>RF Clark - 3<small>Hard · 9 days ago</small></div></div>
+          <a style="color:var(--px-accent-text);font-size:12px">Show all 10</a>
+        </div>
+        <div class="card wcol"><div class="h">Keeps going wrong</div><div class="muted">Nothing has been rated Hard twice.</div></div>
+        <div class="card wcol"><div class="h">Weakest papers</div>
+          <div class="it"><div>Meyers<small>Score 50% · 5 of 8 rated</small></div></div>
+          <div class="it"><div>Siewert<small>Score 50% · 6 of 8 rated</small></div></div>
+          <div class="it"><div>Brosius<small>Score 57% · 7 of 8 rated</small></div></div>
+          <div class="it"><div>Clark<small>Score 75% · 4 of 8 rated</small></div></div>
+        </div>
+        <div class="card wcol"><div class="h">Quick wins</div>
+          <div class="it"><span class="dot n"></span><div>RF Clark - 5<small>Never tried</small></div></div>
+          <div class="it"><span class="dot n"></span><div>RF Clark - 8<small>Never tried</small></div></div>
+          <div class="it"><span class="dot n"></span><div>RF Meyers - 7<small>Never tried</small></div></div>
+          <div class="it"><span class="dot n"></span><div>RF Siewert - 8<small>Never tried</small></div></div>
+        </div>
+        <div class="card wcol"><div class="h">Starred</div>
+          <div class="it"><span class="dot e"></span><div>RF Brosius - 7<small>Easy</small></div></div>
+          <div class="it"><span class="dot h"></span><div>RF Brosius - 8<small>Hard</small></div></div>
+          <div class="it"><span class="dot e"></span><div>RF Clark - 1<small>Easy</small></div></div>
+        </div>
+      </div>
+      <div class="sl" style="margin-top:16px">Progress by paper</div>
+      <div class="card" style="padding:12px 16px">
+        <div class="prow"><span>Meyers</span><div class="bar"><b class="e" style="width:25%"></b><b class="m" style="width:12.5%"></b><b class="h" style="width:25%"></b></div><span class="muted xs num" style="text-align:right">5 of 8 · 50%</span></div>
+        <div class="prow"><span>Siewert</span><div class="bar"><b class="e" style="width:25%"></b><b class="m" style="width:25%"></b><b class="h" style="width:25%"></b></div><span class="muted xs num" style="text-align:right">6 of 8 · 50%</span></div>
+        <div class="prow"><span>Brosius</span><div class="bar"><b class="e" style="width:50%"></b><b class="h" style="width:37.5%"></b></div><span class="muted xs num" style="text-align:right">7 of 8 · 57%</span></div>
+        <div class="prow"><span>Clark</span><div class="bar"><b class="e" style="width:37.5%"></b><b class="h" style="width:12.5%"></b></div><span class="muted xs num" style="text-align:right">4 of 8 · 75%</span></div>
+      </div>
+      <div class="sl" style="margin-top:16px">Rewards</div>
+      <div class="chips">
+        <span class="chip on"><svg class="i s12"><use href="#i-trophy"/></svg>First step</span>
+        <span class="chip on"><svg class="i s12"><use href="#i-cal"/></svg>Full day</span>
+        <span class="chip"><svg class="i s12"><use href="#i-flame"/></svg>Three straight</span>
+        <span class="chip"><svg class="i s12"><use href="#i-flame"/></svg>Seven straight</span>
+        <span class="chip"><svg class="i s12"><use href="#i-cal"/></svg>Fortnight</span>
+        <span class="chip"><svg class="i s12"><use href="#i-trophy"/></svg>Twenty-five down</span>
+        <span class="chip add">+ 11 more to earn</span>
+      </div>
+      <p class="muted xs" style="margin:14px 0 0">The three Progress over time charts are unchanged and sit between Progress by paper and Rewards.</p>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li><b>Header actions</b>: today's four day actions sit inside the hero card in two styles. They move to the header: Resume (primary), Quiz Due Problems, Review Due Flashcards; Draw Anyway stays in the card as a ghost button since it overrides the rest day.</li>
+  <li><b>Days to exam</b> shows "Set exam date…" (opens Settings at that field) instead of a bare dash.</li>
+  <li><b>Labels</b> in sentence case: Work on next, Progress by paper, Time studied, Rated this week, Days to exam.</li>
+</ul>
+
+<!-- ═══════════════ 4. bank ═══════════════ -->
+<h2 id="bank">4. Problem Bank</h2>
+<p>Search, filters and the count sit in one toolbar; filters become chips and wrap in a narrow window. Papers stay as an accordion; an open paper lists its problems as rows, with star, rating and actions in fixed columns.</p>
+<div class="win">
+  <div class="tabs"><div class="tab"><svg class="i s14"><use href="#i-home"/></svg>Worksheets</div><div class="tab on"><svg class="i s14"><use href="#i-lib"/></svg>Problem Bank<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+  <div class="ed">
+    <div class="scroll">
+      <div class="ph">
+        <div><div class="crumb"><a>Worksheets</a><svg class="i s12"><use href="#i-right"/></svg></div><h3>Problem Bank</h3><div class="sub">48 problems · 28 rated · 6 papers</div></div>
+        <div class="acts">
+          <span class="btn secondary"><svg class="i s14"><use href="#i-chat"/></svg>Discuss Notes in Chat (5)</span>
+          <span class="btn primary">Quiz These…</span>
+          <span class="btn ghost icon"><svg class="i"><use href="#i-more"/></svg></span>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <div class="input" style="width:240px"><svg class="i s14 faint"><use href="#i-search"/></svg><span class="phd">Search problems</span></div>
+        <div class="chips">
+          <span class="chip">Starred <span class="n">3</span></span>
+          <span class="chip on"><svg class="i s12"><use href="#i-check"/></svg>Noted <span class="n">5</span></span>
+          <span class="chip">Incomplete <span class="n">20</span></span>
+          <span class="chip">Easy</span><span class="chip">Medium</span><span class="chip">Hard</span>
+          <span class="chip">Rising Fellow</span><span class="chip">CAS Exam</span>
+          <span class="chip">Quantitative</span><span class="chip">Qualitative</span>
+        </div>
+        <span class="muted xs num" style="margin-left:auto">5 of 48 · <a style="color:var(--px-accent-text)">Clear filters</a></span>
+      </div>
+      <div class="list" style="margin-top:12px">
+        <div class="row" style="background:var(--px-bg-raised)"><svg class="i s14 muted"><use href="#i-down"/></svg><span class="t">Brosius</span><span class="muted xs">5 shown</span><div class="end" style="gap:12px"><div class="bar" style="width:90px"><b class="e" style="width:50%"></b><b class="h" style="width:37%"></b></div><span class="muted xs num">7 of 8 rated · 3h 08m</span></div></div>
+        <div class="row"><svg class="i s14 faint"><use href="#i-star"/></svg><div class="two"><span class="t">RF Brosius - 1 <span class="pill h" style="margin-left:6px">Hard</span></span><span class="m">Rising Fellow · Quantitative · Difficult &amp; unlikely · 1 attempt · 35m · last Sep 29</span><span class="m" style="color:var(--px-text-secondary)"><svg class="i s12" style="vertical-align:-2px"><use href="#i-note"/></svg> Review the tail factor derivation</span></div></div>
+        <div class="row hov"><svg class="i s14 faint"><use href="#i-star"/></svg><div class="two"><span class="t">RF Brosius - 2 <span class="pill n" style="margin-left:6px">Not rated</span></span><span class="m">Rising Fellow · Quantitative · Easy &amp; unlikely · 17m</span><span class="m" style="color:var(--px-text-secondary)"><svg class="i s12" style="vertical-align:-2px"><use href="#i-note"/></svg> Watch the units: $000s</span></div><div class="end"><span class="btn secondary sm">Practice</span><span class="btn ghost icon sm"><svg class="i s14"><use href="#i-more"/></svg></span></div></div>
+        <div class="row"><svg class="i s14 faint"><use href="#i-star"/></svg><div class="two"><span class="t">RF Brosius - 3 <span class="pill e" style="margin-left:6px">Easy</span></span><span class="m">CAS Exam · Quantitative · Easy &amp; likely · 1 attempt · 28m · last Sep 21</span><span class="m" style="color:var(--px-text-secondary)"><svg class="i s12" style="vertical-align:-2px"><use href="#i-note"/></svg> Compare with Mack: the variance term</span></div></div>
+        <div class="row"><svg class="i s14 faint"><use href="#i-star"/></svg><div class="two"><span class="t">RF Brosius - 4 <span class="pill e" style="margin-left:6px">Easy</span></span><span class="m">Rising Fellow · Qualitative · Difficult &amp; likely · 1 attempt · 30m · last Sep 26</span></div></div>
+        <div class="row"><svg class="i s14 muted"><use href="#i-right"/></svg><span class="t">Clark</span><span class="muted xs">0 shown</span><div class="end" style="gap:12px"><div class="bar" style="width:90px"><b class="e" style="width:37%"></b><b class="h" style="width:12%"></b></div><span class="muted xs num">4 of 8 rated · 3h 02m</span></div></div>
+        <div class="row"><svg class="i s14 muted"><use href="#i-right"/></svg><span class="t">Meyers</span><span class="muted xs">0 shown</span><div class="end" style="gap:12px"><div class="bar" style="width:90px"><b class="e" style="width:25%"></b><b class="m" style="width:12%"></b><b class="h" style="width:25%"></b></div><span class="muted xs num">5 of 8 rated · 2h 24m</span></div></div>
+      </div>
+      <div class="menu" style="right:32px;top:318px">
+        <div>Open in New Tab</div><div>Star</div><div>Add Note…</div><hr><div>Reset Work…</div><div class="dan">Delete Problem…</div>
+      </div>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li><b>Quiz These…</b> (new) opens the quiz builder with the bank's current filters already chosen.</li>
+  <li><b>Chips</b>: one group per facet (status, rating, source, kind); RF, CAS, Quant and Qual are spelled out. Several can be on at once, as today.</li>
+  <li><b>Row actions</b>: Practice and ⋯ on hover; the ⋯ menu gathers what today sits as loose text buttons (Delete) plus Star, Note and Reset.</li>
+  <li><b>Paper rows</b> show how many problems the filters leave in them, so an empty paper reads as "0 shown" instead of opening to nothing.</li>
+</ul>
+
+<!-- ═══════════════ 5. builder ═══════════════ -->
+<h2 id="builder">5. New Quiz</h2>
+<p>Today the builder is one long column ending in a full-width Start Quiz. Filters stay on the left as chip groups; the right column always shows what you'll get, the length, shuffle, a name already filled in, and Start Quiz.</p>
+<div class="win">
+  <div class="tabs"><div class="tab"><svg class="i s14"><use href="#i-home"/></svg>Worksheets</div><div class="tab on"><svg class="i s14"><use href="#i-plus"/></svg>New Quiz<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+  <div class="ed">
+    <div class="scroll">
+      <div class="ph">
+        <div><div class="crumb"><a>Worksheets</a><svg class="i s12"><use href="#i-right"/></svg></div><h3>New Quiz</h3><div class="sub">Choose what to draw from. Every rating you give lands on the problem.</div></div>
+      </div>
+      <div class="builder">
+        <div>
+          <div class="fgroup"><div class="sl">Papers</div><div class="chips"><span class="chip on"><svg class="i s12"><use href="#i-check"/></svg>Brosius <span class="n">8</span></span><span class="chip">Clark <span class="n">8</span></span><span class="chip on"><svg class="i s12"><use href="#i-check"/></svg>Meyers <span class="n">8</span></span><span class="chip">Siewert <span class="n">8</span></span><span class="chip">Venter <span class="n">8</span></span><span class="chip">Verrall <span class="n">8</span></span><span class="btn ghost sm">All</span></div></div>
+          <div class="fgroup"><div class="sl">Sources</div><div class="chips"><span class="chip">Rising Fellow <span class="n">42</span></span><span class="chip">CAS Exam <span class="n">6</span></span></div></div>
+          <div class="fgroup"><div class="sl">Kinds</div><div class="chips"><span class="chip">Quantitative <span class="n">37</span></span><span class="chip">Qualitative <span class="n">11</span></span></div></div>
+          <div class="fgroup"><div class="sl">Rating</div><div class="seg"><span>Any</span><span>Never tried</span><span>Incomplete</span><span>Easy</span><span>Medium</span><span>Hard</span><span class="on">Medium or hard</span></div></div>
+          <div class="fgroup"><div class="sl">Starred</div><div class="seg"><span class="on">Any</span><span>Starred</span><span>Not starred</span></div></div>
+          <p class="muted xs" style="margin:6px 0 0">No chip on in a group means every one in it.</p>
+        </div>
+        <div class="card side">
+          <div class="muted xs">Matching problems</div>
+          <div class="big num">7</div>
+          <div class="muted xs">Brosius 4 · Meyers 3</div>
+          <div class="field"><label>Length</label><span class="stepper"><span>−</span><b class="num">7</b><span>+</span></span> <span class="muted xs" style="margin-left:6px">of 7</span></div>
+          <div class="field"><span class="toggle on"><i></i>Shuffle</span></div>
+          <div class="field"><label>Name</label><div class="input">Brosius and Meyers, medium or hard</div></div>
+          <div style="margin-top:16px;display:flex;gap:8px"><span class="btn primary" style="flex:1">Start Quiz</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li><b>Rating and Starred</b> pick one value each, so they use the switch; Papers, Sources and Kinds pick several, so they use chips.</li>
+  <li><b>Name</b> is filled from the choices and can be edited; today it is an empty box with a faint hint.</li>
+  <li><b>Length</b> is a stepper that cannot pass the number matching; it reads "of 7".</li>
+  <li>With nothing matching, the side card shows "No problems match" and Start Quiz is disabled, instead of an error under the button.</li>
+</ul>
+
+<!-- ═══════════════ 6. quizzes ═══════════════ -->
+<h2 id="quizzes">6. Quizzes</h2>
+<p>New Quiz moves into the header; quizzes split into Open and Completed; each row keeps one main action (Resume or Review) and puts Rename, Copy, Reopen and Delete in ⋯.</p>
+<div class="win">
+  <div class="tabs"><div class="tab"><svg class="i s14"><use href="#i-home"/></svg>Worksheets</div><div class="tab on"><svg class="i s14"><use href="#i-checks"/></svg>Quizzes<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+  <div class="ed" style="height:470px">
+    <div class="scroll">
+      <div class="ph">
+        <div><div class="crumb"><a>Worksheets</a><svg class="i s12"><use href="#i-right"/></svg></div><h3>Quizzes</h3><div class="sub">A quiz stays open until you complete it from its summary.</div></div>
+        <div class="acts"><span class="btn primary"><svg class="i s14"><use href="#i-plus"/></svg>New Quiz</span></div>
+      </div>
+      <div class="sl">Open</div>
+      <div class="list">
+        <div class="row"><span class="dot a"></span><div class="two"><span class="t">Day 8 Draw</span><span class="m">6 problems · 3 easy · 2 hard · 1 not rated · started Oct 2, 9:21 AM</span></div><div class="end" style="gap:12px"><div style="width:120px"><div class="bar"><b class="e" style="width:50%;background:var(--px-accent)"></b></div><div class="muted xs num" style="margin-top:3px">2 of 6</div></div><span class="btn primary sm"><svg class="i s14"><use href="#i-play"/></svg>Resume</span><span class="btn ghost icon sm"><svg class="i s14"><use href="#i-more"/></svg></span></div></div>
+      </div>
+      <div class="sl" style="margin-top:12px">Completed</div>
+      <div class="list">
+        <div class="row hov"><span class="dot n"></span><div class="two"><span class="t">Day 6 Draw</span><span class="m">6 problems · 2 easy · 1 hard · 3 not rated · completed yesterday</span></div><div class="end"><span class="btn secondary sm">Review</span><span class="btn ghost icon sm on"><svg class="i s14"><use href="#i-more"/></svg></span></div></div>
+      </div>
+      <div class="menu" style="right:32px;top:290px">
+        <div>Rename…</div><div><svg class="i s14"><use href="#i-copy"/></svg>Copy as New Quiz</div><div>Reopen</div><hr><div class="dan"><svg class="i s14"><use href="#i-trash"/></svg>Delete Quiz…</div>
+      </div>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li>Open quizzes show progress as a bar plus "2 of 6", which today is a pill inside the name line.</li>
+  <li>Delete asks first, like the rest of the app.</li>
+  <li>With no quizzes: the kit empty state, "No quizzes yet", with New Quiz.</li>
+</ul>
+
+<!-- ═══════════════ 7. sheet ═══════════════ -->
+<h2 id="sheet">7. Problem sheet in a quiz</h2>
+<p>The quiz bar and the problem header carry eleven controls today, five of them icon-only. The rating becomes the switch (it is one choice of three); Reveal Solution gets its label; the less frequent tools go to ⋯. The sheet itself is Univer and keeps the light exam look.</p>
+<div class="win">
+  <div class="tabs"><div class="tab"><svg class="i s14"><use href="#i-home"/></svg>Worksheets</div><div class="tab on"><svg class="i s14"><use href="#i-checks"/></svg>Day 8 Draw<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+  <div class="ed" style="height:560px">
+    <div class="sessbar">
+      <span class="btn ghost icon sm"><svg class="i s14"><use href="#i-left"/></svg></span>
+      <span style="font-weight:600;font-size:12.5px">Day 8 Draw</span><span class="muted" style="font-size:12.5px">· 2 of 6</span>
+      <span class="btn ghost icon sm"><svg class="i s14"><use href="#i-right"/></svg></span>
+      <div style="display:flex;gap:7px;margin-left:12px"><span class="dot h"></span><span class="dot a" style="box-shadow:0 0 0 2px var(--px-bg),0 0 0 3px var(--px-accent)"></span><span class="dot e"></span><span class="dot a"></span><span class="dot a"></span><span class="dot e"></span></div>
+      <div style="margin-left:auto;display:flex;gap:4px;align-items:center">
+        <span class="btn ghost sm"><svg class="i s14"><use href="#i-list"/></svg>Overview</span>
+        <span class="btn ghost sm"><svg class="i s14"><use href="#i-next"/></svg>Next Marked (2)</span>
+      </div>
+    </div>
+    <div class="itemhead">
+      <div style="min-width:0">
+        <div class="t">RF Brosius - 2</div>
+        <div class="muted xs">Brosius · Rising Fellow · Quantitative · Easy &amp; unlikely</div>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+        <span class="timer"><svg class="i s14"><use href="#i-clock"/></svg>17:22</span>
+        <span class="vdiv"></span>
+        <span class="seg rate"><span>Easy</span><span>Medium</span><span>Hard</span></span>
+        <span class="vdiv"></span>
+        <span class="btn ghost icon"><svg class="i"><use href="#i-star"/></svg></span>
+        <span class="btn ghost icon on"><svg class="i"><use href="#i-flag"/></svg></span>
+        <span class="btn ghost icon on"><svg class="i"><use href="#i-note"/></svg></span>
+        <span class="btn secondary"><svg class="i s14"><use href="#i-eye"/></svg>Reveal Solution</span>
+        <span class="btn ghost icon hov"><svg class="i"><use href="#i-more"/></svg></span>
+      </div>
+    </div>
+    <div class="menu" style="right:16px;top:86px">
+      <div><svg class="i s14"><use href="#i-moon"/></svg>Dark Sheet</div>
+      <div><svg class="i s14"><use href="#i-chat"/></svg>Review in Chat</div>
+      <div>Open Problem in Bank</div>
+      <hr>
+      <div class="dan"><svg class="i s14"><use href="#i-reset"/></svg>Reset Work…</div>
+    </div>
+    <div class="notepanel"><div class="ta">Watch the units: $000s</div></div>
+    <div class="univer">
+      <div class="rib"><b>Start</b><span>Insert</span><span>Formulas</span><span>Data</span></div>
+      <div class="tools"><span></span><span></span><span></span>Arial ▾ &nbsp; 11 ▾<span></span><span></span><span></span><span></span><span></span><span></span>General ▾</div>
+      <div class="fx"><span style="width:60px">A1</span><span>RF Brosius - 2</span></div>
+      <div class="grid">
+        <div class="hd"></div><div class="hd">A</div><div class="hd">B</div><div class="hd">C</div><div class="hd">D</div><div class="hd">E</div><div class="hd">F</div><div class="hd">G</div><div class="hd">H</div><div class="hd">I</div>
+        <div class="hd">1</div><div>RF Brosius - 2</div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+        <div class="hd">2</div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+        <div class="hd">3</div><div></div><div>Given the following information:</div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+        <div class="hd">4</div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+        <div class="hd">5</div><div></div><div>Accident Year</div><div>Reported</div><div>Paid</div><div></div><div></div><div></div><div></div><div></div>
+        <div class="hd">6</div><div></div><div class="r">2021</div><div class="r">1220</div><div class="r">910</div><div></div><div></div><div></div><div></div><div></div>
+        <div class="hd">7</div><div></div><div class="r">2022</div><div class="r">1370</div><div class="r">990</div><div></div><div></div><div></div><div></div><div></div>
+        <div class="hd">8</div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+        <div class="hd">9</div><div></div><div>Question: estimate the ultimate loss for accident year 2022.</div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+        <div class="hd">10</div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li><b>Quiz bar</b>: the six dots are the quiz's problems coloured by state (rated, worked, marked, current); clicking one goes there. Overview and Next Marked get labels; Next Item is the › beside the count.</li>
+  <li><b>Rating</b> is the switch: one press rates and the chosen value stays lit in its colour. New: Ctrl+1, Ctrl+2, Ctrl+3 rate from the keyboard.</li>
+  <li><b>Kept as icons</b>: Star, Mark for Later, Note, all toggles that light up when on, each with a name for screen readers. Reveal Solution is labelled because it changes the whole sheet; once on it reads Hide Solution.</li>
+  <li><b>In ⋯</b>: Dark Sheet, Review in Chat, Open Problem in Bank, Reset Work… (it already asks first; the … now says so).</li>
+  <li><b>Note</b> uses the app's textarea, the same box as the PDF highlight note.</li>
+</ul>
+
+<!-- ═══════════════ 8. overview ═══════════════ -->
+<h2 id="overview">8. Quiz overview</h2>
+<p>One row per problem, the same row as the Bank; the current problem is selected; state pills say one thing each; the flag column shows marks at a glance.</p>
+<div class="win">
+  <div class="tabs"><div class="tab"><svg class="i s14"><use href="#i-home"/></svg>Worksheets</div><div class="tab on"><svg class="i s14"><use href="#i-checks"/></svg>Day 8 Draw<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+  <div class="ed" style="height:500px">
+    <div class="sessbar">
+      <span class="btn ghost icon sm"><svg class="i s14"><use href="#i-left"/></svg></span>
+      <span style="font-weight:600;font-size:12.5px">Day 8 Draw</span><span class="muted" style="font-size:12.5px">· 2 of 6</span>
+      <span class="btn ghost icon sm"><svg class="i s14"><use href="#i-right"/></svg></span>
+      <div style="margin-left:auto;display:flex;gap:4px;align-items:center">
+        <span class="btn ghost sm on"><svg class="i s14"><use href="#i-list"/></svg>Overview</span>
+        <span class="btn ghost sm"><svg class="i s14"><use href="#i-next"/></svg>Next Marked (2)</span>
+      </div>
+    </div>
+    <div class="scroll">
+      <div class="ph nocrumb">
+        <div><h3>Day 8 Draw</h3><div class="sub">0 rated · 2 worked · 4 not started · 2 marked for later</div></div>
+        <div class="acts"><span class="btn secondary">Back to Problem 2</span><span class="btn primary">Quiz Summary</span><span class="btn ghost icon"><svg class="i"><use href="#i-more"/></svg></span></div>
+      </div>
+      <div class="list">
+        <div class="row"><span class="idx">1</span><div class="two"><span class="t">RF Brosius - 1</span><span class="m">Review the tail factor derivation</span></div><div class="end" style="gap:8px"><span class="pill h">Hard earlier</span><span class="btn ghost icon sm"><svg class="i s14 faint"><use href="#i-flag"/></svg></span><span class="btn ghost icon sm"><svg class="i s14 faint"><use href="#i-star"/></svg></span></div></div>
+        <div class="row sel"><span class="idx">2</span><div class="two"><span class="t">RF Brosius - 2</span><span class="m">Watch the units: $000s</span></div><div class="end" style="gap:8px"><span class="pill n">Not started</span><span class="btn ghost icon sm"><svg class="i s14 faint"><use href="#i-flag"/></svg></span><span class="btn ghost icon sm"><svg class="i s14 faint"><use href="#i-star"/></svg></span></div></div>
+        <div class="row"><span class="idx">3</span><div class="two"><span class="t">RF Brosius - 3</span><span class="m">Compare with Mack: the variance term</span></div><div class="end" style="gap:8px"><span class="pill e">Easy in workbook</span><span class="btn ghost icon sm on"><svg class="i s14"><use href="#i-flag"/></svg></span><span class="btn ghost icon sm"><svg class="i s14 faint"><use href="#i-star"/></svg></span></div></div>
+        <div class="row"><span class="idx">4</span><div class="two"><span class="t">RF Brosius - 4</span><span class="m">Never remember the formula for the bias adjustment</span></div><div class="end" style="gap:8px"><span class="pill a">Worked, not rated</span><span class="btn ghost icon sm"><svg class="i s14 faint"><use href="#i-flag"/></svg></span><span class="btn ghost icon sm"><svg class="i s14 faint"><use href="#i-star"/></svg></span></div></div>
+        <div class="row"><span class="idx">5</span><div class="two"><span class="t">RF Brosius - 5</span><span class="m">Do again before the exam</span></div><div class="end" style="gap:8px"><span class="pill a">Worked, not rated</span><span class="btn ghost icon sm on"><svg class="i s14"><use href="#i-flag"/></svg></span><span class="btn ghost icon sm"><svg class="i s14 faint"><use href="#i-star"/></svg></span></div></div>
+        <div class="row"><span class="idx">6</span><div class="two"><span class="t">RF Brosius - 6</span></div><div class="end" style="gap:8px"><span class="pill e">Easy earlier</span><span class="btn ghost icon sm"><svg class="i s14 faint"><use href="#i-flag"/></svg></span><span class="btn ghost icon sm"><svg class="i s14 faint"><use href="#i-star"/></svg></span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li><b>Header</b>: "Back to Problem 2" replaces the eye icon whose tooltip read "Back To Sheet. Back to the problem you were on."; Quiz Summary is the primary; Rename… and Copy as New Quiz go to ⋯.</li>
+  <li><b>Note</b> is edited from the row's ⋯ or by opening the problem; the per-row note button goes, since the note already shows as the row's second line.</li>
+  <li><b>Pills</b> read as words: "Hard earlier" for a rating from an earlier quiz, "Easy in workbook" for one carried over on import.</li>
+</ul>
+
+<!-- ═══════════════ 9. summary ═══════════════ -->
+<h2 id="summary">9. Quiz summary</h2>
+<p>Five buttons in two styles become one primary, one secondary and ⋯. A bar shows the quiz at a glance above the rows.</p>
+<div class="win">
+  <div class="tabs"><div class="tab"><svg class="i s14"><use href="#i-home"/></svg>Worksheets</div><div class="tab on"><svg class="i s14"><use href="#i-checks"/></svg>Day 8 Draw<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+  <div class="ed" style="height:470px">
+    <div class="scroll">
+      <div class="ph">
+        <div><div class="crumb"><a>Worksheets</a><svg class="i s12"><use href="#i-right"/></svg><a>Quizzes</a><svg class="i s12"><use href="#i-right"/></svg></div><h3>Day 8 Draw <span class="pill n" style="vertical-align:3px;margin-left:4px">Open</span></h3><div class="sub">Quiz summary · 6 problems · 1h 54m</div></div>
+        <div class="acts"><span class="btn secondary">Back to Quiz</span><span class="btn primary"><svg class="i s14"><use href="#i-check"/></svg>Complete Quiz</span><span class="btn ghost icon"><svg class="i"><use href="#i-more"/></svg></span></div>
+      </div>
+      <div class="card" style="padding:12px 16px;display:flex;align-items:center;gap:20px">
+        <div class="bar" style="flex:1;height:10px;border-radius:5px"><b class="e" style="width:50%"></b><b class="h" style="width:33.3%"></b></div>
+        <span class="xs"><span class="dot e" style="display:inline-block"></span> 3 easy</span>
+        <span class="xs"><span class="dot m" style="display:inline-block"></span> 0 medium</span>
+        <span class="xs"><span class="dot h" style="display:inline-block"></span> 2 hard</span>
+        <span class="xs"><span class="dot n" style="display:inline-block"></span> 1 not rated</span>
+        <span class="xs"><svg class="i s12" style="vertical-align:-2px;color:var(--px-accent-text)"><use href="#i-flag"/></svg> 2 marked</span>
+      </div>
+      <div class="list" style="margin-top:12px">
+        <div class="row"><span class="idx">1</span><span class="t grow">RF Brosius - 1</span><div class="end" style="gap:8px"><span class="pill h">Hard earlier</span><span class="muted xs num" style="width:42px;text-align:right">35m</span></div></div>
+        <div class="row hov"><span class="idx">2</span><span class="t grow">RF Brosius - 2</span><div class="end" style="gap:8px"><span class="pill n">Not rated</span><span class="muted xs num" style="width:42px;text-align:right">17m</span></div></div>
+        <div class="row"><span class="idx">3</span><span class="t grow">RF Brosius - 3</span><div class="end" style="gap:8px"><svg class="i s14" style="color:var(--px-accent-text)"><use href="#i-flag"/></svg><span class="pill e">Easy in workbook</span><span class="muted xs num" style="width:42px;text-align:right">28m</span></div></div>
+        <div class="row"><span class="idx">4</span><span class="t grow">RF Brosius - 4</span><div class="end" style="gap:8px"><span class="pill e">Easy earlier</span><span class="muted xs num" style="width:42px;text-align:right">30m</span></div></div>
+        <div class="row"><span class="idx">5</span><span class="t grow">RF Brosius - 5</span><div class="end" style="gap:8px"><svg class="i s14" style="color:var(--px-accent-text)"><use href="#i-flag"/></svg><span class="pill h">Hard earlier</span><span class="muted xs num" style="width:42px;text-align:right">4m</span></div></div>
+        <div class="row"><span class="idx">6</span><span class="t grow">RF Brosius - 6</span><div class="end" style="gap:8px"><span class="pill e">Easy earlier</span><span class="muted xs num" style="width:42px;text-align:right">–</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li><b>⋯</b> holds Next Marked (2), Quiz Overview and Copy as New Quiz.</li>
+  <li>The bar replaces the line "3 Easy · 0 Medium · 2 Hard · 1 Not Rated · 2 Marked For Later" and shows the same counts.</li>
+  <li>Marked problems carry the flag instead of a second "Marked" pill; each row shows its time.</li>
+  <li>Complete Quiz with unrated problems asks first and says how many are unrated.</li>
+</ul>
+
+<!-- ═══════════════ 10. import ═══════════════ -->
+<h2 id="import">10. Import Workbook</h2>
+<p>Before a file is chosen: the kit empty state with a drop area. After: problems grouped by paper with checkboxes, already-imported ones marked, and a footer that always shows what will happen.</p>
+<div class="cmp">
+  <div class="cell" style="border:none">
+    <div class="win" style="margin-top:0">
+      <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-import"/></svg>Import Workbook<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+      <div class="ed" style="height:470px">
+        <div class="scroll">
+          <div class="ph"><div><div class="crumb"><a>Worksheets</a><svg class="i s12"><use href="#i-right"/></svg></div><h3>Import Workbook</h3><div class="sub">A practice workbook: one problem per sheet, named Paper.Source_NN.</div></div></div>
+          <div class="drop">
+            <svg class="i s28"><use href="#i-upload"/></svg>
+            <div class="h">Drop an Excel workbook here</div>
+            <div class="xs">.xlsx with one problem per sheet. Solutions below a Solution marker import hidden.</div>
+            <div style="margin-top:14px"><span class="btn primary">Choose Excel File…</span></div>
+          </div>
+          <p class="muted xs" style="margin:14px 0 0">Re-importing the same workbook adds only new problems; ones already in the bank are marked and left unticked.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cell" style="border:none">
+    <div class="win" style="margin-top:0">
+      <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-import"/></svg>Import Workbook<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+      <div class="ed" style="height:470px">
+        <div class="scroll">
+          <div class="ph"><div><div class="crumb"><a>Worksheets</a><svg class="i s12"><use href="#i-right"/></svg></div><h3>RF Practice 2026.xlsx</h3><div class="sub">52 problems in 6 papers · 48 already in the bank</div></div><div class="acts"><span class="btn ghost">Choose Another…</span></div></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><div class="chips"><span class="chip on">New only <span class="n">4</span></span><span class="chip">All <span class="n">52</span></span></div><span style="margin-left:auto" class="btn ghost sm">Select None</span></div>
+          <div class="list">
+            <div class="row" style="background:var(--px-bg-raised)"><span class="check on"><svg class="i s12"><use href="#i-check"/></svg></span><span class="t">Brosius</span><span class="muted xs">2 new of 10</span></div>
+            <div class="row"><span class="check on"><svg class="i s12"><use href="#i-check"/></svg></span><div class="two"><span class="t">RF Brosius - 9</span><span class="m">12 pts · solution below</span></div><span class="pill a end">New</span></div>
+            <div class="row"><span class="check on"><svg class="i s12"><use href="#i-check"/></svg></span><div class="two"><span class="t">RF Brosius - 10</span><span class="m">8 pts · item and answer sheets</span></div><span class="pill a end">New</span></div>
+            <div class="row"><span class="check"></span><div class="two"><span class="t" style="color:var(--px-text-muted)">RF Brosius - 1</span><span class="m">In the bank · Hard</span></div></div>
+            <div class="row" style="background:var(--px-bg-raised)"><span class="check on"><svg class="i s12"><use href="#i-check"/></svg></span><span class="t">Clark</span><span class="muted xs">2 new of 10</span></div>
+          </div>
+        </div>
+        <div class="footbar"><span class="muted xs">4 selected · 2 papers</span><span style="margin-left:auto" class="btn primary">Import 4 Problems</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ 11. generate ═══════════════ -->
+<h2 id="generate">11. Generate Items</h2>
+<p>Same frame as Import: a source on the left (drop a PDF or a canvas page, or paste), settings and Generate on the right; generated items list below for review, each with Drop, and Save sits in a footer.</p>
+<div class="win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-spark"/></svg>Generate Items<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+  <div class="ed" style="height:520px">
+    <div class="scroll">
+      <div class="ph"><div><div class="crumb"><a>Worksheets</a><svg class="i s12"><use href="#i-right"/></svg></div><h3>Generate Items</h3><div class="sub">Practice items with givens and a worked model answer, from a PDF or pasted material. Kept apart from the workbook.</div></div></div>
+      <div class="builder">
+        <div>
+          <div class="card" style="padding:12px 14px;display:flex;align-items:center;gap:10px"><svg class="i s20 muted"><use href="#i-file"/></svg><div class="two" style="display:flex;flex-direction:column"><span style="font-weight:600">Brosius - Loss Development Using Credibility.pdf</span><span class="muted xs">14 pages · read</span></div><span class="btn ghost sm" style="margin-left:auto">Remove</span></div>
+          <div class="muted xs" style="margin:10px 0 4px">Or paste material</div>
+          <div class="input" style="height:80px;align-items:flex-start;padding-top:6px"><span class="phd">Paste study material here. It replaces the file above.</span></div>
+        </div>
+        <div class="card side">
+          <div class="field" style="margin-top:0"><label>Items</label><span class="stepper"><span>−</span><b class="num">5</b><span>+</span></span></div>
+          <div style="margin-top:16px"><span class="btn primary" style="width:100%"><svg class="i s14"><use href="#i-spark"/></svg>Generate Items</span></div>
+        </div>
+      </div>
+      <div class="sl" style="margin-top:14px">Generated · review before saving</div>
+      <div class="list">
+        <div class="row"><div class="two"><span class="t">Credibility-weighted LDF</span><span class="m">Given reported losses for three years and a credibility of 0.6, find the weighted development factor.</span></div><div class="end"><span class="btn ghost sm">Drop</span></div></div>
+        <div class="row"><div class="two"><span class="t">Least squares vs chain ladder</span><span class="m">Explain when the least-squares estimate equals the chain ladder estimate.</span></div><div class="end"><span class="btn ghost sm">Drop</span></div></div>
+      </div>
+    </div>
+    <div class="footbar"><span class="muted xs">5 items · saved to the Problem Bank under Generated</span><span style="margin-left:auto" class="btn primary">Save 5 Items</span></div>
+  </div>
+</div>
+
+<!-- ═══════════════ 12. settings ═══════════════ -->
+<h2 id="settings">12. Worksheets Settings</h2>
+<p>The app's settings layout: what a setting does on the left, the control on the right. One-of-a-few choices use the switch. End Campaign is a danger button that asks first, instead of changing to "End It, Really".</p>
+<div class="win">
+  <div class="tabs"><div class="tab"><svg class="i s14"><use href="#i-home"/></svg>Worksheets</div><div class="tab on"><svg class="i s14"><use href="#i-gear"/></svg>Worksheets Settings<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+  <div class="ed auto">
+    <div class="scroll" style="max-width:860px">
+      <div class="ph"><div><div class="crumb"><a>Worksheets</a><svg class="i s12"><use href="#i-right"/></svg></div><h3>Worksheets Settings</h3></div></div>
+      <div class="sl">Campaign</div>
+      <div class="card" style="padding:0 16px">
+        <div class="set"><div><div class="l">Day 8 of 22</div><div class="d">17 of 48 done · 3 a day · Fridays off · ends Oct 16, 2026</div></div><span class="btn danger">End Campaign…</span></div>
+        <div class="set"><div><div class="l">Exam date</div><div class="d">The Dashboard counts down to it.</div></div><div style="display:flex;gap:6px"><div class="input" style="width:150px;justify-content:space-between"><span class="phd">Not set</span><svg class="i s14 faint"><use href="#i-cal"/></svg></div></div></div>
+        <div class="set"><div><div class="l">XP to cash</div><div class="d">Dollars per 100 XP. The Dashboard then shows what your XP and each reward are worth. 0 turns it off.</div></div><div class="input" style="width:90px"><span class="muted">$</span>0</div></div>
+      </div>
+      <div class="sl" style="margin-top:14px">Practice sheet</div>
+      <div class="card" style="padding:0 16px">
+        <div class="set"><div><div class="l">Sheet appearance</div><div class="d">Light matches the exam tool. Follow app uses the workbench theme.</div></div><span class="seg"><span class="on">Light</span><span>Dark</span><span>Follow app</span></span></div>
+        <div class="set"><div><div class="l">Decimals shown</div><div class="d">Display only; cells keep full precision.</div></div><span class="seg"><span>2</span><span class="on">4</span><span>6</span><span>8</span><span>Full</span></span></div>
+      </div>
+      <div class="sl" style="margin-top:14px">Study clock</div>
+      <div class="card" style="padding:0 16px">
+        <div class="set"><div><div class="l">Stop counting after</div><div class="d">Time counts while a problem or quiz is on screen and you are active. After this long with no input, the stretch is taken back.</div></div><span class="seg"><span>5 min</span><span class="on">10 min</span><span>15 min</span><span>30 min</span></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li>Descriptions that today live only in tooltips are shown under each setting.</li>
+  <li>With no campaign, the first row reads "No campaign running" with Start Campaign… (primary), which opens today's days and last-day fields in a small dialog.</li>
+</ul>
+
+<!-- ═══════════════ 13. light + narrow ═══════════════ -->
+<h2 id="light">13. Light mode and a narrow window</h2>
+<p>All the parts are tokens, so light mode needs no Worksheets-specific rules. In a narrow pane (under 640 px) the header actions fold into ⋯ except the primary, the Home cards stack, chips wrap, and the builder's side card moves above the filters.</p>
+<div class="narrowwrap">
+  <div class="win" style="width:430px;max-width:100%">
+    <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-home"/></svg>Worksheets</div><div class="tab"><svg class="i s14"><use href="#i-lib"/></svg>Problem Bank</div></div>
+    <div class="ed" style="height:600px">
+      <div class="scroll" style="padding:0 16px 20px">
+        <div class="ph nocrumb"><div><h3>Worksheets</h3><div class="sub">48 problems · 28 rated</div></div><div class="acts"><span class="btn primary">New Quiz</span><span class="btn ghost icon"><svg class="i"><use href="#i-more"/></svg></span></div></div>
+        <div class="dest" style="grid-template-columns:1fr">
+          <div class="destc"><div class="ic"><svg class="i s20"><use href="#i-gauge"/></svg></div><div><div class="t">Study Dashboard</div><div class="m">58% attempted · 59% score</div></div></div>
+          <div class="destc"><div class="ic"><svg class="i s20"><use href="#i-lib"/></svg></div><div><div class="t">Problem Bank</div><div class="m">48 problems in 6 papers</div></div></div>
+          <div class="destc"><div class="ic"><svg class="i s20"><use href="#i-checks"/></svg></div><div><div class="t">Quizzes</div><div class="m">1 open · 1 completed</div></div></div>
+        </div>
+        <div class="card today" style="flex-wrap:wrap"><div style="flex:1 1 100%"><div class="t">Day 8 of 22 · Rest day</div><div class="muted" style="font-size:12px">17 of 48 done · 1 behind pace</div></div><span class="btn primary"><svg class="i s14"><use href="#i-play"/></svg>Resume Day 8 Draw</span></div>
+        <div class="sl" style="margin-top:12px">Recent</div>
+        <div class="list">
+          <div class="row"><span class="dot h"></span><div class="two"><span class="t">RF Brosius - 8</span><span class="m">Brosius · Hard · Today</span></div></div>
+          <div class="row"><span class="dot e"></span><div class="two"><span class="t">RF Siewert - 5</span><span class="m">Siewert · Easy · Today</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="win light">
+    <div class="tabs"><div class="tab"><svg class="i s14"><use href="#i-home"/></svg>Worksheets</div><div class="tab on"><svg class="i s14"><use href="#i-lib"/></svg>Problem Bank<svg class="i s12 x"><use href="#i-x"/></svg></div></div>
+    <div class="ed" style="height:600px">
+      <div class="scroll">
+        <div class="ph">
+          <div><div class="crumb"><a>Worksheets</a><svg class="i s12"><use href="#i-right"/></svg></div><h3>Problem Bank</h3><div class="sub">48 problems · 28 rated · 6 papers</div></div>
+          <div class="acts"><span class="btn secondary"><svg class="i s14"><use href="#i-chat"/></svg>Discuss Notes in Chat (5)</span><span class="btn primary">Quiz These…</span></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <div class="input" style="width:200px"><svg class="i s14 faint"><use href="#i-search"/></svg><span class="phd">Search problems</span></div>
+          <div class="chips"><span class="chip">Starred <span class="n">3</span></span><span class="chip">Noted <span class="n">5</span></span><span class="chip on"><svg class="i s12"><use href="#i-check"/></svg>Hard</span><span class="chip">Easy</span><span class="chip">Medium</span><span class="chip">Rising Fellow</span><span class="chip">CAS Exam</span></div>
+        </div>
+        <div class="list" style="margin-top:12px">
+          <div class="row" style="background:var(--px-bg-raised)"><svg class="i s14 muted"><use href="#i-down"/></svg><span class="t">Brosius</span><span class="muted xs">3 shown</span><div class="end" style="gap:12px"><div class="bar" style="width:90px"><b class="e" style="width:50%"></b><b class="h" style="width:37%"></b></div><span class="muted xs num">7 of 8 rated</span></div></div>
+          <div class="row"><svg class="i s14 faint"><use href="#i-star"/></svg><div class="two"><span class="t">RF Brosius - 1 <span class="pill h" style="margin-left:6px">Hard</span></span><span class="m">Rising Fellow · Quantitative · 1 attempt · 35m</span></div></div>
+          <div class="row hov"><svg class="i s14" style="color:var(--px-warning)"><use href="#i-star"/></svg><div class="two"><span class="t">RF Brosius - 5 <span class="pill h" style="margin-left:6px">Hard</span></span><span class="m">CAS Exam · Quantitative · 1 attempt</span></div><div class="end"><span class="btn secondary sm">Practice</span><span class="btn ghost icon sm"><svg class="i s14"><use href="#i-more"/></svg></span></div></div>
+          <div class="row"><svg class="i s14 faint"><use href="#i-star"/></svg><div class="two"><span class="t">RF Brosius - 8 <span class="pill h" style="margin-left:6px">Hard</span></span><span class="m">Rising Fellow · Qualitative · 2 attempts · 41m</span></div></div>
+          <div class="row"><svg class="i s14 muted"><use href="#i-right"/></svg><span class="t">Clark</span><span class="muted xs">1 shown</span></div>
+          <div class="row"><svg class="i s14 muted"><use href="#i-right"/></svg><span class="t">Meyers</span><span class="muted xs">2 shown</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ 14. copy ═══════════════ -->
+<h2 id="copy">14. Copy changes</h2>
+<p>House rules: Title Case for actions and titles, sentence case for labels, … on actions that open a dialog or ask first.</p>
+<table class="t">
+  <tr><th>Where</th><th>Today</th><th>Proposed</th></tr>
+  <tr><td>Dashboard sections</td><td class="old">Work On Next · Progress By Paper · Progress Over Time</td><td>Work on next · Progress by paper · Progress over time</td></tr>
+  <tr><td>Dashboard stats</td><td class="old">Time Studied · Rated This Week · Days To Exam · Papers Cleared</td><td>Time studied · Rated this week · Days to exam · Papers cleared</td></tr>
+  <tr><td>Settings labels</td><td class="old">Exam Date · XP To Cash · Sheet Appearance · Decimals Shown · Study Clock</td><td>Exam date · XP to cash · Sheet appearance · Decimals shown · Study clock</td></tr>
+  <tr><td>Settings choices</td><td class="old">Follow App · 5 Minutes Idle</td><td>Follow app · 5 min (under "Stop counting after")</td></tr>
+  <tr><td>End Campaign</td><td class="old">End Campaign → End It, Really</td><td>End Campaign… then a confirm dialog</td></tr>
+  <tr><td>Overview back button</td><td class="old">Back To Sheet. Back to the problem you were on.</td><td>Back to Problem 2</td></tr>
+  <tr><td>Quiz summary line</td><td class="old">2 Marked For Later</td><td>2 marked (in the bar)</td></tr>
+  <tr><td>Quiz builder title</td><td class="old">Start a Quiz</td><td>New Quiz</td></tr>
+  <tr><td>Bank filters</td><td class="old">RF · CAS · Quant · Qual</td><td>Rising Fellow · CAS Exam · Quantitative · Qualitative</td></tr>
+  <tr><td>Status pills</td><td class="old">Hard · Earlier · Easy · Workbook</td><td>Hard earlier · Easy in workbook</td></tr>
+  <tr><td>Reset</td><td class="old">Reset Work · Reset Sheet</td><td>Reset Work… · Reset Sheet… (both already ask first)</td></tr>
+  <tr><td>Delete quiz</td><td class="old">Delete</td><td>Delete Quiz…</td></tr>
+  <tr><td>Import</td><td class="old">Import a Practice Workbook · Import Selected Items</td><td>Import Workbook · Import 4 Problems</td></tr>
+  <tr><td>Hyphen used as a dash</td><td class="old">Importing - 10 / 52… · No question/solution structure detected - tick any…</td><td>Importing 10 of 52… · No question and solution found. Tick any to import the whole sheet.</td></tr>
+</table>
+
+<h2>Build order</h2>
+<ol class="notes" style="font-size:13px">
+  <li><b>Parts:</b> register the filter chip in the kit; swap Worksheets' buttons and headers to the kit (no layout change yet). Copy changes ride along.</li>
+  <li><b>Tabs:</b> names and icons.</li>
+  <li><b>Home, Quizzes, Summary, Overview:</b> headers, rows with ⋯ menus, the quiz bar's dots.</li>
+  <li><b>Bank and New Quiz:</b> chips, the two-column builder, Quiz These….</li>
+  <li><b>Problem sheet:</b> rating switch and its shortcuts, labelled Reveal Solution, ⋯ menu.</li>
+  <li><b>Import, Generate, Settings:</b> drop area, footer bars, settings rows.</li>
+</ol>
+<p>Each step is checked in the app with the screens probe in dark, light and a narrow window before the next.</p>
+</div>
+</body>
+</html>
