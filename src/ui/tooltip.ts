@@ -207,8 +207,10 @@ export function installGlobalTooltipDelegate(): void {
     // Skip elements that already have setupTooltip wired (they handle themselves)
     if (target.hasAttribute('data-parallx-tooltip-managed')) return;
 
-    // Get the tooltip text: prefer the stashed data attribute, fall back to title
-    let text = target.getAttribute(TITLE_DATA_ATTR) || target.getAttribute('title') || '';
+    // The live title wins: code that changes an element's title after its first
+    // hover (a chip that switches model) must not keep showing the stashed old
+    // text. The stash only covers the hover after we stripped the title.
+    let text = target.getAttribute('title') || target.getAttribute(TITLE_DATA_ATTR) || '';
     if (!text.trim()) return;
 
     // Strip the native title to prevent the browser's built-in tooltip

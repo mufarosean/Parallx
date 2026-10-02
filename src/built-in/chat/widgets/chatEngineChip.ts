@@ -44,6 +44,15 @@ export interface IEngineChipOptions {
   readonly engineStatus?: IEngineStatusServices;
 }
 
+/** The chip's tooltip: the same model and size as its label. Test seam. */
+export function chipTooltip(model: string, size: number, used: number | undefined, engine: readonly string[]): string {
+  const head = size > 0 ? `${model} · ${formatTokens(size)}` : model;
+  const use = size > 0 && used !== undefined
+    ? (used > 0 ? `${formatTokens(used)} of ${formatTokens(size)} used` : 'Nothing used yet')
+    : '';
+  return [head, use, ...engine].filter(Boolean).map((t) => (/[.…]$/.test(t) ? t : `${t}.`)).join(' ');
+}
+
 /** The engine in words, for the popover. Test seam. */
 export function engineLines(s: IEngineStatus | undefined): string[] {
   if (!s) return [];
@@ -117,7 +126,10 @@ export class ChatEngineChip extends Disposable {
     const size = this._effectiveSize();
     this._label.textContent = size ? `${shortModelName(active)} · ${formatTokens(size)}` : shortModelName(active);
     const usage = this._o.getUsage();
-    const pct = usage && usage.contextLength > 0 ? Math.min(1, usage.total / usage.contextLength) : 0;
+    // One size everywhere: the chip's label, its ring, its tooltip and the
+    // popover all measure against the size this chat runs at, never a meter
+    // reading taken before the last pick.
+    const pct = usage && size > 0 ? Math.min(1, usage.total / size) : 0;
     const c = 2 * Math.PI * 14;
     this._ring.setAttribute('stroke-dasharray', `${(pct * c).toFixed(1)} ${c.toFixed(1)}`);
     this._chip.classList.toggle('parallx-chat-engine-chip--warn', pct > 0.7 && pct <= 0.9);
@@ -127,11 +139,7 @@ export class ChatEngineChip extends Disposable {
     this._queue.hidden = waiting === 0;
     this._queue.textContent = waiting > 0 ? `${waiting} waiting` : '';
     this._chip.classList.toggle('parallx-chat-engine-chip--slow', engine?.where === 'partial' || engine?.where === 'cpu');
-    const base = usage
-      ? `${shortModelName(active)}: ${formatTokens(usage.total)} of ${formatTokens(usage.contextLength)} used`
-      : 'Model and context size';
-    const lines = engineLines(engine);
-    this._chip.title = lines.length ? `${base}\n${lines.join('\n')}` : base;
+    this._chip.title = chipTooltip(shortModelName(active), size, usage?.total, engineLines(engine));
     if (this._pop) this._renderUsage(this._pop);
   }
 
@@ -253,9 +261,10 @@ export class ChatEngineChip extends Disposable {
     }
     const head = $('div.parallx-chat-engine-row');
     head.appendChild($('span.parallx-chat-engine-title', 'This chat'));
-    head.appendChild($('span.parallx-chat-engine-value', u && u.contextLength ? `${u.isReal ? '' : '~'}${formatTokens(u.total)} of ${formatTokens(u.contextLength)} used` : 'Nothing yet'));
+    const size = this._effectiveSize();
+    head.appendChild($('span.parallx-chat-engine-value', u && size && u.total > 0 ? `${u.isReal ? '' : '~'}${formatTokens(u.total)} of ${formatTokens(size)} used` : 'Nothing used yet'));
     host.appendChild(head);
-    if (!u || !u.contextLength) return;
+    if (!u || !size) return;
     const bar = $('div.parallx-chat-engine-bar');
     const parts: Array<[string, number, string]> = [
       ['Instructions', u.categories.systemInstructions, 'a'],
@@ -267,7 +276,7 @@ export class ChatEngineChip extends Disposable {
     for (const [label, n, k] of parts) {
       if (n <= 0) continue;
       const seg = $(`span.parallx-chat-engine-seg.parallx-chat-engine-seg--${k}`);
-      seg.style.width = `${Math.min(100, (n / u.contextLength) * 100).toFixed(2)}%`;
+      seg.style.width = `${Math.min(100, (n / size) * 100).toFixed(2)}%`;
       bar.appendChild(seg);
       const item = $('span.parallx-chat-engine-legend-item');
       item.appendChild($(`span.parallx-chat-engine-swatch.parallx-chat-engine-seg--${k}`));
