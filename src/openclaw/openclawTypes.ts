@@ -251,6 +251,8 @@ export interface IDefaultParticipantServices {
   maxIterations?: number;
   networkTimeout?: number;
   getModelContextLength?(): number;
+  /** A run's own context window, when it names one (a routine's "Context"). Background runs size their prompt to it. */
+  getSessionContextWindow?(sessionId: string): number | undefined;
   sendSummarizationRequest?(messages: readonly IChatMessage[], signal?: AbortSignal, options?: { readonly numCtx?: number; readonly engine?: IChatRequestOptions['engine'] }): AsyncIterable<IChatResponseChunk>;
   getFileCount?(): Promise<number>;
   isRAGAvailable?(): boolean;

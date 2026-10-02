@@ -1265,6 +1265,8 @@ export interface ILanguageModelsService extends IDisposable {
   getEngineBroker?(): import('./modelEngineBroker.js').IModelEngineBroker;
   /** The engine (provider id) a model runs on, if known. */
   getEngineForModel?(modelId: string): string | undefined;
+  /** Who answers "which model is this run pinned to" (a session id → model). */
+  setRunModelResolver?(fn: ((runId: string) => string | undefined) | undefined): void;
 }
 
 export const ILanguageModelsService = createServiceIdentifier<ILanguageModelsService>('ILanguageModelsService');

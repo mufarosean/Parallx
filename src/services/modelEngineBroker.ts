@@ -106,6 +106,8 @@ export interface IModelEngineBroker {
   /** Drop a run's bookkeeping once it is over. */
   forgetRun(runId: string): void;
   snapshot(engine?: string): readonly IEngineSnapshot[];
+  /** The model and context size last sent to an engine (what it has loaded). */
+  loadedShape(engine: string): { readonly modelId: string; readonly numCtx: number } | undefined;
 }
 
 /** Concurrency for background tickets on one engine. Learned later; 1 until proven. */
@@ -155,6 +157,7 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   private _timer: ReturnType<typeof setTimeout> | undefined;
   private _classifier: ((runId: string) => EnginePriority | undefined) | undefined;
   private readonly _runs = new Map<string, IRunBook>();
+  private readonly _shape = new Map<string, { modelId: string; numCtx: number }>();
   private _changeQueued = false;
 
   constructor(
@@ -187,7 +190,8 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
   async *request(req: IEngineRequest, start: EngineStart): AsyncIterable<IChatResponseChunk> {
     const tag = req.options?.engine;
     const priority = this._classify(tag);
-    const options = this._policy(req.options, priority);
+    const options = this._policy(req, priority);
+    if (options?.numCtx && options.numCtx > 0) this._shape.set(req.engine, { modelId: req.modelId, numCtx: options.numCtx });
 
     if (!req.gated) {
       yield* start(options, req.signal ?? new AbortController().signal);
@@ -409,11 +413,36 @@ export class ModelEngineBroker extends Disposable implements IModelEngineBroker 
 
   // ── Policy ──
 
-  /** Per-class request shaping: background output gets a cap. */
-  private _policy(options: IChatRequestOptions | undefined, priority: EnginePriority): IChatRequestOptions | undefined {
-    if (priority === 'interactive') return options;
-    if (options?.maxTokens && options.maxTokens > 0) return options;
-    return { ...(options ?? {}), maxTokens: BACKGROUND_MAX_TOKENS };
+  /**
+   * Per-class request shaping.
+   *
+   * Loaded shape: a model loaded at one context size reloads (seconds, and
+   * the prompt cache is lost) when a request names another. Your chat
+   * turns set the size. Everyone else (background runs, extensions, inline
+   * AI) adopts the loaded size when theirs is smaller or unnamed: a bigger
+   * window costs nothing once loaded, and their prompt budget stays their
+   * own. A background call that needs more than is loaded keeps its size;
+   * it only ever runs while chat is idle, so the reload never lands on you.
+   *
+   * Output cap: background calls that name no cap get one (thinking counts).
+   */
+  private _policy(req: IEngineRequest, priority: EnginePriority): IChatRequestOptions | undefined {
+    let options = req.options;
+    const setsShape = priority === 'interactive' && !!options?.engine?.runId;
+    const loaded = this._shape.get(req.engine);
+    if (!setsShape && loaded && loaded.modelId === req.modelId) {
+      const asked = options?.numCtx ?? 0;
+      if (asked < loaded.numCtx) options = { ...(options ?? {}), numCtx: loaded.numCtx };
+    }
+    if (priority !== 'interactive' && !(options?.maxTokens && options.maxTokens > 0)) {
+      options = { ...(options ?? {}), maxTokens: BACKGROUND_MAX_TOKENS };
+    }
+    return options;
+  }
+
+  /** The model and context size last sent to an engine (what it has loaded). */
+  loadedShape(engine: string): { readonly modelId: string; readonly numCtx: number } | undefined {
+    return this._shape.get(engine);
   }
 
   // ── Runs ──

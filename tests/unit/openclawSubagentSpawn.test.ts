@@ -263,7 +263,7 @@ describe('SubagentSpawner', () => {
       expect(result.runId).toMatch(/^subagent-/);
       expect(result.durationMs).toBeGreaterThanOrEqual(0);
 
-      expect(executor).toHaveBeenCalledWith('Analyze the test file for coverage', null, { profile: undefined, tools: undefined });
+      expect(executor).toHaveBeenCalledWith('Analyze the test file for coverage', null, { profile: undefined, tools: undefined }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
 
       spawner.dispose();
     });
@@ -273,7 +273,7 @@ describe('SubagentSpawner', () => {
 
       await spawner.spawn(createParams({ model: 'qwen3.5' }));
 
-      expect(executor).toHaveBeenCalledWith(expect.any(String), 'qwen3.5', { profile: undefined, tools: undefined });
+      expect(executor).toHaveBeenCalledWith(expect.any(String), 'qwen3.5', { profile: undefined, tools: undefined }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
 
       spawner.dispose();
     });
@@ -533,5 +533,47 @@ describe('spawn policy threading (HARNESS.md 4)', () => {
     const spawner = new SubagentSpawner(executor, vi.fn(async () => {}));
     await spawner.spawn({ task: 'plain task' });
     expect(seen[0]).toEqual({ profile: undefined, tools: undefined });
+  });
+});
+
+describe('SubagentSpawner: time limit and Stop reach the turn', () => {
+  it('the limit leaves out time spent waiting for the model', async () => {
+    vi.useFakeTimers();
+    try {
+      let waited = 0;
+      const executor = vi.fn((_t: string, _m: string | null, _p: unknown, control?: { signal: AbortSignal; onSession?(id: string): void }) => {
+        control?.onSession?.('eph-1');
+        return new Promise<string>((resolve) => setTimeout(() => resolve('done'), 1500));
+      });
+      const spawner = new SubagentSpawner(executor as any, null, 1);
+      spawner.setWaitingClock(() => waited);
+      const p = spawner.spawn(createParams({ runTimeoutSeconds: 1 }));
+      // 900 ms of the 1.5 s were spent waiting behind chat: 600 ms of work.
+      waited = 900;
+      await vi.advanceTimersByTimeAsync(1600);
+      const r = await p;
+      expect(r.status).toBe('completed');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a timeout or cancel aborts the turn signal', async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      const executor = vi.fn((_t: string, _m: string | null, _p: unknown, control?: { signal: AbortSignal }) => {
+        signal = control?.signal;
+        return new Promise<string>(() => {});
+      });
+      const spawner = new SubagentSpawner(executor as any, null, 1);
+      const p = spawner.spawn(createParams({ runTimeoutSeconds: 1 }));
+      await vi.advanceTimersByTimeAsync(1100);
+      const r = await p;
+      expect(r.status).toBe('timeout');
+      expect(signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

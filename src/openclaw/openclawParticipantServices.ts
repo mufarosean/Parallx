@@ -18,6 +18,7 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly maxIterations?: IDefaultParticipantServices['maxIterations'];
   readonly networkTimeout?: IDefaultParticipantServices['networkTimeout'];
   readonly getModelContextLength?: IDefaultParticipantServices['getModelContextLength'];
+  readonly getSessionContextWindow?: IDefaultParticipantServices['getSessionContextWindow'];
   readonly sendSummarizationRequest?: IDefaultParticipantServices['sendSummarizationRequest'];
   readonly getFileCount?: IDefaultParticipantServices['getFileCount'];
   readonly isRAGAvailable?: IDefaultParticipantServices['isRAGAvailable'];
@@ -152,6 +153,7 @@ export function buildOpenclawDefaultParticipantServices(
     maxIterations: deps.maxIterations,
     networkTimeout: deps.networkTimeout,
     getModelContextLength: deps.getModelContextLength,
+    getSessionContextWindow: deps.getSessionContextWindow,
     sendSummarizationRequest: deps.sendSummarizationRequest,
     getFileCount: deps.getFileCount,
     isRAGAvailable: deps.isRAGAvailable,

@@ -289,7 +289,13 @@ export async function runOpenclawTurn(
         continue;
       }
 
-      // 3e. Unrecoverable error
+      // 3e. Unrecoverable error. A model that cannot load gets a plain
+      //     reason instead of a silent swap to some other installed model
+      //     (which, on a full card, evicted the main model too).
+      if (isModelError(error)) {
+        const original = error instanceof Error ? error.message : String(error);
+        throw new Error(`${original}. The model could not run: it may not fit in memory at this context size. Choose a smaller context in the model chip, or close other models.`);
+      }
       throw error;
     }
   }

@@ -735,6 +735,12 @@ export class ChatService extends Disposable implements IChatService {
     // The model engine broker orders calls by who is asking: tell it how to
     // read a run id (a session id) as a priority class.
     languageModelsService.getEngineBroker?.().setClassifier((runId) => this.classifyRun(runId));
+    // Background runs keep the model they started with (pinned at creation,
+    // or the one their routine names); your chats follow the model picker.
+    languageModelsService.setRunModelResolver?.((runId) => {
+      if (!isEphemeralSessionId(runId)) return undefined;
+      return this._sessions.get(runId)?.modelId || undefined;
+    });
 
     // Ensure tables exist (fire and forget — errors are non-fatal)
     if (database) {
@@ -1125,7 +1131,9 @@ export class ChatService extends Disposable implements IChatService {
       createdAt: Date.now(),
       title: 'Ephemeral (subagent)',
       mode: parent?.mode ?? this._modeService.getMode(),
-      modelId: parent?.modelId ?? this._languageModelsService.getActiveModel() ?? '',
+      // Pinned now: the model the app runs on at the moment the run starts
+      // (a routine may name its own, updateSessionModel).
+      modelId: this._languageModelsService.getActiveModel() || parent?.modelId || '',
       // Attribution: the archive origin doubles as the session's live origin
       // so observers (activity journal, permission gates) can tell an
       // autonomous turn from a user turn WHILE it runs, not just at archive.

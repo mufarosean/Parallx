@@ -62,6 +62,7 @@
  *     Bare reminder jobs and early activation both stay safe.
  */
 
+import { sendTurnWithWorkingLimit } from './openclawWorkingTimeLimit.js';
 import {
   ISurfaceRouterService,
   ORIGIN_CRON,
@@ -116,6 +117,10 @@ export interface ICronChatService {
   createEphemeralSession(parentId: string, seed?: IEphemeralSessionSeed): IEphemeralSessionHandle;
   purgeEphemeralSession(handle: IEphemeralSessionHandle): void;
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<unknown>;
+  /** Cancel a turn (its working-time limit). */
+  cancelRequest?(sessionId: string): void;
+  /** Time a session spent waiting for the model behind your chat. */
+  getWaitingMs?(sessionId: string): number;
   getSession(sessionId: string): { messages: readonly { response: { parts: readonly IChatContentPart[] } }[] } | undefined;
 }
 
@@ -249,7 +254,7 @@ export function createCronTurnExecutor(
 
     let thrownError: unknown;
     try {
-      await realTurnDeps!.chatService.sendRequest(handle.sessionId, userMessage);
+      await sendTurnWithWorkingLimit(realTurnDeps!.chatService, handle.sessionId, userMessage);
       const session = realTurnDeps!.chatService.getSession(handle.sessionId);
       let resultText = '';
       if (session && session.messages.length > 0) {

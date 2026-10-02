@@ -45,6 +45,7 @@ import type {
   SubagentAnnouncer,
   ISubagentRun,
   ISubagentSessionPolicy,
+  ISubagentTurnControl,
 } from './openclawSubagentSpawn.js';
 import {
   ORIGIN_SUBAGENT,
@@ -114,6 +115,7 @@ export interface ISubagentChatService {
   createEphemeralSession(parentId: string, seed?: IEphemeralSessionSeed): IEphemeralSessionHandle;
   purgeEphemeralSession(handle: IEphemeralSessionHandle): void;
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<unknown>;
+  cancelRequest?(sessionId: string): void;
   getSession(sessionId: string): { messages: readonly { response: IChatAssistantResponse }[] } | undefined;
 }
 
@@ -206,7 +208,7 @@ export interface ICreateSubagentTurnExecutorOpts {
 export function createSubagentTurnExecutor(
   opts: ICreateSubagentTurnExecutorOpts,
 ): SubagentTurnExecutor {
-  return async (task: string, model: string | null, policy?: ISubagentSessionPolicy): Promise<string> => {
+  return async (task: string, model: string | null, policy?: ISubagentSessionPolicy, control?: ISubagentTurnControl): Promise<string> => {
     const parentId = opts.getParentSessionId();
     if (!parentId) {
       throw new Error('SubagentTurnExecutor: no active parent session');
@@ -219,6 +221,11 @@ export function createSubagentTurnExecutor(
     };
 
     const handle = opts.chatService.createEphemeralSession(parentId, seed);
+    // The spawner's Stop and time limit end the turn itself (which closes the
+    // model request), not just the wait for it.
+    control?.onSession?.(handle.sessionId);
+    const onAbort = () => { try { opts.chatService.cancelRequest?.(handle.sessionId); } catch { /* best-effort */ } };
+    control?.signal.addEventListener('abort', onAbort, { once: true });
     _subagentDepth += 1;
     // Tag this ephemeral session as subagent-originated so the permission
     // gate routes requires-approval tool calls to the autonomy log under
@@ -245,6 +252,7 @@ export function createSubagentTurnExecutor(
       const lastPair = session.messages[session.messages.length - 1];
       return extractFinalAssistantText(lastPair.response.parts);
     } finally {
+      control?.signal.removeEventListener('abort', onAbort);
       _subagentDepth = Math.max(0, _subagentDepth - 1);
       _sessionPolicies.delete(handle.sessionId);
       opts.permissionService?.unmarkSubagentSession(handle.sessionId);

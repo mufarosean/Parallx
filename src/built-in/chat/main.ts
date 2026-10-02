@@ -1129,6 +1129,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? 25,
     networkTimeout: 120_000,
     getModelContextLength: () => dataService.getModelContextLength(),
+    getSessionContextWindow: (sid) => chatService.getSession(sid)?.contextWindowOverride,
     sendSummarizationRequest: (m, s, o) => dataService.sendSummarizationRequest(m, s, o),
     getFileCount: fsAccessor ? () => dataService.getFileCount() : undefined,
     isRAGAvailable: () => dataService.isRAGAvailable(),
@@ -1676,6 +1677,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             purgeEphemeralSession: (handle) =>
               chatServiceForCron.purgeEphemeralSession(handle),
             sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
+            cancelRequest: (sid) => chatService.cancelRequest(sid),
+            getWaitingMs: (sid) => languageModelsService.getEngineBroker?.().waitingMs(sid) ?? 0,
             getSession: (sid) => chatService.getSession(sid),
           },
           getParentSessionId: () => _activeWidget?.getSession()?.id,
@@ -1875,6 +1878,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           purgeEphemeralSession: (handle) =>
             chatServiceForSubagent.purgeEphemeralSession(handle),
           sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
+          cancelRequest: (sid) => chatService.cancelRequest(sid),
           getSession: (sid) => chatService.getSession(sid),
         },
         getParentSessionId,
@@ -1897,6 +1901,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         subagentAnnouncer,
         /* maxDepth */ 1,
       );
+      // A helper's time limit counts working time, not time it waited for
+      // the model behind your chat.
+      {
+        const broker = languageModelsService.getEngineBroker?.();
+        if (broker) subagentSpawner.setWaitingClock((sid) => broker.waitingMs(sid));
+      }
       // ── M60 Phase γ §3.8/§3.10 — subagent controls layer ──
       // Hard cap depth=1 already enforced by maxDepth above (no nested
       // spawns in M60). Flag gate refuses spawn when off; emit captures
@@ -2319,6 +2329,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             (chatService as unknown as import('../../services/chatService.js').ChatService)
               .purgeEphemeralSession(handle),
           sendRequest: (sid, msg, opts) => chatService.sendRequest(sid, msg, opts),
+          cancelRequest: (sid) => chatService.cancelRequest(sid),
+          getWaitingMs: (sid) => languageModelsService.getEngineBroker?.().waitingMs(sid) ?? 0,
           getSession: (sid) => chatService.getSession(sid),
         },
         getParentSessionId: () => {
@@ -3250,6 +3262,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // Transparency: stamp the serving model on every run's log entries, and
     // narrate failures into the activity timeline.
     getActiveModelId: () => languageModelsService.getActiveModel() ?? undefined,
+    getWaitingMs: (sid) => languageModelsService.getEngineBroker?.().waitingMs(sid) ?? 0,
     activity: _activityJournal
       ? { note: (n) => _activityJournal.note(n) }
       : undefined,

@@ -80,6 +80,12 @@ export interface IBackgroundPromptDeps {
    * model ran my refresh" is never a mystery again.
    */
   readonly getActiveModelId?: () => string | undefined;
+  /**
+   * Time a run's session has spent waiting for the model behind your chat
+   * (the engine broker's count). Left out of the time limit, so giving way
+   * to chat can never make a run time out.
+   */
+  readonly getWaitingMs?: (sessionId: string) => number;
   /** Activity journal — background failures must be narratable. */
   readonly activity?: {
     note(n: import('../../../services/activityJournalService.js').IActivityNote): void;
@@ -179,7 +185,7 @@ export function createBackgroundPromptRunner(
 
     // Recorded on every log entry: the model the turn engine will resolve at
     // send time. "Which model ran my refresh" must never be a mystery.
-    const model = deps.getActiveModelId?.() || undefined;
+    const model = req.modelId || deps.getActiveModelId?.() || undefined;
     const timeoutMs = typeof req.timeoutMs === 'number' && req.timeoutMs > 0
       ? req.timeoutMs
       : DEFAULT_TIMEOUT_MS;
@@ -205,9 +211,17 @@ export function createBackgroundPromptRunner(
       // The runner owns its own timeout: cancel the turn and report a REAL
       // failure rather than racing past an orphaned request (the old
       // scheduler-side race left widgets spinning on turns nobody cancelled).
+      // The limit counts working time: time spent waiting for the model
+      // behind your chat does not use it up.
       let timer: ReturnType<typeof setTimeout> | undefined;
+      const startedAt = Date.now();
       const timedOut = new Promise<'timeout'>((resolve) => {
-        timer = setTimeout(() => resolve('timeout'), timeoutMs);
+        const check = () => {
+          const used = Date.now() - startedAt - (deps.getWaitingMs?.(handle.sessionId) ?? 0);
+          if (used >= timeoutMs) { resolve('timeout'); return; }
+          timer = setTimeout(check, Math.max(250, timeoutMs - used));
+        };
+        timer = setTimeout(check, timeoutMs);
       });
       const turn = deps.chatService.sendRequest(handle.sessionId, text)
         .then((r) => ({ kind: 'done' as const, result: r }));

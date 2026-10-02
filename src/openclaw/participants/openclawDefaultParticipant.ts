@@ -9,6 +9,7 @@ import type {
   IChatFollowup,
   IChatRequestOptions,
 } from '../../services/chatTypes.js';
+import { isEphemeralSessionId } from '../../services/chatSessionPersistence.js';
 import { ChatMode, ChatContentPartKind, isChatFileAttachment, isChatCanvasBlockAttachment } from '../../services/chatTypes.js';
 import { isChatSelectionAttachment } from '../../services/selectionActionTypes.js';
 import type {
@@ -584,7 +585,12 @@ async function buildOpenclawTurnContext(
   // Ollama's small default silently truncated long prompts (M92's num_ctx
   // lesson, applied to this rail).
   const rawContextWindow = services.getModelContextLength?.();
-  const contextWindow = typeof rawContextWindow === 'number' && rawContextWindow > 0 ? rawContextWindow : 8192;
+  const modelWindow = typeof rawContextWindow === 'number' && rawContextWindow > 0 ? rawContextWindow : 8192;
+  // A background run that names a smaller window (a routine's Context)
+  // gets a smaller prompt budget. The size sent to the model stays the one
+  // already loaded (the engine broker adopts it), so nothing reloads.
+  const runWindow = isEphemeralSessionId(context.sessionId) ? services.getSessionContextWindow?.(context.sessionId) : undefined;
+  const contextWindow = runWindow && runWindow > 0 ? Math.min(modelWindow, runWindow) : modelWindow;
   const budget = computeTokenBudget(contextWindow);
 
   // Bootstrap files (AGENTS.md, SOUL.md, TOOLS.md, etc.)
@@ -666,10 +672,10 @@ async function buildOpenclawTurnContext(
   // preserves the tool exchange record (docs/HARNESS.md §1).
   const history = flattenPairsToMessages(context.history);
 
-  // Model fallback: resolve available models for retry on model errors
-  const fallbackModels = services.getAvailableModelIds
-    ? (await services.getAvailableModelIds()).filter(id => id !== runtimeInfo.model)
-    : undefined;
+  // No automatic fallback to other installed models: retrying at the same
+  // size on whatever else is installed (embedding models included) loaded a
+  // second model on a full card and evicted the main one. A model that
+  // cannot load now fails with a plain reason (openclawTurnRunner 3e).
 
   return {
     sessionId: context.sessionId,
@@ -717,7 +723,7 @@ async function buildOpenclawTurnContext(
       // D2: Inject session-level thinking flag
       think: options?.think ?? (services.getSessionFlag?.(THINK_SESSION_FLAG) || undefined),
     }, signal),
-    fallbackModels: fallbackModels?.length ? fallbackModels : undefined,
+    fallbackModels: undefined,
     rebuildSendChatRequest: services.sendChatRequestForModel ?? undefined,
     invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl
       ? (name, args, token, observer, sessionId, opts) => services.invokeToolWithRuntimeControl!(name, args, token, observer, sessionId ?? context.sessionId, opts)

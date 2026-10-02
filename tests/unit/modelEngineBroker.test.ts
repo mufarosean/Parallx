@@ -194,4 +194,22 @@ describe('ModelEngineBroker', () => {
     ]);
     expect(Math.abs(log[0].started - log[1].started)).toBeLessThan(15);
   });
+
+  it('chat turns set the loaded context size; everyone else adopts it unless they need more', async () => {
+    const b = new ModelEngineBroker();
+    const log: ICallLog[] = [];
+    const call = (options: IChatRequestOptions, label: string, modelId = 'm') =>
+      collect(b.request({ engine: 'ollama', gated: true, modelId, options }, fakeStart(log, label, 1, 1)));
+    await call({ numCtx: 163840, engine: { runId: 'chat' } }, 'chat');
+    await call({ numCtx: 16384 }, 'ext');                                          // extension: smaller → loaded
+    await call({ engine: { priority: 'scheduled' } }, 'bg-none');                  // unnamed → loaded
+    await call({ numCtx: 32768, engine: { priority: 'scheduled' } }, 'bg-small');  // smaller → loaded
+    await call({ numCtx: 32768, engine: { priority: 'scheduled' } }, 'other', 'm2'); // other model: its own
+    expect(log.map((l) => l.options?.numCtx)).toEqual([163840, 163840, 163840, 163840, 32768]);
+    // The other model is now what is loaded; the chat sets it back.
+    await call({ numCtx: 65536, engine: { runId: 'chat' } }, 'chat2');
+    expect(b.loadedShape('ollama')).toEqual({ modelId: 'm', numCtx: 65536 });
+    await call({ numCtx: 200000, engine: { priority: 'scheduled' } }, 'bg-big');   // needs more: keeps it
+    expect(log[log.length - 1].options?.numCtx).toBe(200000);
+  });
 });

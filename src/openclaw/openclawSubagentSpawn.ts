@@ -151,7 +151,19 @@ export type SubagentTurnExecutor = (
   task: string,
   model: string | null,
   policy?: ISubagentSessionPolicy,
+  control?: ISubagentTurnControl,
 ) => Promise<string>;
+
+/**
+ * How the spawner steers a running helper turn: `signal` aborts it (Stop or
+ * its time limit; the executor cancels the turn, which closes the model
+ * request), and `onSession` names the session it runs in, so the time limit
+ * can leave out time spent waiting for the model behind your chat.
+ */
+export interface ISubagentTurnControl {
+  readonly signal: AbortSignal;
+  onSession?(sessionId: string): void;
+}
 
 /**
  * Delegate that announces a sub-agent result back to the parent chat.
@@ -323,6 +335,9 @@ export class SubagentSpawner implements IDisposable {
   private _disposed = false;
   /** M60 Phase γ — controls layer observers (flag + event emit). */
   private _observers: ISubagentObservers = {};
+  /** Running helper turns, by run id: abort stops the turn. */
+  private readonly _controllers = new Map<string, AbortController>();
+  private _waitingMs: ((sessionId: string) => number) | undefined;
 
   constructor(
     private readonly _executor: SubagentTurnExecutor,
@@ -459,6 +474,7 @@ export class SubagentSpawner implements IDisposable {
         params.model ?? null,
         run.timeoutMs,
         { profile: params.profile, tools: params.tools },
+        run.id,
       );
 
       // Step 4: Mark completed
@@ -578,7 +594,18 @@ export class SubagentSpawner implements IDisposable {
       status: 'cancelled',
       completedAt: Date.now(),
     });
+    // Stop the turn itself, so the model engine is free at once.
+    this._controllers.get(runId)?.abort();
+    this._controllers.delete(runId);
     return true;
+  }
+
+  /**
+   * Time a helper's session has spent waiting for the model (the engine
+   * broker's count), left out of its time limit.
+   */
+  setWaitingClock(fn: ((sessionId: string) => number) | undefined): void {
+    this._waitingMs = fn;
   }
 
   /**
@@ -589,19 +616,33 @@ export class SubagentSpawner implements IDisposable {
     model: string | null,
     timeoutMs: number,
     policy?: ISubagentSessionPolicy,
+    runId?: string,
   ): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       let settled = false;
+      const controller = new AbortController();
+      if (runId) this._controllers.set(runId, controller);
+      let sessionId: string | undefined;
+      const startedAt = Date.now();
 
-      const timer = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          reject(new Error(`Sub-agent timeout after ${timeoutMs}ms`));
-        }
-      }, timeoutMs);
+      // The limit counts working time: time the helper spent waiting for
+      // the model behind your chat does not use it up.
+      const working = () => Date.now() - startedAt - (sessionId && this._waitingMs ? this._waitingMs(sessionId) : 0);
+      let timer: ReturnType<typeof setTimeout>;
+      const check = () => {
+        if (settled) return;
+        const used = working();
+        if (used < timeoutMs) { timer = setTimeout(check, Math.max(250, timeoutMs - used)); return; }
+        settled = true;
+        if (runId) this._controllers.delete(runId);
+        controller.abort();
+        reject(new Error(`Sub-agent timeout after ${timeoutMs}ms`));
+      };
+      timer = setTimeout(check, timeoutMs);
 
-      this._executor(task, model, policy)
+      this._executor(task, model, policy, { signal: controller.signal, onSession: (id) => { sessionId = id; } })
         .then(result => {
+          if (runId) this._controllers.delete(runId);
           if (!settled) {
             settled = true;
             clearTimeout(timer);
@@ -609,6 +650,7 @@ export class SubagentSpawner implements IDisposable {
           }
         })
         .catch(err => {
+          if (runId) this._controllers.delete(runId);
           if (!settled) {
             settled = true;
             clearTimeout(timer);
@@ -620,6 +662,8 @@ export class SubagentSpawner implements IDisposable {
 
   dispose(): void {
     this._disposed = true;
+    for (const c of this._controllers.values()) c.abort();
+    this._controllers.clear();
     // Cancel all active runs
     for (const run of this._registry.activeRuns) {
       this._registry.update(run.id, {

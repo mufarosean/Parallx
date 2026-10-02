@@ -351,7 +351,11 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     options?: IChatRequestOptions,
     signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk> {
-    const modelId = this._activeModelId;
+    // A background run keeps the model it started with, whatever the
+    // visible chat switches to meanwhile (AGENT_RUNTIME_DESIGN.md §5).
+    const runId = options?.engine?.runId;
+    const pinned = runId ? this._runModelResolver?.(runId) : undefined;
+    const modelId = pinned && this._modelToProvider.has(pinned) ? pinned : this._activeModelId;
     if (!modelId) {
       throw new Error('No active model selected. Please select a model before sending a request.');
     }
@@ -439,6 +443,13 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
       { engine: provider.id, gated: provider.local === true, modelId, options, signal },
       (opts, sig) => provider.sendChatRequest(modelId, messages, opts, sig),
     );
+  }
+
+  private _runModelResolver: ((runId: string) => string | undefined) | undefined;
+
+  /** The model a run is pinned to (the chat service answers for its sessions). */
+  setRunModelResolver(fn: ((runId: string) => string | undefined) | undefined): void {
+    this._runModelResolver = fn;
   }
 
   getEngineBroker(): IModelEngineBroker {
