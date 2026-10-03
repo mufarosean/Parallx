@@ -26,63 +26,63 @@
     "commands": [
       {
         "id": "textGenerator.newCharacter",
-        "title": "Creations AI: New Character",
+        "title": "New Character",
         "category": "Creations AI",
         "aiInvocable": true,
         "aiDescription": "Open the Character Studio with an empty sheet: a character from a concept, from sources, or from sources with a Twist."
       },
       {
         "id": "textGenerator.newChat",
-        "title": "Creations AI: New Chat",
+        "title": "New Chat",
         "category": "Creations AI",
         "aiInvocable": true,
         "aiDescription": "Start a new Creations AI roleplay chat."
       },
       {
         "id": "textGenerator.openHome",
-        "title": "Creations AI: Home",
+        "title": "Home",
         "category": "Creations AI",
         "aiInvocable": true,
         "aiDescription": "Open the Creations AI home page."
       },
       {
         "id": "textGenerator.openCharacters",
-        "title": "Creations AI: Characters",
+        "title": "Characters",
         "category": "Creations AI",
         "aiInvocable": true,
         "aiDescription": "Open the Creations AI character roster."
       },
       {
         "id": "textGenerator.openSettings",
-        "title": "Creations AI: Settings",
+        "title": "Settings",
         "category": "Creations AI",
         "aiInvocable": true,
         "aiDescription": "Open the Creations AI settings page."
       },
       {
         "id": "textGenerator.openStories",
-        "title": "Creations AI: Stories",
+        "title": "Stories",
         "category": "Creations AI",
         "aiInvocable": true,
         "aiDescription": "Open the Story Writer: stories written in beats you steer."
       },
       {
         "id": "textGenerator.newStory",
-        "title": "Creations AI: New Story",
+        "title": "New Story",
         "category": "Creations AI",
         "aiInvocable": true,
         "aiDescription": "Start a new story in the Story Writer."
       },
       {
         "id": "textGenerator.openTables",
-        "title": "Creations AI: Tables",
+        "title": "Tables",
         "category": "Creations AI",
         "aiInvocable": true,
         "aiDescription": "Open Tables: random tables in the Perchance list grammar."
       },
       {
         "id": "textGenerator.newTable",
-        "title": "Creations AI: New Table",
+        "title": "New Table",
         "category": "Creations AI",
         "aiInvocable": true,
         "aiDescription": "Make a new random table."

@@ -1,7 +1,7 @@
 /**
  * Drives a real Parallx Electron instance end-to-end:
  *   1. Launches Electron (uses last-workspace.json → Personal Workspace)
- *   2. Opens command palette → "Budget: Sync Gmail Transactions"
+ *   2. Opens command palette → "Budget: Sync Now"
  *   3. Polls the budget SQLite DB until `last_run_at` advances past the
  *      pre-launch baseline (or 5 min timeout)
  *   4. Diffs DB state and prints PASS/FAIL with deltas
@@ -71,7 +71,7 @@ test('drive real budget.sync end-to-end and verify DB deltas', async () => {
   await window.keyboard.press('Control+Shift+p');
   const input = window.locator('.command-palette-input');
   await input.waitFor({ state: 'visible', timeout: 5_000 });
-  await input.fill('>Sync Gmail Transactions');
+  await input.fill('>Budget: Sync Now');
   await window.waitForTimeout(500);
 
   // Pick the first matching item.
