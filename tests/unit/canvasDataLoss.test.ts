@@ -457,3 +457,49 @@ describe('C16: a reload keeps the edits that had not been saved yet', () => {
     expect(mergeLocalEdits(base, local, external).doc).toEqual(doc(blk('a', 'one'), blk('b', 'two typed')));
   });
 });
+
+// ── C13: AI block edits must never write a schema-invalid page ───────────────
+
+describe('C13: AI block edits fit the page structure (and never write an invalid doc)', () => {
+  const schema = () => mk({ type: 'doc', content: [p()] }).schema;
+  const list = (...rows: any[]) => ({ type: 'bulletList', content: rows });
+  const row = (id: string, text: string, ...rest: any[]) => ({ type: 'listItem', attrs: { id }, content: [{ type: 'paragraph', attrs: { id: id + 'p' }, content: [t(text)] }, ...rest] });
+  const page = () => ({ type: 'doc', content: [{ type: 'paragraph', attrs: { id: 'top' }, content: [t('intro')] }, list(row('r1', 'one'), row('r2', 'two')), { type: 'paragraph', attrs: { id: 'end' }, content: [t('outro')] }] });
+  const valid = (doc: any) => { schema().nodeFromJSON(doc).check(); return true; };
+  const texts = (doc: any) => { const out: string[] = []; schema().nodeFromJSON(doc).descendants((n: any) => { if (n.isText) out.push(n.text); return true; }); return out; };
+
+  it('inserting a paragraph after a list row keeps the doc valid and the paragraph between the rows', async () => {
+    const { fitBlocksAtTarget, findBlockById } = await import('../../src/built-in/canvas/ai/blockApi');
+    const d = page();
+    const hit = findBlockById(d as any, 'r1')!;
+    const out = fitBlocksAtTarget(d as any, hit.path, [{ type: 'paragraph', content: [t('between')] }], 'insertAfter');
+    expect(valid(out)).toBe(true);
+    expect(texts(out)).toEqual(['intro', 'one', 'between', 'two', 'outro']);
+  });
+
+  it('inserting list rows after a row splices them into the same list', async () => {
+    const { fitBlocksAtTarget, findBlockById } = await import('../../src/built-in/canvas/ai/blockApi');
+    const d = page();
+    const out: any = fitBlocksAtTarget(d as any, findBlockById(d as any, 'r1')!.path, [list(row('n1', 'new row'))], 'insertAfter');
+    expect(valid(out)).toBe(true);
+    expect(out.content[1].content.length).toBe(3);
+    expect(texts(out)).toEqual(['intro', 'one', 'new row', 'two', 'outro']);
+  });
+
+  it('editing a row\'s line into a heading and a paragraph keeps the row valid', async () => {
+    const { fitBlocksAtTarget, findBlockById } = await import('../../src/built-in/canvas/ai/blockApi');
+    const d = page();
+    const out = fitBlocksAtTarget(d as any, findBlockById(d as any, 'r2p')!.path, [
+      { type: 'heading', attrs: { level: 2 }, content: [t('new line')] }, { type: 'paragraph', content: [t('detail')] },
+    ], 'replace');
+    expect(valid(out)).toBe(true);
+    expect(texts(out)).toEqual(['intro', 'one', 'new line', 'detail', 'outro']);
+  });
+
+  it('the old plain splice made these invalid (what the tools used to write)', async () => {
+    const { insertManyAfter, findBlockById } = await import('../../src/built-in/canvas/ai/blockApi');
+    const d = page();
+    const out = insertManyAfter(d as any, findBlockById(d as any, 'r1')!.path, [{ type: 'paragraph', content: [t('between')] }]);
+    expect(() => valid(out)).toThrow();
+  });
+});

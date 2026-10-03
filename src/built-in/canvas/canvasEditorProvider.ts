@@ -32,7 +32,7 @@ import type { ICanvasDataService } from './canvasTypes.js';
 import { diffTopLevel, computeReplaceRange, classifySpan, type ISpanClassification } from './canvasDocDiff.js';
 import { setAiEditMarks, getAiEditSpan, type IAiEditMark } from './plugins/aiEditMarks.js';
 import { createButton } from '../../ui/kit.js';
-import { Editor } from '@tiptap/core';
+import { Editor, getSchema } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
 import { createEditorExtensions, PageChromeController, renderPageIconHtml } from './config/blockRegistry.js';
@@ -43,10 +43,27 @@ import { motionReduced } from '../../ui/motionPreference.js';
 import { editorContentForStorage, wrapUnknownContent } from './unknownContent.js';
 import { joinPaneMirror, broadcastPaneDoc, type PaneMirrorTarget } from './paneMirror.js';
 import { mergeLocalEdits } from './reloadMerge.js';
+import { setBlockDocValidator } from './ai/blockApi.js';
 import { decodeCanvasContent } from './contentSchema.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
+
+// The AI block tools write page JSON directly; they check every result
+// against the editor's own schema first, so an invalid page is never
+// written (C13).  Built lazily, once.
+{
+  let schema: ReturnType<typeof getSchema> | null = null;
+  setBlockDocValidator((doc) => {
+    schema ??= getSchema(createEditorExtensions(lowlight, {}));
+    try {
+      schema.nodeFromJSON(wrapUnknownContent(doc, schema)).check();
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  });
+}
 
 /** Height of `.canvas-top-ribbon` (canvas.css). Reserved on the ribbon
  *  container before the pane mounts so the first layout is already right. */

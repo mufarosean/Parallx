@@ -33,11 +33,11 @@ import {
   encodeDocContent,
   findBlockById,
   nodeToPlainText,
-  replaceWithMany,
   insertAfter,
-  insertManyAfter,
   paragraphFromText,
   generateBlockId,
+  fitBlocksAtTarget,
+  validateBlockDoc,
   type DocNode,
 } from './blockApi.js';
 import { markdownToTiptapJson } from '../markdownImport.js';
@@ -190,7 +190,13 @@ export function createEditBlockTool(
       if (blocks.length > 0) {
         blocks[0]!.attrs = { ...(blocks[0]!.attrs ?? {}), id: blockId };
       }
-      const newDoc = replaceWithMany(page.doc, hit.path, blocks);
+      // Fitted to the block's place (a list row, a row's line), then checked
+      // against the editor schema: an invalid page is never written (C13).
+      const newDoc = fitBlocksAtTarget(page.doc, hit.path, blocks, 'replace');
+      const invalid = validateBlockDoc(newDoc);
+      if (invalid) {
+        return { content: `That edit would break the page's structure, so nothing was changed (${invalid}). Edit the enclosing block instead.`, isError: true };
+      }
       await persistDoc(db!, pageId, newDoc, notifyPageMutated);
 
       const expanded = blocks.length > 1 ? ` (expanded into ${blocks.length} blocks)` : '';
@@ -259,7 +265,11 @@ export function createInsertBlockAfterTool(
 
       // Parse markdown so inserted blocks get the correct type(s).
       const blocks = markdownToBlocks(content);
-      const newDoc = insertManyAfter(page.doc, hit.path, blocks);
+      const newDoc = fitBlocksAtTarget(page.doc, hit.path, blocks, 'insertAfter');
+      const invalid = validateBlockDoc(newDoc);
+      if (invalid) {
+        return { content: `That insert would break the page's structure, so nothing was changed (${invalid}). Insert after the enclosing block instead.`, isError: true };
+      }
       await persistDoc(db!, pageId, newDoc, notifyPageMutated);
 
       const newBlockIds = blocks.map((b) => (b.attrs?.['id'] as string) || '').filter(Boolean);

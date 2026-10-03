@@ -252,6 +252,103 @@ export function insertManyAfter(doc: DocNode, path: number[], nodes: DocNode[]):
   return { ...doc, content: children };
 }
 
+// ── Structure-aware splicing (C13) ──────────────────────────────────────────
+//
+// The AI addresses blocks by id, and ids exist on list rows and on a row's
+// own line paragraph too.  Splicing arbitrary blocks there wrote invalid
+// pages: a paragraph between two rows of a list, a heading as a row's first
+// line.  These fit the blocks to where they land.  The tools still validate
+// the result against the real schema before writing (validateBlockDoc).
+
+const LIST_TYPES = new Set(['bulletList', 'orderedList', 'taskList']);
+const ROW_TYPES = new Set(['listItem', 'taskItem']);
+const ROW_FOR_LIST: Record<string, string> = { bulletList: 'listItem', orderedList: 'listItem', taskList: 'taskItem' };
+
+function nodeAtPath(doc: DocNode, path: number[]): DocNode | null {
+  let node: DocNode | undefined = doc;
+  for (const i of path) {
+    node = Array.isArray(node?.content) ? node!.content[i] : undefined;
+    if (!node) return null;
+  }
+  return node ?? null;
+}
+
+/** A block's inline content, for a place that only takes a line. */
+function inlineOf(block: DocNode): DocNode[] {
+  if (LIST_TYPES.has(block.type)) {
+    const firstRow = block.content?.[0];
+    const line = firstRow?.content?.[0];
+    return Array.isArray(line?.content) ? line!.content : [];
+  }
+  if (Array.isArray(block.content) && block.content.every((c) => c.type === 'text' || c.type === 'hardBreak' || c.type === 'inlineMath')) {
+    return block.content;
+  }
+  return [{ type: 'text', text: nodeToPlainText(block).trim() }].filter((n) => n.text);
+}
+
+/**
+ * Replace (`mode: 'replace'`) the block at `path`, or insert after it
+ * (`'insertAfter'`), with `blocks` — fitted to the target's place:
+ *   • after a list row: rows of the same list type join the list; any other
+ *     blocks split the list there, so they land exactly between the rows;
+ *   • after a row's own line: the same as after the row;
+ *   • a row's own line replaced: the line stays a paragraph (the first
+ *     block's text, keeping the line's id) and further blocks nest in the row;
+ *   • anywhere else: a plain splice.
+ */
+export function fitBlocksAtTarget(doc: DocNode, path: number[], blocks: DocNode[], mode: 'replace' | 'insertAfter'): DocNode {
+  if (path.length === 0) throw new Error('fitBlocksAtTarget: cannot target the doc root');
+  const target = nodeAtPath(doc, path);
+  const parentPath = path.slice(0, -1);
+  const parent = nodeAtPath(doc, parentPath);
+  const index = path[path.length - 1]!;
+
+  // A row's own line (first child of a row).
+  if (target && parent && ROW_TYPES.has(parent.type) && index === 0 && target.type === 'paragraph') {
+    if (mode === 'insertAfter') return fitBlocksAtTarget(doc, parentPath, blocks, 'insertAfter');
+    if (blocks.length === 0) return replaceWithMany(doc, path, [{ ...target, content: [] }]);
+    const line: DocNode = { type: 'paragraph', attrs: { ...(target.attrs ?? {}) }, content: inlineOf(blocks[0]!) };
+    const rest = LIST_TYPES.has(blocks[0]!.type)
+      ? [...(blocks[0]!.content?.[0]?.content?.slice(1) ?? []), ...(blocks[0]!.content!.length > 1 ? [{ ...blocks[0]!, content: blocks[0]!.content!.slice(1) }] : []), ...blocks.slice(1)]
+      : blocks.slice(1);
+    return replaceWithMany(doc, path, [line, ...rest]);
+  }
+
+  // A list row.
+  if (target && parent && ROW_TYPES.has(target.type) && LIST_TYPES.has(parent.type)) {
+    const rowType = ROW_FOR_LIST[parent.type];
+    const sameRows = blocks.length > 0 && blocks.every((b) => b.type === parent.type);
+    if (sameRows) {
+      const rows = blocks.flatMap((b) => (b.content ?? []).filter((r) => r.type === rowType));
+      return mode === 'replace' ? replaceWithMany(doc, path, rows) : insertManyAfter(doc, path, rows);
+    }
+    // Split the list around the blocks.
+    const rowsBefore = (parent.content ?? []).slice(0, mode === 'replace' ? index : index + 1);
+    const rowsAfter = (parent.content ?? []).slice(index + 1);
+    const { id: _listId, ...listAttrs } = (parent.attrs ?? {}) as Record<string, unknown>;
+    const pieces: DocNode[] = [];
+    if (rowsBefore.length > 0) pieces.push({ ...parent, content: rowsBefore });
+    pieces.push(...blocks);
+    if (rowsAfter.length > 0) pieces.push({ type: parent.type, attrs: listAttrs, content: rowsAfter });
+    return replaceWithMany(doc, parentPath, pieces);
+  }
+
+  return mode === 'replace' ? replaceWithMany(doc, path, blocks) : insertManyAfter(doc, path, blocks);
+}
+
+/**
+ * Validator for whole docs, installed by the canvas at activation (it owns
+ * the editor schema; this module has none).  Returns a message when the doc
+ * is invalid, null when it is fine or no validator is installed.
+ */
+let _docValidator: ((doc: DocNode) => string | null) | null = null;
+export function setBlockDocValidator(fn: ((doc: DocNode) => string | null) | null): void {
+  _docValidator = fn;
+}
+export function validateBlockDoc(doc: DocNode): string | null {
+  try { return _docValidator ? _docValidator(doc) : null; } catch (err) { return err instanceof Error ? err.message : String(err); }
+}
+
 /** Build a paragraph node from a plain-text string. */
 export function paragraphFromText(text: string, blockId?: string): DocNode {
   const para: DocNode = { type: 'paragraph' };
