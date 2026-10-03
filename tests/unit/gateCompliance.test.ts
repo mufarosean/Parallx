@@ -130,10 +130,11 @@ const GATE_RULES: Record<string, string[]> = {
   'menus/slashMenuItems.ts':               [],  // pure data — zero imports
   'menus/inputPasteContextMenu.ts':        [],  // pure UI — no canvas imports
   'menus/inputIsolation.ts':               [],  // pure UI helper — no canvas imports
-  'menus/imageInsertPopup.ts':             ['menus/inputIsolation', 'menus/imagePathResolver'],  // pure UI
+  'menus/insertTarget.ts':                 [],  // tracks an insert popup's target through edits (C11)
+  'menus/imageInsertPopup.ts':             ['menus/inputIsolation', 'menus/imagePathResolver', 'menus/insertTarget'],  // pure UI
   'menus/imagePathResolver.ts':            [],  // pure utility — zero canvas imports
-  'menus/mediaInsertPopup.ts':             ['menus/inputPasteContextMenu', 'menus/inputIsolation'],  // pure UI
-  'menus/bookmarkInsertPopup.ts':          ['menus/inputPasteContextMenu', 'menus/inputIsolation'],  // pure UI
+  'menus/mediaInsertPopup.ts':             ['menus/inputPasteContextMenu', 'menus/inputIsolation', 'menus/insertTarget'],  // pure UI
+  'menus/bookmarkInsertPopup.ts':          ['menus/inputPasteContextMenu', 'menus/inputIsolation', 'menus/insertTarget'],  // pure UI
 
   // ── BlockStateRegistry children ─────────────────────────────────────────
   'config/blockStateRegistry/blockUnit.ts':           ['config/blockStateRegistry/blockStateRegistry'],

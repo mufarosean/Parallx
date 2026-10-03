@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
+import { trackInsertTarget } from './insertTarget.js';
 import { attachInputPasteContextMenu } from './inputPasteContextMenu.js';
 import { isolateInputFromEditor } from './inputIsolation.js';
 
@@ -33,15 +34,19 @@ export function showBookmarkInsertPopup(
   let detachDismiss: (() => void) | null = null;
   const pasteMenu = attachInputPasteContextMenu(input, popup);
 
+  // Follows the placeholder paragraph through edits while the popup is open (C11).
+  const target = trackInsertTarget(editor, range);
+
   const dismiss = () => {
     pasteMenu.dismiss();
     popup.remove();
     detachDismiss?.();
     detachDismiss = null;
+    target.dispose();
   };
 
   const cancel = () => {
-    editor.chain().insertContentAt(range, { type: 'paragraph' }).focus().run();
+    target.clear();
     dismiss();
   };
 
@@ -71,7 +76,7 @@ export function showBookmarkInsertPopup(
       }
     })();
 
-    editor.chain().insertContentAt(range, {
+    target.insert({
       type: 'bookmark',
       attrs: {
         url,
@@ -80,7 +85,7 @@ export function showBookmarkInsertPopup(
         favicon: '',
         image: '',
       },
-    }).focus().run();
+    });
     dismiss();
   };
 

@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
+import { trackInsertTarget } from './insertTarget.js';
 import {
   attachInputPasteContextMenu,
   type InputPasteMenuController,
@@ -63,15 +64,24 @@ export function showMediaInsertPopup(
     }
   };
 
+  // Follows the placeholder paragraph through edits while the popup is open
+  // (C11).  `picking`: the OS file dialog's window blur must not cancel.
+  const target = trackInsertTarget(editor, range);
+  let closed = false;
+  let picking = false;
+
   const dismiss = () => {
+    closed = true;
     dismissPasteMenu();
     popup.remove();
     detachDismiss?.();
     detachDismiss = null;
+    target.dispose();
   };
 
   const cancel = () => {
-    editor.chain().insertContentAt(range, { type: 'paragraph' }).focus().run();
+    if (picking) return;
+    target.clear();
     dismiss();
   };
 
@@ -121,7 +131,8 @@ export function showMediaInsertPopup(
   };
 
   const insertFromAttrs = (attrs: Record<string, string>) => {
-    editor.chain().insertContentAt(range, { type: kind, attrs }).focus().run();
+    if (closed) return;
+    target.insert({ type: kind, attrs });
     dismiss();
   };
 
@@ -169,11 +180,17 @@ export function showMediaInsertPopup(
           renderError('File dialog is not available.');
           return;
         }
-        const filePaths = await electron.dialog.openFile({
-          filters: MEDIA_FILTERS[kind],
-          properties: ['openFile'],
-        });
-        if (!filePaths?.[0]) return;
+        let filePaths: string[] | undefined;
+        picking = true;
+        try {
+          filePaths = await electron.dialog.openFile({
+            filters: MEDIA_FILTERS[kind],
+            properties: ['openFile'],
+          });
+        } finally {
+          picking = false;
+        }
+        if (closed || !filePaths?.[0]) return;
         const filePath = filePaths[0];
         const result = await electron.fs.readFile(filePath);
         if (result?.error) {

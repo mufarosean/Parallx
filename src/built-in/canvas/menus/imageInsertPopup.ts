@@ -11,6 +11,7 @@ import type { Editor } from '@tiptap/core';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { isolateInputFromEditor } from './inputIsolation.js';
 import { looksLikeLocalPath, readLocalImageAsDataUrl } from './imagePathResolver.js';
+import { trackInsertTarget } from './insertTarget.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -59,27 +60,32 @@ export function showImageInsertPopup(
   // ── Helpers ─────────────────────────────────────────────────────────────
 
   let detachDismiss: (() => void) | null = null;
+  // Follows the "/image" paragraph through any edit while the popup is open
+  // (C11: inserting at the range captured on open ate the next block).
+  const target = trackInsertTarget(editor, range);
+  let closed = false;
+  // True while the OS file dialog is open: it blurs the window, which must
+  // not cancel the popup the dialog belongs to.
+  let picking = false;
 
   const dismiss = () => {
+    closed = true;
     popup.remove();
     detachDismiss?.();
     detachDismiss = null;
+    target.dispose();
   };
 
   const insertImage = (src: string) => {
-    editor.chain()
-      .insertContentAt(range, { type: 'image', attrs: { src } })
-      .focus()
-      .run();
+    if (closed) return;
+    target.insert({ type: 'image', attrs: { src } });
     dismiss();
   };
 
   const cancel = () => {
+    if (picking) return;
     // Replace the `/image` paragraph with an empty paragraph
-    editor.chain()
-      .insertContentAt(range, { type: 'paragraph' })
-      .focus()
-      .run();
+    target.clear();
     dismiss();
   };
 
@@ -97,11 +103,17 @@ export function showImageInsertPopup(
           renderError('File picker is unavailable in this environment.');
           return;
         }
-        const filePaths = await electron.dialog.openFile({
-          filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }],
-          properties: ['openFile'],
-        });
-        if (!filePaths?.[0]) return; // user cancelled
+        let filePaths: string[] | undefined;
+        picking = true;
+        try {
+          filePaths = await electron.dialog.openFile({
+            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] }],
+            properties: ['openFile'],
+          });
+        } finally {
+          picking = false;
+        }
+        if (closed || !filePaths?.[0]) return; // popup gone, or user cancelled
         const filePath = filePaths[0];
         const result = await electron.fs.readFile(filePath);
         if (result?.error) {

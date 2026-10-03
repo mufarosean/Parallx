@@ -313,3 +313,44 @@ describe('C10: a block selection never takes copy, cut or paste from another inp
     ctl.dispose(); chat.remove(); container.remove();
   });
 });
+
+// ── C11: an upload that finishes after the file dialog blurred the window ────
+
+describe('C11: inserting an uploaded image never eats the next block', () => {
+  it('the file dialog blurring the window neither cancels the popup nor lets the upload land on a stale range', async () => {
+    const { showImageInsertPopup } = await import('../../src/built-in/canvas/menus/imageInsertPopup');
+    const ed = mk({ type: 'doc', content: [p('/image'), p('next block')] });
+    (ed.view as any).coordsAtPos = () => ({ left: 0, right: 0, top: 0, bottom: 0 }); // no layout in jsdom
+    let resolvePick: (v: string[]) => void = () => {};
+    (window as any).parallxElectron = {
+      dialog: { openFile: () => new Promise<string[]>((r) => { resolvePick = r; }) },
+      fs: { readFile: async () => ({ content: 'iVBORw0KGgo=', encoding: 'base64' }) },
+    };
+    showImageInsertPopup(ed, { from: 0, to: ed.state.doc.child(0).nodeSize });
+    (document.querySelector('.canvas-image-insert-upload-btn') as HTMLButtonElement).click();
+    window.dispatchEvent(new Event('blur')); // the OS file dialog takes focus
+    await new Promise((r) => setTimeout(r, 0));
+    resolvePick(['/tmp/picture.png']);
+    await new Promise((r) => setTimeout(r, 10));
+    const outline: string[] = [];
+    ed.state.doc.forEach((n: any) => outline.push(n.type.name + (n.isTextblock ? `(${n.textContent})` : '')));
+    expect(outline.slice(0, 2)).toEqual(['image', 'paragraph(next block)']);
+    delete (window as any).parallxElectron;
+    document.querySelectorAll('.canvas-image-insert-popup').forEach((e) => e.remove());
+  });
+});
+
+describe('C11: the insert follows the placeholder through other edits', () => {
+  it('text typed above while the popup is open shifts the target with it', async () => {
+    const { trackInsertTarget } = await import('../../src/built-in/canvas/menus/insertTarget');
+    const ed = mk({ type: 'doc', content: [p('above'), p('/bookmark'), p('next block')] });
+    const start = ed.state.doc.child(0).nodeSize;
+    const target = trackInsertTarget(ed, { from: start, to: start + ed.state.doc.child(1).nodeSize });
+    ed.view.dispatch(ed.state.tr.insertText('more text ', 1));
+    target.insert({ type: 'bookmark', attrs: { url: 'https://example.com' } });
+    target.dispose();
+    const outline: string[] = [];
+    ed.state.doc.forEach((n: any) => outline.push(n.type.name + (n.isTextblock ? `(${n.textContent})` : '')));
+    expect(outline.slice(0, 3)).toEqual(['paragraph(more text above)', 'bookmark', 'paragraph(next block)']);
+  });
+});
