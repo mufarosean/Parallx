@@ -9,6 +9,8 @@ import { mk, p, t, col, cols, find } from './canvasMatrixHarness';
 import { CanvasDataService } from '../../src/built-in/canvas/canvasDataService';
 import { decodeCanvasContent } from '../../src/built-in/canvas/contentSchema';
 import { wrapUnknownContent, unwrapUnknownContent } from '../../src/built-in/canvas/unknownContent';
+import { DatabaseDataService } from '../../src/built-in/canvas/database/databaseDataService';
+import { Emitter } from '../../src/platform/events';
 
 // ── Service harness (a pages table in memory) ────────────────────────────────
 
@@ -138,3 +140,54 @@ describe('C6: a page whose stored content cannot be read is never written over',
     expect(env.pages.get('good')!.content).toContain('typed');
   });
 });
+
+// ── C2: Trash is not delete for a database ───────────────────────────────────
+
+describe('C2: moving a database to Trash keeps its rows, columns and views', () => {
+  function setup() {
+    const changes = new Emitter<any>();
+    const sql: string[] = [];
+    const bridge = {
+      all: vi.fn(async (q: string) => (/SELECT id FROM databases/.test(q) ? { error: null, rows: [{ id: 'db-1' }] } : { error: null, rows: [] })),
+      get: vi.fn(async () => ({ error: null, row: null })),
+      run: vi.fn(async (q: string) => { sql.push(q); return { error: null, changes: 1 }; }),
+      runTransaction: vi.fn(async (ops: any[]) => { for (const o of ops) sql.push(o.sql); return { error: null, results: [] }; }),
+    };
+    const pages = { onDidChangePage: changes.event } as any;
+    const service = new DatabaseDataService(pages);
+    service.attachDatabase(bridge as any);
+    return { changes, sql, service };
+  }
+
+  it('an archive (Trash) event deletes nothing', async () => {
+    const { changes, sql, service } = setup();
+    await service.ensureIdsLoaded();
+    changes.fire({ kind: 'Deleted', pageId: 'db-1', archived: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sql.filter((q) => /DELETE/i.test(q))).toEqual([]);
+    service.dispose();
+  });
+
+  it('a permanent delete still removes the database tables', async () => {
+    const { changes, sql, service } = setup();
+    await service.ensureIdsLoaded();
+    changes.fire({ kind: 'Deleted', pageId: 'db-1' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sql.some((q) => /DELETE FROM databases/i.test(q))).toBe(true);
+    service.dispose();
+  });
+
+  it('the page service marks a Trash move as archived, a permanent delete not', async () => {
+    const env = memoryDb();
+    env.pages.set('db-1', pageRow('db-1', docOf('x')));
+    (globalThis as any).window = { parallxElectron: { database: { ...env.mock, all: vi.fn(async (q: string) => (/WITH RECURSIVE/.test(q) ? { error: null, rows: [{ id: 'db-1' }] } : { error: null, rows: [] })) } } };
+    const service = new CanvasDataService();
+    const events: any[] = [];
+    service.onDidChangePage((e) => events.push(e));
+    await service.archivePage('db-1');
+    expect(events.filter((e) => e.kind === 'Deleted').map((e) => e.archived)).toEqual([true]);
+    service.dispose();
+    delete (globalThis as any).window;
+  });
+});
+

@@ -1755,6 +1755,11 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     );
     if (restoreResult.error) throw new Error(restoreResult.error.message);
 
+    // A page restored out of a parent that is still in the Trash (or gone)
+    // moves to the top level (Notion).  Left under the trashed parent, it was
+    // invisible in the tree and Empty Trash deleted it with the parent (C3).
+    await this._rerootIfParentGone(pageId);
+
     // M77 Phase 9.2 — fetch the entire restored subtree + every parent we
     // might re-attach a pageBlock card to in TWO queries instead of N
     // sequential getPage() round-trips. For a subtree of K pages the old
@@ -1843,9 +1848,78 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   /**
-   * Permanently delete a page (true delete, not soft).
+   * Move a page to the top level when its parent is archived or missing.
+   * @returns true when the page was moved.
+   */
+  private async _rerootIfParentGone(pageId: string): Promise<boolean> {
+    const row = await this._db.get(
+      `SELECT p.parent_id AS parent_id, parent.is_archived AS parent_archived, parent.id AS parent_exists
+         FROM pages p LEFT JOIN pages parent ON parent.id = p.parent_id
+        WHERE p.id = ?`,
+      [pageId],
+    );
+    if (row.error) throw new Error(row.error.message);
+    const r = row.row as { parent_id?: string | null; parent_archived?: number | null; parent_exists?: string | null } | null;
+    if (!r || !r.parent_id) return false;
+    if (r.parent_exists && !r.parent_archived) return false;
+    const max = await this._db.get('SELECT MAX(sort_order) as max_sort FROM pages WHERE parent_id IS NULL');
+    const sortOrder = ((max.row?.max_sort as number | null) ?? 0) + 1;
+    const moved = await this._db.run(
+      `UPDATE pages SET parent_id = NULL, sort_order = ?, updated_at = datetime('now') WHERE id = ?`,
+      [sortOrder, pageId],
+    );
+    if (moved.error) throw new Error(moved.error.message);
+    const page = await this.getPage(pageId);
+    this._onDidChangePage.fire({ kind: PageChangeKind.Moved, pageId, page: page ?? undefined });
+    return true;
+  }
+
+  /**
+   * Empty the Trash: permanently delete every page in it, read at the time
+   * this runs (a list captured earlier may hold pages restored since).
+   */
+  async emptyTrash(): Promise<void> {
+    // Roots of the Trash: archived pages whose parent is not also archived.
+    // Deleting a root takes its archived descendants with it.
+    for (let guard = 0; guard < 1000; guard++) {
+      const roots = await this._db.all(
+        `SELECT p.id FROM pages p LEFT JOIN pages parent ON parent.id = p.parent_id
+          WHERE p.is_archived = 1 AND (parent.id IS NULL OR parent.is_archived = 0)`,
+      );
+      if (roots.error) throw new Error(roots.error.message);
+      const ids = (roots.rows ?? []).map((r) => r.id as string);
+      if (ids.length === 0) return;
+      for (const id of ids) await this.permanentlyDeletePage(id);
+    }
+  }
+
+  /**
+   * Permanently delete a page that is in the Trash (true delete, not soft),
+   * with its archived descendants.  A page not in the Trash is refused, and a
+   * live page still nested under the deleted one is first moved to the top
+   * level — the cascade must only ever take pages the user trashed (C3).
    */
   async permanentlyDeletePage(pageId: string): Promise<void> {
+    const rootRow = await this._db.get('SELECT is_archived FROM pages WHERE id = ?', [pageId]);
+    if (rootRow.error) throw new Error(rootRow.error.message);
+    if (!rootRow.row) return; // already gone
+    if (!rootRow.row.is_archived) {
+      throw new Error(`[CanvasDataService] Page "${pageId}" is not in the Trash; refusing to delete it permanently`);
+    }
+    // Live pages inside the subtree whose parent is archived: lift them out.
+    const live = await this._db.all(
+      `WITH RECURSIVE subtree(id) AS (
+         SELECT id FROM pages WHERE id = ?
+         UNION ALL
+         SELECT p.id FROM pages p JOIN subtree s ON p.parent_id = s.id
+       )
+       SELECT p.id FROM pages p JOIN pages parent ON parent.id = p.parent_id
+        WHERE p.id IN (SELECT id FROM subtree) AND p.is_archived = 0 AND parent.is_archived = 1`,
+      [pageId],
+    );
+    if (live.error) throw new Error(live.error.message);
+    for (const r of live.rows ?? []) await this._rerootIfParentGone(r.id as string);
+
     const deletedIds = await this._getPageSubtreeIds(pageId);
 
     for (const id of deletedIds.length > 0 ? deletedIds : [pageId]) {
@@ -2528,7 +2602,8 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       this._cancelPendingSave(id);
       this._cancelRetry(id);
       this._knownRevisions.delete(id);
-      this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId: id });
+      // archived: Trash, not delete — the page and its data come back on restore.
+      this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId: id, archived: true });
     }
 
     return ids;

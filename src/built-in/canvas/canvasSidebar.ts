@@ -691,7 +691,11 @@ export class CanvasSidebar {
         { title: 'Cancel' },
       );
       if (result?.title === 'Delete') {
-        await this._dataService.permanentlyDeletePage(page.id);
+        try {
+          await this._dataService.permanentlyDeletePage(page.id);
+        } catch (err) {
+          void this._api.window.showErrorMessage(`Could not delete "${page.title || 'Untitled'}". ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
     });
     row.appendChild(deleteBtn);
@@ -1224,8 +1228,12 @@ export class CanvasSidebar {
           { title: 'Cancel' },
         );
         if (result?.title === 'Delete All') {
-          for (const p of this._archivedPages) {
-            await this._dataService.permanentlyDeletePage(p.id);
+          // The service reads the Trash now; this panel's list may be stale
+          // (a page restored since it was drawn must not be deleted).
+          try {
+            await this._dataService.emptyTrash();
+          } catch (err) {
+            void this._api.window.showErrorMessage(`Could not empty the Trash. ${err instanceof Error ? err.message : String(err)}`);
           }
         }
       });

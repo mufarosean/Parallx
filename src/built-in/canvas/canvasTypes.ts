@@ -92,6 +92,13 @@ export interface PageChangeEvent {
   readonly page?: IPage;
   /** The mutable fields that changed for Updated events when known. */
   readonly changedFields?: readonly PageMutationField[];
+  /**
+   * Deleted events only: true when the page went to Trash (it can be
+   * restored), absent for a permanent delete.  Listeners that destroy data
+   * tied to the page (database rows, columns, views) must act only on a
+   * permanent delete.
+   */
+  readonly archived?: boolean;
 }
 
 // ─── Page Update Data ────────────────────────────────────────────────────────
@@ -376,6 +383,8 @@ export interface ICanvasDataService {
   archivePage(pageId: string): Promise<void>;
   restorePage(pageId: string): Promise<IPage>;
   permanentlyDeletePage(pageId: string): Promise<void>;
+  /** Permanently delete every page in the Trash, read when it runs. */
+  emptyTrash(): Promise<void>;
   getArchivedPages(): Promise<IPage[]>;
 
   // ── Duplication ──

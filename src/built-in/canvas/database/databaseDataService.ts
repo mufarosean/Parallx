@@ -92,10 +92,12 @@ export class DatabaseDataService extends Disposable {
 
   constructor(private readonly _pages: ICanvasDataService) {
     super();
-    // Self-healing cleanup: when a database PAGE is deleted through any page
-    // path, drop the database schema rows too.
+    // Self-healing cleanup: when a database PAGE is permanently deleted
+    // through any page path, drop the database schema rows too.  Trash is not
+    // delete: an archived database keeps its rows, columns and views so
+    // Restore brings back the database, not an empty page (C2).
     this._register(this._pages.onDidChangePage((e) => {
-      if (e.kind === PageChangeKind.Deleted && this._databaseIds.has(e.pageId)) {
+      if (e.kind === PageChangeKind.Deleted && !e.archived && this._databaseIds.has(e.pageId)) {
         void this._cleanupDatabaseRows(e.pageId);
       }
     }));
