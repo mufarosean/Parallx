@@ -24,19 +24,14 @@ import {
   type PxAppearanceState,
   type PxBaseTheme,
   type PxMode, PX_FONTS, DEFAULT_FONT_ID,
-  PX_TEXT_SIZES, DEFAULT_TEXT_SIZE, APPEARANCE_CHANGED_EVENT } from '../../theme/pxAppearance.js';
-import { applyThemeById } from '../../theme/themeApply.js';
+  PX_TEXT_SIZES, DEFAULT_TEXT_SIZE, APPEARANCE_CHANGED_EVENT, effectiveMode } from '../../theme/pxAppearance.js';
+import { applyThemeById, EDITOR_THEME_FOR_MODE } from '../../theme/themeApply.js';
 import { Toggle } from '../../ui/toggle.js';
 
 import './pxAppearance.css';
 
-/** VS Code base theme ids paired to each --px mode (both ship in the catalog). */
-const EDITOR_THEME_FOR_MODE: Record<PxMode, string> = {
-  dark: 'parallx-dark-modern',
-  light: 'parallx-light-modern',
-};
-
 const MOON_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+const SYSTEM_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>';
 const SUN_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
 
 export class PxAppearancePanel implements IDisposable {
@@ -50,7 +45,8 @@ export class PxAppearancePanel implements IDisposable {
   private readonly _globalStorage?: IStorage;
 
   // Re-render hooks for selection rings.
-  private readonly _modeButtons = new Map<PxMode, HTMLElement>();
+  private readonly _modeButtons = new Map<PxMode | 'system', HTMLElement>();
+  private _modeStatus?: HTMLElement;
   private readonly _baseCards = new Map<PxBaseTheme, HTMLElement>();
   private readonly _accentChips = new Map<string, HTMLElement>();
   private readonly _fontChips = new Map<string, HTMLButtonElement>();
@@ -73,10 +69,17 @@ export class PxAppearancePanel implements IDisposable {
 
   private readonly _onExternalChange = (): void => {
     if (this._disposed) return;
-    const textSize = readAppearance().textSize;
-    if (textSize === this._state.textSize) return;
-    this._state.textSize = textSize;
-    this._syncTextSizeSelection();
+    const stored = readAppearance();
+    if (stored.textSize !== this._state.textSize) {
+      this._state.textSize = stored.textSize;
+      this._syncTextSizeSelection();
+    }
+    // The computer switched light or dark while Match System is on.
+    if (stored.mode !== this._state.mode || stored.followSystem !== this._state.followSystem) {
+      this._state.mode = stored.mode;
+      this._state.followSystem = stored.followSystem;
+      this._syncModeSelection();
+    }
   };
 
   /** Apply + persist the --px chrome (mode/base/accent). */
@@ -255,28 +258,34 @@ export class PxAppearancePanel implements IDisposable {
   private _renderModeSection(): HTMLElement {
     const section = document.createElement('section');
     section.className = 'px-appearance-section';
-    section.appendChild(this._sectionHeading('Mode', 'Light or dark. Applies to the whole app, including the code editor.'));
+    section.appendChild(this._sectionHeading('Mode', 'Light, dark, or whatever your computer is set to. Applies to the whole app, including the code editor.'));
 
     const toggle = document.createElement('div');
     toggle.className = 'px-mode-toggle';
     toggle.setAttribute('role', 'group');
     toggle.setAttribute('aria-label', 'Light or dark mode');
 
-    const MODES: { id: PxMode; label: string; icon: string }[] = [
-      { id: 'dark',  label: 'Dark',  icon: MOON_SVG },
-      { id: 'light', label: 'Light', icon: SUN_SVG },
+    const MODES: { id: PxMode | 'system'; label: string; icon: string }[] = [
+      { id: 'dark',   label: 'Dark',         icon: MOON_SVG },
+      { id: 'light',  label: 'Light',        icon: SUN_SVG },
+      { id: 'system', label: 'Match System', icon: SYSTEM_SVG },
     ];
     for (const m of MODES) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'px-mode-btn';
       btn.dataset.mode = m.id;
-      btn.setAttribute('aria-pressed', String(this._state.mode === m.id));
-      if (this._state.mode === m.id) btn.classList.add('is-selected');
       btn.innerHTML = `${m.icon}<span>${m.label}</span>`;
       btn.addEventListener('click', () => {
-        if (this._state.mode === m.id) return;
-        this._state.mode = m.id;
+        if (m.id === 'system') {
+          if (this._state.followSystem) return;
+          this._state.followSystem = true;
+          this._state.mode = effectiveMode(this._state);
+        } else {
+          if (!this._state.followSystem && this._state.mode === m.id) return;
+          this._state.followSystem = undefined;
+          this._state.mode = m.id;
+        }
         this._commit();         // --px chrome + persist
         this._syncEditorTheme(); // VS Code editor base theme
         this._syncModeSelection();
@@ -285,15 +294,24 @@ export class PxAppearancePanel implements IDisposable {
       toggle.appendChild(btn);
     }
     section.appendChild(toggle);
+    this._modeStatus = document.createElement('div');
+    this._modeStatus.className = 'px-appearance-mode-status';
+    section.appendChild(this._modeStatus);
+    this._syncModeSelection();
     return section;
   }
 
   /** Reflect the active mode on the toggle and re-tint the base-card previews. */
   private _syncModeSelection(): void {
+    const selected = this._state.followSystem ? 'system' : this._state.mode;
     for (const [id, btn] of this._modeButtons) {
-      const on = this._state.mode === id;
+      const on = selected === id;
       btn.classList.toggle('is-selected', on);
       btn.setAttribute('aria-pressed', String(on));
+    }
+    if (this._modeStatus) {
+      this._modeStatus.hidden = !this._state.followSystem;
+      this._modeStatus.textContent = this._state.followSystem ? `Following your computer: ${this._state.mode} right now.` : '';
     }
     const light = this._state.mode === 'light';
     for (const card of this._baseCards.values()) {
@@ -571,7 +589,7 @@ export class PxAppearancePanel implements IDisposable {
         const font = preset.font ?? this._state.font;
         // A saved theme is the look; text size (and the other comfort
         // settings) stays as the person set it.
-        this._state = { ...this._state, mode: preset.mode, base: preset.base, accent: preset.accent, customHue: preset.customHue, font: font === DEFAULT_FONT_ID ? undefined : font };
+        this._state = { ...this._state, mode: preset.mode, followSystem: undefined, base: preset.base, accent: preset.accent, customHue: preset.customHue, font: font === DEFAULT_FONT_ID ? undefined : font };
         this._commit();
         this._syncEditorTheme();
         this._syncModeSelection();

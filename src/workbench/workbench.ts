@@ -215,6 +215,7 @@ import {
   initUserThemesCache,
 } from '../theme/themeCatalog.js';
 import { migrateRetiredTheme } from '../theme/themeApply.js';
+import { watchSystemMode } from '../theme/systemMode.js';
 import { TEXT_SIZE_EXTRA_KEYBINDINGS, TEXT_SIZE_KEYBINDING_WHEN } from '../commands/textSizeCommands.js';
 import { setupEditorWatermark, updateWatermarkKeybindings } from './workbenchWatermark.js';
 import { $ } from '../ui/dom.js';
@@ -1019,6 +1020,8 @@ export class Workbench extends Layout {
     const themeService = this._register(new ThemeService(colorRegistry, themeData, designTokenRegistry));
     themeService.applyTheme(themeData);
     this._services.registerInstance(IThemeService, themeService);
+    // Appearance › Mode › Match System: follow the computer's light or dark.
+    this._register(watchSystemMode(themeService, this._globalStorage));
 
     // ── Unified AI Config Service (M20) ──
     // Replaces AISettingsService + ParallxConfigService as single source of truth.

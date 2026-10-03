@@ -486,3 +486,7 @@
 .px-comfort-row__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .px-comfort-row__title { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
 .px-comfort-row__hint { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+
+/* Match System: which mode the computer has chosen right now. */
+.px-appearance-mode-status { font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.px-appearance-mode-status[hidden] { display: none; }

@@ -13,6 +13,12 @@ import type { ColorThemeData } from './themeData.js';
 import type { IStorage } from '../platform/storage.js';
 import { applyAppearance, readAppearance, writeAppearance } from './pxAppearance.js';
 
+/** The editor base theme for each --px mode (both ship in the catalog). */
+export const EDITOR_THEME_FOR_MODE: Readonly<Record<'dark' | 'light', string>> = {
+  dark: 'parallx-dark-modern',
+  light: 'parallx-light-modern',
+};
+
 /** Minimal surface needed to apply a theme — both ThemeService and IThemeService satisfy it. */
 interface ThemeApplier {
   applyTheme(theme: ColorThemeData): void;

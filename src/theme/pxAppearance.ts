@@ -27,6 +27,12 @@ export interface PxAccent {
 export interface PxAppearanceState {
   /** Light or dark — drives both the --px chrome and the VS Code editor base theme. */
   mode: PxMode;
+  /**
+   * Match System: the mode follows the computer's light or dark setting,
+   * live (systemMode.ts keeps `mode` in step). Choosing Dark or Light, or
+   * applying a saved theme, turns it off.
+   */
+  followSystem?: boolean;
   base: PxBaseTheme;     // the "mood": slate / warm / ember (applies in both modes)
   accent: string;        // accent id, or 'custom'
   customHue?: number;    // 0-360 when accent === 'custom'
@@ -103,6 +109,7 @@ function normalizeAppearance(parsed: Partial<PxAppearanceState> | null | undefin
   if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_STATE };
   return {
     mode: parsed.mode === 'light' ? 'light' : 'dark',
+    followSystem: parsed.followSystem === true ? true : undefined,
     base: (parsed.base === 'warm' || parsed.base === 'ember') ? parsed.base : 'slate',
     accent: typeof parsed.accent === 'string' ? parsed.accent : 'steel',
     customHue: typeof parsed.customHue === 'number' ? parsed.customHue : undefined,
@@ -353,9 +360,23 @@ export function accentTextLightness(h: number, s: number, l: number): number {
   return 10;
 }
 
+/** The computer's light or dark setting (Electron follows the OS); dark when unknown. */
+export function systemPrefersDark(): boolean {
+  try { return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true; } catch { return true; }
+}
+
+/** The mode on screen: the computer's when following it, else the chosen one. */
+export function effectiveMode(state: PxAppearanceState): PxMode {
+  if (!state.followSystem) return state.mode;
+  return systemPrefersDark() ? 'dark' : 'light';
+}
+
 /** Apply a state to :root (mode + base via data-attrs, accent via inline vars). */
-export function applyAppearance(state: PxAppearanceState): void {
+export function applyAppearance(input: PxAppearanceState): void {
   const root = document.documentElement;
+  // Following the computer: paint its mode now, even before systemMode.ts
+  // has stored it, so a launch after the computer switched never flashes.
+  const state = input.followSystem ? { ...input, mode: effectiveMode(input) } : input;
 
   // Mode — dark is the bare-:root default (no attribute), so existing dark
   // themes are untouched; light is opt-in via data-px-mode. Also set
