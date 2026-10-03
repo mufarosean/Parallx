@@ -233,3 +233,37 @@ describe('C5: editors of one page share every edit', () => {
     expect(paneMirrorSize('p1')).toBe(0);
   });
 });
+
+// ── C7: structural repair of a malformed toggle ──────────────────────────────
+
+describe('C7: repairing a malformed toggle keeps its title and every block', () => {
+  async function repaired(docJson: any) {
+    const { applyStructuralRepairs } = await import('../../src/built-in/canvas/plugins/structuralRepair');
+    const { EditorState } = await import('@tiptap/pm/state');
+    const schema = mk({ type: 'doc', content: [p()] }).schema;
+    const state = EditorState.create({ schema, doc: schema.nodeFromJSON(docJson) });
+    const tr = state.tr;
+    applyStructuralRepairs(tr);
+    const texts: string[] = [];
+    tr.doc.descendants((n: any) => { if (n.isText) texts.push(n.text); return true; });
+    return { doc: tr.doc, texts };
+  }
+
+  it('a toggle with a stray block beside its title keeps title, stray block and body, and stays a toggle', async () => {
+    const { doc, texts } = await repaired({ type: 'doc', content: [{ type: 'details', content: [
+      { type: 'detailsSummary', content: [t('Title')] }, p('stray'), { type: 'detailsContent', content: [p('body')] },
+    ] }] });
+    expect(texts).toEqual(['Title', 'stray', 'body']);
+    expect(doc.child(0).type.name).toBe('details');
+    expect(() => doc.check()).not.toThrow();
+  });
+
+  it('a toggle heading missing its body keeps its title', async () => {
+    const { doc, texts } = await repaired({ type: 'doc', content: [{ type: 'toggleHeading', attrs: { level: 2 }, content: [
+      { type: 'toggleHeadingText', content: [t('Heading')] }, p('loose'),
+    ] }] });
+    expect(texts).toEqual(['Heading', 'loose']);
+    expect(doc.child(0).type.name).toBe('toggleHeading');
+    expect(() => doc.check()).not.toThrow();
+  });
+});

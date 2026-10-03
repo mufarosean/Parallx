@@ -8,8 +8,8 @@
 // detection-only: details, toggleHeading, callout, table, pageBlock.
 //
 // Every repair is conservative and content-preserving: clamp a value, insert a
-// required child, or — when a container's shape can't be trusted — unwrap it to
-// its content so the user's text is never dropped, only the broken wrapper.
+// required child, or rebuild a broken toggle from all of its parts, so the
+// user's text is never dropped.
 
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
@@ -27,26 +27,49 @@ function nodeAtMapped(tr: AnyTr, origPos: number): { pos: number; node: PMNode |
   return { pos, node: tr.doc.nodeAt(pos) };
 }
 
-/** A paragraph holding `node`'s plain text (empty paragraph when there's none). */
-function paragraphOfText(schema: any, node: PMNode): PMNode {
-  const text = node.textContent;
-  return schema.nodes.paragraph.create(null, text ? schema.text(text) : null);
-}
-
 /**
- * Replacement fragment that preserves a malformed container's content: prefer
- * the inner `detailsContent`'s block children; otherwise a single paragraph of
- * the container's text. Never empty — `createAndFill` guarantees a paragraph.
+ * A malformed toggle (details / toggleHeading) rebuilt as a VALID one from
+ * all of its parts: the first title child stays the title, every
+ * detailsContent's blocks and every stray block become the body, and any
+ * extra title-like child becomes a paragraph in the body.  The old repair
+ * unwrapped the toggle to its body alone, so its title and any stray block
+ * (an AI insert beside the title was enough) were deleted (C7).  When the
+ * rebuild still can't be made valid, the parts are released in place — title
+ * first — never dropped.
  */
-function unwrapFragment(schema: any, node: PMNode): Fragment {
-  let contentChild: PMNode | null = null;
+function rebuildToggle(schema: any, node: PMNode): Fragment {
+  const isHeading = node.type.name === 'toggleHeading';
+  const titleType = schema.nodes[isHeading ? 'toggleHeadingText' : 'detailsSummary'];
+  const contentType = schema.nodes.detailsContent;
+  let title: PMNode | null = null;
+  const body: PMNode[] = [];
   node.forEach((child) => {
-    if (!contentChild && child.type.name === 'detailsContent') contentChild = child;
+    const name = child.type.name;
+    if (name === 'detailsContent') {
+      child.forEach((b) => body.push(b));
+    } else if (child.type === titleType && !title) {
+      title = child;
+    } else if (child.isTextblock || name === 'detailsSummary' || name === 'toggleHeadingText') {
+      body.push(schema.nodes.paragraph.create(null, child.content));
+    } else if (child.isBlock) {
+      body.push(child);
+    } else if (child.isInline) {
+      body.push(schema.nodes.paragraph.create(null, child));
+    }
   });
-  if (contentChild && (contentChild as PMNode).childCount > 0) {
-    return (contentChild as PMNode).content;
+  const titleNode = (title as PMNode | null) ?? titleType.create();
+  try {
+    const rebuilt = node.type.createChecked(node.attrs, [
+      titleType.createChecked(titleNode.attrs, titleNode.content),
+      contentType.createChecked(null, body.length > 0 ? body : [schema.nodes.paragraph.create()]),
+    ]);
+    return Fragment.from(rebuilt);
+  } catch {
+    const titleBlock = isHeading && schema.nodes.heading
+      ? schema.nodes.heading.create({ level: node.attrs?.level ?? 1 }, titleNode.content)
+      : schema.nodes.paragraph.create(null, titleNode.textContent ? schema.text(titleNode.textContent) : null);
+    return Fragment.from([titleBlock, ...body]);
   }
-  return Fragment.from(paragraphOfText(schema, node));
 }
 
 /**
@@ -119,7 +142,7 @@ export function applyStructuralRepairs(tr: AnyTr): boolean {
       case 'details-malformed': {
         const expect = kind === 'toggle-malformed' ? 'toggleHeading' : 'details';
         if (node.type.name !== expect) break;
-        tr.replaceWith(pos, pos + node.nodeSize, unwrapFragment(schema, node));
+        tr.replaceWith(pos, pos + node.nodeSize, rebuildToggle(schema, node));
         break;
       }
       case 'check-summary-orphan': {

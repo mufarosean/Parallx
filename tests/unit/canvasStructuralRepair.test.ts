@@ -67,20 +67,22 @@ describe('applyStructuralRepairs', () => {
     expect(changed).toBe(false);
   });
 
-  it('unwraps a malformed toggleHeading to its content (preserving text)', () => {
+  it('rebuilds a malformed toggleHeading as a valid one (text kept in the body)', () => {
     // Wrong shape: a bare paragraph child instead of [toggleHeadingText, detailsContent].
     const tg = n('toggleHeading', { level: 1 }, para('kept text'));
     const { doc, changed } = repair(n('doc', null, tg));
     expect(changed).toBe(true);
-    expect(doc.child(0).type.name).not.toBe('toggleHeading');
+    expect(doc.child(0).type.name).toBe('toggleHeading');
+    expect(() => doc.check()).not.toThrow();
     expect(doc.textContent).toContain('kept text');
   });
 
-  it('unwraps a malformed details, keeping inner content blocks', () => {
+  it('rebuilds a details missing its title as a valid one, keeping the body', () => {
     const det = n('details', null, n('detailsContent', null, para('inner')));
     const { doc, changed } = repair(n('doc', null, det));
     expect(changed).toBe(true);
-    expect(doc.child(0).type.name).toBe('paragraph');
+    expect(doc.child(0).type.name).toBe('details');
+    expect(() => doc.check()).not.toThrow();
     expect(doc.textContent).toContain('inner');
   });
 
