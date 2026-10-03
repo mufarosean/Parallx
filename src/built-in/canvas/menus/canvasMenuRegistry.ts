@@ -72,6 +72,7 @@ export {
   canTakeBackgroundColor,
   canTurnInto,
 } from '../config/blockStateRegistry/blockStateRegistry.js';
+import { moveCaretPastInsertedBlock as _moveCaretPastInsertedBlock } from '../config/blockStateRegistry/blockStateRegistry.js';
 
 // ── Table operations (source: blockStateRegistry/tableOps.ts) ──────────────
 // The row/column grips and the table action menu are two doors onto ONE set
@@ -774,6 +775,9 @@ export class CanvasMenuRegistry {
     } else if (def.defaultContent) {
       editor.chain().insertContentAt(range, def.defaultContent).focus().run();
     }
+    // Never leave the new block selected whole: the next keystroke would
+    // replace it (C4).
+    _moveCaretPastInsertedBlock(editor);
   }
 
   // ── Dispose ─────────────────────────────────────────────────────────────

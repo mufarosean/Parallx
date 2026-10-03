@@ -100,12 +100,12 @@ describe('C6: a page whose stored content cannot be read is never written over',
     env = memoryDb();
     env.pages.set('bad', pageRow('bad', GARBAGE));
     env.pages.set('good', pageRow('good', docOf('fine')));
-    (globalThis as any).window = { parallxElectron: { database: env.mock } };
+    (window as any).parallxElectron = { database: env.mock };
     service = new CanvasDataService();
   });
   afterEach(() => {
     service.dispose();
-    delete (globalThis as any).window;
+    delete (window as any).parallxElectron;
   });
 
   it('decoding says unreadable and asks for no repair', () => {
@@ -180,14 +180,34 @@ describe('C2: moving a database to Trash keeps its rows, columns and views', () 
   it('the page service marks a Trash move as archived, a permanent delete not', async () => {
     const env = memoryDb();
     env.pages.set('db-1', pageRow('db-1', docOf('x')));
-    (globalThis as any).window = { parallxElectron: { database: { ...env.mock, all: vi.fn(async (q: string) => (/WITH RECURSIVE/.test(q) ? { error: null, rows: [{ id: 'db-1' }] } : { error: null, rows: [] })) } } };
+    (window as any).parallxElectron = { database: { ...env.mock, all: vi.fn(async (q: string) => (/WITH RECURSIVE/.test(q) ? { error: null, rows: [{ id: 'db-1' }] } : { error: null, rows: [] })) } };
     const service = new CanvasDataService();
     const events: any[] = [];
     service.onDidChangePage((e) => events.push(e));
     await service.archivePage('db-1');
     expect(events.filter((e) => e.kind === 'Deleted').map((e) => e.archived)).toEqual([true]);
     service.dispose();
-    delete (globalThis as any).window;
+    delete (window as any).parallxElectron;
   });
 });
 
+
+// ── C4: the keystroke after inserting a divider / TOC / concept map ──────────
+
+describe('C4: typing after inserting a block from the slash menu keeps the block', () => {
+  for (const blockId of ['horizontalRule', 'tableOfContents', 'conceptMap']) {
+    it(`${blockId}: the next keystroke goes into a paragraph after it`, async () => {
+      const { CanvasMenuRegistry } = await import('../../src/built-in/canvas/menus/canvasMenuRegistry');
+      const ed = mk({ type: 'doc', content: [p('/'), p('next')] });
+      const registry = new CanvasMenuRegistry(() => ed);
+      await registry.executeBlockInsert(blockId, ed, { from: 0, to: ed.state.doc.child(0).nodeSize }, {});
+      const typed = ed.view.someProp('handleTextInput', (f: any) => f(ed.view, ed.state.selection.from, ed.state.selection.to, 'x'));
+      if (!typed) ed.view.dispatch(ed.state.tr.insertText('x'));
+      const types: string[] = [];
+      ed.state.doc.forEach((n: any) => types.push(n.type.name + (n.isTextblock ? `(${n.textContent})` : '')));
+      expect(types).toContain(blockId);
+      expect(types.slice(0, 3)).toEqual([blockId, 'paragraph(x)', 'paragraph(next)']);
+      registry.dispose();
+    });
+  }
+});

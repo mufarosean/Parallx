@@ -11,7 +11,7 @@
 
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { resolveBlockAncestry, BLOCK_BG_TYPES } from './blockStateRegistry.js';
 
 // ── Capability predicates ────────────────────────────────────────────────────
@@ -278,4 +278,34 @@ export function applyBackgroundColorToBlock(
   // that selection to the block being coloured, so colouring a block at the
   // top of a page used to scroll to wherever the caret last was.
   editor.commands.focus(null, { scrollIntoView: false });
+}
+
+/**
+ * After a block is inserted from a menu: if the insert left the new block
+ * selected as a whole (a divider, table of contents, concept map…), put the
+ * caret in an empty paragraph right after it instead — creating one when the
+ * next block isn't already an empty paragraph (Notion).  With the block
+ * selected, the next keystroke replaced it (C4).  An equation opens its own
+ * editor and keeps its selection.
+ */
+export function moveCaretPastInsertedBlock(editor: Editor): void {
+  const { state } = editor;
+  const sel = state.selection;
+  if (!(sel instanceof NodeSelection)) return;
+  const node = sel.node;
+  if (!node.isBlock || node.isTextblock || node.type.name === 'mathBlock') return;
+  const paragraph = state.schema.nodes.paragraph;
+  if (!paragraph) return;
+  const after = sel.to;
+  const $after = state.doc.resolve(after);
+  const next = $after.nodeAfter;
+  const tr = state.tr;
+  if (!(next && next.type === paragraph && next.content.size === 0)) {
+    const index = $after.index();
+    if (!$after.parent.canReplaceWith(index, index, paragraph)) return;
+    tr.insert(after, paragraph.create());
+  }
+  tr.setSelection(TextSelection.create(tr.doc, after + 1));
+  editor.view.dispatch(tr.scrollIntoView());
+  editor.commands.focus();
 }
