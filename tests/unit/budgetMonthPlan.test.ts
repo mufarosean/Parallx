@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 // @ts-expect-error — JS module with no types
 import { __testables } from '../../ext/budget/main.js';
 
-const { computeMonthPlan } = __testables;
+const { computeMonthPlan, planScope } = __testables;
 
 describe('budget month plan', () => {
   it('day 2 with rent paid: plenty left, under pace, no projection yet', () => {
@@ -44,5 +44,26 @@ describe('budget month plan', () => {
     const p = computeMonthPlan({ limitCents: 100000, spentCents: 1000, billsPaidCents: 5000, billsToComeCents: 0, daysInMonth: 30, dayOfMonth: 5 });
     expect(p.billsPaidCents).toBe(1000);
     expect(p.everydaySpentCents).toBe(0);
+  });
+
+  it('only categories with a limit are planned: a mortgage in an unlimited Housing is not "over plan"', () => {
+    const statuses = [
+      { id: 'housing', effective_limit_cents: 0, spent_cents: 185000 },
+      { id: 'groceries', effective_limit_cents: 55000, spent_cents: 0 },
+      { id: 'transport', effective_limit_cents: 15000, spent_cents: 4100 },
+    ];
+    const bills = [
+      { categoryId: 'housing', paidCents: 185000, toComeCents: 0 },
+      { categoryId: 'transport', paidCents: 0, toComeCents: 2000 },
+    ];
+    const scope = planScope(statuses, bills, 189100);
+    expect(scope.limitCents).toBe(70000);
+    expect(scope.spentCents).toBe(4100);
+    expect(scope.billsPaidCents).toBe(0);
+    expect(scope.billsToComeCents).toBe(2000);
+    expect(scope.unplannedSpentCents).toBe(185000);
+    expect(scope.allBillsPaidCents).toBe(185000);
+    const p = computeMonthPlan({ ...scope, daysInMonth: 31, dayOfMonth: 3 });
+    expect(p.leftCents).toBe(70000 - 4100 - 2000);
   });
 });

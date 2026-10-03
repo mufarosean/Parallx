@@ -304,6 +304,10 @@ function routeForInstanceId(instanceId) {
 let _currentSection = 'overview';
 const _sectionListeners = new Set();
 let _liveEditorShow = null;
+// Sets the open page's header actions ({ primary, secondary }); a no-op when no
+// Budget editor is open. Pages call it while they render.
+let _setPageActions = null;
+function setPageActions(actions) { if (_setPageActions) _setPageActions(actions || {}); }
 function _setCurrentSection(id) {
   _currentSection = id;
   for (const fn of _sectionListeners) { try { fn(id); } catch { /* listener errors stay local */ } }
@@ -429,16 +433,45 @@ function injectStyles() {
   box-sizing: border-box;
 }
 /* The kit page header pads itself; the body lines up under its title. */
-.budget-editor-head { padding: 0; }
-.budget-editor-body {
-  flex: 1;
-  padding: 0 var(--px-space-6) var(--px-space-6);
+/* One page column, as Planner's Today: the header and every page share one
+   width and sit centred in the tab, so the header's actions line up with the
+   right edge of the content instead of the far edge of a wide pane. */
+.budget-page {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 var(--px-space-6) var(--px-space-8);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: var(--px-space-3);
+}
+.budget-editor-head .px-page-header { padding: var(--px-space-5) 0 var(--px-space-4); }
+.budget-editor-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-space-4);
+  min-width: 0;
 }
 .budget-plan-switch { display: flex; }
-.budget-worth-goals { display: flex; flex-direction: column; gap: var(--px-space-3); margin-top: var(--px-space-4); }
+.budget-plan-view, .budget-plan-view > div:not([class]) { display: flex; flex-direction: column; gap: var(--px-space-4); min-width: 0; }
+.budget-chart-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--px-space-4); }
+@container (max-width: 820px) {
+.budget-chart-pair { grid-template-columns: minmax(0, 1fr); }
+}
+.budget-chart-card {
+  padding: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg);
+  background: var(--px-bg-elevated); min-width: 0;
+}
+.budget-chart-card svg { width: 100%; height: auto; }
+.budget-chart-card .budget-chart-legend { margin-top: 0; }
+.budget-worth { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: var(--px-space-8); align-items: start; }
+@container (max-width: 820px) {
+.budget-worth { grid-template-columns: minmax(0, 1fr); gap: var(--px-space-6); }
+}
+.budget-worth-col { display: flex; flex-direction: column; gap: var(--px-space-4); min-width: 0; }
+.budget-worth-goals .budget-section:empty + .budget-goals .px-empty { padding: var(--px-space-6) var(--px-space-4); }
+.budget-worth-manage { margin-top: var(--px-space-4); }
 /* Shared: amounts line up, links read as links, a category's colour dot. */
 .budget-num { font-variant-numeric: tabular-nums; }
 .budget-link {
@@ -449,7 +482,7 @@ function injectStyles() {
 .budget-link:focus-visible { outline: 1px solid var(--px-accent); outline-offset: 2px; border-radius: var(--px-radius-sm); }
 .budget-dot { width: 8px; height: 8px; border-radius: var(--px-radius-full); flex: 0 0 8px; display: inline-block; }
 /* ═══ Overview ═══ */
-.budget-ov { display: flex; flex-direction: column; gap: var(--px-space-4); max-width: 1180px; }
+.budget-ov { display: flex; flex-direction: column; gap: var(--px-space-4); }
 .budget-ov-month { display: flex; align-items: center; gap: var(--px-space-1); }
 .budget-ov-month-label { font-weight: 600; padding: 0 var(--px-space-2); min-width: 130px; text-align: center; }
 .budget-ov-card {
@@ -497,15 +530,15 @@ function injectStyles() {
 .budget-ov-bar { height: 6px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; }
 .budget-ov-fill { display: block; height: 100%; border-radius: var(--px-radius-full); background: var(--px-accent); }
 .budget-ov-fill.is-over { background: var(--px-danger); }
+.budget-ov-fill.is-unplanned { opacity: 0.45; }
 .budget-ov-cat-amt { text-align: right; white-space: nowrap; }
 .budget-ov-cat-amt .budget-ov-faint { font-size: inherit; }
 .budget-ov-row { display: flex; align-items: center; gap: var(--px-space-3); min-height: 32px; border-top: 1px solid var(--px-divider); }
 .budget-ov-when { width: 52px; flex: 0 0 52px; color: var(--px-text-faint); font-size: var(--px-text-sm); }
 .budget-ov-grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* ═══ Merchants and Rules ═══ */
-.budget-ru { display: flex; flex-direction: column; gap: var(--px-space-4); max-width: 980px; }
-.budget-ru-top { display: flex; align-items: flex-start; gap: var(--px-space-4); }
-.budget-ru-help { margin: 0; flex: 1; max-width: 640px; }
+.budget-ru { display: flex; flex-direction: column; gap: var(--px-space-4); }
+.budget-ru-help { margin: 0; max-width: 720px; }
 .budget-ru-form { gap: var(--px-space-3); }
 .budget-ru-field { display: grid; grid-template-columns: 140px auto minmax(0, 1fr); align-items: center; gap: var(--px-space-2); }
 .budget-ru-field > :last-child:nth-child(2) { grid-column: 2 / -1; }
@@ -532,7 +565,7 @@ function injectStyles() {
 }
 
 /* ═══ Plan › Budgets ═══ */
-.budget-pl { display: flex; flex-direction: column; gap: var(--px-space-4); max-width: 920px; }
+.budget-pl { display: flex; flex-direction: column; gap: var(--px-space-4); }
 .budget-pl-bar { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
 .budget-pl-acts { margin-left: auto; display: flex; gap: var(--px-space-2); }
 .budget-pl-card { gap: var(--px-space-3); }
@@ -568,10 +601,9 @@ function injectStyles() {
 }
 .budget-pl-left.is-over { border-color: var(--px-danger); }
 /* ═══ Transactions ═══ */
-.budget-tx { display: flex; flex-direction: column; gap: var(--px-space-2); max-width: 1180px; }
+.budget-tx { display: flex; flex-direction: column; gap: var(--px-space-3); }
 .budget-tx-bar { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
 .budget-tx-search { min-width: 200px; height: 28px; font-size: var(--px-text-sm); }
-.budget-tx-add { margin-left: auto; }
 .budget-ov-month[hidden], .budget-tx-allmonths[hidden] { display: none; }
 .budget-tx-allmonths { text-align: left; min-width: 0; padding: 0 var(--px-space-1); }
 .budget-tx-chips { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; }
@@ -617,9 +649,8 @@ function injectStyles() {
 }
 .budget-how-text { display: flex; flex-direction: column; min-width: 0; font-size: var(--px-text-sm); }
 /* ═══ Review ═══ */
-.budget-rv { max-width: 1180px; }
 .budget-rv-undo {
-  max-width: 1180px; box-sizing: border-box;
+  box-sizing: border-box;
   display: flex; align-items: center; gap: var(--px-space-2);
   padding: var(--px-space-1) var(--px-space-2) var(--px-space-1) var(--px-space-4);
   border: 1px solid var(--px-border); border-radius: var(--px-radius-md);
@@ -665,56 +696,49 @@ function injectStyles() {
   line-height: 1.55;
   max-width: 680px;
 }
-/* ═══ Section toolbar + content ═══ */
+/* ═══ Section toolbar + content ═══
+   The older pages (Bills, Trends, Reconcile, Categories, Sync Log, Import /
+   Export) draw with these shared classes; they follow the same tokens and
+   spacing as the redesigned pages. Buttons are the kit's (makeButton). */
 .budget-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--px-space-2);
   flex-wrap: wrap;
+  min-height: var(--px-control-h);
 }
 .budget-toolbar .spacer { flex: 1; }
-.budget-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  box-sizing: border-box;
-  background: var(--vscode-button-secondaryBackground, #3a3a3a);
-  color: var(--vscode-button-secondaryForeground, #ccc);
-  border: 1px solid var(--vscode-panel-border, #555);
-  font-family: inherit;
-  cursor: pointer;
-  justify-content: center;
-  height: var(--px-control-h);
-  padding: 0 12px;
-  border-radius: var(--px-radius-sm);
-  font-size: var(--px-text-sm);
-  line-height: 1;
-}
-.budget-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
-.budget-btn[aria-pressed="true"] {
-  background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #fff);
-  border-color: transparent;
-}
-.budget-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-.budget-btn-primary {
-  background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #fff);
-  border-color: transparent;
-}
-.budget-btn-primary:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
-.budget-btn .budget-icon { width: 12px; height: 12px; flex: 0 0 12px; }
+.budget-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .budget-input {
-  background: var(--vscode-input-background, rgba(255,255,255,0.04));
-  color: var(--vscode-input-foreground, #ccc);
-  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #555));
-  border-radius: var(--px-radius-sm, 3px);
-  padding: 4px 8px;
+  height: var(--px-control-h);
+  box-sizing: border-box;
+  background: var(--px-bg-inset);
+  color: var(--px-text);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm);
+  padding: 0 var(--px-space-2);
   font: inherit;
-  font-size: var(--px-text-xs, 11px);
+  font-size: var(--px-text-sm);
+}
+.budget-input::placeholder { color: var(--px-text-faint); }
+.budget-input:hover { border-color: var(--px-border-strong); }
+/* A name you can retype in place: reads as text until hovered or focused. */
+.budget-inline-input { width: 100%; max-width: 260px; background: transparent; border-color: transparent; font-weight: 500; }
+.budget-inline-input:hover { background: var(--px-bg-inset); }
+.budget-inline-input::placeholder { color: var(--px-text); }
+.budget-cat-limit { width: 110px; text-align: right; }
+.budget-color {
+  width: 28px; height: 20px; padding: 0; border: 1px solid var(--px-border); border-radius: var(--px-radius-sm);
+  background: transparent; cursor: pointer;
+}
+.budget-color::-webkit-color-swatch-wrapper { padding: 2px; }
+.budget-color::-webkit-color-swatch { border: 0; border-radius: var(--px-radius-xs, 2px); }
+.budget-cell-more { text-align: right; }
+/* A narrow pane keeps the name readable: Transactions and As of step aside. */
+@container (max-width: 820px) {
+.budget-accounts-table th:nth-child(4), .budget-accounts-table td:nth-child(4),
+.budget-accounts-table th:nth-child(6), .budget-accounts-table td:nth-child(6) { display: none; }
+.budget-accounts-table th:nth-child(2) { width: 140px !important; }
 }
 /* The ~40 lines of .budget-select styling that used to sit here are gone with the
    last native <select> in this extension — including the appearance:none +
@@ -733,50 +757,42 @@ function injectStyles() {
 .budget-dd { position: relative; display: inline-block; }
 .budget-dd .ui-dropdown { width: 100%; min-width: 0; }
 .budget-table .budget-dd { min-width: 150px; }
-.budget-input:focus {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
+.budget-input:focus { outline: none; border-color: var(--px-accent); }
 .budget-empty {
   padding: 40px 20px;
   text-align: center;
   color: var(--px-text-muted);
   font-size: var(--px-text-sm);
 }
-/* Tables — the ledger register. Ruled hairlines, small-caps column heads
-   under a double rule (classic accounting), amounts right-aligned in the
-   mono face, faint alternating row tint like ruled ledger paper. */
+/* Tables: the same rows as the redesigned lists — a hairline between rows,
+   a quiet heading row, amounts right-aligned in tabular figures. */
 .budget-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--px-text-xs, 11px);
+  font-size: var(--px-text-sm);
 }
 .budget-table th, .budget-table td {
   text-align: left;
-  padding: 5px 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border, #2a2a2a) 55%, transparent);
+  height: 40px;
+  padding: 0 var(--px-space-3);
+  border-bottom: 1px solid var(--px-divider);
   vertical-align: middle;
 }
 .budget-table thead th {
   position: sticky;
   top: 0;
-  background: var(--vscode-editor-background);
+  z-index: 1;
+  height: 32px;
+  background: var(--px-bg);
   font-weight: 600;
-  color: var(--vscode-descriptionForeground, #aaa);
-  font-size: var(--px-text-xs);
-  letter-spacing: normal;
-  text-transform: none;
-  border-bottom: 3px double var(--vscode-panel-border, #2a2a2a);
+  color: var(--px-text-secondary);
+  white-space: nowrap;
 }
-.budget-table tbody tr:nth-child(even) {
-  background: color-mix(in srgb, var(--vscode-foreground, #ddd) 2.5%, transparent);
-}
-.budget-table tbody tr:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
-}
-/* Totals rows close the register with the classic double rule above. */
+.budget-table tbody tr:hover { background: var(--px-surface-hover); }
+.budget-table td.budget-amount, .budget-table th.budget-amount { text-align: right; }
+.budget-table tbody tr.is-archived td { color: var(--px-text-muted); }
 .budget-table tr.budget-total-row td {
-  border-top: 3px double var(--vscode-panel-border, #2a2a2a);
+  border-top: 1px solid var(--px-border-strong);
   border-bottom: none;
   font-weight: 600;
 }
@@ -827,53 +843,32 @@ function injectStyles() {
   margin-right: 6px;
   vertical-align: middle;
 }
-/* Summary cards — ruled panels, not floating chips: square corners, a
-   heavier top rule, small-caps label, mono figure. */
+/* Summary cards: the Overview's card, three across. */
 .budget-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--px-space-4);
 }
 .budget-card {
-  padding: 10px 14px 12px;
-  border: 1px solid var(--vscode-panel-border, #2a2a2a);
-  border-top: 2px solid color-mix(in srgb, var(--vscode-foreground, #ddd) 35%, var(--vscode-panel-border, #2a2a2a));
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--vscode-foreground, #ddd) 1.5%, var(--vscode-editor-background));
-  transition: border-color 80ms ease, background 80ms ease, transform 80ms ease;
+  padding: var(--px-space-4);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-lg);
+  background: var(--px-bg-elevated);
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0;
 }
-.budget-card-clickable:hover {
-  border-color: var(--vscode-focusBorder);
-  background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
-}
-.budget-card-clickable:focus-visible {
-  outline: 2px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
-}
-.budget-card-clickable:active {
-  transform: translateY(1px);
-}
-.budget-card-label {
-  font-size: var(--px-text-xs);
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: normal;
-  color: var(--vscode-descriptionForeground, #888);
-}
+.budget-card-clickable { cursor: pointer; }
+.budget-card-clickable:hover { border-color: var(--px-border-strong); background: var(--px-surface-hover); }
+.budget-card-clickable:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.budget-card-label { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-secondary); }
 .budget-card-value {
-  font-size: 24px;
+  font-size: var(--px-text-xl);
   font-weight: 600;
-  margin-top: 6px;
+  margin-top: var(--px-space-1);
   font-variant-numeric: tabular-nums;
-  font-variant-numeric: tabular-nums lining-nums;
-  color: var(--vscode-foreground, #ddd);
+  color: var(--px-text);
 }
-.budget-card-sub {
-  font-size: 11px;
-  margin-top: 4px;
-  color: var(--vscode-descriptionForeground, #888);
-  margin-top: 2px;
-}
+.budget-card-sub { font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .budget-cat-bar {
   display: grid;
   grid-template-columns: 110px 1fr 70px;
@@ -900,15 +895,14 @@ function injectStyles() {
 .budget-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 32px;
+  gap: var(--px-space-3);
 }
-.budget-section:last-of-type { margin-bottom: 16px; }
+.budget-section:empty { display: none; }
 .budget-section h3 {
-  margin: 0 0 10px 0;
+  margin: 0;
   font-size: var(--px-text-sm);
   font-weight: 600;
-  color: var(--px-text);
+  color: var(--px-text-secondary);
 }
 .budget-log-row {
   font-variant-numeric: tabular-nums;
@@ -1060,7 +1054,7 @@ function injectStyles() {
 .budget-table tbody tr.budget-row-clickable:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255,255,255,0.05))); }
 .budget-table tbody tr:hover .budget-row-edit, .budget-table tbody tr:focus-within .budget-row-edit { opacity: 1; }
 /* ═══ Net Worth ═══ */
-.budget-networth-head { padding: 6px 2px 16px; }
+.budget-networth-head { display: flex; flex-direction: column; gap: 2px; }
 .budget-networth-label { font-size: var(--px-text-xs, 11px); text-transform: none; letter-spacing: normal; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); }
 .budget-networth-value { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; margin-top: 2px; color: var(--px-text, var(--vscode-editor-foreground, #eee)); font-variant-numeric: tabular-nums; }
 .budget-networth-sub { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
@@ -1099,7 +1093,7 @@ function injectStyles() {
 .budget-nw-row-pct { font-size: var(--px-text-xs, 11px); color: var(--px-text-faint, var(--vscode-descriptionForeground, #777)); }
 .budget-nw-mgmt-head { font-size: var(--px-text-xs, 11px); font-weight: 700; text-transform: none; letter-spacing: normal; color: var(--px-text-muted, var(--vscode-descriptionForeground, #888)); margin: 4px 2px 8px; }
 /* ═══ Goals ═══ */
-.budget-goals { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.budget-goals { display: flex; flex-direction: column; gap: var(--px-space-3); }
 .budget-goal-card {
   display: flex; flex-direction: column; gap: 8px; width: 100%; box-sizing: border-box; text-align: left;
   padding: 14px 16px; border: 1px solid var(--px-border, var(--vscode-panel-border, #2a2a2a)); border-radius: var(--px-radius-md, 6px);
@@ -1121,7 +1115,8 @@ function injectStyles() {
 /* With nothing to chart, the empty message spans the row like every other empty state. */
 .budget-donut-wrap > .budget-empty { flex: 1 1 100%; }
 /* ═══ Recurring / subscriptions list ═══ */
-.budget-recur { display: flex; flex-direction: column; margin-top: 14px; border: 1px solid var(--px-border, var(--vscode-panel-border, #2a2a2a)); border-radius: var(--px-radius-md, 6px); overflow: hidden; }
+.budget-recur { display: flex; flex-direction: column; border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); overflow: hidden; }
+.budget-recur:empty { display: none; }
 .budget-recur-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--px-chrome-line, rgba(255, 255, 255, 0.04)); }
 .budget-recur-row:last-child { border-bottom: none; }
 .budget-recur-row:hover { background: var(--px-surface-hover, var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04))); }
@@ -1340,11 +1335,14 @@ function renderEditorPane(container, api, input) {
   }
   const el = document.createElement('div');
   el.className = 'budget-editor';
+  const pageEl = document.createElement('div');
+  pageEl.className = 'budget-page';
   const head = document.createElement('div');
   head.className = 'budget-editor-head';
   const body = document.createElement('div');
   body.className = 'budget-editor-body';
-  el.append(head, body);
+  pageEl.append(head, body);
+  el.appendChild(pageEl);
   container.appendChild(el);
 
   let cleanup = null;
@@ -1367,14 +1365,21 @@ function renderEditorPane(container, api, input) {
     body.dataset.section = section.id;
     _setCurrentSection(section.id);
     const back = section.nav === false ? { label: 'Overview', onClick: () => show('overview') } : undefined;
-    api.ui.createPageHeader(head, { title: section.title, back, more: moreItems() });
+    // A page puts its own main action in the header (setPageActions), as
+    // every Parallx page does, instead of a stray button in its body.
+    const drawHeader = (actions = {}) => {
+      head.replaceChildren();
+      api.ui.createPageHeader(head, { title: section.title, back, primary: actions.primary, secondary: actions.secondary, more: moreItems() });
+    };
+    _setPageActions = drawHeader;
+    drawHeader();
     try {
       cleanup = renderSection(section.id, body, api, view) || null;
     } catch (e) {
       console.error('[Budget] section render failed:', section.id, e);
       body.appendChild(emptyState('This page could not be drawn: ' + (e instanceof Error ? e.message : String(e))));
     }
-    body.scrollTop = 0;
+    el.scrollTop = 0;
   }
 
   const [startId, startView] = _navState.section
@@ -1387,7 +1392,7 @@ function renderEditorPane(container, api, input) {
 
   return {
     dispose() {
-      if (_liveEditorShow === show) _liveEditorShow = null;
+      if (_liveEditorShow === show) { _liveEditorShow = null; _setPageActions = null; }
       try { if (typeof cleanup === 'function') cleanup(); } catch { /* best-effort */ }
       try { container.removeChild(el); } catch { /* container already gone */ }
     },
@@ -1409,15 +1414,27 @@ function renderSection(id, body, api, view) {
   }
 }
 
-// Net Worth and Goals: one page, accounts first.
+// Net Worth and Goals: what you hold beside what you are saving toward, then
+// the synced accounts to rename, retype or archive. The two "add" actions sit
+// in the page header.
 function renderWorthSection(body, api) {
-  const top = document.createElement('div');
+  const grid = document.createElement('div');
+  grid.className = 'budget-worth';
+  const holdings = document.createElement('div');
+  holdings.className = 'budget-worth-col';
   const goals = document.createElement('div');
-  goals.className = 'budget-worth-goals';
-  body.append(top, goals);
-  const a = renderAccountsSection(top, api);
-  api.ui.createSectionLabel(goals, 'Goals');
-  const g = renderGoalsSection(goals, api);
+  goals.className = 'budget-worth-col budget-worth-goals';
+  grid.append(holdings, goals);
+  const manage = document.createElement('div');
+  manage.className = 'budget-worth-manage';
+  body.append(grid, manage);
+  const actions = {};
+  const a = renderAccountsSection(holdings, api, { manageHost: manage, actions });
+  const g = renderGoalsSection(goals, api, { actions });
+  setPageActions({
+    primary: { label: 'Add Asset or Debt…', icon: 'plus', onClick: () => actions.addHolding?.() },
+    secondary: [{ label: 'New Goal…', icon: 'plus', onClick: () => actions.newGoal?.() }],
+  });
   return () => { if (typeof a === 'function') a(); if (typeof g === 'function') g(); };
 }
 
@@ -1443,21 +1460,17 @@ function escHtml(s) {
   ));
 }
 
-function makeButton(label, opts) {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'budget-btn' + (opts && opts.primary ? ' budget-btn-primary' : '');
-  if (opts && opts.iconHtml) {
-    const ic = document.createElement('span');
-    ic.className = 'budget-icon';
-    ic.innerHTML = opts.iconHtml;
-    b.appendChild(ic);
-  }
-  const span = document.createElement('span');
-  span.textContent = label;
-  b.appendChild(span);
-  if (opts && typeof opts.onClick === 'function') b.addEventListener('click', opts.onClick);
-  return b;
+// The kit's button (api.ui.createButton): one height, radius and hierarchy
+// with the rest of Parallx. The label is the button's last <span>.
+function makeButton(label, opts = {}) {
+  return _api.ui.createButton(null, {
+    label,
+    kind: opts.primary ? 'primary' : (opts.kind || 'secondary'),
+    size: opts.size,
+    icon: opts.icon,
+    title: opts.title,
+    onClick: typeof opts.onClick === 'function' ? opts.onClick : undefined,
+  });
 }
 
 function emptyState(msg) {
@@ -1873,8 +1886,8 @@ async function openTxEditor(api, opts = {}) {
     const delBtn = makeButton('Delete', { onClick: async () => {
       if (!armed) {
         armed = true; delBtn.querySelector('span:last-child').textContent = 'Click again to delete';
-        delBtn.classList.add('budget-btn-danger');
-        armTimer = setTimeout(() => { armed = false; delBtn.querySelector('span:last-child').textContent = 'Delete'; delBtn.classList.remove('budget-btn-danger'); }, 3000);
+        delBtn.classList.add('px-btn--danger');
+        armTimer = setTimeout(() => { armed = false; delBtn.querySelector('span:last-child').textContent = 'Delete'; delBtn.classList.remove('px-btn--danger'); }, 3000);
         return;
       }
       if (armTimer) clearTimeout(armTimer);
@@ -2123,10 +2136,7 @@ function renderTransactionsSection(body, api) {
   const acctSlot = document.createElement('span');
   acctSlot.className = 'budget-dd-slot';
   bar.appendChild(acctSlot);
-  const addHost = document.createElement('span');
-  addHost.className = 'budget-tx-add';
-  api.ui.createButton(addHost, { label: 'Add Transaction…', icon: 'plus', onClick: () => void openTxEditor(api, { onSaved: refresh }) });
-  bar.appendChild(addHost);
+  setPageActions({ primary: { label: 'Add Transaction…', icon: 'plus', onClick: () => void openTxEditor(api, { onSaved: refresh }) } });
   root.appendChild(bar);
 
   // Quick filters, and the narrowing a link brought (category, day, type).
@@ -2898,11 +2908,9 @@ function renderSyncLogSection(body, api) {
 // ─── Section: Categories ───────────────────────────────────────────────────
 
 function renderCategoriesSection(body, api) {
-  const toolbar = document.createElement('div');
-  toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('Add Category…', {
-    primary: true,
-    iconHtml: makeIcon(api, 'plus', 12),
+  setPageActions({ primary: {
+    label: 'Add Category…',
+    icon: 'plus',
     onClick: async () => {
       const name = (await api.window?.showInputBox?.({ prompt: 'Category name', placeHolder: 'e.g. Pets' }) || '').trim();
       if (!name) return;
@@ -2917,8 +2925,7 @@ function renderCategoriesSection(body, api) {
         await api.window?.showErrorMessage?.('Add failed: ' + (e instanceof Error ? e.message : String(e)));
       }
     },
-  }));
-  body.appendChild(toolbar);
+  } });
 
   const tableWrap = document.createElement('div');
   body.appendChild(tableWrap);
@@ -2943,26 +2950,29 @@ function renderCategoriesSection(body, api) {
     table.className = 'budget-table';
     table.innerHTML = `
       <thead><tr>
-        <th>Name</th><th>Color</th><th>Kind</th>
-        <th style="text-align:right" title="Used in any month that has no limit of its own in Plan">Default limit</th>
-        <th style="text-align:right">Transactions</th><th>Status</th><th>Actions</th>
+        <th>Name</th><th style="width:64px">Color</th><th style="width:170px">Kind</th>
+        <th style="text-align:right;width:130px" title="Used in any month that has no limit of its own in Plan">Default limit</th>
+        <th style="text-align:right;width:110px">Transactions</th><th style="width:48px"><span class="budget-sr">Actions</span></th>
       </tr></thead>`;
     const tbody = document.createElement('tbody');
     for (const r of rows) {
       const tr = document.createElement('tr');
+      if (r.archived) tr.className = 'is-archived';
 
       // Name (click to rename)
       const tdName = document.createElement('td');
       const swatch = document.createElement('span'); swatch.className = 'budget-cat-swatch'; swatch.style.background = r.color || '#888';
       const nameSpan = document.createElement('span'); nameSpan.textContent = r.name;
       tdName.appendChild(swatch); tdName.appendChild(nameSpan);
+      if (r.archived) { const a = document.createElement('span'); a.className = 'budget-ov-faint'; a.textContent = ' · archived'; tdName.appendChild(a); }
       tr.appendChild(tdName);
 
       // Color
       const tdColor = document.createElement('td');
       const colorInput = document.createElement('input');
       colorInput.type = 'color'; colorInput.value = r.color || '#94a3b8';
-      colorInput.style.width = '32px'; colorInput.style.height = '20px'; colorInput.style.border = 'none'; colorInput.style.background = 'transparent'; colorInput.style.cursor = 'pointer';
+      colorInput.className = 'budget-color';
+      colorInput.title = 'Colour';
       colorInput.addEventListener('change', async () => {
         try { await db.run(`UPDATE categories SET color=? WHERE id=?`, [colorInput.value, r.id]); swatch.style.background = colorInput.value; }
         catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
@@ -2983,9 +2993,8 @@ function renderCategoriesSection(body, api) {
       const tdLimit = document.createElement('td'); tdLimit.className = 'budget-amount';
       const limitInput = document.createElement('input');
       limitInput.type = 'number'; limitInput.step = '1'; limitInput.min = '0';
-      limitInput.className = 'budget-input';
-      limitInput.style.width = '90px'; limitInput.style.textAlign = 'right';
-      limitInput.placeholder = '—';
+      limitInput.className = 'budget-input budget-cat-limit';
+      limitInput.placeholder = 'No limit';
       limitInput.value = r.monthly_limit_cents != null ? String(Math.round(r.monthly_limit_cents) / 100) : '';
       limitInput.addEventListener('change', async () => {
         const v = limitInput.value.trim();
@@ -3001,27 +3010,23 @@ function renderCategoriesSection(body, api) {
       const tdTx = document.createElement('td'); tdTx.className = 'budget-amount'; tdTx.textContent = String(r.tx_count || 0);
       tr.appendChild(tdTx);
 
-      // Status pill
-      const tdStat = document.createElement('td');
-      tdStat.innerHTML = r.archived ? '<span class="budget-pill hidden">Archived</span>' : '<span class="budget-pill confirmed">Active</span>';
-      tr.appendChild(tdStat);
-
-      // Actions
-      const tdAct = document.createElement('td'); tdAct.style.display = 'flex'; tdAct.style.gap = '4px';
-      tdAct.appendChild(makeButton('Rename…', {
-        onClick: async () => {
+      // Actions: one ⋯ per row, as on Merchants and Rules. (A cell made
+      // display:flex stops being a table cell and pulls every column out of
+      // line with its heading.)
+      const tdAct = document.createElement('td'); tdAct.className = 'budget-cell-more';
+      const moreBtn = api.ui.createIconButton(tdAct, { icon: 'ellipsis', title: 'Category Actions', size: 'sm' });
+      moreBtn.addEventListener('click', () => api.ui.showContextMenu(moreBtn, [
+        { label: 'Rename…', onSelect: async () => {
           const next = (await api.window?.showInputBox?.({ prompt: 'New name', value: r.name }) || '').trim();
           if (!next || next === r.name) return;
           try { await db.run(`UPDATE categories SET name=? WHERE id=?`, [next, r.id]); notifyLedgerChanged(); }
           catch (e) { await api.window?.showErrorMessage?.('Rename failed: ' + (e instanceof Error ? e.message : String(e))); }
-        },
-      }));
-      tdAct.appendChild(makeButton(r.archived ? 'Unarchive' : 'Archive', {
-        onClick: async () => {
+        } },
+        { label: r.archived ? 'Unarchive' : 'Archive', onSelect: async () => {
           try { await db.run(`UPDATE categories SET archived=? WHERE id=?`, [r.archived ? 0 : 1, r.id]); notifyLedgerChanged(); }
           catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
-        },
-      }));
+        } },
+      ]));
       tr.appendChild(tdAct);
 
       tbody.appendChild(tr);
@@ -3247,7 +3252,7 @@ function drawLeftCard(col, data) {
   what.textContent = data.limitCents > 0
     ? (data.leftCents >= 0 ? `left to spend, of ${fmtMoney(data.limitCents)} planned` : `over the ${fmtMoney(data.limitCents)} planned`)
     : 'spent so far';
-  if (data.limitCents <= 0) big.textContent = fmtMoney(data.spentCents);
+  if (data.limitCents <= 0) big.textContent = fmtMoney(data.allSpentCents);
   top.append(big, what);
   card.appendChild(top);
 
@@ -3306,17 +3311,21 @@ function drawFacts(col, data) {
   card.className = 'budget-ov-card budget-ov-facts';
   fact(card, 'Income', fmtMoney(data.incomeCents),
     data.incomeExpectedCents > 0 ? `of about ${fmtMoney(data.incomeExpectedCents)} in a usual month` : 'this month');
-  const toCome = data.billsToComeCents;
-  fact(card, 'Bills', `${fmtMoney(data.billsPaidCents)} paid`, toCome > 0 ? `${fmtMoney(toCome)} still to come` : 'nothing more due this month');
+  const toCome = data.allBillsToComeCents;
+  fact(card, 'Bills', `${fmtMoney(data.allBillsPaidCents)} paid`, toCome > 0 ? `${fmtMoney(toCome)} still to come` : 'nothing more due this month');
   fact(card, 'Goals', data.goals.tgt > 0 ? `${Math.round((data.goals.cur / data.goals.tgt) * 100)}%` : 'None yet',
     data.goals.tgt > 0 ? `${fmtMoney(data.goals.cur)} of ${fmtMoney(data.goals.tgt)} across ${data.goals.n}` : 'add one in Net Worth and Goals');
   col.appendChild(card);
 }
 
+// Every category with a limit or with spending this month. A limited one fills
+// toward its limit; one without a limit is drawn against the month's largest
+// category, in its own colour, faintly, and says it has no limit.
 function drawCategories(col, data, api) {
-  const rows = data.categories.filter(c => (Number(c.effective_limit_cents) || 0) > 0)
-    .sort((a, b) => b.pct - a.pct);
-  if (!rows.length) return;
+  const rows = data.categories
+    .filter(c => (Number(c.effective_limit_cents) || 0) > 0 || (Number(c.spent_cents) || 0) > 0)
+    .sort((a, b) => (Number(b.spent_cents) || 0) - (Number(a.spent_cents) || 0));
+  const biggest = Math.max(1, ...rows.map(c => Number(c.spent_cents) || 0));
   const card = document.createElement('div');
   card.className = 'budget-ov-card';
   const head = document.createElement('div');
@@ -3333,13 +3342,14 @@ function drawCategories(col, data, api) {
     const dot = document.createElement('span'); dot.className = 'budget-dot'; dot.style.background = c.color || 'var(--px-text-faint)';
     const name = document.createElement('span'); name.className = 'budget-ov-cat-name'; name.textContent = c.name;
     const bar = document.createElement('span'); bar.className = 'budget-ov-bar';
-    const fill = document.createElement('span'); fill.className = 'budget-ov-fill' + (c.status === 'over' ? ' is-over' : '');
-    fill.style.width = `${Math.min(100, Math.round(c.pct * 100))}%`;
+    const limited = (Number(c.effective_limit_cents) || 0) > 0;
+    const fill = document.createElement('span'); fill.className = 'budget-ov-fill' + (c.status === 'over' ? ' is-over' : '') + (limited ? '' : ' is-unplanned');
+    fill.style.width = `${Math.min(100, Math.round((limited ? c.pct : (Number(c.spent_cents) || 0) / biggest) * 100))}%`;
     fill.style.background = c.status === 'over' ? '' : (c.color || '');
     bar.appendChild(fill);
     const amt = document.createElement('span'); amt.className = 'budget-ov-cat-amt budget-num';
     const sp = document.createElement('strong'); sp.textContent = fmtMoney(c.spent_cents);
-    const of = document.createElement('span'); of.className = 'budget-ov-faint'; of.textContent = ` of ${fmtMoney(c.effective_limit_cents)}`;
+    const of = document.createElement('span'); of.className = 'budget-ov-faint'; of.textContent = limited ? ` of ${fmtMoney(c.effective_limit_cents)}` : ' · no limit';
     amt.append(sp, of);
     row.append(dot, name, bar, amt);
     row.addEventListener('click', () => {
@@ -3347,6 +3357,10 @@ function drawCategories(col, data, api) {
       openBudgetSection(api, 'transactions');
     });
     card.appendChild(row);
+  }
+  if (!rows.length) {
+    const none = document.createElement('div'); none.className = 'budget-ov-faint'; none.textContent = 'Nothing spent yet this month.';
+    card.appendChild(none);
   }
   col.appendChild(card);
 }
@@ -3611,8 +3625,8 @@ async function openManualBalanceEditor(api, opts = {}) {
     const delBtn = makeButton('Delete', { onClick: async () => {
       if (!armed) {
         armed = true; delBtn.querySelector('span:last-child').textContent = 'Click again to delete';
-        delBtn.classList.add('budget-btn-danger');
-        armTimer = setTimeout(() => { armed = false; delBtn.querySelector('span:last-child').textContent = 'Delete'; delBtn.classList.remove('budget-btn-danger'); }, 3000);
+        delBtn.classList.add('px-btn--danger');
+        armTimer = setTimeout(() => { armed = false; delBtn.querySelector('span:last-child').textContent = 'Delete'; delBtn.classList.remove('px-btn--danger'); }, 3000);
         return;
       }
       if (armTimer) clearTimeout(armTimer);
@@ -3655,17 +3669,12 @@ async function openManualBalanceEditor(api, opts = {}) {
 
 // ─── Section: Net Worth (accounts + manual holdings) ───────────────────────
 
-function renderAccountsSection(body, api) {
-  const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('Add Asset or Debt…', {
-    iconHtml: makeIcon(api, 'plus', 12),
-    onClick: () => void openManualBalanceEditor(api, { onSaved: refresh }),
-  }));
-  body.appendChild(toolbar);
+function renderAccountsSection(body, api, opts = {}) {
+  if (opts.actions) opts.actions.addHolding = () => void openManualBalanceEditor(api, { onSaved: refresh });
 
   const headEl = document.createElement('div'); headEl.className = 'budget-networth-head'; body.appendChild(headEl);
   const groupsEl = document.createElement('div'); groupsEl.className = 'budget-nw-groups'; body.appendChild(groupsEl);
-  const mgmtEl = document.createElement('div'); mgmtEl.className = 'budget-section'; body.appendChild(mgmtEl);
+  const mgmtEl = document.createElement('div'); mgmtEl.className = 'budget-section'; (opts.manageHost || body).appendChild(mgmtEl);
 
   let alive = true;
   async function refresh() {
@@ -3731,7 +3740,7 @@ function renderAccountsSection(body, api) {
     headEl.appendChild(sub);
 
     if (acctRows.length === 0 && manualRows.length === 0) {
-      groupsEl.appendChild(emptyState('No accounts or holdings yet. Run a sync to import account balances, or add an asset / liability manually.'));
+      groupsEl.appendChild(emptyState('No accounts or holdings yet. A sync brings in balances from your bank emails; Add Asset or Debt… adds one by hand.'));
       return;
     }
 
@@ -3771,15 +3780,17 @@ function renderAccountsSection(body, api) {
          ORDER BY a.archived ASC, a.kind ASC, a.last_four ASC`);
     } catch { allRows = []; }
     if (allRows.length) {
-      const h = document.createElement('div'); h.className = 'budget-nw-mgmt-head'; h.textContent = 'Synced accounts'; mgmtEl.appendChild(h);
-      const table = document.createElement('table'); table.className = 'budget-table';
-      table.innerHTML = `<thead><tr><th>Name</th><th>Kind</th><th>Last 4</th><th>Transactions</th><th style="text-align:right">Latest balance</th><th>As of</th><th>Actions</th></tr></thead>`;
+      api.ui.createSectionLabel(mgmtEl, 'Synced accounts');
+      const table = document.createElement('table'); table.className = 'budget-table budget-accounts-table';
+      table.innerHTML = `<thead><tr><th>Name</th><th style="width:170px">Kind</th><th style="width:80px">Last 4</th><th style="text-align:right;width:110px">Transactions</th><th style="text-align:right;width:140px">Latest balance</th><th style="width:90px">As of</th><th style="width:48px"><span class="budget-sr">Actions</span></th></tr></thead>`;
       const tb = document.createElement('tbody');
       for (const a of allRows) {
         const tr = document.createElement('tr');
+        if (a.archived) tr.className = 'is-archived';
         const tdName = document.createElement('td');
-        const inp = document.createElement('input'); inp.type = 'text'; inp.value = a.display_name || ''; inp.className = 'budget-input';
-        inp.style.width = '160px';
+        const inp = document.createElement('input'); inp.type = 'text'; inp.value = a.display_name || ''; inp.className = 'budget-input budget-inline-input';
+        inp.placeholder = defaultAccountName(a.kind, a.last_four);
+        inp.title = 'Rename';
         inp.addEventListener('change', async () => {
           try { await db.run('UPDATE accounts SET display_name=?, updated_at=? WHERE id=?', [inp.value || null, new Date().toISOString(), a.id]); }
           catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
@@ -3798,13 +3809,14 @@ function renderAccountsSection(body, api) {
         const tdTx = document.createElement('td'); tdTx.className = 'budget-amount'; tdTx.textContent = String(a.tx_count || 0); tr.appendChild(tdTx);
         const tdBal = document.createElement('td'); tdBal.className = 'budget-amount'; tdBal.textContent = a.bal != null ? fmtMoney(a.bal) : '—'; tr.appendChild(tdBal);
         const tdDate = document.createElement('td'); tdDate.textContent = a.bal_date ? shortDate(a.bal_date) : '—'; tr.appendChild(tdDate);
-        const tdAct = document.createElement('td'); tdAct.style.display = 'flex'; tdAct.style.gap = '4px';
-        tdAct.appendChild(makeButton(a.archived ? 'Unarchive' : 'Archive', {
-          onClick: async () => {
+        const tdAct = document.createElement('td'); tdAct.className = 'budget-cell-more';
+        const moreBtn = api.ui.createIconButton(tdAct, { icon: 'ellipsis', title: 'Account Actions', size: 'sm' });
+        moreBtn.addEventListener('click', () => api.ui.showContextMenu(moreBtn, [
+          { label: a.archived ? 'Unarchive' : 'Archive', onSelect: async () => {
             try { await db.run('UPDATE accounts SET archived=?, updated_at=? WHERE id=?', [a.archived ? 0 : 1, new Date().toISOString(), a.id]); await refresh(); }
             catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
-          },
-        }));
+          } },
+        ]));
         tr.appendChild(tdAct); tb.appendChild(tr);
       }
       table.appendChild(tb); mgmtEl.appendChild(table);
@@ -3939,7 +3951,7 @@ async function openGoalEditor(api, opts = {}) {
   if (!isCreate) {
     let armed = false, armTimer = null;
     const delBtn = makeButton('Delete', { onClick: async () => {
-      if (!armed) { armed = true; delBtn.querySelector('span:last-child').textContent = 'Click again to delete'; delBtn.classList.add('budget-btn-danger'); armTimer = setTimeout(() => { armed = false; delBtn.querySelector('span:last-child').textContent = 'Delete'; delBtn.classList.remove('budget-btn-danger'); }, 3000); return; }
+      if (!armed) { armed = true; delBtn.querySelector('span:last-child').textContent = 'Click again to delete'; delBtn.classList.add('px-btn--danger'); armTimer = setTimeout(() => { armed = false; delBtn.querySelector('span:last-child').textContent = 'Delete'; delBtn.classList.remove('px-btn--danger'); }, 3000); return; }
       if (armTimer) clearTimeout(armTimer);
       try { await db.run('DELETE FROM goals WHERE id=?', [opts.id]); close(); opts.onSaved?.(); }
       catch (e) { await api.window?.showErrorMessage?.('Delete failed: ' + (e instanceof Error ? e.message : String(e))); }
@@ -3970,11 +3982,9 @@ async function openGoalEditor(api, opts = {}) {
   nameInput.focus();
 }
 
-function renderGoalsSection(body, api) {
-  const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('New Goal…', { iconHtml: makeIcon(api, 'plus', 12), onClick: () => void openGoalEditor(api, { onSaved: refresh }) }));
-  const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
-  body.appendChild(toolbar);
+function renderGoalsSection(body, api, opts = {}) {
+  if (opts.actions) opts.actions.newGoal = () => void openGoalEditor(api, { onSaved: refresh });
+  api.ui.createSectionLabel(body, 'Goals');
 
   const headEl = document.createElement('div'); headEl.className = 'budget-section'; body.appendChild(headEl);
   const listEl = document.createElement('div'); listEl.className = 'budget-goals'; body.appendChild(listEl);
@@ -3988,7 +3998,7 @@ function renderGoalsSection(body, api) {
       estimateMonthlySurplus(),
     ]);
     if (!goals.length) {
-      listEl.appendChild(emptyState('No goals yet. Create a savings target (emergency fund, a trip) or a debt-payoff goal to track progress and a projected finish date.'));
+      listEl.appendChild(emptyState('No goals yet. New Goal… sets a savings target or a debt to pay off, and says when you would get there.'));
       return;
     }
     const totalTarget = goals.reduce((s, g) => s + (Number(g.target_cents) || 0), 0);
@@ -4021,8 +4031,10 @@ function renderCashFlowSection(body, api) {
   body.appendChild(toolbar);
 
   const cards = document.createElement('div'); cards.className = 'budget-cards'; body.appendChild(cards);
-  const chartWrap = document.createElement('div'); chartWrap.className = 'budget-section'; body.appendChild(chartWrap);
-  const savingsWrap = document.createElement('div'); savingsWrap.className = 'budget-section'; body.appendChild(savingsWrap);
+  // The two charts side by side, each a card that scales its chart to fit.
+  const charts = document.createElement('div'); charts.className = 'budget-chart-pair'; body.appendChild(charts);
+  const chartWrap = document.createElement('div'); chartWrap.className = 'budget-section budget-chart-card'; charts.appendChild(chartWrap);
+  const savingsWrap = document.createElement('div'); savingsWrap.className = 'budget-section budget-chart-card'; charts.appendChild(savingsWrap);
   const tableWrap = document.createElement('div'); body.appendChild(tableWrap);
 
   let alive = true;
@@ -4078,7 +4090,7 @@ function renderCashFlowSection(body, api) {
     chartWrap.appendChild(legend);
 
     const h2 = document.createElement('h3'); h2.textContent = 'Net Savings'; savingsWrap.appendChild(h2);
-    savingsWrap.appendChild(buildLine(savingsPoints, { width: 720, height: 140 }));
+    savingsWrap.appendChild(buildLine(savingsPoints, { width: 720, height: 220 }));
 
     // Table
     const table = document.createElement('table'); table.className = 'budget-table';
@@ -4241,12 +4253,16 @@ function goalMonthlyNeed(goal, nowMs = Date.now()) {
 // committed is the larger of the two, and what has no job yet is income
 // less that and less the goal needs: bills + everyday + goals + the rest
 // always add up to the income.
-function computeAllocation({ incomeCents, limitCents, billsCents, goalsCents }) {
+// `billsInLimitsCents` is the part of the bills that sits in a category with a
+// limit (default: all of them); a bill in a category without a limit is
+// committed but takes nothing from the limits.
+function computeAllocation({ incomeCents, limitCents, billsCents, goalsCents, billsInLimitsCents }) {
   const income = Math.max(0, Number(incomeCents) || 0);
   const limits = Math.max(0, Number(limitCents) || 0);
   const bills = Math.max(0, Number(billsCents) || 0);
   const goals = Math.max(0, Number(goalsCents) || 0);
-  const everyday = Math.max(0, limits - bills);
+  const inLimits = billsInLimitsCents == null ? bills : Math.max(0, Math.min(bills, Number(billsInLimitsCents) || 0));
+  const everyday = Math.max(0, limits - inLimits);
   return {
     incomeCents: income,
     billsCents: bills,
@@ -4357,7 +4373,9 @@ function renderBudgetsSection(body, api) {
     const billsCents = plan.bills.reduce((a, b) => a + (b.paid ? b.paidCents : b.toComeCents), 0);
     const needs = goals.map(g => ({ g, need: goalMonthlyNeed(g) }));
     const goalsCents = needs.reduce((a, x) => a + (x.need || 0), 0);
-    const alloc = computeAllocation({ incomeCents: income, limitCents: plan.limitCents, billsCents, goalsCents });
+    const limited = new Set(plan.categories.filter(r => (Number(r.effective_limit_cents) || 0) > 0).map(r => r.id));
+    const billsInLimitsCents = plan.bills.filter(b => limited.has(b.categoryId)).reduce((a, b) => a + (b.paid ? b.paidCents : b.toComeCents), 0);
+    const alloc = computeAllocation({ incomeCents: income, limitCents: plan.limitCents, billsCents, goalsCents, billsInLimitsCents });
 
     root.replaceChildren();
 
@@ -4390,7 +4408,8 @@ function renderBudgetsSection(body, api) {
       const how = document.createElement('div');
       how.className = 'budget-ov-note';
       how.textContent = `${fmtMoney(plan.limitCents)} in limits, less ${fmtMoney(plan.spentCents)} spent`
-        + (plan.billsToComeCents > 0 ? ` and ${fmtMoney(plan.billsToComeCents)} of bills still to come.` : '.');
+        + (plan.billsToComeCents > 0 ? ` and ${fmtMoney(plan.billsToComeCents)} of bills still to come.` : '.')
+        + (plan.unplannedSpentCents > 0 ? ` ${fmtMoney(plan.unplannedSpentCents)} went to categories without a limit.` : '');
       now.append(big, how);
       root.appendChild(now);
     }
@@ -4477,7 +4496,6 @@ function renderBudgetsSection(body, api) {
       if (inBills) parts.push(`includes ${fmtMoney(inBills)} of bills`);
       const h = sugg.hist.get(r.id) || { m1: 0, m2: 0, m3: 0 };
       const suggested = suggestLimitCents(h.m1, h.m2, h.m3, sugg.recurring.get(r.id) || 0);
-      if (suggested > 0) parts.push(`suggested ${fmtMoney(suggested)}`);
       sub.textContent = parts.join(' · ');
       if (parts.length) nameCol.appendChild(sub);
 
@@ -4496,7 +4514,7 @@ function renderBudgetsSection(body, api) {
       const useCol = document.createElement('div');
       useCol.className = 'budget-pl-use';
       if (suggested > 0 && suggested !== r.effective_limit_cents) {
-        api.ui.createButton(useCol, { label: 'Use Suggested', kind: 'ghost', size: 'sm', title: `Set ${fmtMoney(suggested)}`, onClick: async () => {
+        api.ui.createButton(useCol, { label: `Use ${fmtMoney(suggested)}`, kind: 'ghost', size: 'sm', title: `Set the limit to ${fmtMoney(suggested)}, from the last three months`, onClick: async () => {
           try { await writeLimit(r.id, suggested); notifyLedgerChanged(); }
           catch (e) { await api.window?.showErrorMessage?.('The limit was not saved: ' + (e instanceof Error ? e.message : String(e))); }
         } });
@@ -4572,8 +4590,11 @@ function renderRecurringSection(body, api) {
   let showCancelled = false;
 
   const toolbar = document.createElement('div'); toolbar.className = 'budget-toolbar';
-  toolbar.appendChild(makeButton('Detect Now', {
-    primary: true,
+  api.ui.createFilterChip(toolbar, { label: 'Show Cancelled', pressed: false, onToggle: (on) => { showCancelled = on; void refresh(); } });
+  const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
+  toolbar.appendChild(makeButton('Detect Bills', {
+    icon: 'refresh-cw',
+    title: 'Look through the ledger for charges that repeat',
     onClick: async () => {
       try {
         const n = await detectRecurring(api);
@@ -4584,10 +4605,6 @@ function renderRecurringSection(body, api) {
       }
     },
   }));
-  const cancelToggle = makeButton('Show Cancelled', { onClick: () => { showCancelled = !showCancelled; cancelToggle.setAttribute('aria-pressed', String(showCancelled)); void refresh(); } });
-  cancelToggle.setAttribute('aria-pressed', 'false');
-  toolbar.appendChild(cancelToggle);
-  const spacer = document.createElement('div'); spacer.className = 'spacer'; toolbar.appendChild(spacer);
   body.appendChild(toolbar);
 
   const summary = document.createElement('div'); summary.className = 'budget-cards'; body.appendChild(summary);
@@ -4638,7 +4655,7 @@ function renderRecurringSection(body, api) {
     summary.appendChild(makeCard('Due in 30 days', String(next30.length), next30.length ? `~${fmtMoney(Math.round(next30Total))} upcoming` : 'Nothing due soon'));
 
     if (all.length === 0) {
-      listWrap.appendChild(emptyState('No bills found yet. Sync more transactions, then choose Detect Now.'));
+      listWrap.appendChild(emptyState('No bills found yet. Sync more transactions, then choose Detect Bills.'));
       return;
     }
 
@@ -4722,16 +4739,11 @@ function renderRulesSection(body, api) {
   root.className = 'budget-ru';
   body.appendChild(root);
 
-  const top = document.createElement('div');
-  top.className = 'budget-ru-top';
+  setPageActions({ primary: { label: 'New Rule…', icon: 'plus', onClick: () => showEditor(null) } });
   const help = document.createElement('p');
   help.className = 'budget-ov-note budget-ru-help';
   help.textContent = 'A rule decides the category before the AI is asked. Merchants without a rule are left to the AI; three matching AI answers make a learned rule, as long as none disagree.';
-  top.appendChild(help);
-  const newHost = document.createElement('div');
-  api.ui.createButton(newHost, { label: 'New Rule…', kind: 'primary', icon: 'plus', onClick: () => showEditor(null) });
-  top.appendChild(newHost);
-  root.appendChild(top);
+  root.appendChild(help);
 
   const editorWrap = document.createElement('div');
   root.appendChild(editorWrap);
@@ -6325,6 +6337,29 @@ async function readMonthBills(range, todayIso) {
   return out;
 }
 
+// What the month's plan is measured on. Only categories with a limit are
+// planned: spending and bills in a category without one are not counted
+// against the limits (a mortgage in an unlimited Housing must not put the
+// month "over plan"). Totals across every category are kept beside them for
+// what the pages report as spent and paid.
+function planScope(statuses, bills, allSpentCents) {
+  const limited = new Set(statuses.filter(r => (Number(r.effective_limit_cents) || 0) > 0).map(r => r.id));
+  const inPlan = bills.filter(b => limited.has(b.categoryId));
+  const sum = (xs, f) => xs.reduce((a, x) => a + (Number(f(x)) || 0), 0);
+  const limitCents = sum(statuses.filter(r => limited.has(r.id)), r => r.effective_limit_cents);
+  const spentCents = sum(statuses.filter(r => limited.has(r.id)), r => r.spent_cents);
+  return {
+    limitCents,
+    spentCents,
+    billsPaidCents: sum(inPlan, b => b.paidCents),
+    billsToComeCents: sum(inPlan, b => b.toComeCents),
+    allSpentCents: Math.max(0, Number(allSpentCents) || 0),
+    unplannedSpentCents: Math.max(0, (Number(allSpentCents) || 0) - spentCents),
+    allBillsPaidCents: sum(bills, b => b.paidCents),
+    allBillsToComeCents: sum(bills, b => b.toComeCents),
+  };
+}
+
 async function readMonthPlan(monthKey) {
   const range = monthRange(monthKey);
   const now = ctParts(new Date());
@@ -6333,21 +6368,14 @@ async function readMonthPlan(monthKey) {
   const day = range.key === nowKey ? now.d : range.key < nowKey ? daysInMonth : 0;
   const todayIso = range.key === nowKey ? `${nowKey}-${String(now.d).padStart(2, '0')}` : null;
   const statuses = await evalBudgetStatus(range.key);
-  const limitCents = statuses.reduce((a, r) => a + (Number(r.effective_limit_cents) || 0), 0);
   const spentRow = await db.get(
     `SELECT COALESCE(SUM(amount_cents),0) AS cents FROM transactions
       WHERE status='confirmed' AND tx_type IN ('purchase','fee') AND transaction_date >= ? AND transaction_date <= ?`,
     [range.start, range.end]);
   const bills = await readMonthBills(range, todayIso);
-  const plan = computeMonthPlan({
-    limitCents,
-    spentCents: Number(spentRow?.cents) || 0,
-    billsPaidCents: bills.reduce((a, b) => a + b.paidCents, 0),
-    billsToComeCents: bills.reduce((a, b) => a + b.toComeCents, 0),
-    daysInMonth,
-    dayOfMonth: day,
-  });
-  return { ...plan, range, categories: statuses, bills };
+  const scope = planScope(statuses, bills, Number(spentRow?.cents) || 0);
+  const plan = computeMonthPlan({ ...scope, daysInMonth, dayOfMonth: day });
+  return { ...plan, ...scope, range, categories: statuses, bills };
 }
 
 async function readMonthGlance() {
@@ -8394,6 +8422,7 @@ function renderPlanSection(body, api, view) {
   const bar = document.createElement('div');
   bar.className = 'budget-plan-switch';
   const content = document.createElement('div');
+  content.className = 'budget-plan-view';
   body.append(bar, content);
   let cleanup = null;
   function mount(v) {
@@ -9036,6 +9065,7 @@ export async function deactivate() {
 // imported by vitest. The blob-URL loader ignores extra named exports.
 export const __testables = {
   computeMonthPlan,
+  planScope,
   reviewReason,
   reviewDefaultVerdict,
   reviewRuleFor,

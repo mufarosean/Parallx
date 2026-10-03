@@ -22,6 +22,12 @@ describe('budget plan allocation', () => {
     expect(ahead.billsCents + ahead.everydayCents + ahead.goalsCents + ahead.unassignedCents).toBe(825000);
   });
 
+  it('a bill in a category without a limit is committed but takes nothing from the limits', () => {
+    const a = computeAllocation({ incomeCents: 540000, limitCents: 134000, billsCents: 208436, goalsCents: 0, billsInLimitsCents: 0 });
+    expect(a.everydayCents).toBe(134000);
+    expect(a.unassignedCents).toBe(540000 - 208436 - 134000);
+  });
+
   it('counts each time a bill falls due in a month ahead', () => {
     expect(billDueCount('2026-10-12', 'monthly', nov)).toBe(1);
     expect(billDueCount('2026-10-05', 'weekly', nov)).toBe(5);   // Nov 2, 9, 16, 23, 30

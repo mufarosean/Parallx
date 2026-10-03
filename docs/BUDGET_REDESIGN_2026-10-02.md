@@ -110,3 +110,51 @@ expected income) and a limit change flowing to the sidebar.
 - Remember for fees (the sync applies rules to purchases only).
 - An editable monthly amount per goal.
 - A non-modal toast with an action in the kit; Review has its own bar.
+
+## Layout pass, 2026-10-03
+
+Seen in the app (`tests/ui-polish/budget-pages.mjs`, dark and light, 1600
+and 1100 wide), after the owner found the pages squeezed and lopsided:
+
+- **One page column.** Every page had its own width (920, 980, 1180 or the
+  whole pane), all left-aligned, while the header's ⋯ sat at the pane's far
+  edge. The header and every page now share one centred 1180px column
+  (`.budget-page`), as Planner's Today does.
+- **Actions in the header.** Add Transaction…, New Rule…, Add Category…, Add
+  Asset or Debt… and New Goal… were buttons floating in the page body; they
+  are the kit page header's primary and secondary actions
+  (`setPageActions`).
+- **The older pages on the same system.** Bills, Trends, Reconcile,
+  Categories, Sync Log and Import / Export drew with the pre-redesign
+  classes: VS Code colours, 11px tables with zebra rows, square "ledger"
+  cards, toolbars touching the cards under them. Those classes now use the
+  `--px-*` tokens, 40px rows and the Overview's card; `makeButton` is the
+  kit's button, so there is one button everywhere and no second blue
+  primary (Detect Bills is secondary; Show Cancelled is a filter chip). The
+  Plan views get the page's vertical rhythm. Trends' two charts sit side by
+  side in cards and scale to them.
+- **Categories' columns line up.** Its Actions cell was `display: flex`,
+  which stops a cell being a table cell and pulled every column out from
+  under its heading. Rename and Archive moved to a ⋯ menu per row, as on
+  Merchants and Rules; the "Active" pill went (archived rows say so).
+- **Net Worth and Goals** puts holdings and goals side by side, the synced
+  accounts below as their own table with names you retype in place and a ⋯
+  for Archive; on a narrow pane Transactions and As of step aside.
+- **Overview** lists every category with spending this month, not only the
+  ones with a limit, so its left column is not empty before limits are set;
+  a category without a limit is drawn faintly against the month's largest.
+- **Plan**: the suggestion button says the amount (Use $520.00).
+- Numbers right-align in every table (a `.budget-table td` rule was
+  outranking `.budget-amount`).
+
+**A numbers fix found on the way.** The month counted spending and bills in
+every category against the limits of the categories that have one, so a
+mortgage paid from an unlimited Housing put the month "$850 over plan" and
+Everyday at $0. `planScope()` now measures the plan on limited categories
+only, keeps all-category totals for what Overview reports as spent and
+paid, and Plan says how much went to categories without a limit. Tested in
+`budgetMonthPlan` and `budgetPlanAllocation`.
+
+Dropdowns were checked open (Transactions' accounts, Trends' range,
+Net Worth's kinds, the transaction drawer's fields): they are the core
+`.ui-dropdown` throughout, mounted in the body layer, and none is clipped.

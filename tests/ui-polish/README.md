@@ -105,3 +105,14 @@ and detached requests, and model/storage failures. The model bridge test uses
 a deterministic reply to verify grounded context and Markdown/LaTeX preservation;
 it is not a live model quality evaluation. The Electron probe above verifies
 the actual rendered Markdown and KaTeX and persistence through grade/Undo.
+
+## Budget pages
+
+Run `node scripts/build.mjs`, then `node tests/ui-polish/budget-pages.mjs`
+(under `xvfb-run -a` on Linux without a display). It launches the built app
+with a new profile and workspace under `test-results/ui-polish/`, installs
+`ext/budget`, seeds a synthetic ledger (three accounts, July to today,
+bills, rules, a row to review, limits for this month) and screenshots every
+Budget page and Plan view, plus the accounts and kind dropdowns open and the
+transaction drawer. `--light`, `--width=1100` and `--only=overview,plan`
+narrow a run.
