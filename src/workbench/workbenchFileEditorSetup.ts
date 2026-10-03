@@ -277,6 +277,14 @@ function _initFileEditorResolver(
     let uri: URI;
     if (uriString.startsWith('file://') || uriString.startsWith('file:///')) {
       uri = URI.parse(uriString);
+    } else if (!/^([/\\]|[A-Za-z]:[/\\])/.test(uriString)) {
+      // A workspace-relative path ('.parallx/memory/MEMORY.md'): resolve it
+      // against the first workspace folder. URI.file() would root it at '/',
+      // which the workspace boundary then refuses.
+      const workspaceService = services.has(IWorkspaceService) ? services.get(IWorkspaceService) : undefined;
+      const folder = workspaceService?.folders?.[0];
+      const folderUri = folder ? (typeof folder.uri === 'string' ? URI.parse(folder.uri) : folder.uri) : undefined;
+      uri = folderUri ? folderUri.joinPath(...uriString.split(/[/\\]+/).filter(Boolean)) : URI.file(uriString);
     } else {
       uri = URI.file(uriString);
     }

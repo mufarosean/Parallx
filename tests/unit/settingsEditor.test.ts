@@ -5,7 +5,7 @@
 // Verifies search filtering, type-driven control rendering, and live apply.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SettingsEditor } from '../../src/built-in/settings/settingsEditor';
+import { SettingsEditor, enumOptionLabel, humanizeSettingKey } from '../../src/built-in/settings/settingsEditor';
 import { SettingsRegistryService } from '../../src/services/settingsRegistryService';
 import { settingsPanelRegistry } from '../../src/services/settingsPanelRegistry';
 import type { IStorage } from '../../src/platform/storage';
@@ -176,8 +176,26 @@ describe('SettingsEditor — D2', () => {
     canvasItem.click();
     const row = document.querySelector<HTMLElement>('[data-key="canvas.propertyBar.collapsed"]')!;
     expect(row.querySelector('.settings-editor__row-title')?.textContent).toBe('Property Bar › Collapsed');
-    expect(row.querySelector('.settings-editor__row-key')?.textContent).toBe('canvas.propertyBar.collapsed');
+    // Browsing: the key is the title's tooltip, not a line on the row.
+    expect(row.querySelector('.settings-editor__row-key')).toBeNull();
+    expect(row.querySelector<HTMLElement>('.settings-editor__row-title')?.title).toBe('canvas.propertyBar.collapsed');
     editor.dispose();
+  });
+
+  it('shows the raw key while searching, since search matches keys', async () => {
+    const { editor } = await setup();
+    const input = document.querySelector<HTMLInputElement>('.settings-editor__search input')!;
+    input.value = 'heartbeat';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    const row = document.querySelector<HTMLElement>('[data-key="autonomy.heartbeat.intervalMs"]')!;
+    expect(row.querySelector('.settings-editor__row-key')?.textContent).toBe('autonomy.heartbeat.intervalMs');
+    editor.dispose();
+  });
+
+  it('enum options read as words, and initialisms stay capitals', () => {
+    expect(enumOptionLabel({}, 'session-allow')).toBe('Session Allow');
+    expect(enumOptionLabel({ enumLabels: { agent: 'Agent mode' } }, 'agent')).toBe('Agent mode');
+    expect(humanizeSettingKey('chat.ollama.baseUrl')).toBe('Ollama › Base URL');
   });
 
   it('filters rows by search text', async () => {
@@ -309,7 +327,7 @@ describe('SettingsEditor — panel absorbs a same-named schema category', () => 
       // The rich panel…
       expect(root.querySelector('.test-panel-marker')).not.toBeNull();
       // …and the raw setting it would otherwise have hidden.
-      expect(root.textContent).toContain('widgets.enabled');
+      expect(root.querySelector('[data-key="widgets.enabled"]')).not.toBeNull();
     } finally {
       reg.dispose();
     }

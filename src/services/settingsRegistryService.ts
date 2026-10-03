@@ -69,6 +69,9 @@ export interface ISettingSchema {
   readonly deprecated?: string;
   /** For type='enum'. Allowed string values. */
   readonly enumValues?: readonly string[];
+  /** For type='enum'. What the dropdown shows for each value (Title Case);
+   *  a value without one is shown humanized, never as its raw id. */
+  readonly enumLabels?: Readonly<Record<string, string>>;
   /** For type='number'. Inclusive bounds. */
   readonly min?: number;
   readonly max?: number;

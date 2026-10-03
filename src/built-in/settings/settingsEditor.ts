@@ -117,12 +117,26 @@ const NAV_DISPLAY_OVERRIDES: Record<string, string> = {
 export function humanizeSettingKey(key: string): string {
   const segs = key.split('.');
   const tail = segs.length > 1 ? segs.slice(1) : segs;
-  return tail
-    .map((s) => s
-      .replace(/[-_]/g, ' ')
-      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-      .replace(/^./, (c) => c.toUpperCase()))
-    .join(' › ');
+  return tail.map(humanizeWords).join(' › ');
+}
+
+/** Words that are initialisms, written as such ("Base Url" → "Base URL"). */
+const INITIALISMS = new Set(['url', 'api', 'ai', 'id', 'mcp', 'ui', 'json', 'csv', 'pdf', 'llm', 'gpu', 'cpu', 'rag']);
+
+function humanizeWords(s: string): string {
+  return s
+    .replace(/[-_]/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => INITIALISMS.has(w.toLowerCase()) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/** The label a dropdown shows for an enum value: the schema's own, else the
+ *  value made readable ('session-allow' → "Session Allow"), never the raw id. */
+export function enumOptionLabel(schema: Pick<ISettingSchema, 'enumLabels'>, value: string): string {
+  return schema.enumLabels?.[value] ?? humanizeWords(value);
 }
 
 /** Optional command runner — registry action rows fire commands when present. */
@@ -512,6 +526,7 @@ export class SettingsEditor extends Disposable {
     const head = $('div.settings-editor__row-head');
     const titleEl = $('span.settings-editor__row-title');
     titleEl.textContent = schema.label ?? humanizeSettingKey(schema.key);
+    titleEl.title = schema.key;
     head.appendChild(titleEl);
 
     const scopeBadge = $('span.settings-editor__row-scope');
@@ -526,9 +541,14 @@ export class SettingsEditor extends Disposable {
 
     row.appendChild(head);
 
-    const keyEl = $('div.settings-editor__row-key');
-    keyEl.textContent = schema.key;
-    row.appendChild(keyEl);
+    // The raw key is an engineering id: it shows while searching (search
+    // matches keys too, so the reader can see why a row matched) and is
+    // otherwise the title's tooltip, not a line on every row.
+    if (this._searchValue) {
+      const keyEl = $('div.settings-editor__row-key');
+      keyEl.textContent = schema.key;
+      row.appendChild(keyEl);
+    }
 
     const desc = $('div.settings-editor__row-desc');
     desc.textContent = schema.description;
@@ -649,7 +669,7 @@ export class SettingsEditor extends Disposable {
       }
       case 'enum': {
         const dropdown = new Dropdown(host, {
-          items: schema.enumValues!.map((v) => ({ value: v, label: v })),
+          items: schema.enumValues!.map((v) => ({ value: v, label: enumOptionLabel(schema, v) })),
           selected: current as string,
           ariaLabel: schema.key,
         });
@@ -692,7 +712,9 @@ export class SettingsEditor extends Disposable {
       }
     }
 
-    // Reset button — applies to every type.
+    // Reset button — only when the value differs from its default; a Reset
+    // on every row says nothing.
+    if (JSON.stringify(current) === JSON.stringify(schema.default)) return;
     const resetBtn = document.createElement('button');
     resetBtn.className = 'settings-editor__reset';
     resetBtn.textContent = 'Reset';

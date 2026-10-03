@@ -133,6 +133,11 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
         if (origin === 'programmatic') return;
         if (COMMAND_NOISE.some((re) => re.test(e.commandId))) return;
         const desc = cmdSvc.getCommand?.(e.commandId);
+        // An extension calling a command with no title is code reading code
+        // (Agents asking parallx.heartbeat.status on every repaint): such
+        // commands are API-only by construction (commandsBridge registers
+        // them untitled), so no person ran them.
+        if (isExtId(origin) && !desc?.title) return;
         const title = desc?.title
           ? (desc.category ? `${desc.category}: ${desc.title}` : desc.title)
           : e.commandId;
