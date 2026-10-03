@@ -38,6 +38,9 @@ let diagnosticsService: InstanceType<typeof import('../../services/diagnosticsSe
 let currentResults: readonly IDiagnosticResult[] = [];
 let renderCallback: (() => void) | undefined;
 let _autoRefreshTimer: ReturnType<typeof setInterval> | undefined;
+/** The panel's container while it is mounted; the live refresh runs only
+ *  while it is on screen. */
+let _viewEl: HTMLElement | undefined;
 
 const AUTO_REFRESH_MS = 30_000; // 30 seconds
 
@@ -81,8 +84,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       renderCallback?.();
     }).catch(() => { /* swallow startup errors */ });
 
-    // Live auto-refresh: re-run checks periodically
+    // Live refresh, only while someone is looking. The checks include a
+    // real embedding request plus model-list and version calls; run every
+    // 30 s forever they kept the embedding model resident and, on a tight
+    // GPU, could push the chat model out. Nothing else reads these results
+    // (chat's /doctor runs its own checks on demand).
     _autoRefreshTimer = setInterval(() => {
+      if (document.hidden || !_viewEl?.isConnected || !_viewEl.checkVisibility?.()) return;
       diagnosticsService?.runChecks().catch(() => {});
     }, AUTO_REFRESH_MS);
   }
@@ -197,6 +205,7 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
 
   // Wire up render callback
   renderCallback = renderResults;
+  _viewEl = container;
 
   // Initial render with any existing results
   renderResults();
@@ -204,6 +213,7 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
   return {
     dispose() {
       renderCallback = undefined;
+      if (_viewEl === container) _viewEl = undefined;
       container.textContent = '';
     },
   };

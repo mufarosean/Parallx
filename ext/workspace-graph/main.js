@@ -241,6 +241,34 @@ let _linkDistances = [];
 /** Reset the simulation temperature so the graph reanimates. */
 function resetSimulation() { _alpha = 1; }
 
+// ── Visibility: the graph works only while someone can see it ──
+// The sidebar view mounts at boot. Its loop used to draw (and reallocate the
+// canvas) 60 times a second forever, and every trigger, including a 30 s
+// timer, re-walked the workspace and re-ran the physics, while the graph sat
+// hidden behind another view. Now a hidden graph sleeps: its loop checks
+// twice a second, and refreshes asked for while no graph is on screen run
+// once, when one comes back.
+const _graphCanvases = new Set();
+let _refreshWhileHidden = false;
+let _requestRefresh = null; // set in activate: the debounced model refresh
+function _isShown(cvs) {
+  if (!cvs || !cvs.isConnected || document.hidden || cvs.clientWidth < 2) return false;
+  return typeof cvs.checkVisibility === 'function' ? cvs.checkVisibility() : true;
+}
+function _anyGraphShown() {
+  for (const c of _graphCanvases) if (_isShown(c)) return true;
+  return false;
+}
+/** Run `loop` on the next frame if `cvs` is on screen, else check again in
+ *  half a second. A refresh skipped while hidden runs on the way back. */
+function _nextFrame(cvs, loop, wasShown) {
+  if (_isShown(cvs)) {
+    if (!wasShown && _refreshWhileHidden && _requestRefresh) { _refreshWhileHidden = false; _requestRefresh(); }
+    return { raf: requestAnimationFrame(loop), timer: null };
+  }
+  return { raf: null, timer: setTimeout(loop, 500) };
+}
+
 // ── Shared graph model: single source of truth for both views ──
 let _editorActive = false; // true when editor pane is open (it drives physics)
 const _model = {
@@ -1183,8 +1211,10 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
   const w = cvs.clientWidth;
   const h = cvs.clientHeight;
   if (w < 2 || h < 2) return;
-  cvs.width = Math.floor(w * dpr);
-  cvs.height = Math.floor(h * dpr);
+  // Resizing a canvas reallocates its backing store; only when it changed.
+  const bw = Math.floor(w * dpr), bh = Math.floor(h * dpr);
+  if (cvs.width !== bw) cvs.width = bw;
+  if (cvs.height !== bh) cvs.height = bh;
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
@@ -1460,6 +1490,7 @@ function createGraphEditor(container, api) {
   const main = _el('div', 'display:flex;flex:1;overflow:hidden;position:relative;');
 
   const cvs = document.createElement('canvas');
+  _graphCanvases.add(cvs);
   cvs.style.cssText = 'flex:1;min-width:0;cursor:grab;';
   const ctx = cvs.getContext('2d');
 
@@ -2507,13 +2538,18 @@ Respond using this exact JSON with no other text before or after it:
   }
 
   // ── Animation Loop ──
+  let shown = false;
+  let sleepTimer = null;
   function _loop() {
     if (disposed) return;
-    if (physicsOn) {
-      physicsTick(m.nodes, m.edges, m.byId);
+    const nowShown = _isShown(cvs);
+    if (nowShown) {
+      if (physicsOn) physicsTick(m.nodes, m.edges, m.byId);
+      drawGraph(ctx, cvs, m.nodes, m.edges, m.byId, view, selected, hovered, showEdges);
     }
-    drawGraph(ctx, cvs, m.nodes, m.edges, m.byId, view, selected, hovered, showEdges);
-    animFrameId = requestAnimationFrame(_loop);
+    const next = _nextFrame(cvs, _loop, shown);
+    shown = nowShown;
+    animFrameId = next.raf; sleepTimer = next.timer;
   }
 
   function _redraw() {
@@ -2588,6 +2624,8 @@ Respond using this exact JSON with no other text before or after it:
       disposed = true;
       _editorActive = false;
       if (animFrameId) cancelAnimationFrame(animFrameId);
+      clearTimeout(sleepTimer);
+      _graphCanvases.delete(cvs);
       if (changePageSub) changePageSub.dispose();
       if (refreshStatusSub) refreshStatusSub.dispose();
       if (refreshCompleteSub) refreshCompleteSub.dispose();
@@ -2632,6 +2670,7 @@ function createGraphSidebar(container, api) {
 
   // Canvas (full area)
   const cvs = document.createElement('canvas');
+  _graphCanvases.add(cvs);
   cvs.style.cssText = 'flex:1;width:100%;min-height:0;cursor:grab;';
   const ctx = cvs.getContext('2d');
   container.appendChild(cvs);
@@ -2717,12 +2756,19 @@ function createGraphSidebar(container, api) {
 
   // Animation — uses shared model data, doesn't run its own physics
   // (editor's loop runs physics, sidebar just renders the same node positions)
+  let shown = false;
+  let sleepTimer = null;
   function _loop() {
     if (disposed) return;
-    // Only run physics if editor isn't running (sidebar opened alone)
-    if (!_editorActive) physicsTick(m.nodes, m.edges, m.byId);
-    drawGraph(ctx, cvs, m.nodes, m.edges, m.byId, view, null, hovered, true);
-    animFrameId = requestAnimationFrame(_loop);
+    const nowShown = _isShown(cvs);
+    if (nowShown) {
+      // Only run physics if editor isn't running (sidebar opened alone)
+      if (!_editorActive) physicsTick(m.nodes, m.edges, m.byId);
+      drawGraph(ctx, cvs, m.nodes, m.edges, m.byId, view, null, hovered, true);
+    }
+    const next = _nextFrame(cvs, _loop, shown);
+    shown = nowShown;
+    animFrameId = next.raf; sleepTimer = next.timer;
   }
 
   function _onModelChange() {
@@ -2750,6 +2796,8 @@ function createGraphSidebar(container, api) {
     dispose() {
       disposed = true;
       if (animFrameId) cancelAnimationFrame(animFrameId);
+      clearTimeout(sleepTimer);
+      _graphCanvases.delete(cvs);
       if (changePageSub) changePageSub.dispose();
       modelSub.dispose();
       container.innerHTML = '';
@@ -2819,9 +2867,12 @@ export async function activate(api, context) {
     if (_refreshTimer) return;
     _refreshTimer = setTimeout(() => {
       _refreshTimer = null;
+      // No graph on screen: remember it, and refresh once one shows.
+      if (!_anyGraphShown()) { _refreshWhileHidden = true; return; }
       if (_model._api) _model.refresh().catch(err => console.warn('[WorkspaceGraph] refresh failed:', err));
     }, delay);
   };
+  _requestRefresh = () => _scheduleRefresh(0);
 
   // Provider contributions (extensions register/unregister/notifyChange).
   if (api.workspaceGraph && typeof api.workspaceGraph.onDidChange === 'function') {

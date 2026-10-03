@@ -119,6 +119,9 @@ const METADATA_TIMEOUT_MS = 10_000;
 const HEALTH_POLL_CONNECTED_MS = 30_000;
 const HEALTH_POLL_DISCONNECTED_MS = 5_000;
 const HEALTH_POLL_BACKOFF_MS = 60_000;
+/** Ollama never seen yet: after the first misses, check this often, not every
+ *  5 s forever (it is quick enough to notice an Ollama just installed). */
+const HEALTH_POLL_NEVER_SEEN_MS = 15_000;
 const HEALTH_FAILURE_BACKOFF_THRESHOLD = 5;
 
 /** Fast-poll interval during the startup burst window. */
@@ -196,6 +199,14 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     // End startup burst after the window expires
     const startupTimeout = setTimeout(() => { this._startupBurst = false; this._schedulePoll(); }, HEALTH_STARTUP_WINDOW_MS);
     this._register(toDisposable(() => clearTimeout(startupTimeout)));
+
+    // A hidden window skips its polls (see _schedulePoll); coming back checks
+    // at once, so the status is current the moment someone looks.
+    if (typeof document !== 'undefined') {
+      const onVisible = () => { if (!document.hidden) this._pollHealth(); };
+      document.addEventListener('visibilitychange', onVisible);
+      this._register(toDisposable(() => document.removeEventListener('visibilitychange', onVisible)));
+    }
   }
 
   // ── Public accessors for cached state ──
@@ -978,11 +989,15 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       interval = HEALTH_POLL_CONNECTED_MS;
     } else if (this._hasEverConnected && this._consecutiveFailures >= HEALTH_FAILURE_BACKOFF_THRESHOLD) {
       interval = HEALTH_POLL_BACKOFF_MS;
+    } else if (this._consecutiveFailures >= HEALTH_FAILURE_BACKOFF_THRESHOLD) {
+      interval = HEALTH_POLL_NEVER_SEEN_MS;
     } else {
       interval = HEALTH_POLL_DISCONNECTED_MS;
     }
 
     this._pollTimer = setInterval(() => {
+      // Minimised or hidden: nobody is reading the status; skip the wake-up.
+      if (typeof document !== 'undefined' && document.hidden) return;
       this._pollHealth();
     }, interval);
   }
