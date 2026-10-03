@@ -209,6 +209,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   context.subscriptions.push(
     api.commands.registerCommand('memory.openDurable', async () => {
+      // A fresh workspace has no MEMORY.md yet; the scaffold writes it, as
+      // the daily log's ensureDailyMemory does for its own file.
+      await workspaceMemoryService?.ensureScaffold();
       await openCanonicalMemoryFile(workspaceMemoryService?.getDurableMemoryRelativePath() ?? '.parallx/memory/MEMORY.md');
     }),
   );
