@@ -267,3 +267,49 @@ describe('C7: repairing a malformed toggle keeps its title and every block', () 
     expect(() => doc.check()).not.toThrow();
   });
 });
+
+// ── C10: copy / cut / paste in another input with a block selection left over ─
+
+describe('C10: a block selection never takes copy, cut or paste from another input', () => {
+  async function setup() {
+    const { BlockClipboardController } = await import('../../src/built-in/canvas/handles/blockClipboard');
+    const ed = mk({ type: 'doc', content: [p('canvas block'), p('other')] });
+    const container = document.createElement('div');
+    container.appendChild(ed.view.dom.parentElement ?? ed.view.dom);
+    document.body.appendChild(container);
+    const deleteSelected = vi.fn();
+    const host = { editor: ed, editorContainer: container, blockSelection: { hasSelection: true, positions: [0], count: 1, deleteSelected, selectMultiple: vi.fn() } };
+    const ctl = new BlockClipboardController(host as any);
+    ctl.setup();
+    const chat = document.createElement('textarea');
+    document.body.appendChild(chat);
+    return { ed, ctl, chat, deleteSelected, container };
+  }
+  function clipboardEvent(type: string) {
+    const data = new Map<string, string>();
+    const ev = new Event(type, { bubbles: true, cancelable: true }) as any;
+    ev.clipboardData = { setData: (k: string, v: string) => data.set(k, v), getData: (k: string) => data.get(k) ?? '' };
+    return { ev, data };
+  }
+
+  it('Ctrl+X in the chat box cuts the chat text, not the canvas block', async () => {
+    const { ctl, chat, deleteSelected, container } = await setup();
+    chat.focus();
+    const { ev, data } = clipboardEvent('cut');
+    chat.dispatchEvent(ev);
+    expect(deleteSelected).not.toHaveBeenCalled();
+    expect(ev.defaultPrevented).toBe(false);
+    expect(data.size).toBe(0);
+    ctl.dispose(); chat.remove(); container.remove();
+  });
+
+  it('copy with the block selected and nothing else focused still copies the block', async () => {
+    const { ctl, chat, container } = await setup();
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    const { ev, data } = clipboardEvent('copy');
+    document.body.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(data.get('text/plain')).toBe('canvas block');
+    ctl.dispose(); chat.remove(); container.remove();
+  });
+});

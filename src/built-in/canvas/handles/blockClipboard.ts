@@ -6,7 +6,8 @@
 // is active).
 //
 // Wired through the native `copy` / `cut` / `paste` DOM events (document
-// capture) rather than keybindings: clipboard events fire regardless of
+// capture) rather than keybindings — taken only when focus is in this editor
+// or on nothing editable (see _ownsClipboardGesture): clipboard events fire regardless of
 // whether the editor is focused — a handle-click or marquee selection blurs
 // the editor, which is exactly when block copy must work — and the events
 // allow synchronous clipboardData access with no async-permission dance.
@@ -83,9 +84,25 @@ export class BlockClipboardController {
     document.removeEventListener('keydown', this._onKeyDown, true);
   }
 
+  /**
+   * Whether a clipboard gesture is this pane's to take: focus is in this
+   * editor, or on nothing editable (a marquee or handle click blurs the
+   * editor — that is when block copy must work).  An input, text area or
+   * other editor elsewhere owns its own clipboard: with a block selection left
+   * over, Ctrl+X in the chat box used to cut the canvas block instead (C10).
+   */
+  private _ownsClipboardGesture(): boolean {
+    const active = document.activeElement as HTMLElement | null;
+    if (!active || active === document.body) return true;
+    if (this._host.editorContainer?.contains(active)) return true;
+    const editable = active.isContentEditable || active.tagName === 'INPUT' || active.tagName === 'TEXTAREA';
+    return !editable;
+  }
+
   // ── Copy / Cut ────────────────────────────────────────────────────────────
 
   private readonly _onCopy = (e: ClipboardEvent): void => {
+    if (!this._ownsClipboardGesture()) return;
     if (this._writeSelectedBlocks(e)) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -93,6 +110,7 @@ export class BlockClipboardController {
   };
 
   private readonly _onCut = (e: ClipboardEvent): void => {
+    if (!this._ownsClipboardGesture()) return;
     if (this._writeSelectedBlocks(e)) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -156,6 +174,7 @@ export class BlockClipboardController {
 
     const payload = this._readPayload(e.clipboardData);
     if (!payload) return; // foreign content — ProseMirror's paste handles it
+    if (!this._ownsClipboardGesture()) return; // pasting into another input
 
     // This pane is the paste target when its blocks are selected or its
     // editor holds the caret.
