@@ -354,3 +354,22 @@ describe('C11: the insert follows the placeholder through other edits', () => {
     expect(outline.slice(0, 3)).toEqual(['paragraph(more text above)', 'bookmark', 'paragraph(next block)']);
   });
 });
+
+// ── C14: dragging a card on a board grouped by a multi-select ────────────────
+
+describe('C14: moving a card between board columns keeps its other tags', () => {
+  it('multi-select: drop moves one tag, keeps the rest as an array', async () => {
+    const { boardDropValue } = await import('../../src/built-in/canvas/database/databaseViewModel');
+    expect(boardDropValue(['red', 'blue'], 'red', 'green', true)).toEqual(['blue', 'green']);
+    expect(boardDropValue(['red', 'blue'], 'red', 'blue', true)).toEqual(['blue']);
+    expect(boardDropValue(['red', 'blue'], 'red', '', true)).toEqual(['blue']); // onto "No tags": only this tag goes
+    expect(boardDropValue([], '', 'green', true)).toEqual(['green']);
+    expect(boardDropValue(['red'], 'red', 'red', true)).toEqual(['red']);
+  });
+
+  it('single select: the value is the target column (or empty)', async () => {
+    const { boardDropValue } = await import('../../src/built-in/canvas/database/databaseViewModel');
+    expect(boardDropValue('todo', 'todo', 'done', false)).toBe('done');
+    expect(boardDropValue('todo', 'todo', '', false)).toBe(null);
+  });
+});

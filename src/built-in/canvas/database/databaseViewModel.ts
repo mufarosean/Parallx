@@ -137,6 +137,24 @@ export function groupRows(
   return groups;
 }
 
+/**
+ * The value a card gets when it is dragged from column `fromKey` to column
+ * `toKey` of a board grouped by its property ('' is the "No …" column).
+ *
+ * A multi-select (tags) card stands in one column per tag: the move swaps
+ * the tag it was dragged from for the target's, keeping every other tag —
+ * the old drop wrote the column key as the whole value, turning the tag list
+ * into one string, and "No …" cleared every tag (C14).
+ */
+export function boardDropValue(current: unknown, fromKey: string, toKey: string, multi: boolean): unknown {
+  if (!multi) return toKey || null;
+  const tags = Array.isArray(current) ? current.map(String) : (current === null || current === undefined || current === '' ? [] : [String(current)]);
+  if (fromKey === toKey) return tags;
+  const next = tags.filter((t) => t !== fromKey);
+  if (toKey && !next.includes(toKey)) next.push(toKey);
+  return next;
+}
+
 /** JSON-decode helpers for the persisted view columns (defensive). */
 export function parseFilterConfig(json: string | null | undefined): IFilterConfig {
   try {

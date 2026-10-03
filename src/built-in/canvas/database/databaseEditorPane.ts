@@ -20,7 +20,7 @@ import type {
   DatabaseViewType, FilterOp, IDatabaseProperty, IDatabaseRow, IDatabaseView, IFilterRule, ISortRule,
 } from './databaseTypes.js';
 import { TITLE_KEY } from './databaseTypes.js';
-import { applyFilter, applySort, groupRows } from './databaseViewModel.js';
+import { applyFilter, applySort, boardDropValue, groupRows } from './databaseViewModel.js';
 import { createPropertyEditor, createTypeIconElement } from '../properties/propertyEditors.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
 import { resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
@@ -471,6 +471,8 @@ export class DatabaseEditorPane implements IDisposable {
         card.addEventListener('click', () => this._deps.openPage(row.pageId));
         card.addEventListener('dragstart', (e) => {
           e.dataTransfer?.setData('text/parallx-db-row', row.pageId);
+          // The column it leaves: a tags card stands in one column per tag.
+          e.dataTransfer?.setData('text/parallx-db-group', group.key);
           card.classList.add('canvas-db-card--dragging');
         });
         card.addEventListener('dragend', () => card.classList.remove('canvas-db-card--dragging'));
@@ -487,7 +489,10 @@ export class DatabaseEditorPane implements IDisposable {
         colEl.classList.remove('canvas-db-board__col--over');
         const pageId = e.dataTransfer?.getData('text/parallx-db-row');
         if (pageId) {
-          void this._deps.db.setCellValue(this._databaseId, pageId, groupProp.id, group.key || null);
+          const fromKey = e.dataTransfer?.getData('text/parallx-db-group') ?? '';
+          const current = rows.find((r) => r.pageId === pageId)?.values[groupProp.id];
+          const value = boardDropValue(current, fromKey, group.key, groupProp.type === 'tags');
+          void this._deps.db.setCellValue(this._databaseId, pageId, groupProp.id, value);
         }
       });
       board.appendChild(colEl);
