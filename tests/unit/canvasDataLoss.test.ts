@@ -373,3 +373,36 @@ describe('C14: moving a card between board columns keeps its other tags', () => 
     expect(boardDropValue('todo', 'todo', '', false)).toBe(null);
   });
 });
+
+// ── C15: the legacy property migration running a second time ────────────────
+
+describe('C15: re-running the legacy property migration never overwrites current values', () => {
+  it('a value the user changed after the first run stays; an empty cell is filled', async () => {
+    const { runLegacyPropertyMigration } = await import('../../src/built-in/canvas/database/legacyPropertyMigration');
+    const cells: Record<string, unknown> = { status: 'done' }; // edited since the first run
+    const bridge = {
+      all: async (sql: string) => (/property_definitions/.test(sql)
+        ? { error: null, rows: [{ name: 'Status', type: 'select', config: '{}', sort_order: 1 }, { name: 'Due', type: 'text', config: '{}', sort_order: 2 }] }
+        : { error: null, rows: [
+          { page_id: 'p1', key: 'Status', value_type: 'string', value: '"todo"', is_archived: 0 },
+          { page_id: 'p1', key: 'Due', value_type: 'string', value: '"Friday"', is_archived: 0 },
+        ] }),
+      get: async () => ({ error: null, row: null }),
+      run: async () => ({ error: null, changes: 0 }),
+    };
+    const set = vi.fn(async (_db: string, _page: string, prop: string, value: unknown) => { cells[prop] = value; });
+    const db = {
+      getHomeDatabaseForPage: async () => 'home-1',
+      addExistingPageAsRow: async () => {},
+      listProperties: async () => [{ id: 'status', name: 'Status' }, { id: 'due', name: 'Due' }],
+      addProperty: async () => ({ id: 'new' }),
+      getRowValues: async () => ({ ...cells }),
+      setCellValue: set,
+      createDatabase: async () => ({ id: 'created' }),
+      reconcileSingleHome: async () => 0,
+    };
+    await runLegacyPropertyMigration({ bridge: bridge as any, db: db as any, writeBackup: async () => {} });
+    expect(cells.status).toBe('done');
+    expect(cells.due).toBe('Friday');
+  });
+});

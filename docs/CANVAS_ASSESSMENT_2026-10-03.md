@@ -81,7 +81,7 @@ markdown, focus) were not tested adversarially.
 | C12 | **Markdown round-trip corrupts text** (AI edits, Edit-mode Accept and export all pass through it): a code block in a list item swallows everything after it; `$5 and $10` becomes math; `my_func_name` gets italics; `# x` and `1. x` paragraphs become a heading and a list (no escaping); `|` splits table cells; toggle headings, page cards, bookmarks, columns, media, TOC, colours and backgrounds vanish. | `markdownExport.ts`, `markdownImport.ts:788` | Verified (round-trip probe) |
 | C13 | `canvas_edit_block` on a nested id (list row, cell) writes a schema-invalid doc; an AI insert after a list row produces an invalid list that throws on Enter. Nothing calls `check()` before saving. | `ai/blockTools.ts:189`, `ai/blockApi.ts:157, 240` | Verified |
 | C14 | Board grouped by multi-select: dragging a card turns its tag array into one string; dropping on "No X" clears all tags. | `database/databaseEditorPane.ts:490` | **Fixed**: the drop swaps only the tag the card was dragged from (`boardDropValue`); "No …" removes only that tag. |
-| C15 | Re-running the legacy property migration overwrites current values with stale ones. | `database/legacyPropertyMigration.ts:553` | Verified |
+| C15 | Re-running the legacy property migration overwrites current values with stale ones. | `database/legacyPropertyMigration.ts:553` | **Fixed**: the migration only fills empty cells, never overwrites. |
 | C16 | Typing during an AI write (or while a child page is renamed) drops the last ~500 ms of keystrokes yet reports Saved; Ctrl+Q / Reload skip the close-time flush. | `canvasDataService.ts:1453`, `electron/main.cjs:816` | Verified / likely |
 
 ## High: broken features

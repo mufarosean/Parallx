@@ -186,18 +186,28 @@ export async function runLegacyPropertyMigration(deps: IMigrationDeps): Promise<
       await db.addExistingPageAsRow(home, pageId);
     }
 
+    // Fill, never overwrite: on a re-run (the workspace flag lost, a retry
+    // after a partial run) the database holds values the user may have
+    // changed since — the legacy value is older, so it only fills an empty
+    // cell (C15).
+    const current = await db.getRowValues(home, pageId);
+    const isEmpty = (v: unknown) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
+
     for (const { key, value } of customs) {
       const def = defs.find((d) => d.name === key);
       const type = (def?.type as PropertyType) ?? 'text';
       const config = mapOptions(decode(def?.config ?? '{}') as Record<string, unknown>);
       const propId = await ensureColumn(home, key, type, config);
+      if (!isEmpty(current[propId])) continue;
       await db.setCellValue(home, pageId, propId, value);
       migratedCustomValues++;
     }
     if (tags) {
       const tagsPropId = await ensureColumn(home, 'Tags', 'tags', tagsConfig);
-      await db.setCellValue(home, pageId, tagsPropId, tags);
-      migratedTagPages++;
+      if (isEmpty(current[tagsPropId])) {
+        await db.setCellValue(home, pageId, tagsPropId, tags);
+        migratedTagPages++;
+      }
     }
   }
 
