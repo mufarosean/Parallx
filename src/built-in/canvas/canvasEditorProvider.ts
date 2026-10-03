@@ -40,6 +40,7 @@ import { BlockHandlesController, BlockSelectionController, BlockMarqueeControlle
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuRegistry.js';
 import { motionReduced } from '../../ui/motionPreference.js';
+import { editorContentForStorage, wrapUnknownContent } from './unknownContent.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -460,7 +461,7 @@ class CanvasEditorPane implements IDisposable {
 
   requestSave(_reason: string): void {
     if (!this._editor || !this._pageId || !this._initComplete) return;
-    const json = JSON.stringify(this._editor.getJSON());
+    const json = editorContentForStorage(this._editor);
     this._dataService.scheduleContentSave(this._pageId, json);
   }
 
@@ -580,7 +581,7 @@ class CanvasEditorPane implements IDisposable {
         // overwrite the page's stored content with the empty doc, causing
         // permanent data loss.
         if (!this._initialContentLoaded) return;
-        const json = JSON.stringify(editor.getJSON());
+        const json = editorContentForStorage(editor);
         this._dataService.scheduleContentSave(this._pageId, json);
       },
       onTransaction: ({ editor, transaction }) => {
@@ -916,6 +917,12 @@ class CanvasEditorPane implements IDisposable {
         try {
           const decoded = await this._dataService.decodePageContentForEditor(page);
           if (!isCurrent()) return;
+          // Unreadable stored content: show the notice, read-only; the
+          // service keeps the stored text untouched (C6).
+          if (decoded.unreadable) this._editor!.setEditable(false);
+          // Blocks and marks this build doesn't know load as placeholders and
+          // save back as they were (C1) — instead of an empty page.
+          const docForEditor = wrapUnknownContent(decoded.doc, this._editor!.schema);
           // Reloads (external writers — AI tools, sidebar ops) apply SURGICALLY:
           // only the changed top-level blocks are replaced, so the user's
           // cursor/scroll/selection survive and nothing flickers. The changed
@@ -923,11 +930,11 @@ class CanvasEditorPane implements IDisposable {
           // the user is editing inside it. The full setContent rebuild is
           // reserved for the initial open and as the fallback when the surgical
           // path can't represent the change.
-          const surgical = this._initialContentLoaded
-            && await this._animateExternalDoc(decoded.doc as { type: string; content?: unknown[] }, isCurrent);
+          const surgical = this._initialContentLoaded && !decoded.unreadable
+            && await this._animateExternalDoc(docForEditor as { type: string; content?: unknown[] }, isCurrent);
           if (!isCurrent()) return;
           if (!surgical) {
-            this._editor!.commands.setContent(decoded.doc);
+            this._editor!.commands.setContent(docForEditor);
           }
           if (decoded.recovered) {
             console.warn(`[CanvasEditorPane] Recovered and normalized content for page "${this._pageId}"`);
@@ -1327,7 +1334,7 @@ class CanvasEditorPane implements IDisposable {
   private async _commitNow(): Promise<void> {
     if (!this._pageId) return;
     const finalJson = (this._editor && this._initialContentLoaded)
-      ? JSON.stringify(this._editor.getJSON())
+      ? editorContentForStorage(this._editor)
       : undefined;
     await this._dataService.commitPageClose(this._pageId, finalJson);
   }
@@ -1356,7 +1363,7 @@ class CanvasEditorPane implements IDisposable {
     // doc so a pane that never loaded content hands over nothing to persist.
     if (this._pageId) {
       const finalJson = (this._editor && this._initialContentLoaded)
-        ? JSON.stringify(this._editor.getJSON())
+        ? editorContentForStorage(this._editor)
         : undefined;
       void this._dataService.commitPageClose(this._pageId, finalJson).catch((err) => {
         console.warn(`[CanvasEditorPane] Failed to commit page close for "${this._pageId}":`, err);

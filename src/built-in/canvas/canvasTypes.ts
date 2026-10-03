@@ -110,6 +110,10 @@ export type PageUpdateData = Partial<Pick<IPage,
   /** Tags the version-history checkpoint produced by this write. Not persisted
    *  to the page row. Defaults to 'user'. */
   editSource?: RevisionSource;
+  /** Write content over a page whose stored content cannot be read. Only a
+   *  deliberate user action (restore a version, start over) sets this; every
+   *  other content write to such a page is refused so its text survives. */
+  replaceUnreadable?: boolean;
 };
 
 // ─── Version history ─────────────────────────────────────────────────────────
@@ -131,7 +135,7 @@ export interface IPageRevisionContent extends IPageRevision {
   readonly contentSchemaVersion: number;
 }
 
-export type PageUpdateField = Exclude<keyof PageUpdateData, 'expectedRevision'>;
+export type PageUpdateField = Exclude<keyof PageUpdateData, 'expectedRevision' | 'replaceUnreadable'>;
 
 /**
  * Fields that can change on a page during its lifetime.  Wider than
@@ -280,7 +284,7 @@ export interface ICanvasDataService {
 
   appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<IPage>;
   moveBlocksBetweenPagesAtomic(params: CrossPageMoveParams): Promise<{ sourcePage: IPage; targetPage: IPage }>;
-  decodePageContentForEditor(page: IPage): Promise<{ doc: any; recovered: boolean }>;
+  decodePageContentForEditor(page: IPage): Promise<{ doc: any; recovered: boolean; unreadable?: boolean }>;
 
   /**
    * Encode a raw TipTap doc JSON via the content schema and immediately

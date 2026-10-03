@@ -31,15 +31,21 @@ describe('contentSchema', () => {
     expect(decoded.schemaVersion).toBe(CURRENT_CANVAS_CONTENT_SCHEMA_VERSION);
   });
 
-  it('recovers invalid JSON to safe empty doc envelope', () => {
+  it('leaves invalid JSON unreadable and unrepaired (C6: never written over)', () => {
     const decoded = decodeCanvasContent('{ invalid json');
-    expect(decoded.needsRepair).toBe(true);
+    expect(decoded.needsRepair).toBe(false);
+    expect(decoded.unreadable).toBe(true);
     expect(decoded.reason).toBe('invalid-json');
+    expect(decoded.repairedStoredContent).toBe('{ invalid json');
+    // The editor still gets a doc to show.
+    expect(decoded.doc.type).toBe('doc');
+    expect(() => normalizeCanvasContentForStorage('{ invalid json')).toThrow(/cannot be read/);
+  });
 
-    const repaired = JSON.parse(decoded.repairedStoredContent);
-    expect(repaired.schemaVersion).toBe(CURRENT_CANVAS_CONTENT_SCHEMA_VERSION);
-    expect(repaired.doc.type).toBe('doc');
-    expect(Array.isArray(repaired.doc.content)).toBe(true);
+  it('treats no content at all as an empty page', () => {
+    const decoded = decodeCanvasContent('');
+    expect(decoded.unreadable).toBeFalsy();
+    expect(JSON.parse(decoded.repairedStoredContent).doc.type).toBe('doc');
   });
 
   it('normalizes storage payloads to envelope + schema version', () => {

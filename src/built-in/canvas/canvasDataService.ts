@@ -32,7 +32,9 @@ import {
   decodeCanvasContent,
   encodeCanvasContentFromDoc,
   normalizeCanvasContentForStorage,
+  isUnreadableCanvasContent,
 } from './contentSchema.js';
+import { unwrapUnknownContent } from './unknownContent.js';
 
 // SaveStateKind / SaveStateEvent moved to canvasTypes.ts (M77 Phase 11.1)
 // so consumers can subscribe via ICanvasDataService without coupling to
@@ -401,6 +403,16 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       params.push(updates.icon);
     }
     if (updates.content !== undefined) {
+      // A page whose stored content can't be read keeps it: any write would
+      // replace text that might still be recovered (C6).
+      if (!updates.replaceUnreadable) {
+        const current = this._knownStoredContent.has(pageId)
+          ? this._knownStoredContent.get(pageId)
+          : (await this.getPage(pageId))?.content;
+        if (isUnreadableCanvasContent(current)) {
+          throw new Error(`[CanvasDataService] Page "${pageId}" content cannot be read; refusing to write over it`);
+        }
+      }
       const normalized = normalizeCanvasContentForStorage(updates.content);
       // DIAGNOSTIC (canvas content-loss hunt): flag any write that blanks a page
       // that currently holds real content, with the caller stack. The auto-save
@@ -511,6 +523,8 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * never import contentSchema directly.
    */
   async flushContentSave(pageId: string, docJson: any): Promise<void> {
+    // Callers hand over the editor's doc: placeholders go back to what they held.
+    docJson = unwrapUnknownContent(docJson);
     // Cancel any stale pending/retry saves — this content supersedes them.
     this._cancelPendingSave(pageId);
     this._cancelRetry(pageId);
@@ -1418,8 +1432,13 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   scheduleContentSave(pageId: string, content: string): void {
-    const normalized = normalizeCanvasContentForStorage(content);
     const knownContent = this._knownStoredContent.get(pageId);
+    // The editor shows unreadable pages read-only; this is the backstop.
+    if (isUnreadableCanvasContent(knownContent)) {
+      console.warn(`[CanvasDataService] Not saving page "${pageId}": its stored content cannot be read and is kept as is.`);
+      return;
+    }
+    const normalized = normalizeCanvasContentForStorage(content);
     const pendingSave = this._pendingSaves.get(pageId);
     const retrySave = this._retryQueue.get(pageId);
 
@@ -1597,8 +1616,25 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * Decode page content for editor usage and auto-heal malformed/legacy storage.
    * Returns a valid TipTap document object in all cases.
    */
-  async decodePageContentForEditor(page: IPage): Promise<{ doc: any; recovered: boolean }> {
+  async decodePageContentForEditor(page: IPage): Promise<{ doc: any; recovered: boolean; unreadable?: boolean }> {
     const decoded = decodeCanvasContent(page.content);
+
+    // Unreadable content is shown as a notice, read-only, and left untouched
+    // in storage.  (It used to be "repaired" to an empty page on open.)
+    if (decoded.unreadable) {
+      console.error(`[CanvasDataService] Page "${page.id}" content cannot be read (${decoded.reason}); left unchanged.`);
+      return {
+        doc: {
+          type: 'doc',
+          content: [{
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'This page\'s content could not be read. It is shown read-only and kept exactly as stored, so it can still be recovered from version history or a backup.' }],
+          }],
+        },
+        recovered: false,
+        unreadable: true,
+      };
+    }
 
     if (decoded.needsRepair) {
       console.warn(

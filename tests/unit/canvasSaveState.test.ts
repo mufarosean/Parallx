@@ -68,7 +68,8 @@ describe('CanvasDataService save-state observability', () => {
     const disposable = service.onDidChangeSaveState((e) => events.push(e));
 
     const result = await service.decodePageContentForEditor(
-      makePage({ content: '{ invalid json', contentSchemaVersion: 0 }),
+      // A legacy bare doc needs a repair write (unreadable content never does).
+      makePage({ content: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }), contentSchemaVersion: 0 }),
     );
 
     expect(result.doc.type).toBe('doc');

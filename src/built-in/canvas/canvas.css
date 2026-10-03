@@ -5119,3 +5119,22 @@
   font-size: var(--px-text-xs);
   color: var(--px-text-faint);
 }
+
+/* ── Unsupported content (unknownContent.ts) ── */
+.canvas-tiptap-editor .canvas-unsupported-block {
+  margin: 4px 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--px-border);
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
+  user-select: none;
+}
+
+.canvas-tiptap-editor .canvas-unsupported-inline {
+  padding: 0 4px;
+  border-radius: var(--px-radius-sm);
+  background: color-mix(in srgb, var(--px-text) 6%, transparent);
+  color: var(--px-text-muted);
+  font-size: 0.9em;
+}

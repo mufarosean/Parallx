@@ -30,6 +30,7 @@ import {
 import type { ICanvasDataService } from './canvasTypes.js';
 import type { DatabaseDataService } from './database/databaseDataService.js';
 import type { OpenEditorFn } from './canvasEditorProvider.js';
+import { editorContentForStorage, wrapUnknownContent } from './unknownContent.js';
 
 // Shared syntax-highlighting instance (same common language set as the pane).
 const lowlight = createLowlight(common);
@@ -111,7 +112,7 @@ export class CanvasEditorView implements CanvasMenuHost {
 
   requestSave(_reason: string): void {
     if (!this._editor || !this._initialContentLoaded) return;
-    this._dataService.scheduleContentSave(this._pageId, JSON.stringify(this._editor.getJSON()));
+    this._dataService.scheduleContentSave(this._pageId, editorContentForStorage(this._editor));
   }
 
   async copyLinkToClipboard(href: string): Promise<void> {
@@ -161,7 +162,7 @@ export class CanvasEditorView implements CanvasMenuHost {
       editorProps: { attributes: { class: 'canvas-tiptap-editor', spellcheck: 'true' } },
       onUpdate: ({ editor }) => {
         if (this._suppressUpdate || !this._initialContentLoaded) return;
-        this._dataService.scheduleContentSave(this._pageId, JSON.stringify(editor.getJSON()));
+        this._dataService.scheduleContentSave(this._pageId, editorContentForStorage(editor));
       },
       onTransaction: ({ editor, transaction }) => {
         if (this._suppressUpdate) return;
@@ -220,7 +221,10 @@ export class CanvasEditorView implements CanvasMenuHost {
         if (page && page.content) {
           const decoded = await this._dataService.decodePageContentForEditor(page);
           if (this._disposed || !this._editor) return;
-          this._editor.commands.setContent(decoded.doc);
+          // Same load rules as the canvas pane: unreadable → read-only notice
+          // (C6); unknown blocks → placeholders that save back as they were (C1).
+          if (decoded.unreadable) this._editor.setEditable(false);
+          this._editor.commands.setContent(wrapUnknownContent(decoded.doc, this._editor.schema));
         }
       } finally {
         this._suppressUpdate = false;
@@ -241,7 +245,7 @@ export class CanvasEditorView implements CanvasMenuHost {
     this._blockSelection?.dispose();
     this._menuRegistry?.dispose();
     if (this._editor) {
-      try { this._dataService.scheduleContentSave(this._pageId, JSON.stringify(this._editor.getJSON())); } catch { /* best-effort flush */ }
+      try { this._dataService.scheduleContentSave(this._pageId, editorContentForStorage(this._editor)); } catch { /* best-effort flush */ }
       this._editor.destroy();
       this._editor = null;
     }

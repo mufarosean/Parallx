@@ -26,6 +26,8 @@ const ORIGINAL_COLUMN_BLOCK_NODE_TYPES = [
   'blockquote', 'codeBlock', 'horizontalRule', 'image', 'table',
   'callout', 'details', 'toggleHeading', 'mathBlock', 'pageBlock',
   'bookmark', 'conceptMap', 'tableOfContents', 'video', 'audio', 'fileAttachment',
+  // 2026-10-03: placeholder for stored blocks this build can't show (C1).
+  'unsupportedBlock',
 ];
 
 /** From blockCapabilities.ts */
@@ -33,6 +35,7 @@ const ORIGINAL_DRAG_HANDLE_CUSTOM_NODE_TYPES = [
   'mathBlock', 'callout', 'details', 'toggleHeading', 'pageBlock',
   'bookmark', 'conceptMap', 'tableOfContents', 'video', 'audio', 'fileAttachment',
   'horizontalRule', 'image',
+  'unsupportedBlock',
 ];
 
 /** From blockHandles.ts, blockSelection.ts, blockMutations.ts, columnDropPlugin.ts */

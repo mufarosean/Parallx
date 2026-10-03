@@ -31,6 +31,7 @@ import { ConceptMap, DEFAULT_CONCEPT_MAP_SRC } from '../extensions/conceptMapNod
 import { PageBlock } from '../extensions/pageBlockNode.js';
 import { TableOfContents } from '../extensions/tableOfContentsNode.js';
 import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
+import { UnsupportedBlock, UnsupportedInline } from '../extensions/unsupportedContentNodes.js';
 // Types
 import type { AnyExtension, Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
@@ -950,6 +951,34 @@ const definitions: BlockDefinition[] = [
     turnInto: undefined,
     defaultContent: { type: 'tableOfContents' },
     extension: () => TableOfContents,
+  },
+  // Placeholders for stored content this build can't show (unknownContent.ts).
+  // Never inserted by the user: no slash entry, no turn-into.
+  {
+    id: 'unsupportedBlock',
+    name: 'unsupportedBlock',
+    label: 'Unsupported Block',
+    icon: 'warning',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: undefined,
+    turnInto: undefined,
+    defaultContent: { type: 'unsupportedBlock' },
+    extension: () => UnsupportedBlock,
+  },
+  {
+    id: 'unsupportedInline',
+    name: 'unsupportedInline',
+    label: 'Unsupported Content',
+    icon: 'warning',
+    source: 'custom',
+    kind: 'inline',
+    capabilities: { ...STD_LEAF, allowInColumn: false },
+    slashMenu: undefined,
+    turnInto: undefined,
+    defaultContent: { type: 'unsupportedInline' },
+    extension: () => UnsupportedInline,
   },
   {
     id: 'video',
