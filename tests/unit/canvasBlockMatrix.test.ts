@@ -49,6 +49,7 @@ import { isDropInsideDragged } from '../../src/built-in/canvas/config/blockState
 import { duplicateBlockAt } from '../../src/built-in/canvas/config/blockStateRegistry/blockLifecycle';
 import { outdentBlock } from '../../src/built-in/canvas/config/blockStateRegistry/blockNesting';
 import { moveBlockToLinkedPage } from '../../src/built-in/canvas/config/blockStateRegistry/crossPageMovement';
+import { BlockSelectionController, createBlockSelectionPlugin } from '../../src/built-in/canvas/handles/blockSelection';
 import {
   setActiveCanvasDragSession,
   clearActiveCanvasDragSession,
@@ -579,5 +580,55 @@ describe('cross-page move', () => {
     clearActiveCanvasDragSession();
     expect(calls.atomic.appendedNodes.map((n: any) => n.type)).toEqual(['orderedList']);
     expect(body(ed.state.doc)).toBe('orderedList[listItem[paragraph("one")]]');
+  });
+});
+
+describe('block selection', () => {
+  function controller(ed: any) {
+    const div = document.createElement('div');
+    const sel = new BlockSelectionController({ editor: ed, container: div, editorContainer: div });
+    sel.setup();
+    return sel;
+  }
+
+  it('a selected block moves like the caret path (out of its column) and stays selected', () => {
+    const ed = mk({ type: 'doc', content: [p('top'), cols(col(p('X')), col(p('Z')))] });
+    ed.registerPlugin(createBlockSelectionPlugin());
+    const sel = controller(ed);
+    const x = find(ed, (n) => n.type.name === 'paragraph' && n.textContent === 'X')!;
+    sel.select(x.pos);
+    expect(sel.moveSelectedUp()).toBe(true);
+    expect(body(ed.state.doc)).toBe('paragraph("top"), paragraph("X"), paragraph("Z")');
+    expect(sel.positions).toEqual([find(ed, (n) => n.type.name === 'paragraph' && n.textContent === 'X')!.pos]);
+  });
+
+  it('with only a caret, the selection mover stands aside for the caret path', () => {
+    const ed = mk({ type: 'doc', content: [p('a'), p('b')] });
+    const sel = controller(ed);
+    expect(sel.moveSelectedDown()).toBe(false);
+    expect(sel.hasSelection).toBe(false);
+  });
+
+  it('the caret leaving the selected block ends the block selection', () => {
+    const ed = mk({ type: 'doc', content: [p('a'), p('b')] });
+    ed.registerPlugin(createBlockSelectionPlugin());
+    const sel = controller(ed);
+    ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, 1)));
+    sel.select(0);
+    ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, 2)));
+    expect(sel.hasSelection).toBe(true); // still inside "a"
+    ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, 4)));
+    expect(sel.hasSelection).toBe(false);
+  });
+
+  it('Duplicate on a row and its own nested row copies the row once', () => {
+    const ed = mk({ type: 'doc', content: [{ type: 'bulletList', content: [li(p('parent'), { type: 'bulletList', content: [li(p('child'))] })] }] });
+    ed.registerPlugin(createBlockSelectionPlugin());
+    const sel = controller(ed);
+    const parent = find(ed, (n) => n.type.name === 'listItem' && n.firstChild?.textContent === 'parent')!;
+    const child = find(ed, (n) => n.type.name === 'listItem' && n.firstChild?.textContent === 'child')!;
+    (sel as any)._selected = new Set([parent.pos, child.pos]);
+    sel.duplicateSelected();
+    expect(textOf(ed)).toEqual(['parent', 'child', 'parent', 'child']);
   });
 });

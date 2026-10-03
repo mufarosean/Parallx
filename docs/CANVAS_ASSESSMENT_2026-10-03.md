@@ -312,6 +312,10 @@ each has a named test besides the sweeps.
   to the parent list.
 - A block at the top or bottom of a callout, quote or toggle now steps out of
   it, and the container keeps an empty paragraph.
+- A block selection outlived the caret moving away from it (arrow keys).
+  Ctrl+D, Delete and Mod-Shift-↑/↓ then acted on the old block. Moving the
+  caret out of the selected blocks now ends the selection. Seen in the app,
+  then fixed and checked there.
 - Shift-Tab on a block directly in a column skipped past the column. It lifted
   the block out of the layout and out of whatever held the layout.
 

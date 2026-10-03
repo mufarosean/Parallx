@@ -123,6 +123,7 @@ export class BlockSelectionController {
 
   private _editorChangeHandler: ((props: { transaction: any }) => void) | null = null;
   private _docClickHandler: ((e: MouseEvent) => void) | null = null;
+  private _selectionChangeHandler: ((props: { editor: any }) => void) | null = null;
 
   constructor(private readonly _host: BlockSelectionHost) {}
 
@@ -139,6 +140,22 @@ export class BlockSelectionController {
       }
     };
     this._host.editor?.on('update', this._editorChangeHandler!);
+
+    // The caret leaving the selected blocks (arrow keys, a programmatic
+    // move, an action elsewhere) ends the block selection.  A stale one kept
+    // owning Ctrl+D, Delete and Mod-Shift-↑/↓, which then acted on blocks the
+    // user had moved away from.  (A mouse click already clears it.)
+    this._selectionChangeHandler = ({ editor }: any) => {
+      if (this._selected.size === 0) return;
+      const { from, to } = editor.state.selection;
+      const doc = editor.state.doc;
+      const inside = [...this._selected].some((pos) => {
+        const node = doc.nodeAt(pos);
+        return !!node && from >= pos && to <= pos + node.nodeSize;
+      });
+      if (!inside) this.clear();
+    };
+    this._host.editor?.on('selectionUpdate', this._selectionChangeHandler!);
 
     // Note: _transactionHandler is no longer needed.  The decoration plugin
     // takes care of rendering — classes survive PM's DOM reconciliation.
@@ -570,8 +587,22 @@ export class BlockSelectionController {
       moved = moveBlockAcrossColumnBoundary(editor, direction);
     }
 
-    const sel = editor.state.selection;
-    const newPos = moved && sel instanceof NodeSelection ? sel.from : pos;
+    // Find the moved block again by its id (the selection can be remapped by
+    // the layout clean-up that follows a move); else by the selection.
+    let newPos = pos;
+    if (moved) {
+      const id = node.attrs?.id;
+      let found = -1;
+      if (id) {
+        editor.state.doc.descendants((n: any, p: number) => {
+          if (found >= 0) return false;
+          if (n.attrs?.id === id) { found = p; return false; }
+          return true;
+        });
+      }
+      const sel = editor.state.selection;
+      newPos = found >= 0 ? found : sel instanceof NodeSelection ? sel.from : editor.state.selection.$from.before(Math.max(1, editor.state.selection.$from.depth));
+    }
     // Leave no node selection on a text block behind: typed text would
     // replace the block.  Atoms keep theirs (that is how they are selected).
     const moving = editor.state.doc.nodeAt(newPos);
@@ -815,6 +846,10 @@ export class BlockSelectionController {
     if (this._editorChangeHandler) {
       this._host.editor?.off('update', this._editorChangeHandler);
       this._editorChangeHandler = null;
+    }
+    if (this._selectionChangeHandler) {
+      this._host.editor?.off('selectionUpdate', this._selectionChangeHandler);
+      this._selectionChangeHandler = null;
     }
     if (this._docClickHandler) {
       this._host.editorContainer?.removeEventListener('mousedown', this._docClickHandler);
