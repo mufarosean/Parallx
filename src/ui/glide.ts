@@ -8,12 +8,14 @@
 // .px-glide-target hides the target row's own highlight while it travels.
 // Lands at once with reduced motion, in an unseen window, or under jsdom.
 
+import { motionReduced } from './motionPreference.js';
+
 const DURATION_MS = 140;
 
 function stillMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
   if (document.visibilityState !== 'visible') return true;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return motionReduced();
 }
 
 export function glideHighlight(container: HTMLElement, from: HTMLElement | null, to: HTMLElement | null, overlayClass: string): void {

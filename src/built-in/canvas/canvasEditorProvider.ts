@@ -39,6 +39,7 @@ import { createEditorExtensions, PageChromeController, renderPageIconHtml } from
 import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, BlockClipboardController, TableControlsController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuRegistry.js';
+import { motionReduced } from '../../ui/motionPreference.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -1095,8 +1096,7 @@ class CanvasEditorPane implements IDisposable {
       const items = parsed
         .map((node, i) => ({ node, kind: marks?.kinds[i] ?? null, before: marks?.before[i] }))
         .filter((it): it is { node: NonNullable<typeof it.node>; kind: 'added' | 'changed' | null; before: string | undefined } => !!it.node);
-      const still = typeof window.matchMedia !== 'function'
-        || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const still = typeof window.matchMedia !== 'function' || motionReduced();
 
       if (aiEdit) {
         this._endAiReview();

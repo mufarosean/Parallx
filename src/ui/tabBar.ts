@@ -13,6 +13,7 @@ import { Disposable, DisposableStore, toDisposable } from '../platform/lifecycle
 import { Emitter, Event } from '../platform/events.js';
 import { $, clearNode, addDisposableListener, toggleClass } from './dom.js';
 import { setupTooltip } from './tooltip.js';
+import { motionReduced } from './motionPreference.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -368,7 +369,7 @@ export class TabBar extends Disposable {
   private static _still(): boolean {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
     if (document.visibilityState !== 'visible') return true;
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return motionReduced();
   }
 
   /** Run `then` when the element's animation ends, or shortly after anyway. */

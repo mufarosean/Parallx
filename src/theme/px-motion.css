@@ -113,3 +113,13 @@
     transition-duration: 0.001ms !important;
   }
 }
+/* …and Settings › Appearance › Reduce Motion, the same for anyone who asks
+   the app rather than the computer (pxAppearance sets the attribute; code
+   that animates by hand asks ui/motionPreference.ts). */
+:root[data-px-motion="reduced"] *,
+:root[data-px-motion="reduced"] *::before,
+:root[data-px-motion="reduced"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}

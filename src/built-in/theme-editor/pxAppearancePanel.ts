@@ -52,6 +52,7 @@ export class PxAppearancePanel implements IDisposable {
   private readonly _fontChips = new Map<string, HTMLButtonElement>();
   private readonly _textSizeButtons = new Map<number, HTMLButtonElement>();
   private _contrastToggle?: Toggle;
+  private _motionToggle?: Toggle;
   private _hueRow?: HTMLElement;
   private _hueInput?: HTMLInputElement;
   private _presetsRow?: HTMLElement;
@@ -170,12 +171,12 @@ export class PxAppearancePanel implements IDisposable {
     }
   }
 
-  // ── Contrast ─────────────────────────────────────────────────────────
+  // ── Contrast and motion ──────────────────────────────────────────────
   // Comfort switches, each a row: title, hint, the kit's toggle.
   private _renderComfortSection(): HTMLElement {
     const section = document.createElement('section');
     section.className = 'px-appearance-section';
-    section.appendChild(this._sectionHeading('Contrast', 'For long sessions and tired eyes.'));
+    section.appendChild(this._sectionHeading('Contrast and motion', 'For long sessions and tired eyes.'));
     const rows = document.createElement('div');
     rows.className = 'px-comfort-rows';
     this._contrastToggle?.dispose();
@@ -183,6 +184,13 @@ export class PxAppearancePanel implements IDisposable {
       'Stronger outlines and secondary text. Every border reaches at least 3:1 against what it sits on, and focus rings are thicker.',
       !!this._state.increaseContrast, (on) => {
         this._state.increaseContrast = on || undefined;
+        this._commit();
+      });
+    this._motionToggle?.dispose();
+    this._motionToggle = this._comfortRow(rows, 'Reduce Motion',
+      "Panels, menus and tabs appear without sliding or fading. Your computer's own setting is always respected.",
+      !!this._state.reduceMotion, (on) => {
+        this._state.reduceMotion = on || undefined;
         this._commit();
       });
     section.appendChild(rows);
@@ -510,7 +518,7 @@ export class PxAppearancePanel implements IDisposable {
   private _renderSavedSection(): HTMLElement {
     const section = document.createElement('section');
     section.className = 'px-appearance-section';
-    section.appendChild(this._sectionHeading('Your themes', 'Save the mode, palette, accent and font as a named theme. Text size and contrast stay as you set them.'));
+    section.appendChild(this._sectionHeading('Your themes', 'Save the mode, palette, accent and font as a named theme. Text size, contrast and motion stay as you set them.'));
 
     // Save bar — name input + save button.
     const saveBar = document.createElement('div');
@@ -634,6 +642,7 @@ export class PxAppearancePanel implements IDisposable {
     this._disposed = true;
     window.removeEventListener(APPEARANCE_CHANGED_EVENT, this._onExternalChange);
     this._contrastToggle?.dispose();
+    this._motionToggle?.dispose();
     this._modeButtons.clear();
     this._baseCards.clear();
     this._accentChips.clear();

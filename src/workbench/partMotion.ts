@@ -6,6 +6,7 @@
 // apply, and every path ends on a timeout too: a transition that never
 // fires (reduced motion, a hidden window) still finishes.
 
+import { motionReduced } from '../ui/motionPreference.js';
 export type PartEdge = 'left' | 'right' | 'bottom';
 
 const SETTLE_MS = 260;
@@ -40,7 +41,7 @@ export function animatePartOut(el: HTMLElement, edge: PartEdge, then: () => void
 }
 
 function prefersReducedMotion(): boolean {
-  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+  return motionReduced();
 }
 
 /**

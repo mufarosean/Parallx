@@ -50,6 +50,12 @@ export interface PxAppearanceState {
    * setting like textSize: saved themes leave it alone.
    */
   increaseContrast?: boolean;
+  /**
+   * Reduce Motion: panels, menus and tabs appear without sliding or fading
+   * (data-px-motion="reduced"; px-motion.css and ui/motionPreference.ts).
+   * The computer's own setting applies either way. A comfort setting.
+   */
+  reduceMotion?: boolean;
 }
 
 /** The text sizes on offer (Settings › Appearance › Text size, Ctrl+= / Ctrl+-). */
@@ -116,6 +122,7 @@ function normalizeAppearance(parsed: Partial<PxAppearanceState> | null | undefin
     font: PX_FONTS.some(f => f.id === parsed.font) ? parsed.font : undefined,
     textSize: typeof parsed.textSize === 'number' && PX_TEXT_SIZES.includes(parsed.textSize) && parsed.textSize !== DEFAULT_TEXT_SIZE ? parsed.textSize : undefined,
     increaseContrast: parsed.increaseContrast === true ? true : undefined,
+    reduceMotion: parsed.reduceMotion === true ? true : undefined,
   };
 }
 
@@ -388,6 +395,10 @@ export function applyAppearance(input: PxAppearanceState): void {
   // Contrast — one attribute; the token block in px-tokens.css does the rest.
   if (state.increaseContrast) root.setAttribute('data-px-contrast', 'more');
   else root.removeAttribute('data-px-contrast');
+
+  // Motion — the attribute stills CSS motion; code asks motionPreference.ts.
+  if (state.reduceMotion) root.setAttribute('data-px-motion', 'reduced');
+  else root.removeAttribute('data-px-motion');
 
   // Base palette — slate is the :root default (no attribute).
   if (state.base === 'slate') root.removeAttribute('data-px-theme');
