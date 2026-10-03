@@ -42,3 +42,19 @@ describe('budget transactions', () => {
     expect(txOrigin({ source: 'gmail', gmail_message_id: null, tx_type_source: 'manual' })).toBe('manual');
   });
 });
+
+describe('budget CSV import parsing', () => {
+  const { splitCsvRecords, csvDate } = __testables;
+  it('keeps a line break inside a quoted field in one record', () => {
+    const recs = splitCsvRecords('date,merchant,amount,notes\r\n2026-10-01,Cafe,12.00,"Dinner\nwith Sam"\n2026-10-02,Shop,5.00,\n');
+    expect(recs).toHaveLength(3);
+    expect(recs[1]).toBe('2026-10-01,Cafe,12.00,"Dinner\nwith Sam"');
+  });
+  it('reads ISO and US dates and refuses the rest', () => {
+    expect(csvDate('2026-10-01')).toBe('2026-10-01');
+    expect(csvDate('9/14/2026')).toBe('2026-09-14');
+    expect(csvDate('09/14/26')).toBe('2026-09-14');
+    expect(csvDate('14/09/2026')).toBeNull();
+    expect(csvDate('Sep 14')).toBeNull();
+  });
+});

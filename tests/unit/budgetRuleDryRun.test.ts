@@ -29,6 +29,18 @@ describe('budget rule dry run', () => {
   });
 
   it('matches nothing when nothing fits', () => {
-    expect(ruleDryRun({ pattern: 'UBER', match_type: 'contains' }, rows, 'transport')).toEqual({ matched: 0, changing: 0, keptManual: 0, changes: [] });
+    expect(ruleDryRun({ pattern: 'UBER', match_type: 'contains' }, rows, 'transport')).toEqual({ matched: 0, changing: 0, keptManual: 0, shadowed: 0, ids: [], changes: [] });
+  });
+
+  it('leaves rows another rule takes first', () => {
+    const past = [
+      { id: 'p1', merchant: 'AMAZON PRIME', category_id: 'subs', categorization_source: 'rule' },
+      { id: 'p2', merchant: 'AMAZON MKTPL', category_id: 'other', categorization_source: 'ai' },
+    ];
+    const prime = { id: 'r1', pattern: 'AMAZON PRIME', match_type: 'contains', priority: 100 };
+    const r = ruleDryRun({ pattern: 'AMAZON', match_type: 'contains' }, past, 'shopping', [prime]);
+    expect(r.matched).toBe(2);
+    expect(r.shadowed).toBe(1);
+    expect(r.ids).toEqual(['p2']);
   });
 });

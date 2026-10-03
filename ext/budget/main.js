@@ -44,7 +44,9 @@ function _emitSync(evt) {
   _lastSyncEvent = evt;
   for (const fn of _syncListeners) {
     try { fn(evt); } catch (e) { console.error('[Budget] sync listener error:', e); }
-  }
+  }  // A finished sync changed the ledger: every page that listens for ledger
+  // changes redraws, not only the ones that also listen for syncs.
+  if (evt.kind === 'complete') notifyLedgerChanged();
 }
 function onSyncEvent(fn) {
   _syncListeners.add(fn);
@@ -237,6 +239,8 @@ async function confirmReviewedTransaction(txId, categoryId, merchant, txType = n
   const sets = ["status='confirmed'", 'user_overridden=1', 'category_id=?', "categorization_source='manual'", 'matched_rule_id=NULL', 'updated_at=?'];
   const params = [categoryId || null, new Date().toISOString()];
   if (txType) { sets.push('tx_type=?', "tx_type_source='manual'"); params.push(txType); }
+  // Income is money in: stored negative, whatever sign the email gave it.
+  if (txType === 'deposit') sets.push('amount_cents=-ABS(amount_cents)');
   params.push(txId);
   await db.run(`UPDATE transactions SET ${sets.join(', ')} WHERE id=?`, params);
   return learn ? await learnExpenseRuleFromOverride(merchant, categoryId) : null;
@@ -303,7 +307,10 @@ function routeForInstanceId(instanceId) {
 // The section the open Budget editor shows, and who wants to know (the sidebar).
 let _currentSection = 'overview';
 const _sectionListeners = new Set();
-let _liveEditorShow = null;
+// Every open Budget pane's show(); the newest still open is the one the
+// sidebar and the open commands drive. A list, not one slot: with the editor
+// split, closing either copy must leave the other in charge.
+const _livePanes = [];
 // Sets the open page's header actions ({ primary, secondary }); a no-op when no
 // Budget editor is open. Pages call it while they render.
 let _setPageActions = null;
@@ -328,6 +335,17 @@ function serialRefresh(fn) {
   };
 }
 
+// A save button's handler that ignores clicks while a save is in flight, so
+// a double click inserts one row, not two.
+function onceAtATime(fn) {
+  let busy = false;
+  return async (...args) => {
+    if (busy) return;
+    busy = true;
+    try { await fn(...args); } finally { busy = false; }
+  };
+}
+
 // Ledger changed outside a sync (a review verdict, an edit): views refresh.
 const _ledgerListeners = new Set();
 function notifyLedgerChanged() {
@@ -338,7 +356,13 @@ function onLedgerChanged(fn) { _ledgerListeners.add(fn); return () => _ledgerLis
 async function openBudgetSection(api, sectionId, view) {
   _navState.section = sectionId;
   _navState.planView = view || null;
-  if (_liveEditorShow) { _liveEditorShow(sectionId, view || null); }
+  const pane = _livePanes[_livePanes.length - 1];
+  if (pane) {
+    pane(sectionId, view || null);
+    // Switched in place: nothing is left for a later mount to pick up.
+    _navState.section = null;
+    _navState.planView = null;
+  }
   await api.editors.openEditor({ typeId: 'budget.editor', title: 'Budget', icon: 'wallet', instanceId: 'budget:main' });
   // A freshly mounted editor consumed _navState; an open one was switched above.
 }
@@ -1362,6 +1386,7 @@ function renderEditorPane(container, api, input) {
   container.appendChild(el);
 
   let cleanup = null;
+  let ownHeader = null;
   function moreItems() {
     return [
       { label: 'Sync Now', icon: 'refresh-cw', onSelect: () => api.commands.executeCommand('budget.sync') },
@@ -1388,6 +1413,7 @@ function renderEditorPane(container, api, input) {
       api.ui.createPageHeader(head, { title: section.title, back, primary: actions.primary, secondary: actions.secondary, more: moreItems() });
     };
     _setPageActions = drawHeader;
+    ownHeader = drawHeader;
     drawHeader();
     try {
       cleanup = renderSection(section.id, body, api, view) || null;
@@ -1403,12 +1429,14 @@ function renderEditorPane(container, api, input) {
     : ['overview', null];
   _navState.section = null;
   _navState.planView = null;
-  _liveEditorShow = show;
+  _livePanes.push(show);
   show(startId, startView);
 
   return {
     dispose() {
-      if (_liveEditorShow === show) { _liveEditorShow = null; _setPageActions = null; }
+      const at = _livePanes.indexOf(show);
+      if (at >= 0) _livePanes.splice(at, 1);
+      if (_setPageActions === ownHeader) _setPageActions = null;
       try { if (typeof cleanup === 'function') cleanup(); } catch { /* best-effort */ }
       try { container.removeChild(el); } catch { /* container already gone */ }
     },
@@ -1449,7 +1477,7 @@ function renderWorthSection(body, api) {
   const g = renderGoalsSection(goals, api, { actions });
   setPageActions({
     primary: { label: 'Add Asset or Debt…', icon: 'plus', onClick: () => actions.addHolding?.() },
-    secondary: [{ label: 'New Goal…', icon: 'plus', onClick: () => actions.newGoal?.() }],
+    secondary: [{ label: 'Add Goal…', icon: 'plus', onClick: () => actions.newGoal?.() }],
   });
   return () => { if (typeof a === 'function') a(); if (typeof g === 'function') g(); };
 }
@@ -1857,12 +1885,12 @@ async function openTxEditor(api, opts = {}) {
     row?.category_id || '');
 
   const typeSel = makeDropdown(typeOpts, initialType, (txType) => {
-    // Changing the type re-scopes the categories. Keep the current pick when it
-    // is still offered; clear it when it is not, rather than leaving an income
-    // category selected on an expense and saving that.
-    const keep = catSel.value;
-    const opts = scopedCategoryOptions(categories, txType, keep);
-    catSel.setOptions(opts, opts.some(o => o.value === keep) ? keep : '');
+    // Changing the type re-scopes the categories. Keep the current pick only
+    // when it is of the new type's kind; clear it otherwise, rather than
+    // leaving an income category on an expense and saving that.
+    const cur = categories.find(c => c.id === catSel.value);
+    const keep = cur && cur.kind === categoryKindForTxType(txType) ? cur.id : '';
+    catSel.setOptions(scopedCategoryOptions(categories, txType, keep), keep);
   });
 
   const statusSel = makeDropdown(
@@ -1918,14 +1946,22 @@ async function openTxEditor(api, opts = {}) {
   const spacer = document.createElement('div'); spacer.className = 'spacer'; foot.appendChild(spacer);
   foot.appendChild(makeButton('Cancel', { onClick: close }));
 
+  let saving = false;
   async function save(forceStatus) {
+    if (saving) return; // a double click saves once
+    saving = true;
+    try { await saveOnce(forceStatus); } finally { saving = false; }
+  }
+
+  async function saveOnce(forceStatus) {
     const merchant = merchantInput.value.trim();
     const dateYmd = dateInput.value;
     const amt = parseFloat(amountInput.value);
     if (!Number.isFinite(amt)) { amountInput.focus(); return; }
     if (!dateYmd) { dateInput.focus(); return; }
-    const cents = dollarsToCents(amt);
     const txType = typeSel.value;
+    // Income is money in, stored negative whichever sign was typed.
+    const cents = txType === 'deposit' ? -Math.abs(dollarsToCents(amt)) : dollarsToCents(amt);
     const categoryId = catSel.value || null;
     const accountId = acctSel.value || null;
     const notes = [notesInput.value.trim(), ...systemTags].filter(Boolean).join(' ') || null;
@@ -1943,8 +1979,10 @@ async function openTxEditor(api, opts = {}) {
           [crypto.randomUUID(), merchant || null, cents, dateYmd, txType, categoryId, accountId, notes, status, now, now],
         );
       } else {
-        const sets = ['merchant=?', 'amount_cents=?', 'transaction_date=?', 'tx_type=?', "tx_type_source='manual'", 'category_id=?', 'account_id=?', 'notes=?', 'status=?', 'user_overridden=1', 'updated_at=?'];
+        const sets = ['merchant=?', 'amount_cents=?', 'transaction_date=?', 'tx_type=?', 'category_id=?', 'account_id=?', 'notes=?', 'status=?', 'user_overridden=1', 'updated_at=?'];
         const params = [merchant || null, cents, dateYmd, txType, categoryId, accountId, notes, status, now];
+        // Who typed it changes only when the type does: a note is not a verdict.
+        if (txType !== row.tx_type) sets.push("tx_type_source='manual'");
         if (categoryChanged) sets.push("categorization_source='manual'", 'matched_rule_id=NULL');
         params.push(opts.id);
         await db.run(`UPDATE transactions SET ${sets.join(', ')} WHERE id=?`, params);
@@ -1972,7 +2010,14 @@ async function openTxEditor(api, opts = {}) {
 // "How it got here": where a row came from, who typed it, who put it in its
 // category, and where it stands now. Every line is read from the row and
 // its email; nothing is guessed.
-const TX_NOTE_TAG = /\[(?:cross-check: |possible duplicate of |hidden: )[^\]]*\]/g;
+// Exactly the tags the sync and Review write, so a merchant with a "]" in
+// it, or a note the user typed in brackets, is never mistaken for one.
+const TX_NOTE_TAG = new RegExp([
+  String.raw`\[cross-check: tx_type=[a-z_]*, merchant=.*?, amount=-?\d+\.\d{2}(?:, payee looks external)?\]`,
+  String.raw`\[possible duplicate of [0-9A-Za-z-]+\]`,
+  String.raw`\[hidden: (?:duplicate|ignored)\]`,
+  String.raw`\[auto-hidden: daily summary\]`,
+].join('|'), 'g');
 function splitTxNotes(notes) {
   const text = String(notes || '');
   const tags = text.match(TX_NOTE_TAG) || [];
@@ -2120,6 +2165,7 @@ function renderTransactionsSection(body, api) {
   let search     = (incoming && incoming.merchant)   || '';
   // A link for fees only, or purchases only, narrows Spending further.
   let typeOnly   = incoming && (incoming.type === 'purchase' || incoming.type === 'fee') ? incoming.type : null;
+  let aiTypedOnly = !!(incoming && incoming.aiTyped);
 
   const root = document.createElement('div');
   root.className = 'budget-tx';
@@ -2164,7 +2210,7 @@ function renderTransactionsSection(body, api) {
     const chip = api.ui.createFilterChip(chipsBar, {
       label: v.label,
       pressed: v.id === view,
-      onToggle: () => { view = v.id; if (v.id !== 'spend') typeOnly = null; syncChips(); void refresh(); },
+      onToggle: () => { view = v.id; if (v.id !== 'spend') typeOnly = null; if (v.id !== 'transfer') aiTypedOnly = false; syncChips(); void refresh(); },
     });
     chips.set(v.id, chip);
   }
@@ -2212,6 +2258,7 @@ function renderTransactionsSection(body, api) {
     }
     if (dayYmd) add(shortDate(dayYmd), () => { dayYmd = null; });
     if (typeOnly) add(typeOnly === 'fee' ? 'Fees only' : 'Purchases only', () => { typeOnly = null; });
+    if (aiTypedOnly) add('Typed by the AI', () => { aiTypedOnly = false; });
   }
 
   async function refresh() {
@@ -2229,11 +2276,13 @@ function renderTransactionsSection(body, api) {
     if (v.status === 'live') where.push("t.status IN ('confirmed','review')");
     else { where.push('t.status = ?'); params.push(v.status); }
     if (typeOnly) { where.push('t.tx_type = ?'); params.push(typeOnly); }
+    if (aiTypedOnly) where.push("t.tx_type_source = 'ai'");
     else if (v.type === 'spend') where.push("t.tx_type IN ('purchase','fee')");
     else if (v.type !== 'all') { where.push('t.tx_type = ?'); params.push(v.type); }
     if (categoryId) { where.push('t.category_id = ?'); params.push(categoryId); }
     if (accountId)  { where.push('t.account_id = ?'); params.push(accountId); }
-    if (search.trim()) { where.push('LOWER(t.merchant) LIKE ?'); params.push(`%${search.trim().toLowerCase()}%`); }
+    // What is typed is matched literally: % and _ are not wildcards.
+    if (search.trim()) { where.push("LOWER(t.merchant) LIKE ? ESCAPE '\\'"); params.push(`%${search.trim().toLowerCase().replace(/[\\%_]/g, c => '\\' + c)}%`); }
 
     let rows;
     let reviewCount = 0;
@@ -2391,11 +2440,12 @@ function reviewReason(r) {
     if (/payee looks external/.test(notes)) {
       return { tag: 'Transfer to a person?', why: `It was typed as a transfer, but ${merchant} does not look like one of your accounts. Money sent to a person is usually spending.` };
     }
+    // A deposit is flagged for its sign whether or not it names a payee.
+    if (/tx_type=deposit/.test(notes)) {
+      return { tag: 'Income or money out?', why: 'It was typed as income, but the amount reads as money going out. Confirming it as Income counts it as money in.' };
+    }
     if (/merchant=NULL/.test(notes)) {
       return { tag: 'No payee', why: 'The email did not name who was paid, so the type could not be checked.' };
-    }
-    if (/tx_type=deposit/.test(notes)) {
-      return { tag: 'Income or money out?', why: 'It was typed as income, but the amount reads as money going out.' };
     }
     return { tag: 'Did not add up', why: 'The type and the amount did not agree when the sync checked them.' };
   }
@@ -2419,8 +2469,8 @@ function reviewTypeSource(r) {
 
 // The verdict a row opens with: Duplicate when it was flagged as one,
 // otherwise the type it already has.
-function reviewDefaultVerdict(r) {
-  if (reviewDuplicateOf(r.notes)) return 'duplicate';
+function reviewDefaultVerdict(r, originalCounts = true) {
+  if (reviewDuplicateOf(r.notes) && originalCounts) return 'duplicate';
   return TX_TYPE_VALUES.includes(r.tx_type) ? r.tx_type : 'purchase';
 }
 
@@ -2465,13 +2515,21 @@ function renderReviewQueueSection(body, api) {
   let rules = [];
   let currentId = null;
   let taught = 0;
+  let origs = new Map(); // duplicate's original id → its row, or absent if gone
   let drawSeq = 0; // a newer draw wins; an older one stops at its next await
+  const doneIds = new Set(); // rows saved and not undone: a second click saves nothing
   const drafts = new Map(); // row id → { verdict, categoryId, remember }
+
+  // A flagged duplicate can be hidden only while its original still counts.
+  function dupLive(r) {
+    const o = origs.get(reviewDuplicateOf(r.notes));
+    return !!o && (o.status === 'confirmed' || o.status === 'review');
+  }
 
   function draftFor(r) {
     let d = drafts.get(r.id);
     if (!d) {
-      const verdict = reviewDefaultVerdict(r);
+      const verdict = reviewDefaultVerdict(r, dupLive(r));
       d = { verdict, categoryId: categoryFor(r, verdict, r.category_id), remember: true };
       drafts.set(r.id, d);
     }
@@ -2487,12 +2545,14 @@ function renderReviewQueueSection(body, api) {
     return fits.length === 1 ? fits[0].id : null;
   }
 
+  // Reads everything a draw needs; the caller keeps it only if it is still
+  // the newest draw, so a slower, older read never replaces newer data.
   async function load() {
-    categories = await db.all(`SELECT id, name, color, kind FROM categories WHERE archived=0 ORDER BY kind, sort_order, name`).catch(() => []);
-    rules = await db.all(
+    const categories = await db.all(`SELECT id, name, color, kind FROM categories WHERE archived=0 ORDER BY kind, sort_order, name`).catch(() => []);
+    const rules = await db.all(
       `SELECT id, pattern, match_type, category_id, priority, auto_created FROM categorization_rules
         WHERE active = 1 ORDER BY priority DESC, length(pattern) DESC, created_at ASC`).catch(() => []);
-    rows = await db.all(`
+    const rows = await db.all(`
       SELECT t.id, t.merchant, t.amount_cents, t.transaction_date, t.ai_confidence, t.category_id,
              t.tx_type, t.tx_type_source, t.notes, t.card_last_four,
              a.display_name AS account_name, a.last_four AS account_last_four, e.raw_subject
@@ -2502,17 +2562,29 @@ function renderReviewQueueSection(body, api) {
        WHERE t.status = 'review'
        ORDER BY t.transaction_date DESC, t.created_at DESC
        LIMIT 200`);
+    const origs = new Map();
+    for (const id of new Set(rows.map(r => reviewDuplicateOf(r.notes)).filter(Boolean))) {
+      const o = await db.get(
+        `SELECT t.merchant, t.amount_cents, t.transaction_date, t.status, e.raw_subject
+           FROM transactions t LEFT JOIN email_imports e ON e.gmail_message_id = t.gmail_message_id
+          WHERE t.id = ?`, [id]).catch(() => null);
+      if (o) origs.set(id, o);
+    }
+    return { categories, rules, rows, origs };
   }
 
   async function draw() {
     if (disposed) return;
     const seq = ++drawSeq;
-    try { await load(); }
+    let data;
+    try { data = await load(); }
     catch (err) {
-      root.replaceChildren(emptyState('The review queue could not be read: ' + (err instanceof Error ? err.message : String(err))));
+      if (!disposed && seq === drawSeq) root.replaceChildren(emptyState('The review queue could not be read: ' + (err instanceof Error ? err.message : String(err))));
       return;
     }
     if (disposed || seq !== drawSeq) return;
+    ({ categories, rules, rows, origs } = data);
+    for (const id of [...doneIds]) if (!rows.some(r => r.id === id)) doneIds.delete(id);
     root.replaceChildren();
     for (const id of [...drafts.keys()]) if (!rows.some(r => r.id === id)) drafts.delete(id);
     if (rows.length === 0) {
@@ -2531,8 +2603,7 @@ function renderReviewQueueSection(body, api) {
     const grid = document.createElement('div');
     grid.className = 'budget-rv-grid';
     drawList(grid);
-    await drawItem(grid, rows.find(r => r.id === currentId), seq);
-    if (disposed || seq !== drawSeq) return;
+    drawItem(grid, rows.find(r => r.id === currentId));
     root.appendChild(grid);
   }
 
@@ -2585,7 +2656,7 @@ function renderReviewQueueSection(body, api) {
     grid.appendChild(side);
   }
 
-  async function drawItem(grid, r, seq) {
+  function drawItem(grid, r) {
     const d = draftFor(r);
     const card = document.createElement('div');
     card.className = 'budget-ov-card budget-rv-card';
@@ -2628,11 +2699,7 @@ function renderReviewQueueSection(body, api) {
 
     const dupId = reviewDuplicateOf(r.notes);
     if (dupId) {
-      const orig = await db.get(
-        `SELECT t.merchant, t.amount_cents, t.transaction_date, t.status, e.raw_subject
-           FROM transactions t LEFT JOIN email_imports e ON e.gmail_message_id = t.gmail_message_id
-          WHERE t.id = ?`, [dupId]).catch(() => null);
-      if (disposed || seq !== drawSeq) return;
+      const orig = origs.get(dupId) || null;
       const cmp = document.createElement('div');
       cmp.className = 'budget-rv-compare';
       const line = (label, x) => {
@@ -2649,7 +2716,16 @@ function renderReviewQueueSection(body, api) {
         cmp.appendChild(row);
       };
       line('This one', r);
-      line(orig && orig.status === 'review' ? 'Also waiting for review' : 'Already in the ledger', orig && orig.status !== 'deleted' ? orig : null);
+      const origLabel = !orig || orig.status === 'deleted' ? 'The earlier one'
+        : orig.status === 'review' ? 'Also waiting for review'
+        : orig.status === 'hidden' ? 'Hidden in the ledger' : 'Already in the ledger';
+      line(origLabel, orig && orig.status !== 'deleted' ? orig : null);
+      if (!dupLive(r)) {
+        const note = document.createElement('div');
+        note.className = 'budget-ov-faint';
+        note.textContent = 'The earlier one no longer counts, so this one is not offered as a duplicate.';
+        cmp.appendChild(note);
+      }
       card.appendChild(cmp);
     }
 
@@ -2665,7 +2741,7 @@ function renderReviewQueueSection(body, api) {
     what.appendChild(seg);
     api.ui.createSegmented(seg, {
       ariaLabel: 'What it is',
-      items: REVIEW_VERDICTS.filter(v => v.value !== 'duplicate' || dupId),
+      items: REVIEW_VERDICTS.filter(v => v.value !== 'duplicate' || dupLive(r)),
       value: d.verdict,
       onChange: (v) => {
         d.verdict = v;
@@ -2782,16 +2858,20 @@ function renderReviewQueueSection(body, api) {
 
   let saving = false;
   async function confirmRow(r, d) {
-    if (saving) return; // a double click saves once
+    // A double click, or a click on the old card before the redraw lands,
+    // saves once: the second would snapshot the saved state and break Undo.
+    if (saving || doneIds.has(r.id)) return;
     saving = true;
-    try { await saveRow(r, d); } finally { saving = false; }
+    doneIds.add(r.id);
+    let ok = false;
+    try { ok = await saveRow(r, d); } finally { saving = false; if (!ok) doneIds.delete(r.id); }
   }
 
   async function saveRow(r, d) {
     const v = d.verdict;
     if (needsCategory(d) && !d.categoryId) return;
     const before = await db.get(
-      `SELECT status, category_id, tx_type, tx_type_source, categorization_source, matched_rule_id, user_overridden, notes, updated_at
+      `SELECT status, category_id, tx_type, tx_type_source, categorization_source, matched_rule_id, user_overridden, notes, updated_at, amount_cents
          FROM transactions WHERE id = ?`, [r.id]).catch(() => null);
     let ruleChange = null;
     let what;
@@ -2822,9 +2902,9 @@ function renderReviewQueueSection(body, api) {
       try {
         await db.run(
           `UPDATE transactions SET status=?, category_id=?, tx_type=?, tx_type_source=?, categorization_source=?,
-                  matched_rule_id=?, user_overridden=?, notes=?, updated_at=? WHERE id=?`,
+                  matched_rule_id=?, user_overridden=?, notes=?, updated_at=?, amount_cents=? WHERE id=?`,
           [before.status, before.category_id, before.tx_type, before.tx_type_source, before.categorization_source,
-           before.matched_rule_id, before.user_overridden, before.notes, before.updated_at, r.id]);
+           before.matched_rule_id, before.user_overridden, before.notes, before.updated_at, before.amount_cents, r.id]);
         await undoLearnedRule(ruleChange);
         if (ruleChange) taught = Math.max(0, taught - 1);
       } catch (e) {
@@ -2833,8 +2913,10 @@ function renderReviewQueueSection(body, api) {
       }
       currentId = r.id;
       drafts.set(r.id, d);
+      doneIds.delete(r.id);
       notifyLedgerChanged();
     });
+    return true;
   }
 
   const offSync = onSyncEvent((e) => { if (e.kind === 'complete' || e.kind === 'error') void draw(); });
@@ -3000,7 +3082,7 @@ function renderCategoriesSection(body, api) {
       // Kind
       const tdKind = document.createElement('td');
       const kindSel = makeDropdown(CATEGORY_KIND_OPTIONS.map(k => ({ value: k.value, label: k.label })), r.kind, async (val) => {
-        try { await db.run(`UPDATE categories SET kind=? WHERE id=?`, [val, r.id]); }
+        try { await db.run(`UPDATE categories SET kind=? WHERE id=?`, [val, r.id]); notifyLedgerChanged(); }
         catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
       });
       tdKind.appendChild(kindSel);
@@ -3040,7 +3122,12 @@ function renderCategoriesSection(body, api) {
           catch (e) { await api.window?.showErrorMessage?.('Rename failed: ' + (e instanceof Error ? e.message : String(e))); }
         } },
         { label: r.archived ? 'Unarchive' : 'Archive', onSelect: async () => {
-          try { await db.run(`UPDATE categories SET archived=? WHERE id=?`, [r.archived ? 0 : 1, r.id]); notifyLedgerChanged(); }
+          try {
+            await db.run(`UPDATE categories SET archived=? WHERE id=?`, [r.archived ? 0 : 1, r.id]);
+            notifyLedgerChanged();
+            const n = Number((await db.get('SELECT COUNT(*) AS n FROM categorization_rules WHERE category_id=? AND active=1', [r.id]))?.n) || 0;
+            if (!r.archived && n) await api.window?.showInformationMessage?.(`${n} rule${n === 1 ? '' : 's'} that file into ${r.name} rest while it is archived. New imports go to the AI.`);
+          }
           catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
         } },
       ]));
@@ -3145,7 +3232,7 @@ async function readOverview(monthKey) {
   const r = plan.range;
   const anyRow = await db.get(`SELECT COUNT(*) AS n FROM transactions`);
   const income = await db.get(
-    `SELECT COALESCE(SUM(-amount_cents),0) AS cents FROM transactions
+    `SELECT COALESCE(SUM(ABS(amount_cents)),0) AS cents FROM transactions
       WHERE status='confirmed' AND tx_type='deposit' AND transaction_date >= ? AND transaction_date <= ?`,
     [r.start, r.end]);
   const incomeExpectedCents = await readExpectedIncome(r.key);
@@ -3229,7 +3316,7 @@ function drawSyncStrip(root, data, api) {
   }
   if (data.transfersAi) {
     linkButton(items, `${data.transfersAi} transfer${data.transfersAi === 1 ? '' : 's'} the AI typed this month`, () => {
-      _navState.txFilter = { monthKey: data.range.key, type: 'transfer' };
+      _navState.txFilter = { monthKey: data.range.key, type: 'transfer', aiTyped: true };
       openBudgetSection(api, 'transactions');
     }).title = 'Kept out of spending. A wrong one hides an expense.';
   }
@@ -3596,7 +3683,7 @@ async function openManualBalanceEditor(api, opts = {}) {
 
   const head = document.createElement('div'); head.className = 'budget-drawer-head';
   const title = document.createElement('h3'); title.className = 'budget-drawer-title'; title.style.flex = '1';
-  title.textContent = isCreate ? 'Add Asset or Debt' : 'Edit Holding';
+  title.textContent = isCreate ? 'Add Asset or Debt' : 'Edit Asset or Debt';
   head.appendChild(title);
   const closeBtn = document.createElement('button'); closeBtn.className = 'budget-drawer-close'; closeBtn.type = 'button';
   closeBtn.innerHTML = makeIcon(api, 'x', 16) || '✕'; closeBtn.addEventListener('click', close);
@@ -3690,7 +3777,7 @@ async function openManualBalanceEditor(api, opts = {}) {
       close(); opts.onSaved?.();
     } catch (e) { await api.window?.showErrorMessage?.('Save failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
-  foot.appendChild(makeButton(isCreate ? 'Add holding' : 'Save', { primary: true, onClick: () => void save() }));
+  foot.appendChild(makeButton(isCreate ? 'Add Asset or Debt' : 'Save', { primary: true, onClick: onceAtATime(save) }));
   drawer.appendChild(foot);
 
   document.body.appendChild(overlay);
@@ -3941,7 +4028,7 @@ async function openGoalEditor(api, opts = {}) {
 
   const head = document.createElement('div'); head.className = 'budget-drawer-head';
   const title = document.createElement('h3'); title.className = 'budget-drawer-title'; title.style.flex = '1';
-  title.textContent = isCreate ? 'New Goal' : 'Edit Goal';
+  title.textContent = isCreate ? 'Add Goal' : 'Edit Goal';
   head.appendChild(title);
   const closeBtn = document.createElement('button'); closeBtn.className = 'budget-drawer-close'; closeBtn.type = 'button';
   closeBtn.innerHTML = makeIcon(api, 'x', 16) || '✕'; closeBtn.addEventListener('click', close); head.appendChild(closeBtn);
@@ -4007,7 +4094,7 @@ async function openGoalEditor(api, opts = {}) {
       close(); opts.onSaved?.();
     } catch (e) { await api.window?.showErrorMessage?.('Save failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
-  foot.appendChild(makeButton(isCreate ? 'Create goal' : 'Save', { primary: true, onClick: () => void save() }));
+  foot.appendChild(makeButton(isCreate ? 'Add Goal' : 'Save', { primary: true, onClick: onceAtATime(save) }));
   drawer.appendChild(foot);
   document.body.appendChild(overlay);
   nameInput.focus();
@@ -4029,7 +4116,7 @@ function renderGoalsSection(body, api, opts = {}) {
       estimateMonthlySurplus(),
     ]);
     if (!goals.length) {
-      listEl.appendChild(emptyState('No goals yet. New Goal… sets a savings target or a debt to pay off, and says when you would get there.'));
+      listEl.appendChild(emptyState('No goals yet. Add Goal… sets a savings target or a debt to pay off, and says when you would get there.'));
       return;
     }
     const totalTarget = goals.reduce((s, g) => s + (Number(g.target_cents) || 0), 0);
@@ -4317,7 +4404,7 @@ async function readExpectedIncome(monthKey) {
   const from = monthRange(monthShift(anchor, -3)).start;
   const to = monthRange(anchor).start;
   const row = await db.get(
-    `SELECT COALESCE(SUM(-amount_cents),0) AS cents FROM transactions
+    `SELECT COALESCE(SUM(ABS(amount_cents)),0) AS cents FROM transactions
       WHERE status='confirmed' AND tx_type='deposit' AND transaction_date >= ? AND transaction_date < ?`,
     [from, to]).catch(() => null);
   return Math.round((Number(row?.cents) || 0) / 3);
@@ -4639,7 +4726,7 @@ function renderRecurringSection(body, api) {
       try {
         const n = await detectRecurring(api);
         await api.window?.showInformationMessage?.(`Detected ${n} new recurring series.`);
-        await refresh();
+        notifyLedgerChanged(); // bills feed what is left to spend
       } catch (e) {
         await api.window?.showErrorMessage?.('Detection failed: ' + (e instanceof Error ? e.message : String(e)));
       }
@@ -4720,7 +4807,7 @@ function renderRecurringSection(body, api) {
       acts.appendChild(makeButton(r.cancelled ? 'Reactivate' : 'Cancel', {
         onClick: async () => {
           await db.run('UPDATE recurring_series SET cancelled=?, updated_at=? WHERE id=?', [r.cancelled ? 0 : 1, new Date().toISOString(), r.id]);
-          await refresh();
+          notifyLedgerChanged(); // bills feed what is left to spend
         },
       }));
       if (!r.cancelled && !r.user_confirmed) {
@@ -4728,7 +4815,7 @@ function renderRecurringSection(body, api) {
           primary: true,
           onClick: async () => {
             await db.run('UPDATE recurring_series SET user_confirmed=1, updated_at=? WHERE id=?', [new Date().toISOString(), r.id]);
-            await refresh();
+            notifyLedgerChanged(); // bills feed what is left to spend
           },
         }));
       }
@@ -4749,21 +4836,32 @@ function renderRecurringSection(body, api) {
 // confirmed purchases ({merchant, category_id, categorization_source}). A row
 // whose category you set by hand is never changed by a rule; it is counted
 // as kept. Changes are grouped by merchant and the category they leave.
-function ruleDryRun(probe, rows, categoryId) {
+function ruleDryRun(probe, rows, categoryId, others = []) {
+  // The order the sync tries rules in: priority, then the longer pattern, an
+  // older rule before a newer one. A row another rule would take is not this
+  // rule's to change.
+  const p = { ...probe, priority: probe.priority ?? 100, _new: true };
+  const order = [...others, p].sort((a, b) =>
+    (Number(b.priority) || 0) - (Number(a.priority) || 0)
+    || String(b.pattern || '').length - String(a.pattern || '').length
+    || (a._new ? 1 : 0) - (b._new ? 1 : 0));
   const groups = new Map();
-  let matched = 0, changing = 0, keptManual = 0;
+  const ids = [];
+  let matched = 0, changing = 0, keptManual = 0, shadowed = 0;
   for (const r of rows) {
-    if (!ruleMatchesMerchant(probe, r.merchant)) continue;
+    if (!ruleMatchesMerchant(p, r.merchant)) continue;
     matched++;
+    if (order.find(x => ruleMatchesMerchant(x, r.merchant)) !== p) { shadowed++; continue; }
     if (r.category_id === categoryId) continue;
     if (r.categorization_source === 'manual') { keptManual++; continue; }
     changing++;
+    if (r.id) ids.push(r.id);
     const key = `${r.merchant}\u0000${r.category_id || ''}`;
     const g = groups.get(key) || { merchant: r.merchant, fromId: r.category_id || null, n: 0 };
     g.n++;
     groups.set(key, g);
   }
-  return { matched, changing, keptManual, changes: [...groups.values()].sort((a, b) => b.n - a.n) };
+  return { matched, changing, keptManual, shadowed, ids, changes: [...groups.values()].sort((a, b) => b.n - a.n) };
 }
 
 const RULE_MATCH_LABELS = { contains: 'contains', exact: 'is exactly', regex: 'matches the pattern' };
@@ -4795,6 +4893,9 @@ function renderRulesSection(body, api) {
 
   let alive = true;
   let categories = [];
+  let activeRules = [];
+  // The active rules a rule competes with, leaving out the one being edited.
+  const othersFor = (rule) => activeRules.filter(x => !rule || x.id !== rule.id);
   const catName = (id) => categories.find(c => c.id === id)?.name || 'No category';
 
   async function pastPurchases() {
@@ -4865,7 +4966,7 @@ function renderRulesSection(body, api) {
       dry.appendChild(line);
       if (!pattern) { line.className = 'budget-ov-faint'; line.textContent = 'Type the merchant text to see what it would match.'; lastDry = null; pastLabel.hidden = true; return; }
       if (matchType === 'regex') { try { new RegExp(pattern, 'i'); } catch { line.className = 'budget-ov-bad'; line.textContent = 'That pattern is not valid.'; lastDry = null; pastLabel.hidden = true; return; } }
-      const result = ruleDryRun({ pattern, match_type: matchType }, await pastPurchases(), categoryId);
+      const result = ruleDryRun({ pattern, match_type: matchType }, await pastPurchases(), categoryId, othersFor(rule));
       if (!alive) return;
       lastDry = result;
       line.className = '';
@@ -4873,7 +4974,8 @@ function renderRulesSection(body, api) {
         ? 'It matches nothing in the ledger yet. It will apply to new imports.'
         : !categoryId ? `It matches ${result.matched} past purchase${result.matched === 1 ? '' : 's'}. Choose a category to see what would change.`
         : `It matches ${result.matched} past purchase${result.matched === 1 ? '' : 's'}; ${result.changing} would change category.`
-          + (result.keptManual ? ` ${result.keptManual} you set by hand stay as they are.` : '');
+          + (result.keptManual ? ` ${result.keptManual} you set by hand stay as they are.` : '')
+          + (result.shadowed ? ` ${result.shadowed} go to another rule first and stay with it.` : '');
       for (const c of categoryId ? result.changes.slice(0, 6) : []) {
         const row = document.createElement('div');
         row.className = 'budget-ru-change';
@@ -4896,7 +4998,7 @@ function renderRulesSection(body, api) {
     const acts = document.createElement('div');
     acts.className = 'budget-ru-acts';
     api.ui.createButton(acts, { label: 'Cancel', onClick: () => editorWrap.replaceChildren() });
-    api.ui.createButton(acts, { label: 'Save Rule', kind: 'primary', onClick: () => void save() });
+    api.ui.createButton(acts, { label: 'Save Rule', kind: 'primary', onClick: onceAtATime(() => save()) });
     card.appendChild(acts);
     editorWrap.appendChild(card);
     void runDry();
@@ -4922,9 +5024,9 @@ function renderRulesSection(body, api) {
         if (!pastLabel.hidden && pastBox.checked) {
           const rows = await db.all(`SELECT id, merchant, category_id, categorization_source FROM transactions
                                       WHERE status='confirmed' AND tx_type='purchase' AND merchant IS NOT NULL`);
-          const probe = { pattern, match_type: matchType };
-          for (const r of rows) {
-            if (!ruleMatchesMerchant(probe, r.merchant) || r.category_id === categoryId || r.categorization_source === 'manual') continue;
+          const { ids } = ruleDryRun({ pattern, match_type: matchType }, rows, categoryId, othersFor(rule));
+          for (const rid of ids) {
+            const r = { id: rid };
             await db.run(`UPDATE transactions SET category_id=?, categorization_source='rule', matched_rule_id=?, updated_at=? WHERE id=?`,
               [categoryId, id, now, r.id]);
             changed++;
@@ -4963,6 +5065,7 @@ function renderRulesSection(body, api) {
              (SELECT COUNT(*) FROM transactions t WHERE t.matched_rule_id = r.id) AS matches
         FROM categorization_rules r LEFT JOIN categories c ON c.id = r.category_id
        ORDER BY r.active DESC, r.auto_created ASC, r.priority DESC, r.pattern COLLATE NOCASE`).catch(() => []);
+    activeRules = rules.filter(r => r.active);
     const aiRows = await db.all(`
       SELECT t.merchant, t.category_id, COUNT(*) AS n
         FROM transactions t
@@ -5138,23 +5241,33 @@ function renderReconcileSection(body, api) {
     }
 
     // Form
-    const h = document.createElement('h3'); h.textContent = 'Mark Reconciled'; formWrap.appendChild(h);
+    const h = document.createElement('h3'); h.textContent = 'Mark reconciled'; formWrap.appendChild(h);
     const form = document.createElement('div'); form.style.display = 'flex'; form.style.gap = '8px'; form.style.alignItems = 'center'; form.style.flexWrap = 'wrap';
     const dateInp = document.createElement('input'); dateInp.type = 'date'; dateInp.className = 'budget-input'; dateInp.value = todayYmd();
-    const balInp = document.createElement('input'); balInp.type = 'number'; balInp.step = '0.01'; balInp.placeholder = 'Statement Balance ($)'; balInp.className = 'budget-input'; balInp.style.width = '180px';
+    const balInp = document.createElement('input'); balInp.type = 'number'; balInp.step = '0.01'; balInp.placeholder = 'Statement balance ($)'; balInp.className = 'budget-input'; balInp.style.width = '180px';
     if (latestSnap) balInp.value = (Number(latestSnap.balance_cents) / 100).toFixed(2);
     const noteInp = document.createElement('input'); noteInp.type = 'text'; noteInp.placeholder = 'Note (optional)'; noteInp.className = 'budget-input'; noteInp.style.flex = '1'; noteInp.style.minWidth = '160px';
     const saveBtn = makeButton('Reconcile', {
       primary: true,
       onClick: async () => {
-        const stmtCents = Math.round(parseFloat(balInp.value || '0') * 100);
+        if (balInp.value.trim() === '') { await api.window?.showWarningMessage?.('Enter the statement balance.'); balInp.focus(); return; }
+        const stmtCents = Math.round(parseFloat(balInp.value) * 100);
         if (!Number.isFinite(stmtCents)) { await api.window?.showWarningMessage?.('Enter a valid balance.'); return; }
-        const diff = stmtCents - derived;
+        const stmtDate = dateInp.value || todayYmd();
+        if (stmtDate < baseDate) { await api.window?.showWarningMessage?.(`Choose a date on or after the last reconciliation (${shortDate(baseDate)}).`); return; }
+        // The ledger as of the statement's date, not today: rows after it are
+        // not on the statement and are not a difference.
+        const asOf = await db.get(
+          `SELECT COALESCE(SUM(amount_cents), 0) AS net_out FROM transactions
+            WHERE account_id=? AND status='confirmed' AND transaction_date > ? AND transaction_date <= ?`,
+          [selectedAccountId, baseDate, stmtDate]);
+        const derivedAt = baseBalance - (Number(asOf?.net_out) || 0);
+        const diff = stmtCents - derivedAt;
         try {
           await db.run(
             `INSERT INTO reconciliations (id, account_id, reconciled_at, statement_balance_cents, derived_balance_cents, diff_cents, note)
              VALUES (?,?,?,?,?,?,?)`,
-            [crypto.randomUUID(), selectedAccountId, dateInp.value || todayYmd(), stmtCents, derived, diff, noteInp.value || null],
+            [crypto.randomUUID(), selectedAccountId, stmtDate, stmtCents, derivedAt, diff, noteInp.value || null],
           );
           await refresh();
         } catch (e) {
@@ -5178,7 +5291,7 @@ function renderReconcileSection(body, api) {
         const tr = document.createElement('tr');
         const off = Number(h.diff_cents) || 0;
         tr.innerHTML = `
-          <td>${escHtml(h.reconciled_at)}</td>
+          <td>${escHtml(shortDate(h.reconciled_at))}</td>
           <td class="budget-amount">${escHtml(fmtMoney(h.statement_balance_cents))}</td>
           <td class="budget-amount">${escHtml(fmtMoney(h.derived_balance_cents))}</td>
           <td class="budget-amount ${Math.abs(off) > 100 ? 'negative' : ''}">${escHtml(fmtMoney(off))}</td>
@@ -5225,7 +5338,7 @@ function renderImportExportSection(body, api) {
   importHelp.style.color = 'var(--vscode-descriptionForeground, #888)';
   importHelp.style.lineHeight = '1.5';
   importHelp.innerHTML =
-    'Header row required: <code>date,merchant,amount</code> (and optional <code>type, category, account, last_four, notes</code>). Amounts are positive for expenses, negative for refund / deposit. Duplicates within prior CSV imports (same date, merchant, and amount) are skipped automatically.';
+    'Header row required: <code>date,merchant,amount</code> (and optional <code>type, category, account, last_four, notes, status</code>). Dates as YYYY-MM-DD or M/D/YYYY. Amounts are positive for expenses and negative for refunds; a row typed deposit counts as income whatever its sign. Duplicates within prior CSV imports (same date, merchant, and amount) are skipped automatically.';
   importWrap.appendChild(importHelp);
 
   const ta = document.createElement('textarea');
@@ -5687,10 +5800,12 @@ function fmtMoneyShort(cents) {
 async function loadActiveRules() {
   try {
     return await db.all(
-      `SELECT id, pattern, match_type, category_id, priority
-         FROM categorization_rules
-        WHERE active = 1
-        ORDER BY priority DESC, length(pattern) DESC, created_at ASC`,
+      // A rule whose category is archived files nothing: new rows would land
+      // where no page or dropdown shows them.
+      `SELECT r.id, r.pattern, r.match_type, r.category_id, r.priority
+         FROM categorization_rules r JOIN categories c ON c.id = r.category_id
+        WHERE r.active = 1 AND c.archived = 0
+        ORDER BY r.priority DESC, length(r.pattern) DESC, r.created_at ASC`,
     );
   } catch { return []; }
 }
@@ -5749,20 +5864,20 @@ async function learnRuleFromOverride(merchant, categoryId) {
   const cleanMerchant = String(merchant).trim();
   if (cleanMerchant.length < 2) return null;
 
-  // Look for an existing exact-match auto rule for this merchant.
+  // An existing learned rule for this merchant, on or off. A rule you turned
+  // off is turned back on: choosing the category again is asking for it.
   const existing = await db.get(
-    `SELECT id, category_id FROM categorization_rules
+    `SELECT id, category_id, active FROM categorization_rules
       WHERE LOWER(pattern) = LOWER(?) AND match_type='exact' AND auto_created=1
-      LIMIT 1`,
+      ORDER BY active DESC LIMIT 1`,
     [cleanMerchant],
   );
   const now = new Date().toISOString();
   if (existing) {
-    if (existing.category_id !== categoryId) {
-      // User changed their mind; redirect the auto rule.
-      const prev = await db.get('SELECT category_id, hits, updated_at FROM categorization_rules WHERE id = ?', [existing.id]);
+    if (existing.category_id !== categoryId || !existing.active) {
+      const prev = await db.get('SELECT category_id, hits, updated_at, active FROM categorization_rules WHERE id = ?', [existing.id]);
       await db.run(
-        `UPDATE categorization_rules SET category_id = ?, updated_at = ?, hits = 0 WHERE id = ?`,
+        `UPDATE categorization_rules SET category_id = ?, active = 1, updated_at = ?, hits = 0 WHERE id = ?`,
         [categoryId, now, existing.id],
       );
       return { ruleId: existing.id, created: false, prev };
@@ -5784,8 +5899,8 @@ async function undoLearnedRule(change) {
   if (change.created) {
     await db.run('DELETE FROM categorization_rules WHERE id = ?', [change.ruleId]);
   } else if (change.prev) {
-    await db.run('UPDATE categorization_rules SET category_id = ?, hits = ?, updated_at = ? WHERE id = ?',
-      [change.prev.category_id, change.prev.hits, change.prev.updated_at, change.ruleId]);
+    await db.run('UPDATE categorization_rules SET category_id = ?, hits = ?, updated_at = ?, active = ? WHERE id = ?',
+      [change.prev.category_id, change.prev.hits, change.prev.updated_at, change.prev.active ?? 1, change.ruleId]);
   }
 }
 
@@ -6187,8 +6302,38 @@ function _parseCsvLine(line) {
   return out.map(s => s.trim());
 }
 
+// CSV records, not lines: a quoted field may hold a line break (a note
+// written on two lines), and export quotes such fields.
+function _splitCsvRecords(text) {
+  const src = String(text).replace(/\r\n?/g, '\n');
+  const out = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '"') inQ = !inQ;
+    if (ch === '\n' && !inQ) { out.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out.filter(l => l.trim().length > 0);
+}
+
+// A CSV date as the ledger stores it (YYYY-MM-DD). US bank exports write
+// M/D/YYYY; anything else is an error, not a row no month can show.
+function _csvDate(raw) {
+  const v = String(raw || '').trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(v);
+  let y, mo, d;
+  if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+  else if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(v))) { mo = +m[1]; d = +m[2]; y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; }
+  else return null;
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
 async function importCsvText(text) {
-  const lines = String(text).replace(/\r\n/g, '\n').split('\n').filter(l => l.trim().length > 0);
+  const lines = _splitCsvRecords(text);
   if (lines.length < 2) return { inserted: 0, skipped: 0, errors: 0 };
   const header = _parseCsvLine(lines[0]).map(h => h.toLowerCase());
   const idx = (name) => header.indexOf(name);
@@ -6203,6 +6348,7 @@ async function importCsvText(text) {
   const acctIdx = idx('account');
   const last4Idx = idx('last_four');
   const notesIdx = idx('notes');
+  const statusIdx = idx('status');
 
   // Cache categories by lowercased name for O(1) lookup.
   const cats = await db.all('SELECT id, name FROM categories WHERE archived=0');
@@ -6217,12 +6363,12 @@ async function importCsvText(text) {
   for (let i = 1; i < lines.length; i++) {
     try {
       const cols = _parseCsvLine(lines[i]);
-      const date = cols[dateIdx]; if (!date) { errors++; continue; }
+      const date = _csvDate(cols[dateIdx]); if (!date) { errors++; continue; }
       const merchant = cols[merchantIdx] || ''; if (!merchant.trim()) { errors++; continue; }
       const amtRaw = (cols[amountIdx] || '').replace(/[$,\s]/g, '');
       const amtNum = parseFloat(amtRaw);
       if (!Number.isFinite(amtNum)) { errors++; continue; }
-      const cents = Math.round(amtNum * 100);
+      let cents = Math.round(amtNum * 100);
 
       // CSV import: tx_type column is optional. Default to 'purchase' for any
       // row regardless of sign — refunds are negative-amount purchases.
@@ -6230,6 +6376,11 @@ async function importCsvText(text) {
       // Collapse legacy values from older exports.
       if (txType === 'refund') txType = 'purchase';
       if (txType === 'cc_payment') txType = 'transfer';
+      // Income is money in, stored negative, whichever sign the bank used.
+      if (txType === 'deposit') cents = -Math.abs(cents);
+      // A row exported from the review queue goes back to it, not into totals.
+      const rawStatus = statusIdx >= 0 ? String(cols[statusIdx] || '').trim().toLowerCase() : '';
+      const status = rawStatus === 'review' || rawStatus === 'hidden' ? rawStatus : 'confirmed';
       const last4 = last4Idx >= 0 ? (cols[last4Idx] || '').replace(/\D/g, '').slice(-4) : '';
       const acctName = acctIdx >= 0 ? cols[acctIdx] : '';
       const notes = notesIdx >= 0 ? cols[notesIdx] : '';
@@ -6271,8 +6422,8 @@ async function importCsvText(text) {
             tx_type, category_id, account_id, card_last_four, status, source,
             posted, notes, created_at, updated_at, categorizer_model,
             categorization_source, matched_rule_id, tx_type_source
-         ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'csv', 1, ?, ?, ?, 'csv:import', ?, ?, 'csv')`,
-        [crypto.randomUUID(), date, merchant, cents, txType, categoryId, accountId, last4 || null, notes || null, now, now, categorizationSource, matchedRuleId],
+         ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'csv', 1, ?, ?, ?, 'csv:import', ?, ?, 'csv')`,
+        [crypto.randomUUID(), date, merchant, cents, txType, categoryId, accountId, last4 || null, status, notes || null, now, now, categorizationSource, matchedRuleId],
       );
       inserted++;
     } catch (e) {
@@ -9213,6 +9364,8 @@ export const __testables = {
   normalizeSyncCursorDate,
   fetchBudgetGmailMessages,
   parseCsvLine: _parseCsvLine,
+  splitCsvRecords: _splitCsvRecords,
+  csvDate: _csvDate,
   ruleMatchesMerchant,
   looksLikeAccountName,
   classifySubjectTxType,
