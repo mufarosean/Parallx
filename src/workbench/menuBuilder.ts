@@ -24,7 +24,6 @@ export interface MenuBuilderDeps {
   readonly titlebar: TitlebarPart;
   readonly activityBarPart: ActivityBarPart;
   readonly services: ServiceCollection;
-  readonly selectColorTheme: () => void;
 }
 
 // ─── Menu Builder ────────────────────────────────────────────────────────────
@@ -38,14 +37,12 @@ export class MenuBuilder extends Disposable {
   private readonly _titlebar: TitlebarPart;
   private readonly _activityBarPart: ActivityBarPart;
   private readonly _services: ServiceCollection;
-  private readonly _selectColorTheme: () => void;
 
   constructor(deps: MenuBuilderDeps) {
     super();
     this._titlebar = deps.titlebar;
     this._activityBarPart = deps.activityBarPart;
     this._services = deps.services;
-    this._selectColorTheme = deps.selectColorTheme;
   }
 
   // ── Keybinding hint helper ─────────────────────────────────────────────
@@ -259,12 +256,6 @@ export class MenuBuilder extends Disposable {
 
     ctxMenu.onDidSelect(({ item }) => {
       if (item.disabled) return;
-
-      // Handle theme commands specially
-      if (item.id === 'workbench.action.selectTheme') {
-        this._selectColorTheme();
-        return;
-      }
 
       // Execute via command service for registered commands
       cmdService.executeCommandFrom('menu', item.id).catch(err => {

@@ -276,13 +276,16 @@ const editReplace: CommandDescriptor = {
 
 //  Preferences: Open Settings / Keyboard Shortcuts 
 
+// The Ctrl+T theme picker is retired (2026-10-03): its light and dark were
+// Appearance's mode under another name and its High Contrast themes changed
+// nothing on screen. The command stays, so the palette and muscle memory
+// still find it, and opens the one place theming lives. Ctrl+T is free.
 const selectColorTheme: CommandDescriptor = {
   id: 'workbench.action.selectTheme',
-  title: 'Color Theme',
+  title: 'Color Theme…',
   category: 'Preferences',
-  keybinding: 'Ctrl+T',
   aiInvocable: true,
-  aiDescription: 'Open the color theme picker so the user can choose a theme.',
+  aiDescription: 'Open Settings › Appearance, where mode, text size, font, palette, accent and contrast are set.',
   handler(ctx) {
     wb(ctx).selectColorTheme();
   },

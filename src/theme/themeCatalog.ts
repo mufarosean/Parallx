@@ -15,16 +15,12 @@ import type { IStorage } from '../platform/storage.js';
 
 import darkModernTheme from './themes/dark-modern.json';
 import lightModernTheme from './themes/light-modern.json';
-import hcDarkTheme from './themes/hc-dark.json';
-import hcLightTheme from './themes/hc-light.json';
 
 // ─── Built-in themes ─────────────────────────────────────────────────────────
 
 const BUILTIN_THEMES: ThemeCatalogEntry[] = [
   { id: darkModernTheme.id, label: darkModernTheme.label, uiTheme: darkModernTheme.uiTheme, source: darkModernTheme as ThemeSource },
   { id: lightModernTheme.id, label: lightModernTheme.label, uiTheme: lightModernTheme.uiTheme, source: lightModernTheme as ThemeSource },
-  { id: hcDarkTheme.id, label: hcDarkTheme.label, uiTheme: hcDarkTheme.uiTheme, source: hcDarkTheme as ThemeSource },
-  { id: hcLightTheme.id, label: hcLightTheme.label, uiTheme: hcLightTheme.uiTheme, source: hcLightTheme as ThemeSource },
 ];
 
 // ─── Theme catalog API ───────────────────────────────────────────────────────

@@ -214,7 +214,7 @@ import {
   THEME_STORAGE_KEY,
   initUserThemesCache,
 } from '../theme/themeCatalog.js';
-import { showColorThemePicker } from './workbenchThemePicker.js';
+import { migrateRetiredTheme } from '../theme/themeApply.js';
 import { TEXT_SIZE_EXTRA_KEYBINDINGS, TEXT_SIZE_KEYBINDING_WHEN } from '../commands/textSizeCommands.js';
 import { setupEditorWatermark, updateWatermarkKeybindings } from './workbenchWatermark.js';
 import { $ } from '../ui/dom.js';
@@ -418,14 +418,10 @@ export class Workbench extends Layout {
     }
   }
 
-  /**
-   * Show a quick pick for selecting the active color theme.
-   * Delegates to the extracted workbenchThemePicker module.
-   */
+  /** Preferences: Color Theme… opens Settings › Appearance (the picker is retired). */
   selectColorTheme(): void {
-    const themeService = this._services.get(IThemeService) as ThemeService | undefined;
-    if (!themeService) return;
-    showColorThemePicker(this._container, themeService, this._globalStorage);
+    const commands = this._services.get(ICommandService) as { executeCommand(id: string): Promise<unknown> } | undefined;
+    void commands?.executeCommand('settings.openAppearance');
   }
 
   // ── Focus Model (Cap 8) ────────────────────────────────────────────────
@@ -1015,7 +1011,9 @@ export class Workbench extends Layout {
     // M53 D3: Init user themes cache from file-backed storage before theme lookup.
     await initUserThemesCache(this._globalStorage);
     // Restore persisted theme or fall back to Dark Modern.
-    const persistedThemeId = await this._globalStorage.get(THEME_STORAGE_KEY) ?? DEFAULT_THEME_ID;
+    // A stored High Contrast theme (retired) becomes its mode with Increase
+    // Contrast on, once, and the matching editor theme from then on.
+    const persistedThemeId = migrateRetiredTheme(await this._globalStorage.get(THEME_STORAGE_KEY) ?? DEFAULT_THEME_ID, this._globalStorage);
     const themeEntry = findThemeById(persistedThemeId) ?? findThemeById(DEFAULT_THEME_ID)!;
     const themeData = resolveTheme(themeEntry, colorRegistry, designTokenRegistry);
     const themeService = this._register(new ThemeService(colorRegistry, themeData, designTokenRegistry));
@@ -1082,7 +1080,6 @@ export class Workbench extends Layout {
       titlebar: this._titlebar,
       activityBarPart: this._activityBarPart,
       services: this._services,
-      selectColorTheme: () => this.selectColorTheme(),
     }));
     this._statusBarController = this._register(new StatusBarController({
       statusBar: this._statusBar as unknown as StatusBarPart,
