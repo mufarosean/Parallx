@@ -40,7 +40,7 @@
   border-radius: var(--px-radius-sm);
 }
 .wfe__name:hover { background: var(--px-surface-hover); }
-.wfe__name:focus { outline: 1px solid var(--px-accent); background: var(--px-bg-inset); }
+.wfe__name:focus { outline: var(--px-focus-width) solid var(--px-accent); background: var(--px-bg-inset); }
 
 .wfe__status {
   font-size: var(--px-text-xs);
@@ -254,7 +254,7 @@
   padding: var(--px-space-1) var(--px-space-2);
   box-sizing: border-box;
 }
-.wfe-ins__input:focus, .wfe-ins__textarea:focus { outline: 1px solid var(--px-accent); }
+.wfe-ins__input:focus, .wfe-ins__textarea:focus { outline: var(--px-focus-width) solid var(--px-accent); }
 
 .wfe-ins__textarea { resize: vertical; }
 

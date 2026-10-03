@@ -205,7 +205,7 @@ select:disabled {
   user-select: none;
   transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
-.px-btn:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.px-btn:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 .px-btn:disabled { opacity: 0.5; cursor: default; }
 .px-btn .svg-icon { display: inline-flex; flex-shrink: 0; }
 .px-btn .svg-icon svg { width: 16px; height: 16px; }
@@ -274,7 +274,7 @@ select:disabled {
   cursor: pointer;
 }
 .px-page-header__back:hover { color: var(--px-text); }
-.px-page-header__back:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; border-radius: var(--px-radius-xs); }
+.px-page-header__back:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; border-radius: var(--px-radius-xs); }
 
 /* Filter chip (kit createFilterChip): narrows a list; several can be on.
    Pressed is aria-pressed, drawn as the accent tint with a tick. */
@@ -298,7 +298,7 @@ select:disabled {
   transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease);
 }
 .px-chip:hover { background: var(--px-surface-hover); border-color: var(--px-border-strong); color: var(--px-text); }
-.px-chip:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.px-chip:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 .px-chip__count { color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
 .px-chip[aria-pressed="true"] { background: var(--px-accent-soft); border-color: transparent; color: var(--px-accent-text); }
 .px-chip[aria-pressed="true"] .px-chip__count { color: inherit; opacity: 0.75; }

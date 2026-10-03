@@ -157,7 +157,7 @@
 .agents-status--working .agents-status__dot { animation: agents-breathe 1.4s ease-in-out infinite; }
 .agents-status--needs .agents-status__dot { background: var(--px-warning); }
 .agents-status--paused .agents-status__dot { background: var(--px-text-faint); }
-.agents-status:focus-visible { outline: 2px solid var(--px-ring-accent); outline-offset: 1px; }
+.agents-status:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 
 /* ── Run tab (agentsRun.ts) ── */
 .agents-run {
@@ -229,7 +229,7 @@
   font: inherit;
   resize: vertical;
 }
-.agents-run__note:focus, .agents-routine__input:focus { outline: 2px solid var(--px-ring-accent); outline-offset: 0; border-color: transparent; }
+.agents-run__note:focus, .agents-routine__input:focus { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 0; border-color: transparent; }
 .agents-run__steer-row { display: flex; align-items: center; gap: var(--px-space-2); }
 .agents-run__hint, .agents-routine__hint { flex: 1; color: var(--px-text-muted); font-size: var(--px-text-xs); }
 
@@ -255,7 +255,7 @@
 }
 .agents-routine__day:hover { background: var(--px-surface-hover); }
 .agents-routine__day[aria-pressed="true"] { background: var(--px-accent-soft); border-color: transparent; color: var(--px-accent-text); }
-.agents-routine__day:focus-visible { outline: 2px solid var(--px-ring-accent); outline-offset: 1px; }
+.agents-routine__day:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 .agents-routine__time { width: auto; }
 .agents-routine__next { display: flex; flex-direction: column; gap: var(--px-space-1); }
 .agents-routine__run { color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
@@ -341,7 +341,7 @@
   transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 .agents-rt__tpl:hover { background: var(--px-surface-hover); border-color: var(--px-border); }
-.agents-rt__tpl:focus-visible { outline: 2px solid var(--px-ring-accent); outline-offset: 1px; }
+.agents-rt__tpl:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 .agents-rt__tpl-icon {
   flex: none;
   align-self: flex-start;

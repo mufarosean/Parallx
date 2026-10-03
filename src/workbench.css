@@ -27,7 +27,7 @@
   outline: none;
 }
 :focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder, #9333ea);
   outline-offset: -1px;
 }
 
@@ -230,7 +230,7 @@ html, body {
 .titlebar-menu-item:focus {
   color: var(--vscode-menu-selectionForeground);
   background: var(--vscode-toolbar-hoverBackground);
-  outline: 1px solid var(--vscode-focusBorder);
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 
@@ -271,7 +271,7 @@ html, body {
 
 .titlebar-workspace-label:focus {
   color: var(--vscode-menu-selectionForeground);
-  outline: 1px solid var(--vscode-focusBorder);
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 
@@ -409,7 +409,7 @@ html, body {
 }
 
 .view-section-header:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 
@@ -1333,7 +1333,7 @@ html, body {
 }
 
 .view-tab:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 

@@ -26,6 +26,7 @@ import {
   type PxMode, PX_FONTS, DEFAULT_FONT_ID,
   PX_TEXT_SIZES, DEFAULT_TEXT_SIZE, APPEARANCE_CHANGED_EVENT } from '../../theme/pxAppearance.js';
 import { applyThemeById } from '../../theme/themeApply.js';
+import { Toggle } from '../../ui/toggle.js';
 
 import './pxAppearance.css';
 
@@ -54,6 +55,7 @@ export class PxAppearancePanel implements IDisposable {
   private readonly _accentChips = new Map<string, HTMLElement>();
   private readonly _fontChips = new Map<string, HTMLButtonElement>();
   private readonly _textSizeButtons = new Map<number, HTMLButtonElement>();
+  private _contrastToggle?: Toggle;
   private _hueRow?: HTMLElement;
   private _hueInput?: HTMLInputElement;
   private _presetsRow?: HTMLElement;
@@ -116,6 +118,7 @@ export class PxAppearancePanel implements IDisposable {
     body.appendChild(this._renderFontSection());
     body.appendChild(this._renderBaseSection());
     body.appendChild(this._renderAccentSection());
+    body.appendChild(this._renderComfortSection());
     body.appendChild(this._renderPreviewSection());
     body.appendChild(this._renderSavedSection());
 
@@ -162,6 +165,45 @@ export class PxAppearancePanel implements IDisposable {
       btn.classList.toggle('is-selected', on);
       btn.setAttribute('aria-pressed', String(on));
     }
+  }
+
+  // ── Contrast ─────────────────────────────────────────────────────────
+  // Comfort switches, each a row: title, hint, the kit's toggle.
+  private _renderComfortSection(): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'px-appearance-section';
+    section.appendChild(this._sectionHeading('Contrast', 'For long sessions and tired eyes.'));
+    const rows = document.createElement('div');
+    rows.className = 'px-comfort-rows';
+    this._contrastToggle?.dispose();
+    this._contrastToggle = this._comfortRow(rows, 'Increase Contrast',
+      'Stronger outlines and secondary text. Every border reaches at least 3:1 against what it sits on, and focus rings are thicker.',
+      !!this._state.increaseContrast, (on) => {
+        this._state.increaseContrast = on || undefined;
+        this._commit();
+      });
+    section.appendChild(rows);
+    return section;
+  }
+
+  private _comfortRow(host: HTMLElement, title: string, hint: string, checked: boolean, onChange: (on: boolean) => void): Toggle {
+    const row = document.createElement('div');
+    row.className = 'px-comfort-row';
+    const text = document.createElement('div');
+    text.className = 'px-comfort-row__text';
+    const t = document.createElement('div');
+    t.className = 'px-comfort-row__title';
+    t.textContent = title;
+    const h = document.createElement('div');
+    h.className = 'px-comfort-row__hint';
+    h.textContent = hint;
+    text.append(t, h);
+    const slot = document.createElement('div');
+    row.append(text, slot);
+    host.appendChild(row);
+    const toggle = new Toggle(slot, { checked, ariaLabel: title });
+    toggle.onDidChange(onChange);
+    return toggle;
   }
 
   // ── Font ─────────────────────────────────────────────────────────────
@@ -450,7 +492,7 @@ export class PxAppearancePanel implements IDisposable {
   private _renderSavedSection(): HTMLElement {
     const section = document.createElement('section');
     section.className = 'px-appearance-section';
-    section.appendChild(this._sectionHeading('Your themes', 'Save the mode, palette, accent and font as a named theme. Text size stays as you set it.'));
+    section.appendChild(this._sectionHeading('Your themes', 'Save the mode, palette, accent and font as a named theme. Text size and contrast stay as you set them.'));
 
     // Save bar — name input + save button.
     const saveBar = document.createElement('div');
@@ -573,6 +615,7 @@ export class PxAppearancePanel implements IDisposable {
     if (this._disposed) return;
     this._disposed = true;
     window.removeEventListener(APPEARANCE_CHANGED_EVENT, this._onExternalChange);
+    this._contrastToggle?.dispose();
     this._modeButtons.clear();
     this._baseCards.clear();
     this._accentChips.clear();

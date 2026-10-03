@@ -44,7 +44,7 @@
 }
 .nb-btn:hover:not(:disabled) { background: var(--px-surface-hover); color: var(--px-text); }
 .nb-btn:disabled { opacity: 0.4; cursor: default; }
-.nb-btn:focus-visible { outline: 1px solid var(--px-accent); outline-offset: -1px; }
+.nb-btn:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: -1px; }
 
 /* The one place accent fill is right: the single call to action in a banner that
    is blocking the notebook from running at all ("Install ipykernel"). It was
@@ -211,7 +211,7 @@
               color var(--px-dur-fast, 120ms) var(--px-ease, ease);
 }
 .nb-gap__btn:hover { background: var(--px-surface-hover); color: var(--px-text); }
-.nb-gap__btn:focus-visible { outline: 1px solid var(--px-accent); outline-offset: -1px; }
+.nb-gap__btn:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: -1px; }
 .nb-gap__icon { flex: 0 0 auto; }
 
 /* A selected cell tints its own row; the insert strip below it is not part of

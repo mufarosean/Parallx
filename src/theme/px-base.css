@@ -40,7 +40,7 @@ h1, h2, h3, h4,
    win (higher specificity); this is the baseline so nothing focuses with a
    jarring default outline. */
 :focus-visible {
-  outline: 2px solid var(--px-accent);
+  outline: var(--px-focus-width) solid var(--px-accent);
   outline-offset: 1px;
   border-radius: var(--px-radius-sm);
 }

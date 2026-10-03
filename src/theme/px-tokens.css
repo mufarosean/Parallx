@@ -237,7 +237,11 @@
   --px-shadow-lg: 0 16px 36px -8px rgba(0, 0, 0, 0.58), 0 4px 10px -4px rgba(0, 0, 0, 0.40);
   --px-edge-light: inset 0 1px 0 rgba(255, 255, 255, 0.05);   /* top sheen on raised surfaces */
   --px-ring: 0 0 0 1px var(--px-border);                       /* hairline ring */
-  --px-ring-accent: 0 0 0 1px var(--px-accent), 0 0 0 4px var(--px-accent-faint);
+  /* Every focus outline's width (one token, so Increase Contrast thickens
+     them all). The kit already drew 2px; the older 1px rings follow it. The
+     box-shadow ring's line is 1px thinner, its soft halo outside it. */
+  --px-focus-width: 2px;
+  --px-ring-accent: 0 0 0 calc(var(--px-focus-width) - 1px) var(--px-accent), 0 0 0 4px var(--px-accent-faint);
 
   /* Motion — purposeful, tactile. fast = state flips (hover/press);
      base = reveals; the spring ease gives interactions a crisp settle. */
@@ -491,4 +495,22 @@
   --px-base-60: #5b5142;
   --px-base-70: #423a2e;
   --px-base-100: #221d15;
+}
+
+/* ── Increase Contrast (Settings › Appearance) ───────────────────────────────
+   One rule per token, the same in every palette and both modes: the
+   standard value mixed toward the text colour by a fixed share. Measured
+   over Slate, Warm and Ember in light and dark, against the page and card
+   grounds: borders 1.3–1.4:1 → 3.2–4.3:1, strong borders → 4.7–5.9:1,
+   dividers → 2.1–2.7:1, muted text → 7.2–9.0:1, secondary → 10.3–12.7:1.
+   Last in the file so it wins over the light block at equal specificity;
+   no palette block sets these tokens. */
+:root[data-px-contrast="more"] {
+  --px-divider:        color-mix(in srgb, var(--px-base-20) 71%, var(--px-text));
+  --px-chrome-line:    color-mix(in srgb, var(--px-base-20) 71%, var(--px-text));
+  --px-border:         color-mix(in srgb, var(--px-base-25) 57%, var(--px-text));
+  --px-border-strong:  color-mix(in srgb, var(--px-base-30) 47%, var(--px-text));
+  --px-text-muted:     color-mix(in srgb, var(--px-base-60) 73%, var(--px-text));
+  --px-text-secondary: color-mix(in srgb, var(--px-base-70) 51%, var(--px-text));
+  --px-focus-width: 3px;
 }

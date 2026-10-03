@@ -467,3 +467,22 @@
 .px-font-chip:active { transform: var(--px-press, translateY(0.5px)); }
 .px-font-chip-sample { font-size: var(--px-text-md, 15px); font-weight: 600; }
 .px-font-chip-label { font-size: var(--px-text-sm, 12px); }
+
+/* ── Comfort rows (Contrast): title and hint, the kit toggle on the right ── */
+.px-comfort-rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  background: var(--px-bg-elevated);
+}
+.px-comfort-row {
+  display: flex;
+  align-items: center;
+  gap: var(--px-space-4);
+  padding: var(--px-space-3) var(--px-space-4);
+}
+.px-comfort-row + .px-comfort-row { border-top: 1px solid var(--px-divider); }
+.px-comfort-row__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.px-comfort-row__title { font-size: var(--px-text-base); font-weight: 600; color: var(--px-text); }
+.px-comfort-row__hint { font-size: var(--px-text-sm); color: var(--px-text-muted); }

@@ -91,7 +91,7 @@
 /* ── Focus ── */
 
 .ui-slider__input:focus-visible::-webkit-slider-thumb {
-  outline: 2px solid var(--vscode-focusBorder, #9333ea);
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder, #9333ea);
   outline-offset: 2px;
 }
 

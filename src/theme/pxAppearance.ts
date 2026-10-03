@@ -38,6 +38,12 @@ export interface PxAppearanceState {
    * never carry it and applying one leaves it alone.
    */
   textSize?: number;
+  /**
+   * Increase Contrast: stronger borders, dividers and secondary text, and
+   * thicker focus rings (px-tokens.css, data-px-contrast="more"). A comfort
+   * setting like textSize: saved themes leave it alone.
+   */
+  increaseContrast?: boolean;
 }
 
 /** The text sizes on offer (Settings › Appearance › Text size, Ctrl+= / Ctrl+-). */
@@ -102,6 +108,7 @@ function normalizeAppearance(parsed: Partial<PxAppearanceState> | null | undefin
     customHue: typeof parsed.customHue === 'number' ? parsed.customHue : undefined,
     font: PX_FONTS.some(f => f.id === parsed.font) ? parsed.font : undefined,
     textSize: typeof parsed.textSize === 'number' && PX_TEXT_SIZES.includes(parsed.textSize) && parsed.textSize !== DEFAULT_TEXT_SIZE ? parsed.textSize : undefined,
+    increaseContrast: parsed.increaseContrast === true ? true : undefined,
   };
 }
 
@@ -356,6 +363,10 @@ export function applyAppearance(state: PxAppearanceState): void {
   if (state.mode === 'light') root.setAttribute('data-px-mode', 'light');
   else root.removeAttribute('data-px-mode');
   root.style.colorScheme = state.mode;
+
+  // Contrast — one attribute; the token block in px-tokens.css does the rest.
+  if (state.increaseContrast) root.setAttribute('data-px-contrast', 'more');
+  else root.removeAttribute('data-px-contrast');
 
   // Base palette — slate is the :root default (no attribute).
   if (state.base === 'slate') root.removeAttribute('data-px-theme');

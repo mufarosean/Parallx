@@ -26,7 +26,7 @@
   transition: background var(--px-dur-base) var(--px-ease), border-color var(--px-dur-base) var(--px-ease), color var(--px-dur-base) var(--px-ease), transform var(--px-dur-instant) var(--px-ease);
 }
 .planner-btn:focus-visible {
-  outline: 2px solid var(--vscode-focusBorder, #5b9bd5);
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder, #5b9bd5);
   outline-offset: 2px;
 }
 .planner-btn:active { transform: translateY(0.5px); }
@@ -239,7 +239,7 @@
   transition: color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
 }
 .planner-pane__tab:hover { color: var(--px-text); }
-.planner-pane__tab:focus-visible { outline: 2px solid var(--px-accent); outline-offset: -2px; }
+.planner-pane__tab:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: -2px; }
 .planner-pane__tab--active {
   color: var(--px-text);
   font-weight: 600;

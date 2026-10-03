@@ -189,7 +189,7 @@
   line-height: 1;
 }
 .dashboard-btn:focus-visible {
-  outline: 2px solid var(--vscode-focusBorder, #5b9bd5);
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder, #5b9bd5);
   outline-offset: 2px;
 }
 .dashboard-btn:active { transform: translateY(0.5px); }
@@ -453,7 +453,7 @@
   background: color-mix(in srgb, var(--px-danger) 14%, transparent);
 }
 .dashboard-widget__btn:focus-visible {
-  outline: 2px solid var(--vscode-focusBorder, #5b9bd5);
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder, #5b9bd5);
   outline-offset: 1px;
 }
 

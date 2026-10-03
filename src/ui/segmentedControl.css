@@ -33,7 +33,7 @@
 }
 
 .ui-segmented-control__segment:focus-visible {
-  outline: 2px solid var(--px-accent);
+  outline: var(--px-focus-width) solid var(--px-accent);
   outline-offset: -2px;
   z-index: 1;
 }

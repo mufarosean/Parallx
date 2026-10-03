@@ -35,7 +35,7 @@
 }
 
 .ui-dropdown__button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #9333ea);
+  outline: var(--px-focus-width) solid var(--vscode-focusBorder, #9333ea);
   outline-offset: -1px;
 }
 

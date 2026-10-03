@@ -360,7 +360,7 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-dash__bar { flex: 1; display: flex; gap: 2px; height: 10px; border-radius: var(--px-radius-sm); overflow: hidden; }
 .ws-dash__bar > span { display: block; flex: 0 0 auto; flex-basis: 0; min-width: 2px; cursor: pointer; }
 .ws-dash__bar > span:hover { filter: brightness(1.2); }
-.ws-dash__bar > span:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.ws-dash__bar > span:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 .ws-dash__barlabel { flex: 0 0 96px; text-align: right; font-size: var(--px-text-xs); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 /* Progress Over Time: two small multiples on one scale, one series each, the target dashed. */
 .ws-dash__charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--px-space-3); }
@@ -440,7 +440,7 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-quiz__overview { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-4) var(--px-space-5); overflow-y: auto; }
 .ws-quiz__row { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) auto auto auto auto auto; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); background: var(--px-bg-elevated); cursor: pointer; color: var(--px-text); }
 .ws-quiz__row:hover { border-color: var(--px-base-35); }
-.ws-quiz__row:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.ws-quiz__row:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 .ws-quiz__row--current { border-color: var(--px-accent); }
 .ws-quiz__num { color: var(--px-text-muted); font-variant-numeric: tabular-nums; text-align: right; }
 .ws-quiz__rowtext { min-width: 0; }
@@ -508,7 +508,7 @@ body > [data-radix-popper-content-wrapper] button { color: inherit; }
 .ws-list__row:first-child { border-top: 0; }
 .ws-list__row:hover { background: var(--px-surface-hover); }
 button.ws-list__row { cursor: pointer; }
-button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: 2px solid var(--px-accent); outline-offset: -2px; }
+button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: -2px; }
 .ws-list__text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .ws-list__title { display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; font-size: var(--px-text-base); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ws-list__title .ws-chip { margin-left: 0; }
@@ -535,7 +535,7 @@ button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: 2px s
 .ws-home__dest { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--px-space-3); }
 .ws-home__destcard { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); color: var(--px-text); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--px-dur-fast) var(--px-ease), background-color var(--px-dur-fast) var(--px-ease); }
 .ws-home__destcard:hover { border-color: var(--px-border-strong); background: var(--px-surface-hover); }
-.ws-home__destcard:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.ws-home__destcard:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 .ws-home__desticon { width: 40px; height: 40px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; border-radius: var(--px-radius-lg); background: var(--px-accent-faint); color: var(--px-accent-text); }
 .ws-home__desttext { display: flex; flex-direction: column; min-width: 0; }
 .ws-home__desttitle { font-size: var(--px-text-md); font-weight: 600; }
@@ -555,7 +555,7 @@ button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: 2px s
 .ws-sessionbar__dot { width: 9px; height: 9px; padding: 0; border: 0; cursor: pointer; }
 .ws-sessionbar__dot:hover { transform: scale(1.25); }
 .ws-sessionbar__dot--current { box-shadow: 0 0 0 2px var(--px-bg), 0 0 0 3.5px var(--px-accent); }
-.ws-sessionbar__dot:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 2px; }
+.ws-sessionbar__dot:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 2px; }
 .ws-sessionbar .px-btn[aria-pressed="true"] { color: var(--px-accent-text); background: var(--px-accent-faint); }
 
 /* The rating switch lights in the rating's colour. */
