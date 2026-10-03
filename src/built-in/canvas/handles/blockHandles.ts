@@ -416,15 +416,20 @@ export class BlockHandlesController {
 
     if (isMultiDrag) {
       // Build a fragment from all selected blocks (sorted by position)
-      const positions = sel.positions; // already sorted asc
+      // Each selected block travels once: a block inside another selected
+      // block (a nested row under its selected parent row) already moves
+      // with it — dragging it as well put a second copy in the drop.
       const nodes: any[] = [];
       const jsonNodes: any[] = [];
-      for (const p of positions) {
+      const ranges: Array<{ from: number; to: number }> = [];
+      for (const p of [...sel.positions].sort((a, b) => a - b)) {
         const n = view.state.doc.nodeAt(p);
-        if (n) {
-          nodes.push(n);
-          jsonNodes.push(n.toJSON());
-        }
+        if (!n) continue;
+        const last = ranges[ranges.length - 1];
+        if (last && p < last.to) continue;
+        nodes.push(n);
+        jsonNodes.push(n.toJSON());
+        ranges.push({ from: p, to: p + n.nodeSize });
       }
 
       if (nodes.length === 0) {
@@ -435,11 +440,10 @@ export class BlockHandlesController {
       const fragment = Fragment.from(nodes);
       const slice = new Slice(fragment, 0, 0);
 
-      // Use the contiguous range from first to last selected block
-      const firstPos = positions[0];
-      const lastPos = positions[positions.length - 1];
-      const lastNode = view.state.doc.nodeAt(lastPos);
-      const rangeTo = lastNode ? lastPos + lastNode.nodeSize : lastPos;
+      // The span from the first to the last block (what view.dragging can
+      // say); the session's `ranges` say which blocks in it actually move.
+      const firstPos = ranges[0].from;
+      const rangeTo = ranges[ranges.length - 1].to;
 
       if (event.dataTransfer) {
         try {
@@ -449,6 +453,7 @@ export class BlockHandlesController {
             sourcePageId: this._host.pageId,
             from: firstPos,
             to: rangeTo,
+            ranges,
             nodes: jsonNodes,
             listType: draggedListType,
             startedAt: Date.now(),
@@ -466,13 +471,14 @@ export class BlockHandlesController {
         sourcePageId: this._host.pageId,
         from: firstPos,
         to: rangeTo,
+        ranges,
         nodes: jsonNodes,
         listType: draggedListType,
         startedAt: Date.now(),
       });
 
       // Visual: mark all selected blocks as drag sources
-      for (const p of positions) {
+      for (const { from: p } of ranges) {
         try {
           const domNode = view.nodeDOM(p) as HTMLElement | null;
           if (domNode) domNode.classList.add('block-drag-source');

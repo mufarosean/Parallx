@@ -21,6 +21,8 @@ import { Dataview } from '../extensions/dataviewNode.js';
 import { structuralInvariantPlugin } from '../plugins/structuralInvariantPlugin.js';
 import { structuralRepairPlugin } from '../plugins/structuralRepair.js';
 import { aiEditMarksPlugin } from '../plugins/aiEditMarks.js';
+import { uniqueIdRepairPlugin } from '../plugins/uniqueIdRepair.js';
+import { linkedPageCardGuardPlugin } from '../plugins/linkedPageCardGuard.js';
 import {
   getNodePlaceholder,
   getBlockExtensions,
@@ -79,6 +81,7 @@ export const UNIQUE_ID_BLOCK_TYPES: string[] = [
   'video',
   'audio',
   'fileAttachment',
+  'conceptMap',
 
   // ── Table nodes ──
   'table',
@@ -509,6 +512,15 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
       // "Untitled" page). Skipping history transactions lets undo restore
       // the original attrs; redo replays the recorded stamp steps verbatim.
       filterTransaction: (tr) => !tr.getMeta('history$'),
+    }),
+    // UniqueID only compares ids inside the changed range; a copied block
+    // (Alt-drag, Duplicate) kept the original's id.  This gives copies their
+    // own — and drops a copied page card (a page has one card).
+    Extension.create({
+      name: 'uniqueIdRepair',
+      addProseMirrorPlugins() {
+        return [linkedPageCardGuardPlugin(), uniqueIdRepairPlugin()];
+      },
     }),
     DetailsEnterHandler,
     BlockKeyboardShortcuts,

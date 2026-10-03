@@ -20,7 +20,9 @@ export { svgIcon } from '../config/iconRegistry.js';
 export { CANVAS_BLOCK_DRAG_MIME, clearActiveCanvasDragSession, setActiveCanvasDragSession } from '../config/blockStateRegistry/blockStateRegistry.js';
 
 /** @see {@link import('../config/blockStateRegistry/columnInvariants.js')} — origin */
-export { resolveBlockAncestry, resolveMovableBlock, normalizeAllColumnLists, notifyLinkedPageBlocksDeleted, growEmptiedAncestorDeletion } from '../config/blockStateRegistry/blockStateRegistry.js';
+export { resolveBlockAncestry, resolveMovableBlock, normalizeAllColumnLists, dissolveOrphanedColumnLists, notifyLinkedPageBlocksDeleted, growEmptiedAncestorDeletion } from '../config/blockStateRegistry/blockStateRegistry.js';
+/** @see {@link import('../config/blockStateRegistry/blockMovement.js')} — origin */
+export { moveBlockUpWithinPageFlow, moveBlockDownWithinPageFlow, moveBlockAcrossColumnBoundary } from '../config/blockStateRegistry/blockStateRegistry.js';
 // ── Table operations (source: blockStateRegistry/tableOps.ts) ──────────────
 // The grips aim and reorder; every structural edit they trigger is defined
 // once in tableOps and shared with the menu and the keyboard policy.

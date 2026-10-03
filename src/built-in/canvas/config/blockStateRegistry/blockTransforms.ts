@@ -75,10 +75,12 @@ export function turnBlockWithSharedStrategy(
 
   if (targetType === 'columnList') {
     const columnCount = Number(attrs?.columns ?? attrs?.count ?? 2);
-    const converted = turnBlockIntoColumns(editor, pos, node, columnCount);
-    if (converted) {
-      return;
-    }
+    // Columns are a layout, not a block shape: when the layout can't be
+    // made (already columns, bad count) the turn-into is a no-op.  Falling
+    // through built a `columnList` holding inline text — a schema-invalid
+    // node that threw.
+    turnBlockIntoColumns(editor, pos, node, columnCount);
+    return;
   }
 
   // Container → paragraph is an UNWRAP: the container's blocks keep their own
@@ -141,7 +143,9 @@ function spliceListRowInto(
     rowNode.attrs?.backgroundColor ?? null,
   );
 
-  const built = buildBlock(targetType, parts, attrs);
+  const built = targetType === 'columnList'
+    ? buildRowColumns(list, rowNode, attrs)
+    : buildBlock(targetType, parts, attrs);
   if (!built) return;
   let converted: any[] = [built.node, ...built.trailing];
   if (converted.length === 0) return;
@@ -200,6 +204,22 @@ function spliceListRowInto(
     .run();
 }
 
+/**
+ * A list row turned into columns: the row itself (its nested rows with it)
+ * becomes a one-row list of the same type in the first column, and the
+ * other columns start with an empty paragraph.  The row keeps its type and
+ * checkbox — columns are a layout around it, not a new block type.
+ */
+function buildRowColumns(list: any, rowNode: any, attrs?: any): BuiltBlock | null {
+  const count = Number(attrs?.columns ?? attrs?.count ?? 2);
+  if (!Number.isFinite(count) || count < 2) return null;
+  const rowList: Record<string, any> = { type: list.type.name, content: [rowNode.toJSON()] };
+  if (hasMeaningfulAttrs(list.attrs)) rowList.attrs = { ...list.attrs };
+  const columns: any[] = [{ type: 'column', content: [rowList] }];
+  for (let i = 1; i < count; i++) columns.push({ type: 'column', content: [{ type: 'paragraph' }] });
+  return { node: { type: 'columnList', content: columns }, trailing: [] };
+}
+
 function hasMeaningfulAttrs(attrs: Record<string, any> | null | undefined): boolean {
   if (!attrs) return false;
   return Object.values(attrs).some((v) => v !== null && v !== undefined);
@@ -213,6 +233,10 @@ function decomposeBlock(node: any, shape: TransformShape): BlockParts {
 
   switch (shape.kind) {
     case 'textblock':
+      if (node.type.name === 'codeBlock') {
+        // Code lines become hard breaks, so a rich target keeps the lines.
+        return { inline: plainTextToInline(plainText), plainText, children: [], backgroundColor: bg };
+      }
       return { inline: node.content?.toJSON() ?? [], plainText, children: [], backgroundColor: bg };
 
     case 'atom-text': {
@@ -320,10 +344,13 @@ function buildBlock(targetType: string, parts: BlockParts, attrs?: any): BuiltBl
   switch (shape.kind) {
     case 'textblock': {
       if (targetType === 'codeBlock') {
-        // Code holds plain text only; marks/inline nodes can't survive.
+        // Code holds plain text only.  It takes the block's own line (the
+        // inline), never the whole subtree's text: the child blocks already
+        // trail after it, so using the full text showed them twice.
+        const text = inlineToPlainText(parts.inline);
         const node: Record<string, any> = {
           type: 'codeBlock',
-          content: parts.plainText ? [{ type: 'text', text: parts.plainText }] : [],
+          content: text ? [{ type: 'text', text }] : [],
         };
         const merged = mergeAttrs(targetType, attrs, parts);
         if (merged) node.attrs = merged;
@@ -336,7 +363,8 @@ function buildBlock(targetType: string, parts: BlockParts, attrs?: any): BuiltBl
     }
 
     case 'atom-text': {
-      const node = { type: targetType, attrs: { ...(attrs ?? {}), [shape.textAttr]: parts.plainText } };
+      // Same rule as code: the block's own line, children trail.
+      const node = { type: targetType, attrs: { ...(attrs ?? {}), [shape.textAttr]: inlineToPlainText(parts.inline, true) } };
       return { node, trailing: parts.children };
     }
 
@@ -370,7 +398,7 @@ function buildBlock(targetType: string, parts: BlockParts, attrs?: any): BuiltBl
       const node: Record<string, any> = {
         type: targetType,
         content: [
-          { type: shape.summaryType, content: parts.inline },
+          { type: shape.summaryType, content: summaryInline(shape.summaryType, parts.inline) },
           { type: shape.contentType, content: body },
         ],
       };
@@ -380,6 +408,54 @@ function buildBlock(targetType: string, parts: BlockParts, attrs?: any): BuiltBl
       return { node, trailing: [] };
     }
   }
+}
+
+// ── Inline conversions ───────────────────────────────────────────────────────
+
+/**
+ * Plain text of inline JSON for text-only targets (code, equation).  Line
+ * breaks stay line breaks and an inline equation keeps its LaTeX as `$…$`,
+ * so nothing in the line disappears (textContent drops both).  An equation
+ * target takes an inline equation's LaTeX bare, without the dollars.
+ */
+function inlineToPlainText(inline: any[], bareMath = false): string {
+  let out = '';
+  for (const n of inline ?? []) {
+    if (!n || typeof n !== 'object') continue;
+    if (n.type === 'text') out += n.text ?? '';
+    else if (n.type === 'hardBreak') out += '\n';
+    else if (n.type === 'inlineMath') out += bareMath ? (n.attrs?.latex ?? '') : `$${n.attrs?.latex ?? ''}$`;
+    else if (Array.isArray(n.content)) out += inlineToPlainText(n.content, bareMath);
+  }
+  return out;
+}
+
+/** Code text back into inline JSON: lines joined by hard breaks. */
+function plainTextToInline(text: string): any[] {
+  const out: any[] = [];
+  text.split('\n').forEach((line, i) => {
+    if (i > 0) out.push({ type: 'hardBreak' });
+    if (line) out.push({ type: 'text', text: line });
+  });
+  return out;
+}
+
+/**
+ * A toggle's summary (`detailsSummary`) holds text only.  Inline nodes it
+ * can't hold become text instead of making the conversion throw: a line
+ * break becomes a space and an inline equation its `$…$` source.  Marks
+ * stay.  Other summaries (toggleHeadingText is `inline*`) take the line as is.
+ */
+function summaryInline(summaryType: string, inline: any[]): any[] {
+  if (summaryType !== 'detailsSummary') return inline;
+  const out: any[] = [];
+  for (const n of inline ?? []) {
+    if (!n || typeof n !== 'object') continue;
+    if (n.type === 'text') { out.push(n); continue; }
+    const text = n.type === 'hardBreak' ? ' ' : inlineToPlainText([n]);
+    if (text) out.push({ type: 'text', text });
+  }
+  return out;
 }
 
 // ── Container unwrap (→ paragraph) ───────────────────────────────────────────

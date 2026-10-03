@@ -187,33 +187,31 @@ export function isColumnEffectivelyEmpty(columnNode: any): boolean {
     return false;
   }
 
-  return !nodeHasMeaningfulContent(columnNode);
+  // A column is empty only when everything in it is an empty paragraph —
+  // the placeholder a column gets backfilled with.  Any other block counts,
+  // empty or not: an empty table, callout, toggle, list or heading is still
+  // a block the user made.  The old text-and-atoms test called those empty,
+  // so dragging or moving the last other block out of the column deleted
+  // them with the column.
+  let empty = true;
+  columnNode.forEach((child: any) => {
+    if (empty && !isPlaceholderParagraph(child)) empty = false;
+  });
+  return empty;
 }
 
-
-function nodeHasMeaningfulContent(node: any): boolean {
-  if (!node) return false;
-
-  if (node.isText) {
-    const text = String(node.text ?? '');
-    return text.replace(/[\s\u200B-\u200D\uFEFF]/g, '').length > 0;
-  }
-
-  if (node.type?.name === 'hardBreak') {
-    return false;
-  }
-
-  if (node.childCount === 0) {
-    return !!node.isAtom;
-  }
-
+function isPlaceholderParagraph(node: any): boolean {
+  if (node?.type?.name !== 'paragraph') return false;
   let meaningful = false;
   node.forEach((child: any) => {
-    if (!meaningful && nodeHasMeaningfulContent(child)) {
-      meaningful = true;
+    if (meaningful) return;
+    if (child.isText) {
+      if (String(child.text ?? '').replace(/[\s\u200B-\u200D\uFEFF]/g, '').length > 0) meaningful = true;
+    } else if (child.type?.name !== 'hardBreak') {
+      meaningful = true; // inline equation, mention, …
     }
   });
-  return meaningful;
+  return !meaningful;
 }
 
 // ── Single-ColumnList Normalization ─────────────────────────────────────────
@@ -390,8 +388,13 @@ export function cleanupEmptyColumn(
 
   if (!isColumnEffectivelyEmpty(maybeColumn)) return false;
 
+  // Map the layout's position through the steps so far BEFORE deleting the
+  // column: an unmapped position can name a different layout once earlier
+  // steps (an inserted drop, another dragged block) shifted the doc.
+  const mappedListPos = tr.mapping.map(columnListPos, 1);
   tr.delete(mappedColPos, mappedColPos + maybeColumn.nodeSize);
-  normalizeColumnList(tr, columnListPos);
+  // The column sat inside the layout, so deleting it leaves the start put.
+  normalizeColumnList(tr, mappedListPos);
   return true;
 }
 
@@ -447,48 +450,23 @@ export function deleteDraggedSource(
     return;
   }
 
-  // Primary path: map column position and check if empty
-  const mappedColumnStart = tr.mapping.map(sourceColumnStartPos, 1);
-  if (cleanupEmptyColumn(tr, mappedColumnStart, sourceColumnListPos)) {
-    return;
-  }
-
-  // The column wasn't found at the mapped position (mapping drift after
-  // complex multi-step transactions). Check if the column node at the mapped
-  // position is still a column — if not, we can't clean up via the primary path.
-  const maybeColumn = tr.doc.nodeAt(mappedColumnStart);
-  if (!maybeColumn || maybeColumn.type.name !== 'column') {
-    return;
-  }
-
-  // Fallback for extraction flows where mapping cannot re-resolve the original
-  // source column start precisely after prior tr steps. Keep this structural and
-  // conservative: only remove one empty column from a 2-column list.
-  const mappedColumnListPos = tr.mapping.map(sourceColumnListPos, -1);
-  const columnListNode = tr.doc.nodeAt(mappedColumnListPos);
-  if (!columnListNode || columnListNode.type.name !== 'columnList') {
-    return;
-  }
-
-  if (columnListNode.childCount !== 2) {
-    return;
-  }
-
-  const emptyColumns: Array<{ pos: number; nodeSize: number }> = [];
-  let scanPos = mappedColumnListPos + 1;
-  columnListNode.forEach((child: any) => {
-    if (child.type?.name === 'column' && isColumnEffectivelyEmpty(child)) {
-      emptyColumns.push({ pos: scanPos, nodeSize: child.nodeSize });
-    }
-    scanPos += child.nodeSize;
-  });
-
-  if (emptyColumns.length !== 1) {
-    return;
-  }
-
-  tr.delete(emptyColumns[0].pos, emptyColumns[0].pos + emptyColumns[0].nodeSize);
-  normalizeColumnList(tr, mappedColumnListPos);
+  // Remove the source column if the drag emptied it.  (A fallback used to
+  // follow: when the source column still had content it deleted any OTHER
+  // empty column of a 2-column layout — the user's own empty column — and
+  // dissolved the layout.  The source column is the only one a drag empties.)
+  cleanupEmptyColumn(tr, tr.mapping.map(sourceColumnStartPos, 1), sourceColumnListPos);
 }
 
-
+/**
+ * Delete every dragged range, last first, each with the same column cleanup
+ * as a single drag.  A multi-block drag of a non-contiguous selection must
+ * remove the dragged blocks only — deleting the span from the first to the
+ * last also deleted every block between them.
+ */
+export function deleteDraggedRanges(
+  tr: any,
+  ranges: ReadonlyArray<{ from: number; to: number }>,
+): void {
+  const sorted = [...ranges].sort((a, b) => b.from - a.from);
+  for (const r of sorted) deleteDraggedSource(tr, r.from, r.to);
+}

@@ -15,9 +15,65 @@ import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { Fragment } from '@tiptap/pm/model';
 import {
-  deleteDraggedSource,
+  deleteDraggedRanges,
+  dragRangesOf,
+  isListItemNodeName,
   resetColumnListWidths,
+  type DragRange,
 } from './blockStateRegistry.js';
+
+// ── Dragged content as blocks ──────────────────────────────────────────────
+
+/**
+ * The dragged nodes as BLOCKS: list rows are wrapped in a list of the type
+ * they came from (consecutive rows from lists of one type share a list).
+ * Rows alone can't stand in a column or at page level; inserting them raw
+ * either threw (a column of bare rows is schema-invalid) or let ProseMirror
+ * wrap them in a bullet list, turning numbered and to-do rows into bullets.
+ *
+ * @param doc    the doc the ranges point into (before the drop's steps).
+ * @param ranges each dragged node's source range, in the fragment's order.
+ */
+export function draggedContentAsBlocks(
+  schema: any,
+  doc: any,
+  content: Fragment,
+  ranges: ReadonlyArray<DragRange>,
+): Fragment {
+  const out: any[] = [];
+  let open: { type: string; attrs: any; rows: any[] } | null = null;
+  const flush = () => {
+    if (open) out.push(schema.nodes[open.type].create(open.attrs, open.rows));
+    open = null;
+  };
+  content.forEach((node: any, _offset: number, index: number) => {
+    if (!isListItemNodeName(node.type.name)) {
+      flush();
+      out.push(node);
+      return;
+    }
+    let listType = node.type.name === 'taskItem' ? 'taskList' : 'bulletList';
+    let listAttrs: any = null;
+    const range = ranges[index];
+    if (range) {
+      try {
+        const parent = doc.resolve(range.from).parent;
+        if (parent.type.contentMatch.matchType(node.type) && parent.type.name !== 'doc') {
+          listType = parent.type.name;
+          const { id: _id, ...rest } = parent.attrs ?? {};
+          listAttrs = rest;
+        }
+      } catch { /* keep the default list type */ }
+    }
+    if (!open || open.type !== listType) {
+      flush();
+      open = { type: listType, attrs: listAttrs, rows: [] };
+    }
+    open.rows.push(node);
+  });
+  flush();
+  return Fragment.from(out);
+}
 
 // ── Turn-Into Columns ───────────────────────────────────────────────────────
 
@@ -54,21 +110,27 @@ export function turnBlockIntoColumns(
 
   const sourceBlock = schema.nodeFromJSON(node.toJSON());
 
-  const columns: any[] = [];
-  for (let i = 0; i < columnCount; i++) {
-    if (i === 0) {
-      columns.push(columnNodeType.create({ width: null }, [sourceBlock]));
-    } else {
-      // Each empty column needs its own paragraph instance — reusing a single
-      // node object corrupts ProseMirror's position tracking and makes the
-      // column un-editable.
-      const emptyParagraph = paragraphNodeType.createAndFill();
-      if (!emptyParagraph) return false;
-      columns.push(columnNodeType.create({ width: null }, [emptyParagraph]));
+  // createChecked: a block a column can't hold (a data view, …) refuses the
+  // conversion instead of writing a schema-invalid layout.
+  let columnList: any;
+  try {
+    const columns: any[] = [];
+    for (let i = 0; i < columnCount; i++) {
+      if (i === 0) {
+        columns.push(columnNodeType.createChecked({ width: null }, [sourceBlock]));
+      } else {
+        // Each empty column needs its own paragraph instance — reusing a single
+        // node object corrupts ProseMirror's position tracking and makes the
+        // column un-editable.
+        const emptyParagraph = paragraphNodeType.createAndFill();
+        if (!emptyParagraph) return false;
+        columns.push(columnNodeType.createChecked({ width: null }, [emptyParagraph]));
+      }
     }
+    columnList = columnListNodeType.createChecked(null, columns);
+  } catch {
+    return false;
   }
-
-  const columnList = columnListNodeType.create(null, columns);
 
   const { tr } = editor.state;
   tr.replaceWith(pos, pos + node.nodeSize, columnList);
@@ -101,24 +163,27 @@ export function createColumnLayoutFromDrop(
   dragFrom: number,
   dragTo: number,
   isDuplicate: boolean,
+  ranges?: ReadonlyArray<DragRange>,
 ): boolean {
   const columnType = schema.nodes.column;
   const columnListType = schema.nodes.columnList;
+  const dragRanges = dragRangesOf(dragFrom, dragTo, ranges);
+  const blocks = draggedContentAsBlocks(schema, tr.doc, content, dragRanges);
 
-  let tCol: any, dCol: any;
+  // createChecked: `create` never validates, so a column of content it can't
+  // hold used to be written as-is (or threw later, mid-dispatch).
+  let cl: any;
   try {
-    tCol = columnType.create(null, Fragment.from(targetBlockNode));
-    dCol = columnType.create(null, content);
+    const tCol = columnType.createChecked(null, Fragment.from(targetBlockNode));
+    const dCol = columnType.createChecked(null, blocks);
+    const cols = zone === 'left'
+      ? Fragment.from([dCol, tCol])
+      : Fragment.from([tCol, dCol]);
+    cl = columnListType.createChecked(null, cols);
   } catch { return false; }
 
-  const cols = zone === 'left'
-    ? Fragment.from([dCol, tCol])
-    : Fragment.from([tCol, dCol]);
-  let cl: any;
-  try { cl = columnListType.create(null, cols); } catch { return false; }
-
   tr.replaceWith(targetBlockPos, targetBlockPos + targetBlockNode.nodeSize, cl);
-  if (!isDuplicate) deleteDraggedSource(tr, dragFrom, dragTo);
+  if (!isDuplicate) deleteDraggedRanges(tr, dragRanges);
   return true;
 }
 
@@ -142,8 +207,10 @@ export function addColumnToLayoutFromDrop(
   dragFrom: number,
   dragTo: number,
   isDuplicate: boolean,
+  ranges?: ReadonlyArray<DragRange>,
 ): boolean {
   const columnType = schema.nodes.column;
+  const dragRanges = dragRangesOf(dragFrom, dragTo, ranges);
 
   const targetColNode = doc.nodeAt(columnPos);
   if (!targetColNode) return false;
@@ -163,14 +230,16 @@ export function addColumnToLayoutFromDrop(
   const half = parseFloat((targetEff / 2).toFixed(2));
 
   let newCol: any;
-  try { newCol = columnType.create(null, content); } catch { return false; }
+  try {
+    newCol = columnType.createChecked(null, draggedContentAsBlocks(schema, doc, content, dragRanges));
+  } catch { return false; }
 
   const insertColPos = zone === 'left'
     ? columnPos
     : columnPos + targetColNode.nodeSize;
 
   tr.insert(insertColPos, newCol);
-  if (!isDuplicate) deleteDraggedSource(tr, dragFrom, dragTo);
+  if (!isDuplicate) deleteDraggedRanges(tr, dragRanges);
 
   // ── Width redistribution: Notion-style split ──
   const mClPos = tr.mapping.map(columnListPos);

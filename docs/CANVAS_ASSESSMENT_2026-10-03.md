@@ -74,8 +74,8 @@ markdown, focus) were not tested adversarially.
 | C5 | **Split editor:** two panes on one page never sync; closing the stale pane writes its old content over the other pane's saved edits. | `canvasEditorProvider.ts:731`, `commitPageClose` | Verified (service test) |
 | C6 | "Repair on open" replaces content it cannot decode with an empty doc and keeps no copy. | `contentSchema.ts:72`, `canvasDataService.ts:1603` | Verified |
 | C7 | **Structural repair deletes a toggle's title** and stray children when the toggle is malformed (an AI insert anchored on the title is enough); it runs on the next unrelated keystroke. | `plugins/structuralRepair.ts:41` | Verified (probe) |
-| C8 | **Turn into Code / Equation duplicates and merges text** from containers and list rows (`node.textContent` plus children emitted again). | `blockTransforms.ts:211, 321` | Verified (probe) |
-| C9 | **Dragging a non-contiguous selection deletes the blocks between** the selected ones (one span from first to last). | `blockHandles.ts:438`, `columnInvariants.ts:436` | Verified on the primitive |
+| C8 | **Turn into Code / Equation duplicates and merges text** from containers and list rows (`node.textContent` plus children emitted again). | `blockTransforms.ts:211, 321` | **Fixed** (block sweep below) |
+| C9 | **Dragging a non-contiguous selection deletes the blocks between** the selected ones (one span from first to last). | `blockHandles.ts:438`, `columnInvariants.ts:436` | **Fixed** (block sweep below) |
 | C10 | **A stale block selection hijacks copy, cut and paste in other inputs**: Ctrl+X in the chat box cuts the canvas block instead. | `handles/blockClipboard.ts:68` | Verified |
 | C11 | **Image/media upload eats the start of the next block**: the file dialog blurs the window, the popup cancels, the upload then inserts over a stale range. | `menus/imageInsertPopup.ts:68`, `mediaInsertPopup.ts` | Verified given the blur |
 | C12 | **Markdown round-trip corrupts text** (AI edits, Edit-mode Accept and export all pass through it): a code block in a list item swallows everything after it; `$5 and $10` becomes math; `my_func_name` gets italics; `# x` and `1. x` paragraphs become a heading and a list (no escaping); `|` splits table cells; toggle headings, page cards, bookmarks, columns, media, TOC, colours and backgrounds vanish. | `markdownExport.ts`, `markdownImport.ts:788` | Verified (round-trip probe) |
@@ -103,14 +103,15 @@ markdown, focus) were not tested adversarially.
   the menu advertises them; Ctrl+Z right after a drag undoes earlier typing.
   Verified in the app.
 - **Mod-Shift-Up/Down does not move blocks.** Verified in the app (the one
-  real e2e failure).
+  real e2e failure). **Fixed** for blocks (block sweep below); the e2e spec
+  is about a table row, still to re-run.
 - **No drop indicator while dragging**; a small sideways drift silently makes
   columns.
 - **Slash menu runs inside code blocks** ("// todo" + Enter turns the code
   block into a to-do list).
-- **Turn Into → Columns on a list row throws** `RangeError`.
+- **Turn Into → Columns on a list row throws** `RangeError`. **Fixed.**
 - **Duplicating a page card then deleting one copy trashes the child page**
-  the other copy points to.
+  the other copy points to. **Fixed**: a copied card is dropped.
 - **Database data integrity:** deleting a property leaves view filters on it
   (the view then shows zero rows); options are stored by name, so an option
   cannot be renamed and removed options orphan values; checkbox, date and
@@ -239,6 +240,105 @@ Missing or weaker, by how much it matters:
   inline AI is plain text only.
 - **Sidebar**: content search in quick find, favorite reordering, keyboard
   tree navigation, open to the side.
+
+## Block operations sweep, 2026-10-03
+
+Every block against every structural operation, on the app's own editor
+(`tests/unit/canvasBlockMatrix.test.ts`, harness in
+`canvasMatrixHarness.ts`). After each operation the test checks that the doc is
+schema-valid, that no layout has fewer than 2 columns and no two blocks share
+an id, that every character, equation, image, table cell and atom block is
+still there exactly once, and that undo restores the doc exactly.
+
+- **Turn into:** 15 source shapes (text, headings, code, quote, callout,
+  toggle, toggle heading, equation, list rows at three depths) × 14 targets ×
+  6 places (page, column, nested column, callout, toggle, inside a list row):
+  1,260 conversions.
+- **Drag and drop:** 29 blocks dragged from 6 places (page, column, the only
+  block of a column, nested column, callout, beside an empty table) onto 15
+  targets in all four zones, moved and Alt-copied: 15,244 drops.
+- **Keyboard:** Mod-Shift-↑/↓ through real key events until the block stops,
+  for every block in 9 places: about 3,250 presses.
+
+The first runs, on the code as it was, found the following. Each is fixed, and
+each has a named test besides the sweeps.
+
+**Turn into**
+- To Code or Equation, a container or list row took the text of the whole
+  subtree, then emitted the children again: text appeared twice. Line breaks
+  and inline equations were dropped. Now the target takes the block's own line
+  (breaks kept, an inline equation as `$…$`, or bare LaTeX in an equation),
+  and the children follow it. Code back into text turns lines into line
+  breaks.
+- Text with a line break or an inline equation into a Toggle threw (the
+  toggle title holds plain text only). The title now gets text in their place.
+- A list row into Columns threw (C-high). The row, keeping its list type, now
+  goes into the first column, in place.
+- When Columns could not be made, the conversion fell through and wrote a
+  layout holding inline text.
+
+**Moving into, out of and between columns**
+- An empty table, callout, toggle, list or heading counted as an "empty
+  column". So moving or dragging the last other block out of a column deleted
+  it, column and all. Now only empty paragraphs make a column empty.
+- Dragging a block out of a column that still had content deleted the
+  *other*, empty column of a 2-column layout and dissolved the layout (a
+  "fallback" in `deleteDraggedSource`).
+- A column-boundary move reset the widths of every layout on the page. So did
+  multi-block delete.
+- Dragging list rows beside a block threw (a column of bare rows is invalid).
+  Rows now land in a list of the type they came from, and so do rows dragged
+  with other blocks (they used to become bullets).
+- Creating a column never checked what it held. It now uses checked creation,
+  and refuses rather than writing an invalid layout.
+- A non-contiguous multi-block drag deleted everything between the selected
+  blocks (C9). Each block now carries its own range. A selected row together
+  with its own nested row was dragged twice; now it is dragged once.
+
+**Keyboard moves**
+- In the app the key never reached the block mover: a higher-priority handler
+  turned the caret into a block selection and ran a sibling swap. That swap
+  stops at every list, container and column edge (the "does nothing" bug).
+  The caret now uses the mover. A single selected block moves the same way
+  and stays selected.
+- After a move the caret landed in the *next* block (a mapping that pointed
+  past the moved block). The next press moved the wrong block, or threw at the
+  end of the page.
+- Equations, images, dividers and other blocks selected as a whole never
+  moved.
+- The first or last row of a list moved into a new one-row list right beside
+  its old list, which the join plugin merged straight back. Now it swaps with
+  the block past the list. A nested row at the edge of its sub-list steps out
+  to the parent list.
+- A block at the top or bottom of a callout, quote or toggle now steps out of
+  it, and the container keeps an empty paragraph.
+- Shift-Tab on a block directly in a column skipped past the column. It lifted
+  the block out of the layout and out of whatever held the layout.
+
+**Ids and page cards**
+- Alt-drag, Duplicate and every other copy kept the original's block id.
+  (Tiptap's UniqueID only compares ids inside the changed range.) Block ids
+  address blocks for the AI tools and the cross-page move. A plugin now gives
+  copies fresh ids, and the block already on the page keeps its own.
+  Concept maps had no id at all; they have one now.
+- A copied page card pointed a second card at the same page. Deleting either
+  card archived the page the other still showed. A copy of a card is now
+  dropped.
+
+**Cross-page move** (drop onto a page card)
+- The source page was saved with blocks cut out of its JSON by hand. A column,
+  callout or list left with nothing in it was stored schema-invalid. The
+  stored source is now the editor's own deletion.
+- When the copy to the other page failed, the source was deleted anyway. Now
+  the source stays.
+- List rows arrived at the other page bare, not in a list.
+- With two blocks sharing an id, both were deleted. Now only the one nearest
+  the drag is deleted.
+
+**Known and left**
+- A row of a list that fills a callout inside a column cannot move past the
+  list's outer edge by keyboard. It would have to leave the list and the
+  callout at once. It stays put; nothing is lost.
 
 ## What to do first
 

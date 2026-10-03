@@ -115,12 +115,15 @@ export function outdentBlock(editor: Editor, pos: number, node: any): boolean {
   // Find the enclosing container we want to escape from.
   // Walk upward from blockDepth to find a container that is:
   //   (a) in PAGE_CONTAINERS (so blocks can live inside it), AND
-  //   (b) not a column (columns are spatial, not semantic containers), AND
+  //   (b) inside the nearest column, if any (columns are spatial edges), AND
   //   (c) not the document root (depth 0)
   let liftContainerDepth: number | null = null;
   for (let d = ancestry.blockDepth - 1; d >= 1; d--) {
     const name = $pos.node(d).type.name;
-    if (name === 'column' || name === 'columnList') continue;
+    // A column is the edge: a block directly in a column has nothing to
+    // outdent from.  Skipping past it lifted the block out of the whole
+    // layout AND whatever held the layout (a callout, a toggle).
+    if (name === 'column' || name === 'columnList') break;
     // Accept PAGE_CONTAINERS OR detailsContent (wrapper inside details/toggleHeading)
     if (PAGE_CONTAINERS.has(name) || name === 'detailsContent') {
       liftContainerDepth = d;

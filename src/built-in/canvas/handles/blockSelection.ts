@@ -12,9 +12,19 @@
 // transactions to update the decoration set — no manual classList calls.
 
 import type { Editor } from '@tiptap/core';
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { resolveMovableBlock, resolveUnitContainer, normalizeAllColumnLists, notifyLinkedPageBlocksDeleted, growEmptiedAncestorDeletion } from './handleRegistry.js';
+import {
+  resolveBlockAncestry,
+  resolveMovableBlock,
+  resolveUnitContainer,
+  dissolveOrphanedColumnLists,
+  notifyLinkedPageBlocksDeleted,
+  growEmptiedAncestorDeletion,
+  moveBlockUpWithinPageFlow,
+  moveBlockDownWithinPageFlow,
+  moveBlockAcrossColumnBoundary,
+} from './handleRegistry.js';
 import { isDevMode } from '../../../platform/devMode.js';
 
 // ── Decoration Plugin ───────────────────────────────────────────────────────
@@ -479,9 +489,9 @@ export class BlockSelectionController {
       }
     }
 
-    // Synchronous column cleanup — dissolve any columns that became empty
-    // after the multi-block delete, and normalize parent columnLists.
-    normalizeAllColumnLists(tr);
+    // Dissolve any layout left with one column.  (The full normalize also
+    // reset the widths of every column layout on the page.)
+    dissolveOrphanedColumnLists(tr);
 
     editor.view.dispatch(tr);
     this.clear();
@@ -499,11 +509,19 @@ export class BlockSelectionController {
     const positions = this.positions.reverse();
     const { tr } = editor.state;
 
+    // A block inside another selected block (a nested row under its selected
+    // parent) is copied with that block — copying it as well doubled it.
+    const doc = editor.state.doc;
+    const outer = this.positions.filter((pos) => !this.positions.some((other) => {
+      if (other === pos) return false;
+      const n = doc.nodeAt(other);
+      return !!n && pos > other && pos < other + n.nodeSize;
+    }));
     for (const pos of positions) {
+      if (!outer.includes(pos)) continue;
       const node = tr.doc.nodeAt(pos);
       if (node) {
-        const clone = editor.state.schema.nodeFromJSON(node.toJSON());
-        tr.insert(pos + node.nodeSize, clone);
+        tr.insert(pos + node.nodeSize, node);
       }
     }
 
@@ -512,31 +530,56 @@ export class BlockSelectionController {
   }
 
   /**
-   * Move all selected blocks up by one position within their parent.
-   * Returns true if handled.
+   * Move the selected block(s) up.  Returns true if handled.
    *
-   * Bootstrap: if no block is selected, first select the block at the cursor —
-   * matches the established pattern in `extendSelectionUp/Down`. Without this
-   * bootstrap, Mod-Shift-ArrowUp inside a table cell (or any context where
-   * Escape is intercepted before `selectAtCursor` can fire) is a no-op
-   * because nothing is in the selection set.
+   * With only a caret (no block selection) this returns false: the caret
+   * path in the column extension moves the block under the caret.  It used
+   * to turn the caret into a block selection and run the sibling swap below,
+   * which stops at every list, container and column edge — so from the caret
+   * Mod-Shift-↑/↓ could never leave a list, a callout or a column.
    */
   moveSelectedUp(): boolean {
-    if (!this.hasSelection) {
-      if (!this.selectAtCursor()) return false;
-    }
+    if (!this.hasSelection) return false;
+    if (this.count === 1) return this._moveOneSelected('up');
     return this._moveSelected('up');
   }
 
-  /**
-   * Move all selected blocks down by one position within their parent.
-   * Returns true if handled. Bootstrap: see `moveSelectedUp`.
-   */
+  /** Move the selected block(s) down.  See `moveSelectedUp`. */
   moveSelectedDown(): boolean {
-    if (!this.hasSelection) {
-      if (!this.selectAtCursor()) return false;
-    }
+    if (!this.hasSelection) return false;
+    if (this.count === 1) return this._moveOneSelected('down');
     return this._moveSelected('down');
+  }
+
+  /**
+   * One selected block moves exactly as the caret path moves it (within its
+   * parent, out of a list or container, across a column edge), then stays
+   * selected at its new place.
+   */
+  private _moveOneSelected(direction: 'up' | 'down'): boolean {
+    const editor = this._host.editor;
+    if (!editor) return false;
+    const pos = this.positions[0];
+    const node = editor.state.doc.nodeAt(pos);
+    if (!node) return false;
+    editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, pos)));
+
+    const result = direction === 'up' ? moveBlockUpWithinPageFlow(editor) : moveBlockDownWithinPageFlow(editor);
+    let moved = result.moved;
+    if (!moved && resolveBlockAncestry(editor.state.selection.$from).columnDepth !== null) {
+      moved = moveBlockAcrossColumnBoundary(editor, direction);
+    }
+
+    const sel = editor.state.selection;
+    const newPos = moved && sel instanceof NodeSelection ? sel.from : pos;
+    // Leave no node selection on a text block behind: typed text would
+    // replace the block.  Atoms keep theirs (that is how they are selected).
+    const moving = editor.state.doc.nodeAt(newPos);
+    if (moving && !moving.isAtom) {
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(newPos + 1))));
+    }
+    this.select(newPos);
+    return true;
   }
 
   /**

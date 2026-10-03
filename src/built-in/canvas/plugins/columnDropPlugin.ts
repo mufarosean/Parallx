@@ -31,9 +31,11 @@ import {
   getActiveCanvasDragSession,
   classifyPageBlockDropZone,
   areAllDraggedNodesListItems,
-  deleteDraggedSource,
+  deleteDraggedRanges,
+  dragRangesOf,
+  draggedContentAsBlocks,
+  isDropInsideDragged,
   moveBlockAboveBelow,
-  wrapDraggedListItemsForDrop,
   createColumnLayoutFromDrop,
   addColumnToLayoutFromDrop,
 } from '../config/blockStateRegistry/blockStateRegistry.js';
@@ -552,13 +554,19 @@ export function columnDropPlugin(): Plugin {
   function isNoOpAboveBelowDrop(
     target: Omit<DropTarget, 'zone'>,
     zone: 'above' | 'below',
-    dragFrom: number,
-    dragTo: number,
+    ranges: ReadonlyArray<{ from: number; to: number }>,
   ): boolean {
     const insertPos = zone === 'above'
       ? target.blockPos
       : target.blockPos + target.blockNode.nodeSize;
-    return insertPos >= dragFrom && insertPos <= dragTo;
+    return isDropInsideDragged(insertPos, ranges);
+  }
+
+  /** The dragged blocks' own ranges (a multi-block drag need not be one span). */
+  function dragRanges(view: EditorView, dragSession: ReturnType<typeof getActiveCanvasDragSession>): Array<{ from: number; to: number }> {
+    const { from, to } = resolveDragBounds(view, dragSession);
+    const own = dragSession && dragSession.from === from && dragSession.to === to ? dragSession.ranges : null;
+    return dragRangesOf(from, to, own);
   }
 
   function resolveDragBounds(view: EditorView, dragSession: ReturnType<typeof getActiveCanvasDragSession>): {
@@ -602,7 +610,7 @@ export function columnDropPlugin(): Plugin {
 
           resetStaleTimer();
           const dragSession = getActiveCanvasDragSession();
-          const { from: dF, to: dT } = resolveDragBounds(view, dragSession);
+          const ranges = dragRanges(view, dragSession);
 
           const x = event.clientX;
           const y = event.clientY;
@@ -647,14 +655,14 @@ export function columnDropPlugin(): Plugin {
           // a toggle into one of its own child paragraphs, callout into a
           // nested block, etc. — which would otherwise produce a self-
           // referential cycle that PM rejects but only after partial damage.
-          if (raw.blockPos >= dF && raw.blockPos < dT) {
+          const inDragged = (pos: number) => ranges.some((r) => pos >= r.from && pos < r.to);
+          if (inDragged(raw.blockPos)) {
             hideAll(); return false;
           }
           try {
             const $target = view.state.doc.resolve(Math.max(0, Math.min(raw.blockPos, view.state.doc.content.size)));
             for (let d = $target.depth; d >= 1; d--) {
-              const ancestorPos = $target.before(d);
-              if (ancestorPos >= dF && ancestorPos < dT) {
+              if (inDragged($target.before(d))) {
                 hideAll(); return false;
               }
             }
@@ -691,7 +699,7 @@ export function columnDropPlugin(): Plugin {
             zone = getZone(raw.blockEl, x, y, isCL, raw.isListItem, isTable);
           }
 
-          if ((zone === 'above' || zone === 'below') && isNoOpAboveBelowDrop(raw, zone, dF, dT)) {
+          if ((zone === 'above' || zone === 'below') && isNoOpAboveBelowDrop(raw, zone, ranges)) {
             hideAll();
             return false;
           }
@@ -765,6 +773,7 @@ export function columnDropPlugin(): Plugin {
 
           const dragSession = getActiveCanvasDragSession();
           const { from: dragFrom, to: dragTo } = resolveDragBounds(view, dragSession);
+          const ranges = dragRanges(view, dragSession);
           const content = slice.content;
           const draggedAreListItems = areAllDraggedNodesListItems(content);
           const { tr } = view.state;
@@ -779,22 +788,20 @@ export function columnDropPlugin(): Plugin {
               ? target.blockPos
               : target.blockPos + target.blockNode.nodeSize;
 
-            if (!isDuplicate && insertPos >= dragFrom && insertPos <= dragTo) {
+            if (!isDuplicate && isDropInsideDragged(insertPos, ranges)) {
               return true;
             }
 
             if (draggedAreListItems) {
-              const dragProbePos = Math.max(0, Math.min(
-                dragTo > dragFrom ? dragFrom + 1 : dragFrom,
-                view.state.doc.content.size,
-              ));
+              const firstRange = ranges[0];
+              const dragProbePos = Math.max(0, Math.min(firstRange.from + 1, view.state.doc.content.size));
               const draggedSource = resolveMovableBlock(view.state.doc.resolve(dragProbePos));
               const draggedListType = dragSession?.listType
                 ?? draggedSource?.listType
                 ?? (content.firstChild?.type.name === 'taskItem' ? 'taskList' : null);
 
               if (target.isListItem && target.listType && draggedListType === target.listType) {
-                moveBlockAboveBelow(tr, content, insertPos, dragFrom, dragTo, isDuplicate);
+                moveBlockAboveBelow(tr, content, insertPos, dragFrom, dragTo, isDuplicate, ranges);
               } else {
                 // Different list type (or non-row target): insert the rows
                 // wrapped in their own list AT THE ROW BOUNDARY the user
@@ -802,15 +809,18 @@ export function columnDropPlugin(): Plugin {
                 // list around the insertion — Notion semantics.  (The old
                 // code teleported insertPos to the whole list's edge, so a
                 // mid-list drop landed above/below the entire list.)
-                if (!draggedListType) return false;
-                const wrappedList = wrapDraggedListItemsForDrop(schema, content, draggedListType);
-                tr.insert(insertPos, wrappedList);
+                // Each row keeps the type of the list it came from.
+                tr.insert(insertPos, draggedContentAsBlocks(schema, view.state.doc, content, ranges));
                 if (!isDuplicate) {
-                  deleteDraggedSource(tr, dragFrom, dragTo);
+                  deleteDraggedRanges(tr, ranges);
                 }
               }
             } else {
-              moveBlockAboveBelow(tr, content, insertPos, dragFrom, dragTo, isDuplicate);
+              // Mixed content (rows with other blocks): the rows travel in
+              // lists of their own type rather than being re-wrapped by
+              // ProseMirror as bullets.
+              const blocks = draggedContentAsBlocks(schema, view.state.doc, content, ranges);
+              moveBlockAboveBelow(tr, blocks, insertPos, dragFrom, dragTo, isDuplicate, ranges);
             }
             view.dispatch(tr);
             return true;
@@ -824,7 +834,7 @@ export function columnDropPlugin(): Plugin {
               tr, schema, content,
               target.blockPos, target.blockNode,
               target.zone as 'left' | 'right',
-              dragFrom, dragTo, isDuplicate,
+              dragFrom, dragTo, isDuplicate, ranges,
             );
             if (!ok) return false;
             view.dispatch(tr);
@@ -836,7 +846,7 @@ export function columnDropPlugin(): Plugin {
             tr, view.state.doc, schema, content,
             target.columnPos, target.columnListPos!,
             target.zone as 'left' | 'right',
-            dragFrom, dragTo, isDuplicate,
+            dragFrom, dragTo, isDuplicate, ranges,
           );
           if (!ok) return false;
 

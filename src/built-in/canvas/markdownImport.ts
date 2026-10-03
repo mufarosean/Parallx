@@ -841,7 +841,7 @@ const UNIQUE_ID_BLOCK_TYPES = new Set<string>([
   'codeBlock', 'image', 'taskList', 'taskItem', 'callout', 'mathBlock',
   'toggleHeading', 'toggleHeadingText', 'details', 'detailsSummary',
   'detailsContent', 'bookmark', 'pageBlock', 'tableOfContents',
-  'video', 'audio', 'fileAttachment',
+  'video', 'audio', 'fileAttachment', 'conceptMap',
   // ── Table nodes ──
   'table', 'tableRow', 'tableCell', 'tableHeader',
   // ── Column nodes ──

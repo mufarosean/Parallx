@@ -10,11 +10,15 @@
 // Part of blockStateRegistry — the single authority for block state operations.
 
 import type { Editor } from '@tiptap/core';
+import { Fragment } from '@tiptap/pm/model';
 import {
   getActiveCanvasDragSession,
   clearActiveCanvasDragSession,
   CANVAS_BLOCK_DRAG_MIME,
-  deleteDraggedSource,
+  deleteDraggedRanges,
+  dragRangesOf,
+  draggedContentAsBlocks,
+  type DragRange,
 } from './blockStateRegistry.js';
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
@@ -112,6 +116,12 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
     return false;
   }
 
+  // Where the dragged blocks were, for telling apart two blocks that share
+  // an id and for giving list rows their list type.
+  const hintRanges: DragRange[] = dragSession && dragSession.sourcePageId === currentPageId
+    ? dragRangesOf(dragSession.from, dragSession.to, dragSession.ranges)
+    : [];
+
   // ── Identity-based source deletion ───────────────────────────────────────
   //
   // UniqueID extension assigns persistent `attrs.id` to every block.
@@ -162,7 +172,7 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
       // cross-page-move meta so the editor reconciler doesn't see "pageBlock
       // removed" and archive the (already-correctly-reparented) child.
       // movePageWithBlocks already fired content-reload for both parents.
-      _mirrorSourceDelete(editor, blockIds);
+      _mirrorSourceDelete(editor, blockIds, hintRanges);
       clearActiveCanvasDragSession();
       return true;
     }
@@ -185,6 +195,18 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
     return true;
   }
 
+  // Rows can't stand at page level: they travel in lists of their own type.
+  let appendedBlocks: any[] = regularNodes;
+  try {
+    const rowsAsBlocks = draggedContentAsBlocks(
+      editor.schema,
+      editor.state.doc,
+      Fragment.from(regularNodes.map((n: any) => editor.schema.nodeFromJSON(n))),
+      regularNodes.length === hintRanges.length ? hintRanges : [],
+    );
+    appendedBlocks = rowsAsBlocks.toJSON() ?? [];
+  } catch { /* keep the nodes as dragged */ }
+
   const regularIds = regularNodes
     .map((n: any) => n.attrs?.id)
     .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
@@ -195,13 +217,17 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
   if (canUseAtomic) {
     // Strip ALL dragged ids (cards included — their reparent above already
     // pruned them from the stored source; the editor doc still shows them).
-    const sourceDocPostDelete = removeNodesByIds(editor.getJSON(), new Set(blockIds));
+    // The stored source is exactly what the editor will show: the same
+    // deletion (emptied lists and columns cleaned up), computed on a
+    // transaction.  Cutting nodes out of the JSON by hand stored a column,
+    // callout or list with no content — a schema-invalid page.
+    const sourceDocPostDelete = _sourceDeleteTr(editor, blockIds, hintRanges).doc.toJSON();
     try {
       await dataService.moveBlocksBetweenPagesAtomic({
         sourcePageId: currentPageId,
         targetPageId,
         sourceDoc: sourceDocPostDelete,
-        appendedNodes: regularNodes,
+        appendedNodes: appendedBlocks,
       });
     } catch (atomicErr) {
       console.warn('[Canvas] Atomic cross-page move failed; aborting:', atomicErr);
@@ -212,7 +238,7 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
     // Mirror the deletion in the local editor so the user sees it disappear.
     // Tagged with the cross-page-move meta so the editor's pageBlock
     // reconciler treats this as relocation, not a user-initiated delete.
-    _mirrorSourceDelete(editor, blockIds);
+    _mirrorSourceDelete(editor, blockIds, hintRanges);
 
     dataService.fireContentReload(targetPageId);
     clearActiveCanvasDragSession();
@@ -228,60 +254,35 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
   // above (move) or skipped (copy); appending one as content would desync
   // the child's parent_id.
   try {
-    await dataService.appendBlocksToPage(targetPageId, regularNodes);
+    await dataService.appendBlocksToPage(targetPageId, appendedBlocks);
   } catch (appendErr) {
-    // appendBlocksToPage can throw if a side-effect listener fails
-    // (e.g. pageBlock title sync) even though the DB write succeeded.
-    // Log but continue — the delete must still run.
-    console.warn('[Canvas] appendBlocksToPage error (continuing with delete):', appendErr);
+    // The copy may not have landed: keep the source.  A duplicate the user
+    // can delete beats blocks lost from both pages.
+    console.warn('[Canvas] appendBlocksToPage failed; keeping the source blocks:', appendErr);
+    dataService.fireContentReload(targetPageId);
+    clearActiveCanvasDragSession();
+    return true;
   }
   dataService.fireContentReload(targetPageId);
 
   // ── Cut: delete blocks from source editor ──
   try {
     if (shouldDeleteSource) {
-      const blockIds = draggedJson
-        .map((n: any) => n.attrs?.id)
-        .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
-
-      const deleteTr = editor.state.tr;
-      deleteTr.setMeta('addToHistory', true);
-      // Tag as a cross-page move so the pageBlock reconciler treats any card
-      // in the deleted set as relocated, not user-deleted (no child archive).
-      deleteTr.setMeta(CANVAS_CROSS_PAGE_MOVE_META, true);
-
-      if (blockIds.length > 0) {
-        // Delete blocks by unique ID (immune to position drift)
-        const idSet = new Set(blockIds);
-        const toDelete: { pos: number; size: number }[] = [];
-        editor.state.doc.descendants((node: any, pos: number) => {
-          if (node.attrs?.id && idSet.has(node.attrs.id)) {
-            toDelete.push({ pos, size: node.nodeSize });
-            return false;
-          }
-          return true;
-        });
-        toDelete.sort((a, b) => b.pos - a.pos);
-        for (const { pos } of toDelete) {
-          const mapped = deleteTr.mapping.map(pos);
-          const node = deleteTr.doc.nodeAt(mapped);
-          if (node) {
-            deleteTr.delete(mapped, mapped + node.nodeSize);
-          }
-        }
+      let deleteTr: any;
+      if (blockIds.length === draggedJson.length) {
+        deleteTr = _sourceDeleteTr(editor, blockIds, hintRanges);
       } else {
-        // Fallback for blocks without UniqueID attrs
-        const dragFrom = typeof (dragging as any)?.from === 'number'
-          ? (dragging as any).from
-          : typeof dragSession?.from === 'number'
-            ? dragSession.from
-          : editor.state.selection.from;
-        const dragTo = typeof (dragging as any)?.to === 'number'
-          ? (dragging as any).to
-          : typeof dragSession?.to === 'number'
-            ? dragSession.to
-          : editor.state.selection.to;
-        deleteDraggedSource(deleteTr, dragFrom, dragTo);
+        // Blocks without ids: their drag ranges (each block's own, never the
+        // span between them).
+        const dragFrom = typeof (dragging as any)?.from === 'number' ? (dragging as any).from : dragSession?.from;
+        const dragTo = typeof (dragging as any)?.to === 'number' ? (dragging as any).to : dragSession?.to;
+        deleteTr = editor.state.tr;
+        deleteTr.setMeta('addToHistory', true);
+        deleteTr.setMeta(CANVAS_CROSS_PAGE_MOVE_META, true);
+        if (typeof dragFrom === 'number' && typeof dragTo === 'number') {
+          const own = dragSession && dragSession.from === dragFrom && dragSession.to === dragTo ? dragSession.ranges : null;
+          deleteDraggedRanges(deleteTr, dragRangesOf(dragFrom, dragTo, own));
+        }
       }
 
       if (deleteTr.docChanged) {
@@ -301,12 +302,6 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Walk a Tiptap JSON doc and return a copy with nodes whose `attrs.id` is in
- * `idSet` removed.  Preserves all other structure (columns, callouts, etc.).
- * Used to compute the post-delete source doc for atomic cross-page moves
- * without applying the deletion to the live editor first.
- */
-/**
  * Mirror a cross-page block deletion in the local editor. Tags the
  * dispatched transaction with CANVAS_CROSS_PAGE_MOVE_META so the
  * editor's pageBlock-hierarchy reconciler can distinguish "block moved
@@ -314,29 +309,10 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
  * reconciler would archive any pageBlock child caught in the move,
  * silently destroying user data.
  */
-function _mirrorSourceDelete(editor: Editor, blockIds: string[]): void {
+function _mirrorSourceDelete(editor: Editor, blockIds: string[], hints: DragRange[] = []): void {
   if (!blockIds.length) return;
   try {
-    const idSet = new Set(blockIds);
-    const deleteTr = editor.state.tr;
-    deleteTr.setMeta('addToHistory', true);
-    deleteTr.setMeta(CANVAS_CROSS_PAGE_MOVE_META, true);
-    const toDelete: { pos: number; size: number }[] = [];
-    editor.state.doc.descendants((node: any, pos: number) => {
-      if (node.attrs?.id && idSet.has(node.attrs.id)) {
-        toDelete.push({ pos, size: node.nodeSize });
-        return false;
-      }
-      return true;
-    });
-    toDelete.sort((a, b) => b.pos - a.pos);
-    for (const { pos } of toDelete) {
-      const mapped = deleteTr.mapping.map(pos);
-      const node = deleteTr.doc.nodeAt(mapped);
-      if (node) {
-        deleteTr.delete(mapped, mapped + node.nodeSize);
-      }
-    }
+    const deleteTr = _sourceDeleteTr(editor, blockIds, hints);
     if (deleteTr.docChanged) {
       editor.view.dispatch(deleteTr);
     }
@@ -345,14 +321,40 @@ function _mirrorSourceDelete(editor: Editor, blockIds: string[]): void {
   }
 }
 
-function removeNodesByIds(node: any, idSet: Set<string>): any {
-  if (!node || typeof node !== 'object') return node;
-  if (!Array.isArray(node.content)) return node;
-
-  const next: any[] = [];
-  for (const child of node.content) {
-    if (child?.attrs?.id && idSet.has(child.attrs.id)) continue;
-    next.push(removeNodesByIds(child, idSet));
-  }
-  return { ...node, content: next };
+/**
+ * The source-side deletion of a cross-page move, as a transaction on the
+ * CURRENT doc (found by id, so drift since dragstart doesn't matter).  Runs
+ * through the drag deletion policy, so a list it empties goes and a column
+ * it empties is removed.  When two blocks share an id (pages saved before
+ * duplicates got fresh ids), only the one nearest the drag's own position
+ * is removed — never both.
+ */
+function _sourceDeleteTr(editor: Editor, blockIds: string[], hints: DragRange[]): any {
+  const idSet = new Set(blockIds);
+  const matches = new Map<string, Array<{ from: number; to: number }>>();
+  editor.state.doc.descendants((node: any, pos: number) => {
+    const id = node.attrs?.id;
+    if (id && idSet.has(id)) {
+      const list = matches.get(id) ?? [];
+      list.push({ from: pos, to: pos + node.nodeSize });
+      matches.set(id, list);
+      return false;
+    }
+    return true;
+  });
+  const ranges: DragRange[] = [];
+  blockIds.forEach((id, index) => {
+    const found = matches.get(id);
+    if (!found || found.length === 0) return;
+    const hint = hints[index]?.from;
+    const pick = typeof hint === 'number'
+      ? found.reduce((best, r) => (Math.abs(r.from - hint) < Math.abs(best.from - hint) ? r : best))
+      : found[0];
+    if (!ranges.some((r) => r.from === pick.from)) ranges.push(pick);
+  });
+  const tr = editor.state.tr;
+  tr.setMeta('addToHistory', true);
+  tr.setMeta(CANVAS_CROSS_PAGE_MOVE_META, true);
+  deleteDraggedRanges(tr, ranges);
+  return tr;
 }
