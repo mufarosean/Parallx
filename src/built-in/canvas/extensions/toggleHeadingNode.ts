@@ -4,6 +4,8 @@
 // Reuses DetailsContent from @tiptap/extension-details for the collapsible body.
 
 import { Node, mergeAttributes } from '@tiptap/core';
+import { Fragment } from '@tiptap/pm/model';
+import { TextSelection } from '@tiptap/pm/state';
 
 // ─── ToggleHeadingText — editable heading line ──────────────────────────────
 
@@ -101,6 +103,34 @@ export const ToggleHeading = Node.create({
 
   addKeyboardShortcuts() {
     return {
+      // Backspace at the start of the title turns the toggle heading into a
+      // plain heading, its body blocks following it (Notion).  Without this,
+      // ProseMirror could not join the title backward and node-selected the
+      // block above instead; the next Backspace deleted that block.
+      Backspace: ({ editor }) => {
+        const { state } = editor;
+        const { selection, schema } = state;
+        const { $head, empty } = selection;
+        if (!empty || $head.parent.type.name !== 'toggleHeadingText' || $head.parentOffset !== 0) return false;
+        const toggleDepth = $head.depth - 1;
+        const toggle = $head.node(toggleDepth);
+        if (toggle.type.name !== 'toggleHeading' || !schema.nodes.heading) return false;
+        const togglePos = $head.before(toggleDepth);
+        const title = toggle.child(0);
+        const body = toggle.childCount > 1 ? toggle.child(1) : null;
+        const heading = schema.nodes.heading.create({ level: toggle.attrs.level ?? 1 }, title.content);
+        const blocks: any[] = [heading];
+        body?.forEach((child: any) => {
+          // An empty body paragraph is the toggle's placeholder, not content.
+          if (body.childCount === 1 && child.type.name === 'paragraph' && child.content.size === 0) return;
+          blocks.push(child);
+        });
+        const tr = state.tr.replaceWith(togglePos, togglePos + toggle.nodeSize, Fragment.from(blocks));
+        tr.setSelection(TextSelection.create(tr.doc, togglePos + 1));
+        editor.view.dispatch(tr.scrollIntoView());
+        return true;
+      },
+
       Enter: ({ editor }) => {
         const { state } = editor;
         const { selection, schema } = state;

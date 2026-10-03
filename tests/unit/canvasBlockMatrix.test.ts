@@ -328,6 +328,94 @@ describe('keyboard: Mod-Shift-↑/↓ for every block in every place', () => {
   });
 });
 
+// ── 4. Editing keys ──────────────────────────────────────────────────────────
+
+const EDIT_PLACES: Record<string, (s: any) => any[]> = {
+  page: (s) => [p('t1'), s, p('t2')],
+  afterCallout: (s) => [{ type: 'callout', attrs: { emoji: 'x' }, content: [p('k0')] }, s, p('t2')],
+  betweenLayouts: (s) => [cols(col(p('l1')), col(p('l2'))), s, cols(col(p('l3')), col(p('l4')))],
+  column: (s) => [p('t1'), cols(col(p('a1'), s, p('a2')), col(p('b1'))), p('t2')],
+  columnFirst: (s) => [p('t1'), cols(col(s, p('a2')), col(p('b1'))), p('t2')],
+  aloneInColumn: (s) => [p('t1'), cols(col(s), col(p('b1'))), p('t2')],
+  callout: (s) => [p('t1'), { type: 'callout', attrs: { emoji: 'x' }, content: [p('k1'), s] }, p('t2')],
+  calloutFirst: (s) => [p('t1'), { type: 'callout', attrs: { emoji: 'x' }, content: [s] }, p('t2')],
+  toggle: (s) => [p('t1'), { type: 'details', content: [{ type: 'detailsSummary', content: [t('ds')] }, { type: 'detailsContent', content: [s] }] }, p('t2')],
+  calloutInColumn: (s) => [p('t1'), cols(col({ type: 'callout', attrs: { emoji: 'x' }, content: [p('k1'), s] }), col(p('b1'))), p('t2')],
+};
+const EDIT_CONTEXT = new Set(['t1', 't2', 'a1', 'a2', 'b1', 'k0', 'k1', 'l1', 'l2', 'l3', 'l4', 'ds', '']);
+const EDIT_KEYS: Array<[string, string, any, 'start' | 'end', number]> = [
+  ['Tab', 'Tab', {}, 'start', 1], ['Shift-Tab', 'Tab', { shift: true }, 'start', 1],
+  ['Backspace at start', 'Backspace', {}, 'start', 1], ['Backspace twice', 'Backspace', {}, 'start', 2],
+  ['Delete at end', 'Delete', {}, 'end', 1], ['Delete twice', 'Delete', {}, 'end', 2],
+  ['Enter at end', 'Enter', {}, 'end', 1], ['Mod-d', 'd', { ctrl: true }, 'start', 1],
+];
+const WHOLE_BLOCK = (n: any) => n.isAtom || ['horizontalRule', 'image', 'table', 'columnList'].includes(n.type.name);
+
+describe('editing keys: Tab, Shift-Tab, Backspace, Delete, Enter, Mod-d on every block in every place', () => {
+  it('never lose content, stay valid, undo exactly', { timeout: 600_000 }, () => {
+    const F = fixtures();
+    const fails: string[] = [];
+    let runs = 0;
+    for (const [place, wrap] of Object.entries(EDIT_PLACES)) for (const name of Object.keys(F)) for (const [kname, key, mods, where, times] of EDIT_KEYS) {
+      const label = `${place}:${name} ${kname}`;
+      const ed = mk(withIds({ type: 'doc', content: wrap(F[name]) }, base().schema));
+      try {
+        const startJson = JSON.stringify(ed.getJSON());
+        const before = tokens(ed.state.doc);
+        const type = F[name].type;
+        const r = find(ed, (n) => n.type.name === type
+          && !(n.type.name === 'paragraph' && EDIT_CONTEXT.has(n.textContent))
+          && !(type === 'callout' && ['k0', 'k1'].includes(n.textContent))
+          && !(type === 'columnList' && /^(l1|l3|a1|b1)/.test(n.textContent)))!;
+        const whole = WHOLE_BLOCK(r.node);
+        if (whole) {
+          ed.view.dispatch(ed.state.tr.setSelection(NodeSelection.create(ed.state.doc, r.pos)));
+        } else {
+          const tbs: number[] = r.node.isTextblock ? [r.pos + 1] : [];
+          r.node.descendants((n: any, pos: number) => { if (n.isTextblock) tbs.push(r.pos + 1 + pos + 1); return true; });
+          const tb = where === 'start' ? tbs[0] : tbs[tbs.length - 1];
+          const at = where === 'start' ? tb : tb + ed.state.doc.resolve(tb).parent.content.size;
+          ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, at)));
+        }
+        let changed = 0;
+        for (let i = 0; i < times; i++) {
+          const prev = JSON.stringify(ed.getJSON());
+          press(ed, key, mods);
+          if (JSON.stringify(ed.getJSON()) !== prev) changed++;
+        }
+        runs++;
+        const issues = problems(ed);
+        const d = diffTokens(before, tokens(ed.state.doc));
+        // Backspace/Delete on a block selected whole deletes that block: expected.
+        const deletesSelected = whole && (key === 'Backspace' || key === 'Delete');
+        if (d.lost.length && !deletesSelected) issues.push('lost ' + d.lost.join(''));
+        if (d.extra.length && key !== 'd') issues.push('extra ' + d.extra.join(''));
+        const after = outline(ed.state.doc);
+        for (let i = 0; i < changed + 1; i++) ed.commands.undo();
+        if (JSON.stringify(ed.getJSON()) !== startJson) issues.push('undo not exact');
+        if (issues.length) fails.push(`${label}: ${issues.join('; ')}\n    → ${after}`);
+      } catch (e: any) {
+        fails.push(`${label}: threw ${e.message}`);
+      } finally {
+        ed.destroy();
+      }
+    }
+    expect(fails, fails.join('\n')).toEqual([]);
+    expect(runs).toBe(Object.keys(EDIT_PLACES).length * Object.keys(F).length * EDIT_KEYS.length);
+  });
+
+  it('Backspace at the start of a toggle heading makes it a heading; the block above stays', () => {
+    const ed = mk({ type: 'doc', content: [p('above'), { type: 'toggleHeading', attrs: { level: 2 }, content: [{ type: 'toggleHeadingText', content: [t('Title')] }, { type: 'detailsContent', content: [p('body')] }] }] });
+    const r = find(ed, (n) => n.type.name === 'toggleHeadingText')!;
+    ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, r.pos + 1)));
+    press(ed, 'Backspace');
+    expect(body(ed.state.doc)).toBe('paragraph("above"), heading2("Title"), paragraph("body")');
+    // The next Backspace is an ordinary join, not a deletion of the block above.
+    press(ed, 'Backspace');
+    expect(textOf(ed)).toEqual(['aboveTitle', 'body']);
+  });
+});
+
 // ── Named regressions ────────────────────────────────────────────────────────
 
 /** Outline without the empty paragraph the editor keeps at the end of a page. */

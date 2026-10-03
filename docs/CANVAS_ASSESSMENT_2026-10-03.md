@@ -259,6 +259,9 @@ still there exactly once, and that undo restores the doc exactly.
   targets in all four zones, moved and Alt-copied: 15,244 drops.
 - **Keyboard:** Mod-Shift-↑/↓ through real key events until the block stops,
   for every block in 9 places: about 3,250 presses.
+- **Editing keys:** Tab, Shift-Tab, Backspace at a block's start (once and
+  twice), Delete at its end (once and twice), Enter and Mod-d, for every block
+  in 10 places: 2,000 cases.
 
 The first runs, on the code as it was, found the following. Each is fixed, and
 each has a named test besides the sweeps.
@@ -338,6 +341,12 @@ each has a named test besides the sweeps.
 - List rows arrived at the other page bare, not in a list.
 - With two blocks sharing an id, both were deleted. Now only the one nearest
   the drag is deleted.
+
+**Editing keys**
+- Backspace at the start of a toggle heading's title could not join backward,
+  so ProseMirror selected the whole block above; a second Backspace deleted
+  it. The toggle heading now becomes a plain heading with its body below
+  (Notion), and the next Backspace is an ordinary join.
 
 **Known and left**
 - A row of a list that fills a callout inside a column cannot move past the
