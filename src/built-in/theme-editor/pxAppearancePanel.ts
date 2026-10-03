@@ -23,7 +23,8 @@ import {
   deletePreset,
   type PxAppearanceState,
   type PxBaseTheme,
-  type PxMode, PX_FONTS, DEFAULT_FONT_ID } from '../../theme/pxAppearance.js';
+  type PxMode, PX_FONTS, DEFAULT_FONT_ID,
+  PX_TEXT_SIZES, DEFAULT_TEXT_SIZE, APPEARANCE_CHANGED_EVENT } from '../../theme/pxAppearance.js';
 import { applyThemeById } from '../../theme/themeApply.js';
 
 import './pxAppearance.css';
@@ -52,6 +53,7 @@ export class PxAppearancePanel implements IDisposable {
   private readonly _baseCards = new Map<PxBaseTheme, HTMLElement>();
   private readonly _accentChips = new Map<string, HTMLElement>();
   private readonly _fontChips = new Map<string, HTMLButtonElement>();
+  private readonly _textSizeButtons = new Map<number, HTMLButtonElement>();
   private _hueRow?: HTMLElement;
   private _hueInput?: HTMLInputElement;
   private _presetsRow?: HTMLElement;
@@ -62,7 +64,18 @@ export class PxAppearancePanel implements IDisposable {
     this._globalStorage = globalStorage;
     this._state = readAppearance();
     this._render();
+    // Text size also changes from the keyboard (Ctrl+= / Ctrl+-) and the View
+    // menu while this page is open: follow it.
+    window.addEventListener(APPEARANCE_CHANGED_EVENT, this._onExternalChange);
   }
+
+  private readonly _onExternalChange = (): void => {
+    if (this._disposed) return;
+    const textSize = readAppearance().textSize;
+    if (textSize === this._state.textSize) return;
+    this._state.textSize = textSize;
+    this._syncTextSizeSelection();
+  };
 
   /** Apply + persist the --px chrome (mode/base/accent). */
   private _commit(): void {
@@ -99,6 +112,7 @@ export class PxAppearancePanel implements IDisposable {
     body.className = 'px-appearance-body';
 
     body.appendChild(this._renderModeSection());
+    body.appendChild(this._renderTextSizeSection());
     body.appendChild(this._renderFontSection());
     body.appendChild(this._renderBaseSection());
     body.appendChild(this._renderAccentSection());
@@ -107,6 +121,47 @@ export class PxAppearancePanel implements IDisposable {
 
     root.appendChild(body);
     this._container.appendChild(root);
+  }
+
+  // ── Text size ────────────────────────────────────────────────────────
+  // The window's zoom: text, icons and spacing together. A comfort setting,
+  // so saved themes never carry it (pxAppearance.ts).
+  private _renderTextSizeSection(): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'px-appearance-section';
+    section.appendChild(this._sectionHeading('Text size', 'Makes everything larger or smaller, like zooming the window. Ctrl+= and Ctrl+- change it from anywhere.'));
+
+    const toggle = document.createElement('div');
+    toggle.className = 'px-mode-toggle';
+    toggle.setAttribute('role', 'group');
+    toggle.setAttribute('aria-label', 'Text size');
+    this._textSizeButtons.clear();
+    for (const size of PX_TEXT_SIZES) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'px-mode-btn';
+      btn.dataset.textSize = String(size);
+      btn.textContent = `${Math.round(size * 100)}%`;
+      btn.addEventListener('click', () => {
+        this._state.textSize = size === DEFAULT_TEXT_SIZE ? undefined : size;
+        this._commit();
+        this._syncTextSizeSelection();
+      });
+      this._textSizeButtons.set(size, btn);
+      toggle.appendChild(btn);
+    }
+    section.appendChild(toggle);
+    this._syncTextSizeSelection();
+    return section;
+  }
+
+  private _syncTextSizeSelection(): void {
+    const current = this._state.textSize ?? DEFAULT_TEXT_SIZE;
+    for (const [size, btn] of this._textSizeButtons) {
+      const on = size === current;
+      btn.classList.toggle('is-selected', on);
+      btn.setAttribute('aria-pressed', String(on));
+    }
   }
 
   // ── Font ─────────────────────────────────────────────────────────────
@@ -395,7 +450,7 @@ export class PxAppearancePanel implements IDisposable {
   private _renderSavedSection(): HTMLElement {
     const section = document.createElement('section');
     section.className = 'px-appearance-section';
-    section.appendChild(this._sectionHeading('Your themes', 'Save the current palette + accent as a named theme to recall later.'));
+    section.appendChild(this._sectionHeading('Your themes', 'Save the mode, palette, accent and font as a named theme. Text size stays as you set it.'));
 
     // Save bar — name input + save button.
     const saveBar = document.createElement('div');
@@ -472,7 +527,9 @@ export class PxAppearancePanel implements IDisposable {
       apply.addEventListener('click', () => {
         // A look saved before fonts existed carries none: keep the current one.
         const font = preset.font ?? this._state.font;
-        this._state = { mode: preset.mode, base: preset.base, accent: preset.accent, customHue: preset.customHue, font: font === DEFAULT_FONT_ID ? undefined : font };
+        // A saved theme is the look; text size (and the other comfort
+        // settings) stays as the person set it.
+        this._state = { ...this._state, mode: preset.mode, base: preset.base, accent: preset.accent, customHue: preset.customHue, font: font === DEFAULT_FONT_ID ? undefined : font };
         this._commit();
         this._syncEditorTheme();
         this._syncModeSelection();
@@ -515,6 +572,7 @@ export class PxAppearancePanel implements IDisposable {
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
+    window.removeEventListener(APPEARANCE_CHANGED_EVENT, this._onExternalChange);
     this._modeButtons.clear();
     this._baseCards.clear();
     this._accentChips.clear();

@@ -52,7 +52,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       id: 'appearance',
       label: 'Appearance',
       order: 10,
-      description: 'Base palette, accent color, and your saved themes.',
+      description: 'Mode, text size, font, palette, accent and your saved themes.',
       render: (container) => new PxAppearancePanel(container, themeService, globalStorage),
     }),
   );

@@ -215,6 +215,7 @@ import {
   initUserThemesCache,
 } from '../theme/themeCatalog.js';
 import { showColorThemePicker } from './workbenchThemePicker.js';
+import { TEXT_SIZE_EXTRA_KEYBINDINGS, TEXT_SIZE_KEYBINDING_WHEN } from '../commands/textSizeCommands.js';
 import { setupEditorWatermark, updateWatermarkKeybindings } from './workbenchWatermark.js';
 import { $ } from '../ui/dom.js';
 
@@ -3885,10 +3886,15 @@ export class Workbench extends Layout {
         bindings.push({
           key: cmd.keybinding,
           commandId: cmd.id,
-          when: cmd.when,
+          when: cmd.when && cmd.keybindingWhen ? `(${cmd.when}) && (${cmd.keybindingWhen})` : (cmd.keybindingWhen ?? cmd.when),
           source: 'builtin',
         });
       }
+    }
+
+    // Text size's further keys ('+' with or without Shift, the number pad).
+    for (const extra of TEXT_SIZE_EXTRA_KEYBINDINGS) {
+      bindings.push({ ...extra, when: TEXT_SIZE_KEYBINDING_WHEN, source: 'builtin' });
     }
 
     // 2. F1 as secondary trigger for command palette (not in command descriptor)

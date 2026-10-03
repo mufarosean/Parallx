@@ -28,6 +28,14 @@ interface FocusChangeEvent {
 const DATA_PART_ID = 'data-part-id';
 const DATA_VIEW_ID = 'data-view-id';
 
+/**
+ * Marks a surface that zooms itself with Ctrl+= / Ctrl+- (the worksheet's
+ * sheet zooms its cells, as Excel does). While focus is inside one, the
+ * context key below is true and the app's Text size keys step aside.
+ */
+export const DATA_OWNS_ZOOM = 'data-px-owns-zoom';
+export const CTX_FOCUS_OWNS_ZOOM = 'focusOwnsZoom';
+
 // ─── FocusTracker ────────────────────────────────────────────────────────────
 
 /**
@@ -166,8 +174,11 @@ export class FocusTracker extends Disposable {
 
   private _attachDOMListeners(): void {
     const onFocusIn = (e: FocusEvent) => {
-      if (this._suspended) return;
       const target = e.target as HTMLElement | null;
+      // Kept current even while tracking is suspended (an overlay owns focus
+      // then, and it never zooms itself).
+      this._contextKeys?.setContext(CTX_FOCUS_OWNS_ZOOM, !!target?.closest?.(`[${DATA_OWNS_ZOOM}]`));
+      if (this._suspended) return;
       if (!target) return;
       this._handleFocusChange(target);
     };

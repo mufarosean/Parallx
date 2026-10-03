@@ -1,7 +1,7 @@
 // electron/preload.cjs — Electron preload script
 // Exposes a minimal API to the renderer via contextBridge.
 
-const { contextBridge, ipcRenderer, clipboard, webUtils } = require('electron');
+const { contextBridge, ipcRenderer, clipboard, webUtils, webFrame } = require('electron');
 
 contextBridge.exposeInMainWorld('parallxElectron', {
   platform: process.platform,
@@ -22,6 +22,14 @@ contextBridge.exposeInMainWorld('parallxElectron', {
 
   // ── Workspace switch teardown ──
   prepareWorkspaceSwitch: () => ipcRenderer.invoke('workspace:prepareSwitch'),
+
+  // ── Text size (Settings › Appearance) ──
+  // The window's zoom. Main opens the window at the saved size; the renderer
+  // changes it live. Out-of-range values are ignored, never clamped silently.
+  setZoomFactor: (factor) => {
+    if (typeof factor === 'number' && factor >= 0.5 && factor <= 3) webFrame.setZoomFactor(factor);
+  },
+  getZoomFactor: () => webFrame.getZoomFactor(),
 
   // ── Window controls for the custom titlebar ──
   minimize: () => ipcRenderer.send('window:minimize'),

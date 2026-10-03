@@ -99,6 +99,9 @@ export class MenuBuilder extends Disposable {
       { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Right Area', group: '2_appearance', order: 3 },
       { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
       { commandId: 'workbench.action.toggleZenMode', title: 'Zen Mode', group: '2_appearance', order: 5 },
+      { commandId: 'workbench.action.increaseTextSize', title: 'Increase Text Size', group: '2_textsize', order: 1 },
+      { commandId: 'workbench.action.decreaseTextSize', title: 'Decrease Text Size', group: '2_textsize', order: 2 },
+      { commandId: 'workbench.action.resetTextSize', title: 'Reset Text Size', group: '2_textsize', order: 3 },
       { commandId: 'editor.toggleWordWrap', title: 'Word Wrap', group: '3_editor', order: 1, when: 'activeEditor' },
     ]));
 

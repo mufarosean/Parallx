@@ -133,6 +133,15 @@ export function keyFromEvent(e: KeyboardEvent): string {
 
   // Normalize key name
   let key = e.key.toLowerCase();
+  // The number pad names its own keys (VS Code's numpad0, numpadadd…), so
+  // Ctrl+NumPad0 can reset Text Size while Ctrl+0 still focuses the side bar.
+  // Digits only with Num Lock on (off, they are Insert, End, arrows…).
+  const code = typeof e.code === 'string' ? e.code : '';
+  if (/^Numpad\d$/.test(code) && /^\d$/.test(e.key)) key = code.toLowerCase();
+  else if (code === 'NumpadAdd') key = 'numpadadd';
+  else if (code === 'NumpadSubtract') key = 'numpadsubtract';
+  // '+' cannot be written in a binding ("Ctrl++" splits on it): it is "plus".
+  else if (key === '+') key = 'plus';
   // Map common key names
   if (key === ' ') key = 'space';
   if (key === 'escape') key = 'escape';

@@ -32,6 +32,23 @@ export interface PxAppearanceState {
   customHue?: number;    // 0-360 when accent === 'custom'
   /** UI font id from PX_FONTS; 'inter' (the default stack) when absent. */
   font?: string;
+  /**
+   * Text size: the window's zoom factor, one of PX_TEXT_SIZES; 1 when absent.
+   * A comfort setting, about the person rather than the look: saved themes
+   * never carry it and applying one leaves it alone.
+   */
+  textSize?: number;
+}
+
+/** The text sizes on offer (Settings › Appearance › Text size, Ctrl+= / Ctrl+-). */
+export const PX_TEXT_SIZES: readonly number[] = [0.9, 1, 1.1, 1.25, 1.5];
+export const DEFAULT_TEXT_SIZE = 1;
+
+/** One step larger (1) or smaller (-1) than `current`, clamped to the ends. */
+export function stepTextSize(current: number | undefined, direction: 1 | -1): number {
+  const value = current ?? DEFAULT_TEXT_SIZE;
+  if (direction > 0) return PX_TEXT_SIZES.find((s) => s > value + 1e-6) ?? PX_TEXT_SIZES[PX_TEXT_SIZES.length - 1];
+  return [...PX_TEXT_SIZES].reverse().find((s) => s < value - 1e-6) ?? PX_TEXT_SIZES[0];
 }
 
 /** The app-wide UI font. One choice, every surface: the workbench root
@@ -84,6 +101,7 @@ function normalizeAppearance(parsed: Partial<PxAppearanceState> | null | undefin
     accent: typeof parsed.accent === 'string' ? parsed.accent : 'steel',
     customHue: typeof parsed.customHue === 'number' ? parsed.customHue : undefined,
     font: PX_FONTS.some(f => f.id === parsed.font) ? parsed.font : undefined,
+    textSize: typeof parsed.textSize === 'number' && PX_TEXT_SIZES.includes(parsed.textSize) && parsed.textSize !== DEFAULT_TEXT_SIZE ? parsed.textSize : undefined,
   };
 }
 
@@ -120,11 +138,24 @@ function durableTarget(): { bridge: StorageBridgeShape; file: string } | null {
   return { bridge, file: `${dataRoot}/data/appearance.json` };
 }
 
+/** Fired on window after every saved change, so an open Appearance page follows a shortcut. */
+export const APPEARANCE_CHANGED_EVENT = 'px-appearance-changed';
+
 export function writeAppearance(state: PxAppearanceState): void {
   const stamped = { ...state, savedAt: Date.now() };
   try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stamped)); } catch { /* ignore */ }
   const t = durableTarget();
   if (t) { void t.bridge.writeJson(t.file, stamped).catch(() => { /* fast layer still holds */ }); }
+  try { window.dispatchEvent(new CustomEvent(APPEARANCE_CHANGED_EVENT, { detail: { ...state } })); } catch { /* no window events */ }
+}
+
+/** Change only the text size: apply it, save it, announce it. Returns the size set. */
+export function setTextSize(size: number): number {
+  const next = PX_TEXT_SIZES.includes(size) ? size : DEFAULT_TEXT_SIZE;
+  const state = { ...readAppearance(), textSize: next === DEFAULT_TEXT_SIZE ? undefined : next };
+  applyAppearance(state);
+  writeAppearance(state);
+  return next;
 }
 
 /**
@@ -361,6 +392,11 @@ export function applyAppearance(state: PxAppearanceState): void {
     }
   }
 
+  // Text size — the window's zoom, set through the preload (Electron's
+  // webFrame). The main process opens the window at the saved size, so this
+  // only changes something when the user does.
+  applyTextSize(state.textSize ?? DEFAULT_TEXT_SIZE);
+
   // UI font — set on :root, where --px-font-ui reads it; the theme bridge's
   // <body> rule points --parallx-fontFamily-ui back at --px-font-ui, so both
   // names, and everything inheriting the body font, follow. The default
@@ -370,6 +406,11 @@ export function applyAppearance(state: PxAppearanceState): void {
   } else {
     root.style.removeProperty('--parallx-fontFamily-ui');
   }
+}
+
+function applyTextSize(size: number): void {
+  const bridge = (window as unknown as { parallxElectron?: { setZoomFactor?(factor: number): void } }).parallxElectron;
+  try { bridge?.setZoomFactor?.(size); } catch { /* not in Electron (tests, a browser) */ }
 }
 
 /** Apply the saved appearance. Call as early as possible at boot. */

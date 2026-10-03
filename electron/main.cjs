@@ -604,7 +604,40 @@ function buildEditableMenuState(params) {
   };
 }
 
+/**
+ * The saved text size (Settings › Appearance), read before the window exists
+ * so it opens at that size instead of opening at 100% and jumping once the
+ * renderer applies it. The same file the renderer writes (pxAppearance.ts).
+ */
+function savedTextSize() {
+  try {
+    const raw = JSON.parse(fsSync.readFileSync(path.join(APP_ROOT, 'data', 'appearance.json'), 'utf8'));
+    const size = raw && raw.textSize;
+    return [0.9, 1, 1.1, 1.25, 1.5].includes(size) ? size : 1;
+  } catch {
+    return 1;
+  }
+}
+
+/**
+ * Electron's default application menu is hidden (the window is frameless)
+ * but its shortcuts still fire for any key the page leaves alone: Ctrl+- and
+ * Ctrl+Shift+= zoomed the window outside the Text size setting, and nothing
+ * remembered it. This is the same menu without the zoom items; Text size
+ * owns zoom (Ctrl+= / Ctrl+- / Ctrl+NumPad0 in the renderer).
+ */
+function installApplicationMenu() {
+  const { Menu } = require('electron');
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { label: 'View', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
+    { role: 'windowMenu' },
+  ]));
+}
+
 async function createWindow() {
+  installApplicationMenu();
   const saved = loadWindowState();
   const useSaved = saved?.bounds && boundsOnScreen(saved.bounds);
   // Restored bounds are clamped to the display they will actually land on
@@ -632,6 +665,7 @@ async function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: true,
+      zoomFactor: savedTextSize(),
       // Enables <webview> for the dashboard Video widget's page fallback
       // (embedding arbitrary video sites that block plain iframes). Every
       // webview is hardened in will-attach-webview below.

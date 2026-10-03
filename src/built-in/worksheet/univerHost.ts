@@ -303,6 +303,10 @@ function ensurePopupRoot(): void {
 
 export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost {
   ensurePopupRoot();
+  // The sheet zooms its cells with Ctrl+= / Ctrl+- / Ctrl+0, as Excel does;
+  // this marks it so the app's Text size keys step aside while focus is in
+  // it (focusTracker.ts DATA_OWNS_ZOOM; named here, this bundle stays apart).
+  opts.container.setAttribute('data-px-owns-zoom', '');
   const sheetsPresetConfig = {
     container: opts.container,
     // Workbook model (Mufaro): items carry parts on separate tabs, so the
@@ -1052,6 +1056,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       if (disposed) return;
       disposed = true;
       renderedResolve();
+      opts.container.removeAttribute('data-px-owns-zoom');
       _hostsAlive = Math.max(0, _hostsAlive - 1);
       clearInterval(sweepInterval);
       document.removeEventListener('pointermove', trackPointer);
