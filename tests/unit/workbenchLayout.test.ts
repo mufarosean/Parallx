@@ -11,7 +11,7 @@
  * @vitest-environment jsdom
  */
 
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import {
   Layout,
   defaultLayoutState,
@@ -29,6 +29,22 @@ import { Orientation } from '../../src/layout/layoutTypes';
 import type { SerializedBranchNode, SerializedGridNode } from '../../src/layout/layoutModel';
 import { Emitter } from '../../src/platform/events';
 
+// Show/hide glides run on partMotion's tween. jsdom has no frames to watch,
+// so by default a glide lands at once, like reduced motion. A test that sets
+// `frames.manual` drives each glide frame by frame instead.
+const frames = vi.hoisted(() => ({
+  manual: false,
+  runs: [] as { from: number; to: number; step: (v: number) => void; live: boolean }[],
+}));
+vi.mock('../../src/workbench/partMotion', () => ({
+  tween: (from: number, to: number, step: (v: number) => void): (() => void) => {
+    if (!frames.manual) { step(to); return () => { /* landed */ }; }
+    const run = { from, to, step, live: true };
+    frames.runs.push(run);
+    return () => { run.live = false; };
+  },
+}));
+
 // ── Fakes ───────────────────────────────────────────────────────────────────
 
 interface FakePart {
@@ -36,6 +52,11 @@ interface FakePart {
   visible: boolean;
   readonly element: HTMLElement;
   setVisible(v: boolean): void;
+  setLeaving(v: boolean): void;
+  /** Mirrors Part: content held for a glide, minimums off along it. */
+  held: 'width' | 'height' | undefined;
+  holdContent(axis: 'width' | 'height'): void;
+  releaseContent(): void;
   layout(): void;
   readonly minimumWidth: number;
   readonly maximumWidth: number;
@@ -48,15 +69,20 @@ interface FakePart {
 
 function fakePart(id: string, visible = true): FakePart {
   const constraints = new Emitter<void>();
+  let leaving = false;
   const part: FakePart = {
     id,
     visible,
     element: document.createElement('div'),
-    setVisible(v: boolean) { part.visible = v; },
+    setVisible(v: boolean) { leaving = false; part.visible = v; },
+    setLeaving(v: boolean) { if (leaving === v) return; leaving = v; part.visible = !v; },
+    held: undefined,
+    holdContent(axis) { part.held = axis; },
+    releaseContent() { part.held = undefined; },
     layout() {},
-    minimumWidth: 48,
+    get minimumWidth() { return part.held === 'width' ? 0 : 48; },
     maximumWidth: Infinity,
-    minimumHeight: 30,
+    get minimumHeight() { return part.held === 'height' ? 0 : 30; },
     maximumHeight: Infinity,
     toJSON: () => ({ id }),
     onDidChangeConstraints: constraints.event,
@@ -143,12 +169,6 @@ describe('Layout on one grid', () => {
     container.remove();
   });
 
-  // Sidebar's hide path animates; finishing means dispatching its
-  // transitionend (the code also has a 200ms safety fallback).
-  const finishSidebarAnimation = (): void => {
-    parts.sidebar.element.dispatchEvent(new Event('transitionend'));
-  };
-
   it('boots into the default shape: H[ sidebar, V[editor, panel] ]', () => {
     expect(rootShape(layout)).toEqual([
       'workbench.parts.sidebar',
@@ -180,7 +200,6 @@ describe('Layout on one grid', () => {
     // The old layout.reset re-added the sidebar at the end of the grid — on
     // the right. Edges are positions now, not indices.
     layout.toggleSidebar();
-    finishSidebarAnimation();
     expect(layout.grid.hasView('workbench.parts.sidebar')).toBe(false);
 
     layout.toggleSidebar();
@@ -191,7 +210,6 @@ describe('Layout on one grid', () => {
   it('remembers a dragged sidebar width across hide and show', () => {
     layout.grid.resizeView('workbench.parts.sidebar', 300);
     layout.toggleSidebar();
-    finishSidebarAnimation();
     layout.toggleSidebar();
     expect(sizeOf('workbench.parts.sidebar')).toBe(300);
   });
@@ -240,7 +258,6 @@ describe('Layout on one grid', () => {
 
   it('resets to the default shape from any mutation', () => {
     layout.toggleSidebar();
-    finishSidebarAnimation();
     layout.toggleAuxiliaryBar();
     layout.grid.resizeView('workbench.parts.panel', 400);
 
@@ -278,7 +295,6 @@ describe('Layout on one grid', () => {
   it('reports part visibility through the LayoutHost protocol', () => {
     expect(layout.isPartVisible('workbench.parts.sidebar')).toBe(true);
     layout.setPartHidden(true, 'workbench.parts.sidebar');
-    finishSidebarAnimation();
     expect(layout.isPartVisible('workbench.parts.sidebar')).toBe(false);
     expect(layout.isPartVisible('workbench.parts.editor')).toBe(true);
   });
@@ -1173,5 +1189,186 @@ describe('rail icons for wandering parts', () => {
     ]);
     layout.togglePanel(); // and the way back still lands in that rail
     expect(layout.areaOf('workbench.parts.panel')).toBe('right');
+  });
+});
+
+describe('show/hide glides: the space moves with the part', () => {
+  let container: HTMLElement;
+  let layout: TestLayout;
+  let parts: TestLayout['parts'];
+  const SIDEBAR = 'workbench.parts.sidebar';
+  const PANEL = 'workbench.parts.panel';
+  const AUX = 'workbench.parts.auxiliarybar';
+
+  const sizeOf = (id: string) => layout.grid.getViewSize(id);
+  /** Width of the editor's column: everything the side bars leave it. */
+  const editorColumn = () => layout.grid.getViewRect('workbench.parts.editor')?.width;
+  /** Run every live glide to `fraction` of its way. */
+  const frame = (fraction: number): void => {
+    for (const run of frames.runs) if (run.live) run.step(run.from + (run.to - run.from) * fraction);
+  };
+  /** The last frame: every live glide lands, as tween always ends on `to`. */
+  const land = (): void => {
+    for (const run of frames.runs) if (run.live) { run.live = false; run.step(run.to); }
+  };
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', { value: WIDTH, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { value: HEIGHT, configurable: true });
+    document.body.appendChild(container);
+    parts = {
+      titlebar: fakePart('workbench.parts.titlebar'),
+      activityBar: fakePart('workbench.parts.activitybar'),
+      sidebar: fakePart(SIDEBAR),
+      editor: fakePart('workbench.parts.editor'),
+      panel: fakePart(PANEL),
+      auxiliaryBar: fakePart(AUX, false),
+      statusBar: fakePart('workbench.parts.statusbar'),
+    };
+    layout = new TestLayout(container, parts);
+    frames.manual = true;
+    frames.runs = [];
+  });
+
+  afterEach(() => {
+    frames.manual = false;
+    frames.runs = [];
+    layout.dispose();
+    container.remove();
+  });
+
+  it('hiding shrinks the sidebar in the grid while the editor grows on the same frames, then takes it out', () => {
+    layout.toggleSidebar();
+    // Leaving from the first frame, still on screen until it lands.
+    expect(parts.sidebar.visible).toBe(false);
+    expect(layout.isPartVisible(SIDEBAR)).toBe(false);
+    expect(layout.isAreaOccupied('left')).toBe(false);
+    expect(layout.grid.hasView(SIDEBAR)).toBe(true);
+    expect(parts.sidebar.held).toBe('width');
+
+    frame(0.5);
+    expect(sizeOf(SIDEBAR)).toBe(DEFAULT_SIDEBAR_WIDTH / 2);
+    expect(editorColumn()).toBe(BODY_W - DEFAULT_SIDEBAR_WIDTH / 2);
+
+    land();
+    expect(layout.grid.hasView(SIDEBAR)).toBe(false);
+    expect(parts.sidebar.held).toBeUndefined();
+    expect(editorColumn()).toBe(BODY_W);
+    expect(layout.lastSidebarWidth).toBe(DEFAULT_SIDEBAR_WIDTH);
+  });
+
+  it('showing starts the sidebar at nothing and glides it to its remembered width', () => {
+    layout.toggleSidebar(false);
+    layout.toggleSidebar();
+    expect(parts.sidebar.visible).toBe(true);
+    expect(sizeOf(SIDEBAR)).toBe(0);
+    expect(editorColumn()).toBe(BODY_W);
+
+    frame(0.5);
+    expect(sizeOf(SIDEBAR)).toBe(DEFAULT_SIDEBAR_WIDTH / 2);
+
+    land();
+    expect(sizeOf(SIDEBAR)).toBe(DEFAULT_SIDEBAR_WIDTH);
+    expect(editorColumn()).toBe(BODY_W - DEFAULT_SIDEBAR_WIDTH);
+    expect(parts.sidebar.held).toBeUndefined();
+  });
+
+  it('toggling mid-glide reverses from where the box is, back to its full width', () => {
+    layout.toggleSidebar();
+    frame(0.5);
+    layout.toggleSidebar();
+    expect(parts.sidebar.visible).toBe(true);
+    const back = frames.runs[frames.runs.length - 1];
+    expect(back.from).toBe(DEFAULT_SIDEBAR_WIDTH / 2);
+    expect(back.to).toBe(DEFAULT_SIDEBAR_WIDTH);
+
+    land();
+    expect(layout.grid.hasView(SIDEBAR)).toBe(true);
+    expect(sizeOf(SIDEBAR)).toBe(DEFAULT_SIDEBAR_WIDTH);
+    expect(parts.sidebar.held).toBeUndefined();
+  });
+
+  it('"show it if hidden" during a glide shut brings it back instead of watching it leave', () => {
+    layout.toggleSidebar();
+    frame(0.3);
+    // What an activity icon or a reveal does.
+    layout.setPartHidden(false, SIDEBAR);
+    land();
+    expect(layout.grid.hasView(SIDEBAR)).toBe(true);
+    expect(sizeOf(SIDEBAR)).toBe(DEFAULT_SIDEBAR_WIDTH);
+  });
+
+  it('a hide while opening remembers the full width, not the half-open one', () => {
+    layout.toggleSidebar(false);
+    layout.toggleSidebar();
+    frame(0.5);
+    layout.toggleSidebar();
+    land();
+    expect(layout.grid.hasView(SIDEBAR)).toBe(false);
+    expect(layout.lastSidebarWidth).toBe(DEFAULT_SIDEBAR_WIDTH);
+    layout.toggleSidebar();
+    land();
+    expect(sizeOf(SIDEBAR)).toBe(DEFAULT_SIDEBAR_WIDTH);
+  });
+
+  it('the right sidebar glides open and shut too', () => {
+    layout.toggleAuxiliaryBar();
+    expect(sizeOf(AUX)).toBe(0);
+    frame(0.5);
+    expect(sizeOf(AUX)).toBe(DEFAULT_AUX_BAR_WIDTH / 2);
+    land();
+    expect(sizeOf(AUX)).toBe(DEFAULT_AUX_BAR_WIDTH);
+
+    layout.toggleAuxiliaryBar();
+    expect(layout.isPartVisible(AUX)).toBe(false);
+    expect(layout.isAreaOccupied('right')).toBe(false);
+    frame(0.5);
+    expect(layout.grid.hasView(AUX)).toBe(true);
+    expect(sizeOf(AUX)).toBe(DEFAULT_AUX_BAR_WIDTH / 2);
+    land();
+    expect(layout.grid.hasView(AUX)).toBe(false);
+  });
+
+  it('the panel glides along its height', () => {
+    const editorHeight = () => sizeOf('workbench.parts.editor');
+    layout.togglePanel();
+    expect(parts.panel.held).toBe('height');
+    frame(0.5);
+    expect(sizeOf(PANEL)).toBe(DEFAULT_PANEL_HEIGHT / 2);
+    expect(editorHeight()).toBe(BODY_H - DEFAULT_PANEL_HEIGHT / 2);
+    land();
+    expect(layout.grid.hasView(PANEL)).toBe(false);
+
+    layout.togglePanel();
+    expect(sizeOf(PANEL)).toBe(0);
+    land();
+    expect(sizeOf(PANEL)).toBe(DEFAULT_PANEL_HEIGHT);
+  });
+
+  it('animate=false (Zen Mode, snap-to-hide) is instant', () => {
+    layout.toggleSidebar(false);
+    expect(layout.grid.hasView(SIDEBAR)).toBe(false);
+    layout.toggleSidebar(false);
+    expect(sizeOf(SIDEBAR)).toBe(DEFAULT_SIDEBAR_WIDTH);
+    expect(frames.runs).toHaveLength(0);
+  });
+
+  it('a whole-shape change or a snapshot lands a glide first', () => {
+    layout.toggleSidebar();
+    frame(0.5);
+    const tree = layout.serializeBodyTree();
+    expect(JSON.stringify(tree)).not.toContain(SIDEBAR);
+    expect(layout.grid.hasView(SIDEBAR)).toBe(false);
+
+    layout.toggleSidebar();
+    frame(0.5);
+    layout.toggleZenMode();
+    // Landed open before Zen Mode took the frame: nothing left in flight.
+    expect(frames.runs.every((run) => !run.live)).toBe(true);
+    expect(parts.sidebar.held).toBeUndefined();
+    expect(layout.grid.hasView(SIDEBAR)).toBe(false);
+    layout.toggleZenMode();
+    expect(layout.grid.hasView(SIDEBAR)).toBe(true);
   });
 });

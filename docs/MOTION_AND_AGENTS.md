@@ -7,12 +7,19 @@ app, and that work the AI does on its own is visible and steerable.
 
 ## M1: areas move, they don't pop
 
-- `src/workbench/partMotion.ts`: `animatePartIn` / `animatePartOut` / `tween`.
-  The sidebar slides in and out; the panel and the right sidebar slide in when
-  shown (hiding stays synchronous, callers read visibility right after); the
-  panel glides to maximized and back.
-- Classes: `.part-animating`, `.part-collapsed--left/right/bottom`
-  (`src/workbench.css`).
+- `src/workbench/partMotion.ts`: `tween`, the frame curve. The panel glides
+  to maximized and back on it.
+- The sidebar, the right sidebar and the panel glide open and shut
+  (`Layout._glidePart`, 2026-10-03): their real size moves in the grid each
+  frame, so the editor gives and takes the space on the same frames. The
+  content holds its full size and rides the moving edge like a drawer
+  (`Part.holdContent`), and minimum sizes are off while it moves. A part
+  gliding shut already reads as hidden (`Part.setLeaving`), so "show it if
+  hidden" brings it back mid-way; toggling again reverses from where it is.
+  Zen Mode and snap-to-hide stay instant (`toggleX(false)`), and a reset,
+  restore, move or tree snapshot lands any glide first (`_settleGlides`).
+  This replaced the earlier content slide, where the box kept its size until
+  the end and the editor jumped.
 - Edit-mode Accept in Chat now applies the page edit (`canvas.applyEditProposal`).
 
 ## M2: one spine for tool steps and approvals

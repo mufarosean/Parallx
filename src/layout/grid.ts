@@ -718,6 +718,20 @@ export class Grid extends Disposable {
   }
 
   /**
+   * For a show/hide glide: the axis a view's size runs along (its parent
+   * branch's) and which of its edges resizeView moves, the one it shares
+   * with the sibling before it ('start'), or after it when it leads its
+   * branch ('end'). Undefined when it has no sibling to trade size with.
+   */
+  motionInfo(viewId: string): { orientation: Orientation; movingEdge: 'start' | 'end' } | undefined {
+    const leaf = this._views.get(viewId);
+    if (!leaf) return undefined;
+    const parent = this._findParent(leaf);
+    if (!parent || parent.childCount < 2) return undefined;
+    return { orientation: parent.orientation, movingEdge: parent.indexOfChild(leaf) > 0 ? 'start' : 'end' };
+  }
+
+  /**
    * Where a view sits, described re-creatably: next to which LEAF sibling,
    * along which axis, on which side — or, when it has no leaf sibling in
    * its branch, which end of that branch's axis it holds.

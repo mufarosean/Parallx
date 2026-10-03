@@ -380,8 +380,8 @@ export class Workbench extends Layout {
    * Toggle visibility of the auxiliary bar (secondary sidebar).
    * Overrides Layout to handle secondary activity bar element + content setup.
    */
-  override toggleAuxiliaryBar(): void {
-    super.toggleAuxiliaryBar();
+  override toggleAuxiliaryBar(animate = true): void {
+    super.toggleAuxiliaryBar(animate);
 
     // Ensure the aux bar content is populated on first open
     if (this._auxBarVisible && !this._auxBarContainer) {

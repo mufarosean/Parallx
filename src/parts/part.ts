@@ -44,7 +44,11 @@ export abstract class Part extends Disposable implements IPart, IGridView {
 
   private _width = 0;
   private _height = 0;
+  /** The content's size while the layout glides the box (holdContent). */
+  private _held: { width: number; height: number; axis: 'width' | 'height'; anchor: 'start' | 'end' } | undefined;
   private _visible: boolean;
+  /** Gliding shut: on screen until it lands, no longer counted as shown. */
+  private _leaving = false;
   private _position: PartPosition;
 
   // ── Events ──
@@ -95,18 +99,21 @@ export abstract class Part extends Disposable implements IPart, IGridView {
 
   // ── IGridView — size constraints ──
 
-  get minimumWidth(): number { return this._constraints.minimumWidth; }
+  // A part gliding open or shut may pass below its minimum on the way to
+  // or from nothing (holdContent), so the grid lets it.
+  get minimumWidth(): number { return this._held?.axis === 'width' ? 0 : this._constraints.minimumWidth; }
   get maximumWidth(): number { return this._constraints.maximumWidth; }
-  get minimumHeight(): number { return this._constraints.minimumHeight; }
+  get minimumHeight(): number { return this._held?.axis === 'height' ? 0 : this._constraints.minimumHeight; }
   get maximumHeight(): number { return this._constraints.maximumHeight; }
 
   // ── State ──
 
-  get visible(): boolean { return this._visible; }
+  get visible(): boolean { return this._visible && !this._leaving; }
   get constraints(): SizeConstraints { return this._constraints; }
   get position(): PartPosition { return this._position; }
-  get width(): number { return this._width; }
-  get height(): number { return this._height; }
+  /** The content's size: the box's, or along a glide the size it holds. */
+  get width(): number { return this._held?.axis === 'width' ? this._held.width : this._width; }
+  get height(): number { return this._held?.axis === 'height' ? this._held.height : this._height; }
   get name(): string { return this._name; }
 
   // ── Lifecycle — create ──
@@ -178,6 +185,12 @@ export abstract class Part extends Disposable implements IPart, IGridView {
     this._element.style.width = `${width}px`;
     this._element.style.height = `${height}px`;
 
+    // Gliding: the box moves, the content keeps its size and rides the edge.
+    if (this._held) {
+      this._placeHeldContent();
+      return;
+    }
+
     this.layoutContent(width, height);
 
     if (changed) {
@@ -185,17 +198,87 @@ export abstract class Part extends Disposable implements IPart, IGridView {
     }
   }
 
+  // ── Show / hide motion ──
+
+  /**
+   * While the layout glides this part's box open or shut, keep the content
+   * at its current full size instead of re-flowing it every frame: the box
+   * clips it, and it stays against the MOVING edge (`anchor`, along `axis`),
+   * so it slides in and out with that edge like a drawer. Minimum sizes are
+   * off meanwhile, so the box can pass through nothing. Holding again keeps
+   * the size already held (a glide reversed mid-way).
+   */
+  holdContent(axis: 'width' | 'height', anchor: 'start' | 'end'): void {
+    if (!this._created) return;
+    this._held = this._held
+      ? { ...this._held, axis, anchor }
+      : { width: this._width, height: this._height, axis, anchor };
+    this._placeHeldContent();
+  }
+
+  /** The glide is over: the content takes the box's size again. */
+  releaseContent(): void {
+    if (!this._held) return;
+    this._held = undefined;
+    for (const child of this._heldChildren()) {
+      child.style.width = '';
+      child.style.height = '';
+      child.style.flex = '';
+      child.style.transform = '';
+    }
+    this.layoutContent(this._width, this._height);
+    this._onDidChangeSize.fire({ width: this._width, height: this._height });
+  }
+
+  private _heldChildren(): HTMLElement[] {
+    return [this._titleElement, this._contentElement].filter((e): e is HTMLElement => !!e && e !== this._element);
+  }
+
+  private _placeHeldContent(): void {
+    const held = this._held;
+    if (!held) return;
+    const box = held.axis === 'width' ? this._width : this._height;
+    const full = held.axis === 'width' ? held.width : held.height;
+    // Against the trailing edge, the content's far side lines up with the
+    // box's: it hangs out past the leading side, which the box clips.
+    const shift = held.anchor === 'end' ? Math.min(0, box - full) : 0;
+    const titleHeight = this._titleElement && this._titleElement !== this._element ? this._titleElement.offsetHeight : 0;
+    for (const child of this._heldChildren()) {
+      if (held.axis === 'width') {
+        child.style.width = `${held.width}px`;
+      } else if (child === this._contentElement) {
+        child.style.height = `${Math.max(0, held.height - titleHeight)}px`;
+        child.style.flex = 'none';
+      }
+      child.style.transform = shift === 0 ? '' : held.axis === 'width' ? `translateX(${shift}px)` : `translateY(${shift}px)`;
+    }
+  }
+
   // ── Visibility ──
 
   setVisible(visible: boolean): void {
-    if (this._visible === visible) {
-      return;
+    const was = this.visible;
+    this._leaving = false;
+    if (this._visible !== visible) {
+      this._visible = visible;
+      if (this._created) {
+        this._element.classList.toggle('hidden', !visible);
+      }
     }
-    this._visible = visible;
-    if (this._created) {
-      this._element.classList.toggle('hidden', !visible);
-    }
-    this._onDidChangeVisibility.fire(visible);
+    if (was !== visible) this._onDidChangeVisibility.fire(visible);
+  }
+
+  /**
+   * The layout is gliding this part shut (true), or brought it back mid-way
+   * (false). It stays on screen until the glide lands with setVisible(false),
+   * but reads as hidden from the first frame, so "show it if hidden" (an
+   * activity icon, a reveal) brings it straight back instead of watching it
+   * finish leaving.
+   */
+  setLeaving(leaving: boolean): void {
+    if (!this._visible || this._leaving === leaving) return;
+    this._leaving = leaving;
+    this._onDidChangeVisibility.fire(!leaving);
   }
 
   // ── State persistence ──
@@ -203,7 +286,7 @@ export abstract class Part extends Disposable implements IPart, IGridView {
   saveState(): PartState {
     return {
       id: this.id,
-      visible: this._visible,
+      visible: this.visible,
       width: this._width,
       height: this._height,
       position: this._position,
@@ -227,7 +310,7 @@ export abstract class Part extends Disposable implements IPart, IGridView {
       type: 'part',
       width: this._width,
       height: this._height,
-      visible: this._visible,
+      visible: this.visible,
     };
   }
 

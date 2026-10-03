@@ -35,7 +35,7 @@ import type {
 } from '../layout/layoutModel.js';
 import type { IGridView } from '../layout/gridView.js';
 import { PartDragController } from './partDrag.js';
-import { animatePartIn, animatePartOut, tween } from './partMotion.js';
+import { tween } from './partMotion.js';
 import type { PartDropZone } from './partDrag.js';
 import { PartRegistry } from '../parts/partRegistry.js';
 import { TitlebarPart, titlebarPartDescriptor } from '../parts/titlebarPart.js';
@@ -61,6 +61,21 @@ export const MIN_EDITOR_WIDTH = 200;
 
 /** Editor strip left visible when the panel is maximized. */
 const MAXIMIZED_EDITOR_MIN = 30;
+/** How long a side bar or the panel takes to glide open or shut. */
+const PART_GLIDE_MS = 200;
+
+/** One show/hide glide in flight (Layout._glidePart). */
+interface PartMotion {
+  /** Gliding shut: landing takes the part out of the grid. */
+  readonly closing: boolean;
+  /** The part's size when open, along `axis`. */
+  readonly full: number;
+  readonly axis: 'width' | 'height';
+  /** Stop where it is; another glide takes over. */
+  readonly cancel: () => void;
+  /** Jump to the end now. */
+  readonly land: () => void;
+}
 
 /**
  * The three toggleable regions of the body, defined RELATIVE TO THE EDITOR
@@ -236,8 +251,14 @@ export abstract class Layout extends Disposable {
   protected _lastAuxBarWidth: number = DEFAULT_AUX_BAR_WIDTH;
   /** Whether the panel is currently maximized (occupying all vertical space). */
   protected _panelMaximized = false;
-  private _sidebarClosing = false;
   private _cancelPanelTween: (() => void) | undefined;
+  /**
+   * Show/hide glides in flight, per part: the box's real size moves in the
+   * grid while the content holds still and rides the moving edge. A part
+   * gliding shut stays in the grid until it lands, but no longer counts as
+   * shown (Part.setLeaving).
+   */
+  private readonly _partMotions = new Map<string, PartMotion>();
   /** Whether Zen Mode is active (all chrome hidden). */
   protected _zenMode = false;
   /** Pre–Zen-Mode visibility snapshot for restore. */
@@ -716,12 +737,13 @@ export abstract class Layout extends Disposable {
 
     // Snap-to-hide (VS Code parity: SplitView snap behaviour).
     this._register(this._grid.onDidSashSnap(({ viewId }) => {
+      // Instant: the drag already carried it to its snap point.
       if (viewId === this._sidebar.id && this._sidebar.visible) {
-        this.toggleSidebar();
+        this.toggleSidebar(false);
       } else if (viewId === this._auxiliaryBar.id && this._auxBarVisible) {
-        this.toggleAuxiliaryBar();
+        this.toggleAuxiliaryBar(false);
       } else if (viewId === this._panel.id && this._panel.visible) {
-        this.togglePanel();
+        this.togglePanel(false);
       }
     }));
 
@@ -869,135 +891,277 @@ export abstract class Layout extends Disposable {
   // Toggle Methods — part visibility mutations
   // ════════════════════════════════════════════════════════════════════════
 
-  /**
-   * Toggle visibility of the auxiliary bar (secondary sidebar).
-   * When shown, it appears at the right edge of the body.
-   */
-  toggleAuxiliaryBar(): void {
-    // Hiding stays synchronous: callers read visibility straight after.
-    // Showing slides the content in from its edge.
-    this._withTrackingSuspended(() => {
-      if (this._auxBarVisible) {
-        const currentWidth = this._grid.getViewRect(this._auxiliaryBar.id)?.width;
-        if (currentWidth !== undefined && currentWidth > 0) {
-          this._lastAuxBarWidth = currentWidth;
-        }
-        this._recordPlacement(this._auxiliaryBar.id);
-        this._grid.removeView(this._auxiliaryBar.id);
-        this._auxiliaryBar.setVisible(false);
-        this._auxBarVisible = false;
-      } else {
-        this._auxiliaryBar.setVisible(true);
-        // Back where the user last had it; the right edge only as the
-        // first-time default.
-        this._placePart(this._auxiliaryBar, this._lastAuxBarWidth, () => {
-          this._grid.addView(this._auxiliaryBar, this._lastAuxBarWidth);
-          this._grid.moveViewToEdge(
-            this._auxiliaryBar.id, Orientation.Horizontal, false, this._lastAuxBarWidth,
-          );
-        });
-        this._auxBarVisible = true;
-      }
-      this._relayoutBody();
-    });
-    this._layoutViewContainers();
-    if (this._auxBarVisible) animatePartIn(this._auxiliaryBar.element, 'right');
-    this._onDidChangePartVisibility.fire({
-      partId: PartId.AuxiliaryBar,
-      visible: this._auxBarVisible,
-    });
+  // ── Show / hide glides ───────────────────────────────────────────────
+
+  /** True while a part glides shut: still in the grid, already leaving. */
+  protected _isClosing(part: Part): boolean {
+    return this._partMotions.get(part.id)?.closing === true;
   }
 
   /**
-   * Toggle primary sidebar visibility.
-   *
-   * VS Code reference: ViewContainerActivityAction.run() — clicking active
-   * icon toggles sidebar. Remembers width before collapse and restores it.
+   * Land every glide in flight at once. A whole-shape change (Zen Mode, a
+   * reset, a restore, a move) and a snapshot of the tree start from parts
+   * at rest, never from a box half open.
    */
-  toggleSidebar(): void {
-    const el = this._sidebar.element;
+  protected _settleGlides(): void {
+    for (const motion of [...this._partMotions.values()]) motion.land();
+  }
 
-    if (this._sidebar.visible) {
-      if (this._sidebarClosing) return;
-      // Its real width and height, whichever way its branch runs, and its
-      // place, recorded NOW: the removal below waits for the animation, and
-      // an area hide removes the neighbours in the meantime. Recording in
-      // the callback described a column the widget had already left, so
-      // the sidebar came back beside the editor at its height for a width.
-      const rect = this._grid.getViewRect(this._sidebar.id);
-      if (rect && rect.width > 0) this._lastSidebarWidth = rect.width;
-      if (rect && rect.height > 0) this._lastSidebarHeight = rect.height;
-      this._recordPlacement(this._sidebar.id);
+  /**
+   * A part's grid rect as it will rest: a part gliding counts at its full
+   * size along the glide, so a hide mid-way remembers the real width.
+   */
+  private _restingRect(part: Part): { width: number; height: number } | undefined {
+    const rect = this._grid.getViewRect(part.id);
+    const motion = this._partMotions.get(part.id);
+    if (!rect || !motion) return rect;
+    return motion.axis === 'width'
+      ? { width: motion.full, height: rect.height }
+      : { width: rect.width, height: motion.full };
+  }
 
-      // Animate out, then remove from grid
-      this._sidebarClosing = true;
-      animatePartOut(el, 'left', () => {
-        this._sidebarClosing = false;
+  /**
+   * Glide a part that is in the grid from its current size to `to`, along
+   * its branch, trading space with its neighbour like a sash drag. Its
+   * content holds still against the moving edge. Closing (`remove` given)
+   * ends by taking the part out. Reduced motion and an unseen window land
+   * at once. A glide already running for the part is replaced, so a toggle
+   * mid-way reverses from wherever the box is.
+   */
+  private _glidePart(part: Part, to: number, remove?: () => void): void {
+    const running = this._partMotions.get(part.id);
+    running?.cancel();
+    const info = this._grid.motionInfo(part.id);
+    if (!info) {
+      // Nothing to trade size with (alone in its branch): no glide.
+      part.releaseContent();
+      if (remove) remove();
+      return;
+    }
+    const axis = info.orientation === Orientation.Horizontal ? 'width' : 'height';
+    const from = this._grid.getViewSize(part.id) ?? 0;
+    const full = running?.full ?? (remove ? from : to);
+    part.holdContent(axis, info.movingEdge);
+    const sameAxis = (): boolean => this._grid.motionInfo(part.id)?.orientation === info.orientation;
+    let live = true;
+    let cancelTween: () => void = () => { /* assigned below */ };
+    const finish = (exact = true): void => {
+      if (!live) return;
+      live = false;
+      this._partMotions.delete(part.id);
+      part.releaseContent();
+      if (remove) {
+        remove();
+        return;
+      }
+      if (exact) this._withTrackingSuspended(() => this._grid.resizeView(part.id, to));
+      this._layoutViewContainers();
+    };
+    this._partMotions.set(part.id, {
+      closing: !!remove,
+      full,
+      axis,
+      cancel: () => { live = false; cancelTween(); this._partMotions.delete(part.id); },
+      land: () => { cancelTween(); finish(sameAxis()); },
+    });
+    cancelTween = tween(from, to, (v) => {
+      if (!live) return;
+      // The tree changed under it (a neighbour left and its branch
+      // collapsed): the axis no longer means what it did, so stop here.
+      const axisHolds = sameAxis();
+      if (v === to || !axisHolds) { finish(axisHolds); return; }
+      this._withTrackingSuspended(() => this._grid.resizeView(part.id, Math.round(v)));
+    }, PART_GLIDE_MS);
+  }
+
+  /** A part just placed at its full size: start it at nothing and glide it open. */
+  private _openPart(part: Part, animate: boolean): void {
+    if (!animate) return;
+    const full = this._grid.getViewSize(part.id);
+    const info = this._grid.motionInfo(part.id);
+    if (full === undefined || full <= 0 || !info) return;
+    part.holdContent(info.orientation === Orientation.Horizontal ? 'width' : 'height', info.movingEdge);
+    this._withTrackingSuspended(() => this._grid.resizeView(part.id, 0));
+    this._glidePart(part, full);
+  }
+
+  /**
+   * Take a part out: glide it shut, or at once when `animate` is false, and
+   * let `remove` take it out of the grid when it lands. From the first
+   * frame it no longer counts as shown, so "show it if hidden" (an
+   * activity icon, a reveal) brings it straight back.
+   */
+  private _closePart(part: Part, partId: string, animate: boolean, remove: () => void): void {
+    part.setLeaving(true);
+    this._onDidChangePartVisibility.fire({ partId, visible: false });
+    if (animate) {
+      this._glidePart(part, 0, remove);
+      return;
+    }
+    this._partMotions.get(part.id)?.cancel();
+    part.releaseContent();
+    remove();
+  }
+
+  /** Toggled again while gliding shut: it comes back from where it is. */
+  private _reopenPart(part: Part, partId: string, animate: boolean): void {
+    const full = this._partMotions.get(part.id)?.full ?? 0;
+    part.setLeaving(false);
+    if (animate) {
+      this._glidePart(part, full);
+    } else {
+      this._partMotions.get(part.id)?.cancel();
+      part.releaseContent();
+      this._withTrackingSuspended(() => this._grid.resizeView(part.id, full));
+      this._layoutViewContainers();
+    }
+    this._onDidChangePartVisibility.fire({ partId, visible: true });
+  }
+
+  /**
+   * Toggle visibility of the auxiliary bar (secondary sidebar).
+   * When shown, it appears at the right edge of the body. It glides open
+   * and shut unless `animate` is false (Zen Mode, snap-to-hide).
+   */
+  toggleAuxiliaryBar(animate = true): void {
+    const part = this._auxiliaryBar;
+    if (this._isClosing(part)) {
+      this._auxBarVisible = true;
+      this._reopenPart(part, PartId.AuxiliaryBar, animate);
+      return;
+    }
+    if (this._auxBarVisible) {
+      const currentWidth = this._restingRect(part)?.width;
+      if (currentWidth !== undefined && currentWidth > 0) {
+        this._lastAuxBarWidth = currentWidth;
+      }
+      this._recordPlacement(part.id);
+      this._auxBarVisible = false;
+      this._closePart(part, PartId.AuxiliaryBar, animate, () => {
         this._withTrackingSuspended(() => {
-          this._grid.removeView(this._sidebar.id);
-          this._sidebar.setVisible(false);
+          this._grid.removeView(part.id);
+          part.setVisible(false);
           this._relayoutBody();
         });
         this._layoutViewContainers();
-        this._onDidChangePartVisibility.fire({ partId: PartId.Sidebar, visible: false });
       });
-    } else {
-      // Add at the left edge, then animate in
-      this._sidebar.setVisible(true);
-      this._withTrackingSuspended(() => {
-        this._placePart(this._sidebar, this._recalledSize(this._sidebar.id, this._lastSidebarWidth, this._lastSidebarHeight), () => {
-          this._grid.addView(this._sidebar, this._lastSidebarWidth);
-          this._grid.moveViewToEdge(
-            this._sidebar.id, Orientation.Horizontal, true, this._lastSidebarWidth,
-          );
-        });
-        this._relayoutBody();
-      });
-      this._layoutViewContainers();
-      animatePartIn(el, 'left');
-      this._onDidChangePartVisibility.fire({ partId: PartId.Sidebar, visible: true });
+      return;
     }
+    part.setVisible(true);
+    this._withTrackingSuspended(() => {
+      // Back where the user last had it; the right edge only as the
+      // first-time default.
+      this._placePart(part, this._lastAuxBarWidth, () => {
+        this._grid.addView(part, this._lastAuxBarWidth);
+        this._grid.moveViewToEdge(
+          part.id, Orientation.Horizontal, false, this._lastAuxBarWidth,
+        );
+      });
+      this._auxBarVisible = true;
+      this._relayoutBody();
+    });
+    this._layoutViewContainers();
+    this._openPart(part, animate);
+    this._onDidChangePartVisibility.fire({ partId: PartId.AuxiliaryBar, visible: true });
+  }
+
+  /**
+   * Toggle sidebar visibility.
+   *
+   * VS Code reference: ViewContainerActivityAction.run() — clicking active
+   * icon toggles sidebar. Remembers width before collapse and restores it.
+   * It glides open and shut unless `animate` is false.
+   */
+  toggleSidebar(animate = true): void {
+    const part = this._sidebar;
+    if (this._isClosing(part)) {
+      this._reopenPart(part, PartId.Sidebar, animate);
+      return;
+    }
+    if (part.visible) {
+      // Its real width and height, whichever way its branch runs, and its
+      // place, recorded NOW: the removal below waits for the glide, and an
+      // area hide removes the neighbours in the meantime. Recording at the
+      // end described a column the widget had already left, so the sidebar
+      // came back beside the editor at its height for a width.
+      const rect = this._restingRect(part);
+      if (rect && rect.width > 0) this._lastSidebarWidth = rect.width;
+      if (rect && rect.height > 0) this._lastSidebarHeight = rect.height;
+      this._recordPlacement(part.id);
+      this._closePart(part, PartId.Sidebar, animate, () => {
+        this._withTrackingSuspended(() => {
+          this._grid.removeView(part.id);
+          part.setVisible(false);
+          this._relayoutBody();
+        });
+        this._layoutViewContainers();
+      });
+      return;
+    }
+    // Add at the left edge (or its recalled place), then glide open.
+    part.setVisible(true);
+    this._withTrackingSuspended(() => {
+      this._placePart(part, this._recalledSize(part.id, this._lastSidebarWidth, this._lastSidebarHeight), () => {
+        this._grid.addView(part, this._lastSidebarWidth);
+        this._grid.moveViewToEdge(
+          part.id, Orientation.Horizontal, true, this._lastSidebarWidth,
+        );
+      });
+      this._relayoutBody();
+    });
+    this._layoutViewContainers();
+    this._openPart(part, animate);
+    this._onDidChangePartVisibility.fire({ partId: PartId.Sidebar, visible: true });
   }
 
   /**
    * Toggle panel visibility.
    *
    * VS Code reference: TogglePanelAction (workbench.action.togglePanel, Ctrl+J).
-   * Remembers height before collapse and restores it on expand.
+   * Remembers height before collapse and restores it on expand. It glides
+   * open and shut unless `animate` is false.
    */
-  togglePanel(): void {
-    // Hiding stays synchronous (see toggleAuxiliaryBar); showing slides up.
+  togglePanel(animate = true): void {
+    const part = this._panel;
     this._cancelPanelTween?.();
-    this._withTrackingSuspended(() => {
-      if (this._panel.visible) {
-        const currentHeight = this._grid.getViewRect(this._panel.id)?.height;
-        if (currentHeight !== undefined && currentHeight > 0) {
-          this._lastPanelHeight = currentHeight;
-        }
-        // Removing the panel collapses the branch it shared with its
-        // neighbour; the neighbour takes over the slot.
-        this._recordPlacement(this._panel.id);
-        this._grid.removeView(this._panel.id);
-        this._panel.setVisible(false);
-        this._panelMaximized = false;
-        this._onDidChangePanelMaximized.fire(false);
-        this._relayoutBody();
-      } else {
-        this._panel.setVisible(true);
-        // Back where the user last had it — under the sidebar if that is
-        // where they stacked it; below the editor only as the default.
-        this._placePart(this._panel, this._lastPanelHeight, () => this._showPanelBelowEditor());
-        this._panelMaximized = false;
-        this._onDidChangePanelMaximized.fire(false);
-        this._relayoutBody();
+    if (this._isClosing(part)) {
+      this._reopenPart(part, PartId.Panel, animate);
+      return;
+    }
+    if (part.visible) {
+      const currentHeight = this._restingRect(part)?.height;
+      if (currentHeight !== undefined && currentHeight > 0 && !this._panelMaximized) {
+        this._lastPanelHeight = currentHeight;
       }
+      // Removing the panel collapses the branch it shared with its
+      // neighbour; the neighbour takes over the slot.
+      this._recordPlacement(part.id);
+      if (this._panelMaximized) {
+        this._panelMaximized = false;
+        this._onDidChangePanelMaximized.fire(false);
+      }
+      this._closePart(part, PartId.Panel, animate, () => {
+        this._withTrackingSuspended(() => {
+          this._grid.removeView(part.id);
+          part.setVisible(false);
+          this._relayoutBody();
+        });
+        this._layoutViewContainers();
+      });
+      return;
+    }
+    part.setVisible(true);
+    this._withTrackingSuspended(() => {
+      // Back where the user last had it — under the sidebar if that is
+      // where they stacked it; below the editor only as the default.
+      this._placePart(part, this._lastPanelHeight, () => this._showPanelBelowEditor());
+      this._panelMaximized = false;
+      this._onDidChangePanelMaximized.fire(false);
+      this._relayoutBody();
     });
     this._layoutViewContainers();
-    if (this._panel.visible) animatePartIn(this._panel.element, 'bottom');
-    this._onDidChangePartVisibility.fire({
-      partId: PartId.Panel,
-      visible: this._panel.visible,
-    });
+    this._openPart(part, animate);
+    this._onDidChangePartVisibility.fire({ partId: PartId.Panel, visible: true });
   }
 
   /**
@@ -1022,6 +1186,7 @@ export abstract class Layout extends Disposable {
    * second toggle.
    */
   toggleMaximizedPanel(): void {
+    this._settleGlides();
     this._withTrackingSuspended(() => {
       if (!this._panel.visible) {
         // Show + maximize in one go, in the panel's own place
@@ -1085,7 +1250,8 @@ export abstract class Layout extends Disposable {
   private _areaOccupants(area: BodyArea): string[] {
     const ids: string[] = [];
     for (const part of [this._sidebar, this._panel, this._auxiliaryBar]) {
-      if (this._grid.hasView(part.id) && this.areaOf(part.id) === area) ids.push(part.id);
+      // A part gliding shut is leaving: the area already reads as empty.
+      if (this._grid.hasView(part.id) && !this._isClosing(part) && this.areaOf(part.id) === area) ids.push(part.id);
     }
     for (const id of this._floatingViews.keys()) {
       if (this._grid.hasView(id) && this.areaOf(id) === area) ids.push(id);
@@ -1150,7 +1316,17 @@ export abstract class Layout extends Disposable {
         (id) => this._floatingViews.has(id) && !this._grid.hasView(id) && !occupants.includes(id),
       );
       this._areaMemory.set(area, [...stillHidden, ...occupants]);
-      for (const id of occupants) this._hideBodyView(id);
+      // One occupant glides shut. Several (a sidebar stacked over a widget)
+      // leave together at once, each remembering its place in the shape
+      // they ALL left: the first one out must not change what the next
+      // one records.
+      if (occupants.length === 1) {
+        this._hideBodyView(occupants[0], true);
+        return;
+      }
+      const places = occupants.map((id) => [id, this._grid.describePosition(id)] as const);
+      for (const id of occupants) this._hideBodyView(id, false);
+      for (const [id, place] of places) if (place) this._placementRecall.set(id, place);
       return;
     }
     const remembered = this._areaMemory.get(area);
@@ -1158,7 +1334,9 @@ export abstract class Layout extends Disposable {
       ? remembered : [this._defaultAreaPart(area).id];
     // Reverse hide order: the first-hidden view's recall may name a
     // later-hidden sibling, which must already be back for it to resolve.
-    for (const id of [...toShow].reverse()) this._showBodyView(id, area);
+    // Several come back together at once, as they left.
+    const animate = toShow.length === 1;
+    for (const id of [...toShow].reverse()) this._showBodyView(id, area, animate);
   }
 
   private _defaultAreaPart(area: BodyArea): Part {
@@ -1170,17 +1348,17 @@ export abstract class Layout extends Disposable {
   }
 
   /** Hide one body view, whatever kind it is, remembering its place. */
-  private _hideBodyView(viewId: string): void {
+  private _hideBodyView(viewId: string, animate: boolean): void {
     if (viewId === this._sidebar.id) {
-      if (this._sidebar.visible) this.toggleSidebar();
+      if (this._sidebar.visible) this.toggleSidebar(animate);
       return;
     }
     if (viewId === this._panel.id) {
-      if (this._panel.visible) this.togglePanel();
+      if (this._panel.visible) this.togglePanel(animate);
       return;
     }
     if (viewId === this._auxiliaryBar.id) {
-      if (this._auxBarVisible) this.toggleAuxiliaryBar();
+      if (this._auxBarVisible) this.toggleAuxiliaryBar(animate);
       return;
     }
     // A floating box: out of the tree, place and size remembered. The box
@@ -1197,17 +1375,17 @@ export abstract class Layout extends Disposable {
   }
 
   /** Bring one body view back — recalled place first, area edge as home. */
-  private _showBodyView(viewId: string, area: BodyArea): void {
+  private _showBodyView(viewId: string, area: BodyArea, animate: boolean): void {
     if (viewId === this._sidebar.id) {
-      if (!this._sidebar.visible) this.toggleSidebar();
+      if (!this._sidebar.visible) this.toggleSidebar(animate);
       return;
     }
     if (viewId === this._panel.id) {
-      if (!this._panel.visible) this.togglePanel();
+      if (!this._panel.visible) this.togglePanel(animate);
       return;
     }
     if (viewId === this._auxiliaryBar.id) {
-      if (!this._auxBarVisible) this.toggleAuxiliaryBar();
+      if (!this._auxBarVisible) this.toggleAuxiliaryBar(animate);
       return;
     }
     const view = this._floatingViews.get(viewId);
@@ -1250,6 +1428,7 @@ export abstract class Layout extends Disposable {
    * Saves visibility state of all parts before entering, restores on exit.
    */
   toggleZenMode(): void {
+    this._settleGlides();
     if (this._zenMode) {
       // ── Exit Zen Mode ──
       this._zenMode = false;
@@ -1291,7 +1470,7 @@ export abstract class Layout extends Disposable {
             this._statusBar.setVisible(true);
           }
           if (s.auxBar && !this._auxBarVisible) {
-            this.toggleAuxiliaryBar();
+            this.toggleAuxiliaryBar(false);
           }
           if (s.activityBar) {
             this._activityBarPart.element.classList.remove('hidden');
@@ -1348,9 +1527,9 @@ export abstract class Layout extends Disposable {
           this._statusBar.setVisible(false);
         }
 
-        // Hide auxiliary bar
+        // Hide auxiliary bar (at once: Zen Mode changes the whole frame in one step)
         if (this._auxBarVisible) {
-          this.toggleAuxiliaryBar();
+          this.toggleAuxiliaryBar(false);
         }
 
         // Hide the ribbons
@@ -1376,6 +1555,7 @@ export abstract class Layout extends Disposable {
    * disposed.
    */
   resetLayout(): void {
+    this._settleGlides();
     const sidebarWas = this._sidebar.visible;
     const panelWas = this._panel.visible;
     const auxWas = this._auxBarVisible;
@@ -1429,6 +1609,8 @@ export abstract class Layout extends Disposable {
 
   /** The body tree as saved state. Leaves are part ids — stable across runs. */
   serializeBodyTree(): SerializedGrid {
+    // The shape at rest: a bar half open is not a shape to come back to.
+    this._settleGlides();
     return this._grid.serialize();
   }
 
@@ -1444,6 +1626,7 @@ export abstract class Layout extends Disposable {
    * legacy visibility path rather than restoring a shape the app never had.
    */
   restoreBodyTree(saved: SerializedGrid | undefined): boolean {
+    this._settleGlides();
     if (!saved || typeof saved !== 'object' || !saved.root) return false;
 
     const leaves: string[] = [];
@@ -1588,6 +1771,7 @@ export abstract class Layout extends Disposable {
    * shape persists with the body tree.
    */
   movePartToEdge(partId: string, orientation: Orientation, before: boolean): void {
+    this._settleGlides();
     if (!this._grid.hasView(partId)) return;
     this._withTrackingSuspended(() => {
       const size = this._grid.getViewSize(partId);
@@ -1606,6 +1790,7 @@ export abstract class Layout extends Disposable {
    * whole layout.
    */
   resetPartPlacement(partId: string): void {
+    this._settleGlides();
     this._placementRecall.delete(partId);
     const wasHidden = !this._grid.hasView(partId);
 
@@ -1661,6 +1846,7 @@ export abstract class Layout extends Disposable {
    * dragged instance keeps running throughout.
    */
   movePartBeside(partId: string, targetId: string, orientation: Orientation, before: boolean): void {
+    this._settleGlides();
     if (partId === targetId) return;
     if (!this._grid.hasView(partId) || !this._grid.hasView(targetId)) return;
     this._withTrackingSuspended(() => {
