@@ -1412,6 +1412,12 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       // storm. isPathIgnored, not isIgnored: directory-only patterns like
       // `node_modules/` do not match the files underneath them.
       if (this._ignore.isPathIgnored(relativePath, false)) { continue; }
+      // …and the full walk's directory rules. Without them every chat turn's
+      // rewritten .parallx/sessions/<id>.jsonl was re-chunked and re-embedded
+      // with transcript indexing off (then crowded real documents out of
+      // retrieval), and files from watchers outside the workspace (a media
+      // library) were embedded under absolute ids and purged next launch.
+      if (!this._isIndexableRelPath(relativePath)) { continue; }
 
       if (event.type === FileChangeType.Deleted) {
         // Remove from index
@@ -1454,6 +1460,29 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    * Used for storing sourceIds and building contextPrefixes that the LLM
    * can use directly with workspace-relative tool calls (fs_read_file, etc.).
    */
+  /**
+   * The full walk's directory rules (_walkDirectory) for one path from the
+   * incremental path: inside a workspace folder, no hidden directory except
+   * `.parallx` itself, and under `.parallx` only `memory/`, plus `sessions/`
+   * when transcript indexing is on. Files directly in `.parallx` count.
+   */
+  private _isIndexableRelPath(relativePath: string): boolean {
+    // _toRelativePath returns the absolute path for a file outside every folder.
+    if (/^([/\\]|[A-Za-z]:)/.test(relativePath)) return false;
+    const segs = relativePath.split('/');
+    for (let i = 0; i < segs.length - 1; i++) {
+      const dir = segs[i];
+      if (!dir.startsWith('.')) continue;
+      if (i !== 0 || dir !== '.parallx') return false;
+      if (segs.length === 2) return true;
+      const sub = segs[1];
+      if (sub === 'memory') continue;
+      if (sub === 'sessions' && this._isTranscriptIndexingEnabled()) continue;
+      return false;
+    }
+    return true;
+  }
+
   private _toRelativePath(absolutePath: string): string {
     const normalized = absolutePath.replace(/\\/g, '/');
     for (const folder of this._workspaceService.folders) {

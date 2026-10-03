@@ -835,6 +835,27 @@ describe('IndexingPipelineService', () => {
     });
   });
 
+  describe('file change events follow the full walk\'s rules', () => {
+    it('ignores transcripts (indexing off), hidden directories and files outside the workspace', () => {
+      const scheduled: string[] = [];
+      vi.spyOn(pipeline, 'scheduleFileReindex').mockImplementation((p: string) => { scheduled.push(p); });
+      const changed = (fsPath: string) => ({ type: 1, uri: { fsPath } });
+      (pipeline as unknown as { _handleFileChanges(e: unknown[]): void })._handleFileChanges([
+        changed('/workspace/.parallx/sessions/abc.jsonl'),  // a chat transcript, rewritten every turn
+        changed('/workspace/.git/COMMIT_EDITMSG.md'),       // a hidden directory
+        changed('/media/library/notes.txt'),                // another watcher, outside the workspace
+        changed('/workspace/.parallx/memory/MEMORY.md'),    // memory is indexed
+        changed('/workspace/.parallx/AGENTS.md'),           // files directly in .parallx are
+        changed('/workspace/notes/plan.md'),
+      ]);
+      expect(scheduled).toEqual([
+        '/workspace/.parallx/memory/MEMORY.md',
+        '/workspace/.parallx/AGENTS.md',
+        '/workspace/notes/plan.md',
+      ]);
+    });
+  });
+
   describe('dispose()', () => {
     it('clears debounce timers', () => {
       vi.useFakeTimers();

@@ -550,7 +550,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     focusDomain: 'general',
     customFocusDescription: '',
     suggestionConfidenceThreshold: 0.65,
-    suggestionsEnabled: true,
+    suggestionsEnabled: false, // nothing shows suggestions yet (aiSettingsDefaults)
     maxPendingSuggestions: 5,
   },
   agent: {

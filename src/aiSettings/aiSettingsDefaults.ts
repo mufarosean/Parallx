@@ -35,7 +35,9 @@ function makeDefaultProfile(): AISettingsProfile {
       focusDomain: 'general',
       customFocusDescription: '',
       suggestionConfidenceThreshold: 0.65,
-      suggestionsEnabled: true,
+      // Off: nothing shows suggestions yet (no chat cards are built), and
+      // the analysis embeds and scans pages while you edit them.
+      suggestionsEnabled: false,
       maxPendingSuggestions: 5,
     },
     createdAt: 0,

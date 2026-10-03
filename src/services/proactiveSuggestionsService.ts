@@ -70,7 +70,7 @@ export class ProactiveSuggestionsService extends Disposable {
   private _analysisTimer: ReturnType<typeof setTimeout> | null = null;
 
   // M15: Configurable thresholds (defaults match original hardcoded values)
-  private _suggestionsEnabled = true;
+  private _suggestionsEnabled = false;
   private _clusterThreshold = CLUSTER_THRESHOLD;
   private _maxSuggestions = MAX_SUGGESTIONS;
 

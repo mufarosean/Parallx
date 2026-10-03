@@ -174,9 +174,9 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     schema: {
       key: 'suggestions.enabled',
       type: 'boolean',
-      default: true,
+      default: false,
       scope: 'workspace',
-      description: 'Show proactive suggestion cards in the chat panel.',
+      description: 'Look over pages as you edit them for things to suggest. Nothing shows the suggestions yet, so this only costs embedding work; leave it off.',
       category: 'Suggestions',
     },
     read: (c) => c.suggestions.suggestionsEnabled,

@@ -2285,12 +2285,21 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // asks the heartbeat to review — the impasse that justifies the model.
     const surpriseAttention = new SurpriseAccumulator();
     let _predictChain: Promise<unknown> = Promise.resolve();
+    // Each observation writes workspace-state.json about six times (probe,
+    // meter, prediction store, ledger). Autosave touches the same file every
+    // few seconds, so one path is observed at most once per window.
+    const PREDICT_SAME_PATH_MS = 30_000;
+    const _lastObserved = new Map<string, number>();
     const observeForPrediction = (path: string): void => {
       if (!predictionLoop) return;
       // Never let Parallx's own internal files (.parallx/** — skills, SOUL/USER/
       // AGENTS/TOOLS/MEMORY, daily logs) enter prediction history or the fluency
       // probe; they're the app's files, not the user's work.
       if (path.replace(/\\/g, '/').includes('/.parallx/')) return;
+      const now = Date.now();
+      if (now - (_lastObserved.get(path) ?? 0) < PREDICT_SAME_PATH_MS) return;
+      _lastObserved.set(path, now);
+      if (_lastObserved.size > 500) _lastObserved.clear();
       _predictChain = _predictChain.then(async () => {
         // The human just did work — the conscience denominator, and (with the
         // file as the recurring "skill") the held-out fluency probe.
@@ -2541,6 +2550,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       context.subscriptions.push(
         fileService.onDidFileChange((events) => {
           const hb = unifiedConfigService.getEffectiveConfig().heartbeat;
+          // A batch touching many files at once is a tool (git checkout, an
+          // install, a sync), not a person working: not a prediction signal,
+          // and observing it queued thousands of whole-file state writes.
+          const bulk = new Set(events.map((e) => e.uri.toString())).size > 10;
           for (const ev of events) {
             const uri = ev.uri.toString();
             // Hard guard: Parallx's OWN internal dir (.parallx/** — skills,
@@ -2563,7 +2576,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             });
             // Feed the same (filtered) stream to the active-inference loop so it
             // forecasts the user's next file and grades itself against reality.
-            observeForPrediction(uri);
+            if (!bulk) observeForPrediction(uri);
           }
         }),
       );
