@@ -24,7 +24,6 @@ import { $ } from '../../../ui/dom.js';
 
 import './chatTokenStatusBar.css';
 import type { ITokenStatusBarServices } from '../chatTypes.js';
-import { formatTokens } from './chatEngineChip.js';
 
 // ITokenStatusBarServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { ITokenStatusBarServices } from '../chatTypes.js';
@@ -581,9 +580,14 @@ export class ChatTokenStatusBar extends Disposable {
 
   // ── Formatting ──
 
-  /** The engine chip's format (1K = 1024), so one window reads the same
-   *  in both places: it was "128K" on the chip and "131.1K" here. */
+  /** The engine chip's format (chatEngineChip formatTokens: 1K = 1024), so
+   *  one window reads the same in both places: it was "128K" on the chip and
+   *  "131.1K" here. Written out, not imported: widgets do not import each
+   *  other (chatGateCompliance). */
   private _formatTokens(n: number): string {
-    return n >= 1024 ? formatTokens(n) : `${n}`;
+    if (n < 1024) return `${n}`;
+    if (n >= 1_000_000) { const m = n / 1_000_000; return `${m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)}M`; }
+    const k = n / 1024;
+    return `${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}K`;
   }
 }
