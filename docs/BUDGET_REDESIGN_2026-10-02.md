@@ -158,3 +158,35 @@ paid, and Plan says how much went to categories without a limit. Tested in
 Dropdowns were checked open (Transactions' accounts, Trends' range,
 Net Worth's kinds, the transaction drawer's fields): they are the core
 `.ui-dropdown` throughout, mounted in the body layer, and none is clipped.
+
+## Bugs found reviewing the redesign, 2026-10-03
+
+After the owner found bugs, four reviewers read the Budget code by area
+(money math; Review and Transactions; the other pages and the shell; copy
+and consistency), each finding needing a concrete failing case. Fixed in
+23e06ce9, b56717cc, 28fec40e and the copy commit after them; each money
+and parsing fix has a unit test.
+
+- **Money.** Weekly bills counted once in the current month; an overdue,
+  unpaid bill dropped out of "still to come"; any charge whose merchant
+  contained a bill's name paid it (a $999 Apple Store purchase paid
+  iCloud), and two bills could count one charge; a refund made a bill's
+  usual amount negative; the pace line and the pace sentence measured
+  different things; a goal due within a month asked for twice what was
+  left; a month's limit could not be cleared over a category default;
+  income had opposite signs on Overview and Trends.
+- **Data.** Double clicks inserted twice; the drawer kept a wrong-kind
+  category after a type change and marked a note edit as a type change;
+  "Remember" did nothing on a turned-off learned rule; Review's Duplicate
+  could hide the only copy; note tags broke on "]"; "Also change the past
+  ones" overrode a rule that wins first; rules kept filing into archived
+  categories; CSV import broke on multi-line notes, ignored status and
+  accepted dates no month shows; Reconcile compared against today.
+- **Refresh.** Pages could paint an older read over a newer one
+  (`serialRefresh`); six pages never redrew after a sync; bills and kind
+  changes left "left to spend" stale; a split editor could leave the
+  sidebar driving nothing; bills were read with one query per bill.
+- **Copy.** One word per thing (Limits, spending, bills, Net Worth and
+  Goals), sentence case for labels and headings, `…` only on what opens a
+  dialog, one error pattern ("Could not …"), local times in the Sync Log,
+  readable dates everywhere, the kit's close button on the drawers.

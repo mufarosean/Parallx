@@ -181,7 +181,7 @@ const CATEGORY_KIND_OPTIONS = [
 const ACCOUNT_KIND_LABELS = {
   checking: 'Checking',
   savings: 'Savings',
-  credit_card: 'Credit Card',
+  credit_card: 'Credit card',
   other: 'Account',
 };
 function titleCaseToken(value) {
@@ -1346,8 +1346,8 @@ async function readSyncStatus() {
   if (Number.isNaN(d.getTime())) return 'Synced';
   const today = new Date();
   const same = d.toDateString() === today.toDateString();
-  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  return same ? `Synced at ${time}` : `Synced ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return same ? `Synced at ${time}` : `Synced ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
 }
 
 // ─── The Budget editor ─────────────────────────────────────────────────────
@@ -1394,7 +1394,7 @@ function renderEditorPane(container, api, input) {
       { label: 'Import / Export', icon: 'arrow-up-down', onSelect: () => show('importExport') },
       { label: 'Reprocess History…', onSelect: () => api.commands.executeCommand('budget.reprocessHistory') },
       { separator: true },
-      { label: 'Budget Settings…', icon: 'settings', onSelect: () => api.commands.executeCommand('settings.open', 'schema:Budget') },
+      { label: 'Budget Settings', icon: 'settings', onSelect: () => api.commands.executeCommand('settings.open', 'schema:Budget') },
     ];
   }
   function show(sectionId, view) {
@@ -1716,7 +1716,7 @@ function defaultAccountName(kind, last4) {
   const tail = last4 ? ' ••' + last4 : '';
   if (kind === 'checking') return 'Checking' + tail;
   if (kind === 'savings') return 'Savings' + tail;
-  if (kind === 'credit_card') return 'Credit Card' + tail;
+  if (kind === 'credit_card') return 'Credit card' + tail;
   return 'Account' + tail;
 }
 
@@ -1837,10 +1837,8 @@ async function openTxEditor(api, opts = {}) {
     titleWrap.appendChild(sub);
   }
   head.appendChild(titleWrap);
-  const closeBtn = document.createElement('button'); closeBtn.className = 'budget-drawer-close'; closeBtn.type = 'button';
-  closeBtn.innerHTML = makeIcon(api, 'x', 16) || '✕';
-  closeBtn.addEventListener('click', close);
-  head.appendChild(closeBtn);
+  // The kit's icon button: a title and an accessible name, like every close.
+  api.ui.createIconButton(head, { icon: 'x', title: 'Close' }).addEventListener('click', close);
   drawer.appendChild(head);
 
   // Body / form
@@ -1874,7 +1872,7 @@ async function openTxEditor(api, opts = {}) {
     typeOpts.push({ value: row.tx_type, label: txTypeLabel(row.tx_type) });
   }
   const acctSel = makeDropdown(
-    [{ value: '', label: 'No Account' }].concat(accounts.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) }))),
+    [{ value: '', label: 'No account' }].concat(accounts.map(a => ({ value: a.id, label: a.display_name || defaultAccountName(a.kind, a.last_four) }))),
     row?.account_id || '');
 
   // Declared before typeSel so the type handler can re-scope it without a forward
@@ -1939,7 +1937,7 @@ async function openTxEditor(api, opts = {}) {
         await budgetToolDeleteTransaction({ id: opts.id, reason: 'deleted from editor' });
         close(); opts.onSaved?.();
         notifyLedgerChanged();
-      } catch (e) { await api.window?.showErrorMessage?.('Delete failed: ' + (e instanceof Error ? e.message : String(e))); }
+      } catch (e) { await api.window?.showErrorMessage?.('Could not delete: ' + (e instanceof Error ? e.message : String(e))); }
     } });
     foot.appendChild(delBtn);
   }
@@ -1991,7 +1989,7 @@ async function openTxEditor(api, opts = {}) {
       close(); opts.onSaved?.();
       notifyLedgerChanged();
     } catch (e) {
-      await api.window?.showErrorMessage?.('Save failed: ' + (e instanceof Error ? e.message : String(e)));
+      await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -2122,7 +2120,7 @@ const TX_VIEWS = [
   { id: 'spend',    label: 'Spending',     status: 'live',      type: 'spend' },
   { id: 'income',   label: 'Income',       status: 'live',      type: 'deposit' },
   { id: 'transfer', label: 'Transfers',    status: 'live',      type: 'transfer' },
-  { id: 'review',   label: 'Needs Review', status: 'review',    type: 'all' },
+  { id: 'review',   label: 'Needs review', status: 'review',    type: 'all' },
   { id: 'hidden',   label: 'Hidden',       status: 'hidden',    type: 'all' },
 ];
 
@@ -2249,7 +2247,7 @@ function renderTransactionsSection(body, api) {
   function drawNarrowing() {
     narrowHost.replaceChildren();
     const add = (label, clear) => api.ui.createFilterChip(narrowHost, {
-      label, pressed: true, title: 'Click to remove this filter',
+      label, pressed: true, title: 'Remove this filter',
       onToggle: () => { clear(); drawNarrowing(); void refresh(); },
     });
     if (categoryId) {
@@ -2966,7 +2964,7 @@ function renderSyncLogSection(body, api) {
     const sub = document.createElement('div'); sub.className = 'budget-ov-faint';
     const cursor = lastSyncedAt ? new Date(lastSyncedAt) : null;
     sub.textContent = cursor && !Number.isNaN(cursor.getTime())
-      ? `The next sync reads email received after ${cursor.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`
+      ? `The next sync reads email received after ${cursor.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`
       : 'The first sync reads the window set in Budget Settings.';
     statusEl.append(lab, val, sub);
 
@@ -2987,7 +2985,7 @@ function renderSyncLogSection(body, api) {
       const tr = document.createElement('tr');
       tr.className = 'budget-log-row ' + (r.level || 'info');
       tr.innerHTML = `
-        <td>${escHtml(String(r.ts).slice(11, 19))}</td>
+        <td>${escHtml(new Date(r.ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }))}</td>
         <td>${escHtml({ info: 'Info', warn: 'Warning', error: 'Error' }[r.level] || r.level)}</td>
         <td>${escHtml(r.stage || '')}</td>
         <td>${escHtml(r.message)}</td>`;
@@ -3021,7 +3019,7 @@ function renderCategoriesSection(body, api) {
         );
         notifyLedgerChanged();
       } catch (e) {
-        await api.window?.showErrorMessage?.('Add failed: ' + (e instanceof Error ? e.message : String(e)));
+        await api.window?.showErrorMessage?.('Could not add: ' + (e instanceof Error ? e.message : String(e)));
       }
     },
   } });
@@ -3071,10 +3069,10 @@ function renderCategoriesSection(body, api) {
       const colorInput = document.createElement('input');
       colorInput.type = 'color'; colorInput.value = r.color || '#94a3b8';
       colorInput.className = 'budget-color';
-      colorInput.title = 'Colour';
+      colorInput.title = 'Color';
       colorInput.addEventListener('change', async () => {
         try { await db.run(`UPDATE categories SET color=? WHERE id=?`, [colorInput.value, r.id]); swatch.style.background = colorInput.value; }
-        catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+        catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
       });
       tdColor.appendChild(colorInput);
       tr.appendChild(tdColor);
@@ -3083,7 +3081,7 @@ function renderCategoriesSection(body, api) {
       const tdKind = document.createElement('td');
       const kindSel = makeDropdown(CATEGORY_KIND_OPTIONS.map(k => ({ value: k.value, label: k.label })), r.kind, async (val) => {
         try { await db.run(`UPDATE categories SET kind=? WHERE id=?`, [val, r.id]); notifyLedgerChanged(); }
-        catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+        catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
       });
       tdKind.appendChild(kindSel);
       tr.appendChild(tdKind);
@@ -3094,13 +3092,13 @@ function renderCategoriesSection(body, api) {
       limitInput.type = 'number'; limitInput.step = '1'; limitInput.min = '0';
       limitInput.className = 'budget-input budget-cat-limit';
       limitInput.placeholder = 'No limit';
-      limitInput.value = r.monthly_limit_cents != null ? String(Math.round(r.monthly_limit_cents) / 100) : '';
+      limitInput.value = r.monthly_limit_cents != null ? (Number(r.monthly_limit_cents) / 100).toFixed(2) : '';
       limitInput.addEventListener('change', async () => {
         const v = limitInput.value.trim();
         const cents = v === '' ? null : Math.round(Number(v) * 100);
-        if (cents !== null && !Number.isFinite(cents)) { limitInput.value = r.monthly_limit_cents != null ? String(r.monthly_limit_cents/100) : ''; return; }
+        if (cents !== null && !Number.isFinite(cents)) { limitInput.value = r.monthly_limit_cents != null ? (Number(r.monthly_limit_cents) / 100).toFixed(2) : ''; return; }
         try { await db.run(`UPDATE categories SET monthly_limit_cents=? WHERE id=?`, [cents, r.id]); notifyLedgerChanged(); }
-        catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+        catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
       });
       tdLimit.appendChild(limitInput);
       tr.appendChild(tdLimit);
@@ -3119,7 +3117,7 @@ function renderCategoriesSection(body, api) {
           const next = (await api.window?.showInputBox?.({ prompt: 'New name', value: r.name }) || '').trim();
           if (!next || next === r.name) return;
           try { await db.run(`UPDATE categories SET name=? WHERE id=?`, [next, r.id]); notifyLedgerChanged(); }
-          catch (e) { await api.window?.showErrorMessage?.('Rename failed: ' + (e instanceof Error ? e.message : String(e))); }
+          catch (e) { await api.window?.showErrorMessage?.('Could not rename: ' + (e instanceof Error ? e.message : String(e))); }
         } },
         { label: r.archived ? 'Unarchive' : 'Archive', onSelect: async () => {
           try {
@@ -3128,7 +3126,7 @@ function renderCategoriesSection(body, api) {
             const n = Number((await db.get('SELECT COUNT(*) AS n FROM categorization_rules WHERE category_id=? AND active=1', [r.id]))?.n) || 0;
             if (!r.archived && n) await api.window?.showInformationMessage?.(`${n} rule${n === 1 ? '' : 's'} that file into ${r.name} rest while it is archived. New imports go to the AI.`);
           }
-          catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+          catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
         } },
       ]));
       tr.appendChild(tdAct);
@@ -3340,15 +3338,15 @@ function describeWhen(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const same = d.toDateString() === new Date().toDateString();
-  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  return same ? `Today at ${time}, from Gmail` : `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${time}, from Gmail`;
+  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return same ? `Today at ${time}, from Gmail` : `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${time}, from Gmail`;
 }
 
 function paceSentence(p) {
   if (p.limitCents <= 0) return 'Set limits in Plan to see what is left and how spending is pacing.';
   const everyday = fmtMoney(p.everydaySpentCents);
   if (p.dayOfMonth === 0) return 'This month has not started yet.';
-  if (p.pace === 'over') return `Everyday spending is ${fmtMoney(p.everydaySpentCents - p.everydayBudgetCents)} past its budget of ${fmtMoney(p.everydayBudgetCents)}.`;
+  if (p.pace === 'over') return `Everyday spending is ${fmtMoney(p.everydaySpentCents - p.everydayBudgetCents)} past the ${fmtMoney(p.everydayBudgetCents)} set for it.`;
   if (p.projectedCents === null) {
     return `${p.dayOfMonth} day${p.dayOfMonth === 1 ? '' : 's'} in: ${everyday} of everyday spending, ${p.everydaySpentCents <= p.evenByNowCents ? 'under' : 'over'} an even pace. Bills are counted as committed, not as pace.`;
   }
@@ -3429,9 +3427,9 @@ function drawFacts(col, data) {
   fact(card, 'Income', fmtMoney(data.incomeCents),
     data.incomeExpectedCents > 0 ? `of about ${fmtMoney(data.incomeExpectedCents)} in a usual month` : 'this month');
   const toCome = data.allBillsToComeCents;
-  fact(card, 'Bills', `${fmtMoney(data.allBillsPaidCents)} paid`, toCome > 0 ? `${fmtMoney(toCome)} still to come` : 'nothing more due this month');
+  fact(card, 'Bills', `${fmtMoney(data.allBillsPaidCents)} paid`, toCome > 0 ? `${fmtMoney(toCome)} still to come` : 'Nothing more due this month');
   fact(card, 'Goals', data.goals.tgt > 0 ? `${Math.round((data.goals.cur / data.goals.tgt) * 100)}%` : 'None yet',
-    data.goals.tgt > 0 ? `${fmtMoney(data.goals.cur)} of ${fmtMoney(data.goals.tgt)} across ${data.goals.n}` : 'add one in Net Worth and Goals');
+    data.goals.tgt > 0 ? `${fmtMoney(data.goals.cur)} of ${fmtMoney(data.goals.tgt)} across ${data.goals.n}` : 'Add one in Net Worth and Goals');
   col.appendChild(card);
 }
 
@@ -3525,7 +3523,7 @@ function drawAccounts(col, data, api) {
   head.className = 'budget-ov-head';
   const l = document.createElement('span'); l.className = 'budget-ov-label'; l.textContent = 'Accounts';
   head.appendChild(l);
-  linkButton(head, 'Net Worth', () => openBudgetSection(api, 'worth'));
+  linkButton(head, 'Net Worth and Goals', () => openBudgetSection(api, 'worth'));
   card.appendChild(head);
   for (const a of data.accounts) {
     const row = document.createElement('div');
@@ -3685,9 +3683,8 @@ async function openManualBalanceEditor(api, opts = {}) {
   const title = document.createElement('h3'); title.className = 'budget-drawer-title'; title.style.flex = '1';
   title.textContent = isCreate ? 'Add Asset or Debt' : 'Edit Asset or Debt';
   head.appendChild(title);
-  const closeBtn = document.createElement('button'); closeBtn.className = 'budget-drawer-close'; closeBtn.type = 'button';
-  closeBtn.innerHTML = makeIcon(api, 'x', 16) || '✕'; closeBtn.addEventListener('click', close);
-  head.appendChild(closeBtn);
+  // The kit's icon button: a title and an accessible name, like every close.
+  api.ui.createIconButton(head, { icon: 'x', title: 'Close' }).addEventListener('click', close);
   drawer.appendChild(head);
 
   const form = document.createElement('div'); form.className = 'budget-drawer-body';
@@ -3748,7 +3745,7 @@ async function openManualBalanceEditor(api, opts = {}) {
       }
       if (armTimer) clearTimeout(armTimer);
       try { await db.run('DELETE FROM manual_balances WHERE id=?', [opts.id]); close(); opts.onSaved?.(); }
-      catch (e) { await api.window?.showErrorMessage?.('Delete failed: ' + (e instanceof Error ? e.message : String(e))); }
+      catch (e) { await api.window?.showErrorMessage?.('Could not delete: ' + (e instanceof Error ? e.message : String(e))); }
     } });
     foot.appendChild(delBtn);
   }
@@ -3775,7 +3772,7 @@ async function openManualBalanceEditor(api, opts = {}) {
           [name, kind, cls, cents, asOf, notes, now, opts.id]);
       }
       close(); opts.onSaved?.();
-    } catch (e) { await api.window?.showErrorMessage?.('Save failed: ' + (e instanceof Error ? e.message : String(e))); }
+    } catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
   }
   foot.appendChild(makeButton(isCreate ? 'Add Asset or Debt' : 'Save', { primary: true, onClick: onceAtATime(save) }));
   drawer.appendChild(foot);
@@ -3813,9 +3810,9 @@ function renderAccountsSection(body, api, opts = {}) {
     const groups = {
       cash:        { label: 'Cash', items: [] },
       investment:  { label: 'Investments', items: [] },
-      real_estate: { label: 'Real Estate', items: [] },
+      real_estate: { label: 'Real estate', items: [] },
       vehicle:     { label: 'Vehicles', items: [] },
-      other_asset: { label: 'Other Assets', items: [] },
+      other_asset: { label: 'Other assets', items: [] },
       liability:   { label: 'Liabilities', items: [] },
     };
     let assetTotal = 0, liabilityTotal = 0;
@@ -3910,7 +3907,7 @@ function renderAccountsSection(body, api, opts = {}) {
         inp.title = 'Rename';
         inp.addEventListener('change', async () => {
           try { await db.run('UPDATE accounts SET display_name=?, updated_at=? WHERE id=?', [inp.value || null, new Date().toISOString(), a.id]); }
-          catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+          catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
         });
         tdName.appendChild(inp); tr.appendChild(tdName);
         const tdKind = document.createElement('td');
@@ -3919,7 +3916,7 @@ function renderAccountsSection(body, api, opts = {}) {
           a.kind,
           async (val) => {
             try { await db.run('UPDATE accounts SET kind=?, updated_at=? WHERE id=?', [val, new Date().toISOString(), a.id]); await refresh(); }
-            catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+            catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
           });
         tdKind.appendChild(kindSel); tr.appendChild(tdKind);
         const td4 = document.createElement('td'); td4.textContent = a.last_four ? '••' + a.last_four : '—'; tr.appendChild(td4);
@@ -3931,7 +3928,7 @@ function renderAccountsSection(body, api, opts = {}) {
         moreBtn.addEventListener('click', () => api.ui.showContextMenu(moreBtn, [
           { label: a.archived ? 'Unarchive' : 'Archive', onSelect: async () => {
             try { await db.run('UPDATE accounts SET archived=?, updated_at=? WHERE id=?', [a.archived ? 0 : 1, new Date().toISOString(), a.id]); await refresh(); }
-            catch (e) { await api.window?.showErrorMessage?.('Update failed: ' + (e instanceof Error ? e.message : String(e))); }
+            catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
           } },
         ]));
         tr.appendChild(tdAct); tb.appendChild(tr);
@@ -4030,8 +4027,8 @@ async function openGoalEditor(api, opts = {}) {
   const title = document.createElement('h3'); title.className = 'budget-drawer-title'; title.style.flex = '1';
   title.textContent = isCreate ? 'Add Goal' : 'Edit Goal';
   head.appendChild(title);
-  const closeBtn = document.createElement('button'); closeBtn.className = 'budget-drawer-close'; closeBtn.type = 'button';
-  closeBtn.innerHTML = makeIcon(api, 'x', 16) || '✕'; closeBtn.addEventListener('click', close); head.appendChild(closeBtn);
+  // The kit's icon button: a title and an accessible name, like every close.
+  api.ui.createIconButton(head, { icon: 'x', title: 'Close' }).addEventListener('click', close);
   drawer.appendChild(head);
 
   const form = document.createElement('div'); form.className = 'budget-drawer-body';
@@ -4072,7 +4069,7 @@ async function openGoalEditor(api, opts = {}) {
       if (!armed) { armed = true; delBtn.querySelector('span:last-child').textContent = 'Click again to delete'; delBtn.classList.add('px-btn--danger'); armTimer = setTimeout(() => { armed = false; delBtn.querySelector('span:last-child').textContent = 'Delete'; delBtn.classList.remove('px-btn--danger'); }, 3000); return; }
       if (armTimer) clearTimeout(armTimer);
       try { await db.run('DELETE FROM goals WHERE id=?', [opts.id]); close(); opts.onSaved?.(); }
-      catch (e) { await api.window?.showErrorMessage?.('Delete failed: ' + (e instanceof Error ? e.message : String(e))); }
+      catch (e) { await api.window?.showErrorMessage?.('Could not delete: ' + (e instanceof Error ? e.message : String(e))); }
     } });
     foot.appendChild(delBtn);
   }
@@ -4092,7 +4089,7 @@ async function openGoalEditor(api, opts = {}) {
           [name, kindSel.value, dollarsToCents(target), dollarsToCents(cur), dateInput.value || null, notesInput.value.trim() || null, now, opts.id]);
       }
       close(); opts.onSaved?.();
-    } catch (e) { await api.window?.showErrorMessage?.('Save failed: ' + (e instanceof Error ? e.message : String(e))); }
+    } catch (e) { await api.window?.showErrorMessage?.('Could not save: ' + (e instanceof Error ? e.message : String(e))); }
   }
   foot.appendChild(makeButton(isCreate ? 'Add Goal' : 'Save', { primary: true, onClick: onceAtATime(save) }));
   drawer.appendChild(foot);
@@ -4189,11 +4186,11 @@ function renderCashFlowSection(body, api) {
     }
 
     cards.appendChild(makeCard(`Total income (${monthsBackN} months)`, fmtMoney(totalIn), ''));
-    cards.appendChild(makeCard(`Total expenses (${monthsBackN} months)`, fmtMoney(totalOut), ''));
+    cards.appendChild(makeCard(`Total spending (${monthsBackN} months)`, fmtMoney(totalOut), ''));
     cards.appendChild(makeCard('Average savings rate', totalIn > 0 ? `${Math.round(((totalIn - totalOut) / totalIn) * 100)}%` : '—',
       totalIn > 0 ? `Net ${fmtMoney(totalIn - totalOut)}` : ''));
 
-    const h1 = document.createElement('h3'); h1.textContent = 'Income vs Expenses'; chartWrap.appendChild(h1);
+    const h1 = document.createElement('h3'); h1.textContent = 'Income and spending'; chartWrap.appendChild(h1);
     const chart = buildBar(groups, {
       width: 720, height: 220,
       onClick: (g) => {
@@ -4208,7 +4205,7 @@ function renderCashFlowSection(body, api) {
     legend.innerHTML = `<span><span class="swatch" style="background:var(--vscode-charts-green,#5da56e)"></span>Income</span><span><span class="swatch" style="background:var(--vscode-charts-red,#a43b38)"></span>Expenses</span>`;
     chartWrap.appendChild(legend);
 
-    const h2 = document.createElement('h3'); h2.textContent = 'Net Savings'; savingsWrap.appendChild(h2);
+    const h2 = document.createElement('h3'); h2.textContent = 'Net savings'; savingsWrap.appendChild(h2);
     savingsWrap.appendChild(buildLine(savingsPoints, { width: 720, height: 220 }));
 
     // Table
@@ -4263,7 +4260,7 @@ function renderReportsSection(body, api) {
     const toDate = months[months.length - 1].end;
 
     // Top merchants
-    const h1 = document.createElement('h3'); h1.textContent = `Top Merchants (${monthsBackN} Months)`; merchSection.appendChild(h1);
+    const h1 = document.createElement('h3'); h1.textContent = `Top merchants (${monthsBackN} months)`; merchSection.appendChild(h1);
     let merchants = [];
     try {
       merchants = await db.all(`
@@ -4294,7 +4291,7 @@ function renderReportsSection(body, api) {
     }
 
     // Category breakdown over window
-    const h2 = document.createElement('h3'); h2.textContent = `Expenses by Category (${monthsBackN} Months)`; catSection.appendChild(h2);
+    const h2 = document.createElement('h3'); h2.textContent = `Spending by category (${monthsBackN} months)`; catSection.appendChild(h2);
     let cats = [];
     try {
       cats = await db.all(`
@@ -4336,7 +4333,7 @@ function renderReportsSection(body, api) {
     }
 
     // Expense trend over months
-    const h3 = document.createElement('h3'); h3.textContent = 'Monthly Expense Trend'; trendSection.appendChild(h3);
+    const h3 = document.createElement('h3'); h3.textContent = 'Spending by month'; trendSection.appendChild(h3);
     const points = [];
     for (const m of months) {
       const r = await db.get(
@@ -4635,7 +4632,7 @@ function renderBudgetsSection(body, api) {
       input.addEventListener('change', async () => {
         const cents = Math.round(parseFloat(input.value || '0') * 100) || 0;
         try { await writeLimit(r.id, cents); notifyLedgerChanged(); }
-        catch (e) { await api.window?.showErrorMessage?.('The limit was not saved: ' + (e instanceof Error ? e.message : String(e))); }
+        catch (e) { await api.window?.showErrorMessage?.('Could not save the limit: ' + (e instanceof Error ? e.message : String(e))); }
       });
 
       const useCol = document.createElement('div');
@@ -4643,7 +4640,7 @@ function renderBudgetsSection(body, api) {
       if (suggested > 0 && suggested !== r.effective_limit_cents) {
         api.ui.createButton(useCol, { label: `Use ${fmtMoney(suggested)}`, kind: 'ghost', size: 'sm', title: `Set the limit to ${fmtMoney(suggested)}, from the last three months`, onClick: async () => {
           try { await writeLimit(r.id, suggested); notifyLedgerChanged(); }
-          catch (e) { await api.window?.showErrorMessage?.('The limit was not saved: ' + (e instanceof Error ? e.message : String(e))); }
+          catch (e) { await api.window?.showErrorMessage?.('Could not save the limit: ' + (e instanceof Error ? e.message : String(e))); }
         } });
       }
 
@@ -4725,10 +4722,10 @@ function renderRecurringSection(body, api) {
     onClick: async () => {
       try {
         const n = await detectRecurring(api);
-        await api.window?.showInformationMessage?.(`Detected ${n} new recurring series.`);
+        await api.window?.showInformationMessage?.(n ? `Found ${n} new bill${n === 1 ? '' : 's'}.` : 'No new bills found.');
         notifyLedgerChanged(); // bills feed what is left to spend
       } catch (e) {
-        await api.window?.showErrorMessage?.('Detection failed: ' + (e instanceof Error ? e.message : String(e)));
+        await api.window?.showErrorMessage?.('Could not look for bills: ' + (e instanceof Error ? e.message : String(e)));
       }
     },
   }));
@@ -4737,14 +4734,14 @@ function renderRecurringSection(body, api) {
   const summary = document.createElement('div'); summary.className = 'budget-cards'; body.appendChild(summary);
   const listWrap = document.createElement('div'); listWrap.className = 'budget-recur'; body.appendChild(listWrap);
 
-  // Relative due label: "Today" / "in 4 days" / "overdue · date" / plain date.
+  // Relative due label: "Today" / "In 4 days" / "Overdue since Sep 30" / a date.
   function dueLabel(ymd, today) {
     if (!ymd) return '—';
     const d = Math.round((new Date(ymd + 'T00:00:00').getTime() - new Date(today + 'T00:00:00').getTime()) / 86400000);
-    if (d < 0) return `overdue · ${fmtDate(ymd)}`;
+    if (d < 0) return `Overdue since ${shortDate(ymd)}`;
     if (d === 0) return 'Today';
     if (d === 1) return 'Tomorrow';
-    if (d <= 30) return `in ${d} days`;
+    if (d <= 30) return `In ${d} days`;
     return fmtDate(ymd);
   }
 
@@ -4779,7 +4776,7 @@ function renderRecurringSection(body, api) {
 
     summary.appendChild(makeCard('Active bills', String(active.length), 'Found from repeating charges'));
     summary.appendChild(makeCard('Bills a month', fmtMoney(Math.round(totalMonthly)), 'Each usual amount, spread over a month'));
-    summary.appendChild(makeCard('Due in 30 days', String(next30.length), next30.length ? `~${fmtMoney(Math.round(next30Total))} upcoming` : 'Nothing due soon'));
+    summary.appendChild(makeCard('Due in 30 days', String(next30.length), next30.length ? `About ${fmtMoney(Math.round(next30Total))} due` : 'Nothing due soon'));
 
     if (all.length === 0) {
       listWrap.appendChild(emptyState('No bills found yet. Sync more transactions, then choose Detect Bills.'));
@@ -4804,7 +4801,7 @@ function renderRecurringSection(body, api) {
         `<span class="budget-recur-due">${escHtml(r.cancelled ? 'Cancelled' : dueLabel(r.next_due_date, today))}</span>`;
 
       const acts = document.createElement('div'); acts.className = 'budget-recur-acts';
-      acts.appendChild(makeButton(r.cancelled ? 'Reactivate' : 'Cancel', {
+      acts.appendChild(makeButton(r.cancelled ? 'Reactivate' : 'Mark Cancelled', {
         onClick: async () => {
           await db.run('UPDATE recurring_series SET cancelled=?, updated_at=? WHERE id=?', [r.cancelled ? 0 : 1, new Date().toISOString(), r.id]);
           notifyLedgerChanged(); // bills feed what is left to spend
@@ -4864,7 +4861,7 @@ function ruleDryRun(probe, rows, categoryId, others = []) {
   return { matched, changing, keptManual, shadowed, ids, changes: [...groups.values()].sort((a, b) => b.n - a.n) };
 }
 
-const RULE_MATCH_LABELS = { contains: 'contains', exact: 'is exactly', regex: 'matches the pattern' };
+const RULE_MATCH_LABELS = { contains: 'contains', exact: 'is exactly', regex: 'matches pattern' };
 
 function ruleMadeBy(r) {
   if (!r.auto_created) return 'You';
@@ -4878,7 +4875,7 @@ function renderRulesSection(body, api) {
   root.className = 'budget-ru';
   body.appendChild(root);
 
-  setPageActions({ primary: { label: 'New Rule…', icon: 'plus', onClick: () => showEditor(null) } });
+  setPageActions({ primary: { label: 'New Rule', icon: 'plus', onClick: () => showEditor(null) } });
   const help = document.createElement('p');
   help.className = 'budget-ov-note budget-ru-help';
   help.textContent = 'A rule decides the category before the AI is asked. Merchants without a rule are left to the AI; three matching AI answers make a learned rule, as long as none disagree.';
@@ -5036,7 +5033,7 @@ function renderRulesSection(body, api) {
         notifyLedgerChanged();
         if (changed) await api.window?.showInformationMessage?.(`Rule saved. ${changed} past purchase${changed === 1 ? '' : 's'} moved to ${catName(categoryId)}.`);
       } catch (e) {
-        await api.window?.showErrorMessage?.('The rule was not saved: ' + (e instanceof Error ? e.message : String(e)));
+        await api.window?.showErrorMessage?.('Could not save the rule: ' + (e instanceof Error ? e.message : String(e)));
       }
     }
   }
@@ -5100,7 +5097,7 @@ function renderRulesSection(body, api) {
         more.className = 'budget-ru-more';
         const btn = api.ui.createIconButton(more, { icon: 'ellipsis', title: 'Rule Actions' });
         btn.addEventListener('click', () => api.ui.showContextMenu(btn, [
-          { label: 'Edit…', onSelect: () => showEditor(r) },
+          { label: 'Edit', onSelect: () => showEditor(r) },
           { label: r.active ? 'Turn Off' : 'Turn On', onSelect: async () => {
             await db.run('UPDATE categorization_rules SET active=?, updated_at=? WHERE id=?', [r.active ? 0 : 1, new Date().toISOString(), r.id]);
             notifyLedgerChanged();
@@ -5151,7 +5148,7 @@ function renderRulesSection(body, api) {
         const blank = document.createElement('span');
         const act = document.createElement('span');
         act.className = 'budget-ru-more';
-        linkButton(act, 'Make a Rule…', () => showEditor(null, { pattern: g.merchant, matchType: 'exact', categoryId: topCat }));
+        linkButton(act, 'Make a Rule', () => showEditor(null, { pattern: g.merchant, matchType: 'exact', categoryId: topCat }));
         row.append(who, cat, n, blank, act);
         aiWrap.appendChild(row);
       }
@@ -5186,7 +5183,7 @@ function renderReconcileSection(body, api) {
     const accounts = await db.all('SELECT id, last_four, kind, display_name FROM accounts WHERE archived=0 ORDER BY kind, last_four');
     acctSlot.innerHTML = '';
     if (accounts.length === 0) {
-      acctSlot.appendChild(makeDropdown([{ value: '', label: 'No Accounts' }], ''));
+      acctSlot.appendChild(makeDropdown([{ value: '', label: 'No accounts' }], ''));
       return [];
     }
     selectedAccountId = selectedAccountId && accounts.find(a => a.id === selectedAccountId) ? selectedAccountId : accounts[0].id;
@@ -5271,7 +5268,7 @@ function renderReconcileSection(body, api) {
           );
           await refresh();
         } catch (e) {
-          await api.window?.showErrorMessage?.('Reconcile failed: ' + (e instanceof Error ? e.message : String(e)));
+          await api.window?.showErrorMessage?.('Could not reconcile: ' + (e instanceof Error ? e.message : String(e)));
         }
       },
     });
@@ -5411,7 +5408,7 @@ function renderImportExportSection(body, api) {
       if (r.errors)  parts.push(`${r.errors} error${r.errors === 1 ? '' : 's'}`);
       setStatus(parts.join(' • '), r.errors ? 'error' : 'success');
     } catch (e) {
-      setStatus('Import failed: ' + (e instanceof Error ? e.message : String(e)), 'error');
+      setStatus('Could not import: ' + (e instanceof Error ? e.message : String(e)), 'error');
     } finally {
       importBtn.removeAttribute('disabled');
       clearBtn.removeAttribute('disabled');
@@ -5456,7 +5453,7 @@ function renderImportExportSection(body, api) {
           : `Copied ${r.count} row${r.count === 1 ? '' : 's'} to clipboard (${r.reason || 'no workspace folder'}).`;
         exportStatus.style.color = 'var(--vscode-charts-green, #6ec77a)';
       } catch (e) {
-        exportStatus.textContent = 'Export failed: ' + (e instanceof Error ? e.message : String(e));
+        exportStatus.textContent = 'Could not export: ' + (e instanceof Error ? e.message : String(e));
         exportStatus.style.color = 'var(--vscode-errorForeground, #f87171)';
       } finally {
         exportBtn.removeAttribute('disabled');
@@ -8432,7 +8429,7 @@ function buildMtdSpendWidget(api) {
       fields: {
         topCategories: {
           type: 'number',
-          label: 'Top Categories to Show',
+          label: 'Top categories to show',
           description: '0-8. Zero hides the breakdown.',
         },
       },
@@ -8483,7 +8480,7 @@ function buildMtdSpendWidget(api) {
         const bits = [`${fmtUsd(s.spend)} spend`];
         if (s.refunds > 0) bits.push(`${fmtUsd(s.refunds)} refunded`);
         bits.push(`${s.transactionCount} transaction${s.transactionCount === 1 ? '' : 's'}`);
-        sub.textContent = `${s.from} → ${s.to} · ` + bits.join(' · ');
+        sub.textContent = `${shortDate(s.from)} to ${shortDate(s.to)} · ` + bits.join(' · ');
         container.appendChild(sub);
 
         const top = clampTop(ctx.config && ctx.config.topCategories);
@@ -8669,7 +8666,7 @@ async function budgetToolUpsertRule(args) {
 // One page with a switch between its views: the month's budgets, the bills
 // (recurring), trends (cash flow and reports) and reconcile.
 const PLAN_VIEWS = [
-  { value: 'budgets',   label: 'Budgets' },
+  { value: 'budgets',   label: 'Limits' },
   { value: 'bills',     label: 'Bills' },
   { value: 'trends',    label: 'Trends' },
   { value: 'reconcile', label: 'Reconcile' },
