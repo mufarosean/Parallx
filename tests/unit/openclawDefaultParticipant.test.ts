@@ -113,7 +113,8 @@ describe('openclaw default participant', () => {
     expect(sentMessages[0].content).not.toContain('should not be injected');
     expect(sentMessages.at(-1)).toEqual(expect.objectContaining({
       role: 'user',
-      content: 'What does my policy cover?',
+      // The latest turn carries the clock; earlier turns (above) do not.
+      content: expect.stringMatching(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2} [^\]]+\]\nWhat does my policy cover\?$/),
     }));
     expect(response.markdown).toHaveBeenCalledWith('OpenClaw answer');
   });
@@ -467,7 +468,8 @@ describe('openclaw default participant', () => {
     ]));
     expect(sentMessages.at(-1)).toEqual(expect.objectContaining({
       role: 'user',
-      content: 'Who should I call to file the claim?',
+      // The latest turn carries the clock; earlier turns (above) do not.
+      content: expect.stringMatching(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2} [^\]]+\]\nWho should I call to file the claim\?$/),
     }));
     expect(response.markdown).toHaveBeenCalledWith('Follow-up answer');
   });
@@ -572,7 +574,8 @@ describe('openclaw default participant — unhandled slash commands', () => {
       history: [],
     } as IChatParticipantContext, createResponse(), createToken());
     const sent = sendChatRequest.mock.calls[0][0];
-    return String(sent.at(-1)?.content ?? '');
+    // The latest turn starts with its clock stamp (formatTurnClock).
+    return String(sent.at(-1)?.content ?? '').replace(/^\[[^\]]+\]\n/, '');
   }
 
   it('hands back an UNREGISTERED command instead of eating the word', async () => {

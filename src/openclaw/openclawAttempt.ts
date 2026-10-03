@@ -33,6 +33,7 @@ import { describeUndeclaredArguments } from '../services/toolArgumentCheck.js';
 import { estimateMessagesTokens, estimateTokens } from './openclawTokenBudget.js';
 import type { IOpenclawRuntimeSkillState } from './openclawSkillState.js';
 import { buildOpenclawPromptArtifacts } from './openclawPromptArtifacts.js';
+import { formatTurnClock } from './openclawSystemPrompt.js';
 import type { IOpenclawRuntimeToolState } from './openclawToolState.js';
 import type { IResolvedAgentConfig } from './agents/openclawAgentConfig.js';
 import { resolveModelTier } from './openclawModelTier.js';
@@ -447,11 +448,14 @@ export async function executeOpenclawAttempt(
   //    two consecutive user messages causes models to ignore the first one (the
   //    attachment content).  Prepending to the user message ensures the model
   //    sees attachment context and query in a single turn.
-  let userContent = request.text;
+  // The time of day rides on this turn only (see buildRuntimeSection): the
+  // system prompt and the history before it stay identical between turns,
+  // so the model server reuses them instead of re-reading the whole chat.
+  let userContent = `${formatTurnClock(context.runtimeInfo.timeZone)}\n${request.text}`;
   if (context.mentionContextBlocks?.length) {
     const contextSection = context.mentionContextBlocks.join('\n\n---\n\n');
     console.log(`[OpenClaw:Attempt] Prepending ${context.mentionContextBlocks.length} mention/attachment context block(s) to user message, total chars: ${contextSection.length}`);
-    userContent = contextSection + '\n\n---\n\n' + request.text;
+    userContent = contextSection + '\n\n---\n\n' + userContent;
   }
 
   const messages: IChatMessage[] = [

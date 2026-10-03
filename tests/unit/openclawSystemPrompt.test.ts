@@ -6,6 +6,7 @@ import {
   buildToolSummariesSection,
   buildWorkspaceSection,
   buildRuntimeSection,
+  formatTurnClock,
   buildMemorySection,
   estimateSystemPromptTokens,
   type IBootstrapFile,
@@ -494,7 +495,11 @@ describe('buildRuntimeSection', () => {
     vi.setSystemTime(new Date('2026-09-16T12:31:02.000Z'));
     try {
       const section = buildRuntimeSection(createRuntimeInfo({ timeZone: 'America/Chicago' }));
-      expect(section).toContain('Current date/time: 2026-09-16 07:31:02 CDT');
+      // The date only: a clock here would change the prompt's first lines
+      // every turn and void the model server's reuse of the conversation.
+      expect(section).toContain('Today: 2026-09-16.');
+      expect(section).not.toMatch(/\d{2}:\d{2}/);
+      expect(formatTurnClock('America/Chicago')).toBe('[2026-09-16 07:31 CDT]');
       expect(section).toContain('Timezone: America/Chicago');
       expect(section).not.toMatch(/UTC:|\d{2}:\d{2}:\d{2}\.\d{3}Z/);
       expect(section).toContain('Never convert to UTC');
@@ -507,7 +512,10 @@ describe('buildRuntimeSection', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-16T12:31:02.000Z'));
     try {
-      expect(buildRuntimeSection(createRuntimeInfo({ timeZone: 'Europe/London' }))).toContain('2026-09-16 13:31:02 GMT+1');
+      expect(formatTurnClock('Europe/London')).toBe('[2026-09-16 13:31 GMT+1]');
+      vi.setSystemTime(new Date('2026-09-16T23:31:02.000Z'));
+      // Past midnight in London, still the 16th in Chicago: the date follows the zone.
+      expect(buildRuntimeSection(createRuntimeInfo({ timeZone: 'Europe/London' }))).toContain('Today: 2026-09-17.');
       const machineTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       expect(buildRuntimeSection(createRuntimeInfo({ timeZone: 'Mars/Olympus' }))).toContain(`Timezone: ${machineTz}`);
     } finally {

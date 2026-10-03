@@ -17,7 +17,7 @@
 import { estimateTokens, trimTextToBudget } from './openclawTokenBudget.js';
 import type { IAgentIdentityConfig } from './agents/openclawAgentConfig.js';
 import type { ToolCategory } from '../services/chatTypes.js';
-import { assistantTimeZone, formatLocalDateTime, isValidTimeZone } from '../services/localTime.js';
+import { assistantTimeZone, formatLocalDate, formatLocalDateTime, isValidTimeZone } from '../services/localTime.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -658,12 +658,21 @@ export function buildRuntimeSection(runtimeInfo: IOpenclawRuntimeInfo): string {
   // time and a machine-shaped one ending in Z, models copy the machine one,
   // and the user hears UTC. Every stamp the model reads (journal lines, tool
   // results, cron seeds) is written in this same zone by services/localTime.
+  //
+  // The DATE only, never the time: this section sits near the top of the
+  // system prompt, ahead of the whole conversation, and the model server
+  // reuses its work on a prompt only up to the first character that
+  // changed. A clock to the second here made every turn re-read the entire
+  // chat (seconds of prefill on a long one, the history re-billed by cloud
+  // caches). The time of day travels on the latest user turn instead
+  // (formatTurnClock, prepended by openclawAttempt), which is never part of
+  // the reused prefix.
   const tz = runtimeInfo.timeZone && isValidTimeZone(runtimeInfo.timeZone) ? runtimeInfo.timeZone : assistantTimeZone();
-  let localStr: string;
-  try { localStr = formatLocalDateTime(now, { seconds: true, timeZone: tz }); } catch { localStr = now.toLocaleString(); }
+  let today: string;
+  try { today = formatLocalDate(now, { timeZone: tz }); } catch { today = now.toDateString(); }
   const lines = [
     '## Runtime',
-    `- Current date/time: ${localStr}`,
+    `- Today: ${today}. The current time is the stamp at the top of the user's latest message.`,
     `- Timezone: ${tz} — the user's local timezone, and the only clock here. Every time you read (the journal, tool results, schedules) and every time you write is in it. Never convert to UTC; add a Z or an offset only when the user explicitly asks for UTC.`,
     `- Model: ${runtimeInfo.model}`,
     `- Provider: ${runtimeInfo.provider}`,
@@ -674,6 +683,19 @@ export function buildRuntimeSection(runtimeInfo: IOpenclawRuntimeInfo): string {
   if (runtimeInfo.arch) { lines.push(`- Architecture: ${runtimeInfo.arch}`); }
   if (runtimeInfo.shell) { lines.push(`- Shell: ${runtimeInfo.shell}`); }
   return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Turn clock
+// ---------------------------------------------------------------------------
+
+/** The time of day for the latest user turn, in the user's zone, to the
+ *  minute: `[2026-09-16 07:31 CDT]`. Prepended to that turn only (never
+ *  stored in history), so the system prompt and the earlier turns stay
+ *  byte-identical between turns and the model server can reuse them. */
+export function formatTurnClock(timeZone?: string, now: Date = new Date()): string {
+  const tz = timeZone && isValidTimeZone(timeZone) ? timeZone : assistantTimeZone();
+  try { return `[${formatLocalDateTime(now, { timeZone: tz })}]`; } catch { return `[${now.toLocaleString()}]`; }
 }
 
 // ---------------------------------------------------------------------------
