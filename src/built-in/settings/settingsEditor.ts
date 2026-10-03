@@ -160,6 +160,14 @@ export class SettingsEditor extends Disposable {
   private readonly _controlDisposables: IDisposable[] = [];
   /** Currently selected nav id (e.g. 'schema:General' or 'panel:appearance'). */
   private _selectedId: string | null = null;
+  /**
+   * A deep link whose panel is not registered yet. Appearance belongs to a
+   * lazy tool that wakes as the hub opens, so on the first render its panel
+   * is missing and the selection falls back to General; the link is kept
+   * and honoured the moment the panel arrives, unless the user has picked
+   * another page by then.
+   */
+  private _pendingDeepLink: string | null = null;
   /** Cleanup for the mounted custom panel, if any. */
   private _activePanelDisposable: IDisposable | null = null;
 
@@ -175,6 +183,7 @@ export class SettingsEditor extends Disposable {
     // bare panel id or a full nav id ('panel:appearance' / 'schema:General').
     if (initialPanelId) {
       this._selectedId = initialPanelId.includes(':') ? initialPanelId : `panel:${initialPanelId}`;
+      this._pendingDeepLink = this._selectedId;
     }
 
     this._overlay = this._register(new Overlay(parent, {
@@ -379,7 +388,10 @@ export class SettingsEditor extends Disposable {
 
     // Ensure a valid selection.
     const all = groups.flatMap((g) => g.entries);
-    if (!this._selectedId || !all.some((e) => e.id === this._selectedId)) {
+    if (this._pendingDeepLink && all.some((e) => e.id === this._pendingDeepLink)) {
+      this._selectedId = this._pendingDeepLink;
+      this._pendingDeepLink = null;
+    } else if (!this._selectedId || !all.some((e) => e.id === this._selectedId)) {
       this._selectedId = all[0]?.id ?? null;
     }
 
@@ -393,6 +405,7 @@ export class SettingsEditor extends Disposable {
       }
       this._register(addDisposableListener(item, 'click', () => {
         if (this._selectedId === entry.id && !this._searchValue) return;
+        this._pendingDeepLink = null;
         this._selectedId = entry.id;
         this._searchValue = '';
         this._renderNav();

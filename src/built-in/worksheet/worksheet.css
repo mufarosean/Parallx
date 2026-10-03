@@ -15,6 +15,10 @@
   min-height: 0;
   position: relative;
 }
+/* The exam's sheet keeps one face whatever the app font is (px-tokens.css,
+   Worksheet sheet); its menus portal to the popup root, so it too. */
+.ws-pane__sheet,
+#ws-univer-popup-root { font-family: var(--px-worksheet-sheet-font); }
 
 /* Athena/Excel left-align the ribbon; Univer's classic ribbon centers both
    the tab row and the icon row (univer-justify-center utilities). Scoped

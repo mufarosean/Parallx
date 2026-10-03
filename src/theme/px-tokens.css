@@ -28,7 +28,7 @@
      surfaces drew Segoe instead of Inter). Aliasing them here re-homes
      every stray declaration onto the one vocabulary; the compliance test
      bans NEW uses of the legacy namespaces. */
-  --px-font-ui: var(--parallx-fontFamily-ui, 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif);
+  --px-font-ui: var(--parallx-fontFamily-ui, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif);
   --px-font-mono: var(--parallx-fontFamily-mono, 'Cascadia Code', 'Fira Code', Consolas, ui-monospace, monospace);
   --vscode-font-family: var(--px-font-ui);
   /* VS Code's "editor font" is its CODE font — the mono token, not the
@@ -273,6 +273,14 @@
   --px-planner-event-tint:      24%;   /* calendar colour mixed into an event block */
   --px-planner-event-tint-past: 12%;   /* the same block once it has ended          */
   --px-planner-now:             var(--px-danger);   /* the current-time line   */
+
+  /* ── Tier 3 · Component — Worksheet sheet ───────────────────────────────
+     The spreadsheet in a Worksheets pane (ribbon, formula bar, sheet tabs
+     and the sheet's own menus) stands in for the exam's sheet, so it keeps
+     one face whatever font the user picks in Appearance, as it keeps its
+     own light look. Cells draw in their cell font (Arial, as on the exam).
+     The pane's bars around the sheet follow the app font. */
+  --px-worksheet-sheet-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
 
   /* ── Tier 3 · Component — Media viewer ──────────────────────────────────
      A full-screen photo or video viewer (Media Organizer's lightbox) stays

@@ -378,3 +378,54 @@ describe('SettingsEditor — panel absorbs a same-named schema category', () => 
     }
   });
 });
+
+describe('SettingsEditor — a deep link to a panel that registers late', () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  const lateRegistry = async () => {
+    const registry = new SettingsRegistryService(createMockStorage(), createMockStorage());
+    await registry.initialize();
+    registry.register({ key: 'workspace.thing', type: 'boolean', default: false, scope: 'workspace', description: 'A workspace thing', category: 'General' });
+    registry.register({ key: 'canvas.thing', type: 'boolean', default: false, scope: 'user', description: 'A canvas thing', category: 'Canvas' });
+    return registry;
+  };
+  const active = (root: HTMLElement) => root.querySelector('.settings-editor__nav-item--active')?.textContent?.trim();
+  const late = () => settingsPanelRegistry.register({
+    id: 'appearance', label: 'Appearance', order: 10, description: 'Registers after the hub opens',
+    render(host: HTMLElement) { const m = document.createElement('div'); m.className = 'late-look-body'; host.appendChild(m); return { dispose: () => m.remove() }; },
+  });
+
+  // The gear menu's Appearance… opened Settings on General: the Appearance
+  // tool is lazy and registers its panel a moment after the hub renders.
+  it('lands on the panel once it registers', async () => {
+    const registry = await lateRegistry();
+    const editor = new SettingsEditor(document.body, registry, undefined, 'appearance');
+    editor.show();
+    const root = document.body.querySelector('.settings-editor') as HTMLElement;
+    expect(active(root)).toBe('General');
+    const reg = late();
+    try {
+      expect(active(root)).toBe('Appearance');
+      expect(root.querySelector('.late-look-body')).not.toBeNull();
+    } finally {
+      reg.dispose();
+      editor.dispose();
+    }
+  });
+
+  it('leaves the page alone when the user picked one before the panel arrived', async () => {
+    const registry = await lateRegistry();
+    const editor = new SettingsEditor(document.body, registry, undefined, 'appearance');
+    editor.show();
+    const root = document.body.querySelector('.settings-editor') as HTMLElement;
+    Array.from(root.querySelectorAll<HTMLElement>('.settings-editor__nav-item')).find((n) => n.textContent?.trim() === 'Canvas')!.click();
+    expect(active(root)).toBe('Canvas');
+    const reg = late();
+    try {
+      expect(active(root)).toBe('Canvas');
+    } finally {
+      reg.dispose();
+      editor.dispose();
+    }
+  });
+});

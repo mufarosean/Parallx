@@ -310,10 +310,12 @@ const THEME_PX_DESIGN_BRIDGE: ReadonlyArray<readonly [string, string]> = [
   ['--parallx-radius-xl', 'var(--px-radius-xl)'],   // 12 → 14
   ['--parallx-radius-full', 'var(--px-radius-full)'],
 
-  // UI font — a refined modern sans stack. Inter if present, else the OS
-  // variable sans (Segoe UI Variable on Win, SF on macOS) — both excellent.
-  ['--parallx-fontFamily-ui',
-   "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif"],
+  // UI font — whatever --px-font-ui says at :root: the font the user picked
+  // in Appearance (pxAppearance sets it there), else the Inter stack. This
+  // rule sits on <body>, so a literal stack here masked the choice for
+  // every element inside it: the picker changed about one text in ten, the
+  // ones reading --px-font-ui directly (font-reach probe, 2026-10-03).
+  ['--parallx-fontFamily-ui', 'var(--px-font-ui)'],
 ];
 
 // ─── ThemeService Implementation ─────────────────────────────────────────────

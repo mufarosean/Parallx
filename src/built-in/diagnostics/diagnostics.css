@@ -45,7 +45,6 @@
   align-items: center;
   gap: var(--px-space-2);
   padding: 2px var(--px-space-2);
-  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: var(--px-text-sm);
   border-bottom: 1px solid var(--px-divider);
   min-height: 22px;
@@ -73,6 +72,8 @@
 }
 .diagnostics-row-detail {
   flex: 1;
+  /* The check's own output (errors, URLs, versions) reads as code; its name is a label. */
+  font-family: var(--px-font-mono);
   color: var(--px-text-muted);
   font-size: var(--px-text-xs);
   overflow: hidden;

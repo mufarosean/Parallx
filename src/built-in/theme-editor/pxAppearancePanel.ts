@@ -51,6 +51,7 @@ export class PxAppearancePanel implements IDisposable {
   private readonly _modeButtons = new Map<PxMode, HTMLElement>();
   private readonly _baseCards = new Map<PxBaseTheme, HTMLElement>();
   private readonly _accentChips = new Map<string, HTMLElement>();
+  private readonly _fontChips = new Map<string, HTMLButtonElement>();
   private _hueRow?: HTMLElement;
   private _hueInput?: HTMLInputElement;
   private _presetsRow?: HTMLElement;
@@ -118,7 +119,8 @@ export class PxAppearancePanel implements IDisposable {
     row.className = 'px-font-row';
     row.setAttribute('role', 'group');
     row.setAttribute('aria-label', 'App font');
-    const chips = new Map<string, HTMLButtonElement>();
+    const chips = this._fontChips;
+    chips.clear();
     const current = this._state.font ?? DEFAULT_FONT_ID;
     for (const font of PX_FONTS) {
       const chip = document.createElement('button');
@@ -138,13 +140,18 @@ export class PxAppearancePanel implements IDisposable {
       chip.addEventListener('click', () => {
         this._state.font = font.id === DEFAULT_FONT_ID ? undefined : font.id;
         this._commit();
-        for (const [id, c] of chips) c.classList.toggle('is-selected', id === font.id);
+        this._syncFontSelection();
       });
       chips.set(font.id, chip);
       row.appendChild(chip);
     }
     section.appendChild(row);
     return section;
+  }
+
+  private _syncFontSelection(): void {
+    const current = this._state.font ?? DEFAULT_FONT_ID;
+    for (const [id, chip] of this._fontChips) chip.classList.toggle('is-selected', id === current);
   }
 
   // ── Mode (light / dark) ───────────────────────────────────────────────
@@ -463,12 +470,15 @@ export class PxAppearancePanel implements IDisposable {
       apply.appendChild(label);
 
       apply.addEventListener('click', () => {
-        this._state = { mode: preset.mode, base: preset.base, accent: preset.accent, customHue: preset.customHue };
+        // A look saved before fonts existed carries none: keep the current one.
+        const font = preset.font ?? this._state.font;
+        this._state = { mode: preset.mode, base: preset.base, accent: preset.accent, customHue: preset.customHue, font: font === DEFAULT_FONT_ID ? undefined : font };
         this._commit();
         this._syncEditorTheme();
         this._syncModeSelection();
         this._syncBaseSelection();
         this._syncAccentSelection();
+        this._syncFontSelection();
       });
       chip.appendChild(apply);
 

@@ -87,6 +87,12 @@ describe('savePreset — carries mode', () => {
     const preset = savePreset('Paper', { mode: 'light', base: 'warm', accent: 'sage' });
     expect(preset.mode).toBe('light');
   });
+
+  // A saved look dropped the font, so applying it put the app back on Inter.
+  it('persists the font into the saved look, the default stated as such', () => {
+    expect(savePreset('Serif', { mode: 'dark', base: 'slate', accent: 'steel', font: 'georgia' }).font).toBe('georgia');
+    expect(savePreset('Plain', { mode: 'dark', base: 'slate', accent: 'steel' }).font).toBe('inter');
+  });
 });
 
 // ─── Durable persistence (2026-08-06) ───────────────────────────────────────

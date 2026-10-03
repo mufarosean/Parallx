@@ -248,6 +248,9 @@ export function savePreset(name: string, state: PxAppearanceState): PxThemePrese
     base: state.base,
     accent: state.accent,
     customHue: state.customHue,
+    // Stated even when it is the default, so applying the look restores it;
+    // looks saved before fonts existed carry none and leave the font alone.
+    font: state.font ?? DEFAULT_FONT_ID,
   };
   const presets = readPresets();
   presets.push(preset);
@@ -358,9 +361,10 @@ export function applyAppearance(state: PxAppearanceState): void {
     }
   }
 
-  // UI font — inline on :root beats the theme bridge's stylesheet rule, so
-  // every surface that reads --parallx-fontFamily-ui (or its --px-font-ui
-  // alias) follows. The default clears the override rather than restating it.
+  // UI font — set on :root, where --px-font-ui reads it; the theme bridge's
+  // <body> rule points --parallx-fontFamily-ui back at --px-font-ui, so both
+  // names, and everything inheriting the body font, follow. The default
+  // clears the override rather than restating it.
   if (state.font && state.font !== DEFAULT_FONT_ID) {
     root.style.setProperty('--parallx-fontFamily-ui', resolveFontStack(state.font));
   } else {

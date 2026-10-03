@@ -56,4 +56,15 @@ describe('font compliance — one font vocabulary', () => {
       expect(tokens, `missing alias ${name}`).toContain(name);
     }
   });
+
+  it('the theme bridge leaves the UI font to the Appearance choice', () => {
+    // The bridge writes --parallx-fontFamily-ui on <body>; Appearance sets the
+    // user's font at :root, where --px-font-ui reads it. A literal stack in the
+    // bridge masked the choice for everything inside <body>: picking a font
+    // changed about one text in ten (font-reach probe, 2026-10-03).
+    const theme = readFileSync(resolve(ROOT, 'src/services/themeService.ts'), 'utf8');
+    const entry = theme.match(/\['--parallx-fontFamily-ui',\s*'([^']*)'\]/);
+    expect(entry, 'bridge entry for --parallx-fontFamily-ui not found').not.toBeNull();
+    expect(entry![1]).toBe('var(--px-font-ui)');
+  });
 });
