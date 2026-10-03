@@ -8,6 +8,7 @@
 import { Disposable, toDisposable, type IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { $, addDisposableListener, layoutPopup } from './dom.js';
+import { enterMode, type ModeHandle } from './interactionMode.js';
 import './dropdown.css';
 
 // ─── Options ─────────────────────────────────────────────────────────────────
@@ -81,6 +82,11 @@ export class Dropdown extends Disposable {
   private _selectedValue: string | undefined;
   private _placeholder: string;
   private _isOpen = false;
+  /** While the list is open the dropdown is the topmost interaction mode, so
+   *  Enter and Escape reach it before the dialog it sits in (Escape in a
+   *  Settings dropdown used to close Settings; Enter in a Planner dialog's
+   *  dropdown saved the dialog). */
+  private _mode: ModeHandle | undefined;
   private _focusedIndex = -1;
   private _disabled: boolean;
 
@@ -321,6 +327,14 @@ export class Dropdown extends Disposable {
 
   private _open(): void {
     this._isOpen = true;
+    this._mode = enterMode({
+      id: 'dropdown',
+      ownedRoots: () => [this.element, this._list],
+      onExit: () => { if (this._mode) { this._mode = undefined; this._close(); } },
+      onKeydown: (e) => this._handleOpenKey(e),
+      // Focus never leaves the trigger while open; nothing to restore.
+      restoreFocus: false,
+    });
     this.element.classList.add('ui-dropdown--open');
     this._button.setAttribute('aria-expanded', 'true');
 
@@ -341,6 +355,9 @@ export class Dropdown extends Disposable {
   }
 
   private _close(): void {
+    const mode = this._mode;
+    this._mode = undefined;
+    mode?.exit();
     this._isOpen = false;
     this.element.classList.remove('ui-dropdown--open');
     this._button.setAttribute('aria-expanded', 'false');
@@ -353,34 +370,45 @@ export class Dropdown extends Disposable {
     if (!this._isOpen) {
       if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
+        // The key that opens the list is the list's: a dialog listening in
+        // the bubble phase must not also act on it (Enter = Save).
+        e.stopPropagation();
         this._open();
       }
       return;
     }
+    // Open: the interaction-mode stack normally delivers these first (and
+    // consumes them); this path covers a list opened outside the stack's
+    // reach. Escape too, so a host's own Escape listener never sees it.
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      this._close();
+      return;
+    }
+    if (this._handleOpenKey(e)) { e.preventDefault(); e.stopPropagation(); }
+  }
 
+  /** Keys while the list is open. True when the key was the list's. */
+  private _handleOpenKey(e: KeyboardEvent): boolean {
     switch (e.key) {
       case 'ArrowDown':
-        e.preventDefault();
         this._focusedIndex = Math.min(this._focusedIndex + 1, this._items.length - 1);
         this._updateFocusedClass();
-        break;
+        return true;
       case 'ArrowUp':
-        e.preventDefault();
         this._focusedIndex = Math.max(this._focusedIndex - 1, 0);
         this._updateFocusedClass();
-        break;
+        return true;
       case 'Enter':
       case ' ':
-        e.preventDefault();
         if (this._focusedIndex >= 0 && this._focusedIndex < this._items.length) {
           this._select(this._items[this._focusedIndex].value);
         }
         this._close();
-        break;
-      case 'Escape':
-        e.preventDefault();
-        this._close();
-        break;
+        return true;
+      default:
+        return false;
     }
   }
 

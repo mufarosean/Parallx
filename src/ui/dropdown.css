@@ -86,12 +86,12 @@
    sufficient on its own. */
 .ui-dropdown__list {
   position: fixed;
-  /* Above every overlay that can HOST a dropdown trigger (planner popover
-     1150, dashboard modal 1200, pdf/notification layers 10000): the list is
-     a body-level sibling of those overlays, so a lower value paints the
-     opaque form OVER the open list. Safe to sit this high — the list exists
-     only while open and self-dismisses on any outside mousedown/scroll/resize. */
-  z-index: 10005;
+  /* The popup layer (--px-z-popup): above every modal that can HOST a
+     dropdown trigger — Settings, planner and dashboard dialogs, PDF export.
+     The list is a body-level sibling of those overlays, so a lower value
+     paints the form OVER the open list (Settings' 14 dropdowns could not be
+     picked). Safe this high: the list exists only while open. */
+  z-index: var(--px-z-popup);
   padding: 4px 0;
   background: var(--vscode-dropdown-listBackground, var(--vscode-editorWidget-background, #252526));
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-widget-border, #454545));

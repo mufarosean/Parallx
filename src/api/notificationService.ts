@@ -479,10 +479,32 @@ export function showConfirmModal(
       ownedRoots: () => [box],
       onExit: () => finish(false),
       onKeydown: (e) => {
-        if (e.key === 'Enter') { finish(true); return true; }
+        // Enter presses the button that has focus. It used to confirm
+        // whatever was focused, so Enter on a focused Cancel ran the
+        // destructive action (Reset Workspace Settings reset every key).
+        // With focus on neither button, Enter means the default one: Cancel
+        // on a destructive confirm, the confirm button otherwise.
+        if (e.key === 'Enter') {
+          const focused = document.activeElement;
+          if (focused === cancelBtn) finish(false);
+          else if (focused === okBtn) finish(true);
+          else finish(!(options.danger && cancelBtn));
+          return true;
+        }
+        // Tab stays inside the dialog: it cycles its buttons.
+        if (e.key === 'Tab') {
+          const buttons = [cancelBtn, okBtn].filter((b): b is HTMLButtonElement => !!b);
+          const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+          const next = (at + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length;
+          buttons[at < 0 ? 0 : next].focus();
+          e.preventDefault();
+          return true;
+        }
         return false;
       },
     });
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-label', options.message);
 
     // Focus the SAFE button by default on destructive confirms.
     requestAnimationFrame(() => {

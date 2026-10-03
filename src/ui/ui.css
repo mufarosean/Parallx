@@ -422,7 +422,7 @@
   align-items: flex-start;
   justify-content: center;
   padding-top: 20vh;
-  z-index: 20000;
+  z-index: var(--px-z-modal);
 }
 
 .ui-overlay--transparent {
@@ -586,7 +586,7 @@
 
 .context-menu {
   position: fixed;
-  z-index: 2575;
+  z-index: var(--px-z-popup);
   min-width: 160px;
   max-width: 320px;
   padding: 4px 0;
@@ -637,19 +637,20 @@
 }
 .context-menu--has-checks .context-menu-item-check { display: inline-flex; }
 
-/* Destructive rows (Delete). */
+.context-menu-item:hover,
+.context-menu-item--selected {
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+/* Destructive rows (Delete). After the hover rule: same specificity, so the
+   later rule wins, and a red row must stay red when hovered. */
 .context-menu-item--danger { color: var(--px-danger, #e5484d); }
 .context-menu-item--danger .context-menu-item-icon { opacity: 1; }
 .context-menu-item--danger:hover,
 .context-menu-item--danger.context-menu-item--selected {
   background: var(--px-danger, #e5484d);
   color: #fff;
-}
-
-.context-menu-item:hover,
-.context-menu-item--selected {
-  background: var(--vscode-menu-selectionBackground);
-  color: var(--vscode-menu-selectionForeground);
 }
 
 .context-menu-item--disabled {

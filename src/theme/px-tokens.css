@@ -249,6 +249,13 @@
   --px-ease-out:    cubic-bezier(0.16, 1, 0.3, 1);      /* enter              */
   --px-ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);    /* press / pop (subtle overshoot) */
 
+  /* Layers — the order surfaces stack in. A popup (menu, dropdown list)
+     belongs to whatever opened it, so it sits above every modal that can
+     host one: Settings is a modal, and its dropdowns used to open behind it. */
+  --px-z-modal:   20000;   /* dialogs and their scrims (Settings, confirms) */
+  --px-z-popup:   30000;   /* context menus, dropdown lists                 */
+  --px-z-tooltip: 99999;   /* tooltips, over everything                     */
+
   /* Press — the physical-button feel. Controls translate + dim shadow on
      :active so a click feels like depressing a key. */
   --px-press: translateY(0.5px) scale(0.992);
