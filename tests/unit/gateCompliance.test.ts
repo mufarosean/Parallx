@@ -54,6 +54,7 @@ const EXEMPT_FILES = new Set([
   'canvasIcons.ts',                // Raw icon data (consumed only by IconRegistry)
   'contentSchema.ts',              // Schema constants
   'unknownContent.ts',             // Unknown-node placeholders (pure JSON, like contentSchema)
+  'paneMirror.ts',                 // Editors of one page share edits (no gate interaction)
   'markdownExport.ts',             // Export utility
   'markdownImport.ts',             // Import utility (M64 Iter 1)
   'dashboardWidgets.ts',           // M86 — dashboard widget contribution (data service + markdownExport only; no gate interaction)

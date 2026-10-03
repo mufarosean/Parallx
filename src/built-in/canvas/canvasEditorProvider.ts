@@ -41,6 +41,7 @@ import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuReg
 import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuRegistry.js';
 import { motionReduced } from '../../ui/motionPreference.js';
 import { editorContentForStorage, wrapUnknownContent } from './unknownContent.js';
+import { joinPaneMirror, broadcastPaneDoc, type PaneMirrorTarget } from './paneMirror.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -290,8 +291,10 @@ export class CanvasEditorProvider {
 
 // ─── Canvas Editor Pane ─────────────────────────────────────────────────────
 
-class CanvasEditorPane implements IDisposable {
+class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
   private _editor: Editor | null = null;
+  /** Leaves the page's pane mirror (see paneMirror.ts). */
+  private _leaveMirror: (() => void) | null = null;
   private _editorContainer: HTMLElement | null = null;
   private _menuRegistry!: CanvasMenuRegistry;
   private _disposed = false;
@@ -583,6 +586,8 @@ class CanvasEditorPane implements IDisposable {
         if (!this._initialContentLoaded) return;
         const json = editorContentForStorage(editor);
         this._dataService.scheduleContentSave(this._pageId, json);
+        // Other editors showing this page take the edit too (C5).
+        broadcastPaneDoc(this, editor.getJSON());
       },
       onTransaction: ({ editor, transaction }) => {
         if (this._suppressUpdate) return;
@@ -633,6 +638,10 @@ class CanvasEditorPane implements IDisposable {
 
     // Bail out if disposed during async content load
     if (this._disposed) return;
+
+    // One document across every editor of this page (split panes): see
+    // applyMirroredDoc.
+    if (this._pageId) this._leaveMirror = joinPaneMirror(this._pageId, this);
 
     // Expose editor for E2E tests (test mode only)
     if ((window as any).parallxElectron?.testMode) {
@@ -1339,9 +1348,31 @@ class CanvasEditorPane implements IDisposable {
     await this._dataService.commitPageClose(this._pageId, finalJson);
   }
 
+  get mirrorPageId(): string | null { return this._pageId || null; }
+
+  /**
+   * Another editor of this page changed it: apply the same doc here, history
+   * free and without saving it again (that editor saves).  Without this, two
+   * panes on one page were two documents, and the later save erased the other
+   * pane's edits (C5).
+   */
+  applyMirroredDoc(docJson: unknown): void {
+    if (this._disposed || !this._editor || !this._initialContentLoaded) return;
+    const json = docJson as { type: string; content?: unknown[] };
+    this._suppressUpdate = true;
+    try {
+      if (!this._applyExternalDoc(json)) this._editor.commands.setContent(json as any);
+      this._pageBlockIds = this._collectPageBlockIds(this._editor);
+    } finally {
+      this._suppressUpdate = false;
+    }
+  }
+
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
+    this._leaveMirror?.();
+    this._leaveMirror = null;
 
     this._aiStatusEl?.remove();
     this._aiStatusEl = null;

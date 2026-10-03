@@ -211,3 +211,25 @@ describe('C4: typing after inserting a block from the slash menu keeps the block
     });
   }
 });
+
+// ── C5: two editors on one page ──────────────────────────────────────────────
+// The pane itself is checked in the app (split, edit in both, close either:
+// both edits stay — before the fix the later save erased the other pane's).
+// This pins the mirror's own contract.
+
+describe('C5: editors of one page share every edit', () => {
+  it('an edit reaches the other editors of the page only', async () => {
+    const { joinPaneMirror, broadcastPaneDoc, paneMirrorSize } = await import('../../src/built-in/canvas/paneMirror');
+    const got: Record<string, unknown[]> = { a: [], b: [], c: [] };
+    const mkTarget = (name: string, pageId: string) => ({ mirrorPageId: pageId, applyMirroredDoc: (d: unknown) => got[name].push(d) });
+    const a = mkTarget('a', 'p1'), b = mkTarget('b', 'p1'), c = mkTarget('c', 'p2');
+    const leaveA = joinPaneMirror('p1', a), leaveB = joinPaneMirror('p1', b), leaveC = joinPaneMirror('p2', c);
+    broadcastPaneDoc(a, { doc: 1 });
+    expect(got).toEqual({ a: [], b: [{ doc: 1 }], c: [] });
+    leaveB();
+    broadcastPaneDoc(a, { doc: 2 });
+    expect(got.b).toEqual([{ doc: 1 }]);
+    leaveA(); leaveC();
+    expect(paneMirrorSize('p1')).toBe(0);
+  });
+});
