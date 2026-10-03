@@ -15130,13 +15130,10 @@ function moEnableDropImport(el, api) {
 
 // ── Home feed ──
 
+// The grid's formatter, so a video reads the same in the feed and the grid
+// (this one rounded: 59.6 s was 1:00 here and 0:59 on its tile).
 function moHomeDuration(sec) {
-  const s = Math.max(0, Math.round(Number(sec) || 0));
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  const ss = s % 60;
-  return h > 0 ? `${h}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}` : `${mm}:${String(ss).padStart(2, '0')}`;
+  return formatDuration(Number(sec) || 0) || '0:00';
 }
 
 /**
@@ -38866,8 +38863,12 @@ export async function activate(api, context) {
         document.removeEventListener('mo:reply-selection', handler);
         const sel = (e.detail && e.detail.selectedIds) || new Set();
         const items = [...sel].map(s => { const [type, id] = s.split(':'); return { type, id: parseInt(id, 10) }; });
+        if (!items.length) {
+          api.window.showInformationMessage('Select photos or videos in the library first, then Move to Trash.');
+          return;
+        }
         const n = await moMoveToTrash(api, items);
-        api.window.showInformationMessage(`Moved ${n} item${n === 1 ? '' : 's'} to trash.`);
+        api.window.showInformationMessage(`Moved ${n} item${n === 1 ? '' : 's'} to Trash. Restore brings them back; after ${MO_TRASH_DAYS} days they are deleted.`);
         const refresh = new CustomEvent('mo:refresh-grid');
         document.dispatchEvent(refresh);
       };

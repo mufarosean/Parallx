@@ -7417,6 +7417,8 @@ async function renderBrowse(body, route, setRoute) {
     if (addForm.style.display === '') frontIn.focus();
   });
   view.appendChild(addForm);
+  // Arrived by New Card: the form is what was asked for.
+  if (route.addCard) { addForm.style.display = ''; setTimeout(() => frontIn.focus(), 0); }
 
   // Toolbar: search + the view controls. Grouping and density are REAL
   // controls (core dropdowns), not chips — chips are content filters, and
@@ -10922,11 +10924,15 @@ async function renderStats(body) {
       bar.style.height = `${Math.max(6, Math.round((day.count / max) * 100))}%`;
       if (i === stats.last30.length - 1) bar.classList.add('fc-chart__bar--today');
     }
-    bar.title = `${new Date(day.day).toLocaleDateString()}: ${day.count} reviews`;
+    bar.title = `${new Date(day.day).toLocaleDateString()}: ${day.count} ${day.count === 1 ? 'review' : 'reviews'}`;
     chart.appendChild(bar);
   });
   view.appendChild(chart);
-  view.appendChild(el('div', 'fc-chart-caption', `Peak day: ${max} reviews`));
+  // `max` is floored at 1 for the bar scale; the caption reports the real peak.
+  const peak = Math.max(0, ...stats.last30.map((d) => d.count));
+  view.appendChild(el('div', 'fc-chart-caption', peak > 0
+    ? `Peak day: ${peak} ${peak === 1 ? 'review' : 'reviews'}`
+    : 'No reviews in the last 30 days.'));
 
   // ── Scheduled load, next 14 days ──
   view.appendChild(el('div', 'fc-label', 'Scheduled, next 14 days'));
@@ -11861,7 +11867,13 @@ function registerCommands(context) {
     ['flashcards.study', () => openFlashcards({ view: 'study' })],
     ['flashcards.customStudy', () => openFlashcards({ view: 'custom' })],
     ['flashcards.newDeck', () => _cmdNewDeck()],
-    ['flashcards.newCard', () => openFlashcards()],
+    // New Card opens a deck with its Add Card form ready (it used to open
+    // Decks and leave the person to find the form). The most recently made
+    // deck; with no deck yet, Decks, whose empty state starts one.
+    ['flashcards.newCard', async () => {
+      const deck = await db.get('SELECT id FROM fc_decks WHERE archived = 0 ORDER BY id DESC LIMIT 1').catch(() => null);
+      return openFlashcards(deck ? { view: 'browse', deckId: deck.id, addCard: true } : undefined);
+    }],
     ['flashcards.generate', () => openFlashcards({ view: 'create' })],
     ['flashcards.stats', () => openFlashcards({ view: 'stats' })],
     // Direct capture surface for other tools and the AI:

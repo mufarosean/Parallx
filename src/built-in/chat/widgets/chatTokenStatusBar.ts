@@ -24,6 +24,7 @@ import { $ } from '../../../ui/dom.js';
 
 import './chatTokenStatusBar.css';
 import type { ITokenStatusBarServices } from '../chatTypes.js';
+import { formatTokens } from './chatEngineChip.js';
 
 // ITokenStatusBarServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { ITokenStatusBarServices } from '../chatTypes.js';
@@ -364,14 +365,15 @@ export class ChatTokenStatusBar extends Disposable {
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (circumference * Math.min(pct, 100)) / 100;
 
-    let fillColor = '#4ec9b0'; // teal/green
-    if (pct >= 90) fillColor = '#f14c4c'; // red
-    else if (pct >= 70) fillColor = '#cca700'; // amber
+    // Theme tokens, through style (presentation attributes cannot read var()).
+    let fillColor = 'var(--px-success)';
+    if (pct >= 90) fillColor = 'var(--px-danger)';
+    else if (pct >= 70) fillColor = 'var(--px-warning)';
 
     return [
       `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`,
-      `<circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" stroke="#3c3c3c" stroke-width="${stroke}"/>`,
-      `<circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" stroke="${fillColor}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" transform="rotate(-90 ${size / 2} ${size / 2})"/>`,
+      `<circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" style="stroke: var(--px-divider)" stroke-width="${stroke}"/>`,
+      `<circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" style="stroke: ${fillColor}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" transform="rotate(-90 ${size / 2} ${size / 2})"/>`,
       `</svg>`,
     ].join('');
   }
@@ -563,24 +565,25 @@ export class ChatTokenStatusBar extends Disposable {
     const innerW = w - 2;
     const fillW = Math.max(0, Math.min(innerW, (innerW * pct) / 100));
 
-    let fillColor = '#4ec9b0';
-    if (pct >= 90) fillColor = '#f14c4c';
-    else if (pct >= 70) fillColor = '#cca700';
+    // Theme tokens through style (a presentation attribute cannot read a
+    // var()): the track was #3c3c3c, a dark bar on a light panel.
+    let fillColor = 'var(--px-success)';
+    if (pct >= 90) fillColor = 'var(--px-danger)';
+    else if (pct >= 70) fillColor = 'var(--px-warning)';
 
     return [
       `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">`,
-      `<rect x="0" y="0" width="${w}" height="${h}" rx="3" ry="3" fill="#3c3c3c"/>`,
-      fillW > 0 ? `<rect x="1" y="1" width="${fillW}" height="${h - 2}" rx="2" ry="2" fill="${fillColor}"/>` : '',
+      `<rect x="0" y="0" width="${w}" height="${h}" rx="3" ry="3" style="fill: var(--px-divider)"/>`,
+      fillW > 0 ? `<rect x="1" y="1" width="${fillW}" height="${h - 2}" rx="2" ry="2" style="fill: ${fillColor}"/>` : '',
       `</svg>`,
     ].join('');
   }
 
   // ── Formatting ──
 
+  /** The engine chip's format (1K = 1024), so one window reads the same
+   *  in both places: it was "128K" on the chip and "131.1K" here. */
   private _formatTokens(n: number): string {
-    if (n >= 1000) {
-      return `${(n / 1000).toFixed(1)}K`;
-    }
-    return `${n}`;
+    return n >= 1024 ? formatTokens(n) : `${n}`;
   }
 }

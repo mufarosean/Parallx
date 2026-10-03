@@ -1495,7 +1495,10 @@ async function persistPractice(announce = false): Promise<void> {
 }
 /** "today", "yesterday", "N days ago": how Home and the quiz screens date things. */
 function when(ms: number): string {
-  const days = Math.floor((Date.now() - ms) / 86400000);
+  // Calendar days, not 24-hour spans: 11 pm last night is "yesterday" at
+  // 8 am, which the elapsed-time count called "today".
+  const midnight = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const days = Math.round((midnight(Date.now()) - midnight(ms)) / 86400000);
   return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
 }
 /** `when` at the start of a fragment: "Today", "Yesterday", "3 days ago". */
@@ -1581,8 +1584,9 @@ function createQuizzesPane(container: HTMLElement) {
       createEmptyState(listHost, {
         icon: 'list-checks',
         headline: 'No quizzes yet.',
-        hint: 'New Quiz builds one; Home and the Dashboard start them from starred, due and drawn problems.',
-        action: { label: 'New Quiz', onClick: () => openBuilder() },
+        // New Quiz is the header's primary action; a second one here made
+        // two primaries for the same thing (one per view).
+        hint: 'New Quiz builds one from the problems you choose. Starred and due problems can also start one from Home.',
       });
       return;
     }

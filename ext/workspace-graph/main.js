@@ -2839,9 +2839,11 @@ export async function activate(api, context) {
   });
   context.subscriptions.push(openCmd);
 
-  const refreshCmd = api.commands.registerCommand('workspaceGraph.refresh', () => {
-    // Refresh is handled within the editor/sidebar instances.
-    // This command just re-opens the editor if not already open.
+  // Refresh rebuilds the graph now, then shows it. (It used to only open the
+  // editor, which refreshed nothing that was already open.)
+  const refreshCmd = api.commands.registerCommand('workspaceGraph.refresh', async () => {
+    if (_model._api) await _model.refresh().catch(err => console.warn('[WorkspaceGraph] refresh failed:', err));
+    _refreshWhileHidden = false;
     api.editors.openEditor({ typeId: 'workspace-graph', title: 'Workspace Graph', icon: 'codicon-graph', instanceId: 'main' });
   });
   context.subscriptions.push(refreshCmd);
