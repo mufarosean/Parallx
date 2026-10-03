@@ -64,7 +64,7 @@ async function triggerSyncFromUI(api, _opts = {}) {
     return { alreadyRunning: true };
   }
   if (!api.lm || !api.mcp) {
-    await api.window?.showErrorMessage?.('Budget sync needs the language-model and MCP APIs. Open Settings → MCP Servers and connect Gmail.');
+    await api.window?.showErrorMessage?.('Budget sync needs a model and the Gmail connection. Connect Gmail in Settings › AI › MCP Servers.');
     return { ok: false, error: 'missing lm/mcp api' };
   }
   _syncInFlight = true;
@@ -8570,12 +8570,26 @@ export async function activate(api, context) {
 
   // 1b) Reprocess history — backfill tx_type / account_id on legacy rows.
   _disposables.push(api.commands.registerCommand('budget.reprocessHistory', async () => {
+    // The "…" promises a dialog: say what it changes before it changes it.
+    const ok = await api.window.showConfirmModal({
+      message: 'Reprocess the whole history?',
+      detail: 'Rows with no type get one from their email, and rows with no category get one from your rules. Types and categories you set yourself stay as they are.',
+      confirmLabel: 'Reprocess',
+    });
+    if (!ok) return;
     try {
       const r = await reprocessHistory(api);
-      const ambig = r.ambiguous ? ` ${r.ambiguous} row(s) remain untyped. Use Reclassify untyped to ask the AI.` : '';
-      await api.window?.showInformationMessage?.(
-        `Reprocessed ${r.updated} legacy row(s); rules categorized ${r.categorized} previously-uncategorized row(s). Errors: ${r.errors}.${ambig}`,
-      );
+      const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+      const parts = [`${n(r.updated, 'row typed', 'rows typed')}`, `${n(r.categorized, 'row categorized by your rules', 'rows categorized by your rules')}`];
+      if (r.errors) parts.push(`${n(r.errors, 'error', 'errors')}`);
+      const msg = `Reprocessed: ${parts.join(', ')}.`;
+      if (r.ambiguous) {
+        const pick = await api.window?.showInformationMessage?.(
+          `${msg} ${n(r.ambiguous, 'row still has', 'rows still have')} no type.`, { title: 'Ask the AI' });
+        if (pick?.title === 'Ask the AI') await api.commands.executeCommand('budget.reclassifyUntyped');
+      } else {
+        await api.window?.showInformationMessage?.(msg);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await api.window?.showErrorMessage?.(`Reprocess failed: ${msg}`);

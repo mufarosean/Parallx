@@ -988,44 +988,6 @@
   color: var(--px-danger);
 }
 
-/* ── Context menu (existing) ──────────────────────────────────────────── */
-
-.planner-menu-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1100;
-}
-.planner-menu {
-  min-width: 180px;
-  padding: 4px;
-  background: var(--vscode-menu-background, #2c2c2c);
-  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 16%, transparent);
-  border-radius: 8px;
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.42);
-  animation: planner-menu-in 140ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes planner-menu-in {
-  from { transform: translateY(-2px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
-}
-.planner-menu__item {
-  display: block;
-  width: 100%;
-  padding: 6px 10px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: var(--px-text-sm);
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--px-dur-fast) var(--px-ease);
-}
-.planner-menu__item:hover { background: var(--vscode-menu-selectionBackground, color-mix(in srgb, var(--vscode-button-background, #0e639c) 40%, transparent)); color: var(--vscode-menu-selectionForeground, #fff); }
-.planner-menu__item--danger:hover { background: color-mix(in srgb, var(--px-danger) 22%, transparent); color: var(--px-danger); }
-
-
 /* ── Calendar chrome — sharp, no pills ────────────────────────────────── */
 
 /* "Today" — outlined sharp button, header baseline 13px / 28px */
@@ -1107,32 +1069,6 @@
 /* Primary CTA — 13px header baseline */
 /* .planner-cta is only a hook now (the new-item command anchors its popover
    to it); the button itself is the kit's primary button. */
-
-/* Narrow variant of the planner menu — view dropdown. Sized to its
-   content: short labels (Month / Week / Day) shouldn't get a 140px
-   row that looks half-empty. */
-.planner-menu--narrow {
-  min-width: 0;
-  width: max-content;
-  padding: 3px;
-}
-/* Items must STACK: inline-flex + width:auto let the buttons flow onto one
-   row inside the max-content menu (the "Month  Week  Day" strip bug) —
-   `display: flex` keeps each item a block-level row. */
-.planner-menu--narrow .planner-menu__item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-width: 96px;
-  height: 26px;
-  padding: 0 8px;
-  font-size: var(--px-text-base);
-}
-.planner-menu--narrow .planner-menu__item svg {
-  flex: 0 0 12px;
-  color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 90%, transparent);
-}
 
 .planner-month {
   /* Sharp grid with full outer border — calendar reads as a contained frame */

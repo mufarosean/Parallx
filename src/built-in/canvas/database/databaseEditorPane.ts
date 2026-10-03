@@ -63,6 +63,8 @@ export interface IDatabasePaneDeps {
   openPage(pageId: string): void;
   /** Rename the database page (title lives on pages). */
   renamePage(pageId: string, title: string): Promise<void>;
+  /** The app's confirmation modal, for actions that lose data. */
+  confirm?(options: { message: string; detail?: string; confirmLabel?: string; danger?: boolean }): Promise<boolean>;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -761,6 +763,20 @@ export class DatabaseEditorPane implements IDisposable {
     });
   }
 
+  /** A row's page goes to Trash, but its values in this database are gone
+   *  for good, so it asks first. */
+  private async _deleteRow(row: IDatabaseRow): Promise<void> {
+    const ok = this._deps.confirm
+      ? await this._deps.confirm({
+        message: 'Delete this row?',
+        detail: 'Its page moves to Trash. The values it held in this database are removed and do not come back with it.',
+        confirmLabel: 'Delete Row',
+        danger: true,
+      })
+      : true;
+    if (ok) await this._deps.db.removeRow(this._databaseId, row.pageId);
+  }
+
   private _openRowMenu(e: MouseEvent, row: IDatabaseRow): void {
     const anchor = el('span');
     anchor.style.position = 'fixed';
@@ -769,7 +785,7 @@ export class DatabaseEditorPane implements IDisposable {
     document.body.appendChild(anchor);
     this._openPopover(anchor, (pop) => {
       pop.appendChild(this._menuItem('Open', () => this._deps.openPage(row.pageId)));
-      pop.appendChild(this._menuItem('Delete row', () => void this._deps.db.removeRow(this._databaseId, row.pageId), true));
+      pop.appendChild(this._menuItem('Delete Row…', () => void this._deleteRow(row), true));
     });
     setTimeout(() => anchor.remove(), 0);
   }

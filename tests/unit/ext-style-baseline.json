@@ -10,7 +10,7 @@
   },
   "budget": {
     "rawColor": 30,
-    "pxFontSize": 12,
+    "pxFontSize": 10,
     "uppercase": 0,
     "emoji": 3,
     "nativeConfirm": 0,

@@ -5,7 +5,6 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { renderEmptyState } from '../../ui/emptyStates.js';
-import { attachPopupDismiss } from '../../ui/dom.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerCalendar, PlannerEvent, PlannerTask, SeriesEditScope, TaskStatus, UpdateEventInput } from './plannerTypes.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
@@ -17,6 +16,7 @@ import { PlannerTodayView, isLate, isOverdue, quickPlanOptions } from './planner
 import { Dropdown, type IDropdownItem } from '../../ui/dropdown.js';
 import { createIconElement, getIcon } from '../../ui/iconRegistry.js';
 import { createButton } from '../../ui/kit.js';
+import { showExtensionContextMenu } from '../../ui/contextMenu.js';
 
 interface PlannerEditorInput {
   readonly id: string;          // === instanceId; only one ('main') for M82
@@ -45,6 +45,7 @@ interface PlannerEditorApi {
     showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+    showConfirmModal?(options: { message: string; detail?: string; confirmLabel?: string; cancelLabel?: string | null; danger?: boolean }): Promise<boolean>;
   };
   /** The activity journal: the planner narrates the user's own task work. */
   activity?: {
@@ -850,7 +851,7 @@ class PlannerEditorPane implements IDisposable {
     more.title = 'More Actions';
     more.setAttribute('aria-label', 'More Actions');
     more.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
-    more.addEventListener('click', () => void this._openTaskMenu(task, more.getBoundingClientRect()));
+    more.addEventListener('click', () => this._openTaskMenu(task, more));
     right.appendChild(more);
 
     row.appendChild(right);
@@ -858,45 +859,34 @@ class PlannerEditorPane implements IDisposable {
   }
 
 
-  private _openTaskMenu(task: PlannerTask, anchor: DOMRect): void {
-    const overlay = el('div', 'planner-menu-overlay');
-    const close = (): void => { detach(); overlay.remove(); };
-    overlay.addEventListener('click', () => close());
-
-    const menu = el('div', 'planner-menu');
-    menu.style.position = 'fixed';
-
-    const items: { label: string; action: () => void; danger?: boolean }[] = [
-      { label: 'Edit Task',      action: () => this._openTaskPopover({ mode: 'edit', task }, anchor) },
-      { label: task.status === 'reviewing' ? 'Move to Planned' : 'Move to Review', action: () => {
-        const to = task.status === 'reviewing' ? 'planned' : 'reviewing';
+  private _openTaskMenu(task: PlannerTask, anchor: HTMLElement): void {
+    const reviewing = task.status === 'reviewing';
+    showExtensionContextMenu(anchor, [
+      { label: 'Edit Task', icon: 'pencil', onSelect: () => this._openTaskPopover({ mode: 'edit', task }, anchor.getBoundingClientRect()) },
+      { label: reviewing ? 'Move to Planned' : 'Move to Review', onSelect: () => {
+        const to = reviewing ? 'planned' : 'reviewing';
         void this._data.updateTask(task.id, { status: to });
         this._note('moved', `task "${task.title}"`, task.id, `to ${to}`);
       } },
-      { label: 'Cancel Task',    action: () => { void this._data.updateTask(task.id, { status: 'cancelled' }); this._note('cancelled', `task "${task.title}"`, task.id); }, danger: true },
-      { label: 'Delete Forever', action: () => { void this._data.removeTask(task.id); this._note('deleted', `task "${task.title}"`, task.id); }, danger: true },
-    ];
-    for (const it of items) {
-      const btn = el('button', 'planner-menu__item');
-      btn.type = 'button';
-      if (it.danger) btn.classList.add('planner-menu__item--danger');
-      btn.textContent = it.label;
-      btn.addEventListener('click', () => { close(); it.action(); });
-      menu.appendChild(btn);
-    }
-    overlay.appendChild(menu);
-    document.body.appendChild(overlay);
+      { separator: true },
+      { label: 'Cancel Task', onSelect: () => { void this._data.updateTask(task.id, { status: 'cancelled' }); this._note('cancelled', `task "${task.title}"`, task.id); } },
+      { label: 'Delete Forever…', icon: 'trash', danger: true, onSelect: () => void this._deleteTaskForever(task) },
+    ], { anchorPosition: 'below' }, (icon, c) => c.appendChild(createIconElement(icon, 14)));
+  }
 
-    const m = menu.getBoundingClientRect();
-    const vw = window.innerWidth, vh = window.innerHeight;
-    let left = anchor.left;
-    let top = anchor.bottom + 4;
-    if (left + m.width > vw - 8) left = Math.max(8, vw - m.width - 8);
-    if (top + m.height > vh - 8) top = Math.max(8, anchor.top - m.height - 4);
-    menu.style.left = `${left}px`;
-    menu.style.top = `${top}px`;
-
-    const detach = attachPopupDismiss(menu, close);
+  /** Deleting cannot be undone (Cancel Task keeps it), so it asks first. */
+  private async _deleteTaskForever(task: PlannerTask): Promise<void> {
+    const ok = this._api.window.showConfirmModal
+      ? await this._api.window.showConfirmModal({
+        message: `Delete “${task.title}” forever?`,
+        detail: 'It cannot be brought back. Cancel Task keeps it in the record instead.',
+        confirmLabel: 'Delete Task',
+        danger: true,
+      })
+      : true;
+    if (!ok) return;
+    void this._data.removeTask(task.id);
+    this._note('deleted', `task "${task.title}"`, task.id);
   }
 
   private _captureNewTask(anchor?: DOMRect): void {
@@ -1054,42 +1044,13 @@ class PlannerEditorPane implements IDisposable {
     else await this._renderDayView(body);
   }
 
-  /** Dropdown menu for Month / Week / Day — replaces the inline tab strip. */
+  /** Month / Week / Day: the app's menu, with the current view checked. */
   private _openViewMenu(anchorBtn: HTMLElement): void {
-    const overlay = el('div', 'planner-menu-overlay');
-    const close = (): void => { detach(); overlay.remove(); };
-    overlay.addEventListener('click', () => close());
-    const menu = el('div', 'planner-menu planner-menu--narrow');
-    menu.style.position = 'fixed';
-
-    for (const v of ['month', 'week', 'day'] as CalendarView[]) {
-      const item = el('button', 'planner-menu__item');
-      item.type = 'button';
-      const labelText = this._viewLabel(v);
-      const check = v === this._calendarView ? '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>' : '<span style="display:inline-block;width:13px"></span>';
-      item.innerHTML = `${check}<span>${labelText}</span>`;
-      item.addEventListener('click', () => {
-        close();
-        this._setCalendarView(v);
-        void this._renderTab();
-      });
-      menu.appendChild(item);
-    }
-
-    overlay.appendChild(menu);
-    document.body.appendChild(overlay);
-
-    const a = anchorBtn.getBoundingClientRect();
-    const m = menu.getBoundingClientRect();
-    const vw = window.innerWidth, vh = window.innerHeight;
-    let left = a.left;
-    let top = a.bottom + 4;
-    if (left + m.width > vw - 8) left = Math.max(8, vw - m.width - 8);
-    if (top + m.height > vh - 8) top = Math.max(8, a.top - m.height - 4);
-    menu.style.left = `${left}px`;
-    menu.style.top = `${top}px`;
-
-    const detach = attachPopupDismiss(menu, close);
+    showExtensionContextMenu(anchorBtn, (['month', 'week', 'day'] as CalendarView[]).map((v) => ({
+      label: this._viewLabel(v),
+      checked: v === this._calendarView,
+      onSelect: () => { this._setCalendarView(v); void this._renderTab(); },
+    })), { anchorPosition: 'below' });
   }
 
   /** Days the week view shows: 7 from Sunday, or 3 around the cursor in a compact pane. */

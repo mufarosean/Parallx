@@ -69,6 +69,7 @@ interface ParallxApi {
     showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showInputBox(options?: { prompt?: string; value?: string; placeholder?: string }): Promise<string | undefined>;
     showQuickPick(items: readonly { label: string; description?: string; detail?: string }[], options?: { placeholder?: string; canPickMany?: boolean }): Promise<{ label: string; description?: string; detail?: string } | undefined>;
+    showConfirmModal(options: { message: string; detail?: string; confirmLabel?: string; cancelLabel?: string | null; danger?: boolean }): Promise<boolean>;
   };
   context: {
     createContextKey<T extends string | number | boolean | undefined>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
@@ -646,6 +647,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           db: _databaseService!,
           openPage: (id) => void openPageInEditor(id),
           renamePage: async (id, title) => { await _dataService?.updatePage(id, { title }); },
+          confirm: (o) => api.window.showConfirmModal(o),
         });
       },
     }),
