@@ -80,7 +80,7 @@ export function buildPageEmbedWidget(
       let body = '';
       try {
         // Versioned envelope, not a bare doc — decode through the schema.
-        body = tiptapJsonToMarkdown(decodeCanvasContent(page.content || '{}').doc);
+        body = tiptapJsonToMarkdown(decodeCanvasContent(page.content || '{}').doc, undefined, { forReading: true });
       } catch {
         body = '_This page could not be rendered._';
       }

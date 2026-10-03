@@ -239,7 +239,8 @@ describe('tiptapJsonToMarkdown', () => {
       const result = tiptapJsonToMarkdown(doc(
         p(text('strong emphasis', [{ type: 'bold' }, { type: 'italic' }]))
       ));
-      expect(result).toBe('***strong emphasis***\n');
+      // `_` inside `**` so the reader never meets an ambiguous `***`.
+      expect(result).toBe('**_strong emphasis_**\n');
     });
 
     it('renders mixed text with and without marks', () => {
@@ -411,21 +412,30 @@ describe('tiptapJsonToMarkdown', () => {
   // ── Callout ───────────────────────────────────────────────────────────
 
   describe('callout', () => {
-    it('renders a callout with icon label prefix', () => {
+    it('renders a callout as a GitHub alert', () => {
+      const result = tiptapJsonToMarkdown(doc({
+        type: 'callout',
+        attrs: { emoji: 'warning' },
+        content: [p('Warning text')],
+      }));
+      expect(result).toBe('> [!WARNING]\n> Warning text\n');
+    });
+
+    it('keeps an icon markdown has no alert type for', () => {
       const result = tiptapJsonToMarkdown(doc({
         type: 'callout',
         attrs: { emoji: 'bolt' },
         content: [p('Warning text')],
       }));
-      expect(result).toContain('> **Bolt:** Warning text');
+      expect(result).toBe('<!-- parallx:attrs {"emoji":"bolt"} -->\n> [!TIP]\n> Warning text\n');
     });
 
-    it('renders callout with default lightbulb label when none specified', () => {
+    it('renders the default lightbulb callout as a tip', () => {
       const result = tiptapJsonToMarkdown(doc({
         type: 'callout',
         content: [p('Info text')],
       }));
-      expect(result).toContain('> **Note:** Info text');
+      expect(result).toBe('> [!TIP]\n> Info text\n');
     });
   });
 
@@ -452,7 +462,7 @@ describe('tiptapJsonToMarkdown', () => {
       expect(result).toContain('</details>');
     });
 
-    it('uses "Details" as default summary', () => {
+    it('keeps the content of a toggle that has no summary', () => {
       const result = tiptapJsonToMarkdown(doc({
         type: 'details',
         content: [
@@ -462,7 +472,7 @@ describe('tiptapJsonToMarkdown', () => {
           },
         ],
       }));
-      expect(result).toContain('<summary>Details</summary>');
+      expect(result).toContain('Content');
     });
   });
 
@@ -538,7 +548,7 @@ describe('tiptapJsonToMarkdown', () => {
   // ── Hard Break ────────────────────────────────────────────────────────
 
   describe('hard break', () => {
-    it('renders a hard break as newline', () => {
+    it('renders a hard break as <br>', () => {
       const result = tiptapJsonToMarkdown(doc({
         type: 'paragraph',
         content: [
@@ -547,7 +557,7 @@ describe('tiptapJsonToMarkdown', () => {
           { type: 'text', text: 'Line 2' },
         ],
       }));
-      expect(result).toContain('Line 1\nLine 2');
+      expect(result).toContain('Line 1<br>Line 2');
     });
   });
 

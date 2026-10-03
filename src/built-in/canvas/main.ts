@@ -1020,7 +1020,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       const block = find(doc);
       if (!block) return null;
       let markdown = '';
-      try { markdown = tiptapJsonToMarkdown({ type: 'doc', content: [block] }).trim(); } catch { markdown = ''; }
+      try { markdown = tiptapJsonToMarkdown({ type: 'doc', content: [block] }, undefined, { forReading: true }).trim(); } catch { markdown = ''; }
       return { markdown, blockType: block.type, pageTitle: page.title };
     }),
   );
@@ -1088,7 +1088,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         return {
           id: page.id,
           title: page.title,
-          markdown: tiptapJsonToMarkdown(doc, page.title),
+          markdown: tiptapJsonToMarkdown(doc, page.title, { forReading: true }),
         };
       } catch (err) {
         console.warn('[Canvas] getPageMarkdown failed:', err);
@@ -1120,7 +1120,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         const { getAllCanvasTemplates } = await import('./canvasTemplates.js');
         const t = (await getAllCanvasTemplates(api as never)).find((x) => x.id === templateId);
         if (!t) return null;
-        return { id: t.id, name: t.name, markdown: tiptapJsonToMarkdown(t.buildDoc(), t.name) };
+        return { id: t.id, name: t.name, markdown: tiptapJsonToMarkdown(t.buildDoc(), t.name, { forReading: true }) };
       } catch (err) {
         console.warn('[Canvas] getTemplateMarkdown failed:', err);
         return null;

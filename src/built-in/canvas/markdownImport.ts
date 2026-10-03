@@ -1,37 +1,35 @@
 // markdownImport.ts — Markdown → TipTap JSON parser for canvas pages.
 //
-// The inverse of `tiptapJsonToMarkdown` (markdownExport.ts). Pure-data
-// transform — no DOM, no IPC, no DB. Produces a doc that can be stored
-// directly in `pages.content` (wrapped by the schemaVersion envelope at
-// the call site).
+// The inverse of `tiptapJsonToMarkdown` (markdownExport.ts): reading back an
+// export gives the same page. Pure-data transform — no DOM, no IPC, no DB.
+// Produces a doc that can be stored directly in `pages.content` (wrapped by
+// the schemaVersion envelope at the call site).
 //
-// Supported block syntax (mirrors the export side):
+// Supported block syntax:
 //   # / ## / ### …          → heading (levels 1-6)
-//   - text / * text         → bulletList / listItem
-//   1. text                 → orderedList / listItem
+//   - text / * text / + text → bulletList / listItem (a row can hold any
+//                              block indented under it: code, quotes, lists)
+//   1. text / 1) text       → orderedList (keeps its first number)
 //   - [ ] / - [x] text      → taskList / taskItem
 //   > text                  → blockquote
-//   > [!type] Title         → callout (GitHub-style; type → emoji)
+//   > [!type] Title         → callout (GitHub-style; type → icon)
 //   ```lang\ncode\n```      → codeBlock
 //   $$\nlatex\n$$           → mathBlock
 //   ---                     → horizontalRule
-//   ![alt](src)             → image (when alone on a line)
+//   ![alt](src)             → image
 //   pipe tables             → table
-//   <details>…</details>    → details
-//   $latex$                 → inlineMath (inline)
-//   **bold** *em* ~~s~~     → inline marks (bold, italic, strike)
-//   `code`                  → inline code mark
-//   [text](url)             → link mark
-//   ==text==                → highlight mark
-//   <u>text</u>             → underline mark
+//   <details>…</details>    → details (may nest)
+//   <!-- parallx:… -->      → what markdown cannot say (see markdownExport.ts)
 //
-// Intentionally unsupported (markdown is not the right surface for these;
-// the user creates them via the slash menu):
-//   columnList, video, audio, fileAttachment, tableOfContents,
-//   pageBlock, bookmark (as separate block — handled as link mark),
-//   toggleHeading (regular details covers AI's needs)
+// Inline: **bold** *em* _em_ ~~s~~ ==mark== <u>u</u> <em>em</em> `code`
+// [text](url) $latex$ $$latex$$ <br>, backslash escapes, and the entities
+// &amp; &lt; &gt; &quot; &nbsp; &#NN; &#xNN;.
 //
-// Unknown lines fall through as plain paragraphs.
+// Plain text reads as written, following CommonMark where it matters:
+// `$5 and $10` is not math, `my_func_name` is not emphasis, `a * b * c` is not
+// emphasis, and a backslash before a letter (C:\Users) stays.
+//
+// Never throws — unknown syntax becomes a plain paragraph.
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -69,30 +67,77 @@ export function markdownToTiptapJson(markdown: string, options: ImportOptions = 
   const assignIds = options.assignBlockIds !== false;
   const idGen = options.idGenerator ?? defaultIdGenerator;
 
-  const lines = normalizeNewlines(markdown).split('\n');
-  const blocks = parseBlocks(lines, 0, lines.length);
+  const lines = normalizeNewlines(markdown ?? '').split('\n');
+  const blocks = fitBlocks(parseBlocks(lines, 0, lines.length));
+
+  // Doc must always contain at least one block — TipTap rejects empty docs.
+  if (blocks.length === 0) blocks.push(makeParagraph([]));
 
   if (assignIds) {
     for (const block of blocks) stampBlockId(block, idGen);
   }
 
-  // Doc must always contain at least one block — TipTap rejects empty docs.
-  if (blocks.length === 0) {
-    blocks.push(makeParagraph([]));
-    if (assignIds) stampBlockId(blocks[0]!, idGen);
-  }
-
   return { type: 'doc', content: blocks };
+}
+
+// ─── Carriers (HTML comments written by the exporter) ─────────────────────
+
+type CarrierKind = 'attrs' | 'empty' | 'atom' | 'block' | 'open' | 'close' | 'endblock';
+
+const CARRIER_LINE_RE = /^\s*<!-- (\/?)parallx:(attrs|empty|atom|block|open|close)(?: (.*?))? -->\s*$/;
+const ATTRS_PREFIX_RE = /^\s*<!-- parallx:attrs (\{.*?\}) -->\s?(.*)$/;
+const ITEM_PREFIX_RE = /^<!-- parallx:item (\{.*?\}) -->\s?(.*)$/;
+const OPEN_RE = /^\s*<!-- parallx:open .* -->\s*$/;
+const CLOSE_RE = /^\s*<!-- parallx:close -->\s*$/;
+const END_BLOCK_RE = /^\s*<!-- \/parallx:block -->\s*$/;
+
+interface Carrier { kind: CarrierKind; value: unknown }
+
+function matchCarrierLine(line: string): Carrier | null {
+  const m = CARRIER_LINE_RE.exec(line);
+  if (!m) return null;
+  const kind = m[2] as CarrierKind;
+  if (m[1] === '/') return kind === 'block' ? { kind: 'endblock', value: null } : null;
+  if (kind === 'empty' || kind === 'close') return m[3] === undefined ? { kind, value: null } : null;
+  const value = parseJson(m[3]);
+  if (value === undefined || value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (kind !== 'attrs' && typeof (value as TipTapNode).type !== 'string') return null;
+  return { kind, value };
+}
+
+function parseJson(text: string | undefined): unknown {
+  if (text === undefined) return undefined;
+  try { return JSON.parse(text); } catch { return undefined; }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
 }
 
 // ─── Top-level block parsing ──────────────────────────────────────────────
 
 /**
  * Parse the line range `[start, end)` into a sequence of block nodes.
- * Recursive — invoked for the body of blockquotes, callouts, and details.
+ * Recursive — invoked for the body of quotes, callouts, list rows, details
+ * and carried blocks.
  */
 function parseBlocks(lines: string[], start: number, end: number): TipTapNode[] {
   const out: TipTapNode[] = [];
+  let pending: Record<string, unknown> | null = null;
+  const push = (node: TipTapNode) => {
+    if (pending) {
+      const { headerRow, ...attrs } = pending;
+      if (node.type === 'table' && headerRow === false) {
+        // A pipe table always has a header row; this one had none.
+        for (const cell of node.content?.[0]?.content ?? []) cell.type = 'tableCell';
+      } else if (headerRow !== undefined) {
+        attrs['headerRow'] = headerRow;
+      }
+      if (Object.keys(attrs).length > 0) node.attrs = { ...(node.attrs ?? {}), ...attrs };
+      pending = null;
+    }
+    out.push(node);
+  };
   let i = start;
 
   while (i < end) {
@@ -101,19 +146,56 @@ function parseBlocks(lines: string[], start: number, end: number): TipTapNode[] 
     // Skip blank lines at block boundaries
     if (line.trim() === '') { i++; continue; }
 
+    // ── Carriers ─────────────────────────────────────────────────────
+    const carrier = matchCarrierLine(line);
+    if (carrier) {
+      i++;
+      switch (carrier.kind) {
+        case 'attrs':
+          pending = { ...(pending ?? {}), ...(carrier.value as Record<string, unknown>) };
+          break;
+        case 'empty':
+          push(makeParagraph([]));
+          break;
+        case 'atom':
+          push(carrier.value as TipTapNode);
+          break;
+        case 'block': {
+          // The readable line(s) after it are for people; skip to the end mark.
+          let j = i;
+          while (j < end && j < i + 3 && !END_BLOCK_RE.test(lines[j]!)) j++;
+          if (j < end && END_BLOCK_RE.test(lines[j]!)) i = j + 1;
+          push(carrier.value as TipTapNode);
+          break;
+        }
+        case 'open': {
+          const close = findMatchingLine(lines, i - 1, end, OPEN_RE, CLOSE_RE);
+          const innerEnd = close === -1 ? end : close;
+          const node = { ...(carrier.value as TipTapNode) };
+          node.content = parseBlocks(lines, i, innerEnd);
+          push(finishOpenedNode(node));
+          i = close === -1 ? end : close + 1;
+          break;
+        }
+        default:
+          // A stray close or end mark: nothing to do.
+          break;
+      }
+      continue;
+    }
+
     // ── Fenced code block ─────────────────────────────────────────────
     const fence = matchCodeFence(line);
     if (fence) {
-      const lang = fence.lang;
       const codeLines: string[] = [];
       i++;
       while (i < end) {
         const cur = lines[i]!;
         if (matchCodeFenceClose(cur, fence.marker)) { i++; break; }
-        codeLines.push(cur);
+        codeLines.push(stripIndent(cur, fence.indent));
         i++;
       }
-      out.push(makeCodeBlock(codeLines.join('\n'), lang));
+      push(makeCodeBlock(codeLines.join('\n'), fence.lang));
       continue;
     }
 
@@ -126,25 +208,25 @@ function parseBlocks(lines: string[], start: number, end: number): TipTapNode[] 
         i++;
       }
       if (i < end) i++; // consume closing $$
-      out.push({ type: 'mathBlock', attrs: { latex: mathLines.join('\n') } });
+      push({ type: 'mathBlock', attrs: { latex: mathLines.join('\n') } });
       continue;
     }
 
     // ── Horizontal rule ──────────────────────────────────────────────
-    if (/^\s*(-{3,}|_{3,}|\*{3,})\s*$/.test(line)) {
-      out.push({ type: 'horizontalRule' });
+    if (HR_RE.test(line)) {
+      push({ type: 'horizontalRule' });
       i++;
       continue;
     }
 
     // ── ATX heading ──────────────────────────────────────────────────
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    const heading = HEADING_RE.exec(line);
     if (heading) {
       const level = heading[1]!.length;
-      out.push({
+      push({
         type: 'heading',
         attrs: { level },
-        content: parseInline(heading[2]!.trim()),
+        content: parseInline((heading[2] ?? '').trim()),
       });
       i++;
       continue;
@@ -153,23 +235,15 @@ function parseBlocks(lines: string[], start: number, end: number): TipTapNode[] 
     // ── Table (pipe-style) ───────────────────────────────────────────
     if (isTableHeader(line, lines[i + 1])) {
       const { node, consumed } = parseTable(lines, i, end);
-      out.push(node);
+      push(node);
       i += consumed;
       continue;
     }
 
-    // ── Image alone on a line ────────────────────────────────────────
-    const imgOnly = /^\s*!\[([^\]]*)\]\(([^)\s]+)\)\s*$/.exec(line);
-    if (imgOnly) {
-      out.push({ type: 'image', attrs: { alt: imgOnly[1] || '', src: imgOnly[2] || '' } });
-      i++;
-      continue;
-    }
-
     // ── Details (HTML) ───────────────────────────────────────────────
-    if (/^\s*<details>\s*$/.test(line)) {
+    if (DETAILS_OPEN_RE.test(line)) {
       const { node, consumed } = parseDetails(lines, i, end);
-      out.push(node);
+      push(node);
       i += consumed;
       continue;
     }
@@ -177,37 +251,31 @@ function parseBlocks(lines: string[], start: number, end: number): TipTapNode[] 
     // ── Blockquote / callout ─────────────────────────────────────────
     if (/^\s*>/.test(line)) {
       const { node, consumed } = parseBlockquote(lines, i, end);
-      out.push(node);
+      push(node);
       i += consumed;
       continue;
     }
 
-    // ── Task list ────────────────────────────────────────────────────
-    if (isTaskItem(line)) {
-      const { node, consumed } = parseTaskList(lines, i, end);
-      out.push(node);
-      i += consumed;
-      continue;
-    }
-
-    // ── Bullet list ──────────────────────────────────────────────────
-    if (isBulletItem(line)) {
-      const { node, consumed } = parseBulletList(lines, i, end);
-      out.push(node);
-      i += consumed;
-      continue;
-    }
-
-    // ── Ordered list ─────────────────────────────────────────────────
-    if (isOrderedItem(line)) {
-      const { node, consumed } = parseOrderedList(lines, i, end);
-      out.push(node);
+    // ── Lists ────────────────────────────────────────────────────────
+    if (matchListMarker(line)) {
+      const { node, consumed } = parseList(lines, i, end);
+      push(node);
       i += consumed;
       continue;
     }
 
     // ── Paragraph (gathers consecutive non-blank, non-block-starter lines) ──
-    const paraLines: string[] = [line];
+    let first = line;
+    let paraAttrs: Record<string, unknown> | null = null;
+    const prefixed = ATTRS_PREFIX_RE.exec(line);
+    if (prefixed) {
+      const attrs = parseJson(prefixed[1]);
+      if (isRecord(attrs)) {
+        paraAttrs = attrs;
+        first = prefixed[2]!;
+      }
+    }
+    const paraLines: string[] = [first];
     i++;
     while (i < end) {
       const next = lines[i]!;
@@ -216,9 +284,39 @@ function parseBlocks(lines: string[], start: number, end: number): TipTapNode[] 
       paraLines.push(next);
       i++;
     }
-    out.push(makeParagraph(parseInline(paraLines.join(' '))));
+
+    let node: TipTapNode;
+    if (paraLines.length === 1 && first.trim() === '<!-- parallx:empty -->') {
+      node = makeParagraph([]);
+    } else {
+      const inline = parseInline(joinParagraphLines(paraLines));
+      // An image alone on its line is an image block.
+      node = inline.length === 1 && inline[0]!.type === 'image' && !paraAttrs ? inline[0]! : makeParagraph(inline);
+    }
+    if (paraAttrs) node.attrs = { ...(node.attrs ?? {}), ...paraAttrs };
+    push(node);
   }
 
+  return out;
+}
+
+const HR_RE = /^\s*(?:-{3,}|_{3,}|\*{3,})\s*$/;
+const HEADING_RE = /^\s{0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/;
+const DETAILS_OPEN_RE = /^\s*<details(\s+open)?\s*>\s*$/i;
+const DETAILS_CLOSE_RE = /^\s*<\/details>\s*$/i;
+
+/** Soft line breaks become spaces; a line ending in `\` or two spaces breaks. */
+function joinParagraphLines(lines: string[]): string {
+  let out = '';
+  for (let k = 0; k < lines.length; k++) {
+    let line = lines[k]!.replace(/^[ \t]+/, '');
+    if (k === lines.length - 1) { out += line.replace(/[ \t]+$/, ''); break; }
+    const slashes = /\\+$/.exec(line)?.[0].length ?? 0;
+    if (slashes % 2 === 1) { out += line.slice(0, -1) + '\n'; continue; }
+    if (/ {2,}$/.test(line)) { out += line.replace(/[ \t]+$/, '') + '\n'; continue; }
+    line = line.replace(/[ \t]+$/, '');
+    out += line + ' ';
+  }
   return out;
 }
 
@@ -229,29 +327,77 @@ function parseBlocks(lines: string[], start: number, end: number): TipTapNode[] 
 function isBlockStart(line: string, nextLine: string | undefined): boolean {
   if (matchCodeFence(line)) return true;
   if (line.trim() === '$$') return true;
-  if (/^\s*(-{3,}|_{3,}|\*{3,})\s*$/.test(line)) return true;
-  if (/^#{1,6}\s+/.test(line)) return true;
+  if (HR_RE.test(line)) return true;
+  if (HEADING_RE.test(line)) return true;
   if (/^\s*>/.test(line)) return true;
-  if (isTaskItem(line)) return true;
-  if (isBulletItem(line)) return true;
-  if (isOrderedItem(line)) return true;
-  if (/^\s*<details>\s*$/.test(line)) return true;
+  if (matchListMarker(line)) return true;
+  if (DETAILS_OPEN_RE.test(line)) return true;
   if (isTableHeader(line, nextLine)) return true;
+  if (/^\s*<!-- \/?parallx:(attrs|empty|atom|block|open|close)\b/.test(line)) return true;
   return false;
+}
+
+/**
+ * Index of the line closing the construct opened at `openIndex`, counting
+ * nested opens and skipping fenced code. -1 when it is never closed.
+ */
+function findMatchingLine(lines: string[], openIndex: number, end: number, openRe: RegExp, closeRe: RegExp): number {
+  let depth = 1;
+  let j = openIndex + 1;
+  while (j < end) {
+    const line = lines[j]!;
+    const fence = matchCodeFence(line);
+    if (fence) {
+      j++;
+      while (j < end && !matchCodeFenceClose(lines[j]!, fence.marker)) j++;
+      j++;
+      continue;
+    }
+    if (openRe.test(line)) depth++;
+    else if (closeRe.test(line)) {
+      depth--;
+      if (depth === 0) return j;
+    }
+    j++;
+  }
+  return -1;
+}
+
+/** Blocks that must hold at least one block. */
+const NEEDS_BLOCK = new Set(['column', 'tableCell', 'tableHeader', 'detailsContent', 'callout', 'blockquote', 'listItem', 'taskItem']);
+
+function finishOpenedNode(node: TipTapNode): TipTapNode {
+  const content = node.content ?? [];
+  if (node.type === 'toggleHeading') {
+    const [first, ...rest] = content;
+    const title: TipTapNode = { type: 'toggleHeadingText' };
+    let body = content;
+    if (first?.type === 'heading') {
+      if (first.content && first.content.length > 0) title.content = first.content;
+      body = rest;
+    }
+    node.content = [title, { type: 'detailsContent', content: body.length > 0 ? body : [makeParagraph([])] }];
+    return node;
+  }
+  if (content.length === 0) {
+    if (NEEDS_BLOCK.has(node.type)) node.content = [makeParagraph([])];
+    else delete node.content;
+  }
+  return node;
 }
 
 // ─── Code fence helpers ───────────────────────────────────────────────────
 
-interface CodeFence { marker: string; lang: string }
+interface CodeFence { marker: string; lang: string; indent: number }
 
 function matchCodeFence(line: string): CodeFence | null {
   const m = /^(\s*)(```+|~~~+)([^\s`~]*)\s*$/.exec(line);
   if (!m) return null;
-  return { marker: m[2]!, lang: m[3]! };
+  return { marker: m[2]!, lang: m[3]!, indent: indentWidth(m[1]!) };
 }
 
 function matchCodeFenceClose(line: string, marker: string): boolean {
-  const re = new RegExp(`^\\s*${marker[0]!}{${marker.length},}\\s*$`);
+  const re = new RegExp(`^\\s*${marker[0] === '`' ? '`' : '~'}{${marker.length},}\\s*$`);
   return re.test(line);
 }
 
@@ -265,13 +411,48 @@ function makeCodeBlock(code: string, lang: string): TipTapNode {
 
 // ─── List helpers ─────────────────────────────────────────────────────────
 
-const BULLET_RE = /^(\s*)[-*+]\s+(?!\[[ xX]\])(.*)$/;
-const ORDERED_RE = /^(\s*)(\d+)[.)]\s+(.*)$/;
-const TASK_RE = /^(\s*)[-*+]\s+\[([ xX])\]\s*(.*)$/;
+interface ListMarker {
+  indent: number;
+  kind: 'bullet' | 'ordered' | 'task';
+  /** `-`, `*`, `+`, `.` or `)` — a change starts a new list. */
+  char: string;
+  num: number;
+  checked: boolean;
+  text: string;
+  contentIndent: number;
+}
 
-function isBulletItem(line: string): boolean { return BULLET_RE.test(line); }
-function isOrderedItem(line: string): boolean { return ORDERED_RE.test(line); }
-function isTaskItem(line: string): boolean { return TASK_RE.test(line); }
+const MARKER_RE = /^(\s*)([-*+]|\d{1,9}[.)])(?:[ \t]+(.*))?$/;
+const TASK_BOX_RE = /^\[([ xX])\](?:[ \t]+(.*))?$/;
+
+function matchListMarker(line: string): ListMarker | null {
+  if (HR_RE.test(line)) return null;
+  const m = MARKER_RE.exec(line);
+  if (!m) return null;
+  const indent = indentWidth(m[1]!);
+  const marker = m[2]!;
+  let text = m[3] ?? '';
+  const ordered = /\d/.test(marker[0]!);
+  let kind: ListMarker['kind'] = ordered ? 'ordered' : 'bullet';
+  let checked = false;
+  if (!ordered) {
+    const box = TASK_BOX_RE.exec(text);
+    if (box) {
+      kind = 'task';
+      checked = box[1]!.toLowerCase() === 'x';
+      text = box[2] ?? '';
+    }
+  }
+  return {
+    indent,
+    kind,
+    char: ordered ? marker.slice(-1) : marker,
+    num: ordered ? parseInt(marker, 10) : 1,
+    checked,
+    text,
+    contentIndent: indent + marker.length + 1,
+  };
+}
 
 function indentWidth(s: string): number {
   // Tabs as 4-spaces (markdown convention)
@@ -284,90 +465,98 @@ function indentWidth(s: string): number {
   return w;
 }
 
+/** Remove up to `width` columns of leading whitespace. */
+function stripIndent(line: string, width: number): string {
+  let w = 0;
+  let k = 0;
+  while (k < line.length && w < width) {
+    const ch = line[k]!;
+    if (ch === ' ') w++;
+    else if (ch === '\t') w += 4;
+    else break;
+    k++;
+  }
+  return line.slice(k);
+}
+
 interface ListParse { node: TipTapNode; consumed: number }
 
-function parseBulletList(lines: string[], start: number, end: number): ListParse {
-  return parseList(lines, start, end, 'bulletList', BULLET_RE, (m) => ({ indent: indentWidth(m[1]!), text: m[2]! }));
-}
-
-function parseOrderedList(lines: string[], start: number, end: number): ListParse {
-  return parseList(lines, start, end, 'orderedList', ORDERED_RE, (m) => ({ indent: indentWidth(m[1]!), text: m[3]! }));
-}
-
-function parseTaskList(lines: string[], start: number, end: number): ListParse {
+function parseList(lines: string[], start: number, end: number): ListParse {
+  const first = matchListMarker(lines[start]!)!;
+  const sameList = (m: ListMarker | null): m is ListMarker =>
+    !!m && m.indent === first.indent && m.kind === first.kind && m.char === first.char;
   const items: TipTapNode[] = [];
   let i = start;
-  const baseIndent = indentWidth(lines[start]!);
 
   while (i < end) {
-    const line = lines[i]!;
-    const m = TASK_RE.exec(line);
-    if (!m || indentWidth(m[1]!) !== baseIndent) break;
+    const m = matchListMarker(lines[i]!);
+    if (!sameList(m)) break;
 
-    const checked = m[2]!.toLowerCase() === 'x';
-    const text = m[3]!;
-    items.push({
-      type: 'taskItem',
-      attrs: { checked },
-      content: [makeParagraph(parseInline(text))],
-    });
-    i++;
-  }
-
-  return { node: { type: 'taskList', content: items }, consumed: i - start };
-}
-
-function parseList(
-  lines: string[],
-  start: number,
-  end: number,
-  nodeType: 'bulletList' | 'orderedList',
-  re: RegExp,
-  extract: (m: RegExpExecArray) => { indent: number; text: string },
-): ListParse {
-  const items: TipTapNode[] = [];
-  let i = start;
-  const baseIndent = indentWidth(lines[start]!);
-
-  while (i < end) {
-    const line = lines[i]!;
-    const m = re.exec(line);
-    if (!m) break;
-    const { indent, text } = extract(m);
-    if (indent !== baseIndent) break;
-
-    // Item body: the inline text on this line, plus any nested list lines
-    // (deeper indent matching one of bullet/ordered/task patterns).
-    const itemContent: TipTapNode[] = [makeParagraph(parseInline(text))];
-    i++;
-
-    // Look ahead for nested list items
-    const nestedLines: string[] = [];
-    const nestedStart = i;
-    while (i < end) {
-      const next = lines[i]!;
-      if (next.trim() === '') break;
-      if (indentWidth(next) <= baseIndent) break;
-      // Nested item OR continuation; we only consume nested list items
-      if (isBulletItem(next) || isOrderedItem(next) || isTaskItem(next)) {
-        nestedLines.push(next);
-        i++;
-      } else {
+    // The row's body: every following line indented past the marker, with
+    // blank lines inside it; a lazy continuation line joins the first line.
+    const body: string[] = [];
+    let k = i + 1;
+    while (k < end) {
+      const line = lines[k]!;
+      if (line.trim() === '') {
+        let n = k;
+        while (n < end && lines[n]!.trim() === '') n++;
+        if (n < end && indentWidth(lines[n]!) > m.indent) {
+          for (; k < n; k++) body.push('');
+          continue;
+        }
         break;
       }
-    }
-    if (nestedLines.length > 0) {
-      const nested = parseBlocks(nestedLines, 0, nestedLines.length);
-      for (const n of nested) itemContent.push(n);
-    } else {
-      // No nested; revert i in case the loop above advanced for non-list lines
-      i = nestedStart + (nestedLines.length === 0 ? 0 : nestedLines.length);
+      if (indentWidth(line) > m.indent) {
+        body.push(stripIndent(line, Math.min(m.contentIndent, indentWidth(line))));
+        k++;
+        continue;
+      }
+      if (body.length === 0 && m.text !== '' && !isBlockStart(line, lines[k + 1])) {
+        body.push(line.trim());
+        k++;
+        continue;
+      }
+      break;
     }
 
-    items.push({ type: 'listItem', content: itemContent });
+    let text = m.text;
+    let itemAttrs: Record<string, unknown> | null = null;
+    const itemPrefix = ITEM_PREFIX_RE.exec(text);
+    if (itemPrefix) {
+      const attrs = parseJson(itemPrefix[1]);
+      if (isRecord(attrs)) {
+        itemAttrs = attrs;
+        text = itemPrefix[2]!;
+      }
+    }
+
+    let children: TipTapNode[];
+    if (text === '') {
+      children = [makeParagraph([]), ...parseBlocks(body, 0, body.length)];
+    } else {
+      const rowLines = [text, ...body];
+      children = parseBlocks(rowLines, 0, rowLines.length);
+      if (children[0]?.type !== 'paragraph') children.unshift(makeParagraph([]));
+    }
+
+    const item: TipTapNode = m.kind === 'task'
+      ? { type: 'taskItem', attrs: { checked: m.checked }, content: children }
+      : { type: 'listItem', content: children };
+    if (itemAttrs) item.attrs = { ...(item.attrs ?? {}), ...itemAttrs };
+    items.push(item);
+
+    i = k;
+    // A blank line between rows of the same list keeps the list going.
+    let n = i;
+    while (n < end && lines[n]!.trim() === '') n++;
+    if (n > i && n < end && sameList(matchListMarker(lines[n]!))) i = n;
   }
 
-  return { node: { type: nodeType, content: items }, consumed: i - start };
+  const type = first.kind === 'task' ? 'taskList' : first.kind === 'ordered' ? 'orderedList' : 'bulletList';
+  const node: TipTapNode = { type, content: items };
+  if (first.kind === 'ordered' && first.num !== 1) node.attrs = { start: first.num };
+  return { node, consumed: i - start };
 }
 
 // ─── Blockquote / callout ────────────────────────────────────────────────
@@ -385,7 +574,7 @@ function parseBlockquote(lines: string[], start: number, end: number): BqParse {
   while (i < end) {
     const line = lines[i]!;
     if (!/^\s*>/.test(line)) break;
-    body.push(line.replace(/^\s*>\s?/, ''));
+    body.push(line.replace(/^\s*>[ \t]?/, ''));
     i++;
   }
 
@@ -415,7 +604,7 @@ function parseBlockquote(lines: string[], start: number, end: number): BqParse {
     const content: TipTapNode[] = [];
     if (calloutTitle) {
       // Render the title as a leading paragraph with strong text
-      content.push(makeParagraph([{ type: 'text', text: calloutTitle, marks: [{ type: 'bold' }] }]));
+      content.push(makeParagraph(parseInline(calloutTitle).map((n) => (n.type === 'text' ? { ...n, marks: [...(n.marks ?? []), { type: 'bold' }] } : n))));
     }
     for (const b of innerBlocks) content.push(b);
     if (content.length === 0) content.push(makeParagraph([]));
@@ -447,44 +636,39 @@ function mapCalloutTypeToEmoji(type: string): string {
 interface DetailsParse { node: TipTapNode; consumed: number }
 
 function parseDetails(lines: string[], start: number, end: number): DetailsParse {
-  let i = start + 1; // skip <details>
-  let summary = '';
-  const bodyLines: string[] = [];
-
-  while (i < end) {
-    const line = lines[i]!;
-    if (/^\s*<\/details>\s*$/.test(line)) { i++; break; }
-    const summaryMatch = /^\s*<summary>(.*)<\/summary>\s*$/.exec(line);
-    if (summaryMatch) {
-      summary = summaryMatch[1]!;
-      i++;
-      continue;
-    }
-    bodyLines.push(line);
+  const open = /\bopen\b/i.test(lines[start]!);
+  const close = findMatchingLine(lines, start, end, DETAILS_OPEN_RE, DETAILS_CLOSE_RE);
+  const bodyEnd = close === -1 ? end : close;
+  let i = start + 1;
+  while (i < bodyEnd && lines[i]!.trim() === '') i++;
+  let summary: TipTapNode[] = parseInline('Details');
+  const summaryMatch = i < bodyEnd ? /^\s*<summary>(.*)<\/summary>\s*$/i.exec(lines[i]!) : null;
+  if (summaryMatch) {
+    summary = parseInline(summaryMatch[1]!.trim());
     i++;
   }
 
-  const bodyBlocks = parseBlocks(bodyLines, 0, bodyLines.length);
-
-  return {
-    node: {
-      type: 'details',
-      content: [
-        { type: 'detailsSummary', content: parseInline(summary || 'Details') },
-        { type: 'detailsContent', content: bodyBlocks.length > 0 ? bodyBlocks : [makeParagraph([])] },
-      ],
-    },
-    consumed: i - start,
+  const bodyBlocks = parseBlocks(lines, i, bodyEnd);
+  const summaryNode: TipTapNode = { type: 'detailsSummary' };
+  if (summary.length > 0) summaryNode.content = summary;
+  const node: TipTapNode = {
+    type: 'details',
+    content: [
+      summaryNode,
+      { type: 'detailsContent', content: bodyBlocks.length > 0 ? bodyBlocks : [makeParagraph([])] },
+    ],
   };
+  if (open) node.attrs = { open: true };
+  return { node, consumed: (close === -1 ? end : close + 1) - start };
 }
 
 // ─── Tables ──────────────────────────────────────────────────────────────
 
-const TABLE_SEP_RE = /^\s*\|?(\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/;
+const TABLE_SEP_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 
 function isTableHeader(line: string, next: string | undefined): boolean {
   if (!next) return false;
-  if (!line.includes('|')) return false;
+  if (!line.includes('|') || !next.includes('|')) return false;
   return TABLE_SEP_RE.test(next);
 }
 
@@ -526,13 +710,17 @@ function parseTable(lines: string[], start: number, end: number): TableParse {
 }
 
 function splitTableRow(line: string): string[] {
-  // Strip leading/trailing pipes, split on un-escaped pipes
-  const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+  // Strip leading/trailing pipes, split on un-escaped pipes. `\|` is a pipe
+  // in the cell; any other escape is left for the inline parser.
+  let trimmed = line.trim();
+  if (trimmed.startsWith('|')) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith('|') && !/(^|[^\\])(\\\\)*\\\|$/.test(trimmed)) trimmed = trimmed.slice(0, -1);
   const cells: string[] = [];
   let cur = '';
   for (let i = 0; i < trimmed.length; i++) {
     const ch = trimmed[i]!;
     if (ch === '\\' && trimmed[i + 1] === '|') { cur += '|'; i++; continue; }
+    if (ch === '\\' && i + 1 < trimmed.length) { cur += ch + trimmed[i + 1]; i++; continue; }
     if (ch === '|') { cells.push(cur.trim()); cur = ''; continue; }
     cur += ch;
   }
@@ -545,28 +733,55 @@ function splitTableRow(line: string): string[] {
 /**
  * Parse inline markdown into an array of TipTap text/inline nodes.
  *
- * Mark precedence (outer → inner): link > bold > italic > strike >
- * underline > highlight > code. Inline math and images create
- * standalone nodes, not text-with-marks.
- *
- * This is a hand-rolled tokenizer; it intentionally avoids backtracking
- * regex disasters by scanning left-to-right and only matching paired
- * delimiters.
+ * A hand-rolled left-to-right tokenizer: it only matches paired delimiters,
+ * and follows CommonMark's flanking rules for `*`, `_` and `$` so ordinary
+ * text (prices, snake_case, arithmetic) is never read as markup.
  */
 export function parseInline(text: string): TipTapNode[] {
   if (!text) return [];
-  return tokenize(text, new Set());
+  return tokenize(text, []);
 }
 
-function tokenize(text: string, activeMarks: Set<string>): TipTapNode[] {
+const ASCII_PUNCT_RE = /[!-/:-@[-`{-~]/;
+const ENTITY_RE = /^&(#\d+|#x[0-9a-fA-F]+|amp|lt|gt|quot|nbsp);/;
+const NAMED_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', nbsp: '\u00a0' };
+
+function decodeEntity(body: string): string | null {
+  if (body.startsWith('#x') || body.startsWith('#X')) {
+    const code = parseInt(body.slice(2), 16);
+    return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : null;
+  }
+  if (body.startsWith('#')) {
+    const code = parseInt(body.slice(1), 10);
+    return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : null;
+  }
+  return NAMED_ENTITIES[body] ?? null;
+}
+
+const isSpace = (c: string | undefined) => c !== undefined && /\s/.test(c);
+const isWordChar = (c: string | undefined) => c !== undefined && /[A-Za-z0-9]/.test(c);
+
+function hasMark(active: TipTapMark[], type: string): boolean {
+  return active.some((m) => m.type === type);
+}
+
+function addMark(active: TipTapMark[], mark: TipTapMark): TipTapMark[] {
+  return hasMark(active, mark.type) ? active : [...active, mark];
+}
+
+function tokenize(text: string, active: TipTapMark[]): TipTapNode[] {
   const out: TipTapNode[] = [];
   let buf = '';
 
   const flush = () => {
     if (buf) {
-      out.push(makeTextNode(buf, activeMarks));
+      out.push(makeTextNode(buf, active));
       buf = '';
     }
+  };
+  const nested = (inner: string, marks: TipTapMark[]) => {
+    flush();
+    out.push(...tokenize(inner, marks));
   };
 
   let i = 0;
@@ -574,57 +789,114 @@ function tokenize(text: string, activeMarks: Set<string>): TipTapNode[] {
     const ch = text[i]!;
     const rest = text.slice(i);
 
-    // Hard break: trailing two spaces + newline; we don't see newlines
-    // here (paragraphs are joined), but `\\n` in source becomes <br>.
-    if (rest.startsWith('\\\n') || rest.startsWith('  \n')) {
-      flush();
-      out.push({ type: 'hardBreak' });
-      i += rest.startsWith('\\\n') ? 2 : 3;
+    // Escapes: a backslash before punctuation makes it literal; before
+    // anything else it is just a backslash (C:\Users).
+    if (ch === '\\') {
+      const next = text[i + 1];
+      if (next !== undefined && ASCII_PUNCT_RE.test(next)) { buf += next; i += 2; continue; }
+      buf += ch;
+      i++;
       continue;
     }
 
-    // Inline image
-    const img = /^!\[([^\]]*)\]\(([^)\s]+)\)/.exec(rest);
-    if (img) {
+    // Hard break (a joined paragraph line ended with `\` or two spaces).
+    if (ch === '\n') {
       flush();
-      out.push({ type: 'image', attrs: { alt: img[1] || '', src: img[2] || '' } });
-      i += img[0].length;
+      out.push({ type: 'hardBreak' });
+      i++;
       continue;
+    }
+
+    if (ch === '&') {
+      const ent = ENTITY_RE.exec(rest);
+      const decoded = ent ? decodeEntity(ent[1]!) : null;
+      if (ent && decoded !== null) { buf += decoded; i += ent[0].length; continue; }
+    }
+
+    if (ch === '<') {
+      // Carried inline node
+      const carried = /^<!-- parallx:inline (.*?) -->/.exec(rest);
+      if (carried) {
+        const node = parseJson(carried[1]);
+        if (isRecord(node) && typeof node.type === 'string') {
+          flush();
+          out.push(node as unknown as TipTapNode);
+          i += carried[0].length;
+          continue;
+        }
+      }
+      const br = /^<br\s*\/?>/i.exec(rest);
+      if (br) {
+        flush();
+        out.push({ type: 'hardBreak' });
+        i += br[0].length;
+        continue;
+      }
+      // Carried marks
+      const span = /^<span data-px="([^"]*)">/.exec(rest);
+      if (span) {
+        const close = rest.indexOf('</span>', span[0].length);
+        const marks = parseJson(safeDecode(span[1]!));
+        if (close !== -1 && Array.isArray(marks)) {
+          let next = active;
+          for (const mk of marks) if (isRecord(mk) && typeof mk.type === 'string') next = addMark(next, mk as unknown as TipTapMark);
+          nested(rest.slice(span[0].length, close), next);
+          i += close + '</span>'.length;
+          continue;
+        }
+      }
+      const tag = /^<(u|em|i)>/i.exec(rest);
+      if (tag) {
+        const name = tag[1]!.toLowerCase();
+        const markType = name === 'u' ? 'underline' : 'italic';
+        const close = rest.toLowerCase().indexOf(`</${name}>`, tag[0].length);
+        if (close > tag[0].length && !hasMark(active, markType)) {
+          nested(rest.slice(tag[0].length, close), addMark(active, { type: markType }));
+          i += close + name.length + 3;
+          continue;
+        }
+      }
+    }
+
+    // Image: ![alt](src)
+    if (ch === '!' && text[i + 1] === '[') {
+      const img = matchLinkLike(rest.slice(1));
+      if (img) {
+        flush();
+        const alt = unescapeText(img.text);
+        out.push({ type: 'image', attrs: alt ? { alt, src: img.href } : { src: img.href } });
+        i += 1 + img.consumed;
+        continue;
+      }
     }
 
     // Link: [text](url)
-    if (ch === '[' && !activeMarks.has('link')) {
-      const link = matchLink(rest);
+    if (ch === '[' && !hasMark(active, 'link')) {
+      const link = matchLinkLike(rest);
       if (link) {
-        flush();
-        // Tokenize inner text with the existing active marks; the link
-        // mark itself is appended onto each resulting text node (it
-        // carries attrs and so isn't tracked in the boolean activeMarks
-        // set).
-        const children = tokenize(link.text, activeMarks);
-        for (const child of children) {
-          if (child.type === 'text') {
-            child.marks = (child.marks ?? []).concat([{ type: 'link', attrs: { href: link.href } }]);
-          }
-          out.push(child);
-        }
+        nested(link.text, addMark(active, { type: 'link', attrs: { href: link.href } }));
         i += link.consumed;
         continue;
       }
     }
 
     // Inline code: `…`
-    if (ch === '`' && !activeMarks.has('code')) {
+    if (ch === '`') {
       const code = matchInlineCode(rest);
       if (code) {
         flush();
-        out.push({ type: 'text', text: code.text, marks: marksFromActive(activeMarks, 'code') });
+        out.push(makeTextNode(code.text, addMark(active, { type: 'code' })));
         i += code.consumed;
         continue;
       }
+      // An unmatched backtick run is literal as a whole.
+      const run = /^`+/.exec(rest)![0];
+      buf += run;
+      i += run.length;
+      continue;
     }
 
-    // Inline math: $…$ (single dollars; double-dollars in inline → display)
+    // Inline math: $…$ (single dollars; double-dollars inline → display)
     if (ch === '$') {
       const m = matchInlineMath(rest);
       if (m) {
@@ -633,178 +905,326 @@ function tokenize(text: string, activeMarks: Set<string>): TipTapNode[] {
         i += m.consumed;
         continue;
       }
+      buf += ch;
+      i++;
+      continue;
     }
 
-    // Bold: ** … **
-    if (rest.startsWith('**') && !activeMarks.has('bold')) {
-      const close = findClose(rest, '**', 2);
-      if (close > 0) {
-        flush();
-        const next = new Set(activeMarks);
-        next.add('bold');
-        out.push(...tokenize(rest.slice(2, close), next));
-        i += close + 2;
+    // Bold + italic: *** … ***
+    if (rest.startsWith('***') && !hasMark(active, 'bold') && !hasMark(active, 'italic') && !isSpace(text[i + 3])) {
+      const close = findClose(rest, '***', 3);
+      if (close > 3) {
+        nested(rest.slice(3, close), addMark(addMark(active, { type: 'bold' }), { type: 'italic' }));
+        i += close + 3;
         continue;
       }
     }
 
-    // Italic: * … * (single) or _ … _
-    if ((ch === '*' || ch === '_') && !activeMarks.has('italic')) {
-      // Avoid matching ** here — that's handled above
-      if (!(ch === '*' && rest[1] === '*')) {
-        const marker = ch;
-        const close = findClose(rest, marker, 1);
-        if (close > 0) {
-          flush();
-          const next = new Set(activeMarks);
-          next.add('italic');
-          out.push(...tokenize(rest.slice(1, close), next));
-          i += close + 1;
-          continue;
-        }
+    // Bold: ** … **
+    if (rest.startsWith('**') && !hasMark(active, 'bold')) {
+      const close = findClose(rest, '**', 2);
+      if (close > 2) {
+        nested(rest.slice(2, close), addMark(active, { type: 'bold' }));
+        i += close + 2;
+        continue;
+      }
+      buf += '**';
+      i += 2;
+      continue;
+    }
+
+    // Italic: * … * or _ … _ (not inside a word for `_`, not around spaces)
+    if ((ch === '*' || ch === '_') && !hasMark(active, 'italic') && !isSpace(text[i + 1]) && text[i + 1] !== undefined
+      && !(ch === '_' && isWordChar(text[i - 1]))) {
+      const close = findClose(rest, ch, 1);
+      if (close > 1) {
+        nested(rest.slice(1, close), addMark(active, { type: 'italic' }));
+        i += close + 1;
+        continue;
       }
     }
 
     // Strike: ~~ … ~~
-    if (rest.startsWith('~~') && !activeMarks.has('strike')) {
+    if (rest.startsWith('~~') && !hasMark(active, 'strike')) {
       const close = findClose(rest, '~~', 2);
-      if (close > 0) {
-        flush();
-        const next = new Set(activeMarks);
-        next.add('strike');
-        out.push(...tokenize(rest.slice(2, close), next));
+      if (close > 2) {
+        nested(rest.slice(2, close), addMark(active, { type: 'strike' }));
         i += close + 2;
         continue;
       }
     }
 
     // Highlight: == … ==
-    if (rest.startsWith('==') && !activeMarks.has('highlight')) {
+    if (rest.startsWith('==') && !hasMark(active, 'highlight')) {
       const close = findClose(rest, '==', 2);
-      if (close > 0) {
-        flush();
-        const next = new Set(activeMarks);
-        next.add('highlight');
-        out.push(...tokenize(rest.slice(2, close), next));
+      if (close > 2) {
+        nested(rest.slice(2, close), addMark(active, { type: 'highlight' }));
         i += close + 2;
         continue;
       }
-    }
-
-    // Underline: <u> … </u>
-    if (rest.toLowerCase().startsWith('<u>') && !activeMarks.has('underline')) {
-      const close = rest.toLowerCase().indexOf('</u>');
-      if (close > 3) {
-        flush();
-        const next = new Set(activeMarks);
-        next.add('underline');
-        out.push(...tokenize(rest.slice(3, close), next));
-        i += close + 4;
-        continue;
-      }
-    }
-
-    // Escapes
-    if (ch === '\\' && i + 1 < text.length) {
-      buf += text[i + 1]!;
-      i += 2;
-      continue;
     }
 
     buf += ch;
     i++;
   }
 
-  if (buf) out.push(makeTextNode(buf, activeMarks));
+  flush();
   return out;
 }
 
-function makeTextNode(text: string, activeMarks: Set<string>): TipTapNode {
+function safeDecode(s: string): string {
+  try { return decodeURIComponent(s); } catch { return ''; }
+}
+
+/** Text with markdown escapes and entities resolved (image alt text). */
+function unescapeText(s: string): string {
+  return tokenize(s, []).map((n) => n.text ?? '').join('');
+}
+
+function makeTextNode(text: string, active: TipTapMark[]): TipTapNode {
   const node: TipTapNode = { type: 'text', text };
-  if (activeMarks.size > 0) node.marks = Array.from(activeMarks).map((t) => ({ type: t }));
+  if (active.length > 0) node.marks = active.map((m) => ({ ...m }));
   return node;
 }
 
-function marksFromActive(active: Set<string>, extra: string): TipTapMark[] {
-  const out: TipTapMark[] = Array.from(active).map((t) => ({ type: t }));
-  out.push({ type: extra });
-  return out;
-}
-
 /**
- * Find the index in `s` (starting from `from`) where `marker` next
- * appears, skipping over escaped occurrences. Returns -1 if not found.
+ * Find where `marker` closes a run opened at the start of `s`, scanning from
+ * `from`. Escapes, code spans, comments, carried marks and link destinations
+ * are skipped. Returns -1 if not found.
  */
 function findClose(s: string, marker: string, from: number): number {
-  let i = from;
-  while (i <= s.length - marker.length) {
-    if (s[i - 1] !== '\\' && s.slice(i, i + marker.length) === marker) {
-      return i;
+  let j = from;
+  while (j < s.length) {
+    const c = s[j]!;
+    if (c === '\\') { j += 2; continue; }
+    if (c === '`') {
+      const code = matchInlineCode(s.slice(j));
+      if (code) { j += code.consumed; continue; }
+      j += /^`+/.exec(s.slice(j))![0].length;
+      continue;
     }
-    i++;
+    if (s.startsWith('<!--', j)) {
+      const k = s.indexOf('-->', j + 4);
+      if (k !== -1) { j = k + 3; continue; }
+    }
+    if (s.startsWith('<span data-px="', j)) {
+      const k = s.indexOf('">', j);
+      if (k !== -1) { j = k + 2; continue; }
+    }
+    if (c === ']' && s[j + 1] === '(') {
+      const k = destinationEnd(s, j + 2);
+      if (k !== -1) { j = k + 1; continue; }
+    }
+    if (marker === '*' || marker === '_') {
+      if (c === marker) {
+        // `**` inside an italic run is a bold run, not the italic's end —
+        // except at `***`, where the first star closes the italic.
+        if (marker === '*' && s[j + 1] === '*' && s[j + 2] !== '*') {
+          const boldClose = findClose(s.slice(j), '**', 2);
+          if (boldClose > 2) { j += boldClose + 2; continue; }
+        }
+        if (j > from && !isSpace(s[j - 1]) && !(marker === '_' && isWordChar(s[j + 1]))) return j;
+      }
+      j++;
+      continue;
+    }
+    if (s.startsWith(marker, j) && j > from) return j;
+    j++;
   }
   return -1;
 }
 
-function matchLink(rest: string): { text: string; href: string; consumed: number } | null {
+/** Index of the `)` closing a link destination that starts at `start`, or -1. */
+function destinationEnd(s: string, start: number): number {
+  if (s[start] === '<') {
+    const close = s.indexOf('>', start + 1);
+    if (close === -1 || s[close + 1] !== ')') return -1;
+    const inner = s.slice(start + 1, close);
+    if (/[<\n]/.test(inner)) return -1;
+    return close + 1;
+  }
+  let depth = 0;
+  for (let j = start; j < s.length; j++) {
+    const c = s[j]!;
+    if (c === '\\' && j + 1 < s.length) { j++; continue; }
+    if (c === '(') depth++;
+    else if (c === ')') {
+      if (depth === 0) return j;
+      depth--;
+    }
+  }
+  return -1;
+}
+
+function matchLinkLike(rest: string): { text: string; href: string; consumed: number } | null {
   // [text](href) where text may contain inline marks but no unmatched ]
   if (rest[0] !== '[') return null;
   let depth = 1;
   let i = 1;
-  while (i < rest.length && depth > 0) {
+  while (i < rest.length) {
     const c = rest[i]!;
     if (c === '\\') { i += 2; continue; }
+    if (c === '`') {
+      const code = matchInlineCode(rest.slice(i));
+      if (code) { i += code.consumed; continue; }
+    }
     if (c === '[') depth++;
-    else if (c === ']') depth--;
-    if (depth === 0) break;
+    else if (c === ']') {
+      depth--;
+      if (depth === 0) break;
+    }
     i++;
   }
-  if (depth !== 0) return null;
+  if (depth !== 0 || i >= rest.length) return null;
   const textEnd = i;
   if (rest[i + 1] !== '(') return null;
   const hrefStart = i + 2;
-  const hrefEnd = rest.indexOf(')', hrefStart);
+  const hrefEnd = destinationEnd(rest, hrefStart);
   if (hrefEnd === -1) return null;
+  let href = rest.slice(hrefStart, hrefEnd);
+  if (href.startsWith('<') && href.endsWith('>')) href = href.slice(1, -1);
+  else href = href.trim();
   return {
     text: rest.slice(1, textEnd),
-    href: rest.slice(hrefStart, hrefEnd).trim(),
+    href,
     consumed: hrefEnd + 1,
   };
 }
 
 function matchInlineCode(rest: string): { text: string; consumed: number } | null {
-  // Count opening backticks
   const open = /^`+/.exec(rest);
   if (!open) return null;
   const len = open[0].length;
-  const closeIdx = rest.indexOf(open[0], len);
-  if (closeIdx === -1) return null;
-  // The next char after close must not be a backtick (no longer fence)
-  if (rest[closeIdx + len] === '`') return null;
-  const text = rest.slice(len, closeIdx);
-  return { text, consumed: closeIdx + len };
+  // Find a closing run of exactly the same length.
+  let j = len;
+  while (j < rest.length) {
+    if (rest[j] !== '`') { j++; continue; }
+    let k = j;
+    while (k < rest.length && rest[k] === '`') k++;
+    if (k - j === len) {
+      let text = rest.slice(len, j);
+      if (text.length >= 2 && text.startsWith(' ') && text.endsWith(' ') && /[^ ]/.test(text)) text = text.slice(1, -1);
+      return { text, consumed: k };
+    }
+    j = k;
+  }
+  return null;
 }
 
 function matchInlineMath(rest: string): { latex: string; display: boolean; consumed: number } | null {
   // $$…$$ inline (display=yes); otherwise $…$
   if (rest.startsWith('$$')) {
-    const close = rest.indexOf('$$', 2);
-    if (close === -1) return null;
-    return { latex: rest.slice(2, close), display: true, consumed: close + 2 };
-  }
-  // Single $: require non-whitespace immediately after, and a closing $.
-  if (rest[1] === undefined || /\s/.test(rest[1])) return null;
-  let i = 1;
-  while (i < rest.length) {
-    if (rest[i] === '\\') { i += 2; continue; }
-    if (rest[i] === '$') {
-      // Don't match if preceded by whitespace (empty math) — though that's
-      // already excluded by the rest[1] check above.
-      return { latex: rest.slice(1, i), display: false, consumed: i + 1 };
+    for (let j = 2; j < rest.length - 1; j++) {
+      if (rest[j] === '\\') { j++; continue; }
+      if (rest[j] === '$' && rest[j + 1] === '$') {
+        if (j === 2) return null;
+        return { latex: rest.slice(2, j), display: true, consumed: j + 2 };
+      }
     }
-    i++;
+    return null;
+  }
+  // Single $ (pandoc's rule): the opener is followed by a non-space; the
+  // closer follows a non-space and is not followed by a digit. So
+  // "$5 and $10" stays text.
+  if (rest[1] === undefined || isSpace(rest[1]) || rest[1] === '$') return null;
+  for (let j = 1; j < rest.length; j++) {
+    if (rest[j] === '\\') { j++; continue; }
+    if (rest[j] === '$') {
+      if (!isSpace(rest[j - 1]) && !/\d/.test(rest[j + 1] ?? '')) {
+        return { latex: rest.slice(1, j), display: false, consumed: j + 1 };
+      }
+    }
   }
   return null;
+}
+
+// ─── Fitting the result to the page schema ──────────────────────────────
+
+/** Nodes whose content is inline text, not blocks. */
+const TEXT_BLOCKS = new Set(['paragraph', 'heading', 'toggleHeadingText', 'detailsSummary', 'codeBlock']);
+
+/**
+ * Images are blocks in the page schema: an image written inside a line of
+ * text becomes its own block after that text. Inline-only places (a details
+ * summary, a toggle heading title) keep the image's alt text instead.
+ */
+function fitBlocks(blocks: TipTapNode[]): TipTapNode[] {
+  const out: TipTapNode[] = [];
+  for (const block of blocks) {
+    if (block.type === 'paragraph' || block.type === 'heading') {
+      out.push(...splitOutImages(block));
+      continue;
+    }
+    if (block.type === 'detailsSummary') {
+      if (block.content) block.content = textOnly(block.content);
+      if (block.content?.length === 0) delete block.content;
+    } else if (block.type === 'toggleHeadingText') {
+      if (block.content) block.content = block.content.map((n) => (n.type === 'image' ? textOfImage(n) : n)).filter((n): n is TipTapNode => !!n);
+    } else if (Array.isArray(block.content) && !TEXT_BLOCKS.has(block.type)) {
+      block.content = fitBlocks(block.content);
+      if ((block.type === 'listItem' || block.type === 'taskItem') && block.content[0]?.type !== 'paragraph') {
+        block.content.unshift(makeParagraph([]));
+      }
+    }
+    out.push(block);
+  }
+  return out;
+}
+
+function splitOutImages(block: TipTapNode): TipTapNode[] {
+  const content = block.content ?? [];
+  if (!content.some((n) => n.type === 'image')) return [block];
+  const out: TipTapNode[] = [];
+  let run: TipTapNode[] = [];
+  let first = true;
+  const flushRun = () => {
+    const trimmed = trimRun(run);
+    if (trimmed.length > 0 || (first && block.type === 'heading')) {
+      const node: TipTapNode = first ? { ...block } : { type: 'paragraph' };
+      if (trimmed.length > 0) node.content = trimmed;
+      else delete node.content;
+      out.push(node);
+      first = false;
+    }
+    run = [];
+  };
+  for (const n of content) {
+    if (n.type === 'image') {
+      flushRun();
+      out.push({ type: 'image', attrs: n.attrs });
+    } else {
+      run.push(n);
+    }
+  }
+  flushRun();
+  return out;
+}
+
+/** Drop the spaces that only separated text from an image. */
+function trimRun(run: TipTapNode[]): TipTapNode[] {
+  const nodes = run.map((n) => ({ ...n }));
+  const firstNode = nodes[0];
+  if (firstNode?.type === 'text' && !firstNode.marks) firstNode.text = firstNode.text!.replace(/^\s+/, '');
+  const lastNode = nodes[nodes.length - 1];
+  if (lastNode?.type === 'text' && !lastNode.marks) lastNode.text = lastNode.text!.replace(/\s+$/, '');
+  return nodes.filter((n) => n.type !== 'text' || n.text);
+}
+
+function textOfImage(n: TipTapNode): TipTapNode | null {
+  const alt = String(n.attrs?.alt ?? '');
+  return alt ? { type: 'text', text: alt } : null;
+}
+
+/** A details summary holds plain (marked) text only. */
+function textOnly(nodes: TipTapNode[]): TipTapNode[] {
+  const out: TipTapNode[] = [];
+  for (const n of nodes) {
+    if (n.type === 'text') out.push(n);
+    else if (n.type === 'image') { const t = textOfImage(n); if (t) out.push(t); }
+    else if (n.type === 'inlineMath') out.push({ type: 'text', text: `$${String(n.attrs?.latex ?? '')}$` });
+    else if (n.type === 'hardBreak') out.push({ type: 'text', text: ' ' });
+  }
+  return out;
 }
 
 // ─── Misc helpers ────────────────────────────────────────────────────────

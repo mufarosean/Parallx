@@ -252,12 +252,12 @@ describe('markdownToTiptapJson — images', () => {
     });
   });
 
-  it('parses image with surrounding text as inline image', () => {
-    const block = firstBlock('see ![alt](url) here');
-    expect(block.type).toBe('paragraph');
-    const img = block.content!.find((n) => n.type === 'image');
-    expect(img).toBeDefined();
-    expect(img!.attrs).toEqual({ alt: 'alt', src: 'url' });
+  it('moves an image written inside text to its own block (images are blocks)', () => {
+    const blocks = parse('see ![alt](url) here').content!;
+    expect(blocks.map((b) => b.type)).toEqual(['paragraph', 'image', 'paragraph']);
+    expect(blocks[1]!.attrs).toEqual({ alt: 'alt', src: 'url' });
+    expect(blocks[0]!.content![0]!.text).toBe('see');
+    expect(blocks[2]!.content![0]!.text).toBe('here');
   });
 });
 
