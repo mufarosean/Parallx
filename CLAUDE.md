@@ -20,7 +20,21 @@
 - Keep history in one line: no side branches for a task, no rebasing or
   force-pushing what is already pushed. If a side branch is ever needed, fold
   it back into the working branch as soon as the step is done.
-- Before starting locally, pull. Before stopping, push.
+- Before starting locally, pull. Before stopping, push. That means every
+  branch with a commit, not only the working one: a commit on a local side
+  branch exists for no other machine until it is pushed.
+- "Is anything on branch X not in the working branch?" is answered by
+  content, with full history, for both copies of X:
+  - Cloud checkouts are shallow, so run `git fetch --unshallow` first. Without
+    it, unrelated-looking histories give wrong answers.
+  - Compare with `git cherry -v <working> <X>`. `-` means the change is
+    already in the working branch, `+` means it is not. Folded-in work usually
+    carries new commit hashes, so hashes alone mislead. A `+` whose diff
+    differs only in context lines (same change, other surrounding lines) is
+    also already in.
+  - Check the local X and `origin/X` separately, and say which one the answer
+    is about. Locally, `git log origin/X..X` lists commits never pushed; push
+    them before calling X folded in.
 - `master` trails the working branch and is only ever fast-forwarded to it
   (last on 2026-10-01, at `8b9e82d2`). Do not build on `master`; work on the working branch.
 
