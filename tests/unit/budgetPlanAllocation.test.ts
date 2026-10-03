@@ -46,5 +46,8 @@ describe('budget plan allocation', () => {
     expect(goalMonthlyNeed({ target_cents: 1000, current_cents: 1000, target_date: '2027-01-01' }, now)).toBeNull();
     expect(goalMonthlyNeed({ target_cents: 1000, current_cents: 0, target_date: null }, now)).toBeNull();
     expect(goalMonthlyNeed({ target_cents: 1000, current_cents: 0, target_date: '2026-01-01' }, now)).toBeNull();
+    // Due within a month, or today: what is left, never twice it.
+    expect(goalMonthlyNeed({ target_cents: 30000, current_cents: 0, target_date: '2026-10-12' }, '2026-10-02')).toBe(30000);
+    expect(goalMonthlyNeed({ target_cents: 10000, current_cents: 0, target_date: '2026-10-02' }, '2026-10-02')).toBe(10000);
   });
 });

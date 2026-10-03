@@ -11,14 +11,21 @@ describe('budget month plan', () => {
   it('day 2 with rent paid: plenty left, under pace, no projection yet', () => {
     const p = computeMonthPlan({
       limitCents: 450000, spentCents: 195864, billsPaidCents: 186549, billsToComeCents: 43497,
-      daysInMonth: 31, dayOfMonth: 2,
+      daysInMonth: 31, dayOfMonth: 2, isCurrent: true,
     });
     expect(p.leftCents).toBe(450000 - 195864 - 43497);
     expect(p.everydayBudgetCents).toBe(450000 - 186549 - 43497);
     expect(p.everydaySpentCents).toBe(195864 - 186549);
     expect(p.projectedCents).toBeNull();
     expect(p.pace).toBe('under');
-    expect(p.daysLeft).toBe(29);
+    expect(p.daysLeft).toBe(30); // Oct 2 through Oct 31
+  });
+
+  it('counts today as a day left, and none once the month is over', () => {
+    const base = { limitCents: 1000, spentCents: 0, billsPaidCents: 0, billsToComeCents: 0, daysInMonth: 31 };
+    expect(computeMonthPlan({ ...base, dayOfMonth: 31, isCurrent: true }).daysLeft).toBe(1);
+    expect(computeMonthPlan({ ...base, dayOfMonth: 31 }).daysLeft).toBe(0);
+    expect(computeMonthPlan({ ...base, dayOfMonth: 0 }).daysLeft).toBe(31);
   });
 
   it('projects from day 7 on, from everyday spending only', () => {

@@ -3118,6 +3118,28 @@ function renderOverviewSection(body, api) {
   return () => { disposed = true; offSync(); offLedger(); };
 }
 
+// The Overview pace line: everyday spending to date, day by day, measured
+// exactly as the pace sentence is: only categories with a limit, and each
+// payment of a bill in one of them taken off the day it was paid. Its last
+// point is computeMonthPlan's everydaySpentCents.
+function everydayByDay(daily, statuses, bills, monthKey, dayOfMonth) {
+  const limited = new Set(statuses.filter(c => (Number(c.effective_limit_cents) || 0) > 0).map(c => c.id));
+  const byDay = new Map();
+  const add = (d, c) => byDay.set(d, (byDay.get(d) || 0) + c);
+  for (const x of daily) if (limited.has(x.category_id)) add(x.d, Number(x.cents) || 0);
+  for (const b of bills) {
+    if (!limited.has(b.categoryId)) continue;
+    for (const p of b.payments || []) add(p.date, -p.cents);
+  }
+  const out = [];
+  let run = 0;
+  for (let d = 1; d <= dayOfMonth; d++) {
+    run += byDay.get(`${monthKey}-${String(d).padStart(2, '0')}`) || 0;
+    out.push(Math.max(0, run));
+  }
+  return out;
+}
+
 async function readOverview(monthKey) {
   const plan = await readMonthPlan(monthKey);
   const r = plan.range;
@@ -3128,9 +3150,9 @@ async function readOverview(monthKey) {
     [r.start, r.end]);
   const incomeExpectedCents = await readExpectedIncome(r.key);
   const daily = await db.all(
-    `SELECT transaction_date AS d, COALESCE(SUM(amount_cents),0) AS cents FROM transactions
+    `SELECT transaction_date AS d, category_id, COALESCE(SUM(amount_cents),0) AS cents FROM transactions
       WHERE status='confirmed' AND tx_type IN ('purchase','fee') AND transaction_date >= ? AND transaction_date <= ?
-      GROUP BY transaction_date`,
+      GROUP BY transaction_date, category_id`,
     [r.start, r.end]);
   const transfersAi = await db.get(
     `SELECT COUNT(*) AS n FROM transactions WHERE status='confirmed' AND tx_type='transfer' AND tx_type_source='ai'
@@ -3145,18 +3167,7 @@ async function readOverview(monthKey) {
       WHERE a.archived = 0 AND v.latest_balance_cents IS NOT NULL ORDER BY v.kind, v.last_four`);
   const goals = await db.get(`SELECT COUNT(*) AS n, COALESCE(SUM(current_cents),0) AS cur, COALESCE(SUM(target_cents),0) AS tgt FROM goals WHERE archived = 0`);
 
-  // Everyday spending by day: each bill's payment comes off the day it was paid.
-  const byDay = new Map(daily.map(x => [x.d, Number(x.cents) || 0]));
-  for (const b of plan.bills) {
-    if (b.paidOn && byDay.has(b.paidOn)) byDay.set(b.paidOn, Math.max(0, byDay.get(b.paidOn) - b.paidCents));
-  }
-  const cumulative = [];
-  let run = 0;
-  for (let d = 1; d <= plan.dayOfMonth; d++) {
-    const iso = `${r.key}-${String(d).padStart(2, '0')}`;
-    run += byDay.get(iso) || 0;
-    cumulative.push(run);
-  }
+  const cumulative = everydayByDay(daily, plan.categories, plan.bills, r.key, plan.dayOfMonth);
   return {
     ...plan,
     hasAny: (Number(anyRow?.n) || 0) > 0 || !!lastAt,
@@ -4262,12 +4273,15 @@ function renderReportsSection(body, api) {
 // What a goal needs set aside each month to make its date: what is left,
 // spread over the months to the target date. null when it has no date, is
 // complete, or the date has passed. The goal cards and Plan both use it.
-function goalMonthlyNeed(goal, nowMs = Date.now()) {
+function goalMonthlyNeed(goal, now = Date.now()) {
   const remaining = Math.max(0, (Number(goal.target_cents) || 0) - Math.max(0, Number(goal.current_cents) || 0));
   if (remaining <= 0 || !goal.target_date) return null;
-  const days = Math.ceil((new Date(goal.target_date).getTime() - nowMs) / 86400000);
-  if (!Number.isFinite(days) || days < 0) return null;
-  return Math.ceil(remaining / Math.max(0.5, days / 30.4));
+  const target = String(goal.target_date).slice(0, 10);
+  const today = typeof now === 'string' ? now : localYmd(new Date(now));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(target) || target < today) return null;
+  const days = (Date.parse(target + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000;
+  // Due within a month (or today): all of what is left, never more.
+  return Math.ceil(remaining / Math.max(1, days / 30.4));
 }
 
 // One month as an allocation of expected income. Limits already hold the
@@ -4342,32 +4356,35 @@ function renderBudgetsSection(body, api) {
   let alive = true;
   let seq = 0;
 
-  async function writeLimit(categoryId, cents) {
+  // A month's own limit. Cleared: when the category has a default limit
+  // (Categories), a 0 is stored so this month really has none; otherwise the
+  // month's row goes and nothing applies.
+  async function writeLimit(categoryId, cents, key = monthKey) {
     const now = new Date().toISOString();
-    if (cents > 0) {
-      const existing = await db.get('SELECT id FROM budgets WHERE category_id=? AND month_key=?', [categoryId, monthKey]);
-      if (existing) await db.run('UPDATE budgets SET limit_cents=?, updated_at=? WHERE id=?', [cents, now, existing.id]);
-      else await db.run(`INSERT INTO budgets (id, category_id, month_key, limit_cents, created_at, updated_at) VALUES (?,?,?,?,?,?)`,
-        [crypto.randomUUID(), categoryId, monthKey, cents, now, now]);
-    } else {
-      await db.run('DELETE FROM budgets WHERE category_id=? AND month_key=?', [categoryId, monthKey]);
+    let value = cents > 0 ? cents : null;
+    if (value === null) {
+      const cat = await db.get('SELECT monthly_limit_cents AS d FROM categories WHERE id=?', [categoryId]);
+      if ((Number(cat?.d) || 0) > 0) value = 0;
     }
+    if (value === null) {
+      await db.run('DELETE FROM budgets WHERE category_id=? AND month_key=?', [categoryId, key]);
+      return;
+    }
+    const existing = await db.get('SELECT id FROM budgets WHERE category_id=? AND month_key=?', [categoryId, key]);
+    if (existing) await db.run('UPDATE budgets SET limit_cents=?, updated_at=? WHERE id=?', [value, now, existing.id]);
+    else await db.run(`INSERT INTO budgets (id, category_id, month_key, limit_cents, created_at, updated_at) VALUES (?,?,?,?,?,?)`,
+      [crypto.randomUUID(), categoryId, key, value, now, now]);
   }
 
+  // The limits the month before actually used, its own or the defaults.
   async function copyPrevious() {
     const prev = monthShift(monthKey, -1);
-    const prevRows = await db.all('SELECT category_id, limit_cents FROM budgets WHERE month_key=?', [prev]);
-    if (!prevRows || prevRows.length === 0) {
+    const prevLimits = await evalBudgetStatus(prev);
+    if (!prevLimits.some(r => (Number(r.limit_cents) || 0) > 0)) {
       await api.window?.showInformationMessage?.(`${monthName(prev)} has no limits to copy.`);
       return;
     }
-    const now = new Date().toISOString();
-    for (const p of prevRows) {
-      await db.run(
-        `INSERT OR REPLACE INTO budgets (id, category_id, month_key, limit_cents, rollover_cents, created_at, updated_at)
-         VALUES (COALESCE((SELECT id FROM budgets WHERE category_id=? AND month_key=?), ?), ?, ?, ?, 0, ?, ?)`,
-        [p.category_id, monthKey, crypto.randomUUID(), p.category_id, monthKey, p.limit_cents, now, now]);
-    }
+    for (const r of prevLimits) await writeLimit(r.id, Number(r.limit_cents) || 0);
     notifyLedgerChanged();
   }
 
@@ -5956,7 +5973,7 @@ async function detectRecurring(api) {
 
     const avgAmt = Math.round(amounts.reduce((a, b) => a + b, 0) / amounts.length);
     const lastSeen = dates[dates.length - 1];
-    const lastAmt = Number(rows[rows.length - 1].amount_cents) || 0;
+    const lastAmt = Math.abs(Number(rows[rows.length - 1].amount_cents) || 0);
     const nextDue = addDays(lastSeen, Math.max(1, Math.round(medGap)));
     const guessedCategoryId = rows[rows.length - 1].category_id;
 
@@ -6298,7 +6315,8 @@ function computeMonthPlan(m) {
     limitCents: limit, spentCents: spent, billsPaidCents: billsPaid, billsToComeCents: billsToCome,
     everydayBudgetCents: everydayBudget, everydaySpentCents: everydaySpent, leftCents: left,
     evenByNowCents: evenByNow, projectedCents: projected, pace,
-    daysLeft: Math.max(0, days - day), dayOfMonth: day, daysInMonth: days,
+    // Today counts as a day left: on the 31st there is one, not none.
+    daysLeft: m.isCurrent ? days - day + 1 : day === 0 ? days : 0, dayOfMonth: day, daysInMonth: days,
     usedPct: limit > 0 ? Math.round(((limit - left) / limit) * 100) : 0,
   };
 }
@@ -6307,37 +6325,98 @@ function computeMonthPlan(m) {
 // amount (what was paid, else its usual amount when it falls due this month).
 // How many times a bill falls due inside a range, stepping from its next due
 // date by its cadence. A month ahead of the current one is planned from this.
-function billDueCount(nextDue, cadence, range) {
-  if (!nextDue || !/^\d{4}-\d{2}-\d{2}$/.test(nextDue)) return 0;
+function billDueDates(nextDue, cadence, range) {
+  if (!nextDue || !/^\d{4}-\d{2}-\d{2}$/.test(nextDue)) return [];
   const step = { weekly: [0, 7], biweekly: [0, 14], monthly: [1, 0], quarterly: [3, 0], yearly: [12, 0] }[cadence];
-  if (!step) return nextDue >= range.start && nextDue <= range.end ? 1 : 0;
+  if (!step) return nextDue >= range.start && nextDue <= range.end ? [nextDue] : [];
   const [y, m, d] = nextDue.split('-').map(Number);
-  let n = 0;
+  const out = [];
   for (let i = 0; i < 400; i++) {
     const dt = new Date(y, m - 1 + step[0] * i, d + step[1] * i);
     // A month that has no such day (the 31st) falls on its last day.
     if (step[0] && dt.getDate() !== d) dt.setDate(0);
     const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
     if (iso > range.end) break;
-    if (iso >= range.start) n++;
+    if (iso >= range.start) out.push(iso);
   }
-  return n;
+  return out;
+}
+function billDueCount(nextDue, cadence, range) { return billDueDates(nextDue, cadence, range).length; }
+
+// A bill's usual amount, always money out (a refund can be the last row seen).
+function billUsualCents(series) {
+  return Math.abs(Number(series.last_amount_cents) || Number(series.avg_amount_cents) || 0);
 }
 
-// What a bill was paid in a month: the purchases and fees linked to it, or
-// whose merchant contains its pattern (any case). Same rule the per-bill
-// query used, read from rows already in memory.
-function billPaidIn(series, rows, linkedIds) {
-  const pat = String(series.merchant_pattern || '').toLowerCase();
-  let cents = 0;
-  let last = null;
-  for (const t of rows) {
-    const hit = (linkedIds && linkedIds.has(t.id)) || (pat !== '' && String(t.merchant || '').toLowerCase().includes(pat));
-    if (!hit) continue;
-    cents += Number(t.amount_cents) || 0;
-    if (!last || t.transaction_date > last) last = t.transaction_date;
+// Which of the month's purchases and fees paid which bill. A row linked to a
+// bill by detection is that bill's. Otherwise a row pays a bill when its
+// merchant contains the bill's name AND its amount is near the bill's usual
+// amount (within half, or $5), so a $999 Apple Store purchase does not pay
+// a $2.99 iCloud bill. Each row pays one bill at most; longer names claim
+// first, so "netflix.com" and "netflix" do not both count one charge.
+function matchBillPayments(seriesList, rows, linked) {
+  const claimed = new Set();
+  const out = new Map(seriesList.map(x => [x.id, []]));
+  const take = (sid, t) => { claimed.add(t.id); out.get(sid).push({ id: t.id, cents: Number(t.amount_cents) || 0, date: t.transaction_date }); };
+  for (const x of seriesList) {
+    const ids = linked && linked.get(x.id);
+    if (!ids) continue;
+    for (const t of rows) if (ids.has(t.id) && !claimed.has(t.id)) take(x.id, t);
   }
-  return { cents, last };
+  const byName = seriesList.filter(x => String(x.merchant_pattern || '').trim())
+    .sort((a, b) => String(b.merchant_pattern).length - String(a.merchant_pattern).length);
+  for (const x of byName) {
+    const pat = String(x.merchant_pattern).toLowerCase();
+    const usual = billUsualCents(x);
+    for (const t of rows) {
+      if (claimed.has(t.id)) continue;
+      if (!String(t.merchant || '').toLowerCase().includes(pat)) continue;
+      const amt = Number(t.amount_cents) || 0;
+      if (usual > 0 && Math.abs(amt - usual) > Math.max(usual / 2, 500)) continue;
+      take(x.id, t);
+    }
+  }
+  return out;
+}
+
+// One bill in one month. A month over: nothing is still to come. A month
+// ahead: every time it falls due. The current month: every due date from its
+// next due date on (one already past and unpaid is still owed), less the
+// payments seen from a few days before that date, since detection's dates
+// run a day or two early and autopay a day or two late.
+function billMonthView(series, payments, range, todayIso, nowIso) {
+  const usual = billUsualCents(series);
+  const due = series.next_due_date || null;
+  // Payments read from five days before the month settle an early due date;
+  // only the month's own count as paid in it.
+  const inMonth = payments.filter(p => p.date >= range.start);
+  const paidCents = inMonth.reduce((a, p) => a + p.cents, 0);
+  const paidOn = inMonth.reduce((a, p) => (!a || p.date > a ? p.date : a), null);
+  let dueCount = 0;
+  if (range.start > nowIso) {
+    dueCount = billDueCount(due, series.cadence, range);
+  } else if (todayIso) {
+    const dates = billDueDates(due, series.cadence, range);
+    if (dates.length) {
+      const from = addDays(dates[0], -5);
+      const settled = payments.filter(p => p.date >= from).length;
+      dueCount = Math.max(0, dates.length - settled);
+    }
+  }
+  return {
+    id: series.id,
+    name: series.display_name || series.merchant_pattern,
+    categoryId: series.category_id,
+    paid: paidCents > 0,
+    paidCents,
+    paidOn,
+    payments: inMonth,
+    dueDate: due,
+    overdue: !!(todayIso && due && due < todayIso && dueCount > 0),
+    toComeCents: usual * dueCount,
+    usualCents: usual,
+    unsure: series.detection_confidence === 'low',
+  };
 }
 
 async function readMonthBills(range, todayIso) {
@@ -6349,41 +6428,19 @@ async function readMonthBills(range, todayIso) {
   const rows = series.length ? await db.all(
     `SELECT id, merchant, amount_cents, transaction_date FROM transactions
       WHERE status='confirmed' AND tx_type IN ('purchase','fee')
-        AND transaction_date >= ? AND transaction_date <= ?`, [range.start, range.end]) : [];
+        AND transaction_date >= ? AND transaction_date <= ?`, [addDays(range.start, -5), range.end]) : [];
   const links = series.length ? await db.all(
     `SELECT o.series_id, o.transaction_id FROM recurring_occurrences o
        JOIN transactions t ON t.id = o.transaction_id
-      WHERE t.transaction_date >= ? AND t.transaction_date <= ?`, [range.start, range.end]).catch(() => []) : [];
+      WHERE t.transaction_date >= ? AND t.transaction_date <= ?`, [addDays(range.start, -5), range.end]).catch(() => []) : [];
   const linked = new Map();
   for (const l of links) {
     if (!linked.has(l.series_id)) linked.set(l.series_id, new Set());
     linked.get(l.series_id).add(l.transaction_id);
   }
-  const out = [];
-  for (const s of series) {
-    const paid = billPaidIn(s, rows, linked.get(s.id));
-    const paidCents = paid.cents;
-    const usual = Number(s.last_amount_cents) || Number(s.avg_amount_cents) || 0;
-    const due = s.next_due_date || null;
-    const dueThisMonth = !!due && due >= range.start && due <= range.end;
-    // A month still ahead: every time the bill falls due in it is to come.
-    const ahead = range.start > localYmd(new Date());
-    const aheadCount = ahead ? billDueCount(due, s.cadence, range) : 0;
-    out.push({
-      id: s.id,
-      name: s.display_name || s.merchant_pattern,
-      categoryId: s.category_id,
-      paid: paidCents > 0,
-      paidCents,
-      paidOn: paid.last,
-      dueDate: due,
-      toComeCents: ahead ? usual * aheadCount
-        : paidCents > 0 || !dueThisMonth || (todayIso && due < todayIso) ? 0 : usual,
-      usualCents: usual,
-      unsure: s.detection_confidence === 'low',
-    });
-  }
-  return out;
+  const paidBy = matchBillPayments(series, rows, linked);
+  const nowIso = localYmd(new Date());
+  return series.map(x => billMonthView(x, paidBy.get(x.id) || [], range, todayIso, nowIso));
 }
 
 // What the month's plan is measured on. Only categories with a limit are
@@ -6423,7 +6480,7 @@ async function readMonthPlan(monthKey) {
     [range.start, range.end]);
   const bills = await readMonthBills(range, todayIso);
   const scope = planScope(statuses, bills, Number(spentRow?.cents) || 0);
-  const plan = computeMonthPlan({ ...scope, daysInMonth, dayOfMonth: day });
+  const plan = computeMonthPlan({ ...scope, daysInMonth, dayOfMonth: day, isCurrent: range.key === nowKey });
   return { ...plan, ...scope, range, categories: statuses, bills };
 }
 
@@ -9138,7 +9195,10 @@ export const __testables = {
   splitTxNotes,
   txOrigin,
   billDueCount,
-  billPaidIn,
+  billDueDates,
+  matchBillPayments,
+  billMonthView,
+  everydayByDay,
   serialRefresh,
   ruleDryRun,
   goalMonthlyNeed,
