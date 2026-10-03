@@ -55,6 +55,7 @@ const EXEMPT_FILES = new Set([
   'contentSchema.ts',              // Schema constants
   'unknownContent.ts',             // Unknown-node placeholders (pure JSON, like contentSchema)
   'paneMirror.ts',                 // Editors of one page share edits (no gate interaction)
+  'reloadMerge.ts',                // Reload keeps unsaved edits (pure JSON, no gate interaction)
   'markdownExport.ts',             // Export utility
   'markdownImport.ts',             // Import utility (M64 Iter 1)
   'dashboardWidgets.ts',           // M86 — dashboard widget contribution (data service + markdownExport only; no gate interaction)
