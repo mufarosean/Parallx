@@ -49,7 +49,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
   private readonly _providers = new Map<string, ILanguageModelProvider>();
 
   /** Maps model ID → provider ID for fast lookup during chat requests. */
-  private readonly _modelToProvider = new Map<string, string>();
+  private _modelToProvider = new Map<string, string>();
 
   /** Cached model list from the last aggregation. */
   private _cachedModels: readonly ILanguageModelInfo[] = [];
@@ -492,22 +492,35 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
   // ── Internal ──
 
   private async _refreshModels(): Promise<void> {
+    // Build the new list aside and swap it in at the end. Clearing the live
+    // map first left it empty across the awaits below: a chat or background
+    // request in that window found no provider for its model, and a pinned
+    // run could be switched to another model.
     const allModels: ILanguageModelInfo[] = [];
-    this._modelToProvider.clear();
+    const modelToProvider = new Map<string, string>();
 
     for (const [providerId, provider] of this._providers) {
       try {
         const models = await provider.listModels();
         for (const model of models) {
           allModels.push(model);
-          this._modelToProvider.set(model.id, providerId);
+          modelToProvider.set(model.id, providerId);
         }
       } catch {
-        // Provider failed to list models — skip but don't crash
-        console.warn(`[LanguageModelsService] Failed to list models from provider '${providerId}'.`);
+        // A provider that fails to list this time keeps what it listed last
+        // time: one dropped request must not make its models (and the active
+        // model) vanish.
+        console.warn(`[LanguageModelsService] Failed to list models from provider '${providerId}'; keeping its previous list.`);
+        for (const model of this._cachedModels) {
+          if (this._modelToProvider.get(model.id) === providerId) {
+            allModels.push(model);
+            modelToProvider.set(model.id, providerId);
+          }
+        }
       }
     }
 
+    this._modelToProvider = modelToProvider;
     this._cachedModels = allModels;
 
     // ── Active model fallback chain ──

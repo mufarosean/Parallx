@@ -12,6 +12,7 @@ import { designTokenRegistry } from './designTokenRegistry.js';
 import { findThemeById, resolveTheme, THEME_STORAGE_KEY } from './themeCatalog.js';
 import type { ColorThemeData } from './themeData.js';
 import type { IStorage } from '../platform/storage.js';
+import { applyAppearance, readAppearance, writeAppearance } from './pxAppearance.js';
 
 /** Minimal surface needed to apply a theme — both ThemeService and IThemeService satisfy it. */
 interface ThemeApplier {
@@ -33,4 +34,15 @@ export function applyThemeById(
   const td = resolveTheme(entry, colorRegistry, designTokenRegistry);
   themeService.applyTheme(td);
   void globalStorage.set(THEME_STORAGE_KEY, themeId);
+  // Light or dark is stored twice: this editor theme, and the --px chrome's
+  // mode (Settings › Appearance). Appearance sets both; the Color Theme
+  // picker (Ctrl+T) set only this one, so a light theme left the chrome
+  // dark. Whichever door sets the theme, the chrome follows its kind.
+  const mode = entry.uiTheme === 'vs' || entry.uiTheme === 'hc-light' ? 'light' : 'dark';
+  const current = readAppearance();
+  if (current.mode !== mode) {
+    const next = { ...current, mode } as const;
+    applyAppearance(next);
+    writeAppearance(next);
+  }
 }

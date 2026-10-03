@@ -22,40 +22,15 @@ import { parseDuration } from '../../openclaw/openclawCronService.js';
 import type { WidgetRefreshPolicy, WidgetTypeRegistration } from './dashboardTypes.js';
 import { DASHBOARD_LIMITS } from './dashboardTypes.js';
 
-// computeNextCronRun is not exported from openclawCronService — only parseDuration
-// and parseCronField are. We re-derive next-fire from parseCronField for now;
-// the dashboard's cron support only needs "schedule the next fire timer", which
-// the helpers below compute identically.
-
-import { parseCronField } from '../../openclaw/openclawCronService.js';
+// The cron service's own next-fire computation, so a dashboard schedule
+// means what an Agents routine means. This file used to carry a copy that
+// walked the calendar in UTC: "0 9 * * *" refreshed at 9:00 UTC, while the
+// cron service (fixed long ago) fires at 9:00 local.
+import { computeNextRun } from '../../openclaw/openclawCronService.js';
 
 function computeNextCronMs(expr: string, fromMs: number): number | null {
-  const parts = expr.trim().split(/\s+/);
-  if (parts.length !== 5) return null;
-  const minutes = new Set(parseCronField(parts[0], 0, 59));
-  const hours = new Set(parseCronField(parts[1], 0, 23));
-  const dom = new Set(parseCronField(parts[2], 1, 31));
-  const months = new Set(parseCronField(parts[3], 1, 12));
-  const dow = new Set(parseCronField(parts[4], 0, 6));
-
-  const start = new Date(fromMs);
-  start.setUTCSeconds(0, 0);
-  start.setUTCMinutes(start.getUTCMinutes() + 1);
-  const limit = fromMs + 366 * 86_400_000;
-
-  const c = start;
-  while (c.getTime() <= limit) {
-    const mo = c.getUTCMonth() + 1;
-    if (!months.has(mo)) { c.setUTCMonth(c.getUTCMonth() + 1, 1); c.setUTCHours(0, 0, 0, 0); continue; }
-    const d = c.getUTCDate(); const wd = c.getUTCDay();
-    if (!dom.has(d) || !dow.has(wd)) { c.setUTCDate(c.getUTCDate() + 1); c.setUTCHours(0, 0, 0, 0); continue; }
-    const hr = c.getUTCHours();
-    if (!hours.has(hr)) { c.setUTCHours(c.getUTCHours() + 1, 0, 0, 0); continue; }
-    const mn = c.getUTCMinutes();
-    if (!minutes.has(mn)) { c.setUTCMinutes(c.getUTCMinutes() + 1, 0, 0); continue; }
-    return c.getTime();
-  }
-  return null;
+  if (expr.trim().split(/\s+/).length !== 5) return null;
+  try { return computeNextRun({ cron: expr }, fromMs); } catch { return null; }
 }
 
 // ─── Public types ────────────────────────────────────────────────────────────
