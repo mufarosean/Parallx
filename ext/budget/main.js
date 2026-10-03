@@ -313,6 +313,21 @@ function _setCurrentSection(id) {
   for (const fn of _sectionListeners) { try { fn(id); } catch { /* listener errors stay local */ } }
 }
 
+// A page refresh that never runs twice at once: a call while one is running
+// asks for one more run after it, so the last paint always shows the latest
+// ledger and an older, slower read can never paint over a newer one.
+function serialRefresh(fn) {
+  let running = false;
+  let again = false;
+  return async function run() {
+    if (running) { again = true; return; }
+    running = true;
+    try {
+      do { again = false; await fn(); } while (again);
+    } finally { running = false; }
+  };
+}
+
 // Ledger changed outside a sync (a review verdict, an edit): views refresh.
 const _ledgerListeners = new Set();
 function notifyLedgerChanged() {
@@ -1245,6 +1260,7 @@ function renderSidebarNav(container, api) {
     else if (evt.kind === 'progress' && evt.stage) status.textContent = `Syncing: ${evt.stage}…`;
     else refresh();
   }
+  refresh = serialRefresh(refresh);
   const offSync = onSyncEvent(onSync);
   const offLedger = onLedgerChanged(refresh);
   _sectionListeners.add(markCurrent);
@@ -2898,6 +2914,7 @@ function renderSyncLogSection(body, api) {
     table.appendChild(tbody);
     tableWrap.appendChild(table);
   }
+  refresh = serialRefresh(refresh);
   void refresh();
   const offBus = onSyncEvent((evt) => {
     if (evt.kind === 'complete' || evt.kind === 'error') void refresh();
@@ -3034,6 +3051,7 @@ function renderCategoriesSection(body, api) {
     table.appendChild(tbody);
     tableWrap.appendChild(table);
   }
+  refresh = serialRefresh(refresh);
   void refresh();
   const offLedger = onLedgerChanged(() => void refresh());
   return () => { alive = false; offLedger(); };
@@ -3093,6 +3111,7 @@ function renderOverviewSection(body, api) {
     drawAccounts(side, data, api);
   }
 
+  draw = serialRefresh(draw);
   const offSync = onSyncEvent((e) => { if (e.kind === 'complete' || e.kind === 'error') draw(); });
   const offLedger = onLedgerChanged(draw);
   draw();
@@ -3822,6 +3841,7 @@ function renderAccountsSection(body, api, opts = {}) {
       table.appendChild(tb); mgmtEl.appendChild(table);
     }
   }
+  refresh = serialRefresh(refresh);
   void refresh();
   const offLedger = onLedgerChanged(() => void refresh());
   return () => { alive = false; offLedger(); };
@@ -4010,6 +4030,7 @@ function renderGoalsSection(body, api, opts = {}) {
     headEl.appendChild(sub);
     for (const g of goals) listEl.appendChild(buildGoalCard(g, monthlySurplus, api, refresh));
   }
+  refresh = serialRefresh(refresh);
   void refresh();
   const offBus = onSyncEvent((evt) => { if (evt.kind === 'complete') void refresh(); });
   const offLedger = onLedgerChanged(() => void refresh());
@@ -4110,6 +4131,7 @@ function renderCashFlowSection(body, api) {
     table.appendChild(tb);
     tableWrap.appendChild(table);
   }
+  refresh = serialRefresh(refresh);
   void refresh();
   const offLedger = onLedgerChanged(() => void refresh());
   return () => { alive = false; offLedger(); };
@@ -4229,6 +4251,7 @@ function renderReportsSection(body, api) {
     }
     trendSection.appendChild(buildLine(points, { width: 720, height: 160, color: 'var(--vscode-charts-red, #a43b38)' }));
   }
+  refresh = serialRefresh(refresh);
   void refresh();
   const offLedger = onLedgerChanged(() => void refresh());
   return () => { alive = false; offLedger(); };
@@ -4697,6 +4720,7 @@ function renderRecurringSection(body, api) {
       listWrap.appendChild(row);
     }
   }
+  refresh = serialRefresh(refresh);
   void refresh();
   const offLedger = onLedgerChanged(() => void refresh());
   return () => { alive = false; offLedger(); };
@@ -5014,6 +5038,7 @@ function renderRulesSection(body, api) {
     }
   }
 
+  refresh = serialRefresh(refresh);
   void refresh();
   const offLedger = onLedgerChanged(() => void refresh());
   const offSync = onSyncEvent((e) => { if (e.kind === 'complete') void refresh(); });
@@ -5148,6 +5173,7 @@ function renderReconcileSection(body, api) {
     }
   }
 
+  refresh = serialRefresh(refresh);
   void refresh();
   const offLedger = onLedgerChanged(() => void refresh());
   return () => { alive = false; offLedger(); };
@@ -6298,22 +6324,45 @@ function billDueCount(nextDue, cadence, range) {
   return n;
 }
 
+// What a bill was paid in a month: the purchases and fees linked to it, or
+// whose merchant contains its pattern (any case). Same rule the per-bill
+// query used, read from rows already in memory.
+function billPaidIn(series, rows, linkedIds) {
+  const pat = String(series.merchant_pattern || '').toLowerCase();
+  let cents = 0;
+  let last = null;
+  for (const t of rows) {
+    const hit = (linkedIds && linkedIds.has(t.id)) || (pat !== '' && String(t.merchant || '').toLowerCase().includes(pat));
+    if (!hit) continue;
+    cents += Number(t.amount_cents) || 0;
+    if (!last || t.transaction_date > last) last = t.transaction_date;
+  }
+  return { cents, last };
+}
+
 async function readMonthBills(range, todayIso) {
   const series = await db.all(
     `SELECT id, merchant_pattern, display_name, category_id, cadence, avg_amount_cents, last_amount_cents, next_due_date, detection_confidence
        FROM recurring_series WHERE cancelled = 0`);
+  // Two reads for every bill, not one per bill: the month's purchases and
+  // fees, and which of them were linked to which bill.
+  const rows = series.length ? await db.all(
+    `SELECT id, merchant, amount_cents, transaction_date FROM transactions
+      WHERE status='confirmed' AND tx_type IN ('purchase','fee')
+        AND transaction_date >= ? AND transaction_date <= ?`, [range.start, range.end]) : [];
+  const links = series.length ? await db.all(
+    `SELECT o.series_id, o.transaction_id FROM recurring_occurrences o
+       JOIN transactions t ON t.id = o.transaction_id
+      WHERE t.transaction_date >= ? AND t.transaction_date <= ?`, [range.start, range.end]).catch(() => []) : [];
+  const linked = new Map();
+  for (const l of links) {
+    if (!linked.has(l.series_id)) linked.set(l.series_id, new Set());
+    linked.get(l.series_id).add(l.transaction_id);
+  }
   const out = [];
   for (const s of series) {
-    const pat = String(s.merchant_pattern || '').toLowerCase();
-    const paid = await db.get(
-      `SELECT COALESCE(SUM(t.amount_cents),0) AS cents, MAX(t.transaction_date) AS last
-         FROM transactions t
-        WHERE t.status='confirmed' AND t.tx_type IN ('purchase','fee')
-          AND t.transaction_date >= ? AND t.transaction_date <= ?
-          AND (t.id IN (SELECT transaction_id FROM recurring_occurrences WHERE series_id = ?)
-               OR (? <> '' AND LOWER(COALESCE(t.merchant,'')) LIKE '%' || ? || '%'))`,
-      [range.start, range.end, s.id, pat, pat]);
-    const paidCents = Number(paid?.cents) || 0;
+    const paid = billPaidIn(s, rows, linked.get(s.id));
+    const paidCents = paid.cents;
     const usual = Number(s.last_amount_cents) || Number(s.avg_amount_cents) || 0;
     const due = s.next_due_date || null;
     const dueThisMonth = !!due && due >= range.start && due <= range.end;
@@ -6326,7 +6375,7 @@ async function readMonthBills(range, todayIso) {
       categoryId: s.category_id,
       paid: paidCents > 0,
       paidCents,
-      paidOn: paid?.last || null,
+      paidOn: paid.last,
       dueDate: due,
       toComeCents: ahead ? usual * aheadCount
         : paidCents > 0 || !dueThisMonth || (todayIso && due < todayIso) ? 0 : usual,
@@ -9089,6 +9138,8 @@ export const __testables = {
   splitTxNotes,
   txOrigin,
   billDueCount,
+  billPaidIn,
+  serialRefresh,
   ruleDryRun,
   goalMonthlyNeed,
   computeAllocation,
