@@ -19,7 +19,7 @@ import UniverPresetSheetsCoreEnUS from '@univerjs/presets/preset-sheets-core/loc
 // (Problem Bank, docs/PROBLEM_BANK.md); the drawing preset renders them.
 import { UniverSheetsDrawingPreset } from '@univerjs/presets/preset-sheets-drawing';
 import UniverPresetSheetsDrawingEnUS from '@univerjs/presets/preset-sheets-drawing/locales/en-US';
-import { IFunctionService } from '@univerjs/engine-formula';
+import { IFunctionService, LexerTreeBuilder, BaseReferenceObject } from '@univerjs/engine-formula';
 import { IContextMenuService, ContextMenuPosition, IShortcutService, KeyCode, MetaKeys } from '@univerjs/ui';
 import { ICommandService, IContextService, IUniverInstanceService, UniverInstanceType, LifecycleService, LifecycleStages, CommandType, Direction, EDITOR_ACTIVATED, FOCUSING_SHEET, FOCUSING_UNIVER_EDITOR, DOCS_NORMAL_EDITOR_UNIT_ID_KEY, DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY, getBodySlice, type DocumentDataModel } from '@univerjs/core';
 import { ReplaceTextRunsCommand } from '@univerjs/docs-ui';
@@ -33,6 +33,7 @@ import type { FUniver } from '@univerjs/core/lib/facade';
 import { ATHENA_FUNCTIONS } from './athenaFunctions.js';
 import { roundForDisplay } from './displayNumbers.js';
 import { restoreAbsoluteMarkers } from './formulaRefs.js';
+import { applyFormulaEngineGuards } from './formulaEngineGuards.js';
 import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 import '@univerjs/presets/lib/styles/preset-sheets-drawing.css';
 
@@ -80,6 +81,14 @@ export interface SheetViewState {
   col: number;
   scrollRow: number;
   scrollCol: number;
+}
+
+// The formula engine's parser and parse caches, made safe once for the
+// window before the first engine exists (formulaEngineGuards.ts: a stray `[`
+// left every later formula black and #NAME? until a restart).
+const ENGINE_GUARDS = applyFormulaEngineGuards(LexerTreeBuilder, BaseReferenceObject);
+if (!ENGINE_GUARDS.lexerReset || !ENGINE_GUARDS.sequenceCopies || !ENGINE_GUARDS.rangeCopies) {
+  console.warn('[WorksheetHost] formula engine guards incomplete:', ENGINE_GUARDS);
 }
 
 /** Live hosts on the page (the quiz mounts and disposes one per problem). */
@@ -510,7 +519,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
         if (reportedErrors.has(key)) continue;
         reportedErrors.add(key);
         const executors = fnService.getExecutors().size;
-        const health = { executors, multiply: fnService.hasExecutor('MULTIPLY'), sum: fnService.hasExecutor('SUM'), hostsAlive: _hostsAlive, sinceMountS: Math.round((Date.now() - mountedAt) / 1000), decimals: displayDecimals };
+        const health = { executors, multiply: fnService.hasExecutor('MULTIPLY'), sum: fnService.hasExecutor('SUM'), hostsAlive: _hostsAlive, sinceMountS: Math.round((Date.now() - mountedAt) / 1000), decimals: displayDecimals, guards: ENGINE_GUARDS };
         const cellName = `${(() => { let n = column + 1, s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; })()}${row + 1}`;
         const summary = `${cellName} ${formula || '(no formula)'} -> ${v}`;
         console.warn('[WorksheetHost] formula error', summary, health);
@@ -920,6 +929,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
         editorVisible: injector.get(IEditorBridgeService).isVisible().visible,
         tabRunMemory: !!findTabRunMemory(),
         hostsAlive: _hostsAlive,
+        guards: { ...ENGINE_GUARDS, sameLexer: injector.get(LexerTreeBuilder) instanceof LexerTreeBuilder },
         executors: injector.get(IFunctionService).getExecutors().size,
         editorActivated: ctx.getContextValue(EDITOR_ACTIVATED),
         focusingSheet: ctx.getContextValue('FOCUSING_SHEET'),

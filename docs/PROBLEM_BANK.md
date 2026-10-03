@@ -309,6 +309,28 @@ replaced. The rule now:
    cell and scroll restored (host getViewState/restoreViewState). The
    Engine.prototype.resize patch for hidden panes is gone with the hidden
    panes.
+   2026-10-03 (Mufaro, a four-hour quiz: a clicked reference stays black,
+   Enter gives #NAME? or #VALUE!, clearing and retyping fails the same way,
+   a restart shows the right number in the same cell). ROOT CAUSE, found
+   and reproduced in the app: the engine's lexer (LexerTreeBuilder) clears
+   its per-parse state at the start of every parse except the square-bracket
+   count. The editor parses on every keystroke, so one `[` or `]` in a
+   formula for a moment (the keys beside `=` and Enter, then Backspace or
+   Escape) left the count wrong for the engine's life; from then on every
+   operator, comma and colon read as part of a name: no reference colours
+   or boxes, `=A1*B1+1` -> #NAME?, `=ROUND(A1/B1,2)` -> #N/A. The parse
+   caches are window-wide and keyed by formula text, so the same text failed
+   again on retry. FIX (formulaEngineGuards.ts, applied once by univerHost
+   to the engine's own classes): the bracket state is reset with the rest;
+   the sequence cache hands out copies (the formula editor rewrote cached
+   nodes when a click replaced a reference); a reference object keeps a
+   copy of its range (SUMIF, AVERAGEIF and LOOKUP stretch a short range in
+   place, which reached the next formula naming that cell). Unit test runs
+   the real engine and fails if an upgrade renames what is patched
+   (worksheetFormulaEngineGuards.test.ts); in-app probe
+   tests/probes/worksheet-formula-lexer-probe.mjs: guards off, 1/4 formulas
+   compute after a stray `[` (black references in the shot); guards on, 7/7.
+   probeState and the 'formula error' journal detail now carry the guards.
 3k. DONE 2026-09-14 (late morning): dollar signs survive a reference drag.
    Reproduced in a hidden host probe (scratch drag-probe: probeStartEditing
    + webContents.insertText, then a mouse drag on the highlighted box's top
