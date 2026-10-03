@@ -311,6 +311,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 2. Create CanvasDataService
   _dataService = new CanvasDataService();
+  // A window reload (View > Reload, Ctrl+R) unloads the renderer without
+  // waiting for the async shutdown: send every pending save while the page
+  // can still send (C16).
+  {
+    const onUnload = () => { _dataService?.flushPendingSavesForUnload(); };
+    window.addEventListener('beforeunload', onUnload);
+    context.subscriptions.push({ dispose: () => window.removeEventListener('beforeunload', onUnload) });
+  }
   context.subscriptions.push(_dataService);
 
   // Route SQL through the IDatabaseService tool bridge so canvas writes

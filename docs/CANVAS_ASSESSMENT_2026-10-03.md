@@ -82,7 +82,7 @@ markdown, focus) were not tested adversarially.
 | C13 | `canvas_edit_block` on a nested id (list row, cell) writes a schema-invalid doc; an AI insert after a list row produces an invalid list that throws on Enter. Nothing calls `check()` before saving. | `ai/blockTools.ts:189`, `ai/blockApi.ts:157, 240` | Verified |
 | C14 | Board grouped by multi-select: dragging a card turns its tag array into one string; dropping on "No X" clears all tags. | `database/databaseEditorPane.ts:490` | **Fixed**: the drop swaps only the tag the card was dragged from (`boardDropValue`); "No …" removes only that tag. |
 | C15 | Re-running the legacy property migration overwrites current values with stale ones. | `database/legacyPropertyMigration.ts:553` | **Fixed**: the migration only fills empty cells, never overwrites. |
-| C16 | Typing during an AI write (or while a child page is renamed) drops the last ~500 ms of keystrokes yet reports Saved; Ctrl+Q / Reload skip the close-time flush. | `canvasDataService.ts:1453`, `electron/main.cjs:816` | Verified / likely |
+| C16 | Typing during an AI write (or while a child page is renamed) drops the last ~500 ms of keystrokes yet reports Saved; Ctrl+Q / Reload skip the close-time flush. | `canvasDataService.ts:1453`, `electron/main.cjs:816` | **Fixed**: Ctrl+Q now goes through the guarded window close, so pending saves are written. In the app: quitting right after typing lost the last words before the fix and kept them after. A reload sends every pending save at once at unload. A reload while edits wait to save merges by block (`reloadMerge.ts`) and saves the merge. The single-page reload and the AI-write case did not reproduce in app runs (the save landed first); the merge is unit-tested. |
 
 ## High: broken features
 

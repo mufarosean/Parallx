@@ -1549,6 +1549,20 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   /**
+   * Start every pending save at once, for the page being unloaded (a window
+   * reload).  Nothing after an unload gets an answer, so a flush that waits
+   * for one page before writing the next only ever sent the first; started
+   * together, each write's request is out before the page goes (C16).
+   */
+  flushPendingSavesForUnload(): void {
+    const pending = [...this._pendingSaves.entries()];
+    this._pendingSaves.clear();
+    for (const [pageId, entry] of pending) {
+      void this._flushPendingEntry(pageId, entry).catch(() => { /* unloading */ });
+    }
+  }
+
+  /**
    * Force-save ONE page's pending auto-save immediately (no-op when none).
    *
    * This is the flush-before-merge invariant: every operation that MERGES into

@@ -406,3 +406,54 @@ describe('C15: re-running the legacy property migration never overwrites current
     expect(cells.due).toBe('Friday');
   });
 });
+
+// ── C16: an external write landing while the user's edits wait to save ──────
+
+describe('C16: a reload keeps the edits that had not been saved yet', () => {
+  const blk = (id: string, text: string) => ({ type: 'paragraph', attrs: { id }, content: [{ type: 'text', text }] });
+  const doc = (...c: any[]) => ({ type: 'doc', content: c });
+
+  it('the user\'s unsaved block survives an external write to another block', async () => {
+    const { mergeLocalEdits } = await import('../../src/built-in/canvas/reloadMerge');
+    const base = doc(blk('a', 'one'), blk('b', 'two'), blk('c', 'card'));
+    const local = doc(blk('a', 'one typed'), blk('b', 'two'), blk('c', 'card'));
+    const external = doc(blk('a', 'one'), blk('b', 'two'), blk('c', 'card renamed'));
+    const r = mergeLocalEdits(base, local, external);
+    expect(r.doc).toEqual(doc(blk('a', 'one typed'), blk('b', 'two'), blk('c', 'card renamed')));
+    expect(r.changed).toBe(true);
+  });
+
+  it('a block added locally keeps its place; a block deleted locally stays deleted', async () => {
+    const { mergeLocalEdits } = await import('../../src/built-in/canvas/reloadMerge');
+    const base = doc(blk('a', 'one'), blk('b', 'two'), blk('c', 'three'));
+    const local = doc(blk('a', 'one'), blk('n', 'new'), blk('c', 'three'));
+    const external = doc(blk('a', 'one'), blk('b', 'two'), blk('c', 'three'), blk('x', 'from AI'));
+    const r = mergeLocalEdits(base, local, external);
+    expect(r.doc).toEqual(doc(blk('a', 'one'), blk('n', 'new'), blk('c', 'three'), blk('x', 'from AI')));
+  });
+
+  it('with no local edits the external doc is taken as is', async () => {
+    const { mergeLocalEdits } = await import('../../src/built-in/canvas/reloadMerge');
+    const base = doc(blk('a', 'one'));
+    const external = doc(blk('a', 'one edited by AI'));
+    const r = mergeLocalEdits(base, base, external);
+    expect(r.doc).toEqual(external);
+    expect(r.changed).toBe(false);
+  });
+
+  it('after an AI rewrite (all new block ids) the user\'s new block lands at the end', async () => {
+    const { mergeLocalEdits } = await import('../../src/built-in/canvas/reloadMerge');
+    const base = doc(blk('a', 'first line'));
+    const local = doc(blk('a', 'first line'), blk('n', 'TYPED NOW'));
+    const external = doc(blk('z', 'AI wrote this paragraph.'));
+    expect(mergeLocalEdits(base, local, external).doc).toEqual(doc(blk('z', 'AI wrote this paragraph.'), blk('n', 'TYPED NOW')));
+  });
+
+  it('a block the other writer deleted but the user edited is kept', async () => {
+    const { mergeLocalEdits } = await import('../../src/built-in/canvas/reloadMerge');
+    const base = doc(blk('a', 'one'), blk('b', 'two'));
+    const local = doc(blk('a', 'one'), blk('b', 'two typed'));
+    const external = doc(blk('a', 'one'));
+    expect(mergeLocalEdits(base, local, external).doc).toEqual(doc(blk('a', 'one'), blk('b', 'two typed')));
+  });
+});

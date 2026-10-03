@@ -803,6 +803,8 @@ async function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    // A quit that waited for the guarded close (see before-quit) resumes.
+    if (_quitAfterWindowClose) app.quit();
   });
 
   // ── Unsaved changes guard ──
@@ -911,7 +913,19 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on('before-quit', () => {
+// Quit (Ctrl+Q, the File menu) goes through the same guarded close as the
+// window's close button while the window is up: the renderer saves dirty
+// editors and flushes pending page saves, then confirms, and the quit
+// resumes once the window has closed. Quitting straight away skipped all of
+// that and lost the last keystrokes (canvas C16).
+let _quitAfterWindowClose = false;
+app.on('before-quit', (e) => {
+  if (!isAppQuitting && !IS_TEST_MODE && mainWindow && !mainWindow.isDestroyed()) {
+    e.preventDefault();
+    _quitAfterWindowClose = true;
+    mainWindow.close();
+    return;
+  }
   isAppQuitting = true;
   runTeardown('appQuit');
 });
@@ -3463,6 +3477,7 @@ function _ensureLoopbackAudioHandler() {
 // ffmpeg can never outlive the app (an orphan keeps recording the screen to
 // disk forever and holds its temp file locked).
 app.on('before-quit', () => {
+  if (!isAppQuitting) return; // the quit was deferred to the guarded window close
   for (const [, e] of _recorderFrames) {
     if (e && e.proc) { try { e.proc.kill('SIGKILL'); } catch { /* ignore */ } }
   }

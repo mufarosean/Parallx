@@ -42,6 +42,8 @@ import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuReg
 import { motionReduced } from '../../ui/motionPreference.js';
 import { editorContentForStorage, wrapUnknownContent } from './unknownContent.js';
 import { joinPaneMirror, broadcastPaneDoc, type PaneMirrorTarget } from './paneMirror.js';
+import { mergeLocalEdits } from './reloadMerge.js';
+import { decodeCanvasContent } from './contentSchema.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -295,6 +297,11 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
   private _editor: Editor | null = null;
   /** Leaves the page's pane mirror (see paneMirror.ts). */
   private _leaveMirror: (() => void) | null = null;
+  /**
+   * The stored doc this editor last matched (loaded, reloaded, or saved by
+   * it).  A reload merges against it so edits not yet saved survive (C16).
+   */
+  private _syncedBase: { type: string; content?: unknown[] } | null = null;
   private _editorContainer: HTMLElement | null = null;
   private _menuRegistry!: CanvasMenuRegistry;
   private _disposed = false;
@@ -752,6 +759,15 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
         this._loadContent();
       }),
     );
+    // A save of this page landed: that stored doc is now what the editor
+    // matches, the base for merging the next reload (C16).
+    this._saveDisposables.add(
+      this._dataService.onDidSavePage((e) => {
+        if (e.pageId !== this._pageId || !e.page?.content || !this._editor) return;
+        const decoded = decodeCanvasContent(e.page.content);
+        if (!decoded.unreadable) this._syncedBase = wrapUnknownContent(decoded.doc, this._editor.schema);
+      }),
+    );
 
     // Register page-menu handler so the external ribbon's ⋯ button can
     // trigger the full page menu (which lives in PageChromeController).
@@ -931,7 +947,22 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
           if (decoded.unreadable) this._editor!.setEditable(false);
           // Blocks and marks this build doesn't know load as placeholders and
           // save back as they were (C1) — instead of an empty page.
-          const docForEditor = wrapUnknownContent(decoded.doc, this._editor!.schema);
+          const storedDoc = wrapUnknownContent(decoded.doc, this._editor!.schema);
+          // A reload while edits still wait to save: keep the blocks the user
+          // changed since the doc this editor last matched, take the rest
+          // from storage, and save the merge (C16).
+          let docForEditor = storedDoc;
+          let mergedLocalEdits = false;
+          if (this._initialContentLoaded && this._syncedBase && !decoded.unreadable) {
+            const merged = mergeLocalEdits(
+              this._syncedBase as never,
+              this._editor!.getJSON() as never,
+              storedDoc as never,
+            );
+            docForEditor = merged.doc as typeof storedDoc;
+            mergedLocalEdits = merged.changed;
+          }
+          this._syncedBase = decoded.unreadable ? null : storedDoc;
           // Reloads (external writers — AI tools, sidebar ops) apply SURGICALLY:
           // only the changed top-level blocks are replaced, so the user's
           // cursor/scroll/selection survive and nothing flickers. The changed
@@ -944,6 +975,9 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
           if (!isCurrent()) return;
           if (!surgical) {
             this._editor!.commands.setContent(docForEditor);
+          }
+          if (mergedLocalEdits) {
+            this._dataService.scheduleContentSave(this._pageId, editorContentForStorage(this._editor!));
           }
           if (decoded.recovered) {
             console.warn(`[CanvasEditorPane] Recovered and normalized content for page "${this._pageId}"`);
