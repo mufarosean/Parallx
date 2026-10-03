@@ -12,7 +12,7 @@
 
 /* ── Header ─────────────────────────────────────────────────────────── */
 .px-appearance-header {
-  padding: var(--px-space-6, 24px) var(--px-space-7, 32px) var(--px-space-4, 16px);
+  padding: var(--px-space-6, 24px) var(--px-space-8) var(--px-space-4, 16px);
   border-bottom: 1px solid var(--px-divider);
   flex: 0 0 auto;
 }
@@ -35,10 +35,10 @@
 .px-appearance-body {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: var(--px-space-6, 24px) var(--px-space-7, 32px) var(--px-space-8, 48px);
+  padding: var(--px-space-6, 24px) var(--px-space-8) var(--px-space-8, 48px);
   display: flex;
   flex-direction: column;
-  gap: var(--px-space-7, 32px);
+  gap: var(--px-space-8);
   max-width: 920px;
 }
 
@@ -302,7 +302,7 @@
 .px-pv-btn {
   font-size: var(--px-text-sm, 12px);
   font-weight: 550;
-  color: var(--px-accent-on, var(--px-text-on-accent, #fff));
+  color: var(--px-text-on-accent);
   background: var(--px-accent);
   border: none;
   border-radius: var(--px-radius-md, 6px);

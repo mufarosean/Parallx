@@ -2459,7 +2459,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   transform-box: fill-box;
   transform-origin: 50% 55%;
   animation: cmw-blink 5.4s infinite;
-  transition: opacity var(--px-dur-normal, 200ms) var(--px-ease);
+  transition: opacity var(--px-dur-base, 200ms) var(--px-ease);
 }
 .cmw--drowsy .cmw__eye-open { animation: cmw-blink 3.2s infinite; }
 .cmw--asleep .cmw__eye-open { opacity: 0; animation: none; }
@@ -2471,7 +2471,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 
 /* Pupils chase the cursor (JS sets the transform; CSS smooths it). */
 .cmw__pupils {
-  transition: transform var(--px-dur-normal, 200ms) var(--px-ease);
+  transition: transform var(--px-dur-base, 200ms) var(--px-ease);
 }
 
 /* Lids: hidden normally, half-drawn when drowsy. */
@@ -2488,7 +2488,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 /* Closed eyes: two content arcs, only while asleep. */
 .cmw__eye-closed {
   opacity: 0;
-  transition: opacity var(--px-dur-normal, 200ms) var(--px-ease);
+  transition: opacity var(--px-dur-base, 200ms) var(--px-ease);
 }
 .cmw--asleep .cmw__eye-closed { opacity: 1; }
 

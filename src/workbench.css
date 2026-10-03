@@ -258,7 +258,7 @@ html, body {
   font-weight: 600;
   letter-spacing: 0.2px;
   color: var(--px-text);
-  background: var(--px-surface);
+  background: var(--px-bg-elevated);
   border: 1px solid var(--px-border);
   user-select: none;
 }
@@ -930,7 +930,7 @@ html, body {
   height: 100%;
   padding: 12px;
   text-align: center;
-  color: var(--px-fg-muted, var(--vscode-descriptionForeground));
+  color: var(--px-text-muted, var(--vscode-descriptionForeground));
   font-size: var(--px-text-sm);
 }
 .container-box--revealed .container-box-card {
@@ -1030,7 +1030,7 @@ html, body {
   height: 100%;
   padding: 12px;
   text-align: center;
-  color: var(--px-fg-muted, var(--vscode-descriptionForeground));
+  color: var(--px-text-muted, var(--vscode-descriptionForeground));
   font-size: var(--px-text-sm);
 }
 

@@ -305,14 +305,14 @@ const CSS = `
 .br-lock { display: inline-flex; opacity: 0.7; flex: 0 0 auto; }
 .br-lock.is-insecure { color: var(--vscode-errorForeground, var(--px-danger)); opacity: 1; }
 .br-address { flex: 1; min-width: 0; height: 100%; border: none; background: transparent; color: inherit; font: inherit; font-size: 13px; outline: none; }
-.br-suggest { position: absolute; left: 0; right: 0; top: 30px; z-index: 5; background: var(--vscode-editorWidget-background, var(--px-surface)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 8px 24px rgba(0,0,0,0.25); overflow: hidden; }
+.br-suggest { position: absolute; left: 0; right: 0; top: 30px; z-index: 5; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 8px 24px rgba(0,0,0,0.25); overflow: hidden; }
 .br-suggest-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
 .br-suggest-item:hover, .br-suggest-item.is-selected { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
 .br-suggest-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .br-suggest-url { opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
 .br-progress { height: 2px; background: transparent; flex: 0 0 auto; }
 .br-progress > div { height: 100%; width: 0; background: var(--vscode-progressBar-background, var(--px-accent)); transition: width var(--px-dur-base, 180ms) var(--px-ease, ease), opacity var(--px-dur-fast, 120ms); }
-.br-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-editorWidget-background, var(--px-surface)); flex: 0 0 auto; }
+.br-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; border-bottom: 1px solid var(--vscode-panel-border, var(--px-border)); background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); flex: 0 0 auto; }
 .br-bar .br-spacer { flex: 1; }
 .br-bar button, .br-panel button.br-action, .br-error button, .br-sidebar button.br-action, .br-newtab button.br-action, .br-page button.br-action { border: 1px solid var(--vscode-panel-border, var(--px-border)); background: transparent; color: inherit; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: var(--px-control-h-sm); padding: 0 10px; border-radius: var(--px-radius-sm); font-size: var(--px-text-sm); line-height: 1; }
 .br-bar button:hover, .br-panel button.br-action:hover, .br-error button:hover, .br-sidebar button.br-action:hover, .br-newtab button.br-action:hover, .br-page button.br-action:hover { background: var(--vscode-list-hoverBackground, var(--px-surface-hover)); }
@@ -329,8 +329,8 @@ const CSS = `
    page, the web page and the error panel all show at once. */
 .br-pane [hidden] { display: none !important; }
 .br-content { background-size: 100% 100%; background-repeat: no-repeat; background-position: 0 0; }
-.br-status { position: absolute; left: 0; bottom: 0; max-width: 70%; padding: 2px 8px; font-size: 11px; background: var(--vscode-editorWidget-background, var(--px-surface)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-left: none; border-bottom: none; border-radius: 0 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 3; }
-.br-panel { position: absolute; top: 40px; right: 8px; width: 320px; z-index: 6; background: var(--vscode-editorWidget-background, var(--px-surface)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); padding: 12px; font-size: 12px; }
+.br-status { position: absolute; left: 0; bottom: 0; max-width: 70%; padding: 2px 8px; font-size: 11px; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-left: none; border-bottom: none; border-radius: 0 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 3; }
+.br-panel { position: absolute; top: 40px; right: 8px; width: 320px; z-index: 6; background: var(--vscode-editorWidget-background, var(--px-bg-elevated)); border: 1px solid var(--vscode-panel-border, var(--px-border)); border-radius: var(--parallx-radius-md, 6px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); padding: 12px; font-size: 12px; }
 .br-panel h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
 .br-panel .br-muted { opacity: 0.7; }
 .br-panel-count { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 6px; }
@@ -386,7 +386,7 @@ const CSS = `
 .br-dlbar { height: 3px; border-radius: 2px; background: var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.3)); overflow: hidden; }
 .br-dlbar > div { height: 100%; background: var(--vscode-progressBar-background, var(--px-accent)); }
 .br-reader { border: none; background: var(--vscode-editor-background, var(--px-bg)); }
-.br-agent-bar { background: var(--vscode-inputValidation-infoBackground, var(--px-surface)); }
+.br-agent-bar { background: var(--vscode-inputValidation-infoBackground, var(--px-bg-elevated)); }
 .br-agent-note { opacity: 0.75; font-style: italic; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .br-agent-state { font-weight: 600; white-space: nowrap; }
 .br-agent-actions { display: inline-flex; gap: 6px; flex: 0 0 auto; }
