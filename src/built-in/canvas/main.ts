@@ -1162,22 +1162,11 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
           return;
         }
 
-        // The "blank page" branch and the "no choice" branch are
-        // distinguishable only by the explicit blank action: opening
-        // the picker is a user-initiated request to create something,
-        // so the blank button creates a page; cancel does NOT.
-        // Distinguish via: template = null but openedManager not set.
-        // For backward compat with the empty-workspace flow, we still
-        // create-blank on null when the user clicked "Start with a
-        // blank page" — that path returns null with no manager flag.
-        // We can't tell apart from a cancel without an explicit flag,
-        // so the picker resolves with template = null in BOTH cases;
-        // only the explicit blank button created a page in M77.4.
-        // Post-rev: cancel and blank are distinguishable because cancel
-        // returns from a different button. We keep current semantics:
-        // the empty-workspace flow goes through canvas.newPage now,
-        // and this command is reached only when the user actively
-        // wants a templated page — so a null template means cancel.
+        // "Start with a blank page" makes a plain page; Cancel makes nothing.
+        if (result.blank) {
+          await api.commands.executeCommand('canvas.newPage');
+          return;
+        }
         if (!result.template) return;
 
         const page = await _dataService.createPage(null, result.template.defaultTitle);
@@ -1219,20 +1208,14 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
           placeholder: 'Daily standup, Bug report, etc.',
         });
         if (!name) return;
-        // Parse the page's stored content into a doc the template can
-        // rebuild. createPage seeds via flushContentSave so the same
-        // JSON shape round-trips.
-        let doc: unknown = null;
-        try {
-          doc = page.content ? JSON.parse(page.content) : null;
-        } catch {
-          doc = null;
-        }
+        // The page's body as a doc (stored content is the versioned
+        // envelope; saving the envelope made every template empty).
+        const mod = await import('./canvasTemplates.js');
+        const doc = mod.templateDocFromPage(page.content);
         if (!doc) {
-          await api.window.showWarningMessage('This page has no content to template yet.');
+          await api.window.showWarningMessage('This page has no content to make a template from.');
           return;
         }
-        const mod = await import('./canvasTemplates.js');
         const saved = await mod.saveUserCanvasTemplate(api, {
           name,
           description: `Created from "${page.title}"`,

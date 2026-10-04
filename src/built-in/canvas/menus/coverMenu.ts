@@ -12,12 +12,6 @@ import { $, layoutPopup } from '../../../ui/dom.js';
 import { COVER_GALLERY } from './canvasMenuRegistry.js';
 import type { ICanvasMenu, CanvasMenuRegistry } from './canvasMenuRegistry.js';
 
-// ── Gradient gallery presets ────────────────────────────────────────────────
-// The identity-derived cover palette — one list, owned by the blockRegistry
-// gate, shared with pageChrome's "Add cover" default.
-
-const GRADIENTS = COVER_GALLERY;
-
 // ── Options ─────────────────────────────────────────────────────────────────
 
 export interface CoverMenuOptions {
@@ -127,7 +121,9 @@ export class CoverMenuController implements ICanvasMenu {
     const renderGallery = () => {
       content.innerHTML = '';
       const grid = $('div.canvas-cover-gallery');
-      for (const grad of GRADIENTS) {
+      // The gallery is read here, not at module load (an import cycle
+      // leaves it undefined then).
+      for (const grad of COVER_GALLERY) {
         const swatch = $('div.canvas-cover-swatch');
         swatch.style.background = grad;
         swatch.addEventListener('click', () => {

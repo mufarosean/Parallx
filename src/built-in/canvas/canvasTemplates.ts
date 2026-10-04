@@ -17,6 +17,8 @@
 // don't touch the DOM or DB themselves; the caller creates the page
 // through CanvasDataService and seeds its content via `flushContentSave`.
 
+import { decodeCanvasContent, isUnreadableCanvasContent } from './contentSchema.js';
+
 /**
  * Minimal API shape this module needs. Mirrors a slice of the host's
  * frozen `ParallxApiObject` (and of canvas/main.ts's local ParallxApi):
@@ -252,6 +254,53 @@ interface IUserTemplateFile {
   readonly doc: unknown;
 }
 
+/**
+ * The body of a template made from a page's stored content (the
+ * `{schemaVersion, doc}` envelope), or null when the page is empty or
+ * cannot be read. Sub-page cards are left out (they are the source page's
+ * children; a second card would point at the same page) and so are block
+ * ids (each new page gets fresh ones).
+ */
+export function templateDocFromPage(storedContent: string | null | undefined): unknown | null {
+  if (!storedContent || isUnreadableCanvasContent(storedContent)) return null;
+  const { doc } = decodeCanvasContent(storedContent);
+  return normalizeTemplateDoc(doc);
+}
+
+/** A template body as a doc: unwraps an envelope saved by older code. */
+function normalizeTemplateDoc(raw: unknown): unknown | null {
+  let doc = raw as { type?: unknown; doc?: unknown; content?: unknown } | null;
+  if (doc && typeof doc === 'object' && doc.type !== 'doc' && doc.doc && typeof doc.doc === 'object') {
+    doc = doc.doc as typeof doc;
+  }
+  if (!doc || typeof doc !== 'object' || doc.type !== 'doc' || !Array.isArray(doc.content)) return null;
+  const cleaned = _withoutCardsAndIds(doc) as { content?: unknown[] };
+  if (!cleaned.content || cleaned.content.length === 0) cleaned.content = [{ type: 'paragraph' }];
+  return cleaned;
+}
+
+/** Blocks that must keep at least one block inside. */
+const _NEEDS_BLOCK = new Set(['column', 'callout', 'blockquote', 'detailsContent', 'tableCell', 'tableHeader', 'listItem', 'taskItem']);
+
+function _withoutCardsAndIds(node: unknown): unknown {
+  if (!node || typeof node !== 'object') return node;
+  const n = node as { type?: string; attrs?: Record<string, unknown>; content?: unknown[] };
+  const out: Record<string, unknown> = { ...n };
+  if (n.attrs) {
+    const { id: _id, ...attrs } = n.attrs;
+    if (Object.keys(attrs).length > 0) out['attrs'] = attrs;
+    else delete out['attrs'];
+  }
+  if (Array.isArray(n.content)) {
+    const kids = n.content
+      .filter((c) => !(c && typeof c === 'object' && (c as { type?: string }).type === 'pageBlock'))
+      .map(_withoutCardsAndIds);
+    if (kids.length === 0 && n.type && _NEEDS_BLOCK.has(n.type)) kids.push({ type: 'paragraph' });
+    out['content'] = kids;
+  }
+  return out;
+}
+
 /** Sanitize a template id so it's safe as a filename. */
 function _sanitizeTemplateId(raw: string): string {
   return raw.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'template';
@@ -298,7 +347,11 @@ export async function loadUserCanvasTemplates(api: CanvasTemplateApi): Promise<r
         console.warn(`[CanvasTemplates] skipping malformed template ${entry.name}: missing required fields`);
         continue;
       }
-      const doc = parsed.doc;
+      const doc = normalizeTemplateDoc(parsed.doc);
+      if (!doc) {
+        console.warn(`[CanvasTemplates] skipping template ${entry.name}: its body is not a page`);
+        continue;
+      }
       templates.push({
         id: parsed.id,
         name: parsed.name,
@@ -308,7 +361,8 @@ export async function loadUserCanvasTemplates(api: CanvasTemplateApi): Promise<r
         filePath: fileUri,
         snapshot: extractTemplateSnapshot(doc) || undefined,
         defaultTitle: parsed.defaultTitle ?? parsed.name,
-        buildDoc: (): unknown => doc,
+        // A fresh copy per page, so one page's edits never reach the next.
+        buildDoc: (): unknown => structuredClone(doc),
       });
     } catch (err) {
       console.warn(`[CanvasTemplates] skipping malformed template ${entry.name}:`, err);

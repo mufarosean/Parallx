@@ -90,11 +90,17 @@ markdown, focus) were not tested adversarially.
   `const DEFAULT_COVER_GRADIENTS = COVER_GALLERY` is read at module load
   inside an import cycle, while still undefined (`header/pageChrome.ts:24`;
   `menus/coverMenu.ts:19` uses the same pattern). Verified in the app and the
-  code.
+  code. **Fixed**: both read the gallery when used; in the app Add Cover now
+  sets a gradient cover.
 - **Save as Template always produces an empty page**: it stores the stored
   envelope `{schemaVersion, doc}` instead of the doc (`main.ts:1218`). Verified.
+  **Fixed**: the template gets the page's doc, without sub-page cards or
+  block ids; templates saved by the old code are unwrapped on load; each new
+  page gets its own copy. In the app a page saved as a template now builds a
+  page with its text.
 - **Template picker "Start with a blank page" does nothing** (same result as
-  Cancel, `canvasTemplatePicker.ts:126`).
+  Cancel, `canvasTemplatePicker.ts:126`). **Fixed**: it creates a plain page;
+  Cancel still creates nothing (checked in the app).
 - **Toggle headings load with their body hidden** while the chevron says open;
   Enter moves the caret into the hidden body; open state is not saved
   (`extensions/toggleHeadingNode.ts:65`).

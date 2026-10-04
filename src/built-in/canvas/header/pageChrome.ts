@@ -19,10 +19,6 @@ import {
   registerCustomFont, removeCustomFont, fontFormatFromExtension, type CanvasFont, getFont } from '../config/fontRegistry.js';
 import { formatRelativeTime } from '../../../ui/relativeTime.js';
 
-// Default gradient presets for "Add cover" — the identity-derived gallery
-// owned by the blockRegistry gate (same list the cover picker shows).
-const DEFAULT_COVER_GRADIENTS = COVER_GALLERY;
-
 // ── Host Interface ──────────────────────────────────────────────────────────
 
 export interface PageChromeHost {
@@ -740,7 +736,9 @@ export class PageChromeController {
     if (btn.disabled) return;
     btn.disabled = true;
     btn.style.opacity = '0.6';
-    const gradient = DEFAULT_COVER_GRADIENTS[Math.floor(Math.random() * DEFAULT_COVER_GRADIENTS.length)];
+    // Read the gallery here, not at module load: an import cycle leaves it
+    // undefined while this module first evaluates (Add Cover threw).
+    const gradient = COVER_GALLERY[Math.floor(Math.random() * COVER_GALLERY.length)];
     void this._host.dataService.updatePage(this._host.pageId, { coverUrl: gradient })
       .catch((err) => {
         // If update fails, re-enable the button so the user can retry.

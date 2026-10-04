@@ -21,6 +21,8 @@ export interface TemplatePickerResult {
   readonly template: CanvasPageTemplate | null;
   /** True iff the user picked "Manage templates…" from the picker. */
   readonly openedManager?: boolean;
+  /** True iff the user asked for a blank page (null template, unlike Cancel). */
+  readonly blank?: boolean;
 }
 
 /**
@@ -123,7 +125,7 @@ export async function showCanvasTemplatePicker(api: CanvasTemplateApi): Promise<
     const blankLabel = document.createElement('span');
     blankLabel.textContent = 'Start with a blank page';
     blankBtn.appendChild(blankLabel);
-    blankBtn.addEventListener('click', () => finish({ template: null }));
+    blankBtn.addEventListener('click', () => finish({ template: null, blank: true }));
     footer.appendChild(blankBtn);
 
     const manageBtn = $('button.canvas-template-picker-manage') as HTMLButtonElement;
