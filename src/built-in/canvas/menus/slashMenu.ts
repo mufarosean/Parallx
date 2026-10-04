@@ -27,6 +27,9 @@ import type { IDisposable } from '../../../platform/lifecycle.js';
 
 const _slashRecents = createRecentList('parallx-canvas-slash-recents', 5);
 
+/** Text-only lines inside a block, where the slash menu stays closed. */
+const SLASH_FREE_TEXTBLOCKS = new Set(['detailsSummary', 'toggleHeadingText']);
+
 // ── Dependency interface ────────────────────────────────────────────────────
 
 export interface SlashMenuHost {
@@ -92,8 +95,12 @@ export class SlashMenuController implements ICanvasMenu {
 
     const { $from } = state.selection;
 
-    // Only trigger at the start of an empty or text-only paragraph
-    if (!$from.parent.isTextblock) {
+    // Only trigger at the start of an empty or text-only paragraph — never
+    // in code (a "/" there is code: "// todo" + Enter turned the code block
+    // into a to-do list) or in a text-only line (a toggle's summary, a toggle
+    // heading's title), where no block can go.
+    const parentType = $from.parent.type;
+    if (!$from.parent.isTextblock || parentType.spec.code || SLASH_FREE_TEXTBLOCKS.has(parentType.name)) {
       this.hide();
       return;
     }

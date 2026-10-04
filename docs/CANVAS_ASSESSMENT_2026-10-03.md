@@ -118,7 +118,8 @@ markdown, focus) were not tested adversarially.
 - **No drop indicator while dragging**; a small sideways drift silently makes
   columns.
 - **Slash menu runs inside code blocks** ("// todo" + Enter turns the code
-  block into a to-do list).
+  block into a to-do list). **Fixed**: it stays closed in code blocks and in text-only lines
+  (a toggle's summary, a toggle heading's title).
 - **Turn Into → Columns on a list row throws** `RangeError`. **Fixed.**
 - **Duplicating a page card then deleting one copy trashes the child page**
   the other copy points to. **Fixed**: a copied card is dropped.
