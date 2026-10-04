@@ -38264,6 +38264,24 @@ async function ensureDatabase(api) {
   return true;
 }
 
+// Canvas "Media Gallery" block queries (exported for tests against the
+// migrations): an album in its own order, or the newest items; never the Trash.
+export const MO_EMBED_SQL = {
+  albums: 'SELECT id, title FROM mo_albums ORDER BY title COLLATE NOCASE',
+  albumItems: `SELECT 'photo' AS type, p.id AS id, p.title AS title, ap.position AS pos, p.created_at AS at
+     FROM mo_albums_photos ap JOIN mo_photos p ON p.id = ap.photo_id
+    WHERE ap.album_id = ? AND p.deleted_at IS NULL
+   UNION ALL
+   SELECT 'video', v.id, v.title, av.position, v.created_at
+     FROM mo_albums_videos av JOIN mo_videos v ON v.id = av.video_id
+    WHERE av.album_id = ? AND v.deleted_at IS NULL
+   ORDER BY pos, at DESC LIMIT ?`,
+  recentItems: `SELECT 'photo' AS type, id, title, created_at AS at FROM mo_photos WHERE deleted_at IS NULL
+   UNION ALL
+   SELECT 'video', id, title, created_at FROM mo_videos WHERE deleted_at IS NULL
+   ORDER BY at DESC, id DESC LIMIT ?`,
+};
+
 export async function activate(api, context) {
     try {
       console.log('[MediaOrganizer] activate() called');
@@ -38809,6 +38827,44 @@ export async function activate(api, context) {
         instanceId: 'album:new',
       });
     })
+  );
+
+  // Canvas "Media Gallery" block: a page shows an album (or the newest items)
+  // through these, and opens them in this viewer. The block never reads the
+  // mo_* tables itself.
+  _commandDisposables.push(
+    api.commands.registerCommand('media-organizer.embed.listAlbums', async () => {
+      const rows = await db.all(MO_EMBED_SQL.albums);
+      return rows.map((r) => ({ id: String(r.id), title: r.title || 'Untitled album' }));
+    }),
+    api.commands.registerCommand('media-organizer.embed.listItems', async (opts) => {
+      const limit = Math.min(60, Math.max(1, Math.round(Number(opts && opts.limit) || 12)));
+      const albumId = opts && opts.albumId ? Number(opts.albumId) : null;
+      const rows = albumId
+        ? await db.all(MO_EMBED_SQL.albumItems, [albumId, albumId, limit])
+        : await db.all(MO_EMBED_SQL.recentItems, [limit]);
+      const thumbs = await resolveThumbnailBatch(rows.map((r) => ({ type: r.type, id: r.id })), api);
+      const out = [];
+      for (const r of rows) {
+        const t = thumbs.get(`${r.type}:${r.id}`);
+        let thumbUrl = null;
+        try { thumbUrl = t && t.path ? await localFileToUrl(t.path) : null; } catch { thumbUrl = null; }
+        out.push({ type: r.type, id: r.id, title: r.title || '', thumbUrl });
+      }
+      return out;
+    }),
+    api.commands.registerCommand('media-organizer.embed.open', (opts) => {
+      const items = (opts && Array.isArray(opts.items) ? opts.items : [])
+        .filter((it) => it && (it.type === 'photo' || it.type === 'video'))
+        .map((it) => ({ type: it.type, id: Number(it.id) }));
+      if (items.length) openLightbox(items, Number(opts.index) || 0, moResolveItemPath);
+    }),
+    api.commands.registerCommand('media-organizer.embed.openAlbum', async (albumId) => {
+      const album = albumId ? await db.get('SELECT id, title FROM mo_albums WHERE id = ?', [Number(albumId)]) : null;
+      return album
+        ? api.editors.openEditor({ typeId: 'media-organizer-grid', title: album.title || 'Album', icon: 'album', instanceId: `album:${album.id}` })
+        : api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Recent', icon: 'image', instanceId: 'grid:recent' });
+    }),
   );
 
   // M59 P3: Search index, perceptual hash, duplicate finder, smart albums

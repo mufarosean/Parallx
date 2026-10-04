@@ -36,6 +36,9 @@ import { Embed } from '../extensions/embedNode.js';
 import { ButtonBlock } from '../extensions/buttonNode.js';
 import { LinkedDatabase } from '../extensions/linkedDatabaseNode.js';
 import { SyncedBlock } from '../extensions/syncedBlockNode.js';
+import { PlannerAgenda } from '../extensions/plannerAgendaNode.js';
+import { MediaGallery } from '../extensions/mediaGalleryNode.js';
+import { PracticeProblems } from '../extensions/practiceProblemsNode.js';
 import { MermaidDiagram, MERMAID_SAMPLE } from '../extensions/mermaidNode.js';
 import type { LiveBlockServices } from '../extensions/liveBlock.js';
 export type { LiveBlockServices } from '../extensions/liveBlock.js';
@@ -1128,6 +1131,50 @@ const definitions: BlockDefinition[] = [
       }
     },
     extension: (ctx) => SyncedBlock.configure({ live: ctx.live }),
+  },
+  // ── From your other tools (asked through their commands; a page works,
+  //    and says so, when the tool is not there) ──
+  {
+    // The planner's events and tasks for today, tomorrow or the week.
+    id: 'plannerAgenda',
+    name: 'plannerAgenda',
+    label: 'Agenda',
+    icon: 'calendar-check',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Today\'s events and tasks from the planner', order: 35, category: 'media' },
+    turnInto: undefined,
+    defaultContent: { type: 'plannerAgenda', attrs: { range: 'today', show: 'all' } },
+    extension: (ctx) => PlannerAgenda.configure({ live: ctx.live }),
+  },
+  {
+    // An album, or the newest photos and videos, from Media Organizer.
+    id: 'mediaGallery',
+    name: 'mediaGallery',
+    label: 'Media Gallery',
+    icon: 'images',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Photos and videos from an album', order: 36, category: 'media' },
+    turnInto: undefined,
+    defaultContent: { type: 'mediaGallery', attrs: { albumId: '', limit: 12 } },
+    extension: (ctx) => MediaGallery.configure({ live: ctx.live }),
+  },
+  {
+    // A few Problem Bank problems (needs work, not tried, starred).
+    id: 'practiceProblems',
+    name: 'practiceProblems',
+    label: 'Practice Problems',
+    icon: 'graduation-cap',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Problems to work from your Problem Bank', order: 37, category: 'media' },
+    turnInto: undefined,
+    defaultContent: { type: 'practiceProblems', attrs: { show: 'needsWork', paper: '', tag: '', limit: 5 } },
+    extension: (ctx) => PracticeProblems.configure({ live: ctx.live }),
   },
   // Placeholders for stored content this build can't show (unknownContent.ts).
   // Never inserted by the user: no slash entry, no turn-into.

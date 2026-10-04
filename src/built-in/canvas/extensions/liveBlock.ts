@@ -172,3 +172,25 @@ export function setBlockAttrs(editor: any, getPos: (() => number | undefined) | 
   if (!node) return;
   editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs }));
 }
+
+/** What another tool answered, or that it is not there (not installed,
+ *  turned off, or not started yet while the app opens). */
+export type ToolAnswer<T> = { ok: true; value: T } | { ok: false };
+
+/** Ask another tool through its command. Never throws. */
+export async function askTool<T>(live: LiveBlockServices | undefined, id: string, ...args: unknown[]): Promise<ToolAnswer<T>> {
+  if (!live) return { ok: false };
+  try {
+    return { ok: true, value: await live.executeCommand(id, ...args) as T };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/** Retry a block whose tool was not there yet: tools start after the page
+ *  can already be open. A few tries, further apart each time; returns stop. */
+export function retrySoon(run: () => void, attempt: number): () => void {
+  if (attempt >= 4) return () => {};
+  const t = setTimeout(run, 800 * 2 ** attempt);
+  return () => clearTimeout(t);
+}

@@ -49,6 +49,7 @@ import { nextMarkedIndex } from './practiceSession.js';
 import { createStudyTicker, DEFAULT_IDLE_MINUTES } from './studyClock.js';
 import { registerWorksheetChatTools, buildNotesDigest } from './worksheetChat.js';
 import { detectExcelItems, wholeSheetItem, type GridSheet, type ExcelItem } from './excelImport.js';
+import { selectEmbedProblems, embedFilterChoices, type EmbedQuery } from './worksheetEmbed.js';
 import './worksheet.css';
 
 // ── API typings (structural — the tool API surface) ─────────────────────────
@@ -3664,6 +3665,28 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.settings', () => openWorksheet('settings', 'Worksheets Settings')),
+  );
+
+  // The Canvas "Practice Problems" block: a page lists problems from the bank
+  // and opens one here. It reaches the bank only through these commands.
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.embed.listProblems', async (query?: unknown) =>
+      selectEmbedProblems(await listItems().catch(() => []), (query ?? {}) as EmbedQuery)),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.embed.filterChoices', async () =>
+      embedFilterChoices(await listItems().catch(() => []))),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.embed.onDidChange', (listener?: unknown) =>
+      typeof listener === 'function' ? onWorksheetDataChanged(listener as () => void) : { dispose() {} }),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.openProblem', async (id?: unknown) => {
+      const item = await getItem(Number(id)).catch(() => null);
+      if (item) await openWorksheet(`item:${item.id}`, item.title);
+      else await openWorksheet('bank', 'Problem Bank');
+    }),
   );
 
   // The AI's read surface: bank/progress + the user's actual sheet work.
