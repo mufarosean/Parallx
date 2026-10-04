@@ -111,7 +111,15 @@ markdown, focus) were not tested adversarially.
 - **Block keyboard shortcuts die after a handle click, marquee or drag**:
   focus leaves the editor, so Del, Ctrl+D and Shift+Arrow do nothing although
   the menu advertises them; Ctrl+Z right after a drag undoes earlier typing.
-  Verified in the app.
+  Verified in the app. **Fixed**: a handle click or a marquee puts the editor caret in the
+  selected block and focuses the editor (`focusEditor`), and a drop focuses
+  it too. In the app, after a handle click Delete, Backspace, Ctrl+D,
+  Shift+Down, Ctrl+Shift+Up/Down and Enter all act; Delete after a marquee
+  deletes; Ctrl+Z after a drag undoes the move. Found on the way and fixed:
+  the action menu re-targeted the next block after its own was deleted (it
+  now checks the block id); Esc did not close it; the editor's blur timer
+  closed a menu the handle click had just opened; deleting the last selected
+  blocks of a page threw in the selection handler.
 - **Mod-Shift-Up/Down does not move blocks.** Verified in the app (the one
   real e2e failure). **Fixed** for blocks (block sweep below); the e2e spec
   is about a table row, still to re-run.

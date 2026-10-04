@@ -379,6 +379,8 @@ export class BlockHandlesController {
       }
     }
 
+    // Keyboard into the editor so the shortcuts the menu lists work.
+    sel.focusEditor();
     const handleRect = this._dragHandleEl!.getBoundingClientRect();
     this._actionMenu.show(menuPos, menuNode, handleRect, this._dragHandleEl!);
   }

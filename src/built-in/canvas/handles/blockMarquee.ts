@@ -176,7 +176,9 @@ export class BlockMarqueeController {
 
     if (positions.length > 0) {
       this._host.blockSelection.selectMultiple(positions);
-      editor.commands.blur();
+      // Keyboard into the editor so Delete, Mod-d and Shift+Arrow act on
+      // the selection (a blur left focus on the page and they did nothing).
+      this._host.blockSelection.focusEditor();
     }
   }
 

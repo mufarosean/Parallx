@@ -110,6 +110,16 @@ export function getZone(
   return ry < r.height / 2 ? 'above' : 'below';
 }
 
+/**
+ * Keyboard back into the editor after a drop: the drag started on a handle
+ * outside it, so Mod-z (and every block shortcut) otherwise missed the
+ * editor; the app's Undo then reverted the browser's own record of earlier
+ * typing instead of the move.
+ */
+function dropFocus(view: { focus(): void }): void {
+  try { view.focus(); } catch { /* view torn down */ }
+}
+
 export function columnDropPlugin(): Plugin {
   const pluginKey = new PluginKey('columnDrop');
 
@@ -823,6 +833,7 @@ export function columnDropPlugin(): Plugin {
               moveBlockAboveBelow(tr, blocks, insertPos, dragFrom, dragTo, isDuplicate, ranges);
             }
             view.dispatch(tr);
+            dropFocus(view);
             return true;
           }
 
@@ -838,6 +849,7 @@ export function columnDropPlugin(): Plugin {
             );
             if (!ok) return false;
             view.dispatch(tr);
+            dropFocus(view);
             return true;
           }
 
@@ -851,6 +863,7 @@ export function columnDropPlugin(): Plugin {
           if (!ok) return false;
 
           view.dispatch(tr);
+            dropFocus(view);
           return true;
         },
 

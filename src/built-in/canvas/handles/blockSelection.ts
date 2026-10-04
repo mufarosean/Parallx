@@ -12,7 +12,7 @@
 // transactions to update the decoration set — no manual classList calls.
 
 import type { Editor } from '@tiptap/core';
-import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
   resolveBlockAncestry,
@@ -145,11 +145,20 @@ export class BlockSelectionController {
     // move, an action elsewhere) ends the block selection.  A stale one kept
     // owning Ctrl+D, Delete and Mod-Shift-↑/↓, which then acted on blocks the
     // user had moved away from.  (A mouse click already clears it.)
-    this._selectionChangeHandler = ({ editor }: any) => {
+    this._selectionChangeHandler = ({ editor, transaction }: any) => {
       if (this._selected.size === 0) return;
+      // An edit makes the stored positions stale (the 'update' handler
+      // clears them, but this event comes first); looking them up threw
+      // past the end of a page that had shrunk.
+      if (transaction?.docChanged) {
+        this._selected.clear();
+        this._anchor = null;
+        return;
+      }
       const { from, to } = editor.state.selection;
       const doc = editor.state.doc;
       const inside = [...this._selected].some((pos) => {
+        if (pos < 0 || pos >= doc.content.size) return false;
         const node = doc.nodeAt(pos);
         return !!node && from >= pos && to <= pos + node.nodeSize;
       });
@@ -211,6 +220,38 @@ export class BlockSelectionController {
       if (node && pos > selPos && pos < selPos + node.nodeSize) return selPos;
     }
     return null;
+  }
+
+  /**
+   * Give the editor keyboard focus with its own selection inside the first
+   * selected block, as Esc-select leaves it.  Block shortcuts (Delete,
+   * Mod-d, Shift+Arrow, Mod-Shift+Arrow) are editor keymaps: after a handle
+   * click or a marquee, focus sat outside the editor and none of them ran.
+   */
+  focusEditor(): void {
+    const editor = this._host.editor;
+    if (!editor || this._selected.size === 0) return;
+    this._sanitizeSelectionReferences();
+    if (this._selected.size === 0) return;
+    const { state, view } = editor;
+    const first = Math.min(...this._selected);
+    const node = state.doc.nodeAt(first);
+    if (!node) return;
+    const end = first + node.nodeSize;
+    const inside = (sel: Selection) => sel.from >= first && sel.to <= end;
+    let target: Selection | null = state.selection;
+    if (!inside(state.selection)) {
+      const found = Selection.findFrom(state.doc.resolve(Math.min(first + 1, state.doc.content.size)), 1, true);
+      if (found && inside(found)) target = found;
+      else if (NodeSelection.isSelectable(node)) target = NodeSelection.create(state.doc, first);
+      else target = null;
+    }
+    if (target && !target.eq(state.selection)) {
+      const tr = state.tr.setSelection(target);
+      tr.setMeta('addToHistory', false);
+      view.dispatch(tr);
+    }
+    view.focus();
   }
 
   /**

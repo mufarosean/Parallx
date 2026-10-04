@@ -195,7 +195,16 @@ export class BlockActionMenuController implements ICanvasMenu {
     this._anchorEl = anchorEl ?? null;
     this._showBlockActionMenu(anchor);
     this._registry.notifyShow(this.id);
+    document.addEventListener('keydown', this._onEscape, true);
   }
+
+  /** Esc closes the menu and leaves the block selected (Notion). */
+  private readonly _onEscape = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape' || !this.visible) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.hide();
+  };
 
   hide(): void {
     this._hideBlockActionMenu();
@@ -213,7 +222,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     if (!this.visible) return;
     if (this._actionBlockPos < 0 || !this._actionBlockNode) return;
     const node = editor.state.doc.nodeAt(this._actionBlockPos);
-    if (!node || node.type.name !== this._actionBlockNode.type.name) {
+    if (!isSameBlock(node, this._actionBlockNode)) {
       this.hide();
     }
   }
@@ -232,7 +241,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     const editor = this._host.editor;
     if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return false;
     const node = editor.state.doc.nodeAt(this._actionBlockPos);
-    if (!node || node.type.name !== this._actionBlockNode.type.name) {
+    if (!node || !isSameBlock(node, this._actionBlockNode)) {
       this._hideBlockActionMenu();
       return false;
     }
@@ -319,6 +328,7 @@ export class BlockActionMenuController implements ICanvasMenu {
   }
 
   private _hideBlockActionMenu(): void {
+    document.removeEventListener('keydown', this._onEscape, true);
     if (!this._blockActionMenu) return;
     this._blockActionMenu.style.display = 'none';
     this._hideTurnIntoSubmenu();
@@ -635,6 +645,7 @@ export class BlockActionMenuController implements ICanvasMenu {
   // ── Dispose ─────────────────────────────────────────────────────────────
 
   dispose(): void {
+    document.removeEventListener('keydown', this._onEscape, true);
     this._registration?.dispose();
     this._registration = null;
     this._turnIntoHover.dispose();
@@ -645,4 +656,15 @@ export class BlockActionMenuController implements ICanvasMenu {
     this._actionBlockNode = null;
     this._anchorEl = null;
   }
+}
+
+/**
+ * Whether `node` is still the block the menu was opened on.  The type alone
+ * is not enough: Delete from the keyboard removes the block and the next
+ * paragraph slides into its position, so the menu re-targeted it.
+ */
+function isSameBlock(node: PMNode | null | undefined, original: PMNode): boolean {
+  if (!node || node.type.name !== original.type.name) return false;
+  const id = original.attrs?.id;
+  return !id || node.attrs?.id === id;
 }

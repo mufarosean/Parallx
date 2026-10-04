@@ -640,6 +640,9 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
         // (mousedown on drag handle transfers focus away from PM).
         setTimeout(() => {
           if (this._menuRegistry.isInteractionLocked()) return;
+          // Focus came back (a handle click refocuses the editor so block
+          // shortcuts work): the menu it just opened stays.
+          if (this._editor?.view.hasFocus()) return;
           if (
             !this._menuRegistry.containsFocusedElement()
           ) {

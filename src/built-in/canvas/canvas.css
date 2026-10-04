@@ -1236,6 +1236,16 @@
   z-index: 1;
 }
 
+/* While blocks are selected the editor keeps keyboard focus (so block
+   shortcuts work) but shows no caret, and the wash alone marks a selected
+   atom block. */
+.canvas-tiptap-editor:has(.block-selected) {
+  caret-color: transparent;
+}
+.canvas-tiptap-editor:not(.dragging) .block-selected.ProseMirror-selectednode:not(.tableWrapper) {
+  background-color: transparent;
+}
+
 /* ── Block marquee (box-drag lasso selection) ── */
 .block-marquee {
   display: none;

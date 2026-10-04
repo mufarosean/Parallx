@@ -179,6 +179,9 @@ export class CanvasEditorView implements CanvasMenuHost {
         setTimeout(() => {
           if (this._disposed || !this._menuRegistry) return;
           if (this._menuRegistry.isInteractionLocked()) return;
+          // Focus came back (a handle click refocuses the editor so block
+          // shortcuts work): the menu it just opened stays.
+          if (this._editor?.view.hasFocus()) return;
           if (!this._menuRegistry.containsFocusedElement()) this._menuRegistry.hideAll();
         }, 150);
       },
