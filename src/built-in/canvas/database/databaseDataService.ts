@@ -799,6 +799,17 @@ export class DatabaseDataService extends Disposable {
 
   /** The databases this page is a member (row) of. Drives the row-page
    *  properties section shown when a row is opened as a page. */
+  /** Live databases the user made (not the app's bookkeeping ones), by title. */
+  async listDatabases(): Promise<{ id: string; title: string; icon: string | null }[]> {
+    const res = await this._db.all(
+      `SELECT d.id, p.title, p.icon FROM databases d JOIN pages p ON p.id = d.page_id
+        WHERE p.is_archived = 0 AND (d.role IS NULL OR d.role NOT IN ('page-properties', 'migrated-properties'))
+        ORDER BY p.title COLLATE NOCASE`,
+    );
+    if (res.error) throw new Error(res.error.message);
+    return (res.rows ?? []).map((r) => ({ id: String(r.id), title: String(r.title || 'Untitled'), icon: (r.icon as string | null) ?? null }));
+  }
+
   async listDatabasesForPage(pageId: string): Promise<string[]> {
     const res = await this._db.all('SELECT database_id FROM database_pages WHERE page_id = ?', [pageId]);
     if (res.error) return [];

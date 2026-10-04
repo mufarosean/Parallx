@@ -101,6 +101,7 @@ export const UNIQUE_ID_BLOCK_TYPES: string[] = [
   'subpageList',
   'embed',
   'mermaidDiagram',
+  'buttonBlock',
 ];
 
 /**

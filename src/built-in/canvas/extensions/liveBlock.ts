@@ -23,6 +23,14 @@ export interface LiveBlockServices {
   readonly pageId?: string;
   /** The page tree, read live. */
   readonly pages?: LivePageReader;
+  /** The user's databases (Button: Add Row). */
+  readonly databases?: LiveDatabaseAccess;
+}
+
+export interface LiveDatabaseAccess {
+  list(): Promise<LivePageSummary[]>;
+  /** Add a row titled `title`; returns the new row page's id. */
+  addRow(databaseId: string, title: string): Promise<string>;
 }
 
 export interface LivePageSummary {
@@ -37,6 +45,8 @@ export interface LivePageReader {
   /** Live sub-pages in their sidebar order. */
   getChildren(pageId: string): Promise<LivePageSummary[]>;
   getPage(pageId: string): Promise<LivePageSummary | null>;
+  /** Every live page, depth first (pickers). */
+  listAll(): Promise<LivePageSummary[]>;
 }
 
 export interface LiveBlockOptions {

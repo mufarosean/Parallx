@@ -131,6 +131,7 @@ function readableAtom(node: TipTapNode): string {
   if (node.type === 'conceptMap') return String(node.attrs?.src ?? '');
   if (node.type === 'mermaidDiagram') return '```mermaid\n' + String(node.attrs?.code ?? '') + '\n```';
   if (node.type === 'embed') return String(node.attrs?.src ?? '');
+  if (node.type === 'buttonBlock') return `[${String(node.attrs?.label ?? 'Button')}]`;
   return plainText(node);
 }
 

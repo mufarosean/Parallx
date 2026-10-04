@@ -33,6 +33,7 @@ import { TableOfContents } from '../extensions/tableOfContentsNode.js';
 import { Dataview } from '../extensions/dataviewNode.js';
 import { PageBreadcrumb, SubpageList } from '../extensions/pageTreeBlocks.js';
 import { Embed } from '../extensions/embedNode.js';
+import { ButtonBlock } from '../extensions/buttonNode.js';
 import { MermaidDiagram, MERMAID_SAMPLE } from '../extensions/mermaidNode.js';
 import type { LiveBlockServices } from '../extensions/liveBlock.js';
 export type { LiveBlockServices } from '../extensions/liveBlock.js';
@@ -1061,6 +1062,21 @@ const definitions: BlockDefinition[] = [
     turnInto: undefined,
     defaultContent: { type: 'mermaidDiagram', attrs: { code: MERMAID_SAMPLE } },
     extension: () => MermaidDiagram,
+  },
+  {
+    // One click runs a list of actions: insert content, add a database row,
+    // open a page, ask AI, run a command.
+    id: 'buttonBlock',
+    name: 'buttonBlock',
+    label: 'Button',
+    icon: 'mouse-pointer-click',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Insert content, add a row or run an action in one click', order: 26, category: 'rich' },
+    turnInto: undefined,
+    defaultContent: { type: 'buttonBlock', attrs: { label: 'New Entry', actions: '[]' } },
+    extension: (ctx) => ButtonBlock.configure({ live: ctx.live }),
   },
   // Placeholders for stored content this build can't show (unknownContent.ts).
   // Never inserted by the user: no slash entry, no turn-into.

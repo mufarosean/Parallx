@@ -24,8 +24,8 @@ const SLASH_MENU_ITEMS = buildSlashMenuItems(getSlashMenuBlocks());
 /** Blocks added after the registry was extracted: each is an atom that can go
  *  in a column and has its own drag handle. One list, so adding a block
  *  updates every parity check here. */
-const ADDED_BLOCK_TYPES = ['dataview', 'pageBreadcrumb', 'subpageList', 'embed', 'mermaidDiagram'];
-const ADDED_SLASH_LABELS = ['Page List', 'Breadcrumb', 'Sub-page List', 'Embed', 'Mermaid Diagram'];
+const ADDED_BLOCK_TYPES = ['dataview', 'pageBreadcrumb', 'subpageList', 'embed', 'mermaidDiagram', 'buttonBlock'];
+const ADDED_SLASH_LABELS = ['Page List', 'Breadcrumb', 'Sub-page List', 'Embed', 'Mermaid Diagram', 'Button'];
 
 const ORIGINAL_COLUMN_BLOCK_NODE_TYPES = [
   'paragraph', 'heading', 'bulletList', 'orderedList', 'taskList',
