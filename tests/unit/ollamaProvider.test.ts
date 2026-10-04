@@ -174,6 +174,26 @@ describe('OllamaProvider', () => {
       freshProvider.dispose();
     });
 
+    it('says why it stopped: a reply that ran out of room ends with doneReason "length"', async () => {
+      const chunks = [
+        JSON.stringify({ model: 'test', message: { role: 'assistant', content: 'She turned to' }, done: false }),
+        JSON.stringify({ model: 'test', message: { role: 'assistant', content: '' }, done: true, done_reason: 'length', eval_count: 4 }),
+      ];
+      vi.stubGlobal('fetch', createMockFetch(new Map([
+        ['/api/version', () => jsonResponse({ version: '0.5.4' })],
+        ['/api/ps', () => jsonResponse({ models: [] })],
+        ['/api/tags', () => jsonResponse({ models: [] })],
+        ['/api/chat', () => streamResponse(chunks)],
+      ])));
+      const freshProvider = new OllamaProvider();
+      let reason: string | undefined;
+      for await (const chunk of freshProvider.sendChatRequest('test', [{ role: 'user' as const, content: 'Hi' }])) {
+        if (chunk.done) reason = chunk.doneReason;
+      }
+      expect(reason).toBe('length');
+      freshProvider.dispose();
+    });
+
     it('respects abort signal on fetch', async () => {
       // Mock fetch to throw AbortError immediately
       vi.stubGlobal('fetch', vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => {

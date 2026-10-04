@@ -1406,6 +1406,8 @@ export interface ChatResponseChunk {
   readonly done: boolean;
   readonly evalCount?: number;
   readonly evalDuration?: number;
+  /** Why generation stopped (final chunk): 'stop', or 'length' when the reply ran out of room (cut off). */
+  readonly doneReason?: string;
 }
 
 /**

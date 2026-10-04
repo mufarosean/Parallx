@@ -3445,6 +3445,8 @@ function assembleContext(params) {
     writingPresetOverride = '',
     responseLengthOverride = '',
     standingNote = '',
+    // Tokens kept free for the reply (and its thinking) inside the window.
+    replyReserve = 0,
   } = params;
 
   // Support both old (single character) and new (characters array) signatures
@@ -3859,15 +3861,58 @@ function assembleContext(params) {
     messages.push({ role: 'user', content: directive });
   }
 
+  // The lanes split the whole window between the prompt's parts and leave
+  // the reply only what they happen not to use; the history floor, the
+  // voice anchor, the memory and the late notes can use it up. The model
+  // then runs out of window part way through the reply and stops there, at
+  // the same place on every retry. The reply's room is kept here, after
+  // everything is in, by dropping the oldest history first.
+  const fit = fitPromptToWindow(messages, contextWindow, replyReserve);
+  if (fit.dropped > 0) {
+    warnings.push(`Dropped ${fit.dropped} older message${fit.dropped === 1 ? '' : 's'} to keep ${replyReserve}t free for the reply.`);
+  }
+
   return {
-    messages,
-    estimatedTokens: estimateTokens(messages.map((m) => m.content).join('\n')),
+    messages: fit.messages,
+    estimatedTokens: fit.tokens,
+    replyReserve,
     budget,
     warnings,
     fitMethod,
     historyBudget,
     mappedHistory,
   };
+}
+
+/**
+ * Keep `reserve` tokens of `contextWindow` free for the reply: drop the
+ * oldest history messages (never the system prompt, never the last two
+ * messages, which carry the late notes and the turn itself) until the
+ * prompt fits. A 5% margin covers the estimate being rough.
+ */
+function fitPromptToWindow(messages, contextWindow, reserve) {
+  const list = [...messages];
+  const count = () => estimateTokens(list.map((m) => m.content).join('\n'));
+  let tokens = count();
+  if (!(contextWindow > 0) || !(reserve > 0)) return { messages: list, tokens, dropped: 0 };
+  const limit = Math.floor((contextWindow - reserve) * 0.95);
+  let dropped = 0;
+  while (tokens > limit) {
+    // The oldest droppable message: after the system prompt, before the last two.
+    let idx = -1;
+    for (let i = 1; i < list.length - 2; i++) { if (list[i].role !== 'system') { idx = i; break; } }
+    if (idx < 0) break;
+    list.splice(idx, 1);
+    dropped++;
+    tokens = count();
+  }
+  return { messages: list, tokens, dropped };
+}
+
+/** The room a reply needs in the window: its own limit, or enough for a long reply with its thinking. */
+function replyReserveFor(contextWindow, maxTokens) {
+  const want = Math.max(Number(maxTokens) > 0 ? Number(maxTokens) : 0, 3072);
+  return Math.max(256, Math.min(want, Math.floor(contextWindow * 0.4)));
 }
 
 /** Map message author to LLM API role. */
@@ -6948,6 +6993,7 @@ function renderChatEditor(container, parallx, input) {
       writingPresetOverride: thread?.writingPresetOverride || '',
       responseLengthOverride: thread?.responseLengthOverride || '',
       standingNote: thread?.standingNote || '',
+      replyReserve: replyReserveFor(contextWindow, (speakerCharLocal?.frontmatter?.maxTokensPerMessage ?? currentSettings?.defaultMaxTokens) || 0),
     });
     // Annotate with diagnostic info the inspect modal + token chip surface.
     // All `*Source` labels reference the SPEAKER character (or
@@ -7285,9 +7331,11 @@ function renderChatEditor(container, parallx, input) {
       const stream = parallx.lm.sendChatRequest(modelId, messagesForApi, _genOpts);
       let fullResponse = '';
       let isThinking = false;
+      let doneReason = '';
 
       for await (const chunk of stream) {
         if (gen.stopRequested) break;
+        if (chunk?.done && chunk.doneReason) doneReason = chunk.doneReason;
         if (chunk.thinking && !chunk.content) {
           if (!isThinking) {
             isThinking = true;
@@ -7335,6 +7383,21 @@ function renderChatEditor(container, parallx, input) {
         const finalMessage = buildGeneratedTurnMessage(cleaned, effectiveSpeaker, instruction, asUser);
         messageHistory.push(finalMessage);
         await appendMessage(fs, workspaceUri, threadId, finalMessage);
+
+        // The model ran out of room (its token limit, or the context
+        // window) and stopped mid-reply. Say so, instead of leaving a reply
+        // that simply ends, and offer to carry it on.
+        if (doneReason === 'length' && !gen.stopRequested) {
+          console.warn('[TextGenerator] Reply stopped at the length limit (done_reason "length").', { maxTokens: _genOpts.maxTokens, numCtx: _genOpts.numCtx });
+          showToast(
+            _genOpts.maxTokens
+              ? `This reply hit the ${_genOpts.maxTokens}-token limit and was cut off.`
+              : 'This reply ran out of room in the context window and was cut off.',
+            'Continue',
+            () => void handleSlashCommand({ command: 'continue' }),
+            10000,
+          );
+        }
 
         // M79 Phase 5 — auto-title also fires after the FIRST AI
         // reply so AI-led / template-seeded chats (no user message
@@ -10285,4 +10348,7 @@ export const __testables = {
   formatFrontmatterValue,
   autoExtractMemoryBackground,
   loadThreadMemory,
+  fitPromptToWindow,
+  replyReserveFor,
+  assembleContext,
 };

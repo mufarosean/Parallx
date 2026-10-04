@@ -106,6 +106,8 @@ interface OllamaChatChunk {
   /** Number of tokens generated (present on final chunk). */
   eval_count?: number;
   eval_duration?: number;
+  /** Why it stopped (final chunk): 'stop', 'length', 'load'... */
+  done_reason?: string;
   /** Mid-stream failure (runner crash, OOM). Terminal — no more chunks follow. */
   error?: string;
 }
@@ -787,6 +789,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       promptEvalCount: chunk.prompt_eval_count,
       evalCount: chunk.eval_count,
       evalDuration: chunk.eval_duration,
+      ...(chunk.done && chunk.done_reason ? { doneReason: chunk.done_reason } : {}),
     };
 
     // Reset tag tracker on final chunk

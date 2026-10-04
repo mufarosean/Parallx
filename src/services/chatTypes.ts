@@ -144,6 +144,12 @@ export interface IChatResponseChunk {
   readonly evalCount?: number;
   /** Evaluation duration in nanoseconds (present on final chunk). */
   readonly evalDuration?: number;
+  /**
+   * Why generation stopped (final chunk): 'stop' (finished, or a stop
+   * sequence), 'length' (ran out of room: the token limit or the context
+   * window). A reply that ends with 'length' was cut off.
+   */
+  readonly doneReason?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
