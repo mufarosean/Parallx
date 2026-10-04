@@ -56,6 +56,7 @@ const EXEMPT_FILES = new Set([
   'unknownContent.ts',             // Unknown-node placeholders (pure JSON, like contentSchema)
   'paneMirror.ts',                 // Editors of one page share edits (no gate interaction)
   'reloadMerge.ts',                // Reload keeps unsaved edits (pure JSON, no gate interaction)
+  'externalDocApply.ts',           // Another writer's doc into an open editor (diff + one transaction)
   'markdownExport.ts',             // Export utility
   'markdownImport.ts',             // Import utility (M64 Iter 1)
   'dashboardWidgets.ts',           // M86 — dashboard widget contribution (data service + markdownExport only; no gate interaction)
@@ -79,6 +80,7 @@ const EXEMPT_FILES = new Set([
   'ai/pageTools.ts',               // M84 — canvas page AI tools (moved from chat)
   'ai/blockTools.ts',              // M84 — canvas block AI tools (moved from chat)
   'ai/blockApi.ts',                // M84 — block manipulation helpers for the AI tools
+  'ai/pageWriter.ts',              // The one way the AI tools write pages (data service or bare DB)
   'canvasSidebarDragState.ts',     // M77 Phase 7 — pure DnD state machine (no canvas-internal imports)
   'canvasTemplates.ts',            // M77 Phase 11.4 — pure data, no canvas imports
   'canvasTemplatePicker.ts',       // M77 Phase 11.4 — standalone modal, only imports its own template data

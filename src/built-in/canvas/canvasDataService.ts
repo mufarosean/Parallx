@@ -516,6 +516,47 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   /**
+   * The door for every writer outside the editor (AI tools, Edit mode's
+   * Accept): read the page, change it, write it, with nothing landing in
+   * between.  The page's pending editor save is written first, so `build`
+   * sees the user's latest typing; the read and the write then run in the
+   * page's write queue, so no other save of this service can slip between
+   * them.  A page whose content cannot be read is refused (C6).  The write is
+   * remembered as the page's known state, so an editor save queued against
+   * the older content is recognised as stale and does not overwrite it.
+   *
+   * `build` gets a copy of the current doc and returns the new doc, or a
+   * sentence saying why it will not change the page.
+   */
+  async rewritePageContent(
+    pageId: string,
+    build: (doc: any, page: IPage) => any | string,
+    opts: { source?: RevisionSource; checkpointBefore?: boolean } = {},
+  ): Promise<{ ok: true; page: IPage; doc: any } | { ok: false; reason: string; notFound?: boolean }> {
+    await this.flushPendingSaveNow(pageId);
+    // A revert point holding the user's content as it was before this write.
+    if (opts.checkpointBefore) await this.checkpointPageNow(pageId, opts.source ?? 'ai');
+    return this._enqueuePageWrite(pageId, async () => {
+      const page = await this.getPage(pageId);
+      if (!page) return { ok: false as const, reason: `Page "${pageId}" not found.`, notFound: true };
+      const decoded = decodeCanvasContent(page.content);
+      if (decoded.unreadable) {
+        return { ok: false as const, reason: `The content of page "${page.title}" cannot be read, so it is kept as is.` };
+      }
+      const next = build(structuredClone(decoded.doc), page);
+      if (typeof next === 'string') return { ok: false as const, reason: next };
+      const encoded = encodeCanvasContentFromDoc(next);
+      if (encoded.storedContent === page.content) return { ok: true as const, page, doc: next };
+      const updated = await this._updatePageNow(pageId, {
+        content: encoded.storedContent,
+        contentSchemaVersion: encoded.schemaVersion,
+        editSource: opts.source ?? 'ai',
+      });
+      return { ok: true as const, page: updated, doc: next };
+    });
+  }
+
+  /**
    * Encode a raw TipTap doc JSON via the content schema and immediately
    * persist it for the given page, cancelling any pending debounced save.
    *
@@ -2425,43 +2466,28 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     targetPageId: string,
     next: { title: string; icon: string | null },
   ): Promise<void> {
-    const result = await this._db.all('SELECT id, content FROM pages');
+    // Only pages whose content mentions the id can hold its card (a title
+    // change used to parse every page in the workspace).
+    const result = await this._db.all(
+      'SELECT id FROM pages WHERE id != ? AND instr(content, ?) > 0',
+      [targetPageId, targetPageId],
+    );
     if (result.error) throw new Error(result.error.message);
 
     for (const row of result.rows ?? []) {
       const pageId = row.id;
-      const storedContent = row.content;
-      if (typeof pageId !== 'string' || typeof storedContent !== 'string') continue;
-      if (pageId === targetPageId) continue; // skip self
-
-      const decoded = decodeCanvasContent(storedContent);
-      const retitled = this._retitleLinkedBlocks(decoded.doc, targetPageId, next);
-      if (!retitled.changed) continue;
-
-      const encoded = encodeCanvasContentFromDoc(retitled.node);
-      const updateResult = await this._db.run(
-        `UPDATE pages
-         SET content = ?,
-             content_schema_version = ?,
-             revision = revision + 1,
-             updated_at = datetime('now')
-         WHERE id = ?`,
-        [encoded.storedContent, encoded.schemaVersion, pageId],
-      );
-      if (updateResult.error) throw new Error(updateResult.error.message);
-
-      const updated = await this.getPage(pageId);
-      if (updated) {
-        this._knownRevisions.set(pageId, updated.revision);
-        // Notify open editors of the parent so they reload the card text.
-        this._onDidChangePage.fire({
-          kind: PageChangeKind.Updated,
-          pageId,
-          page: updated,
-          changedFields: ['content', 'contentSchemaVersion'],
-        });
-        this._onRequestContentReload.fire(pageId);
-      }
+      if (typeof pageId !== 'string') continue;
+      // Through the one door: the parent's pending editor save is written
+      // first and the card is retitled inside the parent's write queue, so
+      // neither overwrites the other.  Unreadable parents are left alone.
+      let changed = false;
+      const res = await this.rewritePageContent(pageId, (doc) => {
+        const retitled = this._retitleLinkedBlocks(doc, targetPageId, next);
+        changed = retitled.changed;
+        return retitled.changed ? retitled.node : doc;
+      }, { source: 'user' });
+      // Open editors of the parent reload the card text.
+      if (res.ok && changed) this._onRequestContentReload.fire(pageId);
     }
   }
 

@@ -233,6 +233,25 @@ markdown, focus) were not tested adversarially.
    revisions protect the editor's writes, but AI tools (`ai/pageTools.ts`,
    1,296 lines; `ai/blockTools.ts`), card retitling and the property tool write
    raw SQL around them. Every write should go through one door.
+   **Fixed (2026-10-04)** for page writes: every AI tool write (edit page,
+   create page, page style, edit/insert/link block, Edit mode's Accept) goes
+   through `ai/pageWriter.ts`, which in the app is the data service's new
+   `rewritePageContent`: it writes the page's pending editor save first, then
+   reads, changes and writes inside the page's write queue, refuses pages whose
+   content cannot be read, and records the write so an editor save queued
+   against the older content is dropped as stale (the reload merge keeps that
+   typing). Before, an AI write could overwrite typing that was waiting to save
+   or a save in flight, and a style change made the pending save fail its
+   revision check. Card retitling on rename goes through the same door (it lost
+   typing waiting to save on the parent) and reads only pages that mention the
+   renamed page. Found on the way, both fixed: `setEditable()` emitted an
+   editor update that saved the doc on screen over a write that had just
+   landed (Edit mode's Accept was undone this way within half a second), and
+   the open editor kept a block the AI had removed when the caret was in it,
+   so the next save put it back (the caret now moves to the nearest text, not
+   onto a card). Tests: `canvasOneWriteDoor` (real SQLite),
+   `canvasExternalDocApply`; checked in the app. Still raw SQL: the AI
+   property tool's database values (part of the database item below).
 3. **The hierarchy is stored twice** (`parent_id` and `pageBlock` cards in the
    parent's JSON). Keeping them in sync is the source of most trash, restore,
    duplicate and delete-card bugs (C2, C3, page-card duplication).
@@ -452,3 +471,9 @@ needing a sideways move):
 | 19-canvas-journey | 1 / 1 |
 | 20-cross-page-diagnostic | passes; the page switch in it is timing-sensitive (1 of 2 runs) |
 | 33-canvas-slash-diagnostic | 3 / 3 |
+| 21-page-block-lifecycle | 1 / 1 (its editor lookups scoped to the visible pane; it failed after `09` left editors open) |
+| 09-canvas | 2 / 7, the same on the build before the write-door change; not yet repaired |
+| 93-canvas-close-persist | 0 / 1, the same on the build before the write-door change; not yet repaired |
+
+Noticed while probing, not yet looked into: right-clicking a page in the
+sidebar's Recent list opens the chat's context menu, not the page menu.

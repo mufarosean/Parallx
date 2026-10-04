@@ -9,9 +9,9 @@
 //
 // Block IDs are persisted in the TipTap doc via `@tiptap/extension-unique-id`
 // (see src/built-in/canvas/config/tiptapExtensions.ts UNIQUE_ID_BLOCK_TYPES).
-// Edit / insert tools mutate the persisted page.content envelope and bump
-// the `pages.revision` counter so the renderer's optimistic-concurrency
-// gate (canvasDataService._knownRevisions) detects external writes.
+// Edit / insert / link tools write through the page writer (pageWriter.ts):
+// in the app that is the data service, which saves the user's pending typing
+// first and reads, changes and writes the page with nothing in between.
 //
 // Idempotency (M60 §3.7): edit_block + insert_block_after carry an
 // optional `idempotencyKey`. The handler stamps the key into the result
@@ -27,10 +27,8 @@ import type {
 } from '../../../services/chatTypes.js';
 import type { IBuiltInToolDatabase, PageMutationNotifier } from '../../chat/chatTypes.js';
 import { markResourceSeen, wasResourceSeen, pageResourceKey } from '../../../services/toolResourceRegistry.js';
-import { sqliteUtcNow } from '../../../platform/storedTime.js';
 import {
   decodeDocContent,
-  encodeDocContent,
   findBlockById,
   nodeToPlainText,
   insertAfter,
@@ -41,6 +39,7 @@ import {
   type DocNode,
 } from './blockApi.js';
 import { markdownToTiptapJson } from '../markdownImport.js';
+import { rawDbPageWriter, type ICanvasPageWriter, type PageDocJson } from './pageWriter.js';
 
 /** Parse markdown into canvas block nodes (each stamped with a stable id). */
 function markdownToBlocks(markdown: string): DocNode[] {
@@ -67,22 +66,24 @@ async function loadPageDoc(
   return { title: row.title, content: row.content, revision: row.revision ?? 1, doc };
 }
 
-async function persistDoc(
-  db: IBuiltInToolDatabase,
+/**
+ * Write a block change through the page writer: `change` runs on the page as
+ * it is at write time (after the user's pending typing is saved, with no
+ * other write in between), so a block that moved or went away meanwhile is
+ * reported instead of written over.
+ */
+async function writeBlockChange(
+  writer: ICanvasPageWriter,
   pageId: string,
-  doc: NonNullable<ReturnType<typeof decodeDocContent>>,
+  change: (doc: DocNode) => DocNode | string,
   notifyPageMutated?: PageMutationNotifier,
-): Promise<void> {
-  const stored = encodeDocContent(doc);
-  // SQLite's own form (datetime('now')): one format for every page timestamp.
-  const now = sqliteUtcNow();
-  await db.run(
-    'UPDATE pages SET content = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
-    [stored, now, pageId],
-  );
+): Promise<string | null> {
+  const res = await writer.rewriteContent(pageId, (doc) => change(doc as unknown as DocNode) as unknown as PageDocJson | string);
+  if (!res.ok) return res.reason;
   // Notify the canvas data service so the sidebar refreshes and any open
-  // editor reloads its content. Never block the SQL write on notifier errors.
+  // editor reloads its content. Never block the write on notifier errors.
   try { notifyPageMutated?.(pageId, 'updated'); } catch { /* swallow */ }
+  return null;
 }
 
 // ─── C3.a: pages.read_block ─────────────────────────────────────────────
@@ -139,6 +140,7 @@ export function createReadBlockTool(db: IBuiltInToolDatabase | undefined): IChat
 export function createEditBlockTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
+  writer?: ICanvasPageWriter,
 ): IChatTool {
   return {
     name: 'canvas_edit_block',
@@ -192,12 +194,15 @@ export function createEditBlockTool(
       }
       // Fitted to the block's place (a list row, a row's line), then checked
       // against the editor schema: an invalid page is never written (C13).
-      const newDoc = fitBlocksAtTarget(page.doc, hit.path, blocks, 'replace');
-      const invalid = validateBlockDoc(newDoc);
-      if (invalid) {
-        return { content: `That edit would break the page's structure, so nothing was changed (${invalid}). Edit the enclosing block instead.`, isError: true };
-      }
-      await persistDoc(db!, pageId, newDoc, notifyPageMutated);
+      const refused = await writeBlockChange(writer ?? rawDbPageWriter(db!), pageId, (doc) => {
+        const now = findBlockById(doc, blockId);
+        if (!now) return `Block "${blockId}" is no longer in page "${page.title}". Read the page again and retry.`;
+        const newDoc = fitBlocksAtTarget(doc, now.path, structuredClone(blocks), 'replace');
+        const invalid = validateBlockDoc(newDoc);
+        if (invalid) return `That edit would break the page's structure, so nothing was changed (${invalid}). Edit the enclosing block instead.`;
+        return newDoc;
+      }, notifyPageMutated);
+      if (refused) return { content: refused, isError: true };
 
       const expanded = blocks.length > 1 ? ` (expanded into ${blocks.length} blocks)` : '';
       const keyNote = idempotencyKey ? `\n\n_idempotencyKey: ${idempotencyKey}_` : '';
@@ -217,6 +222,7 @@ export function createEditBlockTool(
 export function createInsertBlockAfterTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
+  writer?: ICanvasPageWriter,
 ): IChatTool {
   return {
     name: 'canvas_insert_block_after',
@@ -265,12 +271,15 @@ export function createInsertBlockAfterTool(
 
       // Parse markdown so inserted blocks get the correct type(s).
       const blocks = markdownToBlocks(content);
-      const newDoc = fitBlocksAtTarget(page.doc, hit.path, blocks, 'insertAfter');
-      const invalid = validateBlockDoc(newDoc);
-      if (invalid) {
-        return { content: `That insert would break the page's structure, so nothing was changed (${invalid}). Insert after the enclosing block instead.`, isError: true };
-      }
-      await persistDoc(db!, pageId, newDoc, notifyPageMutated);
+      const refused = await writeBlockChange(writer ?? rawDbPageWriter(db!), pageId, (doc) => {
+        const now = findBlockById(doc, anchorId);
+        if (!now) return `Anchor block "${anchorId}" is no longer in page "${page.title}". Read the page again and retry.`;
+        const newDoc = fitBlocksAtTarget(doc, now.path, structuredClone(blocks), 'insertAfter');
+        const invalid = validateBlockDoc(newDoc);
+        if (invalid) return `That insert would break the page's structure, so nothing was changed (${invalid}). Insert after the enclosing block instead.`;
+        return newDoc;
+      }, notifyPageMutated);
+      if (refused) return { content: refused, isError: true };
 
       const newBlockIds = blocks.map((b) => (b.attrs?.['id'] as string) || '').filter(Boolean);
       const keyNote = idempotencyKey ? `\n\n_idempotencyKey: ${idempotencyKey}_` : '';
@@ -290,6 +299,7 @@ export function createInsertBlockAfterTool(
 export function createLinkBlockTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
+  writer?: ICanvasPageWriter,
 ): IChatTool {
   return {
     name: 'canvas_link_block',
@@ -348,8 +358,12 @@ export function createLinkBlockTool(
       const linkBlockId = generateBlockId();
       const linkText = `→ [${label}](page://${toPageId}#${toBlockId})`;
       const linkNode = paragraphFromText(linkText, linkBlockId);
-      const newDoc = insertAfter(fromPage.doc, fromHit.path, linkNode);
-      await persistDoc(db!, fromPageId, newDoc, notifyPageMutated);
+      const refused = await writeBlockChange(writer ?? rawDbPageWriter(db!), fromPageId, (doc) => {
+        const now = findBlockById(doc, fromBlockId);
+        if (!now) return `Source block "${fromBlockId}" is no longer in the source page. Read the page again and retry.`;
+        return insertAfter(doc, now.path, linkNode);
+      }, notifyPageMutated);
+      if (refused) return { content: refused, isError: true };
 
       return {
         content:
@@ -366,12 +380,13 @@ export function createLinkBlockTool(
 export function createBlockTools(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
+  writer?: ICanvasPageWriter,
 ): IChatTool[] {
   return [
     createReadBlockTool(db),
-    createEditBlockTool(db, notifyPageMutated),
-    createInsertBlockAfterTool(db, notifyPageMutated),
-    createLinkBlockTool(db, notifyPageMutated),
+    createEditBlockTool(db, notifyPageMutated, writer),
+    createInsertBlockAfterTool(db, notifyPageMutated, writer),
+    createLinkBlockTool(db, notifyPageMutated, writer),
   ];
 }
 

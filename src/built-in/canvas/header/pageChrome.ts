@@ -183,8 +183,11 @@ export class PageChromeController {
     ec.classList.toggle('canvas-small-text', !!page?.smallText);
 
     // Lock page
-    if (this._host.editor) {
-      this._host.editor.setEditable(!page?.isLocked);
+    // Without emitting `update`: that is not an edit, and saving the doc on
+    // screen while a page update is still being applied writes the old doc
+    // over the new content.
+    if (this._host.editor && this._host.editor.isEditable !== !page?.isLocked) {
+      this._host.editor.setEditable(!page?.isLocked, false);
     }
     if (this._titleEl) {
       this._titleEl.contentEditable = page?.isLocked ? 'false' : 'true';

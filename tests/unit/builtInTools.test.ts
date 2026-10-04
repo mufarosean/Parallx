@@ -268,7 +268,7 @@ describe('set_page_style tool', () => {
   });
 
   it('updates icon, fontFamily, fullWidth, smallText, and coverUrl', async () => {
-    (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'p1', title: 'Page' });
+    (db.get as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p1', title: 'Page' });
     const result = await tool.handler({
       pageId: 'p1',
       style: { icon: '📘', fontFamily: 'serif', fullWidth: true, smallText: true, coverUrl: 'https://example.com/c.jpg' },
@@ -289,7 +289,7 @@ describe('set_page_style tool', () => {
   });
 
   it('clears icon and coverUrl when empty string is passed', async () => {
-    (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'p1', title: 'Page' });
+    (db.get as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p1', title: 'Page' });
     await tool.handler({ pageId: 'p1', style: { icon: '', coverUrl: '' } }, createToken());
     const params = (db.run as ReturnType<typeof vi.fn>).mock.calls[0][1] as unknown[];
     // First two style params should be null (icon, coverUrl)
@@ -654,7 +654,7 @@ describe('edit_page tool (M81 Phase 9: renamed from compose_page)', () => {
   });
 
   it('replaces page content from markdown (default mode)', async () => {
-    (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (db.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'p1',
       title: 'Target',
       content: JSON.stringify({ schemaVersion: 2, doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'old' }] }] } }),
@@ -676,7 +676,7 @@ describe('edit_page tool (M81 Phase 9: renamed from compose_page)', () => {
   });
 
   it('appends markdown blocks to existing content', async () => {
-    (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (db.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'p1',
       title: 'Target',
       content: JSON.stringify({ schemaVersion: 2, doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'first' }] }] } }),
@@ -691,7 +691,7 @@ describe('edit_page tool (M81 Phase 9: renamed from compose_page)', () => {
   });
 
   it('prepends markdown blocks to existing content', async () => {
-    (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (db.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'p1',
       title: 'Target',
       content: JSON.stringify({ schemaVersion: 2, doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'second' }] }] } }),
@@ -704,7 +704,7 @@ describe('edit_page tool (M81 Phase 9: renamed from compose_page)', () => {
   });
 
   it('falls back to empty paragraph when result would be empty', async () => {
-    (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (db.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'p1',
       title: 'Target',
       content: JSON.stringify({ schemaVersion: 2, doc: { type: 'doc', content: [] } }),

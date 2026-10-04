@@ -10,7 +10,7 @@ import type {
   IChatToolInvocationCallContext,
 } from '../../../services/chatTypes.js';
 import { markResourceSeen, wasResourceSeen, pageResourceKey } from '../../../services/toolResourceRegistry.js';
-import { sqliteUtcNow, formatStoredTimeForModel } from '../../../platform/storedTime.js';
+import { formatStoredTimeForModel } from '../../../platform/storedTime.js';
 import type {
   IBuiltInToolDatabase,
   CurrentPageIdGetter,
@@ -19,14 +19,12 @@ import type {
 import { extractSnippet, extractTextContent } from '../../chat/tools/builtInTools.js';
 import { markdownToTiptapJson } from '../markdownImport.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
-import {
-  decodeCanvasContent,
-  encodeCanvasContentFromDoc,
-} from '../contentSchema.js';
+import { decodeCanvasContent } from '../contentSchema.js';
 import { filterToSubquery, validateBlockDoc, type IPropertyFilter, type IPropertySort } from './blockApi.js';
 import type { CanvasTemplateApi } from '../canvasTemplates.js';
 import { getAllCanvasTemplates } from '../canvasTemplates.js';
 import { listFonts, getFont } from '../config/fontRegistry.js';
+import { rawDbPageWriter, type ICanvasPageWriter, type PageDocJson, type PageStyleFields } from './pageWriter.js';
 
 // ── Tool helpers ──
 
@@ -698,6 +696,7 @@ export function createCreatePageTool(
   createChildPage?: (parentId: string, title: string) => Promise<string>,
   streamPageBody?: StreamPageBodyFn,
   getNewPageDefaults?: () => NewPageLayoutDefaults,
+  writer?: ICanvasPageWriter,
 ): IChatTool {
   return {
     name: 'canvas_create_page',
@@ -728,24 +727,20 @@ export function createCreatePageTool(
         return { content: 'Title is required', isError: true };
       }
 
-      const id = generateId();
+      const pageWriter = writer ?? rawDbPageWriter(db!);
       // M85 Slice C — the creator authored this page's content: mark it seen
-      // so follow-up edits in the same session aren't blocked. (Marked up
-      // front — every success path below returns separately.)
-      if (invocation?.sessionId) {
-        markResourceSeen(invocation.sessionId, pageResourceKey(id));
-      }
+      // so follow-up edits in the same session aren't blocked.
+      const markSeen = (pageId: string) => {
+        if (invocation?.sessionId) markResourceSeen(invocation.sessionId, pageResourceKey(pageId));
+      };
       const icon = args['icon'] ? String(args['icon']) : null;
       const templateId = args['templateId'] ? String(args['templateId']) : '';
-      const now = sqliteUtcNow();
 
       // Layout defaults for AI-created pages (registry-backed; default ON in
       // production, off when unwired e.g. in tests).
       const layout = getNewPageDefaults?.() ?? { fullWidth: false, smallText: false };
-      const fullWidthCol = layout.fullWidth ? 1 : 0;
-      const smallTextCol = layout.smallText ? 1 : 0;
 
-      let doc: { type: 'doc'; content: unknown[] };
+      let doc: PageDocJson;
       let fromTemplate = false;
 
       if (templateId && templateApi) {
@@ -760,7 +755,7 @@ export function createCreatePageTool(
         }
         const built = tpl.buildDoc();
         doc = (built && typeof built === 'object' && (built as any).type === 'doc' && Array.isArray((built as any).content))
-          ? built as { type: 'doc'; content: unknown[] }
+          ? built as PageDocJson
           : { type: 'doc', content: [{ type: 'paragraph' }] };
         fromTemplate = true;
       } else {
@@ -768,7 +763,7 @@ export function createCreatePageTool(
         const markdown = typeof args['markdown'] === 'string' ? args['markdown'] : '';
         const plainContent = typeof args['content'] === 'string' ? args['content'] : '';
         if (markdown.trim()) {
-          doc = markdownToTiptapJson(markdown) as { type: 'doc'; content: unknown[] };
+          doc = markdownToTiptapJson(markdown) as PageDocJson;
           if (!doc.content || doc.content.length === 0) {
             doc = { type: 'doc', content: [{ type: 'paragraph' }] };
           }
@@ -784,7 +779,10 @@ export function createCreatePageTool(
         }
       }
 
-      const encoded = encodeCanvasContentFromDoc(doc as Parameters<typeof encodeCanvasContentFromDoc>[0]);
+      const invalid = validateBlockDoc(doc as never);
+      if (invalid) {
+        return { content: `Page not created: the content would not be a valid page (${invalid}).`, isError: true };
+      }
 
       // Sub-page path: parentId present → atomic create (page row + the
       // pageBlock card on the parent in ONE transaction, via the data
@@ -801,14 +799,10 @@ export function createCreatePageTool(
         let childId: string;
         try { childId = await createChildPage(parentId, title); }
         catch (err) { return { content: `Sub-page creation failed: ${err instanceof Error ? err.message : String(err)}`, isError: true }; }
-        // Sub-pages get a data-service id, not the pre-generated one.
-        if (invocation?.sessionId) {
-          markResourceSeen(invocation.sessionId, pageResourceKey(childId));
-        }
-        await db!.run(
-          'UPDATE pages SET icon = ?, content = ?, content_schema_version = ?, full_width = ?, small_text = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
-          [icon, encoded.storedContent, encoded.schemaVersion, fullWidthCol, smallTextCol, now, childId],
-        );
+        markSeen(childId);
+        await pageWriter.setStyle(childId, { icon, fullWidth: layout.fullWidth, smallText: layout.smallText });
+        const written = await pageWriter.rewriteContent(childId, () => doc);
+        if (!written.ok) return { content: `Sub-page "${title}" (id: ${childId}) was created, but its body was not written: ${written.reason}`, isError: true };
         try { notifyPageMutated?.(childId, 'updated'); } catch { /* non-fatal */ }
         const subBlockCount = doc.content.length;
         return { content: `Created sub-page "${title}" (id: ${childId}) under ${parentId} with ${subBlockCount} block${subBlockCount === 1 ? '' : 's'} — the parent page got its sub-page card.` };
@@ -819,32 +813,29 @@ export function createCreatePageTool(
       // a normal write if the page can't be opened/streamed.
       const mdBody = typeof args['markdown'] === 'string' ? (args['markdown'] as string) : '';
       if (streamPageBody && !templateId && mdBody.trim()) {
-        const emptyEnc = encodeCanvasContentFromDoc({ type: 'doc', content: [{ type: 'paragraph' }] } as Parameters<typeof encodeCanvasContentFromDoc>[0]);
-        await db!.run(
-          'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, full_width, small_text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)',
-          [id, title, icon, emptyEnc.storedContent, emptyEnc.schemaVersion, fullWidthCol, smallTextCol, now, now],
-        );
+        const id = await pageWriter.createPage({
+          title, icon, doc: { type: 'doc', content: [{ type: 'paragraph' }] },
+          fullWidth: layout.fullWidth, smallText: layout.smallText,
+        });
+        markSeen(id);
         try { notifyPageMutated?.(id, 'created'); } catch { /* opens the blank page + refreshes the sidebar */ }
         const streamed = await streamPageBody(id, mdBody, 2500);
         if (!streamed) {
-          await db!.run(
-            'UPDATE pages SET content = ?, content_schema_version = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
-            [encoded.storedContent, encoded.schemaVersion, sqliteUtcNow(), id],
-          );
+          const written = await pageWriter.rewriteContent(id, () => doc);
+          if (!written.ok) return { content: `Page "${title}" (id: ${id}) was created, but its body was not written: ${written.reason}`, isError: true };
           try { notifyPageMutated?.(id, 'updated'); } catch { /* non-fatal */ }
         }
         const blocks = doc.content.length;
         return { content: `Created page "${title}" (id: ${id}) — ${streamed ? 'streamed live into the editor' : 'written'} (${blocks} block${blocks === 1 ? '' : 's'}).` };
       }
 
-      await db!.run(
-        'INSERT INTO pages (id, title, icon, content, content_schema_version, is_archived, full_width, small_text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)',
-        [id, title, icon, encoded.storedContent, encoded.schemaVersion, fullWidthCol, smallTextCol, now, now],
-      );
+      const id = await pageWriter.createPage({
+        title, icon, doc, fullWidth: layout.fullWidth, smallText: layout.smallText,
+      });
+      markSeen(id);
 
       // Notify the canvas data service so the sidebar (and other listeners)
-      // refresh promptly. Raw SQL bypasses CanvasDataService.createPage, which
-      // is normally where `onDidChangePage` fires.
+      // refresh promptly and the new page opens.
       try { notifyPageMutated?.(id, 'created'); } catch { /* never block the tool result on notifier errors */ }
 
       const blockCount = doc.content.length;
@@ -877,6 +868,7 @@ export function createEditPageTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
   checkpointPage?: (pageId: string) => void | Promise<void>,
+  writer?: ICanvasPageWriter,
 ): IChatTool {
   return {
     name: 'canvas_edit_page',
@@ -912,6 +904,7 @@ export function createEditPageTool(
       if (!pageId) {
         return { content: 'pageId is required', isError: true };
       }
+      const pageWriter = writer ?? rawDbPageWriter(db!, checkpointPage);
 
       const page = await db!.get<{ id: string; title: string; content: string }>(
         'SELECT id, title, content FROM pages WHERE id = ?',
@@ -934,61 +927,49 @@ export function createEditPageTool(
       }
 
       const incomingDoc = markdownToTiptapJson(markdown);
-      const existing = decodeCanvasContent(page.content);
-      const existingBlocks = Array.isArray(existing.doc?.content) ? existing.doc.content : [];
-      // A card places a page in the tree: the AI keeps the page's own cards
-      // but cannot point one at any other page (that would move it).
-      const ownCards = new Set(collectCardPageIds(existingBlocks));
-      const incomingBlocks = dropForeignCards(Array.isArray(incomingDoc.content) ? incomingDoc.content : [], ownCards);
+      const build = (existingDoc: PageDocJson): PageDocJson | string => {
+        const existingBlocks = Array.isArray(existingDoc.content) ? existingDoc.content : [];
+        // A card places a page in the tree: the AI keeps the page's own cards
+        // but cannot point one at any other page (that would move it).
+        const ownCards = new Set(collectCardPageIds(existingBlocks));
+        const incomingBlocks = dropForeignCards(structuredClone(Array.isArray(incomingDoc.content) ? incomingDoc.content : []), ownCards);
 
-      let finalDoc: { type: 'doc'; content: unknown[] };
-      if (mode === 'replace') {
-        // A sub-page card IS its child page's place in the tree: one the
-        // rewrite left out goes back at the end instead of vanishing.
-        const kept = new Set(collectCardPageIds(incomingBlocks));
-        const missingCards = collectCards(existingBlocks).filter((c) => !kept.has(String(c.attrs?.['pageId'] ?? '')));
-        finalDoc = { type: 'doc', content: [...incomingBlocks, ...missingCards] };
-      } else {
-        // Added blocks never reuse an id the page already has.
-        const taken = new Set(collectIds(existingBlocks));
-        for (const b of incomingBlocks) dropTakenIds(b, taken);
-        const merged = mode === 'append'
-          ? [...existingBlocks, ...incomingBlocks]
-          : [...incomingBlocks, ...existingBlocks];
-        finalDoc = { type: 'doc', content: merged };
-      }
+        let finalDoc: PageDocJson;
+        if (mode === 'replace') {
+          // A sub-page card IS its child page's place in the tree: one the
+          // rewrite left out goes back at the end instead of vanishing.
+          const kept = new Set(collectCardPageIds(incomingBlocks));
+          const missingCards = collectCards(existingBlocks).filter((c) => !kept.has(String(c.attrs?.['pageId'] ?? '')));
+          finalDoc = { type: 'doc', content: [...incomingBlocks, ...missingCards] };
+        } else {
+          // Added blocks never reuse an id the page already has.
+          const taken = new Set(collectIds(existingBlocks));
+          for (const b of incomingBlocks) dropTakenIds(b, taken);
+          const merged = mode === 'append'
+            ? [...existingBlocks, ...incomingBlocks]
+            : [...incomingBlocks, ...existingBlocks];
+          finalDoc = { type: 'doc', content: merged };
+        }
 
-      // Doc must contain at least one block — guard against empty-markdown
-      // append/prepend that would yield an empty body.
-      if (finalDoc.content.length === 0) {
-        finalDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
-      }
+        // Doc must contain at least one block — guard against empty-markdown
+        // append/prepend that would yield an empty body.
+        if (finalDoc.content.length === 0) {
+          finalDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
+        }
 
-      const invalid = validateBlockDoc(finalDoc as never);
-      if (invalid) {
-        return { content: `Edit refused: the result would not be a valid page (${invalid}). Nothing was changed.`, isError: true };
-      }
+        const invalid = validateBlockDoc(finalDoc as never);
+        if (invalid) return `Edit refused: the result would not be a valid page (${invalid}). Nothing was changed.`;
+        return finalDoc;
+      };
 
-      const encoded = encodeCanvasContentFromDoc(finalDoc);
-      const now = sqliteUtcNow();
-
-      // Capture the pre-edit content as a version-history revision BEFORE we
-      // overwrite it. A `replace` that wipes more than intended (the classic
-      // "AI replaced a section but cleared the whole page") must always be
-      // revertable — the post-write checkpoint alone can't recover the original.
-      try { await checkpointPage?.(pageId); } catch { /* never block the edit on checkpoint errors */ }
-      // The open editor streams this in block-by-block on reload (the animated
-      // _applyExternalDoc path) — every mode (replace/append/prepend) types live.
-      // M77 Phase 10.1 — bump `revision` so the canvas data service's
-      // optimistic-concurrency tracking sees this external write. Without
-      // the bump a user's pending auto-save (captured with the pre-AI
-      // revision) would silently succeed and overwrite the AI's content.
-      // With the bump it conflicts and surfaces, which is the correct
-      // behaviour for co-authoring.
-      await db!.run(
-        'UPDATE pages SET content = ?, content_schema_version = ?, updated_at = ?, revision = revision + 1 WHERE id = ?',
-        [encoded.storedContent, encoded.schemaVersion, now, pageId],
-      );
+      // Through the page writer: the user's pending typing is saved first and
+      // nothing lands between reading the page and writing it. The pre-edit
+      // content goes to version history first, so a `replace` that wipes more
+      // than intended is always revertable. The open editor then streams the
+      // change in block-by-block on reload (every mode types live).
+      const written = await pageWriter.rewriteContent(pageId, build, { checkpointBefore: true });
+      if (!written.ok) return { content: written.reason, isError: true };
+      const finalDoc = written.doc;
 
       // Notify the canvas data service so the sidebar refreshes and any
       // open editor for this page reloads its content.
@@ -1229,6 +1210,7 @@ export function createSetPageStyleTool(
   db: IBuiltInToolDatabase | undefined,
   notifyPageMutated?: PageMutationNotifier,
   workspaceRoot?: string,
+  writer?: ICanvasPageWriter,
 ): IChatTool {
   return {
     name: 'canvas_set_page_style',
@@ -1267,6 +1249,7 @@ export function createSetPageStyleTool(
       if (!pageId) {
         return { content: 'pageId is required', isError: true };
       }
+      const pageWriter = writer ?? rawDbPageWriter(db!);
       const style = (args['style'] && typeof args['style'] === 'object') ? args['style'] as Record<string, unknown> : null;
       if (!style) {
         return { content: 'style object is required', isError: true };
@@ -1280,14 +1263,12 @@ export function createSetPageStyleTool(
         return { content: `Page not found: ${pageId}`, isError: true };
       }
 
-      const sets: string[] = [];
-      const params: unknown[] = [];
+      const style_: PageStyleFields = {};
       const changed: string[] = [];
 
       if ('icon' in style) {
         const v = String(style['icon'] ?? '');
-        sets.push('icon = ?');
-        params.push(v === '' ? null : v);
+        style_.icon = v === '' ? null : v;
         changed.push('icon');
       }
       if ('coverUrl' in style) {
@@ -1296,8 +1277,7 @@ export function createSetPageStyleTool(
         if (resolved.error) {
           return { content: resolved.error, isError: true };
         }
-        sets.push('cover_url = ?');
-        params.push(resolved.value);
+        style_.coverUrl = resolved.value;
         changed.push('coverUrl');
       }
       if ('fontFamily' in style) {
@@ -1309,41 +1289,27 @@ export function createSetPageStyleTool(
           const known = listFonts().map((f) => f.id).join(', ');
           return { content: `Invalid fontFamily: ${v}. Known font ids: ${known}.`, isError: true };
         }
-        sets.push('font_family = ?');
-        params.push(v);
+        style_.fontFamily = v;
         changed.push('fontFamily');
       }
       if ('fullWidth' in style) {
-        sets.push('full_width = ?');
-        params.push(style['fullWidth'] ? 1 : 0);
+        style_.fullWidth = !!style['fullWidth'];
         changed.push('fullWidth');
       }
       if ('smallText' in style) {
-        sets.push('small_text = ?');
-        params.push(style['smallText'] ? 1 : 0);
+        style_.smallText = !!style['smallText'];
         changed.push('smallText');
       }
 
-      if (sets.length === 0) {
+      if (changed.length === 0) {
         return { content: 'No style fields provided. Specify at least one of: icon, coverUrl, fontFamily, fullWidth, smallText.', isError: true };
       }
 
-      const now = sqliteUtcNow();
-      sets.push('updated_at = ?');
-      // M77 Phase 10.1 — bump `revision` so the canvas data service's
-      // optimistic-concurrency tracking treats this as a real write and
-      // a concurrent user save can't silently overwrite the style change.
-      sets.push('revision = revision + 1');
-      params.push(now);
-      params.push(pageId);
-
-      await db!.run(
-        `UPDATE pages SET ${sets.join(', ')} WHERE id = ?`,
-        params,
-      );
-
-      // Notify the canvas data service so the sidebar reflects icon/cover
-      // changes immediately and any open editor refreshes its chrome.
+      // Through the page writer: the data service's write queue, revision
+      // tracking and change events (sidebar, open editor chrome).
+      if (!(await pageWriter.setStyle(pageId, style_))) {
+        return { content: `Page not found: ${pageId}`, isError: true };
+      }
       try { notifyPageMutated?.(pageId, 'updated'); } catch { /* never block the tool result on notifier errors */ }
 
       return { content: `Updated page "${page.title}" style: ${changed.join(', ')}.` };

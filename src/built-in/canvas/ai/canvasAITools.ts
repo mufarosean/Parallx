@@ -28,6 +28,7 @@ import {
   type NewPageLayoutDefaults,
 } from './pageTools.js';
 import { createBlockTools } from './blockTools.js';
+import type { ICanvasPageWriter } from './pageWriter.js';
 import { createRelatePagesTool, type RelatePagesFn } from './relatePagesTool.js';
 import { createDatabaseTools } from './databaseTools.js';
 import type { DatabaseDataService } from '../database/databaseDataService.js';
@@ -58,6 +59,9 @@ export interface ICanvasAIToolDeps {
    *  AI edit, so a replace/overwrite is always revertable. Wired to the data
    *  service in canvas/main.ts. Omitted → no pre-edit checkpoint. */
   readonly pageCheckpoint?: (pageId: string) => void | Promise<void>;
+  /** The one way the tools write pages (the data service in canvas/main.ts).
+   *  Omitted → the tools write the database directly (tests). */
+  readonly pageWriter?: ICanvasPageWriter;
   readonly templateApi?: CanvasTemplateApi;
   /** Nest related pages under a hub (canvas_relate_pages). Omitted → tool not
    *  registered. Implemented over the live data service in canvas/main.ts. */
@@ -84,19 +88,19 @@ export interface ICanvasAIToolDeps {
  * Returns disposables that deregister them.
  */
 export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
-  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, pageCheckpoint, templateApi, relatePages, streamPageBody, createChildPage, movePage, getNewPageDefaults, databaseService } = deps;
+  const { toolsService, db, getCurrentPageId, workspaceRoot, pageMutationNotifier, pageCheckpoint, pageWriter, templateApi, relatePages, streamPageBody, createChildPage, movePage, getNewPageDefaults, databaseService } = deps;
 
   const tools: IChatTool[] = [
     createFindPagesTool(db),
     createReadPageTool(db, getCurrentPageId),
     createListTemplatesTool(templateApi),
-    createCreatePageTool(db, pageMutationNotifier, templateApi, createChildPage, streamPageBody, getNewPageDefaults),
-    createEditPageTool(db, pageMutationNotifier, pageCheckpoint),
+    createCreatePageTool(db, pageMutationNotifier, templateApi, createChildPage, streamPageBody, getNewPageDefaults, pageWriter),
+    createEditPageTool(db, pageMutationNotifier, pageCheckpoint, pageWriter),
     ...(movePage ? [createMovePageTool(db, movePage)] : []),
     createListPropertyDefinitionsTool(db),
     createSetPagePropertyTool(db, databaseService ? (id) => databaseService.notifyRowsChanged(id) : undefined),
-    createSetPageStyleTool(db, pageMutationNotifier, workspaceRoot),
-    ...createBlockTools(db, pageMutationNotifier),
+    createSetPageStyleTool(db, pageMutationNotifier, workspaceRoot, pageWriter),
+    ...createBlockTools(db, pageMutationNotifier, pageWriter),
     ...(relatePages ? [createRelatePagesTool(relatePages)] : []),
     ...(databaseService ? createDatabaseTools(databaseService) : []),
   ];

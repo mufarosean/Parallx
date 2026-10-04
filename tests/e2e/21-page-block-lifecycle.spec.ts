@@ -35,17 +35,17 @@ test.describe('Page Block inside Column', () => {
     const treeCountBefore = await page.locator('.canvas-node[role="treeitem"]').count();
 
     // ── 1. Create a column layout via /columns ──
-    const tiptap = page.locator('.tiptap').first();
+    const tiptap = page.locator('.editor-pane:not(.hidden) .tiptap').first();
     await tiptap.click();
     await insertViaSlashMenu(page, '2 Columns');
     await page.waitForTimeout(500);
 
     // Verify a columnList appeared in the editor
-    const columnCount = await page.locator('.tiptap .canvas-column-list').count();
+    const columnCount = await page.locator('.editor-pane:not(.hidden) .tiptap .canvas-column-list').count();
     expect(columnCount, 'Column layout should exist').toBeGreaterThanOrEqual(1);
 
     // ── 2. Click inside the FIRST column and type /page ──
-    const firstCol = page.locator('.tiptap .canvas-column').first();
+    const firstCol = page.locator('.editor-pane:not(.hidden) .tiptap .canvas-column').first();
     await firstCol.click();
     await page.waitForTimeout(200);
 
@@ -79,13 +79,13 @@ test.describe('Page Block inside Column', () => {
     // ── 4. ASSERT: editor auto-navigated (child page is now active) ──
     // Wait for the openEditor call to settle
     await page.waitForTimeout(1500);
-    const childEditorVisible = await page.locator('.tiptap').count();
+    const childEditorVisible = await page.locator('.editor-pane:not(.hidden) .tiptap').count();
     expect(childEditorVisible, 'Editor should be visible after auto-navigate').toBeGreaterThan(0);
 
     // ── 5. Navigate back to parent and verify node survived persist ──
     const parentNode = page.locator('.canvas-node[role="treeitem"]').first();
     await parentNode.click();
-    await page.waitForSelector('.tiptap', { timeout: 10_000 });
+    await page.waitForSelector('.editor-pane:not(.hidden) .tiptap', { timeout: 10_000 });
     await page.waitForTimeout(1000);
 
     // The pageBlock card should be visible inside the column

@@ -29,7 +29,8 @@
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { ICanvasDataService } from './canvasTypes.js';
-import { diffTopLevel, computeReplaceRange, classifySpan, type ISpanClassification } from './canvasDocDiff.js';
+import { diffTopLevel, classifySpan, type ISpanClassification } from './canvasDocDiff.js';
+import { applyExternalDoc } from './externalDocApply.js';
 import { setAiEditMarks, getAiEditSpan, type IAiEditMark } from './plugins/aiEditMarks.js';
 import { createButton } from '../../ui/kit.js';
 import { Editor, getSchema } from '@tiptap/core';
@@ -597,8 +598,14 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
           return false;
         },
       },
-      onUpdate: ({ editor }) => {
+      onUpdate: ({ editor, transaction }) => {
         if (this._suppressUpdate) return;
+        // Only a change to the document is an edit.  Tiptap also emits
+        // `update` from setEditable(); saving then queued the doc on screen
+        // as an edit, and when a page update (an AI write, a rename) had just
+        // landed and the reload had not applied it yet, that old doc was
+        // saved over the new content.
+        if (!transaction.docChanged) return;
         // Critical: do NOT auto-save until the initial content load has
         // populated the editor.  Plugins (notably UniqueID's
         // appendTransaction) fire `docChanged` transactions during Editor
@@ -964,7 +971,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
           if (!isCurrent()) return;
           // Unreadable stored content: show the notice, read-only; the
           // service keeps the stored text untouched (C6).
-          if (decoded.unreadable) this._editor!.setEditable(false);
+          if (decoded.unreadable) this._editor!.setEditable(false, false);
           // Blocks and marks this build doesn't know load as placeholders and
           // save back as they were (C1) — instead of an empty page.
           const storedDoc = wrapUnknownContent(decoded.doc, this._editor!.schema);
@@ -1037,9 +1044,9 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
    * ONE history-free transaction, mapping the user's selection through it.
    *
    * Focused-block protection: when the user's cursor sits INSIDE the changed
-   * span and the editor has focus, their in-progress block is kept verbatim
-   * (the AI never clobbers the block you're typing in); everything around it
-   * still updates.
+   * span and the editor has focus, their block is kept verbatim while the
+   * incoming doc still has it; everything around it still updates (see
+   * externalDocApply.ts).
    *
    * Returns false when the change can't be applied surgically (schema mismatch,
    * unexpected shape) — the caller falls back to a full setContent.
@@ -1048,61 +1055,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     const editor = this._editor;
     if (!editor) return false;
     try {
-      const view = editor.view;
-      const state = view.state;
-      const oldChildren = ((state.doc.toJSON() as { content?: unknown[] }).content ?? []);
-      const newChildren = (newDocJson.content ?? []);
-      if (newChildren.length === 0) return false; // empty doc → let setContent normalize
-
-      const diff = diffTopLevel(oldChildren, newChildren);
-      if (!diff) return true; // identical — nothing to apply
-
-      const schema = state.schema;
-      const buildNodes = (jsons: readonly unknown[]) => jsons.map((j) => schema.nodeFromJSON(j));
-
-      // Block-index → doc-position helper (top-level children start at 0).
-      const posOf = (index: number): number => {
-        let pos = 0;
-        for (let i = 0; i < index; i++) pos += state.doc.child(i).nodeSize;
-        return pos;
-      };
-
-      // Focused-block protection — only when the user is actually in the span.
-      const sel = state.selection;
-      const cursorBlock = sel.$from.depth > 0 ? sel.$from.index(0) : -1;
-      const userInSpan = view.hasFocus() && cursorBlock >= diff.start && cursorBlock < diff.oldEnd;
-
-      const tr = state.tr;
-      if (userInSpan) {
-        const curId = (state.doc.child(cursorBlock).attrs as { id?: string } | null)?.id;
-        // Locate the user's block in the incoming span by its stable id.
-        let ni = -1;
-        if (typeof curId === 'string' && curId) {
-          for (let i = diff.start; i < diff.newEnd; i++) {
-            const attrs = (newChildren[i] as { attrs?: { id?: string } })?.attrs;
-            if (attrs?.id === curId) { ni = i; break; }
-          }
-        }
-        // Keep the user's block verbatim; update everything around it. Apply
-        // the LATER range first so the earlier range's positions stay valid.
-        const before = buildNodes(newChildren.slice(diff.start, ni >= 0 ? ni : diff.newEnd));
-        const after = ni >= 0 ? buildNodes(newChildren.slice(ni + 1, diff.newEnd)) : [];
-        const pStart = posOf(diff.start);
-        const pCur = posOf(cursorBlock);
-        const pCurEnd = pCur + state.doc.child(cursorBlock).nodeSize;
-        const pOldEnd = posOf(diff.oldEnd);
-        if (pCurEnd < pOldEnd || after.length > 0) tr.replaceWith(pCurEnd, pOldEnd, after);
-        if (pStart < pCur || before.length > 0) tr.replaceWith(pStart, pCur, before);
-      } else {
-        const { from, to } = computeReplaceRange(state.doc, diff);
-        tr.replaceWith(from, to, buildNodes(newChildren.slice(diff.start, diff.newEnd)));
-      }
-      if (!tr.docChanged) return true;
-
-      tr.setMeta('addToHistory', false).setMeta('canvasExternalApply', true);
-      tr.setSelection(sel.map(tr.doc, tr.mapping));
-      view.dispatch(tr);
-      return true;
+      return applyExternalDoc(editor.view, newDocJson);
     } catch (err) {
       // Schema mismatch / unexpected shape — let the caller do a full reload.
       console.warn(`[CanvasEditorPane] Surgical apply failed for "${this._pageId}", falling back to full reload:`, err);

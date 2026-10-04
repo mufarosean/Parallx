@@ -21,6 +21,7 @@ import { ILanguageModelToolsService } from '../../services/chatTypes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITools.js';
 import { CANVAS_AI_PAGE_FULL_WIDTH_KEY, CANVAS_AI_PAGE_SMALL_TEXT_KEY, createEditPageTool } from './ai/pageTools.js';
+import { dataServicePageWriter } from './ai/pageWriter.js';
 import { getGlobalSettingsRegistry } from '../../services/settingsRegistryService.js';
 import { CANVAS_DEFAULT_FONT_KEY, CANVAS_CUSTOM_FONTS_KEY, FALLBACK_FONT_ID, loadCustomFonts } from './config/fontRegistry.js';
 import { markdownToTiptapJson } from './markdownImport.js';
@@ -428,11 +429,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       // agent's own work as the user's. Timed removal covers deferred events.
       _aiMutatedPageIds.add(pageId);
       setTimeout(() => _aiMutatedPageIds.delete(pageId), 5_000);
-      // Cancel any pending auto-save before the reload fires. The debounced
-      // save holds pre-AI content; if it fires after notifyExternalPageMutation
-      // updates _knownRevisions to the AI's new revision it silently succeeds
-      // and overwrites the AI's write. Cancelling it here eliminates the race.
-      if (kind === 'updated') _dataService?.cancelPendingSave(pageId);
+      // The AI's writes went through the data service (pageWriter below): the
+      // pending auto-save was written first, and one queued during the write
+      // is recognised as stale there. Cancelling it here used to drop what the
+      // user typed in the last half second.
       if (kind === 'updated') _editorProvider?.markAiEdit(pageId);
       // Deterministic ordering: AWAIT the mutation notification (which drives
       // the open editor's surgical reload) before any focus side-effect. The
@@ -448,9 +448,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       }
     };
 
+    // The one way the AI tools write pages: through the data service's write
+    // queue, after the page's pending editor save.
+    const pageWriter = dataServicePageWriter(_dataService);
     const canvasToolDisposables = registerCanvasAITools({
       toolsService,
       db,
+      pageWriter,
       getCurrentPageId: () => canvasPageIdFromEditorId(editorService?.activeEditor?.id),
       workspaceRoot: api.workspace.workspaceFolders?.[0]?.uri,
       templateApi: api,
@@ -546,7 +550,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // Edit mode's Accept: apply an accepted page proposal through the same
     // path canvas_edit_page takes (checkpoint first, then the write, then the
     // live reload), so an accepted edit lands and can be undone from history.
-    const applyEditTool = createEditPageTool(db, pageMutationNotifier, (pageId) => _dataService?.checkpointPageNow(pageId, 'ai'));
+    const applyEditTool = createEditPageTool(db, pageMutationNotifier, (pageId) => _dataService?.checkpointPageNow(pageId, 'ai'), pageWriter);
     context.subscriptions.push(api.commands.registerCommand('canvas.applyEditProposal', async (...args: unknown[]) => {
       const pageId = String(args[0] ?? '');
       const markdown = String(args[1] ?? '');

@@ -160,8 +160,10 @@ export class CanvasEditorView implements CanvasMenuHost {
       }),
       content: '',
       editorProps: { attributes: { class: 'canvas-tiptap-editor', spellcheck: 'true' } },
-      onUpdate: ({ editor }) => {
+      onUpdate: ({ editor, transaction }) => {
         if (this._suppressUpdate || !this._initialContentLoaded) return;
+        // setEditable() emits `update` too; only a document change is an edit.
+        if (!transaction.docChanged) return;
         this._dataService.scheduleContentSave(this._pageId, editorContentForStorage(editor));
       },
       onTransaction: ({ editor, transaction }) => {
@@ -226,7 +228,7 @@ export class CanvasEditorView implements CanvasMenuHost {
           if (this._disposed || !this._editor) return;
           // Same load rules as the canvas pane: unreadable → read-only notice
           // (C6); unknown blocks → placeholders that save back as they were (C1).
-          if (decoded.unreadable) this._editor.setEditable(false);
+          if (decoded.unreadable) this._editor.setEditable(false, false);
           this._editor.commands.setContent(wrapUnknownContent(decoded.doc, this._editor.schema));
         }
       } finally {
