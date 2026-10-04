@@ -308,6 +308,24 @@ export class SemanticGraphService extends Disposable {
       .catch((err) => console.warn('[SemanticGraphService] cache start failed:', err));
   }
 
+  /**
+   * Stop building the cache: the tool that started it (Workspace Graph) is
+   * turned off. Queued work is dropped; nothing runs until it starts again.
+   */
+  stopCache(): void {
+    this._started = false;
+    this._initialBackfillQueued = false;
+    this._queue.clear();
+    if (this._timer) {
+      clearTimeout(this._timer);
+      this._timer = null;
+    }
+  }
+
+  get isCacheStarted(): boolean {
+    return this._started;
+  }
+
   scheduleSource(sourceType: SemanticGraphSourceType, sourceId: string): void {
     if (!this._started || this._disposed || !isSemanticGraphSourceType(sourceType) || !sourceId) {
       return;
@@ -317,7 +335,7 @@ export class SemanticGraphService extends Disposable {
   }
 
   async rebuildChangedSources(): Promise<void> {
-    if (this._disposed || !this._db.isOpen) {
+    if (!this._started || this._disposed || !this._db.isOpen) {
       return;
     }
     await this._ensureSchema();
@@ -908,7 +926,7 @@ export class SemanticGraphService extends Disposable {
     let drainProcessed = 0;
     let drainSkipped = 0;
     try {
-      while (!this._disposed && this._queue.size > 0) {
+      while (!this._disposed && this._started && this._queue.size > 0) {
         if (this._indexingPipeline.isIndexing) {
           this._scheduleDrain(this._retryWhileIndexingMs);
           break;

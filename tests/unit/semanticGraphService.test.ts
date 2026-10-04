@@ -207,6 +207,7 @@ describe('SemanticGraphService', () => {
     ]);
     db.get.mockResolvedValueOnce({ content_hash: 'old-hash' });
 
+    (service as any)._started = true; // Workspace Graph is on
     await service.rebuildChangedSources();
     await vi.runOnlyPendingTimersAsync();
 
@@ -281,6 +282,7 @@ describe('SemanticGraphService', () => {
     ]);
     db.get.mockResolvedValueOnce({ content_hash: 'old-hash' });
 
+    (service as any)._started = true; // Workspace Graph is on
     await service.rebuildChangedSources();
     await vi.runOnlyPendingTimersAsync();
 
@@ -335,6 +337,7 @@ describe('SemanticGraphService', () => {
       { partnerType: 'page_block', partnerId: 'b', sharedCount: 2 },
     ]);
 
+    (service as any)._started = true; // Workspace Graph is on
     await service.rebuildChangedSources();
     await vi.runOnlyPendingTimersAsync();
 
@@ -583,5 +586,39 @@ describe('reference edges from free signals (M88 S3)', () => {
 
     const flat = JSON.stringify(writes);
     expect(flat).toContain('study/refs/ch2.md'); // resolved against study/
+  });
+});
+
+describe('cache lifetime follows Workspace Graph', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('does nothing until started, and stops when stopped', async () => {
+    const db = createMockDb();
+    const vectorStore = createMockVectorStore();
+    const service = new SemanticGraphService(db as any, vectorStore as any, createMockPipeline() as any, createMockWorkspace() as any, { debounceMs: 10, processYieldMs: 0 });
+
+    // Never started (Workspace Graph off): indexing a page queues nothing.
+    expect(service.isCacheStarted).toBe(false);
+    service.scheduleSource('page_block', 'a');
+    await service.rebuildChangedSources();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(vectorStore.getIndexedSources).not.toHaveBeenCalled();
+    expect(vectorStore.getContentHash).not.toHaveBeenCalled();
+
+    service.ensureCacheStarted();
+    expect(service.isCacheStarted).toBe(true);
+
+    // Turned off with work queued: the queue is dropped and nothing runs.
+    service.scheduleSource('page_block', 'b');
+    service.stopCache();
+    expect(service.isCacheStarted).toBe(false);
+    vectorStore.getContentHash.mockClear();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(vectorStore.getContentHash).not.toHaveBeenCalled();
+    service.scheduleSource('page_block', 'c');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(vectorStore.getContentHash).not.toHaveBeenCalled();
+    service.dispose();
   });
 });

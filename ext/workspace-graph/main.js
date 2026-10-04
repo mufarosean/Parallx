@@ -2816,6 +2816,11 @@ export async function activate(api, context) {
   // Load persisted settings before views render
   await _loadSettings(api);
   _registerSemanticGraphProvider(api, context);
+  // Turned off, the graph's background work stops with it.
+  context.subscriptions.push({ dispose() {
+    const service = _getSemanticGraphService(api);
+    if (service && typeof service.stopCache === 'function') service.stopCache();
+  } });
 
   // Sidebar view
   const viewDisposable = api.views.registerViewProvider('view.workspaceGraph', {

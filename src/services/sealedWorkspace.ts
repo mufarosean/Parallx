@@ -30,7 +30,7 @@ export function registerSealedSetting(registry: RegistryLike): void {
     type: 'boolean',
     default: false,
     scope: 'workspace',
-    description: 'Seal this workspace: no cloud models, no web tools, no network egress from extensions. The AI runs on local models only. For workspaces that hold sensitive documents. Your own browsing in the Browser is unaffected.',
+    description: 'Seal this workspace: no cloud models, no web tools, no network egress from extensions. The AI runs on local models only. For workspaces that hold sensitive documents. Pages you browse yourself are unaffected.',
     category: 'Security',
   } as Parameters<RegistryLike['register']>[0]);
 }

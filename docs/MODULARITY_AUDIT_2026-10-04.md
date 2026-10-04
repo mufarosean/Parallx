@@ -30,8 +30,8 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 | 11 | `openclaw/openclawDefaultRuntimeSupport.ts:104-113` | Web Research | `/research` chat command always offered | **fixed**: the extension brings it (`api.chat.registerSlashCommand`) |
 | 12 | `openclaw/heartbeatTriggers.ts:242,267`, `chat/main.ts:2385-2501` | Planner | Heartbeat notices and follow-ups name the planner | **fixed** (with 19): they read the planner only while its service is registered, which now ends when Planner is turned off |
 | 13 | `services/workflows/workflowLibrary.ts:27` (+ `workflowTypes.ts:67`, `workflowRunner.ts:39`) | Planner | "Morning Report" template reads the planner | **fixed**: reads the schedule only while a planner is on (gated on the service); description no longer names Planner |
-| 14 | `openclaw/participants/openclawContextReport.ts:173` | Workspace Graph | `/context` tells you to use Workspace Graph | open |
-| 15 | `services/sealedWorkspace.ts:33` | Browser | Always-shown setting text names the Browser | open |
+| 14 | `openclaw/participants/openclawContextReport.ts:173` | Workspace Graph | `/context` tells you to use Workspace Graph | **fixed**: the mind map section shows only while Workspace Graph keeps its cache running |
+| 15 | `services/sealedWorkspace.ts:33` | Browser | Always-shown setting text names the Browser | **fixed**: "Pages you browse yourself are unaffected." |
 | 15a | `worksheet/dashboardPane.ts:458`, `worksheet/main.ts:3534` | Flashcards | Worksheets' plan offers "Review Due Flashcards" (says "not available" when off) | open |
 
 ## 2. Work done for a tool that is off
@@ -42,7 +42,7 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 | 17 | `electron/browserAutomationBroker.cjs:448-452` | Browser | At start: clears leftovers, sweeps artifacts on a timer | **fixed** (with 16) |
 | 18 | `services/browserAutomationService.ts:172` | Browser | Core service clears browser artifacts on every chat deletion | **fixed**: kept on purpose (it erases the user's own files when they delete a chat), now without starting the Browser (`forgetChatsOnDisk`) |
 | 19 | `planner/main.ts:150` (`IPlannerQueryService`) | Planner | Never unregistered: after turning Planner off, heartbeat and workflows keep calling it | **fixed**: a service a tool registers through `api.services` is unregistered when the tool deactivates (`ServiceCollection.unregisterInstance`) |
-| 20 | `services/semanticGraphService.ts` and friends (`workbenchServices.ts:360-407`) | Workspace Graph | Once started, keeps re-indexing after Workspace Graph is turned off; tables created by core | open |
+| 20 | `services/semanticGraphService.ts` and friends (`workbenchServices.ts:360-407`) | Workspace Graph | Once started, keeps re-indexing after Workspace Graph is turned off; tables created by core | **fixed**: Workspace Graph stops the cache when it deactivates (`stopCache`: queue dropped, timers cleared, no rebuilds). Tables are created only on first use by the graph. The lineage and concept passes run only on a refresh the user starts from the graph |
 | 21 | `services/autonomyBootstrap.ts` (`workbench.ts:3409`) | Agents | Cron, workflows, task rail built at every start (also used by Chat: decide) | open |
 
 ## 3. Core code that exists only for one tool (dormant)

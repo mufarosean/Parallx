@@ -1733,6 +1733,12 @@ export interface ISemanticGraphService extends IDisposable {
   /** Start low-priority cache initialization. Safe to call multiple times. */
   ensureCacheStarted(): void;
 
+  /** Stop building the cache (its tool was turned off). Safe to call when stopped. */
+  stopCache(): void;
+
+  /** True while a tool keeps the cache running. */
+  readonly isCacheStarted: boolean;
+
   /** Queue one indexed source for semantic-edge recompute. */
   scheduleSource(
     sourceType: import('./semanticGraphService.js').SemanticGraphSourceType,

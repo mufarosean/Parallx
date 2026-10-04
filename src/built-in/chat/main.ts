@@ -1255,7 +1255,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       const sg = api.services.has(ISemanticGraphService)
         ? api.services.get<import('../../services/serviceTypes.js').ISemanticGraphService>(ISemanticGraphService)
         : null;
-      if (!sg) return undefined;
+      // Only while Workspace Graph keeps the cache: off, /context says nothing of it.
+      if (!sg || !sg.isCacheStarted) return undefined;
       const stats = await sg.getMindMapDiagnostics();
       const orch = api.services.has(IMindMapRefreshOrchestrator)
         ? api.services.get<import('../../services/serviceTypes.js').IMindMapRefreshOrchestrator>(IMindMapRefreshOrchestrator)
