@@ -297,6 +297,8 @@ export interface ParallxApiObject {
     registerBlock(registration: CanvasBlockRegistration): IDisposable;
   };
   readonly tools: {
+    /** Fires when a tool starts or stops (turned on or off). */
+    onDidChange(listener: () => void): IDisposable;
     getAll(): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string; state: string; activationEvents: readonly string[]; contributes: Record<string, unknown> }[];
     getById(id: string): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string; state: string; activationEvents: readonly string[]; contributes: Record<string, unknown> } | undefined;
     isEnabled(toolId: string): boolean;
@@ -913,6 +915,7 @@ export function createToolApi(
     }),
 
     tools: Object.freeze({
+      onDidChange: (listener: () => void) => deps.toolRegistry.onDidChangeToolState(() => listener()),
       getAll: () => _toolEntriesToInfo(deps.toolRegistry.getAll()),
       getById: (id) => {
         const entry = deps.toolRegistry.getById(id);

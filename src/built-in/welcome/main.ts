@@ -34,6 +34,10 @@ interface ParallxApi {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
   };
+  tools?: {
+    getAll(): { id: string; name: string; state: string; contributes: Record<string, unknown> }[];
+    onDidChange?(listener: () => void): IDisposable;
+  };
 }
 
 // ─── Activation ──────────────────────────────────────────────────────────────
@@ -190,31 +194,51 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   leftCol.appendChild(startTitle);
 
   // Start = the product's loops, not file operations. Files still open from
-  // the Explorer / quick open; the first screen sells what Parallx IS.
-  const startItems = [
-    { icon: 'file-text', text: 'New Page', command: 'canvas.newPage' },
-    { icon: 'calendar', text: 'Open Planner', command: 'planner.open' },
-    { icon: 'layout-dashboard', text: 'New Dashboard', command: 'dashboard.newPage' },
-    { icon: 'folder', text: 'Open Folder…', command: 'workbench.action.files.openFolder' },
-  ];
-
-  for (const item of startItems) {
-    const row = $('div');
-    row.classList.add('welcome-action-row');
-    const iconSpan = $('span');
-    iconSpan.innerHTML = getIcon(item.icon);
-    iconSpan.classList.add('welcome-action-icon');
-    _sizeIconSvg(iconSpan, 18);
-    const textSpan = $('span');
-    textSpan.textContent = item.text;
-    textSpan.classList.add('welcome-action-text');
-    row.appendChild(iconSpan);
-    row.appendChild(textSpan);
-    row.addEventListener('click', () => {
-      api.commands.executeCommand(item.command).catch(() => {});
-    });
-    leftCol.appendChild(row);
-  }
+  // the Explorer / quick open; the first screen sells what Parallx IS. Then
+  // the running tools that put themselves in the Tools menu (Planner,
+  // Worksheets...): redrawn as tools are turned on and off.
+  const startList = $('div');
+  startList.classList.add('welcome-start-list');
+  leftCol.appendChild(startList);
+  const renderStart = (): void => {
+    const toolItems = (api.tools?.getAll?.() ?? [])
+      .filter((t) => t.state === 'activated')
+      .flatMap((t) => {
+        const items = (t.contributes?.menus as Record<string, { command: string; title?: string }[]> | undefined)?.['menubar/tools'] ?? [];
+        return items.map((m) => ({ icon: 'app-window', text: `Open ${m.title ?? t.name}`, command: m.command }));
+      })
+      .sort((a, b) => a.text.localeCompare(b.text));
+    const startItems = [
+      { icon: 'file-text', text: 'New Page', command: 'canvas.newPage' },
+      ...toolItems,
+      { icon: 'layout-dashboard', text: 'New Dashboard', command: 'dashboard.newPage' },
+      { icon: 'folder', text: 'Open Folder…', command: 'workbench.action.files.openFolder' },
+    ];
+    startList.replaceChildren();
+    for (const item of startItems) {
+      const row = $('div');
+      row.classList.add('welcome-action-row');
+      const iconSpan = $('span');
+      iconSpan.innerHTML = getIcon(item.icon);
+      iconSpan.classList.add('welcome-action-icon');
+      _sizeIconSvg(iconSpan, 18);
+      const textSpan = $('span');
+      textSpan.textContent = item.text;
+      textSpan.classList.add('welcome-action-text');
+      row.appendChild(iconSpan);
+      row.appendChild(textSpan);
+      row.addEventListener('click', () => {
+        api.commands.executeCommand(item.command).catch(() => {});
+      });
+      startList.appendChild(row);
+    }
+  };
+  renderStart();
+  let startTimer: ReturnType<typeof setTimeout> | null = null;
+  const toolsSub = api.tools?.onDidChange?.(() => {
+    if (startTimer) clearTimeout(startTimer);
+    startTimer = setTimeout(renderStart, 100);
+  });
 
   // Help sub-section
   const helpTitle = $('h2');
@@ -360,7 +384,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
 
   container.appendChild(wrapper);
 
-  return { dispose() { wrapper.remove(); } };
+  return { dispose() { toolsSub?.dispose(); if (startTimer) clearTimeout(startTimer); wrapper.remove(); } };
 }
 
 // ─── Display Helpers ─────────────────────────────────────────────────────────

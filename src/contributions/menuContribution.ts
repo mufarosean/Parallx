@@ -31,6 +31,7 @@ const SUPPORTED_MENU_LOCATIONS: ReadonlySet<string> = new Set([
   'commandPalette',
   'view/title',
   'view/context',
+  'menubar/tools',
 ]);
 
 // ─── MenuContributionProcessor ───────────────────────────────────────────────
@@ -128,6 +129,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
           group: item.group,
           order: undefined, // M2: order from group position
           when: item.when,
+          title: item.title,
         };
 
         const bucket = this._menuItems.get(menuId)!;

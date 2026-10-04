@@ -3212,6 +3212,16 @@ export class Workbench extends Layout {
     this._contributionHandler.setViewContribution(this._viewContribution);
     this._contributionHandler.wireViewContributionEvents();
 
+    // The Tools menu lists the running tools that put themselves there
+    // (contributes.menus "menubar/tools"); a tool turned off leaves it.
+    const syncToolsMenu = (): void => {
+      this._menuBuilder?.setToolsMenuItems(menuContribution.getMenuItems('menubar/tools').map((m) => ({
+        commandId: m.commandId,
+        title: m.title ?? registry.getById(m.toolId)?.description.manifest.name ?? m.commandId,
+      })));
+    };
+    this._register(menuContribution.onDidChangeMenu((loc) => { if (loc === 'menubar/tools') syncToolsMenu(); }));
+
     // Process contributions from already-registered tools
     for (const entry of registry.getAll()) {
       if (this._toolEnablementService && !this._toolEnablementService.isEnabled(entry.description.manifest.id)) continue;

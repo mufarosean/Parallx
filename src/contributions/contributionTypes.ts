@@ -55,7 +55,8 @@ export interface IContributedKeybinding {
 /**
  * Supported menu contribution locations in M2.
  */
-export type MenuLocationId = 'commandPalette' | 'view/title' | 'view/context';
+/** `menubar/tools`: the Tools menu's launcher list (a tool adds itself there). */
+export type MenuLocationId = 'commandPalette' | 'view/title' | 'view/context' | 'menubar/tools';
 
 // ─── Contributed Menu Item ───────────────────────────────────────────────────
 
@@ -75,6 +76,8 @@ export interface IContributedMenuItem {
   readonly order?: number;
   /** When-clause controlling visibility. */
   readonly when?: string;
+  /** Label in a menu (menubar locations); the command's title otherwise. */
+  readonly title?: string;
 }
 
 // ─── Contribution Processor Interface ────────────────────────────────────────

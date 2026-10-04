@@ -6,7 +6,7 @@
 //   - Manage gear icon in activity bar
 //   - Manage menu (Settings, Themes, Keyboard Shortcuts, etc.)
 
-import { Disposable } from '../platform/lifecycle.js';
+import { Disposable, type IDisposable } from '../platform/lifecycle.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ICommandService, IKeybindingService } from '../services/serviceTypes.js';
 import { CommandService } from '../commands/commandRegistry.js';
@@ -139,10 +139,10 @@ export class MenuBuilder extends Disposable {
 
     // Register dropdown items for Tools menu
     this._register(this._titlebar.registerMenuBarDropdownItems('tools', [
-      // A launcher for the built-in tools, then the place to manage them.
-      { commandId: 'planner.open', title: 'Planner', group: '1_open', order: 1 },
-      { commandId: 'dashboard.open', title: 'Dashboard', group: '1_open', order: 2 },
-      { commandId: 'worksheet.open', title: 'Worksheets', group: '1_open', order: 3 },
+      // A launcher for the tools, then the place to manage them. Optional
+      // tools add themselves while they run (contributes.menus
+      // "menubar/tools", setToolsMenuItems): none is listed here.
+      { commandId: 'dashboard.open', title: 'Dashboard', group: '1_open', order: 0 },
       { commandId: 'tools.showInstalled', title: 'Manage Tools…', group: '9_manage', order: 1 },
     ]));
 
@@ -155,6 +155,15 @@ export class MenuBuilder extends Disposable {
 
     console.log('[MenuBuilder] Default menu bar items registered (%d menus)', defaultMenus.length);
   }
+
+  /** The Tools menu entries running tools contributed; replaces the last set. */
+  setToolsMenuItems(items: readonly { commandId: string; title: string }[]): void {
+    this._toolsMenuItems?.dispose();
+    const sorted = [...items].sort((a, b) => a.title.localeCompare(b.title));
+    this._toolsMenuItems = this._titlebar.registerMenuBarDropdownItems('tools',
+      sorted.map((it, i) => ({ commandId: it.commandId, title: it.title, group: '1_open', order: i + 1 })));
+  }
+  private _toolsMenuItems: IDisposable | undefined;
 
   // ── Manage gear icon ───────────────────────────────────────────────────
 

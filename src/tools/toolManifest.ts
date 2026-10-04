@@ -131,6 +131,8 @@ export interface IManifestMenuItem {
   readonly group?: string;
   /** When-clause expression controlling visibility. */
   readonly when?: string;
+  /** Label in a menu bar menu (e.g. "Planner" in Tools). */
+  readonly title?: string;
 }
 
 /**

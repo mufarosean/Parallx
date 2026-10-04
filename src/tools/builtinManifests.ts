@@ -511,6 +511,8 @@ export const PLANNER_MANIFEST: IToolManifest = {
   engines: { parallx: '^0.1.0' },
   activationEvents: ['onStartupFinished'],
   contributes: {
+    // In the Tools menu while the Planner runs.
+    menus: { 'menubar/tools': [{ command: 'planner.open', title: 'Planner' }] },
     commands: [
       { id: 'planner.open', title: 'Planner: Open',
         aiInvocable: true, aiDescription: 'Open the Planner editor.' },
@@ -547,6 +549,8 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
   engines: { parallx: '^0.1.0' },
   activationEvents: ['onStartupFinished'],
   contributes: {
+    // In the Tools menu while Worksheets runs.
+    menus: { 'menubar/tools': [{ command: 'worksheet.open', title: 'Worksheets' }] },
     commands: [
       { id: 'worksheet.open', title: 'Worksheets: Open Practice Items',
         aiInvocable: true, aiDescription: 'Open the practice items browser.' },

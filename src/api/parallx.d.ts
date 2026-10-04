@@ -1295,6 +1295,9 @@ export namespace canvas {
 }
 
 export namespace tools {
+  /** Fires when a tool starts or stops (the user turned it on or off). */
+  export function onDidChange(listener: () => void): Disposable;
+
   /**
    * Get all registered tools.
    */
