@@ -402,8 +402,14 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
       this._saveDisposables.add(db.onDidChangeStructure(fire));
     }
     this._saveDisposables.add({ dispose: () => { if (timer) clearTimeout(timer); listeners.clear(); } });
+    const summary = (p: { id: string; title: string; icon: string | null }) => ({ id: p.id, title: p.title || 'Untitled', icon: p.icon ?? null });
     return {
       pageId: this._pageId,
+      pages: {
+        getAncestors: async (id) => (await this._dataService.getAncestors(id)).map(summary),
+        getChildren: async (id) => (await this._dataService.getChildren(id)).map(summary),
+        getPage: async (id) => { const p = await this._dataService.getPage(id); return p && !p.isArchived ? summary(p) : null; },
+      },
       onDidChangeWorkspace: (listener) => { listeners.add(listener); return { dispose: () => { listeners.delete(listener); } }; },
       openPage: (pageId) => {
         void (async () => {

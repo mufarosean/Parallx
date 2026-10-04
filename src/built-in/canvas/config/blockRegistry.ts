@@ -31,6 +31,7 @@ import { ConceptMap, DEFAULT_CONCEPT_MAP_SRC } from '../extensions/conceptMapNod
 import { PageBlock } from '../extensions/pageBlockNode.js';
 import { TableOfContents } from '../extensions/tableOfContentsNode.js';
 import { Dataview } from '../extensions/dataviewNode.js';
+import { PageBreadcrumb, SubpageList } from '../extensions/pageTreeBlocks.js';
 import type { LiveBlockServices } from '../extensions/liveBlock.js';
 export type { LiveBlockServices } from '../extensions/liveBlock.js';
 import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
@@ -1002,6 +1003,34 @@ const definitions: BlockDefinition[] = [
     turnInto: undefined,
     defaultContent: { type: 'dataview', attrs: { query: '' } },
     extension: (ctx) => Dataview.configure({ live: ctx.live }),
+  },
+  {
+    // Where this page sits: the path from the top of the tree, kept current.
+    id: 'pageBreadcrumb',
+    name: 'pageBreadcrumb',
+    label: 'Breadcrumb',
+    icon: 'chevrons-right',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'The path to this page', order: 73, category: 'advanced' },
+    turnInto: undefined,
+    defaultContent: { type: 'pageBreadcrumb' },
+    extension: (ctx) => PageBreadcrumb.configure({ live: ctx.live }),
+  },
+  {
+    // Every sub-page of this page, in sidebar order, kept current.
+    id: 'subpageList',
+    name: 'subpageList',
+    label: 'Sub-page List',
+    icon: 'list-tree',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'All sub-pages of this page', order: 74, category: 'advanced' },
+    turnInto: undefined,
+    defaultContent: { type: 'subpageList' },
+    extension: (ctx) => SubpageList.configure({ live: ctx.live }),
   },
   // Placeholders for stored content this build can't show (unknownContent.ts).
   // Never inserted by the user: no slash entry, no turn-into.

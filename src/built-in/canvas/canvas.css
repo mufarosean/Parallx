@@ -4433,6 +4433,32 @@
 }
 .canvas-live-popover__primary:hover { background: var(--px-accent-hover); }
 
+/* ── Breadcrumb and Sub-page List blocks ── */
+.canvas-crumbs-block { margin: 0.5rem 0; }
+.canvas-crumbs-block__trail { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font-size: var(--px-text-sm); }
+.canvas-crumbs-block__sep { color: var(--px-text-faint); padding: 0 2px; }
+.canvas-crumbs-block__here { color: var(--px-text); padding: 2px 4px; }
+.canvas-subpages-block { margin: 0.75rem 0; }
+.canvas-subpages-block__label { color: var(--px-text-muted); font-size: var(--px-text-sm); padding: 0 6px 4px; }
+.canvas-subpages-block__list { display: flex; flex-direction: column; }
+.canvas-subpages-block__empty { color: var(--px-text-muted); font-size: var(--px-text-sm); padding: 2px 6px; }
+.canvas-crumbs-block__step,
+.canvas-subpages-block__page {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  background: none;
+  border: none;
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.canvas-subpages-block__page { display: flex; width: 100%; padding: 4px 6px; color: var(--px-text); font-size: var(--px-text-md); text-align: left; }
+.canvas-crumbs-block__step:hover,
+.canvas-subpages-block__page:hover { background: var(--px-surface-hover); color: var(--px-text); }
+
 /* ── Page List (dataview) ── */
 .canvas-tiptap-editor .canvas-dataview {
   display: block;

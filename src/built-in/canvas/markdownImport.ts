@@ -1286,6 +1286,8 @@ const UNIQUE_ID_BLOCK_TYPES = new Set<string>([
   'columnList', 'column',
   // ── M60 Phase δ ──
   'dataview',
+  // ── Live blocks (2026-10-04) ──
+  'pageBreadcrumb', 'subpageList',
 ]);
 
 function stampBlockId(node: TipTapNode, gen: () => string): void {

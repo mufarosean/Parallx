@@ -95,6 +95,10 @@ export const UNIQUE_ID_BLOCK_TYPES: string[] = [
 
   // ── M60 Phase δ — dataview block ──
   'dataview',
+
+  // ── Live blocks (2026-10-04) ──
+  'pageBreadcrumb',
+  'subpageList',
 ];
 
 /**

@@ -21,6 +21,22 @@ export interface LiveBlockServices {
   executeCommand(id: string, ...args: unknown[]): Promise<unknown>;
   /** The page the editor shows. */
   readonly pageId?: string;
+  /** The page tree, read live. */
+  readonly pages?: LivePageReader;
+}
+
+export interface LivePageSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly icon: string | null;
+}
+
+export interface LivePageReader {
+  /** Root first, not including the page itself. */
+  getAncestors(pageId: string): Promise<LivePageSummary[]>;
+  /** Live sub-pages in their sidebar order. */
+  getChildren(pageId: string): Promise<LivePageSummary[]>;
+  getPage(pageId: string): Promise<LivePageSummary | null>;
 }
 
 export interface LiveBlockOptions {
