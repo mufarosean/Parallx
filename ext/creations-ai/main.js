@@ -14,7 +14,7 @@ import { renderTablesPage, attachTableRoll, listTables, loadTable } from './tabl
 import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
-import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock } from './chat-memory.js';
+import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 
 // The workspace data folder keeps its original name: every character, thread,
 // lorebook and setting a user has is in there, and a rename would be a move.
@@ -2129,6 +2129,8 @@ ${CREATIONS_PARTS_CSS}
 .cr-memory-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
 .cr-memory-open { border: 0; background: none; padding: 0; color: var(--px-accent-text); font: inherit; font-size: var(--px-text-xs); cursor: pointer; }
 .cr-memory-open:hover { text-decoration: underline; }
+.cr-memory-open:disabled { color: var(--px-text-muted); cursor: default; text-decoration: none; }
+.cr-memory-actions { display: inline-flex; gap: var(--px-space-3); align-items: center; }
 .cr-memory-seg { align-self: stretch; }
 .cr-memory-seg button { flex: 1; }
 .cr-memory-list { display: flex; flex-direction: column; }
@@ -4558,8 +4560,8 @@ async function autoExtractMemoryBackground({
   parallx, fs, workspaceUri, threadId, modelId,
   recentMessages = [], existingSemantic = [],
 }) {
-  if (!parallx?.lm?.sendChatRequest || !modelId) return;
-  if (!Array.isArray(recentMessages) || recentMessages.length === 0) return;
+  if (!parallx?.lm?.sendChatRequest || !modelId) return { ok: false, reason: 'no model' };
+  if (!Array.isArray(recentMessages) || recentMessages.length === 0) return { ok: false, reason: 'nothing to read' };
 
   // Render the recent chunk for the extractor with explicit speaker
   // names so it can attribute facts correctly.
@@ -4570,7 +4572,7 @@ async function autoExtractMemoryBackground({
       return `${name}: ${m.content}`;
     })
     .join('\n\n');
-  if (!transcript.trim()) return;
+  if (!transcript.trim()) return { ok: false, reason: 'nothing to read' };
 
   // Build a compact list of existing facts so the model doesn't re-emit
   // duplicates on every run. Capped at the most recent 30 entries.
@@ -4613,24 +4615,21 @@ async function autoExtractMemoryBackground({
     const stream = parallx.lm.sendChatRequest(modelId, [
       { role: 'system', content: sysPrompt },
       { role: 'user', content: userPrompt },
-    ], { temperature: 0.2, maxTokens: 600, think: false });
+    ], { temperature: 0.2, maxTokens: 1500, think: false });
     let raw = '';
     for await (const chunk of stream) {
       if (chunk?.content) raw += chunk.content;
     }
 
-    // Strip any code fences the model added despite instructions.
-    let cleaned = raw.trim();
-    if (cleaned.startsWith('```')) {
-      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    // Models wrap the JSON in prose, fences or a thinking block, or run out
+    // of tokens part way; parseExtractionReply takes what is there. It used
+    // to JSON.parse the whole reply and drop it silently on any of those.
+    const parsed = parseExtractionReply(raw);
+    if (!parsed) {
+      console.warn('[TextGenerator] Memory extract: the model returned no JSON. Reply began:', raw.slice(0, 200));
+      return { ok: false, reason: 'no JSON in the reply' };
     }
-    let parsed;
-    try { parsed = JSON.parse(cleaned); }
-    catch { return; }
-    if (!parsed || typeof parsed !== 'object') return;
-
-    const facts = Array.isArray(parsed.facts) ? parsed.facts : [];
-    const beats = Array.isArray(parsed.beats) ? parsed.beats : [];
+    const { facts, beats } = parsed;
 
     // M79 memory provenance — every emitted fact/beat records the
     // message IDs of the slice it was extracted from. The autoextractor
@@ -4690,8 +4689,10 @@ async function autoExtractMemoryBackground({
     // were busy. Self-heal by pruning any entry whose entire source
     // set is now orphaned. Cheap; runs once per extract completion.
     await pruneOrphanMemory(fs, workspaceUri, threadId);
+    return { ok: true, facts: factRecords.length, beats: beatRecords.length };
   } catch (err) {
     console.warn('[TextGenerator] Memory auto-extract failed:', err);
+    return { ok: false, reason: String(err?.message || err) };
   }
 }
 
@@ -5076,7 +5077,28 @@ function renderChatEditor(container, parallx, input) {
   const memOpen = el('button', 'cr-memory-open', { text: 'Open memories.md' });
   memOpen.type = 'button';
   memOpen.addEventListener('click', () => void openMemoryFile());
-  memHead.appendChild(memOpen);
+  // Read the recent chat now instead of waiting for the next extraction.
+  const memUpdate = el('button', 'cr-memory-open', { text: 'Update Now' });
+  memUpdate.type = 'button';
+  memUpdate.title = 'Read the recent chat now and add what it should remember';
+  memUpdate.addEventListener('click', async () => {
+    memUpdate.disabled = true;
+    memUpdate.textContent = 'Updating…';
+    try {
+      const r = await _maybeAutoExtractMemory({ force: true });
+      if (!r) showToast('Nothing to read yet, or an update is already running.');
+      else if (!r.ok) showToast(`Memory not updated: ${r.reason}.`);
+      else if (!r.facts && !r.beats) showToast('Nothing new to remember.');
+      else showToast(`Memory updated: ${r.facts} ${r.facts === 1 ? 'fact' : 'facts'}, ${r.beats} ${r.beats === 1 ? 'beat' : 'beats'}.`);
+      void renderMemoryPanel();
+    } finally {
+      memUpdate.disabled = false;
+      memUpdate.textContent = 'Update Now';
+    }
+  });
+  const memActions = el('span', 'cr-memory-actions');
+  memActions.append(memUpdate, memOpen);
+  memHead.appendChild(memActions);
   memoryPanel.appendChild(memHead);
   let memTab = 'facts';
   const memSeg = parallx.ui?.createSegmented
@@ -5334,7 +5356,7 @@ function renderChatEditor(container, parallx, input) {
   // M79 Phase 1 — track how many AI replies have happened since the
   // last auto-extract. We only count completed AI turns so a chatty
   // session with hidden OOC notes doesn't fire premature extractions.
-  let _aiTurnsSinceExtract = 0;
+  let _extractMisses = 0;
   let _extractInFlight = false;
 
   function getCharacterByFile(fileName) {
@@ -5353,31 +5375,41 @@ function renderChatEditor(container, parallx, input) {
    * episodic JSONL files. Re-entrancy guarded so a slow extraction
    * can't pile up.
    */
-  function _maybeAutoExtractMemory() {
-    _aiTurnsSinceExtract += 1;
-    if (_aiTurnsSinceExtract < MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES) return;
-    if (_extractInFlight) return;
-    _aiTurnsSinceExtract = 0;
-    _extractInFlight = true;
-
-    const sliceSize = Math.max(MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES * 2, 12);
-    const recentSlice = messageHistory.slice(-sliceSize);
+  function _maybeAutoExtractMemory({ force = false } = {}) {
+    if (_extractInFlight) return Promise.resolve(null);
+    // The count of story replies the memory covers lives on the thread, so
+    // it survives closing the chat (it used to restart on every visit).
+    const covered = Number(thread?.memoryExtractedThrough) || 0;
+    const plan = extractionDue(messageHistory, force ? -Infinity : covered, { every: force ? 1 : MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES });
+    if (!plan.due || plan.slice.length === 0) return Promise.resolve(null);
     const rawId = selectedModelId || thread?.modelId || null;
     const modelId = (rawId && models.some(m => m.id === rawId)) ? rawId : models[0]?.id;
-    if (!modelId) { _extractInFlight = false; return; }
+    if (!modelId) return Promise.resolve(null);
+    _extractInFlight = true;
 
-    void (async () => {
+    return (async () => {
       try {
         const existing = await readSemanticMemory(fs, workspaceUri, threadId);
-        await autoExtractMemoryBackground({
+        const result = await autoExtractMemoryBackground({
           parallx,
           fs,
           workspaceUri,
           threadId,
           modelId,
-          recentMessages: recentSlice,
+          recentMessages: plan.slice,
           existingSemantic: existing,
         });
+        // Moved on when it worked, or after a second miss in a row, so one
+        // bad reply is retried at the next turn but a model that never
+        // returns JSON does not cost a call on every turn.
+        if (result?.ok || ++_extractMisses >= 2) {
+          _extractMisses = 0;
+          if (thread) thread.memoryExtractedThrough = plan.replies;
+          void updateThreadMeta(fs, workspaceUri, threadId, { memoryExtractedThrough: plan.replies })
+            .catch((err) => console.warn('[TextGenerator] Could not save the memory mark:', err));
+        }
+        if (result?.ok && (result.facts || result.beats)) void renderMemoryPanel();
+        return result;
       } finally {
         _extractInFlight = false;
       }
@@ -10238,4 +10270,6 @@ export const __testables = {
   createCharacterJson,
   characterExportFileName,
   formatFrontmatterValue,
+  autoExtractMemoryBackground,
+  loadThreadMemory,
 };

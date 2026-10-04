@@ -361,6 +361,18 @@ What replaced it (ext/creations-ai/chat-memory.js, pure, tested):
   merges what it finds into the file and never overwrites a line; the two
   JSON logs it wrote stay as logs. A thread on the old shape is folded into
   the file the first time it is read.
+- **When memory is written** (fixed 2026-10-04: it had stopped writing).
+  After every sixth story reply (out-of-character and hidden ones do not
+  count), the extractor reads what came since its last run plus a little
+  before, at most 24 messages, and merges new Facts and Timeline beats into
+  the file. How many replies the memory covers is kept on the thread, so
+  the count survives closing the chat; it used to start over on every
+  visit, so a chat read a few replies at a time never reached six. The
+  model's reply is read however it is wrapped (prose, a code fence, a
+  thinking block, or cut off by the token limit, in which case the complete
+  items are kept); a reply with no JSON is logged, retried at the next
+  reply once, then skipped. Update Now in the Memory panel runs it at once
+  and says what it added. Notes are the user's: nothing writes them.
 - **Facts and Notes go into every prompt.** The scene panel (Now) is pinned
   as before.
 - **No summariser.** When turns drop out of the live window, the prompt

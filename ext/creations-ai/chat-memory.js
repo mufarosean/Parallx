@@ -199,3 +199,85 @@ export function earlierBlock({ beats = [], excerpts = [], maxBeats = 25, maxExce
 }
 
 export function memoryRule() { return RULE; }
+
+// ── When the extractor runs, and reading what it returns ──────────────────
+
+/** A reply the story counts: the AI speaking in the scene (not out of character, not hidden from it). */
+const isStoryReply = (m) => !!m && m.author === 'ai' && m.hiddenFrom !== 'ai' && m.kind !== 'ooc';
+
+/**
+ * Is an extraction due, and over which messages? `extractedThrough` is how
+ * many story replies the memory already covers (kept on the thread, so the
+ * count survives closing the chat; it used to live in the open pane and
+ * started over on every visit, so a chat read a few replies at a time
+ * never reached it). The slice is what came after the last extraction plus
+ * a little before it for context, capped.
+ */
+export function extractionDue(messages, extractedThrough = 0, { every = 6, maxMessages = 24, context = 2 } = {}) {
+  const list = Array.isArray(messages) ? messages : [];
+  let replies = 0;
+  let startIdx = 0;
+  const covered = Math.max(0, Number(extractedThrough) || 0);
+  for (let i = 0; i < list.length; i++) {
+    if (!isStoryReply(list[i])) continue;
+    replies++;
+    if (replies === covered) startIdx = i + 1;
+  }
+  // A thread whose history shrank (messages deleted) starts counting again from where it is.
+  const since = replies >= covered ? replies - covered : replies;
+  if (replies < covered) startIdx = 0;
+  if (since < every) return { due: false, replies, slice: [] };
+  const from = Math.max(0, Math.max(startIdx - context, list.length - maxMessages));
+  return { due: true, replies, slice: list.slice(from) };
+}
+
+/**
+ * The extractor's reply as { facts, beats }, or null when it holds no JSON
+ * object. Models wrap JSON in prose, code fences or a thinking block; all
+ * of that is tolerated. A reply cut off mid-array keeps the complete items.
+ */
+export function parseExtractionReply(raw) {
+  let text = String(raw || '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<think>[\s\S]*$/i, '').trim();
+  text = text.replace(/```(?:json)?/gi, '');
+  const start = text.indexOf('{');
+  if (start < 0) return null;
+  const end = text.lastIndexOf('}');
+  const tryParse = (s) => { try { const v = JSON.parse(s); return v && typeof v === 'object' ? v : null; } catch { return null; } };
+  let obj = end > start ? tryParse(text.slice(start, end + 1)) : null;
+  if (!obj) obj = salvageTruncated(text.slice(start));
+  if (!obj) return null;
+  return {
+    facts: Array.isArray(obj.facts) ? obj.facts : [],
+    beats: Array.isArray(obj.beats) ? obj.beats : [],
+  };
+}
+
+/** Recover the complete objects from a reply cut off part way (a token limit). */
+function salvageTruncated(text) {
+  const grab = (key) => {
+    const at = text.search(new RegExp(`"${key}"\\s*:\\s*\\[`));
+    if (at < 0) return [];
+    const out = [];
+    let i = text.indexOf('[', at) + 1;
+    while (i < text.length) {
+      const open = text.indexOf('{', i);
+      const close = text.indexOf(']', i);
+      if (open < 0 || (close >= 0 && close < open)) break;
+      let depth = 0, inStr = false, esc = false, j = open;
+      for (; j < text.length; j++) {
+        const c = text[j];
+        if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+        if (c === '"') inStr = true;
+        else if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) break; }
+      }
+      if (j >= text.length) break;
+      try { out.push(JSON.parse(text.slice(open, j + 1))); } catch { /* skip a broken item */ }
+      i = j + 1;
+    }
+    return out;
+  };
+  const facts = grab('facts');
+  const beats = grab('beats');
+  return facts.length || beats.length ? { facts, beats } : null;
+}
