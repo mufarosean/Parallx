@@ -18,11 +18,12 @@ import type {
 } from '../../chat/chatTypes.js';
 import { extractSnippet, extractTextContent } from '../../chat/tools/builtInTools.js';
 import { markdownToTiptapJson } from '../markdownImport.js';
+import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import {
   decodeCanvasContent,
   encodeCanvasContentFromDoc,
 } from '../contentSchema.js';
-import { filterToSubquery, type IPropertyFilter, type IPropertySort } from './blockApi.js';
+import { filterToSubquery, validateBlockDoc, type IPropertyFilter, type IPropertySort } from './blockApi.js';
 import type { CanvasTemplateApi } from '../canvasTemplates.js';
 import { getAllCanvasTemplates } from '../canvasTemplates.js';
 import { listFonts, getFont } from '../config/fontRegistry.js';
@@ -233,7 +234,8 @@ export function createReadPageTool(
     name: 'canvas_read_page',
     displaySummary: 'Read a canvas page (body + metadata + properties).',
     description:
-      'Read a canvas page: body (blocks prefixed with their `[blockId]`), metadata, and properties. '
+      'Read a canvas page: metadata, properties, and the body as markdown with each top-level block after a `<!-- block:ID -->` line (the ids canvas_read_block / canvas_edit_block take). '
+      + 'Blocks markdown cannot express (columns, toggle headings, colours, sub-page cards, media) appear as `<!-- parallx:… -->` comments around readable markdown: keep those lines as they are when rewriting the page, or the blocks are lost. '
       + '`pageId` accepts a UUID, a case-insensitive title, or "current" for the open page.',
     parameters: {
       type: 'object',
@@ -360,15 +362,6 @@ export function createReadPageTool(
 // merged tool returns body + metadata + custom properties in one call. For
 // workspace-wide property definitions, use `canvas_list_property_definitions`.
 
-/** Plain text of a Tiptap node (concatenated text leaves). */
-function nodeTextOf(node: unknown): string {
-  if (!node || typeof node !== 'object') return '';
-  const n = node as { type?: string; text?: string; content?: unknown[] };
-  if (n.type === 'text' && typeof n.text === 'string') return n.text;
-  if (Array.isArray(n.content)) return n.content.map(nodeTextOf).join('');
-  return '';
-}
-
 /**
  * Render the page body as one line per TOP-LEVEL block, each prefixed with its
  * stable `[blockId]`, so the model can target a block with `canvas_edit_block`
@@ -376,23 +369,71 @@ function nodeTextOf(node: unknown): string {
  * parsed as a Tiptap doc.
  */
 function extractBlocksWithIds(content: string): string {
+  // Lossless markdown: every block and every attribute survives a rewrite,
+  // and `<!-- block:ID -->` marks each top-level block for the block tools.
+  // Plain text here made a `replace` edit strip formatting, nesting,
+  // callouts and sub-page cards from the page.
   try {
-    const parsed = JSON.parse(content) as { doc?: { content?: unknown[] }; content?: unknown[] };
-    const doc = (parsed.doc && typeof parsed.doc === 'object') ? parsed.doc : parsed;
-    const blocks = Array.isArray(doc.content) ? doc.content : [];
-    if (blocks.length === 0) return '';
-    const lines: string[] = [];
-    for (const b of blocks) {
-      const block = b as { type?: string; attrs?: Record<string, unknown> };
-      const id = block.attrs?.['id'];
-      const idTag = typeof id === 'string' && id ? `[${id}] ` : '';
-      const text = nodeTextOf(b).trim();
-      lines.push(`${idTag}${text || `(${block.type ?? 'block'})`}`);
-    }
-    return lines.join('\n');
+    const { doc, unreadable } = decodeCanvasContent(content) as { doc: unknown; unreadable?: boolean };
+    if (unreadable) return extractTextContent(content);
+    const md = tiptapJsonToMarkdown(doc, undefined, { withBlockIds: true }).trim();
+    return md;
   } catch {
     return extractTextContent(content);
   }
+}
+
+type JsonBlock = { type?: string; attrs?: Record<string, unknown>; content?: unknown[] };
+
+function walkBlocks(nodes: unknown[], visit: (n: JsonBlock) => void): void {
+  for (const raw of nodes) {
+    if (!raw || typeof raw !== 'object') continue;
+    const n = raw as JsonBlock;
+    visit(n);
+    if (Array.isArray(n.content)) walkBlocks(n.content, visit);
+  }
+}
+
+function collectCards(nodes: unknown[]): JsonBlock[] {
+  const out: JsonBlock[] = [];
+  walkBlocks(nodes, (n) => { if (n.type === 'pageBlock' && n.attrs?.['pageId']) out.push(n); });
+  return out;
+}
+
+function collectCardPageIds(nodes: unknown[]): string[] {
+  return collectCards(nodes).map((c) => String(c.attrs!['pageId']));
+}
+
+function collectIds(nodes: unknown[]): string[] {
+  const out: string[] = [];
+  walkBlocks(nodes, (n) => { const id = n.attrs?.['id']; if (typeof id === 'string') out.push(id); });
+  return out;
+}
+
+/** Remove sub-page cards whose page is not one of `allowed` (containers keep a paragraph). */
+function dropForeignCards(nodes: unknown[], allowed: Set<string>): unknown[] {
+  const out: unknown[] = [];
+  for (const raw of nodes) {
+    if (!raw || typeof raw !== 'object') { out.push(raw); continue; }
+    const n = raw as JsonBlock;
+    if (n.type === 'pageBlock' && !allowed.has(String(n.attrs?.['pageId'] ?? ''))) continue;
+    if (Array.isArray(n.content)) {
+      const kids = dropForeignCards(n.content, allowed);
+      const needsBlock = ['column', 'callout', 'blockquote', 'detailsContent', 'tableCell', 'tableHeader', 'listItem', 'taskItem'];
+      if (kids.length === 0 && n.type && needsBlock.includes(n.type)) kids.push({ type: 'paragraph' });
+      out.push({ ...n, content: kids });
+    } else {
+      out.push(n);
+    }
+  }
+  return out;
+}
+
+function dropTakenIds(node: unknown, taken: Set<string>): void {
+  walkBlocks([node], (n) => {
+    const id = n.attrs?.['id'];
+    if (typeof id === 'string' && taken.has(id)) n.attrs = { ...n.attrs, id: crypto.randomUUID() };
+  });
 }
 
 /** Format a JSON-stored property value for display. */
@@ -848,7 +889,7 @@ export function createEditPageTool(
       required: ['pageId', 'markdown'],
       properties: {
         pageId: { type: 'string', description: 'UUID of an EXISTING page (not a title). Resolve from a title via canvas_read_page or canvas_find_pages first.' },
-        markdown: { type: 'string', description: 'Markdown body. Standard CommonMark — headings, lists, code blocks, links. Rendered into Tiptap blocks on save.' },
+        markdown: { type: 'string', description: 'Markdown body (CommonMark: headings, lists, code blocks, links). For `replace`, start from the body canvas_read_page returned and keep its `<!-- block:ID -->` and `<!-- parallx:… -->` lines for the blocks you keep: they carry ids and the blocks markdown cannot express. Sub-page cards you leave out are put back at the end.' },
         mode: {
           type: 'string',
           enum: ['replace', 'append', 'prepend'],
@@ -893,14 +934,24 @@ export function createEditPageTool(
       }
 
       const incomingDoc = markdownToTiptapJson(markdown);
-      const incomingBlocks = Array.isArray(incomingDoc.content) ? incomingDoc.content : [];
+      const existing = decodeCanvasContent(page.content);
+      const existingBlocks = Array.isArray(existing.doc?.content) ? existing.doc.content : [];
+      // A card places a page in the tree: the AI keeps the page's own cards
+      // but cannot point one at any other page (that would move it).
+      const ownCards = new Set(collectCardPageIds(existingBlocks));
+      const incomingBlocks = dropForeignCards(Array.isArray(incomingDoc.content) ? incomingDoc.content : [], ownCards);
 
       let finalDoc: { type: 'doc'; content: unknown[] };
       if (mode === 'replace') {
-        finalDoc = { type: 'doc', content: incomingBlocks };
+        // A sub-page card IS its child page's place in the tree: one the
+        // rewrite left out goes back at the end instead of vanishing.
+        const kept = new Set(collectCardPageIds(incomingBlocks));
+        const missingCards = collectCards(existingBlocks).filter((c) => !kept.has(String(c.attrs?.['pageId'] ?? '')));
+        finalDoc = { type: 'doc', content: [...incomingBlocks, ...missingCards] };
       } else {
-        const existing = decodeCanvasContent(page.content);
-        const existingBlocks = Array.isArray(existing.doc?.content) ? existing.doc.content : [];
+        // Added blocks never reuse an id the page already has.
+        const taken = new Set(collectIds(existingBlocks));
+        for (const b of incomingBlocks) dropTakenIds(b, taken);
         const merged = mode === 'append'
           ? [...existingBlocks, ...incomingBlocks]
           : [...incomingBlocks, ...existingBlocks];
@@ -911,6 +962,11 @@ export function createEditPageTool(
       // append/prepend that would yield an empty body.
       if (finalDoc.content.length === 0) {
         finalDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
+      }
+
+      const invalid = validateBlockDoc(finalDoc as never);
+      if (invalid) {
+        return { content: `Edit refused: the result would not be a valid page (${invalid}). Nothing was changed.`, isError: true };
       }
 
       const encoded = encodeCanvasContentFromDoc(finalDoc);

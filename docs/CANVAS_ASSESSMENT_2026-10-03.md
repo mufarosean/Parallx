@@ -162,7 +162,14 @@ markdown, focus) were not tested adversarially.
   newlines collapse).
 - **AI page edits lose formatting**: `canvas_read_page` returns plain text,
   so a `replace` edit rewrites bold, links, nesting and callouts away and drops
-  sub-page cards. `canvas_link_block` inserts literal text, not a link.
+  sub-page cards. `canvas_link_block` inserts literal text, not a link. **Fixed (2026-10-04)**
+  for page edits: `canvas_read_page` and Edit mode give the AI the page as
+  lossless markdown with a `<!-- block:ID -->` line per top-level block, so a
+  rewrite keeps formatting, nesting, columns, colours and cards, and keeps
+  top-level block ids (nested blocks get fresh ids). `canvas_edit_page` puts
+  back sub-page cards a rewrite left out, drops cards for pages that are not
+  this page's children, gives appended blocks fresh ids when theirs are taken,
+  and refuses a result the editor schema rejects.
 - **Search quality**: the index splits words at formatting boundaries
   ("Para" + "llx"); `canvas_find_pages` runs `LIKE` over raw JSON, so
   "paragraph" or "attrs" match every page.

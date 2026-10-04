@@ -62,7 +62,9 @@ export function tiptapJsonToMarkdown(doc: unknown, title?: string, options: Expo
 
   _reading = options.forReading === true;
   try {
-    let body = renderBlocks(root.content, true);
+    let body = options.withBlockIds && !_reading
+      ? renderBlocksWithIds(root.content)
+      : renderBlocks(root.content, true);
     if (_reading) body = body.replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '');
     const head = title ? `# ${title}\n\n` : '';
     return (head + body).replace(/\s+$/, '') + '\n';
@@ -74,7 +76,24 @@ export function tiptapJsonToMarkdown(doc: unknown, title?: string, options: Expo
 export interface ExportOptions {
   /** Readable text only, for people and AI to read: no carriers, no escapes. */
   readonly forReading?: boolean;
+  /**
+   * Put `<!-- block:ID -->` before each top-level block that has an id, so an
+   * AI can target blocks by id and a rewrite read back keeps them.
+   */
+  readonly withBlockIds?: boolean;
 }
+
+/** Top-level blocks, each after its id marker. */
+function renderBlocksWithIds(nodes: TipTapNode[]): string {
+  const alts = alternateMarkers(nodes);
+  return nodes.map((node, i) => {
+    const id = node.attrs?.id;
+    const text = renderBlock(node, alts[i]!);
+    return typeof id === 'string' && BLOCK_ID_RE.test(id) ? `<!-- block:${id} -->\n${text}` : text;
+  }).join('\n\n');
+}
+
+const BLOCK_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** Set for the duration of a `forReading` export (the converter is synchronous). */
 let _reading = false;

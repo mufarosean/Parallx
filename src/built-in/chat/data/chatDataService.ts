@@ -56,6 +56,8 @@ import { searchWorkspaceTranscripts } from '../../../services/transcriptSearch.j
 import type { PermissionService } from '../../../services/permissionService.js';
 
 import { extractTextContent } from '../tools/builtInTools.js';
+import { tiptapJsonToMarkdown } from '../../canvas/markdownExport.js';
+import { decodeCanvasContent } from '../../canvas/contentSchema.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
 import { buildChatWidgetAttachmentServices, isAttachableFsPath } from '../utilities/chatWidgetAttachmentAdapter.js';
 import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
@@ -964,7 +966,15 @@ export class ChatDataService {
         [pageId],
       );
       if (!row) { return undefined; }
-      const textContent = extractTextContent(row.content);
+      // The page as lossless markdown (block ids and every block kept): Edit
+      // mode rewrites the page from this, and plain text made an accepted
+      // edit strip formatting, nesting and blocks markdown cannot express.
+      let textContent = '';
+      try {
+        const decoded = decodeCanvasContent(row.content);
+        textContent = decoded.unreadable ? '' : tiptapJsonToMarkdown(decoded.doc, undefined, { withBlockIds: true }).trim();
+      } catch { textContent = ''; }
+      if (!textContent) textContent = extractTextContent(row.content);
       return textContent ? { title: row.title, pageId: row.id, textContent } : undefined;
     } catch { return undefined; }
   }

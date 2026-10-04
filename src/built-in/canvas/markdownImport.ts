@@ -68,6 +68,7 @@ export function markdownToTiptapJson(markdown: string, options: ImportOptions = 
   const idGen = options.idGenerator ?? defaultIdGenerator;
 
   const lines = normalizeNewlines(markdown ?? '').split('\n');
+  _seenIds = new Set<string>();
   const blocks = fitBlocks(parseBlocks(lines, 0, lines.length));
 
   // Doc must always contain at least one block — TipTap rejects empty docs.
@@ -83,6 +84,10 @@ export function markdownToTiptapJson(markdown: string, options: ImportOptions = 
 // ─── Carriers (HTML comments written by the exporter) ─────────────────────
 
 type CarrierKind = 'attrs' | 'empty' | 'atom' | 'block' | 'open' | 'close' | 'endblock';
+
+const BLOCK_ID_LINE_RE = /^\s*<!-- block:([A-Za-z0-9_-]{1,64}) -->\s*$/;
+/** Ids already used in the document being read (reset per call). */
+let _seenIds = new Set<string>();
 
 const CARRIER_LINE_RE = /^\s*<!-- (\/?)parallx:(attrs|empty|atom|block|open|close)(?: (.*?))? -->\s*$/;
 const ATTRS_PREFIX_RE = /^\s*<!-- parallx:attrs (\{.*?\}) -->\s?(.*)$/;
@@ -145,6 +150,18 @@ function parseBlocks(lines: string[], start: number, end: number): TipTapNode[] 
 
     // Skip blank lines at block boundaries
     if (line.trim() === '') { i++; continue; }
+
+    // ── Block id marker (from an export with ids) ────────────────────
+    const idMarker = BLOCK_ID_LINE_RE.exec(line);
+    if (idMarker) {
+      i++;
+      // A copied block keeps no id of its own: the first one keeps it.
+      if (!_seenIds.has(idMarker[1]!)) {
+        _seenIds.add(idMarker[1]!);
+        pending = { ...(pending ?? {}), id: idMarker[1]! };
+      }
+      continue;
+    }
 
     // ── Carriers ─────────────────────────────────────────────────────
     const carrier = matchCarrierLine(line);
@@ -334,6 +351,7 @@ function isBlockStart(line: string, nextLine: string | undefined): boolean {
   if (DETAILS_OPEN_RE.test(line)) return true;
   if (isTableHeader(line, nextLine)) return true;
   if (/^\s*<!-- \/?parallx:(attrs|empty|atom|block|open|close)\b/.test(line)) return true;
+  if (BLOCK_ID_LINE_RE.test(line)) return true;
   return false;
 }
 
