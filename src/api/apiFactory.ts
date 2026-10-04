@@ -8,6 +8,7 @@
 // ensures all such calls are scoped to the calling tool and tracked
 // for cleanup.
 
+import { assistantTimeZone } from '../services/localTime.js';
 import {
   createButton as kitCreateButton,
   createIconButton as kitCreateIconButton,
@@ -321,6 +322,8 @@ export interface ParallxApiObject {
     readonly appName: string;
     readonly appVersion: string;
     readonly toolPath: string;
+    /** The app's time zone (IANA): the Time Zone setting, or this computer's when empty. Read it when you need it; it can change. */
+    readonly timeZone: string;
   };
   readonly services: {
     /**
@@ -1016,6 +1019,7 @@ export function createToolApi(
       appName: 'Parallx',
       appVersion: PARALLX_VERSION,
       toolPath: toolDescription.toolPath,
+      get timeZone() { return assistantTimeZone(); },
     }),
 
     // Per-extension isolated database — only available for external (non-builtin) tools.

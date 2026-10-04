@@ -106,7 +106,7 @@ const SCHEMAS: readonly IBoundSchema[] = ([
       type: 'string',
       default: '',
       scope: 'workspace',
-      description: 'The time zone the assistant reads and writes every time in, as an IANA name such as America/Chicago or Europe/London. Empty uses this computer\'s zone. There is no UTC clock in the prompt either way.',
+      description: 'The time zone for every date and time in Parallx: what the assistant reads and writes, and each tool\'s today, day boundaries and date labels. An IANA name such as America/Chicago or Europe/London. Empty uses this computer\'s zone; set it if the computer reports the wrong one.',
       category: 'Chat',
     },
     read: (c) => c.chat.timeZone ?? '',

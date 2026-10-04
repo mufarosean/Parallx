@@ -150,9 +150,13 @@ function _isUrlAllowedThisTurn(turnId, url) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function _localDayKey(date = new Date()) {
-  // YYYY-MM-DD on this computer's clock: the day the user is living in.
-  const p = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+  // YYYY-MM-DD in the app's time zone (the Time Zone setting, or this
+  // computer's): the day the user is living in.
+  let tz = _api && _api.env && _api.env.timeZone;
+  if (!tz) { try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { tz = undefined; } }
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const get = (k) => p.find((x) => x.type === k).value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 function _todayKey() {

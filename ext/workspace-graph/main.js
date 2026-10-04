@@ -970,7 +970,7 @@ function _formatRelativeTime(isoTs) {
   if (hrs < 24) return `${hrs} hr ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
-  return new Date(then).toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
+  return new Date(then).toLocaleDateString('en-US', { timeZone: _wgTimeZone() });
 }
 
 function _formatEstimatedSeconds(secs) {
@@ -978,6 +978,13 @@ function _formatEstimatedSeconds(secs) {
   if (secs < 60) return `~${Math.ceil(secs)} sec`;
   const mins = Math.ceil(secs / 60);
   return `~${mins} min`;
+}
+
+/** The app's time zone, read from the api once the graph is active. */
+let _wgEnv = null;
+function _wgTimeZone() {
+  if (_wgEnv && _wgEnv.timeZone) return _wgEnv.timeZone;
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
 }
 
 function _getSemanticGraphService(api) {
@@ -2812,6 +2819,7 @@ function createGraphSidebar(container, api) {
 
 export async function activate(api, context) {
   console.log('[WorkspaceGraph] Extension activated');
+  _wgEnv = api.env || null;
 
   // Load persisted settings before views render
   await _loadSettings(api);

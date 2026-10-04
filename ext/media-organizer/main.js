@@ -9259,11 +9259,18 @@ function formatDuration(seconds) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** The app's time zone (the Time Zone setting, or this computer's): every date label uses it. */
+function moAppTimeZone() {
+  const tz = typeof _api !== 'undefined' && _api && _api.env && _api.env.timeZone;
+  if (tz) return tz;
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+}
+
 function formatShortDate(isoStr) {
   if (!isoStr) return '';
   try {
     const d = new Date(isoStr);
-    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'America/Chicago' });
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: moAppTimeZone() });
   } catch { return ''; }
 }
 
@@ -16010,7 +16017,7 @@ function buildDetailsTab(ctx, api, container, onRefresh) {
     const dateSection = moEl('div', 'mo-detail-section');
     const dateLabel = moEl('div', 'mo-detail-section-label', { textContent: 'Date Taken' });
     dateSection.appendChild(dateLabel);
-    const dateVal = moEl('div', null, { textContent: new Date(ctx.entity.takenAt).toLocaleString('en-US', { timeZone: 'America/Chicago' }) });
+    const dateVal = moEl('div', null, { textContent: new Date(ctx.entity.takenAt).toLocaleString('en-US', { timeZone: moAppTimeZone() }) });
     dateSection.appendChild(dateVal);
     container.appendChild(dateSection);
   }
@@ -16421,7 +16428,7 @@ function buildFileInfoTab(ctx, container) {
     dlRow(dl, 'Filename', ctx.primaryFile.basename);
     dlRow(dl, 'Size', formatFileSize(ctx.primaryFile.size));
     if (ctx.fullPath) dlRow(dl, 'Path', ctx.fullPath);
-    if (ctx.primaryFile.modTime) dlRow(dl, 'Modified', moModTimeDate(ctx.primaryFile.modTime).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+    if (ctx.primaryFile.modTime) dlRow(dl, 'Modified', moModTimeDate(ctx.primaryFile.modTime).toLocaleString('en-US', { timeZone: moAppTimeZone() }));
     fileSection.appendChild(dl);
     container.appendChild(fileSection);
   }
@@ -16435,7 +16442,7 @@ function buildFileInfoTab(ctx, container) {
       fileSection.appendChild(fileLbl);
       const dl = moEl('dl', 'mo-detail-dl');
       dlRow(dl, 'Size', formatFileSize(file.size));
-      if (file.modTime) dlRow(dl, 'Modified', moModTimeDate(file.modTime).toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+      if (file.modTime) dlRow(dl, 'Modified', moModTimeDate(file.modTime).toLocaleString('en-US', { timeZone: moAppTimeZone() }));
       fileSection.appendChild(dl);
       container.appendChild(fileSection);
     }

@@ -73,9 +73,7 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 
 ## 5. Found along the way
 
-- `America/Chicago` is hardcoded in Budget (`BUDGET_TZ`, its month and day
-  math), Atelier (date labels in the inspector and lightbox) and Workspace
-  Graph (a date label). On a computer in another zone those show and bucket
-  dates in Central Time. Web Research had the same and now uses the
-  computer's zone. **open**: needs the owner's call for Budget, whose comment
-  says the Central anchor is on purpose.
+- `America/Chicago` was hardcoded in Budget, Atelier, Workspace Graph and
+  Web Research. **fixed**: one app time zone, `api.env.timeZone` (the Time
+  Zone setting, or this computer's zone when empty), applied from boot; a
+  test fails if a tool hardcodes a zone again.

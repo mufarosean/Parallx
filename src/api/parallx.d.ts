@@ -1343,6 +1343,14 @@ export namespace env {
 
   /** The calling tool's root directory path. */
   export const toolPath: string;
+
+  /**
+   * The app's time zone, as an IANA name ("America/Chicago"): the Time Zone
+   * setting, or this computer's zone when that is empty. Use it for every
+   * "today", day bucket and date label so all tools agree. Read it when you
+   * need it: the user can change it.
+   */
+  export const timeZone: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

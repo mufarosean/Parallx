@@ -1,5 +1,6 @@
 // workbenchServices.ts — service registration and initialization
 
+import { setAssistantTimeZone } from '../services/localTime.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager, ISettingsRegistryService } from '../services/serviceTypes.js';
 import { isWorkspaceSealed } from '../services/sealedWorkspace.js';
@@ -487,6 +488,9 @@ export async function registerUnifiedAIConfigService(
   const unifiedConfigService = new UnifiedAIConfigService(storage, languageModelsService);
   await unifiedConfigService.initialize();
   services.registerInstance(IUnifiedAIConfigService, unifiedConfigService);
+  // The app's one time zone (api.env.timeZone) holds from boot, before any tool starts.
+  setAssistantTimeZone(unifiedConfigService.getEffectiveConfig().chat?.timeZone ?? '');
+  unifiedConfigService.onDidChangeConfig((c) => setAssistantTimeZone(c.chat?.timeZone ?? ''));
 
   // Also register as IAISettingsService for backward compatibility.
   // Consumers that resolve IAISettingsService get the unified service,

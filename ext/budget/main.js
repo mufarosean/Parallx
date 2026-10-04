@@ -1344,10 +1344,9 @@ async function readSyncStatus() {
   if (!last) return 'Not synced yet';
   const d = new Date(last);
   if (Number.isNaN(d.getTime())) return 'Synced';
-  const today = new Date();
-  const same = d.toDateString() === today.toDateString();
-  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  return same ? `Synced at ${time}` : `Synced ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  const same = localYmd(d) === todayYmd();
+  const time = d.toLocaleTimeString('en-US', inTz({ hour: '2-digit', minute: '2-digit' }));
+  return same ? `Synced at ${time}` : `Synced ${d.toLocaleDateString('en-US', inTz({ month: 'short', day: 'numeric' }))}`;
 }
 
 // ─── The Budget editor ─────────────────────────────────────────────────────
@@ -1622,31 +1621,41 @@ function scopedCategoryOptions(categories, txType, selectedId, placeholder) {
 
 // ─── Month / date math ─────────────────────────────────────────────────────
 //
-// Everything user-facing in this extension is anchored to American Central
-// Time (America/Chicago). The user lives in CT; the dashboard "today,"
-// month buckets, transaction-date stamps, and "5m ago" labels must all
-// agree with their wall clock — not with whatever zone the OS reports or
-// whatever zone an email's ISO timestamp happens to be in.
+// Everything user-facing in this extension is anchored to the app's time
+// zone (api.env.timeZone: the Time Zone setting, or this computer's zone).
+// The dashboard "today," month buckets, transaction-date stamps and time
+// labels all agree with the user's wall clock, not with whatever zone an
+// email's ISO timestamp happens to be in. A computer that reports the wrong
+// zone is corrected once, in that setting, for every tool.
 //
 // Internal storage stays ISO-UTC (received_at, processed_at, etc.); only
 // the rendering / bucketing layer reads through these helpers.
-const BUDGET_TZ = 'America/Chicago';
+function budgetTz() {
+  const tz = _api && _api.env && _api.env.timeZone;
+  if (tz) return tz;
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+}
 
-// Extract {y, m, d} (1-indexed month) for a Date in Central Time.
+/** Locale options for formatting an instant, in the app's zone. */
+function inTz(opts) {
+  return { ...opts, timeZone: budgetTz() };
+}
+
+// Extract {y, m, d} (1-indexed month) for a Date in the app's zone.
 function ctParts(d) {
   if (!(d instanceof Date) || Number.isNaN(d.getTime())) d = new Date();
   const p = new Intl.DateTimeFormat('en-US', {
-    timeZone: BUDGET_TZ,
+    timeZone: budgetTz(),
     year: 'numeric', month: '2-digit', day: '2-digit',
   }).formatToParts(d);
   const get = (k) => Number(p.find((x) => x.type === k).value);
   return { y: get('year'), m: get('month'), d: get('day') };
 }
 
-// Returns a Date whose LOCAL-zone Y/M/D match Central's wall clock for the
-// given instant (or "now" if omitted). All downstream month-arithmetic in
+// Returns a Date whose LOCAL-zone Y/M/D match the app zone's wall clock for
+// the given instant (or "now" if omitted). All downstream month-arithmetic in
 // this file uses local-zone Date constructors + getFullYear/getMonth/getDate,
-// so we hand it a Date pre-tuned to Central so that arithmetic produces
+// so we hand it a Date pre-tuned to the app's zone so that arithmetic produces
 // the months the user expects to see.
 function ctToday(d) {
   const p = ctParts(d || new Date());
@@ -1663,7 +1672,7 @@ function todayYmd() {
 }
 
 // Returns {start, end, label, year, month0} for a YYYY-MM key.
-// Defaults to the current Central-Time month when called with no arg.
+// Defaults to the current month (app's zone) when called with no arg.
 function monthRange(yearMonth) {
   let y, m0;
   if (yearMonth && /^\d{4}-\d{2}$/.test(yearMonth)) {
@@ -2036,7 +2045,7 @@ async function readTxHistory(row) {
   const steps = [];
   const when = (iso) => {
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-US', inTz({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }));
   };
   // 1. Where it came from.
   const email = row.gmail_message_id
@@ -2964,7 +2973,7 @@ function renderSyncLogSection(body, api) {
     const sub = document.createElement('div'); sub.className = 'budget-ov-faint';
     const cursor = lastSyncedAt ? new Date(lastSyncedAt) : null;
     sub.textContent = cursor && !Number.isNaN(cursor.getTime())
-      ? `The next sync reads email received after ${cursor.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`
+      ? `The next sync reads email received after ${cursor.toLocaleString('en-US', inTz({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}.`
       : 'The first sync reads the window set in Budget Settings.';
     statusEl.append(lab, val, sub);
 
@@ -2985,7 +2994,7 @@ function renderSyncLogSection(body, api) {
       const tr = document.createElement('tr');
       tr.className = 'budget-log-row ' + (r.level || 'info');
       tr.innerHTML = `
-        <td>${escHtml(new Date(r.ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }))}</td>
+        <td>${escHtml(new Date(r.ts).toLocaleTimeString('en-US', inTz({ hour: 'numeric', minute: '2-digit', second: '2-digit' })))}</td>
         <td>${escHtml({ info: 'Info', warn: 'Warning', error: 'Error' }[r.level] || r.level)}</td>
         <td>${escHtml(r.stage || '')}</td>
         <td>${escHtml(r.message)}</td>`;
@@ -3337,9 +3346,9 @@ function drawSyncStrip(root, data, api) {
 function describeWhen(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  const same = d.toDateString() === new Date().toDateString();
-  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  return same ? `Today at ${time}, from Gmail` : `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${time}, from Gmail`;
+  const same = localYmd(d) === todayYmd();
+  const time = d.toLocaleTimeString('en-US', inTz({ hour: '2-digit', minute: '2-digit' }));
+  return same ? `Today at ${time}, from Gmail` : `${d.toLocaleDateString('en-US', inTz({ month: 'short', day: 'numeric' }))} at ${time}, from Gmail`;
 }
 
 function paceSentence(p) {
