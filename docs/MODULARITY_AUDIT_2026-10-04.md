@@ -77,3 +77,9 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
   Web Research. **fixed**: one app time zone, `api.env.timeZone` (the Time
   Zone setting, or this computer's zone when empty), applied from boot; a
   test fails if a tool hardcodes a zone again.
+- Canvas database date properties (`propertyEditors`, `platform/storedTime`)
+  still read zone-less stored datetimes as machine-local, not in the app's
+  Time Zone. Moving only the display would misalign it with what is stored;
+  it needs a decision on what a stored zone-less date means. Same for
+  `ui/relativeTime` (layering: ui/ and platform/ may not import services/).
+  **open, parked by the owner 2026-10-04**.
