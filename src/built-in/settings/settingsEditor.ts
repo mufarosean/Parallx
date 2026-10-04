@@ -264,6 +264,13 @@ export class SettingsEditor extends Disposable {
       this._renderNav();
       this._renderContent();
     }));
+    // A tool turned on or off brings or takes its settings.
+    if (this._registry.onDidChangeSchemas) {
+      this._register(this._registry.onDidChangeSchemas(() => {
+        this._renderNav();
+        this._renderContent();
+      }));
+    }
     // Rebuild when a tool registers/removes a custom panel.
     this._register(settingsPanelRegistry.onDidChange(() => {
       this._renderNav();

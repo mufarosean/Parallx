@@ -18,6 +18,7 @@ import type { IDisposable } from '../platform/lifecycle.js';
 import { SettingsRegistryService, setGlobalSettingsRegistry } from './settingsRegistryService.js';
 import { createSecretStorageService } from './secretStorageService.js';
 import { registerManifestConfiguration } from './manifestSettings.js';
+import { ToolState } from '../tools/toolRegistry.js';
 import type { ServiceCollection } from './serviceCollection.js';
 import {
   IConfigurationService,
@@ -64,20 +65,31 @@ export function bootstrapSettingsRegistry(services: ServiceCollection): IDisposa
   // JSON (e.g. mcp.gmail.clientSecret).
   void registry.migrateSecretsFromJson().catch(() => { /* best-effort */ });
 
-  // Declarative extension settings — every tool's contributes.configuration
-  // lands in the unified registry so it appears in the Settings hub, BOUND
-  // to the ConfigurationService (STANDARDIZATION.md P1) so the store
-  // extensions read is the store the hub writes. Tools register after this
-  // runs, so the watcher does the work; the sweep covers any early birds.
+  // A tool's declared settings (contributes.configuration) are in the hub
+  // only while the tool runs: registered as it starts, removed when it is
+  // turned off (CLAUDE.md, the first principle). Stored values are kept for
+  // when it comes back. Bound to the ConfigurationService (STANDARDIZATION.md
+  // P1) so the store extensions read is the store the hub writes.
   const toolRegistry = services.tryGet(IToolRegistryService);
   if (toolRegistry) {
     const configBridge = services.tryGet(IConfigurationService);
+    const live = new Map<string, IDisposable>();
+    const add = (toolId: string): void => {
+      if (live.has(toolId)) return;
+      const entry = toolRegistry.getById?.(toolId) ?? toolRegistry.getAll().find((e) => e.description.manifest.id === toolId);
+      if (!entry) return;
+      live.set(toolId, registerManifestConfiguration(registry, entry.description.manifest as never, configBridge));
+    };
+    const remove = (toolId: string): void => { live.get(toolId)?.dispose(); live.delete(toolId); };
     for (const entry of toolRegistry.getAll()) {
-      registerManifestConfiguration(registry, entry.description.manifest as never, configBridge);
+      if (entry.state === ToolState.Activating || entry.state === ToolState.Activated) add(entry.description.manifest.id);
     }
-    disposables.push(toolRegistry.onDidRegisterTool((e) => {
-      registerManifestConfiguration(registry, e.description.manifest as never, configBridge);
+    disposables.push(toolRegistry.onDidChangeToolState((e) => {
+      // Before activate() runs, so the tool can read its settings while starting.
+      if (e.newState === ToolState.Activating || e.newState === ToolState.Activated) add(e.toolId);
+      else if (e.newState === ToolState.Deactivated) remove(e.toolId);
     }));
+    disposables.push({ dispose: () => { for (const id of [...live.keys()]) remove(id); } });
   }
 
   return disposables;

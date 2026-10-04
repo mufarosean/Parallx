@@ -18,6 +18,7 @@
 
 import type { ISettingSchema, SettingType, ISettingBinding } from './settingsRegistryService.js';
 import { Emitter } from '../platform/events.js';
+import { toDisposable, type IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
 
 interface ManifestConfigProperty {
@@ -43,6 +44,7 @@ interface ManifestLike {
 /** Minimal slice of the settings registry this bridge needs. */
 interface RegistryLike {
   register(schema: ISettingSchema): void;
+  unregister?(key: string): void;
   getSchema(key: string): ISettingSchema | undefined;
   bind?<T>(key: string, binding: ISettingBinding<T>): void;
 }
@@ -91,9 +93,15 @@ export function registerManifestConfiguration(
   registry: RegistryLike,
   manifest: ManifestLike,
   config?: ConfigBridgeLike,
-): void {
+): IDisposable {
+  const registered: string[] = [];
+  const subscriptions: IDisposable[] = [];
+  const done = toDisposable(() => {
+    for (const d of subscriptions) d.dispose();
+    for (const key of registered) registry.unregister?.(key);
+  });
   const sections = manifest.contributes?.configuration;
-  if (!sections || sections.length === 0) return;
+  if (!sections || sections.length === 0) return done;
 
   for (const section of sections) {
     const category = section.title || manifest.name || manifest.id;
@@ -117,29 +125,33 @@ export function registerManifestConfiguration(
       };
       try {
         registry.register(schema);
+        registered.push(key);
         if (config && registry.bind) {
-          registry.bind(key, _configBinding(key, schema.default, config));
+          registry.bind(key, _configBinding(key, schema.default, config, subscriptions));
         }
       } catch (err) {
         console.warn(`[manifestSettings] failed to register "${key}" from "${manifest.id}":`, err);
       }
     }
   }
+  return done;
 }
 
 /** A registry binding that routes one key through the ConfigurationService. */
-function _configBinding(key: string, schemaDefault: unknown, config: ConfigBridgeLike): ISettingBinding {
+function _configBinding(key: string, schemaDefault: unknown, config: ConfigBridgeLike, subscriptions: IDisposable[]): ISettingBinding {
   const cfg = config.getConfiguration();
 
   // External mutations (the extension calling cfg.update) propagate into
-  // the registry so the hub stays live. One filtered subscription per key —
-  // manifest keys are bounded and app-lifetime, matching bind() semantics.
+  // the registry so the hub stays live. One filtered subscription per key,
+  // released with the tool's settings (it was turned off).
   let onDidChange: Event<unknown> | undefined;
   if (config.onDidChangeConfiguration) {
     const emitter = new Emitter<unknown>();
-    config.onDidChangeConfiguration((e) => {
+    const sub = config.onDidChangeConfiguration((e) => {
       if (e.affectedKeys.includes(key)) emitter.fire(cfg.get(key) ?? schemaDefault);
     });
+    if (sub && typeof (sub as IDisposable).dispose === 'function') subscriptions.push(sub as IDisposable);
+    subscriptions.push(emitter);
     onDidChange = emitter.event;
   }
 

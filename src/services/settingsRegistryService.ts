@@ -151,6 +151,16 @@ export interface ISettingsRegistryService {
   register(schema: ISettingSchema): void;
 
   /**
+   * Remove a key (a tool was turned off: its settings leave the hub). The
+   * stored value is kept, so the setting comes back as it was when the tool
+   * registers it again.
+   */
+  unregister(key: string): void;
+
+  /** Fires when keys are registered or removed. */
+  readonly onDidChangeSchemas: Event<void>;
+
+  /**
    * Bind a key to an external store. Calls to setValue/getValue route
    * through the binding; the registry's own storage layer is bypassed
    * for that key. Must be called after `register`.
@@ -221,6 +231,9 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
   private readonly _onDidChange = this._register(new Emitter<ISettingChange>());
   readonly onDidChange: Event<ISettingChange> = this._onDidChange.event;
 
+  private readonly _onDidChangeSchemas = this._register(new Emitter<void>());
+  readonly onDidChangeSchemas: Event<void> = this._onDidChangeSchemas.event;
+
   constructor(
     private readonly _userStorage: IStorage | undefined,
     private readonly _workspaceStorage: IStorage | undefined,
@@ -245,6 +258,13 @@ export class SettingsRegistryService extends Disposable implements ISettingsRegi
     }
     _validateSchema(schema);
     this._schemas.set(schema.key, schema);
+    this._onDidChangeSchemas.fire();
+  }
+
+  unregister(key: string): void {
+    if (!this._schemas.delete(key)) return;
+    this._bindings.delete(key);
+    this._onDidChangeSchemas.fire();
   }
 
   bind<T>(key: string, binding: ISettingBinding<T>): void {

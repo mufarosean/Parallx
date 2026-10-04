@@ -13,7 +13,7 @@
 //   3. Clean up contributed entities (commands, views, context keys)
 //   4. Clear module references for GC
 
-import { Disposable } from '../platform/lifecycle.js';
+import { Disposable, type IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ToolRegistry, ToolState } from './toolRegistry.js';
 import { ToolModuleLoader } from './toolModuleLoader.js';
@@ -523,6 +523,7 @@ export class ToolActivator extends Disposable {
    * Uses persistent ToolMemento when storage is available, otherwise InMemoryMemento.
    */
   private async _createToolContext(description: IToolDescription): Promise<ToolContext> {
+    const configDisposables: IDisposable[] = [];
     let globalState: Memento;
     let workspaceState: Memento;
 
@@ -539,13 +540,14 @@ export class ToolActivator extends Disposable {
       globalState = mementos.globalState;
       workspaceState = mementos.workspaceState;
 
-      // Register configuration schemas from manifest if available
+      // Register configuration schemas from manifest if available. Kept with
+      // the tool's subscriptions: turned off, its schemas go with it.
       if (this._storageDeps.configRegistry && description.manifest.contributes?.configuration) {
         for (const config of description.manifest.contributes.configuration) {
-          this._storageDeps.configRegistry.registerFromManifest(
+          configDisposables.push(this._storageDeps.configRegistry.registerFromManifest(
             description.manifest.id,
             [config],
-          );
+          ));
         }
       }
     } else {
@@ -554,7 +556,7 @@ export class ToolActivator extends Disposable {
     }
 
     return {
-      subscriptions: [],
+      subscriptions: configDisposables,
       globalState,
       workspaceState,
       toolPath: description.toolPath,

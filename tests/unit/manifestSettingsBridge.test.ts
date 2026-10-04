@@ -45,13 +45,28 @@ const MANIFEST = {
 describe('the manifest settings bridge — one store, both readers', () => {
   let registry: SettingsRegistryService;
   let config: ConfigurationService;
+  let toolSettings: { dispose(): void };
 
   beforeEach(async () => {
     registry = new SettingsRegistryService(memStorage(), memStorage());
     await registry.initialize();
     config = new ConfigurationService(memStorage(), new ConfigurationRegistry());
     await config.load();
-    registerManifestConfiguration(registry, MANIFEST, config);
+    toolSettings = registerManifestConfiguration(registry, MANIFEST, config);
+  });
+
+  it("a tool turned off takes its settings out of the hub; on again, they are back with the user's values", async () => {
+    await registry.setValue('testTool.color', 'red');
+    let schemaChanges = 0;
+    registry.onDidChangeSchemas(() => { schemaChanges++; });
+    toolSettings.dispose(); // the tool was turned off
+    expect(registry.getAllSchemas().filter((s) => s.key.startsWith('testTool.'))).toEqual([]);
+    expect(schemaChanges).toBe(3);
+    toolSettings = registerManifestConfiguration(registry, MANIFEST, config); // turned on again
+    expect(registry.getAllSchemas().filter((s) => s.key.startsWith('testTool.'))).toHaveLength(3);
+    expect(registry.getValue('testTool.color')).toBe('red');
+    await registry.setValue('testTool.limit', 7);
+    expect(config.getConfiguration('testTool').get('limit')).toBe(7);
   });
 
   it('a hub edit reaches the extension (the original defect)', async () => {

@@ -18,7 +18,7 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 | # | Where | Tool | What | Status |
 |---|---|---|---|---|
 | 1 | `canvas/config/blockRegistry.ts` | Planner, Atelier, Worksheets | Agenda, Media Gallery, Practice Problems in every / menu | **fixed** `a2d44b5b`: `api.canvas.registerBlock`, generic `toolBlock` node |
-| 2 | `services/settingsRegistryBootstrap.ts:72-79` | Budget, Browser, Flashcards, Atelier, Worksheets | Settings lists every *installed* tool's settings, on or off; never removed | open |
+| 2 | `services/settingsRegistryBootstrap.ts:72-79` | Budget, Browser, Flashcards, Atelier, Worksheets | Settings lists every *installed* tool's settings, on or off; never removed | **fixed**: registered as the tool starts, removed when it is turned off (values kept); the older configuration registry now releases them too |
 | 3 | `aiSettings/ui/aiSettingsPanel.ts:99,135`, `sections/webResearchSection.ts` | Web Research | "Web Research" settings section (API key, budget) always shown | open |
 | 4 | `canvas/menus/bubbleMenu.ts:132`; `editor/panes/pdfEditorPane.ts:2938`, `markdownEditorPane.ts:183`, `textEditorPane.ts:776` | Flashcards | "Make Flashcard" on every text selection | open |
 | 5 | `dashboard/widgets/timerWidget.ts` (+ `timerLogic.ts`) | Planner | Timer's Planner button and copy, on by default | open |
