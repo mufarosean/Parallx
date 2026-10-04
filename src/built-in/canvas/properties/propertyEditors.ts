@@ -7,6 +7,7 @@ import type { IPropertyDefinition, ISelectOption } from './propertyTypes.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
 import { parseStoredTime } from '../../../platform/storedTime.js';
+import { isChecked } from '../database/cellValues.js';
 
 // ─── Type Icon Map ───────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ export function createPropertyEditor(
   switch (definition.type) {
     case 'text': return _createTextEditor(value as string | null, onChange);
     case 'number': return _createNumberEditor(value as number | null, onChange);
-    case 'checkbox': return _createCheckboxEditor(value as boolean, onChange);
+    case 'checkbox': return _createCheckboxEditor(isChecked(value), onChange);
     case 'date': return _createDateEditor(value as string | null, onChange);
     case 'datetime': return _createDatetimeEditor(value as string | null, onChange);
     case 'tags': return _createTagsEditor(value as string[] | null, definition, onChange, context);

@@ -899,6 +899,7 @@ describe('list_property_definitions tool', () => {
 });
 
 describe('set_page_property tool', () => {
+  // Writes are covered on a real database in canvasDatabaseIntegrity.test.ts.
   let tool: IChatTool;
   let db: IBuiltInToolDatabase;
 
@@ -920,34 +921,6 @@ describe('set_page_property tool', () => {
       .mockResolvedValueOnce([{ database_id: 'db1', title: 'Projects' }]);   // memberships
   }
 
-  it('sets a cell on a member page with an existing database property', async () => {
-    mockMemberPage({ property: { id: 'prop-status', type: 'select' } });
-
-    const result = await tool.handler({ pageId: 'p1', propertyName: 'status', value: 'active' }, createToken());
-    expect(result.content).toContain("Set property 'status'");
-    expect(result.content).toContain('"active"');
-    expect(result.content).toContain('My Page');
-    expect(result.content).toContain('Projects');
-    expect(db.run).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO page_property_values'),
-      expect.arrayContaining(['p1', 'prop-status', 'db1', '"active"']),
-    );
-  });
-
-  it('auto-creates the database property (column) when it does not exist', async () => {
-    mockMemberPage({ property: undefined });
-
-    await tool.handler({ pageId: 'p1', propertyName: 'priority', value: 5 }, createToken());
-
-    const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(defCall[0]).toContain('INSERT INTO database_properties');
-    expect(defCall[1]).toEqual(expect.arrayContaining(['db1', 'priority', 'number']));
-
-    const valCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[1];
-    expect(valCall[0]).toContain('INSERT INTO page_property_values');
-    expect(valCall[1]).toEqual(expect.arrayContaining(['p1', 'db1', '5']));
-  });
-
   it('errors helpfully when the page is not in any database', async () => {
     (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'p1', title: 'My Page' });
     (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]); // no memberships
@@ -957,44 +930,6 @@ describe('set_page_property tool', () => {
     expect(result.content).toContain('not in any database');
     expect(result.content).toContain('canvas_add_page_to_database');
     expect(db.run).not.toHaveBeenCalled();
-  });
-
-  it('infers checkbox type for boolean values', async () => {
-    mockMemberPage({ property: undefined });
-    await tool.handler({ pageId: 'p1', propertyName: 'done', value: true }, createToken());
-    const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(defCall[1]).toEqual(expect.arrayContaining(['done', 'checkbox']));
-  });
-
-  it('infers tags type for array values', async () => {
-    mockMemberPage({ property: undefined });
-    await tool.handler({ pageId: 'p1', propertyName: 'labels', value: ['alpha', 'beta'] }, createToken());
-    const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(defCall[1]).toEqual(expect.arrayContaining(['labels', 'tags']));
-  });
-
-  it('recovers a stringified JSON array as tags (small-model safety net)', async () => {
-    mockMemberPage({ property: undefined });
-    await tool.handler(
-      { pageId: 'p1', propertyName: 'tags', value: '["Journal", "Daily", "San Antonio"]' },
-      createToken(),
-    );
-    const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(defCall[1]).toEqual(expect.arrayContaining(['tags', 'tags']));
-    const valCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[1];
-    expect(valCall[0]).toContain('INSERT INTO page_property_values');
-    // Stored value must be the JSON array, not a JSON-encoded string of the array.
-    expect(valCall[1]).toEqual(expect.arrayContaining(['p1', 'db1', '["Journal","Daily","San Antonio"]']));
-  });
-
-  it('keeps a literal "[...]" string when contents are not valid JSON', async () => {
-    mockMemberPage({ property: undefined });
-    await tool.handler(
-      { pageId: 'p1', propertyName: 'note', value: '[wip]' },
-      createToken(),
-    );
-    const defCall = (db.run as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(defCall[1]).toEqual(expect.arrayContaining(['note', 'text']));
   });
 
   it('returns error for missing pageId', async () => {

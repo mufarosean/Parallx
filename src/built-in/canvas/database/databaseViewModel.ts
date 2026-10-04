@@ -7,6 +7,8 @@
 
 import type { IDatabaseRow, IDatabaseView, IFilterConfig, IFilterRule, ISortRule } from './databaseTypes.js';
 import { TITLE_KEY } from './databaseTypes.js';
+import type { PropertyType } from '../properties/propertyTypes.js';
+import { isChecked, normalizeDateValue, toNumber } from './cellValues.js';
 
 function cellOf(row: IDatabaseRow, propertyId: string): unknown {
   return propertyId === TITLE_KEY ? row.title : row.values[propertyId];
@@ -31,8 +33,55 @@ function asComparable(v: unknown): number | string | null {
   return null;
 }
 
-export function ruleMatches(row: IDatabaseRow, rule: IFilterRule): boolean {
+/** The type of each column, for typed comparisons (title is text). */
+export type PropertyTypeOf = (propertyId: string) => PropertyType | undefined;
+
+/** Day ("YYYY-MM-DD") or minute ("YYYY-MM-DDTHH:mm") of a date value, at the rule's precision. */
+function dateKey(v: unknown, precision: number): string | null {
+  const d = normalizeDateValue(v);
+  return d ? d.slice(0, precision) : null;
+}
+
+/**
+ * Does `row` pass `rule`?  With the column's type known, values compare by
+ * what they mean, the same way they are stored (cellValues.ts):
+ *   checkbox  "is empty" = unchecked; equals "true"/"false" (never-set and
+ *             cleared count as unchecked, as they show);
+ *   number    numerically: 5 equals "5.0";
+ *   date      a date-only rule compares days, so equals Oct 4 matches a time
+ *             on Oct 4, and "after"/"before" agree with it;
+ *   tags      equals = has that tag; contains = a tag containing the text.
+ */
+export function ruleMatches(row: IDatabaseRow, rule: IFilterRule, type?: PropertyType): boolean {
   const v = cellOf(row, rule.propertyId);
+  if (type === 'checkbox') {
+    const checked = isChecked(v);
+    switch (rule.op) {
+      case 'is_empty': return !checked;
+      case 'is_not_empty': return checked;
+      case 'equals': return checked === isChecked(rule.value);
+      case 'not_equals': return checked !== isChecked(rule.value);
+      default: return false;
+    }
+  }
+  if (type === 'number' && rule.op !== 'is_empty' && rule.op !== 'is_not_empty' && rule.op !== 'contains') {
+    const a = toNumber(v); const b = toNumber(rule.value);
+    if (rule.op === 'not_equals') return a === null || b === null || a !== b;
+    if (a === null || b === null) return false;
+    if (rule.op === 'equals') return a === b;
+    if (rule.op === 'greater_than') return a > b;
+    if (rule.op === 'less_than') return a < b;
+  }
+  if ((type === 'date' || type === 'datetime') && rule.op !== 'is_empty' && rule.op !== 'is_not_empty' && rule.op !== 'contains') {
+    const ruleDate = normalizeDateValue(rule.value);
+    const precision = ruleDate ? ruleDate.length : 10;
+    const a = dateKey(v, precision); const b = ruleDate;
+    if (rule.op === 'not_equals') return a === null || b === null || a !== b;
+    if (a === null || b === null) return false;
+    if (rule.op === 'equals') return a === b;
+    if (rule.op === 'greater_than') return a > b;
+    if (rule.op === 'less_than') return a < b;
+  }
   switch (rule.op) {
     case 'is_empty': return isEmptyValue(v);
     case 'is_not_empty': return !isEmptyValue(v);
@@ -43,7 +92,7 @@ export function ruleMatches(row: IDatabaseRow, rule: IFilterRule): boolean {
       }
       return String(v ?? '') === String(rule.value ?? '');
     }
-    case 'not_equals': return !ruleMatches(row, { ...rule, op: 'equals' });
+    case 'not_equals': return !ruleMatches(row, { ...rule, op: 'equals' }, type);
     case 'contains': {
       const needle = String(rule.value ?? '').toLowerCase();
       if (needle === '') return true;
@@ -64,12 +113,13 @@ export function ruleMatches(row: IDatabaseRow, rule: IFilterRule): boolean {
   }
 }
 
-export function applyFilter(rows: readonly IDatabaseRow[], filter: IFilterConfig): IDatabaseRow[] {
+export function applyFilter(rows: readonly IDatabaseRow[], filter: IFilterConfig, typeOf?: PropertyTypeOf): IDatabaseRow[] {
   if (!filter || filter.rules.length === 0) return [...rows];
+  const typed = (r: IFilterRule) => (r.propertyId === TITLE_KEY ? 'text' : typeOf?.(r.propertyId));
   return rows.filter((row) =>
     filter.conjunction === 'or'
-      ? filter.rules.some((r) => ruleMatches(row, r))
-      : filter.rules.every((r) => ruleMatches(row, r)),
+      ? filter.rules.some((r) => ruleMatches(row, r, typed(r)))
+      : filter.rules.every((r) => ruleMatches(row, r, typed(r))),
   );
 }
 

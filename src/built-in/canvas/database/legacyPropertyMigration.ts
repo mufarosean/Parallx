@@ -199,8 +199,14 @@ export async function runLegacyPropertyMigration(deps: IMigrationDeps): Promise<
       const config = mapOptions(decode(def?.config ?? '{}') as Record<string, unknown>);
       const propId = await ensureColumn(home, key, type, config);
       if (!isEmpty(current[propId])) continue;
-      await db.setCellValue(home, pageId, propId, value);
-      migratedCustomValues++;
+      try {
+        await db.setCellValue(home, pageId, propId, value);
+        migratedCustomValues++;
+      } catch (err) {
+        // A same-named column of another type cannot take it; the legacy
+        // table keeps the value untouched.
+        console.warn('[legacyPropertyMigration] value not migrated:', key, err instanceof Error ? err.message : err);
+      }
     }
     if (tags) {
       const tagsPropId = await ensureColumn(home, 'Tags', 'tags', tagsConfig);

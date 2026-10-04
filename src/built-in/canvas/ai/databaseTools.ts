@@ -103,16 +103,21 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
         const row = await db.addRow(databaseId, title);
         const set: string[] = [];
         const unknown: string[] = [];
+        const refused: string[] = [];
         const values = (args['values'] && typeof args['values'] === 'object') ? (args['values'] as Record<string, unknown>) : {};
         for (const [name, value] of Object.entries(values)) {
           const prop = props.find((p) => p.name.toLowerCase() === name.toLowerCase());
           if (!prop) { unknown.push(name); continue; }
-          const coerced = prop.type === 'tags' && !Array.isArray(value) ? [value] : value;
-          await db.setCellValue(databaseId, row.pageId, prop.id, coerced);
-          set.push(prop.name);
+          try {
+            await db.setCellValue(databaseId, row.pageId, prop.id, value);
+            set.push(prop.name);
+          } catch (err) {
+            refused.push(err instanceof Error ? err.message : String(err));
+          }
         }
         const parts = [`Added row "${title}" (page id: ${row.pageId}) to "${info.title}"${set.length ? ` with ${set.join(', ')}` : ''}.`];
         if (unknown.length) parts.push(`Unknown properties skipped: ${unknown.join(', ')}.`);
+        if (refused.length) parts.push(`Values not set: ${refused.join(' ')}`);
         return { content: parts.join(' ') };
       },
     },
@@ -195,7 +200,7 @@ export function createDatabaseTools(db: DatabaseDataService): IChatTool[] {
           const rules: IFilterRule[] = (args['filter'] as { property?: unknown; op?: unknown; value?: unknown }[])
             .filter((f) => f && typeof f.property === 'string' && VALID_OPS.includes(f.op as FilterOp))
             .map((f) => ({ propertyId: byName(f.property as string), op: f.op as FilterOp, value: f.value }));
-          rows = applyFilter(rows, { conjunction: 'and', rules });
+          rows = applyFilter(rows, { conjunction: 'and', rules }, (id) => props.find((p) => p.id === id)?.type);
         }
         const sortArg = args['sort'] as { property?: unknown; dir?: unknown } | undefined;
         if (sortArg && typeof sortArg.property === 'string') {

@@ -21,6 +21,7 @@ import type {
 } from './databaseTypes.js';
 import { TITLE_KEY } from './databaseTypes.js';
 import { applyFilter, applySort, boardDropValue, groupRows } from './databaseViewModel.js';
+import { isChecked, normalizeDateValue, toNumber } from './cellValues.js';
 import { createPropertyEditor, createTypeIconElement } from '../properties/propertyEditors.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
 import { resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
@@ -56,6 +57,32 @@ const FILTER_OPS: { op: FilterOp; label: string }[] = [
   { op: 'is_empty', label: 'is empty' },
   { op: 'is_not_empty', label: 'is not empty' },
 ];
+
+/** The filter operations that mean something for a column type. */
+function filterOpsFor(type: PropertyType | 'title'): { op: FilterOp; label: string }[] {
+  switch (type) {
+    case 'checkbox':
+      // Unchecked and never set read the same (cellValues.ts).
+      return [{ op: 'is_not_empty', label: 'is checked' }, { op: 'is_empty', label: 'is not checked' }];
+    case 'number':
+      return FILTER_OPS.filter((o) => o.op !== 'contains');
+    case 'date':
+    case 'datetime':
+      return [
+        { op: 'equals', label: 'is' },
+        { op: 'not_equals', label: 'is not' },
+        { op: 'less_than', label: 'is before' },
+        { op: 'greater_than', label: 'is after' },
+        { op: 'is_empty', label: 'is empty' },
+        { op: 'is_not_empty', label: 'is not empty' },
+      ];
+    case 'select':
+    case 'tags':
+      return FILTER_OPS.filter((o) => o.op !== 'greater_than' && o.op !== 'less_than');
+    default:
+      return FILTER_OPS;
+  }
+}
 
 export interface IDatabasePaneDeps {
   readonly db: DatabaseDataService;
@@ -237,7 +264,7 @@ export class DatabaseEditorPane implements IDisposable {
   }
 
   private _viewRows(view: IDatabaseView): IDatabaseRow[] {
-    return applySort(applyFilter(this._rows, view.filter), view.sort);
+    return applySort(applyFilter(this._rows, view.filter, (id) => this._props.find((p) => p.id === id)?.type), view.sort);
   }
 
   private _renderBody(): void {
@@ -342,8 +369,10 @@ export class DatabaseEditorPane implements IDisposable {
     const value = row.values[prop.id];
     // Checkbox toggles immediately (no edit mode).
     if (prop.type === 'checkbox') {
-      const box = el('div', `canvas-db-check${value ? ' canvas-db-check--on' : ''}`);
-      box.addEventListener('click', () => void this._deps.db.setCellValue(this._databaseId, row.pageId, prop.id, !value));
+      // isChecked: an older "false" string reads unchecked, as it filters.
+      const checked = isChecked(value);
+      const box = el('div', `canvas-db-check${checked ? ' canvas-db-check--on' : ''}`);
+      box.addEventListener('click', () => void this._deps.db.setCellValue(this._databaseId, row.pageId, prop.id, !checked));
       td.appendChild(box);
       return;
     }
@@ -711,25 +740,63 @@ export class DatabaseEditorPane implements IDisposable {
         selected: TITLE_KEY,
         ariaLabel: 'Filter property',
       });
+      const typeOf = (id: string | undefined): PropertyType | 'title' =>
+        !id || id === TITLE_KEY ? 'title' : (this._props.find((p) => p.id === id)?.type ?? 'text');
       const opHost = el('div', 'canvas-db-popover__select');
       const opSel = new Dropdown(opHost, {
-        items: FILTER_OPS.map(({ op, label }) => ({ value: op, label })),
-        selected: FILTER_OPS[0]?.op,
+        items: filterOpsFor('title').map(({ op, label }) => ({ value: op, label })),
+        selected: filterOpsFor('title')[0]?.op,
         ariaLabel: 'Filter operator',
       });
       this._popoverDisposables.push(propSel, opSel);
       const valInput = el('input', 'canvas-db-popover__input') as HTMLInputElement;
       valInput.placeholder = 'Value';
-      const apply = el('button', 'canvas-db-popover__primary', 'Add filter');
+      valInput.setAttribute('aria-label', 'Filter value');
+      // The value field follows the column: a date picker for dates, a
+      // number field for numbers, none where the operation needs no value.
+      const syncValue = () => {
+        const type = typeOf(propSel.value);
+        const op = opSel.value as FilterOp | undefined;
+        const needsValue = type !== 'checkbox' && op !== 'is_empty' && op !== 'is_not_empty';
+        valInput.style.display = needsValue ? '' : 'none';
+        valInput.type = type === 'date' ? 'date' : type === 'datetime' ? 'datetime-local' : type === 'number' ? 'number' : 'text';
+        valInput.classList.remove('canvas-db-popover__input--invalid');
+        valInput.removeAttribute('aria-invalid');
+      };
+      this._popoverDisposables.push(propSel.onDidChange(() => {
+        const ops = filterOpsFor(typeOf(propSel.value));
+        opSel.items = ops.map(({ op, label }) => ({ value: op, label }));
+        opSel.value = ops[0]?.op;
+        valInput.value = '';
+        syncValue();
+      }));
+      this._popoverDisposables.push(opSel.onDidChange(syncValue));
+      const apply = el('button', 'canvas-db-popover__primary', 'Add Filter');
       apply.addEventListener('click', () => {
+        const type = typeOf(propSel.value);
+        const op = (opSel.value ?? filterOpsFor(type)[0]?.op) as FilterOp;
+        const raw = valInput.value.trim();
+        const needsValue = type !== 'checkbox' && op !== 'is_empty' && op !== 'is_not_empty';
+        // A number or date rule with a value that is not one would match
+        // nothing; say so instead of adding it.
+        const bad = needsValue && raw !== '' && (
+          (type === 'number' && toNumber(raw) === null)
+          || ((type === 'date' || type === 'datetime') && normalizeDateValue(raw) === null));
+        if (bad) {
+          valInput.classList.add('canvas-db-popover__input--invalid');
+          valInput.setAttribute('aria-invalid', 'true');
+          valInput.focus();
+          return;
+        }
         const rule: IFilterRule = {
           propertyId: propSel.value ?? TITLE_KEY,
-          op: (opSel.value ?? FILTER_OPS[0]?.op) as FilterOp,
-          value: valInput.value === '' ? undefined : valInput.value,
+          op,
+          value: !needsValue || raw === '' ? undefined : raw,
         };
         this._closePopover();
         void this._updateActiveView({ filter: { ...view.filter, rules: [...view.filter.rules, rule] } });
       });
+      syncValue();
       pop.append(propHost, opHost, valInput, apply);
     });
   }

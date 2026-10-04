@@ -96,6 +96,9 @@ function makeEnv() {
         const max = Math.max(0, ...members.filter((m) => m.database_id === params[0]).map((m) => m.sort_order as number));
         return { error: null, row: { max_sort: max } };
       }
+      if (/SELECT \* FROM database_properties WHERE id = \? AND database_id = \?/i.test(sql)) {
+        return { error: null, row: props.find((p) => p.id === params[0] && p.database_id === params[1]) ?? null };
+      }
       if (/FROM databases d JOIN pages p/i.test(sql)) {
         const d = databases.get(params[0] as string);
         const p = pages.get(params[0] as string);

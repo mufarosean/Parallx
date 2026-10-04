@@ -66,6 +66,7 @@ const EXEMPT_FILES = new Set([
   'database/databaseDataService.ts', // Database data layer (M8)
   'database/database.css',         // Database stylesheet (M8 Phase 2)
   'database/databaseViewModel.ts', // Pure filter/sort/group evaluation
+  'database/cellValues.ts',        // One stored shape per property type
   'database/databaseEditorPane.ts', // Full-page database editor (table/board)
   'database/rowPropertiesSection.ts', // Row-page database properties section
   'database/legacyPropertyMigration.ts', // One-time legacy property migration

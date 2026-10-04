@@ -192,6 +192,7 @@
   border-radius: 4px; padding: 4px 8px; font-size: var(--px-text-base); outline: none; margin: 2px 0;
 }
 .canvas-db-popover__input:focus { border-color: var(--vscode-focusBorder, #0e70c0); }
+.canvas-db-popover__input--invalid, .canvas-db-popover__input--invalid:focus { border-color: var(--px-danger); }
 .canvas-db-popover__primary {
   background: var(--vscode-button-background, #0e70c0);
   color: var(--vscode-button-foreground, #fff);

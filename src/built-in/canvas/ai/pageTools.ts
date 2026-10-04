@@ -24,6 +24,8 @@ import { filterToSubquery, validateBlockDoc, type IPropertyFilter, type IPropert
 import type { CanvasTemplateApi } from '../canvasTemplates.js';
 import { getAllCanvasTemplates } from '../canvasTemplates.js';
 import { listFonts, getFont } from '../config/fontRegistry.js';
+import type { PropertyType } from '../properties/propertyTypes.js';
+import { coerceCellValue } from '../database/cellValues.js';
 import { rawDbPageWriter, type ICanvasPageWriter, type PageDocJson, type PageStyleFields } from './pageWriter.js';
 
 // ── Tool helpers ──
@@ -32,10 +34,6 @@ function requireDb(db: IBuiltInToolDatabase | undefined): asserts db is IBuiltIn
   if (!db || !db.isOpen) {
     throw new Error('Database is not available');
   }
-}
-
-function generateId(): string {
-  return crypto.randomUUID();
 }
 
 // ── Tool definitions ──
@@ -486,9 +484,15 @@ export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | und
   };
 }
 
+/** The database service calls the property tool writes through. */
+export interface PagePropertyWriter {
+  addProperty(databaseId: string, name: string, type: PropertyType, config?: Record<string, unknown>): Promise<{ id: string }>;
+  setCellValue(databaseId: string, pageId: string, propertyId: string, value: unknown): Promise<void>;
+}
+
 export function createSetPagePropertyTool(
   db: IBuiltInToolDatabase | undefined,
-  notifyDatabaseRowsChanged?: (databaseId: string) => void,
+  writer?: PagePropertyWriter,
 ): IChatTool {
   return {
     name: 'canvas_set_page_property',
@@ -577,39 +581,36 @@ export function createSetPagePropertyTool(
         );
         if (found) { target = m; prop = found; break; }
       }
-      if (!prop) {
-        // Create the column on the first membership database.
-        target = memberships[0];
-        const inferredType = inferPropertyType(value);
-        const propId = generateId();
-        const orderRow = await db!.get<{ max_sort: number }>(
-          'SELECT MAX(sort_order) as max_sort FROM database_properties WHERE database_id = ?',
-          [target.database_id],
-        );
-        await db!.run(
-          'INSERT INTO database_properties (id, database_id, name, type, config, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
-          [propId, target.database_id, propertyName, inferredType, '{}', ((orderRow?.max_sort as number) ?? 0) + 1],
-        );
-        prop = { id: propId, type: inferredType };
+      // Writes go through the database service: it stores the value in the
+      // column's own shape (refusing one that does not fit), adds new select
+      // or tag names as options, and tells the views and the index.
+      if (!writer) {
+        return { content: 'Properties cannot be set right now (the database service is not available).', isError: true };
+      }
+      // A value the column cannot take is refused before anything changes.
+      const type = (prop?.type ?? inferPropertyType(value)) as PropertyType;
+      const coerced = coerceCellValue(type, value);
+      if (!coerced.ok) {
+        return { content: `Not set: '${propertyName}' is a ${type} property, and ${coerced.reason}.`, isError: true };
+      }
+      try {
+        if (!prop) {
+          // Create the column on the first membership database.
+          target = memberships[0];
+          prop = { id: (await writer.addProperty(target.database_id, propertyName, type, {})).id, type };
+        }
+        await writer.setCellValue(target!.database_id, pageId, prop.id, value);
+      } catch (err) {
+        return { content: `Not set: ${err instanceof Error ? err.message : String(err)}`, isError: true };
       }
 
-      const serialized = JSON.stringify(value);
-      await db!.run(
-        `INSERT INTO page_property_values (page_id, property_id, database_id, value, updated_at)
-         VALUES (?, ?, ?, ?, datetime('now'))
-         ON CONFLICT(page_id, property_id, database_id)
-         DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-        [pageId, prop.id, target!.database_id, serialized],
-      );
-      try { notifyDatabaseRowsChanged?.(target!.database_id); } catch { /* non-fatal */ }
-
-      return { content: `Set property '${propertyName}' = ${serialized} on page '${page.title}' (database "${target!.title}").` };
+      return { content: `Set property '${propertyName}' = ${JSON.stringify(coerced.value)} on page '${page.title}' (database "${target!.title}").` };
     },
   };
 }
 
 /** Infer a property type from a JavaScript value. */
-function inferPropertyType(value: unknown): string {
+function inferPropertyType(value: unknown): PropertyType {
   if (typeof value === 'boolean') { return 'checkbox'; }
   if (typeof value === 'number') { return 'number'; }
   if (Array.isArray(value)) { return 'tags'; }

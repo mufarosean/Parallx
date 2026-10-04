@@ -29,6 +29,7 @@ import type {
 } from './databaseTypes.js';
 import { EMPTY_FILTER } from './databaseTypes.js';
 import { parseFilterConfig, parseSortConfig, viewWithoutProperties } from './databaseViewModel.js';
+import { coerceCellValue, missingOptions } from './cellValues.js';
 
 interface DatabaseBridge {
   run(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; changes?: number }>;
@@ -67,6 +68,9 @@ function rowToProperty(r: Record<string, unknown>): IDatabaseProperty {
  *  palette: default/gray/brown/orange/yellow/green/blue/purple/pink/red) and
  *  resolved to theme-aware CSS by the views — matching Notion's status
  *  defaults: To-do gray, In progress blue, Complete green. */
+/** Colors given to options created by typing a new name (PILL_COLORS minus default). */
+const NEW_OPTION_COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'] as const;
+
 const DEFAULT_STATUS_OPTIONS = [
   { value: 'To do', color: 'gray' },
   { value: 'In progress', color: 'blue' },
@@ -513,7 +517,17 @@ export class DatabaseDataService extends Disposable {
           }
           const existing = homeValues[target.id];
           const empty = existing === null || existing === undefined || existing === '' || (Array.isArray(existing) && existing.length === 0);
-          if (empty) await this.setCellValue(home, pageId, target.id, value);
+          if (!empty) continue;
+          try {
+            await this.setCellValue(home, pageId, target.id, value);
+          } catch {
+            // The home's column of that name has another type: the value
+            // keeps its own column rather than being dropped with the
+            // membership below.
+            const own = await this.addProperty(home, `${prop.name} (${prop.type})`, prop.type, prop.config);
+            homeProps.push(own);
+            await this.setCellValue(home, pageId, own.id, value);
+          }
         }
         // Drop the extra membership + its cells (values merged above).
         await this._db.runTransaction([
@@ -539,15 +553,45 @@ export class DatabaseDataService extends Disposable {
   }
 
   /** Upsert one cell. Values are stored JSON-encoded. */
+  /**
+   * Store a cell, in the one shape its property type takes (cellValues.ts).
+   * A value the type cannot take is refused with a sentence saying why; a
+   * select or tag name that is not an option yet becomes one, so it gets a
+   * color and a board column like any other.
+   */
   async setCellValue(databaseId: string, pageId: string, propertyId: string, value: unknown): Promise<void> {
-    const res = await this._db.run(
-      `INSERT INTO page_property_values (page_id, property_id, database_id, value, updated_at)
+    const propRes = await this._db.get(
+      'SELECT * FROM database_properties WHERE id = ? AND database_id = ?',
+      [propertyId, databaseId],
+    );
+    if (propRes.error) throw new Error(propRes.error.message);
+    if (!propRes.row) throw new Error(`Property "${propertyId}" is not in this database.`);
+    const prop = rowToProperty(propRes.row);
+    const coerced = coerceCellValue(prop.type, value);
+    if (!coerced.ok) throw new Error(`"${prop.name}": ${coerced.reason}.`);
+
+    const ops: { type: 'run'; sql: string; params: unknown[] }[] = [];
+    const options = Array.isArray(prop.config['options']) ? prop.config['options'] as { value: string; color: string }[] : [];
+    const added = missingOptions(prop.type, coerced.value, options);
+    if (added.length > 0) {
+      const next = [...options, ...added.map((name, i) => ({ value: name, color: NEW_OPTION_COLORS[(options.length + i) % NEW_OPTION_COLORS.length]! }))];
+      ops.push({
+        type: 'run',
+        sql: "UPDATE database_properties SET config = ?, updated_at = datetime('now') WHERE id = ? AND database_id = ?",
+        params: [JSON.stringify({ ...prop.config, options: next }), propertyId, databaseId],
+      });
+    }
+    ops.push({
+      type: 'run',
+      sql: `INSERT INTO page_property_values (page_id, property_id, database_id, value, updated_at)
        VALUES (?, ?, ?, ?, datetime('now'))
        ON CONFLICT(page_id, property_id, database_id)
        DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-      [pageId, propertyId, databaseId, JSON.stringify(value ?? null)],
-    );
+      params: [pageId, propertyId, databaseId, JSON.stringify(coerced.value ?? null)],
+    });
+    const res = await this._db.runTransaction(ops);
     if (res.error) throw new Error(res.error.message);
+    if (added.length > 0) this._onDidChangeStructure.fire(databaseId);
     this._onDidChangeRows.fire(databaseId);
     this._onDidChangeCell.fire({ databaseId, pageId });
   }

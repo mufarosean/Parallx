@@ -98,7 +98,7 @@ export function registerCanvasAITools(deps: ICanvasAIToolDeps): IDisposable[] {
     createEditPageTool(db, pageMutationNotifier, pageCheckpoint, pageWriter),
     ...(movePage ? [createMovePageTool(db, movePage)] : []),
     createListPropertyDefinitionsTool(db),
-    createSetPagePropertyTool(db, databaseService ? (id) => databaseService.notifyRowsChanged(id) : undefined),
+    createSetPagePropertyTool(db, databaseService),
     createSetPageStyleTool(db, pageMutationNotifier, workspaceRoot, pageWriter),
     ...createBlockTools(db, pageMutationNotifier, pageWriter),
     ...(relatePages ? [createRelatePagesTool(relatePages)] : []),

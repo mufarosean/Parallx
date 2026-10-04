@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CanvasDataService } from '../../src/built-in/canvas/canvasDataService';
 import { DatabaseDataService } from '../../src/built-in/canvas/database/databaseDataService';
 import { applyFilter } from '../../src/built-in/canvas/database/databaseViewModel';
+import { createSetPagePropertyTool } from '../../src/built-in/canvas/ai/pageTools';
 import { realSqlite } from './realSqlite';
 
 let env: ReturnType<typeof realSqlite>;
@@ -60,5 +61,105 @@ describe('deleting a property cleans the views that used it', () => {
     expect(repaired.filter.rules).toEqual([]);
     const stored = env.db.prepare('SELECT filter_config FROM database_views WHERE id = ?').get(view!.id) as any;
     expect(JSON.parse(stored.filter_config).rules).toEqual([]);
+  });
+});
+
+describe('the AI property tool writes through the database service, in the column\'s shape', () => {
+  async function setup() {
+    const d = await dbs.createDatabase({ title: 'Projects' });
+    const row = await dbs.addRow(d.id, 'My Page');
+    const tool = createSetPagePropertyTool(env.toolDb as never, dbs);
+    const set = (propertyName: string, value: unknown) =>
+      tool.handler({ pageId: row.pageId, propertyName, value }, { isCancellationRequested: false } as never);
+    const props = () => dbs.listProperties(d.id);
+    const cell = async (name: string) => {
+      const prop = (await props()).find((p) => p.name === name)!;
+      return (await dbs.getRowValues(d.id, row.pageId))[prop.id];
+    };
+    return { d, row, set, props, cell };
+  }
+
+  it('sets an existing column, creating select options for new names', async () => {
+    const { set, cell, props } = await setup();
+    const res = await set('status', 'Blocked');
+    expect(res.isError).toBeFalsy();
+    expect(res.content).toContain("Set property 'status'");
+    expect(res.content).toContain('Projects');
+    expect(await cell('Status')).toBe('Blocked');
+    const status = (await props()).find((p) => p.name === 'Status')!;
+    expect((status.config['options'] as { value: string }[]).map((o) => o.value)).toContain('Blocked');
+  });
+
+  it('creates a missing column with the type the value implies', async () => {
+    const { set, props, cell } = await setup();
+    await set('priority', 5);
+    await set('done', true);
+    await set('labels', ['a', 'b']);
+    await set('tags', '["Journal","Daily"]'); // a stringified array (small models) is the array
+    await set('note', '[not json');
+    const byName = Object.fromEntries((await props()).map((p) => [p.name, p.type]));
+    expect(byName).toMatchObject({ priority: 'number', done: 'checkbox', labels: 'tags', tags: 'tags', note: 'text' });
+    expect(await cell('tags')).toEqual(['Journal', 'Daily']);
+    expect(await cell('note')).toBe('[not json');
+  });
+
+  it('stores a value in the column\'s own shape: "false" in a checkbox is unchecked, "5" in a number is 5', async () => {
+    const { d, set, cell } = await setup();
+    await dbs.addProperty(d.id, 'Done', 'checkbox');
+    await dbs.addProperty(d.id, 'Estimate', 'number');
+    await dbs.addProperty(d.id, 'Due', 'date');
+    await set('Done', 'false');
+    await set('Estimate', '5');
+    await set('Due', '2026-10-04T15:30');
+    expect(await cell('Done')).toBe(false);
+    expect(await cell('Estimate')).toBe(5);
+    expect(await cell('Due')).toBe('2026-10-04');
+  });
+
+  it('refuses a value the column cannot take, and changes nothing', async () => {
+    const { d, set, cell } = await setup();
+    await dbs.addProperty(d.id, 'Estimate', 'number');
+    await set('Estimate', 3);
+    const res = await set('Estimate', 'about a week');
+    expect(res.isError).toBe(true);
+    expect(res.content).toMatch(/number/);
+    expect(await cell('Estimate')).toBe(3);
+  });
+});
+
+describe('filters read values by their type', () => {
+  async function rowsWith(type: 'checkbox' | 'number' | 'date' | 'datetime', values: unknown[]) {
+    const d = await dbs.createDatabase({ title: 'T' });
+    const prop = await dbs.addProperty(d.id, 'P', type);
+    for (const [i, v] of values.entries()) {
+      const row = await dbs.addRow(d.id, `r${i}`);
+      if (v !== undefined) env.db.prepare('INSERT INTO page_property_values (page_id, property_id, database_id, value) VALUES (?, ?, ?, ?)').run(row.pageId, prop.id, d.id, JSON.stringify(v));
+    }
+    const rows = await dbs.listRows(d.id);
+    const match = (op: string, value?: unknown) => applyFilter(rows, { conjunction: 'and', rules: [{ propertyId: prop.id, op: op as never, value }] }, () => type)
+      .map((r) => r.title).sort();
+    return match;
+  }
+
+  it('checkbox: never-set, cleared, false and "false" are all unchecked', async () => {
+    const match = await rowsWith('checkbox', [undefined, null, false, 'false', true]);
+    expect(match('is_empty')).toEqual(['r0', 'r1', 'r2', 'r3']);
+    expect(match('equals', 'false')).toEqual(['r0', 'r1', 'r2', 'r3']);
+    expect(match('is_not_empty')).toEqual(['r4']);
+    expect(match('equals', 'true')).toEqual(['r4']);
+  });
+
+  it('number: equals compares numbers, so 5 equals "5.0"', async () => {
+    const match = await rowsWith('number', [5, 5.5, 10, '7']);
+    expect(match('equals', '5.0')).toEqual(['r0']);
+    expect(match('greater_than', '6')).toEqual(['r2', 'r3']);
+    expect(match('not_equals', '5')).toEqual(['r1', 'r2', 'r3']);
+  });
+
+  it('date: a day rule matches times on that day; before and after agree with it', async () => {
+    const match = await rowsWith('datetime', ['2026-10-03T23:00', '2026-10-04T09:30', '2026-10-04T18:00', '2026-10-05T00:10']);
+    expect(match('equals', '2026-10-04')).toEqual(['r1', 'r2']);
+    expect(match('less_than', '2026-10-04')).toEqual(['r0']);
+    expect(match('greater_than', '2026-10-04')).toEqual(['r3']);
   });
 });

@@ -112,8 +112,9 @@ export async function mountRowPropertiesSection(
     if (!prop) return;
     const rows = applyFilter(await db.listRows(home.databaseId), {
       conjunction: 'and',
-      rules: [{ propertyId: prop.id, op: 'contains', value }],
-    }).filter((r) => r.pageId !== pageId);
+      // equals: pages that have this value (contains matched "art" in "party").
+      rules: [{ propertyId: prop.id, op: 'equals', value }],
+    }, () => prop.type).filter((r) => r.pageId !== pageId);
 
     const pop = document.createElement('div');
     pop.className = 'canvas-prop-value-popover';

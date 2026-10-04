@@ -41,6 +41,11 @@ function makeEnv() {
       else values.push({ page_id: pageId, property_id: propertyId, database_id: databaseId, value });
       return { error: null, changes: 1 };
     }
+    if (/^UPDATE database_properties SET config = \?/i.test(sql)) {
+      const p = props.find((x) => x.id === params[1] && x.database_id === params[2]);
+      if (p) p.config = params[0];
+      return { error: null, changes: p ? 1 : 0 };
+    }
     if (/^DELETE FROM page_property_values WHERE page_id = \? AND database_id/i.test(sql)) {
       for (let i = values.length - 1; i >= 0; i--) {
         if (values[i].page_id === params[0] && values[i].database_id === params[1]) values.splice(i, 1);
@@ -65,6 +70,9 @@ function makeEnv() {
       if (/SELECT database_id FROM database_pages WHERE page_id/i.test(sql)) {
         const m = members.find((x) => x.page_id === params[0]);
         return { error: null, row: m ? { database_id: m.database_id } : null };
+      }
+      if (/SELECT \* FROM database_properties WHERE id = \? AND database_id = \?/i.test(sql)) {
+        return { error: null, row: props.find((p) => p.id === params[0] && p.database_id === params[1]) ?? null };
       }
       if (/SELECT d\.id FROM databases d JOIN pages p/i.test(sql)) {
         for (const d of databases.values()) {
@@ -223,7 +231,11 @@ describe('legacy property migration', () => {
     // p2 (tags only) → home = Tags.
     const tagsDb = [...env.databases.keys()].find((id) => env.pages.get(id)?.title === 'Tags')!;
     const tagsProp = env.props.find((p) => p.database_id === tagsDb && p.name === 'Tags')!;
-    expect(JSON.parse(tagsProp.config as string).options).toEqual([{ value: 'work', color: 'blue' }]);
+    // The legacy option keeps its color; a tag in use that was never an
+    // option ("reading") becomes one, so it shows and groups like the rest.
+    const tagOptions = JSON.parse(tagsProp.config as string).options;
+    expect(tagOptions[0]).toEqual({ value: 'work', color: 'blue' });
+    expect(tagOptions.map((o: { value: string }) => o.value)).toEqual(['work', 'reading']);
     const tagRows = await svc.listRows(tagsDb);
     expect(tagRows.map((x) => x.pageId)).toEqual(['p2']);
     expect(tagRows[0].values[tagsProp.id as string]).toEqual(['reading']);
