@@ -57,6 +57,7 @@ const EXEMPT_FILES = new Set([
   'paneMirror.ts',                 // Editors of one page share edits (no gate interaction)
   'reloadMerge.ts',                // Reload keeps unsaved edits (pure JSON, no gate interaction)
   'externalDocApply.ts',           // Another writer's doc into an open editor (diff + one transaction)
+  'pageLinks.ts',                  // In-app link hrefs (parallx-page:<page>#<block>)
   'markdownExport.ts',             // Export utility
   'markdownImport.ts',             // Import utility (M64 Iter 1)
   'dashboardWidgets.ts',           // M86 — dashboard widget contribution (data service + markdownExport only; no gate interaction)
@@ -120,7 +121,7 @@ const GATE_RULES: Record<string, string[]> = {
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.
-  'config/tiptapExtensions.ts':            ['config/blockRegistry', 'extensions/', 'plugins/', 'menus/imagePathResolver'],
+  'config/tiptapExtensions.ts':            ['config/blockRegistry', 'extensions/', 'plugins/', 'menus/imagePathResolver', 'pageLinks'],
 
   // ── CanvasMenuRegistry children ─────────────────────────────────────────
   'menus/slashMenu.ts':                    ['menus/canvasMenuRegistry'],

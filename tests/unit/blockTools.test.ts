@@ -190,8 +190,11 @@ describe('read_block / edit_block / insert_block_after / link_block', () => {
     const decoded = JSON.parse(pages[0]!.content);
     const linkBlock = decoded.doc.content[1];
     expect(linkBlock.type).toBe('paragraph');
-    expect(linkBlock.content[0].text).toContain('See target');
-    expect(linkBlock.content[0].text).toContain('page://p2#t1');
+    // A real link to the block, not the markdown text of one.
+    const linked = linkBlock.content.find((n: any) => n.marks?.some((m: any) => m.type === 'link'));
+    expect(linked.text).toBe('See target');
+    expect(linked.marks[0].attrs.href).toBe('parallx-page:p2#t1');
+    expect(JSON.stringify(linkBlock)).not.toContain('](');
   });
 
   it('link_block errors when target block missing', async () => {

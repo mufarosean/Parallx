@@ -6,6 +6,7 @@
 // are loaded directly here.
 
 import StarterKit from '@tiptap/starter-kit';
+import { PAGE_LINK_SCHEME } from '../pageLinks.js';
 import Placeholder from '@tiptap/extension-placeholder';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
@@ -439,6 +440,10 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
       codeBlock: false,  // Replaced by CodeBlockLowlight via registry
       link: {
         openOnClick: false,
+        // In-app links to a page or block (pageLinks.ts) are allowed hrefs;
+        // otherwise the link would render with an empty one.  (Not listed in
+        // `protocols`: that would also autolink typed text.)
+        isAllowedUri: (url, ctx) => url.startsWith(`${PAGE_LINK_SCHEME}:`) || ctx.defaultValidate(url),
         HTMLAttributes: {
           class: 'canvas-link',
         },

@@ -27,6 +27,7 @@
 //   • ColumnDrop plugin (drag block to side of another to create/modify columns)
 
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
+import { parsePageLink } from './pageLinks.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { ICanvasDataService } from './canvasTypes.js';
 import { diffTopLevel, classifySpan, type ISpanClassification } from './canvasDocDiff.js';
@@ -291,6 +292,24 @@ export class CanvasEditorProvider {
     return this._pageMenuHandlers.has(pageId);
   }
 
+  /** Show a block once its page is open (an in-app link to a block). */
+  private readonly _revealers = new Map<string, (blockId: string) => void>();
+  private readonly _pendingReveal = new Map<string, string>();
+  requestReveal(pageId: string, blockId: string): void {
+    const reveal = this._revealers.get(pageId);
+    if (reveal) reveal(blockId);
+    else this._pendingReveal.set(pageId, blockId);
+  }
+  registerRevealer(pageId: string, reveal: (blockId: string) => void): IDisposable {
+    this._revealers.set(pageId, reveal);
+    return { dispose: () => { if (this._revealers.get(pageId) === reveal) this._revealers.delete(pageId); } };
+  }
+  takePendingReveal(pageId: string): string | undefined {
+    const blockId = this._pendingReveal.get(pageId);
+    this._pendingReveal.delete(pageId);
+    return blockId;
+  }
+
   /** Pages Chat's page tools just wrote, so the open pane's next reload shows
    *  the edit with margin marks and a Keep/Undo bar (see _animateExternalDoc). */
   private readonly _aiEditPending = new Map<string, number>();
@@ -395,6 +414,49 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     void this.openLinkInExternalBrowser(href);
   };
 
+  /** Open an in-app link: the page in its editor, then the block in view. */
+  private async _openPageLink(pageId: string, blockId?: string): Promise<void> {
+    if (pageId === this._pageId) {
+      if (blockId) this._revealBlock(blockId);
+      return;
+    }
+    const page = await this._dataService.getPage(pageId);
+    if (!page || page.isArchived) {
+      await this._provider.window?.showWarningMessage(page ? 'That page is in the Trash.' : 'That page no longer exists.');
+      return;
+    }
+    if (blockId) this._provider.requestReveal(pageId, blockId);
+    await this._openEditor?.({
+      typeId: this._provider.databaseService?.isDatabase(pageId) ? 'database' : 'canvas',
+      title: page.title || 'Untitled',
+      icon: page.icon ?? undefined,
+      iconHtml: renderPageIconHtml(page.icon),
+      instanceId: pageId,
+    });
+  }
+
+  /** Scroll a block into view, put the caret in it and mark it briefly. */
+  private _revealBlock(blockId: string): void {
+    const editor = this._editor;
+    if (!editor) return;
+    let at = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (at >= 0) return false;
+      if (node.attrs?.id === blockId) { at = pos; return false; }
+      return true;
+    });
+    if (at < 0) return;
+    const node = editor.state.doc.nodeAt(at);
+    const caret = node?.isTextblock ? at + 1 : at;
+    try { editor.chain().focus().setTextSelection(caret).scrollIntoView().run(); } catch { /* an atom: just scroll */ }
+    const dom = editor.view.nodeDOM(at);
+    if (dom instanceof HTMLElement) {
+      dom.scrollIntoView({ block: 'center' });
+      dom.classList.add('canvas-block--revealed');
+      setTimeout(() => dom.classList.remove('canvas-block--revealed'), 1600);
+    }
+  }
+
   constructor(
     private readonly _container: HTMLElement,
     private readonly _pageId: string,
@@ -435,6 +497,10 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
   }
 
   async openLinkInExternalBrowser(href: string): Promise<void> {
+    // In-app links (to a page or block) open here, from a click or the
+    // bubble menu's open button alike.
+    const pageLink = parsePageLink(href);
+    if (pageLink) return this._openPageLink(pageLink.pageId, pageLink.blockId);
     const url = normalizeExternalWebLink(href);
     if (!url) {
       await this._provider.window?.showWarningMessage('Only http:// and https:// links can be opened.');
@@ -796,6 +862,10 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
       }),
     );
 
+    // A link to a block on this page, followed while it is open, shows it.
+    this._saveDisposables.add(
+      this._provider.registerRevealer(this._pageId, (blockId) => this._revealBlock(blockId)),
+    );
     // Register page-menu handler so the external ribbon's ⋯ button can
     // trigger the full page menu (which lives in PageChromeController).
     this._saveDisposables.add(
@@ -1029,6 +1099,9 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
       // Mark that the snapshot is now valid (regardless of whether content
       // existed) — safe to enable reconciler.
       this._initialContentLoaded = true;
+      // Opened from a link to a block: show that block.
+      const reveal = this._provider.takePendingReveal(this._pageId);
+      if (reveal) requestAnimationFrame(() => this._revealBlock(reveal));
     } catch (err) {
       if (this._loadGeneration === generation) this._suppressUpdate = false;
       if (!isCurrent()) return;

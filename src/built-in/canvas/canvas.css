@@ -5156,3 +5156,10 @@
   color: var(--px-text-muted);
   font-size: 0.9em;
 }
+
+/* A block shown by following a link to it: a brief highlight. */
+.canvas-block--revealed {
+  background: var(--px-accent-soft);
+  border-radius: var(--parallx-radius-md);
+  transition: background-color 600ms ease;
+}

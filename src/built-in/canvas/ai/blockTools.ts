@@ -32,13 +32,13 @@ import {
   findBlockById,
   nodeToPlainText,
   insertAfter,
-  paragraphFromText,
   generateBlockId,
   fitBlocksAtTarget,
   validateBlockDoc,
   type DocNode,
 } from './blockApi.js';
 import { markdownToTiptapJson } from '../markdownImport.js';
+import { pageLinkHref } from '../pageLinks.js';
 import { rawDbPageWriter, type ICanvasPageWriter, type PageDocJson } from './pageWriter.js';
 
 /** Parse markdown into canvas block nodes (each stamped with a stable id). */
@@ -356,8 +356,16 @@ export function createLinkBlockTool(
       // We do not modify the source block itself to keep the round-trip
       // diff localized.
       const linkBlockId = generateBlockId();
-      const linkText = `→ [${label}](page://${toPageId}#${toBlockId})`;
-      const linkNode = paragraphFromText(linkText, linkBlockId);
+      // A real link (it used to be the literal text "[label](page://…)"),
+      // opening the target page at the block inside the app (pageLinks.ts).
+      const linkNode = {
+        type: 'paragraph',
+        attrs: { id: linkBlockId },
+        content: [
+          { type: 'text', text: '→ ' },
+          { type: 'text', text: label, marks: [{ type: 'link', attrs: { href: pageLinkHref(toPageId, toBlockId) } }] },
+        ],
+      } as unknown as DocNode;
       const refused = await writeBlockChange(writer ?? rawDbPageWriter(db!), fromPageId, (doc) => {
         const now = findBlockById(doc, fromBlockId);
         if (!now) return `Source block "${fromBlockId}" is no longer in the source page. Read the page again and retry.`;
