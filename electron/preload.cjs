@@ -469,7 +469,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     extractText: (filePath) => ipcRenderer.invoke('document:extractText', filePath),
 
     /** Full workbook cell grid (values + formulas + merges + widths) for the
-     *  Worksheets practice-item importer. Returns { sheets } or { error }. */
+     *  spreadsheet importers. Returns { sheets } or { error }. */
     extractWorkbookGrid: (filePath) => ipcRenderer.invoke('document:extractWorkbookGrid', filePath),
 
     /** Extract sanitized EPUB reader chapters. Returns { title, chapters, metadata } or { error }. */
@@ -488,13 +488,6 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     richExtensions: () => ipcRenderer.invoke('document:richExtensions'),
   },
 
-  // ── Windows metafiles (EMF/WMF) to PNG for the worksheet importer (imageBridge.cjs) ──
-  images: {
-    /** Rasterise an EMF/WMF at 2x. Returns { png, width, height, scale } or null (not Windows, or GDI+ failed). */
-    rasterizeMetafile: (bytes, ext) => ipcRenderer.invoke('image:rasterizeMetafile', bytes, ext),
-    /** Render LaTeX equations to PNG at 2x in an offscreen KaTeX page. items: [{ latex, fontPx }] -> [{ png, width, height } | null]. */
-    renderEquations: (items) => ipcRenderer.invoke('image:renderEquations', items),
-  },
 
 
   // ── Dashboard image/GIF assets (file-backed, served over parallx-asset://) ──
@@ -656,25 +649,6 @@ contextBridge.exposeInMainWorld('parallxElectron', {
       ipcRenderer.on('mcp:oauth-url', handler);
       return () => ipcRenderer.removeListener('mcp:oauth-url', handler);
     },
-  },
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // Google Sync API — planner two-way Google Calendar / Tasks sync
-  // ══════════════════════════════════════════════════════════════════════════
-  //
-  // OAuth + all Google REST calls run in the main process (electron/
-  // googleSyncBridge.cjs). The refresh token lives only in main + safeStorage;
-  // the renderer never sees it. `fetch` is host-allowlisted to www.googleapis.com.
-
-  google: {
-    /** Run the OAuth consent flow. Opens the browser; resolves { ok, email }. */
-    authorize: (scopes) => ipcRenderer.invoke('google:authorize', scopes),
-    /** { connected, email, hasClient } — whether a token + OAuth client exist. */
-    status: () => ipcRenderer.invoke('google:status'),
-    /** Clear the stored refresh token + cached account. */
-    disconnect: () => ipcRenderer.invoke('google:disconnect'),
-    /** Authenticated Google API call: { method, url, body? } → { ok, status, data, error? }. */
-    fetch: (opts) => ipcRenderer.invoke('google:fetch', opts),
   },
 
   // ══════════════════════════════════════════════════════════════════════════

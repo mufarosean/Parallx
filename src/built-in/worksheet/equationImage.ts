@@ -19,10 +19,16 @@ interface ElectronImages {
   renderEquations(items: ReadonlyArray<{ latex: string; fontPx: number }>): Promise<ReadonlyArray<EquationResult | null>>;
 }
 
+/** Worksheets' image bridge (electron/imageBridge.cjs), through the app's one door for tools. */
 function bridge(): ElectronImages | undefined {
-  return typeof window !== 'undefined'
-    ? (window as unknown as { parallxElectron?: { images?: ElectronImages } }).parallxElectron?.images
+  const door = typeof window !== 'undefined'
+    ? (window as unknown as { parallxElectron?: { optionalBridges?: { invoke(channel: string, ...args: unknown[]): Promise<any> } } }).parallxElectron?.optionalBridges
     : undefined;
+  if (!door) return undefined;
+  return {
+    rasterizeMetafile: (bytes, ext) => door.invoke('image:rasterizeMetafile', bytes, ext),
+    renderEquations: (items) => door.invoke('image:renderEquations', items),
+  };
 }
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);

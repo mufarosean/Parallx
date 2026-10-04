@@ -23,8 +23,9 @@ let routes: Route[] = [];
 function installBridge(): void {
   (globalThis as unknown as { window: unknown }).window = {
     parallxElectron: {
-      google: {
-        async fetch(opts: Call) {
+      optionalBridges: {
+        async invoke(channel: string, opts: Call) {
+          if (channel !== 'google:fetch') throw new Error(`unexpected channel ${channel}`);
           calls.push(opts);
           for (const r of routes) {
             const hit = r(opts);

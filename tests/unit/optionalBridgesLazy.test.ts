@@ -231,9 +231,9 @@ describe('the preload names no optional tool\'s channel (audit #22)', () => {
   it('has no optional tool\'s names or channels in its source', () => {
     const src = readFileSync(PRELOAD, 'utf8');
     expect(src).not.toMatch(/webFetch|webSearch|Web Research/);
-    expect(src).not.toMatch(/recorder:|models:|anki:|media-organizer|Flashcards/);
+    expect(src).not.toMatch(/recorder:|models:|anki:|google:|image:|media-organizer|Flashcards|Planner|Worksheets/);
     const { exposed } = loadPreload();
-    for (const gone of ['recorder', 'models', 'anki', 'webFetch']) expect(exposed[gone]).toBeUndefined();
+    for (const gone of ['recorder', 'models', 'anki', 'webFetch', 'google', 'images']) expect(exposed[gone]).toBeUndefined();
   });
 
   it('lets a tool listen to exactly the events optionalBridges.cjs lists, and stop', () => {

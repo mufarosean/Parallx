@@ -3,7 +3,7 @@
 //
 // All OAuth + Google REST traffic happens in the main process; the refresh
 // token never enters the renderer. This module is just a typed, null-safe
-// wrapper around `window.parallxElectron.google` so the settings panel and the
+// wrapper around Planner's Google channels (through `window.parallxElectron.optionalBridges`) so the settings panel and the
 // sync provider don't each re-cast `window`.
 
 export interface GoogleStatus {
@@ -44,9 +44,17 @@ interface GoogleBridge {
   fetch(opts: GoogleFetchRequest): Promise<GoogleFetchResult>;
 }
 
+/** Planner's Google bridge (electron/googleSyncBridge.cjs), through the app's one door for tools. */
 function bridge(): GoogleBridge | undefined {
-  return (window as unknown as { parallxElectron?: { google?: GoogleBridge } })
-    .parallxElectron?.google;
+  const door = (window as unknown as { parallxElectron?: { optionalBridges?: { invoke(channel: string, ...args: unknown[]): Promise<any> } } })
+    .parallxElectron?.optionalBridges;
+  if (!door) return undefined;
+  return {
+    authorize: (scopes) => door.invoke('google:authorize', scopes),
+    status: () => door.invoke('google:status'),
+    disconnect: () => door.invoke('google:disconnect'),
+    fetch: (opts) => door.invoke('google:fetch', opts),
+  };
 }
 
 export const googleSync = {
