@@ -10,7 +10,7 @@
 // owningSelectedBlock lets the handle-click guard resolve a click on a nested
 // row to its selected parent instead of collapsing the selection.
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { BlockSelectionController } from '../../src/built-in/canvas/handles/blockSelection';
@@ -19,12 +19,19 @@ import { enumerateBlockUnits } from '../../src/built-in/canvas/config/blockState
 function p(text: string) { return { type: 'paragraph', content: [{ type: 'text', text }] }; }
 function li(text: string) { return { type: 'listItem', content: [p(text)] }; }
 
+// Each editor is destroyed after its test: a live ProseMirror view keeps a
+// DOM-observer timer that, firing after the jsdom environment is gone, threw
+// "document is not defined" as an unhandled error and failed the run.
+const editors: Editor[] = [];
+afterEach(() => { for (const ed of editors.splice(0)) ed.destroy(); });
+
 function makeController(content: any): { ed: Editor; sel: BlockSelectionController } {
   const ed = new Editor({
     element: document.createElement('div'),
     extensions: [StarterKit],
     content,
   });
+  editors.push(ed);
   const host: any = {
     editor: ed,
     container: document.createElement('div'),

@@ -50,7 +50,7 @@ import { resolveBlockUnitFromDOM } from '../../src/built-in/canvas/config/blockS
 
 const lowlight = createLowlight(common);
 
-// jsdom has no layout: the Range rect stubs come from tests/setup/domGeometry.ts.
+// jsdom has no layout: the Range rect stubs come from tests/unit/setup/domGeometry.ts.
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 

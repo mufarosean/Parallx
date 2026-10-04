@@ -42,6 +42,7 @@ const https = require('https');
 const net = require('net');
 const os = require('os');
 const { URL, domainToASCII } = require('url');
+const workspaceSeal = require('./workspaceSeal.cjs');
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -545,7 +546,7 @@ async function doWebSearch({ query, apiKey, turnId, _injectedFetch } = {}) {
 
 // ─── IPC registration ────────────────────────────────────────────────────────
 
-function setupWebFetchBridge(ipcMain, _appRoot, readSecret) {
+function setupWebFetchBridge(ipcMain, _appRoot, readSecret, opts) {
   // Bound for safety. _appRoot is reserved for future use (e.g. workspace
   // history sink). readSecret is the main-process-only Brave API key reader
   // (see electron/main.cjs:_readSecretString). The renderer NEVER sends the
@@ -556,16 +557,14 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret) {
   if (typeof readSecret !== 'function') {
     throw new Error('[WebFetchBridge] setupWebFetchBridge: readSecret(key) function is required');
   }
-  // Sealed workspace (docs/BROWSER.md phase 2): the renderer tells us when the
-  // open workspace is sealed and every egress request is refused until it is
-  // not. Defaults to open; a failure to hear from the renderer therefore
-  // fails safe only once the renderer has said "sealed".
-  let _sealed = false;
-  ipcMain.handle('webFetch:setSealed', (_event, sealed) => { _sealed = !!sealed; _sealedNow = _sealed; return { ok: true, sealed: _sealed }; });
+  // Sealed workspace (docs/BROWSER.md phase 2): every egress request is
+  // refused while the open workspace is sealed. The flag is the core's
+  // (workspaceSeal.cjs), set by the renderer whether or not this tool is on.
+  const isSealed = (opts && typeof opts.isSealed === 'function') ? opts.isSealed : workspaceSeal.isSealed;
   const SEALED_ERROR = { ok: false, error: { code: 'SEALED', message: 'This workspace is sealed: nothing leaves the machine.' } };
 
   ipcMain.handle('webFetch:request', async (_event, opts) => {
-    if (_sealed) return SEALED_ERROR;
+    if (isSealed()) return SEALED_ERROR;
     try {
       const safe = opts && typeof opts === 'object' ? opts : {};
       const result = await doWebFetch({
@@ -586,7 +585,7 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret) {
   });
 
   ipcMain.handle('webSearch:request', async (_event, opts) => {
-    if (_sealed) return SEALED_ERROR;
+    if (isSealed()) return SEALED_ERROR;
     try {
       const safe = opts && typeof opts === 'object' ? opts : {};
       // SECURITY: API key is read from safeStorage HERE (main process). The
@@ -628,13 +627,8 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret) {
 
 // ─── Exports ─────────────────────────────────────────────────────────────────
 
-// The sealed flag as last pushed by the renderer, for bridges that fetch on their own (modelBridge.cjs).
-let _sealedNow = false;
-function isSealed() { return _sealedNow; }
-
 module.exports = {
   setupWebFetchBridge,
-  isSealed,
   // The same private-address rule, for the assistant browser (browserAutomationBroker.cjs).
   isPrivateIp,
   hostResolvesPrivate,
