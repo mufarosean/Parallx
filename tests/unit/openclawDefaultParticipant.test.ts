@@ -583,8 +583,15 @@ describe('openclaw default participant — unhandled slash commands', () => {
     expect(content).toBe('/explain how does reserving work');
   });
 
-  it('applies the promptTemplate of a registered template-only command (/research)', async () => {
+  it('applies the promptTemplate of a registered template-only command (a tool\'s, e.g. /research)', async () => {
+    const { registerContributedSlashCommand } = await import('../../src/services/chatContributions');
+    const d = registerContributedSlashCommand({
+      name: 'research', description: 'Research a topic',
+      promptTemplate: 'Use the research-topic skill to investigate the following topic and write a summary page under the Research Hub: {input}',
+      ownerToolId: 'parallx.web-research',
+    });
     const content = await sendWithCommand('research', 'loss development factors');
+    d.dispose();
     // The template directs the agent at the research-topic skill — the whole
     // point of /research, which never fired before (applyCommandTemplate had
     // no production caller).

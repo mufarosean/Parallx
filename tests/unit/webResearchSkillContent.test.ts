@@ -3,16 +3,23 @@
 // spells out the four non-negotiable rules (multi-source minimum, depth-1
 // stop, untrusted-as-data, citation requirement) in its body.
 
-import { describe, it, expect } from 'vitest';
-import { defaultSkillContents } from '../../src/built-in/chat/skills/defaultSkillContents.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { defaultSkillContents, RETIRED_SEEDED_SKILLS } from '../../src/built-in/chat/skills/defaultSkillContents.js';
 
-describe('research-topic default skill (M65 Iter 3)', () => {
-  const body = defaultSkillContents.get('research-topic');
+describe('research-topic skill (M65 Iter 3), Web Research\'s own', () => {
+  let body: string | undefined;
+  beforeAll(async () => {
+    const ext: any = await import('../../ext/web-research/main.js');
+    body = ext.__test__.RESEARCH_TOPIC_SKILL;
+  });
 
-  it('is shipped in defaultSkillContents', () => {
-    expect(body).toBeDefined();
+  it('ships with the extension, not copied into every workspace', async () => {
     expect(typeof body).toBe('string');
     expect(body!.length).toBeGreaterThan(500);
+    expect(defaultSkillContents.has('research-topic')).toBe(false);
+    // Workspace copies made before are removed only when unchanged (same hash).
+    const { createHash } = await import('node:crypto');
+    expect(createHash('sha256').update(body!).digest('hex')).toBe(RETIRED_SEEDED_SKILLS.get('research-topic'));
   });
 
   it('has valid YAML frontmatter declaring kind=workflow', () => {

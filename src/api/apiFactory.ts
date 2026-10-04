@@ -77,6 +77,8 @@ import {
 } from './bridges/workspaceGraphBridge.js';
 import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboardBridge.js';
 import { CanvasBlocksBridge, type CanvasBlockRegistration } from './bridges/canvasBlocksBridge.js';
+import { registerContributedSlashCommand, registerContributedSkill } from '../services/chatContributions.js';
+import { parseSkillFrontmatter } from '../services/skillLoaderService.js';
 import { ILinkResolverService, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
 import type { ParsedLink } from '../links/parallxUri.js';
 import type { IThemeService } from '../services/serviceTypes.js';
@@ -355,6 +357,10 @@ export interface ParallxApiObject {
   readonly chat: {
     createChatParticipant(id: string, handler: (...args: unknown[]) => Promise<unknown>): IDisposable & { id: string; displayName: string; description: string; iconPath?: string; commands: { name: string; description: string }[] };
     registerTool(name: string, tool: { description: string; parameters: Record<string, unknown>; handler: (args: Record<string, unknown>, token: unknown) => Promise<{ content: string; isError?: boolean }>; requiresConfirmation: boolean }): IDisposable;
+    /** A chat slash command (`/name <input>` sends promptTemplate with {input} filled). */
+    registerSlashCommand(cmd: { name: string; description: string; promptTemplate: string }): IDisposable;
+    /** A skill (SKILL.md content), offered beside the workspace's own skills. */
+    registerSkill(content: string): IDisposable;
   } | undefined;
   /** Per-extension isolated database (external extensions only). */
   readonly database: {
@@ -1091,6 +1097,19 @@ export function createToolApi(
       ? Object.freeze({
           createChatParticipant: (id: string, handler: any) => chatBridge.createChatParticipant(id, handler),
           registerTool: (name: string, tool: any) => chatBridge.registerTool(name, tool),
+          // A slash command or a skill this tool brings to the chat while it
+          // runs; deactivation removes them (subscriptions).
+          registerSlashCommand: (cmd: { name: string; description: string; promptTemplate: string }) => {
+            const d = registerContributedSlashCommand({ ...cmd, ownerToolId: toolId });
+            subscriptions.push(d);
+            return d;
+          },
+          registerSkill: (content: string) => {
+            const name = String(parseSkillFrontmatter(String(content ?? ''))?.frontmatter?.name ?? '');
+            const d = registerContributedSkill(name, { content: String(content), ownerToolId: toolId });
+            subscriptions.push(d);
+            return d;
+          },
         })
       : undefined,
 

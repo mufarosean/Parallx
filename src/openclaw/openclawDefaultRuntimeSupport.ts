@@ -24,6 +24,7 @@ import {
 } from './openclawContextEngine.js';
 import { OPENCLAW_BOOTSTRAP_DEFAULTS, flattenPairsToMessages } from './participants/openclawParticipantRuntime.js';
 import { estimateMessageTokens, estimateMessagesTokens } from './openclawTokenBudget.js';
+import { getContributedSlashCommand, getContributedSlashCommands } from '../services/chatContributions.js';
 
 const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
   context: {
@@ -101,26 +102,21 @@ const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
     promptTemplate: '{input}',
     isBuiltIn: true,
   },
-  // M65 Iter 3: /research forwards a templated prompt that directs the
-  // agent to use the research-topic skill. The slash command itself does
-  // NOT touch the turn-scoped URL provenance set; URL seeding still flows
-  // exclusively through seedTurnFromUserMessage in the web-research
-  // extension. {input} is the user's topic verbatim.
-  research: {
-    name: 'research',
-    description: 'Research a topic on the public web (search → fetch → write summary to Research Hub)',
-    promptTemplate: 'Use the research-topic skill to investigate the following topic and write a summary page under the Research Hub: {input}',
-    isBuiltIn: true,
-  },
 };
 
 export function createOpenclawCommandRegistry(): IOpenclawCommandRegistryFacade {
   /** Dynamically registered commands (from user workspace or extensions). */
   const dynamicCommands: Record<string, IChatSlashCommand> = {};
 
-  /** Combined lookup: dynamic overrides built-in. */
+  /** A command a running tool brought (api.chat.registerSlashCommand). */
+  function fromTool(name: string): IChatSlashCommand | undefined {
+    const c = getContributedSlashCommand(name);
+    return c ? { name: c.name, description: c.description, promptTemplate: c.promptTemplate, isBuiltIn: false } : undefined;
+  }
+
+  /** Combined lookup: dynamic overrides a tool's, a tool's overrides built-in. */
   function getCommand(name: string): IChatSlashCommand | undefined {
-    return dynamicCommands[name] ?? OPENCLAW_COMMANDS[name];
+    return dynamicCommands[name] ?? fromTool(name) ?? OPENCLAW_COMMANDS[name];
   }
 
   return {
@@ -159,6 +155,7 @@ export function createOpenclawCommandRegistry(): IOpenclawCommandRegistryFacade 
     getRegisteredCommands(): readonly IChatSlashCommand[] {
       const all = new Map<string, IChatSlashCommand>();
       for (const cmd of Object.values(OPENCLAW_COMMANDS)) all.set(cmd.name, cmd);
+      for (const c of getContributedSlashCommands()) all.set(c.name, fromTool(c.name)!);
       for (const cmd of Object.values(dynamicCommands)) all.set(cmd.name, cmd);
       return [...all.values()];
     },

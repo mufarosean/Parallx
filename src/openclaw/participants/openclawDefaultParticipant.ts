@@ -226,7 +226,7 @@ async function runOpenclawDefaultTurn(
   // No handler above claimed this /command. Two cases, and the old code got
   // both wrong by always dropping the token (parseChatRequest strips ANY
   // leading /word into `command` — it has no registry to check against):
-  //   • REGISTERED, template-only (e.g. /research) — apply its promptTemplate,
+  //   • REGISTERED, template-only (a tool's command) — apply its promptTemplate,
   //     which is how those commands were always meant to work but never did:
   //     applyCommandTemplate had no production caller.
   //   • UNREGISTERED (e.g. /explain) — hand the word back. Otherwise "/explain

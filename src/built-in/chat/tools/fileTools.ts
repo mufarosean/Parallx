@@ -12,6 +12,7 @@ import type {
   IBuiltInToolRetrieval,
 } from '../chatTypes.js';
 import { markResourceSeen, fileResourceKey } from '../../../services/toolResourceRegistry.js';
+import { contributedSkillFile } from '../../../services/chatContributions.js';
 
 // ── Constants ──
 
@@ -171,7 +172,15 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
           // Tree is best-effort — don't fail file read if tree fails
         }
 
-        const result = await fs!.readFileContent(relPath);
+        let result: Awaited<ReturnType<NonNullable<typeof fs>['readFileContent']>>;
+        try {
+          result = await fs!.readFileContent(relPath);
+        } catch (err) {
+          // A skill a running tool brought has no file: read it from the tool.
+          const fromTool = contributedSkillFile(relPath);
+          if (fromTool === undefined) throw err;
+          return { content: treePrefix + `**${relPath}**\n\n${fromTool}` };
+        }
 
         // M85 Slice C — a successful read (even a range) marks the file as
         // seen for this session, unlocking fs_edit_file on it.

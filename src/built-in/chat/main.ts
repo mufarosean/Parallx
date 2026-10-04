@@ -135,6 +135,8 @@ import type { IHabitReading } from '../../openclaw/mind/habitDetector.js';
 import { habitToWorkflow } from '../../services/workflows/workflowSuggestions.js';
 import { isWorkspaceSealed, SEALED_WORKSPACE_SETTING } from '../../services/sealedWorkspace.js';
 import { createWorkflowSuggestTool } from './tools/workflowTools.js';
+import { getContributedSkills, onDidChangeChatContributions } from '../../services/chatContributions.js';
+import { sha256Hex } from '../../services/autonomyEventLog.js';
 
 // ── Local API type — only the subset we use ──
 
@@ -3461,11 +3463,24 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         try {
           const parallxExists = await fsAccessor!.exists('.parallx');
           if (parallxExists && fileService && workspaceService) {
-            const { defaultSkillContents } = await import('./skills/defaultSkillContents.js');
+            const { defaultSkillContents, RETIRED_SEEDED_SKILLS } = await import('./skills/defaultSkillContents.js');
             const folders = workspaceService.folders;
             if (folders && folders.length > 0) {
               const rootUri = folders[0].uri;
               let seeded = false;
+              // Skills once copied into every workspace that belong to a tool
+              // (it now brings them while it runs): the copy goes when the
+              // user never changed it.
+              for (const [name, sha] of RETIRED_SEEDED_SKILLS) {
+                const rel = `.parallx/skills/${name}/SKILL.md`;
+                try {
+                  if (!(await fsAccessor!.exists(rel))) continue;
+                  const r = await fsAccessor!.readFileContent(rel);
+                  if (await sha256Hex(r.content) !== sha) continue;
+                  await fileService.delete(rootUri.joinPath(normalizeWorkspaceRelativePath(`.parallx/skills/${name}`)), { recursive: true });
+                  seeded = true;
+                } catch { /* leave it */ }
+              }
               for (const [name, content] of defaultSkillContents) {
                 const rel = `.parallx/skills/${name}/SKILL.md`;
                 const skillExists = await fsAccessor!.exists(rel);
@@ -3485,6 +3500,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         } catch { /* best-effort seeding */ }
       }).catch(() => { /* best-effort */ });
       context.subscriptions.push(skillLoader);
+
+      // Skills running tools brought (api.chat.registerSkill), kept live:
+      // a tool turned off takes its skills with it.
+      const syncToolSkills = (): void => skillLoader.setContributedSkills(getContributedSkills());
+      syncToolSkills();
+      context.subscriptions.push(onDidChangeChatContributions(syncToolSkills));
 
       // Store reference so OpenClaw participant services can access skills
       _skillLoaderRef = skillLoader;

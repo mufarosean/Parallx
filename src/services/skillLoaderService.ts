@@ -368,6 +368,8 @@ export interface ISkillFileSystem {
 export class SkillLoaderService extends Disposable {
 
   private readonly _skills = new Map<string, ISkillManifest>();
+  /** Skills running tools brought (chatContributions); a workspace file of the same name wins. */
+  private readonly _contributed = new Map<string, ISkillManifest>();
 
   private readonly _onDidChangeSkills = this._register(new Emitter<ISkillsChangeEvent>());
   readonly onDidChangeSkills: Event<ISkillsChangeEvent> = this._onDidChangeSkills.event;
@@ -381,14 +383,36 @@ export class SkillLoaderService extends Disposable {
     this._fs = fs;
   }
 
-  /** All loaded skill manifests. */
+  /** All loaded skill manifests: the workspace's, then those running tools brought. */
   get skills(): readonly ISkillManifest[] {
-    return [...this._skills.values()];
+    return [...this._skills.values(), ...[...this._contributed.values()].filter((s) => !this._skills.has(s.name))];
   }
 
   /** Get a specific skill by name. */
   getSkill(name: string): ISkillManifest | undefined {
-    return this._skills.get(name);
+    return this._skills.get(name) ?? this._contributed.get(name);
+  }
+
+  /**
+   * The skills running tools brought (SKILL.md content each). Replaces the
+   * last set: a tool turned off takes its skills with it. Nothing is written
+   * to the workspace.
+   */
+  setContributedSkills(skills: readonly { content: string; ownerToolId: string }[]): void {
+    const next = new Map<string, ISkillManifest>();
+    for (const s of skills) {
+      const parsed = parseSkillFrontmatter(s.content);
+      // Same location as a workspace skill: the model reads skills by
+      // location, and fs_read_file answers it from the tool (contributedSkillFile).
+      const name = String(parsed?.frontmatter?.['name'] ?? '').trim();
+      const manifest = parsed ? validateSkillManifest(parsed, `.parallx/skills/${name}/SKILL.md`) : null;
+      if (manifest) next.set(manifest.name, manifest);
+    }
+    const added = [...next.values()].filter((m) => this._contributed.get(m.name)?.body !== m.body);
+    const removed = [...this._contributed.keys()].filter((n) => !next.has(n));
+    this._contributed.clear();
+    for (const [k, v] of next) this._contributed.set(k, v);
+    if (added.length || removed.length) this._onDidChangeSkills.fire({ added, removed });
   }
 
   /** Convert all loaded skills to IChatTool definitions. */

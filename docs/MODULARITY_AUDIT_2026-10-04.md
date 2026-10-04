@@ -26,8 +26,8 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 | 7 | `dashboard/widgetTemplates.ts:61-68` | Planner | "Daily brief" template reads the planner | open |
 | 8 | `workbench/menuBuilder.ts:143,145` | Planner, Worksheets | Tools menu lists them (greyed out when off) | **fixed**: tools add themselves (`contributes.menus` "menubar/tools") and leave when turned off |
 | 9 | `welcome/main.ts:196` | Planner | "Open Planner" on the Welcome page | **fixed**: Welcome lists the running tools' Tools-menu entries, redrawn as tools change (`api.tools.onDidChange`) |
-| 10 | `chat/skills/defaultSkillContents.ts:459-520` | Web Research | `research-topic` skill seeded into every workspace | open |
-| 11 | `openclaw/openclawDefaultRuntimeSupport.ts:104-113` | Web Research | `/research` chat command always offered | open |
+| 10 | `chat/skills/defaultSkillContents.ts:459-520` | Web Research | `research-topic` skill seeded into every workspace | **fixed**: the extension brings it (`api.chat.registerSkill`), nothing is written to the workspace; an untouched old copy is removed |
+| 11 | `openclaw/openclawDefaultRuntimeSupport.ts:104-113` | Web Research | `/research` chat command always offered | **fixed**: the extension brings it (`api.chat.registerSlashCommand`) |
 | 12 | `openclaw/heartbeatTriggers.ts:242,267`, `chat/main.ts:2385-2501` | Planner | Heartbeat notices and follow-ups name the planner | open |
 | 13 | `services/workflows/workflowLibrary.ts:27` (+ `workflowTypes.ts:67`, `workflowRunner.ts:39`) | Planner | "Morning Report" template reads the planner | open |
 | 14 | `openclaw/participants/openclawContextReport.ts:173` | Workspace Graph | `/context` tells you to use Workspace Graph | open |
