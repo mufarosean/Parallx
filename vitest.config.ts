@@ -6,6 +6,7 @@ export default defineConfig({
     include: ['tests/unit/**/*.test.ts'],
     globals: true,
     pool: 'forks',
+    setupFiles: ['tests/setup/domGeometry.ts'],
   },
   resolve: {
     alias: {

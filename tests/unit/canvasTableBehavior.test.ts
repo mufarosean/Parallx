@@ -50,17 +50,7 @@ import { resolveBlockUnitFromDOM } from '../../src/built-in/canvas/config/blockS
 
 const lowlight = createLowlight(common);
 
-// jsdom implements no layout, so `Range.getClientRects` — which ProseMirror
-// calls through `view.endOfTextblock` — simply isn't there.  prosemirror-tables
-// reaches it on every arrow key inside a cell (that fall-through is the whole
-// point of the stand-down rule below), and the throw surfaces as an *unhandled*
-// error because jsdom swallows listener exceptions.  Zero-rect stubs make the
-// measurement return "unknown", which is the correct answer for a headless DOM.
-const RangeProto = (globalThis as any).Range?.prototype;
-if (RangeProto && typeof RangeProto.getClientRects !== 'function') {
-  RangeProto.getClientRects = () => [] as unknown as DOMRectList;
-  RangeProto.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
-}
+// jsdom has no layout: the Range rect stubs come from tests/setup/domGeometry.ts.
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
