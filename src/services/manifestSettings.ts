@@ -31,6 +31,10 @@ interface ManifestConfigProperty {
   maximum?: number;
   scope?: string;
   category?: string;
+  /** A string kept encrypted at rest (safeStorage), never in a settings file. */
+  secret?: boolean;
+  /** The name shown in Settings (Title Case); derived from the key when absent. */
+  label?: string;
 }
 
 interface ManifestLike {
@@ -118,15 +122,19 @@ export function registerManifestConfiguration(
         default: defaultFor(type, prop),
         scope: prop.scope === 'user' ? 'user' : 'workspace',
         description: prop.description ?? key,
+        ...(prop.label ? { label: prop.label } : {}),
         category,
         ...(type === 'enum' ? { enumValues: prop.enum } : {}),
         ...(prop.minimum !== undefined ? { min: prop.minimum } : {}),
         ...(prop.maximum !== undefined ? { max: prop.maximum } : {}),
+        ...(prop.secret && type === 'string' ? { secret: true, scope: 'user' as const } : {}),
       };
       try {
         registry.register(schema);
         registered.push(key);
-        if (config && registry.bind) {
+        // Secrets live in safeStorage (the registry's own path), never in
+        // the configuration file an extension's settings are bound to.
+        if (config && registry.bind && !schema.secret) {
           registry.bind(key, _configBinding(key, schema.default, config, subscriptions));
         }
       } catch (err) {

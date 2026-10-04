@@ -19,7 +19,7 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 |---|---|---|---|---|
 | 1 | `canvas/config/blockRegistry.ts` | Planner, Atelier, Worksheets | Agenda, Media Gallery, Practice Problems in every / menu | **fixed** `a2d44b5b`: `api.canvas.registerBlock`, generic `toolBlock` node |
 | 2 | `services/settingsRegistryBootstrap.ts:72-79` | Budget, Browser, Flashcards, Atelier, Worksheets | Settings lists every *installed* tool's settings, on or off; never removed | **fixed**: registered as the tool starts, removed when it is turned off (values kept); the older configuration registry now releases them too |
-| 3 | `aiSettings/ui/aiSettingsPanel.ts:99,135`, `sections/webResearchSection.ts` | Web Research | "Web Research" settings section (API key, budget) always shown | open |
+| 3 | `aiSettings/ui/aiSettingsPanel.ts:99,135`, `sections/webResearchSection.ts` | Web Research | "Web Research" settings section (API key, budget) always shown | **fixed**: the extension declares its settings in its manifest (the key as a `secret`, kept in safeStorage); the core section is gone |
 | 4 | `canvas/menus/bubbleMenu.ts:132`; `editor/panes/pdfEditorPane.ts:2938`, `markdownEditorPane.ts:183`, `textEditorPane.ts:776` | Flashcards | "Make Flashcard" on every text selection | open |
 | 5 | `dashboard/widgets/timerWidget.ts` (+ `timerLogic.ts`) | Planner | Timer's Planner button and copy, on by default | open |
 | 6 | `dashboard/widgets/weatherWidget.ts`, `marketWidget.ts` | Web Research | Core widgets whose AI refresh needs Web Research's tools | open |
@@ -56,7 +56,7 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 | 27 | `services/browserAutomationService.ts` tool definitions, `browserAutomationTypes.ts` | Browser | open |
 | 28 | Policy lists naming tools: `openclawToolPolicy.ts:430` (`RED_TOOLS`), `sealedWorkspace.ts:21`, `openclawSystemPrompt.ts:434`, `commands/m70CommandPolicy.ts:57-59`, `dashboardBridge.ts:256` | Web Research, Browser, Budget, Planner, Atelier | open: should be declared by the tool |
 | 29 | `chat/input/chatInputPart.ts:594` (`application/x-mo-items`), `workbench.ts:2348`, `activityTaps.ts:248`, `chat/main.ts:2639` | Atelier, Planner | open |
-| 30 | `settings/settingsEditor.ts:79,86` (Planner and Web Research nav groups) | Planner, Web Research | open |
+| 30 | `settings/settingsEditor.ts:79,86` (Planner and Web Research nav groups) | Planner, Web Research | **fixed**: removed; their pages sit under Extensions like any tool's |
 | 31 | `theme/px-tokens.css:267-287`, `px-base.css:28`; `ui/brandIcons.ts`; `ui/emptyStates.ts:25-42` | Planner, Worksheets, others | open (styles/icons/copy the tool should bring) |
 | 32 | `package.json`: `@ghostery/adblocker-electron`, `onnxruntime-node`, `@univerjs/presets`, `jszip` | Browser, Atelier, Worksheets | open (packaging: a tool's dependencies ship with it) |
 

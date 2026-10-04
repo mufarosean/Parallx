@@ -119,8 +119,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../services/autonomyFeatureFlags.js').IAutonomyFeatureFlagsService>(IAutonomyFeatureFlagsService)
     : undefined;
 
-  // Global storage — needed by the Web Research section to read/write
-  // webResearch.* keys (Brave API key, daily budget, ambient toggle).
+  // Global storage, passed to the panel for the sections that keep values there.
   const globalStorage = api.services.has(IGlobalStorageService)
     ? api.services.get<import('../../platform/storage.js').IStorage>(IGlobalStorageService)
     : undefined;
@@ -140,7 +139,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       id: 'ai',
       label: 'AI & Models',
       order: 20,
-      description: 'Models, agent behavior, scheduled jobs, tools, MCP servers, and web research.',
+      description: 'Models, agent behavior, scheduled jobs, tools and MCP servers.',
       fill: true,
       render: (container) => {
         const cronService = api.services.has(ICronService)

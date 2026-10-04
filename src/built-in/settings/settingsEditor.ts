@@ -76,14 +76,13 @@ const NAV_GROUP_DEFS: readonly { id: string; label: string; members: readonly st
   { id: 'general',    label: 'General',            members: ['schema:General', 'schema:Workspace'] },
   { id: 'appearance', label: 'Appearance',         members: ['panel:appearance'] },
   { id: 'canvas',     label: 'Canvas',             members: ['schema:Canvas'] },
-  { id: 'planner',    label: 'Planner',            members: ['panel:planner', 'schema:Planner'] },
   {
     id: 'ai', label: 'AI', members: [
       'panel:ai',                    // the AI & Models managers panel → "Overview"
       'schema:AI',                   // provider enable toggles → "Providers"
       'schema:Model', 'schema:Agent', 'schema:Chat', 'schema:Persona',
       'schema:Retrieval', 'schema:Indexing', 'schema:Suggestions',
-      'schema:Tools', 'schema:Integrations', 'schema:Web Research',
+      'schema:Tools', 'schema:Integrations',
     ],
   },
   {

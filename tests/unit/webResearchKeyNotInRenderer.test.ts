@@ -49,15 +49,33 @@ describe('M65: Brave API key is never referenced from renderer-bundled code', ()
     expect(content).not.toMatch(/webResearch\.braveApiKey/i);
   });
 
-  it('WebResearchSection writes the Brave key via the secret bridge, not IGlobalStorageService', () => {
-    const src = readFileSync(
-      join(REPO_ROOT, 'src', 'aiSettings', 'ui', 'sections', 'webResearchSection.ts'),
-      'utf8',
-    );
-    // The Brave key constant must not be passed to IStorage.set/get.
-    expect(src).not.toMatch(/_storage[^\n]*\.(set|get)\([^)]*KEY_BRAVE_API_KEY/);
-    expect(src).not.toMatch(/storage\.(set|get)\(\s*['"`]webResearch\.braveApiKey/);
-    // Positive check: must use the secret storage service for the key.
-    expect(src).toMatch(/createSecretStorageService/);
+  it("the key is the extension's own setting, kept in safeStorage, never in a settings file", async () => {
+    // Web Research declares it in its manifest (secret: true); the Settings
+    // hub shows it only while the extension runs and writes it to safeStorage.
+    const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'ext', 'web-research', 'parallx-manifest.json'), 'utf8'));
+    const prop = manifest.contributes.configuration[0].properties['webResearch.braveApiKey'];
+    expect(prop).toMatchObject({ type: 'string', secret: true });
+
+    const { SettingsRegistryService } = await import('../../src/services/settingsRegistryService');
+    const { registerManifestConfiguration } = await import('../../src/services/manifestSettings');
+    const mem = () => { const m = new Map<string, string>(); return { get: async (k: string) => m.get(k), set: async (k: string, v: string) => { m.set(k, v); }, delete: async (k: string) => { m.delete(k); }, has: async (k: string) => m.has(k), keys: async () => [...m.keys()], clear: async () => m.clear(), m }; };
+    const user = mem();
+    const registry = new SettingsRegistryService(user as any, mem() as any);
+    await registry.initialize();
+    const secrets = new Map<string, string>();
+    registry.setSecretStorage({
+      setString: async (k: string, v: string) => { secrets.set(k, v); return { ok: true }; },
+      getString: async (k: string) => ({ ok: true, value: secrets.get(k) ?? null }),
+      delete: async (k: string) => { secrets.delete(k); return { ok: true }; },
+    } as any);
+    const bound: string[] = [];
+    registerManifestConfiguration(registry, manifest, {
+      getConfiguration: () => ({ get: () => undefined, update: async (k: string) => { bound.push(k); } }),
+    } as any);
+    expect(registry.getSchema('webResearch.braveApiKey')).toMatchObject({ secret: true });
+    await registry.setValue('webResearch.braveApiKey', 'BSA-test');
+    expect(secrets.get('webResearch.braveApiKey')).toBe('BSA-test');
+    expect(bound).toEqual([]); // never written to the configuration file
+    expect(JSON.stringify([...user.m.values()])).not.toMatch(/BSA-test/);
   });
 });

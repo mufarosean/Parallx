@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 let ext: any;
 let stored: Record<string, string>;
+let config: Record<string, unknown>;
 let DOMParserCtor: any;
 
 async function loadDOMParser() {
@@ -25,9 +26,20 @@ beforeEach(async () => {
   ext.__test__.resetTurn('turn-b');
   ext.__test__.resetTurn('default-turn');
   stored = {};
+  config = {};
   ext.__test__._setGlobalStorage({
     get: async (k: string) => stored[k] ?? null,
     set: async (k: string, v: string) => { stored[k] = v; },
+    delete: async (k: string) => { delete stored[k]; },
+  });
+  // Its limits are its own settings (manifest configuration).
+  ext.__test__._setApi({
+    workspace: {
+      getConfiguration: () => ({
+        get: (name: string, fallback: unknown) => (name in config ? config[name] : fallback),
+        update: async (name: string, value: unknown) => { config[name] = value; },
+      }),
+    },
   });
   ext.__test__._setBridge({
     webSearch: {
@@ -74,8 +86,8 @@ describe('per-turn search cap (default 20, configurable)', () => {
     expect(freshTurn.isError).toBe(false);
   });
 
-  it('honours a per-turn search cap configured in storage', async () => {
-    stored['webResearch.perTurnSearchCap'] = '2';
+  it('honours a per-turn search cap set in Settings', async () => {
+    config.perTurnSearchCap = 2;
     for (let i = 0; i < 2; i++) {
       // eslint-disable-next-line no-await-in-loop
       const r = await ext.__test__.webSearchTool({ query: `q${i}` }, 'turn-a');
@@ -84,6 +96,17 @@ describe('per-turn search cap (default 20, configurable)', () => {
     const capped = await ext.__test__.webSearchTool({ query: 'q3' }, 'turn-a');
     expect(capped.isError).toBe(true);
     expect(capped.errorCode).toBe('TURN_SEARCH_CAP');
+  });
+});
+
+describe('settings saved by the old core settings page', () => {
+  it('are carried over into the extension\'s own settings once', async () => {
+    stored['webResearch.dailyBudget'] = '40';
+    stored['webResearch.perTurnFetchCap'] = '3';
+    stored['webResearch.ambientEnabled'] = 'true';
+    await ext.__test__.migrateSettings();
+    expect(config).toEqual({ dailyBudget: 40, perTurnFetchCap: 3 });
+    expect(stored).toEqual({});
   });
 });
 
@@ -109,7 +132,7 @@ describe('per-day budget (default 100)', () => {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     })();
     // Pre-fill counter at the budget.
-    stored[ext.__test__.KEY_DAILY_BUDGET] = '100';
+    config.dailyBudget = 100;
     stored[ext.__test__.KEY_DAILY_COUNTER] = JSON.stringify({ date: today, count: 100 });
 
     const r = await ext.__test__.webSearchTool({ query: 'q' }, 'turn-fresh');
@@ -118,7 +141,7 @@ describe('per-day budget (default 100)', () => {
   });
 
   it('rolls over at local midnight (different date key resets count)', async () => {
-    stored[ext.__test__.KEY_DAILY_BUDGET] = '100';
+    config.dailyBudget = 100;
     stored[ext.__test__.KEY_DAILY_COUNTER] = JSON.stringify({ date: '1999-01-01', count: 100 });
     const r = await ext.__test__.webSearchTool({ query: 'q' }, 'turn-fresh');
     expect(r.isError).toBe(false);
@@ -127,7 +150,7 @@ describe('per-day budget (default 100)', () => {
 
 describe('soft-error shape', () => {
   it('budget errors return {isError:true,errorCode,content} — they do NOT throw', async () => {
-    stored[ext.__test__.KEY_DAILY_BUDGET] = '1';
+    config.dailyBudget = 1;
     stored[ext.__test__.KEY_DAILY_COUNTER] = JSON.stringify({
       date: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
       count: 1,

@@ -155,13 +155,13 @@ describe('AISettingsPanel', () => {
   it('renders navigation with the manager sections', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const navItems = parent.querySelectorAll('.ai-settings-nav__item');
-    expect(navItems.length).toBe(5);
+    // Web Research's settings are the extension's own (its manifest), not a core section.
+    expect(navItems.length).toBe(4);
     expect(Array.from(navItems).map((n) => n.textContent)).toEqual([
       'Model',
       'Agent',
       'Tools',
       'MCP Servers',
-      'Web Research',
     ]);
     panel.dispose();
   });
@@ -175,10 +175,10 @@ describe('AISettingsPanel', () => {
   it('renders the manager sections in content area', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const sections = parent.querySelectorAll('.ai-settings-section');
-    expect(sections.length).toBe(5);
+    expect(sections.length).toBe(4);
     const ids = Array.from(sections).map((s) => (s as HTMLElement).dataset.sectionId);
     // Scheduled jobs moved to Agents › Routines.
-    expect(ids).toEqual(['model', 'agent', 'tools', 'mcp', 'web-research']);
+    expect(ids).toEqual(['model', 'agent', 'tools', 'mcp']);
     panel.dispose();
   });
 

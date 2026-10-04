@@ -161,25 +161,33 @@ function _todayKey() {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-async function _readDailyBudget() {
-  if (!_globalStorage) return DEFAULT_DAILY_BUDGET;
-  const raw = await _globalStorage.get(KEY_DAILY_BUDGET);
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_DAILY_BUDGET;
+// The limits are this extension's own settings (its manifest), shown in
+// Settings only while it runs. Values saved before that, in global storage
+// by the old core settings page, are carried over once (_migrateSettings).
+function _cfgNumber(name, fallback) {
+  try {
+    const n = Number(_api && _api.workspace.getConfiguration('webResearch').get(name, fallback));
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+  } catch { return fallback; }
 }
 
-async function _readPerTurnSearchCap() {
-  if (!_globalStorage) return PER_TURN_SEARCH_CAP;
-  const raw = await _globalStorage.get(KEY_PER_TURN_SEARCH_CAP);
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : PER_TURN_SEARCH_CAP;
-}
+async function _readDailyBudget() { return _cfgNumber('dailyBudget', DEFAULT_DAILY_BUDGET); }
+async function _readPerTurnSearchCap() { return _cfgNumber('perTurnSearchCap', PER_TURN_SEARCH_CAP); }
+async function _readPerTurnFetchCap() { return _cfgNumber('perTurnFetchCap', PER_TURN_FETCH_CAP); }
 
-async function _readPerTurnFetchCap() {
-  if (!_globalStorage) return PER_TURN_FETCH_CAP;
-  const raw = await _globalStorage.get(KEY_PER_TURN_FETCH_CAP);
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : PER_TURN_FETCH_CAP;
+async function _migrateSettings() {
+  if (!_globalStorage || !_api) return;
+  const cfg = _api.workspace.getConfiguration('webResearch');
+  for (const [legacy, name] of [[KEY_DAILY_BUDGET, 'dailyBudget'], [KEY_PER_TURN_SEARCH_CAP, 'perTurnSearchCap'], [KEY_PER_TURN_FETCH_CAP, 'perTurnFetchCap']]) {
+    try {
+      const raw = await _globalStorage.get(legacy);
+      if (raw == null || raw === '') continue;
+      const n = Number(raw);
+      if (Number.isFinite(n) && n > 0) await cfg.update(name, Math.floor(n));
+      await _globalStorage.delete(legacy);
+    } catch (err) { console.warn('[web-research] settings carry-over:', err && err.message); }
+  }
+  try { await _globalStorage.delete(KEY_AMBIENT_ENABLED); } catch { /* none */ }
 }
 
 async function _readDailyCounter() {
@@ -934,6 +942,7 @@ export async function activate(api, _context) {
     console.warn('[web-research] global storage lookup failed:', err && err.message);
   }
 
+  await _migrateSettings();
   _registerTools(api);
   _registerLinkContract(api);
   if (api.commands && typeof api.commands.registerCommand === 'function') {
@@ -979,6 +988,8 @@ export const __test__ = Object.freeze({
   _buildHistoryLine,
   _historyFileName,
   _setGlobalStorage(stub) { _globalStorage = stub; },
+  _setApi(stub) { _api = stub; },
+  migrateSettings: () => _migrateSettings(),
   _setBridge(stub) { globalThis.parallxElectron = stub; },
   _setDOMParser(ctor) { _defaultDOMParser = ctor; },
   _setApi(stub) { _api = stub; },

@@ -6,12 +6,59 @@
   "publisher": "parallx",
   "description": "Lets the AI search the web and read pages, with every fetched page treated as untrusted content.",
   "main": "main.js",
-  "activationEvents": ["*"],
+  "activationEvents": [
+    "*"
+  ],
   "engines": {
     "parallx": "^0.1.0"
   },
   "capabilities": {
-    "fs": { "scope": "workspace-files", "modes": ["read", "write"] }
+    "fs": {
+      "scope": "workspace-files",
+      "modes": [
+        "read",
+        "write"
+      ]
+    }
   },
-  "contributes": {}
+  "contributes": {
+    "configuration": [
+      {
+        "title": "Web Research",
+        "properties": {
+          "webResearch.braveApiKey": {
+            "label": "Brave Search API Key",
+            "type": "string",
+            "secret": true,
+            "default": "",
+            "description": "Brave Search API key, needed for web searches. Get one at brave.com/search/api. Kept encrypted on this computer."
+          },
+          "webResearch.dailyBudget": {
+            "label": "Searches Per Day",
+            "type": "number",
+            "default": 100,
+            "minimum": 1,
+            "scope": "user",
+            "description": "Most web searches allowed per day. Resets at local midnight."
+          },
+          "webResearch.perTurnSearchCap": {
+            "label": "Searches Per Reply",
+            "type": "number",
+            "default": 20,
+            "minimum": 1,
+            "scope": "user",
+            "description": "Most web searches the AI may make in one reply."
+          },
+          "webResearch.perTurnFetchCap": {
+            "label": "Pages Read Per Reply",
+            "type": "number",
+            "default": 20,
+            "minimum": 1,
+            "scope": "user",
+            "description": "Most pages the AI may read in one reply."
+          }
+        }
+      }
+    ]
+  }
 }
