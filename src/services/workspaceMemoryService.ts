@@ -1,6 +1,7 @@
 import { Disposable } from '../platform/lifecycle.js';
 import { URI } from '../platform/uri.js';
 import type { IFileService, IWorkspaceMemoryService, IWorkspaceService } from './serviceTypes.js';
+import { appDayKey } from './localTime.js';
 
 const MEMORY_ROOT_SEGMENTS = ['.parallx', 'memory'] as const;
 const DURABLE_MEMORY_FILE = 'MEMORY.md';
@@ -49,11 +50,9 @@ const LEGACY_CONCEPTS_SIGNATURE_PATTERNS: readonly RegExp[] = [
  */
 const USER_FILE_SEGMENTS = ['.parallx', 'USER.md'] as const;
 
+/** The user's day `date` falls on (the app's Time Zone): daily memory files are named by it. */
 function formatIsoDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return appDayKey(date);
 }
 
 function normalizeMarkdown(content: string): string {

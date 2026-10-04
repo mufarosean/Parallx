@@ -4,6 +4,7 @@
 // list of user-configured quick links. No refresh handler — content is
 // either time-derived (client) or static-from-config.
 
+import { appDateParts, appDateString } from '../../../services/localTime.js';
 import type {
   WidgetContext,
   WidgetHandle,
@@ -36,7 +37,7 @@ const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"
 function pad(n: number): string { return n.toString().padStart(2, '0'); }
 
 function formatGreeting(name: string): string {
-  const hour = new Date().getHours();
+  const hour = appDateParts(Date.now()).hour;
   const period = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   return name ? `${period}, ${name}.` : `${period}.`;
 }
@@ -108,7 +109,7 @@ export const CLOCK_AND_LINKS_WIDGET: WidgetTypeRegistration<ClockAndLinksConfig>
       const now = new Date();
       greeting.textContent = formatGreeting(currentConfig.greetingName);
       time.textContent = formatTime(now, currentConfig.clockFormat, currentConfig.showSeconds);
-      date.textContent = now.toLocaleDateString(undefined, {
+      date.textContent = appDateString(now, {
         weekday: 'long',
         month: 'long',
         day: 'numeric',
@@ -162,16 +163,17 @@ export const CLOCK_AND_LINKS_WIDGET: WidgetTypeRegistration<ClockAndLinksConfig>
   },
 };
 
-function formatTime(now: Date, format: ClockFormat, withSeconds: boolean): string {
+function formatTime(at: Date, format: ClockFormat, withSeconds: boolean): string {
+  const now = appDateParts(at);
   if (format === '24h') {
-    const base = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    return withSeconds ? `${base}:${pad(now.getSeconds())}` : base;
+    const base = `${pad(now.hour)}:${pad(now.minute)}`;
+    return withSeconds ? `${base}:${pad(now.second)}` : base;
   }
-  const h24 = now.getHours();
+  const h24 = now.hour;
   const period = h24 < 12 ? 'AM' : 'PM';
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  const base = `${h12}:${pad(now.getMinutes())}`;
-  const body = withSeconds ? `${base}:${pad(now.getSeconds())}` : base;
+  const base = `${h12}:${pad(now.minute)}`;
+  const body = withSeconds ? `${base}:${pad(now.second)}` : base;
   return `${body} ${period}`;
 }
 

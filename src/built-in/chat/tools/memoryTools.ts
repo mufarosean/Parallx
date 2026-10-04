@@ -1,3 +1,4 @@
+import { appDayKey, appTime } from '../../../services/localTime.js';
 import type {
   IChatTool,
   IToolResult,
@@ -26,11 +27,9 @@ const DURABLE_MEMORY_PATH = `${MEMORY_ROOT}/MEMORY.md`;
 const USER_MEMORY_CAP_CHARS = 1500;
 const DURABLE_MEMORY_CAP_CHARS = 2500;
 
+/** The user's day (the app's Time Zone): daily memory files are named by it. */
 function formatDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return appDayKey(date);
 }
 
 function resolveDailyPath(dateInput?: string): { path: string; date: string } | { error: string } {
@@ -266,7 +265,7 @@ function parseDateString(date: string): Date {
   if (!m) {
     return new Date();
   }
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return new Date(appTime(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
 }
 
 /** Capitalize-first-word version of a kebab slug — mirrors `humanizeSlug` in WorkspaceMemoryService. */
@@ -499,9 +498,9 @@ export function createMemoryEditTool(
         if (!m) {
           return { content: '`date` must be in YYYY-MM-DD format.', isError: true };
         }
-        // Construct as local-time so it round-trips through `formatIsoDate`
-        // (which uses local-time accessors) regardless of the user's timezone.
-        date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        // Midnight of that day in the app's Time Zone, so it round-trips through
+        // `formatIsoDate` (which reads the day in that zone).
+        date = new Date(appTime(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
       }
 
       // ── file=lesson branch (M81 Phase 8) ──

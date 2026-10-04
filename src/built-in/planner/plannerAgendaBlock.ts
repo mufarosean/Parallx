@@ -11,6 +11,7 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { CanvasBlockRegistration } from '../../api/bridges/canvasBlocksBridge.js';
+import { addAppDays, appDateString, appTimeString, startOfAppDay } from '../../services/localTime.js';
 
 export type AgendaRange = 'today' | 'tomorrow' | 'week';
 export type AgendaShow = 'all' | 'events' | 'tasks';
@@ -30,17 +31,14 @@ export const AGENDA_SHOWS: ReadonlyArray<{ value: AgendaShow; label: string }> =
 export interface AgendaEventLike { readonly id: string; readonly title: string; readonly startAt: number; readonly endAt: number; readonly allDay: boolean; readonly color: string | null }
 export interface AgendaTaskLike { readonly id: string; readonly title: string; readonly status: string; readonly dueAt: number | null; readonly color: string | null }
 
+/** Midnight starting the user's day (the app's Time Zone). */
 export function startOfDay(t: number): number {
-  const d = new Date(t);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  return startOfAppDay(t);
 }
 
 /** Adds whole calendar days (a day across a clock change is not 24 hours). */
 function addDays(t: number, days: number): number {
-  const d = new Date(t);
-  d.setDate(d.getDate() + days);
-  return d.getTime();
+  return addAppDays(t, days);
 }
 
 /** The window a range covers, both ends inclusive. */
@@ -111,15 +109,15 @@ export function agendaDayLabel(start: number, now: number = Date.now()): string 
   const today = startOfDay(now);
   if (start === today) return 'Today';
   if (start === addDays(today, 1)) return 'Tomorrow';
-  return new Date(start).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  return appDateString(start, { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
 function timeOf(t: number): string {
-  return new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return appTimeString(t, { hour: 'numeric', minute: '2-digit' });
 }
 
 export function agendaTimeLabel(it: AgendaItem): string {
-  if (it.kind === 'task') return it.overdue ? `Due ${new Date(it.dueAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '';
+  if (it.kind === 'task') return it.overdue ? `Due ${appDateString(it.dueAt, { month: 'short', day: 'numeric' })}` : '';
   if (it.allDay) return 'All day';
   return `${timeOf(it.startAt)} – ${timeOf(it.endAt)}`;
 }

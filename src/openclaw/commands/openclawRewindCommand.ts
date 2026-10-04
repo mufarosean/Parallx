@@ -10,6 +10,7 @@
 //   /rewind <id>     — restore checkpoint #id
 
 import type { IChatResponseStream } from '../../services/chatTypes.js';
+import { appTimeString } from '../../services/localTime.js';
 import {
   listCheckpoints,
   latestCheckpoint,
@@ -32,7 +33,7 @@ export async function tryHandleOpenclawRewindCommand(
       return true;
     }
     const lines = entries.map((e) => {
-      const when = new Date(e.at).toLocaleTimeString();
+      const when = appTimeString(new Date(e.at));
       const kind = e.priorContent === null ? 'created' : e.tool === 'fs_delete_file' ? 'deleted' : 'modified';
       const intent = e.intent ? ` · ${e.intent}` : '';
       return `- **#${e.id}** ${when} · \`${e.path}\` ${kind} by ${e.tool}${intent}`;

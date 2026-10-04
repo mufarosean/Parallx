@@ -2,6 +2,7 @@
 // Pattern: Panel view contribution (same as indexing-log tool)
 
 import './diagnostics.css';
+import { appTimeString } from '../../services/localTime.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
@@ -168,7 +169,7 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
 
     // Status line
     const lastTime = results.length > 0
-      ? new Date(Math.max(...results.map(r => r.timestamp))).toLocaleTimeString()
+      ? appTimeString(Math.max(...results.map(r => r.timestamp)))
       : 'never';
     statusLine.textContent = `Last checked: ${lastTime}`;
 

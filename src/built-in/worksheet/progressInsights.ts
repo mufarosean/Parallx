@@ -9,6 +9,7 @@
 // timeline drawn from every rating, what is due again, what keeps going
 // wrong, and where to start next.
 import { normalizeRating, RATING_SCORE, type Rating } from './problemImport.js';
+import { appDayKey } from '../../services/localTime.js';
 
 export interface InsightItem {
   readonly id: number;
@@ -77,9 +78,9 @@ export interface Insights {
 export const DUE_DAYS: Record<'hard' | 'medium', number> = { hard: 3, medium: 7 };
 const DAY = 24 * 60 * 60 * 1000;
 
+/** `YYYY-MM-DD`: the user's day `ms` falls on, in the app's Time Zone (the setting, else this computer's zone). */
 export function dayKey(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return appDayKey(ms);
 }
 
 function paperProgress(paper: string, items: readonly InsightItem[]): PaperProgress {

@@ -1,4 +1,5 @@
 import { Disposable } from '../platform/lifecycle.js';
+import { appTime } from './localTime.js';
 import type {
   ICanonicalMemorySearchResult,
   ICanonicalMemorySearchService,
@@ -42,7 +43,7 @@ export class CanonicalMemorySearchService extends Disposable implements ICanonic
     const requestedDate = normalizeDate(options?.date);
     const durablePath = this._workspaceMemoryService.getDurableMemoryRelativePath();
     const requestedDailyPath = requestedDate
-      ? this._workspaceMemoryService.getDailyMemoryRelativePath(new Date(`${requestedDate}T00:00:00.000Z`))
+      ? this._workspaceMemoryService.getDailyMemoryRelativePath(new Date(appTime(+requestedDate.slice(0, 4), +requestedDate.slice(5, 7) - 1, +requestedDate.slice(8, 10))))
       : undefined;
 
     const chunks = await this._retrievalService.retrieve(trimmed, {

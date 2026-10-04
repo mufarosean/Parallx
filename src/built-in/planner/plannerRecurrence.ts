@@ -10,6 +10,8 @@
 // what the popover's "Repeats" control can produce; richer RRULE (BYMONTHDAY,
 // BYSETPOS, exceptions) can layer on later without changing the storage.
 
+import { appDateParts, appTime } from '../../services/localTime.js';
+
 export type RecurrenceFreq = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 
 export interface ParsedRecurrence {
@@ -114,22 +116,17 @@ export function expandRecurrence(
   };
 
   if (parsed.freq === 'WEEKLY' && parsed.byDay && parsed.byDay.length > 0) {
-    const base = new Date(startAt);
-    const h = base.getHours(), mi = base.getMinutes(), se = base.getSeconds(), ms = base.getMilliseconds();
-    const weekStart = new Date(base);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    weekStart.setHours(0, 0, 0, 0);
-    const days = [...parsed.byDay].sort((a, b) => a - b);
+    // Wall-clock days and times in the app's Time Zone: a series repeats at
+    // the same local time on the user's calendar, across clock changes.
+    const b = appDateParts(startAt);
+    const sunday = b.day - b.weekday;
+    const days = [...parsed.byDay].sort((a, c) => a - c);
 
     for (let wk = 0; wk < HARD_CAP; wk++) {
-      const weekBase = new Date(weekStart);
-      weekBase.setDate(weekBase.getDate() + wk * 7 * parsed.interval);
-      if (weekBase.getTime() > ceiling) break;
+      const weekDay = sunday + wk * 7 * parsed.interval;
+      if (appTime(b.year, b.month, weekDay) > ceiling) break;
       for (const dow of days) {
-        const occ = new Date(weekBase);
-        occ.setDate(occ.getDate() + dow);
-        occ.setHours(h, mi, se, ms);
-        const t = occ.getTime();
+        const t = appTime(b.year, b.month, weekDay + dow, b.hour, b.minute, b.second, b.millisecond);
         if (t < startAt) continue;            // before the series start
         if (!tryEmit(t)) return out;
       }
@@ -149,35 +146,28 @@ export function expandRecurrence(
   //     years ago) exhausted the guard before reaching the window and
   //     silently vanished from every view. Deriving from k lets COUNT-less
   //     series FAST-FORWARD near the window instead of replaying history.
-  const base = new Date(startAt);
-  const baseDay = base.getDate();
-  const baseMonth = base.getMonth();
+  // Wall-clock fields in the app's Time Zone (see the weekly case above).
+  const b = appDateParts(startAt);
+  const at = (y: number, mo: number, d: number): number =>
+    appTime(y, mo, d, b.hour, b.minute, b.second, b.millisecond);
+  /** True when (y, mo, d) is a real calendar date (no rollover). */
+  const exists = (y: number, mo: number, d: number): boolean => {
+    const c = new Date(Date.UTC(2000, 0, 1));
+    c.setUTCFullYear(y, mo, d);
+    return c.getUTCDate() === d && c.getUTCMonth() === ((mo % 12) + 12) % 12;
+  };
 
   const occurrenceAt = (k: number): number | null => {
-    if (parsed.freq === 'DAILY') {
-      const d = new Date(base);
-      d.setDate(d.getDate() + k * parsed.interval);
-      return d.getTime();
-    }
-    if (parsed.freq === 'WEEKLY') {
-      const d = new Date(base);
-      d.setDate(d.getDate() + k * 7 * parsed.interval);
-      return d.getTime();
-    }
+    if (parsed.freq === 'DAILY') return at(b.year, b.month, b.day + k * parsed.interval);
+    if (parsed.freq === 'WEEKLY') return at(b.year, b.month, b.day + k * 7 * parsed.interval);
     if (parsed.freq === 'MONTHLY') {
-      const d = new Date(base);
-      d.setDate(1); // avoid overflow while changing the month
-      d.setMonth(d.getMonth() + k * parsed.interval);
-      d.setDate(baseDay);
-      return d.getDate() === baseDay ? d.getTime() : null; // short month → skip
+      const mo = b.month + k * parsed.interval;
+      const y = b.year + Math.floor(mo / 12);
+      const m = ((mo % 12) + 12) % 12;
+      return exists(y, m, b.day) ? at(y, m, b.day) : null; // short month → skip
     }
-    const d = new Date(base);
-    d.setDate(1); // avoid Feb-29 overflow while changing the year
-    d.setFullYear(d.getFullYear() + k * parsed.interval);
-    d.setMonth(baseMonth, baseDay);
-    return (d.getMonth() === baseMonth && d.getDate() === baseDay)
-      ? d.getTime()
-      : null; // Feb 29 in a non-leap year → skip
+    const y = b.year + k * parsed.interval;
+    return exists(y, b.month, b.day) ? at(y, b.month, b.day) : null; // Feb 29 in a non-leap year → skip
   };
 
   // Fast-forward: COUNT-less series can start near the window (padded by a

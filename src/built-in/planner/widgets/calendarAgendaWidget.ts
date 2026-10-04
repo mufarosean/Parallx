@@ -7,6 +7,7 @@ import type {
   WidgetTypeRegistration,
 } from '../../dashboard/dashboardTypes.js';
 import type { PlannerDataService } from '../plannerDataService.js';
+import { addAppDays, appDateString, appTimeString, isSameAppDay } from '../../../services/localTime.js';
 
 interface Config {
   readonly windowDays: number;
@@ -26,15 +27,13 @@ interface AgendaRow {
 }
 
 function fmtDateLabel(ts: number): string {
-  const d = new Date(ts);
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) return 'Today';
-  const tom = new Date(); tom.setDate(tom.getDate() + 1);
-  if (d.toDateString() === tom.toDateString()) return 'Tomorrow';
-  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  const now = Date.now();
+  if (isSameAppDay(ts, now)) return 'Today';
+  if (isSameAppDay(ts, addAppDays(now, 1))) return 'Tomorrow';
+  return appDateString(ts, { weekday: 'long', month: 'short', day: 'numeric' });
 }
 function fmtTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return appTimeString(ts, { hour: 'numeric', minute: '2-digit' });
 }
 
 export function buildCalendarAgendaWidget(data: PlannerDataService): WidgetTypeRegistration<Config> {

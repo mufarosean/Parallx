@@ -7,6 +7,7 @@
 // (restorePageRevision — non-destructive: it snapshots the current state first).
 
 import { $ } from '../../ui/dom.js';
+import { formatLocalDateTime } from '../../services/localTime.js';
 import { decodeCanvasContent } from './contentSchema.js';
 import type { ICanvasDataService, IPageRevision, RevisionSource } from './canvasTypes.js';
 
@@ -188,7 +189,5 @@ function formatTimestamp(iso: string): string {
   // parseable ISO before formatting locally.
   const ms = Date.parse(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
   if (!Number.isFinite(ms)) return iso;
-  const d = new Date(ms);
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return formatLocalDateTime(ms, { bare: true });
 }

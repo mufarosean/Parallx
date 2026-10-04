@@ -5,6 +5,7 @@
 // draws (Needs you, Running now, Coming up, Done today). Kept apart from the
 // DOM so the wording and ordering are testable.
 
+import { addAppDays, appDateParts, appDateString, isSameAppDay } from '../../services/localTime.js';
 import type { AgentApprovalRequest, AgentPlanStep, AgentTaskRecord, AgentTaskStatus } from '../../agent/agentTypes.js';
 import type { ICronJob } from '../../openclaw/openclawCronService.js';
 import type { IRailRow } from '../../services/autonomyTaskRailService.js';
@@ -109,13 +110,12 @@ export function nameFrom(text: string, fallback: string): string {
 }
 
 function hhmm(ms: number): string {
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const d = appDateParts(ms);
+  return `${String(d.hour).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}`;
 }
 
 function sameDay(a: number, b: number): boolean {
-  const x = new Date(a); const y = new Date(b);
-  return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate();
+  return isSameAppDay(a, b);
 }
 
 /** "in 5 min", "18:00", "Tomorrow 07:30", "Mon 09:00". */
@@ -124,8 +124,8 @@ export function formatWhen(at: number, now: number): string {
   if (diff < 60_000) return 'Now';
   if (diff < 60 * 60_000) return `in ${Math.round(diff / 60_000)} min`;
   if (sameDay(at, now)) return hhmm(at);
-  if (sameDay(at, now + 86_400_000)) return `Tomorrow ${hhmm(at)}`;
-  return `${new Date(at).toLocaleDateString(undefined, { weekday: 'short' })} ${hhmm(at)}`;
+  if (sameDay(at, addAppDays(now, 1))) return `Tomorrow ${hhmm(at)}`;
+  return `${appDateString(at, { weekday: 'short' })} ${hhmm(at)}`;
 }
 
 function every(ms: number): string {

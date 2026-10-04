@@ -9,6 +9,7 @@ import './indexingLog.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
+import { appDateParts } from '../../services/localTime.js';
 import { IIndexingPipelineService, IVectorStoreService } from '../../services/serviceTypes.js';
 import type { IIndexingPipelineService as IndexingPipelineServiceShape } from '../../services/serviceTypes.js';
 import type { IndexingProgress, IndexingSourceResult } from '../../services/indexingPipeline.js';
@@ -422,8 +423,8 @@ function createEntryRow(entry: IndexingLogEntry): HTMLElement {
 
   // Timestamp
   const ts = $('span.indexing-log-ts');
-  const d = new Date(timestamp);
-  ts.textContent = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  const d = appDateParts(timestamp);
+  ts.textContent = `${pad2(d.hour)}:${pad2(d.minute)}:${pad2(d.second)}`;
   row.appendChild(ts);
 
   // Status icon

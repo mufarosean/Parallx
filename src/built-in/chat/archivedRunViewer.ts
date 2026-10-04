@@ -6,6 +6,7 @@
 // reasoning render exactly as they did live.
 
 import type { IChatSession } from '../../services/chatTypes.js';
+import { appDateTimeString } from '../../services/localTime.js';
 import { renderContentPart } from './rendering/chatContentParts.js';
 
 export const ARCHIVED_RUN_EDITOR_TYPE = 'chat-archived-run';
@@ -47,7 +48,7 @@ export function renderArchivedRun(
   const sub = document.createElement('div');
   sub.className = 'archived-run-view__sub';
   const label = origin ? (ORIGIN_LABEL[origin] ?? origin) : 'Autonomous';
-  sub.textContent = `${label} · read-only transcript · ${new Date(run.createdAt).toLocaleString()}`;
+  sub.textContent = `${label} · read-only transcript · ${appDateTimeString(new Date(run.createdAt))}`;
   header.appendChild(sub);
   container.appendChild(header);
 

@@ -29,6 +29,7 @@ import type {
   UpdateTaskInput,
 } from './plannerTypes.js';
 import { expandRecurrence, setRRuleUntil } from './plannerRecurrence.js';
+import { appDateParts, appTime } from '../../services/localTime.js';
 
 /**
  * Setting key: which calendar new events land in when a caller (quick-add, the
@@ -178,10 +179,9 @@ function instanceOriginalStart(id: string): number | null {
  * user moves the task on Google's side. Exported for unit tests.
  */
 export function carryTimeOfDay(dateMs: number, timeSourceMs: number): number {
-  const t = new Date(timeSourceMs);
-  const d = new Date(dateMs);
-  d.setHours(t.getHours(), t.getMinutes(), t.getSeconds(), t.getMilliseconds());
-  return d.getTime();
+  const t = appDateParts(timeSourceMs);
+  const d = appDateParts(dateMs);
+  return appTime(d.year, d.month, d.day, t.hour, t.minute, t.second, t.millisecond);
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -1345,29 +1345,32 @@ export class PlannerDataService extends Disposable {
     // Walk hour-by-hour through the next `withinDays`, intersecting the
     // working window per day. Stop at the first contiguous gap of
     // duration ≥ durationMs.
-    let cursor = new Date(now);
+    // Hours are the user's (the app's Time Zone).
+    const at = (ms: number, hour: number, minute = 0, dayOffset = 0): number => {
+      const p = appDateParts(ms);
+      return appTime(p.year, p.month, p.day + dayOffset, hour, minute);
+    };
     // Round cursor up to the next 15-min boundary so suggestions look human.
-    cursor.setMinutes(Math.ceil(cursor.getMinutes() / 15) * 15, 0, 0);
+    const n = appDateParts(now);
+    let cursor = at(now, n.hour, Math.ceil(n.minute / 15) * 15);
 
-    while (cursor.getTime() < windowEnd) {
-      const hour = cursor.getHours();
+    while (cursor < windowEnd) {
+      const hour = appDateParts(cursor).hour;
       if (hour < startHour) {
-        cursor.setHours(startHour, 0, 0, 0);
+        cursor = at(cursor, startHour);
         continue;
       }
       if (hour >= endHour) {
-        cursor.setDate(cursor.getDate() + 1);
-        cursor.setHours(startHour, 0, 0, 0);
+        cursor = at(cursor, startHour, 0, 1);
         continue;
       }
 
       // Day-end clamp.
-      const dayEnd = new Date(cursor);
-      dayEnd.setHours(endHour, 0, 0, 0);
+      const dayEnd = at(cursor, endHour);
 
       // Largest open chunk = from cursor to the next event start (or day end).
-      const slotStart = cursor.getTime();
-      let slotEnd = Math.min(dayEnd.getTime(), windowEnd);
+      const slotStart = cursor;
+      let slotEnd = Math.min(dayEnd, windowEnd);
       for (const ev of events) {
         if (ev.endAt <= slotStart) continue;
         if (ev.startAt < slotEnd) {
@@ -1387,10 +1390,9 @@ export class PlannerDataService extends Disposable {
       }
       if (nextCursor <= slotStart) {
         // No event blocked us yet duration didn't fit — push to next day.
-        cursor.setDate(cursor.getDate() + 1);
-        cursor.setHours(startHour, 0, 0, 0);
+        cursor = at(cursor, startHour, 0, 1);
       } else {
-        cursor = new Date(nextCursor);
+        cursor = nextCursor;
       }
     }
     return null;

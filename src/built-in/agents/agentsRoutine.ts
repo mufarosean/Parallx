@@ -5,6 +5,7 @@
 // optionally the page it writes its result into. The next three runs are shown as you choose, and Try It
 // Once Now saves the routine and runs it straight away.
 
+import { appDateParts, appDateString, appTime } from '../../services/localTime.js';
 import { $ } from '../../ui/dom.js';
 import { createButton, createSectionLabel } from '../../ui/kit.js';
 import { svc } from './agentsServices.js';
@@ -25,11 +26,11 @@ export function routineCron(days: ReadonlySet<number>, hour: number, minute: num
 export function nextRoutineRuns(days: ReadonlySet<number>, hour: number, minute: number, now: number, count = 3): number[] {
   const out: number[] = [];
   if (days.size === 0) return out;
-  const d = new Date(now);
-  d.setSeconds(0, 0);
+  // The user's wall clock (the app's Time Zone), as the schedule runs on it.
+  const d = appDateParts(now);
   for (let i = 0; i < 7 * count + 1 && out.length < count; i++) {
-    const c = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i, hour, minute, 0, 0);
-    if (c.getTime() > now && days.has(c.getDay())) out.push(c.getTime());
+    const c = appTime(d.year, d.month, d.day + i, hour, minute, 0, 0);
+    if (c > now && days.has(appDateParts(c).weekday)) out.push(c);
   }
   return out;
 }
@@ -42,9 +43,9 @@ export function routinePrompt(what: string, page: string): string {
 }
 
 function fmtRun(ms: number): string {
-  const d = new Date(ms);
-  const day = d.toLocaleDateString(undefined, { weekday: 'long' });
-  return `${day} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const d = appDateParts(ms);
+  const day = appDateString(ms, { weekday: 'long' });
+  return `${day} ${String(d.hour).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}`;
 }
 
 export function renderRoutineForm(host: HTMLElement, onClose: (saved: boolean) => void): () => void {

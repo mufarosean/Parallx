@@ -18,6 +18,7 @@ import { Dropdown, type IDropdownItem } from '../../ui/dropdown.js';
 import { createIconElement, getIcon } from '../../ui/iconRegistry.js';
 import { createButton } from '../../ui/kit.js';
 import { showExtensionContextMenu } from '../../ui/contextMenu.js';
+import { addAppDays, appDateParts, appDateString, appTime, appTimeString, isSameAppDay, startOfAppDay } from '../../services/localTime.js';
 
 interface PlannerEditorInput {
   readonly id: string;          // === instanceId; only one ('main') for M82
@@ -147,29 +148,31 @@ function buildColorSwatches(
   return wrap;
 }
 
-function startOfDay(date: Date): Date { const d = new Date(date); d.setHours(0, 0, 0, 0); return d; }
-function endOfDay(date: Date): Date { const d = new Date(date); d.setHours(23, 59, 59, 999); return d; }
+// Days, weeks and months are the user's (the app's Time Zone setting, else
+// this computer's zone): a Date here is an instant, and its calendar fields
+// are read with appDateParts, never with the machine-local getters.
+function startOfDay(date: Date): Date { return new Date(startOfAppDay(date)); }
+function endOfDay(date: Date): Date { return new Date(addAppDays(startOfAppDay(date), 1) - 1); }
 function startOfWeek(date: Date): Date {
   // Week starts on Sunday for compatibility with most calendars; could be configurable later.
-  const d = startOfDay(date);
-  d.setDate(d.getDate() - d.getDay());
-  return d;
+  const d = startOfAppDay(date);
+  return new Date(addAppDays(d, -appDateParts(d).weekday));
 }
 function startOfMonth(date: Date): Date {
-  const d = startOfDay(date);
-  d.setDate(1);
-  return d;
+  const p = appDateParts(date);
+  return new Date(appTime(p.year, p.month, 1));
 }
 function endOfMonth(date: Date): Date {
-  const d = startOfMonth(date);
-  d.setMonth(d.getMonth() + 1);
-  d.setMilliseconds(-1);
-  return d;
+  const p = appDateParts(date);
+  return new Date(appTime(p.year, p.month + 1, 1) - 1);
 }
 function addDays(date: Date, n: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + n);
-  return d;
+  return new Date(addAppDays(date, n));
+}
+/** `date`'s day in the app zone at the given wall-clock time. */
+function atTime(date: Date | number, hour: number, minute = 0): number {
+  const p = appDateParts(date);
+  return appTime(p.year, p.month, p.day, hour, minute);
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────────
@@ -375,12 +378,11 @@ class PlannerEditorPane implements IDisposable {
         case 'c':
           // C — quick create (event in calendar and today, task in tasks)
           if (this._activeTab === 'calendar' || this._activeTab === 'today') {
-            const start = new Date(this._cursorDate);
-            start.setHours(9, 0, 0, 0);
+            const start = atTime(this._cursorDate, 9);
             this._openEventPopover({
               mode: 'create',
-              startAt: start.getTime(),
-              endAt: start.getTime() + 60 * 60 * 1000,
+              startAt: start,
+              endAt: start + 60 * 60 * 1000,
             }, new DOMRect(window.innerWidth / 2 - 180, 100, 0, 0));
           } else {
             this._openTaskPopover({ mode: 'create' }, new DOMRect(window.innerWidth / 2 - 180, 100, 0, 0));
@@ -584,9 +586,8 @@ class PlannerEditorPane implements IDisposable {
         openEvent: (ev, anchor) => this._openEventPopover({ mode: 'edit', event: ev }, anchor),
         newEvent: (anchor) => {
           // Next whole hour today, the default event length the popover applies.
-          const start = new Date();
-          start.setHours(start.getHours() + 1, 0, 0, 0);
-          this._openEventPopover({ mode: 'create', startAt: start.getTime(), endAt: start.getTime() + 60 * 60 * 1000 }, anchor);
+          const start = atTime(Date.now(), appDateParts(Date.now()).hour + 1);
+          this._openEventPopover({ mode: 'create', startAt: start, endAt: start + 60 * 60 * 1000 }, anchor);
         },
         openTask: (task, anchor) => this._openTaskPopover({ mode: 'edit', task }, anchor),
         openDay: (dayStart) => {
@@ -637,7 +638,7 @@ class PlannerEditorPane implements IDisposable {
     type Filter = { key: string; label: string; pinned?: boolean; match: (t: typeof all[number]) => boolean };
     const filters: Filter[] = [
       { key: 'review',  label: 'Review Queue', pinned: true, match: t => t.status === 'reviewing' },
-      { key: 'today',   label: 'Today',     match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && sameDay(new Date(t.dueAt), new Date()) },
+      { key: 'today',   label: 'Today',     match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && isSameAppDay(t.dueAt, Date.now()) },
       { key: 'week',    label: 'This Week', match: t => (t.status === 'planned' || t.status === 'reviewing') && t.dueAt != null && t.dueAt >= startOfDayMs() && t.dueAt <= startOfDayMs() + 7 * 86_400_000 },
       { key: 'overdue', label: 'Overdue',   match: t => (t.status === 'planned' || t.status === 'reviewing') && isOverdue(t, Date.now()) },
       { key: 'all',     label: 'All Tasks', match: t => t.status !== 'cancelled' },
@@ -656,7 +657,7 @@ class PlannerEditorPane implements IDisposable {
         // full overview when no specific filter is active.
         const reviewing = matching.filter(t => t.status === 'reviewing');
         const overdue   = matching.filter(t => t.status === 'planned' && isOverdue(t, Date.now()));
-        const today     = matching.filter(t => t.status === 'planned' && t.dueAt != null && sameDay(new Date(t.dueAt), new Date()));
+        const today     = matching.filter(t => t.status === 'planned' && t.dueAt != null && isSameAppDay(t.dueAt, Date.now()));
         const upcoming  = matching.filter(t => t.status === 'planned' && t.dueAt != null && t.dueAt > endOfDay(new Date()).getTime());
         const noDate    = matching.filter(t => t.status === 'planned' && !t.dueAt);
         const completed = matching.filter(t => t.status === 'done').slice(0, 12);
@@ -800,7 +801,7 @@ class PlannerEditorPane implements IDisposable {
       plan.setAttribute('role', 'group');
       plan.setAttribute('aria-label', `Plan “${task.title}”`);
       for (const opt of quickPlanOptions(Date.now())) {
-        const day = new Date(opt.dueAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        const day = appDateString(opt.dueAt, { weekday: 'short', month: 'short', day: 'numeric' });
         createButton(plan, {
           label: opt.label, size: 'sm', kind: 'secondary', title: `Plan for ${day}`,
           onClick: () => {
@@ -1030,12 +1031,11 @@ class PlannerEditorPane implements IDisposable {
     const addEvt = createButton(null, { label: 'New Event', icon: 'plus', kind: 'primary', title: 'New Event (C)' });
     addEvt.classList.add('planner-cta');
     addEvt.addEventListener('click', () => {
-      const start = new Date(this._cursorDate);
-      start.setHours(9, 0, 0, 0);
+      const start = atTime(this._cursorDate, 9);
       this._openEventPopover({
         mode: 'create',
-        startAt: start.getTime(),
-        endAt: start.getTime() + 60 * 60 * 1000,
+        startAt: start,
+        endAt: start + 60 * 60 * 1000,
       }, addEvt.getBoundingClientRect());
     });
     actions.appendChild(addEvt);
@@ -1081,30 +1081,33 @@ class PlannerEditorPane implements IDisposable {
   }
 
   private _navigateCalendar(direction: -1 | 1): void {
-    const d = new Date(this._cursorDate);
+    const p = appDateParts(this._cursorDate);
+    let next: number;
     if (this._calendarView === 'month') {
-      d.setMonth(d.getMonth() + direction);
+      // As Date's setMonth: Jan 31 + 1 month rolls into March.
+      next = appTime(p.year, p.month + direction, p.day);
     } else if (this._calendarView === 'week') {
-      d.setDate(d.getDate() + direction * this._weekSpan().days);
+      next = appTime(p.year, p.month, p.day + direction * this._weekSpan().days);
     } else {
-      d.setDate(d.getDate() + direction);
+      next = appTime(p.year, p.month, p.day + direction);
     }
-    this._cursorDate = startOfDay(d);
+    this._cursorDate = startOfDay(new Date(next));
   }
 
   private _calendarRangeLabel(): string {
     if (this._calendarView === 'month') {
-      return this._cursorDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+      return appDateString(this._cursorDate, { month: 'long', year: 'numeric' });
     }
     if (this._calendarView === 'week') {
       const { start, days } = this._weekSpan();
       const end = addDays(start, days - 1);
-      const same = start.getMonth() === end.getMonth();
-      return same
-        ? `${start.toLocaleDateString(undefined, { month: 'long' })} ${start.getDate()}–${end.getDate()}, ${start.getFullYear()}`
-        : `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${end.getFullYear()}`;
+      const s = appDateParts(start);
+      const e = appDateParts(end);
+      return s.month === e.month
+        ? `${appDateString(start, { month: 'long' })} ${s.day}–${e.day}, ${s.year}`
+        : `${appDateString(start, { month: 'short', day: 'numeric' })} – ${appDateString(end, { month: 'short', day: 'numeric' })}, ${e.year}`;
     }
-    return this._cursorDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    return appDateString(this._cursorDate, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   }
 
   // ── Calendar colour + visibility context ────────────────────────────
@@ -1941,11 +1944,11 @@ class PlannerEditorPane implements IDisposable {
 
       const cell = el('div', 'planner-month__cell');
       cell.dataset.dayStart = String(dayStart);
-      if (day.getMonth() !== this._cursorDate.getMonth()) cell.classList.add('planner-month__cell--other-month');
+      if (appDateParts(day).month !== appDateParts(this._cursorDate).month) cell.classList.add('planner-month__cell--other-month');
       if (sameDay(day, new Date())) cell.classList.add('planner-month__cell--today');
 
       const number = el('span', 'planner-month__cellnum');
-      number.textContent = String(day.getDate());
+      number.textContent = String(appDateParts(day).day);
       cell.appendChild(number);
 
       // M98 — provider day-load badge ("38 cards"), a decoration, not a row.
@@ -2022,9 +2025,9 @@ class PlannerEditorPane implements IDisposable {
       const day = addDays(start, i);
       const wd = el('div', 'planner-week__weekday');
       const wdLabel = el('span', 'planner-week__weekday-label');
-      wdLabel.textContent = day.toLocaleDateString(undefined, { weekday: 'short' });
+      wdLabel.textContent = appDateString(day, { weekday: 'short' });
       const wdNum = el('span', 'planner-week__weekday-num');
-      wdNum.textContent = String(day.getDate());
+      wdNum.textContent = String(appDateParts(day).day);
       if (sameDay(day, new Date())) wd.classList.add('planner-week__weekday--today');
       wd.appendChild(wdLabel);
       wd.appendChild(wdNum);
@@ -2360,7 +2363,7 @@ class PlannerEditorPane implements IDisposable {
     allDayInput.type = 'checkbox';
     // All-day default: true if the seeded time is midnight (the user
     // didn't pick a time), false otherwise.
-    allDayInput.checked = new Date(seed.dueAt).getHours() === 0 && new Date(seed.dueAt).getMinutes() === 0 && !isEdit;
+    allDayInput.checked = appDateParts(seed.dueAt).hour === 0 && appDateParts(seed.dueAt).minute === 0 && !isEdit;
     allDayRow.appendChild(allDayInput);
     const allDayText = el('span');
     allDayText.textContent = 'No specific time (all day)';
@@ -2742,7 +2745,7 @@ class PlannerEditorPane implements IDisposable {
     const repeatDefs: { value: string; label: () => string }[] = [
       { value: 'none',    label: () => 'Does not repeat' },
       { value: 'daily',   label: () => 'Daily' },
-      { value: 'weekly',  label: () => `Weekly on ${WEEKDAY_NAMES[new Date(fromDateTimeInputs(startDate.value, '12:00') ?? seed.startAt).getDay()]}` },
+      { value: 'weekly',  label: () => `Weekly on ${WEEKDAY_NAMES[appDateParts(fromDateTimeInputs(startDate.value, '12:00') ?? seed.startAt).weekday]}` },
       { value: 'monthly', label: () => 'Monthly' },
       { value: 'yearly',  label: () => 'Yearly' },
     ];
@@ -2823,7 +2826,7 @@ class PlannerEditorPane implements IDisposable {
       // preset against the current start weekday.
       const recurrence = presetVal === 'custom'
         ? undefined
-        : buildSimpleRRule(presetVal as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly', new Date(startMs).getDay());
+        : buildSimpleRRule(presetVal as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly', appDateParts(startMs).weekday);
       const isSeries = isEdit && init.mode === 'edit' && !!init.event.seriesId;
       try {
         if (isEdit && seed.eventId) {
@@ -3038,22 +3041,20 @@ class PlannerEditorPane implements IDisposable {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function startOfDayMs(): number {
-  const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
+  return startOfAppDay(Date.now());
 }
 
 function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  return isSameAppDay(a, b);
 }
 
 function formatDateShort(ts: number): string {
-  const d = new Date(ts);
-  const now = new Date();
-  if (sameDay(d, now)) return 'Today';
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-  if (sameDay(d, tomorrow)) return 'Tomorrow';
-  const diff = ts - now.getTime();
-  if (diff > 0 && diff < 7 * 86_400_000) return d.toLocaleDateString(undefined, { weekday: 'short' });
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const now = Date.now();
+  if (isSameAppDay(ts, now)) return 'Today';
+  if (isSameAppDay(ts, addAppDays(now, 1))) return 'Tomorrow';
+  const diff = ts - now;
+  if (diff > 0 && diff < 7 * 86_400_000) return appDateString(ts, { weekday: 'short' });
+  return appDateString(ts, { month: 'short', day: 'numeric' });
 }
 
 function formatHour(h: number): string {
@@ -3064,11 +3065,11 @@ function formatHour(h: number): string {
 }
 
 function formatTimeShort(ms: number): string {
-  return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return appTimeString(ms, { hour: 'numeric', minute: '2-digit' });
 }
 
 function formatTimeRange(ev: PlannerEvent): string {
-  const fmt = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const fmt = (ts: number) => appTimeString(ts, { hour: 'numeric', minute: '2-digit' });
   if (ev.allDay) return 'All Day';
   return `${fmt(ev.startAt)} – ${fmt(ev.endAt)}`;
 }
@@ -3121,17 +3122,16 @@ function extractLinks(text: string): { label: string; href: string; kind: 'web' 
 }
 
 function toDateInputValue(ms: number): string {
-  const d = new Date(ms);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  const d = appDateParts(ms);
+  const m = String(d.month + 1).padStart(2, '0');
+  const day = String(d.day).padStart(2, '0');
+  return `${d.year}-${m}-${day}`;
 }
 
 function toTimeInputValue(ms: number): string {
-  const d = new Date(ms);
-  const h = String(d.getHours()).padStart(2, '0');
-  const m = String(d.getMinutes()).padStart(2, '0');
+  const d = appDateParts(ms);
+  const h = String(d.hour).padStart(2, '0');
+  const m = String(d.minute).padStart(2, '0');
   return `${h}:${m}`;
 }
 
@@ -3145,6 +3145,6 @@ function fromDateTimeInputs(dateStr: string, timeStr: string): number | null {
     if (Number.isFinite(hh)) hour = hh;
     if (Number.isFinite(mm)) min = mm;
   }
-  const dt = new Date(y, m - 1, d, hour, min, 0, 0);
-  return Number.isFinite(dt.getTime()) ? dt.getTime() : null;
+  const dt = appTime(y, m - 1, d, hour, min, 0, 0);
+  return Number.isFinite(dt) ? dt : null;
 }

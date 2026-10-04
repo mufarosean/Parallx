@@ -6,6 +6,7 @@
 // and the task replans and carries on (agentSessionService.redirectTask,
 // which only accepts a paused task, hence the pause first).
 
+import { appDateParts } from '../../services/localTime.js';
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
 import { createButton } from '../../ui/kit.js';
@@ -86,8 +87,8 @@ export function renderAgentRun(container: HTMLElement, taskId: string, api: Para
     pill.textContent = STATUS_WORDS[task.status] ?? task.status;
     const done = steps.filter((s) => s.status === 'completed').length;
     const when = $('span');
-    const started = new Date(task.createdAt);
-    when.textContent = `${steps.length ? `${done} of ${steps.length} steps · ` : ''}started ${String(started.getHours()).padStart(2, '0')}:${String(started.getMinutes()).padStart(2, '0')}`;
+    const started = appDateParts(new Date(task.createdAt));
+    when.textContent = `${steps.length ? `${done} of ${steps.length} steps · ` : ''}started ${String(started.hour).padStart(2, '0')}:${String(started.minute).padStart(2, '0')}`;
     meta.append(pill, when);
     head.append(title, meta);
     if (task.goal.trim() !== title.textContent) {

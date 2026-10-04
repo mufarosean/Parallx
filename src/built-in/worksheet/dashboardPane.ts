@@ -14,6 +14,7 @@ import { syncRewards, type RewardState } from './rewardsSync.js';
 import { REWARDS } from './rewards.js';
 import { paperLabel, ratingLabel, normalizeRating, QUADRANT_LABELS } from './problemImport.js';
 import { createButton, createEmptyState, createPageHeader, type IKitAction } from '../../ui/kit.js';
+import { appTime } from '../../services/localTime.js';
 
 export interface DashboardActions {
   openItem(id: number, title: string): void;
@@ -67,9 +68,10 @@ export function fmtStudyTime(seconds: number): string {
   return m === 0 ? `${h}h` : `${h}h ${String(m).padStart(2, '0')}m`;
 }
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** Midnight starting a day key, in the app's Time Zone (where day keys are read). */
 function dayMs(day: string): number {
   const [y, m, d] = day.split('-').map(Number);
-  return new Date(y, m - 1, d).getTime();
+  return appTime(y, m - 1, d);
 }
 function fmtDay(day: string, withYear = false): string {
   const [y, m, d] = day.split('-').map(Number);
@@ -256,15 +258,14 @@ function lineChart(host: HTMLElement, title: string, points: ChartPoint[], targe
     // X labels: first and last day, month starts between when there is room.
     const labels: { day: string; text: string }[] = [{ day: points[0].day, text: fmtDay(points[0].day) }];
     if (points.length > 1) {
-      const first = new Date(t0); const last = new Date(t1);
-      const cursor = new Date(first.getFullYear(), first.getMonth() + 1, 1);
-      while (cursor.getTime() < t1) {
-        const d = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-01`;
-        labels.push({ day: d, text: MONTHS[cursor.getMonth()] });
-        cursor.setMonth(cursor.getMonth() + 1);
+      const [fy, fm] = points[0].day.split('-').map(Number);
+      for (let k = fm; ; k++) {
+        const y = fy + Math.floor(k / 12); const m = k % 12;
+        const d = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+        if (dayMs(d) >= t1) break;
+        labels.push({ day: d, text: MONTHS[m] });
       }
       labels.push({ day: points[points.length - 1].day, text: fmtDay(points[points.length - 1].day) });
-      void last;
     }
     let lastX = -Infinity;
     for (const l of labels) {
@@ -785,9 +786,8 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     const perProblem: ChartPoint[] = [];
     for (const day of [...ratedByDay.keys()].sort()) {
       let secs = 0; let rated = 0;
-      const end = dayMs(day);
       for (let i = 0; i < 7; i++) {
-        const d = dayKey(end - i * DAY_MS);
+        const d = addDays(day, -i);
         secs += studyByDay.get(d) ?? 0;
         rated += ratedByDay.get(d) ?? 0;
       }

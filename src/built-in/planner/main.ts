@@ -31,6 +31,7 @@ import { PlannerSyncOrchestrator } from './sync/plannerSyncOrchestrator.js';
 import { GoogleCalendarSyncProvider, GOOGLE_PROVIDER_ID } from './sync/googleCalendarSyncProvider.js';
 import { googleSync } from './sync/googleClient.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
+import { addAppDays, startOfAppDay } from '../../services/localTime.js';
 
 // ─── API surface ────────────────────────────────────────────────────────────
 
@@ -196,11 +197,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       getToday: async () => {
         const hint = 'Open the planner for the full picture.';
         try {
-          const start = new Date(); start.setHours(0, 0, 0, 0);
-          const end = new Date(start.getTime()); end.setDate(end.getDate() + 1);
+          const start = startOfAppDay(Date.now());
+          const end = addAppDays(start, 1);
           const [events, tasks] = await Promise.all([
-            data.listEvents({ from: start.getTime(), to: end.getTime(), limit: 200 }),
-            data.listTasks({ status: ['planned', 'reviewing'], dueFrom: start.getTime(), dueTo: end.getTime() }),
+            data.listEvents({ from: start, to: end, limit: 200 }),
+            data.listTasks({ status: ['planned', 'reviewing'], dueFrom: start, dueTo: end }),
           ]);
           return { events: events.length, tasksDue: tasks.length, hint };
         } catch { return { events: 0, tasksDue: 0, hint }; }

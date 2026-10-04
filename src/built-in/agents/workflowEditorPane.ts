@@ -16,6 +16,7 @@
 //   • all popover-free: the inspector is a docked panel, the palette a
 //     docked rail — nothing to dismiss, nothing to leak.
 
+import { appDateParts, appTimeString } from '../../services/localTime.js';
 import './workflowEditor.css';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
@@ -523,9 +524,9 @@ export class WorkflowEditorPane implements IDisposable {
     const runs = this._deps.service.getRuns(this._workflowId);
     const items: IDropdownItem[] = [{ value: 'edit', label: 'Editing' }];
     for (const run of [...runs].reverse().slice(0, 20)) {
-      const t = new Date(run.startedAt);
-      const hh = String(t.getHours()).padStart(2, '0');
-      const mm = String(t.getMinutes()).padStart(2, '0');
+      const t = appDateParts(new Date(run.startedAt));
+      const hh = String(t.hour).padStart(2, '0');
+      const mm = String(t.minute).padStart(2, '0');
       items.push({ value: run.id, label: `${hh}:${mm} · ${run.status}` });
     }
     // Keep the current selection when the run still exists; else fall back.
@@ -867,8 +868,7 @@ export class WorkflowEditorPane implements IDisposable {
   private _paintTraceInspector(run: WorkflowRun): void {
     this._inspector.appendChild(this._sectionHead('Run'));
     const when = $('div.wfe-ins__line');
-    const t = new Date(run.startedAt);
-    when.textContent = `${t.toLocaleTimeString()} · ${run.status}${run.automatic === false ? ' · run manually' : ''}`;
+    when.textContent = `${appTimeString(new Date(run.startedAt))} · ${run.status}${run.automatic === false ? ' · run manually' : ''}`;
     this._inspector.appendChild(when);
     const trig = $('div.wfe-ins__line');
     trig.textContent = `Trigger: ${run.trigger.summary}`;

@@ -12,6 +12,7 @@
 // schedule state, the cooldown ledger, and the recent-run ring.
 
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { appDayKey } from '../../services/localTime.js';
 import { Emitter, type Event } from '../../platform/events.js';
 import { createServiceIdentifier } from '../../platform/types.js';
 import { computeNextRun, type ICronJob } from '../../openclaw/openclawCronService.js';
@@ -562,15 +563,14 @@ export class WorkflowService implements IDisposable {
   /** Automatic attention-class runs today (held ones excluded — a held
    *  firing did not interrupt anyone). */
   private _attentionRunsToday(): number {
-    const today = new Date();
-    const y = today.getFullYear(); const m = today.getMonth(); const d = today.getDate();
+    // The user's today, in the app's Time Zone.
+    const today = appDayKey(Date.now());
     let count = 0;
     for (const run of this._runs) {
       if (!run.automatic || run.status === 'held') continue;
       const doc = this._docs.get(run.workflowId);
       if (doc?.class !== 'attention') continue;
-      const t = new Date(run.startedAt);
-      if (t.getFullYear() === y && t.getMonth() === m && t.getDate() === d) count++;
+      if (appDayKey(run.startedAt) === today) count++;
     }
     return count;
   }

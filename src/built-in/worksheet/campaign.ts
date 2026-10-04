@@ -71,14 +71,17 @@ export function isCampaignProblem(item: Pick<InsightItem, 'paper' | 'kind'>): bo
   return !!item.paper && item.kind !== 'essay';
 }
 
+// Day keys are calendar dates: their arithmetic is done on the calendar
+// (UTC, which has no clock changes), never through any zone's clock.
 export function addDays(day: string, n: number): string {
   const [y, m, d] = day.split('-').map(Number);
-  return dayKey(new Date(y, m - 1, d + n).getTime());
+  const t = new Date(Date.UTC(y, m - 1, d + n));
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
 }
 function daysBetween(a: string, b: string): number {
   const [ay, am, ad] = a.split('-').map(Number);
   const [by, bm, bd] = b.split('-').map(Number);
-  return Math.round((new Date(by, bm - 1, bd).getTime() - new Date(ay, am - 1, ad).getTime()) / 86400000);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
 }
 
 /** Calendar days from `startDay` to `endDay`, both included. */
@@ -89,7 +92,7 @@ export function spanDays(startDay: string, endDay: string): number {
 export const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export function weekdayOf(day: string): number {
   const [y, m, d] = day.split('-').map(Number);
-  return new Date(y, m - 1, d).getDay();
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 /** Valid weekdays only, Monday first; all seven off means none off. */
 export function normalizeRestDays(restDays: readonly number[]): number[] {

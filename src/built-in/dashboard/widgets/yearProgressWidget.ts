@@ -10,6 +10,7 @@
 // built once per config and only the numbers move on the minute tick —
 // that is what lets the fill animate instead of being re-created.
 
+import { appDateParts, appDateString, appTime } from '../../../services/localTime.js';
 import type {
   WidgetContext,
   WidgetHandle,
@@ -95,13 +96,15 @@ const DAY_MS = 86_400_000;
 
 /** Every unit the widget can draw, smallest first, plus the year's day counts. */
 export function measureYearProgress(now: Date): { units: Record<UnitId, Unit>; dayOfYear: number; daysInYear: number } {
+  // The user's calendar: the app's Time Zone setting, else this computer's zone.
   const t = now.getTime();
-  const year = now.getFullYear();
-  const yearStart = new Date(year, 0, 1).getTime();
-  const yearEnd = new Date(year + 1, 0, 1).getTime();
-  const monthStart = new Date(year, now.getMonth(), 1).getTime();
-  const monthEnd = new Date(year, now.getMonth() + 1, 1).getTime();
-  const dayStart = new Date(year, now.getMonth(), now.getDate()).getTime();
+  const p = appDateParts(t);
+  const year = p.year;
+  const yearStart = appTime(year, 0, 1);
+  const yearEnd = appTime(year + 1, 0, 1);
+  const monthStart = appTime(year, p.month, 1);
+  const monthEnd = appTime(year, p.month + 1, 1);
+  const dayStart = appTime(year, p.month, p.day);
 
   // Day-of-year by calendar dates rather than elapsed ms, so a DST shift
   // inside the year cannot round the count off by one.
@@ -111,10 +114,10 @@ export function measureYearProgress(now: Date): { units: Record<UnitId, Unit>; d
 
   // Progress counts calendar days plus the part of today gone, not elapsed
   // ms: a DST shift would otherwise move the figure with the computer's zone.
-  const nextDayStart = new Date(year, now.getMonth(), now.getDate() + 1).getTime();
+  const nextDayStart = appTime(year, p.month, p.day + 1);
   const today = fraction(dayStart, nextDayStart, t);
-  const dayOfMonth = now.getDate();
-  const dayOfWeek = (now.getDay() + 6) % 7; // Monday = 0
+  const dayOfMonth = p.day;
+  const dayOfWeek = (p.weekday + 6) % 7; // Monday = 0
   const clamp = (v: number): number => Math.min(1, Math.max(0, v));
 
   return {
@@ -125,7 +128,7 @@ export function measureYearProgress(now: Date): { units: Record<UnitId, Unit>; d
       week: { id: 'week', label: 'Week', progress: clamp((dayOfWeek + today) / 7), segments: 7 },
       month: {
         id: 'month',
-        label: now.toLocaleDateString(undefined, { month: 'long' }),
+        label: appDateString(t, { month: 'long' }),
         progress: clamp((dayOfMonth - 1 + today) / daysInMonth),
         segments: daysInMonth,
       },

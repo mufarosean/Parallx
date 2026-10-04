@@ -18,6 +18,8 @@
 // a habit. Pure + deterministic (clock injected); persisted by MindService. The
 // output is a suggestion for the human, never an automatic action.
 
+import { appDateParts } from '../../services/localTime.js';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_PER_DAY = 24 * 60;
 
@@ -41,10 +43,10 @@ export interface IHabitDetectorOptions {
   readonly minuteOfDay?: (ms: number) => number;
 }
 
-/** Minute of day in the machine's local time zone (what the cron grid uses). */
+/** Minute of day on the user's wall clock (the app's Time Zone, what the cron grid uses). */
 export function localMinuteOfDay(ms: number): number {
-  const d = new Date(ms);
-  return d.getHours() * 60 + d.getMinutes();
+  const d = appDateParts(ms);
+  return d.hour * 60 + d.minute;
 }
 
 /**

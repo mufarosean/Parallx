@@ -9,6 +9,7 @@
 //   VS Code extensionEditor.ts — editor pane, header, tabs, contribution tables
 
 import './toolGallery.css';
+import { appDateTimeString, appTimeString } from '../../services/localTime.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $, clearNode } from '../../ui/dom.js';
@@ -905,7 +906,7 @@ function renderStatusTab(container: HTMLElement, tool: ToolInfo): void {
     ['State', tool.state],
     ['Activation Events', (tool.activationEvents ?? []).join(', ') || 'none'],
     ...(runtime?.activatedAt !== undefined
-      ? [['Activated At', new Date(runtime.activatedAt).toLocaleTimeString()] as [string, string]]
+      ? [['Activated At', appTimeString(runtime.activatedAt)] as [string, string]]
       : []),
     ...(runtime?.activationDurationMs !== undefined
       ? [['Activation Took', `${Math.round(runtime.activationDurationMs)} ms`] as [string, string]]
@@ -939,7 +940,7 @@ function renderStatusTab(container: HTMLElement, tool: ToolInfo): void {
   if (runtime?.lastError) {
     const err = $('div');
     err.classList.add('tool-editor-status-error');
-    err.textContent = `Last error (${runtime.lastError.context}, ${new Date(runtime.lastError.timestamp).toLocaleString()}): ${runtime.lastError.message}`;
+    err.textContent = `Last error (${runtime.lastError.context}, ${appDateTimeString(runtime.lastError.timestamp)}): ${runtime.lastError.message}`;
     section.appendChild(err);
   }
 

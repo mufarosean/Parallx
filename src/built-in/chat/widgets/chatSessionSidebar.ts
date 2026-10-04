@@ -11,6 +11,7 @@
 
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
+import { addAppDays, appDateString, isSameAppDay } from '../../../services/localTime.js';
 import type { Event } from '../../../platform/events.js';
 import { $, addDisposableListener } from '../../../ui/dom.js';
 import { EMPTY_STATES } from '../../../ui/emptyStates.js';
@@ -31,24 +32,13 @@ function _getDateGroup(timestamp: number): DateGroup {
   const diff = now - timestamp;
   const dayMs = 86_400_000;
 
-  // "Today" = same calendar day
-  const nowDate = new Date(now);
-  const tsDate = new Date(timestamp);
-  if (
-    nowDate.getFullYear() === tsDate.getFullYear() &&
-    nowDate.getMonth() === tsDate.getMonth() &&
-    nowDate.getDate() === tsDate.getDate()
-  ) {
+  // "Today" = same calendar day (the user's, in the app's Time Zone)
+  if (isSameAppDay(now, timestamp)) {
     return 'Today';
   }
 
   // "Yesterday" = previous calendar day
-  const yesterday = new Date(now - dayMs);
-  if (
-    yesterday.getFullYear() === tsDate.getFullYear() &&
-    yesterday.getMonth() === tsDate.getMonth() &&
-    yesterday.getDate() === tsDate.getDate()
-  ) {
+  if (isSameAppDay(addAppDays(now, -1), timestamp)) {
     return 'Yesterday';
   }
 
@@ -96,7 +86,7 @@ function _deriveDisplayTitle(session: IChatSession): string {
   }
 
   // Fallback: date-based name
-  return 'Chat \u00B7 ' + new Date(session.createdAt).toLocaleDateString(undefined, {
+  return 'Chat \u00B7 ' + appDateString(session.createdAt, {
     month: 'short',
     day: 'numeric',
   });

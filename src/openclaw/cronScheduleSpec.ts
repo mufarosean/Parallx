@@ -8,6 +8,8 @@
 // builder.
 
 import type { ICronSchedule } from './openclawCronService.js';
+import { parseAtTimestamp } from './openclawCronService.js';
+import { appDateTimeString } from '../services/localTime.js';
 
 export type AutomationScheduleSpec =
   | { readonly kind: 'daily'; readonly time: string }                        // 'HH:MM'
@@ -57,7 +59,8 @@ export function buildCronSchedule(spec: AutomationScheduleSpec): ICronSchedule {
       return { every: v };
     }
     case 'once': {
-      const ts = Date.parse(spec.at);
+      // A date and time with no zone is the user's (the app's Time Zone).
+      const ts = parseAtTimestamp(spec.at) ?? NaN;
       if (!Number.isFinite(ts)) throw new Error(`Invalid date/time "${spec.at}".`);
       if (ts <= Date.now()) throw new Error('One-time runs must be in the future.');
       return { at: new Date(ts).toISOString() };
@@ -105,8 +108,8 @@ export function describeSchedule(s: ICronSchedule): string {
     case 'weekly': return `Every ${WEEKDAY_LABELS[spec.day] ?? '?'} at ${spec.time}`;
     case 'interval': return `Every ${spec.every}`;
     case 'once': {
-      const d = new Date(spec.at);
-      return Number.isNaN(d.getTime()) ? `Once at ${spec.at}` : `Once at ${d.toLocaleString()}`;
+      const ms = parseAtTimestamp(spec.at);
+      return ms === null ? `Once at ${spec.at}` : `Once at ${appDateTimeString(ms)}`;
     }
     case 'cron': return `Cron: ${spec.expr}`;
   }

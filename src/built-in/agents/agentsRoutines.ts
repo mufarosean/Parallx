@@ -8,6 +8,7 @@
 // edit steps, turn off, delete; click one for its last run), and ways to
 // add one (New Routine, Build Steps, a template).
 
+import { appDateTimeString } from '../../services/localTime.js';
 import { $ } from '../../ui/dom.js';
 import { createButton, createSectionLabel } from '../../ui/kit.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
@@ -169,7 +170,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
       line: [triggerWords(wf), last ? `last ${runWords(last)} ${ago(last.startedAt)}` : '', next ? `next ${formatWhen(next, Date.now())}` : ''].filter(Boolean).join(' · '),
       failed: last?.status === 'error',
       chips: [wf.class === 'destructive' ? 'Asks First' : ''].filter(Boolean),
-      trace: last ? [`${new Date(last.startedAt).toLocaleString()} · ${last.trigger.summary}`, ...last.nodes.map((n) => `${n.label}: ${n.status}${n.error ? `, ${n.error}` : n.summary ? `, ${n.summary}` : ''}`)] : undefined,
+      trace: last ? [`${appDateTimeString(new Date(last.startedAt))} · ${last.trigger.summary}`, ...last.nodes.map((n) => `${n.label}: ${n.status}${n.error ? `, ${n.error}` : n.summary ? `, ${n.summary}` : ''}`)] : undefined,
       repaint,
     });
     const bar = row.querySelector('.agents-card__actions') as HTMLElement;

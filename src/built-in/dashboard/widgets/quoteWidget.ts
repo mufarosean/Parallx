@@ -7,6 +7,7 @@
 // Format: one quote per line; an optional attribution follows a `|`, e.g.
 //   The obstacle is the way. | Marcus Aurelius
 
+import { appDateParts } from '../../../services/localTime.js';
 import type {
   WidgetContext,
   WidgetHandle,
@@ -49,8 +50,9 @@ export function parseQuotes(raw: string): ParsedQuote[] {
 /** Exported for tests: today's deterministic pick. */
 export function quoteIndexForDay(count: number, date: Date): number {
   if (count <= 0) return 0;
-  const start = new Date(date.getFullYear(), 0, 1).getTime();
-  const dayOfYear = Math.floor((date.getTime() - start) / 86_400_000);
+  // The user's day of the year (the app's Time Zone), counted on the calendar.
+  const p = appDateParts(date);
+  const dayOfYear = Math.round((Date.UTC(p.year, p.month, p.day) - Date.UTC(p.year, 0, 1)) / 86_400_000);
   return dayOfYear % count;
 }
 

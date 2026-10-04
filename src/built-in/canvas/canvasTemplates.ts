@@ -18,6 +18,7 @@
 // through CanvasDataService and seeds its content via `flushContentSave`.
 
 import { decodeCanvasContent, isUnreadableCanvasContent } from './contentSchema.js';
+import { appDayKey } from '../../services/localTime.js';
 
 /**
  * Minimal API shape this module needs. Mirrors a slice of the host's
@@ -71,12 +72,9 @@ export interface CanvasPageTemplate {
 
 function todayLabel(): string {
   // YYYY-MM-DD with the user's local date (not UTC) so a 10pm note
-  // doesn't get tomorrow's date in time zones west of UTC.
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  // doesn't get tomorrow's date in time zones west of UTC. Local is the
+  // app's Time Zone setting, else this computer's zone.
+  return appDayKey(Date.now());
 }
 
 /**

@@ -9,6 +9,7 @@ import type {
 } from '../../dashboard/dashboardTypes.js';
 import type { PlannerDataService } from '../plannerDataService.js';
 import type { PlannerTask } from '../plannerTypes.js';
+import { addAppDays, appDateString, isSameAppDay, startOfAppDay } from '../../../services/localTime.js';
 
 interface Config {
   readonly maxItems: number;
@@ -25,8 +26,8 @@ interface SnapshotShape {
   readonly next: { id: string; title: string; dueAt: number | null; status: string }[];
 }
 
-function startOfDay(): number { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
-function endOfDay(): number { const d = new Date(); d.setHours(23, 59, 59, 999); return d.getTime(); }
+function startOfDay(): number { return startOfAppDay(Date.now()); }
+function endOfDay(): number { return addAppDays(startOfDay(), 1) - 1; }
 
 async function buildSnapshot(data: PlannerDataService, max: number): Promise<SnapshotShape> {
   const [reviewing, planned, doneRecent] = await Promise.all([
@@ -52,16 +53,13 @@ async function buildSnapshot(data: PlannerDataService, max: number): Promise<Sna
 
 function formatDue(ts: number | null): string {
   if (!ts) return 'No date';
-  const d = new Date(ts);
-  const now = new Date();
-  const sameDate = d.toDateString() === now.toDateString();
-  if (sameDate) return 'Today';
-  const tom = new Date(); tom.setDate(tom.getDate() + 1);
-  if (d.toDateString() === tom.toDateString()) return 'Tomorrow';
-  const diff = ts - Date.now();
+  const now = Date.now();
+  if (isSameAppDay(ts, now)) return 'Today';
+  if (isSameAppDay(ts, addAppDays(now, 1))) return 'Tomorrow';
+  const diff = ts - now;
   if (diff < 0) return 'Overdue';
-  if (diff < 7 * 86_400_000) return d.toLocaleDateString(undefined, { weekday: 'short' });
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (diff < 7 * 86_400_000) return appDateString(ts, { weekday: 'short' });
+  return appDateString(ts, { month: 'short', day: 'numeric' });
 }
 
 export function buildTasksSummaryWidget(data: PlannerDataService): WidgetTypeRegistration<Config> {

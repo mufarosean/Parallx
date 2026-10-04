@@ -7,6 +7,7 @@
 // a heartbeat finding, Do It / Tell Me More / Dismiss. Clicking a row marks
 // it read. Ordinary chat turns are not agent work and are left out.
 
+import { addAppDays, appDateParts, appDateString, isSameAppDay } from '../../services/localTime.js';
 import { $ } from '../../ui/dom.js';
 import { createButton, createEmptyState, createSegmented } from '../../ui/kit.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
@@ -71,13 +72,12 @@ export function heartbeatActions(api: ParallxApi, entry: IAutonomyLogEntry, onHa
 function when(iso: string): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return '';
-  const d = new Date(t);
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) return hm;
-  const y = new Date(now); y.setDate(now.getDate() - 1);
-  if (d.toDateString() === y.toDateString()) return `Yesterday ${hm}`;
-  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${hm}`;
+  const d = appDateParts(t);
+  const hm = `${String(d.hour).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}`;
+  const now = Date.now();
+  if (isSameAppDay(t, now)) return hm;
+  if (isSameAppDay(t, addAppDays(now, -1))) return `Yesterday ${hm}`;
+  return `${appDateString(t, { month: 'short', day: 'numeric' })} ${hm}`;
 }
 
 function outcomeWords(outcome: string): string {

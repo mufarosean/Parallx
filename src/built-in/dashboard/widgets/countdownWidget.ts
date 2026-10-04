@@ -5,6 +5,7 @@
 // remaining days / hours / minutes (and seconds, optionally) until a target
 // moment, or a finished state once it has passed.
 
+import { appDateParts, appDateString, appTime } from '../../../services/localTime.js';
 import type {
   WidgetContext,
   WidgetHandle,
@@ -20,7 +21,7 @@ interface CountdownConfig {
 
 const DEFAULT_CONFIG: CountdownConfig = {
   title: 'New Year',
-  target: `${new Date().getFullYear() + 1}-01-01`,
+  target: `${appDateParts(Date.now()).year + 1}-01-01`,
   showSeconds: false,
 };
 
@@ -96,6 +97,9 @@ export const COUNTDOWN_WIDGET: WidgetTypeRegistration<CountdownConfig> = {
 
     function targetMs(): number | null {
       if (!config.target.trim()) return null;
+      // A date and time with no zone is the user's (the app's Time Zone).
+      const wall = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(config.target.trim());
+      if (wall) return appTime(+wall[1], +wall[2] - 1, +wall[3], +wall[4], +wall[5], wall[6] ? +wall[6] : 0);
       const ms = Date.parse(config.target);
       return Number.isFinite(ms) ? ms : null;
     }
@@ -119,7 +123,7 @@ export const COUNTDOWN_WIDGET: WidgetTypeRegistration<CountdownConfig> = {
       if (diff <= 0) {
         container.classList.add('cdw--done');
         body.innerHTML = '<span class="cdw__done-text">Done</span>';
-        caption.textContent = new Date(tgt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+        caption.textContent = appDateString(tgt, { month: 'long', day: 'numeric', year: 'numeric' });
         return;
       }
 
@@ -128,7 +132,7 @@ export const COUNTDOWN_WIDGET: WidgetTypeRegistration<CountdownConfig> = {
       const parts = [unit(r.days, r.days === 1 ? 'day' : 'days'), unit(r.hours, 'hrs'), unit(r.minutes, 'min')];
       if (config.showSeconds) parts.push(unit(r.seconds, 'sec'));
       body.innerHTML = parts.join('');
-      caption.textContent = new Date(tgt).toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' });
+      caption.textContent = appDateString(tgt, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' });
     }
 
     tick();

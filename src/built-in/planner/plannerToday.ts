@@ -11,6 +11,7 @@ import { createButton, createIconButton, createPageHeader, createSectionLabel } 
 import { createIconElement } from '../../ui/iconRegistry.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerEvent, PlannerTask } from './plannerTypes.js';
+import { addAppDays, appDateParts, appDateString, appTime, appTimeString, startOfAppDay } from '../../services/localTime.js';
 
 const REVIEW_PREVIEW = 3;
 
@@ -43,22 +44,19 @@ export interface TodayInput {
   readonly now: number;
 }
 
+/** Midnight starting the user's day (the app's Time Zone setting, else this computer's zone). */
 export function startOfLocalDay(ms: number): number {
-  const d = new Date(ms);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  return startOfAppDay(ms);
 }
 
 function addLocalDays(dayStart: number, n: number): number {
-  const d = new Date(dayStart);
-  d.setDate(d.getDate() + n);
-  return d.getTime();
+  return addAppDays(dayStart, n);
 }
 
 /** A due time at local midnight means the user picked no time of day. */
 export function isUntimed(ms: number): boolean {
-  const d = new Date(ms);
-  return d.getHours() === 0 && d.getMinutes() === 0;
+  const p = appDateParts(ms);
+  return p.hour === 0 && p.minute === 0;
 }
 
 /** An open task whose due day has passed. A task due earlier today is late,
@@ -130,7 +128,7 @@ export interface QuickPlanOption {
 /** The one-click days a Review Queue task can be planned for. */
 export function quickPlanOptions(now: number): readonly QuickPlanOption[] {
   const today = startOfLocalDay(now);
-  const weekday = new Date(today).getDay();
+  const weekday = appDateParts(today).weekday;
   const toMonday = ((8 - weekday) % 7) || 7;
   return [
     { label: 'Today', dueAt: today },
@@ -179,8 +177,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   return node;
 }
 
-const timeFmt = (ms: number): string => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-const dayFmt = (ms: number): string => new Date(ms).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+const timeFmt = (ms: number): string => appTimeString(ms, { hour: 'numeric', minute: '2-digit' });
+const dayFmt = (ms: number): string => appDateString(ms, { weekday: 'short', month: 'short', day: 'numeric' });
 
 export class PlannerTodayView implements IDisposable {
   /** Months away from the current one in the mini calendar. */
@@ -208,7 +206,7 @@ export class PlannerTodayView implements IDisposable {
     root.append(main, side);
 
     createPageHeader(main, {
-      title: new Date(now).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }),
+      title: appDateString(now, { weekday: 'long', month: 'long', day: 'numeric' }),
       subtitle: todaySummary(model),
     });
     main.appendChild(this._capture());
@@ -349,15 +347,14 @@ export class PlannerTodayView implements IDisposable {
 
   private async _month(now: number, isVisible: IsVisible): Promise<HTMLElement> {
     const card = el('section', 'planner-today__card planner-today__month');
-    const first = new Date(now);
-    first.setDate(1);
-    first.setHours(0, 0, 0, 0);
-    first.setMonth(first.getMonth() + this._monthOffset);
-    const gridStart = addLocalDays(first.getTime(), -first.getDay());
+    const nowParts = appDateParts(now);
+    const first = appTime(nowParts.year, nowParts.month + this._monthOffset, 1);
+    const firstMonth = appDateParts(first).month;
+    const gridStart = addLocalDays(first, -appDateParts(first).weekday);
     const gridEnd = addLocalDays(gridStart, 42);
 
     const head = el('div', 'planner-today__card-head');
-    const title = el('h2', 'planner-today__card-title', first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }));
+    const title = el('h2', 'planner-today__card-title', appDateString(first, { month: 'long', year: 'numeric' }));
     card.setAttribute('aria-label', title.textContent ?? '');
     head.appendChild(title);
     const nav = el('div', 'planner-today__month-nav');
@@ -378,20 +375,20 @@ export class PlannerTodayView implements IDisposable {
 
     const grid = el('div', 'planner-today__month-grid');
     for (let i = 0; i < 7; i++) {
-      const dow = new Date(addLocalDays(gridStart, i)).toLocaleDateString(undefined, { weekday: 'narrow' });
+      const dow = appDateString(addLocalDays(gridStart, i), { weekday: 'narrow' });
       grid.appendChild(el('span', 'planner-today__dow', dow));
     }
     const today = startOfLocalDay(now);
     for (let i = 0; i < 42; i++) {
       const day = addLocalDays(gridStart, i);
-      const d = new Date(day);
+      const d = appDateParts(day);
       const btn = el('button', 'planner-today__day');
       btn.type = 'button';
-      if (d.getMonth() !== first.getMonth()) btn.classList.add('planner-today__day--out');
+      if (d.month !== firstMonth) btn.classList.add('planner-today__day--out');
       if (day === today) btn.classList.add('planner-today__day--today');
       const count = load.get(day) ?? 0;
       btn.setAttribute('aria-label', `${dayFmt(day)}${count ? `, ${plural(count, 'item', 'items')}` : ''}`);
-      btn.appendChild(el('span', 'planner-today__day-num', String(d.getDate())));
+      btn.appendChild(el('span', 'planner-today__day-num', String(d.day)));
       const dots = el('span', 'planner-today__dots');
       for (let k = 0; k < Math.min(count, 3); k++) dots.appendChild(el('span', 'planner-today__dot'));
       btn.appendChild(dots);
@@ -466,10 +463,10 @@ export class PlannerTodayView implements IDisposable {
         label: 'Move to Today', size: 'sm', kind: 'secondary',
         onClick: () => {
           // Keep the time of day it had; only the date moves.
-          const due = new Date(task.dueAt!);
-          const moved = new Date(dayStart);
-          moved.setHours(due.getHours(), due.getMinutes(), 0, 0);
-          void this._deps.data.updateTask(task.id, { dueAt: moved.getTime() });
+          const due = appDateParts(task.dueAt!);
+          const day = appDateParts(dayStart);
+          const moved = appTime(day.year, day.month, day.day, due.hour, due.minute);
+          void this._deps.data.updateTask(task.id, { dueAt: moved });
           this._deps.note('rescheduled', `task "${task.title}"`, task.id, 'to today');
         },
       });

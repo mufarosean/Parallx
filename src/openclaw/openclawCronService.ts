@@ -22,6 +22,7 @@
 import type { IDisposable } from '../platform/lifecycle.js';
 import { Emitter, type Event } from '../platform/events.js';
 import { createServiceIdentifier } from '../platform/types.js';
+import { appDateParts, appTime } from '../services/localTime.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1128,7 +1129,11 @@ export function parseAtTimestamp(at: string): number | null {
   if (!trimmed) return null;
   const dateOnly = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (dateOnly) {
-    return new Date(+dateOnly[1], +dateOnly[2] - 1, +dateOnly[3]).getTime();
+    return appTime(+dateOnly[1], +dateOnly[2] - 1, +dateOnly[3]);
+  }
+  const wall = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (wall) {
+    return appTime(+wall[1], +wall[2] - 1, +wall[3], +wall[4], +wall[5], wall[6] ? +wall[6] : 0);
   }
   const ts = Date.parse(trimmed);
   return Number.isFinite(ts) ? ts : null;
@@ -1150,52 +1155,47 @@ function computeNextCronRun(expr: string, fromMs: number): number | null {
   const monthSet = new Set(months);
   const dowSet = new Set(daysOfWeek);
 
-  // Evaluate in the machine's LOCAL timezone: "0 9 * * *" means 9am on the
-  // user's wall clock, matching every real-world crontab and what a user
-  // asking "every day at 9" obviously means. The original implementation
-  // walked UTC fields, so that job fired at 4am US-Central. Local Date
-  // setters also absorb DST jumps (setHours normalizes across transitions).
+  // Evaluate on the user's wall clock: "0 9 * * *" means 9am where the user
+  // is, matching every real-world crontab and what a user asking "every day
+  // at 9" obviously means. The original implementation walked UTC fields, so
+  // that job fired at 4am US-Central. The wall clock is the app's Time Zone
+  // (the setting, else this computer's zone); appTime absorbs DST jumps the
+  // way Date's local setters do. A step never moves the cursor backwards (a
+  // repeated hour at a clock change would otherwise be walked twice).
+  const step = (cursor: number, next: number): number => Math.max(next, cursor + 60_000);
   // Start from the next whole minute after fromMs.
-  const start = new Date(fromMs);
-  start.setSeconds(0, 0);
-  start.setMinutes(start.getMinutes() + 1);
+  const f = appDateParts(fromMs);
+  let cursor = step(fromMs - f.second * 1000 - f.millisecond, appTime(f.year, f.month, f.day, f.hour, f.minute + 1));
 
   const limit = fromMs + 366 * 86_400_000; // 366 days max lookahead
 
-  const cursor = start;
-  while (cursor.getTime() <= limit) {
-    const month = cursor.getMonth() + 1; // 1-12
-    if (!monthSet.has(month)) {
+  while (cursor <= limit) {
+    const c = appDateParts(cursor);
+    if (!monthSet.has(c.month + 1)) {
       // Skip to first day of next month
-      cursor.setMonth(cursor.getMonth() + 1, 1);
-      cursor.setHours(0, 0, 0, 0);
+      cursor = step(cursor, appTime(c.year, c.month + 1, 1));
       continue;
     }
 
-    const dom = cursor.getDate();
-    const dow = cursor.getDay(); // 0=Sun
-    if (!domSet.has(dom) || !dowSet.has(dow)) {
+    if (!domSet.has(c.day) || !dowSet.has(c.weekday)) {
       // Skip to next day
-      cursor.setDate(cursor.getDate() + 1);
-      cursor.setHours(0, 0, 0, 0);
+      cursor = step(cursor, appTime(c.year, c.month, c.day + 1));
       continue;
     }
 
-    const hour = cursor.getHours();
-    if (!hourSet.has(hour)) {
+    if (!hourSet.has(c.hour)) {
       // Skip to next hour
-      cursor.setHours(cursor.getHours() + 1, 0, 0, 0);
+      cursor = step(cursor, appTime(c.year, c.month, c.day, c.hour + 1));
       continue;
     }
 
-    const minute = cursor.getMinutes();
-    if (!minuteSet.has(minute)) {
+    if (!minuteSet.has(c.minute)) {
       // Skip to next minute
-      cursor.setMinutes(cursor.getMinutes() + 1, 0, 0);
+      cursor = step(cursor, appTime(c.year, c.month, c.day, c.hour, c.minute + 1));
       continue;
     }
 
-    return cursor.getTime();
+    return cursor;
   }
 
   return null;

@@ -13,6 +13,7 @@ import './activityLog.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
+import { formatLocalTime } from '../../services/localTime.js';
 import { IActivityJournalService, type IActivityEvent } from '../../services/activityJournalService.js';
 import { createPanelToolbarButton, createPanelEmptyState } from '../../ui/panelSurface.js';
 
@@ -74,8 +75,7 @@ function eventText(ev: IActivityEvent): string {
 }
 
 function fmtTime(ts: number): string {
-  const d = new Date(ts);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+  return formatLocalTime(ts, { seconds: true });
 }
 
 function fillRow(row: HTMLElement, ev: IActivityEvent): void {

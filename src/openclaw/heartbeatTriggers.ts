@@ -15,6 +15,7 @@
 // session plans; task facts arrive typed from the schedule sources
 // (services/scheduleSources: whatever tools keep the user's tasks).
 // Delivery/persistence live in heartbeatDeterministicLane.ts.
+import { appDateParts, appDayKey } from '../services/localTime.js';
 
 // ── Facts ────────────────────────────────────────────────────────────────────
 
@@ -163,10 +164,9 @@ export interface ITriggerEvaluation {
   readonly ledger: IHeartbeatLedger;
 }
 
+/** The user's day (the app's Time Zone, else this computer's zone). */
 function fmtDay(ms: number): string {
-  const d = new Date(ms);
-  const p = (n: number): string => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return appDayKey(ms);
 }
 
 /** Evaluate all built-in rules. Pure: same inputs → same outputs. */
@@ -257,10 +257,9 @@ export function evaluateTriggers(
 
   // ── UC5: morning digest (once per local day, only on non-empty days) ──
   if (facts.today != null) {
-    const local = new Date(nowMs);
-    const hour = local.getHours();
-    const p = (n: number): string => String(n).padStart(2, '0');
-    const dayKey = `${local.getFullYear()}-${p(local.getMonth() + 1)}-${p(local.getDate())}`;
+    // The user's morning, in the app's Time Zone.
+    const hour = appDateParts(nowMs).hour;
+    const dayKey = appDayKey(nowMs);
     const busy = facts.today.events > 0 || facts.today.tasksDue > 0;
     if (busy && hour >= MORNING_DIGEST_START_HOUR && hour < MORNING_DIGEST_END_HOUR) {
       candidates.push({

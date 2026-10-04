@@ -26,6 +26,7 @@ import type {
   SyncPushResult,
 } from '../plannerTypes.js';
 import { googleSync } from './googleClient.js';
+import { appDateParts, appDateTimeString, appTime, assistantTimeZone } from '../../../services/localTime.js';
 
 export const GOOGLE_PROVIDER_ID = 'google';
 const CAL_BASE = 'https://www.googleapis.com/calendar/v3/calendars';
@@ -73,15 +74,16 @@ interface GCalEventsResponse {
 
 function pad2(n: number): string { return String(n).padStart(2, '0'); }
 
-/** Local Y-M-D for an all-day boundary (Google all-day dates are floating). */
+/** Local Y-M-D (the app's Time Zone) for an all-day boundary (Google all-day dates are floating). */
 export function toAllDayDateStr(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const d = appDateParts(ms);
+  return `${d.year}-${pad2(d.month + 1)}-${pad2(d.day)}`;
 }
 
-/** Parse a floating all-day date ('YYYY-MM-DD') to local-midnight ms. */
+/** Parse a floating all-day date ('YYYY-MM-DD') to local-midnight ms (the app's Time Zone). */
 export function parseAllDayDate(dateStr: string): number {
-  return Date.parse(`${dateStr}T00:00:00`);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  return m ? appTime(+m[1], +m[2] - 1, +m[3]) : NaN;
 }
 
 /**
@@ -193,8 +195,8 @@ export function googleInstanceId(masterId: string, originalStartAt: number, allD
 }
 
 /**
- * The machine's IANA zone, resolved at call time — never hardcoded, and never
- * cached across a machine/OS zone change.
+ * The user's IANA zone (the app's Time Zone setting, else this machine's),
+ * resolved at call time — never hardcoded, and never cached across a change.
  *
  * Google REQUIRES an explicit timeZone on start and end for any RECURRING
  * event, even when the dateTime already carries a UTC offset, and rejects the
@@ -204,13 +206,9 @@ export function googleInstanceId(masterId: string, originalStartAt: number, allD
  * what makes a series repeat at the right WALL-CLOCK time across a DST
  * boundary rather than drifting an hour.
  */
-export function machineTimeZone(): string | undefined {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return tz && tz.length > 0 ? tz : undefined;
-  } catch {
-    return undefined; // omit the field rather than guess a zone
-  }
+export function syncTimeZone(): string | undefined {
+  const tz = assistantTimeZone();
+  return tz && tz.length > 0 ? tz : undefined; // omit the field rather than guess a zone
 }
 
 /**
@@ -233,7 +231,7 @@ export function rruleForGoogle(rule: string, allDay: boolean): string {
       // With Z the stamp is a UTC instant; without it, RFC 5545 floating local.
       const ms = z
         ? Date.UTC(+y, +mo - 1, +d, +hh, +mm, +ss)
-        : new Date(+y, +mo - 1, +d, +hh, +mm, +ss).getTime();
+        : appTime(+y, +mo - 1, +d, +hh, +mm, +ss);
       if (!Number.isFinite(ms)) return `UNTIL=${y}${mo}${d}`;
       return `UNTIL=${toAllDayDateStr(ms).replace(/-/g, '')}`;
     });
@@ -241,7 +239,7 @@ export function rruleForGoogle(rule: string, allDay: boolean): string {
 
 /** Planner event → Google event request body. */
 export function mapPlannerEventToGoogle(local: PlannerEvent): Record<string, unknown> {
-  const timeZone = machineTimeZone();
+  const timeZone = syncTimeZone();
   const body: Record<string, unknown> = {
     summary: local.title,
     description: local.description ?? undefined,
@@ -302,8 +300,8 @@ export function mapPlannerTaskToGoogle(local: PlannerTask): Record<string, unkno
   if (local.dueAt != null) {
     // Tasks `due` is a floating date; send UTC midnight of the local day so the
     // calendar date the user picked round-trips.
-    const d = new Date(local.dueAt);
-    body.due = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString();
+    const d = appDateParts(local.dueAt);
+    body.due = new Date(Date.UTC(d.year, d.month, d.day)).toISOString();
   }
   if (local.status === 'done' && local.completedAt != null) {
     body.completed = new Date(local.completedAt).toISOString();
@@ -615,7 +613,7 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
       const end = override.endAt ?? start + dur;
       // Same timeZone requirement as the series itself — an instance of a
       // recurring event is still a recurring-event write.
-      const timeZone = machineTimeZone();
+      const timeZone = syncTimeZone();
       if (allDay) {
         body.start = { date: toAllDayDateStr(start), timeZone };
         body.end = { date: toAllDayDateStr(end > start ? end : start + 86_400_000), timeZone };
@@ -648,7 +646,7 @@ export class GoogleCalendarSyncProvider implements ICalendarSyncProvider {
 
     const resolved = await this._resolveInstanceId(googleCalId, baseSourceId, override.originalStartAt, allDay);
     if (!resolved) {
-      const when = new Date(override.originalStartAt).toLocaleString();
+      const when = appDateTimeString(override.originalStartAt);
       throw new Error(`no occurrence of the series at ${when} on Google (the series may have changed there)`);
     }
     const res = await patch(resolved);

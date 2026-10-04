@@ -18,6 +18,7 @@ import type {
   ToolPermissionLevel,
 } from '../../../services/chatTypes.js';
 import type { WorkflowDoc } from '../../../services/workflows/workflowTypes.js';
+import { startOfAppDay } from '../../../services/localTime.js';
 import { validateWorkflow } from '../../../services/workflows/workflowGraph.js';
 import { WEEKDAY_LABELS, parseTimeOfDay } from '../../../openclaw/cronScheduleSpec.js';
 
@@ -45,10 +46,9 @@ export function agentSuggestionKey(raw: string): string {
   return AGENT_SUGGESTION_PREFIX + raw.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+/** Midnight starting the user's day (the app's Time Zone). */
 function startOfDay(nowMs: number): number {
-  const d = new Date(nowMs);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  return startOfAppDay(nowMs);
 }
 
 function str(v: unknown): string {

@@ -5,6 +5,8 @@
 // next, what the settings mean, when the tasks will be done, the streak, the
 // day's totals. Domain-blind: a pomodoro is the 25/5/15 preset, nothing here
 // knows about studying.
+import { appDateParts, appDayKey } from '../../../services/localTime.js';
+
 
 export type TimerMode = 'focus' | 'short' | 'long';
 export type TimerAlarm = 'none' | 'bell' | 'digital';
@@ -266,13 +268,15 @@ export function finishEstimate(tasks: readonly TimerTask[], cfg: TimerConfig, mo
   return { at: now + total, minutes: Math.round(total / 60_000), intervals };
 }
 
+/** The user's day `ms` falls on, in the app's Time Zone (the setting, else this computer's zone). */
 export function dayKeyLocal(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return appDayKey(ms);
 }
+/** Calendar arithmetic on a day key (in UTC, which has no clock changes). */
 function shiftDay(day: string, n: number): string {
   const [y, m, d] = day.split('-').map(Number);
-  return dayKeyLocal(new Date(y, m - 1, d + n).getTime());
+  const t = new Date(Date.UTC(y, m - 1, d + n));
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
 }
 
 /** Consecutive days with at least one focus interval, ending today or yesterday. */
@@ -313,8 +317,8 @@ export function fmtClock(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 export function fmtTimeOfDay(ms: number): string {
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const d = appDateParts(ms);
+  return `${String(d.hour).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}`;
 }
 export function fmtHours(minutes: number): string {
   if (minutes < 60) return `${Math.round(minutes)}m`;

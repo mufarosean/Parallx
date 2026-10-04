@@ -12,6 +12,7 @@ import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
 import type { TaskStatus } from './plannerTypes.js';
+import { appDateString, appTime, assistantTimeZone, formatLocalDateTime, startOfAppDay } from '../../services/localTime.js';
 
 interface ChatApi {
   registerTool(toolId: string, def: {
@@ -43,10 +44,15 @@ function parseDateInput(input: unknown): number | null {
   }
   // Date-only strings mean LOCAL midnight (what the tool schema promises).
   // Date.parse('YYYY-MM-DD') would return UTC midnight — a different day
-  // for half the world's timezones.
+  // for half the world's timezones. "Local" is the app's Time Zone setting.
   const dateOnly = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (dateOnly) {
-    return new Date(+dateOnly[1], +dateOnly[2] - 1, +dateOnly[3]).getTime();
+    return appTime(+dateOnly[1], +dateOnly[2] - 1, +dateOnly[3]);
+  }
+  // A wall-clock time with no zone is the user's (the app zone), not this computer's.
+  const wall = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (wall) {
+    return appTime(+wall[1], +wall[2] - 1, +wall[3], +wall[4], +wall[5], wall[6] ? +wall[6] : 0);
   }
   const ts = Date.parse(trimmed);
   return Number.isFinite(ts) ? ts : null;
@@ -72,20 +78,16 @@ function err(message: string): { content: string; isError: true } {
 // Models misread raw epoch ms — hand them local human-readable strings alongside
 // the numbers so they read times instead of (mis)computing them.
 function fmtLocal(ms: number): string {
-  const d = new Date(ms);
-  const p = (n: number): string => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return formatLocalDateTime(ms, { bare: true });
 }
 function fmtDay(ms: number): string {
-  return new Date(ms).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return appDateString(ms, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 function startOfTodayMs(): number {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  return startOfAppDay(Date.now());
 }
 function localTimezone(): string {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'; } catch { return 'local'; }
+  return assistantTimeZone() || 'local';
 }
 
 /**

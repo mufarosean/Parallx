@@ -11,6 +11,7 @@
 
 import { readToolIntent } from '../../services/toolIntent.js';
 import { buildApprovalNode } from './rendering/chatApproval.js';
+import { appDateString, appDateTimeString } from '../../services/localTime.js';
 import type { EditApplyEventDetail } from './chatTypes.js';
 import { commandPrefix } from '../../services/commandRules.js';
 import { ALWAYS_REQUIRE_CONFIRMATION } from '../../services/permissionService.js';
@@ -1731,8 +1732,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             && include.sync === undefined && include.pages === undefined;
           const want = (k: 'schedule' | 'activity' | 'sync' | 'pages'): boolean => all || include[k] === true;
           const blocks: string[] = [];
-          const now = new Date();
-          blocks.push(`Now: ${now.toLocaleString()}`);
+          blocks.push(`Now: ${appDateTimeString(Date.now())}`);
           // The schedule comes from whatever tools keep one (services/
           // scheduleSources), one block per source, headed by its name.
           if (want('schedule')) {
@@ -1745,7 +1745,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
                 const lines: string[] = [];
                 if (digest) lines.push(`Today: ${digest.events} events, ${digest.tasksDue} tasks due.`);
                 for (const t of tasks.slice(0, 20)) {
-                  lines.push(`- ${t.title}${t.dueAt ? ` (due ${new Date(t.dueAt).toLocaleDateString()})` : ''}`);
+                  lines.push(`- ${t.title}${t.dueAt ? ` (due ${appDateString(t.dueAt)})` : ''}`);
                 }
                 if (lines.length) blocks.push(`${source.name.toUpperCase()}:\n${lines.join('\n')}`);
               } catch { /* omit the block */ }
@@ -1770,7 +1770,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               const lines = pages
                 .filter((p) => !p.isArchived)
                 .slice(0, 25)
-                .map((p) => `- ${p.title || 'Untitled'} (updated ${new Date(p.updatedAt).toLocaleDateString()})`);
+                .map((p) => `- ${p.title || 'Untitled'} (updated ${appDateString(new Date(p.updatedAt))})`);
               if (lines.length) blocks.push(`WORKSPACE PAGES:\n${lines.join('\n')}`);
             } catch { /* omit */ }
           }

@@ -21,6 +21,7 @@
 //   Escape       → dismiss
 
 import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
+import { appDateString } from '../services/localTime.js';
 import { glideHighlight } from '../ui/glide.js';
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
@@ -581,7 +582,7 @@ function _formatRelativeTime(isoString: string): string {
     if (diffH < 24) return `${diffH}h ago`;
     const diffD = Math.floor(diffH / 24);
     if (diffD < 30) return `${diffD}d ago`;
-    return dt.toLocaleDateString();
+    return appDateString(dt);
   } catch {
     return '';
   }

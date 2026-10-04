@@ -11,6 +11,7 @@ import type {
 } from '../../dashboard/dashboardTypes.js';
 import type { PlannerDataService } from '../plannerDataService.js';
 import type { PlannerEvent } from '../plannerTypes.js';
+import { addAppDays, appDateParts, appDateString, appTime, appTimeString, isSameAppDay, startOfAppDay } from '../../../services/localTime.js';
 
 type View = 'month' | 'week' | 'day';
 
@@ -22,19 +23,16 @@ const DEFAULT_CONFIG: Config = { view: 'month' };
 
 const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
 
-function startOfDay(d: Date): Date { const c = new Date(d); c.setHours(0, 0, 0, 0); return c; }
-function endOfDay(d: Date): Date { const c = new Date(d); c.setHours(23, 59, 59, 999); return c; }
-function startOfWeek(d: Date): Date { const c = startOfDay(d); c.setDate(c.getDate() - c.getDay()); return c; }
-function startOfMonth(d: Date): Date { const c = startOfDay(d); c.setDate(1); return c; }
-function endOfMonth(d: Date): Date { const c = startOfMonth(d); c.setMonth(c.getMonth() + 1); c.setMilliseconds(-1); return c; }
-function addDays(d: Date, n: number): Date { const c = new Date(d); c.setDate(c.getDate() + n); return c; }
-
-function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
+// Days, weeks and months on the user's calendar (the app's Time Zone), as epoch ms.
+function startOfDay(t: number): number { return startOfAppDay(t); }
+function endOfDay(t: number): number { return addAppDays(startOfAppDay(t), 1) - 1; }
+function startOfWeek(t: number): number { const c = startOfAppDay(t); return addAppDays(c, -appDateParts(c).weekday); }
+function startOfMonth(t: number): number { const p = appDateParts(t); return appTime(p.year, p.month, 1); }
+function endOfMonth(t: number): number { const p = appDateParts(t); return appTime(p.year, p.month + 1, 1) - 1; }
+function addDays(t: number, n: number): number { return addAppDays(t, n); }
 
 function fmtTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return appTimeString(ts, { hour: 'numeric', minute: '2-digit' });
 }
 
 function escapeHtml(s: string): string {
@@ -67,18 +65,18 @@ export function buildCalendarViewWidget(data: PlannerDataService): WidgetTypeReg
 
     async refresh(ctx: WidgetRefreshContext<Config>): Promise<string> {
       const view = (ctx.config?.view ?? 'month') as View;
-      const now = new Date();
+      const now = Date.now();
       let from: number, to: number;
       if (view === 'month') {
-        from = startOfMonth(now).getTime();
-        to = endOfMonth(now).getTime();
+        from = startOfMonth(now);
+        to = endOfMonth(now);
       } else if (view === 'week') {
         const start = startOfWeek(now);
-        from = start.getTime();
-        to = addDays(start, 7).getTime();
+        from = start;
+        to = addDays(start, 7);
       } else {
-        from = startOfDay(now).getTime();
-        to = endOfDay(now).getTime();
+        from = startOfDay(now);
+        to = endOfDay(now);
       }
       const events = await data.listEvents({ from, to, limit: 500 });
       return JSON.stringify({ view, events });
@@ -140,27 +138,29 @@ function paintMonth(host: HTMLElement, events: PlannerEvent[]): void {
 
   const cellsEl = document.createElement('div');
   cellsEl.className = 'pl-cal__cells';
-  const now = new Date();
+  const now = Date.now();
+  const nowMonth = appDateParts(now).month;
   const first = startOfMonth(now);
   const gridStart = startOfWeek(first);
   const last = endOfMonth(now);
   const gridEnd = addDays(startOfWeek(last), 6);
-  const total = Math.round((gridEnd.getTime() - gridStart.getTime()) / 86_400_000) + 1;
+  const total = Math.round((gridEnd - gridStart) / 86_400_000) + 1;
 
   for (let i = 0; i < total; i++) {
     const day = addDays(gridStart, i);
-    const dayStart = startOfDay(day).getTime();
-    const dayEnd = endOfDay(day).getTime();
+    const dayParts = appDateParts(day);
+    const dayStart = startOfDay(day);
+    const dayEnd = endOfDay(day);
     const dayCount = events.filter(ev => ev.startAt <= dayEnd && ev.endAt >= dayStart).length;
 
     const cell = document.createElement('div');
     cell.className = 'pl-cal__cell';
-    if (day.getMonth() !== now.getMonth()) cell.classList.add('pl-cal__cell--other');
-    if (sameDay(day, now)) cell.classList.add('pl-cal__cell--today');
+    if (dayParts.month !== nowMonth) cell.classList.add('pl-cal__cell--other');
+    if (isSameAppDay(day, now)) cell.classList.add('pl-cal__cell--today');
 
     const num = document.createElement('span');
     num.className = 'pl-cal__num';
-    num.textContent = String(day.getDate());
+    num.textContent = String(dayParts.day);
     cell.appendChild(num);
 
     if (dayCount > 0) {
@@ -190,22 +190,23 @@ function paintWeek(host: HTMLElement, events: PlannerEvent[]): void {
   const grid = document.createElement('div');
   grid.className = 'pl-cal__week';
 
-  const start = startOfWeek(new Date());
+  const now = Date.now();
+  const start = startOfWeek(now);
   for (let i = 0; i < 7; i++) {
     const day = addDays(start, i);
     const col = document.createElement('div');
     col.className = 'pl-cal__weekcol';
-    if (sameDay(day, new Date())) col.classList.add('pl-cal__weekcol--today');
+    if (isSameAppDay(day, now)) col.classList.add('pl-cal__weekcol--today');
 
     const head = document.createElement('div');
     head.className = 'pl-cal__weekhead';
-    head.innerHTML = `<span>${day.toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>${day.getDate()}</strong>`;
+    head.innerHTML = `<span>${appDateString(day, { weekday: 'short' })}</span><strong>${appDateParts(day).day}</strong>`;
     col.appendChild(head);
 
     const list = document.createElement('div');
     list.className = 'pl-cal__weeklist';
     const dayEvents = events
-      .filter(ev => ev.startAt <= endOfDay(day).getTime() && ev.endAt >= startOfDay(day).getTime())
+      .filter(ev => ev.startAt <= endOfDay(day) && ev.endAt >= startOfDay(day))
       .sort((a, b) => a.startAt - b.startAt);
     for (const ev of dayEvents.slice(0, 4)) {
       const chip = document.createElement('div');

@@ -7,6 +7,7 @@
 // it is unit-testable; the renderer just hands the result to a file save.
 
 import type { PlannerEvent, PlannerTask } from './plannerTypes.js';
+import { addAppDays, appDateParts, startOfAppDay } from '../../services/localTime.js';
 
 const PRODID = '-//Parallx//Planner//EN';
 
@@ -40,10 +41,10 @@ export function formatICalUTC(ms: number): string {
     `T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
 }
 
-/** Floating DATE (local calendar day): YYYYMMDD. */
+/** Floating DATE (the user's calendar day, in the app's Time Zone): YYYYMMDD. */
 export function formatICalDate(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const d = appDateParts(ms);
+  return `${d.year}${pad(d.month + 1)}${pad(d.day)}`;
 }
 
 function line(name: string, value: string): string {
@@ -57,10 +58,8 @@ function eventToVEvent(ev: PlannerEvent, stamp: string): string[] {
   if (ev.allDay) {
     out.push(line('DTSTART;VALUE=DATE', formatICalDate(ev.startAt)));
     // All-day DTEND is exclusive → the day after the last day covered.
-    const endExclusive = new Date(ev.endAt);
-    endExclusive.setHours(0, 0, 0, 0);
-    endExclusive.setDate(endExclusive.getDate() + 1);
-    out.push(line('DTEND;VALUE=DATE', formatICalDate(endExclusive.getTime())));
+    const endExclusive = addAppDays(startOfAppDay(ev.endAt), 1);
+    out.push(line('DTEND;VALUE=DATE', formatICalDate(endExclusive)));
   } else {
     out.push(line('DTSTART', formatICalUTC(ev.startAt)));
     out.push(line('DTEND', formatICalUTC(ev.endAt)));

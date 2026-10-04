@@ -10,6 +10,7 @@
 // Teardown reverses (5→1).
 
 import { DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { appDateTimeString } from '../services/localTime.js';
 import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
@@ -2765,7 +2766,7 @@ export class Workbench extends Layout {
   async saveCurrentLayout(name: string): Promise<SavedLayout> {
     const layout: SavedLayout = {
       id: `layout-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-      name: name.trim() || `Layout ${new Date().toLocaleString()}`,
+      name: name.trim() || `Layout ${appDateTimeString(Date.now())}`,
       savedAt: new Date().toISOString(),
       tree: this.serializeBodyTree(),
       rails: [

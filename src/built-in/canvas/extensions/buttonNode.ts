@@ -15,6 +15,7 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import { closeHistory } from '@tiptap/pm/history';
+import { appDateParts } from '../../../services/localTime.js';
 import { markdownToTiptapJson } from '../markdownImport.js';
 import {
   type LiveBlockOptions, type LiveBlockServices, type LivePageSummary,
@@ -58,10 +59,11 @@ export function parseButtonActions(raw: unknown): ButtonAction[] {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
-/** {{date}} → 2026-10-04, {{time}} → 14:05 (local). */
+/** {{date}} → 2026-10-04, {{time}} → 14:05 (local: the app's Time Zone). */
 export function fillPlaceholders(text: string, now: Date = new Date()): string {
-  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const p = appDateParts(now);
+  const date = `${p.year}-${pad(p.month + 1)}-${pad(p.day)}`;
+  const time = `${pad(p.hour)}:${pad(p.minute)}`;
   return text.replace(/\{\{\s*date\s*\}\}/gi, date).replace(/\{\{\s*time\s*\}\}/gi, time);
 }
 

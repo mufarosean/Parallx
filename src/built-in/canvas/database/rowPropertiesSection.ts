@@ -27,6 +27,7 @@ import { showPropertyPicker } from '../properties/propertyPicker.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
 import { parseStoredTime } from '../../../platform/storedTime.js';
+import { appDateTimeString } from '../../../services/localTime.js';
 
 const COLLAPSED_KEY = 'canvas.propertyBar.collapsed';
 
@@ -46,8 +47,7 @@ function formatTimestamp(iso: string | undefined | null): string {
   // The page row's times are SQLite UTC ('YYYY-MM-DD HH:MM:SS'): read as UTC, shown local.
   const ms = parseStoredTime(iso);
   if (!Number.isFinite(ms)) return String(iso);
-  const d = new Date(ms);
-  return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return appDateTimeString(ms, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 interface IHome {

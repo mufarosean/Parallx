@@ -7,6 +7,7 @@ import './output.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
+import { appDateParts } from '../../services/localTime.js';
 import { createPanelToolbarButton, createPanelEmptyState } from '../../ui/panelSurface.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -135,8 +136,8 @@ function refreshList(): void {
     else if (entry.source === 'error') row.classList.add('is-error');
 
     if (showTimestamps) {
-      const d = new Date(entry.timestamp);
-      const ts = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+      const d = appDateParts(entry.timestamp);
+      const ts = `${String(d.hour).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}:${String(d.second).padStart(2, '0')}.${String(d.millisecond).padStart(3, '0')}`;
       const time = $('span.px-panel-log-time');
       time.textContent = ts;
       row.appendChild(time);

@@ -35,6 +35,7 @@ import { openWidgetSettingsDrawer } from './settingsDrawer.js';
 import { ILinkResolverService } from '../../links/linkResolverService.js';
 import { WIDGET_TEMPLATES } from './widgetTemplates.js';
 import { getIcon } from '../../ui/iconRegistry.js';
+import { appDateParts, appTime } from '../../services/localTime.js';
 
 // ─── Minimal local API shape (avoids cross-tool import) ──────────────────────
 
@@ -452,9 +453,10 @@ class DashboardEditorPane implements IDisposable {
       // Try to recognise our own daily/weekday shapes; otherwise show raw.
       const m = /^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5)$/.exec(current.cron.trim());
       if (m) {
-        const local = new Date();
-        local.setUTCHours(parseInt(m[2], 10), parseInt(m[1], 10), 0, 0);
-        timeInput.value = `${String(local.getHours()).padStart(2, '0')}:${String(local.getMinutes()).padStart(2, '0')}`;
+        const utc = new Date();
+        utc.setUTCHours(parseInt(m[2], 10), parseInt(m[1], 10), 0, 0);
+        const local = appDateParts(utc);
+        timeInput.value = `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`;
         select.value = m[3] === '1-5' ? 'weekdays' : 'daily';
       } else {
         select.value = 'cron';
@@ -485,8 +487,9 @@ class DashboardEditorPane implements IDisposable {
       else if (v === 'every4h') policy = { kind: 'interval', ms: 4 * 3_600_000 };
       else if (v === 'daily' || v === 'weekdays') {
         const [hh, mm] = (timeInput.value || '07:00').split(':').map((s) => parseInt(s, 10));
-        const local = new Date();
-        local.setHours(hh || 7, mm || 0, 0, 0);
+        // Local time is the app's Time Zone; the cron runs in UTC.
+        const today = appDateParts(Date.now());
+        const local = new Date(appTime(today.year, today.month, today.day, hh || 7, mm || 0));
         policy = {
           kind: 'cron',
           cron: `${local.getUTCMinutes()} ${local.getUTCHours()} * * ${v === 'weekdays' ? '1-5' : '*'}`,

@@ -11,6 +11,7 @@ import {
   type WorksheetItem, type WorksheetItemSummary, type WorksheetAttempt,
 } from './worksheetData.js';
 import { serializeWorkbookCells } from './itemFormat.js';
+import { appDayKey } from '../../services/localTime.js';
 
 interface ChatApiLike {
   chat?: {
@@ -102,7 +103,7 @@ export function buildNotesDigest(items: WorksheetItemSummary[]): string {
     if (tagStr) bits.push(tagStr);
     bits.push(item.attemptState === 'open' ? 'in progress' : item.attemptState ? `rated ${gradeWord(item.attemptState)}` : 'never rated');
     if (item.starred) bits.push('starred');
-    const when = item.noteAt ? new Date(item.noteAt).toISOString().slice(0, 10) : '';
+    const when = item.noteAt ? appDayKey(item.noteAt) : '';
     lines.push(`- [id ${item.id}] "${item.title}" (${bits.join(' · ')})${when ? ` noted ${when}` : ''}:`);
     lines.push(`  ${item.note.trim().replace(/\s*\n\s*/g, ' / ')}`);
   }

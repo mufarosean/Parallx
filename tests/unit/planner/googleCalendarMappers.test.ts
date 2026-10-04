@@ -9,7 +9,7 @@ import {
   mapPlannerTaskToGoogle,
   mapGoogleExceptionToOverride,
   googleInstanceId,
-  machineTimeZone,
+  syncTimeZone,
   rruleForGoogle,
 } from '../../../src/built-in/planner/sync/googleCalendarSyncProvider.js';
 import type { PlannerEvent, PlannerTask } from '../../../src/built-in/planner/plannerTypes.js';
@@ -83,7 +83,7 @@ describe('mapPlannerEventToGoogle', () => {
     }));
     expect(body.start).toEqual({
       dateTime: new Date(Date.parse('2026-07-01T10:00:00Z')).toISOString(),
-      timeZone: machineTimeZone(),
+      timeZone: syncTimeZone(),
     });
     expect(body.summary).toBe('Meet');
   });
@@ -97,7 +97,7 @@ describe('mapPlannerEventToGoogle', () => {
       startAt: Date.parse('2026-07-01T10:00:00Z'), endAt: Date.parse('2026-07-01T11:00:00Z'),
       recurrence: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH',
     }));
-    const tz = machineTimeZone();
+    const tz = syncTimeZone();
     expect(tz).toBeTruthy();
     expect((body.start as Record<string, unknown>).timeZone).toBe(tz);
     expect((body.end as Record<string, unknown>).timeZone).toBe(tz);
@@ -109,8 +109,8 @@ describe('mapPlannerEventToGoogle', () => {
       allDay: true, startAt: parseAllDayDate('2026-07-01'), endAt: parseAllDayDate('2026-07-03'),
       recurrence: 'FREQ=DAILY',
     }));
-    expect(body.start).toEqual({ date: '2026-07-01', timeZone: machineTimeZone() });
-    expect(body.end).toEqual({ date: '2026-07-03', timeZone: machineTimeZone() });
+    expect(body.start).toEqual({ date: '2026-07-01', timeZone: syncTimeZone() });
+    expect(body.end).toEqual({ date: '2026-07-03', timeZone: syncTimeZone() });
     expect(body.recurrence).toEqual(['RRULE:FREQ=DAILY']);
   });
 });

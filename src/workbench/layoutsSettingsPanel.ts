@@ -6,6 +6,7 @@
 // command too, but THIS is the required home.
 
 import type { IDisposable } from '../platform/lifecycle.js';
+import { appDateTimeString } from '../services/localTime.js';
 import { DisposableStore } from '../platform/lifecycle.js';
 import type { ISettingsPanel } from '../services/settingsPanelRegistry.js';
 import type { SavedLayout, SavedLayoutStore } from './savedLayouts.js';
@@ -86,7 +87,7 @@ export function createLayoutsSettingsPanel(host: LayoutsPanelHost): ISettingsPan
         const when = new Date(layout.savedAt);
         row.appendChild(el(
           'span', 'layouts-panel__date',
-          Number.isNaN(when.getTime()) ? '' : `Saved ${when.toLocaleString()}`,
+          Number.isNaN(when.getTime()) ? '' : `Saved ${appDateTimeString(when)}`,
         ));
 
         const applyBtn = button('Apply');

@@ -51,6 +51,7 @@ import { registerWorksheetChatTools, buildNotesDigest } from './worksheetChat.js
 import { detectExcelItems, wholeSheetItem, type GridSheet, type ExcelItem } from './excelImport.js';
 import { practiceBlock } from './worksheetPracticeBlock.js';
 import './worksheet.css';
+import { appDateString, appDateTimeString, startOfAppDay } from '../../services/localTime.js';
 
 // ── API typings (structural — the tool API surface) ─────────────────────────
 
@@ -505,7 +506,7 @@ function createBankPane(container: HTMLElement) {
     if (!item.paper && item.tags) meta.push(item.tags.split(',').filter(Boolean).map((t) => `#${t.trim()}`).join(' '));
     if (item.attemptCount > 0) meta.push(`${item.attemptCount} ${item.attemptCount === 1 ? 'attempt' : 'attempts'}`);
     if (item.seconds > 0) meta.push(fmtStudy(item.seconds));
-    if (item.lastAttemptAt > 0) meta.push(`last ${new Date(item.lastAttemptAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`);
+    if (item.lastAttemptAt > 0) meta.push(`last ${appDateString(item.lastAttemptAt, { month: 'short', day: 'numeric' })}`);
     info.appendChild(el('span', 'ws-list__meta', meta.join(' · ')));
     // The note, in the row: what he told himself about this problem, where he picks it.
     if (item.note) {
@@ -1010,8 +1011,9 @@ function createLauncherPane(container: HTMLElement) {
 // ── Settings (instanceId 'settings') ────────────────────────────────────────
 
 function fmtShortDay(day: string): string {
+  // A day key is a calendar date: written as one, through no zone's clock.
   const [y, m, d] = day.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
 function createSettingsPane(container: HTMLElement) {
@@ -1501,8 +1503,8 @@ async function persistPractice(announce = false): Promise<void> {
 function when(ms: number): string {
   // Calendar days, not 24-hour spans: 11 pm last night is "yesterday" at
   // 8 am, which the elapsed-time count called "today".
-  const midnight = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
-  const days = Math.round((midnight(Date.now()) - midnight(ms)) / 86400000);
+  // The user's days, in the app's Time Zone.
+  const days = Math.round((startOfAppDay(Date.now()) - startOfAppDay(ms)) / 86400000);
   return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
 }
 /** `when` at the start of a fragment: "Today", "Yesterday", "3 days ago". */
@@ -1512,7 +1514,7 @@ function whenCap(ms: number): string {
 }
 /** A quiz named after the moment it began, when nothing better was given. */
 function defaultQuizName(count: number): string {
-  const at = new Date().toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const at = appDateTimeString(Date.now(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   return `${count} ${count === 1 ? 'Problem' : 'Problems'} · ${at}`;
 }
 /** A new, named quiz over these problems, starting at `startAt`. Open quizzes
@@ -1615,7 +1617,7 @@ function createQuizzesPane(container: HTMLElement) {
         const r = normalizeRating(grades.get(id) ?? bankById.get(id)?.attemptState ?? '');
         if (r === 'easy' || r === 'medium' || r === 'hard') counts[r]++; else unrated++;
       }
-      const started = new Date(q.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      const started = appDateTimeString(q.startedAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
       const n = q.itemIds.length;
       const row = el('div', 'ws-list__row ws-quizrow');
       row.appendChild(el('span', `ws-bank__dot ${q.finishedAt ? 'rest' : 'open'}`));

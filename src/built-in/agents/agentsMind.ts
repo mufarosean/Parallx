@@ -6,6 +6,7 @@
 // standing approval. The meters are said in words; the numbers live in the
 // tooltips.
 
+import { appDateString } from '../../services/localTime.js';
 import { $ } from '../../ui/dom.js';
 import { createButton, createEmptyState, createSectionLabel } from '../../ui/kit.js';
 import { showConfirmModal } from '../../api/notificationService.js';
@@ -140,7 +141,7 @@ function renderAllowed(host: HTMLElement, repaint: () => void): void {
     const text = $('span.agents-row__text');
     const n = $('span.agents-row__name'); n.textContent = p.label || p.id;
     const w = $('span.agents-row__what');
-    w.textContent = `Approved ${new Date(p.approvedAt).toLocaleDateString()} · used ${p.matchCount} time${p.matchCount === 1 ? '' : 's'}`;
+    w.textContent = `Approved ${appDateString(new Date(p.approvedAt))} · used ${p.matchCount} time${p.matchCount === 1 ? '' : 's'}`;
     text.append(n, w);
     row.appendChild(text);
     createButton(row, { label: 'Revoke', kind: 'ghost', size: 'sm', title: 'Ask again next time', onClick: () => { void svc.patterns?.revoke(p.id).then(repaint); } });
