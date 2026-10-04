@@ -4433,6 +4433,14 @@
 }
 .canvas-live-popover__primary:hover { background: var(--px-accent-hover); }
 
+/* ── Linked Database block ── */
+.canvas-linked-db { margin: 0.75rem 0; }
+.canvas-linked-db__bar { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.canvas-linked-db__label { color: var(--px-text-faint); font-size: var(--px-text-xs); }
+.canvas-linked-db:hover .canvas-live-edit { opacity: 1; }
+.canvas-linked-db__body { overflow-x: auto; }
+.canvas-linked-db__empty { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px dashed var(--px-border-strong); border-radius: var(--px-radius-md); color: var(--px-text-muted); font-size: var(--px-text-sm); }
+
 /* ── Button block ── */
 .canvas-button-block { display: flex; align-items: center; gap: 8px; margin: 0.5rem 0; }
 .canvas-button-block__button {

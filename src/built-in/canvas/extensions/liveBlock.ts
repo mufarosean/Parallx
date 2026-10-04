@@ -25,6 +25,8 @@ export interface LiveBlockServices {
   readonly pages?: LivePageReader;
   /** The user's databases (Button: Add Row). */
   readonly databases?: LiveDatabaseAccess;
+  /** Show a database's table or board inside `container` (Linked Database). */
+  mountDatabaseView?(container: HTMLElement, databaseId: string, options: { viewId?: string; onViewChange?(viewId: string): void }): { dispose(): void };
 }
 
 export interface LiveDatabaseAccess {

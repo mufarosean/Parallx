@@ -34,6 +34,7 @@ import { Dataview } from '../extensions/dataviewNode.js';
 import { PageBreadcrumb, SubpageList } from '../extensions/pageTreeBlocks.js';
 import { Embed } from '../extensions/embedNode.js';
 import { ButtonBlock } from '../extensions/buttonNode.js';
+import { LinkedDatabase } from '../extensions/linkedDatabaseNode.js';
 import { MermaidDiagram, MERMAID_SAMPLE } from '../extensions/mermaidNode.js';
 import type { LiveBlockServices } from '../extensions/liveBlock.js';
 export type { LiveBlockServices } from '../extensions/liveBlock.js';
@@ -1077,6 +1078,20 @@ const definitions: BlockDefinition[] = [
     turnInto: undefined,
     defaultContent: { type: 'buttonBlock', attrs: { label: 'New Entry', actions: '[]' } },
     extension: (ctx) => ButtonBlock.configure({ live: ctx.live }),
+  },
+  {
+    // One of your databases shown in this page, table or board, live.
+    id: 'linkedDatabase',
+    name: 'linkedDatabase',
+    label: 'Linked Database',
+    icon: 'database',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Show an existing database in this page', order: 0.6, category: 'page' },
+    turnInto: undefined,
+    defaultContent: { type: 'linkedDatabase', attrs: { databaseId: '', viewId: '' } },
+    extension: (ctx) => LinkedDatabase.configure({ live: ctx.live }),
   },
   // Placeholders for stored content this build can't show (unknownContent.ts).
   // Never inserted by the user: no slash entry, no turn-into.

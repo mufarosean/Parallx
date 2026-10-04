@@ -102,6 +102,7 @@ export const UNIQUE_ID_BLOCK_TYPES: string[] = [
   'embed',
   'mermaidDiagram',
   'buttonBlock',
+  'linkedDatabase',
 ];
 
 /**

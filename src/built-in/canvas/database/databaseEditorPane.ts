@@ -85,6 +85,14 @@ function filterOpsFor(type: PropertyType | 'title'): { op: FilterOp; label: stri
   }
 }
 
+/** A database shown inside a page (the Linked Database block). */
+export interface IDatabasePaneEmbedOptions {
+  /** The view to show first (the block remembers it). */
+  readonly viewId?: string;
+  /** A tab was chosen: the block stores it. */
+  onViewChange?(viewId: string): void;
+}
+
 export interface IDatabasePaneDeps {
   readonly db: DatabaseDataService;
   /** Open a row as a page (canvas editor). */
@@ -139,8 +147,13 @@ export class DatabaseEditorPane implements IDisposable {
     private readonly _container: HTMLElement,
     private readonly _databaseId: string,
     private readonly _deps: IDatabasePaneDeps,
+    private readonly _embed?: IDatabasePaneEmbedOptions,
   ) {
     this._root = el('div', 'canvas-db-pane');
+    if (_embed) {
+      this._root.classList.add('canvas-db-pane--embedded');
+      this._activeViewId = _embed.viewId ?? null;
+    }
     this._container.appendChild(this._root);
     this._disposables.add(this._deps.db.onDidChangeStructure((id) => { if (id === this._databaseId) void this._reload(); }));
     this._disposables.add(this._deps.db.onDidChangeRows((id) => { if (id === this._databaseId) void this._reloadRows(); }));
@@ -232,15 +245,24 @@ export class DatabaseEditorPane implements IDisposable {
     // A database without its own icon shows a table, as in the sidebar.
     iconEl.innerHTML = this._icon ? renderPageIconHtml(this._icon) : svgIcon('table');
     header.appendChild(iconEl);
-    const titleEl = el('div', 'canvas-db-header__title', this._title);
-    titleEl.contentEditable = 'true';
-    titleEl.spellcheck = false;
-    titleEl.addEventListener('blur', () => {
-      const next = (titleEl.textContent ?? '').trim() || 'Untitled';
-      if (next !== this._title) { this._title = next; void this._deps.renamePage(this._databaseId, next); }
-    });
-    titleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); titleEl.blur(); } });
-    header.appendChild(titleEl);
+    if (this._embed) {
+      // Inside a page the title opens the database; it is renamed there.
+      const open = el('button', 'canvas-db-header__title canvas-db-header__open', this._title);
+      (open as HTMLButtonElement).type = 'button';
+      open.title = 'Open the database';
+      open.addEventListener('click', () => this._deps.openPage(this._databaseId));
+      header.appendChild(open);
+    } else {
+      const titleEl = el('div', 'canvas-db-header__title', this._title);
+      titleEl.contentEditable = 'true';
+      titleEl.spellcheck = false;
+      titleEl.addEventListener('blur', () => {
+        const next = (titleEl.textContent ?? '').trim() || 'Untitled';
+        if (next !== this._title) { this._title = next; void this._deps.renamePage(this._databaseId, next); }
+      });
+      titleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); titleEl.blur(); } });
+      header.appendChild(titleEl);
+    }
     this._root.appendChild(header);
 
     // View tabs + toolbar.
@@ -250,7 +272,7 @@ export class DatabaseEditorPane implements IDisposable {
       const tab = el('button', `canvas-db-tab${view.id === this.activeView?.id ? ' canvas-db-tab--active' : ''}`);
       tab.appendChild(createTypeIconElement(view.type === 'board' ? 'tags' : 'text', 14));
       tab.appendChild(el('span', '', view.name));
-      tab.addEventListener('click', () => { this._activeViewId = view.id; this._render(); });
+      tab.addEventListener('click', () => { this._activeViewId = view.id; this._embed?.onViewChange?.(view.id); this._render(); });
       tab.addEventListener('contextmenu', (e) => { e.preventDefault(); this._openViewMenu(tab, view); });
       tabs.appendChild(tab);
     }

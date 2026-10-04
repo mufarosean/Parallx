@@ -100,3 +100,28 @@ describe('the table while it is used', () => {
     expect(host.querySelector('.canvas-db-table')).toBe(table);
   });
 });
+
+describe('the table shown inside a page (Linked Database)', () => {
+  it('opens on the remembered view, reports a tab change, and its title opens the database', async () => {
+    const d = await dbs.createDatabase({ title: 'Reading' });
+    await dbs.addRow(d.id, 'Dune');
+    const second = await dbs.addView(d.id, 'Board', 'board');
+    const opened: string[] = [];
+    const viewChanges: string[] = [];
+    pane = new DatabaseEditorPane(host, d.id, {
+      db: dbs, openPage: (id) => opened.push(id), renamePage: async () => {},
+    }, { viewId: second.id, onViewChange: (v) => viewChanges.push(v) });
+    await until(() => !!host.querySelector('.canvas-db-tab--active'));
+    expect(host.querySelector('.canvas-db-pane')!.classList.contains('canvas-db-pane--embedded')).toBe(true);
+    expect(host.querySelector('.canvas-db-tab--active')!.textContent).toContain('Board');
+    // The title is a button here (not an editable heading).
+    const title = host.querySelector('.canvas-db-header__open') as HTMLButtonElement;
+    expect(title.textContent).toBe('Reading');
+    title.click();
+    expect(opened).toEqual([d.id]);
+    const firstTab = [...host.querySelectorAll<HTMLElement>('.canvas-db-tab')].find((t) => !t.classList.contains('canvas-db-tab--active') && !t.classList.contains('canvas-db-tab--add'))!;
+    firstTab.click();
+    expect(viewChanges).toHaveLength(1);
+    expect(viewChanges[0]).not.toBe(second.id);
+  });
+});

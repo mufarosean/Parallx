@@ -48,6 +48,7 @@ import { mergeLocalEdits } from './reloadMerge.js';
 import { setBlockDocValidator } from './ai/blockApi.js';
 import { decodeCanvasContent } from './contentSchema.js';
 import type { LiveBlockServices } from './config/blockRegistry.js';
+import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -403,7 +404,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     }
     this._saveDisposables.add({ dispose: () => { if (timer) clearTimeout(timer); listeners.clear(); } });
     const summary = (p: { id: string; title: string; icon: string | null }) => ({ id: p.id, title: p.title || 'Untitled', icon: p.icon ?? null });
-    return {
+    const services: LiveBlockServices = {
       pageId: this._pageId,
       pages: {
         getAncestors: async (id) => (await this._dataService.getAncestors(id)).map(summary),
@@ -418,6 +419,14 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
           return out;
         },
       },
+      mountDatabaseView: db ? (container, databaseId, options) => {
+        const pane = new DatabaseEditorPane(container, databaseId, {
+          db,
+          openPage: (id) => services.openPage(id),
+          renamePage: async (id, title) => { await this._dataService.updatePage(id, { title }); },
+        }, options);
+        return { dispose: () => pane.dispose() };
+      } : undefined,
       databases: db ? {
         list: () => db.listDatabases(),
         addRow: async (databaseId, title) => (await db.addRow(databaseId, title)).pageId,
@@ -437,6 +446,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
       },
       executeCommand: (id, ...args) => this._provider.executeCommand?.(id, ...args) ?? Promise.resolve(undefined),
     };
+    return services;
   }
 
   // ── Page chrome controller ──
