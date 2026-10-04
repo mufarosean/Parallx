@@ -85,9 +85,21 @@ describe('an extraction writes Facts and Timeline into memories.md', () => {
     expect(w.files.get('ws/.parallx/extensions/text-generator/threads/t1/memories.md')).toContain('Alex lives in Berlin.');
   });
 
+  it('asks the model for JSON in the chat\'s context window, with the instructions intact on a long chat', async () => {
+    const w = world('{"facts":[],"beats":[]}');
+    const seen: { messages: any[]; options: any }[] = [];
+    w.parallx.lm.sendChatRequest = async function* (_m: string, messages: any[], options: any) { seen.push({ messages, options }); yield { content: '{"facts":[],"beats":[]}' }; };
+    const long = Array.from({ length: 24 }, (_, i) => ({ id: `x${i}`, author: i % 2 ? 'ai' : 'user', name: i % 2 ? 'Ada' : 'Alex', content: 'word '.repeat(800) }));
+    const r = await __testables.autoExtractMemoryBackground({ parallx: w.parallx, fs: w.fs, workspaceUri: 'ws', threadId: 't1', modelId: 'm', numCtx: 8192, recentMessages: long, existingSemantic: [] });
+    expect(r).toMatchObject({ ok: true, facts: 0, beats: 0 });
+    expect(seen[0].options).toMatchObject({ format: 'json', numCtx: 8192, think: false });
+    expect(seen[0].messages[0].content).toContain('Return STRICT JSON');
+    expect(seen[0].messages[1].content.length).toBeLessThanOrEqual(12_100);
+  });
+
   it('reports a reply with no JSON instead of dropping it silently', async () => {
     const w = world('I would rather not.');
     const r = await __testables.autoExtractMemoryBackground({ parallx: w.parallx, fs: w.fs, workspaceUri: 'ws', threadId: 't1', modelId: 'm', recentMessages: w.msgs, existingSemantic: [] });
-    expect(r).toEqual({ ok: false, reason: 'no JSON in the reply' });
+    expect(r).toEqual({ ok: false, reason: 'the model answered without JSON ("I would rather not.")' });
   });
 });

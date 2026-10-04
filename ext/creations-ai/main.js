@@ -4557,7 +4557,7 @@ function renderMemoryChannel({ legacyMemory = '', semantic = [], episodic = [], 
  * non-fatal — better to skip an extraction than to surface noise.
  */
 async function autoExtractMemoryBackground({
-  parallx, fs, workspaceUri, threadId, modelId,
+  parallx, fs, workspaceUri, threadId, modelId, numCtx,
   recentMessages = [], existingSemantic = [],
 }) {
   if (!parallx?.lm?.sendChatRequest || !modelId) return { ok: false, reason: 'no model' };
@@ -4569,9 +4569,16 @@ async function autoExtractMemoryBackground({
     .filter((m) => m && m.content && m.hiddenFrom !== 'ai')
     .map((m) => {
       const name = m.name || (m.author === 'user' ? 'User' : m.author === 'ai' ? 'AI' : 'System');
-      return `${name}: ${m.content}`;
+      // A long message is cut in the middle: its start and end carry the most.
+      const c = String(m.content);
+      const text = c.length > 1600 ? `${c.slice(0, 1000)} […] ${c.slice(-500)}` : c;
+      return `${name}: ${text}`;
     })
-    .join('\n\n');
+    .join('\n\n')
+    // At most ~12k characters (~3k tokens), the newest kept, so the
+    // instructions are never pushed out of a small context window: when they
+    // were, the model went on with the roleplay and returned no JSON.
+    .slice(-12000);
   if (!transcript.trim()) return { ok: false, reason: 'nothing to read' };
 
   // Build a compact list of existing facts so the model doesn't re-emit
@@ -4615,7 +4622,7 @@ async function autoExtractMemoryBackground({
     const stream = parallx.lm.sendChatRequest(modelId, [
       { role: 'system', content: sysPrompt },
       { role: 'user', content: userPrompt },
-    ], { temperature: 0.2, maxTokens: 1500, think: false });
+    ], { temperature: 0.2, maxTokens: 1500, think: false, format: 'json', ...(numCtx ? { numCtx } : {}) });
     let raw = '';
     for await (const chunk of stream) {
       if (chunk?.content) raw += chunk.content;
@@ -4627,7 +4634,8 @@ async function autoExtractMemoryBackground({
     const parsed = parseExtractionReply(raw);
     if (!parsed) {
       console.warn('[TextGenerator] Memory extract: the model returned no JSON. Reply began:', raw.slice(0, 200));
-      return { ok: false, reason: 'no JSON in the reply' };
+      const said = raw.replace(/\s+/g, ' ').trim().slice(0, 80);
+      return { ok: false, reason: said ? `the model answered without JSON ("${said}${raw.trim().length > 80 ? '…' : ''}")` : 'the model returned nothing' };
     }
     const { facts, beats } = parsed;
 
@@ -5396,6 +5404,11 @@ function renderChatEditor(container, parallx, input) {
           workspaceUri,
           threadId,
           modelId,
+          // The chat's own context window; without it the default (often
+          // 2048) cut the instructions off the front.
+          numCtx: (thread?.contextWindowOverride && thread.contextWindowOverride > 0)
+            ? thread.contextWindowOverride
+            : (currentSettings?.defaultContextWindow || undefined),
           recentMessages: plan.slice,
           existingSemantic: existing,
         });
