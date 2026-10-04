@@ -20,7 +20,7 @@ import { filterToSubquery, type IPropertyFilter } from '../ai/blockApi.js';
 import { createIconElement, resolvePageIcon } from '../config/blockRegistry.js';
 import {
   type LiveBlockOptions, watchWorkspace, openBlockPopover, popoverRow, selectControl, textControl,
-  blockEditButton, setBlockAttrs,
+  blockEditButton, setBlockAttrs, focusBlock,
 } from './liveBlock.js';
 
 export interface DataviewQueryFilter {
@@ -168,7 +168,7 @@ async function listProperties(): Promise<{ name: string; type: string }[]> {
   return (res.rows ?? []).map((r) => ({ name: String(r['name']), type: String(r['type']) }));
 }
 
-function editFilter(anchor: HTMLElement, current: DataviewQuery, onSave: (q: DataviewQuery) => void): void {
+function editFilter(anchor: HTMLElement, current: DataviewQuery, onSave: (q: DataviewQuery) => void, returnFocus?: () => void): void {
   void listProperties().then((props) => {
     openBlockPopover(anchor, 'Page list', (body, close) => {
       const rules: DataviewQueryFilter[] = current.filter.map((f) => ({ ...f }));
@@ -248,7 +248,7 @@ function editFilter(anchor: HTMLElement, current: DataviewQuery, onSave: (q: Dat
         close();
       });
       body.appendChild(done);
-    });
+    }, returnFocus);
   });
 }
 
@@ -305,7 +305,7 @@ export const Dataview = Node.create<LiveBlockOptions>({
       edit.addEventListener('click', () => {
         if (!editor.isEditable) return;
         const q = parseDataviewQuery(current.attrs?.query) ?? { filter: [] };
-        editFilter(edit, q, (next) => setBlockAttrs(editor, getPos, { query: JSON.stringify(next) }));
+        editFilter(edit, q, (next) => setBlockAttrs(editor, getPos, { query: JSON.stringify(next) }), () => focusBlock(editor, getPos));
       });
 
       let seq = 0;

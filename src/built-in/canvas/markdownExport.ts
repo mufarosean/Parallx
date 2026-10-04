@@ -129,6 +129,8 @@ function readableAtom(node: TipTapNode): string {
   if (node.type === 'mathBlock') return `$$\n${String(node.attrs?.latex ?? '')}\n$$`;
   if (node.type === 'image') return `![${String(node.attrs?.alt ?? '')}](${String(node.attrs?.src ?? '')})`;
   if (node.type === 'conceptMap') return String(node.attrs?.src ?? '');
+  if (node.type === 'mermaidDiagram') return '```mermaid\n' + String(node.attrs?.code ?? '') + '\n```';
+  if (node.type === 'embed') return String(node.attrs?.src ?? '');
   return plainText(node);
 }
 

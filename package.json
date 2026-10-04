@@ -73,6 +73,7 @@
     "markdown-it": "^14.1.1",
     "markdown-it-github-alerts": "^1.0.1",
     "markdown-it-mark": "^4.0.0",
+    "mermaid": "^11.17.2",
     "onnxruntime-node": "^1.30.0",
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^5.4.624",

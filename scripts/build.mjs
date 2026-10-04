@@ -65,6 +65,21 @@ await build({
   assetNames: 'fonts/[name]',
 });
 
+// ── Mermaid bundle (canvas Mermaid diagram blocks) ──────────────────────────
+// Like the worksheet engine: several MB, loaded by the block on first use
+// (extensions/mermaidNode.ts), never inlined into main.js.
+await build({
+  entryPoints: ['src/built-in/canvas/extensions/mermaidHost.ts'],
+  bundle: true,
+  outfile: 'dist/renderer/canvas-mermaid.js',
+  format: 'esm',
+  platform: 'browser',
+  target: 'es2022',
+  sourcemap: isProduction ? 'external' : false,
+  minify: true,
+  logLevel: 'info',
+});
+
 // ── Copy PDF.js runtime assets to dist ─────────────────────────────────────
 const workerSrc = 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs';
 const workerDst = 'dist/renderer/pdf.worker.min.mjs';

@@ -32,6 +32,8 @@ import { PageBlock } from '../extensions/pageBlockNode.js';
 import { TableOfContents } from '../extensions/tableOfContentsNode.js';
 import { Dataview } from '../extensions/dataviewNode.js';
 import { PageBreadcrumb, SubpageList } from '../extensions/pageTreeBlocks.js';
+import { Embed } from '../extensions/embedNode.js';
+import { MermaidDiagram, MERMAID_SAMPLE } from '../extensions/mermaidNode.js';
 import type { LiveBlockServices } from '../extensions/liveBlock.js';
 export type { LiveBlockServices } from '../extensions/liveBlock.js';
 import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
@@ -1031,6 +1033,34 @@ const definitions: BlockDefinition[] = [
     turnInto: undefined,
     defaultContent: { type: 'subpageList' },
     extension: (ctx) => SubpageList.configure({ live: ctx.live }),
+  },
+  {
+    // Any https page in a sandboxed frame; share links become embed links.
+    id: 'embed',
+    name: 'embed',
+    label: 'Embed',
+    icon: 'app-window',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Show a web page: maps, docs, designs, video', order: 34, category: 'media' },
+    turnInto: undefined,
+    defaultContent: { type: 'embed', attrs: { src: '' } },
+    extension: (ctx) => Embed.configure({ live: ctx.live }),
+  },
+  {
+    // Diagram code (flowchart, sequence, Gantt…) drawn by Mermaid.
+    id: 'mermaidDiagram',
+    name: 'mermaidDiagram',
+    label: 'Mermaid Diagram',
+    icon: 'workflow',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Flowcharts and diagrams from text', order: 72.5, category: 'advanced' },
+    turnInto: undefined,
+    defaultContent: { type: 'mermaidDiagram', attrs: { code: MERMAID_SAMPLE } },
+    extension: () => MermaidDiagram,
   },
   // Placeholders for stored content this build can't show (unknownContent.ts).
   // Never inserted by the user: no slash entry, no turn-into.

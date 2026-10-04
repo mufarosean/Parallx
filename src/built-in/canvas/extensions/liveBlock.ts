@@ -51,7 +51,14 @@ export function watchWorkspace(live: LiveBlockServices | undefined, refresh: () 
 }
 
 /** The one settings popover blocks open from their "Edit…" button. */
-export function openBlockPopover(anchor: HTMLElement, title: string, build: (body: HTMLElement, close: () => void) => void): () => void {
+export function openBlockPopover(
+  anchor: HTMLElement,
+  title: string,
+  build: (body: HTMLElement, close: () => void) => void,
+  /** Where focus goes when the popover closes with focus inside it (the
+   *  block, so the keyboard carries on from there; it was left on the body). */
+  returnFocus?: () => void,
+): () => void {
   const pop = $('div.canvas-live-popover');
   pop.setAttribute('role', 'dialog');
   pop.setAttribute('aria-label', title);
@@ -63,9 +70,11 @@ export function openBlockPopover(anchor: HTMLElement, title: string, build: (bod
   document.body.appendChild(pop);
   let detach: (() => void) | null = null;
   const close = (): void => {
+    const hadFocus = pop.contains(document.activeElement) || document.activeElement === document.body;
     detach?.();
     detach = null;
     pop.remove();
+    if (hadFocus) returnFocus?.();
   };
   build(body, close);
   layoutPopup(pop, anchor.getBoundingClientRect(), { position: 'below', gap: 4 });
@@ -116,6 +125,14 @@ export function blockEditButton(label: string): HTMLButtonElement {
   btn.textContent = label;
   btn.addEventListener('mousedown', (e) => e.preventDefault());
   return btn;
+}
+
+/** Select a block and focus the editor (after its popover closes). */
+export function focusBlock(editor: any, getPos: (() => number | undefined) | boolean): void {
+  if (typeof getPos !== 'function' || editor.isDestroyed) return;
+  const pos = getPos();
+  if (typeof pos !== 'number') return;
+  editor.chain().setNodeSelection(pos).focus().run();
 }
 
 /** Write new attributes onto a block from inside its node view. */

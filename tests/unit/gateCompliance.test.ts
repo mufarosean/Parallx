@@ -200,7 +200,10 @@ const GATE_RULES: Record<string, string[]> = {
   // (properties live in databases; one query engine, not two).
   'extensions/dataviewNode.ts':            ['ai/blockApi', 'config/blockRegistry', 'extensions/liveBlock'],
   'extensions/liveBlock.ts':               [],
-  'extensions/pageTreeBlocks.ts':          ['config/blockRegistry', 'extensions/liveBlock'],   // what live blocks get from the app (no canvas imports)
+  'extensions/pageTreeBlocks.ts':          ['config/blockRegistry', 'extensions/liveBlock'],
+  'extensions/embedNode.ts':               ['extensions/liveBlock'],
+  'extensions/mermaidNode.ts':             ['extensions/liveBlock'],
+  'extensions/mermaidHost.ts':             [],   // the separate Mermaid bundle's entry   // what live blocks get from the app (no canvas imports)
 
   // structuralInvariantPlugin imports from invariants/ — same pattern.
   'plugins/structuralInvariantPlugin.ts':  ['invariants/'],

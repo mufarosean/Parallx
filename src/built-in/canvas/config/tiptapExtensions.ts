@@ -99,6 +99,8 @@ export const UNIQUE_ID_BLOCK_TYPES: string[] = [
   // ── Live blocks (2026-10-04) ──
   'pageBreadcrumb',
   'subpageList',
+  'embed',
+  'mermaidDiagram',
 ];
 
 /**
