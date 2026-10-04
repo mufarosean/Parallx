@@ -247,6 +247,7 @@ export async function mountRowPropertiesSection(
   // ── Render ──
   let rendering = false;
   let renderQueued = false;
+  let shownHomeId: string | null = null;
   const render = async (): Promise<void> => {
     if (disposed) return;
     if (rendering) { renderQueued = true; return; }
@@ -254,6 +255,7 @@ export async function mountRowPropertiesSection(
     renderQueued = false;
 
     const homeId = await db.getHomeDatabaseForPage(pageId);
+    shownHomeId = homeId;
     const [home, meta] = await Promise.all([
       (async (): Promise<IHome | null> => {
         if (!homeId) return null;
@@ -343,7 +345,16 @@ export async function mountRowPropertiesSection(
   };
 
   // ── Live home + data reactivity ──
-  const onChange = (): void => { void render(); };
+  // Only the page's own database matters (every panel used to rebuild on any
+  // change to any database). A page without one re-renders only once a
+  // change gives it one (tagging it, adding a property).
+  const onChange = (databaseId: string): void => {
+    if (shownHomeId) {
+      if (databaseId === shownHomeId) void render();
+      return;
+    }
+    void db.getHomeDatabaseForPage(pageId).then((id) => { if (id && !disposed) void render(); }).catch(() => { /* next change retries */ });
+  };
   disposables.add(db.onDidChangeRows(onChange));
   disposables.add(db.onDidChangeStructure(onChange));
   await render();

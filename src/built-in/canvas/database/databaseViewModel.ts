@@ -113,6 +113,47 @@ export function ruleMatches(row: IDatabaseRow, rule: IFilterRule, type?: Propert
   }
 }
 
+/**
+ * What a new row added in a filtered view starts with, so it shows in that
+ * view instead of vanishing the moment it is made (it used to start blank).
+ * Covers the rules a value can satisfy outright: "is" on any type, "contains"
+ * on text and tags, and "is not empty" on a checkbox.  With "any of" (or)
+ * the first such rule is enough.  `title` is set by a rule on the title.
+ */
+export function seedForFilter(filter: IFilterConfig | null | undefined, typeOf?: PropertyTypeOf): { title?: string; values: Record<string, unknown> } {
+  const out: { title?: string; values: Record<string, unknown> } = { values: {} };
+  if (!filter || filter.rules.length === 0) return out;
+  for (const rule of filter.rules) {
+    const isTitle = rule.propertyId === TITLE_KEY;
+    const type = isTitle ? 'text' : typeOf?.(rule.propertyId);
+    if (!type) continue;
+    const raw = rule.value;
+    const text = raw === undefined || raw === null ? '' : String(raw);
+    let value: unknown;
+    if (rule.op === 'equals') {
+      if (type === 'checkbox') value = isChecked(raw);
+      else if (text === '') continue;
+      else if (type === 'tags') value = [text];
+      else if (type === 'number') { const n = toNumber(raw); if (n === null) continue; value = n; }
+      else if (type === 'date' || type === 'datetime') { const d = normalizeDateValue(raw); if (!d) continue; value = d; }
+      else value = text;
+    } else if (rule.op === 'contains' && text !== '' && (type === 'text' || type === 'url' || type === 'tags')) {
+      value = type === 'tags' ? [text] : text;
+    } else if (rule.op === 'is_not_empty' && type === 'checkbox') {
+      value = true;
+    } else {
+      continue;
+    }
+    if (isTitle) out.title = String(value);
+    else if (type === 'tags' && Array.isArray(out.values[rule.propertyId])) {
+      const list = out.values[rule.propertyId] as string[];
+      for (const t of value as string[]) if (!list.includes(t)) list.push(t);
+    } else out.values[rule.propertyId] = value;
+    if (filter.conjunction === 'or') break;
+  }
+  return out;
+}
+
 export function applyFilter(rows: readonly IDatabaseRow[], filter: IFilterConfig, typeOf?: PropertyTypeOf): IDatabaseRow[] {
   if (!filter || filter.rules.length === 0) return [...rows];
   const typed = (r: IFilterRule) => (r.propertyId === TITLE_KEY ? 'text' : typeOf?.(r.propertyId));

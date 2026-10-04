@@ -20,7 +20,7 @@ import type {
   DatabaseViewType, FilterOp, IDatabaseProperty, IDatabaseRow, IDatabaseView, IFilterRule, ISortRule,
 } from './databaseTypes.js';
 import { TITLE_KEY } from './databaseTypes.js';
-import { applyFilter, applySort, boardDropValue, groupRows } from './databaseViewModel.js';
+import { applyFilter, applySort, boardDropValue, groupRows, seedForFilter } from './databaseViewModel.js';
 import { isChecked, normalizeDateValue, toNumber } from './cellValues.js';
 import { createPropertyEditor, createTypeIconElement } from '../properties/propertyEditors.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
@@ -150,7 +150,14 @@ export class DatabaseEditorPane implements IDisposable {
     return this._views.find((v) => v.id === this._activeViewId) ?? this._views[0] ?? null;
   }
 
+  /** Loads can finish out of order (a slow full reload after a quick rows
+   *  reload); only the newest one is shown. */
+  private _loadSeq = 0;
+  private _rowsSignature = '';
+  private _deferredRender: 'all' | 'body' | null = null;
+
   private async _reload(): Promise<void> {
+    const seq = ++this._loadSeq;
     const db = this._deps.db;
     const [info, props, views, rows] = await Promise.all([
       db.getDatabase(this._databaseId),
@@ -158,7 +165,8 @@ export class DatabaseEditorPane implements IDisposable {
       db.listViews(this._databaseId),
       db.listRows(this._databaseId),
     ]);
-    if (this._disposed) return;
+    if (this._disposed || seq !== this._loadSeq) return;
+    this._rowsSignature = JSON.stringify(rows);
     this._title = info?.title ?? 'Untitled database';
     this._icon = info?.icon ?? null;
     this._props = props;
@@ -167,12 +175,48 @@ export class DatabaseEditorPane implements IDisposable {
     if (!this._activeViewId || !views.some((v) => v.id === this._activeViewId)) {
       this._activeViewId = views[0]?.id ?? null;
     }
-    this._render();
+    this._renderWhenIdle('all');
   }
 
   private async _reloadRows(): Promise<void> {
-    this._rows = await this._deps.db.listRows(this._databaseId);
-    if (!this._disposed) this._renderBody();
+    const seq = ++this._loadSeq;
+    const rows = await this._deps.db.listRows(this._databaseId);
+    if (this._disposed || seq !== this._loadSeq) return;
+    // A write that changed nothing shown (the same rows come back) does not
+    // rebuild the table.
+    const signature = JSON.stringify(rows);
+    if (signature === this._rowsSignature) return;
+    this._rowsSignature = signature;
+    this._rows = rows;
+    this._renderWhenIdle('body');
+  }
+
+  /** Rebuilding the table under a field being typed in threw the typing
+   *  away; the rebuild waits until that field is left. */
+  private _renderWhenIdle(kind: 'all' | 'body'): void {
+    const active = document.activeElement as HTMLElement | null;
+    const typing = !!active && this._root.contains(active)
+      && (active.matches('input, textarea, select') || active.isContentEditable);
+    if (!typing) {
+      this._deferredRender = null;
+      if (kind === 'all') this._render(); else this._renderBody();
+      return;
+    }
+    const pending = this._deferredRender;
+    this._deferredRender = pending === 'all' || kind === 'all' ? 'all' : 'body';
+    if (pending) return;
+    // Checked on a short timer: a field that is removed while focused fires
+    // no focusout in Chromium, and the render must not wait forever.
+    const field = active!;
+    const timer = setInterval(() => {
+      if (this._disposed) { clearInterval(timer); return; }
+      if (field.isConnected && document.activeElement === field) return;
+      clearInterval(timer);
+      const next = this._deferredRender;
+      this._deferredRender = null;
+      if (next) this._renderWhenIdle(next);
+    }, 150);
+    this._disposables.add({ dispose: () => clearInterval(timer) });
   }
 
   // ── Render: shell ──────────────────────────────────────────────────────────
@@ -531,10 +575,14 @@ export class DatabaseEditorPane implements IDisposable {
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
+  /** A new row starts with what the view's filter asks for (so it stays in
+   *  view) plus `seedValues` (a board column's value), in one write. */
   private async _addRow(seedValues: Record<string, unknown> = {}): Promise<void> {
-    const row = await this._deps.db.addRow(this._databaseId);
-    for (const [propId, v] of Object.entries(seedValues)) {
-      await this._deps.db.setCellValue(this._databaseId, row.pageId, propId, v);
+    const seed = seedForFilter(this.activeView?.filter, (id) => this._props.find((p) => p.id === id)?.type);
+    try {
+      await this._deps.db.addRow(this._databaseId, seed.title, { ...seed.values, ...seedValues });
+    } catch (err) {
+      console.error('[Database] Add row failed:', err);
     }
   }
 

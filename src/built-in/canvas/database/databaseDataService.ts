@@ -76,6 +76,9 @@ const WORKSPACE_DATABASE_TITLES: Record<WorkspaceDatabaseRole, string> = {
   'migrated-properties': 'Migrated properties',
 };
 
+/** Placeholder for the page id of a row being created (see addRow). */
+const CELL_PAGE = Symbol('cell-page');
+
 /** Colors given to options created by typing a new name (PILL_COLORS minus default). */
 const NEW_OPTION_COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'] as const;
 
@@ -499,24 +502,47 @@ export class DatabaseDataService extends Disposable {
     }));
   }
 
-  /** Create a row: a child page of the database + a membership row. */
-  async addRow(databaseId: string, title?: string): Promise<IDatabaseRow> {
+  /**
+   * Create a row: a child page of the database, its membership and its
+   * starting values (a board column's value, what the view's filter asks
+   * for).  Membership and values are one transaction, and the page is
+   * removed again if that fails, so a failed add leaves no page behind
+   * that is in the tree but not in the table.  One change event, after.
+   */
+  async addRow(databaseId: string, title?: string, values: Record<string, unknown> = {}): Promise<IDatabaseRow> {
+    // Values are checked before anything is written.
+    const cells: { ops: { type: 'run'; sql: string; params: unknown[] }[]; addedOptions: boolean; propertyId: string; value: unknown }[] = [];
+    for (const [propertyId, value] of Object.entries(values)) {
+      cells.push(await this._cellWrite(databaseId, '', propertyId, value));
+    }
     const page = await this._pages.createPage(databaseId, title || 'Untitled');
-    const orderRes = await this._db.get(
-      'SELECT MAX(sort_order) as max_sort FROM database_pages WHERE database_id = ?',
-      [databaseId],
-    );
-    const sortOrder = ((orderRes.row?.max_sort as number) ?? 0) + 1;
-    const res = await this._db.run(
-      'INSERT INTO database_pages (database_id, page_id, sort_order) VALUES (?, ?, ?)',
-      [databaseId, page.id, sortOrder],
-    );
-    if (res.error) throw new Error(res.error.message);
-    this._onDidChangeRows.fire(databaseId);
-    return {
-      pageId: page.id, title: page.title, icon: page.icon, sortOrder,
-      values: {}, createdAt: page.createdAt, updatedAt: page.updatedAt,
-    };
+    try {
+      const orderRes = await this._db.get(
+        'SELECT MAX(sort_order) as max_sort FROM database_pages WHERE database_id = ?',
+        [databaseId],
+      );
+      if (orderRes.error) throw new Error(orderRes.error.message);
+      const sortOrder = ((orderRes.row?.max_sort as number) ?? 0) + 1;
+      const ops: { type: 'run'; sql: string; params: unknown[] }[] = [
+        { type: 'run', sql: 'INSERT INTO database_pages (database_id, page_id, sort_order) VALUES (?, ?, ?)', params: [databaseId, page.id, sortOrder] },
+      ];
+      for (const c of cells) {
+        for (const op of c.ops) ops.push({ ...op, params: op.params.map((p) => (p === CELL_PAGE ? page.id : p)) });
+      }
+      const res = await this._db.runTransaction(ops);
+      if (res.error) throw new Error(res.error.message);
+      if (cells.some((c) => c.addedOptions)) this._onDidChangeStructure.fire(databaseId);
+      this._onDidChangeRows.fire(databaseId);
+      return {
+        pageId: page.id, title: page.title, icon: page.icon, sortOrder,
+        values: Object.fromEntries(cells.map((c) => [c.propertyId, c.value])),
+        createdAt: page.createdAt, updatedAt: page.updatedAt,
+      };
+    } catch (err) {
+      // The page was made by this call a moment ago and holds nothing yet.
+      try { await this._pages.deletePage(page.id); } catch { /* best effort */ }
+      throw err;
+    }
   }
 
   /**
@@ -644,6 +670,20 @@ export class DatabaseDataService extends Disposable {
    * color and a board column like any other.
    */
   async setCellValue(databaseId: string, pageId: string, propertyId: string, value: unknown): Promise<void> {
+    const { ops, addedOptions } = await this._cellWrite(databaseId, pageId, propertyId, value);
+    const res = await this._db.runTransaction(ops);
+    if (res.error) throw new Error(res.error.message);
+    if (addedOptions) this._onDidChangeStructure.fire(databaseId);
+    this._onDidChangeRows.fire(databaseId);
+    this._onDidChangeCell.fire({ databaseId, pageId });
+  }
+
+  /** The writes that store one cell (and any new select/tag options), after
+   *  checking the value against the property's type.  `pageId` '' leaves a
+   *  CELL_PAGE placeholder for a row that does not exist yet. */
+  private async _cellWrite(databaseId: string, pageId: string, propertyId: string, value: unknown): Promise<{
+    ops: { type: 'run'; sql: string; params: unknown[] }[]; addedOptions: boolean; propertyId: string; value: unknown;
+  }> {
     const propRes = await this._db.get(
       'SELECT * FROM database_properties WHERE id = ? AND database_id = ?',
       [propertyId, databaseId],
@@ -671,13 +711,9 @@ export class DatabaseDataService extends Disposable {
        VALUES (?, ?, ?, ?, datetime('now'))
        ON CONFLICT(page_id, property_id, database_id)
        DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-      params: [pageId, propertyId, databaseId, JSON.stringify(coerced.value ?? null)],
+      params: [pageId || CELL_PAGE, propertyId, databaseId, JSON.stringify(coerced.value ?? null)],
     });
-    const res = await this._db.runTransaction(ops);
-    if (res.error) throw new Error(res.error.message);
-    if (added.length > 0) this._onDidChangeStructure.fire(databaseId);
-    this._onDidChangeRows.fire(databaseId);
-    this._onDidChangeCell.fire({ databaseId, pageId });
+    return { ops, addedOptions: added.length > 0, propertyId, value: coerced.value ?? null };
   }
 
   /** Rename a row (delegates to the page title — cards/sidebar stay in sync). */
