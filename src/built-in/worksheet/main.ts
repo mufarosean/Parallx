@@ -25,7 +25,7 @@ import { showExtensionContextMenu, type IExtensionMenuItem } from '../../ui/cont
 import { createIconElement } from '../../ui/iconRegistry.js';
 import {
   listItems, getItem, createItem, deleteItem, getOpenAttempt, getLatestWork, saveAttemptCells,
-  discardOpenAttempt, completeAttempt, markAttemptWorked, saveAttemptReview, onWorksheetDataChanged,
+  discardOpenAttempt, completeAttempt, markAttemptWorked, saveAttemptReview, onWorksheetDataChanged, notifyWorksheetViewsChanged,
   getSessionGrades, attachWorksheetDatabase, recordImportedRating, upsertProgressSnapshot,
   getCampaign, startCampaign, endCampaign, listAttemptHistory,
   getOpenQuizSession, saveQuizSession, finishQuizSession, renameQuizSession, reopenQuizSession, deleteQuizSession,
@@ -136,7 +136,9 @@ interface ParallxApiLike {
   commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): { dispose(): void };
     executeCommand?<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
+    getCommands?(): Promise<string[]>;
   };
+  tools?: { onDidChange?(listener: () => void): { dispose(): void } };
   services?: {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
@@ -903,7 +905,7 @@ function createLauncherPane(container: HTMLElement) {
     const plan = await planDay(items, attempts, campaign, due, resume, rewards?.bonusXp ?? 0, {
       startQuiz: (ids, startAt, name) => startQuizWith(ids, startAt, name),
       resumeQuiz: () => { if (open) void openPastQuiz(open.id); },
-      studyFlashcards: () => studyFlashcards(),
+      studyFlashcards: studyFlashcards(),
       openSettings: () => void openWorksheet('settings', 'Worksheets Settings'),
     });
     if (disposed || seq !== renderSeq) return;
@@ -3530,10 +3532,19 @@ async function openWorksheet(instanceId: string, title: string): Promise<void> {
   });
 }
 
-/** The day's other quest: the flashcards extension's due cards. */
-function studyFlashcards(): void {
-  const cmds = (_api as unknown as { commands?: { executeCommand?: (id: string) => Promise<unknown> } } | null)?.commands;
-  if (cmds?.executeCommand) void cmds.executeCommand('flashcards.study').catch(() => void _api?.window?.showInformationMessage?.('Flashcards is not available in this workspace.'));
+/**
+ * The day's other quest: the flashcards tool's due cards. Offered only while
+ * that tool runs (its study command exists); turned off, the button goes.
+ */
+const FLASHCARDS_STUDY = 'flashcards.study';
+let _flashcardsOn = false;
+async function refreshFlashcardsOn(): Promise<void> {
+  const ids = await _api?.commands?.getCommands?.().catch(() => [] as string[]) ?? [];
+  const on = ids.includes(FLASHCARDS_STUDY);
+  if (on !== _flashcardsOn) { _flashcardsOn = on; notifyWorksheetViewsChanged(); }
+}
+function studyFlashcards(): (() => void) | undefined {
+  return _flashcardsOn ? () => void _api?.commands?.executeCommand?.(FLASHCARDS_STUDY) : undefined;
 }
 
 /** The page every Worksheets tab links back to. */
@@ -3581,6 +3592,8 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
     );
   }
   await runMigrations();
+  await refreshFlashcardsOn();
+  if (api.tools?.onDidChange) context.subscriptions.push(api.tools.onDidChange(() => void refreshFlashcardsOn()));
 
   context.subscriptions.push(
     api.editors.registerEditorProvider('worksheet', {
@@ -3620,7 +3633,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
               await recordXpCashout(xp, cents);
               _api?.activity?.note('cashed out', `${xp} XP for $${dollars}`);
             },
-            studyFlashcards: () => studyFlashcards(),
+            get studyFlashcards() { return studyFlashcards(); },
           });
         }
         return createSheetPane(container, instanceId);

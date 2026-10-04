@@ -32,7 +32,7 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 | 13 | `services/workflows/workflowLibrary.ts:27` (+ `workflowTypes.ts:67`, `workflowRunner.ts:39`) | Planner | "Morning Report" template reads the planner | **fixed**: reads the schedule only while a planner is on (gated on the service); description no longer names Planner |
 | 14 | `openclaw/participants/openclawContextReport.ts:173` | Workspace Graph | `/context` tells you to use Workspace Graph | **fixed**: the mind map section shows only while Workspace Graph keeps its cache running |
 | 15 | `services/sealedWorkspace.ts:33` | Browser | Always-shown setting text names the Browser | **fixed**: "Pages you browse yourself are unaffected." |
-| 15a | `worksheet/dashboardPane.ts:458`, `worksheet/main.ts:3534` | Flashcards | Worksheets' plan offers "Review Due Flashcards" (says "not available" when off) | open |
+| 15a | `worksheet/dashboardPane.ts:458`, `worksheet/main.ts:3534` | Flashcards | Worksheets' plan offers "Review Due Flashcards" (says "not available" when off) | **fixed**: offered only while Flashcards' study command exists; the plan redraws when tools turn on or off |
 
 ## 2. Work done for a tool that is off
 

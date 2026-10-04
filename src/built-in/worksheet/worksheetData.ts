@@ -55,6 +55,9 @@ export function onWorksheetDataChanged(listener: () => void): { dispose(): void 
   return { dispose: () => { _listeners.delete(listener); } };
 }
 
+/** Redraw open Worksheets views when something outside the data changed (a tool turned on or off). */
+export function notifyWorksheetViewsChanged(): void { emitChange(); }
+
 function emitChange(): void {
   for (const fn of _listeners) { try { fn(); } catch { /* listener error is not our problem */ } }
 }

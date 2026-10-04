@@ -34,8 +34,8 @@ export interface DashboardActions {
   xpCashRate?(): number;
   /** Record a cash-out of this much XP for this many cents (asks first). */
   cashOut?(xp: number, cents: number): Promise<void>;
-  /** The day's other quest: the flashcards extension's due cards. */
-  studyFlashcards(): void;
+  /** The day's other quest: the flashcards tool's due cards. Absent while that tool is off. */
+  readonly studyFlashcards?: () => void;
   /** Worksheets Settings: where a campaign is set up and ended. */
   openSettings(): void;
   /** Worksheets Home, the page every Worksheets tab belongs to. */
@@ -455,7 +455,8 @@ export async function planDay(items: InsightItem[], attempts: InsightAttempt[], 
   // the rating that scores them, so the tally's chip is never a dead end.
   const unrated = problems.filter((it) => it.worked && (it.ratingImported || !normalizeRating(it.attemptState))).map((it) => it.id);
   if (unrated.length > 0 && !p.finished) add({ label: `Rate Worked Problems (${unrated.length})`, title: 'Problems you worked without rating. They count already; a rating scores them and sets when they come back.', onClick: () => actions.startQuiz(unrated, 0, 'Worked, Not Rated') });
-  out.secondary.push({ label: 'Review Due Flashcards', onClick: () => actions.studyFlashcards() });
+  const study = actions.studyFlashcards;
+  if (study) out.secondary.push({ label: 'Review Due Flashcards', onClick: () => study() });
 
   const title = p.finished ? 'Campaign complete' : p.dayIndex > campaign.days ? `Day ${p.dayIndex}, ${p.dayIndex - campaign.days} past the plan` : p.restToday ? `Day ${p.dayIndex} of ${campaign.days} · Rest day` : `Day ${p.dayIndex} of ${campaign.days} · ${p.doneToday} of ${p.target} today`;
   const pace = p.delta === 0 ? 'on pace' : p.delta > 0 ? `${p.delta} ahead` : `${-p.delta} behind`;
