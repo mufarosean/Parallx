@@ -199,9 +199,7 @@ export function extractTextContent(content: string): string {
       // Handle schema-envelope format: { schemaVersion, doc: { type: "doc", content: [...] } }
       const doc = (parsed as Record<string, unknown>)['doc'];
       const root = (doc && typeof doc === 'object') ? doc : parsed;
-      const texts: string[] = [];
-      walkNode(root, texts);
-      return texts.join(' ').trim();
+      return nodeText(root).replace(/\s+/g, ' ').trim();
     }
   } catch {
     // Not JSON — treat as plain text
@@ -210,16 +208,17 @@ export function extractTextContent(content: string): string {
   return content.trim();
 }
 
-function walkNode(node: unknown, texts: string[]): void {
-  if (!node || typeof node !== 'object') { return; }
+/**
+ * A node's text: the pieces of one line run together (a word split by
+ * formatting, "Para" + bold "llx", stays "Parallx"), and blocks are
+ * separated by a space.
+ */
+function nodeText(node: unknown): string {
+  if (!node || typeof node !== 'object') { return ''; }
   const n = node as Record<string, unknown>;
-  if (n['type'] === 'text' && typeof n['text'] === 'string') {
-    texts.push(n['text'] as string);
-    return;
-  }
-  if (Array.isArray(n['content'])) {
-    for (const child of n['content']) {
-      walkNode(child, texts);
-    }
-  }
+  if (n['type'] === 'text' && typeof n['text'] === 'string') { return n['text'] as string; }
+  if (n['type'] === 'hardBreak') { return ' '; }
+  const children = Array.isArray(n['content']) ? n['content'] as unknown[] : [];
+  const inline = children.some((c) => (c as Record<string, unknown> | null)?.['type'] === 'text');
+  return children.map(nodeText).join(inline ? '' : ' ');
 }

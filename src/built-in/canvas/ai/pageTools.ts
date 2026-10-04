@@ -122,11 +122,10 @@ export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChat
       const whereParts: string[] = ['p.is_archived = 0'];
       const params: unknown[] = [];
 
-      if (query) {
-        whereParts.push('(p.title LIKE ? OR p.content LIKE ?)');
-        const pattern = `%${query}%`;
-        params.push(pattern, pattern);
-      }
+      // The query is matched against each page's title and text below, not
+      // with LIKE over the stored JSON: that matched "paragraph" or "attrs"
+      // on every page and missed a word split by formatting ("Para" + bold
+      // "llx" is not "Parallx" in the JSON).
 
       if (filters.length > 0) {
         const subqueries: string[] = [];
@@ -154,10 +153,16 @@ export function createFindPagesTool(db: IBuiltInToolDatabase | undefined): IChat
 
       const sql =
         `SELECT p.id, p.title, p.icon, p.content, p.updated_at FROM pages p ` +
-        `WHERE ${whereParts.join(' AND ')} ORDER BY ${sortClause} LIMIT ?`;
-      params.push(limit);
+        `WHERE ${whereParts.join(' AND ')} ORDER BY ${sortClause}` + (query ? '' : ' LIMIT ?');
+      if (!query) params.push(limit);
 
-      const rows = await db!.all<{ id: string; title: string; icon: string | null; content: string; updated_at: string }>(sql, params);
+      let rows = await db!.all<{ id: string; title: string; icon: string | null; content: string; updated_at: string }>(sql, params);
+      if (query) {
+        const needle = query.toLowerCase();
+        rows = rows
+          .filter((r) => (r.title ?? '').toLowerCase().includes(needle) || extractTextContent(r.content).toLowerCase().includes(needle))
+          .slice(0, limit);
+      }
 
       if (rows.length === 0) {
         if (query && filters.length === 0) return { content: `No pages found matching "${query}".` };

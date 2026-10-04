@@ -553,6 +553,9 @@ function extractTextFromBlock(node: TipTapNode): string {
   if (node.type === 'text' && typeof node.text === 'string') {
     return node.text;
   }
+  if (node.type === 'hardBreak') {
+    return '\n';
+  }
 
   // Atom blocks with no text content
   if (node.type === 'image' || node.type === 'horizontalRule' ||
@@ -578,10 +581,12 @@ function extractTextFromBlock(node: TipTapNode): string {
     return '';
   }
 
-  return node.content.map(extractTextFromBlock).join(
-    // Add newlines between block-level children
-    isInlineType(node.type) ? '' : '\n',
-  );
+  // A line's pieces run together (a word split by formatting, "Para" +
+  // bold "llx", stays "Parallx"); blocks go on their own lines.  This used
+  // to look at the node's own type, so a paragraph's pieces were split by
+  // newlines and the index held "Para" and "llx".
+  const inlineChildren = node.content.some((c) => isInlineType(c.type));
+  return node.content.map(extractTextFromBlock).join(inlineChildren ? '' : '\n');
 }
 
 /** Whether a TipTap node type is inline (text-level). */

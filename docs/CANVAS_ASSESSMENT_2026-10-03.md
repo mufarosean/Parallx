@@ -182,7 +182,9 @@ markdown, focus) were not tested adversarially.
   app, which has no model in the cloud container.
 - **AI page edits lose formatting**: `canvas_read_page` returns plain text,
   so a `replace` edit rewrites bold, links, nesting and callouts away and drops
-  sub-page cards. `canvas_link_block` inserts literal text, not a link. **Fixed (2026-10-04)**
+  sub-page cards. `canvas_link_block` inserts literal text, not a link
+  (**fixed 2026-10-04**: it writes a link to `parallx-page:<page>#<block>`,
+  which opens the page at the block inside the app; checked in the app). **Fixed (2026-10-04)**
   for page edits: `canvas_read_page` and Edit mode give the AI the page as
   lossless markdown with a `<!-- block:ID -->` line per top-level block, so a
   rewrite keeps formatting, nesting, columns, colours and cards, and keeps
@@ -192,12 +194,26 @@ markdown, focus) were not tested adversarially.
   and refuses a result the editor schema rejects.
 - **Search quality**: the index splits words at formatting boundaries
   ("Para" + "llx"); `canvas_find_pages` runs `LIKE` over raw JSON, so
-  "paragraph" or "attrs" match every page.
+  "paragraph" or "attrs" match every page. **Fixed (2026-10-04)**: the index
+  text and the search/snippet text run a line's pieces together (the index
+  joined a paragraph's pieces with newlines, the snippets with spaces);
+  `canvas_find_pages` matches the query against each page's title and text,
+  not the JSON (`canvasSearchText`).
 - **Lock Page** locks the body and title only (icon, cover, font still edit).
+  **Fixed (2026-10-04)**: icon, cover and font lock too, in the header and in
+  the sidebar's page menu (checked in the app).
 - **"Delete" means three things**: sidebar = Trash with confirm, header =
-  Trash with no confirm, `canvas.deletePage` = permanent.
+  Trash with no confirm, `canvas.deletePage` = permanent. **Fixed
+  (2026-10-04)**: Delete is Move to Trash after the same question in all
+  three; deleting for good happens only in the Trash (checked in the app).
 - **Ctrl+P is taken by PDF export** on canvas pages, shadowing Go to File.
-- **PDF export prints collapsed toggles as their title only.**
+  **Fixed (2026-10-04)**: PDF export is Ctrl+Alt+P. The shortcut and the
+  `canvas.exportPdf` command had never worked (they looked the page up by
+  editor id); both open the dialog now (checked in the app).
+- **PDF export prints collapsed toggles as their title only.** **Fixed
+  (2026-10-04)**: the print opened `<details>`, but canvas toggles are divs
+  that hide a collapsed body with `hidden`; toggle and toggle heading bodies
+  now print (`canvasPdfExport`).
 
 ## Medium and smaller (grouped)
 
