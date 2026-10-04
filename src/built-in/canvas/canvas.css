@@ -1445,7 +1445,8 @@
   transition: background-color var(--px-dur-instant) var(--px-ease);
 }
 
-.block-action-item:hover {
+.block-action-item:hover,
+.block-action-item--active {
   background-color: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--px-text) 8%, transparent));
 }
 
@@ -1701,6 +1702,13 @@
 @keyframes slashMenuFadeIn {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Group labels in the slash menu (while nothing is typed). */
+.canvas-slash-group {
+  padding: 8px 10px 2px;
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
 }
 
 .canvas-slash-item {

@@ -116,7 +116,7 @@ export interface SlashMenuConfig {
   /** Sort order within the slash menu (lower = higher in list). */
   readonly order: number;
   /** Category for grouping in slash menu UI. */
-  readonly category: 'basic' | 'list' | 'rich' | 'media' | 'layout' | 'math' | 'advanced';
+  readonly category: 'page' | 'basic' | 'list' | 'rich' | 'media' | 'layout' | 'math' | 'advanced';
 }
 
 export interface TurnIntoConfig {
@@ -240,13 +240,16 @@ function _insertAndFocusChild(
 ): void {
   editor.chain().insertContentAt(range, content).run();
   const { doc } = editor.state;
+  // The FIRST match: returning false only skips a node's children, so the
+  // walk went on and every later match moved the caret again (a new table
+  // put it in its last header cell).
+  let target = -1;
   doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
-    if (node.type.name === targetNodeName) {
-      editor.chain().setTextSelection(pos + cursorOffset).focus().run();
-      return false;
-    }
+    if (target >= 0) return false;
+    if (node.type.name === targetNodeName) { target = pos; return false; }
     return true;
   });
+  if (target >= 0) editor.chain().setTextSelection(target + cursorOffset).focus().run();
 }
 
 /** Replace a block with a columnList containing N columns. */
@@ -347,7 +350,7 @@ const definitions: BlockDefinition[] = [
     source: 'starterkit',
     kind: 'leaf',
     capabilities: STD_LEAF,
-    slashMenu: { label: 'Bullet List', description: 'Unordered list', order: 10, category: 'list' },
+    slashMenu: { description: 'Unordered list', order: 10, category: 'list' },
     turnInto: { order: 4 },
     defaultContent: {
       type: 'bulletList',
@@ -407,7 +410,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'leaf',
     capabilities: STD_LEAF,
-    slashMenu: { label: 'To-Do List', description: 'Task list with checkboxes', order: 12, category: 'list' },
+    slashMenu: { description: 'Task list with checkboxes', order: 12, category: 'list' },
     turnInto: { order: 6 },
     defaultContent: {
       type: 'taskList',
@@ -427,7 +430,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'leaf',
     capabilities: { ...STD_LEAF, suppressBubbleMenu: true },
-    slashMenu: { label: 'Code Block', description: 'Code with syntax highlighting', order: 21, category: 'rich' },
+    slashMenu: { description: 'Code with syntax highlighting', order: 21, category: 'rich' },
     turnInto: { order: 11 },
     defaultContent: { type: 'codeBlock' },
     extension: (ctx) => CodeBlockLowlight.configure({
@@ -499,10 +502,12 @@ const definitions: BlockDefinition[] = [
           type: 'tableCell', content: [{ type: 'paragraph' }],
         })),
       });
-      editor.chain().insertContentAt(range, {
+      // The caret goes to the first header cell (the insert left it in the
+      // last cell): cell + 1 is its paragraph, + 2 the text inside it.
+      _insertAndFocusChild(editor, range, {
         type: 'table',
         content: [{ type: 'tableRow', content: headerCells }, bodyRow(), bodyRow()],
-      }).focus().run();
+      }, 'tableHeader', 2);
     },
     extension: () => TableKit.configure({
       table: {
@@ -599,7 +604,7 @@ const definitions: BlockDefinition[] = [
     kind: 'container',
     defaultAttrs: { level: 1 },
     capabilities: CONTAINER_CAP,
-    slashMenu: { description: 'Collapsible large heading', order: 50, category: 'advanced' },
+    slashMenu: { description: 'Collapsible large heading', order: 4, category: 'basic' },
     turnInto: undefined,
     defaultContent: {
       type: 'toggleHeading',
@@ -630,7 +635,7 @@ const definitions: BlockDefinition[] = [
     kind: 'container',
     defaultAttrs: { level: 2 },
     capabilities: CONTAINER_CAP,
-    slashMenu: { description: 'Collapsible medium heading', order: 51, category: 'advanced' },
+    slashMenu: { description: 'Collapsible medium heading', order: 5, category: 'basic' },
     turnInto: undefined,
     defaultContent: {
       type: 'toggleHeading',
@@ -660,7 +665,7 @@ const definitions: BlockDefinition[] = [
     kind: 'container',
     defaultAttrs: { level: 3 },
     capabilities: CONTAINER_CAP,
-    slashMenu: { description: 'Collapsible small heading', order: 52, category: 'advanced' },
+    slashMenu: { description: 'Collapsible small heading', order: 6, category: 'basic' },
     turnInto: undefined,
     defaultContent: {
       type: 'toggleHeading',
@@ -766,7 +771,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Create and open a nested sub-page', order: 0, category: 'basic' },
+    slashMenu: { description: 'Create and open a nested sub-page', order: 0, category: 'page' },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: async (editor, range, context) => {
@@ -893,7 +898,7 @@ const definitions: BlockDefinition[] = [
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'New database with table & board views', order: 1, category: 'basic' },
+    slashMenu: { description: 'New database with table & board views', order: 0.5, category: 'page' },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: async (editor, range, context) => {

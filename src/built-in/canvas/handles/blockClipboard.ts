@@ -46,6 +46,8 @@ interface ClipboardPayload {
  * pasting into another works.
  */
 let _lastCopiedPayload: ClipboardPayload | null = null;
+/** The plain text that copy put on the system clipboard. */
+let _lastCopiedText: string | null = null;
 
 /** Strip `id` attrs recursively — UniqueID assigns fresh ones on insert,
  *  and duplicate ids from a copy would make it churn (or worse). */
@@ -160,6 +162,7 @@ export class BlockClipboardController {
 
     const payload: ClipboardPayload = { blocks: stripIds(blocks) };
     _lastCopiedPayload = payload;
+    _lastCopiedText = texts.join('\n');
     const html = `<div ${BLOCKS_ATTR}="${encodeURIComponent(JSON.stringify(payload))}"></div>`;
     e.clipboardData.setData('text/html', html);
     e.clipboardData.setData('text/plain', texts.join('\n'));
@@ -200,7 +203,16 @@ export class BlockClipboardController {
 
     e.preventDefault();
     e.stopImmediatePropagation();
-    this._pasteBlocks(_lastCopiedPayload);
+    const payload = _lastCopiedPayload;
+    // Only while that copy is still what the clipboard holds: copying
+    // something else since (here or in another app) used to paste the older
+    // blocks anyway.
+    const read = navigator.clipboard?.readText?.();
+    if (!read) { this._pasteBlocks(payload); return; }
+    void read.then((current) => {
+      if (current === _lastCopiedText) this._pasteBlocks(payload);
+      else { _lastCopiedPayload = null; _lastCopiedText = null; }
+    }, () => this._pasteBlocks(payload));
   };
 
   private _pasteBlocks(payload: ClipboardPayload): void {

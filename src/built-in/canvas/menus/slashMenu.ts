@@ -52,6 +52,8 @@ export class SlashMenuController implements ICanvasMenu {
   private _menu: HTMLElement | null = null;
   private _visible = false;
   private _filterText = '';
+  /** Start of the "/" line whose menu was closed with Esc (null: none). */
+  private _dismissedLine: number | null = null;
   private _selectedIndex = 0;
   private _registration: IDisposable | null = null;
   private _slashItems: SlashMenuItem[] | null = null;
@@ -107,6 +109,17 @@ export class SlashMenuController implements ICanvasMenu {
 
     const text = $from.parent.textContent;
 
+    // A line whose menu was closed with Esc stays closed while it still
+    // starts with "/" (the next key used to reopen it).
+    const lineStart = $from.start();
+    if (this._dismissedLine !== null && (this._dismissedLine !== lineStart || !text.startsWith('/'))) {
+      this._dismissedLine = null;
+    }
+    if (this._dismissedLine === lineStart) {
+      this.hide();
+      return;
+    }
+
     // Look for '/' at the start of the line
     if (text.startsWith('/')) {
       this._filterText = text.slice(1).toLowerCase();
@@ -135,6 +148,9 @@ export class SlashMenuController implements ICanvasMenu {
     this._menu.style.display = 'block';
     layoutPopup(this._menu, { x: coords.left, y: coords.bottom }, { gap: 4 });
 
+    // It stays on its line when the page scrolls.
+    window.addEventListener('scroll', this._onScroll, true);
+
     // Keyboard handler for menu
     if (!this._menu.dataset.listening) {
       this._menu.dataset.listening = '1';
@@ -142,8 +158,17 @@ export class SlashMenuController implements ICanvasMenu {
     }
   }
 
+  private readonly _onScroll = (e: Event): void => {
+    const editor = this._host.editor;
+    if (!this._visible || !this._menu || !editor) return;
+    if (e.target instanceof Node && this._menu.contains(e.target)) return;
+    const coords = editor.view.coordsAtPos(editor.state.selection.from);
+    layoutPopup(this._menu, { x: coords.left, y: coords.bottom }, { gap: 4 });
+  };
+
   /** Hide the menu and reset state. */
   hide(): void {
+    window.removeEventListener('scroll', this._onScroll, true);
     if (!this._menu || !this._visible) return;
     this._menu.style.display = 'none';
     this._visible = false;
@@ -168,7 +193,7 @@ export class SlashMenuController implements ICanvasMenu {
       const seen = new Set<string>();
       for (const id of recents) {
         const item = byId.get(id);
-        if (item && !seen.has(id)) { hoisted.push(item); seen.add(id); }
+        if (item && !seen.has(id)) { hoisted.push({ ...item, group: 'Recent' }); seen.add(id); }
       }
       for (const item of items) {
         if (!seen.has(item.blockId)) hoisted.push(item);
@@ -186,9 +211,19 @@ export class SlashMenuController implements ICanvasMenu {
 
   private _renderItems(items: SlashMenuItem[], editor: Editor): void {
     if (!this._menu) return;
+    // Rebuilding the list must not jump its scroll position.
+    const scrollTop = this._menu.scrollTop;
     this._menu.innerHTML = '';
 
+    let lastGroup: string | undefined;
     items.forEach((item, index) => {
+      // Group labels while browsing; a typed filter shows plain results.
+      if (!this._filterText && item.group && item.group !== lastGroup) {
+        const label = $('div.canvas-slash-group');
+        label.textContent = item.group;
+        this._menu!.appendChild(label);
+      }
+      lastGroup = item.group;
       const row = $('div.canvas-slash-item');
       if (index === this._selectedIndex) {
         row.classList.add('canvas-slash-item--selected');
@@ -232,6 +267,9 @@ export class SlashMenuController implements ICanvasMenu {
 
       this._menu!.appendChild(row);
     });
+    this._menu.scrollTop = scrollTop;
+    // Keep the highlighted row in view as the arrow keys move it.
+    this._menu.querySelector<HTMLElement>('.canvas-slash-item--selected')?.scrollIntoView?.({ block: 'nearest' });
   }
 
   private readonly _handleKeydown = (e: KeyboardEvent): void => {
@@ -262,6 +300,7 @@ export class SlashMenuController implements ICanvasMenu {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
+      this._dismissedLine = editor.state.selection.$from.start();
       this.hide();
     }
   };

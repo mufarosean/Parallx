@@ -21,7 +21,7 @@ export interface SlashBlockDef {
   readonly icon: string;
   readonly iconIsText?: boolean;
   readonly defaultContent?: Record<string, any>;
-  readonly slashMenu?: { readonly label?: string; readonly description: string };
+  readonly slashMenu?: { readonly label?: string; readonly description: string; readonly category?: string };
 }
 
 export interface SlashMenuItem {
@@ -32,7 +32,21 @@ export interface SlashMenuItem {
   /** True when `icon` is a text glyph (H₁, T, …) rather than an icon id. */
   iconIsText: boolean;
   description: string;
+  /** The group label shown above the item when nothing is typed. */
+  group?: string;
 }
+
+/** Slash menu group labels, by block category (sentence case). */
+const GROUP_LABELS: Record<string, string> = {
+  page: 'Pages',
+  basic: 'Headings',
+  list: 'Lists',
+  rich: 'Blocks',
+  media: 'Media',
+  math: 'Equations',
+  layout: 'Columns',
+  advanced: 'More',
+};
 
 // ── Build slash menu items from block definitions ───────────────────────────
 
@@ -53,5 +67,6 @@ export function buildSlashMenuItems(defs: readonly SlashBlockDef[]): SlashMenuIt
     icon: def.icon,
     iconIsText: def.iconIsText === true,
     description: def.slashMenu!.description,
+    group: def.slashMenu!.category ? GROUP_LABELS[def.slashMenu!.category] : undefined,
   }));
 }

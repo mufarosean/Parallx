@@ -291,6 +291,10 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
           key: new PluginKey('canvasClipboardImagePaste'),
           props: {
             handlePaste(view, event) {
+              // Excel and Word put a picture of the selection next to its
+              // text and HTML; the text is what was copied. Only a clipboard
+              // with no text is an image paste.
+              if ((event.clipboardData?.getData('text/plain') ?? '').trim()) return false;
               const items = Array.from(event.clipboardData?.items ?? []);
               const imageItem = items.find((item) => item.type.startsWith('image/'));
               const file = imageItem?.getAsFile();

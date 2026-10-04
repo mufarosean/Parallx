@@ -195,14 +195,42 @@ export class BlockActionMenuController implements ICanvasMenu {
     this._anchorEl = anchorEl ?? null;
     this._showBlockActionMenu(anchor);
     this._registry.notifyShow(this.id);
+    this._kbIndex = -1;
     document.addEventListener('keydown', this._onEscape, true);
+    window.addEventListener('scroll', this._onScroll, true);
   }
 
-  /** Esc closes the menu and leaves the block selected (Notion). */
+  /** Keyboard: Esc closes the menu and leaves the block selected (Notion);
+   *  Up/Down move through the rows, Enter runs one (Right opens a submenu). */
+  private _kbIndex = -1;
   private readonly _onEscape = (e: KeyboardEvent): void => {
-    if (e.key !== 'Escape' || !this.visible) return;
-    e.preventDefault();
-    e.stopPropagation();
+    if (!this.visible || !this._blockActionMenu) return;
+    const rows = [...this._blockActionMenu.querySelectorAll<HTMLElement>(':scope > .block-action-item')];
+    const move = (delta: number) => {
+      if (rows.length === 0) return;
+      this._kbIndex = (this._kbIndex + delta + rows.length) % rows.length;
+      rows.forEach((r, i) => r.classList.toggle('block-action-item--active', i === this._kbIndex));
+    };
+    const current = rows[this._kbIndex];
+    if (e.key === 'Escape') {
+      e.preventDefault(); e.stopPropagation();
+      this.hide();
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation();
+      move(e.key === 'ArrowDown' ? 1 : -1);
+    } else if ((e.key === 'Enter' || e.key === 'ArrowRight') && current) {
+      e.preventDefault(); e.stopPropagation();
+      // A submenu row opens on hover; the others act on mousedown.
+      const hasSubmenu = !!current.querySelector('.block-action-chevron, .block-action-arrow');
+      current.dispatchEvent(new MouseEvent(hasSubmenu || e.key === 'ArrowRight' ? 'mouseenter' : 'mousedown', { bubbles: true, cancelable: true }));
+    }
+  };
+
+  /** The menu sits on its block; when the page scrolls, it closes. */
+  private readonly _onScroll = (e: Event): void => {
+    if (!this.visible) return;
+    const target = e.target as Node | null;
+    if (target && this._blockActionMenu?.contains(target)) return;
     this.hide();
   };
 
@@ -285,7 +313,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     // Turn into
     if (showTurnInto) {
       const turnIntoSvg = getIcon('refresh')!;
-      const turnIntoItem = this._createActionItem('Turn into', turnIntoSvg, true);
+      const turnIntoItem = this._createActionItem('Turn Into', turnIntoSvg, true);
       this._turnIntoHover.wireTrigger(turnIntoItem, () => this._showTurnIntoSubmenu(turnIntoItem));
       this._blockActionMenu.appendChild(turnIntoItem);
     }
@@ -311,7 +339,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     // Send to Chat — attach a LIVE reference to the targeted block(s) so the AI
     // can read their current content and edit them in place.
     const chatItem = this._createActionItem(
-      isBatch ? 'Send blocks to Chat' : 'Send to Chat', svgIcon('px-ai-mark'), false,
+      isBatch ? 'Send Blocks to Chat' : 'Send to Chat', svgIcon('px-ai-mark'), false,
     );
     chatItem.addEventListener('mousedown', (e) => { e.preventDefault(); this._sendBlocksToChat(); });
     this._blockActionMenu.appendChild(chatItem);
@@ -329,6 +357,7 @@ export class BlockActionMenuController implements ICanvasMenu {
 
   private _hideBlockActionMenu(): void {
     document.removeEventListener('keydown', this._onEscape, true);
+    window.removeEventListener('scroll', this._onScroll, true);
     if (!this._blockActionMenu) return;
     this._blockActionMenu.style.display = 'none';
     this._hideTurnIntoSubmenu();

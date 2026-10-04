@@ -72,6 +72,8 @@ export class BubbleMenuController implements ICanvasMenu {
   create(): void {
     this._menu = $('div.canvas-bubble-menu');
     this._menu.style.display = 'none';
+    // The menu stays above its selection when the page scrolls.
+    window.addEventListener('scroll', this._onScroll, true);
 
     // ── Formatting buttons ──
     const buttons: { label: string; title: string; command: (e: Editor) => void; active: (e: Editor) => boolean }[] = [
@@ -264,6 +266,8 @@ export class BubbleMenuController implements ICanvasMenu {
       } else if (ev.key === 'Escape') {
         ev.preventDefault();
         this._linkInput!.style.display = 'none';
+        // Back to the text (hiding the focused field dropped focus to the page).
+        this._host.editor?.commands.focus();
       }
     });
 
@@ -472,6 +476,18 @@ export class BubbleMenuController implements ICanvasMenu {
   }
 
   /** Hide the menu and link input. */
+  private readonly _onScroll = (e: Event): void => {
+    const editor = this._host.editor;
+    if (!this._menu || this._menu.style.display === 'none' || !editor) return;
+    if (e.target instanceof Node && this._menu.contains(e.target)) return;
+    const { from, to } = editor.state.selection;
+    const start = editor.view.coordsAtPos(from);
+    const end = editor.view.coordsAtPos(to);
+    const midX = (start.left + end.left) / 2;
+    const topY = Math.min(start.top, end.top);
+    layoutPopup(this._menu, { x: Math.max(8, midX - this._menu.offsetWidth / 2), y: topY - this._menu.offsetHeight - 8 });
+  };
+
   hide(): void {
     if (!this._menu) return;
     this._menu.style.display = 'none';
@@ -482,6 +498,7 @@ export class BubbleMenuController implements ICanvasMenu {
 
   /** Clean up DOM. */
   dispose(): void {
+    window.removeEventListener('scroll', this._onScroll, true);
     this._registration?.dispose();
     this._registration = null;
     if (this._menu) {

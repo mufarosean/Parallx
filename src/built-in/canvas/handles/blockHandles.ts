@@ -317,9 +317,17 @@ export class BlockHandlesController {
     // Insert paragraph with '/' to trigger slash menu
     editor.chain()
       .insertContentAt(insertPos, { type: 'paragraph', content: [{ type: 'text', text: '/' }] })
-      .setTextSelection(insertPos + 2)
-      .focus()
       .run();
+    // The caret goes after the "/": next to a list row the paragraph is
+    // wrapped in a new list item, one level deeper than `insertPos + 2`
+    // assumed, which put the caret before the "/".
+    let caret = insertPos + 2;
+    const { doc } = editor.state;
+    doc.nodesBetween(insertPos, Math.min(doc.content.size, insertPos + 8), (n, p) => {
+      if (n.isTextblock && n.textContent === '/') { caret = p + 2; return false; }
+      return true;
+    });
+    editor.chain().setTextSelection(caret).focus().run();
   };
 
   // ── Drag Handle Click → Block Action Menu ──

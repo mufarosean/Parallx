@@ -211,8 +211,8 @@ describe('blockRegistry', () => {
      *  'Database' was added with the databases feature (pageBlock variant). */
     const ORIGINAL_SLASH_LABELS = [
       'Page', 'Database', 'Heading 1', 'Heading 2', 'Heading 3',
-      'Bullet List', 'Numbered List', 'To-Do List',
-      'Quote', 'Code Block', 'Divider',
+      'Bulleted List', 'Numbered List', 'To-do List',
+      'Quote', 'Code', 'Divider',
       'Toggle List', 'Callout', 'Table',
       'Image', 'Video', 'Audio', 'File',
       'Block Equation', 'Inline Equation',
@@ -239,14 +239,13 @@ describe('blockRegistry', () => {
       }
     });
 
-    it('uses SlashMenuConfig.label overrides when present', () => {
-      // These items have different labels in slash menu vs turn-into menu
-      const map = new Map(SLASH_MENU_ITEMS.map((i) => [i.label, i]));
-      expect(map.has('Bullet List')).toBe(true);     // not 'Bulleted list'
-      expect(map.has('Numbered List')).toBe(true);    // not 'Numbered list'
-      expect(map.has('To-Do List')).toBe(true);       // not 'To-do list'
-      expect(map.has('Code Block')).toBe(true);       // not 'Code'
-      expect(map.has('Toggle List')).toBe(true);      // not 'Toggle list'
+    it('names each block the same in the slash menu and in Turn Into', () => {
+      // One name per block (the slash menu used to say "Bullet List", "To-Do
+      // List" and "Code Block" where Turn Into said otherwise).
+      for (const item of SLASH_MENU_ITEMS) {
+        const def = BLOCK_REGISTRY.get(item.blockId);
+        if (def) expect(item.label).toBe(def.label);
+      }
     });
   });
 

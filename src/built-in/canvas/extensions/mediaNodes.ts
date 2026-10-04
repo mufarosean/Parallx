@@ -380,9 +380,11 @@ export const FileAttachment = Node.create({
         dom.appendChild(info);
 
         // Click to open/download
-        if (attrs.src) {
+        // Only what an attachment can be: a web link or an uploaded file
+        // (data: URL). Any other scheme (javascript:, file:, …) is not opened.
+        if (attrs.src && /^(https?:|data:)/i.test(String(attrs.src).trim())) {
           dom.style.cursor = 'pointer';
-          dom.onclick = () => window.open(attrs.src, '_blank');
+          dom.onclick = () => window.open(String(attrs.src).trim(), '_blank', 'noopener,noreferrer');
         }
       };
 

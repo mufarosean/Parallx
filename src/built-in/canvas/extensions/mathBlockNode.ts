@@ -5,6 +5,7 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import katex from 'katex';
+import { Selection } from '@tiptap/pm/state';
 
 export const MathBlock = Node.create({
   name: 'mathBlock',
@@ -143,23 +144,35 @@ export const MathBlock = Node.create({
         autoResize();
       });
 
+      // The caret goes to the nearest text after the equation (inside the
+      // atom there is none, which ProseMirror warned about).
+      const caretAfterBlock = (): void => {
+        if (typeof getPos !== 'function') return;
+        const at = getPos();
+        const block = editor.state.doc.nodeAt(at);
+        if (!block) return;
+        editor.chain().focus().command(({ tr }: any) => {
+          tr.setSelection(Selection.near(tr.doc.resolve(at + block.nodeSize)));
+          return true;
+        }).run();
+      };
+
       doneBtn.addEventListener('mousedown', (e) => {
         e.preventDefault();
         commitEdit();
         // Move cursor after the math block
         if (typeof getPos === 'function') {
-          const pos = getPos() + 1;
-          editor.chain().setTextSelection(pos).focus().run();
+          caretAfterBlock();
         }
       });
 
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+        // Enter commits; Shift+Enter is a new line (multi-line LaTeX).
+        if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
           commitEdit();
           if (typeof getPos === 'function') {
-            const pos = getPos() + 1;
-            editor.chain().setTextSelection(pos).focus().run();
+            caretAfterBlock();
           }
         } else if (e.key === 'Escape') {
           e.preventDefault();
