@@ -84,8 +84,10 @@ async function dispatchDragover(page: Page, x: number, y: number): Promise<{
     view.dom.dispatchEvent(event);
 
     // Read indicator state
-    const vertEl = document.querySelector('.column-drop-indicator') as HTMLElement;
-    const horzEl = document.querySelector('.canvas-drop-guide') as HTMLElement;
+    // This editor's guides (an earlier test's editor can still be in the page).
+    const scope = view.dom.parentElement ?? document;
+    const vertEl = scope.querySelector('.column-drop-indicator') as HTMLElement;
+    const horzEl = scope.querySelector('.canvas-drop-guide') as HTMLElement;
 
     // Also check what elementsFromPoint returns at this position
     const elements = document.elementsFromPoint(cx, cy);
@@ -180,8 +182,9 @@ async function clearDrag(page: Page): Promise<void> {
     view.dom.classList.remove('dragging');
 
     // Hide indicators
-    const vert = document.querySelector('.column-drop-indicator') as HTMLElement;
-    const horz = document.querySelector('.canvas-drop-guide') as HTMLElement;
+    const scope = (window as any).__tiptapEditor?.view.dom.parentElement ?? document;
+    const vert = scope.querySelector('.column-drop-indicator') as HTMLElement;
+    const horz = scope.querySelector('.canvas-drop-guide') as HTMLElement;
     if (vert) vert.style.display = 'none';
     if (horz) horz.style.display = 'none';
   });
@@ -259,6 +262,9 @@ test.describe('Column Drag-Drop', () => {
     console.log('Bravo rect:', JSON.stringify(bravoRect));
 
     // Target: 10px from left edge, vertically centered
+    // A left-strip column drop takes a deliberate sideways move (a straight
+    // drag from the handle used to make columns): come in from the middle.
+    await dispatchDragover(page, bravoRect.left + bravoRect.width / 2, bravoRect.top + bravoRect.height / 2);
     const s1 = await dispatchDragover(page, bravoRect.left + 10, bravoRect.top + bravoRect.height / 2);
     console.log('S1 result:', JSON.stringify(s1));
 
@@ -353,6 +359,9 @@ test.describe('Column Drag-Drop', () => {
     const bravoRect5 = await getBlockRect(page, 1);
 
     // Dragover to set activeTarget
+    // A left-strip column drop takes a deliberate sideways move (a straight
+    // drag from the handle used to make columns): come in from the middle.
+    await dispatchDragover(page, bravoRect5.left + bravoRect5.width / 2, bravoRect5.top + bravoRect5.height / 2);
     await dispatchDragover(page, bravoRect5.left + 10, bravoRect5.top + bravoRect5.height / 2);
 
     // Drop
@@ -492,6 +501,9 @@ test.describe('Column Drag-Drop', () => {
     console.log('ColA rect:', JSON.stringify(colARect));
 
     // Target: left edge of ColA block
+    // A left-strip column drop takes a deliberate sideways move (a straight
+    // drag from the handle used to make columns): come in from the middle.
+    await dispatchDragover(page, colARect.left + colARect.width / 2, colARect.top + colARect.height / 2);
     const s8l = await dispatchDragover(page, colARect.left + 10, colARect.top + colARect.height / 2);
     console.log('S8 LEFT result:', JSON.stringify(s8l));
 
@@ -740,6 +752,9 @@ test.describe('Column Drag-Drop', () => {
     // Drag first block to left of second
     await startDragFromBlock(page, 0);
     const colTarget = await getBlockRect(page, 1);
+    // A left-strip column drop takes a deliberate sideways move (a straight
+    // drag from the handle used to make columns): come in from the middle.
+    await dispatchDragover(page, colTarget.left + colTarget.width / 2, colTarget.top + colTarget.height / 2);
     await dispatchDragover(page, colTarget.left + 10, colTarget.top + colTarget.height / 2);
     await dispatchDrop(page, colTarget.left + 10, colTarget.top + colTarget.height / 2);
     await page.waitForTimeout(300);

@@ -219,7 +219,8 @@ export async function setupCanvasPage(
 
   // Open the newly created page (last in sort order)
   await page.locator('.canvas-node').last().click();
-  await page.waitForSelector('.tiptap', { timeout: 10_000 });
+  // Another (hidden) editor can exist; wait for the one that is shown.
+  await page.locator('.tiptap:visible').first().waitFor({ timeout: 10_000 });
 
   // Wait for TipTap editor to be fully initialised
   await page.waitForFunction(

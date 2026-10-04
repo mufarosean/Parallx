@@ -67,6 +67,12 @@ export function gapGuideViewportTop(
 // columnList targets only allow above/below (Rule 9 nesting prevention).
 // Exported for tests.
 
+/** How long a drop guide stays without a new dragover (see resetStaleTimer). */
+const STALE_GUIDE_MS = 700;
+
+/** Sideways movement (px) that makes a drop on a block's left strip a column drop. */
+const LEFT_DROP_MIN_TRAVEL = 40;
+
 export function getZone(
   blockEl: HTMLElement,
   x: number,
@@ -74,6 +80,8 @@ export function getZone(
   isColumnList: boolean,
   isListItem: boolean,
   isTable: boolean = false,
+  /** Horizontal distance the cursor has moved since the drag started. */
+  sidewaysTravel?: number,
 ): 'above' | 'below' | 'left' | 'right' {
   const r = blockEl.getBoundingClientRect();
   const rx = x - r.left;   // cursor X relative to block left edge
@@ -97,12 +105,12 @@ export function getZone(
   const preventLeftRight = isColumnList || isListItem || isTable;
 
   if (!preventLeftRight) {
-    // Allow a small negative margin on the left so the zone is
-    // reachable even when the cursor drifts slightly past the block's
-    // bounding-box edge (e.g. into padding or the handle gutter).
-    // During a drag the handle is inert, so there's no conflict.
-    const LEFT_MARGIN = 12;
-    if (rx >= -LEFT_MARGIN && rx < EDGE) return 'left';
+    // The left strip starts at the block's edge, not in the gutter: a drag
+    // starts on the handle just left of the blocks, and a block dragged
+    // straight down drifted into a gutter-wide strip and became columns.
+    // It also needs a deliberate sideways move from where the drag began.
+    const leftIntended = sidewaysTravel === undefined || sidewaysTravel >= LEFT_DROP_MIN_TRAVEL;
+    if (leftIntended && rx >= 0 && rx < EDGE) return 'left';
     if (rx <= r.width && rx > r.width - EDGE) return 'right';
   }
 
@@ -144,6 +152,9 @@ export function columnDropPlugin(): Plugin {
 
   let activeTarget: DropTarget | null = null;
   let _hideStaleTimer: ReturnType<typeof setTimeout> | null = null;
+  // Where the current drag entered the editor (its first dragover), so a
+  // left-strip column drop takes a deliberate sideways move.
+  let _dragOrigin: { dragging: unknown; x: number } | null = null;
 
   // ── Indicator helpers ──
 
@@ -184,7 +195,9 @@ export function columnDropPlugin(): Plugin {
    *  clears indicators that would otherwise linger indefinitely. */
   function resetStaleTimer() {
     if (_hideStaleTimer) clearTimeout(_hideStaleTimer);
-    _hideStaleTimer = setTimeout(() => { hideAll(); _hideStaleTimer = null; }, 150);
+    // Longer than Chromium's dragover interval while the pointer rests
+    // (about 350 ms): at 150 ms the guide vanished whenever the user paused.
+    _hideStaleTimer = setTimeout(() => { hideAll(); _hideStaleTimer = null; }, STALE_GUIDE_MS);
   }
 
   function showVert(container: HTMLElement, blockEl: HTMLElement, side: 'left' | 'right') {
@@ -291,7 +304,42 @@ export function columnDropPlugin(): Plugin {
     );
   }
 
+  /**
+   * A leaf block (video, audio, file, bookmark, divider, equation …) drawn by
+   * `blockEl`.  `posAtDOM(el, 0)` lands before a leaf, where no block
+   * resolves, so a drop next to one found no target: no guide, no columns.
+   */
+  function resolveLeafBlockTarget(view: EditorView, blockEl: HTMLElement): Omit<DropTarget, 'zone'> | null {
+    const parent = blockEl.parentElement;
+    if (!parent) return null;
+    let before: number;
+    try {
+      before = view.posAtDOM(parent, Array.prototype.indexOf.call(parent.childNodes, blockEl));
+    } catch { return null; }
+    const node = view.state.doc.nodeAt(before);
+    if (!node || !node.isLeaf || node.isInline || view.nodeDOM(before) !== blockEl) return null;
+    const $b = view.state.doc.resolve(before);
+    let columnPos: number | null = null;
+    let columnListPos: number | null = null;
+    let columnIndex = 0;
+    for (let d = $b.depth; d >= 1; d--) {
+      if ($b.node(d).type.name === 'column' && d >= 2 && $b.node(d - 1).type.name === 'columnList') {
+        columnPos = $b.before(d);
+        columnListPos = $b.before(d - 1);
+        columnIndex = $b.index(d - 1);
+        break;
+      }
+    }
+    return {
+      blockEl, blockPos: before, blockNode: node,
+      isListItem: false, listPos: null, listNode: null, listType: null,
+      columnPos, columnListPos, columnIndex,
+    };
+  }
+
   function resolveBlockTarget(view: EditorView, blockEl: HTMLElement): Omit<DropTarget, 'zone'> | null {
+    const leaf = resolveLeafBlockTarget(view, blockEl);
+    if (leaf) return leaf;
     try {
       // List rows must be probed at their own content element (shared
       // canonical mapping — see blockUnit.listItemContentElement).
@@ -538,6 +586,8 @@ export function columnDropPlugin(): Plugin {
     if (bestEl && bestDist < 100) {
       try {
         const fallbackEl = resolveNearestListItemElement(bestEl, y) ?? bestEl;
+        const leaf = resolveLeafBlockTarget(view, fallbackEl);
+        if (leaf) return leaf;
         const inner = view.posAtDOM(fallbackEl, 0);
         const $p = view.state.doc.resolve(inner);
         const movable = resolveMovableBlock($p);
@@ -624,6 +674,8 @@ export function columnDropPlugin(): Plugin {
 
           const x = event.clientX;
           const y = event.clientY;
+          if (!_dragOrigin || _dragOrigin.dragging !== view.dragging) _dragOrigin = { dragging: view.dragging, x };
+          const sidewaysTravel = Math.abs(x - _dragOrigin.x);
           let raw = findTarget(view, x, y);
           if (!raw) { hideAll(); return false; }
 
@@ -690,7 +742,7 @@ export function columnDropPlugin(): Plugin {
             // list, so the guide showed the row gap but the drop teleported
             // to the list's edge — mid-list drops of plain blocks (equation,
             // paragraph, …) were impossible.
-            const probe = getZone(raw.blockEl, x, y, isCL, false, isTable);
+            const probe = getZone(raw.blockEl, x, y, isCL, false, isTable, sidewaysTravel);
             if (probe === 'left' || probe === 'right') {
               const listEl = (raw.blockEl.closest('ul, ol') as HTMLElement | null) ?? raw.blockEl;
               raw = {
@@ -706,7 +758,7 @@ export function columnDropPlugin(): Plugin {
             }
             zone = probe;
           } else {
-            zone = getZone(raw.blockEl, x, y, isCL, raw.isListItem, isTable);
+            zone = getZone(raw.blockEl, x, y, isCL, raw.isListItem, isTable, sidewaysTravel);
           }
 
           if ((zone === 'above' || zone === 'below') && isNoOpAboveBelowDrop(raw, zone, ranges)) {

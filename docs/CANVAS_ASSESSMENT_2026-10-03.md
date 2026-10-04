@@ -124,7 +124,20 @@ markdown, focus) were not tested adversarially.
   real e2e failure). **Fixed** for blocks (block sweep below); the e2e spec
   is about a table row, still to re-run.
 - **No drop indicator while dragging**; a small sideways drift silently makes
-  columns.
+  columns. **Fixed**: the guide stays while the pointer rests (the stale-guide
+  timer was 150 ms, shorter than Chromium's ~350 ms dragover interval); the
+  left column strip starts at the block's edge, not in the handle gutter,
+  and needs a 40 px sideways move from where the drag entered. In the app a
+  straight drag with 0 to 40 px of drift now reorders (10 px used to make
+  columns), and a deliberate move into the left or right strip still makes
+  columns. Found on the way and fixed: no drop target at all next to a leaf
+  block outside a column (video, audio, file, bookmark, divider, equation,
+  table of contents, image, concept map), so no guide and no columns there;
+  each now works at the top level and inside a column, right edge and below
+  (checked in the app). The e2e spec `13-column-drag-drop` had a broken
+  fixture (two editors); with the fixture and guide lookups scoped to the
+  editor under test, 3 of 6 pass, and the other 3 fail on stale positions
+  from the synthetic-event harness, the same as before this change.
 - **Slash menu runs inside code blocks** ("// todo" + Enter turns the code
   block into a to-do list). **Fixed**: it stays closed in code blocks and in text-only lines
   (a toggle's summary, a toggle heading's title).

@@ -219,6 +219,23 @@ describe('getZone drop-zone math', () => {
     expect(getZone(el, 300, 35, false, false)).toBe('below');
   });
 
+  // Canvas assessment 2026-10-03: a block dragged straight down from its
+  // handle drifted a few pixels right into the left strip (which reached
+  // 12px outside the block) and silently became columns.
+  it('a cursor left of the block (the handle gutter) is never a column drop', () => {
+    const el = stubEl({});
+    expect(getZone(el, -8, 30, false, false)).toBe('below');
+    expect(getZone(el, -1, 5, false, false)).toBe('above');
+  });
+
+  it('the left strip needs a deliberate sideways move from where the drag started', () => {
+    const el = stubEl({});
+    expect(getZone(el, 10, 30, false, false, false, 15)).toBe('below');
+    expect(getZone(el, 10, 30, false, false, false, 60)).toBe('left');
+    // The right strip is reached only on purpose.
+    expect(getZone(el, 590, 30, false, false, false, 0)).toBe('right');
+  });
+
   it('list-item targets never resolve left/right', () => {
     const el = stubEl({});
     expect(getZone(el, 10, 5, false, true)).toBe('above');
