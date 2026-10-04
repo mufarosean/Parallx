@@ -63,6 +63,8 @@ export interface BlockActionMenuHost {
   /** Copy a link to the clipboard as a labelled link (HTML) and as plain
    *  text, and say so (Copy Link to Block). */
   copyLabelledLink?(href: string, label: string): Promise<void>;
+  /** Move these blocks into a new synced block (Turn Into Synced Block). */
+  makeSyncedBlock?(positions: number[]): Promise<void>;
 }
 
 // ── Submenu hover-handoff helper ────────────────────────────────────────────
@@ -354,6 +356,22 @@ export class BlockActionMenuController implements ICanvasMenu {
         void this._host.copyLabelledLink?.(pageLinkHref(this._host.pageId, anchorId), label);
       });
       this._blockActionMenu.appendChild(linkItem);
+    }
+
+    // Turn Into Synced Block — these blocks become the content of a new
+    // synced block, to paste elsewhere.
+    if (this._host.makeSyncedBlock) {
+      const syncItem = this._createActionItem('Turn Into Synced Block', svgIcon('refresh-cw'), false);
+      syncItem.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const sel = this._host.blockSelection;
+        const positions = (sel?.hasSelection && sel.positions.includes(this._actionBlockPos))
+          ? [...sel.positions] : [this._actionBlockPos];
+        this._host.blockSelection?.clear();
+        this._hideBlockActionMenu();
+        void this._host.makeSyncedBlock?.(positions);
+      });
+      this._blockActionMenu.appendChild(syncItem);
     }
 
     // Send to Chat — attach a LIVE reference to the targeted block(s) so the AI

@@ -25,8 +25,24 @@ export interface LiveBlockServices {
   readonly pages?: LivePageReader;
   /** The user's databases (Button: Add Row). */
   readonly databases?: LiveDatabaseAccess;
+  /** Synced blocks: their shared content (a hidden page each). */
+  readonly synced?: LiveSyncedContent;
+  /** The synced blocks this editor sits inside, outermost first: a synced
+   *  block may not show itself inside itself. */
+  readonly syncChain?: readonly string[];
   /** Show a database's table or board inside `container` (Linked Database). */
   mountDatabaseView?(container: HTMLElement, databaseId: string, options: { viewId?: string; onViewChange?(viewId: string): void }): { dispose(): void };
+}
+
+export interface LiveSyncedContent {
+  /** Make the shared content (from `doc`, or one empty line); returns its id. */
+  create(doc?: unknown): Promise<string>;
+  /** Edit the shared content in `container`: a real canvas editor of it. */
+  mount(container: HTMLElement, syncId: string): { dispose(): void };
+  /** The shared content as a document (Unsync copies it). */
+  readDoc(syncId: string): Promise<{ type: string; content?: unknown[] } | null>;
+  /** How many pages hold a copy. */
+  countCopies(syncId: string): Promise<number>;
 }
 
 export interface LiveDatabaseAccess {

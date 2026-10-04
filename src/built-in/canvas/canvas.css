@@ -4433,6 +4433,17 @@
 }
 .canvas-live-popover__primary:hover { background: var(--px-accent-hover); }
 
+/* ── Synced Block ── */
+.canvas-synced { margin: 0.5rem 0; border: 1px solid transparent; border-radius: var(--px-radius-md); }
+.canvas-synced:hover, .canvas-synced:focus-within { border-color: color-mix(in srgb, var(--px-accent) 45%, transparent); }
+.canvas-synced__bar { display: flex; align-items: center; gap: 8px; min-height: 20px; padding: 2px 6px; }
+.canvas-synced__label { color: var(--px-accent-text); font-size: var(--px-text-xs); opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
+.canvas-synced:hover .canvas-synced__label, .canvas-synced:focus-within .canvas-synced__label,
+.canvas-synced:hover .canvas-live-edit { opacity: 1; }
+.canvas-synced__body > .canvas-editor-wrapper { padding: 0; }
+.canvas-synced__body .canvas-tiptap-editor { min-height: 1.6em; padding: 0 6px 4px; }
+.canvas-synced__note { color: var(--px-text-muted); font-size: var(--px-text-sm); padding: 6px; }
+
 /* ── Linked Database block ── */
 .canvas-linked-db { margin: 0.75rem 0; }
 .canvas-linked-db__bar { display: flex; align-items: center; gap: 8px; min-height: 22px; }

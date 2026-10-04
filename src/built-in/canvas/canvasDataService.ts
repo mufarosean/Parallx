@@ -61,6 +61,9 @@ interface DatabaseBridge {
 // ─── Row → IPage mapping ────────────────────────────────────────────────────
 
 /** @internal Exported for testing — converts a raw database row to an IPage. */
+/** Pages that hold synced-block content: never listed as pages. */
+const SYNCED_CONTENT_PAGES = 'SELECT page_id FROM synced_blocks';
+
 export function rowToPage(row: Record<string, unknown>): IPage {
   return {
     id: row.id as string,
@@ -360,7 +363,8 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     let hidden: Set<string>;
     try {
       const internal = await this._db.all(
-        "SELECT page_id FROM databases WHERE role IN ('page-properties', 'migrated-properties')",
+        `SELECT page_id FROM databases WHERE role IN ('page-properties', 'migrated-properties')
+         UNION SELECT page_id FROM synced_blocks`,
       );
       hidden = new Set((internal.rows ?? []).map((r) => String((r as { page_id: unknown }).page_id)));
     } catch {
@@ -1758,7 +1762,8 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   async getRecentPages(limit: number = 5): Promise<IPage[]> {
     const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
     const result = await this._db.all(
-      'SELECT * FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT ?',
+      `SELECT * FROM pages WHERE is_archived = 0 AND id NOT IN (${SYNCED_CONTENT_PAGES})
+        ORDER BY updated_at DESC LIMIT ?`,
       [safeLimit],
     );
     if (result.error) throw new Error(result.error.message);
@@ -1770,7 +1775,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    */
   async getFavoritedPages(): Promise<IPage[]> {
     const result = await this._db.all(
-      'SELECT * FROM pages WHERE is_favorited = 1 AND is_archived = 0 ORDER BY title',
+      `SELECT * FROM pages WHERE is_favorited = 1 AND is_archived = 0 AND id NOT IN (${SYNCED_CONTENT_PAGES}) ORDER BY title`,
     );
     if (result.error) throw new Error(result.error.message);
     return (result.rows ?? []).map(rowToPage);
@@ -2091,6 +2096,38 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * Walk up the parent chain to build a breadcrumb list.
    * Returns ancestors from root → immediate parent (excludes the page itself).
    */
+  /** Make the content page for a new synced block, holding `doc` (or one
+   *  empty line). Returns its id, which every copy of the block carries. */
+  async createSyncedContent(doc?: unknown): Promise<string> {
+    const page = await this.createPage(null, 'Synced block');
+    const res = await this._db.run('INSERT INTO synced_blocks (page_id) VALUES (?)', [page.id]);
+    if (res.error) {
+      try { await this.deletePage(page.id); } catch { /* best effort */ }
+      throw new Error(res.error.message);
+    }
+    // createPage announced it as a new page, and the sidebar may have listed
+    // it before it was marked; announce it again now it is hidden.
+    this._onDidChangePage.fire({ kind: PageChangeKind.Moved, pageId: page.id });
+    const content = doc ?? { type: 'doc', content: [{ type: 'paragraph' }] };
+    await this.updatePage(page.id, { content: JSON.stringify(content) });
+    return page.id;
+  }
+
+  /** Whether `pageId` is the content of a synced block (never shown as a page). */
+  async isSyncedContent(pageId: string): Promise<boolean> {
+    const res = await this._db.get('SELECT 1 AS yes FROM synced_blocks WHERE page_id = ?', [pageId]);
+    return !!res.row;
+  }
+
+  /** How many live pages hold a copy of the synced block `syncId`. */
+  async countSyncedCopies(syncId: string): Promise<number> {
+    const res = await this._db.get(
+      `SELECT COUNT(*) AS n FROM pages WHERE is_archived = 0 AND id != ? AND instr(content, ?) > 0`,
+      [syncId, `"syncId":"${syncId}"`],
+    );
+    return Number(res.row?.n ?? 0);
+  }
+
   /** Live pages whose body links to `pageId`: an `@` link, Link to Page, a
    *  copied block link. A page's own card for a child is not a link. */
   async getBacklinks(pageId: string): Promise<IPage[]> {

@@ -84,7 +84,8 @@ export function buildDataviewSql(query: DataviewQuery): { sql: string; params: u
   else if (query.sort?.by === 'updated_at') order = `p.updated_at ${dir}`;
   else if (query.sort?.by === 'created_at') order = `p.created_at ${dir}`;
   const where = subqueries.length ? ` AND p.id IN (${subqueries.join(' INTERSECT ')})` : '';
-  const sql = `SELECT p.id, p.title, p.icon FROM pages p WHERE p.is_archived = 0${where} ORDER BY ${order} LIMIT ?`;
+  const sql = `SELECT p.id, p.title, p.icon FROM pages p WHERE p.is_archived = 0`
+    + ` AND p.id NOT IN (SELECT page_id FROM synced_blocks)${where} ORDER BY ${order} LIMIT ?`;
   params.push(limit);
   return { sql, params };
 }

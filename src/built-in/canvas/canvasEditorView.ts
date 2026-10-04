@@ -31,6 +31,9 @@ import type { ICanvasDataService } from './canvasTypes.js';
 import type { DatabaseDataService } from './database/databaseDataService.js';
 import type { OpenEditorFn } from './canvasEditorProvider.js';
 import { editorContentForStorage, wrapUnknownContent } from './unknownContent.js';
+import { joinPaneMirror, broadcastPaneDoc, type PaneMirrorTarget } from './paneMirror.js';
+import { applyExternalDoc } from './externalDocApply.js';
+import type { LiveBlockServices } from './config/blockRegistry.js';
 
 // Shared syntax-highlighting instance (same common language set as the pane).
 const lowlight = createLowlight(common);
@@ -48,13 +51,16 @@ export interface CanvasEditorViewDeps {
   readonly openEditor?: OpenEditorFn;
   /** Host window for link confirmations / copy toasts. Optional. */
   readonly window?: ViewWindow;
+  /** For blocks that show live data inside this editor (synced blocks pass
+   *  the page's own). Optional. */
+  readonly live?: LiveBlockServices;
 }
 
 /**
  * Embeddable canvas editor for a single page. Implements the menu + handle host
  * contracts so it reuses CanvasMenuRegistry / BlockHandlesController unchanged.
  */
-export class CanvasEditorView implements CanvasMenuHost {
+export class CanvasEditorView implements CanvasMenuHost, PaneMirrorTarget {
   private readonly _container: HTMLElement;
   private _editorContainer: HTMLElement | null = null;
   private _editor: Editor | null = null;
@@ -67,6 +73,7 @@ export class CanvasEditorView implements CanvasMenuHost {
   private readonly _store = new DisposableStore();
 
   private _disposed = false;
+  private _leaveMirror: (() => void) | null = null;
   private _initialContentLoaded = false;
   private _suppressUpdate = false;
 
@@ -157,6 +164,7 @@ export class CanvasEditorView implements CanvasMenuHost {
         pageId: this._pageId,
         openEditor: this._deps.openEditor,
         showIconPicker: (opts) => this._menuRegistry?.showIconMenu(opts),
+        live: this._deps.live,
       }),
       content: '',
       editorProps: { attributes: { class: 'canvas-tiptap-editor', spellcheck: 'true' } },
@@ -165,6 +173,9 @@ export class CanvasEditorView implements CanvasMenuHost {
         // setEditable() emits `update` too; only a document change is an edit.
         if (!transaction.docChanged) return;
         this._dataService.scheduleContentSave(this._pageId, editorContentForStorage(editor));
+        // Other editors of this page (another copy of a synced block, the
+        // full page) take the edit at once.
+        broadcastPaneDoc(this, editor.getJSON());
       },
       onTransaction: ({ editor, transaction }) => {
         if (this._suppressUpdate) return;
@@ -214,6 +225,22 @@ export class CanvasEditorView implements CanvasMenuHost {
       void this._loadContent();
     }));
     this._initialContentLoaded = true;
+    this._leaveMirror = joinPaneMirror(this._pageId, this);
+  }
+
+  // ── PaneMirrorTarget: editors of one page hold one document ──
+  get mirrorPageId(): string | null { return this._pageId || null; }
+
+  applyMirroredDoc(docJson: unknown): void {
+    if (this._disposed || !this._editor || !this._initialContentLoaded) return;
+    this._suppressUpdate = true;
+    try {
+      let applied = false;
+      try { applied = applyExternalDoc(this._editor.view, docJson as { type: string; content?: unknown[] }); } catch { applied = false; }
+      if (!applied) this._editor.commands.setContent(docJson as never);
+    } finally {
+      this._suppressUpdate = false;
+    }
   }
 
   private async _loadContent(): Promise<void> {
@@ -243,6 +270,8 @@ export class CanvasEditorView implements CanvasMenuHost {
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
+    this._leaveMirror?.();
+    this._leaveMirror = null;
     this._store.dispose();
     this._blockMarquee?.dispose();
     this._blockHandles?.dispose();

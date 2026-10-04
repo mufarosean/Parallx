@@ -35,6 +35,7 @@ import { PageBreadcrumb, SubpageList } from '../extensions/pageTreeBlocks.js';
 import { Embed } from '../extensions/embedNode.js';
 import { ButtonBlock } from '../extensions/buttonNode.js';
 import { LinkedDatabase } from '../extensions/linkedDatabaseNode.js';
+import { SyncedBlock } from '../extensions/syncedBlockNode.js';
 import { MermaidDiagram, MERMAID_SAMPLE } from '../extensions/mermaidNode.js';
 import type { LiveBlockServices } from '../extensions/liveBlock.js';
 export type { LiveBlockServices } from '../extensions/liveBlock.js';
@@ -787,6 +788,12 @@ const definitions: BlockDefinition[] = [
     defaultContent: undefined,
     insertAction: async (editor, range, context) => {
       if (!context?.dataService || !context.pageId) return;
+      // Not inside a synced block: its content is a hidden page, and a
+      // sub-page made there would be out of sight in the sidebar.
+      if (await context.dataService.isSyncedContent?.(context.pageId)) {
+        editor.chain().insertContentAt(range, { type: 'paragraph', content: [{ type: 'text', text: 'Sub-pages cannot be made inside a synced block.' }] }).run();
+        return;
+      }
 
       let child: { id: string; title: string; icon: string | null } | null = null;
       try {
@@ -939,6 +946,10 @@ const definitions: BlockDefinition[] = [
     defaultContent: undefined,
     insertAction: async (editor, range, context) => {
       if (!context?.dataService || !context.databaseService || !context.pageId) return;
+      if (await context.dataService.isSyncedContent?.(context.pageId)) {
+        editor.chain().insertContentAt(range, { type: 'paragraph', content: [{ type: 'text', text: 'Databases cannot be made inside a synced block. Use Linked Database to show one.' }] }).run();
+        return;
+      }
       let dbId: string | null = null;
       try {
         // Same manual-flow discipline as /page: the editor doc is the source of
@@ -1092,6 +1103,31 @@ const definitions: BlockDefinition[] = [
     turnInto: undefined,
     defaultContent: { type: 'linkedDatabase', attrs: { databaseId: '', viewId: '' } },
     extension: (ctx) => LinkedDatabase.configure({ live: ctx.live }),
+  },
+  {
+    // The same content in many places: edit any copy, all change. Copy and
+    // paste the block to place another copy.
+    id: 'syncedRef',
+    name: 'syncedRef',
+    label: 'Synced Block',
+    icon: 'refresh-cw',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Content kept the same everywhere you paste it', order: 27, category: 'rich' },
+    turnInto: undefined,
+    defaultContent: undefined,
+    insertAction: async (editor, range, context) => {
+      const create = context?.dataService?.createSyncedContent;
+      if (!create) return;
+      try {
+        const syncId = await create.call(context!.dataService);
+        editor.chain().insertContentAt(range, { type: 'syncedRef', attrs: { syncId } }).run();
+      } catch (err) {
+        console.error('[Canvas] Could not make a synced block:', err);
+      }
+    },
+    extension: (ctx) => SyncedBlock.configure({ live: ctx.live }),
   },
   // Placeholders for stored content this build can't show (unknownContent.ts).
   // Never inserted by the user: no slash entry, no turn-into.

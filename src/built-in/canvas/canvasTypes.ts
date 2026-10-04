@@ -350,6 +350,10 @@ export interface ICanvasDataService {
   getAncestors(pageId: string): Promise<IPage[]>;
   /** Live pages whose body links to `pageId` (a `parallx-page:` link), by title. */
   getBacklinks?(pageId: string): Promise<IPage[]>;
+  /** Synced blocks: make the shared content page (see migration 018). */
+  createSyncedContent?(doc?: unknown): Promise<string>;
+  isSyncedContent?(pageId: string): Promise<boolean>;
+  countSyncedCopies?(syncId: string): Promise<number>;
 
   // ── Auto-save ──
 

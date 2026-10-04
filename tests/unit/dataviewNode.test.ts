@@ -62,7 +62,7 @@ describe('buildDataviewSql', () => {
   it('with no rules lists every live page (the Page List default)', () => {
     const built = buildDataviewSql({ filter: [] })!;
     expect(built.sql).not.toContain('INTERSECT');
-    expect(built.sql).toContain('WHERE p.is_archived = 0 ORDER BY');
+    expect(built.sql).toContain('WHERE p.is_archived = 0 AND p.id NOT IN (SELECT page_id FROM synced_blocks) ORDER BY');
     expect(built.params).toEqual([50]);
   });
 

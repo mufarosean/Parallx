@@ -49,6 +49,7 @@ import { setBlockDocValidator } from './ai/blockApi.js';
 import { decodeCanvasContent } from './contentSchema.js';
 import type { LiveBlockServices } from './config/blockRegistry.js';
 import { DatabaseEditorPane } from './database/databaseEditorPane.js';
+import { CanvasEditorView } from './canvasEditorView.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -419,6 +420,28 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
           return out;
         },
       },
+      synced: this._dataService.createSyncedContent ? {
+        create: (doc) => this._dataService.createSyncedContent!(doc),
+        countCopies: (id) => this._dataService.countSyncedCopies?.(id) ?? Promise.resolve(0),
+        readDoc: async (id) => {
+          const page = await this._dataService.getPage(id);
+          if (!page) return null;
+          const decoded = decodeCanvasContent(page.content);
+          return decoded.unreadable ? null : decoded.doc as { type: string; content?: unknown[] };
+        },
+        mount: (container, syncId) => {
+          // Blocks inside the synced content know they are inside it.
+          const inner: LiveBlockServices = { ...services, syncChain: [...(services.syncChain ?? []), syncId] };
+          const view = new CanvasEditorView(container, syncId, this._dataService, {
+            databaseService: db,
+            openEditor: this._openEditor,
+            window: this._provider.window,
+            live: inner,
+          });
+          void view.init();
+          return { dispose: () => view.dispose() };
+        },
+      } : undefined,
       mountDatabaseView: db ? (container, databaseId, options) => {
         const pane = new DatabaseEditorPane(container, databaseId, {
           db,
@@ -580,6 +603,49 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     } else {
       await this._provider.window?.showWarningMessage('Could not copy link.');
     }
+  }
+
+  /** BlockActionMenuHost: these blocks become one new synced block in their
+   *  place. Page and database cards stay out (their pages belong to this
+   *  page; moved into shared content they would be read as deleted). */
+  async makeSyncedBlock(positions: number[]): Promise<void> {
+    const editor = this._editor;
+    const create = this._dataService.createSyncedContent;
+    if (!editor || !create || !editor.isEditable) return;
+    const doc = editor.state.doc;
+    const blocks = [...new Set(positions)].sort((a, b) => a - b)
+      .map((pos) => ({ pos, node: doc.nodeAt(pos) }))
+      .filter((b): b is { pos: number; node: NonNullable<typeof b.node> } => !!b.node);
+    if (blocks.length === 0) return;
+    let hasCard = false;
+    for (const b of blocks) {
+      if (b.node.type.name === 'pageBlock') hasCard = true;
+      b.node.descendants((n) => { if (n.type.name === 'pageBlock') hasCard = true; });
+    }
+    if (hasCard) {
+      await this._provider.window?.showWarningMessage('Page and database cards cannot go into a synced block. Leave them out of the selection.');
+      return;
+    }
+    let syncId: string;
+    try {
+      syncId = await create.call(this._dataService, { type: 'doc', content: blocks.map((b) => b.node.toJSON()) });
+    } catch (err) {
+      await this._provider.window?.showErrorMessage(`Could not make a synced block. ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    // The document may have changed while the content was saved: only
+    // replace blocks that are still the same ones.
+    const now = editor.state.doc;
+    if (blocks.some((b) => now.nodeAt(b.pos) !== b.node)) {
+      await this._provider.window?.showWarningMessage('The page changed meanwhile; the synced block was not placed.');
+      return;
+    }
+    const type = editor.schema.nodes.syncedRef;
+    if (!type) return;
+    const tr = editor.state.tr;
+    for (const b of [...blocks].reverse()) tr.delete(b.pos, b.pos + b.node.nodeSize);
+    tr.insert(blocks[0]!.pos, type.create({ syncId }));
+    editor.view.dispatch(tr);
   }
 
   /** BlockActionMenuHost: a link pasted into a page keeps its label (HTML);
