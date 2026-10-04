@@ -1,0 +1,51 @@
+{
+  "electron/webFetchBridge.cjs": {
+    "webResearch": 2
+  },
+  "src/api/apiFactory.ts": {
+    "workspaceGraph": 9
+  },
+  "src/api/bridges/dashboardBridge.ts": {
+    "webResearch": 3
+  },
+  "src/built-in/agents/workflowEditorPane.ts": {
+    "planner": 2
+  },
+  "src/built-in/chat/input/chatInputPart.ts": {
+    "atelier": 2
+  },
+  "src/built-in/chat/main.ts": {
+    "planner": 5
+  },
+  "src/built-in/chat/tools/workflowTools.ts": {
+    "budget": 1
+  },
+  "src/openclaw/heartbeatTriggers.ts": {
+    "planner": 2
+  },
+  "src/openclaw/mcp/mcpCatalog.ts": {
+    "flashcards": 1
+  },
+  "src/openclaw/openclawSystemPrompt.ts": {
+    "planner": 1
+  },
+  "src/openclaw/participants/openclawContextReport.ts": {
+    "workspaceGraph": 1
+  },
+  "src/services/browserAutomationTypes.ts": {
+    "browser": 1
+  },
+  "src/theme/px-base.css": {
+    "planner": 2
+  },
+  "src/theme/px-tokens.css": {
+    "planner": 3,
+    "worksheets": 1
+  },
+  "src/ui/emptyStates.ts": {
+    "planner": 6
+  },
+  "src/workbench/workbench.ts": {
+    "atelier": 2
+  }
+}
