@@ -108,7 +108,7 @@ export function injectStudioStyles() {
 .cs-inline { display: flex; gap: var(--px-space-2); align-items: flex-start; }
 .cs-inline .cs-input, .cs-inline .cs-textarea { flex: 1; }
 .cs-rows { display: flex; flex-direction: column; gap: var(--px-space-2); }
-.cs-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'label acts' 'text text' 'err err'; column-gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-3) var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); align-items: center; }
+.cs-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'label acts' 'text text' 'steer steer' 'err err'; column-gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-3) var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); align-items: center; }
 .cs-row-label { grid-area: label; font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-secondary); display: flex; align-items: center; gap: var(--px-space-2); min-width: 0; min-height: 24px; }
 .cs-row-lock { color: var(--px-accent-text); background: var(--px-accent-faint); border-radius: var(--px-radius-full); padding: 0 7px; line-height: 18px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
 .cs-row-text { grid-area: text; width: 100%; box-sizing: border-box; background: transparent; border: 1px solid transparent; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-base); line-height: 1.5; padding: 6px var(--px-space-2); resize: none; overflow: hidden; min-height: 34px; field-sizing: content; }
@@ -122,6 +122,12 @@ export function injectStudioStyles() {
 .cs-icon-btn:hover { background: var(--px-bg-inset); color: var(--px-text); }
 .cs-icon-btn:disabled { opacity: .4; cursor: default; }
 .cs-icon-btn[aria-pressed="true"] { color: var(--px-accent-text); }
+.cs-row-steer { grid-area: steer; display: none; flex-direction: column; gap: var(--px-space-2); margin-top: var(--px-space-1); padding: var(--px-space-2); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
+.cs-row--steer .cs-row-steer { display: flex; }
+.cs-row--steer .cs-row-actions { opacity: 1; }
+.cs-row-steer .cs-textarea { background: var(--px-bg-elevated); min-height: 34px; }
+.cs-row-steer-foot { display: flex; align-items: center; gap: var(--px-space-2); }
+.cs-row-steer-hint { flex: 1; font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .cs-row-error { grid-area: err; display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-danger); }
 .cs-canon { display: flex; flex-direction: column; gap: 2px; }
 .cs-fact { display: flex; gap: var(--px-space-2); font-size: var(--px-text-sm); line-height: 1.45; padding: 2px 0; cursor: pointer; }
@@ -151,6 +157,21 @@ ${CREATIONS_PARTS_CSS}
 const FIELD_SIZING = typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('field-sizing', 'content');
 
 const SOURCE_ICONS = { link: 'link', canvas: 'file-text', file: 'file', text: 'clipboard' };
+/** One example direction per field, shown in the Rewrite box's placeholder. */
+const STEER_EXAMPLES = {
+  name: 'older, from the same town',
+  tagline: 'wry, about the work',
+  description: 'more about their daily life',
+  appearance: 'older, practical clothes',
+  personality: 'warmer and funnier',
+  voice: 'more formal, fewer words',
+  backstory: 'more detail on the war years and a brother',
+  drives: 'make the fear about family',
+  secrets: 'something smaller and more human',
+  relationships: 'add a rival from work',
+  exampleDialogue: 'more teasing, less guarded',
+  reminder: 'about the temper',
+};
 
 /**
  * @param container host element
@@ -496,16 +517,34 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     undoBtn.style.display = 'none';
     const lockBtn = iconButton('lock', `Lock ${f.label.toLowerCase()} so Generate and Reroll leave it alone`, () => toggleLock(f.key));
     lockBtn.setAttribute('aria-pressed', 'false');
-    const rerollBtn = iconButton('refresh-cw', `Rewrite ${f.label.toLowerCase()}, keeping the rest of the sheet`, () => void reroll(f.key));
+    const rerollBtn = iconButton('refresh-cw', `Rewrite ${f.label.toLowerCase()}, with a direction if you like`, () => toggleSteer(f.key));
+    rerollBtn.setAttribute('aria-expanded', 'false');
     acts.append(undoBtn, lockBtn, rerollBtn);
+    // The direction box: optional. Empty, Rewrite is a fresh take as before.
+    const steer = el('div', 'cs-row-steer');
+    const steerInput = el('textarea', 'cs-textarea');
+    steerInput.rows = 1;
+    steerInput.placeholder = `How should it change? e.g. "${STEER_EXAMPLES[f.key] || 'more detail, a different angle'}"`;
+    steerInput.setAttribute('aria-label', `How the ${f.label.toLowerCase()} should change`);
+    const steerGo = smallButton('Rewrite', 'sparkles', () => void reroll(f.key, steerInput.value));
+    steerGo.classList.add('cs-btn--primary');
+    const steerCancel = smallButton('Cancel', null, () => closeSteer(f.key));
+    steerCancel.classList.add('cs-btn--quiet');
+    steerInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); steerGo.click(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeSteer(f.key); rerollBtn.focus(); }
+    });
+    const steerFoot = el('div', 'cs-row-steer-foot');
+    steerFoot.append(el('span', 'cs-row-steer-hint', { text: 'Optional. Leave it empty for a fresh take.' }), steerCancel, steerGo);
+    steer.append(steerInput, steerFoot);
     const err = el('div', 'cs-row-error');
     err.style.display = 'none';
     const skel = el('div', 'cs-row-skel');
     skel.append(el('span', 'cr-skel'), el('span', 'cr-skel'));
     skel.children[0].style.width = '92%';
     skel.children[1].style.width = '64%';
-    row.append(label, area, acts, err, skel);
-    rows[f.key] = { row, area, lockBtn, rerollBtn, undoBtn, lockMark, err, label: f.label, state: rowState };
+    row.append(label, area, acts, steer, err, skel);
+    rows[f.key] = { row, area, lockBtn, rerollBtn, undoBtn, lockMark, err, steer, steerInput, steerGo, label: f.label, state: rowState };
     return row;
   }
   function setField(key, value, opts = {}) {
@@ -531,6 +570,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   }
   function toggleLock(key) {
     if (state.locks.has(key)) state.locks.delete(key); else state.locks.add(key);
+    if (state.locks.has(key)) closeSteer(key);
     const r = rows[key];
     const on = state.locks.has(key);
     r.lockBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -553,6 +593,20 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     r.err.appendChild(el('span', null, { text: message }));
     if (retry) r.err.appendChild(smallButton('Try Again', 'refresh-cw', retry));
     r.err.style.display = '';
+  }
+  function toggleSteer(key) {
+    const r = rows[key];
+    if (!r || state.locks.has(key)) return;
+    if (r.row.classList.contains('cs-row--steer')) { closeSteer(key); return; }
+    r.row.classList.add('cs-row--steer');
+    r.rerollBtn.setAttribute('aria-expanded', 'true');
+    r.steerInput.focus();
+  }
+  function closeSteer(key) {
+    const r = rows[key];
+    if (!r) return;
+    r.row.classList.remove('cs-row--steer');
+    r.rerollBtn.setAttribute('aria-expanded', 'false');
   }
   function clearRowError(key) { rows[key].err.style.display = 'none'; rows[key].err.replaceChildren(); }
   function setMode(mode) {
@@ -923,27 +977,32 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       genBtn.disabled = false;
     }
   }
-  async function reroll(key) {
+  async function reroll(key, direction = '') {
     if (state.busy || state.locks.has(key)) return;
     const r = rows[key];
     clearRowError(key);
     state.busy = true;
     r.row.classList.add('cs-row--busy');
     r.rerollBtn.disabled = true;
+    r.steerGo.disabled = true;
     try {
       const { modelId, numCtx } = await resolveModel();
-      const { parsed } = await streamJson(modelId, numCtx, buildFieldMessages(context(), state.sheet, key));
+      const { parsed } = await streamJson(modelId, numCtx, buildFieldMessages(context(), state.sheet, key, direction));
       const next = parsed && typeof parsed[key] === 'string' ? cleanFieldValue(key, parsed[key]) : '';
       if (!next) throw new Error('nothing came back');
       state.undo.set(key, state.sheet[key]);
       setField(key, next);
       showUndo(key);
+      // Done: the box closes and forgets the direction; Undo brings the old text back.
+      r.steerInput.value = '';
+      closeSteer(key);
     } catch (err) {
-      rowError(key, `Could not rewrite ${r.label.toLowerCase()}. ${err?.message || ''}`.trim(), () => void reroll(key));
+      rowError(key, `Could not rewrite ${r.label.toLowerCase()}. ${err?.message || ''}`.trim(), () => void reroll(key, direction));
     } finally {
       state.busy = false;
       r.row.classList.remove('cs-row--busy');
       r.rerollBtn.disabled = state.locks.has(key);
+      r.steerGo.disabled = false;
     }
   }
   async function tryLine() {

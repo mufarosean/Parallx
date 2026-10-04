@@ -93,6 +93,18 @@ describe('prompts', () => {
     expect(user.content).toContain('"backstory": "old"');
     expect(user.content).toContain('turning point');
   });
+  it('a rewrite with a direction follows it and lets it set the length', () => {
+    const [, plain] = buildFieldMessages({ concept: 'A guard' }, { name: 'X', backstory: 'old' }, 'backstory');
+    expect(plain.content).not.toContain('DIRECTION');
+    expect(plain.content).toContain('same length as the current one or shorter');
+    for (const blank of ['', '   ']) expect(buildFieldMessages({}, { backstory: 'old' }, 'backstory', blank)[1].content).toBe(buildFieldMessages({}, { backstory: 'old' }, 'backstory')[1].content);
+    const [, steered] = buildFieldMessages({ concept: 'A guard' }, { name: 'X', backstory: 'old' }, 'backstory', '  More about the war years and her brother.  ');
+    expect(steered.content).toContain('DIRECTION: More about the war years and her brother.');
+    expect(steered.content).toContain('The direction leads');
+    expect(steered.content).not.toContain('same length as the current one or shorter');
+    expect(steered.content).toContain('turning point'); // the field's own requirement still frames it
+    expect(steered.content).not.toMatch(/[—–]/);
+  });
   it('lets you try a line against the composed portrait', () => {
     const [system, user] = buildTryLineMessages({ name: 'Ada', description: 'Ada counts.', voice: 'Dry.', exampleDialogue: '[USER]: hi\n[AI]: no', reminder: 'Never lies.' }, 'Hello?');
     expect(system.content).toContain('You are Ada');

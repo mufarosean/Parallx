@@ -112,6 +112,12 @@ Sample Lines, Description (what the chat plays), Reminder (what it
 never forgets). Each row is label, text (edited in place, grows with
 its content) and, on hover, two icon actions: Lock and Reroll. A locked
 row shows a small lock chip and is never touched by Generate or Reroll.
+Reroll (the Rewrite icon) opens a small box under the row: an optional
+direction for this rewrite ("more detail on the war years", "warmer").
+Enter rewrites (Shift+Enter is a new line), Escape closes it. Empty, it
+is a fresh take as before; with a direction, the direction leads and may
+make the field longer. What comes back is saved like any edit, and Undo
+brings the old text back.
 When the character is twisted, a Show Original toggle in the bar puts
 each field's pre-twist text beneath it in muted type. While generating,
 rows fill in order as the model streams; locked rows stay; a row that
@@ -188,6 +194,8 @@ and why:
   it: every fact marked kept, changed (with "was") or added, and any fact
   can be clicked out of the next generation. One sheet is written, from the
   twisted canon, so a Twist costs two extra model calls, not a second sheet.
+- Reroll takes an optional direction, the same box Story Writer's beats
+  use, so a rewrite can be steered instead of rolled again and again.
 - Reroll has Undo. Three alternatives per field were cut: one more control
   per row for a gain the undo already gives.
 - The name has no lock. A name that is in the title when you press Generate

@@ -245,7 +245,12 @@ export function buildSheetMessages({ concept = '', canon = [], spec = '', twist 
 }
 
 /** One field again, consistent with the rest of the sheet, written differently. */
-export function buildFieldMessages({ concept = '', canon = [], spec = '', twist = '', name = '' } = {}, sheet, key) {
+/**
+ * Rewrite one field. `direction` is the user's optional steer for this
+ * rewrite ("darker, more about her father", "more detail on the war years");
+ * when given it leads, and the field's usual length gives way to it.
+ */
+export function buildFieldMessages({ concept = '', canon = [], spec = '', twist = '', name = '' } = {}, sheet, key, direction = '') {
   const field = STUDIO_FIELDS.find((f) => f.key === key);
   const label = field ? field.label.toLowerCase() : key;
   const context = [];
@@ -260,7 +265,14 @@ export function buildFieldMessages({ concept = '', canon = [], spec = '', twist 
     { role: 'user', content: [
       ...context,
       'Current character sheet JSON:', JSON.stringify(sheet, null, 2), '',
-      `Rewrite ONLY the ${label}: a fresh take, consistent with the rest of the sheet but written differently than before. Keep to the same length as the current one or shorter; plain and concrete, no purple filler, no stock phrases.`,
+      ...(String(direction || '').trim()
+        ? [
+          `Rewrite ONLY the ${label}, following the user's direction for it:`,
+          `DIRECTION: ${String(direction).trim()}`,
+          'The direction leads: change what it asks to change, add what it asks for, and keep the rest of the sheet true. Length is what the direction needs: if it asks for more detail or depth, write more (up to about three times the current length); otherwise keep about the same length. Plain and concrete, no purple filler, no stock phrases.',
+          `The usual shape of the ${label}, which the direction may override:`,
+        ]
+        : [`Rewrite ONLY the ${label}: a fresh take, consistent with the rest of the sheet but written differently than before. Keep to the same length as the current one or shorter; plain and concrete, no purple filler, no stock phrases.`]),
       requirement,
     ].join('\n') },
   ];

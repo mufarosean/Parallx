@@ -309,9 +309,17 @@ describe('the Studio screen', () => {
     await flush();
     const root = container.querySelector('.cs') as HTMLElement;
     typeInto(areaOf(root, 'backstory'), 'The old backstory.');
-    (rowOf(root, 'backstory').querySelector('[aria-label^="Rewrite"]') as HTMLButtonElement).click();
+    const row = rowOf(root, 'backstory');
+    (row.querySelector('[aria-label^="Rewrite"]') as HTMLButtonElement).click();
+    // Rewrite opens the direction box first; nothing is sent yet.
+    expect(row.classList.contains('cs-row--steer')).toBe(true);
+    expect(w.requests).toHaveLength(0);
+    // Empty direction: a fresh take, as before.
+    (row.querySelector('.cs-row-steer .cs-btn--primary') as HTMLButtonElement).click();
     await flush();
     expect(areaOf(root, 'backstory').value).toBe('Rewritten backstory.');
+    expect(row.classList.contains('cs-row--steer')).toBe(false);
+    expect(w.requests[0].messages[1].content).not.toContain('DIRECTION');
     const undo = rowOf(root, 'backstory').querySelector('[aria-label^="Undo"]') as HTMLButtonElement;
     expect(undo.style.display).toBe('');
     undo.click();
@@ -319,6 +327,55 @@ describe('the Studio screen', () => {
     expect(undo.style.display).toBe('none');
     const req = w.requests[0];
     expect(req.messages[1].content).toContain('"backstory": "The old backstory."');
+  });
+
+  it('rewrites a row the way the user directs, and saves what comes back', async () => {
+    const w = makeWorld();
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    typeInto(root.querySelector('.cs-title') as HTMLInputElement, 'Ada Lovelace'); // a named character autosaves
+    typeInto(areaOf(root, 'backstory'), 'The old backstory.');
+    const row = rowOf(root, 'backstory');
+    const open = row.querySelector('[aria-label^="Rewrite"]') as HTMLButtonElement;
+    open.click();
+    expect(open.getAttribute('aria-expanded')).toBe('true');
+    const box = row.querySelector('.cs-row-steer textarea') as HTMLTextAreaElement;
+    expect(box.placeholder).toContain('How should it change?');
+    expect(document.activeElement).toBe(box);
+    // Escape closes it without sending; the rewrite icon opens it again.
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(row.classList.contains('cs-row--steer')).toBe(false);
+    open.click();
+    box.value = 'More about the war years and her brother.';
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(w.requests).toHaveLength(1);
+    expect(w.requests[0].messages[1].content).toContain('DIRECTION: More about the war years and her brother.');
+    expect(areaOf(root, 'backstory').value).toBe('Rewritten backstory.');
+    expect(row.classList.contains('cs-row--steer')).toBe(false);
+    expect(box.value).toBe('');
+    await flush(900); // autosave
+    expect(JSON.stringify([...w.saved.values()])).toContain('Rewritten backstory.');
+    // Shift+Enter is a new line in the box, not a send.
+    open.click();
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+    await flush();
+    expect(w.requests).toHaveLength(1);
+  });
+
+  it('a locked row cannot open the direction box, and locking closes it', async () => {
+    const w = makeWorld();
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    const row = rowOf(root, 'voice');
+    (row.querySelector('[aria-label^="Rewrite"]') as HTMLButtonElement).click();
+    expect(row.classList.contains('cs-row--steer')).toBe(true);
+    (row.querySelector('[aria-label^="Lock"]') as HTMLButtonElement).click();
+    expect(row.classList.contains('cs-row--steer')).toBe(false);
+    (row.querySelector('[aria-label^="Rewrite"]') as HTMLButtonElement).click();
+    expect(row.classList.contains('cs-row--steer')).toBe(false);
   });
 
   it('opens a character made before the Studio with its rows filled from the role instruction, and autosaves an edit without losing the rest', async () => {
