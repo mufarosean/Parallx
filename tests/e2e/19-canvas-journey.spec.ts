@@ -37,7 +37,11 @@ async function getTopLevelBlockTypes(page: Page): Promise<string[]> {
 }
 
 async function getPageCount(page: Page): Promise<number> {
-  return page.locator('.canvas-node').count();
+  // A page can show twice (Recent and Pages); count pages, not rows.
+  return page.evaluate(async () => {
+    const res = await (window as any).parallxElectron.database.all('SELECT COUNT(*) AS n FROM pages WHERE is_archived = 0');
+    return Number((res.rows ?? res)[0].n);
+  });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -170,11 +174,7 @@ test.describe('Canvas Journey — Full User Session', () => {
     console.log('\n═══ STEP 7: Second page ═══');
     const countBefore = await getPageCount(page);
     await page.locator('.canvas-sidebar-add-btn').click();
-    await page.waitForFunction(
-      (prev) => document.querySelectorAll('.canvas-node').length > prev,
-      countBefore,
-      { timeout: 10_000 },
-    );
+    await expect.poll(() => getPageCount(page), { timeout: 10_000 }).toBeGreaterThan(countBefore);
     const countAfter = await getPageCount(page);
     expect(countAfter).toBe(countBefore + 1);
     console.log(`  Pages: ${countBefore} → ${countAfter}`);
@@ -182,7 +182,7 @@ test.describe('Canvas Journey — Full User Session', () => {
     // ═══ STEP 8: Switch to second page, add content, switch back ═══
     console.log('\n═══ STEP 8: Page switching ═══');
     await page.locator('.canvas-node').last().click();
-    await page.waitForSelector('.tiptap', { timeout: 10_000 });
+    await page.locator('.tiptap:visible').first().waitFor({ timeout: 10_000 });
     await waitForEditor(page);
 
     await setContent(page, [p('Second Page Content'), p('More text here')]);
@@ -193,7 +193,7 @@ test.describe('Canvas Journey — Full User Session', () => {
 
     // Switch back to first page
     await page.locator('.canvas-node').first().click();
-    await page.waitForSelector('.tiptap', { timeout: 10_000 });
+    await page.locator('.tiptap:visible').first().waitFor({ timeout: 10_000 });
     await waitForEditor(page);
     await page.waitForTimeout(500);
 

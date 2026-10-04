@@ -757,6 +757,20 @@ export class BlockHandlesController {
     const atomTarget = this._resolveAtomBlockAtCoords(view, clientX, clientY);
     if (atomTarget) return atomTarget;
 
+    // Over a callout's icon the handle belongs to the callout: the inner
+    // block's handle sat right on the icon, so clicking the icon opened the
+    // block menu instead of the icon picker.
+    const chrome = (document.elementFromPoint(clientX, clientY) as HTMLElement | null)
+      ?.closest?.('.canvas-callout-emoji')?.closest('.canvas-callout') as HTMLElement | null;
+    if (chrome && view.dom.contains(chrome)) {
+      try {
+        const parent = chrome.parentElement!;
+        const pos = view.posAtDOM(parent, Array.prototype.indexOf.call(parent.childNodes, chrome));
+        const node = view.state.doc.nodeAt(pos);
+        if (node?.type.name === 'callout') return { pos, node };
+      } catch { /* fall through */ }
+    }
+
     const isListWrapper = (node: any): boolean => {
       const name = node?.type?.name;
       return name === 'bulletList' || name === 'orderedList' || name === 'taskList';
@@ -874,6 +888,16 @@ export class BlockHandlesController {
     // Li markers — shift left to clear the bullet/number
     if (dom.matches('ul:not([data-type=taskList]) li, ol li')) {
       left -= hw;
+    }
+
+    // Inside a callout the gutter holds the callout's icon: keep the handle
+    // left of it, or it covers the icon and a click on the icon opens the
+    // block menu instead of the icon picker.
+    const calloutIcon = dom.closest('.canvas-callout-content')?.parentElement
+      ?.querySelector(':scope > .canvas-callout-emoji') as HTMLElement | null;
+    if (calloutIcon) {
+      const iconLeft = calloutIcon.getBoundingClientRect().left - ecRect.left;
+      left = Math.min(left, iconLeft - hw - 2);
     }
 
     this._dragHandleEl.style.left = `${left}px`;

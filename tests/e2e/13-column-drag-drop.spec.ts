@@ -301,7 +301,9 @@ test.describe('Column Drag-Drop', () => {
 
     console.log('\n═══ SCENARIO 3: dragover ABOVE top-level block ═══');
 
-    await startDragFromBlock(page, 0);
+    // Drag Charlie: Alpha above Bravo would be a no-op drop, which shows no
+    // guide (see "adjacent no-op edge is not offered").
+    await startDragFromBlock(page, 2);
 
     // Target: center X, near top
     const s3 = await dispatchDragover(
@@ -1133,6 +1135,9 @@ test.describe('Column Drag-Drop', () => {
     expect(videoIndex).toBeGreaterThanOrEqual(0);
 
     const videoRect = await getBlockRect(page, videoIndex);
+    // A left-strip column drop takes a deliberate sideways move: come in
+    // from the middle of the block first.
+    await dispatchDragover(page, videoRect.left + videoRect.width / 2, videoRect.top + videoRect.height / 2);
     const dragResult = await dispatchDragover(
       page,
       videoRect.left + 10,

@@ -207,6 +207,9 @@ test.describe('Column Integration — Real User Workflow', () => {
     console.log('\n═══ STEP 2: Create 2-column via drag ═══');
     const purpleRect = await getBlockRect(page, 1);
     await setupDrag(page, 2); // Olive
+    // A left-strip column drop takes a deliberate sideways move: come in
+    // from the middle of the block first.
+    await dragoverAt(page, purpleRect.left + purpleRect.width / 2, purpleRect.top + purpleRect.height / 2);
     await dragoverAt(page, purpleRect.left + 15, purpleRect.top + purpleRect.height / 2);
     await shot(page, '02-indicator-visible');
     await dropAt(page, purpleRect.left + 15, purpleRect.top + purpleRect.height / 2);
@@ -301,6 +304,9 @@ test.describe('Column Integration — Real User Workflow', () => {
     const lastIdx = doc.length - 1;
     const prevRect = await getBlockRect(page, lastIdx - 1);
     await setupDrag(page, lastIdx);
+    // A left-strip column drop takes a deliberate sideways move: come in
+    // from the middle of the block first.
+    await dragoverAt(page, prevRect.left + prevRect.width / 2, prevRect.top + prevRect.height / 2);
     await dragoverAt(page, prevRect.left + 15, prevRect.top + prevRect.height / 2);
     await dropAt(page, prevRect.left + 15, prevRect.top + prevRect.height / 2);
     await page.waitForTimeout(400);

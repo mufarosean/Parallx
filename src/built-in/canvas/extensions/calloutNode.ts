@@ -89,7 +89,14 @@ export const Callout = Node.create<CalloutOptions>({
       iconSpan.contentEditable = 'false';
       iconSpan.title = 'Change icon';
 
+      // Redraw only when the icon changes: redrawing on every update fed a
+      // loop (the new SVG is a DOM mutation, which re-rendered the node),
+      // and a click on the icon then hit an SVG already swapped out, so the
+      // icon picker never opened.
+      let renderedEmoji: string | null = null;
       const renderIcon = (emoji: string) => {
+        if (emoji === renderedEmoji) return;
+        renderedEmoji = emoji;
         const iconId = resolvePageIcon(emoji);
         iconSpan.innerHTML = svgIcon(iconId);
         const svg = iconSpan.querySelector('svg');
@@ -138,6 +145,10 @@ export const Callout = Node.create<CalloutOptions>({
           if (updatedNode.type.name !== 'callout') return false;
           renderIcon(updatedNode.attrs.emoji);
           return true;
+        },
+        // The icon is ours, not document content.
+        ignoreMutation(mutation: any) {
+          return mutation.type !== 'selection' && !contentDOM.contains(mutation.target);
         },
         destroy() {
           // Icon picker is now registry-managed; no local cleanup needed.

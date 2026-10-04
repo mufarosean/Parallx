@@ -241,7 +241,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await openBlockActionMenu(window, 0);
 
     // The menu should be visible
-    const actionMenu = window.locator('.block-action-menu');
+    const actionMenu = window.locator('.block-action-menu:not(.table-action-menu)');
     await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
     // It should have menu items: Turn into, Color, Duplicate, Delete
@@ -277,7 +277,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
 
     await openBlockActionMenu(window, 1);
 
-    const actionMenu = window.locator('.block-action-menu');
+    const actionMenu = window.locator('.block-action-menu:not(.table-action-menu)');
     await expect(actionMenu).toBeVisible({ timeout: 3_000 });
     await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
   });
@@ -328,7 +328,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     // Validate that we can reliably click handles for multiple targets even
     // when different neighboring block DOM structures are present.
     await openBlockActionMenu(window, 0);
-    let actionMenu = window.locator('.block-action-menu');
+    let actionMenu = window.locator('.block-action-menu:not(.table-action-menu)');
     await expect(actionMenu).toBeVisible({ timeout: 3_000 });
     await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
 
@@ -338,7 +338,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await window.waitForTimeout(180);
 
     await openBlockActionMenu(window, 2); // quote
-    actionMenu = window.locator('.block-action-menu');
+    actionMenu = window.locator('.block-action-menu:not(.table-action-menu)');
     await expect(actionMenu).toBeVisible({ timeout: 3_000 });
     await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
 
@@ -346,7 +346,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await window.waitForTimeout(180);
 
     await openBlockActionMenu(window, 5);
-    actionMenu = window.locator('.block-action-menu');
+    actionMenu = window.locator('.block-action-menu:not(.table-action-menu)');
     await expect(actionMenu).toBeVisible({ timeout: 3_000 });
     await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
   });
@@ -367,7 +367,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
 
     // Open the action menu
     await openBlockActionMenu(window, 0);
-    const actionMenu = window.locator('.block-action-menu');
+    const actionMenu = window.locator('.block-action-menu:not(.table-action-menu)');
     await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
     // Click the drag handle again to close
@@ -392,7 +392,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     ]);
 
     await openBlockActionMenu(window, 0);
-    const actionMenu = window.locator('.block-action-menu');
+    const actionMenu = window.locator('.block-action-menu:not(.table-action-menu)');
     await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
     // Click on the editor body, away from the menu
@@ -502,7 +502,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await window.waitForTimeout(300);
 
     // Menu should close
-    const actionMenu = window.locator('.block-action-menu');
+    const actionMenu = window.locator('.block-action-menu:not(.table-action-menu)');
     await expect(actionMenu).not.toBeVisible();
 
     // Block should now be a heading
@@ -659,10 +659,10 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await expect(icon).toBeVisible({ timeout: 3_000 });
 
     await icon.click();
-    const picker = window.locator('.canvas-icon-picker');
+    const picker = window.locator('.ui-icon-picker:visible');
     await expect(picker).toBeVisible({ timeout: 3_000 });
 
-    const targetIcon = picker.locator('.canvas-icon-btn[title="rocket"]').first();
+    const targetIcon = picker.locator('.ui-icon-picker-btn[title="rocket"]').first();
     await targetIcon.click();
     await window.waitForTimeout(200);
 
@@ -769,7 +769,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await window.waitForTimeout(300);
 
     // Menu should close
-    const actionMenu = window.locator('.block-action-menu');
+    const actionMenu = window.locator('.block-action-menu:not(.table-action-menu)');
     await expect(actionMenu).not.toBeVisible();
 
     // Check that color mark was applied
@@ -809,7 +809,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await expect(colorSubmenu).toBeVisible({ timeout: 3_000 });
     await window.evaluate(() => {
       const items = document.querySelectorAll('.block-color-submenu .block-color-item');
-      const item = [...items].find(el => el.textContent?.includes('Blue background'));
+      const item = [...items].find(el => el.textContent?.toLowerCase().includes('blue background'));
       if (!item) throw new Error('No Blue background item');
       item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     });
@@ -853,7 +853,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await window.waitForTimeout(300);
 
     // Menu should close
-    const actionMenu = window.locator('.block-action-menu');
+    const actionMenu = window.locator('.block-action-menu:not(.table-action-menu)');
     await expect(actionMenu).not.toBeVisible();
 
     // Document should now have 3 blocks with the first duplicated
@@ -915,7 +915,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await window.waitForTimeout(300);
 
     // Menu should close
-    const actionMenu = window.locator('.block-action-menu');
+    const actionMenu = window.locator('.block-action-menu:not(.table-action-menu)');
     await expect(actionMenu).not.toBeVisible();
 
     // Only 2 blocks should remain

@@ -207,6 +207,19 @@ export async function setupCanvasPage(
   if (!cls?.includes('active')) await canvasBtn.click();
   await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
 
+  // Close the editors earlier tests left open (the app is shared): a hidden
+  // canvas editor per earlier test made every `.tiptap` locator ambiguous.
+  await page.evaluate(async () => {
+    const wb = (window as any).__parallx_workbench__;
+    const entries = (wb?._services ?? wb?.services)?._entries;
+    let cmd: any = null;
+    entries?.forEach((e: any) => { if (e?.instance && typeof e.instance.executeCommand === 'function') cmd = e.instance; });
+    for (let i = 0; i < 30 && cmd && document.querySelector('.tiptap'); i++) {
+      try { await cmd.executeCommand('workbench.action.closeActiveEditor'); } catch { break; }
+      await new Promise((r) => setTimeout(r, 30));
+    }
+  });
+
   // Create a new page — handles the database-service context menu
   await clickNewPage(page);
 
@@ -217,10 +230,15 @@ export async function setupCanvasPage(
   await page.keyboard.press('Escape');
   await page.waitForTimeout(120);
 
-  // Open the newly created page (last in sort order)
-  await page.locator('.canvas-node').last().click();
-  // Another (hidden) editor can exist; wait for the one that is shown.
-  await page.locator('.tiptap:visible').first().waitFor({ timeout: 10_000 });
+  // A new page opens itself. Clicking the last tree row as well opened a
+  // second page, leaving two editors (one hidden) that every `.tiptap`
+  // locator then tripped over. Only open a row when nothing opened.
+  const opened = await page.locator('.tiptap:visible').first()
+    .waitFor({ timeout: 3_000 }).then(() => true, () => false);
+  if (!opened) {
+    await page.locator('.canvas-node').last().click();
+    await page.locator('.tiptap:visible').first().waitFor({ timeout: 10_000 });
+  }
 
   // Wait for TipTap editor to be fully initialised
   await page.waitForFunction(
@@ -267,8 +285,10 @@ export async function getDocStructure(page: Page): Promise<string[]> {
       if (type === 'details') return 'details';
       if (type === 'mathBlock') return 'mathBlock';
       if (type === 'columnList') {
-        const cols = (node.content || []).length;
-        return `columnList:${cols}`;
+        const cols = node.content || [];
+        // Each column's block texts, so a check can see what went where.
+        const desc = cols.map((col: any) => (col.content || []).map((b: any) => b.content?.[0]?.text ?? b.type).join(',')).join('|');
+        return `columnList:${cols.length}[${desc}]`;
       }
       return type;
     });

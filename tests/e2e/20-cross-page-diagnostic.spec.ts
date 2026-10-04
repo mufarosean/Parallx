@@ -64,7 +64,9 @@ test.describe('Cross-Page DnD Diagnostic', () => {
     console.log('[DND-DIAG] Child page created in tree');
 
     // /page auto-navigates to the child. Go back to parent.
-    const parentNode = page.locator('.canvas-node[role="treeitem"]').first();
+    // The parent is the row with children (Recent lists the child first).
+    const parentNode = page.locator('.canvas-node--has-children[role="treeitem"]').first();
+    await parentNode.waitFor({ timeout: 10_000 });
     await parentNode.click();
     await page.waitForSelector('.canvas-page-block-card', { timeout: 10_000 });
     await waitForEditor(page);
@@ -94,7 +96,7 @@ test.describe('Cross-Page DnD Diagnostic', () => {
     expect(pageBlockCount).toBeGreaterThanOrEqual(1);
 
     // Verify DRAG_ME_BLOCK is present
-    await expect(page.locator('.tiptap p', { hasText: 'DRAG_ME_BLOCK' })).toHaveCount(1);
+    await expect(page.locator('.tiptap:visible p', { hasText: 'DRAG_ME_BLOCK' })).toHaveCount(1);
 
     // ── 4. Inject diagnostic instrumentation ──
     console.log('[DND-DIAG] Injecting instrumentation...');
@@ -128,7 +130,7 @@ test.describe('Cross-Page DnD Diagnostic', () => {
     console.log('[DND-DIAG] Starting drag...');
 
     // Hover the DRAG_ME_BLOCK paragraph to trigger drag handle
-    const paragraph = page.locator('.tiptap p', { hasText: 'DRAG_ME_BLOCK' }).first();
+    const paragraph = page.locator('.tiptap:visible p', { hasText: 'DRAG_ME_BLOCK' }).first();
     await paragraph.scrollIntoViewIfNeeded();
     const paraBox = await paragraph.boundingBox();
     console.log(`[DND-DIAG] Paragraph bounds: ${JSON.stringify(paraBox)}`);
@@ -137,7 +139,7 @@ test.describe('Cross-Page DnD Diagnostic', () => {
     await page.waitForTimeout(300);
 
     // Check if drag handle appears
-    const dragHandle = page.locator('.drag-handle');
+    const dragHandle = page.locator('.drag-handle:visible');
     const handleVisible = await dragHandle.isVisible().catch(() => false);
     console.log(`[DND-DIAG] Drag handle visible after hover: ${handleVisible}`);
 
@@ -248,7 +250,7 @@ test.describe('Cross-Page DnD Diagnostic', () => {
     console.log(`[DND-DIAG] Full doc JSON AFTER: ${JSON.stringify(fullDocAfter, null, 2)}`);
 
     // Check if the source block is still present
-    const sourceStillPresent = await page.locator('.tiptap p', { hasText: 'DRAG_ME_BLOCK' }).count();
+    const sourceStillPresent = await page.locator('.tiptap:visible p', { hasText: 'DRAG_ME_BLOCK' }).count();
     console.log(`[DND-DIAG] DRAG_ME_BLOCK still in source page: ${sourceStillPresent > 0} (count: ${sourceStillPresent})`);
 
     // Print all collected console logs
@@ -259,13 +261,13 @@ test.describe('Cross-Page DnD Diagnostic', () => {
     // Now navigate to the child page to check if the block arrived
     console.log('[DND-DIAG] Opening child page to check if block arrived...');
     await page.locator('.canvas-page-block-card').first().click();
-    await page.waitForSelector('.tiptap', { timeout: 10_000 });
+    await page.locator('.tiptap:visible').first().waitFor({ timeout: 10_000 });
     await page.waitForTimeout(500);
 
     const childDoc = await getDocStructure(page);
     console.log(`[DND-DIAG] Child page doc: ${JSON.stringify(childDoc)}`);
 
-    const blockInChild = await page.locator('.tiptap p', { hasText: 'DRAG_ME_BLOCK' }).count();
+    const blockInChild = await page.locator('.tiptap:visible p', { hasText: 'DRAG_ME_BLOCK' }).count();
     console.log(`[DND-DIAG] DRAG_ME_BLOCK in child page: ${blockInChild > 0} (count: ${blockInChild})`);
 
     // ── Assertions (these WILL fail if the move didn't work — that's the point) ──

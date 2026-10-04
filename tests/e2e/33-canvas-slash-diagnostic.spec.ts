@@ -138,7 +138,7 @@ test.describe('Canvas slash-menu + movement (2026-05-27 regression)', () => {
     await snap(page, 'todo-after-slash');
   });
 
-  test('Mod-Shift-ArrowDown inside a table cell moves the table down', async ({
+  test('Mod-Shift-ArrowDown moves the row from a cell, and the table after Esc', async ({
     window: page,
     electronApp,
     workspacePath,
@@ -168,18 +168,29 @@ test.describe('Canvas slash-menu + movement (2026-05-27 regression)', () => {
     expect(before[0]).toBe('table');
     expect(before[1]).toBe('p:AFTER-TABLE');
 
-    // Click into a cell and press the movement chord. No prior Escape needed
-    // — `moveSelectedDown` bootstraps via selectAtCursor when nothing is
-    // selected. This is the user's actual gesture: cursor in cell, press
-    // the chord, expect the table to move.
+    // Since 2026-08-27 (tableKeyboardPolicy.ts) the ROW is the movable unit
+    // for a caret in a cell: the chord there must not move the whole table.
     await page.locator('.tiptap table th, .tiptap table td').first().click();
     await page.waitForTimeout(100);
     const isMac = process.platform === 'darwin';
-    await page.keyboard.press(isMac ? 'Meta+Shift+ArrowDown' : 'Control+Shift+ArrowDown');
+    const chord = isMac ? 'Meta+Shift+ArrowDown' : 'Control+Shift+ArrowDown';
+    await page.keyboard.press(chord);
+    await page.waitForTimeout(300);
+    const inCell = order(await dumpJson(page));
+    expect(inCell.indexOf('table')).toBeLessThan(inCell.indexOf('p:AFTER-TABLE'));
+
+    // Esc selects the cell, a second Esc the table as a block; the chord
+    // then moves it down.
+    await page.locator('.tiptap table th, .tiptap table td').first().click();
+    await page.waitForTimeout(100);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(100);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(100);
+    await page.keyboard.press(chord);
     await page.waitForTimeout(300);
 
     const after = order(await dumpJson(page));
-    // Table must have moved past AFTER-TABLE.
     const tableIdx = after.indexOf('table');
     const paraIdx = after.indexOf('p:AFTER-TABLE');
     expect(tableIdx).toBeGreaterThan(paraIdx);

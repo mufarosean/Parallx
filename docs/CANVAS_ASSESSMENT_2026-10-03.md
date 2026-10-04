@@ -138,6 +138,13 @@ markdown, focus) were not tested adversarially.
   fixture (two editors); with the fixture and guide lookups scoped to the
   editor under test, 3 of 6 pass, and the other 3 fail on stale positions
   from the synthetic-event harness, the same as before this change.
+- **Clicking a callout's icon did nothing** (found 2026-10-04 by the
+  repaired e2e suite). The callout redrew its icon on every update, the new
+  SVG was a mutation that re-rendered the node, so the icon was replaced in
+  a loop and a click hit a detached SVG; and the handle of the block inside
+  the callout sat on the icon. **Fixed**: the icon is redrawn only when it
+  changes, the node view ignores its own chrome mutations, and the handle of
+  a block in a callout stays left of the icon. Checked in the app.
 - **Slash menu runs inside code blocks** ("// todo" + Enter turns the code
   block into a to-do list). **Fixed**: it stays closed in code blocks and in text-only lines
   (a toggle's summary, a toggle heading's title).
@@ -411,3 +418,24 @@ each has a named test besides the sweeps.
 Evidence (probes, logs, screenshots) was kept in the cloud session's scratchpad, which does not outlive the session:
 `canvasrun/` (app run, 73 screenshots), `probe/`, `vt/`, `rt/`, `storage/`,
 `trash.py`, `vm.ts`.
+
+## Canvas e2e suites, 2026-10-04
+
+The canvas e2e suites could not run: the shared fixture opened a second page
+after the new page had opened itself, so every `.tiptap` locator matched two
+editors; `12-columns` never passed `workspacePath`; the table menu also
+carries `.block-action-menu`. With the fixture closing earlier editors and
+the selectors scoped, and stale expectations updated to deliberate later
+rules (row-scoped Mod-Shift-Arrow in tables, no Turn into for leaf blocks,
+no guide for a no-op drop, Title Case color labels, the left column strip
+needing a sideways move):
+
+| Suite | Result |
+|---|---|
+| 11-block-handles | 31 / 31 |
+| 12-columns | 51 / 52 (the right-click Paste path in the bookmark popup fails the same way on the build before 2026-10-03; Ctrl+V works) |
+| 13-column-drag-drop | 6 / 6 |
+| 14-column-integration | 1 / 1 |
+| 19-canvas-journey | 1 / 1 |
+| 20-cross-page-diagnostic | passes; the page switch in it is timing-sensitive (1 of 2 runs) |
+| 33-canvas-slash-diagnostic | 3 / 3 |
