@@ -39,6 +39,10 @@ export function showImageInsertPopup(
   tabLink.textContent = 'Embed Link';
   tabBar.appendChild(tabUpload);
   tabBar.appendChild(tabLink);
+  const cancelBtn = $('button.canvas-insert-popup-cancel');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.title = 'Close without adding (Esc)';
+  tabBar.appendChild(cancelBtn);
   popup.appendChild(tabBar);
 
   // Content area
@@ -67,6 +71,16 @@ export function showImageInsertPopup(
   // True while the OS file dialog is open: it blurs the window, which must
   // not cancel the popup the dialog belongs to.
   let picking = false;
+  // The OS file dialog blurs the window, which ends the popup's dismiss mode
+  // (Escape, outside click); `cancel` ignores that while picking, so the
+  // mode is armed again once the dialog closes. Without that the popup
+  // stayed up with no way to close it after a cancelled pick.
+  let dismissLost = false;
+  const armDismiss = () => { detachDismiss = attachPopupDismiss(popup, cancel); };
+  const pickFinished = () => {
+    picking = false;
+    if (!closed && dismissLost) { dismissLost = false; armDismiss(); }
+  };
 
   const dismiss = () => {
     closed = true;
@@ -83,7 +97,7 @@ export function showImageInsertPopup(
   };
 
   const cancel = () => {
-    if (picking) return;
+    if (picking) { dismissLost = true; return; }
     // Replace the `/image` paragraph with an empty paragraph
     target.clear();
     dismiss();
@@ -111,7 +125,7 @@ export function showImageInsertPopup(
             properties: ['openFile'],
           });
         } finally {
-          picking = false;
+          pickFinished();
         }
         if (closed || !filePaths?.[0]) return; // popup gone, or user cancelled
         const filePath = filePaths[0];
@@ -200,7 +214,8 @@ export function showImageInsertPopup(
 
   // ── Dismiss on click outside / Escape ─────────────────────────────────
 
-  detachDismiss = attachPopupDismiss(popup, cancel);
+  armDismiss();
+  cancelBtn.addEventListener('click', () => cancel());
 
   // ── Mount ─────────────────────────────────────────────────────────────
 

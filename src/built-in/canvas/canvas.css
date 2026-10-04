@@ -3449,6 +3449,21 @@
   font-family: inherit;
 }
 
+/* Cancel, at the right end of both insert popups' tab bars. */
+.canvas-insert-popup-cancel {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--px-text-muted);
+  font-size: var(--parallx-fontSize-md);
+  font-family: inherit;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.canvas-insert-popup-cancel:hover { color: var(--px-text); background: color-mix(in srgb, var(--px-text) 8%, transparent); }
+.canvas-insert-popup-cancel:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
+
 .canvas-image-insert-tab:hover {
   color: var(--px-text);
 }

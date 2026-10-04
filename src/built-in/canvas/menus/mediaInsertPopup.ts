@@ -49,6 +49,10 @@ export function showMediaInsertPopup(
   tabLink.textContent = 'Embed Link';
   tabBar.appendChild(tabUpload);
   tabBar.appendChild(tabLink);
+  const cancelBtn = $('button.canvas-insert-popup-cancel');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.title = 'Close without adding (Esc)';
+  tabBar.appendChild(cancelBtn);
   popup.appendChild(tabBar);
 
   const content = $('div.canvas-media-insert-content');
@@ -69,6 +73,16 @@ export function showMediaInsertPopup(
   const target = trackInsertTarget(editor, range);
   let closed = false;
   let picking = false;
+  // The OS file dialog blurs the window, which ends the dismiss mode; it is
+  // armed again once the dialog closes (see imageInsertPopup).
+  let dismissLost = false;
+  const armDismiss = () => {
+    detachDismiss = attachPopupDismiss(popup, cancel, { isDismissable: () => !pasteMenu?.isOpen() });
+  };
+  const pickFinished = () => {
+    picking = false;
+    if (!closed && dismissLost) { dismissLost = false; armDismiss(); }
+  };
 
   const dismiss = () => {
     closed = true;
@@ -80,7 +94,7 @@ export function showMediaInsertPopup(
   };
 
   const cancel = () => {
-    if (picking) return;
+    if (picking) { dismissLost = true; return; }
     target.clear();
     dismiss();
   };
@@ -188,7 +202,7 @@ export function showMediaInsertPopup(
             properties: ['openFile'],
           });
         } finally {
-          picking = false;
+          pickFinished();
         }
         if (closed || !filePaths?.[0]) return;
         const filePath = filePaths[0];
@@ -255,9 +269,8 @@ export function showMediaInsertPopup(
   tabUpload.addEventListener('click', () => activate('upload'));
   tabLink.addEventListener('click', () => activate('link'));
 
-  detachDismiss = attachPopupDismiss(popup, cancel, {
-    isDismissable: () => !pasteMenu?.isOpen(),
-  });
+  armDismiss();
+  cancelBtn.addEventListener('click', () => cancel());
 
   activate('upload');
   document.body.appendChild(popup);
