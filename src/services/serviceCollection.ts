@@ -66,6 +66,15 @@ export class ServiceCollection implements IDisposable, IServiceProvider {
   }
 
   /**
+   * Remove a pre-built instance, if it is still the one registered (a tool
+   * that registered it was turned off: nothing may keep calling into it).
+   */
+  unregisterInstance<T>(id: ServiceIdentifier<T>, instance: T): void {
+    const entry = this._entries.get(id.id);
+    if (entry && entry.instance === instance) this._entries.delete(id.id);
+  }
+
+  /**
    * Check if a service is registered (instance or descriptor).
    */
   has(id: ServiceIdentifier<any>): boolean {

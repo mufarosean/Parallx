@@ -25,7 +25,7 @@ import {
   type IKitPageHeaderOptions,
   type IKitEmptyStateOptions,
 } from '../ui/kit.js';
-import { IDisposable } from '../platform/lifecycle.js';
+import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import { rafThrottle } from '../platform/rafThrottle.js';
 import { createDropdownHandle, IDropdownItem } from '../ui/dropdown.js';
@@ -1069,6 +1069,11 @@ export function createToolApi(
           );
         }
         deps.services.registerInstance(id as any, instance);
+        // Gone with the tool: turned off, nothing keeps calling into it.
+        subscriptions.push(toDisposable(() => {
+          const svc = deps.services as { unregisterInstance?: (i: unknown, v: unknown) => void };
+          svc.unregisterInstance?.(id, instance);
+        }));
       },
     }),
 

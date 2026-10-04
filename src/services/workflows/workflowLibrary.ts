@@ -24,7 +24,7 @@ export const WORKFLOW_TEMPLATES: readonly WorkflowTemplate[] = [
   {
     key: 'morning-report',
     name: 'Morning Report',
-    description: 'At 5am (or first launch of the day), the agent reads your planner and activity, then writes a report page.',
+    description: 'At 5am (or first launch of the day), the agent reads today\'s facts (your schedule, when a planner is on) and your activity, then writes a report page.',
     class: 'attention',
     nodes: [
       { id: 't', label: '5am Or First Launch', kind: 'trigger.schedule', spec: { kind: 'daily', time: '05:00' }, x: 40, y: 80 },
