@@ -13,6 +13,7 @@
 import { build } from 'esbuild';
 import { copyFile, cp, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 const isProduction = process.argv.includes('--production');
 
@@ -68,17 +69,28 @@ await build({
 // ── Mermaid bundle (canvas Mermaid diagram blocks) ──────────────────────────
 // Like the worksheet engine: several MB, loaded by the block on first use
 // (extensions/mermaidNode.ts), never inlined into main.js.
-await build({
-  entryPoints: ['src/built-in/canvas/extensions/mermaidHost.ts'],
-  bundle: true,
-  outfile: 'dist/renderer/canvas-mermaid.js',
-  format: 'esm',
-  platform: 'browser',
-  target: 'es2022',
-  sourcemap: isProduction ? 'external' : false,
-  minify: true,
-  logLevel: 'info',
-});
+//
+// Optional for starting the app: a checkout pulled without `npm install`
+// lacks the package, and a failed build here stopped `npm start` before the
+// window opened. Without it, diagram blocks say they cannot be drawn.
+const require = createRequire(import.meta.url);
+let hasMermaid = true;
+try { require.resolve('mermaid'); } catch { hasMermaid = false; }
+if (hasMermaid) {
+  await build({
+    entryPoints: ['src/built-in/canvas/extensions/mermaidHost.ts'],
+    bundle: true,
+    outfile: 'dist/renderer/canvas-mermaid.js',
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2022',
+    sourcemap: isProduction ? 'external' : false,
+    minify: true,
+    logLevel: 'info',
+  });
+} else {
+  console.warn('\n⚠ The "mermaid" package is not installed: Mermaid diagram blocks will not draw.\n  Run `npm install` to add it. The rest of the app is built.\n');
+}
 
 // ── Copy PDF.js runtime assets to dist ─────────────────────────────────────
 const workerSrc = 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs';
