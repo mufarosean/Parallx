@@ -62,10 +62,13 @@ const IPC_LATENCY_MS = 0.5;
 
 class IpcDbBridge {
   protected queue: Promise<unknown> = Promise.resolve();
+  /** IPC round-trips made: the cost that does not depend on the machine. */
+  calls = 0;
 
   constructor(protected db: DB) {}
 
   protected enqueue<T>(work: () => T): Promise<T> {
+    this.calls++;
     const next = this.queue.then(async () => {
       // model IPC marshaling cost
       await new Promise((r) => setTimeout(r, IPC_LATENCY_MS));
@@ -323,6 +326,8 @@ async function simulateSave(bridge: IpcDbBridge, id: number): Promise<number> {
 
 interface RunResult {
   rebuildMs: number;
+  /** Round-trips the rebuild itself made (saves excluded). */
+  rebuildCalls: number;
   saveLatenciesMs: number[];
   maxSaveMs: number;
   meanSaveMs: number;
@@ -360,11 +365,12 @@ async function runScenario(
   await rebuildPromise;
   const rebuildMs = performance.now() - rebuildStart;
   await Promise.all(saveJobs);
+  const rebuildCalls = bridge.calls - saveJobs.length;
   db.close();
 
   const meanSaveMs = saveLatencies.reduce((a, b) => a + b, 0) / saveLatencies.length;
   const maxSaveMs = Math.max(...saveLatencies);
-  return { rebuildMs, saveLatenciesMs: saveLatencies, maxSaveMs, meanSaveMs };
+  return { rebuildMs, rebuildCalls, saveLatenciesMs: saveLatencies, maxSaveMs, meanSaveMs };
 }
 
 describe('media-organizer FTS rebuild — watcher contention', () => {
@@ -374,42 +380,31 @@ describe('media-organizer FTS rebuild — watcher contention', () => {
   const PHOTOS = 2000;
   const VIDEOS = 500;
 
-  it('OLD per-row rebuild is catastrophically slow on a non-trivial library', async () => {
+  // The cost that made saves wait is the number of serial IPC round-trips,
+  // so that is what these assert. Wall-clock thresholds (the old "> 5 s",
+  // "10x faster") passed or failed with the speed of the machine.
+  it('OLD per-row rebuild makes one IPC round-trip per item', async () => {
     const r = await runScenario(oldRebuild, PHOTOS, VIDEOS);
     // eslint-disable-next-line no-console
-    console.log(
-      `[OLD]  rebuild=${r.rebuildMs.toFixed(0)}ms  saves=${r.saveLatenciesMs
-        .map((x) => x.toFixed(0))
-        .join('/')}ms  mean=${r.meanSaveMs.toFixed(0)}  max=${r.maxSaveMs.toFixed(0)}`,
-    );
-    // 2500 serial IPC round-trips at 0.5 ms each = 1.25 s minimum just
-    // for IPC overhead. With JS+SQLite work added, expect ≥ 5 s on any
-    // host. On the user's machine (~10K-item library) this scales to
-    // tens of seconds — observed during M64 cold-start activation.
-    expect(r.rebuildMs).toBeGreaterThan(5_000);
+    console.log(`[OLD]  rebuild=${r.rebuildMs.toFixed(0)}ms  calls=${r.rebuildCalls}  max save=${r.maxSaveMs.toFixed(0)}ms`);
+    expect(r.rebuildCalls).toBeGreaterThanOrEqual(PHOTOS + VIDEOS);
   }, 120_000);
 
-  it('NEW transactional rebuild completes in under one second', async () => {
-    const r = await runScenario(newRebuild, PHOTOS, VIDEOS);
+  it('NEW transactional rebuild makes a handful of round-trips, whatever the library size', async () => {
+    const small = await runScenario(newRebuild, PHOTOS, VIDEOS);
+    const big = await runScenario(newRebuild, PHOTOS * 4, VIDEOS * 4);
     // eslint-disable-next-line no-console
-    console.log(
-      `[NEW]  rebuild=${r.rebuildMs.toFixed(0)}ms  saves=${r.saveLatenciesMs
-        .map((x) => x.toFixed(0))
-        .join('/')}ms  mean=${r.meanSaveMs.toFixed(0)}  max=${r.maxSaveMs.toFixed(0)}`,
-    );
-    expect(r.rebuildMs).toBeLessThan(2_000);
+    console.log(`[NEW]  rebuild=${small.rebuildMs.toFixed(0)}ms  calls=${small.rebuildCalls} (x4 library: ${big.rebuildCalls})`);
+    expect(small.rebuildCalls).toBeLessThanOrEqual(10);
+    expect(big.rebuildCalls).toBe(small.rebuildCalls);
   }, 60_000);
 
-  it('NEW path is at least 10× faster than OLD for the rebuild itself', async () => {
+  it('NEW path makes at least 100x fewer round-trips than OLD', async () => {
     const oldR = await runScenario(oldRebuild, PHOTOS, VIDEOS);
     const newR = await runScenario(newRebuild, PHOTOS, VIDEOS);
     // eslint-disable-next-line no-console
-    console.log(
-      `[CMP]  OLD rebuild=${oldR.rebuildMs.toFixed(0)}ms  NEW rebuild=${newR.rebuildMs.toFixed(
-        0,
-      )}ms  speedup=${(oldR.rebuildMs / Math.max(newR.rebuildMs, 1)).toFixed(1)}x`,
-    );
-    expect(oldR.rebuildMs).toBeGreaterThan(newR.rebuildMs * 10);
+    console.log(`[CMP]  OLD calls=${oldR.rebuildCalls}  NEW calls=${newR.rebuildCalls}  (${oldR.rebuildMs.toFixed(0)}ms vs ${newR.rebuildMs.toFixed(0)}ms here)`);
+    expect(oldR.rebuildCalls).toBeGreaterThanOrEqual(newR.rebuildCalls * 100);
   }, 180_000);
 
   // The bug the user reported: a freshly-saved image takes 60+ seconds

@@ -70,3 +70,12 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 - Core manifests contribute nothing for optional tools; the core database
   migrations create no table an optional tool owns.
 - No core code reads an optional tool's tables.
+
+## 5. Found along the way
+
+- `America/Chicago` is hardcoded in Budget (`BUDGET_TZ`, its month and day
+  math), Atelier (date labels in the inspector and lightbox) and Workspace
+  Graph (a date label). On a computer in another zone those show and bucket
+  dates in Central Time. Web Research had the same and now uses the
+  computer's zone. **open**: needs the owner's call for Budget, whose comment
+  says the Central anchor is on purpose.

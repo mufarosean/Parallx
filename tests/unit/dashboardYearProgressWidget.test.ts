@@ -185,7 +185,8 @@ describe('yearProgress rendering', () => {
   });
 
   it('honours the decimal-places choice', () => {
-    for (const [precision, expected] of [['0', '65%'], ['1', '64.8%'], ['2', '64.78%']] as const) {
+    // Aug 25, noon: 236.5 of 365 days, in every time zone.
+    for (const [precision, expected] of [['0', '65%'], ['1', '64.8%'], ['2', '64.79%']] as const) {
       const { container, handle } = mount({ precision });
       expect(container.querySelector('.ypw__pct')?.textContent).toBe(expected);
       handle.dispose();

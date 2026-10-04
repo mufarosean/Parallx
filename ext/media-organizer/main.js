@@ -30249,8 +30249,8 @@ function moQuarterRects(w, h, overlap = 0.1) {
 }
 
 /**
- * What Approve writes for a review row. The live picks with their ancestors
- * are the target. 'add' writes what the photo lacks and removes nothing.
+ * What Approve writes for a review row. The live picks (tag and the parent
+ * it sits under) are the target; ancestors are inferred from the tree. 'add' writes what the photo lacks and removes nothing.
  * 'retag' makes the target the photo's whole tag set: what it has and the
  * target lacks is removed. Nothing is ever removed on 'add'.
  */

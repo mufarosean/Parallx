@@ -149,16 +149,16 @@ function _isUrlAllowedThisTurn(turnId, url) {
 // SECTION 4 — Daily budget (C11)
 // ═══════════════════════════════════════════════════════════════════════════
 
+function _localDayKey(date = new Date()) {
+  // YYYY-MM-DD on this computer's clock: the day the user is living in.
+  const p = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+}
+
 function _todayKey() {
-  // YYYY-MM-DD in American Central Time. The daily budget rolls over at
-  // midnight CT regardless of where the OS clock is set — keeps the
-  // budget reset consistent with the rest of the Parallx extensions.
-  const p = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date());
-  const get = (k) => p.find((x) => x.type === k).value;
-  return `${get('year')}-${get('month')}-${get('day')}`;
+  // The daily budget rolls over at local midnight, the same moment the
+  // history file rolls over (_historyFileName).
+  return _localDayKey();
 }
 
 // The limits are this extension's own settings (its manifest), shown in
@@ -639,14 +639,8 @@ function _buildHistoryLine(record) {
 }
 
 function _historyFileName(date = new Date()) {
-  // History files are bucketed by Central Time calendar day so that the
-  // file rollover lines up with the daily-budget rollover (_todayKey).
-  const p = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(date);
-  const get = (k) => p.find((x) => x.type === k).value;
-  return `${HISTORY_FILE_PREFIX}.${get('year')}-${get('month')}-${get('day')}.ndjson`;
+  // One file per local calendar day, rolling over with the daily budget (_todayKey).
+  return `${HISTORY_FILE_PREFIX}.${_localDayKey(date)}.ndjson`;
 }
 
 function _joinUri(base, ...parts) {

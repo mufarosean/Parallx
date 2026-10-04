@@ -93,14 +93,6 @@ interface Unit {
 
 const DAY_MS = 86_400_000;
 
-/** Midnight at the start of Monday of `now`'s week (ISO 8601 week start). */
-function startOfWeek(now: Date): number {
-  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const offset = (midnight.getDay() + 6) % 7; // Sunday(0) → 6, Monday(1) → 0
-  midnight.setDate(midnight.getDate() - offset);
-  return midnight.getTime();
-}
-
 /** Every unit the widget can draw, smallest first, plus the year's day counts. */
 export function measureYearProgress(now: Date): { units: Record<UnitId, Unit>; dayOfYear: number; daysInYear: number } {
   const t = now.getTime();
@@ -110,7 +102,6 @@ export function measureYearProgress(now: Date): { units: Record<UnitId, Unit>; d
   const monthStart = new Date(year, now.getMonth(), 1).getTime();
   const monthEnd = new Date(year, now.getMonth() + 1, 1).getTime();
   const dayStart = new Date(year, now.getMonth(), now.getDate()).getTime();
-  const weekStart = startOfWeek(now);
 
   // Day-of-year by calendar dates rather than elapsed ms, so a DST shift
   // inside the year cannot round the count off by one.
@@ -118,19 +109,27 @@ export function measureYearProgress(now: Date): { units: Record<UnitId, Unit>; d
   const daysInYear = Math.round((yearEnd - yearStart) / DAY_MS);
   const daysInMonth = Math.round((monthEnd - monthStart) / DAY_MS);
 
+  // Progress counts calendar days plus the part of today gone, not elapsed
+  // ms: a DST shift would otherwise move the figure with the computer's zone.
+  const nextDayStart = new Date(year, now.getMonth(), now.getDate() + 1).getTime();
+  const today = fraction(dayStart, nextDayStart, t);
+  const dayOfMonth = now.getDate();
+  const dayOfWeek = (now.getDay() + 6) % 7; // Monday = 0
+  const clamp = (v: number): number => Math.min(1, Math.max(0, v));
+
   return {
     dayOfYear,
     daysInYear,
     units: {
-      day: { id: 'day', label: 'Day', progress: fraction(dayStart, dayStart + DAY_MS, t), segments: 24 },
-      week: { id: 'week', label: 'Week', progress: fraction(weekStart, weekStart + 7 * DAY_MS, t), segments: 7 },
+      day: { id: 'day', label: 'Day', progress: today, segments: 24 },
+      week: { id: 'week', label: 'Week', progress: clamp((dayOfWeek + today) / 7), segments: 7 },
       month: {
         id: 'month',
         label: now.toLocaleDateString(undefined, { month: 'long' }),
-        progress: fraction(monthStart, monthEnd, t),
+        progress: clamp((dayOfMonth - 1 + today) / daysInMonth),
         segments: daysInMonth,
       },
-      year: { id: 'year', label: String(year), progress: fraction(yearStart, yearEnd, t), segments: 12 },
+      year: { id: 'year', label: String(year), progress: clamp((dayOfYear - 1 + today) / daysInYear), segments: 12 },
     },
   };
 }

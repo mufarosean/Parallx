@@ -75,7 +75,7 @@ for pages and PDFs gets exactly that. So:
 - Copy: Title Case for actions and titles, sentence case for section labels
   and hints, no uppercase micro-labels, no em dashes in labels, `…` when an
   action opens a dialog.
-- Checks: `npx tsc --noEmit`, `npx vitest run`, `npm run build`. Known
-  failures that predate 2026-10-01: `moAiTagging.test.ts`,
-  `mediaOrganizerFtsRebuild.test.ts` (timing), `dashboardYearProgressWidget`,
-  `webResearchHistoryLog`.
+- Checks: `npx tsc --noEmit`, `npx vitest run`, `npm run build`. All of
+  them pass; there are no known failures. A failing test is the app's
+  problem whoever caused it: find the cause and fix it, never list it
+  as known. Tests must not depend on the machine's speed or time zone.

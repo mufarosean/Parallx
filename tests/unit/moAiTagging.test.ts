@@ -23,7 +23,7 @@ function loadRegion(): string {
 
 const REGION = loadRegion();
 const NAMES = ['MO_TAG_PATH_SEP', 'MO_TAG_OVERVIEW_EDGE', 'MO_TAG_CROP_EDGE', 'MO_TAG_CROP_MIN_EDGE', 'moNormalizeTagName',
-  'moTagParentsOf', 'moTagAncestorIds', 'moExpandWithAncestors', 'moTagPaths', 'moTagEntries', 'moTagReplySchema',
+  'moTagParentsOf', 'moTagPaths', 'moTagEntries', 'moTagReplySchema',
   'moTagPrompt', 'moTagRulesText', 'MO_TAG_RULES_MAX', 'moParseTagReply', 'moResolveTagPicks', 'moFitEdge', 'moQuarterRects',
   'moTagApprovePlan'];
 // eslint-disable-next-line @typescript-eslint/no-implied-eval
@@ -72,35 +72,32 @@ describe('moNormalizeTagName', () => {
 });
 
 describe('the tag tree', () => {
-  const parentsOf = P.moTagParentsOf(rels);
+  // Since 3019f3b2 an item carries a tag and the parent it sits under (via);
+  // ancestors are inferred from the tree, never stamped on the item.
+  const pathsOf = (m: Map<number, { path: string; via: number }[]>, id: number) => m.get(id)!.map((e) => e.path).sort();
 
-  it('finds every ancestor', () => {
-    expect([...P.moTagAncestorIds(3, parentsOf)].sort()).toEqual([1, 2]);
-    expect([...P.moTagAncestorIds(1, parentsOf)]).toEqual([]);
+  it('lists each tag\'s parents', () => {
+    const parentsOf = P.moTagParentsOf(rels);
+    expect(parentsOf.get(3)).toEqual([2]);
+    expect(parentsOf.get(1)).toBeUndefined();
   });
 
-  it('adds parents once each, after the picks', () => {
-    expect(P.moExpandWithAncestors([3, 6], parentsOf)).toEqual([3, 6, 2, 1, 5]);
-    expect(P.moExpandWithAncestors([3, 2, 3], parentsOf)).toEqual([3, 2, 1]);
-    expect(P.moExpandWithAncestors([], parentsOf)).toEqual([]);
-  });
-
-  it('builds the full path of every tag', () => {
+  it('builds the full path of every tag, with the parent it hangs under', () => {
     const paths = P.moTagPaths(tags, rels);
-    expect(paths.get(3)).toEqual([`ANIMALS${S}DOG${S}CORGI`]);
-    expect(paths.get(6)).toEqual([`PLACES${S}BEACH`]);
-    expect(paths.get(1)).toEqual(['ANIMALS']);
+    expect(paths.get(3)).toEqual([{ path: `ANIMALS${S}DOG${S}CORGI`, via: 2 }]);
+    expect(paths.get(6)).toEqual([{ path: `PLACES${S}BEACH`, via: 5 }]);
+    expect(paths.get(1)).toEqual([{ path: 'ANIMALS', via: 0 }]);
   });
 
-  it('gives a tag filed under two parents (older data) one path each, and both ancestor chains', () => {
-    const legacy = [...rels, { parent_id: 5, child_id: 3 }];
-    expect(P.moTagPaths(tags, legacy).get(3).sort()).toEqual([`ANIMALS${S}DOG${S}CORGI`, `PLACES${S}CORGI`].sort());
-    expect([...P.moTagAncestorIds(3, P.moTagParentsOf(legacy))].sort()).toEqual([1, 2, 5]);
+  it('gives a tag under two parents one path per place, each its own sense', () => {
+    const two = [...rels, { parent_id: 5, child_id: 3 }];
+    const paths = P.moTagPaths(tags, two);
+    expect(pathsOf(paths, 3)).toEqual([`ANIMALS${S}DOG${S}CORGI`, `PLACES${S}CORGI`].sort());
+    expect(paths.get(3)!.map((e: { via: number }) => e.via).sort()).toEqual([2, 5]);
   });
 
   it('stops at a loop in damaged data', () => {
     const loopRels = [{ parent_id: 1, child_id: 2 }, { parent_id: 2, child_id: 1 }];
-    expect([...P.moTagAncestorIds(1, P.moTagParentsOf(loopRels))]).toEqual([2]);
     const paths = P.moTagPaths([{ id: 1, name: 'A' }, { id: 2, name: 'B' }], loopRels);
     expect(paths.get(1).length).toBeGreaterThan(0);
     expect(paths.get(2).length).toBeGreaterThan(0);
@@ -180,12 +177,16 @@ describe('moResolveTagPicks', () => {
   const entries = P.moTagEntries(tags, rels, new Set());
 
   it('maps exact paths to tag ids', () => {
-    expect(P.moResolveTagPicks([`ANIMALS${S}DOG${S}CORGI`, `PLACES${S}BEACH`], entries)).toEqual({ ids: [3, 6], unknown: [] });
+    expect(P.moResolveTagPicks([`ANIMALS${S}DOG${S}CORGI`, `PLACES${S}BEACH`], entries)).toEqual({
+      picks: [{ id: 3, via: 2 }, { id: 6, via: 5 }], ids: [3, 6], unknown: [],
+    });
   });
 
   it('forgives case, other separators and a bare tag name, without duplicates', () => {
     const r = P.moResolveTagPicks(['animals › dog › corgi', 'ANIMALS > DOG', 'beach', 'PLACES/BEACH'], entries);
-    expect(r).toEqual({ ids: [3, 2, 6], unknown: [] });
+    expect(r.ids).toEqual([3, 2, 6]);
+    expect(r.picks).toEqual([{ id: 3, via: 2 }, { id: 2, via: 1 }, { id: 6, via: 5 }]);
+    expect(r.unknown).toEqual([]);
   });
 
   it('never invents a tag', () => {
@@ -221,31 +222,35 @@ describe('the image sizes', () => {
   });
 });
 describe('moTagApprovePlan', () => {
-  const parentsOf = () => P.moTagParentsOf(rels);
   const live = new Set([1, 2, 3, 4, 5, 6]);
-  it('on an add, writes the picks and their ancestors the photo lacks and removes nothing', () => {
-    // The photo has ANIMALS and CAT; the pick is CORGI.
-    const plan = P.moTagApprovePlan({ mode: 'add', currentIds: [1, 4], pickIds: [3], parentsOf: parentsOf(), liveIds: live });
-    expect(plan.picks).toEqual([3]);
-    expect([...plan.target].sort()).toEqual([1, 2, 3]);
-    expect([...plan.add].sort()).toEqual([2, 3]);
+  const ids = (xs: { id: number }[]) => xs.map((x) => x.id).sort();
+  it('on an add, writes the picks the photo lacks and removes nothing', () => {
+    // The photo has CAT (under ANIMALS); the pick is CORGI under DOG.
+    const plan = P.moTagApprovePlan({ mode: 'add', current: [{ id: 4, via: 1 }], picks: [{ id: 3, via: 2 }], liveIds: live });
+    expect(plan.picks).toEqual([{ id: 3, via: 2 }]);
+    expect(plan.target).toEqual([3]);
+    expect(plan.add).toEqual([{ id: 3, via: 2 }]);
     expect(plan.remove).toEqual([]);
   });
-  it('on a retag, makes the picks and their ancestors the whole set: the rest goes, shared ancestors stay', () => {
-    // The photo has ANIMALS, CAT and BEACH (with PLACES); the fresh pick is CORGI.
-    const plan = P.moTagApprovePlan({ mode: 'retag', currentIds: [1, 4, 5, 6], pickIds: [3], parentsOf: parentsOf(), liveIds: live });
-    expect([...plan.target].sort()).toEqual([1, 2, 3]);
-    expect([...plan.add].sort()).toEqual([2, 3]);
-    expect([...plan.remove].sort()).toEqual([4, 5, 6]);
+  it('on a retag, makes the picks the whole set: the rest goes', () => {
+    const plan = P.moTagApprovePlan({ mode: 'retag', current: [{ id: 4, via: 1 }, { id: 6, via: 5 }], picks: [{ id: 3, via: 2 }], liveIds: live });
+    expect(ids(plan.add)).toEqual([3]);
+    expect(ids(plan.remove)).toEqual([4, 6]);
   });
-  it('a retag whose picks match what the photo has changes nothing, and a pick that is no longer live is dropped', () => {
-    const same = P.moTagApprovePlan({ mode: 'retag', currentIds: [1, 2, 3], pickIds: [3], parentsOf: parentsOf(), liveIds: live });
+  it('the same tag in another sense is a different assignment', () => {
+    const plan = P.moTagApprovePlan({ mode: 'retag', current: [{ id: 3, via: 5 }], picks: [{ id: 3, via: 2 }], liveIds: live });
+    expect(plan.add).toEqual([{ id: 3, via: 2 }]);
+    expect(plan.remove).toEqual([{ id: 3, via: 5 }]);
+  });
+  it('a retag that matches the photo changes nothing; a dead tag or parent is dropped; a sense is taken once', () => {
+    const same = P.moTagApprovePlan({ mode: 'retag', current: [{ id: 3, via: 2 }], picks: [{ id: 3, via: 2 }, { id: 3, via: 2 }], liveIds: live });
+    expect(same.picks).toEqual([{ id: 3, via: 2 }]);
     expect(same.add).toEqual([]);
     expect(same.remove).toEqual([]);
-    const gone = P.moTagApprovePlan({ mode: 'retag', currentIds: [1, 4], pickIds: [99], parentsOf: parentsOf(), liveIds: live });
+    const gone = P.moTagApprovePlan({ mode: 'retag', current: [{ id: 4, via: 1 }], picks: [{ id: 99, via: 0 }, { id: 3, via: 98 }], liveIds: live });
     expect(gone.picks).toEqual([]);
     expect(gone.target).toEqual([]);
     // No live pick: the caller returns before writing, so the photo keeps its tags.
-    expect(gone.remove).toEqual([1, 4]);
+    expect(gone.remove).toEqual([{ id: 4, via: 1 }]);
   });
 });
