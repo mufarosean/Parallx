@@ -2083,14 +2083,99 @@ export function deactivate() {
 // SECTION 11: ASSISTANT BROWSER HOST (docs/BROWSER_AGENT_IMPLEMENTATION_CONTRACT.md)
 // ═══════════════════════════════════════════════════════════════════════════════
 // The assistant browses in its own tabs on the agent partition: none of the
-// user's cookies or logins. The tools are core (src/services/
-// browserAutomationService.ts) and the work happens in the main process
-// (electron/browserAutomationBroker.cjs), which creates each tab's page, reads
-// it through the accessibility tree and acts with real input. This extension
-// is the HOST: it shows those tabs as editor panes, shows the run's state on
-// each, and gives the user Pause, Take Over, Hand Back and Stop. It cannot
-// start a run or act on a page. While it is registered the tools exist;
-// disabling the Browser removes them and ends any run.
+// user's cookies or logins. This extension brings the assistant's tools
+// (AUTOMATION_TOOLS below: names, descriptions, parameters, the broker
+// operation each runs) when it registers as the HOST. The core
+// (src/services/browserAutomationService.ts) registers them for it and runs
+// each call through the main process (electron/browserAutomationBroker.cjs),
+// which creates each tab's page, reads it through the accessibility tree and
+// acts with real input. The core, not this file, decides what reaches the
+// broker: the call's identity, only the declared arguments, and confirmation
+// for anything that acts on a page. The host shows those tabs as editor panes,
+// shows the run's state on each, and gives the user Pause, Take Over, Hand Back
+// and Stop. It cannot start a run or act on a page. While it is registered the
+// tools exist; disabling the Browser removes them and ends any run.
+
+const AGENT_REF = { type: 'string', description: 'A target reference from the latest browserRead, like "e12".' };
+const AGENT_INDEX = { type: 'integer', description: 'Legacy: the target\'s number (i) in the latest read. Prefer ref.' };
+const AGENT_KEYS = ['Enter', 'Tab', 'Shift+Tab', 'Escape', 'Backspace', 'Delete', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'];
+
+/** The assistant's browser tools, registered through the host (contract section 1). */
+export const AUTOMATION_TOOLS = [
+  {
+    name: 'browserOpen', op: 'open', requiresConfirmation: false,
+    description: 'Open a web page in the Assistant Browser: a tab the user can watch, using the assistant\'s own browser profile (its own cookies and sign-ins, separate from the user\'s). Returns JSON with the page text and its targets (links, buttons, fields), each with a ref such as "e12" for browserClick, browserType and browserAct. Only http(s) addresses. One chat uses the Assistant Browser at a time. Prefer webSearch or webFetch for plain reading; use the browser when a page needs interaction. When the user asks for private browsing, pass private: true.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'An http(s) address.' },
+        newTab: { type: 'boolean', description: 'Open in a new assistant tab instead of the current one.' },
+        private: { type: 'boolean', description: 'true: open in a private session, a tab with its own throwaway profile that shares nothing with the assistant\'s usual one and keeps nothing (cookies, sign-ins, site data) once its private tabs close. Pages it opens stay private, and later browserOpen calls without private stay in it. false: leave the private session for the usual profile.' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'browserRead', op: 'read', requiresConfirmation: false,
+    description: 'Read the current Assistant Browser page again: text and targets with fresh refs. find lists only targets whose role or name contains the words; from pages through more targets; scope "targets" or "text" returns only that part. When the text is truncated, pass next.textFrom as textFrom to read the text that follows. References from older reads can be refused as stale.',
+    parameters: {
+      type: 'object',
+      properties: {
+        find: { type: 'string' },
+        from: { type: 'integer' },
+        scope: { type: 'string', enum: ['all', 'targets', 'text'] },
+        textFrom: { type: 'integer', description: 'Character offset in the page text to start from: next.textFrom of a truncated read.' },
+      },
+    },
+  },
+  {
+    name: 'browserClick', op: 'click', requiresConfirmation: true,
+    description: 'Click a target by ref with a real mouse click. Returns what happened (navigated, page changed, popup, download, dialog or no visible change) and the page afterwards. A stale, hidden or covered target is refused, never swapped for another element. A click that reached a site cannot be undone.',
+    parameters: { type: 'object', properties: { ref: AGENT_REF, index: AGENT_INDEX } },
+  },
+  {
+    name: 'browserType', op: 'type', requiresConfirmation: true,
+    description: 'Type into a text field or editor by ref, replacing its contents; submit presses Enter afterwards. Password and one-time-code fields are refused: the user types those into the Assistant Browser themselves.',
+    parameters: { type: 'object', properties: { ref: AGENT_REF, index: AGENT_INDEX, text: { type: 'string' }, submit: { type: 'boolean' } }, required: ['text'] },
+  },
+  {
+    name: 'browserBack', op: 'back', requiresConfirmation: false,
+    description: 'Go back one page in the current assistant tab and return the page.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'browserAct', op: 'act', requiresConfirmation: true,
+    description: 'Other actions: check (a checkbox, radio or switch to checked true or false), select (a dropdown option by value or label), press (a key, optionally on a ref), hover, scroll (a ref into view, or the page up or down without one), dialog (accept or dismiss an open alert, confirm or prompt; text answers a prompt), click_at (x, y in a browserCapture image, with its captureId, for something that has no ref), download (a link\'s file or a picture, by ref, into the assistant\'s run folder; pictures the page names are image targets; browserWait for "download" says when it finishes), save_download (give a finished download to the user: a copy in their Downloads, by its file name). To get a picture or file for the user, use download then save_download, never a screenshot.',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['check', 'select', 'press', 'hover', 'scroll', 'dialog', 'click_at', 'download', 'save_download'] },
+        ref: AGENT_REF, index: AGENT_INDEX,
+        checked: { type: 'boolean' }, value: { type: 'string' }, label: { type: 'string' },
+        key: { type: 'string', enum: AGENT_KEYS }, direction: { type: 'string', enum: ['up', 'down'] },
+        accept: { type: 'boolean' }, text: { type: 'string' },
+        captureId: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' },
+        file: { type: 'string', description: 'save_download: the file name of a finished download (from its download evidence).' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'browserTabs', op: 'tabs', requiresConfirmation: false,
+    description: 'List, switch to, or close this chat\'s assistant tabs. A popup a page opens becomes a new assistant tab.',
+    parameters: { type: 'object', properties: { action: { type: 'string', enum: ['list', 'switch', 'close'] }, tab: { type: 'string' } } },
+  },
+  {
+    name: 'browserWait', op: 'wait', requiresConfirmation: false,
+    description: 'Wait for a condition on the current page: load, url (contains value), text (value appears), gone (value disappears) or download (finishes). Returns as soon as it holds; timeoutMs up to 30000. A timeout is an error, not a success.',
+    parameters: { type: 'object', properties: { for: { type: 'string', enum: ['load', 'url', 'text', 'gone', 'download'] }, value: { type: 'string' }, timeoutMs: { type: 'integer' } }, required: ['for'] },
+  },
+  {
+    name: 'browserCapture', op: 'capture', requiresConfirmation: false,
+    description: 'Capture the visible Assistant Browser page as an image you can see (models with vision only). Use it when a page cannot be understood from its text and targets; click something in it with browserAct click_at.',
+    parameters: { type: 'object', properties: {} },
+  },
+];
 
 const AGENT_BANNER_PRIVATE = 'A private session: it shares nothing with your logins or the assistant\'s usual profile, and nothing it keeps survives its last private tab closing. Clicks and typing follow your chat\'s approval settings.';
 const AGENT_BANNER_IDLE = 'The assistant\'s own profile: none of your logins or cookies. Clicks and typing follow your chat\'s approval settings.';
@@ -2165,7 +2250,8 @@ function registerAutomationHost(api, context) {
     console.warn('[browser] the automation host API is missing; the assistant\'s browser tools are off');
     return;
   }
-  // The registration is tied to this extension's lifetime by the API itself.
+  // The registration, the tools it brings included, is tied to this
+  // extension's lifetime by the API itself.
   _automation = api.browser.registerAutomationHost({
     // A new tab of a chat whose run is live (a popup, a second tab) shows that
     // run's state from its first frame, not the idle banner.
@@ -2199,7 +2285,7 @@ function registerAutomationHost(api, context) {
         if (p && !p.disposed && p.setRunState) p.setRunState(s);
       }
     },
-  });
+  }, AUTOMATION_TOOLS);
   context.subscriptions.push({ dispose: () => { _automation = null; _agentRunByTab.clear(); _agentRunByChat.clear(); _agentShown.clear(); } });
 }
 

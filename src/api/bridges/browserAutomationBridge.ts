@@ -2,11 +2,11 @@
 //
 // docs/BROWSER_AGENT_IMPLEMENTATION_CONTRACT.md section 2. The Browser registers
 // as the host of the assistant's browser automation: it shows the tabs the
-// main-process broker creates and displays the run's state. The registration is
-// tied to the extension's lifetime (pushed onto its subscriptions), so a
-// disabled or deactivated Browser takes its tools, host and leases with it. The
-// host cannot create ownership or dispatch page actions; only the core service
-// and the broker do.
+// main-process broker creates and displays the run's state, and it brings the
+// assistant's tools as specs. The registration is tied to the extension's
+// lifetime (pushed onto its subscriptions), so a disabled or deactivated
+// Browser takes its tools, host and leases with it. The host cannot create
+// ownership or dispatch page actions; only the core service and the broker do.
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import {
@@ -14,6 +14,7 @@ import {
   type IBrowserAutomationService,
   type IBrowserAutomationHost,
   type IBrowserAutomationHostRegistration,
+  type IBrowserAutomationToolSpec,
 } from '../../services/browserAutomationTypes.js';
 
 export class BrowserAutomationBridge {
@@ -28,9 +29,10 @@ export class BrowserAutomationBridge {
     return toolId === BROWSER_OWNER_TOOL_ID;
   }
 
-  registerAutomationHost(host: IBrowserAutomationHost): IBrowserAutomationHostRegistration {
+  /** The host and the tools it brings; the tools carry this extension's owner id. */
+  registerAutomationHost(host: IBrowserAutomationHost, tools: readonly IBrowserAutomationToolSpec[]): IBrowserAutomationHostRegistration {
     if (this._toolId !== BROWSER_OWNER_TOOL_ID) throw new Error('Only the Browser can host browser automation.');
-    const registration = this._service.registerHost(host, this._toolId);
+    const registration = this._service.registerHost(host, this._toolId, tools ?? []);
     this._subscriptions.push(registration);
     return registration;
   }

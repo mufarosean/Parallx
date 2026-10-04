@@ -10,11 +10,18 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { Emitter } from '../../src/platform/events';
-import { BrowserAutomationService, BROWSER_TOOL_SPECS } from '../../src/services/browserAutomationService';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+import { BrowserAutomationService } from '../../src/services/browserAutomationService';
 import { BrowserAutomationBridge } from '../../src/api/bridges/browserAutomationBridge';
-import type { IChatTool, ICancellationToken, IToolResult } from '../../src/services/chatTypes';
-import { BROWSER_TOOL_NAMES, BROWSER_TOOLS_NEED_A_CHAT, isBrowserToolName, type IBrowserAutomationHost } from '../../src/services/browserAutomationTypes';
+import { TOOL_NEEDS_A_CHAT_TURN, type IChatTool, type ICancellationToken, type IToolResult } from '../../src/services/chatTypes';
+import type { IBrowserAutomationHost, IBrowserAutomationToolSpec } from '../../src/services/browserAutomationTypes';
 import { isToolImageGone } from '../../src/services/toolImageLifetime';
+// The Browser extension's own tool specs: the core holds none.
+import { AUTOMATION_TOOLS } from '../../ext/browser/main.js';
+
+const TOOLS = AUTOMATION_TOOLS as readonly IBrowserAutomationToolSpec[];
+const TOOL_NAMES = TOOLS.map((t) => t.name);
 
 type Call = { method: string; payload: any; budget: number | undefined };
 
@@ -63,10 +70,12 @@ function fakeHost(): IBrowserAutomationHost & Record<string, ReturnType<typeof v
   return { openTab: vi.fn(), closeTab: vi.fn(), revealTab: vi.fn(), setRunState: vi.fn() } as any;
 }
 
-function setup(opts: { reply?: (c: Call) => unknown; sealed?: boolean; noContext?: boolean } = {}) {
+function setup(opts: { reply?: (c: Call) => unknown; sealed?: boolean; noContext?: boolean; taken?: Set<string> } = {}) {
   const registered: IChatTool[] = [];
   const tools = {
     registerTool: (t: IChatTool) => {
+      // Like the tools service: a name another tool holds is refused.
+      if (opts.taken?.has(t.name)) throw new Error(`Tool "${t.name}" is already registered`);
       registered.push(t);
       return { dispose: () => { const i = registered.indexOf(t); if (i >= 0) registered.splice(i, 1); } };
     },
@@ -106,27 +115,101 @@ describe('BrowserAutomationService', () => {
   it('registers no tools until the Browser hosts them, then all nine owned by the Browser', () => {
     const s = setup();
     expect(s.registered).toHaveLength(0);
-    s.service.registerHost(fakeHost(), 'parallx.browser');
-    expect(s.registered.map((t) => t.name).sort()).toEqual(BROWSER_TOOL_SPECS.map((t) => t.name).sort());
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
+    expect(s.registered.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
     expect(s.registered).toHaveLength(9);
     for (const t of s.registered) {
       expect(t.source).toBe('bridge');
       expect(t.ownerToolId).toBe('parallx.browser');
+      expect(t.reachesNetwork).toBe(true);
+      expect(t.needsChatTurn).toBe(true);
     }
     const confirming = s.registered.filter((t) => t.requiresConfirmation).map((t) => t.name).sort();
     expect(confirming).toEqual(['browserAct', 'browserClick', 'browserType']);
     expect(s.transport.of('setContext')[0].payload).toEqual({ workspaceId: 'ws-1', workspaceSessionId: 'wss-1', sealed: false });
   });
 
-  it('names the browser tools once: the specs are exactly BROWSER_TOOL_NAMES', () => {
-    expect(BROWSER_TOOL_SPECS.map((t) => t.name).sort()).toEqual([...BROWSER_TOOL_NAMES].sort());
-    for (const name of BROWSER_TOOL_NAMES) expect(isBrowserToolName(name)).toBe(true);
-    for (const name of ['webFetch', 'fs_read_file', 'browser', '']) expect(isBrowserToolName(name)).toBe(false);
+  it('with no Browser host there are no browser tools, and the core names none of them', () => {
+    const s = setup();
+    expect(s.registered).toHaveLength(0);
+    expect(s.service.hasHost).toBe(false);
+    // The tool names and copy live in the Browser extension only.
+    const core = [
+      'src/services/browserAutomationService.ts',
+      'src/services/browserAutomationTypes.ts',
+      'src/api/bridges/browserAutomationBridge.ts',
+      'src/built-in/chat/main.ts',
+      'src/built-in/agents/main.ts',
+    ].map((p) => readFileSync(resolve(__dirname, '../..', p), 'utf8'));
+    for (const src of core) {
+      for (const t of TOOLS) {
+        expect(src).not.toContain(t.name);
+        expect(src).not.toContain(t.description.slice(0, 40));
+      }
+    }
+  });
+
+  it('enforces confirmation for page actions whatever the host declares, and can only add more', () => {
+    const s = setup();
+    const lax = TOOLS.map((t) => ({ ...t, requiresConfirmation: false }));
+    const strict = lax.map((t) => (t.op === 'read' ? { ...t, requiresConfirmation: true } : t));
+    s.service.registerHost(fakeHost(), 'parallx.browser', strict);
+    const confirming = s.registered.filter((t) => t.requiresConfirmation).map((t) => t.name).sort();
+    expect(confirming).toEqual(['browserAct', 'browserClick', 'browserRead', 'browserType']);
+  });
+
+  it('refuses an invalid spec and registers nothing: unknown operation, bad or repeated name, no schema', () => {
+    const bad: IBrowserAutomationToolSpec[][] = [
+      [{ name: 'evil', op: 'evaluate', description: 'x', parameters: { type: 'object', properties: {} } }],
+      [{ name: 'has space', op: 'read', description: 'x', parameters: { type: 'object', properties: {} } }],
+      [TOOLS[0], { ...TOOLS[1], name: TOOLS[0].name }],
+      [{ name: 'noSchema', op: 'read', description: 'x', parameters: undefined as any }],
+      [{ name: 'noText', op: 'read', description: '', parameters: { type: 'object', properties: {} } }],
+      [{ name: 'proto', op: 'toString', description: 'x', parameters: { type: 'object', properties: {} } }],
+    ];
+    for (const tools of bad) {
+      const s = setup();
+      expect(() => s.service.registerHost(fakeHost(), 'parallx.browser', tools)).toThrow();
+      expect(s.registered).toHaveLength(0);
+      expect(s.service.hasHost).toBe(false);
+      expect(s.transport.calls).toHaveLength(0);
+    }
+  });
+
+  it('a name another tool holds undoes the whole registration, and the host can register again', () => {
+    const taken = new Set(['browserTabs']);
+    const s = setup({ taken });
+    expect(() => s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS)).toThrow();
+    expect(s.registered).toHaveLength(0);
+    expect(s.service.hasHost).toBe(false);
+    taken.clear();
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
+    expect(s.registered).toHaveLength(9);
+  });
+
+  it('copies the specs at registration: later changes to the host\'s objects reach nothing', async () => {
+    const s = setup();
+    const mine = TOOLS.map((t) => ({ ...t, parameters: JSON.parse(JSON.stringify(t.parameters)) }));
+    s.service.registerHost(fakeHost(), 'parallx.browser', mine);
+    const click = mine.find((t) => t.name === 'browserClick')!;
+    (click as any).op = 'open';
+    (click.parameters as any).properties.url = { type: 'string' };
+    await s.tool('browserClick').handler({ ref: 'e1', url: 'https://evil.example' }, token(), { sessionId: 'chat-1' });
+    expect(s.transport.of('run')[0].payload.action).toEqual({ op: 'click', ref: 'e1' });
+  });
+
+  it('passes declared arguments typed as declared: integers truncated, strings kept, odd values dropped', async () => {
+    const s = setup();
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
+    await s.tool('browserType').handler({ index: '3.7', text: 123, submit: 'true', ref: { x: 1 } }, token(), { sessionId: 'chat-1' });
+    expect(s.transport.of('run')[0].payload.action).toEqual({ op: 'type', index: 3, text: '123' });
+    await s.tool('browserType').handler({ ref: 'e4', text: 'hi', submit: true }, token(), { sessionId: 'chat-1' });
+    expect(s.transport.of('run')[1].payload.action).toEqual({ op: 'type', ref: 'e4', text: 'hi', submit: true });
   });
 
   it('disposing the registration removes the tools and ends every run, closing its tabs', () => {
     const s = setup();
-    const reg = s.service.registerHost(fakeHost(), 'parallx.browser');
+    const reg = s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     reg.dispose();
     expect(s.registered).toHaveLength(0);
     expect(s.service.hasHost).toBe(false);
@@ -135,13 +218,13 @@ describe('BrowserAutomationService', () => {
 
   it('refuses a second host', () => {
     const s = setup();
-    s.service.registerHost(fakeHost(), 'parallx.browser');
-    expect(() => s.service.registerHost(fakeHost(), 'parallx.browser')).toThrow();
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
+    expect(() => s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS)).toThrow();
   });
 
   it('takes the identity from the invocation, the turn and the workspace session, never from arguments', async () => {
     const s = setup();
-    s.service.registerHost(fakeHost(), 'parallx.browser');
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     await s.tool('browserClick').handler({ ref: 'e3', chatSessionId: 'someone-else', turnId: 'forged', op: 'type' }, token('turn-1'), { sessionId: 'chat-1' });
     const run = s.transport.of('run')[0];
     expect(run.payload.identity).toEqual({ chatSessionId: 'chat-1', turnId: 'turn-1', workspaceSessionId: 'wss-1' });
@@ -154,7 +237,7 @@ describe('BrowserAutomationService', () => {
   it('refuses without a chat session, a turn or a workspace, and never reaches the broker', async () => {
     for (const [inv, tok, noContext] of [[undefined, token(), false], [{ sessionId: 'c' }, token(null), false], [{ sessionId: 'c' }, token(), true]] as const) {
       const s = setup({ noContext });
-      s.service.registerHost(fakeHost(), 'parallx.browser');
+      s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
       const r = await s.tool('browserRead').handler({}, tok, inv);
       expect(r.isError).toBe(true);
       expect(parse(r).error.code).toBe('MISSING_CONTEXT');
@@ -164,14 +247,14 @@ describe('BrowserAutomationService', () => {
 
   it('passes the chat\'s result budget to the broker', async () => {
     const s = setup();
-    s.service.registerHost(fakeHost(), 'parallx.browser');
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     await s.tool('browserOpen').handler({ url: 'https://example.com' }, token(), { sessionId: 'chat-1', resultCharBudget: 4321 });
     expect(s.transport.of('run')[0].budget).toBe(4321);
   });
 
   it('reads on from a text offset: browserRead offers textFrom and hands it to the broker', async () => {
     const s = setup();
-    s.service.registerHost(fakeHost(), 'parallx.browser');
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     const read = s.tool('browserRead');
     expect((read.parameters as any).properties.textFrom).toEqual(expect.objectContaining({ type: 'integer' }));
     expect(read.description).toContain('textFrom');
@@ -181,19 +264,19 @@ describe('BrowserAutomationService', () => {
 
   it('reports anything but ok as an error and carries image artifacts', async () => {
     const ok = setup({ reply: () => JSON.stringify({ version: 1, status: 'ok', summary: 'Captured.', artifacts: [{ kind: 'image', id: 'cap-1', mimeType: 'image/jpeg', width: 800, height: 600 }, { kind: 'script', id: 'x' }] }) });
-    ok.service.registerHost(fakeHost(), 'parallx.browser');
+    ok.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     const r = await ok.tool('browserCapture').handler({}, token(), { sessionId: 'chat-1', acceptsImages: true });
     expect(r.isError).toBe(false);
     expect(r.artifacts).toEqual([{ kind: 'image', id: 'cap-1', mimeType: 'image/jpeg', width: 800, height: 600 }]);
 
     const busy = setup({ reply: () => JSON.stringify({ version: 1, status: 'error', summary: 'Another chat is using the Assistant Browser.', error: { code: 'BROWSER_BUSY', retryable: true } }) });
-    busy.service.registerHost(fakeHost(), 'parallx.browser');
+    busy.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     const b = await busy.tool('browserRead').handler({}, token(), { sessionId: 'chat-2' });
     expect(b.isError).toBe(true);
     expect(parse(b).error.code).toBe('BROWSER_BUSY');
 
     const odd = setup({ reply: () => ({ __error: 'Unknown automation method' }) });
-    odd.service.registerHost(fakeHost(), 'parallx.browser');
+    odd.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     expect(parse(await odd.tool('browserRead').handler({}, token(), { sessionId: 'c' })).error.code).toBe('UNAVAILABLE');
   });
 
@@ -202,9 +285,11 @@ describe('BrowserAutomationService', () => {
     // loop sets it only for a model that can see.
     for (const inv of [{ sessionId: 'chat-1' }, { sessionId: 'chat-1', acceptsImages: false }]) {
       const s = setup({ reply: () => JSON.stringify({ version: 1, status: 'ok', summary: 'Captured.', artifacts: [{ kind: 'image', id: 'browser:w:r:c1', mimeType: 'image/jpeg' }] }) });
-      s.service.registerHost(fakeHost(), 'parallx.browser');
+      s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
       const r = await s.tool('browserCapture').handler({}, token(), inv);
       expect(parse(r).error.code).toBe('NO_VISION');
+      // It points at the host's own read tool.
+      expect(parse(r).summary).toBe('The chat model cannot see images. Use browserRead instead.');
       expect(s.transport.of('run')).toHaveLength(0);
       expect(s.transport.of('readArtifact')).toHaveLength(0);
     }
@@ -213,7 +298,7 @@ describe('BrowserAutomationService', () => {
   it('cancelling the turn cancels the broker\'s run; a cancelled turn runs nothing', async () => {
     let release: (v: unknown) => void = () => {};
     const s = setup({ reply: (c) => (c.method === 'run' ? new Promise((r) => { release = r; }) : { ok: true }) });
-    s.service.registerHost(fakeHost(), 'parallx.browser');
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     const t = token('turn-9');
     const pending = s.tool('browserOpen').handler({ url: 'https://example.com' }, t, { sessionId: 'chat-1' });
     await Promise.resolve();
@@ -232,7 +317,7 @@ describe('BrowserAutomationService', () => {
   it('ending the workspace session ends the run at once: revokeAll and the run\'s cancel before it answers', async () => {
     let release: (v: unknown) => void = () => {};
     const s = setup({ reply: (c) => (c.method === 'run' ? new Promise((r) => { release = r; }) : { ok: true }) });
-    s.service.registerHost(fakeHost(), 'parallx.browser');
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     let settled = false;
     const pending = s.tool('browserWait').handler({ for: 'text', value: 'Done' }, token('turn-4'), { sessionId: 'chat-1' }).then((r) => { settled = true; return r; });
     await Promise.resolve();
@@ -253,7 +338,7 @@ describe('BrowserAutomationService', () => {
 
   it('a finished request releases its run', () => {
     const s = setup();
-    s.service.registerHost(fakeHost(), 'parallx.browser');
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     s.completed.fire({ sessionId: 'chat-1', turnId: 'turn-1' });
     expect(s.transport.of('release')[0].payload).toEqual({ chatSessionId: 'chat-1', turnId: 'turn-1' });
   });
@@ -264,7 +349,7 @@ describe('BrowserAutomationService', () => {
     const s = setup();
     s.deleted.fire('chat-7');
     expect(s.forgotten).toEqual([['chat-7']]);
-    s.service.registerHost(fakeHost(), 'parallx.browser');
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     s.deleted.fire('chat-8');
     expect(s.forgotten).toEqual([['chat-7'], ['chat-8']]);
     expect(s.transport.of('clearArtifacts')).toHaveLength(0);
@@ -275,7 +360,7 @@ describe('BrowserAutomationService', () => {
 
   it('tells the broker again when the workspace changes or is sealed', () => {
     const s = setup();
-    s.service.registerHost(fakeHost(), 'parallx.browser');
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     s.sessionChanged.fire(undefined);
     s.settings.changed.fire({ key: 'workspace.sealed' });
     s.settings.changed.fire({ key: 'something.else' });
@@ -286,7 +371,7 @@ describe('BrowserAutomationService', () => {
   it('hands tab and run-state events to the host, and the host\'s controls to the broker', async () => {
     const s = setup({ reply: (c) => (c.method === 'control' ? { ok: true } : 'x') });
     const host = fakeHost();
-    const reg = s.service.registerHost(host, 'parallx.browser');
+    const reg = s.service.registerHost(host, 'parallx.browser', TOOLS);
     s.transport.emit({ type: 'tab-open', tabId: 'agent:a:1', chatSessionId: 'chat-1', openerTabId: null, reveal: true });
     s.transport.emit({ type: 'run-state', chatSessionId: 'chat-1', tabId: 'agent:a:1', tabs: ['agent:a:1'], state: 'paused', note: 'You took over', by: 'user' });
     s.transport.emit({ type: 'tab-closed', tabId: 'agent:a:1' });
@@ -306,7 +391,7 @@ describe('BrowserAutomationService', () => {
         ? { mimeType: 'image/jpeg', data: '/9j/abc', width: 10, height: 10 }
         : JSON.stringify({ version: 1, status: 'ok', summary: 'Captured.', artifacts: [{ kind: 'image', id: 'browser:w:r:c1', mimeType: 'image/jpeg' }] })),
     });
-    s.service.registerHost(fakeHost(), 'parallx.browser');
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     const r = await s.tool('browserCapture').handler({}, token(), { sessionId: 'chat-1', acceptsImages: true });
     expect(s.transport.of('readArtifact')[0].payload).toEqual({ id: 'browser:w:r:c1' });
     expect(r.images).toEqual([expect.objectContaining({ kind: 'image', id: 'browser:w:r:c1', mimeType: 'image/jpeg', data: '/9j/abc' })]);
@@ -319,7 +404,7 @@ describe('BrowserAutomationService', () => {
         ? { mimeType: 'image/jpeg', data: '/9j/abc', width: 10, height: 10 }
         : JSON.stringify({ version: 1, status: 'ok', summary: 'Captured.', artifacts: [{ kind: 'image', id: 'browser:w:r:c9', mimeType: 'image/jpeg' }] })),
     });
-    s.service.registerHost(fakeHost(), 'parallx.browser');
+    s.service.registerHost(fakeHost(), 'parallx.browser', TOOLS);
     expect(isToolImageGone('browser:w:r:c9')).toBe(false);
     s.transport.emit({ type: 'artifacts-cleared', chatSessionIds: ['chat-1'], artifactIds: ['browser:w:r:c9'], partial: true });
     expect(isToolImageGone('browser:w:r:c9')).toBe(true);
@@ -328,10 +413,13 @@ describe('BrowserAutomationService', () => {
   });
 
   it('a workflow tool step gets a plain refusal naming the Agent Turn step', () => {
-    // chat/main.ts runTool returns this for every browser tool, before any
-    // call reaches the tools service; the workflow editor does not list them.
-    expect(BROWSER_TOOLS_NEED_A_CHAT).toContain('Agent Turn');
-    expect(BROWSER_TOOLS_NEED_A_CHAT).not.toMatch(/—/);
+    // chat/main.ts runTool returns this for every tool that declares
+    // needsChatTurn (the core sets it on every browser tool), before any call
+    // reaches the tools service; the workflow editor does not list them.
+    expect(TOOL_NEEDS_A_CHAT_TURN).toContain('Agent Turn');
+    expect(TOOL_NEEDS_A_CHAT_TURN).not.toMatch(/—/);
+    const chatMain = readFileSync(resolve(__dirname, '../../src/built-in/chat/main.ts'), 'utf8');
+    expect(chatMain).toMatch(/getTool\(toolName\)\?\.needsChatTurn\) return \{ content: TOOL_NEEDS_A_CHAT_TURN/);
   });
 });
 
@@ -340,9 +428,9 @@ describe('BrowserAutomationBridge', () => {
     const s = setup();
     expect(BrowserAutomationBridge.isHostTool('parallx.browser')).toBe(true);
     expect(BrowserAutomationBridge.isHostTool('parallx.web-research')).toBe(false);
-    expect(() => new BrowserAutomationBridge('someone.else', s.service, []).registerAutomationHost(fakeHost())).toThrow();
+    expect(() => new BrowserAutomationBridge('someone.else', s.service, []).registerAutomationHost(fakeHost(), TOOLS)).toThrow();
     const subs: { dispose(): void }[] = [];
-    new BrowserAutomationBridge('parallx.browser', s.service, subs).registerAutomationHost(fakeHost());
+    new BrowserAutomationBridge('parallx.browser', s.service, subs).registerAutomationHost(fakeHost(), TOOLS);
     expect(subs).toHaveLength(1);
     expect(s.registered).toHaveLength(9);
     subs[0].dispose();

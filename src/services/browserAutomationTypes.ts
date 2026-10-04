@@ -1,8 +1,8 @@
 // browserAutomationTypes.ts — the assistant's browser tools: contract types.
 //
 // docs/BROWSER_AGENT_IMPLEMENTATION_CONTRACT.md. The core service
-// (browserAutomationService.ts) registers the browser tools while the Browser
-// extension is registered as the automation HOST; the main-process broker
+// (browserAutomationService.ts) registers the tools the Browser extension
+// brings while it is registered as the automation HOST; the main-process broker
 // (electron/browserAutomationBroker.cjs) does the work. Results travel as
 // versioned JSON inside IToolResult.content.
 
@@ -14,25 +14,26 @@ import type { Event } from '../platform/events.js';
 export const BROWSER_OWNER_TOOL_ID = 'parallx.browser';
 
 /**
- * The browser tools, named once. The service registers exactly these while the
- * Browser hosts them. A workflow tool step has no chat turn for the broker's
- * lease, so it refuses them and the workflow editor does not offer them.
+ * One assistant tool the host brings when it registers (contract section 1).
+ * The core holds no tool names, descriptions or schemas: the Browser declares
+ * them, and the core turns each into a chat tool that drives one broker
+ * operation. What reaches the broker is decided by the core, not the host: only
+ * the arguments the schema declares (typed as declared), the call's identity
+ * from the invocation, and an operation the broker knows. Confirmation, network
+ * reach and the chat-turn requirement are enforced by the core per operation; a
+ * spec can ask for more confirmation, never less.
  */
-export const BROWSER_TOOL_NAMES = [
-  'browserOpen', 'browserRead', 'browserClick', 'browserType', 'browserBack',
-  'browserAct', 'browserTabs', 'browserWait', 'browserCapture',
-] as const;
-
-export type BrowserToolName = (typeof BROWSER_TOOL_NAMES)[number];
-
-const BROWSER_TOOL_NAME_SET: ReadonlySet<string> = new Set(BROWSER_TOOL_NAMES);
-
-export function isBrowserToolName(name: string): name is BrowserToolName {
-  return BROWSER_TOOL_NAME_SET.has(name);
+export interface IBrowserAutomationToolSpec {
+  /** The chat tool's name. Unique among the host's tools. */
+  readonly name: string;
+  readonly description: string;
+  /** JSON Schema of type object. Its properties are the only arguments passed on. */
+  readonly parameters: Record<string, unknown>;
+  /** The broker operation this tool runs (electron/browserAutomationBroker.cjs). */
+  readonly op: string;
+  /** Ask the user first. An operation that acts on a page always asks, whatever this says. */
+  readonly requiresConfirmation?: boolean;
 }
-
-/** What a workflow tool step gets instead of running a browser tool. */
-export const BROWSER_TOOLS_NEED_A_CHAT = 'The Assistant Browser runs only inside a chat or an Agent Turn step. Use an Agent Turn step to browse.';
 
 export type BrowserOutcomeStatus = 'ok' | 'needs_user' | 'cancelled' | 'error';
 
@@ -62,7 +63,7 @@ export interface IBrowserOutcome {
   readonly text?: string;
   readonly targets?: readonly IBrowserTarget[];
   readonly truncated?: boolean;
-  /** Where the next browserRead continues: from for targets, textFrom for cut text. */
+  /** Where the next read continues: from for targets, textFrom for cut text. */
   readonly next?: { readonly from?: number; readonly textFrom?: number; readonly note?: string };
   readonly evidence?: readonly { readonly kind: string; readonly detail: string }[];
   readonly error?: { readonly code: string; readonly retryable: boolean };
@@ -86,7 +87,7 @@ export interface IBrowserAutomationTabRequest {
   readonly chatSessionId: string;
   readonly openerTabId: string | null;
   readonly reveal: boolean;
-  /** A tab in a private session (browserOpen private: true): the host marks it. */
+  /** A tab in a private session (an open with private: true): the host marks it. */
   readonly private?: boolean;
 }
 
@@ -110,8 +111,12 @@ export interface IBrowserAutomationHostRegistration extends IDisposable {
 
 export interface IBrowserAutomationService {
   readonly hasHost: boolean;
-  /** Register the host. The browser tools exist from now until the returned registration is disposed. */
-  registerHost(host: IBrowserAutomationHost, ownerToolId: string): IBrowserAutomationHostRegistration;
+  /**
+   * Register the host and the tools it brings. The tools exist from now until
+   * the returned registration is disposed. Throws on an invalid spec, before
+   * anything is registered.
+   */
+  registerHost(host: IBrowserAutomationHost, ownerToolId: string, tools: readonly IBrowserAutomationToolSpec[]): IBrowserAutomationHostRegistration;
 }
 
 export const IBrowserAutomationService = createServiceIdentifier<IBrowserAutomationService>('IBrowserAutomationService');

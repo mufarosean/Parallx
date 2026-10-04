@@ -1177,7 +1177,17 @@ export interface IChatTool {
    * turn that reads it is tainted, so later writes ask first.
    */
   readonly untrustedOutput?: boolean;
+  /**
+   * The tool works only inside a chat turn: what it holds is keyed to the
+   * request and released when the request completes. A workflow Tool step
+   * refuses it and the workflow editor does not offer it. Declared by whoever
+   * registers the tool.
+   */
+  readonly needsChatTurn?: boolean;
 }
+
+/** What a workflow Tool step gets instead of running a tool that needs a chat turn. */
+export const TOOL_NEEDS_A_CHAT_TURN = 'This tool runs only inside a chat or an Agent Turn step. Use an Agent Turn step for it.';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 4. Service Interfaces & DI Identifiers (Task 0.4)

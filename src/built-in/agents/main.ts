@@ -34,7 +34,6 @@ import { WorkflowEditorPane } from './workflowEditorPane.js';
 import { AGENTS_SETTINGS_GROUP, registerAgentsSettings } from './agentsSettings.js';
 import { ISettingsRegistryService, ICanvasPageQueryService } from '../../services/serviceTypes.js';
 import { ILanguageModelToolsService, ILanguageModelsService } from '../../services/chatTypes.js';
-import { isBrowserToolName } from '../../services/browserAutomationTypes.js';
 import type { IAutonomyLogEntry } from '../../services/autonomyLogService.js';
 
 type AgentsTab = 'now' | 'routines' | 'history' | 'mind';
@@ -157,9 +156,9 @@ function registerWorkflows(api: ParallxApi, context: ToolContext): void {
           try {
             if (!api.services.has(ILanguageModelToolsService)) return [];
             const tools = api.services.get<import('../../services/chatTypes.js').ILanguageModelToolsService>(ILanguageModelToolsService);
-            // Browser tools run only in a chat turn; a Tool step refuses them.
+            // A tool that needs a chat turn is refused by a Tool step: not offered.
             return tools.getToolDefinitions()
-              .filter((t) => !isBrowserToolName(t.name))
+              .filter((t) => !tools.getTool(t.name)?.needsChatTurn)
               .map((t) => ({ name: t.name, description: t.description }));
           } catch { return []; }
         },

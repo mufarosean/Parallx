@@ -68,7 +68,7 @@ import { ChatBridge } from './bridges/chatBridge.js';
 import { IconsBridge } from './bridges/iconsBridge.js';
 import { McpBridge, type IMcpInvokeToken, type IMcpInvokeResult, type IMcpToolInfo } from './bridges/mcpBridge.js';
 import { BrowserAutomationBridge } from './bridges/browserAutomationBridge.js';
-import { IBrowserAutomationService, type IBrowserAutomationHost, type IBrowserAutomationHostRegistration } from '../services/browserAutomationTypes.js';
+import { IBrowserAutomationService, type IBrowserAutomationHost, type IBrowserAutomationHostRegistration, type IBrowserAutomationToolSpec } from '../services/browserAutomationTypes.js';
 import { CronBridge, type IExtensionCronJob } from './bridges/cronBridge.js';
 import { ICronService } from '../openclaw/openclawCronService.js';
 import { LinksBridge, type LinkContractInput } from './bridges/linksBridge.js';
@@ -393,7 +393,7 @@ export interface ParallxApiObject {
   } | undefined;
   /** Browser automation host (docs/BROWSER_AGENT_IMPLEMENTATION_CONTRACT.md). The Browser extension only. */
   readonly browser: {
-    registerAutomationHost(host: IBrowserAutomationHost): IBrowserAutomationHostRegistration;
+    registerAutomationHost(host: IBrowserAutomationHost, tools: readonly IBrowserAutomationToolSpec[]): IBrowserAutomationHostRegistration;
   } | undefined;
   /**
    * Cron scheduling surface (M63 P0).
@@ -1148,7 +1148,7 @@ export function createToolApi(
 
     browser: browserAutomationBridge
       ? Object.freeze({
-          registerAutomationHost: (host: IBrowserAutomationHost) => browserAutomationBridge.registerAutomationHost(host),
+          registerAutomationHost: (host: IBrowserAutomationHost, tools: readonly IBrowserAutomationToolSpec[]) => browserAutomationBridge.registerAutomationHost(host, tools),
         })
       : undefined,
 

@@ -44,13 +44,13 @@ import {
   IChatModeService,
   ILanguageModelToolsService,
   ChatRequestQueueKind,
+  TOOL_NEEDS_A_CHAT_TURN,
 } from '../../services/chatTypes.js';
 import type {
   ICancellationToken,
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { isBrowserToolName, BROWSER_TOOLS_NEED_A_CHAT } from '../../services/browserAutomationTypes.js';
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService, IAutonomyLogService, IAutonomyEventLog, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService } from '../../services/serviceTypes.js';
 import { getScheduleSources, listScheduleOpenTasks, listScheduleTaskFacts, getScheduleToday, getScheduleSyncHealth, captureScheduleFollowUp } from '../../services/scheduleSources.js';
 import { normalizeFactsInclude, type FactsInclude } from '../../services/workflows/workflowTypes.js';
@@ -1820,10 +1820,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             return api.commands.executeCommand(commandId, ...args);
           },
           runTool: async (toolName, args, origin) => {
-            // A browser action needs a chat turn: the broker's lease is keyed to
-            // it and released when the chat request completes, which a tool
-            // step never does. Browsing belongs in an Agent Turn step.
-            if (isBrowserToolName(toolName)) return { content: BROWSER_TOOLS_NEED_A_CHAT, isError: true };
+            // A tool that declares it needs a chat turn holds state keyed to
+            // the request and released when the request completes, which a
+            // tool step never does. It belongs in an Agent Turn step.
+            if (languageModelToolsService?.getTool(toolName)?.needsChatTurn) return { content: TOOL_NEEDS_A_CHAT_TURN, isError: true };
             const sessionId = `${origin}:${Date.now()}`;
             _permissionService?.markSubagentSession(sessionId);
             try {

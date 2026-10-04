@@ -1713,7 +1713,7 @@ export interface BrowserAutomationTabRequest {
   readonly chatSessionId: string;
   readonly openerTabId: string | null;
   readonly reveal: boolean;
-  /** A tab in a private session (browserOpen private: true): marked as private. */
+  /** A tab in a private session (an open with private: true): marked as private. */
   readonly private?: boolean;
 }
 
@@ -1731,13 +1731,30 @@ export interface BrowserAutomationHostRegistration extends IDisposable {
 }
 
 /**
+ * One assistant tool the host brings. The core registers it as a chat tool
+ * that runs one broker operation with only the arguments `parameters` declares
+ * and the call's identity from the chat turn. The core sets network reach and
+ * the chat-turn requirement itself, and an operation that acts on a page
+ * (click, type, act) always asks first.
+ */
+export interface BrowserAutomationToolSpec {
+  readonly name: string;
+  readonly description: string;
+  /** JSON Schema of type object. */
+  readonly parameters: Record<string, unknown>;
+  /** The broker operation: open, read, back, tabs, wait, capture, click, type or act. */
+  readonly op: string;
+  readonly requiresConfirmation?: boolean;
+}
+
+/**
  * The `parallx.browser` API namespace: defined for the Browser extension
- * (parallx.browser) only. While a host is registered the assistant's browser
- * tools exist; disposing the registration (or the extension deactivating)
- * removes them and ends any run.
+ * (parallx.browser) only. While a host is registered the tools it brings
+ * exist; disposing the registration (or the extension deactivating) removes
+ * them and ends any run.
  */
 export namespace browser {
-  export function registerAutomationHost(host: BrowserAutomationHost): BrowserAutomationHostRegistration;
+  export function registerAutomationHost(host: BrowserAutomationHost, tools: readonly BrowserAutomationToolSpec[]): BrowserAutomationHostRegistration;
 }
 
 
