@@ -5,7 +5,7 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import { Fragment } from '@tiptap/pm/model';
-import { TextSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 
 // ─── ToggleHeadingText — editable heading line ──────────────────────────────
 
@@ -43,6 +43,15 @@ export const ToggleHeading = Node.create({
           'data-level': attributes.level,
         }),
       },
+      // Saved with the page; a toggle heading opens or closes where it was
+      // left.  Pages from before this attribute load open.
+      open: {
+        default: true,
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-open') !== 'false',
+        renderHTML: (attributes: Record<string, any>) => ({
+          'data-open': attributes.open === false ? 'false' : 'true',
+        }),
+      },
     };
   },
 
@@ -62,25 +71,30 @@ export const ToggleHeading = Node.create({
   },
 
   addNodeView() {
-    return ({ node }: any) => {
+    return ({ node, getPos, editor }: any) => {
+      let current = node;
       const dom = document.createElement('div');
-      dom.classList.add('canvas-toggle-heading', 'is-open');
+      dom.classList.add('canvas-toggle-heading');
       dom.setAttribute('data-type', 'toggleHeading');
-      dom.dataset.level = String(node.attrs.level);
 
       // Chevron toggle button
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.classList.add('toggle-heading-chevron');
       btn.contentEditable = 'false';
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const isOpen = dom.classList.toggle('is-open');
-        const body = contentDOM.querySelector(
-          '[data-type="detailsContent"]',
-        ) as HTMLElement;
-        if (body) body.hidden = !isOpen;
+        const pos = typeof getPos === 'function' ? getPos() : undefined;
+        if (typeof pos !== 'number' || !editor.isEditable) {
+          // Read-only page: open and close for viewing, without saving.
+          render(!dom.classList.contains('is-open'));
+          return;
+        }
+        const tr = editor.state.tr.setNodeMarkup(pos, undefined, { ...current.attrs, open: current.attrs.open === false });
+        tr.setMeta('addToHistory', false);
+        editor.view.dispatch(tr);
       });
       dom.appendChild(btn);
 
@@ -89,16 +103,74 @@ export const ToggleHeading = Node.create({
       contentDOM.classList.add('toggle-heading-wrapper');
       dom.appendChild(contentDOM);
 
+      // The body's view (DetailsContent's) starts hidden and only listens to
+      // a <details> parent; the open state here decides it.
+      const render = (open: boolean) => {
+        dom.classList.toggle('is-open', open);
+        btn.setAttribute('aria-expanded', String(open));
+        btn.setAttribute('aria-label', open ? 'Collapse' : 'Expand');
+        const body = contentDOM.querySelector(':scope > [data-type="detailsContent"]') as HTMLElement | null;
+        if (body) body.hidden = !open;
+      };
+      const sync = () => {
+        dom.dataset.level = String(current.attrs.level);
+        render(current.attrs.open !== false);
+      };
+      sync();
+      // The body is rendered into contentDOM after this view is built.
+      queueMicrotask(sync);
+
       return {
         dom,
         contentDOM,
         update(updatedNode: any) {
           if (updatedNode.type.name !== 'toggleHeading') return false;
-          dom.dataset.level = String(updatedNode.attrs.level);
+          current = updatedNode;
+          sync();
           return true;
+        },
+        ignoreMutation(mutation: any) {
+          // Our own class and hidden toggles are not content changes.
+          return mutation.type === 'attributes' && (mutation.target === dom || mutation.target === btn
+            || (mutation.target as HTMLElement).parentElement === contentDOM && mutation.attributeName === 'hidden');
         },
       };
     };
+  },
+
+  addProseMirrorPlugins() {
+    // The caret never rests inside a closed body: forward moves go past the
+    // toggle heading, backward moves to the end of its title.
+    return [
+      new Plugin({
+        key: new PluginKey('toggleHeadingClosedBody'),
+        appendTransaction: (transactions, oldState, newState) => {
+          if (!transactions.some((tr) => tr.selectionSet || tr.docChanged)) return null;
+          const sel = newState.selection;
+          if (!(sel instanceof TextSelection) || !sel.empty) return null;
+          const $from = sel.$from;
+          for (let d = $from.depth; d > 0; d--) {
+            const n = $from.node(d);
+            if (n.type.name !== 'toggleHeading' || n.attrs.open !== false) continue;
+            if ($from.index(d) === 0) return null; // in the title
+            const togglePos = $from.before(d);
+            const forward = oldState.selection.from <= sel.from;
+            const tr = newState.tr;
+            if (forward) {
+              const after = togglePos + n.nodeSize;
+              if (after >= tr.doc.content.size || !tr.doc.resolve(after).nodeAfter?.isTextblock) {
+                tr.insert(after, newState.schema.nodes.paragraph.create());
+              }
+              tr.setSelection(TextSelection.create(tr.doc, after + 1));
+            } else {
+              tr.setSelection(TextSelection.create(tr.doc, togglePos + 1 + n.child(0).nodeSize - 1));
+            }
+            return tr;
+          }
+          return null;
+        },
+      }),
+    ];
   },
 
   addKeyboardShortcuts() {
@@ -143,9 +215,9 @@ export const ToggleHeading = Node.create({
         // Find the toggleHeading wrapper
         const toggleDepth = $head.depth - 1;
         const togglePos = $head.before(toggleDepth);
-        const domEl = editor.view.nodeDOM(togglePos) as HTMLElement;
+        const toggleNode = state.doc.nodeAt(togglePos);
 
-        if (domEl?.classList.contains('is-open')) {
+        if (toggleNode?.attrs.open !== false) {
           // Expanded → move cursor into body's first block
           const afterText = $head.after();
           editor.chain().setTextSelection(afterText + 2).focus().run();

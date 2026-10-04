@@ -103,7 +103,11 @@ markdown, focus) were not tested adversarially.
   Cancel still creates nothing (checked in the app).
 - **Toggle headings load with their body hidden** while the chevron says open;
   Enter moves the caret into the hidden body; open state is not saved
-  (`extensions/toggleHeadingNode.ts:65`).
+  (`extensions/toggleHeadingNode.ts:65`). **Fixed**: an `open` attribute is
+  saved with the page (old pages load open) and decides whether the body
+  shows; the chevron sets it without an undo step; Enter in a closed title
+  makes a paragraph after it; the caret never rests in a closed body. In the
+  app the body shows on insert, closes, and stays closed after reopening.
 - **Block keyboard shortcuts die after a handle click, marquee or drag**:
   focus leaves the editor, so Del, Ctrl+D and Shift+Arrow do nothing although
   the menu advertises them; Ctrl+Z right after a drag undoes earlier typing.
