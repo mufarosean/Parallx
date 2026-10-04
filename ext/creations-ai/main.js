@@ -23,7 +23,8 @@ const SELF_SPEAKER = '__self__';
 const NARRATOR_SPEAKER = '__narrator__';
 
 // Context-window presets shared by the chat toolbar and the forge.
-// 0 = Auto (fall back to the settings default / Ollama's own num_ctx).
+// 0 = Auto: the settings default when one was chosen, else the model's own
+// context length (see resolveContextWindow).
 const CTX_WINDOW_PRESETS = [
   { label: 'Auto',  value: 0 },
   { label: '4K',    value: 4_096 },
@@ -33,6 +34,36 @@ const CTX_WINDOW_PRESETS = [
   { label: '64K',   value: 65_536 },
   { label: '128K',  value: 131_072 },
 ];
+
+/**
+ * The context window a chat uses: the size sent to Ollama as num_ctx and
+ * the size its prompt is budgeted to, always the same number. A size the
+ * user picked for this chat wins, then a default they set in Settings, then
+ * the model's own context length. 8192 only when Ollama could not report
+ * the model's length.
+ */
+function resolveContextWindow({ override, settingsDefault, modelLength } = {}) {
+  for (const v of [override, settingsDefault, modelLength]) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  }
+  return 8192;
+}
+
+/** Short label for a window size: 32768 -> "32K". */
+function ctxSizeLabel(n) {
+  return n >= 1024 ? `${Math.round(n / 1024)}K` : String(n);
+}
+
+// The settings default shipped as 8192 before Auto existed, and the settings
+// page saved it back unchanged, so a stored 8192 without the "chosen" mark
+// is that old default, not a choice. Read it as Auto.
+function migrateContextDefault(settings) {
+  if (settings && settings.defaultContextWindowChosen !== true && Number(settings.defaultContextWindow) === 8192) {
+    settings.defaultContextWindow = 0;
+  }
+  return settings;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1A: ICON HELPERS (via parallx.icons API)
@@ -5032,6 +5063,15 @@ function renderChatEditor(container, parallx, input) {
   // Per-thread context-window override picker. Lives next to the model
   // dropdown so users can pick a heavier model + clamp the context to
   // keep KV cache in VRAM. 0 = Auto clears the override.
+  async function refreshCtxAutoLabel() {
+    const rawId = selectedModelId || thread?.modelId || null;
+    const modelId = (rawId && models.some(m => m.id === rawId)) ? rawId : models[0]?.id;
+    const settingsDefault = Number(currentSettings?.defaultContextWindow) || 0;
+    const auto = resolveContextWindow({ settingsDefault, modelLength: settingsDefault > 0 ? 0 : await modelContextLength(modelId) });
+    const value = ctxSelect.value;
+    ctxSelect.setItems(CTX_WINDOW_PRESETS.map((p) => ({ value: String(p.value), label: p.value === 0 ? `Auto (${ctxSizeLabel(auto)})` : p.label })));
+    ctxSelect.value = value;
+  }
   const ctxLabel = el('span', 'tg-chat-toolbar-label', { text: 'Ctx' });
   const ctxSelect = tgSelect(parallx, {
     className: 'tg-chat-toolbar-select',
@@ -5042,6 +5082,7 @@ function renderChatEditor(container, parallx, input) {
       const v = Number(raw) || 0;
       if (thread) {
         thread.contextWindowOverride = v > 0 ? v : null;
+        void refreshCtxAutoLabel();
         surfaceSaveError(
           updateThreadMeta(fs, workspaceUri, threadId, { contextWindowOverride: thread.contextWindowOverride }),
           parallx,
@@ -5348,6 +5389,29 @@ function renderChatEditor(container, parallx, input) {
   let models = [];
   let selectedModelId = null;
   let currentSettings = null;
+  // The window the last prompt was budgeted to (sent as num_ctx with it).
+  let lastContextWindow = 0;
+  const modelLengthCache = new Map();
+
+  /** The model's own context length from Ollama (0 when unknown), cached per model. */
+  async function modelContextLength(modelId) {
+    if (!modelId) return 0;
+    if (modelLengthCache.has(modelId)) return modelLengthCache.get(modelId);
+    let n = 0;
+    try { n = Number((await parallx.lm?.getModelInfo?.(modelId))?.contextLength) || 0; } catch { n = 0; }
+    if (n > 0) modelLengthCache.set(modelId, n);
+    return n;
+  }
+
+  async function chatContextWindow(modelId) {
+    const override = Number(thread?.contextWindowOverride) || 0;
+    const settingsDefault = Number(currentSettings?.defaultContextWindow) || 0;
+    return resolveContextWindow({
+      override,
+      settingsDefault,
+      modelLength: override > 0 || settingsDefault > 0 ? 0 : await modelContextLength(modelId),
+    });
+  }
   let lastAssembledContext = null;
   // Generation state is SHARED across panes of this thread (see the
   // active-generation registry): a tab switch disposes this pane but the
@@ -5406,9 +5470,7 @@ function renderChatEditor(container, parallx, input) {
           modelId,
           // The chat's own context window; without it the default (often
           // 2048) cut the instructions off the front.
-          numCtx: (thread?.contextWindowOverride && thread.contextWindowOverride > 0)
-            ? thread.contextWindowOverride
-            : (currentSettings?.defaultContextWindow || undefined),
+          numCtx: await chatContextWindow(modelId),
           recentMessages: plan.slice,
           existingSemantic: existing,
         });
@@ -6812,18 +6874,12 @@ function renderChatEditor(container, parallx, input) {
     const rawId = selectedModelId || thread?.modelId || null;
     const modelId = (rawId && models.some(m => m.id === rawId)) ? rawId : models[0]?.id;
     if (!modelId) throw new Error('No model selected');
-    const modelInfo = models.find((item) => item.id === modelId);
-    // CRITICAL: this window must equal the num_ctx that getGenerationOptions
-    // sends to Ollama (thread override > settings default). It previously
-    // preferred modelInfo.contextLength — so a 32K-capable model was
-    // BUDGETED at 32K while Ollama was clamped to the 8K settings default.
-    // Any assembled prompt over the real num_ctx got silently truncated
-    // from the TOP, deleting the system prompt (character, style, rules)
-    // while the UI claimed everything fit. That failure mode presents
-    // exactly as "the AI ignores my prompts". Budget and num_ctx now
-    // resolve from the same chain; model context length is only a
-    // fallback for the (currently impossible) case of no settings value.
-    const contextWindow = thread?.contextWindowOverride || currentSettings?.defaultContextWindow || modelInfo?.contextLength || 8192;
+    // CRITICAL: this window must equal the num_ctx sent to Ollama. A prompt
+    // budgeted larger than num_ctx gets cut from the TOP by Ollama, deleting
+    // the system prompt while the UI claims everything fit. So the window is
+    // resolved once here and getGenerationOptions sends this same number.
+    const contextWindow = await chatContextWindow(modelId);
+    lastContextWindow = contextWindow;
     // Lorebooks come from the primary (first) character only. If multi-character
     // chats are introduced, the original character’s lore wins. If the character
     // hasn't picked any books, NO lore is injected — empty selection means none.
@@ -7011,14 +7067,9 @@ function renderChatEditor(container, parallx, input) {
       stop.push(`\n${otherName}:`);
     }
 
-    // num_ctx priority: per-thread picker > settings default > undefined.
-    // Sending `undefined` lets Ollama use its own configured num_ctx
-    // (Modelfile / OLLAMA_NUM_CTX). When the user explicitly picks a
-    // preset in the toolbar, the thread override wins so heavy models
-    // can be clamped to fit in VRAM on a per-thread basis.
-    const numCtx = (thread?.contextWindowOverride && thread.contextWindowOverride > 0)
-      ? thread.contextWindowOverride
-      : (currentSettings?.defaultContextWindow || undefined);
+    // The window buildContextForGeneration just budgeted the prompt to; every
+    // caller builds the context first, so the two never differ.
+    const numCtx = lastContextWindow || undefined;
 
     return {
       think: true,
@@ -7709,10 +7760,11 @@ function renderChatEditor(container, parallx, input) {
     selectedModelId = threadModel || models[0]?.id || null;
     if (selectedModelId) modelSelect.value = selectedModelId;
     // Sync the context-window picker to the thread's override. 0 means
-    // "Auto" (use Ollama / Modelfile default), so no override is sent
-    // via num_ctx. Picks above 0 are sent verbatim as num_ctx per call.
+    // "Auto": the settings default if one was set, else the model's own
+    // length; the item shows the size that resolves to.
     const ctxVal = Number(thread?.contextWindowOverride) || 0;
     ctxSelect.value = String(ctxVal);
+    void refreshCtxAutoLabel();
   }
 
   /**
@@ -8750,7 +8802,8 @@ const DEFAULT_SETTINGS = {
   tokenBudgetUser: 30,
   defaultTemperature: 0.8,
   defaultMaxTokens: 0,
-  defaultContextWindow: 8192,
+  // 0 = Auto: the model's own context length.
+  defaultContextWindow: 0,
   userName: 'Anon',
   defaultWritingPreset: 'immersive-rp',
   defaultResponseLength: '',
@@ -8780,7 +8833,7 @@ async function loadSettings(fs, workspaceUri) {
   const path = resolveUri(workspaceUri, `${EXT_ROOT}/settings.json`);
   try {
     const { content } = await fs.readFile(path);
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(content) };
+    return migrateContextDefault({ ...DEFAULT_SETTINGS, ...JSON.parse(content) });
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -8905,7 +8958,7 @@ function renderSettingsPage(container, parallx) {
   form.appendChild(sep);
   const tempInput = formGroup('Temperature', 'Controls randomness (0.0 = deterministic, 2.0 = very random)', 'number', 'defaultTemperature', { min: 0, max: 2, step: 0.1 });
   const maxTokInput = formGroup('Max tokens per response', '0 = unlimited (recommended for thinking models)', 'number', 'defaultMaxTokens', { min: 0, max: 16384 });
-  const ctxInput = formGroup('Default context window', 'Sent to Ollama as num_ctx AND used for token budgeting. The two are kept identical so prompts can never silently overflow. Per-chat "Ctx" picker overrides this.', 'number', 'defaultContextWindow', { min: 2048, max: 131072 });
+  const ctxInput = formGroup('Default context window', 'Tokens the prompt and reply share, sent to Ollama as num_ctx. 0 = Auto, the model\'s own context length. The Ctx picker in a chat overrides this.', 'number', 'defaultContextWindow', { min: 0, max: 1048576 });
   const userNameInput = formGroup('User display name', 'Used in {{user}} template substitution', 'text', 'userName');
   const sourceWordsInput = formGroup('Words Kept Per Source', 'How much of each source the Character Studio keeps, in words. Default 1500.', 'number', 'studioSourceWords', { min: 200, max: 20000, step: 100 });
   const presetSelect = formGroup('Default writing preset', 'Applied to newly created chats', 'select', 'defaultWritingPreset', {
@@ -9012,7 +9065,8 @@ function renderSettingsPage(container, parallx) {
       tokenBudgetUser: Number.isFinite(Number(userBudget.value)) ? Number(userBudget.value) : DEFAULT_SETTINGS.tokenBudgetUser,
       defaultTemperature: Number.isFinite(Number(tempInput.value)) ? Number(tempInput.value) : DEFAULT_SETTINGS.defaultTemperature,
       defaultMaxTokens: Number.isFinite(Number(maxTokInput.value)) ? Number(maxTokInput.value) : DEFAULT_SETTINGS.defaultMaxTokens,
-      defaultContextWindow: Number.isFinite(Number(ctxInput.value)) && Number(ctxInput.value) > 0 ? Number(ctxInput.value) : DEFAULT_SETTINGS.defaultContextWindow,
+      defaultContextWindow: Number.isFinite(Number(ctxInput.value)) && Number(ctxInput.value) > 0 ? Number(ctxInput.value) : 0,
+      defaultContextWindowChosen: true,
       userName: userNameInput.value.trim() || DEFAULT_SETTINGS.userName,
       studioSourceWords: Number(sourceWordsInput.value) >= 200 ? Number(sourceWordsInput.value) : DEFAULT_SETTINGS.studioSourceWords,
       defaultWritingPreset: presetSelect.value || DEFAULT_SETTINGS.defaultWritingPreset,
@@ -10303,4 +10357,6 @@ export const __testables = {
   autoExtractMemoryBackground,
   loadThreadMemory,
   assembleContext,
+  resolveContextWindow,
+  migrateContextDefault,
 };
