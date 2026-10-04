@@ -1279,3 +1279,20 @@ describe('since-last-turn state push (HARNESS.md 3.5)', () => {
     expect(result.messages.find((m) => m.content.includes('Since Your Last Turn'))).toBeUndefined();
   });
 });
+
+describe('extractIdentifiers stays fast on data-like text', () => {
+  it('a 60 KB unbroken string, a long path run and an @ run each finish in well under a second (the old patterns took seconds to minutes)', async () => {
+    const { extractIdentifiers } = await import('../../src/openclaw/openclawContextEngine');
+    for (const text of ['x'.repeat(60_000), '/a'.repeat(30_000), 'a@'.repeat(30_000), ('word '.repeat(10) + 'x'.repeat(299) + ' ').repeat(200)]) {
+      const t = performance.now();
+      extractIdentifiers(text);
+      expect(performance.now() - t).toBeLessThan(500);
+    }
+  });
+
+  it('still finds an email, and words around long data', async () => {
+    const { extractIdentifiers } = await import('../../src/openclaw/openclawContextEngine');
+    const ids = extractIdentifiers(`Mail <ann@example.co.uk> about /src/a.ts ${'x'.repeat(5_000)} v1.2.3`);
+    expect(ids).toEqual(expect.arrayContaining(['ann@example.co.uk', '/src/a.ts', 'v1.2.3']));
+  });
+});

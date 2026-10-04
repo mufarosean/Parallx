@@ -781,36 +781,43 @@ export const COMPACTION_SUMMARIZATION_PROMPT = [
  */
 export function extractIdentifiers(text: string): string[] {
   const identifiers = new Set<string>();
+  const add = (re: RegExp, s: string) => { for (const m of s.matchAll(re)) identifiers.add(m[0]); };
 
-  // File paths (forward and backslash)
-  for (const m of text.matchAll(/(?:\/[\w.-]+)+\.\w+/g)) { identifiers.add(m[0]); }
-  for (const m of text.matchAll(/(?:\\[\w.-]+)+\.\w+/g)) { identifiers.add(m[0]); }
+  // Policy numbers can span a space ("policy 12345"); the pattern is linear.
+  add(/(?:#|policy\s*)\d{4,}/gi, text);
 
-  // URIs
-  for (const m of text.matchAll(/https?:\/\/\S+/g)) { identifiers.add(m[0]); }
-
-  // Dates (ISO and common formats)
-  for (const m of text.matchAll(/\d{4}-\d{2}-\d{2}/g)) { identifiers.add(m[0]); }
-  for (const m of text.matchAll(/\d{1,2}\/\d{1,2}\/\d{4}/g)) { identifiers.add(m[0]); }
-
-  // Policy/ID numbers (# or $ prefixed)
-  for (const m of text.matchAll(/(?:#|policy\s*)\d{4,}/gi)) { identifiers.add(m[0]); }
-  for (const m of text.matchAll(/\$[\d,]+(?:\.\d{2})?/g)) { identifiers.add(m[0]); }
-
-  // Email addresses
-  for (const m of text.matchAll(/\S+@\S+\.\S+/g)) { identifiers.add(m[0]); }
-
-  // Version numbers (e.g., v1.2.3, 2.0.0)
-  for (const m of text.matchAll(/\bv?\d+\.\d+\.\d+\b/g)) { identifiers.add(m[0]); }
-
-  // CamelCase/PascalCase identifiers (e.g., MyClass, handleClick)
-  for (const m of text.matchAll(/\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b/g)) { identifiers.add(m[0]); }
-
-  // ALL_CAPS constants (e.g., MAX_RETRIES, API_KEY) — minimum 3 chars
-  for (const m of text.matchAll(/\b[A-Z][A-Z_]{2,}\b/g)) { identifiers.add(m[0]); }
+  // Everything else lives inside one word. Matching word by word, and
+  // skipping "words" no identifier is that long (minified code, base64, a
+  // long run of one character), keeps this linear: run over the whole text,
+  // `\S+@\S+` backtracked quadratically and froze a turn for seconds on a
+  // 60 KB file read.
+  for (const word of text.split(/\s+/)) {
+    if (!word || word.length > MAX_IDENTIFIER_WORD) continue;
+    // File paths (forward and backslash)
+    add(/(?:\/[\w.-]+)+\.\w+/g, word);
+    add(/(?:\\[\w.-]+)+\.\w+/g, word);
+    // URIs
+    add(/https?:\/\/\S+/g, word);
+    // Dates (ISO and common formats)
+    add(/\d{4}-\d{2}-\d{2}/g, word);
+    add(/\d{1,2}\/\d{1,2}\/\d{4}/g, word);
+    // Dollar amounts
+    add(/\$[\d,]+(?:\.\d{2})?/g, word);
+    // Email addresses (no overlapping repeats, so no backtracking blow-up)
+    add(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, word);
+    // Version numbers (e.g., v1.2.3, 2.0.0)
+    add(/\bv?\d+\.\d+\.\d+\b/g, word);
+    // CamelCase/PascalCase identifiers (e.g., MyClass, handleClick)
+    add(/\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b/g, word);
+    // ALL_CAPS constants (e.g., MAX_RETRIES, API_KEY) — minimum 3 chars
+    add(/\b[A-Z][A-Z_]{2,}\b/g, word);
+  }
 
   return [...identifiers];
 }
+
+/** No path, address or name is longer; longer "words" are data, not identifiers. */
+const MAX_IDENTIFIER_WORD = 300;
 
 /**
  * D6-2: Audit compaction quality — check identifier survival in the summary.
