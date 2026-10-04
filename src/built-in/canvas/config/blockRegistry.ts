@@ -883,6 +883,31 @@ const definitions: BlockDefinition[] = [
     }),
   },
   {
+    // "Link to Page" puts "@" on the line, which opens the page picker
+    // (menus/mentionMenu.ts); the chosen page goes in as a link. No node of
+    // its own: the line stays a paragraph.
+    id: 'linkToPage',
+    name: 'paragraph',
+    label: 'Link to Page',
+    icon: 'link',
+    source: 'starterkit',
+    kind: 'leaf',
+    capabilities: STD_LEAF,
+    slashMenu: { description: 'Link to another page', order: 0.75, category: 'page' },
+    turnInto: undefined,
+    defaultContent: undefined,
+    insertAction: (editor, range) => {
+      editor.chain()
+        .insertContentAt(range, { type: 'paragraph', content: [{ type: 'text', text: '@' }] })
+        .setTextSelection(range.from + 2)
+        .focus()
+        .run();
+      // The slash command runs with menu updates paused; one more
+      // transaction after it lets the picker see the "@".
+      setTimeout(() => { if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta('linkToPage', true)); }, 0);
+    },
+  },
+  {
     // /database — creates a Notion-style DATABASE as a child page and drops its
     // card at the cursor (the card opens the database editor: table/board views,
     // typed columns, rows-as-pages). Reuses the pageBlock node — a database IS a

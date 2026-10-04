@@ -46,6 +46,10 @@ export interface PageChromeHost {
   }) => void;
   /** Ask before moving a page to the Trash (the same question everywhere). */
   readonly confirmMoveToTrash?: (title: string) => Promise<boolean>;
+  /** Run an app command (Move To…, Save as Template, Duplicate). The page
+   *  menu used to reach for `input._api`, which does not exist, so those
+   *  items did nothing. */
+  readonly executeCommand?: (id: string, ...args: unknown[]) => Promise<unknown>;
   /** Tells a database page apart, so a breadcrumb opens it in its own editor. */
   readonly databaseService?: { isDatabase(pageId: string): boolean };
 }
@@ -70,6 +74,9 @@ export class PageChromeController {
   private _coverEl: HTMLElement | null = null;
   private _coverControls: HTMLElement | null = null;
   private _breadcrumbsEl: HTMLElement | null = null;
+  private _backlinksEl: HTMLElement | null = null;
+  private _backlinksOpen = false;
+  private _backlinksTimer: ReturnType<typeof setTimeout> | null = null;
   /** The pages the breadcrumb trail shows, root first. */
   private _ancestorIds: string[] = [];
   private _breadcrumbCurrentIcon: HTMLElement | null = null;
@@ -287,6 +294,8 @@ export class PageChromeController {
   dispose(): void {
     this.dismissPopups();
     this._flushTitle();
+    if (this._backlinksTimer) clearTimeout(this._backlinksTimer);
+    this._backlinksEl = null;
     if (this._saveStateClearTimer) clearTimeout(this._saveStateClearTimer);
     this._saveStateSub?.dispose();
     this._saveStateSub = null;
@@ -594,12 +603,71 @@ export class PageChromeController {
 
     titleRow.appendChild(this._titleEl);
 
+    // Backlinks: the pages that link here, under the title. Shown only when
+    // there are some.
+    this._backlinksEl = $('div.canvas-backlinks');
+    this._backlinksEl.style.display = 'none';
+    this._pageHeader.appendChild(this._backlinksEl);
+    void this._loadBacklinks();
+
     // Insert header AFTER the cover element so DOM order is: cover → header → editor
     if (this._coverEl) {
       this._coverEl.after(this._pageHeader);
     } else {
       ec.prepend(this._pageHeader);
     }
+  }
+
+  /** Another page's body changed (it may link here now, or no longer):
+   *  re-read the backlinks a moment later. A rename or Trash changes the
+   *  list too. */
+  syncBacklinks(event: PageChangeEvent): void {
+    if (!this._backlinksEl || event.pageId === this._host.pageId) return;
+    const fields = event.changedFields;
+    const relevant = event.kind !== PageChangeKind.Updated || !fields?.length
+      || fields.some((f) => f === 'content' || f === 'title' || f === 'icon');
+    if (!relevant) return;
+    if (this._backlinksTimer) clearTimeout(this._backlinksTimer);
+    this._backlinksTimer = setTimeout(() => { this._backlinksTimer = null; void this._loadBacklinks(); }, 800);
+  }
+
+  private async _loadBacklinks(): Promise<void> {
+    const el = this._backlinksEl;
+    const read = this._host.dataService.getBacklinks;
+    if (!el || !read || !this._host.pageId) return;
+    let pages: IPage[];
+    try { pages = await read.call(this._host.dataService, this._host.pageId); } catch { return; }
+    if (this._backlinksEl !== el) return;
+    el.innerHTML = '';
+    el.style.display = pages.length ? '' : 'none';
+    if (!pages.length) return;
+    const toggle = $('button.canvas-backlinks__toggle') as HTMLButtonElement;
+    toggle.type = 'button';
+    toggle.setAttribute('aria-expanded', String(this._backlinksOpen));
+    toggle.appendChild(createIconElement('link', 14));
+    const label = $('span');
+    label.textContent = pages.length === 1 ? '1 backlink' : `${pages.length} backlinks`;
+    toggle.appendChild(label);
+    toggle.addEventListener('click', () => { this._backlinksOpen = !this._backlinksOpen; void this._loadBacklinks(); });
+    el.appendChild(toggle);
+    if (!this._backlinksOpen) return;
+    const list = $('div.canvas-backlinks__list');
+    for (const page of pages) {
+      const row = $('button.canvas-backlinks__page') as HTMLButtonElement;
+      row.type = 'button';
+      row.appendChild(createIconElement(resolvePageIcon(page.icon), 14));
+      const t = $('span');
+      t.textContent = page.title || 'Untitled';
+      row.appendChild(t);
+      row.addEventListener('click', () => this._host.openEditor?.({
+        typeId: this._host.databaseService?.isDatabase(page.id) ? 'database' : 'canvas',
+        title: page.title || 'Untitled',
+        icon: page.icon ?? undefined,
+        instanceId: page.id,
+      }));
+      list.appendChild(row);
+    }
+    el.appendChild(list);
   }
 
   /** Any page changed: the trail follows a move of this page or an ancestor,
@@ -1053,16 +1121,13 @@ export class PageChromeController {
         action: async () => {
           try {
             const newPage = await this._host.dataService.duplicatePage(this._host.pageId);
-            const input = this._host.input as any;
-            if (input?._api?.editors) {
-              input._api.editors.openEditor({
-                typeId: 'canvas',
-                title: newPage.title,
-                icon: newPage.icon ?? undefined,
-                iconHtml: renderPageIconHtml(newPage.icon),
-                instanceId: newPage.id,
-              });
-            }
+            await this._host.openEditor?.({
+              typeId: 'canvas',
+              title: newPage.title,
+              icon: newPage.icon ?? undefined,
+              iconHtml: renderPageIconHtml(newPage.icon),
+              instanceId: newPage.id,
+            });
           } catch (err) {
             console.error('[Canvas] Duplicate failed:', err);
           }
@@ -1094,16 +1159,20 @@ export class PageChromeController {
         },
       },
       {
+        label: 'Move To…',
+        iconId: 'folder-input',
+        action: () => {
+          this.dismissPopups();
+          void this._host.executeCommand?.('canvas.movePageTo', this._host.pageId);
+        },
+      },
+      {
         label: 'Save as Template',
         iconId: 'layout-template',
         action: async () => {
           this.dismissPopups();
           try {
-            const input = this._host.input as any;
-            const api = input?._api;
-            if (api?.commands?.executeCommand) {
-              await api.commands.executeCommand('canvas.saveAsTemplate', this._host.pageId);
-            }
+            await this._host.executeCommand?.('canvas.saveAsTemplate', this._host.pageId);
           } catch (err) {
             console.error('[Canvas] Save as template failed:', err);
           }
@@ -1360,10 +1429,8 @@ export class PageChromeController {
         iconId: 'duplicate',
         action: async () => {
           try {
-            const input = this._host.input as any;
-            const api = input?._api;
-            if (api?.commands?.executeCommand) {
-              await api.commands.executeCommand('canvas.duplicatePage', this._host.pageId);
+            if (this._host.executeCommand) {
+              await this._host.executeCommand('canvas.duplicatePage', this._host.pageId);
             } else {
               await this._host.dataService.duplicatePage(this._host.pageId);
             }

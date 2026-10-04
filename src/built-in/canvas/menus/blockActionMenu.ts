@@ -30,6 +30,7 @@ import {
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
+import { pageLinkHref } from '../pageLinks.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 
@@ -59,6 +60,9 @@ export interface BlockActionMenuHost {
    * of just the anchor — matching the visual highlight users see.
    */
   readonly blockSelection?: IMenuBlockSelection;
+  /** Copy a link to the clipboard as a labelled link (HTML) and as plain
+   *  text, and say so (Copy Link to Block). */
+  copyLabelledLink?(href: string, label: string): Promise<void>;
 }
 
 // ── Submenu hover-handoff helper ────────────────────────────────────────────
@@ -335,6 +339,22 @@ export class BlockActionMenuController implements ICanvasMenu {
     const dupItem = this._createActionItem('Duplicate', svgIcon('duplicate'), false, 'Ctrl+D');
     dupItem.addEventListener('mousedown', (e) => { e.preventDefault(); this._duplicateBlock(); });
     this._blockActionMenu.appendChild(dupItem);
+
+    // Copy Link to Block — a link that opens this page and shows the block
+    // (paste it in any page, or follow it from chat).
+    const anchorNode = this._host.editor?.state.doc.nodeAt(this._actionBlockPos);
+    const anchorId = anchorNode?.attrs?.['id'];
+    if (!isBatch && typeof anchorId === 'string' && anchorId && this._host.copyLabelledLink) {
+      const linkItem = this._createActionItem('Copy Link to Block', svgIcon('link'), false);
+      linkItem.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        this._hideBlockActionMenu();
+        const text = (anchorNode?.textContent ?? '').replace(/\s+/g, ' ').trim();
+        const label = text ? (text.length > 60 ? `${text.slice(0, 59)}…` : text) : 'Link to block';
+        void this._host.copyLabelledLink?.(pageLinkHref(this._host.pageId, anchorId), label);
+      });
+      this._blockActionMenu.appendChild(linkItem);
+    }
 
     // Send to Chat — attach a LIVE reference to the targeted block(s) so the AI
     // can read their current content and edit them in place.

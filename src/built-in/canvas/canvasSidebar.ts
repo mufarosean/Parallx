@@ -978,6 +978,12 @@ export class CanvasSidebar {
       },
     });
     addAction({
+      id: 'move-to',
+      label: 'Move To…',
+      iconId: 'folder-input',
+      action: () => { void this._api.commands.executeCommand('canvas.movePageTo', page.id); },
+    });
+    addAction({
       id: 'export-md',
       label: 'Export as Markdown',
       iconId: 'export',

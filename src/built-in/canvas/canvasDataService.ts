@@ -2091,6 +2091,19 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * Walk up the parent chain to build a breadcrumb list.
    * Returns ancestors from root → immediate parent (excludes the page itself).
    */
+  /** Live pages whose body links to `pageId`: an `@` link, Link to Page, a
+   *  copied block link. A page's own card for a child is not a link. */
+  async getBacklinks(pageId: string): Promise<IPage[]> {
+    const result = await this._db.all(
+      `SELECT * FROM pages
+        WHERE is_archived = 0 AND id != ? AND instr(content, ?) > 0
+        ORDER BY title COLLATE NOCASE`,
+      [pageId, `parallx-page:${pageId}`],
+    );
+    if (result.error) throw new Error(result.error.message);
+    return (result.rows ?? []).map(rowToPage);
+  }
+
   async getAncestors(pageId: string): Promise<IPage[]> {
     const ancestors: IPage[] = [];
     let currentId: string | null = pageId;

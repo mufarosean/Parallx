@@ -138,10 +138,10 @@ describe('blockRegistry', () => {
       }
     });
 
-    it('returns 29 slash menu items', () => {
+    it('returns 30 slash menu items', () => {
       // 28 after the /mindmap retirement, +1 for /concept map (the chat
       // pattern promoted: outline in, diagram out).
-      expect(getSlashMenuBlocks()).toHaveLength(29);
+      expect(getSlashMenuBlocks()).toHaveLength(30);
     });
 
     it('includes Page as the first item (order 0)', () => {
@@ -210,7 +210,7 @@ describe('blockRegistry', () => {
     /** Original labels from the hardcoded SLASH_MENU_ITEMS, in order.
      *  'Database' was added with the databases feature (pageBlock variant). */
     const ORIGINAL_SLASH_LABELS = [
-      'Page', 'Database', 'Heading 1', 'Heading 2', 'Heading 3',
+      'Page', 'Database', 'Link to Page', 'Heading 1', 'Heading 2', 'Heading 3',
       'Bulleted List', 'Numbered List', 'To-do List',
       'Quote', 'Code', 'Divider',
       'Toggle List', 'Callout', 'Table',
@@ -222,7 +222,7 @@ describe('blockRegistry', () => {
     ];
 
     it('produces 29 items', () => {
-      expect(SLASH_MENU_ITEMS).toHaveLength(29);
+      expect(SLASH_MENU_ITEMS).toHaveLength(30);
     });
 
     it('preserves all original labels', () => {

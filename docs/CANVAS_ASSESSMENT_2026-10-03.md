@@ -383,6 +383,20 @@ Missing or weaker, by how much it matters:
 
 - **Linking**: @-mentions, link-to-page, backlinks (no code at all),
   Copy link to block, Move to.
+  **Done (2026-10-04)**: "@" (after a space or at a line start) and the
+  "Link to Page" slash item open a page picker that inserts the page's
+  title as a `parallx-page:` link; each page shows "N backlinks" under its
+  title, opening to the linking pages (live pages only, re-read when other
+  pages change); Copy Link to Block in the block menu copies a labelled
+  link (HTML) plus the plain link, so pasting it into a page gives a link
+  named after the block; Move To… in the page ⋯ menu and the sidebar menu
+  picks a new parent or the top level (not the page's own subpages, not a
+  database). The page ⋯ menu's Duplicate, Save as Template and Move To run
+  through the pane's command door: they used `input._api`, which does not
+  exist, so Save as Template did nothing and Duplicate never opened the
+  copy. A link keeps the title it was made with; a later rename does not
+  rewrite it (Notion's mentions do). Tests: `canvasLinking` (backlinks on
+  real SQLite); every piece checked in the app.
 - **Databases**: only 8 property types (no status, person, files, relation,
   rollup, formula, created/edited as columns, email, phone); only table and
   board (no list, gallery, calendar, timeline); filters without typed operators,

@@ -174,6 +174,13 @@ export class CanvasEditorProvider {
     this._openEditor = fn;
   }
 
+  /** Run a command (the page menu's Move To…, Save as Template, Duplicate). */
+  setExecuteCommand(fn: (id: string, ...args: unknown[]) => Promise<unknown>): void {
+    this._executeCommand = fn;
+  }
+  private _executeCommand: ((id: string, ...args: unknown[]) => Promise<unknown>) | undefined;
+  get executeCommand(): ((id: string, ...args: unknown[]) => Promise<unknown>) | undefined { return this._executeCommand; }
+
   /**
    * Set the inline AI provider so canvas panes can create inline AI menus.
    * Called from canvas main.ts after the chat tool registers its provider.
@@ -487,6 +494,10 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
   set suppressUpdate(v: boolean) { this._suppressUpdate = v; }
   get input(): IEditorInput | undefined { return this._input; }
   get openEditor(): OpenEditorFn | undefined { return this._openEditor; }
+  /** PageChromeHost: run a command through the app's command service. */
+  executeCommand(id: string, ...args: unknown[]): Promise<unknown> {
+    return this._provider.executeCommand?.(id, ...args) ?? Promise.resolve(undefined);
+  }
   get blockSelection(): BlockSelectionController { return this._blockSelection; }
 
   /** BubbleMenuHost (M98): page identity for selection-action provenance. */
@@ -504,6 +515,25 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     } else {
       await this._provider.window?.showWarningMessage('Could not copy link.');
     }
+  }
+
+  /** BlockActionMenuHost: a link pasted into a page keeps its label (HTML);
+   *  anywhere else it is the plain link. */
+  async copyLabelledLink(href: string, label: string): Promise<void> {
+    const html = `<a href="${escapeHtmlAttr(href)}">${escapeHtmlAttr(label)}</a>`;
+    let copied = false;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/plain': new Blob([href], { type: 'text/plain' }),
+        'text/html': new Blob([html], { type: 'text/html' }),
+      })]);
+      copied = true;
+    } catch {
+      copied = await writeClipboardText(href);
+    }
+    await (copied
+      ? this._provider.window?.showInformationMessage('Link copied.')
+      : this._provider.window?.showWarningMessage('Could not copy link.'));
   }
 
   async openLinkInExternalBrowser(href: string): Promise<void> {
@@ -850,6 +880,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     this._saveDisposables.add(
       this._dataService.onDidChangePage((event) => {
         this._pageChrome.syncBreadcrumbs(event);
+        this._pageChrome.syncBacklinks(event);
         if (event.pageId !== this._pageId || !event.page) return;
         this._pageChrome.syncPageChange(event.page, event.changedFields);
         this._pageChrome.applyPageSettings();
@@ -1515,4 +1546,8 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     this._menuRegistry?.dispose(); // disposes all menus (slash, bubble, blockAction, inlineMath, etc.)
     this._pageChrome?.dispose();
   }
+}
+
+function escapeHtmlAttr(text: string): string {
+  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 }

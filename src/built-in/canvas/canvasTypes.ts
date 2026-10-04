@@ -348,6 +348,8 @@ export interface ICanvasDataService {
   movePage(pageId: string, newParentId: string | null, afterSiblingId?: string): Promise<void>;
   reorderPages(parentId: string | null, orderedIds: string[]): Promise<void>;
   getAncestors(pageId: string): Promise<IPage[]>;
+  /** Live pages whose body links to `pageId` (a `parallx-page:` link), by title. */
+  getBacklinks?(pageId: string): Promise<IPage[]>;
 
   // ── Auto-save ──
 

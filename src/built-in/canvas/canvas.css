@@ -1681,6 +1681,44 @@
   animation: slashMenuFadeIn 0.1s ease-out;
 }
 
+/* Backlinks under the page title: quiet until opened. */
+.canvas-backlinks { margin-top: 4px; }
+.canvas-backlinks__toggle,
+.canvas-backlinks__page {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  background: none;
+  border: none;
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text-muted);
+  font: inherit;
+  font-size: var(--px-text-sm);
+  cursor: pointer;
+}
+.canvas-backlinks__toggle:hover,
+.canvas-backlinks__page:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.canvas-backlinks__list { display: flex; flex-direction: column; align-items: flex-start; padding-left: 8px; }
+
+/* "@" page picker: the slash menu's look, with the page's place in the tree. */
+.canvas-mention-menu { max-width: 360px; }
+.canvas-mention-path {
+  margin-left: auto;
+  padding-left: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--px-text-faint);
+  font-size: var(--px-text-xs);
+}
+.canvas-mention-empty {
+  padding: 6px 8px;
+  color: var(--px-text-muted);
+  font-size: var(--px-text-sm);
+}
+
 @keyframes slashMenuFadeIn {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }

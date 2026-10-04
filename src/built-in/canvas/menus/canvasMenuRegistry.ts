@@ -18,6 +18,7 @@ import type { IDisposable } from '../../../platform/lifecycle.js';
 import { $ } from '../../../ui/dom.js';
 import { SlashMenuController, type SlashMenuHost } from './slashMenu.js';
 import { BubbleMenuController, type BubbleMenuHost } from './bubbleMenu.js';
+import { MentionMenuController } from './mentionMenu.js';
 import { BlockActionMenuController, type BlockActionMenuHost } from './blockActionMenu.js';
 import { TableActionMenuController, type TableMenuTarget } from './tableActionMenu.js';
 import { IconMenuController, type IconMenuHost, type IconMenuOptions } from './iconMenu.js';
@@ -49,12 +50,16 @@ export type InsertActionBaseContext = _InsertActionBaseContext;
 
 import {
   svgIcon as _ir_svgIcon,
+  resolvePageIcon as _ir_resolvePageIcon,
   PAGE_SELECTABLE_ICONS as _ir_PAGE_SELECTABLE_ICONS,
   ALL_PAGE_SELECTABLE_ICONS as _ir_ALL_PAGE_SELECTABLE_ICONS,
 } from '../config/iconRegistry.js';
 
 /** @see {@link import('../config/iconRegistry.js').svgIcon} — original source (IconRegistry → here) */
 export const svgIcon: (id: string) => string = _ir_svgIcon;
+
+/** @see {@link import('../config/iconRegistry.js').resolvePageIcon} — a page's icon id, or the default page icon */
+export const resolvePageIcon: (icon: string | null | undefined) => string = _ir_resolvePageIcon;
 
 // ── Block Mutation Access (from BlockStateRegistry — source owner) ─────────
 // Menu children (blockActionMenu) get mutation helpers through
@@ -472,6 +477,9 @@ export class CanvasMenuRegistry {
   createStandardMenus(host: CanvasMenuHost): IBlockActionMenu {
     const slash = new SlashMenuController(host, this);
     slash.create();
+
+    const mention = new MentionMenuController(host, this);
+    mention.create();
 
     const bubble = new BubbleMenuController(host, this);
     bubble.create();

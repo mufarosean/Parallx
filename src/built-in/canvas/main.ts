@@ -37,6 +37,7 @@ import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
 import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
+import { pageMoveTargets } from './pageMoveTargets.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -640,6 +641,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _editorProvider = editorProvider;
   editorProvider.setDatabaseService(_databaseService);
   editorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
+  editorProvider.setExecuteCommand((id, ...args) => Promise.resolve(api.commands.executeCommand(id, ...args)));
   context.subscriptions.push(
     api.editors.registerEditorProvider('canvas', {
       createEditorPane(container: HTMLElement, input?: any): IDisposable {
@@ -1369,6 +1371,36 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       } catch (err) {
         console.error('[Canvas] Failed to duplicate page:', err);
         await api.window.showErrorMessage('Failed to duplicate page.');
+      }
+    }),
+  );
+
+  // canvas.movePageTo — Move To…: pick a new parent (or the top level) for a
+  // page. Used by the page ⋯ menu and the sidebar's page menu.
+  context.subscriptions.push(
+    api.commands.registerCommand('canvas.movePageTo', async (...args: unknown[]) => {
+      const pageId = args[0] as string | undefined;
+      if (!_dataService || !pageId) return;
+      try {
+        const [page, tree] = await Promise.all([_dataService.getPage(pageId), _dataService.getPageTree()]);
+        if (!page) return;
+        const targets = pageMoveTargets(tree, pageId, (id) => _databaseService?.isDatabase(id) ?? false);
+        const items = [
+          { label: 'Top Level', description: page.parentId === null ? 'Current' : 'No parent page', _id: null as string | null },
+          ...targets.map((t) => ({
+            label: `${'\u2003'.repeat(t.depth)}${t.title}`,
+            description: t.id === page.parentId ? 'Current' : undefined,
+            _id: t.id as string | null,
+          })),
+        ];
+        const picked = await api.window.showQuickPick(items, { placeholder: `Move "${page.title || 'Untitled'}" to…` }) as (typeof items)[number] | undefined;
+        if (!picked || picked._id === page.parentId) return;
+        await _dataService.movePage(pageId, picked._id);
+        const where = picked._id ? `"${targets.find((t) => t.id === picked._id)?.title ?? 'page'}"` : 'the top level';
+        await api.window.showInformationMessage(`Moved to ${where}.`);
+      } catch (err) {
+        console.error('[Canvas] Move failed:', err);
+        await api.window.showErrorMessage(`Could not move the page. ${err instanceof Error ? err.message : String(err)}`);
       }
     }),
   );
