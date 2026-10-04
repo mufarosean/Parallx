@@ -15,7 +15,7 @@ import './planner.css';
 import { toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import { PlannerDataService } from './plannerDataService.js';
-import { IPlannerQueryService, IDatabaseService } from '../../services/serviceTypes.js';
+import { IDatabaseService } from '../../services/serviceTypes.js';
 import type { ICalendarSyncProvider } from './plannerTypes.js';
 import { PlannerSidebar } from './plannerSidebar.js';
 import { PlannerEditorProvider } from './plannerEditorProvider.js';
@@ -24,6 +24,7 @@ import { registerPlannerChatTools } from './plannerChatTools.js';
 import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidgets.js';
 import { agendaBlock } from './plannerAgendaBlock.js';
 import { registerTaskSource } from '../../services/taskSources.js';
+import { registerScheduleSource } from '../../services/scheduleSources.js';
 import { createPlannerSettingsPanel } from './plannerSettingsPanel.js';
 import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 import { PlannerSyncOrchestrator } from './sync/plannerSyncOrchestrator.js';
@@ -148,11 +149,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     );
   }
 
-  // 2a. Expose a narrow read surface cross-extension so the autonomy review (and
-  //     anything else) can see the user's open tasks — real workspace awareness.
+  // 2a. The Planner is a schedule source while it runs: the heartbeat and
+  //     workflow facts read the user's open tasks, today and sync health
+  //     through the generic hub (services/scheduleSources), never the Planner.
   {
     const data = _data;
-    api.services.registerInstance(IPlannerQueryService, {
+    context.subscriptions.push(registerScheduleSource({
+      id: 'parallx.planner',
+      name: 'Planner',
       listOpenTasks: async () => {
         try {
           const tasks = await data.listTasks({ status: ['reviewing', 'planned'] });
@@ -171,7 +175,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       // M87 — heartbeat follow-ups land in the review queue. The sourceUri
       // carries the finding key so the same finding never creates a second
       // OPEN task (completed/cancelled ones don't block a fresh follow-up).
-      captureHeartbeatTask: async (input: { title: string; description?: string; sourceKey: string }) => {
+      captureFollowUp: async (input: { title: string; description?: string; sourceKey: string }) => {
         try {
           const sourceUri = `parallx-heartbeat://${input.sourceKey}`;
           const open = await data.listTasks({ status: ['reviewing', 'planned'], includeUndated: true });
@@ -189,7 +193,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       },
       // M87 S3 — morning digest inputs: today's events + tasks due today
       // (local calendar day).
-      getTodayDigest: async () => {
+      getToday: async () => {
+        const hint = 'Open the planner for the full picture.';
         try {
           const start = new Date(); start.setHours(0, 0, 0, 0);
           const end = new Date(start.getTime()); end.setDate(end.getDate() + 1);
@@ -197,8 +202,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             data.listEvents({ from: start.getTime(), to: end.getTime(), limit: 200 }),
             data.listTasks({ status: ['planned', 'reviewing'], dueFrom: start.getTime(), dueTo: end.getTime() }),
           ]);
-          return { events: events.length, tasksDue: tasks.length };
-        } catch { return { events: 0, tasksDue: 0 }; }
+          return { events: events.length, tasksDue: tasks.length, hint };
+        } catch { return { events: 0, tasksDue: 0, hint }; }
       },
       // M87 S3 — sync health for the rising-edge failure alert. Reads the
       // orchestrator lazily: it is constructed after this registration but
@@ -215,7 +220,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           return { failed: true, detail };
         } catch { return null; }
       },
-    });
+    }));
   }
 
   // 2b. Sync registry + orchestrator. The registry hook (registerSyncProvider)

@@ -54,6 +54,11 @@
         "location": "sidebar"
       }
     ],
+    "menus": {
+      "viewContainer/title": [
+        { "command": "media-organizer.rescan", "title": "Refresh", "group": "1_actions", "when": "activeViewContainer == 'media-organizer-container'" }
+      ]
+    },
     "views": [
       {
         "id": "mediaOrganizer.browser",

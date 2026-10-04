@@ -69,6 +69,17 @@ export function normalizeAutonomySignal(raw: unknown): IAutonomySignal | null {
   };
 }
 
+/**
+ * Who caused a signal's event: the publisher's stamp, or for an unstamped
+ * signal from the canvas (a core, user-gesture surface) the user. A tool's
+ * signal counts as the user's only when the tool stamps `actor: 'user'`
+ * itself; the core assumes nothing about a tool's signals.
+ */
+export function resolveSignalActor(sig: Pick<IAutonomySignal, 'source' | 'actor'>): 'user' | 'agent' | undefined {
+  if (sig.actor) return sig.actor;
+  return sig.source === 'canvas' ? 'user' : undefined;
+}
+
 export interface IAutonomySignalService {
   /** Publish a raw signal payload. Returns true if accepted, false if dropped (malformed). */
   signal(raw: unknown): boolean;

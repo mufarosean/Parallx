@@ -1667,6 +1667,31 @@ export namespace chat {
    * @param tool The tool definition with handler.
    */
   export function registerTool(name: string, tool: ChatToolDefinition): IDisposable;
+
+  /**
+   * Accept this tool's own drag type on the chat input while the tool runs.
+   * The input attaches dropped files by itself; when a drop of `mimeType`
+   * carried no file it could attach, `resolve` is called with the drag's
+   * data of that type and says what to attach (`paths`, absolute) or what
+   * to tell the user (`warning`). Disposed (or the tool turned off), the
+   * input no longer accepts the type.
+   */
+  export function registerDropHandler(handler: ChatDropHandler): IDisposable;
+}
+
+/** A handler for a tool's own drag type dropped on the chat input. */
+export interface ChatDropHandler {
+  /** The drag data type, e.g. `application/x-mytool-items`. */
+  readonly mimeType: string;
+  resolve(data: string): ChatDropResult | undefined | Promise<ChatDropResult | undefined>;
+}
+
+/** What a chat drop handler makes of a drop. */
+export interface ChatDropResult {
+  /** Absolute file paths to attach. */
+  readonly paths?: readonly string[];
+  /** A message shown in the chat input when nothing could be attached. */
+  readonly warning?: string;
 }
 
 // --- Browser automation host (docs/BROWSER_AGENT_IMPLEMENTATION_CONTRACT.md) ---

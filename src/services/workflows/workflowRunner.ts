@@ -9,6 +9,8 @@
 import {
   MAX_AGENT_TURNS_PER_RUN,
   isActionNode,
+  normalizeFactsInclude,
+  type FactsInclude,
   type WorkflowDoc,
   type WorkflowNode,
   type WorkflowNodeTrace,
@@ -35,9 +37,7 @@ export interface WorkflowExecutionDeps {
     readonly contextWindow?: number;
   }) => Promise<string>;
   /** Gather the deterministic facts bundle as one prompt block. */
-  readonly gatherFacts?: (include: {
-    planner?: boolean; activity?: boolean; sync?: boolean; pages?: boolean;
-  }) => Promise<string>;
+  readonly gatherFacts?: (include: FactsInclude) => Promise<string>;
   /** A template's or page's content as markdown (format exemplar). */
   readonly getExemplar?: (ref: { kind: 'template' | 'page'; id: string }) => Promise<string | null>;
   /** Execute a workbench command, origin-stamped as this workflow. */
@@ -136,7 +136,7 @@ export async function executeWorkflowRun(
       switch (node.kind) {
         case 'context.facts': {
           const text = deps.gatherFacts
-            ? await deps.gatherFacts(node.include ?? {})
+            ? await deps.gatherFacts(normalizeFactsInclude(node.include))
             : '';
           if (text.trim()) contextBlocks.set(node.id, text.trim());
           record(node, 'ok', t0, text.trim() ? `${text.trim().split('\n').length} lines gathered` : 'nothing to gather');

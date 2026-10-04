@@ -31170,6 +31170,23 @@ function moRegisterTagTool(api) {
   }
 }
 
+// Cards and list rows drag 'application/x-mo-items' (plus the file's URI and
+// path once known). The chat input attaches the file by itself; this handler
+// lets it accept our drag, and speaks up when a card carried no path yet.
+function moRegisterChatDrop(api) {
+  if (!api.chat || typeof api.chat.registerDropHandler !== 'function') return;
+  try {
+    _commandDisposables.push(api.chat.registerDropHandler({
+      mimeType: 'application/x-mo-items',
+      resolve: () => ({
+        warning: 'That media card did not carry a file path, so nothing was attached. Wait for its thumbnail to load and drag again.',
+      }),
+    }));
+  } catch (err) {
+    console.warn('[MediaOrganizer] chat drop handler registration failed:', err);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 44: ACTIVATION
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -39083,6 +39100,7 @@ export async function activate(api, context) {
   // AI tagging (Section 43): the one chat tool. It replaced the nineteen
   // mediaOrganizer.* tools, which were switched off in 2026-06 and then deleted.
   moRegisterTagTool(api);
+  moRegisterChatDrop(api);
 
   // M66 — register the media-organizer link contract. Iter A: open the grid;
   // Iter B will deepen to per-item focus (photo lightbox, video clip).

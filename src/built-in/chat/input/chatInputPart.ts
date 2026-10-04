@@ -23,6 +23,7 @@ import type { IAttachmentServices, IWorkspaceFileEntry } from '../chatTypes.js';
 import type { IChatAttachment, IChatSelectionAttachment, IChatCanvasBlockAttachment, IContextPill } from '../../../services/chatTypes.js';
 import { ChatContextPills } from './chatContextPills.js';
 import { ChatMentionAutocomplete } from './chatMentionAutocomplete.js';
+import { getChatDropHandlers } from '../../../services/chatContributions.js';
 import type { IMentionSuggestionProvider, ISlashCommandProvider } from '../chatTypes.js';
 
 /**
@@ -208,16 +209,17 @@ export class ChatInputPart extends Disposable {
       void this._handlePaste(event);
     }));
 
-    // Drag-and-drop attachments — accept file URIs (from media-organizer cards,
-    // explorer rows, etc.) and native OS file drags. Reuses the existing
-    // attachment pipelines (addAttachment / addPastedImage).
+    // Drag-and-drop attachments — accept file URIs (from explorer rows, a
+    // tool's cards, etc.) and native OS file drags, plus any drag type a
+    // running tool registered a drop handler for (api.chat.registerDropHandler).
+    // Reuses the existing attachment pipelines (addAttachment / addPastedImage).
     this._register(addDisposableListener(this._root, 'dragover', (event: DragEvent) => {
       if (!event.dataTransfer) { return; }
-      const types = event.dataTransfer.types;
+      const types = Array.from(event.dataTransfer.types ?? []);
       if (
         types.includes('Files') ||
         types.includes('text/uri-list') ||
-        types.includes('application/x-mo-items')
+        getChatDropHandlers(types).length > 0
       ) {
         event.preventDefault();
         event.dataTransfer.dropEffect = 'copy';
@@ -541,9 +543,11 @@ export class ChatInputPart extends Disposable {
 
   /**
    * Handle a drop on the chat input. Accepts:
-   *   - text/uri-list with file:// URLs (from media-organizer cards, etc.)
+   *   - text/uri-list with file:// URLs (from explorer rows, a tool's cards, etc.)
    *   - text/plain absolute paths (Windows or POSIX)
    *   - DataTransfer.files (native OS file drags)
+   *   - a running tool's own drag type, through its registered drop handler,
+   *     when the drop carried nothing the input could attach by itself
    * Routes file paths through addAttachment (same pipeline as the Add Context
    * button + file explorer). Routes raw image blobs through addPastedImage.
    */
@@ -590,12 +594,9 @@ export class ChatInputPart extends Disposable {
     // `.path` property too; prefer the path-based pipeline when available.
     const files = Array.from(dt.files || []);
     if (files.length === 0) {
-      // A media-organizer card whose file path never resolved (thumbnail still
-      // pending) would otherwise vanish without a trace — say so.
-      if (dt.types && Array.from(dt.types).includes('application/x-mo-items')) {
-        event.preventDefault();
-        this._contextRibbon.notifyWarning('That media card did not carry a file path, so nothing was attached. Wait for its thumbnail to load and drag again.');
-      }
+      // A tool's own drag that carried no file: its drop handler says what
+      // to attach, or what to tell the user (instead of vanishing silently).
+      await this._handleToolDrop(event, dt);
       return;
     }
     event.preventDefault();
@@ -608,6 +609,39 @@ export class ChatInputPart extends Disposable {
       }
     }
     this._updateAttachBtnLabel();
+  }
+
+  /**
+   * Hand a drop to the running tools' drop handlers for its drag types.
+   * The drag data is read before any await (it is gone once the drop event
+   * returns); the first handler that answers wins.
+   */
+  private async _handleToolDrop(event: DragEvent, dt: DataTransfer): Promise<void> {
+    const handlers = getChatDropHandlers(Array.from(dt.types ?? []));
+    if (handlers.length === 0) { return; }
+    event.preventDefault();
+    const payloads = handlers.map((h) => ({ handler: h, data: dt.getData(h.mimeType) }));
+    for (const { handler, data } of payloads) {
+      let result;
+      try { result = await handler.resolve(data); } catch (err) {
+        console.warn(`[ChatInput] Drop handler from "${handler.ownerToolId}" failed:`, err);
+        continue;
+      }
+      if (!result) { continue; }
+      const paths = (result.paths ?? []).filter((p) => typeof p === 'string' && p.length > 0);
+      if (paths.length > 0) {
+        for (const fullPath of paths) {
+          const name = fullPath.split(/[\\/]/).pop() || fullPath;
+          await this._contextRibbon.addAttachment({ name, fullPath });
+        }
+        this._updateAttachBtnLabel();
+        return;
+      }
+      if (result.warning) {
+        this._contextRibbon.notifyWarning(result.warning);
+        return;
+      }
+    }
   }
 
   /** Open the multi-file picker dropdown (Task 4.7). */

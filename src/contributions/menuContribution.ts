@@ -32,6 +32,7 @@ const SUPPORTED_MENU_LOCATIONS: ReadonlySet<string> = new Set([
   'view/title',
   'view/context',
   'menubar/tools',
+  'viewContainer/title',
 ]);
 
 // ─── MenuContributionProcessor ───────────────────────────────────────────────
@@ -312,6 +313,22 @@ export class MenuContributionProcessor extends Disposable implements IContributi
         el.remove();
       }
     });
+  }
+
+  // ── View Container Title (sidebar header More Actions) ──
+
+  /**
+   * The sidebar header's More Actions items for the showing container: the
+   * `viewContainer/title` items whose when clause holds (they name their
+   * container with `activeViewContainer == '<id>'`), sorted by group.
+   */
+  getViewContainerTitleItems(): readonly IContributedMenuItem[] {
+    const items = this._menuItems.get('viewContainer/title') ?? [];
+    return items
+      .filter((item) => !item.when || !this._contextKeyService || this._contextKeyService.contextMatchesRules(item.when))
+      .map((item, i) => ({ item, i }))
+      .sort((a, b) => (a.item.group ?? '').localeCompare(b.item.group ?? '') || (a.item.order ?? 0) - (b.item.order ?? 0) || a.i - b.i)
+      .map(({ item }) => item);
   }
 
   // ── View Context Menu ──

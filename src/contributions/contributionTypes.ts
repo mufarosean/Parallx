@@ -56,7 +56,9 @@ export interface IContributedKeybinding {
  * Supported menu contribution locations in M2.
  */
 /** `menubar/tools`: the Tools menu's launcher list (a tool adds itself there). */
-export type MenuLocationId = 'commandPalette' | 'view/title' | 'view/context' | 'menubar/tools';
+/** `viewContainer/title`: the sidebar header's More Actions menu; items say
+ *  which container they belong to with `when: "activeViewContainer == '<id>'"`. */
+export type MenuLocationId = 'commandPalette' | 'view/title' | 'view/context' | 'menubar/tools' | 'viewContainer/title';
 
 // ─── Contributed Menu Item ───────────────────────────────────────────────────
 

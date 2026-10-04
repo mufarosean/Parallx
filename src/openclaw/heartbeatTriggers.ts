@@ -12,7 +12,8 @@
 //   UC3 overdue-task     — a planned task > overdueDays past due
 //
 // Senses feeding this engine are equally pure: buildPlanFacts maps chat
-// session plans; task facts arrive typed from IPlannerQueryService.
+// session plans; task facts arrive typed from the schedule sources
+// (services/scheduleSources: whatever tools keep the user's tasks).
 // Delivery/persistence live in heartbeatDeterministicLane.ts.
 
 // ── Facts ────────────────────────────────────────────────────────────────────
@@ -37,10 +38,13 @@ export interface IHeartbeatTaskFact {
 export interface IHeartbeatFacts {
   readonly plans: readonly IHeartbeatPlanFact[];
   readonly tasks: readonly IHeartbeatTaskFact[];
-  /** UC4 — planner sync health. null/undefined = sync not configured. */
+  /** UC4 — calendar sync health. null/undefined = sync not configured. */
   readonly sync?: { readonly failed: boolean; readonly detail: string | null } | null;
-  /** UC5 — today's schedule shape (events + tasks due today, local day). */
-  readonly today?: { readonly events: number; readonly tasksDue: number } | null;
+  /**
+   * UC5 — today's schedule shape (events + tasks due today, local day).
+   * `hint` says where to look for the full picture, in the source's words.
+   */
+  readonly today?: { readonly events: number; readonly tasksDue: number; readonly hint?: string } | null;
   /**
    * UC7 — AGENTS.md staleness inputs: a short content hash (null = file
    * missing) and how many canvas pages changed in the last 30 days.
@@ -239,8 +243,8 @@ export function evaluateTriggers(
         candidates.push({
           key: 'sync-failure',
           kind: 'sync-failure',
-          title: 'Planner sync is failing',
-          detail: facts.sync.detail?.trim() || 'The last sync run reported an error. Check Settings → Planner → Google sync.',
+          title: 'Calendar sync is failing',
+          detail: facts.sync.detail?.trim() || 'The last sync run reported an error.',
           delivery: 'notification',
           cooldownMs: COOLDOWN_SYNC_FAILURE_MS,
         });
@@ -264,7 +268,7 @@ export function evaluateTriggers(
         key: `morning-digest:${dayKey}`,
         kind: 'morning-digest',
         title: `Today: ${facts.today.events} event${facts.today.events === 1 ? '' : 's'}, ${facts.today.tasksDue} task${facts.today.tasksDue === 1 ? '' : 's'} due`,
-        detail: 'Open the planner for the full picture.',
+        detail: facts.today.hint?.trim() || 'Open your calendar for the full picture.',
         delivery: 'notification',
         cooldownMs: DAY_MS,
       });

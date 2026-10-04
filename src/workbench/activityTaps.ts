@@ -15,7 +15,7 @@ import {
   IWindowService,
 } from '../services/serviceTypes.js';
 import { IChatService } from '../services/chatTypes.js';
-import { IAutonomySignalService } from '../services/autonomySignalService.js';
+import { IAutonomySignalService, resolveSignalActor } from '../services/autonomySignalService.js';
 import { IActivityJournalService } from '../services/activityJournalService.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 import type { FocusTracker } from '../context/focusTracker.js';
@@ -240,12 +240,13 @@ export function wireActivityTaps(deps: IActivityTapDeps): IDisposable {
     const bus = services.get(IAutonomySignalService);
     store.add(bus.onDidSignal((sig) => {
       // The publisher's actor stamp wins (a canvas page the AI created is the
-      // assistant's action, not the user's); the source heuristic is only the
-      // fallback for actor-blind publishers.
+      // assistant's action, not the user's); an unstamped tool signal is the
+      // tool's own (resolveSignalActor names no tool).
+      const who = resolveSignalActor(sig);
       const actor: import('../services/activityJournalService.js').ActivityActor =
-        sig.actor === 'agent' ? 'ai'
-        : sig.actor === 'user' ? 'user'
-        : (sig.source === 'canvas' || sig.source === 'planner' ? 'user' : `ext:${sig.source}` as const);
+        who === 'agent' ? 'ai'
+        : who === 'user' ? 'user'
+        : `ext:${sig.source}` as const;
       journal.note({
         actor,
         source: `signal:${sig.source}`,

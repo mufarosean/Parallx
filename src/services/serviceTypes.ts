@@ -1697,27 +1697,6 @@ export interface ICanvasPageQueryService {
 
 export const ICanvasPageQueryService = createServiceIdentifier<ICanvasPageQueryService>('ICanvasPageQueryService');
 
-/** Narrow, cross-extension read surface for the planner — lets the autonomy
- *  review (and anything else) see the user's open tasks. */
-export interface IPlannerQueryService {
-  /** Open tasks (not done/cancelled), lightweight. */
-  listOpenTasks(): Promise<{ title: string; dueAt: number | null }[]>;
-  /** M87 — full task facts for the heartbeat's deterministic senses. */
-  listTaskFacts?(): Promise<{ id: string; title: string; status: string; dueAt: number | null; createdAt: number }[]>;
-  /**
-   * M87 — heartbeat delivery: capture a follow-up into the review queue.
-   * `sourceKey` identifies the finding; when an OPEN heartbeat task with the
-   * same key already exists, no duplicate is created and false is returned.
-   */
-  captureHeartbeatTask?(input: { title: string; description?: string; sourceKey: string }): Promise<boolean>;
-  /** M87 S3 — today's schedule shape for the morning digest (local day). */
-  getTodayDigest?(): Promise<{ events: number; tasksDue: number }>;
-  /** M87 S3 — sync health for the rising-edge failure alert.
-   *  null = sync not configured/never ran. */
-  getSyncHealth?(): Promise<{ failed: boolean; detail: string | null } | null>;
-}
-export const IPlannerQueryService = createServiceIdentifier<IPlannerQueryService>('IPlannerQueryService');
-
 export const IIndexingPipelineService = createServiceIdentifier<IIndexingPipelineService>('IIndexingPipelineService');
 
 // ─── ISemanticGraphService (M68) ───────────────────────────────────────────

@@ -63,12 +63,27 @@ export interface EventTriggerNode extends WorkflowNodeBase {
 export interface FactsContextNode extends WorkflowNodeBase {
   readonly kind: 'context.facts';
   /** Which fact blocks to gather (default: all). */
-  readonly include?: {
-    readonly planner?: boolean;
-    readonly activity?: boolean;
-    readonly sync?: boolean;
-    readonly pages?: boolean;
-  };
+  readonly include?: FactsInclude;
+}
+
+/**
+ * The fact blocks a context node gathers. `schedule` is today and open
+ * tasks from whatever tools keep a schedule (services/scheduleSources).
+ */
+export interface FactsInclude {
+  readonly schedule?: boolean;
+  readonly activity?: boolean;
+  readonly sync?: boolean;
+  readonly pages?: boolean;
+  /** @deprecated Saved by older versions; read as `schedule`. */
+  readonly planner?: boolean;
+}
+
+/** A node's include with the old `planner` key read as `schedule`. */
+export function normalizeFactsInclude(include: FactsInclude | undefined): Omit<FactsInclude, 'planner'> {
+  if (!include) return {};
+  const { planner, ...rest } = include;
+  return rest.schedule === undefined && planner !== undefined ? { ...rest, schedule: planner } : rest;
 }
 
 /** A canvas template or page injected as a FORMAT EXEMPLAR (markdown). */

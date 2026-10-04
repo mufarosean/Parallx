@@ -25,6 +25,7 @@ import { NodeCanvas } from '../../ui/nodeCanvas.js';
 import type { WorkflowService } from '../../services/workflows/workflowService.js';
 import {
   isTriggerNode,
+  normalizeFactsInclude,
   type WorkflowClass,
   type WorkflowDoc,
   type WorkflowNode,
@@ -105,10 +106,10 @@ function nodeSummary(n: WorkflowNode): string {
       return parts.length ? parts.join(' · ') : 'Matches everything.';
     }
     case 'context.facts': {
-      const inc = n.include ?? {};
-      const all = inc.planner === undefined && inc.activity === undefined && inc.sync === undefined && inc.pages === undefined;
+      const inc = normalizeFactsInclude(n.include);
+      const all = inc.schedule === undefined && inc.activity === undefined && inc.sync === undefined && inc.pages === undefined;
       const parts = all
-        ? ['planner', 'activity', 'sync', 'pages']
+        ? ['schedule', 'activity', 'sync', 'pages']
         : Object.entries(inc).filter(([, v]) => v).map(([k]) => k);
       return parts.length ? `injects ${parts.join(' · ')}` : 'Nothing selected.';
     }
@@ -702,10 +703,10 @@ export class WorkflowEditorPane implements IDisposable {
         const note = $('div.wfe-ins__note');
         note.textContent = 'Injects live app facts above the mission: connect this into an Agent Turn.';
         this._inspector.appendChild(note);
-        const inc = node.include ?? {};
-        const all = inc.planner === undefined && inc.activity === undefined && inc.sync === undefined && inc.pages === undefined;
-        const opts: Array<{ key: 'planner' | 'activity' | 'sync' | 'pages'; label: string }> = [
-          { key: 'planner', label: 'Planner: today + open tasks' },
+        const inc = normalizeFactsInclude(node.include);
+        const all = inc.schedule === undefined && inc.activity === undefined && inc.sync === undefined && inc.pages === undefined;
+        const opts: Array<{ key: 'schedule' | 'activity' | 'sync' | 'pages'; label: string }> = [
+          { key: 'schedule', label: 'Schedule: today + open tasks' },
           { key: 'activity', label: 'Recent Activity' },
           { key: 'sync', label: 'Sync Health' },
           { key: 'pages', label: 'Workspace Pages' },
@@ -716,7 +717,7 @@ export class WorkflowEditorPane implements IDisposable {
           box.type = 'checkbox';
           box.checked = all || inc[opt.key] === true;
           box.addEventListener('change', () => {
-            const current = node.include ?? { planner: true, activity: true, sync: true, pages: true };
+            const current = node.include ? normalizeFactsInclude(node.include) : { schedule: true, activity: true, sync: true, pages: true };
             this._patchNode(node.id, { include: { ...current, [opt.key]: box.checked } });
           });
           row.appendChild(box);

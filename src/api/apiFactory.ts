@@ -78,7 +78,7 @@ import {
 } from './bridges/workspaceGraphBridge.js';
 import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboardBridge.js';
 import { CanvasBlocksBridge, type CanvasBlockRegistration } from './bridges/canvasBlocksBridge.js';
-import { registerContributedSlashCommand, registerContributedSkill } from '../services/chatContributions.js';
+import { registerContributedSlashCommand, registerContributedSkill, registerChatDropHandler, type ChatDropResult } from '../services/chatContributions.js';
 import { parseSkillFrontmatter } from '../services/skillLoaderService.js';
 import { ILinkResolverService, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
 import type { ParsedLink } from '../links/parallxUri.js';
@@ -364,6 +364,12 @@ export interface ParallxApiObject {
     registerSlashCommand(cmd: { name: string; description: string; promptTemplate: string }): IDisposable;
     /** A skill (SKILL.md content), offered beside the workspace's own skills. */
     registerSkill(content: string): IDisposable;
+    /**
+     * A handler for this tool's own drag type dropped on the chat input: the
+     * input accepts the drag, and when the drop carried no file it could
+     * attach, `resolve` says what to attach (`paths`) or what to tell the user.
+     */
+    registerDropHandler(handler: { mimeType: string; resolve(data: string): ChatDropResult | undefined | Promise<ChatDropResult | undefined> }): IDisposable;
   } | undefined;
   /** Per-extension isolated database (external extensions only). */
   readonly database: {
@@ -1116,6 +1122,15 @@ export function createToolApi(
           registerSkill: (content: string) => {
             const name = String(parseSkillFrontmatter(String(content ?? ''))?.frontmatter?.name ?? '');
             const d = registerContributedSkill(name, { content: String(content), ownerToolId: toolId });
+            subscriptions.push(d);
+            return d;
+          },
+          registerDropHandler: (handler: { mimeType: string; resolve(data: string): ChatDropResult | undefined | Promise<ChatDropResult | undefined> }) => {
+            const d = registerChatDropHandler({
+              mimeType: handler?.mimeType,
+              resolve: (data: string) => handler.resolve(data),
+              ownerToolId: toolId,
+            });
             subscriptions.push(d);
             return d;
           },

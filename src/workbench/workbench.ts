@@ -2337,24 +2337,23 @@ export class Workbench extends Layout {
       moreBtn.textContent = '⋯';
       this._register(addDisposableListener(moreBtn, 'click', (_e) => {
         const rect = moreBtn.getBoundingClientRect();
-        // Item ids ARE command ids (Phase B menu contract), resolved per
-        // active container — each owner registers its own commands and
-        // decides what "collapse" and "refresh" mean. Containers without a
-        // matching command simply don't offer the item; no dead rows.
+        // Item ids ARE command ids (Phase B menu contract). Each container's
+        // owner puts its own items here (contributes.menus
+        // "viewContainer/title", when: activeViewContainer == '<id>') and
+        // decides what they mean; the header names no tool. Items whose
+        // command is gone are not offered; no dead rows.
         const activeId = this._contributionHandler.activeSidebarContainerId;
+        // Read the when clauses against the container actually showing.
+        this._workbenchContext?.setActiveViewContainer(activeId ?? 'sidebar');
         const cmdService = this._services.get(ICommandService) as CommandService;
-        const collapseCmd = activeId === 'explorer-container' ? 'explorer.collapse' : undefined;
-        const refreshCmd = activeId === 'explorer-container' ? 'explorer.refresh'
-          : activeId === 'media-organizer-container' ? 'media-organizer.rescan'
-          : undefined;
-        const items = [
-          ...(collapseCmd && cmdService.hasCommand(collapseCmd)
-            ? [{ id: collapseCmd, label: 'Collapse All', group: '1_actions', keybinding: this._keybindingHint(collapseCmd) }]
-            : []),
-          ...(refreshCmd && cmdService.hasCommand(refreshCmd)
-            ? [{ id: refreshCmd, label: 'Refresh', group: '1_actions', keybinding: this._keybindingHint(refreshCmd) }]
-            : []),
-        ];
+        const items = (this._menuContribution?.getViewContainerTitleItems() ?? [])
+          .filter((m) => cmdService.hasCommand(m.commandId))
+          .map((m) => ({
+            id: m.commandId,
+            label: m.title ?? cmdService.getCommand(m.commandId)?.title ?? m.commandId,
+            group: m.group ?? '1_actions',
+            keybinding: this._keybindingHint(m.commandId),
+          }));
         if (items.length === 0) return;
         const menu = ContextMenu.show({
           items,

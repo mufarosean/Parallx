@@ -155,6 +155,18 @@ describe('the destructive class', () => {
 });
 
 describe('the prompt compiler', () => {
+  it('a facts node saved with the old "planner" key asks for the schedule', async () => {
+    const nodes: WorkflowNode[] = [
+      trigger,
+      { id: 'f', label: 'Facts', kind: 'context.facts', include: { planner: true, activity: false } },
+      { id: 'g', label: 'Mission', kind: 'action.agentTurn', prompt: 'Go.' },
+    ];
+    const gatherFacts = vi.fn(async () => 'SCHEDULE');
+    const deps = makeDeps({ gatherFacts });
+    await executeWorkflowRun(doc(nodes, [{ from: 't', to: 'f' }, { from: 'f', to: 'g' }]), trigger, ctx, deps, makeLedger());
+    expect(gatherFacts).toHaveBeenCalledWith({ schedule: true, activity: false });
+  });
+
   it('upstream context blocks compile into the mission, in walk order', async () => {
     const nodes: WorkflowNode[] = [
       trigger,

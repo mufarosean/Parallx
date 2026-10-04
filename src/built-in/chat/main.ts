@@ -51,7 +51,9 @@ import type {
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
 import { isBrowserToolName, BROWSER_TOOLS_NEED_A_CHAT } from '../../services/browserAutomationTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService, IAutonomyLogService, IAutonomyEventLog, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService, IPlannerQueryService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService, IAutonomyLogService, IAutonomyEventLog, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService } from '../../services/serviceTypes.js';
+import { getScheduleSources, listScheduleOpenTasks, listScheduleTaskFacts, getScheduleToday, getScheduleSyncHealth, captureScheduleFollowUp } from '../../services/scheduleSources.js';
+import { normalizeFactsInclude, type FactsInclude } from '../../services/workflows/workflowTypes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { IPythonEnvService } from '../../services/pythonEnvService.js';
 import { INotebookKernelService } from '../../services/notebookKernelService.js';
@@ -83,7 +85,7 @@ import { SurpriseAccumulator } from '../../openclaw/mind/surpriseAccumulator.js'
 import { cronForMinuteOfDay, habitActionForActivity, isSameHabitKey } from '../../openclaw/mind/habitDetector.js';
 import { createMindRememberTool } from './tools/mindTools.js';
 import { signalToSystemEvent } from '../../openclaw/openclawAutonomySignal.js';
-import { IAutonomySignalService } from '../../services/autonomySignalService.js';
+import { IAutonomySignalService, resolveSignalActor } from '../../services/autonomySignalService.js';
 import { shouldHeartbeatAcceptPath } from '../../openclaw/openclawHeartbeatFileFilter.js';
 import { CronService, ICronService, type HeartbeatWaker } from '../../openclaw/openclawCronService.js';
 import {
@@ -1723,34 +1725,35 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         // Context deps: the deterministic facts bundle (the heartbeat's
         // proven shape, from public DI seams, lazily resolved at fire
         // time) and template/page format exemplars via canvas commands.
-        const gatherWorkflowFacts = async (include: {
-          planner?: boolean; activity?: boolean; sync?: boolean; pages?: boolean;
-        }): Promise<string> => {
-          const all = include.planner === undefined && include.activity === undefined
+        const gatherWorkflowFacts = async (rawInclude: FactsInclude): Promise<string> => {
+          const include = normalizeFactsInclude(rawInclude);
+          const all = include.schedule === undefined && include.activity === undefined
             && include.sync === undefined && include.pages === undefined;
-          const want = (k: 'planner' | 'activity' | 'sync' | 'pages'): boolean => all || include[k] === true;
+          const want = (k: 'schedule' | 'activity' | 'sync' | 'pages'): boolean => all || include[k] === true;
           const blocks: string[] = [];
           const now = new Date();
           blocks.push(`Now: ${now.toLocaleString()}`);
-          if (want('planner') && api.services.has(IPlannerQueryService)) {
-            try {
-              const planner = api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService);
-              const [digest, tasks] = await Promise.all([
-                planner.getTodayDigest?.() ?? Promise.resolve(null),
-                planner.listOpenTasks(),
-              ]);
-              const lines: string[] = [];
-              if (digest) lines.push(`Today: ${digest.events} events, ${digest.tasksDue} tasks due.`);
-              for (const t of tasks.slice(0, 20)) {
-                lines.push(`- ${t.title}${t.dueAt ? ` (due ${new Date(t.dueAt).toLocaleDateString()})` : ''}`);
-              }
-              if (lines.length) blocks.push(`PLANNER:\n${lines.join('\n')}`);
-            } catch { /* omit the block */ }
+          // The schedule comes from whatever tools keep one (services/
+          // scheduleSources), one block per source, headed by its name.
+          if (want('schedule')) {
+            for (const source of getScheduleSources()) {
+              try {
+                const [digest, tasks] = await Promise.all([
+                  source.getToday?.() ?? Promise.resolve(null),
+                  source.listOpenTasks(),
+                ]);
+                const lines: string[] = [];
+                if (digest) lines.push(`Today: ${digest.events} events, ${digest.tasksDue} tasks due.`);
+                for (const t of tasks.slice(0, 20)) {
+                  lines.push(`- ${t.title}${t.dueAt ? ` (due ${new Date(t.dueAt).toLocaleDateString()})` : ''}`);
+                }
+                if (lines.length) blocks.push(`${source.name.toUpperCase()}:\n${lines.join('\n')}`);
+              } catch { /* omit the block */ }
+            }
           }
-          if (want('sync') && api.services.has(IPlannerQueryService)) {
+          if (want('sync')) {
             try {
-              const planner = api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService);
-              const health = await planner.getSyncHealth?.();
+              const health = await getScheduleSyncHealth();
               if (health?.failed) blocks.push(`SYNC: failing${health.detail ? ` (${health.detail})` : ''}`);
             } catch { /* omit */ }
           }
@@ -2326,6 +2329,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // M87 S4 — the deterministic lane's last result, surfaced through
     // parallx.heartbeat.status so silence is legible on the status board.
     let _lastTriggerLane: { at: number; delivered: number; suppressed: number; failed: number } | null = null;
+    // The tool that took the last heartbeat follow-up, named in the status pulse.
+    let _lastFollowUpSourceName: string | undefined;
 
     const executor = createHeartbeatTurnExecutor(
       surfaceRouter,
@@ -2385,13 +2390,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             return content ? parseHeartbeatPurpose(content).watches : [];
           } catch { return []; }
         },
-        // The user's open planner tasks — the second surface the review knows.
+        // The user's open tasks, from whatever tools keep them — the second
+        // surface the review knows.
         getWorkspaceTasks: async () => {
-          const planner = api.services.has(IPlannerQueryService)
-            ? api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService)
-            : undefined;
-          if (!planner) return [];
-          try { return await planner.listOpenTasks(); }
+          try { return await listScheduleOpenTasks(); }
           catch { return []; }
         },
         // The activity timeline — what the user actually DID since the last
@@ -2412,13 +2414,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         deterministicLane: async () => {
           const result = await runHeartbeatDeterministicLane({
           collectFacts: async () => {
-            const planner = api.services.has(IPlannerQueryService)
-              ? api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService)
-              : undefined;
             const [tasks, today, sync] = await Promise.all([
-              planner?.listTaskFacts?.() ?? Promise.resolve([]),
-              planner?.getTodayDigest?.() ?? Promise.resolve(null),
-              planner?.getSyncHealth?.() ?? Promise.resolve(null),
+              listScheduleTaskFacts(),
+              getScheduleToday(),
+              getScheduleSyncHealth(),
             ]);
             const plans = buildPlanFacts(chatService.getSessions().map((s) => ({
               sessionId: s.id,
@@ -2458,15 +2457,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             await storage?.set('parallx-heartbeat-trigger-ledger', JSON.stringify(ledger));
           },
           deliverTask: async (finding) => {
-            const planner = api.services.has(IPlannerQueryService)
-              ? api.services.get<import('../../services/serviceTypes.js').IPlannerQueryService>(IPlannerQueryService)
-              : undefined;
-            if (!planner?.captureHeartbeatTask) return false;
-            return planner.captureHeartbeatTask({
+            const filed = await captureScheduleFollowUp({
               title: finding.title,
               description: finding.detail,
               sourceKey: finding.key,
             });
+            if (filed) _lastFollowUpSourceName = filed.source.name;
+            return filed?.created ?? false;
           },
           deliverNotification: async (finding) => {
             const notifications = api.services.has(INotificationService)
@@ -2501,7 +2498,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
               surfaceId: 'status',
               contentType: 'text',
               content: `watchers: ${n} filed`,
-              metadata: { pulse: true, tooltip: 'Heartbeat filed follow-ups. See the planner review queue.' },
+              metadata: {
+                pulse: true,
+                tooltip: _lastFollowUpSourceName
+                  ? `Heartbeat filed follow-ups. See the ${_lastFollowUpSourceName.toLowerCase()} review queue.`
+                  : 'Heartbeat filed follow-ups.',
+              },
             }, 'heartbeat').catch(() => {});
           }
           return result;
@@ -2638,18 +2640,19 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           // actor stamp (canvas marks agent-mutated pages): a page the AGENT
           // created must never count as the user's behavior — not in the
           // conscience meter, not in habit detection. Unstamped signals from
-          // canvas/planner default to user (they are user-gesture surfaces).
-          const isUserAction = (sig.source === 'canvas' || sig.source === 'planner') && sig.actor !== 'agent';
+          // canvas default to user (a user-gesture surface). Any other
+          // publisher counts as the user's action only when it stamps
+          // actor 'user' itself; the core names no tool here.
+          const isUserAction = resolveSignalActor(sig) === 'user';
           const salient = sig.severity === 'warn' || sig.severity === 'urgent' || isUserAction;
           if (salient && unifiedConfigService.getEffectiveConfig().heartbeat.senseExtensionSignals) {
             heartbeatRunner.pushEvent(signalToSystemEvent(sig));
           }
-          // Canvas/planner USER signals are the user DOING work — count them in
-          // the conscience denominator. Canvas pages live in SQLite, so the
+          // USER signals are the user DOING work — count them in the
+          // conscience denominator. Canvas pages live in SQLite, so the
           // file-edit recordHuman above never sees this work; without this line
           // the meter reads canvas-heavy days as "the human did nothing".
-          // (planner emits no signals yet — the clause is forward wiring, and
-          // planner work is still invisible to the meter until it does.)
+          // A tool's work joins the meter when it stamps actor 'user'.
           if (isUserAction) void mindService?.recordHuman(Date.now());
           // USER signals feed habit detection (agent-caused ones would train
           // fake "user habits" at machine-scheduled times). When a habit newly

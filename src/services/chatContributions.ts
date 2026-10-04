@@ -1,13 +1,15 @@
-// chatContributions.ts — chat slash commands and skills tools bring
+// chatContributions.ts — chat slash commands, skills and drop handlers tools bring
 //
-// A tool adds to the chat while it runs: a slash command or a skill. Turned
-// off, both go. Nothing is written into the workspace: a contributed skill
+// A tool adds to the chat while it runs: a slash command, a skill, or a
+// handler for its own drag data dropped on the chat input. Turned off, all
+// go. Nothing is written into the workspace: a contributed skill
 // lives here, beside the ones the user keeps in .parallx/skills/ (which win
 // on a name clash).
 //
 // Module-global hub (contributions survive activation order), fed through
-// the per-tool API (apiFactory: api.chat.registerSlashCommand / registerSkill)
-// and read by the command registries and the skill loader.
+// the per-tool API (apiFactory: api.chat.registerSlashCommand / registerSkill
+// / registerDropHandler) and read by the command registries, the skill loader
+// and the chat input.
 
 import { Emitter, type Event } from '../platform/events.js';
 import { toDisposable, type IDisposable } from '../platform/lifecycle.js';
@@ -80,4 +82,53 @@ export function registerContributedSkill(name: string, skill: ContributedSkill):
 export function contributedSkillFile(path: string): string | undefined {
   const m = /^\.parallx\/skills\/([a-z][a-z0-9-]{0,40})\/SKILL\.md$/.exec(String(path).replace(/\\/g, '/').replace(/^\.\//, ''));
   return m ? _skills.get(m[1])?.content : undefined;
+}
+
+// ── Drop handlers: drags a tool's own views start, accepted by the chat input ──
+//
+// The chat input attaches dropped files (file URIs, absolute paths, OS file
+// drags) by itself. A tool whose views drag their own data type (say, items
+// from a library) registers a handler for that type while it runs: the input
+// then accepts the drag, and when the drop carried no file it could attach,
+// the handler says what to attach or what to tell the user.
+
+/** What a drop handler makes of a drop. */
+export interface ChatDropResult {
+  /** Absolute file paths to attach. */
+  readonly paths?: readonly string[];
+  /** A message shown in the input when nothing could be attached. */
+  readonly warning?: string;
+}
+
+export interface ContributedChatDropHandler {
+  /** The drag data type it handles (e.g. `application/x-mytool-items`). */
+  readonly mimeType: string;
+  /** Called with the drag's data of that type, read when the drop happened. */
+  resolve(data: string): ChatDropResult | undefined | Promise<ChatDropResult | undefined>;
+  readonly ownerToolId: string;
+}
+
+const _dropHandlers: ContributedChatDropHandler[] = [];
+
+const MIME = /^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/i;
+
+export function registerChatDropHandler(handler: ContributedChatDropHandler): IDisposable {
+  if (!handler || typeof handler.mimeType !== 'string' || !MIME.test(handler.mimeType)) {
+    throw new Error(`[api.chat] Drop handler type "${String(handler?.mimeType)}" must be a media type like "application/x-name".`);
+  }
+  if (typeof handler.resolve !== 'function') throw new Error(`[api.chat] Drop handler for "${handler.mimeType}" needs resolve().`);
+  const entry: ContributedChatDropHandler = { ...handler, mimeType: handler.mimeType.toLowerCase() };
+  _dropHandlers.push(entry);
+  _onDidChange.fire();
+  return toDisposable(() => {
+    const i = _dropHandlers.indexOf(entry);
+    if (i >= 0) { _dropHandlers.splice(i, 1); _onDidChange.fire(); }
+  });
+}
+
+/** The registered handlers for any of these drag types, in registration order. */
+export function getChatDropHandlers(types?: readonly string[]): readonly ContributedChatDropHandler[] {
+  if (!types) return [..._dropHandlers];
+  const wanted = new Set(types.map((t) => t.toLowerCase()));
+  return _dropHandlers.filter((h) => wanted.has(h.mimeType));
 }

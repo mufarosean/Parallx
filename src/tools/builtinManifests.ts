@@ -59,6 +59,13 @@ export const EXPLORER_MANIFEST: IToolManifest = {
     viewContainers: [
       { id: 'explorer-container', title: 'Explorer', icon: 'folder', location: 'sidebar' as const },
     ],
+    // The sidebar header's More Actions menu while the Explorer is showing.
+    menus: {
+      'viewContainer/title': [
+        { command: 'explorer.collapse', title: 'Collapse All', group: '1_actions', when: "activeViewContainer == 'explorer-container'" },
+        { command: 'explorer.refresh', title: 'Refresh', group: '1_actions', when: "activeViewContainer == 'explorer-container'" },
+      ],
+    },
     // Manifest order IS stacked-section order (Retirement 4a: views seat in
     // contribution order). Files first, Open Editors below — the layout the
     // old builtin boot loop produced by accident and users rely on.

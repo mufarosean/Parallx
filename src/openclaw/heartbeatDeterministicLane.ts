@@ -18,12 +18,12 @@ import {
 } from './heartbeatTriggers.js';
 
 export interface IHeartbeatLaneDeps {
-  /** Collect the beat's facts (planner tasks + session plans). */
+  /** Collect the beat's facts (schedule-source tasks + session plans). */
   readonly collectFacts: () => Promise<IHeartbeatFacts>;
   /** Cooldown ledger persistence (survives restarts). */
   readonly loadLedger: () => Promise<IHeartbeatLedger>;
   readonly saveLedger: (ledger: IHeartbeatLedger) => Promise<void>;
-  /** Deliver a follow-up-shaped finding into the planner review queue.
+  /** Deliver a follow-up-shaped finding to a schedule source's review queue.
    *  Returns true when a task was created (false = duplicate already open). */
   readonly deliverTask: (finding: IHeartbeatFinding) => Promise<boolean>;
   /** Deliver an alert/digest-shaped finding as an in-app notification. */
