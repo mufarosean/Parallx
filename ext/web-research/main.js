@@ -783,6 +783,8 @@ function _registerTools(api) {
     },
     handler: async (args, token) => webSearchTool(args, getTurnId(token)),
     requiresConfirmation: false,
+    reachesNetwork: true,
+    untrustedOutput: true,
   }));
 
   _commandDisposables.push(api.chat.registerTool('webFetch', {
@@ -796,6 +798,8 @@ function _registerTools(api) {
     },
     handler: async (args, token) => webFetchTool(args, getTurnId(token)),
     requiresConfirmation: false,
+    reachesNetwork: true,
+    untrustedOutput: true,
   }));
 
   // Research output is plain canvas now: the research-topic skill creates a

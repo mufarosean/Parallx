@@ -54,9 +54,8 @@ export const M70_EXCLUDED_COMMANDS: ReadonlySet<string> = new Set([
   // Destructive content
   'explorer.delete',
   'canvas.deletePage',
-  'budget.importCsv',
-  'media-organizer.emptyTrash',
-  'media-organizer.moveToTrash',
+  // A tool's own commands reach the AI only if its manifest opts each one in
+  // (aiInvocable); destructive ones simply don't. The core names no tool here.
   // Memory editor surfaces (the AI navigates its own memory tooling)
   'memory.openDurable',
   'memory.openTodayLog',

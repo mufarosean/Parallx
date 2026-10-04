@@ -5,6 +5,7 @@ import {
   isToolDeniedByProfile,
   resolveToolProfile,
   getToolColor,
+  markToolUntrusted,
   markTurnTainted,
   isTurnTainted,
   beginNewTurn,
@@ -374,9 +375,15 @@ describe('buildToolDefinitionFromSkillCatalogEntry', () => {
 // ---------------------------------------------------------------------------
 
 describe('getToolColor (M65 Iter 2)', () => {
-  it('classifies web tools as red', () => {
+  it('a tool is red only while it declares untrusted output', () => {
+    expect(getToolColor('webSearch')).toBe('green');
+    const a = markToolUntrusted('webSearch');
+    const b = markToolUntrusted('webSearch');
     expect(getToolColor('webSearch')).toBe('red');
-    expect(getToolColor('webFetch')).toBe('red');
+    a.dispose(); a.dispose();
+    expect(getToolColor('webSearch')).toBe('red');
+    b.dispose();
+    expect(getToolColor('webSearch')).toBe('green');
   });
 
   it('classifies consequential writes as blue', () => {

@@ -1166,6 +1166,17 @@ export interface IChatTool {
    * through to the legacy "ungrouped" rendering.
    */
   readonly category?: ToolCategory;
+  /**
+   * The tool reaches the internet. Declared by the tool that registers it;
+   * a sealed workspace hides it.
+   */
+  readonly reachesNetwork?: boolean;
+  /**
+   * What the tool returns comes from outside (a web page, a search result)
+   * and may carry instructions. Declared by the tool that registers it; a
+   * turn that reads it is tainted, so later writes ask first.
+   */
+  readonly untrustedOutput?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

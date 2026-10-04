@@ -504,3 +504,26 @@ describe('LanguageModelToolsService', () => {
     });
   });
 });
+
+describe('tools declare network reach and untrusted output themselves', () => {
+  it('a sealed workspace hides only tools that declare reachesNetwork', async () => {
+    const service = new LanguageModelToolsService();
+    let sealed = false;
+    service.setSealedProvider(() => sealed);
+    service.registerTool(createTool({ name: 'net_tool', reachesNetwork: true, source: 'bridge', ownerToolId: 'any.tool' }));
+    service.registerTool(createTool({ name: 'local_tool', source: 'bridge', ownerToolId: 'any.tool' }));
+    const names = () => service.getToolDefinitions().map((d) => d.name).sort();
+    expect(names()).toEqual(['local_tool', 'net_tool']);
+    sealed = true;
+    expect(names()).toEqual(['local_tool']);
+  });
+
+  it('untrustedOutput makes the tool red while it is registered', async () => {
+    const { getToolColor } = await import('../../src/openclaw/openclawToolPolicy');
+    const service = new LanguageModelToolsService();
+    const reg = service.registerTool(createTool({ name: 'fetch_thing', untrustedOutput: true }));
+    expect(getToolColor('fetch_thing')).toBe('red');
+    reg.dispose();
+    expect(getToolColor('fetch_thing')).toBe('green');
+  });
+});

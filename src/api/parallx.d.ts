@@ -1548,6 +1548,13 @@ export interface ChatToolDefinition {
   readonly parameters: Record<string, unknown>;
   readonly handler: (args: Record<string, unknown>, token: CancellationToken) => Promise<ChatToolResult>;
   readonly requiresConfirmation: boolean;
+  /** The tool reaches the internet. A sealed workspace hides it. */
+  readonly reachesNetwork?: boolean;
+  /**
+   * What the tool returns comes from outside (a web page, a search result) and
+   * may carry instructions. A turn that reads it is tainted: later writes ask first.
+   */
+  readonly untrustedOutput?: boolean;
 }
 
 /**

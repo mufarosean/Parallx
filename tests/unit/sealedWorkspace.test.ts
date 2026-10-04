@@ -8,7 +8,6 @@ import {
   SEALED_WORKSPACE_SETTING,
   registerSealedSetting,
   isWorkspaceSealed,
-  isSealedOutOwner,
   applyWorkspaceSeal,
 } from '../../src/services/sealedWorkspace';
 
@@ -43,13 +42,6 @@ describe('sealed workspace', () => {
     expect(isWorkspaceSealed(reg)).toBe(true);
     expect(reg.registrations()).toBe(1);
     expect(isWorkspaceSealed(undefined)).toBe(false);
-  });
-
-  it('hides the network tool owners and nothing else', () => {
-    expect(isSealedOutOwner('parallx.web-research')).toBe(true);
-    expect(isSealedOutOwner('parallx.browser')).toBe(true);
-    expect(isSealedOutOwner('parallx-community.media-organizer')).toBe(false);
-    expect(isSealedOutOwner(undefined)).toBe(false);
   });
 
   it('pushes the state to the title bar and the egress chokepoint', async () => {

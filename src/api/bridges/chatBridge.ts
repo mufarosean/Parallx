@@ -103,6 +103,10 @@ export class ChatBridge {
       parameters: Record<string, unknown>;
       handler: (args: Record<string, unknown>, token: ICancellationToken) => Promise<IToolResult>;
       requiresConfirmation: boolean;
+      /** The tool reaches the internet (a sealed workspace hides it). */
+      reachesNetwork?: boolean;
+      /** What it returns comes from outside and may carry instructions (taints the turn). */
+      untrustedOutput?: boolean;
     },
   ): IDisposable {
     this._throwIfDisposed();
@@ -119,6 +123,8 @@ export class ChatBridge {
       requiresConfirmation: tool.requiresConfirmation,
       source: 'bridge',
       ownerToolId: this._toolId,
+      reachesNetwork: tool.reachesNetwork === true,
+      untrustedOutput: tool.untrustedOutput === true,
     };
 
     const disposable = this._toolsService.registerTool(chatTool);

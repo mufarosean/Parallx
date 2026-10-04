@@ -427,10 +427,25 @@ export type ToolColor = 'red' | 'blue' | 'green';
  * MCP-prefixed tools (`mcp__*`) are handled dynamically in `getToolColor()` —
  * MCP servers are external and their outputs are untrusted.
  */
-const RED_TOOLS: ReadonlySet<string> = new Set<string>([
-  'webSearch',
-  'webFetch',
-]);
+const RED_TOOLS = new Map<string, number>();
+
+/**
+ * Mark a tool red while it is registered. A tool declares this itself
+ * (`untrustedOutput` on registration: web search and fetch do); the core
+ * names no tool here.
+ */
+export function markToolUntrusted(toolName: string): { dispose(): void } {
+  RED_TOOLS.set(toolName, (RED_TOOLS.get(toolName) ?? 0) + 1);
+  let done = false;
+  return {
+    dispose: () => {
+      if (done) return;
+      done = true;
+      const n = (RED_TOOLS.get(toolName) ?? 1) - 1;
+      if (n > 0) RED_TOOLS.set(toolName, n); else RED_TOOLS.delete(toolName);
+    },
+  };
+}
 
 /**
  * Blue tools — consequential writes / mutations that must NOT fire silently

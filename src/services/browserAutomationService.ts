@@ -230,6 +230,7 @@ export class BrowserAutomationService extends Disposable implements IBrowserAuto
           requiresConfirmation: spec.requiresConfirmation,
           source: 'bridge',
           ownerToolId,
+          reachesNetwork: true,
           handler: (args, token, invocation) => this._invoke(spec, args, token, invocation),
         }));
       }

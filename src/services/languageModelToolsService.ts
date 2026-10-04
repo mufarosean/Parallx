@@ -27,7 +27,7 @@ import type {
 } from './chatTypes.js';
 import type { PermissionService } from './permissionService.js';
 import { PolicyDecisionPoint } from './policyDecisionPoint.js';
-import { isSealedOutOwner } from './sealedWorkspace.js';
+import { markToolUntrusted } from '../openclaw/openclawToolPolicy.js';
 import {
   markTurnTainted,
 } from '../openclaw/openclawToolPolicy.js';
@@ -231,7 +231,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   private _isOwnerExtensionDisabled(tool: IChatTool): boolean {
     // A sealed workspace hides the network-reaching extensions' tools
     // outright; this is a hard gate, not a toggle the user set.
-    if (this._sealedProvider && isSealedOutOwner(tool.ownerToolId) && this._sealedProvider()) return true;
+    if (this._sealedProvider && tool.reachesNetwork && this._sealedProvider()) return true;
     if (!this._toolEnablement) return false;
     if (tool.source !== 'bridge') return false;
     if (!tool.ownerToolId) return false;
@@ -263,10 +263,12 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     }
 
     this._tools.set(canonical, registered);
+    const untrusted = registered.untrustedOutput ? markToolUntrusted(canonical) : undefined;
     this._onDidChangeTools.fire();
 
     return {
       dispose: () => {
+        untrusted?.dispose();
         this._tools.delete(canonical);
         this._onDidChangeTools.fire();
       },

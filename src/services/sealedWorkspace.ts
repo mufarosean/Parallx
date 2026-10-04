@@ -5,7 +5,7 @@
 //   - cloud model providers are not registered, whatever the per-workspace
 //     opt-in says (chat/main.ts syncProviders);
 //   - tools that reach the network are hidden from the model and refused
-//     if called (languageModelToolsService, by owner extension);
+//     if called (languageModelToolsService; a tool declares reachesNetwork);
 //   - the main-process egress chokepoint refuses every request
 //     (electron/webFetchBridge.cjs, told through the preload);
 //   - the title bar shows a seal so the state is never silent.
@@ -16,9 +16,6 @@
 import type { ISettingsRegistryService } from './settingsRegistryService.js';
 
 export const SEALED_WORKSPACE_SETTING = 'workspace.sealed';
-
-/** Extensions whose tools reach the network. Hidden and refused while sealed. */
-export const SEALED_TOOL_OWNERS: ReadonlySet<string> = new Set(['parallx.web-research', 'parallx.browser']);
 
 type RegistryLike = Pick<ISettingsRegistryService, 'register' | 'getSchema' | 'getValue'>;
 
@@ -44,11 +41,6 @@ export function isWorkspaceSealed(registry: RegistryLike | undefined): boolean {
   } catch {
     return false;
   }
-}
-
-/** Whether a tool's owner extension is one the seal hides. */
-export function isSealedOutOwner(ownerToolId: string | undefined): boolean {
-  return !!ownerToolId && SEALED_TOOL_OWNERS.has(ownerToolId);
 }
 
 interface SealSurfaces {
