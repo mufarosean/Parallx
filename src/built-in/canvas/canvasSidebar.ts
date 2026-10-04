@@ -24,6 +24,7 @@ import { ContextMenu } from '../../ui/contextMenu.js';
 import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, PAGE_ICON_RECENT_STORAGE_KEY, resolvePageIcon, svgIcon, renderPageIconHtml } from './config/blockRegistry.js';
 import { CanvasSidebarDragState } from './canvasSidebarDragState.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
+import { pageLinkHref } from './pageLinks.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -218,6 +219,9 @@ export class CanvasSidebar {
     this._disposables.push(
       this._dataService.onDidChangePage((event) => {
         if (!doesPageChangeAffectSidebar(event)) {
+          // A body edit moves the page up in Recent (it used to be ignored);
+          // only Recent is re-read, a while after the typing.
+          if (event.changedFields?.includes('content')) this._scheduleRecentsRefresh();
           return;
         }
         this._requestRefreshTree();
@@ -237,6 +241,7 @@ export class CanvasSidebar {
         this._dismissTrashPanel();
         this._dismissUndoToast();
         if (this._typeAheadTimer) clearTimeout(this._typeAheadTimer);
+        if (this._recentsTimer) clearTimeout(this._recentsTimer);
         this._treeList = null;
         for (const d of this._disposables) d.dispose();
         this._disposables.length = 0;
@@ -300,6 +305,21 @@ export class CanvasSidebar {
     }
   }
 
+  private _recentsTimer: ReturnType<typeof setTimeout> | null = null;
+  private _scheduleRecentsRefresh(): void {
+    if (this._recentsTimer) clearTimeout(this._recentsTimer);
+    this._recentsTimer = setTimeout(() => {
+      this._recentsTimer = null;
+      void this._dataService.getRecentPages(5).then((recents) => {
+        const same = recents.length === this._recentPages.length
+          && recents.every((p, i) => p.id === this._recentPages[i]?.id);
+        if (same) return;
+        this._recentPages = recents;
+        this._renderTree();
+      }).catch(() => { /* the next full refresh catches up */ });
+    }, 1500);
+  }
+
   private async _refreshTree(): Promise<void> {
     const refreshSeq = ++this._refreshSeq;
 
@@ -328,6 +348,10 @@ export class CanvasSidebar {
       return;
     }
     if (refreshSeq !== this._refreshSeq) return;
+    if (this._pendingRevealId && this._findNode(this._tree, this._pendingRevealId)) {
+      this._revealInTree(this._pendingRevealId);
+      return;
+    }
     this._renderTree();
   }
 
@@ -398,7 +422,9 @@ export class CanvasSidebar {
     }
 
     // ── Favorites section ──
-    if (this._favoritedPages.length > 0) {
+    // Hidden while filtering: the filtered tree is the result, and Enter opens
+    // its first row, which must be a match.
+    if (!this._filterQuery && this._favoritedPages.length > 0) {
       const favSection = $('div.canvas-sidebar-section.canvas-sidebar-favorites');
 
       const favLabel = $('div.canvas-sidebar-section-label');
@@ -718,7 +744,10 @@ export class CanvasSidebar {
     if (hasChildren) {
       row.classList.add('canvas-node--has-children');
       if (isExpanded) row.classList.add('canvas-node--expanded');
+      row.setAttribute('aria-expanded', String(isExpanded));
     }
+    row.setAttribute('aria-level', String(depth + 1));
+    row.setAttribute('aria-selected', String(node.id === this._selectedPageId));
 
     // Icon area — shared container so chevron can overlay the icon
     const iconArea = $('span.canvas-node-icon-area');
@@ -1310,10 +1339,34 @@ export class CanvasSidebar {
     // Editor IDs for canvas pages are formatted as "parallx.canvas:canvas:<pageId>"
     // or just the instanceId which is the pageId
     const pageId = this._extractPageIdFromEditorId(active.id);
-    if (pageId && pageId !== this._selectedPageId) {
+    // Revealed once per page that becomes active, also when a click on a
+    // Recent or Favorites row already selected it.
+    if (pageId && pageId !== this._activePageId) {
+      this._activePageId = pageId;
       this._selectedPageId = pageId;
-      this._renderTree();
+      this._revealInTree(pageId);
     }
+  }
+  private _activePageId: string | null = null;
+  private _pendingRevealId: string | null = null;
+
+  /** The open page is shown in the tree: its ancestors open and its row
+   *  scrolls into view (a page deep in a closed branch used to have no
+   *  visible selection at all). */
+  private _revealInTree(pageId: string): void {
+    const target = this._findNode(this._tree, pageId);
+    // A page opened as it is created is not in the tree yet; the reload
+    // that brings it in reveals it.
+    this._pendingRevealId = target ? null : pageId;
+    let opened = false;
+    let parentId = target?.parentId ?? null;
+    while (parentId) {
+      if (!this._expandedIds.has(parentId)) { this._expandedIds.add(parentId); opened = true; }
+      parentId = this._findNode(this._tree, parentId)?.parentId ?? null;
+    }
+    this._renderTree();
+    if (opened) this._onExpandStateChanged?.(this._expandedIds);
+    this._visibleTreeRows().find((el) => el.getAttribute('data-page-id') === pageId)?.scrollIntoView?.({ block: 'nearest' });
   }
 
   private _extractPageIdFromEditorId(editorId: string): string | null {
@@ -1666,8 +1719,12 @@ export class CanvasSidebar {
     // by a concurrent DB event firing mid-drag.
     this._dragState.start(node.id, this._tree);
     if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', node.id);
+      // A row dropped into a page becomes a link to it (it used to insert
+      // the page's id as text). Moves inside the tree use the drag state.
+      const title = node.title || 'Untitled';
+      e.dataTransfer.effectAllowed = 'copyMove';
+      e.dataTransfer.setData('text/plain', title);
+      e.dataTransfer.setData('text/html', `<a href="${pageLinkHref(node.id)}">${escapeHtml(title)}</a>`);
     }
   }
 
@@ -1856,6 +1913,7 @@ export class CanvasSidebar {
       this._clearMultiSelection();
       return;
     }
+    if (this._handleTreeNavKey(e)) return;
     if (e.key === 'Delete' && this._selectedPageId) {
       e.preventDefault();
       this._deletePage(this._selectedPageId);
@@ -1912,6 +1970,71 @@ export class CanvasSidebar {
       }
     }
   };
+
+  /** The Pages section's rows as shown (collapsed children left out), top
+   *  to bottom. Recent and Favorites copies are skipped so each page is
+   *  one stop. */
+  private _visibleTreeRows(): HTMLElement[] {
+    if (!this._treeList) return [];
+    return Array.from(this._treeList.querySelectorAll<HTMLElement>('.canvas-node[role="treeitem"][data-page-id]'))
+      .filter((el) => !el.closest('.canvas-sidebar-favorites, .canvas-sidebar-recents') && el.getClientRects().length > 0);
+  }
+
+  /** Arrow keys walk the tree the way a file tree does: Up and Down move,
+   *  Right opens a page's children or steps into them, Left closes them or
+   *  steps to the parent, Home and End jump, Enter opens the page. The
+   *  tree had none of this. Returns true when the key was used. */
+  private _handleTreeNavKey(e: KeyboardEvent): boolean {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return false;
+    // Keys typed into a button or field inside the tree stay theirs.
+    const target = e.target as HTMLElement | null;
+    if (target && target !== this._treeList && !target.classList.contains('canvas-node')) return false;
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'].includes(e.key)) return false;
+    const rows = this._visibleTreeRows();
+    if (rows.length === 0) return false;
+    const index = rows.findIndex((el) => el.getAttribute('data-page-id') === this._selectedPageId);
+    const current = index >= 0 ? this._findNode(this._tree, this._selectedPageId!) : null;
+    let nextId: string | null = null;
+    switch (e.key) {
+      case 'ArrowDown': nextId = rows[index < 0 ? 0 : Math.min(index + 1, rows.length - 1)].getAttribute('data-page-id'); break;
+      case 'ArrowUp': nextId = rows[index < 0 ? 0 : Math.max(index - 1, 0)].getAttribute('data-page-id'); break;
+      case 'Home': nextId = rows[0].getAttribute('data-page-id'); break;
+      case 'End': nextId = rows[rows.length - 1].getAttribute('data-page-id'); break;
+      case 'ArrowRight': {
+        if (!current || current.children.length === 0) break;
+        if (rows[index].getAttribute('aria-expanded') !== 'true') {
+          e.preventDefault();
+          this._toggleExpand(current.id);
+          return true;
+        }
+        nextId = current.children[0].id;
+        break;
+      }
+      case 'ArrowLeft': {
+        if (!current) break;
+        if (rows[index].getAttribute('aria-expanded') === 'true' && this._expandedIds.has(current.id)) {
+          e.preventDefault();
+          this._toggleExpand(current.id);
+          return true;
+        }
+        nextId = current.parentId;
+        break;
+      }
+      case 'Enter': {
+        if (!current) return false;
+        e.preventDefault();
+        void this._selectAndOpenPage(current);
+        return true;
+      }
+    }
+    e.preventDefault();
+    if (nextId && nextId !== this._selectedPageId) {
+      this._selectedPageId = nextId;
+      this._renderTree();
+      this._visibleTreeRows().find((el) => el.getAttribute('data-page-id') === nextId)?.scrollIntoView?.({ block: 'nearest' });
+    }
+    return true;
+  }
 
   /**
    * Show an undo toast (M77 Phase 11.8). The toast is a non-modal
@@ -2068,4 +2191,8 @@ export class CanvasSidebar {
   set onExpandStateChanged(cb: ((expandedIds: ReadonlySet<string>) => void) | null) {
     this._onExpandStateChanged = cb;
   }
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 }

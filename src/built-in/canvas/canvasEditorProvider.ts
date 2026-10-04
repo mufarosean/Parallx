@@ -849,8 +849,9 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     // Subscribe to page changes for bidirectional sync (Task 7.2)
     this._saveDisposables.add(
       this._dataService.onDidChangePage((event) => {
+        this._pageChrome.syncBreadcrumbs(event);
         if (event.pageId !== this._pageId || !event.page) return;
-        this._pageChrome.syncPageChange(event.page);
+        this._pageChrome.syncPageChange(event.page, event.changedFields);
         this._pageChrome.applyPageSettings();
       }),
     );

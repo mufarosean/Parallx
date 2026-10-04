@@ -353,7 +353,24 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     if (result.error) throw new Error(result.error.message);
 
     const pages = (result.rows ?? []).map(rowToPage);
-    return this._assembleTree(pages);
+    const tree = this._assembleTree(pages);
+    // The databases the app keeps for its own bookkeeping ("Page properties")
+    // are not pages the user made, so the tree leaves them out (they showed
+    // up as a stray root page). Tags stays: it lists the tagged pages.
+    let hidden: Set<string>;
+    try {
+      const internal = await this._db.all(
+        "SELECT page_id FROM databases WHERE role IN ('page-properties', 'migrated-properties')",
+      );
+      hidden = new Set((internal.rows ?? []).map((r) => String((r as { page_id: unknown }).page_id)));
+    } catch {
+      hidden = new Set();
+    }
+    if (hidden.size === 0) return tree;
+    const prune = (nodes: IPageTreeNode[]): IPageTreeNode[] => nodes
+      .filter((n) => !hidden.has(n.id))
+      .map((n) => ({ ...n, children: prune(n.children as IPageTreeNode[]) }));
+    return prune(tree);
   }
 
   /**

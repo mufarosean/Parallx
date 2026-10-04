@@ -7,8 +7,8 @@
 import type { Editor } from '@tiptap/core';
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import type { IEditorInput } from '../../../editor/editorInput.js';
-import type { IPage, ICanvasDataService, SaveStateEvent } from '../canvasTypes.js';
-import { SaveStateKind } from '../canvasTypes.js';
+import type { IPage, ICanvasDataService, SaveStateEvent, PageChangeEvent, PageMutationField } from '../canvasTypes.js';
+import { SaveStateKind, PageChangeKind } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
@@ -46,6 +46,8 @@ export interface PageChromeHost {
   }) => void;
   /** Ask before moving a page to the Trash (the same question everywhere). */
   readonly confirmMoveToTrash?: (title: string) => Promise<boolean>;
+  /** Tells a database page apart, so a breadcrumb opens it in its own editor. */
+  readonly databaseService?: { isDatabase(pageId: string): boolean };
 }
 
 export interface PageChromeOptions {
@@ -68,6 +70,8 @@ export class PageChromeController {
   private _coverEl: HTMLElement | null = null;
   private _coverControls: HTMLElement | null = null;
   private _breadcrumbsEl: HTMLElement | null = null;
+  /** The pages the breadcrumb trail shows, root first. */
+  private _ancestorIds: string[] = [];
   private _breadcrumbCurrentIcon: HTMLElement | null = null;
   private _breadcrumbCurrentText: HTMLElement | null = null;
   private _iconEl: HTMLElement | null = null;
@@ -80,6 +84,7 @@ export class PageChromeController {
   // ── Page state ──
   private _currentPage: IPage | null = null;
   private _titleSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  private _pendingTitle: string | null = null;
   private _isRepositioning = false;
 
   constructor(
@@ -117,8 +122,11 @@ export class PageChromeController {
   }
 
   /** Sync UI after an external page change event. */
-  syncPageChange(page: IPage): void {
-    this.dismissPopups();
+  syncPageChange(page: IPage, changedFields?: readonly PageMutationField[]): void {
+    // A body save changes nothing the ⋯ menu shows, so it stays open while
+    // the page saves (it used to close on every keystroke's save).
+    const contentOnly = !!changedFields?.length && changedFields.every((f) => f === 'content' || f === 'contentSchemaVersion');
+    if (!contentOnly) this.dismissPopups();
     this._currentPage = page;
 
     // Update title if changed externally
@@ -265,9 +273,20 @@ export class PageChromeController {
     this._detachPageMenuDismiss = null;
   }
 
+  /** Saves a title typed in the last moments (closing the page used to drop it). */
+  private _flushTitle(): void {
+    if (this._titleSaveTimer) clearTimeout(this._titleSaveTimer);
+    this._titleSaveTimer = null;
+    const title = this._pendingTitle;
+    this._pendingTitle = null;
+    if (title === null) return;
+    void this._host.dataService.updatePage(this._host.pageId, { title })
+      .catch((err) => console.error('[Canvas] Title save failed:', err));
+  }
+
   dispose(): void {
     this.dismissPopups();
-    if (this._titleSaveTimer) clearTimeout(this._titleSaveTimer);
+    this._flushTitle();
     if (this._saveStateClearTimer) clearTimeout(this._saveStateClearTimer);
     this._saveStateSub?.dispose();
     this._saveStateSub = null;
@@ -554,9 +573,8 @@ export class PageChromeController {
         this._breadcrumbCurrentText.textContent = newTitle;
       }
       if (this._titleSaveTimer) clearTimeout(this._titleSaveTimer);
-      this._titleSaveTimer = setTimeout(() => {
-        this._host.dataService.updatePage(this._host.pageId, { title: newTitle });
-      }, 300);
+      this._pendingTitle = newTitle;
+      this._titleSaveTimer = setTimeout(() => this._flushTitle(), 300);
     });
 
     // Enter → move focus to editor, prevent newline
@@ -584,10 +602,25 @@ export class PageChromeController {
     }
   }
 
+  /** Any page changed: the trail follows a move of this page or an ancestor,
+   *  and an ancestor's rename or new icon (it used to stay as first built). */
+  syncBreadcrumbs(event: PageChangeEvent): void {
+    const touchesTrail = event.pageId === this._host.pageId || this._ancestorIds.includes(event.pageId);
+    if (!touchesTrail) return;
+    if (event.kind === PageChangeKind.Moved) { void this._loadBreadcrumbs(); return; }
+    if (event.pageId === this._host.pageId) return;
+    const relabeled = event.kind !== PageChangeKind.Updated
+      || !event.changedFields?.length
+      || event.changedFields.some((f) => f === 'title' || f === 'icon');
+    if (relabeled) void this._loadBreadcrumbs();
+  }
+
   private async _loadBreadcrumbs(): Promise<void> {
     if (!this._breadcrumbsEl || !this._host.pageId) return;
     try {
       const ancestors = await this._host.dataService.getAncestors(this._host.pageId);
+      if (!this._breadcrumbsEl) return;
+      this._ancestorIds = ancestors.map((a) => a.id);
       this._breadcrumbsEl.style.display = '';
       this._breadcrumbsEl.innerHTML = '';
 
@@ -601,7 +634,7 @@ export class PageChromeController {
         crumb.appendChild(crumbText);
         crumb.addEventListener('click', () => {
           this._host.openEditor?.({
-            typeId: 'canvas',
+            typeId: this._host.databaseService?.isDatabase(ancestors[i].id) ? 'database' : 'canvas',
             title: ancestors[i].title,
             icon: ancestors[i].icon ?? undefined,
             instanceId: ancestors[i].id,
@@ -812,11 +845,11 @@ export class PageChromeController {
       }
     };
 
+    // A drag only moves the picture; Save Position stores it and Cancel puts
+    // it back (each drag used to be saved at once, so Cancel undid nothing).
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      const finalOffset = this._currentPage?.coverYOffset ?? 0.5;
-      this._host.dataService.updatePage(this._host.pageId, { coverYOffset: finalOffset });
     };
 
     const originalOffset = this._currentPage?.coverYOffset ?? 0.5;

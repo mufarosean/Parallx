@@ -117,7 +117,7 @@ const GATE_RULES: Record<string, string[]> = {
   // contentSchema: the versioned-envelope decoder for the md-export action
   // (raw JSON.parse of page.content hands the wrapper to the converter and
   // silently exports title-only markdown — the M93 flashcards bug).
-  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState', 'contentSchema'],
+  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry', 'canvasSidebarDragState', 'contentSchema', 'pageLinks'],
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.

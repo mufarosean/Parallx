@@ -59,15 +59,12 @@ export function resolveOptionColor(color: string | undefined | null): string {
  * Wire the standard input-editor commit contract:
  *   • blur → commit
  *   • Enter → preventDefault + commit + blur
- * The commit fires at most once per editor lifetime so blur-after-Enter is a no-op.
+ * Every blur commits; each editor compares with the value it last saved, so
+ * blur-after-Enter is a no-op. (It used to commit once per editor lifetime,
+ * so a second edit in the same field was never saved.)
  */
 function wireInputCommit(input: HTMLInputElement, commit: () => void): void {
-  let committed = false;
-  const fire = () => {
-    if (committed) return;
-    committed = true;
-    commit();
-  };
+  const fire = () => commit();
   input.addEventListener('blur', fire);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); fire(); input.blur(); }
@@ -108,9 +105,11 @@ function _createTextEditor(value: string | null, onChange: (v: unknown) => void)
   input.value = value ?? '';
   input.placeholder = 'Empty';
 
+  let saved = value ?? '';
   wireInputCommit(input, () => {
     const newVal = input.value.trim();
-    if (newVal !== (value ?? '')) {
+    if (newVal !== saved) {
+      saved = newVal;
       onChange(newVal || null);
     }
   });
@@ -127,10 +126,12 @@ function _createNumberEditor(value: number | null, onChange: (v: unknown) => voi
   input.value = value != null ? String(value) : '';
   input.placeholder = 'Empty';
 
+  let saved = value;
   wireInputCommit(input, () => {
     const raw = input.value.trim();
     const newVal = raw === '' ? null : Number(raw);
-    if (newVal !== value) {
+    if (newVal !== saved) {
+      saved = newVal;
       onChange(newVal);
     }
   });
@@ -486,9 +487,11 @@ function _createUrlEditor(value: string | null, onChange: (v: unknown) => void):
   input.value = value ?? '';
   input.placeholder = 'https://…';
 
+  let saved = value ?? '';
   wireInputCommit(input, () => {
     const newVal = input.value.trim();
-    if (newVal !== (value ?? '')) {
+    if (newVal !== saved) {
+      saved = newVal;
       onChange(newVal || null);
     }
   });
