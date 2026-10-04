@@ -4355,34 +4355,116 @@
 }
 
 /* ─── M60 Phase δ — Dataview block (canvas C4) ─────────────────────────── */
+/* ── Live blocks (extensions/liveBlock.ts): one look for blocks that show
+   workspace data, and their settings popover. ── */
+.canvas-live-edit {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text-muted);
+  font: inherit;
+  font-size: var(--px-text-xs);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--px-dur-fast) var(--px-ease);
+}
+.canvas-tiptap-editor [data-type]:hover > * > .canvas-live-edit,
+.canvas-tiptap-editor [data-type]:hover > .canvas-live-edit,
+.canvas-live-edit:focus-visible { opacity: 1; }
+.canvas-live-edit:hover { background: var(--px-surface-hover); color: var(--px-text); }
+
+.canvas-live-popover {
+  position: fixed;
+  z-index: calc(var(--px-canvas-z-menu) + 3);
+  min-width: 300px;
+  max-width: 440px;
+  padding: 10px;
+  background: var(--vscode-menu-background, var(--px-bg-elevated));
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
+  box-shadow: var(--px-shadow-md);
+  color: var(--px-text);
+  font-size: var(--px-text-sm);
+}
+.canvas-live-popover__title { font-weight: 600; margin-bottom: 8px; }
+.canvas-live-popover__body { display: flex; flex-direction: column; gap: 8px; }
+.canvas-live-popover__row { display: flex; align-items: center; gap: 8px; }
+.canvas-live-popover__label { flex: 0 0 96px; color: var(--px-text-muted); }
+.canvas-live-popover__hint { color: var(--px-text-muted); }
+.canvas-live-popover__select,
+.canvas-live-popover__input {
+  flex: 1;
+  min-width: 0;
+  height: var(--px-control-h-sm);
+  padding: 0 6px;
+  background: var(--px-bg-inset);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text);
+  font: inherit;
+}
+.canvas-live-popover__input:focus,
+.canvas-live-popover__select:focus { outline: none; border-color: var(--px-accent); }
+.canvas-live-popover__icon-btn,
+.canvas-live-popover__link {
+  background: none;
+  border: none;
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.canvas-live-popover__icon-btn { width: 24px; height: 24px; }
+.canvas-live-popover__link { align-self: flex-start; padding: 2px 4px; color: var(--px-accent-text); }
+.canvas-live-popover__icon-btn:hover,
+.canvas-live-popover__link:hover { background: var(--px-surface-hover); }
+.canvas-live-popover__primary {
+  align-self: flex-end;
+  height: var(--px-control-h-sm);
+  padding: 0 12px;
+  background: var(--px-accent);
+  border: none;
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text-on-accent);
+  font: inherit;
+  cursor: pointer;
+}
+.canvas-live-popover__primary:hover { background: var(--px-accent-hover); }
+
+/* ── Page List (dataview) ── */
 .canvas-tiptap-editor .canvas-dataview {
   display: block;
   margin: 0.75rem 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  border-radius: var(--parallx-radius-sm);
-  background: var(--vscode-editorWidget-background);
-  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
-  font-size: var(--vscode-editor-font-size, 13px);
+  padding: 6px 8px;
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-md);
 }
-.canvas-tiptap-editor .canvas-dataview-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.canvas-dataview-head { display: flex; align-items: center; gap: 8px; padding: 2px 4px 6px; }
+.canvas-dataview-summary { color: var(--px-text-muted); font-size: var(--px-text-sm); }
+.canvas-dataview-rules { display: flex; flex-direction: column; gap: 6px; }
+.canvas-dataview-rule { display: flex; align-items: center; gap: 6px; }
+.canvas-tiptap-editor .canvas-dataview-list { list-style: none; margin: 0; padding: 0; }
+.canvas-tiptap-editor .canvas-dataview-row { margin: 0; padding: 0; }
+.canvas-dataview-page {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  background: none;
+  border: none;
+  border-radius: var(--px-radius-sm);
+  color: var(--px-text);
+  font: inherit;
+  font-size: var(--px-text-md);
+  text-align: left;
+  cursor: pointer;
 }
-.canvas-tiptap-editor .canvas-dataview-row {
-  padding: 0.25rem 0;
-  border-bottom: 1px solid var(--vscode-widget-border, transparent);
-  cursor: default;
-}
-.canvas-tiptap-editor .canvas-dataview-row:last-child {
-  border-bottom: none;
-}
-.canvas-tiptap-editor .canvas-dataview-empty {
-  color: var(--vscode-descriptionForeground);
-  font-style: italic;
-  padding: 0.25rem 0;
-}
+.canvas-dataview-page:hover { background: var(--px-surface-hover); }
+.canvas-tiptap-editor .canvas-dataview-empty { color: var(--px-text-muted); padding: 4px 6px; }
+
 
 
 .canvas-tiptap-editor .tiptap-math.latex:hover {

@@ -47,6 +47,7 @@ import { joinPaneMirror, broadcastPaneDoc, type PaneMirrorTarget } from './paneM
 import { mergeLocalEdits } from './reloadMerge.js';
 import { setBlockDocValidator } from './ai/blockApi.js';
 import { decodeCanvasContent } from './contentSchema.js';
+import type { LiveBlockServices } from './config/blockRegistry.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -384,6 +385,42 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
   private _initialContentLoaded = false;
   private readonly _saveDisposables = new DisposableStore();
 
+  /** What blocks that show live data get (extensions/liveBlock.ts): one
+   *  debounced "workspace changed" signal for page and database changes,
+   *  page opening, and the app's commands. */
+  private _liveBlockServices(): LiveBlockServices {
+    const listeners = new Set<() => void>();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const fire = (): void => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; for (const l of [...listeners]) { try { l(); } catch { /* one block's error stays its own */ } } }, 300);
+    };
+    this._saveDisposables.add(this._dataService.onDidChangePage(fire));
+    const db = this._provider.databaseService;
+    if (db) {
+      this._saveDisposables.add(db.onDidChangeRows(fire));
+      this._saveDisposables.add(db.onDidChangeStructure(fire));
+    }
+    this._saveDisposables.add({ dispose: () => { if (timer) clearTimeout(timer); listeners.clear(); } });
+    return {
+      pageId: this._pageId,
+      onDidChangeWorkspace: (listener) => { listeners.add(listener); return { dispose: () => { listeners.delete(listener); } }; },
+      openPage: (pageId) => {
+        void (async () => {
+          const page = await this._dataService.getPage(pageId).catch(() => null);
+          await this._openEditor?.({
+            typeId: this._provider.databaseService?.isDatabase(pageId) ? 'database' : 'canvas',
+            title: page?.title || 'Untitled',
+            icon: page?.icon ?? undefined,
+            iconHtml: renderPageIconHtml(page?.icon ?? null),
+            instanceId: pageId,
+          });
+        })();
+      },
+      executeCommand: (id, ...args) => this._provider.executeCommand?.(id, ...args) ?? Promise.resolve(undefined),
+    };
+  }
+
   // ── Page chrome controller ──
   private _pageChrome!: PageChromeController;
 
@@ -674,6 +711,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
         showIconPicker: (opts) => this._menuRegistry?.showIconMenu(opts),
         resolveEditorTypeId: (id) =>
           this._provider.databaseService?.isDatabase(id) ? 'database' : 'canvas',
+        live: this._liveBlockServices(),
       }),
       content: '',
       editorProps: {

@@ -18,7 +18,6 @@ import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
 import { ListKeyboardPolicy } from '../extensions/listKeyboardPolicy.js';
 import { TableKeyboardPolicy } from '../extensions/tableKeyboardPolicy.js';
-import { Dataview } from '../extensions/dataviewNode.js';
 import { structuralInvariantPlugin } from '../plugins/structuralInvariantPlugin.js';
 import { structuralRepairPlugin } from '../plugins/structuralRepair.js';
 import { aiEditMarksPlugin } from '../plugins/aiEditMarks.js';
@@ -550,6 +549,5 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     // Registry-fed: blockRegistry.BLOCK_BG_TYPES is the single source for
     // which types carry the backgroundColor attribute.
     BlockBackgroundColor.configure({ types: [...BLOCK_BG_TYPES] }),
-    Dataview,
   ];
 }

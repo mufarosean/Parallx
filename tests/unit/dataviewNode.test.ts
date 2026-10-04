@@ -27,11 +27,11 @@ describe('parseDataviewQuery', () => {
     expect(q?.filter[0]?.prop).toBe('status');
   });
 
-  it('returns null for empty / malformed input', () => {
-    expect(parseDataviewQuery('')).toBeNull();
+  it('an unset query means no rules (every page); malformed input is null', () => {
+    expect(parseDataviewQuery('')).toEqual({ filter: [] });
+    expect(parseDataviewQuery(null)).toEqual({ filter: [] });
     expect(parseDataviewQuery('not json')).toBeNull();
     expect(parseDataviewQuery('{}')).toBeNull();
-    expect(parseDataviewQuery(null)).toBeNull();
     expect(parseDataviewQuery(JSON.stringify({ filter: 'string' }))).toBeNull();
   });
 });
@@ -46,7 +46,7 @@ describe('buildDataviewSql', () => {
     });
     expect(built).not.toBeNull();
     expect(built!.sql).toContain('INTERSECT');
-    expect(built!.sql).toContain('SELECT p.id, p.title FROM pages p');
+    expect(built!.sql).toContain('SELECT p.id, p.title, p.icon FROM pages p');
     expect(built!.params).toContain('status');
     expect(built!.params).toContain('tag');
   });
@@ -56,11 +56,14 @@ describe('buildDataviewSql', () => {
       filter: [{ prop: 'x', op: 'is_not_empty' }],
       sort: { by: 'title', dir: 'asc' },
     });
-    expect(built!.sql).toContain('p.title ASC');
+    expect(built!.sql).toContain('p.title COLLATE NOCASE ASC');
   });
 
-  it('returns null on empty filter array', () => {
-    expect(buildDataviewSql({ filter: [] })).toBeNull();
+  it('with no rules lists every live page (the Page List default)', () => {
+    const built = buildDataviewSql({ filter: [] })!;
+    expect(built.sql).not.toContain('INTERSECT');
+    expect(built.sql).toContain('WHERE p.is_archived = 0 ORDER BY');
+    expect(built.params).toEqual([50]);
   });
 
   it('returns null on unknown op', () => {

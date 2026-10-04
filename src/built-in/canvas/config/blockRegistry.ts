@@ -30,6 +30,9 @@ import { Bookmark } from '../extensions/bookmarkNode.js';
 import { ConceptMap, DEFAULT_CONCEPT_MAP_SRC } from '../extensions/conceptMapNode.js';
 import { PageBlock } from '../extensions/pageBlockNode.js';
 import { TableOfContents } from '../extensions/tableOfContentsNode.js';
+import { Dataview } from '../extensions/dataviewNode.js';
+import type { LiveBlockServices } from '../extensions/liveBlock.js';
+export type { LiveBlockServices } from '../extensions/liveBlock.js';
 import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
 import { UnsupportedBlock, UnsupportedInline } from '../extensions/unsupportedContentNodes.js';
 // Types
@@ -64,6 +67,9 @@ export interface EditorExtensionContext {
   /** Editor routing for linked pages — a card must open a database page in
    *  the database editor. */
   readonly resolveEditorTypeId?: (pageId: string) => string;
+  /** What blocks that show live workspace data need from the app (open a
+   *  page, run a command, hear about changes). */
+  readonly live?: LiveBlockServices;
 }
 
 // ── InsertActionContext ─────────────────────────────────────────────────────
@@ -981,6 +987,21 @@ const definitions: BlockDefinition[] = [
     turnInto: undefined,
     defaultContent: { type: 'tableOfContents' },
     extension: () => TableOfContents,
+  },
+  {
+    // A live list of pages: every page, or those whose database properties
+    // match a filter (Edit Filter…). Was insertable only by the AI.
+    id: 'dataview',
+    name: 'dataview',
+    label: 'Page List',
+    icon: 'list-filter',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Pages that match a filter, kept up to date', order: 72, category: 'advanced' },
+    turnInto: undefined,
+    defaultContent: { type: 'dataview', attrs: { query: '' } },
+    extension: (ctx) => Dataview.configure({ live: ctx.live }),
   },
   // Placeholders for stored content this build can't show (unknownContent.ts).
   // Never inserted by the user: no slash entry, no turn-into.

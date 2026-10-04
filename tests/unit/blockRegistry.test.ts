@@ -21,6 +21,12 @@ const SLASH_MENU_ITEMS = buildSlashMenuItems(getSlashMenuBlocks());
 // ── Baseline values (copied verbatim from the original hardcoded sources) ──
 
 /** From blockCapabilities.ts */
+/** Blocks added after the registry was extracted: each is an atom that can go
+ *  in a column and has its own drag handle. One list, so adding a block
+ *  updates every parity check here. */
+const ADDED_BLOCK_TYPES = ['dataview'];
+const ADDED_SLASH_LABELS = ['Page List'];
+
 const ORIGINAL_COLUMN_BLOCK_NODE_TYPES = [
   'paragraph', 'heading', 'bulletList', 'orderedList', 'taskList',
   'blockquote', 'codeBlock', 'horizontalRule', 'image', 'table',
@@ -28,6 +34,8 @@ const ORIGINAL_COLUMN_BLOCK_NODE_TYPES = [
   'bookmark', 'conceptMap', 'tableOfContents', 'video', 'audio', 'fileAttachment',
   // 2026-10-03: placeholder for stored blocks this build can't show (C1).
   'unsupportedBlock',
+  // 2026-10-04: blocks added since (docs/CANVAS_BLOCKS.md).
+  ...ADDED_BLOCK_TYPES,
 ];
 
 /** From blockCapabilities.ts */
@@ -36,6 +44,7 @@ const ORIGINAL_DRAG_HANDLE_CUSTOM_NODE_TYPES = [
   'bookmark', 'conceptMap', 'tableOfContents', 'video', 'audio', 'fileAttachment',
   'horizontalRule', 'image',
   'unsupportedBlock',
+  ...ADDED_BLOCK_TYPES,
 ];
 
 /** From blockHandles.ts, blockSelection.ts, blockMutations.ts, columnDropPlugin.ts */
@@ -138,10 +147,10 @@ describe('blockRegistry', () => {
       }
     });
 
-    it('returns 30 slash menu items', () => {
+    it('returns every slash menu item', () => {
       // 28 after the /mindmap retirement, +1 for /concept map (the chat
       // pattern promoted: outline in, diagram out).
-      expect(getSlashMenuBlocks()).toHaveLength(30);
+      expect(getSlashMenuBlocks()).toHaveLength(30 + ADDED_SLASH_LABELS.length);
     });
 
     it('includes Page as the first item (order 0)', () => {
@@ -219,10 +228,11 @@ describe('blockRegistry', () => {
       'Toggle Heading 1', 'Toggle Heading 2', 'Toggle Heading 3',
       '2 Columns', '3 Columns', '4 Columns',
       'Bookmark', 'Concept Map', 'Table of Contents',
+      ...ADDED_SLASH_LABELS,
     ];
 
-    it('produces 29 items', () => {
-      expect(SLASH_MENU_ITEMS).toHaveLength(30);
+    it('produces one item per slash block', () => {
+      expect(SLASH_MENU_ITEMS).toHaveLength(30 + ADDED_SLASH_LABELS.length);
     });
 
     it('preserves all original labels', () => {

@@ -198,7 +198,8 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/databaseFullPageNode.ts':    ['config/blockRegistry'],
   // dataview delegates its filter SQL to the shared blockApi builder
   // (properties live in databases; one query engine, not two).
-  'extensions/dataviewNode.ts':            ['ai/blockApi'],
+  'extensions/dataviewNode.ts':            ['ai/blockApi', 'config/blockRegistry', 'extensions/liveBlock'],
+  'extensions/liveBlock.ts':               [],   // what live blocks get from the app (no canvas imports)
 
   // structuralInvariantPlugin imports from invariants/ — same pattern.
   'plugins/structuralInvariantPlugin.ts':  ['invariants/'],
