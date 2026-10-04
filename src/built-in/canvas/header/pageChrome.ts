@@ -44,6 +44,8 @@ export interface PageChromeHost {
     pageHeader?: HTMLElement | null;
     onSelectCover: (coverUrl: string) => void;
   }) => void;
+  /** Ask before moving a page to the Trash (the same question everywhere). */
+  readonly confirmMoveToTrash?: (title: string) => Promise<boolean>;
 }
 
 export interface PageChromeOptions {
@@ -238,6 +240,20 @@ export class PageChromeController {
         (this._host.editorContainer?.querySelector('.ProseMirror') as HTMLElement | null)
         ?? (this._host.editor?.view.dom as HTMLElement | null),
     });
+  }
+
+  /** Delete = Move to Trash, after the same question as the sidebar
+   *  (canvas.deletePage). It used to trash the page with no question. */
+  private async _movePageToTrash(): Promise<void> {
+    const title = this._currentPage?.title || 'Untitled';
+    if (this._host.confirmMoveToTrash && !(await this._host.confirmMoveToTrash(title))) return;
+    await this._host.dataService.archivePage(this._host.pageId);
+  }
+
+  /** Lock Page locks the whole page: body, title, icon, cover and font
+   *  (it used to leave icon, cover and font editable). */
+  private get _locked(): boolean {
+    return !!this._currentPage?.isLocked;
   }
 
   dismissPopups(): void {
@@ -648,6 +664,7 @@ export class PageChromeController {
     removeBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (this._locked) return;
       this._host.dataService.updatePage(this._host.pageId, { coverUrl: null });
     });
 
@@ -735,6 +752,7 @@ export class PageChromeController {
    * prevent rapid double-clicks during the in-flight window.
    */
   private _handleAddCoverClick(e: Event, btn: HTMLButtonElement): void {
+    if (this._locked) return;
     e.stopPropagation();
     if (btn.disabled) return;
     btn.disabled = true;
@@ -756,6 +774,7 @@ export class PageChromeController {
   }
 
   private _startCoverReposition(): void {
+    if (this._locked) return;
     if (!this._coverEl || !this._currentPage?.coverUrl || this._isRepositioning) return;
 
     this._isRepositioning = true;
@@ -867,6 +886,7 @@ export class PageChromeController {
   }
 
   private _showCoverPicker(anchor?: HTMLElement | null): void {
+    if (this._locked) return;
     this.dismissPopups();
 
     const resolvedAnchor = this._resolvePopupAnchor(anchor, [this._coverControls, this._pageHeader]);
@@ -885,6 +905,7 @@ export class PageChromeController {
   // ── Icon Picker ─────────────────────────────────────────────────────────
 
   private _showIconPicker(anchor?: HTMLElement | null): void {
+    if (this._locked) return;
     this.dismissPopups();
 
     const resolvedAnchor = this._resolvePopupAnchor(anchor, [
@@ -1059,8 +1080,8 @@ export class PageChromeController {
         label: 'Delete',
         iconId: 'trash',
         action: () => {
-          this._host.dataService.archivePage(this._host.pageId);
           this.dismissPopups();
+          void this._movePageToTrash();
         },
         danger: true,
       },
@@ -1117,8 +1138,13 @@ export class PageChromeController {
 
     const list = $('div.canvas-page-menu-font-list');
     list.hidden = true;
+    if (this._locked) {
+      current.setAttribute('aria-disabled', 'true');
+      current.title = 'This page is locked.';
+    }
     current.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (this._locked) return;
       list.hidden = !list.hidden;
       current.classList.toggle('canvas-page-menu-font-current--open', !list.hidden);
     });
@@ -1146,6 +1172,7 @@ export class PageChromeController {
       defBadge.textContent = 'default';
       pick.appendChild(defBadge);
       pick.addEventListener('click', () => {
+        if (this._locked) return;
         this._host.dataService.updatePage(this._host.pageId, { fontFamily: font.id });
         list.querySelectorAll('.canvas-page-menu-font-row').forEach((r) => r.classList.remove('canvas-page-menu-font-row--active'));
         row.classList.add('canvas-page-menu-font-row--active');
@@ -1317,8 +1344,8 @@ export class PageChromeController {
         label: 'Delete',
         iconId: 'trash',
         action: () => {
-          this._host.dataService.archivePage(this._host.pageId);
           this.dismissPopups();
+          void this._movePageToTrash();
         },
         danger: true,
       },

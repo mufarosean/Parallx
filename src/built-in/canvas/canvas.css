@@ -3926,6 +3926,15 @@
   display: none;
 }
 
+/* Locked: the cover and icon cannot change either. */
+.canvas-locked .canvas-cover-controls {
+  display: none;
+}
+
+.canvas-locked .canvas-page-icon {
+  cursor: default;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
  * Sidebar Section Labels (Cap 10 — Task 10.2 / 10.3)
  * ───────────────────────────────────────────────────────────────────────────── */

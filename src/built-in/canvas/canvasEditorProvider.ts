@@ -249,7 +249,7 @@ export class CanvasEditorProvider {
 
   /** M93 — pageId → open the PDF-export dialog for that pane's live editor.
    *  Registered by panes on init; invoked by the `canvas.exportPdf` command
-   *  (Ctrl+P) for whichever canvas editor is active. */
+   *  (Ctrl+Alt+P) for whichever canvas editor is active. */
   private readonly _pdfExportHandlers = new Map<string, () => void>();
 
   registerPdfExportHandler(pageId: string, handler: () => void): IDisposable {
@@ -413,6 +413,16 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     event.stopPropagation();
     void this.openLinkInExternalBrowser(href);
   };
+
+  /** PageChromeHost: the same question the sidebar and canvas.deletePage ask. */
+  async confirmMoveToTrash(title: string): Promise<boolean> {
+    const answer = await this._provider.window?.showWarningMessage(
+      `Move "${title}" to the Trash?`,
+      { title: 'Move to Trash' },
+      { title: 'Cancel' },
+    );
+    return answer?.title === 'Move to Trash';
+  }
 
   /** Open an in-app link: the page in its editor, then the block in view. */
   private async _openPageLink(pageId: string, blockId?: string): Promise<void> {
@@ -873,7 +883,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
         this._pageChrome.showPageMenu();
       }),
     );
-    // M93 — Ctrl+P / command-driven PDF export routes to the active pane.
+    // M93 — Ctrl+Alt+P / command-driven PDF export routes to the active pane.
     this._saveDisposables.add(
       this._provider.registerPdfExportHandler(this._pageId, () => {
         void this._pageChrome.exportPdf();

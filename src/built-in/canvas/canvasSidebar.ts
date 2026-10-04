@@ -1064,8 +1064,16 @@ export class CanvasSidebar {
     iconButton.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (page.isLocked) return;
       openIconPicker();
     });
+    // A locked page keeps its title and icon here too, as in its header.
+    if (page.isLocked) {
+      iconButton.disabled = true;
+      iconButton.title = 'This page is locked.';
+      titleInput.inputElement.readOnly = true;
+      titleInput.inputElement.title = 'This page is locked.';
+    }
 
     popupStore.add(toDisposable(() => {
       this._pageOptionsIconPicker?.dismiss();
@@ -1453,7 +1461,7 @@ export class CanvasSidebar {
     if (!page) return;
 
     const result = await this._api.window.showWarningMessage(
-      `Move "${page.title}" to trash?`,
+      `Move "${page.title || 'Untitled'}" to the Trash?`,
       { title: 'Move to Trash' },
       { title: 'Cancel' },
     );

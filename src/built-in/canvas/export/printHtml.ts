@@ -173,6 +173,11 @@ export function sanitizeContentHtml(sourceRoot: HTMLElement): string {
   // 2. Expand every toggle so no content hides behind a collapsed section —
   //    "no cutoff material" includes collapsed material.
   clone.querySelectorAll('details').forEach((d) => d.setAttribute('open', ''));
+  // Canvas toggles are not <details>: a collapsed toggle hides its body with
+  // the `hidden` attribute (detailsContent, and a toggle heading's body), so
+  // the PDF printed only their titles.
+  clone.querySelectorAll('[data-type="detailsContent"][hidden], [data-type="toggleHeading"] [hidden]')
+    .forEach((el) => el.removeAttribute('hidden'));
 
   // 3. Remove editor-only / non-printable elements.
   for (const sel of STRIP_SELECTORS) {

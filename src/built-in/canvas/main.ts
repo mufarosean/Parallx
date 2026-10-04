@@ -1133,19 +1133,22 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
   );
 
   // canvas.exportPdf (M93) — open the print-style PDF export dialog for the
-  // ACTIVE canvas editor. Bound to Ctrl+P scoped by when-clause, so Quick
-  // Open keeps Ctrl+P everywhere else.
+  // ACTIVE canvas editor. Ctrl+Alt+P: on Ctrl+P it shadowed Go to File on
+  // every canvas page, where finding a page matters most.
   context.subscriptions.push(
     api.commands.registerCommand('canvas.exportPdf', () => {
       const active = api.editors.openEditors.find((e) => e.isActive);
       if (!active || !_editorProvider) return;
-      const handler = _editorProvider.getPdfExportHandler(active.id);
+      // Handlers are kept by page id; the editor id carries a prefix
+      // (`…:canvas:<pageId>`), so looking up the raw id never found one and
+      // the shortcut did nothing.
+      const handler = _editorProvider.getPdfExportHandler(canvasPageIdFromEditorId(active.id) ?? active.id);
       if (handler) handler();
     }),
   );
   if (api.keybindings) {
     context.subscriptions.push(
-      api.keybindings.register('Ctrl+P', 'canvas.exportPdf', "activeEditor == 'canvas'"),
+      api.keybindings.register('Ctrl+Alt+P', 'canvas.exportPdf', "activeEditor == 'canvas'"),
     );
   }
 
@@ -1297,18 +1300,21 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       const page = await _dataService.getPage(pageId);
       if (!page) return;
 
+      // "Delete" means one thing everywhere (sidebar, page menu, this
+      // command): Move to Trash, after the same question.  It used to delete
+      // permanently here.  Deleting for good happens only in the Trash.
       const confirmation = await api.window.showWarningMessage(
-        `Delete "${page.title}"? This cannot be undone.`,
-        { title: 'Delete' },
+        `Move "${page.title || 'Untitled'}" to the Trash?`,
+        { title: 'Move to Trash' },
         { title: 'Cancel' },
       );
-      if (confirmation?.title !== 'Delete') return;
+      if (confirmation?.title !== 'Move to Trash') return;
 
       try {
-        await _dataService.deletePage(pageId);
+        await _dataService.archivePage(pageId);
       } catch (err) {
-        console.error('[Canvas] Failed to delete page:', err);
-        await api.window.showErrorMessage('Failed to delete page.');
+        console.error('[Canvas] Failed to move page to Trash:', err);
+        await api.window.showErrorMessage('Could not move the page to the Trash.');
       }
     }),
   );

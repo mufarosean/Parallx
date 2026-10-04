@@ -280,3 +280,20 @@ describe('catalogues', () => {
     expect(MARGIN_PRESETS.map(p => p.id)).toEqual(['none', 'narrow', 'normal', 'wide', 'custom']);
   });
 });
+
+describe('PDF export prints collapsed toggles open', () => {
+  it('a collapsed toggle and toggle heading print their bodies', () => {
+    const root = document.createElement('div');
+    root.innerHTML =
+      '<div class="canvas-details" data-type="details"><button type="button"></button><div><summary>Sum</summary>'
+      + '<div data-type="detailsContent" hidden="hidden"><p>Hidden body</p></div></div></div>'
+      + '<div class="canvas-toggle-heading" data-type="toggleHeading" data-level="2"><button type="button" class="toggle-heading-chevron"></button>'
+      + '<div class="toggle-heading-wrapper"><div data-type="toggleHeadingText">TH</div><div class="toggle-heading-body" hidden><p>TH body</p></div></div></div>';
+    const html = sanitizeContentHtml(root);
+    const out = document.createElement('div');
+    out.innerHTML = html;
+    expect(out.querySelectorAll('[hidden]')).toHaveLength(0);
+    expect(out.textContent).toContain('Hidden body');
+    expect(out.textContent).toContain('TH body');
+  });
+});
