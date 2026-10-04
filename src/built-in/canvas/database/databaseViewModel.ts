@@ -5,7 +5,7 @@
 // behavior is unit-testable without a DB or DOM. The data service fetches; this
 // module evaluates; the views render.
 
-import type { IDatabaseRow, IFilterConfig, IFilterRule, ISortRule } from './databaseTypes.js';
+import type { IDatabaseRow, IDatabaseView, IFilterConfig, IFilterRule, ISortRule } from './databaseTypes.js';
 import { TITLE_KEY } from './databaseTypes.js';
 
 function cellOf(row: IDatabaseRow, propertyId: string): unknown {
@@ -174,4 +174,36 @@ export function parseSortConfig(json: string | null | undefined): ISortRule[] {
     }
   } catch { /* fall through */ }
   return [];
+}
+
+/**
+ * A view without references to properties that no longer exist: filter
+ * rules, sort rules, grouping, and per-column config (widths, hidden).  A
+ * filter rule on a deleted property matched no row, so the view showed none
+ * and offered no way to remove the rule.  Returns null when nothing changes.
+ */
+export function viewWithoutProperties(
+  view: Pick<IDatabaseView, 'filter' | 'sort' | 'groupBy' | 'config'>,
+  isGone: (propertyId: string) => boolean,
+): { filter: IFilterConfig; sort: ISortRule[]; groupBy: string | null; config: Record<string, unknown> } | null {
+  const gone = (id: string) => id !== TITLE_KEY && isGone(id);
+  const rules = view.filter.rules.filter((r) => !gone(r.propertyId));
+  const sort = view.sort.filter((s) => !gone(s.propertyId));
+  const groupBy = view.groupBy && gone(view.groupBy) ? null : view.groupBy;
+  const config: Record<string, unknown> = { ...view.config };
+  let configChanged = false;
+  const hidden = config['hidden'];
+  if (Array.isArray(hidden) && hidden.some((h) => typeof h === 'string' && gone(h))) {
+    config['hidden'] = hidden.filter((h) => !(typeof h === 'string' && gone(h)));
+    configChanged = true;
+  }
+  const widths = config['widths'];
+  if (widths && typeof widths === 'object' && Object.keys(widths).some(gone)) {
+    config['widths'] = Object.fromEntries(Object.entries(widths as Record<string, unknown>).filter(([k]) => !gone(k)));
+    configChanged = true;
+  }
+  if (rules.length === view.filter.rules.length && sort.length === view.sort.length && groupBy === view.groupBy && !configChanged) {
+    return null;
+  }
+  return { filter: { conjunction: view.filter.conjunction, rules }, sort, groupBy, config };
 }

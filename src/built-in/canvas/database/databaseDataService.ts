@@ -28,7 +28,7 @@ import type {
   ISortRule,
 } from './databaseTypes.js';
 import { EMPTY_FILTER } from './databaseTypes.js';
-import { parseFilterConfig, parseSortConfig } from './databaseViewModel.js';
+import { parseFilterConfig, parseSortConfig, viewWithoutProperties } from './databaseViewModel.js';
 
 interface DatabaseBridge {
   run(sql: string, params?: unknown[]): Promise<{ error: { code: string; message: string } | null; changes?: number }>;
@@ -251,9 +251,17 @@ export class DatabaseDataService extends Disposable {
   }
 
   async deleteProperty(databaseId: string, propertyId: string): Promise<void> {
+    // Views lose their filter, sort and grouping on the property in the same
+    // transaction: a filter on a deleted property matched no row, so the view
+    // showed nothing and had no rule left to remove.
+    const viewOps = (await this._readViews(databaseId)).flatMap((view) => {
+      const cleaned = viewWithoutProperties(view, (id) => id === propertyId);
+      return cleaned ? [this._viewCleanupOp(view.id, databaseId, cleaned)] : [];
+    });
     const txn = await this._db.runTransaction([
       { type: 'run', sql: 'DELETE FROM page_property_values WHERE property_id = ? AND database_id = ?', params: [propertyId, databaseId] },
       { type: 'run', sql: 'DELETE FROM database_properties WHERE id = ? AND database_id = ?', params: [propertyId, databaseId] },
+      ...viewOps,
     ]);
     if (txn.error) throw new Error(txn.error.message);
     this._onDidChangeStructure.fire(databaseId);
@@ -261,13 +269,45 @@ export class DatabaseDataService extends Disposable {
 
   // ── Views ──────────────────────────────────────────────────────────────────
 
-  async listViews(databaseId: string): Promise<IDatabaseView[]> {
+  private async _readViews(databaseId: string): Promise<IDatabaseView[]> {
     const res = await this._db.all(
       'SELECT * FROM database_views WHERE database_id = ? ORDER BY sort_order',
       [databaseId],
     );
     if (res.error) throw new Error(res.error.message);
-    const views = (res.rows ?? []).map(rowToView);
+    return (res.rows ?? []).map(rowToView);
+  }
+
+  private _viewCleanupOp(
+    viewId: string,
+    databaseId: string,
+    cleaned: NonNullable<ReturnType<typeof viewWithoutProperties>>,
+  ): { type: 'run'; sql: string; params: unknown[] } {
+    return {
+      type: 'run',
+      sql: "UPDATE database_views SET filter_config = ?, sort_config = ?, group_by = ?, config = ?, updated_at = datetime('now') WHERE id = ? AND database_id = ?",
+      params: [JSON.stringify(cleaned.filter), JSON.stringify(cleaned.sort), cleaned.groupBy, JSON.stringify(cleaned.config), viewId, databaseId],
+    };
+  }
+
+  async listViews(databaseId: string): Promise<IDatabaseView[]> {
+    let views = await this._readViews(databaseId);
+    // Views saved before deleting a property cleaned them up still point at
+    // it: drop those references, and store the repair.
+    if (views.length > 0) {
+      const known = new Set((await this.listProperties(databaseId)).map((p) => p.id));
+      const repairs: { type: 'run'; sql: string; params: unknown[] }[] = [];
+      views = views.map((view) => {
+        const cleaned = viewWithoutProperties(view, (id) => !known.has(id));
+        if (!cleaned) return view;
+        repairs.push(this._viewCleanupOp(view.id, databaseId, cleaned));
+        return { ...view, ...cleaned };
+      });
+      if (repairs.length > 0) {
+        const txn = await this._db.runTransaction(repairs);
+        if (txn.error) console.warn('[DatabaseDataService] view repair failed for', databaseId, txn.error.message);
+      }
+    }
     if (views.length === 0) {
       // A database must always have at least one view — self-heal.
       const id = crypto.randomUUID();
