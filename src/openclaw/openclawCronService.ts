@@ -246,6 +246,9 @@ export class CronService implements IDisposable {
   private readonly _jobs = new Map<string, ICronJob>();
   private readonly _runHistory: ICronRunResult[] = [];
   private _timer: ReturnType<typeof setInterval> | null = null;
+  /** start() was called: the timer runs while at least one job is enabled. */
+  private _started = false;
+  private _jobsSub: { dispose(): void } | undefined;
   private _disposed = false;
   private _nextJobId = 1;
   /** M60 §3.7 — idempotency keys for `(cronId, scheduledAt)` firings. */
@@ -390,8 +393,9 @@ export class CronService implements IDisposable {
   }
 
   /** Whether the cron timer is running. */
+  /** Started: jobs fire on schedule. The minute check itself runs only while a job is enabled (status().timerActive). */
   get isRunning(): boolean {
-    return this._timer !== null;
+    return this._started && !this._disposed;
   }
 
   /**
@@ -559,21 +563,38 @@ export class CronService implements IDisposable {
    * Upstream: CronService starts timer on initialization.
    */
   start(): void {
-    if (this._disposed || this._timer) return;
+    if (this._disposed || this._started) return;
+    this._started = true;
 
     // Run missed jobs on startup — upstream: runMissedJobs
     this._runMissedJobs();
 
-    this._timer = setInterval(() => {
-      this._checkDueJobs();
-    }, CRON_CHECK_INTERVAL_MS);
+    // Nothing ticks for nothing: the minute check runs only while a job is
+    // enabled, and arms or stops itself as jobs are added, paused or removed.
+    this._jobsSub ??= this.onDidChangeJobs(() => this._syncTimer());
+    this._syncTimer();
   }
 
   /**
    * Stop the cron check timer.
    */
   stop(): void {
+    this._started = false;
     if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
+  }
+
+  private _syncTimer(): void {
+    let scheduled = false;
+    for (const job of this._jobs.values()) {
+      if (job.enabled && job.nextRunAt !== null) { scheduled = true; break; }
+    }
+    const want = this._started && !this._disposed && !this._shuttingDown && scheduled;
+    if (want && !this._timer) {
+      this._timer = setInterval(() => { void this._checkDueJobs(); }, CRON_CHECK_INTERVAL_MS);
+    } else if (!want && this._timer) {
       clearInterval(this._timer);
       this._timer = null;
     }
@@ -884,6 +905,7 @@ export class CronService implements IDisposable {
   dispose(): void {
     this._disposed = true;
     this.stop();
+    this._jobsSub?.dispose();
     this._jobs.clear();
     this._runHistory.length = 0;
     this._onDidChangeJobs.dispose();

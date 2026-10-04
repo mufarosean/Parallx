@@ -374,3 +374,48 @@ describe('suggestions', () => {
     expect(() => b.service.addWorkflow(suggested)).toThrow(/dismissed/);
   });
 });
+
+describe('the minute check runs only while there is something to run', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 4, 9, 0, 0)); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  const everyMinute = {
+    ...notifyFlow,
+    nodes: [
+      { id: 't', label: 'Interval', kind: 'trigger.schedule' as const, spec: { kind: 'interval' as const, every: '1m' } },
+      notifyFlow.nodes[1],
+    ],
+  };
+
+  it('arms with an enabled scheduled routine and stops without one', () => {
+    const { service } = makeService();
+    service.start();
+    expect(service.isTicking).toBe(false);
+    service.addWorkflow(notifyFlow); // manual only: nothing to tick for
+    expect(service.isTicking).toBe(false);
+    const wf = service.addWorkflow(everyMinute);
+    expect(service.isTicking).toBe(true);
+    service.setEnabled(wf.id, false);
+    expect(service.isTicking).toBe(false);
+    service.setEnabled(wf.id, true);
+    expect(service.isTicking).toBe(true);
+    service.removeWorkflow(wf.id);
+    expect(service.isTicking).toBe(false);
+    service.dispose();
+  });
+
+  it('turned back on, a routine does not fire the slots it missed while off', async () => {
+    const { service, deps } = makeService();
+    service.start();
+    const hourly = { ...everyMinute, nodes: [{ ...everyMinute.nodes[0], spec: { kind: 'interval' as const, every: '1h' } }, everyMinute.nodes[1]] };
+    const wf = service.addWorkflow(hourly); // next slot 10:00
+    service.setEnabled(wf.id, false);
+    vi.setSystemTime(new Date(2026, 9, 4, 12, 30, 0)); // 10:00, 11:00 and 12:00 pass while off
+    service.setEnabled(wf.id, true);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(deps.notifications).toEqual([]); // no catch-up for slots missed while off
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(deps.notifications).toEqual(['ping']); // 13:00, on its grid
+    service.dispose();
+  });
+});

@@ -260,6 +260,21 @@ describe('CronService', () => {
       svc.dispose();
     });
 
+    it('nothing ticks while no job is enabled; the check arms and stops with the jobs', () => {
+      const svc = new CronService(executor, contextFetcher, heartbeatWaker);
+      svc.start();
+      expect(svc.status().timerActive).toBe(false);
+      const job = svc.addJob(createParams({ schedule: { every: '5m' } }));
+      expect(svc.status().timerActive).toBe(true);
+      svc.updateJob(job.id, { enabled: false });
+      expect(svc.status().timerActive).toBe(false);
+      svc.updateJob(job.id, { enabled: true });
+      expect(svc.status().timerActive).toBe(true);
+      svc.removeJob(job.id);
+      expect(svc.status().timerActive).toBe(false);
+      svc.dispose();
+    });
+
     it('start is idempotent', () => {
       const svc = new CronService(executor, contextFetcher, heartbeatWaker);
       svc.start();

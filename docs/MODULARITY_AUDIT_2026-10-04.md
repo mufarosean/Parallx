@@ -43,7 +43,7 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 | 18 | `services/browserAutomationService.ts:172` | Browser | Core service clears browser artifacts on every chat deletion | **fixed**: kept on purpose (it erases the user's own files when they delete a chat), now without starting the Browser (`forgetChatsOnDisk`) |
 | 19 | `planner/main.ts:150` (`IPlannerQueryService`) | Planner | Never unregistered: after turning Planner off, heartbeat and workflows keep calling it | **fixed**: a service a tool registers through `api.services` is unregistered when the tool deactivates (`ServiceCollection.unregisterInstance`) |
 | 20 | `services/semanticGraphService.ts` and friends (`workbenchServices.ts:360-407`) | Workspace Graph | Once started, keeps re-indexing after Workspace Graph is turned off; tables created by core | **fixed**: Workspace Graph stops the cache when it deactivates (`stopCache`: queue dropped, timers cleared, no rebuilds). Tables are created only on first use by the graph. The lineage and concept passes run only on a refresh the user starts from the graph |
-| 21 | `services/autonomyBootstrap.ts` (`workbench.ts:3409`) | Agents | Cron, workflows, task rail built at every start (also used by Chat: decide) | open |
+| 21 | `services/autonomyBootstrap.ts` (`workbench.ts:3409`) | Agents | Cron, workflows, task rail built at every start (also used by Chat: decide) | **fixed**: Chat (always on) owns them; the heartbeat runs only when turned on, and the scheduled-task and routine checks tick only while an enabled job or scheduled routine exists. The services themselves are storage, built so their lists show; they do no work at rest |
 
 ## 3. Core code that exists only for one tool (dormant)
 

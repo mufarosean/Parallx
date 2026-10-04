@@ -92,6 +92,9 @@ export class WorkflowService implements IDisposable {
   private readonly _dismissedSuggestions = new Set<string>();
 
   private _timer: ReturnType<typeof setInterval> | null = null;
+  /** start() was called: the minute check runs while an enabled routine has a schedule. */
+  private _started = false;
+  private _changeSub: { dispose(): void } | undefined;
   private _disposed = false;
   private _nextId = 1;
   private _deps: WorkflowExecutionDeps | undefined;
@@ -187,6 +190,9 @@ export class WorkflowService implements IDisposable {
     this._assertValid(updated);
     this._docs.set(id, updated);
     this._syncScheduleStates();
+    // Turned back on: its schedule resumes from the next slot. Slots that
+    // passed while it was off are not a missed run to catch up.
+    if (!existing.enabled && updated.enabled) this._skipPassedSlots(id);
     void this._save();
     this._onDidChangeWorkflows.fire({ kind: 'updated', workflowId: id });
     return updated;
@@ -323,18 +329,55 @@ export class WorkflowService implements IDisposable {
   // ── Scheduling ────────────────────────────────────────────────────────────
 
   start(): void {
-    if (this._disposed || this._timer) return;
+    if (this._disposed || this._started) return;
+    this._started = true;
     void this._checkDue(); // catch-up (coalesced at load)
-    this._timer = setInterval(() => { void this._checkDue(); }, WORKFLOW_CHECK_INTERVAL_MS);
+    // Nothing ticks for nothing: the minute check runs only while an enabled
+    // routine has a schedule, and arms or stops itself as routines change.
+    this._changeSub ??= this.onDidChangeWorkflows(() => this._syncTimer());
+    this._syncTimer();
   }
 
   stop(): void {
+    this._started = false;
     if (this._timer) { clearInterval(this._timer); this._timer = null; }
+  }
+
+  /** True while the minute check is armed. */
+  get isTicking(): boolean { return this._timer !== null; }
+
+  private _syncTimer(): void {
+    const scheduled = [...this._docs.values()].some((d) => d.enabled && d.nodes.some((n) => n.kind === 'trigger.schedule'));
+    const want = this._started && !this._disposed && scheduled;
+    if (want && !this._timer) {
+      this._timer = setInterval(() => { void this._checkDue(); }, WORKFLOW_CHECK_INTERVAL_MS);
+    } else if (!want && this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
+  }
+
+  private _skipPassedSlots(workflowId: string): void {
+    const doc = this._docs.get(workflowId);
+    if (!doc) return;
+    const now = Date.now();
+    for (const node of doc.nodes) {
+      if (node.kind !== 'trigger.schedule') continue;
+      const st = this._schedules.get(`${workflowId}:${node.id}`);
+      if (!st || st.nextRunAt === null || st.nextRunAt > now) continue;
+      try {
+        const schedule = buildCronSchedule(node.spec);
+        let next = computeNextRun(schedule, now, st.anchorMs);
+        if (next !== null && next <= now) next = computeNextRun(schedule, next + 1, st.anchorMs);
+        st.nextRunAt = next;
+      } catch { st.nextRunAt = null; }
+    }
   }
 
   dispose(): void {
     this._disposed = true;
     this.stop();
+    this._changeSub?.dispose();
     this._journalSub?.dispose();
     this._onDidChangeWorkflows.dispose();
     this._onDidRecordRun.dispose();
