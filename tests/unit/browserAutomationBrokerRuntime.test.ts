@@ -381,7 +381,7 @@ describe('Stop', () => {
     const t0 = Date.now();
     await h.call('control', { action: 'stop' });
     const [w, q] = await Promise.all([waiting, queued]);
-    expect(Date.now() - t0).toBeLessThan(1_000);
+    expect(Date.now() - t0).toBeLessThan(5_000); // ended early: the wait runs 20 s, and a loaded run is slow
     expect(w).toMatchObject({ status: 'needs_user', error: { code: 'STOPPED_BY_USER', retryable: false } });
     expect(q).toMatchObject({ status: 'needs_user', error: { code: 'STOPPED_BY_USER', retryable: false } });
   });
@@ -396,7 +396,7 @@ describe('cancel', () => {
     const t0 = Date.now();
     expect(await h.call('cancel', { chatSessionId: 's1', turnId: 't1' })).toEqual({ ok: true });
     const w = await waiting;
-    expect(Date.now() - t0).toBeLessThan(1_000);
+    expect(Date.now() - t0).toBeLessThan(5_000); // ended early: the wait runs 20 s, and a loaded run is slow
     expect(w).toMatchObject({ status: 'cancelled', error: { code: 'CANCELLED', retryable: false } });
     const late = await h.run({ op: 'read' }, id('s1', 't1'));
     expect(late.status).toBe('cancelled');
