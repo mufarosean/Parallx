@@ -109,7 +109,8 @@ export function showPropertyPicker(
 
     const createBtn = document.createElement('div');
     createBtn.className = 'canvas-property-picker__create';
-    createBtn.textContent = '+ Create new property';
+    createBtn.appendChild(createIconElement('plus', 14));
+    createBtn.appendChild(document.createElement('span')).textContent = 'New Property…';
     createBtn.addEventListener('mousedown', (e) => {
       e.preventDefault();
       _showNewForm();

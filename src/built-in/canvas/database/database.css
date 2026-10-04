@@ -94,7 +94,7 @@
 .canvas-db-cell__icon svg { width: 16px; height: 16px; }
 .canvas-db-cell__titletext { cursor: text; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .canvas-db-openbtn {
-  visibility: hidden; font-size: var(--px-text-2xs); letter-spacing: 0.04em;
+  visibility: hidden; font-size: var(--px-text-2xs);
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.3));
   color: var(--vscode-descriptionForeground, #999);
@@ -118,6 +118,8 @@
   cursor: pointer; font-size: var(--px-text-base);
   border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.12));
 }
+.canvas-db-newrow__label { display: inline-flex; align-items: center; gap: 6px; }
+.canvas-db-newrow__label svg { width: 14px; height: 14px; }
 .canvas-db-newrow__cell:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.06)); color: var(--vscode-editor-foreground, #ddd); }
 .canvas-db-count { padding: 6px 8px; font-size: var(--px-text-sm); color: var(--vscode-descriptionForeground, #888); }
 .canvas-db-check {
@@ -131,7 +133,7 @@
 }
 .canvas-db-check--on::after {
   content: ''; position: absolute; left: 4.5px; top: 1px;
-  width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+  width: 4px; height: 8px; border: solid var(--px-text-on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 
 /* ── Option pills (Notion's named palette, theme-tinted) ── */
@@ -141,15 +143,15 @@
   background: rgba(128,128,128,0.22); color: var(--vscode-editor-foreground, #ddd);
 }
 .canvas-db-pill--gray,
-.canvas-db-pill--default { background: rgba(128,128,128,0.22); }
-.canvas-db-pill--brown   { background: rgba(159,107,74,0.32); }
-.canvas-db-pill--orange  { background: rgba(217,115,13,0.32); }
-.canvas-db-pill--yellow  { background: rgba(203,148,51,0.32); }
-.canvas-db-pill--green   { background: rgba(68,131,97,0.35); }
-.canvas-db-pill--blue    { background: rgba(51,126,169,0.35); }
-.canvas-db-pill--purple  { background: rgba(144,101,176,0.35); }
-.canvas-db-pill--pink    { background: rgba(193,76,138,0.32); }
-.canvas-db-pill--red     { background: rgba(212,76,71,0.32); }
+.canvas-db-pill--default { background: var(--px-option-default); }
+.canvas-db-pill--brown   { background: var(--px-option-brown); }
+.canvas-db-pill--orange  { background: var(--px-option-orange); }
+.canvas-db-pill--yellow  { background: var(--px-option-yellow); }
+.canvas-db-pill--green   { background: var(--px-option-green); }
+.canvas-db-pill--blue    { background: var(--px-option-blue); }
+.canvas-db-pill--purple  { background: var(--px-option-purple); }
+.canvas-db-pill--pink    { background: var(--px-option-pink); }
+.canvas-db-pill--red     { background: var(--px-option-red); }
 
 /* ── Board view ── */
 .canvas-db-board { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-top: 12px; }
@@ -168,7 +170,7 @@
   background: var(--vscode-editorWidget-background, #2d2d30);
   border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.18));
   border-radius: 6px; padding: 8px 10px; cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.18);
+  box-shadow: var(--px-shadow-sm);
 }
 .canvas-db-card:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.1)); }
 .canvas-db-card--dragging { opacity: 0.5; }
@@ -178,10 +180,10 @@
 
 /* ── Popovers & menus ── */
 .canvas-db-popover {
-  position: fixed; z-index: 1000; min-width: 220px; max-width: 320px;
+  position: fixed; z-index: var(--px-canvas-z-menu); min-width: 220px; max-width: 320px;
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,0.3));
-  border-radius: 6px; box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+  border-radius: var(--px-radius-md); box-shadow: var(--px-shadow-md);
   padding: 6px; display: flex; flex-direction: column; gap: 2px;
 }
 .canvas-db-popover__label { font-size: var(--px-text-xs); text-transform: none; letter-spacing: normal; color: var(--vscode-descriptionForeground, #888); padding: 4px 6px 2px; }

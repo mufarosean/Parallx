@@ -161,8 +161,8 @@ export class DatabaseDataService extends Disposable {
    */
   async createDatabase(opts: { title?: string; parentId?: string | null; seedDefaults?: boolean } = {}): Promise<IDatabaseInfo> {
     const page = opts.parentId
-      ? await this._pages.createChildPageWithBlock({ parentId: opts.parentId, title: opts.title || 'Untitled database' })
-      : await this._pages.createPage(null, opts.title || 'Untitled database');
+      ? await this._pages.createChildPageWithBlock({ parentId: opts.parentId, title: opts.title || 'Untitled' })
+      : await this._pages.createPage(null, opts.title || 'Untitled');
 
     const statusPropId = crypto.randomUUID();
     const viewId = crypto.randomUUID();

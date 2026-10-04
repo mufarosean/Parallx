@@ -167,7 +167,7 @@ export class DatabaseEditorPane implements IDisposable {
     ]);
     if (this._disposed || seq !== this._loadSeq) return;
     this._rowsSignature = JSON.stringify(rows);
-    this._title = info?.title ?? 'Untitled database';
+    this._title = info?.title ?? 'Untitled';
     this._icon = info?.icon ?? null;
     this._props = props;
     this._views = views;
@@ -234,7 +234,7 @@ export class DatabaseEditorPane implements IDisposable {
     titleEl.contentEditable = 'true';
     titleEl.spellcheck = false;
     titleEl.addEventListener('blur', () => {
-      const next = (titleEl.textContent ?? '').trim() || 'Untitled database';
+      const next = (titleEl.textContent ?? '').trim() || 'Untitled';
       if (next !== this._title) { this._title = next; void this._deps.renamePage(this._databaseId, next); }
     });
     titleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); titleEl.blur(); } });
@@ -378,7 +378,7 @@ export class DatabaseEditorPane implements IDisposable {
       const titleText = el('span', 'canvas-db-cell__titletext', row.title || 'Untitled');
       titleText.addEventListener('click', () => this._beginRenameRow(titleText, row));
       titleWrap.appendChild(titleText);
-      const openBtn = el('button', 'canvas-db-openbtn', 'OPEN');
+      const openBtn = el('button', 'canvas-db-openbtn', 'Open');
       openBtn.addEventListener('click', (e) => { e.stopPropagation(); this._deps.openPage(row.pageId); });
       titleWrap.appendChild(openBtn);
       titleTd.appendChild(titleWrap);
@@ -396,7 +396,11 @@ export class DatabaseEditorPane implements IDisposable {
 
     // + New row.
     const newTr = el('tr', 'canvas-db-newrow');
-    const newTd = el('td', 'canvas-db-newrow__cell', '+ New');
+    const newTd = el('td', 'canvas-db-newrow__cell');
+    const newLabel = el('span', 'canvas-db-newrow__label');
+    newLabel.innerHTML = svgIcon('plus');
+    newLabel.appendChild(el('span', '', 'New'));
+    newTd.appendChild(newLabel);
     newTd.colSpan = props.length + 2;
     newTd.addEventListener('click', () => void this._addRow());
     newTr.appendChild(newTd);

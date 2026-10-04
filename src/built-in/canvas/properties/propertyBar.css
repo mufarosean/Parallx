@@ -131,7 +131,7 @@
 .canvas-property-row__delete:hover,
 .canvas-property-row__delete-definition:hover {
   color: var(--vscode-errorForeground, #f38ba8);
-  background: rgba(243, 139, 168, 0.1);
+  background: var(--px-danger-soft);
 }
 
 /* ─── Add Property Button ───────────────────────────────────────────────────── */
@@ -233,7 +233,7 @@
 
 .canvas-prop-calendar {
   position: fixed;
-  z-index: 2575;
+  z-index: var(--px-canvas-z-fields);
   background: var(--vscode-menu-background);
   color: var(--vscode-menu-foreground);
   border: 1px solid var(--vscode-menu-border);
@@ -429,7 +429,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--px-text-on-accent);
   position: absolute;
   top: 2px;
   left: 2px;
@@ -494,7 +494,7 @@
 
 .canvas-prop-tag-autocomplete {
   position: fixed;
-  z-index: 2575;
+  z-index: var(--px-canvas-z-fields);
   background: var(--vscode-menu-background);
   color: var(--vscode-menu-foreground);
   border: 1px solid var(--vscode-menu-border);
@@ -549,7 +549,7 @@
 
 .canvas-prop-select-dropdown {
   position: fixed;
-  z-index: 2575;
+  z-index: var(--px-canvas-z-fields);
   background: var(--vscode-menu-background);
   color: var(--vscode-menu-foreground);
   border: 1px solid var(--vscode-menu-border);
@@ -613,14 +613,14 @@
 }
 
 .canvas-prop-url-link:hover {
-  background: rgba(137, 180, 250, 0.1);
+  background: var(--px-accent-faint);
 }
 
 /* ─── Property Picker Dropdown ──────────────────────────────────────────────── */
 
 .canvas-property-picker {
   position: fixed;
-  z-index: 2575;
+  z-index: var(--px-canvas-z-fields);
   background: var(--vscode-menu-background);
   color: var(--vscode-menu-foreground);
   border: 1px solid var(--vscode-menu-border);
@@ -707,7 +707,7 @@
 
 .canvas-property-picker__delete:hover {
   color: var(--vscode-errorForeground, #f38ba8);
-  background: rgba(243, 139, 168, 0.1);
+  background: var(--px-danger-soft);
 }
 
 .canvas-property-picker__item-icon {
@@ -802,7 +802,7 @@
 
 .canvas-property-picker__type-dropdown {
   position: absolute;
-  z-index: 2576;
+  z-index: calc(var(--px-canvas-z-fields) + 1);
   background: var(--vscode-menu-background, #1e1e2e);
   border: 1px solid var(--vscode-menu-border, rgba(255, 255, 255, 0.08));
   border-radius: var(--parallx-radius-md, 4px);
@@ -858,7 +858,7 @@
 
 .canvas-prop-value-popover {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--px-canvas-z-menu);
   min-width: 200px;
   max-width: 320px;
   max-height: 320px;

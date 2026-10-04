@@ -291,7 +291,8 @@
   margin-bottom: 18px;
 }
 .canvas-empty-action {
-  display: block;
+  display: flex;
+  gap: 6px;
   width: 100%;
   text-align: left;
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
@@ -352,7 +353,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9000;
+  z-index: var(--px-canvas-z-dialog);
   animation: canvas-template-fade-in 0.12s ease;
 }
 @keyframes canvas-template-fade-in {
@@ -507,7 +508,7 @@
 }
 .canvas-sidebar-add-popover {
   position: fixed;
-  z-index: 9500;
+  z-index: calc(var(--px-canvas-z-dialog) + 500);
   min-width: 200px;
   background: var(--vscode-menu-background, var(--vscode-editorWidget-background, #252526));
   border: 1px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 10%, transparent));
@@ -545,7 +546,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9000;
+  z-index: var(--px-canvas-z-dialog);
   animation: canvas-template-fade-in 0.12s ease;
 }
 .canvas-shortcuts-modal {
@@ -1312,17 +1313,28 @@
   z-index: 56;
   /* Shift left to avoid overlapping the column resize boundary zone */
   transform: translateX(-8px);
-  background-size: calc(0.5em + 0.375rem) calc(0.5em + 0.375rem);
-  background-repeat: no-repeat;
-  background-position: center;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' style='fill: rgba(255, 255, 255, 0.35)'%3E%3Cpath d='M3,2 C2.44771525,2 2,1.55228475 2,1 C2,0.44771525 2.44771525,0 3,0 C3.55228475,0 4,0.44771525 4,1 C4,1.55228475 3.55228475,2 3,2 Z M3,6 C2.44771525,6 2,5.55228475 2,5 C2,4.44771525 2.44771525,4 3,4 C3.55228475,4 4,4.44771525 4,5 C4,5.55228475 3.55228475,6 3,6 Z M3,10 C2.44771525,10 2,9.55228475 2,9 C2,8.44771525 2.44771525,8 3,8 C3.55228475,8 4,8.44771525 4,9 C4,9.55228475 3.55228475,10 3,10 Z M7,2 C6.44771525,2 6,1.55228475 6,1 C6,0.44771525 6.44771525,0 7,0 C7.55228475,0 8,0.44771525 8,1 C8,1.55228475 7.55228475,2 7,2 Z M7,6 C6.44771525,6 6,5.55228475 6,5 C6,4.44771525 6.44771525,4 7,4 C7.55228475,4 8,4.44771525 8,5 C8,5.55228475 7.55228475,6 7,6 Z M7,10 C6.44771525,10 6,9.55228475 6,9 C6,8.44771525 6.44771525,8 7,8 C7.55228475,8 8,8.44771525 8,9 C8,9.55228475 7.55228475,10 7,10 Z'%3E%3C/path%3E%3C/svg%3E");
+}
+
+/* The six dots are a mask filled with a text token, so they follow the mode
+   (they were drawn white, which vanished on a light page). */
+.drag-handle::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: var(--px-text-muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' %3E%3Cpath d='M3,2 C2.44771525,2 2,1.55228475 2,1 C2,0.44771525 2.44771525,0 3,0 C3.55228475,0 4,0.44771525 4,1 C4,1.55228475 3.55228475,2 3,2 Z M3,6 C2.44771525,6 2,5.55228475 2,5 C2,4.44771525 2.44771525,4 3,4 C3.55228475,4 4,4.44771525 4,5 C4,5.55228475 3.55228475,6 3,6 Z M3,10 C2.44771525,10 2,9.55228475 2,9 C2,8.44771525 2.44771525,8 3,8 C3.55228475,8 4,8.44771525 4,9 C4,9.55228475 3.55228475,10 3,10 Z M7,2 C6.44771525,2 6,1.55228475 6,1 C6,0.44771525 6.44771525,0 7,0 C7.55228475,0 8,0.44771525 8,1 C8,1.55228475 7.55228475,2 7,2 Z M7,6 C6.44771525,6 6,5.55228475 6,5 C6,4.44771525 6.44771525,4 7,4 C7.55228475,4 8,4.44771525 8,5 C8,5.55228475 7.55228475,6 7,6 Z M7,10 C6.44771525,10 6,9.55228475 6,9 C6,8.44771525 6.44771525,8 7,8 C7.55228475,8 8,8.44771525 8,9 C8,9.55228475 7.55228475,10 7,10 Z'%3E%3C/path%3E%3C/svg%3E") center / calc(0.5em + 0.375rem) calc(0.5em + 0.375rem) no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' %3E%3Cpath d='M3,2 C2.44771525,2 2,1.55228475 2,1 C2,0.44771525 2.44771525,0 3,0 C3.55228475,0 4,0.44771525 4,1 C4,1.55228475 3.55228475,2 3,2 Z M3,6 C2.44771525,6 2,5.55228475 2,5 C2,4.44771525 2.44771525,4 3,4 C3.55228475,4 4,4.44771525 4,5 C4,5.55228475 3.55228475,6 3,6 Z M3,10 C2.44771525,10 2,9.55228475 2,9 C2,8.44771525 2.44771525,8 3,8 C3.55228475,8 4,8.44771525 4,9 C4,9.55228475 3.55228475,10 3,10 Z M7,2 C6.44771525,2 6,1.55228475 6,1 C6,0.44771525 6.44771525,0 7,0 C7.55228475,0 8,0.44771525 8,1 C8,1.55228475 7.55228475,2 7,2 Z M7,6 C6.44771525,6 6,5.55228475 6,5 C6,4.44771525 6.44771525,4 7,4 C7.55228475,4 8,4.44771525 8,5 C8,5.55228475 7.55228475,6 7,6 Z M7,10 C6.44771525,10 6,9.55228475 6,9 C6,8.44771525 6.44771525,8 7,8 C7.55228475,8 8,8.44771525 8,9 C8,9.55228475 7.55228475,10 7,10 Z'%3E%3C/path%3E%3C/svg%3E") center / calc(0.5em + 0.375rem) calc(0.5em + 0.375rem) no-repeat;
+  pointer-events: none;
 }
 
 .drag-handle:hover {
   opacity: 1 !important;
   background-color: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--px-text) 8%, transparent));
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' style='fill: rgba(255, 255, 255, 0.7)'%3E%3Cpath d='M3,2 C2.44771525,2 2,1.55228475 2,1 C2,0.44771525 2.44771525,0 3,0 C3.55228475,0 4,0.44771525 4,1 C4,1.55228475 3.55228475,2 3,2 Z M3,6 C2.44771525,6 2,5.55228475 2,5 C2,4.44771525 2.44771525,4 3,4 C3.55228475,4 4,4.44771525 4,5 C4,5.55228475 3.55228475,6 3,6 Z M3,10 C2.44771525,10 2,9.55228475 2,9 C2,8.44771525 2.44771525,8 3,8 C3.55228475,8 4,8.44771525 4,9 C4,9.55228475 3.55228475,10 3,10 Z M7,2 C6.44771525,2 6,1.55228475 6,1 C6,0.44771525 6.44771525,0 7,0 C7.55228475,0 8,0.44771525 8,1 C8,1.55228475 7.55228475,2 7,2 Z M7,6 C6.44771525,6 6,5.55228475 6,5 C6,4.44771525 6.44771525,4 7,4 C7.55228475,4 8,4.44771525 8,5 C8,5.55228475 7.55228475,6 7,6 Z M7,10 C6.44771525,10 6,9.55228475 6,9 C6,8.44771525 6.44771525,8 7,8 C7.55228475,8 8,8.44771525 8,9 C8,9.55228475 7.55228475,10 7,10 Z'%3E%3C/path%3E%3C/svg%3E");
   transition: background-color var(--px-dur-base) var(--px-ease);
+}
+
+.drag-handle:hover::before {
+  background-color: var(--px-text-secondary);
 }
 
 .drag-handle:active {
@@ -1402,7 +1414,7 @@
 .block-action-menu,
 .block-action-submenu {
   position: fixed;
-  z-index: 1002;
+  z-index: calc(var(--px-canvas-z-menu) + 2);
   background: var(--vscode-menu-background, #252525);
   border: 1px solid var(--vscode-menu-border, color-mix(in srgb, var(--px-text) 10%, transparent));
   border-radius: var(--parallx-radius-lg);
@@ -1553,7 +1565,7 @@
 
 .canvas-bubble-menu {
   position: fixed;
-  z-index: 1001;
+  z-index: calc(var(--px-canvas-z-menu) + 1);
   display: none;
   /* Notion parity: wrap to rows of 5 buttons via CSS grid.  When the
      bubble is shown, JS sets style.display = 'grid'.  The link-input
@@ -1686,7 +1698,7 @@
 
 .canvas-slash-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--px-canvas-z-menu);
   min-width: 220px;
   max-width: 320px;
   max-height: 340px;
@@ -3130,7 +3142,7 @@
 
 .canvas-page-menu {
   position: fixed;
-  z-index: 1002;
+  z-index: calc(var(--px-canvas-z-menu) + 2);
   min-width: 240px;
   background: var(--vscode-menu-background);
   border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
@@ -3399,7 +3411,7 @@
 
 .canvas-image-insert-popup {
   position: fixed;
-  z-index: 1003;
+  z-index: calc(var(--px-canvas-z-menu) + 3);
   width: 340px;
   background: var(--vscode-menu-background);
   border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
@@ -3518,7 +3530,7 @@
 
 .canvas-media-insert-popup {
   position: fixed;
-  z-index: 1003;
+  z-index: calc(var(--px-canvas-z-menu) + 3);
   width: 360px;
   background: var(--vscode-menu-background);
   border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
@@ -3637,7 +3649,7 @@
 
 .canvas-bookmark-insert-popup {
   position: fixed;
-  z-index: 1003;
+  z-index: calc(var(--px-canvas-z-menu) + 3);
   width: 420px;
   background: var(--vscode-menu-background);
   border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
@@ -3701,7 +3713,7 @@
 /* Input paste context menu (bookmark/media URL inputs) */
 .canvas-input-paste-menu {
   position: fixed;
-  z-index: 1100;
+  z-index: calc(var(--px-canvas-z-menu) + 100);
   min-width: 120px;
   background: var(--vscode-menu-background);
   border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
@@ -3735,7 +3747,7 @@
 
 .canvas-cover-picker {
   position: fixed;
-  z-index: 1003;
+  z-index: calc(var(--px-canvas-z-menu) + 3);
   width: 420px;
   background: var(--vscode-menu-background);
   border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
@@ -4007,7 +4019,7 @@
 
 .canvas-sidebar-page-menu {
   position: fixed;
-  z-index: 1005;
+  z-index: calc(var(--px-canvas-z-menu) + 5);
   --canvas-sidebar-page-menu-control-height: 32px;
   width: 280px;
   padding: 8px;
@@ -4125,7 +4137,7 @@
  * ───────────────────────────────────────────────────────────────────────────── */
 .canvas-trash-panel {
   position: fixed;
-  z-index: 1005;
+  z-index: calc(var(--px-canvas-z-menu) + 5);
   width: 320px;
   max-height: 440px;
   background: var(--px-bg-elevated);
@@ -4309,7 +4321,7 @@
 
 .canvas-context-menu {
   position: fixed;
-  z-index: 1010;
+  z-index: calc(var(--px-canvas-z-menu) + 10);
   min-width: 200px;
   background: var(--vscode-menu-background);
   border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
@@ -4675,7 +4687,7 @@
 
 .canvas-ai-chat {
   position: fixed;
-  z-index: 1002;
+  z-index: calc(var(--px-canvas-z-menu) + 2);
   display: none;
   flex-direction: column;
   width: 340px;
@@ -5030,7 +5042,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9000;
+  z-index: var(--px-canvas-z-dialog);
   animation: canvas-template-fade-in 0.12s ease;
 }
 .canvas-vh-modal {

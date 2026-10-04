@@ -911,7 +911,7 @@ const definitions: BlockDefinition[] = [
 
         // 1. Create the database as a ROOT page (no auto-card — the card goes
         //    at the cursor), then reparent the row only.
-        const info = await context.databaseService.createDatabase({ title: 'Untitled database' });
+        const info = await context.databaseService.createDatabase({ title: 'Untitled' });
         dbId = info.id;
         await context.dataService.movePage(info.id, context.pageId);
 

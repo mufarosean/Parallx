@@ -335,6 +335,30 @@
   --px-portrait-s:        18%;      /* saturation of the tone               */
   --px-portrait-l:        30%;      /* lightness of the tone                */
   --px-portrait-ink-l:    86%;      /* lightness of the initials            */
+
+  /* ── Tier 3 · Component — Canvas option colors ──────────────────────────
+     The fill of a select or tag option, by the color name stored with the
+     option. One set for the database table and board and the page property
+     panel (each kept its own copy). Translucent, so text stays readable on
+     both modes. */
+  --px-option-default:    rgba(128, 128, 128, 0.22);
+  --px-option-brown:      rgba(159, 107, 74, 0.32);
+  --px-option-orange:     rgba(217, 115, 13, 0.32);
+  --px-option-yellow:     rgba(203, 148, 51, 0.32);
+  --px-option-green:      rgba(68, 131, 97, 0.35);
+  --px-option-blue:       rgba(51, 126, 169, 0.35);
+  --px-option-purple:     rgba(144, 101, 176, 0.35);
+  --px-option-pink:       rgba(193, 76, 138, 0.32);
+  --px-option-red:        rgba(212, 76, 71, 0.32);
+
+  /* ── Tier 3 · Component — Canvas layers ─────────────────────────────────
+     Canvas's menus and its own dialogs sit under the app's confirm dialogs
+     (--px-z-modal): the Trash panel stays open while "Delete permanently"
+     asks, and the question must show above it. Menus are numbered up from
+     the base in the order they stack. */
+  --px-canvas-z-menu:     1000;     /* slash, bubble, block and page menus, pickers */
+  --px-canvas-z-fields:   2575;     /* property pickers, calendars, tag lists */
+  --px-canvas-z-dialog:   9000;     /* templates, shortcuts, version history  */
 }
 
 /* ============================================================================

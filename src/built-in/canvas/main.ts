@@ -1033,7 +1033,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     api.commands.registerCommand('canvas.newDatabase', async () => {
       if (!_databaseService) return;
       try {
-        const db = await _databaseService.createDatabase({ title: 'Untitled database' });
+        const db = await _databaseService.createDatabase({ title: 'Untitled' });
         await openPageInEditor(db.id);
       } catch (err) {
         console.error('[Canvas] Failed to create database:', err);

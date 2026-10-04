@@ -506,7 +506,8 @@ export class CanvasSidebar {
       const actions = $('div.canvas-empty-actions');
 
       const blankBtn = $('button.canvas-empty-action.canvas-empty-action--primary');
-      blankBtn.textContent = '+ Blank Page';
+      blankBtn.appendChild(createIconElement('plus', 14));
+      blankBtn.appendChild($('span')).textContent = 'Blank Page';
       blankBtn.addEventListener('click', () => this._createPage());
       actions.appendChild(blankBtn);
 

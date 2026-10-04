@@ -37,16 +37,16 @@ export function createTypeIconElement(type: string, size = 16): HTMLElement {
  * Anything else (legacy rgba strings) passes through unchanged.
  */
 const NAMED_OPTION_COLORS: Record<string, string> = {
-  default: 'rgba(128,128,128,0.22)',
-  gray: 'rgba(128,128,128,0.22)',
-  brown: 'rgba(159,107,74,0.32)',
-  orange: 'rgba(217,115,13,0.32)',
-  yellow: 'rgba(203,148,51,0.32)',
-  green: 'rgba(68,131,97,0.35)',
-  blue: 'rgba(51,126,169,0.35)',
-  purple: 'rgba(144,101,176,0.35)',
-  pink: 'rgba(193,76,138,0.32)',
-  red: 'rgba(212,76,71,0.32)',
+  default: 'var(--px-option-default)',
+  gray: 'var(--px-option-default)',
+  brown: 'var(--px-option-brown)',
+  orange: 'var(--px-option-orange)',
+  yellow: 'var(--px-option-yellow)',
+  green: 'var(--px-option-green)',
+  blue: 'var(--px-option-blue)',
+  purple: 'var(--px-option-purple)',
+  pink: 'var(--px-option-pink)',
+  red: 'var(--px-option-red)',
 };
 export function resolveOptionColor(color: string | undefined | null): string {
   if (!color) return NAMED_OPTION_COLORS.default;
@@ -288,7 +288,7 @@ function _createTagsEditor(
     } else {
       const input = document.createElement('input');
       input.className = 'canvas-prop-tag-input';
-      input.placeholder = tags.length ? '' : 'Add tags...';
+      input.placeholder = tags.length ? '' : 'Add tags…';
       _wireTagInput(input);
       container.appendChild(input);
     }

@@ -31,7 +31,7 @@ test.describe('Canvas Databases', () => {
     // The database editor opens: header, tabs, toolbar, table.
     const pane = window.locator('.canvas-db-pane');
     await expect(pane).toBeVisible({ timeout: 10_000 });
-    await expect(pane.locator('.canvas-db-header__title')).toHaveText('Untitled database');
+    await expect(pane.locator('.canvas-db-header__title')).toHaveText('Untitled');
     await expect(pane.locator('.canvas-db-tab--active')).toContainText('Table');
     await expect(pane.locator('.canvas-db-newbtn')).toHaveText('New');
     // Seeded schema: Name + Status columns.
@@ -74,7 +74,7 @@ test.describe('Canvas Databases', () => {
     await window.screenshot({ path: 'test-results/db-row-page.png', fullPage: true });
 
     // ── The database page shows in the sidebar tree (a database IS a page) ──
-    await expect(window.locator('.canvas-node', { hasText: 'Untitled database' }).first()).toBeVisible();
+    await expect(window.locator('.canvas-node', { hasText: 'Untitled' }).first()).toBeVisible();
   });
 
   test('legacy property migration: tags + custom values move into databases, backup written, property bar gone', async ({ window, electronApp }) => {
