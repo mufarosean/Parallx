@@ -10,6 +10,23 @@ import type {
   IActionHandlerServices,
 } from './selectionActionTypes.js';
 
+/** Actions the core itself offers (each editor places these itself). */
+export const CORE_SELECTION_ACTIONS: ReadonlySet<string> = new Set(['add-to-chat', 'send-to-canvas']);
+
+let _current: SelectionActionDispatcher | undefined;
+
+/**
+ * The selection actions running tools added (Flashcards' "Create Flashcard…"):
+ * editors list these in their selection menus. A tool turned off takes its
+ * action with it, so no editor offers something nothing will answer.
+ */
+export function getToolSelectionActions(): readonly { actionId: string; label: string; icon?: string }[] {
+  if (!_current) return [];
+  return _current.getHandlers()
+    .filter((h) => !CORE_SELECTION_ACTIONS.has(h.actionId))
+    .map((h) => ({ actionId: h.actionId, label: h.label, icon: h.icon }));
+}
+
 /**
  * Concrete dispatcher. Maintains a handler registry and routes payloads.
  */
@@ -17,6 +34,10 @@ export class SelectionActionDispatcher implements ISelectionActionDispatcher {
   private readonly _handlers = new Map<string, ISelectionActionHandler>();
   private _services: IActionHandlerServices | undefined;
   private _disposed = false;
+
+  constructor() {
+    _current = this;
+  }
 
   /**
    * Bind the shared services that every handler receives.
@@ -63,5 +84,6 @@ export class SelectionActionDispatcher implements ISelectionActionDispatcher {
   dispose(): void {
     this._disposed = true;
     this._handlers.clear();
+    if (_current === this) _current = undefined;
   }
 }

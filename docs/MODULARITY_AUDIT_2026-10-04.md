@@ -20,7 +20,7 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 | 1 | `canvas/config/blockRegistry.ts` | Planner, Atelier, Worksheets | Agenda, Media Gallery, Practice Problems in every / menu | **fixed** `a2d44b5b`: `api.canvas.registerBlock`, generic `toolBlock` node |
 | 2 | `services/settingsRegistryBootstrap.ts:72-79` | Budget, Browser, Flashcards, Atelier, Worksheets | Settings lists every *installed* tool's settings, on or off; never removed | **fixed**: registered as the tool starts, removed when it is turned off (values kept); the older configuration registry now releases them too |
 | 3 | `aiSettings/ui/aiSettingsPanel.ts:99,135`, `sections/webResearchSection.ts` | Web Research | "Web Research" settings section (API key, budget) always shown | **fixed**: the extension declares its settings in its manifest (the key as a `secret`, kept in safeStorage); the core section is gone |
-| 4 | `canvas/menus/bubbleMenu.ts:132`; `editor/panes/pdfEditorPane.ts:2938`, `markdownEditorPane.ts:183`, `textEditorPane.ts:776` | Flashcards | "Make Flashcard" on every text selection | open |
+| 4 | `canvas/menus/bubbleMenu.ts:132`; `editor/panes/pdfEditorPane.ts:2938`, `markdownEditorPane.ts:183`, `textEditorPane.ts:776` | Flashcards | "Make Flashcard" on every text selection | **fixed**: editors list the selection actions running tools registered (`getToolSelectionActions`); none is hardcoded |
 | 5 | `dashboard/widgets/timerWidget.ts` (+ `timerLogic.ts`) | Planner | Timer's Planner button and copy, on by default | open |
 | 6 | `dashboard/widgets/weatherWidget.ts`, `marketWidget.ts` | Web Research | Core widgets whose AI refresh needs Web Research's tools | open |
 | 7 | `dashboard/widgetTemplates.ts:61-68` | Planner | "Daily brief" template reads the planner | open |
@@ -32,6 +32,7 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 | 13 | `services/workflows/workflowLibrary.ts:27` (+ `workflowTypes.ts:67`, `workflowRunner.ts:39`) | Planner | "Morning Report" template reads the planner | open |
 | 14 | `openclaw/participants/openclawContextReport.ts:173` | Workspace Graph | `/context` tells you to use Workspace Graph | open |
 | 15 | `services/sealedWorkspace.ts:33` | Browser | Always-shown setting text names the Browser | open |
+| 15a | `worksheet/dashboardPane.ts:458`, `worksheet/main.ts:3534` | Flashcards | Worksheets' plan offers "Review Due Flashcards" (says "not available" when off) | open |
 
 ## 2. Work done for a tool that is off
 

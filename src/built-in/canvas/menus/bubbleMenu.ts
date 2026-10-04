@@ -7,6 +7,7 @@
 // submenu visually identical to the block-action menu's Color submenu —
 // it just targets the current text selection instead of a whole block.
 
+import { getToolSelectionActions } from '../../../services/selectionActionDispatcher.js';
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
 import { svgIcon, recordRecentColor, renderColorPalette } from './canvasMenuRegistry.js';
@@ -127,14 +128,6 @@ export class BubbleMenuController implements ICanvasMenu {
         // dispatcher (the same CustomEvent the inline AI's "Send to Chat" uses).
         label: svgIcon('px-ai-mark'), title: 'Add to Chat',
         command: (e) => this._dispatchSelectionAction(e, 'add-to-chat'),
-        active: () => false,
-      },
-      {
-        // M98: capture the selection as a flashcard. Same dispatcher; the
-        // flashcards extension registers the 'create-flashcard' handler
-        // (the PDF viewer already exposes this action).
-        label: svgIcon('layers'), title: 'Make Flashcard',
-        command: (e) => this._dispatchSelectionAction(e, 'create-flashcard'),
         active: () => false,
       },
       {
@@ -446,10 +439,40 @@ export class BubbleMenuController implements ICanvasMenu {
       layoutPopup(this._menu, { x: centredX, y: aboveY });
     });
 
+    this._renderToolActions();
     this._refreshActiveStates();
     // Hide link input when selection changes
     if (this._linkInput) this._linkInput.style.display = 'none';
   }
+
+  /**
+   * Buttons for the selection actions running tools added (a study tool's
+   * "make a card", say), after the built-in ones. Read each time the menu
+   * shows: a tool turned off takes its button with it.
+   */
+  private _renderToolActions(): void {
+    if (!this._menu) return;
+    const actions = getToolSelectionActions();
+    const key = actions.map((a) => `${a.actionId}|${a.label}|${a.icon ?? ''}`).join(',');
+    if (key === this._toolActionsKey) return;
+    this._toolActionsKey = key;
+    this._menu.querySelectorAll('.canvas-bubble-btn--tool').forEach((el) => el.remove());
+    for (const a of actions) {
+      const el = $('button.canvas-bubble-btn.canvas-bubble-btn--tool');
+      el.innerHTML = a.icon ? svgIcon(a.icon) : '';
+      if (!el.innerHTML) el.textContent = a.label;
+      el.title = a.label.replace(/…$/, '');
+      el.setAttribute('aria-label', a.label);
+      el.dataset.action = a.actionId;
+      el.addEventListener('mousedown', (ev) => {
+        ev.preventDefault();  // prevent editor blur
+        const editor = this._host.editor;
+        if (editor) this._dispatchSelectionAction(editor, a.actionId);
+      });
+      this._menu.appendChild(el);
+    }
+  }
+  private _toolActionsKey = '';
 
   private _refreshActiveStates(): void {
     const editor = this._host.editor;

@@ -11823,7 +11823,7 @@ function registerSelectionAction(context, attempt = 0) {
       if (!dispatcher || typeof dispatcher.registerHandler !== 'function') throw new Error('no dispatcher');
       context.subscriptions.push(dispatcher.registerHandler({
         actionId: 'create-flashcard',
-        label: 'Create Flashcard',
+        label: 'Create Flashcard…',
         icon: 'px-flashcards',
         execute: async (payload) => fcCaptureSelection(payload.selectedText, payload.source),
       }));

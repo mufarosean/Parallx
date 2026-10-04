@@ -24,6 +24,7 @@ import { MarkdownPreviewInput } from './markdownPreviewInput.js';
 import { ReadonlyMarkdownInput } from './readonlyMarkdownInput.js';
 import { $ } from '../../ui/dom.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
+import { getToolSelectionActions } from '../../services/selectionActionDispatcher.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -178,12 +179,9 @@ export class MarkdownEditorPane extends EditorPane {
           label: 'Add Selection to Chat',
           group: 'ai',
         },
-        // M98: flashcard capture — same dispatcher, handled by ext/flashcards.
-        {
-          id: 'ai.createFlashcard',
-          label: 'Create Flashcard from Selection',
-          group: 'ai',
-        },
+        // Actions running tools added (selection-action dispatcher), e.g.
+        // a study tool's "make a card"; none when no tool offers one.
+        ...getToolSelectionActions().map((a) => ({ id: `sel:${a.actionId}`, label: a.label, group: 'ai' })),
       ],
       anchor: { x: e.clientX, y: e.clientY },
     });
@@ -193,8 +191,8 @@ export class MarkdownEditorPane extends EditorPane {
         void navigator.clipboard.writeText(selected);
       } else if (ev.item.id === 'ai.addToChat') {
         this._dispatchSelectionAction('add-to-chat');
-      } else if (ev.item.id === 'ai.createFlashcard') {
-        this._dispatchSelectionAction('create-flashcard');
+      } else if (ev.item.id.startsWith('sel:')) {
+        this._dispatchSelectionAction(ev.item.id.slice(4));
       }
     });
 

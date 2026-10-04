@@ -36,6 +36,7 @@ import {
 // ── PDF.js Display layer (for getDocument) ──────────────────────────────
 import * as pdfjsLib from 'pdfjs-dist';
 import { AnnotationMode } from 'pdfjs-dist';
+import { getToolSelectionActions } from '../../services/selectionActionDispatcher.js';
 
 // ── CSS ─────────────────────────────────────────────────────────────────
 import 'pdfjs-dist/web/pdf_viewer.css';
@@ -2933,9 +2934,9 @@ export class PdfEditorPane extends EditorPane {
         // and opens its review panel focused on the AI input).
         { id: 'ai.askInline', label: 'Ask AI About Selection', disabled: !hasSel, group: 'ai' },
         { id: 'ai.addToChat', label: 'Send to Chat', disabled: !hasSel, group: 'ai' },
-        // Routed through the selection-action dispatcher to the flashcards
-        // extension's 'create-flashcard' handler (deck pick + AI generation).
-        { id: 'flashcards.capture', label: 'Create Flashcard…', disabled: !hasSel, group: 'ai' },
+        // Actions running tools added (selection-action dispatcher), e.g.
+        // a study tool's "make a card"; none when no tool offers one.
+        ...getToolSelectionActions().map((a) => ({ id: `sel:${a.actionId}`, label: a.label, disabled: !hasSel, group: 'ai' })),
       ],
       anchor: { x, y },
     });
@@ -2964,8 +2965,8 @@ export class PdfEditorPane extends EditorPane {
         this._askAIAboutSelection();
       } else if (e.item.id === 'ai.addToChat') {
         this._dispatchSelectionAction('add-to-chat');
-      } else if (e.item.id === 'flashcards.capture') {
-        this._dispatchSelectionAction('create-flashcard');
+      } else if (e.item.id.startsWith('sel:')) {
+        this._dispatchSelectionAction(e.item.id.slice(4));
       }
       this._dismissSelectionBubble();
     });
