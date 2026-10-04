@@ -76,15 +76,6 @@ function mapOptions(config: Record<string, unknown>): Record<string, unknown> {
 
 const SYSTEM_KEYS = new Set(['tags', 'created', 'modified']);
 
-/** Find a live database by exact page title (reuse on re-run). */
-async function findDatabaseByTitle(bridge: DatabaseBridgeLike, title: string): Promise<string | null> {
-  const res = await bridge.get(
-    'SELECT d.id FROM databases d JOIN pages p ON p.id = d.id WHERE p.title = ? AND p.is_archived = 0',
-    [title],
-  );
-  return res.row ? (res.row.id as string) : null;
-}
-
 export async function runLegacyPropertyMigration(deps: IMigrationDeps): Promise<IMigrationResult | 'nothing-to-migrate'> {
   const { bridge, db } = deps;
 
@@ -153,15 +144,13 @@ export async function runLegacyPropertyMigration(deps: IMigrationDeps): Promise<
   let customDbId: string | null = null;
   const ensureCustomDb = async (): Promise<string> => {
     if (customDbId) return customDbId;
-    customDbId = await findDatabaseByTitle(bridge, 'Migrated properties');
-    if (!customDbId) customDbId = (await db.createDatabase({ title: 'Migrated properties', seedDefaults: false })).id;
+    customDbId = (await db.ensureWorkspaceDatabase('migrated-properties')).databaseId;
     return customDbId;
   };
   let tagsDbId: string | null = null;
   const ensureTagsDb = async (): Promise<string> => {
     if (tagsDbId) return tagsDbId;
-    tagsDbId = await findDatabaseByTitle(bridge, 'Tags');
-    if (!tagsDbId) tagsDbId = (await db.createDatabase({ title: 'Tags', seedDefaults: false })).id;
+    tagsDbId = (await db.ensureWorkspaceDatabase('tags')).databaseId;
     return tagsDbId;
   };
 

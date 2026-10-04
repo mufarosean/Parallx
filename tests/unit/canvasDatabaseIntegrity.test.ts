@@ -163,3 +163,80 @@ describe('filters read values by their type', () => {
     expect(match('greater_than', '2026-10-04')).toEqual(['r3']);
   });
 });
+
+describe('select and tag options can be renamed and removed', () => {
+  async function setup() {
+    const d = await dbs.createDatabase({ title: 'Tasks' });
+    const status = (await dbs.listProperties(d.id)).find((p) => p.name === 'Status')!;
+    const tags = await dbs.addProperty(d.id, 'Tags', 'tags', { options: [{ value: 'art', color: 'red' }, { value: 'work', color: 'blue' }] });
+    const a = await dbs.addRow(d.id, 'A');
+    const b = await dbs.addRow(d.id, 'B');
+    await dbs.setCellValue(d.id, a.pageId, status.id, 'In progress');
+    await dbs.setCellValue(d.id, b.pageId, status.id, 'Done');
+    await dbs.setCellValue(d.id, a.pageId, tags.id, ['art', 'work']);
+    await dbs.setCellValue(d.id, b.pageId, tags.id, ['work']);
+    const cell = async (pageId: string, propId: string) => (await dbs.getRowValues(d.id, pageId))[propId];
+    return { d, status, tags, a, b, cell };
+  }
+
+  it('renaming an option renames it in every cell and in filters on it', async () => {
+    const { d, status, tags, a, b, cell } = await setup();
+    const [view] = await dbs.listViews(d.id);
+    await dbs.updateView(d.id, view!.id, { filter: { conjunction: 'and', rules: [{ propertyId: tags.id, op: 'equals', value: 'work' }] } });
+
+    await dbs.setOptions(d.id, tags.id, [{ value: 'art', color: 'red' }, { value: 'Job', color: 'blue' }], { work: 'Job' });
+    await dbs.setOptions(d.id, status.id, [{ value: 'To do', color: 'gray' }, { value: 'Doing', color: 'blue' }, { value: 'Done', color: 'green' }], { 'In progress': 'Doing' });
+
+    expect(await cell(a.pageId, tags.id)).toEqual(['art', 'Job']);
+    expect(await cell(b.pageId, tags.id)).toEqual(['Job']);
+    expect(await cell(a.pageId, status.id)).toBe('Doing');
+    expect(await cell(b.pageId, status.id)).toBe('Done');
+    expect((await dbs.listViews(d.id))[0]!.filter.rules[0]!.value).toBe('Job');
+  });
+
+  it('removing an option takes it out of the cells that held it', async () => {
+    const { d, status, tags, a, b, cell } = await setup();
+    await dbs.setOptions(d.id, tags.id, [{ value: 'art', color: 'red' }]);
+    await dbs.setOptions(d.id, status.id, [{ value: 'To do', color: 'gray' }, { value: 'In progress', color: 'blue' }]);
+    expect(await cell(a.pageId, tags.id)).toEqual(['art']);
+    expect(await cell(b.pageId, tags.id)).toEqual([]);
+    expect(await cell(a.pageId, status.id)).toBe('In progress');
+    expect(await cell(b.pageId, status.id)).toBeNull();
+  });
+
+  it('two options with one name are refused, and nothing changes', async () => {
+    const { d, tags, a, cell } = await setup();
+    await expect(dbs.setOptions(d.id, tags.id, [{ value: 'art', color: 'red' }, { value: 'art', color: 'blue' }], { work: 'art' }))
+      .rejects.toThrow(/same name/);
+    expect(await cell(a.pageId, tags.id)).toEqual(['art', 'work']);
+  });
+});
+
+describe('the workspace Tags and Page properties databases are found by role, not title', () => {
+  it('a user database named "Tags" is never taken over', async () => {
+    const mine = await dbs.createDatabase({ title: 'Tags' }); // the user's own: it has the default Status column
+    const { databaseId } = await dbs.ensureWorkspaceDatabase('tags', { name: 'Tags', type: 'tags' });
+    expect(databaseId).not.toBe(mine.id);
+    expect((await dbs.listProperties(mine.id)).map((p) => p.name)).toEqual(['Status']);
+  });
+
+  it('the app\'s own Tags database made before roles is adopted, and found again after a rename', async () => {
+    const old = await dbs.createDatabase({ title: 'Tags', seedDefaults: false });
+    await dbs.addProperty(old.id, 'Tags', 'tags');
+    const first = await dbs.ensureWorkspaceDatabase('tags', { name: 'Tags', type: 'tags' });
+    expect(first.databaseId).toBe(old.id);
+
+    await pages.updatePage(old.id, { title: 'My labels' });
+    const again = await dbs.ensureWorkspaceDatabase('tags', { name: 'Tags', type: 'tags' });
+    expect(again.databaseId).toBe(old.id);
+  });
+
+  it('two calls give one database; one in the Trash gives up the role', async () => {
+    const a = await dbs.ensureWorkspaceDatabase('page-properties');
+    const b = await dbs.ensureWorkspaceDatabase('page-properties');
+    expect(b.databaseId).toBe(a.databaseId);
+    await pages.archivePage(a.databaseId);
+    const c = await dbs.ensureWorkspaceDatabase('page-properties');
+    expect(c.databaseId).not.toBe(a.databaseId);
+  });
+});

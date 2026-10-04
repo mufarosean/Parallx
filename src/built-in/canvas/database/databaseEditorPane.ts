@@ -618,23 +618,33 @@ export class DatabaseEditorPane implements IDisposable {
 
   private _openOptionsEditor(anchor: HTMLElement, prop: IDatabaseProperty): void {
     this._openPopover(anchor, (pop) => {
-      const options = [...(((prop.config as { options?: { value: string; color: string }[] }).options) ?? [])];
+      // `orig` is the option's stored name: renaming one renames it in every
+      // cell that holds it (DatabaseDataService.setOptions).
+      const options = ((((prop.config as { options?: { value: string; color: string }[] }).options) ?? []))
+        .map((o) => ({ value: o.value, color: o.color, orig: o.value as string | undefined }));
       const list = el('div', 'canvas-db-options');
+      const error = el('div', 'canvas-db-popover__error');
       const renderList = () => {
         list.textContent = '';
         for (const [i, opt] of options.entries()) {
           const rowEl = el('div', 'canvas-db-options__row');
-          rowEl.appendChild(pill(opt.value, opt.color));
-          const colorBtn = el('button', 'canvas-db-options__color', '◐');
-          colorBtn.title = 'Cycle color';
+          const colorBtn = el('button', `canvas-db-options__color canvas-db-pill--${PILL_COLORS.includes(opt.color as never) ? opt.color : 'default'}`, '◐');
+          colorBtn.title = 'Change color';
+          colorBtn.setAttribute('aria-label', `Change color of ${opt.value}`);
           colorBtn.addEventListener('click', () => {
             const idx = PILL_COLORS.indexOf((opt.color as never) ?? 'default');
             options[i] = { ...opt, color: PILL_COLORS[(idx + 1) % PILL_COLORS.length] };
             renderList();
           });
+          const name = el('input', 'canvas-db-popover__input canvas-db-options__name') as HTMLInputElement;
+          name.value = opt.value;
+          name.setAttribute('aria-label', 'Option name');
+          name.addEventListener('input', () => { options[i] = { ...options[i]!, value: name.value }; });
           const del = el('button', 'canvas-db-options__del', '×');
+          del.title = 'Remove option';
+          del.setAttribute('aria-label', `Remove ${opt.value}`);
           del.addEventListener('click', () => { options.splice(i, 1); renderList(); });
-          rowEl.append(colorBtn, del);
+          rowEl.append(colorBtn, name, del);
           list.appendChild(rowEl);
         }
       };
@@ -644,16 +654,21 @@ export class DatabaseEditorPane implements IDisposable {
       add.placeholder = 'New option, Enter to add';
       add.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && add.value.trim()) {
-          options.push({ value: add.value.trim(), color: PILL_COLORS[(options.length + 1) % PILL_COLORS.length] });
+          options.push({ value: add.value.trim(), color: PILL_COLORS[(options.length + 1) % PILL_COLORS.length], orig: undefined });
           add.value = '';
           renderList();
         }
       });
       pop.appendChild(add);
-      const save = el('button', 'canvas-db-popover__primary', 'Save options');
+      pop.appendChild(error);
+      const save = el('button', 'canvas-db-popover__primary', 'Save Options');
       save.addEventListener('click', () => {
-        this._closePopover();
-        void this._deps.db.updateProperty(this._databaseId, prop.id, { config: { ...prop.config, options } });
+        const renames: Record<string, string> = {};
+        for (const o of options) if (o.orig !== undefined && o.orig !== o.value.trim()) renames[o.orig] = o.value.trim();
+        const next = options.map(({ value, color }) => ({ value: value.trim(), color }));
+        void this._deps.db.setOptions(this._databaseId, prop.id, next, renames)
+          .then(() => this._closePopover())
+          .catch((err) => { error.textContent = err instanceof Error ? err.message : String(err); });
       });
       pop.appendChild(save);
     });

@@ -68,6 +68,14 @@ function rowToProperty(r: Record<string, unknown>): IDatabaseProperty {
  *  palette: default/gray/brown/orange/yellow/green/blue/purple/pink/red) and
  *  resolved to theme-aware CSS by the views — matching Notion's status
  *  defaults: To-do gray, In progress blue, Complete green. */
+/** Databases the app keeps for itself, found by role (not by title). */
+export type WorkspaceDatabaseRole = 'tags' | 'page-properties' | 'migrated-properties';
+const WORKSPACE_DATABASE_TITLES: Record<WorkspaceDatabaseRole, string> = {
+  'tags': 'Tags',
+  'page-properties': 'Page properties',
+  'migrated-properties': 'Migrated properties',
+};
+
 /** Colors given to options created by typing a new name (PILL_COLORS minus default). */
 const NEW_OPTION_COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'] as const;
 
@@ -252,6 +260,80 @@ export class DatabaseDataService extends Disposable {
     );
     if (res.error) throw new Error(res.error.message);
     this._onDidChangeStructure.fire(databaseId);
+  }
+
+  /**
+   * Replace a select/tags column's options.  Cells store option names, so a
+   * rename rewrites every cell that holds the old name (and view filters on
+   * it), and a removed option leaves the cells that held it: a select is
+   * cleared, a tag list loses that tag.  All in one transaction.
+   *
+   * `renames` maps an old name to its new one.  Names must be unique.
+   */
+  async setOptions(
+    databaseId: string,
+    propertyId: string,
+    options: readonly { value: string; color: string }[],
+    renames: Readonly<Record<string, string>> = {},
+  ): Promise<void> {
+    const names = options.map((o) => o.value.trim());
+    if (names.some((n) => !n)) throw new Error('An option needs a name.');
+    if (new Set(names).size !== names.length) throw new Error('Two options have the same name.');
+    const prop = (await this.listProperties(databaseId)).find((p) => p.id === propertyId);
+    if (!prop) throw new Error(`Property "${propertyId}" is not in this database.`);
+    const keep = new Set(names);
+    const mapName = (name: string): string | null => {
+      const next = Object.prototype.hasOwnProperty.call(renames, name) ? renames[name]! : name;
+      return keep.has(next) ? next : null;
+    };
+
+    const ops: { type: 'run'; sql: string; params: unknown[] }[] = [{
+      type: 'run',
+      sql: "UPDATE database_properties SET config = ?, updated_at = datetime('now') WHERE id = ? AND database_id = ?",
+      params: [JSON.stringify({ ...prop.config, options: options.map((o) => ({ ...o, value: o.value.trim() })) }), propertyId, databaseId],
+    }];
+    const cells = await this._db.all(
+      'SELECT page_id, value FROM page_property_values WHERE property_id = ? AND database_id = ?',
+      [propertyId, databaseId],
+    );
+    if (cells.error) throw new Error(cells.error.message);
+    for (const cell of cells.rows ?? []) {
+      let value: unknown;
+      try { value = JSON.parse(cell.value as string); } catch { value = cell.value; }
+      let next: unknown = value;
+      if (Array.isArray(value)) {
+        next = value.map((v) => mapName(String(v))).filter((v): v is string => v !== null)
+          .filter((v, i, all) => all.indexOf(v) === i);
+      } else if (typeof value === 'string' && value) {
+        next = mapName(value);
+      }
+      if (JSON.stringify(next) === JSON.stringify(value)) continue;
+      ops.push({
+        type: 'run',
+        sql: "UPDATE page_property_values SET value = ?, updated_at = datetime('now') WHERE page_id = ? AND property_id = ? AND database_id = ?",
+        params: [JSON.stringify(next ?? null), cell.page_id, propertyId, databaseId],
+      });
+    }
+    // Filters naming a renamed option follow it.
+    for (const view of await this._readViews(databaseId)) {
+      let changed = false;
+      const rules = view.filter.rules.map((r) => {
+        if (r.propertyId !== propertyId || typeof r.value !== 'string' || !Object.prototype.hasOwnProperty.call(renames, r.value)) return r;
+        changed = true;
+        return { ...r, value: renames[r.value] };
+      });
+      if (changed) {
+        ops.push({
+          type: 'run',
+          sql: "UPDATE database_views SET filter_config = ?, updated_at = datetime('now') WHERE id = ? AND database_id = ?",
+          params: [JSON.stringify({ ...view.filter, rules }), view.id, databaseId],
+        });
+      }
+    }
+    const txn = await this._db.runTransaction(ops);
+    if (txn.error) throw new Error(txn.error.message);
+    this._onDidChangeStructure.fire(databaseId);
+    this._onDidChangeRows.fire(databaseId);
   }
 
   async deleteProperty(databaseId: string, propertyId: string): Promise<void> {
@@ -489,16 +571,18 @@ export class DatabaseDataService extends Disposable {
     );
     const pageIds = (multi.rows ?? []).map((r) => r.page_id as string);
     if (pageIds.length === 0) return 0;
+    // The workspace Tags database, also when it predates roles.
+    const tagsDb = (await this.findDatabaseByRole('tags')) ?? (await this._adoptableForRole('tags'));
 
     for (const pageId of pageIds) {
       const memberships = await this._db.all(
-        `SELECT dp.database_id, p.title FROM database_pages dp JOIN pages p ON p.id = dp.database_id
-          WHERE dp.page_id = ? ORDER BY dp.created_at`,
+        'SELECT database_id FROM database_pages WHERE page_id = ? ORDER BY created_at',
         [pageId],
       );
       const rows = memberships.rows ?? [];
       if (rows.length <= 1) continue;
-      const home = (rows.find((r) => r.title !== 'Tags') ?? rows[0]).database_id as string;
+      // The workspace Tags database is home only when nothing else is.
+      const home = (rows.find((r) => r.database_id !== tagsDb) ?? rows[0]).database_id as string;
       const homeProps = await this.listProperties(home);
       const homeValues = await this.getRowValues(home, pageId);
 
@@ -602,13 +686,38 @@ export class DatabaseDataService extends Disposable {
     this._onDidChangeRows.fire(databaseId);
   }
 
-  /** Find a live database by exact page title (e.g. the workspace 'Tags'). */
-  async findDatabaseByTitle(title: string): Promise<string | null> {
+  /** The live database that holds a workspace role, if any. */
+  async findDatabaseByRole(role: WorkspaceDatabaseRole): Promise<string | null> {
     const res = await this._db.get(
-      'SELECT d.id FROM databases d JOIN pages p ON p.id = d.id WHERE p.title = ? AND p.is_archived = 0',
-      [title],
+      'SELECT d.id FROM databases d JOIN pages p ON p.id = d.id WHERE d.role = ? AND p.is_archived = 0',
+      [role],
     );
     return res.row ? (res.row.id as string) : null;
+  }
+
+  /**
+   * A database made before roles existed that can take `role`: the oldest
+   * live one with the role's title that the app made, not the user.  The
+   * user's own databases start with the default Status column; the app's
+   * never had one (and Tags has its Tags column).
+   */
+  private async _adoptableForRole(role: WorkspaceDatabaseRole): Promise<string | null> {
+    const res = await this._db.all(
+      `SELECT d.id FROM databases d JOIN pages p ON p.id = d.id
+        WHERE p.title = ? AND p.is_archived = 0 AND d.role IS NULL ORDER BY d.created_at`,
+      [WORKSPACE_DATABASE_TITLES[role]],
+    );
+    for (const row of res.rows ?? []) {
+      const id = row.id as string;
+      const props = await this.listProperties(id);
+      const seededStatus = props.some((p) => p.name === 'Status' && p.type === 'select'
+        && JSON.stringify(((p.config['options'] as { value: string }[] | undefined) ?? []).map((o) => o.value))
+          === JSON.stringify(DEFAULT_STATUS_OPTIONS.map((o) => o.value)));
+      if (seededStatus) continue;
+      if (role === 'tags' && !props.some((p) => p.type === 'tags' && p.name.toLowerCase() === 'tags')) continue;
+      return id;
+    }
+    return null;
   }
 
   /**
@@ -621,12 +730,21 @@ export class DatabaseDataService extends Disposable {
    * bucket ('+ Add property' on a page that's in no other database).
    */
   async ensureWorkspaceDatabase(
-    title: string,
+    role: WorkspaceDatabaseRole,
     seedProperty?: { name: string; type: PropertyType; config?: Record<string, unknown> },
   ): Promise<{ databaseId: string; propertyId?: string }> {
-    let databaseId = await this.findDatabaseByTitle(title);
+    let databaseId = await this.findDatabaseByRole(role);
     if (!databaseId) {
-      databaseId = (await this.createDatabase({ title, seedDefaults: false })).id;
+      // One in the Trash gives up the role: tagging must not join a page to a
+      // database nobody can see.  Restoring it brings it back as a database.
+      await this._db.run(
+        'UPDATE databases SET role = NULL WHERE role = ? AND id IN (SELECT id FROM pages WHERE is_archived = 1)',
+        [role],
+      );
+      databaseId = await this._adoptableForRole(role)
+        ?? (await this.createDatabase({ title: WORKSPACE_DATABASE_TITLES[role], seedDefaults: false })).id;
+      const res = await this._db.run('UPDATE databases SET role = ? WHERE id = ?', [role, databaseId]);
+      if (res.error) throw new Error(res.error.message);
     }
     if (!seedProperty) return { databaseId };
     const props = await this.listProperties(databaseId);

@@ -29,8 +29,6 @@ import { attachPopupDismiss } from '../../../ui/dom.js';
 import { parseStoredTime } from '../../../platform/storedTime.js';
 
 const COLLAPSED_KEY = 'canvas.propertyBar.collapsed';
-const TAGS_DB_TITLE = 'Tags';
-const BUCKET_DB_TITLE = 'Page properties';
 
 function readCollapsed(): boolean {
   try { return localStorage.getItem(COLLAPSED_KEY) === 'true'; } catch { return false; }
@@ -221,7 +219,7 @@ export async function mountRowPropertiesSection(
             const prop = await db.addProperty(home.databaseId, 'Tags', 'tags', { options: [] });
             await db.setCellValue(home.databaseId, pageId, prop.id, newValue);
           } else {
-            const { databaseId, propertyId } = await db.ensureWorkspaceDatabase(TAGS_DB_TITLE, { name: 'Tags', type: 'tags', config: { options: [] } });
+            const { databaseId, propertyId } = await db.ensureWorkspaceDatabase('tags', { name: 'Tags', type: 'tags', config: { options: [] } });
             await db.addExistingPageAsRow(databaseId, pageId);
             await db.setCellValue(databaseId, pageId, propertyId!, newValue);
           }
@@ -321,7 +319,7 @@ export async function mountRowPropertiesSection(
               if (home) {
                 await db.addProperty(home.databaseId, propName, type, config);
               } else {
-                const { databaseId } = await db.ensureWorkspaceDatabase(BUCKET_DB_TITLE);
+                const { databaseId } = await db.ensureWorkspaceDatabase('page-properties');
                 await db.addExistingPageAsRow(databaseId, pageId);
                 await db.addProperty(databaseId, propName, type, config);
               }

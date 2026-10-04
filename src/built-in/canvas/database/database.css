@@ -208,10 +208,18 @@
 .canvas-db-options { display: flex; flex-direction: column; gap: 3px; max-height: 200px; overflow-y: auto; }
 .canvas-db-options__row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; }
 .canvas-db-options__row .canvas-db-pill { flex: 1; }
-.canvas-db-options__color, .canvas-db-options__del {
+.canvas-db-options__name { flex: 1; min-width: 0; margin: 0; }
+.canvas-db-options__del {
   background: none; border: none; color: var(--vscode-descriptionForeground, #999); cursor: pointer; font-size: var(--px-text-base);
 }
-.canvas-db-options__color:hover, .canvas-db-options__del:hover { color: var(--vscode-editor-foreground, #ddd); }
+/* The color button shows the option's color (its canvas-db-pill--* class). */
+.canvas-db-options__color {
+  flex: none; width: 22px; height: 22px; padding: 0; border: none; border-radius: 4px;
+  color: var(--vscode-editor-foreground, #ddd); cursor: pointer; font-size: var(--px-text-xs);
+}
+.canvas-db-options__del:hover { color: var(--vscode-editor-foreground, #ddd); }
+.canvas-db-popover__error { color: var(--px-danger); font-size: var(--px-text-xs); padding: 0 6px; }
+.canvas-db-popover__error:empty { display: none; }
 
 /* ── Row-page property panel ──
    The panel reuses the PropertyBar DOM + propertyBar.css (same UI as before

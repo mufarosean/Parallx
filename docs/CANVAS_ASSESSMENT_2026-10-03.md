@@ -156,7 +156,21 @@ markdown, focus) were not tested adversarially.
   cannot be renamed and removed options orphan values; checkbox, date and
   number filters disagree with themselves; "Tags" and "Page properties"
   databases are found by title, so a user database named "Tags" is hijacked;
-  the AI property tool writes raw SQL with no type validation.
+  the AI property tool writes raw SQL with no type validation. **Fixed
+  (2026-10-04)**: deleting a property removes its filter rules, sorts,
+  grouping and column settings from every view (and views saved before are
+  repaired when read); options can be renamed in Edit Options… and a rename
+  or removal carries to every cell and filter that used the name; every cell
+  write is stored in its column's one shape (`database/cellValues.ts`) and a
+  value that does not fit is refused, and new select or tag names become
+  options; filters read values by type (unchecked = never set, cleared,
+  false or "false"; numbers compare as numbers; a date rule compares days),
+  and the filter popover offers the operations and input that fit the
+  column; the workspace Tags, Page properties and Migrated properties
+  databases are found by a stored role (migration 016), adopting an earlier
+  app-made one, never a user's database of that title; the AI property tool
+  writes through the database service. Tests: `canvasDatabaseIntegrity`
+  (real SQLite); checked in the app.
 - **Inline AI Replace** uses a range captured when the chat opened (wrong text
   if the page changed) and parses the reply as HTML (`<b>` becomes bold,
   newlines collapse). **Fixed (2026-10-04)**: the selected range follows every

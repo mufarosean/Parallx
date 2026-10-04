@@ -16,6 +16,15 @@ function makeEnv() {
   const legacyValues: Record<string, unknown>[] = [];
 
   function runSync(sql: string, params: unknown[] = []): { error: null; changes: number } {
+    if (/^UPDATE databases SET role = NULL/i.test(sql)) {
+      for (const d of databases.values()) if (d.role === params[0] && pages.get(d.id as string)?.archived) d.role = null;
+      return { error: null, changes: 1 };
+    }
+    if (/^UPDATE databases SET role = \? WHERE id = \?/i.test(sql)) {
+      const d = databases.get(params[1] as string);
+      if (d) d.role = params[0];
+      return { error: null, changes: d ? 1 : 0 };
+    }
     if (/^INSERT INTO databases/i.test(sql)) {
       databases.set(params[0] as string, { id: params[0], page_id: params[1] });
       return { error: null, changes: 1 };
@@ -74,6 +83,12 @@ function makeEnv() {
       if (/SELECT \* FROM database_properties WHERE id = \? AND database_id = \?/i.test(sql)) {
         return { error: null, row: props.find((p) => p.id === params[0] && p.database_id === params[1]) ?? null };
       }
+      if (/WHERE d\.role = \?/i.test(sql)) {
+        for (const d of databases.values()) {
+          if (d.role === params[0] && !pages.get(d.id as string)?.archived) return { error: null, row: { id: d.id } };
+        }
+        return { error: null, row: null };
+      }
       if (/SELECT d\.id FROM databases d JOIN pages p/i.test(sql)) {
         for (const d of databases.values()) {
           const p = pages.get(d.id as string);
@@ -94,6 +109,21 @@ function makeEnv() {
         const counts = new Map<string, number>();
         for (const m of members) counts.set(m.page_id as string, (counts.get(m.page_id as string) ?? 0) + 1);
         return { error: null, rows: [...counts.entries()].filter(([, c]) => c > 1).map(([page_id]) => ({ page_id })) };
+      }
+      if (/^SELECT database_id FROM database_pages WHERE page_id = \? ORDER BY created_at/i.test(sql)) {
+        return { error: null, rows: members.filter((m) => m.page_id === params[0]).map((m) => ({ database_id: m.database_id })) };
+      }
+      if (/AND d\.role IS NULL ORDER BY/i.test(sql)) {
+        return { error: null, rows: [...databases.values()].filter((d) => !d.role && pages.get(d.id as string)?.title === params[0] && !pages.get(d.id as string)?.archived).map((d) => ({ id: d.id })) };
+      }
+      if (/SELECT dp\.database_id, d\.role FROM database_pages dp/i.test(sql)) {
+        return {
+          error: null,
+          rows: members.filter((m) => m.page_id === params[0]).map((m) => ({
+            database_id: m.database_id,
+            role: databases.get(m.database_id as string)?.role ?? null,
+          })),
+        };
       }
       if (/SELECT dp\.database_id, p\.title FROM database_pages dp/i.test(sql)) {
         return {
