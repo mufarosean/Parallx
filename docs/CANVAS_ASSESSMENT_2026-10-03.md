@@ -221,7 +221,18 @@ markdown, focus) were not tested adversarially.
 - **Storage**: retries ignore the staleness and blank checks; restore puts a
   child's card at the end of the parent; version restore does not restore the
   title or child cards; `canvas_blocks` is never written, so "Blocks" is always
-  0; `sort_order` midpoints are never re-spaced.
+  0; `sort_order` midpoints are never re-spaced. **Fixed (2026-10-04)**: a
+  retried save runs the same stale and blank checks as the first attempt (it
+  used to write an older doc over another writer's content after the
+  backoff); Trash remembers where the card was (migration 017) and Restore
+  puts it back there, at the end only when its neighbour is gone; removing
+  and restoring cards go through the one write door; version restore brings
+  back the title, drops cards for pages that are no longer children and keeps
+  cards for children added since; the block count and chat's page structure
+  read the page content (the `canvas_blocks` table is left unused); moves
+  re-space sibling order once a gap is too small to halve. Tests:
+  `canvasStorage` (real SQLite, failing first); Trash and Restore checked in
+  the app.
 - **Databases**: new rows ignore the view's filter; `addRow` is two writes; no
   reload guard; every edit rebuilds the whole table; row-property panels listen
   to every database.

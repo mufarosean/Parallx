@@ -307,10 +307,9 @@ export function createReadPageTool(
       }
 
       // Folded from the former canvas_get_page tool: include block count + properties.
-      const blockCount = await db!.get<{ cnt: number }>(
-        'SELECT COUNT(*) as cnt FROM canvas_blocks WHERE page_id = ?',
-        [page.id],
-      );
+      // Counted from the page itself (the canvas_blocks table is never written).
+      const decodedForCount = decodeCanvasContent(page.content ?? '');
+      const blockCount = { cnt: decodedForCount.unreadable ? 0 : (decodedForCount.doc?.content?.length ?? 0) };
 
       // Properties live in databases: read this page's cell values across all
       // databases it is a member of (name + type from the database schema).

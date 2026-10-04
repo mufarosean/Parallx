@@ -877,28 +877,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       ? await this.getRootPages()
       : await this.getChildren(newParentId);
 
-    let newSortOrder: number;
-
-    if (!afterSiblingId) {
-      // Append at end
-      const maxSort = siblings.length > 0
-        ? Math.max(...siblings.map(s => s.sortOrder))
-        : 0;
-      newSortOrder = maxSort + 1;
-    } else {
-      // Insert after the specified sibling
-      const afterIdx = siblings.findIndex(s => s.id === afterSiblingId);
-      if (afterIdx === -1) {
-        // Sibling not found — append at end
-        newSortOrder = (siblings.length > 0 ? Math.max(...siblings.map(s => s.sortOrder)) : 0) + 1;
-      } else if (afterIdx === siblings.length - 1) {
-        // After the last item
-        newSortOrder = siblings[afterIdx].sortOrder + 1;
-      } else {
-        // Between afterSibling and the next sibling
-        newSortOrder = (siblings[afterIdx].sortOrder + siblings[afterIdx + 1].sortOrder) / 2;
-      }
-    }
+    const newSortOrder = await this._sortOrderAfter(siblings, pageId, afterSiblingId);
 
     const result = await this._db.run(
       `UPDATE pages SET parent_id = ?, sort_order = ?, updated_at = datetime('now') WHERE id = ?`,
@@ -981,20 +960,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     const siblings = newParentId === null
       ? await this.getRootPages()
       : await this.getChildren(newParentId);
-    let newSortOrder: number;
-    if (!afterSiblingId) {
-      const maxSort = siblings.length > 0 ? Math.max(...siblings.map(s => s.sortOrder)) : 0;
-      newSortOrder = maxSort + 1;
-    } else {
-      const afterIdx = siblings.findIndex(s => s.id === afterSiblingId);
-      if (afterIdx === -1) {
-        newSortOrder = (siblings.length > 0 ? Math.max(...siblings.map(s => s.sortOrder)) : 0) + 1;
-      } else if (afterIdx === siblings.length - 1) {
-        newSortOrder = siblings[afterIdx].sortOrder + 1;
-      } else {
-        newSortOrder = (siblings[afterIdx].sortOrder + siblings[afterIdx + 1].sortOrder) / 2;
-      }
-    }
+    const newSortOrder = await this._sortOrderAfter(siblings, pageId, afterSiblingId);
 
     // Reorder-only (same parent): defer to the simpler movePage path and
     // skip content rewrites entirely.
@@ -1372,6 +1338,31 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   /**
+   * The sort_order that puts `movingId` right after `afterSiblingId` (at the
+   * end when that is missing or last).  Placing between two siblings takes
+   * the midpoint; once a gap is too small to halve, the siblings are
+   * re-spaced to 1…n first (about fifty moves into one gap used to exhaust
+   * the number's precision, and then two pages shared a position).
+   */
+  private async _sortOrderAfter(siblingsAll: readonly IPage[], movingId: string, afterSiblingId?: string): Promise<number> {
+    const siblings = siblingsAll.filter((s) => s.id !== movingId).sort((a, b) => a.sortOrder - b.sortOrder);
+    const maxSort = siblings.length > 0 ? siblings[siblings.length - 1]!.sortOrder : 0;
+    const afterIdx = afterSiblingId ? siblings.findIndex((s) => s.id === afterSiblingId) : -1;
+    if (afterIdx === -1 || afterIdx === siblings.length - 1) return maxSort + 1;
+    const lo = siblings[afterIdx]!.sortOrder;
+    const hi = siblings[afterIdx + 1]!.sortOrder;
+    const mid = (lo + hi) / 2;
+    if (hi - lo > 1e-6 && mid > lo && mid < hi) return mid;
+    const res = await this._db.runTransaction(siblings.map((sib, i) => ({
+      type: 'run' as const,
+      sql: 'UPDATE pages SET sort_order = ? WHERE id = ?',
+      params: [i + 1, sib.id],
+    })));
+    if (res.error) throw new Error(res.error.message);
+    return afterIdx + 1.5;
+  }
+
+  /**
    * Reorder pages within a parent by assigning sequential sort_order values.
    *
    * @param parentId — parent page ID (null for root level)
@@ -1561,7 +1552,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
           });
         } else {
           // Non-revision-conflict failure — schedule retry with backoff
-          this._scheduleRetry(pageId, normalized.storedContent, normalized.schemaVersion, 0);
+          this._scheduleRetry(pageId, normalized.storedContent, normalized.schemaVersion, 0, scheduleBase);
         }
       }
     }, this._autoSaveMs);
@@ -1776,10 +1767,75 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * Soft-delete a page by setting is_archived = 1.
    */
   async archivePage(pageId: string): Promise<void> {
+    // Remember where the page's card sits in its parent, so Restore puts it
+    // back there and not at the end.
+    const page = await this.getPage(pageId);
+    if (page?.parentId) {
+      const parent = await this.getPage(page.parentId);
+      const decoded = parent ? decodeCanvasContent(parent.content) : null;
+      const anchor = decoded && !decoded.unreadable ? this._locateCard(decoded.doc, pageId) : null;
+      if (anchor) {
+        await this._db.run('UPDATE pages SET trashed_card_anchor = ? WHERE id = ?', [JSON.stringify(anchor), pageId]);
+      }
+    }
     const archivedIds = await this._archivePageSubtree(pageId);
     for (const archivedId of archivedIds) {
       await this._removeLinkedBlocksForPageId(archivedId);
     }
+  }
+
+  /** Where a page's card is: the block it is inside (null = the page) and the block before it. */
+  private _locateCard(doc: any, childId: string): { container: string | null; after: string | null } | null {
+    // `parentId`: the immediate parent's own id; null for the page itself;
+    // undefined when that block has none (then the place cannot be named and
+    // Restore uses the end of the page rather than guess a level).
+    const walk = (node: any, parentId: string | null | undefined): { container: string | null; after: string | null } | null => {
+      const children: any[] = Array.isArray(node?.content) ? node.content : [];
+      for (let i = 0; i < children.length; i++) {
+        const c = children[i];
+        if (c?.type === 'pageBlock' && c.attrs?.pageId === childId) {
+          if (parentId === undefined) return null;
+          const prev = children[i - 1];
+          return { container: parentId, after: typeof prev?.attrs?.id === 'string' ? prev.attrs.id : null };
+        }
+        const found = walk(c, typeof c?.attrs?.id === 'string' ? c.attrs.id : undefined);
+        if (found) return found;
+      }
+      return null;
+    };
+    return walk(doc, null);
+  }
+
+  /** `doc` with `card` put back at `anchor` (the end of the page when the anchor is gone). */
+  private _insertCardAt(doc: any, card: any, anchor: { container: string | null; after: string | null } | null): any {
+    const insertInto = (node: any): any | null => {
+      const children: any[] = Array.isArray(node.content) ? node.content : [];
+      const at = anchor?.after ? children.findIndex((c) => c?.attrs?.id === anchor.after) : -1;
+      if (anchor?.after && at < 0) return null;
+      const next = [...children];
+      next.splice(anchor?.after ? at + 1 : 0, 0, card);
+      return { ...node, content: next };
+    };
+    if (anchor) {
+      if (anchor.container === null) {
+        const placed = insertInto(doc);
+        if (placed) return placed;
+      } else {
+        let placed = false;
+        const visit = (node: any): any => {
+          if (placed || !node || typeof node !== 'object') return node;
+          if (node.attrs?.id === anchor.container && Array.isArray(node.content)) {
+            const done = insertInto(node);
+            if (done) { placed = true; return done; }
+          }
+          if (Array.isArray(node.content)) return { ...node, content: node.content.map(visit) };
+          return node;
+        };
+        const result = visit(doc);
+        if (placed) return result;
+      }
+    }
+    return { ...doc, content: [...(Array.isArray(doc.content) ? doc.content : []), card] };
   }
 
   /**
@@ -2318,6 +2374,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     storedContent: string,
     schemaVersion: number,
     attempt: number,
+    baseContent?: string,
   ): void {
     if (attempt >= CanvasDataService.MAX_RETRIES) {
       console.error(`[CanvasDataService] Auto-save retry exhausted for page "${pageId}" after ${attempt} attempts`);
@@ -2336,6 +2393,18 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
     const timer = setTimeout(async () => {
       this._retryQueue.delete(pageId);
+      // The same checks as the first attempt: another writer's content that
+      // landed meanwhile is not overwritten with this older doc (the reload
+      // merge keeps the typing), and a populated page is not blanked.
+      if (this._pendingSaveIsStale(pageId, baseContent, storedContent)) {
+        this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'debounce' });
+        return;
+      }
+      if (this._autoSaveWouldBlankPopulated(pageId, storedContent)) {
+        console.warn(`[CanvasDataService] Blocked retry that would blank populated page "${pageId}".`);
+        this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'debounce' });
+        return;
+      }
       this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'debounce' });
       try {
         // Re-fetch latest revision for the retry attempt
@@ -2359,7 +2428,9 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
             // ignore
           }
         }
-        this._scheduleRetry(pageId, storedContent, schemaVersion, attempt + 1);
+        // After a revision conflict the refreshed page is the known state, so
+        // the next attempt sees the other writer's content and stands down.
+        this._scheduleRetry(pageId, storedContent, schemaVersion, attempt + 1, baseContent);
       }
     }, delayMs);
 
@@ -2496,27 +2567,20 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * content if one is not already present anywhere in the tree.
    */
   private async _ensureLinkedBlockOnParent(parent: IPage, child: IPage): Promise<void> {
-    const decoded = decodeCanvasContent(parent.content);
-    if (this._docContainsPageBlock(decoded.doc, child.id)) return;
-
-    const content = Array.isArray(decoded.doc?.content) ? decoded.doc.content : [];
-    const nextDoc = {
-      type: 'doc',
-      content: [
-        ...content,
-        {
-          type: 'pageBlock',
-          attrs: {
-            pageId: child.id,
-            title: child.title,
-            icon: child.icon,
-          },
-        },
-      ],
-    };
-
-    await this.flushContentSave(parent.id, nextDoc);
-    this._onRequestContentReload.fire(parent.id);
+    // Where the card was before the page went to the Trash, if known.
+    const anchorRow = await this._db.get('SELECT trashed_card_anchor FROM pages WHERE id = ?', [child.id]);
+    let anchor: { container: string | null; after: string | null } | null = null;
+    try { anchor = anchorRow.row?.trashed_card_anchor ? JSON.parse(anchorRow.row.trashed_card_anchor as string) : null; } catch { anchor = null; }
+    const card = { type: 'pageBlock', attrs: { pageId: child.id, title: child.title, icon: child.icon } };
+    let added = false;
+    const res = await this.rewritePageContent(parent.id, (doc) => {
+      if (this._docContainsPageBlock(doc, child.id)) return doc;
+      added = true;
+      return this._insertCardAt(doc, card, anchor);
+    }, { source: 'user' });
+    if (!res.ok) throw new Error(res.reason);
+    if (anchorRow.row?.trashed_card_anchor) await this._db.run('UPDATE pages SET trashed_card_anchor = NULL WHERE id = ?', [child.id]);
+    if (added) this._onRequestContentReload.fire(parent.id);
   }
 
   private _pruneLinkedBlocks(node: any, targetPageId: string): { node: any; changed: boolean } {
@@ -2563,42 +2627,25 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   private async _removeLinkedBlocksForPageId(targetPageId: string): Promise<void> {
-    // Walk EVERY page (including archived) — leaving stale references in
-    // archived parents would surface as broken cards on restore.
-    const result = await this._db.all('SELECT id, content FROM pages');
+    // Every page that mentions it, archived ones too (a stale card in an
+    // archived parent would surface as a broken card on restore).  Through
+    // the one door: a pending editor save on that page is written first and
+    // the card is removed inside its write queue.  Unreadable pages are kept.
+    const result = await this._db.all(
+      'SELECT id FROM pages WHERE id != ? AND instr(content, ?) > 0',
+      [targetPageId, targetPageId],
+    );
     if (result.error) throw new Error(result.error.message);
-
     for (const row of result.rows ?? []) {
       const pageId = row.id;
-      const storedContent = row.content;
-      if (typeof pageId !== 'string' || typeof storedContent !== 'string') continue;
-
-      const decoded = decodeCanvasContent(storedContent);
-      const pruned = this._pruneLinkedBlocks(decoded.doc, targetPageId);
-      if (!pruned.changed) continue;
-
-      const encoded = encodeCanvasContentFromDoc(pruned.node);
-      const updateResult = await this._db.run(
-        `UPDATE pages
-         SET content = ?,
-             content_schema_version = ?,
-             revision = revision + 1,
-             updated_at = datetime('now')
-         WHERE id = ?`,
-        [encoded.storedContent, encoded.schemaVersion, pageId],
-      );
-      if (updateResult.error) throw new Error(updateResult.error.message);
-
-      const updated = await this.getPage(pageId);
-      if (updated) {
-        this._knownRevisions.set(pageId, updated.revision);
-        this._onDidChangePage.fire({
-          kind: PageChangeKind.Updated,
-          pageId,
-          page: updated,
-          changedFields: ['content', 'contentSchemaVersion'],
-        });
-      }
+      if (typeof pageId !== 'string') continue;
+      let changed = false;
+      const res = await this.rewritePageContent(pageId, (doc) => {
+        const pruned = this._pruneLinkedBlocks(doc, targetPageId);
+        changed = pruned.changed;
+        return pruned.changed ? pruned.node : doc;
+      }, { source: 'user' });
+      if (res.ok && changed) this._onRequestContentReload.fire(pageId);
     }
   }
 
@@ -2832,16 +2879,53 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     if (!rev || rev.pageId !== pageId) {
       throw new Error(`[CanvasDataService] Revision "${revisionId}" not found for page "${pageId}"`);
     }
-    // Snapshot the CURRENT state first so the restore is itself undoable.
+    // The user's pending typing is part of the state the restore replaces:
+    // save it first, then snapshot that state so the restore is undoable.
+    await this.flushPendingSaveNow(pageId);
     await this._captureRevision(pageId, 'restore', this._maxRevisionsPerPage());
-    // Write the revision's content back through the normal update path, then
-    // reload any open editor so the restored content animates in.
-    await this.updatePage(pageId, {
-      content: rev.content,
-      contentSchemaVersion: rev.contentSchemaVersion,
-      editSource: 'restore',
+    await this._enqueuePageWrite(pageId, async () => {
+      const current = await this.getPage(pageId);
+      let content = rev.content;
+      const restored = decodeCanvasContent(rev.content);
+      if (!restored.unreadable) {
+        // Sub-page cards follow the page's children as they are NOW: a card
+        // for a page that has since moved or gone is dropped (it would pull
+        // that page back here), and a card the page has now for a child the
+        // old version did not list is kept, at the end.
+        let doc: any = restored.doc;
+        for (const orphanId of await this._findOrphanPageBlocks(doc, pageId)) {
+          const pruned = this._pruneLinkedBlocks(doc, orphanId);
+          if (pruned.changed) doc = pruned.node;
+        }
+        const listed = new Set<string>();
+        this._collectPageBlockIds(doc, listed);
+        const now = current ? decodeCanvasContent(current.content) : null;
+        const kept = now && !now.unreadable
+          ? this._cardNodes(now.doc).filter((c) => !listed.has(c.attrs.pageId as string))
+          : [];
+        if (kept.length > 0) doc = { ...doc, content: [...(doc.content ?? []), ...kept] };
+        content = encodeCanvasContentFromDoc(doc).storedContent;
+      }
+      // The version's title comes back with its content (and retitles the
+      // page's cards in its parents).
+      await this._updatePageNow(pageId, {
+        content,
+        contentSchemaVersion: rev.contentSchemaVersion,
+        ...(rev.title && rev.title !== current?.title ? { title: rev.title } : {}),
+        editSource: 'restore',
+        replaceUnreadable: true,
+      });
     });
+    // Reload any open editor so the restored content animates in.
     this.fireContentReload(pageId);
+  }
+
+  /** Every sub-page card in a doc, in document order. */
+  private _cardNodes(node: any, out: any[] = []): any[] {
+    if (!node || typeof node !== 'object') return out;
+    if (node.type === 'pageBlock' && typeof node.attrs?.pageId === 'string') out.push(node);
+    if (Array.isArray(node.content)) for (const c of node.content) this._cardNodes(c, out);
+    return out;
   }
 
   override dispose(): void {

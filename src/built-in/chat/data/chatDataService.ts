@@ -1926,28 +1926,22 @@ export class ChatDataService {
   async getPageStructure(pageId: string): Promise<IPageStructure | null> {
     if (!this._d.databaseService?.isOpen) { return null; }
     try {
-      const page = await this._d.databaseService.get<{ id: string; title: string; icon?: string }>(
-        'SELECT id, title, icon FROM pages WHERE id = ?', [pageId],
+      const page = await this._d.databaseService.get<{ id: string; title: string; icon?: string; content: string }>(
+        'SELECT id, title, icon, content FROM pages WHERE id = ?', [pageId],
       );
       if (!page) { return null; }
 
-      const blocks = await this._d.databaseService.all<{
-        id: string;
-        block_type: string;
-        parent_block_id: string | null;
-        sort_order: number;
-        content_json: string;
-      }>(
-        'SELECT id, block_type, parent_block_id, sort_order, content_json FROM canvas_blocks WHERE page_id = ? ORDER BY sort_order',
-        [pageId],
-      );
-
-      const blockSummaries: IBlockSummary[] = blocks.map((b) => ({
-        id: b.id,
-        blockType: b.block_type,
-        parentBlockId: b.parent_block_id,
-        sortOrder: b.sort_order,
-        textPreview: extractBlockPreview(b.content_json),
+      // The page's top-level blocks, read from its content (the canvas_blocks
+      // table this used to read is never written, so it listed nothing).
+      const decoded = decodeCanvasContent(page.content ?? '');
+      const top: { type?: string; attrs?: { id?: unknown }; content?: unknown[] }[] =
+        decoded.unreadable || !Array.isArray(decoded.doc?.content) ? [] : decoded.doc.content;
+      const blockSummaries: IBlockSummary[] = top.map((b, i) => ({
+        id: typeof b.attrs?.id === 'string' ? b.attrs.id : `block-${i}`,
+        blockType: b.type ?? 'unknown',
+        parentBlockId: null,
+        sortOrder: i,
+        textPreview: extractBlockPreview(JSON.stringify(b.content ?? [])),
       }));
 
       return {

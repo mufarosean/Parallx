@@ -408,10 +408,10 @@ describe('read_page tool (M81 Phase 9: merged body + metadata + properties)', ()
   it('reads page body + basic metadata by ID', async () => {
     (db.get as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
-        id: 'abc', title: 'My Page', content: 'Hello world',
+        id: 'abc', title: 'My Page',
+        content: JSON.stringify({ schemaVersion: 2, doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello world' }] }] } }),
         icon: null, is_archived: 0, created_at: '2026-09-11T17:47:56.668Z', updated_at: '2026-09-11 18:05:02',
-      })
-      .mockResolvedValueOnce({ cnt: 1 });
+      });
     (db.all as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]); // no properties
 
     const result = await tool.handler({ pageId: 'abc' }, createToken());
