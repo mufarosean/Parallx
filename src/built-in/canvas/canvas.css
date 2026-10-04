@@ -5170,5 +5170,5 @@
 .canvas-block--revealed {
   background: var(--px-accent-soft);
   border-radius: var(--parallx-radius-md);
-  transition: background-color 600ms ease;
+  transition: background-color var(--px-dur-slow) var(--px-ease);
 }
