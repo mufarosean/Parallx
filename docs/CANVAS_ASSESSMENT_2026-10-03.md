@@ -226,6 +226,20 @@ markdown, focus) were not tested adversarially.
   reposition does not revert; the last title edit is lost if the tab closes
   within 300 ms; the page "⋯" menu closes itself on any change or autosave;
   text/number/URL property edits can be silently dropped after one blur.
+  **Fixed (2026-10-04)**: Recent is re-read a moment after body edits;
+  filtering hides Favorites, so Enter opens the first match; breadcrumbs
+  follow a move of the page or an ancestor and an ancestor's rename, and a
+  database ancestor opens in the database editor; the tree has Up/Down/Home/
+  End, Right/Left to open, close and step, Enter to open, and
+  `aria-expanded`/`aria-level`/`aria-selected`; the open page is revealed
+  (ancestors opened, row scrolled into view), also right after it is
+  created; a row dragged into a page becomes a `parallx-page:` link; the
+  "Page properties" bookkeeping database is left out of the tree (Tags
+  stays, it lists tagged pages); a cover drag is saved only by Save
+  Position; a title typed just before closing is saved; the ⋯ menu stays
+  open through body saves; property fields save every edit. Tests:
+  `canvasSidebarMedium` (real SQLite), `propertyEditors`, both failing
+  first; every item checked in the app.
 - **Editing**: a new table puts the caret in the last cell; "+" on the last
   list row puts the caret before the "/"; after Esc the next key reopens the
   slash menu; the slash list does not scroll to the highlighted row; menus do
@@ -234,6 +248,15 @@ markdown, focus) were not tested adversarially.
   or Word pastes a picture; the internal Ctrl+V fallback can paste an older
   copy; Enter always commits a block equation (no multi-line LaTeX); the file
   attachment opens any URL scheme.
+  **Fixed (2026-10-04)**: a new table puts the caret in the first cell; "+"
+  on a list row puts it after the "/"; Esc closes the slash menu until the
+  line changes; the highlighted slash row stays in view; slash and bubble
+  menus follow the page on scroll; the block action menu has arrows, Enter
+  and Escape; Esc in the link field returns focus to the editor; an Office
+  paste with text pastes the text; the internal paste fallback checks the
+  clipboard text first; Shift+Enter adds a line to a block equation; file
+  blocks open only http(s) and data URLs. Tests: `canvasPasteOffice`,
+  `blockRegistry`; checked in the app.
 - **Storage**: retries ignore the staleness and blank checks; restore puts a
   child's card at the end of the parent; version restore does not restore the
   title or child cards; `canvas_blocks` is never written, so "Blocks" is always
@@ -252,6 +275,15 @@ markdown, focus) were not tested adversarially.
 - **Databases**: new rows ignore the view's filter; `addRow` is two writes; no
   reload guard; every edit rebuilds the whole table; row-property panels listen
   to every database.
+  **Fixed (2026-10-04)**: a row added in a filtered view starts with the
+  values the filter asks for, so it stays in view; `addRow` takes starting
+  values and writes membership and values in one transaction (values are
+  checked first, the page is removed again if the write fails, one change
+  event); the table shows only the newest load, skips rebuilding when the
+  rows did not change and waits until a field being typed in is left; a
+  page's property panel re-renders only for its own database. Tests:
+  `canvasDatabaseRows` (real SQLite), `canvasDatabasePane` (the real pane on
+  real SQLite), failing first; checked in the app.
 - **Copy and design system**: slash menu labels differ from Turn Into
   ("Bullet List" / "Bulleted List", "To-Do" / "To-do", "Code Block" / "Code");
   "Turn into", "Send blocks to Chat", "OPEN", "+ Blank Page", "Add tags...",
@@ -262,6 +294,22 @@ markdown, focus) were not tested adversarially.
   `--px-*` (812), `--vscode-*` (192) and `--parallx-*` (151) tokens, with 41 raw
   z-index values; hard-coded Catppuccin colours in `propertyBar.css` and the
   select palette in `propertyEditors.ts`.
+  **Fixed (2026-10-04)**: slash labels match Turn Into, groups are labelled
+  and Database sits with pages; "Turn Into", "Send Blocks to Chat", "Open",
+  icon + "New", icon + "Blank Page", "New Property…", "Add tags…", new
+  databases are "Untitled"; the drag grip is a mask filled with a text
+  token and shows in light mode; option colors are one Tier 3 token set
+  (`--px-option-*`) for the database and the property panel; the raw
+  z-index values are registered layers (`--px-canvas-z-menu`, `-fields`,
+  `-dialog`) with the same stacking, so canvas menus stay under the app's
+  confirm dialogs; the Catppuccin and white literals in `propertyBar.css`
+  and `database.css` are tokens. Kit: the sidebar's empty-state actions and
+  the database toolbar (Filter, Sort, New, add view) are kit buttons.
+  **Still open**: the rest of the kit pass (the sidebar toast, the
+  checkbox switch, the popovers and the remaining hand-built buttons in
+  the header and property UI) and one token namespace in `canvas.css`
+  (`--vscode-*` and `--parallx-*` still mixed with `--px-*`); both belong
+  with the design-system pass in "Against Notion".
 
 ## Architecture
 

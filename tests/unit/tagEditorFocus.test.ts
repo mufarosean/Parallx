@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 // After Enter adds a tag the cursor stays in the field, so the next tag can be
 // typed straight away (it used to fall to the page body).
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createPropertyEditor, resolveOptionColor } from '../../src/built-in/canvas/properties/propertyEditors';
@@ -22,6 +24,8 @@ describe('tag editor', () => {
   });
 
   it('an uncoloured tag gets the neutral tint, which shows on light and dark pages', () => {
-    expect(resolveOptionColor(undefined)).toBe('rgba(128,128,128,0.22)');
+    expect(resolveOptionColor(undefined)).toBe('var(--px-option-default)');
+    const tokens = readFileSync(resolve(__dirname, '../../src/theme/px-tokens.css'), 'utf8');
+    expect(tokens).toMatch(/--px-option-default:\s*rgba\(128, 128, 128, 0\.22\);/);
   });
 });

@@ -290,36 +290,6 @@
   gap: 6px;
   margin-bottom: 18px;
 }
-.canvas-empty-action {
-  display: flex;
-  gap: 6px;
-  width: 100%;
-  text-align: left;
-  background: color-mix(in srgb, var(--px-text) 4%, transparent);
-  border: 1px solid color-mix(in srgb, var(--px-text) 8%, transparent);
-  color: var(--vscode-foreground, color-mix(in srgb, var(--px-text) 85%, transparent));
-  font-family: inherit;
-  cursor: pointer;
-  transition: background-color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease);
-  align-items: center;
-  box-sizing: border-box;
-  height: var(--px-control-h);
-  padding: 0 12px;
-  border-radius: var(--px-radius-sm);
-  font-size: var(--px-text-sm);
-  line-height: 1;
-}
-.canvas-empty-action:hover {
-  background: color-mix(in srgb, var(--px-text) 8%, transparent);
-  border-color: color-mix(in srgb, var(--px-text) 16%, transparent);
-}
-.canvas-empty-action--primary {
-  background: rgba(var(--px-accent-rgb), 0.18);
-  border-color: rgba(var(--px-accent-rgb), 0.4);
-}
-.canvas-empty-action--primary:hover {
-  background: rgba(var(--px-accent-rgb), 0.28);
-}
 .canvas-empty-hints {
   display: flex;
   flex-direction: column;

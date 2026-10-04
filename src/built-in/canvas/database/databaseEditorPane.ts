@@ -25,6 +25,7 @@ import { isChecked, normalizeDateValue, toNumber } from './cellValues.js';
 import { createPropertyEditor, createTypeIconElement } from '../properties/propertyEditors.js';
 import type { IPropertyDefinition, PropertyType } from '../properties/propertyTypes.js';
 import { resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
+import { createButton, createIconButton } from '../../../ui/kit.js';
 import { showConfirmModal } from '../../../api/notificationService.js';
 import { Dropdown } from '../../../ui/dropdown.js';
 import { attachPopupDismiss } from '../../../ui/dom.js';
@@ -228,7 +229,8 @@ export class DatabaseEditorPane implements IDisposable {
     // Header: icon + editable title.
     const header = el('div', 'canvas-db-header');
     const iconEl = el('span', 'canvas-db-header__icon');
-    iconEl.innerHTML = renderPageIconHtml(this._icon);
+    // A database without its own icon shows a table, as in the sidebar.
+    iconEl.innerHTML = this._icon ? renderPageIconHtml(this._icon) : svgIcon('table');
     header.appendChild(iconEl);
     const titleEl = el('div', 'canvas-db-header__title', this._title);
     titleEl.contentEditable = 'true';
@@ -252,19 +254,16 @@ export class DatabaseEditorPane implements IDisposable {
       tab.addEventListener('contextmenu', (e) => { e.preventDefault(); this._openViewMenu(tab, view); });
       tabs.appendChild(tab);
     }
-    const addView = el('button', 'canvas-db-tab canvas-db-tab--add', '+');
-    addView.title = 'Add a view';
-    addView.addEventListener('click', () => this._openAddViewMenu(addView));
+    const addView = createIconButton(null, { icon: 'plus', title: 'Add a View…', size: 'sm', onClick: () => this._openAddViewMenu(addView) });
+    addView.classList.add('canvas-db-tab--add');
     tabs.appendChild(addView);
     bar.appendChild(tabs);
 
     const toolbar = el('div', 'canvas-db-toolbar');
-    const filterBtn = el('button', 'canvas-db-toolbtn', 'Filter');
-    filterBtn.addEventListener('click', () => this._openFilterPopover(filterBtn));
-    const sortBtn = el('button', 'canvas-db-toolbtn', 'Sort');
-    sortBtn.addEventListener('click', () => this._openSortPopover(sortBtn));
-    const newBtn = el('button', 'canvas-db-newbtn', 'New');
-    newBtn.addEventListener('click', () => void this._addRow());
+    const filterBtn = createButton(null, { label: 'Filter', kind: 'ghost', size: 'sm', icon: 'filter', onClick: () => this._openFilterPopover(filterBtn) });
+    const sortBtn = createButton(null, { label: 'Sort', kind: 'ghost', size: 'sm', icon: 'arrow-up-down', onClick: () => this._openSortPopover(sortBtn) });
+    const newBtn = createButton(null, { label: 'New', kind: 'primary', size: 'sm', icon: 'plus', onClick: () => void this._addRow() });
+    newBtn.classList.add('canvas-db-newbtn');
     toolbar.append(filterBtn, sortBtn, newBtn);
     bar.appendChild(toolbar);
     this._root.appendChild(bar);

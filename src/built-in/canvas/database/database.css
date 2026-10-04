@@ -35,26 +35,6 @@
 }
 .canvas-db-tab--add { font-size: var(--px-text-md); }
 .canvas-db-toolbar { display: flex; align-items: center; gap: 4px; }
-.canvas-db-toolbtn {
-  background: none; border: none; color: var(--vscode-descriptionForeground, #999);
-  padding: 4px 8px; font-size: var(--px-text-base); cursor: pointer; border-radius: 4px;
-}
-.canvas-db-toolbtn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.15)); color: var(--vscode-editor-foreground, #ddd); }
-.canvas-db-newbtn {
-  background: var(--vscode-button-background, #0e70c0);
-  color: var(--vscode-button-foreground, #fff);
-  border: none; border-radius: 4px; padding: 4px 12px; font-size: var(--px-text-base); font-weight: 500; cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  height: var(--px-control-h-sm);
-  padding: 0 10px;
-  border-radius: var(--px-radius-sm);
-  font-size: var(--px-text-sm);
-  line-height: 1;
-}
-.canvas-db-newbtn:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
 .canvas-db-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 0; }
 .canvas-db-chip {
   display: inline-flex; align-items: center; gap: 4px;

@@ -25,6 +25,7 @@ import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, PAGE_ICON_RECENT_STORAGE_
 import { CanvasSidebarDragState } from './canvasSidebarDragState.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { pageLinkHref } from './pageLinks.js';
+import { createButton } from '../../ui/kit.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -505,20 +506,14 @@ export class CanvasSidebar {
 
       const actions = $('div.canvas-empty-actions');
 
-      const blankBtn = $('button.canvas-empty-action.canvas-empty-action--primary');
-      blankBtn.appendChild(createIconElement('plus', 14));
-      blankBtn.appendChild($('span')).textContent = 'Blank Page';
-      blankBtn.addEventListener('click', () => this._createPage());
-      actions.appendChild(blankBtn);
+      createButton(actions, { label: 'Blank Page', kind: 'primary', size: 'sm', icon: 'plus', onClick: () => this._createPage() });
 
       // M77 Phase 11.4 ties templates in; the button is wired up here
       // and the modal opens via a command exposed by canvas main.ts.
-      const templateBtn = $('button.canvas-empty-action');
-      templateBtn.textContent = 'Use a Template…';
-      templateBtn.addEventListener('click', () => {
-        void this._api.commands.executeCommand('canvas.showTemplatePicker');
+      createButton(actions, {
+        label: 'Use a Template…', size: 'sm', icon: 'book-template',
+        onClick: () => { void this._api.commands.executeCommand('canvas.showTemplatePicker'); },
       });
-      actions.appendChild(templateBtn);
 
       empty.appendChild(actions);
 
