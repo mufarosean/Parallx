@@ -254,6 +254,9 @@ export const LEGACY_WIDGET_TYPE_OWNERS: Readonly<Record<string, string>> = {
   'parallx.dashboard.recent-files': 'parallx.explorer',
   'parallx.dashboard.autonomy-activity': 'parallx.chat',
   'parallx.dashboard.news-brief': 'parallx.web-research',
+  // Re-homed 2026-10-04: they need Web Research's search tools to refresh.
+  'parallx.dashboard.weather': 'parallx.web-research',
+  'parallx.dashboard.market': 'parallx.web-research',
 };
 
 function validateRegistration(toolId: string, reg: WidgetTypeRegistration<unknown>): void {

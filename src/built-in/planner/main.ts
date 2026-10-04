@@ -23,6 +23,7 @@ import { PlannerReminderScheduler } from './plannerReminderScheduler.js';
 import { registerPlannerChatTools } from './plannerChatTools.js';
 import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidgets.js';
 import { agendaBlock } from './plannerAgendaBlock.js';
+import { registerTaskSource } from '../../services/taskSources.js';
 import { createPlannerSettingsPanel } from './plannerSettingsPanel.js';
 import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 import { PlannerSyncOrchestrator } from './sync/plannerSyncOrchestrator.js';
@@ -341,6 +342,15 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // workaround is gone: register once, the dashboard picks it up whenever
   // it activates.
   context.subscriptions.push(registerPlannerDashboardWidgets(api.dashboard, _data));
+  // The timer (and anything else that offers tasks to work on) lists the
+  // Planner's open tasks while it runs.
+  context.subscriptions.push(registerTaskSource({
+    id: 'parallx.planner',
+    name: 'Planner',
+    listOpenTasks: async () => (await _data!.listTasks({ status: ['planned', 'reviewing'], includeUndated: true }))
+      .map((t) => ({ id: t.id, title: t.title })),
+    setDone: async (id, done) => { await _data!.updateTask(id, done ? { status: 'done', completedAt: Date.now() } : { status: 'planned', completedAt: null }); },
+  }));
   // The Agenda block for pages: offered only while the Planner runs.
   context.subscriptions.push(api.canvas.registerBlock(agendaBlock(_data, () => void api.commands.executeCommand('planner.open'))));
   if (isDevMode) console.log('[Planner] dashboard widgets contributed');

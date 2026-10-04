@@ -819,7 +819,7 @@ function _registerTools(api) {
 // brief — no DOM code needed here.
 
 function _stripRefreshBanner(text) {
-  return text.replace(/^_(?:Refreshing|Researching)[^\n]*_\s*\n+/, '').trim();
+  return text.replace(/^_(?:Refreshing|Researching|Updating|Fetching)[^\n]*_\s*\n+/, '').trim();
 }
 
 function _buildNewsBriefPrompt(cfg, instanceId) {
@@ -917,6 +917,130 @@ function _registerNewsBriefWidget(api) {
   }
 }
 
+// Weather and Market snapshot: AI widgets refreshed with this extension's
+// search tools, so they come with it (moved out of the dashboard core).
+function _aiWidgetRefresh(kindLabel, buildPrompt, cfgLabel, waitingText, updatingText) {
+  return async function refresh(ctx) {
+    const cmd = ctx.api && ctx.api.commands;
+    if (!cmd || typeof cmd.executeCommand !== 'function') {
+      throw new Error('Chat tool not available. Ensure the Chat extension is enabled.');
+    }
+    const cfg = ctx.config || {};
+    const prompt = buildPrompt(cfg, ctx.instanceId);
+    if (!prompt) return ctx.cachedOutput || null;
+    if (ctx.mode !== 'chat') {
+      const res = await cmd.executeCommand('chat.runBackgroundPrompt', {
+        text: prompt, origin: 'dashboard', originLabel: `[dashboard · ${kindLabel} · ${cfgLabel(cfg)}]`,
+      });
+      if (!res || !res.ok) throw new Error((res && res.error) || 'Background refresh failed.');
+      return null;
+    }
+    await cmd.executeCommand('chat.submitPrompt', { text: prompt });
+    const prior = _stripRefreshBanner((ctx.cachedOutput || '').trim());
+    if (prior) return `_${updatingText(cfg)}_\n\n${prior}`;
+    return `_${waitingText(cfg)}_`;
+  };
+}
+
+function _weatherCfg(raw) {
+  const c = raw || {};
+  const days = typeof c.forecastDays === 'number' && Number.isFinite(c.forecastDays) ? Math.max(0, Math.min(7, Math.floor(c.forecastDays))) : 3;
+  return {
+    location: typeof c.location === 'string' && c.location.trim() ? c.location : 'San Antonio, Texas',
+    units: c.units === 'metric' ? 'metric' : 'imperial',
+    forecastDays: days,
+  };
+}
+
+function _buildWeatherPrompt(raw, instanceId) {
+  const cfg = _weatherCfg(raw);
+  const unitLabel = cfg.units === 'metric' ? 'Celsius and km/h' : 'Fahrenheit and mph';
+  const lines = [
+    `Look up the current weather for ${cfg.location} and deliver a compact report to my dashboard widget.`,
+    '',
+    'Steps:',
+    `1. Use webSearch / webFetch to find current conditions for ${cfg.location} from a reliable weather source.`,
+    `2. Report temperatures and wind in ${unitLabel}. Use only what the source actually states — never estimate or invent values.`,
+  ];
+  if (cfg.forecastDays > 0) lines.push(`3. Include a short ${cfg.forecastDays}-day forecast.`);
+  lines.push(
+    `${cfg.forecastDays > 0 ? '4' : '3'}. Format as Markdown: a one-line heading with the location and the current temperature + condition, then a compact bullet list (feels-like, wind, humidity, high/low)${cfg.forecastDays > 0 ? ', then a short forecast list (one line per day)' : ''}. No preamble, no emojis.`,
+    `${cfg.forecastDays > 0 ? '5' : '4'}. Call the dashboard_render_widget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the report reaches the widget — do not skip it.`,
+  );
+  return lines.join('\n');
+}
+
+function _marketCfg(raw) {
+  const c = raw || {};
+  const symbols = Array.isArray(c.symbols) ? c.symbols.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean).slice(0, 20) : [];
+  return { symbols, extraInstructions: typeof c.extraInstructions === 'string' ? c.extraInstructions : '' };
+}
+
+function _buildMarketPrompt(raw, instanceId) {
+  const cfg = _marketCfg(raw);
+  if (cfg.symbols.length === 0) return null;
+  const lines = [
+    `Look up the latest available prices for these symbols and deliver a compact snapshot to my dashboard widget: ${cfg.symbols.join(', ')}.`,
+    '',
+    'Steps:',
+    '1. Use webSearch / webFetch to find the latest quote for each symbol from a reliable financial source.',
+    '2. Report only what the source actually shows — never invent or estimate a price. If a symbol can’t be found, mark it as "n/a".',
+    '3. Format as a Markdown bullet list, one line per symbol: `**SYMBOL** — price (change with % and a + / − sign)`. Do not use a Markdown table. Add one short italic line beneath the list noting the as-of time and source. No preamble, no emojis.',
+    `4. Call the dashboard_render_widget tool with instanceId "${instanceId}" and the finished Markdown as content. This is how the snapshot reaches the widget — do not skip it.`,
+  ];
+  if (cfg.extraInstructions.trim()) lines.push('', `Additional instructions: ${cfg.extraInstructions.trim()}`);
+  return lines.join('\n');
+}
+
+function _registerWeatherAndMarketWidgets(api) {
+  if (!api.dashboard || typeof api.dashboard.registerWidgetType !== 'function') return;
+  try {
+    _commandDisposables.push(api.dashboard.registerWidgetType({
+      typeId: 'parallx.dashboard.weather',
+      displayName: 'Weather',
+      description: 'AI-fetched current conditions and a short forecast for your area. Add a refresh schedule to keep it current.',
+      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.8A7 7 0 1 0 4 16.5"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>',
+      category: 'ai',
+      renderMode: 'markdown',
+      defaultSize: { colSpan: 4, rowSpan: 3 },
+      defaultConfig: { location: 'San Antonio, Texas', units: 'imperial', forecastDays: 3 },
+      configSchema: {
+        fields: {
+          location: { type: 'string', label: 'Location', description: 'City or region to report on.', placeholder: 'San Antonio, Texas' },
+          units: { type: 'enum', label: 'Units', options: [{ value: 'imperial', label: 'Fahrenheit (°F)' }, { value: 'metric', label: 'Celsius (°C)' }] },
+          forecastDays: { type: 'number', label: 'Forecast days', description: '0 for current conditions only, up to 7.' },
+        },
+      },
+      defaultRefreshPolicy: { kind: 'manual' },
+      refresh: _aiWidgetRefresh('Weather', _buildWeatherPrompt, (c) => _weatherCfg(c).location,
+        (c) => `Fetching current conditions for ${_weatherCfg(c).location}… the report will appear here when ready.`,
+        (c) => `Updating weather for ${_weatherCfg(c).location}…`),
+    }));
+    _commandDisposables.push(api.dashboard.registerWidgetType({
+      typeId: 'parallx.dashboard.market',
+      displayName: 'Market snapshot',
+      description: 'AI-fetched latest prices for the stocks / crypto you track. Add a refresh schedule to keep it current.',
+      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/><path d="M19 7v3h-3"/></svg>',
+      category: 'ai',
+      renderMode: 'markdown',
+      defaultSize: { colSpan: 4, rowSpan: 3 },
+      defaultConfig: { symbols: ['AAPL', 'MSFT', 'BTC-USD'], extraInstructions: '' },
+      configSchema: {
+        fields: {
+          symbols: { type: 'string-list', label: 'Symbols', description: 'One ticker per line, e.g. AAPL, MSFT, BTC-USD, ^GSPC.' },
+          extraInstructions: { type: 'textarea', label: 'Extra instructions (optional)', description: 'Add focus, currency, or formatting preferences.', placeholder: 'e.g. "Show values in EUR."' },
+        },
+      },
+      defaultRefreshPolicy: { kind: 'manual' },
+      refresh: _aiWidgetRefresh('Market', _buildMarketPrompt, (c) => _marketCfg(c).symbols.join(', '),
+        () => 'Fetching the latest prices… the snapshot will appear here when ready.',
+        () => 'Updating prices…'),
+    }));
+  } catch (err) {
+    console.error('[web-research] weather/market widget registration failed:', err);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION 9 — Activation
 // ═══════════════════════════════════════════════════════════════════════════
@@ -967,6 +1091,7 @@ export async function activate(api, _context) {
     _commandDisposables.push(api.commands.registerCommand('webResearch.fetchReadable', (url) => fetchReadableForExtension(url)));
   }
   _registerNewsBriefWidget(api);
+  _registerWeatherAndMarketWidgets(api);
   _registerChatContributions(api);
   console.log('[web-research] Activated');
 }
@@ -1010,6 +1135,9 @@ export const __test__ = Object.freeze({
   _setApi(stub) { _api = stub; },
   RESEARCH_TOPIC_SKILL,
   registerChatContributions: (api) => _registerChatContributions(api),
+  registerWeatherAndMarketWidgets: (api) => _registerWeatherAndMarketWidgets(api),
+  buildWeatherPrompt: _buildWeatherPrompt,
+  buildMarketPrompt: _buildMarketPrompt,
   migrateSettings: () => _migrateSettings(),
   _setBridge(stub) { globalThis.parallxElectron = stub; },
   _setDOMParser(ctor) { _defaultDOMParser = ctor; },

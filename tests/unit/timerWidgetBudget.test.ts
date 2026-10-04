@@ -2,6 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {TIMER_WIDGET} from '../../src/built-in/dashboard/widgets/timerWidget.js';
 import {DEFAULT_TIMER_CONFIG, parseState} from '../../src/built-in/dashboard/widgets/timerLogic.js';
+import {registerTaskSource} from '../../src/services/taskSources.js';
 
 describe('timer task budgets in the widget', () => {
   let host: HTMLElement;
@@ -24,10 +25,16 @@ describe('timer task budgets in the widget', () => {
     const button = [...host.querySelectorAll('button')].find(b => b.textContent === label);
     expect(button,`Button ${label}`).toBeTruthy(); button!.click();
   };
+  // A task tool (the Planner, in the app) registered as a task source.
+  let source: {dispose():void};
   beforeEach(()=>{
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-09T09:00:00'));
     data.listTasks.mockReset().mockResolvedValue([]); data.listEvents.mockReset();data.updateTask.mockReset();
+    source = registerTaskSource({id:'test.tasks',name:'Planner',
+      listOpenTasks:async()=>(await data.listTasks({status:['planned','reviewing'],includeUndated:true})).map((t:any)=>({id:t.id,title:t.title})),
+      setDone:async(id,done)=>{await data.updateTask(id,{status:done?'done':'planned'});}});
   });
+  afterEach(()=>{ source.dispose(); });
   afterEach(()=>{handle?.dispose();document.body.replaceChildren();vi.useRealTimers()});
 
   it('ends a shortened final break at the cap, persists it, and does not complete Planner',()=>{
@@ -73,6 +80,15 @@ describe('timer task budgets in the widget', () => {
     expect(host.querySelectorAll('.dtimer__task')).toHaveLength(1);
     expect(parseState(saved).tasks).toHaveLength(2);
     expect(parseState(saved).tasks.find(t=>t.sourceId==='tk')!.budgetMinutes).toBe(60);
+  });
+  it('offers Choose tasks only while a task tool runs, named after it',()=>{
+    source.dispose(); // no task tool on
+    mount();
+    const btn=()=>[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent==='Choose tasks')!;
+    expect(btn().hidden).toBe(true);
+    source = registerTaskSource({id:'test.tasks',name:'Tasks Tool',listOpenTasks:async()=>[],setDone:async()=>{}});
+    expect(btn().hidden).toBe(false);
+    expect(btn().title).toBe('Choose open tasks from Tasks Tool');
   });
   it('opens budget editing from the task time and hides it after saving or starting',()=>{
     mount();

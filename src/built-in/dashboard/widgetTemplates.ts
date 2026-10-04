@@ -58,10 +58,11 @@ export const WIDGET_TEMPLATES: readonly WidgetTemplate[] = [
   },
   {
     name: 'Daily brief (AI)',
-    description: 'One card that reads your agenda and workspace, and plans your day.',
+    description: 'One card that reads your workspace (and your schedule, when a tool keeps one) and plans your day.',
     typeId: 'parallx.dashboard.ai-custom',
     config: {
-      prompt: 'Look at my planner (today\'s tasks and events) and anything notable in my workspace, then write a short "here is your day" brief: schedule first, then the 3 most important things to do, then anything at risk. Keep it under 200 words.',
+      // Names no tool: the AI uses whatever schedule or task tools are on.
+      prompt: 'Look at what I have on today (use any schedule or task tools you have; skip this if there are none) and anything notable in my workspace, then write a short "here is your day" brief: schedule first, then the 3 most important things to do, then anything at risk. Keep it under 200 words.',
       skill: '',
     },
     refreshPolicy: { kind: 'cron', cron: '0 12 * * *' },

@@ -11,32 +11,22 @@
 // time per day without new storage. All arithmetic lives in timerLogic.ts.
 
 import type { WidgetContext, WidgetHandle, WidgetTypeRegistration } from '../dashboardTypes.js';
+import { getTaskSources, onDidChangeTaskSources, type TaskSource } from '../../../services/taskSources.js';
 import {
   readConfig, parseState, minutesFor, nextMode, finishEstimate, dayStreak, todaySummary, lastDays,
   fmtClock, fmtTimeOfDay, fmtHours, MAX_LOG, MAX_TASKS, mergePlannerItems, planTimeBudget, budgetRemaining, isTimerTask,
   type TimerConfig, type TimerMode, type TimerState, type TimerTask, type PlannerLinkItem,
 } from './timerLogic.js';
 
-// The planner's public registry, reached through its command so the two
-// tools stay independent: the timer works without the planner installed.
-interface PlannerTaskLike { readonly id: string; readonly title: string; readonly status: string; readonly dueAt: number | null }
-interface PlannerDataLike {
-  listTasks(query: { status?: readonly string[]; dueFrom?: number; dueTo?: number; includeUndated?: boolean }): Promise<PlannerTaskLike[]>;
-  updateTask(id: string, patch: { status?: string; completedAt?: number | null }): Promise<unknown>;
+// Tasks come from whichever tool keeps them (services/taskSources: the
+// Planner registers there while it runs). The timer names no tool: with no
+// source running, it offers no "Choose tasks".
+function taskSource(): TaskSource | null {
+  return getTaskSources()[0] ?? null;
 }
-async function plannerData(api: unknown): Promise<PlannerDataLike | null> {
-  try {
-    const cmds = (api as { commands?: { executeCommand<T>(id: string): Promise<T> } } | null)?.commands;
-    if (!cmds?.executeCommand) return null;
-    const reg = await cmds.executeCommand<{ data?: PlannerDataLike } | null>('planner.getRegistry');
-    return reg?.data && typeof reg.data.listTasks === 'function' ? reg.data : null;
-  } catch { return null; }
-}
-/** Tasks are offered explicitly, including overdue, future, and undated work. */
-async function plannerTaskItems(data: PlannerDataLike): Promise<PlannerLinkItem[]> {
-  const tasks = await data.listTasks({ status: ['planned', 'reviewing'], includeUndated: true });
-  return tasks.filter((t) => t.status === 'planned' || t.status === 'reviewing')
-    .map((t) => ({ id: t.id, title: t.title, minutes: null, kind: 'task' }));
+async function sourceTaskItems(src: TaskSource): Promise<PlannerLinkItem[]> {
+  const tasks = await src.listOpenTasks();
+  return tasks.map((t) => ({ id: t.id, title: t.title, minutes: null, kind: 'task' }));
 }
 
 const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/><path d="M12 2v3"/></svg>';
@@ -114,7 +104,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       alarmVolume: { type: 'number', label: 'Volume', description: '0 to 100.' },
       ticking: { type: 'boolean', label: 'Ticking while running' },
       showTasks: { type: 'boolean', label: 'Show tasks' },
-      plannerSync: { type: 'boolean', label: 'Planner button', description: 'Choose open Planner tasks to study. Calendar events are excluded.' },
+      plannerSync: { type: 'boolean', label: 'Choose Tasks button', description: 'Pick open tasks to work on from a tool that keeps your tasks, when one is on.' },
       showReport: { type: 'boolean', label: 'Show the report row', description: "Today's minutes, the streak and seven small bars." },
       label: { type: 'string', label: 'Focus label', description: 'Logged with each completed focus interval.', placeholder: 'Focus' },
     },
@@ -206,7 +196,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     tasksHead.appendChild(h('span', 'dtimer__taskstitle', 'Tasks'));
     const tasksSummary = h('span', 'dtimer__taskssummary');
     tasksHead.appendChild(tasksSummary);
-    const syncBtn = button('Choose tasks', 'dtimer__tasksmall dtimer__sync', () => { void openPlannerPicker(); }, 'Choose open tasks from Planner');
+    const syncBtn = button('Choose tasks', 'dtimer__tasksmall dtimer__sync', () => { void openPlannerPicker(); }, 'Choose open tasks');
     tasksHead.appendChild(syncBtn);
     tasksBox.appendChild(tasksHead);
     const taskList = h('div', 'dtimer__tasklist');
@@ -269,8 +259,8 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     // An interval already in progress is allowed to finish before switching.
     if (activeTask()?.sourceKind === 'event' && state.endsAt === null && state.pausedRemaining === null) state.activeTaskId = readyTask()?.id ?? null;
 
-    // ── Planner link: nothing arrives unasked. Sync shows today's planner
-    // items with a checkbox each; only the ones you tick join the list. ──
+    // ── Task link: nothing arrives unasked. "Choose tasks" lists the task
+    // tool's open tasks with a checkbox each; only the ticked ones join. ──
     let picker: HTMLElement | null = null;
     const closePicker = (): void => {
       if (picker) { picker.remove(); picker = null; }
@@ -279,18 +269,18 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     const openPlannerPicker = async (): Promise<void> => {
       if (!cfg.showTasks) return;
       if (picker) { closePicker(); return; }
-      const data = await plannerData(ctx.api);
-      if (!data) { syncBtn.textContent = 'No Planner'; setTimeout(() => { syncBtn.textContent = 'Choose tasks'; }, 1500); return; }
+      const src = taskSource();
+      if (!src) { render(); return; }
       let items: PlannerLinkItem[];
-      try { items = await plannerTaskItems(data); }
+      try { items = await sourceTaskItems(src); }
       catch { syncBtn.textContent = 'Try again'; return; }
       const linked = new Set(state.tasks.map((t) => t.sourceId).filter((s): s is string => !!s));
       const box = h('div', 'dtimer__picker');
       const search = h('input', 'dtimer__input') as HTMLInputElement;
-      search.type = 'search'; search.placeholder = 'Find a Planner task'; search.setAttribute('aria-label', 'Find a Planner task');
+      search.type = 'search'; search.placeholder = `Find a task in ${src.name}`; search.setAttribute('aria-label', `Find a task in ${src.name}`);
       box.appendChild(search);
       const noMatch = h('div', 'dtimer__pickerempty', 'No matching tasks.'); noMatch.hidden = true;
-      if (items.length === 0) box.appendChild(h('div', 'dtimer__pickerempty', 'No open tasks in Planner.'));
+      if (items.length === 0) box.appendChild(h('div', 'dtimer__pickerempty', `No open tasks in ${src.name}.`));
       const choices: { item: PlannerLinkItem; input: HTMLInputElement }[] = [];
       for (const it of items) {
         const row = h('label', 'dtimer__pickrow');
@@ -323,7 +313,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
           // lists it open anywhere, never because it fell outside today's
           // window; with no answer from the planner, nothing is assumed.
           const keep = items.filter((i) => linked.has(i.id) || chosen.has(i.id));
-          const open = await data.listTasks({ status: ['planned', 'reviewing'], includeUndated: true })
+          const open = await src.listOpenTasks()
             .then((ts) => new Set(ts.map((t) => t.id))).catch(() => null);
           state.tasks = mergePlannerItems(state.tasks, keep, cfg.focusMinutes, [], Date.now(), open);
           for (const task of state.tasks) if (task.sourceId && chosen.has(task.sourceId) && !linked.has(task.sourceId)) { task.budgetMinutes = 60; task.spentMinutes = 0; }
@@ -343,7 +333,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
     /** Finishing a linked planner task here finishes it there too; events are only read. */
     const writeBackDone = (t: TimerTask): void => {
       if (!t.sourceId || t.sourceKind !== 'task') return;
-      void plannerData(ctx.api).then((data) => data?.updateTask(t.sourceId!, t.done ? { status: 'done', completedAt: Date.now() } : { status: 'planned', completedAt: null })).catch(() => {});
+      void taskSource()?.setDone(t.sourceId, t.done).catch(() => {});
     };
 
     let tick: ReturnType<typeof setInterval> | null = null;
@@ -498,7 +488,10 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       budgetNote.textContent = budgetInput.disabled ? 'Reset the current interval to edit its budget.' : 'Includes breaks. Pauses extend the finish time.';
       previewBudget();
       tasksBox.hidden = !cfg.showTasks;
-      syncBtn.hidden = !cfg.plannerSync;
+      // Only while a tool that keeps tasks runs, and named after it.
+      const src = taskSource();
+      syncBtn.hidden = !cfg.plannerSync || !src;
+      if (src) syncBtn.title = `Choose open tasks from ${src.name}`;
       renderTasks();
       // The report stays short: a figure or two, the sentence in the tooltip.
       report.hidden = !cfg.showReport;
@@ -567,7 +560,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
         const check = button('', 'dtimer__check', () => markTask(t), t.done ? 'Mark not done' : 'Mark done');
         check.setAttribute('aria-pressed', t.done ? 'true' : 'false');
         row.appendChild(check);
-        const title = button(t.title, 'dtimer__tasktitle', () => selectTask(t), t.sourceId ? 'From Planner. Click to make active; right-click for more.' : 'Click to make active; right-click for more.');
+        const title = button(t.title, 'dtimer__tasktitle', () => selectTask(t), t.sourceId ? `From ${taskSource()?.name ?? 'your task list'}. Click to make active; right-click for more.` : 'Click to make active; right-click for more.');
         title.addEventListener('dblclick', () => startRename(row, title, t));
         row.appendChild(title);
         // The count closes the row at the far right; everything else about a task is a right-click away.
@@ -636,6 +629,8 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       cfg = readConfig(next);
       render();
     });
+    // A task tool turned on or off brings or takes the "Choose tasks" button.
+    const sourcesSub = onDidChangeTaskSources(() => render());
 
     return {
       refreshFromCache(cached: string | null) {
@@ -650,6 +645,7 @@ export const TIMER_WIDGET: WidgetTypeRegistration<TimerConfig> = {
       dispose() {
         stopTick();
         sub.dispose();
+        sourcesSub.dispose();
       },
     };
   },

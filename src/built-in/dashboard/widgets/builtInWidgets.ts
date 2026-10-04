@@ -13,8 +13,6 @@ import { VIDEO_WIDGET } from './videoWidget.js';
 import { NOTES_WIDGET } from './notesWidget.js';
 import { TASKS_WIDGET } from './tasksWidget.js';
 import { COUNTDOWN_WIDGET } from './countdownWidget.js';
-import { WEATHER_WIDGET } from './weatherWidget.js';
-import { MARKET_WIDGET } from './marketWidget.js';
 import { TIMER_WIDGET } from './timerWidget.js';
 import { TRACKER_BOARD_WIDGET } from './trackerBoardWidget.js';
 import { SAVED_QUERY_WIDGET } from './savedQueryWidget.js';
@@ -40,9 +38,9 @@ export function registerBuiltInDashboardWidgets(
 
   // M86: organ-owned widgets are NOT registered here — they are contributed
   // by the tool that owns their data via `api.dashboard.registerWidgetType`
-  // (recent-files → explorer; autonomy-activity → chat; news-brief →
-  // web-research extension). Their typeIds are unchanged, so persisted
-  // instances keep working.
+  // (recent-files → explorer; autonomy-activity → chat; news-brief,
+  // weather, market → web-research extension, whose search tools they
+  // need). Their typeIds are unchanged, so persisted instances keep working.
   const disposables: IDisposable[] = [
     registry.registerWidgetType(CLOCK_AND_LINKS_WIDGET),
     registry.registerWidgetType(CUSTOM_AI_WIDGET),
@@ -52,8 +50,6 @@ export function registerBuiltInDashboardWidgets(
     registry.registerWidgetType(NOTES_WIDGET),
     registry.registerWidgetType(TASKS_WIDGET),
     registry.registerWidgetType(COUNTDOWN_WIDGET),
-    registry.registerWidgetType(WEATHER_WIDGET),
-    registry.registerWidgetType(MARKET_WIDGET),
     // M86 C3 — the generic slate: domain-blind, config-shaped widgets.
     registry.registerWidgetType(TIMER_WIDGET),
     registry.registerWidgetType(TRACKER_BOARD_WIDGET),
