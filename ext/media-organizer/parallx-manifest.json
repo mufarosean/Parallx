@@ -11,6 +11,9 @@
     "parallx": "^0.1.0"
   },
   "contributes": {
+    "icons": [
+      { "id": "px-media", "svg": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4.5\" y=\"4\" width=\"15\" height=\"16\" rx=\"1.5\"/><circle cx=\"15\" cy=\"8.8\" r=\"1.6\"/><path d=\"M6.5 17 L10 12.4 L12.7 15.1 L14.8 12.8 L17.5 17\"/></svg>" }
+    ],
     "commands": [
       { "id": "media-organizer.scan", "title": "Scan Directory", "category": "Atelier" },
       { "id": "media-organizer.cancelScan", "title": "Cancel Scan", "category": "Atelier" },

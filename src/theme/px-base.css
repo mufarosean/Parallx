@@ -24,9 +24,7 @@ html, body {
 /* Headings sit tighter still. */
 h1, h2, h3, h4,
 .view-section-title,
-.dashboard-header__title,
-.planner-cheader__date,
-.planner-cdate {
+.dashboard-header__title {
   letter-spacing: -0.014em;
 }
 

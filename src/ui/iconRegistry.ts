@@ -24,8 +24,8 @@ for (const [id, svg] of Object.entries(LUCIDE_ICONS)) {
   _icons.set(id, svg);
 }
 
-// Parallx-original brand icons (`px-*`) for the product's core nouns —
-// hand-drawn on the logo's parallelogram motif (see brandIcons.ts).
+// Parallx-original brand icons (`px-*`) for the core's own nouns (see
+// brandIcons.ts). A tool's mark comes with the tool (`contributes.icons`).
 for (const [id, svg] of Object.entries(BRAND_ICONS)) {
   _icons.set(id, svg);
 }
@@ -42,6 +42,14 @@ for (const [id, svg] of Object.entries(FILE_TYPE_ICONS)) {
  */
 export function registerIcon(id: string, svgMarkup: string): void {
   _icons.set(id, svgMarkup);
+}
+
+/**
+ * Remove an icon registered at runtime (a tool's own mark, when the tool is
+ * turned off). Returns whether it was there.
+ */
+export function unregisterIcon(id: string): boolean {
+  return _icons.delete(id);
 }
 
 /**

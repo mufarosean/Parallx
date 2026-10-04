@@ -155,7 +155,7 @@ function _validateContributions(
 ): void {
   const knownPoints = new Set([
     'views', 'viewContainers', 'commands', 'configuration',
-    'menus', 'keybindings', 'statusBar', 'editors',
+    'menus', 'keybindings', 'statusBar', 'editors', 'icons',
   ]);
 
   for (const key of Object.keys(contributes)) {
@@ -174,6 +174,28 @@ function _validateContributions(
         const p = `contributes.editors[${i}]`;
         if (!_isObject(e)) { errors.push({ path: p, message: 'must be an object' }); continue; }
         _requireNonEmptyStringAt(e as Record<string, unknown>, 'typeId', p, errors);
+      }
+    }
+  }
+
+  // ── icons ──
+  if (contributes.icons !== undefined) {
+    if (!Array.isArray(contributes.icons)) {
+      errors.push({ path: 'contributes.icons', message: 'must be an array' });
+    } else {
+      for (let i = 0; i < contributes.icons.length; i++) {
+        const ic = contributes.icons[i] as Record<string, unknown> | null;
+        const p = `contributes.icons[${i}]`;
+        if (typeof ic !== 'object' || ic === null) {
+          errors.push({ path: p, message: 'must be an object' });
+          continue;
+        }
+        if (typeof ic.id !== 'string' || !ic.id) {
+          errors.push({ path: `${p}.id`, message: 'must be a non-empty string' });
+        }
+        if (typeof ic.svg !== 'string' || !/^\s*<svg[\s>]/.test(ic.svg)) {
+          errors.push({ path: `${p}.svg`, message: 'must be <svg> markup' });
+        }
       }
     }
   }

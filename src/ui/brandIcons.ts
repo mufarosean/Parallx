@@ -16,22 +16,28 @@
 //   - The parallelogram lean lives ONLY in `px-mark` — the logo itself.
 //
 // Rules:
-//   - Brand icons are for PRODUCT nouns (canvas, planner, dashboard, chat,
-//     automations, extensions' primary surfaces). Universal verbs and objects
-//     (search, folder, settings, trash…) stay Lucide — genericness is correct
-//     there.
+//   - Brand icons are for PRODUCT nouns (canvas, dashboard, chat, the tool
+//     gallery). Universal verbs and objects (search, folder, settings,
+//     trash…) stay Lucide — genericness is correct there.
 //   - Upright plate: `<rect x="4.5" y="4" width="15" height="16" rx="1.5"/>`.
 //     One strong inner mark, no fills, nothing outside 2–22.
+//   - Only the core's own nouns live here. A tool that can be turned off
+//     brings its mark itself (its manifest's `contributes.icons`, drawn with
+//     `brandIcon` + `BRAND_PLATE` for a built-in, the same markup inline in
+//     an extension's manifest); it is registered while the tool runs.
 
 const SVG_OPEN =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
 
-function brand(inner: string): string {
+/** A brand icon: the inner marks wrapped in the shared 24×24 stroke svg. */
+export function brandIcon(inner: string): string {
   return `${SVG_OPEN}${inner}</svg>`;
 }
+const brand = brandIcon;
 
 /** The upright plate most brand icons are built on. */
-const PLATE = '<rect x="4.5" y="4" width="15" height="16" rx="1.5"/>';
+export const BRAND_PLATE = '<rect x="4.5" y="4" width="15" height="16" rx="1.5"/>';
+const PLATE = BRAND_PLATE;
 
 /**
  * THE logo: two leaning plates, filled, the back one ghosted. This is the
@@ -68,15 +74,6 @@ export const BRAND_ICONS: Record<string, string> = {
     + '<path d="M8 16.5 L12.5 16.5"/>',
   ),
 
-  /** Planner — binding ticks piercing the plate + a done-check (no divider,
-   *  which is what separates it from Lucide's calendar-check). */
-  'px-planner': brand(
-    PLATE
-    + '<path d="M9.5 2.2 L9.5 6"/>'
-    + '<path d="M14.5 2.2 L14.5 6"/>'
-    + '<path d="M8.3 13.6 L10.4 15.7 L15.7 10.4"/>',
-  ),
-
   /** Dashboard — staggered shelves, not the symmetric stock split. */
   'px-dashboard': brand(
     PLATE
@@ -88,57 +85,5 @@ export const BRAND_ICONS: Record<string, string> = {
   /** Tool gallery — the plate with a puzzle notch in its top edge. */
   'px-tools': brand(
     '<path d="M4.5 4 L10 4 A2 2 0 0 0 14 4 L19.5 4 L19.5 20 L4.5 20 Z"/>',
-  ),
-
-  /** Automations — the plate carrying a bolt. */
-  'px-automations': brand(
-    PLATE
-    + '<path d="M13.4 6.5 L9 13 L11.8 13 L10.4 17.5 L14.8 11 L12 11 Z"/>',
-  ),
-
-  /** Flashcards — a landscape card with a prompt line, another card behind. */
-  'px-flashcards': brand(
-    '<rect x="7.5" y="5" width="13" height="10" rx="1.5"/>'
-    + '<path d="M10.5 9 L17.5 9"/>'
-    + '<path d="M4.5 9 L4.5 17 A2 2 0 0 0 6.5 19 L15 19"/>',
-  ),
-
-  /** Media library — sun + ridge line inside the plate. */
-  'px-media': brand(
-    PLATE
-    + '<circle cx="15" cy="8.8" r="1.6"/>'
-    + '<path d="M6.5 17 L10 12.4 L12.7 15.1 L14.8 12.8 L17.5 17"/>',
-  ),
-
-  /** Workspace graph — linked nodes inside the plate. */
-  'px-graph': brand(
-    PLATE
-    + '<circle cx="9.4" cy="9" r="1.5"/>'
-    + '<circle cx="15.4" cy="10.4" r="1.5"/>'
-    + '<circle cx="10.4" cy="15.4" r="1.5"/>'
-    + '<path d="M10.9 9.4 L13.9 10"/>'
-    + '<path d="M14.4 11.6 L11.5 14.3"/>',
-  ),
-
-  /** Text generator — an italic capital on the plate. */
-  'px-writer': brand(
-    PLATE
-    + '<path d="M13.6 7.5 L10.4 16.5"/>'
-    + '<path d="M12 7.5 L15.2 7.5"/>'
-    + '<path d="M8.8 16.5 L12 16.5"/>',
-  ),
-
-  /** Budget — a coin over the ledger line. */
-  'px-budget': brand(
-    PLATE
-    + '<circle cx="12" cy="11" r="3.3"/>'
-    + '<path d="M7.5 17 L14 17"/>',
-  ),
-
-  /** Web research — a globe crossed by its orbit. */
-  'px-web': brand(
-    PLATE
-    + '<circle cx="12" cy="11.5" r="3.5"/>'
-    + '<path d="M6.8 14.8 L17.2 8.2"/>',
   ),
 };

@@ -1,5 +1,15 @@
 /* Worksheets (M99) — pane chrome around the Univer engine. */
 
+/* The spreadsheet in a Worksheets pane (ribbon, formula bar, sheet tabs and
+   the sheet's own menus) stands in for the exam's sheet, so it keeps one
+   face whatever font the user picks in Appearance, as it keeps its own
+   light look. Cells draw in their cell font (Arial, as on the exam). The
+   pane's bars around the sheet follow the app font. Kept with Worksheets,
+   not in the core's px-tokens.css. */
+:root {
+  --px-worksheet-sheet-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+}
+
 .ws-pane {
   display: flex;
   flex-direction: column;
@@ -15,8 +25,8 @@
   min-height: 0;
   position: relative;
 }
-/* The exam's sheet keeps one face whatever the app font is (px-tokens.css,
-   Worksheet sheet); its menus portal to the popup root, so it too. */
+/* The exam's sheet keeps one face whatever the app font is (the token
+   above); its menus portal to the popup root, so it too. */
 .ws-pane__sheet,
 #ws-univer-popup-root { font-family: var(--px-worksheet-sheet-font); }
 

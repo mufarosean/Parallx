@@ -7,6 +7,8 @@
  */
 
 import type { IToolManifest } from './toolManifest.js';
+import { AGENTS_ICON } from '../built-in/agents/agentsIcon.js';
+import { PLANNER_ICON } from '../built-in/planner/plannerIcon.js';
 
 // ── Explorer ─────────────────────────────────────────────────────────────
 
@@ -277,6 +279,7 @@ export const AGENTS_MANIFEST: IToolManifest = {
       { typeId: 'agents-run', displayName: 'Agent Run' },
       { typeId: 'workflow', displayName: 'Workflow' },
     ],
+    icons: [AGENTS_ICON],
     viewContainers: [
       { id: 'agents-container', title: 'Agents', icon: 'px-automations', location: 'auxiliaryBar' as const },
     ],
@@ -526,6 +529,7 @@ export const PLANNER_MANIFEST: IToolManifest = {
       // (workbench.action.showCommands) and must never be reassigned.
       { command: 'planner.open', key: 'Ctrl+Shift+K' },
     ],
+    icons: [PLANNER_ICON],
     viewContainers: [
       { id: 'planner-container', title: 'Planner', icon: 'px-planner', location: 'sidebar' as const },
     ],

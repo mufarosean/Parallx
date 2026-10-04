@@ -2,10 +2,15 @@
 //
 // Empty states are the app's speaking moments (Slack/Duolingo school —
 // see docs/Parallx_Milestone_89.md): the one place a blank panel either
-// feels cared-for or utilitarian. EVERY empty-state line lives HERE so the
+// feels cared-for or utilitarian. Every core surface's line lives HERE so the
 // voice stays consistent, greppable, and testable. Surfaces either render
 // through `renderEmptyState()` (standard hero) or import their entry's
 // strings when they own a custom layout (canvas sidebar, chat).
+//
+// A tool that can be turned off keeps its own lines (an `EmptyStateEntry`
+// next to its code, rendered with `renderEmptyStateEntry`), so no core copy
+// names a tool the user may not have. emptyStates.test.ts holds those to
+// the same voice rules.
 //
 // Voice rules (enforced by emptyStates.test.ts):
 //   - headline: warm, ≤ 6 words, no terminal period, never "Nothing here"
@@ -22,30 +27,6 @@ export interface EmptyStateEntry {
 }
 
 export const EMPTY_STATES = {
-  'planner.day': {
-    id: 'planner.day',
-    icon: 'calendar',
-    headline: 'A clear day',
-    hint: 'Capture a task with Create, or ask the AI in chat. New tasks land in the review queue so you never break flow to plan.',
-  },
-  'planner.filter': {
-    id: 'planner.filter',
-    icon: 'filter',
-    headline: 'All clear on this view',
-    hint: 'No tasks match this filter. Switch views above, or click Create to capture something new.',
-  },
-  'planner.scheduled': {
-    id: 'planner.scheduled',
-    icon: 'px-ai-mark',
-    headline: 'Nothing scheduled yet',
-    hint: 'Workflows with a schedule appear here, with their next and last run. Create one in the Workflows panel, or add one the AI suggests.',
-  },
-  'search.noResults': {
-    id: 'search.noResults',
-    icon: 'search',
-    headline: 'No matches for that',
-    hint: 'Try fewer words or a different phrasing. Search covers file contents, not just names.',
-  },
   'canvas.noPages': {
     id: 'canvas.noPages',
     icon: 'file-text',
@@ -62,18 +43,6 @@ export const EMPTY_STATES = {
     // canvas block are auto-attached to a turn, and pages/files are reachable
     // through retrieval and @mentions.
     hint: 'Ask about your files, pages, or whatever you have selected. The selection comes along automatically.',
-  },
-  'autonomyLog.empty': {
-    id: 'autonomyLog.empty',
-    icon: 'px-ai-mark',
-    headline: 'All quiet so far',
-    hint: 'When the assistant acts on its own (heartbeat findings, scheduled runs), the receipts appear here.',
-  },
-  'mind.noBeliefs': {
-    id: 'mind.noBeliefs',
-    icon: 'px-ai-mark',
-    headline: 'No beliefs yet',
-    hint: 'The agent forms them as it reviews your work. Check back after a few sessions.',
   },
   'chat.sessions': {
     id: 'chat.sessions',
@@ -99,12 +68,6 @@ export const EMPTY_STATES = {
     headline: 'No tools match that',
     hint: 'Try fewer words, or switch the filter back to Installed.',
   },
-  'welcome.recent': {
-    id: 'welcome.recent',
-    icon: 'history',
-    headline: 'A fresh start',
-    hint: 'Files and workspaces you open appear here.',
-  },
 } as const satisfies Record<string, EmptyStateEntry>;
 
 export type EmptyStateId = keyof typeof EMPTY_STATES;
@@ -115,7 +78,11 @@ export type EmptyStateId = keyof typeof EMPTY_STATES;
  * only, informational-opacity text per the Linear hierarchy rule.
  */
 export function renderEmptyState(id: EmptyStateId): HTMLElement {
-  const entry = EMPTY_STATES[id];
+  return renderEmptyStateEntry(EMPTY_STATES[id]);
+}
+
+/** The same hero for an entry a tool keeps itself. */
+export function renderEmptyStateEntry(entry: EmptyStateEntry): HTMLElement {
   const root = document.createElement('div');
   root.className = 'px-empty';
   root.dataset.emptyStateId = entry.id;

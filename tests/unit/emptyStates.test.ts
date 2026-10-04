@@ -5,10 +5,19 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { globSync } from 'glob';
-import { EMPTY_STATES, renderEmptyState, type EmptyStateId } from '../../src/ui/emptyStates';
+import { EMPTY_STATES, renderEmptyState, renderEmptyStateEntry, type EmptyStateEntry, type EmptyStateId } from '../../src/ui/emptyStates';
+import { PLANNER_EMPTY_STATES } from '../../src/built-in/planner/plannerEmptyStates';
+import { SEARCH_EMPTY_STATES } from '../../src/built-in/search/searchEmptyStates';
+import { WELCOME_EMPTY_STATES } from '../../src/built-in/welcome/welcomeEmptyStates';
 
 const ROOT = resolve(__dirname, '../..');
-const entries = Object.values(EMPTY_STATES);
+// The core's lines and the ones optional tools keep themselves: one voice.
+const entries: EmptyStateEntry[] = [
+  ...Object.values(EMPTY_STATES),
+  ...Object.values(PLANNER_EMPTY_STATES),
+  ...Object.values(SEARCH_EMPTY_STATES),
+  ...Object.values(WELCOME_EMPTY_STATES),
+];
 
 describe('empty-state voice rules (M89 S2)', () => {
   it('headlines are warm and brief: ≤ 6 words, no terminal period, no anti-voice', () => {
@@ -34,11 +43,24 @@ describe('empty-state voice rules (M89 S2)', () => {
     }
   });
 
+  it('tool entries have unique ids, none shared with the core', () => {
+    const ids = entries.map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('renderEmptyState builds the standard hero', () => {
-    const el = renderEmptyState('planner.day' as EmptyStateId);
+    const el = renderEmptyState('canvas.noPages' as EmptyStateId);
     expect(el.className).toBe('px-empty');
-    expect(el.querySelector('.px-empty__headline')?.textContent).toBe(EMPTY_STATES['planner.day'].headline);
-    expect(el.querySelector('.px-empty__hint')?.textContent).toBe(EMPTY_STATES['planner.day'].hint);
+    expect(el.querySelector('.px-empty__headline')?.textContent).toBe(EMPTY_STATES['canvas.noPages'].headline);
+    expect(el.querySelector('.px-empty__hint')?.textContent).toBe(EMPTY_STATES['canvas.noPages'].hint);
+    expect(el.dataset.emptyStateId).toBe('canvas.noPages');
+  });
+
+  it('renderEmptyStateEntry builds the same hero for a tool\'s own entry', () => {
+    const el = renderEmptyStateEntry(PLANNER_EMPTY_STATES.day);
+    expect(el.className).toBe('px-empty');
+    expect(el.querySelector('.px-empty__headline')?.textContent).toBe('A clear day');
+    expect(el.querySelector('.px-empty__hint')?.textContent).toBe(PLANNER_EMPTY_STATES.day.hint);
     expect(el.dataset.emptyStateId).toBe('planner.day');
   });
 });

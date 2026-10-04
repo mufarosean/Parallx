@@ -5,6 +5,23 @@
    refined typography, hover-revealed affordances, subtle motion.
    ========================================================================== */
 
+/* ── Planner tokens ────────────────────────────────────────────────────────
+   Values only the planner needs, kept with the planner (not in the core's
+   px-tokens.css). They reference Tier 2 (or are pure ratios), so they
+   re-theme with everything else.
+   Pane widths: the planner lays out by its OWN width (a container named
+   `planner`), not the window, so a split editor gets the narrow layout.
+   Container queries cannot read custom properties, so the three steps are
+   named here and written literally below:
+     wide     ≥ 1024px   side column beside the page
+     medium   720–1023px side column drops below the page
+     compact  < 720px    one column; week view shows 3 days */
+:root {
+  --px-planner-event-tint:      24%;   /* calendar colour mixed into an event block */
+  --px-planner-event-tint-past: 12%;   /* the same block once it has ended          */
+  --px-planner-now:             var(--px-danger);   /* the current-time line   */
+}
+
 
 /* ── Shared buttons ─────────────────────────────────────────────────────── */
 
@@ -167,8 +184,8 @@
    ========================================================================== */
 
 /* The pane is a named size container: everything inside lays out by the
-   planner's own width (wide / medium / compact, see the Tier 3 planner
-   block in px-tokens.css), so a split editor gets the narrow layout. */
+   planner's own width (wide / medium / compact, see the planner tokens
+   at the top of this file), so a split editor gets the narrow layout. */
 .planner-pane-host {
   position: relative;
   display: block;

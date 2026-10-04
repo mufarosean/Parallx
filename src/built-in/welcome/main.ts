@@ -10,7 +10,7 @@ import { IWorkspaceService } from '../../services/serviceTypes.js';
 import { IRecentsService, type IRecentsServiceShape } from '../../services/recentsService.js';
 import { $ } from '../../ui/dom.js';
 import { getIcon, getFileTypeIcon } from '../../ui/iconRegistry.js';
-import { EMPTY_STATES } from '../../ui/emptyStates.js';
+import { WELCOME_EMPTY_STATES } from './welcomeEmptyStates.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -333,7 +333,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi, recentWorksp
   if (recentWorkspaces.length === 0 && recentFiles.length === 0) {
     const emptyMsg = $('div');
     emptyMsg.classList.add('welcome-empty');
-    emptyMsg.textContent = EMPTY_STATES['welcome.recent'].hint;
+    emptyMsg.textContent = WELCOME_EMPTY_STATES.recent.hint;
     rightCol.appendChild(emptyMsg);
   }
 

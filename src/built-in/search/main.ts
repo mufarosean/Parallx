@@ -13,7 +13,7 @@
 
 import './search.css';
 
-import { EMPTY_STATES } from '../../ui/emptyStates.js';
+import { SEARCH_EMPTY_STATES } from './searchEmptyStates.js';
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
@@ -454,7 +454,7 @@ async function executeSearch(): Promise<void> {
 
     if (_results.length === 0) {
       // M89 S2 — registry voice: warm line + a concrete next step.
-      updateMessage(`No matches for "${query}". ${EMPTY_STATES['search.noResults'].hint}`);
+      updateMessage(`No matches for "${query}". ${SEARCH_EMPTY_STATES.noResults.hint}`);
     } else {
       updateMessage(
         `${_totalMatches} result${_totalMatches !== 1 ? 's' : ''} in ${_results.length} file${_results.length !== 1 ? 's' : ''}`,

@@ -18,6 +18,7 @@ import type { IContributionProcessor } from './contributionTypes.js';
 import type { ViewManager } from '../views/viewManager.js';
 import type { IView, ViewState } from '../views/viewTypes.js';
 import { DEFAULT_SIZE_CONSTRAINTS } from '../layout/layoutTypes.js';
+import { IconContributionProcessor } from './iconContribution.js';
 
 // ─── Container Location ──────────────────────────────────────────────────────
 
@@ -107,6 +108,10 @@ export class ViewContributionProcessor extends Disposable implements IContributi
   /** View ID → view info. */
   private readonly _views = new Map<string, IContributedView>();
 
+  /** A tool's own icons (`contributes.icons`): what its containers and views
+   *  wear, so they are registered before those and leave with them. */
+  private readonly _icons = new IconContributionProcessor();
+
   /** View ID → runtime provider (registered by tool during activation). */
   private readonly _providers = new Map<string, IToolViewProvider>();
 
@@ -187,6 +192,9 @@ export class ViewContributionProcessor extends Disposable implements IContributi
       console.log(`[ViewContribution] Re-processing contributions for "${toolId}" — clearing previous state`);
       this.removeContributions(toolId);
     }
+
+    // ── Process icons (before the containers that name them) ──
+    this._icons.processContributions(description);
 
     // ── Process viewContainers ──
     if (contributes.viewContainers && contributes.viewContainers.length > 0) {
@@ -292,6 +300,9 @@ export class ViewContributionProcessor extends Disposable implements IContributi
       }
       this._toolContainers.delete(toolId);
     }
+
+    // Icons last: nothing of the tool's is left to wear them.
+    this._icons.removeContributions(toolId);
   }
 
   // ════════════════════════════════════════════════════════════════════════

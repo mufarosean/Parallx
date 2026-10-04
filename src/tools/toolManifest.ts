@@ -67,6 +67,18 @@ export interface IManifestViewContainerDescriptor {
 }
 
 /**
+ * An icon a tool brings: its own drawing, registered under `id` while the
+ * tool runs and removed when it is turned off, so its activity-bar entry,
+ * editor tabs and gallery row can name it like any registry icon.
+ */
+export interface IManifestIconDescriptor {
+  /** Icon id (e.g. `px-budget`). Cannot replace an icon the app already has. */
+  readonly id: string;
+  /** Complete `<svg>…</svg>` markup, drawn in `currentColor`. */
+  readonly svg: string;
+}
+
+/**
  * A contributed command declared in a tool manifest.
  */
 export interface IManifestCommandDescriptor {
@@ -197,6 +209,8 @@ export interface IManifestContributions {
    * `activate()` via `api.editors.registerEditorProvider(typeId, ...)`.
    */
   readonly editors?: readonly IManifestEditorDescriptor[];
+  /** Icons the tool draws itself (see IManifestIconDescriptor). */
+  readonly icons?: readonly IManifestIconDescriptor[];
 }
 
 /**

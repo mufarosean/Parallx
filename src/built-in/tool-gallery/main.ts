@@ -26,6 +26,7 @@ interface ToolContributions {
   menus?: Record<string, { command: string; group?: string; when?: string }[]>;
   keybindings?: { command: string; key: string; when?: string }[];
   statusBar?: { id: string; name: string; text: string; tooltip?: string; command?: string; alignment: string; priority?: number }[];
+  icons?: { id: string; svg: string }[];
 }
 
 interface ToolInfo {
@@ -97,7 +98,14 @@ const SVG_ICON_EXTERNAL = getIcon('plug')!;
 function toolIconSvg(tool: { isBuiltin: boolean; contributes?: ToolContributions }): string {
   const c = tool.contributes ?? {};
   const ids = [...(c.viewContainers ?? []).map((v) => v.icon), ...(c.views ?? []).map((v) => v.icon)];
-  for (const id of ids) if (id && hasIcon(id)) return getIcon(id);
+  for (const id of ids) {
+    if (!id) continue;
+    if (hasIcon(id)) return getIcon(id);
+    // A tool that is off has not registered its own icons; its manifest
+    // still carries the drawing.
+    const own = c.icons?.find((i) => i.id === id);
+    if (own) return own.svg;
+  }
   return tool.isBuiltin ? SVG_ICON_BUILTIN : SVG_ICON_EXTERNAL;
 }
 

@@ -22,6 +22,9 @@
     }
   },
   "contributes": {
+    "icons": [
+      { "id": "px-web", "svg": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4.5\" y=\"4\" width=\"15\" height=\"16\" rx=\"1.5\"/><circle cx=\"12\" cy=\"11.5\" r=\"3.5\"/><path d=\"M6.8 14.8 L17.2 8.2\"/></svg>" }
+    ],
     "configuration": [
       {
         "title": "Web Research",

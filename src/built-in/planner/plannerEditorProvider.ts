@@ -4,7 +4,8 @@
 // week / day view). Pure DOM + CSS Grid; no layout engine.
 
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { renderEmptyState } from '../../ui/emptyStates.js';
+import { renderEmptyStateEntry } from '../../ui/emptyStates.js';
+import { PLANNER_EMPTY_STATES } from './plannerEmptyStates.js';
 import type { PlannerDataService } from './plannerDataService.js';
 import type { PlannerCalendar, PlannerEvent, PlannerTask, SeriesEditScope, TaskStatus, UpdateEventInput } from './plannerTypes.js';
 import type { IPlannerSyncController } from './sync/plannerSyncOrchestrator.js';
@@ -70,7 +71,7 @@ type Tab = 'today' | 'tasks' | 'calendar';
 type CalendarView = 'month' | 'week' | 'day';
 
 /** Widest pane that gets the compact layout. Mirrors the `compact` step in
- *  the Tier 3 planner block of px-tokens.css (CSS can't share it with TS). */
+ *  the planner tokens block of planner.css (CSS can't share it with TS). */
 const PANE_COMPACT_MAX = 719;
 
 const PLANNER_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>';
@@ -619,7 +620,7 @@ class PlannerEditorPane implements IDisposable {
     });
 
     if (all.length === 0) {
-      body.appendChild(renderEmptyState('planner.day'));
+      body.appendChild(renderEmptyStateEntry(PLANNER_EMPTY_STATES.day));
       return;
     }
 
@@ -668,7 +669,7 @@ class PlannerEditorPane implements IDisposable {
       } else {
         // Single-filter view: one flat section with the matching rows.
         if (matching.length === 0) {
-          content.appendChild(renderEmptyState('planner.filter'));
+          content.appendChild(renderEmptyStateEntry(PLANNER_EMPTY_STATES.filter));
           return;
         }
         // Completed reads best newest-first (by completion time).

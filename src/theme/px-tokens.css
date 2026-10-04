@@ -264,28 +264,6 @@
      :active so a click feels like depressing a key. */
   --px-press: translateY(0.5px) scale(0.992);
 
-  /* ── Tier 3 · Component — Planner ──────────────────────────────────────
-     Values only the planner pane needs. They reference Tier 2 (or are pure
-     ratios), so they re-theme with everything else.
-     Pane widths: the planner lays out by its OWN width (a container named
-     `planner`), not the window, so a split editor gets the narrow layout.
-     Container queries cannot read custom properties, so the three steps are
-     named here and written literally in planner.css:
-       wide     ≥ 1024px   side column beside the page
-       medium   720–1023px side column drops below the page
-       compact  < 720px    one column; week view shows 3 days */
-  --px-planner-event-tint:      24%;   /* calendar colour mixed into an event block */
-  --px-planner-event-tint-past: 12%;   /* the same block once it has ended          */
-  --px-planner-now:             var(--px-danger);   /* the current-time line   */
-
-  /* ── Tier 3 · Component — Worksheet sheet ───────────────────────────────
-     The spreadsheet in a Worksheets pane (ribbon, formula bar, sheet tabs
-     and the sheet's own menus) stands in for the exam's sheet, so it keeps
-     one face whatever font the user picks in Appearance, as it keeps its
-     own light look. Cells draw in their cell font (Arial, as on the exam).
-     The pane's bars around the sheet follow the app font. */
-  --px-worksheet-sheet-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-
   /* ── Tier 3 · Component — Media viewer ──────────────────────────────────
      A full-screen photo or video viewer (Media Organizer's lightbox) stays
      dark in every theme and mode: photos are judged against black, as in
