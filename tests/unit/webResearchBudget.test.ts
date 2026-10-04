@@ -42,20 +42,16 @@ beforeEach(async () => {
     },
   });
   ext.__test__._setBridge({
-    webSearch: {
-      request: async () => ({
-        ok: true,
-        result: {
-          results: [{ title: 'A', url: 'https://result.example/x', snippet: '' }],
-        },
-      }),
-    },
-    webFetch: {
-      request: async ({ url }: { url: string }) => ({
-        ok: true,
-        result: { status: 200, finalUrl: url, contentType: 'text/html', body: '<html><body>hi</body></html>' },
-      }),
-    },
+    'webSearch:request': async () => ({
+      ok: true,
+      result: {
+        results: [{ title: 'A', url: 'https://result.example/x', snippet: '' }],
+      },
+    }),
+    'webFetch:request': async ({ url }: { url: string }) => ({
+      ok: true,
+      result: { status: 200, finalUrl: url, contentType: 'text/html', body: '<html><body>hi</body></html>' },
+    }),
   });
 });
 
@@ -168,13 +164,11 @@ describe('missing Brave API key', () => {
     // main-process bridge reads it from safeStorage. Simulate the bridge
     // returning the NO_API_KEY soft error.
     ext.__test__._setBridge({
-      webSearch: {
-        request: async () => ({
-          ok: false,
-          error: { code: 'NO_API_KEY', message: 'Brave Search API key not configured' },
-        }),
-      },
-      webFetch: { request: async () => ({ ok: false, error: { code: 'NO_BRIDGE', message: '' } }) },
+      'webSearch:request': async () => ({
+        ok: false,
+        error: { code: 'NO_API_KEY', message: 'Brave Search API key not configured' },
+      }),
+      'webFetch:request': async () => ({ ok: false, error: { code: 'NO_BRIDGE', message: '' } }),
     });
     const r = await ext.__test__.webSearchTool({ query: 'q' }, 'turn-no-key');
     expect(r.isError).toBe(true);

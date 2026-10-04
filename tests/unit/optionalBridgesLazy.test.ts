@@ -176,14 +176,14 @@ describe('the workspace seal is core, not a tool\'s', () => {
     const seal = require('../../electron/workspaceSeal.cjs');
     const { ipc, call } = fakeIpc();
     seal.setupWorkspaceSeal(ipc);
-    expect(await call('webFetch:setSealed', true)).toEqual({ ok: true, sealed: true });
+    expect(await call('workspace:setSealed', true)).toEqual({ ok: true, sealed: true });
     expect(seal.isSealed()).toBe(true);
     expect(isLoaded('webFetchBridge.cjs')).toBe(false);
     // The fetch bridge, set up without its own flag, refuses while sealed.
     const web = fakeIpc();
     require('../../electron/webFetchBridge.cjs').setupWebFetchBridge(web.ipc, '', async () => 'key');
     expect(await web.call('webSearch:request', { query: 'x' })).toMatchObject({ ok: false, error: { code: 'SEALED' } });
-    await call('webFetch:setSealed', false);
+    await call('workspace:setSealed', false);
     expect(seal.isSealed()).toBe(false);
   });
 });
@@ -198,6 +198,63 @@ describe('main.cjs does not load a tool\'s bridge at start', () => {
   it('keeps no recorder, anki, image or model handler of its own', () => {
     expect(main).not.toMatch(/ipcMain\.handle\('(recorder|anki|image|models|google|webSearch):/);
     expect(main).not.toMatch(/ipcMain\.handle\('webFetch:(request|resetTurn)'/);
+  });
+});
+
+describe('the preload names no optional tool\'s channel (audit #22)', () => {
+  const PRELOAD = E('preload.cjs');
+  const ELECTRON = require.resolve('electron');
+
+  /** Load preload.cjs against a fake electron; return what it exposes and the invokes it made. */
+  function loadPreload() {
+    const invoked: { channel: string; args: unknown[] }[] = [];
+    let exposed: Record<string, any> = {};
+    const fake = {
+      contextBridge: { exposeInMainWorld: (_k: string, api: Record<string, any>) => { exposed = api; } },
+      ipcRenderer: {
+        invoke: (channel: string, ...args: unknown[]) => { invoked.push({ channel, args }); return Promise.resolve({ ok: true }); },
+        send: () => {}, on: () => {}, once: () => {}, removeListener: () => {}, removeAllListeners: () => {},
+      },
+      clipboard: {}, webUtils: {}, webFrame: { setZoomFactor: () => {}, getZoomFactor: () => 1 },
+    };
+    const saved = require.cache[ELECTRON];
+    require.cache[ELECTRON] = { id: ELECTRON, filename: ELECTRON, loaded: true, exports: fake } as any;
+    delete require.cache[PRELOAD];
+    try { require(PRELOAD); } finally {
+      if (saved) require.cache[ELECTRON] = saved; else delete require.cache[ELECTRON];
+      delete require.cache[PRELOAD];
+    }
+    return { exposed, invoked };
+  }
+
+  it('has no Web Research names or channels in its source', () => {
+    const src = readFileSync(PRELOAD, 'utf8');
+    expect(src).not.toMatch(/webFetch|webSearch|Web Research/);
+  });
+
+  it('lets a tool invoke exactly the channels optionalBridges.cjs registers', async () => {
+    const { OPTIONAL_BRIDGE_CHANNELS } = require('../../electron/optionalBridges.cjs');
+    const { exposed, invoked } = loadPreload();
+    const all = Object.values(OPTIONAL_BRIDGE_CHANNELS as Record<string, string[]>).flat();
+    for (const ch of all) await exposed.optionalBridges.invoke(ch, { a: 1 });
+    expect(invoked.map((i) => i.channel)).toEqual(all);
+    expect(invoked[0].args).toEqual([{ a: 1 }]);
+  });
+
+  it('refuses any other channel before it reaches IPC', async () => {
+    const { exposed, invoked } = loadPreload();
+    for (const ch of ['fs:writeFile', 'workspace:setSealed', 'webFetch:request ', '', 'toString', '__proto__']) {
+      await expect(exposed.optionalBridges.invoke(ch)).rejects.toThrow(/not allowed/);
+    }
+    await expect(exposed.optionalBridges.invoke(undefined)).rejects.toThrow(/not allowed/);
+    await expect(exposed.optionalBridges.invoke({ toString: () => 'webFetch:request' })).rejects.toThrow(/not allowed/);
+    expect(invoked).toEqual([]);
+  });
+
+  it('keeps the core workspace seal on its own core channel', async () => {
+    const { exposed, invoked } = loadPreload();
+    await exposed.workspaceSeal.setSealed(true);
+    expect(invoked).toEqual([{ channel: 'workspace:setSealed', args: [true] }]);
   });
 });
 

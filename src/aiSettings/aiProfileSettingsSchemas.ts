@@ -100,14 +100,21 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     read: (c) => c.chat.responseLength,
     write: (v) => ({ chat: { responseLength: v as 'short' | 'medium' | 'long' | 'adaptive' } }),
   } as IBoundSchema<string>,
+
+  // ── General (app-wide, stored with the chat profile) ──
   {
     schema: {
       key: 'chat.timeZone',
       type: 'string',
       default: '',
       scope: 'workspace',
-      description: 'The time zone for every date and time in Parallx: what the assistant reads and writes, and each tool\'s today, day boundaries and date labels. An IANA name such as America/Chicago or Europe/London. Empty uses this computer\'s zone; set it if the computer reports the wrong one.',
-      category: 'Chat',
+      // One zone for the whole app (the assistant, every tool's today, day
+      // boundaries and date labels), so it lives with the general settings,
+      // not under AI. The stored key keeps its historical `chat.` prefix so
+      // nobody's value is lost; this is the only place it is edited.
+      label: 'Time Zone',
+      description: 'Empty uses this computer\'s zone. Set it if the computer reports the wrong one, using a name such as America/Chicago or Europe/London.',
+      category: 'General',
     },
     read: (c) => c.chat.timeZone ?? '',
     write: (v) => ({ chat: { timeZone: String(v ?? '').trim() } }),

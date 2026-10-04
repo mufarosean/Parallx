@@ -2,6 +2,11 @@
 // Exposes a minimal API to the renderer via contextBridge.
 
 const { contextBridge, ipcRenderer, clipboard, webUtils, webFrame } = require('electron');
+// The allow-list for optionalBridges.invoke: exactly the channels the main
+// process registers for optional tools' bridges (that file defines names and
+// a registration helper only; no bridge module loads from it).
+const { OPTIONAL_BRIDGE_CHANNELS } = require('./optionalBridges.cjs');
+const OPTIONAL_CHANNELS = new Set(Object.values(OPTIONAL_BRIDGE_CHANNELS).flat());
 
 contextBridge.exposeInMainWorld('parallxElectron', {
   platform: process.platform,
@@ -367,27 +372,26 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     addToDictionary: (word) => ipcRenderer.invoke('editableMenu:addToDictionary', word),
   },
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Web Research API (M65 — ext/web-research/ chokepoint)
-  // ═══════════════════════════════════════════════════════════════════════
-  //
-  // SECURITY: This is the ONLY outbound HTTP channel the web-research
-  // extension may use. See electron/webFetchBridge.cjs for the egress
-  // controls (DNS allowlist, blocklist, HTTPS-only, redirect re-resolve,
-  // body/timeout caps, fixed UA, no cookies/auth/referer).
-
-  webFetch: {
-    /** Fetch a single URL through the egress chokepoint. Returns { ok, result?, error? }. */
-    request: (opts) => ipcRenderer.invoke('webFetch:request', opts),
-    /** Reset the per-turn fetch backstop counter for the given turnId. */
-    resetTurn: (turnId) => ipcRenderer.invoke('webFetch:resetTurn', turnId),
-    /** Sealed workspace: refuse every egress request until told otherwise. */
-    setSealed: (sealed) => ipcRenderer.invoke('webFetch:setSealed', sealed),
+  // ── Sealed workspace (core; electron/workspaceSeal.cjs) ──
+  // The renderer pushes the flag; every bridge that reaches the network asks
+  // the main process before it does.
+  workspaceSeal: {
+    setSealed: (sealed) => ipcRenderer.invoke('workspace:setSealed', !!sealed),
   },
 
-  webSearch: {
-    /** Call Brave Search API (host-locked). Returns { ok, result?, error? }. */
-    request: (opts) => ipcRenderer.invoke('webSearch:request', opts),
+  // ── Optional tools' bridges (electron/optionalBridges.cjs) ──
+  // The preload names no optional tool here: a tool calls its own bridge's
+  // channels through this one door. It is NOT a pass-through: only the
+  // channels optionalBridges.cjs registers in the main process (the same
+  // frozen list, read from that file) are allowed; anything else is refused
+  // here, before it reaches IPC. Invoke only, no events.
+  optionalBridges: {
+    invoke: (channel, ...args) => {
+      if (typeof channel !== 'string' || !OPTIONAL_CHANNELS.has(channel)) {
+        return Promise.reject(new Error(`[optionalBridges] channel not allowed: ${String(channel)}`));
+      }
+      return ipcRenderer.invoke(channel, ...args);
+    },
   },
 
   // ── Private browser (docs/BROWSER.md) ──

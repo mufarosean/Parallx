@@ -9,9 +9,10 @@
 //   Layer 6 — Renderer hardening      : Iteration 2 (markdownRenderer)
 //   Layer 7 — Ephemerality            : bridge sends no cookies/auth/referer
 //
-// All outbound HTTP MUST go through window.parallxElectron.webFetch /
-// .webSearch (the bridge). DO NOT add fetch(), require('http'), or
-// require('https') to this file — there is a grep regression test for it
+// All outbound HTTP MUST go through this tool's main-process bridge
+// (electron/webFetchBridge.cjs), reached by its channel names through
+// window.parallxElectron.optionalBridges.invoke. DO NOT add fetch(),
+// require('http'), or require('https') to this file — there is a grep regression test for it
 // (C14, tests/unit/webResearchNoDirectFetch.test.ts).
 //
 // Readability is INLINED at the bottom of this file (Section 11). External
@@ -374,6 +375,16 @@ function wrapUntrusted(source, body) {
   return `<untrusted_web_content source="${safeSource}">\n${body}\n</untrusted_web_content>`;
 }
 
+/**
+ * This tool's bridge: the main process registers its channels
+ * (`webSearch:request`, `webFetch:request`; electron/optionalBridges.cjs) and
+ * the preload lets a tool invoke only those registered channels.
+ */
+function _bridgeInvoke() {
+  const b = globalThis.parallxElectron && globalThis.parallxElectron.optionalBridges;
+  return b && typeof b.invoke === 'function' ? b.invoke : null;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION 6 — Tool: webSearch
 // ═══════════════════════════════════════════════════════════════════════════
@@ -404,14 +415,12 @@ async function webSearchTool(args, turnId) {
 
   if (!_globalStorage) return softError('NO_STORAGE', 'global storage unavailable');
 
-  const bridge = (globalThis.parallxElectron && globalThis.parallxElectron.webSearch) || null;
-  if (!bridge || typeof bridge.request !== 'function') {
-    return softError('NO_BRIDGE', 'webSearch bridge unavailable');
-  }
+  const invoke = _bridgeInvoke();
+  if (!invoke) return softError('NO_BRIDGE', 'webSearch bridge unavailable');
 
   // The Brave API key is read inside the main-process bridge from
   // safeStorage. NO_API_KEY surfaces here as a soft error from the bridge.
-  const res = await bridge.request({ query, turnId });
+  const res = await invoke('webSearch:request', { query, turnId });
   if (!res || !res.ok) {
     return softError(res && res.error && res.error.code ? res.error.code : 'SEARCH_FAILED',
       res && res.error && res.error.message ? res.error.message : 'webSearch failed');
@@ -453,12 +462,10 @@ async function webFetchTool(args, turnId) {
       `URL is not in this turn's provenance set. The model may only fetch URLs the user typed, a prior search returned, or a prior fetch resolved to.`);
   }
 
-  const bridge = (globalThis.parallxElectron && globalThis.parallxElectron.webFetch) || null;
-  if (!bridge || typeof bridge.request !== 'function') {
-    return softError('NO_BRIDGE', 'webFetch bridge unavailable');
-  }
+  const invoke = _bridgeInvoke();
+  if (!invoke) return softError('NO_BRIDGE', 'webFetch bridge unavailable');
 
-  const res = await bridge.request({ url, turnId });
+  const res = await invoke('webFetch:request', { url, turnId });
   if (!res || !res.ok) {
     return softError(res && res.error && res.error.code ? res.error.code : 'FETCH_FAILED',
       res && res.error && res.error.message ? res.error.message : 'webFetch failed');
@@ -1141,7 +1148,19 @@ export const __test__ = Object.freeze({
   buildWeatherPrompt: _buildWeatherPrompt,
   buildMarketPrompt: _buildMarketPrompt,
   migrateSettings: () => _migrateSettings(),
-  _setBridge(stub) { globalThis.parallxElectron = stub; },
+  /** Stub the bridge: `handlers` maps a channel to its main-process answer;
+   *  any other channel is refused, as the preload refuses it. */
+  _setBridge(handlers) {
+    globalThis.parallxElectron = {
+      optionalBridges: {
+        invoke: async (channel, ...args) => {
+          const fn = handlers && handlers[channel];
+          if (typeof fn !== 'function') throw new Error(`channel not allowed: ${channel}`);
+          return fn(...args);
+        },
+      },
+    };
+  },
   _setDOMParser(ctor) { _defaultDOMParser = ctor; },
   _setApi(stub) { _api = stub; },
   _isUrlAllowedThisTurn,

@@ -62,17 +62,15 @@ describe('webFetchTool — depth-1 hard stop (C5 + milestone)', () => {
 
     // Stub the bridge: webFetch returns HTML body containing a link to evil.com.
     ext.__test__._setBridge({
-      webFetch: {
-        request: async ({ url }: { url: string }) => ({
-          ok: true,
-          result: {
-            status: 200,
-            finalUrl: url,
-            contentType: 'text/html',
-            body: '<html><body><p>hi</p><a href="https://evil.com/exfil?x=1">click me</a></body></html>',
-          },
-        }),
-      },
+      'webFetch:request': async ({ url }: { url: string }) => ({
+        ok: true,
+        result: {
+          status: 200,
+          finalUrl: url,
+          contentType: 'text/html',
+          body: '<html><body><p>hi</p><a href="https://evil.com/exfil?x=1">click me</a></body></html>',
+        },
+      }),
     });
 
     const r1 = await ext.__test__.webFetchTool({ url: 'https://allowed.example/start' }, 't1');
@@ -89,17 +87,15 @@ describe('webFetchTool — redirect final URL is added to provenance', () => {
   it('a follow-up fetch of the redirect destination is allowed', async () => {
     ext.__test__.seedTurnFromUserMessage('t1', 'https://allowed.example/start');
     ext.__test__._setBridge({
-      webFetch: {
-        request: async ({ url }: { url: string }) => ({
-          ok: true,
-          result: {
-            status: 200,
-            finalUrl: 'https://final.example/landed',  // simulated redirect destination
-            contentType: 'text/html',
-            body: '<html><body>ok</body></html>',
-          },
-        }),
-      },
+      'webFetch:request': async ({ url }: { url: string }) => ({
+        ok: true,
+        result: {
+          status: 200,
+          finalUrl: 'https://final.example/landed',  // simulated redirect destination
+          contentType: 'text/html',
+          body: '<html><body>ok</body></html>',
+        },
+      }),
     });
     const r1 = await ext.__test__.webFetchTool({ url: 'https://allowed.example/start' }, 't1');
     expect(r1.isError).toBe(false);
@@ -119,23 +115,19 @@ describe('webSearch results are added to provenance', () => {
       set: async () => {},
     });
     ext.__test__._setBridge({
-      webSearch: {
-        request: async () => ({
-          ok: true,
-          result: {
-            results: [
-              { title: 'A', url: 'https://result-a.example/p', snippet: '' },
-              { title: 'B', url: 'https://result-b.example/q', snippet: '' },
-            ],
-          },
-        }),
-      },
-      webFetch: {
-        request: async ({ url }: { url: string }) => ({
-          ok: true,
-          result: { status: 200, finalUrl: url, contentType: 'text/html', body: '<html><body>hi</body></html>' },
-        }),
-      },
+      'webSearch:request': async () => ({
+        ok: true,
+        result: {
+          results: [
+            { title: 'A', url: 'https://result-a.example/p', snippet: '' },
+            { title: 'B', url: 'https://result-b.example/q', snippet: '' },
+          ],
+        },
+      }),
+      'webFetch:request': async ({ url }: { url: string }) => ({
+        ok: true,
+        result: { status: 200, finalUrl: url, contentType: 'text/html', body: '<html><body>hi</body></html>' },
+      }),
     });
 
     const s = await ext.__test__.webSearchTool({ query: 'parallx' }, 't2');

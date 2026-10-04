@@ -139,6 +139,25 @@ Declares command IDs. Each command must also be registered at runtime via `api.c
 | `keybinding` | no | E.g. `"Ctrl+Shift+D"`. |
 | `when` | no | Context expression. |
 
+#### `contributes.icons`
+
+Icons the extension draws itself, for the rare mark no registry icon fits (typically its activity-bar icon). Prefer a Lucide id (Section 4.7); bring an icon only when none fits.
+
+```json
+"icons": [
+  { "id": "px-myext", "svg": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"8\"/></svg>" }
+]
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `id` | yes | Non-empty string. Convention: `px-<extId>`. Any `icon` field (view container, command, `api.icons.*`) can then name it. |
+| `svg` | yes | Complete `<svg>…</svg>` markup: must start with `<svg` (leading whitespace allowed). Draw in `currentColor`, 24×24 viewBox, 2px stroke, like Lucide, so it follows the theme. |
+
+- The validator rejects a non-array `icons`, an entry that is not an object, an empty or non-string `id`, and an `svg` that is not `<svg>` markup.
+- The icons exist only while the extension runs: registered as it starts (before its view containers, so they can name them) and removed when it is turned off.
+- An extension cannot replace an icon that already exists. If `id` is a core icon (or one another tool registered first), that entry is skipped with a console warning and the existing icon stays. Pick an id of your own.
+
 #### `contributes.viewContainers`
 
 A **view container** is a slot in the activity bar (left edge icons). Use this when the extension needs its own activity-bar icon. Otherwise, attach views to a built-in container.
@@ -153,7 +172,7 @@ A **view container** is a slot in the activity bar (left edge icons). Use this w
 |---|---|---|
 | `id` | yes | Globally unique. |
 | `title` | yes | Tooltip on the activity bar icon. |
-| `icon` | yes | Lucide icon ID. |
+| `icon` | yes | Lucide icon ID, or the `id` of an icon from `contributes.icons`. |
 | `location` | yes | One of `"sidebar"`, `"panel"`, `"auxiliaryBar"`. Use `"sidebar"` for activity bar. |
 
 #### `contributes.views`
@@ -236,9 +255,15 @@ Adds command entries to specific menus.
 ```json
 "menus": {
   "commandPalette": [{ "command": "myExt.doThing" }],
-  "view/title":     [{ "command": "myExt.doThing", "when": "view == myExt.main" }]
+  "view/title":     [{ "command": "myExt.doThing", "when": "view == myExt.main" }],
+  "viewContainer/title": [
+    { "command": "myExt.refresh", "title": "Refresh", "group": "1_actions",
+      "when": "activeViewContainer == 'myExt-container'" }
+  ]
 }
 ```
+
+Locations: `commandPalette`, `view/title`, `view/context`, `menubar/tools` (the Tools menu, `title` is the label), and `viewContainer/title`: the More Actions (`⋯`) menu in the sidebar header. Its items always say which container they belong to with `when: "activeViewContainer == '<your container id>'"`, or they would show under every container. Items are sorted by `group`; an item whose command is not registered is not shown. Like every contribution, they leave when the extension is turned off.
 
 #### `contributes.keybindings`
 
@@ -373,7 +398,7 @@ Migration files live at `<toolPath>/db/migrations/*.sql`, sorted by filename. Us
 
 ### 4.7 `api.icons`
 
-Parallx ships ~2000 Lucide icons. Use them everywhere instead of inline SVG.
+Parallx ships ~2000 Lucide icons. Use them everywhere instead of inline SVG. An icon the registry lacks is declared in the manifest (`contributes.icons`, Section 3.4) and then used by id like any other.
 
 ```js
 api.icons.getIcon(id)                  // → SVG markup string (or '' if unknown)
@@ -407,10 +432,23 @@ api.chat.registerTool(name, {
   parameters: <JSON Schema>,
   handler: async (args, token) => ({ content: string, isError?: boolean }),
   requiresConfirmation: boolean,
-})
+  reachesNetwork?: boolean,      // the tool reaches the internet
+  untrustedOutput?: boolean,     // what it returns comes from outside and may carry instructions
+})                                            // → IDisposable
+api.chat.registerDropHandler({
+  mimeType: 'application/x-myext-items',      // your own drag type
+  resolve: async (data) => ({ paths?: string[], warning?: string }) | undefined,
+})                                            // → IDisposable
 ```
 
-A registered chat tool is auto-discoverable by the agent in Agent mode.
+A registered chat tool is auto-discoverable by the agent in Agent mode. Declare honestly what it does; the app's safety rules read these flags, never the tool's name:
+
+- `reachesNetwork: true`: the tool makes any request off this computer. A sealed workspace (nothing leaves the machine) hides the tool from the AI.
+- `untrustedOutput: true`: the result carries text from outside (a web page, a search result, a downloaded file) that may contain instructions. A turn that reads it is tainted: later tool calls in that turn that write or change anything ask the user first.
+
+`registerDropHandler` lets the chat input accept your extension's own drag type while it runs. The input attaches dropped files by itself; when a drop of `mimeType` carried no file it could attach, `resolve` gets the drag's data of that type and returns absolute `paths` to attach, or a `warning` shown in the chat input when nothing could be attached (return `undefined` to ignore the drop). Disposed, or the extension turned off, the input stops accepting the type.
+
+All of these are removed when the extension is turned off; still push them into `context.subscriptions`.
 
 ### 4.10 `api.mcp` (MCP tool calls — may be undefined)
 
@@ -464,7 +502,10 @@ api.tools.uninstall(id)
 api.env.appName       // 'Parallx'
 api.env.appVersion    // semver
 api.env.toolPath      // absolute path to this extension's directory
+api.env.timeZone      // the app's time zone, an IANA name such as 'America/Chicago'
 ```
+
+`api.env.timeZone` is the one time zone for the whole app: the Time Zone setting (Settings › General), or this computer's zone when that is empty. Use it for every "today", day boundary and date label (`new Intl.DateTimeFormat('en-CA', { timeZone: api.env.timeZone })`) so your dates agree with the assistant and every other tool. Read it each time you need it (the user can change it while you run); never hardcode a zone (a test rejects `timeZone: 'Area/City'` literals in tools).
 
 ### 4.15 `api.dashboard` — contribute dashboard widgets (M86)
 
@@ -845,6 +886,7 @@ Every token has a light-mode value. Test your surface in both (Settings › Appe
 1. Lucide ids via `api.icons.createIconHtml(id, size)`; 16px in rows and buttons, 14px in dense rows.
 2. **One concept, one icon** across the app: `trash` for delete, `plus` for new, `settings` for settings, `refresh-cw` for refresh, `ellipsis` for more, `pencil` for rename, `px-ai-mark` for anything that calls the AI, and only for that.
 3. Activity-bar icons are a single concrete noun: `wallet`, `image`, `folder`, `inbox`, `calendar`, `book-open`, `database`. Never `bot`, `sparkles` or `message-circle` (AI is the mark).
+4. An icon of your own goes in the manifest (`contributes.icons`, Section 3.4), never inline in `main.js`: `id` like `px-<extId>`, Lucide-style markup in `currentColor`. It exists only while the extension runs and can never replace a core icon (a clash is skipped).
 
 ### 6.8 Copy
 
@@ -1277,9 +1319,9 @@ api.context.{createContextKey, getContextValue}
 api.icons.{getIcon, hasIcon, getAllIconIds, createIconHtml, getFileTypeIcon}
 api.tools.{getAll, getById, isEnabled, setEnabled, onDidChangeEnablement,
            installFromFile, uninstall, onDidInstallTool, onDidUninstallTool, onDidChangeTools}
-api.env.{appName, appVersion, toolPath}
+api.env.{appName, appVersion, toolPath, timeZone}
 api.lm?.{getModels, sendChatRequest, registerProvider, onDidChangeModels}            // may be undefined
-api.chat?.{createChatParticipant, registerTool}                                      // may be undefined
+api.chat?.{createChatParticipant, registerTool, registerDropHandler}                 // may be undefined
 api.mcp?.{invokeTool, listTools}                                                     // may be undefined
 api.cron?.{upsertJob, removeJob}                                                     // may be undefined
 api.database?.{open, close, migrate, run, get, all, runTransaction, isOpen}          // external extensions only

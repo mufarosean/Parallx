@@ -339,7 +339,8 @@ way for the app to reach the web. Now Web Research exposes its whole
 fetch pipeline as the command `webResearch.fetchReadable`, the Studio
 calls that and nothing else, and its own page reader is deleted. Without
 Web Research, Add Link says so and does nothing. The rule for the future:
-an extension never touches `parallxElectron.webFetch` itself.
+an extension never invokes Web Research's bridge channels (`webFetch:*`,
+`webSearch:*`) itself.
 
 ## Roleplay memory (built 2026-09-20)
 
