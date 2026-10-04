@@ -10614,7 +10614,7 @@ function renderBrowserSidebar(container, api) {
     const cpNewBtn = moSidebarHeaderBtn(api, 'plus', 'New in Studio');
     cpNewBtn.addEventListener('click', () => {
       const r = cpNewBtn.getBoundingClientRect();
-      const canRecord = !!(window.parallxElectron && window.parallxElectron.recorder && window.parallxElectron.recorder.openFrame);
+      const canRecord = !!moBridge();
       showContextMenu(r.left, r.bottom + 2, [
         { label: 'New Clip Project\u2026', icon: 'clapperboard', handler: () => void moNewClipProject(api, []) },
         // A recording opens as a temporary project: closing it erases the
@@ -19185,7 +19185,7 @@ async function moStartScreenRecording(api) {
     // actually open, the flag is stale and recording may proceed.
     let reallyActive = true;
     try {
-      const r = await window.parallxElectron?.recorder?.anyActive?.();
+      const r = await moBridge()?.invoke('recorder:anyActive');
       if (r && r.active === false) reallyActive = false;
     } catch { /* keep the conservative answer */ }
     if (reallyActive) {
@@ -19195,7 +19195,7 @@ async function moStartScreenRecording(api) {
     console.warn('[media-organizer] cleared stale recording-in-progress flag (no recorder frame open)');
     _moRecordingInFlight = false;
   }
-  if (!window.parallxElectron?.recorder?.openFrame) {
+  if (!moBridge()) {
     api.window.showErrorMessage('Screen recorder is not available in this build.');
     return;
   }
@@ -19222,7 +19222,7 @@ async function moStartScreenRecording(api) {
   }
   _moRecordingInFlight = true;
   try {
-    const res = await window.parallxElectron.recorder.openFrame({
+    const res = await moBridge().invoke('recorder:openFrame', {
       // 60 fps capture for smooth motion (mouse, video, animations). The export
       // FPS dropdown can still downsample per-clip.
       ffmpegPath: _toolPaths.ffmpeg, outputPath, fps: 60, width: 640, height: 400,
@@ -35420,14 +35420,19 @@ async function moEditPasteTo(api, photoIds) {
   const text = `${what}${failures.length ? ` ${failures.length} failed: ${failures[0]}` : ''}`;
   if (failures.length && !done) api.window.showErrorMessage(text); else api.window.showInformationMessage(text);
 }
+/** Atelier's main-process bridges (screen recorder, picture models), through the app's one door for tools. */
+function moBridge() {
+  return (typeof window !== 'undefined' && window.parallxElectron && window.parallxElectron.optionalBridges) || null;
+}
+
 
 // ── Remove: the model ──
 // -> 'ready', 'model' (not fetched yet), 'runtime' (the runner is missing) or 'unavailable'
 async function moEditRemoveState() {
-  const m = window.parallxElectron && window.parallxElectron.models;
+  const m = moBridge();
   if (!m) return 'unavailable';
   try {
-    const s = await m.status(MO_EDIT_REMOVE_MODEL);
+    const s = await m.invoke('models:status', MO_EDIT_REMOVE_MODEL);
     if (!s || !s.ok) return 'unavailable';
     if (!s.runtime) return 'runtime';
     return s.present ? 'ready' : 'model';
@@ -35460,7 +35465,7 @@ async function moEditFill(source, maskCanvas, box) {
     if (md[p * 4 + 3] > 8) { mask[p] = 1; marked++; }
   }
   if (!marked) throw new Error('The mark is too small to see.');
-  const r = await window.parallxElectron.models.run(MO_EDIT_REMOVE_MODEL.sha256, { image: { data: image, dims: [1, 3, S, S] }, mask: { data: mask, dims: [1, 1, S, S] } });
+  const r = await moBridge().invoke('models:run', MO_EDIT_REMOVE_MODEL.sha256, { image: { data: image, dims: [1, 3, S, S] }, mask: { data: mask, dims: [1, 1, S, S] } });
   if (!r || !r.ok) throw new Error((r && r.error) || 'The model did not answer.');
   const o = r.outputs && (r.outputs.output || Object.values(r.outputs)[0]);
   if (!o || !o.data || o.data.length < 3 * S * S) throw new Error('The model answered with nothing usable.');
@@ -37696,7 +37701,7 @@ function renderImageEditor(container, api) {
         bar.appendChild(fill);
         card.appendChild(bar);
         card.appendChild(hint(`Downloading · ${Math.round(state.download.received / 1048576)} of ${mb} MB`));
-        card.appendChild(row(textBtn('Cancel Download', () => void window.parallxElectron.models.cancelDownload(MO_EDIT_REMOVE_MODEL.sha256))));
+        card.appendChild(row(textBtn('Cancel Download', () => void moBridge()?.invoke('models:cancelDownload', MO_EDIT_REMOVE_MODEL.sha256))));
       } else {
         card.appendChild(row(api.ui.createButton(null, { label: 'Download', kind: 'primary', size: 'sm', onClick: () => void downloadModel() }), textBtn('Check Again', () => { state.removeState = 'unknown'; renderPanel(); }, 'ghost')));
         if (state.downloadError) card.appendChild(hint(state.downloadError));
@@ -37717,16 +37722,16 @@ function renderImageEditor(container, api) {
   async function downloadModel() {
     state.download = { received: 0 }; state.downloadError = '';
     renderPanel();
-    const res = await window.parallxElectron.models.download(MO_EDIT_REMOVE_MODEL);
+    const res = await moBridge().invoke('models:download', MO_EDIT_REMOVE_MODEL);
     if (disposed) return;
     state.download = null;
     if (res && res.ok) state.removeState = 'ready';
     else state.downloadError = res && res.stopped ? 'Cancelled. Nothing was kept.' : `The download did not finish: ${(res && res.error) || 'no answer'}`;
     if (state.tool === 'remove') renderPanel();
   }
-  if (window.parallxElectron && window.parallxElectron.models && window.parallxElectron.models.onProgress) {
+  if (moBridge()) {
     let lastDraw = 0;
-    disposers.push(window.parallxElectron.models.onProgress((p) => {
+    disposers.push(moBridge().on('models:progress', (p) => {
       if (!p || p.sha256 !== MO_EDIT_REMOVE_MODEL.sha256 || !state.download || p.done) return;
       state.download.received = p.received;
       if (state.tool === 'remove' && Date.now() - lastDraw > 400) { lastDraw = Date.now(); renderPanel(); }
@@ -38595,8 +38600,8 @@ export async function activate(api, context) {
 
   // Screen-recorder: handle a finished recording, and sweep orphaned temp clips
   // left by a crash/quit mid-record (see moPurgeOrphanRecordings).
-  if (window.parallxElectron?.recorder?.onComplete) {
-    const unsub = window.parallxElectron.recorder.onComplete((payload) => {
+  if (moBridge()) {
+    const unsub = moBridge().on('recorder:complete', (payload) => {
       moOnRecordingComplete(api, payload).catch((err) =>
         console.warn('[MediaOrganizer] recording-complete handler failed:', err));
     });

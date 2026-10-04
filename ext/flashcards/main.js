@@ -10586,8 +10586,8 @@ async function renderImport(body, route, setRoute, viewDisposables = []) {
     try {
       if (kind === 'anki') {
         const bridge = electronBridge();
-        if (!bridge?.anki?.read) throw new Error('Anki import needs the desktop app.');
-        const res = await bridge.anki.read(fsPath);
+        if (!bridge?.optionalBridges) throw new Error('Anki import needs the desktop app.');
+        const res = await bridge.optionalBridges.invoke('anki:read', fsPath);
         if (!res.ok) throw new Error(res.error || 'Could not read the deck.');
         loaded = { kind: 'anki', decks: res.decks, mediaSkipped: res.mediaSkipped, label, uri: fsPath };
         srcStatus.textContent = `${label}: ${res.cardCount.toLocaleString()} cards in ${res.decks.length} deck${res.decks.length === 1 ? '' : 's'}.`;

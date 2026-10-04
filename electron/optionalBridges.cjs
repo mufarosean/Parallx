@@ -79,6 +79,12 @@ const OPTIONAL_BRIDGE_CHANNELS = Object.freeze({
   ],
 });
 
+/** Events those bridges send to the main window; a tool listens through optionalBridges.on. */
+const OPTIONAL_BRIDGE_EVENTS = Object.freeze([
+  'models:progress', // Atelier: model download progress (modelBridge.cjs)
+  'recorder:complete', // Atelier: a recording finished or was cancelled (screenRecorderBridge.cjs)
+]);
+
 /**
  * Register every optional bridge, loading none of them.
  *
@@ -151,4 +157,4 @@ function setupOptionalBridges(ipcMain, deps) {
   };
 }
 
-module.exports = { registerLazyBridge, setupOptionalBridges, OPTIONAL_BRIDGE_CHANNELS };
+module.exports = { registerLazyBridge, setupOptionalBridges, OPTIONAL_BRIDGE_CHANNELS, OPTIONAL_BRIDGE_EVENTS };

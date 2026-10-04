@@ -208,12 +208,13 @@ describe('the preload names no optional tool\'s channel (audit #22)', () => {
   /** Load preload.cjs against a fake electron; return what it exposes and the invokes it made. */
   function loadPreload() {
     const invoked: { channel: string; args: unknown[] }[] = [];
+    let listening: { channel: string; h: any }[] = [];
     let exposed: Record<string, any> = {};
     const fake = {
       contextBridge: { exposeInMainWorld: (_k: string, api: Record<string, any>) => { exposed = api; } },
       ipcRenderer: {
         invoke: (channel: string, ...args: unknown[]) => { invoked.push({ channel, args }); return Promise.resolve({ ok: true }); },
-        send: () => {}, on: () => {}, once: () => {}, removeListener: () => {}, removeAllListeners: () => {},
+        send: () => {}, on: (channel: string, h: any) => { listening.push({ channel, h }); }, once: () => {}, removeListener: (channel: string, h: any) => { listening = listening.filter((l) => !(l.channel === channel && l.h === h)); }, removeAllListeners: () => {},
       },
       clipboard: {}, webUtils: {}, webFrame: { setZoomFactor: () => {}, getZoomFactor: () => 1 },
     };
@@ -224,12 +225,29 @@ describe('the preload names no optional tool\'s channel (audit #22)', () => {
       if (saved) require.cache[ELECTRON] = saved; else delete require.cache[ELECTRON];
       delete require.cache[PRELOAD];
     }
-    return { exposed, invoked };
+    return { exposed, invoked, listening: () => listening };
   }
 
-  it('has no Web Research names or channels in its source', () => {
+  it('has no optional tool\'s names or channels in its source', () => {
     const src = readFileSync(PRELOAD, 'utf8');
     expect(src).not.toMatch(/webFetch|webSearch|Web Research/);
+    expect(src).not.toMatch(/recorder:|models:|anki:|media-organizer|Flashcards/);
+    const { exposed } = loadPreload();
+    for (const gone of ['recorder', 'models', 'anki', 'webFetch']) expect(exposed[gone]).toBeUndefined();
+  });
+
+  it('lets a tool listen to exactly the events optionalBridges.cjs lists, and stop', () => {
+    const { OPTIONAL_BRIDGE_EVENTS } = require('../../electron/optionalBridges.cjs');
+    const { exposed, listening } = loadPreload();
+    const seen: unknown[] = [];
+    const offs = (OPTIONAL_BRIDGE_EVENTS as string[]).map((ch) => exposed.optionalBridges.on(ch, (p: unknown) => seen.push(p)));
+    expect(listening().map((l) => l.channel)).toEqual(OPTIONAL_BRIDGE_EVENTS);
+    listening()[0].h({}, { done: true });
+    expect(seen).toEqual([{ done: true }]);
+    offs.forEach((off: () => void) => off());
+    expect(listening()).toEqual([]);
+    for (const ch of ['fs:change', 'workspace:setSealed', '', '__proto__']) expect(() => exposed.optionalBridges.on(ch, () => {})).toThrow(/not allowed/);
+    expect(() => exposed.optionalBridges.on('models:progress', 'not a function')).toThrow(/not allowed/);
   });
 
   it('lets a tool invoke exactly the channels optionalBridges.cjs registers', async () => {

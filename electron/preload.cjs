@@ -5,8 +5,9 @@ const { contextBridge, ipcRenderer, clipboard, webUtils, webFrame } = require('e
 // The allow-list for optionalBridges.invoke: exactly the channels the main
 // process registers for optional tools' bridges (that file defines names and
 // a registration helper only; no bridge module loads from it).
-const { OPTIONAL_BRIDGE_CHANNELS } = require('./optionalBridges.cjs');
+const { OPTIONAL_BRIDGE_CHANNELS, OPTIONAL_BRIDGE_EVENTS } = require('./optionalBridges.cjs');
 const OPTIONAL_CHANNELS = new Set(Object.values(OPTIONAL_BRIDGE_CHANNELS).flat());
+const OPTIONAL_EVENTS = new Set(OPTIONAL_BRIDGE_EVENTS);
 
 contextBridge.exposeInMainWorld('parallxElectron', {
   platform: process.platform,
@@ -144,7 +145,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     setWorkspaceRoot: (rootPath) => ipcRenderer.invoke('fs:setWorkspaceRoot', rootPath),
 
     /**
-     * Register user-blessed external folders (e.g. media-organizer scan
+     * Register user-blessed external folders (e.g. a media library's scan
      * roots) that live outside the workspace but should be writable/readable
      * by extensions. Pass the full list each call — the main process
      * replaces the previous set. Only pass paths the user explicitly added
@@ -173,23 +174,6 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     },
   },
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // Screen Recorder API (media-organizer)
-  // ══════════════════════════════════════════════════════════════════════════
-  // Opens a transparent always-on-top framing window; ffmpeg (in main) records
-  // the hollow inner rect to the caller-provided, in-workspace output path.
-  recorder: {
-    /** Open the framing window. opts: { ffmpegPath, outputPath, fps, width, height, audio, countdown, showCursor, followBox }. Returns { frameId } or { error }. */
-    openFrame: (opts) => ipcRenderer.invoke('recorder:openFrame', opts),
-    /** Whether any recorder frame is currently open ({ active }). Used to self-heal a stale in-progress flag. */
-    anyActive: () => ipcRenderer.invoke('recorder:anyActive'),
-    /** Fires when a recording finishes/cancels: { frameId, path, ok, cancelled?, duration, cursorTrack, boxTrack, followBox, pauses }. Returns an unsubscribe fn. */
-    onComplete: (callback) => {
-      const handler = (_event, payload) => { try { callback(payload); } catch { /* ignore */ } };
-      ipcRenderer.on('recorder:complete', handler);
-      return () => ipcRenderer.removeListener('recorder:complete', handler);
-    },
-  },
 
   // ══════════════════════════════════════════════════════════════════════════
   // Shell API
@@ -302,7 +286,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
 
     /**
      * Drop all tables and migration records belonging to an external tool.
-     * @param {string} migrationPrefix — prefix of migration filenames (e.g. 'media-organizer')
+     * @param {string} migrationPrefix — prefix of migration filenames (usually the tool's own id)
      * @param {string} tablePrefix — prefix of table names (e.g. 'mo_')
      * @returns {Promise<{ error: null, droppedTables: string[], removedMigrations: number } | { error: { code: string, message: string } }>}
      */
@@ -384,13 +368,22 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   // channels through this one door. It is NOT a pass-through: only the
   // channels optionalBridges.cjs registers in the main process (the same
   // frozen list, read from that file) are allowed; anything else is refused
-  // here, before it reaches IPC. Invoke only, no events.
+  // here, before it reaches IPC. Events the same way: only the listed ones.
   optionalBridges: {
     invoke: (channel, ...args) => {
       if (typeof channel !== 'string' || !OPTIONAL_CHANNELS.has(channel)) {
         return Promise.reject(new Error(`[optionalBridges] channel not allowed: ${String(channel)}`));
       }
       return ipcRenderer.invoke(channel, ...args);
+    },
+    /** Listen to an event an optional bridge sends; returns a function that stops listening. */
+    on: (channel, callback) => {
+      if (typeof channel !== 'string' || !OPTIONAL_EVENTS.has(channel) || typeof callback !== 'function') {
+        throw new Error(`[optionalBridges] event not allowed: ${String(channel)}`);
+      }
+      const handler = (_event, payload) => { try { callback(payload); } catch { /* the listener's own error */ } };
+      ipcRenderer.on(channel, handler);
+      return () => ipcRenderer.removeListener(channel, handler);
     },
   },
 
@@ -460,14 +453,6 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   // Document Extraction API
   // ══════════════════════════════════════════════════════════════════════════
 
-  anki: {
-    /**
-     * Parse an Anki export (.apkg or "Notes in Plain Text" .txt) into decks of
-     * plain-text cards. Returns { ok, decks:[{name, cards:[{front,back,tags}]}],
-     * cardCount, mediaSkipped } or { ok:false, error }.
-     */
-    read: (filePath) => ipcRenderer.invoke('anki:read', filePath),
-  },
 
   /**
    * Filesystem path of an OS-dragged File object. Electron removed the
@@ -511,19 +496,6 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     renderEquations: (items) => ipcRenderer.invoke('image:renderEquations', items),
   },
 
-  // ── Local picture models (electron/modelBridge.cjs) ──
-  // A model is named by the SHA-256 of its file; desc is { url, sha256, bytes }.
-  models: {
-    /** -> { ok, runtime, present, downloading } */
-    status: (desc) => ipcRenderer.invoke('models:status', desc),
-    /** Fetch the model once and keep it only if its hash matches. Progress arrives through onProgress. -> { ok, error? } */
-    download: (desc) => ipcRenderer.invoke('models:download', desc),
-    cancelDownload: (sha256) => ipcRenderer.invoke('models:cancelDownload', sha256),
-    /** inputs: { name: { data: Float32Array, dims } } -> { ok, outputs: { name: { data, dims } }, provider, ms, loadMs } */
-    run: (sha256, inputs) => ipcRenderer.invoke('models:run', sha256, inputs),
-    /** cb({ sha256, received, total, done?, error? }); returns a function that stops listening. */
-    onProgress: (cb) => { const h = (_e, p) => cb(p); ipcRenderer.on('models:progress', h); return () => ipcRenderer.removeListener('models:progress', h); },
-  },
 
   // ── Dashboard image/GIF assets (file-backed, served over parallx-asset://) ──
   dashboardAssets: {
