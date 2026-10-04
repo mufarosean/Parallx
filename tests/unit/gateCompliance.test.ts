@@ -207,9 +207,7 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/buttonNode.ts':              ['extensions/liveBlock', 'markdownImport'],
   'extensions/linkedDatabaseNode.ts':      ['extensions/liveBlock'],
   'extensions/syncedBlockNode.ts':         ['extensions/liveBlock'],   // what live blocks get from the app (no canvas imports)
-  'extensions/plannerAgendaNode.ts':       ['extensions/liveBlock'],
-  'extensions/mediaGalleryNode.ts':        ['extensions/liveBlock'],
-  'extensions/practiceProblemsNode.ts':    ['extensions/liveBlock'],
+  'extensions/toolBlockNode.ts':           ['extensions/liveBlock'],   // blocks other tools bring (api.canvas.registerBlock)
 
   // structuralInvariantPlugin imports from invariants/ — same pattern.
   'plugins/structuralInvariantPlugin.ts':  ['invariants/'],

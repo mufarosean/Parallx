@@ -639,3 +639,15 @@ button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: var(-
 .ws-dash__tilelink:hover { text-decoration: underline; }
 /* A long switch (the rating bands) wraps rather than run off a narrow pane. */
 .ws-builder .ui-segmented-control { flex-wrap: wrap; max-width: 100%; }
+
+/* ── Practice Problems block for pages (worksheetPracticeBlock.ts) ── */
+.ws-practice__row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 2px 4px; background: none; border: none; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; text-align: left; cursor: pointer; }
+.ws-practice__row:hover { background: var(--px-surface-hover); }
+.ws-practice__name { flex: 1; min-width: 0; overflow: hidden; font-size: var(--px-text-md); text-overflow: ellipsis; white-space: nowrap; }
+.ws-practice__paper { flex: 0 0 auto; color: var(--px-text-muted); font-size: var(--px-text-sm); }
+.ws-practice__state { flex: 0 0 auto; padding: 1px 8px; border-radius: var(--px-radius-full); background: var(--px-surface-hover); color: var(--px-text-muted); font-size: var(--px-text-xs); }
+.ws-practice__state--hard { background: var(--px-danger-soft); color: var(--px-danger); }
+.ws-practice__state--medium { background: var(--px-warning-soft); color: var(--px-text); }
+.ws-practice__state--easy { color: var(--px-success); }
+.ws-practice__state--open { color: var(--px-accent-text); }
+.ws-practice { display: flex; flex-direction: column; }

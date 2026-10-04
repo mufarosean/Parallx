@@ -1288,7 +1288,7 @@ const UNIQUE_ID_BLOCK_TYPES = new Set<string>([
   'dataview',
   // ── Live blocks (2026-10-04) ──
   'pageBreadcrumb', 'subpageList', 'embed', 'mermaidDiagram', 'buttonBlock', 'linkedDatabase', 'syncedRef',
-  'plannerAgenda', 'mediaGallery', 'practiceProblems',
+  'toolBlock',
 ]);
 
 function stampBlockId(node: TipTapNode, gen: () => string): void {

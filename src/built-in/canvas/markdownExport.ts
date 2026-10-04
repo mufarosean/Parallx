@@ -30,6 +30,8 @@
 //
 // No external dependencies — pure string transformation.
 
+import { readableToolBlock } from './extensions/toolBlockNode.js';
+
 // ─── Types for TipTap JSON AST ──────────────────────────────────────────────
 
 interface TipTapNode {
@@ -132,9 +134,7 @@ function readableAtom(node: TipTapNode): string {
   if (node.type === 'mermaidDiagram') return '```mermaid\n' + String(node.attrs?.code ?? '') + '\n```';
   if (node.type === 'embed') return String(node.attrs?.src ?? '');
   if (node.type === 'buttonBlock') return `[${String(node.attrs?.label ?? 'Button')}]`;
-  if (node.type === 'plannerAgenda') return `[Agenda: ${({ tomorrow: 'Tomorrow', week: 'Next 7 days' } as Record<string, string>)[String(node.attrs?.range)] ?? 'Today'}]`;
-  if (node.type === 'mediaGallery') return '[Media gallery]';
-  if (node.type === 'practiceProblems') return '[Practice problems]';
+  if (node.type === 'toolBlock') return readableToolBlock(node.attrs ?? {});
   return plainText(node);
 }
 

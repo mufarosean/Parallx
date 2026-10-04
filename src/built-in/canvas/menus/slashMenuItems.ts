@@ -46,6 +46,7 @@ const GROUP_LABELS: Record<string, string> = {
   math: 'Equations',
   layout: 'Columns',
   advanced: 'More',
+  tools: 'From your tools',
 };
 
 // ── Build slash menu items from block definitions ───────────────────────────

@@ -76,6 +76,7 @@ import {
   type GraphProvider,
 } from './bridges/workspaceGraphBridge.js';
 import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboardBridge.js';
+import { CanvasBlocksBridge, type CanvasBlockRegistration } from './bridges/canvasBlocksBridge.js';
 import { ILinkResolverService, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
 import type { ParsedLink } from '../links/parallxUri.js';
 import type { IThemeService } from '../services/serviceTypes.js';
@@ -286,6 +287,14 @@ export interface ParallxApiObject {
     registerWidgetType<TConfig = Record<string, unknown>>(registration: WidgetTypeRegistration<TConfig>): IDisposable;
     /** Metadata snapshot of every contributed widget type, across all tools. */
     listWidgetTypes(): readonly import('./bridges/dashboardBridge.js').WidgetTypeDescriptor[];
+  };
+  readonly canvas: {
+    /**
+     * Contribute a page block (the / menu and pages). typeIds are namespaced
+     * under the contributing tool's id (`<toolId>.<name>`). The block exists
+     * only while the tool runs: turned off, pages keep it and show a note.
+     */
+    registerBlock(registration: CanvasBlockRegistration): IDisposable;
   };
   readonly tools: {
     getAll(): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string; state: string; activationEvents: readonly string[]; contributes: Record<string, unknown> }[];
@@ -560,6 +569,10 @@ export function createToolApi(
   // mirrors it into its registry, so registration order doesn't matter.
   const dashboardBridge = new DashboardBridge(toolId, subscriptions);
   subscriptions.push(dashboardBridge);
+
+  // Page blocks a tool brings to the canvas while it runs. Pure hub.
+  const canvasBlocksBridge = new CanvasBlocksBridge(toolId, toolDescription.manifest.name || toolId, subscriptions);
+  subscriptions.push(canvasBlocksBridge);
 
   // ── Build API object ──
   const api: ParallxApiObject = {
@@ -893,6 +906,10 @@ export function createToolApi(
       registerWidgetType: <TConfig = Record<string, unknown>>(registration: WidgetTypeRegistration<TConfig>) =>
         dashboardBridge.registerWidgetType(registration),
       listWidgetTypes: () => dashboardBridge.listWidgetTypes(),
+    }),
+
+    canvas: Object.freeze({
+      registerBlock: (registration: CanvasBlockRegistration) => canvasBlocksBridge.registerBlock(registration),
     }),
 
     tools: Object.freeze({

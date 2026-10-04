@@ -104,9 +104,7 @@ export const UNIQUE_ID_BLOCK_TYPES: string[] = [
   'buttonBlock',
   'linkedDatabase',
   'syncedRef',
-  'plannerAgenda',
-  'mediaGallery',
-  'practiceProblems',
+  'toolBlock',
 ];
 
 /**

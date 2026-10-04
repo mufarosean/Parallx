@@ -9143,6 +9143,14 @@ select.mo-select-bound:disabled { opacity: 0.55; cursor: default; }
 .mo-br-tile.is-failed .mo-br-status { color: var(--vscode-errorForeground, var(--px-danger)); }
 .mo-br-open { flex: 0 0 auto; }
 .mo-practice-history-actions { display: flex; gap: 6px; }
+/* Media Gallery block in pages */
+.mo-page-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+.mo-page-gallery__tile { position: relative; aspect-ratio: 1; padding: 0; overflow: hidden; background: var(--px-bg-inset); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); cursor: zoom-in; }
+.mo-page-gallery__tile:hover { border-color: var(--px-border-strong); }
+.mo-page-gallery__tile:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
+.mo-page-gallery__img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.mo-page-gallery__placeholder { display: flex; align-items: center; justify-content: center; height: 100%; padding: 6px; color: var(--px-text-muted); font-size: var(--px-text-xs); overflow-wrap: anywhere; }
+.mo-page-gallery__badge { position: absolute; right: 4px; bottom: 4px; padding: 1px 6px; background: color-mix(in srgb, var(--px-bg) 80%, transparent); border-radius: var(--px-radius-sm); color: var(--px-text); font-size: var(--px-text-xs); }
 `;
 
 function moInjectStyles() {
@@ -38282,6 +38290,116 @@ export const MO_EMBED_SQL = {
    ORDER BY at DESC, id DESC LIMIT ?`,
 };
 
+const MO_GALLERY_SIZES = [6, 12, 24, 48];
+
+async function moGalleryItems(api, albumId, limit) {
+  const n = Math.min(60, Math.max(1, Math.round(Number(limit) || 12)));
+  const rows = albumId
+    ? await db.all(MO_EMBED_SQL.albumItems, [Number(albumId), Number(albumId), n])
+    : await db.all(MO_EMBED_SQL.recentItems, [n]);
+  const thumbs = await resolveThumbnailBatch(rows.map((r) => ({ type: r.type, id: r.id })), api);
+  const out = [];
+  for (const r of rows) {
+    const t = thumbs.get(`${r.type}:${r.id}`);
+    let thumbUrl = null;
+    try { thumbUrl = t && t.path ? await localFileToUrl(t.path) : null; } catch { thumbUrl = null; }
+    out.push({ type: r.type, id: r.id, title: r.title || '', thumbUrl });
+  }
+  return out;
+}
+
+async function moGalleryAlbums() {
+  const rows = await db.all(MO_EMBED_SQL.albums);
+  return rows.map((r) => ({ value: String(r.id), label: r.title || 'Untitled album' }));
+}
+
+function moGalleryBlock(api) {
+  return {
+    typeId: 'parallx-community.media-organizer.gallery',
+    label: 'Media Gallery',
+    description: 'Photos and videos from an Atelier album',
+    icon: 'images',
+    defaultConfig: { albumId: '', limit: 12 },
+    settings: {
+      title: 'Media gallery',
+      fields: {
+        albumId: { type: 'enum', label: 'Show', options: async () => [{ value: '', label: 'Newest photos and videos' }, ...(await moGalleryAlbums().catch(() => []))] },
+        limit: { type: 'enum', label: 'How many', options: MO_GALLERY_SIZES.map((n) => ({ value: String(n), label: `Up to ${n}` })) },
+      },
+    },
+    readable: (config) => (config.albumId ? '[Media gallery: an Atelier album]' : '[Media gallery: newest photos and videos]'),
+    render(body, ctx) {
+      moInjectStyles();
+      let config = ctx.config;
+      let seq = 0;
+      let disposed = false;
+      const openAlbum = () => {
+        const id = config.albumId ? Number(config.albumId) : null;
+        void (id
+          ? db.get('SELECT id, title FROM mo_albums WHERE id = ?', [id]).then((a) => a && api.editors.openEditor({ typeId: 'media-organizer-grid', title: a.title || 'Album', icon: 'album', instanceId: `album:${a.id}` }))
+          : api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Recent', icon: 'image', instanceId: 'grid:recent' }));
+      };
+      ctx.setActions([{ label: 'Open in Atelier', run: openAlbum }]);
+      const render = async () => {
+        const mine = ++seq;
+        const albumId = config.albumId ? String(config.albumId) : '';
+        const [albums, items] = await Promise.all([
+          moGalleryAlbums().catch(() => []),
+          moGalleryItems(api, albumId, config.limit).catch(() => null),
+        ]);
+        if (disposed || mine !== seq) return;
+        const album = albumId ? albums.find((a) => a.value === albumId) : null;
+        if (albumId && !album) { ctx.setTitle('Album not found'); ctx.showNote('This album was deleted: pick another with Edit.'); return; }
+        ctx.setTitle(album ? album.label : 'Newest photos and videos');
+        if (!items) { ctx.showNote('Atelier could not read the library.'); return; }
+        if (!items.length) { ctx.showNote(albumId ? 'This album is empty.' : 'No photos or videos yet.'); return; }
+        body.innerHTML = '';
+        const grid = document.createElement('div');
+        grid.className = 'mo-page-gallery';
+        items.forEach((it, index) => {
+          const tile = document.createElement('button');
+          tile.type = 'button';
+          tile.className = 'mo-page-gallery__tile';
+          tile.setAttribute('aria-label', `${it.type === 'video' ? 'Video' : 'Photo'}: ${it.title || 'Untitled'}`);
+          tile.title = it.title || '';
+          if (it.thumbUrl) {
+            const img = document.createElement('img');
+            img.className = 'mo-page-gallery__img';
+            img.alt = '';
+            img.loading = 'lazy';
+            img.draggable = false;
+            img.src = it.thumbUrl;
+            tile.appendChild(img);
+          } else {
+            const ph = document.createElement('span');
+            ph.className = 'mo-page-gallery__placeholder';
+            ph.textContent = it.title || (it.type === 'video' ? 'Video' : 'Photo');
+            tile.appendChild(ph);
+          }
+          if (it.type === 'video') {
+            const badge = document.createElement('span');
+            badge.className = 'mo-page-gallery__badge';
+            badge.textContent = 'Video';
+            tile.appendChild(badge);
+          }
+          tile.addEventListener('click', () => openLightbox(items.map((x) => ({ type: x.type, id: x.id })), index, moResolveItemPath));
+          grid.appendChild(tile);
+        });
+        body.appendChild(grid);
+      };
+      // Atelier has no change signal for pages: look again when the window
+      // comes back (after adding photos, say).
+      const onFocus = () => void render();
+      window.addEventListener('focus', onFocus);
+      void render();
+      return {
+        update(next) { config = next; void render(); },
+        dispose() { disposed = true; window.removeEventListener('focus', onFocus); },
+      };
+    },
+  };
+}
+
 export async function activate(api, context) {
     try {
       console.log('[MediaOrganizer] activate() called');
@@ -38829,43 +38947,12 @@ export async function activate(api, context) {
     })
   );
 
-  // Canvas "Media Gallery" block: a page shows an album (or the newest items)
-  // through these, and opens them in this viewer. The block never reads the
-  // mo_* tables itself.
-  _commandDisposables.push(
-    api.commands.registerCommand('media-organizer.embed.listAlbums', async () => {
-      const rows = await db.all(MO_EMBED_SQL.albums);
-      return rows.map((r) => ({ id: String(r.id), title: r.title || 'Untitled album' }));
-    }),
-    api.commands.registerCommand('media-organizer.embed.listItems', async (opts) => {
-      const limit = Math.min(60, Math.max(1, Math.round(Number(opts && opts.limit) || 12)));
-      const albumId = opts && opts.albumId ? Number(opts.albumId) : null;
-      const rows = albumId
-        ? await db.all(MO_EMBED_SQL.albumItems, [albumId, albumId, limit])
-        : await db.all(MO_EMBED_SQL.recentItems, [limit]);
-      const thumbs = await resolveThumbnailBatch(rows.map((r) => ({ type: r.type, id: r.id })), api);
-      const out = [];
-      for (const r of rows) {
-        const t = thumbs.get(`${r.type}:${r.id}`);
-        let thumbUrl = null;
-        try { thumbUrl = t && t.path ? await localFileToUrl(t.path) : null; } catch { thumbUrl = null; }
-        out.push({ type: r.type, id: r.id, title: r.title || '', thumbUrl });
-      }
-      return out;
-    }),
-    api.commands.registerCommand('media-organizer.embed.open', (opts) => {
-      const items = (opts && Array.isArray(opts.items) ? opts.items : [])
-        .filter((it) => it && (it.type === 'photo' || it.type === 'video'))
-        .map((it) => ({ type: it.type, id: Number(it.id) }));
-      if (items.length) openLightbox(items, Number(opts.index) || 0, moResolveItemPath);
-    }),
-    api.commands.registerCommand('media-organizer.embed.openAlbum', async (albumId) => {
-      const album = albumId ? await db.get('SELECT id, title FROM mo_albums WHERE id = ?', [Number(albumId)]) : null;
-      return album
-        ? api.editors.openEditor({ typeId: 'media-organizer-grid', title: album.title || 'Album', icon: 'album', instanceId: `album:${album.id}` })
-        : api.editors.openEditor({ typeId: 'media-organizer-grid', title: 'Recent', icon: 'image', instanceId: 'grid:recent' });
-    }),
-  );
+  // The Media Gallery block for pages: Atelier brings it while it runs
+  // (api.canvas.registerBlock). Turned off, the block is not offered and
+  // pages that have one say Atelier is needed. Never the Trash.
+  if (api.canvas && typeof api.canvas.registerBlock === 'function') {
+    _commandDisposables.push(api.canvas.registerBlock(moGalleryBlock(api)));
+  }
 
   // M59 P3: Search index, perceptual hash, duplicate finder, smart albums
   _commandDisposables.push(

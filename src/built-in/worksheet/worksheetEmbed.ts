@@ -1,8 +1,8 @@
-// worksheetEmbed.ts — what the Canvas "Practice Problems" block asks for
+// worksheetEmbed.ts — which problems the Practice Problems page block shows
 //
 // A page shows a few problems from the bank (by paper, tag and state) and
-// opens one to work it. The block reaches this through the worksheet.embed.*
-// commands, never the ws_* tables. Pure, so the choice is tested alone.
+// opens one to work it. worksheetPracticeBlock.ts draws the block; this file
+// does the choosing. Pure, so the choice is tested alone.
 
 import { itemTags } from './practiceSession.js';
 import { normalizeRating, paperLabel, ratingLabel } from './problemImport.js';

@@ -1258,6 +1258,42 @@ export namespace dashboard {
  * The `parallx.tools` API namespace.
  * Tool registry metadata and enablement control.
  */
+/**
+ * Page blocks. A tool adds blocks to the canvas `/` menu while it runs; turned
+ * off, they leave the menu and pages that hold one show which tool is needed
+ * (their settings are kept). The canvas draws the frame (title, actions,
+ * Edit… from `settings`); `render` fills the body.
+ */
+export namespace canvas {
+  interface BlockOption { readonly value: string; readonly label: string }
+  interface BlockField {
+    readonly type: 'enum' | 'string' | 'number';
+    readonly label: string;
+    readonly options?: readonly BlockOption[] | (() => Promise<readonly BlockOption[]>);
+    readonly placeholder?: string;
+  }
+  interface BlockContext {
+    readonly config: Readonly<Record<string, unknown>>;
+    readonly editable: boolean;
+    setConfig(patch: Record<string, unknown>): void;
+    setTitle(text: string): void;
+    setActions(actions: readonly { label: string; run(): void }[]): void;
+    showNote(text: string): void;
+  }
+  interface BlockRegistration {
+    /** `"<extensionId>.<name>"`. */
+    readonly typeId: string;
+    readonly label: string;
+    readonly description: string;
+    readonly icon: string;
+    readonly defaultConfig: Readonly<Record<string, unknown>>;
+    readonly settings?: { readonly title: string; readonly fields: Readonly<Record<string, BlockField>> };
+    render(body: HTMLElement, ctx: BlockContext): { update?(config: Readonly<Record<string, unknown>>): void; dispose?(): void } | void;
+    readable?(config: Readonly<Record<string, unknown>>): string;
+  }
+  export function registerBlock(registration: BlockRegistration): Disposable;
+}
+
 export namespace tools {
   /**
    * Get all registered tools.

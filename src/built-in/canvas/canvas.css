@@ -4433,45 +4433,15 @@
 }
 .canvas-live-popover__primary:hover { background: var(--px-accent-hover); }
 
-/* ── Blocks from other tools: Agenda, Media Gallery, Practice Problems ── */
-.canvas-agenda, .canvas-gallery, .canvas-practice { margin: 0.75rem 0; padding: 6px 8px 8px; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); }
-.canvas-agenda__bar, .canvas-gallery__bar, .canvas-practice__bar { display: flex; align-items: center; gap: 4px; min-height: 22px; padding-bottom: 4px; }
-.canvas-agenda__title, .canvas-gallery__title, .canvas-practice__title { margin-right: auto; color: var(--px-text-muted); font-size: var(--px-text-sm); font-weight: 500; }
-.canvas-agenda__bar .canvas-live-edit, .canvas-gallery__bar .canvas-live-edit, .canvas-practice__bar .canvas-live-edit { margin-left: 0; }
-.canvas-agenda:hover .canvas-live-edit, .canvas-gallery:hover .canvas-live-edit, .canvas-practice:hover .canvas-live-edit { opacity: 1; }
-.canvas-agenda__note, .canvas-gallery__note, .canvas-practice__note { color: var(--px-text-muted); font-size: var(--px-text-sm); padding: 4px 2px; }
-
-.canvas-agenda__body { display: flex; flex-direction: column; }
-.canvas-agenda__day { padding: 8px 2px 2px; color: var(--px-text-faint); font-size: var(--px-text-xs); }
-.canvas-agenda__day:first-child { padding-top: 0; }
-.canvas-agenda__item { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 2px; }
-.canvas-agenda__dot { flex: 0 0 auto; width: 8px; height: 8px; margin: 0 4px; border-radius: 50%; background: var(--px-accent); }
-.canvas-agenda__check { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; accent-color: var(--px-accent); cursor: pointer; }
-.canvas-agenda__name { flex: 1; min-width: 0; padding: 2px 4px; overflow: hidden; background: none; border: none; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-md); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.canvas-agenda__name:hover { background: var(--px-surface-hover); }
-.canvas-agenda__item--done .canvas-agenda__name { color: var(--px-text-muted); text-decoration: line-through; }
-.canvas-agenda__when { flex: 0 0 auto; color: var(--px-text-muted); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
-.canvas-agenda__item--overdue .canvas-agenda__when { color: var(--px-danger); }
-
-.canvas-gallery__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
-.canvas-gallery__grid > .canvas-gallery__note { grid-column: 1 / -1; }
-.canvas-gallery__tile { position: relative; aspect-ratio: 1; padding: 0; overflow: hidden; background: var(--px-bg-inset); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); cursor: zoom-in; }
-.canvas-gallery__tile:hover { border-color: var(--px-border-strong); }
-.canvas-gallery__tile:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
-.canvas-gallery__img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.canvas-gallery__placeholder { display: flex; align-items: center; justify-content: center; height: 100%; padding: 6px; color: var(--px-text-muted); font-size: var(--px-text-xs); overflow-wrap: anywhere; }
-.canvas-gallery__badge { position: absolute; right: 4px; bottom: 4px; padding: 1px 6px; background: color-mix(in srgb, var(--px-bg) 80%, transparent); border-radius: var(--px-radius-sm); color: var(--px-text); font-size: var(--px-text-xs); }
-
-.canvas-practice__list { display: flex; flex-direction: column; }
-.canvas-practice__row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 2px 4px; background: none; border: none; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; text-align: left; cursor: pointer; }
-.canvas-practice__row:hover { background: var(--px-surface-hover); }
-.canvas-practice__name { flex: 1; min-width: 0; overflow: hidden; font-size: var(--px-text-md); text-overflow: ellipsis; white-space: nowrap; }
-.canvas-practice__paper { flex: 0 0 auto; color: var(--px-text-muted); font-size: var(--px-text-sm); }
-.canvas-practice__state { flex: 0 0 auto; padding: 1px 8px; border-radius: var(--px-radius-full); background: var(--px-surface-hover); color: var(--px-text-muted); font-size: var(--px-text-xs); }
-.canvas-practice__state--hard { background: var(--px-danger-soft); color: var(--px-danger); }
-.canvas-practice__state--medium { background: var(--px-warning-soft); color: var(--px-text); }
-.canvas-practice__state--easy { color: var(--px-success); }
-.canvas-practice__state--open { color: var(--px-accent-text); }
+/* ── Blocks other tools bring (extensions/toolBlockNode.ts): the frame only;
+   each tool styles its own body. ── */
+.canvas-toolblock { margin: 0.75rem 0; padding: 6px 8px 8px; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); }
+.canvas-toolblock__bar { display: flex; align-items: center; gap: 4px; min-height: 22px; padding-bottom: 4px; }
+.canvas-toolblock__title { margin-right: auto; color: var(--px-text-muted); font-size: var(--px-text-sm); font-weight: 500; }
+.canvas-toolblock__actions { display: inline-flex; gap: 4px; }
+.canvas-toolblock__bar .canvas-live-edit { margin-left: 0; }
+.canvas-toolblock:hover .canvas-live-edit { opacity: 1; }
+.canvas-toolblock__note { color: var(--px-text-muted); font-size: var(--px-text-sm); padding: 4px 2px; }
 
 /* ── Synced Block ── */
 .canvas-synced { margin: 0.5rem 0; border: 1px solid transparent; border-radius: var(--px-radius-md); }

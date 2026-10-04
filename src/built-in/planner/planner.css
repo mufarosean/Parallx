@@ -2024,3 +2024,16 @@
   background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 18%, transparent);
 }
 
+
+/* ── Agenda block for pages (plannerAgendaBlock.ts) ── */
+.planner-agenda { display: flex; flex-direction: column; }
+.planner-agenda__day { padding: 8px 2px 2px; color: var(--px-text-faint); font-size: var(--px-text-xs); }
+.planner-agenda__day:first-child { padding-top: 0; }
+.planner-agenda__item { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 2px; }
+.planner-agenda__dot { flex: 0 0 auto; width: 8px; height: 8px; margin: 0 4px; border-radius: 50%; background: var(--px-accent); }
+.planner-agenda__check { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; accent-color: var(--px-accent); cursor: pointer; }
+.planner-agenda__name { flex: 1; min-width: 0; padding: 2px 4px; overflow: hidden; background: none; border: none; border-radius: var(--px-radius-sm); color: var(--px-text); font: inherit; font-size: var(--px-text-md); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.planner-agenda__name:hover { background: var(--px-surface-hover); }
+.planner-agenda__item--done .planner-agenda__name { color: var(--px-text-muted); text-decoration: line-through; }
+.planner-agenda__when { flex: 0 0 auto; color: var(--px-text-muted); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.planner-agenda__item--overdue .planner-agenda__when { color: var(--px-danger); }

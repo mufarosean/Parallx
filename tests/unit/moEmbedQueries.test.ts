@@ -1,5 +1,5 @@
-// moEmbedQueries.test.ts — the queries behind the Canvas Media Gallery
-// block (media-organizer.embed.*), run on Media Organizer's own migrations.
+// moEmbedQueries.test.ts — the queries behind Atelier's Media Gallery page
+// block, run on Atelier's own migrations.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';

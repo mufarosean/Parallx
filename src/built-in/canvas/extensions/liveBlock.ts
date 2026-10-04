@@ -1,12 +1,12 @@
 // liveBlock.ts — what blocks that show live workspace data get from the app
 //
-// A page list, a child-page list, a planner agenda or a media gallery reads
-// data that lives outside the page and changes while the page is open. The
-// editor hands every such block one `LiveBlockServices` object (through the
-// extension context in config/blockRegistry.ts): it can open a page, run an
-// app command (other tools answer through their commands, so a block never
-// imports another tool), and hear when workspace data changed so it can
-// re-read. Blocks also share one settings popover, so they look alike.
+// A page list, a child-page list or a linked database reads data that lives
+// outside the page and changes while the page is open. The editor hands
+// every such block one `LiveBlockServices` object (through the extension
+// context in config/blockRegistry.ts): it can open a page, run an app
+// command, and hear when workspace data changed so it can re-read. Blocks
+// also share one settings popover, so they look alike. Blocks that show one
+// tool's data belong to that tool (toolBlockNode.ts), not to this list.
 //
 // No canvas-internal imports: only the app's DOM helpers.
 
@@ -173,24 +173,3 @@ export function setBlockAttrs(editor: any, getPos: (() => number | undefined) | 
   editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs }));
 }
 
-/** What another tool answered, or that it is not there (not installed,
- *  turned off, or not started yet while the app opens). */
-export type ToolAnswer<T> = { ok: true; value: T } | { ok: false };
-
-/** Ask another tool through its command. Never throws. */
-export async function askTool<T>(live: LiveBlockServices | undefined, id: string, ...args: unknown[]): Promise<ToolAnswer<T>> {
-  if (!live) return { ok: false };
-  try {
-    return { ok: true, value: await live.executeCommand(id, ...args) as T };
-  } catch {
-    return { ok: false };
-  }
-}
-
-/** Retry a block whose tool was not there yet: tools start after the page
- *  can already be open. A few tries, further apart each time; returns stop. */
-export function retrySoon(run: () => void, attempt: number): () => void {
-  if (attempt >= 4) return () => {};
-  const t = setTimeout(run, 800 * 2 ** attempt);
-  return () => clearTimeout(t);
-}

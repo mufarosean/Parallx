@@ -56,7 +56,6 @@ export class SlashMenuController implements ICanvasMenu {
   private _dismissedLine: number | null = null;
   private _selectedIndex = 0;
   private _registration: IDisposable | null = null;
-  private _slashItems: SlashMenuItem[] | null = null;
 
   constructor(
     private readonly _host: SlashMenuHost,
@@ -181,7 +180,8 @@ export class SlashMenuController implements ICanvasMenu {
   }
 
   private _getFilteredItems(): SlashMenuItem[] {
-    const items = this._slashItems ??= buildSlashMenuItems(this._registry.getSlashMenuBlocks());
+    // Not kept: tools add and remove their blocks as they are turned on and off.
+    const items = buildSlashMenuItems(this._registry.getSlashMenuBlocks());
 
     if (!this._filterText) {
       // No filter — hoist recents to the top while preserving full list ordering

@@ -1,21 +1,24 @@
 // @vitest-environment jsdom
-// canvasToolBlocks.test.ts — blocks that show another tool's data: Agenda
-// (planner), Media Gallery (Media Organizer), Practice Problems (Worksheets).
-// What each picks and in what order, the real Media Organizer queries on its
-// own migrations (moEmbedQueries.test.ts), and each block working in a real editor against fake tools
-// (and saying so when the tool is not there).
+// canvasToolBlocks.test.ts — blocks other tools bring to pages.
+//
+// The canvas knows none of them: a tool registers a block while it runs
+// (api.canvas.registerBlock) and it leaves the / menu when the tool stops;
+// pages keep the block (one generic `toolBlock` node) and say which tool is
+// needed. Then the Planner's Agenda and Worksheets' Practice Problems, each
+// against fake data. (Atelier's gallery queries: moEmbedQueries.test.ts.)
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { createEditorExtensions } from '../../src/built-in/canvas/config/tiptapExtensions';
-import { agendaWindow, buildAgenda, startOfDay, agendaTimeLabel, type AgendaEventLike, type AgendaTaskLike } from '../../src/built-in/canvas/extensions/plannerAgendaNode';
-import { clampGalleryLimit, galleryLabel } from '../../src/built-in/canvas/extensions/mediaGalleryNode';
-import { PRACTICE_SHOWS, describePractice, practiceTone } from '../../src/built-in/canvas/extensions/practiceProblemsNode';
-import { selectEmbedProblems, embedFilterChoices, EMBED_SHOW, clampEmbedLimit, type EmbedItemLike } from '../../src/built-in/worksheet/worksheetEmbed';
+import { CanvasBlocksBridge, getContributedBlocks, type CanvasBlockRegistration } from '../../src/api/bridges/canvasBlocksBridge';
+import { CanvasMenuRegistry } from '../../src/built-in/canvas/menus/canvasMenuRegistry';
+import { missingToolNote } from '../../src/built-in/canvas/extensions/toolBlockNode';
+import { agendaWindow, buildAgenda, startOfDay, agendaTimeLabel, agendaBlock, type AgendaEventLike, type AgendaTaskLike } from '../../src/built-in/planner/plannerAgendaBlock';
+import { describePractice, practiceTone, practiceBlock } from '../../src/built-in/worksheet/worksheetPracticeBlock';
+import { selectEmbedProblems, embedFilterChoices, clampEmbedLimit, type EmbedItemLike } from '../../src/built-in/worksheet/worksheetEmbed';
 import { tiptapJsonToMarkdown } from '../../src/built-in/canvas/markdownExport';
 import { markdownToTiptapJson } from '../../src/built-in/canvas/markdownImport';
-import type { LiveBlockServices } from '../../src/built-in/canvas/extensions/liveBlock';
 
 const HOUR = 3_600_000;
 // Wednesday 2026-10-07, 10:30 local.
@@ -142,9 +145,6 @@ describe('Practice Problems: which problems', () => {
     expect(c.papers).toEqual([{ value: 'clark', label: 'Clark' }, { value: 'mack1994', label: 'Mack (1994)' }]);
     expect(c.tags).toEqual(['LDF', 'reserving', 'Reserving']);
   });
-  it('the block offers the same Show choices Worksheets answers', () => {
-    expect(PRACTICE_SHOWS).toEqual(EMBED_SHOW);
-  });
   it('summary and tones', () => {
     expect(describePractice({ show: 'needsWork', paper: 'clark', tag: 'LDF' }, 'Clark')).toBe('Needs work · Clark · #LDF');
     expect(describePractice({ show: 'all' })).toBe('Problems');
@@ -153,189 +153,250 @@ describe('Practice Problems: which problems', () => {
   });
 });
 
-describe('Media Gallery: helpers', () => {
-  it('limit and label', () => {
-    expect(clampGalleryLimit(undefined)).toBe(12);
-    expect(clampGalleryLimit(500)).toBe(60);
-    expect(galleryLabel('', null)).toBe('Newest photos and videos');
-    expect(galleryLabel('7', [{ id: '7', title: 'Studies' }])).toBe('Studies');
+
+// ── The contribution hub ──
+
+const subs: Array<{ dispose(): void }> = [];
+function bridge(toolId = 'acme.tool', name = 'Acme') { const b = new CanvasBlocksBridge(toolId, name, subs); return b; }
+
+function fakeBlock(over: Partial<CanvasBlockRegistration> = {}) {
+  const calls = { render: 0, update: [] as unknown[], dispose: 0 };
+  const reg: CanvasBlockRegistration = {
+    typeId: 'acme.tool.list',
+    label: 'Acme List',
+    description: 'Things from Acme',
+    icon: 'list',
+    defaultConfig: { size: 'small' },
+    settings: { title: 'Acme list', fields: { size: { type: 'enum', label: 'Size', options: [{ value: 'small', label: 'Small' }, { value: 'large', label: 'Large' }] } } },
+    readable: (c) => `[Acme list: ${String(c.size)}]`,
+    render(body, ctx) {
+      calls.render++;
+      ctx.setTitle(`Acme (${String(ctx.config.size)})`);
+      ctx.setActions([{ label: 'Open Acme', run: () => {} }]);
+      body.textContent = `size=${String(ctx.config.size)}`;
+      return { update: (c) => { calls.update.push(c); body.textContent = `size=${String(c.size)}`; }, dispose: () => { calls.dispose++; } };
+    },
+    ...over,
+  };
+  return { reg, calls };
+}
+
+afterEach(() => { for (const s of subs.splice(0)) s.dispose(); });
+
+describe('blocks a tool registers', () => {
+  it('must be named under the tool and complete', () => {
+    const b = bridge();
+    expect(() => b.registerBlock({ ...fakeBlock().reg, typeId: 'other.tool.list' })).toThrow(/must start with "acme.tool."/);
+    expect(() => b.registerBlock({ ...fakeBlock().reg, label: '' })).toThrow(/needs a label/);
+  });
+  it('exist while the tool runs and go when it stops', () => {
+    const b = bridge();
+    const d = b.registerBlock(fakeBlock().reg);
+    expect(getContributedBlocks().map((c) => [c.registration.typeId, c.ownerName])).toEqual([['acme.tool.list', 'Acme']]);
+    d.dispose();
+    expect(getContributedBlocks()).toEqual([]);
+    b.registerBlock(fakeBlock().reg);
+    b.dispose(); // the tool deactivated
+    expect(getContributedBlocks()).toEqual([]);
+  });
+  it('another tool cannot take a block id', () => {
+    bridge().registerBlock(fakeBlock().reg);
+    const thief = new CanvasBlocksBridge('acme', 'Thief', subs);
+    expect(() => thief.registerBlock({ ...fakeBlock().reg, typeId: 'acme.tool.list' })).toThrow(/already registered/);
+  });
+  it('the / menu lists them under "From your tools" only while the tool runs', () => {
+    const menus = new CanvasMenuRegistry(() => null);
+    const has = () => menus.getSlashMenuBlocks().some((b) => b.id === 'tool:acme.tool.list');
+    expect(has()).toBe(false);
+    const d = bridge().registerBlock(fakeBlock().reg);
+    expect(has()).toBe(true);
+    expect(menus.getSlashMenuBlocks().find((b) => b.id === 'tool:acme.tool.list')?.slashMenu?.category).toBe('tools');
+    d.dispose();
+    expect(has()).toBe(false);
+    menus.dispose();
+  });
+  it('core canvas offers no block of any optional tool', () => {
+    const menus = new CanvasMenuRegistry(() => null);
+    const labels = menus.getSlashMenuBlocks().map((b) => b.label);
+    for (const l of ['Agenda', 'Media Gallery', 'Practice Problems']) expect(labels).not.toContain(l);
+    menus.dispose();
   });
 });
 
-// ── The blocks in a real editor, against fake tools ──
+// ── The block in a page ──
+
 const lowlight = createLowlight(common);
-
-function fakeLive(commands: Record<string, (...args: any[]) => unknown>): LiveBlockServices & { calls: Array<[string, unknown[]]> } {
-  const calls: Array<[string, unknown[]]> = [];
-  return {
-    calls,
-    onDidChangeWorkspace: () => ({ dispose() {} }),
-    openPage: () => {},
-    async executeCommand(id: string, ...args: unknown[]) {
-      calls.push([id, args]);
-      const fn = commands[id];
-      if (!fn) throw new Error(`Unknown command: ${id}`);
-      return fn(...args);
-    },
-  };
-}
-
 let editors: Editor[] = [];
-function mount(live: LiveBlockServices, node: unknown): Editor {
+function mount(content: unknown[]): Editor {
   const element = document.createElement('div');
   document.body.appendChild(element);
-  const ed = new Editor({ element, extensions: createEditorExtensions(lowlight, { live } as any), content: { type: 'doc', content: [node] } });
+  const ed = new Editor({ element, extensions: createEditorExtensions(lowlight, {}), content: { type: 'doc', content } });
   editors.push(ed);
   return ed;
 }
-afterEach(() => { for (const e of editors) e.destroy(); editors = []; document.body.innerHTML = ''; vi.useRealTimers(); });
-const settle = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0)); };
+afterEach(() => { for (const e of editors) e.destroy(); editors = []; document.body.innerHTML = ''; });
+const settle = async (ms = 0) => { await new Promise((r) => setTimeout(r, ms)); for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0)); };
+const acmeNode = { type: 'toolBlock', attrs: { blockType: 'acme.tool.list', config: { size: 'small' }, from: 'Acme' } };
 
-describe('Agenda block in the editor', () => {
-  it('lists today, ticks a task done through the planner, and redraws when the planner changes', async () => {
-    const now = Date.now();
-    const sod = startOfDay(now);
+describe('a tool block in a page', () => {
+  it('the tool draws the body; the canvas draws title, actions and Edit…', () => {
+    const { reg, calls } = fakeBlock();
+    bridge().registerBlock(reg);
+    const ed = mount([acmeNode]);
+    const dom = ed.view.dom;
+    // ProseMirror may redraw the view once as the editor starts: every draw but the live one is disposed.
+    expect(calls.render - calls.dispose).toBe(1);
+    expect(dom.querySelector('.canvas-toolblock__title')?.textContent).toBe('Acme (small)');
+    expect(dom.querySelector('.canvas-toolblock__body')?.textContent).toBe('size=small');
+    expect([...dom.querySelectorAll('.canvas-toolblock__bar button')].map((b) => b.textContent)).toEqual(['Open Acme', 'Edit…']);
+  });
+
+  it('Edit… shows the tool\'s settings and stores the choice in the page (undoable)', async () => {
+    const { reg, calls } = fakeBlock();
+    bridge().registerBlock(reg);
+    const ed = mount([acmeNode]);
+    ed.view.dom.querySelector<HTMLButtonElement>('.canvas-toolblock__bar > button')!.click();
+    await settle();
+    const select = document.querySelector<HTMLSelectElement>('.canvas-live-popover select')!;
+    expect([...select.options].map((o) => o.textContent)).toEqual(['Small', 'Large']);
+    select.value = 'large';
+    document.querySelector<HTMLButtonElement>('.canvas-live-popover__primary')!.click();
+    expect((ed.getJSON().content![0] as any).attrs.config).toEqual({ size: 'large' });
+    expect(calls.update).toEqual([{ size: 'large' }]);
+    ed.commands.undo();
+    expect((ed.getJSON().content![0] as any).attrs.config).toEqual({ size: 'small' });
+  });
+
+  it('with the tool turned off, the page keeps the block and says which tool it needs; on again, it is back', () => {
+    const { reg, calls } = fakeBlock();
+    const ed = mount([acmeNode, { type: 'paragraph', content: [{ type: 'text', text: 'after' }] }]);
+    const dom = ed.view.dom;
+    expect(dom.querySelector('.canvas-toolblock__note')?.textContent).toBe(missingToolNote('Acme'));
+    expect(dom.querySelector<HTMLElement>('.canvas-toolblock__bar > button')!.hidden).toBe(true);
+
+    const d = bridge().registerBlock(reg); // the tool is turned on
+    expect(calls.render - calls.dispose).toBe(1);
+    expect(dom.querySelector('.canvas-toolblock__body')?.textContent).toBe('size=small');
+
+    d.dispose(); // and off again
+    expect(calls.render - calls.dispose).toBe(0);
+    expect(dom.querySelector('.canvas-toolblock__note')?.textContent).toContain('Acme, which is turned off');
+    expect(ed.getJSON().content![0]).toMatchObject(acmeNode); // nothing lost
+  });
+
+  it('a block that fails to draw says so instead of breaking the page', () => {
+    bridge().registerBlock(fakeBlock({ render: () => { throw new Error('boom'); } }).reg);
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const ed = mount([acmeNode]);
+    expect(ed.view.dom.querySelector('.canvas-toolblock__note')?.textContent).toBe('Acme could not show this block.');
+    spy.mockRestore();
+  });
+
+  it('Markdown export and import keep it whole; readers see the tool\'s words, or which tool it needs', () => {
+    const doc = { type: 'doc', content: [acmeNode] };
+    const back = markdownToTiptapJson(tiptapJsonToMarkdown(doc)) as any;
+    expect(back.content[0]).toMatchObject(acmeNode);
+    expect(tiptapJsonToMarkdown(doc, undefined, { forReading: true })).toContain('[Block from Acme]');
+    bridge().registerBlock(fakeBlock().reg);
+    expect(tiptapJsonToMarkdown(doc, undefined, { forReading: true })).toContain('[Acme list: small]');
+  });
+
+  it('copy and paste carries the block and its settings', () => {
+    const ed = mount([acmeNode]);
+    const html = ed.getHTML();
+    const ed2 = mount([{ type: 'paragraph' }]);
+    ed2.commands.setContent(html);
+    expect(ed2.getJSON().content![0]).toMatchObject(acmeNode);
+  });
+});
+
+// ── A fake canvas frame for drawing a tool's block alone ──
+function frame(config: Record<string, unknown>) {
+  const body = document.createElement('div');
+  const state = { title: '', actions: [] as string[], note: '' };
+  const ctx = {
+    config, editable: true, setConfig: vi.fn(),
+    setTitle: (t: string) => { state.title = t; },
+    setActions: (a: readonly { label: string }[]) => { state.actions = a.map((x) => x.label); },
+    showNote: (t: string) => { state.note = t; body.textContent = t; },
+  };
+  return { body, ctx, state };
+}
+
+describe('Agenda (the Planner\'s block)', () => {
+  it('lists today, ticks a task done in the planner, and redraws when the planner changes', async () => {
+    const sod = startOfDay(Date.now());
     let tasks: AgendaTaskLike[] = [task('Write report', sod + 23 * HOUR)];
     const listeners = new Set<() => void>();
     const data = {
       listEvents: vi.fn(async () => [ev('Standup', sod + 1, sod + 2)]),
       listTasks: vi.fn(async (q: { dueTo?: number }) => tasks.filter((t) => t.dueAt !== null && t.dueAt <= (q.dueTo ?? Infinity) && t.dueAt >= sod)),
       updateTask: vi.fn(async (id: string, patch: { status?: string }) => { tasks = tasks.map((t) => (t.id === id ? { ...t, status: patch.status! } : t)); }),
-      onDidChange: (fn: () => void) => { listeners.add(fn); return { dispose: () => listeners.delete(fn) }; },
+      onDidChange: (fn: () => void) => { listeners.add(fn); return { dispose: () => { listeners.delete(fn); } }; },
     };
-    const live = fakeLive({ 'planner.getRegistry': () => ({ data }), 'planner.open': () => {} });
-    const ed = mount(live, { type: 'plannerAgenda', attrs: { range: 'today', show: 'all' } });
+    const open = vi.fn();
+    const reg = agendaBlock(data, open);
+    expect(reg.typeId).toBe('parallx.planner.agenda');
+    const { body, ctx, state } = frame({ range: 'today', show: 'all' });
+    const handle = reg.render(body, ctx)!;
     await settle();
-    const dom = ed.view.dom;
-    expect([...dom.querySelectorAll('.canvas-agenda__name')].map((n) => n.textContent)).toEqual(['Standup', 'Write report']);
-    expect(dom.querySelector('.canvas-agenda__title')?.textContent).toBe('Today');
+    expect(state.title).toBe('Today');
+    expect(state.actions).toEqual(['Open Planner']);
+    expect([...body.querySelectorAll('.planner-agenda__name')].map((n) => n.textContent)).toEqual(['Standup', 'Write report']);
 
-    const box = dom.querySelector<HTMLInputElement>('.canvas-agenda__check')!;
+    const box = body.querySelector<HTMLInputElement>('.planner-agenda__check')!;
     box.checked = true;
     box.dispatchEvent(new Event('change'));
     await settle();
     expect(data.updateTask).toHaveBeenCalledWith('Write report', expect.objectContaining({ status: 'done' }));
 
-    // The planner announces the change; the block re-reads (after a short settle).
-    const before = data.listTasks.mock.calls.length;
     for (const l of listeners) l();
-    await new Promise((r) => setTimeout(r, 300));
-    await settle();
-    expect(data.listTasks.mock.calls.length).toBeGreaterThan(before);
-    expect(dom.querySelector('.canvas-agenda__item--done .canvas-agenda__name')?.textContent).toBe('Write report');
+    await settle(300);
+    expect(body.querySelector('.planner-agenda__item--done .planner-agenda__name')?.textContent).toBe('Write report');
+    body.querySelector<HTMLButtonElement>('.planner-agenda__name')!.click();
+    expect(open).toHaveBeenCalled();
 
-    dom.querySelector<HTMLButtonElement>('.canvas-agenda__name')!.click();
+    handle.update!({ range: 'tomorrow', show: 'all' });
     await settle();
-    expect(live.calls.some(([id]) => id === 'planner.open')).toBe(true);
-
-    // Removing the block stops listening.
-    ed.commands.setContent({ type: 'doc', content: [{ type: 'paragraph' }] });
+    expect(state.title).toBe('Tomorrow');
+    handle.dispose!();
     expect(listeners.size).toBe(0);
-  });
-
-  it('says so when there is no planner', async () => {
-    const ed = mount(fakeLive({}), { type: 'plannerAgenda', attrs: { range: 'week', show: 'all' } });
-    await settle();
-    expect(ed.view.dom.querySelector('.canvas-agenda__note')?.textContent).toBe('The planner is not available.');
-  });
-
-  it('survives Markdown export and import with its settings', () => {
-    const doc = { type: 'doc', content: [{ type: 'plannerAgenda', attrs: { range: 'week', show: 'tasks' } }] };
-    const md = tiptapJsonToMarkdown(doc);
-    expect(tiptapJsonToMarkdown(doc, undefined, { forReading: true })).toContain('[Agenda: Next 7 days]');
-    const back = markdownToTiptapJson(md) as any;
-    expect(back.content[0]).toMatchObject({ type: 'plannerAgenda', attrs: { range: 'week', show: 'tasks' } });
+    expect(reg.readable!({ range: 'week' })).toBe('[Agenda: Next 7 days]');
   });
 });
 
-describe('Media Gallery block in the editor', () => {
-  const items = [
-    { type: 'photo', id: 1, title: 'Sketch', thumbUrl: 'blob:one' },
-    { type: 'video', id: 2, title: 'Timelapse', thumbUrl: null },
-  ];
-  it('shows thumbnails, names the album, and opens the clicked one in the viewer', async () => {
-    const live = fakeLive({
-      'media-organizer.embed.listAlbums': () => [{ id: '9', title: 'Studies' }],
-      'media-organizer.embed.listItems': () => items,
-      'media-organizer.embed.open': () => {},
-    });
-    const ed = mount(live, { type: 'mediaGallery', attrs: { albumId: '9', limit: 6 } });
-    await settle();
-    const dom = ed.view.dom;
-    expect(live.calls.find(([id]) => id === 'media-organizer.embed.listItems')?.[1][0]).toEqual({ albumId: '9', limit: 6 });
-    expect(dom.querySelector('.canvas-gallery__title')?.textContent).toBe('Studies');
-    const tiles = [...dom.querySelectorAll<HTMLButtonElement>('.canvas-gallery__tile')];
-    expect(tiles).toHaveLength(2);
-    expect(tiles[0].querySelector('img')?.getAttribute('src')).toBe('blob:one');
-    expect(tiles[1].textContent).toContain('Video');
-    tiles[1].click();
-    await settle();
-    expect(live.calls.find(([id]) => id === 'media-organizer.embed.open')?.[1][0]).toEqual({ items: [{ type: 'photo', id: 1 }, { type: 'video', id: 2 }], index: 1 });
-  });
-
-  it('a deleted album, an empty library, and no Media Organizer each say so', async () => {
-    const gone = mount(fakeLive({ 'media-organizer.embed.listAlbums': () => [], 'media-organizer.embed.listItems': () => [] }), { type: 'mediaGallery', attrs: { albumId: '4', limit: 12 } });
-    const empty = mount(fakeLive({ 'media-organizer.embed.listAlbums': () => [], 'media-organizer.embed.listItems': () => [] }), { type: 'mediaGallery', attrs: { albumId: '', limit: 12 } });
-    const none = mount(fakeLive({}), { type: 'mediaGallery', attrs: { albumId: '', limit: 12 } });
-    await settle();
-    expect(gone.view.dom.querySelector('.canvas-gallery__note')?.textContent).toContain('album was deleted');
-    expect(empty.view.dom.querySelector('.canvas-gallery__note')?.textContent).toBe('No photos or videos yet.');
-    expect(none.view.dom.querySelector('.canvas-gallery__note')?.textContent).toBe('Media Organizer is not available.');
-  });
-
-  it('a tool that starts after the page is opened is picked up', async () => {
-    vi.useFakeTimers();
-    const commands: Record<string, (...a: any[]) => unknown> = {};
-    const ed = mount(fakeLive(commands), { type: 'mediaGallery', attrs: { albumId: '', limit: 12 } });
-    await vi.advanceTimersByTimeAsync(10);
-    expect(ed.view.dom.querySelector('.canvas-gallery__note')?.textContent).toBe('Media Organizer is not available.');
-    commands['media-organizer.embed.listAlbums'] = () => [];
-    commands['media-organizer.embed.listItems'] = () => items;
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(ed.view.dom.querySelectorAll('.canvas-gallery__tile')).toHaveLength(2);
-  });
-});
-
-describe('Practice Problems block in the editor', () => {
+describe('Practice Problems (Worksheets\' block)', () => {
   it('lists problems with their state, opens one, and follows Worksheets changes', async () => {
-    let problems = [
-      { id: 3, title: 'Mack reserve', paper: 'Mack (1994)', state: 'Hard', starred: true },
-      { id: 2, title: 'Clark LDF', paper: 'Clark', state: 'Medium', starred: false },
+    let items: EmbedItemLike[] = [
+      item(3, { title: 'Mack reserve', paper: 'mack1994', attemptState: 'hard', starred: true }),
+      item(2, { title: 'Clark LDF', attemptState: 'medium' }),
     ];
     const listeners = new Set<() => void>();
-    const live = fakeLive({
-      'worksheet.embed.listProblems': () => problems,
-      'worksheet.embed.filterChoices': () => ({ papers: [{ value: 'clark', label: 'Clark' }], tags: [] }),
-      'worksheet.embed.onDidChange': (fn: () => void) => { listeners.add(fn); return { dispose: () => listeners.delete(fn) }; },
-      'worksheet.openProblem': () => {},
+    const openProblem = vi.fn();
+    const reg = practiceBlock({
+      listItems: async () => items,
+      onDidChange: (fn) => { listeners.add(fn); return { dispose: () => { listeners.delete(fn); } }; },
+      openProblem, openBank: vi.fn(),
     });
-    const ed = mount(live, { type: 'practiceProblems', attrs: { show: 'needsWork', paper: 'clark', tag: '', limit: 5 } });
+    expect(reg.typeId).toBe('parallx.worksheet.practice');
+    const { body, ctx, state } = frame({ show: 'needsWork', paper: '', tag: '', limit: 5 });
+    const handle = reg.render(body, ctx)!;
     await settle();
-    const dom = ed.view.dom;
-    expect(live.calls.find(([id]) => id === 'worksheet.embed.listProblems')?.[1][0]).toEqual({ show: 'needsWork', paper: 'clark', tag: '', limit: 5 });
-    expect(dom.querySelector('.canvas-practice__title')?.textContent).toBe('Needs work · Clark');
-    const rows = [...dom.querySelectorAll<HTMLButtonElement>('.canvas-practice__row')];
-    expect(rows.map((r) => r.querySelector('.canvas-practice__name')?.textContent)).toEqual(['★ Mack reserve', 'Clark LDF']);
-    expect(rows[0].querySelector('.canvas-practice__state--hard')?.textContent).toBe('Hard');
+    expect(state.title).toBe('Needs work');
+    const rows = [...body.querySelectorAll<HTMLButtonElement>('.ws-practice__row')];
+    expect(rows.map((r) => r.querySelector('.ws-practice__name')?.textContent)).toEqual(['★ Mack reserve', 'Clark LDF']);
+    expect(rows[0].querySelector('.ws-practice__state--hard')?.textContent).toBe('Hard');
     rows[1].click();
-    await settle();
-    expect(live.calls.find(([id]) => id === 'worksheet.openProblem')?.[1]).toEqual([2]);
+    expect(openProblem).toHaveBeenCalledWith(2, 'Clark LDF');
 
-    expect(listeners.size).toBe(1);
-    problems = [];
+    const paperField = reg.settings!.fields.paper.options as () => Promise<Array<{ label: string }>>;
+    expect((await paperField()).map((o) => o.label)).toEqual(['Any paper', 'Clark', 'Mack (1994)']);
+
+    items = [];
     for (const l of listeners) l();
-    await new Promise((r) => setTimeout(r, 450));
-    await settle();
-    expect(dom.querySelector('.canvas-practice__note')?.textContent).toBe('Nothing needs work here. Well done.');
-
-    ed.destroy();
-    editors = editors.filter((e) => e !== ed);
+    await settle(450);
+    expect(state.note).toBe('Nothing needs work here. Well done.');
+    handle.dispose!();
     expect(listeners.size).toBe(0);
-  });
-
-  it('says so when Worksheets is not there', async () => {
-    const ed = mount(fakeLive({}), { type: 'practiceProblems', attrs: { show: 'all', paper: '', tag: '', limit: 5 } });
-    await settle();
-    expect(ed.view.dom.querySelector('.canvas-practice__note')?.textContent).toBe('Worksheets is not available.');
   });
 });

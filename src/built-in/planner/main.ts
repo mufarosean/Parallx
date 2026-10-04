@@ -22,6 +22,7 @@ import { PlannerEditorProvider } from './plannerEditorProvider.js';
 import { PlannerReminderScheduler } from './plannerReminderScheduler.js';
 import { registerPlannerChatTools } from './plannerChatTools.js';
 import { registerPlannerDashboardWidgets } from './widgets/registerPlannerWidgets.js';
+import { agendaBlock } from './plannerAgendaBlock.js';
 import { createPlannerSettingsPanel } from './plannerSettingsPanel.js';
 import { settingsPanelRegistry } from '../../services/settingsPanelRegistry.js';
 import { PlannerSyncOrchestrator } from './sync/plannerSyncOrchestrator.js';
@@ -35,6 +36,9 @@ interface ParallxApi {
   commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown): IDisposable;
     executeCommand<T = unknown>(id: string, ...args: unknown[]): Promise<T>;
+  };
+  canvas: {
+    registerBlock(registration: import('../../api/bridges/canvasBlocksBridge.js').CanvasBlockRegistration): IDisposable;
   };
   dashboard: {
     registerWidgetType<TConfig = Record<string, unknown>>(
@@ -337,6 +341,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // workaround is gone: register once, the dashboard picks it up whenever
   // it activates.
   context.subscriptions.push(registerPlannerDashboardWidgets(api.dashboard, _data));
+  // The Agenda block for pages: offered only while the Planner runs.
+  context.subscriptions.push(api.canvas.registerBlock(agendaBlock(_data, () => void api.commands.executeCommand('planner.open'))));
   if (isDevMode) console.log('[Planner] dashboard widgets contributed');
 
   // 9. Commands.

@@ -36,9 +36,7 @@ import { Embed } from '../extensions/embedNode.js';
 import { ButtonBlock } from '../extensions/buttonNode.js';
 import { LinkedDatabase } from '../extensions/linkedDatabaseNode.js';
 import { SyncedBlock } from '../extensions/syncedBlockNode.js';
-import { PlannerAgenda } from '../extensions/plannerAgendaNode.js';
-import { MediaGallery } from '../extensions/mediaGalleryNode.js';
-import { PracticeProblems } from '../extensions/practiceProblemsNode.js';
+import { ToolBlock } from '../extensions/toolBlockNode.js';
 import { MermaidDiagram, MERMAID_SAMPLE } from '../extensions/mermaidNode.js';
 import type { LiveBlockServices } from '../extensions/liveBlock.js';
 export type { LiveBlockServices } from '../extensions/liveBlock.js';
@@ -131,7 +129,7 @@ export interface SlashMenuConfig {
   /** Sort order within the slash menu (lower = higher in list). */
   readonly order: number;
   /** Category for grouping in slash menu UI. */
-  readonly category: 'page' | 'basic' | 'list' | 'rich' | 'media' | 'layout' | 'math' | 'advanced';
+  readonly category: 'page' | 'basic' | 'list' | 'rich' | 'media' | 'layout' | 'math' | 'advanced' | 'tools';
 }
 
 export interface TurnIntoConfig {
@@ -1132,49 +1130,21 @@ const definitions: BlockDefinition[] = [
     },
     extension: (ctx) => SyncedBlock.configure({ live: ctx.live }),
   },
-  // ── From your other tools (asked through their commands; a page works,
-  //    and says so, when the tool is not there) ──
+  // Blocks other tools bring while they run (api.canvas.registerBlock):
+  // one node for all of them; the / menu lists the running tools' blocks
+  // (canvasMenuRegistry), never this entry.
   {
-    // The planner's events and tasks for today, tomorrow or the week.
-    id: 'plannerAgenda',
-    name: 'plannerAgenda',
-    label: 'Agenda',
-    icon: 'calendar-check',
+    id: 'toolBlock',
+    name: 'toolBlock',
+    label: 'Block From a Tool',
+    icon: 'grid',
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Today\'s events and tasks from the planner', order: 35, category: 'media' },
+    slashMenu: undefined,
     turnInto: undefined,
-    defaultContent: { type: 'plannerAgenda', attrs: { range: 'today', show: 'all' } },
-    extension: (ctx) => PlannerAgenda.configure({ live: ctx.live }),
-  },
-  {
-    // An album, or the newest photos and videos, from Media Organizer.
-    id: 'mediaGallery',
-    name: 'mediaGallery',
-    label: 'Media Gallery',
-    icon: 'images',
-    source: 'custom',
-    kind: 'atom',
-    capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Photos and videos from an album', order: 36, category: 'media' },
-    turnInto: undefined,
-    defaultContent: { type: 'mediaGallery', attrs: { albumId: '', limit: 12 } },
-    extension: (ctx) => MediaGallery.configure({ live: ctx.live }),
-  },
-  {
-    // A few Problem Bank problems (needs work, not tried, starred).
-    id: 'practiceProblems',
-    name: 'practiceProblems',
-    label: 'Practice Problems',
-    icon: 'graduation-cap',
-    source: 'custom',
-    kind: 'atom',
-    capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Problems to work from your Problem Bank', order: 37, category: 'media' },
-    turnInto: undefined,
-    defaultContent: { type: 'practiceProblems', attrs: { show: 'needsWork', paper: '', tag: '', limit: 5 } },
-    extension: (ctx) => PracticeProblems.configure({ live: ctx.live }),
+    defaultContent: undefined,
+    extension: () => ToolBlock,
   },
   // Placeholders for stored content this build can't show (unknownContent.ts).
   // Never inserted by the user: no slash entry, no turn-into.

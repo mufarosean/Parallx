@@ -37,6 +37,11 @@ import {
   type InsertActionContext as _InsertActionContext,
   type InsertActionBaseContext as _InsertActionBaseContext,
 } from '../config/blockRegistry.js';
+import { getContributedBlocks, getContributedBlock } from '../../../api/bridges/canvasBlocksBridge.js';
+import { toolBlockContent } from '../extensions/toolBlockNode.js';
+
+/** / menu ids of blocks other tools bring: `tool:<typeId>`. */
+const TOOL_SLASH_PREFIX = 'tool:';
 
 // Re-export both context types so menu children (slashMenu.ts) get them
 // through their parent registry rather than importing blockRegistry directly.
@@ -359,7 +364,7 @@ export interface MenuBlockInfo {
   readonly iconIsText?: boolean;
   readonly defaultAttrs?: Record<string, any>;
   readonly defaultContent?: Record<string, any>;
-  readonly slashMenu?: { readonly label?: string; readonly description: string };
+  readonly slashMenu?: { readonly label?: string; readonly description: string; readonly category?: string };
   readonly turnInto?: { readonly order: number; readonly shortcut?: string };
 }
 
@@ -712,7 +717,17 @@ export class CanvasMenuRegistry {
    * Menus call this instead of importing blockRegistry directly.
    */
   getSlashMenuBlocks(): MenuBlockInfo[] {
-    return _getSlashMenuBlocks();
+    // Then the blocks running tools bring (they come and go with the tool).
+    const fromTools: MenuBlockInfo[] = getContributedBlocks()
+      .map((c) => ({
+        id: TOOL_SLASH_PREFIX + c.registration.typeId,
+        name: 'toolBlock',
+        label: c.registration.label,
+        icon: c.registration.icon,
+        slashMenu: { description: c.registration.description, category: 'tools' },
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    return [..._getSlashMenuBlocks(), ...fromTools];
   }
 
   /**
@@ -765,6 +780,13 @@ export class CanvasMenuRegistry {
     range: { from: number; to: number },
     context: _InsertActionBaseContext,
   ): Promise<void> {
+    if (blockId.startsWith(TOOL_SLASH_PREFIX)) {
+      const c = getContributedBlock(blockId.slice(TOOL_SLASH_PREFIX.length));
+      if (!c) return;
+      editor.chain().insertContentAt(range, toolBlockContent(c)).focus().run();
+      _moveCaretPastInsertedBlock(editor);
+      return;
+    }
     const def = _BLOCK_REGISTRY.get(blockId);
     if (!def) return;
 
