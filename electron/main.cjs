@@ -32,7 +32,8 @@ const { setupStorageHandlers } = require('./storageHandlers.cjs');
 const { setupWebFetchBridge } = require('./webFetchBridge.cjs');
 const { isSealed: isWorkspaceSealed } = require('./webFetchBridge.cjs');
 const { setupModelBridge } = require('./modelBridge.cjs');
-const { setupBrowserBridge } = require('./browserBridge.cjs');
+// The Browser's main-process side is loaded only when the Browser extension
+// starts it (startBrowserBridge), not at app start.
 /** The browser bridge once the window exists; asked before any link leaves for the system browser. */
 let _browserBridge = null;
 const { setupGoogleSyncBridge } = require('./googleSyncBridge.cjs');
@@ -902,15 +903,38 @@ app.whenReady().then(async () => {
   } catch { /* old dir doesn't exist — nothing to migrate */ }
 
   await createWindow();
-  // Private browser sessions (docs/BROWSER.md): configured once the window
-  // exists so popup routing and blocked counts can reach the renderer. A test
-  // launch without its own data folder shares a running app's (no single-
-  // instance lock in test mode): it leaves that app's captures alone.
+});
+
+// Private browser sessions (docs/BROWSER.md). Nothing of the Browser exists
+// until the Browser extension starts it (browser:start, from its activate):
+// no sessions, no ad-block list downloads, no sweeps for a user who never
+// turned it on. Turned off, it stops its timers and network checks
+// (browser:stop); turned on again, it resumes. A test launch without its own
+// data folder shares a running app's (no single-instance lock in test mode):
+// it leaves that app's captures alone.
+function startBrowserBridge() {
+  if (_browserBridge) { _browserBridge.setActive(true); return true; }
   try {
+    const { setupBrowserBridge } = require('./browserBridge.cjs');
     _browserBridge = setupBrowserBridge(ipcMain, { getMainWindow: () => mainWindow, userData: app.getPath('userData'), getWorkspaceRoot: () => _fsWorkspaceRoot, eraseSecurely: (p, isDir) => queueEraser(p, isDir), eraseLeftoversAtStart: !(IS_TEST_MODE && !process.env.PARALLX_USER_DATA) });
+    return true;
   } catch (err) {
     console.error('[browser] bridge setup failed:', err && err.message);
+    return false;
   }
+}
+// Deleting a chat erases its kept captures and downloads: through the
+// running Browser, or straight from disk while it is off (nothing starts).
+ipcMain.handle('browser:forgetChats', async (event, chatSessionIds) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return { ok: false };
+  if (_browserBridge) return _browserBridge.forgetChats(chatSessionIds);
+  const { forgetChatsOnDisk } = require('./browserAutomationBroker.cjs');
+  return forgetChatsOnDisk(app.getPath('userData'), Array.isArray(chatSessionIds) ? chatSessionIds : [], (p, isDir) => queueEraser(p, isDir));
+});
+ipcMain.handle('browser:start', (event) => (mainWindow && event.sender === mainWindow.webContents ? startBrowserBridge() : false));
+ipcMain.handle('browser:stop', (event) => {
+  if (mainWindow && event.sender === mainWindow.webContents && _browserBridge) _browserBridge.setActive(false);
+  return true;
 });
 
 // Quit (Ctrl+Q, the File menu) goes through the same guarded close as the

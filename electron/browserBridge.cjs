@@ -303,7 +303,7 @@ function setupBrowserBridge(ipcMain, opts) {
       lists = { status: 'ready', count: countFilters(blocker), updatedAt, error: null, annoyances: prefs.annoyances };
     } catch (err) {
       lists = { status: blocker ? 'ready' : 'unavailable', count: blocker ? lists.count : 0, updatedAt: lists.updatedAt, error: err && err.message ? err.message : String(err), annoyances: prefs.annoyances };
-      setTimeout(() => { void loadLists(false); }, LIST_RETRY_MS).unref?.();
+      setTimeout(() => { if (active) void loadLists(false); }, LIST_RETRY_MS).unref?.();
     }
     send('browser:lists', lists);
   }
@@ -342,8 +342,23 @@ function setupBrowserBridge(ipcMain, opts) {
     if (!e) return { webContentsId: id, count: 0, hosts: [] };
     return { webContentsId: id, count: e.count, hosts: [...e.hosts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([host, n]) => ({ host, n })) };
   }
-  void loadLists(false);
-  setInterval(() => { void loadLists(false); }, LIST_CHECK_MS).unref?.();
+  // The lists are fetched and re-checked only while the Browser extension
+  // runs: turned off, nothing goes to the network for it (setActive).
+  let active = false;
+  let listTimer = null;
+  function setActive(on) {
+    if (on && !active) {
+      active = true;
+      void loadLists(false);
+      listTimer = setInterval(() => { void loadLists(false); }, LIST_CHECK_MS);
+      listTimer.unref?.();
+    } else if (!on && active) {
+      active = false;
+      if (listTimer) clearInterval(listTimer);
+      listTimer = null;
+    }
+    brokerHook('setActive', on);
+  }
 
   // ── Cosmetic filters and scriptlets ──
   // Cosmetic CSS: the engine's frame preload asks for rules at document start
@@ -979,7 +994,9 @@ function setupBrowserBridge(ipcMain, opts) {
     send('browser:open-url', { url: String(url).trim(), disposition: 'app-link', openerId: null });
     return true;
   };
-  return { PARTITIONS, watchWindow, openInApp };
+  setActive(true);
+  const forgetChats = async (ids) => (broker ? broker.clearArtifacts({ chatSessionIds: Array.isArray(ids) ? ids : [] }) : { ok: false });
+  return { PARTITIONS, watchWindow, openInApp, setActive, forgetChats };
 }
 
 module.exports = { setupBrowserBridge, PARTITIONS };

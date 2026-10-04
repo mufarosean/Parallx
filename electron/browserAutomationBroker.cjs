@@ -415,7 +415,6 @@ function createAutomationBroker(opts) {
   const eraseSecurely = typeof opts.eraseSecurely === 'function' ? opts.eraseSecurely : null;
   // Copies a finished download into the user's Downloads (the bridge's folder, listed like their own).
   const saveDownload = typeof opts.saveDownload === 'function' ? opts.saveDownload : null;
-  let retireSeq = 0;
   const send = (payload) => { const w = getMainWindow(); if (w && !w.isDestroyed()) w.webContents.send('browser:automation:event', payload); };
 
   let ctx = null;          // { workspaceId, workspaceSessionId, sealed }
@@ -447,9 +446,19 @@ function createAutomationBroker(opts) {
   // Not by a test launch sharing a running app's folder: that app's tabs are open.
   if (opts.eraseLeftoversAtStart !== false) eraseLeftovers();
   cleanupArtifacts();
-  // Retention holds while the app runs, not only at start.
-  const sweep = setInterval(cleanupArtifacts, LIMITS.artifactSweepMs);
-  if (typeof sweep.unref === 'function') sweep.unref();
+  // Retention holds while the Browser runs, not only at start. Stopped while
+  // the Browser extension is turned off (setActive).
+  let sweep = null;
+  function setActive(on) {
+    if (on && !sweep) {
+      sweep = setInterval(cleanupArtifacts, LIMITS.artifactSweepMs);
+      if (typeof sweep.unref === 'function') sweep.unref();
+    } else if (!on && sweep) {
+      clearInterval(sweep);
+      sweep = null;
+    }
+  }
+  setActive(true);
 
   // ── Context and leases ──
 
@@ -2252,35 +2261,6 @@ function createAutomationBroker(opts) {
       if (fs.existsSync(p)) eraseKept(p, true);
     }
   }
-  /** Take a folder out of reach before it is erased: no capture id resolves inside it again. */
-  function retire(p) {
-    if (!fs.existsSync(p)) return null;
-    const doomed = `${p}.erase-${Date.now().toString(36)}${(++retireSeq).toString(36)}`;
-    try { fs.renameSync(p, doomed); return doomed; } catch { return null; }
-  }
-  /** Overwrite every file under `target` with random bytes, in place. */
-  function overwriteTree(target) {
-    let st;
-    try { st = fs.statSync(target); } catch { return; }
-    if (st.isDirectory()) {
-      let names = [];
-      try { names = fs.readdirSync(target); } catch { names = []; }
-      for (const n of names) overwriteTree(path.join(target, n));
-      return;
-    }
-    let fd = null;
-    try {
-      fd = fs.openSync(target, 'r+');
-      const chunk = Buffer.alloc(Math.max(1, Math.min(st.size, 1 << 20)));
-      for (let off = 0; off < st.size;) {
-        crypto.randomFillSync(chunk);
-        const n = Math.min(chunk.length, st.size - off);
-        fs.writeSync(fd, chunk, 0, n, off);
-        off += n;
-      }
-      fs.fsyncSync(fd);
-    } catch { /* in use: it is still removed below */ } finally { if (fd !== null) { try { fs.closeSync(fd); } catch { /* closed */ } } }
-  }
   /**
    * Remove kept captures and downloads (a folder, or one file) for good, never to the Recycle Bin.
    * Eraser (when the delete policy names it) overwrites and removes them;
@@ -2676,9 +2656,81 @@ function createAutomationBroker(opts) {
 
   return {
     onPopup, downloadPathFor, onInput, isAutomationInput, onViewGone, onViewCrashed, onLeaveBlocked, onAuthRequired, onRendererReset, isAgentSealed, revokeAll,
-    clearArtifacts, readArtifact,
+    clearArtifacts, readArtifact, setActive,
     _state: () => ({ ctx, lease, chats, stoppedTurns }),
   };
+}
+
+
+// ── Erasing kept files (module level: also used with the Browser off) ──
+
+let retireSeq = 0;
+/** Take a folder out of reach before it is erased: no capture id resolves inside it again. */
+function retire(p) {
+  if (!fs.existsSync(p)) return null;
+  const doomed = `${p}.erase-${Date.now().toString(36)}${(++retireSeq).toString(36)}`;
+  try { fs.renameSync(p, doomed); return doomed; } catch { return null; }
+}
+/** Overwrite every file under `target` with random bytes, in place. */
+function overwriteTree(target) {
+  let st;
+  try { st = fs.statSync(target); } catch { return; }
+  if (st.isDirectory()) {
+    let names = [];
+    try { names = fs.readdirSync(target); } catch { names = []; }
+    for (const n of names) overwriteTree(path.join(target, n));
+    return;
+  }
+  let fd = null;
+  try {
+    fd = fs.openSync(target, 'r+');
+    const chunk = Buffer.alloc(Math.max(1, Math.min(st.size, 1 << 20)));
+    for (let off = 0; off < st.size;) {
+      crypto.randomFillSync(chunk);
+      const n = Math.min(chunk.length, st.size - off);
+      fs.writeSync(fd, chunk, 0, n, off);
+      off += n;
+    }
+    fs.fsyncSync(fd);
+  } catch { /* in use: it is still removed below */ } finally { if (fd !== null) { try { fs.closeSync(fd); } catch { /* closed */ } } }
+}
+
+/**
+ * A deleted chat takes its kept captures and downloads with it, also while
+ * the Browser is turned off (nothing of the Browser runs then; this only
+ * erases the user's own files, on their request). Same folders as
+ * clearArtifacts with chat ids: the runs those chats made.
+ */
+async function forgetChatsOnDisk(userData, chatSessionIds, eraseSecurely) {
+  const ids = new Set((chatSessionIds || []).filter((x) => typeof x === 'string' && x));
+  if (!ids.size) return { ok: true, removed: 0 };
+  const root = path.join(userData, 'browser', 'artifacts');
+  let workspaces = [];
+  try { workspaces = fs.readdirSync(root); } catch { return { ok: true, removed: 0 }; }
+  const dirs = [];
+  for (const w of workspaces) {
+    const wsDir = path.join(root, w);
+    let runs = {};
+    try { const j = JSON.parse(fs.readFileSync(path.join(wsDir, RUNS_INDEX), 'utf8')); runs = j && j.runs && typeof j.runs === 'object' ? j.runs : {}; } catch { continue; }
+    let changed = false;
+    for (const [run, info] of Object.entries(runs)) {
+      if (!info || !ids.has(info.chatSessionId)) continue;
+      dirs.push(path.join(wsDir, safeSegment(run)));
+      delete runs[run];
+      changed = true;
+    }
+    if (changed) { try { fs.writeFileSync(path.join(wsDir, RUNS_INDEX), JSON.stringify({ version: 1, runs })); } catch { /* gone */ } }
+  }
+  let kept = 0;
+  for (const dir of dirs) {
+    const target = retire(dir) || dir;
+    try {
+      let queued = false;
+      if (typeof eraseSecurely === 'function') { try { queued = await eraseSecurely(target, true); } catch { queued = false; } }
+      if (!queued) { overwriteTree(target); await fs.promises.rm(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+    } catch { kept++; }
+  }
+  return kept ? { ok: false, removed: dirs.length - kept } : { ok: true, removed: dirs.length };
 }
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
@@ -2732,4 +2784,4 @@ function staticPixelsMatch(a, b, width, region, motion) {
   return true;
 }
 
-module.exports = { createAutomationBroker, LIMITS, KEYS, PAGE_NOTICE, fitOutcome, withNotice, targetView, isSecretField, safeFileName, uniquePath, isWebUrl, isPrivateDestination, markChangedBlocks, staticPixelsMatch, targetMovesOnlyNow };
+module.exports = { createAutomationBroker, forgetChatsOnDisk, LIMITS, KEYS, PAGE_NOTICE, fitOutcome, withNotice, targetView, isSecretField, safeFileName, uniquePath, isWebUrl, isPrivateDestination, markChangedBlocks, staticPixelsMatch, targetMovesOnlyNow };

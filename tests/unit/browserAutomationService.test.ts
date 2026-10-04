@@ -76,6 +76,7 @@ function setup(opts: { reply?: (c: Call) => unknown; sealed?: boolean; noContext
   const sessionChanged = new Emitter<unknown>();
   const settings = fakeSettings(opts.sealed);
   const transport = fakeTransport(opts.reply);
+  const forgotten: string[][] = [];
   // The workspace session, as the session manager holds it: endSession aborts
   // its signal, drops it and then announces the change.
   const abort = new AbortController();
@@ -89,13 +90,14 @@ function setup(opts: { reply?: (c: Call) => unknown; sealed?: boolean; noContext
     sessions: () => ({ activeContext: active, onDidChangeSession: sessionChanged.event }),
     settings: () => settings as any,
     transport: () => transport,
+    forgetChats: async (ids) => { forgotten.push(ids); return { ok: true }; },
   });
   const tool = (name: string) => {
     const t = registered.find((x) => x.name === name);
     if (!t) throw new Error(`no tool ${name}`);
     return t;
   };
-  return { service, registered, transport, completed, deleted, sessionChanged, endSession, settings, tool };
+  return { service, registered, transport, completed, deleted, sessionChanged, endSession, settings, tool, forgotten };
 }
 
 const parse = (r: IToolResult) => JSON.parse(r.content);
@@ -256,16 +258,19 @@ describe('BrowserAutomationService', () => {
     expect(s.transport.of('release')[0].payload).toEqual({ chatSessionId: 'chat-1', turnId: 'turn-1' });
   });
 
-  it('a deleted chat takes its artifacts with it, with or without the Browser hosting', () => {
+  it('a deleted chat takes its artifacts with it, with or without the Browser running', () => {
+    // Through the main process, which erases the files itself while the
+    // Browser is off (nothing of the Browser starts for it).
     const s = setup();
     s.deleted.fire('chat-7');
-    expect(s.transport.of('clearArtifacts').map((c) => c.payload)).toEqual([{ chatSessionIds: ['chat-7'] }]);
+    expect(s.forgotten).toEqual([['chat-7']]);
     s.service.registerHost(fakeHost(), 'parallx.browser');
     s.deleted.fire('chat-8');
-    expect(s.transport.of('clearArtifacts').map((c) => c.payload)).toEqual([{ chatSessionIds: ['chat-7'] }, { chatSessionIds: ['chat-8'] }]);
+    expect(s.forgotten).toEqual([['chat-7'], ['chat-8']]);
+    expect(s.transport.of('clearArtifacts')).toHaveLength(0);
     s.service.dispose();
     s.deleted.fire('chat-9');
-    expect(s.transport.of('clearArtifacts')).toHaveLength(2);
+    expect(s.forgotten).toHaveLength(2);
   });
 
   it('tells the broker again when the workspace changes or is sealed', () => {

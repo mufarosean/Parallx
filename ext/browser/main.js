@@ -2013,6 +2013,9 @@ export async function activate(api, context) {
   _dbBridge = api.database;
   await hardenDb();
   Tabs.prune().catch(() => {});
+  // The browser itself (sessions, shields, ad-block lists) exists in the main
+  // process only while this extension runs: started here, stopped on deactivate.
+  try { const b = bridge(); if (b && b.start) await b.start(); } catch (err) { console.warn('[browser] could not start the browser:', err && err.message); }
 
   context.subscriptions.push(api.editors.registerEditorProvider(EDITOR_TYPE, {
     createEditorPane(container, input) {
@@ -2066,6 +2069,8 @@ export function deactivate() {
   _unsubscribeBridge = null;
   const b = bridge();
   if (b && cfg('clearOnExit', false)) { try { b.clearData('user'); } catch { /* ignore */ } }
+  // Turned off: no list checks or sweeps run for it any more.
+  if (b && b.stop) { try { void b.stop(); } catch { /* ignore */ } }
   dismissMenu();
   _panes.clear(); _panesByWc.clear(); _livePanes.clear(); _sidebarListeners.clear();
   const style = document.getElementById('browser-styles');

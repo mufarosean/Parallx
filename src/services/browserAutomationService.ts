@@ -40,6 +40,8 @@ export interface IBrowserAutomationDeps {
   readonly sessions: () => { readonly activeContext: { readonly workspaceId: string; readonly sessionId: string; readonly cancellationSignal?: AbortSignal } | undefined; readonly onDidChangeSession: Event<unknown> } | undefined;
   readonly settings: () => SettingsLike | undefined;
   readonly transport?: () => IBrowserAutomationTransport | undefined;
+  /** Erase deleted chats' kept captures and downloads (main process; works with the Browser off). */
+  readonly forgetChats?: (chatSessionIds: string[]) => Promise<unknown>;
 }
 
 interface ToolSpec {
@@ -162,16 +164,22 @@ function electronTransport(): IBrowserAutomationTransport | undefined {
   return { call: (m, p, budget) => automation(m, p, budget), onEvent: (cb) => onEvent(cb) };
 }
 
+function electronForgetChats(): ((ids: string[]) => Promise<unknown>) | undefined {
+  const b = (globalThis as { parallxElectron?: { browser?: { forgetChats?: (ids: string[]) => Promise<unknown> } } }).parallxElectron?.browser;
+  return b?.forgetChats ? (ids) => b.forgetChats!(ids) : undefined;
+}
+
 export class BrowserAutomationService extends Disposable implements IBrowserAutomationService {
   private _host: IBrowserAutomationHost | undefined;
 
   constructor(private readonly _deps: IBrowserAutomationDeps) {
     super();
     // A deleted chat takes its captures and downloads with it, whether or not
-    // the Browser is on now: the files are on disk from earlier runs.
+    // the Browser is on now: the files are on disk from earlier runs. With the
+    // Browser off nothing of it starts; the main process erases the files.
     this._register(_deps.chat.onDidDeleteSession((chatSessionId) => {
-      const t = this._transport();
-      if (t) void t.call('clearArtifacts', { chatSessionIds: [chatSessionId] }).catch(() => { /* main process not ready */ });
+      const forget = this._deps.forgetChats ?? electronForgetChats();
+      if (forget) void forget([chatSessionId]).catch(() => { /* main process not ready */ });
     }));
   }
 

@@ -396,6 +396,12 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   // browser extension listens to. The sessions themselves are configured in
   // the main process; nothing here can weaken them.
   browser: {
+    // The Browser extension starts the browser when it activates and stops
+    // its background work when turned off; nothing runs before.
+    start: () => ipcRenderer.invoke('browser:start'),
+    stop: () => ipcRenderer.invoke('browser:stop'),
+    // A deleted chat's kept captures and downloads, with the Browser on or off.
+    forgetChats: (chatSessionIds) => ipcRenderer.invoke('browser:forgetChats', chatSessionIds),
     getState: () => ipcRenderer.invoke('browser:getState'),
     getSite: (url) => ipcRenderer.invoke('browser:getSite', url),
     setSite: (url, patch) => ipcRenderer.invoke('browser:setSite', url, patch),

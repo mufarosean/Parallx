@@ -37,9 +37,9 @@ Status: **fixed** (commit), **open**, or **ok** (checked, follows the rule).
 
 | # | Where | Tool | What | Status |
 |---|---|---|---|---|
-| 16 | `electron/main.cjs:908`, `browserBridge.cjs:133-346` | Browser | At every start: two browser sessions, ad-block lists downloaded from the internet, re-checked hourly | open (highest) |
-| 17 | `electron/browserAutomationBroker.cjs:448-452` | Browser | At start: clears leftovers, sweeps artifacts on a timer | open |
-| 18 | `services/browserAutomationService.ts:172` | Browser | Core service clears browser artifacts on every chat deletion | open |
+| 16 | `electron/main.cjs:908`, `browserBridge.cjs:133-346` | Browser | At every start: two browser sessions, ad-block lists downloaded from the internet, re-checked hourly | **fixed**: nothing of the Browser loads until the extension starts it (`browser:start`); turned off, list checks and sweeps stop (`browser:stop`) |
+| 17 | `electron/browserAutomationBroker.cjs:448-452` | Browser | At start: clears leftovers, sweeps artifacts on a timer | **fixed** (with 16) |
+| 18 | `services/browserAutomationService.ts:172` | Browser | Core service clears browser artifacts on every chat deletion | **fixed**: kept on purpose (it erases the user's own files when they delete a chat), now without starting the Browser (`forgetChatsOnDisk`) |
 | 19 | `planner/main.ts:150` (`IPlannerQueryService`) | Planner | Never unregistered: after turning Planner off, heartbeat and workflows keep calling it | open |
 | 20 | `services/semanticGraphService.ts` and friends (`workbenchServices.ts:360-407`) | Workspace Graph | Once started, keeps re-indexing after Workspace Graph is turned off; tables created by core | open |
 | 21 | `services/autonomyBootstrap.ts` (`workbench.ts:3409`) | Agents | Cron, workflows, task rail built at every start (also used by Chat: decide) | open |
