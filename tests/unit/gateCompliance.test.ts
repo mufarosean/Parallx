@@ -126,7 +126,8 @@ const GATE_RULES: Record<string, string[]> = {
   'menus/tableActionMenu.ts':              ['menus/canvasMenuRegistry'],
   'menus/iconMenu.ts':                     ['menus/canvasMenuRegistry'],
   'menus/coverMenu.ts':                    ['menus/canvasMenuRegistry'],
-  'menus/inlineAIChat.ts':                 ['menus/canvasMenuRegistry'],   // M48 Phase 5
+  'menus/inlineAIChat.ts':                 ['menus/canvasMenuRegistry', 'menus/inlineAIReplace'],   // M48 Phase 5
+  'menus/inlineAIReplace.ts':              [],  // Replace action: markdown in and out, tracked range
   'math/inlineMathEditor.ts':              ['menus/canvasMenuRegistry'],
   'menus/slashMenuItems.ts':               [],  // pure data — zero imports
   'menus/inputPasteContextMenu.ts':        [],  // pure UI — no canvas imports
@@ -332,6 +333,7 @@ describe('Canvas Gate Architecture Compliance', () => {
           canvasRel === 'canvasTypes' ||
           canvasRel === 'canvasEditorProvider' ||
           canvasRel === 'markdownExport' ||
+          canvasRel === 'markdownImport' ||
           canvasRel === 'contentSchema'
         ) {
           continue;
@@ -408,6 +410,7 @@ describe('Canvas Gate Architecture Compliance', () => {
           canvasRel === 'canvasTypes' ||
           canvasRel === 'canvasEditorProvider' ||
           canvasRel === 'markdownExport' ||
+          canvasRel === 'markdownImport' ||
           canvasRel === 'contentSchema'
         ) {
           continue;

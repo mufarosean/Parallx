@@ -14,6 +14,7 @@ import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import type { IChatMessage, IChatResponseChunk } from '../../../services/chatTypes.js';
+import { TrackedRange, replySlice, selectionToMarkdown } from './inlineAIReplace.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,8 +51,12 @@ export class InlineAIChatController implements ICanvasMenu {
 
   /** The selected text when the chat was opened. */
   private _selectionText = '';
-  private _selectionFrom = 0;
-  private _selectionTo = 0;
+  /** The selection as markdown, as the AI sees it. */
+  private _selectionMarkdown = '';
+  /** Where the selection is now; follows edits made while the chat is open. */
+  private _range: TrackedRange | null = null;
+  /** The editor the selection belongs to. */
+  private _rangeEditor: Editor | null = null;
 
   /** Last AI response text (for Replace / Send to Chat actions). */
   private _lastAssistantText = '';
@@ -166,10 +171,12 @@ export class InlineAIChatController implements ICanvasMenu {
 
     // Capture selection state
     this._selectionText = editor.state.doc.textBetween(from, to);
-    this._selectionFrom = from;
-    this._selectionTo = to;
-
     if (!this._selectionText.trim()) return;
+    this._selectionMarkdown = selectionToMarkdown(editor.state.doc, from, to) || this._selectionText;
+    this._untrack();
+    this._range = new TrackedRange(from, to, this._selectionText);
+    this._rangeEditor = editor;
+    editor.on('transaction', this._onTransaction);
 
     // Reset conversation for new selection context
     this._resetConversation();
@@ -192,10 +199,21 @@ export class InlineAIChatController implements ICanvasMenu {
     });
   }
 
+  private readonly _onTransaction = ({ transaction }: { transaction: import('@tiptap/pm/state').Transaction }): void => {
+    this._range?.map(transaction);
+  };
+
+  private _untrack(): void {
+    this._rangeEditor?.off('transaction', this._onTransaction);
+    this._rangeEditor = null;
+    this._range = null;
+  }
+
   hide(): void {
     if (this._chat) {
       this._chat.style.display = 'none';
     }
+    this._untrack();
     this._abortController?.abort();
     this._abortController = null;
     this._streaming = false;
@@ -203,6 +221,7 @@ export class InlineAIChatController implements ICanvasMenu {
   }
 
   dispose(): void {
+    this._untrack();
     this._registration?.dispose();
     this._registration = null;
     this._abortController?.abort();
@@ -271,10 +290,12 @@ export class InlineAIChatController implements ICanvasMenu {
         role: 'system',
         content: 'You are a helpful writing assistant working on a selected passage of text. '
           + 'The user has selected the following text from their document:\n\n'
-          + `---\n${this._selectionText}\n---\n\n`
+          + `---\n${this._selectionMarkdown}\n---\n\n`
           + 'Help them with whatever they ask about this selection. '
           + 'Be concise and direct. If they ask you to rewrite or transform the text, '
-          + 'return only the transformed text without explanation.',
+          + 'return only the transformed text without explanation, as Markdown. '
+          + 'Keep its formatting, and keep any <!-- parallx:... --> comments and '
+          + '<span data-px...> tags around the text they belong to.',
       });
     }
 
@@ -394,18 +415,38 @@ export class InlineAIChatController implements ICanvasMenu {
 
   // ── Actions ────────────────────────────────────────────────────────────
 
-  /** Replace the original selection with the last AI response. */
+  /** Replace the selection, where it is now, with the last AI response. */
   private _replaceSelection(): void {
     const editor = this._host.editor;
-    if (!editor || !this._lastAssistantText) return;
+    const range = this._range;
+    if (!editor || !range || !this._lastAssistantText) return;
 
-    editor.chain()
-      .focus()
-      .deleteRange({ from: this._selectionFrom, to: this._selectionTo })
-      .insertContentAt(this._selectionFrom, this._lastAssistantText)
-      .run();
+    if (editor !== this._rangeEditor || editor.isDestroyed || !range.isIntact(editor.state.doc)) {
+      this._appendNote('The selected text changed after you asked, so it was not replaced. Select it again to try again.');
+      return;
+    }
+
+    let slice;
+    try {
+      slice = replySlice(editor.state.schema, this._lastAssistantText);
+    } catch {
+      this._appendNote('This response could not be added to the page.');
+      return;
+    }
+
+    const tr = editor.state.tr.replaceRange(range.from, range.to, slice).scrollIntoView();
+    editor.view.dispatch(tr);
+    editor.view.focus();
 
     this.hide();
+  }
+
+  /** A short line in the chat explaining why an action did nothing. */
+  private _appendNote(text: string): void {
+    const note = $('div.canvas-ai-chat-note');
+    note.textContent = text;
+    this._messagesContainer?.appendChild(note);
+    this._scrollToBottom();
   }
 
   /** Dispatch the selection + conversation to the main chat panel. */

@@ -4794,6 +4794,14 @@
   color: var(--vscode-testing-iconFailed, #f87171);
 }
 
+/* Why an action did nothing */
+.canvas-ai-chat-note {
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+  line-height: 1.4;
+  padding: 0 4px;
+}
+
 /* Action buttons on assistant messages */
 .canvas-ai-chat-actions {
   display: flex;

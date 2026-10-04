@@ -159,7 +159,13 @@ markdown, focus) were not tested adversarially.
   the AI property tool writes raw SQL with no type validation.
 - **Inline AI Replace** uses a range captured when the chat opened (wrong text
   if the page changed) and parses the reply as HTML (`<b>` becomes bold,
-  newlines collapse).
+  newlines collapse). **Fixed (2026-10-04)**: the selected range follows every
+  edit while the chat is open (`menus/inlineAIReplace.ts`), Replace refuses
+  with a note when the selected text itself was edited or deleted, the AI gets
+  the selection as markdown, and the reply is read as markdown and put in the
+  way a paste is (one paragraph joins the line; several become blocks with
+  their own ids). Covered by `canvasInlineAIReplace.test.ts`; not tried in the
+  app, which has no model in the cloud container.
 - **AI page edits lose formatting**: `canvas_read_page` returns plain text,
   so a `replace` edit rewrites bold, links, nesting and callouts away and drops
   sub-page cards. `canvas_link_block` inserts literal text, not a link. **Fixed (2026-10-04)**
