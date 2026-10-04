@@ -35,7 +35,6 @@ import { openWidgetSettingsDrawer } from './settingsDrawer.js';
 import { ILinkResolverService } from '../../links/linkResolverService.js';
 import { WIDGET_TEMPLATES } from './widgetTemplates.js';
 import { getIcon } from '../../ui/iconRegistry.js';
-import { appDateParts, appTime } from '../../services/localTime.js';
 
 // ─── Minimal local API shape (avoids cross-tool import) ──────────────────────
 
@@ -398,11 +397,10 @@ class DashboardEditorPane implements IDisposable {
   /**
    * Compact popover to set the page's headless refresh schedule.
    * Preset-first (off / hourly / every 4h / daily / weekdays) with a raw
-   * cron field for power users. Daily/weekday times are entered in LOCAL
-   * time and converted to UTC (the cron evaluator runs in UTC). Note: for
-   * times where the UTC date differs from the local date, weekday schedules
-   * shift by a day at the boundary — acceptable for the target use
-   * ("weekdays 7:00"-style morning schedules).
+   * cron field for power users. Times and cron fields are in the app's Time
+   * Zone, as the scheduler reads them (computeNextRun walks the calendar in
+   * that zone). This used to convert daily/weekday times to UTC fields, so
+   * "Daily At 7:00" fired at 7:00 UTC read as local: noon in Central Time.
    */
   private async _openScheduleEditor(anchor: HTMLElement): Promise<void> {
     document.querySelector('.dashboard-schedule-pop')?.remove();
@@ -437,7 +435,7 @@ class DashboardEditorPane implements IDisposable {
 
     const cronInput = document.createElement('input');
     cronInput.type = 'text';
-    cronInput.placeholder = '0 12 * * 1-5  (5-field cron, UTC)';
+    cronInput.placeholder = '0 12 * * 1-5  (5-field cron, your time zone)';
     cronInput.className = 'dashboard-schedule-pop__cron';
     pop.appendChild(cronInput);
 
@@ -451,13 +449,10 @@ class DashboardEditorPane implements IDisposable {
       select.value = current.ms === 4 * 3_600_000 ? 'every4h' : 'hourly';
     } else if (current.kind === 'cron') {
       // Try to recognise our own daily/weekday shapes; otherwise show raw.
-      const m = /^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5)$/.exec(current.cron.trim());
-      if (m) {
-        const utc = new Date();
-        utc.setUTCHours(parseInt(m[2], 10), parseInt(m[1], 10), 0, 0);
-        const local = appDateParts(utc);
-        timeInput.value = `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`;
-        select.value = m[3] === '1-5' ? 'weekdays' : 'daily';
+      const daily = cronToDailyTime(current.cron);
+      if (daily) {
+        timeInput.value = daily.time;
+        select.value = daily.weekdaysOnly ? 'weekdays' : 'daily';
       } else {
         select.value = 'cron';
         cronInput.value = current.cron;
@@ -470,7 +465,7 @@ class DashboardEditorPane implements IDisposable {
       cronInput.style.display = v === 'cron' ? '' : 'none';
       hint.textContent =
         v === 'off' ? 'Widgets only refresh manually or on their own schedules.'
-        : v === 'cron' ? 'Standard 5-field cron, evaluated in UTC.'
+        : v === 'cron' ? 'Standard 5-field cron, in your time zone.'
         : v === 'daily' || v === 'weekdays' ? 'Local time. AI widgets run as background agents.'
         : 'AI widgets run as background agents; the chat is never opened.';
     };
@@ -486,14 +481,7 @@ class DashboardEditorPane implements IDisposable {
       if (v === 'hourly') policy = { kind: 'interval', ms: 3_600_000 };
       else if (v === 'every4h') policy = { kind: 'interval', ms: 4 * 3_600_000 };
       else if (v === 'daily' || v === 'weekdays') {
-        const [hh, mm] = (timeInput.value || '07:00').split(':').map((s) => parseInt(s, 10));
-        // Local time is the app's Time Zone; the cron runs in UTC.
-        const today = appDateParts(Date.now());
-        const local = new Date(appTime(today.year, today.month, today.day, hh || 7, mm || 0));
-        policy = {
-          kind: 'cron',
-          cron: `${local.getUTCMinutes()} ${local.getUTCHours()} * * ${v === 'weekdays' ? '1-5' : '*'}`,
-        };
+        policy = { kind: 'cron', cron: dailyTimeToCron(timeInput.value, v === 'weekdays') };
       } else if (v === 'cron') {
         const cron = cronInput.value.trim();
         if (cron) policy = { kind: 'cron', cron };
@@ -1575,4 +1563,22 @@ export function firstFitPlacement(
     }
   }
   return { row: maxRow + 1, col: 0, rowSpan, colSpan };
+}
+
+/**
+ * "Daily At" / "Weekdays At" as a cron. The fields are the app's Time Zone
+ * wall clock, the way the scheduler (computeNextRun) reads them.
+ */
+export function dailyTimeToCron(time: string, weekdaysOnly: boolean): string {
+  const [hh, mm] = (time || '07:00').split(':').map((x) => parseInt(x, 10));
+  const h = Number.isFinite(hh) ? Math.min(23, Math.max(0, hh)) : 7;
+  const min = Number.isFinite(mm) ? Math.min(59, Math.max(0, mm)) : 0;
+  return `${min} ${h} * * ${weekdaysOnly ? '1-5' : '*'}`;
+}
+
+/** The time a daily/weekday cron fires at ('HH:MM'), or null for any other cron. */
+export function cronToDailyTime(cron: string): { time: string; weekdaysOnly: boolean } | null {
+  const m = /^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5)$/.exec(String(cron).trim());
+  if (!m) return null;
+  return { time: `${m[2].padStart(2, '0')}:${m[1].padStart(2, '0')}`, weekdaysOnly: m[3] === '1-5' };
 }
