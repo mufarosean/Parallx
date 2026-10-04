@@ -739,7 +739,10 @@ const near = (f: any, box: { x: number; y: number; w: number; h: number }, pad: 
   Math.abs(f.x + f.w / 2 - (box.x + box.w / 2)) < box.w * 0.08 + 2 && Math.abs(f.y + f.h / 2 - (box.y + box.h / 2)) < box.h * 0.12 + 2
   && Math.abs(f.w / (box.w + 2 * pad * (box.w / MARK_W)) - 1) < 0.1;
 
-describe('finding a mark in other photos', () => {
+// These run the real multi-scale search over whole (small) photos: 1 to 3 s
+// each on an idle machine, so the 5 s default fails them under a loaded full
+// run. The work is the point of the test; the limit fits the work.
+describe('finding a mark in other photos', { timeout: 30_000 }, () => {
   const W = 360; const H = 240; const PAD = 8;
   // the example: the mark on one background, brushed a little larger than it is
   const example = background(W, H, 11);
