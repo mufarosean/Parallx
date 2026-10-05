@@ -71,6 +71,10 @@ function makeWorld(opts: { existing?: Record<string, any> | null } = {}) {
         ] })]);
         if (sys.includes('exactly one string key')) { const key = sys.match(/one string key: "(\w+)"/)![1]; return chunks([`{"${key}": "Rewritten ${key}."}`]); }
         if (sys.includes('Stay in character')) return chunks(['Noted. ', 'What do you want?']);
+        if (sys.includes('you propose several different characters')) return chunks([JSON.stringify({ pitches: [
+          { name: 'Marit Holm', tagline: 'Keeps the light and the gossip', hook: 'She runs the last manned light.', contradiction: 'Wants company, drives it off.', line: 'Sit. The kettle is on.' },
+          { name: 'Teodor Brask', tagline: 'Retired, not resigned', hook: 'He took the light to be alone and hates it.', contradiction: 'Writes letters he never sends.', line: 'The boat comes Tuesday. Or it does not.' },
+        ] })]);
         if (sys.includes('character designer for roleplay fiction')) {
           const s = { ...SHEET };
           if (user.includes('lighthouse keeper')) s.description = 'Ada keeps a lighthouse.';
@@ -148,8 +152,8 @@ describe('the Studio screen', () => {
     expect(root).toBeTruthy();
     expect((root.querySelector('.cs-title') as HTMLInputElement).placeholder).toBe('Name');
     expect(root.querySelector('.cs-chip')?.textContent).toBe('Draft');
-    for (const label of ['Open Chat', 'Export As Markdown', 'Chat Behaviour', 'Generate', 'Roll The Dice', 'Add Link', 'Add Canvas Page', 'Add File', 'Add Text', 'Send']) expect(buttonNamed(root, label), label).toBeTruthy();
-    expect([...root.querySelectorAll('.cs-section-title')].map((e) => e.textContent)).toEqual(['Make', 'Dials', 'Canon', 'Sheet', 'Try A Line']);
+    for (const label of ['Open Chat', 'Export As Markdown', 'Chat Behaviour', 'Generate', 'Pitch Ideas', 'Roll The Dice', 'Add Link', 'Add Canvas Page', 'Add File', 'Add Text', 'Send']) expect(buttonNamed(root, label), label).toBeTruthy();
+    expect([...root.querySelectorAll('.cs-section-title')].map((e) => e.textContent)).toEqual(['Make', 'Dials', 'Pitches', 'Canon', 'Sheet', 'Try A Line']);
     expect(root.querySelectorAll('.cs-row')).toHaveLength(11);
     for (const l of root.querySelectorAll('.cs-row-label > span:first-child')) expect(l.textContent).toMatch(/^[A-Z][a-z]+( [A-Z][a-z]+)*$/);
     expect(rowOf(root, 'personality').querySelectorAll('.cs-icon-btn')).toHaveLength(3);
@@ -212,6 +216,38 @@ describe('the Studio screen', () => {
     buttonNamed(root, 'Generate').click();
     await flush();
     expect((root.querySelector('.cs-title') as HTMLInputElement).value).toBe('Ada Lovelace');
+  });
+
+  it('pitches several takes first, and writes the sheet from the one picked', async () => {
+    const w = makeWorld();
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    expect(buttonNamed(root, 'Pitch Ideas')).toBeTruthy();
+    typeInto(root.querySelector('.cs-textarea') as HTMLTextAreaElement, 'A lighthouse keeper');
+    buttonNamed(root, 'Pitch Ideas').click();
+    await flush();
+    const cards = [...root.querySelectorAll('.cs-pitch')];
+    expect(cards).toHaveLength(2);
+    expect(cards[1].querySelector('.cs-pitch-name')?.textContent).toBe('Teodor Brask');
+    expect(cards[1].querySelector('.cs-pitch-line')?.textContent).toBe('"The boat comes Tuesday. Or it does not."');
+    const pitchReq = w.requests.find((r) => r.messages[0].content.includes('you propose several different characters'))!;
+    expect(pitchReq.options.temperature).toBe(1);
+    expect(pitchReq.messages[1].content).toContain('A lighthouse keeper');
+    // No sheet yet: pitching is a step before the sheet.
+    expect(areaOf(root, 'backstory').value).toBe('');
+    (cards[1].querySelector('button') as HTMLButtonElement).click();
+    await flush();
+    const sheetReq = w.requests.find((r) => r.messages[0].content.includes('character designer for roleplay fiction'))!;
+    expect(sheetReq.messages[1].content).toContain('NAME: Teodor Brask');
+    expect(sheetReq.messages[1].content).toContain('The take to write, chosen from several pitches');
+    expect(sheetReq.messages[1].content).toContain('Hook: He took the light to be alone and hates it.');
+    expect(areaOf(root, 'backstory').value).toBe(SHEET.backstory);
+    expect(root.querySelector('.cs-pitch--chosen .cs-pitch-name')?.textContent).toBe('Teodor Brask');
+    await flush(900);
+    const data = [...w.saved.values()][0];
+    expect(data.studio.pitch.name).toBe('Teodor Brask');
+    expect(data.studio.concept).toBe('A lighthouse keeper');
   });
 
   it('refuses to generate with nothing to go on, in words, not a dialog', async () => {

@@ -14,6 +14,7 @@ import {
   STUDIO_FIELDS, STUDIO_KEYS, emptySheet, cleanSheet, cleanFieldValue,
   condenseText, formatWords,
   buildCanonMessages, buildTwistMessages, buildSheetMessages, buildFieldMessages, buildTryLineMessages,
+  buildPitchMessages, parsePitches, pitchAsConcept,
   parseJsonLoose, extractCompletedFields, parseCanonFacts, parseTwistedCanon, canonCounts,
   sheetFromCharacter, characterFromSheet, lineageOf, stripDashes,
 } from './studio-core.js';
@@ -133,6 +134,14 @@ export function injectStudioStyles() {
 .cs-fact { display: flex; gap: var(--px-space-2); font-size: var(--px-text-sm); line-height: 1.45; padding: 2px 0; cursor: pointer; }
 .cs-fact-mark { width: 8px; height: 8px; border-radius: var(--px-radius-full); background: var(--px-divider); flex: 0 0 auto; margin-top: 7px; }
 .cs-fact--changed .cs-fact-mark { background: var(--px-accent); }
+.cs-pitches { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--px-space-3); }
+.cs-pitch { display: flex; flex-direction: column; gap: var(--px-space-1); padding: var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); }
+.cs-pitch--chosen { border-color: var(--px-accent); background: var(--px-accent-faint); }
+.cs-pitch-name { font-weight: 600; font-size: var(--px-text-md); }
+.cs-pitch-tag { color: var(--px-text-secondary); font-size: var(--px-text-sm); }
+.cs-pitch-hook { font-size: var(--px-text-sm); line-height: 1.45; }
+.cs-pitch-line { font-size: var(--px-text-sm); color: var(--px-text-muted); font-style: italic; line-height: 1.45; }
+.cs-pitch-foot { display: flex; justify-content: flex-end; margin-top: auto; padding-top: var(--px-space-2); }
 .cs-fact--added .cs-fact-mark { background: var(--px-success); }
 .cs-fact--off { opacity: .45; text-decoration: line-through; }
 .cs-fact-text { min-width: 0; }
@@ -202,6 +211,9 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     excluded: new Set(),
     dials: null,
     dialsTouched: false,
+    // Pitches: several takes on the concept; `pitch` is the one the sheet was written from.
+    pitches: [],
+    pitch: null,
     parentId: null,
     parentName: '',
     busy: false,
@@ -339,13 +351,24 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   diceBtn.title = 'Randomise every unlocked dial';
   const genBtn = button('Generate', 'sparkles', () => void generate(), true);
   genBtn.title = 'Write the whole sheet. Locked rows stay as they are.';
-  makeActions.append(genBtn, diceBtn);
+  const pitchBtn = button('Pitch Ideas', 'lightbulb', () => void pitchIdeas());
+  pitchBtn.title = 'Several different takes on the concept first; the sheet is written from the one you pick';
+  makeActions.append(genBtn, pitchBtn, diceBtn);
   diceBtn.classList.add('cr-dice');
   make.body.appendChild(makeActions);
   const progress = el('div', 'cs-progress');
   const progressFill = el('i');
   progress.appendChild(progressFill);
   make.body.appendChild(progress);
+
+  // ── Pitches ────────────────────────────────────────────────────────────
+  const pitchesSec = section('Pitches', 'Pick one; the sheet is written from it.');
+  pitchesSec.root.style.display = 'none';
+  mainCol.appendChild(pitchesSec.root);
+  const pitchList = el('div', 'cs-pitches');
+  const pitchMore = smallButton('More Pitches', 'lightbulb', () => void pitchIdeas());
+  pitchMore.title = 'Another set of takes';
+  pitchesSec.body.append(pitchList, pitchMore);
 
   // ── Canon ──────────────────────────────────────────────────────────────
   const canon = section('Canon', '');
@@ -615,6 +638,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     sourcesMode.setAttribute('aria-pressed', mode === 'sources' ? 'true' : 'false');
     sourcesField.style.display = mode === 'sources' ? '' : 'none';
     twistField.style.display = mode === 'sources' ? '' : 'none';
+    pitchBtn.style.display = mode === 'sources' ? 'none' : '';
     conceptLabel.textContent = mode === 'sources' ? 'Direction' : 'Concept';
     conceptArea.placeholder = mode === 'sources'
       ? 'Optional. Who the sources are about and what to focus on, e.g. "Jackie Chan, the person, not the films."'
@@ -905,17 +929,72 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   function context() {
     return {
       name: state.sheet.name.trim(),
-      concept: state.concept,
+      concept: state.mode === 'concept' ? pitchAsConcept(state.concept, state.pitch) : state.concept,
       canon: state.mode === 'sources' ? activeFacts() : [],
       spec: state.dialsTouched && forgeControls ? forgeControls.spec() : '',
       twist: state.mode === 'sources' ? state.twist : '',
     };
   }
 
-  // ── Generate ───────────────────────────────────────────────────────────
-  async function generate() {
+  // ── Pitches ────────────────────────────────────────────────────────────
+  function renderPitches() {
+    if (!state.pitches.length) { pitchesSec.root.style.display = 'none'; return; }
+    pitchesSec.root.style.display = '';
+    pitchesSec.open();
+    pitchList.replaceChildren(...state.pitches.map((p) => {
+      const chosen = state.pitch && state.pitch.name === p.name && state.pitch.hook === p.hook;
+      const card = el('div', `cs-pitch${chosen ? ' cs-pitch--chosen' : ''}`);
+      if (p.name) card.appendChild(el('div', 'cs-pitch-name', { text: p.name }));
+      if (p.tagline) card.appendChild(el('div', 'cs-pitch-tag', { text: p.tagline }));
+      if (p.hook) card.appendChild(el('div', 'cs-pitch-hook', { text: p.hook }));
+      if (p.contradiction) card.appendChild(el('div', 'cs-pitch-hook', { text: p.contradiction }));
+      if (p.line) card.appendChild(el('div', 'cs-pitch-line', { text: `"${p.line.replace(/^["']|["']$/g, '')}"` }));
+      const foot = el('div', 'cs-pitch-foot');
+      const write = smallButton(chosen ? 'Written' : 'Write This One', 'sparkles', () => void generate(p));
+      write.classList.add('cs-btn--primary');
+      write.disabled = !!chosen;
+      foot.appendChild(write);
+      card.appendChild(foot);
+      return card;
+    }));
+  }
+  async function pitchIdeas() {
     if (state.busy) return;
     clearError();
+    if (!state.concept.trim() && !state.dialsTouched) { showError('Write a concept, or roll the dice.'); return; }
+    state.busy = true;
+    pitchBtn.disabled = true;
+    pitchMore.disabled = true;
+    setStatus('Pitching', 'accent');
+    try {
+      const { modelId, numCtx } = await resolveModel();
+      const spec = state.dialsTouched && forgeControls ? forgeControls.spec() : '';
+      const { parsed } = await streamJson(modelId, numCtx, buildPitchMessages({ concept: state.concept, spec, name: state.sheet.name.trim() }), null, 1.0);
+      const pitches = parsePitches(parsed);
+      if (pitches.length === 0) throw new Error('The model returned no pitches. Try again, or pick another model.');
+      state.pitches = pitches;
+      state.pitch = null;
+      renderPitches();
+      pitchesSec.root.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    } catch (err) {
+      showError(`Could not pitch: ${err?.message || String(err)}`, () => void pitchIdeas());
+    } finally {
+      state.busy = false;
+      pitchBtn.disabled = false;
+      pitchMore.disabled = false;
+      refreshStatus();
+    }
+  }
+
+  // ── Generate ───────────────────────────────────────────────────────────
+  /** `pitch`: write the sheet from this take (Write This One); none: from the concept alone. */
+  async function generate(pitch = null) {
+    if (state.busy) return;
+    clearError();
+    state.pitch = pitch && typeof pitch === 'object' ? pitch : null;
+    // A pitch names the character unless the user already did.
+    if (state.pitch && state.pitch.name && !state.sheet.name.trim()) setField('name', state.pitch.name, { silent: true });
+    renderPitches();
     const usable = state.sources.filter((s) => s.status === 'ready' && s.text);
     if (state.mode === 'sources' && usable.length === 0 && state.baseFacts.length === 0) {
       showError('Add at least one source, or switch to From A Concept.');
@@ -965,6 +1044,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       if (!parsed || typeof parsed.name !== 'string') throw new Error('The model did not return a character. Try again, or pick another model.');
       fillSheet(cleanSheet(parsed), { skip: keepName ? ['name'] : [] });
       for (const k of STUDIO_KEYS) hideUndo(k);
+      renderPitches();
       make.close();
       sheetSec.open();
       scheduleSave(true);
@@ -1044,6 +1124,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       dials: state.dialsTouched && state.dials ? { ...state.dials, locks: [...state.dials.locks] } : null,
       parentId: state.parentId || null,
       parentName: state.parentName || '',
+      pitch: state.pitch || null,
     };
   }
   function markDirty() {
@@ -1157,6 +1238,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       state.excluded = new Set(Array.isArray(st.excluded) ? st.excluded : []);
       state.parentId = st.parentId || null;
       state.parentName = st.parentName || '';
+      state.pitch = st.pitch && typeof st.pitch === 'object' ? st.pitch : null;
       for (const k of Array.isArray(st.locks) ? st.locks : []) if (rows[k]) toggleLockSilently(k);
       if (st.dials && state.dials) { forgeControls.set(st.dials); state.dialsTouched = true; dials.setMeta('Set. Roll the dice or move a dial to change them.'); }
       make.close();

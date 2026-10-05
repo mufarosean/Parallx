@@ -191,3 +191,38 @@ describe('sheet <-> character file', () => {
     expect(lineageOf(byId, 'lost').map((c) => c.id)).toEqual(['lost']);
   });
 });
+
+describe('pitches', () => {
+  const { buildPitchMessages, parsePitches, pitchAsConcept, PITCH_COUNT } = core;
+
+  it('asks for several different takes on the concept, the chosen name kept', () => {
+    const [system, user] = buildPitchMessages({ concept: 'A lighthouse keeper who collects secrets', spec: '- Gender: Female', name: 'Marit Holm' });
+    expect(system.content).toContain(`exactly ${PITCH_COUNT} pitches`);
+    expect(system.content).toContain('never the obvious one twice');
+    expect(user.content).toContain('NAME: Marit Holm');
+    expect(user.content).toContain('A lighthouse keeper who collects secrets');
+    expect(user.content).toContain('ATTRIBUTES');
+    expect(system.content + user.content).not.toMatch(/[—–]/);
+  });
+
+  it('reads the pitches, cleans dashes, drops empties, keeps at most six', () => {
+    const parsed = { pitches: [
+      { name: 'Marit Holm', tagline: 'Keeps the light — and the gossip', hook: 'She runs the last manned light on the coast.', contradiction: 'Wants company, drives it off.', line: 'Sit. Or do not, I have the kettle on either way.' },
+      { name: '', tagline: '', hook: '', contradiction: 'x', line: '' },
+      ...Array.from({ length: 7 }, (_, i) => ({ name: `P${i}`, tagline: `take ${i}`, hook: `hook ${i}` })),
+    ] };
+    const out = parsePitches(parsed);
+    expect(out).toHaveLength(6);
+    expect(out[0].tagline).toBe('Keeps the light, and the gossip');
+    expect(out[1].name).toBe('P0');
+    expect(parsePitches({})).toEqual([]);
+  });
+
+  it('folds the chosen pitch into the concept the sheet is written from', () => {
+    const text = pitchAsConcept('A lighthouse keeper', { name: 'Marit Holm', tagline: 'Keeps the light', hook: 'Runs the last light.', contradiction: 'Wants company, drives it off.', line: 'Sit.' });
+    expect(text.startsWith('A lighthouse keeper\n\nThe take to write')).toBe(true);
+    expect(text).toContain('Name: Marit Holm');
+    expect(text).toContain('Contradiction: Wants company, drives it off.');
+    expect(pitchAsConcept('A lighthouse keeper', null)).toBe('A lighthouse keeper');
+  });
+});

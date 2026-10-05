@@ -244,6 +244,59 @@ export function buildSheetMessages({ concept = '', canon = [], spec = '', twist 
   return [{ role: 'system', content: system }, { role: 'user', content: parts.join('\n') }];
 }
 
+// ── Pitches ────────────────────────────────────────────────────────────────
+// One seed used to give one character. A pitch is a short take on the
+// concept (name, tagline, hook, the contradiction inside them, one line they
+// might say); several at once, each a different person, and the sheet is
+// written from the one chosen. Choosing between angles is where the
+// creativity is; a full sheet per angle would cost too much.
+
+export const PITCH_COUNT = 4;
+
+export function buildPitchMessages({ concept = '', spec = '', name = '' } = {}, count = PITCH_COUNT) {
+  const system = [
+    'You design characters for roleplay fiction. From one concept you propose several different characters, each a real take on it, never the obvious one twice.',
+    `Return ONLY a JSON object: {"pitches": [{"name": "...", "tagline": "...", "hook": "...", "contradiction": "...", "line": "..."}]} with exactly ${count} pitches. No markdown, no commentary.`,
+    'Each pitch: "name", a first name and surname from the character\'s own country and generation, the kind found in a phone book there, never the fiction defaults (Elias, Elara, Silas, Marcus, Mara, Mira, Thorne, Vance, Vane, Aris, Kael, Vex, Wren); "tagline", at most ten words, no name, who they are now; "hook", one sentence: the premise of this person, their life and work, concrete; "contradiction", one sentence: the tension inside them, what they want against what they do; "line", one thing they might say, in their own voice, one or two sentences, no stock quip.',
+    'The pitches differ in temperament (one may be warm, one vain, one anxious, one funny), in age, in the life around the concept, and in what the contradiction is. Third person throughout except inside "line".',
+    NO_DASHES,
+  ].join('\n');
+  const parts = [`Propose ${count} different characters for this concept.`, ''];
+  if (name.trim()) parts.push(`NAME: ${name.trim()}. The user chose this name: every pitch uses it, and the pitches differ in everything else.`, '');
+  if (concept.trim()) parts.push('CHARACTER CONCEPT (the user\'s own words; authoritative; every pitch is a take on this):', concept.trim(), '');
+  if (spec.trim()) parts.push('ATTRIBUTES (fill whatever the concept leaves open; the concept wins on any conflict):', spec.trim(), '');
+  return [{ role: 'system', content: system }, { role: 'user', content: parts.join('\n') }];
+}
+
+/** The pitches out of the model's JSON, cleaned; at most six, only those with a hook or a tagline. */
+export function parsePitches(parsed) {
+  const list = Array.isArray(parsed?.pitches) ? parsed.pitches : [];
+  const out = [];
+  for (const p of list) {
+    if (!p || typeof p !== 'object') continue;
+    const take = (k) => stripDashes(typeof p[k] === 'string' ? p[k] : '').trim();
+    const pitch = { name: take('name'), tagline: take('tagline'), hook: take('hook'), contradiction: take('contradiction'), line: take('line') };
+    if (!pitch.hook && !pitch.tagline) continue;
+    out.push(pitch);
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
+/** The concept the sheet is written from once a pitch is chosen: the user's words, then the take. */
+export function pitchAsConcept(concept, pitch) {
+  if (!pitch) return concept;
+  const lines = [
+    'The take to write, chosen from several pitches (the sheet is this person):',
+    pitch.name ? `Name: ${pitch.name}` : '',
+    pitch.tagline ? `Tagline: ${pitch.tagline}` : '',
+    pitch.hook ? `Hook: ${pitch.hook}` : '',
+    pitch.contradiction ? `Contradiction: ${pitch.contradiction}` : '',
+    pitch.line ? `A line they might say: ${pitch.line}` : '',
+  ].filter(Boolean);
+  return [String(concept || '').trim(), lines.join('\n')].filter(Boolean).join('\n\n');
+}
+
 /** One field again, consistent with the rest of the sheet, written differently. */
 /**
  * Rewrite one field. `direction` is the user's optional steer for this
