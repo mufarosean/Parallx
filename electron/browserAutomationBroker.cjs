@@ -712,13 +712,16 @@ function createAutomationBroker(opts) {
   }
 
   /**
-   * A new assistant tab for the chat. `opts.private`: in the chat's private
-   * session, its own in-memory profile (a new one once the last session ended),
-   * sharing nothing with the assistant's usual profile.
+   * A new assistant tab for the chat, always in the chat's private session:
+   * its own in-memory profile (a new one once the last session ended), that
+   * shares nothing with the user's browsing and keeps nothing (cookies,
+   * sign-ins, site data, captures, downloads not saved) once its last tab
+   * closes. The assistant never browses on a profile that persists (the
+   * owner's rule, 2026-10-05): what it does on the web leaves no trace.
    */
-  async function createTab(chatSessionId, openerTabId, opts) {
+  async function createTab(chatSessionId, openerTabId, _opts) {
     const c = chatRecord(chatSessionId);
-    const priv = !!(opts && opts.private);
+    const priv = true;
     if (priv && !c.privatePartition) c.privatePartition = `parallx-browser-agent-private-${safeSegment(chatSessionId).slice(-12)}-${++privateSeq}`;
     const tabId = `agent:${safeSegment(chatSessionId).slice(-8)}${Date.now().toString(36).slice(-4)}:${++c.seq}`;
     const rec = views.create(tabId, 'agent', priv ? { privatePartition: c.privatePartition } : undefined);
@@ -1518,13 +1521,11 @@ function createAutomationBroker(opts) {
     if (await privateRefused(url)) return fail('PRIVATE_ADDRESS', 'The Assistant Browser does not open addresses on this computer or the local network. Ask the user to open it themselves.', false);
     // The lookup can take a moment: a Stop or a pause in it opens no tab.
     guard(L);
-    // private: true opens (or stays in) the chat's private session; false leaves
-    // it for the usual profile; left out, a new tab follows the current one.
+    // Every assistant tab is in the chat's private session (createTab); a
+    // `private` flag, true or false, changes nothing.
     const current = currentTab(L);
-    const wantPrivate = a.private === true ? true : (a.private === false ? false : null);
     let rec = a.newTab ? null : current;
-    if (rec && wantPrivate !== null && !!rec.private !== wantPrivate) rec = null;
-    if (!rec) rec = await createTab(L.chatSessionId, null, { private: wantPrivate === null ? !!(current && current.private) : wantPrivate });
+    if (!rec) rec = await createTab(L.chatSessionId, null);
     note(L, `Opening ${hostOf(url)}`);
     // Load first: a tab that has never navigated has no renderer yet, and
     // every protocol command to it waits for one. observe() prepares after.

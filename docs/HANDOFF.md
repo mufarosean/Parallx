@@ -43,6 +43,26 @@ any order; a quoted phrase matches whole; a leading minus excludes
 (`brosius credibility -essay`). It was one substring before, so two words
 apart in the text found nothing.
 
+## Done on 2026-10-05, cloud, late: the assistant always browses privately
+
+The owner's rule: anything that uses the browser on its own uses it in
+private mode. Both automatic uses now do.
+
+- **The Assistant Browser** (`browserOpen` and the rest): every assistant tab
+  is a private session, the chat's own in-memory partition, wiped with its
+  last tab; `createTab` in `browserAutomationBroker.cjs` makes nothing else,
+  and the tool spec in `ext/browser/main.js` no longer offers a `private`
+  flag (a flag passed anyway changes nothing). Captures therefore live in
+  memory only and go when their tab closes; downloads sit in the run's
+  `private-downloads` folder and are erased when the session ends unless
+  saved with save_download. The on-disk erase machinery stays for files
+  older versions left. `docs/BROWSER.md`, "Two partitions", says so. Tests
+  rewritten in `browserAutomationBrokerRuntime.test.ts` ("private sessions",
+  "erasing what the assistant kept", "downloads", "artifacts") and
+  `browserAutomationService.test.ts`.
+- **The browser-engine fetch** (`electron/browserFetch.cjs`) was private from
+  the start: an in-memory partition per read, cleared after.
+
 ## Done on 2026-10-05, cloud, late: Web Research that works, and the browser engine
 
 The owner said the web tools "do not work half the time". The review found
