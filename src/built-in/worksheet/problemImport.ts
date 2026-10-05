@@ -44,9 +44,11 @@ export function paperKey(name: string): string {
 export function paperLabel(key: string): string {
   const k = paperKey(key);
   if (PAPER_LABELS[k]) return PAPER_LABELS[k];
+  const pe = /^pe(\d+)$/.exec(k);
+  if (pe) return `Practice Exam ${Number(pe[1])}`;
   return k ? k.charAt(0).toUpperCase() + k.slice(1) : '';
 }
-export const SOURCE_LABELS: Record<string, string> = { rf: 'Rising Fellow', cas: 'CAS Exam', custom: 'Custom', generated: 'Generated', other: 'Other' };
+export const SOURCE_LABELS: Record<string, string> = { rf: 'Rising Fellow', cas: 'CAS Exam', exam: 'Practice Exam', custom: 'Custom', generated: 'Generated', other: 'Other' };
 export const KIND_LABELS: Record<string, string> = { quant: 'Quantitative', qual: 'Qualitative', essay: 'Essay' };
 export const QUADRANT_LABELS: Record<number, string> = { 1: 'Easy & Likely', 2: 'Difficult & Likely', 3: 'Easy & Unlikely', 4: 'Difficult & Unlikely' };
 
@@ -56,7 +58,8 @@ export interface ProblemImport {
   readonly sheetName: string;
   readonly title: string;
   readonly paper: string;
-  readonly source: 'rf' | 'cas' | 'custom' | 'other';
+  /** 'exam': a sheet of a timed practice exam; its paper is the exam (pe1, pe2…) and the reading it tests rides along as a `reading:` tag. */
+  readonly source: 'rf' | 'cas' | 'exam' | 'custom' | 'other';
   readonly kind: 'quant' | 'qual' | 'essay';
   readonly quadrant: number;
   readonly rating: Rating;
@@ -237,10 +240,18 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
     const rating: Rating = ratingCell ? normalizeRating(cellText(sheet, ratingCell.row, ratingCell.col + 1)) : '';
     const a1 = cellText(sheet, 0, 0).trim();
     const hint = hints.get(name) ?? hints.get(name.replace(/\s+/g, ''));
-    const paper = name.includes('.') ? paperKey(name.split('.')[0])
+    // A practice-exam sheet has no title in A1: "Source: | PE 1 | Exam 7 | Q #3".
+    const exam = /^source:?$/i.test(cellText(sheet, 0, 1).trim()) ? cellText(sheet, 0, 2).trim()
+      : /^source:?$/i.test(a1) ? cellText(sheet, 0, 1).trim() : '';
+    const examNo = /^PE\s*(\d+)$/i.exec(exam);
+    // The paper a sheet belongs to. A practice exam is its own paper (pe1, pe2…) so
+    // the exam is one unit in the bank; the reading each question tests is kept as
+    // a `reading:` tag for the debrief.
+    const reading = name.includes('.') ? paperKey(name.split('.')[0])
       : hint?.paper ? paperKeyFromLabel(hint.paper)
         : paperFromTitle(a1);
-    const source = sourceOf(name);
+    const paper = examNo ? `pe${Number(examNo[1])}` : reading;
+    const source: ProblemImport['source'] = examNo ? 'exam' : sourceOf(name);
     const indexed = index.get(name);
     // A solution below the question: a "SOLUTION" row in column A after SHOW ALL WORK.
     const below = solution ? null : findCell(sheet, (t, r, c) => c === 0 && (!work || r > work.row) && /^solutions?\b/i.test(t.trim()));
@@ -252,14 +263,11 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
           : solution || hasFormulaBelow ? 'quant' : 'qual';
     const quadrant = indexed && indexed.quadrant >= 1 && indexed.quadrant <= 4 ? indexed.quadrant : 0;
     const { workbook, stats } = sheetToSnapshot(sheet, book, { dropCells: drop });
-    // A practice-exam sheet has no title in A1: "Source: | PE 1 | Exam 7 | Q #3".
-    // Name it by the exam and the question, with the paper when the point
-    // sheet gives one; a bank code takes the contents page's title.
-    const exam = /^source:?$/i.test(cellText(sheet, 0, 1).trim()) ? cellText(sheet, 0, 2).trim()
-      : /^source:?$/i.test(a1) ? cellText(sheet, 0, 1).trim() : '';
+    // Name a practice-exam sheet by the exam and the question, with the reading
+    // when the point sheet gives one; a bank code takes the contents page's title.
     const title = a1 && !/^source:?$/i.test(a1) && !(a1 === name && hint?.title) ? a1
       : hint?.title ? `${name} · ${hint.title}`
-        : [exam, name, paper ? paperLabel(paper) : ''].filter(Boolean).join(' · ');
+        : [exam, name, reading ? paperLabel(reading) : ''].filter(Boolean).join(' · ');
     const problem: ProblemImport = {
       sheetName: name,
       title: title || name,
@@ -277,7 +285,7 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
       stats,
     };
     // The content-outline task (A.iii.2) rides along as a tag when the workbook names one.
-    problems.push({ ...problem, tags: problemTags(problem) + (hint?.task ? `,${hint.task}` : '') });
+    problems.push({ ...problem, tags: problemTags(problem) + (hint?.task ? `,${hint.task}` : '') + (examNo && reading ? `,reading:${reading}` : '') });
     done++;
     onProgress?.(done, names.length);
   }

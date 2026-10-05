@@ -715,13 +715,13 @@ let _bankQuery = '';
 const BANK_FACETS = {
   status: ['starred', 'noted', 'incomplete'],
   rating: ['easy', 'medium', 'hard'],
-  source: ['rf', 'cas'],
+  source: ['rf', 'cas', 'exam'],
   kind: ['quant', 'qual', 'essay'],
 } as const satisfies Record<string, readonly string[]>;
 const BANK_FILTERS: [string, string][] = [
   ['starred', 'Starred'], ['noted', 'Noted'], ['incomplete', 'Incomplete'],
   ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'],
-  ['rf', 'Rising Fellow'], ['cas', 'CAS Exam'],
+  ['rf', 'Rising Fellow'], ['cas', 'CAS Exam'], ['exam', 'Practice Exam'],
   ['quant', 'Quantitative'], ['qual', 'Qualitative'], ['essay', 'Essay'],
 ];
 

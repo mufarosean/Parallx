@@ -12,8 +12,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 let sampleWritten = false;
 const db = new Database(dbPath, { readonly: true });
-const rows = db.prepare('SELECT id, title, sheet_json AS givens_json FROM ws_items ORDER BY id').all();
-let equationPngs = 0, textSvgs = 0, picturePngs = 0, pictureOther = 0;
+const rows = db.prepare('SELECT id, title, paper, source, tags, solution_col, solution_row, sheet_json AS givens_json FROM ws_items ORDER BY id').all();
+let equationPngs = 0, textSvgs = 0, picturePngs = 0, pictureOther = 0, noSolution = 0;
 for (const r of rows) {
   let eq = 0, svg = 0, png = 0, other = 0;
   try {
@@ -39,7 +39,9 @@ for (const r of rows) {
       }
     }
   } catch (e) { console.log(`  ${r.title}: unreadable snapshot (${String(e).slice(0, 80)})`); }
-  if (eq || svg || png || other) console.log(`  ${r.title}: equationPngs=${eq} textSvgs=${svg} picturePngs=${png} pictureOther=${other}`);
+  const sol = r.solution_col >= 0 ? `solution col ${r.solution_col}` : r.solution_row >= 0 ? `solution row ${r.solution_row}` : 'NO SOLUTION FOUND';
+  if (r.solution_col < 0 && r.solution_row < 0) noSolution++;
+  console.log(`  ${r.title} [${r.paper}/${r.source}; ${r.tags}]: ${sol}; equationPngs=${eq} textSvgs=${svg} picturePngs=${png} pictureOther=${other}`);
   equationPngs += eq; textSvgs += svg; picturePngs += png; pictureOther += other;
 }
-console.log(`TOTAL items=${rows.length} equationPngs=${equationPngs} textSvgs=${textSvgs} picturePngs=${picturePngs} pictureOther=${pictureOther}`);
+console.log(`TOTAL items=${rows.length} equationPngs=${equationPngs} textSvgs=${textSvgs} picturePngs=${picturePngs} pictureOther=${pictureOther} noSolution=${noSolution}`);

@@ -57,6 +57,45 @@ async function buildWorkbook(): Promise<Uint8Array> {
   return zip.generateAsync({ type: 'uint8array' });
 }
 
+/** A Rising Fellow practice exam: "Q #n" sheets, a PointSheet naming each question's paper, points and task. */
+async function buildExamWorkbook(): Promise<Uint8Array> {
+  const zip = new JSZip();
+  zip.file('xl/workbook.xml', `<workbook xmlns:r="r"><sheets>
+    <sheet name="PointSheet" sheetId="1" r:id="rId1"/>
+    <sheet name="Q #1" sheetId="2" r:id="rId2"/>
+    <sheet name="Q #2" sheetId="3" r:id="rId3"/></sheets></workbook>`);
+  zip.file('xl/_rels/workbook.xml.rels', `<Relationships>${[1, 2, 3].map((i) => `<Relationship Id="rId${i}" Target="worksheets/sheet${i}.xml"/>`).join('')}</Relationships>`);
+  zip.file('xl/styles.xml', `<styleSheet><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellXfs></styleSheet>`);
+  zip.file('xl/worksheets/sheet1.xml', `<worksheet><sheetData>
+    <row r="1"><c r="A1" t="str"><v>Question</v></c><c r="C1" t="str"><v>Paper</v></c><c r="D1" t="str"><v>Points</v></c><c r="F1" t="str"><v>Task</v></c></row>
+    <row r="2"><c r="A2"><v>1</v></c><c r="C2" t="str"><v>Mack - Chain Ladder</v></c><c r="D2"><v>3.5</v></c><c r="F2" t="str"><v>A.iii.4</v></c></row>
+    <row r="3"><c r="A3"><v>2</v></c><c r="C3" t="str"><v>Shapland</v></c><c r="D3"><v>2.25</v></c><c r="F3" t="str"><v>A.iii.3</v></c></row>
+  </sheetData></worksheet>`);
+  const q = (n: number, text: string) => `<worksheet><sheetData>
+    <row r="1"><c r="B1" t="str"><v>Source:</v></c><c r="C1" t="str"><v>PE 1</v></c><c r="D1" t="str"><v>Exam 7</v></c><c r="E1" t="str"><v>Q #${n}</v></c><c r="L1" t="str"><v>Solution -&gt;</v></c></row>
+    <row r="4"><c r="B4" t="str"><v>${text}</v></c></row>
+    <row r="9"><c r="C9"><v>100</v></c><c r="M9"><f>C9*2</f><v>200</v></c></row>
+    <row r="14"><c r="A14" t="str"><v>SHOW ALL WORK.</v></c></row>
+  </sheetData></worksheet>`;
+  zip.file('xl/worksheets/sheet2.xml', q(1, 'Calculate the standard error of the reserve.'));
+  zip.file('xl/worksheets/sheet3.xml', q(2, 'Describe the bootstrap.'));
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
+describe('a practice exam imports as its own paper', () => {
+  it('names the exam as the paper, keeps the reading as a tag, and finds the solution column', async () => {
+    const book = await openXlsx(await buildExamWorkbook());
+    const { problems, skipped } = await detectProblems(book);
+    expect(skipped.map((s) => s.name)).toEqual(['PointSheet']);
+    expect(problems.map((p) => [p.paper, p.source, p.title, p.solutionCol, p.workRow])).toEqual([
+      ['pe1', 'exam', 'PE 1 · Q #1 · Mack (1994)', 11, 13],
+      ['pe1', 'exam', 'PE 1 · Q #2 · Shapland', 11, 13],
+    ]);
+    expect(problems[0].tags).toBe('pe1,exam,quant,A.iii.4,reading:mack1994');
+    expect(problems[1].tags).toBe('pe1,exam,quant,A.iii.3,reading:shapland');
+  });
+});
+
 describe('the workbook timeline', () => {
   it('turns Excel serial dates into calendar days', () => {
     expect(serialToDay(46204)).toBe('2026-07-01');
@@ -86,6 +125,7 @@ describe('ratings and labels', () => {
     expect(paperLabel('Mack1994')).toBe('Mack (1994)');
     expect(paperLabel('sahas')).toBe('Sahasrabuddhe');
     expect(paperLabel('newpaper')).toBe('Newpaper');
+    expect(paperLabel('pe1')).toBe('Practice Exam 1');
     expect(isProblemSheetName('Brosius.RF_01')).toBe(true);
     expect(isProblemSheetName('Quiz Generator')).toBe(false);
     expect(isProblemSheetName('Shapland Q&A')).toBe(false);

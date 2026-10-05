@@ -124,7 +124,7 @@ async function main() {
     check(rows > 0, 'workbook read: problems listed');
     await shot(page, 'import-picker');
 
-    const importBtn = page.getByRole('button', { name: /Import Selected Problems/ }).first();
+    const importBtn = page.getByRole('button', { name: /Import (Selected |\d+ )Problems/ }).first();
     await importBtn.click();
     // Rendering equations and rasterising metafiles happens here; give it time.
     const started = Date.now();
