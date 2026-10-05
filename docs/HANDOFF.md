@@ -34,6 +34,12 @@ what the user turned on), house rules, copy rules, checks.
     the same number (`resolveContextWindow`). A stored 8192 the user never
     chose reads as Auto. The picker shows e.g. "Auto (40K)".
 
+## Cloud setup
+
+- `npm ci` in a cloud container: set `ONNXRUNTIME_NODE_INSTALL=skip`
+  (its download resets through the proxy). Do not skip Electron's binary:
+  `optionalBridgesLazy.test.ts` requires `electron` and fails without it.
+
 ## Lessons to keep
 
 - Do not change what the roleplay model sees (prompt assembly, history
@@ -45,11 +51,21 @@ what the user turned on), house rules, copy rules, checks.
 
 ## Waiting on the owner
 
-- The owner has to pull and rebuild to try the context window fix. Watch
-  for: replies still cut off (check the diagnostics' window size), or slow
-  generation on models with a huge reported length (qwen3.x reports 262K;
-  the answer is picking a size in Ctx, but ask the owner before adding
-  any cap).
+- The owner is testing the context window fix. Watch for: replies still
+  cut off (check the diagnostics' window size), or slow generation on
+  models with a huge reported length. Ask the owner before adding any cap.
+- Found after the fix: "the model's own length" (`lm.getModelInfo`
+  `contextLength`) is not the length the model file declares. The Ollama
+  provider (`_extractContextLength` in `ollamaProvider.ts`) takes the larger
+  of the file's `context_length` and a guess from the RoPE base, capped at
+  256K. So Auto is 128K for qwen3:8b (file says 40,960) and qwen2.5:7b
+  (32,768), and 256K for qwen3 2507 / 3.x. The core chat's Auto uses the
+  same number. Options put to the owner: Auto uses the declared length
+  (needs the provider to report it separately), cap Auto, or leave it and
+  pick a size in Ctx. Not changed: it decides how much history the model
+  sees.
+- The Ctx picker's "Auto (…)" label now follows a model change (it showed
+  the previous model's size).
 
 ## Open, not started
 

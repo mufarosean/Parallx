@@ -5055,6 +5055,8 @@ function renderChatEditor(container, parallx, input) {
     layout: 'inline',
     onChange: (v) => {
       selectedModelId = v || null;
+      // Auto's size is the model's, so it follows the model.
+      void refreshCtxAutoLabel();
       if (thread && selectedModelId) {
         surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { modelId: selectedModelId }), parallx, 'model selection');
       }
