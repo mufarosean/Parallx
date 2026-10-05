@@ -91,7 +91,7 @@ function makeWorld(opts: { existing?: Record<string, any> | null } = {}) {
         return url === 'https://example.org/ada' ? { ok: true, text: 'Ada Lovelace was born in 1815 in London.', title: 'Ada Lovelace', source: url } : { ok: false, error: { code: 'BLOCKLISTED', message: 'Host on egress blocklist' } };
       },
     },
-    window: { showInputBox: async () => undefined, showWarningMessage: async () => undefined },
+    window: { showInputBox: async () => undefined, showWarningMessage: async () => undefined, showQuickPick: async (items: { label: string }[]) => items[items.length - 1] },
     ui: { createDropdown: dropdownStub },
   };
   const fs = {
@@ -269,6 +269,37 @@ describe('the Studio screen', () => {
     await flush();
     const req = w.requests.find((r) => r.messages[0].content.includes('character designer for roleplay fiction'))!;
     expect(req.messages[1].content).toContain('ATTRIBUTES');
+  });
+
+  it('makes one of the people in Relationships a character of their own, named, with the line as the concept', async () => {
+    const w = makeWorld();
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    typeInto(root.querySelector('.cs-title') as HTMLInputElement, 'Ada Lovelace');
+    typeInto(areaOf(root, 'tagline'), 'Counts what others feel');
+    typeInto(areaOf(root, 'relationships'), 'Babbage: her collaborator, strained.\nDana: her sister, lives upstairs.');
+    const makeBtn = rowOf(root, 'relationships').querySelector('.cs-make-them') as HTMLButtonElement;
+    expect(makeBtn).toBeTruthy();
+    expect(rowOf(root, 'personality').querySelector('.cs-make-them')).toBeNull();
+    makeBtn.click();
+    await flush();
+    expect(w.ctx.openNew).toHaveBeenCalledTimes(1);
+    const from = (w.ctx.openNew as any).mock.calls[0][0];
+    expect(from.name).toBe('Dana');
+    expect(from.concept).toContain('Dana: her sister, lives upstairs.');
+    expect(from.concept).toContain('in relation to Ada Lovelace (Counts what others feel)');
+    expect(from.relatedTo.name).toBe('Ada Lovelace');
+    // Opened from that: the Studio in concept mode, the name in the title, nothing written yet.
+    const w2 = makeWorld();
+    w2.ctx.from = from;
+    renderStudioPane(container, w2.parallx, w2.ctx, w2.deps);
+    await flush();
+    const root2 = container.querySelectorAll('.cs')[1] as HTMLElement;
+    expect((root2.querySelector('.cs-title') as HTMLInputElement).value).toBe('Dana');
+    expect((root2.querySelector('.cs-mode[aria-pressed="true"]') as HTMLElement).textContent).toBe('From A Concept');
+    expect((root2.querySelector('.cs-textarea') as HTMLTextAreaElement).value).toContain('Dana: her sister');
+    expect(w2.requests).toHaveLength(0);
   });
 
   it('refuses to generate with nothing to go on, in words, not a dialog', async () => {

@@ -452,6 +452,60 @@ Probe: `node tests/probes/creations-redesign-probe.mjs <outDir>` seeds
 characters, a chat, a story, a table and a lorebook, then shoots every
 surface in dark, light and a narrow pane.
 
+## Characters that are not alone (built 2026-10-05)
+
+Mufaro, after a week of use: the generator gives one good character from
+one seed and nothing to choose between; the dice randomise the body and
+leave the motive blank; in a chat the world has a bartender and a sister
+but the model cannot voice them without being told, and when it is told it
+speaks for them as if they had a seat; characters state their values
+("peace", "solitude") instead of showing them, so he retypes "how people
+talk" into every chat; and a card is static, so a character married on the
+card and divorced in the chat is either, turn by turn. Six changes, each
+its own commit and tests:
+
+- **The card is the start, the memory is the present.** The Cast and
+  Conversation Memories sections say which wins when they differ. Growth is
+  per chat (`memories.md`); the card stays the base for every other story.
+  The Timeline's last twenty lines ride with the memory in every prompt;
+  they used to reach the model under one fit method only.
+- **Dialogue rules.** A Settings field, shipped with a default (people talk
+  about what is in front of them, never name their own values, no abstract
+  nouns as subjects, humour from the scene), Reset To Default, empty means
+  none. In every roleplay prompt as "## How People Talk" and in the Story
+  Writer's beat prompt. Not prescriptive about voice: the Voice field stays
+  description.
+- **Supporting cast.** `thread.supportingCast`: a character from the roster
+  (its card read fresh each prompt) or a person typed as "Name: who they
+  are, how they talk". One line each under "## Supporting Cast"; whoever is
+  writing the turn may give them a line or two inside it; they never get a
+  turn, a stop token or a chip. The Turn Contract names that one exception.
+  Chat Settings: From Roster, Someone New. The chat head reads "Ada · with
+  Dana".
+- **Pitches before the sheet.** Pitch Ideas asks for four different takes on
+  the concept (name, tagline, hook, contradiction, a line) as cards; Write
+  This One writes the sheet from the one picked, naming the character after
+  it unless a name was typed. Generate still writes straight from the
+  concept. `studio.pitch` keeps the one chosen.
+- **Example dialogue from the sheet.** The three situations come from this
+  character's drives, secret and relationships, not a template; one shows
+  what they care about by what they do, never by naming it; no abstract
+  nouns in their mouth; humour from something specific.
+- **Character Seeds.** `tables/character-seeds.txt` ships once (the
+  `characterSeedsShipped` flag means a deleted file stays deleted) and is
+  the user's to edit: concept, occupation, quirk, contradiction, setting,
+  place, want, fear, secret. Surprise Me and the Try chips roll `concept`
+  (the fixed lines stand in without the table); Roll The Dice fills Want,
+  Fear and Secret, each lockable.
+- **Make one of their people.** The Relationships row has a fourth action:
+  pick a "Name: note" line and open the Studio on that person, named, with
+  the line as the concept in relation to this character. Added to a chat as
+  supporting cast, the leads have someone to talk to.
+
+Not done, on purpose: growth across chats (the card is the base for every
+story), a Wildness control, direction chips (the reroll box takes a typed
+direction), rules in the Voice field.
+
 ## Gates, whole program
 
 Unit suite: 405 files, 6414 tests green after the rename, of which

@@ -484,6 +484,32 @@ export function characterFromSheet(sheet, base = {}, studio = {}) {
   };
 }
 
+// ── Making one of their people ─────────────────────────────────────────────
+// The sheet names two to four people who do not exist. Any of them can be
+// made a character of their own, from the line that names them and who they
+// are to this character; added to a chat as supporting cast, the leads have
+// someone to talk to.
+
+/** "Dana: her sister, lives upstairs" lines → [{ name, note }]. */
+export function parseRelationshipLines(text) {
+  const out = [];
+  for (const raw of String(text || '').split('\n')) {
+    const m = raw.trim().match(/^[-*]?\s*([^:]{1,60}?)\s*:\s*(.+)$/);
+    if (m) out.push({ name: m[1].trim(), note: m[2].trim() });
+  }
+  return out;
+}
+
+/** The concept for one of their people: the line, and who it is in relation to. */
+export function relationConcept(person, sheet) {
+  const owner = (sheet.name || 'the character').trim();
+  const who = (sheet.tagline || '').trim();
+  return [
+    `${person.name}: ${person.note}`,
+    `${person.name} is written here in relation to ${owner}${who ? ` (${who.replace(/\.$/, '')})` : ''}; the relationship above is how things stand between them right now, seen from ${person.name}'s side. ${person.name} is a whole person with a life of their own, not an extension of ${owner}.`,
+  ].join('\n\n');
+}
+
 // ── Lineage ────────────────────────────────────────────────────────────────
 
 /** Root first, the character itself last. Cycles and missing parents end the walk. */

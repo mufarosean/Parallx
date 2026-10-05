@@ -240,3 +240,19 @@ describe('the example dialogue requirement', () => {
     expect(reroll.content).toContain('never by naming the value or the feeling');
   });
 });
+
+describe('making one of their people', () => {
+  const { parseRelationshipLines, relationConcept } = core;
+  it('reads the Name: note lines and writes a concept that stands on its own', () => {
+    const people = parseRelationshipLines('Dana: her sister, lives upstairs, not speaking since the funeral.\n- Tom Reyes: the landlord. Owed two months.\nno colon here');
+    expect(people).toEqual([
+      { name: 'Dana', note: 'her sister, lives upstairs, not speaking since the funeral.' },
+      { name: 'Tom Reyes', note: 'the landlord. Owed two months.' },
+    ]);
+    const concept = relationConcept(people[0], { name: 'Ada Lovelace', tagline: 'Counts what others feel.' });
+    expect(concept.startsWith('Dana: her sister, lives upstairs')).toBe(true);
+    expect(concept).toContain('in relation to Ada Lovelace (Counts what others feel)');
+    expect(concept).toContain("seen from Dana's side");
+    expect(concept).toContain('not an extension of Ada Lovelace');
+  });
+});

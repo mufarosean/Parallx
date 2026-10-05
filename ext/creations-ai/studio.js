@@ -14,7 +14,7 @@ import {
   STUDIO_FIELDS, STUDIO_KEYS, emptySheet, cleanSheet, cleanFieldValue,
   condenseText, formatWords,
   buildCanonMessages, buildTwistMessages, buildSheetMessages, buildFieldMessages, buildTryLineMessages,
-  buildPitchMessages, parsePitches, pitchAsConcept,
+  buildPitchMessages, parsePitches, pitchAsConcept, parseRelationshipLines, relationConcept,
   parseJsonLoose, extractCompletedFields, parseCanonFacts, parseTwistedCanon, canonCounts,
   sheetFromCharacter, characterFromSheet, lineageOf, stripDashes,
 } from './studio-core.js';
@@ -543,6 +543,12 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     const rerollBtn = iconButton('refresh-cw', `Rewrite ${f.label.toLowerCase()}, with a direction if you like`, () => toggleSteer(f.key));
     rerollBtn.setAttribute('aria-expanded', 'false');
     acts.append(undoBtn, lockBtn, rerollBtn);
+    // Relationships name people who do not exist yet: make one of them.
+    if (f.key === 'relationships') {
+      const makeBtn = iconButton('user-plus', 'Make one of these people a character of their own', () => void makeOneOfThem());
+      makeBtn.classList.add('cs-make-them');
+      acts.appendChild(makeBtn);
+    }
     // The direction box: optional. Empty, Rewrite is a fresh take as before.
     const steer = el('div', 'cs-row-steer');
     const steerInput = el('textarea', 'cs-textarea');
@@ -1191,6 +1197,21 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     refreshStatus();
   }
 
+  /** One of the people in Relationships, as a new character in the Studio, with the line as their concept. */
+  async function makeOneOfThem() {
+    const people = parseRelationshipLines(state.sheet.relationships);
+    if (people.length === 0) { showError('Relationships has no "Name: who they are" line yet.'); return; }
+    let person = people[0];
+    if (people.length > 1) {
+      let picked = null;
+      try { picked = await parallx.window?.showQuickPick(people.map((p) => ({ label: p.name, description: p.note })), { placeholder: 'Who should get a character of their own?' }); } catch { picked = null; }
+      if (!picked) return;
+      person = people.find((p) => p.name === picked.label) || people[0];
+    }
+    if (!(await ensureSaved())) return;
+    ctx.openNew?.({ concept: relationConcept(person, state.sheet), name: person.name, relatedTo: { fileName: state.fileName, name: state.sheet.name.trim() } });
+  }
+
   // ── Bar actions ────────────────────────────────────────────────────────
   async function ensureSaved() {
     if (state.saveTimer) { clearTimeout(state.saveTimer); state.saveTimer = null; }
@@ -1267,6 +1288,12 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       for (const k of Array.isArray(st.locks) ? st.locks : []) if (rows[k]) toggleLockSilently(k);
       if (st.dials && state.dials) { forgeControls.set(st.dials); state.dialsTouched = true; dials.setMeta('Set. Roll the dice or move a dial to change them.'); }
       make.close();
+    } else if (ctx.from && ctx.from.relatedTo) {
+      // One of another character's people: the line as the concept, their
+      // name in the title, the Studio open for pitches or a sheet.
+      state.concept = ctx.from.concept || '';
+      state.sheet.name = ctx.from.name || '';
+      state.mode = 'concept';
     } else if (ctx.from) {
       state.parentId = ctx.from.parentId || null;
       state.parentName = ctx.from.parentName || '';

@@ -1,13 +1,30 @@
 # Handoff: where the work stands
 
-Last updated 2026-10-05, evening. Branches: `dev` (app work) and
-`exam7-campaign` (the owner's study campaign work), both pushed and level
-at the Campaign commit or later; `master` was fast-forwarded to `2e1e8719`
-when `dev` started. Working tree clean. tsc, the worksheet, flashcards,
-compliance and ratchet suites and `npm run build` pass.
+Last updated 2026-10-05, night. Branches: `dev` (app work) and
+`exam7-campaign` (the owner's study campaign work), both pushed; `master`
+was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
+tsc, the full vitest suite (7586 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
+
+## Done on 2026-10-05, cloud: the Creations character generator
+
+Six changes the owner asked for after a week of use, each its own commit
+with tests; design and reasons in `docs/CREATIONS_AI.md`, "Characters that
+are not alone". In short: the card is the start of a story and the chat's
+memory is its present (the prompt says so; the Timeline's tail rides with
+the memory); a Dialogue rules setting (Settings, shipped default, Reset To
+Default) replaces the hand-typed standing note; a supporting cast of people
+who never take a turn (Chat Settings › Supporting cast); Pitch Ideas before
+the sheet; example dialogue drawn from the character's own sheet; a shipped
+Character Seeds table (`tables/character-seeds.txt`, the user's to edit)
+behind Surprise Me and the dice; Make one of their people from a
+Relationships line. Prompt assembly changed in three places (Cast and
+memory wording, How People Talk, Supporting Cast); history retention is
+untouched (`creationsReplyRoom.test.ts`). Tests: `creationsGrowthAndDialogue`,
+`creationsSupportingCast`, and additions to the Studio core and pane,
+Tables and Story suites.
 
 ## Done on 2026-10-05, local: the Exam 7 campaign
 
@@ -84,6 +101,12 @@ Tests: `quoteLocator`, `fileLocator`, `explorerFileLink`, `parallxLinkTool`,
 
 ## Waiting on the owner
 
+- Creations, after a pull and rebuild: a chat with a supporting person
+  added, a Pitch Ideas run, Roll The Dice, and dialogue under the shipped
+  rules. Watch for: the model giving a supporting person a whole turn (the
+  contract says a line or two); pitches too alike; a model that returns no
+  JSON for pitches (the error says so; Try Again). The Settings field
+  "Dialogue rules" is where to tune the wording.
 - Eyes on the Campaign tab (Worksheets › Campaign) after a restart: the
   Today card, Start the Clock on the exam block, the grading pane, the
   day strip, the pools, the rewards. His verdict on the Hard and Medium
