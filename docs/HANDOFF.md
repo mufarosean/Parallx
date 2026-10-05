@@ -1,8 +1,10 @@
 # Handoff: where the work stands
 
-Last updated 2026-10-05. Branch `fix/light-mode-and-accent-contrast`, tip
-`0fdbebd1` or later. Working tree clean, everything pushed. tsc, the full
-vitest suite (7474 tests) and `npm run build` all pass.
+Last updated 2026-10-05. Branch `dev`, tip `2e1e8719` or later. `dev`
+replaces `fix/light-mode-and-accent-contrast` as the working branch; `master`
+was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean,
+everything pushed. tsc, the full vitest suite (7474 tests) and
+`npm run build` all pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.

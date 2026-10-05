@@ -12,7 +12,7 @@
 
 ## Git rules that follow from that
 
-- One working branch holds the latest version: `fix/light-mode-and-accent-contrast`
+- One working branch holds the latest version: `dev`
   (until the owner names a new one). Start every task from its tip
   (`git pull` first) and commit to it.
 - Commit and push as you go, after each finished step, so nothing lives only
@@ -36,7 +36,7 @@
     is about. Locally, `git log origin/X..X` lists commits never pushed; push
     them before calling X folded in.
 - `master` trails the working branch and is only ever fast-forwarded to it
-  (last on 2026-10-01, at `8b9e82d2`). Do not build on `master`; work on the working branch.
+  (last on 2026-10-05, at `2e1e8719`). Do not build on `master`; work on the working branch.
 
 ## The first principle: the app is only what the user turned on
 
