@@ -786,25 +786,6 @@ export async function savePlanBlock(day: string, blockId: string, patch: { draw?
   emitChange();
 }
 
-export interface ExamGradeRow { readonly itemId: number; readonly points: number; readonly lost: number; readonly cause: string; readonly gradedAt: number }
-export async function listExamGrades(): Promise<ExamGradeRow[]> {
-  return (await allRows('SELECT item_id, points, lost, cause, graded_at FROM ws_exam_grade')).map((r) => ({
-    itemId: Number(r.item_id), points: Number(r.points), lost: Number(r.lost), cause: String(r.cause ?? ''), gradedAt: Number(r.graded_at),
-  }));
-}
-export async function upsertExamGrade(g: Omit<ExamGradeRow, 'gradedAt'>): Promise<void> {
-  await run(
-    `INSERT INTO ws_exam_grade (item_id, points, lost, cause, graded_at) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(item_id) DO UPDATE SET points = excluded.points, lost = excluded.lost, cause = excluded.cause, graded_at = excluded.graded_at`,
-    [g.itemId, g.points, g.lost, g.cause, Date.now()],
-  );
-  emitChange();
-}
-export async function deleteExamGrade(itemId: number): Promise<void> {
-  await run('DELETE FROM ws_exam_grade WHERE item_id = ?', [itemId]);
-  emitChange();
-}
-
 /** Quiz session id to the time it finished, for the sessions given. */
 export async function getSessionFinishes(ids: readonly string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();

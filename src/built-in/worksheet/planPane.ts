@@ -1,25 +1,26 @@
-// planPane.ts — Worksheets: the study plan's dashboard, and the grading of an exam.
+// planPane.ts — Worksheets: the study plan's dashboard.
 //
 // The plan is imported data (plan.ts): days of blocks in clock order. This
 // tab shows where the plan stands, today's blocks each with its one action,
-// the exams with their scores, every day as a strip, the pools the quizzes
-// draw from, what other tools reported finishing, and the plan's rewards.
+// the exams, every day as a strip, the pools the quizzes draw from, what
+// other tools reported finishing, and the plan's rewards. No grading: the
+// owner rates and stars; an exam is done when it is sat.
 // A block's draw is made here the first time the day is opened and saved,
 // so it never reshuffles. Starting a quiz or an exam links the quiz session
 // to the block; finishing that session is what marks the block done.
 import {
-  listItems, listAttemptHistory, onWorksheetDataChanged, getPlanJson, listPlanBlocks, savePlanBlock, listExamGrades, upsertExamGrade, deleteExamGrade,
+  listItems, listAttemptHistory, onWorksheetDataChanged, getPlanJson, listPlanBlocks, savePlanBlock,
   getSessionFinishes, listRewardUnlocks, unlockRewards, getItem, type PlanBlockRow,
 } from './worksheetData.js';
 import { dayKey, type InsightAttempt, type InsightItem } from './progressInsights.js';
 import {
-  parsePlan, planProgress, drawBlock, drawnOnMap, examItems, examSummary, resolveBlock, blockKey, clockLabel, readingOf, earnedPlanRewards, planRewardXp, PLAN_REWARDS,
-  type StudyPlan, type PlanDay, type PlanBlock, type BlockState, type BlockView, type DayView, type ExamGrade, type ExamSummary, type PlanProgress, type ResolveContext,
+  parsePlan, planProgress, drawBlock, drawnOnMap, examItems, resolveBlock, blockKey, clockLabel, earnedPlanRewards, planRewardXp, PLAN_REWARDS,
+  type StudyPlan, type PlanDay, type PlanBlock, type BlockState, type BlockView, type DayView, type PlanProgress, type ResolveContext,
 } from './plan.js';
-import { normalizeRating, paperLabel } from './problemImport.js';
+import { normalizeRating } from './problemImport.js';
 import { LEVEL_TITLES } from './campaign.js';
-import { el, tile, card, pct, makeTooltip, fmtStudyTime } from './dashboardPane.js';
-import { createButton, createEmptyState, createPageHeader, createSegmented, type IKitAction } from '../../ui/kit.js';
+import { el, tile, card, makeTooltip, fmtStudyTime } from './dashboardPane.js';
+import { createButton, createEmptyState, createPageHeader, type IKitAction } from '../../ui/kit.js';
 import { appTimeString } from '../../services/localTime.js';
 
 export interface PlanActions {
@@ -28,7 +29,6 @@ export interface PlanActions {
   startQuiz(ids: number[], name: string): Promise<string>;
   /** Reopen a quiz session: an open one resumes, a finished one reviews. */
   openQuiz(id: string): void;
-  openGrading(paper: string, title: string): void;
   /** Run a command another tool registered; false when it does not exist. */
   runCommand(command: string, args: readonly unknown[]): Promise<boolean>;
   commandExists(command: string): Promise<boolean>;
@@ -57,26 +57,16 @@ function fmtDayShort(day: string): string {
 }
 function fmtClock(ms: number): string { return appTimeString(ms, { hour: 'numeric', minute: '2-digit' }); }
 
-const CAUSES: readonly { value: string; label: string }[] = [
-  { value: 'did not know', label: 'Did Not Know' },
-  { value: 'knew but slow', label: 'Knew, Slow' },
-  { value: 'misread', label: 'Misread' },
-  { value: 'arithmetic', label: 'Arithmetic' },
-];
-export function causeLabel(cause: string): string { return CAUSES.find((c) => c.value === cause)?.label ?? cause; }
-
-/** What a quiz draw holds, by pool, for the block's line: "4 misses, 6 starred Hard". */
-function describeDraw(ids: readonly number[], items: ReadonlyMap<number, InsightItem>, grades: ReadonlyMap<number, ExamGrade>): string {
-  let misses = 0, hard = 0, medium = 0, easy = 0, fresh = 0, other = 0;
+/** What a quiz draw holds, by rating, for the block's line: "6 Hard, 2 new". */
+function describeDraw(ids: readonly number[], items: ReadonlyMap<number, InsightItem>): string {
+  let hard = 0, medium = 0, easy = 0, fresh = 0, other = 0;
   for (const id of ids) {
     const it = items.get(id);
     if (!it) continue;
-    if (it.source === 'exam' && (grades.get(id)?.lost ?? 0) > 0) misses++;
-    else if (it.source === 'custom') fresh++;
+    if (it.source === 'custom') fresh++;
     else { const r = normalizeRating(it.attemptState); if (r === 'hard') hard++; else if (r === 'medium') medium++; else if (r === 'easy') easy++; else other++; }
   }
   const parts: string[] = [];
-  if (misses) parts.push(`${misses} exam ${misses === 1 ? 'miss' : 'misses'}`);
   if (hard) parts.push(`${hard} Hard`);
   if (medium) parts.push(`${medium} Medium`);
   if (easy) parts.push(`${easy} Easy`);
@@ -92,18 +82,9 @@ interface Loaded {
   readonly byId: Map<number, InsightItem>;
   readonly attempts: InsightAttempt[];
   readonly states: BlockState[];
-  readonly grades: Map<number, ExamGrade>;
   readonly ctx: ResolveContext;
   readonly progress: PlanProgress;
   readonly unlocks: Map<string, number>;
-  readonly exams: ExamSummary[];
-}
-
-/** Every exam paper the plan names, in plan order. */
-function examPapers(plan: StudyPlan): string[] {
-  const out: string[] = [];
-  for (const d of plan.days) for (const b of d.blocks) if (b.kind === 'exam' && b.paper && !out.includes(b.paper)) out.push(b.paper);
-  return out;
 }
 
 export function createPlanPane(container: HTMLElement, actions: PlanActions): { dispose(): void } {
@@ -122,19 +103,12 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
     if (!row) return null;
     const { plan } = parsePlan(row.json);
     if (!plan) return null;
-    const [items, attempts, blockRows, gradeRows] = await Promise.all([
-      listItems().catch(() => []), listAttemptHistory().catch(() => []), listPlanBlocks().catch(() => [] as PlanBlockRow[]), listExamGrades().catch(() => []),
+    const [items, attempts, blockRows] = await Promise.all([
+      listItems().catch(() => []), listAttemptHistory().catch(() => []), listPlanBlocks().catch(() => [] as PlanBlockRow[]),
     ]);
     const byId = new Map<number, InsightItem>(items.map((i) => [i.id, i]));
     const states: BlockState[] = blockRows.map((r) => ({ day: r.day, blockId: r.blockId, draw: r.draw, sessionId: r.sessionId, doneAt: r.doneAt }));
-    const grades = new Map<number, ExamGrade>(gradeRows.map((g) => [g.itemId, g]));
     const finishedSessions = await getSessionFinishes(states.map((s) => s.sessionId)).catch(() => new Map<string, number>());
-    // An exam is graded when every one of its questions carries a grade.
-    const gradedPapers = new Map<string, number>();
-    for (const paper of examPapers(plan)) {
-      const qs = examItems(paper, items);
-      if (qs.length > 0 && qs.every((id) => grades.has(id))) gradedPapers.set(paper, Math.max(...qs.map((id) => grades.get(id)!.gradedAt)));
-    }
     // Sessions other tools run: the journal line the block names, seen on that day.
     const today = dayKey(now);
     const journalHits = new Map<string, number>();
@@ -147,23 +121,20 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
         if (hit !== undefined) journalHits.set(blockKey(d.day, b.id), hit);
       }
     }
-    const ctx: ResolveContext = { finishedSessions, gradedPapers, journalHits };
+    const ctx: ResolveContext = { finishedSessions, journalHits };
     // Rewards: earned once, dated, kept.
     const all = await listRewardUnlocks().catch(() => new Map<string, number>());
     const unlocks = new Map([...all].filter(([id]) => id.startsWith('plan:')));
-    const exams = examPapers(plan).map((paper) => examSummary(paper, items, grades));
     const base = planProgress(plan, states, ctx, now, 0);
     const newTotal = items.filter((i) => i.source === 'custom').length;
     const newDone = items.filter((i) => i.source === 'custom' && (i.attemptCount > 0 || i.worked)).length;
-    const missIds = items.filter((i) => (grades.get(i.id)?.lost ?? 0) > 0).map((i) => i.id);
-    const missesRedone = missIds.filter((id) => attempts.some((a) => a.itemId === id && !a.imported && Math.max(a.at, a.workedAt ?? 0) > (grades.get(id)?.gradedAt ?? 0))).length;
-    const fresh = earnedPlanRewards({ progress: base, exams, newDone, newTotal, missesRedone, misses: missIds.length }).filter((r) => !unlocks.has(r.id));
+    const fresh = earnedPlanRewards({ progress: base, newDone, newTotal }).filter((r) => !unlocks.has(r.id));
     if (fresh.length) {
       await unlockRewards(fresh.map((r) => r.id), now).catch(() => {});
       for (const r of fresh) unlocks.set(r.id, now);
     }
     const progress = planProgress(plan, states, ctx, now, planRewardXp(unlocks.keys()));
-    return { plan, items, byId, attempts, states, grades, ctx, progress, unlocks, exams };
+    return { plan, items, byId, attempts, states, ctx, progress, unlocks };
   };
 
   /** Today's quiz blocks get their draw the first time the day is opened; the draw is kept. */
@@ -175,7 +146,7 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
       if (b.kind !== 'quiz' || !b.pool) continue;
       const st = L.states.find((s) => s.day === day && s.blockId === b.id);
       if (st && st.draw.length > 0) continue;
-      const draw = drawBlock(day, b, { items: L.items, attempts: L.attempts, grades: L.grades, drawnOn: drawnOnMap(L.states) });
+      const draw = drawBlock(day, b, { items: L.items, attempts: L.attempts, drawnOn: drawnOnMap(L.states) });
       if (draw.length === 0) continue;
       await savePlanBlock(day, b.id, { draw }).catch(() => {});
       L.states.push({ day, blockId: b.id, draw, sessionId: '', doneAt: null });
@@ -188,7 +159,7 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
     if (b.kind === 'quiz') {
       let ids = view.state?.draw ?? [];
       if (ids.length === 0) {
-        ids = drawBlock(day, b, { items: L.items, attempts: L.attempts, grades: L.grades, drawnOn: drawnOnMap(L.states) });
+        ids = drawBlock(day, b, { items: L.items, attempts: L.attempts, drawnOn: drawnOnMap(L.states) });
         if (ids.length === 0) return;
         await savePlanBlock(day, b.id, { draw: ids }).catch(() => {});
       }
@@ -206,7 +177,6 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
       if (sessionId) await savePlanBlock(day, b.id, { sessionId }).catch(() => {});
       return;
     }
-    if (b.kind === 'grade' && b.paper) { actions.openGrading(b.paper, b.title); return; }
     if (b.kind === 'session' && b.command) {
       const ok = await actions.runCommand(b.command, b.args ?? []);
       if (ok && !view.state) await savePlanBlock(day, b.id, { sessionId: '' }).catch(() => {});
@@ -224,13 +194,10 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
     let line = b.note ?? '';
     if (b.kind === 'quiz') {
       const draw = v.state?.draw ?? [];
-      line = draw.length ? describeDraw(draw, L.byId, L.grades) : `${b.pool?.count ?? 0} to draw${b.note ? ` · ${b.note}` : ''}`;
+      line = draw.length ? describeDraw(draw, L.byId) : `${b.pool?.count ?? 0} to draw${b.note ? ` · ${b.note}` : ''}`;
     } else if (b.kind === 'exam' && b.paper) {
       const n = examItems(b.paper, L.items).length;
       line = `${n} ${n === 1 ? 'question' : 'questions'}${b.minutes ? `, ${fmtStudyTime(b.minutes * 60)} on the clock` : ''}${b.note ? ` · ${b.note}` : ''}`;
-    } else if (b.kind === 'grade' && b.paper) {
-      const ex = L.exams.find((e) => e.paper === b.paper);
-      line = ex ? `${ex.graded} of ${ex.questions} graded${ex.graded ? ` · ${pct(ex.score)} so far` : ''}${b.note ? ` · ${b.note}` : ''}` : line;
     }
     if (line) text.appendChild(el('div', 'ws-plan__blockline', line));
     row.appendChild(text);
@@ -243,9 +210,9 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
     xp.title = 'Earned when the block is done.';
     row.appendChild(xp);
     const act = el('div', 'ws-plan__blockact');
-    const label = v.done ? (b.kind === 'grade' ? 'Grades' : b.kind === 'session' ? '' : 'Review')
-      : v.started ? (b.kind === 'grade' ? 'Grade' : b.kind === 'session' ? (b.command ? 'Open' : '') : 'Resume')
-        : b.kind === 'exam' ? 'Start the Clock' : b.kind === 'grade' ? 'Grade' : b.kind === 'quiz' ? 'Start Quiz' : b.command ? 'Start' : '';
+    const label = v.done ? (b.kind === 'session' ? '' : 'Review')
+      : v.started ? (b.kind === 'session' ? (b.command ? 'Open' : '') : 'Resume')
+        : b.kind === 'exam' ? 'Start the Clock' : b.kind === 'quiz' ? 'Start Quiz' : b.command ? 'Start' : '';
     if (label) {
       const primary = !v.done && isToday && canStart;
       createButton(act, {
@@ -334,41 +301,22 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
     }
     top.appendChild(dayCard.root);
 
-    const examsCard = card('Practice exams', 'Each exam is its own paper. Grading is Reveal and Rate, plus the points lost and why.');
+    const examsCard = card('Practice exams', 'Each exam is its own paper, sat whole under the clock. Reveal and Rate as you go through it.');
     for (const d of plan.days) {
       for (const b of d.blocks) {
         if (b.kind !== 'exam' || !b.paper) continue;
         const v = p.days.find((x) => x.day.day === d.day)?.blocks.find((x) => x.block.id === b.id);
-        const ex = L.exams.find((e) => e.paper === b.paper);
-        const gradeBlock = plan.days.flatMap((x) => x.blocks.map((y) => ({ day: x.day, b: y }))).find((x) => x.b.kind === 'grade' && x.b.paper === b.paper);
+        const n = examItems(b.paper, L.items).length;
         const box = el('div', 'ws-plan__exam');
         const head = el('div', 'ws-plan__examhead');
         head.appendChild(el('span', 'ws-plan__examtitle', `${b.title} · ${fmtDayShort(d.day)}`));
-        if (ex && ex.graded > 0) head.appendChild(el('span', 'ws-plan__examscore', pct(ex.score)));
         box.appendChild(head);
         const chips = el('div', 'ws-chips');
         chips.appendChild(el('span', `ws-chip ${v?.done ? 'ws-chip--easy' : v?.started ? 'ws-chip--medium' : 'ws-chip--muted'}`, v?.done ? `Sat${v.doneAt ? ' ' + fmtDayShort(dayKey(v.doneAt)) : ''}` : v?.started ? 'In progress' : d.day > today ? `In ${Math.round((dayStartMs(d.day) - dayStartMs(today)) / DAY_MS)} days` : 'Not sat'));
-        if (ex) chips.appendChild(el('span', `ws-chip ${ex.graded >= ex.questions && ex.questions > 0 ? 'ws-chip--easy' : ex.graded > 0 ? 'ws-chip--medium' : 'ws-chip--muted'}`, ex.questions === 0 ? 'Not imported' : `${ex.graded} of ${ex.questions} graded`));
+        chips.appendChild(el('span', 'ws-chip ws-chip--muted', n === 0 ? 'Not imported' : `${n} ${n === 1 ? 'question' : 'questions'}`));
         box.appendChild(chips);
-        if (ex && ex.graded > 0) {
-          const list = el('div', 'ws-plan__readings');
-          for (const r of ex.byReading.slice(0, 6)) {
-            const line = el('div', 'ws-plan__reading');
-            line.appendChild(el('span', 'ws-plan__readingname', paperLabel(r.reading) || 'Unknown reading'));
-            const track = el('div', 'ws-plan__readingbar');
-            const f = el('span');
-            f.style.width = `${r.points > 0 ? Math.round((r.lost / r.points) * 100) : 0}%`;
-            track.appendChild(f);
-            line.appendChild(track);
-            line.appendChild(el('span', 'ws-plan__readingnum', `${r.lost} of ${r.points} lost`));
-            list.appendChild(line);
-          }
-          box.appendChild(list);
-          if (ex.causes.length) box.appendChild(el('div', 'ws-hint', `Causes: ${ex.causes.map((c) => `${causeLabel(c.cause).toLowerCase()} ${c.count}`).join(', ')}`));
-        }
         const acts = el('div', 'ws-plan__examacts');
         if (v?.state?.sessionId) createButton(acts, { label: v.done ? 'Review Exam' : 'Resume Exam', size: 'sm', onClick: () => actions.openQuiz(v.state!.sessionId) });
-        if (ex && ex.questions > 0) createButton(acts, { label: ex.graded > 0 ? 'Grades' : 'Grade…', size: 'sm', onClick: () => actions.openGrading(b.paper!, gradeBlock?.b.title ?? `Grade ${b.title}`) });
         box.appendChild(acts);
         examsCard.body.appendChild(box);
       }
@@ -418,18 +366,6 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
       if (note) row.appendChild(el('div', 'ws-hint', note));
       pools.body.appendChild(row);
     };
-    const misses = L.items.filter((i) => (L.grades.get(i.id)?.lost ?? 0) > 0);
-    const redone = misses.filter((i) => L.attempts.some((a) => a.itemId === i.id && !a.imported && Math.max(a.at, a.workedAt ?? 0) > (L.grades.get(i.id)?.gradedAt ?? 0)));
-    const missRow = el('div', 'ws-plan__pool');
-    const mh = el('div', 'ws-plan__poolhead');
-    mh.appendChild(el('span', 'ws-plan__poolname', 'Exam misses'));
-    mh.appendChild(el('span', 'ws-plan__poolnum', `${redone.length} of ${misses.length} redone`));
-    missRow.appendChild(mh);
-    const mt = el('div', 'ws-plan__poolbar ws-plan__poolbar--miss');
-    const mf = el('span'); mf.style.width = `${misses.length ? Math.round((redone.length / misses.length) * 100) : 0}%`; mt.appendChild(mf);
-    missRow.appendChild(mt);
-    missRow.appendChild(el('div', 'ws-hint', 'Every question with lost points. First in line on the next old-problems block.'));
-    pools.body.appendChild(missRow);
     poolLine('Starred, rated Hard', workbook.filter((i) => i.starred && rating(i) === 'hard'), 'Hard-focus days');
     poolLine('Starred, rated Medium', workbook.filter((i) => i.starred && rating(i) === 'medium'), 'Medium-focus days');
     poolLine('New problems', L.items.filter((i) => i.source === 'custom'), 'Never seen before the plan; drawn across papers');
@@ -494,100 +430,6 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
 
 // ── Grading an exam ─────────────────────────────────────────────────────────
 
-export interface GradingActions {
-  openItem(id: number, title: string): void;
-  openHome?(): void;
-  openPlan(): void;
-}
-
-/** One row per question: points, points lost, the cause. Saved as typed; the exam is graded when every row has a grade. */
-export function createGradingPane(container: HTMLElement, paper: string, title: string, actions: GradingActions): { dispose(): void } {
-  const pane = el('div', 'ws-pane ws-dash ws-grade');
-  container.appendChild(pane);
-  const content = el('div', 'ws-dash__content');
-  pane.appendChild(content);
-  let disposed = false;
-  let renderSeq = 0;
-  /** Edits in flight are not redrawn over: a save announces a change, which would rebuild the inputs mid-typing. */
-  let editing = false;
-
-  const render = async () => {
-    if (disposed || editing) return;
-    const seq = ++renderSeq;
-    const [items, gradeRows] = await Promise.all([listItems().catch(() => []), listExamGrades().catch(() => [])]);
-    if (disposed || seq !== renderSeq) return;
-    const grades = new Map<number, ExamGrade>(gradeRows.map((g) => [g.itemId, g]));
-    const ids = examItems(paper, items);
-    const byId = new Map(items.map((i) => [i.id, i]));
-    const summary = examSummary(paper, items, grades);
-    content.replaceChildren();
-    const back = { label: 'Campaign', onClick: () => actions.openPlan() };
-    createPageHeader(content, {
-      back, title,
-      subtitle: ids.length ? `${summary.graded} of ${ids.length} graded${summary.graded ? ` · ${pct(summary.score)} · ${summary.lost} of ${summary.points} points lost` : ''}` : 'This exam is not in the bank.',
-    });
-    if (ids.length === 0) {
-      createEmptyState(content, { icon: 'file-spreadsheet', headline: 'No questions found.', hint: `Import the exam workbook first; its questions arrive as the paper ${paperLabel(paper)}.` });
-      return;
-    }
-    content.appendChild(el('div', 'ws-hint ws-grade__hint', 'Open a question, Reveal its solution and Rate it there. Here, write the points it carried, the points you lost, and why. A question with nothing lost needs only its points.'));
-    const table = el('div', 'ws-grade__rows');
-    const head = el('div', 'ws-grade__row ws-grade__row--head');
-    for (const h of ['Question', 'Points', 'Lost', 'Why', '']) head.appendChild(el('span', '', h));
-    table.appendChild(head);
-    for (const id of ids) {
-      const it = byId.get(id)!;
-      const g = grades.get(id);
-      const row = el('div', `ws-grade__row${g ? (g.lost > 0 ? ' ws-grade__row--lost' : ' ws-grade__row--clean') : ''}`);
-      const name = el('button', 'ws-grade__q') as HTMLButtonElement;
-      name.type = 'button';
-      name.textContent = it.title.replace(/^PE\s*\d+\s*·\s*/i, '');
-      name.title = `Open ${it.title}`;
-      name.addEventListener('click', () => actions.openItem(id, it.title));
-      row.appendChild(name);
-      const points = el('input', 'ws-grade__input') as HTMLInputElement;
-      points.type = 'number'; points.min = '0'; points.step = '0.25'; points.id = `ws-grade-points-${id}`;
-      points.value = g ? String(g.points) : it.points != null ? String(it.points) : '';
-      points.setAttribute('aria-label', 'Points the question carries');
-      const lost = el('input', 'ws-grade__input') as HTMLInputElement;
-      lost.type = 'number'; lost.min = '0'; lost.step = '0.25'; lost.id = `ws-grade-lost-${id}`;
-      lost.value = g ? String(g.lost) : '';
-      lost.setAttribute('aria-label', 'Points lost');
-      row.append(points, lost);
-      const causeHost = el('div', 'ws-grade__cause');
-      let cause = g?.cause ?? '';
-      const seg = createSegmented(causeHost, { items: CAUSES.map((c) => ({ value: c.value, label: c.label })), value: cause || CAUSES[0].value, ariaLabel: 'Why the points were lost', onChange: (v) => { cause = v; void save(); } });
-      row.appendChild(causeHost);
-      const clear = el('div', 'ws-grade__clear');
-      if (g) createButton(clear, { label: 'Clear', kind: 'ghost', size: 'sm', onClick: () => { void deleteExamGrade(id); } });
-      row.appendChild(clear);
-      const save = async () => {
-        const pts = Number(points.value);
-        const lst = Number(lost.value);
-        if (!Number.isFinite(pts) || pts <= 0 || points.value === '') return;
-        if (lost.value === '' || !Number.isFinite(lst) || lst < 0) return;
-        editing = true;
-        try { await upsertExamGrade({ itemId: id, points: pts, lost: Math.min(pts, lst), cause: lst > 0 ? (cause || seg.value) : '' }); }
-        finally { editing = false; }
-      };
-      for (const input of [points, lost]) {
-        input.addEventListener('focus', () => { editing = true; });
-        input.addEventListener('blur', () => { editing = false; void save().then(() => render()); });
-        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); });
-      }
-      table.appendChild(row);
-    }
-    content.appendChild(table);
-    const foot = el('div', 'ws-grade__foot');
-    foot.appendChild(el('span', 'ws-hint', summary.graded >= ids.length ? 'Every question graded. The misses join the pool and lead the next old-problems block.' : `${ids.length - summary.graded} ${ids.length - summary.graded === 1 ? 'question' : 'questions'} still to grade.`));
-    createButton(foot, { label: 'Back to Campaign', size: 'sm', onClick: () => actions.openPlan() });
-    content.appendChild(foot);
-  };
-  void render();
-  const sub = onWorksheetDataChanged(() => { void render(); });
-  return { dispose: () => { disposed = true; sub.dispose(); pane.remove(); } };
-}
-
 /** For the quiz run: the exam block a session belongs to, if any, with its clock. */
 export async function examClockFor(sessionId: string, lookup: (sessionId: string) => Promise<PlanBlockRow | null>): Promise<{ minutes: number; title: string } | null> {
   const row = await lookup(sessionId).catch(() => null);
@@ -601,4 +443,4 @@ export async function examClockFor(sessionId: string, lookup: (sessionId: string
 }
 
 // Referenced so the pure helpers stay reachable from here for tests and the run pane.
-export { resolveBlock, readingOf, getItem, type PlanDay, type DayView };
+export { resolveBlock, getItem, type PlanDay, type DayView };

@@ -36,7 +36,7 @@ import {
 import { openXlsx } from './ooxml.js';
 import { detectProblems, readWorkbookTimeline, normalizeRating, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS, type ProblemImport, type WorkbookSnapshot } from './problemImport.js';
 import { createDashboardPane, planDay, dayStrip } from './dashboardPane.js';
-import { createPlanPane, createGradingPane, examClockFor, type PlanActions } from './planPane.js';
+import { createPlanPane, examClockFor, type PlanActions } from './planPane.js';
 import { parsePlan } from './plan.js';
 import { getPlanBlockBySession, savePlanJson, clearPlan, updateItemPoints } from './worksheetData.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
@@ -3624,7 +3624,6 @@ function planActions(): PlanActions {
     openItem: (id, title) => void openWorksheet(`item:${id}`, title),
     startQuiz: (ids, name) => startQuizReturningId(ids, name),
     openQuiz: (id) => void openPastQuiz(id),
-    openGrading: (paper, title) => void openWorksheet(`grade:${paper}`, title),
     runCommand: async (command, args) => {
       const ids = await _api?.commands?.getCommands?.().catch(() => [] as string[]) ?? [];
       if (!ids.includes(command)) { await _api?.window?.showWarningMessage?.(`The tool that runs "${command}" is not on.`); return false; }
@@ -3719,10 +3718,6 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         if (instanceId === 'practice-run') return createPracticeRunPane(container, input as { setName?(name: string): void } | undefined);
         if (instanceId === 'quizzes') return createQuizzesPane(container);
         if (instanceId === 'plan') return createPlanPane(container, planActions());
-        if (instanceId.startsWith('grade:')) {
-          const paper = instanceId.slice('grade:'.length);
-          return createGradingPane(container, paper, `Grade ${paperLabel(paper)}`, { openItem: (id, title) => void openWorksheet(`item:${id}`, title), openHome: () => BACK_TO_HOME.onClick(), openPlan: () => void openWorksheet('plan', 'Campaign') });
-        }
         if (instanceId === 'dashboard') {
           return createDashboardPane(container, {
             openItem: (id, title) => void openWorksheet(`item:${id}`, title),

@@ -2,10 +2,11 @@
 //
 // PURE (unit-tested in tests/unit/worksheetPlan.test.ts). A plan is data the
 // user imports: a run of days, each with blocks in clock order. A block is a
-// quiz drawn from named pools, an exam sat whole with a clock, the grading of
-// that exam, or a session another tool runs (named by its command, finished
-// when the activity journal says so). Nothing here names a tool: the plan's
-// JSON carries the command ids and the journal lines to look for.
+// quiz drawn from named pools, an exam sat whole with a clock, or a session
+// another tool runs (named by its command, finished when the activity
+// journal says so). Nothing here names a tool: the plan's JSON carries the
+// command ids and the journal lines to look for. There is no grading: the
+// owner tracks by rating and starring, and an exam is done when it is sat.
 //
 // A day is full when every required block of it is done; the streak counts
 // full days back from today; XP is the blocks' own XP plus a full-day bonus.
@@ -15,10 +16,10 @@ import { dayKey, type InsightAttempt, type InsightItem } from './progressInsight
 import { normalizeRating } from './problemImport.js';
 import { levelFor, addDays, type CampaignLevel } from './campaign.js';
 
-export type BlockKind = 'quiz' | 'exam' | 'grade' | 'session';
+export type BlockKind = 'quiz' | 'exam' | 'session';
 /** Where a quiz block draws from, in order of preference. */
-export type PoolSource = 'misses' | 'starred-hard' | 'starred-medium' | 'starred-easy' | 'starred' | 'hard' | 'easy-medium' | 'new';
-export const POOL_SOURCES: readonly PoolSource[] = ['misses', 'starred-hard', 'starred-medium', 'starred-easy', 'starred', 'hard', 'easy-medium', 'new'];
+export type PoolSource = 'starred-hard' | 'starred-medium' | 'starred-easy' | 'starred' | 'hard' | 'easy-medium' | 'new';
+export const POOL_SOURCES: readonly PoolSource[] = ['starred-hard', 'starred-medium', 'starred-easy', 'starred', 'hard', 'easy-medium', 'new'];
 
 export interface PoolSpec {
   readonly from: readonly PoolSource[];
@@ -35,7 +36,7 @@ export interface PlanBlock {
   readonly xp: number;
   /** A quiz: what to draw. */
   readonly pool?: PoolSpec;
-  /** An exam or its grading: the paper that holds the exam's questions (pe1). */
+  /** An exam: the paper that holds its questions (pe1). */
   readonly paper?: string;
   /** An exam: minutes on the clock. */
   readonly minutes?: number;
@@ -49,7 +50,7 @@ export interface PlanBlock {
 }
 export interface PlanDay {
   readonly day: string;
-  /** exam, grade, practice, soft, hard, flashcards, pto, taper, sitting: the strip's word for the day. */
+  /** exam, practice, soft, hard, flashcards, pto, taper, sitting: the strip's word for the day. */
   readonly type: string;
   readonly label: string;
   readonly blocks: readonly PlanBlock[];
@@ -70,15 +71,6 @@ export interface BlockState {
   readonly sessionId: string;
   readonly doneAt: number | null;
 }
-/** A graded exam question: the points it carried and the points lost. */
-export interface ExamGrade {
-  readonly itemId: number;
-  readonly points: number;
-  readonly lost: number;
-  readonly cause: string;
-  readonly gradedAt: number;
-}
-
 // ── Parsing ─────────────────────────────────────────────────────────────────
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -109,7 +101,9 @@ export function parsePlan(json: string): { plan: StudyPlan | null; error: string
       const id = str(bb.id); const kind = str(bb.kind) as BlockKind;
       if (!id || ids.has(id)) return { plan: null, error: `${day}: a block has no id or a repeated one.` };
       ids.add(id);
-      if (!['quiz', 'exam', 'grade', 'session'].includes(kind)) return { plan: null, error: `${day}/${id}: kind must be quiz, exam, grade or session.` };
+      // Grading blocks from an older plan are left out: an exam is done when it is sat.
+      if ((kind as string) === 'grade') continue;
+      if (!['quiz', 'exam', 'session'].includes(kind)) return { plan: null, error: `${day}/${id}: kind must be quiz, exam or session.` };
       if (!TIME_RE.test(str(bb.start)) || !TIME_RE.test(str(bb.end))) return { plan: null, error: `${day}/${id}: start and end must be H:MM.` };
       const block: PlanBlock = {
         id, kind, start: str(bb.start), end: str(bb.end), title: str(bb.title) || id, xp: Math.max(0, Math.round(num(bb.xp))),
@@ -118,12 +112,13 @@ export function parsePlan(json: string): { plan: StudyPlan | null; error: string
       };
       if (kind === 'quiz') {
         const p = (bb.pool ?? {}) as Record<string, unknown>;
+        // Pools an older plan named that no longer exist ("misses") are dropped.
         const from = (Array.isArray(p.from) ? p.from : []).map(str).filter((s): s is PoolSource => (POOL_SOURCES as readonly string[]).includes(s));
         if (from.length === 0 || num(p.count) < 1) return { plan: null, error: `${day}/${id}: a quiz needs pool.from and pool.count.` };
         blocks.push({ ...block, pool: { from, count: Math.round(num(p.count)) } });
-      } else if (kind === 'exam' || kind === 'grade') {
+      } else if (kind === 'exam') {
         if (!str(bb.paper)) return { plan: null, error: `${day}/${id}: an exam block names its paper.` };
-        blocks.push({ ...block, paper: str(bb.paper), ...(kind === 'exam' ? { minutes: Math.max(0, Math.round(num(bb.minutes))) } : {}) });
+        blocks.push({ ...block, paper: str(bb.paper), minutes: Math.max(0, Math.round(num(bb.minutes))) });
       } else {
         const done = (bb.done ?? {}) as Record<string, unknown>;
         // No command: a session done by hand (a formula sheet on paper), marked done on the dashboard.
@@ -168,7 +163,6 @@ function hash(s: string): number {
 export interface DrawContext {
   readonly items: readonly InsightItem[];
   readonly attempts: readonly InsightAttempt[];
-  readonly grades: ReadonlyMap<number, ExamGrade>;
   /** Item id to the last plan day it was drawn on, over every saved block state. */
   readonly drawnOn: ReadonlyMap<number, string>;
 }
@@ -180,33 +174,14 @@ export function drawnOnMap(states: readonly BlockState[]): Map<number, string> {
   return m;
 }
 
-/** How many times a graded exam question was worked again after its grading. */
-function redoCount(id: number, gradedAt: number, attempts: readonly InsightAttempt[]): number {
-  let n = 0;
-  for (const a of attempts) {
-    if (a.itemId !== id || a.imported) continue;
-    const at = a.workedAt && a.workedAt > a.at ? a.workedAt : a.at;
-    if (at > gradedAt && (normalizeRating(a.selfGrade) || a.workedAt)) n++;
-  }
-  return n;
-}
-
 const isWorkbook = (it: InsightItem) => !!it.paper && it.kind !== 'essay' && (it.source === 'rf' || it.source === 'cas');
 
 /** Candidates of one pool, best first, deterministic for `seed`. */
 export function poolCandidates(source: PoolSource, ctx: DrawContext, seed: string): number[] {
-  const { items, attempts, grades, drawnOn } = ctx;
+  const { items, drawnOn } = ctx;
   const order = (a: InsightItem, b: InsightItem) => hash(`${seed}:${a.id}`) - hash(`${seed}:${b.id}`);
   const rating = (it: InsightItem) => normalizeRating(it.attemptState);
   const starred = (it: InsightItem) => !!it.starred;
-  if (source === 'misses') {
-    const missed = items.filter((it) => { const g = grades.get(it.id); return !!g && g.lost > 0; });
-    // Fewest redos first, then the earliest graded: every miss comes back before any comes back twice.
-    return missed
-      .map((it) => ({ it, redos: redoCount(it.id, grades.get(it.id)!.gradedAt, attempts), at: grades.get(it.id)!.gradedAt }))
-      .sort((a, b) => a.redos - b.redos || a.at - b.at || order(a.it, b.it))
-      .map((x) => x.it.id);
-  }
   if (source === 'new') {
     // Never seen, never drawn: round robin across papers, the fullest paper first.
     const fresh = items.filter((it) => it.source === 'custom' && it.attemptCount === 0 && !it.worked && !drawnOn.has(it.id));
@@ -268,8 +243,6 @@ export function examItems(paper: string, items: readonly InsightItem[]): number[
 export interface ResolveContext {
   /** Quiz session id to when it finished. */
   readonly finishedSessions: ReadonlyMap<string, number>;
-  /** Exam paper to when its last question was graded; present only when every question is graded. */
-  readonly gradedPapers: ReadonlyMap<string, number>;
   /** Block key (day/id) to when the journal saw its finishing line. */
   readonly journalHits: ReadonlyMap<string, number>;
 }
@@ -307,7 +280,6 @@ export function resolveBlock(day: string, block: PlanBlock, state: BlockState | 
   let doneAt: number | null = state?.doneAt ?? null;
   if (doneAt === null) {
     if ((block.kind === 'quiz' || block.kind === 'exam') && state?.sessionId) doneAt = ctx.finishedSessions.get(state.sessionId) ?? null;
-    else if (block.kind === 'grade' && block.paper) doneAt = ctx.gradedPapers.get(block.paper) ?? null;
     else if (block.kind === 'session') doneAt = ctx.journalHits.get(blockKey(day, block.id)) ?? null;
   }
   const started = doneAt === null && !!state && (state.draw.length > 0 || !!state.sessionId);
@@ -348,56 +320,13 @@ export function planProgress(plan: StudyPlan, states: readonly BlockState[], ctx
 }
 function ymd(day: string): [number, number, number] { const [y, m, d] = day.split('-').map(Number); return [y, m - 1, d]; }
 
-// ── Exams ───────────────────────────────────────────────────────────────────
-
-export interface ExamSummary {
-  readonly paper: string;
-  readonly questions: number;
-  readonly graded: number;
-  readonly points: number;
-  readonly lost: number;
-  /** 0..1 once anything is graded. */
-  readonly score: number;
-  readonly byReading: readonly { reading: string; points: number; lost: number }[];
-  readonly causes: readonly { cause: string; count: number }[];
-}
-/** The reading an exam question tests, from its `reading:` tag. */
-export function readingOf(tags: string | undefined): string {
-  for (const t of (tags ?? '').split(',')) { const s = t.trim(); if (s.startsWith('reading:')) return s.slice(8); }
-  return '';
-}
-export function examSummary(paper: string, items: readonly InsightItem[], grades: ReadonlyMap<number, ExamGrade>): ExamSummary {
-  const qs = items.filter((it) => it.paper === paper && it.source === 'exam');
-  const byReading = new Map<string, { points: number; lost: number }>();
-  const causes = new Map<string, number>();
-  let points = 0; let lost = 0; let graded = 0;
-  for (const it of qs) {
-    const g = grades.get(it.id);
-    if (!g) continue;
-    graded++; points += g.points; lost += g.lost;
-    const r = readingOf(it.tags);
-    const e = byReading.get(r) ?? { points: 0, lost: 0 };
-    e.points += g.points; e.lost += g.lost; byReading.set(r, e);
-    if (g.lost > 0 && g.cause) causes.set(g.cause, (causes.get(g.cause) ?? 0) + 1);
-  }
-  return {
-    paper, questions: qs.length, graded, points, lost, score: points > 0 ? Math.max(0, (points - lost) / points) : 0,
-    byReading: [...byReading.entries()].map(([reading, v]) => ({ reading, ...v })).sort((a, b) => b.lost - a.lost || a.reading.localeCompare(b.reading)),
-    causes: [...causes.entries()].map(([cause, count]) => ({ cause, count })).sort((a, b) => b.count - a.count),
-  };
-}
-
 // ── Rewards ─────────────────────────────────────────────────────────────────
 
 export interface PlanRewardContext {
   readonly progress: PlanProgress;
-  readonly exams: readonly ExamSummary[];
   /** Custom-bank problems done and in the bank. */
   readonly newDone: number;
   readonly newTotal: number;
-  /** Graded misses redone at least once, and all of them. */
-  readonly missesRedone: number;
-  readonly misses: number;
 }
 export interface PlanRewardDef {
   readonly id: string;
@@ -408,19 +337,14 @@ export interface PlanRewardDef {
   readonly earned: (c: PlanRewardContext) => boolean;
 }
 const examBlocksDone = (c: PlanRewardContext, kind: BlockKind) => c.progress.days.reduce((n, d) => n + d.blocks.filter((b) => b.block.kind === kind && b.done).length, 0);
-/** An exam graded the day it was sat: the grade block done on a day whose exam block is done too. */
-const gradedSameDay = (c: PlanRewardContext) => c.progress.days.some((d) => d.blocks.some((b) => b.block.kind === 'exam' && b.done) && d.blocks.filter((b) => b.block.kind === 'grade').some((b) => b.done));
 
 export const PLAN_REWARDS: readonly PlanRewardDef[] = [
   { id: 'plan:first-exam', title: 'First Exam Sat', hint: 'Sit a practice exam under the clock.', icon: 'timer', xp: 100, earned: (c) => examBlocksDone(c, 'exam') >= 1 },
-  { id: 'plan:graded-same-day', title: 'Graded The Same Day', hint: 'Grade an exam on the day you sat it.', icon: 'check-check', xp: 100, earned: gradedSameDay },
   { id: 'plan:three-full', title: 'Three Full Days', hint: 'Three full days in a row.', icon: 'flame', xp: 100, earned: (c) => c.progress.streak >= 3 },
   { id: 'plan:seven-full', title: 'Seven Full Days', hint: 'A full week of full days.', icon: 'zap', xp: 250, earned: (c) => c.progress.streak >= 7 },
   { id: 'plan:half-bank', title: 'Half The Bank', hint: 'Half the new problems done.', icon: 'milestone', xp: 200, earned: (c) => c.newTotal > 0 && c.newDone * 2 >= c.newTotal },
   { id: 'plan:bank-done', title: 'Bank Done', hint: 'Every new problem done.', icon: 'trophy', xp: 500, earned: (c) => c.newTotal > 0 && c.newDone >= c.newTotal },
-  { id: 'plan:misses-redone', title: 'Every Miss Redone', hint: 'Every exam miss worked again.', icon: 'repeat', xp: 300, earned: (c) => c.misses > 0 && c.missesRedone >= c.misses },
   { id: 'plan:three-exams', title: 'Three Exams Sat', hint: 'All three practice exams sat.', icon: 'award', xp: 300, earned: (c) => examBlocksDone(c, 'exam') >= 3 },
-  { id: 'plan:all-graded', title: 'Every Exam Graded', hint: 'Every practice exam graded, question by question.', icon: 'list-checks', xp: 200, earned: (c) => c.exams.length > 0 && c.exams.every((e) => e.questions > 0 && e.graded >= e.questions) },
   { id: 'plan:taper', title: 'Taper Kept', hint: 'The last day before the sitting, done as planned.', icon: 'moon', xp: 150, earned: (c) => c.progress.days.some((d) => d.day.type === 'taper' && d.full) },
 ];
 export function earnedPlanRewards(ctx: PlanRewardContext): PlanRewardDef[] {
