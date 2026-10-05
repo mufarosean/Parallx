@@ -13,6 +13,7 @@ import { renderStoriesPage, listStories } from './story.js';
 import { renderTablesPage, attachTableRoll, listTables, loadTable } from './tables.js';
 import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
+import { sheetFromCharacter } from './studio-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 
@@ -3188,6 +3189,71 @@ function debugLorebookTriggers(lorebooks, recentContext = '') {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 4C: SUPPORTING CAST
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// People who are in the world of a chat but never take a turn of their own:
+// the bartender, a sister, the landlord. Before this, a person was either a
+// full character (a third seat at the table, with turns to manage) or did not
+// exist, and the Turn Contract forbade the model from writing anyone else's
+// words at all, so the leads could not so much as order a drink. A supporting
+// cast member is one line in the prompt; whoever is speaking may voice them
+// briefly inside their own turn. They are never given a turn, never a stop
+// token, never a chip.
+//
+// Stored on the thread as `supportingCast`: `{ id, file }` for a character
+// from the roster (its card is read fresh each prompt) or `{ id, name, note }`
+// for a person typed in the chat.
+
+const SUPPORTING_NOTE_MAX = 320;
+
+/** "Dana: the bartender, Ada's ex" (or "Dana, the bartender…") → { name, note }. */
+function parseSupportingPerson(text) {
+  const t = String(text || '').trim().replace(/\s+/g, ' ');
+  if (!t) return null;
+  const m = t.match(/^([^:,.]{1,60}?)\s*[:,]\s*(.+)$/);
+  if (m) return { name: m[1].trim(), note: m[2].trim() };
+  return { name: t.slice(0, 60).trim(), note: '' };
+}
+
+/** At most `max` characters, cut at a sentence end when one sits in the second half, else at a word. */
+function clipNote(text, max = SUPPORTING_NOTE_MAX) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 3);
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; '));
+  if (end > max * 0.5) return cut.slice(0, end + 1).trim();
+  const space = cut.lastIndexOf(' ');
+  return (space > 0 ? cut.slice(0, space) : cut).trim() + '...';
+}
+
+/**
+ * The short cards the prompt gets: `[{ name, note }]`. A roster entry is read
+ * from its character (tagline or first sentence, then how they speak); an
+ * entry whose character is gone is left out. `roster` is the parsed
+ * character list (scanCharacters).
+ */
+function supportingCastCards(entries, roster = []) {
+  const out = [];
+  for (const e of Array.isArray(entries) ? entries : []) {
+    if (!e) continue;
+    if (e.file) {
+      const c = roster.find((r) => r.fileName === e.file);
+      if (!c) continue;
+      const data = c.rawData || {};
+      const sheet = sheetFromCharacter(data);
+      const name = c.frontmatter?.name || data.name || e.file.replace(/\.(md|json)$/, '');
+      const who = (sheet.tagline || (sheet.description || data.roleInstruction || '').split(/(?<=[.!?])\s/)[0] || '').trim();
+      const voice = (sheet.voice || '').split('\n').map((l) => l.trim()).filter(Boolean)[0] || '';
+      out.push({ name, note: clipNote([who, voice ? `Speaks: ${voice.replace(/^speaks:?\s*/i, '')}` : ''].filter(Boolean).join(' ')) });
+    } else if (e.name) {
+      out.push({ name: String(e.name).trim(), note: clipNote(e.note || '') });
+    }
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 5: SYSTEM PROMPT BUILDER (← openclawSystemPrompt.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -3211,6 +3277,8 @@ function buildSystemPrompt(params = {}) {
     // How people talk: the user's rules for dialogue (Settings › Dialogue
     // rules). Empty means none.
     dialogueRules = '',
+    // People in the world who never take a turn: [{ name, note }].
+    supportingCast = [],
   } = params;
 
   const parts = [];
@@ -3346,12 +3414,26 @@ function buildSystemPrompt(params = {}) {
     parts.push(['## Cast', ...(castNote ? [castNote] : []), ...castEntries].join('\n\n'));
   }
 
+  // 2b. Supporting cast: in the scene, never at the table. The one exception
+  // to "write for no one else": whoever is speaking may voice these people
+  // briefly, inside their own turn, so the leads can talk to a bartender
+  // without the bartender becoming a third character to manage.
+  const supporting = (supportingCast || []).filter((p) => p && p.name);
+  if (supporting.length > 0) {
+    parts.push([
+      '## Supporting Cast',
+      'People in this world who never take a turn of their own. Whoever is writing the turn may give them a line or two inside it, in quotes, as part of the scene, in keeping with the note on each. They never get a `<<Name>>` block or a reply of their own, and they never carry the scene: the turn stays the active character\'s.',
+      ...supporting.map((p) => `- ${p.name}${p.note ? `: ${substituteVars(p.note, p.name, userName)}` : ''}`),
+    ].join('\n'));
+  }
+
   // 3. Conversation contract.
   parts.push([
     '## Turn Contract',
     '- History is rendered with `<<Name>>` tags identifying each speaker. They are authoritative.',
     '- Write exactly one new turn, for the character named in the banner above and the Active Turn block below — and ONLY that character.',
     '- Never write, narrate, quote, or describe internal thoughts for any other character. If you find yourself starting to write a different `<<Name>>` block, STOP.',
+    ...(supporting.length > 0 ? ['- The one exception: the Supporting Cast listed below may be given a line or two inside your turn. They are the only other people whose words you may write, and they never take the turn over.'] : []),
     '- Never prepend a speaker tag (no `<<Name>>`, no `Name:`); the interface adds the label automatically.',
     '- Character-specific instructions override the writing style preset when they conflict.',
   ].join('\n'));
@@ -3509,6 +3591,8 @@ function assembleContext(params) {
     writingPresetOverride = '',
     responseLengthOverride = '',
     standingNote = '',
+    // People in the world who never take a turn: [{ name, note }].
+    supportingCast = [],
   } = params;
 
   // Support both old (single character) and new (characters array) signatures
@@ -3605,6 +3689,7 @@ function assembleContext(params) {
     customStyleContent: settings?.customWritingStyle || '',
     sceneState, // M79 Phase 3a
     dialogueRules: settings?.dialogueRules || '',
+    supportingCast,
   });
   const systemPrompt = buildResult.prompt;
   const characterReminders = buildResult.reminders || [];
@@ -3993,6 +4078,7 @@ async function createThread(fs, workspaceUri, characterFile, modelId) {
     responseLengthOverride: '',
     standingNote: '',
     smartTurnOrder: false,
+    supportingCast: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -4109,6 +4195,7 @@ async function loadThread(fs, workspaceUri, threadId) {
   if (thread.responseLengthOverride === undefined) thread.responseLengthOverride = '';
   if (thread.standingNote === undefined) thread.standingNote = '';
   if (thread.smartTurnOrder === undefined) thread.smartTurnOrder = false;
+  if (!Array.isArray(thread.supportingCast)) thread.supportingCast = [];
 
   return thread;
 }
@@ -5431,6 +5518,8 @@ function renderChatEditor(container, parallx, input) {
 
   let thread = null;
   let characters = [];
+  // The supporting cast's short cards, resolved against the roster on load.
+  let supportingCards = [];
   let allLorebooks = [];
   let messageHistory = [];
   let models = [];
@@ -5675,7 +5764,8 @@ function renderChatEditor(container, parallx, input) {
   }
   function renderChatHead() {
     const names = characters.map((char) => getCharacterName(char));
-    chatHeadName.textContent = names.length ? names.join(', ') : 'Chat';
+    const withCast = supportingCards.length ? ` \u00B7 with ${supportingCards.map((p) => p.name).join(', ')}` : '';
+    chatHeadName.textContent = (names.length ? names.join(', ') : 'Chat') + withCast;
     chatHeadFaces.replaceChildren(...characters.slice(0, 3).map((char) => createPortrait(getCharacterName(char), { size: 32, hue: characterHue(char) })));
     const sc = thread?.sceneState;
     const bits = sc && typeof sc === 'object' ? [sc.location, sc.time, sc.mood].filter((v) => typeof v === 'string' && v.trim()) : [];
@@ -7053,6 +7143,7 @@ function renderChatEditor(container, parallx, input) {
       writingPresetOverride: thread?.writingPresetOverride || '',
       responseLengthOverride: thread?.responseLengthOverride || '',
       standingNote: thread?.standingNote || '',
+      supportingCast: supportingCards,
     });
     // Annotate with diagnostic info the inspect modal + token chip surface.
     // All `*Source` labels reference the SPEAKER character (or
@@ -7768,6 +7859,11 @@ function renderChatEditor(container, parallx, input) {
       } catch (err) { console.warn('[TextGenerator] Skipped broken character entry', charRef?.file, err); }
     }
     characters = loadedCharacters;
+    // Supporting cast from the roster: read fresh so an edited card shows.
+    try {
+      const roster = (thread.supportingCast || []).some((e) => e && e.file) ? await scanCharacters(fs, workspaceUri) : [];
+      supportingCards = supportingCastCards(thread.supportingCast, roster);
+    } catch { supportingCards = supportingCastCards(thread.supportingCast, []); }
     // Persist updated thread references if any .md → .json renames happened
     if (threadNeedsUpdate) {
       await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { characters: thread.characters }), parallx, 'updated participant references');
@@ -7952,6 +8048,64 @@ function renderChatEditor(container, parallx, input) {
     };
     rebuildChips();
     bodyEl.appendChild(fieldWrap('Participants', chipList));
+
+    // ── Supporting cast ──
+    // People in the scene who never take a turn. From the roster, or typed
+    // as "Name: who they are, how they talk".
+    const castList = el('div', 'tg-drawer-chips');
+    const saveCast = async () => {
+      await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { supportingCast: thread.supportingCast }), parallx, 'supporting cast');
+      await reloadThreadState({ includeMessages: false });
+      rebuildCast();
+    };
+    const rebuildCast = () => {
+      castList.innerHTML = '';
+      for (const entry of thread.supportingCast || []) {
+        const card = entry.file ? supportingCards.find((p) => p.name === (getCharacterName(entry.file))) : null;
+        const label = entry.file ? getCharacterName(entry.file) : (entry.name || 'Someone');
+        const chip = el('span', 'tg-drawer-chip');
+        chip.title = entry.file ? (card?.note || 'From the roster') : (entry.note || '');
+        chip.appendChild(document.createTextNode(label));
+        const rm = el('button', 'tg-drawer-chip-remove', { html: icon('x', 10) });
+        rm.title = 'Remove from the scene';
+        rm.addEventListener('click', async () => {
+          thread.supportingCast = (thread.supportingCast || []).filter((e) => e.id !== entry.id);
+          await saveCast();
+        });
+        chip.appendChild(rm);
+        castList.appendChild(chip);
+      }
+      const fromRoster = el('button', 'tg-drawer-add-btn', { text: '+ From Roster' });
+      fromRoster.title = 'A character from your roster, as a supporting person in this chat';
+      fromRoster.addEventListener('click', async () => {
+        const allChars = await scanCharacters(fs, workspaceUri);
+        const taken = new Set([...(thread.characters || []).map((c) => c.file), ...(thread.supportingCast || []).map((e) => e.file).filter(Boolean)]);
+        const available = allChars.filter((c) => !taken.has(c.fileName));
+        if (available.length === 0) { showToast('Every character is already in this chat.'); return; }
+        const picked = await parallx.window?.showQuickPick(
+          available.map((c) => ({ label: c.frontmatter.name || c.fileName, description: c.fileName })),
+          { placeholder: 'Who is in the scene, without a turn of their own?' },
+        );
+        if (!picked) return;
+        thread.supportingCast = [...(thread.supportingCast || []), { id: generateId().slice(0, 8), file: picked.description, addedAt: Date.now() }];
+        await saveCast();
+      });
+      const someone = el('button', 'tg-drawer-add-btn', { text: '+ Someone New' });
+      someone.title = 'A person who exists only in this chat';
+      someone.addEventListener('click', async () => {
+        const typed = await parallx.window?.showInputBox({
+          prompt: 'Who are they? Name, then who they are and how they talk.',
+          placeholder: 'Dana: the bartender, Ada\'s ex. Talks fast, never finishes a sentence.',
+        });
+        const person = parseSupportingPerson(typed);
+        if (!person) return;
+        thread.supportingCast = [...(thread.supportingCast || []), { id: generateId().slice(0, 8), name: person.name, note: person.note, addedAt: Date.now() }];
+        await saveCast();
+      });
+      castList.append(fromRoster, someone);
+    };
+    rebuildCast();
+    bodyEl.appendChild(fieldWrap('Supporting cast', castList, 'In the scene, never at the table: whoever is speaking can give them a line or two. They never take a turn.'));
 
     // ── Edit character shortcut ──
     const editCharBtn = el('button', 'tg-drawer-btn', { html: `${icon('pencil-line', 13)} Edit ${escapeHtml(getCharacterName(characters[0]) || 'character')}` });
@@ -10446,6 +10600,8 @@ export const __testables = {
   assembleContext,
   buildSystemPrompt,
   renderMemoryChannel,
+  parseSupportingPerson,
+  supportingCastCards,
   resolveContextWindow,
   migrateContextDefault,
   DEFAULT_DIALOGUE_RULES,
