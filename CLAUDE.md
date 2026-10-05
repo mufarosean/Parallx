@@ -15,6 +15,11 @@
 - One working branch holds the latest version: `dev`
   (until the owner names a new one). Start every task from its tip
   (`git pull` first) and commit to it.
+- A second branch, `exam7-campaign`, holds the owner's Exam 7 study campaign
+  work (the plan, workspace data fixes, the campaign build) so `dev` stays
+  app-only. Same rules on it: pull first, push before stopping, no rebasing.
+  App code the campaign needs is folded into `dev` as each step finishes, so
+  `dev` never lacks a shipped feature.
 - Commit and push as you go, after each finished step, so nothing lives only
   in one machine or one container. Never end a session with uncommitted work.
 - Keep history in one line: no side branches for a task, no rebasing or
