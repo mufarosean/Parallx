@@ -3648,7 +3648,7 @@ function planActions(): PlanActions {
     importPlan: () => void pickAndImportPlan(),
     removePlan: () => {
       void (async () => {
-        const ok = await _api?.window?.showConfirmModal?.({ message: 'Remove the plan?', detail: 'The plan and what each block recorded go. Quizzes, ratings and exam grades stay.', confirmLabel: 'Remove Plan' }) ?? true;
+        const ok = await _api?.window?.showConfirmModal?.({ message: 'Remove the plan?', detail: 'The plan and what each block recorded go. Quizzes and ratings stay.', confirmLabel: 'Remove Plan' }) ?? true;
         if (ok) await clearPlan();
       })();
     },
