@@ -11,7 +11,9 @@
 // and the pace step over them, and the dashboard gives them to repeats.
 // Essay sheets (one per paper, ten or more questions each) are not campaign
 // problems: they live on as flashcards. Practice-exam sheets are not either:
-// an exam is sat whole on its own day, never drawn piecemeal.
+// an exam is sat whole on its own day, never drawn piecemeal. Nor are the
+// custom and generated banks: the campaign is the workbook, every Rising
+// Fellow and released CAS problem in it; other banks are drawn by a plan.
 import { normalizeRating } from './problemImport.js';
 import { dayKey, type InsightItem, type InsightAttempt } from './progressInsights.js';
 
@@ -67,9 +69,9 @@ export const XP_EASY_BONUS = 5;
 export const XP_FULL_DAY = 50;
 export const XP_PER_LEVEL = 300;
 
-/** A workbook problem the campaign counts, draws and clears: has a paper, is not an essay sheet, is not a practice-exam question. */
+/** A workbook problem the campaign counts, draws and clears: a Rising Fellow or CAS problem with a paper that is not an essay sheet. */
 export function isCampaignProblem(item: Pick<InsightItem, 'paper' | 'kind' | 'source'>): boolean {
-  return !!item.paper && item.kind !== 'essay' && item.source !== 'exam';
+  return !!item.paper && item.kind !== 'essay' && (item.source === 'rf' || item.source === 'cas');
 }
 
 // Day keys are calendar dates: their arithmetic is done on the calendar

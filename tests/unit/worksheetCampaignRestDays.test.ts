@@ -92,6 +92,8 @@ describe('essay sheets stay out of the campaign', () => {
   it('is not counted, not drawn, not needed to clear a paper, and never earns XP', () => {
     expect(isCampaignProblem(essay)).toBe(false);
     expect(isCampaignProblem({ ...item(8, 'pe1'), source: 'exam' })).toBe(false);
+    expect(isCampaignProblem({ ...item(9, 'meyers'), source: 'custom' })).toBe(false);
+    expect(isCampaignProblem({ ...item(10, 'meyers'), source: 'cas' })).toBe(true);
     expect(isCampaignProblem(item(1, 'brosius'))).toBe(true);
     const all = bank.map((b, i) => attempt(b.id, 'easy', START + i * 60000));
     const p = campaignProgress(campaign, withEssay, [...all, attempt(7, 'easy', START + 3600000)], FRI);
