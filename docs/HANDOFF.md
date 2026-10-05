@@ -49,6 +49,31 @@ what the user turned on), house rules, copy rules, checks.
   owner before touching roleplay prompt assembly again.
 - Answer "why" questions directly: name the line and who set the value.
 
+## Context window: settled
+
+- The owner tested the fix: it works (qwen 3.8 27B at 64K, picked in Ctx).
+  Decided: no cap and no change to what Auto resolves to.
+- Auto's "model length" is the provider's estimate (`_extractContextLength`
+  in `ollamaProvider.ts`: the larger of the file's `context_length` and a
+  RoPE-based guess, capped at 256K), e.g. 128K for qwen3:8b. Known and
+  accepted; a slow model is answered by picking a size in Ctx.
+- The Ctx picker's "Auto (…)" label follows a model change.
+
+## Cloud setup
+
+- `npm ci` in a cloud container: set `ONNXRUNTIME_NODE_INSTALL=skip`
+  (its download resets through the proxy). Do not skip Electron's binary:
+  `optionalBridgesLazy.test.ts` requires `electron` and fails without it.
+
+## Lessons to keep
+
+- Do not change what the roleplay model sees (prompt assembly, history
+  trimming) without checking history retention. A "reply reserve" that
+  dropped old history broke continuity and was reverted (`b7fad86b`);
+  `tests/unit/creationsReplyRoom.test.ts` guards it. Confirm with the
+  owner before touching roleplay prompt assembly again.
+- Answer "why" questions directly: name the line and who set the value.
+
 ## Waiting on the owner
 
 - The owner is testing the context window fix. Watch for: replies still
