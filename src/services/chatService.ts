@@ -739,8 +739,8 @@ export class ChatService extends Disposable implements IChatService {
   // will see on their token and the user's own text. A tool that must know
   // what the user typed (Web Research fetches only addresses the user gave)
   // reads it from here, before any tool call of the turn.
-  private readonly _onDidStartRequest = this._register(new Emitter<{ readonly sessionId: string; readonly turnId: string; readonly text: string }>());
-  readonly onDidStartRequest: Event<{ readonly sessionId: string; readonly turnId: string; readonly text: string }> = this._onDidStartRequest.event;
+  private readonly _onDidStartRequest = this._register(new Emitter<{ readonly sessionId: string; readonly turnId: string; readonly text: string; readonly origin?: string }>());
+  readonly onDidStartRequest: Event<{ readonly sessionId: string; readonly turnId: string; readonly text: string; readonly origin?: string }> = this._onDidStartRequest.event;
 
   constructor(
     agentService: IChatAgentService,
@@ -1378,7 +1378,9 @@ export class ChatService extends Disposable implements IChatService {
     // 6. Create cancellation token
     const cts = new CancellationTokenSource(requestId);
     this._activeCancellations.set(sessionId, cts);
-    this._onDidStartRequest.fire({ sessionId, turnId: requestId, text: message });
+    // origin: undefined is a turn the user typed; 'heartbeat', 'cron' and the
+    // like are the assistant's own, with nobody at the keyboard.
+    this._onDidStartRequest.fire({ sessionId, turnId: requestId, text: message, origin: (session as { origin?: string }).origin ?? undefined });
 
     // Your chat turn holds the model engine for its whole length, tool steps
     // included: background work waits, and any already running gives way.

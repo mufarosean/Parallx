@@ -530,7 +530,7 @@ async function webFetchTool(args, turnId) {
   let httpStatus = res.result && Number(res.result.status) || 0;
   if (_isRefusal(httpStatus) && _browserFallbackOn()) {
     let viaBrowser = null;
-    try { viaBrowser = await invoke('webFetch:browserRequest', { url, turnId }); }
+    try { viaBrowser = await invoke('webFetch:browserRequest', { url, turnId, interactive: t.interactive !== false }); }
     catch (err) { viaBrowser = { ok: false, error: { code: 'NO_BROWSER', message: (err && err.message) || 'the browser engine is not available' } }; }
     const browserStatus = viaBrowser && viaBrowser.ok && viaBrowser.result ? Number(viaBrowser.result.status) || 0 : 0;
     if (viaBrowser && viaBrowser.ok && browserStatus < 400) {
@@ -1182,6 +1182,9 @@ function _wireChatTurns(chat) {
     out.push(chat.onDidStartRequest((e) => {
       if (!e || typeof e.turnId !== 'string') return;
       seedTurnFromUserMessage(e.turnId, typeof e.text === 'string' ? e.text : '');
+      // A person is at the keyboard for a turn they typed; an autonomous
+      // turn (heartbeat, cron) has nobody to tick a site's human check.
+      _ensureTurn(e.turnId).interactive = !e.origin;
     }));
   }
   if (typeof chat.onDidCompleteRequest === 'function') {

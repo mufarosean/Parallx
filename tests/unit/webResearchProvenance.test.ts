@@ -259,6 +259,24 @@ describe('the chat seeds what the user typed (2026-10-05)', () => {
     expect(start.size()).toBe(0);
   });
 
+  it('a turn the user typed may show them a site\'s human check; an autonomous turn may not', async () => {
+    const start = emitter<{ sessionId: string; turnId: string; text: string; origin?: string }>();
+    ext.__test__._wireChatTurns({ onDidStartRequest: start.on });
+    const asked: { turnId: string; interactive: boolean }[] = [];
+    const wall = (url: string) => ({ ok: true, result: { status: 403, finalUrl: url, contentType: 'text/html', body: '<html><head><title>Just a moment...</title></head><body></body></html>' } });
+    ext.__test__._setBridge({
+      'webFetch:request': async ({ url }: { url: string }) => wall(url),
+      'webFetch:browserRequest': async (p: { turnId: string; interactive: boolean }) => { asked.push({ turnId: p.turnId, interactive: p.interactive }); return { ok: false, error: { code: 'BROWSER_CHALLENGE', message: 'no' } }; },
+    });
+    start.fire({ sessionId: 's', turnId: 'typed', text: 'read https://wall.example/page' });
+    start.fire({ sessionId: 's', turnId: 'robot', text: 'read https://wall.example/page', origin: 'heartbeat' });
+    await ext.__test__.webFetchTool({ url: 'https://wall.example/page' }, 'typed');
+    await ext.__test__.webFetchTool({ url: 'https://wall.example/page' }, 'robot');
+    expect(asked).toEqual([{ turnId: 'typed', interactive: true }, { turnId: 'robot', interactive: false }]);
+    ext.__test__.resetTurn('typed');
+    ext.__test__.resetTurn('robot');
+  });
+
   it('a chat without the events is left alone', () => {
     expect(ext.__test__._wireChatTurns({})).toEqual([]);
     expect(ext.__test__._wireChatTurns(null)).toEqual([]);

@@ -658,7 +658,7 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret, opts) {
         const { createBrowserFetch } = require('./browserFetch.cjs');
         browserFetch = createBrowserFetch({ electron: require('electron'), policy: require('./browserPolicy.cjs'), preflight: _preflight });
       }
-      const result = await browserFetch.fetchPage({ url: safe.url });
+      const result = await browserFetch.fetchPage({ url: safe.url, interactive: safe.interactive === true });
       return { ok: true, result };
     } catch (err) {
       return { ok: false, error: { code: (err && err.code) || 'UNKNOWN', message: err && err.message ? err.message : String(err) } };

@@ -31,17 +31,25 @@ function fakeElectron(pages: Page[], opts: { failLoad?: boolean } = {}) {
     async clearStorageData() { this.cleared++; }
     async clearCache() { this.cleared++; }
   }
-  class FakeWindow {
+  class FakeWindow extends EventEmitter {
     webContents: FakeContents;
     opts: Record<string, unknown>;
     destroyed = false;
+    shown = 0;
+    hidden = 0;
+    title = '';
     constructor(o: Record<string, unknown>) {
+      super();
       this.opts = o;
       this.webContents = new FakeContents();
       made.push({ win: this, partition: String((o.webPreferences as Record<string, unknown>).partition), webPreferences: o.webPreferences as Record<string, unknown> });
     }
     isDestroyed() { return this.destroyed; }
     destroy() { this.destroyed = true; }
+    show() { this.shown++; }
+    focus() {}
+    hide() { this.hidden++; }
+    setTitle(t: string) { this.title = t; }
   }
   class FakeContents extends EventEmitter {
     current: Page | null = null;
@@ -95,7 +103,8 @@ describe('createBrowserFetch', () => {
     const { win, partition, webPreferences } = f.made[0];
     expect(win.opts.show).toBe(false);
     expect(partition.startsWith('persist:')).toBe(false);
-    expect(webPreferences).toMatchObject({ sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false, images: false });
+    expect(webPreferences).toMatchObject({ sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false });
+    expect(win.shown).toBe(0);
     expect(win.destroyed).toBe(true);
     expect(f.sessions[0].ua).toContain('Electron');
     await new Promise((r) => setTimeout(r, 0));
@@ -110,10 +119,44 @@ describe('createBrowserFetch', () => {
     expect(r.body).toContain('lighthouse');
   });
 
-  it('a challenge that never clears is a failure that says so', async () => {
+  it('a challenge that never clears is a failure that says so, and nobody is shown a window', async () => {
     const f = fakeElectron([wall]);
     const fetcher = createBrowserFetch({ electron: f.electron, policy, preflight: okPreflight, options: { challengeWaitMs: 10, challengeRounds: 1 } });
     await expect(fetcher.fetchPage({ url: 'https://wiki.example/wiki/Ada' })).rejects.toMatchObject({ code: 'BROWSER_CHALLENGE' });
+    expect(f.made[0].win.destroyed).toBe(true);
+    expect(f.made[0].win.shown).toBe(0);
+  });
+
+  it('with a person present, a human check shows the window, and the read goes on once they pass it', async () => {
+    // Two walls (the automatic round does not clear it), then the page the site reloads into after the tick.
+    const f = fakeElectron([wall, wall, real]);
+    const fetcher = createBrowserFetch({ electron: f.electron, policy, preflight: okPreflight, options: { challengeWaitMs: 100, challengeRounds: 1, interactiveWaitMs: 2000 } });
+    const r = await fetcher.fetchPage({ url: 'https://wiki.example/wiki/Ada', interactive: true });
+    expect(r.status).toBe(200);
+    expect(r.body).toContain('lighthouse');
+    const { win } = f.made[0];
+    expect(win.shown).toBe(1);
+    expect(win.hidden).toBe(1);
+    expect(win.title).toMatch(/finish this site's check/);
+    expect(win.destroyed).toBe(true);
+  });
+
+  it('closing the window during the check is a failure that says so', async () => {
+    const f = fakeElectron([wall, wall]);
+    const fetcher = createBrowserFetch({ electron: f.electron, policy, preflight: okPreflight, options: { challengeWaitMs: 10, challengeRounds: 1, interactiveWaitMs: 5000 } });
+    const p = fetcher.fetchPage({ url: 'https://wiki.example/wiki/Ada', interactive: true });
+    await new Promise((r) => setTimeout(r, 60));
+    const { win } = f.made[0];
+    expect(win.shown).toBe(1);
+    win.destroyed = true;
+    win.emit('closed');
+    await expect(p).rejects.toMatchObject({ code: 'BROWSER_CHALLENGE', message: /closed before/ });
+  });
+
+  it('the human check waits only so long', async () => {
+    const f = fakeElectron([wall, wall]);
+    const fetcher = createBrowserFetch({ electron: f.electron, policy, preflight: okPreflight, options: { challengeWaitMs: 10, challengeRounds: 1, interactiveWaitMs: 80 } });
+    await expect(fetcher.fetchPage({ url: 'https://wiki.example/wiki/Ada', interactive: true })).rejects.toMatchObject({ code: 'BROWSER_CHALLENGE', message: /not finished in time/ });
     expect(f.made[0].win.destroyed).toBe(true);
   });
 

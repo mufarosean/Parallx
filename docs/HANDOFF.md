@@ -3,7 +3,7 @@
 Last updated 2026-10-05, night. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7617 tests) and `npm run build` pass.
+tsc, the full vitest suite (7621 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
@@ -83,9 +83,15 @@ engine as the way past bot walls.
   is refused (401, 403, 429, 5xx; never a 404) and the setting
   `webResearch.browserFallback` ("Read Refused Pages With The Browser
   Engine", on by default) allows; the Studio's Add Link gets it through
-  `fetchReadableForExtension`. A challenge that needs a human still fails,
-  and the message says so. Tests: `browserFetch.test.ts` (fake Electron),
-  `webFetchBridge`, `webResearchProvenance`, `optionalBridgesLazy`.
+  `fetchReadableForExtension`. A check that needs a human (the "verify you
+  are human" box) cannot pass hidden: when a person is present (a turn the
+  user typed, carried as `origin` undefined on `onDidStartRequest`, or Add
+  Link) the window is shown with the title "Parallx: finish this site's
+  check to continue", the user ticks the box, the site reloads into the
+  page and the read goes on (up to 3 minutes); an autonomous turn
+  (heartbeat, cron) never shows a window and fails with a message. Tests:
+  `browserFetch.test.ts` (fake Electron), `webFetchBridge`,
+  `webResearchProvenance`, `optionalBridgesLazy`.
 
 ## Done on 2026-10-05, cloud, late: Add Link said "Could Not Fetch" and no more
 
@@ -210,8 +216,9 @@ Tests: `quoteLocator`, `fileLocator`, `explorerFileLink`, `parallxLinkTool`,
   Reveal and Rate per question is the whole of the marking.
 - Web Research, after a pull and rebuild: in chat, "read <a link you type>"
   should fetch it (it never could before); the link that gave a 403 should
-  come through the browser engine (slower, a few seconds); a search twice in
-  one reply should not 429. The Settings switch "Read Refused Pages With The
+  come through the browser engine (slower, a few seconds); if it shows a
+  window asking to finish the site's check, tick the box and wait; a search
+  twice in one reply should not 429. The Settings switch "Read Refused Pages With The
   Browser Engine" turns the fallback off.
 - Review These: filter the bank to "Brosius" plus Done, Review These, step
   with Next. The sheet should show the work and the solution together; a

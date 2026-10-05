@@ -65,7 +65,7 @@
             "type": "boolean",
             "default": true,
             "scope": "user",
-            "description": "When a site refuses the plain fetch (a 403 from a bot wall, a human check), load the page in a hidden browser window instead. Slower, and it passes most walls. The same rules apply: https only, nothing on this computer or the local network, nothing kept afterwards."
+            "description": "When a site refuses the plain fetch (a 403 from a bot wall), load the page in a hidden browser window instead. If the site then asks you to prove you are human, the window is shown so you can tick the box; the read goes on once you have. The same rules apply: https only, nothing on this computer or the local network, nothing kept afterwards."
           }
         }
       }

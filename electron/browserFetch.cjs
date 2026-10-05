@@ -11,6 +11,14 @@
 // feeds. It is the fallback the Web Research extension takes when a site
 // refuses the plain fetch (its setting "browserFallback").
 //
+// A check that needs a human (the "verify you are human" box) cannot pass in
+// a hidden window. When the caller says a person is present (`interactive`:
+// a chat turn the user typed, the Studio's Add Link), the window is shown
+// with a title that says what to do, the user ticks the box, the site
+// reloads into the page, and the read goes on; the window closes itself.
+// An autonomous turn (heartbeat, cron) never shows a window: it fails and
+// says so.
+//
 // Every rule of the plain fetch holds here, for the page and for everything
 // it loads: HTTPS only, the domain blocklist, no private or local addresses
 // (the preflight the bridge hands in, DNS included, on the page and on every
@@ -29,12 +37,14 @@ const DEFAULTS = Object.freeze({
   loadTimeoutMs: 15_000,       // the first document
   challengeWaitMs: 9_000,      // one round of a JavaScript challenge
   challengeRounds: 2,
+  interactiveWaitMs: 180_000,  // the user's own check, once the window is shown
   maxHtmlBytes: 10 * 1024 * 1024,
   width: 1280,
   height: 900,
 });
 
 const CHALLENGE_TITLE = /just a moment|attention required|checking your browser|verify you are (a )?human|access denied|security check|please wait|one more step|are you a robot|ddos-guard|bot verification/i;
+const INTERACTIVE_TITLE = 'Parallx: finish this site\'s check to continue';
 const CHALLENGE_MARKERS = ['cf-challenge', 'challenge-platform', '_cf_chl_opt', 'cf-turnstile', 'cf_chl_', 'captcha-delivery', 'px-captcha', '_pxhd', 'awswaf', 'ddos-guard', 'hcaptcha', 'g-recaptcha', 'sec-cpt-'];
 
 function _err(code, message) {
@@ -117,7 +127,7 @@ function createBrowserFetch({ electron, policy, preflight, options = {} }) {
     return { html: String((r && r.html) || ''), title: String((r && r.title) || ''), url: String((r && r.url) || '') };
   }
 
-  async function fetchOnce(url) {
+  async function fetchOnce(url, interactive) {
     await preflight(url);
     const partition = `webfetch-${Date.now().toString(36)}-${++seq}`; // no "persist:": in memory only
     const ses = session.fromPartition(partition);
@@ -126,9 +136,14 @@ function createBrowserFetch({ electron, policy, preflight, options = {} }) {
       show: false, width: cfg.width, height: cfg.height,
       webPreferences: {
         partition, sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: false,
-        webviewTag: false, images: false, spellcheck: false, backgroundThrottling: false,
+        webviewTag: false, spellcheck: false, backgroundThrottling: false,
       },
     });
+    let closedByUser = false;
+    const closedErr = () => _err('BROWSER_CHALLENGE', 'The window was closed before the site\'s check was finished.');
+    // Rejects the moment the user closes the window, so no wait outlives it.
+    const closed = new Promise((_r, reject) => { try { win.on('closed', () => { closedByUser = true; reject(closedErr()); }); } catch { /* fake */ } });
+    closed.catch(() => {});
     const wc = win.webContents;
     let status = 0;
     try { wc.setWindowOpenHandler(() => ({ action: 'deny' })); } catch { /* fake */ }
@@ -151,7 +166,23 @@ function createBrowserFetch({ electron, policy, preflight, options = {} }) {
         doc = await readDocument(wc);
       }
       if (looksLikeChallenge({ status, title: doc.title, html: doc.html })) {
-        throw _err('BROWSER_CHALLENGE', 'The site asked for a human check that the browser engine could not pass on its own.');
+        if (!interactive) throw _err('BROWSER_CHALLENGE', 'The site asked for a human check that the browser engine could not pass on its own.');
+        // Over to the person: the window comes up, they tick the box, the
+        // site reloads into the page, and the read goes on.
+        try { win.setTitle(INTERACTIVE_TITLE); } catch { /* fake */ }
+        try { win.show(); win.focus(); } catch { /* fake */ }
+        const until = Date.now() + cfg.interactiveWaitMs;
+        for (;;) {
+          if (closedByUser || win.isDestroyed()) throw closedErr();
+          const wait = until - Date.now();
+          if (wait <= 0) throw _err('BROWSER_CHALLENGE', 'The site\'s check was not finished in time; the window was closed.');
+          try { await Promise.race([waitForLoad(wc, wait), closed]); }
+          catch (e) { if (closedByUser || win.isDestroyed()) throw closedErr(); if (e && e.code === 'TIMEOUT') continue; throw e; }
+          if (closedByUser || win.isDestroyed()) throw closedErr();
+          doc = await readDocument(wc);
+          if (!looksLikeChallenge({ status, title: doc.title, html: doc.html })) break;
+        }
+        try { win.hide(); } catch { /* fake */ }
       }
       let html = doc.html;
       if (Buffer.byteLength(html, 'utf8') > cfg.maxHtmlBytes) html = html.slice(0, cfg.maxHtmlBytes);
@@ -164,13 +195,15 @@ function createBrowserFetch({ electron, policy, preflight, options = {} }) {
     }
   }
 
-  /** Read `url` with the browser engine: { status, finalUrl, contentType, body, title, via }. */
-  function fetchPage({ url }) {
+  /** Read `url` with the browser engine: { status, finalUrl, contentType, body, title, via }.
+   *  `interactive`: a person is present and may be shown the window for a human check. */
+  function fetchPage({ url, interactive = false }) {
     if (typeof url !== 'string' || !url) return Promise.reject(_err('INVALID_URL', 'browser fetch requires a string URL'));
     const run = chain.then(() => {
       let timer;
-      const budget = new Promise((_r, reject) => { timer = setTimeout(() => reject(_err('TIMEOUT', `The read exceeded ${cfg.totalTimeoutMs}ms.`)), cfg.totalTimeoutMs); });
-      return Promise.race([fetchOnce(url), budget]).finally(() => clearTimeout(timer));
+      const total = cfg.totalTimeoutMs + (interactive ? cfg.interactiveWaitMs : 0);
+      const budget = new Promise((_r, reject) => { timer = setTimeout(() => reject(_err('TIMEOUT', `The read exceeded ${total}ms.`)), total); });
+      return Promise.race([fetchOnce(url, !!interactive), budget]).finally(() => clearTimeout(timer));
     });
     chain = run.then(() => undefined, () => undefined);
     return run;
@@ -179,4 +212,4 @@ function createBrowserFetch({ electron, policy, preflight, options = {} }) {
   return { fetchPage, _gate: gate, _sleep: sleep, _config: cfg };
 }
 
-module.exports = { createBrowserFetch, looksLikeChallenge, DEFAULTS, CHALLENGE_MARKERS };
+module.exports = { createBrowserFetch, looksLikeChallenge, DEFAULTS, CHALLENGE_MARKERS, INTERACTIVE_TITLE };

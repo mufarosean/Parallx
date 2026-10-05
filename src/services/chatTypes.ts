@@ -1320,9 +1320,11 @@ export interface IChatService extends IDisposable {
   readonly onDidCompleteRequest?: Event<{ readonly sessionId: string; readonly turnId: string }>;
   /**
    * Fires once per request as its turn begins, before any tool runs: the
-   * turn id the turn's tools see on their token, and the user's text.
+   * turn id the turn's tools see on their token, the user's text, and the
+   * session's origin (undefined = the user typed it; 'heartbeat', 'cron'...
+   * = the assistant's own turn, nobody present).
    */
-  readonly onDidStartRequest?: Event<{ readonly sessionId: string; readonly turnId: string; readonly text: string }>;
+  readonly onDidStartRequest?: Event<{ readonly sessionId: string; readonly turnId: string; readonly text: string; readonly origin?: string }>;
   /** Create a new chat session. */
   createSession(mode?: ChatMode, modelId?: string): IChatSession;
   /** Delete a session by ID. */
