@@ -473,6 +473,14 @@ async function webFetchTool(args, turnId) {
 
   t.fetches += 1;
 
+  // An error page is not the page. A 403 is usually a site that refuses
+  // anything that is not a browser; a 404 is a wrong address. Either way the
+  // body is the site's error text, never what the caller asked for.
+  const httpStatus = res.result && Number(res.result.status) || 0;
+  if (httpStatus >= 400) {
+    return softError(`HTTP_${httpStatus}`, _httpStatusMessage(httpStatus));
+  }
+
   // Add the final resolved URL to provenance (C5) so a subsequent fetch of
   // the redirect destination is allowed. We DO NOT add any <a href> URLs
   // extracted from the body — that's the depth-1 hard stop.
@@ -497,6 +505,15 @@ async function webFetchTool(args, turnId) {
   return { isError: false, content: framed, title, finalUrl };
 }
 
+/** What a site's error status means, in words the user can act on. */
+function _httpStatusMessage(status) {
+  if (status === 401 || status === 403) return `The site refused the request (${status}). It may block anything that is not a browser, or need a login.`;
+  if (status === 404 || status === 410) return `The site has no page at this address (${status}).`;
+  if (status === 429) return 'The site says too many requests (429). Try again later.';
+  if (status >= 500) return `The site is having trouble (${status}). Try again later.`;
+  return `The site answered with an error (${status}).`;
+}
+
 /**
  * The same fetch, for other extensions. One door to the web: a URL the user
  * typed goes through the provenance seed, the egress bridge (HTTPS only,
@@ -508,11 +525,19 @@ async function webFetchTool(args, turnId) {
 async function fetchReadableForExtension(url) {
   const turnId = `ext-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   try {
+    // The caller hands over a URL the user typed, whole: it is seeded as is,
+    // not lexed out of prose, so a path with parentheses or brackets (a wiki
+    // page such as /wiki/Name_(character)) is not cut short and refused.
     seedTurnFromUserMessage(turnId, String(url || ''));
+    const exact = canonicalUrl(String(url || ''));
+    if (exact) _ensureTurn(turnId).urls.add(exact);
     const result = await webFetchTool({ url: String(url || '') }, turnId);
     if (!result || result.isError !== false) {
-      const code = result && result.error && result.error.code ? result.error.code : 'FETCH_FAILED';
-      const message = result && result.error && result.error.message ? result.error.message : 'fetch failed';
+      // A soft error is { errorCode, content: '[web-research] CODE: why' }; the
+      // caller gets the code and the why, so it can tell the user the reason.
+      const code = (result && result.errorCode) || 'FETCH_FAILED';
+      const content = result && typeof result.content === 'string' ? result.content : '';
+      const message = content.replace(/^\[web-research\]\s*[A-Z0-9_]+:\s*/, '').trim() || 'fetch failed';
       return { ok: false, error: { code, message } };
     }
     const text = String(result.content || '').replace(/^<untrusted_web_content[^>]*>\n?/, '').replace(/\n?<\/untrusted_web_content>\s*$/, '');
@@ -1129,6 +1154,7 @@ export function deactivate() {
 export const __test__ = Object.freeze({
   canonicalUrl,
   seedTurnFromUserMessage,
+  fetchReadableForExtension,
   resetTurn,
   sanitizeHtml,
   sanitizeWithReadability,

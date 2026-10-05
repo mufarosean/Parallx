@@ -145,3 +145,40 @@ describe('per-turn isolation (C5 — no persistence across turns)', () => {
     expect(ext.__test__._isUrlAllowedThisTurn('t2', 'https://allowed.example/x')).toBe(false);
   });
 });
+
+describe('fetchReadableForExtension — the Studio\'s Add Link', () => {
+  const page = (url: string, status = 200, body = '<html><head><title>Ada (character)</title></head><body><p>Ada keeps a lighthouse on the coast.</p></body></html>') => ({
+    ok: true, result: { status, finalUrl: url, contentType: 'text/html', body },
+  });
+
+  it('fetches a wiki address with parentheses whole, not cut at the bracket', async () => {
+    const asked: string[] = [];
+    ext.__test__._setBridge({ 'webFetch:request': async ({ url }: { url: string }) => { asked.push(url); return page(url); } });
+    const r = await ext.__test__.fetchReadableForExtension('https://wiki.example/wiki/Ada_(character)');
+    expect(r.ok).toBe(true);
+    expect(r.title).toBe('Ada (character)');
+    expect(r.text).toContain('lighthouse');
+    expect(asked).toEqual(['https://wiki.example/wiki/Ada_(character)']);
+  });
+
+  it('an error page is a failure with a reason, not a source', async () => {
+    ext.__test__._setBridge({ 'webFetch:request': async ({ url }: { url: string }) => page(url, 403, '<html><body><h1>Access denied</h1><p>Please enable JavaScript.</p></body></html>') });
+    const r = await ext.__test__.fetchReadableForExtension('https://wiki.example/wiki/Ada');
+    expect(r.ok).toBe(false);
+    expect(r.error.code).toBe('HTTP_403');
+    expect(r.error.message).toMatch(/refused.*403/);
+    const gone = await ext.__test__.fetchReadableForExtension('https://wiki.example/missing');
+    expect(gone.ok).toBe(false);
+    ext.__test__._setBridge({ 'webFetch:request': async ({ url }: { url: string }) => page(url, 404, '<html><body>Not found</body></html>') });
+    const nf = await ext.__test__.fetchReadableForExtension('https://wiki.example/missing');
+    expect(nf.error.code).toBe('HTTP_404');
+    expect(nf.error.message).toMatch(/no page at this address/);
+  });
+
+  it('passes the bridge\'s own refusal through as the reason', async () => {
+    ext.__test__._setBridge({ 'webFetch:request': async () => ({ ok: false, error: { code: 'NOT_HTTPS', message: 'Refusing non-HTTPS URL: http://' } }) });
+    const r = await ext.__test__.fetchReadableForExtension('http://wiki.example/wiki/Ada');
+    expect(r.ok).toBe(false);
+    expect(r.error.code).toBe('NOT_HTTPS');
+  });
+});

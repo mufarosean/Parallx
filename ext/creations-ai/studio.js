@@ -101,7 +101,8 @@ export function injectStudioStyles() {
 .cs-textarea:focus, .cs-input:focus { outline: none; border-color: var(--px-accent); }
 .cs-textarea::placeholder, .cs-input::placeholder { color: var(--px-text-faint); }
 .cs-sources { display: flex; flex-direction: column; }
-.cs-source { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-2) 0; border-bottom: 1px solid var(--px-divider); font-size: var(--px-text-sm); }
+.cs-source { display: flex; align-items: center; gap: var(--px-space-2); padding: var(--px-space-2) 0; border-bottom: 1px solid var(--px-divider); font-size: var(--px-text-sm); flex-wrap: wrap; }
+.cs-source-why { flex-basis: 100%; font-size: var(--px-text-xs); color: var(--px-danger); }
 .cs-source-icon { color: var(--px-text-muted); display: inline-flex; flex: 0 0 auto; }
 .cs-source-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs-source-ref { color: var(--px-text-muted); font-size: var(--px-text-xs); margin-left: var(--px-space-1); }
@@ -794,9 +795,21 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     t.title = s.ref || '';
     row.appendChild(t);
     const chip = el('span', `cs-chip${s.status === 'error' ? ' cs-chip--danger' : ''}`, { text: sourceChipText(s) });
+    if (s.status === 'error' && s.error) chip.title = s.error;
     row.appendChild(chip);
+    if (s.status === 'error' && s.error) row.appendChild(el('span', 'cs-source-why', { text: s.error }));
     row.appendChild(iconButton('x', 'Remove this source', () => removeSource(s.id)));
     return row;
+  }
+  /** The reason a source failed, in the user's words; a bare code is not a reason. */
+  function sourceErrorText(err) {
+    const m = String((err && err.message) || err || '').trim();
+    if (!m || m === 'fetch failed') return 'The page could not be fetched.';
+    if (m === 'empty' || m === 'empty page') return 'The page had no readable text.';
+    if (m === 'empty file') return 'The file is empty.';
+    if (/^Refusing non-HTTPS/i.test(m)) return 'Only https:// links can be fetched.';
+    if (/^Host on egress blocklist|PRIVATE_IP|private address/i.test(m)) return 'This address is not allowed.';
+    return m;
   }
   function sourceChipText(s) {
     if (s.status === 'fetching') return 'Fetching';
@@ -825,7 +838,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       if (state.mode !== 'sources') setMode('sources');
     } catch (err) {
       s.status = 'error';
-      s.error = err?.message || String(err);
+      s.error = sourceErrorText(err);
     }
     if (state.disposed) return;
     renderSources();

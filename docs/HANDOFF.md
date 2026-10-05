@@ -3,7 +3,7 @@
 Last updated 2026-10-05, night. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7594 tests) and `npm run build` pass.
+tsc, the full vitest suite (7600 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
@@ -42,6 +42,26 @@ must appear somewhere (title, sheet, question, paper name, tags, note), in
 any order; a quoted phrase matches whole; a leading minus excludes
 (`brosius credibility -essay`). It was one substring before, so two words
 apart in the text found nothing.
+
+## Done on 2026-10-05, cloud, late: Add Link said "Could Not Fetch" and no more
+
+The owner's Add Link in the Character Studio failed with no reason shown.
+Three causes, all fixed in `ext/web-research/main.js` and `studio.js`:
+
+- `fetchReadableForExtension` read `error.code` off a soft error that
+  carries `errorCode` and a prefixed `content`, so every failure became a
+  bare "fetch failed". It now returns the code and the reason.
+- The URL was lexed out of its own text with the chat's regex, which stops
+  at `)` and `]`; a wiki address such as `/wiki/Name_(character)` was cut
+  short, failed provenance and was refused. The exact URL is now seeded.
+- An HTTP error page (403 from a site that blocks non-browsers, a 404) was
+  returned as the page. `webFetchTool` now refuses status 400 and up with
+  a message in words (`HTTP_<status>`), for the chat tool too.
+
+The Studio shows the reason under the source row and on the chip. Tests:
+`webResearchProvenance` (fetchReadableForExtension), `creationsStudioPane`.
+Sites behind a bot wall still refuse the app's fixed User-Agent; the
+message now says so, and the way round is to paste the page's text.
 
 ## Done on 2026-10-05, local: the Exam 7 campaign
 

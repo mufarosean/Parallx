@@ -388,6 +388,9 @@ describe('the Studio screen', () => {
     await flush();
     rows = [...root.querySelectorAll('.cs-source')];
     expect(rows[1].querySelector('.cs-chip')?.textContent).toBe('Could Not Fetch');
+    // The reason is on the row in words, not hidden behind the chip.
+    expect(rows[1].querySelector('.cs-source-why')?.textContent).toBe('This address is not allowed.');
+    expect(rows[1].querySelector('.cs-chip')?.getAttribute('title')).toBe('This address is not allowed.');
     expect((globalThis as any).parallxElectron).toBeUndefined();
   });
 
