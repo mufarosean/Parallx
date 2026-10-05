@@ -121,6 +121,7 @@ function makeWorld(opts: { existing?: Record<string, any> | null } = {}) {
     scanCharacters: async () => [...saved.entries()].map(([fileName, data]) => ({ fileName, frontmatter: { name: data.name }, rawData: data })),
     resolveUri: (base: string, path: string) => `${base}/${path}`,
     extRoot: '.parallx/extensions/text-generator',
+    rollSeed: async (list: string) => ({ want: 'to be asked to stay', fear: 'deep water', secret: 'they kept the money' } as Record<string, string>)[list] || '',
     ctxPresets: [{ value: 0, label: 'Auto' }, { value: 4096, label: '4k' }],
     forge: {
       AXES: [{ key: 'warmth', label: 'Warmth', low: 'cold', high: 'warm' }], RANDOM: '(random)',
@@ -248,6 +249,26 @@ describe('the Studio screen', () => {
     const data = [...w.saved.values()][0];
     expect(data.studio.pitch.name).toBe('Teodor Brask');
     expect(data.studio.concept).toBe('A lighthouse keeper');
+  });
+
+  it('the dice roll a want, a fear and a secret from the seeds table, and leave a locked one alone', async () => {
+    const w = makeWorld();
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    const inputOf = (label: string) => [...root.querySelectorAll('.tg-forge-row--text')].find((r) => r.querySelector('.tg-forge-row-label')?.textContent === label)!.querySelector('input') as HTMLInputElement;
+    typeInto(inputOf('Fear'), 'the telephone');
+    ([...root.querySelectorAll('.tg-forge-row--text')].find((r) => r.querySelector('.tg-forge-row-label')?.textContent === 'Fear')!.querySelector('.tg-forge-lock') as HTMLButtonElement).click();
+    buttonNamed(root, 'Roll The Dice').click();
+    await flush();
+    expect(inputOf('Want').value).toBe('to be asked to stay');
+    expect(inputOf('Secret').value).toBe('they kept the money');
+    expect(inputOf('Fear').value).toBe('the telephone');
+    typeInto(root.querySelector('.cs-textarea') as HTMLTextAreaElement, 'A ferry captain');
+    buttonNamed(root, 'Generate').click();
+    await flush();
+    const req = w.requests.find((r) => r.messages[0].content.includes('character designer for roleplay fiction'))!;
+    expect(req.messages[1].content).toContain('ATTRIBUTES');
   });
 
   it('refuses to generate with nothing to go on, in words, not a dialog', async () => {

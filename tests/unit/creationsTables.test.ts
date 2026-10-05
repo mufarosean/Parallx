@@ -124,3 +124,22 @@ describe('words', () => {
     expect(fixArticles('\u0001a owl, \u0001a cat, \u0001a hour, \u0001a unicorn, \u0001A apple')).toBe('an owl, a cat, an hour, a unicorn, An apple');
   });
 });
+
+describe('the Character Seeds table', () => {
+  // @ts-expect-error — JS module with no types
+  it('parses clean and rolls a concept, a want, a fear and a secret', async () => {
+    const { CHARACTER_SEEDS_TABLE, CHARACTER_SEEDS_NAME } = await import('../../ext/creations-ai/tables-core.js');
+    const gen = parseTables(CHARACTER_SEEDS_TABLE);
+    expect(gen.errors).toEqual([]);
+    for (const name of ['concept', 'occupation', 'quirk', 'contradiction', 'want', 'fear', 'secret']) expect(listNames(gen)).toContain(name);
+    const seq = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let i = 0;
+    const rng = () => seq[i++ % seq.length];
+    expect(evaluate(gen, 'output', { rng }).text).toBe('a lighthouse keeper who collects other people\'s secrets');
+    expect(evaluate(gen, 'want', { rng }).text).toBe('to be asked to stay');
+    expect(evaluate(gen, 'fear', { rng }).text).toBe('that the apology will come too late');
+    expect(evaluate(gen, 'secret', { rng }).text).toBe('they let a stranger take the blame, years ago, and watched');
+    expect(CHARACTER_SEEDS_NAME).toBe('character-seeds');
+    expect(CHARACTER_SEEDS_TABLE).not.toMatch(/[—–]/);
+  });
+});

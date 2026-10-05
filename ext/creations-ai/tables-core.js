@@ -380,3 +380,154 @@ treasure
   map
   knife
 `;
+
+/**
+ * The Character Seeds table, shipped once into the user's tables folder
+ * (`character-seeds.txt`) and theirs to edit from then on. Home's Surprise
+ * Me rolls `concept`; the Studio's dice roll `want`, `fear` and `secret`.
+ * Before, Surprise Me drew from eighteen fixed lines and the dice left the
+ * story seeds empty, so a rolled character was random in body and blank in
+ * motive.
+ */
+export const CHARACTER_SEEDS_TABLE = `// Character Seeds. Home's Surprise Me rolls "concept"; the Studio's dice roll
+// "want", "fear" and "secret". Edit anything, add your own lines: this file is
+// yours. A line's ^3 makes it three times as likely.
+
+output
+  [concept]
+
+concept
+  {a} [occupation] who [quirk]
+  {a} [occupation] who [quirk], [setting]
+  {a} [occupation] in [place], who [contradiction]
+  {a} [age] [occupation] who [quirk] and [contradiction]
+  the only [occupation] in [place], who [quirk]
+
+occupation
+  lighthouse keeper
+  night-shift radiologist
+  wedding planner
+  forensic accountant
+  long-haul lorry driver
+  piano tuner
+  court interpreter
+  hospice cook
+  beekeeper
+  bus-station locksmith
+  retired diver
+  pawnbroker
+  ferry captain
+  archivist
+  tattoo artist
+  tax auditor
+  stage magician
+  midwife
+  harbour pilot
+  substitute teacher
+  bookbinder
+  smuggler
+  priest with a parish of nine
+  racehorse vet
+  census taker
+
+quirk
+  collects other people's secrets
+  lies on half of their own maps
+  keeps the hours of a monastery, out of spite
+  talks to the dead and is bored by them
+  has never once been on time
+  answers every question with a smaller question
+  remembers every debt and forgives none
+  draws a floor plan of every room they sleep in
+  is sure one painting in the museum is watching
+  knows the weather by the ache in a bad knee
+  reads other people's post and seals it again
+  has outlived three business partners
+  cannot pass a locked door without trying it
+  hears music in ledgers
+  keeps a list of everyone who has ever been kind to them
+  is the last voice on the night shift
+  charges in gossip, not coin
+  has lost every fight but the one that mattered
+  believes the bees elected them
+  is embarrassed about how they nearly died
+
+contradiction
+  wants company and drives it off
+  gives advice nobody asked for and takes none
+  is brave about everything but the telephone
+  is generous with money and mean with time
+  tells the truth to strangers and lies to family
+  is loyal to a person who left years ago
+  is afraid of being ordinary and lives like it
+  wants to be found and keeps moving
+  forgives everyone but one
+  is tidy about everything except the past
+
+setting
+  in a port town that floods every spring
+  in a mining town the mine has left
+  on an island with one ferry a day
+  in a city that never turns its lights off
+  in a border village with two names
+  on a research station with a crew of four
+  in a seaside hotel out of season
+  in a town where everyone works for one family
+
+place
+  Tromsø
+  Valparaíso
+  Lagos
+  Hull
+  Marseille
+  Nagasaki
+  Winnipeg
+  Dunedin
+  Bulawayo
+  Gdańsk
+
+age
+  young
+  middle-aged
+  retired
+  seventeen-year-old
+  very old
+
+want
+  to be asked to stay
+  to pay off one debt before anyone finds out about it
+  the house they grew up in, back
+  one more season at the work before the hands give out
+  to be believed, once, without proof
+  a quiet month with nobody needing anything
+  to see their name spelled right on something official
+  to win back a friend they wronged
+  to leave town without it looking like leaving
+  to be the one who is called when things go wrong
+
+fear
+  that the apology will come too late
+  being found boring
+  the sound of the phone after midnight
+  that the one lie will be the one that gets found
+  ending up exactly like their father
+  being looked after
+  that nobody will notice when they stop
+  deep water
+  being asked to choose
+  that they were right all along and it did not matter
+
+secret
+  they let a stranger take the blame, years ago, and watched
+  they still write to someone who died
+  they cannot read well and have hidden it their whole life
+  they are not from where they say they are from
+  they kept the money
+  they know exactly where the lost thing is
+  they were the one who called the police
+  they have a child who does not know them
+  they failed the exam everyone thinks they passed
+  they are in love with the wrong person and have told no one
+`;
+
+export const CHARACTER_SEEDS_NAME = 'character-seeds';

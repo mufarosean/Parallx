@@ -8,7 +8,7 @@
 // to drop a roll into it. Design and gates: docs/CREATIONS_AI.md, slice 4.
 
 import { injectStudioStyles } from './studio.js';
-import { parseTables, evaluate, roll, listNames, STARTER_TABLE } from './tables-core.js';
+import { parseTables, evaluate, roll, listNames, STARTER_TABLE, CHARACTER_SEEDS_TABLE, CHARACTER_SEEDS_NAME } from './tables-core.js';
 
 const STYLE_ID = 'creations-tables-styles';
 const AUTOSAVE_MS = 800;
@@ -68,6 +68,34 @@ async function readTable(fs, workspaceUri, deps, name) {
 async function writeTable(fs, workspaceUri, deps, name, source) {
   await deps.ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', deps.extFolder, TABLES_DIR]);
   await fs.writeFile(deps.resolveUri(workspaceUri, `${deps.extRoot}/${TABLES_DIR}/${name}.txt`), source);
+}
+
+/** A table by name, parsed with its imports, or null when there is no such file. */
+export async function loadTableByName(fs, workspaceUri, deps, name) {
+  const src = await readTable(fs, workspaceUri, deps, name);
+  if (src == null) return null;
+  return loadTable(fs, workspaceUri, deps, src);
+}
+
+/** One roll of a list in a loaded table; '' when the list is missing or the roll is empty. */
+export function rollList(loaded, listName) {
+  if (!loaded || !loaded.gen) return '';
+  const r = evaluate(loaded.gen, listName, { imports: loaded.imports });
+  return String(r.text || '').trim();
+}
+
+/**
+ * Ship the Character Seeds table into the user's tables folder, once. The
+ * `settings.characterSeedsShipped` flag means a user who deletes the file
+ * does not get it back on every start. Returns true when it wrote the file.
+ */
+export async function shipCharacterSeeds(fs, workspaceUri, deps) {
+  const settings = await deps.loadSettings(fs, workspaceUri);
+  if (settings.characterSeedsShipped) return false;
+  const existing = await readTable(fs, workspaceUri, deps, CHARACTER_SEEDS_NAME);
+  if (existing == null) await writeTable(fs, workspaceUri, deps, CHARACTER_SEEDS_NAME, CHARACTER_SEEDS_TABLE);
+  await deps.saveSettings(fs, workspaceUri, { ...settings, characterSeedsShipped: true });
+  return existing == null;
 }
 
 /**

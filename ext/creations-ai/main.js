@@ -10,7 +10,8 @@
 
 import { renderStudioPane } from './studio.js';
 import { renderStoriesPage, listStories } from './story.js';
-import { renderTablesPage, attachTableRoll, listTables, loadTable } from './tables.js';
+import { renderTablesPage, attachTableRoll, listTables, loadTable, loadTableByName, rollList, shipCharacterSeeds } from './tables.js';
+import { CHARACTER_SEEDS_NAME } from './tables-core.js';
 import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
 import { sheetFromCharacter } from './studio-core.js';
@@ -8334,6 +8335,27 @@ const HOME_CONCEPTS = [
   'A knight sworn to protect a very small and ungrateful goose',
 ];
 
+/**
+ * Where Surprise Me gets a concept: the user's Character Seeds table when it
+ * is there (rolled fresh each time), else the lines above. `pick(n)` gives n
+ * different concepts.
+ */
+async function loadConceptRoller(fs, workspaceUri) {
+  let loaded = null;
+  try { if (fs && workspaceUri) loaded = await loadTableByName(fs, workspaceUri, studioDeps(), CHARACTER_SEEDS_NAME); } catch { loaded = null; }
+  const fallback = () => HOME_CONCEPTS[Math.floor(Math.random() * HOME_CONCEPTS.length)];
+  const one = () => (loaded && rollList(loaded, 'concept')) || fallback();
+  return {
+    fromTable: !!loaded,
+    one,
+    pick(n) {
+      const out = [];
+      for (let tries = 0; out.length < n && tries < n * 6; tries++) { const c = one(); if (!out.includes(c)) out.push(c); }
+      return out;
+    },
+  };
+}
+
 // The Home's Make Character hands its concept to the Characters page. If that
 // page is already open it takes the concept at once; otherwise it reads it on render.
 let _pendingStudio = null;
@@ -8378,7 +8400,9 @@ function renderHomePage(container, parallx) {
   const workspaceUri = parallx.workspace?.workspaceFolders?.[0]?.uri;
   const root = el('div', 'cr-home');
   container.appendChild(root);
-  const pick = (n) => [...HOME_CONCEPTS].sort(() => Math.random() - 0.5).slice(0, n);
+  // Until the seeds table has loaded, the fixed lines stand in.
+  let roller = { fromTable: false, one: () => HOME_CONCEPTS[Math.floor(Math.random() * HOME_CONCEPTS.length)], pick: (n) => [...HOME_CONCEPTS].sort(() => Math.random() - 0.5).slice(0, n) };
+  const pick = (n) => roller.pick(n);
 
   // ── Hero: who do you want to meet? ──
   const hero = el('div', 'cr-hero');
@@ -8391,20 +8415,30 @@ function renderHomePage(container, parallx) {
   conceptInput.placeholder = pick(1)[0];
   conceptInput.setAttribute('aria-label', 'Describe a character');
   prompt.appendChild(conceptInput);
-  const surprise = ui.createButton(prompt, { label: 'Surprise Me', kind: 'ghost', icon: 'dices', title: 'Fill in a concept at random', onClick: () => { conceptInput.value = pick(1)[0]; conceptInput.focus(); } });
+  const surprise = ui.createButton(prompt, { label: 'Surprise Me', kind: 'ghost', icon: 'dices', title: 'Fill in a concept rolled from your Character Seeds table', onClick: () => { conceptInput.value = roller.one(); conceptInput.focus(); } });
   surprise.classList.add('cr-dice');
   ui.createButton(prompt, { label: 'Make Character', kind: 'primary', icon: 'wand-sparkles', title: 'Open the Studio and write this character', onClick: () => makeCharacterFrom(parallx, conceptInput.value || conceptInput.placeholder) });
   conceptInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); makeCharacterFrom(parallx, conceptInput.value || conceptInput.placeholder); } });
   ask.appendChild(prompt);
   const tries = el('div', 'cr-tries');
-  tries.appendChild(el('span', 'cr-tries-label', { text: 'Try' }));
-  for (const c of pick(2)) {
-    const b = el('button', 'cr-try', { text: c });
-    b.type = 'button';
-    b.addEventListener('click', () => { conceptInput.value = c; conceptInput.focus(); });
-    tries.appendChild(b);
-  }
+  const renderTries = () => {
+    tries.replaceChildren(el('span', 'cr-tries-label', { text: 'Try' }));
+    for (const c of pick(2)) {
+      const b = el('button', 'cr-try', { text: c });
+      b.type = 'button';
+      b.addEventListener('click', () => { conceptInput.value = c; conceptInput.focus(); });
+      tries.appendChild(b);
+    }
+  };
+  renderTries();
   ask.appendChild(tries);
+  // The seeds table, once it has loaded, replaces the fixed lines.
+  void loadConceptRoller(fs, workspaceUri).then((r) => {
+    if (!r.fromTable || !root.isConnected) return;
+    roller = r;
+    if (!conceptInput.value) conceptInput.placeholder = roller.one();
+    renderTries();
+  });
   hero.appendChild(ask);
   const rollHost = el('div', 'cr-roll');
   rollHost.style.display = 'none';
@@ -8642,7 +8676,7 @@ function renderCharactersPage(container, parallx, input) {
     back: { label: 'Creations', onClick: () => void parallx.commands.executeCommand('textGenerator.openHome') },
     subtitle: ' ',
     primary: { label: 'New Character', icon: 'plus', onClick: () => openStudioNew() },
-    secondary: [{ label: 'Surprise Me', icon: 'dices', title: 'A new character from a concept picked at random', onClick: () => openStudio({ concept: HOME_CONCEPTS[Math.floor(Math.random() * HOME_CONCEPTS.length)], autoGenerate: true }) }],
+    secondary: [{ label: 'Surprise Me', icon: 'dices', title: 'A new character from a concept rolled from your Character Seeds table', onClick: () => void loadConceptRoller(fs, workspaceUri).then((r) => openStudio({ concept: r.one(), autoGenerate: true })) }],
   });
   const subtitleEl = header.querySelector('.px-page-header__subtitle');
   const tools = el('div', 'cr-gallery-tools');
@@ -8984,6 +9018,13 @@ function studioDeps() {
     el, icon, tgSelect, loadSettings, saveSettings, saveCharacter, createCharacterJson, exportCharacterToMarkdown,
     ensureNestedDirs, generateId, scanCharacters, resolveUri, extRoot: EXT_ROOT, extFolder: 'text-generator', ctxPresets: CTX_WINDOW_PRESETS,
     injectStyles, refreshSidebar: () => _refreshSidebar?.(), exportMarkdown: exportMarkdownFile,
+    // The Studio's dice: one roll of a Character Seeds list (want, fear, secret), '' when the table is gone.
+    rollSeed: async (listName) => {
+      const fs = _parallx?.workspace?.fs;
+      const workspaceUri = _parallx?.workspace?.workspaceFolders?.[0]?.uri;
+      if (!fs || !workspaceUri) return '';
+      try { return rollList(await loadTableByName(fs, workspaceUri, studioDeps(), CHARACTER_SEEDS_NAME), listName); } catch { return ''; }
+    },
     // Roll A Table beside a text field: the Studio's concept, the story's premise.
     tableRoll: (textarea) => {
       const fs = _parallx?.workspace?.fs;
@@ -10507,6 +10548,10 @@ export function activate(parallx, context) {
   if (fs && workspaceUri) {
     scaffoldExamples(fs, workspaceUri).catch((err) => {
       console.warn('[TextGenerator] Failed to scaffold examples:', err);
+    });
+    // The Character Seeds table, once; the user's to edit from then on.
+    shipCharacterSeeds(fs, workspaceUri, studioDeps()).catch((err) => {
+      console.warn('[TextGenerator] Could not ship the Character Seeds table:', err);
     });
   }
 

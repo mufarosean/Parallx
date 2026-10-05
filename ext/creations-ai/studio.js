@@ -347,8 +347,8 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   make.body.appendChild(engine);
 
   const makeActions = el('div', 'cs-actions');
-  const diceBtn = button('Roll The Dice', 'dices', () => { forgeControls.roll(); state.dialsTouched = true; dials.open(); });
-  diceBtn.title = 'Randomise every unlocked dial';
+  const diceBtn = button('Roll The Dice', 'dices', () => { void rollDice(); });
+  diceBtn.title = 'Randomise every unlocked dial, and roll a want, a fear and a secret from your Character Seeds table';
   const genBtn = button('Generate', 'sparkles', () => void generate(), true);
   genBtn.title = 'Write the whole sheet. Locked rows stay as they are.';
   const pitchBtn = button('Pitch Ideas', 'lightbulb', () => void pitchIdeas());
@@ -696,13 +696,14 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       row.append(s, val, lockFor(key));
       host.appendChild(row);
     };
-    const textRow = (label, key, placeholder) => {
+    const textRow = (label, key, placeholder, lockable = false) => {
       const row = el('div', 'tg-forge-row tg-forge-row--text');
       row.appendChild(el('span', 'tg-forge-row-label', { text: label }));
       const inp = el('input', 'cs-input'); inp.type = 'text'; inp.placeholder = placeholder;
       inp.addEventListener('input', () => { d[key] = inp.value; touched(); });
       texts[key] = inp;
       row.appendChild(inp);
+      if (lockable) row.appendChild(lockFor(key));
       host.appendChild(row);
     };
     sectionTitle('Body');
@@ -724,9 +725,9 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     pickerRow('Style', 'clothing', F.CLOTHING);
     textRow('Notes', 'clothingNotes', 'Optional outfit preferences');
     sectionTitle('Story Seeds');
-    textRow('Want', 'want', 'Optional: what they openly pursue');
-    textRow('Fear', 'fear', 'Optional: what they privately dread');
-    textRow('Secret', 'secret', 'Optional: what they hide');
+    textRow('Want', 'want', 'Optional: what they openly pursue. The dice roll one from your Character Seeds table.', true);
+    textRow('Fear', 'fear', 'Optional: what they privately dread. The dice roll one too.', true);
+    textRow('Secret', 'secret', 'Optional: what they hide. The dice roll one too.', true);
     return {
       roll() {
         for (const axis of F.AXES) { if (d.locks.has(axis.key)) continue; d.axes[axis.key] = Math.floor(Math.random() * 101); sliders[axis.key].value = String(d.axes[axis.key]); }
@@ -737,6 +738,14 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       spec() {
         // The Studio's own name and concept travel separately; the dials only carry attributes.
         return F.buildSpec({ ...d, name: '', concept: '' }).spec;
+      },
+      /** Want, Fear and Secret from the seeds table, onto the controls. */
+      setSeeds(seeds) {
+        for (const key of ['want', 'fear', 'secret']) {
+          if (typeof seeds[key] !== 'string' || !texts[key]) continue;
+          d[key] = seeds[key];
+          texts[key].value = seeds[key];
+        }
       },
       /** Saved dials back onto the controls, so a reopened character regenerates with the same settings. */
       set(saved) {
@@ -751,6 +760,22 @@ export function renderStudioPane(container, parallx, ctx, deps) {
         d.locks = new Set(Array.isArray(saved.locks) ? saved.locks : []);
       },
     };
+  }
+
+  /** The dice: every unlocked dial, then Want, Fear and Secret from the seeds table (left alone when locked, or when there is no table). */
+  async function rollDice() {
+    forgeControls.roll();
+    state.dialsTouched = true;
+    dials.open();
+    if (!deps.rollSeed) return;
+    const seeds = {};
+    for (const key of ['want', 'fear', 'secret']) {
+      if (state.dials.locks.has(key)) continue;
+      try { const v = await deps.rollSeed(key); if (v) seeds[key] = v; } catch { /* no seed for this one */ }
+    }
+    if (state.disposed || Object.keys(seeds).length === 0) return;
+    forgeControls.setSeeds(seeds);
+    markDirty();
   }
 
   // ── Sources ────────────────────────────────────────────────────────────

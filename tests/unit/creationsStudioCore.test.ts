@@ -226,3 +226,17 @@ describe('pitches', () => {
     expect(pitchAsConcept('A lighthouse keeper', null)).toBe('A lighthouse keeper');
   });
 });
+
+describe('the example dialogue requirement', () => {
+  it('draws the situations from the character\'s own sheet and shows a value by behaviour, never by naming it', () => {
+    const [, user] = buildSheetMessages({ concept: 'A ferry captain' });
+    const line = user.content.split('\n').find((l: string) => l.startsWith('- "exampleDialogue"'))!;
+    expect(line).toContain("chosen from THIS character's own sheet, not from a template");
+    expect(line).toContain('never by naming the value or the feeling');
+    expect(line).toContain('No abstract nouns in their mouth');
+    expect(line).toContain('never a quip that would fit anyone');
+    // The reroll of that one field carries the same requirement.
+    const [, reroll] = buildFieldMessages({ concept: 'A ferry captain' }, { exampleDialogue: '[USER]: hi\n[AI]: no' }, 'exampleDialogue');
+    expect(reroll.content).toContain('never by naming the value or the feeling');
+  });
+});
