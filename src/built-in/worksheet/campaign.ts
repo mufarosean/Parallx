@@ -15,7 +15,7 @@
 // custom and generated banks: the campaign is the workbook, every Rising
 // Fellow and released CAS problem in it; other banks are drawn by a plan.
 import { normalizeRating } from './problemImport.js';
-import { dayKey, type InsightItem, type InsightAttempt } from './progressInsights.js';
+import { dayKey, isWorkbookProblem, type InsightItem, type InsightAttempt } from './progressInsights.js';
 
 export interface Campaign {
   readonly startDay: string;
@@ -71,7 +71,7 @@ export const XP_PER_LEVEL = 300;
 
 /** A workbook problem the campaign counts, draws and clears: a Rising Fellow or CAS problem with a paper that is not an essay sheet. */
 export function isCampaignProblem(item: Pick<InsightItem, 'paper' | 'kind' | 'source'>): boolean {
-  return !!item.paper && item.kind !== 'essay' && (item.source === 'rf' || item.source === 'cas');
+  return isWorkbookProblem(item);
 }
 
 // Day keys are calendar dates: their arithmetic is done on the calendar
@@ -172,6 +172,21 @@ export function levelFor(xp: number): CampaignLevel {
   return { level, title: LEVEL_TITLES[level - 1], floor: (level - 1) * XP_PER_LEVEL, nextAt: level * XP_PER_LEVEL };
 }
 
+/**
+ * The quota a given day carried: the daily target, or what was still left
+ * when the day began if that was less. The last day of a campaign asks for
+ * the remainder, not a full day, so finishing everything closes it as full.
+ */
+function dayTargetFn(target: number, total: number, credits: ReadonlyMap<number, { day: string }>): (day: string) => number {
+  const firstDays = [...credits.values()].map((r) => r.day).sort();
+  return (day: string) => {
+    let before = 0;
+    for (const d of firstDays) { if (d < day) before++; else break; }
+    const left = total - before;
+    return left > 0 ? Math.max(1, Math.min(target, left)) : target;
+  };
+}
+
 export function campaignProgress(campaign: Campaign, items: readonly InsightItem[], attempts: readonly InsightAttempt[], now: number = Date.now(), bonusXp = 0): CampaignProgress {
   const problems = items.filter(isCampaignProblem);
   const total = problems.length;
@@ -192,6 +207,7 @@ export function campaignProgress(campaign: Campaign, items: readonly InsightItem
   // a stale target behind.
   const working = Math.max(1, workingDays(campaign.startDay, campaign.days, campaign.restDays ?? []));
   const target = Math.max(1, Math.ceil(total / working));
+  const targetFor = dayTargetFn(target, total, credits);
   const days: CampaignDay[] = [];
   let fullDays = 0;
   let workingThroughToday = 0;
@@ -200,19 +216,19 @@ export function campaignProgress(campaign: Campaign, items: readonly InsightItem
     const n = doneByDay.get(day) ?? 0;
     const r = rest(day);
     if (!r && day <= today) workingThroughToday++;
-    const full = !r && n >= target;
+    const full = !r && n >= targetFor(day);
     if (full && day <= today) fullDays++;
     const state: CampaignDay['state'] = day === today && !full ? 'today' : r ? 'rest' : day > today ? 'future' : full ? 'full' : n > 0 ? 'partial' : 'missed';
-    days.push({ day, index: i + 1, done: n, target, state, rest: r });
+    days.push({ day, index: i + 1, done: n, target: targetFor(day), state, rest: r });
   }
   // Days past the planned end still count for the streak and XP; rest days never do.
   const endDay = addDays(campaign.startDay, campaign.days - 1);
   for (const [day, n] of doneByDay) {
-    if (day > endDay && day <= today && !rest(day) && n >= target) fullDays++;
+    if (day > endDay && day <= today && !rest(day) && n >= targetFor(day)) fullDays++;
   }
   // Streak: consecutive full working days ending today (if full) or the last
   // working day before it. Rest days are stepped over, never broken on.
-  const fullOn = (day: string) => !rest(day) && (doneByDay.get(day) ?? 0) >= target;
+  const fullOn = (day: string) => !rest(day) && (doneByDay.get(day) ?? 0) >= targetFor(day);
   let streak = 0;
   let cursor = fullOn(today) ? today : addDays(today, -1);
   while (cursor >= campaign.startDay) {
@@ -241,7 +257,7 @@ export function campaignProgress(campaign: Campaign, items: readonly InsightItem
   const clearedPapers = papers.filter((p) => p.total > 0 && p.done >= p.total).map((p) => p.paper);
 
   return {
-    dayIndex, total, done, remaining, doneToday, target, leftToday, restToday, workingDays: working,
+    dayIndex, total, done, remaining, doneToday, target: targetFor(today), leftToday, restToday, workingDays: working,
     expectedByToday, delta: done - expectedByToday,
     streak, fullDays, xp, level: levelFor(xp), days, papers, clearedPapers,
     finished: total > 0 && done >= total,
@@ -307,6 +323,7 @@ export function dayStory(campaign: Campaign, items: readonly InsightItem[], atte
   const rest = (day: string) => isRestDay(campaign.restDays ?? [], day);
   const working = Math.max(1, workingDays(campaign.startDay, campaign.days, campaign.restDays ?? []));
   const target = Math.max(1, Math.ceil(problems.length / working));
+  const targetFor = dayTargetFn(target, problems.length, credits);
   const today = dayKey(now);
 
   // Per day: the rating each problem was given (the last of the day), the
@@ -351,7 +368,7 @@ export function dayStory(campaign: Campaign, items: readonly InsightItem[], atte
       }
     }
     const r = rest(day);
-    const full = !r && done >= target;
+    const full = !r && done >= targetFor(day);
     const xp = done * XP_PER_PROBLEM + easy * XP_EASY_BONUS + (full ? XP_FULL_DAY : 0);
     return { t: { day, done, easy, medium, hard, unrated, seconds: studyByDay ? (studyByDay.get(day) ?? 0) : (d?.seconds ?? 0), papers: papers.size, xp, full, rest: r }, papers };
   };

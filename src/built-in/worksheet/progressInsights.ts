@@ -125,10 +125,18 @@ export function buildTimeline(items: readonly InsightItem[], attempts: readonly 
   return [...older.sort((a, b) => a.day.localeCompare(b.day)), ...points];
 }
 
+/**
+ * The workbook's problems: a Rising Fellow or CAS problem with a paper. Essay
+ * sheets have a paper but live on as flashcards; practice exams and the custom
+ * bank are other pools with their own plan. The dashboard's arithmetic (attempted,
+ * score, paper bars, due list) and the campaign both run over this set.
+ */
+export function isWorkbookProblem(item: Pick<InsightItem, 'paper' | 'kind' | 'source'>): boolean {
+  return !!item.paper && item.kind !== 'essay' && (item.source === 'rf' || item.source === 'cas');
+}
+
 export function computeInsights(items: readonly InsightItem[], attempts: readonly InsightAttempt[], snapshots: readonly ProgressSnapshot[] = [], now: number = Date.now()): Insights {
-  // Essay sheets have a paper but are not problems: they live on as flashcards and the
-  // campaign leaves them out, so the paper bars, score and due list leave them out too.
-  const problems = items.filter((i) => i.paper && i.kind !== 'essay');
+  const problems = items.filter(isWorkbookProblem);
   const byPaperMap = new Map<string, InsightItem[]>();
   for (const it of problems) { if (!byPaperMap.has(it.paper)) byPaperMap.set(it.paper, []); byPaperMap.get(it.paper)!.push(it); }
   const byPaper = [...byPaperMap.entries()].map(([paper, list]) => paperProgress(paper, list)).sort((a, b) => a.paper.localeCompare(b.paper));

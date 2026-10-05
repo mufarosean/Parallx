@@ -31,6 +31,17 @@ const attempts = [
   attempt(8, 'easy', NOW - 1 * DAY),
 ];
 
+describe('practice exams and the custom bank stay out of the workbook arithmetic', () => {
+  const exam = { ...item(10, 'pe1', ''), source: 'exam' };
+  const custom = { ...item(11, 'clark', ''), source: 'custom' };
+  const ins = computeInsights([...bank, exam, custom], attempts, [], NOW);
+  it('keeps the totals and the paper rows to Rising Fellow and CAS problems', () => {
+    expect(ins.totalProblems).toBe(7);
+    expect(ins.byPaper.map((p) => p.paper)).toEqual(['brosius', 'clark']);
+    expect(ins.byPaper.find((p) => p.paper === 'clark')!.total).toBe(3);
+  });
+});
+
 describe('essay sheets stay out of the dashboard arithmetic', () => {
   // An essay sheet carries a paper but is not a problem: the campaign leaves it
   // out, so the paper bars must not show it as one problem left unrated.

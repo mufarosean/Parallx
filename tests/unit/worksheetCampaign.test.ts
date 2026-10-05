@@ -21,6 +21,27 @@ const bank = [
 ];
 const campaign = planCampaign(8, 4, START); // 2 a day
 
+describe('the last day asks only for what is left', () => {
+  // Five problems over three days: two, two, then one. Finishing that one is a full day.
+  const five = [item(1, 'brosius'), item(2, 'brosius'), item(3, 'clark'), item(4, 'clark'), item(5, 'clark')];
+  const plan = planCampaign(5, 3, START);
+  const day = (n: number) => START + n * 24 * 60 * 60 * 1000;
+  const all = [attempt(1, 'easy', day(0)), attempt(2, 'easy', day(0)), attempt(3, 'easy', day(1)), attempt(4, 'easy', day(1)), attempt(5, 'hard', day(2))];
+  it('closes the campaign as full with the streak intact', () => {
+    const p = campaignProgress(plan, five, all, day(2) + 3600000);
+    expect(p.finished).toBe(true);
+    expect(p.days.map((d) => [d.target, d.state])).toEqual([[2, 'full'], [2, 'full'], [1, 'full']]);
+    expect(p.target).toBe(1);
+    expect(p.streak).toBe(3);
+    expect(p.fullDays).toBe(3);
+  });
+  it('tells the day story the same way', () => {
+    const s = dayStory(plan, five, all, day(2) + 3600000);
+    expect(s.today.full).toBe(true);
+    expect(s.today.done).toBe(1);
+  });
+});
+
 describe('planCampaign', () => {
   it('sizes the daily target from what is left and the days given', () => {
     expect(campaign).toMatchObject({ startDay: '2026-09-08', days: 4, dailyTarget: 2 });
