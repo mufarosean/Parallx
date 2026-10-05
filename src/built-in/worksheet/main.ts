@@ -19,6 +19,7 @@
 
 import type { IWorkbookData } from '@univerjs/core';
 import type { IWorksheetHost, SheetViewState } from './univerHost.js';
+import { BANK_FACETS, BANK_FILTERS, BANK_COUNTED, bankMatches, stateClass } from './bankFilters.js';
 import { renderMarkdown } from '../../ui/renderMarkdown.js';
 import { createButton, createEmptyState, createFilterChip, createIconButton, createPageHeader, createSectionLabel, createSegmented, type IKitAction } from '../../ui/kit.js';
 import { showExtensionContextMenu, type IExtensionMenuItem } from '../../ui/contextMenu.js';
@@ -485,7 +486,10 @@ function createBankPane(container: HTMLElement) {
       back: BACK_TO_HOME,
       title: 'Problem Bank',
       subtitle: problems.length ? `${problems.length} problems · ${rated} rated · ${papers} ${papers === 1 ? 'paper' : 'papers'}` : undefined,
-      secondary: noted.length ? [{ label: `Discuss Notes in Chat (${noted.length})`, icon: 'message-square', title: 'Stages every note, with its problem, paper and rating, in the chat. Add your question under the brief, then send.', onClick: () => void discussNotesInChat(items) }] : [],
+      secondary: [
+        ...(shown.length ? [{ label: 'Review These', icon: 'eye', title: 'Walks through the problems shown here with your work and the solution showing. Not a quiz: nothing is scored or recorded.', onClick: () => void beginReview(shown.map((it) => it.id)) }] : []),
+        ...(noted.length ? [{ label: `Discuss Notes in Chat (${noted.length})`, icon: 'message-square', title: 'Stages every note, with its problem, paper and rating, in the chat. Add your question under the brief, then send.', onClick: () => void discussNotesInChat(items) }] : []),
+      ],
       primary: shown.length ? { label: 'Quiz These…', title: 'Opens the quiz builder with the problems shown here.', onClick: () => { _quizPreset = { ids: shown.map((it) => it.id), name: '' }; openBuilder(); } } : undefined,
       more: generated.length ? [{ label: `Delete All Generated Items (${generated.length})…`, icon: 'trash-2', danger: true, onSelect: () => void deleteGeneratedItems(generated) }] : [],
     });
@@ -636,7 +640,7 @@ function createBankPane(container: HTMLElement) {
     const count = (f: string) => items.filter((it) => it.paper && bankMatches(it, new Set([f]), '')).length;
     for (const [value, label] of BANK_FILTERS) {
       if (([...BANK_FACETS.source, ...BANK_FACETS.kind] as readonly string[]).includes(value) && !present.has(value)) continue;
-      const withCount = value === 'starred' || value === 'noted' || value === 'incomplete';
+      const withCount = BANK_COUNTED.has(value);
       createFilterChip(chips, {
         label, count: withCount ? count(value) : undefined, pressed: _bankFilters.has(value),
         onToggle: (on) => { if (on) _bankFilters.add(value); else _bankFilters.delete(value); paintList(); },
@@ -685,10 +689,6 @@ function createBankPane(container: HTMLElement) {
 function gradeLabel(grade: string): string {
   return ratingLabel(grade) || grade;
 }
-/** The chip/dot class for an attempt state: easy | medium | hard | open. */
-function stateClass(state: string): string {
-  return state === 'open' ? 'open' : normalizeRating(state) || state;
-}
 /** Study time in a summary: "12m", "3h 08m", never seconds (those belong to the sheet's clock). */
 function fmtStudy(total: number): string {
   const s = Math.max(0, Math.round(total));
@@ -713,43 +713,9 @@ function fmtSeconds(total: number): string {
 // choice survives a re-render (module state, like the scratch cache).
 
 const _bankOpen = new Set<string>();
-/** The bank's chips: any number on; within a facet any may match, across facets all must. */
+/** The bank's chips: any number on; within a facet any may match, across facets all must (bankFilters.ts). */
 const _bankFilters = new Set<string>();
 let _bankQuery = '';
-const BANK_FACETS = {
-  status: ['starred', 'noted', 'incomplete'],
-  rating: ['easy', 'medium', 'hard'],
-  source: ['rf', 'cas', 'exam'],
-  kind: ['quant', 'qual', 'essay'],
-} as const satisfies Record<string, readonly string[]>;
-const BANK_FILTERS: [string, string][] = [
-  ['starred', 'Starred'], ['noted', 'Noted'], ['incomplete', 'Incomplete'],
-  ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'],
-  ['rf', 'Rising Fellow'], ['cas', 'CAS Exam'], ['exam', 'Practice Exam'],
-  ['quant', 'Quantitative'], ['qual', 'Qualitative'], ['essay', 'Essay'],
-];
-
-function bankMatches(item: WorksheetItemSummary, filters: ReadonlySet<string>, query: string): boolean {
-  const state = stateClass(item.attemptState);
-  const test = (f: string): boolean => {
-    if (f === 'starred') return !!item.starred;
-    if (f === 'noted') return !!item.note;
-    if (f === 'incomplete') return item.attemptCount === 0 || item.attemptState === 'open';
-    if (f === 'easy' || f === 'medium' || f === 'hard') return state === f;
-    if (f === 'rf' || f === 'cas') return item.source === f;
-    return item.kind === f;
-  };
-  for (const facet of Object.values(BANK_FACETS) as readonly (readonly string[])[]) {
-    const on = facet.filter((f) => filters.has(f));
-    if (on.length && !on.some(test)) return false;
-  }
-  if (query) {
-    const q = query.toLowerCase();
-    const hay = `${item.title} ${item.sheetName} ${item.questionMd} ${paperLabel(item.paper)} ${item.note}`.toLowerCase();
-    if (!hay.includes(q)) return false;
-  }
-  return true;
-}
 
 /** Remove every generated item (never a workbook problem), after one confirmation. */
 async function deleteGeneratedItems(generated: WorksheetItemSummary[]): Promise<void> {
@@ -1934,6 +1900,113 @@ function createPracticeConfigPane(container: HTMLElement) {
   return { dispose: () => { disposed = true; for (const d of disposables) d.dispose(); root.remove(); } };
 }
 
+// ── Review: walking through problems, work and solution showing, no quiz ──
+//
+// The owner asked (2026-10-05) to go back over problems he has done, filtered
+// as he likes, without a quiz: no session, no scoring, nothing recorded. The
+// walk is the bank's filtered list; each step is the problem's own sheet,
+// opened as he left it with the solution revealed. Rating, starring and the
+// note stay available on the sheet because they are his tracking; an edit
+// still counts as work, as it does anywhere.
+
+interface ReviewWalk { ids: number[]; index: number }
+let _review: ReviewWalk | null = null;
+/** Open Review tabs, told when a new walk begins so they show it. */
+const _reviewListeners = new Set<() => void>();
+
+async function beginReview(ids: readonly number[]): Promise<void> {
+  if (ids.length === 0) return;
+  _review = { ids: [...ids], index: 0 };
+  for (const fn of _reviewListeners) { try { fn(); } catch { /* pane torn down */ } }
+  await openWorksheet('review', 'Review');
+}
+
+function createReviewPane(container: HTMLElement) {
+  const root = el('div', 'ws-pane');
+  container.appendChild(root);
+  let disposed = false;
+  let player: { dispose(): void } | null = null;
+  let serveSeq = 0;
+  const bar = el('div', 'ws-sessionbar');
+  const playerHost = el('div', 'ws-session__player');
+  root.append(bar, playerHost);
+
+  const renderIdle = () => {
+    serveSeq++;
+    player?.dispose();
+    player = null;
+    bar.style.display = 'none';
+    bar.replaceChildren();
+    playerHost.replaceChildren();
+    createEmptyState(playerHost, {
+      icon: 'eye',
+      headline: 'Nothing to review.',
+      hint: 'In the Problem Bank, filter down to the problems you want, then choose Review These.',
+      action: { label: 'Problem Bank', onClick: () => void openWorksheet('bank', 'Problem Bank') },
+    });
+  };
+
+  const paintBar = async (walk: ReviewWalk) => {
+    const id = walk.ids[walk.index];
+    const titles = await listItems().catch(() => []);
+    if (disposed) return;
+    const title = titles.find((it) => it.id === id)?.title ?? `Problem ${walk.index + 1}`;
+    bar.replaceChildren();
+    const prev = createIconButton(bar, { icon: 'chevron-left', title: 'Previous Problem', size: 'sm', onClick: () => goTo(walk.index - 1) });
+    prev.disabled = walk.index === 0;
+    const pos = el('span', 'ws-sessionbar__pos');
+    pos.append(el('span', 'ws-sessionbar__name', 'Review'), el('span', 'ws-sessionbar__count', ` · ${walk.index + 1} of ${walk.ids.length} · ${title}`));
+    bar.appendChild(pos);
+    const next = createIconButton(bar, { icon: 'chevron-right', title: 'Next Problem', size: 'sm', onClick: () => goTo(walk.index + 1) });
+    next.disabled = walk.index === walk.ids.length - 1;
+    const spacer = el('div'); spacer.style.flex = '1';
+    bar.appendChild(spacer);
+    createButton(bar, { label: 'Problem Bank', icon: 'library', kind: 'ghost', size: 'sm', title: 'Back to the bank and its filters. This review stays open.', onClick: () => void openWorksheet('bank', 'Problem Bank') });
+  };
+
+  const goTo = (index: number) => {
+    const walk = _review;
+    if (!walk || index < 0 || index >= walk.ids.length) return;
+    walk.index = index;
+    serve();
+  };
+
+  const serve = () => {
+    if (disposed) return;
+    const walk = _review;
+    if (!walk || walk.ids.length === 0) { renderIdle(); return; }
+    const seq = ++serveSeq;
+    bar.style.display = '';
+    void paintBar(walk);
+    // Staged behind the sheet on screen and swapped in once painted, as the quiz does, so Next never flashes.
+    const stage = el('div', 'ws-session__stage ws-session__stage--staging');
+    playerHost.appendChild(stage);
+    const nextPane = createSheetPane(stage, `item:${walk.ids[walk.index]}`, { revealed: true });
+    void nextPane.ready.then(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (disposed || seq !== serveSeq) { nextPane.dispose(); stage.remove(); return; }
+      player?.dispose();
+      player = null;
+      for (const old of [...playerHost.children]) if (old !== stage) old.remove();
+      stage.classList.remove('ws-session__stage--staging');
+      player = nextPane;
+    })));
+  };
+
+  const onReview = () => serve();
+  _reviewListeners.add(onReview);
+  serve();
+
+  return {
+    dispose: () => {
+      disposed = true;
+      _reviewListeners.delete(onReview);
+      player?.dispose();
+      player = null;
+      root.remove();
+    },
+  };
+}
+
 function createPracticeRunPane(container: HTMLElement, input?: { setName?(name: string): void }) {
   const root = el('div', 'ws-pane');
   /** The tab carries the running quiz's name. */
@@ -2848,7 +2921,7 @@ function createExcelImportPane(container: HTMLElement) {
 
 // ── Sheet panes (scratch + item player) ─────────────────────────────────────
 
-function createSheetPane(container: HTMLElement, instanceId: string) {
+function createSheetPane(container: HTMLElement, instanceId: string, opts: { revealed?: boolean } = {}) {
   const itemId = instanceId.startsWith('item:') ? Number(instanceId.slice(5)) : null;
 
   const root = el('div', 'ws-pane');
@@ -2877,7 +2950,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
   const ready = new Promise<void>((resolve) => { readyResolve = resolve; });
   /** 'working' = user's attempt on screen; 'solution' = model solution. */
   let mode: 'working' | 'solution' = 'working';
-  let revealed = false;
+  let revealed = !!opts.revealed;
   /** Set by the problem tab: re-reads the solution's visibility from the live sheet. */
   let syncRevealFromSheet: (() => void) | null = null;
   let visibilitySub: { dispose(): void } | null = null;
@@ -3554,7 +3627,7 @@ function createSheetPane(container: HTMLElement, instanceId: string) {
  *  look alike (the app's Dashboard and this one, the builder and a quiz). */
 const TAB_ICONS: Record<string, string> = {
   home: 'table', dashboard: 'gauge', bank: 'library', quizzes: 'list-checks', practice: 'plus',
-  'practice-run': 'list-checks', settings: 'settings', create: 'sparkles', 'excel-import': 'folder-input', scratch: 'table-2',
+  'practice-run': 'list-checks', review: 'eye', settings: 'settings', create: 'sparkles', 'excel-import': 'folder-input', scratch: 'table-2',
 };
 function tabIconHtml(instanceId: string): string {
   const id = TAB_ICONS[instanceId] ?? (instanceId.startsWith('item:') ? 'file-spreadsheet' : 'table');
@@ -3717,6 +3790,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         if (instanceId === 'practice') return createPracticeConfigPane(container);
         if (instanceId === 'practice-run') return createPracticeRunPane(container, input as { setName?(name: string): void } | undefined);
         if (instanceId === 'quizzes') return createQuizzesPane(container);
+        if (instanceId === 'review') return createReviewPane(container);
         if (instanceId === 'plan') return createPlanPane(container, planActions());
         if (instanceId === 'dashboard') {
           return createDashboardPane(container, {

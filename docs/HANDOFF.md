@@ -3,7 +3,7 @@
 Last updated 2026-10-05, night. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7590 tests) and `npm run build` pass.
+tsc, the full vitest suite (7594 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
@@ -25,6 +25,19 @@ memory wording, How People Talk, Supporting Cast); history retention is
 untouched (`creationsReplyRoom.test.ts`). Tests: `creationsGrowthAndDialogue`,
 `creationsSupportingCast`, and additions to the Studio core and pane,
 Tables and Story suites.
+
+## Done on 2026-10-05, cloud, late: review without a quiz
+
+The owner wanted to go back over problems he has done, filtered as he
+likes, without a quiz. The Problem Bank now has a Done chip (the opposite
+of Incomplete) and a Review These action over whatever the filters show.
+It opens a Review tab (`createReviewPane`, instance `review`): Previous and
+Next over the list, each step the problem's own sheet as he left it, with
+the solution revealed from the start (`createSheetPane(…, { revealed })`).
+Nothing is scored or recorded; rating, starring and the note stay on the
+sheet because they are his tracking, and an edit still counts as work.
+The bank's filter logic moved to `bankFilters.ts` (pure, tested in
+`worksheetBankFilters.test.ts`).
 
 ## Done on 2026-10-05, local: the Exam 7 campaign
 
@@ -127,6 +140,9 @@ Tests: `quoteLocator`, `fileLocator`, `explorerFileLink`, `parallxLinkTool`,
 - Exam 1 is Tue Oct 6, 5:30: Start the Clock opens the 30 questions as a
   quiz with a 4 hour clock; the block is done when the session finishes.
   Reveal and Rate per question is the whole of the marking.
+- Review These: filter the bank to "Brosius" plus Done, Review These, step
+  with Next. The sheet should show the work and the solution together; a
+  rating given there counts as any rating does.
 - Chat citations: try them in a study chat; each link should open the file
   at the cited page with the quote highlighted. His workspace memory lesson
   `source-links-clickable` hard-codes a base folder and is no longer
