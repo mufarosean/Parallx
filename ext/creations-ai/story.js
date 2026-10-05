@@ -559,7 +559,7 @@ export function renderStoryPane(container, parallx, ctx, deps) {
         : models[0]?.id;
     if (!modelId) throw new Error('No model is available. Choose one in Settings.');
     const ctxPick = state.engine.numCtx || Number(ctxSelect.value) || 0;
-    return { modelId, numCtx: ctxPick > 0 ? ctxPick : (settings.defaultContextWindow || undefined) };
+    return { modelId, numCtx: ctxPick > 0 ? ctxPick : (settings.defaultContextWindow || undefined), dialogueRules: typeof settings.dialogueRules === 'string' ? settings.dialogueRules : '' };
   }
   async function streamText(modelId, numCtx, messages, onPartial, options = {}) {
     const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.85, think: false, numCtx, ...options });
@@ -592,8 +592,8 @@ export function renderStoryPane(container, parallx, ctx, deps) {
     chaptersHost.querySelector('.st-empty')?.remove();
     if (target) target.appendChild(live); else chaptersHost.appendChild(live);
     try {
-      const { modelId, numCtx } = await resolveModel();
-      const messages = buildBeatMessages({ story: state.story, instruction: beat.instruction, mode: 'continue' });
+      const { modelId, numCtx, dialogueRules } = await resolveModel();
+      const messages = buildBeatMessages({ story: state.story, instruction: beat.instruction, mode: 'continue', dialogueRules });
       const text = await streamText(modelId, numCtx, messages, (t) => { liveText.textContent = stripDashes(t); });
       const clean = cleanBeat(text);
       if (!clean) throw new Error('Nothing came back.');
@@ -629,8 +629,8 @@ export function renderStoryPane(container, parallx, ctx, deps) {
     setStatus('Rewriting', 'accent');
     const previous = beat.text;
     try {
-      const { modelId, numCtx } = await resolveModel();
-      const messages = buildBeatMessages({ story: state.story, instruction, mode: 'rewrite', target: beat });
+      const { modelId, numCtx, dialogueRules } = await resolveModel();
+      const messages = buildBeatMessages({ story: state.story, instruction, mode: 'rewrite', target: beat, dialogueRules });
       const text = await streamText(modelId, numCtx, messages, (t) => { r.area.value = stripDashes(t); autogrow(r.area); });
       const clean = cleanBeat(text);
       if (!clean) throw new Error('Nothing came back.');

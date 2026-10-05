@@ -101,7 +101,7 @@ const NO_DASHES = 'Never use em dashes or en dashes. Use commas, periods or elli
  * One beat. `mode` is 'continue' (the next beat) or 'rewrite' (the beat
  * `target` again, differently). `instruction` steers this beat only.
  */
-export function buildBeatMessages({ story, instruction = '', mode = 'continue', target = null, maxContextChars = 9000 }) {
+export function buildBeatMessages({ story, instruction = '', mode = 'continue', target = null, maxContextChars = 9000, dialogueRules = '' }) {
   const brief = story.brief || emptyBrief();
   const words = beatLengthWords(brief);
   const system = [
@@ -113,6 +113,7 @@ export function buildBeatMessages({ story, instruction = '', mode = 'continue', 
     'THE BRIEF',
     briefBlock(brief),
     castBlock(brief.cast) ? `\nTHE CAST\n${castBlock(brief.cast)}` : '',
+    dialogueRules.trim() ? `\nHOW PEOPLE TALK\n${dialogueRules.trim()}` : '',
     brief.authorsNote ? `\nAUTHOR'S NOTE (holds for every beat)\n${brief.authorsNote.trim()}` : '',
     story.memory ? `\nSTORY MEMORY (what has happened so far; never contradict it)\n${story.memory.trim()}` : '',
   ].filter((l) => l !== '').join('\n');

@@ -695,7 +695,7 @@ button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: var(-
 .ws-plan__days { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--px-space-2); margin-bottom: var(--px-space-5); }
 .ws-plan__day { display: flex; flex-direction: column; gap: 4px; min-height: 84px; padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); color: var(--px-text-secondary); text-align: left; font: inherit; cursor: pointer; }
 .ws-plan__day:hover { background: var(--px-surface-hover); }
-.ws-plan__day:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.ws-plan__day:focus-visible { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: 1px; }
 .ws-plan__day--today { border-color: var(--px-accent); background: var(--px-accent-faint); color: var(--px-text); }
 .ws-plan__day--full { color: var(--px-text); }
 .ws-plan__day--missed { border-color: var(--px-danger-soft); }
@@ -749,6 +749,6 @@ button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: var(-
 .ws-grade__q { background: none; border: 0; padding: 0; font: inherit; color: var(--px-text); text-align: left; cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-grade__q:hover { color: var(--px-accent-text); text-decoration: underline; }
 .ws-grade__input { width: 100%; box-sizing: border-box; padding: 4px 8px; border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); background: var(--px-bg); color: var(--px-text); font: inherit; font-variant-numeric: tabular-nums; }
-.ws-grade__input:focus { outline: 2px solid var(--px-accent); outline-offset: -1px; }
+.ws-grade__input:focus { outline: var(--px-focus-width) solid var(--px-accent); outline-offset: -1px; }
 .ws-grade__foot { display: flex; justify-content: space-between; align-items: center; gap: var(--px-space-3); margin-top: var(--px-space-4); }
 @media (max-width: 760px) { .ws-grade__row { grid-template-columns: minmax(0, 1fr) 80px 80px; } .ws-grade__cause, .ws-grade__clear { grid-column: 1 / -1; } }

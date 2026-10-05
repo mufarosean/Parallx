@@ -569,6 +569,20 @@ function injectStyles() {
   transition: opacity 200ms ease;
 }
 .tg-form-saved--show { opacity: 1; }
+/* Reset To Default under the dialogue rules: quiet, beside the field. */
+.tg-form-reset {
+  margin-top: var(--px-space-2);
+  height: var(--px-control-h-sm);
+  padding: 0 var(--px-space-3);
+  border: 1px solid var(--px-border);
+  border-radius: var(--px-radius-sm);
+  background: transparent;
+  color: var(--px-text-secondary);
+  font: inherit;
+  font-size: var(--px-text-xs);
+  cursor: pointer;
+}
+.tg-form-reset:hover { border-color: var(--px-border-strong); background: var(--px-surface-hover); color: var(--px-text); }
 
 /* ═══ Chat Editor ═══ */
 .tg-chat {
@@ -3194,6 +3208,9 @@ function buildSystemPrompt(params = {}) {
     responseLength = null,
     customStyleContent = '',
     sceneState = null, // M79 Phase 3a — auto-derived scene context
+    // How people talk: the user's rules for dialogue (Settings › Dialogue
+    // rules). Empty means none.
+    dialogueRules = '',
   } = params;
 
   const parts = [];
@@ -3256,6 +3273,15 @@ function buildSystemPrompt(params = {}) {
     ].join('\n'));
   }
 
+  // 1b2. How people talk. The owner was retyping this into every chat's
+  // standing note: the model stated a character's values instead of showing
+  // them ("values peace" became speeches about peace). The text is the user's
+  // (Settings › Dialogue rules, shipped with a default); it reads as craft,
+  // not as a format, so it rides for every preset but none.
+  if (writingPreset !== 'none' && dialogueRules && dialogueRules.trim()) {
+    parts.push(['## How People Talk', dialogueRules.trim()].join('\n'));
+  }
+
   // 1b. User identity — description/role if provided by character config.
   if (userDescription) {
     parts.push(['## User Identity', `The user (${userName}) is described as: ${userDescription}`].join('\n'));
@@ -3310,7 +3336,14 @@ function buildSystemPrompt(params = {}) {
   }
 
   if (castEntries.length > 0) {
-    parts.push(['## Cast', ...castEntries].join('\n\n'));
+    // With a memory, the cards are the start of the story, not its present:
+    // a character married on the card may be divorced by now in this chat,
+    // and the card is kept as it is for other stories. Said here and again
+    // under the memory, so the model is never left to pick between the two.
+    const castNote = memoryContent
+      ? 'These are the characters as they were when this story began. What has changed since is under Conversation Memories, and where the two differ, the memory is the present.'
+      : null;
+    parts.push(['## Cast', ...(castNote ? [castNote] : []), ...castEntries].join('\n\n'));
   }
 
   // 3. Conversation contract.
@@ -3332,7 +3365,7 @@ function buildSystemPrompt(params = {}) {
   // 5. Thread memory — substitute {{char}}/{{user}} template vars.
   if (memoryContent) {
     const primaryName = characters[0] ? (characters[0].frontmatter.name || characters[0].fileName.replace(/\.(md|json)$/, '')) : '';
-    parts.push('## Conversation Memories\n' + substituteVars(memoryContent, primaryName, userName));
+    parts.push('## Conversation Memories\nWhat has happened in this chat so far. Where it differs from a character\'s description above, this is the present: the description is how things stood when the story began.\n\n' + substituteVars(memoryContent, primaryName, userName));
   }
 
   // 6. Active turn. Same shape for every speaker — the user-persona,
@@ -3571,6 +3604,7 @@ function assembleContext(params) {
     responseLength: effectiveResponseLength,
     customStyleContent: settings?.customWritingStyle || '',
     sceneState, // M79 Phase 3a
+    dialogueRules: settings?.dialogueRules || '',
   });
   const systemPrompt = buildResult.prompt;
   const characterReminders = buildResult.reminders || [];
@@ -4317,6 +4351,8 @@ function mergeSceneState(prior, update) {
 // are preserved verbatim and treated as additional semantic content.
 
 const MEMORY_AUTOEXTRACT_EVERY_N_EXCHANGES = 6;
+/** How many Timeline lines ride in every prompt. */
+const MEMORY_TIMELINE_TAIL = 20;
 const MEMORY_SEMANTIC_FILE = 'memory.semantic.jsonl';
 const MEMORY_EPISODIC_FILE = 'memory.episodic.jsonl';
 const MEMORY_CATEGORY_ORDER = ['relationship', 'trait', 'event', 'place', 'preference', 'other'];
@@ -4526,7 +4562,7 @@ async function pruneMemoryForDeletedMessages(fs, workspaceUri, threadId, deleted
  * facts grouped by category, then episodic beats sorted by
  * `recency × importance` and trimmed to budget.
  */
-function renderMemoryChannel({ legacyMemory = '', semantic = [], episodic = [], budgetTokens = Infinity }) {
+function renderMemoryChannel({ legacyMemory = '', semantic = [], episodic = [], timeline = [], budgetTokens = Infinity }) {
   const parts = [];
   if (legacyMemory.trim()) parts.push(legacyMemory.trim());
 
@@ -4572,6 +4608,15 @@ function renderMemoryChannel({ legacyMemory = '', semantic = [], episodic = [], 
       const beats = ranked.map((e) => `- ${e.summary.trim()}`);
       parts.push('**Earlier beats:**\n' + beats.join('\n'));
     }
+  }
+
+  // The Timeline's tail: the order things happened in this chat, oldest
+  // first. It used to reach the model only under one fit method, so on the
+  // default the sequence of events was gone as soon as old turns dropped out
+  // of the window. Last, so a budget cut takes it before the facts.
+  const tail = timeline.map((b) => String(b && (b.text || b) || '').trim()).filter(Boolean).slice(-MEMORY_TIMELINE_TAIL);
+  if (tail.length > 0) {
+    parts.push('**Timeline (oldest first, the last line is the most recent):**\n' + tail.map((t) => `- ${t}`).join('\n'));
   }
 
   const combined = parts.join('\n\n');
@@ -6924,6 +6969,7 @@ function renderChatEditor(container, parallx, input) {
       legacyMemory: memoryParts.notes,
       semantic: memoryParts.facts,
       episodic: [],
+      timeline: memoryParts.beats,
       budgetTokens: Infinity,
     });
     // When userText is provided, exclude the last history entry (the same message)
@@ -6958,7 +7004,8 @@ function renderChatEditor(container, parallx, input) {
         if (dropped.length > 0) {
           const said = [userText || '', ...effectiveHistory.slice(-2).map((m) => m.content || '')].join('\n');
           const excerpts = rankExcerpts(dropped.map((m) => ({ turn: m.turn, name: m.name, content: m.raw })), said, 5);
-          historySummary = earlierBlock({ beats: memoryParts.beats, excerpts });
+          // The Timeline's tail is already in the memory block; here only the quoted turns.
+          historySummary = earlierBlock({ beats: [], excerpts });
         }
       } catch (err) {
         console.warn('[TextGenerator] Earlier-in-the-story block failed:', err);
@@ -8797,6 +8844,20 @@ function studioDeps() {
     },
   };
 }
+/**
+ * The shipped dialogue rules. Against one failure in particular: the model
+ * states a character's values instead of showing them (a character who
+ * values solitude talks about solitude). Craft, not format; the user edits
+ * it in Settings.
+ */
+const DEFAULT_DIALOGUE_RULES = [
+  '- People talk about what is in front of them: the task, the object, the other person. Nobody names their own values or traits. What someone cares about shows in what they do, what they notice and what they refuse, never in a speech about it.',
+  '- Abstract nouns (peace, solitude, trust, freedom, honour) are not subjects of conversation. Say the concrete thing instead: the quiet of the house, the locked door, the money, the name not spoken.',
+  '- People answer the question they heard, not the one that was asked. They interrupt, trail off, change the subject, and say less than they mean.',
+  '- Humour comes from a specific thing in the scene or a specific person, never from a character announcing a joke or a quip that would fit any scene.',
+  '- Nobody summarises their feelings or the scene. If a line could be printed on a mug, cut it.',
+].join('\n');
+
 const DEFAULT_SETTINGS = {
   tokenBudgetCharacter: 15,
   tokenBudgetLore: 20,
@@ -8824,6 +8885,9 @@ const DEFAULT_SETTINGS = {
   // Feel: streaming motion and the Home's table roll.
   showWritingMotion: true,
   homeTableRoll: true,
+  // How people talk, in every roleplay and story prompt. The user's text;
+  // an empty string means none.
+  dialogueRules: DEFAULT_DIALOGUE_RULES,
 };
 
 /** Motion off: `.cr-still` on the body stops every Creations animation. */
@@ -8982,6 +9046,24 @@ function renderSettingsPage(container, parallx) {
   customStyleInput.placeholder = '- Write in second-person, present tense.\n- Keep paragraphs short.\n- Lean into sensory detail and quiet beats.';
   customStyleGroup.appendChild(customStyleInput);
   form.appendChild(customStyleGroup);
+  // Dialogue rules: the one block of craft that rides in every roleplay and
+  // story prompt. Shipped with a default; the user's text once edited.
+  const rulesGroup = el('div', 'tg-form-group');
+  rulesGroup.appendChild(el('label', 'tg-form-label', { text: 'Dialogue rules' }));
+  rulesGroup.appendChild(el('div', 'tg-form-hint', {
+    text: 'How people talk, in every chat and story, under "## How People Talk". Edit freely; empty means none. A chat\'s standing director\'s note adds to it for that chat.',
+  }));
+  const rulesInput = el('textarea', 'tg-form-input');
+  rulesInput.rows = 8;
+  rulesInput.style.minHeight = '150px';
+  rulesInput.placeholder = 'Leave empty for no dialogue rules.';
+  rulesGroup.appendChild(rulesInput);
+  const rulesReset = el('button', 'tg-form-reset', { text: 'Reset To Default' });
+  rulesReset.type = 'button';
+  rulesReset.title = 'Put the shipped dialogue rules back';
+  rulesReset.addEventListener('click', () => { rulesInput.value = DEFAULT_DIALOGUE_RULES; });
+  rulesGroup.appendChild(rulesReset);
+  form.appendChild(rulesGroup);
   const responseLengthSelect = formGroup('Default response length', 'Applied to newly created chats when no character override exists', 'select', 'defaultResponseLength', {
     options: [
       { value: '', label: 'No Limit (Default)' },
@@ -9033,6 +9115,7 @@ function renderSettingsPage(container, parallx) {
     sourceWordsInput.value = s.studioSourceWords || DEFAULT_SETTINGS.studioSourceWords;
     presetSelect.value = s.defaultWritingPreset || 'immersive-rp';
     customStyleInput.value = s.customWritingStyle || '';
+    rulesInput.value = typeof s.dialogueRules === 'string' ? s.dialogueRules : DEFAULT_DIALOGUE_RULES;
     responseLengthSelect.value = s.defaultResponseLength || '';
     defaultPovSelect.value = s.defaultPov || '';
     fitMethodSelect.value = s.defaultFitMethod || 'dropOld';
@@ -9077,6 +9160,8 @@ function renderSettingsPage(container, parallx) {
       defaultModel: defaultModelSelect.value || '',
       defaultFitMethod: fitMethodSelect.value || DEFAULT_SETTINGS.defaultFitMethod,
       customWritingStyle: customStyleInput.value || '',
+      // Saved as typed, '' included: an emptied field means none, not the default.
+      dialogueRules: rulesInput.value,
     };
     await saveSettings(fs, workspaceUri, settings);
     savedLabel.classList.add('tg-form-saved--show');
@@ -10359,6 +10444,10 @@ export const __testables = {
   autoExtractMemoryBackground,
   loadThreadMemory,
   assembleContext,
+  buildSystemPrompt,
+  renderMemoryChannel,
   resolveContextWindow,
   migrateContextDefault,
+  DEFAULT_DIALOGUE_RULES,
+  DEFAULT_SETTINGS,
 };
