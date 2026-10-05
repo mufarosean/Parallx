@@ -36,6 +36,10 @@ import {
 import { openXlsx } from './ooxml.js';
 import { detectProblems, readWorkbookTimeline, normalizeRating, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS, type ProblemImport, type WorkbookSnapshot } from './problemImport.js';
 import { createDashboardPane, planDay, dayStrip } from './dashboardPane.js';
+import { createPlanPane, createGradingPane, examClockFor, type PlanActions } from './planPane.js';
+import { parsePlan } from './plan.js';
+import { getPlanBlockBySession, savePlanJson, clearPlan, updateItemPoints } from './worksheetData.js';
+import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { planCampaign, campaignProgress, addDays, spanDays, workingDays, restDaysLabel, isCampaignProblem, WEEKDAY_LABELS } from './campaign.js';
 import { parseDisplayDecimals, DISPLAY_DECIMALS_CHOICES, DEFAULT_DISPLAY_DECIMALS } from './displayNumbers.js';
 import { indexPristine, solutionSegments as pureSolutionSegments, applySolutionVisibility as pureApplySolutionVisibility, type PristineIndex } from './solutionVisibility.js';
@@ -862,6 +866,7 @@ function createSidebarView(container: HTMLElement) {
     };
     navItem('Home', 'home', 'home', 'Worksheets', 'Quiz, dashboard, bank, import, generate, scratch sheet');
     navItem('Study Dashboard', 'gauge', 'dashboard', 'Study Dashboard', 'Progress, pace, the campaign, what to work on next');
+    navItem('Campaign', 'calendar-check', 'plan', 'Campaign', 'The study plan, day by day: exams, quizzes drawn for the day, sessions, rewards');
     navItem('Quizzes', 'list-checks', 'quizzes', 'Quizzes', 'Every quiz, open and completed: resume, rename, copy, reopen, delete');
     navItem('Settings', 'settings', 'settings', 'Worksheets Settings', 'The campaign and the sheet appearance');
     root.appendChild(nav);
@@ -955,6 +960,7 @@ function createLauncherPane(container: HTMLElement) {
     card('Study Dashboard', ins.rated > 0 ? `${Math.round(ins.attempted * 100)}% attempted · ${Math.round(ins.score * 100)}% score` : 'Progress, pace, what to work on next', 'gauge', () => void openWorksheet('dashboard', 'Study Dashboard'));
     card('Problem Bank', problems.length ? `${problems.length} problems in ${new Set(problems.map((it) => it.paper)).size} papers` : 'Empty until you import a workbook', 'library', () => void openWorksheet('bank', 'Problem Bank'));
     card('Quizzes', quizzes.length ? `${openCount} open · ${quizzes.length - openCount} completed` : 'None yet', 'list-checks', () => void openWorksheet('quizzes', 'Quizzes'));
+    card('Campaign', 'The study plan, day by day', 'calendar-check', () => void openWorksheet('plan', 'Campaign'));
     col.appendChild(dest);
 
     // Today: the campaign's line, its days, and the day's one action.
@@ -1941,6 +1947,11 @@ function createPracticeRunPane(container: HTMLElement, input?: { setName?(name: 
   /** Bumped by every change of what the player shows; a sheet still being staged for an older step is thrown away. */
   let serveSeq = 0;
   let markCleanup: (() => void) | null = null;
+  /** An exam block's clock, when this quiz is one: counted down in the bar. */
+  let clockTimer: ReturnType<typeof setInterval> | null = null;
+  const clockEl = el('span', 'ws-sessionbar__clock');
+  clockEl.hidden = true;
+  const stopClock = () => { if (clockTimer) clearInterval(clockTimer); clockTimer = null; clockEl.hidden = true; };
   const bar = el('div', 'ws-sessionbar');
   const playerHost = el('div', 'ws-session__player');
   root.append(bar, playerHost);
@@ -1949,6 +1960,7 @@ function createPracticeRunPane(container: HTMLElement, input?: { setName?(name: 
   // No quiz: the tab came back with nothing to resume, or a quiz ended.
   const renderIdle = () => {
     serveSeq++;
+    stopClock();
     bar.style.display = 'none';
     bar.replaceChildren();
     playerHost.replaceChildren();
@@ -1969,6 +1981,24 @@ function createPracticeRunPane(container: HTMLElement, input?: { setName?(name: 
     // Reviewing the overview or the summary is study too: it counts under
     // item 0 of this quiz, only while no problem sheet is on screen.
     quizTicker?.dispose();
+    // The exam clock: an exam block's minutes from the quiz's start, in the bar.
+    stopClock();
+    let timeCalled = false;
+    void examClockFor(session.id, getPlanBlockBySession).then((clock) => {
+      if (disposed || !clock) return;
+      const paint = () => {
+        if (disposed) { stopClock(); return; }
+        const left = session.startedAt + clock.minutes * 60_000 - Date.now();
+        clockEl.hidden = false;
+        clockEl.classList.toggle('ws-sessionbar__clock--over', left <= 0);
+        const s = Math.max(0, Math.floor(left / 1000));
+        clockEl.textContent = left > 0 ? `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}` : 'Time';
+        clockEl.title = `${clock.title}: ${clock.minutes} minutes from ${appDateTimeString(session.startedAt)}.`;
+        if (left <= 0 && !timeCalled) { timeCalled = true; void _api?.window?.showInformationMessage?.(`Time. ${clock.title} is over: finish the line you are on, then complete the quiz from its summary.`); }
+      };
+      paint();
+      clockTimer = setInterval(paint, 1000);
+    });
     quizTicker = createStudyTicker({
       visible: () => !disposed && paneOnScreen(root) && (view === 'overview' || session.index >= session.ids.length),
       idleMs: getIdleMinutes() * 60_000,
@@ -2367,6 +2397,7 @@ function createPracticeRunPane(container: HTMLElement, input?: { setName?(name: 
       const pos = el('span', 'ws-sessionbar__pos');
       pos.append(el('span', 'ws-sessionbar__name', session.name || 'Quiz'), el('span', 'ws-sessionbar__count', ` · ${session.index + 1} of ${session.ids.length}`));
       bar.appendChild(pos);
+      bar.appendChild(clockEl);
       // The last Next opens the summary, where Complete Quiz is a separate
       // decision; nothing here finishes the quiz.
       const last = session.index === session.ids.length - 1;
@@ -2692,11 +2723,16 @@ function createExcelImportPane(container: HTMLElement) {
         try {
           for (const r of keep) {
             const p = r.problem;
-            if (existing.has(p.sheetName)) { done++; continue; }
+            if (existing.has(p.sheetName)) {
+              // Already in the bank: a point value the workbook gives now fills a blank one.
+              const known = existing.get(p.sheetName);
+              if (known != null && typeof p.points === 'number') await updateItemPoints(known, p.points).catch(() => {});
+              done++; continue;
+            }
             const id = await createItem({
               title: p.title, questionMd: p.questionMd, sourceUri: filePath, sourceLabel: fileLabel, tags: p.tags,
               sheetJson: p.sheetJson, solutionCol: p.solutionCol, workRow: p.workRow, solutionRow: p.solutionRow,
-              paper: p.paper, source: p.source, kind: p.kind, quadrant: p.quadrant, sheetName: p.sheetName,
+              paper: p.paper, source: p.source, kind: p.kind, quadrant: p.quadrant, sheetName: p.sheetName, points: p.points ?? null,
             });
             if (id != null && p.rating) { await recordImportedRating(id, p.rating, Date.now()); carried++; }
             done++;
@@ -3549,6 +3585,77 @@ function studyFlashcards(): (() => void) | undefined {
   return _flashcardsOn ? () => void _api?.commands?.executeCommand?.(FLASHCARDS_STUDY) : undefined;
 }
 
+// ── The study plan (the Campaign tab) ─────────────────────────────────────────
+
+/** The app's activity journal, when it runs: how a plan learns that another tool finished a session. */
+function activityJournal(): IActivityJournalService | null {
+  try { return _api?.services?.has(IActivityJournalService) ? _api.services.get<IActivityJournalService>(IActivityJournalService) : null; } catch { return null; }
+}
+/** A new quiz over these problems, named; the session id once it runs. */
+async function startQuizReturningId(ids: number[], name: string): Promise<string> {
+  if (ids.length === 0) return '';
+  await beginPractice(ids, 0, name);
+  if (_api?.activity) _api.activity.note('started', `the quiz "${_practice?.name ?? name}" (${ids.length} ${ids.length === 1 ? 'problem' : 'problems'})`);
+  await openWorksheet('practice-run', _practice?.name || 'Quiz');
+  return _practice?.id ?? '';
+}
+/** A plan file (JSON) becomes the plan: the old one and its block states go. */
+async function importPlanFromPath(filePath: string): Promise<boolean> {
+  const fs = (window as { parallxElectron?: { fs?: { readFile?(p: string, enc?: string): Promise<{ content?: string; error?: { message: string } }> } } }).parallxElectron?.fs;
+  if (!fs?.readFile) { await _api?.window?.showErrorMessage?.('Importing a plan needs the desktop app.'); return false; }
+  const res: { content?: string; error?: { message: string } } = await fs.readFile(filePath, 'utf8').catch((e: Error) => ({ error: { message: e.message } }));
+  if (res.error || typeof res.content !== 'string') { await _api?.window?.showErrorMessage?.(`Could not read the plan: ${res.error?.message ?? 'empty file'}`); return false; }
+  const { plan, error } = parsePlan(res.content);
+  if (!plan) { await _api?.window?.showErrorMessage?.(`That is not a plan: ${error}`); return false; }
+  await savePlanJson(res.content);
+  _api?.activity?.note('imported', `the plan "${plan.title}"`, `${plan.days.length} days`);
+  await openWorksheet('plan', 'Campaign');
+  return true;
+}
+async function pickAndImportPlan(): Promise<void> {
+  const dialog = (window as { parallxElectron?: { dialog?: { openFile?(opts: unknown): Promise<string[] | null> } } }).parallxElectron?.dialog;
+  if (!dialog?.openFile) { await _api?.window?.showErrorMessage?.('Importing a plan needs the desktop app.'); return; }
+  const res = await dialog.openFile({ title: 'Import a study plan', filters: [{ name: 'Plan (JSON)', extensions: ['json'] }] });
+  const filePath = Array.isArray(res) ? res[0] : undefined;
+  if (filePath) await importPlanFromPath(filePath);
+}
+function planActions(): PlanActions {
+  return {
+    openItem: (id, title) => void openWorksheet(`item:${id}`, title),
+    startQuiz: (ids, name) => startQuizReturningId(ids, name),
+    openQuiz: (id) => void openPastQuiz(id),
+    openGrading: (paper, title) => void openWorksheet(`grade:${paper}`, title),
+    runCommand: async (command, args) => {
+      const ids = await _api?.commands?.getCommands?.().catch(() => [] as string[]) ?? [];
+      if (!ids.includes(command)) { await _api?.window?.showWarningMessage?.(`The tool that runs "${command}" is not on.`); return false; }
+      await _api?.commands?.executeCommand?.(command, ...args);
+      return true;
+    },
+    commandExists: async (command) => ((await _api?.commands?.getCommands?.().catch(() => [] as string[])) ?? []).includes(command),
+    journalHits: async (verb, object, sinceTs) => {
+      const j = activityJournal();
+      if (!j) return [];
+      const events = await j.query({ verb, sinceTs, limit: 500 }).catch(() => []);
+      return events.filter((e) => e.object === object).map((e) => e.ts);
+    },
+    journalFinished: async (sinceTs) => {
+      const j = activityJournal();
+      if (!j) return [];
+      const events = await j.query({ verb: 'finished', sinceTs, limit: 300 }).catch(() => []);
+      return events.filter((e) => e.source.startsWith('ext:')).map((e) => ({ object: e.object, detail: e.detail ?? '', ts: e.ts }));
+    },
+    renderIcon: (id, size) => { try { return _api?.icons?.createIconHtml?.(id, size) ?? ''; } catch { return ''; } },
+    openHome: () => BACK_TO_HOME.onClick(),
+    importPlan: () => void pickAndImportPlan(),
+    removePlan: () => {
+      void (async () => {
+        const ok = await _api?.window?.showConfirmModal?.({ message: 'Remove the plan?', detail: 'The plan and what each block recorded go. Quizzes, ratings and exam grades stay.', confirmLabel: 'Remove Plan' }) ?? true;
+        if (ok) await clearPlan();
+      })();
+    },
+  };
+}
+
 /** The page every Worksheets tab links back to. */
 const BACK_TO_HOME: IKitAction = { label: 'Worksheets', onClick: () => void openWorksheet('home', 'Worksheets') };
 const openBuilder = () => void openWorksheet('practice', 'New Quiz');
@@ -3611,6 +3718,11 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
         if (instanceId === 'practice') return createPracticeConfigPane(container);
         if (instanceId === 'practice-run') return createPracticeRunPane(container, input as { setName?(name: string): void } | undefined);
         if (instanceId === 'quizzes') return createQuizzesPane(container);
+        if (instanceId === 'plan') return createPlanPane(container, planActions());
+        if (instanceId.startsWith('grade:')) {
+          const paper = instanceId.slice('grade:'.length);
+          return createGradingPane(container, paper, `Grade ${paperLabel(paper)}`, { openItem: (id, title) => void openWorksheet(`item:${id}`, title), openHome: () => BACK_TO_HOME.onClick(), openPlan: () => void openWorksheet('plan', 'Campaign') });
+        }
         if (instanceId === 'dashboard') {
           return createDashboardPane(container, {
             openItem: (id, title) => void openWorksheet(`item:${id}`, title),
@@ -3675,6 +3787,16 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.quizzes', () => openWorksheet('quizzes', 'Quizzes')),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.plan', () => openWorksheet('plan', 'Campaign')),
+  );
+  context.subscriptions.push(
+    api.commands.registerCommand('worksheet.importPlan', async (filePath?: unknown) => {
+      if (typeof filePath === 'string' && filePath) return importPlanFromPath(filePath);
+      await pickAndImportPlan();
+      return true;
+    }),
   );
   context.subscriptions.push(
     api.commands.registerCommand('worksheet.bank', () => openWorksheet('bank', 'Problem Bank')),

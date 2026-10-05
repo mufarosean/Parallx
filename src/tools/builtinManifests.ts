@@ -581,6 +581,9 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Open the Problem Bank dashboard: attempted and score, progress by paper, the timeline, and what to work on next (due, struggling, weakest papers, quick wins).' },
       { id: 'worksheet.quizzes', title: 'Worksheets: Open Quizzes',
         aiInvocable: true, aiDescription: 'Open the Quizzes tab: every quiz, open and completed, to resume, rename, copy, reopen or delete.' },
+      { id: 'worksheet.plan', title: 'Worksheets: Open Campaign',
+        aiInvocable: true, aiDescription: 'Open the Campaign tab: the study plan day by day, with each block, the exams and the rewards.' },
+      { id: 'worksheet.importPlan', title: 'Worksheets: Import Plan…' },
     ],
     viewContainers: [
       { id: 'worksheet-container', title: 'Worksheets', icon: 'file-spreadsheet', location: 'sidebar' as const },

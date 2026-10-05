@@ -90,6 +90,8 @@ export interface WorksheetItem {
   readonly kind: string;
   readonly quadrant: number;
   readonly sheetName: string;
+  /** The points an exam question carries (the workbook's point sheet); null when unknown. */
+  readonly points: number | null;
 }
 
 export interface WorksheetItemSummary extends Omit<WorksheetItem, 'givensJson' | 'solutionJson' | 'sheetJson'> {
@@ -136,6 +138,7 @@ function rowToItem(row: Record<string, unknown>): WorksheetItem {
     kind: String(row.kind ?? ''),
     quadrant: Number(row.quadrant ?? 0),
     sheetName: String(row.sheet_name ?? ''),
+    points: row.points == null ? null : Number(row.points),
   };
 }
 
@@ -143,7 +146,7 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
   const rows = await allRows(`
     SELECT i.id, i.title, i.question_md, i.solution_notes_md, i.source_uri,
            i.source_label, i.source_page, i.tags, i.created_at,
-           i.solution_col, i.work_row, i.solution_row, i.paper, i.source, i.kind, i.quadrant, i.sheet_name,
+           i.solution_col, i.work_row, i.solution_row, i.paper, i.source, i.kind, i.quadrant, i.sheet_name, i.points,
            (i.sheet_json != '') AS has_sheet,
            (SELECT COUNT(*) FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1) AS done_count,
            (SELECT a.self_grade FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1
@@ -172,7 +175,7 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
       sourceLabel: base.sourceLabel, sourcePage: base.sourcePage,
       tags: base.tags, createdAt: base.createdAt,
       solutionCol: base.solutionCol, workRow: base.workRow, solutionRow: base.solutionRow, paper: base.paper, source: base.source,
-      kind: base.kind, quadrant: base.quadrant, sheetName: base.sheetName,
+      kind: base.kind, quadrant: base.quadrant, sheetName: base.sheetName, points: base.points,
       attemptState, attemptCount: doneCount,
       seconds: Number(row.seconds ?? 0),
       lastAttemptAt: Number(row.last_at ?? 0),
@@ -228,14 +231,15 @@ export interface CreateItemInput {
   kind?: string;
   quadrant?: number;
   sheetName?: string;
+  points?: number | null;
 }
 
 export async function createItem(input: CreateItemInput): Promise<number | null> {
   const res = await run(`
     INSERT INTO ws_items (title, question_md, givens_json, solution_json,
       solution_notes_md, source_uri, source_label, source_page, tags, created_at,
-      sheet_json, solution_col, work_row, paper, source, kind, quadrant, sheet_name, solution_row)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sheet_json, solution_col, work_row, paper, source, kind, quadrant, sheet_name, solution_row, points)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     input.title.trim(),
     input.questionMd ?? '',
@@ -256,9 +260,15 @@ export async function createItem(input: CreateItemInput): Promise<number | null>
     Number.isInteger(input.quadrant) ? (input.quadrant as number) : 0,
     input.sheetName ?? '',
     Number.isInteger(input.solutionRow) ? (input.solutionRow as number) : -1,
+    typeof input.points === 'number' && Number.isFinite(input.points) ? input.points : null,
   ]);
   emitChange();
   return res.lastInsertRowid !== undefined ? Number(res.lastInsertRowid) : null;
+}
+
+/** The points an exam question carries, filled in when a later import of its workbook says. */
+export async function updateItemPoints(id: number, points: number): Promise<void> {
+  await run('UPDATE ws_items SET points = ? WHERE id = ? AND points IS NULL', [points, id]);
 }
 
 export async function deleteItem(id: number): Promise<void> {
@@ -730,4 +740,77 @@ export async function saveAttemptReview(itemId: number, aiReviewMd: string): Pro
   if (!row) return;
   await run('UPDATE ws_attempts SET ai_review_md = ?, updated_at = ? WHERE id = ?', [aiReviewMd, Date.now(), Number(row.id)]);
   emitChange();
+}
+
+// ── Study plan (migration 015) ──────────────────────────────────────────────
+
+export async function getPlanJson(): Promise<{ json: string; createdAt: number } | null> {
+  const row = await getRow('SELECT json, created_at FROM ws_plan WHERE id = 1');
+  return row ? { json: String(row.json), createdAt: Number(row.created_at) } : null;
+}
+/** A new plan replaces the old one and its block states. */
+export async function savePlanJson(json: string): Promise<void> {
+  await run('INSERT INTO ws_plan (id, json, created_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json, created_at = excluded.created_at', [json, Date.now()]);
+  await run('DELETE FROM ws_plan_block');
+  emitChange();
+}
+export async function clearPlan(): Promise<void> {
+  await run('DELETE FROM ws_plan');
+  await run('DELETE FROM ws_plan_block');
+  emitChange();
+}
+
+export interface PlanBlockRow { readonly day: string; readonly blockId: string; readonly draw: number[]; readonly sessionId: string; readonly doneAt: number | null }
+function rowToPlanBlock(r: Record<string, unknown>): PlanBlockRow {
+  return { day: String(r.day), blockId: String(r.block_id), draw: parseIdList(r.draw), sessionId: String(r.session_id ?? ''), doneAt: r.done_at == null ? null : Number(r.done_at) };
+}
+export async function listPlanBlocks(): Promise<PlanBlockRow[]> {
+  return (await allRows('SELECT day, block_id, draw, session_id, done_at FROM ws_plan_block ORDER BY day, block_id')).map(rowToPlanBlock);
+}
+export async function getPlanBlockBySession(sessionId: string): Promise<PlanBlockRow | null> {
+  if (!sessionId) return null;
+  const r = await getRow('SELECT day, block_id, draw, session_id, done_at FROM ws_plan_block WHERE session_id = ?', [sessionId]);
+  return r ? rowToPlanBlock(r) : null;
+}
+/** Create or update one block's state; only the fields given change. */
+export async function savePlanBlock(day: string, blockId: string, patch: { draw?: readonly number[]; sessionId?: string; doneAt?: number | null }): Promise<void> {
+  const cur = await getRow('SELECT draw, session_id, done_at FROM ws_plan_block WHERE day = ? AND block_id = ?', [day, blockId]);
+  const draw = patch.draw !== undefined ? JSON.stringify([...patch.draw]) : String(cur?.draw ?? '[]');
+  const sessionId = patch.sessionId !== undefined ? patch.sessionId : String(cur?.session_id ?? '');
+  const doneAt = patch.doneAt !== undefined ? patch.doneAt : (cur?.done_at == null ? null : Number(cur.done_at));
+  await run(
+    `INSERT INTO ws_plan_block (day, block_id, draw, session_id, done_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(day, block_id) DO UPDATE SET draw = excluded.draw, session_id = excluded.session_id, done_at = excluded.done_at`,
+    [day, blockId, draw, sessionId, doneAt],
+  );
+  emitChange();
+}
+
+export interface ExamGradeRow { readonly itemId: number; readonly points: number; readonly lost: number; readonly cause: string; readonly gradedAt: number }
+export async function listExamGrades(): Promise<ExamGradeRow[]> {
+  return (await allRows('SELECT item_id, points, lost, cause, graded_at FROM ws_exam_grade')).map((r) => ({
+    itemId: Number(r.item_id), points: Number(r.points), lost: Number(r.lost), cause: String(r.cause ?? ''), gradedAt: Number(r.graded_at),
+  }));
+}
+export async function upsertExamGrade(g: Omit<ExamGradeRow, 'gradedAt'>): Promise<void> {
+  await run(
+    `INSERT INTO ws_exam_grade (item_id, points, lost, cause, graded_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(item_id) DO UPDATE SET points = excluded.points, lost = excluded.lost, cause = excluded.cause, graded_at = excluded.graded_at`,
+    [g.itemId, g.points, g.lost, g.cause, Date.now()],
+  );
+  emitChange();
+}
+export async function deleteExamGrade(itemId: number): Promise<void> {
+  await run('DELETE FROM ws_exam_grade WHERE item_id = ?', [itemId]);
+  emitChange();
+}
+
+/** Quiz session id to the time it finished, for the sessions given. */
+export async function getSessionFinishes(ids: readonly string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const list = ids.filter(Boolean);
+  if (list.length === 0) return out;
+  const rows = await allRows(`SELECT id, finished_at FROM ws_quiz_session WHERE finished_at IS NOT NULL AND id IN (${list.map(() => '?').join(',')})`, list);
+  for (const r of rows) out.set(String(r.id), Number(r.finished_at));
+  return out;
 }

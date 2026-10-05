@@ -1713,6 +1713,34 @@ function fcIsProductionMode(mode) {
   return FC_PRODUCTION_MODES.includes(fcNormalizeRecallMode(mode));
 }
 
+/**
+ * The recall mode a card's own tags call for when nothing set one: a concept,
+ * list, comparison, steps or reading-results card, or essay practice, is
+ * answered by typing and graded against its rubric (derived on the first
+ * grade when the generator gave none). Formula and everything else stay
+ * recognition: a formula is written out on paper before the flip.
+ */
+function fcDefaultRecallMode(tags, importanceReason) {
+  const t = `,${String(tags || '').toLowerCase().replace(/\s+/g, '')},`;
+  if (/,type-(concept|list|comparison|steps|reading-results),/.test(t)) return 'conceptual';
+  if (/^essay practice/i.test(String(importanceReason || '').trim())) return 'conceptual';
+  return 'recognition';
+}
+/** The mode to store: the one given when it is a production mode, else what the tags call for. */
+function fcRecallModeFor(recallMode, tags, importanceReason) {
+  return fcIsProductionMode(recallMode) ? fcNormalizeRecallMode(recallMode) : fcDefaultRecallMode(tags, importanceReason);
+}
+/** Cards still at recognition whose type says typed: switched, once, in bulk. */
+async function fcReclassifyByType() {
+  const rows = await db.all("SELECT id, tags, importance_reason FROM fc_cards WHERE suspended = 0 AND recall_mode = 'recognition'");
+  const ids = rows.filter((r) => fcDefaultRecallMode(r.tags, r.importance_reason) === 'conceptual').map((r) => r.id);
+  for (const id of ids) await db.run("UPDATE fc_cards SET recall_mode = 'conceptual' WHERE id = ?", [id]);
+  if (ids.length) _emitDataChanged();
+  _api?.activity?.note('reclassified', `${ids.length} flashcards to typed answers`);
+  await _api?.window?.showInformationMessage?.(ids.length ? `${ids.length} ${ids.length === 1 ? 'card' : 'cards'} now take a typed answer.` : 'Every card of a typed kind already takes a typed answer.');
+  return ids.length;
+}
+
 /** Longest rubric we store. Past this the model is padding, not distilling. */
 const FC_RUBRIC_MAX_POINTS = 12;
 const FC_RUBRIC_POINT_MAX_CHARS = 400;
@@ -2021,7 +2049,7 @@ async function fcCreateCard(input) {
     Date.now(),
     fcNormalizeImportance(input.importance),
     String(input.importanceReason || '').slice(0, 300),
-    fcNormalizeRecallMode(input.recallMode),
+    fcRecallModeFor(input.recallMode, input.tags, input.importanceReason),
     fcSerializeRubric(input.rubric),
     String(input.sourceExcerpt || '').slice(0, FC_SOURCE_EXCERPT_MAX_CHARS),
   ]);
@@ -2072,9 +2100,9 @@ async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = 
     fcNormalizeFlag(c.flag),
     fcNormalizeImportance(c.importance),
     String(c.importanceReason || '').slice(0, 300),
-    // M102. Generation and import leave these undefined → 'recognition' with
-    // an empty rubric, which is exactly today's behaviour.
-    fcNormalizeRecallMode(c.recallMode),
+    // M102. A production mode given is kept; otherwise the card's type tags
+    // decide (fcDefaultRecallMode), the rubric derived on the first grade.
+    fcRecallModeFor(c.recallMode, c.tags, c.importanceReason),
     fcSerializeRubric(c.rubric),
     String(c.sourceExcerpt || '').slice(0, FC_SOURCE_EXCERPT_MAX_CHARS),
   ];
@@ -9348,6 +9376,13 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       if (session.pending.length > 0) { renderWait(); return; }
       _fcStudySessions.delete(sessionKey);
       const n = session.doneCount;
+      // The journal hears it: 'finished' + 'flashcards session due' or
+      // 'flashcards session #<tag>'. Another tool's plan counts the block done
+      // from that line, never from this tool's tables.
+      if (!session.previewOnly && n > 0) {
+        const scope = typeof tag === 'string' && tag ? `#${tag}` : 'due';
+        try { _api?.activity?.note('finished', `flashcards session ${scope}`, `${n} ${n === 1 ? 'card' : 'cards'}`); } catch { /* journal absent */ }
+      }
       const done = el('div', 'fc-study__done px-empty');
       done.appendChild(el('div', 'px-empty__headline',
         session.previewOnly ? 'Pass complete' : 'Session complete'));
@@ -11865,6 +11900,9 @@ function registerCommands(context) {
     // exactly as the user left it (fresh opens still default to Decks).
     ['flashcards.open', () => openFlashcards()],
     ['flashcards.study', () => openFlashcards({ view: 'study' })],
+    // A session over one tag: a custom deck's tag (deck-formulas) or the memorize set.
+    ['flashcards.studyTag', (tag) => openFlashcards({ view: 'study', tag: String(tag || '').trim().toLowerCase() })],
+    ['flashcards.reclassifyByType', () => fcReclassifyByType()],
     ['flashcards.customStudy', () => openFlashcards({ view: 'custom' })],
     ['flashcards.newDeck', () => _cmdNewDeck()],
     // New Card opens a deck with its Add Card form ready (it used to open

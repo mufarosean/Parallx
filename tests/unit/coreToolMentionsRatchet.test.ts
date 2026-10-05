@@ -61,7 +61,8 @@ function measure(): Counts {
     const text = stripComments(readFileSync(resolve(ROOT, f), 'utf8'));
     for (const [tool, re] of Object.entries(TOOLS)) {
       const n = (text.match(re) ?? []).length;
-      if (n > 0) (out[f] ??= {})[tool] = n;
+      // Keys use forward slashes whatever the machine's separator, so the baseline reads the same on Windows.
+      if (n > 0) (out[f.split(String.fromCharCode(92)).join('/')] ??= {})[tool] = n;
     }
   }
   return out;

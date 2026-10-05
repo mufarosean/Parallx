@@ -661,3 +661,94 @@ button.ws-list__row:focus-visible, .ws-list__text:focus-visible { outline: var(-
 .ws-practice__state--easy { color: var(--px-success); }
 .ws-practice__state--open { color: var(--px-accent-text); }
 .ws-practice { display: flex; flex-direction: column; }
+
+/* ── Campaign: the study plan's dashboard (planPane.ts) ─────────────────── */
+
+.ws-plan__top { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--px-space-4); margin-bottom: var(--px-space-5); }
+@media (max-width: 1100px) { .ws-plan__top { grid-template-columns: minmax(0, 1fr); } }
+
+.ws-plan__block { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto auto auto; gap: var(--px-space-3); align-items: center; padding: var(--px-space-3) var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-inset); margin-bottom: var(--px-space-2); }
+.ws-plan__block--done { opacity: 0.78; }
+.ws-plan__block--started { border-color: var(--px-warning); }
+.ws-plan__block:not(.ws-plan__block--done):has(.px-btn--primary) { border-color: var(--px-accent); }
+.ws-plan__time { display: flex; flex-direction: column; font-size: var(--px-text-xs); color: var(--px-text-secondary); font-variant-numeric: tabular-nums; }
+.ws-plan__blocktext { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ws-plan__blocktitle { font-size: var(--px-text-md); font-weight: 600; }
+.ws-plan__blockline { font-size: var(--px-text-sm); color: var(--px-text-secondary); }
+.ws-plan__blockstate { white-space: nowrap; }
+.ws-plan__blockxp { font-size: var(--px-text-sm); color: var(--px-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ws-plan__blockact { display: flex; gap: var(--px-space-2); align-items: center; }
+@media (max-width: 760px) { .ws-plan__block { grid-template-columns: 56px minmax(0, 1fr); } .ws-plan__blockstate, .ws-plan__blockxp, .ws-plan__blockact { grid-column: 2; } }
+
+.ws-plan__exam { display: flex; flex-direction: column; gap: var(--px-space-2); padding: var(--px-space-3); border-radius: var(--px-radius-lg); background: var(--px-bg-inset); margin-bottom: var(--px-space-2); }
+.ws-plan__examhead { display: flex; justify-content: space-between; align-items: baseline; gap: var(--px-space-2); }
+.ws-plan__examtitle { font-size: var(--px-text-md); font-weight: 600; }
+.ws-plan__examscore { font-size: var(--px-text-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ws-plan__readings { display: flex; flex-direction: column; gap: 4px; font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.ws-plan__reading { display: grid; grid-template-columns: 110px minmax(0, 1fr) 90px; gap: var(--px-space-2); align-items: center; }
+.ws-plan__readingname { color: var(--px-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-plan__readingbar { height: 8px; border-radius: var(--px-radius-full); background: var(--px-bg); overflow: hidden; }
+.ws-plan__readingbar > span { display: block; height: 100%; background: var(--px-danger); }
+.ws-plan__readingnum { text-align: right; color: var(--px-text-secondary); }
+.ws-plan__examacts { display: flex; gap: var(--px-space-2); flex-wrap: wrap; }
+
+.ws-plan__days { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--px-space-2); margin-bottom: var(--px-space-5); }
+.ws-plan__day { display: flex; flex-direction: column; gap: 4px; min-height: 84px; padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); color: var(--px-text-secondary); text-align: left; font: inherit; cursor: pointer; }
+.ws-plan__day:hover { background: var(--px-surface-hover); }
+.ws-plan__day:focus-visible { outline: 2px solid var(--px-accent); outline-offset: 1px; }
+.ws-plan__day--today { border-color: var(--px-accent); background: var(--px-accent-faint); color: var(--px-text); }
+.ws-plan__day--full { color: var(--px-text); }
+.ws-plan__day--missed { border-color: var(--px-danger-soft); }
+.ws-plan__day--selected { box-shadow: inset 0 0 0 1px var(--px-accent); }
+.ws-plan__dayhead { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
+.ws-plan__daydate { font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); }
+.ws-plan__daystate { font-size: var(--px-text-2xs); color: var(--px-text-muted); }
+.ws-plan__day--full .ws-plan__daystate { color: var(--px-success); }
+.ws-plan__day--today .ws-plan__daystate { color: var(--px-accent-text); }
+.ws-plan__day--missed .ws-plan__daystate { color: var(--px-danger); }
+.ws-plan__daylabel { font-size: var(--px-text-xs); line-height: 1.3; }
+.ws-plan__dots { margin-top: auto; display: flex; gap: 3px; flex-wrap: wrap; }
+.ws-plan__dot { width: 8px; height: 8px; border-radius: var(--px-radius-full); background: var(--px-border-strong); }
+.ws-plan__dot--done { background: var(--px-success); }
+.ws-plan__dot--started { background: var(--px-warning); }
+.ws-plan__dot--missed { background: var(--px-danger); }
+
+.ws-plan__pool { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--px-space-3); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; }
+.ws-plan__poolhead { display: flex; justify-content: space-between; gap: var(--px-space-2); }
+.ws-plan__poolname { font-weight: 500; }
+.ws-plan__poolnum { color: var(--px-text-secondary); }
+.ws-plan__poolbar { height: 8px; border-radius: var(--px-radius-full); background: var(--px-bg); overflow: hidden; }
+.ws-plan__poolbar > span { display: block; height: 100%; background: var(--px-accent); }
+.ws-plan__poolbar--miss > span { background: var(--px-danger); }
+
+.ws-plan__sessionday { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: var(--px-space-2); letter-spacing: 0.02em; }
+.ws-plan__session { display: flex; justify-content: space-between; gap: var(--px-space-2); font-size: var(--px-text-sm); padding: 4px 0; border-bottom: 1px solid var(--px-border); }
+.ws-plan__sessionwhat { font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-plan__sessiondetail { color: var(--px-text-secondary); white-space: nowrap; }
+
+.ws-plan__rewards { display: flex; flex-direction: column; gap: var(--px-space-2); }
+.ws-plan__reward { display: flex; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) var(--px-space-3); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
+.ws-plan__reward--locked { opacity: 0.7; }
+.ws-plan__reward .ws-reward__icon { width: 26px; height: 26px; border-radius: var(--px-radius-full); display: inline-flex; align-items: center; justify-content: center; background: var(--px-success); color: var(--px-text-on-accent); flex: 0 0 26px; }
+.ws-plan__reward--locked .ws-reward__icon { background: var(--px-bg-elevated); color: var(--px-text-muted); }
+.ws-plan__rewardtext { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ws-plan__rewardtitle { font-size: var(--px-text-base); font-weight: 500; }
+.ws-plan__rewardhint { font-size: var(--px-text-xs); color: var(--px-text-secondary); }
+
+/* The exam clock in the quiz bar. */
+.ws-sessionbar__clock { font-family: var(--px-font-mono); font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; padding: 2px 8px; border-radius: var(--px-radius-sm); background: var(--px-bg-inset); color: var(--px-text); margin-left: var(--px-space-2); }
+.ws-sessionbar__clock--over { background: var(--px-danger-soft); color: var(--px-danger); }
+
+/* Grading an exam (planPane.ts). */
+.ws-grade__hint { display: block; margin: var(--px-space-2) 0 var(--px-space-4); max-width: 80ch; }
+.ws-grade__rows { display: flex; flex-direction: column; gap: var(--px-space-1); }
+.ws-grade__row { display: grid; grid-template-columns: minmax(0, 1fr) 90px 90px auto 70px; gap: var(--px-space-3); align-items: center; padding: var(--px-space-2) var(--px-space-3); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
+.ws-grade__row--head { background: transparent; font-size: var(--px-text-xs); color: var(--px-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.ws-grade__row--lost { box-shadow: inset 3px 0 0 var(--px-danger); }
+.ws-grade__row--clean { box-shadow: inset 3px 0 0 var(--px-success); }
+.ws-grade__q { background: none; border: 0; padding: 0; font: inherit; color: var(--px-text); text-align: left; cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-grade__q:hover { color: var(--px-accent-text); text-decoration: underline; }
+.ws-grade__input { width: 100%; box-sizing: border-box; padding: 4px 8px; border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); background: var(--px-bg); color: var(--px-text); font: inherit; font-variant-numeric: tabular-nums; }
+.ws-grade__input:focus { outline: 2px solid var(--px-accent); outline-offset: -1px; }
+.ws-grade__foot { display: flex; justify-content: space-between; align-items: center; gap: var(--px-space-3); margin-top: var(--px-space-4); }
+@media (max-width: 760px) { .ws-grade__row { grid-template-columns: minmax(0, 1fr) 80px 80px; } .ws-grade__cause, .ws-grade__clear { grid-column: 1 / -1; } }

@@ -26,6 +26,12 @@ export interface InsightItem {
   readonly ratingImported?: boolean;
   /** A cell on this problem's sheet was changed at some point. */
   readonly worked?: boolean;
+  /** Starred by the student. */
+  readonly starred?: boolean;
+  /** The comma-separated tags (paper, source, kind, task, reading:…). */
+  readonly tags?: string;
+  /** The points an exam question carries, when the workbook said. */
+  readonly points?: number | null;
 }
 export interface InsightAttempt {
   readonly itemId: number;

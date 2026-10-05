@@ -43,7 +43,7 @@ export interface DashboardActions {
   openHome?(): void;
 }
 
-function el(tag: string, className?: string, text?: string): HTMLElement {
+export function el(tag: string, className?: string, text?: string): HTMLElement {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
@@ -56,7 +56,7 @@ function btn(label: string, className: string, onClick: () => void): HTMLButtonE
   b.addEventListener('click', onClick);
   return b;
 }
-const pct = (v: number): string => `${Math.round(v * 100)}%`;
+export const pct = (v: number): string => `${Math.round(v * 100)}%`;
 const DAY_MS = 86400000;
 
 export function fmtStudyTime(seconds: number): string {
@@ -84,7 +84,7 @@ function daysAgoLabel(n: number): string {
 // ── Pieces ──────────────────────────────────────────────────────────────────
 
 /** A label and a number; the sentence behind them is the tooltip (Mufaro, 2026-09-21: no wording the number already says). */
-function tile(label: string, value: string, sub: string): HTMLElement {
+export function tile(label: string, value: string, sub: string): HTMLElement {
   const t = el('div', 'ws-dash__tile');
   t.title = sub;
   t.appendChild(el('div', 'ws-dash__tilelabel', label));
@@ -93,7 +93,7 @@ function tile(label: string, value: string, sub: string): HTMLElement {
 }
 
 /** A card: its title carries the explanation as a tooltip, the body carries the content. */
-function card(title: string, hint: string, onQuiz?: () => void): { root: HTMLElement; body: HTMLElement; foot: HTMLElement } {
+export function card(title: string, hint: string, onQuiz?: () => void): { root: HTMLElement; body: HTMLElement; foot: HTMLElement } {
   const root = el('section', 'ws-dash__card');
   const head = el('div', 'ws-dash__cardhead');
   const t = el('div', 'ws-dash__cardtitle', title);
@@ -130,7 +130,7 @@ function problemRow(item: InsightItem, meta: string, dot: string, onOpen: () => 
 }
 
 /** A floating tooltip that follows the pointer inside the pane. */
-function makeTooltip(pane: HTMLElement): { show(x: number, y: number, lines: string[]): void; hide(): void } {
+export function makeTooltip(pane: HTMLElement): { show(x: number, y: number, lines: string[]): void; hide(): void } {
   const tip = el('div', 'ws-dash__tip');
   tip.hidden = true;
   pane.appendChild(tip);

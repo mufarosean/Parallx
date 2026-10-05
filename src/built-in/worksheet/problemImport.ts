@@ -72,6 +72,8 @@ export interface ProblemImport {
   readonly sheetJson: string;
   readonly questionMd: string;
   readonly tags: string;
+  /** The points the workbook's point sheet gives this question; undefined when it has none. */
+  readonly points?: number;
   readonly stats: SnapshotStats;
 }
 export interface DetectResult {
@@ -282,6 +284,7 @@ export async function detectProblems(book: XlsxWorkbook, onProgress?: (done: num
       sheetJson: JSON.stringify(workbook),
       questionMd: questionText(sheet, solution ? solution.col : -1, work ? work.row : below ? below.row : -1),
       tags: '',
+      ...(typeof hint?.points === 'number' ? { points: hint.points } : {}),
       stats,
     };
     // The content-outline task (A.iii.2) rides along as a tag when the workbook names one.
