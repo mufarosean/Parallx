@@ -2,10 +2,10 @@
 // match), chips across facets narrow (all must). Done is the opposite of
 // Incomplete. The search box finds a paper by its name.
 import { describe, it, expect } from 'vitest';
-import { bankMatches, isDone, BANK_FACETS, BANK_FILTERS, BANK_COUNTED, type BankFilterItem } from '../../src/built-in/worksheet/bankFilters.js';
+import { bankMatches, isDone, parseQuery, BANK_FACETS, BANK_FILTERS, BANK_COUNTED, type BankFilterItem } from '../../src/built-in/worksheet/bankFilters.js';
 
 const item = (o: Partial<BankFilterItem> = {}): BankFilterItem => ({
-  title: 'P1', sheetName: 'B1', questionMd: 'Compute the reserve.', paper: 'brosius', note: '',
+  title: 'P1', sheetName: 'B1', questionMd: 'Compute the reserve.', paper: 'brosius', note: '', tags: '',
   source: 'rf', kind: 'quant', starred: false, attemptCount: 0, attemptState: '', ...o,
 });
 const F = (...f: string[]) => new Set(f);
@@ -34,6 +34,27 @@ describe('bank filters', () => {
     expect(bankMatches(item({ title: 'Problem 7' }), F(), 'brosius')).toBe(true);
     expect(bankMatches(item({ title: 'Problem 7', paper: 'clark' }), F(), 'brosius')).toBe(false);
     expect(bankMatches(item({ note: 'Remember the Brosius credibility weight' }), F(), 'credibility')).toBe(true);
+  });
+  it('several words match in any order and anywhere, each one somewhere', () => {
+    const it1 = item({ questionMd: 'Use least squares to estimate the credibility weight.', note: 'tricky algebra' });
+    expect(bankMatches(it1, F(), 'credibility brosius')).toBe(true);
+    expect(bankMatches(it1, F(), 'brosius algebra squares')).toBe(true);
+    expect(bankMatches(it1, F(), 'brosius mack')).toBe(false);
+    expect(bankMatches(it1, F(), '  Credibility   ')).toBe(true);
+  });
+  it('a quoted phrase matches whole; a minus leaves problems out', () => {
+    const it1 = item({ questionMd: 'Use least squares to estimate the credibility weight.' });
+    expect(bankMatches(it1, F(), '"least squares"')).toBe(true);
+    expect(bankMatches(it1, F(), '"squares least"')).toBe(false);
+    expect(bankMatches(it1, F(), 'brosius -squares')).toBe(false);
+    expect(bankMatches(it1, F(), 'brosius -mack')).toBe(true);
+    expect(bankMatches(it1, F(), '-"least squares"')).toBe(false);
+    expect(parseQuery(' a  "b c" -d -"e f" - "unclosed')).toEqual([
+      { text: 'a', not: false }, { text: 'b c', not: false }, { text: 'd', not: true }, { text: 'e f', not: true }, { text: 'unclosed', not: false },
+    ]);
+  });
+  it('searches the tags too, so an exam question is found by its reading', () => {
+    expect(bankMatches(item({ paper: 'pe1', title: 'PE 1 · Q #2', tags: 'pe1,exam,quant,reading:clark' }), F(), 'clark')).toBe(true);
   });
   it('every chip belongs to one facet, and the counted ones exist', () => {
     const all = (Object.values(BANK_FACETS) as readonly (readonly string[])[]).flat();

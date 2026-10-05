@@ -2,8 +2,10 @@
 //
 // PURE (unit-tested in tests/unit/worksheetBankFilters.test.ts). The bank's
 // chips are grouped into facets; within a facet any chip may match, across
-// facets all must. The search box matches the title, the sheet, the
-// question, the paper's name and the note.
+// facets all must. The search box takes words: every word must appear
+// somewhere in the problem (title, sheet, question, paper name, tags, note),
+// in any order; "a phrase in quotes" must appear whole; a word with a
+// leading minus must not appear.
 import { normalizeRating, paperLabel } from './problemImport.js';
 
 export interface BankFilterItem {
@@ -12,6 +14,7 @@ export interface BankFilterItem {
   readonly questionMd: string;
   readonly paper: string;
   readonly note: string;
+  readonly tags: string;
   readonly source: string;
   readonly kind: string;
   readonly starred: boolean;
@@ -62,10 +65,26 @@ export function bankMatches(item: BankFilterItem, filters: ReadonlySet<string>, 
     const on = facet.filter((f) => filters.has(f));
     if (on.length && !on.some(test)) return false;
   }
-  if (query) {
-    const q = query.toLowerCase();
-    const hay = `${item.title} ${item.sheetName} ${item.questionMd} ${paperLabel(item.paper)} ${item.note}`.toLowerCase();
-    if (!hay.includes(q)) return false;
+  if (query.trim()) {
+    const hay = `${item.title} ${item.sheetName} ${item.questionMd} ${paperLabel(item.paper)} ${item.tags} ${item.note}`.toLowerCase();
+    for (const term of parseQuery(query)) {
+      if (hay.includes(term.text) === term.not) return false;
+    }
   }
   return true;
+}
+
+export interface QueryTerm { readonly text: string; readonly not: boolean }
+
+/** Words, quoted phrases and -exclusions, lower-cased; an empty or lone minus is nothing. */
+export function parseQuery(query: string): QueryTerm[] {
+  const out: QueryTerm[] = [];
+  const re = /(-?)(?:"([^"]*)"?|(\S+))/g;
+  for (const m of query.toLowerCase().matchAll(re)) {
+    const text = (m[2] ?? m[3] ?? '').trim();
+    // A lone minus or stray punctuation is nothing to look for.
+    if (!/[\p{L}\p{N}]/u.test(text)) continue;
+    out.push({ text, not: m[1] === '-' });
+  }
+  return out;
 }

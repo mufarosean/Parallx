@@ -37,7 +37,11 @@ the solution revealed from the start (`createSheetPane(…, { revealed })`).
 Nothing is scored or recorded; rating, starring and the note stay on the
 sheet because they are his tracking, and an edit still counts as work.
 The bank's filter logic moved to `bankFilters.ts` (pure, tested in
-`worksheetBankFilters.test.ts`).
+`worksheetBankFilters.test.ts`). Its search now takes words: every word
+must appear somewhere (title, sheet, question, paper name, tags, note), in
+any order; a quoted phrase matches whole; a leading minus excludes
+(`brosius credibility -essay`). It was one substring before, so two words
+apart in the text found nothing.
 
 ## Done on 2026-10-05, local: the Exam 7 campaign
 

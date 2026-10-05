@@ -621,6 +621,7 @@ function createBankPane(container: HTMLElement) {
     const input = el('input') as HTMLInputElement;
     input.type = 'search';
     input.placeholder = 'Search problems';
+    input.title = 'Every word must appear, in any order. Quote a phrase to match it whole; put a minus before a word to leave those problems out: brosius credibility -essay';
     input.value = _bankQuery;
     input.setAttribute('aria-label', 'Search problems');
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
