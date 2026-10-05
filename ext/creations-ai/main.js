@@ -3437,6 +3437,7 @@ function buildSystemPrompt(params = {}) {
     ...(supporting.length > 0 ? ['- The one exception: the Supporting Cast listed below may be given a line or two inside your turn. They are the only other people whose words you may write, and they never take the turn over.'] : []),
     '- Never prepend a speaker tag (no `<<Name>>`, no `Name:`); the interface adds the label automatically.',
     '- Character-specific instructions override the writing style preset when they conflict.',
+    '- Quoted phrases in a character\'s voice notes ("Says: ...", "Might say: ...") show how they talk; they are examples, not lines to say. Use one rarely, never the same one twice in a scene, never to open a reply.',
   ].join('\n'));
 
   // 4. Lore — substitute {{char}}/{{user}} template vars.
@@ -3784,7 +3785,10 @@ function assembleContext(params) {
           .split('\n').map(s => s.trim()).filter(Boolean).slice(0, 3);
         anchorBody = descLines.join(' ');
       }
-      const personaLine = anchorBody ? ` Voice anchor: ${anchorBody.slice(0, 400)}` : '';
+      // The anchor sits right before generation on every turn, so a quoted
+      // phrase in it ("Says: 'noted'") was read as a line to say, and said,
+      // scene after scene. Say what the quotes are.
+      const personaLine = anchorBody ? ` Voice anchor (how ${rName} speaks; any quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '';
       speakerLateAnchor = `[You are ${rName}. Stay strictly in ${rName}'s voice. Do not write, quote, or describe internal thoughts for any other character. Do not write the user's words or actions.${personaLine}]`;
 
       // M79 Phase 3c — variation avoidance v2. Pull the last 5 outputs

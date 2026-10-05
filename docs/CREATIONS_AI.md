@@ -502,6 +502,14 @@ its own commit and tests:
   the line as the concept in relation to this character. Added to a chat as
   supporting cast, the leads have someone to talk to.
 
+- **Quoted phrases in Voice are the register, not lines.** The voice
+  anchor sits right before generation on every turn, so "Says: 'noted'"
+  was read as a line to say and said scene after scene. The Turn Contract
+  and the anchor now say quoted phrases are examples (use one rarely, never
+  twice in a scene, never to open a reply); the Studio asks for one
+  "Might say" example instead of two signature phrases; Try A Line says
+  the same. Existing cards need no edit.
+
 Not done, on purpose: growth across chats (the card is the base for every
 story), a Wildness control, direction chips (the reroll box takes a typed
 direction), rules in the Voice field.

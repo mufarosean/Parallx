@@ -195,7 +195,7 @@ const FIELD_REQUIREMENTS = [
   '- "description": 1-2 paragraphs: who they are, their background, occupation and daily life, and how they behave. Concrete specifics over adjectives.',
   '- "appearance": one vivid paragraph: their physical appearance and typical clothing, faithful to the canon and the concept. Any physical trait the concept states replaces any attribute given below.',
   '- "personality": one paragraph: their temperament, how they treat people, what they openly want, and the hidden need that conflicts with it.',
-  '- "voice": 3-5 short lines, one per line with a line break between them, each a third-person description of how they speak, not a sample line: the tone; the rhythm; "Says: \'...\' and \'...\'" (two signature phrases); "Never says: \'...\' or \'...\'". Sample lines belong in the example dialogue.',
+  '- "voice": 3-5 short lines, one per line with a line break between them, each a third-person description of how they speak, not a sample line: the tone; the rhythm (sentence length, questions or statements, how they handle silence); what they talk about when they are uneasy; one line "Might say: \'...\'" giving ONE example of their phrasing, an example of the register, never a catchphrase they would repeat; one line "Never says: \'...\' or \'...\'". Sample lines belong in the example dialogue.',
   '- "backstory": 1-2 paragraphs in the past tense: where they come from, with places and ages, and at least one turning point that made them who they are.',
   '- "drives": exactly three lines with a line break between them, each starting with its label: "Wants: ..." (what they openly want), "Fears: ..." (what they privately fear), "In the way: ..." (a person, a habit, a fact).',
   '- "secrets": one or two sentences: what they hide and who must never learn it.',
@@ -335,7 +335,7 @@ export function buildFieldMessages({ concept = '', canon = [], spec = '', twist 
 export function buildTryLineMessages(sheet, line) {
   const name = (sheet.name || 'the character').trim();
   const system = [
-    `You are ${name}. Stay in character. Reply in the first person, in one to four sentences, in their voice exactly as described. No narration unless ${name} would narrate. Never break character, never explain.`,
+    `You are ${name}. Stay in character. Reply in the first person, in one to four sentences, in their voice exactly as described. Quoted phrases in the voice notes are examples of the register, not lines to say. No narration unless ${name} would narrate. Never break character, never explain.`,
     NO_DASHES,
     '',
     composeRoleInstruction(sheet),

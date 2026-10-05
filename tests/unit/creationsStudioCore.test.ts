@@ -256,3 +256,15 @@ describe('making one of their people', () => {
     expect(concept).toContain('not an extension of Ada Lovelace');
   });
 });
+
+describe('the voice requirement', () => {
+  it('asks for one example of the register, never a catchphrase, and Try A Line says the same', () => {
+    const [, user] = buildSheetMessages({ concept: 'A ferry captain' });
+    const line = user.content.split('\n').find((l: string) => l.startsWith('- "voice"'))!;
+    expect(line).toContain('"Might say:');
+    expect(line).toContain('never a catchphrase they would repeat');
+    expect(line).not.toContain('two signature phrases');
+    const [system] = buildTryLineMessages({ name: 'Ada', voice: "Says: 'noted'." }, 'hello');
+    expect(system.content).toContain('examples of the register, not lines to say');
+  });
+});
