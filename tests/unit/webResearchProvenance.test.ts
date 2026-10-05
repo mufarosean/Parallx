@@ -161,18 +161,61 @@ describe('fetchReadableForExtension — the Studio\'s Add Link', () => {
     expect(asked).toEqual(['https://wiki.example/wiki/Ada_(character)']);
   });
 
-  it('an error page is a failure with a reason, not a source', async () => {
-    ext.__test__._setBridge({ 'webFetch:request': async ({ url }: { url: string }) => page(url, 403, '<html><body><h1>Access denied</h1><p>Please enable JavaScript.</p></body></html>') });
+  const wall = (url: string) => page(url, 403, '<html><head><title>Just a moment...</title></head><body><div id="cf-challenge">Please enable JavaScript.</div></body></html>');
+
+  it('a 403 from a bot wall is read again with the browser engine, and that page is the source', async () => {
+    const asked: string[] = [];
+    ext.__test__._setBridge({
+      'webFetch:request': async ({ url }: { url: string }) => wall(url),
+      'webFetch:browserRequest': async ({ url }: { url: string }) => { asked.push(url); return { ok: true, result: { ...page(url).result, via: 'browser' } }; },
+    });
+    const r = await ext.__test__.fetchReadableForExtension('https://wiki.example/wiki/Ada');
+    expect(r.ok).toBe(true);
+    expect(r.text).toContain('lighthouse');
+    expect(r.title).toBe('Ada (character)');
+    expect(asked).toEqual(['https://wiki.example/wiki/Ada']);
+  });
+
+  it('when the browser engine cannot get it either, the reason names both', async () => {
+    ext.__test__._setBridge({
+      'webFetch:request': async ({ url }: { url: string }) => wall(url),
+      'webFetch:browserRequest': async () => ({ ok: false, error: { code: 'BROWSER_CHALLENGE', message: 'The site asked for a human check that the browser engine could not pass on its own.' } }),
+    });
     const r = await ext.__test__.fetchReadableForExtension('https://wiki.example/wiki/Ada');
     expect(r.ok).toBe(false);
     expect(r.error.code).toBe('HTTP_403');
-    expect(r.error.message).toMatch(/refused.*403/);
-    const gone = await ext.__test__.fetchReadableForExtension('https://wiki.example/missing');
-    expect(gone.ok).toBe(false);
-    ext.__test__._setBridge({ 'webFetch:request': async ({ url }: { url: string }) => page(url, 404, '<html><body>Not found</body></html>') });
+    expect(r.error.message).toMatch(/refused the request \(403\)/);
+    expect(r.error.message).toMatch(/browser engine could not get it either: The site asked for a human check/);
+  });
+
+  it('a bridge without the browser engine is a plain refusal, not a crash', async () => {
+    ext.__test__._setBridge({ 'webFetch:request': async ({ url }: { url: string }) => wall(url) });
+    const r = await ext.__test__.fetchReadableForExtension('https://wiki.example/wiki/Ada');
+    expect(r.ok).toBe(false);
+    expect(r.error.code).toBe('HTTP_403');
+    expect(r.error.message).toMatch(/browser engine could not get it either/);
+  });
+
+  it('a missing page is not tried in the browser; with the setting off, nothing is', async () => {
+    const browserCalls: string[] = [];
+    const bridge = (status: number) => ({
+      'webFetch:request': async ({ url }: { url: string }) => page(url, status, '<html><body>Not found</body></html>'),
+      'webFetch:browserRequest': async ({ url }: { url: string }) => { browserCalls.push(url); return page(url); },
+    });
+    ext.__test__._setBridge(bridge(404));
     const nf = await ext.__test__.fetchReadableForExtension('https://wiki.example/missing');
     expect(nf.error.code).toBe('HTTP_404');
     expect(nf.error.message).toMatch(/no page at this address/);
+    expect(browserCalls).toEqual([]);
+    ext.__test__._setApi({ workspace: { getConfiguration: () => ({ get: (name: string, fallback: unknown) => (name === 'browserFallback' ? false : fallback) }) } });
+    try {
+      ext.__test__._setBridge(bridge(403));
+      const off = await ext.__test__.fetchReadableForExtension('https://wiki.example/wiki/Ada');
+      expect(off.error.code).toBe('HTTP_403');
+      expect(browserCalls).toEqual([]);
+    } finally {
+      ext.__test__._setApi(null);
+    }
   });
 
   it('passes the bridge\'s own refusal through as the reason', async () => {
@@ -180,5 +223,61 @@ describe('fetchReadableForExtension — the Studio\'s Add Link', () => {
     const r = await ext.__test__.fetchReadableForExtension('http://wiki.example/wiki/Ada');
     expect(r.ok).toBe(false);
     expect(r.error.code).toBe('NOT_HTTPS');
+  });
+});
+
+describe('the chat seeds what the user typed (2026-10-05)', () => {
+  function emitter<T>() {
+    const fns: ((e: T) => void)[] = [];
+    const on = (fn: (e: T) => void) => { fns.push(fn); return { dispose() { fns.splice(fns.indexOf(fn), 1); } }; };
+    return { on, fire: (e: T) => fns.forEach((f) => f(e)), size: () => fns.length };
+  }
+
+  it('lexes addresses out of prose: punctuation after them is not theirs, a bracket they opened is', () => {
+    const lex = ext.__test__.lexUrls;
+    expect(lex('see https://wiki.example/wiki/Ada_(character), then https://a.example/b.')).toEqual(['https://wiki.example/wiki/Ada_(character)', 'https://a.example/b']);
+    expect(lex('(the page is https://a.example/x?q=1)')).toEqual(['https://a.example/x?q=1']);
+    expect(lex('[https://a.example/y]')).toEqual(['https://a.example/y']);
+    expect(lex('"https://a.example/z" and http://plain.example/')).toEqual(['https://a.example/z']);
+  });
+
+  it('a request start seeds its turn; its completion forgets the turn here and in the bridge', async () => {
+    const start = emitter<{ sessionId: string; turnId: string; text: string }>();
+    const done = emitter<{ sessionId: string; turnId: string }>();
+    const resets: string[] = [];
+    ext.__test__._setBridge({ 'webFetch:resetTurn': async (id: string) => { resets.push(id); return { ok: true }; } });
+    const disposables = ext.__test__._wireChatTurns({ onDidStartRequest: start.on, onDidCompleteRequest: done.on });
+    expect(disposables).toHaveLength(2);
+    start.fire({ sessionId: 's', turnId: 'turn-9', text: 'Read https://wiki.example/wiki/Ada_(character) for me' });
+    expect(ext.__test__._isUrlAllowedThisTurn('turn-9', 'https://wiki.example/wiki/Ada_(character)')).toBe(true);
+    expect(ext.__test__._isUrlAllowedThisTurn('turn-8', 'https://wiki.example/wiki/Ada_(character)')).toBe(false);
+    done.fire({ sessionId: 's', turnId: 'turn-9' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ext.__test__._isUrlAllowedThisTurn('turn-9', 'https://wiki.example/wiki/Ada_(character)')).toBe(false);
+    expect(resets).toEqual(['turn-9']);
+    for (const d of disposables) d.dispose();
+    expect(start.size()).toBe(0);
+  });
+
+  it('a chat without the events is left alone', () => {
+    expect(ext.__test__._wireChatTurns({})).toEqual([]);
+    expect(ext.__test__._wireChatTurns(null)).toEqual([]);
+  });
+});
+
+describe('searches are paced', () => {
+  it('a 429 is tried once more; the second answer stands', async () => {
+    let calls = 0;
+    ext.__test__._setBridge({
+      'webSearch:request': async () => (++calls === 1
+        ? { ok: false, error: { code: 'SEARCH_HTTP_429', message: 'Brave Search HTTP 429' } }
+        : { ok: true, result: { results: [{ title: 'A', url: 'https://a.example/', snippet: 's' }] } }),
+    });
+    ext.__test__._setGlobalStorage({ get: async () => null, set: async () => {}, delete: async () => {} });
+    ext.__test__._setSearchPacing({ gapMs: 0, retryMs: 0 });
+    const r = await ext.__test__.webSearchTool({ query: 'ada lovelace' }, 't1');
+    expect(r.isError).toBe(false);
+    expect(calls).toBe(2);
+    expect(ext.__test__._isUrlAllowedThisTurn('t1', 'https://a.example/')).toBe(true);
   });
 });

@@ -3,7 +3,7 @@
 Last updated 2026-10-05, night. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7600 tests) and `npm run build` pass.
+tsc, the full vitest suite (7617 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
@@ -43,6 +43,50 @@ any order; a quoted phrase matches whole; a leading minus excludes
 (`brosius credibility -essay`). It was one substring before, so two words
 apart in the text found nothing.
 
+## Done on 2026-10-05, cloud, late: Web Research that works, and the browser engine
+
+The owner said the web tools "do not work half the time". The review found
+one serious defect and three smaller ones, all fixed, and added the browser
+engine as the way past bot walls.
+
+- **The chat never seeded the links the user typed.** webFetch only takes an
+  address in the turn's provenance set (the user's message, a search result,
+  a redirect). The seeding function was called only by the Studio, never by
+  the chat, so "read this link" was refused every time and only search then
+  fetch worked. Now `ChatService.onDidStartRequest` fires as a turn begins
+  (`{ sessionId, turnId, text }`, before the participant runs; `IChatService`
+  carries it, `chatServiceCompletion.test.ts`) and Web Research subscribes
+  (`_wireChatTurns`, via `api.services.get({ id: 'IChatService' })`): it
+  seeds the turn from the text and, on `onDidCompleteRequest`, forgets the
+  turn here and in the bridge's backstop counter. URLs are lexed from prose
+  by `lexUrls`: trailing punctuation is not theirs, a closing bracket is
+  only when they opened one.
+- **Two caps disagreed.** The bridge's per-turn backstop was 5 while the
+  setting and the tool text said 20; the sixth fetch failed. The backstop is
+  60, a ceiling above any setting; the skill text names the settings.
+- **Searches are paced.** Brave allows a query a second; searches now run one
+  at a time a second apart, and a 429 is tried once more (`_pacedSearch`;
+  `_setBridge` zeroes the pacing for tests).
+- **Pages decode in their own charset** (`decodeBody`: Content-Type, then
+  `<meta charset>`, then UTF-8).
+- **The browser engine, for refused pages.** `electron/browserFetch.cjs`
+  loads the page in a hidden `BrowserWindow` on an in-memory partition with
+  Electron's own user agent (a Chrome UA with no client hints breaks the
+  challenge, as the assistant browser learned), waits a JavaScript challenge
+  out (two rounds within a 25 s budget), and returns the document's HTML for
+  the same sanitizer. Every rule of the plain fetch holds for the page and
+  for all it loads: https only, the blocklist, the DNS preflight on every
+  main-frame navigation, private addresses refused by form on subresources,
+  no downloads, popups or permissions, the session wiped after. Reached as
+  `webFetch:browserRequest` on the Web Research bridge (lazy, listed in
+  `OPTIONAL_BRIDGE_CHANNELS`). `webFetchTool` takes it when the plain fetch
+  is refused (401, 403, 429, 5xx; never a 404) and the setting
+  `webResearch.browserFallback` ("Read Refused Pages With The Browser
+  Engine", on by default) allows; the Studio's Add Link gets it through
+  `fetchReadableForExtension`. A challenge that needs a human still fails,
+  and the message says so. Tests: `browserFetch.test.ts` (fake Electron),
+  `webFetchBridge`, `webResearchProvenance`, `optionalBridgesLazy`.
+
 ## Done on 2026-10-05, cloud, late: Add Link said "Could Not Fetch" and no more
 
 The owner's Add Link in the Character Studio failed with no reason shown.
@@ -60,8 +104,8 @@ Three causes, all fixed in `ext/web-research/main.js` and `studio.js`:
 
 The Studio shows the reason under the source row and on the chip. Tests:
 `webResearchProvenance` (fetchReadableForExtension), `creationsStudioPane`.
-Sites behind a bot wall still refuse the app's fixed User-Agent; the
-message now says so, and the way round is to paste the page's text.
+Sites behind a bot wall refused the plain fetch; since the same night the
+browser engine reads those (the section above).
 
 ## Done on 2026-10-05, local: the Exam 7 campaign
 
@@ -164,6 +208,11 @@ Tests: `quoteLocator`, `fileLocator`, `explorerFileLink`, `parallxLinkTool`,
 - Exam 1 is Tue Oct 6, 5:30: Start the Clock opens the 30 questions as a
   quiz with a 4 hour clock; the block is done when the session finishes.
   Reveal and Rate per question is the whole of the marking.
+- Web Research, after a pull and rebuild: in chat, "read <a link you type>"
+  should fetch it (it never could before); the link that gave a 403 should
+  come through the browser engine (slower, a few seconds); a search twice in
+  one reply should not 429. The Settings switch "Read Refused Pages With The
+  Browser Engine" turns the fallback off.
 - Review These: filter the bank to "Brosius" plus Done, Review These, step
   with Next. The sheet should show the work and the solution together; a
   rating given there counts as any rating does.

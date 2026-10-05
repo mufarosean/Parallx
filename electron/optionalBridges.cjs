@@ -63,7 +63,7 @@ function registerLazyBridge(ipcMain, spec) {
 /** Every optional bridge's channels, by bridge. */
 const OPTIONAL_BRIDGE_CHANNELS = Object.freeze({
   // Web Research (ext/web-research): electron/webFetchBridge.cjs
-  webFetch: ['webFetch:request', 'webSearch:request', 'webFetch:resetTurn'],
+  webFetch: ['webFetch:request', 'webSearch:request', 'webFetch:browserRequest', 'webFetch:resetTurn'],
   // Planner: electron/googleSyncBridge.cjs
   google: ['google:authorize', 'google:status', 'google:disconnect', 'google:fetch'],
   // Worksheets: electron/imageBridge.cjs

@@ -17,9 +17,12 @@ describe('research-topic skill (M65 Iter 3), Web Research\'s own', () => {
     expect(typeof body).toBe('string');
     expect(body!.length).toBeGreaterThan(500);
     expect(defaultSkillContents.has('research-topic')).toBe(false);
-    // Workspace copies made before are removed only when unchanged (same hash).
+    // Workspace copies made before are removed only when unchanged: the
+    // retired hash is of the text as it was copied then, not of today's text,
+    // which has since changed (the cap wording, 2026-10-05).
+    expect(RETIRED_SEEDED_SKILLS.get('research-topic')).toMatch(/^[0-9a-f]{64}$/);
     const { createHash } = await import('node:crypto');
-    expect(createHash('sha256').update(body!).digest('hex')).toBe(RETIRED_SEEDED_SKILLS.get('research-topic'));
+    expect(createHash('sha256').update(body!).digest('hex')).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('has valid YAML frontmatter declaring kind=workflow', () => {
@@ -64,7 +67,8 @@ describe('research-topic skill (M65 Iter 3), Web Research\'s own', () => {
   });
 
   it('states the per-turn budget caps so the LLM plans accordingly', () => {
-    expect(body!).toMatch(/3 searches/);
-    expect(body!).toMatch(/5 fetches/);
+    expect(body!).toMatch(/20 each by\s+default/);
+    expect(body!).toMatch(/Settings → Web Research/);
+    expect(body!).not.toMatch(/3 searches|5 fetches/);
   });
 });

@@ -401,3 +401,20 @@ describe('_makePinnedLookup (F3 � M65 Iter 2)', () => {
     expect(result.family).toBe(4);
   });
 });
+
+describe('decodeBody — the page in its own encoding', () => {
+  const { decodeBody } = bridge._internals;
+  it('reads the Content-Type charset', () => {
+    expect(decodeBody(Buffer.from('caf\xe9', 'latin1'), 'text/html; charset=ISO-8859-1')).toBe('café');
+    expect(decodeBody(Buffer.from('caf\xe9', 'latin1'), 'text/html; charset="windows-1252"')).toBe('café');
+  });
+  it('sniffs a <meta charset> when the header says nothing', () => {
+    const html = Buffer.from('<html><head><meta charset="windows-1252"></head><body>caf\xe9</body></html>', 'latin1');
+    expect(decodeBody(html, 'text/html')).toContain('café');
+  });
+  it('is UTF-8 otherwise, and falls back to UTF-8 on a label it does not know', () => {
+    expect(decodeBody(Buffer.from('café', 'utf8'), 'text/html; charset=utf-8')).toBe('café');
+    expect(decodeBody(Buffer.from('café', 'utf8'), '')).toBe('café');
+    expect(decodeBody(Buffer.from('café', 'utf8'), 'text/html; charset=no-such-thing')).toBe('café');
+  });
+});

@@ -52,7 +52,10 @@ const FIXED_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 const MAX_REDIRECTS = 3;
 const MAX_BODY_BYTES = 10 * 1024 * 1024;       // 10 MB (C6)
 const TOTAL_TIMEOUT_MS = 15_000;                // 15 s wall clock (C7)
-const PER_TURN_FETCH_BACKSTOP = 5;              // Backstop ceiling per turn
+// A ceiling above any cap the extension can be set to (Settings → Web
+// Research, 20 by default): the extension's cap is the limit the user sees;
+// this only catches a runaway turn.
+const PER_TURN_FETCH_BACKSTOP = 60;
 const BRAVE_SEARCH_HOST = 'api.search.brave.com'; // C12 allowlist
 
 // Domain blocklist (C4). Lowercase. Subdomain match: host === e || host.endsWith('.'+e).
@@ -270,6 +273,26 @@ function _err(code, message) {
   return e;
 }
 
+/**
+ * The body as text, in the page's own encoding: the Content-Type charset,
+ * else the <meta charset> in the first bytes, else UTF-8. A page in
+ * Windows-1252 or Shift_JIS read as UTF-8 came through garbled before.
+ */
+function decodeBody(buffer, contentType) {
+  const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || '');
+  let label = '';
+  const ct = /charset=["']?([\w.:-]+)/i.exec(String(contentType || ''));
+  if (ct) label = ct[1];
+  if (!label) {
+    const head = buf.subarray(0, 4096).toString('latin1');
+    const meta = /<meta[^>]+charset=["']?([\w.:-]+)/i.exec(head);
+    if (meta) label = meta[1];
+  }
+  label = label.toLowerCase();
+  if (!label || label === 'utf8' || label === 'utf-8') return buf.toString('utf-8');
+  try { return new TextDecoder(label).decode(buf); } catch { return buf.toString('utf-8'); }
+}
+
 // ─── Per-turn fetch counter (backstop) ───────────────────────────────────────
 
 const _turnFetchCounts = new Map();
@@ -384,7 +407,7 @@ function _doSingleHopRequest({ urlStr, signal, headers, method = 'GET' }) {
 
         res.on('end', () => {
           if (aborted) return; // 'error' will fire
-          const body = Buffer.concat(chunks, bytesRead).toString('utf-8');
+          const body = decodeBody(Buffer.concat(chunks, bytesRead), res.headers['content-type']);
           resolve({
             redirected: false,
             status,
@@ -619,6 +642,29 @@ function setupWebFetchBridge(ipcMain, _appRoot, readSecret, opts) {
     }
   });
 
+  // The browser engine, for a page the plain fetch could not get (a 403 from
+  // a bot wall, a JavaScript challenge). Loaded on first use, never before.
+  let browserFetch = (opts && opts.browserFetch) || null;
+  ipcMain.handle('webFetch:browserRequest', async (_event, request) => {
+    if (isSealed()) return SEALED_ERROR;
+    try {
+      const safe = request && typeof request === 'object' ? request : {};
+      if (typeof safe.url !== 'string' || safe.url.length === 0) throw _err('INVALID_URL', 'browser fetch requires a string URL');
+      if (safe.turnId) {
+        const n = _incrementTurnFetch(safe.turnId);
+        if (n !== null && n > PER_TURN_FETCH_BACKSTOP) throw _err('TURN_BACKSTOP', `Per-turn fetch backstop (${PER_TURN_FETCH_BACKSTOP}) exceeded`);
+      }
+      if (!browserFetch) {
+        const { createBrowserFetch } = require('./browserFetch.cjs');
+        browserFetch = createBrowserFetch({ electron: require('electron'), policy: require('./browserPolicy.cjs'), preflight: _preflight });
+      }
+      const result = await browserFetch.fetchPage({ url: safe.url });
+      return { ok: true, result };
+    } catch (err) {
+      return { ok: false, error: { code: (err && err.code) || 'UNKNOWN', message: err && err.message ? err.message : String(err) } };
+    }
+  });
+
   ipcMain.handle('webFetch:resetTurn', async (_event, turnId) => {
     _resetTurnFetchCount(typeof turnId === 'string' ? turnId : '');
     return { ok: true };
@@ -637,6 +683,7 @@ module.exports = {
     isPrivateIp,
     isBlocklistedHost,
     canonicalUrl,
+    decodeBody,
     doWebFetch,
     doWebSearch,
     DOMAIN_BLOCKLIST,

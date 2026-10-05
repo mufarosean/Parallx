@@ -59,6 +59,13 @@
             "minimum": 1,
             "scope": "user",
             "description": "Most pages the AI may read in one reply."
+          },
+          "webResearch.browserFallback": {
+            "label": "Read Refused Pages With The Browser Engine",
+            "type": "boolean",
+            "default": true,
+            "scope": "user",
+            "description": "When a site refuses the plain fetch (a 403 from a bot wall, a human check), load the page in a hidden browser window instead. Slower, and it passes most walls. The same rules apply: https only, nothing on this computer or the local network, nothing kept afterwards."
           }
         }
       }

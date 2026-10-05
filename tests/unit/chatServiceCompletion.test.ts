@@ -31,8 +31,23 @@ function setup(behaviour: (token: ICancellationToken) => Promise<void>) {
   agents.registerAgent(agent);
   const completions: { sessionId: string; turnId: string }[] = [];
   service.onDidCompleteRequest((c) => completions.push(c));
-  return { service, turns, completions };
+  const starts: { sessionId: string; turnId: string; text: string }[] = [];
+  service.onDidStartRequest((c) => starts.push(c));
+  return { service, turns, completions, starts };
 }
+
+describe('ChatService.onDidStartRequest', () => {
+  it('fires as the turn begins, before the participant, with the token\'s turn id and the user\'s text', async () => {
+    const seen: string[] = [];
+    const s = setup(async () => { seen.push('participant'); });
+    s.service.onDidStartRequest(() => seen.push('start'));
+    const session = s.service.createSession();
+    await s.service.sendRequest(session.id, 'Read https://example.org/a_(b) please');
+    expect(seen).toEqual(['start', 'participant']);
+    expect(s.starts).toEqual([{ sessionId: session.id, turnId: s.turns[0], text: 'Read https://example.org/a_(b) please' }]);
+    expect(s.completions.map((c) => c.turnId)).toEqual([s.turns[0]]);
+  });
+});
 
 describe('ChatService.onDidCompleteRequest', () => {
   it('fires once per request with the turn id the token carried', async () => {

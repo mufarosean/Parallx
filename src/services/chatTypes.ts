@@ -1318,6 +1318,11 @@ export interface IChatService extends IDisposable {
    * cancellation token carries.
    */
   readonly onDidCompleteRequest?: Event<{ readonly sessionId: string; readonly turnId: string }>;
+  /**
+   * Fires once per request as its turn begins, before any tool runs: the
+   * turn id the turn's tools see on their token, and the user's text.
+   */
+  readonly onDidStartRequest?: Event<{ readonly sessionId: string; readonly turnId: string; readonly text: string }>;
   /** Create a new chat session. */
   createSession(mode?: ChatMode, modelId?: string): IChatSession;
   /** Delete a session by ID. */
