@@ -126,7 +126,9 @@ export function buildTimeline(items: readonly InsightItem[], attempts: readonly 
 }
 
 export function computeInsights(items: readonly InsightItem[], attempts: readonly InsightAttempt[], snapshots: readonly ProgressSnapshot[] = [], now: number = Date.now()): Insights {
-  const problems = items.filter((i) => i.paper);
+  // Essay sheets have a paper but are not problems: they live on as flashcards and the
+  // campaign leaves them out, so the paper bars, score and due list leave them out too.
+  const problems = items.filter((i) => i.paper && i.kind !== 'essay');
   const byPaperMap = new Map<string, InsightItem[]>();
   for (const it of problems) { if (!byPaperMap.has(it.paper)) byPaperMap.set(it.paper, []); byPaperMap.get(it.paper)!.push(it); }
   const byPaper = [...byPaperMap.entries()].map(([paper, list]) => paperProgress(paper, list)).sort((a, b) => a.paper.localeCompare(b.paper));

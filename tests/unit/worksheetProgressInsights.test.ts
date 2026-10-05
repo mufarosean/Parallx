@@ -31,6 +31,20 @@ const attempts = [
   attempt(8, 'easy', NOW - 1 * DAY),
 ];
 
+describe('essay sheets stay out of the dashboard arithmetic', () => {
+  // An essay sheet carries a paper but is not a problem: the campaign leaves it
+  // out, so the paper bars must not show it as one problem left unrated.
+  const essay = { ...item(9, 'clark', ''), kind: 'essay' };
+  const ins = computeInsights([...bank, essay], attempts, [], NOW);
+  it('does not count the sheet in the paper total or the bank total', () => {
+    expect(ins.totalProblems).toBe(7);
+    expect(ins.byPaper.find((p) => p.paper === 'clark')!.total).toBe(3);
+  });
+  it('does not list the sheet as a quick win', () => {
+    expect(ins.quickWins.some((q) => q.id === 9)).toBe(false);
+  });
+});
+
 describe('computeInsights', () => {
   const ins = computeInsights(bank, attempts, [], NOW);
   it('keeps the workbook arithmetic over workbook problems only', () => {
