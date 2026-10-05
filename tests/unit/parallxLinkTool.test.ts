@@ -107,3 +107,80 @@ describe('M66 link_create tool', () => {
     expect(parsed.error).toMatch(/Missing required argument: target/);
   });
 });
+
+// ── The link's own check (verify) ───────────────────────────────────────────
+//
+// "ok: true" used to mean only "shaped like a parallx:// link": the model
+// then told the user its links were "validated" and "verified" when the
+// files did not exist. Now the link's kind checks the target, and the result
+// carries what was checked and where the link lands.
+
+describe('link_create checks the target', () => {
+  async function callWith(args: Record<string, unknown>, verify: (uri: string) => Promise<any>) {
+    const tool = createParallxLinkTool(() => makeContracts('canvas', 'explorer'), verify);
+    const result = await tool.handler(args, NOT_CANCELLED);
+    return { result, parsed: JSON.parse(result.content as string) as Record<string, unknown> };
+  }
+
+  it('returns the checked link, what was checked, and the location to cite', async () => {
+    const seen: string[] = [];
+    const { result, parsed } = await callWith(
+      { target: 'parallx://explorer/file', params: { path: 'Rising Fellow Guides/Clark.pdf', quote: 'The ultimate loss is NOT the same' } },
+      async (uri) => {
+        seen.push(uri);
+        return { ok: true, uri: 'parallx://explorer/file?path=X&page=13', checked: '"Clark.pdf" exists and the quote was found on page 13 of 30.', location: 'page 13 of 30' };
+      },
+    );
+    expect(result.isError).toBeFalsy();
+    expect(parsed).toMatchObject({ ok: true, uri: 'parallx://explorer/file?path=X&page=13', location: 'page 13 of 30' });
+    expect(parsed.checked).toContain('page 13 of 30');
+    // params were encoded into the URI handed to the check.
+    const asked = new URL(seen[0]);
+    expect(asked.searchParams.get('path')).toBe('Rising Fellow Guides/Clark.pdf');
+    expect(asked.searchParams.get('quote')).toBe('The ultimate loss is NOT the same');
+  });
+
+  it('passes the check\'s error through as a failure', async () => {
+    const { result, parsed } = await callWith(
+      { target: 'parallx://explorer/file?path=D:/AI/Parallx/Shapland.pdf' },
+      async () => ({ ok: false, error: 'No file at "D:/AI/Parallx/Shapland.pdf" in this workspace.' }),
+    );
+    expect(result.isError).toBe(true);
+    expect(parsed).toEqual({ ok: false, error: 'No file at "D:/AI/Parallx/Shapland.pdf" in this workspace.' });
+  });
+
+  it('encodes params with characters a hand-built link breaks on', async () => {
+    let asked = '';
+    await callWith(
+      { target: 'parallx://explorer/file', params: { path: 'C++ notes/a&b #1.pdf', quote: 'x + y = 100%', page: 3 } },
+      async (uri) => { asked = uri; return { ok: true, uri, checked: 'ok' }; },
+    );
+    const u = new URL(asked);
+    expect(u.searchParams.get('path')).toBe('C++ notes/a&b #1.pdf');
+    expect(u.searchParams.get('quote')).toBe('x + y = 100%');
+    expect(u.searchParams.get('page')).toBe('3');
+    expect(u.hash).toBe('');
+  });
+
+  it('lets params override the same name in target', async () => {
+    let asked = '';
+    await callWith(
+      { target: 'parallx://explorer/file?path=old.pdf&page=2', params: { page: 9 } },
+      async (uri) => { asked = uri; return { ok: true, uri, checked: 'ok' }; },
+    );
+    const u = new URL(asked);
+    expect(u.searchParams.get('path')).toBe('old.pdf');
+    expect(u.searchParams.get('page')).toBe('9');
+  });
+
+  it('rejects params that are not an object of strings and numbers', async () => {
+    const { result, parsed } = await callWith({ target: 'parallx://explorer/file', params: ['path'] }, async () => ({ ok: true, uri: '', checked: '' }));
+    expect(result.isError).toBe(true);
+    expect(parsed.error).toMatch(/params must be an object/);
+  });
+
+  it('without a checker, says the target was not checked', async () => {
+    const { parsed } = await call({ target: 'parallx://canvas/page/01HZX' }, makeContracts('canvas'));
+    expect(parsed.checked).toBe('The link is well formed; its target was not checked.');
+  });
+});

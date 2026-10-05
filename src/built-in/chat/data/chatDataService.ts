@@ -704,6 +704,10 @@ export function buildFileSystemAccessor(
       return { content: result.content, type: 'text' as const, totalChars: result.content.length };
     },
 
+    async readPdfPages(relativePath: string) {
+      return fileService.readPdfPages(resolveUri(relativePath));
+    },
+
     async exists(relativePath: string) {
       const uri = resolveUri(relativePath);
       return fileService.exists(uri);
@@ -1046,6 +1050,7 @@ export class ChatDataService {
         };
         return undefined;
       }
+      await this._labelPdfPages(chunks);
       const text = this._d.retrievalService.formatContext(chunks);
       const sources = this._buildSourceCitations(chunks);
       this._lastTestDebugSnapshot = {
@@ -1311,6 +1316,33 @@ export class ChatDataService {
   }
 
   /** Build deduplicated source citations from retrieval chunks. */
+  /**
+   * Label each PDF chunk with the page(s) its text is on, so a passage the
+   * model cites carries the PDF's own page number (1 = first page of the
+   * file) instead of one it would have to work out. Best-effort: a chunk
+   * whose text cannot be matched to a page gets no label.
+   */
+  private async _labelPdfPages(chunks: { sourceType: string; sourceId: string; text: string; page?: string }[]): Promise<void> {
+    const fileService = this._d.fileService;
+    const root = this._d.workspaceService?.folders?.[0]?.uri;
+    if (!fileService || !root) return;
+    const files = [...new Set(chunks.filter((c) => c.sourceType === 'file_chunk' && /\.pdf$/i.test(c.sourceId)).map((c) => c.sourceId))];
+    if (files.length === 0) return;
+    const { pageLabelForPassage } = await import('../../../services/quoteLocator.js');
+    const pagesByFile = new Map<string, readonly string[]>();
+    await Promise.all(files.map(async (file) => {
+      try {
+        const pages = await fileService.readPdfPages(root.joinPath(file));
+        if (pages) pagesByFile.set(file, pages);
+      } catch { /* no page labels for this file */ }
+    }));
+    for (const chunk of chunks) {
+      const pages = chunk.sourceType === 'file_chunk' ? pagesByFile.get(chunk.sourceId) : undefined;
+      const label = pages ? pageLabelForPassage(pages, chunk.text) : '';
+      if (label) chunk.page = label;
+    }
+  }
+
   private _buildSourceCitations(chunks: readonly { sourceType: string; sourceId: string; contextPrefix?: string }[]): Array<{ uri: string; label: string; index: number }> {
     const seen = new Set<string>();
     const sources: Array<{ uri: string; label: string; index: number }> = [];

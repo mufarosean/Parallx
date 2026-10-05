@@ -11,6 +11,7 @@
 
 import { readToolIntent } from '../../services/toolIntent.js';
 import { buildApprovalNode } from './rendering/chatApproval.js';
+import { setChatLinkChecker } from './rendering/chatContentParts.js';
 import { appDateString, appDateTimeString } from '../../services/localTime.js';
 import type { EditApplyEventDetail } from './chatTypes.js';
 import { commandPrefix } from '../../services/commandRules.js';
@@ -2079,17 +2080,26 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       context.subscriptions.push(languageModelToolsService.registerTool(mod.createAppDescribeTool(getIntrospection)));
     }).catch(() => { /* tool module load failed — chat continues without it */ });
 
+    // M66 — chat marks citation links whose target is gone (file moved or
+    // never there), checked by each link's own kind.
+    setChatLinkChecker((uri) => api.links.verify(uri));
+    context.subscriptions.push({ dispose: () => setChatLinkChecker(undefined) });
+
     // M66 §4a — `link_create` chat tool. Registered separately so it can
     // close over the `api.links` snapshot without threading it through the
     // big `registerBuiltInTools(...)` signature. The tool's prompt
     // visibility is gated by the `## Linking` section in the system prompt,
     // which only renders when at least one contract is registered.
     void import('./tools/parallxLinkTool.js').then((mod) => {
-      const parallxLinkTool = mod.createParallxLinkTool(() => api.links.allContracts().map(c => ({
-        segment: c.segment,
-        displayName: c.displayName,
-        kinds: Object.entries(c.kinds).map(([kind, h]) => ({ kind, uriTemplate: h.uriTemplate })),
-      })));
+      const parallxLinkTool = mod.createParallxLinkTool(
+        () => api.links.allContracts().map(c => ({
+          segment: c.segment,
+          displayName: c.displayName,
+          kinds: Object.entries(c.kinds).map(([kind, h]) => ({ kind, uriTemplate: h.uriTemplate })),
+        })),
+        // The link's own kind checks it: target exists, quote found and where.
+        (uri) => api.links.verify(uri, { thorough: true }),
+      );
       context.subscriptions.push(languageModelToolsService.registerTool(parallxLinkTool));
     }).catch(() => { /* tool module load failed — chat continues without it */ });
 

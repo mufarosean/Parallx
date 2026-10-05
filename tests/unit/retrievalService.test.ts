@@ -308,6 +308,22 @@ describe('RetrievalService', () => {
       expect(formatted).toContain('---');
     });
 
+    it('labels a PDF chunk with the page its text is on', () => {
+      const formatted = service.formatContext([
+        {
+          sourceType: 'file_chunk',
+          sourceId: 'Rising Fellow Guides/Clark.pdf',
+          contextPrefix: 'Rising Fellow Guides/Clark.pdf',
+          text: 'The ultimate loss is NOT the same as the expected loss!',
+          score: 0.9,
+          sources: ['vector'],
+          tokenCount: 12,
+          page: 'page 13 of 30',
+        },
+      ]);
+      expect(formatted).toContain('Path: Rising Fellow Guides/Clark.pdf\nPDF page: page 13 of 30\nThe ultimate loss');
+    });
+
     it('uses sourceId as fallback when contextPrefix is empty', () => {
       const chunks = [
         {

@@ -22,6 +22,7 @@ import { UntitledEditorInput } from './untitledEditorInput.js';
 import { getLanguageForFileName } from '../../services/languageDetection.js';
 import { $ } from '../../ui/dom.js';
 import type { IPythonEnvService } from '../../services/pythonEnvService.js';
+import { takeFileReveal } from '../fileReveal.js';
 
 /** Files above this size skip the fancy surface — CM6 is fast but not free. */
 const LARGE_FILE_THRESHOLD = 2_000_000;
@@ -294,6 +295,14 @@ export class CodeEditorPane extends EditorPane {
 
   override focus(): void {
     this._editor?.focus();
+  }
+
+  /** Shown and laid out: select a citation link's lines, if one is pending. */
+  protected override onDidShow(): void {
+    const input = this.input;
+    if (!(input instanceof FileEditorInput) || !this._editor) return;
+    const target = takeFileReveal(input.uri.fsPath);
+    if (target?.line) this._editor.revealLines(target.line, target.endLine ?? target.line);
   }
 
   protected override savePaneViewState(): EditorPaneViewState {

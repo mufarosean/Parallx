@@ -55,6 +55,7 @@ import { getIcon } from '../../ui/iconRegistry.js';
 import { setupTooltip } from '../../ui/tooltip.js';
 import { SegmentedControl } from '../../ui/segmentedControl.js';
 import type { IChatMessage, IChatResponseChunk } from '../../services/chatTypes.js';
+import { takeFileReveal } from '../fileReveal.js';
 
 // Inline-AI provider shape (chat extension's `chat.getInlineAIProvider`).
 type InlineAISendChat = (
@@ -327,6 +328,12 @@ export class PdfEditorPane extends EditorPane {
     page?: number; scaleValue?: string; scrollLeft?: number; scrollTop?: number;
   } | null = null;
   private _pagesInited = false;
+  /**
+   * The group has shown this document (laid out, view state restored). A
+   * citation reveal needs this AND the pages laid out; whichever comes last
+   * applies it, so a restore that lands after 'pagesinit' cannot undo it.
+   */
+  private _shownSinceLoad = false;
 
   protected override restorePaneViewState(state: Record<string, unknown>): void {
     this._pendingViewState = {
@@ -594,24 +601,21 @@ export class PdfEditorPane extends EditorPane {
       document.removeEventListener('parallx:edit-undo', onEditUndo);
       document.removeEventListener('parallx:edit-redo', onEditRedo);
     }));
+  }
 
-    // M66 Iter B — Listen for `parallx:pdf-reveal` deep-link requests. The
-    // explorer link contract dispatches `{filePath, page?, quote?}` after
-    // openFileEditor() resolves; this pane reacts only when the filePath
-    // matches its currently loaded input. Best-effort, non-fatal.
-    const revealController = new AbortController();
-    this._register(toDisposable(() => revealController.abort()));
-    window.addEventListener('parallx:pdf-reveal', (ev: Event) => {
-      const detail = (ev as CustomEvent<{ filePath?: string; page?: number; quote?: string }>).detail;
-      if (!detail) return;
-      const ownPath = this._currentInput?.uri.fsPath;
-      if (!ownPath || !detail.filePath) return;
-      // Normalize slashes for cross-platform compare.
-      const a = ownPath.replace(/\\/g, '/').toLowerCase();
-      const b = detail.filePath.replace(/\\/g, '/').toLowerCase();
-      if (a !== b) return;
-      this._applyLinkReveal(detail.page, detail.quote);
-    }, { signal: revealController.signal });
+  /**
+   * M66 Iter B — citation links open a PDF at a page and quote. The open
+   * path files the request (fileReveal.ts). Shown with its pages laid out,
+   * the pane applies it here; a document still loading leaves it for
+   * 'pagesinit' (a fresh open used to drop the page because the document was
+   * still loading when a fixed 100 ms timer fired).
+   */
+  protected override onDidShow(): void {
+    this._shownSinceLoad = true;
+    if (!this._pagesInited) return;
+    const ownPath = this._currentInput?.uri.fsPath;
+    const target = ownPath ? takeFileReveal(ownPath) : undefined;
+    if (target) this._applyLinkReveal(target.page, target.quote);
   }
 
   /**
@@ -2476,6 +2480,15 @@ export class PdfEditorPane extends EditorPane {
         this._pdfViewer!.update();
         this._scheduleSelectionOverlayUpdate();
         this._renderAllHighlights();
+
+        // A citation link that opened this file: its page and quote win over
+        // the restored reading position. Not yet shown, the group's didShow
+        // (after layout and restore) applies it instead.
+        if (this._shownSinceLoad) {
+          const linkPath = this._currentInput?.uri.fsPath;
+          const linkTarget = linkPath ? takeFileReveal(linkPath) : undefined;
+          if (linkTarget) this._applyLinkReveal(linkTarget.page, linkTarget.quote);
+        }
       });
 
       this._pdfViewer.setDocument(this._pdfDoc);
@@ -3139,6 +3152,7 @@ export class PdfEditorPane extends EditorPane {
     // A new document gets a fresh pagesinit cycle; stale pending state from
     // the previous document must not apply to it.
     this._pagesInited = false;
+    this._shownSinceLoad = false;
     this._pendingViewState = null;
     this._dismissContextMenu();
     if (this._resizeTimer) { clearTimeout(this._resizeTimer); this._resizeTimer = null; }

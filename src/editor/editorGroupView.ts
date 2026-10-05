@@ -817,6 +817,7 @@ export class EditorGroupView extends Disposable implements IGridView {
       const paneH = Math.max(0, this._height - TAB_HEIGHT - ribbonH);
       retained.layout(this._width, paneH);
       this._activePane = retained;
+      this._notifyShown(retained);
       this._onDidActivePaneChange.fire(retained);
       return;
     }
@@ -872,7 +873,17 @@ export class EditorGroupView extends Disposable implements IGridView {
     }
 
     this._activePane = pane;
+    this._notifyShown(pane);
     this._onDidActivePaneChange.fire(pane);
+  }
+
+  /** Tell a pane it is shown and settled (it may apply a citation reveal). */
+  private _notifyShown(pane: EditorPane): void {
+    try {
+      pane.didShow();
+    } catch (err) {
+      console.warn('[EditorGroupView] didShow() threw:', err);
+    }
   }
 
   // ─── Pane Retention ────────────────────────────────────────────────────

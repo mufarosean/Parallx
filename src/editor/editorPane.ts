@@ -45,6 +45,15 @@ export interface IEditorPane extends IDisposable {
    */
   readonly retainOnHide: boolean;
 
+  /**
+   * Called by the group each time the pane is shown: after setInput, layout
+   * and view-state restore on a first mount, after reveal and layout for a
+   * retained pane. A pane takes a pending citation reveal here (see
+   * fileReveal.ts), so it lands after the restored scroll position, against
+   * a laid-out viewport.
+   */
+  didShow(): void;
+
   readonly onDidChangeViewState: Event<void>;
 }
 
@@ -142,6 +151,17 @@ export abstract class EditorPane extends Disposable implements IEditorPane {
 
   protected fireViewStateChanged(): void {
     this._onDidChangeViewState.fire();
+  }
+
+  // ── Shown ──
+
+  didShow(): void {
+    this.onDidShow();
+  }
+
+  /** The pane is visible, laid out and restored. No-op by default. */
+  protected onDidShow(): void {
+    // no-op by default
   }
 
   // ── Protected hooks ──

@@ -80,8 +80,10 @@ import { DashboardBridge, type WidgetTypeRegistration } from './bridges/dashboar
 import { CanvasBlocksBridge, type CanvasBlockRegistration } from './bridges/canvasBlocksBridge.js';
 import { registerContributedSlashCommand, registerContributedSkill, registerChatDropHandler, type ChatDropResult } from '../services/chatContributions.js';
 import { parseSkillFrontmatter } from '../services/skillLoaderService.js';
-import { ILinkResolverService, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
+import { ILinkResolverService, type LinkCheck, type LinkCheckOptions, type LinkContract, type LinkMetadata } from '../links/linkResolverService.js';
 import type { ParsedLink } from '../links/parallxUri.js';
+import type { IFileRevealTarget } from '../editor/fileReveal.js';
+import type { IFileLocateResult } from '../services/fileLocator.js';
 import type { IThemeService } from '../services/serviceTypes.js';
 import { ThemeType } from '../theme/colorRegistry.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -250,6 +252,8 @@ export interface ParallxApiObject {
       rename(source: string, target: string): Promise<void>;
       delete(uri: string, options?: { recursive?: boolean; useTrash?: boolean }): Promise<void>;
       mkdir(uri: string): Promise<void>;
+      /** How a file is addressed and, given a quote, every spot it occurs (PDF page, text line, spreadsheet cell). */
+      locate(uri: string, quote?: string): Promise<IFileLocateResult>;
     } | undefined;
   };
   readonly editors: {
@@ -257,7 +261,7 @@ export interface ParallxApiObject {
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
     closeEditor(editorId: string): Promise<boolean>;
     focusEditor(editorId: string): Promise<boolean>;
-    openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
+    openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: IFileRevealTarget }): Promise<void>;
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
@@ -268,6 +272,7 @@ export interface ParallxApiObject {
     parse(uri: string): ParsedLink | null;
     allContracts(): readonly LinkContract[];
     resolveMetadata(uri: string): Promise<LinkMetadata | null>;
+    verify(uri: string, options?: LinkCheckOptions): Promise<LinkCheck>;
     onDidChangeContracts(listener: () => void): IDisposable;
   };
   readonly workspaceGraph: {
@@ -878,6 +883,7 @@ export function createToolApi(
             return entries.map(e => ({ name: e.name, type: e.type as number }));
           },
           exists: (uriStr: string) => fileSystemBridge.exists(URI.parse(uriStr)),
+          locate: (uriStr: string, quote?: string) => fileSystemBridge.locate(URI.parse(uriStr), quote),
           rename: async (src: string, tgt: string) => {
             await fileSystemBridge.rename(URI.parse(src), URI.parse(tgt));
           },
@@ -909,6 +915,7 @@ export function createToolApi(
       parse: (uri: string) => linksBridge.parse(uri),
       allContracts: () => linksBridge.allContracts(),
       resolveMetadata: (uri: string) => linksBridge.resolveMetadata(uri),
+      verify: (uri: string, options?: LinkCheckOptions) => linksBridge.verify(uri, options),
       onDidChangeContracts: (listener: () => void) => linksBridge.onDidChangeContracts(listener),
     }),
 

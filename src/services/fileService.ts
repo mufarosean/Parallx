@@ -28,6 +28,7 @@ import {
   type MessageBoxResult,
 } from '../platform/fileTypes.js';
 import type { IFileService } from './serviceTypes.js';
+import { FileLocator, type IFileLocateResult, type ILocatorSheet } from './fileLocator.js';
 
 // ── Electron bridge shape ──────────────────────────────────────────────────
 
@@ -159,6 +160,14 @@ export class FileService extends Disposable implements IFileService {
   /** Per-URI generation counter to prevent TOCTOU stale-cache races. */
   private readonly _cacheGeneration = new Map<string, number>();
   private _boundaryChecker: ((uri: URI, operation: string) => void) | undefined;
+  /** Where quotes sit in files; caches extracted pages per file. */
+  private readonly _locator = new FileLocator({
+    stat: (uri) => this.stat(uri),
+    readText: async (uri) => (await this.readFile(uri)).content,
+    readPdfPages: async (uri) => (await this.readDocumentText(uri)).pageTexts ?? [],
+    readDocumentText: async (uri) => (await this.readDocumentText(uri)).text,
+    readSpreadsheet: (uri) => this._readSpreadsheet(uri),
+  });
 
   constructor() {
     super();
@@ -385,7 +394,7 @@ export class FileService extends Disposable implements IFileService {
     return this._ensureRichDocExtensions().has(ext);
   }
 
-  async readDocumentText(uri: URI): Promise<{ text: string; format: string; metadata?: Record<string, unknown> }> {
+  async readDocumentText(uri: URI): Promise<{ text: string; format: string; metadata?: Record<string, unknown>; pageTexts?: readonly string[] }> {
     this._assertBoundary(uri, 'readDocumentText');
     const api = (window as any).parallxElectron;
     if (!api?.document?.extractText) {
@@ -403,7 +412,48 @@ export class FileService extends Disposable implements IFileService {
         uri,
       );
     }
-    return { text: result.text, format: result.format, metadata: result.metadata };
+    return {
+      text: result.text,
+      format: result.format,
+      metadata: result.metadata,
+      ...(Array.isArray(result.pageTexts) ? { pageTexts: result.pageTexts as string[] } : {}),
+    };
+  }
+
+  /** A PDF's text, one string per page (cached until the file changes); undefined for other files. */
+  async readPdfPages(uri: URI): Promise<readonly string[] | undefined> {
+    this._assertBoundary(uri, 'readPdfPages');
+    return this._locator.readPdfPages(uri);
+  }
+
+  /**
+   * How a file is addressed (pages, lines or cells) and, given a quote,
+   * every spot it occurs: PDF page, text line, or spreadsheet sheet and cell.
+   */
+  async locateInFile(uri: URI, quote?: string): Promise<IFileLocateResult> {
+    this._assertBoundary(uri, 'locateInFile');
+    return this._locator.locate(uri, quote);
+  }
+
+  /** A workbook's sheets as the spreadsheet viewer shows them, with their real row and column offsets. */
+  private async _readSpreadsheet(uri: URI): Promise<readonly ILocatorSheet[]> {
+    const api = (window as any).parallxElectron;
+    if (!api?.document?.readSpreadsheet) {
+      throw new FileOperationError(
+        'Spreadsheet reading not available — Electron bridge not detected',
+        FileOperationErrorCode.FILE_UNAVAILABLE,
+        uri,
+      );
+    }
+    const result = await api.document.readSpreadsheet(uri.fsPath);
+    if (result?.error) {
+      throw new FileOperationError(
+        result.error.message || 'Spreadsheet reading failed',
+        result.error.code || FileOperationErrorCode.FILE_UNKNOWN,
+        uri,
+      );
+    }
+    return Array.isArray(result?.sheets) ? result.sheets : [];
   }
 
   private _assertBoundary(uri: URI, operation: string): void {

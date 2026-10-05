@@ -8,6 +8,7 @@
 import { URI } from '../../platform/uri.js';
 import type { FileStat, FileEntry } from '../../platform/fileTypes.js';
 import type { IFileService, IWorkspaceBoundaryService } from '../../services/serviceTypes.js';
+import type { IFileLocateResult } from '../../services/fileLocator.js';
 
 /**
  * Bridge for `parallx.workspace.fs` — scoped filesystem access for tools.
@@ -56,6 +57,13 @@ export class FileSystemBridge {
     this._throwIfDisposed();
     this._validateScope(uri);
     return this._fileService.exists(uri);
+  }
+
+  /** How a file is addressed and, given a quote, every spot it occurs (page, line or cell). */
+  async locate(uri: URI, quote?: string): Promise<IFileLocateResult> {
+    this._throwIfDisposed();
+    this._validateScope(uri);
+    return this._fileService.locateInFile(uri, quote);
   }
 
   async delete(uri: URI): Promise<void> {

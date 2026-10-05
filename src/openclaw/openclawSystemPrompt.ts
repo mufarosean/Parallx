@@ -442,7 +442,7 @@ export function buildToolSummariesSection(tools: readonly IToolSummary[]): strin
   if (terminal) { legend.push('- `terminal_run_command` — shell commands on the host.'); }
   if (python) { legend.push('- `python_*` — the workspace\'s own Python environment: run a `.py` file, install packages, list what is installed.'); }
   if (notebook) { legend.push('- `notebook_*` — `.ipynb` notebooks: create, read, edit a cell, run cells against the workspace kernel.'); }
-  if (names.has('link_create')) { legend.push('- `link_create` — mint a `parallx://` citation URI.'); }
+  if (names.has('link_create')) { legend.push('- `link_create` — make a checked `parallx://` citation link (says where it lands).'); }
   if (names.has('sessions_spawn')) { legend.push('- `sessions_spawn` — delegate a self-contained bulk task to an isolated subagent (see the Subagents section).'); }
   if (app) { legend.push('- `app__*` — Parallx workbench commands (open views, change settings).'); }
   if (families.length > 0 || web.length > 0) { legend.push(`- extension families — ${[...families, ...web].join(', ')}. Read each description.`); }
@@ -501,7 +501,10 @@ export function buildToolSummariesSection(tools: readonly IToolSummary[]): strin
  * Tells the AI:
  *   - That Parallx resources are citable via `parallx://` URIs.
  *   - The exact URI templates that are live in this workspace right now.
- *   - To prefer `link_create` over hand-constructing URIs.
+ *   - To make every citation with `link_create`, which checks the target
+ *     and says where the link lands, and to cite only that location: a
+ *     page or line number the model works out itself is how citations went
+ *     wrong (pages off by one, links to a guessed drive path).
  *
  * Adding a new extension contract surfaces its templates here automatically.
  * Reviewers should reject any PR that adds a hardcoded segment branch in
@@ -520,7 +523,17 @@ export function buildLinkingSection(
     'reference one of these in your reply, emit a markdown link with the',
     '`parallx://` URI so the user can click through.',
     ...(hasLinkCreate
-      ? ['Prefer the `link_create` tool to mint URIs — it validates the target', 'against the templates below before returning a link.']
+      ? [
+        'Make every citation link with the `link_create` tool. It checks that the',
+        'target exists and returns the link to use:',
+        '- Give the target and its parameters. To cite a passage, include the quoted',
+        '  words: the tool finds where they are and returns `location` (for example',
+        '  "page 13 of 30").',
+        '- Use the returned `uri` exactly, and cite the returned `location` in your',
+        '  text. Never write a page, line or row number that a tool did not give you.',
+        '- An error means the link would not work: fix what it names, or say that',
+        '  source could not be linked. One failed link is no reason to stop linking.',
+      ]
       : ['Mint URIs only from the templates below.']),
     '',
     'URI templates available in this workspace:',

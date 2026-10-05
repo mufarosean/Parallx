@@ -22,6 +22,7 @@ import { ContextMenu } from '../../ui/contextMenu.js';
 import { $,  hide, show } from '../../ui/dom.js';
 import { getLanguageForFileName } from '../../services/languageDetection.js';
 import { getToolSelectionActions } from '../../services/selectionActionDispatcher.js';
+import { takeFileReveal } from '../fileReveal.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -283,6 +284,43 @@ export class TextEditorPane extends EditorPane {
     this._updateLineNumbers();
 
     // Render minimap
+    this._renderMinimap();
+  }
+
+  /** Shown and laid out: select a citation link's lines, if one is pending. */
+  protected override onDidShow(): void {
+    const input = this.input;
+    if (!(input instanceof FileEditorInput)) return;
+    const target = takeFileReveal(input.uri.fsPath);
+    if (target?.line) this.revealLines(target.line, target.endLine ?? target.line);
+  }
+
+  /**
+   * Select lines `first`..`last` (1-based) and scroll the first into view.
+   * Out-of-range lines leave the editor as it is.
+   */
+  revealLines(first: number, last: number = first): void {
+    if (!this._textarea) return;
+    const lines = this._textarea.value.split('\n');
+    if (!Number.isFinite(first) || first < 1 || first > lines.length) return;
+    const end = Math.min(Math.max(first, Math.floor(last)), lines.length);
+    let start = 0;
+    for (let i = 0; i < first - 1; i++) start += lines[i].length + 1;
+    let stop = start;
+    for (let i = first - 1; i < end; i++) stop += lines[i].length + (i < end - 1 ? 1 : 0);
+    // Caret at the start, so focusing scrolls to the first cited line.
+    this._textarea.setSelectionRange(start, stop, 'backward');
+    if (this._wordWrap) {
+      // Wrapped lines have no fixed height: let the browser scroll the caret in.
+      this._textarea.blur();
+      this._textarea.focus();
+    } else {
+      this._textarea.focus({ preventScroll: true });
+      const lineHeight = parseFloat(getComputedStyle(this._textarea).lineHeight) || 20;
+      this._textarea.scrollTop = Math.max(0, (first - 1) * lineHeight - this._textarea.clientHeight / 3);
+    }
+    this._updateCursorPosition();
+    this._syncGutterScroll();
     this._renderMinimap();
   }
 

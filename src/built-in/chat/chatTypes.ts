@@ -660,6 +660,11 @@ export interface IBuiltInToolFileSystem {
   readdir(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
   /** Read any file — auto-detects rich documents (PDF, DOCX, EPUB, XLSX) and extracts text. */
   readFileContent(relativePath: string): Promise<IFileReadResult>;
+  /**
+   * A PDF's text, one string per page (page 1 first), or undefined when the
+   * file is not a PDF. Cached until the file changes.
+   */
+  readPdfPages?(relativePath: string): Promise<readonly string[] | undefined>;
   exists(relativePath: string): Promise<boolean>;
   readonly workspaceRootName: string;
 }

@@ -100,6 +100,8 @@ export interface RetrievedContext {
   text: string;
   /** Relevance score from hybrid search. */
   score: number;
+  /** For a PDF chunk, the page(s) its text is on, e.g. "page 13 of 30" (set by the caller). */
+  page?: string;
   /** Which retrieval methods contributed ('vector', 'keyword'). */
   sources: string[];
   /** Estimated token count for this chunk. */
@@ -261,6 +263,9 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       sections.push(`[${idx}] Source: ${source} (relevance ${chunk.score.toFixed(2)})`);
       if (chunk.sourceType === 'file_chunk' && chunk.sourceId) {
         sections.push(`Path: ${chunk.sourceId}`);
+      }
+      if (chunk.page) {
+        sections.push(`PDF page: ${chunk.page}`);
       }
       sections.push(chunk.text);
     }

@@ -20,6 +20,10 @@ import { $ } from '../../ui/dom.js';
 import { glideHighlight } from '../../ui/glide.js';
 import { getFileTypeIcon, getFolderIcon } from '../../ui/iconRegistry.js';
 import { RECENT_ITEMS_WIDGET, setupRecentItemsTracking } from './recentItemsWidget.js';
+import { URI } from '../../platform/uri.js';
+import type { IFileLocateResult } from '../../services/fileLocator.js';
+import type { IFileRevealTarget } from '../../editor/fileReveal.js';
+import { checkFileLink, findLinkedFile, revealTargetOf, type IFileLinkHost } from './fileLink.js';
 
 // ─── Types (avoid circular imports) ──────────────────────────────────────────
 
@@ -48,6 +52,7 @@ interface ParallxApi {
       rename(source: string, target: string): Promise<void>;
       delete(uri: string, options?: { recursive?: boolean; useTrash?: boolean }): Promise<void>;
       mkdir(uri: string): Promise<void>;
+      locate(uri: string, quote?: string): Promise<IFileLocateResult>;
     };
     getConfiguration(section?: string): { get<T>(key: string, defaultValue?: T): T | undefined; has(key: string): boolean };
     readonly onDidChangeConfiguration: (listener: (e: { affectsConfiguration(section: string): boolean }) => void) => IDisposable;
@@ -63,7 +68,7 @@ interface ParallxApi {
   };
   editors: {
     openEditor(options: { typeId: string; title: string; icon?: string; iconHtml?: string; instanceId?: string }): Promise<void>;
-    openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
+    openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: IFileRevealTarget }): Promise<void>;
     closeEditor(editorId: string): Promise<boolean>;
     focusEditor(editorId: string): Promise<boolean>;
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string; iconHtml?: string }[];
@@ -210,71 +215,59 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // M66 — register the explorer link contract. Makes
-  // `parallx://explorer/file?path=<absPath>` (or `?uri=<file://...>`) open
-  // any workspace file in the appropriate editor. Optional `?line=<n>` is
-  // accepted for forward-compat; line reveal is delivered in Iteration B.
+  // M66 — the explorer link contract: `parallx://explorer/file?path=<path>`
+  // opens a workspace file in its editor, at the cited spot. `path` is the
+  // workspace-relative path the file tools show, resolved against the open
+  // workspace (fileLink.ts); absolute paths and `uri=file:///…` still open.
+  const linkHost: IFileLinkHost = {
+    workspaceRoot: () => {
+      const first = api.workspace.workspaceFolders?.[0]?.uri;
+      return first ? URI.parse(first) : undefined;
+    },
+    stat: (uri) => {
+      if (!api.workspace.fs) return Promise.reject(new Error('No file system'));
+      return api.workspace.fs.stat(uri);
+    },
+    locate: (uri, quote) => {
+      if (!api.workspace.fs) return Promise.reject(new Error('No file system'));
+      return api.workspace.fs.locate(uri, quote);
+    },
+  };
   context.subscriptions.push(
     api.links.register({
       segment: 'explorer',
       displayName: 'Explorer',
       kinds: {
         file: {
-          uriTemplate: 'parallx://explorer/file?path=<absolutePath>',
-          description: 'Open a file from the workspace in its registered editor. Use `?path=<absPath>` or `?uri=<file:///...>`. PDF-only deep-link anchors: `?page=<n>` and `?quote=<text>` (jumps to page and search-highlights the quote). `?line=<n>` reserved for text-editor reveal.',
+          uriTemplate: 'parallx://explorer/file?path=<workspace path>',
+          description: 'Open a workspace file at the cited spot. `path` is the file\'s path relative to the workspace, exactly as the file tools show it (never a drive or folder in front of it). Add `quote=<the passage, word for word>` and link_create finds where it is: the page in a PDF, the line in a text file, the sheet and cell in a spreadsheet. Without a quote you may give `page=<n>` (PDF page, 1 = first page of the file), `line=<n>` (text line) or `sheet=<name>&cell=<A1>`.',
           examples: [
-            'parallx://explorer/file?path=D%3A%2FAI%2FParallx%2FREADME.md',
-            'parallx://explorer/file?path=D%3A%2Fdocs%2Fpaper.pdf&page=3&quote=unified%20linking',
+            'parallx://explorer/file?path=Papers%2FClark.pdf&quote=The+expected+loss+is+used+to+calculate+the+reserves',
+            'parallx://explorer/file?path=Notes%2Frecipes.txt&line=12',
           ],
           async open(parsed) {
-            const explicitUri = parsed.params['uri'];
-            const fsPath = parsed.params['path'];
-            let fileUri: string | undefined;
-            let resolvedFsPath: string | undefined;
-            if (explicitUri && explicitUri.startsWith('file:')) {
-              fileUri = explicitUri;
-              // Derive fsPath from file:// URI for the pdf-reveal event.
-              try {
-                const u = new URL(explicitUri);
-                resolvedFsPath = decodeURIComponent(u.pathname.replace(/^\//, ''));
-              } catch {
-                // Best-effort — leave undefined.
-              }
-            } else if (fsPath) {
-              // Convert absolute path → file:// URI without depending on Node `path`.
-              const normalized = fsPath.replace(/\\/g, '/');
-              fileUri = normalized.startsWith('/')
-                ? `file://${encodeURI(normalized)}`
-                : `file:///${encodeURI(normalized)}`;
-              resolvedFsPath = fsPath;
+            const found = await findLinkedFile(linkHost, parsed.params);
+            if ('error' in found) {
+              console.warn(`[Explorer] Link not opened: ${found.error}`);
+              return false;
             }
-            if (!fileUri) return false;
+            // A quote decides the spot: a hand-made or older link with a
+            // wrong page (or none) still lands where the words are.
+            let reveal = revealTargetOf(parsed.params);
+            if (reveal.quote) {
+              const check = await checkFileLink(linkHost, parsed, { thorough: true });
+              const anchors = check.ok ? api.links.parse(check.uri)?.params : undefined;
+              if (anchors) reveal = revealTargetOf(anchors);
+            }
             try {
-              await api.editors.openFileEditor(fileUri);
+              await api.editors.openFileEditor(found.file.uri.toString(), { reveal });
             } catch {
               return false;
             }
-            // M66 Iter B — PDF deep-link anchors. The PdfEditorPane listens
-            // for `parallx:pdf-reveal` events and filters by filePath, so a
-            // dispatch is safe even if the resolver picked a non-PDF
-            // editor — non-PDF panes ignore the event.
-            const pageParam = parsed.params['page'];
-            const quoteParam = parsed.params['quote'];
-            if (resolvedFsPath && (pageParam || quoteParam)) {
-              const page = pageParam ? parseInt(pageParam, 10) : undefined;
-              // Defer one frame so the pane's renderInput() finishes wiring
-              // _currentInput before our handler reads it.
-              window.setTimeout(() => {
-                window.dispatchEvent(new CustomEvent('parallx:pdf-reveal', {
-                  detail: {
-                    filePath: resolvedFsPath,
-                    page: Number.isFinite(page) ? page : undefined,
-                    quote: quoteParam,
-                  },
-                }));
-              }, 100);
-            }
             return true;
+          },
+          verify(parsed, options) {
+            return checkFileLink(linkHost, parsed, options);
           },
           async resolveMetadata(parsed) {
             const fsPath = parsed.params['path'] ?? parsed.params['uri'];

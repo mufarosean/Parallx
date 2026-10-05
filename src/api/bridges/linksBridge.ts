@@ -9,6 +9,8 @@
 import { type IDisposable, toDisposable } from '../../platform/lifecycle.js';
 import type {
   ILinkResolverService,
+  LinkCheck,
+  LinkCheckOptions,
   LinkContract,
   LinkMetadata,
 } from '../../links/linkResolverService.js';
@@ -76,6 +78,11 @@ export class LinksBridge {
   resolveMetadata(uri: string): Promise<LinkMetadata | null> {
     if (!this._service) return Promise.resolve(null);
     return this._service.resolveMetadata(uri);
+  }
+
+  verify(uri: string, options?: LinkCheckOptions): Promise<LinkCheck> {
+    if (!this._service) return Promise.resolve({ ok: false, error: 'Links are not available.' });
+    return this._service.verify(uri, options);
   }
 
   get onDidChangeContracts(): (listener: () => void) => IDisposable {

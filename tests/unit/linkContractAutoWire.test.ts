@@ -114,7 +114,7 @@ describe('M66 link contract — auto-wire guardrail', () => {
     const out = buildLinkingSection([]);
     expect(out).toContain('## Linking');
     expect(out).toContain('URI templates available in this workspace:');
-    // No per-extension lines emitted.
-    expect(out).not.toMatch(/^- /m);
+    // No per-extension template lines ("- Name / kind — `parallx://…`: …").
+    expect(out).not.toMatch(/^- .* — `parallx:\/\//m);
   });
 });

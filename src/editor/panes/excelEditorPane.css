@@ -143,3 +143,10 @@
   pointer-events: none;
 }
 .excel-error { color: var(--px-danger); }
+
+/* The cell a citation link points at. */
+.excel-grid td.excel-cell-revealed {
+  background: var(--px-accent-soft);
+  outline: var(--px-focus-width) solid var(--px-accent);
+  outline-offset: -1px;
+}

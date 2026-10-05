@@ -9,8 +9,11 @@
 //      and the active-extensions list (Iteration C).
 //   3. The canvas `link` block renderer — calls `resolveMetadata()` for
 //      title/icon (Iteration A — click interception today, full chips later).
-//   4. The future `link_create` chat tool — validates the AI's target URI
-//      against the union of registered segments (Iteration C).
+//   4. The `link_create` chat tool — validates the AI's target URI against
+//      the registered segments, then asks the kind's `verify()` whether the
+//      target is really there (and, for a quote, where).
+//   5. The chat renderer — `verify()` without `thorough` marks links whose
+//      target is gone.
 //
 // This is the ONLY integration point. Reviewers should reject any PR that
 // adds a per-extension branch in core code — everything goes through
@@ -33,6 +36,32 @@ export interface LinkMetadata {
   readonly icon?: string;
 }
 
+export interface LinkCheckOptions {
+  /**
+   * Also check the link's anchors against the content (for a file: that a
+   * quote is in it, and where). Costs a read of the target. Without it, a
+   * check only confirms the target exists.
+   */
+  readonly thorough?: boolean;
+}
+
+/** What checking a link found. */
+export type LinkCheck =
+  | {
+    readonly ok: true;
+    /** The link to use: canonical form, anchors filled in from what was found. */
+    readonly uri: string;
+    /** One sentence saying exactly what was checked and found. */
+    readonly checked: string;
+    /** Where in the target the link lands, for citing in prose (e.g. "page 13 of 30"). */
+    readonly location?: string;
+  }
+  | {
+    readonly ok: false;
+    /** Why the link would not work, and what to change. */
+    readonly error: string;
+  };
+
 /** Per-kind handler. The AI sees `uriTemplate` + `description` in the system prompt. */
 export interface LinkKindHandler {
   /** Template shown to the AI, e.g. `parallx://canvas/page/<pageId>`. */
@@ -45,6 +74,12 @@ export interface LinkKindHandler {
   open(parsed: ParsedLink, ctx: LinkResolveContext): Promise<boolean>;
   /** Lazy metadata for the canvas link chip. Returns null if unknown. */
   resolveMetadata?(parsed: ParsedLink): Promise<LinkMetadata | null>;
+  /**
+   * Check that the target exists (and, when `thorough`, that the anchors
+   * match its content). A kind without it is checked for shape only. Never
+   * throws.
+   */
+  verify?(parsed: ParsedLink, options: LinkCheckOptions): Promise<LinkCheck>;
 }
 
 /**
@@ -80,6 +115,12 @@ export interface ILinkResolverService {
 
   /** Lazy metadata for a single URI; returns null if unknown or unresolvable. */
   resolveMetadata(uri: string): Promise<LinkMetadata | null>;
+
+  /**
+   * Check a link: it parses, its segment and kind are registered, and (when
+   * the kind can tell) its target exists. Never throws.
+   */
+  verify(uri: string, options?: LinkCheckOptions): Promise<LinkCheck>;
 }
 
 export const ILinkResolverService = createServiceIdentifier<ILinkResolverService>('ILinkResolverService');
@@ -156,6 +197,31 @@ export class LinkResolverService implements ILinkResolverService {
     } catch (err) {
       console.warn(`[LinkResolver] resolveMetadata() failed for ${uri}:`, err);
       return null;
+    }
+  }
+
+  async verify(uri: string, options: LinkCheckOptions = {}): Promise<LinkCheck> {
+    const parsed = parseParallxUri(uri);
+    if (!parsed) return { ok: false, error: 'Not a valid parallx:// link.' };
+    const contract = this._contracts.get(parsed.segment);
+    if (!contract) {
+      const known = Array.from(this._contracts.keys()).join(', ') || '(none registered)';
+      return { ok: false, error: `Unknown segment "${parsed.segment}". Registered segments: ${known}.` };
+    }
+    const kind = parsed.kind;
+    const handler = kind ? contract.kinds[kind] : undefined;
+    if (!handler) {
+      const kinds = Object.keys(contract.kinds).join(', ');
+      return { ok: false, error: `"${parsed.segment}" has no link kind "${kind ?? ''}". Its kinds: ${kinds}.` };
+    }
+    if (!handler.verify) {
+      return { ok: true, uri: parsed.raw, checked: `The link is well formed; ${contract.displayName} cannot check that its target exists.` };
+    }
+    try {
+      return await handler.verify(parsed, options);
+    } catch (err) {
+      console.warn(`[LinkResolver] verify() failed for ${uri}:`, err);
+      return { ok: false, error: `The link could not be checked: ${err instanceof Error ? err.message : String(err)}` };
     }
   }
 

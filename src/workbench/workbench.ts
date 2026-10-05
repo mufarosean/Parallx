@@ -3334,7 +3334,14 @@ export class Workbench extends Layout {
       const href = anchor.getAttribute('href');
       if (!href) return;
       e.preventDefault();
-      void linkResolverService.open(href).catch((err) => {
+      void linkResolverService.open(href).then(async (opened) => {
+        if (opened) return;
+        // Say why instead of doing nothing: the link's own check knows
+        // (file gone, wrong path, …).
+        const check = await linkResolverService.verify(href);
+        const reason = check.ok ? 'Its target could not be opened.' : check.error;
+        void this._services.tryGet(INotificationService)?.warn(`This link does not work. ${reason}`);
+      }).catch((err) => {
         console.warn('[Workbench] parallx:// link resolution failed:', err);
       });
     };

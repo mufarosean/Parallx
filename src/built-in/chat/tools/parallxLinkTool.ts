@@ -1,19 +1,23 @@
 // parallxLinkTool.ts — M66 §4a — `link_create` chat tool.
 //
 // The system prompt's `## Linking` section lists every registered
-// `parallx://` template; this tool is the safe minter the AI calls when it
-// wants to cite one. It validates that:
-//   1. The target parses as a `parallx://` URI.
-//   2. The segment is registered by some extension (per
-//      `LinkResolverService.allContracts()`).
-//   3. The optional `anchor` query-string is well-formed.
+// `parallx://` template; this tool is how the AI makes a citation link. It:
+//   1. Parses the target as a `parallx://` URI and adds any `params` /
+//      `anchor` query parameters (encoded here, so the AI never encodes).
+//   2. Checks the segment is registered (`LinkResolverService.allContracts()`).
+//   3. Asks the link's own kind to check it (`LinkResolverService.verify`
+//      with `thorough`): the target exists, and anchors such as a quote are
+//      found in it. The kind returns the canonical link and where it lands.
 //
-// It does NOT open the target — opening is a renderer/click-time concern.
-// The returned `{ uri }` is what the AI should embed in a markdown link.
+// "ok: true" therefore means the target was checked, and the result says in
+// one sentence what was checked. A kind that cannot check its targets says
+// so; the tool never claims more than the kind confirmed.
+//
+// It does NOT open the target — opening is a click-time concern.
 //
 // Strict M66 §6 guardrail: the tool MUST NOT contain any per-extension
-// branches. Segment validity is decided entirely by the contract list
-// passed in at construction time.
+// branches. Segment validity comes from the contract list, and checking is
+// the contract's own `verify`.
 
 import type {
   IChatTool,
@@ -35,6 +39,14 @@ export interface IParallxLinkToolContractView {
 
 export type LinkContractSnapshot = () => readonly IParallxLinkToolContractView[];
 
+/** What checking a link found (the shape of `LinkResolverService.verify`). */
+export type LinkToolCheck =
+  | { readonly ok: true; readonly uri: string; readonly checked: string; readonly location?: string }
+  | { readonly ok: false; readonly error: string };
+
+/** Thorough check of a link by its own kind. */
+export type LinkVerifier = (uri: string) => Promise<LinkToolCheck>;
+
 function failure(message: string): IToolResult {
   return {
     content: JSON.stringify({ ok: false, error: message }),
@@ -46,29 +58,51 @@ function readString(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }
 
+/** Query parameters given as an object: string, number or boolean values only. */
+function readParams(v: unknown): Record<string, string> | string | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'object' || Array.isArray(v)) return 'params must be an object of query parameters, e.g. {"path": "Papers/Clark.pdf", "quote": "…"}.';
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (val === undefined || val === null || val === '') continue;
+    if (typeof val !== 'string' && typeof val !== 'number' && typeof val !== 'boolean') {
+      return `params.${k} must be a string or number.`;
+    }
+    out[k] = String(val);
+  }
+  return out;
+}
+
 /**
  * Build the tool. When `getContracts` returns an empty list, the tool still
  * registers but every call fails fast — the prompt section is also skipped
  * in that case, so the AI never sees the tool in the catalog with no
- * usable templates.
+ * usable templates. Without `verify`, links are checked for shape only and
+ * the result says so.
  */
-export function createParallxLinkTool(getContracts: LinkContractSnapshot): IChatTool {
+export function createParallxLinkTool(getContracts: LinkContractSnapshot, verify?: LinkVerifier): IChatTool {
   return {
     name: 'link_create',
-    displaySummary: 'Mint a validated parallx:// citation URI.',
+    displaySummary: 'Make a checked parallx:// citation link.',
     description:
-      'Validate and mint a parallx:// citation URI. target must follow a template from the ## Linking section. Use anchor for deep-linking.',
+      'Make a citation link and check it. target follows a template from the ## Linking section; put query parameters in params (values are encoded for you). ' +
+      'The link\'s target is checked: ok:true comes with `checked` (what was confirmed) and `location` (where it lands, e.g. "page 13 of 30"); use the returned uri and cite that location. ' +
+      'ok:false means the link would not work: fix it or say the source could not be linked.',
     parameters: {
       type: 'object',
       required: ['target'],
       properties: {
         target: {
           type: 'string',
-          description: 'parallx:// URI from a ## Linking template.',
+          description: 'parallx:// URI from a ## Linking template, e.g. parallx://explorer/file. Parameters may be in it or in params.',
+        },
+        params: {
+          type: 'object',
+          description: 'Query parameters as an object, e.g. {"path": "Papers/Clark.pdf", "quote": "the exact words"}. Encoded for you; they override the same names in target.',
         },
         anchor: {
           type: 'string',
-          description: 'Deep-link query string (no leading ?).',
+          description: 'Deep-link query string (no leading ?). Prefer params.',
         },
         note: {
           type: 'string',
@@ -85,6 +119,12 @@ export function createParallxLinkTool(getContracts: LinkContractSnapshot): IChat
       if (!target) return failure('Missing required argument: target');
       const anchor = readString(args.anchor);
       const note = readString(args.note);
+      const params = readParams(args.params);
+      if (typeof params === 'string') return failure(params);
+
+      if (anchor && (anchor.startsWith('?') || anchor.startsWith('&'))) {
+        return failure('anchor must not start with `?` or `&` — pass the query string only.');
+      }
 
       const parsed = parseParallxUri(target);
       if (!parsed) {
@@ -98,23 +138,42 @@ export function createParallxLinkTool(getContracts: LinkContractSnapshot): IChat
         return failure(`Unknown segment "${parsed.segment}". Registered segments: ${known}.`);
       }
 
-      // Append anchor if supplied. Reject if caller already encoded a `?`
-      // — anchor is meant to be a query string fragment.
-      let finalUri = target;
-      if (anchor) {
-        if (anchor.startsWith('?') || anchor.startsWith('&')) {
-          return failure('anchor must not start with `?` or `&` — pass the query string only.');
+      // One URI from target + anchor + params, encoded here.
+      let uri: string;
+      try {
+        const url = new URL(target.trim());
+        if (anchor) {
+          new URLSearchParams(anchor).forEach((v, k) => url.searchParams.set(k, v));
         }
-        const sep = target.includes('?') ? '&' : '?';
-        finalUri = `${target}${sep}${anchor}`;
+        for (const [k, v] of Object.entries(params ?? {})) url.searchParams.set(k, v);
+        uri = url.toString();
+      } catch {
+        return failure('target is not a valid parallx:// URI');
       }
 
+      if (!verify) {
+        return {
+          content: JSON.stringify({
+            ok: true,
+            uri,
+            segment: parsed.segment,
+            displayName: contract.displayName,
+            checked: 'The link is well formed; its target was not checked.',
+            note,
+          }),
+        };
+      }
+
+      const check = await verify(uri);
+      if (!check.ok) return failure(check.error);
       return {
         content: JSON.stringify({
           ok: true,
-          uri: finalUri,
+          uri: check.uri,
           segment: parsed.segment,
           displayName: contract.displayName,
+          checked: check.checked,
+          ...(check.location ? { location: check.location } : {}),
           note,
         }),
       };

@@ -13,6 +13,8 @@ import {
   registerEditorInputDeserializer,
   hasEditorInputDeserializer,
 } from '../../editor/editorInputDeserializer.js';
+import { requestFileReveal, hasRevealTarget, type IFileRevealTarget } from '../../editor/fileReveal.js';
+import { URI } from '../../platform/uri.js';
 
 // ─── File Editor Resolver ────────────────────────────────────────────────────
 
@@ -306,11 +308,17 @@ export class EditorsBridge {
    * @param uri  File URI string (e.g. `file:///C:/project/readme.md` or an fsPath).
    * @param options  Optional editor open options.
    */
-  async openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void> {
+  async openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: IFileRevealTarget }): Promise<void> {
     this._throwIfDisposed();
 
     if (!_fileEditorResolver) {
       throw new Error('[EditorsBridge] No file editor resolver registered. The file editor may not be initialised yet.');
+    }
+
+    // Filed before opening: the pane takes it once it is shown and settled.
+    if (hasRevealTarget(options?.reveal)) {
+      const fsPath = revealPathOf(uri);
+      if (fsPath) requestFileReveal(fsPath, options!.reveal!);
     }
 
     const input = await _fileEditorResolver(uri);
@@ -339,6 +347,17 @@ export class EditorsBridge {
     if (this._disposed) {
       throw new Error(`[EditorsBridge] Tool "${this._toolId}" has been deactivated; API access is no longer allowed.`);
     }
+  }
+}
+
+/** The file path a reveal is keyed by, from a file URI or a plain path. */
+function revealPathOf(uri: string): string | undefined {
+  try {
+    if (uri.startsWith('file:')) return URI.parse(uri).fsPath;
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(uri) && !/^[a-zA-Z]:[\\/]/.test(uri)) return undefined;
+    return uri;
+  } catch {
+    return undefined;
   }
 }
 

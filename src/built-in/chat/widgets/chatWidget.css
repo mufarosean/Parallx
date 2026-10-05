@@ -991,6 +991,14 @@
   text-decoration: underline;
 }
 
+/* A parallx:// citation link whose target was not found (title says why). */
+.parallx-chat-markdown a.parallx-chat-link--broken {
+  color: var(--px-danger);
+  text-decoration: line-through;
+  text-decoration-color: var(--px-danger);
+  cursor: help;
+}
+
 .parallx-chat-markdown strong {
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);

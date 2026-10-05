@@ -319,7 +319,9 @@ api.views.setBadge(containerId, { count: 3 })   // or { dot: true } or undefined
 api.editors.registerEditorProvider(typeId, { createEditorPane(container, input) { /* return IDisposable */ } })
 api.editors.openEditor({ typeId, title, icon?, instanceId? })   // → Promise<void>
 api.editors.closeEditor(editorId)                                // → Promise<boolean>
-api.editors.openFileEditor(uri, { pinned? })                     // open built-in text editor
+api.editors.openFileEditor(uri, { pinned?, reveal? })            // open a file in its editor
+// reveal: { page?, quote? } (PDF), { line?, endLine? } (text), { sheet?, cell? } (spreadsheet, A1 cell);
+// applied once the file has loaded
 api.editors.openEditors                                          // readonly array of descriptors
 api.editors.onDidChangeOpenEditors(listener)                     // → IDisposable
 ```
@@ -375,6 +377,7 @@ api.workspace.fs.exists(uri)
 api.workspace.fs.rename(src, tgt)
 api.workspace.fs.delete(uri, { recursive?, useTrash? })
 api.workspace.fs.mkdir(uri)
+api.workspace.fs.locate(uri, quote?)  // → { addressing: 'page'|'line'|'cell'|'none', pageCount?, lineCount?, sheets?, spots: [{ page?, line?, sheet?, cell?, text }] }
 ```
 
 ### 4.6 `api.database` (per-extension SQLite)

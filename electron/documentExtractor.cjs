@@ -716,7 +716,7 @@ async function extractDocxReadingData(filePath) {
  * renderer builds the table with textContent, so there's no HTML-injection
  * surface. Rows/cols are capped so a huge workbook can't lock the UI.
  * @param {string} filePath
- * @returns {Promise<{ format: 'spreadsheet'; title: string; sheets: Array<{ name: string; rows: string[][]; cols: number; truncated: boolean }> }>}
+ * @returns {Promise<{ format: 'spreadsheet'; title: string; sheets: Array<{ name: string; rows: string[][]; cols: number; truncated: boolean; rowStart: number; colStart: number }> }>}
  */
 async function extractSpreadsheetReadingData(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -739,7 +739,11 @@ async function extractSpreadsheetReadingData(filePath) {
     if (!sheet) continue;
     // header:1 → array of row-arrays; raw:false → SheetJS's formatted text
     // (so dates/percentages/currency read the way the workbook shows them).
-    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '', raw: false });
+    // Blank rows are KEPT and the used range's first row and column ride
+    // along, so the viewer's row numbers and column letters are the
+    // workbook's own (a citation's "B206" is the B206 Excel shows).
+    const range = sheet['!ref'] ? XLSX.utils.decode_range(sheet['!ref']) : null;
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: true, defval: '', raw: false });
     let cols = 0;
     const rows = [];
     for (const r of rawRows.slice(0, MAX_ROWS)) {
@@ -747,7 +751,14 @@ async function extractSpreadsheetReadingData(filePath) {
       cols = Math.max(cols, cells.length);
       rows.push(cells);
     }
-    sheets.push({ name: String(name), rows, cols, truncated: rawRows.length > MAX_ROWS });
+    sheets.push({
+      name: String(name),
+      rows,
+      cols,
+      truncated: rawRows.length > MAX_ROWS,
+      rowStart: range ? range.s.r : 0,
+      colStart: range ? range.s.c : 0,
+    });
   }
 
   return { format: 'spreadsheet', title: path.basename(filePath, ext), sheets };

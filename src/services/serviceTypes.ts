@@ -1289,7 +1289,20 @@ export interface IFileService extends IDisposable {
    * Returns the extracted text, the format identifier, and optional metadata.
    * Throws if the file is not a supported rich document format.
    */
-  readDocumentText(uri: import('../platform/uri.js').URI): Promise<{ text: string; format: string; metadata?: Record<string, unknown> }>;
+  readDocumentText(uri: import('../platform/uri.js').URI): Promise<{ text: string; format: string; metadata?: Record<string, unknown>; pageTexts?: readonly string[] }>;
+
+  /**
+   * A PDF's text, one string per page, in page order (page 1 first). Cached
+   * until the file changes. Undefined for any file that is not a PDF.
+   */
+  readPdfPages(uri: import('../platform/uri.js').URI): Promise<readonly string[] | undefined>;
+
+  /**
+   * How a file is addressed and, given a quote, every spot it occurs: the
+   * PDF page (1 = first page of the file), the text line, or the
+   * spreadsheet sheet and cell (the workbook's own A1 reference).
+   */
+  locateInFile(uri: import('../platform/uri.js').URI, quote?: string): Promise<import('./fileLocator.js').IFileLocateResult>;
 
   /**
    * Check if a file extension represents a supported rich document format.

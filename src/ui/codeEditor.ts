@@ -450,6 +450,21 @@ export class CodeEditor extends Disposable {
     return this._view.hasFocus;
   }
 
+  /**
+   * Select lines `first`..`last` (1-based) and scroll them to the middle of
+   * the view. Out-of-range lines leave the editor as it is.
+   */
+  revealLines(first: number, last: number = first): void {
+    const doc = this._view.state.doc;
+    if (!Number.isFinite(first) || first < 1 || first > doc.lines) return;
+    const from = doc.line(Math.floor(first)).from;
+    const to = doc.line(Math.min(Math.max(Math.floor(first), Math.floor(last)), doc.lines)).to;
+    this._view.dispatch({
+      selection: { anchor: from, head: to },
+      effects: EditorView.scrollIntoView(from, { y: 'center' }),
+    });
+  }
+
   /** Scroll position, for editor view-state save/restore across tab switches. */
   get scrollTop(): number {
     return this._view.scrollDOM.scrollTop;

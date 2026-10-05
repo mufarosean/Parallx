@@ -978,13 +978,29 @@ export namespace editors {
   export function setEditorTitle(inputId: string, title: string): boolean;
 
   /**
-   * Open a file in the built-in text editor.
+   * Where to take the reader when a file opens. Each editor uses what applies
+   * to it: the PDF viewer `page` (1 = first page of the file) and `quote`
+   * (found and highlighted), the text and code editors `line`/`endLine`, the
+   * spreadsheet viewer `sheet` and `cell` (A1 style, e.g. `B206`).
+   */
+  export interface FileRevealTarget {
+    readonly page?: number;
+    readonly quote?: string;
+    readonly line?: number;
+    readonly endLine?: number;
+    readonly sheet?: string;
+    readonly cell?: string;
+  }
+
+  /**
+   * Open a file in the editor registered for its type.
    *
    * @param uri  File URI string (e.g. `file:///path/to/file.txt` or an fsPath).
    *             Use `untitled://` for a new untitled document.
-   * @param options  Optional editor open options.
+   * @param options  Optional editor open options. `reveal` opens the file at
+   *             a spot; it is applied once the file has loaded.
    */
-  export function openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
+  export function openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: FileRevealTarget }): Promise<void>;
 
   /**
    * Descriptors for all currently open editors across all groups.
@@ -1040,7 +1056,31 @@ export interface LinkKindHandler {
   open(parsed: ParsedLink, ctx: LinkResolveContext): Promise<boolean>;
   /** Lazy metadata for canvas link chips. Return `null` if unknown. */
   resolveMetadata?(parsed: ParsedLink): Promise<LinkMetadata | null>;
+  /**
+   * Check that the target exists and, when `options.thorough`, that the
+   * link's anchors match its content. Return the canonical link (anchors
+   * filled in from what was found) and one sentence saying what was checked.
+   * Without it a link is checked for shape only. Should not throw.
+   */
+  verify?(parsed: ParsedLink, options: { readonly thorough?: boolean }): Promise<LinkCheck>;
 }
+
+/** What checking a link found. */
+export type LinkCheck =
+  | {
+    readonly ok: true;
+    /** The link to use: canonical form, anchors filled in from what was found. */
+    readonly uri: string;
+    /** One sentence saying exactly what was checked and found. */
+    readonly checked: string;
+    /** Where in the target the link lands, for citing in prose (e.g. "page 13 of 30"). */
+    readonly location?: string;
+  }
+  | {
+    readonly ok: false;
+    /** Why the link would not work, and what to change. */
+    readonly error: string;
+  };
 
 /**
  * The full contract published by an extension. Adding one of these via
@@ -1108,6 +1148,13 @@ export namespace links {
 
   /** Lazy metadata fetch for a single URI. Returns `null` if unknown. */
   export function resolveMetadata(uri: string): Promise<LinkMetadata | null>;
+
+  /**
+   * Check a link: it parses, its segment and kind are registered, and (when
+   * its kind can tell) its target exists. `thorough` also checks anchors
+   * against the content. Never throws.
+   */
+  export function verify(uri: string, options?: { readonly thorough?: boolean }): Promise<LinkCheck>;
 
   /** Fires when contracts are added or removed (extension load/unload). */
   export const onDidChangeContracts: Event<void>;

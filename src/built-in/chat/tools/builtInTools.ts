@@ -132,7 +132,7 @@ export function registerBuiltInTools(
     // ── Terminal tool (M11 Task 4.3) ──
     createRunCommandTool(terminal, workspaceRoot),
     // ── RAG tools (M10 Phase 3) ──
-    createSearchKnowledgeTool(retrieval),
+    createSearchKnowledgeTool(retrieval, fs),
     // ── Surface routing tools (M58 W6) ──
     createSurfaceSendTool(surfaceRouter),
     createSurfaceListTool(surfaceRouter),

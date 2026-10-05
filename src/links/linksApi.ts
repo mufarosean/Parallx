@@ -25,12 +25,18 @@ export interface LinksApiParsedLink {
   readonly kind: string | undefined;
 }
 
+/** What checking a link found (see LinkCheck in linkResolverService.ts). */
+export type LinksApiCheck =
+  | { readonly ok: true; readonly uri: string; readonly checked: string; readonly location?: string }
+  | { readonly ok: false; readonly error: string };
+
 export interface LinksApiKindHandler {
   readonly uriTemplate: string;
   readonly description: string;
   readonly examples?: readonly string[];
   open(parsed: LinksApiParsedLink, ctx: { source?: string }): Promise<boolean>;
   resolveMetadata?(parsed: LinksApiParsedLink): Promise<{ title: string; icon?: string } | null>;
+  verify?(parsed: LinksApiParsedLink, options: { readonly thorough?: boolean }): Promise<LinksApiCheck>;
 }
 
 export interface LinksApiContractInput {
@@ -55,5 +61,6 @@ export interface LinksApi {
   parse(uri: string): LinksApiParsedLink | null;
   allContracts(): readonly LinksApiContract[];
   resolveMetadata(uri: string): Promise<{ title: string; icon?: string } | null>;
+  verify(uri: string, options?: { readonly thorough?: boolean }): Promise<LinksApiCheck>;
   onDidChangeContracts(listener: () => void): IDisposable;
 }

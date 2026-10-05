@@ -11,6 +11,8 @@ import type { IEditorInput } from '../../editor/editorInput.js';
 import { $, hide, show } from '../../ui/dom.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 import { ExcelEditorInput } from './excelEditorInput.js';
+import { takeFileReveal, type IFileRevealTarget } from '../fileReveal.js';
+import { parseCellRef } from '../../services/quoteLocator.js';
 
 const PANE_ID = 'excel-editor-pane';
 const RENDER_ROW_CAP = 1000;
@@ -19,9 +21,13 @@ const ICON = { sheet: getIcon('table') || getIcon('grid') };
 
 interface SpreadsheetSheet {
   readonly name: string;
+  /** Rows from the used range's first row, blank rows included. */
   readonly rows: readonly (readonly string[])[];
   readonly cols: number;
   readonly truncated: boolean;
+  /** 0-based workbook row of rows[0] and column of each row's first cell. */
+  readonly rowStart?: number;
+  readonly colStart?: number;
 }
 interface SpreadsheetDocument {
   readonly format: 'spreadsheet';
@@ -51,9 +57,21 @@ export class ExcelEditorPane extends EditorPane {
   private _sheets: readonly SpreadsheetSheet[] = [];
   private _active = 0;
   private _loadSeq = 0;
+  /** Index into the active sheet's rows of the first row rendered. */
+  private _renderFrom = 0;
+  /** Cell a citation link pointed at: [rows index, cols index] in the active sheet. */
+  private _revealed: { row: number; col: number } | null = null;
 
   constructor() {
     super(PANE_ID);
+  }
+
+  /** Shown and laid out: apply a citation link's sheet and cell, if one is pending. */
+  protected override onDidShow(): void {
+    const path = this._current?.uri.fsPath;
+    if (!path || this._sheets.length === 0) return;
+    const target = takeFileReveal(path);
+    if (target) this._applyReveal(target);
   }
 
   protected override createPaneContent(container: HTMLElement): void {
@@ -120,6 +138,8 @@ export class ExcelEditorPane extends EditorPane {
         this._showError('This workbook has no sheets.');
         return;
       }
+      this._renderFrom = 0;
+      this._revealed = null;
       this._renderTabs();
       this._renderActiveSheet();
     } catch (err) {
@@ -172,6 +192,8 @@ export class ExcelEditorPane extends EditorPane {
         if (i === this._active) return;
         this._active = i;
         if (this._current) this._current.activeSheet = i;
+        this._renderFrom = 0;
+        this._revealed = null;
         this._renderTabs();
         this._renderActiveSheet();
       });
@@ -185,7 +207,10 @@ export class ExcelEditorPane extends EditorPane {
 
     const rowCount = sheet.rows.length;
     const cols = Math.max(1, sheet.cols);
-    const shownRows = Math.min(rowCount, RENDER_ROW_CAP);
+    const rowStart = sheet.rowStart ?? 0;
+    const colStart = sheet.colStart ?? 0;
+    const from = Math.max(0, Math.min(this._renderFrom, Math.max(0, rowCount - 1)));
+    const to = Math.min(rowCount, from + RENDER_ROW_CAP);
     this._metaEl.textContent = `${rowCount.toLocaleString()} row${rowCount === 1 ? '' : 's'} × ${cols} col${cols === 1 ? '' : 's'}`;
 
     const table = $('table.excel-grid');
@@ -196,7 +221,9 @@ export class ExcelEditorPane extends EditorPane {
     headRow.appendChild($('th.excel-corner'));
     for (let c = 0; c < cols; c++) {
       const th = $('th.excel-colhead');
-      th.textContent = colLabel(c);
+      // The workbook's own letters: a sheet whose data starts in column C
+      // is labelled from C, as Excel shows it.
+      th.textContent = colLabel(colStart + c);
       headRow.appendChild(th);
     }
     thead.appendChild(headRow);
@@ -204,16 +231,19 @@ export class ExcelEditorPane extends EditorPane {
 
     // Body: row-number gutter + cells (textContent — no injection)
     const tbody = $('tbody');
-    for (let r = 0; r < shownRows; r++) {
+    for (let r = from; r < to; r++) {
       const row = sheet.rows[r] ?? [];
       const tr = $('tr');
       const rownum = $('th.excel-rownum');
-      rownum.textContent = String(r + 1);
+      // The workbook's own row number (blank rows are kept, so it counts
+      // the way Excel does).
+      rownum.textContent = String(rowStart + r + 1);
       tr.appendChild(rownum);
       for (let c = 0; c < cols; c++) {
         const td = $('td');
         const v = row[c] ?? '';
         if (v !== '') td.textContent = v;
+        if (this._revealed && this._revealed.row === r && this._revealed.col === c) td.classList.add('excel-cell-revealed');
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
@@ -223,13 +253,49 @@ export class ExcelEditorPane extends EditorPane {
     this._gridScroll.textContent = '';
     this._gridScroll.appendChild(table);
 
-    if (rowCount > shownRows || sheet.truncated) {
+    const shown = to - from;
+    if (from > 0 || rowCount > to || sheet.truncated) {
       const note = $('div.excel-truncation-note');
-      note.textContent = `Showing the first ${shownRows.toLocaleString()} rows${sheet.truncated ? ' (workbook is larger than the viewer cap)' : ` of ${rowCount.toLocaleString()}`}. Open in a spreadsheet app for everything.`;
+      const span = from > 0
+        ? `Showing rows ${(rowStart + from + 1).toLocaleString()} to ${(rowStart + to).toLocaleString()}`
+        : `Showing the first ${shown.toLocaleString()} rows`;
+      note.textContent = `${span}${sheet.truncated ? ' (workbook is larger than the viewer cap)' : ` of ${rowCount.toLocaleString()}`}. Open in a spreadsheet app for everything.`;
       this._gridScroll.appendChild(note);
     }
 
     this._gridScroll.scrollTop = 0;
+  }
+
+  /**
+   * Show the sheet and cell a citation link points at: switch to the sheet,
+   * render the rows around the cell, scroll it into view and mark it. A cell
+   * outside the sheet's data leaves the view as it is.
+   */
+  private _applyReveal(target: IFileRevealTarget): void {
+    if (this._sheets.length === 0) return;
+    let sheetIndex = this._active;
+    if (target.sheet) {
+      const wanted = target.sheet.toLowerCase();
+      const found = this._sheets.findIndex((s) => s.name.toLowerCase() === wanted);
+      if (found >= 0) sheetIndex = found;
+    }
+    const sheet = this._sheets[sheetIndex];
+    const ref = target.cell ? parseCellRef(target.cell) : undefined;
+    const row = ref ? ref.row - (sheet.rowStart ?? 0) : -1;
+    const col = ref ? ref.col - (sheet.colStart ?? 0) : -1;
+    const inSheet = row >= 0 && row < sheet.rows.length && col >= 0 && col < Math.max(1, sheet.cols);
+
+    if (sheetIndex !== this._active) {
+      this._active = sheetIndex;
+      if (this._current) this._current.activeSheet = sheetIndex;
+      this._renderTabs();
+    }
+    this._revealed = inSheet ? { row, col } : null;
+    this._renderFrom = inSheet && row >= RENDER_ROW_CAP ? Math.max(0, row - Math.floor(RENDER_ROW_CAP / 2)) : 0;
+    this._renderActiveSheet();
+    if (!inSheet) return;
+    const td = this._gridScroll.querySelector('td.excel-cell-revealed');
+    td?.scrollIntoView({ block: 'center', inline: 'center' });
   }
 
   private _showLoading(): void {
