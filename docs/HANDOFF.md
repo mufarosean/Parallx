@@ -3,7 +3,7 @@
 Last updated 2026-10-06, early. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7627 tests) and `npm run build` pass.
+tsc, the full vitest suite (7636 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
@@ -83,6 +83,20 @@ must appear somewhere (title, sheet, question, paper name, tags, note), in
 any order; a quoted phrase matches whole; a leading minus excludes
 (`brosius credibility -essay`). It was one substring before, so two words
 apart in the text found nothing.
+
+## Done on 2026-10-06, cloud: a character connected to another
+
+Connected To in the Studio's Make section: pick a roster character, one
+line on how this one stands to them, and their card goes into every
+generation as established fact (who they are, their world), nothing
+retyped. Saved on the character, shown in the bar, live for the chat as
+"## People In Their Lives" when the connected person is not in the scene,
+and one button adds a line about the new character to the other card. Make
+One Of Their People arrives connected. Design and files in
+`docs/CREATIONS_AI.md`, "Connected people". To try after a pull and
+rebuild: open a character, Add Person, pick another, type the line,
+Generate; read Relationships and the Overview; then chat as the new one
+alone and ask about the other person.
 
 ## Done on 2026-10-06, cloud: the Studio describes to a structure
 

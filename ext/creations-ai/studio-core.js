@@ -300,7 +300,7 @@ const CRAFT_RULES = [
  * the dials as text (only when the user touched them), `twist` the change
  * so the writer knows the world has already moved.
  */
-export function buildSheetMessages({ concept = '', canon = [], spec = '', twist = '', name = '', structure = null } = {}) {
+export function buildSheetMessages({ concept = '', canon = [], spec = '', twist = '', name = '', structure = null, connections = [] } = {}) {
   const system = [
     'You are a character designer for roleplay fiction. You create original, specific, believable characters, never generic ones.',
     'Every field is written in the THIRD PERSON, as a description of the character ("<Name> is...", "She speaks..."). Never address anyone as "you", and never the general "you" either ("if you catch them early" becomes "if caught early"); the only "you" is inside the example dialogue. Never write instructions. It should all read as one consistent character portrait.',
@@ -321,7 +321,9 @@ export function buildSheetMessages({ concept = '', canon = [], spec = '', twist 
   if (spec.trim()) {
     parts.push('ATTRIBUTES (fill whatever the canon and the concept leave open; the canon and the concept win on any conflict):', spec.trim(), '');
   }
-  parts.push('Field requirements:', fieldRequirements(structure), '', CRAFT_RULES);
+  parts.push(...connectionsBlock(connections, name));
+  const connReq = connectionsRequirement(connections);
+  parts.push('Field requirements:', fieldRequirements(structure), ...(connReq ? [connReq] : []), '', CRAFT_RULES);
   return [{ role: 'system', content: system }, { role: 'user', content: parts.join('\n') }];
 }
 
@@ -384,7 +386,7 @@ export function pitchAsConcept(concept, pitch) {
  * rewrite ("darker, more about her father", "more detail on the war years");
  * when given it leads, and the field's usual length gives way to it.
  */
-export function buildFieldMessages({ concept = '', canon = [], spec = '', twist = '', name = '', structure = null } = {}, sheet, key, direction = '') {
+export function buildFieldMessages({ concept = '', canon = [], spec = '', twist = '', name = '', structure = null, connections = [] } = {}, sheet, key, direction = '') {
   const field = STUDIO_FIELDS.find((f) => f.key === key);
   const label = field ? field.label.toLowerCase() : key;
   const context = [];
@@ -393,7 +395,9 @@ export function buildFieldMessages({ concept = '', canon = [], spec = '', twist 
   if (canon.length > 0) context.push('CANON (must agree with all of these):', ...canon.map((f) => `- ${f}`), '');
   if (twist.trim() && canon.length > 0) context.push(`The canon already includes this change: ${twist.trim()}.`, '');
   if (spec.trim()) context.push('ATTRIBUTES:', spec.trim(), '');
-  const requirement = fieldRequirements(structure).split('\n').find((l) => l.startsWith(`- "${key}"`)) || '';
+  context.push(...connectionsBlock(connections, name || (sheet && sheet.name) || ''));
+  const connReq = key === 'relationships' || key === 'description' || key === 'backstory' ? connectionsRequirement(connections) : '';
+  const requirement = [fieldRequirements(structure).split('\n').find((l) => l.startsWith(`- "${key}"`)) || '', connReq].filter(Boolean).join('\n');
   return [
     { role: 'system', content: `You are a character designer. Write in the THIRD PERSON as a description of the character; never address anyone as "you", not even the general "you"; never write instructions. Return ONLY a JSON object with exactly one string key: "${key}". No commentary. ${NO_DASHES}` },
     { role: 'user', content: [
@@ -563,6 +567,86 @@ export function characterFromSheet(sheet, base = {}, studio = {}) {
     reminder: (sheet.reminder || '').trim(),
     studio: { ...(base.studio || {}), ...studio, sheet: { ...sheet } },
   };
+}
+
+// ── Connected people ───────────────────────────────────────────────────────
+// A new character is often made to stand beside one that exists: the
+// gamekeeper to a lord, the sister to a lead. Before this (2026-10-06) the
+// owner retyped who the other person was and what their world looked like,
+// every time. A connection names a character from the roster and one line,
+// from the new character's side, on how they stand to them ("works for Lord
+// Ashby at his estate as his gamekeeper"). At generation the connected card is
+// read fresh and goes in as established fact, so the sheet is written in that
+// world without a word of it retyped; saved on the character
+// (`studio.connections`), the link stays live for the chat (main.js, People In
+// Their Lives) and for the back-link onto the other card.
+
+const CONNECTION_FIELD_WORDS = { tagline: 30, description: 160, appearance: 90, backstory: 120, relationships: 90 };
+
+function clipWords(text, max) {
+  const words = String(text || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  if (words.length <= max) return words.join(' ');
+  return words.slice(0, max).join(' ').replace(/[,;:]$/, '') + '...';
+}
+
+/** What a connected card tells the writer: the person as their own sheet has them, shortened; never their secrets. */
+export function connectionDigest(data) {
+  const sheet = sheetFromCharacter(data || {});
+  const name = (sheet.name || (data && data.name) || 'Unnamed').trim();
+  const lines = [];
+  if (sheet.tagline) lines.push(`Tagline: ${clipWords(sheet.tagline, CONNECTION_FIELD_WORDS.tagline)}`);
+  if (sheet.description) lines.push(`Overview: ${clipWords(sheet.description, CONNECTION_FIELD_WORDS.description)}`);
+  if (sheet.appearance) lines.push(`Appearance: ${clipWords(sheet.appearance, CONNECTION_FIELD_WORDS.appearance)}`);
+  if (sheet.backstory) lines.push(`Background: ${clipWords(sheet.backstory, CONNECTION_FIELD_WORDS.backstory)}`);
+  if (sheet.relationships) lines.push(`Their relationships: ${clipWords(sheet.relationships, CONNECTION_FIELD_WORDS.relationships)}`);
+  return { name, lines };
+}
+
+/**
+ * The prompt block for the connections: `[{ name, how, data }]`, `data` the
+ * connected character's current file (read fresh). `newName` is the character
+ * being written, when known. Empty array when there is nothing to say.
+ */
+export function connectionsBlock(connections, newName = '') {
+  const list = Array.isArray(connections) ? connections.filter((c) => c && (c.data || c.name)) : [];
+  if (list.length === 0) return [];
+  const who = (newName || '').trim() || 'The character';
+  const out = [
+    'CONNECTED PEOPLE (established characters from the user\'s roster, read from their own cards; everything here is true and must not be contradicted or renamed; the character is written in relation to them, in their world, and knows what anyone in their position would know of it):',
+  ];
+  for (const c of list) {
+    const d = c.data ? connectionDigest(c.data) : { name: c.name, lines: [] };
+    out.push(`### ${(c.name || d.name).trim()}`);
+    if (c.how && c.how.trim()) out.push(`${who} to them, from ${who}'s side: ${c.how.trim()}`);
+    out.push(...d.lines);
+  }
+  out.push('');
+  return out;
+}
+
+/** The requirement that the Relationships field names every connected person. */
+function connectionsRequirement(connections) {
+  const names = (Array.isArray(connections) ? connections : []).map((c) => c && (c.name || (c.data && c.data.name))).filter(Boolean);
+  if (names.length === 0) return '';
+  return `- The "relationships" field includes one line for each connected person (${names.map((n) => `"${n}"`).join(', ')}), by that exact name, saying who they are to the character and how things stand right now, in keeping with the line given for them; the other lines may be new people. The "description" and "backstory" place the character in the connected people's world (their house, their work, their town) as those cards describe it, without retelling the other person's story.`;
+}
+
+/** The line a connection adds to the OTHER card's Relationships: the new person, then how they stand, from their side. */
+export function backLinkLine(newName, how) {
+  const n = String(newName || '').trim();
+  const h = stripDashes(String(how || '')).trim().replace(/\.$/, '');
+  if (!n) return '';
+  return h ? `${n}: ${h}.` : `${n}: connected to them.`;
+}
+
+/** The sheet with one more Relationships line (not added twice for the same name). */
+export function withRelationshipLine(sheet, line) {
+  const l = String(line || '').trim();
+  if (!l) return sheet;
+  const name = l.split(':')[0].trim().toLowerCase();
+  const existing = parseRelationshipLines(sheet.relationships || '');
+  if (existing.some((p) => p.name.trim().toLowerCase() === name)) return sheet;
+  return { ...sheet, relationships: [String(sheet.relationships || '').trim(), l].filter(Boolean).join('\n') };
 }
 
 // ── Making one of their people ─────────────────────────────────────────────

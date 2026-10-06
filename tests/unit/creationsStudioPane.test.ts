@@ -314,6 +314,7 @@ describe('the Studio screen', () => {
     expect(from.concept).toContain('Dana: her sister, lives upstairs.');
     expect(from.concept).toContain('in relation to Ada Lovelace (Counts what others feel)');
     expect(from.relatedTo.name).toBe('Ada Lovelace');
+    expect(from.relatedTo.how).toBe('her sister, lives upstairs.');
     // Opened from that: the Studio in concept mode, the name in the title, nothing written yet.
     const w2 = makeWorld();
     w2.ctx.from = from;
@@ -566,5 +567,65 @@ describe('the Studio screen', () => {
     expect(root.querySelector('.cs-crumbs')?.textContent).toBe('AdaAda Of The Rock');
     (root.querySelector('.cs-crumb:not(.cs-crumb--here)') as HTMLButtonElement).click();
     expect(w.ctx.openCharacter).toHaveBeenCalledWith('character-parent.json');
+  });
+});
+
+describe('connected people (2026-10-06)', () => {
+  const ashby = { id: 'char-ashby', name: 'Lord Ashby', roleInstruction: '', studio: { sheet: { name: 'Lord Ashby', tagline: 'Owns the valley', description: 'Ashby holds Harrow Court, a grey stone house above the river.', relationships: 'Clara Ashby: his wife.' } } };
+
+  it('adds a person from the roster with a line, sends their card as fact, saves the link and shows it', async () => {
+    const w = makeWorld();
+    w.saved.set('character-ashby.json', ashby);
+    w.parallx.window.showInputBox = async () => 'works for Lord Ashby at Harrow Court as his gamekeeper';
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    typeInto(root.querySelector('.cs-title') as HTMLInputElement, 'Tom Hale');
+    buttonNamed(root, 'Add Person').click();
+    await flush();
+    const row = root.querySelector('.cs-connection') as HTMLElement;
+    expect(row).toBeTruthy();
+    expect(row.querySelector('.cs-source-title')?.textContent).toBe('Lord Ashby');
+    expect((row.querySelector('.cs-connection-how') as HTMLInputElement).value).toBe('works for Lord Ashby at Harrow Court as his gamekeeper');
+    expect(root.querySelector('.cs-crumbs')?.textContent).toBe('Connected to Lord Ashby');
+    typeInto(root.querySelector('.cs-textarea') as HTMLTextAreaElement, 'A gamekeeper');
+    buttonNamed(root, 'Generate').click();
+    await flush(900);
+    const req = w.requests.filter((r) => r.messages[0].content.includes('character designer for roleplay fiction')).at(-1)!;
+    expect(req.messages[1].content).toContain('CONNECTED PEOPLE');
+    expect(req.messages[1].content).toContain('### Lord Ashby');
+    expect(req.messages[1].content).toContain('Harrow Court, a grey stone house');
+    expect(req.messages[1].content).toContain("Tom Hale to them, from Tom Hale's side: works for Lord Ashby");
+    const tom = [...w.saved.entries()].find(([f]) => f !== 'character-ashby.json')![1];
+    expect(tom.studio.connections).toEqual([{ fileName: 'character-ashby.json', name: 'Lord Ashby', how: 'works for Lord Ashby at Harrow Court as his gamekeeper' }]);
+    // The back-link: one line onto Ashby's card, not twice.
+    (row.querySelector('.cs-backlink') as HTMLButtonElement).click();
+    await flush();
+    expect(w.saved.get('character-ashby.json').studio.sheet.relationships).toBe('Clara Ashby: his wife.\nTom Hale: works for Lord Ashby at Harrow Court as his gamekeeper.');
+    expect(w.saved.get('character-ashby.json').roleInstruction).toContain('Tom Hale: works for Lord Ashby');
+    (row.querySelector('.cs-backlink') as HTMLButtonElement).click();
+    await flush();
+    expect(w.saved.get('character-ashby.json').studio.sheet.relationships.match(/Tom Hale/g)).toHaveLength(1);
+    // Removing the connection drops it from the save and the crumbs.
+    (row.querySelector('[title="Remove this connection"]') as HTMLButtonElement).click();
+    await flush(900);
+    expect([...w.saved.entries()].find(([f]) => f !== 'character-ashby.json')![1].studio.connections).toEqual([]);
+    expect((root.querySelector('.cs-crumbs') as HTMLElement).style.display).toBe('none');
+  });
+
+  it('opens a saved character with its connections, and Make One Of Their People arrives connected', async () => {
+    const w = makeWorld({ existing: { id: 'char-tom', name: 'Tom Hale', roleInstruction: '', studio: { sheet: { name: 'Tom Hale' }, connections: [{ fileName: 'character-ashby.json', name: 'Lord Ashby', how: 'his gamekeeper' }] } } });
+    w.ctx.fileName = 'character-legacy.json';
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    expect(root.querySelector('.cs-connection .cs-source-title')?.textContent).toBe('Lord Ashby');
+    const w2 = makeWorld();
+    w2.ctx.from = { concept: 'Dana: her sister', name: 'Dana', relatedTo: { fileName: 'character-ada.json', name: 'Ada Lovelace', how: 'her sister, lives upstairs' } };
+    renderStudioPane(container, w2.parallx, w2.ctx, w2.deps);
+    await flush();
+    const root2 = container.querySelectorAll('.cs')[1] as HTMLElement;
+    expect(root2.querySelector('.cs-connection .cs-source-title')?.textContent).toBe('Ada Lovelace');
+    expect((root2.querySelector('.cs-connection-how') as HTMLInputElement).value).toBe('her sister, lives upstairs');
   });
 });

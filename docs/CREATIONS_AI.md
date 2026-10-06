@@ -490,6 +490,32 @@ its own commit and tests:
   every section in concrete detail". A steered reroll keeps the sections and
   changes what is in them. Tests: `creationsStudioCore` ("the sheet
   structure"), `creationsStudioPane`, `creationsGrowthAndDialogue`.
+- **Connected people (built 2026-10-06).** A new character is often made
+  to stand beside one that exists (the gamekeeper to a lord), and the owner
+  retyped who the other person was and what their world looked like every
+  time. The Studio's Make section has Connected To: Add Person picks a
+  character from the roster and takes one line, from the new character's
+  side ("works for Lord Ashby at his estate as his gamekeeper"); the line is
+  editable in the row. At every Generate and reroll the connected cards are
+  read fresh and go into the prompt as CONNECTED PEOPLE: their tagline,
+  overview, appearance, background and relationships, shortened, never
+  their secrets, as established fact that must not be contradicted or
+  renamed (`connectionDigest`, `connectionsBlock` in `studio-core.js`); the
+  Relationships field must name each of them, and the description and
+  backstory place the character in their world. Saved as
+  `studio.connections` (`{ fileName, name, how }`); the bar reads
+  "Connected to Lord Ashby". Make One Of Their People arrives connected to
+  the character it came from. The link button on a row adds one line about
+  the new character to the other card's Relationships (`backLinkLine`,
+  `withRelationshipLine`, never twice), so a chat as Ashby knows Tom too;
+  off unless pressed, so another card is never edited silently. In chat,
+  each cast character's connections that are not at the table or in the
+  supporting cast become "## People In Their Lives" (`connectedPeopleCards`
+  in `main.js`, cards read fresh): known, spoken of, expected, and
+  Supporting Cast from the moment the story brings one in; the Turn Contract
+  names the exception. The From Roster picker lists them first. History
+  retention untouched. Tests: `creationsStudioCore` ("connected people"),
+  `creationsStudioPane`, `creationsSupportingCast`.
 - **Supporting cast.** `thread.supportingCast`: a character from the roster
   (its card read fresh each prompt) or a person typed as "Name: who they
   are, how they talk". One line each under "## Supporting Cast"; whoever is

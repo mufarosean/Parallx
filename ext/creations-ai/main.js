@@ -3254,6 +3254,41 @@ function supportingCastCards(entries, roster = []) {
   return out;
 }
 
+/**
+ * People from the cast's lives who are not in the scene: each cast
+ * character's connections (Studio, Connected To: `studio.connections`,
+ * `{ fileName, name, how }`), read fresh from the roster so an edited card
+ * shows. One already at the table (cast) or in the scene (supporting cast)
+ * is left out: they are known there. `[{ name, note }]`, the note from the
+ * connected card: how the character stands to them, who they are, how they
+ * look, in a few words.
+ */
+function connectedPeopleCards(characters, supportingCast = [], roster = []) {
+  const present = new Set();
+  for (const c of Array.isArray(characters) ? characters : []) if (c && c.fileName) present.add(c.fileName);
+  for (const e of Array.isArray(supportingCast) ? supportingCast : []) if (e && e.file) present.add(e.file);
+  const out = [];
+  const seen = new Set();
+  for (const c of Array.isArray(characters) ? characters : []) {
+    const owner = c && (c.frontmatter?.name || c.rawData?.name || '');
+    const conns = c && c.rawData && c.rawData.studio && Array.isArray(c.rawData.studio.connections) ? c.rawData.studio.connections : [];
+    for (const k of conns) {
+      if (!k || !k.fileName || present.has(k.fileName) || seen.has(k.fileName)) continue;
+      const r = roster.find((x) => x.fileName === k.fileName);
+      if (!r) continue;
+      seen.add(k.fileName);
+      const data = r.rawData || {};
+      const sheet = sheetFromCharacter(data);
+      const name = r.frontmatter?.name || data.name || k.name || k.fileName.replace(/\.(md|json)$/, '');
+      const who = (sheet.tagline || (sheet.description || data.roleInstruction || '').split(/(?<=[.!?])\s/)[0] || '').trim();
+      const look = (sheet.appearance || '').replace(/^[A-Z][\w ]{0,24}:\s*/, '').split(/(?<=[.!?])\s/)[0] || '';
+      const stands = k.how && String(k.how).trim() ? `${owner || 'The character'}, to them: ${String(k.how).trim().replace(/\.$/, '')}.` : '';
+      out.push({ name, note: clipNote([stands, who, look].filter(Boolean).join(' '), 420), file: k.fileName });
+    }
+  }
+  return out;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 5: SYSTEM PROMPT BUILDER (← openclawSystemPrompt.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -3280,6 +3315,8 @@ function buildSystemPrompt(params = {}) {
     dialogueRules = '',
     // People in the world who never take a turn: [{ name, note }].
     supportingCast = [],
+    // People from the cast's lives who are not in the scene: [{ name, note }].
+    connectedPeople = [],
   } = params;
 
   const parts = [];
@@ -3428,13 +3465,26 @@ function buildSystemPrompt(params = {}) {
     ].join('\n'));
   }
 
+  // 2c. People in their lives: known to the characters, not in the scene.
+  // The gamekeeper's lord, the lead's sister: named on a connected card the
+  // user never has to retype. Spoken of, remembered, expected; if the story
+  // brings one in, the Supporting Cast rule holds for them.
+  const connected = (connectedPeople || []).filter((p) => p && p.name);
+  if (connected.length > 0) {
+    parts.push([
+      '## People In Their Lives',
+      'People the characters know who are not in this scene. They may be spoken of, remembered or expected, and what is said of them agrees with the note on each. If the story brings one of them into the scene, they are Supporting Cast from then on: a line or two inside the active character\'s turn, never a turn of their own.',
+      ...connected.map((p) => `- ${p.name}${p.note ? `: ${substituteVars(p.note, p.name, userName)}` : ''}`),
+    ].join('\n'));
+  }
+
   // 3. Conversation contract.
   parts.push([
     '## Turn Contract',
     '- History is rendered with `<<Name>>` tags identifying each speaker. They are authoritative.',
     '- Write exactly one new turn, for the character named in the banner above and the Active Turn block below — and ONLY that character.',
     '- Never write, narrate, quote, or describe internal thoughts for any other character. If you find yourself starting to write a different `<<Name>>` block, STOP.',
-    ...(supporting.length > 0 ? ['- The one exception: the Supporting Cast listed below may be given a line or two inside your turn. They are the only other people whose words you may write, and they never take the turn over.'] : []),
+    ...(supporting.length > 0 || connected.length > 0 ? [`- The one exception: the ${supporting.length > 0 ? 'Supporting Cast' : 'People In Their Lives'} listed ${supporting.length > 0 ? 'above' : 'above, once in the scene,'} may be given a line or two inside your turn. They are the only other people whose words you may write, and they never take the turn over.`] : []),
     '- Never prepend a speaker tag (no `<<Name>>`, no `Name:`); the interface adds the label automatically.',
     '- Character-specific instructions override the writing style preset when they conflict.',
     '- Quoted phrases in a character\'s voice notes ("Says: ...", "Might say: ...") show how they talk; they are examples, not lines to say. Use one rarely, never the same one twice in a scene, never to open a reply.',
@@ -3595,6 +3645,8 @@ function assembleContext(params) {
     standingNote = '',
     // People in the world who never take a turn: [{ name, note }].
     supportingCast = [],
+    // People from the cast's lives who are not in the scene: [{ name, note }].
+    connectedPeople = [],
   } = params;
 
   // Support both old (single character) and new (characters array) signatures
@@ -3692,6 +3744,7 @@ function assembleContext(params) {
     sceneState, // M79 Phase 3a
     dialogueRules: settings?.dialogueRules || '',
     supportingCast,
+    connectedPeople,
   });
   const systemPrompt = buildResult.prompt;
   const characterReminders = buildResult.reminders || [];
@@ -5525,6 +5578,7 @@ function renderChatEditor(container, parallx, input) {
   let characters = [];
   // The supporting cast's short cards, resolved against the roster on load.
   let supportingCards = [];
+  let connectedCards = [];
   let allLorebooks = [];
   let messageHistory = [];
   let models = [];
@@ -7149,6 +7203,7 @@ function renderChatEditor(container, parallx, input) {
       responseLengthOverride: thread?.responseLengthOverride || '',
       standingNote: thread?.standingNote || '',
       supportingCast: supportingCards,
+      connectedPeople: connectedCards,
     });
     // Annotate with diagnostic info the inspect modal + token chip surface.
     // All `*Source` labels reference the SPEAKER character (or
@@ -7864,11 +7919,14 @@ function renderChatEditor(container, parallx, input) {
       } catch (err) { console.warn('[TextGenerator] Skipped broken character entry', charRef?.file, err); }
     }
     characters = loadedCharacters;
-    // Supporting cast from the roster: read fresh so an edited card shows.
+    // Supporting cast and the cast's connected people from the roster: read
+    // fresh so an edited card shows.
     try {
-      const roster = (thread.supportingCast || []).some((e) => e && e.file) ? await scanCharacters(fs, workspaceUri) : [];
+      const anyConnections = characters.some((c) => c && c.rawData && c.rawData.studio && Array.isArray(c.rawData.studio.connections) && c.rawData.studio.connections.length > 0);
+      const roster = (thread.supportingCast || []).some((e) => e && e.file) || anyConnections ? await scanCharacters(fs, workspaceUri) : [];
       supportingCards = supportingCastCards(thread.supportingCast, roster);
-    } catch { supportingCards = supportingCastCards(thread.supportingCast, []); }
+      connectedCards = connectedPeopleCards(characters, thread.supportingCast, roster);
+    } catch { supportingCards = supportingCastCards(thread.supportingCast, []); connectedCards = []; }
     // Persist updated thread references if any .md → .json renames happened
     if (threadNeedsUpdate) {
       await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { characters: thread.characters }), parallx, 'updated participant references');
@@ -8087,12 +8145,15 @@ function renderChatEditor(container, parallx, input) {
         const taken = new Set([...(thread.characters || []).map((c) => c.file), ...(thread.supportingCast || []).map((e) => e.file).filter(Boolean)]);
         const available = allChars.filter((c) => !taken.has(c.fileName));
         if (available.length === 0) { showToast('Every character is already in this chat.'); return; }
+        // The cast's connected people first: the ones most likely wanted in the scene.
+        const connectedFiles = new Set(connectedCards.map((p) => p.file));
+        available.sort((a, b) => Number(connectedFiles.has(b.fileName)) - Number(connectedFiles.has(a.fileName)));
         const picked = await parallx.window?.showQuickPick(
-          available.map((c) => ({ label: c.frontmatter.name || c.fileName, description: c.fileName })),
+          available.map((c) => ({ label: c.frontmatter.name || c.fileName, description: connectedFiles.has(c.fileName) ? `${c.fileName} (connected)` : c.fileName })),
           { placeholder: 'Who is in the scene, without a turn of their own?' },
         );
         if (!picked) return;
-        thread.supportingCast = [...(thread.supportingCast || []), { id: generateId().slice(0, 8), file: picked.description, addedAt: Date.now() }];
+        thread.supportingCast = [...(thread.supportingCast || []), { id: generateId().slice(0, 8), file: picked.description.replace(/ \(connected\)$/, ''), addedAt: Date.now() }];
         await saveCast();
       });
       const someone = el('button', 'tg-drawer-add-btn', { text: '+ Someone New' });
@@ -10672,6 +10733,7 @@ export const __testables = {
   renderMemoryChannel,
   parseSupportingPerson,
   supportingCastCards,
+  connectedPeopleCards,
   resolveContextWindow,
   migrateContextDefault,
   DEFAULT_DIALOGUE_RULES,

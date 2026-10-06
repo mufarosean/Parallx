@@ -16,7 +16,7 @@ import {
   buildCanonMessages, buildTwistMessages, buildSheetMessages, buildFieldMessages, buildTryLineMessages, parseSheetStructure, DEFAULT_SHEET_STRUCTURE,
   buildPitchMessages, parsePitches, pitchAsConcept, parseRelationshipLines, relationConcept,
   parseJsonLoose, extractCompletedFields, parseCanonFacts, parseTwistedCanon, canonCounts,
-  sheetFromCharacter, characterFromSheet, lineageOf, stripDashes,
+  sheetFromCharacter, characterFromSheet, lineageOf, stripDashes, backLinkLine, withRelationshipLine,
 } from './studio-core.js';
 import { createPortrait, updatePortrait, hueOf, PORTRAIT_HUES, createDots, CREATIONS_PARTS_CSS } from './portrait.js';
 
@@ -107,6 +107,7 @@ export function injectStudioStyles() {
 .cs-source-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs-source-ref { color: var(--px-text-muted); font-size: var(--px-text-xs); margin-left: var(--px-space-1); }
 .cs-add { display: flex; gap: var(--px-space-2); flex-wrap: wrap; }
+.cs-connection-how { flex: 2 1 220px; width: auto; min-width: 0; font-size: var(--px-text-xs); padding: 2px var(--px-space-2); }
 .cs-inline { display: flex; gap: var(--px-space-2); align-items: flex-start; }
 .cs-inline .cs-input, .cs-inline .cs-textarea { flex: 1; }
 .cs-rows { display: flex; flex-direction: column; gap: var(--px-space-2); }
@@ -215,6 +216,9 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     // Pitches: several takes on the concept; `pitch` is the one the sheet was written from.
     pitches: [],
     pitch: null,
+    // People from the roster this character stands beside: [{ fileName, name, how }]; their cards read fresh at generation.
+    connections: [],
+    connectionCards: [],
     parentId: null,
     parentName: '',
     busy: false,
@@ -316,6 +320,18 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   );
   sourcesField.append(sourcesList, sourcesHint, addRow, inlineHost);
   make.body.appendChild(sourcesField);
+
+  // Connected To: characters from the roster this one stands beside. Their
+  // cards go in as established fact at generation, so who they are and what
+  // their world looks like is never retyped; the link is saved and stays live.
+  const connField = el('div', 'cs-field');
+  connField.appendChild(el('div', 'cs-label', { text: 'Connected To' }));
+  const connList = el('div', 'cs-sources cs-connections');
+  const connHint = el('div', 'cs-hint', { text: 'A character this one stands beside, and one line on how, from this character\'s side. Their card is read at every generation: who they are and their world come along, nothing retyped.' });
+  const connAdd = el('div', 'cs-add');
+  connAdd.append(smallButton('Add Person', 'user-plus', () => void addConnection()));
+  connField.append(connList, connHint, connAdd);
+  make.body.appendChild(connField);
 
   const twistField = el('div', 'cs-field');
   twistField.appendChild(el('div', 'cs-label', { text: 'Twist' }));
@@ -906,6 +922,82 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     });
   }
 
+  // ── Connected people ───────────────────────────────────────────────────
+  function renderConnections() {
+    connList.replaceChildren(...state.connections.map((c) => {
+      const row = el('div', 'cs-source cs-connection');
+      row.dataset.file = c.fileName;
+      row.appendChild(el('span', 'cs-source-icon', { html: icon('user', 14) }));
+      const t = el('span', 'cs-source-title', { text: c.name || c.fileName });
+      t.title = 'Open their card';
+      t.style.cursor = 'pointer';
+      t.addEventListener('click', () => ctx.openCharacter?.(c.fileName));
+      row.appendChild(t);
+      const how = el('input', 'cs-input cs-connection-how');
+      how.type = 'text';
+      how.value = c.how || '';
+      how.placeholder = `how ${state.sheet.name.trim() || 'this character'} stands to ${c.name}, e.g. "works for them at their estate as the gamekeeper"`;
+      how.setAttribute('aria-label', `How this character stands to ${c.name}`);
+      how.addEventListener('input', () => { c.how = how.value; markDirty(); });
+      row.appendChild(how);
+      const link = iconButton('link', `Add a line about ${state.sheet.name.trim() || 'this character'} to ${c.name}'s Relationships`, () => void addBackLink(c));
+      link.classList.add('cs-backlink');
+      row.appendChild(link);
+      row.appendChild(iconButton('x', 'Remove this connection', () => { state.connections = state.connections.filter((x) => x !== c); renderConnections(); markDirty(); void renderCrumbs(); }));
+      return row;
+    }));
+    connHint.style.display = state.connections.length ? 'none' : '';
+  }
+  async function addConnection() {
+    let all = [];
+    try { all = await deps.scanCharacters(fs, workspaceUri); } catch { all = []; }
+    const taken = new Set([state.fileName, ...state.connections.map((c) => c.fileName)].filter(Boolean));
+    const available = all.filter((c) => !taken.has(c.fileName));
+    if (available.length === 0) { showError(all.length ? 'Every character is already connected.' : 'No other character to connect to yet.'); return; }
+    let picked = null;
+    try { picked = await parallx.window?.showQuickPick(available.map((c) => ({ label: c.frontmatter?.name || c.rawData?.name || c.fileName, description: c.fileName })), { placeholder: 'Who does this character stand beside?' }); } catch { picked = null; }
+    if (!picked) return;
+    let how = '';
+    try { how = await parallx.window?.showInputBox({ prompt: `How ${state.sheet.name.trim() || 'this character'} stands to ${picked.label}, from their side`, placeholder: `works for ${picked.label} at their estate as the gamekeeper` }); } catch { how = ''; }
+    if (how === undefined || how === null) return;
+    state.connections.push({ fileName: picked.description, name: picked.label, how: String(how).trim() });
+    renderConnections();
+    markDirty();
+    void renderCrumbs();
+  }
+  /** The connected cards, read fresh: `[{ name, how, data }]`; a card that is gone is named only. */
+  async function loadConnectionCards() {
+    if (state.connections.length === 0) { state.connectionCards = []; return; }
+    let all = [];
+    try { all = await deps.scanCharacters(fs, workspaceUri); } catch { all = []; }
+    state.connectionCards = state.connections.map((c) => {
+      const found = all.find((x) => x.fileName === c.fileName);
+      const name = found ? (found.frontmatter?.name || found.rawData?.name || c.name) : c.name;
+      if (found && name !== c.name) c.name = name;
+      return { name, how: c.how || '', data: found ? found.rawData || null : null };
+    });
+  }
+  /** One line about this character onto the other card's Relationships, so a chat as them knows this one too. */
+  async function addBackLink(c) {
+    const name = state.sheet.name.trim();
+    if (!name) { showError('Name this character first.'); return; }
+    try {
+      // The card as the roster has it now (scanCharacters), not a stale copy.
+      const all = await deps.scanCharacters(fs, workspaceUri);
+      const found = all.find((x) => x.fileName === c.fileName);
+      if (!found || !found.rawData) throw new Error('their card is gone');
+      const data = found.rawData;
+      const sheet = sheetFromCharacter(data);
+      const next = withRelationshipLine(sheet, backLinkLine(name, c.how));
+      if (next === sheet) { setStatus(`${c.name} already names ${name}`, 'ok'); return; }
+      await deps.saveCharacter(fs, workspaceUri, c.fileName, characterFromSheet(next, data, data.studio || {}));
+      setStatus(`Added to ${c.name}`, 'ok');
+      try { await ctx.onSaved?.(c.fileName, c.name); } catch { /* the rail label is cosmetic */ }
+    } catch (err) {
+      showError(`Could not add the line to ${c.name}: ${err?.message || String(err)}`);
+    }
+  }
+
   // ── Canon ──────────────────────────────────────────────────────────────
   function renderCanon() {
     if (!state.canon.length) { canon.root.style.display = 'none'; twistAgainBtn.style.display = 'none'; return; }
@@ -953,6 +1045,8 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     const settings = await deps.loadSettings(fs, workspaceUri);
     // The sheet's shape, read fresh for every generation so a Settings edit lands at once.
     state.structure = parseSheetStructure(typeof settings.sheetStructure === 'string' ? settings.sheetStructure : DEFAULT_SHEET_STRUCTURE);
+    // The connected people's cards, read fresh too: an edit on their card lands here.
+    await loadConnectionCards();
     const models = await parallx.lm.getModels();
     const picked = state.engine.modelId || modelSelect.value || '';
     const modelId = (picked && models.some((m) => m.id === picked)) ? picked
@@ -980,6 +1074,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       spec: state.dialsTouched && forgeControls ? forgeControls.spec() : '',
       twist: state.mode === 'sources' ? state.twist : '',
       structure: state.structure || null,
+      connections: state.connectionCards || [],
     };
   }
 
@@ -1172,6 +1267,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       parentId: state.parentId || null,
       parentName: state.parentName || '',
       pitch: state.pitch || null,
+      connections: state.connections.map((c) => ({ fileName: c.fileName, name: c.name, how: c.how || '' })),
     };
   }
   function markDirty() {
@@ -1225,7 +1321,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       person = people.find((p) => p.name === picked.label) || people[0];
     }
     if (!(await ensureSaved())) return;
-    ctx.openNew?.({ concept: relationConcept(person, state.sheet), name: person.name, relatedTo: { fileName: state.fileName, name: state.sheet.name.trim() } });
+    ctx.openNew?.({ concept: relationConcept(person, state.sheet), name: person.name, relatedTo: { fileName: state.fileName, name: state.sheet.name.trim(), how: person.note } });
   }
 
   // ── Bar actions ────────────────────────────────────────────────────────
@@ -1254,7 +1350,20 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   async function renderCrumbs() {
     crumbs.replaceChildren();
     crumbs.style.display = 'none';
-    if (!state.parentId) return;
+    const connected = state.connections.filter((c) => c.name);
+    if (!state.parentId) {
+      if (connected.length === 0) return;
+      crumbs.append(el('span', null, { text: 'Connected to ' }));
+      connected.forEach((c, i) => {
+        if (i > 0) crumbs.append(el('span', null, { text: ', ' }));
+        const b = el('button', 'cs-crumb', { text: c.name });
+        b.title = 'Open their card';
+        b.addEventListener('click', () => ctx.openCharacter?.(c.fileName));
+        crumbs.appendChild(b);
+      });
+      crumbs.style.display = '';
+      return;
+    }
     let all = [];
     try { all = await deps.scanCharacters(fs, workspaceUri); } catch { all = []; }
     if (state.disposed) return;
@@ -1301,15 +1410,19 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       state.parentId = st.parentId || null;
       state.parentName = st.parentName || '';
       state.pitch = st.pitch && typeof st.pitch === 'object' ? st.pitch : null;
+      state.connections = (Array.isArray(st.connections) ? st.connections : []).filter((c) => c && c.fileName).map((c) => ({ fileName: String(c.fileName), name: String(c.name || ''), how: String(c.how || '') }));
       for (const k of Array.isArray(st.locks) ? st.locks : []) if (rows[k]) toggleLockSilently(k);
       if (st.dials && state.dials) { forgeControls.set(st.dials); state.dialsTouched = true; dials.setMeta('Set. Roll the dice or move a dial to change them.'); }
       make.close();
     } else if (ctx.from && ctx.from.relatedTo) {
       // One of another character's people: the line as the concept, their
-      // name in the title, the Studio open for pitches or a sheet.
+      // name in the title, the Studio open for pitches or a sheet, and the
+      // other character connected so their card comes along.
       state.concept = ctx.from.concept || '';
       state.sheet.name = ctx.from.name || '';
       state.mode = 'concept';
+      const r = ctx.from.relatedTo;
+      if (r.fileName) state.connections = [{ fileName: r.fileName, name: r.name || '', how: r.how || '' }];
     } else if (ctx.from) {
       state.parentId = ctx.from.parentId || null;
       state.parentName = ctx.from.parentName || '';
@@ -1327,6 +1440,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     conceptArea.value = state.concept; autogrow(conceptArea);
     twistArea.value = state.twist; autogrow(twistArea);
     fillSheet(state.sheet, { respectLocks: false, silent: true });
+    renderConnections();
     setModeSilently(state.mode);
     renderSources();
     renderCanon();

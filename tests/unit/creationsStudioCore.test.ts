@@ -12,6 +12,7 @@ const {
   parseJsonLoose, extractCompletedFields, parseTwistedCanon, parseCanonFacts, canonCounts,
   composeRoleInstruction, splitRoleInstruction, sheetFromCharacter, characterFromSheet, lineageOf,
   parseSheetStructure, fieldRequirements, structureRequirement, DEFAULT_SHEET_STRUCTURE,
+  connectionDigest, connectionsBlock, backLinkLine, withRelationshipLine,
 } = core;
 
 describe('the sheet', () => {
@@ -324,5 +325,71 @@ describe('the sheet structure (2026-10-06)', () => {
     expect(steered.content).toContain('Physicality');
     const [, other] = buildFieldMessages({ concept: 'A ferry captain', structure: st }, { voice: 'Short.' }, 'voice');
     expect(other.content).not.toContain('separate paragraphs');
+  });
+});
+
+describe('connected people (2026-10-06)', () => {
+  const ashby = {
+    name: 'Lord Ashby',
+    roleInstruction: '',
+    studio: { sheet: {
+      name: 'Lord Ashby', tagline: 'Owns the valley and knows it', description: 'Ashby holds Harrow Court, a grey stone house above the river, and three farms. He walks the estate every morning.',
+      appearance: 'Overview: a tall man gone soft at the middle.\n\nFace: a red face, pale eyes.', backstory: 'Born at Harrow Court in 1962.', secrets: 'He sold the north wood to pay a debt.',
+      relationships: 'Clara Ashby: his wife, in London most of the year.',
+    } },
+  };
+
+  it('digests a card as its own sheet has it, shortened, never its secrets', () => {
+    const d = connectionDigest(ashby);
+    expect(d.name).toBe('Lord Ashby');
+    expect(d.lines.join('\n')).toContain('Tagline: Owns the valley and knows it');
+    expect(d.lines.join('\n')).toContain('Overview: Ashby holds Harrow Court, a grey stone house above the river');
+    expect(d.lines.join('\n')).toContain('Appearance: Overview: a tall man gone soft');
+    expect(d.lines.join('\n')).toContain('Background: Born at Harrow Court in 1962.');
+    expect(d.lines.join('\n')).toContain('Their relationships: Clara Ashby');
+    expect(d.lines.join('\n')).not.toContain('north wood');
+    const long = connectionDigest({ name: 'X', studio: { sheet: { name: 'X', description: 'word '.repeat(300) } } });
+    expect(long.lines[0].split(' ').length).toBeLessThan(170);
+    expect(long.lines[0].endsWith('...')).toBe(true);
+  });
+
+  it('writes the block for the prompt: the card as fact, the line from the new character\'s side; nothing for none', () => {
+    const block = connectionsBlock([{ name: 'Lord Ashby', how: 'works for Lord Ashby at Harrow Court as his gamekeeper', data: ashby }], 'Tom Hale');
+    expect(block[0]).toMatch(/^CONNECTED PEOPLE/);
+    expect(block[0]).toMatch(/must not be contradicted or renamed/);
+    expect(block).toContain('### Lord Ashby');
+    expect(block).toContain("Tom Hale to them, from Tom Hale's side: works for Lord Ashby at Harrow Court as his gamekeeper");
+    expect(block.some((l) => l.startsWith('Overview: Ashby holds Harrow Court'))).toBe(true);
+    expect(connectionsBlock([], 'Tom')).toEqual([]);
+    // A card that is gone is still named.
+    expect(connectionsBlock([{ name: 'Gone Person', how: 'her brother', data: null }], 'Tom')).toContain('### Gone Person');
+  });
+
+  it('the whole sheet and a field rewrite carry the connections and the relationships requirement', () => {
+    const conns = [{ name: 'Lord Ashby', how: 'works for Lord Ashby at Harrow Court as his gamekeeper', data: ashby }];
+    const [, user] = buildSheetMessages({ concept: 'A gamekeeper', name: 'Tom Hale', connections: conns });
+    expect(user.content).toContain('CONNECTED PEOPLE');
+    expect(user.content).toContain('Harrow Court');
+    expect(user.content).toMatch(/"relationships" field includes one line for each connected person \("Lord Ashby"\)/);
+    expect(user.content).toMatch(/place the character in the connected people's world/);
+    const [, plain] = buildSheetMessages({ concept: 'A gamekeeper' });
+    expect(plain.content).not.toContain('CONNECTED PEOPLE');
+    const [, rel] = buildFieldMessages({ concept: 'A gamekeeper', connections: conns }, { name: 'Tom Hale', relationships: 'Nobody.' }, 'relationships');
+    expect(rel.content).toContain('### Lord Ashby');
+    expect(rel.content).toMatch(/includes one line for each connected person/);
+    const [, voice] = buildFieldMessages({ concept: 'A gamekeeper', connections: conns }, { name: 'Tom Hale', voice: 'Short.' }, 'voice');
+    expect(voice.content).toContain('### Lord Ashby');
+    expect(voice.content).not.toMatch(/includes one line for each connected person/);
+  });
+
+  it('the back-link: one line onto the other card, never twice for the same name', () => {
+    expect(backLinkLine('Tom Hale', 'works for Lord Ashby at Harrow Court as his gamekeeper.')).toBe('Tom Hale: works for Lord Ashby at Harrow Court as his gamekeeper.');
+    expect(backLinkLine('Tom Hale', '')).toBe('Tom Hale: connected to them.');
+    expect(backLinkLine('', 'x')).toBe('');
+    const sheet = { relationships: 'Clara Ashby: his wife, in London most of the year.' };
+    const once = withRelationshipLine(sheet, backLinkLine('Tom Hale', 'his gamekeeper'));
+    expect(once.relationships).toBe('Clara Ashby: his wife, in London most of the year.\nTom Hale: his gamekeeper.');
+    expect(withRelationshipLine(once, backLinkLine('tom hale', 'his gamekeeper, again'))).toBe(once);
+    expect(withRelationshipLine({ relationships: '' }, 'Tom Hale: his gamekeeper.').relationships).toBe('Tom Hale: his gamekeeper.');
   });
 });
