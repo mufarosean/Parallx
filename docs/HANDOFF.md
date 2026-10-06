@@ -3,7 +3,7 @@
 Last updated 2026-10-06, early. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7642 tests) and `npm run build` pass.
+tsc, the full vitest suite (7643 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
@@ -83,6 +83,19 @@ must appear somewhere (title, sheet, question, paper name, tags, note), in
 any order; a quoted phrase matches whole; a leading minus excludes
 (`brosius credibility -essay`). It was one substring before, so two words
 apart in the text found nothing.
+
+## Done on 2026-10-06, cloud: regenerate with a direction
+
+In a roleplay chat, the regenerate button on a reply or a user-side message
+now opens a line under it: the direction, filled with the instruction the
+message was made with (the "/ai @Saul goes outside" part) so it can be
+clarified or cleared; Enter or Regenerate runs it, Escape or Cancel closes
+it. The new message remembers the direction for next time. Before, a
+regenerate reused the old instruction silently. One function,
+`regenerateMessage(index, instruction)` in `main.js`, replaces the two
+handlers; `openRegenDirection` is the box; `regenDirectionFor` the pure
+bit (tested in `creationsGrowthAndDialogue`). Variants, the warning about
+later messages, memory pruning and the failure path are as before.
 
 ## Done on 2026-10-06, cloud: a character connected to another
 

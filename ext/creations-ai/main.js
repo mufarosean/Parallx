@@ -1201,6 +1201,12 @@ function injectStyles() {
   border: 1px solid var(--vscode-panel-border, var(--px-bg-inset));
 }
 
+/* ═══ Regenerate with a direction ═══ */
+.tg-regen-box { display: flex; align-items: center; gap: var(--px-space-2); margin-top: var(--px-space-2); }
+.tg-regen-input { flex: 1; min-width: 0; box-sizing: border-box; background: var(--px-bg-inset); color: var(--px-text); border: 1px solid var(--px-border); border-radius: var(--px-radius-sm); padding: var(--px-space-1) var(--px-space-2); font: inherit; font-size: var(--px-text-sm); }
+.tg-regen-input:focus { outline: none; border-color: var(--px-accent); }
+.tg-regen-input::placeholder { color: var(--px-text-faint); }
+
 /* ═══ System Prompt Modal ═══ */
 .tg-modal-overlay {
   position: fixed;
@@ -6501,6 +6507,60 @@ function renderChatEditor(container, parallx, input) {
   tokenCountEl.style.cursor = 'pointer';
   tokenCountEl.addEventListener('click', () => { void showPromptModal(); });
 
+  /**
+   * Regenerate the message at `index` with `instruction` as its direction
+   * (null = none). The owner's ask (2026-10-06): a regenerate used to reuse
+   * the /ai instruction the message was made with, silently, with no way to
+   * clarify it; now the direction is shown and edited first
+   * (openRegenDirection), and the new message remembers it for next time.
+   * Everything after the message goes, as before; the old text stays as a
+   * variant; a failure puts the original back.
+   */
+  async function regenerateMessage(index, instruction) {
+    if (gen.isGenerating || !messageHistory[index]) return;
+    const target = messageHistory[index];
+    const asUser = target.author === 'user';
+    const messagesAfter = messageHistory.length - 1 - index;
+    if (messagesAfter > 0) {
+      const regenChoice = await _parallx.window.showWarningMessage(`Regenerating removes the ${messagesAfter} ${messagesAfter > 1 ? 'messages' : 'message'} after this one.`, { title: 'Regenerate' });
+      if (!regenChoice || regenChoice.title !== 'Regenerate') return;
+    }
+    const speaker = asUser
+      ? (target.characterFile || SELF_SPEAKER)
+      : (!target.characterFile && (target.name || '').toLowerCase() === 'narrator' ? NARRATOR_SPEAKER : (target.characterFile || characters[0]?.fileName));
+    // Snapshot variants. target.content is always kept as a variant, so an
+    // edit made after variants existed is not lost.
+    const existingVariants = Array.isArray(target.variants) ? target.variants : [];
+    const previousVariants = existingVariants.includes(target.content)
+      ? [...existingVariants]
+      : (existingVariants.length ? [...existingVariants, target.content] : [target.content]);
+    const targetSnapshot = { ...target, variants: previousVariants, variantIndex: previousVariants.indexOf(target.content) };
+    // M79 hard-delete: the ids of everything spliced off, the target
+    // included, collected before the splice so memory pruning has them all.
+    const removedIds = messageHistory.slice(index).map((m) => m.id).filter(Boolean);
+    messageHistory = messageHistory.slice(0, index);
+    await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
+    renderMessages();
+    if (removedIds.length > 0) {
+      void pruneMemoryForDeletedMessages(fs, workspaceUri, threadId, removedIds)
+        .catch((err) => console.warn('[TextGenerator] Memory prune failed on regenerate:', err));
+    }
+    await generateTurn({ speaker, instruction: instruction || null, asUser });
+    const newIdx = messageHistory.findIndex((m, i) => i >= index && m.author === (asUser ? 'user' : 'ai') && m.generatedBy === 'model');
+    if (newIdx >= 0) {
+      const newMsg = messageHistory[newIdx];
+      newMsg.variants = [...previousVariants, newMsg.content];
+      newMsg.variantIndex = newMsg.variants.length - 1;
+      await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
+      renderMessages();
+    } else {
+      // Cancelled, empty, or only error system messages: the original comes back where it was.
+      messageHistory = [...messageHistory.slice(0, index), targetSnapshot, ...messageHistory.slice(index)];
+      await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
+      renderMessages();
+    }
+  }
+
   function renderMessageRow(msg, index = null, isTransient = false) {
     const hiddenClass = msg.hiddenFrom ? ` tg-msg--dim` : '';
     // M79 Phase 4a — OOC entries get a distinct "Backstage" treatment
@@ -6611,119 +6671,21 @@ function renderChatEditor(container, parallx, input) {
         actions.appendChild(forkBtn);
 
         const regenBtn = el('button', 'tg-msg-action-btn', { html: icon('refresh-cw', 13) });
-        regenBtn.title = 'Regenerate this turn';
-        regenBtn.addEventListener('click', async (event) => {
+        regenBtn.title = 'Regenerate this turn, with a direction if you like';
+        regenBtn.addEventListener('click', (event) => {
           event.stopPropagation();
           if (gen.isGenerating || !messageHistory[index]) return;
-          const target = messageHistory[index];
-          // Warn if regenerating will delete messages after this one
-          const messagesAfter = messageHistory.length - 1 - index;
-          if (messagesAfter > 0) {
-            const regenChoice = await _parallx.window.showWarningMessage(`Regenerating removes the ${messagesAfter} ${messagesAfter > 1 ? 'messages' : 'message'} after this one.`, { title: 'Regenerate' });
-            if (!regenChoice || regenChoice.title !== 'Regenerate') return;
-          }
-          const speaker = !target.characterFile && (target.name || '').toLowerCase() === 'narrator'
-            ? NARRATOR_SPEAKER
-            : (target.characterFile || characters[0]?.fileName);
-          // Snapshot variants. Always make sure target.content is preserved as a variant
-          // — covers the case where the user edited the message after creating variants.
-          const existingVariants = Array.isArray(target.variants) ? target.variants : [];
-          const previousVariants = existingVariants.includes(target.content)
-            ? [...existingVariants]
-            : (existingVariants.length ? [...existingVariants, target.content] : [target.content]);
-          const targetSnapshot = { ...target, variants: previousVariants, variantIndex: previousVariants.indexOf(target.content) };
-          // M79 hard-delete: collect the IDs of everything spliced off
-          // BEFORE the splice happens, so memory pruning has the full
-          // list. We include the target itself — its content is
-          // preserved as a variant on the new message, but
-          // semantic/episodic facts derived from the original turn
-          // would otherwise survive a regenerate that genuinely
-          // changed the narrative.
-          const regenRemovedIds = messageHistory.slice(index).map((m) => m.id).filter(Boolean);
-          // Remove this message and everything after it, then regenerate
-          messageHistory = messageHistory.slice(0, index);
-          await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
-          renderMessages();
-          if (regenRemovedIds.length > 0) {
-            void pruneMemoryForDeletedMessages(fs, workspaceUri, threadId, regenRemovedIds)
-              .catch((err) => console.warn('[TextGenerator] Memory prune failed on regenerate:', err));
-          }
-          await generateTurn({ speaker, instruction: target.instruction || null });
-          // Locate the freshly generated AI message (skip past any error system msgs).
-          const newIdx = messageHistory.findIndex((m, i) => i >= index && m.author === 'ai' && m.generatedBy === 'model');
-          if (newIdx >= 0) {
-            const newMsg = messageHistory[newIdx];
-            newMsg.variants = [...previousVariants, newMsg.content];
-            newMsg.variantIndex = newMsg.variants.length - 1;
-            await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
-            renderMessages();
-          } else {
-            // Failure path: cancelled, empty response, or only error system messages.
-            // Reinsert the original AI message at its original index so nothing is lost.
-            messageHistory = [
-              ...messageHistory.slice(0, index),
-              targetSnapshot,
-              ...messageHistory.slice(index),
-            ];
-            await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
-            renderMessages();
-          }
+          openRegenDirection(index);
         });
         actions.appendChild(regenBtn);
 
       } else if (msg.author === 'user') {
         const regenBtn = el('button', 'tg-msg-action-btn', { html: icon('refresh-cw', 13) });
-        regenBtn.title = 'Regenerate this message';
-        regenBtn.addEventListener('click', async (event) => {
+        regenBtn.title = 'Regenerate this message, with a direction if you like';
+        regenBtn.addEventListener('click', (event) => {
           event.stopPropagation();
           if (gen.isGenerating || !messageHistory[index]) return;
-          const target = messageHistory[index];
-          const messagesAfter = messageHistory.length - 1 - index;
-          if (messagesAfter > 0) {
-            const regenChoice = await _parallx.window.showWarningMessage(`Regenerating removes the ${messagesAfter} ${messagesAfter > 1 ? 'messages' : 'message'} after this one.`, { title: 'Regenerate' });
-            if (!regenChoice || regenChoice.title !== 'Regenerate') return;
-          }
-          // For user messages, the speaker is whichever persona authored it:
-          // either the character the user plays as, or "self" (no character).
-          const speaker = target.characterFile || SELF_SPEAKER;
-          // Snapshot variants. Always make sure target.content is preserved as a variant
-          // — covers the case where the user edited the message after creating variants.
-          const existingVariants = Array.isArray(target.variants) ? target.variants : [];
-          const previousVariants = existingVariants.includes(target.content)
-            ? [...existingVariants]
-            : (existingVariants.length ? [...existingVariants, target.content] : [target.content]);
-          const targetSnapshot = { ...target, variants: previousVariants, variantIndex: previousVariants.indexOf(target.content) };
-          // M79 hard-delete: same as the AI regen path — collect IDs
-          // before the splice and prune any memory derived from them.
-          const userRegenRemovedIds = messageHistory.slice(index).map((m) => m.id).filter(Boolean);
-          // Remove this message and everything after it, then regenerate as user.
-          messageHistory = messageHistory.slice(0, index);
-          await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
-          renderMessages();
-          if (userRegenRemovedIds.length > 0) {
-            void pruneMemoryForDeletedMessages(fs, workspaceUri, threadId, userRegenRemovedIds)
-              .catch((err) => console.warn('[TextGenerator] Memory prune failed on user-regenerate:', err));
-          }
-          await generateTurn({ speaker, instruction: target.instruction || null, asUser: true });
-          // Locate the freshly generated user message (skip past any error system msgs).
-          const newIdx = messageHistory.findIndex((m, i) => i >= index && m.author === 'user' && m.generatedBy === 'model');
-          if (newIdx >= 0) {
-            const newMsg = messageHistory[newIdx];
-            newMsg.variants = [...previousVariants, newMsg.content];
-            newMsg.variantIndex = newMsg.variants.length - 1;
-            await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
-            renderMessages();
-          } else {
-            // Failure path: cancelled, empty response, or only error system messages.
-            // Reinsert the original user message at its original index so nothing is lost.
-            messageHistory = [
-              ...messageHistory.slice(0, index),
-              targetSnapshot,
-              ...messageHistory.slice(index),
-            ];
-            await rewriteMessages(fs, workspaceUri, threadId, messageHistory);
-            renderMessages();
-          }
+          openRegenDirection(index);
         });
         actions.appendChild(regenBtn);
       }
@@ -6832,6 +6794,41 @@ function renderChatEditor(container, parallx, input) {
     if (isTransient) _transientBodyEl = body;
 
     // Inline edit logic — shared by double-click and pencil button
+    /**
+     * The direction for a regenerate, asked before it runs: a line under the
+     * message, filled with the instruction the message was made with (the
+     * "/ai @Saul goes outside" part), to clarify or clear; Enter or
+     * Regenerate runs it, Escape or Cancel closes it. One box at a time.
+     */
+    function openRegenDirection(msgIndex) {
+      const target = messageHistory[msgIndex];
+      if (!target) return;
+      const open = contentWrap.querySelector('.tg-regen-box');
+      if (open) { open.remove(); return; }
+      const box = el('div', 'tg-regen-box');
+      const input = el('input', 'tg-regen-input');
+      input.type = 'text';
+      input.value = regenDirectionFor(target);
+      input.placeholder = 'Direction for the new version (optional)';
+      input.setAttribute('aria-label', 'Direction for the regenerated message');
+      const go = el('button', 'tg-msg-edit-save', { html: `${icon('refresh-cw', 12)} Regenerate` });
+      go.type = 'button';
+      const cancel = el('button', 'tg-msg-edit-cancel', { text: 'Cancel' });
+      cancel.type = 'button';
+      const run = () => { const direction = input.value.trim(); box.remove(); void regenerateMessage(msgIndex, direction || null); };
+      go.addEventListener('click', (e) => { e.stopPropagation(); run(); });
+      cancel.addEventListener('click', (e) => { e.stopPropagation(); box.remove(); });
+      input.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); run(); }
+        if (e.key === 'Escape') { e.preventDefault(); box.remove(); }
+      });
+      box.append(input, go, cancel);
+      contentWrap.appendChild(box);
+      input.focus();
+      input.select();
+    }
+
     function startInlineEdit(bodyEl, msgIndex) {
       if (gen.isGenerating) return;
       if (!messageHistory[msgIndex]) return;
@@ -8693,6 +8690,12 @@ function formatAgoWords(ts) {
   if (days === 1) return 'yesterday';
   if (days < 30) return `${days} days ago`;
   return new Date(ts).toLocaleDateString();
+}
+
+/** What the regenerate box opens with: the direction the message was made with, else nothing. */
+function regenDirectionFor(message) {
+  const v = message && typeof message.instruction === 'string' ? message.instruction.trim() : '';
+  return v;
 }
 
 /** The line under a character's name: the Studio's tagline, else the start of their instruction. */
@@ -10734,6 +10737,7 @@ export const __testables = {
   parseSupportingPerson,
   supportingCastCards,
   connectedPeopleCards,
+  regenDirectionFor,
   resolveContextWindow,
   migrateContextDefault,
   DEFAULT_DIALOGUE_RULES,

@@ -14,7 +14,7 @@ import { __testables } from '../../ext/creations-ai/main.js';
 // @ts-expect-error — JS module with no types
 import { buildBeatMessages, newStory } from '../../ext/creations-ai/story-core.js';
 
-const { assembleContext, buildSystemPrompt, renderMemoryChannel, DEFAULT_DIALOGUE_RULES, DEFAULT_SHEET_STRUCTURE, DEFAULT_SETTINGS } = __testables;
+const { assembleContext, buildSystemPrompt, renderMemoryChannel, DEFAULT_DIALOGUE_RULES, DEFAULT_SHEET_STRUCTURE, DEFAULT_SETTINGS, regenDirectionFor } = __testables;
 const ada = { fileName: 'ada.json', frontmatter: { name: 'Ada' }, sections: { roleInstruction: 'Ada is married to Tom.' } };
 
 describe('the card is the start, the memory is the present', () => {
@@ -92,5 +92,14 @@ describe('quoted phrases in a voice are the register, not lines', () => {
     expect(out.messages[0].content).toContain('they are examples, not lines to say. Use one rarely, never the same one twice in a scene');
     const late = out.messages.find((m: any) => m.role === 'system' && m.content.startsWith('[Active turn:'))!;
     expect(late.content).toContain("Voice anchor (how Ada speaks; any quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): Short lines. Says: 'noted'.");
+  });
+});
+
+describe('regenerate with a direction (2026-10-06)', () => {
+  it('opens with the instruction the message was made with, trimmed, else empty', () => {
+    expect(regenDirectionFor({ author: 'ai', content: 'He goes.', instruction: '  goes outside ' })).toBe('goes outside');
+    expect(regenDirectionFor({ author: 'ai', content: 'He goes.', instruction: null })).toBe('');
+    expect(regenDirectionFor({ author: 'user', content: 'Hi' })).toBe('');
+    expect(regenDirectionFor(null)).toBe('');
   });
 });
