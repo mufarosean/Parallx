@@ -40,7 +40,8 @@ function pathFromMediaUrl(url) {
   let p;
   try { p = decodeURIComponent(u.pathname.replace(/^\/+/, '')); } catch { return null; }
   if (!p || p.includes('\0') || !path.isAbsolute(p)) return null;
-  return path.resolve(p);
+  // Normalised, not resolved: resolving puts the current drive in front of a drive-less path on Windows.
+  return path.normalize(p);
 }
 
 /**
