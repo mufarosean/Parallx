@@ -1,9 +1,9 @@
 # Handoff: where the work stands
 
-Last updated 2026-10-05, night. Branches: `dev` (app work) and
+Last updated 2026-10-06, early. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7621 tests) and `npm run build` pass.
+tsc, the full vitest suite (7627 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
@@ -82,6 +82,38 @@ must appear somewhere (title, sheet, question, paper name, tags, note), in
 any order; a quoted phrase matches whole; a leading minus excludes
 (`brosius credibility -essay`). It was one substring before, so two words
 apart in the text found nothing.
+
+## Done on 2026-10-06, cloud: the Studio describes to a structure
+
+A Settings text, "Sheet structure" (Creations Settings, under Dialogue
+rules, Reset To Default), names sheet fields and the sections each must
+cover, one paragraph per section starting with its label; shipped with
+Appearance in five (Overview, Height and build, Face, Clothes, Physicality:
+how they move, sit, stand, gesture). The Studio reads it at every Generate
+and reroll. Design and files in `docs/CREATIONS_AI.md`, "Sheet structure".
+To try after a pull and rebuild: Generate a character and read its
+Appearance; then add a field in Settings (say Personality with three
+sections) and reroll that field.
+
+## Done on 2026-10-05, cloud, late: the assistant always browses privately
+
+The owner's rule: anything that uses the browser on its own uses it in
+private mode. Both automatic uses now do.
+
+- **The Assistant Browser** (`browserOpen` and the rest): every assistant tab
+  is a private session, the chat's own in-memory partition, wiped with its
+  last tab; `createTab` in `browserAutomationBroker.cjs` makes nothing else,
+  and the tool spec in `ext/browser/main.js` no longer offers a `private`
+  flag (a flag passed anyway changes nothing). Captures therefore live in
+  memory only and go when their tab closes; downloads sit in the run's
+  `private-downloads` folder and are erased when the session ends unless
+  saved with save_download. The on-disk erase machinery stays for files
+  older versions left. `docs/BROWSER.md`, "Two partitions", says so. Tests
+  rewritten in `browserAutomationBrokerRuntime.test.ts` ("private sessions",
+  "erasing what the assistant kept", "downloads", "artifacts") and
+  `browserAutomationService.test.ts`.
+- **The browser-engine fetch** (`electron/browserFetch.cjs`) was private from
+  the start: an in-memory partition per read, cleared after.
 
 ## Done on 2026-10-05, cloud, late: Web Research that works, and the browser engine
 

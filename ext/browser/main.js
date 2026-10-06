@@ -2104,13 +2104,12 @@ const AGENT_KEYS = ['Enter', 'Tab', 'Shift+Tab', 'Escape', 'Backspace', 'Delete'
 export const AUTOMATION_TOOLS = [
   {
     name: 'browserOpen', op: 'open', requiresConfirmation: false,
-    description: 'Open a web page in the Assistant Browser: a tab the user can watch, using the assistant\'s own browser profile (its own cookies and sign-ins, separate from the user\'s). Returns JSON with the page text and its targets (links, buttons, fields), each with a ref such as "e12" for browserClick, browserType and browserAct. Only http(s) addresses. One chat uses the Assistant Browser at a time. Prefer webSearch or webFetch for plain reading; use the browser when a page needs interaction. When the user asks for private browsing, pass private: true.',
+    description: 'Open a web page in the Assistant Browser: a tab the user can watch, always in a private session (a throwaway profile for this chat, separate from the user\'s browsing, that keeps nothing: cookies, sign-ins, site data, captures and unsaved downloads go when its last tab closes). Returns JSON with the page text and its targets (links, buttons, fields), each with a ref such as "e12" for browserClick, browserType and browserAct. Only http(s) addresses. One chat uses the Assistant Browser at a time. Prefer webSearch or webFetch for plain reading; use the browser when a page needs interaction.',
     parameters: {
       type: 'object',
       properties: {
         url: { type: 'string', description: 'An http(s) address.' },
         newTab: { type: 'boolean', description: 'Open in a new assistant tab instead of the current one.' },
-        private: { type: 'boolean', description: 'true: open in a private session, a tab with its own throwaway profile that shares nothing with the assistant\'s usual one and keeps nothing (cookies, sign-ins, site data) once its private tabs close. Pages it opens stay private, and later browserOpen calls without private stay in it. false: leave the private session for the usual profile.' },
       },
       required: ['url'],
     },

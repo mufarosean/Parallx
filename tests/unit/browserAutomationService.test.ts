@@ -229,9 +229,9 @@ describe('BrowserAutomationService', () => {
     const run = s.transport.of('run')[0];
     expect(run.payload.identity).toEqual({ chatSessionId: 'chat-1', turnId: 'turn-1', workspaceSessionId: 'wss-1' });
     expect(run.payload.action).toEqual({ op: 'click', ref: 'e3' });
-    // browserOpen passes private through, and nothing it was not given.
-    await s.tool('browserOpen').handler({ url: 'https://example.com', private: true, chatSessionId: 'x' }, token('turn-1'), { sessionId: 'chat-1' });
-    expect(s.transport.of('run')[1].payload.action).toEqual({ op: 'open', url: 'https://example.com', private: true });
+    // browserOpen passes only what its spec names: every assistant tab is private, so there is no flag to pass.
+    await s.tool('browserOpen').handler({ url: 'https://example.com', private: false, chatSessionId: 'x' }, token('turn-1'), { sessionId: 'chat-1' });
+    expect(s.transport.of('run')[1].payload.action).toEqual({ op: 'open', url: 'https://example.com' });
   });
 
   it('refuses without a chat session, a turn or a workspace, and never reaches the broker', async () => {

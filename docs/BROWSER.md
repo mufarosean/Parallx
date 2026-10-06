@@ -46,10 +46,17 @@ IP anonymity.
 ## Two partitions
 
 `persist:parallx-browser` is the user's: their logins, their history. 
-`persist:parallx-browser-agent` is the agent's: empty, no cookies, no access to
-the user's tabs. Agent browsing tools (a later phase) run only on the agent
-partition, read pages only through the Web Research sanitizer, and act only
-with per-action consent through the M90 consent model. The user's tabs feed
+`persist:parallx-browser-agent` was the agent's; since 2026-10-05 the
+assistant never browses on a profile that persists. Every assistant tab is a
+private session: an in-memory partition per chat
+(`parallx-browser-agent-private-<chat>-<n>`), no cookies carried in, no
+access to the user's tabs, wiped with its last tab (cookies, sign-ins, site
+data, captures, downloads the user did not save). `browserOpen` takes no
+`private` flag any more; the owner's rule is that anything the assistant does
+on the web leaves no trace. The persistent agent partition stays only so
+"Clear Assistant Browser Data" can empty what older versions left in it.
+Agent browsing tools read pages only through the Web Research sanitizer, and
+act only with per-action consent through the M90 consent model. The user's tabs feed
 the AI through exactly one door, **Send Page To Chat**, which attaches the URL
 and title so the model fetches through the sanitized chokepoint.
 

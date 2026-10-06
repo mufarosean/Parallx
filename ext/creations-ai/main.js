@@ -14,7 +14,7 @@ import { renderTablesPage, attachTableRoll, listTables, loadTable, loadTableByNa
 import { CHARACTER_SEEDS_NAME } from './tables-core.js';
 import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
-import { sheetFromCharacter } from './studio-core.js';
+import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE } from './studio-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 
@@ -9087,6 +9087,9 @@ const DEFAULT_SETTINGS = {
   // How people talk, in every roleplay and story prompt. The user's text;
   // an empty string means none.
   dialogueRules: DEFAULT_DIALOGUE_RULES,
+  // The shape of each sheet field the Studio writes (sections, one paragraph
+  // each). The user's text; an empty string means every field keeps its usual shape.
+  sheetStructure: DEFAULT_SHEET_STRUCTURE,
 };
 
 /** Motion off: `.cr-still` on the body stops every Creations animation. */
@@ -9263,6 +9266,22 @@ function renderSettingsPage(container, parallx) {
   rulesReset.addEventListener('click', () => { rulesInput.value = DEFAULT_DIALOGUE_RULES; });
   rulesGroup.appendChild(rulesReset);
   form.appendChild(rulesGroup);
+  const structureGroup = el('div', 'tg-form-group');
+  structureGroup.appendChild(el('label', 'tg-form-label', { text: 'Sheet structure' }));
+  structureGroup.appendChild(el('div', 'tg-form-hint', {
+    text: 'What the Character Studio must cover in each sheet field. A heading names a field (Appearance, Personality...); the lines under it are its sections, in order, each written as its own paragraph. Edit freely; empty means every field keeps its usual shape.',
+  }));
+  const structureInput = el('textarea', 'tg-form-input');
+  structureInput.rows = 10;
+  structureInput.style.minHeight = '180px';
+  structureInput.placeholder = 'Leave empty for the usual one-paragraph fields.';
+  structureGroup.appendChild(structureInput);
+  const structureReset = el('button', 'tg-form-reset', { text: 'Reset To Default' });
+  structureReset.type = 'button';
+  structureReset.title = 'Put the shipped sheet structure back';
+  structureReset.addEventListener('click', () => { structureInput.value = DEFAULT_SHEET_STRUCTURE; });
+  structureGroup.appendChild(structureReset);
+  form.appendChild(structureGroup);
   const responseLengthSelect = formGroup('Default response length', 'Applied to newly created chats when no character override exists', 'select', 'defaultResponseLength', {
     options: [
       { value: '', label: 'No Limit (Default)' },
@@ -9315,6 +9334,7 @@ function renderSettingsPage(container, parallx) {
     presetSelect.value = s.defaultWritingPreset || 'immersive-rp';
     customStyleInput.value = s.customWritingStyle || '';
     rulesInput.value = typeof s.dialogueRules === 'string' ? s.dialogueRules : DEFAULT_DIALOGUE_RULES;
+    structureInput.value = typeof s.sheetStructure === 'string' ? s.sheetStructure : DEFAULT_SHEET_STRUCTURE;
     responseLengthSelect.value = s.defaultResponseLength || '';
     defaultPovSelect.value = s.defaultPov || '';
     fitMethodSelect.value = s.defaultFitMethod || 'dropOld';
@@ -9361,6 +9381,7 @@ function renderSettingsPage(container, parallx) {
       customWritingStyle: customStyleInput.value || '',
       // Saved as typed, '' included: an emptied field means none, not the default.
       dialogueRules: rulesInput.value,
+      sheetStructure: structureInput.value,
     };
     await saveSettings(fs, workspaceUri, settings);
     savedLabel.classList.add('tg-form-saved--show');
@@ -10654,5 +10675,6 @@ export const __testables = {
   resolveContextWindow,
   migrateContextDefault,
   DEFAULT_DIALOGUE_RULES,
+  DEFAULT_SHEET_STRUCTURE,
   DEFAULT_SETTINGS,
 };

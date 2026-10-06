@@ -13,7 +13,7 @@
 import {
   STUDIO_FIELDS, STUDIO_KEYS, emptySheet, cleanSheet, cleanFieldValue,
   condenseText, formatWords,
-  buildCanonMessages, buildTwistMessages, buildSheetMessages, buildFieldMessages, buildTryLineMessages,
+  buildCanonMessages, buildTwistMessages, buildSheetMessages, buildFieldMessages, buildTryLineMessages, parseSheetStructure, DEFAULT_SHEET_STRUCTURE,
   buildPitchMessages, parsePitches, pitchAsConcept, parseRelationshipLines, relationConcept,
   parseJsonLoose, extractCompletedFields, parseCanonFacts, parseTwistedCanon, canonCounts,
   sheetFromCharacter, characterFromSheet, lineageOf, stripDashes,
@@ -951,6 +951,8 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   }
   async function resolveModel() {
     const settings = await deps.loadSettings(fs, workspaceUri);
+    // The sheet's shape, read fresh for every generation so a Settings edit lands at once.
+    state.structure = parseSheetStructure(typeof settings.sheetStructure === 'string' ? settings.sheetStructure : DEFAULT_SHEET_STRUCTURE);
     const models = await parallx.lm.getModels();
     const picked = state.engine.modelId || modelSelect.value || '';
     const modelId = (picked && models.some((m) => m.id === picked)) ? picked
@@ -977,6 +979,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       canon: state.mode === 'sources' ? activeFacts() : [],
       spec: state.dialsTouched && forgeControls ? forgeControls.spec() : '',
       twist: state.mode === 'sources' ? state.twist : '',
+      structure: state.structure || null,
     };
   }
 

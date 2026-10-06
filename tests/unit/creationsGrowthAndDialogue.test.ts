@@ -14,7 +14,7 @@ import { __testables } from '../../ext/creations-ai/main.js';
 // @ts-expect-error — JS module with no types
 import { buildBeatMessages, newStory } from '../../ext/creations-ai/story-core.js';
 
-const { assembleContext, buildSystemPrompt, renderMemoryChannel, DEFAULT_DIALOGUE_RULES, DEFAULT_SETTINGS } = __testables;
+const { assembleContext, buildSystemPrompt, renderMemoryChannel, DEFAULT_DIALOGUE_RULES, DEFAULT_SHEET_STRUCTURE, DEFAULT_SETTINGS } = __testables;
 const ada = { fileName: 'ada.json', frontmatter: { name: 'Ada' }, sections: { roleInstruction: 'Ada is married to Tom.' } };
 
 describe('the card is the start, the memory is the present', () => {
@@ -54,6 +54,11 @@ describe('dialogue rules', () => {
   it('ship with a default that is in every new settings file', () => {
     expect(DEFAULT_SETTINGS.dialogueRules).toBe(DEFAULT_DIALOGUE_RULES);
     expect(DEFAULT_DIALOGUE_RULES).toContain('Nobody names their own values or traits');
+  });
+  it('the sheet structure ships the same way, with Appearance laid out in sections', () => {
+    expect(DEFAULT_SETTINGS.sheetStructure).toBe(DEFAULT_SHEET_STRUCTURE);
+    expect(DEFAULT_SHEET_STRUCTURE).toContain('Appearance\n- Overview');
+    expect(DEFAULT_SHEET_STRUCTURE).toContain('- Physicality');
   });
 
   it('go into the roleplay prompt as How People Talk, from the settings, for every preset but none', () => {
