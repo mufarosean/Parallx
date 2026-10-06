@@ -256,7 +256,52 @@ export function structureRequirement(key, entry) {
   const label = entry.labels
     ? `each paragraph begins with its section's label and a colon, like "${first}: ..."`
     : 'each paragraph is plain, with no label';
-  return `- "${key}": written as ${n} separate paragraphs, one per section, in this order, with a blank line between them (\\n\\n inside the JSON string); ${label}. Every section is filled with concrete, specific detail about THIS character, several sentences each; none is skipped, merged or padded out. The sections: ${list}.`;
+  const skeleton = entry.labels
+    ? entry.sections.map((s) => `${s.name}: ...`).join('\\n\\n')
+    : entry.sections.map(() => '...').join('\\n\\n');
+  return `- "${key}": written as ${n} separate paragraphs, one per section, in this order, with a blank line between them (\\n\\n inside the JSON string); ${label}. Every section is filled with concrete, specific detail about THIS character, several sentences each; none is skipped, merged or padded out. The sections: ${list}. Written like: "${skeleton}" with each ... a full paragraph. A "${key}" with fewer than ${n} paragraphs is incomplete and wrong.`;
+}
+
+/** The sheet's own rule for a structure, in the system message: models weigh it more there. */
+export function structureSystemLine(structure) {
+  const keys = Object.keys(structure && typeof structure === 'object' ? structure : {}).filter((k) => structure[k] && structure[k].sections && structure[k].sections.length);
+  if (keys.length === 0) return '';
+  const parts = keys.map((k) => `"${k}" (${structure[k].sections.length} sections: ${structure[k].sections.map((x) => x.name).join(', ')})`);
+  return `Some fields have a required structure, given under Field requirements: ${parts.join('; ')}. Write EVERY section named, each as its own paragraph, in order. A field with fewer paragraphs than its sections is incomplete and wrong; never merge two sections into one paragraph.`;
+}
+
+const normLabel = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+/**
+ * Which of a structure's sections a field's text has. With labels, a section
+ * is present when a paragraph or a line begins with its label (bold or not,
+ * a colon or a dash after it); without, paragraphs are counted in order.
+ * `{ present, missing }`, both lists of section names.
+ */
+export function sectionsPresent(value, entry) {
+  const text = String(value || '').replace(/\r/g, '');
+  const sections = entry && Array.isArray(entry.sections) ? entry.sections : [];
+  const paras = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (!entry || !entry.labels) {
+    return { present: sections.slice(0, paras.length).map((x) => x.name), missing: sections.slice(paras.length).map((x) => x.name) };
+  }
+  const heads = new Set();
+  for (const line of text.split('\n')) {
+    const m = /^\s*(?:\*\*|__|#+\s*)?([^:\n*_]{1,60}?)(?:\*\*|__)?\s*[:\-\u2013\u2014]/.exec(line);
+    if (m) heads.add(normLabel(m[1]));
+  }
+  const present = [];
+  const missing = [];
+  for (const x of sections) (heads.has(normLabel(x.name)) ? present : missing).push(x.name);
+  return { present, missing };
+}
+
+/** The direction for a rewrite that adds what a structured field lacks and keeps what it has. */
+export function completionDirection(entry, missing) {
+  const names = Array.isArray(missing) ? missing : [];
+  const all = entry.sections.map((x) => x.name).join(', ');
+  const want = entry.sections.filter((x) => names.includes(x.name)).map((x) => (x.hint ? `${x.name} (${x.hint})` : x.name)).join('; ');
+  return `Keep every paragraph that is already there, word for word, and ADD the missing sections: ${want}. Each missing section is its own paragraph of several concrete sentences${entry.labels ? ', starting with its label and a colon' : ''}, placed in the order of the structure. The result has all ${entry.sections.length} sections, in this order: ${all}. Nothing else changes.`;
 }
 
 /** Every field's requirement, with the structured fields' lines in place of their usual ones. */
@@ -301,8 +346,10 @@ const CRAFT_RULES = [
  * so the writer knows the world has already moved.
  */
 export function buildSheetMessages({ concept = '', canon = [], spec = '', twist = '', name = '', structure = null, connections = [] } = {}) {
+  const structureLine = structureSystemLine(structure);
   const system = [
     'You are a character designer for roleplay fiction. You create original, specific, believable characters, never generic ones.',
+    ...(structureLine ? [structureLine] : []),
     'Every field is written in the THIRD PERSON, as a description of the character ("<Name> is...", "She speaks..."). Never address anyone as "you", and never the general "you" either ("if you catch them early" becomes "if caught early"); the only "you" is inside the example dialogue. Never write instructions. It should all read as one consistent character portrait.',
     `Return ONLY a single JSON object with EXACTLY these string keys, in this order: ${STUDIO_KEYS.map((k) => `"${k}"`).join(', ')}. No markdown, no commentary.`,
     NO_DASHES,

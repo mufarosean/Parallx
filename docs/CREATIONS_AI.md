@@ -488,8 +488,17 @@ its own commit and tests:
   `studio-core.js`) and the field's requirement becomes "N separate
   paragraphs, one per section, in this order, each starting with its label,
   every section in concrete detail". A steered reroll keeps the sections and
-  changes what is in them. Tests: `creationsStudioCore` ("the sheet
-  structure"), `creationsStudioPane`, `creationsGrowthAndDialogue`.
+  changes what is in them. A model told to write five sections often wrote
+  three (the owner, the same day): the rule now also sits in the system
+  message with each field's section count, the requirement shows the shape
+  ("Overview: ...\n\nHeight and build: ..."), and after a sheet or a reroll
+  each structured field is checked (`sectionsPresent`: a label at a
+  paragraph or line start, bold or dashed); what is missing is asked for
+  once as a rewrite that keeps the rest word for word
+  (`completionDirection`), taken only when it adds sections; still short,
+  the row says "Missing: ..." and offers Complete. Tests:
+  `creationsStudioCore` ("the sheet structure", "a structured field,
+  checked"), `creationsStudioPane`, `creationsGrowthAndDialogue`.
 - **Connected people (built 2026-10-06).** A new character is often made
   to stand beside one that exists (the gamekeeper to a lord), and the owner
   retyped who the other person was and what their world looked like every

@@ -13,6 +13,7 @@ const {
   composeRoleInstruction, splitRoleInstruction, sheetFromCharacter, characterFromSheet, lineageOf,
   parseSheetStructure, fieldRequirements, structureRequirement, DEFAULT_SHEET_STRUCTURE,
   connectionDigest, connectionsBlock, backLinkLine, withRelationshipLine,
+  sectionsPresent, completionDirection, structureSystemLine,
 } = core;
 
 describe('the sheet', () => {
@@ -391,5 +392,34 @@ describe('connected people (2026-10-06)', () => {
     expect(once.relationships).toBe('Clara Ashby: his wife, in London most of the year.\nTom Hale: his gamekeeper.');
     expect(withRelationshipLine(once, backLinkLine('tom hale', 'his gamekeeper, again'))).toBe(once);
     expect(withRelationshipLine({ relationships: '' }, 'Tom Hale: his gamekeeper.').relationships).toBe('Tom Hale: his gamekeeper.');
+  });
+});
+
+describe('a structured field, checked (2026-10-06)', () => {
+  const entry = parseSheetStructure(DEFAULT_SHEET_STRUCTURE).appearance;
+  it('knows which sections a text has, by label at a paragraph or line start, bold or dashed', () => {
+    expect(sectionsPresent('Overview: tall.\n\n**Face**: red.\nClothes - tweed.\n\nphysicality: stoops', entry)).toEqual({ present: ['Overview', 'Face', 'Clothes', 'Physicality'], missing: ['Height and build'] });
+    expect(sectionsPresent('', entry).missing).toHaveLength(5);
+    expect(sectionsPresent('A tall man in tweed who stoops.', entry).present).toEqual([]);
+    const plain = { labels: false, sections: [{ name: 'A', hint: '' }, { name: 'B', hint: '' }, { name: 'C', hint: '' }] };
+    expect(sectionsPresent('one.\n\ntwo.', plain)).toEqual({ present: ['A', 'B'], missing: ['C'] });
+  });
+  it('asks for exactly what is missing, with its hints, and nothing else changed', () => {
+    const d = completionDirection(entry, ['Height and build', 'Physicality']);
+    expect(d).toMatch(/^Keep every paragraph that is already there, word for word, and ADD the missing sections: Height and build \(height, weight/);
+    expect(d).toContain('Physicality (how they move');
+    expect(d).not.toContain('Face (');
+    expect(d).toMatch(/all 5 sections, in this order: Overview, Height and build, Face, Clothes, Physicality/);
+    expect(d).toContain('starting with its label and a colon');
+  });
+  it('puts the rule in the system message and a skeleton in the requirement', () => {
+    const st = parseSheetStructure(DEFAULT_SHEET_STRUCTURE);
+    expect(structureSystemLine(st)).toMatch(/"appearance" \(5 sections: Overview, Height and build, Face, Clothes, Physicality\)/);
+    expect(structureSystemLine(st)).toContain('fewer paragraphs than its sections is incomplete and wrong');
+    expect(structureSystemLine({})).toBe('');
+    const [system, user] = buildSheetMessages({ concept: 'x', structure: st });
+    expect(system.content).toContain('Some fields have a required structure');
+    expect(user.content).toContain('Written like: "Overview: ...\\n\\nHeight and build: ...\\n\\nFace: ...\\n\\nClothes: ...\\n\\nPhysicality: ..."');
+    expect(buildSheetMessages({ concept: 'x' })[0].content).not.toContain('required structure');
   });
 });

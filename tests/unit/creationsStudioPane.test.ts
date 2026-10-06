@@ -16,7 +16,8 @@ import { renderStudioPane } from '../../ext/creations-ai/studio.js';
 type Chunk = { content?: string };
 
 const SHEET = {
-  name: 'Ada Lovelace', tagline: 'Counts what others feel', description: 'Ada counts everything.', appearance: 'Tall, ink on her cuffs.',
+  name: 'Ada Lovelace', tagline: 'Counts what others feel', description: 'Ada counts everything.',
+  appearance: 'Overview: Tall, ink on her cuffs.\n\nHeight and build: Five foot nine, narrow.\n\nFace: Grey eyes that do not blink enough.\n\nClothes: Black, mended at the elbows.\n\nPhysicality: Sits very straight and taps a count on her knee.',
   personality: 'Dry and exact.', voice: 'Short lines. Says "noted". Never says "whatever".', backstory: 'Born in 1815 in London.',
   drives: 'Wants order. Fears chaos. Her brother stands in the way.', secrets: 'She cannot add in her head.', relationships: 'Babbage: strained.',
   exampleDialogue: '[USER]: hi\n[AI]: Noted.', reminder: 'Ada never lies.',
@@ -183,7 +184,7 @@ describe('the Studio screen', () => {
     expect(w.saved.size).toBe(1);
     const data = [...w.saved.values()][0];
     expect(data.name).toBe('Ada Lovelace');
-    expect(data.roleInstruction).toContain('## Appearance\nTall, ink on her cuffs.');
+    expect(data.roleInstruction).toContain('## Appearance\nOverview: Tall, ink on her cuffs.');
     expect(data.studio.sheet.secrets).toBe('She cannot add in her head.');
     expect(data.studio.concept).toBe('A countess who counts');
     expect(w.ctx.onCreated).toHaveBeenCalledTimes(1);
@@ -627,5 +628,62 @@ describe('connected people (2026-10-06)', () => {
     const root2 = container.querySelectorAll('.cs')[1] as HTMLElement;
     expect(root2.querySelector('.cs-connection .cs-source-title')?.textContent).toBe('Ada Lovelace');
     expect((root2.querySelector('.cs-connection-how') as HTMLInputElement).value).toBe('her sister, lives upstairs');
+  });
+});
+
+describe('a structured field the model left short (2026-10-06)', () => {
+  const short = { ...SHEET, appearance: 'Overview: Tall, ink on her cuffs.\n\nFace: Grey eyes.' };
+  function worldWith(onComplete: (user: string) => string) {
+    const w = makeWorld();
+    const orig = w.parallx.lm.sendChatRequest;
+    w.parallx.lm.sendChatRequest = (model: string, messages: { role: string; content: string }[], options: any) => {
+      const sys = messages[0].content; const user = messages[1].content;
+      if (sys.includes('character designer for roleplay fiction') && !sys.includes('exactly one string key')) { w.requests.push({ messages, options }); return chunks([JSON.stringify(short)]); }
+      if (sys.includes('exactly one string key') && user.includes('ADD the missing sections')) { w.requests.push({ messages, options }); return chunks([JSON.stringify({ appearance: onComplete(user) })]); }
+      return orig(model, messages, options);
+    };
+    return w;
+  }
+
+  it('asks once for the missing sections, keeping the rest, and takes the completed field', async () => {
+    const w = worldWith(() => SHEET.appearance);
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    typeInto(root.querySelector('.cs-textarea') as HTMLTextAreaElement, 'A countess who counts');
+    buttonNamed(root, 'Generate').click();
+    await flush(900);
+    const completion = w.requests.find((r) => r.messages[1].content.includes('ADD the missing sections'))!;
+    expect(completion).toBeTruthy();
+    expect(completion.messages[1].content).toContain('Height and build (height, weight, frame, posture, how they carry it)');
+    expect(completion.messages[1].content).toContain('Clothes (');
+    expect(completion.messages[1].content).toContain('Physicality (');
+    expect(completion.messages[1].content).not.toMatch(/missing sections: Overview/);
+    expect(completion.messages[1].content).toContain('Keep every paragraph that is already there, word for word');
+    expect(areaOf(root, 'appearance').value).toBe(SHEET.appearance);
+    expect((rowOf(root, 'appearance').querySelector('.cs-row-error') as HTMLElement | null)?.style.display ?? 'none').toBe('none');
+    // The sheet request itself was told, in the system message, that short fields are wrong.
+    const sheetReq = w.requests.find((r) => r.messages[0].content.includes('character designer for roleplay fiction'))!;
+    expect(sheetReq.messages[0].content).toMatch(/"appearance" \(5 sections: Overview, Height and build, Face, Clothes, Physicality\)/);
+    expect(sheetReq.messages[1].content).toContain('Written like: "Overview: ...\\n\\nHeight and build: ...');
+  });
+
+  it('when the model still leaves sections out, the row says which and offers Complete, and keeps what it had', async () => {
+    const w = worldWith(() => 'Overview: Tall, ink on her cuffs.\n\nFace: Grey eyes.\n\nClothes: Black.');
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    typeInto(root.querySelector('.cs-textarea') as HTMLTextAreaElement, 'A countess who counts');
+    buttonNamed(root, 'Generate').click();
+    await flush(900);
+    // Three of five came back the second time: taken (more than two), and the notice names the two still missing.
+    expect(areaOf(root, 'appearance').value).toContain('Clothes: Black.');
+    const err = rowOf(root, 'appearance').querySelector('.cs-row-error') as HTMLElement;
+    expect(err.textContent).toContain('Missing: Height and build, Physicality.');
+    expect(buttonNamed(err, 'Complete')).toBeTruthy();
+    const before = w.requests.length;
+    buttonNamed(err, 'Complete').click();
+    await flush(900);
+    expect(w.requests.length).toBe(before + 1);
   });
 });
