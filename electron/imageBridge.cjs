@@ -94,15 +94,19 @@ async function renderEquations(app, items, scale = 2) {
       show: false, width: 1600, height: 400, transparent: true, frame: false,
       webPreferences: { offscreen: true, contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false },
     });
-    win.webContents.setZoomFactor(scale);
     await win.loadFile(page);
+    // The equation is laid out at `scale` times its font size and captured at
+    // its own bounds, so the picture is a crisp 2x and its size is what was
+    // captured. (A zoom factor set before the page loaded never applied: the
+    // capture took 2x the element's area at 1x, and three quarters of every
+    // picture was empty, 2026-10-06.)
     for (let i = 0; i < items.length; i++) {
       const { latex, fontPx } = items[i] || {};
       if (typeof latex !== 'string' || !latex.trim()) continue;
       try {
         const size = await win.webContents.executeJavaScript(`(async () => {
           const el = document.getElementById('eq');
-          el.style.fontSize = ${Number(fontPx) > 0 ? Number(fontPx) : 15} + 'px';
+          el.style.fontSize = ${(Number(fontPx) > 0 ? Number(fontPx) : 15) * scale} + 'px';
           katex.render(${JSON.stringify(latex)}, el, { throwOnError: false, output: 'html', strict: 'ignore' });
           await document.fonts.ready;
           await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -110,9 +114,9 @@ async function renderEquations(app, items, scale = 2) {
           return { w: Math.ceil(b.width), h: Math.ceil(b.height) };
         })()`, true);
         if (!size || !size.w || !size.h) continue;
-        const image = await win.webContents.capturePage({ x: 0, y: 0, width: Math.ceil(size.w * scale), height: Math.ceil(size.h * scale) });
+        const image = await win.webContents.capturePage({ x: 0, y: 0, width: size.w, height: size.h });
         if (image.isEmpty()) continue;
-        out[i] = { png: new Uint8Array(image.toPNG()), width: size.w, height: size.h };
+        out[i] = { png: new Uint8Array(image.toPNG()), width: size.w / scale, height: size.h / scale };
       } catch { /* this equation stays a text box */ }
     }
   } catch {

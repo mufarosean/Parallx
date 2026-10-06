@@ -17,7 +17,7 @@ async function buildWorkbook(): Promise<Uint8Array> {
     <sheet name="Brosius.RF_01" sheetId="1" r:id="rId1"/>
     <sheet name="Hidden Machinery" sheetId="2" state="hidden" r:id="rId2"/></sheets></workbook>`);
   zip.file('xl/_rels/workbook.xml.rels', `<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>`);
-  zip.file('xl/sharedStrings.xml', `<sst><si><t>RF Brosius - 1</t></si><si><r><t>Solution </t></r><r><rPr><b/></rPr><t>-&gt;</t></r></si><si><t>Self-Rating:</t></si><si><t>Unrated</t></si></sst>`);
+  zip.file('xl/sharedStrings.xml', `<sst><si><t>RF Brosius - 1</t></si><si><r><t>Solution </t></r><r><rPr><b/></rPr><t>-&gt;</t></r></si><si><t>Self-Rating:</t></si><si><t>Unrated</t></si><si><r><rPr><b/></rPr><t>Part b</t></r><r><t xml:space="preserve">&#10;second line</t></r></si></sst>`);
   zip.file('xl/theme/theme1.xml', `<a:theme xmlns:a="a"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="0E2841"/></a:dk2><a:lt2><a:srgbClr val="E8E8E8"/></a:lt2><a:accent1><a:srgbClr val="156082"/></a:accent1><a:accent2><a:srgbClr val="E97132"/></a:accent2><a:accent3><a:srgbClr val="196B24"/></a:accent3><a:accent4><a:srgbClr val="0F9ED5"/></a:accent4><a:accent5><a:srgbClr val="A02B93"/></a:accent5><a:accent6><a:srgbClr val="4EA72E"/></a:accent6><a:hlink><a:srgbClr val="467886"/></a:hlink><a:folHlink><a:srgbClr val="96607D"/></a:folHlink></a:clrScheme></a:themeElements></a:theme>`);
   zip.file('xl/styles.xml', `<styleSheet>
     <numFmts count="1"><numFmt numFmtId="164" formatCode="0.0%"/></numFmts>
@@ -42,6 +42,7 @@ async function buildWorkbook(): Promise<Uint8Array> {
       <row r="9"><c r="M9"><f t="shared" si="0"/><v>0.2</v></c></row>
       <row r="10"><c r="M10"><f t="shared" si="0"/><v>0.3</v></c><c r="L10" t="inlineStr"><is><t>inline text</t></is></c></row>
       <row r="12"><c r="L12"><f t="array" ref="L12:L13">SEQUENCE(2,1,1,1)</f><v>1</v></c></row>
+      <row r="15"><c r="L15" t="s"><v>4</v></c></row>
       <row r="19"><c r="A19" t="str"><v>SHOW ALL WORK.</v></c></row>
     </sheetData>
     <mergeCells count="1"><mergeCell ref="B5:E5"/></mergeCells>
@@ -135,6 +136,13 @@ describe('openXlsx + sheetToSnapshot', () => {
     expect(ws.cellData[2][1]).toMatchObject({ f: '=B2*2', v: 2501 });
     expect(ws.cellData[7][13].f).toBe('=CONCAT("a","b")');
     expect(ws.cellData[11][11]).toMatchObject({ f: '=SEQUENCE(2,1,1,1)', ref: 'L12:L13' });
+    // A rich string with a line break: one paragraph per line, in Univer's own marks.
+    const rich = ws.cellData[14][11].p as { body: { dataStream: string; paragraphs: { startIndex: number }[]; sectionBreaks: { startIndex: number }[]; textRuns: { st: number; ed: number; ts: Record<string, unknown> }[] } };
+    expect(String(ws.cellData[14][11].v)).toContain('second line');
+    expect(rich.body.dataStream).toBe('Part b\rsecond line\r\n');
+    expect(rich.body.paragraphs).toEqual([{ startIndex: 6 }, { startIndex: 18 }]);
+    expect(rich.body.sectionBreaks).toEqual([{ startIndex: 19 }]);
+    expect(rich.body.textRuns.map((r) => [r.st, r.ed, r.ts.bl ?? 0])).toEqual([[0, 6, 1], [6, 18, 0]]);
     // Text boxes float as SVG images at their anchors; no cell is written.
     expect(ws.cellData[3]?.[1]).toBeUndefined();
     expect(ws.cellData[1][1].v).toBe(1250.5);
@@ -188,5 +196,24 @@ describe('openXlsx + sheetToSnapshot', () => {
     expect(styles.x4).toMatchObject({ n: { pattern: 'm/d/yyyy' } });
     expect(stats.styles).toBe(4);
     expect(stats.styledCells).toBeGreaterThanOrEqual(4);
+  });
+
+  it('keeps a drawing the size it has once hidden columns are shown', async () => {
+    const book = await openXlsx(await buildWorkbook());
+    const sheet = await book.readSheet('Brosius.RF_01');
+    const drawingsOf = (opts: Parameters<typeof sheetToSnapshot>[2]) => JSON.parse((sheetToSnapshot(sheet, book, { unitId: 'u', sheetId: 's', ...opts }).workbook as unknown as { resources: { data: string }[] }).resources[0].data).s.data;
+    const shown = drawingsOf({});
+    const hidden = drawingsOf({ hideFromColumn: 1 });
+    for (const id of ['img0', 'tb0', 'tb1']) {
+      expect(hidden[id].transform).toEqual(shown[id].transform);
+      expect(hidden[id].sheetTransform).toEqual(shown[id].sheetTransform);
+    }
+    expect(shown.tb0.transform.width).toBeGreaterThan(100);
+    // A rendered equation is sized against its box whether the box's columns show or not.
+    sheet.textBoxes[1].rendered = { mime: 'image/png', base64: 'AAAA', width: 400, height: 200 };
+    const eq = drawingsOf({ hideFromColumn: 1 }).tb1;
+    expect(eq.transform.width).toBe(shown.tb1.transform.width);
+    expect(eq.transform.height).toBe(Math.round(200 * (shown.tb1.transform.width / 400)));
+    expect(eq.transform.height).toBeGreaterThan(8);
   });
 });

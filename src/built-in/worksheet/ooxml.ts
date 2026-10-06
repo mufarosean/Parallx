@@ -870,9 +870,14 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
   const rowCount = Math.max(ATHENA_ROWS, sheet.maxRow + 20, ...sheet.merges.map((m) => m.r1 + 1));
   const columnCount = Math.max(ATHENA_COLUMNS, usedCol + 27);
 
-  // Pictures → floating images. Pixel positions come from the grid geometry.
-  const widthOf = (c: number): number => (columnData[c]?.hd ? 0 : columnData[c]?.w ?? sheet.defaultColumnWidthPx);
-  const heightOf = (r: number): number => (rowData[r]?.hd ? 0 : rowData[r]?.h ?? sheet.defaultRowHeightPx);
+  // Pictures → floating images. Pixel positions come from the grid geometry
+  // as it is with every column and row shown: a hidden column keeps its
+  // width, so a box anchored in the solution (hidden until Reveal, in the
+  // workbook and here) keeps the size it has once the columns are shown.
+  // Counting hidden columns as zero collapsed every such box to 8 px
+  // (the practice exams' equations, 2026-10-06).
+  const widthOf = (c: number): number => columnData[c]?.w ?? sheet.defaultColumnWidthPx;
+  const heightOf = (r: number): number => rowData[r]?.h ?? sheet.defaultRowHeightPx;
   const xOf = (a: XlsxAnchor): number => { let x = 0; for (let c = 0; c < a.col; c++) x += widthOf(c); return x + a.colOffsetPx; };
   const yOf = (a: XlsxAnchor): number => { let y = 0; for (let r = 0; r < a.row; r++) y += heightOf(r); return y + a.rowOffsetPx; };
   const drawings: Record<string, unknown> = {};
@@ -970,13 +975,20 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
 
 const pt2pxf = (pt: number): number => (pt * 96) / 72;
 
-/** A Univer rich-text document for one cell: the runs over the cell's own font. */
+/**
+ * A Univer rich-text document for one cell: the runs over the cell's own font.
+ * Excel breaks a line inside a cell with "\n" (or "\r\n"); Univer ends a
+ * paragraph with "\r" and lists every paragraph. One paragraph holding raw
+ * breaks showed only its first line (every "Part b" box of the practice
+ * exams, 2026-10-06), so each line is its own paragraph here.
+ */
 function richDocument(id: string, runs: readonly RichRun[], base: IStyleData | null): Record<string, unknown> {
   const baseTs: Record<string, unknown> = {};
   const b = (base ?? {}) as Record<string, unknown>;
   for (const key of ['ff', 'fs', 'bl', 'it', 'ul', 'cl'] as const) if (b[key] !== undefined) baseTs[key] = b[key];
   const textRuns: { st: number; ed: number; ts: Record<string, unknown> }[] = [];
   let at = 0;
+  let stream = '';
   for (const run of runs) {
     const ts: Record<string, unknown> = { ...baseTs };
     if (run.bold) ts.bl = 1;
@@ -987,18 +999,23 @@ function richDocument(id: string, runs: readonly RichRun[], base: IStyleData | n
     if (run.color) ts.cl = { rgb: run.color };
     if (run.vertAlign === 'superscript') ts.va = 3;
     else if (run.vertAlign === 'subscript') ts.va = 2;
-    const len = run.text.length;
+    const text = run.text.replace(/\r\n|\r|\n/g, '\r');
+    const len = text.length;
     if (len > 0) textRuns.push({ st: at, ed: at + len, ts });
     at += len;
+    stream += text;
   }
-  const stream = runs.map((r) => r.text).join('');
+  const paragraphs: { startIndex: number }[] = [];
+  for (let i = 0; i < stream.length; i++) if (stream[i] === '\r') paragraphs.push({ startIndex: i });
+  paragraphs.push({ startIndex: stream.length });
   return {
     id,
     documentStyle: {},
     body: {
       dataStream: `${stream}\r\n`,
       textRuns,
-      paragraphs: [{ startIndex: stream.length }],
+      paragraphs,
+      sectionBreaks: [{ startIndex: stream.length + 1 }],
     },
   };
 }

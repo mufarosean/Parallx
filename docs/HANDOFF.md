@@ -26,6 +26,46 @@ untouched (`creationsReplyRoom.test.ts`). Tests: `creationsGrowthAndDialogue`,
 `creationsSupportingCast`, and additions to the Studio core and pane,
 Tables and Story suites.
 
+## Done on 2026-10-06, local: the practice exams' solutions, as the sheet has them
+
+The owner sat Practice Exam 1 and found solutions broken: a merged "Part b"
+box showing only its first line (Q5, Q6, Q7), the typed formulas of Q3
+invisible. Three import faults, all since the first exam import:
+
+- **Rich text was one paragraph.** `richDocument` put Excel's line breaks
+  into the stream raw and listed a single paragraph; Univer drew the first
+  line and stopped. Each line is now its own paragraph, in Univer's marks
+  (a `\r` per paragraph, a section break at the end), the shape Univer
+  itself saves. Plain cells with line breaks were never affected.
+- **Hidden columns had no width.** Rising Fellow ships the solution columns
+  hidden; the drawing geometry counted a hidden column as zero wide, so
+  every text box and rendered equation anchored in the solution collapsed to
+  8 px (65 of 120 equation pictures, 28 of 68 text boxes across the bank;
+  3 CAS problems too). Geometry now uses the sheet as shown; the hidden
+  state stays a view state.
+- **Equation pictures were a quarter full.** `imageBridge.cjs` set the
+  capture page's zoom before loading it, so the zoom never applied: the
+  capture took twice the element's area at 1x and the formula sat in the
+  top-left quarter of a transparent picture, drawn at half size. The
+  equation is now laid out at twice its font size and captured at its own
+  bounds (a crisp 2x, sized as captured). A picture is still no wider than
+  the box Excel gave it; KaTeX draws wider than Excel's linear text, so a
+  formula can read a size smaller than its cell neighbours.
+
+Tests: `worksheetOoxml.test.ts` (a rich string with a break; a drawing under
+hidden columns keeps its size, rendered or not). The owner's data was
+repaired in place by `.claude/scratch-repair-exam-sheets.mjs` (git-ignored):
+the sheet is re-read with the fixed reader, every equation is rendered
+again through the fixed bridge (the script runs as an Electron main script),
+and only the rich cells and the drawings are copied over the stored problem
+and every attempt snapshot; values, styles and his work are untouched;
+an undo file sits beside it. Rendering was checked in a hidden probe on a
+throwaway workspace (`.claude/scratch-probe-exam-render.mjs`).
+
+**Lesson:** the 10-05 record said the exam import was checked. It was the
+import's own status line. An import is checked by opening imported items
+and looking at them; say exactly what was looked at.
+
 ## Done on 2026-10-05, cloud, late: review without a quiz
 
 The owner wanted to go back over problems he has done, filtered as he
