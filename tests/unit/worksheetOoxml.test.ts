@@ -210,10 +210,15 @@ describe('openXlsx + sheetToSnapshot', () => {
     }
     expect(shown.tb0.transform.width).toBeGreaterThan(100);
     // A rendered equation is sized against its box whether the box's columns show or not.
-    sheet.textBoxes[1].rendered = { mime: 'image/png', base64: 'AAAA', width: 400, height: 200 };
+    const box = shown.tb1.transform.width;
+    sheet.textBoxes[1].rendered = { mime: 'image/png', base64: 'AAAA', width: box * 1.25, height: 40 };
     const eq = drawingsOf({ hideFromColumn: 1 }).tb1;
-    expect(eq.transform.width).toBe(shown.tb1.transform.width);
-    expect(eq.transform.height).toBe(Math.round(200 * (shown.tb1.transform.width / 400)));
-    expect(eq.transform.height).toBeGreaterThan(8);
+    expect(eq.transform.width).toBe(Math.round(box));
+    expect(eq.transform.height).toBe(Math.round(40 / 1.25));
+    // Never below 70% of its own size: a long one-line formula runs past a narrow box instead.
+    sheet.textBoxes[1].rendered = { mime: 'image/png', base64: 'AAAA', width: box * 4, height: 40 };
+    const long = drawingsOf({}).tb1;
+    expect(long.transform.width).toBe(Math.round(box * 4 * 0.7));
+    expect(long.transform.height).toBe(Math.round(40 * 0.7));
   });
 });

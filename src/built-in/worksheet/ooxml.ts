@@ -783,6 +783,9 @@ let _snapshotCounter = 0;
  * written into the cell under their top-left corner (the next empty cell to
  * the right when that one is taken); pictures become floating images.
  */
+/** The smallest an equation picture is drawn, as a share of its own size. */
+const EQUATION_MIN_SCALE = 0.7;
+
 export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: SnapshotOptions = {}): SheetSnapshot {
   const unitId = opts.unitId ?? `ws-xlsx-${Date.now()}-${_snapshotCounter++}`;
   const sheetId = opts.sheetId ?? 's0';
@@ -919,11 +922,15 @@ export function sheetToSnapshot(sheet: XlsxSheet, book: XlsxWorkbook, opts: Snap
       width = Math.max(8, tb.extPx?.width ?? 120); height = Math.max(8, tb.extPx?.height ?? 24);
       to = anchorAt(left + width, top + height, widthOf, heightOf);
     }
-    // A rendered equation takes its own size, capped at the box Excel gave it;
-    // anything else is the text box drawn as SVG.
+    // A rendered equation takes its own size, capped at the width of the box
+    // Excel gave it, but never below 70% of its font: KaTeX sets a long
+    // formula on one line where Excel wrapped it over three, and squeezing
+    // that line to the box left 9 px pictures (PE2 Q27, 2026-10-06). Past
+    // the floor the picture runs past its box. Anything else is the text
+    // box drawn as SVG.
     let source: string;
     if (tb.rendered) {
-      const scale = Math.min(1, width / Math.max(1, tb.rendered.width));
+      const scale = Math.max(EQUATION_MIN_SCALE, Math.min(1, width / Math.max(1, tb.rendered.width)));
       width = Math.max(8, Math.round(tb.rendered.width * scale));
       height = Math.max(8, Math.round(tb.rendered.height * scale));
       to = anchorAt(left + width, top + height, widthOf, heightOf);

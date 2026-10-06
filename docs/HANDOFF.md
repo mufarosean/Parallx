@@ -48,9 +48,10 @@ invisible. Three import faults, all since the first exam import:
   capture took twice the element's area at 1x and the formula sat in the
   top-left quarter of a transparent picture, drawn at half size. The
   equation is now laid out at twice its font size and captured at its own
-  bounds (a crisp 2x, sized as captured). A picture is still no wider than
-  the box Excel gave it; KaTeX draws wider than Excel's linear text, so a
-  formula can read a size smaller than its cell neighbours.
+  bounds (a crisp 2x, sized as captured). A picture is capped at the width
+  of the box Excel gave it but never drawn below 70% of its own size
+  (`EQUATION_MIN_SCALE`): KaTeX sets a long formula on one line where Excel
+  wrapped it, and past the floor the picture runs past its box.
 
 Tests: `worksheetOoxml.test.ts` (a rich string with a break; a drawing under
 hidden columns keeps its size, rendered or not). The owner's data was
