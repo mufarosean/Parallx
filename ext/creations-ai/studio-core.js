@@ -189,6 +189,87 @@ export function buildTwistMessages(facts, twist) {
   return [{ role: 'system', content: system }, { role: 'user', content: user }];
 }
 
+// ── Sheet structure ────────────────────────────────────────────────────────
+// The owner wanted the writer to describe, not gesture (2026-10-06): an
+// appearance that says how tall, what the face does, how they sit and move,
+// each in its own paragraph, and the list of what is required to be his to
+// change over time. The structure is a Settings text (DEFAULT_SHEET_STRUCTURE
+// shipped, "Sheet structure" in Settings): a heading names a sheet field, the
+// lines under it are its sections in order. A field named there is written
+// as one paragraph per section, each starting with its label; a field not
+// named keeps its usual shape (FIELD_REQUIREMENTS). The whole sheet and a
+// single field's rewrite follow it alike.
+
+export const DEFAULT_SHEET_STRUCTURE = [
+  '# The shape of each sheet field the Studio writes. A heading names a field',
+  '# (Appearance, Personality, Backstory...); the lines under it are its sections,',
+  '# in order, each written as its own paragraph that starts with the section\'s',
+  '# label. "Label: hint" says what belongs there. A field with no heading here',
+  '# keeps its usual shape. Add "(no labels)" after a heading for plain paragraphs.',
+  '',
+  'Appearance',
+  '- Overview: the impression at first sight, in one or two sentences',
+  '- Height and build: height, weight, frame, posture, how they carry it',
+  '- Face: eyes, hair, skin, the features people remember, what the face does at rest',
+  '- Clothes: what they wear day to day and how they wear it',
+  '- Physicality: how they move, sit, stand and gesture; the habits of their body; what their hands do',
+].join('\n');
+
+/**
+ * The structure text as a map: field key -> { labels, sections: [{ name, hint }] }.
+ * A heading is a field's label or key, case-insensitive, an optional colon,
+ * and optionally "(no labels)". Lines starting with # are notes. A section
+ * line is "- Name: hint" or "- Name"; a field whose heading has no sections
+ * is left out, as is a heading that names no field.
+ */
+export function parseSheetStructure(text) {
+  const out = {};
+  if (typeof text !== 'string' || !text.trim()) return out;
+  const byName = new Map(STUDIO_FIELDS.flatMap((f) => [[f.label.toLowerCase(), f.key], [f.key.toLowerCase(), f.key]]));
+  let current = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const bullet = /^(?:[-*•]|\d+[.)])\s+(.*)$/.exec(line);
+    if (bullet) {
+      if (!current) continue;
+      const m = /^([^:]+?)\s*:\s*(.*)$/.exec(bullet[1]);
+      const name = stripDashes(m ? m[1] : bullet[1]).trim();
+      if (name) current.sections.push({ name, hint: stripDashes(m ? m[2] : '').trim() });
+      continue;
+    }
+    const head = /^(.+?)\s*(\((?:no|without)\s+labels\))?\s*:?\s*$/i.exec(line);
+    const key = head ? byName.get(head[1].trim().toLowerCase()) : undefined;
+    if (!key) { current = null; continue; }
+    current = { labels: !head[2], sections: [] };
+    out[key] = current;
+  }
+  for (const k of Object.keys(out)) if (out[k].sections.length === 0) delete out[k];
+  return out;
+}
+
+/** The requirement line for a field written to a structure: one paragraph per section, in order, each in detail. */
+export function structureRequirement(key, entry) {
+  const n = entry.sections.length;
+  const list = entry.sections.map((s) => (s.hint ? `${s.name} (${s.hint})` : s.name)).join('; ');
+  const first = entry.sections[0].name;
+  const label = entry.labels
+    ? `each paragraph begins with its section's label and a colon, like "${first}: ..."`
+    : 'each paragraph is plain, with no label';
+  return `- "${key}": written as ${n} separate paragraphs, one per section, in this order, with a blank line between them (\\n\\n inside the JSON string); ${label}. Every section is filled with concrete, specific detail about THIS character, several sentences each; none is skipped, merged or padded out. The sections: ${list}.`;
+}
+
+/** Every field's requirement, with the structured fields' lines in place of their usual ones. */
+export function fieldRequirements(structure) {
+  const lines = FIELD_REQUIREMENTS.split('\n');
+  if (!structure || typeof structure !== 'object') return lines.join('\n');
+  return lines.map((l) => {
+    const m = /^- "(\w+)"/.exec(l);
+    const entry = m && structure[m[1]];
+    return entry && entry.sections && entry.sections.length ? structureRequirement(m[1], entry) : l;
+  }).join('\n');
+}
+
 const FIELD_REQUIREMENTS = [
   '- "name": their name. The NAME given above when there is one, exactly; otherwise the canon\'s name when there is one. Otherwise a first name and surname from the character\'s own country and generation, the kind found in a phone book there. Never the fiction defaults: Elias, Elara, Silas, Marcus, Mara, Mira, Thorne, Vance, Vane, Aris, Kael, Vex, Wren. The same rule for every named person in the sheet.',
   '- "tagline": at most ten words, no name, not a restatement of the concept: the one line that says who they are now.',
@@ -219,7 +300,7 @@ const CRAFT_RULES = [
  * the dials as text (only when the user touched them), `twist` the change
  * so the writer knows the world has already moved.
  */
-export function buildSheetMessages({ concept = '', canon = [], spec = '', twist = '', name = '' } = {}) {
+export function buildSheetMessages({ concept = '', canon = [], spec = '', twist = '', name = '', structure = null } = {}) {
   const system = [
     'You are a character designer for roleplay fiction. You create original, specific, believable characters, never generic ones.',
     'Every field is written in the THIRD PERSON, as a description of the character ("<Name> is...", "She speaks..."). Never address anyone as "you", and never the general "you" either ("if you catch them early" becomes "if caught early"); the only "you" is inside the example dialogue. Never write instructions. It should all read as one consistent character portrait.',
@@ -240,7 +321,7 @@ export function buildSheetMessages({ concept = '', canon = [], spec = '', twist 
   if (spec.trim()) {
     parts.push('ATTRIBUTES (fill whatever the canon and the concept leave open; the canon and the concept win on any conflict):', spec.trim(), '');
   }
-  parts.push('Field requirements:', FIELD_REQUIREMENTS, '', CRAFT_RULES);
+  parts.push('Field requirements:', fieldRequirements(structure), '', CRAFT_RULES);
   return [{ role: 'system', content: system }, { role: 'user', content: parts.join('\n') }];
 }
 
@@ -303,7 +384,7 @@ export function pitchAsConcept(concept, pitch) {
  * rewrite ("darker, more about her father", "more detail on the war years");
  * when given it leads, and the field's usual length gives way to it.
  */
-export function buildFieldMessages({ concept = '', canon = [], spec = '', twist = '', name = '' } = {}, sheet, key, direction = '') {
+export function buildFieldMessages({ concept = '', canon = [], spec = '', twist = '', name = '', structure = null } = {}, sheet, key, direction = '') {
   const field = STUDIO_FIELDS.find((f) => f.key === key);
   const label = field ? field.label.toLowerCase() : key;
   const context = [];
@@ -312,7 +393,7 @@ export function buildFieldMessages({ concept = '', canon = [], spec = '', twist 
   if (canon.length > 0) context.push('CANON (must agree with all of these):', ...canon.map((f) => `- ${f}`), '');
   if (twist.trim() && canon.length > 0) context.push(`The canon already includes this change: ${twist.trim()}.`, '');
   if (spec.trim()) context.push('ATTRIBUTES:', spec.trim(), '');
-  const requirement = FIELD_REQUIREMENTS.split('\n').find((l) => l.startsWith(`- "${key}"`)) || '';
+  const requirement = fieldRequirements(structure).split('\n').find((l) => l.startsWith(`- "${key}"`)) || '';
   return [
     { role: 'system', content: `You are a character designer. Write in the THIRD PERSON as a description of the character; never address anyone as "you", not even the general "you"; never write instructions. Return ONLY a JSON object with exactly one string key: "${key}". No commentary. ${NO_DASHES}` },
     { role: 'user', content: [
@@ -323,7 +404,7 @@ export function buildFieldMessages({ concept = '', canon = [], spec = '', twist 
           `Rewrite ONLY the ${label}, following the user's direction for it:`,
           `DIRECTION: ${String(direction).trim()}`,
           'The direction leads: change what it asks to change, add what it asks for, and keep the rest of the sheet true. Length is what the direction needs: if it asks for more detail or depth, write more (up to about three times the current length); otherwise keep about the same length. Plain and concrete, no purple filler, no stock phrases.',
-          `The usual shape of the ${label}, which the direction may override:`,
+          `The usual shape of the ${label}, which the direction may override (a shape given as sections is kept: the direction changes what is in them):`,
         ]
         : [`Rewrite ONLY the ${label}: a fresh take, consistent with the rest of the sheet but written differently than before. Keep to the same length as the current one or shorter; plain and concrete, no purple filler, no stock phrases.`]),
       requirement,

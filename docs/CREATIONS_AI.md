@@ -475,6 +475,21 @@ its own commit and tests:
   none. In every roleplay prompt as "## How People Talk" and in the Story
   Writer's beat prompt. Not prescriptive about voice: the Voice field stays
   description.
+- **Sheet structure (built 2026-10-06).** The owner wanted the writer to
+  describe, not gesture: an appearance that says how tall, what the face
+  does at rest, how they sit and move, each in its own paragraph, and the
+  list of what is required to be his to change over time. A Settings text
+  ("Sheet structure", Reset To Default, empty means every field keeps its
+  usual shape): a heading names a sheet field, the lines under it are its
+  sections in order, "Label: hint"; "(no labels)" after a heading gives
+  plain paragraphs. Shipped: Appearance as Overview, Height and build,
+  Face, Clothes, Physicality. The Studio reads it fresh at every Generate
+  and reroll (`parseSheetStructure`, `fieldRequirements` in
+  `studio-core.js`) and the field's requirement becomes "N separate
+  paragraphs, one per section, in this order, each starting with its label,
+  every section in concrete detail". A steered reroll keeps the sections and
+  changes what is in them. Tests: `creationsStudioCore` ("the sheet
+  structure"), `creationsStudioPane`, `creationsGrowthAndDialogue`.
 - **Supporting cast.** `thread.supportingCast`: a character from the roster
   (its card read fresh each prompt) or a person typed as "Name: who they
   are, how they talk". One line each under "## Supporting Cast"; whoever is

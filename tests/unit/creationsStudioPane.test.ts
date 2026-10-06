@@ -191,6 +191,30 @@ describe('the Studio screen', () => {
     const sheetReq = w.requests.find((r) => r.messages[0].content.includes('character designer for roleplay fiction'))!;
     expect(sheetReq.options).toMatchObject({ format: 'json', think: false, numCtx: 4096 });
     expect(sheetReq.messages[1].content).not.toContain('ATTRIBUTES');
+    // The shipped sheet structure rides in the request: Appearance in sections, one paragraph each.
+    expect(sheetReq.messages[1].content).toMatch(/"appearance": written as 5 separate paragraphs/);
+    expect(sheetReq.messages[1].content).toContain('Physicality (how they move');
+  });
+
+  it('follows the sheet structure from Settings as it stands at each generation, and an emptied one means the usual shape', async () => {
+    const w = makeWorld();
+    let structure: string | undefined = 'Backstory\n- Childhood: where and with whom\n- The war: what it took';
+    w.deps.loadSettings = async () => ({ forgeModelId: '', defaultModel: '', forgeContextWindow: 0, defaultContextWindow: 4096, studioSourceWords: 40, ...(structure === undefined ? {} : { sheetStructure: structure }) });
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    typeInto(root.querySelector('.cs-textarea') as HTMLTextAreaElement, 'An innkeeper');
+    buttonNamed(root, 'Generate').click();
+    await flush();
+    const first = w.requests.filter((r) => r.messages[0].content.includes('character designer for roleplay fiction')).at(-1)!;
+    expect(first.messages[1].content).toMatch(/"backstory": written as 2 separate paragraphs/);
+    expect(first.messages[1].content).toMatch(/"appearance": one vivid paragraph/);
+    structure = '';
+    buttonNamed(root, 'Generate').click();
+    await flush();
+    const second = w.requests.filter((r) => r.messages[0].content.includes('character designer for roleplay fiction')).at(-1)!;
+    expect(second.messages[1].content).not.toContain('separate paragraphs');
+    expect(second.messages[1].content).toMatch(/"backstory": 1-2 paragraphs/);
   });
 
   it('keeps the name you typed through Generate, tells the model, and the rail hears every later save', async () => {

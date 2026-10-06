@@ -1,9 +1,9 @@
 # Handoff: where the work stands
 
-Last updated 2026-10-05, night. Branches: `dev` (app work) and
+Last updated 2026-10-06, early. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7621 tests) and `npm run build` pass.
+tsc, the full vitest suite (7627 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
@@ -42,6 +42,18 @@ must appear somewhere (title, sheet, question, paper name, tags, note), in
 any order; a quoted phrase matches whole; a leading minus excludes
 (`brosius credibility -essay`). It was one substring before, so two words
 apart in the text found nothing.
+
+## Done on 2026-10-06, cloud: the Studio describes to a structure
+
+A Settings text, "Sheet structure" (Creations Settings, under Dialogue
+rules, Reset To Default), names sheet fields and the sections each must
+cover, one paragraph per section starting with its label; shipped with
+Appearance in five (Overview, Height and build, Face, Clothes, Physicality:
+how they move, sit, stand, gesture). The Studio reads it at every Generate
+and reroll. Design and files in `docs/CREATIONS_AI.md`, "Sheet structure".
+To try after a pull and rebuild: Generate a character and read its
+Appearance; then add a field in Settings (say Personality with three
+sections) and reroll that field.
 
 ## Done on 2026-10-05, cloud, late: the assistant always browses privately
 

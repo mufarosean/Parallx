@@ -11,6 +11,7 @@ const {
   buildCanonMessages, buildTwistMessages, buildSheetMessages, buildFieldMessages, buildTryLineMessages,
   parseJsonLoose, extractCompletedFields, parseTwistedCanon, parseCanonFacts, canonCounts,
   composeRoleInstruction, splitRoleInstruction, sheetFromCharacter, characterFromSheet, lineageOf,
+  parseSheetStructure, fieldRequirements, structureRequirement, DEFAULT_SHEET_STRUCTURE,
 } = core;
 
 describe('the sheet', () => {
@@ -266,5 +267,62 @@ describe('the voice requirement', () => {
     expect(line).not.toContain('two signature phrases');
     const [system] = buildTryLineMessages({ name: 'Ada', voice: "Says: 'noted'." }, 'hello');
     expect(system.content).toContain('examples of the register, not lines to say');
+  });
+});
+
+describe('the sheet structure (2026-10-06)', () => {
+  it('ships with Appearance in five sections, physicality among them, and notes the user can read', () => {
+    const st = parseSheetStructure(DEFAULT_SHEET_STRUCTURE);
+    expect(Object.keys(st)).toEqual(['appearance']);
+    expect(st.appearance.labels).toBe(true);
+    expect(st.appearance.sections.map((x: { name: string }) => x.name)).toEqual(['Overview', 'Height and build', 'Face', 'Clothes', 'Physicality']);
+    expect(st.appearance.sections[4].hint).toMatch(/how they move, sit, stand/);
+    expect(DEFAULT_SHEET_STRUCTURE).toMatch(/^# /m);
+  });
+
+  it('reads headings by label or key, any case, with or without a colon; notes, blank lines and unknown headings are skipped', () => {
+    const st = parseSheetStructure([
+      '# a note', '', 'APPEARANCE:', '- Overview', '* Face: eyes and hair', '1. Hands', '',
+      'backstory', '- Childhood: where, with whom', '- The turning point',
+      'Not A Field', '- Ignored: never lands', 'Personality (no labels)', '- Temper: quick or slow', '- Under it',
+      'Secrets', '# a heading with no sections is nothing',
+    ].join('\n'));
+    expect(Object.keys(st).sort()).toEqual(['appearance', 'backstory', 'personality']);
+    expect(st.appearance.sections).toEqual([{ name: 'Overview', hint: '' }, { name: 'Face', hint: 'eyes and hair' }, { name: 'Hands', hint: '' }]);
+    expect(st.backstory.sections[1]).toEqual({ name: 'The turning point', hint: '' });
+    expect(st.personality.labels).toBe(false);
+    expect(parseSheetStructure('')).toEqual({});
+    expect(parseSheetStructure('- Face: orphan bullets before any heading')).toEqual({});
+  });
+
+  it('writes a structured field as one detailed paragraph per section, in order, labelled unless told not to', () => {
+    const st = parseSheetStructure(DEFAULT_SHEET_STRUCTURE);
+    const line = fieldRequirements(st).split('\n').find((l) => l.startsWith('- "appearance"'))!;
+    expect(line).toMatch(/5 separate paragraphs, one per section, in this order/);
+    expect(line).toMatch(/begins with its section's label and a colon, like "Overview: \.\.\."/);
+    expect(line).toMatch(/none is skipped, merged or padded out/);
+    expect(line).toContain('Physicality (how they move, sit, stand and gesture; the habits of their body; what their hands do)');
+    // Every other field keeps its usual line.
+    expect(fieldRequirements(st).split('\n').find((l) => l.startsWith('- "voice"'))).toBe(fieldRequirements(null).split('\n').find((l) => l.startsWith('- "voice"')));
+    const plain = structureRequirement('personality', { labels: false, sections: [{ name: 'Temper', hint: '' }, { name: 'Under it', hint: 'the need' }] });
+    expect(plain).toMatch(/2 separate paragraphs/);
+    expect(plain).toMatch(/each paragraph is plain, with no label/);
+    expect(plain).toContain('Temper; Under it (the need)');
+  });
+
+  it('the whole sheet and a single field\'s rewrite follow it; without a structure the usual shape stands', () => {
+    const st = parseSheetStructure(DEFAULT_SHEET_STRUCTURE);
+    const [, user] = buildSheetMessages({ concept: 'A ferry captain', structure: st });
+    expect(user.content).toContain('Height and build');
+    expect(user.content).not.toMatch(/"appearance": one vivid paragraph/);
+    const [, usual] = buildSheetMessages({ concept: 'A ferry captain' });
+    expect(usual.content).toMatch(/"appearance": one vivid paragraph/);
+    const [, reroll] = buildFieldMessages({ concept: 'A ferry captain', structure: st }, { appearance: 'Tall.' }, 'appearance');
+    expect(reroll.content).toContain('5 separate paragraphs');
+    const [, steered] = buildFieldMessages({ concept: 'A ferry captain', structure: st }, { appearance: 'Tall.' }, 'appearance', 'more about her hands');
+    expect(steered.content).toMatch(/a shape given as sections is kept/);
+    expect(steered.content).toContain('Physicality');
+    const [, other] = buildFieldMessages({ concept: 'A ferry captain', structure: st }, { voice: 'Short.' }, 'voice');
+    expect(other.content).not.toContain('separate paragraphs');
   });
 });
