@@ -7,8 +7,8 @@
 
 import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
 import { EditorInput, type IEditorInput } from '../../editor/editorInput.js';
-import type { SerializedEditorEntry } from '../../editor/editorTypes.js';
-import type { IEditorService, OpenEditorDescriptor } from '../../services/serviceTypes.js';
+import { GroupDirection, type SerializedEditorEntry } from '../../editor/editorTypes.js';
+import type { IEditorService, IEditorGroupService, OpenEditorDescriptor } from '../../services/serviceTypes.js';
 import {
   registerEditorInputDeserializer,
   hasEditorInputDeserializer,
@@ -124,6 +124,7 @@ export class EditorsBridge {
     private readonly _toolId: string,
     private readonly _editorService: IEditorService | undefined,
     private readonly _subscriptions: IDisposable[],
+    private readonly _editorGroupService?: IEditorGroupService,
   ) {}
 
   /**
@@ -306,9 +307,12 @@ export class EditorsBridge {
    * `file://` URIs, UntitledEditorInput for `untitled://`, etc.).
    *
    * @param uri  File URI string (e.g. `file:///C:/project/readme.md` or an fsPath).
-   * @param options  Optional editor open options.
+   * @param options  Optional editor open options. `side` opens the file in the
+   *   group to the right of the active one, splitting when there is none (the
+   *   `markdown.showPreviewToSide` pattern); a file already open somewhere is
+   *   shown there instead. The reveal applies either way.
    */
-  async openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: IFileRevealTarget }): Promise<void> {
+  async openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: IFileRevealTarget; side?: boolean }): Promise<void> {
     this._throwIfDisposed();
 
     if (!_fileEditorResolver) {
@@ -327,11 +331,47 @@ export class EditorsBridge {
       return;
     }
 
-    if (this._editorService) {
-      await this._editorService.openEditor(input, { pinned: options?.pinned ?? true });
-    } else {
+    if (!this._editorService) {
       console.warn(`[EditorsBridge] No editor service available — cannot open file editor.`);
+      return;
     }
+
+    const openOptions = { pinned: options?.pinned ?? true };
+    if (options?.side) {
+      const groupId = this._sideGroupFor(input);
+      if (groupId) {
+        await this._editorService.openEditor(input, openOptions, groupId);
+        this._editorGroupService?.activateGroup(groupId);
+        return;
+      }
+    }
+    await this._editorService.openEditor(input, openOptions);
+  }
+
+  /**
+   * The group a `side` open lands in: the one the file is already open in
+   * (opened again there, the group re-shows it and the reveal applies), else
+   * the group to the right of the active one, else a new split to its right.
+   * Undefined without a group service, so the open falls back to the active
+   * group.
+   */
+  private _sideGroupFor(input: IEditorInput): string | undefined {
+    const open = this._editorService!.getOpenEditors().find((d) => d.id === input.id);
+    if (open) return open.groupId;
+
+    const groups = this._editorGroupService;
+    const active = groups?.activeGroup;
+    if (!groups || !active) return undefined;
+
+    const right = groups.findGroup(GroupDirection.Right, active.id);
+    if (right) return right.id;
+
+    const split = groups.splitGroup(active.id, GroupDirection.Right);
+    if (!split) return undefined;
+    // The split copies the active editor into the new group; the file takes
+    // its place (as markdown.showPreviewToSide does for its preview).
+    if (split.model.count > 0) split.model.closeEditor(0, true);
+    return split.id;
   }
 
   dispose(): void {

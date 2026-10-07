@@ -263,7 +263,7 @@ Adds command entries to specific menus.
 }
 ```
 
-Locations: `commandPalette`, `view/title`, `view/context`, `menubar/tools` (the Tools menu, `title` is the label), and `viewContainer/title`: the More Actions (`⋯`) menu in the sidebar header. Its items always say which container they belong to with `when: "activeViewContainer == '<your container id>'"`, or they would show under every container. Items are sorted by `group`; an item whose command is not registered is not shown. Like every contribution, they leave when the extension is turned off.
+Locations: `commandPalette`, `view/title`, `view/context`, `menubar/tools` (the Tools menu, `title` is the label), and `viewContainer/title`: the More Actions (`⋯`) menu in the sidebar header. Its items always say which container they belong to with `when: "activeViewContainer == '<your container id>'"`, or they would show under every container. And `editor/title`: the More Actions (`⋯`) menu of an editor pane (the PDF viewer today); its items say which editor they belong to with `when: "activeEditor == 'parallx.editor.pdf'"`, the row shows your extension's name at the right, and the command is called with one argument `{ uri, fsPath, page }` (the file's URI string, its path, the current 1-based page). Items are sorted by `group`; an item whose command is not registered is not shown. Like every contribution, they leave when the extension is turned off.
 
 #### `contributes.keybindings`
 
@@ -319,9 +319,10 @@ api.views.setBadge(containerId, { count: 3 })   // or { dot: true } or undefined
 api.editors.registerEditorProvider(typeId, { createEditorPane(container, input) { /* return IDisposable */ } })
 api.editors.openEditor({ typeId, title, icon?, instanceId? })   // → Promise<void>
 api.editors.closeEditor(editorId)                                // → Promise<boolean>
-api.editors.openFileEditor(uri, { pinned?, reveal? })            // open a file in its editor
+api.editors.openFileEditor(uri, { pinned?, reveal?, side? })     // open a file in its editor
 // reveal: { page?, quote? } (PDF), { line?, endLine? } (text), { sheet?, cell? } (spreadsheet, A1 cell);
-// applied once the file has loaded
+// applied once the file has loaded. side: true opens it beside the active editor (the group to
+// its right, split when there is none); a file already open is shown where it is
 api.editors.openEditors                                          // readonly array of descriptors
 api.editors.onDidChangeOpenEditors(listener)                     // → IDisposable
 ```

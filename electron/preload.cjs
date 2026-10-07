@@ -465,7 +465,10 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
 
   document: {
-    /** Extract plain text from a rich document (PDF, Excel, Word, EPUB). Returns { text, format, metadata } or { error }. */
+    /** Extract plain text from a rich document (PDF, Excel, Word, EPUB). Returns { text, format, metadata } or { error }.
+     *  A PDF also carries `pageTexts` (one string per page, in order) and `outline`: its bookmarks as a
+     *  flat list in document order, `[{ title, page, level }]` with `page` 1-based and `level` 0 at the
+     *  top; `[]` when the file has none. */
     extractText: (filePath) => ipcRenderer.invoke('document:extractText', filePath),
 
     /** Full workbook cell grid (values + formulas + merges + widths) for the

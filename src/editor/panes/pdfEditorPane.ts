@@ -49,6 +49,8 @@ import { PdfEditorInput } from './pdfEditorInput.js';
 import { $, hide, show } from '../../ui/dom.js';
 import { beginPointerDrag } from '../../ui/interactionMode.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
+import type { IContextMenuItem } from '../../ui/contextMenu.js';
+import { getEditorTitleActions } from '../../contributions/menuContribution.js';
 import { toDisposable } from '../../platform/lifecycle.js';
 import type { IStorage } from '../../platform/storage.js';
 import { getIcon } from '../../ui/iconRegistry.js';
@@ -1784,6 +1786,19 @@ export class PdfEditorPane extends EditorPane {
       }
     };
 
+    // Entries running tools added through the `editor/title` menu location
+    // (when: activeEditor == this pane's typeId). The pane names no tool: it
+    // lists what is there, with the tool's name at the right so the user can
+    // tell what added it. ContextMenu has no slot for trailing text other
+    // than the keybinding span (muted, right-aligned), so the tag goes there.
+    const toolActions = getEditorTitleActions();
+    const toolItems: IContextMenuItem[] = toolActions.map((a) => ({
+      id: `tool:${a.commandId}`,
+      label: a.label,
+      keybinding: a.toolName,
+      group: 'tools',
+    }));
+
     const menu = ContextMenu.show({
       items: [
         { id: 'pdf.rotate', label: 'Rotate 90°', keybinding: 'R' },
@@ -1808,12 +1823,25 @@ export class PdfEditorPane extends EditorPane {
         },
         { id: 'pdf.print', label: 'Print…', group: 'doc' },
         { id: 'pdf.openExternal', label: 'Open in System Viewer', group: 'doc' },
+        ...toolItems,
       ],
       anchor: { x: r.left, y: r.bottom + 4 },
     });
 
     menu.onDidSelect((e) => {
       const id = e.item.id;
+      const toolAction = toolActions.find((a) => `tool:${a.commandId}` === id);
+      if (toolAction) {
+        // One argument: where the reader is. The command decides what to do with it.
+        const uri = this._currentInput?.uri;
+        if (!uri || !this._commandService) return;
+        void this._commandService.executeCommand(toolAction.commandId, {
+          uri: uri.toString(),
+          fsPath: uri.fsPath,
+          page: this._pdfViewer?.currentPageNumber ?? 1,
+        }).catch((err) => console.error(`[PdfEditorPane] "${toolAction.commandId}" failed:`, err));
+        return;
+      }
       if (id === 'pdf.rotate') this._rotate();
       else if (id === 'pdf.print') this._print();
       else if (id === 'pdf.openExternal') this._openExternal();

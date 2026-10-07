@@ -1,12 +1,14 @@
 // menuContribution.ts — contributes.menus processor
 //
 // Processes the `contributes.menus` section from tool manifests.
-// Manages three menu locations:
+// Manages the menu locations:
 //   - commandPalette: controls command visibility in the palette
 
 import './menuContribution.css';
 //   - view/title: adds action buttons to view title bars
 //   - view/context: adds items to view right-click context menus
+//   - menubar/tools, viewContainer/title: the Tools menu, the sidebar header's More Actions
+//   - editor/title: an editor pane's More Actions (when: activeEditor == '<typeId>')
 //
 // Menu items are conditional on when clauses and sorted by group + order.
 
@@ -33,7 +35,33 @@ const SUPPORTED_MENU_LOCATIONS: ReadonlySet<string> = new Set([
   'view/context',
   'menubar/tools',
   'viewContainer/title',
+  'editor/title',
 ]);
+
+// ─── Editor title actions (module-level, like getToolSelectionActions) ──────
+
+/** A tool's entry in an editor pane's More Actions menu. */
+export interface IEditorTitleAction {
+  readonly commandId: string;
+  /** The item's title, or the command's registered title. */
+  readonly label: string;
+  readonly toolId: string;
+  /** The contributing tool's display name (its manifest name), shown as a tag. */
+  readonly toolName: string;
+}
+
+let _current: MenuContributionProcessor | undefined;
+
+/**
+ * The `editor/title` entries for the active editor, for a pane's More
+ * Actions menu. A pane lists these with no reference to the processor; a
+ * tool turned off takes its entries with it, so no pane offers something
+ * nothing will answer.
+ */
+export function getEditorTitleActions(): readonly IEditorTitleAction[] {
+  if (!_current) return [];
+  return _current.getEditorTitleActions();
+}
 
 // ─── MenuContributionProcessor ───────────────────────────────────────────────
 
@@ -52,6 +80,9 @@ export class MenuContributionProcessor extends Disposable implements IContributi
 
   /** Menu items per tool for cleanup. */
   private readonly _toolMenuItems = new Map<string, IContributedMenuItem[]>();
+
+  /** Display name (manifest name) per tool, for the tag on an editor/title row. */
+  private readonly _toolNames = new Map<string, string>();
 
   /** Rendered title bar action elements for cleanup. */
   private readonly _renderedActions = new Map<string, Map<string, HTMLElement[]>>();
@@ -78,6 +109,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
     private readonly _commandService: CommandService,
   ) {
     super();
+    _current = this;
 
     // Initialize menu location buckets
     for (const loc of SUPPORTED_MENU_LOCATIONS) {
@@ -103,6 +135,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
     if (!menus) return;
 
     const toolId = manifest.id;
+    this._toolNames.set(toolId, manifest.name || toolId);
     const contributedList: IContributedMenuItem[] = [];
 
     for (const [location, items] of Object.entries(menus)) {
@@ -188,6 +221,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
     }
 
     this._toolMenuItems.delete(toolId);
+    this._toolNames.delete(toolId);
     this._onDidRemoveMenus.fire({ toolId });
 
     for (const loc of affectedLocations) {
@@ -331,6 +365,42 @@ export class MenuContributionProcessor extends Disposable implements IContributi
       .map(({ item }) => item);
   }
 
+  // ── Editor Title (an editor pane's More Actions) ──
+
+  /**
+   * An editor pane's More Actions items for the active editor: the
+   * `editor/title` items whose when clause holds (they name their editor
+   * with `activeEditor == '<typeId>'`), sorted by group.
+   */
+  getEditorTitleItems(): readonly IContributedMenuItem[] {
+    const items = this._menuItems.get('editor/title') ?? [];
+    return items
+      .filter((item) => !item.when || !this._contextKeyService || this._contextKeyService.contextMatchesRules(item.when))
+      .map((item, i) => ({ item, i }))
+      .sort((a, b) => (a.item.group ?? '').localeCompare(b.item.group ?? '') || (a.item.order ?? 0) - (b.item.order ?? 0) || a.i - b.i)
+      .map(({ item }) => item);
+  }
+
+  /**
+   * The same items as actions a pane can list: label (the item's title, or
+   * the command's registered title) and the contributing tool's display
+   * name. An item whose command is not registered is left out.
+   */
+  getEditorTitleActions(): readonly IEditorTitleAction[] {
+    const actions: IEditorTitleAction[] = [];
+    for (const item of this.getEditorTitleItems()) {
+      const cmd = this._commandService.getCommand(item.commandId);
+      if (!cmd) continue;
+      actions.push({
+        commandId: item.commandId,
+        label: item.title || cmd.title || cmd.id,
+        toolId: item.toolId,
+        toolName: this._toolNames.get(item.toolId) ?? item.toolId,
+      });
+    }
+    return actions;
+  }
+
   // ── View Context Menu ──
 
   /**
@@ -434,6 +504,8 @@ export class MenuContributionProcessor extends Disposable implements IContributi
     this.dismissContextMenu();
     this._menuItems.clear();
     this._toolMenuItems.clear();
+    this._toolNames.clear();
+    if (_current === this) _current = undefined;
 
     for (const toolRendered of this._renderedActions.values()) {
       for (const elements of toolRendered.values()) {

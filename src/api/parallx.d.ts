@@ -998,9 +998,11 @@ export namespace editors {
    * @param uri  File URI string (e.g. `file:///path/to/file.txt` or an fsPath).
    *             Use `untitled://` for a new untitled document.
    * @param options  Optional editor open options. `reveal` opens the file at
-   *             a spot; it is applied once the file has loaded.
+   *             a spot; it is applied once the file has loaded. `side` opens
+   *             it beside the active editor (the group to its right, split
+   *             when there is none); a file already open is shown where it is.
    */
-  export function openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: FileRevealTarget }): Promise<void>;
+  export function openFileEditor(uri: string, options?: { pinned?: boolean; reveal?: FileRevealTarget; side?: boolean }): Promise<void>;
 
   /**
    * Descriptors for all currently open editors across all groups.

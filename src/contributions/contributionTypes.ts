@@ -58,7 +58,9 @@ export interface IContributedKeybinding {
 /** `menubar/tools`: the Tools menu's launcher list (a tool adds itself there). */
 /** `viewContainer/title`: the sidebar header's More Actions menu; items say
  *  which container they belong to with `when: "activeViewContainer == '<id>'"`. */
-export type MenuLocationId = 'commandPalette' | 'view/title' | 'view/context' | 'menubar/tools' | 'viewContainer/title';
+/** `editor/title`: an editor pane's More Actions menu; items say which editor
+ *  they belong to with `when: "activeEditor == '<typeId>'"`. */
+export type MenuLocationId = 'commandPalette' | 'view/title' | 'view/context' | 'menubar/tools' | 'viewContainer/title' | 'editor/title';
 
 // ─── Contributed Menu Item ───────────────────────────────────────────────────
 

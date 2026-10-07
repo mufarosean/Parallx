@@ -98,7 +98,7 @@ function getAdmZip() {
  * Extract text from a PDF file.
  * @param {Buffer} buffer
  * @param {string} filePath
- * @returns {Promise<{ text: string; pageCount: number }>}
+ * @returns {Promise<{ text: string; pageCount: number; pageTexts: string[]; outline: Array<{ title: string; page: number; level: number }> }>}
  */
 async function extractPdf(buffer, filePath) {
   const { PDFParse } = getPdfParse();
@@ -112,10 +112,59 @@ async function extractPdf(buffer, filePath) {
       // (odd = front, even = back) for printed front/back decks; joining and
       // re-splitting the concatenated text can never recover page boundaries.
       pageTexts: Array.isArray(result.pages) ? result.pages.map((p) => p.text || '') : [],
+      outline: await readPdfOutline(parser),
     };
   } finally {
     try { await parser.destroy(); } catch { /* best-effort cleanup */ }
   }
+}
+
+/**
+ * The PDF's bookmarks (its outline) as a flat list in document order, each
+ * with its 1-based page and nesting level (0 = top). pdf-parse keeps the
+ * pdf.js document it loaded on `parser.doc`; its `getOutline()` gives the
+ * tree, and each entry's destination (a named destination or an explicit
+ * array whose first element is a page reference) resolves to a page index
+ * through `getDestination()` and `getPageIndex()`. An entry whose
+ * destination does not resolve is left out; its children are still walked.
+ * `[]` when the document has no outline or the API is not there. Never throws.
+ * @param {import('pdf-parse').PDFParse} parser
+ * @returns {Promise<Array<{ title: string; page: number; level: number }>>}
+ */
+async function readPdfOutline(parser) {
+  const out = [];
+  try {
+    const doc = /** @type {any} */ (parser).doc;
+    if (!doc || typeof doc.getOutline !== 'function') return out;
+    const nodes = await doc.getOutline();
+    if (!Array.isArray(nodes) || nodes.length === 0) return out;
+
+    const pageOf = async (dest) => {
+      if (typeof dest === 'string') dest = await doc.getDestination(dest);
+      const ref = Array.isArray(dest) ? dest[0] : null;
+      if (typeof ref === 'number') return ref + 1; // some writers store the page index itself
+      if (ref && typeof ref === 'object' && typeof doc.getPageIndex === 'function') {
+        return (await doc.getPageIndex(ref)) + 1;
+      }
+      return null;
+    };
+
+    const walk = async (items, level) => {
+      for (const node of items) {
+        if (!node || typeof node.title !== 'string') continue;
+        let page = null;
+        try { page = await pageOf(node.dest); } catch { page = null; }
+        if (typeof page === 'number' && Number.isFinite(page) && page >= 1) {
+          out.push({ title: node.title.trim(), page, level });
+        }
+        if (Array.isArray(node.items) && node.items.length > 0) await walk(node.items, level + 1);
+      }
+    };
+    await walk(nodes, 0);
+  } catch {
+    // An outline is a bonus: a malformed one costs nothing but the entries read so far.
+  }
+  return out;
 }
 
 /**
@@ -630,7 +679,8 @@ function isRichDocument(ext) {
  * Extract text from a rich document file.
  *
  * @param {string} filePath — absolute path to the file
- * @returns {Promise<{ text: string; format: string; metadata?: Record<string, unknown> }>}
+ * @returns {Promise<{ text: string; format: string; metadata?: Record<string, unknown>; pageTexts?: string[]; outline?: Array<{ title: string; page: number; level: number }> }>}
+ *   A PDF also carries `pageTexts` and `outline` (its bookmarks, flat, in document order, page 1-based, level 0 at the top; `[]` when it has none).
  * @throws {Error} if unsupported format, file too large, or extraction fails
  */
 async function extractText(filePath) {
@@ -651,7 +701,7 @@ async function extractText(filePath) {
   switch (ext) {
     case '.pdf': {
       const result = await extractPdf(buffer, filePath);
-      return { text: result.text, format: 'pdf', metadata: { pageCount: result.pageCount }, pageTexts: result.pageTexts };
+      return { text: result.text, format: 'pdf', metadata: { pageCount: result.pageCount }, pageTexts: result.pageTexts, outline: result.outline };
     }
 
     case '.xlsx':

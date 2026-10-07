@@ -41,6 +41,7 @@ import {
   IContextKeyService,
   IKeybindingService,
   IEditorService,
+  IEditorGroupService,
   IWorkspaceService,
   IWorkspaceBoundaryService,
   IFileService,
@@ -538,7 +539,10 @@ export function createToolApi(
       )
     : undefined;
 
-  const editorsBridge = new EditorsBridge(toolId, editorService, subscriptions);
+  const editorGroupService = deps.services.has(IEditorGroupService)
+    ? deps.services.get(IEditorGroupService)
+    : undefined;
+  const editorsBridge = new EditorsBridge(toolId, editorService, subscriptions, editorGroupService);
 
   // AI chat bridges (M9 Cap 8)
   const languageModelsService = deps.services.has(ILanguageModelsService)
