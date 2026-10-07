@@ -1197,9 +1197,12 @@ async function stDeleteProviderBank(bank) {
  * was turned off) loses its questions and bank; answers stay as history.
  * Providers absent since the start are kept unless `prune: 'all'` (tools
  * still registering at startup must not lose their banks to a race).
- * Returns { providers, inserted, updated, removed }.
+ * `isLive` (optional) is asked after every wait: once it says no (Study
+ * was turned off meanwhile) the sync stops where it is, quietly.
+ * Returns { providers, inserted, updated, removed, stopped? }.
  */
-async function stSyncProviders(registry, { prune = 'gone' } = {}) {
+async function stSyncProviders(registry, { prune = 'gone', isLive = null } = {}) {
+  const stopped = () => typeof isLive === 'function' && !isLive();
   const lister = registry && typeof registry.list === 'function' ? registry.list
     : registry && typeof registry.listQuestionProviders === 'function' ? registry.listQuestionProviders : null;
   if (!lister) return { providers: 0, inserted: 0, updated: 0, removed: 0 };
@@ -1207,16 +1210,20 @@ async function stSyncProviders(registry, { prune = 'gone' } = {}) {
   try { providers = Array.from(lister.call(registry) || []); } catch { providers = []; }
   let inserted = 0;
   let updated = 0;
+  const halted = () => ({ providers: providers.length, inserted, updated, removed: 0, stopped: true });
   const banks = await stListBanks();
+  if (stopped()) return halted();
   const live = new Set();
   for (const p of providers) {
     if (!p || !p.id || typeof p.list !== 'function') continue;
     live.add(String(p.id));
     let items;
     try { items = await p.list({ limit: 2000 }); } catch (err) {
+      if (stopped()) return halted();
       console.warn(`[Study] provider ${p.id} failed to list:`, err && err.message);
       continue;
     }
+    if (stopped()) return halted();
     if (!Array.isArray(items)) continue;
     let bank = banks.find((b) => b.kind === 'provider' && b.providerId === p.id);
     if (!bank) {
@@ -1267,6 +1274,7 @@ async function stSyncProviders(registry, { prune = 'gone' } = {}) {
     }
     const count = await db.get('SELECT COUNT(*) AS n FROM st_questions WHERE provider_id = ?', [p.id]);
     await stSetBankCount(bank.id, (count && count.n) || 0);
+    if (stopped()) return halted();
   }
   let removed = 0;
   for (const bank of banks) {

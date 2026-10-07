@@ -38,6 +38,8 @@ const ST_MAP_CHUNK_CHARS = 24000;
 const ST_ASK_PER_CALL = 24;
 /** Generation passes over a scope before giving up on a format the model cannot write. */
 const ST_MAX_PASSES = 3;
+/** Calls in a row that may keep nothing for one (concept, format) pair before stEnsureBank stops asking for it. */
+const ST_PAIR_MAX_FRUITLESS = 2;
 /** Concept titles this similar (Dice over bigrams of the skeleton) are one concept. */
 const ST_TITLE_SIMILARITY = 0.85;
 
@@ -423,6 +425,14 @@ async function stBuildConceptMap(material, section, {
   if (!model) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
   const text = await stMaterialText(material);
   const existing = await stListConcepts({ materialIds: [material.id] });
+  // Headings a concept's title or quote may start with (page text opens
+  // with its heading, and a model copies it): every section and outline title.
+  const sectionTitles = new Map((await stListSections(material.id)).map((x) => [x.id, String(x.title || '')]));
+  const headings = [...new Set([
+    section && section.title ? String(section.title) : '',
+    ...sectionTitles.values(),
+    ...(Array.isArray(material.outline) ? material.outline.map((o) => String((o && o.title) || '')) : []),
+  ].filter(Boolean))];
   const report = (done, total) => {
     const p = { phase: 'map', done, total, written: 0, kept: 0, dropped: {}, materialId: material.id, sectionId: section ? section.id : 0 };
     if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
@@ -480,10 +490,15 @@ async function stBuildConceptMap(material, section, {
     const raws = stJsonArrayFrom(output);
     for (const raw of raws) {
       if (!raw || typeof raw !== 'object') continue;
-      const title = String(raw.title || '').trim();
-      if (!title) continue;
+      const rawTitle = String(raw.title || '').trim();
+      if (!rawTitle) continue;
+      // A leading copy of a heading comes off the title and the quote before
+      // the anchor check; a title that is only its section's title is no concept.
+      const ownTitle = section && section.title ? stSkeleton(section.title) : '';
+      if (ownTitle && stSkeleton(rawTitle) === ownTitle) continue;
+      const title = stStripLeadingHeading(rawTitle, headings) || rawTitle;
       const summary = String(raw.summary || '').trim();
-      const quote = String(raw.quote || '').trim();
+      const quote = stStripLeadingHeading(String(raw.quote || '').trim(), headings);
       let page = Number(raw.page) || 0;
       if (selectionText) {
         page = Number(selectionPage) || 0;
@@ -493,6 +508,8 @@ async function stBuildConceptMap(material, section, {
         page = located || hint;
       }
       const anchorQuote = quote && (selectionText || stAnchorPageFor(quote, text.pageTexts, page)) ? quote : '';
+      const owner = typeof ownerOf === 'function' && !selectionText ? sectionTitles.get(Number(ownerOf(page)) || 0) : '';
+      if (owner && stSkeleton(rawTitle) === stSkeleton(owner)) continue;
       const prior = stFindSimilarConcept(title, pool);
       if (prior) {
         if (prior.id && !matched.includes(prior)) matched.push(prior);
@@ -1124,20 +1141,22 @@ function stConceptForRaw(raw, group) {
  * (Python). Each check is skipped when its setting is off and counted in
  * dropped when it fails. `maxGroups` > 0 makes at most that many model
  * calls (stEnsureBank visits units round-robin, one call each); `more` says
- * calls were left. `attempted` lists the concepts a call was made for.
- * Returns { kept, written, dropped, runId, needed, status, attempted, more }.
+ * calls were left. `attempted` lists the concepts a call was made for,
+ * `attemptedPairs` the "<conceptId>:<format>" pairs those calls asked for;
+ * a pair in `skipPairs` (a Set of the same keys) is not asked at all.
+ * Returns { kept, written, dropped, runId, needed, status, attempted, attemptedPairs, more }.
  */
 async function stGenerateQuestions(material, {
   sectionId = 0, conceptIds = null, formats = null, perConcept = 0, choices = 0, modelId = '', numCtx = 0,
   token = null, onProgress = null, pythonAvailable = null, stopWhen = null,
-  maxGroups = 0, maxConceptsPerCall = 0, quiet = false,
+  maxGroups = 0, maxConceptsPerCall = 0, quiet = false, skipPairs = null,
 } = {}) {
   const cancelled = () => !!(token && token.cancelled);
   const wanted = Array.isArray(conceptIds) ? new Set(conceptIds.map(Number)) : null;
   const concepts = wanted
     ? (await stListConcepts({ materialIds: [material.id] })).filter((c) => wanted.has(c.id))
     : await stListConcepts({ sectionIds: [sectionId] });
-  const empty = { kept: [], written: 0, dropped: {}, runId: 0, needed: 0, status: 'done', attempted: [], more: false };
+  const empty = { kept: [], written: 0, dropped: {}, runId: 0, needed: 0, status: 'done', attempted: [], attemptedPairs: [], more: false };
   if (!concepts.length) return empty;
 
   const per = Math.max(1, Number(perConcept) || Number(cfg('questionsPerConcept', 2)) || 2);
@@ -1160,6 +1179,7 @@ async function stGenerateQuestions(material, {
     const need = {};
     for (const f of stApplicableFormats(c, python)) {
       if (allowed && !allowed.has(f)) continue;
+      if (skipPairs && skipPairs.has(`${c.id}:${f}`)) continue;
       const n = per - ((have.get(c.id) && have.get(c.id).get(f)) || 0);
       if (n > 0) { need[f] = n; needed += n; }
     }
@@ -1181,6 +1201,7 @@ async function stGenerateQuestions(material, {
   let groupsDone = 0;
   let more = false;
   const attempted = [];
+  const attemptedPairs = [];
   const report = (phase, extra) => {
     const p = {
       phase, done: conceptsDone, total: plan.length, written, kept: kept.length, dropped,
@@ -1231,7 +1252,10 @@ async function stGenerateQuestions(material, {
         if (cancelled()) { status = 'stopped'; break; }
         throw err;
       }
-      for (const slot of group) attempted.push(slot.concept.id);
+      for (const slot of group) {
+        attempted.push(slot.concept.id);
+        for (const f of Object.keys(slot.need)) attemptedPairs.push(`${slot.concept.id}:${f}`);
+      }
       const raws = stJsonArrayFrom(output);
       if (!raws.length) {
         dropped.parse += 1;
@@ -1323,7 +1347,7 @@ async function stGenerateQuestions(material, {
   }
   await stFinishRun(runId, { status, written, kept: kept.length, dropped });
   report(status === 'stopped' ? 'stopped' : 'done');
-  return { kept, written, dropped, runId, needed, status, attempted, more };
+  return { kept, written, dropped, runId, needed, status, attempted, attemptedPairs, more };
 }
 
 // ── Grading, explaining, rubrics ────────────────────────────────────────────
@@ -1696,6 +1720,70 @@ async function stScopeStats(scope) {
   };
 }
 
+/**
+ * Could generation still add questions to a scope? True while a unit is
+ * unmapped or a concept lacks questionsPerConcept of an applicable format;
+ * never for a bank. (A format the model keeps failing still counts as
+ * lacking: the draw that then repeats says so itself.)
+ */
+async function stScopeCanGrow(scope) {
+  if (!scope || scope.kind === 'bank') return false;
+  if (scope.kind !== 'weak') {
+    for (const { material, units } of await stScopeUnits(scope)) {
+      for (const u of units) {
+        if (u.selection) { if (!stSelectionConceptIds(scope).length) return true; continue; }
+        if (u.section.mappedAt > 0) continue;
+        if (!u.partial) return true;
+        const known = await stListConcepts({ materialIds: [material.id] });
+        if (!known.some((c) => stInRanges(c.page, u.ranges))) return true;
+      }
+    }
+  }
+  const concepts = await stScopeConcepts(scope);
+  if (!concepts.length) return false;
+  const per = Math.max(1, Number(cfg('questionsPerConcept', 2)) || 2);
+  const python = cfg('checkNumeric', true) !== false ? await stPythonAvailable() : false;
+  const have = new Map();
+  for (const q of await stListQuestions({ conceptIds: concepts.map((c) => c.id) })) {
+    const key = `${q.conceptId}:${q.format}`;
+    have.set(key, (have.get(key) || 0) + 1);
+  }
+  return concepts.some((c) => stApplicableFormats(c, python).some((f) => (have.get(`${c.id}:${f}`) || 0) < per));
+}
+
+/**
+ * Will the session's next Refresh repeat questions? When fewer than a
+ * draw's worth of usable questions in scope are unasked in the session and
+ * either `drewRepeats` (the draw on screen already repeated) or generation
+ * can add nothing (stScopeCanGrow).
+ */
+async function stRefreshWillRepeat(session, { drewRepeats = false } = {}) {
+  const scope = (session && session.scope) || {};
+  const size = Number(session && session.size) || Number(cfg('sessionSize', 20)) || 20;
+  const asked = new Set((await stListSessionItems(session.id)).map((i) => i.questionId));
+  const pool = await stScopePool(scope);
+  const unseen = pool.questions.filter((q) => !asked.has(q.id)).length;
+  if (unseen >= size) return false;
+  if (drewRepeats || scope.kind === 'bank') return true;
+  return !(await stScopeCanGrow(scope));
+}
+
+/** How many usable questions in the session's scope it has not asked yet. */
+async function stScopeUnseenCount(session) {
+  const scope = (session && session.scope) || {};
+  const asked = new Set((await stListSessionItems(session.id)).map((i) => i.questionId));
+  const pool = await stScopePool(scope);
+  return pool.questions.filter((q) => !asked.has(q.id)).length;
+}
+
+/** The results line for a Refresh that will repeat: exact about what is left unasked. Pure. */
+function stRepeatLineText(unseen) {
+  const n = Math.max(0, Number(unseen) || 0);
+  if (n === 0) return 'Every question here has been asked; Refresh repeats the ones you missed first.';
+  if (n === 1) return 'One question here is still unasked; Refresh adds repeats, missed first.';
+  return `Only ${n} questions here are still unasked; Refresh adds repeats, missed first.`;
+}
+
 /** The number of usable (non-hidden, answerable) questions in a scope, for stSessionNeedsGeneration. */
 async function stScopeQuestionCount(scope) {
   return (await stScopeStats(scope)).available;
@@ -1762,10 +1850,12 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
   const emit = (phase, inner = null, unit = null) => {
     const innerKept = inner ? Number(inner.kept) || 0 : 0;
     const available = result.available + innerKept;
+    const total = target || run.unitsTotal;
     const p = {
       phase,
-      done: target ? Math.min(available, target) : run.unitsDone,
-      total: target || run.unitsTotal,
+      // A finished call is complete whatever it found: done reaches total.
+      done: phase === 'done' ? total : target ? Math.min(available, target) : run.unitsDone,
+      total,
       written: run.written + (inner ? Number(inner.written) || 0 : 0),
       kept: run.kept + innerKept,
       dropped: stAddDropped(run.dropped, inner && inner.dropped),
@@ -1825,6 +1915,15 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
     return m;
   };
   const attempts = new Map();
+  // (concept, format) pairs: consecutive calls that kept nothing for the
+  // pair; after ST_PAIR_MAX_FRUITLESS the pair is not asked again in this
+  // call (a format the model keeps getting wrong).
+  const pairTries = new Map();
+  const skipPairs = new Set();
+  // Units whose last visit made every call it could and kept nothing, since
+  // the last question kept: once every live unit is here, a full pass kept
+  // nothing and the call ends.
+  const barren = new Set();
   const touched = new Map();
   const finish = (unit) => {
     if (unit.done) return;
@@ -1874,13 +1973,22 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
       sectionId: unit.section ? unit.section.id : 0,
       conceptIds: eligible.map((c) => c.id),
       perConcept: sweepPer, choices, modelId: model, numCtx, token, onProgress: innerFor(unit), pythonAvailable,
-      maxGroups: 1, maxConceptsPerCall: target ? 1 : 0, quiet: true,
+      maxGroups: 1, maxConceptsPerCall: target ? 1 : 0, quiet: true, skipPairs,
     });
     run.written += Number(gen.written) || 0;
     run.kept += gen.kept.length;
     result.available += gen.kept.length;
     run.dropped = stAddDropped(run.dropped, gen.dropped);
     for (const id of gen.attempted || []) attempts.set(id, (attempts.get(id) || 0) + 1);
+    const keptPairs = new Set(gen.kept.map((q) => `${q.conceptId}:${q.format}`));
+    for (const key of gen.attemptedPairs || []) {
+      if (keptPairs.has(key)) { pairTries.delete(key); continue; }
+      const n = (pairTries.get(key) || 0) + 1;
+      pairTries.set(key, n);
+      if (n >= ST_PAIR_MAX_FRUITLESS) skipPairs.add(key);
+    }
+    if (gen.kept.length) barren.clear();
+    else if ((gen.attempted || []).length && !gen.more) barren.add(unit);
     if (!gen.needed || (!(gen.attempted || []).length && gen.status !== 'stopped')) finish(unit);
   };
 
@@ -1889,8 +1997,10 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
   // second fills each concept up to questionsPerConcept.
   const sweeps = target && perConcept > 1 ? [1, perConcept] : [perConcept];
   let sweepPer = sweeps[0];
+  let fruitless = false;
   for (let sweep = 0; sweep < sweeps.length; sweep++) {
     sweepPer = sweeps[sweep];
+    barren.clear();
     if (sweep > 0) {
       attempts.clear();
       for (const q of queues) { q.cursor = 0; for (const u of q.units) u.done = false; }
@@ -1912,8 +2022,10 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
       if (!unit) continue;
       await visit(unit);
       emit('generate', null, unit);
+      const stillLive = queues.flatMap((q) => q.units.filter((u) => !u.done));
+      if (stillLive.length && stillLive.every((u) => barren.has(u))) { fruitless = true; break; }
     }
-    if (cancelled() || (target && result.available >= target)) break;
+    if (fruitless || cancelled() || (target && result.available >= target)) break;
   }
   result.kept = run.kept;
   result.concepts = [...touched.values()];
@@ -1946,9 +2058,13 @@ async function stDeriveDrawRubrics(draw, session, { token = null, onProgress = n
  * unseen questions remain (never for a bank scope: there is nothing to
  * generate from), draw with stDrawSession excluding everything the session
  * already holds, give bank questions their concepts and rubrics, and record
- * the items. Returns the questions in order (empty when the scope has
- * nothing left or the run was stopped); `unanswerable` on the array counts
- * the questions left out for having neither answer nor rubric.
+ * the items. When the scope still has fewer than `size` unseen questions
+ * after that, the draw is filled with questions this session already asked
+ * (stRepeatFill: missed first, then retried, then the oldest answered),
+ * never one twice, materials still interleaved. Returns the questions in
+ * order (empty when the scope has no usable question or the run was
+ * stopped); `unanswerable` on the array counts the questions left out for
+ * having neither answer nor rubric, `repeats` how many were asked before.
  */
 async function stNextDraw(session, { token = null, onProgress = null } = {}) {
   const scope = session.scope || {};
@@ -1965,18 +2081,28 @@ async function stNextDraw(session, { token = null, onProgress = null } = {}) {
     pool = await stScopePool(scope, { materialize, ensured });
     candidates = pool.questions.filter((q) => !exclude.has(q.id));
   }
-  const empty = () => Object.assign([], { unanswerable: pool.unanswerable });
+  const empty = () => Object.assign([], { unanswerable: pool.unanswerable, repeats: 0 });
   if (token && token.cancelled) return empty();
-  if (!candidates.length) return empty();
+  if (!pool.questions.length) return empty();
   const conceptById = new Map(pool.concepts.map((c) => [c.id, c]));
-  const draw = stDrawSession({
+  const fresh = candidates.length ? (stDrawSession({
     questions: pool.questions, concepts: pool.concepts, size, exclude,
     answerFormat: session.answerFormat, now: stNow(), rng: Math.random,
     staleDays: Number(cfg('staleDays', 14)) || 14,
-  }) || [];
+  }) || []) : [];
+  let draw = fresh;
+  let repeats = 0;
+  if (fresh.length < size) {
+    const taken = new Set(fresh.map((q) => q.id));
+    // Only questions whose concept is in scope, as stDrawSession requires.
+    const inScope = pool.questions.filter((q) => conceptById.has(q.conceptId));
+    const again = stRepeatFill({ items, questions: inScope, exclude: taken, limit: size - fresh.length });
+    repeats = again.length;
+    if (repeats) draw = stInterleaveMaterials(fresh.concat(again));
+  }
   if (!draw.length) return empty();
   await stDeriveDrawRubrics(draw, session, { token, onProgress });
   const formats = draw.map((q) => stResolveFormat(conceptById.get(q.conceptId) || stPseudoConcept(q.conceptId), q, session.answerFormat));
   await stAddSessionItems(session.id, Number(session.refreshes) || 0, draw.map((q) => q.id), formats);
-  return Object.assign(draw, { unanswerable: pool.unanswerable });
+  return Object.assign(draw, { unanswerable: pool.unanswerable, repeats });
 }

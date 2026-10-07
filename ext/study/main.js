@@ -39,20 +39,92 @@ let _api = null;
 /** api.database, bound in activate(). */
 let _dbBridge = null;
 
+// ── Activation tokens ──────────────────────────────────────────────────────
+// Turning Study off and on again may re-run activate on the same module, or
+// load a fresh copy while the old one still has promises in flight. Every
+// activate and deactivate moves the token on; work started under one token
+// (a provider sync, a generation run, marking, a retry, a widget refresh)
+// compares it when it resumes and stops quietly once it is no longer
+// current. Listeners registered on anything outside Study go through stOwn,
+// so deactivate removes them whatever order the host disposes things in.
+
+/** The current activation (0 while Study is off, before the first activate). */
+let _stActivation = 0;
+
+/** The token to capture when work starts. */
+function stActivation() {
+  return _stActivation;
+}
+
+/** True while `token` is the running activation and the host api is bound. */
+function stIsCurrent(token) {
+  return token === _stActivation && !!_api && !!_dbBridge;
+}
+
+/** The error a database call raises once Study is off: stale work stops on it, quietly. */
+function stStoppedError() {
+  const err = new Error('[Study] Study is turned off.');
+  err.stStopped = true;
+  return err;
+}
+
+/** An error that only says Study went off under the work (logged by no one). */
+function stIsStopped(err) {
+  return !!(err && err.stStopped);
+}
+
+/** Disposables Study registered outside itself, removed on deactivate. */
+const _stOwned = new Set();
+
+/**
+ * Own a disposable (or a dispose function) registered for activation
+ * `token`: it goes on context.subscriptions and in _stOwned, and disposes at
+ * most once, whichever of the host or deactivate gets there first. A
+ * registration that arrives after its activation ended is disposed at once.
+ */
+function stOwn(context, token, disposable) {
+  if (!disposable) return disposable;
+  let done = false;
+  const own = {
+    dispose: () => {
+      if (done) return;
+      done = true;
+      _stOwned.delete(own);
+      try {
+        if (typeof disposable === 'function') disposable();
+        else if (typeof disposable.dispose === 'function') disposable.dispose();
+      } catch { /* a host disposable that throws is not ours */ }
+    },
+  };
+  if (token !== _stActivation) { own.dispose(); return own; }
+  _stOwned.add(own);
+  try { context.subscriptions.push(own); } catch { /* no context: deactivate still disposes it */ }
+  return own;
+}
+
+/** Dispose everything stOwn holds (deactivate). */
+function stDisposeOwned() {
+  for (const own of [..._stOwned]) own.dispose();
+}
+
 /** The Flashcards database wrapper, copied: errors surface as thrown Errors
- *  with a prefix, so a failed statement never reads as an empty result. */
+ *  with a prefix, so a failed statement never reads as an empty result.
+ *  With Study off (no bridge) every call throws stStoppedError. */
 const db = {
   async run(sql, params = []) {
+    if (!_dbBridge) throw stStoppedError();
     const res = await _dbBridge.run(sql, params);
     if (res.error) throw new Error(`[ST-DB] ${res.error.message}`);
     return res;
   },
   async get(sql, params = []) {
+    if (!_dbBridge) throw stStoppedError();
     const res = await _dbBridge.get(sql, params);
     if (res.error) throw new Error(`[ST-DB] ${res.error.message}`);
     return res.row ?? null;
   },
   async all(sql, params = []) {
+    if (!_dbBridge) throw stStoppedError();
     const res = await _dbBridge.all(sql, params);
     if (res.error) throw new Error(`[ST-DB] ${res.error.message}`);
     return res.rows ?? [];
@@ -80,9 +152,10 @@ function icon(id, size = 16) {
   return '';
 }
 
-/** A Study setting (the manifest's `study.*` keys, given without the prefix). */
+/** A Study setting (the manifest's `study.*` keys, given without the prefix); the fallback while Study is off. */
 function cfg(key, fallback) {
   try {
+    if (!_api || !_api.workspace) return fallback;
     const c = _api.workspace.getConfiguration('study');
     const v = c.get(String(key).replace(/^study\./, ''), fallback);
     return v === undefined ? fallback : v;
@@ -167,8 +240,12 @@ const bus = (() => {
       const set = listeners.get(event);
       if (!set) return;
       for (const fn of [...set]) {
-        try { fn(detail); } catch (err) { console.error('[Study] listener failed', err); }
+        try { fn(detail); } catch (err) { if (!stIsStopped(err)) console.error('[Study] listener failed', err); }
       }
+    },
+    /** Drop every listener (deactivate: nothing of Study listens while it is off). */
+    clear() {
+      listeners.clear();
     },
   };
 })();
@@ -423,32 +500,120 @@ function stCoverage(concepts, now, opts) {
 }
 
 /**
- * Tally a session's items: right, wrong, skipped, answered, and the missed
- * list (one entry per wrong item). `secondMiss` marks an item whose concept
- * was already missed earlier in the session, or whose concept is on a miss
- * streak of two or more. Items carry conceptId, or a question with one.
+ * Tally a session's items: right, wrong, skipped, answered, the missed list
+ * (one entry per wrong item) and `missedConcepts`, the same misses grouped
+ * by concept (one entry per concept, in order of first miss; a question
+ * without a concept is its own group): `count` misses in these items, the
+ * note and question of the most recent one, and `secondMiss` when the
+ * concept was missed before these items too (its miss streak runs past
+ * them). In `missed`, `secondMiss` marks an item whose concept was already
+ * missed earlier in the items, or whose concept is on a miss streak of two
+ * or more. Items carry conceptId, or a question with one.
  */
 function stSessionSummary(items, concepts) {
   const byId = new Map();
   for (const c of concepts || []) if (c && c.id != null) byId.set(c.id, c);
-  const out = { right: 0, wrong: 0, skipped: 0, answered: 0, missed: [] };
+  const out = { right: 0, wrong: 0, skipped: 0, answered: 0, missed: [], missedConcepts: [] };
   const seenMiss = new Set();
-  for (const it of items || []) {
-    if (!it) continue;
+  const groups = new Map();
+  (items || []).forEach((it, index) => {
+    if (!it) return;
     const status = it.status;
     if (status === 'right') out.right++;
     else if (status === 'wrong') out.wrong++;
     else if (status === 'skipped') out.skipped++;
-    if (status !== 'wrong') continue;
+    if (status !== 'wrong') return;
     const conceptId = it.conceptId ?? it.question?.conceptId ?? 0;
+    const questionId = it.questionId ?? it.question?.id ?? 0;
     const concept = byId.get(conceptId);
     const secondMiss = seenMiss.has(conceptId) || (Number(concept?.missStreak) || 0) >= 2;
     seenMiss.add(conceptId);
     const verdict = typeof it.verdict === 'string' ? (stExtractJsonObject(it.verdict) || {}) : (it.verdict || {});
-    out.missed.push({ conceptId, questionId: it.questionId ?? it.question?.id ?? 0, note: String(verdict.note || ''), secondMiss });
+    const note = String(verdict.note || '');
+    out.missed.push({ conceptId, questionId, note, secondMiss });
+    const key = conceptId ? `c:${conceptId}` : `q:${questionId}`;
+    const at = Number(it.answeredAt) || 0;
+    const g = groups.get(key);
+    if (!g) {
+      const entry = { conceptId, questionId, note, count: 1, secondMiss: false, at, index };
+      groups.set(key, entry);
+      out.missedConcepts.push(entry);
+    } else {
+      g.count += 1;
+      // The most recent miss gives the row its note and question.
+      if (at > g.at || (at === g.at && index > g.index)) Object.assign(g, { questionId, note, at, index });
+    }
+  });
+  for (const g of out.missedConcepts) {
+    const streak = Number(byId.get(g.conceptId)?.missStreak) || 0;
+    g.secondMiss = !!g.conceptId && streak > g.count;
+    delete g.at;
+    delete g.index;
   }
   out.answered = out.right + out.wrong;
   return out;
+}
+
+/**
+ * The status words of a missed row: "missed twice" or "missed N times" when
+ * the concept was missed more than once in the draw, "second miss" when it
+ * was missed in an earlier session too, else "weak".
+ */
+function stMissedStatusText(entry) {
+  const n = Number(entry && entry.count) || 1;
+  if (n === 2) return 'missed twice';
+  if (n > 2) return `missed ${n} times`;
+  return entry && entry.secondMiss ? 'second miss' : 'weak';
+}
+
+/**
+ * Questions to repeat when a scope has fewer unseen questions than a draw
+ * needs: from the session's items, each question once (its latest item
+ * decides), ordered answered wrong (most recent first), then retried (most
+ * recent first), then the rest (oldest answer first). Only questions in
+ * `questions` (the usable pool) and not in `exclude` (the draw so far); at
+ * most `limit`.
+ */
+function stRepeatFill({ items = [], questions = [], exclude, limit = 0 } = {}) {
+  const max = Math.max(0, Math.floor(Number(limit) || 0));
+  if (!max) return [];
+  const excluded = exclude instanceof Set ? exclude : new Set(Array.isArray(exclude) ? exclude : []);
+  const byId = new Map();
+  for (const q of questions || []) if (q && !q.hidden && q.id != null) byId.set(q.id, q);
+  const latest = new Map();
+  (items || []).forEach((it, index) => {
+    if (!it || !byId.has(it.questionId) || excluded.has(it.questionId)) return;
+    const at = Number(it.answeredAt) || 0;
+    const prior = latest.get(it.questionId);
+    if (!prior || at > prior.at || (at === prior.at && index > prior.index)) latest.set(it.questionId, { it, at, index });
+  });
+  const rank = ({ it }) => (it.retried ? 1 : it.status === 'wrong' ? 0 : 2);
+  const ordered = [...latest.values()].sort((a, b) => {
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    if (ra < 2) return (b.at - a.at) || (b.index - a.index);
+    return (a.at - b.at) || (a.index - b.index);
+  });
+  return ordered.slice(0, max).map((e) => byId.get(e.it.questionId));
+}
+
+/**
+ * True when a grader's note only restates a missed or partial rubric point:
+ * the letters-and-digits skeleton of one contains the other's and the
+ * shorter is at least 80% of the longer. The note is then left out, since
+ * the point already says it.
+ */
+function stNoteRestatesPoint(note, rubric, points) {
+  const n = stSkeleton(note);
+  if (!n) return false;
+  return (Array.isArray(rubric) ? rubric : []).some((p, i) => {
+    const status = (points && points[i] && points[i].status) || 'miss';
+    if (status === 'hit') return false;
+    const t = stSkeleton(p && typeof p === 'object' ? p.text : p);
+    if (!t) return false;
+    const [short, long] = t.length <= n.length ? [t, n] : [n, t];
+    return long.includes(short) && short.length / long.length >= 0.8;
+  });
 }
 
 /** Reorder so no two consecutive items share a materialId when avoidable. Stable otherwise. */
@@ -552,6 +717,51 @@ function stSkeleton(text) {
     i += width - 1;
   }
   return out;
+}
+
+/** A heading without its number or "Chapter 3:" prefix ("2.2 The Cape Cod Method" → "The Cape Cod Method"). */
+function stHeadingCore(title) {
+  return String(title || '').trim()
+    .replace(/^(?:chapter|part|appendix|section)\s+(?:\d{1,3}(?:\.\d{1,3})*|[IVXLC]{1,6}|[A-Z])\b\s*[.:-]?\s*/i, '')
+    .replace(/^\d{1,3}(?:\.\d{1,3})*\.?\s+/, '')
+    .trim();
+}
+
+/**
+ * Text with a leading copy of a heading taken off: "The Cape Cod Method The
+ * Cape Cod method assumes…" with the heading "2.2 The Cape Cod Method" reads
+ * "The Cape Cod method assumes…". A heading matches with or without its
+ * number, ignoring case, spacing and punctuation; what follows must start a
+ * new phrase (a capital or a digit), so "Cape Cod Method assumptions" keeps
+ * its words. Returns the text unchanged when nothing matches, '' when the
+ * text is only a heading.
+ */
+function stStripLeadingHeading(text, headings) {
+  const source = String(text ?? '').trim();
+  if (!source) return source;
+  const variants = [];
+  for (const h of Array.isArray(headings) ? headings : []) {
+    for (const v of [String(h || ''), stHeadingCore(h)]) {
+      const sk = stSkeleton(v);
+      if (sk.length >= 3 && !variants.includes(sk)) variants.push(sk);
+    }
+  }
+  variants.sort((a, b) => b.length - a.length);
+  for (const sk of variants) {
+    let i = 0;
+    let got = '';
+    while (i < source.length && got.length < sk.length) {
+      got += stSkeleton(source[i]);
+      i += 1;
+      if (!sk.startsWith(got)) break;
+    }
+    if (got !== sk) continue;
+    const rest = source.slice(i).replace(/^[\s.:;,\-–—)]+/u, '');
+    if (!rest) return '';
+    if (stSkeleton(source[i] || '')) continue; // the heading ends inside a word
+    if (/^[\p{Lu}\p{N}"“'‘(]/u.test(rest)) return rest;
+  }
+  return source;
 }
 
 /** Trigram counts of a skeleton. */
@@ -1100,22 +1310,27 @@ function stMapVerdictToRating(verdict, rubric) {
   return s.score >= ST_GRADE_GOOD_FLOOR ? GOOD : HARD;
 }
 
-const ST_NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+const ST_NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 
+/** A count in words up to ten, digits above. */
 function stNumberWord(n) {
   return ST_NUMBER_WORDS[n] ?? String(n);
 }
 
-/** The verdict line: Complete, "Two of three", Not quite, Contradicts the source. */
+/**
+ * The verdict line: "Contradicts the source"; "Complete" when every point
+ * is hit; "Partly" with no hit and some partial; "Not quite" with neither;
+ * else "<hits> of <total>", with ", <n> partly" when some are partial
+ * ("Two of three, one partly").
+ */
 function stVerdictLabel(verdict, rubric) {
-  const s = stScoreVerdict(verdict, rubric);
   if (verdict?.contradiction) return 'Contradicts the source';
-  if (!s.total) return 'Not quite';
-  if (s.hits === s.total) return 'Complete';
-  const rating = stMapVerdictToRating(verdict, rubric);
-  if (rating === AGAIN) return 'Not quite';
+  const s = stScoreVerdict(verdict, rubric);
+  if (s.total && s.hits === s.total) return 'Complete';
+  if (!s.hits) return s.partials ? 'Partly' : 'Not quite';
   const got = stNumberWord(s.hits);
-  return `${got.charAt(0).toUpperCase()}${got.slice(1)} of ${stNumberWord(s.total)}`;
+  const head = `${got.charAt(0).toUpperCase()}${got.slice(1)} of ${stNumberWord(s.total)}`;
+  return s.partials ? `${head}, ${stNumberWord(s.partials)} partly` : head;
 }
 
 function stRatingWord(rating) {
@@ -3011,9 +3226,12 @@ async function stDeleteProviderBank(bank) {
  * was turned off) loses its questions and bank; answers stay as history.
  * Providers absent since the start are kept unless `prune: 'all'` (tools
  * still registering at startup must not lose their banks to a race).
- * Returns { providers, inserted, updated, removed }.
+ * `isLive` (optional) is asked after every wait: once it says no (Study
+ * was turned off meanwhile) the sync stops where it is, quietly.
+ * Returns { providers, inserted, updated, removed, stopped? }.
  */
-async function stSyncProviders(registry, { prune = 'gone' } = {}) {
+async function stSyncProviders(registry, { prune = 'gone', isLive = null } = {}) {
+  const stopped = () => typeof isLive === 'function' && !isLive();
   const lister = registry && typeof registry.list === 'function' ? registry.list
     : registry && typeof registry.listQuestionProviders === 'function' ? registry.listQuestionProviders : null;
   if (!lister) return { providers: 0, inserted: 0, updated: 0, removed: 0 };
@@ -3021,16 +3239,20 @@ async function stSyncProviders(registry, { prune = 'gone' } = {}) {
   try { providers = Array.from(lister.call(registry) || []); } catch { providers = []; }
   let inserted = 0;
   let updated = 0;
+  const halted = () => ({ providers: providers.length, inserted, updated, removed: 0, stopped: true });
   const banks = await stListBanks();
+  if (stopped()) return halted();
   const live = new Set();
   for (const p of providers) {
     if (!p || !p.id || typeof p.list !== 'function') continue;
     live.add(String(p.id));
     let items;
     try { items = await p.list({ limit: 2000 }); } catch (err) {
+      if (stopped()) return halted();
       console.warn(`[Study] provider ${p.id} failed to list:`, err && err.message);
       continue;
     }
+    if (stopped()) return halted();
     if (!Array.isArray(items)) continue;
     let bank = banks.find((b) => b.kind === 'provider' && b.providerId === p.id);
     if (!bank) {
@@ -3081,6 +3303,7 @@ async function stSyncProviders(registry, { prune = 'gone' } = {}) {
     }
     const count = await db.get('SELECT COUNT(*) AS n FROM st_questions WHERE provider_id = ?', [p.id]);
     await stSetBankCount(bank.id, (count && count.n) || 0);
+    if (stopped()) return halted();
   }
   let removed = 0;
   for (const bank of banks) {
@@ -3155,6 +3378,8 @@ const ST_MAP_CHUNK_CHARS = 24000;
 const ST_ASK_PER_CALL = 24;
 /** Generation passes over a scope before giving up on a format the model cannot write. */
 const ST_MAX_PASSES = 3;
+/** Calls in a row that may keep nothing for one (concept, format) pair before stEnsureBank stops asking for it. */
+const ST_PAIR_MAX_FRUITLESS = 2;
 /** Concept titles this similar (Dice over bigrams of the skeleton) are one concept. */
 const ST_TITLE_SIMILARITY = 0.85;
 
@@ -3540,6 +3765,14 @@ async function stBuildConceptMap(material, section, {
   if (!model) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
   const text = await stMaterialText(material);
   const existing = await stListConcepts({ materialIds: [material.id] });
+  // Headings a concept's title or quote may start with (page text opens
+  // with its heading, and a model copies it): every section and outline title.
+  const sectionTitles = new Map((await stListSections(material.id)).map((x) => [x.id, String(x.title || '')]));
+  const headings = [...new Set([
+    section && section.title ? String(section.title) : '',
+    ...sectionTitles.values(),
+    ...(Array.isArray(material.outline) ? material.outline.map((o) => String((o && o.title) || '')) : []),
+  ].filter(Boolean))];
   const report = (done, total) => {
     const p = { phase: 'map', done, total, written: 0, kept: 0, dropped: {}, materialId: material.id, sectionId: section ? section.id : 0 };
     if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
@@ -3597,10 +3830,15 @@ async function stBuildConceptMap(material, section, {
     const raws = stJsonArrayFrom(output);
     for (const raw of raws) {
       if (!raw || typeof raw !== 'object') continue;
-      const title = String(raw.title || '').trim();
-      if (!title) continue;
+      const rawTitle = String(raw.title || '').trim();
+      if (!rawTitle) continue;
+      // A leading copy of a heading comes off the title and the quote before
+      // the anchor check; a title that is only its section's title is no concept.
+      const ownTitle = section && section.title ? stSkeleton(section.title) : '';
+      if (ownTitle && stSkeleton(rawTitle) === ownTitle) continue;
+      const title = stStripLeadingHeading(rawTitle, headings) || rawTitle;
       const summary = String(raw.summary || '').trim();
-      const quote = String(raw.quote || '').trim();
+      const quote = stStripLeadingHeading(String(raw.quote || '').trim(), headings);
       let page = Number(raw.page) || 0;
       if (selectionText) {
         page = Number(selectionPage) || 0;
@@ -3610,6 +3848,8 @@ async function stBuildConceptMap(material, section, {
         page = located || hint;
       }
       const anchorQuote = quote && (selectionText || stAnchorPageFor(quote, text.pageTexts, page)) ? quote : '';
+      const owner = typeof ownerOf === 'function' && !selectionText ? sectionTitles.get(Number(ownerOf(page)) || 0) : '';
+      if (owner && stSkeleton(rawTitle) === stSkeleton(owner)) continue;
       const prior = stFindSimilarConcept(title, pool);
       if (prior) {
         if (prior.id && !matched.includes(prior)) matched.push(prior);
@@ -4241,20 +4481,22 @@ function stConceptForRaw(raw, group) {
  * (Python). Each check is skipped when its setting is off and counted in
  * dropped when it fails. `maxGroups` > 0 makes at most that many model
  * calls (stEnsureBank visits units round-robin, one call each); `more` says
- * calls were left. `attempted` lists the concepts a call was made for.
- * Returns { kept, written, dropped, runId, needed, status, attempted, more }.
+ * calls were left. `attempted` lists the concepts a call was made for,
+ * `attemptedPairs` the "<conceptId>:<format>" pairs those calls asked for;
+ * a pair in `skipPairs` (a Set of the same keys) is not asked at all.
+ * Returns { kept, written, dropped, runId, needed, status, attempted, attemptedPairs, more }.
  */
 async function stGenerateQuestions(material, {
   sectionId = 0, conceptIds = null, formats = null, perConcept = 0, choices = 0, modelId = '', numCtx = 0,
   token = null, onProgress = null, pythonAvailable = null, stopWhen = null,
-  maxGroups = 0, maxConceptsPerCall = 0, quiet = false,
+  maxGroups = 0, maxConceptsPerCall = 0, quiet = false, skipPairs = null,
 } = {}) {
   const cancelled = () => !!(token && token.cancelled);
   const wanted = Array.isArray(conceptIds) ? new Set(conceptIds.map(Number)) : null;
   const concepts = wanted
     ? (await stListConcepts({ materialIds: [material.id] })).filter((c) => wanted.has(c.id))
     : await stListConcepts({ sectionIds: [sectionId] });
-  const empty = { kept: [], written: 0, dropped: {}, runId: 0, needed: 0, status: 'done', attempted: [], more: false };
+  const empty = { kept: [], written: 0, dropped: {}, runId: 0, needed: 0, status: 'done', attempted: [], attemptedPairs: [], more: false };
   if (!concepts.length) return empty;
 
   const per = Math.max(1, Number(perConcept) || Number(cfg('questionsPerConcept', 2)) || 2);
@@ -4277,6 +4519,7 @@ async function stGenerateQuestions(material, {
     const need = {};
     for (const f of stApplicableFormats(c, python)) {
       if (allowed && !allowed.has(f)) continue;
+      if (skipPairs && skipPairs.has(`${c.id}:${f}`)) continue;
       const n = per - ((have.get(c.id) && have.get(c.id).get(f)) || 0);
       if (n > 0) { need[f] = n; needed += n; }
     }
@@ -4298,6 +4541,7 @@ async function stGenerateQuestions(material, {
   let groupsDone = 0;
   let more = false;
   const attempted = [];
+  const attemptedPairs = [];
   const report = (phase, extra) => {
     const p = {
       phase, done: conceptsDone, total: plan.length, written, kept: kept.length, dropped,
@@ -4348,7 +4592,10 @@ async function stGenerateQuestions(material, {
         if (cancelled()) { status = 'stopped'; break; }
         throw err;
       }
-      for (const slot of group) attempted.push(slot.concept.id);
+      for (const slot of group) {
+        attempted.push(slot.concept.id);
+        for (const f of Object.keys(slot.need)) attemptedPairs.push(`${slot.concept.id}:${f}`);
+      }
       const raws = stJsonArrayFrom(output);
       if (!raws.length) {
         dropped.parse += 1;
@@ -4440,7 +4687,7 @@ async function stGenerateQuestions(material, {
   }
   await stFinishRun(runId, { status, written, kept: kept.length, dropped });
   report(status === 'stopped' ? 'stopped' : 'done');
-  return { kept, written, dropped, runId, needed, status, attempted, more };
+  return { kept, written, dropped, runId, needed, status, attempted, attemptedPairs, more };
 }
 
 // ── Grading, explaining, rubrics ────────────────────────────────────────────
@@ -4813,6 +5060,70 @@ async function stScopeStats(scope) {
   };
 }
 
+/**
+ * Could generation still add questions to a scope? True while a unit is
+ * unmapped or a concept lacks questionsPerConcept of an applicable format;
+ * never for a bank. (A format the model keeps failing still counts as
+ * lacking: the draw that then repeats says so itself.)
+ */
+async function stScopeCanGrow(scope) {
+  if (!scope || scope.kind === 'bank') return false;
+  if (scope.kind !== 'weak') {
+    for (const { material, units } of await stScopeUnits(scope)) {
+      for (const u of units) {
+        if (u.selection) { if (!stSelectionConceptIds(scope).length) return true; continue; }
+        if (u.section.mappedAt > 0) continue;
+        if (!u.partial) return true;
+        const known = await stListConcepts({ materialIds: [material.id] });
+        if (!known.some((c) => stInRanges(c.page, u.ranges))) return true;
+      }
+    }
+  }
+  const concepts = await stScopeConcepts(scope);
+  if (!concepts.length) return false;
+  const per = Math.max(1, Number(cfg('questionsPerConcept', 2)) || 2);
+  const python = cfg('checkNumeric', true) !== false ? await stPythonAvailable() : false;
+  const have = new Map();
+  for (const q of await stListQuestions({ conceptIds: concepts.map((c) => c.id) })) {
+    const key = `${q.conceptId}:${q.format}`;
+    have.set(key, (have.get(key) || 0) + 1);
+  }
+  return concepts.some((c) => stApplicableFormats(c, python).some((f) => (have.get(`${c.id}:${f}`) || 0) < per));
+}
+
+/**
+ * Will the session's next Refresh repeat questions? When fewer than a
+ * draw's worth of usable questions in scope are unasked in the session and
+ * either `drewRepeats` (the draw on screen already repeated) or generation
+ * can add nothing (stScopeCanGrow).
+ */
+async function stRefreshWillRepeat(session, { drewRepeats = false } = {}) {
+  const scope = (session && session.scope) || {};
+  const size = Number(session && session.size) || Number(cfg('sessionSize', 20)) || 20;
+  const asked = new Set((await stListSessionItems(session.id)).map((i) => i.questionId));
+  const pool = await stScopePool(scope);
+  const unseen = pool.questions.filter((q) => !asked.has(q.id)).length;
+  if (unseen >= size) return false;
+  if (drewRepeats || scope.kind === 'bank') return true;
+  return !(await stScopeCanGrow(scope));
+}
+
+/** How many usable questions in the session's scope it has not asked yet. */
+async function stScopeUnseenCount(session) {
+  const scope = (session && session.scope) || {};
+  const asked = new Set((await stListSessionItems(session.id)).map((i) => i.questionId));
+  const pool = await stScopePool(scope);
+  return pool.questions.filter((q) => !asked.has(q.id)).length;
+}
+
+/** The results line for a Refresh that will repeat: exact about what is left unasked. Pure. */
+function stRepeatLineText(unseen) {
+  const n = Math.max(0, Number(unseen) || 0);
+  if (n === 0) return 'Every question here has been asked; Refresh repeats the ones you missed first.';
+  if (n === 1) return 'One question here is still unasked; Refresh adds repeats, missed first.';
+  return `Only ${n} questions here are still unasked; Refresh adds repeats, missed first.`;
+}
+
 /** The number of usable (non-hidden, answerable) questions in a scope, for stSessionNeedsGeneration. */
 async function stScopeQuestionCount(scope) {
   return (await stScopeStats(scope)).available;
@@ -4879,10 +5190,12 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
   const emit = (phase, inner = null, unit = null) => {
     const innerKept = inner ? Number(inner.kept) || 0 : 0;
     const available = result.available + innerKept;
+    const total = target || run.unitsTotal;
     const p = {
       phase,
-      done: target ? Math.min(available, target) : run.unitsDone,
-      total: target || run.unitsTotal,
+      // A finished call is complete whatever it found: done reaches total.
+      done: phase === 'done' ? total : target ? Math.min(available, target) : run.unitsDone,
+      total,
       written: run.written + (inner ? Number(inner.written) || 0 : 0),
       kept: run.kept + innerKept,
       dropped: stAddDropped(run.dropped, inner && inner.dropped),
@@ -4942,6 +5255,15 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
     return m;
   };
   const attempts = new Map();
+  // (concept, format) pairs: consecutive calls that kept nothing for the
+  // pair; after ST_PAIR_MAX_FRUITLESS the pair is not asked again in this
+  // call (a format the model keeps getting wrong).
+  const pairTries = new Map();
+  const skipPairs = new Set();
+  // Units whose last visit made every call it could and kept nothing, since
+  // the last question kept: once every live unit is here, a full pass kept
+  // nothing and the call ends.
+  const barren = new Set();
   const touched = new Map();
   const finish = (unit) => {
     if (unit.done) return;
@@ -4991,13 +5313,22 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
       sectionId: unit.section ? unit.section.id : 0,
       conceptIds: eligible.map((c) => c.id),
       perConcept: sweepPer, choices, modelId: model, numCtx, token, onProgress: innerFor(unit), pythonAvailable,
-      maxGroups: 1, maxConceptsPerCall: target ? 1 : 0, quiet: true,
+      maxGroups: 1, maxConceptsPerCall: target ? 1 : 0, quiet: true, skipPairs,
     });
     run.written += Number(gen.written) || 0;
     run.kept += gen.kept.length;
     result.available += gen.kept.length;
     run.dropped = stAddDropped(run.dropped, gen.dropped);
     for (const id of gen.attempted || []) attempts.set(id, (attempts.get(id) || 0) + 1);
+    const keptPairs = new Set(gen.kept.map((q) => `${q.conceptId}:${q.format}`));
+    for (const key of gen.attemptedPairs || []) {
+      if (keptPairs.has(key)) { pairTries.delete(key); continue; }
+      const n = (pairTries.get(key) || 0) + 1;
+      pairTries.set(key, n);
+      if (n >= ST_PAIR_MAX_FRUITLESS) skipPairs.add(key);
+    }
+    if (gen.kept.length) barren.clear();
+    else if ((gen.attempted || []).length && !gen.more) barren.add(unit);
     if (!gen.needed || (!(gen.attempted || []).length && gen.status !== 'stopped')) finish(unit);
   };
 
@@ -5006,8 +5337,10 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
   // second fills each concept up to questionsPerConcept.
   const sweeps = target && perConcept > 1 ? [1, perConcept] : [perConcept];
   let sweepPer = sweeps[0];
+  let fruitless = false;
   for (let sweep = 0; sweep < sweeps.length; sweep++) {
     sweepPer = sweeps[sweep];
+    barren.clear();
     if (sweep > 0) {
       attempts.clear();
       for (const q of queues) { q.cursor = 0; for (const u of q.units) u.done = false; }
@@ -5029,8 +5362,10 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
       if (!unit) continue;
       await visit(unit);
       emit('generate', null, unit);
+      const stillLive = queues.flatMap((q) => q.units.filter((u) => !u.done));
+      if (stillLive.length && stillLive.every((u) => barren.has(u))) { fruitless = true; break; }
     }
-    if (cancelled() || (target && result.available >= target)) break;
+    if (fruitless || cancelled() || (target && result.available >= target)) break;
   }
   result.kept = run.kept;
   result.concepts = [...touched.values()];
@@ -5063,9 +5398,13 @@ async function stDeriveDrawRubrics(draw, session, { token = null, onProgress = n
  * unseen questions remain (never for a bank scope: there is nothing to
  * generate from), draw with stDrawSession excluding everything the session
  * already holds, give bank questions their concepts and rubrics, and record
- * the items. Returns the questions in order (empty when the scope has
- * nothing left or the run was stopped); `unanswerable` on the array counts
- * the questions left out for having neither answer nor rubric.
+ * the items. When the scope still has fewer than `size` unseen questions
+ * after that, the draw is filled with questions this session already asked
+ * (stRepeatFill: missed first, then retried, then the oldest answered),
+ * never one twice, materials still interleaved. Returns the questions in
+ * order (empty when the scope has no usable question or the run was
+ * stopped); `unanswerable` on the array counts the questions left out for
+ * having neither answer nor rubric, `repeats` how many were asked before.
  */
 async function stNextDraw(session, { token = null, onProgress = null } = {}) {
   const scope = session.scope || {};
@@ -5082,20 +5421,30 @@ async function stNextDraw(session, { token = null, onProgress = null } = {}) {
     pool = await stScopePool(scope, { materialize, ensured });
     candidates = pool.questions.filter((q) => !exclude.has(q.id));
   }
-  const empty = () => Object.assign([], { unanswerable: pool.unanswerable });
+  const empty = () => Object.assign([], { unanswerable: pool.unanswerable, repeats: 0 });
   if (token && token.cancelled) return empty();
-  if (!candidates.length) return empty();
+  if (!pool.questions.length) return empty();
   const conceptById = new Map(pool.concepts.map((c) => [c.id, c]));
-  const draw = stDrawSession({
+  const fresh = candidates.length ? (stDrawSession({
     questions: pool.questions, concepts: pool.concepts, size, exclude,
     answerFormat: session.answerFormat, now: stNow(), rng: Math.random,
     staleDays: Number(cfg('staleDays', 14)) || 14,
-  }) || [];
+  }) || []) : [];
+  let draw = fresh;
+  let repeats = 0;
+  if (fresh.length < size) {
+    const taken = new Set(fresh.map((q) => q.id));
+    // Only questions whose concept is in scope, as stDrawSession requires.
+    const inScope = pool.questions.filter((q) => conceptById.has(q.conceptId));
+    const again = stRepeatFill({ items, questions: inScope, exclude: taken, limit: size - fresh.length });
+    repeats = again.length;
+    if (repeats) draw = stInterleaveMaterials(fresh.concat(again));
+  }
   if (!draw.length) return empty();
   await stDeriveDrawRubrics(draw, session, { token, onProgress });
   const formats = draw.map((q) => stResolveFormat(conceptById.get(q.conceptId) || stPseudoConcept(q.conceptId), q, session.answerFormat));
   await stAddSessionItems(session.id, Number(session.refreshes) || 0, draw.map((q) => q.id), formats);
-  return Object.assign(draw, { unanswerable: pool.unanswerable });
+  return Object.assign(draw, { unanswerable: pool.unanswerable, repeats });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5785,13 +6134,18 @@ function createSidebarView(container) {
   // ── Paint ──
   let painting = false, paintQueued = false;
   async function paint() {
+    if (state.disposed) return;
     if (painting) { paintQueued = true; return; }
     painting = true;
+    const token = stActivation();
     try {
       do {
         paintQueued = false;
         await paintOnce();
-      } while (paintQueued && !state.disposed);
+      } while (paintQueued && !state.disposed && stIsCurrent(token));
+    } catch (err) {
+      // Turned off mid-paint, or the view went: nothing to say.
+      if (!state.disposed && stIsCurrent(token) && !stIsStopped(err)) console.warn('[Study] sidebar paint failed:', err);
     } finally { painting = false; }
   }
 
@@ -6198,14 +6552,21 @@ function stRunFor(session) {
   let run = _stRuns.get(session.id);
   if (run) return run;
   const token = { cancelled: false };
+  // The activation this run belongs to: once Study goes off (or off and on
+  // again) its progress and its end are nobody's, and it reports neither.
+  const activation = stActivation();
   run = {
     token,
     progress: { phase: '', done: 0, total: 0, written: 0, kept: 0, available: null, dropped: {} },
     listeners: new Set(),
     done: false, result: null, error: null, promise: null,
   };
-  const notify = () => { for (const fn of run.listeners) { try { fn(); } catch { /* noop */ } } };
+  const notify = () => {
+    if (activation !== stActivation()) return;
+    for (const fn of run.listeners) { try { fn(); } catch { /* noop */ } }
+  };
   const onProgress = (p) => {
+    if (activation !== stActivation()) { token.cancelled = true; return; }
     if (p && typeof p === 'object') {
       const dropped = p.dropped && typeof p.dropped === 'object' ? { ...run.progress.dropped, ...p.dropped } : run.progress.dropped;
       Object.assign(run.progress, p, { dropped });
@@ -6215,8 +6576,16 @@ function stRunFor(session) {
   run.onProgress = onProgress;
   run.promise = Promise.resolve()
     .then(() => stNextDraw(session, { token, onProgress }))
-    .then((qs) => { run.result = Array.isArray(qs) ? qs : []; }, (err) => { run.error = err; })
-    .then(() => { run.done = true; _stRuns.delete(session.id); notify(); });
+    .then((qs) => { run.result = Array.isArray(qs) ? qs : []; }, (err) => {
+      // Study went off under the run: it stopped, it did not fail.
+      if (activation !== stActivation() || stIsStopped(err)) { token.cancelled = true; return; }
+      run.error = err;
+    })
+    .then(() => {
+      run.done = true;
+      if (_stRuns.get(session.id) === run) _stRuns.delete(session.id);
+      notify();
+    });
   _stRuns.set(session.id, run);
   return run;
 }
@@ -6307,9 +6676,10 @@ function stPendingGrades(sessionId) {
 function stQueueTestGrade(sessionId, item, q, { modelId = '', numCtx = 0 } = {}) {
   const g = stGradeStateFor(sessionId);
   if (g.pending.has(item.id)) return g.pending.get(item.id);
+  const token = stActivation();
   const job = g.chain
-    .then(() => stMarkTestAnswer(sessionId, item, q, { modelId, numCtx }))
-    .catch((err) => console.warn('[Study] marking failed:', err));
+    .then(() => stMarkTestAnswer(sessionId, item, q, { modelId, numCtx, token }))
+    .catch((err) => { if (stIsCurrent(token) && !stIsStopped(err)) console.warn('[Study] marking failed:', err); });
   g.chain = job;
   g.pending.set(item.id, job);
   void job.then(() => {
@@ -6320,28 +6690,33 @@ function stQueueTestGrade(sessionId, item, q, { modelId = '', numCtx = 0 } = {})
 }
 
 /** Mark one recorded Test answer and write it back as Practice would have. */
-async function stMarkTestAnswer(sessionId, item, q, { modelId, numCtx }) {
-  if (!_api) return;
+async function stMarkTestAnswer(sessionId, item, q, { modelId, numCtx, token = stActivation() }) {
+  // Each wait may end with Study turned off (or off and on again): then the
+  // answer stays as recorded and the next results screen marks it.
+  const live = () => stIsCurrent(token);
+  if (!live()) return;
   const typed = String(item.typed || '');
   let result;
   try {
     result = await stGradeTypedResult(q, typed, { modelId, numCtx });
   } catch (err) {
-    if (!_api) return;
+    if (!live()) return;
     // Not counted either way: skipped, with the reason kept for review.
     await stAnswerItem(item.id, { status: 'skipped', verdict: { note: `Could not mark this answer: ${stSentence(stErrText(err))}`, ungraded: true } }, stNow());
     item.status = 'skipped';
     bus.emit('session', { sessionId, itemId: item.id, status: 'skipped' });
     return;
   }
-  if (!_api) return;
+  if (!live()) return;
   const ok = result.rating >= GOOD;
   const status = ok ? 'right' : 'wrong';
   const now = stNow();
   const fmt = item.formatUsed || 'short';
   await stAnswerItem(item.id, { status, verdict: stStoredVerdict(result) }, now);
+  if (!live()) return;
   await stLogAnswer({ questionId: q.id, conceptId: q.conceptId, sessionId, formatUsed: fmt, correct: ok ? 1 : 0, rating: result.rating, retried: 0 }, now);
   const concept = Number(q.conceptId) > 0 ? await stGetConcept(q.conceptId) : null;
+  if (!live()) return;
   if (concept) await stUpdateConcept(stApplyAnswer(concept, { correct: ok, rating: result.rating, formatUsed: fmt, retried: 0 }, now));
   item.status = status;
   bus.emit('session', { sessionId, itemId: item.id, status });
@@ -6402,7 +6777,9 @@ function stReviewItemEl(item, q, c, n) {
     box.appendChild(line);
     if (rubric.length) box.appendChild(stRubricEl(rubric, v.points));
   }
-  if (v && v.note) {
+  const shownRubric = v && Array.isArray(v.rubric) && v.rubric.length ? v.rubric : (Array.isArray(q.rubric) ? q.rubric : []);
+  const restates = fmt !== 'mc' && v && Array.isArray(v.points) && stNoteRestatesPoint(v.note, shownRubric, v.points);
+  if (v && v.note && !restates) {
     const note = el('div', 'st-fb__why');
     note.appendChild(stMd(v.note));
     box.appendChild(note);
@@ -6456,10 +6833,11 @@ function createEditorPane(container, input) {
   const render = async () => {
     if (rendering) { renderQueued = true; return; }
     rendering = true;
+    const token = stActivation();
     try {
       do {
         renderQueued = false;
-        if (state.disposed) return;
+        if (state.disposed || !stIsCurrent(token)) return;
         disposeView();
         root.innerHTML = '';
         const route = state.route;
@@ -6473,6 +6851,8 @@ function createEditorPane(container, input) {
           else await renderSetup(root, { view: 'setup', materialIds: [] }, ctx);
         } catch (err) {
           if (state.disposed) return;
+          // Study turned off under the view: the pane is going, nothing to say.
+          if (!stIsCurrent(token) || stIsStopped(err)) return;
           // Error boundary, as the Flashcards pane: a view that throws says so.
           root.innerHTML = '';
           const box = el('div', 'st-error');
@@ -7001,6 +7381,14 @@ async function renderGenerating(host, route, ctx) {
     checks.appendChild(ck);
     rows.set(def.key, { dot, n, on: cfg(def.setting, true) !== false });
   }
+  // Model output that could not be read as a question (unparseable or
+  // invalid): not a check, so no running dot, and a row only once it counts.
+  const unusable = el('div', 'st-ck');
+  unusable.dataset.check = 'parse';
+  unusable.appendChild(el('span', 'st-ck__d st-ck__d--idle'));
+  unusable.appendChild(el('span', '', 'Unusable model output'));
+  const unusableN = el('span', 'st-ck__n', '');
+  unusable.appendChild(unusableN);
   if (!isBank) gen.appendChild(checks);
   const acts = el('div', 'st-gen__acts');
   const stopBtn = _api.ui.createButton(acts, { label: 'Stop', kind: 'ghost', title: 'Stop writing. What is kept stays in the bank.', onClick: () => void stop() });
@@ -7046,6 +7434,11 @@ async function renderGenerating(host, route, ctx) {
       else if (idx >= 0 ? i > idx : count === 0 && !run.done) cls += ' st-ck__d--idle';
       r.dot.className = cls;
     });
+    const parsed = Number(dropped.parse) || 0;
+    if (parsed > 0) {
+      unusableN.textContent = `${parsed} dropped`;
+      if (!unusable.parentNode) checks.appendChild(unusable);
+    } else if (unusable.parentNode) unusable.remove();
     // Start With N Ready: enough usable questions in the whole scope, beyond
     // the ones this session already drew, for a full draw now.
     const full = filling && ready >= size;
@@ -7071,8 +7464,8 @@ async function renderGenerating(host, route, ctx) {
     if (isBank && !stopped) {
       _api.ui.createEmptyState(host, {
         icon: 'database',
-        headline: 'Every question in this bank has been drawn.',
-        hint: 'Start a new session on the bank to go through it again.',
+        headline: 'This bank has no question to draw.',
+        hint: 'A question needs an answer or a rubric to be marked.',
         action: { label: 'Study This Bank…', onClick: () => void stOpenSetup({ bankIds: scope.bankIds || [] }) },
       });
       return;
@@ -7085,7 +7478,7 @@ async function renderGenerating(host, route, ctx) {
     });
   };
 
-  const onDone = () => { void settle().catch((err) => { if (ctx.disposed()) return; host.innerHTML = ''; const box = el('div', 'st-error'); box.appendChild(el('div', 'st-error__t', 'Could not make questions.')); box.appendChild(el('div', '', String(err && err.message ? err.message : err))); host.appendChild(box); }); };
+  const onDone = () => { void settle().catch((err) => { if (ctx.disposed() || stIsStopped(err)) return; host.innerHTML = ''; const box = el('div', 'st-error'); box.appendChild(el('div', 'st-error__t', 'Could not make questions.')); box.appendChild(el('div', '', String(err && err.message ? err.message : err))); host.appendChild(box); }); };
   const listener = () => { paint(); if (run.done) onDone(); };
   run.listeners.add(listener);
   const offRun = bus.on('run', (d) => {
@@ -7162,13 +7555,21 @@ async function renderSession(host, route, ctx) {
 
   // ── Timing: seconds while the pane is visible, stored every 30 s and on close ──
   let seconds = Number(stProp(session, 'seconds', 0)) || 0;
+  // The timer belongs to this activation: once Study goes off it stops, and
+  // a save that lands after that is dropped quietly.
+  const timerToken = stActivation();
+  const saveSeconds = () => {
+    if (!stIsCurrent(timerToken)) return;
+    stUpdateSession(session.id, { seconds }).catch((err) => { if (stIsCurrent(timerToken) && !stIsStopped(err)) console.warn('[Study] session time not saved:', err); });
+  };
   const tick = setInterval(() => {
+    if (!stIsCurrent(timerToken)) { clearInterval(tick); return; }
     if (ctx.disposed() || !host.isConnected) return;
     if (typeof document.visibilityState === 'string' && document.visibilityState !== 'visible') return;
     seconds++;
-    if (seconds % 30 === 0) void stUpdateSession(session.id, { seconds });
+    if (seconds % 30 === 0) saveSeconds();
   }, 1000);
-  ctx.add({ dispose: () => { clearInterval(tick); void stUpdateSession(session.id, { seconds }); } });
+  ctx.add({ dispose: () => { clearInterval(tick); saveSeconds(); } });
 
   // ── Strand ──
   const segs = new Map();
@@ -7406,7 +7807,8 @@ async function renderSession(host, route, ctx) {
     fb.appendChild(feedbackActs(cur, { retry: false }));
     const points = result.verdict && Array.isArray(result.verdict.points) ? result.verdict.points : [];
     if (result.verdict && rubric.length) fb.appendChild(stRubricEl(rubric, points));
-    if (result.verdict && result.verdict.note) {
+    // The note stays only when it adds to the points (nothing said twice).
+    if (result.verdict && result.verdict.note && !stNoteRestatesPoint(result.verdict.note, rubric, points)) {
       const why = el('div', 'st-fb__why');
       why.appendChild(stMd(result.verdict.note));
       fb.appendChild(why);
@@ -7770,13 +8172,22 @@ async function renderResults(host, route, ctx) {
   // stSessionSummary reads conceptId off each item; the rows carry only the question id.
   const enriched = drawItems.map((i) => ({ ...i, conceptId: (questions.get(i.questionId) || {}).conceptId || 0 }));
   const summary = stSessionSummary(enriched, conceptList) || { right: 0, wrong: 0, skipped: 0, answered: 0, missed: [] };
-  const missed = (Array.isArray(summary.missed) ? summary.missed : []).map((m) => ({ ...m, note: m.note || stMissedNote(enriched.find((i) => i.questionId === m.questionId), questions.get(m.questionId)) }));
+  // One row per missed concept, its note from the most recent miss.
+  const missed = (Array.isArray(summary.missedConcepts) ? summary.missedConcepts : []).map((m) => ({ ...m, note: m.note || stMissedNote(enriched.find((i) => i.questionId === m.questionId && i.status === 'wrong'), questions.get(m.questionId)) }));
   const cov = stCoverageOf(scopeConcepts, now);
   const size = drawItems.length || Number(stProp(session, 'size', 0)) || 0;
   const sessionSize = Number(stProp(session, 'size', 0)) || Number(cfg('sessionSize', 20)) || 20;
   const refreshes = Number(stProp(session, 'refreshes', 0)) || 0;
   const answerFormat = stProp(session, 'answerFormat', 'mixed');
   const flashcards = await stFlashcardsAvailable();
+  // Every question in scope asked: the next Refresh repeats, missed first.
+  const earlier = new Set(allItems.filter((i) => (Number(i.draw) || 0) < draw).map((i) => i.questionId));
+  let willRepeat = false;
+  try { willRepeat = await stRefreshWillRepeat({ ...session, scope }, { drewRepeats: drawItems.some((i) => earlier.has(i.questionId)) }); } catch { willRepeat = false; }
+  let repeatLine = '';
+  if (willRepeat) {
+    try { repeatLine = stRepeatLineText(await stScopeUnseenCount({ ...session, scope })); } catch { repeatLine = stRepeatLineText(0); }
+  }
 
   // A Test's answers are marked in the background; pick up any the queue
   // lost (the app closed mid-marking) and wait for the rest, quietly.
@@ -7823,6 +8234,7 @@ async function renderResults(host, route, ctx) {
     under.appendChild(el('b', '', `${cov.clean} of ${cov.total} concepts clean`));
     under.appendChild(document.createTextNode(` · ${Math.max(0, cov.total - cov.clean)} to go · ${refreshText}`));
   }
+  if (willRepeat) under.appendChild(document.createTextNode(` · ${repeatLine}`));
   left.appendChild(under);
   top.appendChild(left);
   const acts = el('div', 'st-res__acts');
@@ -7845,7 +8257,7 @@ async function renderResults(host, route, ctx) {
     if (!marking) sendBtn.appendChild(el('span', 'st-faint', `· ${cardCount}`));
   }
   _api.ui.createButton(acts, {
-    label: 'Refresh', icon: 'refresh-cw', kind: 'primary', title: `Draws the next ${sessionSize} from the same scope, weak concepts first.`,
+    label: 'Refresh', icon: 'refresh-cw', kind: 'primary', title: willRepeat ? `Draws ${sessionSize} again from the same scope, missed questions first.` : `Draws the next ${sessionSize} from the same scope, weak concepts first.`,
     onClick: async () => {
       await stUpdateSession(session.id, { refreshes: refreshes + 1, finishedAt: 0, position: 0 });
       _emitDataChanged();
@@ -7936,9 +8348,9 @@ async function renderResults(host, route, ctx) {
         else if (c) void stShowSource({ id: 0, materialId: c.materialId, conceptId: c.id, format: 'short', stem: c.title, sourcePage: c.page, sourceQuote: c.anchorQuote, sourceUri: '', origin: 'generated' });
       });
       row.appendChild(pg);
-      const stEl = el('span', `st-mrow__st${m.secondMiss ? ' st-mrow__st--w' : ''}`);
+      const stEl = el('span', `st-mrow__st${m.secondMiss || m.count > 1 ? ' st-mrow__st--w' : ''}`);
       stEl.appendChild(el('i', ''));
-      stEl.appendChild(document.createTextNode(m.secondMiss ? 'second miss' : 'weak'));
+      stEl.appendChild(document.createTextNode(stMissedStatusText(m)));
       row.appendChild(stEl);
       missedBox.appendChild(row);
     }
@@ -7946,7 +8358,8 @@ async function renderResults(host, route, ctx) {
   }
 
   const ft = el('div', 'st-res__ft');
-  ft.appendChild(el('span', 'st-res__lhs', `Refresh draws the next ${sessionSize}, weak concepts first.`));
+  // Said once: when the under line says Refresh repeats, the footer does not say otherwise.
+  ft.appendChild(el('span', 'st-res__lhs', willRepeat ? '' : `Refresh draws the next ${sessionSize}, weak concepts first.`));
   if (!isTest) _api.ui.createButton(ft, { label: 'Review Answers', kind: 'ghost', onClick: () => ctx.setRoute({ view: 'review', sessionId: session.id }) });
   res.appendChild(ft);
 }
@@ -8065,11 +8478,12 @@ let _ratingListener = null;
  *  deactivate clears them so nothing fires for a Study that is off. */
 const _stRetryTimers = new Set();
 
-/** Run `fn` after `ms` unless Study is turned off first (then nothing runs). */
-function stRetryLater(fn, ms) {
+/** Run `fn` after `ms` unless Study is turned off first, or turned off and
+ *  on again (`token`, default the activation now): then nothing runs. */
+function stRetryLater(fn, ms, token = stActivation()) {
   const timer = setTimeout(() => {
     _stRetryTimers.delete(timer);
-    if (!_api || !_dbBridge) return;
+    if (!stIsCurrent(token)) return;
     fn();
   }, ms);
   _stRetryTimers.add(timer);
@@ -8605,9 +9019,10 @@ async function stSendMissedToFlashcards(session, { items = null } = {}) {
 }
 
 /** A card rated in Flashcards lowers its concept's mastery here (tag study:c:<id>, or study:q:<id>). */
-function registerRatingListener(context) {
+function registerRatingListener(context, token = stActivation()) {
   if (typeof document === 'undefined' || !document.addEventListener) return;
   const handler = (ev) => {
+    if (!stIsCurrent(token)) return;
     const detail = ev?.detail || {};
     const rating = Number(detail.rating);
     const tags = Array.isArray(detail.tags) ? detail.tags : String(detail.tags || '').split(',');
@@ -8617,20 +9032,21 @@ function registerRatingListener(context) {
       const m = /^study:([cq]):(\d+)$/.exec(String(raw || '').trim());
       if (!m) continue;
       void (async () => {
-        if (!_api || !_dbBridge) return;
+        if (!stIsCurrent(token)) return;
         let conceptId = Number(m[2]);
         if (m[1] === 'q') {
           const q = await stGetQuestion(conceptId);
+          if (!stIsCurrent(token)) return;
           conceptId = Number(q?.conceptId) || 0;
           if (!conceptId) return;
         }
         const concept = await stLoadConcept(conceptId);
-        if (!concept) return;
+        if (!concept || !stIsCurrent(token)) return;
         const mastery = stMasteryFromCardRating(Number(concept.mastery) || 0, rating);
         if (mastery === concept.mastery) return;
         await stUpdateConcept({ ...concept, mastery });
-        _emitDataChanged();
-      })().catch((err) => console.warn('[Study] card rating not applied:', err));
+        if (stIsCurrent(token)) _emitDataChanged();
+      })().catch((err) => { if (stIsCurrent(token) && !stIsStopped(err)) console.warn('[Study] card rating not applied:', err); });
     }
   };
   _ratingListener = handler;
@@ -8645,24 +9061,38 @@ function registerRatingListener(context) {
 
 // ─── Question providers ─────────────────────────────────────────────────────
 
-/** Pull every question provider's items; re-sync when the set changes. Retries while the core command is not yet there. */
-function registerQuestionProviders(context, attempt = 0) {
+/**
+ * Pull every question provider's items; re-sync when the set changes.
+ * Retries while the core command is not yet there. Everything is tied to
+ * activation `token`: a sync that resumes after Study went off (or off and
+ * on again) stops there, and the change listener is only registered while
+ * the token is current (stOwn disposes it with the activation).
+ */
+function registerQuestionProviders(context, attempt = 0, token = stActivation()) {
+  const live = () => stIsCurrent(token);
+  if (!live()) return;
   _api.commands.executeCommand('questions.getRegistry')
     .then(async (registry) => {
-      if (!_api || !_dbBridge) return;
+      if (!live()) return;
       if (!registry || typeof registry.list !== 'function') throw new Error('no registry');
       _questionRegistry = registry;
-      await stSyncProviders(registry);
+      await stSyncProviders(registry, { isLive: live });
+      if (!live()) return;
+      // Activate hands every register function a context owned by its
+      // activation (stOwnedContext): a push after Study went off is
+      // disposed at once, and deactivate disposes the rest.
       if (typeof registry.onDidChange === 'function') {
         context.subscriptions.push(registry.onDidChange(() => {
-          if (!_dbBridge) return;
-          stSyncProviders(registry).then(() => _emitDataChanged()).catch((err) => console.warn('[Study] provider sync failed:', err));
+          if (!live()) return;
+          stSyncProviders(registry, { isLive: live })
+            .then(() => { if (live()) _emitDataChanged(); })
+            .catch((err) => { if (live() && !stIsStopped(err)) console.warn('[Study] provider sync failed:', err); });
         }));
       }
       _emitDataChanged();
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) stRetryLater(() => registerQuestionProviders(context, attempt + 1), 2000);
+      if (attempt < 5 && live()) stRetryLater(() => registerQuestionProviders(context, attempt + 1, token), 2000, token);
     });
 }
 
@@ -8699,10 +9129,11 @@ async function stQuizSelection(payload) {
 }
 
 /** Register into the selection-action dispatcher; the chat may activate after Study, so retry briefly. */
-function registerSelectionAction(context, attempt = 0) {
+function registerSelectionAction(context, attempt = 0, token = stActivation()) {
+  if (!stIsCurrent(token)) return;
   _api.commands.executeCommand('chat.getSelectionActionDispatcher')
     .then((dispatcher) => {
-      if (!_api || !_dbBridge) return;
+      if (!stIsCurrent(token)) return;
       if (!dispatcher || typeof dispatcher.registerHandler !== 'function') throw new Error('no dispatcher');
       context.subscriptions.push(dispatcher.registerHandler({
         actionId: 'quiz-selection',
@@ -8712,7 +9143,7 @@ function registerSelectionAction(context, attempt = 0) {
       }));
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) stRetryLater(() => registerSelectionAction(context, attempt + 1), 2000);
+      if (attempt < 5 && stIsCurrent(token)) stRetryLater(() => registerSelectionAction(context, attempt + 1, token), 2000, token);
     });
 }
 
@@ -8893,7 +9324,16 @@ function registerDashboardWidget(context) {
       defaultConfig: { maxRows: 5 },
       configSchema: { fields: { maxRows: { type: 'number', label: 'Materials to show' } } },
       defaultRefreshPolicy: { kind: 'interval', ms: 15 * 60 * 1000 },
-      refresh: async (ctx) => JSON.stringify(await stWeakSpotRows(Number(ctx?.config?.maxRows) || 5)),
+      refresh: async (ctx) => {
+        const token = stActivation();
+        try {
+          return JSON.stringify(await stWeakSpotRows(Number(ctx?.config?.maxRows) || 5));
+        } catch (err) {
+          // Turned off mid-refresh: an empty widget, no error.
+          if (!stIsCurrent(token) || stIsStopped(err)) return JSON.stringify({ rows: [], totalWeak: 0, size: 20 });
+          throw err;
+        }
+      },
       createWidget: (container, ctx) => {
         injectStyles();
         const root = el('div', 'st-widget');
@@ -9136,11 +9576,12 @@ function registerChatTools(context) {
         const questionById = new Map(questions.map((q) => [Number(q.id), q]));
         const missedTitles = [];
         const seen = new Set();
-        for (const m of summary.missed || []) {
+        for (const m of summary.missedConcepts || []) {
           const c = byId.get(Number(m.conceptId) || Number(questionById.get(Number(m.questionId))?.conceptId));
           if (!c || seen.has(c.id)) continue;
           seen.add(c.id);
-          missedTitles.push(`- ${c.title}${m.secondMiss ? ' (missed twice)' : ''} · parallx://study/concept/${c.id}`);
+          const status = stMissedStatusText(m);
+          missedTitles.push(`- ${c.title}${status === 'weak' ? '' : ` (${status})`} · parallx://study/concept/${c.id}`);
         }
         const state = Number(session.finishedAt) > 0 ? 'finished' : 'open';
         return { content: [
@@ -9180,10 +9621,11 @@ async function stDayLoads(fromMs, toMs) {
 }
 
 /** Study's due concepts as planner day badges, through the planner's generic seam; skipped when it lacks the method. */
-function registerPlannerDayLoads(context, attempt = 0) {
+function registerPlannerDayLoads(context, attempt = 0, token = stActivation()) {
+  if (!stIsCurrent(token)) return;
   _api.commands.executeCommand('planner.getRegistry')
     .then((registry) => {
-      if (!_api || !_dbBridge) return;
+      if (!stIsCurrent(token)) return;
       if (!registry) throw new Error('no registry');
       if (typeof registry.registerDayLoadProvider !== 'function') return;
       context.subscriptions.push(registry.registerDayLoadProvider({
@@ -9193,7 +9635,7 @@ function registerPlannerDayLoads(context, attempt = 0) {
       }));
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) stRetryLater(() => registerPlannerDayLoads(context, attempt + 1), 2000);
+      if (attempt < 5 && stIsCurrent(token)) stRetryLater(() => registerPlannerDayLoads(context, attempt + 1, token), 2000, token);
     });
 }
 
@@ -9223,9 +9665,28 @@ async function ensureDatabase(api) {
   return true;
 }
 
+/**
+ * The context the register functions see: what they push is owned by
+ * activation `token` (stOwn), so it is disposed by the host or by
+ * deactivate, whichever runs first, and a registration that resolves after
+ * Study went off is disposed at once instead of leaking.
+ */
+function stOwnedContext(context, token) {
+  return {
+    subscriptions: {
+      push: (...disposables) => {
+        for (const d of disposables) stOwn(context, token, d);
+        return disposables.length;
+      },
+    },
+  };
+}
+
 export async function activate(api, context) {
   if (_activated) return;
   _activated = true;
+  _stActivation += 1;
+  const token = _stActivation;
   _api = api;
 
   if (!api.database) {
@@ -9234,42 +9695,50 @@ export async function activate(api, context) {
   }
   _dbBridge = api.database;
   const ok = await ensureDatabase(api);
-  if (!ok) return;
+  // Turned off while the database opened: nothing registers.
+  if (!ok || token !== _stActivation) return;
 
   injectStyles();
+  const owned = stOwnedContext(context, token);
 
-  context.subscriptions.push(
+  owned.subscriptions.push(
     api.views.registerViewProvider('study.materials', {
       createView: (container) => createSidebarView(container),
     }),
   );
 
-  context.subscriptions.push(
+  owned.subscriptions.push(
     api.editors.registerEditorProvider('study', {
       createEditorPane: (container, input) => createEditorPane(container, input),
     }),
   );
 
-  registerCommands(context);
-  registerSelectionAction(context);
-  registerQuestionProviders(context);
-  registerRatingListener(context);
-  registerDashboardWidget(context);
-  registerLinks(context);
-  registerChatTools(context);
-  registerPlannerDayLoads(context);
+  registerCommands(owned);
+  registerSelectionAction(owned, 0, token);
+  registerQuestionProviders(owned, 0, token);
+  registerRatingListener(owned, token);
+  registerDashboardWidget(owned);
+  registerLinks(owned);
+  registerChatTools(owned);
+  registerPlannerDayLoads(owned, 0, token);
 
   console.log('[Study] activated');
 }
 
 export async function deactivate() {
   _activated = false;
-  // The host disposes context.subscriptions; this drops what lives in module
-  // state: in-flight generation stops, pending retries never fire, marking
-  // still queued does nothing once _api is null, and the styles go.
+  // A new token: everything started under the old one stops quietly when
+  // it resumes (stIsCurrent), whatever the host does next.
+  _stActivation += 1;
+  // The host disposes context.subscriptions too, before or after this; each
+  // owned disposable runs once. Then what lives in module state goes:
+  // in-flight generation stops, pending retries never fire, marking still
+  // queued does nothing, bus listeners are dropped, and the styles go.
+  stDisposeOwned();
   stCancelRuns();
   stClearRetryTimers();
   _stGrades.clear();
+  bus.clear();
   if (typeof document !== 'undefined' && document.getElementById) {
     const style = document.getElementById('study-styles');
     if (style) style.remove();
@@ -9282,6 +9751,7 @@ export async function deactivate() {
   _questionRegistry = null;
   _fcCheck = null;
   _picked = [];
+  _stSeenProviders.clear();
   _dbBridge = null;
   _api = null;
 }
@@ -9293,8 +9763,12 @@ export async function deactivate() {
 export const __testables = {
   /** Bind a fake api without activating (jsdom tests of the pane and sidebar). */
   __setApi: (api) => { _api = api; _dbBridge = api?.database || null; },
+  stActivation,
+  stIsCurrent,
+  stIsStopped,
   // 40/50/60: the surfaces, for jsdom tests over the real bundle
   injectStyles,
+  stRepeatLineText,
   createSidebarView,
   createEditorPane,
   stOpenPane,
@@ -9340,6 +9814,10 @@ export const __testables = {
   stDrawSession,
   stCoverage,
   stSessionSummary,
+  stMissedStatusText,
+  stRepeatFill,
+  stNoteRestatesPoint,
+  stStripLeadingHeading,
   stContextPlan,
   stChunkPages,
   stSkeleton,

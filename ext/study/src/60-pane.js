@@ -297,14 +297,21 @@ function stRunFor(session) {
   let run = _stRuns.get(session.id);
   if (run) return run;
   const token = { cancelled: false };
+  // The activation this run belongs to: once Study goes off (or off and on
+  // again) its progress and its end are nobody's, and it reports neither.
+  const activation = stActivation();
   run = {
     token,
     progress: { phase: '', done: 0, total: 0, written: 0, kept: 0, available: null, dropped: {} },
     listeners: new Set(),
     done: false, result: null, error: null, promise: null,
   };
-  const notify = () => { for (const fn of run.listeners) { try { fn(); } catch { /* noop */ } } };
+  const notify = () => {
+    if (activation !== stActivation()) return;
+    for (const fn of run.listeners) { try { fn(); } catch { /* noop */ } }
+  };
   const onProgress = (p) => {
+    if (activation !== stActivation()) { token.cancelled = true; return; }
     if (p && typeof p === 'object') {
       const dropped = p.dropped && typeof p.dropped === 'object' ? { ...run.progress.dropped, ...p.dropped } : run.progress.dropped;
       Object.assign(run.progress, p, { dropped });
@@ -314,8 +321,16 @@ function stRunFor(session) {
   run.onProgress = onProgress;
   run.promise = Promise.resolve()
     .then(() => stNextDraw(session, { token, onProgress }))
-    .then((qs) => { run.result = Array.isArray(qs) ? qs : []; }, (err) => { run.error = err; })
-    .then(() => { run.done = true; _stRuns.delete(session.id); notify(); });
+    .then((qs) => { run.result = Array.isArray(qs) ? qs : []; }, (err) => {
+      // Study went off under the run: it stopped, it did not fail.
+      if (activation !== stActivation() || stIsStopped(err)) { token.cancelled = true; return; }
+      run.error = err;
+    })
+    .then(() => {
+      run.done = true;
+      if (_stRuns.get(session.id) === run) _stRuns.delete(session.id);
+      notify();
+    });
   _stRuns.set(session.id, run);
   return run;
 }
@@ -406,9 +421,10 @@ function stPendingGrades(sessionId) {
 function stQueueTestGrade(sessionId, item, q, { modelId = '', numCtx = 0 } = {}) {
   const g = stGradeStateFor(sessionId);
   if (g.pending.has(item.id)) return g.pending.get(item.id);
+  const token = stActivation();
   const job = g.chain
-    .then(() => stMarkTestAnswer(sessionId, item, q, { modelId, numCtx }))
-    .catch((err) => console.warn('[Study] marking failed:', err));
+    .then(() => stMarkTestAnswer(sessionId, item, q, { modelId, numCtx, token }))
+    .catch((err) => { if (stIsCurrent(token) && !stIsStopped(err)) console.warn('[Study] marking failed:', err); });
   g.chain = job;
   g.pending.set(item.id, job);
   void job.then(() => {
@@ -419,28 +435,33 @@ function stQueueTestGrade(sessionId, item, q, { modelId = '', numCtx = 0 } = {})
 }
 
 /** Mark one recorded Test answer and write it back as Practice would have. */
-async function stMarkTestAnswer(sessionId, item, q, { modelId, numCtx }) {
-  if (!_api) return;
+async function stMarkTestAnswer(sessionId, item, q, { modelId, numCtx, token = stActivation() }) {
+  // Each wait may end with Study turned off (or off and on again): then the
+  // answer stays as recorded and the next results screen marks it.
+  const live = () => stIsCurrent(token);
+  if (!live()) return;
   const typed = String(item.typed || '');
   let result;
   try {
     result = await stGradeTypedResult(q, typed, { modelId, numCtx });
   } catch (err) {
-    if (!_api) return;
+    if (!live()) return;
     // Not counted either way: skipped, with the reason kept for review.
     await stAnswerItem(item.id, { status: 'skipped', verdict: { note: `Could not mark this answer: ${stSentence(stErrText(err))}`, ungraded: true } }, stNow());
     item.status = 'skipped';
     bus.emit('session', { sessionId, itemId: item.id, status: 'skipped' });
     return;
   }
-  if (!_api) return;
+  if (!live()) return;
   const ok = result.rating >= GOOD;
   const status = ok ? 'right' : 'wrong';
   const now = stNow();
   const fmt = item.formatUsed || 'short';
   await stAnswerItem(item.id, { status, verdict: stStoredVerdict(result) }, now);
+  if (!live()) return;
   await stLogAnswer({ questionId: q.id, conceptId: q.conceptId, sessionId, formatUsed: fmt, correct: ok ? 1 : 0, rating: result.rating, retried: 0 }, now);
   const concept = Number(q.conceptId) > 0 ? await stGetConcept(q.conceptId) : null;
+  if (!live()) return;
   if (concept) await stUpdateConcept(stApplyAnswer(concept, { correct: ok, rating: result.rating, formatUsed: fmt, retried: 0 }, now));
   item.status = status;
   bus.emit('session', { sessionId, itemId: item.id, status });
@@ -501,7 +522,9 @@ function stReviewItemEl(item, q, c, n) {
     box.appendChild(line);
     if (rubric.length) box.appendChild(stRubricEl(rubric, v.points));
   }
-  if (v && v.note) {
+  const shownRubric = v && Array.isArray(v.rubric) && v.rubric.length ? v.rubric : (Array.isArray(q.rubric) ? q.rubric : []);
+  const restates = fmt !== 'mc' && v && Array.isArray(v.points) && stNoteRestatesPoint(v.note, shownRubric, v.points);
+  if (v && v.note && !restates) {
     const note = el('div', 'st-fb__why');
     note.appendChild(stMd(v.note));
     box.appendChild(note);
@@ -555,10 +578,11 @@ function createEditorPane(container, input) {
   const render = async () => {
     if (rendering) { renderQueued = true; return; }
     rendering = true;
+    const token = stActivation();
     try {
       do {
         renderQueued = false;
-        if (state.disposed) return;
+        if (state.disposed || !stIsCurrent(token)) return;
         disposeView();
         root.innerHTML = '';
         const route = state.route;
@@ -572,6 +596,8 @@ function createEditorPane(container, input) {
           else await renderSetup(root, { view: 'setup', materialIds: [] }, ctx);
         } catch (err) {
           if (state.disposed) return;
+          // Study turned off under the view: the pane is going, nothing to say.
+          if (!stIsCurrent(token) || stIsStopped(err)) return;
           // Error boundary, as the Flashcards pane: a view that throws says so.
           root.innerHTML = '';
           const box = el('div', 'st-error');
@@ -1100,6 +1126,14 @@ async function renderGenerating(host, route, ctx) {
     checks.appendChild(ck);
     rows.set(def.key, { dot, n, on: cfg(def.setting, true) !== false });
   }
+  // Model output that could not be read as a question (unparseable or
+  // invalid): not a check, so no running dot, and a row only once it counts.
+  const unusable = el('div', 'st-ck');
+  unusable.dataset.check = 'parse';
+  unusable.appendChild(el('span', 'st-ck__d st-ck__d--idle'));
+  unusable.appendChild(el('span', '', 'Unusable model output'));
+  const unusableN = el('span', 'st-ck__n', '');
+  unusable.appendChild(unusableN);
   if (!isBank) gen.appendChild(checks);
   const acts = el('div', 'st-gen__acts');
   const stopBtn = _api.ui.createButton(acts, { label: 'Stop', kind: 'ghost', title: 'Stop writing. What is kept stays in the bank.', onClick: () => void stop() });
@@ -1145,6 +1179,11 @@ async function renderGenerating(host, route, ctx) {
       else if (idx >= 0 ? i > idx : count === 0 && !run.done) cls += ' st-ck__d--idle';
       r.dot.className = cls;
     });
+    const parsed = Number(dropped.parse) || 0;
+    if (parsed > 0) {
+      unusableN.textContent = `${parsed} dropped`;
+      if (!unusable.parentNode) checks.appendChild(unusable);
+    } else if (unusable.parentNode) unusable.remove();
     // Start With N Ready: enough usable questions in the whole scope, beyond
     // the ones this session already drew, for a full draw now.
     const full = filling && ready >= size;
@@ -1170,8 +1209,8 @@ async function renderGenerating(host, route, ctx) {
     if (isBank && !stopped) {
       _api.ui.createEmptyState(host, {
         icon: 'database',
-        headline: 'Every question in this bank has been drawn.',
-        hint: 'Start a new session on the bank to go through it again.',
+        headline: 'This bank has no question to draw.',
+        hint: 'A question needs an answer or a rubric to be marked.',
         action: { label: 'Study This Bank…', onClick: () => void stOpenSetup({ bankIds: scope.bankIds || [] }) },
       });
       return;
@@ -1184,7 +1223,7 @@ async function renderGenerating(host, route, ctx) {
     });
   };
 
-  const onDone = () => { void settle().catch((err) => { if (ctx.disposed()) return; host.innerHTML = ''; const box = el('div', 'st-error'); box.appendChild(el('div', 'st-error__t', 'Could not make questions.')); box.appendChild(el('div', '', String(err && err.message ? err.message : err))); host.appendChild(box); }); };
+  const onDone = () => { void settle().catch((err) => { if (ctx.disposed() || stIsStopped(err)) return; host.innerHTML = ''; const box = el('div', 'st-error'); box.appendChild(el('div', 'st-error__t', 'Could not make questions.')); box.appendChild(el('div', '', String(err && err.message ? err.message : err))); host.appendChild(box); }); };
   const listener = () => { paint(); if (run.done) onDone(); };
   run.listeners.add(listener);
   const offRun = bus.on('run', (d) => {
@@ -1261,13 +1300,21 @@ async function renderSession(host, route, ctx) {
 
   // ── Timing: seconds while the pane is visible, stored every 30 s and on close ──
   let seconds = Number(stProp(session, 'seconds', 0)) || 0;
+  // The timer belongs to this activation: once Study goes off it stops, and
+  // a save that lands after that is dropped quietly.
+  const timerToken = stActivation();
+  const saveSeconds = () => {
+    if (!stIsCurrent(timerToken)) return;
+    stUpdateSession(session.id, { seconds }).catch((err) => { if (stIsCurrent(timerToken) && !stIsStopped(err)) console.warn('[Study] session time not saved:', err); });
+  };
   const tick = setInterval(() => {
+    if (!stIsCurrent(timerToken)) { clearInterval(tick); return; }
     if (ctx.disposed() || !host.isConnected) return;
     if (typeof document.visibilityState === 'string' && document.visibilityState !== 'visible') return;
     seconds++;
-    if (seconds % 30 === 0) void stUpdateSession(session.id, { seconds });
+    if (seconds % 30 === 0) saveSeconds();
   }, 1000);
-  ctx.add({ dispose: () => { clearInterval(tick); void stUpdateSession(session.id, { seconds }); } });
+  ctx.add({ dispose: () => { clearInterval(tick); saveSeconds(); } });
 
   // ── Strand ──
   const segs = new Map();
@@ -1505,7 +1552,8 @@ async function renderSession(host, route, ctx) {
     fb.appendChild(feedbackActs(cur, { retry: false }));
     const points = result.verdict && Array.isArray(result.verdict.points) ? result.verdict.points : [];
     if (result.verdict && rubric.length) fb.appendChild(stRubricEl(rubric, points));
-    if (result.verdict && result.verdict.note) {
+    // The note stays only when it adds to the points (nothing said twice).
+    if (result.verdict && result.verdict.note && !stNoteRestatesPoint(result.verdict.note, rubric, points)) {
       const why = el('div', 'st-fb__why');
       why.appendChild(stMd(result.verdict.note));
       fb.appendChild(why);
@@ -1869,13 +1917,22 @@ async function renderResults(host, route, ctx) {
   // stSessionSummary reads conceptId off each item; the rows carry only the question id.
   const enriched = drawItems.map((i) => ({ ...i, conceptId: (questions.get(i.questionId) || {}).conceptId || 0 }));
   const summary = stSessionSummary(enriched, conceptList) || { right: 0, wrong: 0, skipped: 0, answered: 0, missed: [] };
-  const missed = (Array.isArray(summary.missed) ? summary.missed : []).map((m) => ({ ...m, note: m.note || stMissedNote(enriched.find((i) => i.questionId === m.questionId), questions.get(m.questionId)) }));
+  // One row per missed concept, its note from the most recent miss.
+  const missed = (Array.isArray(summary.missedConcepts) ? summary.missedConcepts : []).map((m) => ({ ...m, note: m.note || stMissedNote(enriched.find((i) => i.questionId === m.questionId && i.status === 'wrong'), questions.get(m.questionId)) }));
   const cov = stCoverageOf(scopeConcepts, now);
   const size = drawItems.length || Number(stProp(session, 'size', 0)) || 0;
   const sessionSize = Number(stProp(session, 'size', 0)) || Number(cfg('sessionSize', 20)) || 20;
   const refreshes = Number(stProp(session, 'refreshes', 0)) || 0;
   const answerFormat = stProp(session, 'answerFormat', 'mixed');
   const flashcards = await stFlashcardsAvailable();
+  // Every question in scope asked: the next Refresh repeats, missed first.
+  const earlier = new Set(allItems.filter((i) => (Number(i.draw) || 0) < draw).map((i) => i.questionId));
+  let willRepeat = false;
+  try { willRepeat = await stRefreshWillRepeat({ ...session, scope }, { drewRepeats: drawItems.some((i) => earlier.has(i.questionId)) }); } catch { willRepeat = false; }
+  let repeatLine = '';
+  if (willRepeat) {
+    try { repeatLine = stRepeatLineText(await stScopeUnseenCount({ ...session, scope })); } catch { repeatLine = stRepeatLineText(0); }
+  }
 
   // A Test's answers are marked in the background; pick up any the queue
   // lost (the app closed mid-marking) and wait for the rest, quietly.
@@ -1922,6 +1979,7 @@ async function renderResults(host, route, ctx) {
     under.appendChild(el('b', '', `${cov.clean} of ${cov.total} concepts clean`));
     under.appendChild(document.createTextNode(` · ${Math.max(0, cov.total - cov.clean)} to go · ${refreshText}`));
   }
+  if (willRepeat) under.appendChild(document.createTextNode(` · ${repeatLine}`));
   left.appendChild(under);
   top.appendChild(left);
   const acts = el('div', 'st-res__acts');
@@ -1944,7 +2002,7 @@ async function renderResults(host, route, ctx) {
     if (!marking) sendBtn.appendChild(el('span', 'st-faint', `· ${cardCount}`));
   }
   _api.ui.createButton(acts, {
-    label: 'Refresh', icon: 'refresh-cw', kind: 'primary', title: `Draws the next ${sessionSize} from the same scope, weak concepts first.`,
+    label: 'Refresh', icon: 'refresh-cw', kind: 'primary', title: willRepeat ? `Draws ${sessionSize} again from the same scope, missed questions first.` : `Draws the next ${sessionSize} from the same scope, weak concepts first.`,
     onClick: async () => {
       await stUpdateSession(session.id, { refreshes: refreshes + 1, finishedAt: 0, position: 0 });
       _emitDataChanged();
@@ -2035,9 +2093,9 @@ async function renderResults(host, route, ctx) {
         else if (c) void stShowSource({ id: 0, materialId: c.materialId, conceptId: c.id, format: 'short', stem: c.title, sourcePage: c.page, sourceQuote: c.anchorQuote, sourceUri: '', origin: 'generated' });
       });
       row.appendChild(pg);
-      const stEl = el('span', `st-mrow__st${m.secondMiss ? ' st-mrow__st--w' : ''}`);
+      const stEl = el('span', `st-mrow__st${m.secondMiss || m.count > 1 ? ' st-mrow__st--w' : ''}`);
       stEl.appendChild(el('i', ''));
-      stEl.appendChild(document.createTextNode(m.secondMiss ? 'second miss' : 'weak'));
+      stEl.appendChild(document.createTextNode(stMissedStatusText(m)));
       row.appendChild(stEl);
       missedBox.appendChild(row);
     }
@@ -2045,7 +2103,8 @@ async function renderResults(host, route, ctx) {
   }
 
   const ft = el('div', 'st-res__ft');
-  ft.appendChild(el('span', 'st-res__lhs', `Refresh draws the next ${sessionSize}, weak concepts first.`));
+  // Said once: when the under line says Refresh repeats, the footer does not say otherwise.
+  ft.appendChild(el('span', 'st-res__lhs', willRepeat ? '' : `Refresh draws the next ${sessionSize}, weak concepts first.`));
   if (!isTest) _api.ui.createButton(ft, { label: 'Review Answers', kind: 'ghost', onClick: () => ctx.setRoute({ view: 'review', sessionId: session.id }) });
   res.appendChild(ft);
 }

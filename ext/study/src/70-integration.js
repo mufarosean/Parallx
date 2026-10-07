@@ -21,11 +21,12 @@ let _ratingListener = null;
  *  deactivate clears them so nothing fires for a Study that is off. */
 const _stRetryTimers = new Set();
 
-/** Run `fn` after `ms` unless Study is turned off first (then nothing runs). */
-function stRetryLater(fn, ms) {
+/** Run `fn` after `ms` unless Study is turned off first, or turned off and
+ *  on again (`token`, default the activation now): then nothing runs. */
+function stRetryLater(fn, ms, token = stActivation()) {
   const timer = setTimeout(() => {
     _stRetryTimers.delete(timer);
-    if (!_api || !_dbBridge) return;
+    if (!stIsCurrent(token)) return;
     fn();
   }, ms);
   _stRetryTimers.add(timer);
@@ -561,9 +562,10 @@ async function stSendMissedToFlashcards(session, { items = null } = {}) {
 }
 
 /** A card rated in Flashcards lowers its concept's mastery here (tag study:c:<id>, or study:q:<id>). */
-function registerRatingListener(context) {
+function registerRatingListener(context, token = stActivation()) {
   if (typeof document === 'undefined' || !document.addEventListener) return;
   const handler = (ev) => {
+    if (!stIsCurrent(token)) return;
     const detail = ev?.detail || {};
     const rating = Number(detail.rating);
     const tags = Array.isArray(detail.tags) ? detail.tags : String(detail.tags || '').split(',');
@@ -573,20 +575,21 @@ function registerRatingListener(context) {
       const m = /^study:([cq]):(\d+)$/.exec(String(raw || '').trim());
       if (!m) continue;
       void (async () => {
-        if (!_api || !_dbBridge) return;
+        if (!stIsCurrent(token)) return;
         let conceptId = Number(m[2]);
         if (m[1] === 'q') {
           const q = await stGetQuestion(conceptId);
+          if (!stIsCurrent(token)) return;
           conceptId = Number(q?.conceptId) || 0;
           if (!conceptId) return;
         }
         const concept = await stLoadConcept(conceptId);
-        if (!concept) return;
+        if (!concept || !stIsCurrent(token)) return;
         const mastery = stMasteryFromCardRating(Number(concept.mastery) || 0, rating);
         if (mastery === concept.mastery) return;
         await stUpdateConcept({ ...concept, mastery });
-        _emitDataChanged();
-      })().catch((err) => console.warn('[Study] card rating not applied:', err));
+        if (stIsCurrent(token)) _emitDataChanged();
+      })().catch((err) => { if (stIsCurrent(token) && !stIsStopped(err)) console.warn('[Study] card rating not applied:', err); });
     }
   };
   _ratingListener = handler;
@@ -601,24 +604,38 @@ function registerRatingListener(context) {
 
 // ─── Question providers ─────────────────────────────────────────────────────
 
-/** Pull every question provider's items; re-sync when the set changes. Retries while the core command is not yet there. */
-function registerQuestionProviders(context, attempt = 0) {
+/**
+ * Pull every question provider's items; re-sync when the set changes.
+ * Retries while the core command is not yet there. Everything is tied to
+ * activation `token`: a sync that resumes after Study went off (or off and
+ * on again) stops there, and the change listener is only registered while
+ * the token is current (stOwn disposes it with the activation).
+ */
+function registerQuestionProviders(context, attempt = 0, token = stActivation()) {
+  const live = () => stIsCurrent(token);
+  if (!live()) return;
   _api.commands.executeCommand('questions.getRegistry')
     .then(async (registry) => {
-      if (!_api || !_dbBridge) return;
+      if (!live()) return;
       if (!registry || typeof registry.list !== 'function') throw new Error('no registry');
       _questionRegistry = registry;
-      await stSyncProviders(registry);
+      await stSyncProviders(registry, { isLive: live });
+      if (!live()) return;
+      // Activate hands every register function a context owned by its
+      // activation (stOwnedContext): a push after Study went off is
+      // disposed at once, and deactivate disposes the rest.
       if (typeof registry.onDidChange === 'function') {
         context.subscriptions.push(registry.onDidChange(() => {
-          if (!_dbBridge) return;
-          stSyncProviders(registry).then(() => _emitDataChanged()).catch((err) => console.warn('[Study] provider sync failed:', err));
+          if (!live()) return;
+          stSyncProviders(registry, { isLive: live })
+            .then(() => { if (live()) _emitDataChanged(); })
+            .catch((err) => { if (live() && !stIsStopped(err)) console.warn('[Study] provider sync failed:', err); });
         }));
       }
       _emitDataChanged();
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) stRetryLater(() => registerQuestionProviders(context, attempt + 1), 2000);
+      if (attempt < 5 && live()) stRetryLater(() => registerQuestionProviders(context, attempt + 1, token), 2000, token);
     });
 }
 
@@ -655,10 +672,11 @@ async function stQuizSelection(payload) {
 }
 
 /** Register into the selection-action dispatcher; the chat may activate after Study, so retry briefly. */
-function registerSelectionAction(context, attempt = 0) {
+function registerSelectionAction(context, attempt = 0, token = stActivation()) {
+  if (!stIsCurrent(token)) return;
   _api.commands.executeCommand('chat.getSelectionActionDispatcher')
     .then((dispatcher) => {
-      if (!_api || !_dbBridge) return;
+      if (!stIsCurrent(token)) return;
       if (!dispatcher || typeof dispatcher.registerHandler !== 'function') throw new Error('no dispatcher');
       context.subscriptions.push(dispatcher.registerHandler({
         actionId: 'quiz-selection',
@@ -668,7 +686,7 @@ function registerSelectionAction(context, attempt = 0) {
       }));
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) stRetryLater(() => registerSelectionAction(context, attempt + 1), 2000);
+      if (attempt < 5 && stIsCurrent(token)) stRetryLater(() => registerSelectionAction(context, attempt + 1, token), 2000, token);
     });
 }
 
@@ -849,7 +867,16 @@ function registerDashboardWidget(context) {
       defaultConfig: { maxRows: 5 },
       configSchema: { fields: { maxRows: { type: 'number', label: 'Materials to show' } } },
       defaultRefreshPolicy: { kind: 'interval', ms: 15 * 60 * 1000 },
-      refresh: async (ctx) => JSON.stringify(await stWeakSpotRows(Number(ctx?.config?.maxRows) || 5)),
+      refresh: async (ctx) => {
+        const token = stActivation();
+        try {
+          return JSON.stringify(await stWeakSpotRows(Number(ctx?.config?.maxRows) || 5));
+        } catch (err) {
+          // Turned off mid-refresh: an empty widget, no error.
+          if (!stIsCurrent(token) || stIsStopped(err)) return JSON.stringify({ rows: [], totalWeak: 0, size: 20 });
+          throw err;
+        }
+      },
       createWidget: (container, ctx) => {
         injectStyles();
         const root = el('div', 'st-widget');
@@ -1092,11 +1119,12 @@ function registerChatTools(context) {
         const questionById = new Map(questions.map((q) => [Number(q.id), q]));
         const missedTitles = [];
         const seen = new Set();
-        for (const m of summary.missed || []) {
+        for (const m of summary.missedConcepts || []) {
           const c = byId.get(Number(m.conceptId) || Number(questionById.get(Number(m.questionId))?.conceptId));
           if (!c || seen.has(c.id)) continue;
           seen.add(c.id);
-          missedTitles.push(`- ${c.title}${m.secondMiss ? ' (missed twice)' : ''} · parallx://study/concept/${c.id}`);
+          const status = stMissedStatusText(m);
+          missedTitles.push(`- ${c.title}${status === 'weak' ? '' : ` (${status})`} · parallx://study/concept/${c.id}`);
         }
         const state = Number(session.finishedAt) > 0 ? 'finished' : 'open';
         return { content: [
@@ -1136,10 +1164,11 @@ async function stDayLoads(fromMs, toMs) {
 }
 
 /** Study's due concepts as planner day badges, through the planner's generic seam; skipped when it lacks the method. */
-function registerPlannerDayLoads(context, attempt = 0) {
+function registerPlannerDayLoads(context, attempt = 0, token = stActivation()) {
+  if (!stIsCurrent(token)) return;
   _api.commands.executeCommand('planner.getRegistry')
     .then((registry) => {
-      if (!_api || !_dbBridge) return;
+      if (!stIsCurrent(token)) return;
       if (!registry) throw new Error('no registry');
       if (typeof registry.registerDayLoadProvider !== 'function') return;
       context.subscriptions.push(registry.registerDayLoadProvider({
@@ -1149,6 +1178,6 @@ function registerPlannerDayLoads(context, attempt = 0) {
       }));
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) stRetryLater(() => registerPlannerDayLoads(context, attempt + 1), 2000);
+      if (attempt < 5 && stIsCurrent(token)) stRetryLater(() => registerPlannerDayLoads(context, attempt + 1, token), 2000, token);
     });
 }

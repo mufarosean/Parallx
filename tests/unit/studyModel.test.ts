@@ -337,6 +337,28 @@ describe('stCoverage and stSessionSummary', () => {
     ]);
   });
 
+  it('groups misses by concept: one entry each, the most recent note, how many times, and an earlier session', () => {
+    const cs = [concept({ id: 1, missStreak: 2 }), concept({ id: 2, missStreak: 3 }), concept({ id: 3, missStreak: 3 })];
+    const items = [
+      { questionId: 11, conceptId: 1, status: 'wrong', answeredAt: 10, verdict: { note: 'First.' } },
+      { questionId: 21, conceptId: 2, status: 'wrong', answeredAt: 20 },
+      { questionId: 12, conceptId: 1, status: 'wrong', answeredAt: 30, verdict: { note: 'Latest.' } },
+      { questionId: 31, conceptId: 3, status: 'wrong', answeredAt: 40 },
+      { questionId: 32, conceptId: 3, status: 'wrong', answeredAt: 50 },
+      { questionId: 33, conceptId: 3, status: 'wrong', answeredAt: 60 },
+    ];
+    const s = stSessionSummary(items, cs);
+    expect(s.missed).toHaveLength(6);
+    expect(s.missedConcepts).toEqual([
+      { conceptId: 1, questionId: 12, note: 'Latest.', count: 2, secondMiss: false },
+      { conceptId: 2, questionId: 21, note: '', count: 1, secondMiss: true },
+      { conceptId: 3, questionId: 33, note: '', count: 3, secondMiss: false },
+    ]);
+    const S = __testables;
+    expect(s.missedConcepts.map(S.stMissedStatusText)).toEqual(['missed twice', 'second miss', 'missed 3 times']);
+    expect(S.stMissedStatusText({ count: 1, secondMiss: false })).toBe('weak');
+  });
+
   it('reads the concept from an attached question when the item has none', () => {
     const s = stSessionSummary([{ status: 'wrong', question: { id: 7, conceptId: 4 } }], []);
     expect(s.missed).toEqual([{ conceptId: 4, questionId: 7, note: '', secondMiss: false }]);
@@ -641,9 +663,29 @@ describe('the rubric grader (M102 port)', () => {
     expect(stVerdictLabel(v(['hit', 'hit', 'hit']), three)).toBe('Complete');
     expect(stVerdictLabel(v(['hit', 'hit', 'miss']), three)).toBe('Two of three');
     expect(stVerdictLabel(v(['hit', 'hit', 'hit', 'miss', 'miss']), five)).toBe('Three of five');
-    expect(stVerdictLabel(v(['miss', 'miss', 'hit']), three)).toBe('Not quite');
+    expect(stVerdictLabel(v(['miss', 'miss', 'hit']), three)).toBe('One of three');
+    expect(stVerdictLabel(v(['hit', 'partial', 'miss']), three)).toBe('One of three, one partly');
+    expect(stVerdictLabel(v(['hit', 'hit', 'partial']), three)).toBe('Two of three, one partly');
+    expect(stVerdictLabel(v(['partial']), ['only']), 'a one-point rubric answered partly').toBe('Partly');
+    expect(stVerdictLabel(v(['miss', 'partial', 'partial']), three)).toBe('Partly');
+    expect(stVerdictLabel(v(['miss', 'miss', 'miss']), three)).toBe('Not quite');
+    const twelve = Array.from({ length: 12 }, (_, i) => `p${i}`);
+    expect(stVerdictLabel(v([...Array(11).fill('hit'), 'miss']), twelve), 'digits above ten').toBe('11 of 12');
     expect(stVerdictLabel(v(['hit', 'hit', 'hit'], { contradiction: true }), three)).toBe('Contradicts the source');
     expect(stVerdictLabel(v([]), [])).toBe('Not quite');
+  });
+
+  it('leaves out a note that only restates a missed or partial point, and keeps one that adds something', () => {
+    const S = __testables;
+    const rubric = [{ text: 'The scale factor is the sum of squared residuals over the degrees of freedom', required: true }, { text: 'Fewer parameters lower the variance', required: true }];
+    const missedSecond = [{ status: 'hit' }, { status: 'miss' }];
+    expect(S.stNoteRestatesPoint('Fewer parameters lower the variance.', rubric, missedSecond)).toBe(true);
+    expect(S.stNoteRestatesPoint('Missed: fewer parameters lower the variance.', rubric, missedSecond)).toBe(true);
+    expect(S.stNoteRestatesPoint('Fewer parameters lower the variance; you named the curve instead, which changes nothing about it.', rubric, missedSecond)).toBe(false);
+    expect(S.stNoteRestatesPoint('Fewer parameters', rubric, missedSecond), 'a fragment well under 80%').toBe(false);
+    expect(S.stNoteRestatesPoint('The scale factor is the sum of squared residuals over the degrees of freedom.', rubric, missedSecond), 'a hit point is not repeated').toBe(false);
+    expect(S.stNoteRestatesPoint('Fewer parameters lower the variance.', rubric, [{ status: 'hit' }, { status: 'partial' }])).toBe(true);
+    expect(S.stNoteRestatesPoint('', rubric, missedSecond)).toBe(false);
   });
 
   it('names ratings', () => {
@@ -1329,5 +1371,144 @@ describe('ords, labels, imports', () => {
     const [q5b, other] = await h.S.stListQuestions({});
     expect(q5b).toMatchObject({ rubricOrigin: 'report', sourceUri: 'file:///ws/report.pdf', sourcePage: 2 });
     expect(other.rubricOrigin).toBe('');
+  });
+});
+
+describe('an exhausted bank repeats instead of dead-ending', () => {
+  it('fills a draw with asked questions: wrong (most recent first), then retried, then oldest answered; never twice; materials interleaved', async () => {
+    const h = harness({ conf: { questionsPerConcept: 1 }, pdfs: { '/ws/a.pdf': { pages: paperPages(CLARK_TITLES.slice(0, 2)) }, '/ws/b.pdf': { pages: paperPages(MACK_TITLES.slice(0, 2)) } } });
+    const a = await h.S.stIngestPdf('/ws/a.pdf');
+    const b = await h.S.stIngestPdf('/ws/b.pdf');
+    const scope = { kind: 'materials', materialIds: [a.id, b.id], label: 'Both' };
+    await h.S.stEnsureBank(scope, {});
+    const size = await h.S.stScopeQuestionCount(scope);
+    expect(size).toBeGreaterThanOrEqual(4);
+    const session = await h.S.stCreateSession({ name: 'Both', scope, mode: 'practice', answerFormat: 'mixed', size });
+    const first = await h.S.stNextDraw(session, {});
+    expect(first).toHaveLength(size);
+    expect(first.repeats).toBe(0);
+    const items = await h.S.stListSessionItems(session.id);
+    // Item 0 right (oldest), 1 wrong, 2 retried, 3 wrong (most recent), the rest right after them.
+    const answer = (i: number, status: string, retried: number, at: number) => h.sql.prepare('UPDATE st_session_items SET status = ?, retried = ?, answered_at = ? WHERE id = ?').run(status, retried, at, items[i].id);
+    answer(0, 'right', 0, 100); answer(1, 'wrong', 0, 200); answer(2, 'wrong', 1, 300); answer(3, 'wrong', 0, 400);
+    for (let i = 4; i < items.length; i++) answer(i, 'right', 0, 500 + i);
+    const callsBefore = h.calls.length;
+    const again = await h.S.stNextDraw({ ...session, refreshes: 1 }, {});
+    // Every concept had its quota: nothing to generate, and no dead end.
+    expect(h.calls.length).toBe(callsBefore);
+    expect(again.repeats).toBe(size);
+    expect(new Set(again.map((q: any) => q.id)).size).toBe(size);
+    const order = [3, 1, 2, 0, ...items.slice(4).map((_: unknown, k: number) => k + 4)].map((i) => items[i].questionId);
+    const byId = new Map(first.map((q: any) => [q.id, q]));
+    const expected = h.S.__testables.stInterleaveMaterials(order.map((id) => byId.get(id)));
+    expect(again.map((q: any) => q.id)).toEqual(expected.map((q: any) => q.id));
+    expect(again[0].id).toBe(items[3].questionId);
+    for (let i = 1; i < again.length; i++) if (again.slice(i).some((q: any) => q.materialId !== again[i - 1].materialId)) expect(again[i].materialId).not.toBe(again[i - 1].materialId);
+    expect((await h.S.stListSessionItems(session.id)).filter((i: any) => i.draw === 1)).toHaveLength(size);
+  });
+
+  it('the repeat order is pure', () => {
+    const S = loadStudy().__testables;
+    const qs = [1, 2, 3, 4, 5].map((id) => ({ id, materialId: 1, conceptId: id }));
+    const items = [
+      { questionId: 1, status: 'right', retried: false, answeredAt: 10 },
+      { questionId: 2, status: 'wrong', retried: false, answeredAt: 20 },
+      { questionId: 3, status: 'wrong', retried: true, answeredAt: 30 },
+      { questionId: 4, status: 'wrong', retried: false, answeredAt: 40 },
+      { questionId: 5, status: 'right', retried: false, answeredAt: 5 },
+      { questionId: 2, status: 'right', retried: false, answeredAt: 50 }, // asked again and right: its latest item decides
+    ];
+    expect(S.stRepeatFill({ items, questions: qs, limit: 10 }).map((q: any) => q.id)).toEqual([4, 3, 5, 1, 2]);
+    expect(S.stRepeatFill({ items, questions: qs, limit: 2, exclude: new Set([4]) }).map((q: any) => q.id)).toEqual([3, 5]);
+    expect(S.stRepeatFill({ items, questions: qs.filter((q) => q.id !== 3), limit: 10 }).map((q: any) => q.id)).toEqual([4, 5, 1, 2]);
+  });
+});
+
+describe('fruitless generation stops', () => {
+  it('a format the model keeps getting wrong is asked at most twice per concept, a pass that keeps nothing ends the call, and progress finishes', async () => {
+    // Every multiple-choice answer is out of range: rejected as unusable.
+    const badMc = (system: string, user: string) => {
+      const out = scriptedModel(system, user);
+      if (!system.startsWith('You write questions')) return out;
+      const parsed = JSON.parse(out);
+      for (const q of parsed.questions) if (q.format === 'mc') q.answer = 9;
+      return JSON.stringify(parsed);
+    };
+    const h = harness({ model: badMc, pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES.slice(0, 3)) }, '/ws/mack.pdf': { pages: paperPages(MACK_TITLES.slice(0, 3)) } } });
+    const a = await h.S.stIngestPdf('/ws/clark.pdf');
+    const b = await h.S.stIngestPdf('/ws/mack.pdf');
+    const progress: any[] = [];
+    const scope = { kind: 'materials', materialIds: [a.id, b.id], label: 'Both' };
+    await h.S.stEnsureBank(scope, { size: 60, untilSize: true, sessionId: 5, onProgress: (p: any) => progress.push(p) });
+    const concepts = await h.S.stListConcepts({ materialIds: [a.id, b.id] });
+    const writes = h.calls.filter((c) => c.system.startsWith('You write questions'));
+    const mcAsks = writes.map((c) => c.user.split('\n').filter((l) => /^- id \d+: .* Write: .*\bmc\b/.test(l)).map((l) => Number(/^- id (\d+)/.exec(l)![1]))).flat();
+    for (const c of concepts) expect(mcAsks.filter((id) => id === c.id).length, c.title).toBeLessThanOrEqual(2);
+    expect(writes.length).toBeLessThanOrEqual(concepts.length * 3);
+    const last = progress[progress.length - 1];
+    expect(last.phase).toBe('done');
+    expect(last.done).toBe(last.total);
+    // A second call over a scope that can grow no further ends after one fruitless pass.
+    const before = h.calls.length;
+    await h.S.stEnsureBank(scope, { size: 60, untilSize: true });
+    const again = h.calls.slice(before).filter((c) => c.system.startsWith('You write questions')).length;
+    expect(again).toBeLessThanOrEqual(concepts.length * 2);
+  });
+});
+
+describe('concept titles and quotes lose a leading heading', () => {
+  it('strips a copy of the section or outline title before the anchor check, and drops a concept that is only the section title', async () => {
+    // A model that starts every title and quote with the page heading, and
+    // also names the section itself as a concept.
+    const headingFirst = (system: string, user: string) => {
+      const out = scriptedModel(system, user);
+      if (!system.startsWith('You read a passage')) return out;
+      const blocks = pageBlocks(user.slice(user.indexOf('--- MATERIAL ---')));
+      const parsed = JSON.parse(out);
+      const extra: any[] = [];
+      for (const c of parsed.concepts) {
+        const heading = (blocks.get(c.page) || '').split('\n')[0].trim();
+        const core = heading.replace(/^\d+(\.\d+)*\.?\s+/, '');
+        extra.push({ ...c, title: heading, quote: heading });
+        c.title = `${core} ${c.quote.split(' ').slice(0, 6).join(' ')}`;
+        c.quote = `${heading} ${c.quote}`;
+      }
+      return JSON.stringify({ concepts: [...parsed.concepts, ...extra] });
+    };
+    const titles = CLARK_TITLES.slice(0, 3);
+    const h = harness({ model: headingFirst, pdfs: { '/ws/clark.pdf': { pages: paperPages(titles) } } });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    await h.S.stEnsureBank({ kind: 'document', materialIds: [m.id], label: 'Clark' }, {});
+    const concepts = await h.S.stListConcepts({ materialIds: [m.id] });
+    expect(concepts).toHaveLength(titles.length);
+    const pages = paperPages(titles);
+    concepts.forEach((c: any) => {
+      const sentence = pages[c.page - 1].split('\n')[1];
+      expect(c.title).toBe(sentence.split(' ').slice(0, 6).join(' '));
+      expect(c.anchorQuote).toBe(sentence);
+      expect(pages[c.page - 1]).toContain(c.anchorQuote);
+    });
+  });
+
+  it('the strip is pure: with or without the number, only before a new phrase, nothing when only a heading', () => {
+    const S = loadStudy().__testables;
+    const hs = ['2.2 The Cape Cod Method', 'Chapter 3: Mack'];
+    expect(S.stStripLeadingHeading('The Cape Cod Method The Cape Cod method assumes one ratio', hs)).toBe('The Cape Cod method assumes one ratio');
+    expect(S.stStripLeadingHeading('2.2 The Cape Cod Method: The method assumes one ratio', hs)).toBe('The method assumes one ratio');
+    expect(S.stStripLeadingHeading('The Cape Cod Method assumptions', hs)).toBe('The Cape Cod Method assumptions');
+    expect(S.stStripLeadingHeading('The Cape Cod Methods Compared', hs)).toBe('The Cape Cod Methods Compared');
+    expect(S.stStripLeadingHeading('Mack Variance is proportional', hs)).toBe('Variance is proportional');
+    expect(S.stStripLeadingHeading('2.2 The Cape Cod Method', hs)).toBe('');
+    expect(S.stStripLeadingHeading('Something else', hs)).toBe('Something else');
+  });
+});
+
+describe('the repeat line says exactly what is left', () => {
+  it('names the unasked count, or says every question was asked', async () => {
+    // @ts-expect-error JS module with no types
+    const { __testables: t } = await import('../../ext/study/main.js');
+    expect(t.stRepeatLineText(0)).toBe('Every question here has been asked; Refresh repeats the ones you missed first.');
+    expect(t.stRepeatLineText(1)).toBe('One question here is still unasked; Refresh adds repeats, missed first.');
+    expect(t.stRepeatLineText(4)).toBe('Only 4 questions here are still unasked; Refresh adds repeats, missed first.');
   });
 });

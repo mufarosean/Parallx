@@ -24,9 +24,28 @@ async function ensureDatabase(api) {
   return true;
 }
 
+/**
+ * The context the register functions see: what they push is owned by
+ * activation `token` (stOwn), so it is disposed by the host or by
+ * deactivate, whichever runs first, and a registration that resolves after
+ * Study went off is disposed at once instead of leaking.
+ */
+function stOwnedContext(context, token) {
+  return {
+    subscriptions: {
+      push: (...disposables) => {
+        for (const d of disposables) stOwn(context, token, d);
+        return disposables.length;
+      },
+    },
+  };
+}
+
 export async function activate(api, context) {
   if (_activated) return;
   _activated = true;
+  _stActivation += 1;
+  const token = _stActivation;
   _api = api;
 
   if (!api.database) {
@@ -35,42 +54,50 @@ export async function activate(api, context) {
   }
   _dbBridge = api.database;
   const ok = await ensureDatabase(api);
-  if (!ok) return;
+  // Turned off while the database opened: nothing registers.
+  if (!ok || token !== _stActivation) return;
 
   injectStyles();
+  const owned = stOwnedContext(context, token);
 
-  context.subscriptions.push(
+  owned.subscriptions.push(
     api.views.registerViewProvider('study.materials', {
       createView: (container) => createSidebarView(container),
     }),
   );
 
-  context.subscriptions.push(
+  owned.subscriptions.push(
     api.editors.registerEditorProvider('study', {
       createEditorPane: (container, input) => createEditorPane(container, input),
     }),
   );
 
-  registerCommands(context);
-  registerSelectionAction(context);
-  registerQuestionProviders(context);
-  registerRatingListener(context);
-  registerDashboardWidget(context);
-  registerLinks(context);
-  registerChatTools(context);
-  registerPlannerDayLoads(context);
+  registerCommands(owned);
+  registerSelectionAction(owned, 0, token);
+  registerQuestionProviders(owned, 0, token);
+  registerRatingListener(owned, token);
+  registerDashboardWidget(owned);
+  registerLinks(owned);
+  registerChatTools(owned);
+  registerPlannerDayLoads(owned, 0, token);
 
   console.log('[Study] activated');
 }
 
 export async function deactivate() {
   _activated = false;
-  // The host disposes context.subscriptions; this drops what lives in module
-  // state: in-flight generation stops, pending retries never fire, marking
-  // still queued does nothing once _api is null, and the styles go.
+  // A new token: everything started under the old one stops quietly when
+  // it resumes (stIsCurrent), whatever the host does next.
+  _stActivation += 1;
+  // The host disposes context.subscriptions too, before or after this; each
+  // owned disposable runs once. Then what lives in module state goes:
+  // in-flight generation stops, pending retries never fire, marking still
+  // queued does nothing, bus listeners are dropped, and the styles go.
+  stDisposeOwned();
   stCancelRuns();
   stClearRetryTimers();
   _stGrades.clear();
+  bus.clear();
   if (typeof document !== 'undefined' && document.getElementById) {
     const style = document.getElementById('study-styles');
     if (style) style.remove();
@@ -83,6 +110,7 @@ export async function deactivate() {
   _questionRegistry = null;
   _fcCheck = null;
   _picked = [];
+  _stSeenProviders.clear();
   _dbBridge = null;
   _api = null;
 }
@@ -94,8 +122,12 @@ export async function deactivate() {
 export const __testables = {
   /** Bind a fake api without activating (jsdom tests of the pane and sidebar). */
   __setApi: (api) => { _api = api; _dbBridge = api?.database || null; },
+  stActivation,
+  stIsCurrent,
+  stIsStopped,
   // 40/50/60: the surfaces, for jsdom tests over the real bundle
   injectStyles,
+  stRepeatLineText,
   createSidebarView,
   createEditorPane,
   stOpenPane,
@@ -141,6 +173,10 @@ export const __testables = {
   stDrawSession,
   stCoverage,
   stSessionSummary,
+  stMissedStatusText,
+  stRepeatFill,
+  stNoteRestatesPoint,
+  stStripLeadingHeading,
   stContextPlan,
   stChunkPages,
   stSkeleton,

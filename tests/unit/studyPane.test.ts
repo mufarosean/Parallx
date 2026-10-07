@@ -328,6 +328,13 @@ interface Env {
   pick: (items: AnyRec[], opts: AnyRec) => AnyRec | undefined;
   confirm: boolean;
   hold: { kind: string; reached: boolean; release: () => void; promise: Promise<void> } | null;
+  /** Question writing opens each reply with one question that fails validation. */
+  unusable: boolean;
+  /** The provider's next list() waits for this, once. */
+  listGate: Promise<void> | null;
+  listCalls: number;
+  fireProviders: () => void;
+  providerListenerCount: () => number;
 }
 
 function makeEnv(): Env {
@@ -356,12 +363,19 @@ function makeEnv(): Env {
   const providerListeners = new Set<() => void>();
   const provider = {
     id: 'worksheets.items', displayName: 'Worksheets', toolId: 'parallx.worksheets',
-    list: async () => [
-      { ref: 'ws-1', kind: 'essay', question: 'Explain why the LDF method has a high parameter variance on a small triangle.', answer: 'It fits one ultimate per accident year plus the curve parameters, so many parameters come from few points.', label: 'Clark LDF parameters', paper: 'Exam 7', source: 'rf' },
-      { ref: 'ws-2', kind: 'essay', question: 'Describe the test Mack proposes for calendar year effects.', answer: 'Count large and small development factors along each diagonal and compare with the binomial expectation.', label: 'Mack calendar year test', paper: 'Exam 7', source: 'rf' },
-    ],
+    list: async () => {
+      env.listCalls++;
+      const gate = env.listGate;
+      env.listGate = null;
+      if (gate) await gate;
+      return providerItems();
+    },
     open: async (ref: string) => { calls.providerOpen.push(ref); return true; },
   };
+  const providerItems = () => [
+      { ref: 'ws-1', kind: 'essay', question: 'Explain why the LDF method has a high parameter variance on a small triangle.', answer: 'It fits one ultimate per accident year plus the curve parameters, so many parameters come from few points.', label: 'Clark LDF parameters', paper: 'Exam 7', source: 'rf' },
+      { ref: 'ws-2', kind: 'essay', question: 'Describe the test Mack proposes for calendar year effects.', answer: 'Count large and small development factors along each diagonal and compare with the binomial expectation.', label: 'Mack calendar year test', paper: 'Exam 7', source: 'rf' },
+  ];
   const registry = {
     register: (p: AnyRec) => { void p; return { dispose() {} }; },
     list: () => [provider],
@@ -453,6 +467,7 @@ function makeEnv(): Env {
           for (let i = 0; i < Number(n); i++) out.push(writeQuestion(fx, Number(m[1]), format, i));
         }
       }
+      if (env.unusable && out.length) out.unshift({ ...out[0], format: 'mc', options: ['Only one option'], answer: 3 });
       return JSON.stringify({ questions: out });
     }
     if (kind === 'support') {
@@ -473,7 +488,11 @@ function makeEnv(): Env {
       }
       const typed = user.slice(user.indexOf("Student's answer:\n") + "Student's answer:\n".length);
       const statuses = points.map((p) => gradePoint(p, typed));
-      return JSON.stringify({ points: statuses.map((status) => ({ status, note: '' })), contradiction: false, note: statuses.every((s) => s === 'hit') ? '' : 'A point from the text is missing.' });
+      // One point short: the note restates it word for word (as a local model
+      // often does); more: a note that says something of its own.
+      const short = statuses.map((st, i) => (st === 'hit' ? '' : points[i])).filter(Boolean);
+      const note = !short.length ? '' : short.length === 1 ? `${short[0][0].toUpperCase()}${short[0].slice(1)}.` : 'A point from the text is missing.';
+      return JSON.stringify({ points: statuses.map((status) => ({ status, note: '' })), contradiction: false, note });
     }
     if (kind === 'explain') return EXPLANATION;
     if (kind === 'rubric') {
@@ -616,7 +635,10 @@ function makeEnv(): Env {
 
   Object.assign(env, {
     api, context: { subscriptions: [] as AnyRec[] }, db, calls, lmCalls, settings, editors, views, commandHandlers,
-    tools, widgets, links, selectionHandlers, flashcardsOn: true, pick: (items: AnyRec[]) => items[0], confirm: true, hold: null,
+    tools, widgets, links, selectionHandlers, flashcardsOn: true, pick: (items: AnyRec[]) => items[0], confirm: true, hold: null, unusable: false,
+    listGate: null, listCalls: 0,
+    fireProviders: () => { for (const fn of [...providerListeners]) fn(); },
+    providerListenerCount: () => providerListeners.size,
   });
   return env;
 }
@@ -894,6 +916,54 @@ describe('Study end to end', () => {
     expect(env.tools.size).toBe(3);
   });
 
+  it('1b. off and on again in one app session: a provider sync that resolves after deactivate stops quietly, and the next activation syncs once', async () => {
+    const logged: unknown[][] = [];
+    vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { logged.push(a); });
+    vi.spyOn(console, 'warn').mockImplementation((...a: unknown[]) => { logged.push(a); });
+    let release: () => void = () => {};
+    env.listGate = new Promise<void>((r) => { release = r; });
+    await activate(env.api, env.context);
+    await waitFor(() => env.listCalls === 1, 'the first sync to reach the provider');
+    const firstContext = env.context;
+
+    // Off, in the order that leaks if anything is pushed late: the
+    // subscriptions first, then deactivate().
+    for (const d of firstContext.subscriptions.splice(0)) d.dispose();
+    await deactivate();
+    env.fireProviders(); // the registry changes while Study is off
+    await settle(5);
+    expect(env.listCalls).toBe(1);
+    expect(env.providerListenerCount()).toBe(0);
+
+    // On again; the first sync's provider answers only now.
+    env.context = { subscriptions: [] };
+    await activate(env.api, env.context);
+    await waitFor(() => env.listCalls === 2, "the second activation's sync");
+    release();
+    await settle(30);
+    expect(env.listCalls).toBe(2);
+    expect(env.providerListenerCount()).toBe(1);
+    expect(firstContext.subscriptions.length).toBe(0);
+    expect(one("SELECT COUNT(*) AS n FROM st_banks WHERE kind = 'provider'").n).toBe(1);
+    expect(one("SELECT COUNT(*) AS n FROM st_questions WHERE origin = 'provider'").n).toBe(2);
+
+    // One change, one sync: only the live activation listens.
+    env.fireProviders();
+    await waitFor(() => env.listCalls === 3, 'the sync on change');
+    await settle(30);
+    expect(env.listCalls).toBe(3);
+    expect(logged).toEqual([]);
+
+    // Off again with deactivate() first (the host's order), then a change: nothing runs.
+    await deactivate();
+    for (const d of env.context.subscriptions.splice(0)) d.dispose();
+    env.fireProviders();
+    await settle(10);
+    expect(env.listCalls).toBe(3);
+    expect(env.providerListenerCount()).toBe(0);
+    expect(logged).toEqual([]);
+  });
+
   // ═════════════════════════════════════════════════════════════════════════
   // 2. Study This Document
   // ═════════════════════════════════════════════════════════════════════════
@@ -989,6 +1059,7 @@ describe('Study end to end', () => {
     await waitFor(() => text(q(h, '.st-ck[data-check="numeric"] .st-ck__n')) === 'needs Python', 'the numeric row');
     expect(text(q(h, '.st-gen__t'))).toBe(`Making questions for ${label1()} · ${CH3}`);
     expect(qa(h, '.st-ck').map((c) => text(qa(c, 'span')[1]))).toEqual(['Anchor is on the page', 'Anchor settles the answer', 'No wrong option is defensible', 'Numeric answers execute']);
+    expect(q(h, '.st-ck[data-check="parse"]'), 'no unusable output yet: no fifth row').toBeNull();
     expect(btn(h, 'Start With 6 Ready')!.disabled).toBe(true);
     expect(btn(h, 'Stop')!.disabled).toBe(false);
     const session = one('SELECT * FROM st_sessions WHERE id = ?', sessionId);
@@ -1068,6 +1139,28 @@ describe('Study end to end', () => {
     expect(items.every((i) => i.draw === 0 && i.status === 'pending')).toBe(true);
     expect(new Set(items.map((i) => i.question_id)).size).toBe(6);
     for (const i of items) expect(i.format_used).toBe(i.qformat === 'mc' ? 'mc' : i.qformat);
+  });
+
+  it('3b. unusable model output has its own row once it counts, and the count line adds up to the rows', async () => {
+    await boot();
+    env.unusable = true;
+    const setup = await openChapterSetup();
+    const hold = holdLm('support');
+    btn(setup, 'Make Questions and Start')!.click();
+    const tab = await waitFor(() => latestSessionTab(), 'the session tab');
+    const h = paneHost(tab)!;
+    await waitFor(() => hold.reached, 'the first support check');
+    const row = await waitFor(() => q(h, '.st-ck[data-check="parse"]'), 'the unusable row');
+    expect(text(qa(row, 'span')[1])).toBe('Unusable model output');
+    expect(text(q(row, '.st-ck__n'))).toBe('1 dropped');
+    expect(q(row, '.st-ck__d')!.className).toBe('st-ck__d st-ck__d--idle');
+    expect(qa(h, '.st-ck').at(-1)).toBe(row);
+    const rowsTotal = qa(h, '.st-ck__n').map((n) => Number((/^(\d+) dropped$/.exec(text(n)) || [])[1]) || 0).reduce((a, b) => a + b, 0);
+    const line = qa(h, '.st-genline > span').map(text);
+    expect(line[1]).toBe(`${rowsTotal} dropped`);
+    expect(line[2]).toMatch(/^\d of 6 ready$/);
+    hold.release();
+    await waitFor(() => q(h, '.st-card'), 'the first card');
   });
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -1183,6 +1276,10 @@ describe('Study end to end', () => {
       expect(qa(h, '.st-rub__req').length).toBe(2);
       expect(text(q(h, '.st-fb__text'))).toBe(T.stVerdictLabel(verdict, rubric));
       expect(text(q(h, '.st-fb__grade'))).toBe(`· counts as ${T.stRatingWord(rating)}`);
+      // Nothing said twice: a note that only restates the missed point is left out.
+      const short = statuses.filter((st: string) => st !== 'hit').length;
+      expect(text(q(h, '.st-fb__why'))).toBe(short > 1 ? 'A point from the text is missing.' : '');
+      expect(q(h, '.st-fb__why') === null).toBe(short <= 1);
       expect(q(h, '.st-fb')!.classList.contains(rating >= 3 ? 'st-fb--ok' : 'st-fb--no')).toBe(true);
       expect(text(q(h, '.st-full summary'))).toBe('Full answer');
       expect(q<HTMLDetailsElement>(h, 'details.st-full')!.open).toBe(false);
@@ -1272,13 +1369,26 @@ describe('Study end to end', () => {
     document.dispatchEvent(new CustomEvent('parallx:card-rated', { detail: { toolId: 'parallx-community.flashcards', cardId: 1, rating: 1, tags: ['study', `study:c:${target.id}`] } }));
     await waitFor(() => Math.abs(one('SELECT mastery FROM st_concepts WHERE id = ?', target.id).mastery - target.mastery * 0.5) < 1e-12, 'mastery halved');
 
-    // Refresh: draw 1, no question repeated, a new card.
+    // Refresh: draw 1. The chapter's unasked questions come first; the bank
+    // is then used up (every concept has its quota), so the draw is filled
+    // with this session's questions, the missed ones first, none twice.
     const drawn0 = new Set(items.map((i) => i.question_id));
     btn(h, 'Refresh')!.click();
     await waitFor(() => q(h, '.st-card') && one('SELECT COUNT(*) AS n FROM st_session_items WHERE session_id = ? AND draw = 1', sessionId).n > 0, 'the second draw');
     expect(one('SELECT refreshes, finished_at FROM st_sessions WHERE id = ?', sessionId)).toEqual({ refreshes: 1, finished_at: 0 });
     const draw1 = all('SELECT * FROM st_session_items WHERE session_id = ? AND draw = 1 ORDER BY ord', sessionId);
-    expect(draw1.every((i) => !drawn0.has(i.question_id))).toBe(true);
+    expect(draw1).toHaveLength(6);
+    const fresh1 = draw1.filter((i) => !drawn0.has(i.question_id));
+    expect(fresh1.length).toBeGreaterThan(0);
+    expect(fresh1.length).toBeLessThan(6);
+    expect(draw1.slice(0, fresh1.length)).toEqual(fresh1);
+    expect(new Set(draw1.map((i) => i.question_id)).size).toBe(6);
+    const num = (a: number[]) => [...a].sort((x, y) => x - y);
+    const wrong0 = missed.map((i) => i.question_id);
+    expect(num(draw1.slice(fresh1.length, fresh1.length + wrong0.length).map((i) => i.question_id))).toEqual(num(wrong0));
+    // Answered wrong before retried: the plain miss leads the repeats.
+    const plain = missed.filter((i) => !i.retried).map((i) => i.question_id);
+    if (plain.length && plain.length < wrong0.length) expect(plain).toContain(draw1[fresh1.length].question_id);
     expect(draw1[0].ord).toBe(6);
     expect(qa(h, '.st-strand i').length).toBe(draw1.length);
     expect(qa(h, '.st-strand i')[0].className).toBe('cur');
@@ -1290,6 +1400,21 @@ describe('Study end to end', () => {
     const missed1 = all("SELECT DISTINCT q.concept_id FROM st_session_items i JOIN st_questions q ON q.id = i.question_id WHERE i.session_id = ? AND i.draw = 1 AND i.status = 'wrong'", sessionId).map((r) => r.concept_id);
     expect(missed1.length).toBeGreaterThan(0);
     expect(text(q(h, '.st-res__big small'))).toBe(`of ${draw1.length}`);
+    // Said once, on the under line: the next Refresh repeats.
+    expect(text(q(h, '.st-res__under'))).toMatch(/ · Every question here has been asked; Refresh repeats the ones you missed first\.$/);
+    expect(text(q(h, '.st-res__lhs'))).toBe('');
+    // One row per missed concept; a concept missed twice in the draw says so.
+    const wrong1 = all("SELECT q.concept_id FROM st_session_items i JOIN st_questions q ON q.id = i.question_id WHERE i.session_id = ? AND i.draw = 1 AND i.status = 'wrong'", sessionId).map((r) => r.concept_id);
+    const rows1 = qa(h, '.st-mrow');
+    expect(rows1.length).toBe(missed1.length);
+    expect(wrong1.length).toBeGreaterThan(missed1.length);
+    const times = (id: number) => wrong1.filter((x) => x === id).length;
+    for (const r of rows1) {
+      const c = all('SELECT * FROM st_concepts').find((x: AnyRec) => text(q(r, '.st-mrow__c')).startsWith(x.title))!;
+      const n = times(c.id);
+      expect(text(q(r, '.st-mrow__st'))).toBe(n === 2 ? 'missed twice' : n > 2 ? `missed ${n} times` : c.miss_streak > n ? 'second miss' : 'weak');
+    }
+    expect(text(q(btn(h, 'Send Missed to Flashcards'), '.st-faint'))).toBe(`· ${rows1.length}`);
     // Past the ten-second Flashcards check cache.
     const realNow = Date.now();
     vi.spyOn(Date, 'now').mockReturnValue(realNow + 60_000);

@@ -327,13 +327,18 @@ function createSidebarView(container) {
   // ── Paint ──
   let painting = false, paintQueued = false;
   async function paint() {
+    if (state.disposed) return;
     if (painting) { paintQueued = true; return; }
     painting = true;
+    const token = stActivation();
     try {
       do {
         paintQueued = false;
         await paintOnce();
-      } while (paintQueued && !state.disposed);
+      } while (paintQueued && !state.disposed && stIsCurrent(token));
+    } catch (err) {
+      // Turned off mid-paint, or the view went: nothing to say.
+      if (!state.disposed && stIsCurrent(token) && !stIsStopped(err)) console.warn('[Study] sidebar paint failed:', err);
     } finally { painting = false; }
   }
 

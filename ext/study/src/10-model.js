@@ -229,32 +229,120 @@ function stCoverage(concepts, now, opts) {
 }
 
 /**
- * Tally a session's items: right, wrong, skipped, answered, and the missed
- * list (one entry per wrong item). `secondMiss` marks an item whose concept
- * was already missed earlier in the session, or whose concept is on a miss
- * streak of two or more. Items carry conceptId, or a question with one.
+ * Tally a session's items: right, wrong, skipped, answered, the missed list
+ * (one entry per wrong item) and `missedConcepts`, the same misses grouped
+ * by concept (one entry per concept, in order of first miss; a question
+ * without a concept is its own group): `count` misses in these items, the
+ * note and question of the most recent one, and `secondMiss` when the
+ * concept was missed before these items too (its miss streak runs past
+ * them). In `missed`, `secondMiss` marks an item whose concept was already
+ * missed earlier in the items, or whose concept is on a miss streak of two
+ * or more. Items carry conceptId, or a question with one.
  */
 function stSessionSummary(items, concepts) {
   const byId = new Map();
   for (const c of concepts || []) if (c && c.id != null) byId.set(c.id, c);
-  const out = { right: 0, wrong: 0, skipped: 0, answered: 0, missed: [] };
+  const out = { right: 0, wrong: 0, skipped: 0, answered: 0, missed: [], missedConcepts: [] };
   const seenMiss = new Set();
-  for (const it of items || []) {
-    if (!it) continue;
+  const groups = new Map();
+  (items || []).forEach((it, index) => {
+    if (!it) return;
     const status = it.status;
     if (status === 'right') out.right++;
     else if (status === 'wrong') out.wrong++;
     else if (status === 'skipped') out.skipped++;
-    if (status !== 'wrong') continue;
+    if (status !== 'wrong') return;
     const conceptId = it.conceptId ?? it.question?.conceptId ?? 0;
+    const questionId = it.questionId ?? it.question?.id ?? 0;
     const concept = byId.get(conceptId);
     const secondMiss = seenMiss.has(conceptId) || (Number(concept?.missStreak) || 0) >= 2;
     seenMiss.add(conceptId);
     const verdict = typeof it.verdict === 'string' ? (stExtractJsonObject(it.verdict) || {}) : (it.verdict || {});
-    out.missed.push({ conceptId, questionId: it.questionId ?? it.question?.id ?? 0, note: String(verdict.note || ''), secondMiss });
+    const note = String(verdict.note || '');
+    out.missed.push({ conceptId, questionId, note, secondMiss });
+    const key = conceptId ? `c:${conceptId}` : `q:${questionId}`;
+    const at = Number(it.answeredAt) || 0;
+    const g = groups.get(key);
+    if (!g) {
+      const entry = { conceptId, questionId, note, count: 1, secondMiss: false, at, index };
+      groups.set(key, entry);
+      out.missedConcepts.push(entry);
+    } else {
+      g.count += 1;
+      // The most recent miss gives the row its note and question.
+      if (at > g.at || (at === g.at && index > g.index)) Object.assign(g, { questionId, note, at, index });
+    }
+  });
+  for (const g of out.missedConcepts) {
+    const streak = Number(byId.get(g.conceptId)?.missStreak) || 0;
+    g.secondMiss = !!g.conceptId && streak > g.count;
+    delete g.at;
+    delete g.index;
   }
   out.answered = out.right + out.wrong;
   return out;
+}
+
+/**
+ * The status words of a missed row: "missed twice" or "missed N times" when
+ * the concept was missed more than once in the draw, "second miss" when it
+ * was missed in an earlier session too, else "weak".
+ */
+function stMissedStatusText(entry) {
+  const n = Number(entry && entry.count) || 1;
+  if (n === 2) return 'missed twice';
+  if (n > 2) return `missed ${n} times`;
+  return entry && entry.secondMiss ? 'second miss' : 'weak';
+}
+
+/**
+ * Questions to repeat when a scope has fewer unseen questions than a draw
+ * needs: from the session's items, each question once (its latest item
+ * decides), ordered answered wrong (most recent first), then retried (most
+ * recent first), then the rest (oldest answer first). Only questions in
+ * `questions` (the usable pool) and not in `exclude` (the draw so far); at
+ * most `limit`.
+ */
+function stRepeatFill({ items = [], questions = [], exclude, limit = 0 } = {}) {
+  const max = Math.max(0, Math.floor(Number(limit) || 0));
+  if (!max) return [];
+  const excluded = exclude instanceof Set ? exclude : new Set(Array.isArray(exclude) ? exclude : []);
+  const byId = new Map();
+  for (const q of questions || []) if (q && !q.hidden && q.id != null) byId.set(q.id, q);
+  const latest = new Map();
+  (items || []).forEach((it, index) => {
+    if (!it || !byId.has(it.questionId) || excluded.has(it.questionId)) return;
+    const at = Number(it.answeredAt) || 0;
+    const prior = latest.get(it.questionId);
+    if (!prior || at > prior.at || (at === prior.at && index > prior.index)) latest.set(it.questionId, { it, at, index });
+  });
+  const rank = ({ it }) => (it.retried ? 1 : it.status === 'wrong' ? 0 : 2);
+  const ordered = [...latest.values()].sort((a, b) => {
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    if (ra < 2) return (b.at - a.at) || (b.index - a.index);
+    return (a.at - b.at) || (a.index - b.index);
+  });
+  return ordered.slice(0, max).map((e) => byId.get(e.it.questionId));
+}
+
+/**
+ * True when a grader's note only restates a missed or partial rubric point:
+ * the letters-and-digits skeleton of one contains the other's and the
+ * shorter is at least 80% of the longer. The note is then left out, since
+ * the point already says it.
+ */
+function stNoteRestatesPoint(note, rubric, points) {
+  const n = stSkeleton(note);
+  if (!n) return false;
+  return (Array.isArray(rubric) ? rubric : []).some((p, i) => {
+    const status = (points && points[i] && points[i].status) || 'miss';
+    if (status === 'hit') return false;
+    const t = stSkeleton(p && typeof p === 'object' ? p.text : p);
+    if (!t) return false;
+    const [short, long] = t.length <= n.length ? [t, n] : [n, t];
+    return long.includes(short) && short.length / long.length >= 0.8;
+  });
 }
 
 /** Reorder so no two consecutive items share a materialId when avoidable. Stable otherwise. */
@@ -358,6 +446,51 @@ function stSkeleton(text) {
     i += width - 1;
   }
   return out;
+}
+
+/** A heading without its number or "Chapter 3:" prefix ("2.2 The Cape Cod Method" → "The Cape Cod Method"). */
+function stHeadingCore(title) {
+  return String(title || '').trim()
+    .replace(/^(?:chapter|part|appendix|section)\s+(?:\d{1,3}(?:\.\d{1,3})*|[IVXLC]{1,6}|[A-Z])\b\s*[.:-]?\s*/i, '')
+    .replace(/^\d{1,3}(?:\.\d{1,3})*\.?\s+/, '')
+    .trim();
+}
+
+/**
+ * Text with a leading copy of a heading taken off: "The Cape Cod Method The
+ * Cape Cod method assumes…" with the heading "2.2 The Cape Cod Method" reads
+ * "The Cape Cod method assumes…". A heading matches with or without its
+ * number, ignoring case, spacing and punctuation; what follows must start a
+ * new phrase (a capital or a digit), so "Cape Cod Method assumptions" keeps
+ * its words. Returns the text unchanged when nothing matches, '' when the
+ * text is only a heading.
+ */
+function stStripLeadingHeading(text, headings) {
+  const source = String(text ?? '').trim();
+  if (!source) return source;
+  const variants = [];
+  for (const h of Array.isArray(headings) ? headings : []) {
+    for (const v of [String(h || ''), stHeadingCore(h)]) {
+      const sk = stSkeleton(v);
+      if (sk.length >= 3 && !variants.includes(sk)) variants.push(sk);
+    }
+  }
+  variants.sort((a, b) => b.length - a.length);
+  for (const sk of variants) {
+    let i = 0;
+    let got = '';
+    while (i < source.length && got.length < sk.length) {
+      got += stSkeleton(source[i]);
+      i += 1;
+      if (!sk.startsWith(got)) break;
+    }
+    if (got !== sk) continue;
+    const rest = source.slice(i).replace(/^[\s.:;,\-–—)]+/u, '');
+    if (!rest) return '';
+    if (stSkeleton(source[i] || '')) continue; // the heading ends inside a word
+    if (/^[\p{Lu}\p{N}"“'‘(]/u.test(rest)) return rest;
+  }
+  return source;
 }
 
 /** Trigram counts of a skeleton. */
@@ -906,22 +1039,27 @@ function stMapVerdictToRating(verdict, rubric) {
   return s.score >= ST_GRADE_GOOD_FLOOR ? GOOD : HARD;
 }
 
-const ST_NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+const ST_NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 
+/** A count in words up to ten, digits above. */
 function stNumberWord(n) {
   return ST_NUMBER_WORDS[n] ?? String(n);
 }
 
-/** The verdict line: Complete, "Two of three", Not quite, Contradicts the source. */
+/**
+ * The verdict line: "Contradicts the source"; "Complete" when every point
+ * is hit; "Partly" with no hit and some partial; "Not quite" with neither;
+ * else "<hits> of <total>", with ", <n> partly" when some are partial
+ * ("Two of three, one partly").
+ */
 function stVerdictLabel(verdict, rubric) {
-  const s = stScoreVerdict(verdict, rubric);
   if (verdict?.contradiction) return 'Contradicts the source';
-  if (!s.total) return 'Not quite';
-  if (s.hits === s.total) return 'Complete';
-  const rating = stMapVerdictToRating(verdict, rubric);
-  if (rating === AGAIN) return 'Not quite';
+  const s = stScoreVerdict(verdict, rubric);
+  if (s.total && s.hits === s.total) return 'Complete';
+  if (!s.hits) return s.partials ? 'Partly' : 'Not quite';
   const got = stNumberWord(s.hits);
-  return `${got.charAt(0).toUpperCase()}${got.slice(1)} of ${stNumberWord(s.total)}`;
+  const head = `${got.charAt(0).toUpperCase()}${got.slice(1)} of ${stNumberWord(s.total)}`;
+  return s.partials ? `${head}, ${stNumberWord(s.partials)} partly` : head;
 }
 
 function stRatingWord(rating) {
