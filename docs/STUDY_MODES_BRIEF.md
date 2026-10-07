@@ -248,15 +248,18 @@ his machine, not guessed from here.
   stay in Worksheets, where the sheet is the point.
 - **From files.** Markdown, CSV or JSON with question, answer, paper, year
   and source. Past CAS questions import this way.
-- **Examiner's reports.** A report PDF is read with the same extractor and
-  matched to its exam's questions by number. Each question's sample answer
+- **Examiner's reports.** They are not in the study workspace yet. The CAS
+  publishes one per sitting on its website beside the exam; collecting
+  them into the workspace is part of the build, and Study reads them from
+  there. A report PDF is read with the same extractor and matched to its
+  exam's questions by number. Each question's sample answer
   becomes the rubric, the report's note of what candidates commonly missed
   becomes the contradiction list, and the report's page is the question's
   anchor, so Show Source opens the report at the right place. A question
   with no report keeps a model-written rubric from its answer, marked as
   such.
 - **From Flashcards.** Its essay-practice cards, through the same provider
-  seam, if Flashcards registers one.
+  seam; Flashcards registers a provider as part of this work.
 
 Imported items get a concept assignment by the model (confirmable), so a
 past exam question counts toward the same concept as the reading it tests.
@@ -268,7 +271,7 @@ past exam question counts toward the same concept as the reading it tests.
 | Practice | 20 questions from a scope, Refresh for the next 20, until the scope is clean: every concept answered right once in the chosen format. Instant marking, retry, Explain (grounded in the anchor, never free text), Show Source (opens the PDF on the page with the quote highlighted). |
 | Test | The same bank in Type format, no retry, results at the end with per-point feedback. |
 | Weak Spots | A session drawn from the concepts with the lowest mastery across the whole workspace, any material. |
-| Learn | A one-screen summary of the scope, every line cited to a page. Optional; Chat can do this, so it ships only if the citations earn it. |
+| Learn | A one-screen summary of the scope, every line cited to a page and clickable to it. The way into a chapter before Practice. |
 | Memorize | Not built here. Flashcards does it; Study feeds it. |
 
 ### 7.6 Mastery and scheduling
@@ -284,7 +287,9 @@ job.
 **Send Missed to Flashcards** appears while Flashcards is on and makes one
 card per missed concept, not per missed question, with the anchor as the
 card's source so it jumps to the page. Mastery written back from Flashcards
-ratings is a later step if the seam exists.
+ratings closes the loop: a card rated Again in Flashcards lowers its
+concept's mastery in Study, through a generic rating event Flashcards
+emits and any tool may listen to.
 
 ### 7.7 Quality loop
 
@@ -315,18 +320,17 @@ ratings is a later step if the seam exists.
   `study_weak_spots`, `study_results`.
 - **Links**: `parallx://study/session/<id>`, `parallx://study/concept/<id>`.
 - **Planner**: the day-load seam Flashcards already feeds gets Study's
-  scheduled weak-spot sessions, if the seam takes a second provider.
+  scheduled weak-spot sessions; the seam takes any number of providers.
 
 ### 7.9 Modularity
 
 - Study names no other tool. Providers are discovered; Flashcards is a
-  command-exists check; Worksheets is a provider it may or may not find.
+  command-exists check; Worksheets is one provider among those it finds.
 - The PDF pane learns nothing about Study; it gains a generic menu slot.
 - Nothing runs while Study is off: no extraction, no model calls, no cron.
 - The rubric grader (`fcNormalizeVerdict`, `fcScoreVerdict`,
   `fcMapVerdictToRating`, about 150 pure lines) is duplicated into Study
-  with a note, since extensions cannot import each other; a shared module
-  both copy at build is the later step if a third user appears.
+  with a note, since extensions cannot import each other.
 
 ### 7.10 Models
 
@@ -339,19 +343,21 @@ Flashcards does), `study.choices` (4 or 5), `study.questionsPerConcept`,
 `study.sessionSize` (20), `study.answerFormat`, `study.numericTolerance`, `study.checks` (each
 check on or off, all on by default).
 
-## 8. Open decisions for Mufaro
+## 8. Decisions
 
-Settled 2026-10-07: the name is Study; sessions cap at 20 with Refresh
-for the next 20; the pulled questions are in his local study workspace and
-the import is matched there; examiner's reports are included; no mock
-exams and no point scoring.
+Settled with Mufaro 2026-10-07: the name is Study; sessions cap at 20 with
+Refresh for the next 20; the pulled questions are in his local study
+workspace and the import is matched there; examiner's reports are included
+and still need collecting; no mock exams and no point scoring; the whole
+design ships as one thing, nothing is optional and nothing is deferred to
+a later version. Learn mode is in. Multiple choice defaults to four
+options, the setting allows five.
 
-1. Learn mode in v1 or not.
-2. Four or five options per multiple-choice question.
-3. Whether the examiner's reports are already PDFs in the study workspace
-   or still need collecting.
+## 9. Build order
 
-## 9. Proposed slices (order only)
+The order below is the order the work is done in, not a set of releases.
+Study is turned on for the owner when every step is finished and checked
+against the table in section 6.
 
 1. Core: the `editor/title` menu contribution point and the generic
    question-provider seam, with tests.
