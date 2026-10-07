@@ -106,6 +106,16 @@ class DatabaseManager {
 
   // ── Migrations ──
 
+  /** The table that records applied migrations; created on first use. */
+  _ensureMigrationsTable() {
+    this._db.exec(`
+      CREATE TABLE IF NOT EXISTS _migrations (
+        name TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+  }
+
   /**
    * Apply SQL migration files from a directory.
    *
@@ -117,14 +127,7 @@ class DatabaseManager {
    */
   migrate(migrationsDir) {
     this._ensureOpen();
-
-    // Create the migrations tracking table if it doesn't exist
-    this._db.exec(`
-      CREATE TABLE IF NOT EXISTS _migrations (
-        name TEXT PRIMARY KEY,
-        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-    `);
+    this._ensureMigrationsTable();
 
     // Read migration files
     let files;
@@ -289,6 +292,11 @@ class DatabaseManager {
    */
   dropToolData(migrationPrefix, tablePrefix) {
     this._ensureOpen();
+    // A tool can be turned off or uninstalled before any migration has ever
+    // run on this database (a fresh workspace, a tool with no migrations):
+    // the records table must exist for the DELETE below to be a no-op
+    // rather than an error.
+    this._ensureMigrationsTable();
 
     // Validate prefixes to prevent SQL injection — only allow [a-zA-Z0-9_-]
     if (!/^[a-zA-Z0-9_-]+$/.test(migrationPrefix)) {
