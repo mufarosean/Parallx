@@ -82,6 +82,8 @@ const PDFJS_WASM_URL = './dist/renderer/pdfjs/wasm/';
 
 // TextLayerMode is not exported from pdf_viewer.mjs
 const TEXT_LAYER_ENABLE = 1;
+/** How long a closed document waits for pdf.js's page lookups before it is destroyed anyway. */
+const PDF_DESTROY_GRACE_MS = 3000;
 
 // ─── SVG icons — from the central Lucide icon registry ─────────────────────
 
@@ -3204,7 +3206,13 @@ export class PdfEditorPane extends EditorPane {
     // Disconnect thumbnail observer
     if (this._thumbObserver) { this._thumbObserver.disconnect(); this._thumbObserver = null; }
 
-    // Tear down viewer components
+    // Tear down viewer components. Once the first page has rendered, pdf.js
+    // looks up every other page; destroying the document while those lookups
+    // are in flight fails each one with a console error ("Unable to get page
+    // N to initialize viewer"), as when a tab moves from one PDF to the next.
+    // The document is destroyed once they settle, or after a few seconds when
+    // they never started.
+    const pagesSettled = this._pdfViewer?.pagesPromise ?? null;
     if (this._pdfViewer) {
       this._pdfViewer.cleanup();
     }
@@ -3213,7 +3221,12 @@ export class PdfEditorPane extends EditorPane {
     this._findController = null;
     this._eventBus = null;
 
-    if (this._pdfDoc) { this._pdfDoc.destroy(); this._pdfDoc = null; }
+    const doc = this._pdfDoc;
+    this._pdfDoc = null;
+    if (doc) {
+      if (!pagesSettled) void doc.destroy();
+      else void Promise.race([pagesSettled, new Promise((r) => setTimeout(r, PDF_DESTROY_GRACE_MS))]).then(() => doc.destroy());
+    }
 
     this._viewerEl?.replaceChildren();
     this._outlineTree?.replaceChildren();
