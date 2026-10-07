@@ -602,7 +602,7 @@ function makeEnv(): Env {
       createSegmented: kit.createSegmented,
       createPageHeader: kit.createPageHeader,
       createFilterChip: kit.createFilterChip,
-      showContextMenu: (_anchor: unknown, items: AnyRec[]) => { calls.menus.push(items); return { dispose() {} }; },
+      showContextMenu: (_anchor: unknown, items: AnyRec[]) => { calls.menus.push(items); return { update(next: AnyRec[]) { calls.menus.push(next); }, dispose() {} }; },
       renderMarkdown,
     },
     window: {
@@ -1045,7 +1045,7 @@ describe('Study end to end', () => {
     expect(btn(setup, 'Cancel')).not.toBeNull();
     q<HTMLButtonElement>(setup, '.st-sheet__mdl')!.click();
     const menu = env.calls.menus.at(-1).map((m: AnyRec) => m.label);
-    expect(menu).toEqual(['Model', 'qwen3:14b', 'llama3:8b', "Use the Chat's Model", undefined, 'Context', 'Auto', '8k', '16k', '32k']);
+    expect(menu).toEqual(['Model', 'qwen3:14b', 'llama3:8b', "Use the Chat's Model", undefined, 'Context', 'Auto', '8K', '16K', '32K', '40K']);
 
     // Start: the generation screen, held at the first question-writing call.
     const hold = holdLm('questions');
@@ -2109,17 +2109,33 @@ describe('Study end to end', () => {
     expect(text(mdl(setup))).toBe('qwen3:14b · Auto context');
     expect(material()).toEqual({ model: '', context_setting: 0, answer_format: '' });
 
-    // A model and a fixed window: the line says them, the material keeps them.
+    // Model and context are set together: every choice keeps the menu open,
+    // and a model redraws it with the sizes that model can hold.
+    const first = openMenu(setup);
+    expect(first.filter((m) => m.label && !m.disabled).every((m) => m.keepOpen === true)).toBe(true);
+    expect(first.slice(first.indexOf(first.find((m) => m.label === 'Auto')!))).toHaveLength(5);
+    const before = env.calls.menus.length;
+    first.find((m) => m.label === 'llama3:8b')!.onSelect();
+    expect(env.calls.menus.length).toBe(before + 1);
+    const redrawn = env.calls.menus.at(-1) as AnyRec[];
+    expect(redrawn.filter((m) => m.checked).map((m) => m.label)).toEqual(['llama3:8b', 'Auto']);
+    expect(redrawn.slice(redrawn.findIndex((m) => m.label === 'Auto')).map((m) => m.label)).toEqual(['Auto', '8K']);
+    // A fixed size the new model cannot hold becomes that model's maximum.
+    pick(setup, 'qwen3:14b');
+    pick(setup, '32K');
+    expect(text(mdl(setup))).toBe('qwen3:14b · 32K context');
     pick(setup, 'llama3:8b');
+    expect(text(mdl(setup))).toBe('llama3:8b · 8K context');
+    pick(setup, 'Auto');
     expect(text(mdl(setup))).toBe('llama3:8b · Auto context');
     await waitFor(() => material().model === 'llama3:8b', 'the model stored');
     const menu = openMenu(setup);
-    // Its window is 8k: no larger fixed size is offered. The choice is checked.
-    expect(menu.map((m) => m.label)).toEqual(['Model', 'qwen3:14b', 'llama3:8b', "Use the Chat's Model", undefined, 'Context', 'Auto', '8k']);
+    // Its window is 8K: no larger fixed size is offered. The choice is checked.
+    expect(menu.map((m) => m.label)).toEqual(['Model', 'qwen3:14b', 'llama3:8b', "Use the Chat's Model", undefined, 'Context', 'Auto', '8K']);
     expect(menu.filter((m) => m.checked).map((m) => m.label)).toEqual(['llama3:8b', 'Auto']);
-    expect(menu.filter((m) => m.keybinding).map((m) => [m.label, m.keybinding])).toEqual([['qwen3:14b', '40k'], ['llama3:8b', '8k']]);
-    menu.find((m) => m.label === '8k')!.onSelect();
-    expect(text(mdl(setup))).toBe('llama3:8b · 8k context');
+    expect(menu.filter((m) => m.keybinding).map((m) => [m.label, m.keybinding])).toEqual([['qwen3:14b', '40K'], ['llama3:8b', '8K']]);
+    menu.find((m) => m.label === '8K')!.onSelect();
+    expect(text(mdl(setup))).toBe('llama3:8b · 8K context');
     await waitFor(() => material().context_setting === 8192, 'the context stored');
 
     // The run: the session records both and every call carries them.
@@ -2137,9 +2153,9 @@ describe('Study end to end', () => {
 
     // The sheet again remembers both; back to the chat's model and Auto, answered by typing.
     const again = await openChapterSetup();
-    expect(text(mdl(again))).toBe('llama3:8b · 8k context');
+    expect(text(mdl(again))).toBe('llama3:8b · 8K context');
     pick(again, "Use the Chat's Model");
-    expect(text(mdl(again))).toBe('qwen3:14b · 8k context');
+    expect(text(mdl(again))).toBe('qwen3:14b · 8K context');
     pick(again, 'Auto');
     expect(text(mdl(again))).toBe('qwen3:14b · Auto context');
     await waitFor(() => material().model === '' && material().context_setting === 0, 'the defaults stored');
@@ -2185,12 +2201,12 @@ describe('Study end to end', () => {
     env.settings.generationContext = 8192;
     const setup = await openChapterSetup();
     const mdl = q<HTMLButtonElement>(setup, '.st-sheet__mdl')!;
-    expect(text(mdl)).toBe('llama3:8b · 8k context');
+    expect(text(mdl)).toBe('llama3:8b · 8K context');
     mdl.click();
     const menu = env.calls.menus.at(-1) as AnyRec[];
-    expect(menu.map((m) => m.label)).toEqual(['Model', 'qwen3:14b', 'llama3:8b', 'Use the Model in Settings', undefined, 'Context', 'As in Settings', '8k']);
+    expect(menu.map((m) => m.label)).toEqual(['Model', 'qwen3:14b', 'llama3:8b', 'Use the Model in Settings', undefined, 'Context', 'As in Settings', '8K']);
     expect(menu.filter((m) => m.checked).map((m) => m.label)).toEqual(['Use the Model in Settings', 'As in Settings']);
-    expect(menu.find((m) => m.label === 'As in Settings')!.keybinding).toBe('8k');
+    expect(menu.find((m) => m.label === 'As in Settings')!.keybinding).toBe('8K');
     // Nothing is copied onto the material: it follows Settings.
     expect(one('SELECT model, context_setting FROM st_materials WHERE id = 1')).toEqual({ model: '', context_setting: 0 });
     const s = await startFromSetup(setup);

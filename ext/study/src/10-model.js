@@ -379,6 +379,18 @@ const ST_PROMPT_HEADROOM = 1.08;
 const ST_SCAFFOLD_TOKENS = 600;
 const ST_FALLBACK_MODEL_CTX = 131072;
 
+/** The fixed context sizes the setup sheet offers: the chat's steps from
+ *  8K (Auto never goes below it) up to the model's maximum, which is added
+ *  when it is not one of them. With no maximum known, all of them. */
+const ST_CONTEXT_SIZES = [8192, 16384, 32768, 65536, 131072, 163840, 262144];
+function stContextSizesFor(max) {
+  const limit = Number(max) || 0;
+  const cap = limit > 0 ? limit : ST_CONTEXT_SIZES[ST_CONTEXT_SIZES.length - 1];
+  const out = ST_CONTEXT_SIZES.filter((s) => s <= cap);
+  if (limit >= ST_CONTEXT_SIZES[0] && !out.includes(limit)) out.push(limit);
+  return out;
+}
+
 /**
  * The context window for one request: enough for prompt and output,
  * rounded up to 2048, clamped to the model's real length. `setting` > 0 is

@@ -70,6 +70,12 @@ model backend. First local step: run a chapter of a real Exam 7 reading
 with the model you use, and look at the generating screen's drop counts;
 a model that drops most multiple-choice questions shows it there.
 
+Model and context menus (Study's setup sheet and the chat's engine chip)
+stay open while you pick: choose a model, then a size, in one go; the sizes
+follow the model's maximum (Study goes to 256K and beyond like the chat).
+The shared context menu gained `keepOpen` rows and `update(items)` on its
+handle for this (`src/ui/contextMenu.ts`, `api.ui.showContextMenu`).
+
 Behaviour worth knowing: deleting a bank also deletes the sessions over
 only that bank (as removing a material does); a model or context fixed in
 Settings shows on the setup sheet as the default (Use the Model in
