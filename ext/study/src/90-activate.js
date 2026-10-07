@@ -65,7 +65,17 @@ export async function activate(api, context) {
 
 export async function deactivate() {
   _activated = false;
-  // The host disposes context.subscriptions; this drops what lives in module state.
+  // The host disposes context.subscriptions; this drops what lives in module
+  // state: in-flight generation stops, pending retries never fire, marking
+  // still queued does nothing once _api is null, and the styles go.
+  stCancelRuns();
+  stClearRetryTimers();
+  _stGrades.clear();
+  if (typeof document !== 'undefined' && document.getElementById) {
+    const style = document.getElementById('study-styles');
+    if (style) style.remove();
+  }
+  _stStyleInjected = false;
   if (_ratingListener && typeof document !== 'undefined' && document.removeEventListener) {
     document.removeEventListener('parallx:card-rated', _ratingListener);
   }
@@ -91,6 +101,20 @@ export const __testables = {
   stOpenPane,
   stOpenSetup,
   stDeleteMaterial,
+  // 60-pane: setup, Test marking, review
+  stCountScopeQuestions,
+  stSetupCountText,
+  stBankOriginText,
+  stItemAnswered,
+  stTestQuestion,
+  stStoredVerdict,
+  stQueueTestGrade,
+  stPendingGrades,
+  stEnsureTestGrades,
+  stCancelRuns,
+  stErrText,
+  stSentence,
+  stRunFor,
   // 00-header
   el,
   icon,
@@ -170,4 +194,19 @@ export const __testables = {
   stDayLoads,
   stWeakSpotRows,
   stLoadConcept,
+  stIsBankQuestion,
+  stQuestionAnswerText,
+  stLastDrawItems,
+  stMissedCardGroups,
+  stCloseSourceEditor,
+  stPathArg,
+  stRetryLater,
+  stClearRetryTimers,
+  stCmdAddMaterial,
+  stCmdImportQuestions,
+  stCmdImportReport,
+  stCmdStudyTogether,
+  // 30-ai, from the pipeline (guarded: present once that part ships them)
+  stScopeQuestionCount: typeof stScopeQuestionCount === 'function' ? stScopeQuestionCount : undefined,
+  stMaterialLabelFor: typeof stMaterialLabelFor === 'function' ? stMaterialLabelFor : undefined,
 };

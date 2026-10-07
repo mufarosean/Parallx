@@ -444,6 +444,14 @@ function stPagesLabel(a, b) {
   return a === b ? `Page ${a}` : `Pages ${a}–${b}`;
 }
 
+/** A trailing continuation marker: "(continued)", "(cont.)", "(cont'd)", "continued". */
+const ST_CONTINUED = /\s*(?:[([]\s*(?:continued|cont\.?|cont['\u2019]d)\s*[)\]]|[-\u2013:,]?\s*\b(?:continued|cont\.|cont['\u2019]d))\s*$/i;
+
+/** A heading line without its continuation marker, so a running "(continued)" header keys as its chapter. */
+function stStripContinued(line) {
+  return String(line || '').replace(ST_CONTINUED, '').trim();
+}
+
 /**
  * One line as a heading candidate, or null. A heading is short (at most
  * 80 characters, 12 words), starts "3. Title", "3.1 Title", "Chapter 3",
@@ -451,7 +459,7 @@ function stPagesLabel(a, b) {
  * terminal punctuation) or a contents line (dot leaders, a page number).
  */
 function stHeadingOfLine(rawLine) {
-  const line = String(rawLine || '').replace(/\s+/g, ' ').trim();
+  const line = stStripContinued(String(rawLine || '').replace(/\s+/g, ' ').trim());
   if (!line || line.length > 80) return null;
   if (/\.{3,}/.test(line)) return null;
   if (/[.,;:]$/.test(line)) return null;
@@ -526,23 +534,57 @@ function stFallbackSections(pageCount) {
   return out;
 }
 
+/** The first non-empty line of a page, whitespace folded. */
+function stFirstLine(pageText) {
+  for (const line of String(pageText || '').replace(/\r\n?/g, '\n').split('\n')) {
+    const t = line.replace(/\s+/g, ' ').trim();
+    if (t) return t;
+  }
+  return '';
+}
+
+/**
+ * The skeleton of a constant running header, or ''. A heading-shaped line
+ * that opens more than half the pages (three or more pages) names the
+ * document, not a section, unless the opening lines change: when another
+ * heading-shaped first line also repeats, the repeats are chapter headers
+ * and each counts once, at its first page.
+ */
+function stRunningHeaderKey(pages) {
+  if (pages.length < 3) return '';
+  const counts = new Map();
+  for (const p of pages) {
+    const first = stFirstLine(p);
+    if (!stHeadingOfLine(first)) continue;
+    const key = stSkeleton(stStripContinued(first));
+    if (key) counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  let running = '';
+  for (const [key, n] of counts) if (n > pages.length / 2) running = key;
+  if (!running) return '';
+  for (const [key, n] of counts) if (key !== running && n >= 2) return '';
+  return running;
+}
+
 /**
  * Sections from the page texts when the PDF has no outline: numbered and
  * chapter headings at line starts, the first occurrence of each (running
- * headers repeat on every page), minus what reads as a list or a contents
- * page (stPageHeadings). Fewer than two headings: every eight pages,
- * "Pages a–b".
+ * headers repeat on every page; a trailing "(continued)" is the same
+ * heading), minus a constant running header (stRunningHeaderKey) and what
+ * reads as a list or a contents page (stPageHeadings). Fewer than two
+ * headings: every eight pages, "Pages a–b".
  */
 function stHeadingsFromPages(pageTexts) {
   const pages = Array.isArray(pageTexts) ? pageTexts : [];
   if (!pages.length) return [];
   const entries = [];
   const seen = new Set();
+  const running = stRunningHeaderKey(pages);
   let sawChapter = false;
   for (let p = 1; p <= pages.length; p++) {
     for (const h of stPageHeadings(pages[p - 1])) {
       const key = stSkeleton(h.title);
-      if (!key || seen.has(key)) continue;
+      if (!key || seen.has(key) || key === running) continue;
       seen.add(key);
       if (h.kind === 'chapter' || h.kind === 'part' || h.kind === 'appendix') sawChapter = true;
       entries.push({ title: h.title, page: p, level: h.level, kind: h.kind });
@@ -553,7 +595,8 @@ function stHeadingsFromPages(pageTexts) {
   return stRangesFor(entries, pages.length);
 }
 
-/** Sections from a PDF outline [{title, page, level}]: the same ranges. */
+/** Sections from a PDF outline [{title, page, level}] (the extractor's levels
+ *  start at 0 for the top), as the same 1-based-level ranges. */
 function stSectionsFromOutline(outline, pageCount) {
   const total = Math.max(0, Math.floor(Number(pageCount) || 0));
   if (!total || !Array.isArray(outline)) return [];
@@ -562,10 +605,63 @@ function stSectionsFromOutline(outline, pageCount) {
     const page = Math.floor(Number(o?.page) || 0);
     const title = String(o?.title || '').replace(/\s+/g, ' ').trim();
     if (!title || page < 1 || page > total) continue;
-    entries.push({ title, page, level: Math.max(1, Math.floor(Number(o.level) || 1)) });
+    entries.push({ title, page, level: Math.max(1, Math.floor(Number(o.level) || 0) + 1) });
   }
   entries.sort((a, b) => a.page - b.page);
   return stRangesFor(entries, total);
+}
+
+/**
+ * Which section owns each page: the deepest section containing it (the
+ * highest level; on a tie the later one, which starts there). Returns the
+ * contiguous runs [{ index, pageFrom, pageTo }], `index` into `sections`,
+ * so nested sections map each page once, under the leaf that holds it.
+ */
+function stPagePartition(sections, pageCount) {
+  const list = Array.isArray(sections) ? sections : [];
+  let total = Math.max(0, Math.floor(Number(pageCount) || 0));
+  if (!total) for (const s of list) total = Math.max(total, Math.floor(Number(s && s.pageTo) || 0));
+  const runs = [];
+  for (let p = 1; p <= total; p++) {
+    let owner = -1;
+    let ownerLevel = -Infinity;
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i];
+      if (!s) continue;
+      const from = Math.floor(Number(s.pageFrom) || 0);
+      const to = Math.floor(Number(s.pageTo) || from);
+      if (p < from || p > to) continue;
+      const level = Number(s.level) || 0;
+      if (level >= ownerLevel) { owner = i; ownerLevel = level; }
+    }
+    if (owner < 0) continue;
+    const last = runs[runs.length - 1];
+    if (last && last.index === owner && last.pageTo === p - 1) last.pageTo = p;
+    else runs.push({ index: owner, pageFrom: p, pageTo: p });
+  }
+  return runs;
+}
+
+/**
+ * 0..n-1 in an order that spreads across the range early: 0, the middle,
+ * the quarters, then the rest (bit-reversed), so the first few units a run
+ * visits already span the document.
+ */
+function stSpreadOrder(n) {
+  const count = Math.max(0, Math.floor(Number(n) || 0));
+  if (count <= 1) return count ? [0] : [];
+  let m = 1, bits = 0;
+  while (m < count) { m *= 2; bits++; }
+  const out = [];
+  const seen = new Set();
+  for (let j = 0; j < m; j++) {
+    let r = 0;
+    for (let b = 0; b < bits; b++) if (j & (1 << b)) r |= 1 << (bits - 1 - b);
+    const idx = Math.floor((r * count) / m);
+    if (!seen.has(idx)) { seen.add(idx); out.push(idx); }
+  }
+  for (let i = 0; i < count; i++) if (!seen.has(i)) out.push(i);
+  return out;
 }
 
 // ── JSON from a model ──────────────────────────────────────────────────────────
@@ -1025,9 +1121,14 @@ function stDistractorPrompts(question) {
 
 // ── Import: question files ─────────────────────────────────────────────────────
 
-/** Strip a BOM and normalise line endings. */
+/** Strip a BOM, normalise line endings, and fold curly apostrophes and
+ *  quotes to ASCII, so "EXAMINER\u2019S REPORT" reads as a heading. */
 function stCleanText(text) {
-  return String(text ?? '').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  return String(text ?? '')
+    .replace(/^\ufeff/, '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u2018\u2019\u201b\u00b4\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u201e\u2033]/g, '"');
 }
 
 const ST_IMPORT_KEYS = {
@@ -1236,7 +1337,10 @@ function stParseQuestionFile(text, ext) {
 
 // ── Import: examiner's reports ─────────────────────────────────────────────────
 
-const ST_REPORT_QUESTION = /^\s*(?:question|q)\s*[#.:]?\s*(\d{1,3})\b\s*(.*)$/i;
+/** "QUESTION 5", "Question 5 (part b)": the word, any case. */
+const ST_REPORT_QUESTION = /^\s*question\s*[#.:]?\s*(\d{1,3})\b\s*(.*)$/i;
+/** A bare "Q5", "Q5(b)", "Q5 part b:", "Q5." with nothing else on the line (never "q1 = 2" or "Q4 losses"). */
+const ST_REPORT_QUESTION_BARE = /^\s*q\s*(\d{1,3})\s*(?:\(?\s*(?:part\s*)?([a-h])\s*\)?)?\s*[:.]?\s*$/i;
 const ST_REPORT_SAMPLE = /^(?:sample\s+(?:answers?|responses?|solutions?)|model\s+(?:answers?|solutions?))\b/i;
 const ST_REPORT_COMMENTS = /^(?:examiner'?s'?\s+(?:report|comments?|notes?)|common\s+(?:errors?|mistakes?)|candidates?\b)/i;
 const ST_REPORT_PART_WORD = /^\s*part\s*\(?([a-h])\)?\s*[:.)]?\s*(.*)$/i;
@@ -1296,6 +1400,11 @@ function stParseExaminerReport(pageTexts) {
   lines.forEach((l, i) => {
     const s = l.text.trim();
     if (s.length > 80) return;
+    const bare = ST_REPORT_QUESTION_BARE.exec(s);
+    if (bare) {
+      starts.push({ at: i, number: Number(bare[1]), part: bare[2] ? bare[2].toLowerCase() : '', page: l.page });
+      return;
+    }
     const m = ST_REPORT_QUESTION.exec(s);
     if (!m) return;
     const rest = m[2].trim();
@@ -1373,42 +1482,138 @@ function stSittingKey(s) {
   return v.toLowerCase();
 }
 
-/** A question's exam, sitting, number and part keys: its own fields, else its origin label. */
+/**
+ * The import keys a question carries in its providerRef JSON (exam,
+ * sitting, number, part, paper, source, and a provider's own `ref`), or {}
+ * when providerRef is empty or a bare provider ref.
+ */
+function stQuestionMeta(q) {
+  const ref = q ? q.providerRef : null;
+  if (ref && typeof ref === 'object' && !Array.isArray(ref)) return ref;
+  const s = String(ref ?? '').trim();
+  if (!s.startsWith('{')) return {};
+  try {
+    const v = JSON.parse(s);
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The ref a provider knows the question by: `ref` in the providerRef JSON, else providerRef itself. */
+function stProviderRefOf(q) {
+  const meta = stQuestionMeta(q);
+  if (meta.ref != null) return String(meta.ref);
+  const s = String((q && q.providerRef) ?? '').trim();
+  return s.startsWith('{') ? '' : s;
+}
+
+/** A question's exam, sitting, number and part keys: its own fields, then its providerRef JSON, then its origin label. */
 function stQuestionKeys(q) {
-  const keys = {
-    exam: stExamKey(q?.exam),
-    sitting: stSittingKey(q?.sitting),
-    number: Number(q?.number) || 0,
-    part: String(q?.part ?? '').trim().toLowerCase(),
+  const meta = stQuestionMeta(q);
+  const pick = (k) => {
+    const own = q ? q[k] : undefined;
+    return own != null && String(own).trim() !== '' ? own : meta[k];
   };
-  if (!keys.number && q?.originLabel) {
-    const pieces = String(q.originLabel).split(/\s*[·|]\s*/);
-    for (const piece of pieces) {
+  const keys = {
+    exam: stExamKey(pick('exam')),
+    sitting: stSittingKey(pick('sitting')),
+    number: Number(pick('number')) || 0,
+    part: String(pick('part') ?? '').trim().toLowerCase(),
+  };
+  if ((!keys.number || !keys.exam || !keys.sitting) && q?.originLabel) {
+    const fromLabel = { number: 0, part: '', exam: '', sitting: '' };
+    for (const piece of String(q.originLabel).split(/\s*[·|]\s*/)) {
       const qm = /^q\s*(\d{1,3})\s*(?:\(([a-h])\))?$/i.exec(piece.trim());
-      if (qm) { keys.number = Number(qm[1]); if (!keys.part && qm[2]) keys.part = qm[2].toLowerCase(); continue; }
-      if (!keys.exam && /exam/i.test(piece)) keys.exam = stExamKey(piece);
-      else if (!keys.sitting && /(?:19|20)\d\d/.test(piece)) keys.sitting = stSittingKey(piece);
+      if (qm) { fromLabel.number = Number(qm[1]); fromLabel.part = qm[2] ? qm[2].toLowerCase() : ''; continue; }
+      if (!fromLabel.exam && /exam/i.test(piece)) fromLabel.exam = stExamKey(piece);
+      else if (!fromLabel.sitting && /(?:19|20)\d\d/.test(piece)) fromLabel.sitting = stSittingKey(piece);
     }
+    if (!keys.number && fromLabel.number) { keys.number = fromLabel.number; if (!keys.part) keys.part = fromLabel.part; }
+    if (!keys.exam) keys.exam = fromLabel.exam;
+    if (!keys.sitting) keys.sitting = fromLabel.sitting;
   }
   return keys;
 }
 
-/** Pair each report entry with the questions it is about, by exam, sitting, number and part. */
+/**
+ * Pair each report entry with the questions it is about. Exam, sitting and
+ * number must agree, and the part too when both sides name one; an empty
+ * exam or sitting on either side never matches (a Q5 of every sitting is
+ * not this report's Q5).
+ */
 function stMatchReportToQuestions(report, questions) {
   const exam = stExamKey(report?.exam);
   const sitting = stSittingKey(report?.sitting);
   const out = [];
+  if (!exam || !sitting) return out;
   const keyed = (questions || []).map((q) => ({ q, k: stQuestionKeys(q) }));
   for (const entry of report?.questions || []) {
     const number = Number(entry?.number) || 0;
     const part = String(entry?.part ?? '').trim().toLowerCase();
     if (!number) continue;
     for (const { q, k } of keyed) {
-      if (k.number !== number || k.part !== part) continue;
-      if (exam && k.exam && k.exam !== exam) continue;
-      if (sitting && k.sitting && k.sitting !== sitting) continue;
+      if (!k.exam || !k.sitting) continue;
+      if (k.exam !== exam || k.sitting !== sitting || k.number !== number) continue;
+      if (part && k.part && k.part !== part) continue;
       out.push({ questionId: q.id, entry });
     }
   }
   return out;
+}
+
+// ── Materials and banks ────────────────────────────────────────────────────────
+
+/** Metadata titles that name nothing: the writing tool's placeholders. */
+const ST_GENERIC_TITLE = /^(?:untitled(?:\s+document)?|document\s*\d*|title|no\s+title|unknown|none|null|pdf|slide\s*\d*|presentation\s*\d*|word\s+document|microsoft\s+word|default)$/i;
+
+/**
+ * A material's label: the PDF's metadata title when it is a real one (a
+ * writing tool's "Microsoft Word - " prefix and a file extension dropped;
+ * "Untitled" and the like refused), else the file name without its
+ * extension, underscores and runs of spaces as single spaces.
+ */
+function stMaterialLabelFor(fileName, metadataTitle) {
+  const tidy = (t) => (/_/.test(t) && !/\s/.test(t) ? t.replace(/_+/g, ' ') : t).replace(/\s+/g, ' ').trim();
+  let title = String(metadataTitle ?? '').replace(/\s+/g, ' ').trim()
+    .replace(/^microsoft\s+(?:office\s+)?(?:word|powerpoint|excel)\s*-\s*/i, '')
+    .replace(/\.(?:docx?|pptx?|xlsx?|pdf|tex|dvi|rtf|odt)$/i, '')
+    .trim();
+  title = tidy(title);
+  if (title.length >= 3 && /\p{L}/u.test(title) && !ST_GENERIC_TITLE.test(title)) return title;
+  const base = String(fileName ?? '').split(/[\\/]/).pop() || '';
+  const name = base.replace(/\.[A-Za-z0-9]{1,5}$/, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+  return name || 'Document';
+}
+
+/**
+ * Can the question be answered and marked? mc needs its options and an
+ * answer index among them; numeric a number; short and essay an answer or
+ * a rubric; formula and cloze an answer. A bank question with neither
+ * answer nor rubric is left out of draws.
+ */
+function stQuestionAnswerable(q) {
+  if (!q) return false;
+  const answer = String(q.answer ?? '').trim();
+  switch (q.format) {
+    case 'mc': {
+      const options = Array.isArray(q.options) ? q.options : [];
+      const i = Number(answer);
+      return options.length >= 2 && answer !== '' && Number.isInteger(i) && i >= 0 && i < options.length;
+    }
+    case 'numeric': return !!stParseNumber(q.numeric && q.numeric.expected != null ? q.numeric.expected : answer);
+    case 'short':
+    case 'essay': return !!answer || stNormalizeRubric(q.rubric).length > 0;
+    default: return !!answer;
+  }
+}
+
+/** A short title for a bank question's own concept: its origin label, else the stem's first sentence, cut. */
+function stBankConceptTitle(q) {
+  const label = String((q && q.originLabel) || '').trim();
+  if (label) return label;
+  const stem = String((q && q.stem) || '').replace(/\s+/g, ' ').trim();
+  const first = (/^(.{12,}?[.?!])(?:\s|$)/.exec(stem) || [null, stem])[1];
+  const cut = first.length > 60 ? `${first.slice(0, 59).replace(/\s+\S*$/, '')}…` : first;
+  return cut || 'Question';
 }

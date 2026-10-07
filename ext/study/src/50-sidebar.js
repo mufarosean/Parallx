@@ -4,7 +4,8 @@
 //
 // The desk (mockup section 10): every material with its coverage and, for the
 // expanded PDF, its chapters; the sessions open now and the finished ones
-// under them; the question banks folded. Select Materials turns the icon
+// under them; the question banks folded, each one studiable (a row opens the
+// setup sheet on that bank). Select Materials turns the icon
 // column into checks and Study Together starts one session over the pick.
 // Chrome is the kit's (icon buttons, section labels, the empty state, the
 // context menu, the confirm modal); the rows are Study's own rules on tokens.
@@ -74,7 +75,7 @@ function stFlattenPageTree(nodes, path = [], out = []) {
 }
 
 /** Add PDF…: the workspace pick, ingest, then the setup sheet. Shared by the
- *  header's + menu and the empty state. */
+ *  Materials row's + menu and the empty state. */
 async function stAddPdfFlow() {
   const fsPath = await stPickWorkspacePdf();
   if (!fsPath) return;
@@ -113,44 +114,44 @@ function createSidebarView(container) {
     activeSessionId: null,
   };
 
-  // ── Header: Select Materials, +, ⋯ ──
-  const header = el('div', 'st-sb__hd');
-  header.appendChild(el('span', 'st-sp'));
+  // No header row of its own: the workbench's container header already
+  // carries ⋯ (Add Material…, Import Questions…, Import Examiner's Report…).
+  // Select Materials and + sit at the right of the Materials label row
+  // (authoring guide §6.6), drawn on every paint.
   const selectIcon = _api.icons && typeof _api.icons.hasIcon === 'function' && _api.icons.hasIcon('check-square') ? 'check-square' : 'square-check';
-  const selectBtn = _api.ui.createIconButton(header, {
-    icon: selectIcon, title: 'Select Materials', size: 'sm',
-    onClick: () => {
-      state.selecting = !state.selecting;
-      if (!state.selecting) { state.picked.clear(); stSetPicked([]); }
-      void paint();
-    },
-  });
-  selectBtn.setAttribute('aria-pressed', 'false');
-  const addBtn = _api.ui.createIconButton(header, {
-    icon: 'plus', title: 'Add Material', size: 'sm',
-    onClick: () => {
-      _api.ui.showContextMenu(addBtn, [
-        { label: 'Add PDF…', icon: 'file-text', onSelect: () => void stAddPdfFlow() },
-        { label: 'Add Canvas Page…', icon: 'notebook-text', onSelect: () => void stAddCanvasPageFlow() },
-      ], { anchorPosition: 'below' });
-    },
-  });
-  const moreBtn = _api.ui.createIconButton(header, {
-    icon: 'ellipsis', title: 'More Actions', size: 'sm',
-    onClick: () => {
-      _api.ui.showContextMenu(moreBtn, [
-        { label: 'Import Questions…', icon: 'database', onSelect: () => void _api.commands.executeCommand('study.importQuestions') },
-        { label: "Import Examiner's Report…", icon: 'file-check', onSelect: () => void _api.commands.executeCommand('study.importReport') },
-      ], { anchorPosition: 'below' });
-    },
-  });
-  root.appendChild(header);
+  const toggleSelecting = () => {
+    state.selecting = !state.selecting;
+    if (!state.selecting) { state.picked.clear(); stSetPicked([]); }
+    void paint();
+  };
+  const materialActions = (row, { withSelect }) => {
+    row.appendChild(el('span', 'st-sp'));
+    if (withSelect) {
+      const selectBtn = _api.ui.createIconButton(row, {
+        icon: selectIcon, title: state.selecting ? 'Stop Selecting' : 'Select Materials', size: 'sm',
+        onClick: () => toggleSelecting(),
+      });
+      selectBtn.classList.add('st-sb__select');
+      selectBtn.setAttribute('aria-pressed', state.selecting ? 'true' : 'false');
+      selectBtn.classList.toggle('st-sb__btn--on', state.selecting);
+    }
+    const addBtn = _api.ui.createIconButton(row, {
+      icon: 'plus', title: 'Add Material', size: 'sm',
+      onClick: () => {
+        _api.ui.showContextMenu(addBtn, [
+          { label: 'Add PDF…', icon: 'file-text', onSelect: () => void stAddPdfFlow() },
+          { label: 'Add Canvas Page…', icon: 'notebook-text', onSelect: () => void stAddCanvasPageFlow() },
+        ], { anchorPosition: 'below' });
+      },
+    });
+    addBtn.classList.add('st-sb__add');
+  };
 
   const body = el('div', 'st-sb__body');
   root.appendChild(body);
 
   // ── Rows ──
-  const sectionLabel = (host, text, count, { fold = null } = {}) => {
+  const sectionLabel = (host, text, count, { fold = null, actions = null } = {}) => {
     const row = el('div', 'st-sb__secl' + (fold ? ' st-sb__secl--fold' : ''));
     const label = _api.ui.createSectionLabel(null, text);
     if (fold) {
@@ -163,6 +164,7 @@ function createSidebarView(container) {
     }
     if (count != null) label.appendChild(el('span', 'st-sb__n', String(count)));
     row.appendChild(label);
+    if (actions) actions(row);
     host.appendChild(row);
     return row;
   };
@@ -183,7 +185,9 @@ function createSidebarView(container) {
       row.appendChild(ic);
       if (state.expandedId === m.id) row.classList.add('st-sb__it--on');
     }
-    row.appendChild(el('span', 'st-sb__nm', m.label));
+    const nm = el('span', 'st-sb__nm', m.label);
+    nm.title = m.label;
+    row.appendChild(nm);
     row.appendChild(stCoverageBar('st-mini', cov));
     row.addEventListener('click', () => {
       if (state.selecting) {
@@ -266,13 +270,19 @@ function createSidebarView(container) {
     const ic = el('span', '');
     ic.innerHTML = icon('database', 14);
     row.appendChild(ic);
-    row.appendChild(el('span', 'st-sb__nm', b.name));
+    const nm = el('span', 'st-sb__nm', b.name);
+    nm.title = b.name;
+    row.appendChild(nm);
     row.title = b.name;
-    row.appendChild(el('span', 'st-sb__r', `${b.count || 0} · ${b.kind}`));
+    row.appendChild(el('span', 'st-sb__r', String(b.count || 0)));
+    // A bank is studiable: the row opens the setup sheet on it.
+    row.addEventListener('click', () => void stOpenSetup({ bankIds: [b.id] }));
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, [
-        { label: 'Delete', icon: 'trash', danger: true, onSelect: () => void deleteBank(b) },
+        { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [b.id] }) },
+        { separator: true },
+        { label: 'Delete Bank', icon: 'trash', danger: true, onSelect: () => void deleteBank(b) },
       ]);
     });
     return row;
@@ -341,11 +351,9 @@ function createSidebarView(container) {
     const banks = (await stListBanks()) || [];
     if (state.disposed) return;
 
-    selectBtn.setAttribute('aria-pressed', state.selecting ? 'true' : 'false');
-    selectBtn.classList.toggle('st-sb__btn--on', state.selecting);
     body.innerHTML = '';
 
-    if (!materials.length) {
+    if (!materials.length && !banks.length && !open.length && !done.length) {
       _api.ui.createEmptyState(body, {
         icon: 'px-study',
         headline: 'Nothing to study yet.',
@@ -382,7 +390,8 @@ function createSidebarView(container) {
 
     // Materials.
     const matSec = el('div', 'st-sb__sec st-sb__sec--materials');
-    sectionLabel(matSec, 'Materials', materials.length);
+    sectionLabel(matSec, 'Materials', materials.length, { actions: (row) => materialActions(row, { withSelect: materials.length > 0 }) });
+    if (!materials.length) matSec.appendChild(el('div', 'st-sb__none', 'No materials yet.'));
     for (const p of perMaterial) {
       matSec.appendChild(materialRow(p.m, p.cov, p.concepts));
       if (!state.selecting) for (const s of p.sections) matSec.appendChild(chapterRow(p.m, s, p.concepts, now));

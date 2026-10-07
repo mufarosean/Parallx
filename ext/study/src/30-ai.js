@@ -406,8 +406,18 @@ function stFindSimilarConcept(title, concepts) {
  * against the material's existing concepts and each other; new ones are
  * inserted and the section marked mapped. Returns the unit's concepts:
  * the existing matches plus the new rows.
+ *
+ * `ranges` ([[from, to], ...]) maps only those pages (the pages the section
+ * owns under stPagePartition, so a chapter and its subsections never map a
+ * page twice); `ownerOf(page)` files each concept under the section that
+ * owns its page; `markMapped` false leaves the section unmarked (a range
+ * clipped to a Pages scope is not the whole section). `quiet` reports only
+ * through onProgress, for a caller that rewrites the progress (stEnsureBank).
  */
-async function stBuildConceptMap(material, section, { modelId, numCtx = 0, token, onProgress, selectionText = '', selectionPage = 0 } = {}) {
+async function stBuildConceptMap(material, section, {
+  modelId, numCtx = 0, token, onProgress, selectionText = '', selectionPage = 0,
+  ranges = null, ownerOf = null, markMapped = true, quiet = false,
+} = {}) {
   const cancelled = () => !!(token && token.cancelled);
   const model = modelId || await stPickModel(material);
   if (!model) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
@@ -416,30 +426,38 @@ async function stBuildConceptMap(material, section, { modelId, numCtx = 0, token
   const report = (done, total) => {
     const p = { phase: 'map', done, total, written: 0, kept: 0, dropped: {}, materialId: material.id, sectionId: section ? section.id : 0 };
     if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
-    try { bus.emit('run', p); } catch { /* bus is optional here */ }
+    if (!quiet) { try { bus.emit('run', p); } catch { /* bus is optional here */ } }
   };
 
   // The chunks: page ranges of the section, or the selection as one chunk.
-  let chunks;
+  let chunks = [];
   if (selectionText) {
     const page = Number(selectionPage) || 0;
     chunks = [{ pageFrom: page, pageTo: page, text: `[Page ${page || 1}]\n${String(selectionText).trim()}` }];
   } else {
-    const from = Math.max(1, Number(section.pageFrom) || 1);
-    const to = Math.max(from, Math.min(text.pageTexts.length || from, Number(section.pageTo) || from));
+    const pageCount = text.pageTexts.length;
+    const list = Array.isArray(ranges) && ranges.length ? ranges : [[section.pageFrom, section.pageTo]];
     const cap = await stPlanFor(model, material, ST_MAP_CHUNK_CHARS, ST_MAP_OUTPUT_TOKENS, numCtx);
     const maxChars = Math.min(ST_MAP_CHUNK_CHARS, cap.maxChars);
-    const ranges = stChunkPages(text.pageTexts, { from, to, maxChars }) || [];
-    chunks = ranges.map((r) => {
-      const block = stPageBlock(text.pageTexts, r.pageFrom, r.pageTo, maxChars);
-      return { pageFrom: r.pageFrom, pageTo: r.pageTo, text: block.material };
-    }).filter((c) => c.text.trim());
-    if (!chunks.length) {
-      const block = stPageBlock(text.pageTexts, from, to, maxChars);
-      if (block.material.trim()) chunks = [{ pageFrom: from, pageTo: to, text: block.material }];
+    for (const [rf, rt] of list) {
+      const from = Math.max(1, Number(rf) || 1);
+      const to = Math.max(from, Math.min(pageCount || from, Number(rt) || from));
+      const pieces = (stChunkPages(text.pageTexts, { from, to, maxChars }) || []).map((r) => {
+        const block = stPageBlock(text.pageTexts, r.pageFrom, r.pageTo, maxChars);
+        return { pageFrom: r.pageFrom, pageTo: r.pageTo, text: block.material };
+      }).filter((c) => c.text.trim());
+      if (!pieces.length) {
+        const block = stPageBlock(text.pageTexts, from, to, maxChars);
+        if (block.material.trim()) pieces.push({ pageFrom: from, pageTo: to, text: block.material });
+      }
+      chunks.push(...pieces);
     }
   }
-  if (!chunks.length) throw new Error('This section has no readable text to map.');
+  if (!chunks.length) {
+    // Nothing readable (a blank or image-only stretch): mapped, with no concepts.
+    if (section && section.id && markMapped && !cancelled()) await stMarkSectionMapped(section.id, stNow());
+    return [];
+  }
 
   const found = [];   // new concepts to insert: { title, summary, page, anchorQuote, flags }
   const matched = []; // existing concepts the chunk named again
@@ -477,22 +495,31 @@ async function stBuildConceptMap(material, section, { modelId, numCtx = 0, token
       const anchorQuote = quote && (selectionText || stAnchorPageFor(quote, text.pageTexts, page)) ? quote : '';
       const prior = stFindSimilarConcept(title, pool);
       if (prior) {
-        if (!matched.includes(prior)) matched.push(prior);
-        if (!_stConceptFlags.has(prior.id)) stRememberFlags(prior.id, raw);
+        if (prior.id && !matched.includes(prior)) matched.push(prior);
+        if (prior.id && !_stConceptFlags.has(prior.id)) stRememberFlags(prior.id, raw);
         continue;
       }
-      const entry = { title, summary, page, anchorQuote, flags: raw };
-      found.push(entry);
+      found.push({ title, summary, page, anchorQuote, flags: raw });
       pool.push({ id: 0, title });
     }
     report(i + 1, chunks.length);
   }
 
-  const inserted = found.length
-    ? await stInsertConcepts(material.id, section ? section.id : 0, found.map(({ title, summary, page, anchorQuote }) => ({ title, summary, page, anchorQuote })))
-    : [];
-  for (let i = 0; i < inserted.length; i++) stRememberFlags(inserted[i].id, found[i] && found[i].flags);
-  if (section && section.id && !cancelled()) await stMarkSectionMapped(section.id, stNow());
+  // Each new concept goes under the section that owns its page.
+  const baseSection = section ? section.id : 0;
+  const bySection = new Map();
+  for (const f of found) {
+    const sid = typeof ownerOf === 'function' && !selectionText ? (Number(ownerOf(f.page)) || baseSection) : baseSection;
+    if (!bySection.has(sid)) bySection.set(sid, []);
+    bySection.get(sid).push(f);
+  }
+  const inserted = [];
+  for (const [sid, list] of bySection) {
+    const rows = await stInsertConcepts(material.id, sid, list.map(({ title, summary, page, anchorQuote }) => ({ title, summary, page, anchorQuote })));
+    for (let i = 0; i < rows.length; i++) stRememberFlags(rows[i].id, list[i] && list[i].flags);
+    inserted.push(...rows);
+  }
+  if (section && section.id && markMapped && !cancelled()) await stMarkSectionMapped(section.id, stNow());
   return [...matched, ...inserted];
 }
 
@@ -509,11 +536,14 @@ function stAnchorPageFor(quote, pageTexts, hintPage) {
 
 // ── Checks ──────────────────────────────────────────────────────────────────
 
-/** The answer as text, for the support check. */
+/** The answer as text, for the support check. `q` is a validated StQuestion (stValidateQuestion). */
 function stAnswerText(q) {
   switch (q.format) {
     case 'mc': return String((Array.isArray(q.options) ? q.options[Number(q.answer)] : '') || '');
-    case 'numeric': return `${q.expected != null ? q.expected : q.answer}${q.units ? ` ${q.units}` : ''}`;
+    case 'numeric': {
+      const n = q.numeric || {};
+      return `${n.expected != null ? n.expected : q.answer}${n.units ? ` ${n.units}` : ''}`;
+    }
     default: return String(q.answer || '');
   }
 }
@@ -522,7 +552,7 @@ function stAnswerText(q) {
 async function stCheckSupport(modelId, q, { material, numCtx } = {}) {
   const user = [
     'Quotation:',
-    String(q.quote || ''),
+    String(q.sourceQuote || ''),
     '',
     'Question:',
     String(q.stem || ''),
@@ -547,7 +577,7 @@ async function stCheckDistractors(modelId, q, { material, numCtx } = {}) {
       String(d.stem || q.stem || ''),
       '',
       'Quotation from the source:',
-      String(q.quote || ''),
+      String(q.sourceQuote || ''),
       '',
       'Option to check:',
       String(d.option || ''),
@@ -582,40 +612,299 @@ async function stPythonAvailable() {
   }
 }
 
+/** The only import line a solution may carry (math is bound for it anyway). */
+const ST_PY_IMPORT_MATH = /^\s*import\s+math\s*(?:#.*)?$/;
+/** Words a calculation never needs: modules, introspection, I/O, control flow the vetting refuses. */
+const ST_PY_FORBIDDEN = /(__|\b(?:open|exec|eval|compile|input|print|globals|locals|vars|getattr|setattr|delattr|hasattr|breakpoint|help|dir|type|object|lambda|while|with|try|except|finally|global|nonlocal|class|yield|async|await|del|assert|raise|os|sys|subprocess|socket|shutil|pathlib|json|codecs|ctypes|urllib|importlib|builtins|pickle|marshal|io)\b)/;
+
 /**
  * A model-written solution is run in the user's environment, so it is held
  * to the shape the prompt asked for: a solve() over arithmetic and math,
  * nothing that reaches the file system, the network or the interpreter.
+ * This is the first gate only; the script itself vets the solution's syntax
+ * tree before running it (ST_NUMERIC_WRAPPER).
  */
 function stNumericSolutionSafe(py) {
   const src = String(py || '');
   if (!/def\s+solve\s*\(/.test(src)) return { ok: false, reason: 'The solution does not define solve().' };
-  if (/^\s*(import|from)\s+(?!math\b)/m.test(src)) return { ok: false, reason: 'The solution imports a module other than math.' };
-  if (/(__|\bopen\s*\(|\bexec\s*\(|\beval\s*\(|\bcompile\s*\(|\binput\s*\(|\bos\b|\bsys\b|\bsubprocess\b|\bsocket\b|\bshutil\b|\bpathlib\b|\bglobals\s*\(|\bgetattr\s*\(|\bbreakpoint\s*\()/.test(src)) {
-    return { ok: false, reason: 'The solution uses something a calculation does not need.' };
-  }
   if (src.length > 4000) return { ok: false, reason: 'The solution is too long to be a calculation.' };
+  for (const line of src.split(/\r\n?|\n/)) {
+    if (/\b(?:import|from)\b/.test(line) && !ST_PY_IMPORT_MATH.test(line)) {
+      return { ok: false, reason: 'The solution imports a module other than math.' };
+    }
+  }
+  if (ST_PY_FORBIDDEN.test(src)) return { ok: false, reason: 'The solution uses something a calculation does not need.' };
   return { ok: true, reason: '' };
 }
 
-/** The script: the inputs, the model's solve(), one JSON line on stdout. */
+/**
+ * The check script. The solution arrives as a string (__SOURCE__) and the
+ * inputs as JSON text (__INPUTS__), both JSON string literals, which Python
+ * reads as string literals. Before anything runs, the solution's syntax
+ * tree is vetted: one `def solve(i)` (a bare `import math` is allowed and
+ * dropped), and inside it only assignments, augmented assignments, return,
+ * if, and for over range() with constant bounds of at most 1000; numbers;
+ * arithmetic, comparisons, boolean and conditional expressions; names
+ * assigned in solve and its argument; `i["key"]`; math.<name> calls and
+ * constants; calls to abs, min, max, round, sum, pow, float, int, len and
+ * range; lists, tuples and comprehensions over range() only as call
+ * arguments. Anything else (an import, an attribute on anything but math, a
+ * dunder, a string outside a subscript, while, with, try, lambda, global,
+ * any other call) is refused. The vetted tree is executed in a namespace
+ * whose __builtins__ is exactly those functions and whose only other name
+ * is math; the inputs are parsed before, json is not reachable from it, and
+ * the one JSON result line is printed by the wrapper after.
+ */
+// (The imports are a string of their own: a part's line never starts with "import", studyBundle.test.ts.)
+const ST_NUMERIC_WRAPPER = 'import ast\nimport json\nimport math\n' + `
+SOURCE = __SOURCE__
+INPUTS = __INPUTS__
+
+ALLOWED_CALLS = {"abs", "min", "max", "round", "sum", "pow", "float", "int", "len", "range"}
+SAFE_BUILTINS = {"abs": abs, "min": min, "max": max, "round": round, "sum": sum, "pow": pow, "float": float, "int": int, "len": len, "range": range}
+MATH_CONSTANTS = {"pi", "e", "tau", "inf", "nan"}
+BIN_OPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)
+UNARY_OPS = (ast.UAdd, ast.USub, ast.Not)
+CMP_OPS = (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE)
+MAX_RANGE = 1000
+
+
+class Rejected(Exception):
+    pass
+
+
+def reject(why):
+    raise Rejected(why)
+
+
+def check_store(name):
+    if name.startswith("_") or name == "math" or name in ALLOWED_CALLS:
+        reject("assignment to " + name)
+
+
+def const_int(node):
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        return -const_int(node.operand)
+    if isinstance(node, ast.Constant) and type(node.value) is int:
+        return node.value
+    reject("range() bounds must be constant integers")
+
+
+def is_range(node):
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "range"
+
+
+def check_range(node):
+    if not is_range(node) or node.keywords or not 1 <= len(node.args) <= 3:
+        reject("loops run over range() only")
+    for arg in node.args:
+        if abs(const_int(arg)) > MAX_RANGE:
+            reject("range() longer than 1000")
+
+
+def check_expr(node, names, as_arg=False):
+    if isinstance(node, ast.Constant):
+        if type(node.value) in (int, float, bool):
+            return
+        reject("constant")
+    if isinstance(node, ast.Name):
+        if not isinstance(node.ctx, ast.Load) or node.id.startswith("_") or node.id not in names:
+            reject("name " + node.id)
+        return
+    if isinstance(node, ast.BinOp):
+        if not isinstance(node.op, BIN_OPS):
+            reject("operator")
+        check_expr(node.left, names)
+        check_expr(node.right, names)
+        return
+    if isinstance(node, ast.UnaryOp):
+        if not isinstance(node.op, UNARY_OPS):
+            reject("operator")
+        check_expr(node.operand, names)
+        return
+    if isinstance(node, ast.BoolOp):
+        for value in node.values:
+            check_expr(value, names)
+        return
+    if isinstance(node, ast.Compare):
+        if not all(isinstance(op, CMP_OPS) for op in node.ops):
+            reject("comparison")
+        check_expr(node.left, names)
+        for value in node.comparators:
+            check_expr(value, names)
+        return
+    if isinstance(node, ast.IfExp):
+        check_expr(node.test, names)
+        check_expr(node.body, names)
+        check_expr(node.orelse, names)
+        return
+    if isinstance(node, ast.Subscript):
+        key = node.slice
+        if hasattr(ast, "Index") and isinstance(key, getattr(ast, "Index")):
+            key = key.value
+        if not (isinstance(node.ctx, ast.Load) and isinstance(node.value, ast.Name) and node.value.id == ARG):
+            reject("subscript")
+        if not (isinstance(key, ast.Constant) and type(key.value) is str):
+            reject("subscript key")
+        return
+    if isinstance(node, ast.Attribute):
+        if isinstance(node.ctx, ast.Load) and isinstance(node.value, ast.Name) and node.value.id == "math" and node.attr in MATH_CONSTANTS:
+            return
+        reject("attribute")
+    if isinstance(node, ast.Call):
+        check_call(node, names)
+        return
+    if as_arg and isinstance(node, (ast.List, ast.Tuple)) and isinstance(node.ctx, ast.Load):
+        for elt in node.elts:
+            check_expr(elt, names)
+        return
+    if as_arg and isinstance(node, (ast.ListComp, ast.GeneratorExp)):
+        inner = set(names)
+        for gen in node.generators:
+            if getattr(gen, "is_async", 0) or not isinstance(gen.target, ast.Name):
+                reject("comprehension")
+            check_store(gen.target.id)
+            check_range(gen.iter)
+            inner.add(gen.target.id)
+            for cond in gen.ifs:
+                check_expr(cond, inner)
+        check_expr(node.elt, inner)
+        return
+    reject(type(node).__name__)
+
+
+def check_call(node, names):
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        if not (isinstance(func.value, ast.Name) and func.value.id == "math") or func.attr.startswith("_") or not hasattr(math, func.attr):
+            reject("call")
+    elif isinstance(func, ast.Name):
+        if func.id not in ALLOWED_CALLS:
+            reject("call " + func.id)
+        if func.id == "range":
+            check_range(node)
+            return
+    else:
+        reject("call")
+    for arg in node.args:
+        check_expr(arg, names, True)
+    for kw in node.keywords:
+        if kw.arg is None:
+            reject("keyword unpacking")
+        check_expr(kw.value, names)
+
+
+def check_target(node):
+    if not isinstance(node, ast.Name):
+        reject("assignment target")
+    check_store(node.id)
+
+
+def check_body(stmts, names, depth=0):
+    if depth > 12:
+        reject("nesting")
+    for stmt in stmts:
+        if isinstance(stmt, ast.Assign):
+            for target in stmt.targets:
+                check_target(target)
+            check_expr(stmt.value, names)
+        elif isinstance(stmt, ast.AugAssign):
+            check_target(stmt.target)
+            if not isinstance(stmt.op, BIN_OPS):
+                reject("operator")
+            check_expr(stmt.value, names)
+        elif isinstance(stmt, ast.Return):
+            if stmt.value is None:
+                reject("return without a value")
+            check_expr(stmt.value, names)
+        elif isinstance(stmt, ast.If):
+            check_expr(stmt.test, names)
+            check_body(stmt.body, names, depth + 1)
+            check_body(stmt.orelse, names, depth + 1)
+        elif isinstance(stmt, ast.For):
+            check_target(stmt.target)
+            check_range(stmt.iter)
+            if stmt.orelse:
+                reject("for-else")
+            check_body(stmt.body, names, depth + 1)
+        elif isinstance(stmt, ast.Pass):
+            pass
+        elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+            pass
+        else:
+            reject(type(stmt).__name__)
+
+
+ARG = "i"
+
+
+def vet(source):
+    global ARG
+    tree = ast.parse(source, mode="exec")
+    functions = []
+    for node in tree.body:
+        if isinstance(node, ast.Import) and len(node.names) == 1 and node.names[0].name == "math" and node.names[0].asname is None:
+            continue
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            continue
+        if not isinstance(node, ast.FunctionDef):
+            reject(type(node).__name__ + " outside solve()")
+        functions.append(node)
+    if len(functions) != 1 or functions[0].name != "solve":
+        reject("exactly one def solve(i)")
+    fn = functions[0]
+    args = fn.args
+    if fn.decorator_list or fn.returns or getattr(fn, "type_params", None) or args.vararg or args.kwarg or args.kwonlyargs or args.defaults or args.kw_defaults or getattr(args, "posonlyargs", []) or len(args.args) != 1 or args.args[0].annotation:
+        reject("solve() takes one plain argument")
+    ARG = args.args[0].arg
+    check_store(ARG)
+    names = {ARG}
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            check_store(node.id)
+            names.add(node.id)
+    check_body(fn.body, names)
+    module = ast.Module(body=[fn], type_ignores=[])
+    return compile(module, "<solution>", "exec")
+
+
+def main():
+    try:
+        inputs = json.loads(INPUTS)
+        if not isinstance(inputs, dict):
+            reject("inputs are not an object")
+        code = vet(SOURCE)
+    except Rejected as err:
+        print(json.dumps({"error": "rejected: " + str(err)}))
+        return
+    except (SyntaxError, ValueError, TypeError, RecursionError) as err:
+        print(json.dumps({"error": "rejected: " + type(err).__name__}))
+        return
+    namespace = {"__builtins__": dict(SAFE_BUILTINS), "math": math}
+    try:
+        exec(code, namespace)
+        value = namespace["solve"](inputs)
+        if isinstance(value, bool):
+            raise TypeError("not a number")
+        value = float(value)
+        if not math.isfinite(value):
+            raise ValueError("not finite")
+    except Exception as err:
+        print(json.dumps({"error": type(err).__name__}))
+        return
+    print(json.dumps({"value": value}))
+
+
+main()
+`;
+
+/** The script for one numeric question: the wrapper with the solution and inputs filled in. */
 function stNumericScript(numeric) {
   const inputs = numeric && numeric.inputs && typeof numeric.inputs === 'object' ? numeric.inputs : {};
-  const literal = JSON.stringify(JSON.stringify(inputs));
-  return [
-    'import json',
-    'import math',
-    `INPUTS = json.loads(${literal})`,
-    '',
-    String(numeric.solutionPy || '').replace(/\r\n?/g, '\n'),
-    '',
-    'try:',
-    '    _v = solve(INPUTS)',
-    '    print(json.dumps({"value": _v if isinstance(_v, (int, float)) else float(_v)}))',
-    'except Exception as _e:',
-    '    print(json.dumps({"error": str(_e)}))',
-    '',
-  ].join('\n');
+  const source = String((numeric && numeric.solutionPy) || '').replace(/\r\n?/g, '\n');
+  return ST_NUMERIC_WRAPPER
+    .replace('__SOURCE__', () => JSON.stringify(source))
+    .replace('__INPUTS__', () => JSON.stringify(JSON.stringify(inputs)));
 }
 
 /** Make sure each directory of a workspace-relative path exists, best effort. */
@@ -640,6 +929,9 @@ async function stEnsureWorkspaceDirs(fs, rootSlash, relPath) {
  * is known. `timeout` is the bridge's stall limit; a second timer here
  * cancels the run if the exit never arrives.
  */
+/** The run's output directory, relative to the workspace (the bridge accepts any path inside it; without one it makes output/pyrun-N per run). */
+const ST_NUMERIC_OUT_REL = '.parallx/tmp/study/out';
+
 function stRunPythonScript(workspaceRoot, scriptPath, timeout) {
   const py = electronBridge() && electronBridge().python;
   if (!py || typeof py.runScript !== 'function' || typeof py.onRunData !== 'function' || typeof py.onRunExit !== 'function') {
@@ -685,7 +977,7 @@ function stRunPythonScript(workspaceRoot, scriptPath, timeout) {
       bucket(p.runId).exit = p;
       if (runId && p.runId === runId) finish();
     });
-    Promise.resolve(py.runScript({ workspaceRoot, scriptPath, args: [], timeout })).then((res) => {
+    Promise.resolve(py.runScript({ workspaceRoot, scriptPath, args: [], timeout, outDir: ST_NUMERIC_OUT_REL })).then((res) => {
       if (!res || !res.ok || !res.runId) {
         done({ stdout: '', stderr: '', exitCode: -1, error: String((res && res.error) || 'The check script could not be started.') });
         return;
@@ -735,6 +1027,7 @@ async function stRunNumericCheck(question) {
     run = await stRunPythonScript(root, stFsPathOf(scriptUri), ST_NUMERIC_TIMEOUT_MS);
   } finally {
     try { await fs.delete(scriptUri); } catch { /* best effort */ }
+    try { await fs.delete(stUriOf(`${rootSlash}/${ST_NUMERIC_OUT_REL}`)); } catch { /* best effort */ }
   }
   if (run.error && !run.stdout.trim()) return { available: true, agreed: false, computed: null, error: run.error };
   const lines = run.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -743,7 +1036,10 @@ async function stRunNumericCheck(question) {
     try { const v = JSON.parse(lines[i]); if (v && typeof v === 'object') parsed = v; } catch { /* not the result line */ }
   }
   if (!parsed) return { available: true, agreed: false, computed: null, error: run.stderr.trim() ? 'The solution did not run cleanly.' : 'The solution printed no result.' };
-  if (parsed.error) return { available: true, agreed: false, computed: null, error: 'The solution raised an error when run.' };
+  if (parsed.error) {
+    const refused = /^rejected/.test(String(parsed.error));
+    return { available: true, agreed: false, computed: null, error: refused ? 'The solution uses something a calculation does not need.' : 'The solution raised an error when run.' };
+  }
   const computed = Number(parsed.value);
   if (!Number.isFinite(computed)) return { available: true, agreed: false, computed: null, error: 'The solution did not return a number.' };
   const tolerance = Number(numeric.tolerance) || Number(cfg('numericTolerance', 0.005)) || 0.005;
@@ -753,46 +1049,22 @@ async function stRunNumericCheck(question) {
 
 // ── Generation ──────────────────────────────────────────────────────────────
 
-/** A validated model question as an StQuestion-shaped insert. */
-function stRawToQuestion(q, { material, concept, modelId, runId, sourcePage, checks, numeric }) {
-  const format = String(q.format);
-  let options = [];
-  let answer = '';
-  let rubric = [];
-  if (format === 'mc') {
-    options = Array.isArray(q.options) ? q.options.map((o) => String(o)) : [];
-    answer = String(Number(q.answer) || 0);
-  } else if (format === 'numeric') {
-    answer = String(q.expected != null ? q.expected : q.answer != null ? q.answer : '');
-  } else if (format === 'cloze') {
-    answer = String(q.answer || '');
-    options = Array.isArray(q.aliases) ? q.aliases.map((a) => String(a)) : [];
-  } else {
-    answer = String(q.answer || '');
-    if (format === 'short' || format === 'essay') rubric = stNormalizeRubric(q.rubric);
-  }
+/**
+ * A validated question (stValidateQuestion's StQuestion: sourceQuote,
+ * sourcePage, numeric {inputs, solutionPy, expected, units}, a cloze's
+ * aliases in options, an mc answer as an index) made ready to insert. The
+ * checks read the same object, so there is one shape from validation on.
+ */
+function stFinalizeQuestion(q, { material, concept, modelId, runId, sourcePage, checks, numeric }) {
   return {
+    ...q,
     materialId: material.id,
     conceptId: concept.id,
-    format,
-    stem: String(q.stem || '').trim(),
-    options,
-    answer,
-    explanation: String(q.explanation || '').trim(),
-    rubric,
-    rubricOrigin: rubric.length ? 'source' : '',
-    contradictions: [],
-    numeric: numeric || null,
-    sourcePage: Number(sourcePage) || 0,
-    sourceQuote: String(q.quote || '').trim(),
+    numeric: numeric || q.numeric || null,
+    sourcePage: Number(sourcePage) || Number(q.sourcePage) || 0,
     sourceUri: '',
     origin: 'generated',
-    originLabel: '',
-    providerId: '',
-    providerRef: '',
-    bankId: 0,
     checks,
-    difficulty: ['easy', 'medium', 'hard'].includes(String(q.difficulty || '').toLowerCase()) ? String(q.difficulty).toLowerCase() : '',
     hidden: false,
     edited: false,
     runId,
@@ -807,9 +1079,10 @@ function stAskCount(need) {
 
 /**
  * Split the plan into calls: concepts on one page share the page's text,
- * and no call asks for more than ST_ASK_PER_CALL questions.
+ * no call asks for more than ST_ASK_PER_CALL questions, and with
+ * `maxConcepts` > 0 no call covers more concepts than that.
  */
-function stGroupPlan(plan) {
+function stGroupPlan(plan, maxConcepts = 0) {
   const sorted = [...plan].sort((a, b) => (a.concept.page - b.concept.page) || (a.concept.ord - b.concept.ord) || (a.concept.id - b.concept.id));
   const groups = [];
   let current = null;
@@ -817,7 +1090,8 @@ function stGroupPlan(plan) {
   for (const slot of sorted) {
     const ask = Object.values(slot.need).reduce((n, v) => n + stAskCount(v), 0);
     const samePage = current && current[0].concept.page === slot.concept.page;
-    if (!current || !samePage || currentAsk + ask > ST_ASK_PER_CALL) {
+    const full = maxConcepts > 0 && current && current.length >= maxConcepts;
+    if (!current || !samePage || full || currentAsk + ask > ST_ASK_PER_CALL) {
       current = [];
       currentAsk = 0;
       groups.push(current);
@@ -848,18 +1122,22 @@ function stConceptForRaw(raw, group) {
  * of each applicable format, through the checks in order: anchor
  * (mechanical), support (model), distractor (model, mc only), numeric
  * (Python). Each check is skipped when its setting is off and counted in
- * dropped when it fails. Returns { kept, written, dropped, runId, needed, status }.
+ * dropped when it fails. `maxGroups` > 0 makes at most that many model
+ * calls (stEnsureBank visits units round-robin, one call each); `more` says
+ * calls were left. `attempted` lists the concepts a call was made for.
+ * Returns { kept, written, dropped, runId, needed, status, attempted, more }.
  */
 async function stGenerateQuestions(material, {
   sectionId = 0, conceptIds = null, formats = null, perConcept = 0, choices = 0, modelId = '', numCtx = 0,
   token = null, onProgress = null, pythonAvailable = null, stopWhen = null,
+  maxGroups = 0, maxConceptsPerCall = 0, quiet = false,
 } = {}) {
   const cancelled = () => !!(token && token.cancelled);
   const wanted = Array.isArray(conceptIds) ? new Set(conceptIds.map(Number)) : null;
   const concepts = wanted
     ? (await stListConcepts({ materialIds: [material.id] })).filter((c) => wanted.has(c.id))
     : await stListConcepts({ sectionIds: [sectionId] });
-  const empty = { kept: [], written: 0, dropped: {}, runId: 0, needed: 0, status: 'done' };
+  const empty = { kept: [], written: 0, dropped: {}, runId: 0, needed: 0, status: 'done', attempted: [], more: false };
   if (!concepts.length) return empty;
 
   const per = Math.max(1, Number(perConcept) || Number(cfg('questionsPerConcept', 2)) || 2);
@@ -892,7 +1170,7 @@ async function stGenerateQuestions(material, {
   const model = modelId || await stPickModel(material);
   if (!model) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
   const text = await stMaterialText(material);
-  const groups = stGroupPlan(plan);
+  const groups = stGroupPlan(plan, Number(maxConceptsPerCall) || 0);
   const setting = stContextSettingFor(material, numCtx);
   const runId = await stStartRun({ materialId: material.id, sectionId, model, numCtx: setting });
   const dropped = { anchor: 0, support: 0, distractor: 0, numeric: python ? 0 : null, parse: 0 };
@@ -900,13 +1178,16 @@ async function stGenerateQuestions(material, {
   let written = 0;
   let conceptsDone = 0;
   let status = 'done';
+  let groupsDone = 0;
+  let more = false;
+  const attempted = [];
   const report = (phase, extra) => {
     const p = {
       phase, done: conceptsDone, total: plan.length, written, kept: kept.length, dropped,
       runId, materialId: material.id, sectionId, model, ...(extra || {}),
     };
     if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
-    try { bus.emit('run', p); } catch { /* bus is optional here */ }
+    if (!quiet) { try { bus.emit('run', p); } catch { /* bus is optional here */ } }
   };
   const checkAnchor = cfg('checkAnchor', true) !== false;
   const checkSupport = cfg('checkSupport', true) !== false;
@@ -916,7 +1197,9 @@ async function stGenerateQuestions(material, {
     report('generate');
     for (const group of groups) {
       if (cancelled()) { status = 'stopped'; break; }
+      if (maxGroups > 0 && groupsDone >= maxGroups) { more = true; break; }
       if (stopWhen && await stopWhen()) break;
+      groupsDone += 1;
       const focus = group[0].concept.page || 1;
       const pageFrom = Math.max(1, focus - 1);
       const pageTo = Math.min(Math.max(1, text.pageTexts.length), focus + 1);
@@ -948,6 +1231,7 @@ async function stGenerateQuestions(material, {
         if (cancelled()) { status = 'stopped'; break; }
         throw err;
       }
+      for (const slot of group) attempted.push(slot.concept.id);
       const raws = stJsonArrayFrom(output);
       if (!raws.length) {
         dropped.parse += 1;
@@ -962,23 +1246,26 @@ async function stGenerateQuestions(material, {
         if (!raw || typeof raw !== 'object') { dropped.parse += 1; continue; }
         const slot = stConceptForRaw(raw, group);
         if (!slot) { dropped.parse += 1; continue; }
-        const format = String(raw.format || '');
+        const format = String(raw.format || '').trim().toLowerCase();
         if (!slot.need[format] || slot.need[format] <= 0) continue; // a format not asked for, or already filled
         const v = stValidateQuestion(raw, { choices: nChoices });
         if (!v || !v.ok || !v.question) { dropped.parse += 1; continue; }
+        // From here on, only the validated StQuestion: sourceQuote, sourcePage,
+        // numeric {...}, aliases in options. The raw model fields are gone.
         const q = v.question;
         const concept = slot.concept;
         const checks = { anchor: null, support: null, distractor: null, numeric: null };
-        let sourcePage = Number(q.page) || concept.page || focus;
+        let sourcePage = Number(q.sourcePage) || concept.page || focus;
 
         // 1. Anchor: the quote must be on its page (mechanical).
         if (checkAnchor) {
           report('check:anchor', { concept: concept.title });
-          const found = stAnchorPageFor(q.quote, text.pageTexts, sourcePage);
+          const found = stAnchorPageFor(q.sourceQuote, text.pageTexts, sourcePage);
           if (!found) { dropped.anchor += 1; continue; }
           checks.anchor = true;
           sourcePage = found;
         }
+        q.sourcePage = sourcePage;
         // 2. Support: the quote alone settles the answer (model).
         if (checkSupport) {
           report('check:support', { concept: concept.title });
@@ -996,12 +1283,13 @@ async function stGenerateQuestions(material, {
         // 4. Numeric: the solution, run in Python, agrees with the stated answer.
         let numeric = null;
         if (format === 'numeric') {
+          const n = q.numeric || {};
           numeric = {
-            inputs: q.inputs && typeof q.inputs === 'object' ? q.inputs : {},
-            solutionPy: String(q.solutionPy || ''),
-            expected: q.expected,
-            units: String(q.units || ''),
-            tolerance: Number(cfg('numericTolerance', 0.005)) || 0.005,
+            inputs: n.inputs && typeof n.inputs === 'object' ? n.inputs : {},
+            solutionPy: String(n.solutionPy || ''),
+            expected: n.expected,
+            units: String(n.units || ''),
+            tolerance: Number.isFinite(Number(n.tolerance)) && n.tolerance !== null ? Number(n.tolerance) : (Number(cfg('numericTolerance', 0.005)) || 0.005),
             executed: false,
             agreed: null,
           };
@@ -1018,7 +1306,7 @@ async function stGenerateQuestions(material, {
           }
         }
         slot.need[format] -= 1;
-        groupKept.push(stRawToQuestion(q, { material, concept, modelId: model, runId, sourcePage, checks, numeric }));
+        groupKept.push(stFinalizeQuestion(q, { material, concept, modelId: model, runId, sourcePage, checks, numeric }));
       }
       if (groupKept.length) {
         const inserted = await stInsertQuestions(groupKept);
@@ -1035,7 +1323,7 @@ async function stGenerateQuestions(material, {
   }
   await stFinishRun(runId, { status, written, kept: kept.length, dropped });
   report(status === 'stopped' ? 'stopped' : 'done');
-  return { kept, written, dropped, runId, needed, status };
+  return { kept, written, dropped, runId, needed, status, attempted, more };
 }
 
 // ── Grading, explaining, rubrics ────────────────────────────────────────────
@@ -1044,6 +1332,13 @@ function stVerdictFor(statuses, rubric, { contradiction = false, note = '' } = {
   const verdict = stNormalizeVerdict({ points: statuses.map((s) => ({ status: s, note: '' })), contradiction, note }, rubric);
   return { verdict, rating: stMapVerdictToRating(verdict, rubric), label: stVerdictLabel(verdict, rubric), rubric };
 }
+
+/**
+ * Rubrics for multiple-choice questions answered by typing, per question
+ * id. Never stored on the question: the mc row keeps its options and index,
+ * and the next typed answer reuses this.
+ */
+const _stTypedRubrics = new Map();
 
 /**
  * Grade a typed answer: { verdict, rating, label, rubric }. Numeric, cloze
@@ -1070,7 +1365,9 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
     return stVerdictFor([ok ? 'hit' : 'miss'], rubric, { note: ok ? '' : (typed ? `The term is ${question.answer}.` : 'Nothing written down.') });
   }
 
-  let rubric = stNormalizeRubric(question.rubric);
+  // An mc question answered by typing is marked against its correct
+  // option's text, never against the stored index.
+  let rubric = format === 'mc' ? [] : stNormalizeRubric(question.rubric);
   const reference = format === 'mc'
     ? String((Array.isArray(question.options) ? question.options[Number(question.answer)] : '') || '')
     : String(question.answer || '');
@@ -1079,7 +1376,18 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
     if (stFormulaMatches(typed, reference)) return stVerdictFor(['hit'], [{ text: reference, required: true }]);
     rubric = [{ text: reference, required: true }];
   }
-  if (!rubric.length && reference) {
+  if (!rubric.length && reference && format === 'mc') {
+    const cached = question.id ? _stTypedRubrics.get(question.id) : null;
+    if (cached && cached.length) rubric = cached;
+    else {
+      const derived = await stRubricFromAnswer({ ...question, format: 'short', answer: reference, options: [] }, { modelId, numCtx });
+      if (derived.length) {
+        rubric = derived;
+        if (question.id) _stTypedRubrics.set(question.id, derived);
+      }
+    }
+  }
+  if (!rubric.length && reference && format !== 'mc') {
     const derived = await stRubricFromAnswer(question, { modelId, numCtx });
     if (derived.length) {
       rubric = derived;
@@ -1091,7 +1399,7 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
     }
   }
   if (!rubric.length && reference) rubric = [{ text: reference, required: true }];
-  if (!rubric.length) throw new Error('This question has no answer to grade against. Edit the question and add one.');
+  if (!rubric.length) throw new Error('This question has no reference answer, so it has been left out.');
   if (!typed) return stVerdictFor(rubric.map(() => 'miss'), rubric, { note: 'Nothing written down.' });
 
   const model = modelId || await stPickModel(null);
@@ -1112,7 +1420,7 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
   const plan = await stPlanFor(model, null, user.length, ST_SMALL_OUTPUT_TOKENS + 40 * rubric.length, numCtx);
   const output = await stChat(model, ST_GRADE_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
   const raw = stJsonObjectFrom(output);
-  if (!raw) throw new Error('The model could not grade this answer. Try again, or rate it yourself.');
+  if (!raw) throw new Error('The model could not grade this answer. Try again, or open the full answer to compare.');
   const verdict = stNormalizeVerdict(raw, rubric);
   return { verdict, rating: stMapVerdictToRating(verdict, rubric), label: stVerdictLabel(verdict, rubric), rubric };
 }
@@ -1213,50 +1521,110 @@ async function stRubricFromReport(entry, { modelId = '', numCtx = 0 } = {}) {
 
 // ── Scope resolution ────────────────────────────────────────────────────────
 
-/** Selection scopes map to concepts kept here by selection text, so a refresh does not map them again. */
+/** Selection concepts by selection text, for the life of the app; scope.conceptIds is the lasting copy. */
 const _stSelectionConcepts = new Map();
 
 function stSelectionKey(scope) {
   return `${(scope.materialIds || [])[0] || 0}:${stHashText(String(scope.selectionText || ''))}`;
 }
 
-/** The sections a scope covers, each with its material; a selection is its own unit. */
+/** The concept ids a selection scope was mapped to: the persisted scope.conceptIds, else this run's memory. */
+function stSelectionConceptIds(scope) {
+  const persisted = Array.isArray(scope && scope.conceptIds) ? scope.conceptIds.map(Number).filter((n) => n > 0) : [];
+  if (persisted.length) return persisted;
+  return _stSelectionConcepts.get(stSelectionKey(scope)) || [];
+}
+
+function stInRanges(page, ranges) {
+  const p = Number(page) || 0;
+  return ranges.some(([a, b]) => p >= a && p <= b);
+}
+
+/** A material's sections with their outline levels (st_sections has no level column; the stored outline has, in the same order). */
+async function stSectionsWithLevels(material) {
+  let sections = await stListSections(material.id);
+  if (!sections.length) sections = await stEnsureSections(material.id, stNormalizeSections([], material.pageCount));
+  const outline = Array.isArray(material.outline) ? material.outline : [];
+  const aligned = outline.length === sections.length && outline.every((o, i) => o && String(o.title || '') === sections[i].title);
+  return sections.map((s, i) => ({ ...s, level: aligned ? Number(outline[i].level) || 0 : 0 }));
+}
+
+/**
+ * The mapping units of one material: each section with the pages it owns
+ * (stPagePartition: a page belongs to the deepest section holding it),
+ * clipped to [pageFrom, pageTo] when given. `partial` marks a unit clipped
+ * short of what its section owns; `ownerOf(page)` gives any page's section.
+ */
+async function stMaterialUnits(material, { pageFrom = 0, pageTo = 0 } = {}) {
+  const sections = await stSectionsWithLevels(material);
+  const runs = stPagePartition(sections, material.pageCount || 0);
+  const owner = new Map();
+  for (const r of runs) for (let p = r.pageFrom; p <= r.pageTo; p++) owner.set(p, sections[r.index].id);
+  const ownerOf = (page) => owner.get(Math.floor(Number(page) || 0)) || 0;
+  const units = new Map();
+  for (const r of runs) {
+    const from = pageFrom ? Math.max(r.pageFrom, pageFrom) : r.pageFrom;
+    const to = pageTo ? Math.min(r.pageTo, pageTo) : r.pageTo;
+    const section = sections[r.index];
+    if (!units.has(section.id)) units.set(section.id, { material, section, ranges: [], owned: 0, covered: 0, ownerOf });
+    const u = units.get(section.id);
+    u.owned += r.pageTo - r.pageFrom + 1;
+    if (from > to) continue;
+    u.ranges.push([from, to]);
+    u.covered += to - from + 1;
+  }
+  return [...units.values()]
+    .filter((u) => u.ranges.length)
+    .map((u) => ({ ...u, partial: u.covered < u.owned }))
+    .sort((a, b) => a.ranges[0][0] - b.ranges[0][0]);
+}
+
+/**
+ * The units a scope covers, per material: [{ material, units }]. A
+ * selection is its own unit; a chapter is the units inside its page range,
+ * so a parent chapter takes its subsections' pages.
+ */
 async function stScopeUnits(scope) {
-  const units = [];
   const kind = scope && scope.kind;
   const materialIds = Array.isArray(scope && scope.materialIds) ? scope.materialIds : [];
+  const out = [];
   if (kind === 'selection') {
     const material = await stGetMaterial(materialIds[0]);
-    if (material) units.push({ material, section: null, selectionText: String(scope.selectionText || ''), selectionPage: Number(scope.selectionPage) || 0 });
-    return units;
+    if (material) out.push({ material, units: [{ material, section: null, selection: true, selectionText: String(scope.selectionText || ''), selectionPage: Number(scope.selectionPage) || 0, ranges: [] }] });
+    return out;
   }
   if (kind === 'chapter') {
+    const byMaterial = new Map();
     for (const sid of Array.isArray(scope.sectionIds) ? scope.sectionIds : []) {
       const section = await stGetSection(sid);
       if (!section) continue;
       const material = await stGetMaterial(section.materialId);
-      if (material) units.push({ material, section });
+      if (!material) continue;
+      if (!byMaterial.has(material.id)) byMaterial.set(material.id, { material, units: new Map() });
+      const entry = byMaterial.get(material.id);
+      for (const u of await stMaterialUnits(material, { pageFrom: section.pageFrom, pageTo: section.pageTo })) {
+        const prior = entry.units.get(u.section.id);
+        if (!prior) { entry.units.set(u.section.id, u); continue; }
+        prior.ranges.push(...u.ranges.filter(([a, b]) => !prior.ranges.some(([c, d]) => c === a && d === b)));
+        prior.covered = prior.ranges.reduce((n, [a, b]) => n + b - a + 1, 0);
+        prior.partial = prior.covered < prior.owned;
+      }
     }
-    return units;
+    for (const { material, units } of byMaterial.values()) out.push({ material, units: [...units.values()] });
+    return out;
   }
   if (kind === 'document' || kind === 'materials' || kind === 'pages') {
     for (const mid of materialIds) {
       const material = await stGetMaterial(mid);
       if (!material) continue;
-      let sections = await stListSections(material.id);
-      if (!sections.length) sections = await stEnsureSections(material.id, stNormalizeSections([], material.pageCount));
-      if (kind === 'pages') {
-        const from = Number(scope.pageFrom) || 1;
-        const to = Number(scope.pageTo) || from;
-        sections = sections.filter((s) => s.pageTo >= from && s.pageFrom <= to);
-      }
-      for (const section of sections) units.push({ material, section });
+      const clip = kind === 'pages' ? { pageFrom: Number(scope.pageFrom) || 1, pageTo: Number(scope.pageTo) || Number(scope.pageFrom) || 1 } : {};
+      out.push({ material, units: await stMaterialUnits(material, clip) });
     }
   }
-  return units;
+  return out;
 }
 
-/** The concepts a scope draws from. `ensured` is a prior stEnsureBank result, for selections. */
+/** The concepts a scope draws from. `ensured` is a prior stEnsureBank result. */
 async function stScopeConcepts(scope, ensured = null) {
   const kind = scope && scope.kind;
   const materialIds = Array.isArray(scope && scope.materialIds) ? scope.materialIds : [];
@@ -1267,13 +1635,12 @@ async function stScopeConcepts(scope, ensured = null) {
     return weak.filter((c) => (c.state === 'weak' || c.state === 'stale') && (!mids.size || mids.has(c.materialId)));
   }
   if (kind === 'selection') {
-    if (ensured && Array.isArray(ensured.concepts) && ensured.concepts.length) return ensured.concepts;
-    const ids = _stSelectionConcepts.get(stSelectionKey(scope));
-    if (!ids || !ids.length) return [];
+    const ids = stSelectionConceptIds(scope);
+    if (!ids.length) return ensured && Array.isArray(ensured.concepts) ? ensured.concepts : [];
     const set = new Set(ids);
     return (await stListConcepts({ materialIds: [materialIds[0]] })).filter((c) => set.has(c.id));
   }
-  if (kind === 'chapter') return stListConcepts({ sectionIds: Array.isArray(scope.sectionIds) ? scope.sectionIds : [] });
+  if (kind === 'chapter') return stConceptsForSections(Array.isArray(scope.sectionIds) ? scope.sectionIds : []);
   const all = await stListConcepts({ materialIds });
   if (kind === 'pages') {
     const from = Number(scope.pageFrom) || 1;
@@ -1283,151 +1650,333 @@ async function stScopeConcepts(scope, ensured = null) {
   return all;
 }
 
-/** A stand-in concept for bank questions that were never mapped. */
+/** A stand-in concept for a question whose concept row is missing. */
 function stPseudoConcept(id = 0) {
-  return { id, materialId: 0, sectionId: 0, title: 'Bank', summary: '', page: 0, anchorQuote: '', ord: 0, mastery: 0, answers: 0, misses: 0, missStreak: 0, rightChooseAt: 0, rightTypeAt: 0, lastAnsweredAt: 0 };
+  return { id, materialId: 0, sectionId: 0, title: 'Question', summary: '', page: 0, anchorQuote: '', ord: 0, mastery: 0, answers: 0, misses: 0, missStreak: 0, rightChooseAt: 0, rightTypeAt: 0, lastAnsweredAt: 0 };
 }
 
-/** Concepts and questions for a scope's draw. */
-async function stScopePool(scope, ensured = null) {
+/**
+ * Concepts and usable questions for a scope: not hidden and answerable
+ * (stQuestionAnswerable); `unanswerable` counts the rest. A bank scope
+ * draws the banks' questions; with `materialize`, a bank question without
+ * a concept gets its own first (stEnsureBankConcepts).
+ */
+async function stScopePool(scope, { materialize = false, ensured = null } = {}) {
   if (scope && scope.kind === 'bank') {
-    const questions = await stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] });
-    const mapped = [...new Set(questions.map((q) => q.conceptId).filter((id) => id > 0))];
-    const concepts = mapped.length ? (await stListConcepts({})).filter((c) => mapped.includes(c.id)) : [];
-    if (questions.some((q) => !q.conceptId)) concepts.push(stPseudoConcept(0));
-    return { concepts, questions };
+    const all = await stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] });
+    const questions = all.filter(stQuestionAnswerable);
+    if (materialize) await stEnsureBankConcepts(questions);
+    const ids = [...new Set(questions.map((q) => q.conceptId).filter((id) => id > 0))];
+    const concepts = ids.length ? await stListConcepts({ ids }) : [];
+    return { concepts, questions, unanswerable: all.length - questions.length };
   }
   const concepts = await stScopeConcepts(scope, ensured);
-  const questions = concepts.length ? await stListQuestions({ conceptIds: concepts.map((c) => c.id) }) : [];
-  return { concepts, questions };
+  const all = concepts.length ? await stListQuestions({ conceptIds: concepts.map((c) => c.id) }) : [];
+  const questions = all.filter(stQuestionAnswerable);
+  return { concepts, questions, unanswerable: all.length - questions.length };
+}
+
+/** Does a drawn question still need a rubric made from its answer? */
+function stNeedsAnswerRubric(q) {
+  return (q.format === 'short' || q.format === 'essay') && !stNormalizeRubric(q.rubric).length && !!String(q.answer || '').trim();
+}
+
+/**
+ * What a scope holds now: `available` usable questions (the same pool as
+ * stNextDraw), `unanswerable` ones left out (no answer and no rubric), and
+ * `needsRubric`, the short and essay ones whose rubric is made from the
+ * answer when first drawn.
+ */
+async function stScopeStats(scope) {
+  const pool = await stScopePool(scope || {});
+  return {
+    available: pool.questions.length,
+    unanswerable: pool.unanswerable,
+    needsRubric: pool.questions.filter(stNeedsAnswerRubric).length,
+  };
+}
+
+/** The number of usable (non-hidden, answerable) questions in a scope, for stSessionNeedsGeneration. */
+async function stScopeQuestionCount(scope) {
+  return (await stScopeStats(scope)).available;
 }
 
 // ── Orchestration ───────────────────────────────────────────────────────────
 
-/**
- * Make sure a scope has questions: map every unmapped section (or the
- * selection), then generate until every concept has questionsPerConcept of
- * each applicable format. With `untilSize`, stop as soon as `size` kept
- * questions exist across the scope (the Start With N Ready path).
- * Returns { kept, concepts, numericUnavailable }.
- */
-async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token = null, onProgress = null, untilSize = false } = {}) {
-  const cancelled = () => !!(token && token.cancelled);
-  const result = { kept: 0, concepts: [], numericUnavailable: false };
-  if (!scope) return result;
-  if (scope.kind === 'bank') {
-    result.kept = (await stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] })).length;
-    return result;
+/** dropped counts added key by key; numeric stays null (Python missing) when either side says so. */
+function stAddDropped(a, b) {
+  const out = { ...(a || {}) };
+  for (const [k, v] of Object.entries(b || {})) {
+    if (v === null || out[k] === null) { out[k] = null; continue; }
+    out[k] = (Number(out[k]) || 0) + (Number(v) || 0);
   }
+  return out;
+}
+
+/**
+ * Make sure a scope has questions. Units (a section's own pages, a
+ * selection, a material's weak concepts) are visited round-robin across
+ * materials and, within a material, across its units in an order spread
+ * over the document (stSpreadOrder): each visit maps the unit if it is not
+ * mapped yet, then makes one generation call for it. So the first questions
+ * already span the scope, and a long PDF is mapped only as far as needed.
+ * With `untilSize`, the run stops once `size` usable questions exist in
+ * the scope (the Start With N Ready path), one concept per call; without,
+ * it goes on until every concept has questionsPerConcept of each format
+ * (or failed ST_MAX_PASSES times). A bank scope has nothing to generate.
+ *
+ * Progress payloads: { phase, done, total, written, kept, dropped,
+ * available, unanswerable, unitsDone, unitsTotal, sessionId, materialId,
+ * sectionId, concept?, runId?, model? }. `kept`, `written` and `dropped`
+ * count this run; `available` is every usable question in the scope now;
+ * done/total never go back: with untilSize, available (capped) of size,
+ * else units finished of units. Phases: map, generate, check:<key>, done,
+ * stopped, failed.
+ *
+ * A selection's concept ids are written into the session's scope
+ * (scope.conceptIds) when `sessionId` is given, so a restart draws from
+ * them without mapping again. Returns { kept, concepts, available,
+ * unanswerable, numericUnavailable }.
+ */
+async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token = null, onProgress = null, untilSize = false, sessionId = null } = {}) {
+  const cancelled = () => !!(token && token.cancelled);
+  const result = { kept: 0, concepts: [], available: 0, unanswerable: 0, numericUnavailable: false };
+  if (!scope) return result;
+  const base = await stScopeStats(scope);
+  result.available = base.available;
+  result.unanswerable = base.unanswerable;
+  if (scope.kind === 'bank') return result;
+  const target = untilSize && Number(size) > 0 ? Number(size) : 0;
+  if (target && result.available >= target) return result;
+
   const checkNumeric = cfg('checkNumeric', true) !== false;
   const pythonAvailable = checkNumeric ? await stPythonAvailable() : false;
   result.numericUnavailable = checkNumeric && !pythonAvailable;
+  const perConcept = Math.max(1, Number(cfg('questionsPerConcept', 2)) || 2);
+  const choices = Number(cfg('choices', 4)) === 5 ? 5 : 4;
 
-  // 1. Concepts: map what is unmapped.
-  const groups = []; // [{ material, section, concepts, model }]
+  const run = {
+    written: 0, kept: 0, unitsDone: 0, unitsTotal: 0,
+    dropped: { anchor: 0, support: 0, distractor: 0, numeric: result.numericUnavailable ? null : 0, parse: 0 },
+  };
+  const emit = (phase, inner = null, unit = null) => {
+    const innerKept = inner ? Number(inner.kept) || 0 : 0;
+    const available = result.available + innerKept;
+    const p = {
+      phase,
+      done: target ? Math.min(available, target) : run.unitsDone,
+      total: target || run.unitsTotal,
+      written: run.written + (inner ? Number(inner.written) || 0 : 0),
+      kept: run.kept + innerKept,
+      dropped: stAddDropped(run.dropped, inner && inner.dropped),
+      available,
+      unanswerable: result.unanswerable,
+      unitsDone: run.unitsDone,
+      unitsTotal: run.unitsTotal,
+      sessionId: sessionId == null ? null : sessionId,
+      materialId: inner && inner.materialId != null ? inner.materialId : unit ? unit.material.id : null,
+      sectionId: inner && inner.sectionId != null ? inner.sectionId : unit && unit.section ? unit.section.id : 0,
+    };
+    if (inner) for (const k of ['concept', 'runId', 'model', 'error']) if (inner[k] != null) p[k] = inner[k];
+    if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
+    try { bus.emit('run', p); } catch { /* bus is optional here */ }
+  };
+  const innerFor = (unit) => (p) => {
+    const phase = p && (p.phase === 'done' || p.phase === 'stopped') ? 'generate' : (p && p.phase) || 'generate';
+    // A map call's done/total are chunks, not this run's: the payload keeps the run's.
+    emit(phase, p && p.phase === 'map' ? { ...p, kept: 0, written: 0, dropped: {} } : p, unit);
+  };
+
+  // The units, per material.
+  const queues = [];
   if (scope.kind === 'weak') {
-    const concepts = await stScopeConcepts(scope);
     const byMaterial = new Map();
-    for (const c of concepts) {
+    for (const c of await stScopeConcepts(scope)) {
       if (!byMaterial.has(c.materialId)) byMaterial.set(c.materialId, []);
       byMaterial.get(c.materialId).push(c);
     }
     for (const [mid, list] of byMaterial) {
       const material = await stGetMaterial(mid);
-      if (material) groups.push({ material, section: null, concepts: list, model: modelId || await stPickModel(material) });
+      if (material && material.kind !== 'bank') queues.push({ material, cursor: 0, units: [{ material, section: null, concepts: list, mapped: true, ranges: [] }] });
     }
   } else {
-    const units = await stScopeUnits(scope);
-    for (const unit of units) {
-      if (cancelled()) break;
-      const model = modelId || await stPickModel(unit.material);
-      let concepts;
-      if (unit.selectionText !== undefined) {
-        const key = stSelectionKey(scope);
-        const known = _stSelectionConcepts.get(key);
-        if (known && known.length) {
-          const set = new Set(known);
-          concepts = (await stListConcepts({ materialIds: [unit.material.id] })).filter((c) => set.has(c.id));
-        } else {
-          concepts = await stBuildConceptMap(unit.material, null, { modelId: model, numCtx, token, onProgress, selectionText: unit.selectionText, selectionPage: unit.selectionPage });
-          _stSelectionConcepts.set(key, concepts.map((c) => c.id));
+    for (const { material, units } of await stScopeUnits(scope)) {
+      if (!units.length) continue;
+      const ordered = stSpreadOrder(units.length).map((i) => units[i]);
+      for (const u of ordered) {
+        if (u.selection) u.mapped = stSelectionConceptIds(scope).length > 0;
+        else if (u.section.mappedAt > 0) u.mapped = true;
+        else if (u.partial) {
+          // A clipped unit counts as mapped once its pages have concepts.
+          const known = await stListConcepts({ materialIds: [material.id] });
+          u.mapped = known.some((c) => stInRanges(c.page, u.ranges));
+        } else u.mapped = false;
+      }
+      queues.push({ material, cursor: 0, units: ordered });
+    }
+  }
+  run.unitsTotal = queues.reduce((n, q) => n + q.units.length, 0);
+
+  const models = new Map();
+  const modelFor = async (material) => {
+    if (!models.has(material.id)) models.set(material.id, modelId || await stPickModel(material));
+    const m = models.get(material.id);
+    if (!m) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
+    return m;
+  };
+  const attempts = new Map();
+  const touched = new Map();
+  const finish = (unit) => {
+    if (unit.done) return;
+    unit.done = true;
+    if (!unit.counted) { unit.counted = true; run.unitsDone += 1; }
+  };
+
+  const visit = async (unit) => {
+    const material = unit.material;
+    const model = await modelFor(material);
+    // 1. Map the unit when it has not been mapped.
+    if (!unit.mapped) {
+      if (unit.selection) {
+        const concepts = await stBuildConceptMap(material, null, {
+          modelId: model, numCtx, token, onProgress: innerFor(unit), quiet: true,
+          selectionText: unit.selectionText, selectionPage: unit.selectionPage,
+        });
+        const ids = concepts.map((c) => c.id).filter((id) => id > 0);
+        _stSelectionConcepts.set(stSelectionKey(scope), ids);
+        scope.conceptIds = ids;
+        if (sessionId != null && ids.length) {
+          const s = await stGetSession(sessionId);
+          if (s) await stUpdateSession(sessionId, { scope: { ...(s.scope || {}), conceptIds: ids } });
         }
       } else {
-        if (!unit.section.mappedAt) {
-          await stBuildConceptMap(unit.material, unit.section, { modelId: model, numCtx, token, onProgress });
-        }
-        concepts = await stListConcepts({ sectionIds: [unit.section.id] });
-        if (scope.kind === 'pages') {
-          const from = Number(scope.pageFrom) || 1;
-          const to = Number(scope.pageTo) || from;
-          concepts = concepts.filter((c) => c.page >= from && c.page <= to);
-        }
+        await stBuildConceptMap(material, unit.section, {
+          modelId: model, numCtx, token, onProgress: innerFor(unit), quiet: true,
+          ranges: unit.ranges, ownerOf: unit.ownerOf, markMapped: !unit.partial,
+        });
       }
-      groups.push({ material: unit.material, section: unit.section, concepts, model });
+      if (cancelled()) return;
+      unit.mapped = true;
     }
-  }
-  const concepts = groups.flatMap((g) => g.concepts);
-  result.concepts = concepts;
-  const countKept = async () => concepts.length ? (await stListQuestions({ conceptIds: concepts.map((c) => c.id) })).length : 0;
-  result.kept = await countKept();
-  if (!concepts.length || cancelled()) return result;
-  const target = untilSize && Number(size) > 0 ? Number(size) : 0;
-  if (target && result.kept >= target) return result;
+    // 2. One generation call for the unit's concepts.
+    let concepts;
+    if (unit.concepts) concepts = unit.concepts;
+    else if (unit.selection) {
+      const set = new Set(stSelectionConceptIds(scope));
+      concepts = (await stListConcepts({ materialIds: [material.id] })).filter((c) => set.has(c.id));
+    } else {
+      concepts = (await stListConcepts({ materialIds: [material.id] })).filter((c) => stInRanges(c.page, unit.ranges));
+    }
+    for (const c of concepts) touched.set(c.id, c);
+    const eligible = concepts.filter((c) => (attempts.get(c.id) || 0) < ST_MAX_PASSES);
+    if (!eligible.length) { finish(unit); return; }
+    const gen = await stGenerateQuestions(material, {
+      sectionId: unit.section ? unit.section.id : 0,
+      conceptIds: eligible.map((c) => c.id),
+      perConcept: sweepPer, choices, modelId: model, numCtx, token, onProgress: innerFor(unit), pythonAvailable,
+      maxGroups: 1, maxConceptsPerCall: target ? 1 : 0, quiet: true,
+    });
+    run.written += Number(gen.written) || 0;
+    run.kept += gen.kept.length;
+    result.available += gen.kept.length;
+    run.dropped = stAddDropped(run.dropped, gen.dropped);
+    for (const id of gen.attempted || []) attempts.set(id, (attempts.get(id) || 0) + 1);
+    if (!gen.needed || (!(gen.attempted || []).length && gen.status !== 'stopped')) finish(unit);
+  };
 
-  // 2. Questions: generate to coverage, or until the size is reached.
-  const perConcept = Math.max(1, Number(cfg('questionsPerConcept', 2)) || 2);
-  const choices = Number(cfg('choices', 4)) === 5 ? 5 : 4;
-  const stopWhen = target ? async () => (await countKept()) >= target : null;
-  for (let pass = 0; pass < ST_MAX_PASSES; pass++) {
-    let progressed = false;
-    for (const group of groups) {
-      if (cancelled()) break;
-      if (!group.concepts.length) continue;
-      if (stopWhen && await stopWhen()) break;
-      const gen = await stGenerateQuestions(group.material, {
-        sectionId: group.section ? group.section.id : 0,
-        conceptIds: group.concepts.map((c) => c.id),
-        perConcept, choices, modelId: group.model, numCtx, token, onProgress, pythonAvailable, stopWhen,
-      });
-      if (gen.kept.length) progressed = true;
-      if (gen.status === 'stopped') break;
+  // With a target, a first sweep asks one question of each format per
+  // concept, so the first `size` questions come from many units; the
+  // second fills each concept up to questionsPerConcept.
+  const sweeps = target && perConcept > 1 ? [1, perConcept] : [perConcept];
+  let sweepPer = sweeps[0];
+  for (let sweep = 0; sweep < sweeps.length; sweep++) {
+    sweepPer = sweeps[sweep];
+    if (sweep > 0) {
+      attempts.clear();
+      for (const q of queues) { q.cursor = 0; for (const u of q.units) u.done = false; }
     }
-    result.kept = await countKept();
-    if (cancelled() || !progressed) break;
-    if (stopWhen && result.kept >= target) break;
+    let turn = 0;
+    for (;;) {
+      if (cancelled()) break;
+      if (target && result.available >= target) break;
+      const live = queues.filter((q) => q.units.some((u) => !u.done));
+      if (!live.length) break;
+      const queue = live[turn % live.length];
+      turn += 1;
+      const n = queue.units.length;
+      let unit = null;
+      for (let k = 0; k < n; k++) {
+        const u = queue.units[(queue.cursor + k) % n];
+        if (!u.done) { unit = u; queue.cursor = (queue.cursor + k + 1) % n; break; }
+      }
+      if (!unit) continue;
+      await visit(unit);
+      emit('generate', null, unit);
+    }
+    if (cancelled() || (target && result.available >= target)) break;
   }
+  result.kept = run.kept;
+  result.concepts = [...touched.values()];
+  emit(cancelled() ? 'stopped' : 'done');
   return result;
 }
 
 /**
+ * Rubrics for the drawn short and essay questions that have an answer and
+ * no rubric (bank questions), made from the answer and stored with
+ * rubric_origin 'answer', before the session shows them.
+ */
+async function stDeriveDrawRubrics(draw, session, { token = null, onProgress = null } = {}) {
+  const todo = draw.filter(stNeedsAnswerRubric);
+  for (let k = 0; k < todo.length; k++) {
+    if (token && token.cancelled) return;
+    const q = todo[k];
+    const p = { phase: 'rubric', rubricsDone: k, rubricsTotal: todo.length, sessionId: session.id };
+    if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
+    const rubric = await stRubricFromAnswer(q, { modelId: session.model, numCtx: session.numCtx });
+    if (!rubric.length) continue;
+    q.rubric = rubric;
+    q.rubricOrigin = 'answer';
+    try { await stUpdateQuestion(q); } catch { /* grading derives it again */ }
+  }
+}
+
+/**
  * The next draw for a session: top the bank up when fewer than `size`
- * unseen questions remain, draw with stDrawSession excluding everything
- * the session already holds, and record the items. Returns the questions
- * in order (empty when the scope has nothing left or the run was stopped).
+ * unseen questions remain (never for a bank scope: there is nothing to
+ * generate from), draw with stDrawSession excluding everything the session
+ * already holds, give bank questions their concepts and rubrics, and record
+ * the items. Returns the questions in order (empty when the scope has
+ * nothing left or the run was stopped); `unanswerable` on the array counts
+ * the questions left out for having neither answer nor rubric.
  */
 async function stNextDraw(session, { token = null, onProgress = null } = {}) {
   const scope = session.scope || {};
   const items = await stListSessionItems(session.id);
   const exclude = new Set(items.map((i) => i.questionId));
   const size = Number(session.size) || Number(cfg('sessionSize', 20)) || 20;
-  let pool = await stScopePool(scope);
-  let candidates = pool.questions.filter((q) => !q.hidden && !exclude.has(q.id));
+  const materialize = scope.kind === 'bank';
+  let pool = await stScopePool(scope, { materialize });
+  let candidates = pool.questions.filter((q) => !exclude.has(q.id));
   if (candidates.length < size && scope.kind !== 'bank') {
     const ensured = await stEnsureBank(scope, {
-      size: size + exclude.size, modelId: session.model, numCtx: session.numCtx, token, onProgress, untilSize: true,
+      size: size + exclude.size, modelId: session.model, numCtx: session.numCtx, token, onProgress, untilSize: true, sessionId: session.id,
     });
-    pool = await stScopePool(scope, ensured);
-    candidates = pool.questions.filter((q) => !q.hidden && !exclude.has(q.id));
+    pool = await stScopePool(scope, { materialize, ensured });
+    candidates = pool.questions.filter((q) => !exclude.has(q.id));
   }
-  if (token && token.cancelled) return [];
-  if (!candidates.length) return [];
+  const empty = () => Object.assign([], { unanswerable: pool.unanswerable });
+  if (token && token.cancelled) return empty();
+  if (!candidates.length) return empty();
   const conceptById = new Map(pool.concepts.map((c) => [c.id, c]));
   const draw = stDrawSession({
     questions: pool.questions, concepts: pool.concepts, size, exclude,
     answerFormat: session.answerFormat, now: stNow(), rng: Math.random,
+    staleDays: Number(cfg('staleDays', 14)) || 14,
   }) || [];
-  if (!draw.length) return [];
+  if (!draw.length) return empty();
+  await stDeriveDrawRubrics(draw, session, { token, onProgress });
   const formats = draw.map((q) => stResolveFormat(conceptById.get(q.conceptId) || stPseudoConcept(q.conceptId), q, session.answerFormat));
   await stAddSessionItems(session.id, Number(session.refreshes) || 0, draw.map((q) => q.id), formats);
-  return draw;
+  return Object.assign(draw, { unanswerable: pool.unanswerable });
 }

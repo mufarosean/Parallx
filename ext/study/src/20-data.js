@@ -245,8 +245,9 @@ async function stEnsureDatabase(api) {
 
 // ── Materials ───────────────────────────────────────────────────────────────
 
+/** The materials a user added (PDFs and canvas pages). A bank's own hidden material (stBankMaterial) is left out. */
 async function stListMaterials() {
-  const rows = await db.all('SELECT * FROM st_materials ORDER BY last_studied_at DESC, label COLLATE NOCASE');
+  const rows = await db.all("SELECT * FROM st_materials WHERE kind != 'bank' ORDER BY last_studied_at DESC, label COLLATE NOCASE");
   return rows.map(stRowToMaterial);
 }
 
@@ -347,10 +348,20 @@ async function stEnsureSections(materialId, sections) {
 
 // ── Concepts ────────────────────────────────────────────────────────────────
 
-/** Concepts by material and/or section. Either filter may be empty; both empty lists everything. */
-async function stListConcepts({ materialIds, sectionIds } = {}) {
+/**
+ * Concepts by id, material and/or section. Any filter may be left out; all
+ * left out lists everything. `ids` reaches a bank question's own concept,
+ * which lives under its bank's hidden material.
+ */
+async function stListConcepts({ materialIds, sectionIds, ids } = {}) {
   const where = [];
   const params = [];
+  if (Array.isArray(ids)) {
+    const list = stIdList(ids);
+    if (!list.length) return [];
+    where.push(`id IN (${stPlaceholders(list)})`);
+    params.push(...list);
+  }
   const mids = stIdList(materialIds);
   const sids = stIdList(sectionIds);
   if (Array.isArray(materialIds)) {
@@ -374,12 +385,37 @@ async function stGetConcept(id) {
   return row ? stRowToConcept(row) : null;
 }
 
+/**
+ * The concepts of chapters, resolved by page range: every concept of the
+ * section's material whose page lies in the section, or that was filed
+ * under it. A parent chapter so includes its subsections' concepts (each
+ * concept is filed under the deepest section holding its page).
+ */
+async function stConceptsForSections(sectionIds) {
+  const out = [];
+  const seen = new Set();
+  for (const sid of stIdList(sectionIds)) {
+    const section = await stGetSection(sid);
+    if (!section) continue;
+    const rows = await db.all(
+      'SELECT * FROM st_concepts WHERE material_id = ? AND ((page >= ? AND page <= ?) OR section_id = ?) ORDER BY section_id, ord, id',
+      [section.materialId, section.pageFrom, section.pageTo, section.id],
+    );
+    for (const r of rows) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.push(stRowToConcept(r));
+    }
+  }
+  return out;
+}
+
 /** Insert [{ title, summary, page, anchorQuote, ord? }] under a section. Returns the stored concepts. */
 async function stInsertConcepts(materialId, sectionId, concepts) {
   const list = Array.isArray(concepts) ? concepts : [];
   if (!list.length) return [];
   const base = await db.get('SELECT COALESCE(MAX(ord), -1) AS m FROM st_concepts WHERE material_id = ? AND section_id = ?', [materialId, sectionId || 0]);
-  let ord = (base && Number(base.m)) || -1;
+  let ord = base && base.m != null && Number.isFinite(Number(base.m)) ? Number(base.m) : -1;
   const ids = [];
   const now = stNow();
   for (const c of list) {
@@ -658,7 +694,7 @@ async function stAddSessionItems(sessionId, draw, questionIds, formats = []) {
   const ids = stIdList(questionIds);
   if (!ids.length) return [];
   const base = await db.get('SELECT COALESCE(MAX(ord), -1) AS m FROM st_session_items WHERE session_id = ?', [sessionId]);
-  let ord = (base && Number(base.m)) || -1;
+  let ord = base && base.m != null && Number.isFinite(Number(base.m)) ? Number(base.m) : -1;
   const inserted = [];
   for (let i = 0; i < ids.length; i++) {
     ord += 1;
@@ -742,11 +778,66 @@ async function stSetBankCount(id, count) {
   _emitDataChanged();
 }
 
-/** Delete a bank and the questions it brought in. */
+/** Delete a bank, the questions it brought in and their own concepts. Answers stay in st_answers (history). */
 async function stDeleteBank(id) {
   await db.run('DELETE FROM st_questions WHERE bank_id = ?', [id]);
+  await stDeleteBankMaterial(id);
   await db.run('DELETE FROM st_banks WHERE id = ?', [id]);
   _emitDataChanged();
+}
+
+/**
+ * The hidden material a bank's own concepts live under (kind 'bank', uri
+ * 'bank:<id>'). st_concepts.material_id references st_materials and the
+ * app's database enforces foreign keys, so a concept cannot hang off
+ * material 0; stListMaterials leaves these out.
+ */
+async function stBankMaterial(bankId) {
+  const uri = `bank:${Number(bankId) || 0}`;
+  const row = await db.get("SELECT * FROM st_materials WHERE kind = 'bank' AND uri = ?", [uri]);
+  if (row) return stRowToMaterial(row);
+  const bank = await stGetBank(bankId);
+  const res = await db.run(
+    'INSERT INTO st_materials (kind, uri, label, page_count, content_hash, outline_json, created_at) VALUES (?, ?, ?, 0, \'\', \'[]\', ?)',
+    ['bank', uri, String((bank && bank.name) || 'Question bank'), stNow()],
+  );
+  return stGetMaterial(res.lastInsertRowid);
+}
+
+async function stDeleteBankMaterial(bankId) {
+  const row = await db.get("SELECT id FROM st_materials WHERE kind = 'bank' AND uri = ?", [`bank:${Number(bankId) || 0}`]);
+  if (!row) return;
+  await db.run('DELETE FROM st_concepts WHERE material_id = ?', [row.id]);
+  await db.run('DELETE FROM st_materials WHERE id = ?', [row.id]);
+}
+
+/**
+ * Give every bank question that has no concept one of its own, made on
+ * first use: titled by its origin label or its stem, anchored to its
+ * source page and quote, under its bank's hidden material. The question's
+ * concept_id is updated, so mastery, draws and results work as for a
+ * concept of the reading. Mutates and returns the questions.
+ */
+async function stEnsureBankConcepts(questions) {
+  const list = Array.isArray(questions) ? questions : [];
+  const materials = new Map();
+  let made = 0;
+  for (const q of list) {
+    if (!q || q.conceptId) continue;
+    const bankId = Number(q.bankId) || 0;
+    if (!materials.has(bankId)) materials.set(bankId, await stBankMaterial(bankId));
+    const material = materials.get(bankId);
+    if (!material) continue;
+    const res = await db.run(
+      'INSERT INTO st_concepts (material_id, section_id, title, summary, page, anchor_quote, ord, created_at) VALUES (?, 0, ?, \'\', ?, ?, ?, ?)',
+      [material.id, stBankConceptTitle(q), Number(q.sourcePage) || 0, String(q.sourceQuote || ''), Number(q.id) || 0, stNow()],
+    );
+    await db.run('UPDATE st_questions SET concept_id = ? WHERE id = ?', [res.lastInsertRowid, q.id]);
+    q.conceptId = res.lastInsertRowid;
+    made += 1;
+  }
+  if (made) _emitDataChanged();
+  return list;
 }
 
 // ── Material text ───────────────────────────────────────────────────────────
@@ -784,7 +875,9 @@ async function stExtractPdf(fsPath) {
   const pageTexts = Array.isArray(result.pageTexts) && result.pageTexts.length ? result.pageTexts.map((p) => String(p || '')) : [text];
   const pageCount = Number(result.metadata && result.metadata.pageCount) || pageTexts.length;
   const outline = Array.isArray(result.outline) ? result.outline : [];
-  return { text, pageTexts, pageCount, outline };
+  const meta = (result && result.metadata) || {};
+  const metadataTitle = String(meta.title || meta.Title || (meta.info && meta.info.Title) || result.title || '').trim();
+  return { text, pageTexts, pageCount, outline, metadataTitle };
 }
 
 /** Read a canvas page as markdown through the core command. Copy of fcReadCanvasPage. */
@@ -852,10 +945,14 @@ async function stIngestPdf(fsPath) {
     ? stSectionsFromOutline(ex.outline, ex.pageCount)
     : stHeadingsFromPages(ex.pageTexts);
   const sections = stNormalizeSections(raw, ex.pageCount);
+  const uri = stUriOf(path);
+  // An existing material keeps its label; a new one is named by the PDF's
+  // title, else its file name made readable (stMaterialLabelFor).
+  const prior = await db.get("SELECT label FROM st_materials WHERE kind = 'pdf' AND uri = ?", [uri]);
   const material = await stUpsertMaterial({
     kind: 'pdf',
-    uri: stUriOf(path),
-    label: stFileNameOf(path) || 'Document',
+    uri,
+    label: prior && prior.label ? prior.label : stMaterialLabelFor(stFileNameOf(path), ex.metadataTitle),
     pageCount: ex.pageCount,
     contentHash,
     outline: sections,
@@ -947,14 +1044,34 @@ function stOriginLabel({ exam, sitting, number, part, paper, label } = {}) {
   return parts.join(' · ');
 }
 
+/** The import keys kept in providerRef JSON, so report matching can read them back (stQuestionKeys). */
+const ST_IMPORT_META_KEYS = ['exam', 'sitting', 'number', 'part', 'paper', 'source'];
+
+/**
+ * providerRef for an imported or provider question: JSON of the unknown
+ * columns, the import keys, and a provider's own `ref` (stProviderRefOf
+ * reads it back for the provider's open). '' when there is nothing to keep.
+ */
+function stImportProviderRef(raw, ref) {
+  const out = {};
+  const extras = stQuestionMeta({ providerRef: raw.providerRef != null ? raw.providerRef : (raw.extra && typeof raw.extra === 'object' ? raw.extra : '') });
+  Object.assign(out, extras);
+  for (const k of ST_IMPORT_META_KEYS) {
+    const v = raw[k];
+    if (v == null || String(v).trim() === '') continue;
+    out[k] = k === 'part' ? String(v).trim().toLowerCase() : String(v).trim();
+  }
+  if (ref != null && ref !== '') out.ref = String(ref);
+  return Object.keys(out).length ? JSON.stringify(out) : '';
+}
+
 /** A parsed import entry (§7) as an StQuestion-shaped insert. */
-function stImportedToQuestion(raw, { origin, bankId, sourceUri, providerId = '', providerRef = '' }) {
+function stImportedToQuestion(raw, { origin, bankId, sourceUri, providerId = '', ref = '' }) {
   const kind = String(raw.format || raw.kind || '').toLowerCase();
   let format = ST_IMPORT_KINDS[kind] || 'essay';
   const options = Array.isArray(raw.options) ? raw.options.map((o) => String(o)) : [];
   if (format === 'mc' && options.length < 2) format = 'short';
   const rubric = stNormalizeRubric(raw.rubric);
-  const extra = raw.extra && typeof raw.extra === 'object' ? raw.extra : null;
   return {
     materialId: 0,
     conceptId: 0,
@@ -971,9 +1088,9 @@ function stImportedToQuestion(raw, { origin, bankId, sourceUri, providerId = '',
     sourceQuote: String(raw.sourceQuote || ''),
     sourceUri: String(raw.sourceUri || sourceUri || ''),
     origin: String(raw.origin || origin),
-    originLabel: stOriginLabel(raw),
+    originLabel: raw.originLabel ? String(raw.originLabel) : stOriginLabel(raw),
     providerId,
-    providerRef: providerRef || (raw.providerRef != null ? (typeof raw.providerRef === 'string' ? raw.providerRef : stJsonCol(raw.providerRef, '')) : (extra ? stJsonCol(extra, '') : '')),
+    providerRef: stImportProviderRef(raw, ref),
     bankId,
     checks: {},
     difficulty: '',
@@ -1000,7 +1117,7 @@ async function stImportQuestionFile(fsPath) {
   const text = await stReadWorkspaceFile(path);
   const parsed = stParseQuestionFile(text, ext) || { questions: [], skipped: 0 };
   const entries = Array.isArray(parsed.questions) ? parsed.questions : [];
-  if (!entries.length) throw new Error('No questions were found in that file. Check its format in the Study help.');
+  if (!entries.length) throw new Error('No questions were found in that file. Each question needs question text: a Q: line or a **Question** block in Markdown, a question column in CSV or TSV, or a question field in JSON.');
   const bank = await stInsertBank({ name: stFileNameOf(path), kind: 'file', path, count: entries.length });
   const sourceUri = stUriOf(path);
   const rows = entries
@@ -1027,37 +1144,74 @@ async function stImportExaminerReport(fsPath, { modelId } = {}) {
   const candidates = (await stListQuestions({ includeHidden: true })).filter((q) => q.origin !== 'generated');
   const matches = stMatchReportToQuestions(report, candidates) || [];
   const reportUri = stUriOf(path);
-  let matched = 0;
+  // One question can be named by several entries (a whole Q5 against parts
+  // a and b): its rubric is made from all of them together.
+  const byQuestion = new Map();
   for (const m of matches) {
-    const q = candidates.find((c) => c.id === m.questionId);
-    if (!q || !m.entry) continue;
-    const derived = await stRubricFromReport(m.entry, { modelId });
+    if (!m || !m.entry) continue;
+    if (!byQuestion.has(m.questionId)) byQuestion.set(m.questionId, []);
+    byQuestion.get(m.questionId).push(m.entry);
+  }
+  let matched = 0;
+  for (const [questionId, list] of byQuestion) {
+    const q = candidates.find((c) => c.id === questionId);
+    if (!q) continue;
+    const entry = list.length === 1 ? list[0] : {
+      number: list[0].number,
+      part: '',
+      sampleAnswer: list.map((e) => `${e.part ? `Part ${e.part}: ` : ''}${e.sampleAnswer || ''}`.trim()).filter(Boolean).join('\n\n'),
+      commonErrors: list.map((e) => String(e.commonErrors || '').trim()).filter(Boolean).join('\n\n'),
+      page: list[0].page,
+    };
+    const derived = await stRubricFromReport(entry, { modelId });
     if (!derived || !derived.rubric || !derived.rubric.length) continue;
     q.rubric = derived.rubric;
     q.contradictions = Array.isArray(derived.contradictions) ? derived.contradictions : [];
     q.rubricOrigin = 'report';
     q.sourceUri = reportUri;
-    q.sourcePage = Number(m.entry.page) || 0;
+    q.sourcePage = Number(entry.page) || 0;
     await stUpdateQuestion(q);
     matched += 1;
   }
-  return { bank, matched, unmatched: entries.length - matched };
+  const named = new Set(matches.map((m) => m && m.entry));
+  const unmatched = entries.filter((e) => !named.has(e)).length;
+  return { bank, matched, unmatched };
+}
+
+/** Providers seen by a sync in this run: one gone from the registry since was turned off. */
+const _stSeenProviders = new Set();
+
+/** Remove a provider's questions, its bank and their own concepts. Answers stay (history). */
+async function stDeleteProviderBank(bank) {
+  await db.run('DELETE FROM st_questions WHERE provider_id = ? OR bank_id = ?', [bank.providerId, bank.id]);
+  await stDeleteBankMaterial(bank.id);
+  await db.run('DELETE FROM st_banks WHERE id = ?', [bank.id]);
 }
 
 /**
  * Pull every question provider's items into st_questions with origin
- * 'provider' (idempotent by provider_id + provider_ref) and one st_banks
- * row per provider. Returns { providers, inserted, updated }.
+ * 'provider' (idempotent by provider_id + the provider's ref) and one
+ * st_banks row per provider. `registry` is what the core command
+ * `questions.getRegistry` returns: { register, list, onDidChange }.
+ * A provider that a sync in this run saw and that is gone now (its tool
+ * was turned off) loses its questions and bank; answers stay as history.
+ * Providers absent since the start are kept unless `prune: 'all'` (tools
+ * still registering at startup must not lose their banks to a race).
+ * Returns { providers, inserted, updated, removed }.
  */
-async function stSyncProviders(registry) {
-  if (!registry || typeof registry.listQuestionProviders !== 'function') return { providers: 0, inserted: 0, updated: 0 };
+async function stSyncProviders(registry, { prune = 'gone' } = {}) {
+  const lister = registry && typeof registry.list === 'function' ? registry.list
+    : registry && typeof registry.listQuestionProviders === 'function' ? registry.listQuestionProviders : null;
+  if (!lister) return { providers: 0, inserted: 0, updated: 0, removed: 0 };
   let providers;
-  try { providers = registry.listQuestionProviders() || []; } catch { providers = []; }
+  try { providers = Array.from(lister.call(registry) || []); } catch { providers = []; }
   let inserted = 0;
   let updated = 0;
   const banks = await stListBanks();
+  const live = new Set();
   for (const p of providers) {
     if (!p || !p.id || typeof p.list !== 'function') continue;
+    live.add(String(p.id));
     let items;
     try { items = await p.list({ limit: 2000 }); } catch (err) {
       console.warn(`[Study] provider ${p.id} failed to list:`, err && err.message);
@@ -1070,7 +1224,7 @@ async function stSyncProviders(registry) {
       banks.push(bank);
     }
     const existing = await db.all('SELECT * FROM st_questions WHERE provider_id = ?', [p.id]);
-    const byRef = new Map(existing.map((r) => [String(r.provider_ref), stRowToQuestion(r)]));
+    const byRef = new Map(existing.map((r) => { const q = stRowToQuestion(r); return [stProviderRefOf(q), q]; }));
     const rows = [];
     for (const item of items) {
       if (!item || item.ref == null) continue;
@@ -1089,14 +1243,16 @@ async function stSyncProviders(registry) {
         label: item.label,
         sourceUri: item.sourceUri,
         sourcePage: item.sourcePage,
-      }, { origin: 'provider', bankId: bank.id, providerId: p.id, providerRef: ref });
+      }, { origin: 'provider', bankId: bank.id, providerId: p.id, ref });
       if (!mapped.stem) continue;
       const prior = byRef.get(ref);
       if (prior) {
         const changed = prior.stem !== mapped.stem || prior.answer !== mapped.answer || prior.originLabel !== mapped.originLabel
-          || prior.format !== mapped.format || stJsonCol(prior.rubric, '') !== stJsonCol(mapped.rubric, '');
+          || prior.format !== mapped.format || prior.providerRef !== mapped.providerRef || prior.bankId !== bank.id
+          || stJsonCol(prior.rubric, '') !== stJsonCol(mapped.rubric, '');
         if (changed && !prior.edited) {
           await stUpdateQuestion({ ...prior, stem: mapped.stem, answer: mapped.answer, format: mapped.format, originLabel: mapped.originLabel,
+            providerRef: mapped.providerRef, bankId: bank.id,
             rubric: mapped.rubric.length ? mapped.rubric : prior.rubric, rubricOrigin: mapped.rubric.length ? 'source' : prior.rubricOrigin,
             sourceUri: mapped.sourceUri || prior.sourceUri, sourcePage: mapped.sourcePage || prior.sourcePage });
           updated += 1;
@@ -1112,7 +1268,17 @@ async function stSyncProviders(registry) {
     const count = await db.get('SELECT COUNT(*) AS n FROM st_questions WHERE provider_id = ?', [p.id]);
     await stSetBankCount(bank.id, (count && count.n) || 0);
   }
-  return { providers: providers.length, inserted, updated };
+  let removed = 0;
+  for (const bank of banks) {
+    if (bank.kind !== 'provider' || live.has(bank.providerId)) continue;
+    if (prune !== 'all' && !_stSeenProviders.has(bank.providerId)) continue;
+    await stDeleteProviderBank(bank);
+    _stSeenProviders.delete(bank.providerId);
+    removed += 1;
+  }
+  for (const id of live) _stSeenProviders.add(id);
+  if (removed) _emitDataChanged();
+  return { providers: providers.length, inserted, updated, removed };
 }
 
 // ── Weak concepts ───────────────────────────────────────────────────────────

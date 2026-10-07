@@ -638,6 +638,14 @@ function stPagesLabel(a, b) {
   return a === b ? `Page ${a}` : `Pages ${a}–${b}`;
 }
 
+/** A trailing continuation marker: "(continued)", "(cont.)", "(cont'd)", "continued". */
+const ST_CONTINUED = /\s*(?:[([]\s*(?:continued|cont\.?|cont['\u2019]d)\s*[)\]]|[-\u2013:,]?\s*\b(?:continued|cont\.|cont['\u2019]d))\s*$/i;
+
+/** A heading line without its continuation marker, so a running "(continued)" header keys as its chapter. */
+function stStripContinued(line) {
+  return String(line || '').replace(ST_CONTINUED, '').trim();
+}
+
 /**
  * One line as a heading candidate, or null. A heading is short (at most
  * 80 characters, 12 words), starts "3. Title", "3.1 Title", "Chapter 3",
@@ -645,7 +653,7 @@ function stPagesLabel(a, b) {
  * terminal punctuation) or a contents line (dot leaders, a page number).
  */
 function stHeadingOfLine(rawLine) {
-  const line = String(rawLine || '').replace(/\s+/g, ' ').trim();
+  const line = stStripContinued(String(rawLine || '').replace(/\s+/g, ' ').trim());
   if (!line || line.length > 80) return null;
   if (/\.{3,}/.test(line)) return null;
   if (/[.,;:]$/.test(line)) return null;
@@ -720,23 +728,57 @@ function stFallbackSections(pageCount) {
   return out;
 }
 
+/** The first non-empty line of a page, whitespace folded. */
+function stFirstLine(pageText) {
+  for (const line of String(pageText || '').replace(/\r\n?/g, '\n').split('\n')) {
+    const t = line.replace(/\s+/g, ' ').trim();
+    if (t) return t;
+  }
+  return '';
+}
+
+/**
+ * The skeleton of a constant running header, or ''. A heading-shaped line
+ * that opens more than half the pages (three or more pages) names the
+ * document, not a section, unless the opening lines change: when another
+ * heading-shaped first line also repeats, the repeats are chapter headers
+ * and each counts once, at its first page.
+ */
+function stRunningHeaderKey(pages) {
+  if (pages.length < 3) return '';
+  const counts = new Map();
+  for (const p of pages) {
+    const first = stFirstLine(p);
+    if (!stHeadingOfLine(first)) continue;
+    const key = stSkeleton(stStripContinued(first));
+    if (key) counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  let running = '';
+  for (const [key, n] of counts) if (n > pages.length / 2) running = key;
+  if (!running) return '';
+  for (const [key, n] of counts) if (key !== running && n >= 2) return '';
+  return running;
+}
+
 /**
  * Sections from the page texts when the PDF has no outline: numbered and
  * chapter headings at line starts, the first occurrence of each (running
- * headers repeat on every page), minus what reads as a list or a contents
- * page (stPageHeadings). Fewer than two headings: every eight pages,
- * "Pages a–b".
+ * headers repeat on every page; a trailing "(continued)" is the same
+ * heading), minus a constant running header (stRunningHeaderKey) and what
+ * reads as a list or a contents page (stPageHeadings). Fewer than two
+ * headings: every eight pages, "Pages a–b".
  */
 function stHeadingsFromPages(pageTexts) {
   const pages = Array.isArray(pageTexts) ? pageTexts : [];
   if (!pages.length) return [];
   const entries = [];
   const seen = new Set();
+  const running = stRunningHeaderKey(pages);
   let sawChapter = false;
   for (let p = 1; p <= pages.length; p++) {
     for (const h of stPageHeadings(pages[p - 1])) {
       const key = stSkeleton(h.title);
-      if (!key || seen.has(key)) continue;
+      if (!key || seen.has(key) || key === running) continue;
       seen.add(key);
       if (h.kind === 'chapter' || h.kind === 'part' || h.kind === 'appendix') sawChapter = true;
       entries.push({ title: h.title, page: p, level: h.level, kind: h.kind });
@@ -747,7 +789,8 @@ function stHeadingsFromPages(pageTexts) {
   return stRangesFor(entries, pages.length);
 }
 
-/** Sections from a PDF outline [{title, page, level}]: the same ranges. */
+/** Sections from a PDF outline [{title, page, level}] (the extractor's levels
+ *  start at 0 for the top), as the same 1-based-level ranges. */
 function stSectionsFromOutline(outline, pageCount) {
   const total = Math.max(0, Math.floor(Number(pageCount) || 0));
   if (!total || !Array.isArray(outline)) return [];
@@ -756,10 +799,63 @@ function stSectionsFromOutline(outline, pageCount) {
     const page = Math.floor(Number(o?.page) || 0);
     const title = String(o?.title || '').replace(/\s+/g, ' ').trim();
     if (!title || page < 1 || page > total) continue;
-    entries.push({ title, page, level: Math.max(1, Math.floor(Number(o.level) || 1)) });
+    entries.push({ title, page, level: Math.max(1, Math.floor(Number(o.level) || 0) + 1) });
   }
   entries.sort((a, b) => a.page - b.page);
   return stRangesFor(entries, total);
+}
+
+/**
+ * Which section owns each page: the deepest section containing it (the
+ * highest level; on a tie the later one, which starts there). Returns the
+ * contiguous runs [{ index, pageFrom, pageTo }], `index` into `sections`,
+ * so nested sections map each page once, under the leaf that holds it.
+ */
+function stPagePartition(sections, pageCount) {
+  const list = Array.isArray(sections) ? sections : [];
+  let total = Math.max(0, Math.floor(Number(pageCount) || 0));
+  if (!total) for (const s of list) total = Math.max(total, Math.floor(Number(s && s.pageTo) || 0));
+  const runs = [];
+  for (let p = 1; p <= total; p++) {
+    let owner = -1;
+    let ownerLevel = -Infinity;
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i];
+      if (!s) continue;
+      const from = Math.floor(Number(s.pageFrom) || 0);
+      const to = Math.floor(Number(s.pageTo) || from);
+      if (p < from || p > to) continue;
+      const level = Number(s.level) || 0;
+      if (level >= ownerLevel) { owner = i; ownerLevel = level; }
+    }
+    if (owner < 0) continue;
+    const last = runs[runs.length - 1];
+    if (last && last.index === owner && last.pageTo === p - 1) last.pageTo = p;
+    else runs.push({ index: owner, pageFrom: p, pageTo: p });
+  }
+  return runs;
+}
+
+/**
+ * 0..n-1 in an order that spreads across the range early: 0, the middle,
+ * the quarters, then the rest (bit-reversed), so the first few units a run
+ * visits already span the document.
+ */
+function stSpreadOrder(n) {
+  const count = Math.max(0, Math.floor(Number(n) || 0));
+  if (count <= 1) return count ? [0] : [];
+  let m = 1, bits = 0;
+  while (m < count) { m *= 2; bits++; }
+  const out = [];
+  const seen = new Set();
+  for (let j = 0; j < m; j++) {
+    let r = 0;
+    for (let b = 0; b < bits; b++) if (j & (1 << b)) r |= 1 << (bits - 1 - b);
+    const idx = Math.floor((r * count) / m);
+    if (!seen.has(idx)) { seen.add(idx); out.push(idx); }
+  }
+  for (let i = 0; i < count; i++) if (!seen.has(i)) out.push(i);
+  return out;
 }
 
 // ── JSON from a model ──────────────────────────────────────────────────────────
@@ -1219,9 +1315,14 @@ function stDistractorPrompts(question) {
 
 // ── Import: question files ─────────────────────────────────────────────────────
 
-/** Strip a BOM and normalise line endings. */
+/** Strip a BOM, normalise line endings, and fold curly apostrophes and
+ *  quotes to ASCII, so "EXAMINER\u2019S REPORT" reads as a heading. */
 function stCleanText(text) {
-  return String(text ?? '').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  return String(text ?? '')
+    .replace(/^\ufeff/, '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u2018\u2019\u201b\u00b4\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u201e\u2033]/g, '"');
 }
 
 const ST_IMPORT_KEYS = {
@@ -1430,7 +1531,10 @@ function stParseQuestionFile(text, ext) {
 
 // ── Import: examiner's reports ─────────────────────────────────────────────────
 
-const ST_REPORT_QUESTION = /^\s*(?:question|q)\s*[#.:]?\s*(\d{1,3})\b\s*(.*)$/i;
+/** "QUESTION 5", "Question 5 (part b)": the word, any case. */
+const ST_REPORT_QUESTION = /^\s*question\s*[#.:]?\s*(\d{1,3})\b\s*(.*)$/i;
+/** A bare "Q5", "Q5(b)", "Q5 part b:", "Q5." with nothing else on the line (never "q1 = 2" or "Q4 losses"). */
+const ST_REPORT_QUESTION_BARE = /^\s*q\s*(\d{1,3})\s*(?:\(?\s*(?:part\s*)?([a-h])\s*\)?)?\s*[:.]?\s*$/i;
 const ST_REPORT_SAMPLE = /^(?:sample\s+(?:answers?|responses?|solutions?)|model\s+(?:answers?|solutions?))\b/i;
 const ST_REPORT_COMMENTS = /^(?:examiner'?s'?\s+(?:report|comments?|notes?)|common\s+(?:errors?|mistakes?)|candidates?\b)/i;
 const ST_REPORT_PART_WORD = /^\s*part\s*\(?([a-h])\)?\s*[:.)]?\s*(.*)$/i;
@@ -1490,6 +1594,11 @@ function stParseExaminerReport(pageTexts) {
   lines.forEach((l, i) => {
     const s = l.text.trim();
     if (s.length > 80) return;
+    const bare = ST_REPORT_QUESTION_BARE.exec(s);
+    if (bare) {
+      starts.push({ at: i, number: Number(bare[1]), part: bare[2] ? bare[2].toLowerCase() : '', page: l.page });
+      return;
+    }
     const m = ST_REPORT_QUESTION.exec(s);
     if (!m) return;
     const rest = m[2].trim();
@@ -1567,44 +1676,140 @@ function stSittingKey(s) {
   return v.toLowerCase();
 }
 
-/** A question's exam, sitting, number and part keys: its own fields, else its origin label. */
+/**
+ * The import keys a question carries in its providerRef JSON (exam,
+ * sitting, number, part, paper, source, and a provider's own `ref`), or {}
+ * when providerRef is empty or a bare provider ref.
+ */
+function stQuestionMeta(q) {
+  const ref = q ? q.providerRef : null;
+  if (ref && typeof ref === 'object' && !Array.isArray(ref)) return ref;
+  const s = String(ref ?? '').trim();
+  if (!s.startsWith('{')) return {};
+  try {
+    const v = JSON.parse(s);
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The ref a provider knows the question by: `ref` in the providerRef JSON, else providerRef itself. */
+function stProviderRefOf(q) {
+  const meta = stQuestionMeta(q);
+  if (meta.ref != null) return String(meta.ref);
+  const s = String((q && q.providerRef) ?? '').trim();
+  return s.startsWith('{') ? '' : s;
+}
+
+/** A question's exam, sitting, number and part keys: its own fields, then its providerRef JSON, then its origin label. */
 function stQuestionKeys(q) {
-  const keys = {
-    exam: stExamKey(q?.exam),
-    sitting: stSittingKey(q?.sitting),
-    number: Number(q?.number) || 0,
-    part: String(q?.part ?? '').trim().toLowerCase(),
+  const meta = stQuestionMeta(q);
+  const pick = (k) => {
+    const own = q ? q[k] : undefined;
+    return own != null && String(own).trim() !== '' ? own : meta[k];
   };
-  if (!keys.number && q?.originLabel) {
-    const pieces = String(q.originLabel).split(/\s*[·|]\s*/);
-    for (const piece of pieces) {
+  const keys = {
+    exam: stExamKey(pick('exam')),
+    sitting: stSittingKey(pick('sitting')),
+    number: Number(pick('number')) || 0,
+    part: String(pick('part') ?? '').trim().toLowerCase(),
+  };
+  if ((!keys.number || !keys.exam || !keys.sitting) && q?.originLabel) {
+    const fromLabel = { number: 0, part: '', exam: '', sitting: '' };
+    for (const piece of String(q.originLabel).split(/\s*[·|]\s*/)) {
       const qm = /^q\s*(\d{1,3})\s*(?:\(([a-h])\))?$/i.exec(piece.trim());
-      if (qm) { keys.number = Number(qm[1]); if (!keys.part && qm[2]) keys.part = qm[2].toLowerCase(); continue; }
-      if (!keys.exam && /exam/i.test(piece)) keys.exam = stExamKey(piece);
-      else if (!keys.sitting && /(?:19|20)\d\d/.test(piece)) keys.sitting = stSittingKey(piece);
+      if (qm) { fromLabel.number = Number(qm[1]); fromLabel.part = qm[2] ? qm[2].toLowerCase() : ''; continue; }
+      if (!fromLabel.exam && /exam/i.test(piece)) fromLabel.exam = stExamKey(piece);
+      else if (!fromLabel.sitting && /(?:19|20)\d\d/.test(piece)) fromLabel.sitting = stSittingKey(piece);
     }
+    if (!keys.number && fromLabel.number) { keys.number = fromLabel.number; if (!keys.part) keys.part = fromLabel.part; }
+    if (!keys.exam) keys.exam = fromLabel.exam;
+    if (!keys.sitting) keys.sitting = fromLabel.sitting;
   }
   return keys;
 }
 
-/** Pair each report entry with the questions it is about, by exam, sitting, number and part. */
+/**
+ * Pair each report entry with the questions it is about. Exam, sitting and
+ * number must agree, and the part too when both sides name one; an empty
+ * exam or sitting on either side never matches (a Q5 of every sitting is
+ * not this report's Q5).
+ */
 function stMatchReportToQuestions(report, questions) {
   const exam = stExamKey(report?.exam);
   const sitting = stSittingKey(report?.sitting);
   const out = [];
+  if (!exam || !sitting) return out;
   const keyed = (questions || []).map((q) => ({ q, k: stQuestionKeys(q) }));
   for (const entry of report?.questions || []) {
     const number = Number(entry?.number) || 0;
     const part = String(entry?.part ?? '').trim().toLowerCase();
     if (!number) continue;
     for (const { q, k } of keyed) {
-      if (k.number !== number || k.part !== part) continue;
-      if (exam && k.exam && k.exam !== exam) continue;
-      if (sitting && k.sitting && k.sitting !== sitting) continue;
+      if (!k.exam || !k.sitting) continue;
+      if (k.exam !== exam || k.sitting !== sitting || k.number !== number) continue;
+      if (part && k.part && k.part !== part) continue;
       out.push({ questionId: q.id, entry });
     }
   }
   return out;
+}
+
+// ── Materials and banks ────────────────────────────────────────────────────────
+
+/** Metadata titles that name nothing: the writing tool's placeholders. */
+const ST_GENERIC_TITLE = /^(?:untitled(?:\s+document)?|document\s*\d*|title|no\s+title|unknown|none|null|pdf|slide\s*\d*|presentation\s*\d*|word\s+document|microsoft\s+word|default)$/i;
+
+/**
+ * A material's label: the PDF's metadata title when it is a real one (a
+ * writing tool's "Microsoft Word - " prefix and a file extension dropped;
+ * "Untitled" and the like refused), else the file name without its
+ * extension, underscores and runs of spaces as single spaces.
+ */
+function stMaterialLabelFor(fileName, metadataTitle) {
+  const tidy = (t) => (/_/.test(t) && !/\s/.test(t) ? t.replace(/_+/g, ' ') : t).replace(/\s+/g, ' ').trim();
+  let title = String(metadataTitle ?? '').replace(/\s+/g, ' ').trim()
+    .replace(/^microsoft\s+(?:office\s+)?(?:word|powerpoint|excel)\s*-\s*/i, '')
+    .replace(/\.(?:docx?|pptx?|xlsx?|pdf|tex|dvi|rtf|odt)$/i, '')
+    .trim();
+  title = tidy(title);
+  if (title.length >= 3 && /\p{L}/u.test(title) && !ST_GENERIC_TITLE.test(title)) return title;
+  const base = String(fileName ?? '').split(/[\\/]/).pop() || '';
+  const name = base.replace(/\.[A-Za-z0-9]{1,5}$/, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+  return name || 'Document';
+}
+
+/**
+ * Can the question be answered and marked? mc needs its options and an
+ * answer index among them; numeric a number; short and essay an answer or
+ * a rubric; formula and cloze an answer. A bank question with neither
+ * answer nor rubric is left out of draws.
+ */
+function stQuestionAnswerable(q) {
+  if (!q) return false;
+  const answer = String(q.answer ?? '').trim();
+  switch (q.format) {
+    case 'mc': {
+      const options = Array.isArray(q.options) ? q.options : [];
+      const i = Number(answer);
+      return options.length >= 2 && answer !== '' && Number.isInteger(i) && i >= 0 && i < options.length;
+    }
+    case 'numeric': return !!stParseNumber(q.numeric && q.numeric.expected != null ? q.numeric.expected : answer);
+    case 'short':
+    case 'essay': return !!answer || stNormalizeRubric(q.rubric).length > 0;
+    default: return !!answer;
+  }
+}
+
+/** A short title for a bank question's own concept: its origin label, else the stem's first sentence, cut. */
+function stBankConceptTitle(q) {
+  const label = String((q && q.originLabel) || '').trim();
+  if (label) return label;
+  const stem = String((q && q.stem) || '').replace(/\s+/g, ' ').trim();
+  const first = (/^(.{12,}?[.?!])(?:\s|$)/.exec(stem) || [null, stem])[1];
+  const cut = first.length > 60 ? `${first.slice(0, 59).replace(/\s+\S*$/, '')}…` : first;
+  return cut || 'Question';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1854,8 +2059,9 @@ async function stEnsureDatabase(api) {
 
 // ── Materials ───────────────────────────────────────────────────────────────
 
+/** The materials a user added (PDFs and canvas pages). A bank's own hidden material (stBankMaterial) is left out. */
 async function stListMaterials() {
-  const rows = await db.all('SELECT * FROM st_materials ORDER BY last_studied_at DESC, label COLLATE NOCASE');
+  const rows = await db.all("SELECT * FROM st_materials WHERE kind != 'bank' ORDER BY last_studied_at DESC, label COLLATE NOCASE");
   return rows.map(stRowToMaterial);
 }
 
@@ -1956,10 +2162,20 @@ async function stEnsureSections(materialId, sections) {
 
 // ── Concepts ────────────────────────────────────────────────────────────────
 
-/** Concepts by material and/or section. Either filter may be empty; both empty lists everything. */
-async function stListConcepts({ materialIds, sectionIds } = {}) {
+/**
+ * Concepts by id, material and/or section. Any filter may be left out; all
+ * left out lists everything. `ids` reaches a bank question's own concept,
+ * which lives under its bank's hidden material.
+ */
+async function stListConcepts({ materialIds, sectionIds, ids } = {}) {
   const where = [];
   const params = [];
+  if (Array.isArray(ids)) {
+    const list = stIdList(ids);
+    if (!list.length) return [];
+    where.push(`id IN (${stPlaceholders(list)})`);
+    params.push(...list);
+  }
   const mids = stIdList(materialIds);
   const sids = stIdList(sectionIds);
   if (Array.isArray(materialIds)) {
@@ -1983,12 +2199,37 @@ async function stGetConcept(id) {
   return row ? stRowToConcept(row) : null;
 }
 
+/**
+ * The concepts of chapters, resolved by page range: every concept of the
+ * section's material whose page lies in the section, or that was filed
+ * under it. A parent chapter so includes its subsections' concepts (each
+ * concept is filed under the deepest section holding its page).
+ */
+async function stConceptsForSections(sectionIds) {
+  const out = [];
+  const seen = new Set();
+  for (const sid of stIdList(sectionIds)) {
+    const section = await stGetSection(sid);
+    if (!section) continue;
+    const rows = await db.all(
+      'SELECT * FROM st_concepts WHERE material_id = ? AND ((page >= ? AND page <= ?) OR section_id = ?) ORDER BY section_id, ord, id',
+      [section.materialId, section.pageFrom, section.pageTo, section.id],
+    );
+    for (const r of rows) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.push(stRowToConcept(r));
+    }
+  }
+  return out;
+}
+
 /** Insert [{ title, summary, page, anchorQuote, ord? }] under a section. Returns the stored concepts. */
 async function stInsertConcepts(materialId, sectionId, concepts) {
   const list = Array.isArray(concepts) ? concepts : [];
   if (!list.length) return [];
   const base = await db.get('SELECT COALESCE(MAX(ord), -1) AS m FROM st_concepts WHERE material_id = ? AND section_id = ?', [materialId, sectionId || 0]);
-  let ord = (base && Number(base.m)) || -1;
+  let ord = base && base.m != null && Number.isFinite(Number(base.m)) ? Number(base.m) : -1;
   const ids = [];
   const now = stNow();
   for (const c of list) {
@@ -2267,7 +2508,7 @@ async function stAddSessionItems(sessionId, draw, questionIds, formats = []) {
   const ids = stIdList(questionIds);
   if (!ids.length) return [];
   const base = await db.get('SELECT COALESCE(MAX(ord), -1) AS m FROM st_session_items WHERE session_id = ?', [sessionId]);
-  let ord = (base && Number(base.m)) || -1;
+  let ord = base && base.m != null && Number.isFinite(Number(base.m)) ? Number(base.m) : -1;
   const inserted = [];
   for (let i = 0; i < ids.length; i++) {
     ord += 1;
@@ -2351,11 +2592,66 @@ async function stSetBankCount(id, count) {
   _emitDataChanged();
 }
 
-/** Delete a bank and the questions it brought in. */
+/** Delete a bank, the questions it brought in and their own concepts. Answers stay in st_answers (history). */
 async function stDeleteBank(id) {
   await db.run('DELETE FROM st_questions WHERE bank_id = ?', [id]);
+  await stDeleteBankMaterial(id);
   await db.run('DELETE FROM st_banks WHERE id = ?', [id]);
   _emitDataChanged();
+}
+
+/**
+ * The hidden material a bank's own concepts live under (kind 'bank', uri
+ * 'bank:<id>'). st_concepts.material_id references st_materials and the
+ * app's database enforces foreign keys, so a concept cannot hang off
+ * material 0; stListMaterials leaves these out.
+ */
+async function stBankMaterial(bankId) {
+  const uri = `bank:${Number(bankId) || 0}`;
+  const row = await db.get("SELECT * FROM st_materials WHERE kind = 'bank' AND uri = ?", [uri]);
+  if (row) return stRowToMaterial(row);
+  const bank = await stGetBank(bankId);
+  const res = await db.run(
+    'INSERT INTO st_materials (kind, uri, label, page_count, content_hash, outline_json, created_at) VALUES (?, ?, ?, 0, \'\', \'[]\', ?)',
+    ['bank', uri, String((bank && bank.name) || 'Question bank'), stNow()],
+  );
+  return stGetMaterial(res.lastInsertRowid);
+}
+
+async function stDeleteBankMaterial(bankId) {
+  const row = await db.get("SELECT id FROM st_materials WHERE kind = 'bank' AND uri = ?", [`bank:${Number(bankId) || 0}`]);
+  if (!row) return;
+  await db.run('DELETE FROM st_concepts WHERE material_id = ?', [row.id]);
+  await db.run('DELETE FROM st_materials WHERE id = ?', [row.id]);
+}
+
+/**
+ * Give every bank question that has no concept one of its own, made on
+ * first use: titled by its origin label or its stem, anchored to its
+ * source page and quote, under its bank's hidden material. The question's
+ * concept_id is updated, so mastery, draws and results work as for a
+ * concept of the reading. Mutates and returns the questions.
+ */
+async function stEnsureBankConcepts(questions) {
+  const list = Array.isArray(questions) ? questions : [];
+  const materials = new Map();
+  let made = 0;
+  for (const q of list) {
+    if (!q || q.conceptId) continue;
+    const bankId = Number(q.bankId) || 0;
+    if (!materials.has(bankId)) materials.set(bankId, await stBankMaterial(bankId));
+    const material = materials.get(bankId);
+    if (!material) continue;
+    const res = await db.run(
+      'INSERT INTO st_concepts (material_id, section_id, title, summary, page, anchor_quote, ord, created_at) VALUES (?, 0, ?, \'\', ?, ?, ?, ?)',
+      [material.id, stBankConceptTitle(q), Number(q.sourcePage) || 0, String(q.sourceQuote || ''), Number(q.id) || 0, stNow()],
+    );
+    await db.run('UPDATE st_questions SET concept_id = ? WHERE id = ?', [res.lastInsertRowid, q.id]);
+    q.conceptId = res.lastInsertRowid;
+    made += 1;
+  }
+  if (made) _emitDataChanged();
+  return list;
 }
 
 // ── Material text ───────────────────────────────────────────────────────────
@@ -2393,7 +2689,9 @@ async function stExtractPdf(fsPath) {
   const pageTexts = Array.isArray(result.pageTexts) && result.pageTexts.length ? result.pageTexts.map((p) => String(p || '')) : [text];
   const pageCount = Number(result.metadata && result.metadata.pageCount) || pageTexts.length;
   const outline = Array.isArray(result.outline) ? result.outline : [];
-  return { text, pageTexts, pageCount, outline };
+  const meta = (result && result.metadata) || {};
+  const metadataTitle = String(meta.title || meta.Title || (meta.info && meta.info.Title) || result.title || '').trim();
+  return { text, pageTexts, pageCount, outline, metadataTitle };
 }
 
 /** Read a canvas page as markdown through the core command. Copy of fcReadCanvasPage. */
@@ -2461,10 +2759,14 @@ async function stIngestPdf(fsPath) {
     ? stSectionsFromOutline(ex.outline, ex.pageCount)
     : stHeadingsFromPages(ex.pageTexts);
   const sections = stNormalizeSections(raw, ex.pageCount);
+  const uri = stUriOf(path);
+  // An existing material keeps its label; a new one is named by the PDF's
+  // title, else its file name made readable (stMaterialLabelFor).
+  const prior = await db.get("SELECT label FROM st_materials WHERE kind = 'pdf' AND uri = ?", [uri]);
   const material = await stUpsertMaterial({
     kind: 'pdf',
-    uri: stUriOf(path),
-    label: stFileNameOf(path) || 'Document',
+    uri,
+    label: prior && prior.label ? prior.label : stMaterialLabelFor(stFileNameOf(path), ex.metadataTitle),
     pageCount: ex.pageCount,
     contentHash,
     outline: sections,
@@ -2556,14 +2858,34 @@ function stOriginLabel({ exam, sitting, number, part, paper, label } = {}) {
   return parts.join(' · ');
 }
 
+/** The import keys kept in providerRef JSON, so report matching can read them back (stQuestionKeys). */
+const ST_IMPORT_META_KEYS = ['exam', 'sitting', 'number', 'part', 'paper', 'source'];
+
+/**
+ * providerRef for an imported or provider question: JSON of the unknown
+ * columns, the import keys, and a provider's own `ref` (stProviderRefOf
+ * reads it back for the provider's open). '' when there is nothing to keep.
+ */
+function stImportProviderRef(raw, ref) {
+  const out = {};
+  const extras = stQuestionMeta({ providerRef: raw.providerRef != null ? raw.providerRef : (raw.extra && typeof raw.extra === 'object' ? raw.extra : '') });
+  Object.assign(out, extras);
+  for (const k of ST_IMPORT_META_KEYS) {
+    const v = raw[k];
+    if (v == null || String(v).trim() === '') continue;
+    out[k] = k === 'part' ? String(v).trim().toLowerCase() : String(v).trim();
+  }
+  if (ref != null && ref !== '') out.ref = String(ref);
+  return Object.keys(out).length ? JSON.stringify(out) : '';
+}
+
 /** A parsed import entry (§7) as an StQuestion-shaped insert. */
-function stImportedToQuestion(raw, { origin, bankId, sourceUri, providerId = '', providerRef = '' }) {
+function stImportedToQuestion(raw, { origin, bankId, sourceUri, providerId = '', ref = '' }) {
   const kind = String(raw.format || raw.kind || '').toLowerCase();
   let format = ST_IMPORT_KINDS[kind] || 'essay';
   const options = Array.isArray(raw.options) ? raw.options.map((o) => String(o)) : [];
   if (format === 'mc' && options.length < 2) format = 'short';
   const rubric = stNormalizeRubric(raw.rubric);
-  const extra = raw.extra && typeof raw.extra === 'object' ? raw.extra : null;
   return {
     materialId: 0,
     conceptId: 0,
@@ -2580,9 +2902,9 @@ function stImportedToQuestion(raw, { origin, bankId, sourceUri, providerId = '',
     sourceQuote: String(raw.sourceQuote || ''),
     sourceUri: String(raw.sourceUri || sourceUri || ''),
     origin: String(raw.origin || origin),
-    originLabel: stOriginLabel(raw),
+    originLabel: raw.originLabel ? String(raw.originLabel) : stOriginLabel(raw),
     providerId,
-    providerRef: providerRef || (raw.providerRef != null ? (typeof raw.providerRef === 'string' ? raw.providerRef : stJsonCol(raw.providerRef, '')) : (extra ? stJsonCol(extra, '') : '')),
+    providerRef: stImportProviderRef(raw, ref),
     bankId,
     checks: {},
     difficulty: '',
@@ -2609,7 +2931,7 @@ async function stImportQuestionFile(fsPath) {
   const text = await stReadWorkspaceFile(path);
   const parsed = stParseQuestionFile(text, ext) || { questions: [], skipped: 0 };
   const entries = Array.isArray(parsed.questions) ? parsed.questions : [];
-  if (!entries.length) throw new Error('No questions were found in that file. Check its format in the Study help.');
+  if (!entries.length) throw new Error('No questions were found in that file. Each question needs question text: a Q: line or a **Question** block in Markdown, a question column in CSV or TSV, or a question field in JSON.');
   const bank = await stInsertBank({ name: stFileNameOf(path), kind: 'file', path, count: entries.length });
   const sourceUri = stUriOf(path);
   const rows = entries
@@ -2636,37 +2958,74 @@ async function stImportExaminerReport(fsPath, { modelId } = {}) {
   const candidates = (await stListQuestions({ includeHidden: true })).filter((q) => q.origin !== 'generated');
   const matches = stMatchReportToQuestions(report, candidates) || [];
   const reportUri = stUriOf(path);
-  let matched = 0;
+  // One question can be named by several entries (a whole Q5 against parts
+  // a and b): its rubric is made from all of them together.
+  const byQuestion = new Map();
   for (const m of matches) {
-    const q = candidates.find((c) => c.id === m.questionId);
-    if (!q || !m.entry) continue;
-    const derived = await stRubricFromReport(m.entry, { modelId });
+    if (!m || !m.entry) continue;
+    if (!byQuestion.has(m.questionId)) byQuestion.set(m.questionId, []);
+    byQuestion.get(m.questionId).push(m.entry);
+  }
+  let matched = 0;
+  for (const [questionId, list] of byQuestion) {
+    const q = candidates.find((c) => c.id === questionId);
+    if (!q) continue;
+    const entry = list.length === 1 ? list[0] : {
+      number: list[0].number,
+      part: '',
+      sampleAnswer: list.map((e) => `${e.part ? `Part ${e.part}: ` : ''}${e.sampleAnswer || ''}`.trim()).filter(Boolean).join('\n\n'),
+      commonErrors: list.map((e) => String(e.commonErrors || '').trim()).filter(Boolean).join('\n\n'),
+      page: list[0].page,
+    };
+    const derived = await stRubricFromReport(entry, { modelId });
     if (!derived || !derived.rubric || !derived.rubric.length) continue;
     q.rubric = derived.rubric;
     q.contradictions = Array.isArray(derived.contradictions) ? derived.contradictions : [];
     q.rubricOrigin = 'report';
     q.sourceUri = reportUri;
-    q.sourcePage = Number(m.entry.page) || 0;
+    q.sourcePage = Number(entry.page) || 0;
     await stUpdateQuestion(q);
     matched += 1;
   }
-  return { bank, matched, unmatched: entries.length - matched };
+  const named = new Set(matches.map((m) => m && m.entry));
+  const unmatched = entries.filter((e) => !named.has(e)).length;
+  return { bank, matched, unmatched };
+}
+
+/** Providers seen by a sync in this run: one gone from the registry since was turned off. */
+const _stSeenProviders = new Set();
+
+/** Remove a provider's questions, its bank and their own concepts. Answers stay (history). */
+async function stDeleteProviderBank(bank) {
+  await db.run('DELETE FROM st_questions WHERE provider_id = ? OR bank_id = ?', [bank.providerId, bank.id]);
+  await stDeleteBankMaterial(bank.id);
+  await db.run('DELETE FROM st_banks WHERE id = ?', [bank.id]);
 }
 
 /**
  * Pull every question provider's items into st_questions with origin
- * 'provider' (idempotent by provider_id + provider_ref) and one st_banks
- * row per provider. Returns { providers, inserted, updated }.
+ * 'provider' (idempotent by provider_id + the provider's ref) and one
+ * st_banks row per provider. `registry` is what the core command
+ * `questions.getRegistry` returns: { register, list, onDidChange }.
+ * A provider that a sync in this run saw and that is gone now (its tool
+ * was turned off) loses its questions and bank; answers stay as history.
+ * Providers absent since the start are kept unless `prune: 'all'` (tools
+ * still registering at startup must not lose their banks to a race).
+ * Returns { providers, inserted, updated, removed }.
  */
-async function stSyncProviders(registry) {
-  if (!registry || typeof registry.listQuestionProviders !== 'function') return { providers: 0, inserted: 0, updated: 0 };
+async function stSyncProviders(registry, { prune = 'gone' } = {}) {
+  const lister = registry && typeof registry.list === 'function' ? registry.list
+    : registry && typeof registry.listQuestionProviders === 'function' ? registry.listQuestionProviders : null;
+  if (!lister) return { providers: 0, inserted: 0, updated: 0, removed: 0 };
   let providers;
-  try { providers = registry.listQuestionProviders() || []; } catch { providers = []; }
+  try { providers = Array.from(lister.call(registry) || []); } catch { providers = []; }
   let inserted = 0;
   let updated = 0;
   const banks = await stListBanks();
+  const live = new Set();
   for (const p of providers) {
     if (!p || !p.id || typeof p.list !== 'function') continue;
+    live.add(String(p.id));
     let items;
     try { items = await p.list({ limit: 2000 }); } catch (err) {
       console.warn(`[Study] provider ${p.id} failed to list:`, err && err.message);
@@ -2679,7 +3038,7 @@ async function stSyncProviders(registry) {
       banks.push(bank);
     }
     const existing = await db.all('SELECT * FROM st_questions WHERE provider_id = ?', [p.id]);
-    const byRef = new Map(existing.map((r) => [String(r.provider_ref), stRowToQuestion(r)]));
+    const byRef = new Map(existing.map((r) => { const q = stRowToQuestion(r); return [stProviderRefOf(q), q]; }));
     const rows = [];
     for (const item of items) {
       if (!item || item.ref == null) continue;
@@ -2698,14 +3057,16 @@ async function stSyncProviders(registry) {
         label: item.label,
         sourceUri: item.sourceUri,
         sourcePage: item.sourcePage,
-      }, { origin: 'provider', bankId: bank.id, providerId: p.id, providerRef: ref });
+      }, { origin: 'provider', bankId: bank.id, providerId: p.id, ref });
       if (!mapped.stem) continue;
       const prior = byRef.get(ref);
       if (prior) {
         const changed = prior.stem !== mapped.stem || prior.answer !== mapped.answer || prior.originLabel !== mapped.originLabel
-          || prior.format !== mapped.format || stJsonCol(prior.rubric, '') !== stJsonCol(mapped.rubric, '');
+          || prior.format !== mapped.format || prior.providerRef !== mapped.providerRef || prior.bankId !== bank.id
+          || stJsonCol(prior.rubric, '') !== stJsonCol(mapped.rubric, '');
         if (changed && !prior.edited) {
           await stUpdateQuestion({ ...prior, stem: mapped.stem, answer: mapped.answer, format: mapped.format, originLabel: mapped.originLabel,
+            providerRef: mapped.providerRef, bankId: bank.id,
             rubric: mapped.rubric.length ? mapped.rubric : prior.rubric, rubricOrigin: mapped.rubric.length ? 'source' : prior.rubricOrigin,
             sourceUri: mapped.sourceUri || prior.sourceUri, sourcePage: mapped.sourcePage || prior.sourcePage });
           updated += 1;
@@ -2721,7 +3082,17 @@ async function stSyncProviders(registry) {
     const count = await db.get('SELECT COUNT(*) AS n FROM st_questions WHERE provider_id = ?', [p.id]);
     await stSetBankCount(bank.id, (count && count.n) || 0);
   }
-  return { providers: providers.length, inserted, updated };
+  let removed = 0;
+  for (const bank of banks) {
+    if (bank.kind !== 'provider' || live.has(bank.providerId)) continue;
+    if (prune !== 'all' && !_stSeenProviders.has(bank.providerId)) continue;
+    await stDeleteProviderBank(bank);
+    _stSeenProviders.delete(bank.providerId);
+    removed += 1;
+  }
+  for (const id of live) _stSeenProviders.add(id);
+  if (removed) _emitDataChanged();
+  return { providers: providers.length, inserted, updated, removed };
 }
 
 // ── Weak concepts ───────────────────────────────────────────────────────────
@@ -3152,8 +3523,18 @@ function stFindSimilarConcept(title, concepts) {
  * against the material's existing concepts and each other; new ones are
  * inserted and the section marked mapped. Returns the unit's concepts:
  * the existing matches plus the new rows.
+ *
+ * `ranges` ([[from, to], ...]) maps only those pages (the pages the section
+ * owns under stPagePartition, so a chapter and its subsections never map a
+ * page twice); `ownerOf(page)` files each concept under the section that
+ * owns its page; `markMapped` false leaves the section unmarked (a range
+ * clipped to a Pages scope is not the whole section). `quiet` reports only
+ * through onProgress, for a caller that rewrites the progress (stEnsureBank).
  */
-async function stBuildConceptMap(material, section, { modelId, numCtx = 0, token, onProgress, selectionText = '', selectionPage = 0 } = {}) {
+async function stBuildConceptMap(material, section, {
+  modelId, numCtx = 0, token, onProgress, selectionText = '', selectionPage = 0,
+  ranges = null, ownerOf = null, markMapped = true, quiet = false,
+} = {}) {
   const cancelled = () => !!(token && token.cancelled);
   const model = modelId || await stPickModel(material);
   if (!model) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
@@ -3162,30 +3543,38 @@ async function stBuildConceptMap(material, section, { modelId, numCtx = 0, token
   const report = (done, total) => {
     const p = { phase: 'map', done, total, written: 0, kept: 0, dropped: {}, materialId: material.id, sectionId: section ? section.id : 0 };
     if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
-    try { bus.emit('run', p); } catch { /* bus is optional here */ }
+    if (!quiet) { try { bus.emit('run', p); } catch { /* bus is optional here */ } }
   };
 
   // The chunks: page ranges of the section, or the selection as one chunk.
-  let chunks;
+  let chunks = [];
   if (selectionText) {
     const page = Number(selectionPage) || 0;
     chunks = [{ pageFrom: page, pageTo: page, text: `[Page ${page || 1}]\n${String(selectionText).trim()}` }];
   } else {
-    const from = Math.max(1, Number(section.pageFrom) || 1);
-    const to = Math.max(from, Math.min(text.pageTexts.length || from, Number(section.pageTo) || from));
+    const pageCount = text.pageTexts.length;
+    const list = Array.isArray(ranges) && ranges.length ? ranges : [[section.pageFrom, section.pageTo]];
     const cap = await stPlanFor(model, material, ST_MAP_CHUNK_CHARS, ST_MAP_OUTPUT_TOKENS, numCtx);
     const maxChars = Math.min(ST_MAP_CHUNK_CHARS, cap.maxChars);
-    const ranges = stChunkPages(text.pageTexts, { from, to, maxChars }) || [];
-    chunks = ranges.map((r) => {
-      const block = stPageBlock(text.pageTexts, r.pageFrom, r.pageTo, maxChars);
-      return { pageFrom: r.pageFrom, pageTo: r.pageTo, text: block.material };
-    }).filter((c) => c.text.trim());
-    if (!chunks.length) {
-      const block = stPageBlock(text.pageTexts, from, to, maxChars);
-      if (block.material.trim()) chunks = [{ pageFrom: from, pageTo: to, text: block.material }];
+    for (const [rf, rt] of list) {
+      const from = Math.max(1, Number(rf) || 1);
+      const to = Math.max(from, Math.min(pageCount || from, Number(rt) || from));
+      const pieces = (stChunkPages(text.pageTexts, { from, to, maxChars }) || []).map((r) => {
+        const block = stPageBlock(text.pageTexts, r.pageFrom, r.pageTo, maxChars);
+        return { pageFrom: r.pageFrom, pageTo: r.pageTo, text: block.material };
+      }).filter((c) => c.text.trim());
+      if (!pieces.length) {
+        const block = stPageBlock(text.pageTexts, from, to, maxChars);
+        if (block.material.trim()) pieces.push({ pageFrom: from, pageTo: to, text: block.material });
+      }
+      chunks.push(...pieces);
     }
   }
-  if (!chunks.length) throw new Error('This section has no readable text to map.');
+  if (!chunks.length) {
+    // Nothing readable (a blank or image-only stretch): mapped, with no concepts.
+    if (section && section.id && markMapped && !cancelled()) await stMarkSectionMapped(section.id, stNow());
+    return [];
+  }
 
   const found = [];   // new concepts to insert: { title, summary, page, anchorQuote, flags }
   const matched = []; // existing concepts the chunk named again
@@ -3223,22 +3612,31 @@ async function stBuildConceptMap(material, section, { modelId, numCtx = 0, token
       const anchorQuote = quote && (selectionText || stAnchorPageFor(quote, text.pageTexts, page)) ? quote : '';
       const prior = stFindSimilarConcept(title, pool);
       if (prior) {
-        if (!matched.includes(prior)) matched.push(prior);
-        if (!_stConceptFlags.has(prior.id)) stRememberFlags(prior.id, raw);
+        if (prior.id && !matched.includes(prior)) matched.push(prior);
+        if (prior.id && !_stConceptFlags.has(prior.id)) stRememberFlags(prior.id, raw);
         continue;
       }
-      const entry = { title, summary, page, anchorQuote, flags: raw };
-      found.push(entry);
+      found.push({ title, summary, page, anchorQuote, flags: raw });
       pool.push({ id: 0, title });
     }
     report(i + 1, chunks.length);
   }
 
-  const inserted = found.length
-    ? await stInsertConcepts(material.id, section ? section.id : 0, found.map(({ title, summary, page, anchorQuote }) => ({ title, summary, page, anchorQuote })))
-    : [];
-  for (let i = 0; i < inserted.length; i++) stRememberFlags(inserted[i].id, found[i] && found[i].flags);
-  if (section && section.id && !cancelled()) await stMarkSectionMapped(section.id, stNow());
+  // Each new concept goes under the section that owns its page.
+  const baseSection = section ? section.id : 0;
+  const bySection = new Map();
+  for (const f of found) {
+    const sid = typeof ownerOf === 'function' && !selectionText ? (Number(ownerOf(f.page)) || baseSection) : baseSection;
+    if (!bySection.has(sid)) bySection.set(sid, []);
+    bySection.get(sid).push(f);
+  }
+  const inserted = [];
+  for (const [sid, list] of bySection) {
+    const rows = await stInsertConcepts(material.id, sid, list.map(({ title, summary, page, anchorQuote }) => ({ title, summary, page, anchorQuote })));
+    for (let i = 0; i < rows.length; i++) stRememberFlags(rows[i].id, list[i] && list[i].flags);
+    inserted.push(...rows);
+  }
+  if (section && section.id && markMapped && !cancelled()) await stMarkSectionMapped(section.id, stNow());
   return [...matched, ...inserted];
 }
 
@@ -3255,11 +3653,14 @@ function stAnchorPageFor(quote, pageTexts, hintPage) {
 
 // ── Checks ──────────────────────────────────────────────────────────────────
 
-/** The answer as text, for the support check. */
+/** The answer as text, for the support check. `q` is a validated StQuestion (stValidateQuestion). */
 function stAnswerText(q) {
   switch (q.format) {
     case 'mc': return String((Array.isArray(q.options) ? q.options[Number(q.answer)] : '') || '');
-    case 'numeric': return `${q.expected != null ? q.expected : q.answer}${q.units ? ` ${q.units}` : ''}`;
+    case 'numeric': {
+      const n = q.numeric || {};
+      return `${n.expected != null ? n.expected : q.answer}${n.units ? ` ${n.units}` : ''}`;
+    }
     default: return String(q.answer || '');
   }
 }
@@ -3268,7 +3669,7 @@ function stAnswerText(q) {
 async function stCheckSupport(modelId, q, { material, numCtx } = {}) {
   const user = [
     'Quotation:',
-    String(q.quote || ''),
+    String(q.sourceQuote || ''),
     '',
     'Question:',
     String(q.stem || ''),
@@ -3293,7 +3694,7 @@ async function stCheckDistractors(modelId, q, { material, numCtx } = {}) {
       String(d.stem || q.stem || ''),
       '',
       'Quotation from the source:',
-      String(q.quote || ''),
+      String(q.sourceQuote || ''),
       '',
       'Option to check:',
       String(d.option || ''),
@@ -3328,40 +3729,299 @@ async function stPythonAvailable() {
   }
 }
 
+/** The only import line a solution may carry (math is bound for it anyway). */
+const ST_PY_IMPORT_MATH = /^\s*import\s+math\s*(?:#.*)?$/;
+/** Words a calculation never needs: modules, introspection, I/O, control flow the vetting refuses. */
+const ST_PY_FORBIDDEN = /(__|\b(?:open|exec|eval|compile|input|print|globals|locals|vars|getattr|setattr|delattr|hasattr|breakpoint|help|dir|type|object|lambda|while|with|try|except|finally|global|nonlocal|class|yield|async|await|del|assert|raise|os|sys|subprocess|socket|shutil|pathlib|json|codecs|ctypes|urllib|importlib|builtins|pickle|marshal|io)\b)/;
+
 /**
  * A model-written solution is run in the user's environment, so it is held
  * to the shape the prompt asked for: a solve() over arithmetic and math,
  * nothing that reaches the file system, the network or the interpreter.
+ * This is the first gate only; the script itself vets the solution's syntax
+ * tree before running it (ST_NUMERIC_WRAPPER).
  */
 function stNumericSolutionSafe(py) {
   const src = String(py || '');
   if (!/def\s+solve\s*\(/.test(src)) return { ok: false, reason: 'The solution does not define solve().' };
-  if (/^\s*(import|from)\s+(?!math\b)/m.test(src)) return { ok: false, reason: 'The solution imports a module other than math.' };
-  if (/(__|\bopen\s*\(|\bexec\s*\(|\beval\s*\(|\bcompile\s*\(|\binput\s*\(|\bos\b|\bsys\b|\bsubprocess\b|\bsocket\b|\bshutil\b|\bpathlib\b|\bglobals\s*\(|\bgetattr\s*\(|\bbreakpoint\s*\()/.test(src)) {
-    return { ok: false, reason: 'The solution uses something a calculation does not need.' };
-  }
   if (src.length > 4000) return { ok: false, reason: 'The solution is too long to be a calculation.' };
+  for (const line of src.split(/\r\n?|\n/)) {
+    if (/\b(?:import|from)\b/.test(line) && !ST_PY_IMPORT_MATH.test(line)) {
+      return { ok: false, reason: 'The solution imports a module other than math.' };
+    }
+  }
+  if (ST_PY_FORBIDDEN.test(src)) return { ok: false, reason: 'The solution uses something a calculation does not need.' };
   return { ok: true, reason: '' };
 }
 
-/** The script: the inputs, the model's solve(), one JSON line on stdout. */
+/**
+ * The check script. The solution arrives as a string (__SOURCE__) and the
+ * inputs as JSON text (__INPUTS__), both JSON string literals, which Python
+ * reads as string literals. Before anything runs, the solution's syntax
+ * tree is vetted: one `def solve(i)` (a bare `import math` is allowed and
+ * dropped), and inside it only assignments, augmented assignments, return,
+ * if, and for over range() with constant bounds of at most 1000; numbers;
+ * arithmetic, comparisons, boolean and conditional expressions; names
+ * assigned in solve and its argument; `i["key"]`; math.<name> calls and
+ * constants; calls to abs, min, max, round, sum, pow, float, int, len and
+ * range; lists, tuples and comprehensions over range() only as call
+ * arguments. Anything else (an import, an attribute on anything but math, a
+ * dunder, a string outside a subscript, while, with, try, lambda, global,
+ * any other call) is refused. The vetted tree is executed in a namespace
+ * whose __builtins__ is exactly those functions and whose only other name
+ * is math; the inputs are parsed before, json is not reachable from it, and
+ * the one JSON result line is printed by the wrapper after.
+ */
+// (The imports are a string of their own: a part's line never starts with "import", studyBundle.test.ts.)
+const ST_NUMERIC_WRAPPER = 'import ast\nimport json\nimport math\n' + `
+SOURCE = __SOURCE__
+INPUTS = __INPUTS__
+
+ALLOWED_CALLS = {"abs", "min", "max", "round", "sum", "pow", "float", "int", "len", "range"}
+SAFE_BUILTINS = {"abs": abs, "min": min, "max": max, "round": round, "sum": sum, "pow": pow, "float": float, "int": int, "len": len, "range": range}
+MATH_CONSTANTS = {"pi", "e", "tau", "inf", "nan"}
+BIN_OPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)
+UNARY_OPS = (ast.UAdd, ast.USub, ast.Not)
+CMP_OPS = (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE)
+MAX_RANGE = 1000
+
+
+class Rejected(Exception):
+    pass
+
+
+def reject(why):
+    raise Rejected(why)
+
+
+def check_store(name):
+    if name.startswith("_") or name == "math" or name in ALLOWED_CALLS:
+        reject("assignment to " + name)
+
+
+def const_int(node):
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        return -const_int(node.operand)
+    if isinstance(node, ast.Constant) and type(node.value) is int:
+        return node.value
+    reject("range() bounds must be constant integers")
+
+
+def is_range(node):
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "range"
+
+
+def check_range(node):
+    if not is_range(node) or node.keywords or not 1 <= len(node.args) <= 3:
+        reject("loops run over range() only")
+    for arg in node.args:
+        if abs(const_int(arg)) > MAX_RANGE:
+            reject("range() longer than 1000")
+
+
+def check_expr(node, names, as_arg=False):
+    if isinstance(node, ast.Constant):
+        if type(node.value) in (int, float, bool):
+            return
+        reject("constant")
+    if isinstance(node, ast.Name):
+        if not isinstance(node.ctx, ast.Load) or node.id.startswith("_") or node.id not in names:
+            reject("name " + node.id)
+        return
+    if isinstance(node, ast.BinOp):
+        if not isinstance(node.op, BIN_OPS):
+            reject("operator")
+        check_expr(node.left, names)
+        check_expr(node.right, names)
+        return
+    if isinstance(node, ast.UnaryOp):
+        if not isinstance(node.op, UNARY_OPS):
+            reject("operator")
+        check_expr(node.operand, names)
+        return
+    if isinstance(node, ast.BoolOp):
+        for value in node.values:
+            check_expr(value, names)
+        return
+    if isinstance(node, ast.Compare):
+        if not all(isinstance(op, CMP_OPS) for op in node.ops):
+            reject("comparison")
+        check_expr(node.left, names)
+        for value in node.comparators:
+            check_expr(value, names)
+        return
+    if isinstance(node, ast.IfExp):
+        check_expr(node.test, names)
+        check_expr(node.body, names)
+        check_expr(node.orelse, names)
+        return
+    if isinstance(node, ast.Subscript):
+        key = node.slice
+        if hasattr(ast, "Index") and isinstance(key, getattr(ast, "Index")):
+            key = key.value
+        if not (isinstance(node.ctx, ast.Load) and isinstance(node.value, ast.Name) and node.value.id == ARG):
+            reject("subscript")
+        if not (isinstance(key, ast.Constant) and type(key.value) is str):
+            reject("subscript key")
+        return
+    if isinstance(node, ast.Attribute):
+        if isinstance(node.ctx, ast.Load) and isinstance(node.value, ast.Name) and node.value.id == "math" and node.attr in MATH_CONSTANTS:
+            return
+        reject("attribute")
+    if isinstance(node, ast.Call):
+        check_call(node, names)
+        return
+    if as_arg and isinstance(node, (ast.List, ast.Tuple)) and isinstance(node.ctx, ast.Load):
+        for elt in node.elts:
+            check_expr(elt, names)
+        return
+    if as_arg and isinstance(node, (ast.ListComp, ast.GeneratorExp)):
+        inner = set(names)
+        for gen in node.generators:
+            if getattr(gen, "is_async", 0) or not isinstance(gen.target, ast.Name):
+                reject("comprehension")
+            check_store(gen.target.id)
+            check_range(gen.iter)
+            inner.add(gen.target.id)
+            for cond in gen.ifs:
+                check_expr(cond, inner)
+        check_expr(node.elt, inner)
+        return
+    reject(type(node).__name__)
+
+
+def check_call(node, names):
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        if not (isinstance(func.value, ast.Name) and func.value.id == "math") or func.attr.startswith("_") or not hasattr(math, func.attr):
+            reject("call")
+    elif isinstance(func, ast.Name):
+        if func.id not in ALLOWED_CALLS:
+            reject("call " + func.id)
+        if func.id == "range":
+            check_range(node)
+            return
+    else:
+        reject("call")
+    for arg in node.args:
+        check_expr(arg, names, True)
+    for kw in node.keywords:
+        if kw.arg is None:
+            reject("keyword unpacking")
+        check_expr(kw.value, names)
+
+
+def check_target(node):
+    if not isinstance(node, ast.Name):
+        reject("assignment target")
+    check_store(node.id)
+
+
+def check_body(stmts, names, depth=0):
+    if depth > 12:
+        reject("nesting")
+    for stmt in stmts:
+        if isinstance(stmt, ast.Assign):
+            for target in stmt.targets:
+                check_target(target)
+            check_expr(stmt.value, names)
+        elif isinstance(stmt, ast.AugAssign):
+            check_target(stmt.target)
+            if not isinstance(stmt.op, BIN_OPS):
+                reject("operator")
+            check_expr(stmt.value, names)
+        elif isinstance(stmt, ast.Return):
+            if stmt.value is None:
+                reject("return without a value")
+            check_expr(stmt.value, names)
+        elif isinstance(stmt, ast.If):
+            check_expr(stmt.test, names)
+            check_body(stmt.body, names, depth + 1)
+            check_body(stmt.orelse, names, depth + 1)
+        elif isinstance(stmt, ast.For):
+            check_target(stmt.target)
+            check_range(stmt.iter)
+            if stmt.orelse:
+                reject("for-else")
+            check_body(stmt.body, names, depth + 1)
+        elif isinstance(stmt, ast.Pass):
+            pass
+        elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+            pass
+        else:
+            reject(type(stmt).__name__)
+
+
+ARG = "i"
+
+
+def vet(source):
+    global ARG
+    tree = ast.parse(source, mode="exec")
+    functions = []
+    for node in tree.body:
+        if isinstance(node, ast.Import) and len(node.names) == 1 and node.names[0].name == "math" and node.names[0].asname is None:
+            continue
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            continue
+        if not isinstance(node, ast.FunctionDef):
+            reject(type(node).__name__ + " outside solve()")
+        functions.append(node)
+    if len(functions) != 1 or functions[0].name != "solve":
+        reject("exactly one def solve(i)")
+    fn = functions[0]
+    args = fn.args
+    if fn.decorator_list or fn.returns or getattr(fn, "type_params", None) or args.vararg or args.kwarg or args.kwonlyargs or args.defaults or args.kw_defaults or getattr(args, "posonlyargs", []) or len(args.args) != 1 or args.args[0].annotation:
+        reject("solve() takes one plain argument")
+    ARG = args.args[0].arg
+    check_store(ARG)
+    names = {ARG}
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            check_store(node.id)
+            names.add(node.id)
+    check_body(fn.body, names)
+    module = ast.Module(body=[fn], type_ignores=[])
+    return compile(module, "<solution>", "exec")
+
+
+def main():
+    try:
+        inputs = json.loads(INPUTS)
+        if not isinstance(inputs, dict):
+            reject("inputs are not an object")
+        code = vet(SOURCE)
+    except Rejected as err:
+        print(json.dumps({"error": "rejected: " + str(err)}))
+        return
+    except (SyntaxError, ValueError, TypeError, RecursionError) as err:
+        print(json.dumps({"error": "rejected: " + type(err).__name__}))
+        return
+    namespace = {"__builtins__": dict(SAFE_BUILTINS), "math": math}
+    try:
+        exec(code, namespace)
+        value = namespace["solve"](inputs)
+        if isinstance(value, bool):
+            raise TypeError("not a number")
+        value = float(value)
+        if not math.isfinite(value):
+            raise ValueError("not finite")
+    except Exception as err:
+        print(json.dumps({"error": type(err).__name__}))
+        return
+    print(json.dumps({"value": value}))
+
+
+main()
+`;
+
+/** The script for one numeric question: the wrapper with the solution and inputs filled in. */
 function stNumericScript(numeric) {
   const inputs = numeric && numeric.inputs && typeof numeric.inputs === 'object' ? numeric.inputs : {};
-  const literal = JSON.stringify(JSON.stringify(inputs));
-  return [
-    'import json',
-    'import math',
-    `INPUTS = json.loads(${literal})`,
-    '',
-    String(numeric.solutionPy || '').replace(/\r\n?/g, '\n'),
-    '',
-    'try:',
-    '    _v = solve(INPUTS)',
-    '    print(json.dumps({"value": _v if isinstance(_v, (int, float)) else float(_v)}))',
-    'except Exception as _e:',
-    '    print(json.dumps({"error": str(_e)}))',
-    '',
-  ].join('\n');
+  const source = String((numeric && numeric.solutionPy) || '').replace(/\r\n?/g, '\n');
+  return ST_NUMERIC_WRAPPER
+    .replace('__SOURCE__', () => JSON.stringify(source))
+    .replace('__INPUTS__', () => JSON.stringify(JSON.stringify(inputs)));
 }
 
 /** Make sure each directory of a workspace-relative path exists, best effort. */
@@ -3386,6 +4046,9 @@ async function stEnsureWorkspaceDirs(fs, rootSlash, relPath) {
  * is known. `timeout` is the bridge's stall limit; a second timer here
  * cancels the run if the exit never arrives.
  */
+/** The run's output directory, relative to the workspace (the bridge accepts any path inside it; without one it makes output/pyrun-N per run). */
+const ST_NUMERIC_OUT_REL = '.parallx/tmp/study/out';
+
 function stRunPythonScript(workspaceRoot, scriptPath, timeout) {
   const py = electronBridge() && electronBridge().python;
   if (!py || typeof py.runScript !== 'function' || typeof py.onRunData !== 'function' || typeof py.onRunExit !== 'function') {
@@ -3431,7 +4094,7 @@ function stRunPythonScript(workspaceRoot, scriptPath, timeout) {
       bucket(p.runId).exit = p;
       if (runId && p.runId === runId) finish();
     });
-    Promise.resolve(py.runScript({ workspaceRoot, scriptPath, args: [], timeout })).then((res) => {
+    Promise.resolve(py.runScript({ workspaceRoot, scriptPath, args: [], timeout, outDir: ST_NUMERIC_OUT_REL })).then((res) => {
       if (!res || !res.ok || !res.runId) {
         done({ stdout: '', stderr: '', exitCode: -1, error: String((res && res.error) || 'The check script could not be started.') });
         return;
@@ -3481,6 +4144,7 @@ async function stRunNumericCheck(question) {
     run = await stRunPythonScript(root, stFsPathOf(scriptUri), ST_NUMERIC_TIMEOUT_MS);
   } finally {
     try { await fs.delete(scriptUri); } catch { /* best effort */ }
+    try { await fs.delete(stUriOf(`${rootSlash}/${ST_NUMERIC_OUT_REL}`)); } catch { /* best effort */ }
   }
   if (run.error && !run.stdout.trim()) return { available: true, agreed: false, computed: null, error: run.error };
   const lines = run.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -3489,7 +4153,10 @@ async function stRunNumericCheck(question) {
     try { const v = JSON.parse(lines[i]); if (v && typeof v === 'object') parsed = v; } catch { /* not the result line */ }
   }
   if (!parsed) return { available: true, agreed: false, computed: null, error: run.stderr.trim() ? 'The solution did not run cleanly.' : 'The solution printed no result.' };
-  if (parsed.error) return { available: true, agreed: false, computed: null, error: 'The solution raised an error when run.' };
+  if (parsed.error) {
+    const refused = /^rejected/.test(String(parsed.error));
+    return { available: true, agreed: false, computed: null, error: refused ? 'The solution uses something a calculation does not need.' : 'The solution raised an error when run.' };
+  }
   const computed = Number(parsed.value);
   if (!Number.isFinite(computed)) return { available: true, agreed: false, computed: null, error: 'The solution did not return a number.' };
   const tolerance = Number(numeric.tolerance) || Number(cfg('numericTolerance', 0.005)) || 0.005;
@@ -3499,46 +4166,22 @@ async function stRunNumericCheck(question) {
 
 // ── Generation ──────────────────────────────────────────────────────────────
 
-/** A validated model question as an StQuestion-shaped insert. */
-function stRawToQuestion(q, { material, concept, modelId, runId, sourcePage, checks, numeric }) {
-  const format = String(q.format);
-  let options = [];
-  let answer = '';
-  let rubric = [];
-  if (format === 'mc') {
-    options = Array.isArray(q.options) ? q.options.map((o) => String(o)) : [];
-    answer = String(Number(q.answer) || 0);
-  } else if (format === 'numeric') {
-    answer = String(q.expected != null ? q.expected : q.answer != null ? q.answer : '');
-  } else if (format === 'cloze') {
-    answer = String(q.answer || '');
-    options = Array.isArray(q.aliases) ? q.aliases.map((a) => String(a)) : [];
-  } else {
-    answer = String(q.answer || '');
-    if (format === 'short' || format === 'essay') rubric = stNormalizeRubric(q.rubric);
-  }
+/**
+ * A validated question (stValidateQuestion's StQuestion: sourceQuote,
+ * sourcePage, numeric {inputs, solutionPy, expected, units}, a cloze's
+ * aliases in options, an mc answer as an index) made ready to insert. The
+ * checks read the same object, so there is one shape from validation on.
+ */
+function stFinalizeQuestion(q, { material, concept, modelId, runId, sourcePage, checks, numeric }) {
   return {
+    ...q,
     materialId: material.id,
     conceptId: concept.id,
-    format,
-    stem: String(q.stem || '').trim(),
-    options,
-    answer,
-    explanation: String(q.explanation || '').trim(),
-    rubric,
-    rubricOrigin: rubric.length ? 'source' : '',
-    contradictions: [],
-    numeric: numeric || null,
-    sourcePage: Number(sourcePage) || 0,
-    sourceQuote: String(q.quote || '').trim(),
+    numeric: numeric || q.numeric || null,
+    sourcePage: Number(sourcePage) || Number(q.sourcePage) || 0,
     sourceUri: '',
     origin: 'generated',
-    originLabel: '',
-    providerId: '',
-    providerRef: '',
-    bankId: 0,
     checks,
-    difficulty: ['easy', 'medium', 'hard'].includes(String(q.difficulty || '').toLowerCase()) ? String(q.difficulty).toLowerCase() : '',
     hidden: false,
     edited: false,
     runId,
@@ -3553,9 +4196,10 @@ function stAskCount(need) {
 
 /**
  * Split the plan into calls: concepts on one page share the page's text,
- * and no call asks for more than ST_ASK_PER_CALL questions.
+ * no call asks for more than ST_ASK_PER_CALL questions, and with
+ * `maxConcepts` > 0 no call covers more concepts than that.
  */
-function stGroupPlan(plan) {
+function stGroupPlan(plan, maxConcepts = 0) {
   const sorted = [...plan].sort((a, b) => (a.concept.page - b.concept.page) || (a.concept.ord - b.concept.ord) || (a.concept.id - b.concept.id));
   const groups = [];
   let current = null;
@@ -3563,7 +4207,8 @@ function stGroupPlan(plan) {
   for (const slot of sorted) {
     const ask = Object.values(slot.need).reduce((n, v) => n + stAskCount(v), 0);
     const samePage = current && current[0].concept.page === slot.concept.page;
-    if (!current || !samePage || currentAsk + ask > ST_ASK_PER_CALL) {
+    const full = maxConcepts > 0 && current && current.length >= maxConcepts;
+    if (!current || !samePage || full || currentAsk + ask > ST_ASK_PER_CALL) {
       current = [];
       currentAsk = 0;
       groups.push(current);
@@ -3594,18 +4239,22 @@ function stConceptForRaw(raw, group) {
  * of each applicable format, through the checks in order: anchor
  * (mechanical), support (model), distractor (model, mc only), numeric
  * (Python). Each check is skipped when its setting is off and counted in
- * dropped when it fails. Returns { kept, written, dropped, runId, needed, status }.
+ * dropped when it fails. `maxGroups` > 0 makes at most that many model
+ * calls (stEnsureBank visits units round-robin, one call each); `more` says
+ * calls were left. `attempted` lists the concepts a call was made for.
+ * Returns { kept, written, dropped, runId, needed, status, attempted, more }.
  */
 async function stGenerateQuestions(material, {
   sectionId = 0, conceptIds = null, formats = null, perConcept = 0, choices = 0, modelId = '', numCtx = 0,
   token = null, onProgress = null, pythonAvailable = null, stopWhen = null,
+  maxGroups = 0, maxConceptsPerCall = 0, quiet = false,
 } = {}) {
   const cancelled = () => !!(token && token.cancelled);
   const wanted = Array.isArray(conceptIds) ? new Set(conceptIds.map(Number)) : null;
   const concepts = wanted
     ? (await stListConcepts({ materialIds: [material.id] })).filter((c) => wanted.has(c.id))
     : await stListConcepts({ sectionIds: [sectionId] });
-  const empty = { kept: [], written: 0, dropped: {}, runId: 0, needed: 0, status: 'done' };
+  const empty = { kept: [], written: 0, dropped: {}, runId: 0, needed: 0, status: 'done', attempted: [], more: false };
   if (!concepts.length) return empty;
 
   const per = Math.max(1, Number(perConcept) || Number(cfg('questionsPerConcept', 2)) || 2);
@@ -3638,7 +4287,7 @@ async function stGenerateQuestions(material, {
   const model = modelId || await stPickModel(material);
   if (!model) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
   const text = await stMaterialText(material);
-  const groups = stGroupPlan(plan);
+  const groups = stGroupPlan(plan, Number(maxConceptsPerCall) || 0);
   const setting = stContextSettingFor(material, numCtx);
   const runId = await stStartRun({ materialId: material.id, sectionId, model, numCtx: setting });
   const dropped = { anchor: 0, support: 0, distractor: 0, numeric: python ? 0 : null, parse: 0 };
@@ -3646,13 +4295,16 @@ async function stGenerateQuestions(material, {
   let written = 0;
   let conceptsDone = 0;
   let status = 'done';
+  let groupsDone = 0;
+  let more = false;
+  const attempted = [];
   const report = (phase, extra) => {
     const p = {
       phase, done: conceptsDone, total: plan.length, written, kept: kept.length, dropped,
       runId, materialId: material.id, sectionId, model, ...(extra || {}),
     };
     if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
-    try { bus.emit('run', p); } catch { /* bus is optional here */ }
+    if (!quiet) { try { bus.emit('run', p); } catch { /* bus is optional here */ } }
   };
   const checkAnchor = cfg('checkAnchor', true) !== false;
   const checkSupport = cfg('checkSupport', true) !== false;
@@ -3662,7 +4314,9 @@ async function stGenerateQuestions(material, {
     report('generate');
     for (const group of groups) {
       if (cancelled()) { status = 'stopped'; break; }
+      if (maxGroups > 0 && groupsDone >= maxGroups) { more = true; break; }
       if (stopWhen && await stopWhen()) break;
+      groupsDone += 1;
       const focus = group[0].concept.page || 1;
       const pageFrom = Math.max(1, focus - 1);
       const pageTo = Math.min(Math.max(1, text.pageTexts.length), focus + 1);
@@ -3694,6 +4348,7 @@ async function stGenerateQuestions(material, {
         if (cancelled()) { status = 'stopped'; break; }
         throw err;
       }
+      for (const slot of group) attempted.push(slot.concept.id);
       const raws = stJsonArrayFrom(output);
       if (!raws.length) {
         dropped.parse += 1;
@@ -3708,23 +4363,26 @@ async function stGenerateQuestions(material, {
         if (!raw || typeof raw !== 'object') { dropped.parse += 1; continue; }
         const slot = stConceptForRaw(raw, group);
         if (!slot) { dropped.parse += 1; continue; }
-        const format = String(raw.format || '');
+        const format = String(raw.format || '').trim().toLowerCase();
         if (!slot.need[format] || slot.need[format] <= 0) continue; // a format not asked for, or already filled
         const v = stValidateQuestion(raw, { choices: nChoices });
         if (!v || !v.ok || !v.question) { dropped.parse += 1; continue; }
+        // From here on, only the validated StQuestion: sourceQuote, sourcePage,
+        // numeric {...}, aliases in options. The raw model fields are gone.
         const q = v.question;
         const concept = slot.concept;
         const checks = { anchor: null, support: null, distractor: null, numeric: null };
-        let sourcePage = Number(q.page) || concept.page || focus;
+        let sourcePage = Number(q.sourcePage) || concept.page || focus;
 
         // 1. Anchor: the quote must be on its page (mechanical).
         if (checkAnchor) {
           report('check:anchor', { concept: concept.title });
-          const found = stAnchorPageFor(q.quote, text.pageTexts, sourcePage);
+          const found = stAnchorPageFor(q.sourceQuote, text.pageTexts, sourcePage);
           if (!found) { dropped.anchor += 1; continue; }
           checks.anchor = true;
           sourcePage = found;
         }
+        q.sourcePage = sourcePage;
         // 2. Support: the quote alone settles the answer (model).
         if (checkSupport) {
           report('check:support', { concept: concept.title });
@@ -3742,12 +4400,13 @@ async function stGenerateQuestions(material, {
         // 4. Numeric: the solution, run in Python, agrees with the stated answer.
         let numeric = null;
         if (format === 'numeric') {
+          const n = q.numeric || {};
           numeric = {
-            inputs: q.inputs && typeof q.inputs === 'object' ? q.inputs : {},
-            solutionPy: String(q.solutionPy || ''),
-            expected: q.expected,
-            units: String(q.units || ''),
-            tolerance: Number(cfg('numericTolerance', 0.005)) || 0.005,
+            inputs: n.inputs && typeof n.inputs === 'object' ? n.inputs : {},
+            solutionPy: String(n.solutionPy || ''),
+            expected: n.expected,
+            units: String(n.units || ''),
+            tolerance: Number.isFinite(Number(n.tolerance)) && n.tolerance !== null ? Number(n.tolerance) : (Number(cfg('numericTolerance', 0.005)) || 0.005),
             executed: false,
             agreed: null,
           };
@@ -3764,7 +4423,7 @@ async function stGenerateQuestions(material, {
           }
         }
         slot.need[format] -= 1;
-        groupKept.push(stRawToQuestion(q, { material, concept, modelId: model, runId, sourcePage, checks, numeric }));
+        groupKept.push(stFinalizeQuestion(q, { material, concept, modelId: model, runId, sourcePage, checks, numeric }));
       }
       if (groupKept.length) {
         const inserted = await stInsertQuestions(groupKept);
@@ -3781,7 +4440,7 @@ async function stGenerateQuestions(material, {
   }
   await stFinishRun(runId, { status, written, kept: kept.length, dropped });
   report(status === 'stopped' ? 'stopped' : 'done');
-  return { kept, written, dropped, runId, needed, status };
+  return { kept, written, dropped, runId, needed, status, attempted, more };
 }
 
 // ── Grading, explaining, rubrics ────────────────────────────────────────────
@@ -3790,6 +4449,13 @@ function stVerdictFor(statuses, rubric, { contradiction = false, note = '' } = {
   const verdict = stNormalizeVerdict({ points: statuses.map((s) => ({ status: s, note: '' })), contradiction, note }, rubric);
   return { verdict, rating: stMapVerdictToRating(verdict, rubric), label: stVerdictLabel(verdict, rubric), rubric };
 }
+
+/**
+ * Rubrics for multiple-choice questions answered by typing, per question
+ * id. Never stored on the question: the mc row keeps its options and index,
+ * and the next typed answer reuses this.
+ */
+const _stTypedRubrics = new Map();
 
 /**
  * Grade a typed answer: { verdict, rating, label, rubric }. Numeric, cloze
@@ -3816,7 +4482,9 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
     return stVerdictFor([ok ? 'hit' : 'miss'], rubric, { note: ok ? '' : (typed ? `The term is ${question.answer}.` : 'Nothing written down.') });
   }
 
-  let rubric = stNormalizeRubric(question.rubric);
+  // An mc question answered by typing is marked against its correct
+  // option's text, never against the stored index.
+  let rubric = format === 'mc' ? [] : stNormalizeRubric(question.rubric);
   const reference = format === 'mc'
     ? String((Array.isArray(question.options) ? question.options[Number(question.answer)] : '') || '')
     : String(question.answer || '');
@@ -3825,7 +4493,18 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
     if (stFormulaMatches(typed, reference)) return stVerdictFor(['hit'], [{ text: reference, required: true }]);
     rubric = [{ text: reference, required: true }];
   }
-  if (!rubric.length && reference) {
+  if (!rubric.length && reference && format === 'mc') {
+    const cached = question.id ? _stTypedRubrics.get(question.id) : null;
+    if (cached && cached.length) rubric = cached;
+    else {
+      const derived = await stRubricFromAnswer({ ...question, format: 'short', answer: reference, options: [] }, { modelId, numCtx });
+      if (derived.length) {
+        rubric = derived;
+        if (question.id) _stTypedRubrics.set(question.id, derived);
+      }
+    }
+  }
+  if (!rubric.length && reference && format !== 'mc') {
     const derived = await stRubricFromAnswer(question, { modelId, numCtx });
     if (derived.length) {
       rubric = derived;
@@ -3837,7 +4516,7 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
     }
   }
   if (!rubric.length && reference) rubric = [{ text: reference, required: true }];
-  if (!rubric.length) throw new Error('This question has no answer to grade against. Edit the question and add one.');
+  if (!rubric.length) throw new Error('This question has no reference answer, so it has been left out.');
   if (!typed) return stVerdictFor(rubric.map(() => 'miss'), rubric, { note: 'Nothing written down.' });
 
   const model = modelId || await stPickModel(null);
@@ -3858,7 +4537,7 @@ async function stGradeTyped(question, answer, { modelId = '', numCtx = 0 } = {})
   const plan = await stPlanFor(model, null, user.length, ST_SMALL_OUTPUT_TOKENS + 40 * rubric.length, numCtx);
   const output = await stChat(model, ST_GRADE_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
   const raw = stJsonObjectFrom(output);
-  if (!raw) throw new Error('The model could not grade this answer. Try again, or rate it yourself.');
+  if (!raw) throw new Error('The model could not grade this answer. Try again, or open the full answer to compare.');
   const verdict = stNormalizeVerdict(raw, rubric);
   return { verdict, rating: stMapVerdictToRating(verdict, rubric), label: stVerdictLabel(verdict, rubric), rubric };
 }
@@ -3959,50 +4638,110 @@ async function stRubricFromReport(entry, { modelId = '', numCtx = 0 } = {}) {
 
 // ── Scope resolution ────────────────────────────────────────────────────────
 
-/** Selection scopes map to concepts kept here by selection text, so a refresh does not map them again. */
+/** Selection concepts by selection text, for the life of the app; scope.conceptIds is the lasting copy. */
 const _stSelectionConcepts = new Map();
 
 function stSelectionKey(scope) {
   return `${(scope.materialIds || [])[0] || 0}:${stHashText(String(scope.selectionText || ''))}`;
 }
 
-/** The sections a scope covers, each with its material; a selection is its own unit. */
+/** The concept ids a selection scope was mapped to: the persisted scope.conceptIds, else this run's memory. */
+function stSelectionConceptIds(scope) {
+  const persisted = Array.isArray(scope && scope.conceptIds) ? scope.conceptIds.map(Number).filter((n) => n > 0) : [];
+  if (persisted.length) return persisted;
+  return _stSelectionConcepts.get(stSelectionKey(scope)) || [];
+}
+
+function stInRanges(page, ranges) {
+  const p = Number(page) || 0;
+  return ranges.some(([a, b]) => p >= a && p <= b);
+}
+
+/** A material's sections with their outline levels (st_sections has no level column; the stored outline has, in the same order). */
+async function stSectionsWithLevels(material) {
+  let sections = await stListSections(material.id);
+  if (!sections.length) sections = await stEnsureSections(material.id, stNormalizeSections([], material.pageCount));
+  const outline = Array.isArray(material.outline) ? material.outline : [];
+  const aligned = outline.length === sections.length && outline.every((o, i) => o && String(o.title || '') === sections[i].title);
+  return sections.map((s, i) => ({ ...s, level: aligned ? Number(outline[i].level) || 0 : 0 }));
+}
+
+/**
+ * The mapping units of one material: each section with the pages it owns
+ * (stPagePartition: a page belongs to the deepest section holding it),
+ * clipped to [pageFrom, pageTo] when given. `partial` marks a unit clipped
+ * short of what its section owns; `ownerOf(page)` gives any page's section.
+ */
+async function stMaterialUnits(material, { pageFrom = 0, pageTo = 0 } = {}) {
+  const sections = await stSectionsWithLevels(material);
+  const runs = stPagePartition(sections, material.pageCount || 0);
+  const owner = new Map();
+  for (const r of runs) for (let p = r.pageFrom; p <= r.pageTo; p++) owner.set(p, sections[r.index].id);
+  const ownerOf = (page) => owner.get(Math.floor(Number(page) || 0)) || 0;
+  const units = new Map();
+  for (const r of runs) {
+    const from = pageFrom ? Math.max(r.pageFrom, pageFrom) : r.pageFrom;
+    const to = pageTo ? Math.min(r.pageTo, pageTo) : r.pageTo;
+    const section = sections[r.index];
+    if (!units.has(section.id)) units.set(section.id, { material, section, ranges: [], owned: 0, covered: 0, ownerOf });
+    const u = units.get(section.id);
+    u.owned += r.pageTo - r.pageFrom + 1;
+    if (from > to) continue;
+    u.ranges.push([from, to]);
+    u.covered += to - from + 1;
+  }
+  return [...units.values()]
+    .filter((u) => u.ranges.length)
+    .map((u) => ({ ...u, partial: u.covered < u.owned }))
+    .sort((a, b) => a.ranges[0][0] - b.ranges[0][0]);
+}
+
+/**
+ * The units a scope covers, per material: [{ material, units }]. A
+ * selection is its own unit; a chapter is the units inside its page range,
+ * so a parent chapter takes its subsections' pages.
+ */
 async function stScopeUnits(scope) {
-  const units = [];
   const kind = scope && scope.kind;
   const materialIds = Array.isArray(scope && scope.materialIds) ? scope.materialIds : [];
+  const out = [];
   if (kind === 'selection') {
     const material = await stGetMaterial(materialIds[0]);
-    if (material) units.push({ material, section: null, selectionText: String(scope.selectionText || ''), selectionPage: Number(scope.selectionPage) || 0 });
-    return units;
+    if (material) out.push({ material, units: [{ material, section: null, selection: true, selectionText: String(scope.selectionText || ''), selectionPage: Number(scope.selectionPage) || 0, ranges: [] }] });
+    return out;
   }
   if (kind === 'chapter') {
+    const byMaterial = new Map();
     for (const sid of Array.isArray(scope.sectionIds) ? scope.sectionIds : []) {
       const section = await stGetSection(sid);
       if (!section) continue;
       const material = await stGetMaterial(section.materialId);
-      if (material) units.push({ material, section });
+      if (!material) continue;
+      if (!byMaterial.has(material.id)) byMaterial.set(material.id, { material, units: new Map() });
+      const entry = byMaterial.get(material.id);
+      for (const u of await stMaterialUnits(material, { pageFrom: section.pageFrom, pageTo: section.pageTo })) {
+        const prior = entry.units.get(u.section.id);
+        if (!prior) { entry.units.set(u.section.id, u); continue; }
+        prior.ranges.push(...u.ranges.filter(([a, b]) => !prior.ranges.some(([c, d]) => c === a && d === b)));
+        prior.covered = prior.ranges.reduce((n, [a, b]) => n + b - a + 1, 0);
+        prior.partial = prior.covered < prior.owned;
+      }
     }
-    return units;
+    for (const { material, units } of byMaterial.values()) out.push({ material, units: [...units.values()] });
+    return out;
   }
   if (kind === 'document' || kind === 'materials' || kind === 'pages') {
     for (const mid of materialIds) {
       const material = await stGetMaterial(mid);
       if (!material) continue;
-      let sections = await stListSections(material.id);
-      if (!sections.length) sections = await stEnsureSections(material.id, stNormalizeSections([], material.pageCount));
-      if (kind === 'pages') {
-        const from = Number(scope.pageFrom) || 1;
-        const to = Number(scope.pageTo) || from;
-        sections = sections.filter((s) => s.pageTo >= from && s.pageFrom <= to);
-      }
-      for (const section of sections) units.push({ material, section });
+      const clip = kind === 'pages' ? { pageFrom: Number(scope.pageFrom) || 1, pageTo: Number(scope.pageTo) || Number(scope.pageFrom) || 1 } : {};
+      out.push({ material, units: await stMaterialUnits(material, clip) });
     }
   }
-  return units;
+  return out;
 }
 
-/** The concepts a scope draws from. `ensured` is a prior stEnsureBank result, for selections. */
+/** The concepts a scope draws from. `ensured` is a prior stEnsureBank result. */
 async function stScopeConcepts(scope, ensured = null) {
   const kind = scope && scope.kind;
   const materialIds = Array.isArray(scope && scope.materialIds) ? scope.materialIds : [];
@@ -4013,13 +4752,12 @@ async function stScopeConcepts(scope, ensured = null) {
     return weak.filter((c) => (c.state === 'weak' || c.state === 'stale') && (!mids.size || mids.has(c.materialId)));
   }
   if (kind === 'selection') {
-    if (ensured && Array.isArray(ensured.concepts) && ensured.concepts.length) return ensured.concepts;
-    const ids = _stSelectionConcepts.get(stSelectionKey(scope));
-    if (!ids || !ids.length) return [];
+    const ids = stSelectionConceptIds(scope);
+    if (!ids.length) return ensured && Array.isArray(ensured.concepts) ? ensured.concepts : [];
     const set = new Set(ids);
     return (await stListConcepts({ materialIds: [materialIds[0]] })).filter((c) => set.has(c.id));
   }
-  if (kind === 'chapter') return stListConcepts({ sectionIds: Array.isArray(scope.sectionIds) ? scope.sectionIds : [] });
+  if (kind === 'chapter') return stConceptsForSections(Array.isArray(scope.sectionIds) ? scope.sectionIds : []);
   const all = await stListConcepts({ materialIds });
   if (kind === 'pages') {
     const from = Number(scope.pageFrom) || 1;
@@ -4029,153 +4767,335 @@ async function stScopeConcepts(scope, ensured = null) {
   return all;
 }
 
-/** A stand-in concept for bank questions that were never mapped. */
+/** A stand-in concept for a question whose concept row is missing. */
 function stPseudoConcept(id = 0) {
-  return { id, materialId: 0, sectionId: 0, title: 'Bank', summary: '', page: 0, anchorQuote: '', ord: 0, mastery: 0, answers: 0, misses: 0, missStreak: 0, rightChooseAt: 0, rightTypeAt: 0, lastAnsweredAt: 0 };
+  return { id, materialId: 0, sectionId: 0, title: 'Question', summary: '', page: 0, anchorQuote: '', ord: 0, mastery: 0, answers: 0, misses: 0, missStreak: 0, rightChooseAt: 0, rightTypeAt: 0, lastAnsweredAt: 0 };
 }
 
-/** Concepts and questions for a scope's draw. */
-async function stScopePool(scope, ensured = null) {
+/**
+ * Concepts and usable questions for a scope: not hidden and answerable
+ * (stQuestionAnswerable); `unanswerable` counts the rest. A bank scope
+ * draws the banks' questions; with `materialize`, a bank question without
+ * a concept gets its own first (stEnsureBankConcepts).
+ */
+async function stScopePool(scope, { materialize = false, ensured = null } = {}) {
   if (scope && scope.kind === 'bank') {
-    const questions = await stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] });
-    const mapped = [...new Set(questions.map((q) => q.conceptId).filter((id) => id > 0))];
-    const concepts = mapped.length ? (await stListConcepts({})).filter((c) => mapped.includes(c.id)) : [];
-    if (questions.some((q) => !q.conceptId)) concepts.push(stPseudoConcept(0));
-    return { concepts, questions };
+    const all = await stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] });
+    const questions = all.filter(stQuestionAnswerable);
+    if (materialize) await stEnsureBankConcepts(questions);
+    const ids = [...new Set(questions.map((q) => q.conceptId).filter((id) => id > 0))];
+    const concepts = ids.length ? await stListConcepts({ ids }) : [];
+    return { concepts, questions, unanswerable: all.length - questions.length };
   }
   const concepts = await stScopeConcepts(scope, ensured);
-  const questions = concepts.length ? await stListQuestions({ conceptIds: concepts.map((c) => c.id) }) : [];
-  return { concepts, questions };
+  const all = concepts.length ? await stListQuestions({ conceptIds: concepts.map((c) => c.id) }) : [];
+  const questions = all.filter(stQuestionAnswerable);
+  return { concepts, questions, unanswerable: all.length - questions.length };
+}
+
+/** Does a drawn question still need a rubric made from its answer? */
+function stNeedsAnswerRubric(q) {
+  return (q.format === 'short' || q.format === 'essay') && !stNormalizeRubric(q.rubric).length && !!String(q.answer || '').trim();
+}
+
+/**
+ * What a scope holds now: `available` usable questions (the same pool as
+ * stNextDraw), `unanswerable` ones left out (no answer and no rubric), and
+ * `needsRubric`, the short and essay ones whose rubric is made from the
+ * answer when first drawn.
+ */
+async function stScopeStats(scope) {
+  const pool = await stScopePool(scope || {});
+  return {
+    available: pool.questions.length,
+    unanswerable: pool.unanswerable,
+    needsRubric: pool.questions.filter(stNeedsAnswerRubric).length,
+  };
+}
+
+/** The number of usable (non-hidden, answerable) questions in a scope, for stSessionNeedsGeneration. */
+async function stScopeQuestionCount(scope) {
+  return (await stScopeStats(scope)).available;
 }
 
 // ── Orchestration ───────────────────────────────────────────────────────────
 
-/**
- * Make sure a scope has questions: map every unmapped section (or the
- * selection), then generate until every concept has questionsPerConcept of
- * each applicable format. With `untilSize`, stop as soon as `size` kept
- * questions exist across the scope (the Start With N Ready path).
- * Returns { kept, concepts, numericUnavailable }.
- */
-async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token = null, onProgress = null, untilSize = false } = {}) {
-  const cancelled = () => !!(token && token.cancelled);
-  const result = { kept: 0, concepts: [], numericUnavailable: false };
-  if (!scope) return result;
-  if (scope.kind === 'bank') {
-    result.kept = (await stListQuestions({ bankIds: Array.isArray(scope.bankIds) ? scope.bankIds : [] })).length;
-    return result;
+/** dropped counts added key by key; numeric stays null (Python missing) when either side says so. */
+function stAddDropped(a, b) {
+  const out = { ...(a || {}) };
+  for (const [k, v] of Object.entries(b || {})) {
+    if (v === null || out[k] === null) { out[k] = null; continue; }
+    out[k] = (Number(out[k]) || 0) + (Number(v) || 0);
   }
+  return out;
+}
+
+/**
+ * Make sure a scope has questions. Units (a section's own pages, a
+ * selection, a material's weak concepts) are visited round-robin across
+ * materials and, within a material, across its units in an order spread
+ * over the document (stSpreadOrder): each visit maps the unit if it is not
+ * mapped yet, then makes one generation call for it. So the first questions
+ * already span the scope, and a long PDF is mapped only as far as needed.
+ * With `untilSize`, the run stops once `size` usable questions exist in
+ * the scope (the Start With N Ready path), one concept per call; without,
+ * it goes on until every concept has questionsPerConcept of each format
+ * (or failed ST_MAX_PASSES times). A bank scope has nothing to generate.
+ *
+ * Progress payloads: { phase, done, total, written, kept, dropped,
+ * available, unanswerable, unitsDone, unitsTotal, sessionId, materialId,
+ * sectionId, concept?, runId?, model? }. `kept`, `written` and `dropped`
+ * count this run; `available` is every usable question in the scope now;
+ * done/total never go back: with untilSize, available (capped) of size,
+ * else units finished of units. Phases: map, generate, check:<key>, done,
+ * stopped, failed.
+ *
+ * A selection's concept ids are written into the session's scope
+ * (scope.conceptIds) when `sessionId` is given, so a restart draws from
+ * them without mapping again. Returns { kept, concepts, available,
+ * unanswerable, numericUnavailable }.
+ */
+async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token = null, onProgress = null, untilSize = false, sessionId = null } = {}) {
+  const cancelled = () => !!(token && token.cancelled);
+  const result = { kept: 0, concepts: [], available: 0, unanswerable: 0, numericUnavailable: false };
+  if (!scope) return result;
+  const base = await stScopeStats(scope);
+  result.available = base.available;
+  result.unanswerable = base.unanswerable;
+  if (scope.kind === 'bank') return result;
+  const target = untilSize && Number(size) > 0 ? Number(size) : 0;
+  if (target && result.available >= target) return result;
+
   const checkNumeric = cfg('checkNumeric', true) !== false;
   const pythonAvailable = checkNumeric ? await stPythonAvailable() : false;
   result.numericUnavailable = checkNumeric && !pythonAvailable;
+  const perConcept = Math.max(1, Number(cfg('questionsPerConcept', 2)) || 2);
+  const choices = Number(cfg('choices', 4)) === 5 ? 5 : 4;
 
-  // 1. Concepts: map what is unmapped.
-  const groups = []; // [{ material, section, concepts, model }]
+  const run = {
+    written: 0, kept: 0, unitsDone: 0, unitsTotal: 0,
+    dropped: { anchor: 0, support: 0, distractor: 0, numeric: result.numericUnavailable ? null : 0, parse: 0 },
+  };
+  const emit = (phase, inner = null, unit = null) => {
+    const innerKept = inner ? Number(inner.kept) || 0 : 0;
+    const available = result.available + innerKept;
+    const p = {
+      phase,
+      done: target ? Math.min(available, target) : run.unitsDone,
+      total: target || run.unitsTotal,
+      written: run.written + (inner ? Number(inner.written) || 0 : 0),
+      kept: run.kept + innerKept,
+      dropped: stAddDropped(run.dropped, inner && inner.dropped),
+      available,
+      unanswerable: result.unanswerable,
+      unitsDone: run.unitsDone,
+      unitsTotal: run.unitsTotal,
+      sessionId: sessionId == null ? null : sessionId,
+      materialId: inner && inner.materialId != null ? inner.materialId : unit ? unit.material.id : null,
+      sectionId: inner && inner.sectionId != null ? inner.sectionId : unit && unit.section ? unit.section.id : 0,
+    };
+    if (inner) for (const k of ['concept', 'runId', 'model', 'error']) if (inner[k] != null) p[k] = inner[k];
+    if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
+    try { bus.emit('run', p); } catch { /* bus is optional here */ }
+  };
+  const innerFor = (unit) => (p) => {
+    const phase = p && (p.phase === 'done' || p.phase === 'stopped') ? 'generate' : (p && p.phase) || 'generate';
+    // A map call's done/total are chunks, not this run's: the payload keeps the run's.
+    emit(phase, p && p.phase === 'map' ? { ...p, kept: 0, written: 0, dropped: {} } : p, unit);
+  };
+
+  // The units, per material.
+  const queues = [];
   if (scope.kind === 'weak') {
-    const concepts = await stScopeConcepts(scope);
     const byMaterial = new Map();
-    for (const c of concepts) {
+    for (const c of await stScopeConcepts(scope)) {
       if (!byMaterial.has(c.materialId)) byMaterial.set(c.materialId, []);
       byMaterial.get(c.materialId).push(c);
     }
     for (const [mid, list] of byMaterial) {
       const material = await stGetMaterial(mid);
-      if (material) groups.push({ material, section: null, concepts: list, model: modelId || await stPickModel(material) });
+      if (material && material.kind !== 'bank') queues.push({ material, cursor: 0, units: [{ material, section: null, concepts: list, mapped: true, ranges: [] }] });
     }
   } else {
-    const units = await stScopeUnits(scope);
-    for (const unit of units) {
-      if (cancelled()) break;
-      const model = modelId || await stPickModel(unit.material);
-      let concepts;
-      if (unit.selectionText !== undefined) {
-        const key = stSelectionKey(scope);
-        const known = _stSelectionConcepts.get(key);
-        if (known && known.length) {
-          const set = new Set(known);
-          concepts = (await stListConcepts({ materialIds: [unit.material.id] })).filter((c) => set.has(c.id));
-        } else {
-          concepts = await stBuildConceptMap(unit.material, null, { modelId: model, numCtx, token, onProgress, selectionText: unit.selectionText, selectionPage: unit.selectionPage });
-          _stSelectionConcepts.set(key, concepts.map((c) => c.id));
+    for (const { material, units } of await stScopeUnits(scope)) {
+      if (!units.length) continue;
+      const ordered = stSpreadOrder(units.length).map((i) => units[i]);
+      for (const u of ordered) {
+        if (u.selection) u.mapped = stSelectionConceptIds(scope).length > 0;
+        else if (u.section.mappedAt > 0) u.mapped = true;
+        else if (u.partial) {
+          // A clipped unit counts as mapped once its pages have concepts.
+          const known = await stListConcepts({ materialIds: [material.id] });
+          u.mapped = known.some((c) => stInRanges(c.page, u.ranges));
+        } else u.mapped = false;
+      }
+      queues.push({ material, cursor: 0, units: ordered });
+    }
+  }
+  run.unitsTotal = queues.reduce((n, q) => n + q.units.length, 0);
+
+  const models = new Map();
+  const modelFor = async (material) => {
+    if (!models.has(material.id)) models.set(material.id, modelId || await stPickModel(material));
+    const m = models.get(material.id);
+    if (!m) throw new Error('No model is available. Pick a model in Settings or start the model backend.');
+    return m;
+  };
+  const attempts = new Map();
+  const touched = new Map();
+  const finish = (unit) => {
+    if (unit.done) return;
+    unit.done = true;
+    if (!unit.counted) { unit.counted = true; run.unitsDone += 1; }
+  };
+
+  const visit = async (unit) => {
+    const material = unit.material;
+    const model = await modelFor(material);
+    // 1. Map the unit when it has not been mapped.
+    if (!unit.mapped) {
+      if (unit.selection) {
+        const concepts = await stBuildConceptMap(material, null, {
+          modelId: model, numCtx, token, onProgress: innerFor(unit), quiet: true,
+          selectionText: unit.selectionText, selectionPage: unit.selectionPage,
+        });
+        const ids = concepts.map((c) => c.id).filter((id) => id > 0);
+        _stSelectionConcepts.set(stSelectionKey(scope), ids);
+        scope.conceptIds = ids;
+        if (sessionId != null && ids.length) {
+          const s = await stGetSession(sessionId);
+          if (s) await stUpdateSession(sessionId, { scope: { ...(s.scope || {}), conceptIds: ids } });
         }
       } else {
-        if (!unit.section.mappedAt) {
-          await stBuildConceptMap(unit.material, unit.section, { modelId: model, numCtx, token, onProgress });
-        }
-        concepts = await stListConcepts({ sectionIds: [unit.section.id] });
-        if (scope.kind === 'pages') {
-          const from = Number(scope.pageFrom) || 1;
-          const to = Number(scope.pageTo) || from;
-          concepts = concepts.filter((c) => c.page >= from && c.page <= to);
-        }
+        await stBuildConceptMap(material, unit.section, {
+          modelId: model, numCtx, token, onProgress: innerFor(unit), quiet: true,
+          ranges: unit.ranges, ownerOf: unit.ownerOf, markMapped: !unit.partial,
+        });
       }
-      groups.push({ material: unit.material, section: unit.section, concepts, model });
+      if (cancelled()) return;
+      unit.mapped = true;
     }
-  }
-  const concepts = groups.flatMap((g) => g.concepts);
-  result.concepts = concepts;
-  const countKept = async () => concepts.length ? (await stListQuestions({ conceptIds: concepts.map((c) => c.id) })).length : 0;
-  result.kept = await countKept();
-  if (!concepts.length || cancelled()) return result;
-  const target = untilSize && Number(size) > 0 ? Number(size) : 0;
-  if (target && result.kept >= target) return result;
+    // 2. One generation call for the unit's concepts.
+    let concepts;
+    if (unit.concepts) concepts = unit.concepts;
+    else if (unit.selection) {
+      const set = new Set(stSelectionConceptIds(scope));
+      concepts = (await stListConcepts({ materialIds: [material.id] })).filter((c) => set.has(c.id));
+    } else {
+      concepts = (await stListConcepts({ materialIds: [material.id] })).filter((c) => stInRanges(c.page, unit.ranges));
+    }
+    for (const c of concepts) touched.set(c.id, c);
+    const eligible = concepts.filter((c) => (attempts.get(c.id) || 0) < ST_MAX_PASSES);
+    if (!eligible.length) { finish(unit); return; }
+    const gen = await stGenerateQuestions(material, {
+      sectionId: unit.section ? unit.section.id : 0,
+      conceptIds: eligible.map((c) => c.id),
+      perConcept: sweepPer, choices, modelId: model, numCtx, token, onProgress: innerFor(unit), pythonAvailable,
+      maxGroups: 1, maxConceptsPerCall: target ? 1 : 0, quiet: true,
+    });
+    run.written += Number(gen.written) || 0;
+    run.kept += gen.kept.length;
+    result.available += gen.kept.length;
+    run.dropped = stAddDropped(run.dropped, gen.dropped);
+    for (const id of gen.attempted || []) attempts.set(id, (attempts.get(id) || 0) + 1);
+    if (!gen.needed || (!(gen.attempted || []).length && gen.status !== 'stopped')) finish(unit);
+  };
 
-  // 2. Questions: generate to coverage, or until the size is reached.
-  const perConcept = Math.max(1, Number(cfg('questionsPerConcept', 2)) || 2);
-  const choices = Number(cfg('choices', 4)) === 5 ? 5 : 4;
-  const stopWhen = target ? async () => (await countKept()) >= target : null;
-  for (let pass = 0; pass < ST_MAX_PASSES; pass++) {
-    let progressed = false;
-    for (const group of groups) {
-      if (cancelled()) break;
-      if (!group.concepts.length) continue;
-      if (stopWhen && await stopWhen()) break;
-      const gen = await stGenerateQuestions(group.material, {
-        sectionId: group.section ? group.section.id : 0,
-        conceptIds: group.concepts.map((c) => c.id),
-        perConcept, choices, modelId: group.model, numCtx, token, onProgress, pythonAvailable, stopWhen,
-      });
-      if (gen.kept.length) progressed = true;
-      if (gen.status === 'stopped') break;
+  // With a target, a first sweep asks one question of each format per
+  // concept, so the first `size` questions come from many units; the
+  // second fills each concept up to questionsPerConcept.
+  const sweeps = target && perConcept > 1 ? [1, perConcept] : [perConcept];
+  let sweepPer = sweeps[0];
+  for (let sweep = 0; sweep < sweeps.length; sweep++) {
+    sweepPer = sweeps[sweep];
+    if (sweep > 0) {
+      attempts.clear();
+      for (const q of queues) { q.cursor = 0; for (const u of q.units) u.done = false; }
     }
-    result.kept = await countKept();
-    if (cancelled() || !progressed) break;
-    if (stopWhen && result.kept >= target) break;
+    let turn = 0;
+    for (;;) {
+      if (cancelled()) break;
+      if (target && result.available >= target) break;
+      const live = queues.filter((q) => q.units.some((u) => !u.done));
+      if (!live.length) break;
+      const queue = live[turn % live.length];
+      turn += 1;
+      const n = queue.units.length;
+      let unit = null;
+      for (let k = 0; k < n; k++) {
+        const u = queue.units[(queue.cursor + k) % n];
+        if (!u.done) { unit = u; queue.cursor = (queue.cursor + k + 1) % n; break; }
+      }
+      if (!unit) continue;
+      await visit(unit);
+      emit('generate', null, unit);
+    }
+    if (cancelled() || (target && result.available >= target)) break;
   }
+  result.kept = run.kept;
+  result.concepts = [...touched.values()];
+  emit(cancelled() ? 'stopped' : 'done');
   return result;
 }
 
 /**
+ * Rubrics for the drawn short and essay questions that have an answer and
+ * no rubric (bank questions), made from the answer and stored with
+ * rubric_origin 'answer', before the session shows them.
+ */
+async function stDeriveDrawRubrics(draw, session, { token = null, onProgress = null } = {}) {
+  const todo = draw.filter(stNeedsAnswerRubric);
+  for (let k = 0; k < todo.length; k++) {
+    if (token && token.cancelled) return;
+    const q = todo[k];
+    const p = { phase: 'rubric', rubricsDone: k, rubricsTotal: todo.length, sessionId: session.id };
+    if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
+    const rubric = await stRubricFromAnswer(q, { modelId: session.model, numCtx: session.numCtx });
+    if (!rubric.length) continue;
+    q.rubric = rubric;
+    q.rubricOrigin = 'answer';
+    try { await stUpdateQuestion(q); } catch { /* grading derives it again */ }
+  }
+}
+
+/**
  * The next draw for a session: top the bank up when fewer than `size`
- * unseen questions remain, draw with stDrawSession excluding everything
- * the session already holds, and record the items. Returns the questions
- * in order (empty when the scope has nothing left or the run was stopped).
+ * unseen questions remain (never for a bank scope: there is nothing to
+ * generate from), draw with stDrawSession excluding everything the session
+ * already holds, give bank questions their concepts and rubrics, and record
+ * the items. Returns the questions in order (empty when the scope has
+ * nothing left or the run was stopped); `unanswerable` on the array counts
+ * the questions left out for having neither answer nor rubric.
  */
 async function stNextDraw(session, { token = null, onProgress = null } = {}) {
   const scope = session.scope || {};
   const items = await stListSessionItems(session.id);
   const exclude = new Set(items.map((i) => i.questionId));
   const size = Number(session.size) || Number(cfg('sessionSize', 20)) || 20;
-  let pool = await stScopePool(scope);
-  let candidates = pool.questions.filter((q) => !q.hidden && !exclude.has(q.id));
+  const materialize = scope.kind === 'bank';
+  let pool = await stScopePool(scope, { materialize });
+  let candidates = pool.questions.filter((q) => !exclude.has(q.id));
   if (candidates.length < size && scope.kind !== 'bank') {
     const ensured = await stEnsureBank(scope, {
-      size: size + exclude.size, modelId: session.model, numCtx: session.numCtx, token, onProgress, untilSize: true,
+      size: size + exclude.size, modelId: session.model, numCtx: session.numCtx, token, onProgress, untilSize: true, sessionId: session.id,
     });
-    pool = await stScopePool(scope, ensured);
-    candidates = pool.questions.filter((q) => !q.hidden && !exclude.has(q.id));
+    pool = await stScopePool(scope, { materialize, ensured });
+    candidates = pool.questions.filter((q) => !exclude.has(q.id));
   }
-  if (token && token.cancelled) return [];
-  if (!candidates.length) return [];
+  const empty = () => Object.assign([], { unanswerable: pool.unanswerable });
+  if (token && token.cancelled) return empty();
+  if (!candidates.length) return empty();
   const conceptById = new Map(pool.concepts.map((c) => [c.id, c]));
   const draw = stDrawSession({
     questions: pool.questions, concepts: pool.concepts, size, exclude,
     answerFormat: session.answerFormat, now: stNow(), rng: Math.random,
+    staleDays: Number(cfg('staleDays', 14)) || 14,
   }) || [];
-  if (!draw.length) return [];
+  if (!draw.length) return empty();
+  await stDeriveDrawRubrics(draw, session, { token, onProgress });
   const formats = draw.map((q) => stResolveFormat(conceptById.get(q.conceptId) || stPseudoConcept(q.conceptId), q, session.answerFormat));
   await stAddSessionItems(session.id, Number(session.refreshes) || 0, draw.map((q) => q.id), formats);
-  return draw;
+  return Object.assign(draw, { unanswerable: pool.unanswerable });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4217,11 +5137,13 @@ function injectStyles() {
 .st-sess-tb { display: flex; align-items: center; gap: var(--px-space-3); height: 40px; padding: 0 var(--px-space-4); border-bottom: 1px solid var(--px-divider); background: var(--px-bg); flex: none; }
 .st-sess-tb__scope { font-size: var(--px-text-sm); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .st-sess-tb__scope .m { color: var(--px-text-muted); font-weight: 400; }
-.st-strand { display: flex; gap: 3px; flex: 0 1 240px; min-width: 120px; }
+.st-strand { display: flex; gap: var(--px-space-1); flex: 0 1 240px; min-width: 120px; }
 .st-strand i { flex: 1; height: 3px; border-radius: var(--px-radius-full); background: var(--px-surface-active); transition: background var(--px-dur-base) var(--px-ease), transform var(--px-dur-base) var(--px-ease-spring); }
 .st-strand i.ok { background: var(--px-success); }
 .st-strand i.no { background: var(--px-danger); }
 .st-strand i.cur { background: var(--px-accent); }
+/* Test: an answered item is neutral until the results; no verdict during the test. */
+.st-strand i.ans { background: var(--px-text-faint); }
 .st-strand i.just { transform: scaleY(1.9); }
 .st-sess-main { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; padding: var(--px-space-5) var(--px-space-6) var(--px-space-6); overflow-y: auto; }
 .st-qwrap { width: 100%; max-width: 760px; position: relative; }
@@ -4253,7 +5175,7 @@ function injectStyles() {
 /* Options: rows on the card with a keycap at the left, divided by the card's
    own hairline. No radio circles: the keycap is the letter and the key. */
 .st-opts { margin: 0 calc(var(--px-space-6) * -1); border-top: 1px solid var(--px-stock-line); }
-.st-opt { display: flex; align-items: flex-start; gap: var(--px-space-3); padding: 11px var(--px-space-6); border-bottom: 1px solid var(--px-stock-line); font-size: var(--px-text-md); line-height: 1.45; cursor: pointer; position: relative; transition: background var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease); }
+.st-opt { display: flex; align-items: flex-start; gap: var(--px-space-3); padding: var(--px-space-3) var(--px-space-6); border-bottom: 1px solid var(--px-stock-line); font-size: var(--px-text-md); line-height: 1.45; cursor: pointer; position: relative; transition: background var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease); }
 .st-opt:last-child { border-bottom: 0; }
 .st-opt:hover { background: var(--px-stock-well); }
 .st-opt:active { transform: var(--px-press); }
@@ -4273,7 +5195,7 @@ function injectStyles() {
 .st-opts--done .st-opt:not(.st-opt--right):not(.st-opt--wrong) .st-opt__key { color: var(--px-stock-ink-faint); border-color: var(--px-stock-line); }
 /* Typed answer: a well on the card. */
 .st-ta { margin: 0 calc(var(--px-space-6) * -1) calc(var(--px-space-2) * -1); border-top: 1px solid var(--px-stock-line); padding: var(--px-space-4) var(--px-space-6) var(--px-space-5); }
-.st-ta__field, .st-ta__line, .st-ta__num { width: 100%; border: 1px solid var(--px-stock-line); border-radius: var(--px-radius-sm); padding: 10px 12px; font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-stock-ink); background: var(--px-stock-well); outline: none; box-sizing: border-box; transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease); }
+.st-ta__field, .st-ta__line, .st-ta__num { width: 100%; border: 1px solid var(--px-stock-line); border-radius: var(--px-radius-sm); padding: var(--px-space-2) var(--px-space-3); font-size: var(--px-text-md); line-height: var(--px-leading-base); color: var(--px-stock-ink); background: var(--px-stock-well); outline: none; box-sizing: border-box; transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease); }
 .st-ta__field { min-height: 96px; resize: vertical; }
 .st-ta__field--essay { min-height: 130px; }
 .st-ta__line { height: 40px; }
@@ -4306,13 +5228,13 @@ function injectStyles() {
 .st-fb__acts .px-btn:hover:not(:disabled) { color: var(--px-text); background: none; }
 .st-fb__acts .px-btn .svg-icon { display: none; }
 /* The anchor quote with the warning-coloured left rule and the page link. */
-.st-quote { grid-column: 1 / -1; display: flex; gap: var(--px-space-2); padding: 10px 12px; border: 1px solid var(--px-border); border-left: 2px solid var(--px-warning); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); font-size: var(--px-text-base); line-height: var(--px-leading-base); color: var(--px-text-secondary); max-width: 70ch; }
+.st-quote { grid-column: 1 / -1; display: flex; gap: var(--px-space-2); padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-left: 2px solid var(--px-warning); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); font-size: var(--px-text-base); line-height: var(--px-leading-base); color: var(--px-text-secondary); max-width: 70ch; }
 .st-quote__text { flex: 1; min-width: 0; }
 .st-quote__pg { font-size: var(--px-text-xs); color: var(--px-accent-text); white-space: nowrap; align-self: flex-start; margin-top: 2px; cursor: pointer; background: none; border: 0; padding: 0; font-weight: 500; }
 .st-quote__pg:hover { text-decoration: underline; }
 /* Rubric points land one after another: 50 ms apart, --st-i set per row. */
-.st-rub { grid-column: 1 / -1; display: grid; gap: 6px; margin-top: calc(var(--px-space-1) * -1); }
-.st-rub__pt { display: flex; align-items: flex-start; gap: 10px; font-size: var(--px-text-base); line-height: 1.45; color: var(--px-text-secondary); opacity: 0; transform: translateX(-4px); animation: st-pt-in var(--px-dur-base) var(--px-ease-out) forwards; animation-delay: calc(var(--st-i, 0) * 50ms); }
+.st-rub { grid-column: 1 / -1; display: grid; gap: var(--px-space-2); margin-top: calc(var(--px-space-1) * -1); }
+.st-rub__pt { display: flex; align-items: flex-start; gap: var(--px-space-2); font-size: var(--px-text-base); line-height: 1.45; color: var(--px-text-secondary); opacity: 0; transform: translateX(-4px); animation: st-pt-in var(--px-dur-base) var(--px-ease-out) forwards; animation-delay: calc(var(--st-i, 0) * 50ms); }
 @keyframes st-pt-in { to { opacity: 1; transform: none; } }
 .st-rub__g { flex: none; width: 18px; height: 18px; border-radius: var(--px-radius-sm); display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
 .st-rub__g .svg-icon svg { width: 12px; height: 12px; }
@@ -4323,29 +5245,38 @@ function injectStyles() {
 .st-rub__req { font-size: var(--px-text-2xs); color: var(--px-text-faint); margin-left: var(--px-space-1); }
 /* The full answer stays folded; the explanation streams into a block. */
 .st-full { grid-column: 1 / -1; margin-top: 2px; }
-.st-full summary { font-size: var(--px-text-sm); color: var(--px-text-muted); cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 5px; }
+.st-full summary { font-size: var(--px-text-sm); color: var(--px-text-muted); cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: var(--px-space-1); }
 .st-full summary::-webkit-details-marker { display: none; }
-.st-full__text, .st-explain { margin: var(--px-space-2) 0 0; font-size: var(--px-text-base); line-height: 1.55; color: var(--px-text-secondary); max-width: 70ch; padding: 10px 12px; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); }
+.st-full__text, .st-explain { margin: var(--px-space-2) 0 0; font-size: var(--px-text-base); line-height: 1.55; color: var(--px-text-secondary); max-width: 70ch; padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); }
 .st-explain { grid-column: 1 / -1; margin-top: 0; white-space: pre-wrap; }
 .st-explain .px-markdown { white-space: normal; }
 .st-explain--busy { color: var(--px-text-muted); }
 
 /* ── Controls row ───────────────────────────────────────────────────────── */
 .st-ctl { display: flex; align-items: center; gap: var(--px-space-2); width: 100%; max-width: 760px; margin-top: var(--px-space-5); }
-.st-k { margin-left: 6px; opacity: .55; font-size: var(--px-text-xs); font-weight: 400; }
+.st-k { margin-left: var(--px-space-1); opacity: .55; font-size: var(--px-text-xs); font-weight: 400; }
 
 /* ── Setup sheet: scrim and sheet over the pane ─────────────────────────── */
 .st-scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--px-bg) 55%, transparent); animation: st-fade var(--px-dur-base) var(--px-ease-out); }
 @keyframes st-fade { from { opacity: 0; } to { opacity: 1; } }
-.st-sheet { position: absolute; top: 50%; left: 50%; width: 560px; max-width: calc(100% - 32px); transform: translate(-50%, -50%); background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); box-shadow: var(--px-shadow-lg), var(--px-edge-light); animation: st-rise var(--px-dur-slow) var(--px-ease-out); }
+.st-sheet { position: absolute; top: 50%; left: 50%; width: min(640px, calc(100% - var(--px-space-8))); container-type: inline-size; container-name: st-sheet; transform: translate(-50%, -50%); background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); box-shadow: var(--px-shadow-lg), var(--px-edge-light); animation: st-rise var(--px-dur-slow) var(--px-ease-out); }
 @keyframes st-rise { from { opacity: 0; transform: translate(-50%, -50%) translateY(10px) scale(.985); } to { opacity: 1; transform: translate(-50%, -50%); } }
 .st-sheet__hd { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-3); padding: var(--px-space-4) var(--px-space-5) 0; }
 .st-sheet__title { margin: 0; font-size: var(--px-text-md); font-weight: 600; }
 .st-sheet__sub { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-sheet__bd { padding: var(--px-space-4) var(--px-space-5) var(--px-space-5); display: grid; gap: var(--px-space-4); }
 .st-row { display: flex; align-items: center; gap: var(--px-space-3); flex-wrap: wrap; }
-.st-row__lab { width: 92px; flex: none; font-size: var(--px-text-sm); color: var(--px-text-muted); }
+.st-row__lab { width: 64px; flex: none; font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .st-row__lab--inline { width: auto; margin-left: var(--px-space-3); }
+/* Mode and Answer: one row that never wraps at the sheet's full width; two
+   rows on the same label column when the sheet is narrower. */
+.st-ma { display: flex; align-items: center; gap: var(--px-space-3); flex-wrap: nowrap; }
+.st-ma__pair { display: flex; align-items: center; gap: var(--px-space-3); flex: none; }
+@container st-sheet (max-width: 600px) {
+  .st-ma { flex-direction: column; align-items: flex-start; gap: var(--px-space-4); }
+  .st-ma .st-row__lab--inline { width: 64px; margin-left: 0; }
+}
+.st-sheet__count { font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .st-outline { border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); overflow: hidden; max-height: 240px; overflow-y: auto; }
 .st-outline__o { display: flex; align-items: center; gap: var(--px-space-2); min-height: var(--px-control-h); padding: 0 var(--px-space-3); font-size: var(--px-text-sm); color: var(--px-text-secondary); border-top: 1px solid var(--px-divider); cursor: pointer; }
 .st-outline__o:first-child { border-top: 0; }
@@ -4361,16 +5292,15 @@ function injectStyles() {
 .st-pages { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); color: var(--px-text-muted); }
 .st-input { height: var(--px-control-h); width: 72px; padding: 0 var(--px-space-2); border: 1px solid var(--px-border-strong); border-radius: var(--px-radius-sm); background: var(--px-bg-inset); color: var(--px-text); font: inherit; font-size: var(--px-text-sm); font-variant-numeric: tabular-nums; outline: none; }
 .st-input:focus { border-color: var(--px-accent); box-shadow: 0 0 0 1px var(--px-accent); }
-.st-selection { padding: 10px 12px; border: 1px solid var(--px-border); border-left: 2px solid var(--px-accent); border-radius: var(--px-radius-md); background: var(--px-bg-inset); font-size: var(--px-text-sm); color: var(--px-text-secondary); line-height: var(--px-leading-base); }
+.st-selection { padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-left: 2px solid var(--px-accent); border-radius: var(--px-radius-md); background: var(--px-bg-inset); font-size: var(--px-text-sm); color: var(--px-text-secondary); line-height: var(--px-leading-base); }
 .st-sheet__ft { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-3); padding: var(--px-space-3) var(--px-space-5) var(--px-space-4); border-top: 1px solid var(--px-divider); }
-.st-sheet__st { font-size: var(--px-text-sm); color: var(--px-text-muted); display: inline-flex; align-items: center; gap: var(--px-space-2); min-width: 0; flex-wrap: wrap; }
-.st-sheet__st b { color: var(--px-text); font-weight: 600; }
-.st-sheet__mdl { display: inline-flex; align-items: center; gap: 5px; color: var(--px-text-secondary); cursor: pointer; background: none; border: 0; padding: 0; font: inherit; font-size: var(--px-text-sm); white-space: nowrap; }
-.st-sheet__mdl:hover { color: var(--px-text); }
+.st-sheet__mdl { min-width: 0; max-width: 100%; color: var(--px-text-secondary); }
+.st-sheet__mdl .px-btn__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.st-sheet__chev { display: inline-flex; flex: none; color: var(--px-text-muted); }
 .st-sheet__acts { display: flex; gap: var(--px-space-2); flex: none; }
 
 /* ── Generation screen ──────────────────────────────────────────────────── */
-.st-gen { width: 560px; max-width: calc(100% - 32px); margin: 56px auto 0; }
+.st-gen { width: 560px; max-width: calc(100% - var(--px-space-8)); margin: calc(var(--px-space-8) + var(--px-space-6)) auto 0; }
 .st-gen__t { font-size: var(--px-text-md); font-weight: 600; }
 .st-gen__s { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: 2px; }
 .st-gen__bar { height: 4px; border-radius: var(--px-radius-full); background: var(--px-divider); overflow: hidden; margin: var(--px-space-4) 0 var(--px-space-4); }
@@ -4378,7 +5308,7 @@ function injectStyles() {
 .st-genline { display: flex; gap: var(--px-space-5); font-size: var(--px-text-base); color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
 .st-genline b { color: var(--px-text); font-weight: 600; }
 .st-checks { margin-top: var(--px-space-4); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); overflow: hidden; }
-.st-ck { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 var(--px-space-3); font-size: var(--px-text-sm); border-top: 1px solid var(--px-divider); color: var(--px-text-secondary); }
+.st-ck { display: flex; align-items: center; gap: var(--px-space-2); height: 30px; padding: 0 var(--px-space-3); font-size: var(--px-text-sm); border-top: 1px solid var(--px-divider); color: var(--px-text-secondary); }
 .st-ck:first-child { border-top: 0; }
 .st-ck__d { width: 7px; height: 7px; border-radius: var(--px-radius-full); background: var(--px-success); flex: none; }
 .st-ck__d--run { background: var(--px-accent); animation: st-pulse calc(var(--px-dur-slow) * 5) var(--px-ease) infinite; }
@@ -4397,7 +5327,7 @@ function injectStyles() {
 .st-res__under b { color: var(--px-text); font-weight: 600; }
 .st-res__acts { display: flex; gap: var(--px-space-2); flex-wrap: wrap; justify-content: flex-end; }
 .st-res__acts .st-faint { margin-left: var(--px-space-1); }
-.st-cov { display: flex; gap: 2px; height: 6px; margin: var(--px-space-5) 0 6px; }
+.st-cov { display: flex; gap: 2px; height: 6px; margin: var(--px-space-5) 0 var(--px-space-2); }
 .st-cov i { flex: 1; border-radius: 2px; background: var(--px-surface-active); }
 .st-cov i.c { background: var(--px-success); }
 .st-cov i.w { background: var(--px-danger); }
@@ -4408,13 +5338,13 @@ function injectStyles() {
 .st-covl b { color: var(--px-text); font-weight: 600; }
 .st-missed { margin-top: var(--px-space-5); }
 .st-missed .px-section-label { padding-top: 0; }
-.st-mrow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: var(--px-space-3); padding: 10px 0; border-top: 1px solid var(--px-divider); font-size: var(--px-text-base); }
+.st-mrow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: var(--px-space-3); padding: var(--px-space-2) 0; border-top: 1px solid var(--px-divider); font-size: var(--px-text-base); }
 .st-mrow:first-of-type { border-top: 0; }
 .st-mrow__c { font-weight: 500; min-width: 0; }
 .st-mrow__c small { display: block; font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 1px; font-weight: 400; }
 .st-mrow__pg { font-size: var(--px-text-xs); color: var(--px-accent-text); white-space: nowrap; background: none; border: 0; padding: 0; cursor: pointer; font-weight: 500; }
 .st-mrow__pg:hover { text-decoration: underline; }
-.st-mrow__st { display: inline-flex; align-items: center; gap: 6px; font-size: var(--px-text-xs); color: var(--px-text-muted); white-space: nowrap; }
+.st-mrow__st { display: inline-flex; align-items: center; gap: var(--px-space-1); font-size: var(--px-text-xs); color: var(--px-text-muted); white-space: nowrap; }
 .st-mrow__st i { width: 6px; height: 6px; border-radius: var(--px-radius-full); background: var(--px-danger); }
 .st-mrow__st--w i { background: var(--px-warning); }
 .st-res__ft { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-3); margin-top: var(--px-space-5); padding-top: var(--px-space-4); border-top: 1px solid var(--px-divider); }
@@ -4435,52 +5365,60 @@ function injectStyles() {
 .st-review__ans--skip { color: var(--px-text-muted); }
 .st-review .st-quote { max-width: none; }
 
+.st-review__v { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text-muted); }
+.st-review__v .st-fb__grade { font-weight: 400; }
+.st-review__v--ok { color: var(--px-success); }
+.st-review__v--no { color: var(--px-danger); }
+.st-review .st-rub { margin-top: 0; }
+.st-marking { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-top: var(--px-space-4); }
+
 /* ── Learn ──────────────────────────────────────────────────────────────── */
 .st-learn { width: 100%; max-width: 720px; margin: 0 auto; padding-top: var(--px-space-2); animation: st-card-in var(--px-dur-base) var(--px-ease-out); }
-.st-learn__h { font-size: var(--px-text-xl); font-weight: 600; line-height: 1.3; margin: 10px 0 var(--px-space-1); }
+.st-learn__h { font-size: var(--px-text-xl); font-weight: 600; line-height: 1.3; margin: var(--px-space-2) 0 var(--px-space-1); }
 .st-learn__sub { font-size: var(--px-text-sm); color: var(--px-text-muted); margin-bottom: var(--px-space-5); }
 .st-learn__pt { display: grid; grid-template-columns: 1fr auto; gap: var(--px-space-4); padding: var(--px-space-3) 0; border-top: 1px solid var(--px-divider); font-size: var(--px-text-base); line-height: 1.55; color: var(--px-text-secondary); }
 .st-learn__pt b { color: var(--px-text); font-weight: 600; }
 .st-learn__pt:hover { color: var(--px-text); }
-.st-learn__pg { font-size: var(--px-text-xs); color: var(--px-accent-text); white-space: nowrap; align-self: start; margin-top: 3px; cursor: pointer; background: none; border: 0; padding: 0; font-weight: 500; }
+.st-learn__pg { font-size: var(--px-text-xs); color: var(--px-accent-text); white-space: nowrap; align-self: start; margin-top: var(--px-space-1); cursor: pointer; background: none; border: 0; padding: 0; font-weight: 500; }
 .st-learn__pg:hover { text-decoration: underline; }
 .st-learn__ft { display: flex; justify-content: space-between; align-items: center; gap: var(--px-space-3); margin-top: var(--px-space-4); padding-top: var(--px-space-4); border-top: 1px solid var(--px-divider); font-size: var(--px-text-sm); color: var(--px-text-muted); }
 
 /* ── Sidebar ────────────────────────────────────────────────────────────── */
 .st-sb { display: flex; flex-direction: column; height: 100%; min-width: 0; font-size: var(--px-text-sm); }
-.st-sb__hd { display: flex; align-items: center; gap: var(--px-space-1); height: 36px; flex: none; padding: 0 var(--px-space-2) 0 var(--px-sidebar-inset); }
 .st-sb__btn--on { color: var(--px-accent-text); background: var(--px-accent-faint); }
 .st-sb__body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: var(--px-space-3); }
 .st-sb__sec { padding: var(--px-space-1) 0 var(--px-space-2); }
-.st-sb__secl { display: flex; align-items: center; gap: var(--px-space-1); padding: 0 var(--px-space-2) 0 var(--px-sidebar-inset); }
+.st-sb__secl { display: flex; align-items: center; gap: var(--px-space-1); min-height: var(--px-control-h); padding: 0 var(--px-space-2) 0 var(--px-sidebar-inset); }
+.st-sb__secl .px-section-label + .st-sp { min-width: var(--px-space-2); }
 .st-sb__secl .px-section-label { display: inline-flex; align-items: center; gap: var(--px-space-1); min-width: 0; }
 .st-sb__secl--fold .px-section-label { cursor: pointer; color: var(--px-text-faint); }
 .st-sb__secl--fold .px-section-label:hover { color: var(--px-text-secondary); }
 .st-sb__n { color: var(--px-text-faint); font-weight: 500; margin-left: 2px; font-size: var(--px-text-xs); font-variant-numeric: tabular-nums; }
-.st-sb__it { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: var(--px-space-2); height: 30px; padding: 0 var(--px-sidebar-inset); color: var(--px-text-secondary); white-space: nowrap; cursor: pointer; transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease); }
+.st-sb__it { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: var(--px-space-2); height: 30px; padding: 0 var(--px-sidebar-inset); color: var(--px-text-secondary); white-space: nowrap; cursor: pointer; transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease); }
 .st-sb__it:hover { background: var(--px-surface-hover); color: var(--px-text); }
 .st-sb__it--on { background: var(--px-surface-selected); color: var(--px-text); }
 .st-sb__it .svg-icon { color: var(--px-text-muted); display: inline-flex; }
-.st-sb__nm { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.st-sb__nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .st-mini { width: 48px; height: 3px; border-radius: var(--px-radius-full); background: var(--px-surface-active); overflow: hidden; display: flex; }
 .st-sb__r { font-size: var(--px-text-xs); color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
 .st-sb__r--weak { color: var(--px-danger); }
-.st-sb__it--sub { padding-left: 32px; grid-template-columns: 1fr auto; }
+.st-sb__it--sub { padding-left: var(--px-space-8); grid-template-columns: minmax(0, 1fr) auto; }
 /* Select mode: a check well replaces the icon; chosen rows tint. */
-.st-sb__ck { width: 15px; height: 15px; border-radius: 3px; border: 1px solid var(--px-border-strong); background: var(--px-bg-inset); display: inline-flex; align-items: center; justify-content: center; color: transparent; }
+.st-sb__ck { width: 15px; height: 15px; border-radius: var(--px-radius-sm); border: 1px solid var(--px-border-strong); background: var(--px-bg-inset); display: inline-flex; align-items: center; justify-content: center; color: transparent; }
 .st-sb__ck .svg-icon svg { width: 11px; height: 11px; }
 .st-sb__ck--on { background: var(--px-accent); border-color: var(--px-accent); color: var(--px-text-on-accent); }
 .st-sb__it--picked { background: var(--px-accent-faint); color: var(--px-text); }
-.st-sb__bar { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; margin: var(--px-space-1) var(--px-sidebar-inset) 6px; padding: var(--px-space-2) 10px; white-space: nowrap; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); font-size: var(--px-text-sm); color: var(--px-text-secondary); animation: st-card-in var(--px-dur-base) var(--px-ease-out); }
+.st-sb__bar { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--px-space-2); margin: var(--px-space-1) var(--px-sidebar-inset) var(--px-space-2); padding: var(--px-space-2) var(--px-space-3); white-space: nowrap; border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-elevated); font-size: var(--px-text-sm); color: var(--px-text-secondary); animation: st-card-in var(--px-dur-base) var(--px-ease-out); }
 .st-sb__bar b { color: var(--px-text); font-weight: 600; }
 .st-sb__bar small { display: block; font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: 1px; }
 .st-sb__live { width: 6px; height: 6px; border-radius: var(--px-radius-full); background: var(--px-accent); animation: st-pulse calc(var(--px-dur-slow) * 6) var(--px-ease) infinite; justify-self: center; }
 .st-sb .px-empty { padding: var(--px-space-6) var(--px-sidebar-inset); }
+.st-sb__none { padding: var(--px-space-1) var(--px-sidebar-inset); font-size: var(--px-text-xs); color: var(--px-text-muted); }
 
 /* ── Dashboard widget rows (70-integration.js draws them) ──────────────── */
 .st-widget { display: flex; flex-direction: column; min-height: 0; }
 .st-widget__empty { font-size: var(--px-text-sm); color: var(--px-text-muted); padding: var(--px-space-2) 0; }
-.st-widget__row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 7px 0; border-top: 1px solid var(--px-divider); font-size: var(--px-text-sm); cursor: pointer; color: var(--px-text); outline: none; }
+.st-widget__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--px-space-2); align-items: center; padding: var(--px-space-2) 0; border-top: 1px solid var(--px-divider); font-size: var(--px-text-sm); cursor: pointer; color: var(--px-text); outline: none; }
 .st-widget__row:first-of-type { border-top: 0; }
 .st-widget__row:hover .st-widget__label, .st-widget__row:focus-visible .st-widget__label { color: var(--px-accent-text); }
 .st-widget__text { min-width: 0; }
@@ -4489,8 +5427,7 @@ function injectStyles() {
 .st-widget__bar { width: 72px; height: 4px; border-radius: var(--px-radius-full); background: var(--px-surface-active); overflow: hidden; display: block; }
 .st-widget__fill { display: block; height: 100%; background: var(--px-danger); }
 .st-widget__fill--warn { background: var(--px-warning); }
-.st-widget__foot { margin-top: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-accent-text); cursor: pointer; background: none; border: 0; padding: 0; text-align: left; font-family: inherit; }
-.st-widget__foot:hover { text-decoration: underline; }
+.st-widget__foot { margin-top: var(--px-space-2); align-self: flex-start; }
 
 /* ── Reduced motion: every duration above collapses; nothing hides behind
    an animation. The core stills the whole app the same way; repeated here
@@ -4525,7 +5462,8 @@ function injectStyles() {
 //
 // The desk (mockup section 10): every material with its coverage and, for the
 // expanded PDF, its chapters; the sessions open now and the finished ones
-// under them; the question banks folded. Select Materials turns the icon
+// under them; the question banks folded, each one studiable (a row opens the
+// setup sheet on that bank). Select Materials turns the icon
 // column into checks and Study Together starts one session over the pick.
 // Chrome is the kit's (icon buttons, section labels, the empty state, the
 // context menu, the confirm modal); the rows are Study's own rules on tokens.
@@ -4595,7 +5533,7 @@ function stFlattenPageTree(nodes, path = [], out = []) {
 }
 
 /** Add PDF…: the workspace pick, ingest, then the setup sheet. Shared by the
- *  header's + menu and the empty state. */
+ *  Materials row's + menu and the empty state. */
 async function stAddPdfFlow() {
   const fsPath = await stPickWorkspacePdf();
   if (!fsPath) return;
@@ -4634,44 +5572,44 @@ function createSidebarView(container) {
     activeSessionId: null,
   };
 
-  // ── Header: Select Materials, +, ⋯ ──
-  const header = el('div', 'st-sb__hd');
-  header.appendChild(el('span', 'st-sp'));
+  // No header row of its own: the workbench's container header already
+  // carries ⋯ (Add Material…, Import Questions…, Import Examiner's Report…).
+  // Select Materials and + sit at the right of the Materials label row
+  // (authoring guide §6.6), drawn on every paint.
   const selectIcon = _api.icons && typeof _api.icons.hasIcon === 'function' && _api.icons.hasIcon('check-square') ? 'check-square' : 'square-check';
-  const selectBtn = _api.ui.createIconButton(header, {
-    icon: selectIcon, title: 'Select Materials', size: 'sm',
-    onClick: () => {
-      state.selecting = !state.selecting;
-      if (!state.selecting) { state.picked.clear(); stSetPicked([]); }
-      void paint();
-    },
-  });
-  selectBtn.setAttribute('aria-pressed', 'false');
-  const addBtn = _api.ui.createIconButton(header, {
-    icon: 'plus', title: 'Add Material', size: 'sm',
-    onClick: () => {
-      _api.ui.showContextMenu(addBtn, [
-        { label: 'Add PDF…', icon: 'file-text', onSelect: () => void stAddPdfFlow() },
-        { label: 'Add Canvas Page…', icon: 'notebook-text', onSelect: () => void stAddCanvasPageFlow() },
-      ], { anchorPosition: 'below' });
-    },
-  });
-  const moreBtn = _api.ui.createIconButton(header, {
-    icon: 'ellipsis', title: 'More Actions', size: 'sm',
-    onClick: () => {
-      _api.ui.showContextMenu(moreBtn, [
-        { label: 'Import Questions…', icon: 'database', onSelect: () => void _api.commands.executeCommand('study.importQuestions') },
-        { label: "Import Examiner's Report…", icon: 'file-check', onSelect: () => void _api.commands.executeCommand('study.importReport') },
-      ], { anchorPosition: 'below' });
-    },
-  });
-  root.appendChild(header);
+  const toggleSelecting = () => {
+    state.selecting = !state.selecting;
+    if (!state.selecting) { state.picked.clear(); stSetPicked([]); }
+    void paint();
+  };
+  const materialActions = (row, { withSelect }) => {
+    row.appendChild(el('span', 'st-sp'));
+    if (withSelect) {
+      const selectBtn = _api.ui.createIconButton(row, {
+        icon: selectIcon, title: state.selecting ? 'Stop Selecting' : 'Select Materials', size: 'sm',
+        onClick: () => toggleSelecting(),
+      });
+      selectBtn.classList.add('st-sb__select');
+      selectBtn.setAttribute('aria-pressed', state.selecting ? 'true' : 'false');
+      selectBtn.classList.toggle('st-sb__btn--on', state.selecting);
+    }
+    const addBtn = _api.ui.createIconButton(row, {
+      icon: 'plus', title: 'Add Material', size: 'sm',
+      onClick: () => {
+        _api.ui.showContextMenu(addBtn, [
+          { label: 'Add PDF…', icon: 'file-text', onSelect: () => void stAddPdfFlow() },
+          { label: 'Add Canvas Page…', icon: 'notebook-text', onSelect: () => void stAddCanvasPageFlow() },
+        ], { anchorPosition: 'below' });
+      },
+    });
+    addBtn.classList.add('st-sb__add');
+  };
 
   const body = el('div', 'st-sb__body');
   root.appendChild(body);
 
   // ── Rows ──
-  const sectionLabel = (host, text, count, { fold = null } = {}) => {
+  const sectionLabel = (host, text, count, { fold = null, actions = null } = {}) => {
     const row = el('div', 'st-sb__secl' + (fold ? ' st-sb__secl--fold' : ''));
     const label = _api.ui.createSectionLabel(null, text);
     if (fold) {
@@ -4684,6 +5622,7 @@ function createSidebarView(container) {
     }
     if (count != null) label.appendChild(el('span', 'st-sb__n', String(count)));
     row.appendChild(label);
+    if (actions) actions(row);
     host.appendChild(row);
     return row;
   };
@@ -4704,7 +5643,9 @@ function createSidebarView(container) {
       row.appendChild(ic);
       if (state.expandedId === m.id) row.classList.add('st-sb__it--on');
     }
-    row.appendChild(el('span', 'st-sb__nm', m.label));
+    const nm = el('span', 'st-sb__nm', m.label);
+    nm.title = m.label;
+    row.appendChild(nm);
     row.appendChild(stCoverageBar('st-mini', cov));
     row.addEventListener('click', () => {
       if (state.selecting) {
@@ -4787,13 +5728,19 @@ function createSidebarView(container) {
     const ic = el('span', '');
     ic.innerHTML = icon('database', 14);
     row.appendChild(ic);
-    row.appendChild(el('span', 'st-sb__nm', b.name));
+    const nm = el('span', 'st-sb__nm', b.name);
+    nm.title = b.name;
+    row.appendChild(nm);
     row.title = b.name;
-    row.appendChild(el('span', 'st-sb__r', `${b.count || 0} · ${b.kind}`));
+    row.appendChild(el('span', 'st-sb__r', String(b.count || 0)));
+    // A bank is studiable: the row opens the setup sheet on it.
+    row.addEventListener('click', () => void stOpenSetup({ bankIds: [b.id] }));
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, [
-        { label: 'Delete', icon: 'trash', danger: true, onSelect: () => void deleteBank(b) },
+        { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [b.id] }) },
+        { separator: true },
+        { label: 'Delete Bank', icon: 'trash', danger: true, onSelect: () => void deleteBank(b) },
       ]);
     });
     return row;
@@ -4862,11 +5809,9 @@ function createSidebarView(container) {
     const banks = (await stListBanks()) || [];
     if (state.disposed) return;
 
-    selectBtn.setAttribute('aria-pressed', state.selecting ? 'true' : 'false');
-    selectBtn.classList.toggle('st-sb__btn--on', state.selecting);
     body.innerHTML = '';
 
-    if (!materials.length) {
+    if (!materials.length && !banks.length && !open.length && !done.length) {
       _api.ui.createEmptyState(body, {
         icon: 'px-study',
         headline: 'Nothing to study yet.',
@@ -4903,7 +5848,8 @@ function createSidebarView(container) {
 
     // Materials.
     const matSec = el('div', 'st-sb__sec st-sb__sec--materials');
-    sectionLabel(matSec, 'Materials', materials.length);
+    sectionLabel(matSec, 'Materials', materials.length, { actions: (row) => materialActions(row, { withSelect: materials.length > 0 }) });
+    if (!materials.length) matSec.appendChild(el('div', 'st-sb__none', 'No materials yet.'));
     for (const p of perMaterial) {
       matSec.appendChild(materialRow(p.m, p.cov, p.concepts));
       if (!state.selecting) for (const s of p.sections) matSec.appendChild(chapterRow(p.m, s, p.concepts, now));
@@ -5036,6 +5982,7 @@ async function stOpenPane(route) {
 function stOpenSetup(partial) {
   const p = partial || {};
   const route = { view: 'setup', materialIds: Array.isArray(p.materialIds) ? p.materialIds.slice() : [] };
+  if (Array.isArray(p.bankIds) && p.bankIds.length) route.bankIds = p.bankIds.slice();
   for (const k of ['sectionId', 'pageFrom', 'pageTo', 'selectionText', 'selectionPage']) if (p[k] != null) route[k] = p[k];
   return stOpenPane(route);
 }
@@ -5100,6 +6047,18 @@ function stMd(text) {
     if (_api.ui && typeof _api.ui.renderMarkdown === 'function') return _api.ui.renderMarkdown(s);
   } catch { /* fall through */ }
   return document.createTextNode(s);
+}
+
+/** An error's message as text. */
+function stErrText(err) {
+  return String(err && err.message ? err.message : (err || 'Unknown error'));
+}
+
+/** Text as a sentence: a period added only when it has no closing mark. */
+function stSentence(text) {
+  const t = String(text || '').trim();
+  if (!t) return '';
+  return /[.!?…:]$/.test(t) ? t : `${t}.`;
 }
 
 function stSetLabel(btn, text) {
@@ -5223,7 +6182,7 @@ function stRunFor(session) {
   const token = { cancelled: false };
   run = {
     token,
-    progress: { phase: '', done: 0, total: 0, written: 0, kept: 0, dropped: {} },
+    progress: { phase: '', done: 0, total: 0, written: 0, kept: 0, available: null, dropped: {} },
     listeners: new Set(),
     done: false, result: null, error: null, promise: null,
   };
@@ -5242,6 +6201,202 @@ function stRunFor(session) {
     .then(() => { run.done = true; _stRuns.delete(session.id); notify(); });
   _stRuns.set(session.id, run);
   return run;
+}
+
+/** Stop every in-flight draw (deactivate): their tokens are cancelled, so the
+ *  pipeline stops at its next check and nothing keeps writing. */
+function stCancelRuns() {
+  for (const run of _stRuns.values()) { try { run.token.cancelled = true; } catch { /* noop */ } }
+  _stRuns.clear();
+}
+
+// ── Answers and marking shared by the session, results and review ──────────
+
+/** True once an item has an answer in, marked or not (Test's 'answered'). */
+function stItemAnswered(item) {
+  const s = item && item.status;
+  return s === 'right' || s === 'wrong' || s === 'answered';
+}
+
+/** The rubric points, hit / partial / miss, landing one after another. */
+function stRubricEl(rubric, points) {
+  const rub = el('div', 'st-rub');
+  (rubric || []).forEach((p, i) => {
+    const status = (points && points[i] && points[i].status) || 'miss';
+    const pt = el('div', `st-rub__pt st-rub__pt--${status}`);
+    pt.style.setProperty('--st-i', String(i));
+    const glyph = el('span', 'st-rub__g');
+    glyph.innerHTML = icon(status === 'hit' ? 'check' : status === 'partial' ? 'minus' : 'x', 12);
+    pt.appendChild(glyph);
+    const body = el('span', 'st-rub__text');
+    body.appendChild(stMd(p && p.text));
+    if (p && p.required) body.appendChild(el('span', 'st-rub__req', 'required'));
+    pt.appendChild(body);
+    rub.appendChild(pt);
+  });
+  return rub;
+}
+
+/** A multiple-choice question answered as typed (Test): the right option is
+ *  the reference answer and, without a rubric, the one point to hit. A copy
+ *  with id 0, so grading never writes a derived rubric back onto it. */
+function stTestQuestion(q) {
+  if (!q || q.format !== 'mc') return q;
+  const options = Array.isArray(q.options) ? q.options : [];
+  const answer = String(options[Number(q.answer)] !== undefined ? options[Number(q.answer)] : (q.answer ?? ''));
+  const rubric = Array.isArray(q.rubric) && q.rubric.length ? q.rubric : [{ text: answer, required: true }];
+  return { ...q, id: 0, format: 'short', answer, rubric };
+}
+
+/** Grade a typed answer. stGradeTyped grades numeric, cloze and formula
+ *  answers mechanically and the rest against the rubric; it returns the
+ *  rubric it marked against, which is the one the points are drawn from. */
+async function stGradeTypedResult(q, text, { modelId = '', numCtx = 0 } = {}) {
+  const g = await stGradeTyped(stTestQuestion(q), text, { modelId, numCtx });
+  const rubric = Array.isArray(g && g.rubric) && g.rubric.length ? g.rubric : (Array.isArray(q.rubric) ? q.rubric : []);
+  const rating = g && g.rating != null ? Number(g.rating) : AGAIN;
+  const verdict = g && g.verdict ? g.verdict : null;
+  const label = (g && g.label) || (verdict ? stVerdictLabel(verdict, rubric) : (rating >= GOOD ? 'Correct' : 'Not quite'));
+  return { rating, verdict, label, rubric };
+}
+
+/** The verdict as stored on the item: the points plus the rubric they were
+ *  marked against, the label and the rating, so review shows it as marked. */
+function stStoredVerdict(result) {
+  if (!result || !result.verdict) return null;
+  return { ...result.verdict, rubric: result.rubric, label: result.label, rating: result.rating };
+}
+
+// Test marking runs in the background, one answer at a time (a local model
+// grades better without a queue of parallel calls). Per session: the chain
+// and the promise of every item still being marked, so the results screen
+// can wait for exactly those. Module state, so a pane rebuild loses nothing.
+const _stGrades = new Map(); // sessionId → { chain, pending: Map<itemId, Promise> }
+
+function stGradeStateFor(sessionId) {
+  let g = _stGrades.get(sessionId);
+  if (!g) { g = { chain: Promise.resolve(), pending: new Map() }; _stGrades.set(sessionId, g); }
+  return g;
+}
+
+/** The marking promises still open for a session. */
+function stPendingGrades(sessionId) {
+  const g = _stGrades.get(sessionId);
+  return g ? [...g.pending.values()] : [];
+}
+
+/** Queue one Test answer for marking; returns its promise (never rejects). */
+function stQueueTestGrade(sessionId, item, q, { modelId = '', numCtx = 0 } = {}) {
+  const g = stGradeStateFor(sessionId);
+  if (g.pending.has(item.id)) return g.pending.get(item.id);
+  const job = g.chain
+    .then(() => stMarkTestAnswer(sessionId, item, q, { modelId, numCtx }))
+    .catch((err) => console.warn('[Study] marking failed:', err));
+  g.chain = job;
+  g.pending.set(item.id, job);
+  void job.then(() => {
+    g.pending.delete(item.id);
+    if (!g.pending.size && _stGrades.get(sessionId) === g) _stGrades.delete(sessionId);
+  });
+  return job;
+}
+
+/** Mark one recorded Test answer and write it back as Practice would have. */
+async function stMarkTestAnswer(sessionId, item, q, { modelId, numCtx }) {
+  if (!_api) return;
+  const typed = String(item.typed || '');
+  let result;
+  try {
+    result = await stGradeTypedResult(q, typed, { modelId, numCtx });
+  } catch (err) {
+    if (!_api) return;
+    // Not counted either way: skipped, with the reason kept for review.
+    await stAnswerItem(item.id, { status: 'skipped', verdict: { note: `Could not mark this answer: ${stSentence(stErrText(err))}`, ungraded: true } }, stNow());
+    item.status = 'skipped';
+    bus.emit('session', { sessionId, itemId: item.id, status: 'skipped' });
+    return;
+  }
+  if (!_api) return;
+  const ok = result.rating >= GOOD;
+  const status = ok ? 'right' : 'wrong';
+  const now = stNow();
+  const fmt = item.formatUsed || 'short';
+  await stAnswerItem(item.id, { status, verdict: stStoredVerdict(result) }, now);
+  await stLogAnswer({ questionId: q.id, conceptId: q.conceptId, sessionId, formatUsed: fmt, correct: ok ? 1 : 0, rating: result.rating, retried: 0 }, now);
+  const concept = Number(q.conceptId) > 0 ? await stGetConcept(q.conceptId) : null;
+  if (concept) await stUpdateConcept(stApplyAnswer(concept, { correct: ok, rating: result.rating, formatUsed: fmt, retried: 0 }, now));
+  item.status = status;
+  bus.emit('session', { sessionId, itemId: item.id, status });
+}
+
+/** Results of a Test: queue every recorded answer not yet marked and not in
+ *  the queue (the app closed mid-marking). Returns the open promises. */
+function stEnsureTestGrades(sessionId, items, questions, opts) {
+  const g = _stGrades.get(sessionId);
+  for (const it of items || []) {
+    if (it.status !== 'answered') continue;
+    if (g && g.pending.has(it.id)) continue;
+    const q = questions.get(it.questionId);
+    if (q) stQueueTestGrade(sessionId, it, q, opts);
+  }
+  return stPendingGrades(sessionId);
+}
+
+/** One answered item in the review layout: the stem, the answer given, the
+ *  verdict with its rubric points, the right answer and the anchor. */
+function stReviewItemEl(item, q, c, n) {
+  const box = el('div', 'st-review__item');
+  box.dataset.status = item.status || 'pending';
+  const eyebrow = el('div', 'st-eyebrow');
+  eyebrow.appendChild(el('span', 'st-eyebrow__src', `${n}.`));
+  eyebrow.appendChild(el('span', 'st-eyebrow__cpt', c ? c.title : (q.originLabel || 'Question')));
+  if (item.draw) { eyebrow.appendChild(el('span', 'st-eyebrow__dot')); eyebrow.appendChild(el('span', 'st-eyebrow__src', `draw ${Number(item.draw) + 1}`)); }
+  box.appendChild(eyebrow);
+  const stem = el('div', 'st-review__stem');
+  stem.appendChild(stMd(q.stem));
+  box.appendChild(stem);
+  const fmt = item.formatUsed || q.format;
+  const options = Array.isArray(q.options) ? q.options : [];
+  let yours = '';
+  if (fmt === 'mc') { const i = Number(item.chosen); yours = item.chosen !== '' && item.chosen != null && options[i] !== undefined ? options[i] : ''; }
+  else yours = item.typed || '';
+  const yoursEl = el('div', `st-review__ans st-review__ans--${item.status === 'right' ? 'ok' : item.status === 'wrong' ? 'no' : 'skip'}`);
+  yoursEl.appendChild(el('span', 'st-review__lab', 'Your answer'));
+  if (yours) yoursEl.appendChild(stMd(yours)); else yoursEl.appendChild(document.createTextNode(item.status === 'skipped' ? 'skipped' : 'no answer'));
+  if (item.retried) yoursEl.appendChild(el('span', 'st-review__lab', ' · retried'));
+  box.appendChild(yoursEl);
+
+  // The verdict of a typed answer, as it was marked, point by point.
+  const v = item.verdict && typeof item.verdict === 'object' ? item.verdict : null;
+  if (item.status === 'answered') {
+    box.appendChild(el('div', 'st-review__v', 'Marking…'));
+  } else if (fmt !== 'mc' && v && Array.isArray(v.points)) {
+    const rubric = Array.isArray(v.rubric) && v.rubric.length ? v.rubric : (Array.isArray(q.rubric) ? q.rubric : []);
+    const ok = item.status === 'right';
+    const line = el('div', `st-review__v st-review__v--${ok ? 'ok' : 'no'}`);
+    line.appendChild(el('span', '', v.label || (rubric.length ? stVerdictLabel(v, rubric) : (ok ? 'Correct' : 'Not quite'))));
+    if (v.rating) {
+      const g = el('span', 'st-fb__grade');
+      g.appendChild(document.createTextNode('· counts as '));
+      g.appendChild(el('b', '', stRatingWord(Number(v.rating))));
+      line.appendChild(g);
+    }
+    box.appendChild(line);
+    if (rubric.length) box.appendChild(stRubricEl(rubric, v.points));
+  }
+  if (v && v.note) {
+    const note = el('div', 'st-fb__why');
+    note.appendChild(stMd(v.note));
+    box.appendChild(note);
+  }
+
+  const rightEl = el('div', 'st-review__ans');
+  rightEl.appendChild(el('span', 'st-review__lab', 'Right answer'));
+  const rightText = q.format === 'mc' ? (options[Number(q.answer)] !== undefined ? options[Number(q.answer)] : String(q.answer)) : String(q.answer || '');
+  rightEl.appendChild(stMd(rightText));
+  box.appendChild(rightEl);
+  box.appendChild(stQuoteEl(q, q.sourceQuote, q.sourcePage, () => void stShowSource(q)));
+  return box;
 }
 
 // ── The pane ────────────────────────────────────────────────────────────────
@@ -5273,6 +6428,7 @@ function createEditorPane(container, input) {
     setRoute,
     add: (d) => { viewDisposables.push(d); },
     disposed: () => state.disposed,
+    rerender: () => { if (!state.disposed) void render(); },
     closeTab: async () => {
       try { if (input && input.id && _api.editors && typeof _api.editors.closeEditor === 'function') await _api.editors.closeEditor(input.id); } catch { /* noop */ }
     },
@@ -5359,7 +6515,174 @@ function createEditorPane(container, input) {
 
 // ── Setup sheet ─────────────────────────────────────────────────────────────
 
+/** Usable questions in a scope: the pipeline's count when it is there, else
+ *  the scope's materials' questions filtered by the scope (the same rule as
+ *  stSessionNeedsGeneration, so the sheet and the start agree). */
+async function stCountScopeQuestions(scope) {
+  try {
+    if (typeof stScopeQuestionCount === 'function') return Number(await stScopeQuestionCount(scope)) || 0;
+  } catch { /* fall through */ }
+  try {
+    if (scope && scope.kind === 'bank') return ((await stListQuestions({ bankIds: scope.bankIds || [] })) || []).filter((q) => !q.hidden).length;
+    const materialIds = Array.isArray(scope && scope.materialIds) ? scope.materialIds : [];
+    const [questions, concepts] = await Promise.all([
+      stListQuestions({ materialIds }),
+      materialIds.length ? stListConcepts({ materialIds }) : Promise.resolve([]),
+    ]);
+    return stQuestionsInScope(questions || [], concepts || [], scope, stNow(), Number(cfg('staleDays', 14)) || 14).length;
+  } catch { return 0; }
+}
+
+/** What the sheet's one count line says (mockup §2, second pass). */
+function stSetupCountText({ mode, concepts, clean, questions, size }) {
+  const prefix = concepts ? `${concepts} ${concepts === 1 ? 'concept' : 'concepts'}, ${clean} clean` : '';
+  if (mode === 'learn') return prefix || 'No concepts yet; Learn maps them first.';
+  const join = (rest) => (prefix ? `${prefix} · ${rest}` : rest);
+  if (questions >= size) return join(`${questions} questions in the bank`);
+  if (questions > 0) return join(`${questions} questions in the bank, ${size - questions} more will be made first`);
+  return prefix ? `${prefix} · no questions yet, ${size} will be made first` : `No questions yet, ${size} will be made first.`;
+}
+
+/** Where a bank's questions came from, in a few words. */
+function stBankOriginText(bank, questions) {
+  if (bank && bank.kind === 'report') return "examiner's report";
+  if (bank && bank.kind === 'provider') return 'from another tool';
+  const counts = new Map();
+  for (const q of questions || []) counts.set(q.origin, (counts.get(q.origin) || 0) + 1);
+  let top = '', n = -1;
+  for (const [k, v] of counts) if (v > n) { top = k; n = v; }
+  if (top === 'exam') return bank && bank.exam ? `${bank.exam}${bank.sitting ? ` ${bank.sitting}` : ''}` : 'past exams';
+  if (top === 'rising-fellow') return 'Rising Fellow';
+  return 'imported';
+}
+
+/** The models api.lm offers and the chat's active one. */
+async function stSheetModels() {
+  let models = [];
+  let activeModel = '';
+  if (_api.lm) {
+    try { models = (await _api.lm.getModels()) || []; } catch { models = []; }
+    try { activeModel = typeof _api.lm.getActiveModel === 'function' ? (_api.lm.getActiveModel() || '') : ''; } catch { activeModel = ''; }
+  }
+  return { models, activeModel };
+}
+
+/** The scrim, the sheet and its header; returns the body to fill. */
+function stSheetFrame(host, ctx, subtitle) {
+  host.appendChild(el('div', 'st-scrim'));
+  const sheet = el('div', 'st-sheet');
+  sheet.setAttribute('role', 'dialog');
+  sheet.setAttribute('aria-label', 'Study');
+  host.appendChild(sheet);
+  const hd = el('div', 'st-sheet__hd');
+  const titles = el('div', '');
+  titles.appendChild(el('h3', 'st-sheet__title', 'Study'));
+  const sub = el('div', 'st-sheet__sub', subtitle);
+  sub.title = subtitle;
+  titles.appendChild(sub);
+  hd.appendChild(titles);
+  _api.ui.createIconButton(hd, { icon: 'x', title: 'Cancel', size: 'sm', onClick: () => void ctx.closeTab() });
+  sheet.appendChild(hd);
+  const bd = el('div', 'st-sheet__bd');
+  sheet.appendChild(bd);
+  return { sheet, bd };
+}
+
+/** Mode and Answer: one row (two aligned rows when the sheet is narrow).
+ *  Test is answered by typing, so it locks Answer on Type; a bank with no
+ *  multiple-choice question cannot be answered by choosing. */
+function stModeAnswerRow(bd, ctx, st, { modes, noChoose = false, onChange }) {
+  const row = el('div', 'st-ma');
+  const modePair = el('div', 'st-ma__pair');
+  modePair.appendChild(el('span', 'st-row__lab', 'Mode'));
+  row.appendChild(modePair);
+  const answerPair = el('div', 'st-ma__pair');
+  answerPair.appendChild(el('span', 'st-row__lab st-row__lab--inline', 'Answer'));
+  row.appendChild(answerPair);
+  let answerSeg = null;
+  const sync = () => {
+    if (!answerSeg) return;
+    const test = st.mode === 'test';
+    if (test || (noChoose && st.answer === 'choose')) { st.answer = 'type'; answerSeg.value = 'type'; }
+    for (const btn of answerSeg.element.querySelectorAll('[data-value]')) {
+      const v = btn.dataset.value;
+      const why = test && v !== 'type' ? 'Test is answered by typing.'
+        : noChoose && v === 'choose' ? 'This bank has no multiple-choice questions.' : '';
+      btn.disabled = !!why;
+      if (why) btn.title = why; else btn.removeAttribute('title');
+    }
+  };
+  const modeSeg = _api.ui.createSegmented(modePair, {
+    ariaLabel: 'Mode', items: modes, value: st.mode,
+    onChange: (v) => { st.mode = v; sync(); onChange(); },
+  });
+  modeSeg.element.title = modes.some((m) => m.value === 'learn')
+    ? 'Practice marks as you go and lets you retry. Test is typed answers, no retry, results at the end. Learn is the chapter in a page.'
+    : 'Practice marks as you go and lets you retry. Test is typed answers, no retry, results at the end.';
+  ctx.add(modeSeg);
+  answerSeg = _api.ui.createSegmented(answerPair, {
+    ariaLabel: 'Answer format',
+    items: [{ value: 'choose', label: 'Choose' }, { value: 'type', label: 'Type' }, { value: 'mixed', label: 'Mixed' }],
+    value: st.answer,
+    onChange: (v) => { st.answer = v; onChange(); },
+  });
+  answerSeg.element.title = 'Mixed starts on choices and moves a concept to typing once it has been answered right.';
+  ctx.add(answerSeg);
+  bd.appendChild(row);
+  sync();
+  return { modeSeg, answerSeg };
+}
+
+/** The footer: the model line on the left (a kit ghost button with its
+ *  chevron), Cancel and Start on the right. */
+function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }) {
+  const ft = el('div', 'st-sheet__ft');
+  const mdlBtn = _api.ui.createButton(ft, {
+    label: '', icon: 'px-ai-mark', kind: 'ghost', size: 'sm',
+    title: 'The model that writes and grades, and its context window',
+    onClick: () => openMenu(),
+  });
+  mdlBtn.classList.add('st-sheet__mdl');
+  const chev = el('span', 'st-sheet__chev');
+  chev.innerHTML = icon('chevron-down', 12);
+  mdlBtn.appendChild(chev);
+  const acts = el('span', 'st-sheet__acts');
+  _api.ui.createButton(acts, { label: 'Cancel', kind: 'ghost', onClick: () => void ctx.closeTab() });
+  const startBtn = _api.ui.createButton(acts, { label: 'Start', kind: 'primary', onClick: () => void onStart() });
+  ft.appendChild(acts);
+  sheet.appendChild(ft);
+
+  const effectiveModel = () => st.model || activeModel || (models[0] ? models[0].id : '');
+  const modelName = (id) => { const m = models.find((x) => x.id === id); return m ? (m.displayName || m.id) : (id || 'No model'); };
+  const paintModel = () => {
+    const ctxLabel = st.contextSetting ? `${stFmtK(st.contextSetting)} context` : 'Auto context';
+    stSetLabel(mdlBtn, `${modelName(effectiveModel())} · ${ctxLabel}`);
+  };
+  const pick = (patch) => { Object.assign(st, patch); paintModel(); void onPrefs(); };
+  function openMenu() {
+    const items = [{ label: 'Model', disabled: true }];
+    for (const m of models) {
+      items.push({ label: m.displayName || m.id, keybinding: stFmtK(m.contextLength), checked: st.model === m.id, onSelect: () => pick({ model: m.id }) });
+    }
+    items.push({ label: "Use the Chat's Model", checked: !st.model, onSelect: () => pick({ model: '' }) });
+    items.push({ separator: true });
+    items.push({ label: 'Context', disabled: true });
+    items.push({ label: 'Auto', checked: !st.contextSetting, onSelect: () => pick({ contextSetting: 0 }) });
+    const current = models.find((x) => x.id === effectiveModel());
+    const limit = current ? Number(current.contextLength) || 0 : 0;
+    for (const k of [8, 16, 32, 64]) {
+      const tokens = k * 1024;
+      if (limit && tokens > limit) continue;
+      items.push({ label: `${k}k`, checked: st.contextSetting === tokens, onSelect: () => pick({ contextSetting: tokens }) });
+    }
+    _api.ui.showContextMenu(mdlBtn, items, { anchorPosition: 'above' });
+  }
+  paintModel();
+  return { startBtn, mdlBtn };
+}
+
 async function renderSetup(host, route, ctx) {
+  if (Array.isArray(route.bankIds) && route.bankIds.length) { await renderBankSetup(host, route, ctx); return; }
   const now = stNow();
   const all = (await stListMaterials()) || [];
   let ids = Array.isArray(route.materialIds) ? route.materialIds.filter((n) => n != null) : [];
@@ -5377,12 +6700,7 @@ async function renderSetup(host, route, ctx) {
   const primary = materials[0];
   const sections = primary.kind === 'pdf' ? ((await stListSections(primary.id)) || []) : [];
   const concepts = (await stListConcepts({ materialIds: materials.map((m) => m.id) })) || [];
-  let models = [];
-  let activeModel = '';
-  if (_api.lm) {
-    try { models = (await _api.lm.getModels()) || []; } catch { models = []; }
-    try { activeModel = typeof _api.lm.getActiveModel === 'function' ? (_api.lm.getActiveModel() || '') : ''; } catch { activeModel = ''; }
-  }
+  const { models, activeModel } = await stSheetModels();
   const size = Number(cfg('sessionSize', 20)) || 20;
 
   const kinds = [];
@@ -5408,36 +6726,24 @@ async function renderSetup(host, route, ctx) {
   };
   if (!['choose', 'type', 'mixed'].includes(st.answer)) st.answer = 'mixed';
 
-  host.appendChild(el('div', 'st-scrim'));
-  const sheet = el('div', 'st-sheet');
-  sheet.setAttribute('role', 'dialog');
-  sheet.setAttribute('aria-label', 'Study');
-  host.appendChild(sheet);
-
-  const hd = el('div', 'st-sheet__hd');
-  const titles = el('div', '');
-  titles.appendChild(el('h3', 'st-sheet__title', 'Study'));
-  titles.appendChild(el('div', 'st-sheet__sub', materials.length > 1 ? `${materials.length} materials` : primary.label));
-  hd.appendChild(titles);
-  _api.ui.createIconButton(hd, { icon: 'x', title: 'Cancel', size: 'sm', onClick: () => void ctx.closeTab() });
-  sheet.appendChild(hd);
-
-  const bd = el('div', 'st-sheet__bd');
-  sheet.appendChild(bd);
+  const { sheet, bd } = stSheetFrame(host, ctx, materials.length > 1 ? `${materials.length} materials` : primary.label);
 
   // Scope row.
   const scopeRow = el('div', 'st-row');
   scopeRow.appendChild(el('span', 'st-row__lab', 'Scope'));
   const scopeSeg = _api.ui.createSegmented(scopeRow, {
     ariaLabel: 'Scope', items: kinds, value: st.kind,
-    onChange: (v) => { st.kind = v; paintList(); void paintFooter(); },
+    onChange: (v) => { st.kind = v; paintList(); void paintCount(); },
   });
   ctx.add(scopeSeg);
   bd.appendChild(scopeRow);
 
-  // The list under the scope: outline, page inputs, the selection, or the materials.
+  // The list under the scope: outline, page inputs, the selection, or the
+  // materials; then the one count line under it.
   const listHost = el('div', 'st-sheet__list');
   bd.appendChild(listHost);
+  const countEl = el('div', 'st-sheet__count');
+  bd.appendChild(countEl);
 
   const conceptsBySection = new Map();
   for (const c of concepts) {
@@ -5450,9 +6756,8 @@ async function renderSetup(host, route, ctx) {
     listHost.innerHTML = '';
     if (st.kind === 'document' || st.kind === 'chapter') {
       if (!sections.length) {
-        const cov = stCoverageOf(concepts, now);
-        const line = el('div', 'st-selection', `${primary.label} · ${stProp(primary, 'pageCount', 0) ? `${stProp(primary, 'pageCount', 0)} pages · ` : ''}${cov.total} concepts`);
-        listHost.appendChild(line);
+        const pages = stProp(primary, 'pageCount', 0);
+        listHost.appendChild(el('div', 'st-selection', `${primary.label}${pages ? ` · ${pages} pages` : ''}`));
         return;
       }
       const outline = el('div', 'st-outline');
@@ -5461,7 +6766,9 @@ async function renderSetup(host, route, ctx) {
         const row = el('div', 'st-outline__o' + (st.kind === 'chapter' && s.id === st.sectionId ? ' st-outline__o--on' : ''));
         row.setAttribute('role', 'option');
         row.dataset.sectionId = String(s.id);
-        row.appendChild(el('span', 'st-outline__nm', s.title));
+        const nm = el('span', 'st-outline__nm', s.title);
+        nm.title = s.title;
+        row.appendChild(nm);
         row.appendChild(stCoverageBar('st-ocov', stCoverageOf(conceptsBySection.get(s.id) || [], now)));
         const from = stProp(s, 'pageFrom', 0), to = stProp(s, 'pageTo', 0);
         row.appendChild(el('span', 'st-outline__pp', from === to ? String(from) : `${from}–${to}`));
@@ -5470,7 +6777,7 @@ async function renderSetup(host, route, ctx) {
           st.kind = 'chapter';
           scopeSeg.value = 'chapter';
           paintList();
-          void paintFooter();
+          void paintCount();
         });
         outline.appendChild(row);
       }
@@ -5479,21 +6786,20 @@ async function renderSetup(host, route, ctx) {
     }
     if (st.kind === 'pages') {
       const row = el('div', 'st-pages');
+      const max = stProp(primary, 'pageCount', 0);
       const mk = (label, key) => {
         row.appendChild(el('span', '', label));
         const input = el('input', 'st-input');
         input.type = 'number';
         input.min = '1';
-        const max = stProp(primary, 'pageCount', 0);
         if (max) input.max = String(max);
         input.value = String(st[key]);
         input.setAttribute('aria-label', label === 'From' ? 'First page' : 'Last page');
-        input.addEventListener('input', () => { st[key] = Number(input.value) || 1; void paintFooter(); });
+        input.addEventListener('input', () => { st[key] = Number(input.value) || 1; void paintCount(); });
         row.appendChild(input);
       };
       mk('From', 'pageFrom');
       mk('to', 'pageTo');
-      const max = stProp(primary, 'pageCount', 0);
       if (max) row.appendChild(el('span', 'st-faint', `of ${max}`));
       listHost.appendChild(row);
       return;
@@ -5510,116 +6816,38 @@ async function renderSetup(host, route, ctx) {
     for (const m of materials) {
       const row = el('div', 'st-outline__o');
       row.dataset.materialId = String(m.id);
-      row.appendChild(el('span', 'st-outline__nm', m.label));
+      const nm = el('span', 'st-outline__nm', m.label);
+      nm.title = m.label;
+      row.appendChild(nm);
       row.appendChild(stCoverageBar('st-ocov', stCoverageOf(concepts.filter((c) => c.materialId === m.id), now)));
       outline.appendChild(row);
     }
     listHost.appendChild(outline);
   }
 
-  // Mode and Answer on one row.
-  const modeRow = el('div', 'st-row');
-  modeRow.appendChild(el('span', 'st-row__lab', 'Mode'));
-  let answerSeg = null;
-  const modeSeg = _api.ui.createSegmented(modeRow, {
-    ariaLabel: 'Mode',
-    items: [{ value: 'practice', label: 'Practice' }, { value: 'test', label: 'Test' }, { value: 'learn', label: 'Learn' }],
-    value: st.mode,
-    onChange: (v) => {
-      st.mode = v;
-      if (v === 'test' && answerSeg) { st.answer = 'type'; answerSeg.value = 'type'; }
-      void paintFooter();
-    },
+  stModeAnswerRow(bd, ctx, st, {
+    modes: [{ value: 'practice', label: 'Practice' }, { value: 'test', label: 'Test' }, { value: 'learn', label: 'Learn' }],
+    onChange: () => void paintCount(),
   });
-  modeSeg.element.title = 'Practice marks as you go and lets you retry. Test is typed answers, no retry, results at the end. Learn is the chapter in a page.';
-  ctx.add(modeSeg);
-  modeRow.appendChild(el('span', 'st-row__lab st-row__lab--inline', 'Answer'));
-  answerSeg = _api.ui.createSegmented(modeRow, {
-    ariaLabel: 'Answer format',
-    items: [{ value: 'choose', label: 'Choose' }, { value: 'type', label: 'Type' }, { value: 'mixed', label: 'Mixed' }],
-    value: st.answer,
-    onChange: (v) => { st.answer = v; void paintFooter(); },
-  });
-  answerSeg.element.title = 'Mixed starts on choices and moves a concept to typing once it has been answered right.';
-  ctx.add(answerSeg);
-  bd.appendChild(modeRow);
 
-  // Footer: the model line, the count line, Cancel, Start.
-  const ft = el('div', 'st-sheet__ft');
-  const status = el('span', 'st-sheet__st');
-  const mdlBtn = el('button', 'st-sheet__mdl');
-  mdlBtn.type = 'button';
-  mdlBtn.title = 'The model that writes and grades, and its context window';
-  status.appendChild(mdlBtn);
-  status.appendChild(el('span', 'st-faint', '·'));
-  const countEl = el('span', 'st-sheet__count');
-  status.appendChild(countEl);
-  ft.appendChild(status);
-  const acts = el('span', 'st-sheet__acts');
-  _api.ui.createButton(acts, { label: 'Cancel', kind: 'ghost', onClick: () => void ctx.closeTab() });
-  const startBtn = _api.ui.createButton(acts, { label: 'Start', kind: 'primary', onClick: () => void start() });
-  ft.appendChild(acts);
-  sheet.appendChild(ft);
-
-  const effectiveModel = () => st.model || activeModel || (models[0] ? models[0].id : '');
-  const modelName = (id) => { const m = models.find((x) => x.id === id); return m ? (m.displayName || m.id) : (id || 'No model'); };
-  const paintModel = () => {
-    mdlBtn.innerHTML = '';
-    const mark = el('span', '');
-    mark.innerHTML = icon('px-ai-mark', 12);
-    mdlBtn.appendChild(mark);
-    const ctxLabel = st.contextSetting ? `${stFmtK(st.contextSetting)} context` : 'Auto context';
-    mdlBtn.appendChild(el('span', '', `${modelName(effectiveModel())} · ${ctxLabel}`));
-    const chev = el('span', '');
-    chev.innerHTML = icon('chevron-down', 12);
-    mdlBtn.appendChild(chev);
-  };
   const savePrefs = async () => {
     for (const m of materials) {
       try { await stSetMaterialPrefs(m.id, { model: st.model, contextSetting: st.contextSetting, answerFormat: st.answer }); } catch { /* noop */ }
     }
   };
-  mdlBtn.addEventListener('click', () => {
-    const items = [{ label: 'Model', disabled: true }];
-    for (const m of models) {
-      items.push({
-        label: m.displayName || m.id, keybinding: stFmtK(m.contextLength), checked: st.model === m.id,
-        onSelect: () => { st.model = m.id; paintModel(); void savePrefs(); },
-      });
-    }
-    items.push({ label: "Use the chat's model", checked: !st.model, onSelect: () => { st.model = ''; paintModel(); void savePrefs(); } });
-    items.push({ separator: true });
-    items.push({ label: 'Context', disabled: true });
-    items.push({ label: 'Auto', checked: !st.contextSetting, onSelect: () => { st.contextSetting = 0; paintModel(); void savePrefs(); } });
-    const current = models.find((x) => x.id === effectiveModel());
-    const limit = current ? Number(current.contextLength) || 0 : 0;
-    for (const k of [8, 16, 32, 64]) {
-      const tokens = k * 1024;
-      if (limit && tokens > limit) continue;
-      items.push({ label: `${k}k`, checked: st.contextSetting === tokens, onSelect: () => { st.contextSetting = tokens; paintModel(); void savePrefs(); } });
-    }
-    _api.ui.showContextMenu(mdlBtn, items, { anchorPosition: 'above' });
-  });
+  const { startBtn } = stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs: savePrefs, onStart: () => start() });
 
-  let footerSeq = 0;
-  async function paintFooter() {
-    const seq = ++footerSeq;
+  let countSeq = 0;
+  async function paintCount() {
+    const seq = ++countSeq;
     const scope = stBuildScope(st, materials, sections, route);
-    const scopeConcepts = stConceptsInScope(concepts, scope);
-    const cov = stCoverageOf(scopeConcepts, now);
-    let candidates = [];
-    if (scopeConcepts.length && st.mode !== 'learn') {
-      try {
-        candidates = ((await stListQuestions({ materialIds: scope.materialIds, conceptIds: scopeConcepts.map((c) => c.id) })) || []).filter((q) => !q.hidden);
-      } catch { candidates = []; }
-    }
-    if (seq !== footerSeq || ctx.disposed()) return;
-    const short = st.mode !== 'learn' && candidates.length < size;
-    countEl.textContent = short
-      ? `${candidates.length} questions in the bank, ${size - candidates.length} more will be made first`
-      : `${cov.total} concepts, ${cov.clean} clean`;
-    stSetLabel(startBtn, st.mode !== 'learn' && short ? 'Make Questions and Start' : 'Start');
-    startBtn.title = st.mode === 'learn' ? 'Open the chapter as a page' : short ? 'Writes the missing questions first, then starts' : `Draws ${size} questions from the bank`;
+    const cov = stCoverageOf(stConceptsInScope(concepts, scope), now);
+    const questions = st.mode === 'learn' ? 0 : await stCountScopeQuestions(scope);
+    if (seq !== countSeq || ctx.disposed()) return;
+    countEl.textContent = stSetupCountText({ mode: st.mode, concepts: cov.total, clean: cov.clean, questions, size });
+    const short = st.mode !== 'learn' && questions < size;
+    stSetLabel(startBtn, short ? 'Make Questions and Start' : 'Start');
+    startBtn.title = st.mode === 'learn' ? 'Open the chapter as a page.' : short ? 'Writes the missing questions first, then starts.' : `Draws ${size} questions from the bank.`;
   }
 
   async function start() {
@@ -5634,19 +6862,78 @@ async function renderSetup(host, route, ctx) {
         await ctx.closeTab();
         return;
       }
-      await stStartSession({ scope, mode: st.mode, answerFormat: st.answer, model: st.model, numCtx: st.contextSetting });
+      await stStartSession({ scope, mode: st.mode, answerFormat: st.mode === 'test' ? 'type' : st.answer, model: st.model, numCtx: st.contextSetting });
       _emitDataChanged();
       await ctx.closeTab();
     } catch (err) {
       st.starting = false;
       startBtn.disabled = false;
-      try { await _api.window.showErrorMessage(`Could not start: ${err && err.message ? err.message : err}`); } catch { /* noop */ }
+      try { await _api.window.showErrorMessage(`Could not start: ${stErrText(err)}`); } catch { /* noop */ }
     }
   }
 
   paintList();
-  paintModel();
-  await paintFooter();
+  await paintCount();
+}
+
+/** The sheet over a question bank: no chapter list, one line, Mode and
+ *  Answer; Start runs a session with the bank scope. */
+async function renderBankSetup(host, route, ctx) {
+  const banks = [];
+  for (const id of route.bankIds) {
+    const b = await stGetBank(id);
+    if (b) banks.push(b);
+  }
+  if (!banks.length) {
+    _api.ui.createEmptyState(host, {
+      icon: 'database',
+      headline: 'This bank no longer exists.',
+      hint: 'It was deleted, with its questions.',
+      action: { label: 'Close', onClick: () => void ctx.closeTab() },
+    });
+    return;
+  }
+  const scope = { kind: 'bank', bankIds: banks.map((b) => b.id), materialIds: [], label: banks.map((b) => b.name).join(' + ') };
+  const questions = ((await stListQuestions({ bankIds: scope.bankIds })) || []).filter((q) => !q.hidden);
+  const count = await stCountScopeQuestions(scope);
+  const hasChoice = questions.some((q) => q.format === 'mc' && Array.isArray(q.options) && q.options.length);
+  const { models, activeModel } = await stSheetModels();
+  const configured = String(cfg('answerFormat', 'mixed') || 'mixed');
+  const st = {
+    mode: 'practice',
+    // An essay bank (no choices to pick from) starts on Type.
+    answer: !hasChoice ? 'type' : (['choose', 'type', 'mixed'].includes(configured) ? configured : 'mixed'),
+    model: String(cfg('aiModel', '') || ''),
+    contextSetting: Number(cfg('generationContext', 0)) || 0,
+    starting: false,
+  };
+
+  const { sheet, bd } = stSheetFrame(host, ctx, banks.length > 1 ? `${banks.length} banks` : banks[0].name);
+  const origin = stBankOriginText(banks[0], questions);
+  bd.appendChild(el('div', 'st-sheet__count', `${count} ${count === 1 ? 'question' : 'questions'} · ${origin}`));
+  stModeAnswerRow(bd, ctx, st, {
+    modes: [{ value: 'practice', label: 'Practice' }, { value: 'test', label: 'Test' }],
+    noChoose: !hasChoice,
+    onChange: () => {},
+  });
+  const { startBtn } = stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs: async () => {}, onStart: () => start() });
+  if (!count) { startBtn.disabled = true; startBtn.title = 'This bank has no questions to draw.'; }
+  else startBtn.title = `Draws ${Math.min(count, Number(cfg('sessionSize', 20)) || 20)} questions from the bank.`;
+
+  async function start() {
+    if (st.starting || !count) return;
+    st.starting = true;
+    startBtn.disabled = true;
+    try {
+      await stStartSession({ scope, mode: st.mode, answerFormat: st.mode === 'test' ? 'type' : st.answer, model: st.model, numCtx: st.contextSetting });
+      _emitDataChanged();
+      await ctx.closeTab();
+    } catch (err) {
+      st.starting = false;
+      startBtn.disabled = false;
+      try { await _api.window.showErrorMessage(`Could not start: ${stErrText(err)}`); } catch { /* noop */ }
+    }
+  }
 }
 
 // ── Generation screen ───────────────────────────────────────────────────────
@@ -5675,8 +6962,10 @@ async function renderGenerating(host, route, ctx) {
   if (!modelId) { try { modelId = (await stPickModel(primary)) || ''; } catch { modelId = ''; } }
 
   const gen = el('div', 'st-gen');
-  gen.appendChild(el('div', 'st-gen__t', `Making questions for ${scope.label || session.name}`));
-  const pages = scope.pageFrom ? `Pages ${scope.pageFrom} to ${scope.pageTo || scope.pageFrom}` : (primary && stProp(primary, 'pageCount', 0) ? `${stProp(primary, 'pageCount', 0)} pages` : (materialIds.length > 1 ? `${materialIds.length} materials` : 'Whole document'));
+  // A bank is never written to: the screen only bridges the draw.
+  const isBank = scope.kind === 'bank';
+  gen.appendChild(el('div', 'st-gen__t', `${isBank ? 'Drawing from' : 'Making questions for'} ${scope.label || session.name}`));
+  const pages = isBank ? 'Question bank' : scope.pageFrom ? `Pages ${scope.pageFrom} to ${scope.pageTo || scope.pageFrom}` : (primary && stProp(primary, 'pageCount', 0) ? `${stProp(primary, 'pageCount', 0)} pages` : (materialIds.length > 1 ? `${materialIds.length} materials` : 'Whole document'));
   const sub = el('div', 'st-gen__s');
   gen.appendChild(sub);
   const bar = el('div', 'st-gen__bar');
@@ -5698,21 +6987,23 @@ async function renderGenerating(host, route, ctx) {
     checks.appendChild(ck);
     rows.set(def.key, { dot, n, on: cfg(def.setting, true) !== false });
   }
-  gen.appendChild(checks);
+  if (!isBank) gen.appendChild(checks);
   const acts = el('div', 'st-gen__acts');
-  const stopBtn = _api.ui.createButton(acts, { label: 'Stop', kind: 'ghost', title: 'Stop writing; what is kept stays in the bank', onClick: () => void stop() });
+  const stopBtn = _api.ui.createButton(acts, { label: 'Stop', kind: 'ghost', title: 'Stop writing. What is kept stays in the bank.', onClick: () => void stop() });
   const startBtn = _api.ui.createButton(acts, { label: `Start With ${size} Ready`, kind: 'primary', disabled: true, onClick: () => void startEarly() });
   gen.appendChild(acts);
   host.appendChild(gen);
 
   const run = stRunFor(session);
-  const total = () => run.progress.total || concepts.length || 0;
+  // Questions the session already holds (a Refresh): the new draw excludes them.
+  const held = items.length;
   const paint = () => {
     if (ctx.disposed()) return;
     const p = run.progress;
     const done = Number(p.done) || 0;
-    const t = total();
-    sub.textContent = `${pages} · ${t} concepts${modelId ? ` · ${modelId}` : ''}`;
+    const t = Number(p.total) || 0;
+    sub.textContent = `${pages}${concepts.length ? ` · ${concepts.length} ${concepts.length === 1 ? 'concept' : 'concepts'}` : ''}${modelId ? ` · ${modelId}` : ''}`;
+    // done and total are monotone over a run, so the bar never moves back.
     fill.style.width = `${t ? Math.min(100, Math.round((done / t) * 100)) : 0}%`;
     const dropped = p.dropped || {};
     const droppedTotal = Object.values(dropped).reduce((a, b) => a + (Number(b) || 0), 0);
@@ -5720,7 +7011,7 @@ async function renderGenerating(host, route, ctx) {
     const part = (b, rest) => { const s = el('span', ''); s.appendChild(el('b', '', b)); s.appendChild(document.createTextNode(` ${rest}`)); line.appendChild(s); };
     part(String(Number(p.kept) || 0), 'kept');
     part(String(droppedTotal), 'dropped');
-    part(`${done} of ${t}`, 'concepts');
+    if (t) part(`${done} of ${t}`, p.phase === 'map' ? 'mapped' : 'concepts');
     // 30-ai reports phases 'map', 'generate', 'check:<key>', 'done',
     // 'stopped', 'failed'; dropped.numeric is null when Python is missing.
     const order = ST_CHECK_ROWS.map((d) => d.key);
@@ -5736,8 +7027,12 @@ async function renderGenerating(host, route, ctx) {
       else if (idx >= 0 ? i > idx : count === 0 && !run.done) cls += ' st-ck__d--idle';
       r.dot.className = cls;
     });
-    const kept = Number(p.kept) || 0;
-    startBtn.disabled = run.done || run.token.cancelled || kept < size;
+    // Start With N Ready: enough usable questions in the whole scope, beyond
+    // the ones this session already drew, for a full draw now.
+    const available = p.available == null ? NaN : Number(p.available);
+    const ready = Number.isFinite(available) && available - held >= size;
+    startBtn.disabled = run.done || run.token.cancelled || !ready;
+    startBtn.title = ready ? 'Start now; writing goes on for the rest.' : `Offered once ${size} questions are ready.`;
     stopBtn.disabled = run.done || run.token.cancelled;
   };
 
@@ -5755,6 +7050,15 @@ async function renderGenerating(host, route, ctx) {
     if (run.error) throw run.error;
     host.innerHTML = '';
     const stopped = !!run.token.cancelled;
+    if (isBank && !stopped) {
+      _api.ui.createEmptyState(host, {
+        icon: 'database',
+        headline: 'Every question in this bank has been drawn.',
+        hint: 'Start a new session on the bank to go through it again.',
+        action: { label: 'Study This Bank…', onClick: () => void stOpenSetup({ bankIds: scope.bankIds || [] }) },
+      });
+      return;
+    }
     _api.ui.createEmptyState(host, {
       icon: 'px-study',
       headline: stopped ? 'Stopped before any question was ready.' : 'No questions could be made.',
@@ -5767,9 +7071,8 @@ async function renderGenerating(host, route, ctx) {
   const listener = () => { paint(); if (run.done) onDone(); };
   run.listeners.add(listener);
   const offRun = bus.on('run', (d) => {
-    if (!d || typeof d !== 'object') return;
-    if (d.sessionId != null && d.sessionId !== session.id) return;
-    if (d.materialId != null && !materialIds.includes(d.materialId)) return;
+    // Only this session's run: another tab's generation says nothing here.
+    if (!d || typeof d !== 'object' || d.sessionId == null || Number(d.sessionId) !== Number(session.id)) return;
     run.onProgress(d);
   });
   ctx.add({ dispose: () => { run.listeners.delete(listener); stOff(offRun); } });
@@ -5781,7 +7084,7 @@ async function renderGenerating(host, route, ctx) {
   async function startEarly() {
     restarting = true;
     run.token.cancelled = true;
-    stSetLabel(startBtn, 'Starting');
+    stSetLabel(startBtn, 'Starting…');
     startBtn.disabled = true;
     stopBtn.disabled = true;
     await run.promise;
@@ -5856,13 +7159,15 @@ async function renderSession(host, route, ctx) {
     segs.clear();
     for (const it of drawItems) {
       const i = el('i', '');
-      if (it.status === 'right') i.className = 'ok';
+      // Test shows no verdict until the results: an answered item is neutral.
+      if (isTest && stItemAnswered(it)) i.className = 'ans';
+      else if (it.status === 'right') i.className = 'ok';
       else if (it.status === 'wrong') i.className = 'no';
       else if (it.id === currentId) i.className = 'cur';
       strand.appendChild(i);
       segs.set(it.id, i);
     }
-    const answered = drawItems.filter((i) => i.status === 'right' || i.status === 'wrong').length;
+    const answered = drawItems.filter((i) => stItemAnswered(i)).length;
     strand.setAttribute('aria-label', `${answered} of ${drawItems.length} answered`);
   }
   function pulseSeg(itemId, cls) {
@@ -5874,6 +7179,9 @@ async function renderSession(host, route, ctx) {
 
   let index = 0;
   let current = null;
+  // The source Show Source opened beside the session; it stays open across
+  // cards until Esc closes it.
+  const source = { open: false, uri: '' };
 
   function renderItem() {
     if (ctx.disposed()) return;
@@ -5886,7 +7194,9 @@ async function renderSession(host, route, ctx) {
     if (!fmt) { try { fmt = stResolveFormat(concept, q, answerFormat); } catch { fmt = ''; } }
     if (!fmt) fmt = q.format || 'mc';
     if (fmt === 'mc' && !(Array.isArray(q.options) && q.options.length)) fmt = 'short';
-    const cur = { item, q, concept, fmt, answered: false, retried: false, retryBtn: null, chosen: null, sourceOpen: false, explaining: false, busy: false, ungraded: false, typedField: null };
+    // Test is Type: a multiple-choice question is answered as a short typed answer.
+    if (isTest && fmt === 'mc') fmt = 'short';
+    const cur = { item, q, concept, fmt, answered: false, retried: false, retryBtn: null, chosen: null, explaining: false, busy: false, ungraded: false, typedField: null };
     current = cur;
     paintStrand(item.id);
     qwrap.innerHTML = '';
@@ -5908,7 +7218,7 @@ async function renderSession(host, route, ctx) {
       eyebrow.appendChild(el('span', 'st-eyebrow__cpt', concept ? concept.title : (q.originLabel || 'Question')));
     }
     const eyeActs = el('span', 'st-eyebrow__acts');
-    _api.ui.createIconButton(eyeActs, { icon: 'thumbs-down', title: 'Hide This Question', size: 'sm', onClick: () => void hideQuestion() });
+    _api.ui.createIconButton(eyeActs, { icon: 'thumbs-down', title: 'Hide This Question…', size: 'sm', onClick: () => void hideQuestion() });
     eyebrow.appendChild(eyeActs);
     qwrap.appendChild(eyebrow);
 
@@ -5927,14 +7237,14 @@ async function renderSession(host, route, ctx) {
 
     ctl.appendChild(el('span', 'st-sp'));
     cur.skipBtn = _api.ui.createButton(ctl, {
-      label: 'Skip', kind: 'ghost', title: 'Skip (K) · Moves this question to the end of the session',
+      label: 'Skip', kind: 'ghost', title: 'Skip (K). Moves this question to the end of the session.',
       disabled: queue.length - index <= 1,
       onClick: () => void skip(),
     });
     cur.skipBtn.appendChild(el('span', 'st-k', 'K'));
     cur.nextBtn = _api.ui.createButton(ctl, {
-      label: fmt === 'mc' ? 'Next' : 'Check', kind: 'primary', disabled: fmt === 'mc',
-      title: fmt === 'mc' ? 'Next (Enter)' : 'Check (Enter)',
+      label: fmt === 'mc' || isTest ? 'Next' : 'Check', kind: 'primary', disabled: fmt === 'mc',
+      title: isTest ? 'Next (Enter). Every answer is marked at the end.' : fmt === 'mc' ? 'Next (Enter)' : 'Check (Enter)',
       onClick: () => { if (cur.fmt !== 'mc' && !cur.answered) void check(); else void next(); },
     });
     cur.nextBtn.appendChild(el('span', 'st-k', '↵'));
@@ -6006,7 +7316,8 @@ async function renderSession(host, route, ctx) {
     field.setAttribute('aria-label', 'Your answer');
     const hint = el('div', 'st-ta__hint');
     hint.appendChild(el('span', '', typedHint(q, fmt)));
-    hint.appendChild(el('span', '', fmt === 'short' || fmt === 'essay' ? 'Enter to check · Shift+Enter for a new line' : 'Enter to check'));
+    const enterWord = isTest ? 'Enter for the next question' : 'Enter to check';
+    hint.appendChild(el('span', '', fmt === 'short' || fmt === 'essay' ? `${enterWord} · Shift+Enter for a new line` : enterWord));
     ta.appendChild(hint);
     field.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -6028,10 +7339,10 @@ async function renderSession(host, route, ctx) {
   function feedbackActs(cur, { retry: withRetry }) {
     const acts = el('div', 'st-fb__acts');
     if (withRetry) {
-      cur.retryBtn = _api.ui.createButton(acts, { label: 'Retry', kind: 'ghost', title: 'Retry (R) · once; a right answer now still counts as a miss', onClick: () => retry() });
+      cur.retryBtn = _api.ui.createButton(acts, { label: 'Retry', kind: 'ghost', title: 'Retry (R), once. A right answer now still counts as a miss.', onClick: () => retry() });
     }
-    _api.ui.createButton(acts, { label: stSourceLabel(cur.q), kind: 'ghost', title: 'Show Source (S) · opens the page beside the session', onClick: () => void showSource() });
-    _api.ui.createButton(acts, { label: 'Explain', kind: 'ghost', title: 'Explain (E) · a short explanation grounded in the anchor', onClick: () => void explain() });
+    _api.ui.createButton(acts, { label: stSourceLabel(cur.q), kind: 'ghost', title: `${stSourceLabel(cur.q)} (S). Opens the page beside the session.`, onClick: () => void showSource() });
+    _api.ui.createButton(acts, { label: 'Explain', kind: 'ghost', title: 'Explain (E). A short explanation grounded in the anchor.', onClick: () => void explain() });
     return acts;
   }
 
@@ -6076,23 +7387,7 @@ async function renderSession(host, route, ctx) {
     fb.appendChild(verdict);
     fb.appendChild(feedbackActs(cur, { retry: false }));
     const points = result.verdict && Array.isArray(result.verdict.points) ? result.verdict.points : [];
-    if (result.verdict && rubric.length) {
-      const rub = el('div', 'st-rub');
-      rubric.forEach((p, i) => {
-        const status = (points[i] && points[i].status) || 'miss';
-        const pt = el('div', `st-rub__pt st-rub__pt--${status}`);
-        pt.style.setProperty('--st-i', String(i));
-        const glyph = el('span', 'st-rub__g');
-        glyph.innerHTML = icon(status === 'hit' ? 'check' : status === 'partial' ? 'minus' : 'x', 12);
-        pt.appendChild(glyph);
-        const body = el('span', 'st-rub__text');
-        body.appendChild(stMd(p.text));
-        if (p.required) body.appendChild(el('span', 'st-rub__req', 'required'));
-        pt.appendChild(body);
-        rub.appendChild(pt);
-      });
-      fb.appendChild(rub);
-    }
+    if (result.verdict && rubric.length) fb.appendChild(stRubricEl(rubric, points));
     if (result.verdict && result.verdict.note) {
       const why = el('div', 'st-fb__why');
       why.appendChild(stMd(result.verdict.note));
@@ -6127,7 +7422,7 @@ async function renderSession(host, route, ctx) {
     verdict.appendChild(el('span', 'st-fb__text', 'Could not grade this answer'));
     fb.appendChild(verdict);
     fb.appendChild(feedbackActs(cur, { retry: false }));
-    fb.appendChild(el('div', 'st-fb__why', `${err && err.message ? err.message : err}. The answer is not counted; Next moves on.`));
+    fb.appendChild(el('div', 'st-fb__why', `${stSentence(stErrText(err))} The answer is not counted; Next moves on.`));
     const t = el('div', 'st-full__text');
     t.appendChild(stMd(String(cur.q.answer || '')));
     fb.appendChild(t);
@@ -6205,16 +7500,25 @@ async function renderSession(host, route, ctx) {
   }
 
   // ── Typed ──
-  async function gradeTyped(q, text) {
-    // stGradeTyped grades numeric, cloze and formula answers mechanically and
-    // the rest against the rubric; it returns the rubric it marked against,
-    // which is the one the points are drawn from.
-    const g = await stGradeTyped(q, text, { modelId, numCtx });
-    const rubric = Array.isArray(g && g.rubric) && g.rubric.length ? g.rubric : (Array.isArray(q.rubric) ? q.rubric : []);
-    const rating = g && g.rating != null ? Number(g.rating) : AGAIN;
-    const verdict = g && g.verdict ? g.verdict : null;
-    const label = (g && g.label) || (verdict ? stVerdictLabel(verdict, rubric) : (rating >= GOOD ? 'Correct' : 'Not quite'));
-    return { rating, verdict, label, rubric };
+  /** Test: record the answer with no verdict, queue its marking (one at a
+   *  time, in the background) and move on. The results screen waits for it. */
+  async function recordTest(cur, text) {
+    cur.busy = true;
+    cur.typedField.disabled = true;
+    cur.nextBtn.disabled = true;
+    cur.answered = true;
+    cur.typed = text;
+    const now = stNow();
+    try {
+      await stAnswerItem(cur.item.id, { status: 'answered', chosen: '', typed: text, verdict: null, retried: 0, formatUsed: cur.fmt }, now);
+      Object.assign(cur.item, { status: 'answered', typed: text, formatUsed: cur.fmt, answeredAt: now });
+      await stUpdateSession(session.id, { position: Math.max(0, drawItems.indexOf(cur.item)), seconds });
+      bus.emit('session', { sessionId: session.id, itemId: cur.item.id, status: 'answered' });
+      stQueueTestGrade(session.id, cur.item, cur.q, { modelId, numCtx });
+      pulseSeg(cur.item.id, 'ans');
+    } finally { cur.busy = false; }
+    if (current !== cur || ctx.disposed()) return;
+    await next();
   }
 
   async function check() {
@@ -6222,12 +7526,13 @@ async function renderSession(host, route, ctx) {
     if (!cur || cur.fmt === 'mc' || cur.answered || cur.busy || !cur.typedField) return;
     const text = String(cur.typedField.value || '').trim();
     if (!text) { cur.typedField.focus(); return; }
+    if (isTest) { await recordTest(cur, text); return; }
     cur.busy = true;
     cur.typedField.disabled = true;
     cur.nextBtn.disabled = true;
-    stSetLabel(cur.nextBtn, 'Checking');
+    stSetLabel(cur.nextBtn, 'Checking…');
     let result;
-    try { result = await gradeTyped(cur.q, text); }
+    try { result = await stGradeTypedResult(cur.q, text, { modelId, numCtx }); }
     catch (err) { result = { error: err || new Error('Grading failed') }; }
     if (current !== cur || ctx.disposed()) return;
     cur.answered = true;
@@ -6245,7 +7550,7 @@ async function renderSession(host, route, ctx) {
     pulseSeg(cur.item.id, ok ? 'ok' : 'no');
     renderTypedFeedback(cur, result);
     try {
-      await commitAnswer(cur, { status: ok ? 'right' : 'wrong', chosen: '', typed: text, verdict: result.verdict, correct: ok, rating: result.rating, retried: 0 });
+      await commitAnswer(cur, { status: ok ? 'right' : 'wrong', chosen: '', typed: text, verdict: stStoredVerdict(result), correct: ok, rating: result.rating, retried: 0 });
     } finally { cur.busy = false; }
     if (current !== cur || ctx.disposed()) return;
     stSetLabel(cur.nextBtn, 'Next');
@@ -6258,8 +7563,19 @@ async function renderSession(host, route, ctx) {
   async function showSource() {
     const cur = current;
     if (!cur) return;
-    try { await stShowSource(cur.q); cur.sourceOpen = true; }
-    catch (err) { try { await _api.window.showWarningMessage(`Could not open the source: ${err && err.message ? err.message : err}`); } catch { /* noop */ } }
+    try {
+      const opened = await stShowSource(cur.q);
+      if (opened) { source.open = true; source.uri = typeof opened === 'string' ? opened : ''; }
+    }
+    catch (err) { try { await _api.window.showWarningMessage(`Could not open the source: ${stSentence(stErrText(err))}`); } catch { /* noop */ } }
+  }
+
+  async function closeSource() {
+    source.open = false;
+    const uri = source.uri;
+    source.uri = '';
+    if (uri && typeof stCloseSourceEditor === 'function') await stCloseSourceEditor(uri);
+    if (!ctx.disposed()) ctx.root.focus();
   }
 
   async function explain() {
@@ -6273,7 +7589,7 @@ async function renderSession(host, route, ctx) {
       if (quote && quote.nextSibling) cur.fb.insertBefore(block, quote.nextSibling); else cur.fb.appendChild(block);
     }
     block.classList.add('st-explain--busy');
-    block.textContent = 'Explaining';
+    block.textContent = 'Explaining…';
     let text = '';
     try {
       const full = await stExplain(cur.q, {
@@ -6288,7 +7604,7 @@ async function renderSession(host, route, ctx) {
       block.appendChild(stMd(String(full || text || 'Nothing to add: the anchor says it.')));
     } catch (err) {
       block.classList.remove('st-explain--busy');
-      block.textContent = `Could not explain: ${err && err.message ? err.message : err}`;
+      block.textContent = `Could not explain: ${stSentence(stErrText(err))}`;
     } finally { cur.explaining = false; }
   }
 
@@ -6352,7 +7668,7 @@ async function renderSession(host, route, ctx) {
   }
 
   async function endSession() {
-    const answered = drawItems.filter((i) => i.status === 'right' || i.status === 'wrong').length;
+    const answered = drawItems.filter((i) => stItemAnswered(i)).length;
     const ok = await _api.window.showConfirmModal({
       message: 'End this session?',
       detail: `${answered} of ${drawItems.length} answered. The results stay; Refresh picks the scope up again.`,
@@ -6372,7 +7688,9 @@ async function renderSession(host, route, ctx) {
     const inField = (typeof HTMLInputElement !== 'undefined' && t instanceof HTMLInputElement) || (typeof HTMLTextAreaElement !== 'undefined' && t instanceof HTMLTextAreaElement);
     if (e.key === 'Escape') {
       e.preventDefault();
-      if (cur.sourceOpen) { cur.sourceOpen = false; return; }
+      // The first Esc closes the source Show Source opened beside the
+      // session; only with no source open does Esc ask to end.
+      if (source.open) { void closeSource(); return; }
       void endSession();
       return;
     }
@@ -6419,12 +7737,16 @@ async function renderResults(host, route, ctx) {
   const session = await stGetSession(route.sessionId);
   if (!session) throw new Error('This session no longer exists.');
   const scope = stSessionScope(session);
+  const isBank = scope.kind === 'bank';
+  const isTest = session.mode === 'test';
   const materialIds = Array.isArray(scope.materialIds) ? scope.materialIds : [];
   const allItems = (await stListSessionItems(session.id)) || [];
   const draw = allItems.reduce((m, i) => Math.max(m, Number(i.draw) || 0), 0);
+  // The draw on screen: everything below (the score, the missed list, what
+  // Send Missed sends) is about these items and no earlier draw.
   const drawItems = allItems.filter((i) => (Number(i.draw) || 0) === draw).sort((a, b) => (a.ord || 0) - (b.ord || 0));
   const conceptList = (await stListConcepts({ materialIds })) || [];
-  const scopeConcepts = stConceptsInScope(conceptList, scope);
+  const scopeConcepts = isBank ? [] : stConceptsInScope(conceptList, scope);
   const concepts = new Map(conceptList.map((c) => [c.id, c]));
   const questions = await stQuestionMap(scope, drawItems.map((i) => i.questionId));
   // stSessionSummary reads conceptId off each item; the rows carry only the question id.
@@ -6437,6 +7759,25 @@ async function renderResults(host, route, ctx) {
   const refreshes = Number(stProp(session, 'refreshes', 0)) || 0;
   const answerFormat = stProp(session, 'answerFormat', 'mixed');
   const flashcards = await stFlashcardsAvailable();
+
+  // A Test's answers are marked in the background; pick up any the queue
+  // lost (the app closed mid-marking) and wait for the rest, quietly.
+  let pending = [];
+  if (isTest && drawItems.some((i) => i.status === 'answered')) {
+    let modelId = stProp(session, 'model', '');
+    if (!modelId) { try { modelId = (await stPickModel(materialIds.length ? await stGetMaterial(materialIds[0]) : null)) || ''; } catch { modelId = ''; } }
+    pending = stEnsureTestGrades(session.id, drawItems, questions, { modelId, numCtx: Number(stProp(session, 'numCtx', 0)) || 0 });
+  }
+  const marking = pending.length > 0;
+
+  // What Send Missed would send, counted by the same function that sends it.
+  let cardCount = 0;
+  if (flashcards && !marking) {
+    try {
+      const groups = typeof stMissedCardGroups === 'function' ? await stMissedCardGroups(session, drawItems) : [];
+      cardCount = (groups || []).reduce((n, g) => n + ((g && g.cards) || []).length, 0);
+    } catch { cardCount = 0; }
+  }
 
   const sess = el('div', 'st-sess');
   host.appendChild(sess);
@@ -6456,32 +7797,37 @@ async function renderResults(host, route, ctx) {
   big.appendChild(el('small', '', `of ${size}`));
   left.appendChild(big);
   const under = el('div', 'st-res__under');
-  under.appendChild(document.createTextNode(`${scope.label || session.name} is `));
-  under.appendChild(el('b', '', `${cov.clean} of ${cov.total} concepts clean`));
-  under.appendChild(document.createTextNode(` · ${Math.max(0, cov.total - cov.clean)} to go · ${refreshes} ${refreshes === 1 ? 'refresh' : 'refreshes'} so far`));
+  const refreshText = `${refreshes} ${refreshes === 1 ? 'refresh' : 'refreshes'} so far`;
+  if (isBank) {
+    under.appendChild(document.createTextNode(`${scope.label || session.name} · ${refreshText}`));
+  } else {
+    under.appendChild(document.createTextNode(`${scope.label || session.name} is `));
+    under.appendChild(el('b', '', `${cov.clean} of ${cov.total} concepts clean`));
+    under.appendChild(document.createTextNode(` · ${Math.max(0, cov.total - cov.clean)} to go · ${refreshText}`));
+  }
   left.appendChild(under);
   top.appendChild(left);
   const acts = el('div', 'st-res__acts');
   if (flashcards) {
     const sendBtn = _api.ui.createButton(acts, {
-      label: 'Send Missed to Flashcards', icon: 'layers', kind: 'secondary', disabled: missed.length === 0,
-      title: missed.length ? 'One card per missed concept, with the anchor as its source' : 'Nothing missed this session',
+      label: 'Send Missed to Flashcards', icon: 'layers', kind: 'secondary', disabled: marking || cardCount === 0,
+      title: marking ? 'Offered once every answer is marked.' : cardCount ? 'One card per missed concept, with the anchor as its source.' : 'Nothing missed this session.',
       onClick: async () => {
         sendBtn.disabled = true;
         try {
-          const r = await stSendMissedToFlashcards(session);
+          const r = await stSendMissedToFlashcards(session, { items: drawItems });
           const n = r && typeof r.count === 'number' ? r.count : 0;
           await _api.window.showInformationMessage(`${n} ${n === 1 ? 'card' : 'cards'} sent to Flashcards.`);
         } catch (err) {
           sendBtn.disabled = false;
-          try { await _api.window.showErrorMessage(`Could not send: ${err && err.message ? err.message : err}`); } catch { /* noop */ }
+          try { await _api.window.showErrorMessage(`Could not send: ${stSentence(stErrText(err))}`); } catch { /* noop */ }
         }
       },
     });
-    sendBtn.appendChild(el('span', 'st-faint', `· ${missed.length}`));
+    if (!marking) sendBtn.appendChild(el('span', 'st-faint', `· ${cardCount}`));
   }
   _api.ui.createButton(acts, {
-    label: 'Refresh', icon: 'refresh-cw', kind: 'primary', title: `Draws the next ${sessionSize} from the same scope, weak concepts first`,
+    label: 'Refresh', icon: 'refresh-cw', kind: 'primary', title: `Draws the next ${sessionSize} from the same scope, weak concepts first.`,
     onClick: async () => {
       await stUpdateSession(session.id, { refreshes: refreshes + 1, finishedAt: 0, position: 0 });
       _emitDataChanged();
@@ -6491,61 +7837,99 @@ async function renderResults(host, route, ctx) {
   top.appendChild(acts);
   res.appendChild(top);
 
-  // The coverage bar: one segment per concept in scope.
-  const bar = el('div', 'st-cov');
-  bar.setAttribute('role', 'img');
-  bar.setAttribute('aria-label', `${cov.clean} clean, ${cov.weak} weak, ${cov.unasked} unasked`);
-  const states = Array.isArray(cov.states) ? cov.states : [];
-  scopeConcepts.forEach((c, i) => {
-    const s = typeof states[i] === 'string' ? states[i] : stConceptState(c, now, { staleDays: Number(cfg('staleDays', 14)) || 14 });
-    const seg = el('i', stCovClass(s) + (s === 'clean' ? ' just' : ''));
-    seg.style.setProperty('--st-i', String(i));
-    seg.title = c.title;
-    bar.appendChild(seg);
-  });
-  res.appendChild(bar);
-  const covl = el('div', 'st-covl');
-  const legend = (n, word) => { const s = el('span', ''); s.appendChild(el('b', '', String(n))); s.appendChild(document.createTextNode(` ${word}`)); covl.appendChild(s); };
-  legend(cov.clean, 'clean');
-  legend(cov.weak, 'weak');
-  legend(cov.unasked, 'unasked');
-  if (cov.stale) legend(cov.stale, 'stale');
-  res.appendChild(covl);
-
-  // Missed this session.
-  const missedBox = el('div', 'st-missed');
-  _api.ui.createSectionLabel(missedBox, 'Missed this session');
-  if (!missed.length) {
-    missedBox.appendChild(el('div', 'st-muted', 'Nothing missed.'));
-  }
-  for (const m of missed) {
-    const c = concepts.get(m.conceptId);
-    const q = questions.get(m.questionId);
-    const row = el('div', 'st-mrow');
-    const cell = el('div', 'st-mrow__c', c ? c.title : (q ? stTruncate(q.stem, 60) : 'Concept'));
-    if (m.note) cell.appendChild(el('small', '', m.note));
-    row.appendChild(cell);
-    const page = q ? q.sourcePage : (c ? c.page : 0);
-    const pg = el('button', 'st-mrow__pg');
-    pg.type = 'button';
-    pg.textContent = q ? stPageLabel(q, page) : (page ? `p. ${page}` : 'Source');
-    pg.title = 'Open the page beside this';
-    pg.addEventListener('click', () => {
-      if (q) void stShowSource(q);
-      else if (c) void stShowSource({ id: 0, materialId: c.materialId, conceptId: c.id, format: 'short', stem: c.title, sourcePage: c.page, sourceQuote: c.anchorQuote, sourceUri: '', origin: 'generated' });
+  // The coverage bar: one segment per concept in scope (a bank has none).
+  if (!isBank) {
+    const bar = el('div', 'st-cov');
+    bar.setAttribute('role', 'img');
+    bar.setAttribute('aria-label', `${cov.clean} clean, ${cov.weak} weak, ${cov.unasked} unasked`);
+    const states = Array.isArray(cov.states) ? cov.states : [];
+    scopeConcepts.forEach((c, i) => {
+      const s = typeof states[i] === 'string' ? states[i] : stConceptState(c, now, { staleDays: Number(cfg('staleDays', 14)) || 14 });
+      const seg = el('i', stCovClass(s) + (s === 'clean' ? ' just' : ''));
+      seg.style.setProperty('--st-i', String(i));
+      seg.title = c.title;
+      bar.appendChild(seg);
     });
-    row.appendChild(pg);
-    const stEl = el('span', `st-mrow__st${m.secondMiss ? ' st-mrow__st--w' : ''}`);
-    stEl.appendChild(el('i', ''));
-    stEl.appendChild(document.createTextNode(m.secondMiss ? 'second miss' : 'weak'));
-    row.appendChild(stEl);
-    missedBox.appendChild(row);
+    res.appendChild(bar);
+    const covl = el('div', 'st-covl');
+    const legend = (n, word) => { const s = el('span', ''); s.appendChild(el('b', '', String(n))); s.appendChild(document.createTextNode(` ${word}`)); covl.appendChild(s); };
+    legend(cov.clean, 'clean');
+    legend(cov.weak, 'weak');
+    legend(cov.unasked, 'unasked');
+    if (cov.stale) legend(cov.stale, 'stale');
+    res.appendChild(covl);
   }
-  res.appendChild(missedBox);
+
+  if (isTest) {
+    // Test: every item with its verdict and per-point feedback.
+    const answersBox = el('div', 'st-missed');
+    _api.ui.createSectionLabel(answersBox, 'Answers');
+    if (marking) {
+      const line = el('div', 'st-marking');
+      answersBox.appendChild(line);
+      const answeredItems = drawItems.filter((i) => stItemAnswered(i) || (i.verdict && i.verdict.ungraded));
+      const paintMarking = () => {
+        const marked = answeredItems.filter((i) => i.status !== 'answered').length;
+        line.textContent = `Marking ${Math.min(answeredItems.length, marked + 1)} of ${answeredItems.length}…`;
+      };
+      paintMarking();
+      const off = bus.on('session', (d) => {
+        if (!d || Number(d.sessionId) !== Number(session.id)) return;
+        const it = drawItems.find((i) => i.id === d.itemId);
+        if (it && d.status) it.status = d.status;
+        paintMarking();
+      });
+      let live = true;
+      ctx.add({ dispose: () => { live = false; stOff(off); } });
+      void Promise.allSettled(pending).then(() => { if (live && !ctx.disposed()) ctx.rerender(); });
+    }
+    const list = el('div', 'st-review');
+    let n = 0;
+    for (const item of drawItems) {
+      const q = questions.get(item.questionId);
+      if (!q) continue;
+      n++;
+      list.appendChild(stReviewItemEl(item, q, concepts.get(q.conceptId), n));
+    }
+    if (!n) list.appendChild(el('div', 'st-muted', 'No answers yet.'));
+    answersBox.appendChild(list);
+    res.appendChild(answersBox);
+  } else {
+    // Missed this session.
+    const missedBox = el('div', 'st-missed');
+    _api.ui.createSectionLabel(missedBox, 'Missed this session');
+    if (!missed.length) {
+      missedBox.appendChild(el('div', 'st-muted', 'Nothing missed.'));
+    }
+    for (const m of missed) {
+      const c = concepts.get(m.conceptId);
+      const q = questions.get(m.questionId);
+      const row = el('div', 'st-mrow');
+      const cell = el('div', 'st-mrow__c', c ? c.title : (q ? stTruncate(q.stem, 60) : 'Concept'));
+      if (m.note) cell.appendChild(el('small', '', m.note));
+      row.appendChild(cell);
+      const page = q ? q.sourcePage : (c ? c.page : 0);
+      const pg = el('button', 'st-mrow__pg');
+      pg.type = 'button';
+      pg.textContent = q ? stPageLabel(q, page) : (page ? `p. ${page}` : 'Source');
+      pg.title = 'Open the page beside this.';
+      pg.addEventListener('click', () => {
+        if (q) void stShowSource(q);
+        else if (c) void stShowSource({ id: 0, materialId: c.materialId, conceptId: c.id, format: 'short', stem: c.title, sourcePage: c.page, sourceQuote: c.anchorQuote, sourceUri: '', origin: 'generated' });
+      });
+      row.appendChild(pg);
+      const stEl = el('span', `st-mrow__st${m.secondMiss ? ' st-mrow__st--w' : ''}`);
+      stEl.appendChild(el('i', ''));
+      stEl.appendChild(document.createTextNode(m.secondMiss ? 'second miss' : 'weak'));
+      row.appendChild(stEl);
+      missedBox.appendChild(row);
+    }
+    res.appendChild(missedBox);
+  }
 
   const ft = el('div', 'st-res__ft');
   ft.appendChild(el('span', 'st-res__lhs', `Refresh draws the next ${sessionSize}, weak concepts first.`));
-  _api.ui.createButton(ft, { label: 'Review Answers', kind: 'ghost', onClick: () => ctx.setRoute({ view: 'review', sessionId: session.id }) });
+  if (!isTest) _api.ui.createButton(ft, { label: 'Review Answers', kind: 'ghost', onClick: () => ctx.setRoute({ view: 'review', sessionId: session.id }) });
   res.appendChild(ft);
 }
 
@@ -6573,34 +7957,7 @@ async function renderReview(host, route, ctx) {
     const q = questions.get(item.questionId);
     if (!q) continue;
     n++;
-    const c = concepts.get(q.conceptId);
-    const box = el('div', 'st-review__item');
-    box.dataset.status = item.status || 'pending';
-    const eyebrow = el('div', 'st-eyebrow');
-    eyebrow.appendChild(el('span', 'st-eyebrow__src', `${n}.`));
-    eyebrow.appendChild(el('span', 'st-eyebrow__cpt', c ? c.title : (q.originLabel || 'Question')));
-    if (item.draw) { eyebrow.appendChild(el('span', 'st-eyebrow__dot')); eyebrow.appendChild(el('span', 'st-eyebrow__src', `draw ${Number(item.draw) + 1}`)); }
-    box.appendChild(eyebrow);
-    const stem = el('div', 'st-review__stem');
-    stem.appendChild(stMd(q.stem));
-    box.appendChild(stem);
-    const fmt = item.formatUsed || q.format;
-    const options = Array.isArray(q.options) ? q.options : [];
-    let yours = '';
-    if (fmt === 'mc') { const i = Number(item.chosen); yours = item.chosen !== '' && item.chosen != null && options[i] !== undefined ? options[i] : ''; }
-    else yours = item.typed || '';
-    const yoursEl = el('div', `st-review__ans st-review__ans--${item.status === 'right' ? 'ok' : item.status === 'wrong' ? 'no' : 'skip'}`);
-    yoursEl.appendChild(el('span', 'st-review__lab', 'Your answer'));
-    if (yours) yoursEl.appendChild(stMd(yours)); else yoursEl.appendChild(document.createTextNode(item.status === 'skipped' ? 'skipped' : 'no answer'));
-    if (item.retried) yoursEl.appendChild(el('span', 'st-review__lab', ' · retried'));
-    box.appendChild(yoursEl);
-    const rightEl = el('div', 'st-review__ans');
-    rightEl.appendChild(el('span', 'st-review__lab', 'Right answer'));
-    const rightText = fmt === 'mc' || q.format === 'mc' ? (options[Number(q.answer)] !== undefined ? options[Number(q.answer)] : String(q.answer)) : String(q.answer || '');
-    rightEl.appendChild(stMd(rightText));
-    box.appendChild(rightEl);
-    box.appendChild(stQuoteEl(q, q.sourceQuote, q.sourcePage, () => void stShowSource(q)));
-    list.appendChild(box);
+    list.appendChild(stReviewItemEl(item, q, concepts.get(q.conceptId), n));
   }
   if (!n) list.appendChild(el('div', 'st-muted', 'No answers yet.'));
 }
@@ -6646,7 +8003,7 @@ async function renderLearn(host, route, ctx) {
     const pg = el('button', 'st-learn__pg');
     pg.type = 'button';
     pg.textContent = c.page ? `p. ${c.page}` : 'Source';
-    pg.title = 'Open the page beside this';
+    pg.title = 'Open the page beside this.';
     pg.addEventListener('click', () => void stShowSource({
       id: 0, materialId: material.id, conceptId: c.id, format: 'short', stem: c.title,
       sourcePage: c.page, sourceQuote: c.anchorQuote, sourceUri: material.kind === 'pdf' ? material.uri : '', origin: 'generated',
@@ -6683,6 +8040,26 @@ let _questionRegistry = null;
 let _fcCheck = null;
 /** The document listener for `parallx:card-rated`, so deactivate can remove it. */
 let _ratingListener = null;
+/** Retry timers of the registrations that wait for another tool's command;
+ *  deactivate clears them so nothing fires for a Study that is off. */
+const _stRetryTimers = new Set();
+
+/** Run `fn` after `ms` unless Study is turned off first (then nothing runs). */
+function stRetryLater(fn, ms) {
+  const timer = setTimeout(() => {
+    _stRetryTimers.delete(timer);
+    if (!_api || !_dbBridge) return;
+    fn();
+  }, ms);
+  _stRetryTimers.add(timer);
+  return timer;
+}
+
+/** Clear every pending retry (deactivate). */
+function stClearRetryTimers() {
+  for (const t of _stRetryTimers) clearTimeout(t);
+  _stRetryTimers.clear();
+}
 
 const ST_FC_CHECK_TTL = 10000;
 const ST_IMPORT_EXTS = ['.md', '.csv', '.tsv', '.json'];
@@ -6770,18 +8147,60 @@ function stBestTypedQuestion(questions, conceptId) {
   return best;
 }
 
+/** True for a question that came from a bank (an import, a past exam, a provider). */
+function stIsBankQuestion(q) {
+  return !!q && (Number(q.bankId) > 0 || (!!q.origin && q.origin !== 'generated'));
+}
+
+/** A bank question's answer as card text: the right option for a choice. */
+function stQuestionAnswerText(q) {
+  if (q && q.format === 'mc') {
+    const options = Array.isArray(q.options) ? q.options : [];
+    const i = Number(q.answer);
+    if (options[i] !== undefined) return String(options[i]);
+  }
+  return String(q?.answer ?? '');
+}
+
 /**
  * Pure: the cards Send Missed makes. One card per missed concept, grouped by
- * material so each group lands in the deck "Study: <material label>".
+ * material so each group lands in the deck "Study: <material label>"; a
+ * missed bank question is its own card (front the stem, back the answer,
+ * tagged study:q:<id>) in the deck "Study: <bank name>".
  * `summary` is stSessionSummary's result ({ missed: [{ conceptId, questionId }] }).
  */
-function stCardsForMissed(summary, concepts, questions, materials) {
+function stCardsForMissed(summary, concepts, questions, materials, banks = []) {
   const conceptById = new Map((concepts || []).map((c) => [Number(c.id), c]));
   const questionById = new Map((questions || []).map((q) => [Number(q.id), q]));
   const materialById = new Map((materials || []).map((m) => [Number(m.id), m]));
+  const bankById = new Map((banks || []).map((b) => [Number(b.id), b]));
   const seen = new Set();
+  const seenQuestions = new Set();
   const groups = new Map();
   for (const miss of summary?.missed || []) {
+    const missedQ = questionById.get(Number(miss.questionId)) || null;
+    if (stIsBankQuestion(missedQ)) {
+      if (seenQuestions.has(Number(missedQ.id))) continue;
+      seenQuestions.add(Number(missedQ.id));
+      const bank = bankById.get(Number(missedQ.bankId)) || null;
+      const label = String(bank?.name || missedQ.originLabel || 'Question bank');
+      const card = {
+        front: String(missedQ.stem || ''),
+        back: stQuestionAnswerText(missedQ),
+        tags: ['study', `study:q:${Number(missedQ.id)}`],
+        sourceUri: String(missedQ.sourceUri || ''),
+        sourceLabel: label,
+        sourcePage: Number(missedQ.sourcePage) > 0 ? Number(missedQ.sourcePage) : 0,
+        sourceExcerpt: String(missedQ.sourceQuote || ''),
+        recallMode: 'conceptual',
+      };
+      const rubric = Array.isArray(missedQ.rubric) ? missedQ.rubric : [];
+      if (rubric.length) card.rubric = rubric.map((pt) => ({ text: String(pt.text || ''), required: pt.required !== false }));
+      const key = `bank:${Number(missedQ.bankId) || 0}`;
+      if (!groups.has(key)) groups.set(key, { materialId: 0, bankId: Number(missedQ.bankId) || 0, deckName: `Study: ${label}`, cards: [] });
+      groups.get(key).cards.push(card);
+      continue;
+    }
     let conceptId = Number(miss.conceptId);
     if (!Number.isFinite(conceptId) || conceptId <= 0) {
       const q = questionById.get(Number(miss.questionId));
@@ -6806,8 +8225,8 @@ function stCardsForMissed(summary, concepts, questions, materials) {
       recallMode: 'conceptual',
     };
     if (typed) card.rubric = typed.rubric.map((pt) => ({ text: String(pt.text || ''), required: pt.required !== false }));
-    const key = Number(concept.materialId) || 0;
-    if (!groups.has(key)) groups.set(key, { materialId: key, deckName: `Study: ${label}`, cards: [] });
+    const key = `material:${Number(concept.materialId) || 0}`;
+    if (!groups.has(key)) groups.set(key, { materialId: Number(concept.materialId) || 0, deckName: `Study: ${label}`, cards: [] });
     groups.get(key).cards.push(card);
   }
   return [...groups.values()];
@@ -6951,10 +8370,16 @@ async function stPickWorkspaceFile(exts, placeholder) {
 
 // ─── Session start ──────────────────────────────────────────────────────────
 
-/** True when the scope holds fewer ready questions than the session size. */
+/** True when the scope holds fewer usable questions than the session size.
+ *  The count is the pipeline's own (stScopeQuestionCount), so a selection
+ *  whose page already has a bank still goes through the generating screen
+ *  when its own concepts are short. */
 async function stSessionNeedsGeneration(session) {
   const scope = stScopeOf(session);
   const size = Number(session?.size) || Number(cfg('sessionSize', 20)) || 20;
+  // A bank is drawn from as it is, never generated into.
+  if (scope.kind === 'bank') return false;
+  if (typeof stScopeQuestionCount === 'function') return (Number(await stScopeQuestionCount(scope)) || 0) < size;
   const materialIds = (scope.materialIds || []).map(Number).filter((n) => n > 0);
   const [questions, concepts] = await Promise.all([
     stListQuestions({ materialIds, includeHidden: false }),
@@ -6986,19 +8411,27 @@ async function stStartSession({ scope, mode, answerFormat, model, numCtx }) {
   for (const id of scope?.materialIds || []) {
     try { await stTouchMaterial(Number(id), now); } catch { /* a bank scope has no material */ }
   }
-  if (await stSessionNeedsGeneration(session)) {
-    await stOpenPane({ view: 'generating', sessionId: session.id });
-  } else {
-    await stNextDraw(session, { token: { cancelled: false }, onProgress: () => {} });
-    await stOpenPane({ view: 'session', sessionId: session.id });
+  let view = 'generating';
+  if (!(await stSessionNeedsGeneration(session))) {
+    // The bank is full enough, so the draw makes nothing. Should the pipeline
+    // start writing anyway, the run stops at once and the generating screen
+    // takes over: generation is never invisible.
+    const token = { cancelled: false };
+    let wrote = false;
+    const onProgress = () => { if (!wrote) { wrote = true; token.cancelled = true; } };
+    const drawn = await stNextDraw(session, { token, onProgress });
+    if (!wrote && Array.isArray(drawn) && drawn.length) view = 'session';
   }
+  await stOpenPane({ view, sessionId: session.id });
   _emitDataChanged();
   return session;
 }
 
 // ─── Show Source ────────────────────────────────────────────────────────────
 
-/** Open the question's source beside the session: the provider's own open, else the file at its page and quote. */
+/** Open the question's source beside the session: the provider's own open,
+ *  else the file at its page and quote. Returns the file URI opened (so the
+ *  session's Esc can close it), true for a provider's open, false for none. */
 async function stShowSource(question) {
   if (!question) return false;
   if (question.providerId && _questionRegistry) {
@@ -7033,7 +8466,22 @@ async function stShowSource(question) {
     console.warn('[Study] open beside failed, opening in place:', err);
     await _api.editors.openFileEditor(target, { reveal });
   }
-  return true;
+  return target;
+}
+
+/** Close the open editor showing `uri` (the source Show Source opened).
+ *  Matched by its fsPath against the editor's description, name or id. */
+async function stCloseSourceEditor(uri) {
+  const fsPath = stFsPathOf(String(uri || ''));
+  if (!fsPath || !_api?.editors) return false;
+  const norm = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
+  const want = norm(fsPath);
+  const editors = Array.isArray(_api.editors.openEditors) ? _api.editors.openEditors : [];
+  const hit = editors.find((e) => e && (norm(stFsPathOf(String(e.description || ''))) === want
+    || norm(stFsPathOf(String(e.name || ''))) === want
+    || norm(String(e.id || '')).includes(want)));
+  if (!hit || typeof _api.editors.closeEditor !== 'function') return false;
+  try { return !!(await _api.editors.closeEditor(hit.id)); } catch { return false; }
 }
 
 // ─── Flashcards hand-off ────────────────────────────────────────────────────
@@ -7057,10 +8505,10 @@ async function stFlashcardsAvailable() {
  * bank question), plus every question of each missed concept (the rubric on
  * a card comes from the best typed one, which the session may never have drawn).
  */
-async function stSessionContext(session) {
+async function stSessionContext(session, onlyItems = null) {
   const scope = stScopeOf(session);
   const materialIds = (scope.materialIds || []).map(Number).filter((n) => n > 0);
-  const items = await stListSessionItems(session.id);
+  const items = Array.isArray(onlyItems) ? onlyItems : await stListSessionItems(session.id);
   const questionIds = [...new Set(items.map((it) => Number(it.questionId)))];
   const [concepts, scopedQuestions] = await Promise.all([
     materialIds.length ? stListConcepts({ materialIds }) : Promise.resolve([]),
@@ -7082,7 +8530,8 @@ async function stSessionContext(session) {
       if (c) { concepts.push(c); conceptIds.add(Number(c.id)); }
     }
   }
-  const summary = stSessionSummary(items, concepts);
+  // stSessionSummary reads conceptId off each item; the rows carry only the question id.
+  const summary = stSessionSummary(items.map((it) => ({ ...it, conceptId: Number(it.conceptId) || Number(questionById.get(Number(it.questionId))?.conceptId) || 0 })), concepts);
   const missedConceptIds = [...new Set((summary.missed || []).map((m) => Number(m.conceptId) || Number(questionById.get(Number(m.questionId))?.conceptId) || 0).filter((n) => n > 0))];
   if (missedConceptIds.length) {
     for (const q of await stListQuestions({ conceptIds: missedConceptIds, includeHidden: false })) {
@@ -7092,13 +8541,32 @@ async function stSessionContext(session) {
   return { scope, items, concepts, questions, summary };
 }
 
-/** Send one card per missed concept of the session to Flashcards. Returns { count }. */
-async function stSendMissedToFlashcards(session) {
+/** The last draw of a session (the one the results screen shows). */
+function stLastDrawItems(items) {
+  const list = Array.isArray(items) ? items : [];
+  const draw = list.reduce((m, i) => Math.max(m, Number(i.draw) || 0), 0);
+  return list.filter((i) => (Number(i.draw) || 0) === draw);
+}
+
+/**
+ * The card groups Send Missed would make for `items` (default: the session's
+ * last draw, never every draw, so a Refresh never resends earlier misses).
+ * The results screen counts its button from this, so the count is what is sent.
+ */
+async function stMissedCardGroups(session, items = null) {
+  const s = session && typeof session === 'object' ? session : await stGetSession(Number(session));
+  if (!s) return [];
+  const chosen = Array.isArray(items) ? items : stLastDrawItems(await stListSessionItems(s.id));
+  const [{ summary, concepts, questions }, materials, banks] = await Promise.all([stSessionContext(s, chosen), stListMaterials(), stListBanks()]);
+  return stCardsForMissed(summary, concepts, questions, materials, banks);
+}
+
+/** Send the missed cards of the draw shown (`items`, default the last draw) to Flashcards. Returns { count }. */
+async function stSendMissedToFlashcards(session, { items = null } = {}) {
   const s = session && typeof session === 'object' ? session : await stGetSession(Number(session));
   if (!s) return { count: 0 };
   if (!(await stFlashcardsAvailable())) return { count: 0 };
-  const [{ summary, concepts, questions }, materials] = await Promise.all([stSessionContext(s), stListMaterials()]);
-  const groups = stCardsForMissed(summary, concepts, questions, materials);
+  const groups = await stMissedCardGroups(s, items);
   let count = 0;
   for (const g of groups) {
     await _api.commands.executeCommand('flashcards.addCards', { deckName: g.deckName, cards: g.cards });
@@ -7107,7 +8575,7 @@ async function stSendMissedToFlashcards(session) {
   return { count };
 }
 
-/** A card rated in Flashcards lowers its concept's mastery here (tag study:c:<id>). */
+/** A card rated in Flashcards lowers its concept's mastery here (tag study:c:<id>, or study:q:<id>). */
 function registerRatingListener(context) {
   if (typeof document === 'undefined' || !document.addEventListener) return;
   const handler = (ev) => {
@@ -7115,11 +8583,19 @@ function registerRatingListener(context) {
     const rating = Number(detail.rating);
     const tags = Array.isArray(detail.tags) ? detail.tags : String(detail.tags || '').split(',');
     for (const raw of tags) {
-      const m = /^study:c:(\d+)$/.exec(String(raw || '').trim());
+      // study:c:<concept>, or study:q:<question> for a bank question's card
+      // (its concept, when the question has one).
+      const m = /^study:([cq]):(\d+)$/.exec(String(raw || '').trim());
       if (!m) continue;
       void (async () => {
-        if (!_dbBridge) return;
-        const concept = await stLoadConcept(Number(m[1]));
+        if (!_api || !_dbBridge) return;
+        let conceptId = Number(m[2]);
+        if (m[1] === 'q') {
+          const q = await stGetQuestion(conceptId);
+          conceptId = Number(q?.conceptId) || 0;
+          if (!conceptId) return;
+        }
+        const concept = await stLoadConcept(conceptId);
         if (!concept) return;
         const mastery = stMasteryFromCardRating(Number(concept.mastery) || 0, rating);
         if (mastery === concept.mastery) return;
@@ -7144,7 +8620,7 @@ function registerRatingListener(context) {
 function registerQuestionProviders(context, attempt = 0) {
   _api.commands.executeCommand('questions.getRegistry')
     .then(async (registry) => {
-      if (!_dbBridge) return;
+      if (!_api || !_dbBridge) return;
       if (!registry || typeof registry.list !== 'function') throw new Error('no registry');
       _questionRegistry = registry;
       await stSyncProviders(registry);
@@ -7157,7 +8633,7 @@ function registerQuestionProviders(context, attempt = 0) {
       _emitDataChanged();
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) setTimeout(() => registerQuestionProviders(context, attempt + 1), 2000);
+      if (attempt < 5 && _dbBridge) stRetryLater(() => registerQuestionProviders(context, attempt + 1), 2000);
     });
 }
 
@@ -7197,7 +8673,7 @@ async function stQuizSelection(payload) {
 function registerSelectionAction(context, attempt = 0) {
   _api.commands.executeCommand('chat.getSelectionActionDispatcher')
     .then((dispatcher) => {
-      if (!_dbBridge) return;
+      if (!_api || !_dbBridge) return;
       if (!dispatcher || typeof dispatcher.registerHandler !== 'function') throw new Error('no dispatcher');
       context.subscriptions.push(dispatcher.registerHandler({
         actionId: 'quiz-selection',
@@ -7207,7 +8683,7 @@ function registerSelectionAction(context, attempt = 0) {
       }));
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) setTimeout(() => registerSelectionAction(context, attempt + 1), 2000);
+      if (attempt < 5 && _dbBridge) stRetryLater(() => registerSelectionAction(context, attempt + 1), 2000);
     });
 }
 
@@ -7243,8 +8719,26 @@ async function stCmdStudyDocument(arg) {
   return material;
 }
 
-async function stCmdStudyTogether() {
-  let ids = stPicked();
+/** A command's optional file argument: a path or file URI string, or
+ *  `{ fsPath }` / `{ uri }`. '' when none was given. */
+function stPathArg(arg) {
+  let raw = '';
+  if (typeof arg === 'string') raw = arg.trim();
+  else if (arg && typeof arg === 'object') raw = String(arg.fsPath || arg.uri || arg.path || '').trim();
+  if (!raw) return '';
+  const p = stFsPathOf(raw);
+  // A workspace-relative path resolves against the workspace root.
+  if (/^([a-zA-Z]:[\\/]|[\\/])/.test(p)) return p;
+  const root = stWorkspaceRoot();
+  if (!root) return p;
+  const sep = root.includes('\\') ? '\\' : '/';
+  return root.replace(/[\\/]+$/, '') + sep + p.replace(/^\.[\\/]/, '');
+}
+
+/** `ids` (optional) are material ids; else the sidebar's pick; else every material. */
+async function stCmdStudyTogether(ids0) {
+  let ids = Array.isArray(ids0) ? ids0.map(Number).filter((n) => Number.isFinite(n) && n > 0) : [];
+  if (!ids.length) ids = stPicked();
   if (!ids.length) ids = (await stListMaterials()).map((m) => m.id);
   if (!ids.length) {
     await _api.window.showInformationMessage('Add a material first.');
@@ -7260,22 +8754,22 @@ async function stCmdWeakSpots() {
     return null;
   }
   return stStartSession({
-    scope: { kind: 'weak', materialIds: materials.map((m) => m.id), label: 'Weak spots' },
+    scope: { kind: 'weak', materialIds: materials.map((m) => m.id), label: 'Weak Spots' },
     mode: 'weak',
     ...stSessionPrefs(null),
   });
 }
 
-async function stCmdAddMaterial() {
-  const fsPath = await stPickWorkspacePdf();
+async function stCmdAddMaterial(arg) {
+  const fsPath = stPathArg(arg) || await stPickWorkspacePdf();
   if (!fsPath) return null;
   const material = await stIngestPdf(fsPath);
   await stOpenSetup({ materialIds: [material.id] });
   return material;
 }
 
-async function stCmdImportQuestions() {
-  const fsPath = await stPickWorkspaceFile(ST_IMPORT_EXTS, 'Import questions from which file?');
+async function stCmdImportQuestions(arg) {
+  const fsPath = stPathArg(arg) || await stPickWorkspaceFile(ST_IMPORT_EXTS, 'Import questions from which file?');
   if (!fsPath) return null;
   const result = await stImportQuestionFile(fsPath);
   const n = Number(result?.inserted) || 0;
@@ -7284,8 +8778,8 @@ async function stCmdImportQuestions() {
   return result;
 }
 
-async function stCmdImportReport() {
-  const fsPath = await stPickWorkspaceFile(['.pdf'], 'Which examiner\'s report?');
+async function stCmdImportReport(arg) {
+  const fsPath = stPathArg(arg) || await stPickWorkspaceFile(['.pdf'], 'Which examiner\'s report?');
   if (!fsPath) return null;
   const result = await stImportExaminerReport(fsPath);
   const countOf = (v) => (Array.isArray(v) ? v.length : Number(v) || 0);
@@ -7310,11 +8804,13 @@ function registerCommands(context) {
       }
       return stQuizSelection(payload);
     }],
-    ['study.studyTogether', () => stCmdStudyTogether()],
+    // Each takes an optional argument (material ids; a path or file URI) so
+    // the chat and scripts can call them without the quick pick.
+    ['study.studyTogether', (ids) => stCmdStudyTogether(ids)],
     ['study.weakSpots', () => stCmdWeakSpots()],
-    ['study.addMaterial', () => stCmdAddMaterial()],
-    ['study.importQuestions', () => stCmdImportQuestions()],
-    ['study.importReport', () => stCmdImportReport()],
+    ['study.addMaterial', (arg) => stCmdAddMaterial(arg)],
+    ['study.importQuestions', (arg) => stCmdImportQuestions(arg)],
+    ['study.importReport', (arg) => stCmdImportReport(arg)],
   ];
   for (const [id, handler] of cmds) {
     context.subscriptions.push(_api.commands.registerCommand(id, handler));
@@ -7360,7 +8856,7 @@ function registerDashboardWidget(context) {
   try {
     context.subscriptions.push(_api.dashboard.registerWidgetType({
       typeId: 'parallx-community.study.weak-spots',
-      displayName: 'Weak spots',
+      displayName: 'Weak Spots',
       description: 'The concepts you keep missing, by material, each row a door into a session on it.',
       icon: 'px-study',
       category: 'query',
@@ -7402,10 +8898,12 @@ function registerDashboardWidget(context) {
             row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
             root.appendChild(row);
           }
-          const foot = el('button', 'st-widget__foot', `Study the weakest ${data.size || 20}`);
-          foot.type = 'button';
-          foot.addEventListener('click', () => void _api.commands.executeCommand('study.weakSpots'));
-          root.appendChild(foot);
+          const foot = _api.ui.createButton(root, {
+            label: `Study the Weakest ${data.size || 20}`, kind: 'ghost', size: 'sm',
+            title: 'One session over the weakest concepts across every material.',
+            onClick: () => void _api.commands.executeCommand('study.weakSpots'),
+          });
+          foot.classList.add('st-widget__foot');
         };
         paint(ctx.cachedOutput);
         const sub = typeof ctx.onDidChangeConfig === 'function' ? ctx.onDidChangeConfig(() => ctx.requestRefresh()) : null;
@@ -7540,7 +9038,7 @@ function registerChatTools(context) {
         const scope = pages
           ? { kind: 'pages', materialIds: [material.id], pageFrom: pages.from, pageTo: pages.to, label: `${material.label} · pages ${pages.from} to ${pages.to}` }
           : mode === 'weak'
-            ? { kind: 'weak', materialIds: [material.id], label: `${material.label} · weak spots` }
+            ? { kind: 'weak', materialIds: [material.id], label: `${material.label} · Weak Spots` }
             : { kind: 'document', materialIds: [material.id], label: material.label };
         const session = await stStartSession({ scope, mode, ...prefs });
         const where = pages ? ` (pages ${pages.from} to ${pages.to})` : '';
@@ -7656,7 +9154,7 @@ async function stDayLoads(fromMs, toMs) {
 function registerPlannerDayLoads(context, attempt = 0) {
   _api.commands.executeCommand('planner.getRegistry')
     .then((registry) => {
-      if (!_dbBridge) return;
+      if (!_api || !_dbBridge) return;
       if (!registry) throw new Error('no registry');
       if (typeof registry.registerDayLoadProvider !== 'function') return;
       context.subscriptions.push(registry.registerDayLoadProvider({
@@ -7666,7 +9164,7 @@ function registerPlannerDayLoads(context, attempt = 0) {
       }));
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) setTimeout(() => registerPlannerDayLoads(context, attempt + 1), 2000);
+      if (attempt < 5 && _dbBridge) stRetryLater(() => registerPlannerDayLoads(context, attempt + 1), 2000);
     });
 }
 
@@ -7737,7 +9235,17 @@ export async function activate(api, context) {
 
 export async function deactivate() {
   _activated = false;
-  // The host disposes context.subscriptions; this drops what lives in module state.
+  // The host disposes context.subscriptions; this drops what lives in module
+  // state: in-flight generation stops, pending retries never fire, marking
+  // still queued does nothing once _api is null, and the styles go.
+  stCancelRuns();
+  stClearRetryTimers();
+  _stGrades.clear();
+  if (typeof document !== 'undefined' && document.getElementById) {
+    const style = document.getElementById('study-styles');
+    if (style) style.remove();
+  }
+  _stStyleInjected = false;
   if (_ratingListener && typeof document !== 'undefined' && document.removeEventListener) {
     document.removeEventListener('parallx:card-rated', _ratingListener);
   }
@@ -7763,6 +9271,20 @@ export const __testables = {
   stOpenPane,
   stOpenSetup,
   stDeleteMaterial,
+  // 60-pane: setup, Test marking, review
+  stCountScopeQuestions,
+  stSetupCountText,
+  stBankOriginText,
+  stItemAnswered,
+  stTestQuestion,
+  stStoredVerdict,
+  stQueueTestGrade,
+  stPendingGrades,
+  stEnsureTestGrades,
+  stCancelRuns,
+  stErrText,
+  stSentence,
+  stRunFor,
   // 00-header
   el,
   icon,
@@ -7842,4 +9364,19 @@ export const __testables = {
   stDayLoads,
   stWeakSpotRows,
   stLoadConcept,
+  stIsBankQuestion,
+  stQuestionAnswerText,
+  stLastDrawItems,
+  stMissedCardGroups,
+  stCloseSourceEditor,
+  stPathArg,
+  stRetryLater,
+  stClearRetryTimers,
+  stCmdAddMaterial,
+  stCmdImportQuestions,
+  stCmdImportReport,
+  stCmdStudyTogether,
+  // 30-ai, from the pipeline (guarded: present once that part ships them)
+  stScopeQuestionCount: typeof stScopeQuestionCount === 'function' ? stScopeQuestionCount : undefined,
+  stMaterialLabelFor: typeof stMaterialLabelFor === 'function' ? stMaterialLabelFor : undefined,
 };

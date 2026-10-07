@@ -17,6 +17,26 @@ let _questionRegistry = null;
 let _fcCheck = null;
 /** The document listener for `parallx:card-rated`, so deactivate can remove it. */
 let _ratingListener = null;
+/** Retry timers of the registrations that wait for another tool's command;
+ *  deactivate clears them so nothing fires for a Study that is off. */
+const _stRetryTimers = new Set();
+
+/** Run `fn` after `ms` unless Study is turned off first (then nothing runs). */
+function stRetryLater(fn, ms) {
+  const timer = setTimeout(() => {
+    _stRetryTimers.delete(timer);
+    if (!_api || !_dbBridge) return;
+    fn();
+  }, ms);
+  _stRetryTimers.add(timer);
+  return timer;
+}
+
+/** Clear every pending retry (deactivate). */
+function stClearRetryTimers() {
+  for (const t of _stRetryTimers) clearTimeout(t);
+  _stRetryTimers.clear();
+}
 
 const ST_FC_CHECK_TTL = 10000;
 const ST_IMPORT_EXTS = ['.md', '.csv', '.tsv', '.json'];
@@ -104,18 +124,60 @@ function stBestTypedQuestion(questions, conceptId) {
   return best;
 }
 
+/** True for a question that came from a bank (an import, a past exam, a provider). */
+function stIsBankQuestion(q) {
+  return !!q && (Number(q.bankId) > 0 || (!!q.origin && q.origin !== 'generated'));
+}
+
+/** A bank question's answer as card text: the right option for a choice. */
+function stQuestionAnswerText(q) {
+  if (q && q.format === 'mc') {
+    const options = Array.isArray(q.options) ? q.options : [];
+    const i = Number(q.answer);
+    if (options[i] !== undefined) return String(options[i]);
+  }
+  return String(q?.answer ?? '');
+}
+
 /**
  * Pure: the cards Send Missed makes. One card per missed concept, grouped by
- * material so each group lands in the deck "Study: <material label>".
+ * material so each group lands in the deck "Study: <material label>"; a
+ * missed bank question is its own card (front the stem, back the answer,
+ * tagged study:q:<id>) in the deck "Study: <bank name>".
  * `summary` is stSessionSummary's result ({ missed: [{ conceptId, questionId }] }).
  */
-function stCardsForMissed(summary, concepts, questions, materials) {
+function stCardsForMissed(summary, concepts, questions, materials, banks = []) {
   const conceptById = new Map((concepts || []).map((c) => [Number(c.id), c]));
   const questionById = new Map((questions || []).map((q) => [Number(q.id), q]));
   const materialById = new Map((materials || []).map((m) => [Number(m.id), m]));
+  const bankById = new Map((banks || []).map((b) => [Number(b.id), b]));
   const seen = new Set();
+  const seenQuestions = new Set();
   const groups = new Map();
   for (const miss of summary?.missed || []) {
+    const missedQ = questionById.get(Number(miss.questionId)) || null;
+    if (stIsBankQuestion(missedQ)) {
+      if (seenQuestions.has(Number(missedQ.id))) continue;
+      seenQuestions.add(Number(missedQ.id));
+      const bank = bankById.get(Number(missedQ.bankId)) || null;
+      const label = String(bank?.name || missedQ.originLabel || 'Question bank');
+      const card = {
+        front: String(missedQ.stem || ''),
+        back: stQuestionAnswerText(missedQ),
+        tags: ['study', `study:q:${Number(missedQ.id)}`],
+        sourceUri: String(missedQ.sourceUri || ''),
+        sourceLabel: label,
+        sourcePage: Number(missedQ.sourcePage) > 0 ? Number(missedQ.sourcePage) : 0,
+        sourceExcerpt: String(missedQ.sourceQuote || ''),
+        recallMode: 'conceptual',
+      };
+      const rubric = Array.isArray(missedQ.rubric) ? missedQ.rubric : [];
+      if (rubric.length) card.rubric = rubric.map((pt) => ({ text: String(pt.text || ''), required: pt.required !== false }));
+      const key = `bank:${Number(missedQ.bankId) || 0}`;
+      if (!groups.has(key)) groups.set(key, { materialId: 0, bankId: Number(missedQ.bankId) || 0, deckName: `Study: ${label}`, cards: [] });
+      groups.get(key).cards.push(card);
+      continue;
+    }
     let conceptId = Number(miss.conceptId);
     if (!Number.isFinite(conceptId) || conceptId <= 0) {
       const q = questionById.get(Number(miss.questionId));
@@ -140,8 +202,8 @@ function stCardsForMissed(summary, concepts, questions, materials) {
       recallMode: 'conceptual',
     };
     if (typed) card.rubric = typed.rubric.map((pt) => ({ text: String(pt.text || ''), required: pt.required !== false }));
-    const key = Number(concept.materialId) || 0;
-    if (!groups.has(key)) groups.set(key, { materialId: key, deckName: `Study: ${label}`, cards: [] });
+    const key = `material:${Number(concept.materialId) || 0}`;
+    if (!groups.has(key)) groups.set(key, { materialId: Number(concept.materialId) || 0, deckName: `Study: ${label}`, cards: [] });
     groups.get(key).cards.push(card);
   }
   return [...groups.values()];
@@ -285,10 +347,16 @@ async function stPickWorkspaceFile(exts, placeholder) {
 
 // ─── Session start ──────────────────────────────────────────────────────────
 
-/** True when the scope holds fewer ready questions than the session size. */
+/** True when the scope holds fewer usable questions than the session size.
+ *  The count is the pipeline's own (stScopeQuestionCount), so a selection
+ *  whose page already has a bank still goes through the generating screen
+ *  when its own concepts are short. */
 async function stSessionNeedsGeneration(session) {
   const scope = stScopeOf(session);
   const size = Number(session?.size) || Number(cfg('sessionSize', 20)) || 20;
+  // A bank is drawn from as it is, never generated into.
+  if (scope.kind === 'bank') return false;
+  if (typeof stScopeQuestionCount === 'function') return (Number(await stScopeQuestionCount(scope)) || 0) < size;
   const materialIds = (scope.materialIds || []).map(Number).filter((n) => n > 0);
   const [questions, concepts] = await Promise.all([
     stListQuestions({ materialIds, includeHidden: false }),
@@ -320,19 +388,27 @@ async function stStartSession({ scope, mode, answerFormat, model, numCtx }) {
   for (const id of scope?.materialIds || []) {
     try { await stTouchMaterial(Number(id), now); } catch { /* a bank scope has no material */ }
   }
-  if (await stSessionNeedsGeneration(session)) {
-    await stOpenPane({ view: 'generating', sessionId: session.id });
-  } else {
-    await stNextDraw(session, { token: { cancelled: false }, onProgress: () => {} });
-    await stOpenPane({ view: 'session', sessionId: session.id });
+  let view = 'generating';
+  if (!(await stSessionNeedsGeneration(session))) {
+    // The bank is full enough, so the draw makes nothing. Should the pipeline
+    // start writing anyway, the run stops at once and the generating screen
+    // takes over: generation is never invisible.
+    const token = { cancelled: false };
+    let wrote = false;
+    const onProgress = () => { if (!wrote) { wrote = true; token.cancelled = true; } };
+    const drawn = await stNextDraw(session, { token, onProgress });
+    if (!wrote && Array.isArray(drawn) && drawn.length) view = 'session';
   }
+  await stOpenPane({ view, sessionId: session.id });
   _emitDataChanged();
   return session;
 }
 
 // ─── Show Source ────────────────────────────────────────────────────────────
 
-/** Open the question's source beside the session: the provider's own open, else the file at its page and quote. */
+/** Open the question's source beside the session: the provider's own open,
+ *  else the file at its page and quote. Returns the file URI opened (so the
+ *  session's Esc can close it), true for a provider's open, false for none. */
 async function stShowSource(question) {
   if (!question) return false;
   if (question.providerId && _questionRegistry) {
@@ -367,7 +443,22 @@ async function stShowSource(question) {
     console.warn('[Study] open beside failed, opening in place:', err);
     await _api.editors.openFileEditor(target, { reveal });
   }
-  return true;
+  return target;
+}
+
+/** Close the open editor showing `uri` (the source Show Source opened).
+ *  Matched by its fsPath against the editor's description, name or id. */
+async function stCloseSourceEditor(uri) {
+  const fsPath = stFsPathOf(String(uri || ''));
+  if (!fsPath || !_api?.editors) return false;
+  const norm = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
+  const want = norm(fsPath);
+  const editors = Array.isArray(_api.editors.openEditors) ? _api.editors.openEditors : [];
+  const hit = editors.find((e) => e && (norm(stFsPathOf(String(e.description || ''))) === want
+    || norm(stFsPathOf(String(e.name || ''))) === want
+    || norm(String(e.id || '')).includes(want)));
+  if (!hit || typeof _api.editors.closeEditor !== 'function') return false;
+  try { return !!(await _api.editors.closeEditor(hit.id)); } catch { return false; }
 }
 
 // ─── Flashcards hand-off ────────────────────────────────────────────────────
@@ -391,10 +482,10 @@ async function stFlashcardsAvailable() {
  * bank question), plus every question of each missed concept (the rubric on
  * a card comes from the best typed one, which the session may never have drawn).
  */
-async function stSessionContext(session) {
+async function stSessionContext(session, onlyItems = null) {
   const scope = stScopeOf(session);
   const materialIds = (scope.materialIds || []).map(Number).filter((n) => n > 0);
-  const items = await stListSessionItems(session.id);
+  const items = Array.isArray(onlyItems) ? onlyItems : await stListSessionItems(session.id);
   const questionIds = [...new Set(items.map((it) => Number(it.questionId)))];
   const [concepts, scopedQuestions] = await Promise.all([
     materialIds.length ? stListConcepts({ materialIds }) : Promise.resolve([]),
@@ -416,7 +507,8 @@ async function stSessionContext(session) {
       if (c) { concepts.push(c); conceptIds.add(Number(c.id)); }
     }
   }
-  const summary = stSessionSummary(items, concepts);
+  // stSessionSummary reads conceptId off each item; the rows carry only the question id.
+  const summary = stSessionSummary(items.map((it) => ({ ...it, conceptId: Number(it.conceptId) || Number(questionById.get(Number(it.questionId))?.conceptId) || 0 })), concepts);
   const missedConceptIds = [...new Set((summary.missed || []).map((m) => Number(m.conceptId) || Number(questionById.get(Number(m.questionId))?.conceptId) || 0).filter((n) => n > 0))];
   if (missedConceptIds.length) {
     for (const q of await stListQuestions({ conceptIds: missedConceptIds, includeHidden: false })) {
@@ -426,13 +518,32 @@ async function stSessionContext(session) {
   return { scope, items, concepts, questions, summary };
 }
 
-/** Send one card per missed concept of the session to Flashcards. Returns { count }. */
-async function stSendMissedToFlashcards(session) {
+/** The last draw of a session (the one the results screen shows). */
+function stLastDrawItems(items) {
+  const list = Array.isArray(items) ? items : [];
+  const draw = list.reduce((m, i) => Math.max(m, Number(i.draw) || 0), 0);
+  return list.filter((i) => (Number(i.draw) || 0) === draw);
+}
+
+/**
+ * The card groups Send Missed would make for `items` (default: the session's
+ * last draw, never every draw, so a Refresh never resends earlier misses).
+ * The results screen counts its button from this, so the count is what is sent.
+ */
+async function stMissedCardGroups(session, items = null) {
+  const s = session && typeof session === 'object' ? session : await stGetSession(Number(session));
+  if (!s) return [];
+  const chosen = Array.isArray(items) ? items : stLastDrawItems(await stListSessionItems(s.id));
+  const [{ summary, concepts, questions }, materials, banks] = await Promise.all([stSessionContext(s, chosen), stListMaterials(), stListBanks()]);
+  return stCardsForMissed(summary, concepts, questions, materials, banks);
+}
+
+/** Send the missed cards of the draw shown (`items`, default the last draw) to Flashcards. Returns { count }. */
+async function stSendMissedToFlashcards(session, { items = null } = {}) {
   const s = session && typeof session === 'object' ? session : await stGetSession(Number(session));
   if (!s) return { count: 0 };
   if (!(await stFlashcardsAvailable())) return { count: 0 };
-  const [{ summary, concepts, questions }, materials] = await Promise.all([stSessionContext(s), stListMaterials()]);
-  const groups = stCardsForMissed(summary, concepts, questions, materials);
+  const groups = await stMissedCardGroups(s, items);
   let count = 0;
   for (const g of groups) {
     await _api.commands.executeCommand('flashcards.addCards', { deckName: g.deckName, cards: g.cards });
@@ -441,7 +552,7 @@ async function stSendMissedToFlashcards(session) {
   return { count };
 }
 
-/** A card rated in Flashcards lowers its concept's mastery here (tag study:c:<id>). */
+/** A card rated in Flashcards lowers its concept's mastery here (tag study:c:<id>, or study:q:<id>). */
 function registerRatingListener(context) {
   if (typeof document === 'undefined' || !document.addEventListener) return;
   const handler = (ev) => {
@@ -449,11 +560,19 @@ function registerRatingListener(context) {
     const rating = Number(detail.rating);
     const tags = Array.isArray(detail.tags) ? detail.tags : String(detail.tags || '').split(',');
     for (const raw of tags) {
-      const m = /^study:c:(\d+)$/.exec(String(raw || '').trim());
+      // study:c:<concept>, or study:q:<question> for a bank question's card
+      // (its concept, when the question has one).
+      const m = /^study:([cq]):(\d+)$/.exec(String(raw || '').trim());
       if (!m) continue;
       void (async () => {
-        if (!_dbBridge) return;
-        const concept = await stLoadConcept(Number(m[1]));
+        if (!_api || !_dbBridge) return;
+        let conceptId = Number(m[2]);
+        if (m[1] === 'q') {
+          const q = await stGetQuestion(conceptId);
+          conceptId = Number(q?.conceptId) || 0;
+          if (!conceptId) return;
+        }
+        const concept = await stLoadConcept(conceptId);
         if (!concept) return;
         const mastery = stMasteryFromCardRating(Number(concept.mastery) || 0, rating);
         if (mastery === concept.mastery) return;
@@ -478,7 +597,7 @@ function registerRatingListener(context) {
 function registerQuestionProviders(context, attempt = 0) {
   _api.commands.executeCommand('questions.getRegistry')
     .then(async (registry) => {
-      if (!_dbBridge) return;
+      if (!_api || !_dbBridge) return;
       if (!registry || typeof registry.list !== 'function') throw new Error('no registry');
       _questionRegistry = registry;
       await stSyncProviders(registry);
@@ -491,7 +610,7 @@ function registerQuestionProviders(context, attempt = 0) {
       _emitDataChanged();
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) setTimeout(() => registerQuestionProviders(context, attempt + 1), 2000);
+      if (attempt < 5 && _dbBridge) stRetryLater(() => registerQuestionProviders(context, attempt + 1), 2000);
     });
 }
 
@@ -531,7 +650,7 @@ async function stQuizSelection(payload) {
 function registerSelectionAction(context, attempt = 0) {
   _api.commands.executeCommand('chat.getSelectionActionDispatcher')
     .then((dispatcher) => {
-      if (!_dbBridge) return;
+      if (!_api || !_dbBridge) return;
       if (!dispatcher || typeof dispatcher.registerHandler !== 'function') throw new Error('no dispatcher');
       context.subscriptions.push(dispatcher.registerHandler({
         actionId: 'quiz-selection',
@@ -541,7 +660,7 @@ function registerSelectionAction(context, attempt = 0) {
       }));
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) setTimeout(() => registerSelectionAction(context, attempt + 1), 2000);
+      if (attempt < 5 && _dbBridge) stRetryLater(() => registerSelectionAction(context, attempt + 1), 2000);
     });
 }
 
@@ -577,8 +696,26 @@ async function stCmdStudyDocument(arg) {
   return material;
 }
 
-async function stCmdStudyTogether() {
-  let ids = stPicked();
+/** A command's optional file argument: a path or file URI string, or
+ *  `{ fsPath }` / `{ uri }`. '' when none was given. */
+function stPathArg(arg) {
+  let raw = '';
+  if (typeof arg === 'string') raw = arg.trim();
+  else if (arg && typeof arg === 'object') raw = String(arg.fsPath || arg.uri || arg.path || '').trim();
+  if (!raw) return '';
+  const p = stFsPathOf(raw);
+  // A workspace-relative path resolves against the workspace root.
+  if (/^([a-zA-Z]:[\\/]|[\\/])/.test(p)) return p;
+  const root = stWorkspaceRoot();
+  if (!root) return p;
+  const sep = root.includes('\\') ? '\\' : '/';
+  return root.replace(/[\\/]+$/, '') + sep + p.replace(/^\.[\\/]/, '');
+}
+
+/** `ids` (optional) are material ids; else the sidebar's pick; else every material. */
+async function stCmdStudyTogether(ids0) {
+  let ids = Array.isArray(ids0) ? ids0.map(Number).filter((n) => Number.isFinite(n) && n > 0) : [];
+  if (!ids.length) ids = stPicked();
   if (!ids.length) ids = (await stListMaterials()).map((m) => m.id);
   if (!ids.length) {
     await _api.window.showInformationMessage('Add a material first.');
@@ -594,22 +731,22 @@ async function stCmdWeakSpots() {
     return null;
   }
   return stStartSession({
-    scope: { kind: 'weak', materialIds: materials.map((m) => m.id), label: 'Weak spots' },
+    scope: { kind: 'weak', materialIds: materials.map((m) => m.id), label: 'Weak Spots' },
     mode: 'weak',
     ...stSessionPrefs(null),
   });
 }
 
-async function stCmdAddMaterial() {
-  const fsPath = await stPickWorkspacePdf();
+async function stCmdAddMaterial(arg) {
+  const fsPath = stPathArg(arg) || await stPickWorkspacePdf();
   if (!fsPath) return null;
   const material = await stIngestPdf(fsPath);
   await stOpenSetup({ materialIds: [material.id] });
   return material;
 }
 
-async function stCmdImportQuestions() {
-  const fsPath = await stPickWorkspaceFile(ST_IMPORT_EXTS, 'Import questions from which file?');
+async function stCmdImportQuestions(arg) {
+  const fsPath = stPathArg(arg) || await stPickWorkspaceFile(ST_IMPORT_EXTS, 'Import questions from which file?');
   if (!fsPath) return null;
   const result = await stImportQuestionFile(fsPath);
   const n = Number(result?.inserted) || 0;
@@ -618,8 +755,8 @@ async function stCmdImportQuestions() {
   return result;
 }
 
-async function stCmdImportReport() {
-  const fsPath = await stPickWorkspaceFile(['.pdf'], 'Which examiner\'s report?');
+async function stCmdImportReport(arg) {
+  const fsPath = stPathArg(arg) || await stPickWorkspaceFile(['.pdf'], 'Which examiner\'s report?');
   if (!fsPath) return null;
   const result = await stImportExaminerReport(fsPath);
   const countOf = (v) => (Array.isArray(v) ? v.length : Number(v) || 0);
@@ -644,11 +781,13 @@ function registerCommands(context) {
       }
       return stQuizSelection(payload);
     }],
-    ['study.studyTogether', () => stCmdStudyTogether()],
+    // Each takes an optional argument (material ids; a path or file URI) so
+    // the chat and scripts can call them without the quick pick.
+    ['study.studyTogether', (ids) => stCmdStudyTogether(ids)],
     ['study.weakSpots', () => stCmdWeakSpots()],
-    ['study.addMaterial', () => stCmdAddMaterial()],
-    ['study.importQuestions', () => stCmdImportQuestions()],
-    ['study.importReport', () => stCmdImportReport()],
+    ['study.addMaterial', (arg) => stCmdAddMaterial(arg)],
+    ['study.importQuestions', (arg) => stCmdImportQuestions(arg)],
+    ['study.importReport', (arg) => stCmdImportReport(arg)],
   ];
   for (const [id, handler] of cmds) {
     context.subscriptions.push(_api.commands.registerCommand(id, handler));
@@ -694,7 +833,7 @@ function registerDashboardWidget(context) {
   try {
     context.subscriptions.push(_api.dashboard.registerWidgetType({
       typeId: 'parallx-community.study.weak-spots',
-      displayName: 'Weak spots',
+      displayName: 'Weak Spots',
       description: 'The concepts you keep missing, by material, each row a door into a session on it.',
       icon: 'px-study',
       category: 'query',
@@ -736,10 +875,12 @@ function registerDashboardWidget(context) {
             row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
             root.appendChild(row);
           }
-          const foot = el('button', 'st-widget__foot', `Study the weakest ${data.size || 20}`);
-          foot.type = 'button';
-          foot.addEventListener('click', () => void _api.commands.executeCommand('study.weakSpots'));
-          root.appendChild(foot);
+          const foot = _api.ui.createButton(root, {
+            label: `Study the Weakest ${data.size || 20}`, kind: 'ghost', size: 'sm',
+            title: 'One session over the weakest concepts across every material.',
+            onClick: () => void _api.commands.executeCommand('study.weakSpots'),
+          });
+          foot.classList.add('st-widget__foot');
         };
         paint(ctx.cachedOutput);
         const sub = typeof ctx.onDidChangeConfig === 'function' ? ctx.onDidChangeConfig(() => ctx.requestRefresh()) : null;
@@ -874,7 +1015,7 @@ function registerChatTools(context) {
         const scope = pages
           ? { kind: 'pages', materialIds: [material.id], pageFrom: pages.from, pageTo: pages.to, label: `${material.label} · pages ${pages.from} to ${pages.to}` }
           : mode === 'weak'
-            ? { kind: 'weak', materialIds: [material.id], label: `${material.label} · weak spots` }
+            ? { kind: 'weak', materialIds: [material.id], label: `${material.label} · Weak Spots` }
             : { kind: 'document', materialIds: [material.id], label: material.label };
         const session = await stStartSession({ scope, mode, ...prefs });
         const where = pages ? ` (pages ${pages.from} to ${pages.to})` : '';
@@ -990,7 +1131,7 @@ async function stDayLoads(fromMs, toMs) {
 function registerPlannerDayLoads(context, attempt = 0) {
   _api.commands.executeCommand('planner.getRegistry')
     .then((registry) => {
-      if (!_dbBridge) return;
+      if (!_api || !_dbBridge) return;
       if (!registry) throw new Error('no registry');
       if (typeof registry.registerDayLoadProvider !== 'function') return;
       context.subscriptions.push(registry.registerDayLoadProvider({
@@ -1000,6 +1141,6 @@ function registerPlannerDayLoads(context, attempt = 0) {
       }));
     })
     .catch(() => {
-      if (attempt < 5 && _dbBridge) setTimeout(() => registerPlannerDayLoads(context, attempt + 1), 2000);
+      if (attempt < 5 && _dbBridge) stRetryLater(() => registerPlannerDayLoads(context, attempt + 1), 2000);
     });
 }

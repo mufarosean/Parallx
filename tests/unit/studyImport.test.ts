@@ -257,6 +257,42 @@ describe('stParseExaminerReport', () => {
   });
 });
 
+describe('stParseExaminerReport: real-world headings', () => {
+  it('reads curly apostrophes in EXAMINER\u2019S REPORT and Examiner\u2019s Comments as headings', () => {
+    const r = stParseExaminerReport([
+      'Exam 7 \u201cFall 2019\u201d',
+      'QUESTION 3\nSample Answer\nThe tail factor is fitted from the curve.\nEXAMINER\u2019S REPORT\nCandidates often forgot the tail.',
+      'QUESTION 4\nSample Answer\nThe ELR is one for all years.\nExaminer\u2019s Comments\nSome used a different ELR per year.',
+    ]);
+    expect(r.sitting).toBe('2019 Fall');
+    expect(r.questions.map((q: { number: number; commonErrors: string }) => [q.number, q.commonErrors])).toEqual([
+      [3, 'Candidates often forgot the tail.'],
+      [4, 'Some used a different ELR per year.'],
+    ]);
+  });
+
+  it('a question starts at QUESTION n, Question n or a bare Qn, never at "q1 = ..." or "Q4 losses"', () => {
+    const r = stParseExaminerReport([
+      'Exam 7 Spring 2021',
+      [
+        'Q2',
+        'Sample Answer',
+        'q1 = 0.65 times the premium',
+        'Q4 losses were developed to ultimate',
+        'The answer continues here.',
+        'Q5(b):',
+        'Sample Answer',
+        'Part b answer.',
+        'question 6',
+        'Sample Answer',
+        'Six.',
+      ].join('\n'),
+    ]);
+    expect(r.questions.map((q: { number: number; part: string }) => [q.number, q.part])).toEqual([[2, ''], [5, 'b'], [6, '']]);
+    expect(r.questions[0].sampleAnswer).toBe('q1 = 0.65 times the premium\nQ4 losses were developed to ultimate\nThe answer continues here.');
+  });
+});
+
 describe('stMatchReportToQuestions', () => {
   const report = stParseExaminerReport(REPORT_PAGES);
   const questions = [
@@ -271,23 +307,37 @@ describe('stMatchReportToQuestions', () => {
     { id: 9, exam: 'Exam 7', sitting: '2019 Fall', number: 5, part: '' },
   ];
 
-  it('matches by exam, sitting, number and part, through fields or the origin label', () => {
+  it('matches by exam, sitting and number, the part when both name one, through fields or the origin label', () => {
     const matches = stMatchReportToQuestions(report, questions);
     const ids = (n: number, p: string) => matches.filter((m: { entry: { number: number; part: string } }) => m.entry.number === n && m.entry.part === p).map((m: { questionId: number }) => m.questionId);
-    expect(ids(5, 'a')).toEqual([1]);
-    expect(ids(5, 'b')).toEqual([2]);
+    // A whole Q5 (no part) is named by each of the report's parts.
+    expect(ids(5, 'a')).toEqual([1, 9]);
+    expect(ids(5, 'b')).toEqual([2, 9]);
     expect(ids(12, 'b')).toEqual([4]);
-    expect(ids(13, '')).toEqual([7, 8]);
+    expect(ids(13, '')).toEqual([7]);
     expect(matches.every((m: { entry: unknown }) => m.entry && typeof m.entry === 'object')).toBe(true);
-    expect(matches.map((m: { questionId: number }) => m.questionId)).not.toContain(3);
-    expect(matches.map((m: { questionId: number }) => m.questionId)).not.toContain(5);
-    expect(matches.map((m: { questionId: number }) => m.questionId)).not.toContain(6);
-    expect(matches.map((m: { questionId: number }) => m.questionId)).not.toContain(9);
+    const all = matches.map((m: { questionId: number }) => m.questionId);
+    expect(all).not.toContain(3); // part c
+    expect(all).not.toContain(5); // another sitting
+    expect(all).not.toContain(6); // another exam
+    expect(all).not.toContain(8); // no exam or sitting: never this report's Q13
   });
 
-  it('a report without exam or sitting matches on number and part alone', () => {
+  it('reads the keys from providerRef JSON, as stored for imported and provider questions', () => {
+    const stored = [
+      { id: 21, providerRef: JSON.stringify({ exam: 'CAS Exam 7', sitting: 'Fall 2019', number: '5', part: 'b', paper: 'Clark' }) },
+      { id: 22, providerRef: JSON.stringify({ ref: 'ws-17', exam: 'Exam 7', sitting: '2019 Fall', number: '13' }) },
+      { id: 23, providerRef: 'ws-18', exam: 'Exam 7', sitting: '2019 Fall', number: 12, part: 'b' },
+      { id: 24, providerRef: JSON.stringify({ number: '13' }) },
+    ];
+    const ids = stMatchReportToQuestions(report, stored).map((m: { questionId: number }) => m.questionId);
+    expect(ids.sort()).toEqual([21, 22, 23]);
+  });
+
+  it('a report or a question without exam or sitting never matches', () => {
     const bare = { exam: '', sitting: '', questions: [{ number: 13, part: '', sampleAnswer: 's', commonErrors: '', page: 1 }] };
-    expect(stMatchReportToQuestions(bare, questions).map((m: { questionId: number }) => m.questionId)).toEqual([5, 6, 7, 8]);
+    expect(stMatchReportToQuestions(bare, questions)).toEqual([]);
+    expect(stMatchReportToQuestions({ exam: 'Exam 7', sitting: '', questions: bare.questions }, questions)).toEqual([]);
     expect(stMatchReportToQuestions({ questions: [] }, questions)).toEqual([]);
     expect(stMatchReportToQuestions(report, [])).toEqual([]);
   });

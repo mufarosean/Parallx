@@ -11,7 +11,12 @@
 // the score, numeric parsing with commas and percents, cloze folding, and
 // question validation.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
 // @ts-expect-error — JS module with no types
 import { __testables } from '../../ext/study/main.js';
 
@@ -517,15 +522,15 @@ describe('stHeadingsFromPages', () => {
 });
 
 describe('stSectionsFromOutline', () => {
-  it('turns an outline into ranges, nested entries inside their parent', () => {
+  it('turns an outline into ranges, nested entries inside their parent (the extractor\'s level 0 is the top)', () => {
     const outline = [
-      { title: 'Introduction', page: 2, level: 1 },
-      { title: 'The Growth Curve', page: 3, level: 1 },
-      { title: 'The Weibull Alternative', page: 3, level: 2 },
-      { title: 'The Two Methods', page: 4, level: 1 },
-      { title: 'LDF Method', page: 4, level: 2 },
-      { title: 'Cape Cod Method', page: 5, level: 2 },
-      { title: 'Conclusion', page: 7, level: 1 },
+      { title: 'Introduction', page: 2, level: 0 },
+      { title: 'The Growth Curve', page: 3, level: 0 },
+      { title: 'The Weibull Alternative', page: 3, level: 1 },
+      { title: 'The Two Methods', page: 4, level: 0 },
+      { title: 'LDF Method', page: 4, level: 1 },
+      { title: 'Cape Cod Method', page: 5, level: 1 },
+      { title: 'Conclusion', page: 7, level: 0 },
     ];
     const sections = stSectionsFromOutline(outline, 8);
     expect(sections).toEqual([
@@ -540,7 +545,7 @@ describe('stSectionsFromOutline', () => {
     ]);
   });
   it('drops entries off the page range or without a title, sorts by page, and is empty without pages', () => {
-    const out = stSectionsFromOutline([{ title: 'B', page: 5, level: 1 }, { title: '', page: 2 }, { title: 'Z', page: 99 }, { title: 'A', page: 1 }], 6);
+    const out = stSectionsFromOutline([{ title: 'B', page: 5, level: 0 }, { title: '', page: 2 }, { title: 'Z', page: 99 }, { title: 'A', page: 1 }], 6);
     expect(out).toEqual([{ title: 'A', pageFrom: 1, pageTo: 4, level: 1 }, { title: 'B', pageFrom: 5, pageTo: 6, level: 1 }]);
     expect(stSectionsFromOutline([{ title: 'A', page: 1 }], 0)).toEqual([]);
     expect(stSectionsFromOutline(null, 5)).toEqual([]);
@@ -796,5 +801,533 @@ describe('header helpers', () => {
     bus.emit('data', 2);
     expect(seen).toEqual([['a', 1], ['b', 1]]);
     bus.emit('never-registered', 1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// The pipeline (20-data.js, 30-ai.js) against a fake api: a real SQLite
+// database with the Study migration (foreign keys on, as the app runs it), a
+// scripted model and a fake PDF extractor. The functions are reached by
+// evaluating the generated main.js in a fresh scope per harness, so module
+// state (text cache, selection memory, seen providers) starts clean, and a
+// second harness over the same database stands in for a restart.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const STUDY_NAMES = [
+  '__testables',
+  'stHeadingsFromPages', 'stSectionsFromOutline', 'stPagePartition', 'stSpreadOrder', 'stMaterialLabelFor',
+  'stQuestionAnswerable', 'stQuestionKeys', 'stProviderRefOf', 'stBankConceptTitle',
+  'stIngestPdf', 'stListMaterials', 'stGetMaterial', 'stListSections', 'stListConcepts', 'stConceptsForSections', 'stInsertConcepts',
+  'stListQuestions', 'stGetQuestion', 'stInsertQuestions', 'stCreateSession', 'stGetSession', 'stAddSessionItems', 'stListSessionItems',
+  'stLogAnswer', 'stListAnswers', 'stListBanks', 'stImportQuestionFile', 'stImportExaminerReport', 'stSyncProviders',
+  'stEnsureBank', 'stNextDraw', 'stGenerateQuestions', 'stGradeTyped', 'stScopeQuestionCount', 'stScopeStats', 'stScopeConcepts',
+  'stRunNumericCheck', 'stNumericSolutionSafe', 'stNumericScript', 'ST_NUMERIC_WRAPPER',
+];
+
+type Study = Record<string, any>;
+
+/** The generated bundle, evaluated in a fresh module scope; returns the named functions. */
+function loadStudy(): Study {
+  const src = readFileSync(join(__dirname, '../../ext/study/main.js'), 'utf8').replace(/^export\s+(?=(?:async\s+)?function|const|let)/gm, '');
+  return new Function(`'use strict';\n${src}\nreturn { ${STUDY_NAMES.join(', ')} };`)() as Study;
+}
+
+const MIGRATION = readFileSync(join(__dirname, '../../ext/study/db/migrations/study_001_initial.sql'), 'utf8');
+
+function sqliteBridge(sql: DatabaseSync) {
+  const wrap = (fn: () => object) => { try { return { error: null, ...fn() }; } catch (e: any) { return { error: { message: e.message } }; } };
+  return {
+    get: async (q: string, p: unknown[] = []) => wrap(() => ({ row: sql.prepare(q).get(...(p as any[])) ?? null })),
+    all: async (q: string, p: unknown[] = []) => wrap(() => ({ rows: sql.prepare(q).all(...(p as any[])) })),
+    run: async (q: string, p: unknown[] = []) => wrap(() => { const r = sql.prepare(q).run(...(p as any[])); return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) }; }),
+  };
+}
+
+/** The first line of a [Page N] block that is a sentence (not a heading): the quote fixtures put there. */
+function quoteOf(block: string) {
+  return block.split('\n').map((l) => l.trim()).find((l) => l.length > 20 && !/^\d+(\.\d+)*\.?\s/.test(l)) || '';
+}
+function pageBlocks(text: string) {
+  const out = new Map<number, string>();
+  const re = /\[Page (\d+)\]\n([\s\S]*?)(?=\n\n\[Page \d+\]|$)/g;
+  let m;
+  while ((m = re.exec(text))) out.set(Number(m[1]), m[2]);
+  return out;
+}
+
+/** A scripted model: answers each Study prompt by its system text, quoting the material verbatim. */
+function scriptedModel(system: string, user: string): string {
+  if (system.startsWith('You read a passage')) {
+    const concepts = [...pageBlocks(user.slice(user.indexOf('--- MATERIAL ---')))].map(([page, block]) => {
+      const heading = block.split('\n')[0].trim();
+      const quote = quoteOf(block);
+      const title = /^\d+(\.\d+)*\.?\s/.test(heading) ? heading.replace(/^\d+(\.\d+)*\.?\s+/, '') : quote.split(' ').slice(0, 4).join(' ');
+      return { title, summary: quote, page, quote, quantitative: /premium/.test(block), term: /Cape Cod/.test(block) ? 'Cape Cod' : '', essayWorthy: false, hasFormula: false };
+    }).filter((c) => c.quote);
+    return JSON.stringify({ concepts });
+  }
+  if (system.startsWith('You write questions')) {
+    const blocks = pageBlocks(user.slice(user.indexOf('--- MATERIAL ---')));
+    const choices = Number((/have (\d) options/.exec(user) || [])[1]) || 4;
+    const questions: any[] = [];
+    for (const line of user.split('\n')) {
+      const m = /^- id (\d+): (.*) Taught on page (\d+)\. Write: (.*)\.$/.exec(line);
+      if (!m) continue;
+      const [, id, title, page, asks] = m;
+      const quote = quoteOf(blocks.get(Number(page)) || '');
+      for (const ask of asks.split(', ')) {
+        const [n, format] = ask.split(' ');
+        for (let k = 0; k < Number(n); k++) {
+          const base = { concept: Number(id), format, quote, page: Number(page), explanation: 'As the text says.' };
+          if (format === 'mc') questions.push({ ...base, stem: `Which reading of ${title} is right (${k})?`, options: [quote, 'The opposite reading one', 'The opposite reading two', 'The opposite reading three', 'The opposite reading four'].slice(0, choices), answer: 0 });
+          else if (format === 'short' || format === 'essay') questions.push({ ...base, stem: `State ${title} (${k}).`, answer: quote, rubric: [{ text: quote, required: true }] });
+          else if (format === 'numeric') questions.push({ ...base, stem: `Compute the expected loss (${k}).`, inputs: { premium: 1000, elr: 0.65 }, solutionPy: "def solve(i):\n    return i['premium'] * i['elr']", expected: 650, units: 'dollars' });
+          else if (format === 'cloze') questions.push({ ...base, stem: `The ____ method fits one ratio (${k}).`, answer: 'Cape Cod', aliases: ['Cape-Cod'] });
+        }
+      }
+    }
+    return JSON.stringify({ questions });
+  }
+  if (system.startsWith('You check whether a quotation')) {
+    const quotation = (/Quotation:\n(.*)\n/.exec(user) || [])[1] || '';
+    return JSON.stringify({ settles: quotation.trim().length > 0, reason: 'r' });
+  }
+  if (system.startsWith('You check one option')) return JSON.stringify({ defensible: false, reason: 'r' });
+  if (system.startsWith('You reduce a model answer')) return JSON.stringify({ rubric: [{ text: 'names the right method', required: true }, { text: 'gives the reason', required: false }], contradictions: [] });
+  if (system.startsWith('You mark')) return JSON.stringify({ points: [{ status: 'hit' }, { status: 'hit' }], contradiction: false, note: '' });
+  return '{}';
+}
+
+/** Page texts for a PDF: a numbered heading, then the quote line, then filler, per page. */
+function paperPages(titles: string[], { headings = true } = {}) {
+  return titles.map((t, i) => `${headings ? `${i + 1}. ${t}\n` : ''}The ${t.toLowerCase()} is set out on this page in plain words for study ${i + 1}.\nFurther discussion follows with enough words to make a page of text worth reading.`);
+}
+
+function harness(opts: { conf?: Record<string, unknown>; sql?: DatabaseSync; pdfs?: Record<string, any>; files?: Record<string, string>; model?: (s: string, u: string) => string } = {}) {
+  const S = loadStudy();
+  const sql = opts.sql || (() => { const d = new DatabaseSync(':memory:'); d.exec('PRAGMA foreign_keys = ON'); d.exec(MIGRATION); return d; })();
+  const calls: { system: string; user: string }[] = [];
+  const conf = { checkNumeric: false, ...(opts.conf || {}) };
+  const model = opts.model || scriptedModel;
+  const fsLog: { writes: string[]; deletes: string[]; written: Record<string, string> } = { writes: [], deletes: [], written: {} };
+  const api: any = {
+    database: sqliteBridge(sql),
+    workspace: {
+      getConfiguration: () => ({ get: (k: string, f: unknown) => (k in conf ? (conf as any)[k] : f) }),
+      workspaceFolders: [{ uri: 'file:///ws', name: 'ws' }],
+      fs: {
+        readFile: async (uri: string) => ({ content: (opts.files || {})[uri] ?? '' }),
+        writeFile: async (uri: string, content: string) => { fsLog.writes.push(uri); fsLog.written[uri] = content; },
+        delete: async (uri: string) => { fsLog.deletes.push(uri); },
+        exists: async () => true,
+        mkdir: async () => {},
+      },
+    },
+    lm: {
+      getActiveModel: async () => 'fake-model',
+      getModels: async () => [{ id: 'fake-model' }],
+      getModelInfo: async () => ({ contextLength: 32768 }),
+      sendChatRequest: (_m: string, messages: { role: string; content: string }[]) => {
+        const system = messages[0].content;
+        const user = messages[1].content;
+        calls.push({ system, user });
+        const out = model(system, user);
+        return (async function* () { yield { content: out }; })();
+      },
+    },
+  };
+  S.__testables.__setApi(api);
+  (globalThis as any).parallxElectron = {
+    document: {
+      extractText: async (path: string) => {
+        const pdf = (opts.pdfs || {})[path];
+        if (!pdf) return { error: { message: 'missing' } };
+        return { text: pdf.pages.join('\n\n'), pageTexts: pdf.pages, metadata: { pageCount: pdf.pages.length, title: pdf.title || '' }, outline: pdf.outline || [] };
+      },
+    },
+  };
+  const kinds = () => calls.map((c) => c.system.slice(0, 18));
+  const count = (prefix: string) => calls.filter((c) => c.system.startsWith(prefix)).length;
+  return { S, sql, api, calls, kinds, count, fsLog };
+}
+
+afterEach(() => { delete (globalThis as any).parallxElectron; });
+
+const CLARK_TITLES = ['Loglogistic Growth Curve', 'Weibull Tail Behaviour', 'Cape Cod Expected Ratio', 'Development Factor Method', 'Process Variance Scale', 'Information Matrix Derivation'];
+const MACK_TITLES = ['Chain Ladder Assumptions', 'Independence Of Years', 'Mean Squared Error', 'Estimation Error Term'];
+
+describe('generation keeps questions (one shape after validation)', () => {
+  it('maps a document and keeps questions whose quote, page and checks come from the validated question', async () => {
+    const h = harness({ pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } } });
+    const material = await h.S.stIngestPdf('/ws/clark.pdf');
+    const res = await h.S.stEnsureBank({ kind: 'document', materialIds: [material.id], label: 'Clark' }, {});
+    expect(res.kept).toBeGreaterThan(0);
+    const qs = await h.S.stListQuestions({ materialIds: [material.id] });
+    expect(qs.length).toBe(res.kept);
+    const pages = paperPages(CLARK_TITLES);
+    for (const q of qs) {
+      expect(q.sourceQuote.length).toBeGreaterThan(20);
+      expect(pages[q.sourcePage - 1]).toContain(q.sourceQuote);
+      expect(q.checks).toMatchObject({ anchor: true, support: true });
+      if (q.format === 'mc') expect(q.checks.distractor).toBe(true);
+    }
+    // Every support check was shown the quote (the bug: an empty quotation).
+    expect(h.calls.filter((c) => c.system.startsWith('You check whether')).every((c) => !/Quotation:\n\n/.test(c.user))).toBe(true);
+  });
+
+  it('keeps numeric questions with their solution, and cloze aliases', async () => {
+    const pages = ['1. Expected Loss\nThe expected loss is the premium times the expected loss ratio, so a premium of 1000 at 0.65 gives 650.\nMore words fill this page out for the extractor.', '2. Cape Cod Method\nThe Cape Cod method fits one expected loss ratio for every year of the triangle.\nMore words fill this page out for the extractor as well.'];
+    const h = harness({ pdfs: { '/ws/el.pdf': { pages } } });
+    const material = await h.S.stIngestPdf('/ws/el.pdf');
+    await h.S.stEnsureBank({ kind: 'document', materialIds: [material.id], label: 'EL' }, {});
+    const concepts = await h.S.stListConcepts({ materialIds: [material.id] });
+    const gen = await h.S.stGenerateQuestions(material, { conceptIds: concepts.map((c: any) => c.id), formats: ['numeric', 'cloze'], pythonAvailable: true });
+    const numeric = gen.kept.find((q: any) => q.format === 'numeric');
+    expect(numeric.numeric).toMatchObject({ solutionPy: "def solve(i):\n    return i['premium'] * i['elr']", expected: 650, units: 'dollars', inputs: { premium: 1000, elr: 0.65 } });
+    expect(numeric.answer).toBe('650');
+    // The document run made the cloze questions (the concept names a term); numeric needed Python, given here.
+    const cloze = (await h.S.stListQuestions({ materialIds: [material.id], formats: ['cloze'] }))[0];
+    expect(cloze).toMatchObject({ answer: 'Cape Cod', options: ['Cape-Cod'] });
+    expect(pages[cloze.sourcePage - 1]).toContain(cloze.sourceQuote);
+  });
+});
+
+describe('stEnsureBank: lazy, round-robin, progress', () => {
+  it('Study Together over two fresh PDFs asks both, maps only what it needs, and reports monotone progress with sessionId and available', async () => {
+    const h = harness({ pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) }, '/ws/mack.pdf': { pages: paperPages(MACK_TITLES) } } });
+    const a = await h.S.stIngestPdf('/ws/clark.pdf');
+    const b = await h.S.stIngestPdf('/ws/mack.pdf');
+    const progress: any[] = [];
+    const res = await h.S.stEnsureBank({ kind: 'materials', materialIds: [a.id, b.id], label: 'Both' }, { size: 6, untilSize: true, sessionId: 77, onProgress: (p: any) => progress.push(p) });
+    const qs = await h.S.stListQuestions({ materialIds: [a.id, b.id] });
+    expect(new Set(qs.map((q: any) => q.materialId))).toEqual(new Set([a.id, b.id]));
+    expect(res.available).toBeGreaterThanOrEqual(6);
+    // Lazy: not every section of both papers was mapped before stopping.
+    const mapped = [...(await h.S.stListSections(a.id)), ...(await h.S.stListSections(b.id))].filter((s: any) => s.mappedAt > 0);
+    expect(mapped.length).toBeLessThan(CLARK_TITLES.length + MACK_TITLES.length);
+    expect(progress.length).toBeGreaterThan(3);
+    for (const p of progress) {
+      expect(p.sessionId).toBe(77);
+      expect(typeof p.available).toBe('number');
+      expect(p.total).toBe(6);
+    }
+    for (let i = 1; i < progress.length; i++) expect(progress[i].done).toBeGreaterThanOrEqual(progress[i - 1].done);
+    expect(progress[progress.length - 1]).toMatchObject({ phase: 'done', kept: res.kept });
+  });
+
+  it('a Document session spreads its first questions across the document, and full coverage maps every page once', async () => {
+    const titles = [...CLARK_TITLES, ...MACK_TITLES];
+    const h = harness({ pdfs: { '/ws/long.pdf': { pages: paperPages(titles) } } });
+    const m = await h.S.stIngestPdf('/ws/long.pdf');
+    await h.S.stEnsureBank({ kind: 'document', materialIds: [m.id], label: 'Long' }, { size: 4, untilSize: true });
+    const pages = (await h.S.stListQuestions({ materialIds: [m.id] })).map((q: any) => q.sourcePage);
+    expect(Math.max(...pages) - Math.min(...pages)).toBeGreaterThanOrEqual(titles.length / 2);
+    await h.S.stEnsureBank({ kind: 'document', materialIds: [m.id], label: 'Long' }, {});
+    const mapCalls = h.calls.filter((c) => c.system.startsWith('You read a passage'));
+    const mappedPages = mapCalls.flatMap((c) => [...pageBlocks(c.user.slice(c.user.indexOf('--- MATERIAL ---'))).keys()]);
+    expect(mappedPages.sort((x, y) => x - y)).toEqual(titles.map((_, i) => i + 1));
+    expect((await h.S.stListSections(m.id)).every((s: any) => s.mappedAt > 0)).toBe(true);
+  });
+});
+
+describe('sections: outline levels, nesting, running headers', () => {
+  it('nested chapters map each page once, under the deepest section, and a chapter scope takes its subsections', async () => {
+    const pages = paperPages(['Introduction Overview', 'Methods Survey', 'Development Factor Method', 'Cape Cod Expected Ratio', 'Cape Cod Credibility Weights', 'Conclusion Remarks'], { headings: false });
+    const outline = [
+      { title: 'Introduction', page: 1, level: 0 },
+      { title: 'Methods', page: 2, level: 0 },
+      { title: 'LDF', page: 3, level: 1 },
+      { title: 'Cape Cod', page: 4, level: 1 },
+      { title: 'Conclusion', page: 6, level: 0 },
+    ];
+    const h = harness({ pdfs: { '/ws/o.pdf': { pages, outline } } });
+    const m = await h.S.stIngestPdf('/ws/o.pdf');
+    const sections = await h.S.stListSections(m.id);
+    const id = (t: string) => sections.find((s: any) => s.title === t).id;
+    expect(sections.map((s: any) => [s.title, s.pageFrom, s.pageTo])).toEqual([
+      ['Introduction', 1, 1], ['Methods', 2, 5], ['LDF', 3, 3], ['Cape Cod', 4, 5], ['Conclusion', 6, 6],
+    ]);
+    await h.S.stEnsureBank({ kind: 'chapter', materialIds: [m.id], sectionIds: [id('Methods')], label: 'Methods' }, {});
+    const concepts = await h.S.stListConcepts({ materialIds: [m.id] });
+    expect(concepts.map((c: any) => [c.page, c.sectionId])).toEqual([[2, id('Methods')], [3, id('LDF')], [4, id('Cape Cod')], [5, id('Cape Cod')]].sort());
+    const mapped = h.calls.filter((c) => c.system.startsWith('You read a passage')).flatMap((c) => [...pageBlocks(c.user.slice(c.user.indexOf('--- MATERIAL ---'))).keys()]);
+    expect(mapped.sort()).toEqual([2, 3, 4, 5]);
+    const inChapter = await h.S.stScopeConcepts({ kind: 'chapter', materialIds: [m.id], sectionIds: [id('Methods')] });
+    expect(inChapter.map((c: any) => c.page).sort()).toEqual([2, 3, 4, 5]);
+    const inSub = await h.S.stScopeConcepts({ kind: 'chapter', materialIds: [m.id], sectionIds: [id('Cape Cod')] });
+    expect(inSub.map((c: any) => c.page).sort()).toEqual([4, 5]);
+    expect(await h.S.stScopeQuestionCount({ kind: 'chapter', materialIds: [m.id], sectionIds: [id('Cape Cod')] })).toBeGreaterThan(0);
+  });
+
+  it('partitions pages to the deepest section and spreads an order over the range', () => {
+    const S = loadStudy();
+    const secs = [{ pageFrom: 1, pageTo: 1, level: 1 }, { pageFrom: 2, pageTo: 5, level: 1 }, { pageFrom: 3, pageTo: 3, level: 2 }, { pageFrom: 4, pageTo: 5, level: 2 }];
+    expect(S.stPagePartition(secs, 5)).toEqual([{ index: 0, pageFrom: 1, pageTo: 1 }, { index: 1, pageFrom: 2, pageTo: 2 }, { index: 2, pageFrom: 3, pageTo: 3 }, { index: 3, pageFrom: 4, pageTo: 5 }]);
+    expect(S.stSpreadOrder(5)).toEqual([0, 2, 1, 3, 4]);
+    expect(S.stSpreadOrder(8).slice(0, 4)).toEqual([0, 4, 2, 6]);
+    expect(S.stSpreadOrder(0)).toEqual([]);
+  });
+
+  it('a running chapter header with "(continued)" is one section, not one per page', () => {
+    const S = loadStudy();
+    const pages = [
+      '2. Growth Curves and the LDF Method\nThe growth curve G(x) describes emergence.',
+      '2. Growth Curves and the LDF Method (continued)\nThe loglogistic curve is common.',
+      '2. Growth Curves and the LDF Method (continued)\n2.1 The Weibull Curve\nThe Weibull curve has a thinner tail.',
+      '3. The Cape Cod Method\nOne expected loss ratio for every year.',
+      "3. The Cape Cod Method (cont'd)\nFewer parameters.",
+      '3. The Cape Cod Method (cont.)\nA smaller parameter variance.',
+    ];
+    expect(S.stHeadingsFromPages(pages).map((s: any) => [s.title, s.pageFrom, s.pageTo, s.level])).toEqual([
+      ['2. Growth Curves and the LDF Method', 1, 3, 1],
+      ['2.1 The Weibull Curve', 3, 3, 2],
+      ['3. The Cape Cod Method', 4, 6, 1],
+    ]);
+  });
+
+  it('ignores a constant running header that opens most pages', () => {
+    const S = loadStudy();
+    const pages = [
+      'Chapter 7 Reserving Notes\n7.1 Chain Ladder\nText about the chain ladder.',
+      'Chapter 7 Reserving Notes\nMore about the chain ladder.',
+      'Chapter 7 Reserving Notes\n7.2 Bornhuetter Ferguson\nText about the method.',
+      'Chapter 7 Reserving Notes\nMore text.',
+    ];
+    expect(S.stHeadingsFromPages(pages).map((s: any) => [s.title, s.pageFrom, s.pageTo])).toEqual([
+      ['7.1 Chain Ladder', 1, 2],
+      ['7.2 Bornhuetter Ferguson', 3, 4],
+    ]);
+  });
+});
+
+describe('banks are studiable', () => {
+  const FILE = [
+    '## One', 'Q: Explain why the Cape Cod method has fewer parameters than the LDF method.', 'A: It fits one expected loss ratio for every year instead of an ultimate per year.', 'Exam: CAS Exam 7', 'Sitting: 2019 Fall', 'Number: 5', 'Part: b',
+    '---', '## Two', 'Q: State the three chain ladder assumptions.', 'A: Factors, independence, variance.', 'Points: factor assumption | independence | variance', 'Kind: short',
+    '---', '## Three', 'Q: Discuss the reserve range.',
+  ].join('\n');
+
+  it('draws a bank scope without generating: concepts made on first draw, rubrics from answers, unanswerable left out', async () => {
+    const h = harness({ files: { 'file:///ws/q.md': FILE } });
+    const { bank, inserted } = await h.S.stImportQuestionFile('/ws/q.md');
+    expect(inserted).toBe(3);
+    const scope = { kind: 'bank', bankIds: [bank.id], materialIds: [], label: bank.name };
+    expect(await h.S.stScopeQuestionCount(scope)).toBe(2);
+    const ensured = await h.S.stEnsureBank(scope, { size: 20, untilSize: true });
+    expect(ensured).toMatchObject({ kept: 0, available: 2, unanswerable: 1 });
+    const session = await h.S.stCreateSession({ name: 'Bank', scope, mode: 'practice', answerFormat: 'type', size: 20 });
+    const draw = await h.S.stNextDraw(session, {});
+    expect(draw).toHaveLength(2);
+    expect(draw.unanswerable).toBe(1);
+    expect(h.count('You write questions') + h.count('You read a passage')).toBe(0);
+    const qs = await h.S.stListQuestions({ bankIds: [bank.id] });
+    const one = qs.find((q: any) => q.stem.startsWith('Explain'));
+    expect(one.conceptId).toBeGreaterThan(0);
+    expect(one).toMatchObject({ rubricOrigin: 'answer' });
+    expect(one.rubric).toEqual([{ text: 'names the right method', required: true }, { text: 'gives the reason', required: false }]);
+    expect(qs.find((q: any) => q.stem.startsWith('State')).rubricOrigin).toBe('source');
+    const [concept] = await h.S.stListConcepts({ ids: [one.conceptId] });
+    expect(concept).toMatchObject({ title: 'CAS Exam 7 · 2019 Fall · Q5(b)', sectionId: 0 });
+    // The bank's concepts live under a hidden material, not in the materials list.
+    expect(await h.S.stListMaterials()).toEqual([]);
+    const items = await h.S.stListSessionItems(session.id);
+    expect(items.map((i: any) => i.questionId).sort()).toEqual(draw.map((q: any) => q.id).sort());
+  });
+
+  it('answerability and bank concept titles are pure', () => {
+    const S = loadStudy();
+    expect(S.stQuestionAnswerable({ format: 'essay', answer: '', rubric: [] })).toBe(false);
+    expect(S.stQuestionAnswerable({ format: 'essay', answer: '', rubric: [{ text: 'a point', required: true }] })).toBe(true);
+    expect(S.stQuestionAnswerable({ format: 'mc', answer: '3', options: ['a', 'b'] })).toBe(false);
+    expect(S.stQuestionAnswerable({ format: 'mc', answer: '1', options: ['a', 'b'] })).toBe(true);
+    expect(S.stQuestionAnswerable({ format: 'numeric', answer: 'about 650' })).toBe(true);
+    expect(S.stBankConceptTitle({ originLabel: '', stem: 'Explain why the method works. Then compare it with another method in detail.' })).toBe('Explain why the method works.');
+  });
+});
+
+describe('selection scope persists its concepts', () => {
+  it('writes the concept ids into the session scope and a restart counts them without mapping again', async () => {
+    const pages = paperPages(CLARK_TITLES);
+    const h = harness({ pdfs: { '/ws/clark.pdf': { pages } } });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    const scope = { kind: 'selection', materialIds: [m.id], selectionText: pages[2], selectionPage: 3, label: 'Selection' };
+    const session = await h.S.stCreateSession({ name: 'Sel', scope, mode: 'practice', answerFormat: 'choose', size: 3 });
+    const draw = await h.S.stNextDraw(session, {});
+    expect(draw.length).toBeGreaterThan(0);
+    const stored = await h.S.stGetSession(session.id);
+    expect(stored.scope.conceptIds.length).toBeGreaterThan(0);
+    const restarted = harness({ sql: h.sql });
+    expect(await restarted.S.stScopeQuestionCount(stored.scope)).toBeGreaterThan(0);
+    expect(restarted.calls).toHaveLength(0);
+  });
+});
+
+describe('question providers', () => {
+  it('reads the registry through list(), stores the keys and the ref, and drops a provider turned off, keeping answers', async () => {
+    const h = harness();
+    let providers: any[] = [
+      { id: 'ws', displayName: 'Problems', list: async () => [{ ref: 'ws-1', question: 'Explain Clark.', answer: 'A.', kind: 'essay', exam: 'Exam 7', sitting: '2019 Fall', number: 5 }, { ref: 'ws-2', question: 'Explain Mack.', answer: 'B.', kind: 'qual' }] },
+      { id: 'fc', displayName: 'Cards', list: async () => [{ ref: 'c-1', question: 'Define ELR.', answer: 'Expected loss ratio.', kind: 'short' }] },
+    ];
+    const registry = { register: () => ({ dispose() {} }), list: () => providers, onDidChange: () => ({ dispose() {} }) };
+    const first = await h.S.stSyncProviders(registry);
+    expect(first).toMatchObject({ providers: 2, inserted: 3, removed: 0 });
+    const ws1 = (await h.S.stListQuestions({})).find((q: any) => h.S.stProviderRefOf(q) === 'ws-1');
+    expect(JSON.parse(ws1.providerRef)).toMatchObject({ ref: 'ws-1', exam: 'Exam 7', sitting: '2019 Fall', number: '5' });
+    expect(h.S.stQuestionKeys(ws1)).toMatchObject({ exam: '7', sitting: '2019 fall', number: 5 });
+    const fcQ = (await h.S.stListQuestions({})).find((q: any) => q.providerId === 'fc');
+    await h.S.stLogAnswer({ questionId: fcQ.id, conceptId: 0, formatUsed: 'short', correct: true, rating: 3 }, 1);
+    expect((await h.S.stSyncProviders(registry)).inserted).toBe(0);
+    providers = providers.slice(0, 1);
+    const after = await h.S.stSyncProviders(registry);
+    expect(after.removed).toBe(1);
+    expect((await h.S.stListQuestions({})).every((q: any) => q.providerId === 'ws')).toBe(true);
+    expect((await h.S.stListBanks()).map((b: any) => b.providerId)).toEqual(['ws']);
+    expect(await h.S.stListAnswers({ questionId: fcQ.id })).toHaveLength(1);
+    // A provider never seen this run (a tool still registering) keeps its bank unless pruning everything is asked for.
+    const fresh = harness({ sql: h.sql });
+    const none = { ...registry, list: () => [] };
+    expect((await fresh.S.stSyncProviders(none)).removed).toBe(0);
+    expect((await fresh.S.stSyncProviders(none, { prune: 'all' })).removed).toBe(1);
+  });
+});
+
+describe('typed answers to multiple-choice questions', () => {
+  it('grades against the correct option text, caches the rubric, and never stores it on the mc question', async () => {
+    const h = harness();
+    const [q] = await h.S.stInsertQuestions([{ format: 'mc', stem: 'Which method fits one ELR?', options: ['LDF', 'Chain ladder', 'Cape Cod', 'Mack'], answer: '2', sourceQuote: 'The Cape Cod method fits one ELR.' }]);
+    const g = await h.S.stGradeTyped(q, 'Cape Cod, one ratio for all years', {});
+    expect(g.rubric[0].text).toBe('names the right method');
+    const rubricCall = h.calls.find((c) => c.system.startsWith('You reduce a model answer'))!;
+    expect(rubricCall.user).toContain('Model answer:\nCape Cod');
+    expect(rubricCall.user).not.toContain('Model answer:\n2');
+    await h.S.stGradeTyped(q, 'Cape Cod', {});
+    expect(h.count('You reduce a model answer')).toBe(1);
+    const row = h.sql.prepare('SELECT rubric_json, rubric_origin FROM st_questions WHERE id = ?').get(q.id) as any;
+    expect(row).toEqual({ rubric_json: '[]', rubric_origin: '' });
+  });
+
+  it('says plainly when a question has no reference answer, and when grading fails', async () => {
+    const h = harness({ model: (s) => (s.startsWith('You mark') ? 'no json here' : scriptedModel(s, '')) });
+    await expect(h.S.stGradeTyped({ format: 'essay', stem: 'Discuss.', answer: '', rubric: [] }, 'text', {})).rejects.toThrow('This question has no reference answer, so it has been left out.');
+    await expect(h.S.stGradeTyped({ format: 'short', stem: 'S.', answer: 'A.', rubric: [{ text: 'a', required: true }] }, 'text', {})).rejects.toThrow('Try again, or open the full answer to compare.');
+  });
+});
+
+describe('numeric checks: the gate, the vetted wrapper, the bridge call', () => {
+  const BYPASSES: Record<string, string> = {
+    'import math, ctypes': 'import math, ctypes\ndef solve(i):\n    return 1',
+    'an import inside solve': 'def solve(i):\n    import os\n    return 1',
+    'json.codecs.open': 'def solve(i):\n    return json.codecs.open("/etc/hosts").read()',
+    'import math, urllib.request': 'import math, urllib.request\ndef solve(i):\n    return 1',
+  };
+  const VALID = "import math\ndef solve(i):\n    total = 0\n    for k in range(1, 4):\n        total += k\n    return math.sqrt(i['premium'] * i['elr'] * 650) + sum(k for k in range(3)) - total + 3";
+
+  it('the JS gate refuses the four bypasses and passes a plain solution', () => {
+    const S = loadStudy();
+    for (const src of Object.values(BYPASSES)) expect(S.stNumericSolutionSafe(src).ok).toBe(false);
+    expect(S.stNumericSolutionSafe(VALID).ok).toBe(true);
+  });
+
+  it('the wrapper vets the syntax tree and runs with a closed set of builtins', () => {
+    const S = loadStudy();
+    const w: string = S.ST_NUMERIC_WRAPPER;
+    for (const needle of ['ast.parse', 'ast.Import', 'ast.Attribute', 'reject("call', 'MAX_RANGE = 1000', '"__builtins__": dict(SAFE_BUILTINS)', 'inputs = json.loads(INPUTS)', 'exactly one def solve(i)']) expect(w).toContain(needle);
+    expect(w.indexOf('inputs = json.loads(INPUTS)')).toBeLessThan(w.indexOf('exec(code, namespace)'));
+    expect(w).not.toMatch(/namespace = \{[^}]*json/);
+    const script = S.stNumericScript({ inputs: { premium: 1000, elr: 0.65 }, solutionPy: 'def solve(i):\n    return 1' });
+    expect(script).toContain('SOURCE = "def solve(i):\\n    return 1"');
+    expect(script).toContain('INPUTS = "{\\"premium\\":1000,\\"elr\\":0.65}"');
+  });
+
+  const python = spawnSync('python3', ['--version']).status === 0;
+  it.skipIf(!python)('python refuses each bypass and runs a valid solution', () => {
+    const S = loadStudy();
+    const dir = mkdtempSync(join(tmpdir(), 'study-numeric-'));
+    try {
+      const run = (src: string) => {
+        const file = join(dir, 'check.py');
+        writeFileSync(file, S.stNumericScript({ inputs: { premium: 1000, elr: 0.65 }, solutionPy: src }));
+        const r = spawnSync('python3', ['-I', file], { encoding: 'utf8', timeout: 20000 });
+        return JSON.parse(String(r.stdout).trim().split('\n').pop() || '{}');
+      };
+      for (const src of Object.values(BYPASSES)) expect(run(src).error).toMatch(/^rejected/);
+      expect(run(VALID)).toEqual({ value: 650 });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('runs through the bridge with a fixed out dir and deletes the script and the out dir', async () => {
+    const h = harness();
+    const payloads: any[] = [];
+    let onData: any = null, onExit: any = null;
+    (globalThis as any).parallxElectron = {
+      python: {
+        status: async () => ({ exists: true }),
+        onRunData: (fn: any) => { onData = fn; return () => {}; },
+        onRunExit: (fn: any) => { onExit = fn; return () => {}; },
+        runScript: async (payload: any) => {
+          payloads.push(payload);
+          setTimeout(() => { onData({ runId: 'r1', channel: 'stdout', chunk: '{"value": 650.0}\n' }); onExit({ runId: 'r1', exitCode: 0 }); }, 0);
+          return { ok: true, runId: 'r1' };
+        },
+        cancelRun: async () => {},
+      },
+    };
+    const r = await h.S.stRunNumericCheck({ id: 9, numeric: { inputs: { premium: 1000, elr: 0.65 }, solutionPy: "def solve(i):\n    return i['premium'] * i['elr']", expected: 650 } });
+    expect(r).toMatchObject({ available: true, agreed: true, computed: 650 });
+    expect(payloads[0]).toMatchObject({ workspaceRoot: '/ws', outDir: '.parallx/tmp/study/out', scriptPath: '/ws/.parallx/tmp/study/check_9.py' });
+    expect(h.fsLog.written['file:///ws/.parallx/tmp/study/check_9.py']).toContain('ast.parse');
+    expect(h.fsLog.deletes).toEqual(['file:///ws/.parallx/tmp/study/check_9.py', 'file:///ws/.parallx/tmp/study/out']);
+  });
+});
+
+describe('ords, labels, imports', () => {
+  it('appends after an existing ord 0 instead of repeating it', async () => {
+    const h = harness({ pdfs: { '/ws/clark.pdf': { pages: paperPages(CLARK_TITLES) } } });
+    const m = await h.S.stIngestPdf('/ws/clark.pdf');
+    const [c1] = await h.S.stInsertConcepts(m.id, 0, [{ title: 'One' }]);
+    const [c2] = await h.S.stInsertConcepts(m.id, 0, [{ title: 'Two' }]);
+    expect([c1.ord, c2.ord]).toEqual([0, 1]);
+    const session = await h.S.stCreateSession({ name: 's', scope: { kind: 'document', materialIds: [m.id] }, mode: 'practice', answerFormat: 'choose', size: 2 });
+    await h.S.stAddSessionItems(session.id, 0, [1]);
+    await h.S.stAddSessionItems(session.id, 0, [2]);
+    expect((await h.S.stListSessionItems(session.id)).map((i: any) => i.ord)).toEqual([0, 1]);
+  });
+
+  it('labels a material by its PDF title, else its file name made readable', async () => {
+    const S = loadStudy();
+    expect(S.stMaterialLabelFor('Clark_2003_LDF_Curve_Fitting.pdf', '')).toBe('Clark 2003 LDF Curve Fitting');
+    expect(S.stMaterialLabelFor('Clark_2003.pdf', 'Untitled')).toBe('Clark 2003');
+    expect(S.stMaterialLabelFor('a.pdf', 'Microsoft Word - Estimation_of_Loss_Development.docx')).toBe('Estimation of Loss Development');
+    expect(S.stMaterialLabelFor('a.pdf', 'LDF Curve-Fitting and Stochastic Reserving')).toBe('LDF Curve-Fitting and Stochastic Reserving');
+    expect(S.stMaterialLabelFor('/ws/notes/my   file_v2.pdf', '  ')).toBe('my file v2');
+    const h = harness({ pdfs: { '/ws/Clark_2003_LDF.pdf': { pages: paperPages(CLARK_TITLES) }, '/ws/b.pdf': { pages: paperPages(MACK_TITLES), title: 'Measuring the Variability of Chain Ladder Reserve Estimates' } } });
+    expect((await h.S.stIngestPdf('/ws/Clark_2003_LDF.pdf')).label).toBe('Clark 2003 LDF');
+    expect((await h.S.stIngestPdf('/ws/b.pdf')).label).toBe('Measuring the Variability of Chain Ladder Reserve Estimates');
+  });
+
+  it('an empty question file says what format is expected', async () => {
+    const h = harness({ files: { 'file:///ws/empty.md': '\n' } });
+    await expect(h.S.stImportQuestionFile('/ws/empty.md')).rejects.toThrow(/^No questions were found in that file\. Each question needs question text: .*\.$/);
+  });
+
+  it('imports a report against stored keys: matched by exam, sitting, number and part, unmatched counts entries', async () => {
+    const file = ['Q: Explain the Cape Cod parameter count.', 'A: One ELR.', 'Exam: CAS Exam 7', 'Sitting: Fall 2019', 'Number: 5', 'Part: b', '---', 'Q: Q5 of another sitting.', 'A: x', 'Exam: Exam 7', 'Sitting: 2018 Fall', 'Number: 5', 'Part: b'].join('\n');
+    const report = [
+      'Casualty Actuarial Society\nExam 7\nFall 2019\nEXAMINER’S REPORT',
+      'QUESTION 5\nSAMPLE ANSWERS\nPart a: 1 point\nThe LDF method has n + 2 parameters for n accident years.\nPart b: 1.5 points\nThe Cape Cod method fits one expected loss ratio for every year.\nExaminer’s Comments\nPart b\nSome candidates reversed the parameter counts of the two methods.',
+      'QUESTION 6\nSample Answer:\nAn answer nobody imported, long enough to read as a sentence.',
+    ];
+    const h = harness({ files: { 'file:///ws/q.md': file }, pdfs: { '/ws/report.pdf': { pages: report } } });
+    await h.S.stImportQuestionFile('/ws/q.md');
+    const stored = (await h.S.stListQuestions({}))[0];
+    expect(JSON.parse(stored.providerRef)).toEqual({ exam: 'CAS Exam 7', sitting: 'Fall 2019', number: '5', part: 'b' });
+    const res = await h.S.stImportExaminerReport('/ws/report.pdf');
+    expect(res).toMatchObject({ matched: 1, unmatched: 2 });
+    const [q5b, other] = await h.S.stListQuestions({});
+    expect(q5b).toMatchObject({ rubricOrigin: 'report', sourceUri: 'file:///ws/report.pdf', sourcePage: 2 });
+    expect(other.rubricOrigin).toBe('');
   });
 });
