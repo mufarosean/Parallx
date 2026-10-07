@@ -525,3 +525,62 @@ Behaviour, from the mockup and nothing else:
 - `studyBundle.test.ts`: `main.js` equals the concatenation of `src/*.js`.
 - Core: `editorTitleMenu.test.ts`, `questionProviders.test.ts`, and the existing suites unchanged.
 - Checks: `npx tsc --noEmit`, `npx vitest run`, `npm run build`, all green. The ratchet at zero for `study`.
+
+## 12. As built (2026-10-07)
+
+Where the build departed from the sections above, after a code review
+and three runs of the real app. The code is the authority; this lists the
+decisions so they are not re-litigated.
+
+- **Bank questions** get concepts like reading questions, but under a
+  hidden material per bank (`kind 'bank'`, `uri 'bank:<id>'`), because
+  `st_concepts.material_id` is a foreign key and 0 cannot be used.
+  `stListMaterials` leaves those materials out; `stDeleteBank` removes it.
+  A bank scope is `{ kind: 'bank', bankIds, materialIds: [], label }`; it
+  never generates; essay and short questions without a rubric get one
+  from their answer on first draw (`rubric_origin 'answer'`); a question
+  with neither is left out and counted as unanswerable.
+- **Match keys** (exam, sitting, number, part, paper, source) live in
+  `provider_ref` as JSON (`stProviderRefOf`, `stQuestionKeys`). A report
+  entry matches only when exam, sitting and number agree (part when both
+  have one); an empty exam or sitting never matches.
+- **Sections**: outline level is the extractor's level + 1. Each page
+  belongs to its deepest section (`stPagePartition`) and is mapped once;
+  a chapter scope resolves by page range, so a parent includes its
+  subsections (`stConceptsForSections`). Repeated running headers and
+  "(continued)" headings are folded. A concept whose title merely repeats
+  its section title is dropped; a leading copy of a heading is stripped
+  from concept titles and quotes.
+- **Generation** maps lazily and visits units round-robin across
+  materials and spread across each document, so the first session-size
+  questions already span the scope. A (concept, format) pair that keeps
+  nothing in two calls is not asked again in that run, and a pass that
+  keeps nothing ends it. Progress payloads add `sessionId`, `available`,
+  `unanswerable`, `unitsDone`, `unitsTotal`; unusable model output is
+  counted as `dropped.parse` and shown as its own row when above zero.
+- **Draws**: when the scope has fewer unasked questions than a session,
+  the draw is filled with questions already asked, wrong ones first, never
+  twice in one draw. "No questions could be made" is only for a scope with
+  no usable question.
+- **Numeric check**: the wrapper script vets the model's solution with
+  Python's `ast` against an allowlist and runs it with closed builtins and
+  only `math`; its output goes under `.parallx/tmp/study/out`, removed
+  after.
+- **Test mode** records answers without verdicts and marks typed answers
+  in the background one at a time; results list every item with its
+  points. Multiple-choice questions are answered as typed short answers in
+  Test, graded against the correct option's text.
+- **Commands** `study.addMaterial`, `study.importQuestions` and
+  `study.importReport` take an optional path or URI; `study.studyTogether`
+  takes optional material ids.
+- **Show Source** opens the file beside the session (`side: true`; a file
+  open only in the session's own group opens in the group to its right).
+  The first Esc closes it; only with no source open does Esc ask to end.
+- **Lifecycle**: every registration is owned by an activation token;
+  continuations that resume after Study was turned off stop quietly, and
+  late registrations are disposed at once.
+- **Testing**: `tests/unit/studyModel.test.ts` (pure model, plus a harness
+  over the generated bundle on node:sqlite), `studyImport.test.ts`,
+  `studyPane.test.ts` (the real pane in jsdom, SQLite, a scripted model),
+  and `tests/probes/study-app-probe.mjs` (the real app in Electron with a
+  scripted model provider and fixture PDFs from `study-fixture-pdfs.py`).

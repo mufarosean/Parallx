@@ -1,12 +1,71 @@
 # Handoff: where the work stands
 
-Last updated 2026-10-06, early. Branches: `dev` (app work) and
+Last updated 2026-10-07. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7643 tests) and `npm run build` pass.
+tsc, the full vitest suite (about 7830 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
+
+## Done on 2026-10-07, cloud: Study, review a reading without rereading it
+
+A new extension, `ext/study` (Study), built to the brief in
+`docs/STUDY_MODES_BRIEF.md`, the design in `docs/mockups/study.html` and
+the contract in `docs/STUDY_BUILD_SPEC.md`. Turn it on in Tools; it is
+off by default like every extension.
+
+- **Use.** Open a PDF, More Actions (⋯) › Study This Document…, pick a
+  chapter, Start. Sessions are 20 questions; Refresh draws the next 20,
+  weak concepts first, and repeats missed ones once the bank is used.
+  Practice marks each answer with the anchor quote and its page; Show
+  Source opens the PDF beside the session on that page. Test asks for
+  typed answers and marks them all at the end. Learn is the chapter as a
+  list of cited claims. Select text in a PDF › Quiz This Selection.
+- **Several PDFs.** The Study sidebar lists materials, chapters and
+  sessions; the check icon on the Materials row picks several, then
+  Study Together interleaves them.
+- **Own questions.** Study sidebar ⋯ › Import Questions… takes `.md`
+  (`## heading`, then `Q:`/`A:` lines and optional `Exam:`, `Sitting:`,
+  `Number:`, `Part:` lines, entries split by `---`), `.csv`/`.tsv`
+  (header with question, answer, exam, sitting, number, part, kind,
+  rubric) or `.json`. Import Examiner's Report… reads a CAS report PDF and
+  turns each sample answer into the rubric of the matching imported
+  question (exam, sitting and number must agree). Each import is a bank
+  in the sidebar; click it to study it. Worksheets' essay and qualitative
+  problems and Flashcards' essay-practice cards arrive as banks by
+  themselves while those tools are on.
+- **Model.** The setup sheet's footer line picks the model and the
+  context window (Auto sizes it per run). Every question is kept only
+  when its quote is found on its page, the quote settles the answer, no
+  wrong option is defensible, and, for numbers, a Python check agrees
+  (the workspace Python environment; the solution is vetted with an ast
+  allowlist and run with closed builtins).
+- **Hand-off.** Send Missed to Flashcards makes one card per missed
+  concept, anchored to the page, into "Study: <material>". A card rated
+  Again in Flashcards lowers that concept's mastery in Study.
+
+Core seams added for it, each generic and tested: the `editor/title`
+menu location (a tool's entry in a pane's More Actions), the question
+provider registry (`questions.getRegistry`, `src/services/questionProviders.ts`),
+`openFileEditor(uri, { side: true })`, card stock tokens
+(`--px-stock-*`), and the PDF outline from the extractor (now passed over
+IPC). Flashcards gained `flashcards.addCards` and the
+`parallx:card-rated` event. A database fix: dropping a tool's data no
+longer fails before any migration ran.
+
+How it was checked: unit tests for the pure model and parsers
+(`studyModel`, `studyImport`), an end-to-end suite that drives the real
+bundle in jsdom against SQLite and a scripted model (`studyPane`), and
+runs of the real app in Electron on real PDFs with a scripted model
+provider (`tests/probes/study-app-probe.mjs`). Not checked here: question
+quality with a real local model, because the cloud container has no
+model backend. First local step: run a chapter of a real Exam 7 reading
+with the model you use, and look at the generating screen's drop counts;
+a model that drops most multiple-choice questions shows it there.
+
+Open, by decision: the examiner's reports are not in the study workspace
+yet; collect them, then Import Examiner's Report… for each.
 
 ## Done on 2026-10-05, cloud: the Creations character generator
 
