@@ -99,4 +99,54 @@ describe('showExtensionContextMenu', () => {
     expect(rows()[0].querySelector('.context-menu-item-icon')!.textContent).toBe('[star]');
     expect(rows()[1].querySelector('.context-menu-item-icon')).toBeNull();
   });
+
+  it('keeps the menu open for a keepOpen choice and moves the check within its group only', () => {
+    const picked: string[] = [];
+    const onClose = vi.fn();
+    showExtensionContextMenu({ x: 5, y: 5 }, [
+      { label: 'Qwen', checked: true, keepOpen: true, onSelect: () => picked.push('qwen') },
+      { label: 'Llama', checked: false, keepOpen: true, onSelect: () => picked.push('llama') },
+      { separator: true },
+      { label: 'Auto', checked: true, keepOpen: true, onSelect: () => picked.push('auto') },
+      { label: '8K', checked: false, keepOpen: true, onSelect: () => picked.push('8k') },
+    ], { onClose });
+    const marks = () => rows().map((r) => r.querySelector('.context-menu-item-check')!.textContent);
+    rows()[1].click();
+    expect(picked).toEqual(['llama']);
+    expect(document.querySelector('.context-menu')).not.toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(marks()).toEqual(['', '✓', '✓', '']);
+    expect(rows()[1].getAttribute('aria-checked')).toBe('true');
+    rows()[3].click();
+    rows()[0].click();
+    expect(picked).toEqual(['llama', '8k', 'qwen']);
+    expect(marks()).toEqual(['✓', '', '', '✓']);
+  });
+
+  it('update() redraws the open menu in place and the new rows run their own handlers', () => {
+    const picked: string[] = [];
+    const build = (sizes: string[]) => [
+      { label: 'Big', keepOpen: true, checked: false, onSelect: () => { picked.push('big'); handle.update(build(['8K', '128K'])); } },
+      { separator: true },
+      ...sizes.map((z) => ({ label: z, keepOpen: true, checked: false, onSelect: () => picked.push(z) })),
+    ];
+    const handle = showExtensionContextMenu({ x: 5, y: 5 }, build(['8K']));
+    expect(rows().map((r) => r.textContent?.replace('✓', ''))).toEqual(['Big', '8K']);
+    rows()[0].click();
+    expect(document.querySelectorAll('.context-menu').length).toBe(1);
+    expect(document.querySelectorAll('.context-menu-separator').length).toBe(1);
+    expect(rows().map((r) => r.textContent?.replace('✓', ''))).toEqual(['Big', '8K', '128K']);
+    rows()[2].click();
+    expect(picked).toEqual(['big', '128K']);
+    handle.dispose();
+    expect(document.querySelector('.context-menu')).toBeNull();
+  });
+
+  it('a plain row in a menu with keepOpen choices still closes it', () => {
+    const onClose = vi.fn();
+    showExtensionContextMenu({ x: 5, y: 5 }, [{ label: 'Qwen', checked: true, keepOpen: true }, { separator: true }, { label: 'Settings…' }], { onClose });
+    rows()[1].click();
+    expect(document.querySelector('.context-menu')).toBeNull();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

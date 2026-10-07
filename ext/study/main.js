@@ -650,6 +650,18 @@ const ST_PROMPT_HEADROOM = 1.08;
 const ST_SCAFFOLD_TOKENS = 600;
 const ST_FALLBACK_MODEL_CTX = 131072;
 
+/** The fixed context sizes the setup sheet offers: the chat's steps from
+ *  8K (Auto never goes below it) up to the model's maximum, which is added
+ *  when it is not one of them. With no maximum known, all of them. */
+const ST_CONTEXT_SIZES = [8192, 16384, 32768, 65536, 131072, 163840, 262144];
+function stContextSizesFor(max) {
+  const limit = Number(max) || 0;
+  const cap = limit > 0 ? limit : ST_CONTEXT_SIZES[ST_CONTEXT_SIZES.length - 1];
+  const out = ST_CONTEXT_SIZES.filter((s) => s <= cap);
+  if (limit >= ST_CONTEXT_SIZES[0] && !out.includes(limit)) out.push(limit);
+  return out;
+}
+
 /**
  * The context window for one request: enough for prompt and output,
  * rounded up to 2048, clamped to the model's real length. `setting` > 0 is
@@ -6452,7 +6464,7 @@ async function stSessionConcepts(materialIds, questions) {
 function stFmtK(n) {
   const v = Number(n) || 0;
   if (!v) return '';
-  return v >= 1024 ? `${Math.round(v / 1024)}k` : String(v);
+  return v >= 1024 ? `${Math.round(v / 1024)}K` : String(v);
 }
 
 /** Markdown (and LaTeX) through the kit; a text node when the kit is absent. */
@@ -7126,27 +7138,36 @@ function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }
     stSetLabel(mdlBtn, `${modelName(effectiveModel())} · ${ctxLabel}`);
   };
   const pick = (patch) => { Object.assign(st, patch); paintModel(); void onPrefs(); };
-  function openMenu() {
+  // Model and context are set together: every choice keeps the menu open,
+  // and a model redraws it, since its maximum decides the sizes offered.
+  const limitOf = (id) => { const m = models.find((x) => x.id === id); return m ? Number(m.contextLength) || 0 : 0; };
+  let menu = null;
+  function menuItems() {
     const items = [{ label: 'Model', disabled: true }];
+    const pickModel = (id) => {
+      const limit = limitOf(id || setModel || activeModel);
+      // A fixed size the new model cannot hold becomes its maximum.
+      pick(limit && st.contextSetting > limit ? { model: id, contextSetting: limit } : { model: id });
+      menu?.update(menuItems());
+    };
     for (const m of models) {
-      items.push({ label: m.displayName || m.id, keybinding: stFmtK(m.contextLength), checked: st.model === m.id, onSelect: () => pick({ model: m.id }) });
+      items.push({ label: m.displayName || m.id, keybinding: stFmtK(m.contextLength), checked: st.model === m.id, keepOpen: true, onSelect: () => pickModel(m.id) });
     }
     items.push(setModel
-      ? { label: 'Use the Model in Settings', keybinding: modelName(setModel), checked: !st.model, onSelect: () => pick({ model: '' }) }
-      : { label: "Use the Chat's Model", checked: !st.model, onSelect: () => pick({ model: '' }) });
+      ? { label: 'Use the Model in Settings', keybinding: modelName(setModel), checked: !st.model, keepOpen: true, onSelect: () => pickModel('') }
+      : { label: "Use the Chat's Model", checked: !st.model, keepOpen: true, onSelect: () => pickModel('') });
     items.push({ separator: true });
     items.push({ label: 'Context', disabled: true });
     items.push(setContext
-      ? { label: 'As in Settings', keybinding: stFmtK(setContext), checked: !st.contextSetting, onSelect: () => pick({ contextSetting: 0 }) }
-      : { label: 'Auto', checked: !st.contextSetting, onSelect: () => pick({ contextSetting: 0 }) });
-    const current = models.find((x) => x.id === effectiveModel());
-    const limit = current ? Number(current.contextLength) || 0 : 0;
-    for (const k of [8, 16, 32, 64]) {
-      const tokens = k * 1024;
-      if (limit && tokens > limit) continue;
-      items.push({ label: `${k}k`, checked: st.contextSetting === tokens, onSelect: () => pick({ contextSetting: tokens }) });
+      ? { label: 'As in Settings', keybinding: stFmtK(setContext), checked: !st.contextSetting, keepOpen: true, onSelect: () => pick({ contextSetting: 0 }) }
+      : { label: 'Auto', checked: !st.contextSetting, keepOpen: true, onSelect: () => pick({ contextSetting: 0 }) });
+    for (const tokens of stContextSizesFor(limitOf(effectiveModel()))) {
+      items.push({ label: stFmtK(tokens), checked: st.contextSetting === tokens, keepOpen: true, onSelect: () => pick({ contextSetting: tokens }) });
     }
-    _api.ui.showContextMenu(mdlBtn, items, { anchorPosition: 'above' });
+    return items;
+  }
+  function openMenu() {
+    menu = _api.ui.showContextMenu(mdlBtn, menuItems(), { anchorPosition: 'above', onClose: () => { menu = null; } });
   }
   paintModel();
   return { startBtn, mdlBtn };
@@ -9987,6 +10008,7 @@ export const __testables = {
   stSpreadOrder: typeof stSpreadOrder === 'function' ? stSpreadOrder : undefined,
   stMaterialLabelFor: typeof stMaterialLabelFor === 'function' ? stMaterialLabelFor : undefined,
   stLineOfStem: typeof stLineOfStem === 'function' ? stLineOfStem : undefined,
+  stContextSizesFor: typeof stContextSizesFor === 'function' ? stContextSizesFor : undefined,
   stQuestionAnswerable: typeof stQuestionAnswerable === 'function' ? stQuestionAnswerable : undefined,
   stProviderRefOf: typeof stProviderRefOf === 'function' ? stProviderRefOf : undefined,
   stQuestionKeys: typeof stQuestionKeys === 'function' ? stQuestionKeys : undefined,

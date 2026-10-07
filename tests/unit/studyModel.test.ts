@@ -692,6 +692,16 @@ describe('the rubric grader (M102 port)', () => {
     expect(S.stNoteRestatesPoint('The answer leaves out: fewer parameters lower the variance.', rubric, [{ status: 'hit' }, { status: 'hit' }]), 'every point hit').toBe(false);
   });
 
+  it('offers the chat\'s context sizes from 8K up to the model\'s maximum', () => {
+    const S = __testables;
+    expect(S.stContextSizesFor(40960)).toEqual([8192, 16384, 32768, 40960]);
+    expect(S.stContextSizesFor(131072)).toEqual([8192, 16384, 32768, 65536, 131072]);
+    expect(S.stContextSizesFor(262144)).toEqual([8192, 16384, 32768, 65536, 131072, 163840, 262144]);
+    expect(S.stContextSizesFor(1048576), 'a million-token model: every step and its maximum').toEqual([8192, 16384, 32768, 65536, 131072, 163840, 262144, 1048576]);
+    expect(S.stContextSizesFor(8192)).toEqual([8192]);
+    expect(S.stContextSizesFor(0), 'unknown maximum: every step').toEqual([8192, 16384, 32768, 65536, 131072, 163840, 262144]);
+  });
+
   it('finds the line a question starts on in its notes file', () => {
     const S = __testables;
     const md = ['# Clark', '', '## 2019 Q4', '**Question**', 'Explain why the *Cape Cod* method', 'suits a small triangle.', '', 'Q: Define the growth curve.', 'A: The share reported by age x.'].join('\n');

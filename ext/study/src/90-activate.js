@@ -249,6 +249,7 @@ export const __testables = {
   stSpreadOrder: typeof stSpreadOrder === 'function' ? stSpreadOrder : undefined,
   stMaterialLabelFor: typeof stMaterialLabelFor === 'function' ? stMaterialLabelFor : undefined,
   stLineOfStem: typeof stLineOfStem === 'function' ? stLineOfStem : undefined,
+  stContextSizesFor: typeof stContextSizesFor === 'function' ? stContextSizesFor : undefined,
   stQuestionAnswerable: typeof stQuestionAnswerable === 'function' ? stQuestionAnswerable : undefined,
   stProviderRefOf: typeof stProviderRefOf === 'function' ? stProviderRefOf : undefined,
   stQuestionKeys: typeof stQuestionKeys === 'function' ? stQuestionKeys : undefined,

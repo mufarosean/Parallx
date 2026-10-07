@@ -43,6 +43,12 @@ export interface IContextMenuItem {
   readonly checked?: boolean;
   /** Tooltip on the row: a disabled item's reason, a longer explanation. */
   readonly tooltip?: string;
+  /**
+   * A choice among several the menu sets together (a model and a size): it
+   * stays open on select. A checkable one takes the mark from the other
+   * checkable rows of its group; `setItems` redraws when more changes.
+   */
+  readonly keepOpen?: boolean;
 }
 
 /** Anchor specification for positioning the menu. */
@@ -109,6 +115,8 @@ export class ContextMenu extends Disposable {
 
   private readonly _el: HTMLElement;
   private readonly _itemEls: HTMLElement[] = [];
+  /** The items shown now: the options' at first, then each setItems(). */
+  private _items: readonly IContextMenuItem[];
   private _highlightIndex = -1;
 
   // ── Submenus ──
@@ -131,9 +139,7 @@ export class ContextMenu extends Disposable {
       this._el.classList.add(_options.className);
     }
     this._el.setAttribute('role', 'menu');
-    if (_options.items.some((it) => it.checked !== undefined)) {
-      this._el.classList.add('context-menu--has-checks');
-    }
+    this._items = _options.items;
 
     // Render items
     this._renderItems(_options.items);
@@ -245,7 +251,7 @@ export class ContextMenu extends Disposable {
       }
       case 'Enter': {
         if (this._highlightIndex >= 0) {
-          const items = this._options.items.filter(i => !i.disabled);
+          const items = this._items.filter(i => !i.disabled);
           const pos = enabledIndices.indexOf(this._highlightIndex);
           if (pos >= 0 && pos < items.length) this._select(items[pos]);
           return true;
@@ -261,8 +267,27 @@ export class ContextMenu extends Disposable {
 
   // ── Rendering ──────────────────────────────────────────────────────────
 
+  /**
+   * Show other items in the open menu, in place (a keepOpen choice that
+   * changes what else is offered). The armed row stays armed when it is
+   * still there; the menu is laid out again against its anchor.
+   */
+  setItems(items: readonly IContextMenuItem[]): void {
+    if (this._dismissed) return;
+    this._cancelSubmenu();
+    const armed = this._highlightIndex;
+    this._items = items;
+    this._itemEls.length = 0;
+    this._el.replaceChildren();
+    this._renderItems(items);
+    layoutPopup(this._el, this._options.anchor, { position: this._options.anchorPosition, gap: 2 });
+    if (armed >= 0 && armed < this._itemEls.length && !items[armed]?.disabled) this._highlight(armed);
+    else this._highlightIndex = -1;
+  }
+
   private _renderItems(items: readonly IContextMenuItem[]): void {
     let lastGroup: string | undefined;
+    this._el.classList.toggle('context-menu--has-checks', items.some((it) => it.checked !== undefined));
 
     for (const item of items) {
       // Group separator
@@ -367,11 +392,24 @@ export class ContextMenu extends Disposable {
   }
 
   private _select(item: IContextMenuItem): void {
+    if (item.keepOpen && item.checked !== undefined && this._items.some((it) => it.id === item.id)) {
+      // The mark moves first, so a handler that redraws (setItems) wins.
+      this._items = this._items.map((it) => (it.group === item.group && it.checked !== undefined && !it.submenu)
+        ? { ...it, checked: it.id === item.id }
+        : it);
+      this._itemEls.forEach((row, i) => {
+        const it = this._items[i];
+        if (!it || it.group !== item.group || it.checked === undefined) return;
+        row.setAttribute('aria-checked', String(!!it.checked));
+        const mark = row.querySelector('.context-menu-item-check');
+        if (mark) mark.textContent = it.checked ? '\u2713' : '';
+      });
+    }
     this._onDidSelect.fire({ item });
     // Fired here (not in the submenu-forward path) so every selection —
     // including submenu items — reaches the static tap exactly once.
     ContextMenu._onDidSelectAny.fire({ item });
-    this.dismiss();
+    if (!item.keepOpen) this.dismiss();
   }
 
   // ── Submenu management ─────────────────────────────────────────────────
@@ -477,7 +515,20 @@ export interface IExtensionMenuItem {
   readonly keybinding?: string;
   /** A child menu, opened on hover or click. */
   readonly submenu?: ReadonlyArray<IExtensionMenuItem>;
+  /**
+   * The menu stays open when this is chosen: one of several choices set
+   * together (a model, then a size). A checked choice takes the mark from the
+   * other checkable rows between the same separators; call `update` on the
+   * returned handle when the choice changes what else the menu offers.
+   */
+  readonly keepOpen?: boolean;
   readonly onSelect?: () => void;
+}
+
+/** The open menu: `update` shows other items in place, `dispose` closes it. */
+export interface IExtensionMenuHandle {
+  update(items: ReadonlyArray<IExtensionMenuItem>): void;
+  dispose(): void;
 }
 
 /** Where an extension context menu opens: a point, a rect, or the element it belongs to. */
@@ -495,7 +546,7 @@ export function showExtensionContextMenu(
   items: ReadonlyArray<IExtensionMenuItem>,
   options?: IExtensionMenuOptions,
   renderIcon?: (icon: string, container: HTMLElement) => void,
-): { dispose(): void } {
+): IExtensionMenuHandle {
   // Separators become group boundaries, which the core draws as dividers.
   // Submenus map recursively, and every row gets a unique id: the core
   // forwards a submenu selection to the parent menu, which must still find
@@ -518,6 +569,7 @@ export function showExtensionContextMenu(
         checked: it.checked,
         tooltip: it.tooltip,
         keybinding: it.keybinding,
+        keepOpen: it.keepOpen,
         className: it.danger ? 'context-menu-item--danger' : undefined,
         renderIcon: icon && renderIcon ? (c: HTMLElement) => renderIcon(icon, c) : undefined,
         submenu: it.submenu && it.submenu.length > 0 ? toCore(it.submenu) : undefined,
@@ -529,5 +581,8 @@ export function showExtensionContextMenu(
   const menu = ContextMenu.show({ items: toCore(items), anchor: rect, anchorPosition: options?.anchorPosition });
   menu.onDidSelect((e) => { handlers.get(e.item.id)?.(); });
   if (options?.onClose) menu.onDidDismiss(options.onClose);
-  return { dispose: () => menu.dismiss() };
+  return {
+    update: (next) => { handlers.clear(); menu.setItems(toCore(next)); },
+    dispose: () => menu.dismiss(),
+  };
 }

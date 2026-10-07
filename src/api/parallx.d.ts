@@ -554,7 +554,19 @@ export namespace ui {
     readonly keybinding?: string;
     /** A child menu, opened on hover or click. */
     readonly submenu?: ReadonlyArray<ContextMenuItem>;
+    /**
+     * The menu stays open when this is chosen: one of several choices set
+     * together (a model, then a size). A checked choice takes the mark from
+     * the other checkable rows between the same separators; call `update` on
+     * the returned handle when the choice changes what else the menu offers.
+     */
+    readonly keepOpen?: boolean;
     readonly onSelect?: () => void;
+  }
+  /** The open menu: `update` shows other items in place, `dispose` closes it. */
+  export interface ContextMenuHandle {
+    update(items: ReadonlyArray<ContextMenuItem>): void;
+    dispose(): void;
   }
   /** Where a context menu opens: a point, a rect, or the element it belongs to. */
   export type ContextMenuAnchor = { readonly x: number; readonly y: number } | DOMRect | HTMLElement;
@@ -570,7 +582,7 @@ export namespace ui {
    * clamping, click-outside dismiss). Prefer this over a hand-rolled menu.
    * `separator: true` entries draw a divider between groups.
    */
-  export function showContextMenu(anchor: ContextMenuAnchor, items: ReadonlyArray<ContextMenuItem>, options?: ContextMenuOptions): { dispose(): void };
+  export function showContextMenu(anchor: ContextMenuAnchor, items: ReadonlyArray<ContextMenuItem>, options?: ContextMenuOptions): ContextMenuHandle;
 
   // ── The chrome kit ──────────────────────────────────────────────────────
   // The workbench's own buttons, page header, empty state and section label.

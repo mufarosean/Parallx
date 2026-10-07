@@ -585,6 +585,11 @@ decisions so they are not re-litigated.
   one (the extractor now passes it as `metadata.title`), else its file
   name made readable; an imported bank or report the same way, without
   the extension.
+- **Model line**: one menu sets the model and the context together and
+  stays open (`keepOpen` rows; a model pick redraws it). Sizes are the
+  chat's steps from 8K (Auto's floor) to the model's maximum, the maximum
+  included (`stContextSizesFor`); a fixed size the new model cannot hold
+  becomes its maximum. Sizes read as in the chat ("128K").
 - **Feedback says nothing twice**: a grader's note is left out when it is
   a missed or partial point near enough, or only a short frame around the
   points it quotes ("The answer leaves out: ..."); "required" marks points
