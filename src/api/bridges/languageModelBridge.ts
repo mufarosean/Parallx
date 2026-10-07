@@ -67,9 +67,10 @@ export class LanguageModelBridge {
     modelId: string,
     messages: readonly IChatMessage[],
     options?: IChatRequestOptions,
+    signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk> {
     this._throwIfDisposed();
-    return this._service.sendChatRequestForModel(modelId, messages, options);
+    return this._service.sendChatRequestForModel(modelId, messages, options, signal);
   }
 
   /**

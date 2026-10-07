@@ -330,6 +330,7 @@ interface Env {
   hold: { kind: string; reached: boolean; release: () => void; promise: Promise<void> } | null;
   /** Question writing opens each reply with one question that fails validation. */
   unusable: boolean;
+  loopOnce: boolean;
   /** The provider's next list() waits for this, once. */
   listGate: Promise<void> | null;
   listCalls: number;
@@ -441,9 +442,15 @@ function makeEnv(): Env {
       : system.startsWith('You explain') ? 'explain'
       : system.startsWith('You reduce') ? 'rubric'
       : 'other';
-    lmCalls.push({ kind, modelId, numCtx: options.numCtx, format: options.format, think: options.think, temperature: options.temperature, user });
+    lmCalls.push({ kind, modelId, numCtx: options.numCtx, format: options.format, think: options.think, temperature: options.temperature, maxTokens: options.maxTokens, user });
     const hold = env.hold;
     if (hold && hold.kind === kind && !hold.reached) { hold.reached = true; await hold.promise; }
+    if (kind === "questions" && env.loopOnce) {
+      // The backend ends an answer that keeps repeating itself.
+      env.loopOnce = false;
+      yield { content: "{\"questions\": [{\"stem\": \"the the the" };
+      throw new Error("Ollama stream error: prediction aborted, token repeat limit reached");
+    }
     const reply = answer(kind, user);
     const cut = Math.max(1, Math.floor(reply.length / 2));
     yield { content: reply.slice(0, cut) };
@@ -635,7 +642,7 @@ function makeEnv(): Env {
 
   Object.assign(env, {
     api, context: { subscriptions: [] as AnyRec[] }, db, calls, lmCalls, settings, editors, views, commandHandlers,
-    tools, widgets, links, selectionHandlers, flashcardsOn: true, pick: (items: AnyRec[]) => items[0], confirm: true, hold: null, unusable: false,
+    tools, widgets, links, selectionHandlers, flashcardsOn: true, pick: (items: AnyRec[]) => items[0], confirm: true, hold: null, unusable: false, loopOnce: false,
     listGate: null, listCalls: 0,
     fireProviders: () => { for (const fn of [...providerListeners]) fn(); },
     providerListenerCount: () => providerListeners.size,
@@ -1161,6 +1168,24 @@ describe('Study end to end', () => {
     expect(line[2]).toMatch(/^\d of 6 ready$/);
     hold.release();
     await waitFor(() => q(h, '.st-card'), 'the first card');
+  });
+
+  it("3c. a model answer that loops counts as unusable and the run goes on; every call is capped; the screen says what it is doing", async () => {
+    await boot();
+    env.loopOnce = true;
+    const setup = await openChapterSetup();
+    const hold = holdLm("support");
+    btn(setup, "Make Questions and Start")!.click();
+    const tab = await waitFor(() => latestSessionTab(), "the session tab");
+    const h = paneHost(tab)!;
+    await waitFor(() => hold.reached, "the first support check");
+    expect(text(q(h, ".st-gen__now"))).toMatch(/^Checking the quote supports the answer for ".+"$/);
+    const row = await waitFor(() => q(h, '.st-ck[data-check="parse"]'), "the unusable row");
+    expect(text(q(row, ".st-ck__n"))).toBe("1 dropped");
+    hold.release();
+    await waitFor(() => q(h, ".st-card"), "the first card");
+    expect(q(h, ".st-error")).toBeNull();
+    for (const c of env.lmCalls.filter((x: AnyRec) => ["map", "questions", "support", "distractor"].includes(x.kind))) expect(c.maxTokens).toBeGreaterThan(0);
   });
 
   // ═════════════════════════════════════════════════════════════════════════

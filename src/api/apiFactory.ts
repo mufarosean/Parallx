@@ -359,7 +359,7 @@ export interface ParallxApiObject {
     getModels(): Promise<readonly { id: string; displayName: string; family: string; parameterSize: string; quantization: string; contextLength: number; capabilities: readonly string[] }[]>;
     getModelInfo(modelId: string): Promise<{ id: string; displayName: string; family: string; parameterSize: string; quantization: string; contextLength: number; capabilities: readonly string[] }>;
     getActiveModel(): string | undefined;
-    sendChatRequest(modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>): AsyncIterable<{ content: string; done: boolean }>;
+    sendChatRequest(modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>, signal?: AbortSignal): AsyncIterable<{ content: string; done: boolean }>;
     registerProvider(provider: { id: string; displayName: string; getModels(): Promise<unknown[]>; checkStatus(): Promise<unknown>; sendChatRequest(...args: unknown[]): AsyncIterable<unknown>; getModelInfo(id: string): Promise<unknown> }): IDisposable;
     onDidChangeModels: (listener: () => void) => IDisposable;
   } | undefined;
@@ -1112,8 +1112,8 @@ export function createToolApi(
           getModels: () => languageModelBridge.getModels(),
           getModelInfo: (modelId: string) => languageModelBridge.getModelInfo(modelId),
           getActiveModel: () => languageModelBridge.getActiveModel(),
-          sendChatRequest: (modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>) =>
-            languageModelBridge.sendChatRequest(modelId, messages as any, options as any),
+          sendChatRequest: (modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>, signal?: AbortSignal) =>
+            languageModelBridge.sendChatRequest(modelId, messages as any, options as any, signal),
           registerProvider: (provider: any) => languageModelBridge.registerProvider(provider),
           onDidChangeModels: (listener: () => void) => languageModelBridge.onDidChangeModels(listener),
         })

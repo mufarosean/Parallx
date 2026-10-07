@@ -32,6 +32,10 @@ const ST_MAP_OUTPUT_TOKENS = 2400;
 const ST_QUESTION_OUTPUT_BASE = 400;
 const ST_QUESTION_OUTPUT_PER = 320;
 const ST_SMALL_OUTPUT_TOKENS = 700;
+/** Thinking a model may do before it answers, in tokens, when thinking is on. */
+const ST_THINK_TOKENS = 8192;
+/** How often, at most, a streaming answer reports its length (ms). */
+const ST_STREAM_REPORT_MS = 400;
 /** Pages per concept-map chunk, as characters: about eight pages of dense text. */
 const ST_MAP_CHUNK_CHARS = 24000;
 /** Questions asked for in one generation call, at most. */
@@ -131,25 +135,63 @@ async function stStreamWithStall(stream, onChunk, stallMs = 90000, firstChunkMs 
   }
 }
 
-/** One chat call, collected to a string. `json` asks the backend for JSON output. */
-async function stChat(modelId, system, user, { temperature = ST_TEMP_CHECK, numCtx = 0, json = true, onChunk = null } = {}) {
+/** The backend ended an answer that kept repeating itself (Ollama: "token repeat limit reached"). */
+function stIsModelLoop(err) {
+  return /repeat limit/i.test(String((err && err.message) || err || ''));
+}
+
+/**
+ * One chat call, collected to a string. `json` asks the backend for JSON
+ * output. `maxTokens` caps the answer, so a model that loops ends at the cap
+ * instead of filling its whole context; an answer the backend ends for
+ * looping comes back as what was written, which callers read as unusable.
+ * `token` (Stop) aborts the request mid-answer. `onStream` hears the
+ * answer's length so far: { chars, thinking }.
+ */
+async function stChat(modelId, system, user, { temperature = ST_TEMP_CHECK, numCtx = 0, json = true, onChunk = null, maxTokens = 0, token = null, onStream = null } = {}) {
   if (!_api.lm || typeof _api.lm.sendChatRequest !== 'function') {
     throw new Error('No model backend is available. Start the model backend and try again.');
   }
-  const options = { temperature, think: !!cfg('aiThinking', false) };
+  if (token && token.cancelled) throw stStoppedError();
+  const think = !!cfg('aiThinking', false);
+  const options = { temperature, think };
   if (numCtx > 0) options.numCtx = numCtx;
+  if (maxTokens > 0) options.maxTokens = maxTokens + (think ? ST_THINK_TOKENS : 0);
   if (json) options.format = 'json';
   let output = '';
-  const stream = _api.lm.sendChatRequest(modelId, [
-    { role: 'system', content: system },
-    { role: 'user', content: user },
-  ], options);
-  await stStreamWithStall(stream, (chunk) => {
-    if (chunk && chunk.content) {
-      output += chunk.content;
-      if (onChunk) { try { onChunk(chunk.content); } catch { /* listener error is not ours */ } }
-    }
-  });
+  let thinking = 0;
+  let lastReport = 0;
+  const tell = (force) => {
+    if (!onStream) return;
+    const now = Date.now();
+    if (!force && now - lastReport < ST_STREAM_REPORT_MS) return;
+    lastReport = now;
+    try { onStream({ chars: output.length, thinking }); } catch { /* listener error is not ours */ }
+  };
+  const controller = new AbortController();
+  const poll = token ? setInterval(() => { if (token.cancelled) controller.abort(); }, 250) : null;
+  try {
+    const stream = _api.lm.sendChatRequest(modelId, [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ], options, controller.signal);
+    tell(true);
+    await stStreamWithStall(stream, (chunk) => {
+      if (chunk && chunk.thinking) thinking += String(chunk.thinking).length;
+      if (chunk && chunk.content) {
+        output += chunk.content;
+        if (onChunk) { try { onChunk(chunk.content); } catch { /* listener error is not ours */ } }
+      }
+      tell(false);
+    });
+  } catch (err) {
+    if (token && token.cancelled) throw stStoppedError();
+    if (stIsModelLoop(err)) return output;
+    throw err;
+  } finally {
+    if (poll) clearInterval(poll);
+    controller.abort(); // a stalled answer stops on the backend too; no-op once finished
+  }
   return output;
 }
 
@@ -433,8 +475,8 @@ async function stBuildConceptMap(material, section, {
     ...sectionTitles.values(),
     ...(Array.isArray(material.outline) ? material.outline.map((o) => String((o && o.title) || '')) : []),
   ].filter(Boolean))];
-  const report = (done, total) => {
-    const p = { phase: 'map', done, total, written: 0, kept: 0, dropped: {}, materialId: material.id, sectionId: section ? section.id : 0 };
+  const report = (done, total, writing = null) => {
+    const p = { phase: 'map', done, total, part: Math.min(total, done + 1), parts: total, writing, written: 0, kept: 0, dropped: {}, materialId: material.id, sectionId: section ? section.id : 0 };
     if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
     if (!quiet) { try { bus.emit('run', p); } catch { /* bus is optional here */ } }
   };
@@ -486,7 +528,16 @@ async function stBuildConceptMap(material, section, {
       '--- MATERIAL ---',
       chunk.text,
     ].join('\n');
-    const output = await stChat(model, ST_CONCEPT_SYSTEM, user, { temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: true });
+    let output;
+    try {
+      output = await stChat(model, ST_CONCEPT_SYSTEM, user, {
+        temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: true, maxTokens: ST_MAP_OUTPUT_TOKENS * 2, token,
+        onStream: (s) => report(i, chunks.length, s),
+      });
+    } catch (err) {
+      if (stIsStopped(err)) break;
+      throw err;
+    }
     const raws = stJsonArrayFrom(output);
     for (const raw of raws) {
       if (!raw || typeof raw !== 'object') continue;
@@ -578,7 +629,7 @@ async function stCheckSupport(modelId, q, { material, numCtx } = {}) {
     stAnswerText(q),
   ].join('\n');
   const plan = await stPlanFor(modelId, material, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
-  const output = await stChat(modelId, ST_SUPPORT_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
+  const output = await stChat(modelId, ST_SUPPORT_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true, maxTokens: ST_SMALL_OUTPUT_TOKENS * 2 });
   const raw = stJsonObjectFrom(output);
   // An unreadable verdict is not evidence for the question: treat it as unsettled.
   if (!raw) return { settles: false, reason: 'The check gave no verdict.' };
@@ -600,7 +651,7 @@ async function stCheckDistractors(modelId, q, { material, numCtx } = {}) {
       String(d.option || ''),
     ].join('\n');
     const plan = await stPlanFor(modelId, material, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
-    const output = await stChat(modelId, ST_DISTRACTOR_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true });
+    const output = await stChat(modelId, ST_DISTRACTOR_SYSTEM, user, { temperature: ST_TEMP_CHECK, numCtx: plan.numCtx, json: true, maxTokens: ST_SMALL_OUTPUT_TOKENS * 2 });
     const raw = stJsonObjectFrom(output);
     if (!raw) return { defensible: true, optionIndex: d.optionIndex, reason: 'The check gave no verdict.' };
     if (raw.defensible === true || raw.defensible === 'true') {
@@ -1205,7 +1256,7 @@ async function stGenerateQuestions(material, {
   const report = (phase, extra) => {
     const p = {
       phase, done: conceptsDone, total: plan.length, written, kept: kept.length, dropped,
-      runId, materialId: material.id, sectionId, model, ...(extra || {}),
+      runId, materialId: material.id, sectionId, model, writing: null, ...(extra || {}),
     };
     if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
     if (!quiet) { try { bus.emit('run', p); } catch { /* bus is optional here */ } }
@@ -1247,9 +1298,12 @@ async function stGenerateQuestions(material, {
       report('generate', { concept: group[0].concept.title });
       let output;
       try {
-        output = await stChat(model, ST_QUESTION_SYSTEM, user, { temperature: ST_TEMP_GENERATE, numCtx: plan1.numCtx, json: true });
+        output = await stChat(model, ST_QUESTION_SYSTEM, user, {
+          temperature: ST_TEMP_GENERATE, numCtx: plan1.numCtx, json: true, maxTokens: outputTokens * 2, token,
+          onStream: (s) => report('generate', { concept: group[0].concept.title, writing: s }),
+        });
       } catch (err) {
-        if (cancelled()) { status = 'stopped'; break; }
+        if (cancelled() || stIsStopped(err)) { status = 'stopped'; break; }
         throw err;
       }
       for (const slot of group) {
@@ -1867,7 +1921,8 @@ async function stEnsureBank(scope, { size = 0, modelId = '', numCtx = 0, token =
       materialId: inner && inner.materialId != null ? inner.materialId : unit ? unit.material.id : null,
       sectionId: inner && inner.sectionId != null ? inner.sectionId : unit && unit.section ? unit.section.id : 0,
     };
-    if (inner) for (const k of ['concept', 'runId', 'model', 'error']) if (inner[k] != null) p[k] = inner[k];
+    if (inner) for (const k of ['concept', 'runId', 'model', 'error', 'part', 'parts']) if (inner[k] != null) p[k] = inner[k];
+    p.writing = inner && inner.writing != null ? inner.writing : null;
     if (onProgress) { try { onProgress(p); } catch { /* listener error is not ours */ } }
     try { bus.emit('run', p); } catch { /* bus is optional here */ }
   };

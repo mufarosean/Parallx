@@ -1646,11 +1646,13 @@ export namespace lm {
    * @param modelId The model to use (e.g. 'llama3.1:8b').
    * @param messages The conversation messages.
    * @param options Optional request parameters.
+   * @param signal Aborting it ends the request, also mid-answer.
    */
   export function sendChatRequest(
     modelId: string,
     messages: readonly ChatMessage[],
     options?: ChatRequestOptions,
+    signal?: AbortSignal,
   ): AsyncIterable<ChatResponseChunk>;
 
   /**

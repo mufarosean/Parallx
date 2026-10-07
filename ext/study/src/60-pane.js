@@ -296,6 +296,31 @@ function stBuildScope(st, materials, sections, route) {
 // not die with it. One run per session, owned here, released when it settles.
 const _stRuns = new Map();
 
+/** What a run is doing right now, in words, from its last progress payload. */
+function stRunNowText(p, run) {
+  if (run.token.cancelled && !run.done) return 'Stopping…';
+  if (run.done) return '';
+  const phase = String(p.phase || '');
+  const concept = p.concept ? `"${p.concept}"` : '';
+  const w = p.writing && typeof p.writing === 'object' ? p.writing : null;
+  // Streaming: nothing yet means the model is still loading or reading.
+  const stream = !w ? ''
+    : w.chars > 0 ? `, about ${Math.max(1, Math.round(w.chars / 6))} words so far`
+    : w.thinking > 0 ? ', thinking'
+    : ', waiting for the model';
+  if (phase === 'map') {
+    const part = Number(p.parts) > 1 ? `, part ${p.part} of ${p.parts}` : '';
+    return `Finding the concepts in the material${part}${stream}`;
+  }
+  if (phase === 'generate') return w ? `Writing questions${concept ? ` on ${concept}` : ''}${stream}` : 'Preparing the next questions';
+  if (phase.startsWith('check:')) {
+    const what = { anchor: 'Finding the quote in the material', support: 'Checking the quote supports the answer', distractor: 'Checking the wrong options', numeric: 'Running the calculation' }[phase.slice(6)] || 'Checking a question';
+    return `${what}${concept ? ` for ${concept}` : ''}`;
+  }
+  if (phase === 'rubric') return 'Writing marking guides';
+  return 'Starting';
+}
+
 function stRunFor(session) {
   let run = _stRuns.get(session.id);
   if (run) return run;
@@ -1147,6 +1172,8 @@ async function renderGenerating(host, route, ctx) {
   const pages = isBank ? 'Question bank' : scope.pageFrom ? `Pages ${scope.pageFrom} to ${scope.pageTo || scope.pageFrom}` : (primary && stProp(primary, 'pageCount', 0) ? `${stProp(primary, 'pageCount', 0)} pages` : (materialIds.length > 1 ? `${materialIds.length} materials` : 'Whole document'));
   const sub = el('div', 'st-gen__s');
   gen.appendChild(sub);
+  const now = el('div', 'st-gen__now');
+  if (!isBank) gen.appendChild(now);
   const bar = el('div', 'st-gen__bar');
   const fill = el('i', '');
   bar.appendChild(fill);
@@ -1197,6 +1224,7 @@ async function renderGenerating(host, route, ctx) {
     const t = filling ? size : Number(p.total) || 0;
     sub.textContent = `${pages}${concepts.length ? ` · ${concepts.length} ${concepts.length === 1 ? 'concept' : 'concepts'}` : ''}${modelId ? ` · ${modelId}` : ''}`;
     fill.style.width = `${t ? Math.min(100, Math.round((done / t) * 100)) : 0}%`;
+    now.textContent = stRunNowText(p, run);
     const dropped = p.dropped || {};
     const droppedTotal = Object.values(dropped).reduce((a, b) => a + (Number(b) || 0), 0);
     line.innerHTML = '';
