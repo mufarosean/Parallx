@@ -1,10 +1,10 @@
 # Study: research brief and design
 
-A new extension that turns dense study material (a PDF, a chapter, a
-selection, or a question bank you already own) into review that is faster
-than rereading and more honest than self-grading: multiple-choice practice,
-typed and essay tests, calculation questions with checked answers, and a
-hand-off of only what you missed to Flashcards. Written 2026-10-07 from
+A new extension, named Study, that turns dense study material (a PDF, a
+chapter, a selection, or a question bank you already own) into review that
+is faster than rereading and more honest than self-grading: multiple-choice
+practice, typed and essay tests, calculation questions with checked
+answers, and a hand-off of only what you missed to Flashcards. Written 2026-10-07 from
 Mufaro's ask after seeing Notability's Learn feature again; revised the same
 day after his bar was set.
 
@@ -12,9 +12,11 @@ The bar, in his words: the material is dense actuarial study text, so ten
 questions is not enough; a session can cap at 20 as long as a refresh
 brings the next set. Every question must be sourced so nothing is made up.
 The essay questions he has already pulled from past exams and from Rising
-Fellow (they live in his local study workspace) must be part of it. No
-concessions: if time goes into this it has to be top tier, better than
-Notability and better than NotebookLM.
+Fellow (they live in his local study workspace) must be part of it, and
+the CAS examiner's reports with them. No mock exams and no point scoring:
+what matters is being able to go through the content. No concessions: if
+time goes into this it has to be top tier, better than Notability and
+better than NotebookLM.
 
 How this was researched: web search plus the pages this container could
 reach. Notability's blog and support site, Apple's App Store pages and
@@ -150,18 +152,17 @@ Study is better than both products when every row below is true.
 | --- | --- | --- | --- |
 | Questions per material | ~10 per run | 10 to 20 | A bank that covers every concept; a session serves 20 and Refresh draws the next 20 until the scope is clean |
 | Sourcing | None shown | Citation on request | Every question carries a verbatim anchor, checked by string match against the page text before it is shown; no anchor, no question |
-| Answer formats | MC, fill-in, matching, true/false | MC only | MC, short typed, essay with point values, numeric with tolerance, formula |
-| Grading | Right/wrong | Right/wrong | MC exact; typed against a rubric with hit/partial/miss; essay against examiner-style points; numeric against an executed solution |
+| Answer formats | MC, fill-in, matching, true/false | MC only | MC, short typed, essay, numeric with tolerance, formula |
+| Grading | Right/wrong | Right/wrong | MC exact; typed and essay against a rubric with hit/partial/miss, the essay rubric from the examiner's report; numeric against an executed solution |
 | Own questions | Import flashcards | None | Past exam and Rising Fellow questions as first-class items, with the generated ones |
 | Coverage | None | Topics covered summary | Concept map per document; mastery per concept; the weak list drives the next session |
 | Memory | Flashcards with SRS | None | Missed items only go to Flashcards; concept mastery feeds back |
-| Exam realism | None | None | Timed mock exams weighted by points, mixed formats, interleaved papers |
 | Privacy | Cloud | Cloud | Local models, local SQLite, nothing leaves the machine |
 | Quality loop | Thumbs up/down | None | Thumbs down hides and logs; edit any question; regenerate; checks run before display |
 
 ## 7. Design
 
-Working name **Study** (`ext/study`). A new extension rather than a mode in
+**Study** (`ext/study`). A new extension rather than a mode in
 Flashcards or Worksheets: it is its own job (review and testing), it must
 run with either of them off, and both are large enough. It talks to them
 only through generic seams, the way Worksheets offers "Review Due
@@ -219,7 +220,7 @@ signal before any user sees a question. Over-generation covers the drops.
 | --- | --- | --- |
 | Multiple choice | One of four or five | Exact; competitive distractors required by prompt and check |
 | Short typed | One or two sentences | Rubric of points, hit/partial/miss, the Flashcards M102 grader |
-| Essay | A written answer with a point value in quarter steps, as on the CAS exams | Examiner-style rubric: what a full-credit answer must state, what earns partial credit, the common mistakes; score out of the points |
+| Essay | A written answer, a paragraph or more | The same rubric grader, with the rubric taken from the examiner's report where there is one: what a full answer states, what the report accepted as partial, the mistakes it called out as contradictions. Hit, partial, miss per point; no score out of marks |
 | Numeric | A number with units | Tolerance set per question; the executed solution shown after |
 | Formula | A formula in LaTeX or plain text | Normalised comparison first, model judgement on mismatch (Flashcards' formula path) |
 | Fill-in-the-blank | A term | Exact or alias match |
@@ -242,14 +243,18 @@ his machine, not guessed from here.
 - **From Worksheets' Problem Bank.** Worksheets registers a generic
   **question provider** (a command the core defines the shape of, like the
   planner's day-load seam) exposing its essay sheets and any qualitative
-  problem as question text, model answer, paper, source and points. Study
-  lists every provider it finds; none is named in code. The quantitative
-  sheets stay in Worksheets, where the sheet is the point; Study links to
-  them as "work this in Worksheets" items inside a mock exam.
-- **From files.** Markdown, CSV or JSON with question, answer, points,
-  paper, year and source. Past CAS questions with their examiner's report
-  answers import this way; the report's sample answer becomes the rubric
-  and its "common mistakes" become the contradiction list.
+  problem as question text, model answer, paper and source. Study lists
+  every provider it finds; none is named in code. The quantitative sheets
+  stay in Worksheets, where the sheet is the point.
+- **From files.** Markdown, CSV or JSON with question, answer, paper, year
+  and source. Past CAS questions import this way.
+- **Examiner's reports.** A report PDF is read with the same extractor and
+  matched to its exam's questions by number. Each question's sample answer
+  becomes the rubric, the report's note of what candidates commonly missed
+  becomes the contradiction list, and the report's page is the question's
+  anchor, so Show Source opens the report at the right place. A question
+  with no report keeps a model-written rubric from its answer, marked as
+  such.
 - **From Flashcards.** Its essay-practice cards, through the same provider
   seam, if Flashcards registers one.
 
@@ -261,8 +266,7 @@ past exam question counts toward the same concept as the reading it tests.
 | Mode | What it does |
 | --- | --- |
 | Practice | 20 questions from a scope, Refresh for the next 20, until the scope is clean: every concept answered right once in the chosen format. Instant marking, retry, Explain (grounded in the anchor, never free text), Show Source (opens the PDF on the page with the quote highlighted). |
-| Test | The same bank in Type format, no retry, score at the end with per-point feedback. |
-| Mock Exam | A timed paper: points target, time limit, format mix and paper mix chosen or drawn from an exam profile (Exam 7: the point weights per paper, the calculation versus essay split). Interleaves papers. Quantitative items open in Worksheets and report back when rated. Results by paper and concept. |
+| Test | The same bank in Type format, no retry, results at the end with per-point feedback. |
 | Weak Spots | A session drawn from the concepts with the lowest mastery across the whole workspace, any material. |
 | Learn | A one-screen summary of the scope, every line cited to a page. Optional; Chat can do this, so it ships only if the citations earn it. |
 | Memorize | Not built here. Flashcards does it; Study feeds it. |
@@ -337,17 +341,15 @@ check on or off, all on by default).
 
 ## 8. Open decisions for Mufaro
 
-1. Name: Study, Practice, or Review.
-2. Settled 2026-10-07: sessions cap at 20 with Refresh for the next 20; the
-   pulled questions are in his local study workspace and the import is
-   matched there.
-3. Whether the examiner's reports are available as PDFs to extract rubrics
-   from, or the rubrics are written by hand or by the model from the sample
-   answers.
-4. The Exam 7 profile: point weights per paper and the calculation versus
-   essay split to drive Mock Exam.
-5. Learn mode in v1 or not.
-6. Four or five options per multiple-choice question.
+Settled 2026-10-07: the name is Study; sessions cap at 20 with Refresh
+for the next 20; the pulled questions are in his local study workspace and
+the import is matched there; examiner's reports are included; no mock
+exams and no point scoring.
+
+1. Learn mode in v1 or not.
+2. Four or five options per multiple-choice question.
+3. Whether the examiner's reports are already PDFs in the study workspace
+   or still need collecting.
 
 ## 9. Proposed slices (order only)
 
@@ -361,11 +363,10 @@ check on or off, all on by default).
 5. Typed, essay and formula formats with rubric grading; Test mode; Mixed.
 6. Numeric format through the Python bridge.
 7. File import of question banks; Worksheets' provider for essay and
-   qualitative problems.
+   qualitative problems; examiner's reports as rubric sources.
 8. Mastery per concept, Weak Spots, Send Missed to Flashcards.
-9. Mock Exam with the exam profile and Worksheets hand-off.
-10. Sidebar, dashboard widget, chat tools, links, planner day loads.
-11. Canvas pages as a material.
+9. Sidebar, dashboard widget, chat tools, links, planner day loads.
+10. Canvas pages as a material.
 
 ## Sources
 
