@@ -478,6 +478,29 @@ api.cron.removeJob(id);
 
 `payload.agentTurn` injects a turn into the AI agent. `payload.systemEvent` pushes a structured event.
 
+### 4.11b Question providers (a core seam, through a command)
+
+A tool that holds questions (a problem bank, practice cards, an imported
+exam) offers them to any tool that runs sessions over questions; neither
+names the other. The registry is the core's and is reached through one
+command, so the pattern is the same as `chat.getSelectionActionDispatcher`:
+
+```js
+const registry = await api.commands.executeCommand('questions.getRegistry');
+// { register(provider) → IDisposable, list() → providers, onDidChange(listener) → IDisposable }
+context.subscriptions.push(registry.register({
+  id: 'myExt.cards',                 // '<tool>.<store>', unique
+  displayName: 'Practice Cards',
+  toolId: 'my-publisher.my-ext',
+  async list({ limit } = {}) {       // → [{ ref, question, answer, kind, rubric?, paper?, source?, exam?, sitting?, number?, part?, label?, sourceUri?, sourcePage?, sourceExcerpt?, tags? }]
+    …
+  },
+  async open(ref) { … return true; },   // show the question where it lives; optional
+}));
+```
+
+`kind` is `essay`, `short`, `quant`, `mc` or `other`; `rubric` is `[{ text, required }]`. A consumer lists providers with `registry.list()`, re-reads on `registry.onDidChange`, and shows `displayName` as the question's origin. The command may be missing on an older host: retry a few times, then give up quietly. Study consumes this seam; Worksheets (`worksheets.problems`) and Flashcards (`flashcards.essay-practice`) provide into it.
+
 ### 4.12 `api.context`
 
 ```js
