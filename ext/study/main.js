@@ -3431,6 +3431,8 @@ const ST_MAP_OUTPUT_TOKENS = 2400;
 const ST_QUESTION_OUTPUT_BASE = 400;
 const ST_QUESTION_OUTPUT_PER = 320;
 const ST_SMALL_OUTPUT_TOKENS = 700;
+/** An explanation: a few short paragraphs, a worked calculation at most. */
+const ST_EXPLAIN_OUTPUT_TOKENS = 1200;
 /** Thinking a model may do before it answers, in tokens, when thinking is on. */
 const ST_THINK_TOKENS = 8192;
 /** How often, at most, a streaming answer reports its length (ms). */
@@ -3710,10 +3712,11 @@ const ST_GRADE_SYSTEM = [
 ].join('\n');
 
 const ST_EXPLAIN_SYSTEM = [
-  'You explain, in two to four plain sentences, why the right answer to a study question is right, using only the quotation from the source you are given.',
-  'Start from what the quotation says, then connect it to the answer. When the student chose or wrote something else, say in one sentence where that went wrong, without scolding.',
-  'Never add a fact the quotation does not state or directly imply; when the quotation does not cover a point, say that the text does not say.',
-  'Formulas in LaTeX between $...$. No headings, no lists, no em dashes. Plain prose only.',
+  'You explain a study question to a student preparing for a professional exam, as a good tutor would: so they understand the idea and can answer the next question like it, not only this one.',
+  'Use what you are given: the question, the right answer, the model answer and marking points, the examiner\'s notes on common errors, and the source passage. Where those do not cover a step, use standard knowledge of the subject, and keep to what the reading teaches. Never refuse because a source quotation is missing.',
+  'Say why the right answer is right: the mechanism, the assumption or the reasoning behind it, and how it applies to this question. When the student chose or wrote something else, say plainly what was wrong or missing and why, without scolding.',
+  'When a calculation is involved, show the steps.',
+  'Be concrete and brief: one to three short paragraphs. Formulas in LaTeX between $...$. No headings, no em dashes.',
 ].join('\n');
 
 const ST_RUBRIC_SYSTEM = [
@@ -4932,17 +4935,34 @@ async function stExplain(question, { chosen = null, typed = '', modelId = '', nu
   const options = Array.isArray(question.options) ? question.options : [];
   const right = question.format === 'mc' ? String(options[Number(question.answer)] || '') : String(question.answer || '');
   const chosenText = question.format === 'mc' && chosen != null && chosen !== '' ? String(options[Number(chosen)] || '') : '';
+  // The reading and the page the question comes from, when Study has them.
+  let material = null;
+  let page = '';
+  try {
+    material = question.materialId ? await stGetMaterial(question.materialId) : null;
+    if (material && question.sourcePage) {
+      const text = await stMaterialText(material);
+      page = String((text && text.pageTexts && text.pageTexts[question.sourcePage - 1]) || '').trim().slice(0, ST_SUPPORT_PAGE_CHARS);
+    }
+  } catch { /* the explanation goes on without the page */ }
+  const rubric = Array.isArray(question.rubric) ? question.rubric.map((r) => String((r && r.text) || '').trim()).filter(Boolean) : [];
+  const errors = Array.isArray(question.contradictions) ? question.contradictions.map((x) => String(x || '').trim()).filter(Boolean) : [];
+  const from = [material && material.label ? String(material.label) : '', question.originLabel || ''].filter(Boolean).join(', ');
   const user = [
+    from ? `From: ${from}` : '',
     `Question:\n${question.stem}`,
     question.format === 'mc' && options.length ? `Options:\n${options.map((o, i) => `${i + 1}. ${o}${i === Number(question.answer) ? ' (correct)' : ''}`).join('\n')}` : '',
     `Right answer:\n${right}`,
+    rubric.length ? `Marking points:\n${rubric.map((r) => `- ${r}`).join('\n')}` : '',
+    errors.length ? `Common errors the examiners noted:\n${errors.map((e) => `- ${e}`).join('\n')}` : '',
     chosenText ? `The student chose:\n${chosenText}` : '',
     typed ? `The student wrote:\n${String(typed).trim()}` : '',
     question.explanation ? `Why, as written when the question was made:\n${question.explanation}` : '',
-    `Quotation from the source${question.sourcePage ? ` (page ${question.sourcePage})` : ''}:\n${question.sourceQuote || '(none)'}`,
+    question.sourceQuote ? `Quotation from the source${question.sourcePage ? ` (page ${question.sourcePage})` : ''}:\n${question.sourceQuote}` : '',
+    page ? `The source page:\n${page}` : '',
   ].filter(Boolean).join('\n\n');
-  const plan = await stPlanFor(model, null, user.length, ST_SMALL_OUTPUT_TOKENS, numCtx);
-  const text = await stChat(model, ST_EXPLAIN_SYSTEM, user, { temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: false, onChunk });
+  const plan = await stPlanFor(model, material, user.length, ST_EXPLAIN_OUTPUT_TOKENS, numCtx);
+  const text = await stChat(model, ST_EXPLAIN_SYSTEM, user, { temperature: ST_TEMP_GENERATE, numCtx: plan.numCtx, json: false, onChunk, maxTokens: ST_EXPLAIN_OUTPUT_TOKENS * 2 });
   const out = String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   if (!out) throw new Error('The model gave no explanation. Try again.');
   return out;

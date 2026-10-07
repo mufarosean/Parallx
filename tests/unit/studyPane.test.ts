@@ -1667,6 +1667,16 @@ describe('Study end to end', () => {
     expect(qa(h, '.st-rub__pt').length).toBeGreaterThan(0);
     expect(qa(h, '.st-rub__req').length).toBe(0);
     expect(qa(h, '.st-fb__acts button').map(text)).toEqual(['Show Source', 'Explain']);
+    // Explain works without a quotation: it gets the model answer and the
+    // marking points instead, and is never told the quote is missing.
+    btn(h, 'Explain')!.click();
+    await waitFor(() => text(q(h, '.st-explain')) === EXPLANATION, 'the explanation');
+    const ask = env.lmCalls.at(-1);
+    expect(ask.kind).toBe('explain');
+    expect(ask.user).toContain(`Right answer:\n${cur.answer}`);
+    expect(ask.user).toContain('Marking points:\n- ');
+    expect(ask.user).not.toContain('Quotation from the source');
+    expect(ask.maxTokens).toBeGreaterThan(0);
     btn(h, 'Show Source')!.click();
     await waitFor(() => env.calls.openFileEditor.length === 1, 'the question file');
     const line = QUESTIONS_MD.split('\n').findIndex((l) => l === `Q: ${cur.stem}`) + 1;
