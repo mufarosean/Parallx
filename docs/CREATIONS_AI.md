@@ -564,6 +564,62 @@ Not done, on purpose: growth across chats (the card is the base for every
 story), a Wildness control, direction chips (the reroll box takes a typed
 direction), rules in the Voice field.
 
+## Directions (built 2026-10-07)
+
+The owner, after weeks of roleplay: every turn needs a director's note
+written by hand ("/ai @Ada she finally asks about the money"), and without
+one the chat shrinks to two people reacting to each other with no larger
+story. The ask: the model proposes where the next turn could go and the
+owner picks instead of writing, on request rather than after every reply.
+
+- **Suggest Directions** (the clapperboard on the composer) makes one model
+  call and opens a card above the composer: for each character in the scene,
+  four one-sentence notes, one of each kind: Deepen (a feeling shown through
+  something they do), Push (they act on what they want), Complicate (a secret,
+  flaw, past event or person from their life gets in the way), Move (they
+  change the scene). Fixed kinds stop the model offering four versions of
+  the same emotional beat. Each note must name something concrete from the
+  scene, the memory or the sheet, and only says what that character does.
+- **Who gets options.** The thread's characters, only those the scene says
+  are present when it says so, at most four; the one who spoke last goes
+  last, since the next turn is usually someone else's. The player's own
+  character is one of the cast, so it gets options like the rest; there is
+  no separate persona path.
+- **What the director reads.** Each character's tagline, drives, secrets and
+  relationships from the sheet; the supporting cast and people in their
+  lives; the memory file (facts, timeline tail, notes); the Now line; the
+  dialogue rules; the last 14 turns; and the notes the last turns were
+  written with (read from the messages, nothing new stored), so it does not
+  offer the same move again.
+- **A pick** puts the chat's own "/ai @Name note" in the composer. Empty or
+  holding only a command, the composer is replaced; holding the player's own
+  words, they stay and the pick goes on the last line. Send writes that
+  character's turn with the note, exactly as a typed note, and the reply
+  keeps it. Fixed on the way: a trailing "/ai @Name note" under typed words
+  used to leave "@Name" in the note and guess the speaker; it now names who
+  replies, as the command does on its own.
+- **The card** streams in as the reply arrives, closes when any turn starts
+  (its options were for the scene before), and has Suggest Again and Close;
+  Escape closes it. One request at a time: a newer one or a turn drops the
+  older. No model, a turn in progress, or a reply with nothing readable each
+  say so on the card, with Try Again.
+- Files: `director.js` (pure: who gets options, the prompt, reading the
+  reply as it streams, the composer text), the card in `main.js`. Tests:
+  `creationsDirector`. Probe: `xvfb-run -a node
+  tests/probes/creations-directions-probe.mjs <outDir>` runs the whole flow
+  against a stand-in Ollama on port 11434 (stop a real one first) and shoots
+  the card in dark, light and a narrow pane.
+
+Not built, on purpose, and talked through first:
+- **World beats.** Details of the wider world (texture, a thread moving
+  forward) surfacing between turns, timed by a roll in code rather than the
+  model, one turn in the prompt only, with a log of what has surfaced and a
+  check that names a motif once it repeats (the clock that chimed in every
+  scene on Perchance). The owner wants Directions to settle first.
+- **A story direction** only the director reads, written as pressures, with
+  beats that wait for a condition rather than a turn count, so the
+  characters never steer toward a plot they should not know.
+
 ## Gates, whole program
 
 Unit suite: 405 files, 6414 tests green after the rename, of which

@@ -16,6 +16,7 @@ import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
 import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE } from './studio-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
+import { directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 
 // The workspace data folder keeps its original name: every character, thread,
@@ -2175,6 +2176,26 @@ ${CREATIONS_PARTS_CSS}
 .tg-shortcut-btn { height: var(--px-control-h-sm); padding: 0 var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-full); color: var(--px-text-secondary); font-family: var(--px-font-ui); font-size: var(--px-text-xs); }
 .tg-shortcut-btn:hover { background: var(--px-surface-hover); border-color: var(--px-border-strong); color: var(--px-text); }
 .tg-shortcut-btn--add { border-style: dashed; }
+.cr-directions { max-width: 860px; margin: 0 auto var(--px-space-2); width: 100%; box-sizing: border-box; border: 1px solid var(--px-border); border-radius: var(--px-radius-lg); background: var(--px-bg-elevated); padding: var(--px-space-2) var(--px-space-3) var(--px-space-3); max-height: 42vh; overflow-y: auto; }
+.cr-directions-head { display: flex; align-items: center; justify-content: space-between; gap: var(--px-space-2); }
+.cr-directions-title { display: inline-flex; align-items: center; gap: 6px; font-size: var(--px-text-sm); font-weight: 600; color: var(--px-text); }
+.cr-directions-actions { display: inline-flex; align-items: center; gap: var(--px-space-1); }
+.cr-directions-icon { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--px-radius-xs); background: none; color: var(--px-text-muted); cursor: pointer; padding: 0; }
+.cr-directions-icon:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.cr-directions-icon:disabled { opacity: 0.5; cursor: default; background: none; }
+.cr-directions-status { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-top: var(--px-space-1); }
+.cr-directions-status--error { color: var(--px-text-secondary); }
+.cr-directions-retry { border: 0; background: none; padding: 0; margin-left: var(--px-space-1); color: var(--px-accent-text); font: inherit; cursor: pointer; }
+.cr-directions-retry:hover { text-decoration: underline; }
+.cr-directions-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--px-space-3); margin-top: var(--px-space-2); }
+.cr-directions-group { min-width: 0; display: flex; flex-direction: column; gap: var(--px-space-1); }
+.cr-directions-who { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); font-weight: 600; color: var(--px-text-secondary); margin-bottom: 2px; }
+.cr-direction { display: flex; align-items: baseline; gap: var(--px-space-2); width: 100%; box-sizing: border-box; padding: var(--px-space-1) var(--px-space-2); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg); color: var(--px-text); font: inherit; font-size: var(--px-text-sm); line-height: 1.4; text-align: left; cursor: pointer; }
+.cr-direction:hover, .cr-direction:focus-visible { border-color: var(--px-border-strong); background: var(--px-surface-hover); outline: none; }
+.cr-direction--picked { border-color: var(--px-accent); background: var(--px-accent-faint); }
+.cr-direction-kind { flex: none; width: 76px; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.cr-direction-text { flex: 1; min-width: 0; }
+@container (max-width: 640px) { .cr-directions-groups { grid-template-columns: minmax(0, 1fr); } }
 .cr-chat-body { flex: 1; min-height: 0; display: flex; }
 .cr-chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .cr-memory { flex: 0 0 300px; border-left: 1px solid var(--px-divider); background: var(--px-bg-elevated); padding: var(--px-space-3) var(--px-space-4); display: flex; flex-direction: column; gap: var(--px-space-3); overflow-y: auto; box-sizing: border-box; }
@@ -5552,7 +5573,13 @@ function renderChatEditor(container, parallx, input) {
 
   const sendBtn = el('button', 'tg-input-send', { html: icon('send', 16) });
   sendBtn.title = 'Send (Enter)';
-  inputToolbar.append(optionsBtn, oocBtn, directorBtn, sendBtn);
+  // Directions: on request, the director reads the scene and offers each
+  // character four short notes for their next turn (director.js). A pick
+  // becomes "/ai @Name note" in the composer, the chat's own way to steer.
+  const directionsBtn = el('button', 'tg-input-ooc-btn', { html: icon('clapperboard', 16) });
+  directionsBtn.title = 'Suggest Directions';
+  directionsBtn.setAttribute('aria-label', 'Suggest Directions');
+  inputToolbar.append(optionsBtn, oocBtn, directionsBtn, directorBtn, sendBtn);
 
   const textareaWrap = el('div', 'tg-textarea-wrap');
   textareaWrap.append(textarea, inputToolbar);
@@ -5570,7 +5597,9 @@ function renderChatEditor(container, parallx, input) {
   // Shortcut buttons bar (inline speaker actions inside the input card)
   const shortcutBar = el('div', 'tg-shortcut-bar');
   inputCard.appendChild(shortcutBar);
-  inputWrap.appendChild(inputCard);
+  const directionsCard = el('div', 'cr-directions');
+  directionsCard.style.display = 'none';
+  inputWrap.append(directionsCard, inputCard);
   root.appendChild(inputWrap);
   // The chat column and the Memory panel side by side.
   const chatBody = el('div', 'cr-chat-body');
@@ -6035,6 +6064,155 @@ function renderChatEditor(container, parallx, input) {
       }
     }
   }
+
+  // ── Directions ──────────────────────────────────────────────────────────
+  // One call, on request, after a turn. Streams into the card as it is read;
+  // a newer request or a new turn drops an older one. The card closes when a
+  // turn starts: its options were for the scene before it.
+  let _directionsRun = 0;
+  let _directionsPicked = null;
+
+  function closeDirections() {
+    _directionsRun++;
+    _directionsPicked = null;
+    directionsCard.style.display = 'none';
+    directionsCard.replaceChildren();
+    directionsBtn.classList.remove('tg-input-ooc-btn--active');
+  }
+
+  function renderDirections({ groups = [], status = '', error = '', busy = false } = {}) {
+    directionsCard.replaceChildren();
+    const head = el('div', 'cr-directions-head');
+    head.appendChild(el('span', 'cr-directions-title', { html: `${icon('clapperboard', 14)} Directions for the next turn` }));
+    const actions = el('div', 'cr-directions-actions');
+    const again = el('button', 'cr-directions-icon', { html: icon('rotate-ccw', 14) });
+    again.title = 'Suggest Again';
+    again.setAttribute('aria-label', 'Suggest Again');
+    again.disabled = busy;
+    again.addEventListener('click', () => void suggestDirections());
+    const close = el('button', 'cr-directions-icon', { html: icon('x', 14) });
+    close.title = 'Close';
+    close.setAttribute('aria-label', 'Close');
+    close.addEventListener('click', () => closeDirections());
+    actions.append(again, close);
+    head.appendChild(actions);
+    directionsCard.appendChild(head);
+
+    if (error) {
+      const line = el('div', 'cr-directions-status cr-directions-status--error', { text: error });
+      const retry = el('button', 'cr-directions-retry', { text: 'Try Again' });
+      retry.addEventListener('click', () => void suggestDirections());
+      line.appendChild(retry);
+      directionsCard.appendChild(line);
+    } else if (status) {
+      directionsCard.appendChild(el('div', 'cr-directions-status', { text: status }));
+    }
+
+    if (groups.length) {
+      const grid = el('div', 'cr-directions-groups');
+      for (const g of groups) {
+        const char = characters.find((c) => getCharacterName(c) === g.name);
+        const box = el('div', 'cr-directions-group');
+        const who = el('div', 'cr-directions-who');
+        who.append(createPortrait(g.name, { size: 20, hue: char ? characterHue(char) : null }), el('span', null, { text: g.name }));
+        box.appendChild(who);
+        for (const o of g.options) {
+          const key = `${g.name}\n${o.text}`;
+          const btn = el('button', `cr-direction${_directionsPicked === key ? ' cr-direction--picked' : ''}`);
+          btn.title = `${g.name} takes the next turn with this note. Edit it before you send.`;
+          btn.append(el('span', 'cr-direction-kind', { text: directionKindLabel(o.kind) }), el('span', 'cr-direction-text', { text: o.text }));
+          btn.addEventListener('click', () => {
+            _directionsPicked = key;
+            for (const b of grid.querySelectorAll('.cr-direction--picked')) b.classList.remove('cr-direction--picked');
+            btn.classList.add('cr-direction--picked');
+            textarea.value = composeWithDirection(textarea.value, directionCommand(g.name, o.text));
+            textarea.dispatchEvent(new Event('input'));
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+          });
+          box.appendChild(btn);
+        }
+        grid.appendChild(box);
+      }
+      directionsCard.appendChild(grid);
+    }
+    directionsCard.style.display = '';
+    directionsBtn.classList.add('tg-input-ooc-btn--active');
+  }
+
+  async function suggestDirections() {
+    if (!thread || characters.length === 0) return;
+    if (gen.isGenerating) {
+      renderDirections({ error: 'A turn is being written. Ask for directions once it is done.' });
+      return;
+    }
+    const rawId = selectedModelId || thread?.modelId || null;
+    const modelId = (rawId && models.some((m) => m.id === rawId)) ? rawId : models[0]?.id;
+    if (!modelId || !parallx.lm?.sendChatRequest) {
+      renderDirections({ error: 'No model is available. Pick one in Chat Settings.' });
+      return;
+    }
+    const run = ++_directionsRun;
+    _directionsPicked = null;
+
+    const story = messageHistory.filter((m) => m && m.content && m.hiddenFrom !== 'ai' && m.kind !== 'ooc');
+    const lastSpeaker = [...story].reverse().find((m) => m.characterFile)?.characterFile || null;
+    const roster = characters.map((c) => ({ file: c.fileName, name: getCharacterName(c), char: c }));
+    const chosen = directorCast(roster, { present: thread.sceneState?.present || [], lastSpeaker });
+    const names = chosen.map((c) => c.name);
+    renderDirections({ status: `Reading the scene for ${names.join(', ')}…`, busy: true });
+
+    let memory = { facts: [], beats: [], notes: '' };
+    try { memory = await loadThreadMemory(fs, workspaceUri, threadId); } catch { /* the prompt goes without it */ }
+    if (run !== _directionsRun) return;
+    const cast = chosen.map(({ name, char }) => {
+      const sheet = sheetFromCharacter(char.rawData || {});
+      return { name, tagline: sheet.tagline, drives: sheet.drives, secrets: sheet.secrets, relationships: sheet.relationships };
+    });
+    const messages = buildDirectorPrompt({
+      cast,
+      others: [...supportingCards, ...connectedCards],
+      scene: thread.sceneState || null,
+      memory,
+      transcript: story.slice(-14).map((m) => ({ name: getVisibleName(m), content: m.content })),
+      recentNotes: messageHistory.slice(-12).map((m) => m && m.instruction).filter(Boolean),
+      rules: currentSettings?.dialogueRules || '',
+    });
+
+    let raw = '';
+    try {
+      const numCtx = await chatContextWindow(modelId);
+      if (run !== _directionsRun) return;
+      const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, maxTokens: 1200, think: false, ...(numCtx ? { numCtx } : {}) });
+      for await (const chunk of stream) {
+        if (run !== _directionsRun) return;
+        if (!chunk?.content) continue;
+        raw += chunk.content;
+        const partial = parseDirections(raw, names, { complete: false });
+        if (partial.length) renderDirections({ groups: partial, status: 'Writing…', busy: true });
+      }
+    } catch (err) {
+      if (run !== _directionsRun) return;
+      renderDirections({ error: `Could not suggest directions: ${err?.message || String(err)}.` });
+      return;
+    }
+    if (run !== _directionsRun) return;
+    const groups = parseDirections(raw, names);
+    if (!groups.length) {
+      console.warn('[TextGenerator] Directions: nothing readable in the reply. It began:', raw.slice(0, 200));
+      renderDirections({ error: 'The model did not suggest anything this time.' });
+      return;
+    }
+    renderDirections({ groups });
+  }
+
+  directionsBtn.addEventListener('click', () => {
+    if (directionsCard.style.display !== 'none' && !directionsCard.querySelector('.cr-directions-status--error')) closeDirections();
+    else void suggestDirections();
+  });
+  directionsCard.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { closeDirections(); textarea.focus(); }
+  });
 
   /**
    * Serialize thread shortcuts array to the @name/@message/... bulk-edit format.
@@ -6924,6 +7102,7 @@ function renderChatEditor(container, parallx, input) {
       const textSoFar = target.content;
       if (!textSoFar.trim()) return;
       const continueSpeaker = target.characterFile || await resolveReplySpeaker();
+      closeDirections();
       gen.isGenerating = true;
       gen.stopRequested = false;
       gen.transient = { ...target, content: textSoFar + '…' };
@@ -7492,6 +7671,7 @@ function renderChatEditor(container, parallx, input) {
     // carry an explicit instruction already (plain send, empty send,
     // shortcut buttons, regenerate). Explicit /ai instructions win.
     if (!instruction) instruction = consumeDirectorNote();
+    closeDirections();
 
     gen.isGenerating = true;
     gen.stopRequested = false;
@@ -7664,6 +7844,7 @@ function renderChatEditor(container, parallx, input) {
         // Generate continuation using history up to (but not including) the last AI message,
         // plus the existing content as a partial assistant response
         if (gen.isGenerating || characters.length === 0 || !parallx.lm) break;
+        closeDirections();
         gen.isGenerating = true;
         gen.stopRequested = false;
         gen.transient = { ...lastAiMsg, content: lastAiMsg.content + '…' };
@@ -7819,14 +8000,19 @@ function renderChatEditor(container, parallx, input) {
     const lines = text.split('\n');
     const lastLine = lines[lines.length - 1].trim();
     let inlineInstruction = null;
+    // A trailing "/ai @Name note" also says who replies, as it does on its
+    // own; the name used to be left in the note and the speaker guessed.
+    let inlineSpeaker = null;
     let messageText = text;
     if (lines.length > 1 && lastLine.startsWith('/ai ')) {
-      inlineInstruction = lastLine.slice(4).trim();
+      const trailing = parseSlashCommand(lastLine);
+      inlineInstruction = trailing ? trailing.instruction : lastLine.slice(4).trim();
+      inlineSpeaker = trailing?.targetCharacter ? resolveCharacterReference(trailing.targetCharacter) : null;
       messageText = lines.slice(0, -1).join('\n').trim();
     }
 
-    if (!messageText && inlineInstruction) {
-      await generateTurn({ speaker: await resolveReplySpeaker(selectedReplySpeaker), instruction: inlineInstruction });
+    if (!messageText && (inlineInstruction || inlineSpeaker)) {
+      await generateTurn({ speaker: inlineSpeaker || await resolveReplySpeaker(selectedReplySpeaker), instruction: inlineInstruction || null });
       return;
     }
 
@@ -7860,7 +8046,7 @@ function renderChatEditor(container, parallx, input) {
     if (!wasOocMessage && thread?.autoReply !== false) {
       const lastMsg = messageHistory[messageHistory.length - 1];
       if (lastMsg?.expectsReply !== false) {
-        await generateTurn({ speaker: await resolveReplySpeaker(selectedReplySpeaker), instruction: inlineInstruction || null, userText: messageText });
+        await generateTurn({ speaker: inlineSpeaker || await resolveReplySpeaker(selectedReplySpeaker), instruction: inlineInstruction || null, userText: messageText });
       }
     }
   }
