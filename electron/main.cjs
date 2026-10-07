@@ -2350,9 +2350,11 @@ ipcMain.handle('pdfExport:render', async (_event, payload) => {
 ipcMain.handle('document:extractText', async (_event, filePath) => {
   try {
     const result = await extractText(filePath);
-    // pageTexts rides along for PDFs so callers can pair pages (the flashcard
-    // importer's odd-front / even-back decks). Absent for other formats.
-    return { text: result.text, format: result.format, metadata: result.metadata, pageTexts: result.pageTexts };
+    // pageTexts rides along for PDFs so callers can pair pages (odd-front /
+    // even-back card decks) or cite a page; outline is the PDF's bookmarks
+    // ([{ title, page, level }], [] when it has none) so a reader can be
+    // split into its chapters. Both absent for other formats.
+    return { text: result.text, format: result.format, metadata: result.metadata, pageTexts: result.pageTexts, outline: result.outline };
   } catch (err) {
     return { error: { code: 'EXTRACTION_FAILED', message: err.message || String(err), path: filePath } };
   }

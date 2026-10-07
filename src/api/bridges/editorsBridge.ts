@@ -349,18 +349,21 @@ export class EditorsBridge {
   }
 
   /**
-   * The group a `side` open lands in: the one the file is already open in
-   * (opened again there, the group re-shows it and the reveal applies), else
-   * the group to the right of the active one, else a new split to its right.
+   * The group a `side` open lands in: a group other than the active one that
+   * already shows the file (opened again there, the group re-shows it and
+   * the reveal applies), else the group to the right of the active one, else
+   * a new split to its right. A file open only in the active group is opened
+   * beside it too: re-showing it there would cover the editor that asked to
+   * keep it in view (a study session opened from that PDF's own group).
    * Undefined without a group service, so the open falls back to the active
    * group.
    */
   private _sideGroupFor(input: IEditorInput): string | undefined {
-    const open = this._editorService!.getOpenEditors().find((d) => d.id === input.id);
-    if (open) return open.groupId;
-
     const groups = this._editorGroupService;
     const active = groups?.activeGroup;
+    const open = this._editorService!.getOpenEditors().find((d) => d.id === input.id && d.groupId !== active?.id);
+    if (open) return open.groupId;
+
     if (!groups || !active) return undefined;
 
     const right = groups.findGroup(GroupDirection.Right, active.id);

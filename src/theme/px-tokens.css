@@ -341,9 +341,9 @@
   /* ── Tier 3 · Component — Card stock ────────────────────────────────────
      A printed card: white paper stock with dark ink, the same in both
      themes and modes (a flashcard or a quiz card is a physical object on
-     the desk, not a surface of the app). Flashcards' white card set the
-     values; every card-like face reads from these, never raw white or
-     raw black. Not redefined under light mode on purpose. */
+     the desk, not a surface of the app). Every card-like face reads
+     from these, never raw white or raw black. Not redefined under light
+     mode on purpose. */
   --px-stock:             #ffffff;  /* the paper                             */
   --px-stock-edge:        #e2e2e2;  /* its border                            */
   --px-stock-line:        #ececec;  /* rules printed on it                   */

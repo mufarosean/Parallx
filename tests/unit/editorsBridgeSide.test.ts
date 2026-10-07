@@ -68,14 +68,22 @@ describe('openFileEditor to the side', () => {
     expect(groupService.activateGroup).toHaveBeenCalledWith('g9');
   });
 
-  it('a file already open is shown where it is, not opened twice', async () => {
-    const { bridge, editorService, groupService } = setup({ open: [{ id: FILE, groupId: 'g1' }] });
+  it('a file already open beside the active group is shown where it is, not opened twice', async () => {
+    const { bridge, editorService, groupService } = setup({ open: [{ id: FILE, groupId: 'g5' }] });
     await bridge.openFileEditor(FILE, { side: true, reveal: { page: 3 } });
     expect(groupService.splitGroup).not.toHaveBeenCalled();
     expect(groupService.findGroup).not.toHaveBeenCalled();
     expect(editorService.openEditor).toHaveBeenCalledTimes(1);
-    expect(editorService.openEditor).toHaveBeenCalledWith(expect.anything(), { pinned: true }, 'g1');
+    expect(editorService.openEditor).toHaveBeenCalledWith(expect.anything(), { pinned: true }, 'g5');
     expect(takeFileReveal('/notes/clark.pdf')).toEqual({ page: 3 });
+  });
+
+  it('a file open only in the active group opens beside it, so the asking editor stays in view', async () => {
+    const { bridge, editorService, groupService } = setup({ open: [{ id: FILE, groupId: 'g1' }] });
+    await bridge.openFileEditor(FILE, { side: true, reveal: { page: 3 } });
+    expect(groupService.splitGroup).toHaveBeenCalledWith('g1', GroupDirection.Right);
+    expect(editorService.openEditor).toHaveBeenCalledWith(expect.anything(), { pinned: true }, 'g2');
+    expect(groupService.activateGroup).toHaveBeenCalledWith('g2');
   });
 
   it('without a group service, side falls back to the active group', async () => {
