@@ -1118,7 +1118,7 @@ async function stImportQuestionFile(fsPath) {
   const parsed = stParseQuestionFile(text, ext) || { questions: [], skipped: 0 };
   const entries = Array.isArray(parsed.questions) ? parsed.questions : [];
   if (!entries.length) throw new Error('No questions were found in that file. Each question needs question text: a Q: line or a **Question** block in Markdown, a question column in CSV or TSV, or a question field in JSON.');
-  const bank = await stInsertBank({ name: stFileNameOf(path), kind: 'file', path, count: entries.length });
+  const bank = await stInsertBank({ name: stMaterialLabelFor(stFileNameOf(path), ''), kind: 'file', path, count: entries.length });
   const sourceUri = stUriOf(path);
   const rows = entries
     .map((raw) => stImportedToQuestion(raw, { origin: 'imported', bankId: bank.id, sourceUri }))
@@ -1140,7 +1140,7 @@ async function stImportExaminerReport(fsPath, { modelId } = {}) {
   const report = stParseExaminerReport(ex.pageTexts) || { exam: '', sitting: '', questions: [] };
   const entries = Array.isArray(report.questions) ? report.questions : [];
   if (!entries.length) throw new Error('No question entries were found in that report. Check that it is a CAS examiner\'s report PDF.');
-  const bank = await stInsertBank({ name: stFileNameOf(path), kind: 'report', path, exam: report.exam || '', sitting: report.sitting || '', count: entries.length });
+  const bank = await stInsertBank({ name: stMaterialLabelFor(stFileNameOf(path), ''), kind: 'report', path, exam: report.exam || '', sitting: report.sitting || '', count: entries.length });
   const candidates = (await stListQuestions({ includeHidden: true })).filter((q) => q.origin !== 'generated');
   const matches = stMatchReportToQuestions(report, candidates) || [];
   const reportUri = stUriOf(path);

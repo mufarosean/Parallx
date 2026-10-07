@@ -248,6 +248,7 @@ export const __testables = {
   stPagePartition: typeof stPagePartition === 'function' ? stPagePartition : undefined,
   stSpreadOrder: typeof stSpreadOrder === 'function' ? stSpreadOrder : undefined,
   stMaterialLabelFor: typeof stMaterialLabelFor === 'function' ? stMaterialLabelFor : undefined,
+  stLineOfStem: typeof stLineOfStem === 'function' ? stLineOfStem : undefined,
   stQuestionAnswerable: typeof stQuestionAnswerable === 'function' ? stQuestionAnswerable : undefined,
   stProviderRefOf: typeof stProviderRefOf === 'function' ? stProviderRefOf : undefined,
   stQuestionKeys: typeof stQuestionKeys === 'function' ? stQuestionKeys : undefined,

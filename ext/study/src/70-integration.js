@@ -444,6 +444,12 @@ async function stShowSource(question) {
   const reveal = {};
   if (Number(question.sourcePage) > 0) reveal.page = Number(question.sourcePage);
   if (question.sourceQuote) reveal.quote = String(question.sourceQuote);
+  // A question from a notes file (no page, no anchor) opens at its own line.
+  if (!reveal.page && !reveal.quote && question.stem && /\.(?:md|txt|csv|tsv|json)$/i.test(uri)) {
+    const text = await stReadWorkspaceFile(stFsPathOf(uri)).catch(() => '');
+    const line = stLineOfStem(text, question.stem);
+    if (line > 0) reveal.line = line;
+  }
   const target = /^[a-z][a-z0-9+.-]*:\/\//i.test(uri) ? uri : stUriOf(stFsPathOf(uri));
   try {
     // `side` opens beside the session (core seam C4); an older core ignores it.

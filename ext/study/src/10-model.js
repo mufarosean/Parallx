@@ -326,23 +326,32 @@ function stRepeatFill({ items = [], questions = [], exclude, limit = 0 } = {}) {
   return ordered.slice(0, max).map((e) => byId.get(e.it.questionId));
 }
 
+/** Letters and digits a note may add around restated points and still say nothing new ("The answer leaves out:"). */
+const ST_NOTE_FRAME_MAX = 30;
+
 /**
- * True when a grader's note only restates a missed or partial rubric point:
- * the letters-and-digits skeleton of one contains the other's and the
- * shorter is at least 80% of the longer. The note is then left out, since
- * the point already says it.
+ * True when a grader's note only restates missed or partial rubric points:
+ * its letters-and-digits skeleton is one of them near enough (one contains
+ * the other and the shorter is at least 80% of the longer), or what is left
+ * once the points it quotes are taken out is only a short frame ("The answer
+ * leaves out: ..."). The note is then left out, since the points already
+ * say it.
  */
 function stNoteRestatesPoint(note, rubric, points) {
   const n = stSkeleton(note);
   if (!n) return false;
-  return (Array.isArray(rubric) ? rubric : []).some((p, i) => {
-    const status = (points && points[i] && points[i].status) || 'miss';
-    if (status === 'hit') return false;
-    const t = stSkeleton(p && typeof p === 'object' ? p.text : p);
-    if (!t) return false;
+  const open = (Array.isArray(rubric) ? rubric : [])
+    .filter((p, i) => ((points && points[i] && points[i].status) || 'miss') !== 'hit')
+    .map((p) => stSkeleton(p && typeof p === 'object' ? p.text : p))
+    .filter(Boolean);
+  const near = open.some((t) => {
     const [short, long] = t.length <= n.length ? [t, n] : [n, t];
     return long.includes(short) && short.length / long.length >= 0.8;
   });
+  if (near) return true;
+  let rest = n;
+  for (const t of [...open].sort((a, b) => b.length - a.length)) rest = rest.split(t).join('');
+  return rest !== n && rest.length <= ST_NOTE_FRAME_MAX;
 }
 
 /** Reorder so no two consecutive items share a materialId when avoidable. Stable otherwise. */
@@ -1744,6 +1753,24 @@ function stQuestionAnswerable(q) {
     case 'essay': return !!answer || stNormalizeRubric(q.rubric).length > 0;
     default: return !!answer;
   }
+}
+
+/**
+ * The 1-based line of a question file where `stem` starts: the first line
+ * whose letters and digits hold the stem's opening (a Q: prefix, Markdown
+ * marks and wrapping ignored), else 0.
+ */
+function stLineOfStem(text, stem) {
+  const want = stSkeleton(stem).slice(0, 40);
+  if (want.length < 8) return 0;
+  const lines = String(text ?? '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    let joined = '';
+    for (let j = i; j < lines.length && joined.length < want.length; j++) joined += stSkeleton(lines[j]);
+    const own = stSkeleton(lines[i]);
+    if (own && joined.includes(want) && joined.indexOf(want) < own.length) return i + 1;
+  }
+  return 0;
 }
 
 /** A short title for a bank question's own concept: its origin label, else the stem's first sentence, cut. */

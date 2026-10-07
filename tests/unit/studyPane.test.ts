@@ -1565,7 +1565,7 @@ describe('Study end to end', () => {
     expect(res.inserted).toBe(2);
     expect(env.calls.info.at(-1)).toBe('Imported 2 questions.');
     const fileBank = one("SELECT * FROM st_banks WHERE kind = 'file'");
-    expect(fileBank).toMatchObject({ name: 'questions.md', path: QFILE, count: 2 });
+    expect(fileBank).toMatchObject({ name: 'questions', path: QFILE, count: 2 });
     const imported = all("SELECT * FROM st_questions WHERE origin = 'imported' ORDER BY id");
     expect(imported.map((r) => [r.format, r.origin_label, r.bank_id, r.material_id, r.source_uri])).toEqual([
       ['essay', 'CAS Exam 7 · 2019 Fall · Q5', fileBank.id, 0, 'file:///ws/banks/questions.md'],
@@ -1629,6 +1629,21 @@ describe('Study end to end', () => {
     expect(drawn.every((r) => r.bank_id === bankId && r.origin === 'imported')).toBe(true);
     expect(q(h, '.st-card')!.dataset.format).toBe('essay');
     expect(text(q(h, '.st-eyebrow__cpt'))).toMatch(/^CAS Exam 7 · 201\d (Fall|Spring) · Q\d$/);
+
+    // A bank question has no anchor: its feedback shows none, and Show
+    // Source opens the question file at the question's own line.
+    const cur = currentQuestion(h);
+    const field = q<HTMLTextAreaElement>(h, '.st-ta textarea, .st-ta input')!;
+    field.value = typedAnswer([{ text: cur.answer }], 'all');
+    key(h, 'Enter', field);
+    await waitFor(() => q(h, '.st-fb--show'), 'feedback');
+    expect(q(h, '.st-fb--show .st-quote')).toBeNull();
+    expect(qa(h, '.st-fb__acts button').map(text)).toEqual(['Show Source', 'Explain']);
+    btn(h, 'Show Source')!.click();
+    await waitFor(() => env.calls.openFileEditor.length === 1, 'the question file');
+    const line = QUESTIONS_MD.split('\n').findIndex((l) => l === `Q: ${cur.stem}`) + 1;
+    expect(line).toBeGreaterThan(0);
+    expect(env.calls.openFileEditor[0]).toEqual({ uri: 'file:///ws/banks/questions.md', options: { reveal: { line }, side: true } });
   });
 
   // ═════════════════════════════════════════════════════════════════════════

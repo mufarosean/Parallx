@@ -219,10 +219,13 @@ function stPageLabel(q, page) {
   return page ? `${prefix} ${page}` : 'Source';
 }
 
-/** The anchor quote with the warning rule and the page link. */
-function stQuoteEl(q, quote, page, onOpen) {
+/** Append the anchor quote with the warning rule and the page link. A
+ *  question with no anchor (most imported ones) shows none; Show Source in
+ *  the actions still opens what it came from. */
+function stAppendQuote(parent, q, quote, page, onOpen) {
+  if (!quote) return;
   const box = el('div', 'st-quote');
-  box.appendChild(el('span', 'st-quote__text', quote ? `“${quote}”` : 'No anchor stored for this question.'));
+  box.appendChild(el('span', 'st-quote__text', `“${quote}”`));
   if (page || q.sourceUri || q.providerId) {
     const pg = el('button', 'st-quote__pg');
     pg.type = 'button';
@@ -231,7 +234,7 @@ function stQuoteEl(q, quote, page, onOpen) {
     pg.addEventListener('click', () => onOpen());
     box.appendChild(pg);
   }
-  return box;
+  parent.appendChild(box);
 }
 
 /** The session toolbar: scope line, optional strand host, the close button. */
@@ -535,7 +538,7 @@ function stReviewItemEl(item, q, c, n) {
   const rightText = q.format === 'mc' ? (options[Number(q.answer)] !== undefined ? options[Number(q.answer)] : String(q.answer)) : String(q.answer || '');
   rightEl.appendChild(stMd(rightText));
   box.appendChild(rightEl);
-  box.appendChild(stQuoteEl(q, q.sourceQuote, q.sourcePage, () => void stShowSource(q)));
+  stAppendQuote(box, q, q.sourceQuote, q.sourcePage, () => void stShowSource(q));
   return box;
 }
 
@@ -1530,7 +1533,7 @@ async function renderSession(host, route, ctx) {
       why.appendChild(stMd(cur.q.explanation));
       fb.appendChild(why);
     }
-    fb.appendChild(stQuoteEl(cur.q, cur.q.sourceQuote, cur.q.sourcePage, () => void showSource()));
+    stAppendQuote(fb, cur.q, cur.q.sourceQuote, cur.q.sourcePage, () => void showSource());
     showFeedback(fb);
   }
 
@@ -1563,7 +1566,7 @@ async function renderSession(host, route, ctx) {
     let quote = q.sourceQuote, page = q.sourcePage;
     const missIdx = rubric.findIndex((p, i) => p && p.quote && ((points[i] && points[i].status) || 'miss') !== 'hit');
     if (missIdx >= 0) { quote = rubric[missIdx].quote; page = rubric[missIdx].page || page; }
-    fb.appendChild(stQuoteEl(q, quote, page, () => void showSource()));
+    stAppendQuote(fb, q, quote, page, () => void showSource());
     if (q.answer !== undefined && q.answer !== null && String(q.answer) !== '') {
       const d = el('details', 'st-full');
       const s = el('summary', '');
@@ -1591,7 +1594,7 @@ async function renderSession(host, route, ctx) {
     const t = el('div', 'st-full__text');
     t.appendChild(stMd(String(cur.q.answer || '')));
     fb.appendChild(t);
-    fb.appendChild(stQuoteEl(cur.q, cur.q.sourceQuote, cur.q.sourcePage, () => void showSource()));
+    stAppendQuote(fb, cur.q, cur.q.sourceQuote, cur.q.sourcePage, () => void showSource());
     showFeedback(fb);
   }
 

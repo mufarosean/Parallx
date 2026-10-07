@@ -686,6 +686,20 @@ describe('the rubric grader (M102 port)', () => {
     expect(S.stNoteRestatesPoint('The scale factor is the sum of squared residuals over the degrees of freedom.', rubric, missedSecond), 'a hit point is not repeated').toBe(false);
     expect(S.stNoteRestatesPoint('Fewer parameters lower the variance.', rubric, [{ status: 'hit' }, { status: 'partial' }])).toBe(true);
     expect(S.stNoteRestatesPoint('', rubric, missedSecond)).toBe(false);
+    expect(S.stNoteRestatesPoint('The answer leaves out: fewer parameters lower the variance.', rubric, missedSecond), 'a framing prefix').toBe(true);
+    expect(S.stNoteRestatesPoint('The answer leaves out: fewer parameters lower the variance.', rubric, [{ status: 'hit' }, { status: 'partial' }]), 'a partial point').toBe(true);
+    expect(S.stNoteRestatesPoint('You did not say that the scale factor is the sum of squared residuals over the degrees of freedom, or that fewer parameters lower the variance.', rubric, [{ status: 'miss' }, { status: 'miss' }]), 'two points in one frame').toBe(true);
+    expect(S.stNoteRestatesPoint('The answer leaves out: fewer parameters lower the variance.', rubric, [{ status: 'hit' }, { status: 'hit' }]), 'every point hit').toBe(false);
+  });
+
+  it('finds the line a question starts on in its notes file', () => {
+    const S = __testables;
+    const md = ['# Clark', '', '## 2019 Q4', '**Question**', 'Explain why the *Cape Cod* method', 'suits a small triangle.', '', 'Q: Define the growth curve.', 'A: The share reported by age x.'].join('\n');
+    expect(S.stLineOfStem(md, 'Explain why the Cape Cod method suits a small triangle.'), 'Markdown marks and wrapping ignored').toBe(5);
+    expect(S.stLineOfStem(md, 'Define the growth curve.'), 'after a Q: prefix').toBe(8);
+    expect(S.stLineOfStem('question,answer\r\n"What is G(x)?",share reported', 'What is G(x)?'), 'CSV, CRLF').toBe(2);
+    expect(S.stLineOfStem(md, 'Something not in the file at all'), 'absent').toBe(0);
+    expect(S.stLineOfStem(md, 'Why?'), 'too short to place').toBe(0);
   });
 
   it('names ratings', () => {
