@@ -345,6 +345,22 @@ function stCancelRuns() {
   _stRuns.clear();
 }
 
+/** Close every session tab whose session no longer exists (deleted from the
+ *  sidebar, or with its material or bank), stopping its draw first: a tab
+ *  left open would keep answering into rows that are gone. */
+async function stCloseGoneSessionTabs() {
+  const editors = Array.isArray(_api && _api.editors && _api.editors.openEditors) ? _api.editors.openEditors : [];
+  for (const e of editors) {
+    const m = /:study:session-(\d+)$/.exec(String((e && e.id) || ''));
+    if (!m) continue;
+    const id = Number(m[1]);
+    if (await stGetSession(id)) continue;
+    const run = _stRuns.get(id);
+    if (run) { run.token.cancelled = true; _stRuns.delete(id); }
+    try { await _api.editors.closeEditor(e.id); } catch { /* already closed */ }
+  }
+}
+
 // ── Answers and marking shared by the session, results and review ──────────
 
 /** True once an item has an answer in, marked or not (Test's 'answered'). */
@@ -800,10 +816,15 @@ function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }
   ft.appendChild(acts);
   sheet.appendChild(ft);
 
-  const effectiveModel = () => st.model || activeModel || (models[0] ? models[0].id : '');
+  // A choice left at its default falls back to Settings first (stPickModel,
+  // stContextSettingFor), so the line and the menu name what a run will use.
+  const setModel = String(cfg('aiModel', '') || '').trim();
+  const setContext = Number(cfg('generationContext', 0)) || 0;
+  const effectiveModel = () => st.model || setModel || activeModel || (models[0] ? models[0].id : '');
   const modelName = (id) => { const m = models.find((x) => x.id === id); return m ? (m.displayName || m.id) : (id || 'No model'); };
   const paintModel = () => {
-    const ctxLabel = st.contextSetting ? `${stFmtK(st.contextSetting)} context` : 'Auto context';
+    const ctx = st.contextSetting || setContext;
+    const ctxLabel = ctx ? `${stFmtK(ctx)} context` : 'Auto context';
     stSetLabel(mdlBtn, `${modelName(effectiveModel())} · ${ctxLabel}`);
   };
   const pick = (patch) => { Object.assign(st, patch); paintModel(); void onPrefs(); };
@@ -812,10 +833,14 @@ function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }
     for (const m of models) {
       items.push({ label: m.displayName || m.id, keybinding: stFmtK(m.contextLength), checked: st.model === m.id, onSelect: () => pick({ model: m.id }) });
     }
-    items.push({ label: "Use the Chat's Model", checked: !st.model, onSelect: () => pick({ model: '' }) });
+    items.push(setModel
+      ? { label: 'Use the Model in Settings', keybinding: modelName(setModel), checked: !st.model, onSelect: () => pick({ model: '' }) }
+      : { label: "Use the Chat's Model", checked: !st.model, onSelect: () => pick({ model: '' }) });
     items.push({ separator: true });
     items.push({ label: 'Context', disabled: true });
-    items.push({ label: 'Auto', checked: !st.contextSetting, onSelect: () => pick({ contextSetting: 0 }) });
+    items.push(setContext
+      ? { label: 'As in Settings', keybinding: stFmtK(setContext), checked: !st.contextSetting, onSelect: () => pick({ contextSetting: 0 }) }
+      : { label: 'Auto', checked: !st.contextSetting, onSelect: () => pick({ contextSetting: 0 }) });
     const current = models.find((x) => x.id === effectiveModel());
     const limit = current ? Number(current.contextLength) || 0 : 0;
     for (const k of [8, 16, 32, 64]) {
@@ -868,8 +893,9 @@ async function renderSetup(host, route, ctx) {
     pageTo: route.pageTo || route.pageFrom || stProp(primary, 'pageCount', 1) || 1,
     mode: 'practice',
     answer: stProp(primary, 'answerFormat', '') || String(cfg('answerFormat', 'mixed') || 'mixed'),
-    model: stProp(primary, 'model', '') || String(cfg('aiModel', '') || ''),
-    contextSetting: Number(stProp(primary, 'contextSetting', 0)) || Number(cfg('generationContext', 0)) || 0,
+    // Empty and 0 mean the default (Settings, else the chat's model and Auto).
+    model: stProp(primary, 'model', ''),
+    contextSetting: Number(stProp(primary, 'contextSetting', 0)) || 0,
     starting: false,
   };
   if (!['choose', 'type', 'mixed'].includes(st.answer)) st.answer = 'mixed';
@@ -1047,8 +1073,8 @@ async function renderBankSetup(host, route, ctx) {
     mode: 'practice',
     // An essay bank (no choices to pick from) starts on Type.
     answer: !hasChoice ? 'type' : (['choose', 'type', 'mixed'].includes(configured) ? configured : 'mixed'),
-    model: String(cfg('aiModel', '') || ''),
-    contextSetting: Number(cfg('generationContext', 0)) || 0,
+    model: '',
+    contextSetting: 0,
     starting: false,
   };
 
@@ -1976,13 +2002,14 @@ async function renderResults(host, route, ctx) {
   big.appendChild(el('small', '', `of ${size}`));
   left.appendChild(big);
   const under = el('div', 'st-res__under');
-  const refreshText = `${refreshes} ${refreshes === 1 ? 'refresh' : 'refreshes'} so far`;
+  // The refresh count only once there is one to count.
+  const refreshText = refreshes > 0 ? ` · ${refreshes} ${refreshes === 1 ? 'refresh' : 'refreshes'} so far` : '';
   if (isBank) {
-    under.appendChild(document.createTextNode(`${scope.label || session.name} · ${refreshText}`));
+    under.appendChild(document.createTextNode(`${scope.label || session.name}${refreshText}`));
   } else {
     under.appendChild(document.createTextNode(`${scope.label || session.name} is `));
     under.appendChild(el('b', '', `${cov.clean} of ${cov.total} concepts clean`));
-    under.appendChild(document.createTextNode(` · ${Math.max(0, cov.total - cov.clean)} to go · ${refreshText}`));
+    under.appendChild(document.createTextNode(` · ${Math.max(0, cov.total - cov.clean)} to go${refreshText}`));
   }
   if (willRepeat) under.appendChild(document.createTextNode(` · ${repeatLine}`));
   left.appendChild(under);

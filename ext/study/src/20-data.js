@@ -778,8 +778,21 @@ async function stSetBankCount(id, count) {
   _emitDataChanged();
 }
 
-/** Delete a bank, the questions it brought in and their own concepts. Answers stay in st_answers (history). */
+/**
+ * Delete a bank, the questions it brought in, their own concepts and every
+ * session whose scope was only this bank (it has nothing left to draw, as
+ * stDeleteMaterial does for a material). Answers stay in st_answers (history).
+ */
 async function stDeleteBank(id) {
+  const bid = Number(id);
+  for (const row of await db.all('SELECT id, scope_json FROM st_sessions', [])) {
+    const scope = stParseJson(row.scope_json, {}) || {};
+    const ids = Array.isArray(scope.bankIds) ? scope.bankIds.map(Number) : [];
+    if (scope.kind === 'bank' && ids.length && ids.every((x) => x === bid)) {
+      await db.run('DELETE FROM st_session_items WHERE session_id = ?', [row.id]);
+      await db.run('DELETE FROM st_sessions WHERE id = ?', [row.id]);
+    }
+  }
   await db.run('DELETE FROM st_questions WHERE bank_id = ?', [id]);
   await stDeleteBankMaterial(id);
   await db.run('DELETE FROM st_banks WHERE id = ?', [id]);

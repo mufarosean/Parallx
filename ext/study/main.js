@@ -2834,8 +2834,21 @@ async function stSetBankCount(id, count) {
   _emitDataChanged();
 }
 
-/** Delete a bank, the questions it brought in and their own concepts. Answers stay in st_answers (history). */
+/**
+ * Delete a bank, the questions it brought in, their own concepts and every
+ * session whose scope was only this bank (it has nothing left to draw, as
+ * stDeleteMaterial does for a material). Answers stay in st_answers (history).
+ */
 async function stDeleteBank(id) {
+  const bid = Number(id);
+  for (const row of await db.all('SELECT id, scope_json FROM st_sessions', [])) {
+    const scope = stParseJson(row.scope_json, {}) || {};
+    const ids = Array.isArray(scope.bankIds) ? scope.bankIds.map(Number) : [];
+    if (scope.kind === 'bank' && ids.length && ids.every((x) => x === bid)) {
+      await db.run('DELETE FROM st_session_items WHERE session_id = ?', [row.id]);
+      await db.run('DELETE FROM st_sessions WHERE id = ?', [row.id]);
+    }
+  }
   await db.run('DELETE FROM st_questions WHERE bank_id = ?', [id]);
   await stDeleteBankMaterial(id);
   await db.run('DELETE FROM st_banks WHERE id = ?', [id]);
@@ -6040,7 +6053,7 @@ function createSidebarView(container) {
         { label: 'Learn', icon: 'book-open', onSelect: () => void stOpenPane({ view: 'learn', materialId: m.id, sectionId: 0 }) },
         { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ materialIds: [m.id] }) },
         { separator: true },
-        { label: 'Remove', icon: 'trash', danger: true, onSelect: () => void removeMaterial(m, concepts) },
+        { label: 'Remove…', icon: 'trash', danger: true, onSelect: () => void removeMaterial(m, concepts) },
       ]);
     });
     return row;
@@ -6094,7 +6107,7 @@ function createSidebarView(container) {
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, [
-        { label: 'Delete Session', icon: 'trash', danger: true, onSelect: () => void deleteSession(s) },
+        { label: 'Delete Session…', icon: 'trash', danger: true, onSelect: () => void deleteSession(s) },
       ]);
     });
     return row;
@@ -6118,7 +6131,7 @@ function createSidebarView(container) {
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, [
         { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [b.id] }) },
         { separator: true },
-        { label: 'Delete Bank', icon: 'trash', danger: true, onSelect: () => void deleteBank(b) },
+        { label: 'Delete Bank…', icon: 'trash', danger: true, onSelect: () => void deleteBank(b) },
       ]);
     });
     return row;
@@ -6136,6 +6149,7 @@ function createSidebarView(container) {
     if (state.expandedId === m.id) state.expandedId = null;
     state.picked.delete(m.id);
     _emitDataChanged();
+    await stCloseGoneSessionTabs();
   }
   async function deleteSession(s) {
     const ok = await _api.window.showConfirmModal({
@@ -6146,16 +6160,18 @@ function createSidebarView(container) {
     if (!ok) return;
     await stDeleteSession(s.id);
     _emitDataChanged();
+    await stCloseGoneSessionTabs();
   }
   async function deleteBank(b) {
     const ok = await _api.window.showConfirmModal({
       message: `Delete the bank ${b.name}?`,
-      detail: `Its ${b.count || 0} questions go with it.`,
+      detail: `Its ${b.count || 0} questions and every session over it go too.`,
       confirmLabel: 'Delete', danger: true,
     });
     if (!ok) return;
     await stDeleteBank(b.id);
     _emitDataChanged();
+    await stCloseGoneSessionTabs();
   }
 
   // ── Paint ──
@@ -6627,6 +6643,22 @@ function stCancelRuns() {
   _stRuns.clear();
 }
 
+/** Close every session tab whose session no longer exists (deleted from the
+ *  sidebar, or with its material or bank), stopping its draw first: a tab
+ *  left open would keep answering into rows that are gone. */
+async function stCloseGoneSessionTabs() {
+  const editors = Array.isArray(_api && _api.editors && _api.editors.openEditors) ? _api.editors.openEditors : [];
+  for (const e of editors) {
+    const m = /:study:session-(\d+)$/.exec(String((e && e.id) || ''));
+    if (!m) continue;
+    const id = Number(m[1]);
+    if (await stGetSession(id)) continue;
+    const run = _stRuns.get(id);
+    if (run) { run.token.cancelled = true; _stRuns.delete(id); }
+    try { await _api.editors.closeEditor(e.id); } catch { /* already closed */ }
+  }
+}
+
 // ── Answers and marking shared by the session, results and review ──────────
 
 /** True once an item has an answer in, marked or not (Test's 'answered'). */
@@ -7082,10 +7114,15 @@ function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }
   ft.appendChild(acts);
   sheet.appendChild(ft);
 
-  const effectiveModel = () => st.model || activeModel || (models[0] ? models[0].id : '');
+  // A choice left at its default falls back to Settings first (stPickModel,
+  // stContextSettingFor), so the line and the menu name what a run will use.
+  const setModel = String(cfg('aiModel', '') || '').trim();
+  const setContext = Number(cfg('generationContext', 0)) || 0;
+  const effectiveModel = () => st.model || setModel || activeModel || (models[0] ? models[0].id : '');
   const modelName = (id) => { const m = models.find((x) => x.id === id); return m ? (m.displayName || m.id) : (id || 'No model'); };
   const paintModel = () => {
-    const ctxLabel = st.contextSetting ? `${stFmtK(st.contextSetting)} context` : 'Auto context';
+    const ctx = st.contextSetting || setContext;
+    const ctxLabel = ctx ? `${stFmtK(ctx)} context` : 'Auto context';
     stSetLabel(mdlBtn, `${modelName(effectiveModel())} · ${ctxLabel}`);
   };
   const pick = (patch) => { Object.assign(st, patch); paintModel(); void onPrefs(); };
@@ -7094,10 +7131,14 @@ function stSheetFooter(sheet, ctx, { models, activeModel, st, onPrefs, onStart }
     for (const m of models) {
       items.push({ label: m.displayName || m.id, keybinding: stFmtK(m.contextLength), checked: st.model === m.id, onSelect: () => pick({ model: m.id }) });
     }
-    items.push({ label: "Use the Chat's Model", checked: !st.model, onSelect: () => pick({ model: '' }) });
+    items.push(setModel
+      ? { label: 'Use the Model in Settings', keybinding: modelName(setModel), checked: !st.model, onSelect: () => pick({ model: '' }) }
+      : { label: "Use the Chat's Model", checked: !st.model, onSelect: () => pick({ model: '' }) });
     items.push({ separator: true });
     items.push({ label: 'Context', disabled: true });
-    items.push({ label: 'Auto', checked: !st.contextSetting, onSelect: () => pick({ contextSetting: 0 }) });
+    items.push(setContext
+      ? { label: 'As in Settings', keybinding: stFmtK(setContext), checked: !st.contextSetting, onSelect: () => pick({ contextSetting: 0 }) }
+      : { label: 'Auto', checked: !st.contextSetting, onSelect: () => pick({ contextSetting: 0 }) });
     const current = models.find((x) => x.id === effectiveModel());
     const limit = current ? Number(current.contextLength) || 0 : 0;
     for (const k of [8, 16, 32, 64]) {
@@ -7150,8 +7191,9 @@ async function renderSetup(host, route, ctx) {
     pageTo: route.pageTo || route.pageFrom || stProp(primary, 'pageCount', 1) || 1,
     mode: 'practice',
     answer: stProp(primary, 'answerFormat', '') || String(cfg('answerFormat', 'mixed') || 'mixed'),
-    model: stProp(primary, 'model', '') || String(cfg('aiModel', '') || ''),
-    contextSetting: Number(stProp(primary, 'contextSetting', 0)) || Number(cfg('generationContext', 0)) || 0,
+    // Empty and 0 mean the default (Settings, else the chat's model and Auto).
+    model: stProp(primary, 'model', ''),
+    contextSetting: Number(stProp(primary, 'contextSetting', 0)) || 0,
     starting: false,
   };
   if (!['choose', 'type', 'mixed'].includes(st.answer)) st.answer = 'mixed';
@@ -7329,8 +7371,8 @@ async function renderBankSetup(host, route, ctx) {
     mode: 'practice',
     // An essay bank (no choices to pick from) starts on Type.
     answer: !hasChoice ? 'type' : (['choose', 'type', 'mixed'].includes(configured) ? configured : 'mixed'),
-    model: String(cfg('aiModel', '') || ''),
-    contextSetting: Number(cfg('generationContext', 0)) || 0,
+    model: '',
+    contextSetting: 0,
     starting: false,
   };
 
@@ -8258,13 +8300,14 @@ async function renderResults(host, route, ctx) {
   big.appendChild(el('small', '', `of ${size}`));
   left.appendChild(big);
   const under = el('div', 'st-res__under');
-  const refreshText = `${refreshes} ${refreshes === 1 ? 'refresh' : 'refreshes'} so far`;
+  // The refresh count only once there is one to count.
+  const refreshText = refreshes > 0 ? ` · ${refreshes} ${refreshes === 1 ? 'refresh' : 'refreshes'} so far` : '';
   if (isBank) {
-    under.appendChild(document.createTextNode(`${scope.label || session.name} · ${refreshText}`));
+    under.appendChild(document.createTextNode(`${scope.label || session.name}${refreshText}`));
   } else {
     under.appendChild(document.createTextNode(`${scope.label || session.name} is `));
     under.appendChild(el('b', '', `${cov.clean} of ${cov.total} concepts clean`));
-    under.appendChild(document.createTextNode(` · ${Math.max(0, cov.total - cov.clean)} to go · ${refreshText}`));
+    under.appendChild(document.createTextNode(` · ${Math.max(0, cov.total - cov.clean)} to go${refreshText}`));
   }
   if (willRepeat) under.appendChild(document.createTextNode(` · ${repeatLine}`));
   left.appendChild(under);
@@ -9157,10 +9200,15 @@ async function stQuizSelection(payload) {
     return null;
   }
   const page = Number.isInteger(source.pageNumber) && source.pageNumber > 0 ? source.pageNumber : 0;
-  const fileName = String(source.fileName || material.label || 'Selection');
   const prefs = stSessionPrefs(material);
+  // The same scope the sheet's Selection builds (stBuildScope): named by the
+  // material's label and the page, and bounded to that page, so the results
+  // count the passage's concepts and not the whole document's.
   return stStartSession({
-    scope: { kind: 'selection', materialIds: [material.id], selectionText: text, selectionPage: page, label: `${fileName} · selection` },
+    scope: {
+      kind: 'selection', materialIds: [material.id], selectionText: text, selectionPage: page,
+      pageFrom: page, pageTo: page, label: `${stTruncate(material.label || 'Selection', 32)} · ${page ? `p. ${page}` : 'selection'}`,
+    },
     mode: 'practice',
     ...prefs,
   });
@@ -9251,8 +9299,16 @@ async function stCmdWeakSpots() {
     await _api.window.showInformationMessage('Add a material first.');
     return null;
   }
+  // The label names the scope; the mode word already says Weak Spots.
+  const scope = { kind: 'weak', materialIds: materials.map((m) => m.id), label: 'All materials' };
+  // Nothing weak or stale yet: no empty session, and no "nothing passed the
+  // checks", which would be untrue.
+  if (!(await stScopeConcepts(scope)).length) {
+    await _api.window.showInformationMessage('No weak spots yet: every concept you have answered is clean.');
+    return null;
+  }
   return stStartSession({
-    scope: { kind: 'weak', materialIds: materials.map((m) => m.id), label: 'Weak Spots' },
+    scope,
     mode: 'weak',
     ...stSessionPrefs(null),
   });
@@ -9545,8 +9601,11 @@ function registerChatTools(context) {
         const scope = pages
           ? { kind: 'pages', materialIds: [material.id], pageFrom: pages.from, pageTo: pages.to, label: `${material.label} · pages ${pages.from} to ${pages.to}` }
           : mode === 'weak'
-            ? { kind: 'weak', materialIds: [material.id], label: `${material.label} · Weak Spots` }
+            ? { kind: 'weak', materialIds: [material.id], label: material.label }
             : { kind: 'document', materialIds: [material.id], label: material.label };
+        if (scope.kind === 'weak' && !(await stScopeConcepts(scope)).length) {
+          return { content: `No weak spots in ${material.label} yet: every concept answered there is clean.` };
+        }
         const session = await stStartSession({ scope, mode, ...prefs });
         const where = pages ? ` (pages ${pages.from} to ${pages.to})` : '';
         return { content: `Started a ${mode} session on ${material.label}${where}: parallx://study/session/${session.id}` };

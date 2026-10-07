@@ -206,7 +206,7 @@ function createSidebarView(container) {
         { label: 'Learn', icon: 'book-open', onSelect: () => void stOpenPane({ view: 'learn', materialId: m.id, sectionId: 0 }) },
         { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ materialIds: [m.id] }) },
         { separator: true },
-        { label: 'Remove', icon: 'trash', danger: true, onSelect: () => void removeMaterial(m, concepts) },
+        { label: 'Remove…', icon: 'trash', danger: true, onSelect: () => void removeMaterial(m, concepts) },
       ]);
     });
     return row;
@@ -260,7 +260,7 @@ function createSidebarView(container) {
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, [
-        { label: 'Delete Session', icon: 'trash', danger: true, onSelect: () => void deleteSession(s) },
+        { label: 'Delete Session…', icon: 'trash', danger: true, onSelect: () => void deleteSession(s) },
       ]);
     });
     return row;
@@ -284,7 +284,7 @@ function createSidebarView(container) {
       _api.ui.showContextMenu({ x: e.clientX, y: e.clientY }, [
         { label: 'Study…', icon: 'px-study', onSelect: () => void stOpenSetup({ bankIds: [b.id] }) },
         { separator: true },
-        { label: 'Delete Bank', icon: 'trash', danger: true, onSelect: () => void deleteBank(b) },
+        { label: 'Delete Bank…', icon: 'trash', danger: true, onSelect: () => void deleteBank(b) },
       ]);
     });
     return row;
@@ -302,6 +302,7 @@ function createSidebarView(container) {
     if (state.expandedId === m.id) state.expandedId = null;
     state.picked.delete(m.id);
     _emitDataChanged();
+    await stCloseGoneSessionTabs();
   }
   async function deleteSession(s) {
     const ok = await _api.window.showConfirmModal({
@@ -312,16 +313,18 @@ function createSidebarView(container) {
     if (!ok) return;
     await stDeleteSession(s.id);
     _emitDataChanged();
+    await stCloseGoneSessionTabs();
   }
   async function deleteBank(b) {
     const ok = await _api.window.showConfirmModal({
       message: `Delete the bank ${b.name}?`,
-      detail: `Its ${b.count || 0} questions go with it.`,
+      detail: `Its ${b.count || 0} questions and every session over it go too.`,
       confirmLabel: 'Delete', danger: true,
     });
     if (!ok) return;
     await stDeleteBank(b.id);
     _emitDataChanged();
+    await stCloseGoneSessionTabs();
   }
 
   // ── Paint ──

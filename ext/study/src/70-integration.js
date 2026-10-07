@@ -668,10 +668,15 @@ async function stQuizSelection(payload) {
     return null;
   }
   const page = Number.isInteger(source.pageNumber) && source.pageNumber > 0 ? source.pageNumber : 0;
-  const fileName = String(source.fileName || material.label || 'Selection');
   const prefs = stSessionPrefs(material);
+  // The same scope the sheet's Selection builds (stBuildScope): named by the
+  // material's label and the page, and bounded to that page, so the results
+  // count the passage's concepts and not the whole document's.
   return stStartSession({
-    scope: { kind: 'selection', materialIds: [material.id], selectionText: text, selectionPage: page, label: `${fileName} · selection` },
+    scope: {
+      kind: 'selection', materialIds: [material.id], selectionText: text, selectionPage: page,
+      pageFrom: page, pageTo: page, label: `${stTruncate(material.label || 'Selection', 32)} · ${page ? `p. ${page}` : 'selection'}`,
+    },
     mode: 'practice',
     ...prefs,
   });
@@ -762,8 +767,16 @@ async function stCmdWeakSpots() {
     await _api.window.showInformationMessage('Add a material first.');
     return null;
   }
+  // The label names the scope; the mode word already says Weak Spots.
+  const scope = { kind: 'weak', materialIds: materials.map((m) => m.id), label: 'All materials' };
+  // Nothing weak or stale yet: no empty session, and no "nothing passed the
+  // checks", which would be untrue.
+  if (!(await stScopeConcepts(scope)).length) {
+    await _api.window.showInformationMessage('No weak spots yet: every concept you have answered is clean.');
+    return null;
+  }
   return stStartSession({
-    scope: { kind: 'weak', materialIds: materials.map((m) => m.id), label: 'Weak Spots' },
+    scope,
     mode: 'weak',
     ...stSessionPrefs(null),
   });
@@ -1056,8 +1069,11 @@ function registerChatTools(context) {
         const scope = pages
           ? { kind: 'pages', materialIds: [material.id], pageFrom: pages.from, pageTo: pages.to, label: `${material.label} · pages ${pages.from} to ${pages.to}` }
           : mode === 'weak'
-            ? { kind: 'weak', materialIds: [material.id], label: `${material.label} · Weak Spots` }
+            ? { kind: 'weak', materialIds: [material.id], label: material.label }
             : { kind: 'document', materialIds: [material.id], label: material.label };
+        if (scope.kind === 'weak' && !(await stScopeConcepts(scope)).length) {
+          return { content: `No weak spots in ${material.label} yet: every concept answered there is clean.` };
+        }
         const session = await stStartSession({ scope, mode, ...prefs });
         const where = pages ? ` (pages ${pages.from} to ${pages.to})` : '';
         return { content: `Started a ${mode} session on ${material.label}${where}: parallx://study/session/${session.id}` };

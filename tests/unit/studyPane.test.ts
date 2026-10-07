@@ -1333,7 +1333,7 @@ describe('Study end to end', () => {
 
     expect(q(h, '.st-res__big')!.firstChild!.textContent).toBe(String(rightN));
     expect(text(q(h, '.st-res__big small'))).toBe('of 6');
-    expect(text(q(h, '.st-res__under'))).toBe(`${label1()} · ${CH3} is ${cov.clean} of ${cov.total} concepts clean · ${cov.total - cov.clean} to go · 0 refreshes so far`);
+    expect(text(q(h, '.st-res__under'))).toBe(`${label1()} · ${CH3} is ${cov.clean} of ${cov.total} concepts clean · ${cov.total - cov.clean} to go`);
     const cls = (s: string) => (s === 'clean' ? 'c just' : s === 'weak' ? 'w' : 'n');
     expect(qa(h, '.st-cov i').map((i) => i.className)).toEqual(cov.states.map(cls));
     expect(text(q(h, '.st-missed .px-section-label'))).toBe('Missed this session');
@@ -1401,7 +1401,7 @@ describe('Study end to end', () => {
     expect(missed1.length).toBeGreaterThan(0);
     expect(text(q(h, '.st-res__big small'))).toBe(`of ${draw1.length}`);
     // Said once, on the under line: the next Refresh repeats.
-    expect(text(q(h, '.st-res__under'))).toMatch(/ · Every question here has been asked; Refresh repeats the ones you missed first\.$/);
+    expect(text(q(h, '.st-res__under'))).toMatch(/ · 1 refresh so far · Every question here has been asked; Refresh repeats the ones you missed first\.$/);
     expect(text(q(h, '.st-res__lhs'))).toBe('');
     // One row per missed concept; a concept missed twice in the draw says so.
     const wrong1 = all("SELECT q.concept_id FROM st_session_items i JOIN st_questions q ON q.id = i.question_id WHERE i.session_id = ? AND i.draw = 1 AND i.status = 'wrong'", sessionId).map((r) => r.concept_id);
@@ -1761,6 +1761,441 @@ describe('Study end to end', () => {
     expect(q(h, '.st-res')).toBeNull();
     expect(q(h, '.st-card')).not.toBeNull();
     expect(one('SELECT finished_at FROM st_sessions WHERE id = ?', sessionId).finished_at).toBe(0);
+  });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 11. Quiz This Selection
+  // ═════════════════════════════════════════════════════════════════════════
+
+  it('11. Quiz This Selection maps the selected passage, makes questions sourced to it and opens a Practice session on them, with no sheet', async () => {
+    await boot();
+    const action = env.selectionHandlers.find((hd) => hd.actionId === 'quiz-selection')!;
+    /** A page's text without its heading line: what a reader selects. */
+    const bodyOf = (page: number) => CLARK_PAGES[page - 1].split('\n').slice(1).join('\n');
+    const payload = (selectedText: string, pageNumber: number) => ({
+      selectedText, surface: 'pdf', actionId: 'quiz-selection',
+      source: { fileName: 'Clark_2003_Mack_1994.pdf', filePath: MAT1, pageNumber },
+    });
+
+    // From the palette (no selection), or a few words: a line saying what to do, nothing made.
+    await exec('study.quizSelection');
+    expect(env.calls.info.at(-1)).toBe('Select text in a PDF or a page, then choose Quiz This Selection.');
+    await action.execute(payload('Mack derives', 16));
+    expect(env.calls.info.at(-1)).toBe('Select a little more text to quiz on.');
+    expect(env.calls.extract).toEqual([]);
+    expect(one('SELECT COUNT(*) AS n FROM st_sessions').n).toBe(0);
+
+    // The passage on page 16: straight into a session over it, through the generating screen.
+    const hold = holdLm('questions');
+    await action.execute(payload(bodyOf(16), 16));
+    const tab = await waitFor(() => latestSessionTab(), 'the session tab');
+    const sessionId = Number(tab.slice('session-'.length));
+    const h = paneHost(tab)!;
+    expect(env.calls.openEditor.map((o: AnyRec) => o.instanceId)).not.toContain('setup');
+    expect(env.calls.extract).toEqual([MAT1]);
+    await waitFor(() => hold.reached, 'the question call');
+    const label = `${label1()} · p. 16`;
+    await waitFor(() => text(q(h, '.st-gen__t')) === `Making questions for ${label}`, 'the generating screen');
+    hold.release();
+    await waitFor(() => q(h, '.st-card'), 'the first card');
+
+    // One map call, over the selected passage alone.
+    const maps = env.lmCalls.filter((c) => c.kind === 'map');
+    expect(maps.length).toBe(1);
+    expect(maps[0].user).toContain(`[Page 16]\n${bodyOf(16)}`);
+    expect(maps[0].user).not.toContain(bodyOf(15));
+    const concepts = all('SELECT * FROM st_concepts');
+    expect(concepts.map((c) => [c.title, c.page, c.anchor_quote])).toEqual([[CONCEPTS[3].title, 16, CONCEPTS[3].quote]]);
+
+    // The session: Practice in the saved default format, scoped to the passage like the sheet's Selection.
+    const session = one('SELECT * FROM st_sessions WHERE id = ?', sessionId);
+    expect(session).toMatchObject({ mode: 'practice', answer_format: 'mixed', finished_at: 0, name: label });
+    expect(JSON.parse(session.scope_json)).toEqual({
+      kind: 'selection', materialIds: [1], selectionText: bodyOf(16), selectionPage: 16,
+      pageFrom: 16, pageTo: 16, label, conceptIds: [concepts[0].id],
+    });
+
+    // Its questions: written for that concept only, every one sourced inside the selection.
+    for (const c of env.lmCalls.filter((x) => x.kind === 'questions')) {
+      expect([...c.user.matchAll(/^- id \d+: (.+?)\. .*Write: /gm)].map((m) => m[1])).toEqual([CONCEPTS[3].title]);
+    }
+    const made = all("SELECT * FROM st_questions WHERE origin = 'generated' ORDER BY id");
+    expect(made.map((r) => r.format).sort()).toEqual(['mc', 'short']);
+    for (const r of made) {
+      expect(r.concept_id).toBe(concepts[0].id);
+      expect(r.source_page).toBe(16);
+      expect(bodyOf(16)).toContain(r.source_quote);
+    }
+    const items = all('SELECT * FROM st_session_items WHERE session_id = ? ORDER BY ord', sessionId);
+    expect(items.map((i) => i.question_id).sort()).toEqual(made.map((r) => r.id).sort());
+
+    // What the card shows.
+    expect(text(q(h, '.st-sess-tb__scope'))).toBe(`${label} · Practice · Mixed`);
+    expect(qa(h, '.st-strand i').length).toBe(2);
+    expect(text(q(h, '.st-eyebrow__cpt'))).toBe(CONCEPTS[3].title);
+    await answerDraw(h);
+    await waitFor(() => q(h, '.st-res'), 'results');
+    expect(text(q(h, '.st-res__big small'))).toBe('of 2');
+    expect(text(q(h, '.st-res__under')).startsWith(`${label} is `)).toBe(true);
+    expect(text(q(h, '.st-res__under'))).toMatch(/ is \d of 1 concepts clean · /);
+    expect(qa(h, '.st-cov i').length).toBe(1);
+
+    // A second passage, page 15: its own concept and session, and its results
+    // count that passage, not every concept the document now has.
+    await action.execute(payload(bodyOf(15), 15));
+    const tab2 = await waitFor(() => { const t = latestSessionTab(); return t && t !== tab ? t : null; }, 'the second session tab');
+    const sessionId2 = Number(tab2.slice('session-'.length));
+    const h2 = paneHost(tab2)!;
+    await waitFor(() => q(h2, '.st-card'), 'its first card');
+    expect(text(q(h2, '.st-sess-tb__scope'))).toBe(`${label1()} · p. 15 · Practice · Mixed`);
+    const c15 = one('SELECT * FROM st_concepts WHERE title = ?', CONCEPTS[2].title);
+    expect(c15.page).toBe(15);
+    expect(one('SELECT COUNT(*) AS n FROM st_concepts').n).toBe(2);
+    const drawn2 = all('SELECT q.* FROM st_session_items i JOIN st_questions q ON q.id = i.question_id WHERE i.session_id = ?', sessionId2);
+    expect(drawn2.length).toBeGreaterThan(0);
+    for (const r of drawn2) {
+      expect(r.concept_id).toBe(c15.id);
+      expect(r.source_page).toBe(15);
+      expect(bodyOf(15)).toContain(r.source_quote);
+    }
+    expect(drawn2.map((r) => r.source_quote)).not.toContain(FABRICATED_QUOTE);
+    await answerDraw(h2);
+    await waitFor(() => q(h2, '.st-res'), 'its results');
+    expect(qa(h2, '.st-cov i').length).toBe(1);
+    expect(text(q(h2, '.st-res__under'))).toMatch(/ is \d of 1 concepts clean · /);
+  });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 12. Weak Spots
+  // ═════════════════════════════════════════════════════════════════════════
+
+  it('12. Weak Spots, from the widget: weakest concepts first, then stale, clean ones left out; with nothing weak it says so and starts nothing', async () => {
+    await boot();
+    await exec('study.weakSpots');
+    expect(env.calls.info.at(-1)).toBe('Add a material first.');
+
+    // A chapter's bank, the session ended unanswered: nothing is weak yet.
+    const s0 = await startChapterSession();
+    env.confirm = true;
+    key(s0.h, 'Escape');
+    await waitFor(() => q(s0.h, '.st-res'), 'results');
+    const opened = env.calls.openEditor.length;
+    await exec('study.weakSpots');
+    expect(env.calls.info.at(-1)).toBe('No weak spots yet: every concept you have answered is clean.');
+    expect(one('SELECT COUNT(*) AS n FROM st_sessions').n).toBe(1);
+    expect(env.calls.openEditor.length).toBe(opened);
+
+    // Mastery as answers leave it: two weak at different depths, one clean,
+    // and one stale that the chapter's run never wrote a question for.
+    const now = Date.now();
+    const setConcept = (title: string, mastery: number, answers: number, at: number) =>
+      env.db.raw().prepare('UPDATE st_concepts SET mastery = ?, answers = ?, misses = 1, last_answered_at = ? WHERE title = ?').run(mastery, answers, at, title);
+    setConcept(CH3_TITLES[0], 0.4, 2, now - 60_000);          // weak
+    setConcept(CH3_TITLES[1], 0.1, 3, now - 60_000);          // weakest
+    setConcept(CH3_TITLES[2], 0.8, 3, now - 60_000);          // clean
+    setConcept(CH3_TITLES[3], 0.9, 4, now - 30 * 86_400_000); // clean once, stale now
+    const id = (title: string) => one('SELECT id FROM st_concepts WHERE title = ?', title).id;
+    const order = [CH3_TITLES[1], CH3_TITLES[0], CH3_TITLES[3]].map(id);
+    const questionsOf = (cid: number) => one('SELECT COUNT(*) AS n FROM st_questions WHERE concept_id = ? AND hidden = 0', cid).n;
+    expect(questionsOf(id(CH3_TITLES[2]))).toBeGreaterThan(0);
+    expect(questionsOf(id(CH3_TITLES[3]))).toBe(0);
+
+    // The widget counts them and its footer opens the session.
+    const wHost = document.createElement('div');
+    document.body.appendChild(wHost);
+    extraHosts.push(wHost);
+    const cached = await env.widgets[0].refresh({ config: { maxRows: 5 } });
+    const widget = env.widgets[0].createWidget(wHost, { cachedOutput: cached, config: { maxRows: 5 }, requestRefresh: () => {}, onDidChangeConfig: () => ({ dispose() {} }) });
+    expect(qa(wHost, '.st-widget__row').map((r) => text(q(r, '.st-widget__label')))).toEqual([label1()]);
+    expect(text(q(wHost, '.st-widget__under'))).toBe('2 weak · 100% covered');
+    const sb = mountSidebar();
+    const callsBefore = env.lmCalls.length;
+    btn(wHost, 'Study the Weakest 6')!.click();
+    const tab = await waitFor(() => { const t = latestSessionTab(); return t && t !== `session-${s0.sessionId}` ? t : null; }, 'the Weak Spots tab');
+    widget.dispose();
+    const sessionId = Number(tab.slice('session-'.length));
+    const h = paneHost(tab)!;
+    await waitFor(() => q(h, '.st-card'), 'the first card');
+
+    const session = one('SELECT * FROM st_sessions WHERE id = ?', sessionId);
+    expect(session).toMatchObject({ mode: 'weak', answer_format: 'mixed', finished_at: 0, name: 'All materials' });
+    expect(JSON.parse(session.scope_json)).toEqual({ kind: 'weak', materialIds: [1], label: 'All materials' });
+    // Short of a full draw, the run wrote questions for the stale concept alone.
+    const written = env.lmCalls.slice(callsBefore).filter((c) => c.kind === 'questions');
+    expect(written.length).toBeGreaterThan(0);
+    for (const c of written) expect([...c.user.matchAll(/^- id \d+: (.+?)\. .*Write: /gm)].map((m) => m[1])).toEqual([CH3_TITLES[3]]);
+    expect(questionsOf(id(CH3_TITLES[3]))).toBe(2);
+    // Round one: one question per concept, weakest first, the stale one after
+    // the weak; then a second round in the same order. The clean one never.
+    const drawn = all('SELECT q.concept_id FROM st_session_items i JOIN st_questions q ON q.id = i.question_id WHERE i.session_id = ? ORDER BY i.ord', sessionId).map((r) => r.concept_id);
+    expect(drawn).toEqual([...order, ...order]);
+    expect(drawn).not.toContain(id(CH3_TITLES[2]));
+
+    // What it says: the scope once, the mode once.
+    expect(text(q(h, '.st-eyebrow__cpt'))).toBe(CH3_TITLES[1]);
+    expect(text(q(h, '.st-sess-tb__scope'))).toBe('All materials · Weak Spots · Mixed');
+    expect(env.calls.openEditor.at(-1)).toMatchObject({ instanceId: tab, title: 'Study · All materials' });
+    const row = await waitFor(() => qa(sb, '.st-sb__it--session').find((r) => r.dataset.sessionId === String(sessionId)), 'its sidebar row');
+    expect(text(q(row, '.st-sb__nm'))).toBe('All materials · Weak Spots');
+  });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 13. Delete Session, Delete Bank
+  // ═════════════════════════════════════════════════════════════════════════
+
+  it('13. Delete Session… and Delete Bank… ask first, then remove the rows, a bank\'s questions and its sessions; the sidebar updates and a deleted session\'s tab closes', async () => {
+    await boot();
+    const sb = mountSidebar();
+    const menuOf = (r: Element) => { r.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); return env.calls.menus.at(-1) as AnyRec[]; };
+
+    // An open session with one answer in.
+    const { h, sessionId } = await startChapterSession();
+    const tab = `session-${sessionId}`;
+    const first = currentQuestion(h);
+    key(h, String(Number(first.answer) + 1));
+    await waitFor(() => one('SELECT COUNT(*) AS n FROM st_answers').n === 1, 'the answer stored');
+    const row = await waitFor(() => qa(sb, '.st-sb__it--session').find((r) => r.dataset.sessionId === String(sessionId)), 'the session row');
+    const name = one('SELECT name FROM st_sessions WHERE id = ?', sessionId).name;
+    const menu = menuOf(row);
+    expect(menu.map((m) => m.label)).toEqual(['Delete Session…']);
+    expect(menu[0]).toMatchObject({ icon: 'trash', danger: true });
+
+    // Declined: nothing goes.
+    env.confirm = false;
+    menu[0].onSelect();
+    await waitFor(() => env.calls.confirms.length === 1, 'the confirm');
+    expect(env.calls.confirms[0]).toMatchObject({ message: `Delete the session ${name}?`, confirmLabel: 'Delete', danger: true });
+    await settle();
+    expect(one('SELECT COUNT(*) AS n FROM st_sessions WHERE id = ?', sessionId).n).toBe(1);
+    expect(qa(sb, '.st-sb__it--session').length).toBe(1);
+    expect(paneHost(tab)).not.toBeNull();
+
+    // Confirmed: the session and its items go, its answers stay counted, the row and the tab go.
+    env.confirm = true;
+    menuOf(qa(sb, '.st-sb__it--session')[0])[0].onSelect();
+    await waitFor(() => paneHost(tab) === null, 'the session tab closed');
+    expect(env.calls.closeEditor).toContain(`parallx-community.study:study:${tab}`);
+    expect(one('SELECT COUNT(*) AS n FROM st_sessions').n).toBe(0);
+    expect(one('SELECT COUNT(*) AS n FROM st_session_items').n).toBe(0);
+    expect(all('SELECT question_id, session_id FROM st_answers')).toEqual([{ question_id: first.id, session_id: sessionId }]);
+    await waitFor(() => !q(sb, '.st-sb__sec--sessions'), 'the sessions section gone');
+    expect(qa(sb, '.st-sb__it--session').length).toBe(0);
+
+    // A bank with a session over it, open in its tab.
+    env.pick = (items) => items.find((i) => i.label === 'questions.md');
+    await exec('study.importQuestions');
+    const bank = one("SELECT * FROM st_banks WHERE kind = 'file'");
+    const providerQuestions = one("SELECT COUNT(*) AS n FROM st_questions WHERE origin = 'provider'").n;
+    expect(providerQuestions).toBe(2);
+    await waitFor(() => q(sb, '.st-sb__sec--banks .px-section-label'), 'the banks section');
+    q<HTMLElement>(sb, '.st-sb__sec--banks .px-section-label')!.click();
+    const bankRow = () => qa(sb, '.st-sb__it--bank').find((r) => r.dataset.bankId === String(bank.id)) || null;
+    await waitFor(() => qa(sb, '.st-sb__it--bank').length === 2, 'bank rows');
+    bankRow()!.click();
+    const setup = await waitFor(() => paneHost('setup'), 'setup on the bank');
+    await waitFor(() => text(q(setup, '.st-sheet__count')), 'the count');
+    const bs = await startFromSetup(setup);
+    const bankMaterial = one("SELECT * FROM st_materials WHERE kind = 'bank'");
+    expect(bankMaterial.uri).toBe(`bank:${bank.id}`);
+    expect(one('SELECT COUNT(*) AS n FROM st_concepts WHERE material_id = ?', bankMaterial.id).n).toBe(2);
+
+    const bankMenu = menuOf(await waitFor(() => bankRow(), 'the bank row'));
+    expect(bankMenu.map((m) => m.label)).toEqual(['Study…', undefined, 'Delete Bank…']);
+    expect(bankMenu[2]).toMatchObject({ icon: 'trash', danger: true });
+    bankMenu[2].onSelect();
+    await waitFor(() => paneHost(`session-${bs.sessionId}`) === null, 'the bank session tab closed');
+    expect(env.calls.confirms.at(-1)).toMatchObject({ message: `Delete the bank ${bank.name}?`, detail: 'Its 2 questions and every session over it go too.', confirmLabel: 'Delete', danger: true });
+    expect(one('SELECT COUNT(*) AS n FROM st_banks WHERE id = ?', bank.id).n).toBe(0);
+    expect(one('SELECT COUNT(*) AS n FROM st_questions WHERE bank_id = ?', bank.id).n).toBe(0);
+    expect(one("SELECT COUNT(*) AS n FROM st_questions WHERE origin = 'imported'").n).toBe(0);
+    expect(one("SELECT COUNT(*) AS n FROM st_materials WHERE kind = 'bank'").n).toBe(0);
+    expect(one('SELECT COUNT(*) AS n FROM st_concepts WHERE material_id = ?', bankMaterial.id).n).toBe(0);
+    expect(one('SELECT COUNT(*) AS n FROM st_sessions WHERE id = ?', bs.sessionId).n).toBe(0);
+    expect(one('SELECT COUNT(*) AS n FROM st_session_items WHERE session_id = ?', bs.sessionId).n).toBe(0);
+    // The other bank and the reading are untouched.
+    expect(one("SELECT COUNT(*) AS n FROM st_questions WHERE origin = 'provider'").n).toBe(providerQuestions);
+    expect(one("SELECT COUNT(*) AS n FROM st_questions WHERE origin = 'generated'").n).toBeGreaterThan(0);
+    await waitFor(() => qa(sb, '.st-sb__it--bank').length === 1, 'one bank row');
+    expect(bankRow()).toBeNull();
+    expect(text(q(sb, '.st-sb__sec--banks .st-sb__n'))).toBe('1');
+    expect(q(sb, '.st-sb__sec--sessions')).toBeNull();
+  });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 14. Resume
+  // ═════════════════════════════════════════════════════════════════════════
+
+  it('14. an open session survives Study turned off and on: its sidebar row reopens it at the same question, earlier answers kept', async () => {
+    await boot();
+    const { h, sessionId } = await startChapterSession();
+    const tab = `session-${sessionId}`;
+    const items = all('SELECT * FROM st_session_items WHERE session_id = ? ORDER BY ord', sessionId);
+    /** Answer the card on screen, right or wrong, and move on. */
+    const answerOne = async (host: HTMLElement, right: boolean) => {
+      const qr = currentQuestion(host);
+      if (q(host, '.st-card')!.dataset.format === 'mc') {
+        const r = Number(qr.answer);
+        key(host, String((right ? r : (r + 1) % 4) + 1));
+      } else {
+        const field = q<HTMLTextAreaElement>(host, '.st-ta textarea, .st-ta input')!;
+        field.value = typedAnswer(JSON.parse(qr.rubric_json), right ? 'all' : 'none');
+        key(host, 'Enter', field);
+      }
+      await waitFor(() => btn(host, 'Next') && text(q(btn(host, 'Next'), '.px-btn__label')) === 'Next' && !btn(host, 'Next')!.disabled, 'the answer stored');
+      key(host, 'Enter');
+      await cardLeft(host);
+      return qr;
+    };
+    expect((await answerOne(h, false)).id).toBe(items[0].question_id);
+    expect((await answerOne(h, true)).id).toBe(items[1].question_id);
+    expect(currentQuestion(h).id).toBe(items[2].question_id);
+    const itemRows = () => all('SELECT id, question_id, status, chosen, typed, verdict_json, format_used, answered_at FROM st_session_items WHERE session_id = ? ORDER BY ord', sessionId);
+    const itemsBefore = itemRows();
+    expect(itemsBefore.map((i) => i.status)).toEqual(['wrong', 'right', 'pending', 'pending', 'pending', 'pending']);
+    const answersBefore = all('SELECT * FROM st_answers ORDER BY id');
+    expect(answersBefore.length).toBe(2);
+    const conceptsBefore = all('SELECT * FROM st_concepts ORDER BY id');
+
+    // Off, as the host does it: the workbench closes Study's tabs, then the
+    // registrations go and deactivate runs.
+    for (const e of [...env.editors.open.values()]) await env.editors.closeEditor(e.id);
+    for (const d of env.context.subscriptions.splice(0)) d.dispose();
+    await deactivate();
+    await settle(5);
+    expect(env.editors.providers.size).toBe(0);
+    expect(env.views.size).toBe(0);
+    expect(one('SELECT finished_at FROM st_sessions WHERE id = ?', sessionId).finished_at).toBe(0);
+
+    // On again: the session is still open in the sidebar, where it stood.
+    env.context = { subscriptions: [] };
+    await activate(env.api, env.context);
+    await waitFor(() => env.commandHandlers.size === 8 && env.editors.providers.size === 1 && env.views.size === 1, 'the second activation');
+    const sb = mountSidebar();
+    const row = await waitFor(() => qa(sb, '.st-sb__it--session').find((r) => r.dataset.sessionId === String(sessionId)), 'the open session row');
+    expect(q(row, '.st-sb__live')).not.toBeNull();
+    expect(text(q(row, '.st-sb__r'))).toBe('2 / 6');
+
+    // Reopened from its row: the third question, the first two marked on the strand, nothing re-asked.
+    row.click();
+    const h2 = await waitFor(() => paneHost(tab), 'the session tab again');
+    await waitFor(() => q(h2, '.st-card'), 'the card');
+    expect(currentQuestion(h2).id).toBe(items[2].question_id);
+    expect(qa(h2, '.st-strand i').map((i) => i.className)).toEqual(['no', 'ok', 'cur', '', '', '']);
+    expect(itemRows()).toEqual(itemsBefore);
+    expect(all('SELECT * FROM st_answers ORDER BY id')).toEqual(answersBefore);
+    expect(all('SELECT * FROM st_concepts ORDER BY id')).toEqual(conceptsBefore);
+
+    // It goes on in the same session.
+    await answerOne(h2, true);
+    expect(currentQuestion(h2).id).toBe(items[3].question_id);
+    expect(itemRows().map((i) => i.status).slice(0, 3)).toEqual(['wrong', 'right', 'right']);
+    expect(one('SELECT COUNT(*) AS n FROM st_answers WHERE session_id = ?', sessionId).n).toBe(3);
+    expect(one('SELECT position FROM st_sessions WHERE id = ?', sessionId).position).toBe(2);
+    expect(one('SELECT COUNT(*) AS n FROM st_sessions').n).toBe(1);
+    await waitFor(() => text(q(qa(sb, '.st-sb__it--session')[0], '.st-sb__r')) === '3 / 6', 'the row moves on');
+  });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 15. Model and context window
+  // ═════════════════════════════════════════════════════════════════════════
+
+  it('15. the model line on the sheet: model and context are remembered per material and every call of the run carries them; Auto sizes each call', async () => {
+    await boot();
+    const setup = await openChapterSetup();
+    const mdl = (host: HTMLElement) => q<HTMLButtonElement>(host, '.st-sheet__mdl')!;
+    const openMenu = (host: HTMLElement) => { mdl(host).click(); return env.calls.menus.at(-1) as AnyRec[]; };
+    const pick = (host: HTMLElement, label: string) => openMenu(host).find((m) => m.label === label)!.onSelect();
+    const material = () => one('SELECT model, context_setting, answer_format FROM st_materials WHERE id = 1');
+    expect(text(mdl(setup))).toBe('qwen3:14b · Auto context');
+    expect(material()).toEqual({ model: '', context_setting: 0, answer_format: '' });
+
+    // A model and a fixed window: the line says them, the material keeps them.
+    pick(setup, 'llama3:8b');
+    expect(text(mdl(setup))).toBe('llama3:8b · Auto context');
+    await waitFor(() => material().model === 'llama3:8b', 'the model stored');
+    const menu = openMenu(setup);
+    // Its window is 8k: no larger fixed size is offered. The choice is checked.
+    expect(menu.map((m) => m.label)).toEqual(['Model', 'qwen3:14b', 'llama3:8b', "Use the Chat's Model", undefined, 'Context', 'Auto', '8k']);
+    expect(menu.filter((m) => m.checked).map((m) => m.label)).toEqual(['llama3:8b', 'Auto']);
+    expect(menu.filter((m) => m.keybinding).map((m) => [m.label, m.keybinding])).toEqual([['qwen3:14b', '40k'], ['llama3:8b', '8k']]);
+    menu.find((m) => m.label === '8k')!.onSelect();
+    expect(text(mdl(setup))).toBe('llama3:8b · 8k context');
+    await waitFor(() => material().context_setting === 8192, 'the context stored');
+
+    // The run: the session records both and every call carries them.
+    const s1 = await startFromSetup(setup);
+    expect(one('SELECT model, num_ctx FROM st_sessions WHERE id = ?', s1.sessionId)).toEqual({ model: 'llama3:8b', num_ctx: 8192 });
+    await answerDraw(s1.h);
+    await waitFor(() => q(s1.h, '.st-res'), 'results');
+    const kinds = new Set(env.lmCalls.map((c) => c.kind));
+    for (const k of ['map', 'questions', 'support', 'distractor', 'grade']) expect(kinds.has(k)).toBe(true);
+    for (const c of env.lmCalls) expect([c.kind, c.modelId, c.numCtx]).toEqual([c.kind, 'llama3:8b', 8192]);
+    const runs = all('SELECT model, num_ctx FROM st_runs');
+    expect(runs.length).toBeGreaterThan(0);
+    for (const r of runs) expect(r).toEqual({ model: 'llama3:8b', num_ctx: 8192 });
+    expect(all("SELECT DISTINCT model FROM st_questions WHERE origin = 'generated'")).toEqual([{ model: 'llama3:8b' }]);
+
+    // The sheet again remembers both; back to the chat's model and Auto, answered by typing.
+    const again = await openChapterSetup();
+    expect(text(mdl(again))).toBe('llama3:8b · 8k context');
+    pick(again, "Use the Chat's Model");
+    expect(text(mdl(again))).toBe('qwen3:14b · 8k context');
+    pick(again, 'Auto');
+    expect(text(mdl(again))).toBe('qwen3:14b · Auto context');
+    await waitFor(() => material().model === '' && material().context_setting === 0, 'the defaults stored');
+    q<HTMLButtonElement>(again, '.ui-segmented-control__segment[data-value="type"]')!.click();
+    await settle();
+    const from = env.lmCalls.length;
+    const s2 = await startFromSetup(again);
+    expect(one('SELECT model, num_ctx, answer_format FROM st_sessions WHERE id = ?', s2.sessionId)).toEqual({ model: '', num_ctx: 0, answer_format: 'type' });
+    expect(material()).toEqual({ model: '', context_setting: 0, answer_format: 'type' });
+
+    // The first answer is long, the rest short: Auto gives each call the window its own prompt needs.
+    const filler = ' Mack derives the standard error of the reserve from the process risk and the parameter risk.'.repeat(320);
+    let typed = 0;
+    for (let guard = 0; guard < 12; guard++) {
+      const step = await waitFor(() => q(s2.h, '.st-res') || q(s2.h, '.st-card:not(.st-card--leaving)'), 'a card or the results');
+      if (step.classList.contains('st-res')) break;
+      expect(step.dataset.format).not.toBe('mc');
+      const field = q<HTMLTextAreaElement>(s2.h, '.st-ta textarea, .st-ta input')!;
+      field.value = `${currentQuestion(s2.h).stem}${typed === 0 ? filler : ''}`;
+      key(s2.h, 'Enter', field);
+      await waitFor(() => btn(s2.h, 'Next') && text(q(btn(s2.h, 'Next'), '.px-btn__label')) === 'Next' && !btn(s2.h, 'Next')!.disabled, 'the verdict');
+      typed++;
+      key(s2.h, 'Enter');
+      await cardLeft(s2.h);
+    }
+    await waitFor(() => q(s2.h, '.st-res'), 'results');
+    expect(typed).toBe(6);
+    const run2 = env.lmCalls.slice(from);
+    expect(run2.every((c) => c.modelId === 'qwen3:14b')).toBe(true);
+    const grades = run2.filter((c) => c.kind === 'grade');
+    expect(grades.length).toBe(6);
+    expect(grades[0].user.length).toBeGreaterThan(30000);
+    expect(grades[0].numCtx).toBeGreaterThan(8192);
+    expect(grades[0].numCtx).toBeLessThanOrEqual(40960);
+    expect(grades[0].numCtx % 2048).toBe(0);
+    for (const g of grades.slice(1)) expect(g.numCtx).toBe(8192);
+    for (const c of run2) { expect(c.numCtx).toBeGreaterThanOrEqual(8192); expect(c.numCtx).toBeLessThanOrEqual(40960); }
+  });
+
+  it('16. with a model and a context fixed in Settings, the sheet names them as the default and the run uses them', async () => {
+    await boot();
+    env.settings.aiModel = 'llama3:8b';
+    env.settings.generationContext = 8192;
+    const setup = await openChapterSetup();
+    const mdl = q<HTMLButtonElement>(setup, '.st-sheet__mdl')!;
+    expect(text(mdl)).toBe('llama3:8b · 8k context');
+    mdl.click();
+    const menu = env.calls.menus.at(-1) as AnyRec[];
+    expect(menu.map((m) => m.label)).toEqual(['Model', 'qwen3:14b', 'llama3:8b', 'Use the Model in Settings', undefined, 'Context', 'As in Settings', '8k']);
+    expect(menu.filter((m) => m.checked).map((m) => m.label)).toEqual(['Use the Model in Settings', 'As in Settings']);
+    expect(menu.find((m) => m.label === 'As in Settings')!.keybinding).toBe('8k');
+    // Nothing is copied onto the material: it follows Settings.
+    expect(one('SELECT model, context_setting FROM st_materials WHERE id = 1')).toEqual({ model: '', context_setting: 0 });
+    const s = await startFromSetup(setup);
+    await waitFor(() => q(s.h, '.st-card'), 'a card');
+    for (const c of env.lmCalls) expect([c.kind, c.modelId, c.numCtx]).toEqual([c.kind, 'llama3:8b', 8192]);
   });
 
   // ═════════════════════════════════════════════════════════════════════════
