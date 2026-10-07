@@ -1,0 +1,1098 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Study</title>
+<style>
+/* Mockup: every Study screen built from the app's own parts (kit buttons
+   and page header, the segmented switch, filter chips, the context menu,
+   the Flashcards white serif card as the study stock) with the tokens from
+   src/theme/px-tokens.css (Slate dark; one light frame at the end). The
+   Practice, Test and Source frames are live: click an option, type an
+   answer, press Next. Every transition uses the motion tokens, nothing else.
+   The question content is illustrative (Clark, Mack), drawn the way real
+   generated questions will read, anchors included. */
+:root {
+  --px-base-00:#16171a; --px-base-05:#1a1c1f; --px-base-10:#1f2125; --px-base-15:#24262b;
+  --px-base-20:#2b2e34; --px-base-25:#33363d; --px-base-30:#41454d; --px-base-35:#4e525b; --px-base-40:#838893;
+  --px-base-60:#9ea3ad; --px-base-70:#c0c4cc; --px-base-100:#e8eaee;
+  --px-accent:hsl(205 64% 60%); --px-accent-hover:hsl(205 64% 67%); --px-accent-strong:hsl(205 64% 52%);
+  --px-accent-soft:hsl(205 64% 60% / .15); --px-accent-faint:hsl(205 64% 60% / .08); --px-accent-text:hsl(205 64% 67%);
+  --px-bg:var(--px-base-00); --px-window:#121315; --px-bg-raised:var(--px-base-05); --px-bg-elevated:var(--px-base-10); --px-bg-inset:var(--px-base-15);
+  --px-surface-hover:var(--px-base-20); --px-surface-active:var(--px-base-25); --px-surface-selected:hsl(205 64% 60% / .16);
+  --px-text:var(--px-base-100); --px-text-secondary:var(--px-base-70); --px-text-muted:var(--px-base-60); --px-text-faint:var(--px-base-40);
+  --px-border:var(--px-base-25); --px-border-strong:var(--px-base-30); --px-divider:var(--px-base-20); --px-chrome-line:rgba(255,255,255,.05);
+  --px-on-accent:#14161a;
+  --g:108,191,143; --y:220,170,90; --r:224,108,102; --b:110,160,224;
+  --px-success:rgb(var(--g)); --px-warning:rgb(var(--y)); --px-danger:rgb(var(--r)); --px-info:rgb(var(--b));
+  --px-shadow-sm:0 1px 2px rgba(0,0,0,.24);
+  --px-shadow-md:0 4px 14px -3px rgba(0,0,0,.42),0 1px 3px rgba(0,0,0,.30);
+  --px-shadow-lg:0 16px 36px -8px rgba(0,0,0,.58),0 4px 10px -4px rgba(0,0,0,.40);
+  --px-edge-light:inset 0 1px 0 rgba(255,255,255,.05);
+  --px-font-ui:'Inter','Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+  --px-font-card:Charter,'Bitstream Charter','Sitka Text',Cambria,Georgia,'Times New Roman',serif;
+  --px-font-mono:'Cascadia Code','Fira Code',Consolas,ui-monospace,monospace;
+  --px-dur-instant:70ms; --px-dur-fast:120ms; --px-dur-base:180ms; --px-dur-slow:260ms;
+  --px-ease:cubic-bezier(.22,1,.36,1); --px-ease-out:cubic-bezier(.16,1,.3,1); --px-ease-spring:cubic-bezier(.34,1.4,.5,1);
+  --px-press:translateY(.5px) scale(.992);
+  --card-ink:#111111; --card-ink-soft:#4a4a4a; --card-ink-faint:#9a9a9a; --card-line:#ececec; --card-stock:#ffffff; --card-edge:#e2e2e2;
+  --page:#0c0d0f; --frame-line:#26282d;
+}
+.light {
+  --px-base-00:#f4f5f7; --px-base-05:#eceef1; --px-base-10:#ffffff; --px-base-15:#eaecf0; --px-base-20:#e2e5ea;
+  --px-base-25:#d6dae1; --px-base-30:#c3c9d2; --px-base-35:#b1b8c2; --px-base-40:#656c78; --px-base-60:#555b64; --px-base-70:#3c414a; --px-base-100:#1b1d21;
+  --px-accent:hsl(205 64% 42%); --px-accent-hover:hsl(205 64% 36%); --px-accent-strong:hsl(205 64% 34%);
+  --px-accent-soft:hsl(205 64% 42% / .12); --px-accent-faint:hsl(205 64% 42% / .06); --px-accent-text:hsl(205 70% 34%);
+  --px-surface-selected:hsl(205 64% 42% / .12); --px-on-accent:#fff; --px-window:#e6e8ec; --px-chrome-line:rgba(0,0,0,.06);
+  --g:33,122,80; --y:142,100,21; --r:194,60,54; --b:40,100,180;
+  --px-shadow-md:0 4px 14px -3px rgba(20,30,40,.16),0 1px 3px rgba(20,30,40,.10);
+  --px-bg:var(--px-base-00); --px-bg-raised:var(--px-base-05); --px-bg-elevated:var(--px-base-10); --px-bg-inset:var(--px-base-15);
+  --px-surface-hover:var(--px-base-20); --px-surface-active:var(--px-base-25);
+  --px-text:var(--px-base-100); --px-text-secondary:var(--px-base-70); --px-text-muted:var(--px-base-60); --px-text-faint:var(--px-base-40);
+  --px-border:var(--px-base-25); --px-border-strong:var(--px-base-30); --px-divider:var(--px-base-20);
+  --px-success:rgb(var(--g)); --px-warning:rgb(var(--y)); --px-danger:rgb(var(--r)); --px-info:rgb(var(--b));
+  --frame-line:#c9ced6;
+  color: var(--px-text);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--px-text); font: 13px/1.45 var(--px-font-ui); -webkit-font-smoothing: antialiased; }
+.doc { max-width: 1240px; margin: 0 auto; padding: 32px 16px 96px; }
+.doc > h1 { font-size: 24px; margin: 0 0 6px; font-weight: 600; }
+.doc > h2 { font-size: 19px; margin: 56px 0 6px; font-weight: 600; }
+.doc > p, .doc li { color: var(--px-text-secondary); max-width: 86ch; }
+.doc > p { margin: 4px 0; }
+.notes { margin: 12px 0 0; padding-left: 18px; font-size: 12.5px; }
+.notes li { margin: 3px 0; }
+.notes b, .doc p b { color: var(--px-text); font-weight: 600; }
+.toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 14px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
+.toc a { color: var(--px-accent-text); text-decoration: none; }
+.kbd { display: inline-block; min-width: 18px; padding: 0 5px; height: 18px; line-height: 16px; border: 1px solid var(--px-border-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--px-bg-inset); color: var(--px-text-secondary); font: 11px var(--px-font-ui); text-align: center; vertical-align: middle; }
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+svg.s14 { width: 14px; height: 14px; } svg.s12 { width: 12px; height: 12px; } svg.s20 { width: 20px; height: 20px; } svg.s28 { width: 28px; height: 28px; stroke-width: 1.4; }
+table.spec { border-collapse: collapse; margin-top: 12px; font-size: 12.5px; width: 100%; max-width: 980px; }
+table.spec th, table.spec td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--frame-line); vertical-align: top; color: var(--px-text-secondary); }
+table.spec th { color: var(--px-text-muted); font-weight: 600; font-size: 11.5px; }
+table.spec td:first-child { color: var(--px-text); white-space: nowrap; }
+table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text); }
+
+/* ── window frame ── */
+.win { margin-top: 14px; border: 1px solid var(--frame-line); border-radius: 8px; overflow: hidden; max-width: 100%; background: var(--px-window); color: var(--px-text); }
+.tabs { display: flex; align-items: stretch; height: 35px; background: var(--px-bg-raised); border-bottom: 1px solid var(--px-divider); overflow: hidden; }
+.tab { display: flex; align-items: center; gap: 7px; padding: 0 14px; font-size: 12.5px; color: var(--px-text-muted); border-right: 1px solid var(--px-divider); white-space: nowrap; }
+.tab.on { background: var(--px-bg); color: var(--px-text); font-weight: 600; box-shadow: inset 0 1px 0 var(--px-accent); }
+.tab .x { opacity: 0; } .tab.on .x { opacity: .7; }
+.ed { position: relative; height: 620px; overflow: hidden; background: var(--px-bg); }
+.ed.auto { height: auto; }
+.ed.win-tone { background: var(--px-window); }
+.frame-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-top: 1px solid var(--frame-line); background: #121316; font-size: 11.5px; color: var(--px-text-muted); }
+.light .frame-caption { background: #e9ebef; }
+.frame-caption .replay { display: inline-flex; align-items: center; gap: 5px; color: var(--px-accent-text); cursor: pointer; user-select: none; background: none; border: 0; font: inherit; }
+
+/* ── kit parts ── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; padding: 0 12px; border: 1px solid transparent; border-radius: 4px; font: 500 12.5px/1 var(--px-font-ui); white-space: nowrap; cursor: pointer; color: var(--px-text); background: transparent; transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease); }
+.btn:active { transform: var(--px-press); }
+.btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
+.btn.lg { height: 32px; padding: 0 16px; font-size: 13px; }
+.btn.primary { background: var(--px-accent); color: var(--px-on-accent); }
+.btn.primary:hover { background: var(--px-accent-hover); }
+.btn.secondary { background: var(--px-bg-elevated); border-color: var(--px-border); }
+.btn.secondary:hover { background: var(--px-surface-hover); }
+.btn.ghost { color: var(--px-text-secondary); }
+.btn.ghost:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.btn.icon { width: 28px; padding: 0; }
+.btn.icon.sm { width: 24px; }
+.btn.on { color: var(--px-accent-text); background: var(--px-accent-faint); }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+.ph { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 0 14px; }
+.ph h3 { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.25; }
+.ph .sub { margin-top: 2px; font-size: 12.5px; color: var(--px-text-muted); }
+.ph .acts { display: flex; align-items: center; gap: 8px; flex: none; }
+.sl { font-size: 12.5px; font-weight: 600; color: var(--px-text-secondary); padding: 8px 0 6px; }
+.muted { color: var(--px-text-muted); } .faint { color: var(--px-text-faint); }
+.xs { font-size: 11.5px; } .num { font-variant-numeric: tabular-nums; }
+.seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 6px; background: var(--px-bg-inset); border: 1px solid var(--px-border); }
+.seg span { padding: 3px 12px; font-size: 12px; line-height: 18px; border-radius: 4px; color: var(--px-text-muted); white-space: nowrap; cursor: pointer; transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease); }
+.seg span.on { background: var(--px-base-25); color: var(--px-text); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.light .seg span.on { background: #fff; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--px-border); background: transparent; font-size: 12px; color: var(--px-text-secondary); white-space: nowrap; }
+.chip .n { color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.chip.on { background: var(--px-accent-soft); border-color: transparent; color: var(--px-accent-text); }
+.chip.on .n { color: var(--px-accent-text); opacity: .75; }
+.input { display: flex; align-items: center; gap: 6px; height: 28px; border: 1px solid var(--px-border-strong); border-radius: 4px; background: var(--px-bg-inset); color: var(--px-text); font-size: 12.5px; padding: 0 8px; }
+.input .phd { color: var(--px-text-faint); }
+.menu { position: absolute; min-width: 220px; padding: 4px; border-radius: 6px; background: var(--px-bg-elevated); border: 1px solid var(--px-border); box-shadow: var(--px-shadow-md), var(--px-edge-light); z-index: 5; animation: pop var(--px-dur-fast) var(--px-ease-out); }
+.menu .mi { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px; border-radius: 4px; font-size: 12.5px; color: var(--px-text); white-space: nowrap; }
+.menu .mi .k { margin-left: auto; color: var(--px-text-faint); font-size: 11.5px; }
+.menu .mi.hov { background: var(--px-surface-selected); }
+.menu .mi.dim { color: var(--px-text-faint); }
+.menu .sep { height: 1px; margin: 4px 6px; background: var(--px-divider); }
+.menu .mi.tool { color: var(--px-text); }
+.menu .mi.tool .tag { margin-left: auto; font-size: 10.5px; color: var(--px-text-faint); }
+@keyframes pop { from { opacity: 0; transform: translateY(-3px) scale(.985); } to { opacity: 1; transform: none; } }
+
+/* ── PDF pane context (drawn, not proposed) ── */
+.pdf { display: flex; flex-direction: column; height: 100%; }
+.pdf-tb { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; border-bottom: 1px solid var(--px-divider); background: var(--px-bg); }
+.pdf-tb .cl { display: flex; align-items: center; gap: 2px; }
+.pdf-tb .sp { flex: 1; }
+.pill { display: inline-flex; align-items: center; height: 24px; padding: 0 6px; border-radius: 4px; background: var(--px-bg-inset); border: 1px solid var(--px-border); font-size: 12px; color: var(--px-text-secondary); gap: 4px; }
+.ib { width: 26px; height: 26px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; color: var(--px-text-secondary); flex: none; }
+.ib.on { color: var(--px-accent-text); background: var(--px-accent-faint); }
+.pdf-stage { flex: 1; position: relative; background: var(--px-window); overflow: hidden; }
+.sheet { background: #fff; color: #222; width: 440px; margin: 22px auto 0; padding: 28px 34px; font: 10.5px/1.55 var(--px-font-card); box-shadow: 0 0 0 1px var(--px-divider), var(--px-shadow-md); }
+.sheet h4 { font-size: 14px; margin: 0 0 8px; font-weight: 700; }
+.sheet h5 { font-size: 11px; margin: 10px 0 4px; }
+.sheet p { color: #222; margin: 0 0 6px; }
+.sheet .f { text-align: center; font-style: italic; margin: 6px 0; }
+.sheet .sel { background: rgba(86,156,214,.32); }
+.sheet .anchor { background: rgba(220,170,90,.42); box-shadow: 0 0 0 2px rgba(220,170,90,.42); border-radius: 1px; }
+.sheet .pg { position: absolute; bottom: 10px; right: 14px; font-size: 9px; color: #888; }
+.bubble { position: absolute; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 6px; background: var(--px-bg-elevated); border: 1px solid var(--px-border); box-shadow: var(--px-shadow-md), var(--px-edge-light); animation: pop var(--px-dur-fast) var(--px-ease-out); }
+.bubble .bb { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 4px; font-size: 12px; color: var(--px-text-secondary); white-space: nowrap; }
+.bubble .bb.hov { background: var(--px-surface-hover); color: var(--px-text); }
+.bubble .vr { width: 1px; height: 16px; background: var(--px-divider); margin: 0 2px; }
+
+/* ── Study sheet (scope + setup) ── */
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.42); animation: fade var(--px-dur-base) var(--px-ease-out); }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.sheetdlg { position: absolute; top: 50%; left: 50%; width: 560px; max-width: calc(100% - 32px); transform: translate(-50%,-50%); background: var(--px-bg-elevated); border: 1px solid var(--px-border); border-radius: 10px; box-shadow: var(--px-shadow-lg), var(--px-edge-light); animation: rise var(--px-dur-slow) var(--px-ease-out); }
+@keyframes rise { from { opacity: 0; transform: translate(-50%,-50%) translateY(10px) scale(.985); } to { opacity: 1; transform: translate(-50%,-50%); } }
+.sheetdlg .hd { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 0; }
+.sheetdlg .hd h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.sheetdlg .hd .sub { font-size: 12px; color: var(--px-text-muted); margin-top: 2px; }
+.sheetdlg .bd { padding: 14px 20px 18px; display: grid; gap: 14px; }
+.row { display: flex; align-items: center; gap: 12px; }
+.row .lab { width: 92px; flex: none; font-size: 12.5px; color: var(--px-text-muted); }
+.outline { border: 1px solid var(--px-border); border-radius: 6px; background: var(--px-bg-inset); overflow: hidden; }
+.outline .o { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; font-size: 12.5px; color: var(--px-text-secondary); border-top: 1px solid var(--px-divider); }
+.outline .o:first-child { border-top: 0; }
+.outline .o.on { background: var(--px-surface-selected); color: var(--px-text); }
+.outline .o .pp { width: 64px; text-align: right; color: var(--px-text-faint); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.outline .o .ocov { margin-left: auto; width: 56px; height: 3px; border-radius: 999px; background: var(--px-divider); overflow: hidden; flex: none; }
+.outline .o .ocov i { display: block; height: 100%; background: var(--px-success); }
+.outline .o .ocov i.w { background: var(--px-accent); }
+.sheetdlg .ft { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px 16px; border-top: 1px solid var(--px-divider); }
+.sheetdlg .ft .st { font-size: 12px; color: var(--px-text-muted); }
+.sheetdlg .ft .st b { color: var(--px-text); font-weight: 600; }
+
+/* ── Generation progress ── */
+.gen { width: 560px; max-width: calc(100% - 32px); margin: 56px auto 0; }
+.gen .t { font-size: 15px; font-weight: 600; }
+.gen .s { font-size: 12.5px; color: var(--px-text-muted); margin-top: 2px; }
+.gen .bar { height: 4px; border-radius: 999px; background: var(--px-divider); overflow: hidden; margin: 16px 0 14px; }
+.gen .bar i { display: block; height: 100%; width: 62%; background: var(--px-accent); border-radius: 999px; transition: width var(--px-dur-slow) var(--px-ease); }
+.tally { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.tally .c { padding: 10px 12px; border: 1px solid var(--px-border); border-radius: 6px; background: var(--px-bg-elevated); }
+.tally .c .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.tally .c .l { font-size: 11.5px; color: var(--px-text-muted); margin-top: 3px; }
+.tally .c .v.ok { color: var(--px-success); } .tally .c .v.drop { color: var(--px-text-secondary); }
+.checks { margin-top: 14px; border: 1px solid var(--px-border); border-radius: 6px; overflow: hidden; }
+.checks .ck { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 12px; font-size: 12.5px; border-top: 1px solid var(--px-divider); color: var(--px-text-secondary); }
+.checks .ck:first-child { border-top: 0; }
+.checks .ck .d { width: 7px; height: 7px; border-radius: 50%; background: var(--px-success); flex: none; }
+.checks .ck .d.run { background: var(--px-accent); animation: pulse 1.2s var(--px-ease) infinite; }
+.checks .ck .d.idle { background: var(--px-base-30); }
+.checks .ck .n { margin-left: auto; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.gen .acts { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+
+/* ── Session pane ── */
+.sess { display: flex; flex-direction: column; height: 100%; background: var(--px-window); }
+.sess-tb { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 16px; border-bottom: 1px solid var(--px-divider); background: var(--px-bg); flex: none; }
+.sess-tb .scope { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.sess-tb .scope .m { color: var(--px-text-muted); font-weight: 400; }
+.sess-tb .sp { flex: 1; }
+.sess-tb .pos { font-size: 11.5px; color: var(--px-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.strand { display: flex; gap: 3px; flex: 0 1 240px; min-width: 120px; }
+.strand i { flex: 1; height: 3px; border-radius: 999px; background: var(--px-base-25); transition: background var(--px-dur-base) var(--px-ease), transform var(--px-dur-base) var(--px-ease-spring); }
+.strand i.ok { background: var(--px-success); } .strand i.no { background: var(--px-danger); } .strand i.cur { background: var(--px-accent); }
+.strand i.just { transform: scaleY(1.9); }
+.sess-main { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; padding: 20px 24px 24px; overflow-y: auto; }
+.qwrap { width: 100%; max-width: 760px; position: relative; }
+.eyebrow { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--px-text-muted); margin-bottom: 10px; }
+.eyebrow .cpt { color: var(--px-text-secondary); font-weight: 600; }
+.eyebrow .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--px-text-faint); }
+.eyebrow .src { color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.eyebrow .fmt { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+/* the card: white serif stock, as Flashcards */
+.card { background: var(--card-stock); border: 1px solid var(--card-edge); box-shadow: 0 2px 8px rgba(0,0,0,.14); padding: 22px 26px 8px; color: var(--card-ink); font-family: var(--px-font-card); animation: card-in var(--px-dur-base) var(--px-ease-out); }
+.card.leaving { animation: card-out var(--px-dur-fast) var(--px-ease) forwards; }
+@keyframes card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes card-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-14px); } }
+.card .q { font-size: 20px; font-weight: 700; line-height: 1.35; margin: 0 0 18px; }
+.card .q em { font-style: italic; font-weight: 400; }
+.opts { margin: 0 -26px; border-top: 1px solid var(--card-line); }
+.opt { display: flex; align-items: flex-start; gap: 14px; padding: 11px 26px; border-bottom: 1px solid var(--card-line); font-size: 15px; line-height: 1.45; cursor: pointer; position: relative; transition: background var(--px-dur-fast) var(--px-ease), transform var(--px-dur-instant) var(--px-ease); }
+.opt:last-child { border-bottom: 0; }
+.opt:hover { background: #f6f6f6; }
+.opt:active { transform: var(--px-press); }
+.opt .key { flex: none; width: 20px; height: 20px; margin-top: 1px; border: 1px solid #d9d9d9; border-radius: 4px; font: 500 11.5px/18px var(--px-font-ui); text-align: center; color: var(--card-ink-faint); transition: background var(--px-dur-fast) var(--px-ease), color var(--px-dur-fast) var(--px-ease), border-color var(--px-dur-fast) var(--px-ease); }
+.opt .mark { flex: none; width: 16px; height: 16px; margin: 3px 0 0 auto; opacity: 0; transform: scale(.6); transition: opacity var(--px-dur-fast) var(--px-ease), transform var(--px-dur-base) var(--px-ease-spring); }
+.opts.done .opt { cursor: default; } .opts.done .opt:hover { background: transparent; }
+.opt.right { background: rgba(33,122,80,.09); }
+.opt.right .key { background: rgb(33,122,80); border-color: rgb(33,122,80); color: #fff; }
+.opt.right .mark { opacity: 1; transform: none; color: rgb(33,122,80); }
+.opt.wrong { background: rgba(194,60,54,.08); }
+.opt.wrong .key { background: rgb(194,60,54); border-color: rgb(194,60,54); color: #fff; }
+.opt.wrong .mark { opacity: 1; transform: none; color: rgb(194,60,54); }
+.opts.done .opt:not(.right):not(.wrong) { color: var(--card-ink-faint); }
+.opts.done .opt:not(.right):not(.wrong) .key { color: #c4c4c4; border-color: #e6e6e6; }
+/* typed answer */
+.ta { margin: 0 -26px -8px; border-top: 1px solid var(--card-line); padding: 14px 26px 18px; }
+.ta textarea { width: 100%; min-height: 96px; resize: vertical; border: 1px solid #dcdcdc; border-radius: 4px; padding: 10px 12px; font: 15px/1.5 var(--px-font-card); color: var(--card-ink); background: #fbfbfb; outline: none; transition: border-color var(--px-dur-fast) var(--px-ease), box-shadow var(--px-dur-fast) var(--px-ease); }
+.ta textarea:focus { border-color: var(--px-accent); box-shadow: 0 0 0 1px var(--px-accent); background: #fff; }
+.ta .hint { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font: 11.5px var(--px-font-ui); color: var(--card-ink-faint); }
+/* feedback strip under the card */
+.fb { margin-top: 14px; display: grid; grid-template-columns: 1fr auto; gap: 14px 16px; align-items: start; opacity: 0; transform: translateY(6px); transition: opacity var(--px-dur-base) var(--px-ease-out), transform var(--px-dur-base) var(--px-ease-out); pointer-events: none; }
+.fb.show { opacity: 1; transform: none; pointer-events: auto; }
+.fb .verdict { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.fb .verdict .d { width: 8px; height: 8px; border-radius: 50%; }
+.fb.ok .verdict { color: var(--px-success); } .fb.ok .verdict .d { background: var(--px-success); }
+.fb.no .verdict { color: var(--px-danger); } .fb.no .verdict .d { background: var(--px-danger); }
+.fb .why { grid-column: 1; font-size: 13px; color: var(--px-text-secondary); line-height: 1.5; max-width: 70ch; margin-top: -6px; }
+.fb .why b { color: var(--px-text); font-weight: 600; }
+.fb .acts { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: 8px; align-items: center; }
+.quote { grid-column: 1; display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--px-border); border-left: 2px solid rgb(var(--y)); border-radius: 6px; background: var(--px-bg-elevated); font: 13px/1.5 var(--px-font-card); color: var(--px-text-secondary); max-width: 70ch; }
+.quote .pg { font: 11.5px var(--px-font-ui); color: var(--px-accent-text); white-space: nowrap; align-self: flex-start; margin-top: 2px; cursor: pointer; }
+.quote .pg:hover { text-decoration: underline; }
+/* rubric verdict */
+.rub { grid-column: 1; display: grid; gap: 6px; margin-top: -4px; }
+.rub .pt { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.45; color: var(--px-text-secondary); opacity: 0; transform: translateX(-4px); animation: pt-in var(--px-dur-base) var(--px-ease-out) forwards; }
+.rub .pt:nth-child(2) { animation-delay: 50ms; } .rub .pt:nth-child(3) { animation-delay: 100ms; } .rub .pt:nth-child(4) { animation-delay: 150ms; } .rub .pt:nth-child(5) { animation-delay: 200ms; }
+@keyframes pt-in { to { opacity: 1; transform: none; } }
+.rub .pt .g { flex: none; width: 18px; height: 18px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font: 600 11px var(--px-font-ui); margin-top: 1px; }
+.rub .pt.hit .g { background: rgba(var(--g),.18); color: var(--px-success); }
+.rub .pt.part .g { background: rgba(var(--y),.18); color: var(--px-warning); }
+.rub .pt.miss .g { background: rgba(var(--r),.18); color: var(--px-danger); }
+.rub .pt.miss { color: var(--px-text); }
+.rub .pt .req { font-size: 10.5px; color: var(--px-text-faint); margin-left: 4px; }
+.fb .grade { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--px-text-muted); }
+.fb .grade b { font-weight: 600; color: var(--px-warning); }
+.model { grid-column: 1; margin-top: 2px; }
+.model summary { font-size: 12px; color: var(--px-text-muted); cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 5px; }
+.model summary::-webkit-details-marker { display: none; }
+.model p { margin: 8px 0 0; font: 13px/1.55 var(--px-font-card); color: var(--px-text-secondary); max-width: 70ch; padding: 10px 12px; border: 1px solid var(--px-border); border-radius: 6px; background: var(--px-bg-elevated); }
+.model .from { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 11.5px; color: var(--px-text-faint); }
+/* controls row */
+.ctl { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 760px; margin-top: 18px; }
+.ctl .sp { flex: 1; }
+.ctl .keys { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--px-text-faint); }
+.ctl .keys span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ── Source split ── */
+.split { display: grid; grid-template-columns: 1fr 0fr; height: 100%; transition: grid-template-columns var(--px-dur-slow) var(--px-ease); }
+.split.open { grid-template-columns: 1fr 1fr; }
+.split .srcpane { min-width: 0; overflow: hidden; border-left: 1px solid var(--px-divider); background: var(--px-bg); display: flex; flex-direction: column; opacity: 0; transition: opacity var(--px-dur-base) var(--px-ease) 80ms; }
+.split.open .srcpane { opacity: 1; }
+.srcpane .hd { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-bottom: 1px solid var(--px-divider); font-size: 12.5px; white-space: nowrap; }
+.srcpane .hd .f { font-weight: 600; } .srcpane .hd .p { color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.srcpane .hd .x { margin-left: auto; }
+.srcpane .stage { flex: 1; position: relative; background: var(--px-window); overflow: hidden; }
+.srcpane .sheet { width: 360px; margin-top: 18px; padding: 24px 28px; font-size: 9.5px; }
+.srcpane .sheet h4 { font-size: 12px; }
+.split .sess { min-width: 0; }
+.split .sess .sess-main { padding-left: 16px; padding-right: 16px; }
+
+/* ── Results ── */
+.res { width: 100%; max-width: 760px; margin: 0 auto; animation: card-in var(--px-dur-slow) var(--px-ease-out); }
+.res .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 28px 0 18px; border-bottom: 1px solid var(--px-divider); }
+.res .big { font-size: 40px; font-weight: 600; line-height: 1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.res .big small { font-size: 18px; color: var(--px-text-muted); font-weight: 500; margin-left: 4px; }
+.res .under { font-size: 12.5px; color: var(--px-text-muted); margin-top: 8px; }
+.res .under b { color: var(--px-text); font-weight: 600; }
+.res .top .acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.cov { display: flex; gap: 2px; height: 6px; margin: 18px 0 6px; }
+.cov i { flex: 1; border-radius: 2px; background: var(--px-base-25); }
+.cov i.c { background: var(--px-success); } .cov i.w { background: var(--px-danger); } .cov i.n { background: var(--px-base-25); }
+.cov i.c.just { animation: fill var(--px-dur-base) var(--px-ease-out) both; }
+@keyframes fill { from { transform: scaleX(.2); opacity: .4; } to { transform: none; opacity: 1; } }
+.covl { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--px-text-muted); }
+.covl span b { color: var(--px-text); font-weight: 600; }
+.missed { margin-top: 22px; }
+.missed .sl { padding-top: 0; }
+.mrow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--px-divider); font-size: 13px; }
+.mrow:first-of-type { border-top: 0; }
+.mrow .c { font-weight: 500; }
+.mrow .c small { display: block; font-size: 11.5px; color: var(--px-text-muted); margin-top: 1px; font-weight: 400; }
+.mrow .pg { font-size: 11.5px; color: var(--px-accent-text); white-space: nowrap; }
+.mrow .st { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--px-text-muted); white-space: nowrap; }
+.mrow .st i { width: 6px; height: 6px; border-radius: 50%; background: var(--px-danger); }
+.mrow .st.w i { background: var(--px-warning); }
+.res .ft { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--px-divider); }
+.res .ft .lhs { font-size: 12px; color: var(--px-text-muted); }
+
+/* ── Learn ── */
+.learn { width: 100%; max-width: 720px; margin: 0 auto; padding-top: 8px; animation: card-in var(--px-dur-base) var(--px-ease-out); }
+.learn h3 { font: 600 20px/1.3 var(--px-font-ui); margin: 10px 0 4px; }
+.learn .sub { font-size: 12.5px; color: var(--px-text-muted); margin-bottom: 18px; }
+.learn .pt { display: grid; grid-template-columns: 1fr auto; gap: 16px; padding: 12px 0; border-top: 1px solid var(--px-divider); font: 14px/1.55 var(--px-font-card); color: var(--px-text-secondary); }
+.learn .pt b { color: var(--px-text); font-weight: 600; }
+.learn .pt .pg { font: 11.5px var(--px-font-ui); color: var(--px-accent-text); white-space: nowrap; align-self: start; margin-top: 3px; cursor: pointer; }
+.learn .pt:hover { color: var(--px-text); }
+.learn .pt .pg:hover { text-decoration: underline; }
+.learn .ft { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--px-divider); font-size: 12px; color: var(--px-text-muted); }
+
+/* ── Sidebar ── */
+.sb { width: 300px; height: 100%; background: var(--px-bg); border-right: 1px solid var(--px-divider); display: flex; flex-direction: column; font-size: 12.5px; }
+.sb .hd { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; font-size: 11px; font-weight: 600; color: var(--px-text-muted); }
+.sb .hd .sp { flex: 1; }
+.sb .sec { padding: 4px 0 8px; }
+.sb .secl { display: flex; align-items: center; gap: 6px; padding: 8px 12px 4px; font-size: 11px; font-weight: 600; color: var(--px-text-muted); }
+.sb .secl .n { color: var(--px-text-faint); font-weight: 500; margin-left: 2px; }
+.sb .it { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px; height: 30px; padding: 0 12px; color: var(--px-text-secondary); white-space: nowrap; }
+.sb .it:hover { background: var(--px-surface-hover); color: var(--px-text); }
+.sb .it.on { background: var(--px-surface-selected); color: var(--px-text); }
+.sb .it .nm { overflow: hidden; text-overflow: ellipsis; }
+.sb .it .mini { width: 48px; height: 3px; border-radius: 999px; background: var(--px-base-25); overflow: hidden; }
+.sb .it .mini i { display: block; height: 100%; background: var(--px-success); }
+.sb .it .mini i.w { background: var(--px-accent); }
+.sb .it .r { font-size: 11px; color: var(--px-text-faint); font-variant-numeric: tabular-nums; }
+.sb .it .r.weak { color: var(--px-danger); }
+.sb .it.sub { padding-left: 32px; grid-template-columns: 1fr auto; }
+.sb .it.sub .nm { color: var(--px-text-secondary); }
+.sbwrap { display: flex; height: 100%; }
+.sbwrap .rest { flex: 1; background: var(--px-window); display: flex; align-items: center; justify-content: center; color: var(--px-text-faint); font-size: 12px; }
+
+/* ── Dashboard widget ── */
+.wdg { width: 380px; padding: 14px 16px 12px; border: 1px solid var(--px-border); border-radius: 14px; background: var(--px-bg-elevated); box-shadow: var(--px-edge-light); margin: 24px auto; }
+.wdg .hd { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; margin-bottom: 10px; }
+.wdg .hd .sp { flex: 1; }
+.wdg .wr { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 7px 0; border-top: 1px solid var(--px-divider); font-size: 12.5px; }
+.wdg .wr:first-of-type { border-top: 0; }
+.wdg .wr small { display: block; color: var(--px-text-muted); font-size: 11px; margin-top: 1px; }
+.wdg .wr .b { width: 72px; height: 4px; border-radius: 999px; background: var(--px-base-25); overflow: hidden; }
+.wdg .wr .b i { display: block; height: 100%; background: var(--px-danger); }
+.wdg .wr .b i.y { background: var(--px-warning); }
+.wdg .ft { margin-top: 8px; font-size: 11.5px; color: var(--px-accent-text); }
+
+/* ── motion spec table styling ── */
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 860px) { .pair { grid-template-columns: 1fr; } .tally { grid-template-columns: 1fr 1fr; } .split.open { grid-template-columns: 1fr; } .split .srcpane { display: none; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; } }
+</style>
+</head>
+<body>
+<div class="doc">
+<h1>Study</h1>
+<p>Every screen of the Study extension, built from parts the app already has, in the app's own tokens. The Practice, Test and Source frames are live: click an option, type an answer, press Next. Nothing here is a new visual language; the two new parts are the <b>progress strand</b> and the <b>anchor quote</b>, and both are drawn from existing tokens.</p>
+<p>The question content is illustrative, written the way real generated questions will read: one concept each, an anchor on the page, competitive wrong options.</p>
+<ul class="toc">
+  <li><a href="#principles">0. Principles and shared parts</a></li>
+  <li><a href="#entry">1. Entry from the PDF</a></li>
+  <li><a href="#setup">2. Scope and setup</a></li>
+  <li><a href="#gen">3. Generation and the checks</a></li>
+  <li><a href="#practice">4. Practice</a></li>
+  <li><a href="#typed">5. Typed answer</a></li>
+  <li><a href="#essay">6. Essay from a past exam</a></li>
+  <li><a href="#source">7. Show Source</a></li>
+  <li><a href="#results">8. Results and Refresh</a></li>
+  <li><a href="#learn">9. Learn</a></li>
+  <li><a href="#sidebar">10. Sidebar and widget</a></li>
+  <li><a href="#motion">11. Motion and keys</a></li>
+  <li><a href="#light">12. Light mode</a></li>
+  <li><a href="#copy">13. Copy</a></li>
+</ul>
+
+<h2 id="principles">0. Principles and shared parts</h2>
+<ul class="notes">
+  <li><b>One thing on screen.</b> A session shows one question, its answer area, and nothing else until the answer is in. Feedback appears under the card, never over it. Toolbar, strand and the scope line are the only chrome.</li>
+  <li><b>The card is the study stock.</b> The question sits on the Flashcards white serif card, so a card in Study and a card in Flashcards are visibly the same material. Everything around it is the app's dark chrome.</li>
+  <li><b>The anchor is always one glance away.</b> Every question carries its page and quote. After an answer the quote is shown; Show Source opens the PDF beside the session at that page with the quote highlighted. A question with no anchor does not exist.</li>
+  <li><b>The strand is the progress.</b> Twenty thin segments in the toolbar: faint for unanswered, green for right, red for wrong, accent for the current one. No percentages, no score counter during the session. The score is the strand.</li>
+  <li><b>Motion is for state, not decoration.</b> Each transition says what changed: a card leaves left and the next arrives from below; feedback rises under the card; rubric points land one after another; the source pane widens from the right. Durations are the motion tokens (120, 180, 260 ms) and nothing else. Reduced motion collapses them all.</li>
+  <li><b>Keys for everything.</b> 1 to 4 pick an option, Enter checks or advances, S opens the source, R retries, Esc closes the source. Shown faintly in the controls row, never as a help screen.</li>
+</ul>
+
+<h2 id="entry">1. Entry from the PDF</h2>
+<p>The PDF pane gains two generic slots the core did not have: a tool entry in More Actions (the <code>editor/title</code> menu location) and the selection action it already lists. Study registers into both; turned off, both entries go.</p>
+<div class="win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-file"/></svg>Clark_2003_LDF_Curve_Fitting.pdf<span class="x">×</span></div><div class="tab"><svg class="i s14"><use href="#i-page"/></svg>Clark notes</div></div>
+  <div class="ed" style="height:520px">
+    <div class="pdf">
+      <div class="pdf-tb">
+        <div class="cl"><span class="ib"><svg class="i s14"><use href="#i-chev-l"/></svg></span><span class="pill"><span class="num">17</span><span class="faint">/</span><span class="faint num">38</span></span><span class="ib"><svg class="i s14"><use href="#i-chev-r"/></svg></span></div>
+        <div class="cl" style="margin-left:8px"><span class="ib"><svg class="i s14"><use href="#i-minus"/></svg></span><span class="pill">110%</span><span class="ib"><svg class="i s14"><use href="#i-plus"/></svg></span></div>
+        <div class="sp"></div>
+        <div class="cl"><span class="ib"><svg class="i s14"><use href="#i-search"/></svg></span><span class="ib"><svg class="i s14"><use href="#i-panel"/></svg></span><span class="ib"><svg class="i s14"><use href="#i-moon"/></svg></span><span class="ib on"><svg class="i s14"><use href="#i-more"/></svg></span></div>
+      </div>
+      <div class="pdf-stage">
+        <div class="sheet" style="position:relative">
+          <h4>3. The Cape Cod Method</h4>
+          <p>The LDF method requires one parameter for each accident year, the ultimate loss <i>ULT<sub>i</sub></i>, in addition to the two parameters of the growth curve. <span class="sel">The Cape Cod method instead assumes that the expected ultimate loss for each year is a constant expected loss ratio applied to the year's on-level premium,</span> so that the whole triangle is fit with only three parameters: ω, θ and ELR.</p>
+          <p class="f">μ<sub>i,t</sub> = Premium<sub>i</sub> · ELR · [G(x<sub>t</sub>) − G(x<sub>t−1</sub>)]</p>
+          <p>Fewer parameters means more degrees of freedom in the data and, in general, a smaller parameter variance. The cost is the assumption that the loss ratio is stable across accident years after adjusting premium to a common level.</p>
+          <h5>3.1 Process variance and parameter variance</h5>
+          <p>The total variance of the reserve estimate is the sum of the process variance, the random variation in the losses themselves, and the parameter variance, the uncertainty in the fitted parameters. The scale factor σ² is estimated from the chi-square statistic…</p>
+          <span class="pg">17</span>
+        </div>
+        <div class="bubble" style="left:150px;top:58px">
+          <span class="bb"><svg class="i s14"><use href="#i-copy"/></svg>Copy</span><span class="bb"><svg class="i s14"><use href="#i-hl"/></svg>Highlight</span><span class="vr"></span><span class="bb"><svg class="i s14"><use href="#i-spark"/></svg>Ask AI</span><span class="bb"><svg class="i s14"><use href="#i-cards"/></svg>Create Flashcard…</span><span class="bb hov"><svg class="i s14"><use href="#i-study"/></svg>Quiz This Selection</span>
+        </div>
+        <div class="menu" style="right:14px;top:4px">
+          <div class="mi"><svg class="i s14"><use href="#i-rotate"/></svg>Rotate<span class="k">R</span></div>
+          <div class="mi"><svg class="i s14"><use href="#i-spread"/></svg>Two Pages</div>
+          <div class="mi"><svg class="i s14"><use href="#i-scroll"/></svg>Continuous Scroll</div>
+          <div class="sep"></div>
+          <div class="mi hov tool"><svg class="i s14"><use href="#i-study"/></svg>Study This Document…<span class="tag">Study</span></div>
+          <div class="sep"></div>
+          <div class="mi"><svg class="i s14"><use href="#i-print"/></svg>Print…</div>
+          <div class="mi"><svg class="i s14"><use href="#i-open"/></svg>Open in Default App</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="frame-caption"><span>More Actions with the tool slot; the selection bubble with the tool's selection action. The tool tag on the menu row names where the entry comes from.</span></div>
+</div>
+<ul class="notes">
+  <li>The More Actions slot is one generic location, <code>editor/title</code>, with <code>when: "activeEditor == 'pdf'"</code>; the menu row carries the tool's name at the right, as the Settings page does for a tool's settings, so the user can tell what added it.</li>
+  <li>"Quiz This Selection" starts straight into a session over the selected passage, no setup sheet: the scope is the selection, the mode is Practice, the format is the saved default.</li>
+</ul>
+
+<h2 id="setup">2. Scope and setup</h2>
+<p>One sheet over the document. Scope on top, with the outline as the chapter list and each chapter's coverage drawn in line. Mode and answer format under it. The footer counts what the choice means before Start is pressed.</p>
+<div class="win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-file"/></svg>Clark_2003_LDF_Curve_Fitting.pdf<span class="x">×</span></div></div>
+  <div class="ed" style="height:560px">
+    <div class="pdf">
+      <div class="pdf-tb"><div class="cl"><span class="ib"><svg class="i s14"><use href="#i-chev-l"/></svg></span><span class="pill"><span class="num">17</span><span class="faint">/</span><span class="faint num">38</span></span><span class="ib"><svg class="i s14"><use href="#i-chev-r"/></svg></span></div><div class="sp"></div></div>
+      <div class="pdf-stage"><div class="sheet" style="opacity:.5"><h4>3. The Cape Cod Method</h4><p>The LDF method requires one parameter for each accident year…</p></div></div>
+    </div>
+    <div class="scrim"></div>
+    <div class="sheetdlg">
+      <div class="hd"><div><h3>Study</h3><div class="sub">Clark_2003_LDF_Curve_Fitting.pdf · 38 pages · 41 concepts known</div></div><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
+      <div class="bd">
+        <div class="row"><span class="lab">Scope</span><span class="seg"><span>Document</span><span>Pages</span><span class="on">Chapter</span><span>Selection</span></span></div>
+        <div class="outline">
+          <div class="o"><svg class="i s12"><use href="#i-chev-r"/></svg>1. Introduction<span class="ocov"><i style="width:100%"></i></span><span class="pp">pp. 1–4</span></div>
+          <div class="o"><svg class="i s12"><use href="#i-chev-r"/></svg>2. Growth Curves and the LDF Method<span class="ocov"><i style="width:78%"></i></span><span class="pp">pp. 5–12</span></div>
+          <div class="o on"><svg class="i s12"><use href="#i-check"/></svg>3. The Cape Cod Method<span class="ocov"><i class="w" style="width:31%"></i></span><span class="pp">pp. 13–21</span></div>
+          <div class="o"><svg class="i s12"><use href="#i-chev-r"/></svg>4. Variance of the Reserve Estimate<span class="ocov"><i style="width:0"></i></span><span class="pp">pp. 22–31</span></div>
+          <div class="o"><svg class="i s12"><use href="#i-chev-r"/></svg>5. Residual Diagnostics and Model Checks<span class="ocov"><i style="width:0"></i></span><span class="pp">pp. 32–38</span></div>
+        </div>
+        <div class="row"><span class="lab">Mode</span><span class="seg"><span class="on">Practice</span><span>Test</span><span>Learn</span></span></div>
+        <div class="row"><span class="lab">Answer</span><span class="seg"><span>Choose</span><span>Type</span><span class="on">Mixed</span></span><span class="xs muted">Starts on choices; a concept moves to typing once it has been answered right.</span></div>
+      </div>
+      <div class="ft"><span class="st"><b>12 concepts</b> in this chapter · 4 clean · 48 questions in the bank · 20 per session</span><span style="display:flex;gap:8px"><span class="btn ghost">Cancel</span><span class="btn primary">Start</span></span></div>
+    </div>
+  </div>
+  <div class="frame-caption"><span>The sheet rises 10 px and settles (260 ms, ease-out). The outline rows carry each chapter's coverage: green for clean concepts, accent for concepts with questions not yet answered right, empty for chapters with no bank yet.</span></div>
+</div>
+<ul class="notes">
+  <li><b>Pages</b> turns the outline into a from–to pair of page inputs. <b>Selection</b> is only offered when the pane has one. <b>Document</b> runs over every chapter in order.</li>
+  <li>The footer is honest about what will happen: when the bank is short, it reads "48 questions in the bank, 12 more will be made first" and Start reads <b>Make Questions and Start</b>.</li>
+  <li>The chosen mode and format are remembered per material; "Quiz This Selection" reuses them.</li>
+</ul>
+
+<h2 id="gen">3. Generation and the checks</h2>
+<p>When a scope needs questions, the session pane shows the work, not a spinner. Four checks run before a question is kept, and their drops are the quality signal the user sees before any question.</p>
+<div class="win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3<span class="x">×</span></div><div class="tab"><svg class="i s14"><use href="#i-file"/></svg>Clark_2003_LDF_Curve_Fitting.pdf</div></div>
+  <div class="ed win-tone" style="height:470px">
+    <div class="gen">
+      <div class="t">Making questions for chapter 3</div>
+      <div class="s">Pages 13 to 21 · 12 concepts · qwen3:14b</div>
+      <div class="bar"><i id="genbar"></i></div>
+      <div class="tally">
+        <div class="c"><div class="v num">61</div><div class="l">Written</div></div>
+        <div class="c"><div class="v num ok">48</div><div class="l">Kept</div></div>
+        <div class="c"><div class="v num drop">13</div><div class="l">Dropped</div></div>
+        <div class="c"><div class="v num">9<span class="muted" style="font-size:13px;font-weight:500"> / 12</span></div><div class="l">Concepts covered</div></div>
+      </div>
+      <div class="checks">
+        <div class="ck"><span class="d"></span>Anchor is on the page<span class="xs faint">string match against the extracted text</span><span class="n">4 dropped</span></div>
+        <div class="ck"><span class="d"></span>Anchor settles the answer<span class="xs faint">the quote alone, read back</span><span class="n">2 dropped</span></div>
+        <div class="ck"><span class="d run"></span>No wrong option is defensible<span class="xs faint">each option alone with the stem</span><span class="n">7 dropped</span></div>
+        <div class="ck"><span class="d idle"></span>Numeric answers execute<span class="xs faint">solution run in Python, result compared</span><span class="n">—</span></div>
+      </div>
+      <div class="acts"><span class="btn ghost">Stop</span><span class="btn primary">Start With 20 Ready</span></div>
+    </div>
+  </div>
+  <div class="frame-caption"><span>The bar moves per concept. The running check pulses; a finished one holds green; one with nothing to do stays grey. Start is offered the moment 20 kept questions exist.</span></div>
+</div>
+<ul class="notes">
+  <li>The drop numbers stay on the material's page in the sidebar as the generation run's record, per model, so a model that cannot write clean distractors is visible rather than suffered.</li>
+  <li>Generation continues in the background after Start; the strand grows into the new questions as they clear.</li>
+</ul>
+
+<h2 id="practice">4. Practice</h2>
+<p>Live. Pick an option with the mouse or <span class="kbd">1</span> to <span class="kbd">4</span>. Wrong first, to see the full feedback; Next advances to the next card.</p>
+<div class="win" id="practice-win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3<span class="x">×</span></div><div class="tab"><svg class="i s14"><use href="#i-file"/></svg>Clark_2003_LDF_Curve_Fitting.pdf</div></div>
+  <div class="ed" style="height:640px">
+    <div class="sess">
+      <div class="sess-tb">
+        <span class="scope">Clark, ch. 3 <span class="m">· Practice · Mixed</span></span>
+        <div class="sp"></div>
+        <div class="strand" id="strand"></div>
+        <span class="pos" id="pos">7 of 20</span>
+        <span class="ib" title="End Session"><svg class="i s14"><use href="#i-x"/></svg></span>
+      </div>
+      <div class="sess-main">
+        <div class="qwrap" id="qwrap"></div>
+        <div class="ctl">
+          <div class="keys"><span><span class="kbd">1</span>–<span class="kbd">4</span> choose</span><span><span class="kbd">↵</span> next</span><span><span class="kbd">S</span> source</span><span><span class="kbd">R</span> retry</span></div>
+          <div class="sp"></div>
+          <span class="btn ghost" id="skip">Skip</span>
+          <span class="btn primary" id="next" disabled>Next</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="frame-caption"><span id="practice-cap">Pick an option. Right: the row and key turn green, the strand segment fills. Wrong: the row turns red, the correct row turns green, and the reason and the anchor rise under the card.</span><button class="replay" id="practice-replay"><svg class="i s12"><use href="#i-rotate"/></svg>Replay</button></div>
+</div>
+<ul class="notes">
+  <li>The card is the Flashcards stock: white, serif, 20 px bold question. Options are rows on the card with a keycap at the left, divided by the card's own hairline. No radio circles, no letters A to D: the keycap is the letter and the key.</li>
+  <li>The strand segment for the current question is accent; on answer it turns green or red and briefly thickens (spring, 180 ms) so the eye catches the result without a toast.</li>
+  <li><b>Why</b> is one or two sentences grounded in the anchor, written at generation time, never a live free answer. <b>Explain</b> is the live door: it opens chat with the question, the anchor and the page attached.</li>
+  <li><b>Retry</b> only after a wrong answer, once: the wrong row stays marked, the others clear. A retried right answer counts as wrong for mastery and the strand keeps its red.</li>
+  <li>Skip puts the question at the end of the session; the strand shows it faint until it comes round.</li>
+</ul>
+
+<h2 id="typed">5. Typed answer</h2>
+<p>Live. Test mode, or a Mixed concept that has already been answered right. Type into the card and press Check; the verdict lands point by point.</p>
+<div class="win" id="typed-win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Mack 1994<span class="x">×</span></div></div>
+  <div class="ed" style="height:720px">
+    <div class="sess">
+      <div class="sess-tb">
+        <span class="scope">Mack 1994 <span class="m">· Test · Type</span></span>
+        <div class="sp"></div>
+        <div class="strand" id="strand2"></div>
+        <span class="pos">4 of 20</span>
+        <span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span>
+      </div>
+      <div class="sess-main">
+        <div class="qwrap">
+          <div class="eyebrow"><span class="cpt">Chain-ladder assumptions</span><span class="dot"></span><span class="src">Mack 1994 · p. 103</span><span class="fmt"><svg class="i s12"><use href="#i-type"/></svg>Type</span></div>
+          <div class="card">
+            <p class="q">State the three assumptions underlying Mack's distribution-free chain-ladder model.</p>
+            <div class="ta">
+              <textarea id="ta" placeholder="Write it out before it shows.">Expected cumulative losses at the next development age equal the current cumulative losses times a development factor that depends only on the age. Accident years are independent of each other.</textarea>
+              <div class="hint"><span>Graded against 3 points from the source.</span><span>Enter to check · Shift+Enter for a new line</span></div>
+            </div>
+          </div>
+          <div class="fb" id="fb2">
+            <div class="verdict"><span class="d"></span>Two of three <span class="grade">· counts as <b>Hard</b></span></div>
+            <div class="rub">
+              <div class="pt hit"><span class="g">✓</span><span>Expected next cumulative loss is the current cumulative loss times a factor that depends only on the development age<span class="req">required</span></span></div>
+              <div class="pt hit"><span class="g">✓</span><span>Accident years are independent<span class="req">required</span></span></div>
+              <div class="pt miss"><span class="g">✗</span><span>The variance of the next cumulative loss is proportional to the current cumulative loss, with a factor σ<sub>k</sub>² that depends only on the age<span class="req">required</span></span></div>
+            </div>
+            <div class="quote"><span>"…and (iii) Var(C<sub>i,k+1</sub> | C<sub>i,1</sub>, …, C<sub>i,k</sub>) = C<sub>i,k</sub> σ<sub>k</sub>², where σ<sub>k</sub>² are unknown parameters."</span><span class="pg">p. 103 ↗</span></div>
+            <details class="model"><summary><svg class="i s12"><use href="#i-chev-r"/></svg>Full answer</summary><p>Mack's model rests on three assumptions: (i) E[C<sub>i,k+1</sub> | C<sub>i,1</sub>, …, C<sub>i,k</sub>] = C<sub>i,k</sub> f<sub>k</sub>; (ii) the accident years {C<sub>i,1</sub>, …, C<sub>i,I</sub>} are independent; (iii) Var(C<sub>i,k+1</sub> | C<sub>i,1</sub>, …, C<sub>i,k</sub>) = C<sub>i,k</sub> σ<sub>k</sub>².</p></details>
+            <div class="acts"><span class="btn secondary"><svg class="i s14"><use href="#i-file"/></svg>Show Source</span><span class="btn ghost"><svg class="i s14"><use href="#i-spark"/></svg>Explain</span></div>
+          </div>
+        </div>
+        <div class="ctl">
+          <div class="keys"><span><span class="kbd">↵</span> check</span><span><span class="kbd">S</span> source</span></div>
+          <div class="sp"></div>
+          <span class="btn ghost">Skip</span>
+          <span class="btn primary" id="check2">Check</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="frame-caption"><span>Check: the verdict appears, then each rubric point lands 50 ms after the last. A missed point is the brightest thing on screen. The full answer stays folded; the anchor is the line that was missed.</span><button class="replay" id="typed-replay"><svg class="i s12"><use href="#i-rotate"/></svg>Replay</button></div>
+</div>
+<ul class="notes">
+  <li>The model is never asked for a grade. It answers, for each point, whether the answer contained it; the grade follows from the points, as in Flashcards. A contradiction of the source outranks the score and reads "Again".</li>
+  <li>The anchor shown after a typed answer is the line for the <b>missed</b> point, not the first point: it is the one worth reading.</li>
+  <li>"Counts as Hard" names what the answer does to the concept's mastery, in Flashcards' words, so the two tools read alike.</li>
+</ul>
+
+<h2 id="essay">6. Essay from a past exam</h2>
+<p>An imported question is the same card with a different eyebrow. The rubric comes from the examiner's report; the report is the anchor.</p>
+<div class="win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, past exams<span class="x">×</span></div></div>
+  <div class="ed auto" style="padding-bottom:20px">
+    <div class="sess" style="height:auto">
+      <div class="sess-tb">
+        <span class="scope">Clark · past exams <span class="m">· Test · Type</span></span>
+        <div class="sp"></div>
+        <div class="strand"><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="ok"></i><i class="ok"></i><i class="cur"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="pos">6 of 20</span>
+        <span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span>
+      </div>
+      <div class="sess-main" style="overflow:visible">
+        <div class="qwrap">
+          <div class="eyebrow"><span class="cpt">Cape Cod vs LDF</span><span class="dot"></span><span class="src">CAS Exam 7 · 2019 Fall · Q5(b)</span><span class="dot"></span><span class="src">Examiner's report</span><span class="fmt"><svg class="i s12"><use href="#i-type"/></svg>Essay</span></div>
+          <div class="card">
+            <p class="q">Briefly describe two reasons Clark prefers the Cape Cod method to the LDF method for estimating reserves, and one situation in which the LDF method would be the better choice.</p>
+            <div class="ta">
+              <textarea style="min-height:130px">Cape Cod uses fewer parameters (ELR plus the two curve parameters instead of one ultimate per accident year), so it has more degrees of freedom and a smaller parameter variance. It also uses premium as an exposure base, which gives information about the immature years that the LDF method does not have. LDF is better when the premium is not on-level or the loss ratio is not stable across years.</textarea>
+              <div class="hint"><span>Graded against the examiner's report for this question.</span><span>Enter to check</span></div>
+            </div>
+          </div>
+          <div class="fb show" style="transition:none">
+            <div class="verdict"><span class="d" style="background:var(--px-success)"></span><span style="color:var(--px-success)">Complete</span> <span class="grade">· counts as <b style="color:var(--px-success)">Good</b></span></div>
+            <div class="rub">
+              <div class="pt hit"><span class="g">✓</span><span>Fewer parameters, so lower parameter variance</span></div>
+              <div class="pt hit"><span class="g">✓</span><span>Premium carries information about immature years through the expected loss ratio</span></div>
+              <div class="pt part"><span class="g">~</span><span>LDF when the premium cannot be put on level or the loss ratio varies by year; the report also accepted "when exposure data is unavailable or unreliable"</span></div>
+            </div>
+            <div class="quote"><span>"Candidates generally earned full credit for citing the lower parameter variance of the Cape Cod method and the use of exposure information. Common errors included stating that the Cape Cod method has lower process variance…"</span><span class="pg">Report p. 9 ↗</span></div>
+            <div class="acts"><span class="btn secondary"><svg class="i s14"><use href="#i-file"/></svg>Show Report</span><span class="btn ghost"><svg class="i s14"><use href="#i-spark"/></svg>Explain</span></div>
+          </div>
+        </div>
+        <div class="ctl">
+          <div class="keys"><span><span class="kbd">↵</span> next</span><span><span class="kbd">S</span> report</span></div>
+          <div class="sp"></div>
+          <span class="btn ghost">Skip</span>
+          <span class="btn primary">Next</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="frame-caption"><span>The eyebrow names the exam, the sitting, the question and the rubric's origin. The common error from the report is in the anchor, so a wrong idea gets caught by the text that caught it before.</span></div>
+</div>
+<ul class="notes">
+  <li>A past-exam question with no report keeps a model-written rubric; its eyebrow then reads "Rubric from the answer" so the two are never confused.</li>
+  <li>Questions from Worksheets' essay sheets show the paper and "Rising Fellow" in the eyebrow, and their Show Source opens the sheet in Worksheets.</li>
+</ul>
+
+<h2 id="source">7. Show Source</h2>
+<p>Live. The session pane splits and the PDF opens beside it at the anchor's page, the quote highlighted. Press Show Source, then Close.</p>
+<div class="win" id="source-win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3<span class="x">×</span></div></div>
+  <div class="ed" style="height:700px">
+    <div class="split" id="split">
+      <div class="sess">
+        <div class="sess-tb"><span class="scope">Clark, ch. 3 <span class="m">· Practice</span></span><div class="sp"></div><div class="strand" style="flex-basis:160px"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="pos">7 of 20</span></div>
+        <div class="sess-main">
+          <div class="qwrap">
+            <div class="eyebrow"><span class="cpt">Parameter variance</span><span class="dot"></span><span class="src">Clark · p. 17</span></div>
+            <div class="card" style="animation:none">
+              <p class="q">In Clark's Cape Cod method, why is the parameter variance generally lower than in the LDF method?</p>
+              <div class="opts done">
+                <div class="opt right"><span class="key">1</span><span>It fits fewer parameters, so the data has more degrees of freedom per parameter.</span><svg class="i mark"><use href="#i-check"/></svg></div>
+                <div class="opt"><span class="key">2</span><span>It uses the Weibull curve, which has one fewer parameter than the loglogistic.</span><svg class="i mark"><use href="#i-x"/></svg></div>
+                <div class="opt wrong"><span class="key">3</span><span>Premium as an exposure base removes the process variance from the estimate.</span><svg class="i mark"><use href="#i-x"/></svg></div>
+                <div class="opt"><span class="key">4</span><span>The LDF method ignores the truncation point of the growth curve.</span><svg class="i mark"><use href="#i-x"/></svg></div>
+              </div>
+            </div>
+            <div class="fb no show" style="transition:none">
+              <div class="verdict"><span class="d"></span>Not quite</div>
+              <div class="why">Premium gives the Cape Cod method an exposure base, but that does not touch process variance. <b>The lower parameter variance comes from fitting three parameters instead of one per accident year.</b></div>
+              <div class="quote"><span>"Fewer parameters means more degrees of freedom in the data and, in general, a smaller parameter variance."</span><span class="pg">p. 17 ↗</span></div>
+              <div class="acts"><span class="btn secondary" id="src-open"><svg class="i s14"><use href="#i-file"/></svg>Show Source</span><span class="btn ghost"><svg class="i s14"><use href="#i-spark"/></svg>Explain</span></div>
+            </div>
+          </div>
+          <div class="ctl"><div class="keys"><span><span class="kbd">S</span> source</span><span><span class="kbd">Esc</span> close</span></div><div class="sp"></div><span class="btn ghost">Retry</span><span class="btn primary">Next</span></div>
+        </div>
+      </div>
+      <div class="srcpane">
+        <div class="hd"><svg class="i s14"><use href="#i-file"/></svg><span class="f">Clark_2003_LDF_Curve_Fitting.pdf</span><span class="p">p. 17 of 38</span><span class="x btn ghost sm" id="src-close">Close</span></div>
+        <div class="stage">
+          <div class="sheet" style="position:relative">
+            <h4>3. The Cape Cod Method</h4>
+            <p>The LDF method requires one parameter for each accident year, the ultimate loss <i>ULT<sub>i</sub></i>, in addition to the two parameters of the growth curve. The Cape Cod method instead assumes that the expected ultimate loss for each year is a constant expected loss ratio applied to the year's on-level premium, so that the whole triangle is fit with only three parameters: ω, θ and ELR.</p>
+            <p class="f">μ<sub>i,t</sub> = Premium<sub>i</sub> · ELR · [G(x<sub>t</sub>) − G(x<sub>t−1</sub>)]</p>
+            <p><span class="anchor">Fewer parameters means more degrees of freedom in the data and, in general, a smaller parameter variance.</span> The cost is the assumption that the loss ratio is stable across accident years after adjusting premium to a common level.</p>
+            <h5>3.1 Process variance and parameter variance</h5>
+            <p>The total variance of the reserve estimate is the sum of the process variance, the random variation in the losses themselves, and the parameter variance…</p>
+            <span class="pg">17</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="frame-caption"><span>The split widens from the right (260 ms, settle), the page fades in once the column exists. The anchor is the PDF pane's own highlight colour. Close, or Esc, returns the session to full width.</span></div>
+</div>
+<ul class="notes">
+  <li>This is the real PDF pane, opened in the same editor group through <code>openFileEditor(uri, { reveal: { page, quote } })</code>, not a picture of it. Highlights, search and notes all work there.</li>
+  <li>Next with the source open keeps it open and moves it to the next question's page, so a reader can walk a chapter question by question with the text beside them.</li>
+</ul>
+
+<h2 id="results">8. Results and Refresh</h2>
+<p>Live. The score is the strand laid out as coverage. What was missed is the list; the two actions that matter are Refresh and Send Missed to Flashcards.</p>
+<div class="win" id="results-win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3<span class="x">×</span></div></div>
+  <div class="ed win-tone" style="height:600px">
+    <div class="sess">
+      <div class="sess-tb"><span class="scope">Clark, ch. 3 <span class="m">· Practice · Mixed</span></span><div class="sp"></div><span class="pos">Session 3 · 14 min</span><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
+      <div class="sess-main">
+        <div class="res">
+          <div class="top">
+            <div><div class="big">17<small>of 20</small></div><div class="under">Chapter 3 is <b>9 of 12 concepts clean</b> · 3 to go · 2 refreshes so far</div></div>
+            <div class="acts"><span class="btn secondary"><svg class="i s14"><use href="#i-cards"/></svg>Send Missed to Flashcards<span class="faint">· 3</span></span><span class="btn primary" id="refresh"><svg class="i s14"><use href="#i-rotate"/></svg>Refresh</span></div>
+          </div>
+          <div class="cov" id="cov"></div>
+          <div class="covl"><span><b>9</b> clean</span><span><b>3</b> weak</span><span><b>0</b> unasked</span></div>
+          <div class="missed">
+            <div class="sl">Missed this session</div>
+            <div class="mrow"><div class="c">Process variance vs parameter variance<small>Chose "premium removes process variance" · retried right</small></div><span class="pg">p. 17</span><span class="st"><i></i>weak</span></div>
+            <div class="mrow"><div class="c">Truncation point of the growth curve<small>Typed answer missed why truncation is needed for the LDF method</small></div><span class="pg">p. 19</span><span class="st"><i></i>weak</span></div>
+            <div class="mrow"><div class="c">Scale factor σ² from the chi-square statistic<small>Chose the wrong denominator</small></div><span class="pg">p. 21</span><span class="st w"><i></i>second miss</span></div>
+          </div>
+          <div class="ft"><span class="lhs">Refresh draws the next 20: the 3 weak concepts first, then the rest of the chapter in a new order.</span><span class="btn ghost">Review Answers</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="frame-caption"><span>The coverage bar fills left to right, one concept at a time (180 ms each, overlapping). Refresh resets it to the new draw. Send Missed makes one card per missed concept, with the anchor as the card's source.</span><button class="replay" id="results-replay"><svg class="i s12"><use href="#i-rotate"/></svg>Replay</button></div>
+</div>
+<ul class="notes">
+  <li>No percentage, no grade letter, no streak. The number is right out of twenty; the bar is the chapter; the list is what to do.</li>
+  <li>"Second miss" is the warning colour: a concept missed in two sessions is what Send Missed is for. The Flashcards button shows the count it would make.</li>
+  <li>Review Answers lists every question of the session with the chosen and correct answers and its anchor, for reading, not for re-answering.</li>
+</ul>
+
+<h2 id="learn">9. Learn</h2>
+<p>A chapter in a page: every line a claim from the text with its page beside it. Read it, click a page to see it in context, then Practice.</p>
+<div class="win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3<span class="x">×</span></div></div>
+  <div class="ed win-tone auto" style="padding:8px 24px 24px">
+    <div class="learn">
+      <div class="eyebrow"><span class="cpt">Learn</span><span class="dot"></span><span class="src">Clark · chapter 3 · pp. 13–21 · 12 concepts</span></div>
+      <h3>The Cape Cod Method</h3>
+      <div class="sub">Each line is one concept, as the text states it. A page opens the PDF beside this.</div>
+      <div class="pt"><span><b>Cape Cod fits three parameters</b> for the whole triangle: the two growth-curve parameters ω and θ, and one expected loss ratio applied to each year's on-level premium. The LDF method fits one ultimate per accident year on top of the curve.</span><span class="pg">p. 15</span></div>
+      <div class="pt"><span><b>Expected incremental loss</b> for year <i>i</i> in period <i>t</i> is Premium<sub>i</sub> · ELR · [G(x<sub>t</sub>) − G(x<sub>t−1</sub>)].</span><span class="pg">p. 16</span></div>
+      <div class="pt"><span><b>Fewer parameters, lower parameter variance.</b> More degrees of freedom in the data per fitted parameter is the reason Clark prefers Cape Cod when premium is reliable.</span><span class="pg">p. 17</span></div>
+      <div class="pt"><span><b>The cost is an assumption:</b> the loss ratio is stable across accident years once premium is on level.</span><span class="pg">p. 17</span></div>
+      <div class="pt"><span><b>Total variance = process variance + parameter variance.</b> Process is the randomness in the losses; parameter is the uncertainty in the fit.</span><span class="pg">p. 18</span></div>
+      <div class="pt"><span><b>The scale factor σ²</b> is estimated as the chi-square statistic divided by the degrees of freedom (number of data points less number of parameters).</span><span class="pg">p. 21</span></div>
+      <div class="ft"><span>6 of 12 shown · scroll for the rest</span><span class="btn primary">Practice This Chapter</span></div>
+    </div>
+  </div>
+  <div class="frame-caption"><span>The same serif as the card, on the dark chrome; the page link is the only accent. Hover brightens the line.</span></div>
+</div>
+
+<h2 id="sidebar">10. Sidebar and widget</h2>
+<div class="pair">
+  <div>
+    <div class="win" style="margin-top:0">
+      <div class="ed" style="height:660px">
+        <div class="sbwrap">
+          <div class="sb">
+            <div class="hd">STUDY<span class="sp"></span><span class="ib"><svg class="i s14"><use href="#i-plus"/></svg></span><span class="ib"><svg class="i s14"><use href="#i-more"/></svg></span></div>
+            <div class="sec">
+              <div class="secl">Materials<span class="n">4</span></div>
+              <div class="it on"><svg class="i s14"><use href="#i-file"/></svg><span class="nm">Clark 2003</span><span class="mini"><i style="width:58%"></i></span></div>
+              <div class="it sub"><span class="nm">1. Introduction</span><span class="r">clean</span></div>
+              <div class="it sub"><span class="nm">2. Growth Curves and the LDF Method</span><span class="r">11 / 14</span></div>
+              <div class="it sub"><span class="nm">3. The Cape Cod Method</span><span class="r">9 / 12</span></div>
+              <div class="it sub"><span class="nm">4. Variance of the Reserve Estimate</span><span class="r faint">no bank</span></div>
+              <div class="it sub"><span class="nm">5. Residual Diagnostics</span><span class="r faint">no bank</span></div>
+              <div class="it"><svg class="i s14"><use href="#i-file"/></svg><span class="nm">Mack 1994</span><span class="mini"><i style="width:84%"></i></span></div>
+              <div class="it"><svg class="i s14"><use href="#i-file"/></svg><span class="nm">Shapland 2016</span><span class="mini"><i class="w" style="width:20%"></i></span></div>
+              <div class="it"><svg class="i s14"><use href="#i-page"/></svg><span class="nm">Venter notes</span><span class="mini"><i style="width:0"></i></span></div>
+            </div>
+            <div class="sec">
+              <div class="secl">Weak concepts<span class="n">7</span></div>
+              <div class="it"><span class="r weak">●</span><span class="nm">Truncation point of the growth curve</span><span class="r">Clark</span></div>
+              <div class="it"><span class="r weak">●</span><span class="nm">Scale factor σ² from chi-square</span><span class="r">Clark</span></div>
+              <div class="it"><span class="r weak">●</span><span class="nm">Variance assumption (iii)</span><span class="r">Mack</span></div>
+              <div class="it"><span class="r weak">●</span><span class="nm">Residual plots by calendar period</span><span class="r">Clark</span></div>
+            </div>
+            <div class="sec">
+              <div class="secl">Question banks<span class="n">3</span></div>
+              <div class="it"><svg class="i s14"><use href="#i-bank"/></svg><span class="nm">CAS Exam 7 · 2014–2024</span><span class="r">212</span></div>
+              <div class="it"><svg class="i s14"><use href="#i-bank"/></svg><span class="nm">Rising Fellow essays</span><span class="r">14 · Worksheets</span></div>
+              <div class="it"><svg class="i s14"><use href="#i-bank"/></svg><span class="nm">Examiner's reports</span><span class="r">9 of 11</span></div>
+            </div>
+            <div class="sec">
+              <div class="secl">Recent</div>
+              <div class="it"><svg class="i s14"><use href="#i-study"/></svg><span class="nm">Clark, ch. 3 · Practice</span><span class="r">17/20 · today</span></div>
+              <div class="it"><svg class="i s14"><use href="#i-study"/></svg><span class="nm">Mack 1994 · Test</span><span class="r">16/20 · yesterday</span></div>
+            </div>
+          </div>
+          <div class="rest">editor</div>
+        </div>
+      </div>
+      <div class="frame-caption"><span>Materials with their chapters and coverage; weak concepts across everything; the banks and where each comes from; recent sessions.</span></div>
+    </div>
+  </div>
+  <div>
+    <div class="win" style="margin-top:0">
+      <div class="ed win-tone auto">
+        <div class="wdg">
+          <div class="hd"><svg class="i s14"><use href="#i-study"/></svg>Weak spots<span class="sp"></span><span class="xs faint">7 concepts</span></div>
+          <div class="wr"><div>Clark · ch. 3<small>3 weak · last 17/20</small></div><span class="b"><i style="width:25%"></i></span></div>
+          <div class="wr"><div>Mack 1994<small>2 weak · last 16/20</small></div><span class="b"><i class="y" style="width:16%"></i></span></div>
+          <div class="wr"><div>Shapland 2016<small>2 weak · 20% covered</small></div><span class="b"><i style="width:40%"></i></span></div>
+          <div class="ft">Study the weakest 20 →</div>
+        </div>
+      </div>
+      <div class="frame-caption"><span>A door, not a poster: each row opens a session on that material; the footer opens Weak Spots across all of them.</span></div>
+    </div>
+    <ul class="notes">
+      <li>The widget uses the dashboard's own card radius and edge light; the only colour is the weak bar.</li>
+      <li>The planner's day-load seam gets Study's scheduled weak-spot sessions beside Flashcards' due counts.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="motion">11. Motion and keys</h2>
+<p>Every transition, with its token. Nothing in the extension animates outside this table.</p>
+<table class="spec">
+  <tr><th>Moment</th><th>What moves</th><th>Duration · ease</th></tr>
+  <tr><td>Setup sheet opens</td><td>Scrim fades; sheet rises 10 px and settles at 98.5% → 100%</td><td><code>--px-dur-slow</code> · <code>--px-ease-out</code></td></tr>
+  <tr><td>Menu, bubble</td><td>Pop from −3 px, 98.5% → 100%</td><td><code>--px-dur-fast</code> · <code>--px-ease-out</code></td></tr>
+  <tr><td>Card arrives</td><td>Fade in from +6 px</td><td><code>--px-dur-base</code> · <code>--px-ease-out</code></td></tr>
+  <tr><td>Card leaves (Next)</td><td>Fade out to −14 px; the next card arrives 60 ms later</td><td><code>--px-dur-fast</code> · <code>--px-ease</code></td></tr>
+  <tr><td>Option press</td><td><code>--px-press</code> on the row</td><td><code>--px-dur-instant</code></td></tr>
+  <tr><td>Option marked</td><td>Row fill and keycap colour; the mark scales 60% → 100%</td><td><code>--px-dur-fast</code> fill · <code>--px-dur-base</code> mark, <code>--px-ease-spring</code></td></tr>
+  <tr><td>Strand segment</td><td>Colour change; scaleY 1 → 1.9 → 1 on the answered segment</td><td><code>--px-dur-base</code> · <code>--px-ease-spring</code></td></tr>
+  <tr><td>Feedback strip</td><td>Rises 6 px and fades in under the card</td><td><code>--px-dur-base</code> · <code>--px-ease-out</code></td></tr>
+  <tr><td>Rubric points</td><td>Each point slides in from −4 px, 50 ms after the previous</td><td><code>--px-dur-base</code> · <code>--px-ease-out</code></td></tr>
+  <tr><td>Source split</td><td>Grid column 0 → 1fr; the page fades in once the column exists (80 ms delay)</td><td><code>--px-dur-slow</code> · <code>--px-ease</code></td></tr>
+  <tr><td>Coverage bar</td><td>Segments fill left to right, 24 ms apart, each scaling 20% → 100%</td><td><code>--px-dur-base</code> · <code>--px-ease-out</code></td></tr>
+  <tr><td>Generation</td><td>Bar width per concept; running check pulses at 1.2 s</td><td><code>--px-dur-slow</code> · <code>--px-ease</code></td></tr>
+  <tr><td>Reduced motion</td><td>Every duration above collapses to 1 ms; nothing is hidden behind an animation</td><td>system setting</td></tr>
+</table>
+<table class="spec" style="margin-top:20px">
+  <tr><th>Key</th><th>Does</th></tr>
+  <tr><td><span class="kbd">1</span> to <span class="kbd">5</span></td><td>Choose that option</td></tr>
+  <tr><td><span class="kbd">↵</span></td><td>Check a typed answer; Next once answered</td></tr>
+  <tr><td><span class="kbd">S</span></td><td>Show Source (or the report, or the Worksheets sheet)</td></tr>
+  <tr><td><span class="kbd">R</span></td><td>Retry, after a wrong choice, once</td></tr>
+  <tr><td><span class="kbd">E</span></td><td>Explain in chat</td></tr>
+  <tr><td><span class="kbd">K</span></td><td>Skip to the end of the session</td></tr>
+  <tr><td><span class="kbd">Esc</span></td><td>Close the source pane; a second Esc asks to end the session</td></tr>
+</table>
+
+<h2 id="light">12. Light mode</h2>
+<p>The same frames under the light theme. The card does not change: it is paper in both.</p>
+<div class="win light">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3<span class="x">×</span></div></div>
+  <div class="ed" style="height:600px">
+    <div class="sess">
+      <div class="sess-tb"><span class="scope">Clark, ch. 3 <span class="m">· Practice · Mixed</span></span><div class="sp"></div><div class="strand"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="ok"></i><i class="ok"></i><i class="cur"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="pos">7 of 20</span><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
+      <div class="sess-main">
+        <div class="qwrap">
+          <div class="eyebrow"><span class="cpt">Growth curves</span><span class="dot"></span><span class="src">Clark · p. 8</span><span class="fmt"><svg class="i s12"><use href="#i-choose"/></svg>Choose</span></div>
+          <div class="card" style="animation:none">
+            <p class="q">Which property distinguishes the loglogistic growth curve from the Weibull in Clark's framework?</p>
+            <div class="opts done">
+              <div class="opt right"><span class="key">1</span><span>The loglogistic has a heavier tail, so it implies a longer development pattern for the same parameters.</span><svg class="i mark"><use href="#i-check"/></svg></div>
+              <div class="opt"><span class="key">2</span><span>The Weibull requires a separate parameter for each accident year.</span><svg class="i mark"><use href="#i-x"/></svg></div>
+              <div class="opt"><span class="key">3</span><span>Only the loglogistic can be truncated at a chosen age.</span><svg class="i mark"><use href="#i-x"/></svg></div>
+              <div class="opt"><span class="key">4</span><span>The Weibull is fit by least squares rather than maximum likelihood.</span><svg class="i mark"><use href="#i-x"/></svg></div>
+            </div>
+          </div>
+          <div class="fb ok show" style="transition:none">
+            <div class="verdict"><span class="d"></span>Correct</div>
+            <div class="quote"><span>"The loglogistic curve has a heavier tail than the Weibull, which is why a truncation point is often needed…"</span><span class="pg">p. 8 ↗</span></div>
+            <div class="acts"><span class="btn secondary"><svg class="i s14"><use href="#i-file"/></svg>Show Source</span><span class="btn ghost"><svg class="i s14"><use href="#i-spark"/></svg>Explain</span></div>
+          </div>
+        </div>
+        <div class="ctl"><div class="keys"><span><span class="kbd">↵</span> next</span><span><span class="kbd">S</span> source</span></div><div class="sp"></div><span class="btn ghost">Skip</span><span class="btn primary">Next</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="frame-caption"><span>Light: chrome lightens, the paper stays paper, the signal colours darken to hold contrast.</span></div>
+</div>
+
+<h2 id="copy">13. Copy</h2>
+<table class="spec">
+  <tr><th>Where</th><th>Reads</th></tr>
+  <tr><td>Menu entry</td><td>Study This Document…</td></tr>
+  <tr><td>Selection action</td><td>Quiz This Selection</td></tr>
+  <tr><td>Scope</td><td>Document · Pages · Chapter · Selection</td></tr>
+  <tr><td>Mode</td><td>Practice · Test · Learn</td></tr>
+  <tr><td>Answer</td><td>Choose · Type · Mixed</td></tr>
+  <tr><td>Start, bank short</td><td>Make Questions and Start</td></tr>
+  <tr><td>Verdicts</td><td>Correct · Not quite · Complete · Two of three · Contradicts the source</td></tr>
+  <tr><td>Mastery words</td><td>clean · weak · second miss · stale · no bank (Flashcards' Again, Hard, Good, Easy for what an answer counts as)</td></tr>
+  <tr><td>Actions</td><td>Show Source · Show Report · Explain · Retry · Skip · Next · Check · Refresh · Send Missed to Flashcards · Review Answers · Practice This Chapter</td></tr>
+  <tr><td>Checks</td><td>Anchor is on the page · Anchor settles the answer · No wrong option is defensible · Numeric answers execute</td></tr>
+  <tr><td>Rubric origin</td><td>Examiner's report · Rubric from the answer · Rising Fellow</td></tr>
+</table>
+
+<h2>What is new to the core</h2>
+<ol class="notes" style="font-size:13px">
+  <li>The <b>editor/title</b> menu location, so a tool can add an entry to a pane's More Actions with a <code>when</code> on the active editor. First user: Study.</li>
+  <li>The <b>question provider</b> seam, so a tool can offer questions (text, answer, rubric, origin, where to open) to any other. First providers: Worksheets' essay and qualitative problems, Flashcards' essay-practice cards.</li>
+  <li>Nothing else. The strand, the anchor quote, the coverage bar and the card options are Study's own CSS on existing tokens.</li>
+</ol>
+</div>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+    <symbol id="i-page" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+    <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+    <symbol id="i-hl" viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></symbol>
+    <symbol id="i-cards" viewBox="0 0 24 24"><rect x="7.5" y="5" width="13" height="10" rx="1.5"/><path d="M10.5 9h7M4.5 9v8a2 2 0 0 0 2 2H15"/></symbol>
+    <symbol id="i-study" viewBox="0 0 24 24"><path d="M4 19.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13.5"/><path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20"/><path d="M9 9h6M9 13h4"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></symbol>
+    <symbol id="i-spread" viewBox="0 0 24 24"><rect x="3" y="5" width="8" height="14" rx="1"/><rect x="13" y="5" width="8" height="14" rx="1"/></symbol>
+    <symbol id="i-scroll" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="8" rx="1"/><rect x="5" y="13" width="14" height="8" rx="1"/></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></symbol>
+    <symbol id="i-open" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
+    <symbol id="i-type" viewBox="0 0 24 24"><path d="M4 7V4h16v3M12 4v16M9 20h6"/></symbol>
+    <symbol id="i-choose" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+    <symbol id="i-bank" viewBox="0 0 24 24"><path d="M3 10h18M5 10v9M9 10v9M15 10v9M19 10v9M3 19h18M12 3l9 7H3z"/></symbol>
+  </defs>
+</svg>
+
+<script>
+(function () {
+  // ── Practice: three illustrative questions ──
+  const Q = [
+    { concept: 'Parameter variance', src: 'Clark · p. 17', fmt: 'Choose',
+      q: "In Clark's Cape Cod method, why is the parameter variance generally lower than in the LDF method?",
+      opts: ['It fits fewer parameters, so the data has more degrees of freedom per parameter.',
+             'It uses the Weibull curve, which has one fewer parameter than the loglogistic.',
+             'Premium as an exposure base removes the process variance from the estimate.',
+             'The LDF method ignores the truncation point of the growth curve.'],
+      right: 0,
+      why: 'Premium gives the Cape Cod method an exposure base, but that does not touch process variance. <b>The lower parameter variance comes from fitting three parameters instead of one per accident year.</b>',
+      quote: '"Fewer parameters means more degrees of freedom in the data and, in general, a smaller parameter variance."', pg: 'p. 17' },
+    { concept: 'Cape Cod assumption', src: 'Clark · p. 17', fmt: 'Choose',
+      q: 'What does the Cape Cod method assume that the LDF method does not?',
+      opts: ['Losses in different accident years are independent.',
+             'The expected loss ratio is the same across accident years once premium is on level.',
+             'The growth curve is the same for every accident year.',
+             'Incremental losses follow an over-dispersed Poisson distribution.'],
+      right: 1,
+      why: 'Both methods share the curve and the distribution. <b>Only Cape Cod ties every year to one expected loss ratio on on-level premium.</b>',
+      quote: '"The cost is the assumption that the loss ratio is stable across accident years after adjusting premium to a common level."', pg: 'p. 17' },
+    { concept: 'Scale factor σ²', src: 'Clark · p. 21', fmt: 'Choose',
+      q: 'How is the scale factor σ² estimated in Clark’s model?',
+      opts: ['As the chi-square statistic divided by the number of data points less the number of parameters.',
+             'As the variance of the fitted development factors across accident years.',
+             'As the mean of the squared residuals divided by the number of accident years.',
+             'As the ratio of the reserve estimate to its standard error.'],
+      right: 0,
+      why: '<b>σ² is the chi-square statistic over the degrees of freedom:</b> data points less fitted parameters. Dividing by accident years or using the standard error is a different quantity.',
+      quote: '"…the scale factor σ² is estimated as the chi-square statistic divided by the degrees of freedom, n − p."', pg: 'p. 21' },
+  ];
+  const strand = document.getElementById('strand');
+  const qwrap = document.getElementById('qwrap');
+  const nextBtn = document.getElementById('next');
+  const skipBtn = document.getElementById('skip');
+  const cap = document.getElementById('practice-cap');
+  const base = ['ok','ok','ok','no','ok','ok']; // first six answered before the live part
+  let idx = 0, answered = false, retried = false;
+  const setDis = (el, on) => on ? el.setAttribute('disabled', '') : el.removeAttribute('disabled');
+
+  function drawStrand() {
+    strand.innerHTML = '';
+    for (let i = 0; i < 20; i++) {
+      const s = document.createElement('i');
+      if (i < base.length) s.className = base[i];
+      else if (i === base.length) s.className = 'cur';
+      strand.appendChild(s);
+    }
+    document.getElementById('pos').textContent = (base.length + 1) + ' of 20';
+  }
+  function render(animate) {
+    const d = Q[idx];
+    answered = false; retried = false; setDis(nextBtn, true);
+    qwrap.innerHTML = `
+      <div class="eyebrow"><span class="cpt">${d.concept}</span><span class="dot"></span><span class="src">${d.src}</span><span class="fmt"><svg class="i s12"><use href="#i-choose"/></svg>${d.fmt}</span></div>
+      <div class="card" ${animate ? '' : 'style="animation:none"'}>
+        <p class="q">${d.q}</p>
+        <div class="opts">${d.opts.map((o, i) => `<div class="opt" data-i="${i}"><span class="key">${i+1}</span><span>${o}</span><svg class="i mark"><use href="#${i === d.right ? 'i-check' : 'i-x'}"/></svg></div>`).join('')}</div>
+      </div>
+      <div class="fb">
+        <div class="verdict"><span class="d"></span><span class="vt"></span></div>
+        <div class="why"></div>
+        <div class="quote"><span>${d.quote}</span><span class="pg">${d.pg} ↗</span></div>
+        <div class="acts"><span class="btn secondary"><svg class="i s14"><use href="#i-file"/></svg>Show Source</span><span class="btn ghost"><svg class="i s14"><use href="#i-spark"/></svg>Explain</span></div>
+      </div>`;
+    qwrap.querySelectorAll('.opt').forEach(o => o.addEventListener('click', () => choose(+o.dataset.i)));
+  }
+  function choose(i) {
+    if (answered) return;
+    answered = true;
+    const d = Q[idx];
+    const opts = qwrap.querySelector('.opts'); opts.classList.add('done');
+    const rows = opts.querySelectorAll('.opt');
+    const ok = i === d.right;
+    rows[d.right].classList.add('right');
+    if (!ok) rows[i].classList.add('wrong');
+    const fb = qwrap.querySelector('.fb');
+    fb.classList.add(ok ? 'ok' : 'no');
+    fb.querySelector('.vt').textContent = ok ? 'Correct' : 'Not quite';
+    const why = fb.querySelector('.why');
+    if (ok) why.remove(); else why.innerHTML = d.why;
+    if (!ok) { const r = document.createElement('span'); r.className = 'btn ghost'; r.textContent = 'Retry'; r.id = 'retry'; fb.querySelector('.acts').prepend(r); r.addEventListener('click', retry); }
+    requestAnimationFrame(() => fb.classList.add('show'));
+    const seg = strand.children[base.length];
+    seg.className = (ok || retried) ? (retried ? 'no' : 'ok') : 'no';
+    seg.classList.add('just'); setTimeout(() => seg.classList.remove('just'), 200);
+    setDis(nextBtn, false);
+    cap.textContent = ok ? 'Correct. The segment fills green and thickens for a beat. Next brings the following card.' : 'Wrong. The chosen row is red, the right one green; the reason and the anchor rise under the card. Retry clears the others once.';
+  }
+  function retry() {
+    if (retried) return; retried = true; answered = false;
+    const opts = qwrap.querySelector('.opts'); opts.classList.remove('done');
+    opts.querySelectorAll('.opt').forEach(o => { if (!o.classList.contains('wrong')) o.classList.remove('right'); });
+    const fb = qwrap.querySelector('.fb'); fb.classList.remove('show','ok','no'); document.getElementById('retry')?.remove();
+    setDis(nextBtn, true);
+    cap.textContent = 'Retry: the wrong row stays marked, the others clear. A right answer now still counts as a miss for the concept.';
+  }
+  function next() {
+    if (nextBtn.hasAttribute('disabled')) return;
+    const card = qwrap.querySelector('.card'); const fb = qwrap.querySelector('.fb');
+    card.classList.add('leaving'); fb.classList.remove('show');
+    const seg = strand.children[base.length]; base.push(seg.className.replace(' just','').trim() || 'ok');
+    setTimeout(() => { idx = (idx + 1) % Q.length; drawStrand(); render(true); }, 150);
+  }
+  nextBtn.addEventListener('click', next);
+  skipBtn.addEventListener('click', () => { if (answered) return; const card = qwrap.querySelector('.card'); card.classList.add('leaving'); setTimeout(() => { idx = (idx + 1) % Q.length; render(true); cap.textContent = 'Skipped: the question goes to the end of the session and its segment stays faint until it comes round.'; }, 150); });
+  document.getElementById('practice-replay').addEventListener('click', () => { base.length = 6; idx = 0; drawStrand(); render(true); cap.textContent = 'Pick an option. Right: the row and key turn green, the strand segment fills. Wrong: the row turns red, the correct row turns green, and the reason and the anchor rise under the card.'; });
+  document.addEventListener('keydown', (e) => {
+    const inPractice = document.getElementById('practice-win').matches(':hover');
+    if (!inPractice) return;
+    if (e.key >= '1' && e.key <= '4') { choose(+e.key - 1); e.preventDefault(); }
+    else if (e.key === 'Enter') { next(); e.preventDefault(); }
+    else if (e.key.toLowerCase() === 'r') { if (answered && !retried && document.getElementById('retry')) retry(); }
+  });
+  drawStrand(); render(false);
+
+  // ── Typed ──
+  const s2 = document.getElementById('strand2');
+  ['ok','ok','no'].forEach(c => { const i = document.createElement('i'); i.className = c; s2.appendChild(i); });
+  for (let i = 3; i < 20; i++) { const s = document.createElement('i'); if (i === 3) s.className = 'cur'; s2.appendChild(s); }
+  const fb2 = document.getElementById('fb2'); const check2 = document.getElementById('check2');
+  function showTyped() {
+    fb2.classList.add('no','show'); check2.textContent = 'Next';
+    fb2.querySelectorAll('.pt').forEach(p => { p.style.animation = 'none'; void p.offsetWidth; p.style.animation = ''; });
+    const seg = s2.children[3]; seg.className = 'no just'; setTimeout(() => seg.classList.remove('just'), 200);
+  }
+  function hideTyped() { fb2.classList.remove('no','show'); check2.textContent = 'Check'; s2.children[3].className = 'cur'; }
+  check2.addEventListener('click', () => fb2.classList.contains('show') ? hideTyped() : showTyped());
+  document.getElementById('typed-replay').addEventListener('click', () => { hideTyped(); setTimeout(showTyped, 120); });
+
+  // ── Source split ──
+  const split = document.getElementById('split');
+  document.getElementById('src-open').addEventListener('click', () => split.classList.add('open'));
+  document.getElementById('src-close').addEventListener('click', () => split.classList.remove('open'));
+  document.addEventListener('keydown', (e) => { if (!document.getElementById('source-win').matches(':hover')) return; if (e.key.toLowerCase() === 's') split.classList.add('open'); if (e.key === 'Escape') split.classList.remove('open'); });
+
+  // ── Results coverage ──
+  const cov = document.getElementById('cov');
+  const states = ['c','c','c','c','w','c','c','w','c','c','w','c'];
+  function drawCov() {
+    cov.innerHTML = '';
+    states.forEach((s, i) => { const b = document.createElement('i'); b.className = s + (s === 'c' ? ' just' : ''); b.style.animationDelay = (i * 24) + 'ms'; cov.appendChild(b); });
+  }
+  drawCov();
+  document.getElementById('results-replay').addEventListener('click', drawCov);
+  document.getElementById('refresh').addEventListener('click', () => { const r = document.querySelector('#results-win .res'); r.style.animation = 'none'; void r.offsetWidth; r.style.animation = ''; drawCov(); });
+
+  // ── Generation bar drift ──
+  const gb = document.getElementById('genbar'); let w = 62;
+  setInterval(() => { w = w >= 92 ? 62 : w + 6; gb.style.width = w + '%'; }, 1600);
+})();
+</script>
+</body>
+</html>
