@@ -354,8 +354,14 @@ async function stPickWorkspaceFile(exts, placeholder) {
 async function stSessionNeedsGeneration(session) {
   const scope = stScopeOf(session);
   const size = Number(session?.size) || Number(cfg('sessionSize', 20)) || 20;
-  // A bank is drawn from as it is, never generated into.
-  if (scope.kind === 'bank') return false;
+  // A bank is never generated into, but its short and essay questions get a
+  // rubric from their answer when first drawn: that model work goes through
+  // the generating screen too, never invisibly.
+  if (scope.kind === 'bank') {
+    if (typeof stScopeStats !== 'function') return false;
+    const stats = await stScopeStats(scope);
+    return (Number(stats && stats.needsRubric) || 0) > 0;
+  }
   if (typeof stScopeQuestionCount === 'function') return (Number(await stScopeQuestionCount(scope)) || 0) < size;
   const materialIds = (scope.materialIds || []).map(Number).filter((n) => n > 0);
   const [questions, concepts] = await Promise.all([
@@ -416,7 +422,9 @@ async function stShowSource(question) {
       const list = typeof _questionRegistry.list === 'function' ? _questionRegistry.list() : [];
       const provider = (await list || []).find((p) => p && p.id === question.providerId);
       if (provider && typeof provider.open === 'function') {
-        const ok = await provider.open(String(question.providerRef || ''));
+        // providerRef is JSON now; the provider knows the question by its `ref`.
+        const ref = typeof stProviderRefOf === 'function' ? stProviderRefOf(question) : String(question.providerRef || '');
+        const ok = await provider.open(ref);
         if (ok) return true;
       }
     } catch (err) {

@@ -217,7 +217,9 @@ function createSidebarView(container) {
     row.dataset.sectionId = String(s.id);
     row.title = s.title;
     row.appendChild(el('span', 'st-sb__nm', s.title));
-    const inSection = concepts.filter((c) => c.sectionId === s.id);
+    // Filed under the chapter or on its pages, so a parent chapter counts its subsections'.
+    const from = Number(s.pageFrom) || 0, to = Number(s.pageTo) || from;
+    const inSection = concepts.filter((c) => c.sectionId === s.id || (from && c.page >= from && c.page <= to));
     const cov = stCoverageOf(inSection, now);
     let text, cls = 'st-sb__r';
     if (!inSection.length) { text = 'no bank'; cls += ' st-faint'; }

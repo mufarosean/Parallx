@@ -111,7 +111,12 @@ function stConceptsInScope(concepts, scope) {
   const list = concepts || [];
   if (!scope) return list;
   if (scope.kind === 'chapter' && Array.isArray(scope.sectionIds) && scope.sectionIds.length) {
-    return list.filter((c) => scope.sectionIds.includes(c.sectionId));
+    // As stConceptsForSections: filed under the chapter, or on its pages (a
+    // parent chapter so includes its subsections' concepts).
+    const mids = Array.isArray(scope.materialIds) ? scope.materialIds : [];
+    const from = Number(scope.pageFrom) || 0, to = Number(scope.pageTo) || from;
+    return list.filter((c) => scope.sectionIds.includes(c.sectionId)
+      || (from && c.page >= from && c.page <= to && (!mids.length || mids.includes(c.materialId))));
   }
   if ((scope.kind === 'pages' || scope.kind === 'selection') && scope.pageFrom) {
     const to = scope.pageTo || scope.pageFrom;
@@ -133,6 +138,17 @@ async function stQuestionMap(scope, ids) {
   add(await stListQuestions({ materialIds, includeHidden: true }));
   if (map.size < wanted.size && materialIds) add(await stListQuestions({ includeHidden: true }));
   return map;
+}
+
+/** The concepts a session's screens need: the scope's materials' concepts
+ *  plus every concept its questions point at that lies outside them (a
+ *  bank's concepts live under a hidden material stListMaterials leaves out). */
+async function stSessionConcepts(materialIds, questions) {
+  const list = materialIds && materialIds.length ? ((await stListConcepts({ materialIds })) || []) : [];
+  const have = new Set(list.map((c) => c.id));
+  const missing = [...new Set([...(questions ? questions.values() : [])].map((q) => Number(q && q.conceptId) || 0))].filter((id) => id > 0 && !have.has(id));
+  if (missing.length) list.push(...(((await stListConcepts({ ids: missing })) || []).filter((c) => !have.has(c.id))));
+  return list;
 }
 
 function stFmtK(n) {
@@ -846,12 +862,6 @@ async function renderSetup(host, route, ctx) {
   const countEl = el('div', 'st-sheet__count');
   bd.appendChild(countEl);
 
-  const conceptsBySection = new Map();
-  for (const c of concepts) {
-    const k = c.sectionId || 0;
-    if (!conceptsBySection.has(k)) conceptsBySection.set(k, []);
-    conceptsBySection.get(k).push(c);
-  }
 
   function paintList() {
     listHost.innerHTML = '';
@@ -870,7 +880,9 @@ async function renderSetup(host, route, ctx) {
         const nm = el('span', 'st-outline__nm', s.title);
         nm.title = s.title;
         row.appendChild(nm);
-        row.appendChild(stCoverageBar('st-ocov', stCoverageOf(conceptsBySection.get(s.id) || [], now)));
+        const from0 = stProp(s, 'pageFrom', 0), to0 = stProp(s, 'pageTo', 0);
+        const inSection = concepts.filter((c) => c.materialId === primary.id && (c.sectionId === s.id || (from0 && c.page >= from0 && c.page <= to0)));
+        row.appendChild(stCoverageBar('st-ocov', stCoverageOf(inSection, now)));
         const from = stProp(s, 'pageFrom', 0), to = stProp(s, 'pageTo', 0);
         row.appendChild(el('span', 'st-outline__pp', from === to ? String(from) : `${from}–${to}`));
         row.addEventListener('click', () => {
@@ -1101,10 +1113,15 @@ async function renderGenerating(host, route, ctx) {
   const paint = () => {
     if (ctx.disposed()) return;
     const p = run.progress;
-    const done = Number(p.done) || 0;
-    const t = Number(p.total) || 0;
+    // Filling a session (stNextDraw runs untilSize): progress is usable
+    // questions in scope beyond the ones this session already drew, of the
+    // session size. Before the first count arrives, the run's own done/total.
+    const avail = p.available == null ? NaN : Number(p.available);
+    const filling = Number.isFinite(avail);
+    const ready = filling ? Math.min(size, Math.max(0, avail - held)) : 0;
+    const done = filling ? ready : Number(p.done) || 0;
+    const t = filling ? size : Number(p.total) || 0;
     sub.textContent = `${pages}${concepts.length ? ` · ${concepts.length} ${concepts.length === 1 ? 'concept' : 'concepts'}` : ''}${modelId ? ` · ${modelId}` : ''}`;
-    // done and total are monotone over a run, so the bar never moves back.
     fill.style.width = `${t ? Math.min(100, Math.round((done / t) * 100)) : 0}%`;
     const dropped = p.dropped || {};
     const droppedTotal = Object.values(dropped).reduce((a, b) => a + (Number(b) || 0), 0);
@@ -1112,7 +1129,7 @@ async function renderGenerating(host, route, ctx) {
     const part = (b, rest) => { const s = el('span', ''); s.appendChild(el('b', '', b)); s.appendChild(document.createTextNode(` ${rest}`)); line.appendChild(s); };
     part(String(Number(p.kept) || 0), 'kept');
     part(String(droppedTotal), 'dropped');
-    if (t) part(`${done} of ${t}`, p.phase === 'map' ? 'mapped' : 'concepts');
+    if (filling) part(`${ready} of ${size}`, 'ready');
     // 30-ai reports phases 'map', 'generate', 'check:<key>', 'done',
     // 'stopped', 'failed'; dropped.numeric is null when Python is missing.
     const order = ST_CHECK_ROWS.map((d) => d.key);
@@ -1130,10 +1147,9 @@ async function renderGenerating(host, route, ctx) {
     });
     // Start With N Ready: enough usable questions in the whole scope, beyond
     // the ones this session already drew, for a full draw now.
-    const available = p.available == null ? NaN : Number(p.available);
-    const ready = Number.isFinite(available) && available - held >= size;
-    startBtn.disabled = run.done || run.token.cancelled || !ready;
-    startBtn.title = ready ? 'Start now; writing goes on for the rest.' : `Offered once ${size} questions are ready.`;
+    const full = filling && ready >= size;
+    startBtn.disabled = run.done || run.token.cancelled || !full;
+    startBtn.title = full ? 'Start now; writing goes on for the rest.' : `Offered once ${size} questions are ready.`;
     stopBtn.disabled = run.done || run.token.cancelled;
   };
 
@@ -1218,7 +1234,7 @@ async function renderSession(host, route, ctx) {
   if (!queue.length) { ctx.setRoute({ view: 'results', sessionId: session.id }); return; }
   const materialIds = Array.isArray(scope.materialIds) ? scope.materialIds : [];
   const questions = await stQuestionMap(scope, drawItems.map((i) => i.questionId));
-  const conceptList = (await stListConcepts({ materialIds })) || [];
+  const conceptList = await stSessionConcepts(materialIds, questions);
   const concepts = new Map(conceptList.map((c) => [c.id, c]));
   const materials = new Map();
   for (const id of materialIds) { const m = await stGetMaterial(id); if (m) materials.set(id, m); }
@@ -1846,10 +1862,10 @@ async function renderResults(host, route, ctx) {
   // The draw on screen: everything below (the score, the missed list, what
   // Send Missed sends) is about these items and no earlier draw.
   const drawItems = allItems.filter((i) => (Number(i.draw) || 0) === draw).sort((a, b) => (a.ord || 0) - (b.ord || 0));
-  const conceptList = (await stListConcepts({ materialIds })) || [];
-  const scopeConcepts = isBank ? [] : stConceptsInScope(conceptList, scope);
-  const concepts = new Map(conceptList.map((c) => [c.id, c]));
   const questions = await stQuestionMap(scope, drawItems.map((i) => i.questionId));
+  const conceptList = await stSessionConcepts(materialIds, questions);
+  const scopeConcepts = isBank ? [] : stConceptsInScope(conceptList.filter((c) => !materialIds.length || materialIds.includes(c.materialId)), scope);
+  const concepts = new Map(conceptList.map((c) => [c.id, c]));
   // stSessionSummary reads conceptId off each item; the rows carry only the question id.
   const enriched = drawItems.map((i) => ({ ...i, conceptId: (questions.get(i.questionId) || {}).conceptId || 0 }));
   const summary = stSessionSummary(enriched, conceptList) || { right: 0, wrong: 0, skipped: 0, answered: 0, missed: [] };
@@ -2043,7 +2059,7 @@ async function renderReview(host, route, ctx) {
   const materialIds = Array.isArray(scope.materialIds) ? scope.materialIds : [];
   const items = ((await stListSessionItems(session.id)) || []).slice().sort((a, b) => ((a.draw || 0) - (b.draw || 0)) || ((a.ord || 0) - (b.ord || 0)));
   const questions = await stQuestionMap(scope, items.map((i) => i.questionId));
-  const concepts = new Map(((await stListConcepts({ materialIds })) || []).map((c) => [c.id, c]));
+  const concepts = new Map((await stSessionConcepts(materialIds, questions)).map((c) => [c.id, c]));
 
   const sess = el('div', 'st-sess');
   host.appendChild(sess);
@@ -2070,8 +2086,11 @@ async function renderLearn(host, route, ctx) {
   if (!material) throw new Error('This material no longer exists.');
   const sections = material.kind === 'pdf' ? ((await stListSections(material.id)) || []) : [];
   const section = route.sectionId ? sections.find((s) => s.id === route.sectionId) || null : null;
-  const concepts = ((await stListConcepts({ materialIds: [material.id], sectionIds: section ? [section.id] : undefined })) || [])
-    .filter((c) => !section || c.sectionId === section.id)
+  // A chapter's concepts by its page range, so a parent chapter includes its subsections'.
+  const concepts = ((section
+    ? (typeof stConceptsForSections === 'function' ? await stConceptsForSections([section.id]) : await stListConcepts({ sectionIds: [section.id] }))
+    : await stListConcepts({ materialIds: [material.id] })) || [])
+    .slice()
     .sort((a, b) => (a.ord || 0) - (b.ord || 0) || (a.page || 0) - (b.page || 0));
 
   const main = el('div', 'st-sess-main');
