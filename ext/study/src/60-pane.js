@@ -356,6 +356,8 @@ function stItemAnswered(item) {
 /** The rubric points, hit / partial / miss, landing one after another. */
 function stRubricEl(rubric, points) {
   const rub = el('div', 'st-rub');
+  // "required" tells points apart; on a rubric where every point is, it would only repeat.
+  const mixed = (rubric || []).some((p) => p && p.required) && (rubric || []).some((p) => !(p && p.required));
   (rubric || []).forEach((p, i) => {
     const status = (points && points[i] && points[i].status) || 'miss';
     const pt = el('div', `st-rub__pt st-rub__pt--${status}`);
@@ -365,7 +367,7 @@ function stRubricEl(rubric, points) {
     pt.appendChild(glyph);
     const body = el('span', 'st-rub__text');
     body.appendChild(stMd(p && p.text));
-    if (p && p.required) body.appendChild(el('span', 'st-rub__req', 'required'));
+    if (mixed && p && p.required) body.appendChild(el('span', 'st-rub__req', 'required'));
     pt.appendChild(body);
     rub.appendChild(pt);
   });

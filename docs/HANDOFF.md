@@ -58,7 +58,13 @@ How it was checked: unit tests for the pure model and parsers
 (`studyModel`, `studyImport`), an end-to-end suite that drives the real
 bundle in jsdom against SQLite and a scripted model (`studyPane`), and
 runs of the real app in Electron on real PDFs with a scripted model
-provider (`tests/probes/study-app-probe.mjs`). Not checked here: question
+provider (`tests/probes/study-app-probe.mjs`: `npm run build`, then
+`node tests/probes/study-app-probe.mjs [outDir]`; it makes its PDFs with
+`study-fixture-pdfs.py`, which needs python3 with reportlab). The last
+run passed every flow with no renderer errors. Two core fixes came out of
+those runs: a citation's quote is now highlighted when it opens a PDF (it
+was wiped by pdf.js's own find-controller reset after the first render),
+and the PDF extractor passes the document's title. Not checked here: question
 quality with a real local model, because the cloud container has no
 model backend. First local step: run a chapter of a real Exam 7 reading
 with the model you use, and look at the generating screen's drop counts;

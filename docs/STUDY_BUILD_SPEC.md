@@ -574,8 +574,21 @@ decisions so they are not re-litigated.
   `study.importReport` take an optional path or URI; `study.studyTogether`
   takes optional material ids.
 - **Show Source** opens the file beside the session (`side: true`; a file
-  open only in the session's own group opens in the group to its right).
-  The first Esc closes it; only with no source open does Esc ask to end.
+  open only in the session's own group opens in the group to its right)
+  at the page, with the anchor highlighted (the PDF pane no longer gives
+  pdf.js's find controller its document early; the viewer's own call
+  after the first render reset it and wiped the quote's find). A question
+  with no anchor shows no quote box; from a notes file it opens at the
+  question's line (`stLineOfStem`). The first Esc closes it; only with no
+  source open does Esc ask to end.
+- **Labels**: a material is named by the PDF's /Title when it is a real
+  one (the extractor now passes it as `metadata.title`), else its file
+  name made readable; an imported bank or report the same way, without
+  the extension.
+- **Feedback says nothing twice**: a grader's note is left out when it is
+  a missed or partial point near enough, or only a short frame around the
+  points it quotes ("The answer leaves out: ..."); "required" marks points
+  only on a rubric that mixes required and supporting ones.
 - **Lifecycle**: every registration is owned by an activation token;
   continuations that resume after Study was turned off stop quietly, and
   late registrations are disposed at once.
@@ -583,4 +596,8 @@ decisions so they are not re-litigated.
   over the generated bundle on node:sqlite), `studyImport.test.ts`,
   `studyPane.test.ts` (the real pane in jsdom, SQLite, a scripted model),
   and `tests/probes/study-app-probe.mjs` (the real app in Electron with a
-  scripted model provider and fixture PDFs from `study-fixture-pdfs.py`).
+  scripted model provider and fixture PDFs from `study-fixture-pdfs.py`;
+  `npm run build`, then `node tests/probes/study-app-probe.mjs [outDir]`,
+  under `xvfb-run -a` without a display; it reads the database with
+  node:sqlite after the app closes). Last run: every flow passes, no
+  renderer errors.

@@ -1638,6 +1638,9 @@ describe('Study end to end', () => {
     key(h, 'Enter', field);
     await waitFor(() => q(h, '.st-fb--show'), 'feedback');
     expect(q(h, '.st-fb--show .st-quote')).toBeNull();
+    // Its rubric, reduced from the answer, is all required: no point says so.
+    expect(qa(h, '.st-rub__pt').length).toBeGreaterThan(0);
+    expect(qa(h, '.st-rub__req').length).toBe(0);
     expect(qa(h, '.st-fb__acts button').map(text)).toEqual(['Show Source', 'Explain']);
     btn(h, 'Show Source')!.click();
     await waitFor(() => env.calls.openFileEditor.length === 1, 'the question file');
