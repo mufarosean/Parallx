@@ -55,6 +55,9 @@ import { createStudyTicker, DEFAULT_IDLE_MINUTES } from './studyClock.js';
 import { registerWorksheetChatTools, buildNotesDigest } from './worksheetChat.js';
 import { detectExcelItems, wholeSheetItem, type GridSheet, type ExcelItem } from './excelImport.js';
 import { practiceBlock } from './worksheetPracticeBlock.js';
+import { worksheetQuestionProvider } from './questionProvider.js';
+import { listQuestionRows } from './worksheetData.js';
+import { registerQuestionProvider } from '../../services/questionProviders.js';
 import './worksheet.css';
 import { appDateString, appDateTimeString, startOfAppDay } from '../../services/localTime.js';
 
@@ -3884,6 +3887,14 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
       openBank: () => void openWorksheet('bank', 'Problem Bank'),
     })));
   }
+
+  // The essay and qualitative problems, for any tool that practises
+  // questions (the core's generic question-provider seam).
+  context.subscriptions.push(registerQuestionProvider(worksheetQuestionProvider({
+    listRows: (limit) => listQuestionRows(limit),
+    getItem: (id) => getItem(id),
+    openItem: (id, title) => openWorksheet(`item:${id}`, title),
+  })));
 
   // The AI's read surface: bank/progress + the user's actual sheet work.
   registerWorksheetChatTools(api, context.subscriptions);

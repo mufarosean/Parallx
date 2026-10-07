@@ -16,6 +16,14 @@
 //   - api.cron              optional daily reminder (autonomy-gated)
 //   - api.dashboard         "Cards due" widget
 //   - api.links             parallx://flashcards/... deep links
+//   - questions.getRegistry (core command) provider 'flashcards.essay-practice'
+//                           over the essay-practice cards, for any tool that
+//                           practises questions
+//   - flashcards.addCards   command: ({ deckName, cards: [{ front, back, tags,
+//                           sourceUri, sourceLabel, sourcePage, sourceExcerpt,
+//                           recallMode, rubric, notes }] }) → { deckId, ids, count }
+//   - 'parallx:card-rated'  document event after a grade is stored, detail
+//                           { toolId, cardId, rating, tags, sourceUri, sourcePage }
 //
 // Layout note: pure logic (scheduler, queue builder, JSON extraction, stats
 // aggregation) is exported through __testables and unit-tested from
@@ -3252,6 +3260,16 @@ async function fcGradeCard(card, rating, msTaken = 0, deckOpts = {}, { answer = 
   `, [card.id, now, rating, card.intervalDays, next.intervalDays, card.ease, next.ease, card.state, next.state, msTaken,
     String(answer || ''), verdict ? JSON.stringify(verdict) : '']);
   _emitDataChanged();
+  // The generic rating event: any tool may listen (a study tool lowering the
+  // mastery of the concept a card's tag names). Fired once the row is stored.
+  if (typeof document !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('parallx:card-rated', {
+      detail: {
+        toolId: 'parallx-community.flashcards', cardId: card.id, rating,
+        tags: fcParseTags(card.tags), sourceUri: card.sourceUri || '', sourcePage: card.sourcePage || 0,
+      },
+    }));
+  }
   return { ...card, ...next };
 }
 
@@ -7454,6 +7472,8 @@ async function renderBrowse(body, route, setRoute) {
   const toolbar = el('div', 'fc-browse-toolbar');
   const searchIn = el('input', 'fc-input');
   searchIn.placeholder = 'Search cards… (#tag searches tags)';
+  // Arrived from another tool's Show Source: the list opens narrowed to that card.
+  if (typeof route.search === 'string' && route.search) searchIn.value = route.search;
   toolbar.appendChild(searchIn);
   const groupDd = _api.ui.createDropdown(toolbar, {
     items: [
@@ -11894,6 +11914,123 @@ function registerPlannerDayLoads(context, attempt = 0) {
     });
 }
 
+/**
+ * One card as a question item for the core's question-provider seam
+ * (src/services/questionProviders.ts): the rubric and tags parsed, the
+ * excerpt and page carried so Show Source lands on the right page. Pure.
+ */
+function fcQuestionItemFromCard(card, deckName = '') {
+  const page = Number(card.sourcePage) || 0;
+  return {
+    ref: String(card.id),
+    question: String(card.front || ''),
+    answer: String(card.back || ''),
+    kind: 'essay',
+    rubric: fcNormalizeRubric(card.rubric),
+    tags: fcParseTags(card.tags),
+    label: String(deckName || ''),
+    source: String(card.sourceLabel || ''),
+    sourceUri: String(card.sourceUri || ''),
+    sourcePage: page > 0 ? page : undefined,
+    sourceExcerpt: String(card.sourceExcerpt || ''),
+  };
+}
+
+/** The essay-practice cards (importance_reason starting "essay practice"), newest first. */
+async function fcListEssayPracticeQuestions(limit = 500) {
+  const n = Math.max(1, Math.min(5000, Math.floor(Number(limit) || 500)));
+  const rows = await db.all(`
+    SELECT c.*, d.name AS deck_name FROM fc_cards c JOIN fc_decks d ON d.id = c.deck_id
+    WHERE c.suspended = 0 AND d.archived = 0 AND LOWER(c.importance_reason) LIKE 'essay practice%'
+    ORDER BY c.created_at DESC LIMIT ?
+  `, [n]);
+  return rows.map((r) => fcQuestionItemFromCard(rowToCard(r), r.deck_name));
+}
+
+/**
+ * Offer the essay-practice cards to any tool that practises questions,
+ * through the core's question-provider registry. Same retry shape as the
+ * dispatcher above, should the command land after this extension.
+ */
+function registerQuestionProvider(context, attempt = 0) {
+  _api.commands.executeCommand('questions.getRegistry')
+    .then((registry) => {
+      if (!_dbBridge) return;
+      if (!registry || typeof registry.register !== 'function') throw new Error('no registry');
+      context.subscriptions.push(registry.register({
+        id: 'flashcards.essay-practice',
+        displayName: 'Essay Practice Cards',
+        toolId: 'parallx-community.flashcards',
+        list: (opts) => fcListEssayPracticeQuestions(opts?.limit),
+        open: async (ref) => {
+          const card = await fcGetCard(parseInt(String(ref), 10)).catch(() => null);
+          if (!card) return false;
+          // The browse search is a LIKE over the front; wildcards stand for themselves.
+          const search = String(card.front || '').replace(/^#+/, '').replace(/[%_]/g, '_').slice(0, 60).trim();
+          await openFlashcards({ view: 'browse', deckId: card.deckId, search });
+          return true;
+        },
+      }));
+    })
+    .catch(() => {
+      if (attempt < 5 && _dbBridge) setTimeout(() => registerQuestionProvider(context, attempt + 1), 2000);
+    });
+}
+
+/**
+ * The argument of flashcards.addCards, normalized for fcCreateCardsBulk:
+ * cards without a front are dropped, tags become an array, the page an
+ * integer, the rubric its normal form. Pure.
+ */
+function fcNormalizeAddCards(args) {
+  const a = args && typeof args === 'object' ? args : {};
+  const deckName = String(a.deckName || '').trim();
+  const list = Array.isArray(a.cards) ? a.cards : [];
+  const cards = [];
+  for (const c of list) {
+    if (!c || typeof c !== 'object') continue;
+    const front = String(c.front || '').trim();
+    if (!front) continue;
+    const page = Math.floor(Number(c.sourcePage));
+    cards.push({
+      front,
+      back: String(c.back || ''),
+      notes: String(c.notes || ''),
+      tags: Array.isArray(c.tags) ? c.tags.map((t) => String(t).trim()).filter(Boolean) : fcParseTags(c.tags),
+      sourceUri: String(c.sourceUri || ''),
+      sourceLabel: String(c.sourceLabel || ''),
+      sourcePage: Number.isInteger(page) && page > 0 ? page : 0,
+      sourceExcerpt: String(c.sourceExcerpt || ''),
+      recallMode: c.recallMode === undefined ? undefined : fcNormalizeRecallMode(c.recallMode),
+      rubric: fcNormalizeRubric(c.rubric),
+    });
+  }
+  return { deckName, cards };
+}
+
+/**
+ * flashcards.addCards: cards from another tool into a deck by name (made
+ * when missing). The bulk insert returns a count; the ids are read back by
+ * the call's own created_at stamp, and left empty when that read cannot be
+ * trusted (a card landed in the deck meanwhile).
+ */
+async function fcAddCards(args) {
+  const { deckName, cards } = fcNormalizeAddCards(args);
+  if (!deckName) throw new Error('[Flashcards] addCards needs a deckName.');
+  const deckId = await fcGetOrCreateDeckByName(deckName);
+  if (!cards.length) return { deckId, ids: [], count: 0 };
+  const count = await fcCreateCardsBulk(deckId, cards);
+  let ids = [];
+  try {
+    const rows = await db.all(
+      'SELECT id FROM fc_cards WHERE deck_id = ? AND created_at = (SELECT MAX(created_at) FROM fc_cards WHERE deck_id = ?) ORDER BY id ASC',
+      [deckId, deckId],
+    );
+    if (rows.length === count) ids = rows.map((r) => r.id);
+  } catch { /* the count still answers */ }
+  return { deckId, ids, count };
+}
+
 function registerCommands(context) {
   const cmds = [
     // No forced route on the generic opens: an already-open pane surfaces
@@ -11917,6 +12054,8 @@ function registerCommands(context) {
     // Direct capture surface for other tools and the AI:
     // flashcards.captureSelection(text, { fileName?, filePath?, pageNumber? })
     ['flashcards.captureSelection', (...args) => fcCaptureSelection(args[0], args[1])],
+    // Cards from another tool: flashcards.addCards({ deckName, cards: [...] }) → { deckId, ids, count }
+    ['flashcards.addCards', (args) => fcAddCards(args)],
   ];
   for (const [id, handler] of cmds) {
     context.subscriptions.push(_api.commands.registerCommand(id, handler));
@@ -11990,6 +12129,7 @@ export async function activate(api, context) {
   registerDashboardWidget(context);
   registerSelectionAction(context);
   registerPlannerDayLoads(context);
+  registerQuestionProvider(context);
   syncReminderJob();
 
   if (api.workspace?.onDidChangeConfiguration) {
@@ -12256,4 +12396,7 @@ export const __testables = {
   fcRepairLatexEscapes,
   fcNormalizeCardText,
   fcAutoCardEstimate,
+  // Question-provider seam and flashcards.addCards
+  fcQuestionItemFromCard,
+  fcNormalizeAddCards,
 };

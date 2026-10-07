@@ -48,6 +48,7 @@ export {
   focusSideBar, focusPanel, focusActivityBar, focusStatusBar,
 } from './focusCommands.js';
 export { installDocling } from './doclingCommands.js';
+export { questionsGetRegistry } from './questionCommands.js';
 
 //  Import for aggregation 
 import {
@@ -77,6 +78,7 @@ import {
   focusSideBar, focusPanel, focusActivityBar, focusStatusBar,
 } from './focusCommands.js';
 import { installDocling } from './doclingCommands.js';
+import { questionsGetRegistry } from './questionCommands.js';
 
 //  Layout Commands 
 
@@ -424,6 +426,8 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   installDocling,
   // M48: Selection → AI command
   addSelectionToChat,
+  // The question-provider registry, for extensions
+  questionsGetRegistry,
 ];
 
 /**

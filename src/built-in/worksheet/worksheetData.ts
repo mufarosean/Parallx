@@ -795,3 +795,22 @@ export async function getSessionFinishes(ids: readonly string[]): Promise<Map<st
   for (const r of rows) out.set(String(r.id), Number(r.finished_at));
   return out;
 }
+
+// ── Question provider rows ──────────────────────────────────────────────────
+
+/**
+ * The essay and qualitative items, for the core's question-provider seam.
+ * The solution text of a sheet is only fetched where the notes are empty and
+ * the sheet marks a solution column or row; the rest of the sheet stays out.
+ */
+export async function listQuestionRows(limit = 500): Promise<Record<string, unknown>[]> {
+  const n = Math.max(1, Math.min(5000, Math.floor(Number(limit) || 500)));
+  return allRows(`
+    SELECT id, title, question_md, solution_notes_md, source_uri, source_page, tags, paper, source, kind,
+           solution_col, solution_row,
+           CASE WHEN solution_notes_md = '' THEN solution_json ELSE '' END AS solution_json,
+           CASE WHEN solution_notes_md = '' AND (solution_col >= 0 OR solution_row >= 0) THEN sheet_json ELSE '' END AS sheet_json
+    FROM ws_items WHERE kind IN ('essay', 'qual')
+    ORDER BY paper, sheet_name, created_at DESC LIMIT ?
+  `, [n]);
+}

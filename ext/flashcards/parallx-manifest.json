@@ -23,7 +23,8 @@
       { "id": "flashcards.generate", "title": "Generate Cards from Source (AI)", "category": "Flashcards" },
       { "id": "flashcards.stats", "title": "Show Progress & Stats", "category": "Flashcards" },
       { "id": "flashcards.studyTag", "title": "Study One Tag", "category": "Flashcards" },
-      { "id": "flashcards.reclassifyByType", "title": "Typed Answers for Concept and List Cards", "category": "Flashcards" }
+      { "id": "flashcards.reclassifyByType", "title": "Typed Answers for Concept and List Cards", "category": "Flashcards" },
+      { "id": "flashcards.addCards", "title": "Add Cards", "category": "Flashcards" }
     ],
     "viewContainers": [
       {
