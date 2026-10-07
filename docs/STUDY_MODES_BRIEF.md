@@ -172,6 +172,8 @@ Flashcards" only while the command exists.
 
 A **material** is anything Study can read: a PDF (whole, page range,
 outline chapter or selection), a canvas page, or an imported question file.
+A session's scope is one of Document, Pages, Chapter, Selection, or
+**Materials**: several PDFs at once, picked in the sidebar.
 On first use of a PDF, Study builds a **concept map** for the scope: one
 pass per page group extracts the concepts the text actually teaches, each
 with its page and anchor quote, grouped under the document's outline
@@ -312,8 +314,16 @@ emits and any tool may listen to.
 - **Session pane**: `contributes.editors` type `study`. Question, answer
   area, feedback strip with Explain and Show Source, results screen. Kit
   components and `--px-*` tokens only; maths rendered as in Flashcards.
-- **Sidebar**: materials with coverage and mastery bars, weak concepts,
-  recent sessions, the question banks and providers.
+- **Sidebar**: Study's own activity-bar container (`contributes.viewContainers`).
+  Materials (every PDF and canvas page Study has read, chapters under a
+  PDF, coverage at the right), Sessions (open now, one per editor tab,
+  several at once; finished ones under them), weak concepts across all
+  materials, the question banks and providers. A Select Materials mode
+  turns the icon column into checks; Study Together starts one session
+  over the picked materials, interleaved so no two questions in a row come
+  from the same material, the eyebrow naming each question's material and
+  Show Source opening whichever PDF it came from. The footer names the
+  model and context in use and how many sessions run.
 - **Dashboard widget**: weak concepts across the workspace, each a door into
   a session.
 - **Chat tools**: `study_session` (start on a document and range),
@@ -337,9 +347,15 @@ emits and any tool may listen to.
 Generation runs on whatever `api.lm` offers, local by default. Local
 models write worse distractors than Claude does, which is why the checks
 run before display and the per-model report exists: the checks are the
-quality floor, the model only raises it. Settings: `study.aiModel`,
-`study.aiThinking`, `study.generationContext` (sized per run, as
-Flashcards does), `study.choices` (4 or 5), `study.questionsPerConcept`,
+quality floor, the model only raises it. The model and the context window
+are chosen on the setup sheet where a session starts (a Model dropdown
+listing every model with its context length, defaulting to the chat's
+active model; a Context dropdown with Auto or a fixed window), remembered
+per material, shown in the session toolbar and the sidebar footer, and
+backed by the same two settings so a choice on the sheet is a choice in
+Settings. Settings: `study.aiModel`, `study.aiThinking`,
+`study.generationContext` (Auto sizes per run from the scope's length and
+the model's limit, as Flashcards does; a fixed value caps VRAM), `study.choices` (4 or 5), `study.questionsPerConcept`,
 `study.sessionSize` (20), `study.answerFormat`, `study.numericTolerance`, `study.checks` (each
 check on or off, all on by default).
 
@@ -352,6 +368,13 @@ and still need collecting; no mock exams and no point scoring; the whole
 design ships as one thing, nothing is optional and nothing is deferred to
 a later version. Learn mode is in. Multiple choice defaults to four
 options, the setting allows five.
+
+## 8a. Design
+
+The design is `docs/mockups/study.html`: every screen in the app's tokens,
+with live Practice, Test and Source frames and the motion table. Built
+2026-10-07; the sidebar, the multi-material session and the model row were
+added the same day at the owner's request.
 
 ## 9. Build order
 

@@ -155,6 +155,19 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 .bubble .bb.hov { background: var(--px-surface-hover); color: var(--px-text); }
 .bubble .vr { width: 1px; height: 16px; background: var(--px-divider); margin: 0 2px; }
 
+/* kit dropdown */
+.dd { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; height: 28px; min-width: 150px; padding: 0 8px; border: 1px solid var(--px-border-strong); border-radius: 4px; background: var(--px-bg-inset); color: var(--px-text); font-size: 12.5px; cursor: pointer; }
+.dd .lbl { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd .chev { color: var(--px-text-faint); }
+.dd.open { border-color: var(--px-accent); box-shadow: 0 0 0 1px var(--px-accent); }
+.ddlist { position: absolute; z-index: 6; min-width: 260px; padding: 4px; border-radius: 6px; background: var(--px-bg-elevated); border: 1px solid var(--px-border); box-shadow: var(--px-shadow-md), var(--px-edge-light); animation: pop var(--px-dur-fast) var(--px-ease-out); }
+.ddlist .it { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; height: 28px; padding: 0 8px; border-radius: 4px; font-size: 12.5px; color: var(--px-text); }
+.ddlist .it small { color: var(--px-text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.ddlist .it.on { background: var(--px-surface-selected); }
+.ddlist .it.hov { background: var(--px-surface-hover); }
+.ddlist .sep { height: 1px; margin: 4px 6px; background: var(--px-divider); }
+.ddlist .hd { padding: 6px 8px 3px; font-size: 11px; font-weight: 600; color: var(--px-text-muted); }
+
 /* ── Study sheet (scope + setup) ── */
 .scrim { position: absolute; inset: 0; background: rgba(0,0,0,.42); animation: fade var(--px-dur-base) var(--px-ease-out); }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
@@ -353,6 +366,17 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 .sb .it .r.weak { color: var(--px-danger); }
 .sb .it.sub { padding-left: 32px; grid-template-columns: 1fr auto; }
 .sb .it.sub .nm { color: var(--px-text-secondary); }
+/* select mode: a check well replaces the icon; chosen rows tint */
+.sb .it .ck { width: 15px; height: 15px; border-radius: 3px; border: 1px solid var(--px-border-strong); background: var(--px-bg-inset); display: inline-flex; align-items: center; justify-content: center; }
+.sb .it .ck.on { background: var(--px-accent); border-color: var(--px-accent); color: var(--px-on-accent); }
+.sb .it.picked { background: var(--px-accent-faint); color: var(--px-text); }
+.sb .bar { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; margin: 4px 12px 6px; padding: 8px 10px; white-space: nowrap; border: 1px solid var(--px-border); border-radius: 6px; background: var(--px-bg-elevated); font-size: 12px; color: var(--px-text-secondary); animation: card-in var(--px-dur-base) var(--px-ease-out); }
+.sb .bar b { color: var(--px-text); font-weight: 600; }
+.sb .bar small { display: block; font-size: 11px; color: var(--px-text-muted); margin-top: 1px; }
+.sb .it .live { width: 6px; height: 6px; border-radius: 50%; background: var(--px-accent); animation: pulse 1.6s var(--px-ease) infinite; }
+.sb .ft { margin-top: auto; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-top: 1px solid var(--px-divider); font-size: 11.5px; color: var(--px-text-muted); white-space: nowrap; }
+.sb .ft .sp { flex: 1; }
+.sb .ft .mdl { color: var(--px-text-secondary); }
 .sbwrap { display: flex; height: 100%; }
 .sbwrap .rest { flex: 1; background: var(--px-window); display: flex; align-items: center; justify-content: center; color: var(--px-text-faint); font-size: 12px; }
 
@@ -390,7 +414,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
   <li><a href="#source">7. Show Source</a></li>
   <li><a href="#results">8. Results and Refresh</a></li>
   <li><a href="#learn">9. Learn</a></li>
-  <li><a href="#sidebar">10. Sidebar and widget</a></li>
+  <li><a href="#sidebar">10. Sidebar: several materials at once</a></li>
   <li><a href="#motion">11. Motion and keys</a></li>
   <li><a href="#light">12. Light mode</a></li>
   <li><a href="#copy">13. Copy</a></li>
@@ -403,6 +427,8 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
   <li><b>The anchor is always one glance away.</b> Every question carries its page and quote. After an answer the quote is shown; Show Source opens the PDF beside the session at that page with the quote highlighted. A question with no anchor does not exist.</li>
   <li><b>The strand is the progress.</b> Twenty thin segments in the toolbar: faint for unanswered, green for right, red for wrong, accent for the current one. No percentages, no score counter during the session. The score is the strand.</li>
   <li><b>Motion is for state, not decoration.</b> Each transition says what changed: a card leaves left and the next arrives from below; feedback rises under the card; rubric points land one after another; the source pane widens from the right. Durations are the motion tokens (120, 180, 260 ms) and nothing else. Reduced motion collapses them all.</li>
+  <li><b>The sidebar is the desk.</b> Study has its own activity-bar container: every material with its coverage, the sessions open now, the weak concepts across all of them. Several sessions run at once, one per tab, and several materials can be studied together in one session.</li>
+  <li><b>The model is a choice on the sheet.</b> Which local model writes and grades, and how large a window it gets, is picked where the session starts and shown where it runs. Never hidden in Settings alone.</li>
   <li><b>Keys for everything.</b> 1 to 4 pick an option, Enter checks or advances, S opens the source, R retries, Esc closes the source. Shown faintly in the controls row, never as a help screen.</li>
 </ul>
 
@@ -455,7 +481,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 <p>One sheet over the document. Scope on top, with the outline as the chapter list and each chapter's coverage drawn in line. Mode and answer format under it. The footer counts what the choice means before Start is pressed.</p>
 <div class="win">
   <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-file"/></svg>Clark_2003_LDF_Curve_Fitting.pdf<span class="x">×</span></div></div>
-  <div class="ed" style="height:560px">
+  <div class="ed" style="height:700px">
     <div class="pdf">
       <div class="pdf-tb"><div class="cl"><span class="ib"><svg class="i s14"><use href="#i-chev-l"/></svg></span><span class="pill"><span class="num">17</span><span class="faint">/</span><span class="faint num">38</span></span><span class="ib"><svg class="i s14"><use href="#i-chev-r"/></svg></span></div><div class="sp"></div></div>
       <div class="pdf-stage"><div class="sheet" style="opacity:.5"><h4>3. The Cape Cod Method</h4><p>The LDF method requires one parameter for each accident year…</p></div></div>
@@ -464,7 +490,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
     <div class="sheetdlg">
       <div class="hd"><div><h3>Study</h3><div class="sub">Clark_2003_LDF_Curve_Fitting.pdf · 38 pages · 41 concepts known</div></div><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
       <div class="bd">
-        <div class="row"><span class="lab">Scope</span><span class="seg"><span>Document</span><span>Pages</span><span class="on">Chapter</span><span>Selection</span></span></div>
+        <div class="row"><span class="lab">Scope</span><span class="seg"><span>Document</span><span>Pages</span><span class="on">Chapter</span><span>Selection</span><span>Materials</span></span></div>
         <div class="outline">
           <div class="o"><svg class="i s12"><use href="#i-chev-r"/></svg>1. Introduction<span class="ocov"><i style="width:100%"></i></span><span class="pp">pp. 1–4</span></div>
           <div class="o"><svg class="i s12"><use href="#i-chev-r"/></svg>2. Growth Curves and the LDF Method<span class="ocov"><i style="width:78%"></i></span><span class="pp">pp. 5–12</span></div>
@@ -474,14 +500,27 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
         </div>
         <div class="row"><span class="lab">Mode</span><span class="seg"><span class="on">Practice</span><span>Test</span><span>Learn</span></span></div>
         <div class="row"><span class="lab">Answer</span><span class="seg"><span>Choose</span><span>Type</span><span class="on">Mixed</span></span><span class="xs muted">Starts on choices; a concept moves to typing once it has been answered right.</span></div>
+        <div class="row" style="position:relative"><span class="lab">Model</span><span class="dd open" style="min-width:190px"><span class="lbl">qwen3:14b</span><svg class="i s12 chev"><use href="#i-chev-d"/></svg></span><span class="dd" style="min-width:150px"><span class="lbl">Context · Auto</span><svg class="i s12 chev"><use href="#i-chev-d"/></svg></span>
+          <div class="ddlist" style="left:104px;top:32px;min-width:200px">
+            <div class="hd">Local</div>
+            <div class="it on"><span>qwen3:14b</span><small>40k ctx</small></div>
+            <div class="it hov"><span>qwen3:32b</span><small>40k ctx · slower</small></div>
+            <div class="it"><span>deepseek-r1:14b</span><small>64k ctx · thinks</small></div>
+            <div class="sep"></div>
+            <div class="hd">Chat's active model</div>
+            <div class="it"><span>Use the chat's model</span><small>follows Settings</small></div>
+          </div>
+        </div>
+        <div class="xs muted" style="margin:-6px 0 0 104px">Auto sizes the window to the scope and the model's limit: 24k for this chapter. A fixed window caps VRAM on a smaller machine.</div>
       </div>
       <div class="ft"><span class="st"><b>12 concepts</b> in this chapter · 4 clean · 48 questions in the bank · 20 per session</span><span style="display:flex;gap:8px"><span class="btn ghost">Cancel</span><span class="btn primary">Start</span></span></div>
     </div>
   </div>
-  <div class="frame-caption"><span>The sheet rises 10 px and settles (260 ms, ease-out). The outline rows carry each chapter's coverage: green for clean concepts, accent for concepts with questions not yet answered right, empty for chapters with no bank yet.</span></div>
+  <div class="frame-caption"><span>The sheet rises 10 px and settles (260 ms, ease-out). The outline rows carry each chapter's coverage: green for clean concepts, accent for concepts with questions not yet answered right, empty for chapters with no bank yet. The model list is the kit dropdown, open.</span></div>
 </div>
 <ul class="notes">
-  <li><b>Pages</b> turns the outline into a from–to pair of page inputs. <b>Selection</b> is only offered when the pane has one. <b>Document</b> runs over every chapter in order.</li>
+  <li><b>Pages</b> turns the outline into a from–to pair of page inputs. <b>Selection</b> is only offered when the pane has one. <b>Document</b> runs over every chapter in order. <b>Materials</b> is the multi-document scope: the list becomes the materials picked in the sidebar (section 10).</li>
+  <li><b>Model</b> lists what <code>api.lm</code> offers with each model's context length; the default is the chat's active model, as Flashcards does. <b>Context</b> is Auto (sized per run from the scope's length and the model's limit, the number shown) or a fixed window from the model's own steps. Both are remembered per material, and both are the same two settings the Settings page holds, so a choice here is a choice there.</li>
   <li>The footer is honest about what will happen: when the bank is short, it reads "48 questions in the bank, 12 more will be made first" and Start reads <b>Make Questions and Start</b>.</li>
   <li>The chosen mode and format are remembered per material; "Quiz This Selection" reuses them.</li>
 </ul>
@@ -761,65 +800,101 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
   <div class="frame-caption"><span>The same serif as the card, on the dark chrome; the page link is the only accent. Hover brightens the line.</span></div>
 </div>
 
-<h2 id="sidebar">10. Sidebar and widget</h2>
-<div class="pair">
-  <div>
-    <div class="win" style="margin-top:0">
-      <div class="ed" style="height:660px">
-        <div class="sbwrap">
-          <div class="sb">
-            <div class="hd">STUDY<span class="sp"></span><span class="ib"><svg class="i s14"><use href="#i-plus"/></svg></span><span class="ib"><svg class="i s14"><use href="#i-more"/></svg></span></div>
-            <div class="sec">
-              <div class="secl">Materials<span class="n">4</span></div>
-              <div class="it on"><svg class="i s14"><use href="#i-file"/></svg><span class="nm">Clark 2003</span><span class="mini"><i style="width:58%"></i></span></div>
-              <div class="it sub"><span class="nm">1. Introduction</span><span class="r">clean</span></div>
-              <div class="it sub"><span class="nm">2. Growth Curves and the LDF Method</span><span class="r">11 / 14</span></div>
-              <div class="it sub"><span class="nm">3. The Cape Cod Method</span><span class="r">9 / 12</span></div>
-              <div class="it sub"><span class="nm">4. Variance of the Reserve Estimate</span><span class="r faint">no bank</span></div>
-              <div class="it sub"><span class="nm">5. Residual Diagnostics</span><span class="r faint">no bank</span></div>
-              <div class="it"><svg class="i s14"><use href="#i-file"/></svg><span class="nm">Mack 1994</span><span class="mini"><i style="width:84%"></i></span></div>
-              <div class="it"><svg class="i s14"><use href="#i-file"/></svg><span class="nm">Shapland 2016</span><span class="mini"><i class="w" style="width:20%"></i></span></div>
-              <div class="it"><svg class="i s14"><use href="#i-page"/></svg><span class="nm">Venter notes</span><span class="mini"><i style="width:0"></i></span></div>
-            </div>
-            <div class="sec">
-              <div class="secl">Weak concepts<span class="n">7</span></div>
-              <div class="it"><span class="r weak">●</span><span class="nm">Truncation point of the growth curve</span><span class="r">Clark</span></div>
-              <div class="it"><span class="r weak">●</span><span class="nm">Scale factor σ² from chi-square</span><span class="r">Clark</span></div>
-              <div class="it"><span class="r weak">●</span><span class="nm">Variance assumption (iii)</span><span class="r">Mack</span></div>
-              <div class="it"><span class="r weak">●</span><span class="nm">Residual plots by calendar period</span><span class="r">Clark</span></div>
-            </div>
-            <div class="sec">
-              <div class="secl">Question banks<span class="n">3</span></div>
-              <div class="it"><svg class="i s14"><use href="#i-bank"/></svg><span class="nm">CAS Exam 7 · 2014–2024</span><span class="r">212</span></div>
-              <div class="it"><svg class="i s14"><use href="#i-bank"/></svg><span class="nm">Rising Fellow essays</span><span class="r">14 · Worksheets</span></div>
-              <div class="it"><svg class="i s14"><use href="#i-bank"/></svg><span class="nm">Examiner's reports</span><span class="r">9 of 11</span></div>
-            </div>
-            <div class="sec">
-              <div class="secl">Recent</div>
-              <div class="it"><svg class="i s14"><use href="#i-study"/></svg><span class="nm">Clark, ch. 3 · Practice</span><span class="r">17/20 · today</span></div>
-              <div class="it"><svg class="i s14"><use href="#i-study"/></svg><span class="nm">Mack 1994 · Test</span><span class="r">16/20 · yesterday</span></div>
-            </div>
-          </div>
-          <div class="rest">editor</div>
+<h2 id="sidebar">10. Sidebar: several materials at once</h2>
+<p>Study has its own activity-bar container. The sidebar is the materials, every PDF with its chapters and coverage; the sessions open right now; the weak concepts across everything; the question banks. Select several materials and one session draws from all of them.</p>
+<div class="win">
+  <div class="ed" style="height:700px">
+    <div class="sbwrap">
+      <div class="sb">
+        <div class="hd">STUDY<span class="sp"></span><span class="ib on" title="Select Materials"><svg class="i s14"><use href="#i-select"/></svg></span><span class="ib"><svg class="i s14"><use href="#i-plus"/></svg></span><span class="ib"><svg class="i s14"><use href="#i-more"/></svg></span></div>
+        <div class="bar"><div><b>3 materials</b><small>36 concepts · 11 weak</small></div><span class="btn primary sm">Study Together</span></div>
+        <div class="sec">
+          <div class="secl">Materials<span class="n">5</span></div>
+          <div class="it picked"><span class="ck on"><svg class="i s12"><use href="#i-check"/></svg></span><span class="nm">Clark 2003</span><span class="mini"><i style="width:58%"></i></span></div>
+          <div class="it sub"><span class="nm">1. Introduction</span><span class="r">clean</span></div>
+          <div class="it sub"><span class="nm">2. Growth Curves and the LDF Method</span><span class="r">11 / 14</span></div>
+          <div class="it sub"><span class="nm">3. The Cape Cod Method</span><span class="r">9 / 12</span></div>
+          <div class="it sub"><span class="nm">4. Variance of the Reserve Estimate</span><span class="r faint">no bank</span></div>
+          <div class="it picked"><span class="ck on"><svg class="i s12"><use href="#i-check"/></svg></span><span class="nm">Mack 1994</span><span class="mini"><i style="width:84%"></i></span></div>
+          <div class="it picked"><span class="ck on"><svg class="i s12"><use href="#i-check"/></svg></span><span class="nm">Venter 1998</span><span class="mini"><i class="w" style="width:35%"></i></span></div>
+          <div class="it"><span class="ck"></span><span class="nm">Shapland 2016</span><span class="mini"><i class="w" style="width:20%"></i></span></div>
+          <div class="it"><span class="ck"></span><span class="nm">Brosius notes</span><span class="mini"><i style="width:0"></i></span></div>
         </div>
+        <div class="sec">
+          <div class="secl">Sessions<span class="n">2 open</span></div>
+          <div class="it on"><span class="live"></span><span class="nm">Clark, ch. 3 · Practice</span><span class="r">7 / 20</span></div>
+          <div class="it"><span class="live"></span><span class="nm">Mack 1994 · Test</span><span class="r">4 / 20</span></div>
+          <div class="it"><svg class="i s14"><use href="#i-study"/></svg><span class="nm">Clark + Mack + Venter · Practice</span><span class="r">16/20 · yesterday</span></div>
+        </div>
+        <div class="sec">
+          <div class="secl">Weak concepts<span class="n">11</span></div>
+          <div class="it"><span class="r weak">●</span><span class="nm">Truncation point of the growth curve</span><span class="r">Clark</span></div>
+          <div class="it"><span class="r weak">●</span><span class="nm">Variance assumption (iii)</span><span class="r">Mack</span></div>
+          <div class="it"><span class="r weak">●</span><span class="nm">Parameter vs process variance (Venter test 2)</span><span class="r">Venter</span></div>
+        </div>
+        <div class="sec">
+          <div class="secl">Question banks<span class="n">3</span></div>
+          <div class="it"><svg class="i s14"><use href="#i-bank"/></svg><span class="nm">CAS Exam 7 · 2014–2024</span><span class="r">212</span></div>
+          <div class="it"><svg class="i s14"><use href="#i-bank"/></svg><span class="nm">Rising Fellow essays</span><span class="r">14 · Worksheets</span></div>
+        </div>
+        <div class="ft"><svg class="i s12"><use href="#i-spark"/></svg><span class="mdl">qwen3:14b · Auto</span><span class="sp"></span><span>2 sessions running</span></div>
       </div>
-      <div class="frame-caption"><span>Materials with their chapters and coverage; weak concepts across everything; the banks and where each comes from; recent sessions.</span></div>
+      <div class="rest">editor</div>
     </div>
   </div>
+  <div class="frame-caption"><span>Select mode on: the icon column becomes checks, picked rows tint, and the bar above the list counts what the pick adds up to. Study Together opens the sheet with Materials as the scope.</span></div>
+</div>
+<ul class="notes">
+  <li><b>Materials</b> are every PDF and canvas page Study has read, with chapters under a PDF and coverage at the right. A material is added with + (any document in the workspace) or arrives by itself the first time a session runs on it.</li>
+  <li><b>Sessions</b> lists what is open now, each a tab in the editor, with its position; several run at once, one per tab, each with its own strand. Finished sessions follow under them. A session over several materials names them all.</li>
+  <li><b>Select mode</b> is the one new control: the check icon in the header. Pick materials, then Study Together. The session interleaves them: no two questions in a row from the same material unless only one is left, and the eyebrow names the material each question comes from.</li>
+  <li>The footer names the model and context in use and how many sessions are running; clicking it opens the model row of the sheet.</li>
+</ul>
+
+<p style="margin-top:28px">A session over three materials. The eyebrow carries the material; the strand is one strand; Show Source opens whichever PDF the question came from.</p>
+<div class="win">
+  <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark + Mack + Venter<span class="x">×</span></div><div class="tab"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3</div><div class="tab"><svg class="i s14"><use href="#i-study"/></svg>Study · Mack 1994</div></div>
+  <div class="ed" style="height:520px">
+    <div class="sess">
+      <div class="sess-tb"><span class="scope">Clark + Mack + Venter <span class="m">· Practice · Mixed</span></span><div class="sp"></div><div class="strand"><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="cur"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="pos">9 of 20</span><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
+      <div class="sess-main">
+        <div class="qwrap">
+          <div class="eyebrow"><span class="cpt">Venter's test 2: superiority to alternative emergence patterns</span><span class="dot"></span><span class="src">Venter 1998 · p. 812</span><span class="fmt"><svg class="i s12"><use href="#i-choose"/></svg>Choose</span></div>
+          <div class="card" style="animation:none">
+            <p class="q">Under Venter's second test, what does it mean when the fitted factor on the prior cumulative loss is not significantly different from zero?</p>
+            <div class="opts">
+              <div class="opt"><span class="key">1</span><span>The chain-ladder assumption is supported, because development depends only on the age.</span><svg class="i mark"><use href="#i-x"/></svg></div>
+              <div class="opt"><span class="key">2</span><span>A Bornhuetter–Ferguson style constant emergence may fit better than the chain ladder.</span><svg class="i mark"><use href="#i-check"/></svg></div>
+              <div class="opt"><span class="key">3</span><span>The residuals are correlated across calendar years, so a diagonal effect exists.</span><svg class="i mark"><use href="#i-x"/></svg></div>
+              <div class="opt"><span class="key">4</span><span>The variance of incremental losses is not proportional to the prior cumulative.</span><svg class="i mark"><use href="#i-x"/></svg></div>
+            </div>
+          </div>
+        </div>
+        <div class="ctl"><div class="keys"><span><span class="kbd">1</span>–<span class="kbd">4</span> choose</span><span><span class="kbd">S</span> source</span></div><div class="sp"></div><span class="btn ghost">Skip</span><span class="btn primary" disabled>Next</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="frame-caption"><span>Three session tabs open at once: the combined one active, two single-material ones behind it, each keeping its own place.</span></div>
+</div>
+
+<h3 style="font-size:15px;font-weight:600;margin:32px 0 6px">Dashboard widget</h3>
+<div class="pair">
   <div>
     <div class="win" style="margin-top:0">
       <div class="ed win-tone auto">
         <div class="wdg">
-          <div class="hd"><svg class="i s14"><use href="#i-study"/></svg>Weak spots<span class="sp"></span><span class="xs faint">7 concepts</span></div>
+          <div class="hd"><svg class="i s14"><use href="#i-study"/></svg>Weak spots<span class="sp"></span><span class="xs faint">11 concepts</span></div>
           <div class="wr"><div>Clark · ch. 3<small>3 weak · last 17/20</small></div><span class="b"><i style="width:25%"></i></span></div>
           <div class="wr"><div>Mack 1994<small>2 weak · last 16/20</small></div><span class="b"><i class="y" style="width:16%"></i></span></div>
-          <div class="wr"><div>Shapland 2016<small>2 weak · 20% covered</small></div><span class="b"><i style="width:40%"></i></span></div>
+          <div class="wr"><div>Venter 1998<small>4 weak · 35% covered</small></div><span class="b"><i style="width:40%"></i></span></div>
           <div class="ft">Study the weakest 20 →</div>
         </div>
       </div>
       <div class="frame-caption"><span>A door, not a poster: each row opens a session on that material; the footer opens Weak Spots across all of them.</span></div>
     </div>
-    <ul class="notes">
+  </div>
+  <div>
+    <ul class="notes" style="margin-top:0">
       <li>The widget uses the dashboard's own card radius and edge light; the only colour is the weak bar.</li>
       <li>The planner's day-load seam gets Study's scheduled weak-spot sessions beside Flashcards' due counts.</li>
     </ul>
@@ -892,7 +967,9 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
   <tr><th>Where</th><th>Reads</th></tr>
   <tr><td>Menu entry</td><td>Study This Document…</td></tr>
   <tr><td>Selection action</td><td>Quiz This Selection</td></tr>
-  <tr><td>Scope</td><td>Document · Pages · Chapter · Selection</td></tr>
+  <tr><td>Scope</td><td>Document · Pages · Chapter · Selection · Materials</td></tr>
+  <tr><td>Sidebar</td><td>Materials · Sessions · Weak concepts · Question banks · Select Materials · Study Together</td></tr>
+  <tr><td>Model row</td><td>Model · Context · Auto · Use the chat's model</td></tr>
   <tr><td>Mode</td><td>Practice · Test · Learn</td></tr>
   <tr><td>Answer</td><td>Choose · Type · Mixed</td></tr>
   <tr><td>Start, bank short</td><td>Make Questions and Start</td></tr>
@@ -937,6 +1014,8 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
     <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
     <symbol id="i-type" viewBox="0 0 24 24"><path d="M4 7V4h16v3M12 4v16M9 20h6"/></symbol>
     <symbol id="i-choose" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+    <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-select" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
     <symbol id="i-bank" viewBox="0 0 24 24"><path d="M3 10h18M5 10v9M9 10v9M15 10v9M19 10v9M3 19h18M12 3l9 7H3z"/></symbol>
   </defs>
 </svg>
