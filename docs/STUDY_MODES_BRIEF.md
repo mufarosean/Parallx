@@ -9,10 +9,12 @@ Mufaro's ask after seeing Notability's Learn feature again; revised the same
 day after his bar was set.
 
 The bar, in his words: the material is dense actuarial study text, so ten
-questions is not enough. Every question must be sourced so nothing is made
-up. The essay questions he has already pulled from past exams and from
-Rising Fellow must be part of it. No concessions: if time goes into this it
-has to be top tier, better than Notability and better than NotebookLM.
+questions is not enough; a session can cap at 20 as long as a refresh
+brings the next set. Every question must be sourced so nothing is made up.
+The essay questions he has already pulled from past exams and from Rising
+Fellow (they live in his local study workspace) must be part of it. No
+concessions: if time goes into this it has to be top tier, better than
+Notability and better than NotebookLM.
 
 How this was researched: web search plus the pages this container could
 reach. Notability's blog and support site, Apple's App Store pages and
@@ -146,7 +148,7 @@ Study is better than both products when every row below is true.
 
 | | Notability | NotebookLM | Study |
 | --- | --- | --- | --- |
-| Questions per material | ~10 per run | 10 to 20 | As many as the material needs: a bank that covers every concept, drawn from in sessions of any size |
+| Questions per material | ~10 per run | 10 to 20 | A bank that covers every concept; a session serves 20 and Refresh draws the next 20 until the scope is clean |
 | Sourcing | None shown | Citation on request | Every question carries a verbatim anchor, checked by string match against the page text before it is shown; no anchor, no question |
 | Answer formats | MC, fill-in, matching, true/false | MC only | MC, short typed, essay with point values, numeric with tolerance, formula |
 | Grading | Right/wrong | Right/wrong | MC exact; typed against a rubric with hit/partial/miss; essay against examiner-style points; numeric against an executed solution |
@@ -180,6 +182,15 @@ page; generation runs per chunk with a progress bar and can be stopped and
 resumed; the bank grows until every concept has questions. The settings say
 how many questions per concept are enough (default: until two of each
 format exist), never a per-document total.
+
+**Sessions are 20 questions** (`study.sessionSize`, default 20). A session
+draws from the bank: weak and unasked concepts first, then stale ones,
+never the same question twice while the bank has another for that concept.
+**Refresh** on the results screen draws the next 20 from the same scope;
+when the bank runs short on a concept, generation tops it up in the
+background before the draw, so a refresh is never a repeat. A scope is
+clean when every concept has been answered right once in the chosen
+format, and the results screen says how many refreshes that took.
 
 ### 7.2 Sourcing, enforced
 
@@ -224,7 +235,9 @@ always answered in their own format.
 ### 7.4 Own question banks
 
 Questions Mufaro already has are items with a `source` of `exam`,
-`rising-fellow` or `imported`, beside `generated`.
+`rising-fellow` or `imported`, beside `generated`. They live in his local
+study workspace, so the first import is matched to their actual shape on
+his machine, not guessed from here.
 
 - **From Worksheets' Problem Bank.** Worksheets registers a generic
   **question provider** (a command the core defines the shape of, like the
@@ -247,7 +260,7 @@ past exam question counts toward the same concept as the reading it tests.
 
 | Mode | What it does |
 | --- | --- |
-| Practice | Work a scope until it is clean: every concept answered right once in the chosen format. Instant marking, retry, Explain (grounded in the anchor, never free text), Show Source (opens the PDF on the page with the quote highlighted). Sized by scope, by time, or by count, never capped. |
+| Practice | 20 questions from a scope, Refresh for the next 20, until the scope is clean: every concept answered right once in the chosen format. Instant marking, retry, Explain (grounded in the anchor, never free text), Show Source (opens the PDF on the page with the quote highlighted). |
 | Test | The same bank in Type format, no retry, score at the end with per-point feedback. |
 | Mock Exam | A timed paper: points target, time limit, format mix and paper mix chosen or drawn from an exam profile (Exam 7: the point weights per paper, the calculation versus essay split). Interleaves papers. Quantitative items open in Worksheets and report back when rated. Results by paper and concept. |
 | Weak Spots | A session drawn from the concepts with the lowest mastery across the whole workspace, any material. |
@@ -319,14 +332,15 @@ run before display and the per-model report exists: the checks are the
 quality floor, the model only raises it. Settings: `study.aiModel`,
 `study.aiThinking`, `study.generationContext` (sized per run, as
 Flashcards does), `study.choices` (4 or 5), `study.questionsPerConcept`,
-`study.answerFormat`, `study.numericTolerance`, `study.checks` (each
+`study.sessionSize` (20), `study.answerFormat`, `study.numericTolerance`, `study.checks` (each
 check on or off, all on by default).
 
 ## 8. Open decisions for Mufaro
 
 1. Name: Study, Practice, or Review.
-2. Where his pulled past-exam questions live today (files, the workbook's
-   essay sheets, Flashcards cards, elsewhere) so the first import matches.
+2. Settled 2026-10-07: sessions cap at 20 with Refresh for the next 20; the
+   pulled questions are in his local study workspace and the import is
+   matched there.
 3. Whether the examiner's reports are available as PDFs to extract rubrics
    from, or the rubrics are written by hand or by the model from the sample
    answers.
