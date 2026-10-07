@@ -3684,7 +3684,7 @@ async function importPlanFromPath(filePath: string): Promise<boolean> {
   if (res.error || typeof res.content !== 'string') { await _api?.window?.showErrorMessage?.(`Could not read the plan: ${res.error?.message ?? 'empty file'}`); return false; }
   const { plan, error } = parsePlan(res.content);
   if (!plan) { await _api?.window?.showErrorMessage?.(`That is not a plan: ${error}`); return false; }
-  await savePlanJson(res.content);
+  await savePlanJson(res.content, new Set(plan.days.flatMap((d) => d.blocks.map((b) => `${d.day}/${b.id}`))));
   _api?.activity?.note('imported', `the plan "${plan.title}"`, `${plan.days.length} days`);
   await openWorksheet('plan', 'Campaign');
   return true;

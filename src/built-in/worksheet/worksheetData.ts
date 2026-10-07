@@ -749,9 +749,18 @@ export async function getPlanJson(): Promise<{ json: string; createdAt: number }
   return row ? { json: String(row.json), createdAt: Number(row.created_at) } : null;
 }
 /** A new plan replaces the old one and its block states. */
-export async function savePlanJson(json: string): Promise<void> {
+/**
+ * Store an imported plan. A block whose day and id the new plan still has
+ * keeps its state (draw, session, done); only blocks the plan dropped lose
+ * theirs. Deleting every row lost a sat exam's link on a re-import
+ * (2026-10-07).
+ */
+export async function savePlanJson(json: string, keep: ReadonlySet<string> = new Set()): Promise<void> {
   await run('INSERT INTO ws_plan (id, json, created_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json, created_at = excluded.created_at', [json, Date.now()]);
-  await run('DELETE FROM ws_plan_block');
+  const rows = await allRows('SELECT day, block_id FROM ws_plan_block');
+  for (const r of rows) {
+    if (!keep.has(`${String(r.day)}/${String(r.block_id)}`)) await run('DELETE FROM ws_plan_block WHERE day = ? AND block_id = ?', [r.day, r.block_id]);
+  }
   emitChange();
 }
 export async function clearPlan(): Promise<void> {
