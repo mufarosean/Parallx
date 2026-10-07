@@ -1,7 +1,8 @@
 // pdfOutlineExtractor.test.ts — extractText gives a PDF's bookmarks as a flat
 // outline: [{ title, page, level }], page 1-based, level 0 at the top, in
 // document order; [] when the file has none. Explicit destinations
-// ([pageRef /XYZ …]) and named ones (/Names /Dests) both resolve.
+// ([pageRef /XYZ …]) and named ones (/Names /Dests) both resolve. The
+// document information's /Title rides along as metadata.title ('' if none).
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
@@ -15,9 +16,10 @@ const { extractText } = require('../../electron/documentExtractor.cjs');
 /**
  * A hand-built three-page PDF. With `withOutline`, the catalog carries an
  * outline: Intro (p1), Methods (p2) with the child Details (p3, a named
- * destination), Results (p3).
+ * destination), Results (p3). With `title`, the trailer points at a
+ * document information dictionary carrying it.
  */
-function buildPdf(withOutline: boolean): Buffer {
+function buildPdf(withOutline: boolean, title?: string): Buffer {
   const objs: string[] = [];
   const add = (s: string) => { objs.push(s); return objs.length; };
   const content = (t: string) => {
@@ -43,13 +45,14 @@ function buildPdf(withOutline: boolean): Buffer {
     add('<< /Title (Results) /Parent 10 0 R /Prev 12 0 R /Dest [6 0 R /XYZ 0 792 0] >>');
     add('<< /Names [(details) [6 0 R /XYZ 0 700 0]] >>');
   }
+  const info = title === undefined ? 0 : add(`<< /Title (${title}) /Producer (Probe) >>`);
   let out = '%PDF-1.4\n';
   const offsets: number[] = [];
   objs.forEach((o, i) => { offsets.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
   const xref = out.length;
   out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
   for (const off of offsets) out += `${String(off).padStart(10, '0')} 00000 n \n`;
-  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R${info ? ` /Info ${info} 0 R` : ''} >>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(out, 'latin1');
 }
 
@@ -64,9 +67,10 @@ describe('PDF outline extraction', () => {
   it('lists the bookmarks flat, in order, with 1-based pages and levels', async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'px-pdf-outline-'));
     const file = path.join(dir, 'outline.pdf');
-    await writeFile(file, buildPdf(true));
+    await writeFile(file, buildPdf(true, '  Clark  2003 '));
     const result = await extractText(file);
     expect(result.format).toBe('pdf');
+    expect(result.metadata).toEqual({ pageCount: 3, title: 'Clark 2003' });
     expect(result.pageTexts).toEqual(['Page one', 'Page two', 'Page three']);
     expect(result.outline).toEqual([
       { title: 'Intro', page: 1, level: 0 },
@@ -81,7 +85,7 @@ describe('PDF outline extraction', () => {
     const file = path.join(dir, 'plain.pdf');
     await writeFile(file, buildPdf(false));
     const result = await extractText(file);
-    expect(result.metadata).toEqual({ pageCount: 3 });
+    expect(result.metadata).toEqual({ pageCount: 3, title: '' });
     expect(result.outline).toEqual([]);
   });
 });

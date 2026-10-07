@@ -98,7 +98,7 @@ function getAdmZip() {
  * Extract text from a PDF file.
  * @param {Buffer} buffer
  * @param {string} filePath
- * @returns {Promise<{ text: string; pageCount: number; pageTexts: string[]; outline: Array<{ title: string; page: number; level: number }> }>}
+ * @returns {Promise<{ text: string; pageCount: number; pageTexts: string[]; outline: Array<{ title: string; page: number; level: number }>; title: string }>}
  */
 async function extractPdf(buffer, filePath) {
   const { PDFParse } = getPdfParse();
@@ -113,6 +113,7 @@ async function extractPdf(buffer, filePath) {
       // re-splitting the concatenated text can never recover page boundaries.
       pageTexts: Array.isArray(result.pages) ? result.pages.map((p) => p.text || '') : [],
       outline: await readPdfOutline(parser),
+      title: await readPdfTitle(parser),
     };
   } finally {
     try { await parser.destroy(); } catch { /* best-effort cleanup */ }
@@ -165,6 +166,25 @@ async function readPdfOutline(parser) {
     // An outline is a bonus: a malformed one costs nothing but the entries read so far.
   }
   return out;
+}
+
+/**
+ * The title the PDF's document information gives (/Title), trimmed; '' when
+ * it has none or the API is not there. A reader shows it in place of a file
+ * name when it is a real one. Never throws.
+ * @param {import('pdf-parse').PDFParse} parser
+ * @returns {Promise<string>}
+ */
+async function readPdfTitle(parser) {
+  try {
+    const doc = /** @type {any} */ (parser).doc;
+    if (!doc || typeof doc.getMetadata !== 'function') return '';
+    const meta = await doc.getMetadata();
+    const title = meta && meta.info && meta.info.Title;
+    return typeof title === 'string' ? title.replace(/\s+/g, ' ').trim() : '';
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -701,7 +721,7 @@ async function extractText(filePath) {
   switch (ext) {
     case '.pdf': {
       const result = await extractPdf(buffer, filePath);
-      return { text: result.text, format: 'pdf', metadata: { pageCount: result.pageCount }, pageTexts: result.pageTexts, outline: result.outline };
+      return { text: result.text, format: 'pdf', metadata: { pageCount: result.pageCount, title: result.title }, pageTexts: result.pageTexts, outline: result.outline };
     }
 
     case '.xlsx':
