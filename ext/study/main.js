@@ -3419,6 +3419,13 @@ const ST_TEMP_GENERATE = 0.3;
 const ST_TEMP_CHECK = 0;
 const ST_TEMP_RUBRIC = 0.1;
 
+/** Pages either side of a concept's page that its question call reads. */
+const ST_QUESTION_PAGES_AROUND = 2;
+/** The source page a support check reads with the quote, at most (characters). */
+const ST_SUPPORT_PAGE_CHARS = 6000;
+/** The syllabus a prompt carries, at most (characters). */
+const ST_SYLLABUS_CHARS = 6000;
+
 /** Output reserves, in tokens, for the context plan. */
 const ST_MAP_OUTPUT_TOKENS = 2400;
 const ST_QUESTION_OUTPUT_BASE = 400;
@@ -3619,6 +3626,8 @@ function stPlainError(err) {
 
 const ST_CONCEPT_SYSTEM = [
   'You read a passage of study material and list the concepts it actually teaches: the ideas, methods, definitions, results and assumptions a student is expected to know after reading it.',
+  'List what an exam on this material would test: methods and when they apply, their assumptions and weaknesses, how approaches differ, what a result or parameter means, formulas and what drives them. Leave out incidental detail: the numbers of a worked example, historical asides, reviews of other literature, acknowledgements, notation conventions.',
+  'When a syllabus is given, list the concepts it asks a candidate to know first, and skip what it does not cover.',
   'Rules:',
   '- One entry per concept. Between 3 and 15 for a passage of a few pages; fewer when the passage is thin. Never pad, never split one idea into two.',
   '- "title": a short noun phrase naming the concept, as the text names it.',
@@ -3637,6 +3646,9 @@ const ST_CONCEPT_SYSTEM = [
 
 const ST_QUESTION_SYSTEM = [
   'You write questions that test whether a student understands study material: one concept per question, every question anchored to a verbatim quote from the page that settles its answer.',
+  'Write at the level of a professional exam on this material, not a reading check. Ask what a prepared candidate must be able to do: say what a method assumes, when it applies or breaks down, how two methods or parameters differ, which way a change moves an estimate, what a result means, what the terms of a formula are. Never ask about incidental detail: who wrote what, the order of sections, the wording of an example, a number that only appears in an illustration.',
+  'When a syllabus is given, write only on what it asks a candidate to know, at its level.',
+  'Write every stem so it stands on its own without the material in front of the student: never "according to the text", "in the passage", "the author states" or "the paper".',
   'Rules for every question:',
   '- One concept per question. "concept" is the id of the concept it tests, from the list you are given. Write only the formats and counts asked for each concept.',
   '- Never invent a fact. Everything in the stem, the answer and the explanation must be stated or directly implied by the material.',
@@ -3665,10 +3677,10 @@ const ST_QUESTION_SYSTEM = [
 ].join('\n');
 
 const ST_SUPPORT_SYSTEM = [
-  'You check whether a quotation from a text settles the answer to a question. You are given only the quotation, the question and the proposed answer; nothing else counts.',
-  '"settles" is true only when a careful reader who had read the quotation alone, and nothing else, would arrive at exactly that answer.',
-  'It is false when the quotation is about something else, when it supports the answer only with outside knowledge, when it supports a different answer, or when it is too vague to decide.',
-  'Be strict: a quotation that merely mentions the topic does not settle the answer.',
+  'You check whether a quotation from a text settles the answer to a question. You are given the quotation, the page it comes from, the question and the proposed answer; nothing else counts.',
+  '"settles" is true when a careful reader of the quotation, read with its page, would arrive at exactly that answer. A question may ask the reader to apply or interpret what the page says; that is fine when the page supports the answer and no other option.',
+  'It is false when the page is about something else, when the answer needs facts the page does not give, when the page supports a different answer, or when it is too vague to decide.',
+  'Be strict: a page that merely mentions the topic does not settle the answer.',
   'Output only this JSON object, no prose:',
   '{"settles": true, "reason": "one short sentence"}',
 ].join('\n');
@@ -3916,6 +3928,7 @@ async function stBuildConceptMap(material, section, {
         ? 'The material below is a passage the student selected. List the concepts it teaches.'
         : `The material below is pages ${chunk.pageFrom} to ${chunk.pageTo}${section && section.title ? ` of "${section.title}"` : ''}. List the concepts it teaches.`,
       'Every "page" must be a [Page N] marker that appears in the material.',
+      ...stExamContext(material),
       '',
       '--- MATERIAL ---',
       chunk.text,
@@ -4008,12 +4021,27 @@ function stAnswerText(q) {
   }
 }
 
-/** Shown only the quote, the stem and the answer: does the quote settle it? */
-async function stCheckSupport(modelId, q, { material, numCtx } = {}) {
+/**
+ * Prompt lines naming the reading and, when the user gave one, the syllabus
+ * questions are aimed at (study.syllabus); [] when there is neither.
+ */
+function stExamContext(material) {
+  const lines = [];
+  const name = material && material.label ? String(material.label).trim() : '';
+  if (name) lines.push('', `The material is from: ${name}`);
+  const syllabus = String(cfg('syllabus', '') || '').trim().slice(0, ST_SYLLABUS_CHARS);
+  if (syllabus) lines.push('', '--- SYLLABUS ---', syllabus);
+  return lines;
+}
+
+/** Shown the quote, its page, the stem and the answer: does the source settle it? */
+async function stCheckSupport(modelId, q, { material, numCtx, pageText = '' } = {}) {
+  const page = String(pageText || '').trim().slice(0, ST_SUPPORT_PAGE_CHARS);
   const user = [
     'Quotation:',
     String(q.sourceQuote || ''),
     '',
+    ...(page ? ['The page it comes from:', page, ''] : []),
     'Question:',
     String(q.stem || ''),
     '',
@@ -4665,11 +4693,12 @@ async function stGenerateQuestions(material, {
       if (stopWhen && await stopWhen()) break;
       groupsDone += 1;
       const focus = group[0].concept.page || 1;
-      const pageFrom = Math.max(1, focus - 1);
-      const pageTo = Math.min(Math.max(1, text.pageTexts.length), focus + 1);
+      const pageFrom = Math.max(1, focus - ST_QUESTION_PAGES_AROUND);
+      const pageTo = Math.min(Math.max(1, text.pageTexts.length), focus + ST_QUESTION_PAGES_AROUND);
       const askTotal = group.reduce((n, slot) => n + Object.values(slot.need).reduce((m, v) => m + stAskCount(v), 0), 0);
       const outputTokens = ST_QUESTION_OUTPUT_BASE + ST_QUESTION_OUTPUT_PER * askTotal;
-      const rawChars = [pageFrom, focus, pageTo].reduce((n, p) => n + String(text.pageTexts[p - 1] || '').length, 0);
+      let rawChars = 0;
+      for (let p = pageFrom; p <= pageTo; p++) rawChars += String(text.pageTexts[p - 1] || '').length;
       const plan1 = await stPlanFor(model, material, rawChars, outputTokens, numCtx);
       const block = stPageBlock(text.pageTexts, pageFrom, pageTo, plan1.maxChars, focus);
       const conceptLines = group.map((slot) => {
@@ -4680,6 +4709,7 @@ async function stGenerateQuestions(material, {
       const user = [
         'Write questions for the concepts below from the material that follows. For each concept write exactly the formats and counts listed, and nothing for a format that is not listed.',
         `Multiple-choice questions have ${nChoices} options.`,
+        ...stExamContext(material),
         '',
         'Concepts:',
         ...conceptLines,
@@ -4739,7 +4769,7 @@ async function stGenerateQuestions(material, {
         // 2. Support: the quote alone settles the answer (model).
         if (checkSupport) {
           report('check:support', { concept: concept.title });
-          const r = await stCheckSupport(model, q, { material, numCtx });
+          const r = await stCheckSupport(model, q, { material, numCtx, pageText: text.pageTexts[sourcePage - 1] });
           if (!r.settles) { dropped.support += 1; continue; }
           checks.support = true;
         }

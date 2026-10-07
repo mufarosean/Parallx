@@ -478,7 +478,7 @@ function makeEnv(): Env {
       return JSON.stringify({ questions: out });
     }
     if (kind === 'support') {
-      const quote = (/Quotation:\n([\s\S]*?)\n\nQuestion:/.exec(user) || [])[1] || '';
+      const quote = (/Quotation:\n([\s\S]*?)\n\n(?:The page it comes from:|Question:)/.exec(user) || [])[1] || '';
       return JSON.stringify({ settles: quote.trim() !== OFF_TOPIC_QUOTE, reason: 'Read alone.' });
     }
     if (kind === 'distractor') {

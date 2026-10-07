@@ -106,6 +106,19 @@ describe('the manifest settings bridge — one store, both readers', () => {
     expect(() => registerManifestConfiguration(registry, MANIFEST, config)).not.toThrow();
   });
 
+  it('a string with editPresentation multilineText is edited in a text area', async () => {
+    const bare = new SettingsRegistryService(memStorage(), memStorage());
+    await bare.initialize();
+    registerManifestConfiguration(bare, { id: 't.m', contributes: { configuration: [{ properties: {
+      't.notes': { type: 'string', default: '', description: 'Notes.', editPresentation: 'multilineText', rows: 8 },
+      't.key': { type: 'string', default: '', description: 'A key.', editPresentation: 'multilineText', secret: true },
+    } }] } });
+    expect(bare.getSchema('t.notes')).toMatchObject({ type: 'multiline', rows: 8 });
+    await bare.setValue('t.notes', 'line one\nline two');
+    expect(bare.getValue('t.notes')).toBe('line one\nline two');
+    expect(bare.getSchema('t.key')!.type).toBe('string');
+  });
+
   it('works without the config bridge (legacy callers unchanged)', async () => {
     const bare = new SettingsRegistryService(memStorage(), memStorage());
     await bare.initialize();

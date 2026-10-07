@@ -35,6 +35,10 @@ interface ManifestConfigProperty {
   secret?: boolean;
   /** The name shown in Settings (Title Case); derived from the key when absent. */
   label?: string;
+  /** "multilineText" (VS Code's name): a string edited in a text area. */
+  editPresentation?: string;
+  /** Text-area rows for a multiline string. */
+  rows?: number;
 }
 
 interface ManifestLike {
@@ -111,7 +115,8 @@ export function registerManifestConfiguration(
     const category = section.title || manifest.name || manifest.id;
     for (const [key, prop] of Object.entries(section.properties ?? {})) {
       if (registry.getSchema(key)) continue;
-      const type = mapType(prop.type, Array.isArray(prop.enum) && prop.enum.length > 0);
+      const mapped = mapType(prop.type, Array.isArray(prop.enum) && prop.enum.length > 0);
+      const type: SettingType | null = mapped === "string" && prop.editPresentation === "multilineText" && !prop.secret ? "multiline" : mapped;
       if (!type) {
         console.warn(`[manifestSettings] "${manifest.id}" config "${key}": unsupported type "${prop.type}" — skipped.`);
         continue;
@@ -127,6 +132,7 @@ export function registerManifestConfiguration(
         ...(type === 'enum' ? { enumValues: prop.enum } : {}),
         ...(prop.minimum !== undefined ? { min: prop.minimum } : {}),
         ...(prop.maximum !== undefined ? { max: prop.maximum } : {}),
+        ...(type === "multiline" && prop.rows ? { rows: prop.rows } : {}),
         ...(prop.secret && type === 'string' ? { secret: true, scope: 'user' as const } : {}),
       };
       try {
