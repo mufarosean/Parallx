@@ -1,42 +1,43 @@
-# Study Modes: research brief
+# Study: research brief and design
 
-Research for a new extension that turns an open PDF (or part of one) into a
-quick review session: multiple-choice practice, typed-answer tests, and a
-hand-off of what you missed to Flashcards. Written 2026-10-07 from Mufaro's
-ask after seeing Notability's Learn feature again.
+A new extension that turns dense study material (a PDF, a chapter, a
+selection, or a question bank you already own) into review that is faster
+than rereading and more honest than self-grading: multiple-choice practice,
+typed and essay tests, calculation questions with checked answers, and a
+hand-off of only what you missed to Flashcards. Written 2026-10-07 from
+Mufaro's ask after seeing Notability's Learn feature again; revised the same
+day after his bar was set.
 
-The ask, in his words: Notability lets you open a doc and go into Learn,
-Memorize or Test mode. Memorize is flashcards. The multiple-choice questions
-are a quick way to review a section instead of rereading it. This could cut
-how many flashcards he has to grind through: review a section fast by
-multiple choice, and memorize only the few things that need it. Multiple
-choice should be switchable off so he has to type answers. It would likely
-be a new extension built on top of the PDF viewer.
+The bar, in his words: the material is dense actuarial study text, so ten
+questions is not enough. Every question must be sourced so nothing is made
+up. The essay questions he has already pulled from past exams and from
+Rising Fellow must be part of it. No concessions: if time goes into this it
+has to be top tier, better than Notability and better than NotebookLM.
 
-How this was researched: web search plus the pages the container could
-reach. Notability's own blog and support site, Apple's App Store pages and
-Google's NotebookLM pages are blocked from this container, so their details
-below come from search excerpts of those pages and should be checked in the
-app before anything is copied exactly. The one first-party page that could
-be read in full is Anthropic's customer case study on Notability Learn.
+How this was researched: web search plus the pages this container could
+reach. Notability's blog and support site, Apple's App Store pages and
+Google's NotebookLM pages are blocked here, so their details come from
+search excerpts of those pages and should be checked in the app before
+anything is copied exactly. The one first-party page read in full is
+Anthropic's customer case study on Notability Learn.
 
 ## 1. How Notability Learn works
 
 **Entry.** Open any note or PDF, tap the sparkle icon top right. Learn
-first produces a summary of the material (copyable into the note), then
-offers the study modes. The material has to be at least 250 words and at
-most about 20,000 words. A page range can be chosen so the rest of the
-document is left out. Learn is a Plus and Pro subscriber feature. Sources
-it works from: handwriting, typed text, PDFs, and audio recordings.
+writes a summary first (copyable into the note), then offers the study
+modes. The material must be at least 250 words and at most about 20,000
+words. A page range can be chosen so the rest of the document is left out.
+Plus and Pro subscribers only. Sources: handwriting, typed text, PDFs and
+audio recordings.
 
 **Three modes, one picker.** The picker reads "Memorize with flashcards,
 Practice with questions, or Mixed-method test."
 
 | Mode | What it is |
 | --- | --- |
-| Memorize | AI-generated flashcards from the material. Since the 2026 back-to-school release every card is rated Again, Hard, Good or Easy and spaced repetition brings weak cards back sooner. Decks can also be imported from Anki (.apkg, .txt) or CSV; import is cloud-only. |
-| Practice | A multiple-choice quiz, about 10 questions per run. Right or wrong is shown as you go. A wrong answer can be retried immediately, "reinforcing the correct answer right then and there." An "Explain this" button at the bottom left breaks down the correct answer. A "Final Score!" screen ends the run with Retry and Give Feedback. Scores are tracked across retakes of the same quiz. |
-| Test | Mixed formats that make you type: fill-in-the-blank (also by Apple Pencil), multiple choice, and the newer true-or-false and mix-and-match (tap or drag terms onto definitions, correct pairs turn green). A "Show only Fill in the Blanks" option forces typed answers. |
+| Memorize | AI-generated flashcards from the material. Since the 2026 back-to-school release every card is rated Again, Hard, Good or Easy and spaced repetition brings weak cards back sooner. Decks import from Anki (.apkg, .txt) or CSV; import is cloud-only. |
+| Practice | A multiple-choice quiz, about 10 questions per run. Right or wrong shows as you go. A wrong answer can be retried immediately. "Explain this" breaks down the correct answer. A "Final Score!" screen ends the run with Retry and Give Feedback. Scores are tracked across retakes. |
+| Test | Mixed formats that make you type: fill-in-the-blank (keyboard or Apple Pencil), multiple choice, and the newer true-or-false and mix-and-match (tap or drag terms onto definitions). A "Show only Fill in the Blanks" option forces typed answers. |
 
 "Auto Study" chains the three into one flow: multiple choice, then
 flashcards, then fill-in-the-blanks.
@@ -45,224 +46,312 @@ flashcards, then fill-in-the-blanks.
 
 - Claude writes the questions and the "Explain this" explanations. Haiku is
   the default model; Sonnet serves Pro subscribers' quizzes.
-- Scale: 220 million quiz questions answered in a year, about 600,000 a
-  day. 273,000 students answered study questions in April 2026.
+- 220 million quiz questions answered in a year, about 600,000 a day.
 - Quality is measured by the thumbs up or down on each question. Flagged
   questions fell from 33 per 10,000 to about 18 after a model upgrade.
   Internal evaluators run on every release.
-- Learn users spend 90% more time in the app and 85% return weekly, against
-  58% without it.
+- Learn users spend 90% more time in the app; 85% return weekly against 58%.
 - The first version shipped in two months.
 
-The two design facts worth copying: a question is a disposable, cheap
-artifact that is regenerated freely, and the one quality signal that
-matters is the user flagging a bad question.
+**What it does not do.** No citation from a question back to the passage.
+No coverage: ten questions per run, however long the material. No control
+over question type beyond the mode. No numeric or calculation questions. No
+way to bring in your own exam questions. Nothing is local: the material
+goes to the cloud.
 
 ## 2. How NotebookLM does it
 
 NotebookLM added Flashcards and Quizzes to its Studio pane in September
 2025, mobile in early 2026.
 
-- **Generation** is one click per type. A pencil icon opens the options:
-  number of items (fewer, standard, more), difficulty (easy, medium, hard)
-  and a free-text prompt to narrow the topic. A quiz is typically 10 to 15
-  four-option multiple-choice questions across all sources in the notebook.
-- **During a quiz** each answer is marked right or wrong at once with a
-  short explanation. An Explain button sends the question to the main
-  chat, where the answer comes back with citations to the exact source
-  passages, like any other NotebookLM answer.
-- **After a quiz** a results screen shows the score with Review and Retake.
-  A 2026 update added a summary of which topics the set covered, which you
-  got right and which you struggled with, and the option to generate a
-  study guide or a new flashcard set from the questions you missed.
-- Quizzes can be shared by email. Flashcards are plain two-sided cards
-  with no scheduling.
+- One click per type. A pencil icon opens the options: number of items
+  (fewer, standard, more), difficulty (easy, medium, hard) and a free-text
+  prompt to narrow the topic. A quiz is typically 10 to 15 four-option
+  multiple-choice questions across all sources in the notebook.
+- Each answer is marked at once with a short explanation. Explain sends the
+  question to the main chat, where the answer comes back with citations to
+  the source passages.
+- A results screen shows the score with Review and Retake. A 2026 update
+  added a summary of which topics the set covered, which you got right and
+  which you struggled with, and the option to generate a study guide or a
+  new flashcard set from the questions you missed.
+- Quizzes can be shared by email. Flashcards are plain two-sided cards.
 
-The idea to copy from NotebookLM is the citation: every question knows the
-passage it came from, so "explain" and "show me where" are one click.
+**What it does not do.** Citations arrive only when you ask Explain; the
+question itself is not verified against the text. "More" is still a dozen
+or two questions. Multiple choice only; no typed, essay or calculation
+answers. No scheduling, no mastery across sessions, no own question banks.
 
 ## 3. The neighbours
 
-- **Quizlet Learn** is the oldest version of this loop. It mixes flashcards,
-  multiple choice and written questions, and moves you from multiple choice
-  to written as you get terms right ("guidance fading"). It tracks the terms
-  you miss and drills them until you know them.
+- **Quizlet Learn** mixes flashcards, multiple choice and written questions
+  and moves you from multiple choice to written as you get terms right
+  ("guidance fading"). It tracks the terms you miss and drills them.
 - **Goodnotes** has Study Sets (AI flashcards from handwriting) with Smart
-  Learn adapting to per-card progress. No multiple-choice from PDFs found.
+  Learn adapting to per-card progress. Nothing on multiple choice from PDFs.
 
 ## 4. What the learning research says
 
-- Retrieval practice of any kind (short answer, multiple choice, free
-  recall) beats rereading for retention. Multiple choice is at least as
-  effective as recall at producing the testing effect.
-- Little and Bjork (2012, UCLA): multiple choice with **competitive**
-  alternatives, meaning wrong options that are plausible enough that you
-  have to recall why they are wrong, improves later recall of the wrong
-  options' own facts too. Cued recall does not do this. So a well-built
-  multiple-choice question is a review of several facts, not one.
+- Retrieval practice of any kind beats rereading for retention. Multiple
+  choice is at least as effective as recall at producing the testing effect.
+- Little and Bjork (UCLA): multiple choice with **competitive** alternatives,
+  wrong options plausible enough that you must recall why they are wrong,
+  improves later recall of the wrong options' own facts too. Cued recall
+  does not. A well-built multiple-choice question reviews several facts.
 - The weakness of machine-written questions is the distractors. In one
-  audit of LLM-generated items, 57% had at least one implausible
-  distractor; ambiguous items with more than one defensible answer were the
-  other common flaw. The fixes that work: ask for 2 or 3 distractors that
-  are semantically close to the answer and the same length, forbid "all of
-  the above" and absolute terms, let the model reason before writing, and
-  run a check pass that shows the model each distractor alone with the stem
-  and rejects the item if any distractor could be correct.
-- Typed answers remain the honest test. Recognising a right answer you
-  could not have produced is the main way self-grading overstates what you
-  know, which is why Flashcards already grades typed answers against a
-  rubric.
+  audit of LLM-generated items, 57% had at least one implausible distractor;
+  ambiguous items with more than one defensible answer were the other common
+  flaw. The fixes that work: distractors semantically close to the answer and
+  the same length, no "all of the above", no absolute terms, reasoning
+  before writing, and a check pass that shows the model each distractor
+  alone with the stem and rejects the item if any could be correct.
+- Typed answers remain the honest test. Recognising a right answer you could
+  not have produced is the main way self-grading overstates what you know,
+  which is why Flashcards already grades typed answers against a rubric.
 
-Taken together: multiple choice is the right tool for fast coverage of a
-section, typed answers for the things that must be produced on an exam, and
-the two should feed each other.
+## 5. What Parallx has today
 
-## 5. What Parallx has today, and the gap
+- **Flashcards** (`ext/flashcards`): SM-2 scheduling, Again/Hard/Good/Easy,
+  Anki import, AI card generation from canvas pages, PDFs and photos with
+  per-page attribution (M98), typed answers graded against a rubric with
+  hit/partial/miss points (M102), essay-practice cards that take typed
+  answers by default, deck exam dates with pacing, a dashboard widget, chat
+  tools, `parallx://flashcards/...` links.
+- **Worksheets' Problem Bank** (`src/built-in/worksheet`, docs/PROBLEM_BANK.md):
+  the Exam 7 workbook imported sheet for sheet. Per the last handoff the
+  bank holds rf 221, cas 110, exam 92 and custom 136 problems across 15
+  papers, each with paper, source (Rising Fellow, CAS, custom, generated),
+  kind (quantitative, qualitative, essay), the vendor's quadrant, ratings
+  and attempts. The 14 Rising Fellow essay sheets (one per paper) are in the
+  bank as kind `essay`, kept out of the campaign draw; the workbook's
+  Shapland Q&A and Flashcards sheets exist as hidden sheets. Quizzes there
+  are named, saved sessions with a timer, marks and stars.
+- **The PDF pane**: highlights, Ask AI About Selection, Send to Chat,
+  capture to Canvas, selection actions from running tools, and
+  `api.editors.openFileEditor(uri, { reveal: { page, quote } })` to land on
+  a page with a passage highlighted.
+- **Extraction**: `parallxElectron.document.extractText` returns whole text
+  and `pageTexts` per page. Dense actuarial PDFs extract formulas as
+  garbage; Flashcards carries a standing instruction to reconstruct them.
+- **Python**: a per-workspace environment with `python:runScript`, so a
+  calculation can be executed, not just asserted.
+- **Nothing does Practice or Test on reading material**, and nothing puts
+  the essay bank, the reading, and the cards into one loop. Every card
+  generated today goes into the scheduled queue whether or not the fact was
+  already known.
 
-- **Flashcards** (`ext/flashcards`, 12,000 lines) does Memorize well: SM-2
-  scheduling, Again/Hard/Good/Easy, Anki import, AI card generation from
-  canvas pages, PDFs and photos with per-page attribution, typed answers
-  graded against a rubric (M102), deck exam dates with pacing, a dashboard
-  widget, chat tools, and `parallx://flashcards/...` links.
-- **The PDF pane** (`src/editor/panes/pdfEditorPane.ts`) has highlights,
-  Ask AI About Selection, Send to Chat, capture to Canvas, and lists the
-  selection actions running tools register (that is how Flashcards'
-  "Create Flashcard…" appears). It can be opened to a page and a quoted
-  passage through `api.editors.openFileEditor(uri, { reveal: { page, quote } })`.
-- **Extraction**: `parallxElectron.document.extractText` returns the whole
-  text and `pageTexts` per page, so a question can carry its page.
-- **Nothing does Practice or Test.** There is no way to open a chapter and
-  be asked ten questions about it, and no way to find out which few things
-  in a chapter you actually need cards for. Every card generated today goes
-  into the scheduled queue whether or not the fact was already known.
+## 6. The bar
 
-## 6. Proposal: a Study extension
+Study is better than both products when every row below is true.
 
-Working name **Study** (`ext/study`). A new extension rather than a mode
-inside Flashcards, for three reasons: it is a different job (ten minutes on
-a section now, versus a scheduled memory system), it must work with
-Flashcards turned off, and Flashcards should stop growing. The hand-off
-between them goes through a generic seam, the same way Worksheets offers
-"Review Due Flashcards" only while the command exists.
+| | Notability | NotebookLM | Study |
+| --- | --- | --- | --- |
+| Questions per material | ~10 per run | 10 to 20 | As many as the material needs: a bank that covers every concept, drawn from in sessions of any size |
+| Sourcing | None shown | Citation on request | Every question carries a verbatim anchor, checked by string match against the page text before it is shown; no anchor, no question |
+| Answer formats | MC, fill-in, matching, true/false | MC only | MC, short typed, essay with point values, numeric with tolerance, formula |
+| Grading | Right/wrong | Right/wrong | MC exact; typed against a rubric with hit/partial/miss; essay against examiner-style points; numeric against an executed solution |
+| Own questions | Import flashcards | None | Past exam and Rising Fellow questions as first-class items, with the generated ones |
+| Coverage | None | Topics covered summary | Concept map per document; mastery per concept; the weak list drives the next session |
+| Memory | Flashcards with SRS | None | Missed items only go to Flashcards; concept mastery feeds back |
+| Exam realism | None | None | Timed mock exams weighted by points, mixed formats, interleaved papers |
+| Privacy | Cloud | Cloud | Local models, local SQLite, nothing leaves the machine |
+| Quality loop | Thumbs up/down | None | Thumbs down hides and logs; edit any question; regenerate; checks run before display |
 
-### The loop
+## 7. Design
 
-1. Open a PDF. Choose **Study This Document…** from the pane, or select a
-   passage and choose **Quiz This Selection**.
-2. Pick the scope: whole document, a page range, an outline chapter, or the
-   selection. Pick the mode and the answer format.
-3. Answer. Each question is marked at once. Wrong answers get a retry, an
-   explanation grounded in the source passage, and a **Show Source** that
-   jumps the PDF to the page and highlights the passage.
-4. The results screen gives the score, the list of questions, which ones
-   you missed, and **Send Missed to Flashcards** (shown only while
-   Flashcards is on). Only what you got wrong becomes cards. That is the
-   point of the whole thing.
+Working name **Study** (`ext/study`). A new extension rather than a mode in
+Flashcards or Worksheets: it is its own job (review and testing), it must
+run with either of them off, and both are large enough. It talks to them
+only through generic seams, the way Worksheets offers "Review Due
+Flashcards" only while the command exists.
 
-### Modes
+### 7.1 Material and the concept map
+
+A **material** is anything Study can read: a PDF (whole, page range,
+outline chapter or selection), a canvas page, or an imported question file.
+On first use of a PDF, Study builds a **concept map** for the scope: one
+pass per page group extracts the concepts the text actually teaches, each
+with its page and anchor quote, grouped under the document's outline
+headings. The map is the unit of coverage and mastery: every question
+belongs to a concept, every result lands on one.
+
+Scope is never limited by length. A 400-page study manual is chunked by
+page; generation runs per chunk with a progress bar and can be stopped and
+resumed; the bank grows until every concept has questions. The settings say
+how many questions per concept are enough (default: until two of each
+format exist), never a per-document total.
+
+### 7.2 Sourcing, enforced
+
+Every generated question stores `sourcePage`, `sourceQuote` and
+`conceptId`. Before a question is kept:
+
+1. **Anchor check (mechanical).** The quote must appear in the page's
+   extracted text after whitespace and ligature normalisation, or match it
+   at 0.9 similarity when extraction mangled it. Fails: dropped, counted.
+2. **Support check (model).** Shown only the quote and the question, does
+   the quote settle the answer? A "no" drops the question. This catches a
+   real quote attached to an invented claim.
+3. **Distractor check (model).** Each wrong option alone with the stem. If
+   any could be defended as correct, dropped.
+4. **Numeric check (executed).** A calculation question ships with the
+   solution as a short Python function and the inputs; Study runs it through
+   the Python bridge and keeps the question only if the stated answer
+   matches the executed one. No bridge, no numeric questions, said plainly.
+
+Drop rates are shown per generation run, because they are the quality
+signal before any user sees a question. Over-generation covers the drops.
+
+### 7.3 Question formats
+
+| Format | Answer | Grading |
+| --- | --- | --- |
+| Multiple choice | One of four or five | Exact; competitive distractors required by prompt and check |
+| Short typed | One or two sentences | Rubric of points, hit/partial/miss, the Flashcards M102 grader |
+| Essay | A written answer with a point value in quarter steps, as on the CAS exams | Examiner-style rubric: what a full-credit answer must state, what earns partial credit, the common mistakes; score out of the points |
+| Numeric | A number with units | Tolerance set per question; the executed solution shown after |
+| Formula | A formula in LaTeX or plain text | Normalised comparison first, model judgement on mismatch (Flashcards' formula path) |
+| Fill-in-the-blank | A term | Exact or alias match |
+
+True-or-false and matching are not built: they test recognition at its
+weakest and the formats above cover their ground.
+
+**Answer format is a session setting**, not a mode: Choose, Type, or Mixed.
+Mixed starts each concept on multiple choice and switches it to typed once
+it has been answered right, the Quizlet fade. Essay and numeric items are
+always answered in their own format.
+
+### 7.4 Own question banks
+
+Questions Mufaro already has are items with a `source` of `exam`,
+`rising-fellow` or `imported`, beside `generated`.
+
+- **From Worksheets' Problem Bank.** Worksheets registers a generic
+  **question provider** (a command the core defines the shape of, like the
+  planner's day-load seam) exposing its essay sheets and any qualitative
+  problem as question text, model answer, paper, source and points. Study
+  lists every provider it finds; none is named in code. The quantitative
+  sheets stay in Worksheets, where the sheet is the point; Study links to
+  them as "work this in Worksheets" items inside a mock exam.
+- **From files.** Markdown, CSV or JSON with question, answer, points,
+  paper, year and source. Past CAS questions with their examiner's report
+  answers import this way; the report's sample answer becomes the rubric
+  and its "common mistakes" become the contradiction list.
+- **From Flashcards.** Its essay-practice cards, through the same provider
+  seam, if Flashcards registers one.
+
+Imported items get a concept assignment by the model (confirmable), so a
+past exam question counts toward the same concept as the reading it tests.
+
+### 7.5 Modes
 
 | Mode | What it does |
 | --- | --- |
-| Learn | A summary of the scope with the key points, each cited to a page. Read it, then go on to Practice. (Optional for v1: Chat already summarises; include only if the one-screen format earns it.) |
-| Practice | Multiple choice, four options, ten questions by default. Instant marking, retry, explain, show source. |
-| Test | The same questions with the answer format set to Type: a short typed answer graded against a rubric the way Flashcards grades its typed cards. Score and per-point feedback (hit, partial, miss). |
+| Practice | Work a scope until it is clean: every concept answered right once in the chosen format. Instant marking, retry, Explain (grounded in the anchor, never free text), Show Source (opens the PDF on the page with the quote highlighted). Sized by scope, by time, or by count, never capped. |
+| Test | The same bank in Type format, no retry, score at the end with per-point feedback. |
+| Mock Exam | A timed paper: points target, time limit, format mix and paper mix chosen or drawn from an exam profile (Exam 7: the point weights per paper, the calculation versus essay split). Interleaves papers. Quantitative items open in Worksheets and report back when rated. Results by paper and concept. |
+| Weak Spots | A session drawn from the concepts with the lowest mastery across the whole workspace, any material. |
+| Learn | A one-screen summary of the scope, every line cited to a page. Optional; Chat can do this, so it ships only if the citations earn it. |
 | Memorize | Not built here. Flashcards does it; Study feeds it. |
 
-**Answer format** is a session setting, not a mode: Choose (multiple
-choice), Type, or Mixed (start with multiple choice, switch a question to
-Type once it has been answered right, the Quizlet fade). The user asked for
-exactly this switch. Fill-in-the-blank, true-or-false and matching are not
-in v1; a four-option question and a typed answer cover the two things that
-matter.
+### 7.6 Mastery and scheduling
 
-### Questions
+Mastery is per concept: a decayed score over the last answers in each
+format, typed outweighing multiple choice. A concept is **weak** below a
+threshold, **clean** above it, **stale** when not answered in N days. Study
+schedules concepts, not cards: a chapter with weak concepts is offered on
+the dashboard and in Weak Spots; a clean chapter is left alone until stale.
+This is lighter than card scheduling on purpose: the cards are Flashcards'
+job.
 
-- Generated through `api.lm` from the scope's `pageTexts`, chunked by page,
-  with the page tagged so every question stores `sourcePage` and a short
-  `sourceQuote` (the Flashcards M98 grounding pattern, reused).
-- Each question: stem, four options, the right one, a one-line explanation,
-  the page, the quote, a difficulty tag, and for Test a rubric of the points
-  a typed answer must contain. One JSON schema, validated on the way in.
-- A check pass before a question is shown: each distractor alone with the
-  stem; if the model would accept it, the question is dropped. Over-generate
-  by a third and keep the ones that pass.
-- Prompt rules carried over from the research: distractors must be
-  plausible and about the answer's length, no "all of the above", no
-  absolute terms, and the Flashcards exception for garbled maths (PDF text
-  extraction shreds formulas; the model reconstructs them).
-- Questions are cached per document, scope and content hash in the
-  extension's SQLite, so a retake is instant and **New Questions** asks for
-  a fresh set. Every answer is logged (question, chosen, right or wrong,
-  time), and a thumbs-down on a question hides it and is the quality
-  signal, as at Notability.
+**Send Missed to Flashcards** appears while Flashcards is on and makes one
+card per missed concept, not per missed question, with the anchor as the
+card's source so it jumps to the page. Mastery written back from Flashcards
+ratings is a later step if the seam exists.
 
-### Settings (manifest `configuration`)
+### 7.7 Quality loop
 
-`study.questionCount` (10), `study.choices` (4), `study.answerFormat`
-(choose, type, mixed), `study.difficulty` (auto, easy, medium, hard),
-`study.aiModel`, `study.aiThinking`, `study.validateDistractors` (on).
+- Thumbs down on any question hides it, logs the reason, and counts
+  against the generation run that made it.
+- Edit any question in place; edits are kept across regeneration.
+- Regenerate a concept's questions, or the whole scope, with the drops
+  reported.
+- A per-model report: drop rate per check, thumbs-down rate, so a local
+  model that cannot write clean distractors is visible, not suffered.
 
-### Surfaces
+### 7.8 Surfaces
 
-- **PDF pane entry.** The toolbar's right cluster and the More Actions menu
-  have no slot for a tool today, and the core must not name Study. The
-  missing contribution point is an `editor/title` menu location (an entry
-  with `when: "activeEditor == 'pdf'"`, shown in the pane's More Actions
-  menu), the same shape as `view/title` and `viewContainer/title` that
-  already exist in `contributes.menus`. Build it generically; Study is its
-  first user. The selection entry needs nothing new: it registers a
-  selection action with the dispatcher, like Flashcards.
-- **Session pane.** An editor pane (`contributes.editors`, type `study`)
-  with the question, the options or the answer box, the feedback strip, and
-  the results screen. Kit components and `--px-*` tokens only.
-- **Sidebar view.** Recent sessions per document, each with score and
-  missed count, so a chapter's history is one glance.
-- **Dashboard widget.** "Weak sections": the scopes with the lowest recent
-  scores, each a door back into a new session on that scope.
-- **Chat tool.** `study_quiz` so the agent can start a session on a
-  document and page range, and `study_results` to report weak sections.
-- **Links.** `parallx://study/session/<id>` so results can be cited.
+- **PDF pane entry.** The toolbar's right cluster and More Actions menu have
+  no slot for a tool, and the core must not name Study. The missing
+  contribution point is an `editor/title` menu location (`when:
+  "activeEditor == 'pdf'"`), the same shape as `view/title`. Build it
+  generically; Study is its first user. The selection entry needs nothing
+  new: a selection action with the dispatcher, like Flashcards.
+- **Session pane**: `contributes.editors` type `study`. Question, answer
+  area, feedback strip with Explain and Show Source, results screen. Kit
+  components and `--px-*` tokens only; maths rendered as in Flashcards.
+- **Sidebar**: materials with coverage and mastery bars, weak concepts,
+  recent sessions, the question banks and providers.
+- **Dashboard widget**: weak concepts across the workspace, each a door into
+  a session.
+- **Chat tools**: `study_session` (start on a document and range),
+  `study_weak_spots`, `study_results`.
+- **Links**: `parallx://study/session/<id>`, `parallx://study/concept/<id>`.
+- **Planner**: the day-load seam Flashcards already feeds gets Study's
+  scheduled weak-spot sessions, if the seam takes a second provider.
 
-### Modularity
+### 7.9 Modularity
 
-- Study names no other tool. Flashcards is reached by checking that
-  `flashcards.newCard` or a generic "add cards" command exists, and the
-  Send Missed button appears only then; turned off, it goes.
+- Study names no other tool. Providers are discovered; Flashcards is a
+  command-exists check; Worksheets is a provider it may or may not find.
 - The PDF pane learns nothing about Study; it gains a generic menu slot.
 - Nothing runs while Study is off: no extraction, no model calls, no cron.
-- Canvas pages are a cheap second source (`canvas.getPageMarkdown`, as
-  Flashcards does) and should follow once the PDF loop works.
+- The rubric grader (`fcNormalizeVerdict`, `fcScoreVerdict`,
+  `fcMapVerdictToRating`, about 150 pure lines) is duplicated into Study
+  with a note, since extensions cannot import each other; a shared module
+  both copy at build is the later step if a third user appears.
 
-### What is shared with Flashcards
+### 7.10 Models
 
-The rubric grading (`fcNormalizeVerdict`, `fcScoreVerdict`,
-`fcMapVerdictToRating`, about 150 pure lines) is the right grader for Test
-mode. Extensions cannot import each other, so either the pure functions are
-duplicated into Study with a note, or they move into a small shared module
-both extensions copy at build. Duplicating is the smaller first step.
+Generation runs on whatever `api.lm` offers, local by default. Local
+models write worse distractors than Claude does, which is why the checks
+run before display and the per-model report exists: the checks are the
+quality floor, the model only raises it. Settings: `study.aiModel`,
+`study.aiThinking`, `study.generationContext` (sized per run, as
+Flashcards does), `study.choices` (4 or 5), `study.questionsPerConcept`,
+`study.answerFormat`, `study.numericTolerance`, `study.checks` (each
+check on or off, all on by default).
 
-## 7. Open decisions for Mufaro
+## 8. Open decisions for Mufaro
 
-1. Name: Study, Quiz, or Practice.
-2. Learn mode in v1, or Practice and Test only.
-3. Four options or five per question.
-4. Should a missed question in Practice also count as a lapse on an
-   existing Flashcards card for the same fact, or stay separate.
-5. Exam 7 use: should the generator be told the exam's style (CAS-style
-   short calculation and essay prompts) through a per-document "exam
-   profile", or stay generic in v1.
+1. Name: Study, Practice, or Review.
+2. Where his pulled past-exam questions live today (files, the workbook's
+   essay sheets, Flashcards cards, elsewhere) so the first import matches.
+3. Whether the examiner's reports are available as PDFs to extract rubrics
+   from, or the rubrics are written by hand or by the model from the sample
+   answers.
+4. The Exam 7 profile: point weights per paper and the calculation versus
+   essay split to drive Mock Exam.
+5. Learn mode in v1 or not.
+6. Four or five options per multiple-choice question.
 
-## 8. Proposed slices (order only)
+## 9. Proposed slices (order only)
 
-1. Core: the `editor/title` menu contribution point, with a test.
-2. Study extension skeleton: manifest, DB, settings, session pane, scope
-   picker reading `pageTexts`.
-3. Question generation with page grounding, schema validation and the
-   distractor check; Practice mode end to end, with Show Source.
-4. Test mode: typed answers, rubric grading, Mixed format.
-5. Results, history, Send Missed to Flashcards through the generic seam.
-6. Sidebar view, dashboard widget, chat tools, links.
-7. Canvas pages as a source.
+1. Core: the `editor/title` menu contribution point and the generic
+   question-provider seam, with tests.
+2. Study skeleton: manifest, DB, settings, session pane, scope picker over
+   `pageTexts` and the outline.
+3. Concept map per scope, resumable generation, the anchor and support
+   checks; Practice in multiple choice with Show Source and Explain.
+4. Distractor check, thumbs down, edit, regenerate, the drop report.
+5. Typed, essay and formula formats with rubric grading; Test mode; Mixed.
+6. Numeric format through the Python bridge.
+7. File import of question banks; Worksheets' provider for essay and
+   qualitative problems.
+8. Mastery per concept, Weak Spots, Send Missed to Flashcards.
+9. Mock Exam with the exam profile and Worksheets hand-off.
+10. Sidebar, dashboard widget, chat tools, links, planner day loads.
+11. Canvas pages as a material.
 
 ## Sources
 
@@ -310,8 +399,8 @@ Neighbours and research
   https://quizlet.com/blog/introducing-the-new-quizlet-learn
 - Goodnotes, Getting Started with Study Sets and Smart Learn:
   https://support.goodnotes.com/hc/en-us/articles/5836056341903-Getting-Started-with-Study-Sets-and-Smart-Learn
-- Bjork Learning and Forgetting Lab, research summary (Little and Bjork on
-  competitive alternatives): https://bjorklab.psych.ucla.edu/research/
+- Bjork Learning and Forgetting Lab, research summary:
+  https://bjorklab.psych.ucla.edu/research/
 - Little and Bjork, The Role of Retrieval in Answering Multiple-Choice
   Questions: https://www.littlelearninglab.com/MCTrivia_JEPLMC.pdf
 - Multiple-choice pretesting potentiates learning of related information,
