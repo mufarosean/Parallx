@@ -3,7 +3,7 @@
 Last updated 2026-10-07. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (about 7830 tests) and `npm run build` pass.
+tsc, the full vitest suite (about 7835 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
@@ -69,6 +69,12 @@ quality with a real local model, because the cloud container has no
 model backend. First local step: run a chapter of a real Exam 7 reading
 with the model you use, and look at the generating screen's drop counts;
 a model that drops most multiple-choice questions shows it there.
+
+Behaviour worth knowing: deleting a bank also deletes the sessions over
+only that bank (as removing a material does); a model or context fixed in
+Settings shows on the setup sheet as the default (Use the Model in
+Settings, As in Settings), and a choice on the sheet overrides it for that
+material. Weak Spots with nothing weak says so and starts nothing.
 
 Open, by decision: the examiner's reports are not in the study workspace
 yet; collect them, then Import Examiner's Report… for each.
