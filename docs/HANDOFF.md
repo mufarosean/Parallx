@@ -3,10 +3,23 @@
 Last updated 2026-10-07. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (about 7835 tests) and `npm run build` pass.
+tsc, the full vitest suite (about 7860 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
+
+## Done on 2026-10-07, cloud: Creations AI, Directions
+
+In a roleplay, Suggest Directions (the clapperboard on the composer) asks
+the model for four short director's notes per character in the scene, one
+each of Deepen, Push, Complicate and Move. A pick becomes "/ai @Name note"
+in the composer; Send writes that character's turn with it. On request
+only, after a talk with the owner about a world and a director for
+roleplay. World beats and a hidden story direction were designed and held
+back on purpose. Details, files and the probe: `docs/CREATIONS_AI.md`,
+Directions. Checks: tsc, the full vitest suite and the build pass; the
+probe passes all 21 of its checks against a stand-in Ollama. Not yet seen
+with a real model.
 
 ## Done on 2026-10-07, cloud: Study, review a reading without rereading it
 
