@@ -862,6 +862,9 @@ api.ui.createPageHeader(root, { title: 'Problem Bank', back: { label: 'Worksheet
 // Choices: THE dropdown, never <select>. Menus: THE context menu.
 const dd = api.ui.createDropdown(row, { items, selected: 'month', ariaLabel: 'Period' });
 api.ui.showContextMenu(anchorEl, [{ label: 'Rename', icon: 'pencil', onSelect: rename }]);
+// Several choices set together (a model, then a size): keepOpen rows leave the
+// menu open and move their check; update() redraws when a choice changes the rest.
+const menu = api.ui.showContextMenu(btn, build(), { anchorPosition: 'above' }); // rows: { label, checked, keepOpen: true, onSelect: () => { pick(); menu.update(build()); } }
 
 // Confirmations: the app's modal, never confirm().
 const ok = await api.window.showConfirmModal({ message: 'Delete this deck?', detail: 'Its 42 cards go too.', confirmLabel: 'Delete', danger: true });

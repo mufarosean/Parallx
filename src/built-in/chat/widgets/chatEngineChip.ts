@@ -159,16 +159,22 @@ export class ChatEngineChip extends Disposable {
     const pop = $('div.parallx-chat-engine-pop');
     pop.setAttribute('role', 'dialog');
     pop.setAttribute('aria-label', 'Model and context');
-    this._renderModels(pop);
-    pop.appendChild($('div.parallx-chat-engine-ctx'));
-    pop.appendChild($('div.parallx-chat-engine-usage'));
-    this._renderContext(pop);
-    this._renderUsage(pop);
+    this._fill(pop);
     document.body.appendChild(pop);
     this._pop = pop;
     this._chip.setAttribute('aria-expanded', 'true');
     layoutPopup(pop, this._chip.getBoundingClientRect(), { position: 'above', gap: 6, margin: 8 });
     this._detach = attachPopupDismiss([pop, this._chip], () => this._close());
+  }
+
+  /** The popover's sections, drawn again after a model pick (its maximum sets the sizes). */
+  private _fill(pop: HTMLElement): void {
+    pop.replaceChildren();
+    this._renderModels(pop);
+    pop.appendChild($('div.parallx-chat-engine-ctx'));
+    pop.appendChild($('div.parallx-chat-engine-usage'));
+    this._renderContext(pop);
+    this._renderUsage(pop);
   }
 
   private _close(): void {
@@ -197,9 +203,17 @@ export class ChatEngineChip extends Disposable {
       const bits = [m.parameterSize, m.contextLength > 0 ? `holds up to ${formatTokens(m.contextLength)}` : ''].filter(Boolean).join(' · ');
       if (bits) text.appendChild($('span.parallx-chat-engine-model-meta', bits));
       row.append(check, text);
+      // The popover stays open: model and size are set together, so the
+      // sizes below are drawn again for the model just picked.
       row.addEventListener('click', () => {
         this._o.onSelectModel(m.id);
-        this._close();
+        // A size the new model cannot hold becomes that model's maximum.
+        const override = this._o.getContextOverride();
+        if (override && m.contextLength > 0 && override > m.contextLength) this._o.onPickContext(m.contextLength);
+        if (this._pop) {
+          this._fill(this._pop);
+          layoutPopup(this._pop, this._chip.getBoundingClientRect(), { position: 'above', gap: 6, margin: 8 });
+        }
         this.refresh();
       });
       sec.appendChild(row);

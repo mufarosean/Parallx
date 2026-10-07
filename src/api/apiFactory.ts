@@ -32,7 +32,7 @@ import { rafThrottle } from '../platform/rafThrottle.js';
 import { createDropdownHandle, IDropdownItem } from '../ui/dropdown.js';
 import { renderMarkdown } from '../ui/renderMarkdown.js';
 import { createAiButton } from '../ui/aiButton.js';
-import { showExtensionContextMenu, type ExtensionMenuAnchor, type IExtensionMenuItem, type IExtensionMenuOptions } from '../ui/contextMenu.js';
+import { showExtensionContextMenu, type ExtensionMenuAnchor, type IExtensionMenuHandle, type IExtensionMenuItem, type IExtensionMenuOptions } from '../ui/contextMenu.js';
 import { createIconElement } from '../ui/iconRegistry.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
@@ -169,7 +169,7 @@ export interface ParallxApiObject {
       readonly ariaLabel?: string;
       readonly title?: string;
     }): HTMLButtonElement;
-    showContextMenu(anchor: ExtensionMenuAnchor, items: ReadonlyArray<IExtensionMenuItem>, options?: IExtensionMenuOptions): { dispose(): void };
+    showContextMenu(anchor: ExtensionMenuAnchor, items: ReadonlyArray<IExtensionMenuItem>, options?: IExtensionMenuOptions): IExtensionMenuHandle;
     createButton(container: HTMLElement | null, options: IKitButtonOptions): HTMLButtonElement;
     createIconButton(container: HTMLElement | null, options: IKitIconButtonOptions): HTMLButtonElement;
     createPageHeader(container: HTMLElement | null, options: IKitPageHeaderOptions): HTMLElement;
@@ -656,7 +656,7 @@ export function createToolApi(
       // The SAME `.context-menu` the workbench uses (keyboard nav, submenu,
       // viewport clamp, click-outside dismiss). Extensions were rolling their
       // own (media-organizer's mo-context-menu predates this).
-      showContextMenu(anchor: ExtensionMenuAnchor, items: ReadonlyArray<IExtensionMenuItem>, options?: IExtensionMenuOptions): { dispose(): void } {
+      showContextMenu(anchor: ExtensionMenuAnchor, items: ReadonlyArray<IExtensionMenuItem>, options?: IExtensionMenuOptions): IExtensionMenuHandle {
         return showExtensionContextMenu(anchor, items, options, (icon, c) => c.appendChild(createIconElement(icon, 14)));
       },
       // THE chrome kit (src/ui/kit.ts): the same buttons, page header, empty
