@@ -180,7 +180,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 .row { display: flex; align-items: center; gap: 12px; }
 .row .lab { width: 92px; flex: none; font-size: 12.5px; color: var(--px-text-muted); }
 .outline { border: 1px solid var(--px-border); border-radius: 6px; background: var(--px-bg-inset); overflow: hidden; }
-.outline .o { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; font-size: 12.5px; color: var(--px-text-secondary); border-top: 1px solid var(--px-divider); }
+.outline .o { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; font-size: 12.5px; color: var(--px-text-secondary); border-top: 1px solid var(--px-divider); }
 .outline .o:first-child { border-top: 0; }
 .outline .o.on { background: var(--px-surface-selected); color: var(--px-text); }
 .outline .o .pp { width: 64px; text-align: right; color: var(--px-text-faint); font-size: 11.5px; font-variant-numeric: tabular-nums; }
@@ -190,6 +190,8 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 .sheetdlg .ft { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px 16px; border-top: 1px solid var(--px-divider); }
 .sheetdlg .ft .st { font-size: 12px; color: var(--px-text-muted); }
 .sheetdlg .ft .st b { color: var(--px-text); font-weight: 600; }
+.sheetdlg .ft .mdl { display: inline-flex; align-items: center; gap: 5px; color: var(--px-text-secondary); cursor: pointer; }
+.sheetdlg .ft .mdl:hover { color: var(--px-text); }
 
 /* ── Generation progress ── */
 .gen { width: 560px; max-width: calc(100% - 32px); margin: 56px auto 0; }
@@ -202,6 +204,8 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 .tally .c .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .tally .c .l { font-size: 11.5px; color: var(--px-text-muted); margin-top: 3px; }
 .tally .c .v.ok { color: var(--px-success); } .tally .c .v.drop { color: var(--px-text-secondary); }
+.genline { display: flex; gap: 20px; font-size: 13px; color: var(--px-text-muted); font-variant-numeric: tabular-nums; }
+.genline b { color: var(--px-text); font-weight: 600; }
 .checks { margin-top: 14px; border: 1px solid var(--px-border); border-radius: 6px; overflow: hidden; }
 .checks .ck { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 12px; font-size: 12.5px; border-top: 1px solid var(--px-divider); color: var(--px-text-secondary); }
 .checks .ck:first-child { border-top: 0; }
@@ -259,20 +263,23 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 .ta textarea:focus { border-color: var(--px-accent); box-shadow: 0 0 0 1px var(--px-accent); background: #fff; }
 .ta .hint { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font: 11.5px var(--px-font-ui); color: var(--card-ink-faint); }
 /* feedback strip under the card */
-.fb { margin-top: 14px; display: grid; grid-template-columns: 1fr auto; gap: 14px 16px; align-items: start; opacity: 0; transform: translateY(6px); transition: opacity var(--px-dur-base) var(--px-ease-out), transform var(--px-dur-base) var(--px-ease-out); pointer-events: none; }
+.fb { margin-top: 14px; display: grid; grid-template-columns: 1fr auto; gap: 12px 16px; align-items: start; opacity: 0; transform: translateY(6px); transition: opacity var(--px-dur-base) var(--px-ease-out), transform var(--px-dur-base) var(--px-ease-out); pointer-events: none; }
 .fb.show { opacity: 1; transform: none; pointer-events: auto; }
 .fb .verdict { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
 .fb .verdict .d { width: 8px; height: 8px; border-radius: 50%; }
 .fb.ok .verdict { color: var(--px-success); } .fb.ok .verdict .d { background: var(--px-success); }
 .fb.no .verdict { color: var(--px-danger); } .fb.no .verdict .d { background: var(--px-danger); }
-.fb .why { grid-column: 1; font-size: 13px; color: var(--px-text-secondary); line-height: 1.5; max-width: 70ch; margin-top: -6px; }
+.fb .why { grid-column: 1 / -1; font-size: 13px; color: var(--px-text-secondary); line-height: 1.5; margin-top: -4px; max-width: 70ch; }
 .fb .why b { color: var(--px-text); font-weight: 600; }
-.fb .acts { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: 8px; align-items: center; }
-.quote { grid-column: 1; display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--px-border); border-left: 2px solid rgb(var(--y)); border-radius: 6px; background: var(--px-bg-elevated); font: 13px/1.5 var(--px-font-card); color: var(--px-text-secondary); max-width: 70ch; }
+.fb .acts { grid-column: 2; grid-row: 1; display: flex; gap: 14px; align-items: center; justify-self: end; }
+.fb .acts .btn { height: auto; padding: 0; border: 0; background: none; color: var(--px-text-muted); font-weight: 500; }
+.fb .acts .btn:hover { color: var(--px-text); background: none; }
+.fb .acts .btn svg { display: none; }
+.quote { grid-column: 1 / -1; display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--px-border); border-left: 2px solid rgb(var(--y)); border-radius: 6px; background: var(--px-bg-elevated); font: 13px/1.5 var(--px-font-card); color: var(--px-text-secondary); max-width: 70ch; }
 .quote .pg { font: 11.5px var(--px-font-ui); color: var(--px-accent-text); white-space: nowrap; align-self: flex-start; margin-top: 2px; cursor: pointer; }
 .quote .pg:hover { text-decoration: underline; }
 /* rubric verdict */
-.rub { grid-column: 1; display: grid; gap: 6px; margin-top: -4px; }
+.rub { grid-column: 1 / -1; display: grid; gap: 6px; margin-top: -4px; }
 .rub .pt { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.45; color: var(--px-text-secondary); opacity: 0; transform: translateX(-4px); animation: pt-in var(--px-dur-base) var(--px-ease-out) forwards; }
 .rub .pt:nth-child(2) { animation-delay: 50ms; } .rub .pt:nth-child(3) { animation-delay: 100ms; } .rub .pt:nth-child(4) { animation-delay: 150ms; } .rub .pt:nth-child(5) { animation-delay: 200ms; }
 @keyframes pt-in { to { opacity: 1; transform: none; } }
@@ -284,7 +291,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 .rub .pt .req { font-size: 10.5px; color: var(--px-text-faint); margin-left: 4px; }
 .fb .grade { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--px-text-muted); }
 .fb .grade b { font-weight: 600; color: var(--px-warning); }
-.model { grid-column: 1; margin-top: 2px; }
+.model { grid-column: 1 / -1; margin-top: 2px; }
 .model summary { font-size: 12px; color: var(--px-text-muted); cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 5px; }
 .model summary::-webkit-details-marker { display: none; }
 .model p { margin: 8px 0 0; font: 13px/1.55 var(--px-font-card); color: var(--px-text-secondary); max-width: 70ch; padding: 10px 12px; border: 1px solid var(--px-border); border-radius: 6px; background: var(--px-bg-elevated); }
@@ -292,6 +299,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 /* controls row */
 .ctl { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 760px; margin-top: 18px; }
 .ctl .sp { flex: 1; }
+.btn .k { margin-left: 6px; opacity: .55; font-size: 11px; font-weight: 400; }
 .ctl .keys { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--px-text-faint); }
 .ctl .keys span { display: inline-flex; align-items: center; gap: 4px; }
 
@@ -402,6 +410,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 <div class="doc">
 <h1>Study</h1>
 <p>Every screen of the Study extension, built from parts the app already has, in the app's own tokens. The Practice, Test and Source frames are live: click an option, type an answer, press Next. Nothing here is a new visual language; the two new parts are the <b>progress strand</b> and the <b>anchor quote</b>, and both are drawn from existing tokens.</p>
+<p>Second pass, 2026-10-07: the owner found the first pass busy, and it was. This pass removes a second row of actions under every card, the key-hint chips, the position counter beside the strand, the page and format from the eyebrow, the hint sentences on the setup sheet, the model row (now a footer line), the number tiles on the generation screen, and two sidebar sections. What is left is what each screen is for.</p>
 <p>The question content is illustrative, written the way real generated questions will read: one concept each, an anchor on the page, competitive wrong options.</p>
 <ul class="toc">
   <li><a href="#principles">0. Principles and shared parts</a></li>
@@ -426,6 +435,9 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
   <li><b>The card is the study stock.</b> The question sits on the Flashcards white serif card, so a card in Study and a card in Flashcards are visibly the same material. Everything around it is the app's dark chrome.</li>
   <li><b>The anchor is always one glance away.</b> Every question carries its page and quote. After an answer the quote is shown; Show Source opens the PDF beside the session at that page with the quote highlighted. A question with no anchor does not exist.</li>
   <li><b>The strand is the progress.</b> Twenty thin segments in the toolbar: faint for unanswered, green for right, red for wrong, accent for the current one. No percentages, no score counter during the session. The score is the strand.</li>
+  <li><b>One primary action, and quiet everything else.</b> Next is the one filled button on a session screen. Show Source, Explain and Retry are text on the verdict line. Skip is a ghost. A screen never shows two button clusters.</li>
+  <li><b>Nothing is said twice.</b> The strand is the count, so there is no "7 of 20". The anchor carries the page, so the eyebrow does not. The card's shape says the format, so no format badge. Keys are a faint glyph on the control that takes them, not a row of chips.</li>
+  <li><b>Disclosure by frequency.</b> What changes every session (scope, mode, answer) is on the sheet. What changes rarely (model, context) is a line in its footer. What explains a control is its tooltip, not a sentence beside it.</li>
   <li><b>Motion is for state, not decoration.</b> Each transition says what changed: a card leaves left and the next arrives from below; feedback rises under the card; rubric points land one after another; the source pane widens from the right. Durations are the motion tokens (120, 180, 260 ms) and nothing else. Reduced motion collapses them all.</li>
   <li><b>The sidebar is the desk.</b> Study has its own activity-bar container: every material with its coverage, the sessions open now, the weak concepts across all of them. Several sessions run at once, one per tab, and several materials can be studied together in one session.</li>
   <li><b>The model is a choice on the sheet.</b> Which local model writes and grades, and how large a window it gets, is picked where the session starts and shown where it runs. Never hidden in Settings alone.</li>
@@ -481,46 +493,35 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 <p>One sheet over the document. Scope on top, with the outline as the chapter list and each chapter's coverage drawn in line. Mode and answer format under it. The footer counts what the choice means before Start is pressed.</p>
 <div class="win">
   <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-file"/></svg>Clark_2003_LDF_Curve_Fitting.pdf<span class="x">×</span></div></div>
-  <div class="ed" style="height:700px">
+  <div class="ed" style="height:560px">
     <div class="pdf">
       <div class="pdf-tb"><div class="cl"><span class="ib"><svg class="i s14"><use href="#i-chev-l"/></svg></span><span class="pill"><span class="num">17</span><span class="faint">/</span><span class="faint num">38</span></span><span class="ib"><svg class="i s14"><use href="#i-chev-r"/></svg></span></div><div class="sp"></div></div>
       <div class="pdf-stage"><div class="sheet" style="opacity:.5"><h4>3. The Cape Cod Method</h4><p>The LDF method requires one parameter for each accident year…</p></div></div>
     </div>
     <div class="scrim"></div>
     <div class="sheetdlg">
-      <div class="hd"><div><h3>Study</h3><div class="sub">Clark_2003_LDF_Curve_Fitting.pdf · 38 pages · 41 concepts known</div></div><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
+      <div class="hd"><div><h3>Study</h3><div class="sub">Clark_2003_LDF_Curve_Fitting.pdf</div></div><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
       <div class="bd">
         <div class="row"><span class="lab">Scope</span><span class="seg"><span>Document</span><span>Pages</span><span class="on">Chapter</span><span>Selection</span><span>Materials</span></span></div>
         <div class="outline">
-          <div class="o"><svg class="i s12"><use href="#i-chev-r"/></svg>1. Introduction<span class="ocov"><i style="width:100%"></i></span><span class="pp">pp. 1–4</span></div>
-          <div class="o"><svg class="i s12"><use href="#i-chev-r"/></svg>2. Growth Curves and the LDF Method<span class="ocov"><i style="width:78%"></i></span><span class="pp">pp. 5–12</span></div>
-          <div class="o on"><svg class="i s12"><use href="#i-check"/></svg>3. The Cape Cod Method<span class="ocov"><i class="w" style="width:31%"></i></span><span class="pp">pp. 13–21</span></div>
-          <div class="o"><svg class="i s12"><use href="#i-chev-r"/></svg>4. Variance of the Reserve Estimate<span class="ocov"><i style="width:0"></i></span><span class="pp">pp. 22–31</span></div>
-          <div class="o"><svg class="i s12"><use href="#i-chev-r"/></svg>5. Residual Diagnostics and Model Checks<span class="ocov"><i style="width:0"></i></span><span class="pp">pp. 32–38</span></div>
+          <div class="o">1. Introduction<span class="ocov"><i style="width:100%"></i></span><span class="pp">1–4</span></div>
+          <div class="o">2. Growth Curves and the LDF Method<span class="ocov"><i style="width:78%"></i></span><span class="pp">5–12</span></div>
+          <div class="o on">3. The Cape Cod Method<span class="ocov"><i class="w" style="width:31%"></i></span><span class="pp">13–21</span></div>
+          <div class="o">4. Variance of the Reserve Estimate<span class="ocov"><i style="width:0"></i></span><span class="pp">22–31</span></div>
+          <div class="o">5. Residual Diagnostics and Model Checks<span class="ocov"><i style="width:0"></i></span><span class="pp">32–38</span></div>
         </div>
-        <div class="row"><span class="lab">Mode</span><span class="seg"><span class="on">Practice</span><span>Test</span><span>Learn</span></span></div>
-        <div class="row"><span class="lab">Answer</span><span class="seg"><span>Choose</span><span>Type</span><span class="on">Mixed</span></span><span class="xs muted">Starts on choices; a concept moves to typing once it has been answered right.</span></div>
-        <div class="row" style="position:relative"><span class="lab">Model</span><span class="dd open" style="min-width:190px"><span class="lbl">qwen3:14b</span><svg class="i s12 chev"><use href="#i-chev-d"/></svg></span><span class="dd" style="min-width:150px"><span class="lbl">Context · Auto</span><svg class="i s12 chev"><use href="#i-chev-d"/></svg></span>
-          <div class="ddlist" style="left:104px;top:32px;min-width:200px">
-            <div class="hd">Local</div>
-            <div class="it on"><span>qwen3:14b</span><small>40k ctx</small></div>
-            <div class="it hov"><span>qwen3:32b</span><small>40k ctx · slower</small></div>
-            <div class="it"><span>deepseek-r1:14b</span><small>64k ctx · thinks</small></div>
-            <div class="sep"></div>
-            <div class="hd">Chat's active model</div>
-            <div class="it"><span>Use the chat's model</span><small>follows Settings</small></div>
-          </div>
-        </div>
-        <div class="xs muted" style="margin:-6px 0 0 104px">Auto sizes the window to the scope and the model's limit: 24k for this chapter. A fixed window caps VRAM on a smaller machine.</div>
+        <div class="row"><span class="lab">Mode</span><span class="seg"><span class="on">Practice</span><span>Test</span><span>Learn</span></span><span class="lab" style="width:auto;margin-left:12px">Answer</span><span class="seg"><span>Choose</span><span>Type</span><span class="on">Mixed</span></span></div>
       </div>
-      <div class="ft"><span class="st"><b>12 concepts</b> in this chapter · 4 clean · 48 questions in the bank · 20 per session</span><span style="display:flex;gap:8px"><span class="btn ghost">Cancel</span><span class="btn primary">Start</span></span></div>
+      <div class="ft" style="position:relative"><span class="st"><span class="mdl"><svg class="i s12"><use href="#i-spark"/></svg>qwen3:14b · Auto context<svg class="i s12"><use href="#i-chev-d"/></svg></span><span class="faint" style="margin:0 8px">·</span>12 concepts, 4 clean</span><span style="display:flex;gap:8px"><span class="btn ghost">Cancel</span><span class="btn primary">Start</span></span>
+      </div>
     </div>
   </div>
-  <div class="frame-caption"><span>The sheet rises 10 px and settles (260 ms, ease-out). The outline rows carry each chapter's coverage: green for clean concepts, accent for concepts with questions not yet answered right, empty for chapters with no bank yet. The model list is the kit dropdown, open.</span></div>
+  <div class="frame-caption"><span>The sheet rises 10 px and settles (260 ms, ease-out). Three decisions: where, how, and in what form. The model is a line in the footer; clicking it opens one list with the models and the context sizes.</span></div>
 </div>
 <ul class="notes">
   <li><b>Pages</b> turns the outline into a from–to pair of page inputs. <b>Selection</b> is only offered when the pane has one. <b>Document</b> runs over every chapter in order. <b>Materials</b> is the multi-document scope: the list becomes the materials picked in the sidebar (section 10).</li>
-  <li><b>Model</b> lists what <code>api.lm</code> offers with each model's context length; the default is the chat's active model, as Flashcards does. <b>Context</b> is Auto (sized per run from the scope's length and the model's limit, the number shown) or a fixed window from the model's own steps. Both are remembered per material, and both are the same two settings the Settings page holds, so a choice here is a choice there.</li>
+  <li><b>The model line</b> in the footer reads the model and the context in use and opens one list with both: every model <code>api.lm</code> offers with its context length, then Auto (sized per run, the number shown) or a fixed window. It is a footer line and not a row because most sessions never touch it. Remembered per material; the same two settings the Settings page holds.</li>
+  <li>No hint text on the sheet. What Mixed means is the segmented control's tooltip, and the footer says what the choice adds up to in five words.</li>
   <li>The footer is honest about what will happen: when the bank is short, it reads "48 questions in the bank, 12 more will be made first" and Start reads <b>Make Questions and Start</b>.</li>
   <li>The chosen mode and format are remembered per material; "Quiz This Selection" reuses them.</li>
 </ul>
@@ -534,22 +535,17 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
       <div class="t">Making questions for chapter 3</div>
       <div class="s">Pages 13 to 21 · 12 concepts · qwen3:14b</div>
       <div class="bar"><i id="genbar"></i></div>
-      <div class="tally">
-        <div class="c"><div class="v num">61</div><div class="l">Written</div></div>
-        <div class="c"><div class="v num ok">48</div><div class="l">Kept</div></div>
-        <div class="c"><div class="v num drop">13</div><div class="l">Dropped</div></div>
-        <div class="c"><div class="v num">9<span class="muted" style="font-size:13px;font-weight:500"> / 12</span></div><div class="l">Concepts covered</div></div>
-      </div>
+      <div class="genline"><span><b>48</b> kept</span><span><b>13</b> dropped</span><span><b>9 of 12</b> concepts</span></div>
       <div class="checks">
-        <div class="ck"><span class="d"></span>Anchor is on the page<span class="xs faint">string match against the extracted text</span><span class="n">4 dropped</span></div>
-        <div class="ck"><span class="d"></span>Anchor settles the answer<span class="xs faint">the quote alone, read back</span><span class="n">2 dropped</span></div>
-        <div class="ck"><span class="d run"></span>No wrong option is defensible<span class="xs faint">each option alone with the stem</span><span class="n">7 dropped</span></div>
-        <div class="ck"><span class="d idle"></span>Numeric answers execute<span class="xs faint">solution run in Python, result compared</span><span class="n">—</span></div>
+        <div class="ck"><span class="d"></span>Anchor is on the page<span class="n">4 dropped</span></div>
+        <div class="ck"><span class="d"></span>Anchor settles the answer<span class="n">2 dropped</span></div>
+        <div class="ck"><span class="d run"></span>No wrong option is defensible<span class="n">7 dropped</span></div>
+        <div class="ck"><span class="d idle"></span>Numeric answers execute<span class="n">—</span></div>
       </div>
       <div class="acts"><span class="btn ghost">Stop</span><span class="btn primary">Start With 20 Ready</span></div>
     </div>
   </div>
-  <div class="frame-caption"><span>The bar moves per concept. The running check pulses; a finished one holds green; one with nothing to do stays grey. Start is offered the moment 20 kept questions exist.</span></div>
+  <div class="frame-caption"><span>The bar moves per concept. One line of numbers; the checks as four rows with their drop counts. Start is offered the moment 20 kept questions exist. What each check does is in the brief, not on the screen.</span></div>
 </div>
 <ul class="notes">
   <li>The drop numbers stay on the material's page in the sidebar as the generation run's record, per model, so a model that cannot write clean distractors is visible rather than suffered.</li>
@@ -557,7 +553,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 </ul>
 
 <h2 id="practice">4. Practice</h2>
-<p>Live. Pick an option with the mouse or <span class="kbd">1</span> to <span class="kbd">4</span>. Wrong first, to see the full feedback; Next advances to the next card.</p>
+<p>Live. Pick an option with the mouse or the keys 1 to 4. Wrong first, to see the full feedback; Next advances to the next card.</p>
 <div class="win" id="practice-win">
   <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3<span class="x">×</span></div><div class="tab"><svg class="i s14"><use href="#i-file"/></svg>Clark_2003_LDF_Curve_Fitting.pdf</div></div>
   <div class="ed" style="height:640px">
@@ -566,16 +562,15 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
         <span class="scope">Clark, ch. 3 <span class="m">· Practice · Mixed</span></span>
         <div class="sp"></div>
         <div class="strand" id="strand"></div>
-        <span class="pos" id="pos">7 of 20</span>
+        
         <span class="ib" title="End Session"><svg class="i s14"><use href="#i-x"/></svg></span>
       </div>
       <div class="sess-main">
         <div class="qwrap" id="qwrap"></div>
         <div class="ctl">
-          <div class="keys"><span><span class="kbd">1</span>–<span class="kbd">4</span> choose</span><span><span class="kbd">↵</span> next</span><span><span class="kbd">S</span> source</span><span><span class="kbd">R</span> retry</span></div>
           <div class="sp"></div>
           <span class="btn ghost" id="skip">Skip</span>
-          <span class="btn primary" id="next" disabled>Next</span>
+          <span class="btn primary" id="next" disabled>Next<span class="k">↵</span></span>
         </div>
       </div>
     </div>
@@ -584,7 +579,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
 </div>
 <ul class="notes">
   <li>The card is the Flashcards stock: white, serif, 20 px bold question. Options are rows on the card with a keycap at the left, divided by the card's own hairline. No radio circles, no letters A to D: the keycap is the letter and the key.</li>
-  <li>The strand segment for the current question is accent; on answer it turns green or red and briefly thickens (spring, 180 ms) so the eye catches the result without a toast.</li>
+  <li>The strand segment for the current question is accent; on answer it turns green or red and briefly thickens (spring, 180 ms) so the eye catches the result without a toast. It is the only progress indicator: no counter, no percentage.</li>
   <li><b>Why</b> is one or two sentences grounded in the anchor, written at generation time, never a live free answer. <b>Explain</b> is the live door: it opens chat with the question, the anchor and the page attached.</li>
   <li><b>Retry</b> only after a wrong answer, once: the wrong row stays marked, the others clear. A retried right answer counts as wrong for mastery and the strand keeps its red.</li>
   <li>Skip puts the question at the end of the session; the strand shows it faint until it comes round.</li>
@@ -600,12 +595,12 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
         <span class="scope">Mack 1994 <span class="m">· Test · Type</span></span>
         <div class="sp"></div>
         <div class="strand" id="strand2"></div>
-        <span class="pos">4 of 20</span>
+        
         <span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span>
       </div>
       <div class="sess-main">
         <div class="qwrap">
-          <div class="eyebrow"><span class="cpt">Chain-ladder assumptions</span><span class="dot"></span><span class="src">Mack 1994 · p. 103</span><span class="fmt"><svg class="i s12"><use href="#i-type"/></svg>Type</span></div>
+          <div class="eyebrow"><span class="cpt">Chain-ladder assumptions</span></div>
           <div class="card">
             <p class="q">State the three assumptions underlying Mack's distribution-free chain-ladder model.</p>
             <div class="ta">
@@ -626,10 +621,9 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
           </div>
         </div>
         <div class="ctl">
-          <div class="keys"><span><span class="kbd">↵</span> check</span><span><span class="kbd">S</span> source</span></div>
           <div class="sp"></div>
           <span class="btn ghost">Skip</span>
-          <span class="btn primary" id="check2">Check</span>
+          <span class="btn primary" id="check2">Check<span class="k">↵</span></span>
         </div>
       </div>
     </div>
@@ -652,12 +646,12 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
         <span class="scope">Clark · past exams <span class="m">· Test · Type</span></span>
         <div class="sp"></div>
         <div class="strand"><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="ok"></i><i class="ok"></i><i class="cur"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <span class="pos">6 of 20</span>
+        
         <span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span>
       </div>
       <div class="sess-main" style="overflow:visible">
         <div class="qwrap">
-          <div class="eyebrow"><span class="cpt">Cape Cod vs LDF</span><span class="dot"></span><span class="src">CAS Exam 7 · 2019 Fall · Q5(b)</span><span class="dot"></span><span class="src">Examiner's report</span><span class="fmt"><svg class="i s12"><use href="#i-type"/></svg>Essay</span></div>
+          <div class="eyebrow"><span class="cpt">CAS Exam 7 · 2019 Fall · Q5(b)</span><span class="dot"></span><span class="src">graded against the examiner's report</span></div>
           <div class="card">
             <p class="q">Briefly describe two reasons Clark prefers the Cape Cod method to the LDF method for estimating reserves, and one situation in which the LDF method would be the better choice.</p>
             <div class="ta">
@@ -677,7 +671,6 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
           </div>
         </div>
         <div class="ctl">
-          <div class="keys"><span><span class="kbd">↵</span> next</span><span><span class="kbd">S</span> report</span></div>
           <div class="sp"></div>
           <span class="btn ghost">Skip</span>
           <span class="btn primary">Next</span>
@@ -699,10 +692,10 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
   <div class="ed" style="height:700px">
     <div class="split" id="split">
       <div class="sess">
-        <div class="sess-tb"><span class="scope">Clark, ch. 3 <span class="m">· Practice</span></span><div class="sp"></div><div class="strand" style="flex-basis:160px"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="pos">7 of 20</span></div>
+        <div class="sess-tb"><span class="scope">Clark, ch. 3 <span class="m">· Practice</span></span><div class="sp"></div><div class="strand" style="flex-basis:160px"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
         <div class="sess-main">
           <div class="qwrap">
-            <div class="eyebrow"><span class="cpt">Parameter variance</span><span class="dot"></span><span class="src">Clark · p. 17</span></div>
+            <div class="eyebrow"><span class="cpt">Parameter variance</span></div>
             <div class="card" style="animation:none">
               <p class="q">In Clark's Cape Cod method, why is the parameter variance generally lower than in the LDF method?</p>
               <div class="opts done">
@@ -719,7 +712,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
               <div class="acts"><span class="btn secondary" id="src-open"><svg class="i s14"><use href="#i-file"/></svg>Show Source</span><span class="btn ghost"><svg class="i s14"><use href="#i-spark"/></svg>Explain</span></div>
             </div>
           </div>
-          <div class="ctl"><div class="keys"><span><span class="kbd">S</span> source</span><span><span class="kbd">Esc</span> close</span></div><div class="sp"></div><span class="btn ghost">Retry</span><span class="btn primary">Next</span></div>
+          <div class="ctl"><div class="sp"></div><span class="btn ghost">Retry</span><span class="btn primary">Next<span class="k">↵</span></span></div>
         </div>
       </div>
       <div class="srcpane">
@@ -751,7 +744,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
   <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3<span class="x">×</span></div></div>
   <div class="ed win-tone" style="height:600px">
     <div class="sess">
-      <div class="sess-tb"><span class="scope">Clark, ch. 3 <span class="m">· Practice · Mixed</span></span><div class="sp"></div><span class="pos">Session 3 · 14 min</span><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
+      <div class="sess-tb"><span class="scope">Clark, ch. 3 <span class="m">· Practice · Mixed</span></span><div class="sp"></div><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
       <div class="sess-main">
         <div class="res">
           <div class="top">
@@ -766,7 +759,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
             <div class="mrow"><div class="c">Truncation point of the growth curve<small>Typed answer missed why truncation is needed for the LDF method</small></div><span class="pg">p. 19</span><span class="st"><i></i>weak</span></div>
             <div class="mrow"><div class="c">Scale factor σ² from the chi-square statistic<small>Chose the wrong denominator</small></div><span class="pg">p. 21</span><span class="st w"><i></i>second miss</span></div>
           </div>
-          <div class="ft"><span class="lhs">Refresh draws the next 20: the 3 weak concepts first, then the rest of the chapter in a new order.</span><span class="btn ghost">Review Answers</span></div>
+          <div class="ft"><span class="lhs">Refresh draws the next 20, weak concepts first.</span><span class="btn ghost">Review Answers</span></div>
         </div>
       </div>
     </div>
@@ -785,7 +778,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
   <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3<span class="x">×</span></div></div>
   <div class="ed win-tone auto" style="padding:8px 24px 24px">
     <div class="learn">
-      <div class="eyebrow"><span class="cpt">Learn</span><span class="dot"></span><span class="src">Clark · chapter 3 · pp. 13–21 · 12 concepts</span></div>
+      <div class="eyebrow"><span class="cpt">Clark · chapter 3</span><span class="dot"></span><span class="src">pp. 13–21 · 12 concepts</span></div>
       <h3>The Cape Cod Method</h3>
       <div class="sub">Each line is one concept, as the text states it. A page opens the PDF beside this.</div>
       <div class="pt"><span><b>Cape Cod fits three parameters</b> for the whole triangle: the two growth-curve parameters ω and θ, and one expected loss ratio applied to each year's on-level premium. The LDF method fits one ultimate per accident year on top of the curve.</span><span class="pg">p. 15</span></div>
@@ -815,6 +808,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
           <div class="it sub"><span class="nm">2. Growth Curves and the LDF Method</span><span class="r">11 / 14</span></div>
           <div class="it sub"><span class="nm">3. The Cape Cod Method</span><span class="r">9 / 12</span></div>
           <div class="it sub"><span class="nm">4. Variance of the Reserve Estimate</span><span class="r faint">no bank</span></div>
+          <div class="it sub"><span class="nm">5. Residual Diagnostics</span><span class="r faint">no bank</span></div>
           <div class="it picked"><span class="ck on"><svg class="i s12"><use href="#i-check"/></svg></span><span class="nm">Mack 1994</span><span class="mini"><i style="width:84%"></i></span></div>
           <div class="it picked"><span class="ck on"><svg class="i s12"><use href="#i-check"/></svg></span><span class="nm">Venter 1998</span><span class="mini"><i class="w" style="width:35%"></i></span></div>
           <div class="it"><span class="ck"></span><span class="nm">Shapland 2016</span><span class="mini"><i class="w" style="width:20%"></i></span></div>
@@ -825,30 +819,22 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
           <div class="it on"><span class="live"></span><span class="nm">Clark, ch. 3 · Practice</span><span class="r">7 / 20</span></div>
           <div class="it"><span class="live"></span><span class="nm">Mack 1994 · Test</span><span class="r">4 / 20</span></div>
           <div class="it"><svg class="i s14"><use href="#i-study"/></svg><span class="nm">Clark + Mack + Venter · Practice</span><span class="r">16/20 · yesterday</span></div>
+          <div class="it"><svg class="i s14"><use href="#i-study"/></svg><span class="nm">Clark, ch. 2 · Test</span><span class="r">18/20 · Mon</span></div>
         </div>
         <div class="sec">
-          <div class="secl">Weak concepts<span class="n">11</span></div>
-          <div class="it"><span class="r weak">●</span><span class="nm">Truncation point of the growth curve</span><span class="r">Clark</span></div>
-          <div class="it"><span class="r weak">●</span><span class="nm">Variance assumption (iii)</span><span class="r">Mack</span></div>
-          <div class="it"><span class="r weak">●</span><span class="nm">Parameter vs process variance (Venter test 2)</span><span class="r">Venter</span></div>
+          <div class="secl" style="color:var(--px-text-faint)"><svg class="i s12"><use href="#i-chev-r"/></svg>Question banks<span class="n">3</span></div>
         </div>
-        <div class="sec">
-          <div class="secl">Question banks<span class="n">3</span></div>
-          <div class="it"><svg class="i s14"><use href="#i-bank"/></svg><span class="nm">CAS Exam 7 · 2014–2024</span><span class="r">212</span></div>
-          <div class="it"><svg class="i s14"><use href="#i-bank"/></svg><span class="nm">Rising Fellow essays</span><span class="r">14 · Worksheets</span></div>
-        </div>
-        <div class="ft"><svg class="i s12"><use href="#i-spark"/></svg><span class="mdl">qwen3:14b · Auto</span><span class="sp"></span><span>2 sessions running</span></div>
       </div>
       <div class="rest">editor</div>
     </div>
   </div>
-  <div class="frame-caption"><span>Select mode on: the icon column becomes checks, picked rows tint, and the bar above the list counts what the pick adds up to. Study Together opens the sheet with Materials as the scope.</span></div>
+  <div class="frame-caption"><span>Two lists: what there is to study, and what is being studied. Select mode on: the icon column becomes checks, picked rows tint, and the bar counts the pick. The banks are a folded section; weak concepts are not a list here, they are what Weak Spots and the widget are for.</span></div>
 </div>
 <ul class="notes">
   <li><b>Materials</b> are every PDF and canvas page Study has read, with chapters under a PDF and coverage at the right. A material is added with + (any document in the workspace) or arrives by itself the first time a session runs on it.</li>
   <li><b>Sessions</b> lists what is open now, each a tab in the editor, with its position; several run at once, one per tab, each with its own strand. Finished sessions follow under them. A session over several materials names them all.</li>
   <li><b>Select mode</b> is the one new control: the check icon in the header. Pick materials, then Study Together. The session interleaves them: no two questions in a row from the same material unless only one is left, and the eyebrow names the material each question comes from.</li>
-  <li>The footer names the model and context in use and how many sessions are running; clicking it opens the model row of the sheet.</li>
+  <li>Nothing in the sidebar is said twice. Coverage is the bar on the material; weak concepts are a count in the pick bar and a session in Weak Spots; the model is on the sheet.</li>
 </ul>
 
 <p style="margin-top:28px">A session over three materials. The eyebrow carries the material; the strand is one strand; Show Source opens whichever PDF the question came from.</p>
@@ -856,10 +842,10 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
   <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark + Mack + Venter<span class="x">×</span></div><div class="tab"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3</div><div class="tab"><svg class="i s14"><use href="#i-study"/></svg>Study · Mack 1994</div></div>
   <div class="ed" style="height:520px">
     <div class="sess">
-      <div class="sess-tb"><span class="scope">Clark + Mack + Venter <span class="m">· Practice · Mixed</span></span><div class="sp"></div><div class="strand"><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="cur"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="pos">9 of 20</span><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
+      <div class="sess-tb"><span class="scope">Clark + Mack + Venter <span class="m">· Practice · Mixed</span></span><div class="sp"></div><div class="strand"><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="cur"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
       <div class="sess-main">
         <div class="qwrap">
-          <div class="eyebrow"><span class="cpt">Venter's test 2: superiority to alternative emergence patterns</span><span class="dot"></span><span class="src">Venter 1998 · p. 812</span><span class="fmt"><svg class="i s12"><use href="#i-choose"/></svg>Choose</span></div>
+          <div class="eyebrow"><span class="cpt">Venter's test 2: superiority to alternative emergence patterns</span></div>
           <div class="card" style="animation:none">
             <p class="q">Under Venter's second test, what does it mean when the fitted factor on the prior cumulative loss is not significantly different from zero?</p>
             <div class="opts">
@@ -870,7 +856,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
             </div>
           </div>
         </div>
-        <div class="ctl"><div class="keys"><span><span class="kbd">1</span>–<span class="kbd">4</span> choose</span><span><span class="kbd">S</span> source</span></div><div class="sp"></div><span class="btn ghost">Skip</span><span class="btn primary" disabled>Next</span></div>
+        <div class="ctl"><div class="sp"></div><span class="btn ghost">Skip</span><span class="btn primary" disabled>Next<span class="k">↵</span></span></div>
       </div>
     </div>
   </div>
@@ -936,10 +922,10 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
   <div class="tabs"><div class="tab on"><svg class="i s14"><use href="#i-study"/></svg>Study · Clark, ch. 3<span class="x">×</span></div></div>
   <div class="ed" style="height:600px">
     <div class="sess">
-      <div class="sess-tb"><span class="scope">Clark, ch. 3 <span class="m">· Practice · Mixed</span></span><div class="sp"></div><div class="strand"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="ok"></i><i class="ok"></i><i class="cur"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="pos">7 of 20</span><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
+      <div class="sess-tb"><span class="scope">Clark, ch. 3 <span class="m">· Practice · Mixed</span></span><div class="sp"></div><div class="strand"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="no"></i><i class="ok"></i><i class="ok"></i><i class="cur"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="ib"><svg class="i s14"><use href="#i-x"/></svg></span></div>
       <div class="sess-main">
         <div class="qwrap">
-          <div class="eyebrow"><span class="cpt">Growth curves</span><span class="dot"></span><span class="src">Clark · p. 8</span><span class="fmt"><svg class="i s12"><use href="#i-choose"/></svg>Choose</span></div>
+          <div class="eyebrow"><span class="cpt">Growth curves</span></div>
           <div class="card" style="animation:none">
             <p class="q">Which property distinguishes the loglogistic growth curve from the Weibull in Clark's framework?</p>
             <div class="opts done">
@@ -955,7 +941,7 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
             <div class="acts"><span class="btn secondary"><svg class="i s14"><use href="#i-file"/></svg>Show Source</span><span class="btn ghost"><svg class="i s14"><use href="#i-spark"/></svg>Explain</span></div>
           </div>
         </div>
-        <div class="ctl"><div class="keys"><span><span class="kbd">↵</span> next</span><span><span class="kbd">S</span> source</span></div><div class="sp"></div><span class="btn ghost">Skip</span><span class="btn primary">Next</span></div>
+        <div class="ctl"><div class="sp"></div><span class="btn ghost">Skip</span><span class="btn primary">Next<span class="k">↵</span></span></div>
       </div>
     </div>
   </div>
@@ -1069,13 +1055,12 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
       else if (i === base.length) s.className = 'cur';
       strand.appendChild(s);
     }
-    document.getElementById('pos').textContent = (base.length + 1) + ' of 20';
   }
   function render(animate) {
     const d = Q[idx];
     answered = false; retried = false; setDis(nextBtn, true);
     qwrap.innerHTML = `
-      <div class="eyebrow"><span class="cpt">${d.concept}</span><span class="dot"></span><span class="src">${d.src}</span><span class="fmt"><svg class="i s12"><use href="#i-choose"/></svg>${d.fmt}</span></div>
+      <div class="eyebrow"><span class="cpt">${d.concept}</span></div>
       <div class="card" ${animate ? '' : 'style="animation:none"'}>
         <p class="q">${d.q}</p>
         <div class="opts">${d.opts.map((o, i) => `<div class="opt" data-i="${i}"><span class="key">${i+1}</span><span>${o}</span><svg class="i mark"><use href="#${i === d.right ? 'i-check' : 'i-x'}"/></svg></div>`).join('')}</div>
@@ -1143,11 +1128,11 @@ table.spec code { font: 11.5px var(--px-font-mono); color: var(--px-accent-text)
   for (let i = 3; i < 20; i++) { const s = document.createElement('i'); if (i === 3) s.className = 'cur'; s2.appendChild(s); }
   const fb2 = document.getElementById('fb2'); const check2 = document.getElementById('check2');
   function showTyped() {
-    fb2.classList.add('no','show'); check2.textContent = 'Next';
+    fb2.classList.add('no','show'); check2.innerHTML = 'Next<span class="k">↵</span>';
     fb2.querySelectorAll('.pt').forEach(p => { p.style.animation = 'none'; void p.offsetWidth; p.style.animation = ''; });
     const seg = s2.children[3]; seg.className = 'no just'; setTimeout(() => seg.classList.remove('just'), 200);
   }
-  function hideTyped() { fb2.classList.remove('no','show'); check2.textContent = 'Check'; s2.children[3].className = 'cur'; }
+  function hideTyped() { fb2.classList.remove('no','show'); check2.innerHTML = 'Check<span class="k">↵</span>'; s2.children[3].className = 'cur'; }
   check2.addEventListener('click', () => fb2.classList.contains('show') ? hideTyped() : showTyped());
   document.getElementById('typed-replay').addEventListener('click', () => { hideTyped(); setTimeout(showTyped, 120); });
 
