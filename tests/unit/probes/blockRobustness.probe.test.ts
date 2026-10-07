@@ -11,7 +11,7 @@
 // table) are NOT in this battery — they need in-app or Playwright
 // verification. Their absence here is a documented gap, not a pass.
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
@@ -36,8 +36,16 @@ import { turnBlockWithSharedStrategy } from '../../../src/built-in/canvas/config
 
 const TestColumn = Column.extend({ content: 'block+' });
 
+// Every editor made here is destroyed after its test: a live ProseMirror DOM
+// observer can schedule a flush that would otherwise fire after jsdom is
+// torn down, which vitest reports as an unhandled error on a loaded machine.
+const liveEditors: Editor[] = [];
+afterEach(() => {
+  for (const ed of liveEditors.splice(0)) { try { ed.destroy(); } catch { /* already gone */ } }
+});
+
 function makeEditor(content: Record<string, any>): Editor {
-  return new Editor({
+  const ed = new Editor({
     element: document.createElement('div'),
     extensions: [
       StarterKit.configure({ dropcursor: false }),
@@ -59,6 +67,8 @@ function makeEditor(content: Record<string, any>): Editor {
     ],
     content,
   });
+  liveEditors.push(ed);
+  return ed;
 }
 
 function p(text: string) { return { type: 'paragraph', content: [{ type: 'text', text }] }; }

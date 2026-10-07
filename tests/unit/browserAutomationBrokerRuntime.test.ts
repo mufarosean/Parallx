@@ -1174,7 +1174,11 @@ describe('erasing what the assistant kept', () => {
     const r = makeHarness({ userData });
     await r.call('setContext', WS);
     expect(await r.call('readArtifact', { id: 'browser:ws1:r1:c1' })).toEqual({ error: 'ARTIFACT_EXPIRED' });
-    for (let i = 0; i < 50 && capturesUnder(ws).length; i++) await new Promise((res) => setTimeout(res, 20));
+    // The captures and the old half-done erase finish separately: wait for
+    // both, by condition rather than by a time budget, so a loaded machine
+    // cannot read the second before it lands.
+    const settled = () => capturesUnder(ws).length === 0 && !fs.existsSync(path.join(ws, 'r0.erase-x2'));
+    for (let i = 0; i < 500 && !settled(); i++) await new Promise((res) => setTimeout(res, 20));
     expect(capturesUnder(ws)).toHaveLength(0);
     expect(fs.existsSync(path.join(ws, 'r0.erase-x2'))).toBe(false);
     expect(fs.readFileSync(path.join(ws, 'r1', 'downloads', 'report.pdf'), 'utf8')).toBe('kept');
