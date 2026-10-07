@@ -2519,9 +2519,13 @@ export class PdfEditorPane extends EditorPane {
         }
       });
 
+      // The viewer hands the find controller its document itself, once the
+      // first page has rendered, and that call resets the controller. Giving
+      // it the document here as well meant a find sent in between (a
+      // citation's quote) was wiped and never highlighted; with the viewer's
+      // one call, an early find waits for the document and then runs.
       this._pdfViewer.setDocument(this._pdfDoc);
       this._linkService.setDocument(this._pdfDoc, null);
-      this._findController.setDocument(this._pdfDoc);
       this._installTestDebugHook();
 
       // Update toolbar page count
