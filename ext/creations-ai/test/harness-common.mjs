@@ -85,15 +85,23 @@ export function createGateway(opts, { mockRespond }) {
         calls.push({ label, role, ms: 0, promptTokens: 0, evalTokens: 0, cached: true });
         return content;
       }
-      const started = Date.now();
+      // One retry after a failed call (Ollama hiccups over hours); a call that
+      // fails twice is recorded with its error, so a harness waiting on it
+      // can see it happened, and thrown.
+      let started = 0;
+      let j;
+      let content = '';
+      for (let attempt = 1; ; attempt++) {
+      try {
+      started = Date.now();
+      content = '';
+      j = undefined;
       const body = { model, messages, stream: !!onText, think: !!think, keep_alive: '10m', options: { num_ctx: opts.numCtx, temperature } };
       if (maxTokens > 0) body.options.num_predict = maxTokens;
       if (Array.isArray(stop) && stop.length) body.options.stop = stop;
       if (json) body.format = 'json';
       const res = await fetch(`${opts.ollama}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error(`Ollama ${res.status}: ${(await res.text()).slice(0, 300)}`);
-      let j;
-      let content = '';
       if (onText) {
         const reader = res.body.getReader();
         const dec = new TextDecoder();
@@ -118,7 +126,19 @@ export function createGateway(opts, { mockRespond }) {
         j = await res.json();
         content = j.message?.content || '';
       }
-      const rec = { label, role, ms: Date.now() - started, promptTokens: j.prompt_eval_count || 0, evalTokens: j.eval_count || 0, firstTokenMs: Math.round((j.load_duration || 0) / 1e6 + (j.prompt_eval_duration || 0) / 1e6) };
+      break;
+      } catch (err) {
+        const why = err?.message || String(err);
+        if (attempt >= 2) {
+          calls.push({ label, role, ms: 0, promptTokens: 0, evalTokens: 0, error: why });
+          console.log(`  [${role}] ${label}: FAILED: ${why}`);
+          throw err;
+        }
+        console.log(`  [${role}] ${label}: retrying after: ${why}`);
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+      }
+      const rec ={ label, role, ms: Date.now() - started, promptTokens: j.prompt_eval_count || 0, evalTokens: j.eval_count || 0, firstTokenMs: Math.round((j.load_duration || 0) / 1e6 + (j.prompt_eval_duration || 0) / 1e6) };
       calls.push(rec);
       cache[role] ??= {};
       cache[role][label] = content;

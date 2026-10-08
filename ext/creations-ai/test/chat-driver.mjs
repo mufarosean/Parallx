@@ -104,12 +104,18 @@ export async function startChatDriver(gw, opts, { tag = 'chat', userName = 'Sam'
         const btn = container.querySelector('.tg-input-send');
         if (!(btn && btn.title === 'Send (Enter)' && !container.querySelector('.tg-msg--streaming'))) { idleSince = 0; return false; }
         if ((await count()) > before) return 'reply';
+        // A finished (or failed) turn call with nothing kept: empty after a few
+        // idle seconds. No call at all after a minute idle: the send was lost.
         const called = gw.calls.filter((c) => c.label.startsWith(`${label} turn`)).length > turnCallsBefore;
-        if (!called) return false;
         idleSince ||= Date.now();
-        return Date.now() - idleSince > 5000 ? 'empty' : false;
+        if (called) return Date.now() - idleSince > 5000 ? 'empty' : false;
+        return Date.now() - idleSince > 60000 ? 'nocall' : false;
       }, 900000, `reply to ${JSON.stringify(String(text).slice(0, 40))}`);
-      if (got === 'empty') d.emptyReplies.push({ label, text });
+      if (got !== 'reply') {
+        const failed = gw.calls.filter((c) => c.label.startsWith(`${label} turn`) && c.error).pop();
+        d.emptyReplies.push({ label, text, why: got === 'nocall' ? 'no request was sent' : failed ? `the call failed: ${failed.error}` : 'the model answered nothing' });
+        console.log(`  [turn] ${label}: no reply kept (${d.emptyReplies.at(-1).why})`);
+      }
       return got === 'reply';
     },
     /** Turns whose model call finished with no reply kept. */
