@@ -92,6 +92,10 @@ export interface WorksheetItem {
   readonly sheetName: string;
   /** The points an exam question carries (the workbook's point sheet); null when unknown. */
   readonly points: number | null;
+  /** The recipe (worked method) the solution follows, '' when none is known (recipes.ts). */
+  readonly recipe: string;
+  /** The paper the recipe belongs to (a paper key); '' when unknown. */
+  readonly recipePaper: string;
 }
 
 export interface WorksheetItemSummary extends Omit<WorksheetItem, 'givensJson' | 'solutionJson' | 'sheetJson'> {
@@ -139,6 +143,8 @@ function rowToItem(row: Record<string, unknown>): WorksheetItem {
     quadrant: Number(row.quadrant ?? 0),
     sheetName: String(row.sheet_name ?? ''),
     points: row.points == null ? null : Number(row.points),
+    recipe: String(row.recipe ?? ''),
+    recipePaper: String(row.recipe_paper ?? ''),
   };
 }
 
@@ -147,6 +153,7 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
     SELECT i.id, i.title, i.question_md, i.solution_notes_md, i.source_uri,
            i.source_label, i.source_page, i.tags, i.created_at,
            i.solution_col, i.work_row, i.solution_row, i.paper, i.source, i.kind, i.quadrant, i.sheet_name, i.points,
+           i.recipe, i.recipe_paper,
            (i.sheet_json != '') AS has_sheet,
            (SELECT COUNT(*) FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1) AS done_count,
            (SELECT a.self_grade FROM ws_attempts a WHERE a.item_id = i.id AND a.completed = 1
@@ -176,6 +183,7 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
       tags: base.tags, createdAt: base.createdAt,
       solutionCol: base.solutionCol, workRow: base.workRow, solutionRow: base.solutionRow, paper: base.paper, source: base.source,
       kind: base.kind, quadrant: base.quadrant, sheetName: base.sheetName, points: base.points,
+      recipe: base.recipe, recipePaper: base.recipePaper,
       attemptState, attemptCount: doneCount,
       seconds: Number(row.seconds ?? 0),
       lastAttemptAt: Number(row.last_at ?? 0),
@@ -232,14 +240,17 @@ export interface CreateItemInput {
   quadrant?: number;
   sheetName?: string;
   points?: number | null;
+  /** The recipe the solution names; omitted = not read yet (filled on activation). */
+  recipe?: string;
+  recipePaper?: string;
 }
 
 export async function createItem(input: CreateItemInput): Promise<number | null> {
   const res = await run(`
     INSERT INTO ws_items (title, question_md, givens_json, solution_json,
       solution_notes_md, source_uri, source_label, source_page, tags, created_at,
-      sheet_json, solution_col, work_row, paper, source, kind, quadrant, sheet_name, solution_row, points)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sheet_json, solution_col, work_row, paper, source, kind, quadrant, sheet_name, solution_row, points, recipe, recipe_paper)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     input.title.trim(),
     input.questionMd ?? '',
@@ -261,6 +272,8 @@ export async function createItem(input: CreateItemInput): Promise<number | null>
     input.sheetName ?? '',
     Number.isInteger(input.solutionRow) ? (input.solutionRow as number) : -1,
     typeof input.points === 'number' && Number.isFinite(input.points) ? input.points : null,
+    input.recipe === undefined ? null : input.recipe.trim(),
+    input.recipe === undefined ? '' : (input.recipePaper ?? ''),
   ]);
   emitChange();
   return res.lastInsertRowid !== undefined ? Number(res.lastInsertRowid) : null;
@@ -269,6 +282,33 @@ export async function createItem(input: CreateItemInput): Promise<number | null>
 /** The points an exam question carries, filled in when a later import of its workbook says. */
 export async function updateItemPoints(id: number, points: number): Promise<void> {
   await run('UPDATE ws_items SET points = ? WHERE id = ? AND points IS NULL', [points, id]);
+}
+
+/** A problem's recipe, set by hand (Set Recipe…); '' clears it. */
+export async function setItemRecipe(id: number, paper: string, name: string): Promise<void> {
+  const clean = name.trim();
+  await run('UPDATE ws_items SET recipe = ?, recipe_paper = ? WHERE id = ?', [clean, clean ? paper : '', id]);
+  emitChange();
+}
+
+/**
+ * Problems whose sheet was never read for a recipe, a few at a time (sheets
+ * are large). Items without a sheet are marked read in one go.
+ */
+export async function listUnreadRecipeSheets(limit: number): Promise<{ id: number; paper: string; sheetJson: string }[]> {
+  await run("UPDATE ws_items SET recipe = '' WHERE recipe IS NULL AND sheet_json = ''");
+  const rows = await allRows('SELECT id, paper, sheet_json FROM ws_items WHERE recipe IS NULL ORDER BY id LIMIT ?', [limit]);
+  return rows.map((r) => ({ id: Number(r.id), paper: String(r.paper ?? ''), sheetJson: String(r.sheet_json ?? '') }));
+}
+
+/** The recipe read from a sheet ('' = it names none); quiet: the caller emits once. */
+export async function storeReadRecipe(id: number, paper: string, name: string): Promise<void> {
+  await run('UPDATE ws_items SET recipe = ?, recipe_paper = ? WHERE id = ? AND recipe IS NULL', [name, name ? paper : '', id]);
+}
+
+/** Tell the views the data changed (after a quiet batch). */
+export function notifyWorksheetDataChanged(): void {
+  emitChange();
 }
 
 export async function deleteItem(id: number): Promise<void> {

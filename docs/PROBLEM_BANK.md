@@ -569,3 +569,15 @@ tab's job. The Quizzes tab is one panel of one-line rows (name, state chip,
 counts, the date only when the name does not already say it; actions on
 hover: Resume or Review, Rename, Copy, Reopen, Delete), completed quizzes
 ordered by when they were completed.
+
+## Recipes (2026-10-07)
+
+A workbook solution can name the worked method it follows: a cell reading
+"Recipe" with "Paper - Recipe name" under it. Each problem keeps it
+(`ws_items.recipe`, `recipe_paper`, migration 016; `recipes.ts` reads it).
+Sheets are read once, in small batches, on activation and after an import
+(`recipe IS NULL` = not read yet). The bank's filter bar has a Recipe menu,
+one submenu per paper with a count per recipe; any chosen recipe may match,
+and it combines with the chips and search. A problem's row shows its recipe,
+and its menu has Set Recipe… (a recipe the bank already uses, a new one, or
+none).

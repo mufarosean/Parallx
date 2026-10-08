@@ -110,7 +110,7 @@ export function sourceOf(sheetName: string): ProblemImport['source'] {
 export function paperKeyFromLabel(label: string): string {
   const l = String(label ?? '').toLowerCase();
   if (!l.trim()) return '';
-  if (l.includes('mack')) return /benktander|2000/.test(l) ? 'mack2000' : /chain|1994/.test(l) ? 'mack1994' : 'mack2000';
+  if (l.includes('mack')) return /benktander|2000/.test(l) ? 'mack2000' : /chain|1994|\b94\b/.test(l) ? 'mack1994' : 'mack2000';
   if (/h[üu]rlimann/.test(l)) return 'hurlimann';
   if (l.includes('sahas')) return 'sahas';
   if (l.includes('teng')) return /disc/.test(l) ? 'tengdisc' : 'teng';

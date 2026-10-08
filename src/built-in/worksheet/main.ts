@@ -39,7 +39,8 @@ import { detectProblems, readWorkbookTimeline, normalizeRating, ratingLabel, pap
 import { createDashboardPane, planDay, dayStrip } from './dashboardPane.js';
 import { createPlanPane, examClockFor, type PlanActions } from './planPane.js';
 import { parsePlan } from './plan.js';
-import { getPlanBlockBySession, savePlanJson, clearPlan, updateItemPoints } from './worksheetData.js';
+import { getPlanBlockBySession, savePlanJson, clearPlan, updateItemPoints, setItemRecipe, listUnreadRecipeSheets, storeReadRecipe, notifyWorksheetDataChanged } from './worksheetData.js';
+import { recipeOfSheet, recipeGroups, recipeKey } from './recipes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { planCampaign, campaignProgress, addDays, spanDays, workingDays, restDaysLabel, isCampaignProblem, WEEKDAY_LABELS } from './campaign.js';
 import { parseDisplayDecimals, DISPLAY_DECIMALS_CHOICES, DEFAULT_DISPLAY_DECIMALS } from './displayNumbers.js';
@@ -159,6 +160,8 @@ interface ParallxApiLike {
     showWarningMessage?(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showInformationMessage?(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showErrorMessage?(message: string): Promise<unknown>;
+    showQuickPick?(items: readonly { label: string; description?: string; picked?: boolean }[], options?: { placeholder?: string; canPickMany?: boolean }): Promise<unknown>;
+    showInputBox?(options?: { prompt?: string; value?: string; placeholder?: string }): Promise<string | undefined>;
   };
   workspace?: {
     getConfiguration(section?: string): {
@@ -475,7 +478,7 @@ function createBankPane(container: HTMLElement) {
   root.append(headHost, barHost, listHost);
   let countEl: HTMLElement | null = null;
 
-  const shownProblems = () => items.filter((it) => it.paper && bankMatches(it, _bankFilters, _bankQuery));
+  const shownProblems = () => items.filter((it) => it.paper && bankMatches(it, _bankFilters, _bankQuery, _bankRecipes));
 
   const paintHeader = () => {
     headHost.replaceChildren();
@@ -513,6 +516,7 @@ function createBankPane(container: HTMLElement) {
     info.appendChild(titleRow);
     const meta: string[] = [];
     if (item.paper) meta.push([SOURCE_LABELS[item.source] ?? '', KIND_LABELS[item.kind] ?? '', item.quadrant ? QUADRANT_LABELS[item.quadrant] : ''].filter(Boolean).join(' · '));
+    if (item.paper && item.recipe) meta.push(item.recipePaper && item.recipePaper !== item.paper ? `${paperLabel(item.recipePaper)}: ${item.recipe}` : item.recipe);
     else if (item.sourceLabel) meta.push(item.sourcePage > 0 ? `${item.sourceLabel} · p.${item.sourcePage}` : item.sourceLabel);
     if (!item.paper && item.tags) meta.push(item.tags.split(',').filter(Boolean).map((t) => `#${t.trim()}`).join(' '));
     if (item.attemptCount > 0) meta.push(`${item.attemptCount} ${item.attemptCount === 1 ? 'attempt' : 'attempts'}`);
@@ -535,6 +539,7 @@ function createBankPane(container: HTMLElement) {
     more.addEventListener('click', () => showMenu(more, [
       { label: 'Quiz This Problem', icon: 'play', onSelect: () => startQuizWith([item.id], 0, item.title) },
       { label: item.starred ? 'Unstar' : 'Star', icon: 'star', onSelect: () => void setItemStarred(item.id, !item.starred).catch(() => {}) },
+      ...(item.paper ? [{ label: 'Set Recipe…', icon: 'tag', onSelect: () => void pickRecipe(item, items) }] : []),
       ...(generated ? [
         { separator: true },
         { label: 'Delete Item…', icon: 'trash-2', danger: true, onSelect: () => {
@@ -561,14 +566,14 @@ function createBankPane(container: HTMLElement) {
     const problems = shownProblems();
     if (countEl) {
       countEl.replaceChildren(document.createTextNode(`${problems.length} of ${all.length}`));
-      if (_bankFilters.size || _bankQuery) {
+      if (_bankFilters.size || _bankQuery || _bankRecipes.size) {
         const clear = el('button', 'ws-linkbtn', 'Clear filters') as HTMLButtonElement;
         clear.type = 'button';
-        clear.addEventListener('click', () => { _bankFilters.clear(); _bankQuery = ''; paintBar(); paintList(); });
+        clear.addEventListener('click', () => { _bankFilters.clear(); _bankRecipes.clear(); _bankQuery = ''; paintBar(); paintList(); });
         countEl.append(document.createTextNode(' · '), clear);
       }
     }
-    const filtering = _bankFilters.size > 0 || !!_bankQuery;
+    const filtering = _bankFilters.size > 0 || !!_bankQuery || _bankRecipes.size > 0;
     const generated = items.filter((it) => !it.paper);
     const byPaper = new Map<string, WorksheetItemSummary[]>();
     for (const it of all) { if (!byPaper.has(it.paper)) byPaper.set(it.paper, []); byPaper.get(it.paper)!.push(it); }
@@ -651,6 +656,15 @@ function createBankPane(container: HTMLElement) {
       });
     }
     bar.appendChild(chips);
+    const groups = recipeGroups(items.filter((it) => it.paper));
+    if (groups.size) {
+      const n = _bankRecipes.size;
+      const recipeBtn = createButton(bar, {
+        label: n ? `Recipes (${n})` : 'Recipe', icon: 'tag', size: 'sm', kind: n ? 'secondary' : 'ghost',
+        title: 'Show only problems that follow a recipe, grouped by paper',
+        onClick: () => showMenu(recipeBtn, recipeMenu(groups, () => { paintBar(); paintList(); })),
+      });
+    }
     countEl = el('span', 'ws-home__summary');
     bar.appendChild(countEl);
     barHost.appendChild(bar);
@@ -719,6 +733,85 @@ function fmtSeconds(total: number): string {
 const _bankOpen = new Set<string>();
 /** The bank's chips: any number on; within a facet any may match, across facets all must (bankFilters.ts). */
 const _bankFilters = new Set<string>();
+/** The bank's recipe filter: recipeKey(paper, name) values; any may match. */
+const _bankRecipes = new Set<string>();
+
+/** One submenu per paper, a checked row per recipe with its problem count. */
+function recipeMenu(groups: Map<string, Map<string, number>>, changed: () => void): IExtensionMenuItem[] {
+  const papers = [...groups.keys()].sort((a, b) => (paperLabel(a) || '~').localeCompare(paperLabel(b) || '~'));
+  const menu: IExtensionMenuItem[] = papers.map((paper) => {
+    const recipes = [...groups.get(paper)!.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const on = recipes.filter(([name]) => _bankRecipes.has(recipeKey(paper, name))).length;
+    return {
+      label: `${paperLabel(paper) || 'Other'}${on ? ` (${on})` : ''}`,
+      submenu: recipes.map(([name, count]) => {
+        const key = recipeKey(paper, name);
+        return {
+          label: `${name} (${count})`,
+          checked: _bankRecipes.has(key),
+          onSelect: () => { if (_bankRecipes.has(key)) _bankRecipes.delete(key); else _bankRecipes.add(key); changed(); },
+        };
+      }),
+    };
+  });
+  if (_bankRecipes.size) menu.push({ separator: true }, { label: 'Clear Recipes', onSelect: () => { _bankRecipes.clear(); changed(); } });
+  return menu;
+}
+
+/** Set Recipe…: pick one the bank already uses (its paper's first), type a new one, or clear it. */
+async function pickRecipe(item: WorksheetItemSummary, items: readonly WorksheetItemSummary[]): Promise<void> {
+  const win = _api?.window;
+  if (!win?.showQuickPick) return;
+  const groups = recipeGroups(items.filter((it) => it.paper));
+  const known: { label: string; description: string; paper: string; name: string }[] = [];
+  for (const [paper, recipes] of groups) {
+    for (const name of recipes.keys()) known.push({ label: name, description: paperLabel(paper) || 'Other', paper, name });
+  }
+  known.sort((a, b) => Number(b.paper === item.paper) - Number(a.paper === item.paper) || a.description.localeCompare(b.description) || a.label.localeCompare(b.label));
+  const NEW = 'New Recipe…';
+  const NONE = 'No Recipe';
+  const picks = [
+    ...known.map((k) => ({ ...k, picked: k.paper === item.recipePaper && k.name === item.recipe })),
+    { label: NEW, description: `for ${paperLabel(item.paper)}` },
+    ...(item.recipe ? [{ label: NONE, description: 'clear it' }] : []),
+  ];
+  const chosen = await win.showQuickPick(picks, { placeholder: `Recipe for ${item.title}` }) as { label: string; paper?: string; name?: string } | undefined;
+  if (!chosen) return;
+  if (chosen.label === NONE && !chosen.paper) { await setItemRecipe(item.id, '', ''); return; }
+  if (chosen.label === NEW && !chosen.paper) {
+    const name = (await win.showInputBox?.({ prompt: `New recipe for ${paperLabel(item.paper)}`, placeholder: 'Direct Development Method', value: '' }))?.trim();
+    if (name) await setItemRecipe(item.id, item.paper, name);
+    return;
+  }
+  if (chosen.paper !== undefined && chosen.name) await setItemRecipe(item.id, chosen.paper, chosen.name);
+}
+
+/** Read the recipe from every sheet not read yet, a few at a time; once per sheet. */
+let _recipesReading: Promise<void> | null = null;
+function readPendingRecipes(): Promise<void> {
+  if (_recipesReading) return _recipesReading;
+  _recipesReading = (async () => {
+    let found = 0;
+    try {
+      for (;;) {
+        if (!_api) return;
+        const batch = await listUnreadRecipeSheets(10);
+        if (!batch.length) break;
+        for (const row of batch) {
+          const r = recipeOfSheet(row.sheetJson, row.paper);
+          await storeReadRecipe(row.id, r ? r.paper : '', r ? r.name : '');
+          if (r) found++;
+        }
+      }
+    } catch (err) {
+      console.warn('[Worksheet] reading recipes failed:', err);
+    } finally {
+      _recipesReading = null;
+      if (found) notifyWorksheetDataChanged();
+    }
+  })();
+  return _recipesReading;
+}
 let _bankQuery = '';
 
 /** Remove every generated item (never a workbook problem), after one confirmation. */
@@ -2815,6 +2908,7 @@ function createExcelImportPane(container: HTMLElement) {
             done++;
             if (done % 10 === 0) status.textContent = `Importing ${done} of ${keep.length}…`;
           }
+          await readPendingRecipes();
           // The workbook's own dashboard history, so the timeline starts where his did.
           for (const s of timeline) await upsertProgressSnapshot(s.day, s.attempted, s.score, 'workbook');
           status.textContent = '';
@@ -3777,6 +3871,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
     );
   }
   await runMigrations();
+  void readPendingRecipes();
   await refreshFlashcardsOn();
   if (api.tools?.onDidChange) context.subscriptions.push(api.tools.onDidChange(() => void refreshFlashcardsOn()));
 

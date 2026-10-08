@@ -7,6 +7,7 @@
 // in any order; "a phrase in quotes" must appear whole; a word with a
 // leading minus must not appear.
 import { normalizeRating, paperLabel } from './problemImport.js';
+import { recipeKey } from './recipes.js';
 
 export interface BankFilterItem {
   readonly title: string;
@@ -21,6 +22,9 @@ export interface BankFilterItem {
   readonly attemptCount: number;
   /** '' = never attempted, 'open' = in progress, else the last rating. */
   readonly attemptState: string;
+  /** The recipe the solution follows and its paper (recipes.ts); '' when none. */
+  readonly recipe?: string;
+  readonly recipePaper?: string;
 }
 
 export const BANK_FACETS = {
@@ -50,7 +54,12 @@ export function isDone(item: BankFilterItem): boolean {
   return item.attemptCount > 0 && item.attemptState !== 'open';
 }
 
-export function bankMatches(item: BankFilterItem, filters: ReadonlySet<string>, query: string): boolean {
+/**
+ * `recipes` holds recipeKey(paper, name) values: when any are given, the
+ * problem's recipe must be one of them (a facet of its own).
+ */
+export function bankMatches(item: BankFilterItem, filters: ReadonlySet<string>, query: string, recipes?: ReadonlySet<string>): boolean {
+  if (recipes && recipes.size && !(item.recipe && recipes.has(recipeKey(item.recipePaper ?? '', item.recipe)))) return false;
   const state = stateClass(item.attemptState);
   const test = (f: string): boolean => {
     if (f === 'starred') return !!item.starred;
@@ -66,7 +75,7 @@ export function bankMatches(item: BankFilterItem, filters: ReadonlySet<string>, 
     if (on.length && !on.some(test)) return false;
   }
   if (query.trim()) {
-    const hay = `${item.title} ${item.sheetName} ${item.questionMd} ${paperLabel(item.paper)} ${item.tags} ${item.note}`.toLowerCase();
+    const hay = `${item.title} ${item.sheetName} ${item.questionMd} ${paperLabel(item.paper)} ${item.tags} ${item.note} ${item.recipe ?? ''}`.toLowerCase();
     for (const term of parseQuery(query)) {
       if (hay.includes(term.text) === term.not) return false;
     }
