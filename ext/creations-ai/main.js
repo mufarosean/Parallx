@@ -16,7 +16,7 @@ import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
 import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE } from './studio-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
-import { directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from './director.js';
+import { directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel, NARRATOR } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 
 // The workspace data folder keeps its original name: every character, thread,
@@ -6119,7 +6119,9 @@ function renderChatEditor(container, parallx, input) {
         for (const o of g.options) {
           const key = `${g.name}\n${o.text}`;
           const btn = el('button', `cr-direction${_directionsPicked === key ? ' cr-direction--picked' : ''}`);
-          btn.title = `${g.name} takes the next turn with this note. Edit it before you send.`;
+          btn.title = g.name === NARRATOR
+            ? 'The Narrator takes the next turn with this note: the story moves on. Edit it before you send.'
+            : `${g.name} takes the next turn with this note. Edit it before you send.`;
           btn.append(el('span', 'cr-direction-kind', { text: directionKindLabel(o.kind) }), el('span', 'cr-direction-text', { text: o.text }));
           btn.addEventListener('click', () => {
             _directionsPicked = key;
@@ -6159,8 +6161,9 @@ function renderChatEditor(container, parallx, input) {
     const lastSpeaker = [...story].reverse().find((m) => m.characterFile)?.characterFile || null;
     const roster = characters.map((c) => ({ file: c.fileName, name: getCharacterName(c), char: c }));
     const chosen = directorCast(roster, { present: thread.sceneState?.present || [], lastSpeaker });
-    const names = chosen.map((c) => c.name);
-    renderDirections({ status: `Reading the scene for ${names.join(', ')}…`, busy: true });
+    // The Narrator's group (moves for the story itself) comes first.
+    const names = [NARRATOR, ...chosen.map((c) => c.name)];
+    renderDirections({ status: `Reading the scene for the Narrator and ${chosen.map((c) => c.name).join(', ')}…`, busy: true });
 
     let memory = { facts: [], beats: [], notes: '' };
     try { memory = await loadThreadMemory(fs, workspaceUri, threadId); } catch { /* the prompt goes without it */ }
@@ -8002,12 +8005,18 @@ function renderChatEditor(container, parallx, input) {
     let inlineInstruction = null;
     // A trailing "/ai @Name note" also says who replies, as it does on its
     // own; the name used to be left in the note and the speaker guessed.
+    // A trailing "/nar note" (a Narrator direction) hands the next turn to
+    // the Narrator the same way.
     let inlineSpeaker = null;
     let messageText = text;
     if (lines.length > 1 && lastLine.startsWith('/ai ')) {
       const trailing = parseSlashCommand(lastLine);
       inlineInstruction = trailing ? trailing.instruction : lastLine.slice(4).trim();
       inlineSpeaker = trailing?.targetCharacter ? resolveCharacterReference(trailing.targetCharacter) : null;
+      messageText = lines.slice(0, -1).join('\n').trim();
+    } else if (lines.length > 1 && lastLine.startsWith('/nar ')) {
+      inlineInstruction = lastLine.slice(5).trim() || null;
+      inlineSpeaker = NARRATOR_SPEAKER;
       messageText = lines.slice(0, -1).join('\n').trim();
     }
 

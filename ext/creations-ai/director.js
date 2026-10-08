@@ -6,6 +6,11 @@
 // nothing about how a turn is written changes, and the note is kept on the
 // reply like any typed one.
 //
+// The Narrator gets four notes too, for the story rather than a character:
+// a new scene, a time skip, an arrival, an event. Character notes play the
+// scene that is running; the Narrator's move the story on from it. A pick
+// becomes the chat's own "/nar note".
+//
 // Pure: the prompt and the reading of the reply. The chat makes the call.
 
 /** The four kinds of move, in the order they are asked for and shown. */
@@ -16,10 +21,30 @@ export const DIRECTION_KINDS = [
   { key: 'move', label: 'Move', rule: 'they change the scene: leave, arrive somewhere, bring someone in, turn the talk somewhere new, or let time pass' },
 ];
 
+/** The Narrator's four kinds: moves for the story itself, not for a character. */
+export const NARRATOR_KINDS = [
+  { key: 'scene', label: 'New Scene', rule: 'this scene ends and the next one opens: a place, a moment and who is there, somewhere the story has reason to go' },
+  { key: 'time', label: 'Time Skip', rule: 'time passes (an hour, a night, weeks) and one thing that changed meanwhile shows' },
+  { key: 'arrival', label: 'Arrival', rule: 'someone comes in, calls or writes: a person from their world, or someone new with a reason to be there' },
+  { key: 'event', label: 'Event', rule: 'something from outside the scene happens that the characters must answer: news, weather, an accident, a discovery' },
+];
+
+/** The Narrator's group name on the card and in the reply. */
+export const NARRATOR = 'Narrator';
+
 /** Characters given options at once. More makes the card a wall and the call slow. */
 export const DIRECTOR_MAX_CAST = 4;
 
-const KIND_BY_WORD = new Map(DIRECTION_KINDS.flatMap((k) => [[k.key, k.key], [k.label.toLowerCase(), k.key]]));
+const kindsFor = (name) => (name === NARRATOR ? NARRATOR_KINDS : DIRECTION_KINDS);
+const KIND_BY_WORD = new Map([...DIRECTION_KINDS, ...NARRATOR_KINDS].flatMap((k) => [[k.key, k.key], [k.label.toLowerCase(), k.key]]));
+/** A kind label at the start of a line ("Push:", "New Scene -"): [key, rest] or null. */
+const labelledKind = (line) => {
+  const m = line.match(/^([A-Za-z]+)(?:\s+([A-Za-z]+))?\s*[:\-\u2013\u2014]\s*(.*)$/);
+  if (!m) return null;
+  if (m[2] && KIND_BY_WORD.has(`${m[1]} ${m[2]}`.toLowerCase())) return [KIND_BY_WORD.get(`${m[1]} ${m[2]}`.toLowerCase()), m[3]];
+  if (!m[2] && KIND_BY_WORD.has(m[1].toLowerCase())) return [KIND_BY_WORD.get(m[1].toLowerCase()), m[3]];
+  return null;
+};
 
 const clip = (text, max) => {
   const t = String(text || '').replace(/\s+/g, ' ').trim();
@@ -54,10 +79,18 @@ export function directorCast(cast, { present = [], lastSpeaker = null, max = DIR
  *   recentNotes: string[] — the director's notes the last turns were written with
  *   rules: string — the user's dialogue rules, if any
  */
-export function buildDirectorPrompt({ cast = [], others = [], scene = null, memory = {}, transcript = [], recentNotes = [], rules = '' } = {}) {
+export function buildDirectorPrompt({ cast = [], others = [], scene = null, memory = {}, transcript = [], recentNotes = [], rules = '', narrator = true } = {}) {
   const names = cast.map((c) => c.name);
   const kinds = DIRECTION_KINDS.map((k) => `- ${k.label}: ${k.rule}.`).join('\n');
   const example = DIRECTION_KINDS.map((k) => `${k.label}: <one sentence>`).join('\n');
+  const narratorRules = narrator ? [
+    '',
+    `Then, under "## ${NARRATOR}", write four options for the story itself, one of each kind:`,
+    NARRATOR_KINDS.map((k) => `- ${k.label}: ${k.rule}.`).join('\n'),
+    'Each Narrator option: one sentence, at most 20 words, present tense, saying what happens, never what anyone says or feels: "Cut to the harbour at dawn, where the buyer is already waiting".',
+    'They move the story on from this scene. Read where it stands: a scene that has run its course needs a new one or a time skip; a scene going in circles needs an arrival or an event.',
+    'An Arrival names someone from the Others list when one fits. Never contradict the memory, never end the story.',
+  ] : [];
   const system = [
     'You are the director of an ongoing roleplay. You do not write the story.',
     'You suggest what each character could do in their next turn, so the player can pick one.',
@@ -73,9 +106,11 @@ export function buildDirectorPrompt({ cast = [], others = [], scene = null, memo
     '- Never contradicts the memory. Never ends the story or settles its central question.',
     'The four options for one character must lead to four clearly different next turns.',
     'Do not repeat or rephrase the notes the last turns were written with.',
+    ...narratorRules,
     '',
     'Answer in exactly this format, nothing before or after it, no em dashes:',
     '',
+    ...(narrator ? [`## ${NARRATOR}`, NARRATOR_KINDS.map((k) => `${k.label}: <one sentence>`).join('\n'), ''] : []),
     `## ${names[0] || 'Name'}`,
     example,
   ].join('\n');
@@ -112,7 +147,9 @@ export function buildDirectorPrompt({ cast = [], others = [], scene = null, memo
   if (turns.trim()) parts.push(`Recent turns, oldest first:\n${turns}`);
   const notes = (Array.isArray(recentNotes) ? recentNotes : []).map((n) => String(n || '').trim()).filter(Boolean).slice(-5);
   if (notes.length) parts.push(`Notes the last turns were written with:\n${notes.map((n) => `- ${clip(n, 200)}`).join('\n')}`);
-  parts.push(`Write the options for: ${names.join(', ')}.`);
+  parts.push(narrator
+    ? `Write the options for the ${NARRATOR}, then for: ${names.join(', ')}.`
+    : `Write the options for: ${names.join(', ')}.`);
 
   return [
     { role: 'system', content: system },
@@ -157,8 +194,7 @@ export function parseDirections(raw, names = [], { complete = true } = {}) {
   const otherHeading = (line) => {
     if (/^\s*#/.test(line) || /^\s*\*\*[^*]+\*\*:?\s*$/.test(line)) return true;
     const t = strip(line);
-    const first = t.match(/^([A-Za-z]+)\s*[:\-\u2013\u2014]/);
-    if (first && KIND_BY_WORD.has(first[1].toLowerCase())) return false;
+    if (labelledKind(t)) return false;
     return /:$/.test(t) && t.split(/\s+/).length <= 4;
   };
   const headingName = (line) => {
@@ -184,10 +220,12 @@ export function parseDirections(raw, names = [], { complete = true } = {}) {
     }
     let line = strip(rawLine);
     let kind = null;
-    const labelled = line.match(/^([A-Za-z]+)\s*[:\-–—]\s*(.+)$/);
-    if (labelled && KIND_BY_WORD.has(labelled[1].toLowerCase())) {
-      kind = KIND_BY_WORD.get(labelled[1].toLowerCase());
-      line = labelled[2];
+    const kinds = kindsFor(current);
+    const labelled = labelledKind(line);
+    if (labelled) {
+      // A label from the other set (a character's "Push" under the Narrator) counts as no label.
+      kind = kinds.some((k) => k.key === labelled[0]) ? labelled[0] : null;
+      line = labelled[1];
     }
     line = line
       .replace(/\s*[—–]\s*/g, ', ')
@@ -195,21 +233,22 @@ export function parseDirections(raw, names = [], { complete = true } = {}) {
       .trim();
     if (!line || /^<.*>$/.test(line) || line.length < 4) continue;
     const opts = groups.get(current);
-    if (opts.length >= DIRECTION_KINDS.length) continue;
+    if (opts.length >= kinds.length) continue;
     if (!kind || opts.some((o) => o.kind === kind)) {
-      kind = DIRECTION_KINDS.map((k) => k.key).find((k) => !opts.some((o) => o.kind === k)) || null;
+      kind = kinds.map((k) => k.key).find((k) => !opts.some((o) => o.kind === k)) || null;
     }
     if (!kind) continue;
     opts.push({ kind, text: line });
   }
 
-  const order = (opts) => DIRECTION_KINDS.map((k) => opts.find((o) => o.kind === k.key)).filter(Boolean);
-  return wanted.filter((n) => groups.get(n)?.length).map((n) => ({ name: n, options: order(groups.get(n)) }));
+  const order = (name, opts) => kindsFor(name).map((k) => opts.find((o) => o.kind === k.key)).filter(Boolean);
+  return wanted.filter((n) => groups.get(n)?.length).map((n) => ({ name: n, options: order(n, groups.get(n)) }));
 }
 
-/** The composer text a picked option becomes: the chat's own "/ai @Name note". */
+/** The composer text a picked option becomes: the chat's own "/ai @Name note", or "/nar note". */
 export function directionCommand(name, text) {
   const n = String(name || '').trim();
+  if (n === NARRATOR) return `/nar ${String(text || '').trim()}`;
   const ref = /\s/.test(n) ? `@"${n}"` : `@${n}`;
   return `/ai ${ref} ${String(text || '').trim()}`;
 }
@@ -218,18 +257,18 @@ export function directionCommand(name, text) {
  * The composer after a pick. Empty, or holding only a command (a turn chip,
  * an earlier pick): the pick replaces it. Holding the player's own words:
  * they stay, and the pick goes on the last line, where the chat reads a
- * trailing "/ai" line as the note for the reply that follows.
+ * trailing "/ai" or "/nar" line as the note for the reply that follows.
  */
 export function composeWithDirection(current, command) {
   const text = String(current || '').replace(/\s+$/, '');
   if (!text.trim()) return command;
   const lines = text.split('\n');
   if (lines.length === 1 && lines[0].trim().startsWith('/')) return command;
-  if (lines[lines.length - 1].trim().startsWith('/ai ')) lines.pop();
+  if (/^\/(ai|nar) /.test(lines[lines.length - 1].trim())) lines.pop();
   return [...lines, command].join('\n');
 }
 
 /** Label for a kind key. */
 export function directionKindLabel(key) {
-  return DIRECTION_KINDS.find((k) => k.key === key)?.label || '';
+  return [...DIRECTION_KINDS, ...NARRATOR_KINDS].find((k) => k.key === key)?.label || '';
 }

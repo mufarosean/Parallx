@@ -33,6 +33,12 @@ const MESSAGES = [
 ];
 
 const DIRECTOR_REPLY = [
+  '## Narrator',
+  'New Scene: Cut to the harbour wall at dawn, where the buyer is already waiting',
+  'Time Skip: Three days pass and the archive door has a new lock',
+  'Arrival: The Harbourmaster comes down the stairs with two clerks',
+  'Event: The tide turns and water starts rising through the floor',
+  '',
   '## Brother Oswin',
   'Deepen: Lays the chart flat and smooths the drowned streets with his thumb',
   'Push: Asks Mara who paid her to keep the archive closed',
@@ -159,15 +165,16 @@ async function main() {
     await button.click();
     await page.waitForSelector('.cr-directions .cr-direction', { timeout: 10_000 });
     const midway = await page.locator('.cr-directions .cr-direction').count();
-    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 8 && !/Writing/.test(document.querySelector('.cr-directions')?.textContent || ''), null, { timeout: 15_000 });
-    check(midway < 8, `the card fills while the reply streams (first look: ${midway} of 8)`);
+    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 12 && !/Writing/.test(document.querySelector('.cr-directions')?.textContent || ''), null, { timeout: 15_000 });
+    check(midway < 12, `the card fills while the reply streams (first look: ${midway} of 12)`);
     const groups = await page.$$eval('.cr-directions-group', (gs) => gs.map((g) => ({ who: g.querySelector('.cr-directions-who > span:last-child')?.textContent, kinds: [...g.querySelectorAll('.cr-direction-kind')].map((k) => k.textContent) })));
     console.log(`[probe] card: ${JSON.stringify(groups)}`);
-    check(groups.map((g) => g.who).join(',') === 'Brother Oswin,Mara Vell', 'the one who spoke last (Mara) comes last');
-    check(groups.every((g) => g.kinds.join(',') === 'Deepen,Push,Complicate,Move'), 'each character has Deepen, Push, Complicate, Move');
+    check(groups.map((g) => g.who).join(',') === 'Narrator,Brother Oswin,Mara Vell', 'the Narrator comes first; the one who spoke last (Mara) comes last');
+    check(groups[0]?.kinds.join(',') === 'New Scene,Time Skip,Arrival,Event', 'the Narrator has New Scene, Time Skip, Arrival, Event');
+    check(groups.slice(1).every((g) => g.kinds.join(',') === 'Deepen,Push,Complicate,Move'), 'each character has Deepen, Push, Complicate, Move');
     const dir = chats.find((m) => String(m[0]?.content || '').startsWith('You are the director'));
     const dirUser = String(dir?.[1]?.content || '');
-    check(/Write the options for: Brother Oswin, Mara Vell\.$/.test(dirUser), 'the director is asked for Oswin, then Mara');
+    check(/Write the options for the Narrator, then for: Brother Oswin, Mara Vell\.$/.test(dirUser), 'the director is asked for the Narrator, then Oswin, then Mara');
     check(dirUser.includes('Hides: She opened the sea wall'), "the director sees Mara's secret from her sheet");
     check(dirUser.includes('- The Harbourmaster: sold the drowned city twice'), 'the director sees the supporting cast');
     check(dirUser.includes('Oswin carried the real chart out of the flood.'), 'the director sees the memory file');
@@ -200,16 +207,38 @@ async function main() {
 
     // 4. The note goes into the next ask as one already used.
     await page.locator('button[aria-label="Suggest Directions"]').click();
-    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 8, null, { timeout: 15_000 });
+    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 12, null, { timeout: 15_000 });
     const again = chats.filter((m) => String(m[0]?.content || '').startsWith('You are the director')).at(-1);
     check(String(again?.[1]?.content || '').includes('Notes the last turns were written with:\n- Offers to buy the chart'), 'the next ask knows the note just used');
-    check(/Write the options for: Brother Oswin, Mara Vell\.$/.test(String(again?.[1]?.content || '')), 'Mara spoke last again, so she is last again');
+    check(/Write the options for the Narrator, then for: Brother Oswin, Mara Vell\.$/.test(String(again?.[1]?.content || '')), 'Mara spoke last again, so she is last again');
 
     // 5. Prose typed by the player stays; the pick goes on the last line.
     await page.locator('.tg-input-textarea').fill('*Oswin sets the chart down.*');
     await page.locator('.cr-directions-group', { hasText: 'Brother Oswin' }).locator('.cr-direction').first().click();
     check(/^\*Oswin sets the chart down\.\*\n\/ai @"Brother Oswin" /.test(await page.locator('.tg-input-textarea').inputValue()), 'typed words stay and the pick goes on the last line');
-    await page.locator('.tg-input-textarea').fill('');
+
+    // 5b. A Narrator pick under typed words: the words are posted, then the
+    //     Narrator writes the next turn with the note, and the story moves.
+    await page.locator('.tg-input-textarea').fill('*Oswin pockets the chart.*');
+    await page.locator('.cr-directions-group', { hasText: 'Narrator' }).locator('.cr-direction', { hasText: 'Three days pass' }).click();
+    const narComposed = await page.locator('.tg-input-textarea').inputValue();
+    check(narComposed === '*Oswin pockets the chart.*\n/nar Three days pass and the archive door has a new lock', `a Narrator pick goes on the last line as /nar: ${JSON.stringify(narComposed)}`);
+    await shot('directions-narrator-picked.png');
+    const beforeNar = chats.length;
+    await page.locator('.tg-input-send').click();
+    await page.waitForTimeout(3_000);
+    const narTurn = chats.slice(beforeNar).find((m) => !String(m[0]?.content || '').startsWith('You extract') && !String(m[0]?.content || '').startsWith('You are the director'));
+    const narSystem = narTurn ? narTurn.filter((m) => m.role === 'system').map((m) => m.content).join('\n') : '';
+    const narLast = String(narTurn?.at(-1)?.content || '');
+    check(/Active turn: Narrator/.test(narSystem), 'the next turn is the Narrator\'s');
+    check(/Three days pass and the archive door has a new lock/.test(narLast), "the pick is the Narrator turn's note");
+    const narLines = (await fs.readFile(path.join(workspace, '.parallx', 'extensions', 'text-generator', 'threads', THREAD_ID, 'messages.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+    const typed = narLines.at(-2);
+    const narSaved = narLines.at(-1);
+    check(typed?.content === '*Oswin pockets the chart.*', 'the typed words are posted without the command');
+    check(narSaved?.name === 'Narrator' && narSaved?.instruction === 'Three days pass and the archive door has a new lock', 'the reply is saved as the Narrator with its note');
+    await page.locator('button[aria-label="Suggest Directions"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 12, null, { timeout: 15_000 });
 
     // 6. Light and narrow.
     await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
