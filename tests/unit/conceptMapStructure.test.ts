@@ -14,6 +14,7 @@ import {
   layoutMindMap,
   MAP_GRID,
   migrateFlatOverrides,
+  minCardWidth,
   moveBranchAmongSiblings,
   moveBranchesUnder,
   outdentBranch,
@@ -190,5 +191,52 @@ describe('where cards stand', () => {
       expect(at(after, l).x - at(base, l).x).toBe(dx);
       expect(at(after, l).y - at(base, l).y).toBe(dy);
     }
+  });
+});
+
+describe('a drop lands where it was let go', () => {
+  // A tall card over a single short child: centring put the card above the
+  // margin, and the first saved move shifted the board a cell down.
+  const TALL = 'Reserving\n  Chain Ladder\n    Mack\n  Bornhuetter\n  Cape Cod';
+
+  it('the automatic layout keeps every box inside the margin, on the grid, in every direction', () => {
+    for (const dir of ['right', 'down', 'radial'] as const) {
+      const base = layoutMindMap(parseMindMap(TALL), dir);
+      for (const n of base.nodes) {
+        const top = n.y - n.height / 2;
+        expect(n.x).toBeGreaterThanOrEqual(MAP_GRID);
+        expect(top).toBeGreaterThanOrEqual(MAP_GRID);
+        expect(n.x % MAP_GRID).toBe(0);
+        expect(top % MAP_GRID).toBe(0);
+      }
+    }
+  });
+
+  it('the first move moves that box by exactly the drag and nothing else', () => {
+    const base = layoutMindMap(parseMindMap(TALL), 'right');
+    const moved = applyOverrides(base, { 'Cape Cod': { dx: 4 * MAP_GRID, dy: 3 * MAP_GRID } });
+    for (const n of base.nodes) {
+      const m = moved.nodes.find((x) => x.line === n.line)!;
+      const [dx, dy] = n.label === 'Cape Cod' ? [4 * MAP_GRID, 3 * MAP_GRID] : [0, 0];
+      expect(m.x - n.x).toBe(dx);
+      expect(m.y - n.y).toBe(dy);
+    }
+  });
+
+  it('a resize that re-wraps the text keeps the box top where it was', () => {
+    const label = 'a fairly long label that will surely need to wrap when narrowed';
+    const base = layoutMindMap(parseMindMap(`Root\n  ${label}`), 'right');
+    const before = base.nodes.find((n) => n.label === label)!;
+    const after = applyOverrides(base, { [label]: { w: 108 } }).nodes.find((n) => n.label === label)!;
+    expect(after.height).toBeGreaterThan(before.height);
+    expect(after.y - after.height / 2).toBe(before.y - before.height / 2);
+  });
+
+  it('a resize never goes narrower than the longest word', () => {
+    const base = layoutMindMap(parseMindMap('Root\n  Bornhuetter-Ferguson method'), 'right');
+    const node = applyOverrides(base, { 'Bornhuetter-Ferguson method': { w: 36 } }).nodes[1];
+    expect(node.width).toBe(minCardWidth('Bornhuetter-Ferguson method', 1));
+    expect(node.width).toBeGreaterThan(108);
+    expect(node.width % (2 * MAP_GRID)).toBe(0);
   });
 });

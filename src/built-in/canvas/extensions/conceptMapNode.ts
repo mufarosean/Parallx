@@ -35,6 +35,7 @@ import {
   insertSiblingAfter,
   MAP_MARGIN,
   migrateFlatOverrides,
+  minCardWidth,
   moveBranchAmongSiblings,
   moveBranchesUnder,
   normalizeLabel,
@@ -605,16 +606,18 @@ export const ConceptMap = Node.create({
       };
 
       /** The right-edge grip resizes; text re-wraps on commit. */
-      const beginBoxResize = (e: PointerEvent | MouseEvent, parts: { rect: SVGRectElement; key: string }): void => {
+      const beginBoxResize = (e: PointerEvent | MouseEvent, parts: NodeParts): void => {
         const startX = e.clientX;
         const startW = Number(parts.rect.getAttribute('width')) || 120;
         const scale = svgScale(parts.rect.ownerSVGElement);
+        // Never narrower than the longest word: below it the text is cut.
+        const floor = minCardWidth(parts.label, branchOfEl(parts.g));
         let w = startW;
         beginPointerDrag(e, {
           id: 'conceptmap-resize',
           cursor: 'ew-resize',
           onMove: (ev) => {
-            w = Math.max(MAP_CELL2, Math.round(Math.max(80, Math.min(420, startW + (ev.clientX - startX) / scale)) / MAP_CELL2) * MAP_CELL2);
+            w = Math.max(floor, MAP_CELL2, Math.round(Math.max(80, Math.min(420, startW + (ev.clientX - startX) / scale)) / MAP_CELL2) * MAP_CELL2);
             parts.rect.setAttribute('width', String(w));
           },
           onEnd: (canceled) => {

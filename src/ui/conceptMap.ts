@@ -311,6 +311,23 @@ function segWidth(seg: LabelSegment, m: CardMetrics): number {
   }
 }
 
+/**
+ * The narrowest a card at DEPTH can be without cutting a word: its longest
+ * unbreakable run (a word, a code span, a formula) plus padding, rounded
+ * up to two cells. A resize never goes below it.
+ */
+export function minCardWidth(label: string, depth: number): number {
+  const m = cardMetrics(depth);
+  let widest = 24;
+  for (const seg of tokenizeLabel(label)) {
+    if (seg.kind === 'math' || seg.kind === 'code') { widest = Math.max(widest, segWidth(seg, m)); continue; }
+    for (const word of seg.value.split(/\s+/)) {
+      if (word) widest = Math.max(widest, segWidth({ kind: seg.kind, value: word }, m));
+    }
+  }
+  return ceilSize(Math.ceil(widest) + m.padX * 2);
+}
+
 export interface MeasuredLabel {
   readonly lines: LabelSegment[][];
   readonly width: number;
@@ -479,13 +496,20 @@ export function applyOverrides(layout: MindMapLayout, overrides: MindMapOverride
     const o = overrides[n.key ?? n.label];
     let { width, height } = n;
     if (o && typeof o.w === 'number' && Number.isFinite(o.w)) {
-      const w = snapSize(Math.max(MIN_OVERRIDE_W, Math.min(MAX_OVERRIDE_W, Math.round(o.w))));
+      const w = Math.max(
+        snapSize(Math.max(MIN_OVERRIDE_W, Math.min(MAX_OVERRIDE_W, Math.round(o.w)))),
+        minCardWidth(n.label, n.depth),
+      );
       const remeasured = measureLabel(n.label, Math.max(24, w - cardMetrics(n.depth).padX * 2), n.depth);
       width = w;
       height = remeasured.height;
     }
     const d = effective(i);
-    return { ...n, x: n.x + d.dx, y: n.y + d.dy, width, height };
+    // A width that re-wraps the text changes the height: the card keeps
+    // its TOP edge (it grows or shrinks downward), as it does while the
+    // edge is being dragged.
+    const top = n.y - n.height / 2;
+    return { ...n, x: n.x + d.dx, y: top + height / 2 + d.dy, width, height };
   });
 
   let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
@@ -678,9 +702,34 @@ export function layoutMindMap(
   roots: readonly MindMapNode[],
   dir: MindMapDirection = 'right',
 ): MindMapLayout {
-  const layout = layoutUnkeyed(roots, dir);
+  const layout = withinMargin(layoutUnkeyed(roots, dir));
   const keys = overrideKeysByLine(roots);
   return { ...layout, nodes: layout.nodes.map((n) => ({ ...n, key: keys.get(n.line) ?? n.label })) };
+}
+
+/**
+ * Every box at least one margin from the board's top and left. A tall card
+ * centred on a single short child sits above that child's top, which put
+ * it at the very edge; the first saved move then shifted the whole board a
+ * cell down, so a dropped card landed a cell below where it was let go.
+ * Shifts by whole cells only, so the grid holds.
+ */
+function withinMargin(layout: MindMapLayout): MindMapLayout {
+  let minX = Infinity;
+  let minY = Infinity;
+  for (const n of layout.nodes) {
+    minX = Math.min(minX, n.x);
+    minY = Math.min(minY, n.y - n.height / 2);
+  }
+  const shiftX = minX < MAP_MARGIN ? Math.ceil((MAP_MARGIN - minX) / MAP_GRID) * MAP_GRID : 0;
+  const shiftY = minY < MAP_MARGIN ? Math.ceil((MAP_MARGIN - minY) / MAP_GRID) * MAP_GRID : 0;
+  if (!shiftX && !shiftY) return layout;
+  return {
+    ...layout,
+    nodes: shifted(layout.nodes, shiftX, shiftY),
+    width: layout.width + shiftX,
+    height: layout.height + shiftY,
+  };
 }
 
 function layoutUnkeyed(
@@ -1276,68 +1325,103 @@ export interface HubPaths {
   readonly arms: readonly { readonly d: string; readonly to: string; readonly color: number }[];
 }
 
+/** The side of a parent a child's connector leaves from. */
+export type HubSide = 'right' | 'left' | 'down' | 'up';
+
+/** Below this gap a side is too tight for a stem, a vertex and an arm. */
+const HUB_MIN_GAP = MAP_GRID * 2;
+
+/**
+ * Which side of the parent a child hangs off, from where the two boxes
+ * actually are, so a card can be moved anywhere and its connector follows.
+ * A layout keeps its own axis while the child is clear of the parent along
+ * it (left and right for a tree or radial map, down and up for a top-down
+ * one), which is always so for the automatic layout; a child moved under
+ * or over its parent (or beside it, top-down) switches to the other axis.
+ */
+export function hubSideOf(parent: EdgeBox, child: EdgeBox, dir: MindMapDirection): HubSide {
+  const pTop = parent.y - parent.height / 2;
+  const pBottom = parent.y + parent.height / 2;
+  const cTop = child.y - child.height / 2;
+  const cBottom = child.y + child.height / 2;
+  const right = child.x - (parent.x + parent.width);
+  const left = parent.x - (child.x + child.width);
+  const down = cTop - pBottom;
+  const up = pTop - cBottom;
+  const h: [HubSide, number] = right >= left ? ['right', right] : ['left', left];
+  const v: [HubSide, number] = down >= up ? ['down', down] : ['up', up];
+  const [first, second] = dir === 'down' ? [v, h] : [h, v];
+  if (first[1] >= HUB_MIN_GAP) return first[0];
+  if (second[1] >= HUB_MIN_GAP) return second[0];
+  if (first[1] > 0) return first[0];
+  if (second[1] > 0) return second[0];
+  // The boxes overlap: go by which way the child's centre lies.
+  const dx = child.x + child.width / 2 - (parent.x + parent.width / 2);
+  const dy = child.y - parent.y;
+  return Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'down' : 'up');
+}
+
+/** The vertex between an exit and the nearest entry: on the grid when there is room. */
+function hubVertex(exit: number, nearest: number): number {
+  const mid = (exit + nearest) / 2;
+  if (Math.abs(nearest - exit) >= HUB_MIN_GAP) return Math.round(mid / MAP_GRID) * MAP_GRID;
+  return Math.round(mid);
+}
+
 /**
  * The hub connector: ONE line leaves the parent, reaches a vertex, a
  * spine runs along it, and one arm enters each child. Straight lines,
- * square corners (Mufaro's call, 2026-09-14: no rounded elbows).
- * Children on each side of the parent get their own hub (post-drag mixed
- * sides). 'radial' routes exactly like 'right'.
+ * square corners (Mufaro's call, 2026-09-14: no rounded elbows). Each
+ * child hangs off the side of the parent it actually sits on
+ * (hubSideOf), and each side used gets its own hub, so a card moved below,
+ * above or across its parent is still met edge to edge.
  */
 export function hubPathsFor(parent: EdgeBox, children: readonly HubChild[], dir: MindMapDirection): HubPaths[] {
   if (children.length === 0) return [];
+  const bySide = new Map<HubSide, HubChild[]>();
+  for (const c of children) {
+    const side = hubSideOf(parent, c, dir);
+    const list = bySide.get(side) ?? [];
+    list.push(c);
+    bySide.set(side, list);
+  }
   const out: HubPaths[] = [];
-  if (dir !== 'down') {
-    const pc = parent.x + parent.width / 2;
-    const sides: [HubChild[], HubChild[]] = [[], []];
-    for (const c of children) (c.x + c.width / 2 >= pc ? sides[0] : sides[1]).push(c);
-    for (let side = 0; side < 2; side++) {
-      const kids = sides[side];
-      if (kids.length === 0) continue;
-      const forward = side === 0;
+  const pTop = parent.y - parent.height / 2;
+  const pBottom = parent.y + parent.height / 2;
+  const px = parent.x + parent.width / 2;
+  for (const side of ['right', 'left', 'down', 'up'] as const) {
+    const kids = bySide.get(side);
+    if (!kids || kids.length === 0) continue;
+    if (side === 'right' || side === 'left') {
+      const forward = side === 'right';
       const exitX = forward ? parent.x + parent.width : parent.x;
       const entries = kids.map((c) => (forward ? c.x : c.x + c.width));
-      const nearest = forward ? Math.min(...entries) : Math.max(...entries);
-      const m = Math.round((exitX + nearest) / 2);
+      const m = hubVertex(exitX, forward ? Math.min(...entries) : Math.max(...entries));
       const ys = kids.map((c) => c.y);
       const minY = Math.min(...ys, parent.y);
       const maxY = Math.max(...ys, parent.y);
-      const arms = kids.map((c) => ({
-        d: 'M' + m + ' ' + c.y + ' H ' + (forward ? c.x : c.x + c.width),
-        to: c.label,
-        color: c.color,
-      }));
       out.push({
         stem: 'M' + exitX + ' ' + parent.y + ' H ' + m,
         spine: minY !== maxY ? 'M' + m + ' ' + minY + ' V ' + maxY : null,
-        arms,
+        arms: kids.map((c) => ({ d: 'M' + m + ' ' + c.y + ' H ' + (forward ? c.x : c.x + c.width), to: c.label, color: c.color })),
       });
+      continue;
     }
-    return out;
-  }
-  const pcy = parent.y;
-  const sides: [HubChild[], HubChild[]] = [[], []];
-  for (const c of children) (c.y >= pcy ? sides[0] : sides[1]).push(c);
-  for (let side = 0; side < 2; side++) {
-    const kids = sides[side];
-    if (kids.length === 0) continue;
-    const downward = side === 0;
-    const exitY = downward ? parent.y + parent.height / 2 : parent.y - parent.height / 2;
-    const px = parent.x + parent.width / 2;
+    const downward = side === 'down';
+    const exitY = downward ? pBottom : pTop;
     const entries = kids.map((c) => (downward ? c.y - c.height / 2 : c.y + c.height / 2));
-    const nearest = downward ? Math.min(...entries) : Math.max(...entries);
-    const m = Math.round((exitY + nearest) / 2);
+    const m = hubVertex(exitY, downward ? Math.min(...entries) : Math.max(...entries));
     const xs = kids.map((c) => c.x + c.width / 2);
     const minX = Math.min(...xs, px);
     const maxX = Math.max(...xs, px);
-    const arms = kids.map((c) => ({
-      d: 'M' + (c.x + c.width / 2) + ' ' + m + ' V ' + (downward ? c.y - c.height / 2 : c.y + c.height / 2),
-      to: c.label,
-      color: c.color,
-    }));
     out.push({
       stem: 'M' + px + ' ' + exitY + ' V ' + m,
       spine: minX !== maxX ? 'M' + minX + ' ' + m + ' H ' + maxX : null,
-      arms,
+      arms: kids.map((c) => ({
+        d: 'M' + (c.x + c.width / 2) + ' ' + m + ' V ' + (downward ? c.y - c.height / 2 : c.y + c.height / 2),
+        to: c.label,
+        color: c.color,
+      })),
     });
   }
   return out;

@@ -248,8 +248,67 @@ async function main() {
     await page.keyboard.press('Escape');
     await shot('06-final.png');
 
+    // 9. A fresh map whose tall top card sits over one short child: the
+    //    first drop and a resize both land exactly where they were let go.
+    await run('workbench.action.closeActiveEditor');
+    await page.waitForFunction(() => document.querySelectorAll('.canvas-conceptmap').length === 0, null, { timeout: 10_000 }).catch(() => {});
+    await run('canvas.saveConceptMap', 'Reserving\n  Chain Ladder\n    Mack\n  Bornhuetter\n  Cape Cod', 'right');
+    await page.waitForFunction(() => document.querySelectorAll('.canvas-conceptmap').length === 1
+      && [...document.querySelectorAll('.canvas-conceptmap .parallx-mindmap__node')].length === 5, null, { timeout: 15_000 });
+    await page.waitForTimeout(800);
+    const tallTop = await rectOf('Chain Ladder');
+    const svgTop = await page.$eval('.canvas-conceptmap svg', (svg) => svg.getBoundingClientRect().y);
+    check(tallTop.y - svgTop >= 18, `the top card keeps the board margin (${Math.round(tallTop.y - svgTop)}px)`);
+    const ccFirst = await rectOf('Cape Cod');
+    const firstDrop = await drag(await centre('Cape Cod'), { x: ccFirst.x + ccFirst.width / 2 + 75, y: ccFirst.y + ccFirst.height / 2 + 50 });
+    const ccAfter = await rectOf('Cape Cod');
+    check(ccAfter.x === firstDrop['Cape Cod'].x && ccAfter.y === firstDrop['Cape Cod'].y,
+      `the first drop on a fresh map lands where it was let go (during ${firstDrop['Cape Cod'].x},${firstDrop['Cape Cod'].y} after ${ccAfter.x},${ccAfter.y})`);
+    const chainBefore = await rectOf('Chain Ladder');
+    check(chainBefore.y === tallTop.y, 'and nothing else moved');
+    // Resize: drag Bornhuetter's right edge in until its text wraps.
+    const bh = await rectOf('Bornhuetter');
+    await page.mouse.move(bh.x + bh.width - 3, bh.y + bh.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bh.x + 70, bh.y + bh.height / 2, { steps: 8 });
+    await page.waitForTimeout(150);
+    const resizing = await rectOf('Bornhuetter');
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+    const resized = await rectOf('Bornhuetter');
+    check(resized.width === resizing.width && resized.x === resizing.x && resized.y === resizing.y,
+      `a resize keeps the width it showed and its top edge (during w${resizing.width} y${resizing.y}, after w${resized.width} y${resized.y} h${resized.height})`);
+    await shot('08-fresh-map.png');
+
+    // 10. Free movement: drag Cape Cod straight under its parent. Its arrow
+    //     must come down into its TOP edge, live while dragging and after.
+    const armInto = (label) => page.$eval('.canvas-conceptmap svg', (svg, l) => {
+      const g = [...svg.querySelectorAll('.parallx-mindmap__node')].find((n) => n.getAttribute('data-mindmap-label') === l);
+      const line = g.getAttribute('data-mm-line');
+      const b = g.querySelector('.parallx-mindmap__box');
+      const arm = svg.querySelector(`path[data-mm-to="${line}"]`);
+      const nums = (arm.getAttribute('d').match(/-?[\d.]+/g) || []).map(Number);
+      const x = Number(b.getAttribute('x')); const y = Number(b.getAttribute('y')); const w = Number(b.getAttribute('width'));
+      return { d: arm.getAttribute('d'), vertical: / V /.test(arm.getAttribute('d')), endsAtTop: nums[2] === y && nums[0] === x + w / 2 };
+    }, label);
+    const parentBox = await rectOf('Reserving');
+    const ccFree = await rectOf('Cape Cod');
+    await page.mouse.move(ccFree.x + ccFree.width / 2, ccFree.y + ccFree.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(ccFree.x + ccFree.width / 2 + 5, ccFree.y + ccFree.height / 2 + 5, { steps: 2 });
+    await page.mouse.move(parentBox.x + parentBox.width / 2, parentBox.y + parentBox.height + 160, { steps: 10 });
+    await page.waitForTimeout(150);
+    const live = await armInto('Cape Cod');
+    check(live.vertical && live.endsAtTop, `while dragging under its parent, the arrow comes down into the card's top (${live.d})`);
+    await shot('09-under-parent-live.png');
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+    const dropped = await armInto('Cape Cod');
+    check(dropped.vertical && dropped.endsAtTop, `after the drop it still does (${dropped.d})`);
+    await shot('10-under-parent.png');
+
     // Light mode, for the selection colour.
-    await page.mouse.click(...Object.values(await centre('Prior')));
+    await page.mouse.click(...Object.values(await centre('Bornhuetter')));
     await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
     await page.waitForTimeout(400);
     await shot('07-light.png');
