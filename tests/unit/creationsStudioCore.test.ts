@@ -423,3 +423,51 @@ describe('a structured field, checked (2026-10-06)', () => {
     expect(buildSheetMessages({ concept: 'x' })[0].content).not.toContain('required structure');
   });
 });
+
+describe('the canon, edited by hand (2026-10-08)', () => {
+  const canon = [
+    { text: 'Ada was born in 1815.', status: 'kept', was: '' },
+    { text: 'Ada is a lighthouse keeper.', status: 'changed', was: 'Ada is a mathematician.' },
+    { text: 'Ada keeps the light on Skerry Rock.', status: 'added', was: '' },
+  ];
+  it('a kept fact rewritten becomes changed, by you, against its source line', () => {
+    const r = core.editCanonFact(canon, {}, 0, '  Ada was born in 1820. ');
+    expect(r.canon[0]).toEqual({ text: 'Ada was born in 1820.', status: 'changed', was: 'Ada was born in 1815.', hand: true });
+    expect(r.edits).toEqual({ 'Ada was born in 1815.': 'Ada was born in 1820.' });
+    expect(canon[0].status).toBe('kept'); // the input is not touched
+  });
+  it('a changed fact keeps its source line; typed back to it, it is kept again', () => {
+    const r1 = core.editCanonFact(canon, {}, 1, 'Ada is a ferry pilot.');
+    expect(r1.canon[1]).toMatchObject({ text: 'Ada is a ferry pilot.', status: 'changed', was: 'Ada is a mathematician.' });
+    const r2 = core.editCanonFact(r1.canon, r1.edits, 1, 'Ada is a mathematician.');
+    expect(r2.canon[1]).toEqual({ text: 'Ada is a mathematician.', status: 'kept', was: '' });
+    expect(r2.edits).toEqual({});
+  });
+  it('an added fact is rewritten in place; an empty or unchanged text changes nothing', () => {
+    expect(core.editCanonFact(canon, {}, 2, 'Ada keeps the light on Fair Isle.').canon[2]).toMatchObject({ status: 'added', text: 'Ada keeps the light on Fair Isle.' });
+    expect(core.editCanonFact(canon, {}, 2, '   ').canon).toEqual(canon);
+    expect(core.editCanonFact(canon, {}, 0, 'Ada was born in 1815.').edits).toEqual({});
+  });
+  it('edits go back on a rebuilt canon by source line, whatever the new Changes did to the rest', () => {
+    const rebuilt = [
+      { text: 'Ada was born in 1815.', status: 'kept', was: '' },
+      { text: 'Ada is a ferry pilot.', status: 'changed', was: 'Ada is a mathematician.' },
+    ];
+    const out = core.applyCanonEdits(rebuilt, { 'Ada was born in 1815.': 'Ada was born in 1820.', 'Gone fact.': 'x' });
+    expect(out[0]).toEqual({ text: 'Ada was born in 1820.', status: 'changed', was: 'Ada was born in 1815.', hand: true });
+    expect(out[1]).toEqual(rebuilt[1]);
+  });
+  it('the sources fingerprint changes with the text or the focus, not with anything else', () => {
+    const a = [{ id: 's1', title: 'A', text: 'Ada was born in 1815.' }];
+    expect(core.sourcesKey(a, 'Ada')).toBe(core.sourcesKey([{ ...a[0], title: 'Other title' }], ' Ada '));
+    expect(core.sourcesKey(a, 'Ada')).not.toBe(core.sourcesKey([{ ...a[0], text: 'Ada was born in 1816.' }], 'Ada'));
+    expect(core.sourcesKey(a, 'Ada')).not.toBe(core.sourcesKey(a, 'Ada the person'));
+  });
+  it('the sheet and a reroll are told the focus changes no fact', () => {
+    const sheet = core.buildSheetMessages({ focus: 'the person, not the films', canon: ['Ada was born in 1815.'] })[1].content;
+    expect(sheet).toContain('FOCUS (what to bring forward from the canon; it changes no fact): the person, not the films');
+    expect(sheet).not.toContain('CHARACTER CONCEPT');
+    const reroll = core.buildFieldMessages({ focus: 'the person', canon: ['Ada was born in 1815.'] }, core.emptySheet(), 'backstory')[1].content;
+    expect(reroll).toContain('FOCUS (what to bring forward from the canon; it changes no fact): the person');
+  });
+});

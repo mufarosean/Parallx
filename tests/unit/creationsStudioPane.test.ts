@@ -372,7 +372,7 @@ describe('the Studio screen', () => {
     await flush();
     const sourceRow = root.querySelector('.cs-source') as HTMLElement;
     expect(sourceRow.querySelector('.cs-chip')?.textContent).toMatch(/^\d+ words$/);
-    typeInto([...root.querySelectorAll('.cs-textarea')].find((t) => (t as HTMLTextAreaElement).placeholder.startsWith('What changes')) as HTMLTextAreaElement, 'Ada is a lighthouse keeper instead of a mathematician');
+    typeInto([...root.querySelectorAll('.cs-textarea')].find((t) => (t as HTMLTextAreaElement).placeholder.startsWith('What to change')) as HTMLTextAreaElement, 'Ada is a lighthouse keeper instead of a mathematician');
     buttonNamed(root, 'Generate').click();
     await flush();
     const canon = [...root.querySelectorAll('.cs-section')].find((s) => s.querySelector('.cs-section-title')?.textContent === 'Canon') as HTMLElement;
@@ -394,6 +394,121 @@ describe('the Studio screen', () => {
     expect(data.studio.sources[0]).toMatchObject({ kind: 'text', status: 'ready' });
     expect(data.studio.excluded).toEqual([3]);
     expect(buttonNamed(root, 'Twist Again').style.display).toBe('');
+  });
+
+  describe('a canon that is yours (2026-10-08)', () => {
+    // The owner: made from a source but tweaked a little, the canon still
+    // showed the source's facts, and the tweak lost to them. Changes now go
+    // through one box and rewrite the canon; a fact can be rewritten by
+    // hand; the canon is rebuilt only when its sources or Changes change.
+    const canonOf = (root: HTMLElement) => [...root.querySelectorAll('.cs-section')].find((x) => x.querySelector('.cs-section-title')?.textContent === 'Canon') as HTMLElement;
+    const count = (w: any, marker: string) => w.requests.filter((r: any) => r.messages[0].content.includes(marker)).length;
+    const lastSheet = (w: any) => [...w.requests].reverse().find((r: any) => r.messages[0].content.includes('character designer for roleplay fiction'))!.messages[1].content as string;
+    const changesBox = (root: HTMLElement) => [...root.querySelectorAll('.cs-textarea')].find((t) => (t as HTMLTextAreaElement).placeholder.startsWith('What to change')) as HTMLTextAreaElement;
+    async function fromText(w: any) {
+      renderStudioPane(container, w.parallx, w.ctx, w.deps);
+      await flush();
+      const root = container.querySelector('.cs') as HTMLElement;
+      buttonNamed(root, 'From Sources').click();
+      buttonNamed(root, 'Add Text').click();
+      typeInto(root.querySelector('.cs-inline textarea') as HTMLTextAreaElement, 'Ada Lovelace was born in 1815. She is a mathematician who lives in London.');
+      buttonNamed(root, 'Add').click();
+      await flush();
+      return root;
+    }
+    function rewrite(root: HTMLElement, index: number, text: string) {
+      const fact = canonOf(root).querySelectorAll('.cs-fact')[index] as HTMLElement;
+      (fact.querySelector('.cs-fact-edit') as HTMLButtonElement).click();
+      const input = fact.querySelector('.cs-fact-input') as HTMLInputElement;
+      input.value = text;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    }
+
+    it('a fact rewritten by hand is marked changed by you, and the next sheet is written from it', async () => {
+      const w = makeWorld();
+      const root = await fromText(w);
+      buttonNamed(root, 'Generate').click();
+      await flush();
+      rewrite(root, 2, 'Ada lives in Edinburgh.');
+      let facts = [...canonOf(root).querySelectorAll('.cs-fact')];
+      expect(facts[2].className).toContain('cs-fact--changed');
+      expect(facts[2].querySelector('.cs-fact-text')?.firstChild?.textContent).toBe('Ada lives in Edinburgh.');
+      expect(facts[2].querySelector('.cs-fact-was')?.textContent).toBe('you changed it; was: Ada lives in London.');
+      (facts[0] as HTMLElement).click(); // leave the birth year out
+      buttonNamed(root, 'Generate').click();
+      await flush();
+      // Nothing it comes from changed: not read again, edits and the left-out fact kept.
+      expect(count(w, 'You extract established facts')).toBe(1);
+      expect(count(w, 'You revise a list of established facts')).toBe(0);
+      expect(canonOf(root).querySelector('.cs-section-meta')?.textContent).toContain('1 left out');
+      expect(lastSheet(w)).toContain('- Ada lives in Edinburgh.');
+      expect(lastSheet(w)).not.toContain('- Ada lives in London.');
+      expect(lastSheet(w)).not.toContain('- Ada was born in 1815.');
+      // Typed back to the source's words, it is kept again.
+      rewrite(root, 2, 'Ada lives in London.');
+      facts = [...canonOf(root).querySelectorAll('.cs-fact')];
+      expect(facts[2].className).toContain('cs-fact--kept');
+      expect(facts[2].querySelector('.cs-fact-was')).toBeNull();
+    });
+
+    it('new Changes are applied to the same reading, and your edits ride along', async () => {
+      const w = makeWorld();
+      const root = await fromText(w);
+      buttonNamed(root, 'Generate').click();
+      await flush();
+      rewrite(root, 2, 'Ada lives in Edinburgh.');
+      typeInto(changesBox(root), 'Ada is a lighthouse keeper instead of a mathematician');
+      buttonNamed(root, 'Generate').click();
+      await flush();
+      expect(count(w, 'You extract established facts')).toBe(1);
+      expect(count(w, 'You revise a list of established facts')).toBe(1);
+      const texts = [...canonOf(root).querySelectorAll('.cs-fact-text')].map((t) => t.firstChild?.textContent);
+      expect(texts).toContain('Ada is a lighthouse keeper.');
+      expect(texts).toContain('Ada lives in Edinburgh.');
+      expect(lastSheet(w)).toContain('- Ada lives in Edinburgh.');
+      // The edit is saved with the character, against the source fact.
+      await flush(900);
+      expect([...w.saved.values()][0].studio.edits).toEqual({ 'Ada lives in London.': 'Ada lives in Edinburgh.' });
+    });
+
+    it('From Sources the box above is Focus: read for, never a change; From A Concept no canon is shown', async () => {
+      const w = makeWorld();
+      const root = await fromText(w);
+      const labels = [...root.querySelectorAll('.cs-label')].map((l) => l.textContent);
+      expect(labels).toContain('Focus');
+      expect(labels).toContain('Changes');
+      typeInto([...root.querySelectorAll('.cs-textarea')].find((t) => (t as HTMLTextAreaElement).placeholder.startsWith('Optional. Who the sources')) as HTMLTextAreaElement, 'Ada the person, not the engine');
+      buttonNamed(root, 'Generate').click();
+      await flush();
+      expect(lastSheet(w)).toContain('FOCUS (what to bring forward from the canon; it changes no fact): Ada the person, not the engine');
+      expect(lastSheet(w)).not.toContain('CHARACTER CONCEPT');
+      expect(canonOf(root).style.display).toBe('');
+      buttonNamed(root, 'From A Concept').click();
+      expect(canonOf(root).style.display).toBe('none');
+      buttonNamed(root, 'From Sources').click();
+      expect(canonOf(root).style.display).toBe('');
+    });
+
+    it('Twist Again starts the next character from this canon, not a new reading of the sources', async () => {
+      const w = makeWorld();
+      const root = await fromText(w);
+      buttonNamed(root, 'Generate').click();
+      await flush(900);
+      buttonNamed(root, 'Twist Again').click();
+      await flush();
+      const from = (w.ctx.openNew as any).mock.calls[0][0];
+      expect(typeof from.baseKey).toBe('string');
+      expect(from.baseKey.length).toBeGreaterThan(0);
+      container.replaceChildren();
+      const child = { ...w.ctx, fileName: null, from: { ...from, baseFacts: ['Ada lives in Edinburgh.', 'Ada is a mathematician.'] } };
+      renderStudioPane(container, w.parallx, child, w.deps);
+      await flush();
+      const root2 = container.querySelector('.cs') as HTMLElement;
+      buttonNamed(root2, 'Generate').click();
+      await flush();
+      expect(count(w, 'You extract established facts')).toBe(1);
+      expect(lastSheet(w)).toContain('- Ada lives in Edinburgh.');
+    });
   });
 
   it('adds a link only through the Web Research door, and shows the door\'s refusal on the row', async () => {

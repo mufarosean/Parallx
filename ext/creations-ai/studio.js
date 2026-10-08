@@ -17,6 +17,7 @@ import {
   sectionsPresent, completionDirection,
   buildPitchMessages, parsePitches, pitchAsConcept, parseRelationshipLines, relationConcept,
   parseJsonLoose, extractCompletedFields, parseCanonFacts, parseTwistedCanon, canonCounts,
+  editCanonFact, applyCanonEdits, sourcesKey,
   sheetFromCharacter, characterFromSheet, lineageOf, stripDashes, backLinkLine, withRelationshipLine,
 } from './studio-core.js';
 import { createPortrait, updatePortrait, hueOf, PORTRAIT_HUES, createDots, CREATIONS_PARTS_CSS } from './portrait.js';
@@ -147,7 +148,11 @@ export function injectStudioStyles() {
 .cs-pitch-foot { display: flex; justify-content: flex-end; margin-top: auto; padding-top: var(--px-space-2); }
 .cs-fact--added .cs-fact-mark { background: var(--px-success); }
 .cs-fact--off { opacity: .45; text-decoration: line-through; }
-.cs-fact-text { min-width: 0; }
+.cs-fact-text { min-width: 0; flex: 1; }
+.cs-fact-edit { flex: none; visibility: hidden; border: 0; background: none; padding: 0 2px; color: var(--px-text-muted); cursor: pointer; line-height: 1; }
+.cs-fact:hover .cs-fact-edit, .cs-fact-edit:focus-visible { visibility: visible; }
+.cs-fact-edit:hover { color: var(--px-text); }
+.cs-fact-input { flex: 1; min-width: 0; font: inherit; font-size: var(--px-text-sm); color: var(--px-text); background: var(--px-bg); border: 1px solid var(--px-accent); border-radius: var(--px-radius-sm); padding: 2px 6px; }
 .cs-fact-was { display: block; color: var(--px-text-muted); font-size: var(--px-text-xs); text-decoration: none; }
 .cs-legend { display: flex; gap: var(--px-space-3); font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .cs-legend span { display: inline-flex; align-items: center; gap: 4px; }
@@ -212,6 +217,11 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     canon: [],
     baseFacts: [],
     excluded: new Set(),
+    // Hand edits to canon facts, by the source fact they change: { [source fact]: your text }.
+    edits: {},
+    // What the canon was last built from: the sources' fingerprint and the Changes text.
+    baseKey: '',
+    twistApplied: null,
     dials: null,
     dialsTouched: false,
     // Pitches: several takes on the concept; `pitch` is the one the sheet was written from.
@@ -280,7 +290,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   root.appendChild(cols);
 
   // ── Make ───────────────────────────────────────────────────────────────
-  const make = section('Make', 'Concept, sources, a Twist, the dials.');
+  const make = section('Make', 'Concept, sources, changes, the dials.');
   mainCol.appendChild(make.root);
   const modes = el('div', 'cs-modes');
   const modeBtn = (key, label) => {
@@ -335,10 +345,12 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   make.body.appendChild(connField);
 
   const twistField = el('div', 'cs-field');
-  twistField.appendChild(el('div', 'cs-label', { text: 'Twist' }));
+  // Every change from the sources goes here, and only here: it rewrites the
+  // canon fact by fact (the Twist), so the canon shows what was asked.
+  twistField.appendChild(el('div', 'cs-label', { text: 'Changes' }));
   const twistArea = el('textarea', 'cs-textarea');
   twistArea.rows = 2;
-  twistArea.placeholder = 'What changes, e.g. "He never made it as an actor and works nights as a hotel security guard." Everything the change does not touch stays true to the sources.';
+  twistArea.placeholder = 'What to change from the sources, e.g. "Ten years older, and he never made it as an actor." Everything you do not change stays true to the sources, and the canon shows each change.';
   twistArea.addEventListener('input', () => { state.twist = twistArea.value; autogrow(twistArea); markDirty(); });
   twistField.append(twistArea);
   make.body.appendChild(twistField);
@@ -393,7 +405,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   canon.root.style.display = 'none';
   mainCol.appendChild(canon.root);
   const legend = el('div', 'cs-legend');
-  legend.innerHTML = '<span><i></i>Kept</span><span><i class="changed"></i>Changed</span><span><i class="added"></i>Added</span><span>Click a fact to leave it out</span>';
+  legend.innerHTML = '<span><i></i>Kept</span><span><i class="changed"></i>Changed</span><span><i class="added"></i>Added</span><span>Click a fact to leave it out; the pencil rewrites it</span>';
   const canonList = el('div', 'cs-canon');
   canon.body.append(legend, canonList);
 
@@ -704,10 +716,11 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     sourcesField.style.display = mode === 'sources' ? '' : 'none';
     twistField.style.display = mode === 'sources' ? '' : 'none';
     pitchBtn.style.display = mode === 'sources' ? 'none' : '';
-    conceptLabel.textContent = mode === 'sources' ? 'Direction' : 'Concept';
+    conceptLabel.textContent = mode === 'sources' ? 'Focus' : 'Concept';
     conceptArea.placeholder = mode === 'sources'
-      ? 'Optional. Who the sources are about and what to focus on, e.g. "Jackie Chan, the person, not the films."'
+      ? 'Optional. Who the sources are about and what to read for, e.g. "Jackie Chan, the person, not the films." It changes no fact: changes go in Changes below.'
       : 'Describe them in your own words, e.g. "A retired forensic accountant who hears music in ledgers." Your words win over everything else.';
+    renderCanon();
     markDirty();
   }
 
@@ -1046,7 +1059,9 @@ export function renderStudioPane(container, parallx, ctx, deps) {
 
   // ── Canon ──────────────────────────────────────────────────────────────
   function renderCanon() {
-    if (!state.canon.length) { canon.root.style.display = 'none'; twistAgainBtn.style.display = 'none'; return; }
+    // A canon is shown only when the sheet is written from it: From
+    // Sources. From A Concept, an earlier canon is not in use, so not shown.
+    if (!state.canon.length || state.mode !== 'sources') { canon.root.style.display = 'none'; twistAgainBtn.style.display = 'none'; return; }
     canon.root.style.display = '';
     const c = canonCounts(state.canon);
     const bits = [`${c.total} facts`];
@@ -1058,13 +1073,52 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       const row = el('div', `cs-fact cs-fact--${f.status}${state.excluded.has(i) ? ' cs-fact--off' : ''}`);
       row.appendChild(el('span', 'cs-fact-mark'));
       const t = el('span', 'cs-fact-text', { text: f.text });
-      if (f.status === 'changed' && f.was) t.appendChild(el('span', 'cs-fact-was', { text: `was: ${f.was}` }));
+      if (f.status === 'changed' && f.was) t.appendChild(el('span', 'cs-fact-was', { text: `${f.hand ? 'you changed it; ' : ''}was: ${f.was}` }));
       row.appendChild(t);
+      const edit = el('button', 'cs-fact-edit', { html: icon('pencil', 13) });
+      edit.type = 'button';
+      edit.title = 'Rewrite this fact';
+      edit.setAttribute('aria-label', 'Rewrite this fact');
+      edit.addEventListener('click', (e) => { e.stopPropagation(); editFact(i, row, t); });
+      row.appendChild(edit);
       row.title = state.excluded.has(i) ? 'Left out. Click to use it again.' : 'Click to leave this fact out of the next generation.';
-      row.addEventListener('click', () => { if (state.excluded.has(i)) state.excluded.delete(i); else state.excluded.add(i); renderCanon(); markDirty(); });
+      row.addEventListener('click', (e) => {
+        if (e.target instanceof Element && e.target.closest('.cs-fact-input, .cs-fact-edit')) return;
+        if (state.excluded.has(i)) state.excluded.delete(i); else state.excluded.add(i);
+        renderCanon(); markDirty();
+      });
       return row;
     }));
     twistAgainBtn.style.display = state.fileName ? '' : 'none';
+  }
+  /** Rewrite fact `i` in place: Enter keeps it, Escape or an unchanged text leaves it. */
+  function editFact(i, row, textEl) {
+    const f = state.canon[i];
+    if (!f) return;
+    const input = el('input', 'cs-fact-input');
+    input.type = 'text';
+    input.value = f.text;
+    input.setAttribute('aria-label', 'Fact');
+    textEl.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (keep) => {
+      if (done) return;
+      done = true;
+      if (keep) {
+        const res = editCanonFact(state.canon, state.edits, i, input.value);
+        state.canon = res.canon;
+        state.edits = res.edits;
+        markDirty();
+      }
+      renderCanon();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
   }
   function activeFacts() { return state.canon.filter((_, i) => !state.excluded.has(i)).map((f) => f.text); }
 
@@ -1115,7 +1169,9 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   function context() {
     return {
       name: state.sheet.name.trim(),
-      concept: state.mode === 'concept' ? pitchAsConcept(state.concept, state.pitch) : state.concept,
+      // From Sources the box is Focus: what to read for, never a change.
+      concept: state.mode === 'concept' ? pitchAsConcept(state.concept, state.pitch) : '',
+      focus: state.mode === 'sources' ? state.concept : '',
       canon: state.mode === 'sources' ? activeFacts() : [],
       spec: state.dialsTouched && forgeControls ? forgeControls.spec() : '',
       twist: state.mode === 'sources' ? state.twist : '',
@@ -1197,18 +1253,31 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     try {
       const { modelId, numCtx } = await resolveModel();
       if (state.mode === 'sources') {
-        if (usable.length > 0) {
+        // The canon is rebuilt only when what it comes from changed: the
+        // sources (or the focus) are read again, the Changes applied again.
+        // Otherwise the canon on screen, with your edits and the facts left
+        // out, is the one the sheet is written from.
+        const key = usable.length > 0 ? sourcesKey(usable, state.concept) : state.baseKey;
+        const reread = usable.length > 0 && (key !== state.baseKey || state.baseFacts.length === 0);
+        if (reread) {
           setStatus('Extracting Canon', 'accent');
           const { parsed } = await streamJson(modelId, numCtx, buildCanonMessages(usable, state.concept), null, 0.3);
           state.baseFacts = parseCanonFacts(parsed);
           if (state.baseFacts.length === 0) throw new Error('Nothing could be read from the sources.');
+          state.baseKey = key;
+          state.edits = {};
         }
-        state.canon = state.baseFacts.map((text) => ({ text, status: 'kept', was: '' }));
-        state.excluded = new Set();
-        if (state.twist.trim()) {
-          setStatus('Applying Twist', 'accent');
-          const { parsed } = await streamJson(modelId, numCtx, buildTwistMessages(state.baseFacts, state.twist), null, 0.5);
-          state.canon = parseTwistedCanon(parsed, state.baseFacts);
+        const twist = state.twist.trim();
+        if (reread || twist !== state.twistApplied || state.canon.length === 0) {
+          let next = state.baseFacts.map((text) => ({ text, status: 'kept', was: '' }));
+          if (twist) {
+            setStatus('Applying Changes', 'accent');
+            const { parsed } = await streamJson(modelId, numCtx, buildTwistMessages(state.baseFacts, twist), null, 0.5);
+            next = parseTwistedCanon(parsed, state.baseFacts);
+          }
+          state.canon = applyCanonEdits(next, state.edits);
+          state.excluded = new Set();
+          state.twistApplied = twist;
         }
         renderCanon();
       }
@@ -1310,6 +1379,9 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       canon: state.canon,
       baseFacts: state.baseFacts,
       excluded: [...state.excluded],
+      edits: state.edits,
+      baseKey: state.baseKey,
+      twistApplied: state.twistApplied,
       locks: [...state.locks],
       dials: state.dialsTouched && state.dials ? { ...state.dials, locks: [...state.dials.locks] } : null,
       parentId: state.parentId || null,
@@ -1393,6 +1465,9 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       sources: state.sources.filter((s) => s.status === 'ready').map((s) => ({ ...s })),
       baseFacts: activeFacts(),
       concept: state.concept,
+      // The child starts from this canon, not from a new reading of the
+      // same sources: their fingerprint says nothing needs re-reading.
+      baseKey: state.baseKey,
     });
   }
   async function renderCrumbs() {
@@ -1455,6 +1530,9 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       state.canon = Array.isArray(st.canon) ? st.canon : [];
       state.baseFacts = Array.isArray(st.baseFacts) ? st.baseFacts : [];
       state.excluded = new Set(Array.isArray(st.excluded) ? st.excluded : []);
+      state.edits = st.edits && typeof st.edits === 'object' ? { ...st.edits } : {};
+      state.baseKey = typeof st.baseKey === 'string' ? st.baseKey : '';
+      state.twistApplied = typeof st.twistApplied === 'string' ? st.twistApplied : null;
       state.parentId = st.parentId || null;
       state.parentName = st.parentName || '';
       state.pitch = st.pitch && typeof st.pitch === 'object' ? st.pitch : null;
@@ -1477,6 +1555,8 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       state.sources = (ctx.from.sources || []).map((s) => ({ ...s }));
       state.baseFacts = [...(ctx.from.baseFacts || [])];
       state.canon = state.baseFacts.map((text) => ({ text, status: 'kept', was: '' }));
+      state.baseKey = typeof ctx.from.baseKey === 'string' ? ctx.from.baseKey : '';
+      state.twistApplied = '';
       state.concept = ctx.from.concept || '';
       state.mode = 'sources';
     } else if (ctx.concept) {

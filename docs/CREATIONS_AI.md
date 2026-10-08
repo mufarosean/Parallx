@@ -564,6 +564,40 @@ Not done, on purpose: growth across chats (the card is the base for every
 story), a Wildness control, direction chips (the reroll box takes a typed
 direction), rules in the Voice field.
 
+## A canon that is yours (built 2026-10-08)
+
+The owner: a character made from a source but tweaked a little still showed
+the source's facts in the canon, and the tweak lost to them. The cause: From
+Sources, the box above the sources was "Direction", sent to the sheet as the
+concept, and the sheet prompt let the canon win over it; only the Twist
+could change a fact, and nothing said so. Three changes:
+
+- **One box for changes.** From Sources, the boxes read Focus (who the
+  sources are about and what to read for; it changes no fact, and the sheet
+  is told so as FOCUS, never as the concept) and Changes (the Twist, renamed:
+  what to change from the sources; it rewrites the canon fact by fact, so
+  the canon shows each change). The data keeps the name `twist`.
+- **A fact rewritten by hand.** The pencil on a canon fact edits it in place:
+  a kept fact becomes changed, "you changed it; was: ..."; typed back to the
+  source's words it is kept again; an added fact is rewritten in place.
+  Edits are kept against the source fact they change (`studio.edits`), so
+  they ride along when new Changes are applied to the same sources.
+- **Rebuilt only when needed.** Generate re-reads the sources only when
+  their text or the Focus changed (a fingerprint, `studio.baseKey`), and
+  re-applies the Changes only when they changed (`studio.twistApplied`).
+  Otherwise the canon on screen, with your edits and the facts left out, is
+  the one the sheet is written from; left-out facts used to reset at every
+  Generate. Twist Again passes the fingerprint, so the next character starts
+  from this canon, as the charter always said, instead of a new reading of
+  the same sources (its first Generate used to read them again).
+- **No canon that is not in use.** From A Concept the canon section is
+  hidden; an earlier canon from sources stayed on screen, unused.
+
+Pure parts in `studio-core.js` (`editCanonFact`, `applyCanonEdits`,
+`sourcesKey`, FOCUS in the sheet and reroll prompts). Tests:
+`creationsStudioCore` ("the canon, edited by hand"), `creationsStudioPane`
+("a canon that is yours").
+
 ## Directions (built 2026-10-07)
 
 The owner, after weeks of roleplay: every turn needs a director's note

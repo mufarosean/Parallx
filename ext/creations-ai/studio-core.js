@@ -345,7 +345,7 @@ const CRAFT_RULES = [
  * the dials as text (only when the user touched them), `twist` the change
  * so the writer knows the world has already moved.
  */
-export function buildSheetMessages({ concept = '', canon = [], spec = '', twist = '', name = '', structure = null, connections = [] } = {}) {
+export function buildSheetMessages({ concept = '', focus = '', canon = [], spec = '', twist = '', name = '', structure = null, connections = [] } = {}) {
   const structureLine = structureSystemLine(structure);
   const system = [
     'You are a character designer for roleplay fiction. You create original, specific, believable characters, never generic ones.',
@@ -363,6 +363,7 @@ export function buildSheetMessages({ concept = '', canon = [], spec = '', twist 
   }
   if (canon.length > 0) {
     parts.push('CANON (established facts about this person; every field must agree with all of them; do not contradict them and do not drop the important ones):', ...canon.map((f) => `- ${f}`), '');
+    if (focus.trim()) parts.push(`FOCUS (what to bring forward from the canon; it changes no fact): ${focus.trim()}`, '');
     if (twist.trim()) parts.push(`The canon already includes this change: ${twist.trim()}. Write the character as they are now, in that life, not as they were before. The description states the change plainly in its first sentences and then what it means for their days; the backstory tells how it came about.`, '');
   }
   if (spec.trim()) {
@@ -433,7 +434,7 @@ export function pitchAsConcept(concept, pitch) {
  * rewrite ("darker, more about her father", "more detail on the war years");
  * when given it leads, and the field's usual length gives way to it.
  */
-export function buildFieldMessages({ concept = '', canon = [], spec = '', twist = '', name = '', structure = null, connections = [] } = {}, sheet, key, direction = '') {
+export function buildFieldMessages({ concept = '', focus = '', canon = [], spec = '', twist = '', name = '', structure = null, connections = [] } = {}, sheet, key, direction = '') {
   const field = STUDIO_FIELDS.find((f) => f.key === key);
   const label = field ? field.label.toLowerCase() : key;
   const context = [];
@@ -441,6 +442,7 @@ export function buildFieldMessages({ concept = '', canon = [], spec = '', twist 
   if (concept.trim()) context.push('CHARACTER CONCEPT (authoritative):', concept.trim(), '');
   if (canon.length > 0) context.push('CANON (must agree with all of these):', ...canon.map((f) => `- ${f}`), '');
   if (twist.trim() && canon.length > 0) context.push(`The canon already includes this change: ${twist.trim()}.`, '');
+  if (focus.trim() && canon.length > 0) context.push(`FOCUS (what to bring forward from the canon; it changes no fact): ${focus.trim()}`, '');
   if (spec.trim()) context.push('ATTRIBUTES:', spec.trim(), '');
   context.push(...connectionsBlock(connections, name || (sheet && sheet.name) || ''));
   const connReq = key === 'relationships' || key === 'description' || key === 'backstory' ? connectionsRequirement(connections) : '';
@@ -741,3 +743,62 @@ export function lineageOf(charactersById, id) {
 export function formatWords(n) {
   return `${Number(n || 0).toLocaleString('en-US')} ${n === 1 ? 'word' : 'words'}`;
 }
+
+// ── The canon, edited by hand ──────────────────────────────────────────────
+//
+// A fact can be rewritten by hand. Edits are kept against the SOURCE fact
+// they change (its text as read from the sources), so they survive a new
+// Changes text being applied to the same sources; a new reading of the
+// sources starts over. A fact typed back to its source text is kept again.
+
+/** The source fact a canon entry stands for: its own text if kept, its "was" if changed; none for an added fact. */
+export function canonBaseOf(fact) {
+  if (!fact) return null;
+  if (fact.status === 'kept') return fact.text;
+  if (fact.status === 'changed') return fact.was || null;
+  return null;
+}
+
+/**
+ * Rewrite canon fact `index` to `text` by hand. Returns the new canon and
+ * the edits map (source fact → your text). Empty text changes nothing.
+ */
+export function editCanonFact(canon, edits, index, text) {
+  const next = String(text || '').replace(/\s+/g, ' ').trim();
+  const list = Array.isArray(canon) ? canon.map((f) => ({ ...f })) : [];
+  const map = { ...(edits || {}) };
+  const f = list[index];
+  if (!f || !next || next === f.text) return { canon: list, edits: map };
+  const base = canonBaseOf(f);
+  if (base !== null && next === base) {
+    list[index] = { text: base, status: 'kept', was: '' };
+    delete map[base];
+  } else if (base !== null) {
+    list[index] = { text: next, status: 'changed', was: base, hand: true };
+    map[base] = next;
+  } else {
+    list[index] = { ...f, text: next, hand: true };
+  }
+  return { canon: list, edits: map };
+}
+
+/** Put hand edits back on a rebuilt canon (after the Changes are applied again to the same sources). */
+export function applyCanonEdits(canon, edits) {
+  const map = edits || {};
+  if (!Object.keys(map).length) return Array.isArray(canon) ? canon : [];
+  return (Array.isArray(canon) ? canon : []).map((f) => {
+    const base = canonBaseOf(f);
+    if (base === null || !map[base] || map[base] === f.text) return f;
+    return { text: map[base], status: 'changed', was: base, hand: true };
+  });
+}
+
+/** A fingerprint of what the canon is read from: the sources' text and the focus. Equal means nothing to re-read. */
+export function sourcesKey(sources, focus = '') {
+  let h = 2166136261;
+  const feed = (str) => { for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } };
+  for (const src of Array.isArray(sources) ? sources : []) feed(`${src.id || ''}\u0001${src.text || ''}\u0002`);
+  feed(`\u0003${String(focus || '').trim()}`);
+  return (h >>> 0).toString(36);
+}
+
