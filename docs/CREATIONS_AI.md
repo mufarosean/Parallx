@@ -637,6 +637,22 @@ owner picks instead of writing, on request rather than after every reply.
   shows on the next one. Shipped: Push, Complicate, Move for characters
   (Deepen dropped) and New Scene, Time Skip, Arrival, Event for the
   Narrator. Each option carries its label to the card.
+- **Grounded in the moment, with consequences (built 2026-10-08).** The
+  owner: the options ignored what had just happened, a Narrator beat
+  included, and read like suggestions for the sake of suggesting, nothing
+  like the choices of a story game. The director saw the last turn but was
+  never told to answer it, so it reached for each sheet's wants and secrets.
+  Now the last turn stands alone, in full, nearest the ask ("What just
+  happened"), and is the newest truth over the Now line (labelled last
+  known) and the memory. The director first writes one sentence under
+  "## Situation" (what the last turn did, what is at stake), shown at the
+  top of the card. Every option answers the last turn, names something from
+  it, and fits only this moment; the sheet shapes how a character answers,
+  never replaces the answer. Each option ends "|| what it could set in
+  motion" (other separators read too), shown under it in muted type; only
+  the action goes into the note, so the consequence never forces an
+  outcome. A character's options take different stances. The Narrator's
+  follow from the last turn too.
 - **Who gets options.** The thread's characters, only those the scene says
   are present when it says so, at most four; the one who spoke last goes
   last, since the next turn is usually someone else's. The player's own

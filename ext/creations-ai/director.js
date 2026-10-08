@@ -83,7 +83,13 @@ const labelledKind = (line, kinds) => {
   return null;
 };
 const kindLines = (kinds) => kinds.map((k) => (k.rule ? `- ${k.label}: ${k.rule}.` : `- ${k.label}.`)).join('\n');
-const formatLines = (kinds) => kinds.map((k) => `${k.label}: <one sentence>`).join('\n');
+const formatLines = (kinds) => kinds.map((k) => `${k.label}: <one sentence> || <what it could set in motion>`).join('\n');
+
+/** Between an option and what it could set in motion: "||" as asked, or what a model writes instead. */
+const THEN_SPLIT = /\s*(?:\|\||\s\|\s|=>|->|\u2192)\s*/;
+
+/** The heading of the director's one-line reading of the moment. */
+export const SITUATION = 'Situation';
 
 const clip = (text, max) => {
   const t = String(text || '').replace(/\s+/g, ' ').trim();
@@ -130,8 +136,8 @@ export function buildDirectorPrompt({
     '',
     `${forCast ? 'Then, under' : 'Under'} "## ${NARRATOR}", write ${count(narratorKinds.length)}, for the story itself:`,
     kindLines(narratorKinds),
-    'Each Narrator option: one sentence, at most 20 words, present tense, saying what happens, never what anyone says or feels: "Cut to the harbour at dawn, where the buyer is already waiting".',
-    'They move the story on from this scene. Read where it stands: a scene that has run its course needs moving on; a scene going in circles needs something new to answer.',
+    'Each Narrator option follows from the last turn: what the world does in answer to it, or where the story goes because of it. One sentence, at most 20 words, present tense, saying what happens, never what anyone says or feels: "Cut to the harbour at dawn, where the buyer is already waiting". Then " || " and what it sets in motion, at most 12 words.',
+    'They move the story on from this moment. Read where it stands: a scene that has run its course needs moving on; a scene going in circles needs something new to answer.',
     'When an option brings someone in, name someone from the Others list when one fits. Never contradict the memory, never end the story.',
   ] : [];
   const characterRules = forCast ? [
@@ -139,24 +145,31 @@ export function buildDirectorPrompt({
     kindLines(characterKinds),
     '',
     'Each option:',
+    '- Answers the last turn. It is what this character does next because of what was just said or what just happened, and it names something from that turn: a person, a word, an object, an event. Their wants, secrets and history shape how they answer; they never replace the answer.',
+    '- If it would fit any other moment of the story, it is wrong. Write one that only fits this one.',
     '- One sentence, at most 20 words, present tense, starting with a verb. The character is implied: "Asks him where the money went", not "Ada asks...".',
-    '- Concrete: it names a person, an object, a place or an event from the scene, the memory or their sheet. Never only a feeling or a mood.',
-    '- Something a player would be glad to see happen next, and different from what just happened.',
+    '- Then " || " and what it could set in motion, at most 12 words: what it risks, reveals or changes ("|| she learns he kept the money").',
     '- Only what this character does. Never decide how anyone else answers.',
     '- Never contradicts the memory. Never ends the story or settles its central question.',
-    "A character's options must each lead to a clearly different next turn.",
+    "A character's options take clearly different stances (give way, push back, deflect, act) and lead to clearly different consequences, like the choices of a story game.",
   ] : [];
   const system = [
     'You are the director of an ongoing roleplay. You do not write the story.',
     forCast
-      ? 'You suggest what each character could do in their next turn, so the player can pick one.'
-      : 'You suggest where the story could go next, so the player can pick one.',
+      ? 'You offer the player real choices for the next turn, like the dialogue choices of a story game: each one a response to what is happening right now, each with consequences.'
+      : 'You offer the player real choices for where the story goes next, each one following from what is happening right now, each with consequences.',
+    'Everything starts from the last turn ("What just happened"). It is the newest truth: where it differs from the Now line or the memory, it wins.',
+    '',
+    `First, under "## ${SITUATION}", write one sentence: what the last turn just did, and what is unresolved or at stake because of it.`,
     '',
     ...characterRules,
     'Do not repeat or rephrase the notes the last turns were written with.',
     ...narratorRules,
     '',
     'Answer in exactly this format, nothing before or after it, no em dashes:',
+    '',
+    `## ${SITUATION}`,
+    '<one sentence>',
     '',
     ...(forNarrator ? [`## ${NARRATOR}`, formatLines(narratorKinds), ''] : []),
     ...(forCast ? [`## ${names[0]}`, formatLines(characterKinds)] : []),
@@ -181,19 +194,26 @@ export function buildDirectorPrompt({
   if (beats.length) parts.push(`Story so far:\n${beats.map((b) => `- ${clip(b, 200)}`).join('\n')}`);
   if (memory?.notes && String(memory.notes).trim()) parts.push(`The player's notes:\n${clip(memory.notes, 600)}`);
   const sceneBits = scene && typeof scene === 'object' ? [scene.location, scene.time, scene.mood].filter(Boolean) : [];
-  if (sceneBits.length) parts.push(`Now: ${sceneBits.join(', ')}`);
+  if (sceneBits.length) parts.push(`Now (last known; the last turn wins if it moved things): ${sceneBits.join(', ')}`);
   if (rules && String(rules).trim()) parts.push(`How people talk in this story:\n${clip(rules, 600)}`);
-  const turns = (Array.isArray(transcript) ? transcript : [])
-    .filter((m) => m && m.content)
+  // The last turn stands on its own, in full, nearest the ask; the ones
+  // before it are the run-up, long ones cut in the middle.
+  const all = (Array.isArray(transcript) ? transcript : []).filter((m) => m && m.content);
+  const last = all.length ? all[all.length - 1] : null;
+  const turns = all.slice(0, -1)
     .map((m) => {
       const c = String(m.content);
       return `${m.name || 'Someone'}: ${c.length > 1400 ? `${c.slice(0, 900)} [...] ${c.slice(-400)}` : c}`;
     })
     .join('\n\n')
     .slice(-9000);
-  if (turns.trim()) parts.push(`Recent turns, oldest first:\n${turns}`);
+  if (turns.trim()) parts.push(`Earlier turns, oldest first:\n${turns}`);
   const notes = (Array.isArray(recentNotes) ? recentNotes : []).map((n) => String(n || '').trim()).filter(Boolean).slice(-5);
   if (notes.length) parts.push(`Notes the last turns were written with:\n${notes.map((n) => `- ${clip(n, 200)}`).join('\n')}`);
+  if (last) {
+    const c = String(last.content);
+    parts.push(`What just happened (the last turn, in full; every option answers it):\n${last.name || 'Someone'}: ${c.length > 4000 ? `${c.slice(0, 2500)} [...] ${c.slice(-1400)}` : c}`);
+  }
   parts.push(forNarrator && forCast
     ? `Write the options for the ${NARRATOR}, then for: ${names.join(', ')}.`
     : forNarrator ? `Write the options for the ${NARRATOR}.` : `Write the options for: ${names.join(', ')}.`);
@@ -276,10 +296,17 @@ export function parseDirections(raw, names = [], { complete = true, characterKin
       kind = kinds.some((k) => k.key === labelled[0]) ? labelled[0] : null;
       line = labelled[1];
     }
+    let then = '';
+    const cut = line.search(THEN_SPLIT);
+    if (cut > 0) {
+      then = line.slice(cut).replace(THEN_SPLIT, '').replace(/^["“']+|["”'.]+$/g, '').trim();
+      line = line.slice(0, cut);
+    }
     line = line
       .replace(/\s*[—–]\s*/g, ', ')
       .replace(/^["“']+|["”']+$/g, '')
       .trim();
+    then = then.replace(/\s*[—–]\s*/g, ', ').replace(/^<.*>$/, '').trim();
     if (!line || /^<.*>$/.test(line) || line.length < 4) continue;
     const opts = groups.get(current);
     if (opts.length >= kinds.length) continue;
@@ -287,7 +314,9 @@ export function parseDirections(raw, names = [], { complete = true, characterKin
       kind = kinds.map((k) => k.key).find((k) => !opts.some((o) => o.kind === k)) || null;
     }
     if (!kind) continue;
-    opts.push({ kind, label: kinds.find((k) => k.key === kind)?.label || '', text: line });
+    const option = { kind, label: kinds.find((k) => k.key === kind)?.label || '', text: line };
+    if (then) option.then = then;
+    opts.push(option);
   }
 
   const order = (name, opts) => kindsFor(name).map((k) => opts.find((o) => o.kind === k.key)).filter(Boolean);
@@ -321,3 +350,32 @@ export function composeWithDirection(current, command) {
 export function directionKindLabel(key) {
   return [...DIRECTION_KINDS, ...NARRATOR_KINDS].find((k) => k.key === key)?.label || '';
 }
+
+/**
+ * The director's reading of the moment: the line under "## Situation"
+ * (or after "Situation:"), complete or streaming. Empty when there is none.
+ */
+export function parseSituation(raw, { complete = true } = {}) {
+  let text = String(raw || '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<think>[\s\S]*$/i, '');
+  if (!complete) {
+    const nl = text.lastIndexOf('\n');
+    text = nl >= 0 ? text.slice(0, nl) : '';
+  }
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].replace(/\*\*|__/g, '').replace(/^\s*#+\s*/, '').trim();
+    const inline = t.match(/^situation\s*:\s*(.+)$/i);
+    if (inline) return inline[1].replace(/\s*[—–]\s*/g, ', ').trim();
+    if (/^situation\s*:?$/i.test(t)) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j].trim();
+        if (!next) continue;
+        if (/^#/.test(next)) return '';
+        return next.replace(/^[-*]\s+/, '').replace(/\s*[—–]\s*/g, ', ').trim();
+      }
+      return '';
+    }
+  }
+  return '';
+}
+

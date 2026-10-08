@@ -16,7 +16,7 @@ import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
 import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE } from './studio-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
-import { directorCast, buildDirectorPrompt, parseDirections, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
+import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 
 // The workspace data folder keeps its original name: every character, thread,
@@ -2195,6 +2195,8 @@ ${CREATIONS_PARTS_CSS}
 .cr-direction--picked { border-color: var(--px-accent); background: var(--px-accent-faint); }
 .cr-direction-kind { flex: none; width: 76px; font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .cr-direction-text { flex: 1; min-width: 0; }
+.cr-direction-then { display: block; margin-top: 2px; font-size: var(--px-text-xs); color: var(--px-text-muted); }
+.cr-directions-situation { margin-top: var(--px-space-1); font-size: var(--px-text-sm); color: var(--px-text-secondary); font-style: italic; }
 @container (max-width: 640px) { .cr-directions-groups { grid-template-columns: minmax(0, 1fr); } }
 .cr-chat-body { flex: 1; min-height: 0; display: flex; }
 .cr-chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -6083,7 +6085,7 @@ function renderChatEditor(container, parallx, input) {
     directionsBtn.classList.remove('tg-input-ooc-btn--active');
   }
 
-  function renderDirections({ groups = [], status = '', error = '', busy = false } = {}) {
+  function renderDirections({ groups = [], status = '', error = '', busy = false, situation = '' } = {}) {
     directionsCard.replaceChildren();
     const head = el('div', 'cr-directions-head');
     head.appendChild(el('span', 'cr-directions-title', { html: `${icon('clapperboard', 14)} Directions for the next turn` }));
@@ -6110,6 +6112,12 @@ function renderChatEditor(container, parallx, input) {
     } else if (status) {
       directionsCard.appendChild(el('div', 'cr-directions-status', { text: status }));
     }
+    // The director's reading of the moment: what the options answer.
+    if (situation) {
+      const line = el('div', 'cr-directions-situation', { text: situation });
+      line.title = 'What the director read from the last turn';
+      directionsCard.appendChild(line);
+    }
 
     if (groups.length) {
       const grid = el('div', 'cr-directions-groups');
@@ -6125,7 +6133,13 @@ function renderChatEditor(container, parallx, input) {
           btn.title = g.name === NARRATOR
             ? 'The Narrator takes the next turn with this note: the story moves on. Edit it before you send.'
             : `${g.name} takes the next turn with this note. Edit it before you send.`;
-          btn.append(el('span', 'cr-direction-kind', { text: o.label || directionKindLabel(o.kind) }), el('span', 'cr-direction-text', { text: o.text }));
+          const body = el('span', 'cr-direction-text', { text: o.text });
+          if (o.then) {
+            const then = el('span', 'cr-direction-then', { text: o.then });
+            then.title = 'What this could set in motion';
+            body.appendChild(then);
+          }
+          btn.append(el('span', 'cr-direction-kind', { text: o.label || directionKindLabel(o.kind) }), body);
           btn.addEventListener('click', () => {
             _directionsPicked = key;
             for (const b of grid.querySelectorAll('.cr-direction--picked')) b.classList.remove('cr-direction--picked');
@@ -6212,7 +6226,8 @@ function renderChatEditor(container, parallx, input) {
         if (!chunk?.content) continue;
         raw += chunk.content;
         const partial = parseDirections(raw, names, { complete: false, characterKinds, narratorKinds });
-        if (partial.length) renderDirections({ groups: partial, status: 'Writing…', busy: true });
+        const reading = parseSituation(raw, { complete: false });
+        if (partial.length || reading) renderDirections({ groups: partial, status: 'Writing…', busy: true, situation: reading });
       }
     } catch (err) {
       if (run !== _directionsRun) return;
@@ -6226,7 +6241,7 @@ function renderChatEditor(container, parallx, input) {
       renderDirections({ error: 'The model did not suggest anything this time.' });
       return;
     }
-    renderDirections({ groups });
+    renderDirections({ groups, situation: parseSituation(raw) });
   }
 
   directionsBtn.addEventListener('click', () => {

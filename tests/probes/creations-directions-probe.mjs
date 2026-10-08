@@ -33,6 +33,9 @@ const MESSAGES = [
 ];
 
 const DIRECTOR_REPLY = [
+  '## Situation',
+  'Mara has caught Oswin holding the real chart, and neither has said what it is worth.',
+  '',
   '## Narrator',
   'New Scene: Cut to the harbour wall at dawn, where the buyer is already waiting',
   'Time Skip: Three days pass and the archive door has a new lock',
@@ -40,12 +43,12 @@ const DIRECTOR_REPLY = [
   'Event: The tide turns and water starts rising through the floor',
   '',
   '## Brother Oswin',
-  'Push: Asks Mara who paid her to keep the archive closed',
+  'Push: Asks Mara who paid her to keep the archive closed || she has to choose between him and her buyer',
   'Complicate: Recognises the harbourmaster\'s seal on the ledger beside her',
   'Move: Starts down the flooded stair toward the lower stacks',
   '',
   '## Mara Vell',
-  'Push: Offers to buy the chart for the price of her boat',
+  'Push: Offers to buy the chart for the price of her boat || she has nothing left to sail with',
   'Complicate: Lets slip she was on the sea wall the night it opened',
   'Move: Hears boots on the stair above and kills the light',
 ].join('\n');
@@ -186,7 +189,12 @@ async function main() {
     check(dirUser.includes('Hides: She opened the sea wall'), "the director sees Mara's secret from her sheet");
     check(dirUser.includes('- The Harbourmaster: sold the drowned city twice'), 'the director sees the supporting cast');
     check(dirUser.includes('Oswin carried the real chart out of the flood.'), 'the director sees the memory file');
-    check(dirUser.includes('Now: the drowned archive, second bell, wary'), 'the director sees the scene');
+    check(dirUser.includes('Now (last known; the last turn wins if it moved things): the drowned archive, second bell, wary'), 'the director sees the scene, as last known');
+    check(/What just happened \(the last turn, in full; every option answers it\):\nMara Vell: \*Her hand stops halfway to the lantern\.\* You kept the map/.test(dirUser), 'the last turn stands alone, in full, for every option to answer');
+    const situation = await page.locator('.cr-directions-situation').textContent().catch(() => '');
+    check(situation === 'Mara has caught Oswin holding the real chart, and neither has said what it is worth.', `the card shows the director's reading of the moment ("${situation}")`);
+    const thenLine = await page.locator('.cr-directions-group', { hasText: 'Mara Vell' }).locator('.cr-direction', { hasText: 'Offers to buy the chart' }).locator('.cr-direction-then').textContent().catch(() => '');
+    check(thenLine === 'she has nothing left to sail with', `an option shows what it could set in motion ("${thenLine}")`);
     const box = await page.locator('.cr-directions').boundingBox();
     const input = await page.locator('.tg-input-card').boundingBox();
     check(box && input && box.y + box.height <= input.y + 1, 'the card sits above the composer');

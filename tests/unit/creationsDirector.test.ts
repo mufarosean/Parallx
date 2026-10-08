@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — JS module with no types
-import { DIRECTION_KINDS, NARRATOR_KINDS, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS, parseDirectionKinds, directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from '../../ext/creations-ai/director.js';
+import { parseSituation, DIRECTION_KINDS, NARRATOR_KINDS, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS, parseDirectionKinds, directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from '../../ext/creations-ai/director.js';
 
 // The reading tests run on four kinds, the list as first shipped; the
 // shipped default is now three (Deepen dropped), and the list is the user's.
@@ -56,7 +56,7 @@ describe('the prompt', () => {
     expect(system).not.toContain('Deepen');
     expect(system).toContain('exactly 3 options, one of each kind');
     expect(system).toContain('Never decide how anyone else answers');
-    expect(system).toContain('## Ada\nPush: <one sentence>\nComplicate: <one sentence>\nMove: <one sentence>');
+    expect(system).toContain('## Ada\nPush: <one sentence> || <what it could set in motion>\nComplicate: <one sentence> || <what it could set in motion>\nMove: <one sentence> || <what it could set in motion>');
     expect(user.endsWith('Write the options for the Narrator, then for: Ada, Tom.')).toBe(true);
   });
 
@@ -68,8 +68,9 @@ describe('the prompt', () => {
     expect(user).toContain('Memory, what is true now:\n- Tom owes the bank.');
     expect(user).toContain('Story so far:\n- Ada found cash in his coat.');
     expect(user).toContain("The player's notes:\nKeep it slow.");
-    expect(user).toContain('Now: the kitchen, late night, tense');
-    expect(user).toContain('Recent turns, oldest first:\nAda: Where did this come from?\n\nTom: Leave it.');
+    expect(user).toContain('Now (last known; the last turn wins if it moved things): the kitchen, late night, tense');
+    expect(user).toContain('Earlier turns, oldest first:\nAda: Where did this come from?');
+    expect(user).toContain('What just happened (the last turn, in full; every option answers it):\nTom: Leave it.');
     expect(user).toContain('Notes the last turns were written with:\n- Tom deflects with a joke');
     expect(user).toContain('How people talk in this story:');
   });
@@ -192,6 +193,7 @@ describe('the Narrator: moves for the story, not a character', () => {
     expect(system).toContain('a scene that has run its course needs moving on');
     expect(system.indexOf('## Narrator\nNew Scene: <one sentence>')).toBeGreaterThan(-1);
     expect(system.indexOf('## Narrator\nNew Scene: <one sentence>')).toBeLessThan(system.indexOf('## Ada\nPush: <one sentence>'));
+    expect(system.indexOf('## Situation\n<one sentence>')).toBeLessThan(system.indexOf('## Narrator\nNew Scene'));
   });
 
   it('reads its group with its own kinds, two-word labels included, beside the characters', () => {
@@ -251,7 +253,7 @@ describe('the kinds are the user\'s (Creations Settings)', () => {
     const [system, user] = buildDirectorPrompt({ cast: [{ name: 'Ada' }], characterKinds, narratorKinds }).map((m: any) => m.content);
     expect(system).toContain('write exactly 2 options, one of each kind:\n- Confess: they admit something.\n- Leave: they go.');
     expect(system).toContain('write one option, of this kind, for the story itself:\n- Cut: a new scene.');
-    expect(system).toContain('## Narrator\nCut: <one sentence>\n\n## Ada\nConfess: <one sentence>\nLeave: <one sentence>');
+    expect(system).toContain('## Narrator\nCut: <one sentence> || <what it could set in motion>\n\n## Ada\nConfess: <one sentence> || <what it could set in motion>\nLeave: <one sentence> || <what it could set in motion>');
     expect(user.endsWith('Write the options for the Narrator, then for: Ada.')).toBe(true);
     const got = parseDirections('## Narrator\nCut: To the docks\n## Ada\nLeave: Walks out\nConfess: Says she took it', [NARRATOR, 'Ada'], { characterKinds, narratorKinds });
     expect(got).toEqual([
@@ -269,6 +271,67 @@ describe('the kinds are the user\'s (Creations Settings)', () => {
     const charactersOnly = buildDirectorPrompt({ cast: [{ name: 'Ada' }], narratorKinds: [] }).map((m: any) => m.content);
     expect(charactersOnly[0]).not.toContain('## Narrator');
     expect(charactersOnly[1].endsWith('Write the options for: Ada.')).toBe(true);
+  });
+});
+
+describe('grounded in the moment, with consequences (2026-10-08)', () => {
+  // The owner: the options ignored what had just happened (a Narrator beat
+  // included) and read like suggestions for the sake of suggesting, with no
+  // consequences, unlike the choices of a story game.
+  const msgs = buildDirectorPrompt({
+    cast: [{ name: 'Ada', drives: 'Wants the money back.' }],
+    transcript: [
+      { name: 'Ada', content: 'Where did this come from?' },
+      { name: 'Narrator', content: 'Boots on the stair. ' + 'The door gives under a shoulder. '.repeat(60) + 'Two clerks stand in the doorway with the harbourmaster.' },
+    ],
+  }).map((m: any) => m.content);
+
+  it('the last turn, a Narrator beat included, stands alone and in full, nearest the ask, and outranks the scene line', () => {
+    const [system, user] = msgs;
+    const lastAt = user.indexOf('What just happened (the last turn, in full; every option answers it):\nNarrator: Boots on the stair.');
+    expect(lastAt).toBeGreaterThan(-1);
+    expect(user).toContain('Two clerks stand in the doorway with the harbourmaster.');
+    expect(user).not.toContain('[...]');
+    expect(lastAt).toBeGreaterThan(user.indexOf('Earlier turns, oldest first:\nAda: Where did this come from?'));
+    expect(lastAt).toBeLessThan(user.indexOf('Write the options'));
+    expect(system).toContain('It is the newest truth: where it differs from the Now line or the memory, it wins.');
+  });
+
+  it('every option answers the last turn, fits only this moment, and says what it could set in motion', () => {
+    const system = msgs[0];
+    expect(system).toContain('Answers the last turn.');
+    expect(system).toContain('they never replace the answer');
+    expect(system).toContain('If it would fit any other moment of the story, it is wrong.');
+    expect(system).toContain('what it could set in motion, at most 12 words');
+    expect(system).toContain('Each Narrator option follows from the last turn');
+    expect(system).toContain('First, under "## Situation", write one sentence');
+  });
+
+  it('reads what an option could set in motion, whatever separator the model used, and keeps it out of the note', () => {
+    const reply = [
+      '## Situation',
+      'The harbourmaster has walked in on the money, and nobody has explained it.',
+      '',
+      '## Ada',
+      'Push: Hands the harbourmaster the ledger || he sees whose name is on page one',
+      'Complicate: Says the cash is Tom\'s -> Tom has to answer for it',
+      'Move: Walks out past the clerks → the clerks follow her, not him',
+    ].join('\n');
+    const [ada] = parseDirections(reply, ['Ada']);
+    expect(ada.options.map((o: any) => [o.text, o.then])).toEqual([
+      ['Hands the harbourmaster the ledger', 'he sees whose name is on page one'],
+      ['Says the cash is Tom\'s', 'Tom has to answer for it'],
+      ['Walks out past the clerks', 'the clerks follow her, not him'],
+    ]);
+    expect(directionCommand('Ada', ada.options[0].text)).toBe('/ai @Ada Hands the harbourmaster the ledger');
+    expect(parseSituation(reply)).toBe('The harbourmaster has walked in on the money, and nobody has explained it.');
+  });
+
+  it('reads the situation inline or under a bold heading; none, or one still streaming, is empty', () => {
+    expect(parseSituation('Situation: The door is open.\n## Ada\nPush: X')).toBe('The door is open.');
+    expect(parseSituation('**Situation**\n\nThe door is open.')).toBe('The door is open.');
+    expect(parseSituation('## Ada\nPush: X')).toBe('');
+    expect(parseSituation('## Situation\nThe door is', { complete: false })).toBe('');
   });
 });
 
