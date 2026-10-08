@@ -72,17 +72,18 @@ async function readVariants(shipped) {
   return { variants, triggers };
 }
 
-// The per-turn voice reminder (main.js, generateTurn's late anchor). The bench
-// runs a version of it from a temporary copy of the chat; the app is untouched.
-const ANCHOR_LINE = "const personaLine = anchorBody ? ` Voice anchor (how ${rName} speaks; any quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '';";
-const STRICT = "Stay strictly in ${rName}'s voice.";
+// The per-turn voice reminder (main.js, generateTurn's late anchor), as shipped
+// since 2026-10-08 (the voice as a tendency). The bench runs other versions of
+// it from a temporary copy of the chat; the app is untouched.
+const ANCHOR_LINE = "const personaLine = anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then (quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '';";
+const STRICT = 'Sound like ${rName}.';
 const ANCHORS = {
-  // The voice as a tendency: most speech plain, the habits now and then.
-  soft: (src) => src
-    .replace(ANCHOR_LINE, "const personaLine = anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then (quoted phrases show the register and are not lines to repeat): ${anchorBody.slice(0, 400)}` : '';")
-    .replace(STRICT, 'Sound like ${rName}.'),
+  // The reminder before 2026-10-08: the voice as a rule for every line.
+  previous: (src) => src
+    .replace(ANCHOR_LINE, "const personaLine = anchorBody ? ` Voice anchor (how ${rName} speaks; any quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '';")
+    .replace(STRICT, "Stay strictly in ${rName}'s voice."),
   // No voice text in the reminder at all: the voice stays in the portrait at the top.
-  identity: (src) => src.replace(ANCHOR_LINE, "const personaLine = '';").replace(STRICT, 'Sound like ${rName}.'),
+  identity: (src) => src.replace(ANCHOR_LINE, "const personaLine = '';"),
 };
 async function patchedMain(anchor) {
   const src = await fsp.readFile(path.join(__dirname, '..', 'main.js'), 'utf8');
@@ -238,8 +239,9 @@ for (const cond of ordered) {
           }
           if (Number.isFinite(cond.temperature)) report.check(`${cond.id}.temperature`, `temperature ${cond.temperature} is sent`, req?.options?.temperature === cond.temperature, `sent ${req?.options?.temperature}`);
           if (cond.triggerWord) report.check(`${cond.id}.voice`, 'the trigger word is in the prompt', sys.includes(`Her speech is ${cond.triggerWord}.`));
-          if (cond.anchor === 'soft') report.check(`${cond.id}.anchor`, 'the softened voice reminder is in the prompt', sys.includes('as a tendency and not a rule for every line') && !sys.includes('Stay strictly'));
-          if (cond.anchor === 'identity') report.check(`${cond.id}.anchor`, 'the voice reminder carries no voice text', !sys.includes('Voice anchor') && !sys.includes('Stay strictly'));
+          if (!cond.anchor || cond.anchor === 'shipped') report.check(`${cond.id}.anchor`, 'the shipped voice reminder is in the prompt', sys.includes('as a tendency and not a rule for every line'));
+          if (cond.anchor === 'previous') report.check(`${cond.id}.anchor`, 'the previous voice reminder is in the prompt', sys.includes('Stay strictly') && sys.includes('Voice anchor (how'));
+          if (cond.anchor === 'identity') report.check(`${cond.id}.anchor`, 'the voice reminder carries no voice text', !sys.includes('as a tendency') && !sys.includes('Voice anchor'));
           if (cond.noExamples) report.check(`${cond.id}.examples`, 'no example dialogue in the prompt', !sys.includes(scene.who.exampleDialogue.split('\n')[0]));
         }
         const msgs = await d.readMessages(threadId);

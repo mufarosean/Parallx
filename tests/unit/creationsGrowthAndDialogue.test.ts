@@ -14,7 +14,7 @@ import { __testables } from '../../ext/creations-ai/main.js';
 // @ts-expect-error — JS module with no types
 import { buildBeatMessages, newStory } from '../../ext/creations-ai/story-core.js';
 
-const { assembleContext, buildSystemPrompt, renderMemoryChannel, DEFAULT_DIALOGUE_RULES, DEFAULT_SHEET_STRUCTURE, DEFAULT_SETTINGS, regenDirectionFor } = __testables;
+const { assembleContext, buildSystemPrompt, renderMemoryChannel, DEFAULT_DIALOGUE_RULES, PREVIOUS_DIALOGUE_RULES, migrateDialogueRules, DEFAULT_SHEET_STRUCTURE, DEFAULT_SETTINGS, regenDirectionFor } = __testables;
 const ada = { fileName: 'ada.json', frontmatter: { name: 'Ada' }, sections: { roleInstruction: 'Ada is married to Tom.' } };
 
 describe('the card is the start, the memory is the present', () => {
@@ -54,6 +54,15 @@ describe('dialogue rules', () => {
   it('ship with a default that is in every new settings file', () => {
     expect(DEFAULT_SETTINGS.dialogueRules).toBe(DEFAULT_DIALOGUE_RULES);
     expect(DEFAULT_DIALOGUE_RULES).toContain('Nobody names their own values or traits');
+    // The dialogue bench's winner (2026-10-08): questions answered plainly, habits now and then.
+    expect(DEFAULT_DIALOGUE_RULES).toContain('They answer the question that was asked');
+    expect(DEFAULT_DIALOGUE_RULES).toContain('show a few times in a scene, not in every line');
+    expect(DEFAULT_DIALOGUE_RULES).not.toContain('answer the question they heard');
+  });
+  it('settings holding the previous shipped rules move to the new ones; edited rules stay', () => {
+    expect(migrateDialogueRules({ dialogueRules: PREVIOUS_DIALOGUE_RULES }).dialogueRules).toBe(DEFAULT_DIALOGUE_RULES);
+    expect(migrateDialogueRules({ dialogueRules: '- My own rule.' }).dialogueRules).toBe('- My own rule.');
+    expect(migrateDialogueRules({ dialogueRules: '' }).dialogueRules).toBe('');
   });
   it('the sheet structure ships the same way, with Appearance laid out in sections', () => {
     expect(DEFAULT_SETTINGS.sheetStructure).toBe(DEFAULT_SHEET_STRUCTURE);
@@ -91,7 +100,11 @@ describe('quoted phrases in a voice are the register, not lines', () => {
     const out = assembleContext({ characters: [noted], history: [], userMessage: 'Hi', contextWindow: 8192, respondAs: 'ada.json' });
     expect(out.messages[0].content).toContain('they are examples, not lines to say. Use one rarely, never the same one twice in a scene');
     const late = out.messages.find((m: any) => m.role === 'system' && m.content.startsWith('[Active turn:'))!;
-    expect(late.content).toContain("Voice anchor (how Ada speaks; any quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): Short lines. Says: 'noted'.");
+    expect(late.content).toContain("quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): Short lines. Says: 'noted'.");
+    // The voice is a tendency, not a rule for every line.
+    expect(late.content).toContain('as a tendency and not a rule for every line');
+    expect(late.content).toContain('Sound like Ada.');
+    expect(late.content).not.toContain('Stay strictly');
   });
 });
 

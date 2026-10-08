@@ -25,6 +25,7 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 export function parseArgs(argv, defaults = {}) {
   const args = argv.slice(2);
@@ -68,7 +69,7 @@ export function createGateway(opts, { mockRespond }) {
       await fsp.mkdir(path.dirname(opts.cache), { recursive: true });
       await fsp.writeFile(opts.cache, JSON.stringify(cache), 'utf8');
     },
-    has(role, label) { return typeof cache[role]?.[label] === 'string'; },
+    has(role, label) { return Object.keys(cache[role] || {}).some((k) => k === label || k.startsWith(`${label} @`)); },
     /** `onText(textSoFar, msSinceStart)` streams the reply (live only), for latency measures. */
     async call(label, messages, { role = 'player', json = false, temperature = 0.8, maxTokens = 0, onText = null, stop = null, think = false, model: modelOverride = '' } = {}) {
       const model = modelOverride || (role === 'judge' ? opts.judge : opts.model);
@@ -78,9 +79,12 @@ export function createGateway(opts, { mockRespond }) {
         return content;
       }
       // A pass that does not own this role reads the cache; so does --replay.
+      // The cache key is the label and what was sent: a changed prompt (new
+      // shipped text, an edited variant) is a new case, never an old answer.
+      const key = `${label} @${createHash('sha1').update(JSON.stringify([model, messages, temperature, json, think])).digest('hex').slice(0, 12)}`;
       const owns = opts.pass === 'all' || (opts.pass === 'play' && role === 'player') || (opts.pass === 'judge' && role === 'judge');
-      if (opts.replay || !owns || (!opts.fresh && typeof cache[role]?.[label] === 'string')) {
-        const content = cache[role]?.[label];
+      if (opts.replay || !owns || (!opts.fresh && typeof cache[role]?.[key] === 'string')) {
+        const content = cache[role]?.[key];
         if (typeof content !== 'string') throw new SkipCase(`no cached ${role} output for "${label}"`);
         calls.push({ label, role, ms: 0, promptTokens: 0, evalTokens: 0, cached: true });
         return content;
@@ -141,7 +145,7 @@ export function createGateway(opts, { mockRespond }) {
       const rec ={ label, role, ms: Date.now() - started, promptTokens: j.prompt_eval_count || 0, evalTokens: j.eval_count || 0, firstTokenMs: Math.round((j.load_duration || 0) / 1e6 + (j.prompt_eval_duration || 0) / 1e6) };
       calls.push(rec);
       cache[role] ??= {};
-      cache[role][label] = content;
+      cache[role][key] = content;
       await gw.save();
       console.log(`  [${role}] ${label}: ${(rec.ms / 1000).toFixed(1)}s, prompt ${rec.promptTokens} tok, output ${rec.evalTokens} tok`);
       return content;

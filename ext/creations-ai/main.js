@@ -3867,9 +3867,12 @@ function assembleContext(params) {
       }
       // The anchor sits right before generation on every turn, so a quoted
       // phrase in it ("Says: 'noted'") was read as a line to say, and said,
-      // scene after scene. Say what the quotes are.
-      const personaLine = anchorBody ? ` Voice anchor (how ${rName} speaks; any quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '';
-      speakerLateAnchor = `[You are ${rName}. Stay strictly in ${rName}'s voice. Do not write, quote, or describe internal thoughts for any other character. Do not write the user's words or actions.${personaLine}]`;
+      // scene after scene. Say what the quotes are. It also gave the voice as
+      // a rule ("Stay strictly in X's voice"), and the model put every habit
+      // in every line; given as a tendency, most of what they say is plain
+      // (dialogue bench, 2026-10-08).
+      const personaLine = anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then (quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '';
+      speakerLateAnchor = `[You are ${rName}. Sound like ${rName}. Do not write, quote, or describe internal thoughts for any other character. Do not write the user's words or actions.${personaLine}]`;
 
       // M79 Phase 3c — variation avoidance v2. Pull the last 5 outputs
       // by this speaker (was: 2), extract 3–5 word phrases, find the
@@ -9303,18 +9306,40 @@ function studioDeps() {
   };
 }
 /**
- * The shipped dialogue rules. Against one failure in particular: the model
- * states a character's values instead of showing them (a character who
- * values solitude talks about solitude). Craft, not format; the user edits
- * it in Settings.
+ * The shipped dialogue rules. Against the model's way of making every line a
+ * performance: values named instead of shown (a character who values solitude
+ * talks about solitude), abstract ideas talked about as things, metaphors and
+ * aphorisms, questions dodged with a clever question back, and a voice habit
+ * in every line. Measured with the dialogue bench
+ * (ext/creations-ai/test/run-dialogue-bench.mjs, 2026-10-08): against the
+ * previous rules, a quarter fewer lines a person would not say and half the
+ * metaphors. Craft, not format; the user edits it in Settings.
  */
 const DEFAULT_DIALOGUE_RULES = [
+  '- People talk about what is in front of them: the task, the object, the other person. Nobody names their own values or traits. What someone cares about shows in what they do, what they notice and what they refuse, never in a speech about it.',
+  '- Abstract nouns (peace, solitude, trust, freedom, honour) are not subjects of conversation. Say the concrete thing instead: the quiet of the house, the locked door, the money, the name not spoken.',
+  '- When someone wants to know something, they ask it plainly. They answer the question that was asked, briefly, then say what they want to say. They interrupt, trail off and change the subject like real people.',
+  '- Humour comes from a specific thing in the scene or a specific person, never from a character announcing a joke or a quip that would fit any scene.',
+  '- Nobody summarises their feelings or the scene. If a line could be printed on a mug, cut it.',
+  '- People speak plainly. A metaphor is rare and only one a person like them would actually use; most lines have none.',
+  "- Most of what anyone says is plain: answering what was just asked, saying what they need, reacting to what is in front of them. A character's habits, quirks and turns of phrase show a few times in a scene, not in every line.",
+].join('\n');
+
+/** The rules shipped before 2026-10-08: settings still holding them word for word get the new ones. */
+const PREVIOUS_DIALOGUE_RULES = [
   '- People talk about what is in front of them: the task, the object, the other person. Nobody names their own values or traits. What someone cares about shows in what they do, what they notice and what they refuse, never in a speech about it.',
   '- Abstract nouns (peace, solitude, trust, freedom, honour) are not subjects of conversation. Say the concrete thing instead: the quiet of the house, the locked door, the money, the name not spoken.',
   '- People answer the question they heard, not the one that was asked. They interrupt, trail off, change the subject, and say less than they mean.',
   '- Humour comes from a specific thing in the scene or a specific person, never from a character announcing a joke or a quip that would fit any scene.',
   '- Nobody summarises their feelings or the scene. If a line could be printed on a mug, cut it.',
 ].join('\n');
+
+
+/** Settings saved with the previous shipped rules, untouched, move to the current ones; edited rules stay. */
+function migrateDialogueRules(settings) {
+  if (settings && settings.dialogueRules === PREVIOUS_DIALOGUE_RULES) settings.dialogueRules = DEFAULT_DIALOGUE_RULES;
+  return settings;
+}
 
 const DEFAULT_SETTINGS = {
   tokenBudgetCharacter: 15,
@@ -9360,7 +9385,7 @@ async function loadSettings(fs, workspaceUri) {
   const path = resolveUri(workspaceUri, `${EXT_ROOT}/settings.json`);
   try {
     const { content } = await fs.readFile(path);
-    return migrateContextDefault({ ...DEFAULT_SETTINGS, ...JSON.parse(content) });
+    return migrateDialogueRules(migrateContextDefault({ ...DEFAULT_SETTINGS, ...JSON.parse(content) }));
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -10936,6 +10961,8 @@ export const __testables = {
   resolveContextWindow,
   migrateContextDefault,
   DEFAULT_DIALOGUE_RULES,
+  PREVIOUS_DIALOGUE_RULES,
+  migrateDialogueRules,
   DEFAULT_SHEET_STRUCTURE,
   DEFAULT_SETTINGS,
 };
