@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — JS module with no types
-import { DIRECTION_KINDS, directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from '../../ext/creations-ai/director.js';
+import { DIRECTION_KINDS, NARRATOR_KINDS, NARRATOR, directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from '../../ext/creations-ai/director.js';
 
 const cast = [
   { file: 'ada.json', name: 'Ada' },
@@ -50,7 +50,7 @@ describe('the prompt', () => {
     expect(system).toContain('exactly four options, one of each kind');
     expect(system).toContain('Never decide how anyone else answers');
     expect(system).toContain('## Ada\nDeepen: <one sentence>');
-    expect(user.endsWith('Write the options for: Ada, Tom.')).toBe(true);
+    expect(user.endsWith('Write the options for the Narrator, then for: Ada, Tom.')).toBe(true);
   });
 
   it('gives the scene, the cast, their world, the memory and the recent turns', () => {
@@ -69,7 +69,10 @@ describe('the prompt', () => {
 
   it('leaves out what it does not have', () => {
     const user = buildDirectorPrompt({ cast: [{ name: 'Ada' }] })[1].content;
-    expect(user).toBe('Cast:\n- Ada\n\nWrite the options for: Ada.');
+    expect(user).toBe('Cast:\n- Ada\n\nWrite the options for the Narrator, then for: Ada.');
+    const without = buildDirectorPrompt({ cast: [{ name: 'Ada' }], narrator: false });
+    expect(without[1].content).toBe('Cast:\n- Ada\n\nWrite the options for: Ada.');
+    expect(without[0].content).not.toContain('## Narrator');
   });
 
   it('keeps the newest turns when the chat is long', () => {
@@ -173,3 +176,49 @@ describe('a pick in the composer', () => {
     expect(directionKindLabel('nope')).toBe('');
   });
 });
+
+describe('the Narrator: moves for the story, not a character', () => {
+  it('is asked for a new scene, a time skip, an arrival and an event, first in the format', () => {
+    const [system] = buildDirectorPrompt({ cast: [{ name: 'Ada' }], others: [{ name: 'Dana', note: 'the landlord' }] }).map((m: any) => m.content);
+    for (const k of NARRATOR_KINDS) expect(system).toContain(`- ${k.label}:`);
+    expect(system).toContain('never what anyone says or feels');
+    expect(system).toContain('a scene that has run its course needs a new one or a time skip');
+    expect(system.indexOf('## Narrator\nNew Scene: <one sentence>')).toBeLessThan(system.indexOf('## Ada\nDeepen: <one sentence>'));
+  });
+
+  it('reads its group with its own kinds, two-word labels included, beside the characters', () => {
+    const reply = [
+      '## Narrator',
+      'New Scene: Cut to the harbour at dawn, where the buyer is already waiting',
+      '**Time Skip** - Three weeks pass and the shop has a new lock',
+      'Arrival: Dana knocks, asking for the rent',
+      'Event: The power fails across the whole street',
+      '',
+      '## Ada',
+      'Push: Asks Tom straight out who he owes',
+    ].join('\n');
+    const got = parseDirections(reply, [NARRATOR, 'Ada']);
+    expect(got.map((g: any) => g.name)).toEqual(['Narrator', 'Ada']);
+    expect(got[0].options.map((o: any) => [o.kind, o.text])).toEqual([
+      ['scene', 'Cut to the harbour at dawn, where the buyer is already waiting'],
+      ['time', 'Three weeks pass and the shop has a new lock'],
+      ['arrival', 'Dana knocks, asking for the rent'],
+      ['event', 'The power fails across the whole street'],
+    ]);
+    expect(got[1].options).toEqual([{ kind: 'push', text: 'Asks Tom straight out who he owes' }]);
+  });
+
+  it('a character label under the Narrator counts as no label; unlabelled lines take the next free kind', () => {
+    const got = parseDirections('## Narrator\nPush: The rain starts\nA stranger arrives', [NARRATOR]);
+    expect(got[0].options.map((o: any) => o.kind)).toEqual(['scene', 'time']);
+    expect(got[0].options[0].text).toBe('The rain starts');
+  });
+
+  it('a pick becomes the chat\'s own /nar, and replaces an earlier pick under typed words', () => {
+    expect(directionCommand(NARRATOR, 'Three weeks pass')).toBe('/nar Three weeks pass');
+    expect(composeWithDirection('I lock the door.\n/ai @Ada X', '/nar Three weeks pass')).toBe('I lock the door.\n/nar Three weeks pass');
+    expect(composeWithDirection('I lock the door.\n/nar Y', '/ai @Ada X')).toBe('I lock the door.\n/ai @Ada X');
+    expect(NARRATOR_KINDS.map((k: any) => directionKindLabel(k.key))).toEqual(['New Scene', 'Time Skip', 'Arrival', 'Event']);
+  });
+});
+

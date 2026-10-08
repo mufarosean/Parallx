@@ -580,6 +580,19 @@ owner picks instead of writing, on request rather than after every reply.
   change the scene). Fixed kinds stop the model offering four versions of
   the same emotional beat. Each note must name something concrete from the
   scene, the memory or the sheet, and only says what that character does.
+- **The Narrator's group (built 2026-10-08).** The owner, testing: the
+  character notes all play the scene that is running, and nothing moves
+  the story itself on. The card now opens with a Narrator group, four
+  notes of its own kinds: New Scene (this scene ends, the next opens
+  somewhere the story has reason to go), Time Skip (time passes, one
+  change shows), Arrival (someone from their world, or someone new, comes
+  in), Event (something from outside lands that the characters must
+  answer). The director is told to read where the scene stands: one that
+  has run its course wants a new scene or a time skip, one going in circles
+  an arrival or an event. A pick becomes the chat's own "/nar note"; under
+  typed words it goes on the last line, and the chat now reads a trailing
+  "/nar" line the way it reads "/ai", so the words are posted and the
+  Narrator writes the next turn. Same call, four more lines in the reply.
 - **Who gets options.** The thread's characters, only those the scene says
   are present when it says so, at most four; the one who spoke last goes
   last, since the next turn is usually someone else's. The player's own
