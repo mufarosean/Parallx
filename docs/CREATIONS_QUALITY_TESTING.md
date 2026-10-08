@@ -301,15 +301,43 @@ on your model. Borrow their methods and rubrics.
 | Echoes in AI (PNAS 2025) | Measures how often the same plot idea recurs across generations | Echo rate across repeated Directions asks |
 | RP-Bench (community) | 27 dimensions including respecting user agency and using lore; adversarial multi-turn mode | The agency dimension, and its warning about judges |
 
+## The harnesses (built 2026-10-08)
+
+Parts 1 to 3 are three harnesses in `ext/creations-ai/test/`, sharing
+`harness-common.mjs` (model calls, cache, measures, report) and
+`scenarios.mjs` (the four scenarios and the Directions scenes):
+
+| Harness | Covers |
+|---|---|
+| `run-creation-checks.mjs` | Part 1: pitches, Appearance structure and completion, connected people, dice, example dialogue, voice, the interview |
+| `run-directions-checks.mjs` | Part 3: format, latency, kind, difference, echo across asks, grounding, other people's moves, freshness |
+| `run-roleplay-sessions.mjs` | Part 2, plus Part 3's "does a pick work" and "does it make the story better" (they need the real chat) |
+
+Run them all with one command:
+```
+node ext/creations-ai/test/run-all-quality.mjs           # live, hours
+node ext/creations-ai/test/run-all-quality.mjs --mock    # wiring, seconds
+```
+It runs every player pass first, then every judge pass, so the play model
+and the judge (gemma4:26b by default) each load once. Outputs are cached by
+label: a stopped run picks up where it was, and `--replay` on any harness
+rescores without a model. The user emulator is the play model with its own
+prompt, so play never swaps models. Rough length at three samples: about
+1,200 calls, five to seven hours; `--samples 1` takes about a third.
+
+Still owed: the judge calibration (20 items scored by hand against the
+judge's verdicts), which needs the first live run's judge output.
+
 ## Order of work
 
 1. Repair the six drifted checks in the behaviour suite. Done 2026-10-08.
-2. Add the Part 1 sections to `run-creations-quality.mjs`. Run it live and
+2. Add the Part 1 sections. Built as `run-creation-checks.mjs`; run it live and
    keep the report.
-3. Add the Part 3 sections, the cheapest real test of Directions. Fix the
+3. Add the Part 3 sections, the cheapest real test of Directions. Built as
+   `run-directions-checks.mjs`. Fix the
    prompt or the reader if format or kind agreement misses.
 4. Extend the roleplay suite: emulator, four scenarios, new measures, the
-   session judge. Calibrate the judge on 20 hand-scored items. Run it live:
+   session judge. Built as `run-roleplay-sessions.mjs`. Calibrate the judge on 20 hand-scored items. Run it live:
    this is the baseline.
 5. Play the five sessions. Fix the worst three problems found, and re-run
    the harness to check nothing else moved.

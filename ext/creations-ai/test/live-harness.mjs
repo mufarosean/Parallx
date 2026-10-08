@@ -33,7 +33,7 @@ export function setupDom() {
   return dom;
 }
 
-export function makeFakeParallx({ workspaceDir, ollamaUrl = 'http://localhost:11434', model, mock = false, mockReplyFn = null, mockDelayMs = 0, modelContextLength = 32768, log = () => {} }) {
+export function makeFakeParallx({ workspaceDir, ollamaUrl = 'http://localhost:11434', model, mock = false, mockReplyFn = null, replyFn = null, mockDelayMs = 0, modelContextLength = 32768, log = () => {} }) {
   /** Every lm request the extension makes, with the streamed reply. */
   const captured = [];
   const openedEditors = [];
@@ -88,8 +88,9 @@ export function makeFakeParallx({ workspaceDir, ollamaUrl = 'http://localhost:11
   async function* sendChatRequest(modelId, messages, options) {
     const rec = { modelId, messages, options, reply: '', thinkingChars: 0, startedAt: Date.now(), endedAt: null };
     captured.push(rec);
-    if (mock) {
-      const text = (mockReplyFn || mockReply)(messages, options);
+    if (mock || replyFn) {
+      // replyFn: an async source of replies (a harness's cached gateway).
+      const text = replyFn ? await replyFn(messages, options) : (mockReplyFn || mockReply)(messages, options);
       if (mockDelayMs > 0) {
         // Slow streaming mode: word-by-word chunks so tests can act
         // mid-stream (e.g. dispose a pane while generation is running).

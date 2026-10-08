@@ -66,8 +66,8 @@ export function createGateway(opts, { mockRespond }) {
     },
     has(role, label) { return typeof cache[role]?.[label] === 'string'; },
     /** `onText(textSoFar, msSinceStart)` streams the reply (live only), for latency measures. */
-    async call(label, messages, { role = 'player', json = false, temperature = 0.8, maxTokens = 0, onText = null } = {}) {
-      const model = role === 'judge' ? opts.judge : opts.model;
+    async call(label, messages, { role = 'player', json = false, temperature = 0.8, maxTokens = 0, onText = null, stop = null, think = false, model: modelOverride = '' } = {}) {
+      const model = modelOverride || (role === 'judge' ? opts.judge : opts.model);
       if (opts.mock) {
         const content = mockRespond(label, messages, { role, json });
         calls.push({ label, role, ms: 0, promptTokens: 0, evalTokens: 0 });
@@ -82,8 +82,9 @@ export function createGateway(opts, { mockRespond }) {
         return content;
       }
       const started = Date.now();
-      const body = { model, messages, stream: !!onText, think: false, keep_alive: '10m', options: { num_ctx: opts.numCtx, temperature } };
+      const body = { model, messages, stream: !!onText, think: !!think, keep_alive: '10m', options: { num_ctx: opts.numCtx, temperature } };
       if (maxTokens > 0) body.options.num_predict = maxTokens;
+      if (Array.isArray(stop) && stop.length) body.options.stop = stop;
       if (json) body.format = 'json';
       const res = await fetch(`${opts.ollama}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error(`Ollama ${res.status}: ${(await res.text()).slice(0, 300)}`);
