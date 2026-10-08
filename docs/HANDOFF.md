@@ -8,6 +8,15 @@ tsc, the full vitest suite (about 7860 tests) and `npm run build` pass.
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
 
+## Done on 2026-10-08, cloud: Creations AI, a quality testing guide
+
+`docs/CREATIONS_QUALITY_TESTING.md`: what to test in character creation,
+roleplay and Directions with a real model, which published benchmarks to
+borrow from, and the order of work. Decided with it: measure before
+building the world feature. Found: the behaviour suite
+(`ext/creations-ai/test/run-live-tests.mjs`) fails six hard checks even in
+mock mode, from drift since the redesign; repairing it is step one.
+
 ## Done on 2026-10-07, cloud: Creations AI, Directions
 
 In a roleplay, Suggest Directions (the clapperboard on the composer) asks

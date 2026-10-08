@@ -620,6 +620,12 @@ Not built, on purpose, and talked through first:
   beats that wait for a condition rather than a turn count, so the
   characters never steer toward a plot they should not know.
 
+## Quality testing
+
+How to measure character creation, roleplay and Directions with a real
+model, and why that comes before the world feature:
+`docs/CREATIONS_QUALITY_TESTING.md` (2026-10-08).
+
 ## Gates, whole program
 
 Unit suite: 405 files, 6414 tests green after the rename, of which
