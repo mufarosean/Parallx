@@ -947,9 +947,13 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     if (!pick || !pick.uri) return;
     const pageId = String(pick.uri).split('/').pop();
     await addSource('canvas', pick.title || 'Canvas page', 'canvas page', async () => {
-      const md = await parallx.commands.executeCommand('canvas.getPageMarkdown', pageId);
-      if (typeof md !== 'string' || !md.trim()) throw new Error('empty page');
-      return { title: pick.title || '', text: md };
+      // The canvas answers { id, title, markdown } (a bare string is taken
+      // too). Reading the answer as the text itself failed every page as
+      // empty, whatever was on it.
+      const res = await parallx.commands.executeCommand('canvas.getPageMarkdown', pageId);
+      const md = typeof res === 'string' ? res : (res && typeof res.markdown === 'string' ? res.markdown : '');
+      if (!md.trim()) throw new Error('empty page');
+      return { title: (res && typeof res === 'object' && res.title) || pick.title || '', text: md };
     });
   }
   async function addFile() {

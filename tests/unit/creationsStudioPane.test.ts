@@ -420,6 +420,40 @@ describe('the Studio screen', () => {
     expect((globalThis as any).parallxElectron).toBeUndefined();
   });
 
+  it('adds a canvas page from the canvas\'s real answer ({ id, title, markdown }), and says so when a page is empty', async () => {
+    // Before 2026-10-08 the Studio read the answer as the text itself, so
+    // every canvas page failed as "no readable text".
+    const w = makeWorld();
+    const pages: Record<string, any> = {
+      'p-ada': { id: 'p-ada', title: 'Ada notes', markdown: '# Ada notes\n\nAda Lovelace was born in 1815 in London.' },
+      'p-empty': { id: 'p-empty', title: 'Blank', markdown: '   ' },
+    };
+    let next = 'p-ada';
+    const asked: string[] = [];
+    const web = w.parallx.commands.executeCommand;
+    w.parallx.commands.executeCommand = async (id: string, arg?: string) => {
+      if (id === 'canvas.pickPageLink') return { uri: `parallx://canvas/page/${next}`, title: pages[next].title, icon: null };
+      if (id === 'canvas.getPageMarkdown') { asked.push(String(arg)); return pages[String(arg)] ?? null; }
+      return web(id, arg);
+    };
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    buttonNamed(root, 'Add Canvas Page').click();
+    await flush();
+    let rows = [...root.querySelectorAll('.cs-source')];
+    expect(asked).toEqual(['p-ada']);
+    expect(rows[0].querySelector('.cs-source-title')?.firstChild?.textContent).toBe('Ada notes');
+    expect(rows[0].querySelector('.cs-chip')?.textContent).not.toBe('Could Not Fetch');
+    expect(rows[0].querySelector('.cs-source-why')).toBeNull();
+    next = 'p-empty';
+    buttonNamed(root, 'Add Canvas Page').click();
+    await flush();
+    rows = [...root.querySelectorAll('.cs-source')];
+    expect(rows[1].querySelector('.cs-chip')?.textContent).toBe('Could Not Fetch');
+    expect(rows[1].querySelector('.cs-source-why')?.textContent).toBe('The page had no readable text.');
+  });
+
   it('rerolls one row and can undo it', async () => {
     const w = makeWorld();
     renderStudioPane(container, w.parallx, w.ctx, w.deps);
