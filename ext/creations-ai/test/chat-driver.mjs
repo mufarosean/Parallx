@@ -87,18 +87,33 @@ export async function startChatDriver(gw, opts, { tag = 'chat', userName = 'Sam'
       const lines = async (f) => { try { return (await fsp.readFile(path.join(dir, f), 'utf8')).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; } };
       return { facts: await lines('memory.semantic.jsonl'), beats: await lines('memory.episodic.jsonl') };
     },
-    /** Send one composer text and wait for the chat to go idle with a new reply. */
+    /**
+     * Send one composer text and wait for the chat to go idle with a new
+     * reply. Returns false when the turn's model call finished but the chat
+     * kept no reply (an empty answer: a model that only thought), after the
+     * chat has sat idle for a few seconds; the harness counts those.
+     */
     async sendTurn(container, threadId, text) {
       const count = async () => (await readThreadMessages(wsDir, threadId)).filter((m) => m.author === 'ai').length;
       const before = await count();
+      const turnCallsBefore = gw.calls.filter((c) => c.label.startsWith(`${label} turn`)).length;
       container.querySelector('.tg-input-textarea').value = text;
       container.querySelector('.tg-input-send').click();
-      await waitFor(async () => {
+      let idleSince = 0;
+      const got = await waitFor(async () => {
         const btn = container.querySelector('.tg-input-send');
-        if (!(btn && btn.title === 'Send (Enter)' && !container.querySelector('.tg-msg--streaming'))) return false;
-        return (await count()) > before;
+        if (!(btn && btn.title === 'Send (Enter)' && !container.querySelector('.tg-msg--streaming'))) { idleSince = 0; return false; }
+        if ((await count()) > before) return 'reply';
+        const called = gw.calls.filter((c) => c.label.startsWith(`${label} turn`)).length > turnCallsBefore;
+        if (!called) return false;
+        idleSince ||= Date.now();
+        return Date.now() - idleSince > 5000 ? 'empty' : false;
       }, 900000, `reply to ${JSON.stringify(String(text).slice(0, 40))}`);
+      if (got === 'empty') d.emptyReplies.push({ label, text });
+      return got === 'reply';
     },
+    /** Turns whose model call finished with no reply kept. */
+    emptyReplies: [],
     async cleanup() {
       try { await fsp.rm(wsDir, { recursive: true, force: true }); } catch { /* locked */ }
       if (mainCopy) { try { await fsp.rm(mainCopy, { force: true }); } catch { /* locked */ } }

@@ -198,6 +198,7 @@ const SIMILE = /\b(like a|like an|as if|as though)\b/i;
 
 const lines = []; // { id, cond, sample, scene, context, text, flags, good, why, mechAbstract, simile }
 const played = []; // { key, scene, sceneLines }, judged after all the play
+const emptyTurns = []; // turns where the model answered nothing the chat could keep
 
 const ordered = [...wanted].sort((a, b) => (a.anchor || 'shipped').localeCompare(b.anchor || 'shipped'));
 for (const cond of ordered) {
@@ -222,7 +223,7 @@ for (const cond of ordered) {
         const container = await d.startThread({ id: threadId, title: key, files: [file], ...(cond.preset ? { writingPresetOverride: cond.preset } : {}) });
         for (let t = 0; t < scene.lines.length; t++) {
           d.setLabel(`${key} t${t + 1}`);
-          await d.sendTurn(container, threadId, scene.lines[t]);
+          if (!(await d.sendTurn(container, threadId, scene.lines[t]))) emptyTurns.push({ cond: cond.id, turn: `${key} t${t + 1}` });
         }
         container.remove();
         // Wiring, once per condition: the levers reach the request the chat sends.
@@ -327,6 +328,11 @@ const table = [
 ].join('\n');
 
 report.section('Results');
+for (const c of wanted) {
+  const n = emptyTurns.filter((x) => x.cond === c.id).length;
+  if (n) report.metric(`${c.id}.empty`, 'turns with no reply kept (the model answered nothing)', n);
+}
+if (emptyTurns.length) report.sample('Turns with no reply kept', emptyTurns.map((x) => x.turn).join('\n'));
 for (const r of rows) {
   report.metric(`${r.id}.anyFault`, 'lines with a fault, per 100', r.m.anyFault);
   report.metric(`${r.id}.good`, 'lines that sound like a person, per 100', r.m.good);
