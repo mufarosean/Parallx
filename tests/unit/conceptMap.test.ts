@@ -10,6 +10,7 @@ import {
   applyOverrides,
   cardTilt,
   hubPathsFor,
+  hubSideOf,
   MAP_GRID,
   layoutMindMap,
   measureLabel,
@@ -294,9 +295,9 @@ describe('hub connectors and outline growth', () => {
     const hubs = hubPathsFor(parent, kids, 'right');
     expect(hubs.length).toBe(1); // one exit, both kids on one side
     const hub = hubs[0];
-    expect(hub.stem).toBe('M160 100 H 230'); // exit at the box edge, one line
-    expect(hub.spine).toBe('M230 40 V 160'); // the vertex line the arms leave
-    expect(hub.arms.map((a) => a.d)).toEqual(['M230 40 H 300', 'M230 160 H 300']);
+    expect(hub.stem).toBe('M160 100 H 234'); // exit at the box edge, one line, the vertex on the grid
+    expect(hub.spine).toBe('M234 40 V 160'); // the vertex line the arms leave
+    expect(hub.arms.map((a) => a.d)).toEqual(['M234 40 H 300', 'M234 160 H 300']);
     expect(hub.arms.map((a) => a.color)).toEqual([1, 2]); // arrows = CHILD level
     // Straight lines, square corners: no curve commands anywhere.
     expect(hub.stem + hub.spine + hub.arms.map((a) => a.d).join('')).not.toMatch(/[QC]/);
@@ -310,9 +311,9 @@ describe('hub connectors and outline growth', () => {
     ];
     const hubs = hubPathsFor(parent, kids, 'down');
     expect(hubs.length).toBe(1);
-    expect(hubs[0].stem).toBe('M160 61 V 125');
-    expect(hubs[0].spine).toBe('M90 125 H 270');
-    expect(hubs[0].arms.map((a) => a.d)).toEqual(['M90 125 V 189', 'M270 125 V 189']);
+    expect(hubs[0].stem).toBe('M160 61 V 126');
+    expect(hubs[0].spine).toBe('M90 126 H 270');
+    expect(hubs[0].arms.map((a) => a.d)).toEqual(['M90 126 V 189', 'M270 126 V 189']);
   });
 
   it('an arm level with its parent needs no spine at all', () => {
@@ -320,7 +321,7 @@ describe('hub connectors and outline growth', () => {
     const kids = [{ x: 300, y: 100, width: 100, height: 22, label: 'A', color: 1 }];
     const hubs = hubPathsFor(parent, kids, 'right');
     expect(hubs[0].spine).toBeNull();
-    expect(hubs[0].arms[0].d).toBe('M230 100 H 300');
+    expect(hubs[0].arms[0].d).toBe('M234 100 H 300');
   });
 
   it('a child dragged to the other side gets its own exit, not a backwards loop', () => {
@@ -331,6 +332,34 @@ describe('hub connectors and outline growth', () => {
     ];
     const hubs = hubPathsFor(parent, kids, 'right');
     expect(hubs.length).toBe(2); // one hub per side after the drag
+  });
+
+  it('a card moved under its parent is met from below, not from inside', () => {
+    // The screenshot case: a tree child dragged straight under its parent.
+    const parent = { x: 234, y: 54, width: 288, height: 72 };
+    const under = { x: 354, y: 300, width: 72, height: 72, label: 'fix', color: 1 };
+    expect(hubSideOf(parent, under, 'right')).toBe('down');
+    const [hub] = hubPathsFor(parent, [under], 'right');
+    expect(hub.stem).toBe('M378 90 V 180'); // parent's bottom centre down to the vertex
+    expect(hub.arms[0].d).toBe('M390 180 V 264'); // into the child's TOP edge
+    expect(hubSideOf(parent, { ...under, y: -300 }, 'right')).toBe('up');
+  });
+
+  it('each child hangs off the side it sits on; the layout keeps its axis while it can', () => {
+    const p = { x: 360, y: 360, width: 144, height: 72 };
+    const at = (x: number, y: number) => ({ x, y, width: 108, height: 36 });
+    // A tree keeps left and right, even for a child far above (the auto layout).
+    expect(hubSideOf(p, at(576, 36), 'right')).toBe('right');
+    expect(hubSideOf(p, at(108, 700), 'radial')).toBe('left');
+    // Too close sideways but clear below: down.
+    expect(hubSideOf(p, at(510, 540), 'right')).toBe('down');
+    // Top-down keeps down and up, even for a child far to the side.
+    expect(hubSideOf(p, at(900, 520), 'down')).toBe('down');
+    expect(hubSideOf(p, at(900, 380), 'down')).toBe('right');
+    // A parent with children on three sides draws three hubs, one exit each.
+    const hubs = hubPathsFor(p, [{ ...at(576, 360), label: 'r', color: 1 }, { ...at(108, 360), label: 'l', color: 1 }, { ...at(378, 600), label: 'd', color: 1 }], 'right');
+    expect(hubs.length).toBe(3);
+    expect(hubs.map((h) => h.arms[0].to)).toEqual(['r', 'l', 'd']);
   });
 
   it('the SVG draws lines in the PARENT hue and arrows in the CHILD hue', () => {

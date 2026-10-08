@@ -36,13 +36,23 @@ override keys, tree-relative deltas, branch moves), `conceptMap.css`,
   lands beside a moved parent. Repeated labels get their own key, so two
   boxes named the same no longer move together. Version 1 maps are
   converted on read and look the same.
+- Connectors follow free movement: each child hangs off the side of its
+  parent it actually sits on (`hubSideOf`). A tree keeps left and right
+  while the child is clear sideways, a top-down map keeps down and up;
+  a card moved under or over its parent is met from below or above, live
+  while dragging. Hub vertices sit on the grid when there is room.
+- Fixed after the first round: the automatic layout could put a tall card
+  over a single child above the margin, and the first saved move then
+  shifted the whole board a cell (a dropped card landed a cell off). The
+  layout now keeps every box inside the margin. A resize that re-wraps
+  keeps the box's top edge, and never goes narrower than its longest word.
 - Reset Layout becomes Reset Selected when a selected box was moved. The
   tools and the key hint stay in place when a wide map scrolls sideways;
   the board keeps four spare cells right and below to drop into.
 - Tests: `conceptMapStructure` (19). Probe:
   `xvfb-run -a node tests/probes/concept-map-probe.mjs <outDir>` after
   `npm run build` with the sqlite module built for Electron; 23 checks
-  pass in the real app, no renderer errors.
+  pass in the real app, no renderer errors (29 after the connector round).
 
 ## Done on 2026-10-08, cloud: Creations AI, a quality testing guide
 
