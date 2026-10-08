@@ -5,7 +5,12 @@
 
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — JS module with no types
-import { DIRECTION_KINDS, NARRATOR_KINDS, NARRATOR, directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from '../../ext/creations-ai/director.js';
+import { DIRECTION_KINDS, NARRATOR_KINDS, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS, parseDirectionKinds, directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from '../../ext/creations-ai/director.js';
+
+// The reading tests run on four kinds, the list as first shipped; the
+// shipped default is now three (Deepen dropped), and the list is the user's.
+const FOUR = parseDirectionKinds('Deepen: a feeling shows\nPush: they act on what they want\nComplicate: something gets in the way\nMove: they change the scene');
+const kt = (opts: any[]) => opts.map(({ kind, text }: any) => ({ kind, text }));
 
 const cast = [
   { file: 'ada.json', name: 'Ada' },
@@ -43,13 +48,15 @@ describe('the prompt', () => {
     rules: 'People talk about what is in front of them.',
   });
 
-  it('asks for four options of four different kinds, per character, in a format it can read back', () => {
+  it('asks for one option of each shipped kind, per character, in a format it can read back', () => {
     expect(messages).toHaveLength(2);
     const [system, user] = messages.map((m: any) => m.content);
+    expect(DIRECTION_KINDS.map((k: any) => k.label)).toEqual(['Push', 'Complicate', 'Move']);
     for (const k of DIRECTION_KINDS) expect(system).toContain(`- ${k.label}:`);
-    expect(system).toContain('exactly four options, one of each kind');
+    expect(system).not.toContain('Deepen');
+    expect(system).toContain('exactly 3 options, one of each kind');
     expect(system).toContain('Never decide how anyone else answers');
-    expect(system).toContain('## Ada\nDeepen: <one sentence>');
+    expect(system).toContain('## Ada\nPush: <one sentence>\nComplicate: <one sentence>\nMove: <one sentence>');
     expect(user.endsWith('Write the options for the Narrator, then for: Ada, Tom.')).toBe(true);
   });
 
@@ -99,7 +106,7 @@ describe('reading the reply', () => {
   ].join('\n');
 
   it('reads one option of each kind per character, in the order asked', () => {
-    const got = parseDirections(reply, ['Ada', 'Tom']);
+    const got = parseDirections(reply, ['Ada', 'Tom'], { characterKinds: FOUR });
     expect(got.map((g: any) => g.name)).toEqual(['Ada', 'Tom']);
     expect(got[0].options.map((o: any) => o.kind)).toEqual(['deepen', 'push', 'complicate', 'move']);
     expect(got[0].options[1].text).toBe('Asks Tom straight out who he owes');
@@ -115,16 +122,16 @@ describe('reading the reply', () => {
       '### Tom',
       '* Move: Says he is going for a walk.',
     ].join('\n');
-    const got = parseDirections(messy, ['Ada', 'Tom']);
-    expect(got[0].options).toEqual([
+    const got = parseDirections(messy, ['Ada', 'Tom'], { characterKinds: FOUR });
+    expect(kt(got[0].options)).toEqual([
       { kind: 'deepen', text: 'Folds the cash, slowly, into stacks' },
       { kind: 'push', text: 'Asks Tom straight out who he owes' },
     ]);
-    expect(got[1].options).toEqual([{ kind: 'move', text: 'Says he is going for a walk.' }]);
+    expect(kt(got[1].options)).toEqual([{ kind: 'move', text: 'Says he is going for a walk.' }]);
   });
 
   it('gives an unlabelled line the next free kind, and ignores a fifth', () => {
-    const got = parseDirections('## Ada\nLooks away\nAsks him\nDeepen: Smiles\nLeaves\nOne too many', ['Ada']);
+    const got = parseDirections('## Ada\nLooks away\nAsks him\nDeepen: Smiles\nLeaves\nOne too many', ['Ada'], { characterKinds: FOUR });
     expect(got[0].options.map((o: any) => [o.kind, o.text])).toEqual([
       ['deepen', 'Looks away'],
       ['push', 'Asks him'],
@@ -134,12 +141,12 @@ describe('reading the reply', () => {
   });
 
   it('matches a heading by first name, and skips names it was not asked for', () => {
-    const got = parseDirections('## Vera\nPush: Opens the ledger\n## Someone\nPush: Waves', ['Vera Quill', 'Tom']);
-    expect(got).toEqual([{ name: 'Vera Quill', options: [{ kind: 'push', text: 'Opens the ledger' }] }]);
+    const got = parseDirections('## Vera\nPush: Opens the ledger\n## Someone\nPush: Waves', ['Vera Quill', 'Tom'], { characterKinds: FOUR });
+    expect(got.map((g: any) => ({ name: g.name, options: kt(g.options) }))).toEqual([{ name: 'Vera Quill', options: [{ kind: 'push', text: 'Opens the ledger' }] }]);
   });
 
   it('keeps an option that happens to end in a colon', () => {
-    expect(parseDirections('## Ada\nPush: Tells him:', ['Ada'])[0].options).toEqual([{ kind: 'push', text: 'Tells him:' }]);
+    expect(parseDirections('## Ada\nPush: Tells him:', ['Ada'])[0].options).toEqual([{ kind: 'push', label: 'Push', text: 'Tells him:' }]);
   });
 
   it('gives a single character the options even without a heading', () => {
@@ -148,8 +155,8 @@ describe('reading the reply', () => {
 
   it('while streaming, holds back the line still being written', () => {
     const partial = '## Ada\nDeepen: Folds the cash\nPush: Asks To';
-    expect(parseDirections(partial, ['Ada'], { complete: false })[0].options.map((o: any) => o.kind)).toEqual(['deepen']);
-    expect(parseDirections(partial, ['Ada'])[0].options.map((o: any) => o.kind)).toEqual(['deepen', 'push']);
+    expect(parseDirections(partial, ['Ada'], { complete: false, characterKinds: FOUR })[0].options.map((o: any) => o.kind)).toEqual(['deepen']);
+    expect(parseDirections(partial, ['Ada'], { characterKinds: FOUR })[0].options.map((o: any) => o.kind)).toEqual(['deepen', 'push']);
   });
 
   it('returns nothing for a reply with no options', () => {
@@ -172,7 +179,7 @@ describe('a pick in the composer', () => {
     expect(composeWithDirection('I put the kettle on.\n/ai @Tom Y\n', '/ai @Ada X')).toBe('I put the kettle on.\n/ai @Ada X');
   });
   it('labels each kind', () => {
-    expect(DIRECTION_KINDS.map((k: any) => directionKindLabel(k.key))).toEqual(['Deepen', 'Push', 'Complicate', 'Move']);
+    expect(DIRECTION_KINDS.map((k: any) => directionKindLabel(k.key))).toEqual(['Push', 'Complicate', 'Move']);
     expect(directionKindLabel('nope')).toBe('');
   });
 });
@@ -182,8 +189,9 @@ describe('the Narrator: moves for the story, not a character', () => {
     const [system] = buildDirectorPrompt({ cast: [{ name: 'Ada' }], others: [{ name: 'Dana', note: 'the landlord' }] }).map((m: any) => m.content);
     for (const k of NARRATOR_KINDS) expect(system).toContain(`- ${k.label}:`);
     expect(system).toContain('never what anyone says or feels');
-    expect(system).toContain('a scene that has run its course needs a new one or a time skip');
-    expect(system.indexOf('## Narrator\nNew Scene: <one sentence>')).toBeLessThan(system.indexOf('## Ada\nDeepen: <one sentence>'));
+    expect(system).toContain('a scene that has run its course needs moving on');
+    expect(system.indexOf('## Narrator\nNew Scene: <one sentence>')).toBeGreaterThan(-1);
+    expect(system.indexOf('## Narrator\nNew Scene: <one sentence>')).toBeLessThan(system.indexOf('## Ada\nPush: <one sentence>'));
   });
 
   it('reads its group with its own kinds, two-word labels included, beside the characters', () => {
@@ -200,17 +208,18 @@ describe('the Narrator: moves for the story, not a character', () => {
     const got = parseDirections(reply, [NARRATOR, 'Ada']);
     expect(got.map((g: any) => g.name)).toEqual(['Narrator', 'Ada']);
     expect(got[0].options.map((o: any) => [o.kind, o.text])).toEqual([
-      ['scene', 'Cut to the harbour at dawn, where the buyer is already waiting'],
-      ['time', 'Three weeks pass and the shop has a new lock'],
+      ['new scene', 'Cut to the harbour at dawn, where the buyer is already waiting'],
+      ['time skip', 'Three weeks pass and the shop has a new lock'],
       ['arrival', 'Dana knocks, asking for the rent'],
       ['event', 'The power fails across the whole street'],
     ]);
-    expect(got[1].options).toEqual([{ kind: 'push', text: 'Asks Tom straight out who he owes' }]);
+    expect(kt(got[1].options)).toEqual([{ kind: 'push', text: 'Asks Tom straight out who he owes' }]);
   });
 
   it('a character label under the Narrator counts as no label; unlabelled lines take the next free kind', () => {
     const got = parseDirections('## Narrator\nPush: The rain starts\nA stranger arrives', [NARRATOR]);
-    expect(got[0].options.map((o: any) => o.kind)).toEqual(['scene', 'time']);
+    expect(got[0].options.map((o: any) => o.kind)).toEqual(['new scene', 'time skip']);
+    expect(got[0].options.map((o: any) => o.label)).toEqual(['New Scene', 'Time Skip']);
     expect(got[0].options[0].text).toBe('The rain starts');
   });
 
@@ -219,6 +228,47 @@ describe('the Narrator: moves for the story, not a character', () => {
     expect(composeWithDirection('I lock the door.\n/ai @Ada X', '/nar Three weeks pass')).toBe('I lock the door.\n/nar Three weeks pass');
     expect(composeWithDirection('I lock the door.\n/nar Y', '/ai @Ada X')).toBe('I lock the door.\n/ai @Ada X');
     expect(NARRATOR_KINDS.map((k: any) => directionKindLabel(k.key))).toEqual(['New Scene', 'Time Skip', 'Arrival', 'Event']);
+  });
+});
+
+describe('the kinds are the user\'s (Creations Settings)', () => {
+  it('reads one kind per line as "Label: what it means"; blanks, # lines and repeats skipped; capped', () => {
+    const kinds = parseDirectionKinds('# mine\n\n- Confess: they admit something\nFlirt\nconfess: again\nA line that is far too long to be a label');
+    expect(kinds).toEqual([
+      { key: 'confess', label: 'Confess', rule: 'they admit something' },
+      { key: 'flirt', label: 'Flirt', rule: '' },
+    ]);
+    expect(parseDirectionKinds('')).toEqual([]);
+    const many = Array.from({ length: 12 }, (_, i) => `K${i}: rule ${i}`).join('\n');
+    expect(parseDirectionKinds(many)).toHaveLength(MAX_DIRECTION_KINDS);
+    expect(parseDirectionKinds(DEFAULT_CHARACTER_DIRECTIONS)).toEqual(DIRECTION_KINDS);
+    expect(parseDirectionKinds(DEFAULT_NARRATOR_DIRECTIONS)).toEqual(NARRATOR_KINDS);
+  });
+
+  it('asks for as many options as there are kinds, and reads them back with their labels', () => {
+    const characterKinds = parseDirectionKinds('Confess: they admit something\nLeave: they go');
+    const narratorKinds = parseDirectionKinds('Cut: a new scene');
+    const [system, user] = buildDirectorPrompt({ cast: [{ name: 'Ada' }], characterKinds, narratorKinds }).map((m: any) => m.content);
+    expect(system).toContain('write exactly 2 options, one of each kind:\n- Confess: they admit something.\n- Leave: they go.');
+    expect(system).toContain('write one option, of this kind, for the story itself:\n- Cut: a new scene.');
+    expect(system).toContain('## Narrator\nCut: <one sentence>\n\n## Ada\nConfess: <one sentence>\nLeave: <one sentence>');
+    expect(user.endsWith('Write the options for the Narrator, then for: Ada.')).toBe(true);
+    const got = parseDirections('## Narrator\nCut: To the docks\n## Ada\nLeave: Walks out\nConfess: Says she took it', [NARRATOR, 'Ada'], { characterKinds, narratorKinds });
+    expect(got).toEqual([
+      { name: 'Narrator', options: [{ kind: 'cut', label: 'Cut', text: 'To the docks' }] },
+      { name: 'Ada', options: [{ kind: 'confess', label: 'Confess', text: 'Says she took it' }, { kind: 'leave', label: 'Leave', text: 'Walks out' }] },
+    ]);
+  });
+
+  it('an empty list asks for none of that sort: Narrator only, or characters only', () => {
+    const narratorOnly = buildDirectorPrompt({ cast: [{ name: 'Ada' }], characterKinds: [] }).map((m: any) => m.content);
+    expect(narratorOnly[0]).not.toContain('For each character');
+    expect(narratorOnly[0]).toContain('Under "## Narrator"');
+    expect(narratorOnly[1]).toContain('Cast:\n- Ada');
+    expect(narratorOnly[1].endsWith('Write the options for the Narrator.')).toBe(true);
+    const charactersOnly = buildDirectorPrompt({ cast: [{ name: 'Ada' }], narratorKinds: [] }).map((m: any) => m.content);
+    expect(charactersOnly[0]).not.toContain('## Narrator');
+    expect(charactersOnly[1].endsWith('Write the options for: Ada.')).toBe(true);
   });
 });
 

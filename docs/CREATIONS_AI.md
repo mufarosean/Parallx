@@ -593,6 +593,16 @@ owner picks instead of writing, on request rather than after every reply.
   typed words it goes on the last line, and the chat now reads a trailing
   "/nar" line the way it reads "/ai", so the words are posted and the
   Narrator writes the next turn. Same call, four more lines in the reply.
+- **The kinds are the user's (built 2026-10-08).** The owner found Deepen
+  the one never worth picking and wanted to choose the kinds and how many.
+  Creations Settings has two lists, Directions for each character and
+  Directions for the Narrator, one kind per line as "Label: what it
+  means" (up to eight; Reset To Default on each). The number of lines is
+  the number of options per card; an empty list means none of that sort
+  (Narrator only, or characters only). Read fresh at every ask, so an edit
+  shows on the next one. Shipped: Push, Complicate, Move for characters
+  (Deepen dropped) and New Scene, Time Skip, Arrival, Event for the
+  Narrator. Each option carries its label to the card.
 - **Who gets options.** The thread's characters, only those the scene says
   are present when it says so, at most four; the one who spoke last goes
   last, since the next turn is usually someone else's. The player's own

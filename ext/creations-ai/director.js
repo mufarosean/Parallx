@@ -13,21 +13,57 @@
 //
 // Pure: the prompt and the reading of the reply. The chat makes the call.
 
-/** The four kinds of move, in the order they are asked for and shown. */
-export const DIRECTION_KINDS = [
-  { key: 'deepen', label: 'Deepen', rule: 'a feeling comes through in something they do or say; never name the feeling' },
-  { key: 'push', label: 'Push', rule: 'they act on what they want, now, in this scene' },
-  { key: 'complicate', label: 'Complicate', rule: 'a secret, a flaw, something from the past or a person from their life gets in the way' },
-  { key: 'move', label: 'Move', rule: 'they change the scene: leave, arrive somewhere, bring someone in, turn the talk somewhere new, or let time pass' },
-];
+// The kinds of option are the user's (Creations Settings, one list for the
+// characters and one for the Narrator): one per line, "Label: what it
+// means". The number of lines is the number of options per card. Shipped
+// with these; Deepen was dropped from the characters' list (2026-10-08:
+// the owner found it the one never worth picking).
 
-/** The Narrator's four kinds: moves for the story itself, not for a character. */
-export const NARRATOR_KINDS = [
-  { key: 'scene', label: 'New Scene', rule: 'this scene ends and the next one opens: a place, a moment and who is there, somewhere the story has reason to go' },
-  { key: 'time', label: 'Time Skip', rule: 'time passes (an hour, a night, weeks) and one thing that changed meanwhile shows' },
-  { key: 'arrival', label: 'Arrival', rule: 'someone comes in, calls or writes: a person from their world, or someone new with a reason to be there' },
-  { key: 'event', label: 'Event', rule: 'something from outside the scene happens that the characters must answer: news, weather, an accident, a discovery' },
-];
+/** The shipped kinds for each character, as the Settings text. */
+export const DEFAULT_CHARACTER_DIRECTIONS = [
+  'Push: they act on what they want, now, in this scene',
+  'Complicate: a secret, a flaw, something from the past or a person from their life gets in the way',
+  'Move: they change the scene: leave, arrive somewhere, bring someone in, turn the talk somewhere new, or let time pass',
+].join('\n');
+
+/** The shipped kinds for the Narrator, as the Settings text: moves for the story itself. */
+export const DEFAULT_NARRATOR_DIRECTIONS = [
+  'New Scene: this scene ends and the next one opens: a place, a moment and who is there, somewhere the story has reason to go',
+  'Time Skip: time passes (an hour, a night, weeks) and one thing that changed meanwhile shows',
+  'Arrival: someone comes in, calls or writes: a person from their world, or someone new with a reason to be there',
+  'Event: something from outside the scene happens that the characters must answer: news, weather, an accident, a discovery',
+].join('\n');
+
+/** At most this many kinds per list: past it a card is a wall. */
+export const MAX_DIRECTION_KINDS = 8;
+
+/**
+ * A kinds list from its Settings text: one per line, "Label: what it
+ * means" (a bare label works too). Blank lines, # lines and repeats are
+ * skipped; a label is at most four words. Empty text, no kinds.
+ */
+export function parseDirectionKinds(text) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').trim();
+    if (!line || line.startsWith('#')) continue;
+    const m = line.match(/^([^:]{1,40}?)\s*:\s*(.*)$/);
+    const label = (m ? m[1] : line).replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+    const rule = m ? m[2].trim().replace(/\.$/, '') : '';
+    if (!label || label.split(' ').length > 4) continue;
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, label, rule });
+    if (out.length >= MAX_DIRECTION_KINDS) break;
+  }
+  return out;
+}
+
+/** The shipped kinds, parsed. */
+export const DIRECTION_KINDS = parseDirectionKinds(DEFAULT_CHARACTER_DIRECTIONS);
+export const NARRATOR_KINDS = parseDirectionKinds(DEFAULT_NARRATOR_DIRECTIONS);
 
 /** The Narrator's group name on the card and in the reply. */
 export const NARRATOR = 'Narrator';
@@ -35,16 +71,19 @@ export const NARRATOR = 'Narrator';
 /** Characters given options at once. More makes the card a wall and the call slow. */
 export const DIRECTOR_MAX_CAST = 4;
 
-const kindsFor = (name) => (name === NARRATOR ? NARRATOR_KINDS : DIRECTION_KINDS);
-const KIND_BY_WORD = new Map([...DIRECTION_KINDS, ...NARRATOR_KINDS].flatMap((k) => [[k.key, k.key], [k.label.toLowerCase(), k.key]]));
-/** A kind label at the start of a line ("Push:", "New Scene -"): [key, rest] or null. */
-const labelledKind = (line) => {
-  const m = line.match(/^([A-Za-z]+)(?:\s+([A-Za-z]+))?\s*[:\-\u2013\u2014]\s*(.*)$/);
-  if (!m) return null;
-  if (m[2] && KIND_BY_WORD.has(`${m[1]} ${m[2]}`.toLowerCase())) return [KIND_BY_WORD.get(`${m[1]} ${m[2]}`.toLowerCase()), m[3]];
-  if (!m[2] && KIND_BY_WORD.has(m[1].toLowerCase())) return [KIND_BY_WORD.get(m[1].toLowerCase()), m[3]];
+/** A kind label at the start of a line ("Push:", "New Scene -"), among `kinds`: [key, rest] or null. */
+const labelledKind = (line, kinds) => {
+  const low = line.toLowerCase();
+  for (const k of [...kinds].sort((a, b) => b.label.length - a.label.length)) {
+    const l = k.label.toLowerCase();
+    if (!low.startsWith(l)) continue;
+    const m = line.slice(l.length).match(/^\s*[:\-–—]\s*(.*)$/);
+    if (m) return [k.key, m[1]];
+  }
   return null;
 };
+const kindLines = (kinds) => kinds.map((k) => (k.rule ? `- ${k.label}: ${k.rule}.` : `- ${k.label}.`)).join('\n');
+const formatLines = (kinds) => kinds.map((k) => `${k.label}: <one sentence>`).join('\n');
 
 const clip = (text, max) => {
   const t = String(text || '').replace(/\s+/g, ' ').trim();
@@ -79,24 +118,25 @@ export function directorCast(cast, { present = [], lastSpeaker = null, max = DIR
  *   recentNotes: string[] — the director's notes the last turns were written with
  *   rules: string — the user's dialogue rules, if any
  */
-export function buildDirectorPrompt({ cast = [], others = [], scene = null, memory = {}, transcript = [], recentNotes = [], rules = '', narrator = true } = {}) {
-  const names = cast.map((c) => c.name);
-  const kinds = DIRECTION_KINDS.map((k) => `- ${k.label}: ${k.rule}.`).join('\n');
-  const example = DIRECTION_KINDS.map((k) => `${k.label}: <one sentence>`).join('\n');
-  const narratorRules = narrator ? [
+export function buildDirectorPrompt({
+  cast = [], others = [], scene = null, memory = {}, transcript = [], recentNotes = [], rules = '',
+  narrator = true, characterKinds = DIRECTION_KINDS, narratorKinds = NARRATOR_KINDS,
+} = {}) {
+  const forCast = characterKinds.length > 0 && cast.length > 0;
+  const forNarrator = narrator && narratorKinds.length > 0;
+  const names = forCast ? cast.map((c) => c.name) : [];
+  const count = (n) => (n === 1 ? 'one option, of this kind' : `exactly ${n} options, one of each kind`);
+  const narratorRules = forNarrator ? [
     '',
-    `Then, under "## ${NARRATOR}", write four options for the story itself, one of each kind:`,
-    NARRATOR_KINDS.map((k) => `- ${k.label}: ${k.rule}.`).join('\n'),
+    `${forCast ? 'Then, under' : 'Under'} "## ${NARRATOR}", write ${count(narratorKinds.length)}, for the story itself:`,
+    kindLines(narratorKinds),
     'Each Narrator option: one sentence, at most 20 words, present tense, saying what happens, never what anyone says or feels: "Cut to the harbour at dawn, where the buyer is already waiting".',
-    'They move the story on from this scene. Read where it stands: a scene that has run its course needs a new one or a time skip; a scene going in circles needs an arrival or an event.',
-    'An Arrival names someone from the Others list when one fits. Never contradict the memory, never end the story.',
+    'They move the story on from this scene. Read where it stands: a scene that has run its course needs moving on; a scene going in circles needs something new to answer.',
+    'When an option brings someone in, name someone from the Others list when one fits. Never contradict the memory, never end the story.',
   ] : [];
-  const system = [
-    'You are the director of an ongoing roleplay. You do not write the story.',
-    'You suggest what each character could do in their next turn, so the player can pick one.',
-    '',
-    'For each character named at the end, write exactly four options, one of each kind:',
-    kinds,
+  const characterRules = forCast ? [
+    `For each character named at the end, write ${count(characterKinds.length)}:`,
+    kindLines(characterKinds),
     '',
     'Each option:',
     '- One sentence, at most 20 words, present tense, starting with a verb. The character is implied: "Asks him where the money went", not "Ada asks...".',
@@ -104,16 +144,23 @@ export function buildDirectorPrompt({ cast = [], others = [], scene = null, memo
     '- Something a player would be glad to see happen next, and different from what just happened.',
     '- Only what this character does. Never decide how anyone else answers.',
     '- Never contradicts the memory. Never ends the story or settles its central question.',
-    'The four options for one character must lead to four clearly different next turns.',
+    "A character's options must each lead to a clearly different next turn.",
+  ] : [];
+  const system = [
+    'You are the director of an ongoing roleplay. You do not write the story.',
+    forCast
+      ? 'You suggest what each character could do in their next turn, so the player can pick one.'
+      : 'You suggest where the story could go next, so the player can pick one.',
+    '',
+    ...characterRules,
     'Do not repeat or rephrase the notes the last turns were written with.',
     ...narratorRules,
     '',
     'Answer in exactly this format, nothing before or after it, no em dashes:',
     '',
-    ...(narrator ? [`## ${NARRATOR}`, NARRATOR_KINDS.map((k) => `${k.label}: <one sentence>`).join('\n'), ''] : []),
-    `## ${names[0] || 'Name'}`,
-    example,
-  ].join('\n');
+    ...(forNarrator ? [`## ${NARRATOR}`, formatLines(narratorKinds), ''] : []),
+    ...(forCast ? [`## ${names[0]}`, formatLines(characterKinds)] : []),
+  ].join('\n').replace(/\n+$/, '');
 
   const parts = [];
   const castLines = cast.map((c) => {
@@ -147,9 +194,9 @@ export function buildDirectorPrompt({ cast = [], others = [], scene = null, memo
   if (turns.trim()) parts.push(`Recent turns, oldest first:\n${turns}`);
   const notes = (Array.isArray(recentNotes) ? recentNotes : []).map((n) => String(n || '').trim()).filter(Boolean).slice(-5);
   if (notes.length) parts.push(`Notes the last turns were written with:\n${notes.map((n) => `- ${clip(n, 200)}`).join('\n')}`);
-  parts.push(narrator
+  parts.push(forNarrator && forCast
     ? `Write the options for the ${NARRATOR}, then for: ${names.join(', ')}.`
-    : `Write the options for: ${names.join(', ')}.`);
+    : forNarrator ? `Write the options for the ${NARRATOR}.` : `Write the options for: ${names.join(', ')}.`);
 
   return [
     { role: 'system', content: system },
@@ -165,7 +212,9 @@ export function buildDirectorPrompt({ cast = [], others = [], scene = null, memo
  * nothing yet is left out. Cut-off last lines are kept only once the reply
  * is `complete`.
  */
-export function parseDirections(raw, names = [], { complete = true } = {}) {
+export function parseDirections(raw, names = [], { complete = true, characterKinds = DIRECTION_KINDS, narratorKinds = NARRATOR_KINDS } = {}) {
+  const kindsFor = (name) => (name === NARRATOR ? narratorKinds : characterKinds);
+  const allKinds = [...characterKinds, ...narratorKinds];
   let text = String(raw || '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<think>[\s\S]*$/i, '');
   if (!complete) {
     const nl = text.lastIndexOf('\n');
@@ -194,7 +243,7 @@ export function parseDirections(raw, names = [], { complete = true } = {}) {
   const otherHeading = (line) => {
     if (/^\s*#/.test(line) || /^\s*\*\*[^*]+\*\*:?\s*$/.test(line)) return true;
     const t = strip(line);
-    if (labelledKind(t)) return false;
+    if (labelledKind(t, allKinds)) return false;
     return /:$/.test(t) && t.split(/\s+/).length <= 4;
   };
   const headingName = (line) => {
@@ -221,7 +270,7 @@ export function parseDirections(raw, names = [], { complete = true } = {}) {
     let line = strip(rawLine);
     let kind = null;
     const kinds = kindsFor(current);
-    const labelled = labelledKind(line);
+    const labelled = labelledKind(line, allKinds);
     if (labelled) {
       // A label from the other set (a character's "Push" under the Narrator) counts as no label.
       kind = kinds.some((k) => k.key === labelled[0]) ? labelled[0] : null;
@@ -238,7 +287,7 @@ export function parseDirections(raw, names = [], { complete = true } = {}) {
       kind = kinds.map((k) => k.key).find((k) => !opts.some((o) => o.kind === k)) || null;
     }
     if (!kind) continue;
-    opts.push({ kind, text: line });
+    opts.push({ kind, label: kinds.find((k) => k.key === kind)?.label || '', text: line });
   }
 
   const order = (name, opts) => kindsFor(name).map((k) => opts.find((o) => o.kind === k.key)).filter(Boolean);

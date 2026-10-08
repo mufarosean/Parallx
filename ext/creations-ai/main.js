@@ -16,7 +16,7 @@ import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
 import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE } from './studio-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
-import { directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel, NARRATOR } from './director.js';
+import { directorCast, buildDirectorPrompt, parseDirections, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 
 // The workspace data folder keeps its original name: every character, thread,
@@ -6125,7 +6125,7 @@ function renderChatEditor(container, parallx, input) {
           btn.title = g.name === NARRATOR
             ? 'The Narrator takes the next turn with this note: the story moves on. Edit it before you send.'
             : `${g.name} takes the next turn with this note. Edit it before you send.`;
-          btn.append(el('span', 'cr-direction-kind', { text: directionKindLabel(o.kind) }), el('span', 'cr-direction-text', { text: o.text }));
+          btn.append(el('span', 'cr-direction-kind', { text: o.label || directionKindLabel(o.kind) }), el('span', 'cr-direction-text', { text: o.text }));
           btn.addEventListener('click', () => {
             _directionsPicked = key;
             for (const b of grid.querySelectorAll('.cr-direction--picked')) b.classList.remove('cr-direction--picked');
@@ -6164,9 +6164,23 @@ function renderChatEditor(container, parallx, input) {
     const lastSpeaker = [...story].reverse().find((m) => m.characterFile)?.characterFile || null;
     const roster = characters.map((c) => ({ file: c.fileName, name: getCharacterName(c), char: c }));
     const chosen = directorCast(roster, { present: thread.sceneState?.present || [], lastSpeaker });
+    // The kinds are the user's, read fresh from Settings at every ask:
+    // one list for the characters, one for the Narrator; an empty list
+    // means no options of that sort.
+    const settings = await loadSettings(fs, workspaceUri).catch(() => currentSettings || {});
+    if (run !== _directionsRun) return;
+    const characterKinds = parseDirectionKinds(typeof settings?.directionsCharacter === 'string' ? settings.directionsCharacter : DEFAULT_CHARACTER_DIRECTIONS);
+    const narratorKinds = parseDirectionKinds(typeof settings?.directionsNarrator === 'string' ? settings.directionsNarrator : DEFAULT_NARRATOR_DIRECTIONS);
+    if (characterKinds.length === 0 && narratorKinds.length === 0) {
+      renderDirections({ error: 'No kinds of direction are set. Add some under Directions in Creations Settings.' });
+      return;
+    }
     // The Narrator's group (moves for the story itself) comes first.
-    const names = [NARRATOR, ...chosen.map((c) => c.name)];
-    renderDirections({ status: `Reading the scene for the Narrator and ${chosen.map((c) => c.name).join(', ')}…`, busy: true });
+    const names = [
+      ...(narratorKinds.length ? [NARRATOR] : []),
+      ...(characterKinds.length ? chosen.map((c) => c.name) : []),
+    ];
+    renderDirections({ status: `Reading the scene for ${names.map((n) => (n === NARRATOR ? 'the Narrator' : n)).join(', ')}…`, busy: true });
 
     let memory = { facts: [], beats: [], notes: '' };
     try { memory = await loadThreadMemory(fs, workspaceUri, threadId); } catch { /* the prompt goes without it */ }
@@ -6183,6 +6197,9 @@ function renderChatEditor(container, parallx, input) {
       transcript: story.slice(-14).map((m) => ({ name: getVisibleName(m), content: m.content })),
       recentNotes: messageHistory.slice(-12).map((m) => m && m.instruction).filter(Boolean),
       rules: currentSettings?.dialogueRules || '',
+      characterKinds,
+      narratorKinds,
+      narrator: narratorKinds.length > 0,
     });
 
     let raw = '';
@@ -6194,7 +6211,7 @@ function renderChatEditor(container, parallx, input) {
         if (run !== _directionsRun) return;
         if (!chunk?.content) continue;
         raw += chunk.content;
-        const partial = parseDirections(raw, names, { complete: false });
+        const partial = parseDirections(raw, names, { complete: false, characterKinds, narratorKinds });
         if (partial.length) renderDirections({ groups: partial, status: 'Writing…', busy: true });
       }
     } catch (err) {
@@ -6203,7 +6220,7 @@ function renderChatEditor(container, parallx, input) {
       return;
     }
     if (run !== _directionsRun) return;
-    const groups = parseDirections(raw, names);
+    const groups = parseDirections(raw, names, { characterKinds, narratorKinds });
     if (!groups.length) {
       console.warn('[TextGenerator] Directions: nothing readable in the reply. It began:', raw.slice(0, 200));
       renderDirections({ error: 'The model did not suggest anything this time.' });
@@ -9374,6 +9391,10 @@ const DEFAULT_SETTINGS = {
   // The shape of each sheet field the Studio writes (sections, one paragraph
   // each). The user's text; an empty string means every field keeps its usual shape.
   sheetStructure: DEFAULT_SHEET_STRUCTURE,
+  // The kinds of option Suggest Directions offers, one per line: each
+  // character's, and the Narrator's. The user's text; empty means none.
+  directionsCharacter: DEFAULT_CHARACTER_DIRECTIONS,
+  directionsNarrator: DEFAULT_NARRATOR_DIRECTIONS,
 };
 
 /** Motion off: `.cr-still` on the body stops every Creations animation. */
@@ -9566,6 +9587,38 @@ function renderSettingsPage(container, parallx) {
   structureReset.addEventListener('click', () => { structureInput.value = DEFAULT_SHEET_STRUCTURE; });
   structureGroup.appendChild(structureReset);
   form.appendChild(structureGroup);
+  // Directions: what Suggest Directions offers in a chat, and how many.
+  const directionsField = (label, hint, placeholder, fallback, resetTitle) => {
+    const group = el('div', 'tg-form-group');
+    group.appendChild(el('label', 'tg-form-label', { text: label }));
+    group.appendChild(el('div', 'tg-form-hint', { text: hint }));
+    const input = el('textarea', 'tg-form-input');
+    input.rows = 5;
+    input.style.minHeight = '110px';
+    input.placeholder = placeholder;
+    group.appendChild(input);
+    const reset = el('button', 'tg-form-reset', { text: 'Reset To Default' });
+    reset.type = 'button';
+    reset.title = resetTitle;
+    reset.addEventListener('click', () => { input.value = fallback; });
+    group.appendChild(reset);
+    form.appendChild(group);
+    return input;
+  };
+  const directionsCharInput = directionsField(
+    'Directions for each character',
+    `The kinds of option Suggest Directions offers each character in a chat, one per line as "Label: what it means". One option per line, up to ${MAX_DIRECTION_KINDS}. Empty means no character options.`,
+    'Push: they act on what they want, now, in this scene',
+    DEFAULT_CHARACTER_DIRECTIONS,
+    'Put the shipped character directions back',
+  );
+  const directionsNarInput = directionsField(
+    'Directions for the Narrator',
+    `The kinds of option the Narrator gets: moves for the story itself, not a character. One per line as "Label: what it means", up to ${MAX_DIRECTION_KINDS}. Empty means no Narrator options.`,
+    'New Scene: this scene ends and the next one opens somewhere the story has reason to go',
+    DEFAULT_NARRATOR_DIRECTIONS,
+    'Put the shipped Narrator directions back',
+  );
   const responseLengthSelect = formGroup('Default response length', 'Applied to newly created chats when no character override exists', 'select', 'defaultResponseLength', {
     options: [
       { value: '', label: 'No Limit (Default)' },
@@ -9619,6 +9672,8 @@ function renderSettingsPage(container, parallx) {
     customStyleInput.value = s.customWritingStyle || '';
     rulesInput.value = typeof s.dialogueRules === 'string' ? s.dialogueRules : DEFAULT_DIALOGUE_RULES;
     structureInput.value = typeof s.sheetStructure === 'string' ? s.sheetStructure : DEFAULT_SHEET_STRUCTURE;
+    directionsCharInput.value = typeof s.directionsCharacter === 'string' ? s.directionsCharacter : DEFAULT_CHARACTER_DIRECTIONS;
+    directionsNarInput.value = typeof s.directionsNarrator === 'string' ? s.directionsNarrator : DEFAULT_NARRATOR_DIRECTIONS;
     responseLengthSelect.value = s.defaultResponseLength || '';
     defaultPovSelect.value = s.defaultPov || '';
     fitMethodSelect.value = s.defaultFitMethod || 'dropOld';
@@ -9666,6 +9721,8 @@ function renderSettingsPage(container, parallx) {
       // Saved as typed, '' included: an emptied field means none, not the default.
       dialogueRules: rulesInput.value,
       sheetStructure: structureInput.value,
+      directionsCharacter: directionsCharInput.value,
+      directionsNarrator: directionsNarInput.value,
     };
     await saveSettings(fs, workspaceUri, settings);
     savedLabel.classList.add('tg-form-saved--show');

@@ -40,16 +40,22 @@ const DIRECTOR_REPLY = [
   'Event: The tide turns and water starts rising through the floor',
   '',
   '## Brother Oswin',
-  'Deepen: Lays the chart flat and smooths the drowned streets with his thumb',
   'Push: Asks Mara who paid her to keep the archive closed',
   'Complicate: Recognises the harbourmaster\'s seal on the ledger beside her',
   'Move: Starts down the flooded stair toward the lower stacks',
   '',
   '## Mara Vell',
-  'Deepen: Turns the lantern down so he cannot see her hands shake',
   'Push: Offers to buy the chart for the price of her boat',
   'Complicate: Lets slip she was on the sea wall the night it opened',
   'Move: Hears boots on the stair above and kills the light',
+].join('\n');
+
+const CUSTOM_REPLY = [
+  '## Brother Oswin',
+  'Confess: Admits he read the ledger before she arrived',
+  '',
+  '## Mara Vell',
+  'Confess: Tells him the sea wall was her doing',
 ].join('\n');
 
 // ── A stand-in Ollama ─────────────────────────────────────────────────────
@@ -75,7 +81,9 @@ function startOllama() {
         chats.push(msgs);
         const isDirector = String(msgs[0]?.content || '').startsWith('You are the director');
         const isMemory = String(msgs[0]?.content || '').startsWith('You extract durable memory');
-        const text = isDirector ? DIRECTOR_REPLY : isMemory ? '{"facts": [], "beats": []}' : '*She offers a price for the chart, too high to be honest.* Name it, love.';
+        // A custom kinds list from Settings ("Confess") gets an answer in its own kinds.
+        const custom = isDirector && String(msgs[0]?.content || '').includes('- Confess:');
+        const text = custom ? CUSTOM_REPLY : isDirector ? DIRECTOR_REPLY : isMemory ? '{"facts": [], "beats": []}' : '*She offers a price for the chart, too high to be honest.* Name it, love.';
         res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Access-Control-Allow-Origin': '*' });
         // Stream in small pieces, slowly enough to see the card fill.
         const pieces = text.match(/[\s\S]{1,24}/g) || [];
@@ -165,13 +173,13 @@ async function main() {
     await button.click();
     await page.waitForSelector('.cr-directions .cr-direction', { timeout: 10_000 });
     const midway = await page.locator('.cr-directions .cr-direction').count();
-    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 12 && !/Writing/.test(document.querySelector('.cr-directions')?.textContent || ''), null, { timeout: 15_000 });
-    check(midway < 12, `the card fills while the reply streams (first look: ${midway} of 12)`);
+    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 10 && !/Writing/.test(document.querySelector('.cr-directions')?.textContent || ''), null, { timeout: 15_000 });
+    check(midway < 10, `the card fills while the reply streams (first look: ${midway} of 10)`);
     const groups = await page.$$eval('.cr-directions-group', (gs) => gs.map((g) => ({ who: g.querySelector('.cr-directions-who > span:last-child')?.textContent, kinds: [...g.querySelectorAll('.cr-direction-kind')].map((k) => k.textContent) })));
     console.log(`[probe] card: ${JSON.stringify(groups)}`);
     check(groups.map((g) => g.who).join(',') === 'Narrator,Brother Oswin,Mara Vell', 'the Narrator comes first; the one who spoke last (Mara) comes last');
     check(groups[0]?.kinds.join(',') === 'New Scene,Time Skip,Arrival,Event', 'the Narrator has New Scene, Time Skip, Arrival, Event');
-    check(groups.slice(1).every((g) => g.kinds.join(',') === 'Deepen,Push,Complicate,Move'), 'each character has Deepen, Push, Complicate, Move');
+    check(groups.slice(1).every((g) => g.kinds.join(',') === 'Push,Complicate,Move'), 'each character has the shipped Push, Complicate, Move (no Deepen)');
     const dir = chats.find((m) => String(m[0]?.content || '').startsWith('You are the director'));
     const dirUser = String(dir?.[1]?.content || '');
     check(/Write the options for the Narrator, then for: Brother Oswin, Mara Vell\.$/.test(dirUser), 'the director is asked for the Narrator, then Oswin, then Mara');
@@ -207,7 +215,7 @@ async function main() {
 
     // 4. The note goes into the next ask as one already used.
     await page.locator('button[aria-label="Suggest Directions"]').click();
-    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 12, null, { timeout: 15_000 });
+    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 10, null, { timeout: 15_000 });
     const again = chats.filter((m) => String(m[0]?.content || '').startsWith('You are the director')).at(-1);
     check(String(again?.[1]?.content || '').includes('Notes the last turns were written with:\n- Offers to buy the chart'), 'the next ask knows the note just used');
     check(/Write the options for the Narrator, then for: Brother Oswin, Mara Vell\.$/.test(String(again?.[1]?.content || '')), 'Mara spoke last again, so she is last again');
@@ -238,7 +246,32 @@ async function main() {
     check(typed?.content === '*Oswin pockets the chart.*', 'the typed words are posted without the command');
     check(narSaved?.name === 'Narrator' && narSaved?.instruction === 'Three days pass and the archive door has a new lock', 'the reply is saved as the Narrator with its note');
     await page.locator('button[aria-label="Suggest Directions"]').click();
-    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 12, null, { timeout: 15_000 });
+    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 10, null, { timeout: 15_000 });
+
+    // 5c. The kinds are the user's: one custom kind for the characters and
+    //     none for the Narrator, written to Settings, change the next ask.
+    const settingsPath = path.join(workspace, '.parallx', 'extensions', 'text-generator', 'settings.json');
+    let current = {};
+    try { current = JSON.parse(await fs.readFile(settingsPath, 'utf8')); } catch { current = {}; }
+    await fs.writeFile(settingsPath, JSON.stringify({ ...current, directionsCharacter: 'Confess: they admit something they have hidden', directionsNarrator: '' }, null, 2));
+    await page.locator('button[aria-label="Suggest Directions"]').click();
+    await page.waitForTimeout(300);
+    if (await page.locator('.cr-directions .cr-direction').count() !== 2) {
+      await page.locator('button[aria-label="Suggest Directions"]').click();
+    }
+    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 2 && !/Writing|Reading/.test(document.querySelector('.cr-directions')?.textContent || ''), null, { timeout: 15_000 }).catch(() => {});
+    const customGroups = await page.$$eval('.cr-directions-group', (gs) => gs.map((g) => ({ who: g.querySelector('.cr-directions-who > span:last-child')?.textContent, kinds: [...g.querySelectorAll('.cr-direction-kind')].map((k) => k.textContent) })));
+    check(JSON.stringify(customGroups) === JSON.stringify([{ who: 'Brother Oswin', kinds: ['Confess'] }, { who: 'Mara Vell', kinds: ['Confess'] }]),
+      `a custom list in Settings sets the kinds and the count; an empty Narrator list drops its group (${JSON.stringify(customGroups)})`);
+    const customAsk = chats.filter((m) => String(m[0]?.content || '').startsWith('You are the director')).at(-1);
+    check(/write one option, of this kind:\n- Confess: they admit something they have hidden\./.test(String(customAsk?.[0]?.content || '')) && !String(customAsk?.[0]?.content || '').includes('## Narrator'),
+      'the director is asked for exactly the custom kind, and nothing for the Narrator');
+    await shot('directions-custom.png');
+    await fs.writeFile(settingsPath, JSON.stringify(current, null, 2));
+    await page.locator('button[aria-label="Suggest Directions"]').click();
+    await page.waitForTimeout(300);
+    if (await page.locator('.cr-directions .cr-direction').count() !== 10) await page.locator('button[aria-label="Suggest Directions"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('.cr-directions .cr-direction').length === 10, null, { timeout: 15_000 });
 
     // 6. Light and narrow.
     await page.evaluate(() => document.documentElement.setAttribute('data-px-mode', 'light'));
@@ -255,6 +288,19 @@ async function main() {
     await page.locator('.cr-direction').first().focus();
     await page.keyboard.press('Escape');
     check(await page.locator('.cr-directions').evaluate((e) => e.style.display === 'none'), 'Escape closes the card');
+
+    // 8. Settings shows both lists, the shipped ones, with Reset To Default.
+    await run('textGenerator.openSettings');
+    await page.waitForTimeout(1_500);
+    const fields = await page.evaluate(() => {
+      const groups = [...document.querySelectorAll('.tg-form-group')];
+      const find = (label) => groups.find((g) => g.querySelector('.tg-form-label')?.textContent === label);
+      const read = (g) => (g ? { value: g.querySelector('textarea')?.value || '', reset: !!g.querySelector('.tg-form-reset') } : null);
+      return { characters: read(find('Directions for each character')), narrator: read(find('Directions for the Narrator')) };
+    });
+    check(!!fields.characters && fields.characters.reset && /^Push: /.test(fields.characters.value) && !/Deepen/.test(fields.characters.value), 'Settings has the characters\' list, shipped without Deepen');
+    check(!!fields.narrator && fields.narrator.reset && /^New Scene: /.test(fields.narrator.value), 'Settings has the Narrator\'s own list');
+    await shot('directions-settings.png');
   } finally {
     const relevant = errors.filter((e) => !/ERR_CONNECTION_REFUSED|api\/embed|favicon/.test(e));
     console.log(relevant.length ? `[probe] ${relevant.length} renderer error(s):\n  ${relevant.join('\n  ')}` : '[probe] no renderer errors');
