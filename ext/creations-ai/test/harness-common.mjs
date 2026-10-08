@@ -65,7 +65,8 @@ export function createGateway(opts, { mockRespond }) {
       await fsp.writeFile(opts.cache, JSON.stringify(cache), 'utf8');
     },
     has(role, label) { return typeof cache[role]?.[label] === 'string'; },
-    async call(label, messages, { role = 'player', json = false, temperature = 0.8, maxTokens = 0 } = {}) {
+    /** `onText(textSoFar, msSinceStart)` streams the reply (live only), for latency measures. */
+    async call(label, messages, { role = 'player', json = false, temperature = 0.8, maxTokens = 0, onText = null } = {}) {
       const model = role === 'judge' ? opts.judge : opts.model;
       if (opts.mock) {
         const content = mockRespond(label, messages, { role, json });
@@ -81,13 +82,37 @@ export function createGateway(opts, { mockRespond }) {
         return content;
       }
       const started = Date.now();
-      const body = { model, messages, stream: false, think: false, keep_alive: '10m', options: { num_ctx: opts.numCtx, temperature } };
+      const body = { model, messages, stream: !!onText, think: false, keep_alive: '10m', options: { num_ctx: opts.numCtx, temperature } };
       if (maxTokens > 0) body.options.num_predict = maxTokens;
       if (json) body.format = 'json';
       const res = await fetch(`${opts.ollama}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error(`Ollama ${res.status}: ${(await res.text()).slice(0, 300)}`);
-      const j = await res.json();
-      const content = j.message?.content || '';
+      let j;
+      let content = '';
+      if (onText) {
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let idx;
+          while ((idx = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, idx).trim();
+            buf = buf.slice(idx + 1);
+            if (!line) continue;
+            const part = JSON.parse(line);
+            content += part.message?.content || '';
+            onText(content, Date.now() - started);
+            if (part.done) j = part;
+          }
+        }
+        j ??= {};
+      } else {
+        j = await res.json();
+        content = j.message?.content || '';
+      }
       const rec = { label, role, ms: Date.now() - started, promptTokens: j.prompt_eval_count || 0, evalTokens: j.eval_count || 0, firstTokenMs: Math.round((j.load_duration || 0) / 1e6 + (j.prompt_eval_duration || 0) / 1e6) };
       calls.push(rec);
       cache[role] ??= {};
