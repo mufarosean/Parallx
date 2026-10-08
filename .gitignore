@@ -39,3 +39,7 @@ ext/media-organizer/bin/realesrgan-ncnn-vulkan*
 ext/media-organizer/bin/models/
 ext/media-organizer/bin/vcomp140*.dll
 .claude/scratch-recipes/
+
+# Creations quality harnesses: temporary chat copies and scratch workspaces
+ext/creations-ai/.bench-main-*.js
+ext/creations-ai/test/.*-ws-*/

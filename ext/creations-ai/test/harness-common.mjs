@@ -14,6 +14,9 @@
 //   --samples <n>       samples per case (3)
 //   --cache <path>      raw outputs, by label (os tmpdir by default)
 //   --report <path>     the Markdown report
+//   --fresh             call the model even for cases already in the cache (by default
+//                       a cached output is reused, so a stopped run resumes and an
+//                       unchanged variant costs nothing)
 //
 // Nothing here pulls, loads or unloads a model by itself; Ollama loads what
 // a request names. The judge lives only in the harness; the app never calls it.
@@ -38,6 +41,7 @@ export function parseArgs(argv, defaults = {}) {
     samples: Math.max(1, Number(after('--samples', defaults.samples ?? 3)) || 3),
     cache: path.resolve(after('--cache', path.join(os.tmpdir(), `${defaults.name || 'creations-harness'}-cache.json`))),
     report: path.resolve(after('--report', defaults.report || `${defaults.name || 'creations-harness'}.md`)),
+    fresh: args.includes('--fresh'),
     only: new Set(String(after('--only', '')).split(',').map((s) => s.trim()).filter(Boolean)),
     ollama: after('--ollama', 'http://localhost:11434'),
   };
@@ -75,7 +79,7 @@ export function createGateway(opts, { mockRespond }) {
       }
       // A pass that does not own this role reads the cache; so does --replay.
       const owns = opts.pass === 'all' || (opts.pass === 'play' && role === 'player') || (opts.pass === 'judge' && role === 'judge');
-      if (opts.replay || !owns) {
+      if (opts.replay || !owns || (!opts.fresh && typeof cache[role]?.[label] === 'string')) {
         const content = cache[role]?.[label];
         if (typeof content !== 'string') throw new SkipCase(`no cached ${role} output for "${label}"`);
         calls.push({ label, role, ms: 0, promptTokens: 0, evalTokens: 0, cached: true });

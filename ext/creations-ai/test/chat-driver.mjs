@@ -25,7 +25,11 @@ export function kindOf(messages) {
 
 export const slug = (name) => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-export async function startChatDriver(gw, opts, { tag = 'chat', userName = 'Sam' } = {}) {
+/**
+ * `mainSource`: the chat's code with a test change (a bench lever), run from a
+ * temporary copy beside main.js so its imports resolve; removed on cleanup.
+ */
+export async function startChatDriver(gw, opts, { tag = 'chat', userName = 'Sam', mainSource = '' } = {}) {
   const wsDir = path.join(__dirname, `.${tag}-ws-${Date.now()}`).replace(/\\/g, '/');
   await fsp.mkdir(wsDir, { recursive: true });
   setupDom();
@@ -41,7 +45,9 @@ export async function startChatDriver(gw, opts, { tag = 'chat', userName = 'Sam'
     });
   };
   const { parallx, captured, editorProviders } = makeFakeParallx({ workspaceDir: wsDir, model: opts.model, mock: true, replyFn, modelContextLength: opts.numCtx });
-  const ext = await import(pathToFileURL(path.join(__dirname, '..', 'main.js')));
+  const mainCopy = mainSource ? path.join(__dirname, '..', `.bench-main-${tag}-${Date.now()}.js`) : '';
+  if (mainCopy) await fsp.writeFile(mainCopy, mainSource, 'utf8');
+  const ext = await import(pathToFileURL(mainCopy || path.join(__dirname, '..', 'main.js')));
   ext.activate(parallx, { subscriptions: [] });
 
   const extRoot = path.join(wsDir, '.parallx', 'extensions', EXT_DIR);
@@ -93,7 +99,10 @@ export async function startChatDriver(gw, opts, { tag = 'chat', userName = 'Sam'
         return (await count()) > before;
       }, 900000, `reply to ${JSON.stringify(String(text).slice(0, 40))}`);
     },
-    async cleanup() { try { await fsp.rm(wsDir, { recursive: true, force: true }); } catch { /* locked */ } },
+    async cleanup() {
+      try { await fsp.rm(wsDir, { recursive: true, force: true }); } catch { /* locked */ }
+      if (mainCopy) { try { await fsp.rm(mainCopy, { force: true }); } catch { /* locked */ } }
+    },
   };
   await d.writeSettings();
   return d;

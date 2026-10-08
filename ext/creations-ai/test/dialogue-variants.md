@@ -10,7 +10,13 @@ is the app's own default.
 
 - `Rules:` the "How People Talk" text from Creations Settings. Write the rules
   on the lines under it. `Rules: shipped` is the app's own text, `Rules: none`
-  sends no rules at all.
+  sends no rules at all, and `Rules: shipped +` is the app's text with the
+  lines under it added.
+- `Anchor:` the voice reminder the chat puts right before every reply (in the
+  chat's code, not in Settings; the bench runs a test copy). `shipped` is
+  today's "Stay strictly in <name>'s voice" with the whole Voice; `soft` gives
+  the Voice as a tendency, most speech plain and the habits now and then;
+  `identity` keeps the Voice out of the reminder (it stays in the portrait).
 - `Temperature:` the character's temperature, 0 to 2.
 - `Preset:` the writing style for the chat (immersive-rp, casual-rp,
   screenplay, custom...).
@@ -36,6 +42,21 @@ Rules:
 - Humour comes from a specific thing in the scene or a specific person, never from a character announcing a joke or a quip that would fit any scene.
 - Nobody summarises their feelings or the scene. If a line could be printed on a mug, cut it.
 - People speak plainly. A metaphor is rare and only one a person like them would actually use; most lines have none.
+
+## balance-rule
+Rules: shipped +
+- Most of what anyone says is plain: answering what was just asked, saying what they need, reacting to what is in front of them. A character's habits, quirks and turns of phrase show a few times in a scene, not in every line.
+
+## soft-anchor
+Anchor: soft
+
+## identity-anchor
+Anchor: identity
+
+## soft-anchor-balance-rule
+Anchor: soft
+Rules: shipped +
+- Most of what anyone says is plain: answering what was just asked, saying what they need, reacting to what is in front of them. A character's habits, quirks and turns of phrase show a few times in a scene, not in every line.
 
 # Trigger words
 

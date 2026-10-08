@@ -51,23 +51,44 @@ async function readVariants(shipped) {
     const h = /^## (.+)$/.exec(line);
     if (h) { cur = { id: h[1].trim() }; variants.push(cur); block = null; continue; }
     if (!cur) continue;
-    const kv = /^(Rules|Temperature|Preset|Style|Reminder|Example dialogue):\s*(.*)$/i.exec(line);
+    const kv = /^(Rules|Temperature|Preset|Style|Reminder|Example dialogue|Anchor):\s*(.*)$/i.exec(line);
     if (kv) {
       const key = kv[1].toLowerCase();
       const val = kv[2].trim();
       block = null;
-      if (key === 'rules') { if (/^shipped$/i.test(val)) cur.rules = shipped.join('\n'); else if (/^none$/i.test(val)) cur.rules = ''; else { cur.rules = val; block = 'rules'; } }
+      // "shipped +": the app's rules, then the lines that follow.
+      if (key === 'rules') { if (/^shipped\s*(\+|plus)$/i.test(val)) { cur.rules = shipped.join('\n'); block = 'rules'; } else if (/^shipped$/i.test(val)) cur.rules = shipped.join('\n'); else if (/^none$/i.test(val)) cur.rules = ''; else { cur.rules = val; block = 'rules'; } }
       else if (key === 'style') { cur.style = val; block = 'style'; }
       else if (key === 'temperature') cur.temperature = Number(val);
       else if (key === 'preset') cur.preset = val;
       else if (key === 'reminder') cur.reminder = val;
       else if (key === 'example dialogue') cur.noExamples = /^off$/i.test(val);
+      else if (key === 'anchor') cur.anchor = val.toLowerCase();
       continue;
     }
     if (block && line.trim()) cur[block] = [cur[block], line].filter(Boolean).join('\n');
   }
   const triggers = triggerPart.split('\n').map((l) => /^-\s+(.+)$/.exec(l.trim())?.[1]).filter(Boolean);
   return { variants, triggers };
+}
+
+// The per-turn voice reminder (main.js, generateTurn's late anchor). The bench
+// runs a version of it from a temporary copy of the chat; the app is untouched.
+const ANCHOR_LINE = "const personaLine = anchorBody ? ` Voice anchor (how ${rName} speaks; any quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '';";
+const STRICT = "Stay strictly in ${rName}'s voice.";
+const ANCHORS = {
+  // The voice as a tendency: most speech plain, the habits now and then.
+  soft: (src) => src
+    .replace(ANCHOR_LINE, "const personaLine = anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then (quoted phrases show the register and are not lines to repeat): ${anchorBody.slice(0, 400)}` : '';")
+    .replace(STRICT, 'Sound like ${rName}.'),
+  // No voice text in the reminder at all: the voice stays in the portrait at the top.
+  identity: (src) => src.replace(ANCHOR_LINE, "const personaLine = '';").replace(STRICT, 'Sound like ${rName}.'),
+};
+async function patchedMain(anchor) {
+  const src = await fsp.readFile(path.join(__dirname, '..', 'main.js'), 'utf8');
+  if (!ANCHORS[anchor]) throw new Error(`Unknown Anchor "${anchor}": use shipped, ${Object.keys(ANCHORS).join(', ')}.`);
+  if (!src.includes(ANCHOR_LINE) || !src.includes(STRICT)) throw new Error('The voice reminder in main.js changed: update ANCHOR_LINE and STRICT in the bench.');
+  return ANCHORS[anchor](src);
 }
 
 // ── Characters and scenes ──────────────────────────────────────────────────
@@ -108,7 +129,7 @@ let mockN = 0;
 function mockRespond(label, messages, { role }) {
   if (role === 'judge') {
     const n = (messages[1].content.match(/^\s*\d+\. /gm) || []).length;
-    return JSON.stringify({ lines: Array.from({ length: n }, (_, i) => ({ n: i + 1, flags: i % 3 === 1 ? ['metaphor'] : [], good: i % 3 !== 1, why: '' })) });
+    return JSON.stringify({ lines: Array.from({ length: n }, (_, i) => ({ n: i + 1, flags: i % 3 === 1 ? ['metaphor'] : [], good: i % 3 !== 1, habit: i % 2 === 0, why: '' })), scene: { recognisable: 4, balance: 3 } });
   }
   mockN++;
   return `*She wipes the counter.* "${MOCK_LINES[mockN % MOCK_LINES.length]}" *She looks up.* "${MOCK_LINES[(mockN + 2) % MOCK_LINES.length]}"`;
@@ -116,6 +137,7 @@ function mockRespond(label, messages, { role }) {
 
 // ── The judge ──────────────────────────────────────────────────────────────
 
+const SCENE_SCORES = []; // { cond, who, recognisable, balance }
 const FLAGS = ['abstract', 'metaphor', 'trivial', 'oblique', 'forced_wit', 'unnatural', 'flat'];
 const DIALOGUE_JUDGE = [
   'You are a dialogue editor. You check whether a character\'s spoken lines sound like a real person talking in that moment. For each numbered line, list ONLY the faults that clearly apply:',
@@ -127,7 +149,9 @@ const DIALOGUE_JUDGE = [
   '- "unnatural": no normal person would say it out loud: too polished, too wise, a little speech, therapy-speak, narrating their own feelings.',
   '- "flat": empty or generic; says nothing this person in particular would say.',
   'Set "good" to true when the line sounds like a real person in that moment. Wit, sarcasm, warmth and a turn of phrase are good when they fit the moment and the person; plain everyday lines are good too. A line with any fault is not good.',
-  'Judge each line in its moment. Reply as JSON: {"lines": [{"n": 1, "flags": [], "good": true, "why": "a few words"}]}, one entry per line, in order.',
+  'Also say for each line whether it shows one of the habits in the character\'s VOICE ("habit": true or false). A habit showing now and then is how people are; a habit in every line is not.',
+  'Then judge the scene as a whole: "recognisable", 1 to 5, could these lines only be this person (5) or anyone at all (1); "balance", 1 to 5, does this person mostly talk plainly with their habits showing now and then (5), or does nearly every line perform a habit (1).',
+  'Judge each line in its moment. Reply as JSON: {"lines": [{"n": 1, "flags": [], "good": true, "habit": false, "why": "a few words"}], "scene": {"recognisable": 4, "balance": 4}}, one entry per line, in order.',
 ].join('\n');
 
 // ── Run ─────────────────────────────────────────────────────────────────────
@@ -151,7 +175,17 @@ if (TRIGGERS) {
 const wanted = opts.only.size ? conditions.filter((c) => opts.only.has(c.id)) : conditions;
 if (!wanted.length) throw new Error('No condition to run: check --only against dialogue-variants.md.');
 
-const d = await startChatDriver(gw, opts, { tag: 'dialogue', userName: USER });
+let d = null;
+let dAnchor = null;
+/** The chat for a condition: a fresh one whenever the reminder version changes. */
+async function chatFor(cond) {
+  const anchor = cond.anchor || 'shipped';
+  if (d && dAnchor === anchor) return d;
+  if (d) await d.cleanup();
+  d = await startChatDriver(gw, opts, { tag: `dialogue-${anchor}`, userName: USER, mainSource: anchor === 'shipped' ? '' : await patchedMain(anchor) });
+  dAnchor = anchor;
+  return d;
+}
 
 /** Spoken lines of a reply: its quoted speech; a reply with no quotes is taken whole, less its *actions*. */
 function spokenLines(reply) {
@@ -165,7 +199,9 @@ const SIMILE = /\b(like a|like an|as if|as though)\b/i;
 const lines = []; // { id, cond, sample, scene, context, text, flags, good, why, mechAbstract, simile }
 const played = []; // { key, scene, sceneLines }, judged after all the play
 
-for (const cond of wanted) {
+const ordered = [...wanted].sort((a, b) => (a.anchor || 'shipped').localeCompare(b.anchor || 'shipped'));
+for (const cond of ordered) {
+  await chatFor(cond);
   for (let s = 1; s <= opts.samples; s++) {
     await d.writeSettings({
       ...(cond.rules !== undefined ? { dialogueRules: cond.rules } : {}),
@@ -196,10 +232,12 @@ for (const cond of wanted) {
           report.section('Wiring');
           if (cond.rules !== undefined) {
             const first = cond.rules.split('\n').find((l) => l.trim()) || '';
-            report.check(`${cond.id}.rules`, cond.rules.trim() ? 'its rules are in the prompt' : 'no rules are in the prompt', cond.rules.trim() ? sys.includes(first.trim()) : !sys.includes('## How People Talk'));
+            report.check(`${cond.id}.rules`, cond.rules.trim() ? 'its rules are in the prompt' : 'no rules are in the prompt', cond.rules.trim() ? sys.includes(first.trim()) && sys.includes(cond.rules.trim().split('\n').pop().trim()) : !sys.includes('## How People Talk'));
           }
           if (Number.isFinite(cond.temperature)) report.check(`${cond.id}.temperature`, `temperature ${cond.temperature} is sent`, req?.options?.temperature === cond.temperature, `sent ${req?.options?.temperature}`);
           if (cond.triggerWord) report.check(`${cond.id}.voice`, 'the trigger word is in the prompt', sys.includes(`Her speech is ${cond.triggerWord}.`));
+          if (cond.anchor === 'soft') report.check(`${cond.id}.anchor`, 'the softened voice reminder is in the prompt', sys.includes('as a tendency and not a rule for every line') && !sys.includes('Stay strictly'));
+          if (cond.anchor === 'identity') report.check(`${cond.id}.anchor`, 'the voice reminder carries no voice text', !sys.includes('Voice anchor') && !sys.includes('Stay strictly'));
           if (cond.noExamples) report.check(`${cond.id}.examples`, 'no example dialogue in the prompt', !sys.includes(scene.who.exampleDialogue.split('\n')[0]));
         }
         const msgs = await d.readMessages(threadId);
@@ -207,7 +245,7 @@ for (const cond of wanted) {
         let context = '';
         for (const m of msgs) {
           if (m.author !== 'ai') { context = m.content; continue; }
-          for (const text of spokenLines(m.content)) sceneLines.push({ id: `${key} l${sceneLines.length + 1}`, cond: cond.id, sample: s, scene: scene.id, context, text, flags: null, good: null, mechAbstract: abstractSubjects(text).length > 0, simile: SIMILE.test(text) });
+          for (const text of spokenLines(m.content)) sceneLines.push({ id: `${key} l${sceneLines.length + 1}`, cond: cond.id, sample: s, scene: scene.id, who: scene.who.name, context, text, flags: null, good: null, mechAbstract: abstractSubjects(text).length > 0, simile: SIMILE.test(text) });
         }
         lines.push(...sceneLines);
         played.push({ key, scene, sceneLines });
@@ -223,8 +261,8 @@ for (const cond of wanted) {
 // The dialogue judge, after all the play: every line, with what was said to the character.
 for (const { key, scene, sceneLines } of played) {
   try {
-    const v = await judgeJson(gw, `${key} judge`, DIALOGUE_JUDGE,
-      `CHARACTER: ${scene.who.name}. ${scene.who.tagline}\n\n${sceneLines.map((l, i) => `${i + 1}. (${USER} had said: "${l.context.replace(/\*[^*]*\*/g, '').trim().slice(0, 160)}") ${scene.who.name.split(' ')[0]}: "${l.text}"`).join('\n')}`);
+    const v = await judgeJson(gw, `${key} judge2`, DIALOGUE_JUDGE,
+      `CHARACTER: ${scene.who.name}. ${scene.who.tagline}\nVOICE:\n${scene.who.voice}\n\n${sceneLines.map((l, i) => `${i + 1}. (${USER} had said: "${l.context.replace(/\*[^*]*\*/g, '').trim().slice(0, 160)}") ${scene.who.name.split(' ')[0]}: "${l.text}"`).join('\n')}`);
     const verdicts = Array.isArray(v?.lines) ? v.lines : [];
     sceneLines.forEach((l, i) => {
       const x = verdicts.find((y) => Number(y?.n) === i + 1) || verdicts[i];
@@ -232,7 +270,10 @@ for (const { key, scene, sceneLines } of played) {
       l.flags = (Array.isArray(x.flags) ? x.flags : []).map((f) => String(f).toLowerCase()).filter((f) => FLAGS.includes(f));
       l.good = x.good === true;
       l.why = String(x.why || '');
+      l.habit = x.habit === true;
     });
+    const sc = v?.scene || {};
+    SCENE_SCORES.push({ cond: sceneLines[0]?.cond, who: scene.who.name, recognisable: Number(sc.recognisable) || NaN, balance: Number(sc.balance) || NaN });
   } catch (err) { if (err instanceof SkipCase) report.skip(`${key} judge`, err.message); else throw err; }
 }
 
@@ -249,6 +290,27 @@ function measure(list) {
   out.simile = per100(list.filter((l) => l.simile).length, list.length);
   return out;
 }
+
+const avg = (xs) => { const v = xs.filter(Number.isFinite); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN; };
+const pct = (list, fn) => (list.length ? (100 * list.filter(fn).length) / list.length : 0);
+const balanceRows = [];
+for (const c of wanted) {
+  for (const who of [...new Set(lines.filter((l) => l.cond === c.id).map((l) => l.who))]) {
+    const ls = lines.filter((l) => l.cond === c.id && l.who === who);
+    const judged = ls.filter((l) => Array.isArray(l.flags));
+    const sc = SCENE_SCORES.filter((x) => x.cond === c.id && x.who === who);
+    balanceRows.push(`| ${c.id} | ${who} | ${ls.length} | ${pct(judged, (l) => l.habit).toFixed(0)} | ${pct(ls, (l) => /\?\s*$/.test(l.text)).toFixed(0)} | ${pct(ls, (l) => l.text.split(/\s+/).length > 35).toFixed(0)} | ${avg(sc.map((x) => x.balance)).toFixed(1)} | ${avg(sc.map((x) => x.recognisable)).toFixed(1)} | ${pct(judged, (l) => l.flags.some((f) => f !== 'flat')).toFixed(0)} | ${pct(judged, (l) => l.good).toFixed(0)} |`);
+  }
+}
+const balanceTable = [
+  '### Balance by character',
+  '',
+  'Habit: share of lines showing a voice habit (judge; some of the time is right, nearly all is not). Ends in ?: share of lines that are questions. Long: lines over 35 words. Balance and recognisable: the judge, per scene, 1 to 5. Fault and good: per 100 lines.',
+  '',
+  '| Condition | Character | Lines | Habit % | Ends in ? % | Long % | Balance | Recognisable | Fault % | Good % |',
+  '|---|---|---|---|---|---|---|---|---|---|',
+  ...balanceRows,
+].join('\n');
 
 const baseId = TRIGGERS ? 'plain' : 'baseline';
 const rows = wanted.map((c) => ({ id: c.id, note: c.note || c.triggerWord || '', m: measure(lines.filter((l) => l.cond === c.id)) }));
@@ -325,7 +387,14 @@ if (argv.includes('--calibrate')) {
   }
 }
 
-await d.cleanup();
-const failures = await report.write(gw, `${table}\n\n\`\`\`text\nollama ps before:\n${psBefore}\n\nollama ps after:\n${ollamaPs(opts)}\n\`\`\``);
+// --dump <path>: every spoken line with its context and the judge's verdict, as JSON (for a second judge or a person).
+if (argv.includes('--dump')) {
+  const out = path.resolve(argv[argv.indexOf('--dump') + 1]);
+  await fsp.writeFile(out, JSON.stringify(lines.map(({ id, cond, scene, context, text, flags, good, why }) => ({ id, cond, scene, context, text, flags, good, why })), null, 1), 'utf8');
+  console.log(`Lines: ${out}`);
+}
+
+if (d) await d.cleanup();
+const failures = await report.write(gw, `${table}\n\n${balanceTable}\n\n\`\`\`text\nollama ps before:\n${psBefore}\n\nollama ps after:\n${ollamaPs(opts)}\n\`\`\``);
 process.exitCode = opts.mock && failures ? 1 : 0;
 setTimeout(() => process.exit(process.exitCode), 200);
