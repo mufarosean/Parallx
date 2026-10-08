@@ -319,7 +319,9 @@ node ext/creations-ai/test/run-all-quality.mjs           # live, hours
 node ext/creations-ai/test/run-all-quality.mjs --mock    # wiring, seconds
 ```
 It runs every player pass first, then every judge pass, so the play model
-and the judge (gemma4:26b by default) each load once. Outputs are cached by
+and the judge each load once. Every harness plays with gemma4:31b at
+num_ctx 65536, the model and size Creations is played with, and judges with
+qwen3.8:27b (another family; a model rates its own writing higher). Outputs are cached by
 label: a stopped run picks up where it was, and `--replay` on any harness
 rescores without a model. The user emulator is the play model with its own
 prompt, so play never swaps models. Rough length at three samples: about
@@ -327,6 +329,64 @@ prompt, so play never swaps models. Rough length at three samples: about
 
 Still owed: the judge calibration (20 items scored by hand against the
 judge's verdicts), which needs the first live run's judge output.
+
+## Dialogue tuning
+
+Characters often say what no person would: abstract ideas as if they were
+things ("trust is a door"), metaphors and aphorisms, fixing on trivia,
+roundabout "clever" questions where a person would just ask, wit forced into
+a moment that does not want it. The shipped "How People Talk" rules aim at
+this and had never been measured. `run-dialogue-bench.mjs` measures it and
+compares changes.
+
+**The measure.** Eight everyday scenes (small talk, bad news, a favour, a lie
+found out, an argument, praise, practical questions, a personal question),
+four lines from Sam each, played through the real chat. A dialogue judge
+reads every spoken line with what was said to the character, and flags only
+what applies: abstract, metaphor, trivial, oblique, forced wit, unnatural,
+flat. It also marks lines that sound like a real person, wit included when it
+lands, so a change that makes dialogue dry shows up as fewer good lines and
+more flat ones. Reported per 100 lines, against baseline, with the flagged
+lines quoted. A mechanical count of abstract-noun subjects and similes sits
+beside it.
+
+**The levers**, one per variant in `ext/creations-ai/test/dialogue-variants.md`
+(plain text, no code), all real settings of the app:
+
+| Lever | In the app |
+|---|---|
+| Rules | Settings, "How People Talk" (`dialogueRules`): shipped, none, or new text |
+| Temperature | the character's temperature |
+| Preset | the chat's writing style override |
+| Style | the custom writing style text |
+| Reminder | a line added to the character's Reminder |
+| Example dialogue | on or off |
+
+`--ablate` adds one variant per shipped rule with that rule left out, to find
+a rule that does harm. One suspect: "People answer the question they heard,
+not the one that was asked" may be what makes characters dodge plain
+questions (not confirmed).
+
+**Trigger words.** `--triggers` runs one plain character, then once per word
+in the variants file ("poetic", "witty", "enigmatic", "full of metaphors"...)
+added to her Voice, and ranks the words by how much worse they make her
+sound. What comes out can become a Studio warning, or words the Studio
+avoids writing.
+
+**Calibration first.** `--replay --calibration-sheet` writes
+`dialogue-calibration.md`: 40 lines to mark with letters. `--replay
+--calibrate` reports how often the judge agrees with you, per fault. Trust
+a fault only where it agrees 80 percent of the time or more.
+
+**An iteration.** Add a variant with one change, run
+`node ext/creations-ai/test/run-dialogue-bench.mjs --only baseline,<name>`,
+read the table and the flagged lines, keep the change if faults fall
+without good lines falling or flat lines rising. Then the winning text goes
+into the app's shipped rules.
+
+Rough length: a variant is 32 replies per sample, about 15 minutes on
+gemma4:31b; the default two samples of three variants is about an hour and
+a half, `--ablate` adds about two and a half hours, `--triggers` about four.
 
 ## Order of work
 

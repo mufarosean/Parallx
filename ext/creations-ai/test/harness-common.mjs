@@ -8,9 +8,9 @@
 //   --pass play|judge|all   play = player calls only (cached); judge = judge
 //                       calls over the cached play (the GPU swaps models once,
 //                       not per call); all = both, in that order (default)
-//   --model <tag>       the player: the model you play with (qwen3.8:27b)
-//   --judge <tag>       the judge, never the player (gemma4:26b)
-//   --num-ctx <n>       num_ctx for every call (8192; at most 16384)
+//   --model <tag>       the player: the model you play Creations with (gemma4:31b)
+//   --judge <tag>       the judge, never the player and of another family (qwen3.8:27b)
+//   --num-ctx <n>       num_ctx for every call (65536, as you play; at most 131072)
 //   --samples <n>       samples per case (3)
 //   --cache <path>      raw outputs, by label (os tmpdir by default)
 //   --report <path>     the Markdown report
@@ -32,9 +32,9 @@ export function parseArgs(argv, defaults = {}) {
     mock, replay,
     mode: mock ? 'MOCK' : replay ? 'REPLAY' : 'LIVE',
     pass: after('--pass', 'all'),
-    model: after('--model', 'qwen3.8:27b'),
-    judge: after('--judge', 'gemma4:26b'),
-    numCtx: Math.min(16384, Math.max(2048, Number(after('--num-ctx', 8192)) || 8192)),
+    model: after('--model', 'gemma4:31b'),
+    judge: after('--judge', 'qwen3.8:27b'),
+    numCtx: Math.min(131072, Math.max(2048, Number(after('--num-ctx', 65536)) || 65536)),
     samples: Math.max(1, Number(after('--samples', defaults.samples ?? 3)) || 3),
     cache: path.resolve(after('--cache', path.join(os.tmpdir(), `${defaults.name || 'creations-harness'}-cache.json`))),
     report: path.resolve(after('--report', defaults.report || `${defaults.name || 'creations-harness'}.md`)),

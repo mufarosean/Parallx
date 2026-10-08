@@ -19,9 +19,8 @@
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
-import { setupDom, makeFakeParallx, waitFor, openChat, readThreadMessages, writeThread } from './live-harness.mjs';
-import { characterFromSheet, emptySheet } from '../studio-core.js';
+import { fileURLToPath } from 'node:url';
+import { startChatDriver, kindOf, slug } from './chat-driver.mjs';
 import { buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection } from '../director.js';
 import { SCENARIOS, PEOPLE_CARDS, USER } from './scenarios.mjs';
 import {
@@ -35,18 +34,7 @@ const argv = process.argv.slice(2);
 const TURNS = Math.max(6, Number(argv.includes('--turns') ? argv[argv.indexOf('--turns') + 1] : 30) || 30);
 const EMULATOR = argv.includes('--emulator') ? argv[argv.indexOf('--emulator') + 1] : opts.model;
 const ONLY = opts.only.size ? opts.only : new Set(['room', 'cast', 'facts', 'married', 'directions']);
-const EXT_DIR = 'text-generator';
 const STOCK_TELLS = ['shiver down', "couldn't help but", 'a testament to', 'dust motes', 'barely above a whisper', 'a mixture of', 'mischievous glint', 'sent a chill', 'unreadable expression', 'in that moment', 'the air was thick', 'heart pounding'];
-
-// ── Which call is which ─────────────────────────────────────────────────────
-
-function kindOf(messages) {
-  const sys = String(messages[0]?.role === 'system' ? messages[0].content : '');
-  if (sys.startsWith('You extract durable memory')) return 'memory';
-  if (sys.startsWith('You are a turn-order selector')) return 'order';
-  if (sys.startsWith('You are the director')) return 'director';
-  return 'turn';
-}
 
 // ── Mock replies ────────────────────────────────────────────────────────────
 
@@ -80,42 +68,9 @@ const report = createReport('Creations: roleplay sessions', opts);
 const psBefore = ollamaPs(opts);
 await gw.load();
 
-const wsDir = path.join(__dirname, `.roleplay-ws-${Date.now()}`).replace(/\\/g, '/');
-await fsp.mkdir(wsDir, { recursive: true });
-setupDom();
-
-let label = 'setup';
-const perTurn = new Map();
-const replyFn = async (messages, options) => {
-  const kind = kindOf(messages);
-  const n = (perTurn.get(kind) || 0) + 1;
-  perTurn.set(kind, n);
-  return gw.call(`${label} ${kind}${n > 1 ? ` ${n}` : ''}`, messages, {
-    temperature: options?.temperature ?? 0.8, maxTokens: options?.maxTokens || 0, stop: options?.stop, think: !!options?.think,
-  });
-};
-const { parallx, captured, editorProviders } = makeFakeParallx({ workspaceDir: wsDir, model: opts.model, mock: true, replyFn, modelContextLength: opts.numCtx });
-const ext = await import(pathToFileURL(path.join(__dirname, '..', 'main.js')));
-ext.activate(parallx, { subscriptions: [] });
-
-const extRoot = path.join(wsDir, '.parallx', 'extensions', EXT_DIR);
-const charDir = path.join(extRoot, 'characters');
-const adaFile = path.join(charDir, 'ada-lovelace.json');
-await waitFor(() => fsp.access(adaFile).then(() => true, () => false), 10000, 'scaffolded character');
-const adaBase = JSON.parse(await fsp.readFile(adaFile, 'utf8'));
-await fsp.writeFile(path.join(extRoot, 'settings.json'), JSON.stringify({ defaultContextWindow: opts.numCtx, userName: USER.name }, null, 2));
-
-const slug = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-async function writeCard(sheet, studio = {}) {
-  const full = { ...emptySheet(), ...sheet };
-  const file = `${slug(sheet.name)}.json`;
-  // The sample card's shape without what belongs to Ada: her greeting and her studio data.
-  const base = Object.fromEntries(Object.entries(adaBase).filter(([k]) => k !== 'studio' && !/initial|greeting|first/i.test(k)));
-  // The card's own user name wins over the settings one: the player is Sam everywhere.
-  await fsp.writeFile(path.join(charDir, file), JSON.stringify(characterFromSheet(full, { ...base, name: sheet.name, userName: USER.name }, studio), null, 2));
-  return file;
-}
-for (const card of PEOPLE_CARDS) await writeCard(card);
+const d = await startChatDriver(gw, opts, { tag: 'roleplay', userName: USER.name });
+const { captured } = d;
+for (const card of PEOPLE_CARDS) await d.writeCard(card);
 
 /** The emulator's next line as Sam, from the brief, the situation and the recent turns. */
 async function emulatorLine(scn, history, t) {
@@ -129,23 +84,10 @@ async function emulatorLine(scn, history, t) {
     ].join('\n') },
     { role: 'user', content: `${recent || '(the scene is just starting)'}\n\nWrite ${USER.name}'s next message.` },
   ];
-  const raw = await gw.call(`${label} user`, messages, { temperature: 0.9, maxTokens: 200, model: EMULATOR });
+  const raw = await gw.call(`${d.label} user`, messages, { temperature: 0.9, maxTokens: 200, model: EMULATOR });
   return String(raw).replace(new RegExp(`^\\s*${USER.name}\\s*:\\s*`, 'i'), '').trim() || '*I nod.*';
 }
 
-/** Send one composer text and wait for the chat to go idle with a new reply. */
-async function sendTurn(container, text) {
-  const before = (await readThreadMessages(wsDir, threadIdNow)).filter((m) => m.author === 'ai').length;
-  const ta = container.querySelector('.tg-input-textarea');
-  ta.value = text;
-  container.querySelector('.tg-input-send').click();
-  await waitFor(async () => {
-    const btn = container.querySelector('.tg-input-send');
-    if (!(btn && btn.title === 'Send (Enter)' && !container.querySelector('.tg-msg--streaming'))) return false;
-    return (await readThreadMessages(wsDir, threadIdNow)).filter((m) => m.author === 'ai').length > before;
-  }, 900000, `reply to ${JSON.stringify(text.slice(0, 40))}`);
-}
-let threadIdNow = '';
 
 const sessions = []; // { id, variant, sample, scn, replies, msgs, picks, probes }
 
@@ -156,18 +98,14 @@ async function playSession(scn, sample, variant = 'plain') {
     const people = scn.people?.[lead.name] || [];
     const connections = [];
     for (const p of people) connections.push({ fileName: `${slug(p.card.name)}.json`, name: p.card.name, how: p.how });
-    leadFiles.push(await writeCard(lead, connections.length ? { connections } : {}));
+    leadFiles.push(await d.writeCard(lead, connections.length ? { connections } : {}));
   }
-  threadIdNow = `rp-${slug(id)}`;
-  const now = Date.now();
-  await writeThread(wsDir, {
-    id: threadIdNow, title: `${scn.title} (${id})`, userName: USER.name,
-    characters: leadFiles.map((file) => ({ file, addedAt: now })),
-    supportingCast: (scn.supporting || []).map((p, i) => ({ id: `sc${i}`, name: p.name, note: p.note })),
-    createdAt: now, updatedAt: now,
-  });
+  const threadIdNow = `rp-${slug(id)}`;
   const capturedFrom = captured.length;
-  const { container } = await openChat(editorProviders, threadIdNow);
+  const container = await d.startThread({
+    id: threadIdNow, title: `${scn.title} (${id})`, files: leadFiles,
+    supportingCast: (scn.supporting || []).map((p, i) => ({ id: `sc${i}`, name: p.name, note: p.note })),
+  });
   const plants = new Map((scn.plants || []).map((p) => [p.turn, p]));
   const probes = new Map((scn.probes || []).map((p) => [p.turn, p]));
   const picks = [];
@@ -176,14 +114,13 @@ async function playSession(scn, sample, variant = 'plain') {
   const rand = (n) => { rng = (rng * 1103515245 + 12345) % 2147483648; return rng % n; };
 
   for (let t = 1; t <= TURNS; t++) {
-    label = `${id} t${t}`;
-    perTurn.clear();
-    const history = (await readThreadMessages(wsDir, threadIdNow)).map((m) => ({ name: m.name, content: m.content }));
+    d.setLabel(`${id} t${t}`);
+    const history = (await d.readMessages(threadIdNow)).map((m) => ({ name: m.name, content: m.content }));
     let line = t === 1 ? scn.opening : plants.get(t)?.line || probes.get(t)?.line || await emulatorLine(scn, history, t);
     // With Directions: every other turn, ask the director and take a random option.
     if (variant === 'directions' && t % 2 === 0 && !plants.has(t) && !probes.has(t)) {
       const cast = scn.leads.map((c) => ({ name: c.name, tagline: c.tagline, drives: c.drives, secrets: c.secrets, relationships: c.relationships }));
-      const raw = await gw.call(`${label} director`, buildDirectorPrompt({ cast, others: scn.supporting || [], transcript: history.slice(-12) }), { temperature: 0.9, maxTokens: 1200 });
+      const raw = await gw.call(`${d.label} director`, buildDirectorPrompt({ cast, others: scn.supporting || [], transcript: history.slice(-12) }), { temperature: 0.9, maxTokens: 1200 });
       const groups = parseDirections(raw, cast.map((c) => c.name)).filter((g) => g.options.length);
       if (groups.length) {
         const g = groups[rand(groups.length)];
@@ -192,8 +129,8 @@ async function playSession(scn, sample, variant = 'plain') {
         line = composeWithDirection(line, directionCommand(g.name, o.text));
       }
     }
-    await sendTurn(container, line);
-    const msgs = await readThreadMessages(wsDir, threadIdNow);
+    await d.sendTurn(container, threadIdNow, line);
+    const msgs = await d.readMessages(threadIdNow);
     const last = [...msgs].reverse().find((m) => m.author === 'ai');
     if (probes.has(t)) probeReplies.push({ ...probes.get(t), reply: last?.content || '' });
     const pick = picks.find((p) => p.turn === t);
@@ -201,10 +138,8 @@ async function playSession(scn, sample, variant = 'plain') {
     if (t % 5 === 0) console.log(`  ${id}: turn ${t}/${TURNS}`);
   }
   container.remove();
-  const msgs = await readThreadMessages(wsDir, threadIdNow);
-  const threadDir = path.join(extRoot, 'threads', threadIdNow);
-  const readLines = async (f) => { try { return (await fsp.readFile(path.join(threadDir, f), 'utf8')).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; } };
-  const memory = { facts: await readLines('memory.semantic.jsonl'), beats: await readLines('memory.episodic.jsonl') };
+  const msgs = await d.readMessages(threadIdNow);
+  const memory = await d.readMemory(threadIdNow);
   const turnPrompts = captured.slice(capturedFrom).filter((r) => kindOf(r.messages) === 'turn').map((r) => r.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n'));
   sessions.push({ id, variant, sample, scn, msgs, turnPrompts, replies: msgs.filter((m) => m.author === 'ai'), picks, probeReplies, memory, memoryCalls: gw.calls.filter((c) => c.label.startsWith(`${id} `) && / memory/.test(c.label)).length });
 }
@@ -346,7 +281,7 @@ for (let s = 1; s <= opts.samples; s++) {
   });
 }
 
-try { await fsp.rm(wsDir, { recursive: true, force: true }); } catch { /* locked */ }
+await d.cleanup();
 const failures = await report.write(gw, `Turns per session: ${TURNS}. Emulator: ${EMULATOR}.\n\n\`\`\`text\nollama ps before:\n${psBefore}\n\nollama ps after:\n${ollamaPs(opts)}\n\`\`\``);
 process.exitCode = opts.mock && failures ? 1 : 0;
 setTimeout(() => process.exit(process.exitCode), 200);
