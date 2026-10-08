@@ -778,6 +778,10 @@
   height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
+  /* The scrollbar's room is kept even before the page is long enough to
+     scroll, so a block that grows the page (a concept map dropped lower)
+     never slides the whole centred column sideways. */
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   background: var(--vscode-editor-background);
@@ -4465,7 +4469,7 @@
 .canvas-synced__label { color: var(--px-accent-text); font-size: var(--px-text-xs); opacity: 0; transition: opacity var(--px-dur-fast) var(--px-ease); }
 .canvas-synced:hover .canvas-synced__label, .canvas-synced:focus-within .canvas-synced__label,
 .canvas-synced:hover .canvas-live-edit { opacity: 1; }
-.canvas-synced__body > .canvas-editor-wrapper { padding: 0; }
+.canvas-synced__body > .canvas-editor-wrapper { padding: 0; scrollbar-gutter: auto; }
 .canvas-synced__body .canvas-tiptap-editor { min-height: 1.6em; padding: 0 6px 4px; }
 .canvas-synced__note { color: var(--px-text-muted); font-size: var(--px-text-sm); padding: 6px; }
 

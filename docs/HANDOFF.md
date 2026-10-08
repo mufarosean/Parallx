@@ -8,6 +8,42 @@ tsc, the full vitest suite (about 7860 tests) and `npm run build` pass.
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
 
+## Done on 2026-10-08, cloud: concept maps on a page, edited like a board
+
+The concept map block (a chat map saved to a page) can now be restructured
+and arranged, not just retyped. Files: `src/ui/conceptMap.ts` (pure:
+override keys, tree-relative deltas, branch moves), `conceptMap.css`,
+`src/built-in/canvas/extensions/conceptMapNode.ts` (the block).
+
+- **Select.** Click a box; Shift or Ctrl adds; a drag across the empty
+  board draws a frame and selects what it touches; Escape clears;
+  Ctrl+A selects all. A click on the box that is already the only one
+  selected edits it (so a double-click edits); Enter or F2 too.
+- **Move.** Dragging moves the whole selection, each box with its branch,
+  on the 18px grid (Alt moves freely), never past the top or left margin.
+  Arrows nudge a cell, Shift four. A drop lands exactly where it was let
+  go: the map now draws at real size instead of shrinking to its column
+  (which rescaled it on every drop), the board keeps its frame instead of
+  re-centring on its top-left box, and canvas pages reserve the scrollbar
+  gutter (a growing page slid the centred column 3px).
+- **Re-parent.** Drop boxes on another box ("Move under ..." shows while
+  dragging) and their branches move under it in the outline. Alt+Up and
+  Alt+Down reorder among siblings; Alt+Right nests under the previous
+  sibling; Alt+Left lifts out a level. Delete removes the selected
+  branches. Tab adds a child.
+- **Storage.** Moves are stored per box relative to its parent
+  (`layoutVersion: 2`), so a branch follows its parent and a new child
+  lands beside a moved parent. Repeated labels get their own key, so two
+  boxes named the same no longer move together. Version 1 maps are
+  converted on read and look the same.
+- Reset Layout becomes Reset Selected when a selected box was moved. The
+  tools and the key hint stay in place when a wide map scrolls sideways;
+  the board keeps four spare cells right and below to drop into.
+- Tests: `conceptMapStructure` (19). Probe:
+  `xvfb-run -a node tests/probes/concept-map-probe.mjs <outDir>` after
+  `npm run build` with the sqlite module built for Electron; 23 checks
+  pass in the real app, no renderer errors.
+
 ## Done on 2026-10-08, cloud: Creations AI, a quality testing guide
 
 `docs/CREATIONS_QUALITY_TESTING.md`: what to test in character creation,

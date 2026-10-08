@@ -7,32 +7,49 @@
 // caret; the commit rewrites that box's own outline LINE. Line, not
 // label, is a box's identity, so two boxes may share a name without
 // ever editing each other. LAYOUT is the user's to adjust: drag a box
-// to move it, drag its right edge to resize (text re-wraps).
-// Adjustments live as OVERRIDES keyed by label, deltas over the
-// computed layout — rename a node in the outline and its override
-// quietly evaporates back to auto layout. The outline can never drift
-// because it never carries geometry.
+// with its branch, drop it on another box to move the branch under that
+// box, drag its right edge to resize (text re-wraps). Click selects;
+// Shift or Ctrl adds; a drag across the board selects a frame of boxes;
+// double-click edits. Adjustments live as OVERRIDES keyed by label
+// (counted when repeated), deltas over the computed layout that carry a
+// box's branch with it; rename a node and its override quietly
+// evaporates back to auto layout. The outline can never drift because it
+// never carries geometry.
 //
-// Attrs: { src, dir, overrides: { [label]: { dx, dy, w } } }.
+// Attrs: { src, dir, overrides: { [key]: { dx, dy, w } }, layoutVersion }.
+// layoutVersion 1 (or absent) stored each box's delta on its own; 2
+// stores them relative to the parent. A version 1 map is converted on
+// read and saved as 2 at its next change.
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import katex from 'katex';
 import {
   appendChildAtLine,
   caretSourceOffset,
+  deleteBranches,
   deleteOutlineSubtree,
   editorHtml,
   editorSignature,
   hubPathsFor,
+  indentBranch,
   insertSiblingAfter,
+  MAP_MARGIN,
+  migrateFlatOverrides,
+  moveBranchAmongSiblings,
+  moveBranchesUnder,
   normalizeLabel,
+  outdentBranch,
   outlineLineText,
+  outlineTree,
+  overrideKeysByLine,
   parseMindMap,
   pruneOverrides,
   renderMindMapSvg,
   replaceOutlineLine,
   resolveSourceOffset,
   serializeEditorDom,
+  subtreeLines,
+  topmostLines,
   type EdgeBox,
   type EditorCaret,
   type HubChild,
@@ -67,6 +84,7 @@ export const ConceptMap = Node.create({
       src: { default: DEFAULT_CONCEPT_MAP_SRC },
       dir: { default: 'right' },
       overrides: { default: {} },
+      layoutVersion: { default: 1 },
     };
   },
 
@@ -94,11 +112,15 @@ export const ConceptMap = Node.create({
       dom.contentEditable = 'false';
       dom.draggable = false;
 
-      const readAttrs = (a: Record<string, unknown>) => ({
-        src: String(a.src ?? ''),
-        dir: coerceMindMapDirection(a.dir),
-        overrides: (a.overrides && typeof a.overrides === 'object' ? a.overrides : {}) as MindMapOverrides,
-      });
+      const readAttrs = (a: Record<string, unknown>) => {
+        const src = String(a.src ?? '');
+        const raw = (a.overrides && typeof a.overrides === 'object' ? a.overrides : {}) as MindMapOverrides;
+        return {
+          src,
+          dir: coerceMindMapDirection(a.dir),
+          overrides: (Number(a.layoutVersion) || 1) >= 2 ? raw : migrateFlatOverrides(src, raw),
+        };
+      };
       let attrs = readAttrs(node.attrs);
       let editing = false;
       // The in-place box editor: teardown removes overlay + listeners
@@ -117,18 +139,79 @@ export const ConceptMap = Node.create({
         // Every src change prunes overrides whose label no longer names
         // a box; without this an orphaned entry keeps Reset Layout lit.
         if (patch.src !== undefined) next.overrides = pruneOverrides(next.overrides, next.src);
-        editor.view.dispatch(editor.view.state.tr.setNodeMarkup(pos, undefined, next));
+        editor.view.dispatch(editor.view.state.tr.setNodeMarkup(pos, undefined, { ...next, layoutVersion: 2 }));
       };
 
-      /** One map node: its <g>, box rect, label, and SOURCE LINE. */
-      type NodeParts = { g: SVGGElement; rect: SVGRectElement; label: string; line: number };
+      // ── Selection ────────────────────────────────────────────────────
+      // Boxes are selected by SOURCE LINE. A change that moves lines hands
+      // over the new ones; a render drops any line no longer drawn. The
+      // map body takes focus on any press, so the keys act on the map.
+      const selected = new Set<number>();
+      let bodyEl: HTMLElement | null = null;
+      let refocusMap = false;
+      let updateResetTool: (() => void) | null = null;
+
+      const paintSelection = (): void => {
+        if (!bodyEl) return;
+        for (const g of Array.from(bodyEl.querySelectorAll('.parallx-mindmap__node[data-mm-line]'))) {
+          g.classList.toggle('parallx-mindmap__node--selected', selected.has(Number(g.getAttribute('data-mm-line'))));
+        }
+        updateResetTool?.();
+      };
+      const selectOnly = (lines: Iterable<number>): void => {
+        selected.clear();
+        for (const l of lines) selected.add(l);
+        paintSelection();
+      };
+      /** Commit a change made on the map: the map keeps focus and the given selection. */
+      const commitFromMap = (
+        patch: Partial<{ src: string; dir: MindMapDirection; overrides: MindMapOverrides }>,
+        nextSelection?: Iterable<number>,
+      ): void => {
+        if (nextSelection) { selected.clear(); for (const l of nextSelection) selected.add(l); }
+        refocusMap = true;
+        commit(patch);
+      };
+      /** The override key of every drawn box, by line. */
+      const keysByLine = (): Map<number, string> => overrideKeysByLine(parseMindMap(attrs.src));
+      /** Overrides with the own position delta of `lines` dropped (a width stays). */
+      const withoutOwnDelta = (lines: Iterable<number>): MindMapOverrides => {
+        const keys = keysByLine();
+        const next: Record<string, { dx?: number; dy?: number; w?: number }> = { ...attrs.overrides };
+        for (const l of lines) {
+          const k = keys.get(l);
+          if (!k || !next[k]) continue;
+          const w = next[k].w;
+          if (typeof w === 'number') next[k] = { w };
+          else delete next[k];
+        }
+        return next;
+      };
+      /** Overrides with (dx, dy) added to the own delta of `lines`. */
+      const withDelta = (lines: Iterable<number>, dx: number, dy: number): MindMapOverrides => {
+        const keys = keysByLine();
+        const next: Record<string, { dx?: number; dy?: number; w?: number }> = { ...attrs.overrides };
+        for (const l of lines) {
+          const k = keys.get(l);
+          if (!k) continue;
+          const prev = next[k] ?? {};
+          next[k] = { ...prev, dx: (prev.dx ?? 0) + dx, dy: (prev.dy ?? 0) + dy };
+        }
+        return next;
+      };
+
+      /** One map node: its <g>, box rect, label, override key and SOURCE LINE. */
+      type NodeParts = { g: SVGGElement; rect: SVGRectElement; label: string; key: string; line: number };
       const nodeParts = (target: EventTarget | null): NodeParts | null => {
         const g = (target as HTMLElement | null)?.closest?.('.parallx-mindmap__node') as SVGGElement | null;
         const rect = g?.querySelector('.parallx-mindmap__box') as SVGRectElement | null;
         const label = g?.getAttribute('data-mindmap-label') ?? '';
+        const key = g?.getAttribute('data-mm-key') || label;
         const line = Number(g?.getAttribute('data-mm-line'));
-        return g && rect && label && Number.isFinite(line) ? { g, rect, label, line } : null;
+        return g && rect && label && Number.isFinite(line) ? { g, rect, label, key, line } : null;
       };
+      const partsForLine = (line: number): NodeParts | null =>
+        nodeParts(bodyEl?.querySelector(`.parallx-mindmap__node[data-mm-line="${line}"] .parallx-mindmap__box`) ?? null);
 
       const startEdit = (): void => {
         editing = true;
@@ -178,100 +261,107 @@ export const ConceptMap = Node.create({
         return out;
       };
 
-      /** Drag = move (recorded as an override); a still click = edit in place. */
-      const beginBoxDrag = (e: PointerEvent | MouseEvent, parts: NodeParts): void => {
+      /**
+       * Drag = move the selection, each box with its whole branch (the
+       * pressed box joins the selection first). Released over another box,
+       * the branches move UNDER it in the outline and settle into the
+       * layout there; released on the board, they stay where they were let
+       * go, snapped to the grid (hold Alt to move freely), never past the
+       * board's top or left margin. A still click selects the box; a still
+       * click on the box that is already the only one selected edits it in
+       * place (so a double-click edits too).
+       */
+      const beginGroupDrag = (e: PointerEvent | MouseEvent, parts: NodeParts, wasSole: boolean): void => {
+        const svg = parts.g.ownerSVGElement;
+        if (!svg || !bodyEl) return;
+        const host = bodyEl;
         const startX = e.clientX;
         const startY = e.clientY;
-        let lastX = startX;
-        let lastY = startY;
         let moved = false;
-        // The BOX moves by per-frame attribute updates, never a transform
-        // on the group: Chromium can stall repaints of transformed groups
-        // that contain a foreignObject (formula boxes froze while their
-        // edges moved). A note's corner paths have no x/y, so they take a
+        const scale = svgScale(svg);
+        const tree = outlineTree(attrs.src);
+        const tops = topmostLines(tree, selected.has(parts.line) ? selected : [parts.line]);
+        const moving = new Set<number>();
+        for (const t of tops) for (const l of subtreeLines(tree, t)) moving.add(l);
+        const nodeEl = (line: number): SVGGElement | null =>
+          svg.querySelector(`.parallx-mindmap__node[data-mm-line="${line}"]`);
+
+        // Boxes move by per-frame attribute updates, never a transform on
+        // the group: Chromium can stall repaints of transformed groups that
+        // contain a foreignObject (formula boxes froze while their edges
+        // moved). A note's corner paths have no x/y, so they take a
         // translate of their own (a bare path has no foreignObject inside).
-        const movables = (Array.from(parts.g.children) as SVGGraphicsElement[])
-          .filter((el) => el.tagName === 'rect' || el.tagName === 'text' || el.tagName === 'foreignObject')
-          .map((el) => ({
-            el,
-            baseX: Number(el.getAttribute('x')) || 0,
-            baseY: Number(el.getAttribute('y')) || 0,
-          }));
-        const cornerPaths = (Array.from(parts.g.children) as SVGGraphicsElement[])
-          .filter((el) => el.tagName === 'path');
-        // Pointer deltas are screen px; the map may be scaled to fit its
-        // column, and a tilted card's attribute axes are rotated by its tilt.
-        const scale = svgScale(parts.g.ownerSVGElement);
-        const tiltRad = (Number(parts.g.getAttribute('data-mm-tilt')) || 0) * Math.PI / 180;
-        const toMapDelta = (dx: number, dy: number): [number, number] => {
-          const sx = dx / scale;
-          const sy = dy / scale;
-          if (!tiltRad) return [sx, sy];
-          const c = Math.cos(tiltRad);
-          const sn = Math.sin(tiltRad);
-          return [sx * c + sy * sn, -sx * sn + sy * c];
-        };
-        // Moves snap to the map's grid (hold Alt to move freely): the
-        // card's top-left lands on a lattice point, in MAP units, the same
-        // lattice the layout and the drawn dots use, at any fit scale.
-        const box0 = { x: Number(parts.rect.getAttribute('x')) || 0, y: Number(parts.rect.getAttribute('y')) || 0 };
-        const snapToGrid = (dx: number, dy: number): [number, number] => {
-          const gx = Math.round((box0.x + dx / scale) / MAP_GRID) * MAP_GRID - box0.x;
-          const gy = Math.round((box0.y + dy / scale) / MAP_GRID) * MAP_GRID - box0.y;
-          return [gx * scale, gy * scale];
-        };
-        let snappedDx = 0;
-        let snappedDy = 0;
-        const moveBox = (dx: number, dy: number): void => {
-          const [mx, my] = toMapDelta(dx, dy);
-          for (const m of movables) {
+        const movers: { el: SVGGraphicsElement; baseX: number; baseY: number }[] = [];
+        const corners: SVGGraphicsElement[] = [];
+        const movingEls: SVGGElement[] = [];
+        for (const l of moving) {
+          const g = nodeEl(l);
+          if (!g) continue;
+          movingEls.push(g);
+          for (const el of Array.from(g.children) as SVGGraphicsElement[]) {
+            if (el.tagName === 'rect' || el.tagName === 'text' || el.tagName === 'foreignObject') {
+              movers.push({ el, baseX: Number(el.getAttribute('x')) || 0, baseY: Number(el.getAttribute('y')) || 0 });
+            } else if (el.tagName === 'path') corners.push(el);
+          }
+        }
+        const moveAll = (mx: number, my: number): void => {
+          for (const m of movers) {
             m.el.setAttribute('x', String(m.baseX + mx));
             m.el.setAttribute('y', String(m.baseY + my));
           }
-          for (const p of cornerPaths) {
+          for (const p of corners) {
             if (mx || my) p.setAttribute('transform', `translate(${mx} ${my})`);
             else p.removeAttribute('transform');
           }
         };
-        // HUBS touching the dragged box re-route LIVE: the box's own hub
-        // (it is a parent) and its parent's hub (it is a child). Without
-        // this the lines freeze mid-air and the drag feels broken.
-        // Everything is keyed by SOURCE LINE: two boxes sharing a label
-        // must never trade arms (the vanished-arrow bug).
-        const svgRoot = parts.g.ownerSVGElement as unknown as HTMLElement | null;
-        const geoms = svgRoot ? boxGeoms(svgRoot) : new Map<number, EdgeBox>();
-        const baseGeom = geoms.get(parts.line);
-        // Parent/children relations come from the OUTLINE (the one truth).
-        const kidsOf = new Map<number, number[]>();
-        const parentOf = new Map<number, number>();
-        const walk = (n: MindMapNode): void => {
-          kidsOf.set(n.line, n.children.map((c) => c.line));
-          for (const c of n.children) { parentOf.set(c.line, n.line); walk(c); }
+
+        const geoms = boxGeoms(svg as unknown as HTMLElement);
+        const grabbed = geoms.get(parts.line);
+        if (!grabbed) return;
+        // The moving set never crosses the margin: that keeps the board's
+        // frame, so the drop lands exactly where it was let go.
+        let minLeft = Infinity;
+        let minTop = Infinity;
+        for (const l of moving) {
+          const gm = geoms.get(l);
+          if (!gm) continue;
+          minLeft = Math.min(minLeft, gm.x);
+          minTop = Math.min(minTop, gm.y - gm.height / 2);
+        }
+        const grabbedTop = grabbed.y - grabbed.height / 2;
+        const place = (dxPx: number, dyPx: number, free: boolean): [number, number] => {
+          let mx = dxPx / scale;
+          let my = dyPx / scale;
+          if (!free) {
+            // The pressed box's top-left lands on a lattice point (map units).
+            mx = Math.round((grabbed.x + mx) / MAP_GRID) * MAP_GRID - grabbed.x;
+            my = Math.round((grabbedTop + my) / MAP_GRID) * MAP_GRID - grabbedTop;
+          }
+          return [Math.max(mx, MAP_MARGIN - minLeft), Math.max(my, MAP_MARGIN - minTop)];
         };
-        for (const r of parseMindMap(attrs.src)) walk(r);
+
+        // HUBS touching a moving box re-route LIVE: its own hub (it is a
+        // parent) and its parent's hub (it is a child). Everything is keyed
+        // by SOURCE LINE: two boxes sharing a label never trade arms.
         const affectedHubs = new Set<number>();
-        if ((kidsOf.get(parts.line) ?? []).length > 0) affectedHubs.add(parts.line);
-        const myParent = parentOf.get(parts.line);
-        if (myParent !== undefined) affectedHubs.add(myParent);
-        const hubPathEls = svgRoot
-          ? (Array.from(svgRoot.querySelectorAll('path[data-mm-hub]')) as SVGPathElement[])
-              .filter((path) => affectedHubs.has(Number(path.getAttribute('data-mm-hub'))))
-              .map((path) => ({ path, baseD: path.getAttribute('d') ?? '' }))
-          : [];
-        // Extra stem/spine paths cloned mid-drag (a side split needs
-        // more structure than the render emitted); removed on cancel.
+        for (const l of moving) {
+          if ((tree.kidsOf.get(l) ?? []).length > 0) affectedHubs.add(l);
+          const p = tree.parentOf.get(l);
+          if (p !== undefined) affectedHubs.add(p);
+        }
+        const hubPathEls = (Array.from(svg.querySelectorAll('path[data-mm-hub]')) as SVGPathElement[])
+          .filter((path) => affectedHubs.has(Number(path.getAttribute('data-mm-hub'))))
+          .map((path) => ({ path, baseD: path.getAttribute('d') ?? '' }));
         const clones: SVGPathElement[] = [];
-        const colorOf = (line: number): number =>
-          branchOfEl(svgRoot?.querySelector(`.parallx-mindmap__node[data-mm-line="${line}"]`) ?? null);
-        const rerouteEdges = (dx: number, dy: number): void => {
-          if (!baseGeom || !svgRoot) return;
-          const geomOf = (line: number): EdgeBox | undefined =>
-            line === parts.line
-              ? { ...baseGeom, x: baseGeom.x + dx, y: baseGeom.y + dy }
-              : geoms.get(line);
+        const colorOf = (line: number): number => branchOfEl(nodeEl(line));
+        const rerouteEdges = (mx: number, my: number): void => {
+          const geomOf = (line: number): EdgeBox | undefined => {
+            const g = geoms.get(line);
+            return g && moving.has(line) ? { ...g, x: g.x + mx, y: g.y + my } : g;
+          };
           for (const hubLine of affectedHubs) {
             const parentGeom = geomOf(hubLine);
-            const kidLines = kidsOf.get(hubLine) ?? [];
+            const kidLines = tree.kidsOf.get(hubLine) ?? [];
             if (!parentGeom || kidLines.length === 0) continue;
             const kids: HubChild[] = [];
             for (const k of kidLines) {
@@ -279,9 +369,7 @@ export const ConceptMap = Node.create({
               if (g) kids.push({ ...g, label: String(k), color: colorOf(k) });
             }
             const hubs = hubPathsFor(parentGeom, kids, attrs.dir);
-            // ARMS carry the arrowheads: match each by its target line,
-            // never by position, so an arrow sticks to its box through
-            // any structural change (spine appearing, side flipping).
+            // ARMS carry the arrowheads: match each by its target line.
             const els = hubPathEls.filter(({ path }) => Number(path.getAttribute('data-mm-hub')) === hubLine);
             const armByTo = new Map<string, SVGPathElement>();
             const trunkPool: SVGPathElement[] = [];
@@ -307,55 +395,217 @@ export const ConceptMap = Node.create({
             for (const hub of hubs) {
               seatTrunk(hub.stem);
               if (hub.spine) seatTrunk(hub.spine);
-              for (const arm of hub.arms) {
-                armByTo.get(arm.to)?.setAttribute('d', arm.d);
-              }
+              for (const arm of hub.arms) armByTo.get(arm.to)?.setAttribute('d', arm.d);
             }
-            // Surplus trunk paths (a side merged back) go blank, never
-            // stale; arms are never blanked, an arrow never vanishes.
+            // Surplus trunk paths go blank, never stale; arms never blank.
             for (let t = trunkNeed; t < trunkPool.length; t++) trunkPool[t].setAttribute('d', '');
           }
+        };
+
+        // The drop target: the box under the pointer, outside the moving
+        // branches, that is not already the parent of every moved branch.
+        let dropTarget: number | null = null;
+        const note = document.createElement('div');
+        note.classList.add('canvas-conceptmap__dropnote');
+        const findTarget = (clientX: number, clientY: number): number | null => {
+          const svgB = svg.getBoundingClientRect();
+          const px = (clientX - svgB.left) / scale;
+          const py = (clientY - svgB.top) / scale;
+          for (const [l, g] of geoms) {
+            if (moving.has(l)) continue;
+            if (px >= g.x && px <= g.x + g.width && py >= g.y - g.height / 2 && py <= g.y + g.height / 2) {
+              return tops.every((t) => tree.parentOf.get(t) === l) ? null : l;
+            }
+          }
+          return null;
+        };
+        const showTarget = (line: number | null): void => {
+          if (line === dropTarget) return;
+          if (dropTarget !== null) nodeEl(dropTarget)?.classList.remove('parallx-mindmap__node--drop');
+          dropTarget = line;
+          if (line === null) { note.remove(); return; }
+          const g = nodeEl(line);
+          g?.classList.add('parallx-mindmap__node--drop');
+          const label = g?.getAttribute('data-mindmap-label') ?? '';
+          note.textContent = `Move under “${label.length > 40 ? `${label.slice(0, 40)}…` : label}”`;
+          const rb = g?.querySelector('.parallx-mindmap__box')?.getBoundingClientRect();
+          const hb = host.getBoundingClientRect();
+          if (rb) {
+            note.style.left = `${Math.round(rb.left - hb.left)}px`;
+            note.style.top = `${Math.round(rb.top - hb.top - 24)}px`;
+          }
+          if (!note.isConnected) host.appendChild(note);
+        };
+
+        let mx = 0;
+        let my = 0;
+        const restore = (): void => {
+          moveAll(0, 0);
+          for (const { path, baseD } of hubPathEls) path.setAttribute('d', baseD);
+          for (const extra of clones) extra.remove();
+          for (const g of movingEls) g.classList.remove('parallx-mindmap__node--moving');
+          showTarget(null);
         };
         beginPointerDrag(e, {
           id: 'conceptmap-move',
           cursor: 'grabbing',
           onMove: (ev) => {
-            lastX = ev.clientX;
-            lastY = ev.clientY;
-            const dx = lastX - startX;
-            const dy = lastY - startY;
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
             if (!moved && Math.hypot(dx, dy) < CLICK_DIST) return;
-            moved = true;
+            if (!moved) {
+              moved = true;
+              for (const g of movingEls) g.classList.add('parallx-mindmap__node--moving');
+            }
             const free = 'altKey' in ev && Boolean((ev as MouseEvent).altKey);
-            [snappedDx, snappedDy] = free ? [dx, dy] : snapToGrid(dx, dy);
-            moveBox(snappedDx, snappedDy);
-            rerouteEdges(snappedDx / scale, snappedDy / scale);
+            [mx, my] = place(dx, dy, free);
+            moveAll(mx, my);
+            rerouteEdges(mx, my);
+            showTarget(findTarget(ev.clientX, ev.clientY));
           },
           onEnd: (canceled) => {
-            if (canceled || !moved) {
-              moveBox(0, 0);
-              for (const { path, baseD } of hubPathEls) path.setAttribute('d', baseD);
-              for (const extra of clones) extra.remove();
-            }
+            const target = dropTarget;
+            restore();
             if (canceled) return;
-            if (!moved) { beginBoxEdit(parts); return; }
-            // The override lives in map units; the tilt does not enter
-            // (the card's centre travels exactly the pointer's path).
-            const dx = Math.round(snappedDx / scale);
-            const dy = Math.round(snappedDy / scale);
-            const prev = attrs.overrides[parts.label] ?? {};
-            commit({
-              overrides: {
-                ...attrs.overrides,
-                [parts.label]: { ...prev, dx: (prev.dx ?? 0) + dx, dy: (prev.dy ?? 0) + dy },
-              },
-            });
+            if (!moved) {
+              if (wasSole) beginBoxEdit(parts);
+              else selectOnly([parts.line]);
+              return;
+            }
+            if (target !== null) {
+              const res = moveBranchesUnder(attrs.src, tops, target);
+              if (!res) return;
+              // Moved branches settle into the layout under their new
+              // parent (their own deltas go; their insides keep theirs).
+              commitFromMap({ src: res.src, overrides: withoutOwnDelta(tops) }, res.lines);
+              return;
+            }
+            const rx = Math.round(mx);
+            const ry = Math.round(my);
+            if (!rx && !ry) return;
+            commitFromMap({ overrides: withDelta(tops, rx, ry) });
           },
         });
       };
 
+      /**
+       * A drag across the empty board draws a frame; every box it touches
+       * is selected (added to the selection with Shift or Ctrl). A still
+       * click on the board clears the selection.
+       */
+      const beginMarquee = (e: PointerEvent | MouseEvent, additive: boolean): void => {
+        const host = bodyEl;
+        if (!host) return;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const base = additive ? new Set(selected) : new Set<number>();
+        let moved = false;
+        const frame = document.createElement('div');
+        frame.classList.add('canvas-conceptmap__marquee');
+        beginPointerDrag(e, {
+          id: 'conceptmap-marquee',
+          cursor: 'crosshair',
+          onMove: (ev) => {
+            if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < CLICK_DIST) return;
+            if (!moved) { moved = true; host.appendChild(frame); }
+            const left = Math.min(startX, ev.clientX);
+            const top = Math.min(startY, ev.clientY);
+            const right = Math.max(startX, ev.clientX);
+            const bottom = Math.max(startY, ev.clientY);
+            const hb = host.getBoundingClientRect();
+            frame.style.left = `${Math.round(left - hb.left)}px`;
+            frame.style.top = `${Math.round(top - hb.top)}px`;
+            frame.style.width = `${Math.round(right - left)}px`;
+            frame.style.height = `${Math.round(bottom - top)}px`;
+            selected.clear();
+            for (const l of base) selected.add(l);
+            for (const g of Array.from(host.querySelectorAll('.parallx-mindmap__node[data-mm-line]'))) {
+              const r = g.querySelector('.parallx-mindmap__box')?.getBoundingClientRect();
+              if (r && r.right >= left && r.left <= right && r.bottom >= top && r.top <= bottom) {
+                selected.add(Number(g.getAttribute('data-mm-line')));
+              }
+            }
+            paintSelection();
+          },
+          onEnd: () => {
+            frame.remove();
+            if (!moved && !additive) selectOnly([]);
+          },
+        });
+      };
+
+      /** Arrow keys nudge the selected branches by a cell (Shift: four), never past the margin. */
+      const nudgeSelection = (dxCells: number, dyCells: number): void => {
+        const tree = outlineTree(attrs.src);
+        const tops = topmostLines(tree, selected);
+        if (tops.length === 0 || !bodyEl) return;
+        const geoms = boxGeoms(bodyEl);
+        let minLeft = Infinity;
+        let minTop = Infinity;
+        for (const t of tops) for (const l of subtreeLines(tree, t)) {
+          const g = geoms.get(l);
+          if (!g) continue;
+          minLeft = Math.min(minLeft, g.x);
+          minTop = Math.min(minTop, g.y - g.height / 2);
+        }
+        const dx = Math.max(dxCells * MAP_GRID, MAP_MARGIN - minLeft);
+        const dy = Math.max(dyCells * MAP_GRID, MAP_MARGIN - minTop);
+        if (!dx && !dy) return;
+        commitFromMap({ overrides: withDelta(tops, dx, dy) });
+      };
+
+      /** The map's keys. Undo and redo (Ctrl or Cmd) pass through to the page. */
+      const onMapKey = (e: KeyboardEvent): void => {
+        if (boxEditTeardown) return;
+        const mod = e.ctrlKey || e.metaKey;
+        const take = (): void => { e.preventDefault(); e.stopPropagation(); };
+        const drawn = new Set(Array.from(bodyEl?.querySelectorAll('.parallx-mindmap__node[data-mm-line]') ?? [])
+          .map((g) => Number(g.getAttribute('data-mm-line'))));
+        const sel = [...selected].filter((l) => drawn.has(l)).sort((a, b) => a - b);
+        if (mod) {
+          if (e.key === 'a' || e.key === 'A') { take(); selectOnly(drawn); }
+          return;
+        }
+        if (e.key === 'Tab' && (e.shiftKey || sel.length !== 1)) return;
+        // Every other key stays on the map: Enter or Backspace must never
+        // reach the page, where they would replace or delete the block.
+        take();
+        if (e.key === 'Escape') { selectOnly([]); return; }
+        if (sel.length === 0) return;
+        if ((e.key === 'Enter' || e.key === 'F2') && sel.length === 1) {
+          const p = partsForLine(sel[0]);
+          if (p) beginBoxEdit(p);
+          return;
+        }
+        if (e.key === 'Tab') { beginPhantomAdd('child', sel[0]); return; }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          const next = deleteBranches(attrs.src, sel);
+          if (next) commitFromMap({ src: next }, []);
+          return;
+        }
+        if (!e.key.startsWith('Arrow')) return;
+        if (e.altKey) {
+          if (sel.length !== 1) return;
+          const l = sel[0];
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            const res = moveBranchAmongSiblings(attrs.src, l, e.key === 'ArrowUp' ? -1 : 1);
+            if (res) commitFromMap({ src: res.src }, res.lines);
+          } else {
+            const res = e.key === 'ArrowRight' ? indentBranch(attrs.src, l) : outdentBranch(attrs.src, l);
+            if (res) commitFromMap({ src: res.src, overrides: withoutOwnDelta([l]) }, res.lines);
+          }
+          return;
+        }
+        const step = e.shiftKey ? 4 : 1;
+        const dir: Record<string, [number, number]> = {
+          ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step],
+        };
+        const [cx, cy] = dir[e.key] ?? [0, 0];
+        nudgeSelection(cx, cy);
+      };
+
       /** The right-edge grip resizes; text re-wraps on commit. */
-      const beginBoxResize = (e: PointerEvent | MouseEvent, parts: { rect: SVGRectElement; label: string }): void => {
+      const beginBoxResize = (e: PointerEvent | MouseEvent, parts: { rect: SVGRectElement; key: string }): void => {
         const startX = e.clientX;
         const startW = Number(parts.rect.getAttribute('width')) || 120;
         const scale = svgScale(parts.rect.ownerSVGElement);
@@ -369,8 +619,8 @@ export const ConceptMap = Node.create({
           },
           onEnd: (canceled) => {
             if (canceled || w === startW) { render(); return; }
-            const prev = attrs.overrides[parts.label] ?? {};
-            commit({ overrides: { ...attrs.overrides, [parts.label]: { ...prev, w } } });
+            const prev = attrs.overrides[parts.key] ?? {};
+            commitFromMap({ overrides: { ...attrs.overrides, [parts.key]: { ...prev, w } } });
           },
         });
       };
@@ -544,6 +794,7 @@ export const ConceptMap = Node.create({
           boxEditTeardown = null;
           teardown();
           const text = src.replace(/\s+/g, ' ').trim();
+          refocusMap = true;
           spec.onDone(via === 'escape' ? null : text, via);
         };
 
@@ -614,13 +865,13 @@ export const ConceptMap = Node.create({
             // when the new label collides, the old adjustment is dropped
             // rather than transplanted onto the box that owns that name.
             const newLabel = normalizeLabel(text);
-            const prevOv = attrs.overrides[parts.label];
+            const prevOv = attrs.overrides[parts.key];
             let overrides = attrs.overrides;
             if (prevOv && newLabel !== parts.label) {
               const rest = { ...attrs.overrides } as Record<string, (typeof attrs.overrides)[string]>;
-              delete rest[parts.label];
-              const taken = labelsOf(next).filter((l) => l === newLabel).length > 1;
-              overrides = taken || rest[newLabel] ? rest : { ...rest, [newLabel]: prevOv };
+              delete rest[parts.key];
+              const newKey = overrideKeysByLine(parseMindMap(next)).get(parts.line) ?? newLabel;
+              overrides = rest[newKey] ? rest : { ...rest, [newKey]: prevOv };
             }
             commit({ src: next, overrides });
           },
@@ -679,7 +930,7 @@ export const ConceptMap = Node.create({
             const newLine = anchorLine + 1;
             if (via === 'enter') pendingPhantom = { kind: 'sibling', line: newLine };
             else if (via === 'tab') pendingPhantom = { kind: 'child', line: newLine };
-            commit({ src: next });
+            commitFromMap({ src: next }, [newLine]);
           },
         });
       };
@@ -724,18 +975,33 @@ export const ConceptMap = Node.create({
         }
         tools.appendChild(seg);
 
-        if (Object.keys(attrs.overrides).length > 0 && !editing) {
-          const resetBtn = document.createElement('button');
-          resetBtn.classList.add('canvas-conceptmap__tool');
-          resetBtn.type = 'button';
-          resetBtn.textContent = 'Reset Layout';
-          resetBtn.title = 'Drop every moved or resized box back to the automatic layout';
-          resetBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            commit({ overrides: {} });
-          });
-          tools.appendChild(resetBtn);
-        }
+        // Reset: the selected boxes when any of them was moved or resized,
+        // else the whole map. Repainted with the selection.
+        const resetBtn = document.createElement('button');
+        resetBtn.classList.add('canvas-conceptmap__tool');
+        resetBtn.type = 'button';
+        const resetScope = (): string[] => {
+          const keys = keysByLine();
+          return [...selected].map((l) => keys.get(l)).filter((k): k is string => !!k && !!attrs.overrides[k]);
+        };
+        updateResetTool = () => {
+          const scoped = resetScope();
+          resetBtn.textContent = scoped.length ? 'Reset Selected' : 'Reset Layout';
+          resetBtn.title = scoped.length
+            ? 'Put the selected boxes back where the automatic layout puts them'
+            : 'Drop every moved or resized box back to the automatic layout';
+          resetBtn.hidden = editing || Object.keys(attrs.overrides).length === 0;
+        };
+        resetBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const scoped = resetScope();
+          if (scoped.length === 0) { commitFromMap({ overrides: {} }); return; }
+          const next = { ...attrs.overrides } as Record<string, (typeof attrs.overrides)[string]>;
+          for (const k of scoped) delete next[k];
+          commitFromMap({ overrides: next });
+        });
+        updateResetTool();
+        tools.appendChild(resetBtn);
 
         const editBtn = document.createElement('button');
         editBtn.classList.add('canvas-conceptmap__tool');
@@ -753,11 +1019,13 @@ export const ConceptMap = Node.create({
           dom.appendChild(ta);
           const hint = document.createElement('div');
           hint.classList.add('canvas-conceptmap__hint');
-          hint.textContent = 'One idea per line; indent to nest. **bold**, *italic*, `code`, and $x^2$ all render. On the map: click a box to edit it in place, drag to move it (it snaps to the grid; hold Alt to move freely), drag its right edge to resize.';
+          hint.textContent = 'One idea per line; indent to nest. **bold**, *italic*, `code`, and $x^2$ all render. On the map: click a box to select it and click again to edit it, drag it to move it with its branch, drop it on another box to move it under that box, drag its right edge to resize.';
           dom.appendChild(hint);
           editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             editing = false;
+            // Back on the map, with its keys: the selection carries on.
+            refocusMap = true;
             if (ta.value !== attrs.src) commit({ src: ta.value });
             else render();
           });
@@ -819,7 +1087,12 @@ export const ConceptMap = Node.create({
           });
           body.addEventListener('pointerleave', () => { addBtn.hidden = true; });
           body.style.position = 'relative';
+          body.classList.add('canvas-conceptmap__body');
+          body.tabIndex = 0;
+          body.setAttribute('aria-label', 'Concept map. Click a box to select it.');
+          body.addEventListener('keydown', onMapKey);
           mapHost = body;
+          bodyEl = body;
           if (pendingPhantom) {
             // The chained phantom opens against the FRESH map (its
             // anchor line just landed); consume exactly once.
@@ -837,15 +1110,43 @@ export const ConceptMap = Node.create({
               finishBoxEdit?.('blur');
               return;
             }
-            const parts = nodeParts(e.target);
-            if (!parts) return;
+            if ((e.target as HTMLElement | null)?.closest?.('.canvas-conceptmap__add')) return;
             e.preventDefault();
             e.stopPropagation();
+            body.focus({ preventScroll: true });
+            const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+            const parts = nodeParts(e.target);
+            if (!parts) { beginMarquee(e, additive); return; }
+            if (additive) {
+              if (selected.has(parts.line)) selected.delete(parts.line);
+              else selected.add(parts.line);
+              paintSelection();
+              return;
+            }
+            const wasSole = selected.size === 1 && selected.has(parts.line);
             const rectRight = parts.rect.getBoundingClientRect().right;
-            if (rectRight - e.clientX <= RESIZE_EDGE_PX) beginBoxResize(e, parts);
-            else beginBoxDrag(e, parts);
+            if (rectRight - e.clientX <= RESIZE_EDGE_PX) {
+              selectOnly([parts.line]);
+              beginBoxResize(e, parts);
+              return;
+            }
+            if (!selected.has(parts.line)) selectOnly([parts.line]);
+            beginGroupDrag(e, parts, wasSole);
           });
           dom.appendChild(body);
+          const keys = document.createElement('div');
+          keys.classList.add('canvas-conceptmap__keys');
+          keys.textContent = 'Click selects, Shift-click or a frame selects more. Click a selected box or press Enter to edit. Drag a box onto another to move it under it. Alt with the arrows reorders and re-nests; arrows nudge; Delete removes; Tab adds a child.';
+          dom.appendChild(keys);
+          // Selection survives the repaint for every line still drawn.
+          const drawn = new Set(Array.from(body.querySelectorAll('.parallx-mindmap__node[data-mm-line]'))
+            .map((g) => Number(g.getAttribute('data-mm-line'))));
+          for (const l of [...selected]) if (!drawn.has(l)) selected.delete(l);
+          paintSelection();
+          if (refocusMap) {
+            refocusMap = false;
+            body.focus({ preventScroll: true });
+          }
         }
       };
 
@@ -863,10 +1164,16 @@ export const ConceptMap = Node.create({
         // turns a mousedown on the tools into a node SELECTION, and every
         // innerHTML rewrite triggers a reconciliation that clobbers the
         // NodeView's DOM (the mathBlock precedent returns both).
+        // Undo and redo pressed on the map are the page's, so they pass.
         stopEvent: (event: Event) => {
           if (editing || boxEditTeardown) return true;
           const t = event.target as HTMLElement | null;
-          return !!t?.closest?.('.canvas-conceptmap__tool, .canvas-conceptmap__editor, .canvas-conceptmap__add, .canvas-conceptmap__boxedit, .parallx-mindmap__node');
+          if (!t?.closest?.('.canvas-conceptmap__tools, .canvas-conceptmap__editor, .canvas-conceptmap__add, .canvas-conceptmap__boxedit, .canvas-conceptmap__body')) return false;
+          if (event.type === 'keydown') {
+            const k = event as KeyboardEvent;
+            if ((k.ctrlKey || k.metaKey) && /^[zy]$/i.test(k.key)) return false;
+          }
+          return true;
         },
         ignoreMutation: () => true,
         destroy: () => {

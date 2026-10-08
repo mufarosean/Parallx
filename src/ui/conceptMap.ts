@@ -383,6 +383,10 @@ export interface LaidOutNode {
   /** The colour index the card wears: its LEVEL (0 index card, 1 note,
    *  2+ slip). Lines take their card's colour; arrowheads the child's. */
   readonly branch: number;
+  /** The key its layout override is stored under: the label, with a
+   *  count for a repeated label ("Idea", "Idea␟2"), so two boxes that
+   *  share a name never share a position. Set by layoutMindMap. */
+  readonly key?: string;
 }
 
 export interface MindMapLayout {
@@ -394,11 +398,15 @@ export interface MindMapLayout {
 }
 
 /**
- * User layout adjustments, keyed by LABEL text: position deltas from the
- * computed layout and an optional explicit width (text re-wraps to it).
- * Label keying is deliberate: rename a node in the outline and its
- * override quietly evaporates back to auto layout. Self-healing, never
- * a second source of structural truth.
+ * User layout adjustments, keyed by the box's override KEY (its label,
+ * counted when repeated, see overrideKeysByLine): a position delta and an
+ * optional explicit width (text re-wraps to it). Deltas are TREE-RELATIVE:
+ * a box sits at its automatic place plus its own delta plus every
+ * ancestor's, so moving a card carries its branch, a card added under a
+ * moved card lands beside it, and a branch moved under another card
+ * follows that card. Label keying is deliberate: rename a node and its
+ * override quietly evaporates back to auto layout. Self-healing, never a
+ * second source of structural truth.
  */
 export type MindMapOverrides = Readonly<Record<string, {
   readonly dx?: number;
@@ -409,28 +417,75 @@ export type MindMapOverrides = Readonly<Record<string, {
 const MIN_OVERRIDE_W = 80;
 const MAX_OVERRIDE_W = 420;
 
-/** Apply overrides to a computed layout, then re-normalise the bounds. */
+/** The separator between a repeated label and its count in an override key. */
+const KEY_SEP = '\u241F';
+
+/**
+ * Every box's override key by SOURCE LINE, in outline order: the label
+ * for its first box, then "label␟2", "label␟3" for later boxes sharing it.
+ */
+export function overrideKeysByLine(roots: readonly MindMapNode[]): Map<number, string> {
+  const seen = new Map<string, number>();
+  const out = new Map<number, string>();
+  const walk = (n: MindMapNode): void => {
+    const count = (seen.get(n.label) ?? 0) + 1;
+    seen.set(n.label, count);
+    out.set(n.line, count === 1 ? n.label : `${n.label}${KEY_SEP}${count}`);
+    n.children.forEach(walk);
+  };
+  roots.forEach(walk);
+  return out;
+}
+
+/** The margin every map keeps around its cards, in map units. */
+export const MAP_MARGIN = MAP_GRID;
+/** Spare board past the last box (right and below), on the canvas board only. */
+const BOARD_ROOM = MAP_GRID * 4;
+
+/**
+ * Apply overrides to a computed layout. A box's place is its automatic
+ * place plus the deltas of itself and every ancestor. The board keeps the
+ * automatic layout's frame: nothing shifts when a card moves inside it,
+ * so a drop lands exactly where it was let go. Only a card left of or
+ * above the margin (a map saved before moves were clamped) shifts the
+ * whole board, by whole grid cells.
+ */
 export function applyOverrides(layout: MindMapLayout, overrides: MindMapOverrides): MindMapLayout {
   const keys = Object.keys(overrides ?? {});
   if (keys.length === 0) return layout;
 
-  const nodes = layout.nodes.map((n) => {
-    const o = overrides[n.label];
-    if (!o) return n;
+  const parentIdx = new Map<number, number>();
+  for (const e of layout.edges) parentIdx.set(e.to, e.from);
+  const own = (i: number): { dx: number; dy: number } => {
+    const o = overrides[layout.nodes[i].key ?? layout.nodes[i].label];
+    return {
+      dx: o && Number.isFinite(o.dx) ? o.dx! : 0,
+      dy: o && Number.isFinite(o.dy) ? o.dy! : 0,
+    };
+  };
+  const total = new Map<number, { dx: number; dy: number }>();
+  const effective = (i: number, guard = 0): { dx: number; dy: number } => {
+    const hit = total.get(i);
+    if (hit) return hit;
+    const mine = own(i);
+    const p = parentIdx.get(i);
+    const up = p === undefined || guard > 64 ? { dx: 0, dy: 0 } : effective(p, guard + 1);
+    const sum = { dx: mine.dx + up.dx, dy: mine.dy + up.dy };
+    total.set(i, sum);
+    return sum;
+  };
+
+  const nodes = layout.nodes.map((n, i) => {
+    const o = overrides[n.key ?? n.label];
     let { width, height } = n;
-    if (typeof o.w === 'number' && Number.isFinite(o.w)) {
+    if (o && typeof o.w === 'number' && Number.isFinite(o.w)) {
       const w = snapSize(Math.max(MIN_OVERRIDE_W, Math.min(MAX_OVERRIDE_W, Math.round(o.w))));
       const remeasured = measureLabel(n.label, Math.max(24, w - cardMetrics(n.depth).padX * 2), n.depth);
       width = w;
       height = remeasured.height;
     }
-    return {
-      ...n,
-      x: n.x + (Number.isFinite(o.dx) ? o.dx! : 0),
-      y: n.y + (Number.isFinite(o.dy) ? o.dy! : 0),
-      width,
-      height,
-    };
+    const d = effective(i);
+    return { ...n, x: n.x + d.dx, y: n.y + d.dy, width, height };
   });
 
   let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
@@ -440,14 +495,42 @@ export function applyOverrides(layout: MindMapLayout, overrides: MindMapOverride
     maxX = Math.max(maxX, n.x + n.width);
     maxY = Math.max(maxY, n.y + n.height / 2);
   }
-  const shiftX = MARGIN - minX;
-  const shiftY = MARGIN - minY;
+  const shiftX = minX < MAP_MARGIN ? Math.ceil((MAP_MARGIN - minX) / MAP_GRID) * MAP_GRID : 0;
+  const shiftY = minY < MAP_MARGIN ? Math.ceil((MAP_MARGIN - minY) / MAP_GRID) * MAP_GRID : 0;
   return {
     ...layout,
-    nodes: nodes.map((n) => ({ ...n, x: n.x + shiftX, y: n.y + shiftY })),
-    width: maxX - minX + 2 * MARGIN,
-    height: maxY - minY + 2 * MARGIN,
+    nodes: shiftX || shiftY ? nodes.map((n) => ({ ...n, x: n.x + shiftX, y: n.y + shiftY })) : nodes,
+    width: maxX + shiftX + MAP_MARGIN,
+    height: maxY + shiftY + MAP_MARGIN,
   };
+}
+
+/**
+ * Overrides saved before deltas were tree-relative (each box moved on its
+ * own) → the same picture as tree-relative deltas: a box's delta minus
+ * its parent's. Pure.
+ */
+export function migrateFlatOverrides(src: string, overrides: MindMapOverrides): MindMapOverrides {
+  const entries = Object.keys(overrides ?? {});
+  if (entries.length === 0) return overrides;
+  const roots = parseMindMap(src);
+  const keys = overrideKeysByLine(roots);
+  const out: Record<string, { dx?: number; dy?: number; w?: number }> = {};
+  const walk = (n: MindMapNode, parentKey: string | null): void => {
+    const key = keys.get(n.line)!;
+    const mine = overrides[key];
+    const up = parentKey ? overrides[parentKey] : undefined;
+    const dx = (mine?.dx ?? 0) - (up?.dx ?? 0);
+    const dy = (mine?.dy ?? 0) - (up?.dy ?? 0);
+    const entry: { dx?: number; dy?: number; w?: number } = {};
+    if (dx) entry.dx = dx;
+    if (dy) entry.dy = dy;
+    if (mine && typeof mine.w === 'number') entry.w = mine.w;
+    if (Object.keys(entry).length) out[key] = entry;
+    n.children.forEach((c) => walk(c, key));
+  };
+  roots.forEach((r) => walk(r, null));
+  return out;
 }
 
 /** Back-compat single-line width estimate (tests, external callers). */
@@ -594,6 +677,15 @@ function layoutRadial(root: MindMapNode, sizes: ReadonlyMap<MindMapNode, Measure
 export function layoutMindMap(
   roots: readonly MindMapNode[],
   dir: MindMapDirection = 'right',
+): MindMapLayout {
+  const layout = layoutUnkeyed(roots, dir);
+  const keys = overrideKeysByLine(roots);
+  return { ...layout, nodes: layout.nodes.map((n) => ({ ...n, key: keys.get(n.line) ?? n.label })) };
+}
+
+function layoutUnkeyed(
+  roots: readonly MindMapNode[],
+  dir: MindMapDirection,
 ): MindMapLayout {
   const sizes = new Map<MindMapNode, MeasuredLabel>();
   const walkMeasure = (n: MindMapNode, depth: number): void => {
@@ -781,6 +873,185 @@ export function deleteOutlineSubtree(src: string, line: number): string | null {
   return kept.join('\n');
 }
 
+// ── Restructuring: whole branches move as blocks of outline lines ─────────
+//
+// Every operation below is pure and line-addressed. A branch is its line
+// plus every deeper line after it; it moves as one block and is
+// re-indented as a whole, so its inner shape never changes. Each returns
+// the new outline and the new lines of the boxes it moved (the block
+// keeps them selected), or null when the move is impossible.
+
+/** The drawn tree's relations by SOURCE LINE (what the map shows). */
+export interface OutlineTree {
+  readonly parentOf: ReadonlyMap<number, number>;
+  readonly kidsOf: ReadonlyMap<number, readonly number[]>;
+  /** Top-level lines, in order. */
+  readonly roots: readonly number[];
+}
+
+export function outlineTree(src: string): OutlineTree {
+  const parentOf = new Map<number, number>();
+  const kidsOf = new Map<number, number[]>();
+  const roots = parseMindMap(src);
+  const walk = (n: MindMapNode): void => {
+    kidsOf.set(n.line, n.children.map((c) => c.line));
+    for (const c of n.children) { parentOf.set(c.line, n.line); walk(c); }
+  };
+  roots.forEach(walk);
+  return { parentOf, kidsOf, roots: roots.map((r) => r.line) };
+}
+
+/** `line` and every line below it in the drawn tree. */
+export function subtreeLines(tree: OutlineTree, line: number): number[] {
+  const out: number[] = [];
+  const walk = (l: number): void => { out.push(l); (tree.kidsOf.get(l) ?? []).forEach(walk); };
+  walk(line);
+  return out;
+}
+
+/** The lines among `lines` that have no ancestor among them (branch tops). */
+export function topmostLines(tree: OutlineTree, lines: Iterable<number>): number[] {
+  const set = new Set(lines);
+  const out: number[] = [];
+  for (const l of set) {
+    if (!tree.kidsOf.has(l)) continue;
+    let p = tree.parentOf.get(l);
+    let covered = false;
+    while (p !== undefined) {
+      if (set.has(p)) { covered = true; break; }
+      p = tree.parentOf.get(p);
+    }
+    if (!covered) out.push(l);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** A branch's lines without the blank lines trailing it. */
+function branchEnd(lines: readonly string[], line: number): number {
+  let end = subtreeEndLine(lines, line);
+  while (end > line && !lines[end].trim()) end--;
+  return end;
+}
+
+/** The outline's own indent step: the smallest parent-to-child indent (2 by default). */
+function indentStep(lines: readonly string[], tree: OutlineTree): number {
+  let step = Infinity;
+  for (const [child, parent] of tree.parentOf) {
+    const d = indentWidth(lines[child]) - indentWidth(lines[parent]);
+    if (d > 0) step = Math.min(step, d);
+  }
+  return Number.isFinite(step) ? step : 2;
+}
+
+/** Re-base a block's indentation: its first line lands at `toIndent`. */
+function reindent(block: readonly string[], toIndent: number): string[] {
+  const base = indentWidth(block[0]);
+  return block.map((l) => (l.trim()
+    ? ' '.repeat(Math.max(0, toIndent + indentWidth(l) - base)) + l.trimStart()
+    : ''));
+}
+
+/** Cut whole branches out (topmost first); return what is left and the blocks. */
+function cutBranches(lines: readonly string[], tops: readonly number[]): { rest: string[]; blocks: string[][]; removedBefore: (line: number) => number } {
+  const ranges = tops.map((t) => [t, branchEnd(lines, t)] as const).sort((a, b) => a[0] - b[0]);
+  const blocks = ranges.map(([a, b]) => lines.slice(a, b + 1));
+  const rest: string[] = [];
+  lines.forEach((l, i) => { if (!ranges.some(([a, b]) => i >= a && i <= b)) rest.push(l); });
+  const removedBefore = (line: number): number =>
+    ranges.reduce((acc, [a, b]) => acc + (b < line ? b - a + 1 : 0), 0);
+  return { rest, blocks, removedBefore };
+}
+
+/**
+ * Move the branches at `lines` (nested picks collapse to their topmost)
+ * under the box at `target`, after its last child, in outline order.
+ * Null when the target is inside a moved branch, or nothing would change.
+ */
+export function moveBranchesUnder(src: string, lines: Iterable<number>, target: number): { src: string; lines: number[] } | null {
+  const all = String(src || '').split('\n');
+  const tree = outlineTree(src);
+  if (!tree.kidsOf.has(target)) return null;
+  const tops = topmostLines(tree, lines);
+  if (tops.length === 0) return null;
+  for (const t of tops) if (subtreeLines(tree, t).includes(target)) return null;
+  if (tops.every((t) => tree.parentOf.get(t) === target)) return null;
+
+  const { rest, blocks, removedBefore } = cutBranches(all, tops);
+  const tgt = target - removedBefore(target);
+  // Children take the indent the target's children already use.
+  const kids = tree.kidsOf.get(target) ?? [];
+  const keptKid = kids.find((k) => !tops.includes(k));
+  const childIndent = keptKid !== undefined ? indentWidth(all[keptKid]) : indentWidth(all[target]) + indentStep(all, tree);
+  const at = branchEnd(rest, tgt) + 1;
+  const moved = blocks.map((b) => reindent(b, childIndent));
+  const newLines: number[] = [];
+  let cursor = at;
+  for (const b of moved) { newLines.push(cursor); cursor += b.length; }
+  rest.splice(at, 0, ...moved.flat());
+  return { src: rest.join('\n'), lines: newLines };
+}
+
+/** Swap the branch at `line` with its previous (-1) or next (+1) sibling. */
+export function moveBranchAmongSiblings(src: string, line: number, step: -1 | 1): { src: string; lines: number[] } | null {
+  const all = String(src || '').split('\n');
+  const tree = outlineTree(src);
+  if (!tree.kidsOf.has(line)) return null;
+  const parent = tree.parentOf.get(line);
+  const sibs = parent === undefined ? tree.roots : tree.kidsOf.get(parent) ?? [];
+  const i = sibs.indexOf(line);
+  const j = i + step;
+  if (i < 0 || j < 0 || j >= sibs.length) return null;
+  const [first, second] = step < 0 ? [sibs[j], line] : [line, sibs[j]];
+  const aEnd = branchEnd(all, first);
+  const bEnd = branchEnd(all, second);
+  const a = all.slice(first, aEnd + 1);
+  const b = all.slice(second, bEnd + 1);
+  const between = all.slice(aEnd + 1, second);
+  const out = [
+    ...all.slice(0, first),
+    ...reindent(b, indentWidth(all[first])),
+    ...between,
+    ...reindent(a, indentWidth(all[second])),
+    ...all.slice(bEnd + 1),
+  ];
+  const movedAt = step < 0 ? first : first + b.length + between.length;
+  return { src: out.join('\n'), lines: [movedAt] };
+}
+
+/** Make the branch at `line` the last child of its previous sibling. */
+export function indentBranch(src: string, line: number): { src: string; lines: number[] } | null {
+  const tree = outlineTree(src);
+  const parent = tree.parentOf.get(line);
+  const sibs = parent === undefined ? tree.roots : tree.kidsOf.get(parent) ?? [];
+  const i = sibs.indexOf(line);
+  if (i <= 0) return null;
+  return moveBranchesUnder(src, [line], sibs[i - 1]);
+}
+
+/** Make the branch at `line` a sibling of its parent, right after it. */
+export function outdentBranch(src: string, line: number): { src: string; lines: number[] } | null {
+  const all = String(src || '').split('\n');
+  const tree = outlineTree(src);
+  const parent = tree.parentOf.get(line);
+  if (parent === undefined) return null;
+  const { rest, blocks, removedBefore } = cutBranches(all, [line]);
+  const p = parent - removedBefore(parent);
+  const at = branchEnd(rest, p) + 1;
+  const block = reindent(blocks[0], indentWidth(all[parent]));
+  rest.splice(at, 0, ...block);
+  return { src: rest.join('\n'), lines: [at] };
+}
+
+/** Delete several branches at once; null when nothing would be left. */
+export function deleteBranches(src: string, lines: Iterable<number>): string | null {
+  const all = String(src || '').split('\n');
+  const tops = topmostLines(outlineTree(src), lines);
+  if (tops.length === 0) return null;
+  const { rest } = cutBranches(all, tops);
+  if (!rest.some((l) => l.trim())) return null;
+  return rest.join('\n');
+}
+
 /**
  * Drop override entries whose label no longer names any box in the
  * outline. The label keying is self-healing by design (a rename lets
@@ -790,9 +1061,7 @@ export function deleteOutlineSubtree(src: string, line: number): string | null {
 export function pruneOverrides(overrides: MindMapOverrides, src: string): MindMapOverrides {
   const keys = Object.keys(overrides);
   if (keys.length === 0) return overrides;
-  const live = new Set<string>();
-  const walk = (n: MindMapNode): void => { live.add(n.label); n.children.forEach(walk); };
-  for (const root of parseMindMap(src)) walk(root);
+  const live = new Set<string>(overrideKeysByLine(parseMindMap(src)).values());
   if (keys.every((k) => live.has(k))) return overrides;
   const kept: Record<string, MindMapOverrides[string]> = {};
   for (const k of keys) if (live.has(k)) kept[k] = overrides[k];
@@ -1153,7 +1422,7 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
 
   const dir = opts.dir ?? 'right';
   const base = layoutMindMap(roots, dir);
-  const { nodes, edges, width, height } = opts.overrides
+  const { nodes, edges, width: layoutW, height: layoutH } = opts.overrides
     ? applyOverrides(base, opts.overrides)
     : base;
 
@@ -1194,7 +1463,8 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
   const boxes = nodes.map((n) => {
     const m = cardMetrics(n.depth);
     const kind = cardKind(n.depth);
-    const ow = opts.overrides?.[n.label]?.w;
+    const nodeKey = n.key ?? n.label;
+    const ow = opts.overrides?.[nodeKey]?.w;
     const measured = measureLabel(
       n.label,
       typeof ow === 'number' && Number.isFinite(ow) ? Math.max(24, Math.round(ow) - m.padX * 2) : undefined,
@@ -1211,6 +1481,7 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
       ? ' data-mm-tilt="' + tilt + '" transform="rotate(' + tilt + ' ' + cx + ' ' + n.y + ')"'
       : '';
     let open = '<g class="' + cls + '" data-mindmap-label="' + attrLabel + '" data-mm-line="' + n.line + '"'
+      + ' data-mm-key="' + escapeXml(nodeKey) + '"'
       + tiltAttrs + ' role="button" tabindex="0">'
       + '<rect class="parallx-mindmap__box" x="' + n.x + '" y="' + top + '" width="' + n.width + '" height="' + n.height
       + '" rx="' + m.radius + '" filter="url(#mm' + uid + '-paper)" />';
@@ -1243,6 +1514,11 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
   // The map scales down to fit a narrow column, never below 80%; past
   // that the host scrolls it. Width/height attributes keep the natural
   // size for hosts without the stylesheet.
+  // A board keeps spare cells to its right and below, so a box can always
+  // be dropped past the last one (the board then grows to hold it).
+  const room = opts.board ? BOARD_ROOM : 0;
+  const width = layoutW + room;
+  const height = layoutH + room;
   const minWidth = Math.round(width * 0.8);
   return '<div class="parallx-mindmap" data-mindmap-dir="' + dir + '">'
     + '<svg viewBox="0 0 ' + width + ' ' + height + '" width="' + width + '" height="' + height + '" '

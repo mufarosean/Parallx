@@ -205,17 +205,24 @@
 .canvas-conceptmap {
   position: relative;
   margin: 8px 0;
-  padding: 14px 12px 12px;
+  /* The top band holds the tools, so they never sit over a box. */
+  padding: 38px 12px 12px;
   border-radius: var(--px-radius-md, 6px);
   overflow-x: auto;
   background-color: var(--px-bg, #16171a);
 }
 
+/* The tools sit in the block's top band and stay put while a wide map
+   scrolls sideways under them (sticky to the left edge, full width). */
 .canvas-conceptmap__tools {
-  position: absolute;
-  top: 6px;
-  right: 8px;
+  position: sticky;
+  left: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 26px;
+  margin: -32px 0 6px;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: 6px;
   opacity: 0;
@@ -392,4 +399,72 @@
 .canvas-conceptmap__add:hover {
   background: var(--px-accent, #569cd6);
   color: var(--px-text-on-accent, #fff);
+}
+
+/* ── Canvas block: selection, moving, re-parenting ──
+   The block draws its map at real size (one map unit is one pixel), so
+   the grid is the same 18px on every map and a drop never rescales the
+   board; a wide map scrolls sideways inside the block. */
+
+.canvas-conceptmap .parallx-mindmap svg {
+  max-width: none;
+}
+
+.canvas-conceptmap__body {
+  outline: none;
+}
+
+.parallx-mindmap__node--selected .parallx-mindmap__box,
+.parallx-mindmap__node--selected:hover .parallx-mindmap__box {
+  stroke: var(--px-accent);
+  stroke-width: 2;
+}
+
+/* The box a dragged branch will move under. */
+.parallx-mindmap__node--drop .parallx-mindmap__box,
+.parallx-mindmap__node--drop:hover .parallx-mindmap__box {
+  stroke: var(--px-accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+}
+
+.parallx-mindmap__node--moving {
+  opacity: 0.85;
+}
+
+/* The selection frame drawn across the board. */
+.canvas-conceptmap__marquee {
+  position: absolute;
+  z-index: 3;
+  border: 1px solid var(--px-accent);
+  border-radius: var(--px-radius-xs, 2px);
+  background: color-mix(in srgb, var(--px-accent) 10%, transparent);
+  pointer-events: none;
+}
+
+/* "Move under ..." above the drop target while dragging. */
+.canvas-conceptmap__dropnote {
+  position: absolute;
+  z-index: 4;
+  padding: 2px 8px;
+  border-radius: var(--px-radius-full, 999px);
+  background: var(--px-accent);
+  color: var(--px-text-on-accent, #fff);
+  font-size: var(--px-text-xs);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* The map's keys, shown while the map has focus. */
+.canvas-conceptmap__keys {
+  display: none;
+  position: sticky;
+  left: 0;
+  margin-top: var(--px-space-2, 8px);
+  font-size: var(--px-text-xs);
+  color: var(--px-text-muted);
+}
+
+.canvas-conceptmap:focus-within:not(.is-editing) .canvas-conceptmap__keys {
+  display: block;
 }
