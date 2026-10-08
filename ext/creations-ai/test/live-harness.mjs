@@ -223,8 +223,15 @@ export async function sendAndWait(container, captured, text, { timeoutMs = 42000
   const ta = container.querySelector('.tg-input-textarea');
   ta.value = text;
   container.querySelector('.tg-input-send').click();
-  await waitFor(() => captured.length > before, timeoutMs, `model request after send: ${JSON.stringify(text.slice(0, 40))}`);
-  const rec = captured[captured.length - 1];
+  // The turn's own request: background calls (memory extraction after a
+  // reply) can land in between, so it is the one whose last user message
+  // carries what was sent.
+  const isTurn = (r) => {
+    const last = r.messages[r.messages.length - 1];
+    return last?.role === 'user' && String(last.content).includes(text);
+  };
+  await waitFor(() => captured.slice(before).some(isTurn), timeoutMs, `model request after send: ${JSON.stringify(text.slice(0, 40))}`);
+  const rec = captured.slice(before).find(isTurn);
   // Generation done = stream ended AND UI left generating state.
   await waitFor(() => rec.endedAt !== null, timeoutMs, 'stream end');
   await waitFor(() => {

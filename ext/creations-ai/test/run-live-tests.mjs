@@ -215,13 +215,18 @@ async function main() {
   // ── S7: regenerate keeps variants ─────────────────────────────────────
   const aiRows = [...container.querySelectorAll('.tg-msg--ai')];
   const lastRow = aiRows[aiRows.length - 1];
-  const regenBtn = lastRow?.querySelector('button[title="Regenerate this turn"]');
+  // The button opens a box for an optional direction; its Regenerate runs it.
+  const regenBtn = lastRow?.querySelector('button[title^="Regenerate this turn"]');
   hard('S7.1', 'regenerate affordance present', !!regenBtn);
   if (regenBtn) {
     const before = captured.length;
     regenBtn.click();
-    await waitFor(() => captured.length > before, 420000, 'regen request');
-    const rec = captured[captured.length - 1];
+    const go = await waitFor(() => container.querySelector('.tg-regen-box .tg-msg-edit-save'), 5000, 'regenerate box');
+    go.click();
+    // Background memory extraction can land in between: the regen is the request that is not it.
+    const isTurn = (r) => !String(r.messages[0]?.content ?? '').startsWith('You extract durable memory');
+    await waitFor(() => captured.slice(before).some(isTurn), 420000, 'regen request');
+    const rec = captured.slice(before).find(isTurn);
     await waitFor(() => rec.endedAt !== null, 420000, 'regen stream end');
     await waitFor(async () => {
       const m = await readThreadMessages(wsDir, 't-basic');

@@ -74,15 +74,16 @@ last ran in July, on another model.
 
 ### Repair the behaviour suite
 
-`ext/creations-ai/test/run-live-tests.mjs --mock` fails six hard checks
-today. A mock run cannot fail on the model, so these are the harness
-falling behind the app:
+`ext/creations-ai/test/run-live-tests.mjs --mock` failed six hard checks
+until 2026-10-08. A mock run cannot fail on the model, so they were the
+harness falling behind the app. Repaired:
 
-| Check | Looks for | Cause |
+| Check | Cause | Fix |
 |---|---|---|
-| S7.1 | a button titled "Regenerate this turn" | Confirmed: the title is now "Regenerate this turn, with a direction if you like". |
-| S5.1 to S5.4 | the screenplay preset reaching the prompt after picking it in Chat Settings | Not yet diagnosed. The length picker in the same drawer still works (S2 passes). |
-| S6.3 | "## Turn Contract" in the system prompt of a long chat | Not yet diagnosed. The heading still exists in the prompt builder. |
+| S7.1 | The button's title is now "Regenerate this turn, with a direction if you like", and it opens a box for a direction. | Match the title's start; press the box's Regenerate. |
+| S5.1 to S5.4, S6.3 | After a reply the app sends a background memory-extraction request, and the harness read the last request sent, which was that one. | `sendAndWait` returns the request whose last user message carries the sent text; the regenerate step skips memory requests. |
+
+All hard checks pass in mock mode.
 
 A mock run rewrites `last-live-report.md`; restore it with
 `git checkout ext/creations-ai/test/` unless the run is meant to be kept.
@@ -302,7 +303,7 @@ on your model. Borrow their methods and rubrics.
 
 ## Order of work
 
-1. Repair the six drifted checks in the behaviour suite.
+1. Repair the six drifted checks in the behaviour suite. Done 2026-10-08.
 2. Add the Part 1 sections to `run-creations-quality.mjs`. Run it live and
    keep the report.
 3. Add the Part 3 sections, the cheapest real test of Directions. Fix the
