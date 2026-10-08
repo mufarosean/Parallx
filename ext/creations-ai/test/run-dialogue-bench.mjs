@@ -129,7 +129,7 @@ let mockN = 0;
 function mockRespond(label, messages, { role }) {
   if (role === 'judge') {
     const n = (messages[1].content.match(/^\s*\d+\. /gm) || []).length;
-    return JSON.stringify({ lines: Array.from({ length: n }, (_, i) => ({ n: i + 1, flags: i % 3 === 1 ? ['metaphor'] : [], good: i % 3 !== 1, habit: i % 2 === 0, why: '' })), scene: { recognisable: 4, balance: 3 } });
+    return JSON.stringify({ lines: Array.from({ length: n }, (_, i) => ({ n: i + 1, flags: i % 3 === 1 ? ['metaphor'] : [], good: i % 3 !== 1, habit: i % 2 === 0, answered: i % 2 === 0 ? true : null, why: '' })), scene: { recognisable: 4, balance: 3 } });
   }
   mockN++;
   return `*She wipes the counter.* "${MOCK_LINES[mockN % MOCK_LINES.length]}" *She looks up.* "${MOCK_LINES[(mockN + 2) % MOCK_LINES.length]}"`;
@@ -149,9 +149,10 @@ const DIALOGUE_JUDGE = [
   '- "unnatural": no normal person would say it out loud: too polished, too wise, a little speech, therapy-speak, narrating their own feelings.',
   '- "flat": empty or generic; says nothing this person in particular would say.',
   'Set "good" to true when the line sounds like a real person in that moment. Wit, sarcasm, warmth and a turn of phrase are good when they fit the moment and the person; plain everyday lines are good too. A line with any fault is not good.',
+  'Also say for each line whether it answers what was said to them ("answered"): true when what was said asked something and this line, read with the lines before it in the same reply, gives a plain answer; false when it was asked something and the line dodges it, answers with a question, or goes somewhere else; null when nothing was asked or the line is not meant as the answer. A question back after a plain answer still counts as answered.',
   'Also say for each line whether it shows one of the habits in the character\'s VOICE ("habit": true or false). A habit showing now and then is how people are; a habit in every line is not.',
   'Then judge the scene as a whole: "recognisable", 1 to 5, could these lines only be this person (5) or anyone at all (1); "balance", 1 to 5, does this person mostly talk plainly with their habits showing now and then (5), or does nearly every line perform a habit (1).',
-  'Judge each line in its moment. Reply as JSON: {"lines": [{"n": 1, "flags": [], "good": true, "habit": false, "why": "a few words"}], "scene": {"recognisable": 4, "balance": 4}}, one entry per line, in order.',
+  'Judge each line in its moment. Reply as JSON: {"lines": [{"n": 1, "flags": [], "good": true, "habit": false, "answered": true, "why": "a few words"}], "scene": {"recognisable": 4, "balance": 4}}, one entry per line, in order.',
 ].join('\n');
 
 // ── Run ─────────────────────────────────────────────────────────────────────
@@ -244,9 +245,11 @@ for (const cond of ordered) {
         const msgs = await d.readMessages(threadId);
         const sceneLines = [];
         let context = '';
+        let reply = 0;
         for (const m of msgs) {
           if (m.author !== 'ai') { context = m.content; continue; }
-          for (const text of spokenLines(m.content)) sceneLines.push({ id: `${key} l${sceneLines.length + 1}`, cond: cond.id, sample: s, scene: scene.id, who: scene.who.name, context, text, flags: null, good: null, mechAbstract: abstractSubjects(text).length > 0, simile: SIMILE.test(text) });
+          reply++;
+          for (const text of spokenLines(m.content)) sceneLines.push({ id: `${key} l${sceneLines.length + 1}`, cond: cond.id, sample: s, scene: scene.id, who: scene.who.name, reply, context, text, flags: null, good: null, mechAbstract: abstractSubjects(text).length > 0, simile: SIMILE.test(text) });
         }
         lines.push(...sceneLines);
         played.push({ key, scene, sceneLines });
@@ -262,7 +265,7 @@ for (const cond of ordered) {
 // The dialogue judge, after all the play: every line, with what was said to the character.
 for (const { key, scene, sceneLines } of played) {
   try {
-    const v = await judgeJson(gw, `${key} judge2`, DIALOGUE_JUDGE,
+    const v = await judgeJson(gw, `${key} judge3`, DIALOGUE_JUDGE,
       `CHARACTER: ${scene.who.name}. ${scene.who.tagline}\nVOICE:\n${scene.who.voice}\n\n${sceneLines.map((l, i) => `${i + 1}. (${USER} had said: "${l.context.replace(/\*[^*]*\*/g, '').trim().slice(0, 160)}") ${scene.who.name.split(' ')[0]}: "${l.text}"`).join('\n')}`);
     const verdicts = Array.isArray(v?.lines) ? v.lines : [];
     sceneLines.forEach((l, i) => {
@@ -272,6 +275,7 @@ for (const { key, scene, sceneLines } of played) {
       l.good = x.good === true;
       l.why = String(x.why || '');
       l.habit = x.habit === true;
+      l.answered = x.answered === true ? true : x.answered === false ? false : null;
     });
     const sc = v?.scene || {};
     SCENE_SCORES.push({ cond: sceneLines[0]?.cond, who: scene.who.name, recognisable: Number(sc.recognisable) || NaN, balance: Number(sc.balance) || NaN });
@@ -300,16 +304,20 @@ for (const c of wanted) {
     const ls = lines.filter((l) => l.cond === c.id && l.who === who);
     const judged = ls.filter((l) => Array.isArray(l.flags));
     const sc = SCENE_SCORES.filter((x) => x.cond === c.id && x.who === who);
-    balanceRows.push(`| ${c.id} | ${who} | ${ls.length} | ${pct(judged, (l) => l.habit).toFixed(0)} | ${pct(ls, (l) => /\?\s*$/.test(l.text)).toFixed(0)} | ${pct(ls, (l) => l.text.split(/\s+/).length > 35).toFixed(0)} | ${avg(sc.map((x) => x.balance)).toFixed(1)} | ${avg(sc.map((x) => x.recognisable)).toFixed(1)} | ${pct(judged, (l) => l.flags.some((f) => f !== 'flat')).toFixed(0)} | ${pct(judged, (l) => l.good).toFixed(0)} |`);
+    const replies = new Map();
+    for (const l of judged) { const k = `${l.sample} ${l.scene} ${l.reply}`; const r = replies.get(k) || { asked: false, answered: false }; if (l.answered !== null && l.answered !== undefined) r.asked = true; if (l.answered === true) r.answered = true; replies.set(k, r); }
+    const asked = [...replies.values()].filter((r) => r.asked);
+    const answeredPct = asked.length ? (100 * asked.filter((r) => r.answered).length) / asked.length : NaN;
+    balanceRows.push(`| ${c.id} | ${who} | ${ls.length} | ${Number.isFinite(answeredPct) ? answeredPct.toFixed(0) : '-'} | ${pct(judged, (l) => l.habit).toFixed(0)} | ${pct(ls, (l) => /\?\s*$/.test(l.text)).toFixed(0)} | ${pct(ls, (l) => l.text.split(/\s+/).length > 35).toFixed(0)} | ${avg(sc.map((x) => x.balance)).toFixed(1)} | ${avg(sc.map((x) => x.recognisable)).toFixed(1)} | ${pct(judged, (l) => l.flags.some((f) => f !== 'flat')).toFixed(0)} | ${pct(judged, (l) => l.good).toFixed(0)} |`);
   }
 }
 const balanceTable = [
   '### Balance by character',
   '',
-  'Habit: share of lines showing a voice habit (judge; some of the time is right, nearly all is not). Ends in ?: share of lines that are questions. Long: lines over 35 words. Balance and recognisable: the judge, per scene, 1 to 5. Fault and good: per 100 lines.',
+  'Answered: share of replies that answer what they were asked (judge; a quip after the answer still counts). Habit: share of lines showing a voice habit (judge; some of the time is right, nearly all is not). Ends in ?: share of lines that are questions. Long: lines over 35 words. Balance and recognisable: the judge, per scene, 1 to 5. Fault and good: per 100 lines.',
   '',
-  '| Condition | Character | Lines | Habit % | Ends in ? % | Long % | Balance | Recognisable | Fault % | Good % |',
-  '|---|---|---|---|---|---|---|---|---|---|',
+  '| Condition | Character | Lines | Answered % | Habit % | Ends in ? % | Long % | Balance | Recognisable | Fault % | Good % |',
+  '|---|---|---|---|---|---|---|---|---|---|---|',
   ...balanceRows,
 ].join('\n');
 
@@ -396,7 +404,7 @@ if (argv.includes('--calibrate')) {
 // --dump <path>: every spoken line with its context and the judge's verdict, as JSON (for a second judge or a person).
 if (argv.includes('--dump')) {
   const out = path.resolve(argv[argv.indexOf('--dump') + 1]);
-  await fsp.writeFile(out, JSON.stringify(lines.map(({ id, cond, scene, context, text, flags, good, why }) => ({ id, cond, scene, context, text, flags, good, why })), null, 1), 'utf8');
+  await fsp.writeFile(out, JSON.stringify(lines.map(({ id, cond, scene, who, reply, context, text, flags, good, habit, answered, why }) => ({ id, cond, scene, who, reply, context, text, flags, good, habit, answered, why })), null, 1), 'utf8');
   console.log(`Lines: ${out}`);
 }
 

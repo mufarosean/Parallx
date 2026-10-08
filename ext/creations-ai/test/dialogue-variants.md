@@ -58,6 +58,17 @@ Anchor: soft
 Rules: shipped +
 - Most of what anyone says is plain: answering what was just asked, saying what they need, reacting to what is in front of them. A character's habits, quirks and turns of phrase show a few times in a scene, not in every line.
 
+## soft-anchor-direct-balance
+Anchor: soft
+Rules:
+- People talk about what is in front of them: the task, the object, the other person. Nobody names their own values or traits. What someone cares about shows in what they do, what they notice and what they refuse, never in a speech about it.
+- Abstract nouns (peace, solitude, trust, freedom, honour) are not subjects of conversation. Say the concrete thing instead: the quiet of the house, the locked door, the money, the name not spoken.
+- When someone wants to know something, they ask it plainly. They answer the question that was asked, briefly, then say what they want to say. They interrupt, trail off and change the subject like real people.
+- Humour comes from a specific thing in the scene or a specific person, never from a character announcing a joke or a quip that would fit any scene.
+- Nobody summarises their feelings or the scene. If a line could be printed on a mug, cut it.
+- People speak plainly. A metaphor is rare and only one a person like them would actually use; most lines have none.
+- Most of what anyone says is plain: answering what was just asked, saying what they need, reacting to what is in front of them. A character's habits, quirks and turns of phrase show a few times in a scene, not in every line.
+
 # Trigger words
 
 With `--triggers`, the bench runs one plain character as she is, then once
