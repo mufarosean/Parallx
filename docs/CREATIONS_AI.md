@@ -700,10 +700,29 @@ older (find, then edit of one Appearance section and one Drives line), the
 Studio shows it with Undo, and a fourth chat undoes it; then, with Tom's
 Chat Behaviour page open and a reminder typed there unsaved, a fifth chat
 gives him a limp: both land, the page opens again, and its Save keeps the
-sheet in step; 46 checks pass, no
+sheet in step; then a Studio rewrite of one Appearance section; 49 checks pass, no
 renderer errors, and shots of the Studio, the edited Studio and the
 Characters page. A skill (`build-character`) that drives the tools is the
 next step, not yet built.
+
+## Rewriting one section of a field (built 2026-10-09)
+
+The owner asked that when a user names the section they want changed, the
+AI change only that section instead of rewriting the whole field. In the
+Studio, a field written in labelled sections (Settings, Sheet structure;
+Appearance by default) shows **Whole Field** and a chip per section in its
+Rewrite box, read fresh from Settings when the box opens. A direction that
+names exactly one section by a word of its name ("change her clothes")
+picks it, until a chip is picked by hand. With a section picked, the model
+is asked for that one paragraph only (`buildSectionMessages`), and it goes
+back in its place (`spliceSection`): every other section stays word for
+word, whatever else the model sends; a reply of plain text is taken as the
+section's text; one without that section is an error on the row. Undo
+brings the whole field back. The chat's `creations_edit_character` already
+took sections alone; its description now says to send only the section the
+user names. Tests: `creationsStudioPane.test.ts`, `creationsStudioCore.test.ts`;
+the character tools probe now rewrites Tom's Clothes with a stand-in that
+rewrites all five sections, and checks only Clothes changed (49 checks).
 
 ## Lorebooks in roleplay (rebuilt 2026-10-09)
 

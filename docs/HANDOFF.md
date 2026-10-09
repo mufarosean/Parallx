@@ -3,10 +3,17 @@
 Last updated 2026-10-09. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7978 tests) and `npm run build` pass.
+tsc, the full vitest suite (7981 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
+
+## Done on 2026-10-09, cloud: rewrite one section of a field
+
+The Studio's Rewrite box on a sectioned field (Appearance) offers Whole
+Field or one section; a direction naming a section picks it; the model
+writes that section only and it is spliced back, the rest word for word.
+`docs/CREATIONS_AI.md`, "Rewriting one section of a field".
 
 ## Done on 2026-10-09, cloud: lorebooks rebuilt for roleplay
 

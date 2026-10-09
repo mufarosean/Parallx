@@ -115,7 +115,11 @@ function startOllama() {
         const toolNames = Array.isArray(parsed.tools) ? parsed.tools.map((t) => t?.function?.name).filter(Boolean) : [];
         requests.push({ msgs, toolNames });
         const isTurn = toolNames.length > 0;
-        const message = isTurn ? replyFor(msgs) : { role: 'assistant', content: 'Characters' };
+        // A Studio rewrite of one section: the stand-in rewrites every section, as models do.
+        const isSection = !isTurn && /exactly one string key/.test(String(msgs[0]?.content || '')) && /ONE paragraph: the Clothes section/.test(String(msgs[1]?.content || ''));
+        const message = isTurn ? replyFor(msgs)
+          : isSection ? { role: 'assistant', content: JSON.stringify({ appearance: ['Overview: NEW.', 'Height and build: NEW.', 'Face: NEW.', 'Clothes: A heavy oilskin coat over a moleskin waistcoat.', 'Physicality: NEW.'].join('\n\n') }) }
+          : { role: 'assistant', content: 'Characters' };
         res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Access-Control-Allow-Origin': '*' });
         res.write(JSON.stringify({ model: MODEL, message, done: false }) + '\n');
         res.end(JSON.stringify({ model: MODEL, message: { role: 'assistant', content: '' }, done: true, done_reason: 'stop' }) + '\n');
@@ -360,6 +364,24 @@ async function main() {
     await page.waitForTimeout(1_000);
     const tomSaved = await read(tom.f);
     check(tomSaved.reminder === saidOnPage && tomSaved.studio.sheet.reminder === saidOnPage && /Walks with a limp/.test(tomSaved.studio.sheet.appearance), 'Save Character on that page keeps the sheet in step, and the chat\'s change');
+
+    // Back in the Studio: Rewrite one section of Appearance, and only it changes.
+    await page.locator('button:has-text("Back To Studio")').first().click();
+    await page.waitForTimeout(1_500);
+    await page.locator('.cs-row[data-key="appearance"] [aria-label^="Rewrite"]').click();
+    await page.waitForTimeout(800);
+    const chipsShown = await page.$$eval('.cs-row[data-key="appearance"] .cs-steer-sections .cs-mode', (els) => els.map((e) => e.textContent));
+    check(JSON.stringify(chipsShown) === JSON.stringify(['Whole Field', 'Overview', 'Height and build', 'Face', 'Clothes', 'Physicality']), `Rewrite on Appearance offers Whole Field and each section (${chipsShown.join(', ')})`);
+    await page.locator('.cs-row[data-key="appearance"] .cs-row-steer textarea').fill('change his clothes to something for the rain');
+    await page.waitForTimeout(300);
+    const pressedNow = await page.$$eval('.cs-row[data-key="appearance"] .cs-steer-sections .cs-mode[aria-pressed="true"]', (els) => els.map((e) => e.textContent));
+    check(pressedNow.join() === 'Clothes', `a direction that names the clothes picks Clothes (${pressedNow.join()})`);
+    await shot('character-tools-section-rewrite.png');
+    const beforeSection = (await read(tom.f)).studio.sheet.appearance.split('\n\n');
+    await page.locator('.cs-row[data-key="appearance"] .cs-row-steer button:has-text("Rewrite")').click();
+    await page.waitForTimeout(2_500);
+    const afterSection = (await read(tom.f)).studio.sheet.appearance.split('\n\n');
+    check(afterSection.length === 5 && afterSection[3] === 'Clothes: A heavy oilskin coat over a moleskin waistcoat.' && [0, 1, 2, 4].every((i) => afterSection[i] === beforeSection[i]), 'only the Clothes section changed on the card, though the model rewrote all five');
     await page.evaluate(async () => window.__parallx_workbench__._services.get({ id: 'ICommandService' }).executeCommand('textGenerator.openCharacters'));
     await page.waitForTimeout(2_000);
     const cards = await page.$$eval('.cr-char-card, .cr-card, [class*="cr-gallery"] [class*="card"]', (els) => els.map((e) => (e.textContent || '').slice(0, 40)));

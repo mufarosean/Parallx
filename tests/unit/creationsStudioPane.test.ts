@@ -916,3 +916,75 @@ describe('a change the chat made (2026-10-09)', () => {
     expect(pane.isBusy()).toBe(false);
   });
 });
+
+describe('rewriting one section of a field (2026-10-09)', () => {
+  const ALL_NEW = ['Overview: NEW overview.', 'Height and build: NEW build.', 'Face: NEW face.', 'Clothes: A grey wool coat, patched at the cuffs.', 'Physicality: NEW hands.'].join('\n\n');
+
+  it('a picked section is the only one that changes, whatever the model sends back', async () => {
+    const w = makeWorld();
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    typeInto(root.querySelector('.cs-title') as HTMLInputElement, 'Ada Lovelace');
+    typeInto(areaOf(root, 'appearance'), SHEET.appearance);
+    // The model rewrites every section, as models do.
+    const real = w.parallx.lm.sendChatRequest;
+    w.parallx.lm.sendChatRequest = (model: string, messages: any[], options: any) => {
+      if (String(messages[0].content).includes('exactly one string key')) { w.requests.push({ messages, options }); return chunks([JSON.stringify({ appearance: ALL_NEW })]); }
+      return real(model, messages, options);
+    };
+    const row = rowOf(root, 'appearance');
+    (row.querySelector('[aria-label^="Rewrite"]') as HTMLButtonElement).click();
+    await flush();
+    const chips = [...row.querySelectorAll('.cs-steer-sections .cs-mode')] as HTMLButtonElement[];
+    expect(chips.map((c) => c.textContent)).toEqual(['Whole Field', 'Overview', 'Height and build', 'Face', 'Clothes', 'Physicality']);
+    expect(chips[0].getAttribute('aria-pressed')).toBe('true');
+    // A direction that names one section picks it.
+    const box = row.querySelector('.cs-row-steer textarea') as HTMLTextAreaElement;
+    typeInto(box, 'change her clothes to something warmer');
+    expect(chips.length).toBe(6);
+    const pressed = () => ([...row.querySelectorAll('.cs-steer-sections .cs-mode')] as HTMLButtonElement[]).filter((c) => c.getAttribute('aria-pressed') === 'true').map((c) => c.textContent);
+    expect(pressed()).toEqual(['Clothes']);
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    const asked = w.requests.at(-1)!.messages[1].content;
+    expect(asked).toContain('Rewrite ONLY the "Clothes" section of the appearance (what they wear day to day and how they wear it), following the user\'s direction for it:');
+    expect(asked).toContain('DIRECTION: change her clothes to something warmer');
+    expect(asked).toContain('Return the "appearance" key with ONE paragraph: the Clothes section, starting with "Clothes:".');
+    const paras = areaOf(root, 'appearance').value.split('\n\n');
+    const was = SHEET.appearance.split('\n\n');
+    expect(paras).toEqual([was[0], was[1], was[2], 'Clothes: A grey wool coat, patched at the cuffs.', was[4]]);
+    // Undo brings the whole field back.
+    (row.querySelector('.cs-icon-btn') as HTMLButtonElement).click();
+    expect(areaOf(root, 'appearance').value).toBe(SHEET.appearance);
+  });
+
+  it('a section picked by hand stays picked; Whole Field rewrites all of it; a field without sections has no chips', async () => {
+    const w = makeWorld();
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    typeInto(root.querySelector('.cs-title') as HTMLInputElement, 'Ada Lovelace');
+    typeInto(areaOf(root, 'appearance'), SHEET.appearance);
+    const row = rowOf(root, 'appearance');
+    (row.querySelector('[aria-label^="Rewrite"]') as HTMLButtonElement).click();
+    await flush();
+    const chip = (name: string) => ([...row.querySelectorAll('.cs-steer-sections .cs-mode')] as HTMLButtonElement[]).find((c) => c.textContent === name)!;
+    chip('Face').click();
+    const box = row.querySelector('.cs-row-steer textarea') as HTMLTextAreaElement;
+    typeInto(box, 'and her clothes');
+    expect(chip('Face').getAttribute('aria-pressed')).toBe('true');
+    // The stub answers with a plain sentence: it goes in as the Face section.
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(areaOf(root, 'appearance').value.split('\n\n')[2]).toBe('Face: Rewritten appearance.');
+    expect(areaOf(root, 'appearance').value.split('\n\n')[3]).toBe(SHEET.appearance.split('\n\n')[3]);
+    // Opened again, it starts on Whole Field.
+    (row.querySelector('[aria-label^="Rewrite"]') as HTMLButtonElement).click();
+    await flush();
+    expect(chip('Whole Field').getAttribute('aria-pressed')).toBe('true');
+    const plain = rowOf(root, 'backstory');
+    (plain.querySelector('[aria-label^="Rewrite"]') as HTMLButtonElement).click();
+    expect((plain.querySelector('.cs-steer-sections') as HTMLElement).style.display).toBe('none');
+  });
+});

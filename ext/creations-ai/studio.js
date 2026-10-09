@@ -19,6 +19,7 @@ import {
   parseJsonLoose, extractCompletedFields, parseCanonFacts, parseTwistedCanon, canonCounts,
   editCanonFact, applyCanonEdits, sourcesKey,
   sheetFromCharacter, characterFromSheet, lineageOf, stripDashes, backLinkLine, withRelationshipLine,
+  buildSectionMessages, spliceSection, sectionNamedIn,
 } from './studio-core.js';
 import { pendingChatEdit, fieldListText } from './character-tool-core.js';
 import { createPortrait, updatePortrait, hueOf, PORTRAIT_HUES, createDots, CREATIONS_PARTS_CSS } from './portrait.js';
@@ -136,6 +137,8 @@ export function injectStudioStyles() {
 .cs-row--steer .cs-row-steer { display: flex; }
 .cs-row--steer .cs-row-actions { opacity: 1; }
 .cs-row-steer .cs-textarea { background: var(--px-bg-elevated); min-height: 34px; }
+.cs-steer-sections { display: flex; flex-wrap: wrap; align-items: center; gap: var(--px-space-1); }
+.cs-steer-sections-label { font-size: var(--px-text-xs); color: var(--px-text-muted); margin-right: var(--px-space-1); }
 .cs-row-steer-foot { display: flex; align-items: center; gap: var(--px-space-2); }
 .cs-row-steer-hint { flex: 1; font-size: var(--px-text-xs); color: var(--px-text-muted); }
 .cs-row-error { grid-area: err; display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-xs); color: var(--px-danger); }
@@ -602,9 +605,22 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); steerGo.click(); }
       if (e.key === 'Escape') { e.preventDefault(); closeSteer(f.key); rerollBtn.focus(); }
     });
+    // A field written in sections (Settings, Sheet structure): Rewrite can
+    // change one section and leave the others word for word. Filled when the
+    // box opens, from the structure as it stands.
+    const steerSections = el('div', 'cs-steer-sections');
+    steerSections.style.display = 'none';
+    steerInput.addEventListener('input', () => {
+      // A direction that names one section picks it, until a section is picked by hand.
+      const entry = structureFor(f.key);
+      const r = rows[f.key];
+      if (!entry || !entry.labels || r.sectionPicked) return;
+      const named = sectionNamedIn(steerInput.value, entry);
+      if (named !== r.section) { r.section = named; paintSections(f.key); }
+    });
     const steerFoot = el('div', 'cs-row-steer-foot');
     steerFoot.append(el('span', 'cs-row-steer-hint', { text: 'Optional. Leave it empty for a fresh take.' }), steerCancel, steerGo);
-    steer.append(steerInput, steerFoot);
+    steer.append(steerInput, steerSections, steerFoot);
     const err = el('div', 'cs-row-error');
     err.style.display = 'none';
     const skel = el('div', 'cs-row-skel');
@@ -612,7 +628,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     skel.children[0].style.width = '92%';
     skel.children[1].style.width = '64%';
     row.append(label, area, acts, steer, err, skel);
-    rows[f.key] = { row, area, lockBtn, rerollBtn, undoBtn, lockMark, err, steer, steerInput, steerGo, label: f.label, state: rowState };
+    rows[f.key] = { row, area, lockBtn, rerollBtn, undoBtn, lockMark, err, steer, steerInput, steerGo, steerSections, section: '', sectionPicked: false, label: f.label, state: rowState };
     return row;
   }
   function setField(key, value, opts = {}) {
@@ -770,7 +786,35 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     if (r.row.classList.contains('cs-row--steer')) { closeSteer(key); return; }
     r.row.classList.add('cs-row--steer');
     r.rerollBtn.setAttribute('aria-expanded', 'true');
+    r.section = '';
+    r.sectionPicked = false;
+    paintSections(key);
     r.steerInput.focus();
+    // The sections as Settings has them now.
+    void Promise.resolve(deps.loadSettings(fs, workspaceUri)).then((settings) => {
+      takeStructure(settings);
+      if (r.row.classList.contains('cs-row--steer')) paintSections(key);
+    }).catch(() => { /* the chips wait for the next generation */ });
+  }
+  /** The section chips of a direction box: Whole Field, then each section; the one Rewrite will change is pressed. */
+  function paintSections(key) {
+    const r = rows[key];
+    const entry = structureFor(key);
+    r.steerSections.replaceChildren();
+    // Only a field whose sections carry labels can have one put back in place.
+    if (!entry || !entry.labels || entry.sections.length < 2) { r.steerSections.style.display = 'none'; r.section = ''; return; }
+    if (r.section && !entry.sections.some((x) => x.name === r.section)) r.section = '';
+    r.steerSections.append(el('span', 'cs-steer-sections-label', { text: 'Rewrite' }));
+    const chip = (label, value) => {
+      const b = el('button', 'cs-mode', { text: label });
+      b.type = 'button';
+      b.setAttribute('aria-pressed', r.section === value ? 'true' : 'false');
+      b.title = value ? `Change only the ${value} section; the others stay word for word` : `Rewrite the whole ${r.label.toLowerCase()}`;
+      b.addEventListener('click', (e) => { e.preventDefault(); r.section = value; r.sectionPicked = true; paintSections(key); r.steerInput.focus(); });
+      return b;
+    };
+    r.steerSections.append(chip('Whole Field', ''), ...entry.sections.map((x) => chip(x.name, x.name)));
+    r.steerSections.style.display = '';
   }
   function closeSteer(key) {
     const r = rows[key];
@@ -1211,10 +1255,13 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       state.engine.numCtx = Number(ctxSelect.value) || 0;
     } catch (err) { console.warn('[Creations] model list failed:', err); }
   }
+  /** The sheet's shape from Settings, read fresh so an edit there lands at once. */
+  function takeStructure(settings) {
+    state.structure = parseSheetStructure(typeof settings?.sheetStructure === 'string' ? settings.sheetStructure : DEFAULT_SHEET_STRUCTURE);
+  }
   async function resolveModel() {
     const settings = await deps.loadSettings(fs, workspaceUri);
-    // The sheet's shape, read fresh for every generation so a Settings edit lands at once.
-    state.structure = parseSheetStructure(typeof settings.sheetStructure === 'string' ? settings.sheetStructure : DEFAULT_SHEET_STRUCTURE);
+    takeStructure(settings);
     // The connected people's cards, read fresh too: an edit on their card lands here.
     await loadConnectionCards();
     const models = await parallx.lm.getModels();
@@ -1393,17 +1440,32 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     r.row.classList.add('cs-row--busy');
     r.rerollBtn.disabled = true;
     r.steerGo.disabled = true;
+    // One section picked: the model writes that section only, and it goes
+    // back in its place; every other section stays word for word.
+    const entry = structureFor(key);
+    const section = r.section && entry && entry.labels && r.row.classList.contains('cs-row--steer') ? r.section : '';
     try {
       const { modelId, numCtx } = await resolveModel();
-      const { parsed } = await streamJson(modelId, numCtx, buildFieldMessages(context(), state.sheet, key, direction));
-      const next = parsed && typeof parsed[key] === 'string' ? cleanFieldValue(key, parsed[key]) : '';
-      if (!next) throw new Error('nothing came back');
+      const messages = section
+        ? buildSectionMessages(context(), state.sheet, key, section, entry, direction)
+        : buildFieldMessages(context(), state.sheet, key, direction);
+      const { parsed } = await streamJson(modelId, numCtx, messages);
+      const reply = parsed && typeof parsed[key] === 'string' ? cleanFieldValue(key, parsed[key]) : '';
+      if (!reply) throw new Error('nothing came back');
+      let next = reply;
+      if (section) {
+        const spliced = spliceSection(state.sheet[key], reply, entry, section);
+        if (spliced.problem) throw new Error(spliced.problem.charAt(0).toUpperCase() + spliced.problem.slice(1) + '.');
+        next = spliced.text;
+      }
       state.undo.set(key, state.sheet[key]);
       setField(key, next);
       showUndo(key);
       await completeField(key, modelId, numCtx);
-      // Done: the box closes and forgets the direction; Undo brings the old text back.
+      // Done: the box closes and forgets the direction and the section; Undo brings the old text back.
       r.steerInput.value = '';
+      r.section = '';
+      r.sectionPicked = false;
       closeSteer(key);
     } catch (err) {
       rowError(key, `Could not rewrite ${r.label.toLowerCase()}. ${err?.message || ''}`.trim(), () => void reroll(key, direction));

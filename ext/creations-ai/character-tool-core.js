@@ -25,8 +25,10 @@
 import {
   STUDIO_FIELDS, STUDIO_KEYS, cleanFieldValue, emptySheet, fieldRequirements, structureSystemLine,
   sectionsPresent, characterFromSheet, sheetFromCharacter, connectionsBlock, parseRelationshipLines,
-  SHEET_CRAFT_RULES, stripDashes, sectionOfParagraph,
+  SHEET_CRAFT_RULES, stripDashes, mergeSections,
 } from './studio-core.js';
+
+export { mergeSections };
 
 /** Most characters one save call takes; the rest go in another call. */
 export const MAX_CHARACTERS_PER_CALL = 8;
@@ -591,34 +593,6 @@ export function resolveCharacterTarget(roster, ref) {
 }
 
 const andList = (xs) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
-const paragraphs = (t) => String(t || '').replace(/\r/g, '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-
-/**
- * A structured field with only some of its sections sent: those sections
- * replace theirs, the rest stay word for word, a section the card lacks goes
- * in at its place in the structure. `null` when the text is the whole field
- * (every section, or paragraphs without labels); `{ problem }` when the card's
- * own text has no sections to put them in.
- */
-export function mergeSections(existing, incoming, entry) {
-  if (!entry || !entry.labels || !Array.isArray(entry.sections) || !entry.sections.length) return null;
-  const inc = paragraphs(incoming).map((text) => ({ text, section: sectionOfParagraph(text, entry) }));
-  if (!inc.length || inc.some((p) => !p.section)) return null;
-  const sent = [...new Set(inc.map((p) => p.section))];
-  if (sent.length >= entry.sections.length) return null;
-  const out = paragraphs(existing).map((text) => ({ text, section: sectionOfParagraph(text, entry) }));
-  if (out.length && !out.some((p) => p.section)) return { problem: `the card's text for this field is not written in sections yet, so the ${sent.join(', ')} section${sent.length === 1 ? '' : 's'} cannot be put in place: send the whole field, all ${entry.sections.length} sections.` };
-  const order = (name) => entry.sections.findIndex((x) => x.name === name);
-  for (const p of inc) {
-    const at = out.findIndex((x) => x.section === p.section);
-    if (at >= 0) { out[at] = p; continue; }
-    let after = -1;
-    out.forEach((x, i) => { if (x.section && order(x.section) < order(p.section)) after = i; });
-    out.splice(after + 1, 0, p);
-  }
-  return { text: out.map((p) => p.text).join('\n\n'), sections: sent };
-}
-
 const DRIVE_LINES = [['Wants', /^\s*wants?\s*:/i], ['Fears', /^\s*fears?\s*:/i], ['In the way', /^\s*in the way\s*:/i]];
 const driveOf = (line) => (DRIVE_LINES.find(([, re]) => re.test(line)) || [''])[0];
 

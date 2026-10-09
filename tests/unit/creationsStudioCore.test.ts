@@ -471,3 +471,22 @@ describe('the canon, edited by hand (2026-10-08)', () => {
     expect(reroll).toContain('FOCUS (what to bring forward from the canon; it changes no fact): the person');
   });
 });
+
+describe('one section of a field (2026-10-09)', () => {
+  it('puts a rewritten section back in its place, the rest word for word', async () => {
+    const { spliceSection, sectionNamedIn, buildSectionMessages, parseSheetStructure: parse, DEFAULT_SHEET_STRUCTURE: DEF } = await import('../../ext/creations-ai/studio-core.js');
+    const entry = parse(DEF).appearance;
+    const was = ['Overview: Old.', 'Height and build: Old.', 'Face: Old.', 'Clothes: Old.', 'Physicality: Old.'].join('\n\n');
+    expect(spliceSection(was, 'Overview: NEW.\n\nFace: Lined now.\n\nClothes: NEW.', entry, 'Face').text).toBe(was.replace('Face: Old.', 'Face: Lined now.'));
+    expect(spliceSection(was, 'Lined now.', entry, 'Face').text).toBe(was.replace('Face: Old.', 'Face: Lined now.'));
+    expect(spliceSection(was, 'Clothes: Only this.', entry, 'Face').problem).toBe('the reply had no Face section');
+    expect(spliceSection('A square woman.', 'Face: Red.', entry, 'Face').problem).toMatch(/not written in sections yet/);
+    expect(sectionNamedIn('change her clothes', entry)).toBe('Clothes');
+    expect(sectionNamedIn('her height and her face', entry)).toBe('');
+    expect(sectionNamedIn('make her older', entry)).toBe('');
+    const msgs = buildSectionMessages({ name: 'Ada' }, { name: 'Ada', appearance: was }, 'appearance', 'Face', entry, 'grey at the temples');
+    expect(msgs[1].content).toContain('Rewrite ONLY the "Face" section of the appearance');
+    expect(msgs[1].content).toContain('DIRECTION: grey at the temples');
+    expect(msgs[1].content).not.toMatch(/5 sections/);
+  });
+});

@@ -309,6 +309,83 @@ export function sectionsPresent(value, entry) {
   return { present, missing };
 }
 
+const paragraphs = (t) => String(t || '').replace(/\r/g, '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+
+/**
+ * A structured field with only some of its sections sent: those sections
+ * replace theirs, the rest stay word for word, a section the card lacks goes
+ * in at its place in the structure. `null` when the text is the whole field
+ * (every section, or paragraphs without labels); `{ problem }` when the card's
+ * own text has no sections to put them in.
+ */
+export function mergeSections(existing, incoming, entry) {
+  if (!entry || !entry.labels || !Array.isArray(entry.sections) || !entry.sections.length) return null;
+  const inc = paragraphs(incoming).map((text) => ({ text, section: sectionOfParagraph(text, entry) }));
+  if (!inc.length || inc.some((p) => !p.section)) return null;
+  const sent = [...new Set(inc.map((p) => p.section))];
+  if (sent.length >= entry.sections.length) return null;
+  const out = paragraphs(existing).map((text) => ({ text, section: sectionOfParagraph(text, entry) }));
+  if (out.length && !out.some((p) => p.section)) return { problem: `the card's text for this field is not written in sections yet, so the ${sent.join(', ')} section${sent.length === 1 ? '' : 's'} cannot be put in place: send the whole field, all ${entry.sections.length} sections.` };
+  const order = (name) => entry.sections.findIndex((x) => x.name === name);
+  for (const p of inc) {
+    const at = out.findIndex((x) => x.section === p.section);
+    if (at >= 0) { out[at] = p; continue; }
+    let after = -1;
+    out.forEach((x, i) => { if (x.section && order(x.section) < order(p.section)) after = i; });
+    out.splice(after + 1, 0, p);
+  }
+  return { text: out.map((p) => p.text).join('\n\n'), sections: sent };
+}
+
+/**
+ * One section rewritten, put back in its place: the section's paragraph from
+ * the model's reply (or the whole reply, labelled, when it wrote just the
+ * text) replaces that section; every other section stays word for word,
+ * whatever else the reply held. `{ text }`, or `{ problem }`.
+ */
+export function spliceSection(existing, reply, entry, section) {
+  const paras = paragraphs(reply);
+  let para = paras.find((p) => sectionOfParagraph(p, entry) === section);
+  if (!para) {
+    const plain = paras.filter((p) => !sectionOfParagraph(p, entry));
+    if (!plain.length) return { problem: `the reply had no ${section} section` };
+    para = `${section}: ${plain.join(' ')}`;
+  }
+  const merged = mergeSections(existing, para, entry);
+  if (!merged) return { text: para };
+  if (merged.problem) return { problem: merged.problem };
+  return { text: merged.text };
+}
+
+/** The messages that rewrite one section of a structured field, and nothing else. */
+export function buildSectionMessages(ctx, sheet, key, section, entry, direction = '') {
+  const field = STUDIO_FIELDS.find((f) => f.key === key);
+  const label = field ? field.label.toLowerCase() : key;
+  const s = (entry && entry.sections || []).find((x) => x.name === section) || { name: section, hint: '' };
+  const base = buildFieldMessages(ctx, sheet, key, direction);
+  const ask = [
+    `Rewrite ONLY the "${s.name}" section of the ${label}${s.hint ? ` (${s.hint})` : ''}${String(direction || '').trim() ? ', following the user\'s direction for it:' : ': a fresh take, consistent with the rest of the sheet, about the same length.'}`,
+    ...(String(direction || '').trim() ? [`DIRECTION: ${String(direction).trim()}`, 'The direction leads: change what it asks to change, and keep the rest of the sheet true. Plain and concrete, no purple filler.'] : []),
+    `Return the "${key}" key with ONE paragraph: the ${s.name} section, starting with "${s.name}:". Do not write the other sections of the ${label}; they stay exactly as they are.`,
+  ].join('\n');
+  const user = base[1].content;
+  const cut = user.indexOf('Current character sheet JSON:');
+  const sheetPart = cut >= 0 ? user.slice(cut).split('\n').slice(0, 1).join('\n') : '';
+  const head = cut >= 0 ? user.slice(0, cut) : '';
+  return [base[0], { role: 'user', content: [head + sheetPart, JSON.stringify(sheet, null, 2), '', ask].join('\n') }];
+}
+
+/**
+ * The section a direction names, when it names exactly one: by a word of
+ * the section's name ("her clothes", "the face"); '' otherwise.
+ */
+export function sectionNamedIn(direction, entry) {
+  const d = String(direction || '').toLowerCase();
+  if (!d.trim() || !entry || !Array.isArray(entry.sections)) return '';
+  const hits = entry.sections.filter((x) => normLabel(x.name).split(' ').filter((w) => w.length > 3 && w !== 'and' && w !== 'with').some((w) => new RegExp(`(?<![\\p{L}])${w}`, 'u').test(d)));
+  return hits.length === 1 ? hits[0].name : '';
+}
+
 /** The direction for a rewrite that adds what a structured field lacks and keeps what it has. */
 export function completionDirection(entry, missing) {
   const names = Array.isArray(missing) ? missing : [];
