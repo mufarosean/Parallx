@@ -68,8 +68,23 @@ export const NARRATOR_KINDS = parseDirectionKinds(DEFAULT_NARRATOR_DIRECTIONS);
 /** The Narrator's group name on the card and in the reply. */
 export const NARRATOR = 'Narrator';
 
-/** Characters given options at once. More makes the card a wall and the call slow. */
-export const DIRECTOR_MAX_CAST = 4;
+/**
+ * Characters given options at once: no cap. Until 2026-10-09 it was four,
+ * and in a larger chat the one who spoke last was silently left off the
+ * card; the owner runs chats with more. `directorCast` still takes a `max`.
+ */
+export const DIRECTOR_MAX_CAST = Infinity;
+
+/**
+ * The most a director reply may run, in tokens: room for the reading of the
+ * scene and every option asked for, each a line with its "then" part, so
+ * the last characters on a big card are not cut off. Never under 1,200 (the
+ * old fixed cap) nor over 6,000.
+ */
+export function directorReplyTokens(optionCount) {
+  const n = Math.max(0, Number(optionCount) || 0);
+  return Math.min(6000, Math.max(1200, 300 + n * 70));
+}
 
 /** A kind label at the start of a line ("Push:", "New Scene -"), among `kinds`: [key, rest] or null. */
 const labelledKind = (line, kinds) => {
@@ -111,7 +126,7 @@ export function directorCast(cast, { present = [], lastSpeaker = null, max = DIR
   const inScene = here.size ? list.filter((c) => here.has(c.name.toLowerCase())) : [];
   const pool = inScene.length ? inScene : list;
   const ordered = [...pool.filter((c) => c.file !== lastSpeaker), ...pool.filter((c) => c.file === lastSpeaker)];
-  return ordered.slice(0, Math.max(1, max));
+  return Number.isFinite(max) ? ordered.slice(0, Math.max(1, max)) : ordered;
 }
 
 /**

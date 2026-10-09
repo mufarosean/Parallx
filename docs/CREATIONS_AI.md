@@ -840,8 +840,12 @@ owner picks instead of writing, on request rather than after every reply.
   outcome. A character's options take different stances. The Narrator's
   follow from the last turn too.
 - **Who gets options.** The thread's characters, only those the scene says
-  are present when it says so, at most four; the one who spoke last goes
-  last, since the next turn is usually someone else's. The player's own
+  are present when it says so, every one of them (at most four until
+  2026-10-09, when the owner, whose chats have more, asked for the cap to
+  go; the reply's length now grows with the options asked for,
+  `directorReplyTokens`, 1,200 to 6,000 tokens, so the last characters are
+  not cut off); the one who spoke last goes last, since the next turn is
+  usually someone else's. The player's own
   character is one of the cast, so it gets options like the rest; there is
   no separate persona path.
 - **What the director reads.** Each character's tagline, drives, secrets and

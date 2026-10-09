@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — JS module with no types
-import { parseSituation, DIRECTION_KINDS, NARRATOR_KINDS, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS, parseDirectionKinds, directorCast, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from '../../ext/creations-ai/director.js';
+import { parseSituation, DIRECTION_KINDS, NARRATOR_KINDS, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS, parseDirectionKinds, directorCast, directorReplyTokens, buildDirectorPrompt, parseDirections, directionCommand, composeWithDirection, directionKindLabel } from '../../ext/creations-ai/director.js';
 
 // The reading tests run on four kinds, the list as first shipped; the
 // shipped default is now three (Deepen dropped), and the list is the user's.
@@ -26,11 +26,17 @@ describe('who gets options', () => {
     expect(directorCast(cast, { present: ['tom', 'Ada'] }).map((c: any) => c.name)).toEqual(['Ada', 'Tom']);
     expect(directorCast(cast, { present: ['Someone Else'] }).map((c: any) => c.name)).toEqual(['Ada', 'Tom', 'Vera Quill']);
   });
-  it('caps the card', () => {
+  it('gives every character options, however many (the card was capped at four until 2026-10-09)', () => {
     const many = Array.from({ length: 7 }, (_, i) => ({ file: `c${i}.json`, name: `C${i}` }));
-    expect(directorCast(many)).toHaveLength(4);
+    expect(directorCast(many, { lastSpeaker: 'c0.json' }).map((c: any) => c.name)).toEqual(['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C0']);
     expect(directorCast(many, { max: 2 })).toHaveLength(2);
     expect(directorCast([])).toEqual([]);
+  });
+  it('gives the reply room for every option asked for', () => {
+    // The Narrator's four and three each for seven characters: 25 options.
+    expect(directorReplyTokens(25)).toBe(2050);
+    expect(directorReplyTokens(4 + 3 * 2)).toBe(1200);
+    expect(directorReplyTokens(500)).toBe(6000);
   });
 });
 

@@ -18,7 +18,7 @@ import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE, parseSheetStructure, STUDI
 import { planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL, searchCharacters, fitBrief, fitFindResult, resolveCharacterTarget, planEdit, applyEdit, undoLastChatEdit, editResultText, undoResultText, rosterName } from './character-tool-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { parseLorebook, selectLore, renderLore, loreReport } from './lore.js';
-import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
+import { directorCast, directorReplyTokens, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 
 // The workspace data folder keeps its original name: every character, thread,
@@ -6064,7 +6064,9 @@ function renderChatEditor(container, parallx, input) {
     try {
       const numCtx = await chatContextWindow(modelId);
       if (run !== _directionsRun) return;
-      const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, maxTokens: 1200, think: false, ...(numCtx ? { numCtx } : {}) });
+      // Room for every option asked for: the Narrator's, then each character's.
+      const optionCount = (narratorKinds.length ? narratorKinds.length : 0) + (characterKinds.length ? chosen.length * characterKinds.length : 0);
+      const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, maxTokens: directorReplyTokens(optionCount), think: false, ...(numCtx ? { numCtx } : {}) });
       for await (const chunk of stream) {
         if (run !== _directionsRun) return;
         if (!chunk?.content) continue;

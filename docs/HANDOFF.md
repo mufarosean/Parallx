@@ -3,10 +3,17 @@
 Last updated 2026-10-09. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7981 tests) and `npm run build` pass.
+tsc, the full vitest suite (7982 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
+
+## Done on 2026-10-09, cloud: Directions for every character
+
+The four-character cap on the Directions card is gone (the owner's chats
+have more); the director reply's length grows with the options asked for
+(`directorReplyTokens`). Still open, offered: say on the card who is missing
+and why (not in the scene's Present list, or the model skipped them).
 
 ## Done on 2026-10-09, cloud: world lore per chat
 
