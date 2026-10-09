@@ -14,8 +14,8 @@ import { renderTablesPage, attachTableRoll, listTables, loadTable, loadTableByNa
 import { CHARACTER_SEEDS_NAME } from './tables-core.js';
 import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
-import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE, parseSheetStructure, STUDIO_KEYS } from './studio-core.js';
-import { buildCharacterBrief, planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL, searchCharacters, findResultText, resolveCharacterTarget, planEdit, applyEdit, undoLastChatEdit, editResultText, undoResultText, rosterName } from './character-tool-core.js';
+import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE, parseSheetStructure, STUDIO_KEYS, keepSheetInStep } from './studio-core.js';
+import { planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL, searchCharacters, fitBrief, fitFindResult, resolveCharacterTarget, planEdit, applyEdit, undoLastChatEdit, editResultText, undoResultText, rosterName } from './character-tool-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
@@ -9213,9 +9213,13 @@ function renderCharactersPage(container, parallx, input) {
   }
 
   _liveCharacters = { openStudio: (p) => openStudio(p), refresh: () => { if (galleryView.style.display !== 'none') void refresh(); }, __root: root };
+  // The Studio or the Chat Behaviour page, whichever is open on the card.
   const studioPage = {
-    studioOn: (fileName) => (paneEditor && paneEditor.__state && paneEditor.__state.fileName === fileName ? paneEditor : null),
-    reopen: (fileName) => { if (!disposed && openFile === fileName) selectCharacter(fileName); },
+    studioOn: (fileName) => (paneEditor && (paneEditor.__state?.fileName === fileName || paneEditor.__fileName === fileName) ? paneEditor : null),
+    reopen: (fileName) => {
+      if (disposed || openFile !== fileName) return;
+      if (paneEditor && paneEditor.__fileName === fileName) openBehaviour(fileName); else selectCharacter(fileName);
+    },
   };
   _studioPages.add(studioPage);
   detailView.style.display = 'none';
@@ -9380,7 +9384,7 @@ async function characterSheetStructure(fs, workspaceUri) {
   return parseSheetStructure(text);
 }
 
-async function characterToolBrief(args) {
+async function characterToolBrief(args, budget = 0) {
   const w = characterToolWorkspace();
   if (!w) return { content: 'Open a workspace first: Creations keeps its characters in the workspace.', isError: true };
   const [structure, roster] = await Promise.all([
@@ -9388,10 +9392,10 @@ async function characterToolBrief(args) {
     scanCharacters(w.fs, w.workspaceUri).catch(() => []),
   ]);
   const connectTo = Array.isArray(args?.connectTo) ? args.connectTo.map((x) => String(x || '')).filter(Boolean) : [];
-  return { content: buildCharacterBrief({ structure, roster, connectTo }) };
+  return { content: fitBrief({ structure, roster, connectTo }, budget) };
 }
 
-async function characterToolFind(args) {
+async function characterToolFind(args, budget = 0) {
   const w = characterToolWorkspace();
   if (!w) return { content: 'Open a workspace first: Creations keeps its characters in the workspace.', isError: true };
   const query = typeof args?.query === 'string' ? args.query : '';
@@ -9407,7 +9411,7 @@ async function characterToolFind(args) {
     if (typeof f === 'string') chats.set(f, (chats.get(f) || 0) + 1);
   }
   const hits = searchCharacters(roster, { query, names });
-  return { content: findResultText(hits, { query, names, full: args?.full === true, chatsOf: (f) => chats.get(f) || 0, total: roster.length }) };
+  return { content: fitFindResult(hits, { query, names, full: args?.full === true, chatsOf: (f) => chats.get(f) || 0, total: roster.length }, budget) };
 }
 
 /** A file name no character has and no other character in this call was given. */
@@ -9421,7 +9425,7 @@ function freshCharacterFile(taken) {
   return f;
 }
 
-async function characterToolSave(args) {
+async function characterToolSave(args, token = null) {
   const w = characterToolWorkspace();
   if (!w) return { content: 'Open a workspace first: Creations keeps its characters in the workspace.', isError: true };
   // An array, a JSON string of one, or one character sent bare.
@@ -9431,12 +9435,13 @@ async function characterToolSave(args) {
   }
   const extra = Math.max(0, list.length - MAX_CHARACTERS_PER_CALL);
   list = list.slice(0, MAX_CHARACTERS_PER_CALL);
-  const run = _characterSaveChain.then(() => saveCharacterBatch(w.fs, w.workspaceUri, list, extra));
+  const run = _characterSaveChain.then(() => saveCharacterBatch(w.fs, w.workspaceUri, list, extra, token));
   _characterSaveChain = run.then(() => undefined, () => undefined);
   return run;
 }
 
-async function saveCharacterBatch(fs, workspaceUri, list, extra) {
+async function saveCharacterBatch(fs, workspaceUri, list, extra, token = null) {
+  const stoppedNow = () => !!token?.isCancellationRequested;
   const [structure, roster] = await Promise.all([
     characterSheetStructure(fs, workspaceUri),
     scanCharacters(fs, workspaceUri).catch(() => []),
@@ -9458,6 +9463,8 @@ async function saveCharacterBatch(fs, workspaceUri, list, extra) {
 
   const saved = [];
   const failed = [];
+  const stopped = [];
+  if (stoppedNow()) return { content: 'Stopped by the user: nothing was saved.', isError: true };
   try {
     await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'characters']);
   } catch (err) {
@@ -9469,6 +9476,8 @@ async function saveCharacterBatch(fs, workspaceUri, list, extra) {
       keepCharacterDraft(workspaceUri, asDraft(merged[p.index]));
       continue;
     }
+    // Stop pressed: what is saved stays saved; nothing more is written.
+    if (stoppedNow()) { stopped.push(p.sheet.name); keepCharacterDraft(workspaceUri, asDraft(merged[p.index])); continue; }
     try {
       const data = characterFileFor(p.sheet, { base: createCharacterJson({ initialMessages: '' }), concept: p.concept, connections: p.connections });
       await saveCharacter(fs, workspaceUri, p.fileName, data);
@@ -9483,6 +9492,7 @@ async function saveCharacterBatch(fs, workspaceUri, list, extra) {
   for (const s of saved) {
     for (const c of s.plan.connections) {
       if (!c.addToTheirCard) continue;
+      if (stoppedNow()) { s.notes.push(`stopped before a line was added to ${c.name}'s card.`); continue; }
       if (c.batchIndex != null) { s.notes.push(`"addToTheirCard" on ${c.name} was not needed: characters in the same call write their own relationships.`); continue; }
       try {
         let added = false;
@@ -9502,7 +9512,7 @@ async function saveCharacterBatch(fs, workspaceUri, list, extra) {
     _refreshSidebar?.();
     try { _liveCharacters?.refresh?.(); } catch { /* the page is cosmetic */ }
   }
-  const content = saveResultText({ saved, failed, extra, total: list.length + extra });
+  const content = saveResultText({ saved, failed, extra, total: list.length + extra, stopped });
   return saved.length ? { content } : { content, isError: true };
 }
 
@@ -9532,21 +9542,22 @@ function listArg(v) {
   return Array.isArray(v) ? v : [v];
 }
 
-async function characterToolEdit(args) {
+async function characterToolEdit(args, token = null) {
   const w = characterToolWorkspace();
   if (!w) return { content: 'Open a workspace first: Creations keeps its characters in the workspace.', isError: true };
-  const run = _characterSaveChain.then(() => editCharacterOnce(w.fs, w.workspaceUri, args));
+  const run = _characterSaveChain.then(() => editCharacterOnce(w.fs, w.workspaceUri, args, token));
   _characterSaveChain = run.then(() => undefined, () => undefined);
   return run;
 }
 
-async function editCharacterOnce(fs, workspaceUri, args) {
+async function editCharacterOnce(fs, workspaceUri, args, token = null) {
   const [structure, roster] = await Promise.all([
     characterSheetStructure(fs, workspaceUri),
     scanCharacters(fs, workspaceUri).catch(() => []),
   ]);
   const target = resolveCharacterTarget(roster, args.character ?? args.link ?? args.file ?? args.name);
   if (target.problem) return { content: `Nothing was changed: ${target.problem}`, isError: true };
+  if (token?.isCancellationRequested) return { content: 'Stopped by the user: nothing was changed.', isError: true };
   const fileName = target.entry.fileName;
   const link = characterLink(fileName);
   const name = rosterName(target.entry);
@@ -9576,12 +9587,14 @@ async function editCharacterOnce(fs, workspaceUri, args) {
     });
     if (plan.problems.length) { content = editResultText({ name, link, plan, failed: true }); isError = true; return; }
     if (!plan.changed.length && !plan.connectionsChanged && !plan.backLinks.length) { content = editResultText({ name, link, plan, noChange: true }); return; }
+    if (token?.isCancellationRequested) { content = 'Stopped by the user: nothing was changed.'; isError = true; return; }
     if (plan.changed.length || plan.connectionsChanged) {
       await saveCharacter(fs, workspaceUri, fileName, applyEdit(data, plan, { request: typeof args.request === 'string' ? args.request : '', at: Date.now() }));
     }
     const backLinked = [];
     const notes = [];
     for (const b of plan.backLinks) {
+      if (token?.isCancellationRequested) { notes.push(`stopped before a line was added to ${b.name}'s card.`); continue; }
       try {
         let added = false;
         const busy = await writeCardAroundStudios(b.fileName, async () => {
@@ -9613,8 +9626,8 @@ const CHARACTER_BRIEF_TOOL = {
       connectTo: { type: 'array', items: { type: 'string' }, description: 'Existing characters the new ones are tied to; their cards come back.' },
     },
   },
-  handler: async (args) => {
-    try { return await characterToolBrief(args || {}); } catch (err) { return { content: `Could not read what a sheet needs: ${err?.message || String(err)}`, isError: true }; }
+  handler: async (args, _token, invocation) => {
+    try { return await characterToolBrief(args || {}, Number(invocation?.resultCharBudget) || 0); } catch (err) { return { content: `Could not read what a sheet needs: ${err?.message || String(err)}`, isError: true }; }
   },
   requiresConfirmation: false,
   profiles: ['readonly', 'standard'],
@@ -9632,8 +9645,8 @@ const CHARACTER_FIND_TOOL = {
       full: { type: 'boolean', description: 'Whole sheets for a query\'s top matches.' },
     },
   },
-  handler: async (args) => {
-    try { return await characterToolFind(args || {}); } catch (err) { return { content: `Could not read the characters: ${err?.message || String(err)}`, isError: true }; }
+  handler: async (args, _token, invocation) => {
+    try { return await characterToolFind(args || {}, Number(invocation?.resultCharBudget) || 0); } catch (err) { return { content: `Could not read the characters: ${err?.message || String(err)}`, isError: true }; }
   },
   requiresConfirmation: false,
   profiles: ['readonly', 'standard'],
@@ -9666,8 +9679,8 @@ const CHARACTER_SAVE_TOOL = {
     },
     required: ['characters'],
   },
-  handler: async (args) => {
-    try { return await characterToolSave(args || {}); } catch (err) { return { content: `The characters could not be saved: ${err?.message || String(err)}`, isError: true }; }
+  handler: async (args, token) => {
+    try { return await characterToolSave(args || {}, token); } catch (err) { return { content: `The characters could not be saved: ${err?.message || String(err)}`, isError: true }; }
   },
   // A write: runs at once in a turn the user started, asks first in a
   // scheduled or background turn and in Careful Mode (M90).
@@ -9693,8 +9706,8 @@ const CHARACTER_EDIT_TOOL = {
     },
     required: ['character'],
   },
-  handler: async (args) => {
-    try { return await characterToolEdit(args || {}); } catch (err) { return { content: `The character could not be changed: ${err?.message || String(err)}`, isError: true }; }
+  handler: async (args, token) => {
+    try { return await characterToolEdit(args || {}, token); } catch (err) { return { content: `The character could not be changed: ${err?.message || String(err)}`, isError: true }; }
   },
   // A write, like the save: asks first in a scheduled or background turn and in Careful Mode.
   requiresConfirmation: true,
@@ -9745,6 +9758,8 @@ function characterLinkContract(parallx) {
 /** The chat tools and the link kind, while Creations runs. Each guarded: a host without chat or links gets the rest. */
 function registerChatCharacterTools(parallx, context) {
   _characterToolHost = parallx;
+  // Turned off: what the tools held goes with them.
+  context.subscriptions.push({ dispose() { _characterDrafts.clear(); if (_characterToolHost === parallx) _characterToolHost = null; } });
   if (parallx.chat && typeof parallx.chat.registerTool === 'function') {
     try { context.subscriptions.push(parallx.chat.registerTool('creations_character_brief', CHARACTER_BRIEF_TOOL)); } catch (err) { console.warn('[TextGenerator] character brief tool not registered:', err); }
     try { context.subscriptions.push(parallx.chat.registerTool('creations_save_characters', CHARACTER_SAVE_TOOL)); } catch (err) { console.warn('[TextGenerator] character save tool not registered:', err); }
@@ -10604,8 +10619,17 @@ function renderCharacterEditor(container, parallx, input) {
     };
   }
 
+  // The sheet the Studio and the chat read, kept in step with what this page changed.
+  const formToSave = () => keepSheetInStep(charData, collectForm());
+  async function saveForm() {
+    const data = formToSave();
+    await saveCharacter(fs, workspaceUri, charFileName, data);
+    charData = data;
+    _baselineSnapshot = snapshotForm();
+  }
+
   saveBtn.addEventListener('click', async () => {
-    const data = collectForm();
+    const data = formToSave();
     await saveCharacter(fs, workspaceUri, charFileName, data);
     charData = data;
     _baselineSnapshot = snapshotForm();
@@ -10619,12 +10643,7 @@ function renderCharacterEditor(container, parallx, input) {
   });
 
   sandboxBtn.addEventListener('click', async () => {
-    if (isDirty()) {
-      const data = collectForm();
-      await saveCharacter(fs, workspaceUri, charFileName, data);
-      charData = data;
-      _baselineSnapshot = snapshotForm();
-    }
+    if (isDirty()) await saveForm();
     try {
       const settings = await loadSettings(fs, workspaceUri);
       const newThread = await createThread(fs, workspaceUri, charFileName, settings.defaultModel || null);
@@ -10674,6 +10693,12 @@ function renderCharacterEditor(container, parallx, input) {
 
   init();
   return {
+    /** The card this page edits, for a chat edit to keep in step with it. */
+    __fileName: charFileName,
+    /** Save what is typed now: the chat is about to change this card. */
+    async flush() { if (isDirty()) await saveForm(); },
+    isBusy: () => false,
+    abandon() { _baselineSnapshot = snapshotForm(); },
     dispose() {
       window.removeEventListener('beforeunload', _beforeUnload);
       container.innerHTML = '';

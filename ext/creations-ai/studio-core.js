@@ -620,6 +620,36 @@ export function sheetFromCharacter(data) {
   return sheet;
 }
 
+/**
+ * A character saved from the Chat Behaviour page, its Studio sheet kept in
+ * step. That page edits the file's own fields (the role instruction, the
+ * voice anchor, the example dialogue, the reminder, the name); the Studio
+ * and the chat's tools read the sheet first, so an edit made there and not
+ * carried into the sheet would be undone by the next Studio save or chat
+ * edit (found 2026-10-09). `before` is the file as the page loaded it,
+ * `next` what it saves; only what changed is carried, so a sheet field the
+ * role instruction cannot hold (the tagline) stays.
+ */
+export function keepSheetInStep(before, next) {
+  const saved = next && next.studio && next.studio.sheet;
+  if (!saved || typeof saved !== 'object') return next;
+  const b = before || {};
+  const changed = (k) => String(next[k] ?? '').trim() !== String(b[k] ?? '').trim();
+  const sheet = { ...saved };
+  if (changed('name')) sheet.name = String(next.name || '').trim();
+  if (changed('roleInstruction')) {
+    const split = splitRoleInstruction(next.roleInstruction);
+    sheet.description = split.description || '';
+    for (const [key] of PORTRAIT_SECTIONS) sheet[key] = split[key] || '';
+    // A role instruction without a Voice section still has the voice anchor.
+    if (!sheet.voice) sheet.voice = String(next.voiceAnchor || '');
+  }
+  if (changed('voiceAnchor')) sheet.voice = String(next.voiceAnchor || '');
+  if (changed('exampleDialogue')) sheet.exampleDialogue = String(next.exampleDialogue || '');
+  if (changed('reminder')) sheet.reminder = String(next.reminder || '');
+  return { ...next, studio: { ...next.studio, sheet } };
+}
+
 /** The character file fields the chat reads, written from the sheet. Everything else on `base` is kept. */
 export function characterFromSheet(sheet, base = {}, studio = {}) {
   return {

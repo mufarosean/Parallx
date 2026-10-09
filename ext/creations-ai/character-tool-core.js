@@ -403,7 +403,7 @@ const clip = (t, words) => { const w = String(t || '').replace(/\s+/g, ' ').trim
  * use what is in the conversation, the roster, and the shape to send.
  * `connectTo` names roster characters whose cards come along in full.
  */
-export function buildCharacterBrief({ structure = null, roster = [], connectTo = [] } = {}) {
+export function buildCharacterBrief({ structure = null, roster = [], connectTo = [], rosterMax = BRIEF_ROSTER_MAX } = {}) {
   const parts = [];
   parts.push('# Writing a Creations character', '');
   parts.push('Write each character as a sheet of twelve fields, then save them with creations_save_characters. Everything is in the third person, a description of the character; the only "you" is inside the example dialogue.');
@@ -426,12 +426,12 @@ export function buildCharacterBrief({ structure = null, roster = [], connectTo =
   if (named.length) parts.push('', ...connectionsBlock(named, ''));
   parts.push('', `Roster (${roster.length} character${roster.length === 1 ? '' : 's'}; a new character may not take one of these names unless the user wants a second of that name; creations_find_characters gives any one's whole sheet):`);
   if (roster.length === 0) parts.push('- (empty)');
-  for (const r of roster.slice(0, BRIEF_ROSTER_MAX)) {
+  for (const r of roster.slice(0, rosterMax)) {
     const sheet = sheetFromCharacter(r.rawData || {});
     const who = clip(sheet.tagline || (sheet.description || '').split(/(?<=[.!?])\s/)[0] || '', 14);
     parts.push(`- ${rosterName(r)}${who ? `: ${who}` : ''}`);
   }
-  if (roster.length > BRIEF_ROSTER_MAX) parts.push(`- and ${roster.length - BRIEF_ROSTER_MAX} more`);
+  if (roster.length > rosterMax) parts.push(`- and ${roster.length - rosterMax} more (creations_find_characters lists them)`);
   return parts.join('\n');
 }
 
@@ -524,7 +524,7 @@ export function characterFullText(hit, chats = 0) {
  * when names were asked for and few came back); the rest as list lines.
  * `chatsOf(fileName)` counts the chats a character is in.
  */
-export function findResultText(hits, { query = '', names = [], full = false, chatsOf = () => 0, total = 0 } = {}) {
+export function findResultText(hits, { query = '', names = [], full = false, chatsOf = () => 0, total = 0, fullMax = FIND_FULL_MAX } = {}) {
   const q = String(query || '').trim();
   // A query with its own quotes is shown as typed; otherwise it is quoted.
   const asked = [q && `matching ${q.includes('"') ? q : `"${q}"`}`, names && names.length ? `named ${names.join(', ')}` : ''].filter(Boolean).join(', ');
@@ -537,7 +537,7 @@ export function findResultText(hits, { query = '', names = [], full = false, cha
   const showFull = full || ((names && names.length) && hits.length <= FIND_FULL_MAX);
   const head = `${hits.length} character${hits.length === 1 ? '' : 's'}${asked ? ` ${asked}` : ''}, of ${total} in the roster.`;
   const lines = [head];
-  const fullOnes = showFull ? hits.slice(0, FIND_FULL_MAX) : [];
+  const fullOnes = showFull ? hits.slice(0, fullMax) : [];
   for (const h of fullOnes) lines.push('', characterFullText(h, chatsOf(h.entry.fileName)));
   const rest = hits.slice(fullOnes.length, fullOnes.length + FIND_LIST_MAX);
   if (rest.length) {
@@ -547,6 +547,7 @@ export function findResultText(hits, { query = '', names = [], full = false, cha
   const left = hits.length - fullOnes.length - rest.length;
   if (left > 0) lines.push(`- and ${left} more: narrow the search.`);
   if (!showFull) lines.push('', 'For whole sheets, call again with "names" (or "full": true).');
+  else if (fullMax < Math.min(hits.length, FIND_FULL_MAX)) lines.push('', `Only ${fullMax === 1 ? 'one whole sheet fits' : fullMax === 0 ? 'no whole sheet fits' : `${fullMax} whole sheets fit`} in this reply: ask for the others by name, one at a time.`);
   lines.push('Give the user a character with its link exactly as written. To change one, creations_edit_character.');
   return lines.join('\n');
 }
@@ -843,6 +844,36 @@ export function undoResultText({ name, link, result }) {
   return lines.join('\n');
 }
 
+// ── Fitting the room the chat gives a result ───────────────────────────────
+// The chat says how long a tool's result may be (`resultCharBudget`, from the
+// model's context). A result over it is cut mid-text by the loop; these fit
+// it first, by dropping what can be asked for again.
+
+/** The brief within `budget` characters: fewer roster lines first; the rules always stay. */
+export function fitBrief(opts, budget) {
+  let text = buildCharacterBrief(opts);
+  if (!budget || text.length <= budget) return text;
+  for (const rosterMax of [30, 15, 5, 0]) {
+    text = buildCharacterBrief({ ...opts, rosterMax });
+    if (text.length <= budget) return text;
+  }
+  return text;
+}
+
+/** A find within `budget` characters: fewer whole sheets first, then fewer list lines. */
+export function fitFindResult(hits, opts, budget) {
+  let text = findResultText(hits, opts);
+  if (!budget || text.length <= budget) return text;
+  for (let fullMax = FIND_FULL_MAX - 1; fullMax >= 0; fullMax--) {
+    text = findResultText(hits, { ...opts, fullMax });
+    if (text.length <= budget) return text;
+  }
+  const lines = text.split('\n');
+  const tail = '- and more that did not fit this reply: narrow the search.';
+  while (lines.length > 1 && lines.join('\n').length + tail.length + 1 > budget) lines.pop();
+  return [...lines, tail].join('\n');
+}
+
 // ── The result ─────────────────────────────────────────────────────────────
 
 /**
@@ -850,7 +881,7 @@ export function undoResultText({ name, link, result }) {
  * connectedTo: [names], backLinked: [names], notes }]`; `failed`: `[{ index,
  * name, problems }]`; `extra`: how many characters were over the per-call limit.
  */
-export function saveResultText({ saved = [], failed = [], extra = 0, total = 0 } = {}) {
+export function saveResultText({ saved = [], failed = [], extra = 0, total = 0, stopped = [] } = {}) {
   const lines = [];
   lines.push(`Saved ${saved.length} of ${total} character${total === 1 ? '' : 's'}.`);
   for (const s of saved) {
@@ -867,6 +898,7 @@ export function saveResultText({ saved = [], failed = [], extra = 0, total = 0 }
       for (const p of f.problems) lines.push(`  - ${p}`);
     }
   }
+  if (stopped.length) lines.push('', `Stopped by the user before ${stopped.join(', ')} ${stopped.length === 1 ? 'was' : 'were'} saved. Do not save ${stopped.length === 1 ? 'it' : 'them'} again unless the user asks.`);
   if (extra > 0) lines.push('', `${extra} more character${extra === 1 ? ' was' : 's were'} sent than one call takes (${MAX_CHARACTERS_PER_CALL}); send ${extra === 1 ? 'it' : 'them'} in another call.`);
   if (saved.length) lines.push('', 'Give the user each saved character with its link exactly as written above; the link opens them in the Character Studio.');
   return lines.join('\n');

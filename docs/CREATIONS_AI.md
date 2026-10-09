@@ -657,7 +657,12 @@ code. Four chat tools, registered while Creations runs, and a link kind:
   chat wrote, and names what was changed since and kept. A Studio open on
   the card saves its typing first, the chat waits while the Studio is
   writing that card, and the Studio opens the card again after (also for the
-  save's `addToTheirCard` lines). The Studio then says "The chat changed
+  save's `addToTheirCard` lines). The Chat Behaviour page is kept in step the
+  same way: its unsaved typing is saved first and it opens again after; and
+  its own Save carries what it changed (role instruction, voice anchor,
+  example dialogue, reminder, name) into the Studio sheet
+  (`keepSheetInStep`), which before 2026-10-09 it did not, so a later Studio
+  save or chat edit undid it. The Studio then says "The chat changed
   Appearance and Drives", with **Undo Chat Edit**, **Keep**, and an undo on
   each changed row.
 - **`parallx://creations/character?file=<fileName>`** opens the character in
@@ -671,7 +676,13 @@ declares the `standard` profile (the brief and find `readonly` too) through a
 generic bridge option, so a small model, which runs with `standard`, still
 sees them. Save and edit are writes (`requiresConfirmation: true`): they run
 at once in a turn the user started, and ask first in a scheduled or
-background turn and in Careful Mode.
+background turn and in Careful Mode. Stop is honoured between writes: what is
+saved stays, nothing more is written, and the result says who was not saved.
+The brief and find fit the result size the chat allows (`resultCharBudget`):
+fewer roster lines, then fewer whole sheets, then fewer list lines, each time
+saying how to ask for the rest. Turned off, Creations forgets its drafts. The
+four descriptions and schemas together stay under 3,300 characters (about
+770 tokens per message), tested.
 
 Files: `ext/creations-ai/character-tool-core.js` (pure), `main.js` (SECTION
 10B9: the tools, drafts, the link kind), `src/api/bridges/chatBridge.ts`
@@ -686,7 +697,10 @@ stand-in 3B model does brief, save three, save the fix, answer, in one chat
 turn, then in a second chat finds Tom by name and the people around Harrow
 Court by words; then, with Tom open in the Studio, a third chat makes him
 older (find, then edit of one Appearance section and one Drives line), the
-Studio shows it with Undo, and a fourth chat undoes it; 40 checks pass, no
+Studio shows it with Undo, and a fourth chat undoes it; then, with Tom's
+Chat Behaviour page open and a reminder typed there unsaved, a fifth chat
+gives him a limp: both land, the page opens again, and its Save keeps the
+sheet in step; 46 checks pass, no
 renderer errors, and shots of the Studio, the edited Studio and the
 Characters page. A skill (`build-character`) that drives the tools is the
 next step, not yet built.

@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as core from '../../ext/creations-ai/character-tool-core.js';
-import { parseSheetStructure, DEFAULT_SHEET_STRUCTURE, sheetFromCharacter, characterFromSheet } from '../../ext/creations-ai/studio-core.js';
+import { parseSheetStructure, DEFAULT_SHEET_STRUCTURE, sheetFromCharacter, characterFromSheet, keepSheetInStep } from '../../ext/creations-ai/studio-core.js';
 import { __testables } from '../../ext/creations-ai/main.js';
 import { ChatBridge } from '../../src/api/bridges/chatBridge';
 import { ChatAgentService } from '../../src/services/chatAgentService';
@@ -23,7 +23,7 @@ const {
   saveResultText, characterLink, fileFromCharacterLink, dialogueExchanges, fieldText, MAX_CHARACTERS_PER_CALL,
   incomingList, mergeDraft, asDraft, searchCharacters, findResultText, findTerms, FIND_FULL_MAX,
   resolveCharacterTarget, mergeSections, mergeDrives, planEdit, applyEdit, undoLastChatEdit, pendingChatEdit,
-  editResultText, undoResultText, CHAT_EDITS_KEPT,
+  editResultText, undoResultText, CHAT_EDITS_KEPT, fitBrief, fitFindResult,
 } = core as any;
 const { registerChatCharacterTools, clearCharacterDrafts, studioPagesForTests } = __testables as any;
 
@@ -762,5 +762,99 @@ describe('the edit tool, through the chat', () => {
 
   it('needs a workspace', async () => {
     expect((await world({ workspace: false }).call('creations_edit_character', { character: 'X' })).content).toMatch(/Open a workspace first/);
+  });
+});
+
+// ── The gaps closed on 2026-10-09 ────────────────────────────────────────────
+
+describe('the Chat Behaviour page keeps the Studio sheet in step', () => {
+  const base = () => characterFromSheet(readIncomingCharacter(goodSheet('Marit Holm')).sheet, { id: 'm' }, {});
+  it('carries what that page changed into the sheet, and keeps what the role instruction cannot hold', () => {
+    const before = base();
+    const role = before.roleInstruction.replace('## Secrets\nShe posts letters to her husband that she never sends.', '## Secrets\nShe reads the keeper\'s log at night.');
+    const next = keepSheetInStep(before, { ...before, roleInstruction: role, reminder: 'Marit never sits with her back to the sea.' });
+    expect(next.studio.sheet.secrets).toBe('She reads the keeper\'s log at night.');
+    expect(next.studio.sheet.reminder).toBe('Marit never sits with her back to the sea.');
+    expect(next.studio.sheet.tagline).toBe(before.studio.sheet.tagline);
+    expect(next.studio.sheet.appearance).toBe(before.studio.sheet.appearance);
+    // So the sheet the Studio and the chat read says what the page saved.
+    expect(sheetFromCharacter(next).secrets).toBe('She reads the keeper\'s log at night.');
+    const voice = keepSheetInStep(before, { ...before, voiceAnchor: 'Slow.\nFew words.\nNo questions.' });
+    expect(voice.studio.sheet.voice).toBe('Slow.\nFew words.\nNo questions.');
+    expect(keepSheetInStep(before, { ...before })).toEqual(before);
+    const legacy = { name: 'Old', roleInstruction: 'x' };
+    expect(keepSheetInStep(legacy, { ...legacy, roleInstruction: 'y' })).toEqual({ ...legacy, roleInstruction: 'y' });
+  });
+});
+
+describe('results fit the room the chat gives them', () => {
+  const roster = Array.from({ length: 40 }, (_, i) => card(`character-${i}.json`, goodSheet(`Person ${i} Holm`)));
+  it('the brief drops roster lines first, never the rules', () => {
+    const whole = fitBrief({ structure: STRUCTURE, roster }, 0);
+    expect(whole).toContain('- Person 39 Holm');
+    const small = fitBrief({ structure: STRUCTURE, roster }, whole.length - 1500);
+    expect(small.length).toBeLessThanOrEqual(whole.length - 1500);
+    expect(small).toContain('Field requirements:');
+    expect(small).toMatch(/- and \d+ more \(creations_find_characters lists them\)/);
+  });
+  it('a find drops whole sheets first, then list lines, and says how to get the rest', () => {
+    const hits = searchCharacters(roster, { query: 'skerry' });
+    const whole = fitFindResult(hits, { query: 'skerry', full: true, total: 40 }, 0);
+    expect(whole.match(/^## /gm)).toHaveLength(4);
+    const two = fitFindResult(hits, { query: 'skerry', full: true, total: 40 }, Math.ceil(whole.length * 0.6));
+    expect(two.length).toBeLessThanOrEqual(Math.ceil(whole.length * 0.6));
+    expect((two.match(/^## /gm) || []).length).toBeLessThan(4);
+    expect(two).toMatch(/whole sheets? fits? in this reply: ask for the others by name, one at a time\./);
+    const tiny = fitFindResult(hits, { query: 'skerry', total: 40 }, 600);
+    expect(tiny.length).toBeLessThanOrEqual(600);
+    expect(tiny).toMatch(/- and more that did not fit this reply: narrow the search\.$/);
+  });
+  it('through the chat, a find honours the budget the loop passes', async () => {
+    const w = world();
+    for (const r of roster.slice(0, 6)) await w.seed(r.fileName, r.rawData);
+    const r = await w.tools.invokeToolWithRuntimeControl('creations_find_characters', { query: 'skerry', full: true }, token(), undefined, undefined, { resultCharBudget: 5000 });
+    expect(r.content.length).toBeLessThanOrEqual(5000);
+    expect(r.content).toMatch(/^6 characters matching "skerry"/);
+  });
+});
+
+describe('Stop, and turning Creations off', () => {
+  beforeEach(() => { clearCharacterDrafts(); studioPagesForTests.clear(); });
+
+  it('Stop during a save keeps what is saved and writes nothing more', async () => {
+    const w = world();
+    let stop = false;
+    const write = w.fs.writeFile.bind(w.fs);
+    w.fs.writeFile = async (uri: string, content: string) => { await write(uri, content); if (uri.startsWith(CHARS)) stop = true; };
+    const t = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) } as any;
+    Object.defineProperty(t, 'isCancellationRequested', { get: () => stop });
+    const r = await w.tools.invokeTool('creations_save_characters', { characters: [goodSheet('Marit Holm'), goodSheet('Tom Hale'), goodSheet('Nell Hale')] }, t);
+    expect(r.content).toMatch(/^Saved 1 of 3 characters\./);
+    expect(r.content).toContain('Stopped by the user before Tom Hale, Nell Hale were saved. Do not save them again unless the user asks.');
+    expect([...w.fs.saved().values()].map((d) => d.name)).toEqual(['Marit Holm']);
+  });
+
+  it('Stop before an edit writes changes nothing', async () => {
+    const w = world();
+    await w.call('creations_save_characters', { characters: [goodSheet('Marit Holm')] });
+    const snapshot = JSON.stringify([...w.fs.saved()]);
+    let n = 0;
+    const t = { onCancellationRequested: () => ({ dispose() {} }) } as any;
+    // Not stopped when the call starts (the loop checks first), stopped by the time it would write.
+    Object.defineProperty(t, 'isCancellationRequested', { get: () => ++n > 1 });
+    const r = await w.tools.invokeTool('creations_edit_character', { character: 'Marit Holm', changes: { tagline: 'Another' } }, t);
+    expect(r).toMatchObject({ isError: true, content: 'Stopped by the user: nothing was changed.' });
+    expect(JSON.stringify([...w.fs.saved()])).toBe(snapshot);
+  });
+
+  it('turned off, the half-finished characters are forgotten', async () => {
+    const w = world();
+    await w.call('creations_save_characters', { characters: [goodSheet('Nell Hale', { secrets: '' })] });
+    for (const d of w.context.subscriptions) d.dispose();
+    const again = world();
+    const fix = await again.call('creations_save_characters', { characters: [{ name: 'Nell Hale', secrets: 'She reads his letters.' }] });
+    expect(fix.isError).toBe(true);
+    expect(fix.content).not.toMatch(/kept from the earlier call/);
+    expect(fix.content).toMatch(/tagline \(Tagline\) is missing/);
   });
 });

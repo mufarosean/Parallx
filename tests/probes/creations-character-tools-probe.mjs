@@ -72,6 +72,10 @@ function replyFor(msgs) {
     if (done.length === 1) return toolCall('creations_edit_character', { character: 'Tom Hale', request: 'older, greying, afraid of the river', changes: { appearance: 'Face: A long jaw gone slack at the edges, pale grey eyes set close, hair grey at the temples, a nose broken once and set a little crooked.', drives: 'Fears: the river he grew up on.' } });
     return { role: 'assistant', content: `Done. ${(String(done.at(-1)?.content || '').match(/parallx:\/\/creations\/character\?file=\S+/) || [''])[0]}` };
   }
+  if (/Give Tom a limp/.test(asked)) {
+    if (done.length === 0) return toolCall('creations_edit_character', { character: 'Tom Hale', changes: { appearance: 'Physicality: Walks with a limp from a fall at the weir, favouring the left leg; sits on the edge of a chair as if about to be called out.' } });
+    return { role: 'assistant', content: 'Done.' };
+  }
   if (/Undo that change/.test(asked)) {
     if (done.length === 0) return toolCall('creations_edit_character', { character: 'Tom Hale', undo: true });
     return { role: 'assistant', content: 'Undone.' };
@@ -322,6 +326,40 @@ async function main() {
     await page.waitForTimeout(1_500);
     const studioAfterUndo = await page.evaluate(() => ({ face: document.querySelector('.cs-row[data-key="appearance"] textarea')?.value || '', notice: getComputedStyle(document.querySelector('.cs-chat-edit')).display }));
     check(!studioAfterUndo.face.includes('grey at the temples') && studioAfterUndo.notice === 'none', 'and the Studio shows him as he was, with nothing left to undo');
+
+    // The Chat Behaviour page open on Tom, with typing not yet saved: a chat edit keeps both.
+    await page.locator('button:has-text("Chat Behaviour")').first().click();
+    await page.waitForTimeout(1_500);
+    const typed = 'Tom Hale never lets anyone cross the weir alone, and never at night.';
+    const typedOk = await page.evaluate((typed) => {
+      const area = [...document.querySelectorAll('.tg-ce textarea')].find((a) => a.value.startsWith('Tom Hale never lets anyone cross the weir alone'));
+      if (!area) return false;
+      area.value = typed;
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    }, typed);
+    check(typedOk, 'the Chat Behaviour page is open on Tom, with a reminder typed and not saved');
+    const limp = await say('Give Tom a limp.');
+    check(!limp.res && /^Changed Tom Hale: /.test(limp.tools[0]?.result || ''), `the chat changes him with that page open (${(limp.tools[0]?.result || '').split('\n')[0]})`);
+    const tomLimp = await read(tom.f);
+    check(tomLimp.reminder === typed && tomLimp.studio.sheet.reminder === typed, 'the reminder typed on that page was saved first, into the sheet too');
+    check(/Physicality: Walks with a limp/.test(tomLimp.studio.sheet.appearance) && tomLimp.roleInstruction.includes('Walks with a limp'), 'and the chat\'s change is on the card');
+    await page.waitForTimeout(1_500);
+    const pageNow = await page.evaluate(() => ({
+      open: !!document.querySelector('.tg-ce'),
+      role: [...document.querySelectorAll('.tg-ce textarea')].some((a) => a.value.includes('Walks with a limp')),
+    }));
+    check(pageNow.open && pageNow.role, 'the page opened again on the changed card');
+    // Saved from that page, an edit reaches the sheet the Studio and the chat read.
+    const saidOnPage = 'Tom Hale never lets anyone cross the weir alone, day or night.';
+    await page.evaluate((v) => {
+      const area = [...document.querySelectorAll('.tg-ce textarea')].find((a) => a.value.startsWith('Tom Hale never lets anyone cross the weir alone'));
+      area.value = v; area.dispatchEvent(new Event('input', { bubbles: true }));
+      [...document.querySelectorAll('.tg-ce button')].find((b) => b.textContent.trim() === 'Save Character').click();
+    }, saidOnPage);
+    await page.waitForTimeout(1_000);
+    const tomSaved = await read(tom.f);
+    check(tomSaved.reminder === saidOnPage && tomSaved.studio.sheet.reminder === saidOnPage && /Walks with a limp/.test(tomSaved.studio.sheet.appearance), 'Save Character on that page keeps the sheet in step, and the chat\'s change');
     await page.evaluate(async () => window.__parallx_workbench__._services.get({ id: 'ICommandService' }).executeCommand('textGenerator.openCharacters'));
     await page.waitForTimeout(2_000);
     const cards = await page.$$eval('.cr-char-card, .cr-card, [class*="cr-gallery"] [class*="card"]', (els) => els.map((e) => (e.textContent || '').slice(0, 40)));
