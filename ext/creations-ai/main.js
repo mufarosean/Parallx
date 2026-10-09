@@ -9605,14 +9605,12 @@ async function editCharacterOnce(fs, workspaceUri, args) {
 
 const CHARACTER_BRIEF_TOOL = {
   description:
-    'Creations AI: what a character sheet must be right now, before writing one. Call it first whenever the user asks to make, build or create one or more characters ' +
-    '(for roleplay, a story, Creations), from a concept of any length, canvas pages, files, links or attached photos. It returns the twelve fields and the rules for each ' +
-    '(with the user\'s own Sheet structure, e.g. the sections Appearance must have), the roster of existing characters, and the exact shape to send to ' +
-    'creations_save_characters. connectTo: names of existing characters the new ones stand beside; their cards come back in full so the new ones are written in their world.',
+    'Creations AI: call first whenever the user wants one or more new characters made. Returns the sheet\'s fields and rules ' +
+    '(with the user\'s Sheet structure), the roster, and the shape creations_save_characters takes.',
   parameters: {
     type: 'object',
     properties: {
-      connectTo: { type: 'array', items: { type: 'string' }, description: 'Exact names of existing roster characters the new characters are connected to (optional).' },
+      connectTo: { type: 'array', items: { type: 'string' }, description: 'Existing characters the new ones are tied to; their cards come back.' },
     },
   },
   handler: async (args) => {
@@ -9624,16 +9622,14 @@ const CHARACTER_BRIEF_TOOL = {
 
 const CHARACTER_FIND_TOOL = {
   description:
-    'Creations AI: look up the user\'s existing characters (the roster). Use it to answer questions about them ("who do I have that...", "what is Tom\'s secret", "which have I played most") ' +
-    'and before writing about or connecting to one. query: words that must all appear somewhere in a character (name, tagline, any field of the sheet), any order; "quoted phrase" matches whole. ' +
-    'names: exact names, for whole sheets. Neither: the whole roster, newest first. A list gives each character\'s link, who they are, connections and how many chats; names (or full: true) gives whole sheets, ' +
-    'up to 4 per call. Read-only.',
+    'Creations AI: look up the user\'s characters. query: words that must all appear (a "quoted phrase" whole); ' +
+    'names: exact names, for whole sheets; neither: the whole roster. Read-only.',
   parameters: {
     type: 'object',
     properties: {
-      query: { type: 'string', description: 'Words to search for (optional).' },
-      names: { type: 'array', items: { type: 'string' }, description: 'Exact character names, for their whole sheets (optional).' },
-      full: { type: 'boolean', description: 'Whole sheets for the first few matches of a query, not just the list (optional).' },
+      query: { type: 'string' },
+      names: { type: 'array', items: { type: 'string' } },
+      full: { type: 'boolean', description: 'Whole sheets for a query\'s top matches.' },
     },
   },
   handler: async (args) => {
@@ -9643,40 +9639,26 @@ const CHARACTER_FIND_TOOL = {
   profiles: ['readonly', 'standard'],
 };
 
+/** The connection objects save and edit take. */
+const CONNECTION_SCHEMA = { type: 'object', properties: { name: { type: 'string' }, how: { type: 'string' }, addToTheirCard: { type: 'boolean', description: 'Only when the user asks.' } }, required: ['name'] };
+
 const CHARACTER_SAVE_TOOL = {
   description:
-    'Creations AI: save one or more finished character sheets into the user\'s roster (up to ' + MAX_CHARACTERS_PER_CALL + ' per call). Call creations_character_brief first and write every field it lists. ' +
-    'Each character is checked: one with a missing field, a missing section, too few dialogue exchanges or an unknown connection is not saved, and the result says exactly what to change; ' +
-    'fix those and send only them again. Characters in one call can be connected to each other by name. Nothing is ever overwritten: a name already in the roster is refused unless allowSameName is true. ' +
-    'Each saved character comes back with a parallx://creations/character link that opens it in the Character Studio; give the user that link.',
+    'Creations AI: save new characters (up to ' + MAX_CHARACTERS_PER_CALL + ' per call), written to creations_character_brief. ' +
+    'Each is checked; one that fails comes back with exact fixes: resend only its name and the fields that change. ' +
+    'Never changes an existing character (creations_edit_character does). Give the user the links it returns.',
   parameters: {
     type: 'object',
     properties: {
       characters: {
         type: 'array',
-        description: 'One object per character, every field a string (line breaks as \n).',
+        description: 'One object per character; every field a string.',
         items: {
           type: 'object',
           properties: {
-            name: { type: 'string' }, tagline: { type: 'string' }, description: { type: 'string', description: 'The Overview.' },
-            appearance: { type: 'string' }, personality: { type: 'string' }, voice: { type: 'string' }, backstory: { type: 'string' },
-            drives: { type: 'string', description: '"Wants: ...\nFears: ...\nIn the way: ..."' }, secrets: { type: 'string' },
-            relationships: { type: 'string', description: 'One "Name: who they are to them" line per person.' },
-            exampleDialogue: { type: 'string', description: 'Six lines: "[USER]: ...\n[AI]: ..." three times.' }, reminder: { type: 'string' },
-            concept: { type: 'string', description: 'The user\'s request for this character, in short (kept with the character).' },
-            connections: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  name: { type: 'string', description: 'Exact name of a roster character or of another character in this call.' },
-                  how: { type: 'string', description: 'How this character stands to them, from this character\'s side.' },
-                  addToTheirCard: { type: 'boolean', description: 'Also add a line about this character to that existing character\'s Relationships. Only when the user wants it.' },
-                },
-                required: ['name'],
-              },
-            },
-            allowSameName: { type: 'boolean', description: 'Save even though a roster character has this name (only when the user wants a second one).' },
+            ...Object.fromEntries([...STUDIO_KEYS, 'concept'].map((k) => [k, { type: 'string' }])),
+            connections: { type: 'array', items: CONNECTION_SCHEMA },
+            allowSameName: { type: 'boolean' },
           },
           required: ['name'],
         },
@@ -9695,25 +9677,19 @@ const CHARACTER_SAVE_TOOL = {
 
 const CHARACTER_EDIT_TOOL = {
   description:
-    'Creations AI: change an existing character when the user asks ("make her older", "give Tom a scar", "less cheerful", "connect Nell to Lord Ashby"), ' +
-    'or undo the chat\'s last change to one (undo: true). Read the character first with creations_find_characters (names), so you change only what was asked. ' +
-    'In changes, send only the fields that change, each whole; for Drives or a field written in sections (e.g. Appearance), you may send just the lines or sections that change, by their labels, and the rest is kept. ' +
-    'The card must still pass the checks a new one does: if not, nothing changes and the result says what to fix. Fields the user locked in the Studio are never changed. ' +
-    'What each field said before is kept, so the change can be undone. Returns the character\'s link; give it to the user.',
+    'Creations AI: change an existing character as the user asks, or undo the chat\'s last change to one (undo: true). ' +
+    'Read it first (creations_find_characters, names). In changes, send only the fields that change, by field name; for Drives or a field in sections ' +
+    '(e.g. Appearance), just the labelled lines or sections that change. Nothing is saved if a check fails. Give the user the link it returns.',
   parameters: {
     type: 'object',
     properties: {
-      character: { type: 'string', description: 'Exact name, or the parallx://creations/character link.' },
-      changes: { type: 'object', description: 'Only the fields that change, by key: name (to rename), tagline, description (the Overview), appearance, personality, voice, backstory, drives, secrets, relationships, exampleDialogue, reminder. Strings; line breaks as \\n.' },
-      connect: {
-        type: 'array',
-        description: 'Roster characters to connect this one to.',
-        items: { type: 'object', properties: { name: { type: 'string' }, how: { type: 'string', description: 'How this character stands to them.' }, addToTheirCard: { type: 'boolean', description: 'Also add a line to their Relationships (only when the user wants it).' } }, required: ['name'] },
-      },
-      disconnect: { type: 'array', items: { type: 'string' }, description: 'Names of connected characters to disconnect.' },
-      request: { type: 'string', description: 'What the user asked for, in short (kept with the change).' },
-      undo: { type: 'boolean', description: 'Put back what the chat\'s last change replaced, instead of changing anything.' },
-      allowSameName: { type: 'boolean', description: 'Rename even though another character has that name (only when the user wants it).' },
+      character: { type: 'string', description: 'Exact name or its link.' },
+      changes: { type: 'object', description: 'e.g. {"appearance": "Face: ..."}; "name" renames.' },
+      connect: { type: 'array', items: CONNECTION_SCHEMA },
+      disconnect: { type: 'array', items: { type: 'string' } },
+      request: { type: 'string', description: 'What the user asked, in short.' },
+      undo: { type: 'boolean' },
+      allowSameName: { type: 'boolean' },
     },
     required: ['character'],
   },

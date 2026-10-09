@@ -3,7 +3,7 @@
 Last updated 2026-10-09. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7961 tests) and `npm run build` pass.
+tsc, the full vitest suite (7962 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
@@ -24,8 +24,11 @@ prompt in scheduled or background turns and in Careful Mode. The authoring
 guide's stale "a write after an untrusted read asks first" line is
 corrected (M90 removed that). Probe: 40 checks pass, including the edit and
 undo with Tom open in the Studio. Still open from the tools review: the
-handlers ignore `resultCharBudget`, Stop is not honoured mid-save, and the
-per-turn schema (now four tools) could be trimmed.
+handlers ignore `resultCharBudget` (moot: the owner builds characters on
+64k or more, where a result may run to 100,000 characters) and Stop is not
+honoured mid-save. The four tools' descriptions and schemas were then cut
+from about 1,550 tokens per message to about 770 (a test holds them under
+3,300 characters); the rules stay in the brief and the results.
 
 ## Done on 2026-10-09, cloud: Creations characters from the chat
 

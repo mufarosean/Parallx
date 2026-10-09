@@ -385,6 +385,13 @@ describe('the tools, through the chat', () => {
     expect(w.links.allContracts().some((c) => c.segment === 'creations')).toBe(false);
   });
 
+  it('cost little in every chat message: the four go with each request, so their descriptions stay short', () => {
+    // The rules live in the brief and in the results, which come only when needed (2026-10-09: about 770 tokens, from 1,550).
+    const sizes = w.tools.getToolDefinitions().map((d) => JSON.stringify({ description: d.description, parameters: d.parameters }).length);
+    expect(sizes).toHaveLength(4);
+    expect(sizes.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(3300);
+  });
+
   it('the brief reads the user\'s own Sheet structure and roster at the moment of the call', async () => {
     await w.seed('character-ashby.json', { name: 'Lord Ashby', studio: { sheet: { name: 'Lord Ashby', tagline: 'Owns the valley' } } });
     w.fs.files.set(SETTINGS, JSON.stringify({ sheetStructure: 'Personality\n- Temper: quick or slow\n- With people: strangers and friends\n- Under it: the need' }));
