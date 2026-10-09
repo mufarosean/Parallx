@@ -3,10 +3,22 @@
 Last updated 2026-10-09. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7970 tests) and `npm run build` pass.
+tsc, the full vitest suite (7978 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
+
+## Done on 2026-10-09, cloud: lorebooks rebuilt for roleplay
+
+`ext/creations-ai/lore.js`: every entry the chat can see is in full or a
+one-line index entry, under "facts of this world, never contradict them";
+keys are whole words (an entry's heading when it has no triggers line); an
+entry stays 12 messages after it was named; lore is packed against its real
+lane, never cut; group chats use every character's books; the Prompt
+Inspector says how each entry went in. Fixed on the way: entries without
+triggers were never sent, so template-made books sent nothing. The owner
+approved this change to roleplay prompt assembly. Design:
+`docs/CREATIONS_AI.md`, "Lorebooks in roleplay". Probe: 10 checks pass.
 
 ## Done on 2026-10-09, cloud: the chat suggests open text files again
 

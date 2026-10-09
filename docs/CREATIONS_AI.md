@@ -705,6 +705,58 @@ renderer errors, and shots of the Studio, the edited Studio and the
 Characters page. A skill (`build-character`) that drives the tools is the
 next step, not yet built.
 
+## Lorebooks in roleplay (rebuilt 2026-10-09)
+
+The owner asked how to make the AI respect a world's lore without all of it
+living in every prompt. What it was (ported from ai-character-chat): an
+entry went in only while one of its `triggers:` words was in the last ten
+messages, matched as any substring ("rain" in "train"); an entry without a
+triggers line was never sent, though the code's comment and the Prompt
+Inspector said it was always on, so a lorebook made from the New Lorebook
+template sent nothing at all; what did not fire was invisible, so the model
+invented over it; an entry that overflowed the lane was cut mid-sentence,
+and in a group chat only the first character's books were read.
+
+What it is (`ext/creations-ai/lore.js`, pure):
+
+- **Every entry is in full or in brief.** In full: the book's overview (the
+  text above the first `##`, always), `scope: always` entries, and those
+  whose key was said. Every other entry is one line in an index after them,
+  "Blackstone Keep: the Ashby family's ruined fortress", from its `summary:`
+  line or its first sentence. The lore opens with the rule "These are facts
+  of this world. Never contradict them". So the model knows every name and
+  fact of the world while only what the scene needs is in full.
+- **Keys:** the `triggers:` (or `keys:`) words; without that line, the
+  entry's own heading. Matched as whole words, any case, plural and
+  possessive too; `elf*` matches words starting with "elf".
+- **An entry stays** in full for the 12 messages after its key was last said
+  (`sticky: N` changes it, `sticky: 0` means only while said). Messages
+  hidden from the AI never fire one.
+- **Room:** packed against the lane lore really gets after the split with
+  memory. Over it, the lowest-ranked entry in full becomes its line (an
+  entry that came up keeps at least its line), then the least important
+  lines go, with "and N more". Nothing is cut mid-text, and the chat's
+  warnings say when entries were squeezed. Rank: `priority:` (0 to 10,
+  default 5), then always-on, then the most recently named.
+- `scope: scene:X` and `scope: character:X` keep an entry out, even of the
+  index, unless the scene or the character is here; `anti:` words keep it
+  out while said.
+- **Group chats** use every character's picked books, the first
+  character's first.
+- **The Prompt Inspector** lists every entry as IN FULL (and why: the key
+  said, how many messages ago; always; the overview), IN BRIEF (and what
+  would bring it in), HIDDEN (why) or LEFT OUT, from the real selection.
+- The New Lorebook template shows the format.
+
+Not built: matching by meaning ("the old fortress" bringing in Blackstone
+Keep). It needs a generic embedding hook for extensions first.
+
+Tests: `creationsLorebooks.test.ts`. Probe:
+`xvfb-run -a node tests/probes/creations-lore-probe.mjs <outDir>` (port
+11434 free, the app built, the sqlite module built for Electron): two
+characters with a book each, Lord Ashby named, Blackstone named three
+messages back; checks the prompt the model got and the Inspector, 10 checks.
+
 ## Directions (built 2026-10-07)
 
 The owner, after weeks of roleplay: every turn needs a director's note

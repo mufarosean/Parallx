@@ -17,6 +17,7 @@ import { storyWords } from './story-core.js';
 import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE, parseSheetStructure, STUDIO_KEYS, keepSheetInStep } from './studio-core.js';
 import { planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL, searchCharacters, fitBrief, fitFindResult, resolveCharacterTarget, planEdit, applyEdit, undoLastChatEdit, editResultText, undoResultText, rosterName } from './character-tool-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
+import { parseLorebook, selectLore, renderLore, loreReport } from './lore.js';
 import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
 
@@ -3013,210 +3014,17 @@ async function scanLorebooks(fs, workspaceUri) {
 }
 
 /**
- * Parse a lorebook's ## sections into entries with optional trigger keywords.
- * Format: ## Section Title\ntriggers: keyword1, keyword2\nContent...
- * Entries without a triggers: line are always active.
+ * The lorebooks a chat uses: every character's picked books, the first
+ * character's first, each once. (Before 2026-10-09 only the first
+ * character's; in a group chat the others' lore was never seen.) No books
+ * picked: no lore.
  */
-function parseLoreEntries(lorebookContent) {
-  const entries = [];
-  const sections = lorebookContent.split(/^## /m);
-  for (const section of sections) {
-    const trimmed = section.trim();
-    if (!trimmed) continue;
-    const lines = trimmed.split('\n');
-    const heading = lines[0].trim();
-    let triggers = null;
-    // M79 Phase 2 — additional metadata fields. Defaults preserve the
-    // legacy behavior so users with old lorebooks see no change.
-    let scope = 'triggered';        // always | triggered | scene:X | character:X
-    let priority = 5;                // 0..10; higher = preserved under budget pressure
-    let antiTriggers = null;         // suppress entry when any anti-keyword fires
-    let bodyStart = 1;
-    // Walk leading lines for any of the recognised metadata keys. Stop
-    // at the first non-metadata content line.
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      const lower = line.toLowerCase();
-      if (lower.startsWith('triggers:')) {
-        triggers = line.slice(9).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-        bodyStart = i + 1;
-        continue;
-      }
-      if (lower.startsWith('scope:')) {
-        scope = line.slice(6).trim().toLowerCase();
-        bodyStart = i + 1;
-        continue;
-      }
-      if (lower.startsWith('priority:')) {
-        const n = parseInt(line.slice(9).trim(), 10);
-        if (Number.isFinite(n)) priority = Math.max(0, Math.min(10, n));
-        bodyStart = i + 1;
-        continue;
-      }
-      if (lower.startsWith('anti:') || lower.startsWith('anti-triggers:')) {
-        const after = lower.startsWith('anti-triggers:') ? line.slice(14) : line.slice(5);
-        antiTriggers = after.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-        bodyStart = i + 1;
-        continue;
-      }
-      break;
-    }
-    const body = lines.slice(bodyStart).join('\n').trim();
-    if (body || heading) {
-      entries.push({
-        heading,
-        body: body ? `## ${heading}\n${body}` : `## ${heading}`,
-        triggers,
-        scope,
-        priority,
-        antiTriggers,
-      });
-    }
+function chatLorebooks(characters, allLorebooks) {
+  const files = [];
+  for (const c of Array.isArray(characters) ? characters : []) {
+    for (const f of Array.isArray(c?.rawData?.lorebookFiles) ? c.rawData.lorebookFiles : []) if (f && !files.includes(f)) files.push(f);
   }
-  return entries;
-}
-
-/**
- * Decide whether a single entry should fire, given the activation
- * context (recent text, scene state, present characters). Returns the
- * match strength (>0 means fire). Higher strength = more recent / more
- * specific trigger.
- *
- * Match strength model (used to break ties when sorting under budget
- * pressure — higher priority always wins first):
- *   - always-scope or character/scene match with no trigger: 0.5
- *   - triggered match with a keyword: 1.0 + how-recent bonus
- *   - anti-trigger fired: 0 (suppress)
- */
-function _scoreLoreEntry(entry, ctx) {
-  const { contextLower = '', sceneTags = [], presentCharNames = [] } = ctx;
-
-  // 1. Anti-triggers always win — suppress entry entirely.
-  if (entry.antiTriggers && entry.antiTriggers.length > 0) {
-    if (entry.antiTriggers.some((kw) => contextLower.includes(kw))) return 0;
-  }
-
-  // 2. Scope filter.
-  const scope = String(entry.scope || 'triggered').toLowerCase();
-  if (scope.startsWith('scene:')) {
-    const wanted = scope.slice(6).trim();
-    if (!wanted) return 0;
-    if (!sceneTags.some((tag) => String(tag).toLowerCase() === wanted)) return 0;
-  } else if (scope.startsWith('character:')) {
-    const wanted = scope.slice(10).trim().toLowerCase();
-    if (!wanted) return 0;
-    if (!presentCharNames.some((n) => String(n).toLowerCase() === wanted)) return 0;
-  } else if (scope !== 'always' && scope !== 'triggered') {
-    // Unknown scope — be conservative: default to triggered.
-  }
-
-  // 3. Keyword trigger evaluation.
-  const hasTriggers = entry.triggers && entry.triggers.length > 0;
-  if (scope === 'always') {
-    // Always-scope ignores triggers; emit at base score.
-    return 0.5;
-  }
-  if (scope.startsWith('scene:') || scope.startsWith('character:')) {
-    // Scope-gated entries fire when the scope matches; triggers (if
-    // present) further refine. If triggers exist and don't match, skip.
-    if (hasTriggers) {
-      if (!entry.triggers.some((kw) => contextLower.includes(kw))) return 0.5;
-      return 1.0;
-    }
-    return 0.6;
-  }
-  // Default scope = triggered.
-  if (!hasTriggers) return 0; // legacy "## heading" entries with no triggers — treat as skip
-  if (!entry.triggers.some((kw) => contextLower.includes(kw))) return 0;
-  return 1.0;
-}
-
-/**
- * Assemble lore content with M79 Phase 2 scope/priority/anti-trigger
- * support. Returns the trimmed lore string ready for injection.
- *
- * Selection order:
- *   1. Score every entry (anti-triggers suppress to 0; scope filters
- *      gate; trigger match boosts).
- *   2. Sort by priority DESC, then score DESC.
- *   3. Pack greedily into the budget; partial inclusion only for the
- *      first overflow entry (current behavior preserved).
- *
- * The activation context is back-compatible: pass `recentContext` and
- * everything works as before. `sceneState` and `presentCharNames` are
- * optional and unlock the new scope: forms.
- */
-function assembleLoreContent(lorebooks, budgetTokens, recentContext = '', activation = {}) {
-  const { sceneState = null, presentCharNames = [] } = activation;
-  const contextLower = (recentContext || '').toLowerCase();
-  // Build scene tag list from the structured scene state, lower-cased
-  // for case-insensitive comparison against `scope: scene:X` entries.
-  const sceneTags = [];
-  if (sceneState && typeof sceneState === 'object') {
-    for (const key of ['location', 'time', 'mood']) {
-      if (sceneState[key]) sceneTags.push(String(sceneState[key]).toLowerCase());
-    }
-  }
-
-  // Collect & score every entry across all lorebooks.
-  const candidates = [];
-  for (const lb of lorebooks) {
-    const entries = parseLoreEntries(lb.content);
-    for (const entry of entries) {
-      const score = _scoreLoreEntry(entry, { contextLower, sceneTags, presentCharNames });
-      if (score <= 0) continue;
-      candidates.push({ entry, score, book: lb });
-    }
-  }
-
-  // Sort by priority DESC, then score DESC.
-  candidates.sort((a, b) => {
-    if (b.entry.priority !== a.entry.priority) return b.entry.priority - a.entry.priority;
-    return b.score - a.score;
-  });
-
-  // Pack greedily into the budget.
-  let combined = '';
-  let used = 0;
-  for (const { entry } of candidates) {
-    const t = estimateTokens(entry.body);
-    if (used + t > budgetTokens) {
-      const rem = budgetTokens - used;
-      if (rem > 50) combined += '\n\n' + trimTextToBudget(entry.body, rem);
-      used = budgetTokens;
-      break;
-    }
-    combined += (combined ? '\n\n' : '') + entry.body;
-    used += t;
-  }
-  return combined.trim();
-}
-
-/**
- * Diagnostic: which lorebook entries matched the recent context, which were
- * skipped because their triggers didn't fire, and which always fire (no
- * triggers). Returned shape is consumed by the Inspect Last Context modal.
- */
-function debugLorebookTriggers(lorebooks, recentContext = '') {
-  const contextLower = recentContext.toLowerCase();
-  const matched = [];
-  const skipped = [];
-  const always = [];
-  for (const lb of lorebooks) {
-    const entries = parseLoreEntries(lb.content);
-    for (const entry of entries) {
-      const head = (entry.body || '').split('\n', 1)[0].slice(0, 80) || '(no header)';
-      if (!entry.triggers || entry.triggers.length === 0) {
-        always.push({ book: lb.fileName, head });
-        continue;
-      }
-      const hits = entry.triggers.filter(kw => contextLower.includes(kw));
-      if (hits.length > 0) matched.push({ book: lb.fileName, head, triggers: entry.triggers, hits });
-      else skipped.push({ book: lb.fileName, head, triggers: entry.triggers });
-    }
-  }
-  return { matched, skipped, always };
+  return files.map((f) => (allLorebooks || []).find((b) => b.fileName === f)).filter(Boolean);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -3716,7 +3524,12 @@ function assembleContext(params) {
   // Split lore lane between lorebooks and thread memory proportional to content size.
   // If one is empty, the other gets the full allocation.
   // When extendedMemory is enabled, guarantee memory gets at least 40% of the lore budget.
-  const rawLoreTokens = estimateTokens(loreContent);
+  // A lore selection (lore.js) is packed against the lane it really gets,
+  // after the split with memory, so an entry is never cut mid-text: what
+  // does not fit falls back to its index line. A plain string is trimmed.
+  const loreSelection = Array.isArray(params.loreSelection) ? params.loreSelection : null;
+  const loreWhole = loreSelection ? renderLore(loreSelection, Infinity, { estimate: estimateTokens }).text : loreContent;
+  const rawLoreTokens = estimateTokens(loreWhole);
   const rawMemTokens = estimateTokens(memoryContent);
   const rawTotal = rawLoreTokens + rawMemTokens;
   let loreBudget, memoryBudget;
@@ -3733,7 +3546,8 @@ function assembleContext(params) {
     memoryBudget = Math.max(0, Math.floor(budget.lore * (rawMemTokens / rawTotal)));
     loreBudget = Math.max(0, budget.lore - memoryBudget);
   }
-  const loreTrimmed = trimTextToBudget(loreContent, loreBudget);
+  const loreRender = loreSelection ? renderLore(loreSelection, loreBudget, { estimate: estimateTokens }) : null;
+  const loreTrimmed = loreRender ? loreRender.text : trimTextToBudget(loreContent, loreBudget);
   const memTrimmed = trimTextToBudget(memoryContent, memoryBudget);
 
   // Extract user-facing settings — merge across all characters for multi-char threads
@@ -3794,7 +3608,15 @@ function assembleContext(params) {
       `Trim the character description, raise context window, or increase Character %.`,
     );
   }
-  if (rawLoreTokens > loreBudget && rawLoreTokens > 0) {
+  if (loreRender) {
+    const squeezed = loreRender.brief.filter((x) => x.state !== 'index').length;
+    if (squeezed || loreRender.left) {
+      warnings.push(
+        `Lore lane is ${loreBudget}t: ${squeezed ? `${squeezed} lore entr${squeezed === 1 ? 'y that came up was' : 'ies that came up were'} sent in brief only` : ''}${squeezed && loreRender.left ? ', and ' : ''}${loreRender.left ? `${loreRender.left} left out even in brief` : ''}. ` +
+        `Increase Lore %, or lower some entries' priority.`,
+      );
+    }
+  } else if (rawLoreTokens > loreBudget && rawLoreTokens > 0) {
     warnings.push(
       `Lore content is ${rawLoreTokens}t but lore lane is ${loreBudget}t, so ${rawLoreTokens - loreBudget}t was truncated. ` +
       `Reduce lorebooks or increase Lore %.`,
@@ -4108,6 +3930,7 @@ function assembleContext(params) {
     fitMethod,
     historyBudget,
     mappedHistory,
+    loreRender,
   };
 }
 
@@ -6675,26 +6498,11 @@ function renderChatEditor(container, parallx, input) {
       body.appendChild(diag);
     }
 
-    // Lorebook trigger debug.
-    if (ctx.loreDebug && (ctx.loreDebug.matched.length || ctx.loreDebug.skipped.length || ctx.loreDebug.always.length)) {
-      body.appendChild(el('div', 'tg-prompt-role', { text: 'lorebook triggers' }));
-      const loreLines = [];
-      if (ctx.loreDebug.matched.length) {
-        loreLines.push('MATCHED:');
-        for (const m of ctx.loreDebug.matched) {
-          loreLines.push(`  • [${m.book}] ${m.head}  ← hit on: ${m.hits.join(', ')}`);
-        }
-      }
-      if (ctx.loreDebug.always.length) {
-        loreLines.push('ALWAYS:');
-        for (const a of ctx.loreDebug.always) loreLines.push(`  • [${a.book}] ${a.head}`);
-      }
-      if (ctx.loreDebug.skipped.length) {
-        loreLines.push('SKIPPED (triggers did not fire):');
-        for (const s of ctx.loreDebug.skipped) loreLines.push(`  • [${s.book}] ${s.head}  (needs: ${s.triggers.join(', ')})`);
-      }
+    // Lorebook entries: what went in full, in brief, or not, and why (lore.js).
+    if (Array.isArray(ctx.loreReport) && ctx.loreReport.length) {
+      body.appendChild(el('div', 'tg-prompt-role', { text: 'lorebook entries' }));
       const loreEl = el('div', 'tg-prompt-content');
-      loreEl.appendChild(el('pre', null, { text: loreLines.join('\n') }));
+      loreEl.appendChild(el('pre', null, { text: ctx.loreReport.join('\n') }));
       body.appendChild(loreEl);
     }
 
@@ -7291,34 +7099,22 @@ function renderChatEditor(container, parallx, input) {
     // resolved once here and getGenerationOptions sends this same number.
     const contextWindow = await chatContextWindow(modelId);
     lastContextWindow = contextWindow;
-    // Lorebooks come from the primary (first) character only. If multi-character
-    // chats are introduced, the original character’s lore wins. If the character
-    // hasn't picked any books, NO lore is injected — empty selection means none.
-    const primaryCharLore = characters[0]?.rawData?.lorebookFiles;
-    const lorebooks = Array.isArray(primaryCharLore) && primaryCharLore.length
-      ? allLorebooks.filter((book) => primaryCharLore.includes(book.fileName))
-      : [];
+    // Every character's picked lorebooks; none picked, no lore (lore.js).
+    const lorebooks = chatLorebooks(characters, allLorebooks);
     const budget = computeTokenBudget(contextWindow, currentSettings);
-    // Build recent context string for lorebook trigger matching (last ~10 messages + user text).
-    // Filter out AI-hidden messages so triggers can't fire on text the AI is forbidden from seeing.
+    // Lore (lore.js): every entry the chat can see is in full or in the
+    // index. Keys are matched as whole words over what the AI may see (hidden
+    // messages never fire one), each entry over its own window.
     const baseHistory = historyOverride || messageHistory;
-    const recentForTriggers = baseHistory
-      .slice(-10)
-      .filter((m) => m.hiddenFrom !== 'ai')
-      .map((m) => m.content || '')
-      .join('\n') + (userText ? '\n' + userText : '');
-    // M79 Phase 2 — lorebook activation now also considers structured
-    // scene state and the present-character roster, enabling
-    // `scope: scene:X` / `scope: character:X` entries.
     const presentCharNames = characters
       .map((c) => c?.frontmatter?.name || c?.fileName?.replace(/\.(md|json)$/, ''))
       .filter(Boolean);
-    const loreActivation = {
+    const loreSelection = lorebooks.length ? selectLore(lorebooks, {
+      messages: baseHistory.filter((m) => m.hiddenFrom !== 'ai').map((m) => m.content || ''),
+      userText,
       sceneState: thread?.sceneState || null,
       presentCharNames,
-    };
-    const loreContent = assembleLoreContent(lorebooks, budget.lore, recentForTriggers, loreActivation);
-    const loreDebug = debugLorebookTriggers(lorebooks, recentForTriggers);
+    }) : [];
     // M79 Phase 1 — combine legacy memories.md with auto-extracted
     // semantic facts (always-on, grouped by category) and episodic
     // beats (recency × importance, trimmed to lane budget). The
@@ -7399,7 +7195,7 @@ function renderChatEditor(container, parallx, input) {
       characters,
       writingPreset: resolvedWritingPreset,
       pov: resolvedPov,
-      loreContent,
+      loreSelection,
       memoryContent,
       history: effectiveHistory,
       userMessage: userText,
@@ -7425,7 +7221,7 @@ function renderChatEditor(container, parallx, input) {
     // global default fallback), matching the speaker-aware resolution
     // above. Previously these reported primaryChar regardless of who
     // was actually speaking, which obscured the bug.
-    assembled.loreDebug = loreDebug;
+    assembled.loreReport = loreReport(loreSelection, assembled.loreRender);
     const charLenLimit = speakerCharLocal?.frontmatter?.messageLengthLimit;
     const threadLenOverride = thread?.responseLengthOverride || '';
     if (threadLenOverride) {
@@ -9204,7 +9000,7 @@ function renderCharactersPage(container, parallx, input) {
     lorebooks = lbs.map((lb) => {
       const parsed = parseFrontmatter(lb.content);
       let entries = 0;
-      try { entries = parseLoreEntries(lb.content).length; } catch { entries = 0; }
+      try { entries = parseLorebook(lb.content, lb.fileName).length; } catch { entries = 0; }
       return { fileName: lb.fileName, name: parsed.frontmatter.name || lb.fileName.replace('.md', ''), entries };
     });
     chatCounts = new Map();
@@ -10936,21 +10732,19 @@ const LOREBOOK_TEMPLATE = `---
 name: New Lorebook
 ---
 
-# World & Setting
+# World
 
-Describe the world, setting, or topic this lorebook covers.
+The text up here is the world's overview: the chat always has it. Keep it to a few lines.
 
-## Key Locations
+## Blackstone Keep
+triggers: blackstone, the keep
+summary: the Ashby family's ruined fortress above the river
+Each entry is a heading and what is true about it. The chat always knows every entry in brief (its summary line, or its first sentence) and gets it in full once someone says one of its triggers, for the next dozen messages. Without a triggers line, its heading is the trigger.
 
-- **Location Name** \u2014 Description of the place.
-
-## Key Characters
-
-- **Character Name** \u2014 Brief description.
-
-## Key Facts
-
-- Important fact about the world.
+## Lord Ashby
+summary: owns the valley, sells it a field at a time to pay his debts
+priority: 7
+A higher priority (0 to 10, 5 by default) comes first when the lore is short of room. Other lines an entry may have: scope (always, or scene: or character: and a name), anti (words that keep it out) and sticky (how many messages it stays after its trigger was said).
 `;
 
 // ── Built-in Writing Presets (replaces separate style/reminder files) ──
@@ -11502,6 +11296,8 @@ export const __testables = {
   parseSupportingPerson,
   supportingCastCards,
   connectedPeopleCards,
+  chatLorebooks,
+  LOREBOOK_TEMPLATE,
   regenDirectionFor,
   registerChatCharacterTools,
   clearCharacterDrafts: () => _characterDrafts.clear(),
