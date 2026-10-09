@@ -59,7 +59,17 @@ const INES_FIX = { name: 'Ines Brask', appearance: APPEARANCE('Ines').replace(/h
 const requests = [];
 const toolCall = (name, args) => ({ role: 'assistant', content: '', tool_calls: [{ function: { name, arguments: args } }] });
 function replyFor(msgs) {
-  const tools = msgs.filter((m) => m.role === 'tool');
+  // Only this turn's tool results count: what follows the last user message.
+  let lastUser = -1;
+  msgs.forEach((m, i) => { if (m.role === 'user') lastUser = i; });
+  const asked = String(msgs[lastUser]?.content || '');
+  if (/look like/.test(asked)) {
+    const found = msgs.slice(lastUser + 1).filter((m) => m.role === 'tool');
+    if (found.length === 0) return toolCall('creations_find_characters', { names: ['Tom Hale'] });
+    if (found.length === 1) return toolCall('creations_find_characters', { query: '"harrow court"' });
+    return { role: 'assistant', content: 'Tom is tall and weathered. Near Harrow Court you have Nell and Lord Ashby.' };
+  }
+  const tools = msgs.slice(lastUser + 1).filter((m) => m.role === 'tool');
   const last = tools.at(-1);
   const lastText = String(last?.content || '');
   if (tools.length === 0) return toolCall('creations_character_brief', { connectTo: ['Lord Ashby'] });
@@ -168,13 +178,13 @@ async function main() {
       try { lm.setActiveModel(model); await lm.getModelInfo(model); } catch { /* the probe checks the turn */ }
       const links = svc('ILinkResolverService');
       return {
-        tools: ['creations_character_brief', 'creations_save_characters'].filter((n) => tools._tools.has(n)),
+        tools: ['creations_character_brief', 'creations_save_characters', 'creations_find_characters'].filter((n) => tools._tools.has(n)),
         contract: links.allContracts().some((c) => c.segment === 'creations'),
         activeModel: lm.getActiveModel(),
       };
     }, MODEL);
     console.log(`[probe] setup: ${JSON.stringify(setup)}`);
-    check(setup.tools?.length === 2, 'Creations registers both character tools when it is turned on');
+    check(setup.tools?.length === 3, `Creations registers its three character tools when it is turned on (${setup.tools?.join(', ')})`);
     check(setup.contract === true, 'Creations registers the parallx://creations link kind');
 
     // One chat turn, as the user would send it.
@@ -197,7 +207,7 @@ async function main() {
     console.log(`[probe] turn: ${JSON.stringify({ res: turn.res, tools: turn.tools.map((t) => `${t.name}${t.isError ? '(error)' : ''}`), pending: turn.pending })}`);
     check(!turn.res, `the turn finishes on its own (${JSON.stringify(turn.res)})`);
     const turnReqs = requests.filter((r) => r.toolNames.length);
-    check(turnReqs.length >= 1 && ['creations_character_brief', 'creations_save_characters'].every((n) => turnReqs[0].toolNames.includes(n)), `the model is offered both tools, as a 3B model on the standard profile (${turnReqs[0]?.toolNames.filter((n) => n.startsWith('creations')).join(', ')})`);
+    check(turnReqs.length >= 1 && ['creations_character_brief', 'creations_save_characters'].every((n) => turnReqs[0].toolNames.includes(n)), `the model is offered the tools, as a 3B model on the standard profile (${turnReqs[0]?.toolNames.filter((n) => n.startsWith('creations')).join(', ')})`);
     check(turn.tools.map((t) => t.name).join(',') === 'creations_character_brief,creations_save_characters,creations_save_characters', `the tools run in order: brief, save, save (${turn.tools.map((t) => t.name).join(',')})`);
     const brief = turn.tools[0]?.result || '';
     check(/"appearance" \(5 sections: Overview, Height and build, Face, Clothes, Physicality\)/.test(brief), 'the brief carries the shipped Sheet structure');
@@ -233,6 +243,22 @@ async function main() {
     }, linkList);
     check(checks.slice(0, 3).every((c) => c.ok), `every link checks out (${checks.slice(0, 3).map((c) => c.location).join(', ')})`);
     check(checks[3] && checks[3].ok === false, 'a link to no character does not');
+
+    // A second chat, asking about them: the model looks them up.
+    const ask = await page.evaluate(async (model) => {
+      const chat = window.__parallx_workbench__._services.get({ id: 'IChatService' });
+      const s = chat.createSession('agent', model);
+      const p = chat.sendRequest(s.id, 'What does Tom Hale look like, and who else do I have around Harrow Court?').catch((e) => ({ thrown: String(e && e.message || e) }));
+      const res = await Promise.race([p, new Promise((r) => setTimeout(() => r({ timedOut: true }), 60_000))]);
+      const session = chat.getSession(s.id) || s;
+      const parts = session.messages.at(-1)?.response.parts || [];
+      return { res: res && (res.timedOut || res.thrown) ? res : null, tools: parts.filter((x) => x.kind === 'toolInvocation').map((x) => ({ name: x.toolName, result: x.result ? String(x.result.content) : '' })) };
+    }, MODEL);
+    check(!ask.res && ask.tools.map((t) => t.name).join(',') === 'creations_find_characters,creations_find_characters', `a question about them runs find twice (${ask.tools.map((t) => t.name).join(',')})`);
+    const byName = ask.tools[0]?.result || '';
+    check(byName.startsWith('1 character named Tom Hale, of 4 in the roster.') && byName.includes('Appearance:\nOverview: Tom reads as someone built for outdoor work') && byName.includes('Connected to:\n- Lord Ashby: works for him at Harrow Court as his gamekeeper'), 'find by name returns Tom\'s whole sheet, with his connections');
+    const byWords = ask.tools[1]?.result || '';
+    check(/^\d+ characters matching "harrow court", of 4 in the roster\./.test(byWords) && ['Tom Hale', 'Nell Hale', 'Lord Ashby'].every((n) => byWords.includes(`- ${n}: parallx://creations/character?file=`)), `find by words lists who is around Harrow Court, each with a link (${byWords.split('\n')[0]})`);
 
     // Open Tom's link: the Characters editor opens on him, in the Studio.
     const opened = await page.evaluate(async (u) => window.__parallx_workbench__._services.get({ id: 'ILinkResolverService' }).open(u), linkList.find((l) => l.includes(encodeURIComponent(tom.f)) || l.includes(tom.f)));

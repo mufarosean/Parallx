@@ -3,14 +3,16 @@
 Last updated 2026-10-09. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7943 tests) and `npm run build` pass.
+tsc, the full vitest suite (7947 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
 
 ## Done on 2026-10-09, cloud: Creations characters from the chat
 
-Two chat tools while Creations runs: `creations_character_brief` (what a
+Three chat tools while Creations runs: `creations_find_characters` (the
+roster by words or exact names: a list with links and chat counts, or whole
+sheets), `creations_character_brief` (what a
 sheet must be now, from the user's Sheet structure and roster) and
 `creations_save_characters` (up to eight per call, checked one by one, the
 good ones saved, exact fixes for the rest, a refused one kept as a draft so
@@ -20,7 +22,7 @@ Characters in one call connect to each other by name. A generic bridge
 option, `profiles`, lets an extension tool be seen by small models too. The
 Studio's "Connected to" line lost a stray space before its commas. Design,
 files, tests and the probe: `docs/CREATIONS_AI.md`, "Characters from the
-chat". The probe passes all 24 checks in the real app. Not yet built: the
+chat". The probe passes all 27 checks in the real app. Not yet built: the
 `build-character` skill on top of the tools, and Atelier photos by id.
 
 ## Done on 2026-10-08, cloud: concept maps on a page, edited like a board

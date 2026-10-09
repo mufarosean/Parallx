@@ -15,7 +15,7 @@ import { CHARACTER_SEEDS_NAME } from './tables-core.js';
 import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
 import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE, parseSheetStructure } from './studio-core.js';
-import { buildCharacterBrief, planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL } from './character-tool-core.js';
+import { buildCharacterBrief, planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL, searchCharacters, findResultText } from './character-tool-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
@@ -9377,6 +9377,25 @@ async function characterToolBrief(args) {
   return { content: buildCharacterBrief({ structure, roster, connectTo }) };
 }
 
+async function characterToolFind(args) {
+  const w = characterToolWorkspace();
+  if (!w) return { content: 'Open a workspace first: Creations keeps its characters in the workspace.', isError: true };
+  const query = typeof args?.query === 'string' ? args.query : '';
+  const names = Array.isArray(args?.names) ? args.names.map((x) => String(x || '')).filter(Boolean)
+    : (typeof args?.names === 'string' && args.names.trim() ? [args.names] : []);
+  const [roster, threads] = await Promise.all([
+    scanCharacters(w.fs, w.workspaceUri).catch(() => []),
+    listThreads(w.fs, w.workspaceUri).catch(() => []),
+  ]);
+  const chats = new Map();
+  for (const t of threads) for (const ref of Array.isArray(t.characters) ? t.characters : []) {
+    const f = ref && (ref.file || ref);
+    if (typeof f === 'string') chats.set(f, (chats.get(f) || 0) + 1);
+  }
+  const hits = searchCharacters(roster, { query, names });
+  return { content: findResultText(hits, { query, names, full: args?.full === true, chatsOf: (f) => chats.get(f) || 0, total: roster.length }) };
+}
+
 /** A file name no character has and no other character in this call was given. */
 function freshCharacterFile(taken) {
   for (let i = 0; i < 20; i++) {
@@ -9489,6 +9508,27 @@ const CHARACTER_BRIEF_TOOL = {
   profiles: ['readonly', 'standard'],
 };
 
+const CHARACTER_FIND_TOOL = {
+  description:
+    'Creations AI: look up the user\'s existing characters (the roster). Use it to answer questions about them ("who do I have that...", "what is Tom\'s secret", "which have I played most") ' +
+    'and before writing about or connecting to one. query: words that must all appear somewhere in a character (name, tagline, any field of the sheet), any order; "quoted phrase" matches whole. ' +
+    'names: exact names, for whole sheets. Neither: the whole roster, newest first. A list gives each character\'s link, who they are, connections and how many chats; names (or full: true) gives whole sheets, ' +
+    'up to 4 per call. Read-only.',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Words to search for (optional).' },
+      names: { type: 'array', items: { type: 'string' }, description: 'Exact character names, for their whole sheets (optional).' },
+      full: { type: 'boolean', description: 'Whole sheets for the first few matches of a query, not just the list (optional).' },
+    },
+  },
+  handler: async (args) => {
+    try { return await characterToolFind(args || {}); } catch (err) { return { content: `Could not read the characters: ${err?.message || String(err)}`, isError: true }; }
+  },
+  requiresConfirmation: false,
+  profiles: ['readonly', 'standard'],
+};
+
 const CHARACTER_SAVE_TOOL = {
   description:
     'Creations AI: save one or more finished character sheets into the user\'s roster (up to ' + MAX_CHARACTERS_PER_CALL + ' per call). Call creations_character_brief first and write every field it lists. ' +
@@ -9584,6 +9624,7 @@ function registerChatCharacterTools(parallx, context) {
   if (parallx.chat && typeof parallx.chat.registerTool === 'function') {
     try { context.subscriptions.push(parallx.chat.registerTool('creations_character_brief', CHARACTER_BRIEF_TOOL)); } catch (err) { console.warn('[TextGenerator] character brief tool not registered:', err); }
     try { context.subscriptions.push(parallx.chat.registerTool('creations_save_characters', CHARACTER_SAVE_TOOL)); } catch (err) { console.warn('[TextGenerator] character save tool not registered:', err); }
+    try { context.subscriptions.push(parallx.chat.registerTool('creations_find_characters', CHARACTER_FIND_TOOL)); } catch (err) { console.warn('[TextGenerator] character find tool not registered:', err); }
   }
   if (parallx.links && typeof parallx.links.register === 'function') {
     try { context.subscriptions.push(parallx.links.register(characterLinkContract(parallx))); } catch (err) { console.warn('[TextGenerator] character link kind not registered:', err); }
@@ -11316,6 +11357,7 @@ export const __testables = {
   clearCharacterDrafts: () => _characterDrafts.clear(),
   CHARACTER_BRIEF_TOOL,
   CHARACTER_SAVE_TOOL,
+  CHARACTER_FIND_TOOL,
   resolveContextWindow,
   migrateContextDefault,
   DEFAULT_DIALOGUE_RULES,

@@ -21,7 +21,7 @@ import type { IDisposable } from '../../src/platform/lifecycle';
 const {
   readIncomingCharacter, checkSheet, planBatch, characterFileFor, backLinkedCard, buildCharacterBrief,
   saveResultText, characterLink, fileFromCharacterLink, dialogueExchanges, fieldText, MAX_CHARACTERS_PER_CALL,
-  incomingList, mergeDraft, asDraft,
+  incomingList, mergeDraft, asDraft, searchCharacters, findResultText, findTerms, FIND_FULL_MAX,
 } = core as any;
 const { registerChatCharacterTools, clearCharacterDrafts } = __testables as any;
 
@@ -245,6 +245,54 @@ describe('the brief', () => {
   });
 });
 
+describe('finding characters', () => {
+  const entry = (fileName: string, sheet: Record<string, string>, extra: Record<string, any> = {}) => ({ fileName, frontmatter: { name: sheet.name }, rawData: { name: sheet.name, updatedAt: extra.updatedAt || 0, studio: { sheet, ...(extra.studio || {}) }, ...(extra.data || {}) } });
+  const roster = [
+    entry('character-tom.json', { name: 'Tom Hale', tagline: 'Keeps the estate\'s game', description: 'Tom keeps the game at Harrow Court.', secrets: 'He knows where the north wood money went.', appearance: 'Tall, in a waxed jacket.' }, { updatedAt: 3, studio: { connections: [{ name: 'Lord Ashby', how: 'his gamekeeper', fileName: 'character-ashby.json' }] } }),
+    entry('character-nell.json', { name: 'Nell Hale', tagline: 'Runs the Hare and Hounds', description: 'Nell runs the pub below Harrow Court.' }, { updatedAt: 5 }),
+    entry('character-ines.json', { name: 'Ines Brask', tagline: 'The new vet', description: 'Ines treats the valley\'s dogs.' }, { updatedAt: 1, data: { lorebookFiles: ['valley.md'] } }),
+  ];
+  it('matches every word somewhere, in any order; a quoted phrase whole; the name weighs most', () => {
+    expect(findTerms('north "harrow court" -')).toEqual(['north', 'harrow court']);
+    expect(searchCharacters(roster, { query: 'harrow court' }).map((h: any) => h.name)).toEqual(['Nell Hale', 'Tom Hale']);
+    expect(searchCharacters(roster, { query: '"court harrow"' })).toEqual([]);
+    expect(searchCharacters(roster, { query: 'north wood' }).map((h: any) => h.name)).toEqual(['Tom Hale']);
+    expect(searchCharacters(roster, { query: 'hale' }).map((h: any) => h.name)).toEqual(['Nell Hale', 'Tom Hale']);
+    expect(searchCharacters(roster, { query: 'tom harrow' })[0].matched).toEqual(expect.arrayContaining(['name', 'description']));
+    // Nothing asked: the whole roster, newest first. Names: exact, any case.
+    expect(searchCharacters(roster, {}).map((h: any) => h.name)).toEqual(['Nell Hale', 'Tom Hale', 'Ines Brask']);
+    expect(searchCharacters(roster, { names: ['tom hale', 'Nobody'] }).map((h: any) => h.name)).toEqual(['Tom Hale']);
+  });
+  it('a list has each one\'s link, who they are, connections and chats; names give whole sheets', () => {
+    const chatsOf = (f: string) => (f === 'character-tom.json' ? 3 : 0);
+    const list = findResultText(searchCharacters(roster, { query: 'harrow' }), { query: 'harrow', chatsOf, total: 3 });
+    expect(list).toContain('2 characters matching "harrow", of 3 in the roster.');
+    expect(list).toContain('- Tom Hale: parallx://creations/character?file=character-tom.json | Keeps the estate\'s game (connected to Lord Ashby; 3 chats)');
+    expect(list).toContain('- Nell Hale: parallx://creations/character?file=character-nell.json | Runs the Hare and Hounds (0 chats)');
+    expect(list).toContain('For whole sheets, call again with "names"');
+    const full = findResultText(searchCharacters(roster, { names: ['Tom Hale'] }), { names: ['Tom Hale'], chatsOf, total: 3 });
+    expect(full).toContain('## Tom Hale\nLink: parallx://creations/character?file=character-tom.json');
+    expect(full).toContain('Secrets:\nHe knows where the north wood money went.');
+    expect(full).toContain('Appearance:\nTall, in a waxed jacket.');
+    expect(full).toContain('Connected to:\n- Lord Ashby: his gamekeeper');
+    expect(full).toContain('Chats: 3.');
+    expect(full).not.toContain('For whole sheets');
+    const ines = findResultText(searchCharacters(roster, { names: ['Ines Brask'] }), { names: ['Ines Brask'], total: 3 });
+    expect(ines).toContain('Lorebooks: valley.md');
+    expect(findResultText([], { query: 'dragon', total: 3 })).toBe('No character matching "dragon".\nThe roster has 3 characters; try fewer or other words.');
+    expect(findResultText(searchCharacters(roster, { query: '"harrow court"' }), { query: '"harrow court"', total: 3 })).toMatch(/^2 characters matching "harrow court", of 3/);
+    expect(findResultText([], { names: ['Bob'], total: 3 })).toMatch(/^No character named Bob\.\nNames are matched exactly/);
+    expect(findResultText([], { total: 0 })).toBe('No character in the roster yet.');
+  });
+  it('whole sheets stop at the limit; the rest are list lines', () => {
+    const many = Array.from({ length: FIND_FULL_MAX + 2 }, (_, i) => entry(`character-${i}.json`, { name: `P${i} Holm`, tagline: 'x' }));
+    const t = findResultText(searchCharacters(many, {}), { full: true, total: many.length });
+    expect((t.match(/^## /gm) || []).length).toBe(FIND_FULL_MAX);
+    expect(t).toContain('Also:');
+    expect((t.match(/^- P\d Holm: /gm) || []).length).toBe(2);
+  });
+});
+
 describe('the result', () => {
   it('lists links for what was saved and the fixes for the rest', () => {
     const t = saveResultText({
@@ -280,7 +328,11 @@ function memoryFs() {
     async mkdir(uri: string) { dirs.add(uri); },
     async readdir(uri: string) {
       if (!dirs.has(uri)) throw new Error(`ENOENT ${uri}`);
-      return [...files.keys()].filter((k) => k.startsWith(uri + '/') && !k.slice(uri.length + 1).includes('/')).map((k) => ({ name: k.slice(uri.length + 1), type: 1 }));
+      const child = (k: string) => k.startsWith(uri + '/') && !k.slice(uri.length + 1).includes('/');
+      return [
+        ...[...dirs].filter(child).map((k) => ({ name: k.slice(uri.length + 1), type: 2 })),
+        ...[...files.keys()].filter(child).map((k) => ({ name: k.slice(uri.length + 1), type: 1 })),
+      ];
     },
     saved(): Map<string, any> {
       const out = new Map<string, any>();
@@ -318,12 +370,12 @@ describe('the tools, through the chat', () => {
 
   it('are registered under their names, visible to every profile a turn can use, and go when Creations does', () => {
     const defs = w.tools.getToolDefinitions().map((d) => d.name).sort();
-    expect(defs).toEqual(['creations_character_brief', 'creations_save_characters']);
+    expect(defs).toEqual(['creations_character_brief', 'creations_find_characters', 'creations_save_characters']);
     const all = w.tools.getToolDefinitions();
     expect(applyOpenclawToolPolicy({ tools: all, mode: 'full' }).map((d) => d.name).sort()).toEqual(defs);
-    // A small model runs with `standard`: both stay. Read-only keeps the brief.
+    // A small model runs with `standard`: all stay. Read-only keeps the two that only read.
     expect(applyOpenclawToolPolicy({ tools: all, mode: 'standard' }).map((d) => d.name).sort()).toEqual(defs);
-    expect(applyOpenclawToolPolicy({ tools: all, mode: 'readonly' }).map((d) => d.name)).toEqual(['creations_character_brief']);
+    expect(applyOpenclawToolPolicy({ tools: all, mode: 'readonly' }).map((d) => d.name).sort()).toEqual(['creations_character_brief', 'creations_find_characters']);
     expect(w.links.allContracts().some((c) => c.segment === 'creations')).toBe(true);
     for (const d of w.context.subscriptions) d.dispose();
     expect(w.tools.getToolDefinitions()).toEqual([]);
@@ -441,6 +493,22 @@ describe('the tools, through the chat', () => {
     expect(bare.content).toMatch(/^Saved 1 of 1 character\./);
   });
 
+  it('finds what was saved, with chats counted from the threads', async () => {
+    await w.call('creations_save_characters', { characters: [goodSheet('Marit Holm'), goodSheet('Tom Hale')] });
+    const tomFile = [...w.fs.saved()].find(([, d]) => d.name === 'Tom Hale')![0];
+    const threads = `${WS}/.parallx/extensions/text-generator/threads`;
+    await w.fs.mkdir(threads); await w.fs.mkdir(`${threads}/t1`);
+    w.fs.files.set(`${threads}/t1/thread.json`, JSON.stringify({ id: 't1', title: 'Weir', characters: [{ file: tomFile }], updatedAt: 1 }));
+    const list = await w.call('creations_find_characters', { query: 'skerry' });
+    expect(list.isError).toBeFalsy();
+    expect(list.content).toMatch(/^2 characters matching "skerry", of 2 in the roster\./);
+    const full = await w.call('creations_find_characters', { names: ['tom hale'] });
+    expect(full.content).toContain(`## Tom Hale\nLink: parallx://creations/character?file=${tomFile}`);
+    expect(full.content).toContain('Appearance:\nOverview: A square woman');
+    expect(full.content).toMatch(/Chats: 1\./);
+    expect((await w.call('creations_find_characters', { names: 'Marit Holm' })).content).toContain('## Marit Holm');
+  });
+
   it('says what to send when nothing was sent, and needs a workspace', async () => {
     const r = await w.call('creations_save_characters', { characters: [] });
     expect(r).toMatchObject({ isError: true });
@@ -448,5 +516,6 @@ describe('the tools, through the chat', () => {
     const n = world({ workspace: false });
     expect((await n.call('creations_save_characters', { characters: [goodSheet('X Y')] })).content).toMatch(/Open a workspace first/);
     expect((await n.call('creations_character_brief', {})).content).toMatch(/Open a workspace first/);
+    expect((await n.call('creations_find_characters', {})).content).toMatch(/Open a workspace first/);
   });
 });

@@ -604,7 +604,7 @@ The owner asked for the chat's AI to make characters, one or several, from
 whatever is in the conversation (a concept of any length, canvas pages,
 files, links, photos), and wanted it perfect. The creative work stays in the
 conversation, where the model already sees all of that; what must be exact is
-code. Two chat tools, registered while Creations runs, and a link kind:
+code. Three chat tools, registered while Creations runs, and a link kind:
 
 - **`creations_character_brief`** returns what a sheet must be right now: the
   twelve fields and their requirements with the user's Sheet structure from
@@ -629,6 +629,14 @@ code. Two chat tools, registered while Creations runs, and a link kind:
   no draft. Nothing is ever overwritten. `addToTheirCard` on a connection to
   an existing character adds one line about the new one to that card's
   Relationships, only when the user wants it. Saves run one at a time.
+- **`creations_find_characters`** (added the same day, on the owner's ask)
+  looks the roster up, read-only. `query`: words that must all appear
+  somewhere in a character (name, tagline, any sheet field, the concept),
+  any order, a "quoted phrase" whole, the name weighing most; `names`: exact
+  names, any case; neither: the whole roster, newest first. A list line has
+  the link, the tagline, connections and how many chats the character is in;
+  `names` (or `full: true`) gives whole sheets, secrets included (it is the
+  user's own chat), four at most, the rest as list lines.
 - **`parallx://creations/character?file=<fileName>`** opens the character in
   the Studio; `verify` checks the file is in the roster, so the chat marks a
   dead one. Each saved character comes back with its link.
@@ -641,14 +649,15 @@ bridge option, so a small model, which runs with `standard`, still sees them.
 
 Files: `ext/creations-ai/character-tool-core.js` (pure), `main.js` (SECTION
 10B9: the tools, drafts, the link kind), `src/api/bridges/chatBridge.ts`
-(`profiles` passthrough). Tests: `creationsCharacterTools.test.ts` (27: the
+(`profiles` passthrough). Tests: `creationsCharacterTools.test.ts` (31: the
 core, and the tools through the real ChatBridge, LanguageModelToolsService,
 tool policy and link resolver). Probe:
 `xvfb-run -a node tests/probes/creations-character-tools-probe.mjs <outDir>`
 (the app built, port 11434 free, the sqlite module built for Electron): a
 stand-in 3B model does brief, save three, save the fix, answer, in one chat
-turn; 24 checks pass, no renderer errors, and shots of the Studio and the
-Characters page. A skill (`build-character`) that drives the tools is the
+turn, then in a second chat finds Tom by name and the people around Harrow
+Court by words; 27 checks pass, no renderer errors, and shots of the Studio
+and the Characters page. A skill (`build-character`) that drives the tools is the
 next step, not yet built.
 
 ## Directions (built 2026-10-07)
