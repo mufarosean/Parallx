@@ -365,7 +365,7 @@ export interface ParallxApiObject {
   } | undefined;
   readonly chat: {
     createChatParticipant(id: string, handler: (...args: unknown[]) => Promise<unknown>): IDisposable & { id: string; displayName: string; description: string; iconPath?: string; commands: { name: string; description: string }[] };
-    registerTool(name: string, tool: { description: string; parameters: Record<string, unknown>; handler: (args: Record<string, unknown>, token: unknown) => Promise<{ content: string; isError?: boolean }>; requiresConfirmation: boolean; reachesNetwork?: boolean; untrustedOutput?: boolean }): IDisposable;
+    registerTool(name: string, tool: { description: string; parameters: Record<string, unknown>; handler: (args: Record<string, unknown>, token: unknown) => Promise<{ content: string; isError?: boolean }>; requiresConfirmation: boolean; reachesNetwork?: boolean; untrustedOutput?: boolean; profiles?: readonly ('readonly' | 'standard')[] }): IDisposable;
     /** A chat slash command (`/name <input>` sends promptTemplate with {input} filled). */
     registerSlashCommand(cmd: { name: string; description: string; promptTemplate: string }): IDisposable;
     /** A skill (SKILL.md content), offered beside the workspace's own skills. */

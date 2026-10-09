@@ -107,6 +107,8 @@ export class ChatBridge {
       reachesNetwork?: boolean;
       /** What it returns comes from outside and may carry instructions (taints the turn). */
       untrustedOutput?: boolean;
+      /** Tool profiles beyond `full` it belongs to: 'standard' (safe writes) and/or 'readonly'. */
+      profiles?: readonly string[];
     },
   ): IDisposable {
     this._throwIfDisposed();
@@ -125,6 +127,11 @@ export class ChatBridge {
       ownerToolId: this._toolId,
       reachesNetwork: tool.reachesNetwork === true,
       untrustedOutput: tool.untrustedOutput === true,
+      // Only the two narrower profiles an extension may opt into; `full`
+      // has every tool already, and anything else is dropped.
+      ...(Array.isArray(tool.profiles) && tool.profiles.some((p) => p === 'readonly' || p === 'standard')
+        ? { profiles: tool.profiles.filter((p) => p === 'readonly' || p === 'standard') }
+        : {}),
     };
 
     const disposable = this._toolsService.registerTool(chatTool);

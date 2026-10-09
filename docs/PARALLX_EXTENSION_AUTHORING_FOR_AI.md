@@ -438,6 +438,7 @@ api.chat.registerTool(name, {
   requiresConfirmation: boolean,
   reachesNetwork?: boolean,      // the tool reaches the internet
   untrustedOutput?: boolean,     // what it returns comes from outside and may carry instructions
+  profiles?: ('readonly' | 'standard')[],    // the narrower tool profiles it belongs to (below)
 })                                            // → IDisposable
 api.chat.registerDropHandler({
   mimeType: 'application/x-myext-items',      // your own drag type
@@ -449,6 +450,7 @@ A registered chat tool is auto-discoverable by the agent in Agent mode. Declare 
 
 - `reachesNetwork: true`: the tool makes any request off this computer. A sealed workspace (nothing leaves the machine) hides the tool from the AI.
 - `untrustedOutput: true`: the result carries text from outside (a web page, a search result, a downloaded file) that may contain instructions. A turn that reads it is tainted: later tool calls in that turn that write or change anything ask the user first.
+- `profiles`: the chat runs each turn with a tool profile. Ask and Agent use `full`, which has every tool; a model the app rates small (8B parameters or fewer) runs with `standard`, and Edit mode too. A tool without `profiles` is hidden from those turns. Declare `['standard']` for a tool that only makes safe writes in your own data (it never deletes or overwrites the user's work), and add `'readonly'` for one that only reads. Anything else is dropped.
 
 `registerDropHandler` lets the chat input accept your extension's own drag type while it runs. The input attaches dropped files by itself; when a drop of `mimeType` carried no file it could attach, `resolve` gets the drag's data of that type and returns absolute `paths` to attach, or a `warning` shown in the chat input when nothing could be attached (return `undefined` to ignore the drop). Disposed, or the extension turned off, the input stops accepting the type.
 

@@ -14,7 +14,8 @@ import { renderTablesPage, attachTableRoll, listTables, loadTable, loadTableByNa
 import { CHARACTER_SEEDS_NAME } from './tables-core.js';
 import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
-import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE } from './studio-core.js';
+import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE, parseSheetStructure } from './studio-core.js';
+import { buildCharacterBrief, planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL } from './character-tool-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
@@ -9205,7 +9206,7 @@ function renderCharactersPage(container, parallx, input) {
     renderGallery();
   }
 
-  _liveCharacters = { openStudio: (p) => openStudio(p), __root: root };
+  _liveCharacters = { openStudio: (p) => openStudio(p), refresh: () => { if (galleryView.style.display !== 'none') void refresh(); }, __root: root };
   detailView.style.display = 'none';
   void refresh().then(() => {
     if (disposed) return;
@@ -9311,6 +9312,284 @@ function buildForgeSpec(state) {
 }
 
 /** What the Studio borrows from this file: DOM helpers, storage, the dials. */
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10B9: CHARACTERS FROM THE CHAT
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Two chat tools, registered while Creations runs, and the link kind they
+// return. The model writes the sheets in the conversation, where it already
+// sees the concept, the pages, the links and the photos; the brief says what
+// a sheet must be right now (the user's Sheet structure, the roster) and the
+// save checks each sheet, files the good ones and says exactly what to
+// change in the rest (character-tool-core.js, tested on its own).
+
+/** Saves run one at a time, so two calls in one turn never take the same name or file. */
+let _characterSaveChain = Promise.resolve();
+/** The host the tools were registered with (activate's), read at each call so a workspace switch is followed. */
+let _characterToolHost = null;
+/**
+ * Characters a save could not take, by name, so the fix is the name and the
+ * fields that change (the chat replays a long tool argument cut short).
+ * Per workspace, at most 24, gone after an hour or once saved.
+ */
+const _characterDrafts = new Map();
+const CHARACTER_DRAFT_TTL_MS = 60 * 60 * 1000;
+const CHARACTER_DRAFT_MAX = 24;
+function takeCharacterDraft(workspaceUri, name) {
+  const k = `${workspaceUri}|${draftKey(name)}`;
+  const d = _characterDrafts.get(k);
+  if (!d) return null;
+  if (Date.now() - d.at > CHARACTER_DRAFT_TTL_MS) { _characterDrafts.delete(k); return null; }
+  return d.raw;
+}
+function keepCharacterDraft(workspaceUri, raw) {
+  const name = raw && raw.name;
+  if (!name) return;
+  const k = `${workspaceUri}|${draftKey(name)}`;
+  _characterDrafts.delete(k);
+  _characterDrafts.set(k, { raw, at: Date.now() });
+  while (_characterDrafts.size > CHARACTER_DRAFT_MAX) _characterDrafts.delete(_characterDrafts.keys().next().value);
+}
+function dropCharacterDraft(workspaceUri, name) { _characterDrafts.delete(`${workspaceUri}|${draftKey(name)}`); }
+
+function characterToolWorkspace() {
+  const host = _characterToolHost || _parallx;
+  const fs = host?.workspace?.fs;
+  const workspaceUri = host?.workspace?.workspaceFolders?.[0]?.uri;
+  return fs && workspaceUri ? { fs, workspaceUri } : null;
+}
+
+async function characterSheetStructure(fs, workspaceUri) {
+  let settings = null;
+  try { settings = await loadSettings(fs, workspaceUri); } catch { settings = null; }
+  const text = settings && typeof settings.sheetStructure === 'string' ? settings.sheetStructure : DEFAULT_SHEET_STRUCTURE;
+  return parseSheetStructure(text);
+}
+
+async function characterToolBrief(args) {
+  const w = characterToolWorkspace();
+  if (!w) return { content: 'Open a workspace first: Creations keeps its characters in the workspace.', isError: true };
+  const [structure, roster] = await Promise.all([
+    characterSheetStructure(w.fs, w.workspaceUri),
+    scanCharacters(w.fs, w.workspaceUri).catch(() => []),
+  ]);
+  const connectTo = Array.isArray(args?.connectTo) ? args.connectTo.map((x) => String(x || '')).filter(Boolean) : [];
+  return { content: buildCharacterBrief({ structure, roster, connectTo }) };
+}
+
+/** A file name no character has and no other character in this call was given. */
+function freshCharacterFile(taken) {
+  for (let i = 0; i < 20; i++) {
+    const f = `character-${generateId().slice(0, 8)}.json`;
+    if (!taken.has(f)) { taken.add(f); return f; }
+  }
+  const f = `character-${generateId()}.json`;
+  taken.add(f);
+  return f;
+}
+
+async function characterToolSave(args) {
+  const w = characterToolWorkspace();
+  if (!w) return { content: 'Open a workspace first: Creations keeps its characters in the workspace.', isError: true };
+  // An array, a JSON string of one, or one character sent bare.
+  let list = incomingList(args);
+  if (!list || list.length === 0) {
+    return { content: 'Nothing to save: send {"characters": [ ...one object per character... ]}. Call creations_character_brief for the fields each needs.', isError: true };
+  }
+  const extra = Math.max(0, list.length - MAX_CHARACTERS_PER_CALL);
+  list = list.slice(0, MAX_CHARACTERS_PER_CALL);
+  const run = _characterSaveChain.then(() => saveCharacterBatch(w.fs, w.workspaceUri, list, extra));
+  _characterSaveChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+async function saveCharacterBatch(fs, workspaceUri, list, extra) {
+  const [structure, roster] = await Promise.all([
+    characterSheetStructure(fs, workspaceUri),
+    scanCharacters(fs, workspaceUri).catch(() => []),
+  ]);
+  // A resend of a character refused earlier carries only what changes.
+  const fromDraft = [];
+  const merged = list.map((raw, i) => {
+    const name = raw && (raw.name || raw.Name || (raw.sheet && raw.sheet.name));
+    const draft = name ? takeCharacterDraft(workspaceUri, name) : null;
+    const m = mergeDraft(draft, raw);
+    fromDraft[i] = m.fromDraft;
+    return m.raw;
+  });
+  const plans = planBatch(merged, roster, { structure });
+  for (const p of plans) if (fromDraft[p.index] && fromDraft[p.index].length) p.notes.unshift(`kept from the earlier call: ${fromDraft[p.index].join(', ')}.`);
+  const taken = new Set(roster.map((r) => r.fileName));
+  for (const p of plans) if (!p.problems.length) p.fileName = freshCharacterFile(taken);
+  for (const p of plans) for (const c of p.connections) if (c.batchIndex != null) c.fileName = plans[c.batchIndex].fileName;
+
+  const saved = [];
+  const failed = [];
+  try {
+    await ensureNestedDirs(fs, workspaceUri, ['.parallx', 'extensions', 'text-generator', 'characters']);
+  } catch (err) {
+    return { content: `Could not make the characters folder: ${err?.message || String(err)}`, isError: true };
+  }
+  for (const p of plans) {
+    if (p.problems.length) {
+      failed.push({ index: p.index, name: p.sheet.name, problems: p.problems });
+      keepCharacterDraft(workspaceUri, asDraft(merged[p.index]));
+      continue;
+    }
+    try {
+      const data = characterFileFor(p.sheet, { base: createCharacterJson({ initialMessages: '' }), concept: p.concept, connections: p.connections });
+      await saveCharacter(fs, workspaceUri, p.fileName, data);
+      dropCharacterDraft(workspaceUri, p.sheet.name);
+      saved.push({ plan: p, name: data.name, fileName: p.fileName, link: characterLink(p.fileName), connectedTo: p.connections.map((c) => c.name), backLinked: [], notes: [...p.notes] });
+    } catch (err) {
+      failed.push({ index: p.index, name: p.sheet.name, problems: [`it could not be written: ${err?.message || String(err)}. Send its name again.`] });
+      keepCharacterDraft(workspaceUri, asDraft(merged[p.index]));
+    }
+  }
+  // A line about the new character on an existing card, only where asked.
+  for (const s of saved) {
+    for (const c of s.plan.connections) {
+      if (!c.addToTheirCard) continue;
+      if (c.batchIndex != null) { s.notes.push(`"addToTheirCard" on ${c.name} was not needed: characters in the same call write their own relationships.`); continue; }
+      try {
+        const { content } = await fs.readFile(resolveUri(workspaceUri, `${EXT_ROOT}/characters/${c.fileName}`));
+        const next = backLinkedCard(JSON.parse(content), s.name, c.how);
+        if (!next) { s.notes.push(`${c.name}'s card already names ${s.name}.`); continue; }
+        await saveCharacter(fs, workspaceUri, c.fileName, next);
+        s.backLinked.push(c.name);
+      } catch (err) {
+        s.notes.push(`could not add a line to ${c.name}'s card: ${err?.message || String(err)}.`);
+      }
+    }
+  }
+  if (saved.length) {
+    _refreshSidebar?.();
+    try { _liveCharacters?.refresh?.(); } catch { /* the page is cosmetic */ }
+  }
+  const content = saveResultText({ saved, failed, extra, total: list.length + extra });
+  return saved.length ? { content } : { content, isError: true };
+}
+
+const CHARACTER_BRIEF_TOOL = {
+  description:
+    'Creations AI: what a character sheet must be right now, before writing one. Call it first whenever the user asks to make, build or create one or more characters ' +
+    '(for roleplay, a story, Creations), from a concept of any length, canvas pages, files, links or attached photos. It returns the twelve fields and the rules for each ' +
+    '(with the user\'s own Sheet structure, e.g. the sections Appearance must have), the roster of existing characters, and the exact shape to send to ' +
+    'creations_save_characters. connectTo: names of existing characters the new ones stand beside; their cards come back in full so the new ones are written in their world.',
+  parameters: {
+    type: 'object',
+    properties: {
+      connectTo: { type: 'array', items: { type: 'string' }, description: 'Exact names of existing roster characters the new characters are connected to (optional).' },
+    },
+  },
+  handler: async (args) => {
+    try { return await characterToolBrief(args || {}); } catch (err) { return { content: `Could not read what a sheet needs: ${err?.message || String(err)}`, isError: true }; }
+  },
+  requiresConfirmation: false,
+  profiles: ['readonly', 'standard'],
+};
+
+const CHARACTER_SAVE_TOOL = {
+  description:
+    'Creations AI: save one or more finished character sheets into the user\'s roster (up to ' + MAX_CHARACTERS_PER_CALL + ' per call). Call creations_character_brief first and write every field it lists. ' +
+    'Each character is checked: one with a missing field, a missing section, too few dialogue exchanges or an unknown connection is not saved, and the result says exactly what to change; ' +
+    'fix those and send only them again. Characters in one call can be connected to each other by name. Nothing is ever overwritten: a name already in the roster is refused unless allowSameName is true. ' +
+    'Each saved character comes back with a parallx://creations/character link that opens it in the Character Studio; give the user that link.',
+  parameters: {
+    type: 'object',
+    properties: {
+      characters: {
+        type: 'array',
+        description: 'One object per character, every field a string (line breaks as \n).',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' }, tagline: { type: 'string' }, description: { type: 'string', description: 'The Overview.' },
+            appearance: { type: 'string' }, personality: { type: 'string' }, voice: { type: 'string' }, backstory: { type: 'string' },
+            drives: { type: 'string', description: '"Wants: ...\nFears: ...\nIn the way: ..."' }, secrets: { type: 'string' },
+            relationships: { type: 'string', description: 'One "Name: who they are to them" line per person.' },
+            exampleDialogue: { type: 'string', description: 'Six lines: "[USER]: ...\n[AI]: ..." three times.' }, reminder: { type: 'string' },
+            concept: { type: 'string', description: 'The user\'s request for this character, in short (kept with the character).' },
+            connections: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Exact name of a roster character or of another character in this call.' },
+                  how: { type: 'string', description: 'How this character stands to them, from this character\'s side.' },
+                  addToTheirCard: { type: 'boolean', description: 'Also add a line about this character to that existing character\'s Relationships. Only when the user wants it.' },
+                },
+                required: ['name'],
+              },
+            },
+            allowSameName: { type: 'boolean', description: 'Save even though a roster character has this name (only when the user wants a second one).' },
+          },
+          required: ['name'],
+        },
+      },
+    },
+    required: ['characters'],
+  },
+  handler: async (args) => {
+    try { return await characterToolSave(args || {}); } catch (err) { return { content: `The characters could not be saved: ${err?.message || String(err)}`, isError: true }; }
+  },
+  requiresConfirmation: false,
+  profiles: ['standard'],
+};
+
+/** `parallx://creations/character?file=<fileName>`: a character, opened in the Studio; checked against the roster. */
+function characterLinkContract(parallx) {
+  const find = async (parsed) => {
+    const file = fileFromCharacterLink(parsed);
+    const w = characterToolWorkspace();
+    if (!file || !w) return null;
+    try {
+      const { content } = await w.fs.readFile(resolveUri(w.workspaceUri, `${EXT_ROOT}/characters/${file}`));
+      const data = JSON.parse(content);
+      return { file, name: String(data?.name || file.replace(/\.json$/, '')).trim() };
+    } catch { return null; }
+  };
+  return {
+    segment: 'creations',
+    displayName: 'Creations',
+    kinds: {
+      character: {
+        uriTemplate: 'parallx://creations/character?file=<fileName>',
+        description: 'A Creations AI character, opened in the Character Studio. Use the link creations_save_characters returned.',
+        examples: ['parallx://creations/character?file=character-1a2b3c4d.json'],
+        async open(parsed) {
+          const hit = await find(parsed);
+          if (!hit) return false;
+          try { await openCharacterTab(parallx, hit.file, hit.name); return true; } catch { return false; }
+        },
+        async resolveMetadata(parsed) {
+          const hit = await find(parsed);
+          return hit ? { title: hit.name, icon: 'user' } : null;
+        },
+        async verify(parsed) {
+          const file = fileFromCharacterLink(parsed);
+          if (!file) return { ok: false, error: 'A character link names its file: parallx://creations/character?file=character-<id>.json, as creations_save_characters returned it.' };
+          const hit = await find(parsed);
+          if (!hit) return { ok: false, error: `No Creations character has the file ${file}. Use the link creations_save_characters returned for it.` };
+          return { ok: true, uri: characterLink(hit.file), checked: `The character ${hit.name} is in the roster (${hit.file}).`, location: hit.name };
+        },
+      },
+    },
+  };
+}
+
+/** The chat tools and the link kind, while Creations runs. Each guarded: a host without chat or links gets the rest. */
+function registerChatCharacterTools(parallx, context) {
+  _characterToolHost = parallx;
+  if (parallx.chat && typeof parallx.chat.registerTool === 'function') {
+    try { context.subscriptions.push(parallx.chat.registerTool('creations_character_brief', CHARACTER_BRIEF_TOOL)); } catch (err) { console.warn('[TextGenerator] character brief tool not registered:', err); }
+    try { context.subscriptions.push(parallx.chat.registerTool('creations_save_characters', CHARACTER_SAVE_TOOL)); } catch (err) { console.warn('[TextGenerator] character save tool not registered:', err); }
+  }
+  if (parallx.links && typeof parallx.links.register === 'function') {
+    try { context.subscriptions.push(parallx.links.register(characterLinkContract(parallx))); } catch (err) { console.warn('[TextGenerator] character link kind not registered:', err); }
+  }
+}
+
 function studioDeps() {
   return {
     el, icon, tgSelect, loadSettings, saveSettings, saveCharacter, createCharacterJson, exportCharacterToMarkdown,
@@ -10923,6 +11202,9 @@ export function activate(parallx, context) {
   });
   context.subscriptions.push(openSettingsCmd);
 
+  // Characters from the chat: two tools and the link kind they return.
+  registerChatCharacterTools(parallx, context);
+
   // Auto-scaffold example files on first activation
   const fs = parallx.workspace?.fs;
   const workspaceUri = parallx.workspace?.workspaceFolders?.[0]?.uri;
@@ -11030,6 +11312,10 @@ export const __testables = {
   supportingCastCards,
   connectedPeopleCards,
   regenDirectionFor,
+  registerChatCharacterTools,
+  clearCharacterDrafts: () => _characterDrafts.clear(),
+  CHARACTER_BRIEF_TOOL,
+  CHARACTER_SAVE_TOOL,
   resolveContextWindow,
   migrateContextDefault,
   DEFAULT_DIALOGUE_RULES,

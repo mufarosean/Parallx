@@ -338,6 +338,8 @@ const CRAFT_RULES = [
   '- Inside the JSON strings, quote phrases with single quotes, never double quotes. Write every one of the twelve fields, "name" first; the object is not finished until "reminder" is written.',
   `- ${NO_DASHES}`,
 ].join('\n');
+/** The craft rules every sheet is written to, for callers outside the Studio (the chat's character tools). */
+export const SHEET_CRAFT_RULES = CRAFT_RULES;
 
 /**
  * The sheet, in one request. `canon` is the list of facts (already

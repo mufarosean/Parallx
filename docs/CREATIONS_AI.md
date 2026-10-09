@@ -598,6 +598,59 @@ Pure parts in `studio-core.js` (`editCanonFact`, `applyCanonEdits`,
 `creationsStudioCore` ("the canon, edited by hand"), `creationsStudioPane`
 ("a canon that is yours").
 
+## Characters from the chat (built 2026-10-09)
+
+The owner asked for the chat's AI to make characters, one or several, from
+whatever is in the conversation (a concept of any length, canvas pages,
+files, links, photos), and wanted it perfect. The creative work stays in the
+conversation, where the model already sees all of that; what must be exact is
+code. Two chat tools, registered while Creations runs, and a link kind:
+
+- **`creations_character_brief`** returns what a sheet must be right now: the
+  twelve fields and their requirements with the user's Sheet structure from
+  Settings applied, the craft rules, how to use the concept and attached
+  photos, the shape to send, and the roster (name and tagline each, sixty at
+  most). `connectTo` brings named roster characters' cards in full, never
+  their secrets. Read fresh at every call, so a Settings edit lands at once.
+- **`creations_save_characters`** takes up to eight characters per call. Each
+  is read however the model shaped it (other key names, arrays, objects, a
+  JSON string, line breaks escaped twice), then checked: every field filled;
+  every structured section there; three dialogue exchanges; three to five
+  voice lines; the three drives lines; two or more "Name: ..." relationships;
+  no name already in the roster or twice in the call unless `allowSameName`.
+  Connections resolve by name to the roster or to another character in the
+  same call, so a household is one call; Relationships must name each
+  connected person. The good ones are saved, the rest come back with one
+  sentence per problem saying what to change. A character connected to one
+  that was refused is held too. A refused character is kept as a draft by
+  name (an hour, 24 at most), because the chat replays a long tool argument
+  cut to 2,000 characters: the fix is the name and the fields that change,
+  and the result names every field taken from the draft. A whole resend uses
+  no draft. Nothing is ever overwritten. `addToTheirCard` on a connection to
+  an existing character adds one line about the new one to that card's
+  Relationships, only when the user wants it. Saves run one at a time.
+- **`parallx://creations/character?file=<fileName>`** opens the character in
+  the Studio; `verify` checks the file is in the roster, so the chat marks a
+  dead one. Each saved character comes back with its link.
+
+A chat-made character is the Studio's own shape (`characterFromSheet`,
+`studio.madeIn: 'chat'`, the concept kept), so it opens and rerolls like any
+other. The open Characters page and the rail refresh after a save. Both tools
+declare the `standard` profile (the brief `readonly` too) through a generic
+bridge option, so a small model, which runs with `standard`, still sees them.
+
+Files: `ext/creations-ai/character-tool-core.js` (pure), `main.js` (SECTION
+10B9: the tools, drafts, the link kind), `src/api/bridges/chatBridge.ts`
+(`profiles` passthrough). Tests: `creationsCharacterTools.test.ts` (27: the
+core, and the tools through the real ChatBridge, LanguageModelToolsService,
+tool policy and link resolver). Probe:
+`xvfb-run -a node tests/probes/creations-character-tools-probe.mjs <outDir>`
+(the app built, port 11434 free, the sqlite module built for Electron): a
+stand-in 3B model does brief, save three, save the fix, answer, in one chat
+turn; 24 checks pass, no renderer errors, and shots of the Studio and the
+Characters page. A skill (`build-character`) that drives the tools is the
+next step, not yet built.
+
 ## Directions (built 2026-10-07)
 
 The owner, after weeks of roleplay: every turn needs a director's note

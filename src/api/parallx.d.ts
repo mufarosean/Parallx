@@ -1626,6 +1626,13 @@ export interface ChatToolDefinition {
    * may carry instructions. A turn that reads it is tainted: later writes ask first.
    */
   readonly untrustedOutput?: boolean;
+  /**
+   * The tool profiles it belongs to beyond `full` (which has every tool):
+   * `'standard'` for a tool that only reads or makes safe, undoable writes,
+   * `'readonly'` for one that only reads. A model the app rates small runs
+   * with `standard`, so a tool without it is hidden from such a model.
+   */
+  readonly profiles?: readonly ('readonly' | 'standard')[];
 }
 
 /**

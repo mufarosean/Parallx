@@ -81,6 +81,7 @@ export function injectStudioStyles() {
 .cs-btn--small { padding: 2px var(--px-space-2); font-size: var(--px-text-xs); line-height: 18px; }
 .cs-crumbs { display: flex; align-items: center; gap: var(--px-space-1); font-size: var(--px-text-sm); color: var(--px-text-muted); flex-wrap: wrap; }
 .cs-crumb { background: none; border: 0; padding: 0; color: var(--px-accent-text); cursor: pointer; font: inherit; }
+.cs-crumb-list { display: inline; }
 .cs-crumb:hover { text-decoration: underline; }
 .cs-crumb--here { color: var(--px-text); cursor: default; text-decoration: none; }
 .cs-crumb--here:hover { text-decoration: none; }
@@ -1476,14 +1477,17 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     const connected = state.connections.filter((c) => c.name);
     if (!state.parentId) {
       if (connected.length === 0) return;
-      crumbs.append(el('span', null, { text: 'Connected to ' }));
+      // One inline run, so the bar's gap never sits between a name and its comma.
+      const list = el('span', 'cs-crumb-list');
+      list.append(document.createTextNode('Connected to '));
       connected.forEach((c, i) => {
-        if (i > 0) crumbs.append(el('span', null, { text: ', ' }));
+        if (i > 0) list.append(document.createTextNode(', '));
         const b = el('button', 'cs-crumb', { text: c.name });
         b.title = 'Open their card';
         b.addEventListener('click', () => ctx.openCharacter?.(c.fileName));
-        crumbs.appendChild(b);
+        list.appendChild(b);
       });
+      crumbs.appendChild(list);
       crumbs.style.display = '';
       return;
     }
