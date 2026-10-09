@@ -8,6 +8,12 @@ tsc, the full vitest suite (7981 tests) and `npm run build` pass.
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
 
+## Done on 2026-10-09, cloud: world lore per chat
+
+Chat Settings has a World lore field: lorebooks for the whole chat, whoever
+is in it, sent before the characters' own books. The chat windows (Prompt
+Inspector, the shortcut dialogs) now close on Escape. Lore probe: 17 checks.
+
 ## Done on 2026-10-09, cloud: rewrite one section of a field
 
 The Studio's Rewrite box on a sectioned field (Appearance) offers Whole

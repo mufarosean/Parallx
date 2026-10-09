@@ -2993,6 +2993,23 @@ function showToastLite(message) {
   setTimeout(() => toast.remove(), 5000);
 }
 
+/**
+ * Escape closes a chat window (Prompt Inspector, the shortcut dialogs) like
+ * its close button; before 2026-10-09 only the button or a click outside did.
+ * The listener goes with the window.
+ */
+function dismissOnEscape(overlay) {
+  const onKey = (e) => {
+    if (!overlay.isConnected) { document.removeEventListener('keydown', onKey, true); return; }
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    overlay.remove();
+    document.removeEventListener('keydown', onKey, true);
+  };
+  document.addEventListener('keydown', onKey, true);
+}
+
 /** Scan EXT_ROOT/lorebooks/ for .md files. */
 async function scanLorebooks(fs, workspaceUri) {
   const loreDir = resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks`);
@@ -3014,13 +3031,16 @@ async function scanLorebooks(fs, workspaceUri) {
 }
 
 /**
- * The lorebooks a chat uses: every character's picked books, the first
- * character's first, each once. (Before 2026-10-09 only the first
- * character's; in a group chat the others' lore was never seen.) No books
- * picked: no lore.
+ * The lorebooks a chat uses: the chat's own world lore first (Chat
+ * Settings, `thread.lorebookFiles`, for whoever is in it), then every
+ * character's picked books, the first character's first, each once. (Before
+ * 2026-10-09 only the first character's; in a group chat the others' lore
+ * was never seen, and a world's lore had to be ticked on a character.) No
+ * books picked anywhere: no lore.
  */
-function chatLorebooks(characters, allLorebooks) {
+function chatLorebooks(characters, allLorebooks, chatFiles = []) {
   const files = [];
+  for (const f of Array.isArray(chatFiles) ? chatFiles : []) if (f && !files.includes(f)) files.push(f);
   for (const c of Array.isArray(characters) ? characters : []) {
     for (const f of Array.isArray(c?.rawData?.lorebookFiles) ? c.rawData.lorebookFiles : []) if (f && !files.includes(f)) files.push(f);
   }
@@ -6177,6 +6197,7 @@ function renderChatEditor(container, parallx, input) {
       if (event.target === overlay) overlay.remove();
     });
     document.body.appendChild(overlay);
+    dismissOnEscape(overlay);
   }
 
   /**
@@ -6250,6 +6271,7 @@ function renderChatEditor(container, parallx, input) {
       if (event.target === overlay) overlay.remove();
     });
     document.body.appendChild(overlay);
+    dismissOnEscape(overlay);
   }
 
   /**
@@ -6364,6 +6386,7 @@ function renderChatEditor(container, parallx, input) {
       if (event.target === overlay) overlay.remove();
     });
     document.body.appendChild(overlay);
+    dismissOnEscape(overlay);
     labelInput.focus();
   }
 
@@ -6421,6 +6444,7 @@ function renderChatEditor(container, parallx, input) {
       if (event.target === overlay) overlay.remove();
     });
     document.body.appendChild(overlay);
+    dismissOnEscape(overlay);
     bulkInput.focus();
   }
 
@@ -6524,6 +6548,7 @@ function renderChatEditor(container, parallx, input) {
       if (event.target === overlay) overlay.remove();
     });
     document.body.appendChild(overlay);
+    dismissOnEscape(overlay);
   }
 
   viewPromptBtn.addEventListener('click', () => { void showPromptModal(); });
@@ -7099,8 +7124,8 @@ function renderChatEditor(container, parallx, input) {
     // resolved once here and getGenerationOptions sends this same number.
     const contextWindow = await chatContextWindow(modelId);
     lastContextWindow = contextWindow;
-    // Every character's picked lorebooks; none picked, no lore (lore.js).
-    const lorebooks = chatLorebooks(characters, allLorebooks);
+    // The chat's world lore, then every character's lorebooks; none picked, no lore (lore.js).
+    const lorebooks = chatLorebooks(characters, allLorebooks, thread?.lorebookFiles);
     const budget = computeTokenBudget(contextWindow, currentSettings);
     // Lore (lore.js): every entry the chat can see is in full or in the
     // index. Keys are matched as whole words over what the AI may see (hidden
@@ -7798,10 +7823,8 @@ function renderChatEditor(container, parallx, input) {
         break;
       }
       case 'lore': {
-        const primaryCharLore = characters[0]?.rawData?.lorebookFiles;
-        const activeLorebooks = Array.isArray(primaryCharLore) && primaryCharLore.length
-          ? allLorebooks.filter((book) => primaryCharLore.includes(book.fileName))
-          : [];
+        // The chat's world lore first, then the characters' books.
+        const activeLorebooks = chatLorebooks(characters, allLorebooks, thread?.lorebookFiles);
         const lorebook = activeLorebooks[0] || allLorebooks[0];
         if (!lorebook) break;
         const lorePath = resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lorebook.fileName}`);
@@ -8196,6 +8219,66 @@ function renderChatEditor(container, parallx, input) {
     };
     rebuildCast();
     bodyEl.appendChild(fieldWrap('Supporting cast', castList, 'In the scene, never at the table: whoever is speaking can give them a line or two. They never take a turn.'));
+
+    // ── World lore ──
+    // Lorebooks for this whole chat, whoever is in it: a world's lore belongs
+    // to the roleplay, not to one of its characters. The characters' own
+    // books come along too.
+    const loreList = el('div', 'tg-drawer-chips');
+    const lorebookLabel = (fileName) => {
+      const book = allLorebooks.find((b) => b.fileName === fileName);
+      const name = book ? parseFrontmatter(book.content).frontmatter.name : '';
+      return String(name || fileName.replace(/\.md$/, ''));
+    };
+    const loreAlso = el('div', 'tg-drawer-hint');
+    const saveLore = async () => {
+      await surfaceSaveError(updateThreadMeta(fs, workspaceUri, threadId, { lorebookFiles: thread.lorebookFiles }), parallx, 'world lore');
+      rebuildLore();
+    };
+    const rebuildLore = () => {
+      loreList.innerHTML = '';
+      const picked = Array.isArray(thread.lorebookFiles) ? thread.lorebookFiles : [];
+      for (const fileName of picked) {
+        const chip = el('span', 'tg-drawer-chip');
+        chip.appendChild(document.createTextNode(lorebookLabel(fileName)));
+        if (!allLorebooks.some((b) => b.fileName === fileName)) chip.title = 'This lorebook is gone; it sends nothing.';
+        const rm = el('button', 'tg-drawer-chip-remove', { html: icon('x', 10) });
+        rm.title = 'Remove from this chat';
+        rm.addEventListener('click', async () => {
+          thread.lorebookFiles = picked.filter((f) => f !== fileName);
+          await saveLore();
+        });
+        chip.appendChild(rm);
+        loreList.appendChild(chip);
+      }
+      const addLore = el('button', 'tg-drawer-add-btn', { text: '+ Add Lorebook' });
+      addLore.title = 'A lorebook for this whole chat, whoever is in it';
+      addLore.addEventListener('click', async () => {
+        allLorebooks = await scanLorebooks(fs, workspaceUri);
+        const available = allLorebooks.filter((b) => !picked.includes(b.fileName));
+        if (available.length === 0) {
+          showToast(allLorebooks.length === 0 ? 'No lorebooks yet. Make one on the Characters page.' : 'Every lorebook is already in this chat.');
+          return;
+        }
+        const choice = await parallx.window?.showQuickPick(
+          available.map((b) => ({ label: lorebookLabel(b.fileName), description: b.fileName })),
+          { placeholder: 'Which lorebook is this chat\'s world?' },
+        );
+        if (!choice) return;
+        thread.lorebookFiles = [...picked, choice.description];
+        await saveLore();
+      });
+      loreList.appendChild(addLore);
+      // What the characters bring as well, so the whole picture is here.
+      const fromChars = chatLorebooks(characters, allLorebooks).map((b) => b.fileName).filter((f) => !picked.includes(f));
+      loreAlso.textContent = fromChars.length
+        ? `Also from the characters: ${fromChars.map(lorebookLabel).join(', ')}.`
+        : 'For the whole chat, whoever is in it. A character\'s own lorebooks come along too.';
+    };
+    rebuildLore();
+    const loreField = fieldWrap('World lore', loreList);
+    loreField.appendChild(loreAlso);
+    bodyEl.appendChild(loreField);
 
     // ── Edit character shortcut ──
     const editCharBtn = el('button', 'tg-drawer-btn', { html: `${icon('pencil-line', 13)} Edit ${escapeHtml(getCharacterName(characters[0]) || 'character')}` });
@@ -10575,7 +10658,7 @@ function renderChatSettingsPage(container, parallx, input) {
   modelRow.appendChild(modelSelect.element);
   generationSection.appendChild(modelRow);
   generationSection.appendChild(el('div', 'tg-cs-hint', {
-    text: 'Writing preset, POV, response length, temperature, max tokens, lorebooks, reminders. Edit those on the character.',
+    text: 'Writing preset, POV, response length, temperature, max tokens and reminders are on the character. A lorebook for the whole chat goes in the chat\'s settings, under World lore.',
   }));
   root.appendChild(generationSection);
 

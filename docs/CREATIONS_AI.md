@@ -760,8 +760,13 @@ What it is (`ext/creations-ai/lore.js`, pure):
 - `scope: scene:X` and `scope: character:X` keep an entry out, even of the
   index, unless the scene or the character is here; `anti:` words keep it
   out while said.
-- **Group chats** use every character's picked books, the first
-  character's first.
+- **World lore for a chat** (added the same day: "if one lorebook is the
+  world lore, it makes no sense to just add it to one person"): Chat
+  Settings has a World lore field, lorebooks for the whole chat whoever is
+  in it (`thread.lorebookFiles`, a field the threads carried unused until
+  now), with + Add Lorebook and a line naming what the characters bring as
+  well. The chat's books come first, then every character's picked books,
+  the first character's first, each once.
 - **The Prompt Inspector** lists every entry as IN FULL (and why: the key
   said, how many messages ago; always; the overview), IN BRIEF (and what
   would bring it in), HIDDEN (why) or LEFT OUT, from the real selection.
@@ -774,7 +779,10 @@ Tests: `creationsLorebooks.test.ts`. Probe:
 `xvfb-run -a node tests/probes/creations-lore-probe.mjs <outDir>` (port
 11434 free, the app built, the sqlite module built for Electron): two
 characters with a book each, Lord Ashby named, Blackstone named three
-messages back; checks the prompt the model got and the Inspector, 10 checks.
+messages back, a world lorebook picked for the chat only; checks the prompt
+the model got, the Inspector (and that Escape closes it), and Chat
+Settings' World lore, then removes it there and checks the next turn; 17
+checks.
 
 ## Directions (built 2026-10-07)
 

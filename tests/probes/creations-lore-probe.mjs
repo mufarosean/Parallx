@@ -53,6 +53,19 @@ name: Salt Coast
 summary: sold the drowned city twice
 He keeps the only key to the sea wall.
 `;
+// The chat's own world lore: on no character, picked in Chat Settings.
+const WORLD = `---
+name: The Northern Reach
+---
+
+# The Northern Reach
+
+Three valleys under one failing crown; the roads close from November to March.
+
+## The Crown Tax
+summary: a tithe of one sheep in ten, collected at midsummer
+The collectors come with soldiers, and the Ashbys pay late every year.
+`;
 const sheet = (o) => ({ name: '', tagline: '', description: '', appearance: '', personality: '', voice: '', backstory: '', drives: '', secrets: '', relationships: '', exampleDialogue: '', reminder: '', ...o });
 const CHARACTERS = [
   ['tom-hale.json', { name: 'Tom Hale', roleInstruction: 'Tom keeps the game on the Ashby estate.', lorebookFiles: ['valley.md'], studio: { sheet: sheet({ name: 'Tom Hale', description: 'Tom keeps the game on the Ashby estate.' }) } }],
@@ -104,9 +117,11 @@ async function seed(workspace) {
   for (const [file, data] of CHARACTERS) await fs.writeFile(path.join(root, 'characters', file), JSON.stringify({ id: `char-${file}`, createdAt: now - 100 * H, updatedAt: now - H, ...data }, null, 2));
   await fs.writeFile(path.join(root, 'lorebooks', 'valley.md'), VALLEY);
   await fs.writeFile(path.join(root, 'lorebooks', 'salt.md'), SALT);
+  await fs.writeFile(path.join(root, 'lorebooks', 'world.md'), WORLD);
   await fs.writeFile(path.join(root, 'threads', THREAD_ID, 'thread.json'), JSON.stringify({
     id: THREAD_ID, title: 'The Road To Blackstone',
     characters: [{ file: 'tom-hale.json', addedAt: now - 3 * H }, { file: 'mara-vell.json', addedAt: now - 3 * H }],
+    lorebookFiles: ['world.md'],
     writingPreset: 'immersive-rp', userName: 'Anon', createdAt: now - 3 * H, updatedAt: now - 2 * H,
   }, null, 2));
   await fs.writeFile(path.join(root, 'threads', THREAD_ID, 'messages.jsonl'), MESSAGES.map((m, i) => JSON.stringify({ id: `m${i}`, timestamp: now - 3 * H + i * 60_000, generatedBy: 'model', hiddenFrom: null, ...m })).join('\n') + '\n');
@@ -179,6 +194,8 @@ async function main() {
     check(lore.includes('- Rainfall: It rains on the valley') && !lore.includes('### Rainfall'), '"train" does not fire "rain": Rainfall is one line');
     check(lore.includes('- The Harbourmaster: sold the drowned city twice'), 'Mara\'s own lorebook is used too, in brief');
     check(!lore.includes('Hollow Folk'), 'an entry for Nell\'s chats only is left out');
+    check(lore.includes('### The Northern Reach\nThree valleys under one failing crown') && lore.includes('- The Crown Tax: a tithe of one sheep in ten'), 'the chat\'s own world lore is sent, though no character has it');
+    check(lore.indexOf('### The Northern Reach') < lore.indexOf('### The Valley'), 'the chat\'s world lore comes before the characters\' books');
 
     await page.locator('button[title^="Inspect prompt"]').first().click();
     await page.waitForTimeout(1_500);
@@ -187,6 +204,40 @@ async function main() {
     check(/IN BRIEF \[valley\.md\] Rainfall  \(comes in full when someone says: rain\)/.test(inspector), 'and says what would bring Rainfall in');
     check(/HIDDEN   \[valley\.md\] The Hollow Folk  \(nell hale is not in this chat\)/.test(inspector), 'and why the Hollow Folk are out');
     await shot('lore-chat.png');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    check(await page.evaluate(() => document.querySelectorAll('.tg-modal-overlay').length === 0), 'Escape closes the Prompt Inspector');
+    // Chat Settings shows the world lore, and what the characters bring as well.
+    await page.locator('button[title="Chat settings"]').first().click();
+    await page.waitForTimeout(800);
+    const drawer = await page.evaluate(() => {
+      const field = [...document.querySelectorAll('.tg-drawer-field')].find((f) => f.querySelector('.tg-drawer-label')?.textContent === 'World lore');
+      return field ? { chips: [...field.querySelectorAll('.tg-drawer-chip')].map((c) => c.textContent.trim()), add: !!field.querySelector('.tg-drawer-add-btn'), hint: field.querySelector('.tg-drawer-hint')?.textContent || '' } : null;
+    });
+    check(!!drawer && drawer.chips.join() === 'The Northern Reach' && drawer.add, `Chat Settings has World lore with the chat's lorebook and + Add Lorebook (${JSON.stringify(drawer)})`);
+    check(!!drawer && drawer.hint === 'Also from the characters: The Valley, Salt Coast.', `and says what the characters bring (${drawer?.hint})`);
+    await shot('lore-chat-settings.png');
+    // Removed there, it is gone from the next turn.
+    await page.evaluate(() => {
+      const field = [...document.querySelectorAll('.tg-drawer-field')].find((f) => f.querySelector('.tg-drawer-label')?.textContent === 'World lore');
+      field.querySelector('.tg-drawer-chip-remove').click();
+    });
+    await page.waitForTimeout(800);
+    const savedThread = JSON.parse(await fs.readFile(path.join(workspace, '.parallx', 'extensions', 'text-generator', 'threads', THREAD_ID, 'thread.json'), 'utf8'));
+    check(Array.isArray(savedThread.lorebookFiles) && savedThread.lorebookFiles.length === 0, 'removing it there saves the chat without it');
+    await page.locator('.tg-drawer .tg-modal-close').first().click();
+    await page.waitForTimeout(300);
+    const beforeNext = chats.length;
+    await page.locator('.tg-input-textarea').fill('And the tax?');
+    await page.locator('.tg-input-send').click();
+    await page.waitForTimeout(3_000);
+    const next = chats.slice(beforeNext).find((m) => !String(m[0]?.content || '').startsWith('You extract'));
+    const nextSys = next ? next.filter((m) => m.role === 'system').map((m) => m.content).join('\n') : '';
+    check(!!next && !nextSys.includes('Northern Reach') && nextSys.includes('### The Valley'), 'the next turn has no world lore from the chat, and the characters\' books still');
+
+  } catch (e) {
+    failed++;
+    console.log(`[probe] FAIL the probe stopped: ${String(e).split('\n')[0]}`);
   } finally {
     console.log(errors.length ? `[probe] ${errors.length} renderer error(s):\n  ${errors.join('\n  ')}` : '[probe] no renderer errors');
     console.log(`[probe] ${failed === 0 ? 'ALL PASS' : `${failed} FAILED`}`);

@@ -158,5 +158,9 @@ describe('the lore in the prompt', () => {
     const chars = [{ rawData: { lorebookFiles: ['b.md'] } }, { rawData: { lorebookFiles: ['a.md', 'b.md'] } }, { rawData: {} }];
     expect(chatLorebooks(chars, books).map((b: any) => b.fileName)).toEqual(['b.md', 'a.md']);
     expect(chatLorebooks([{ rawData: {} }], books)).toEqual([]);
+    // The chat's own world lore comes first, whoever is in it; the characters' books after, each once.
+    expect(chatLorebooks(chars, books, ['c.md', 'b.md']).map((b: any) => b.fileName)).toEqual(['c.md', 'b.md', 'a.md']);
+    expect(chatLorebooks([{ rawData: {} }], books, ['a.md']).map((b: any) => b.fileName)).toEqual(['a.md']);
+    expect(chatLorebooks([], books, ['gone.md'])).toEqual([]);
   });
 });
