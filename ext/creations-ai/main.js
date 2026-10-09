@@ -14,8 +14,8 @@ import { renderTablesPage, attachTableRoll, listTables, loadTable, loadTableByNa
 import { CHARACTER_SEEDS_NAME } from './tables-core.js';
 import { roll as rollTable } from './tables-core.js';
 import { storyWords } from './story-core.js';
-import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE, parseSheetStructure } from './studio-core.js';
-import { buildCharacterBrief, planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL, searchCharacters, findResultText } from './character-tool-core.js';
+import { sheetFromCharacter, DEFAULT_SHEET_STRUCTURE, parseSheetStructure, STUDIO_KEYS } from './studio-core.js';
+import { buildCharacterBrief, planBatch, characterFileFor, backLinkedCard, saveResultText, characterLink, fileFromCharacterLink, incomingList, mergeDraft, asDraft, draftKey, MAX_CHARACTERS_PER_CALL, searchCharacters, findResultText, resolveCharacterTarget, planEdit, applyEdit, undoLastChatEdit, editResultText, undoResultText, rosterName } from './character-tool-core.js';
 import { createPortrait, hueOf, CREATIONS_PARTS_CSS } from './portrait.js';
 import { directorCast, buildDirectorPrompt, parseDirections, parseSituation, parseDirectionKinds, directionCommand, composeWithDirection, directionKindLabel, NARRATOR, DEFAULT_CHARACTER_DIRECTIONS, DEFAULT_NARRATOR_DIRECTIONS, MAX_DIRECTION_KINDS } from './director.js';
 import { renderMemoryMarkdown, parseMemoryMarkdown, isMemoryMarkdown, mergeMemory, memoryFromLegacy, rankExcerpts, earlierBlock, extractionDue, parseExtractionReply } from './chat-memory.js';
@@ -8653,6 +8653,12 @@ async function loadConceptRoller(fs, workspaceUri) {
 // page is already open it takes the concept at once; otherwise it reads it on render.
 let _pendingStudio = null;
 let _liveCharacters = null;
+/**
+ * Every open Characters page, so a card the chat changes is never written
+ * over by a Studio holding the old one: the Studio's unsaved typing is saved
+ * first, and the Studio opens the card again after.
+ */
+const _studioPages = new Set();
 function makeCharacterFrom(parallx, concept) {
   _pendingStudio = { concept: String(concept || '').trim(), autoGenerate: !!String(concept || '').trim() };
   if (_liveCharacters) { const p = _pendingStudio; _pendingStudio = null; _liveCharacters.openStudio(p); }
@@ -9207,6 +9213,11 @@ function renderCharactersPage(container, parallx, input) {
   }
 
   _liveCharacters = { openStudio: (p) => openStudio(p), refresh: () => { if (galleryView.style.display !== 'none') void refresh(); }, __root: root };
+  const studioPage = {
+    studioOn: (fileName) => (paneEditor && paneEditor.__state && paneEditor.__state.fileName === fileName ? paneEditor : null),
+    reopen: (fileName) => { if (!disposed && openFile === fileName) selectCharacter(fileName); },
+  };
+  _studioPages.add(studioPage);
   detailView.style.display = 'none';
   void refresh().then(() => {
     if (disposed) return;
@@ -9220,6 +9231,7 @@ function renderCharactersPage(container, parallx, input) {
   return {
     dispose() {
       disposed = true;
+      _studioPages.delete(studioPage);
       if (_liveCharacters?.openStudio && _liveCharacters.__root === root) _liveCharacters = null;
       clearDetail();
       container.innerHTML = '';
@@ -9316,12 +9328,14 @@ function buildForgeSpec(state) {
 // SECTION 10B9: CHARACTERS FROM THE CHAT
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// Two chat tools, registered while Creations runs, and the link kind they
+// Four chat tools, registered while Creations runs, and the link kind they
 // return. The model writes the sheets in the conversation, where it already
 // sees the concept, the pages, the links and the photos; the brief says what
 // a sheet must be right now (the user's Sheet structure, the roster) and the
 // save checks each sheet, files the good ones and says exactly what to
-// change in the rest (character-tool-core.js, tested on its own).
+// change in the rest. Find reads the roster; edit changes one card, only
+// where asked, and keeps what it replaced for Undo (character-tool-core.js,
+// tested on its own).
 
 /** Saves run one at a time, so two calls in one turn never take the same name or file. */
 let _characterSaveChain = Promise.resolve();
@@ -9471,11 +9485,14 @@ async function saveCharacterBatch(fs, workspaceUri, list, extra) {
       if (!c.addToTheirCard) continue;
       if (c.batchIndex != null) { s.notes.push(`"addToTheirCard" on ${c.name} was not needed: characters in the same call write their own relationships.`); continue; }
       try {
-        const { content } = await fs.readFile(resolveUri(workspaceUri, `${EXT_ROOT}/characters/${c.fileName}`));
-        const next = backLinkedCard(JSON.parse(content), s.name, c.how);
-        if (!next) { s.notes.push(`${c.name}'s card already names ${s.name}.`); continue; }
-        await saveCharacter(fs, workspaceUri, c.fileName, next);
-        s.backLinked.push(c.name);
+        let added = false;
+        const busy = await writeCardAroundStudios(c.fileName, async () => {
+          const next = backLinkedCard(await readCharacterFile(fs, workspaceUri, c.fileName), s.name, c.how);
+          if (next) { await saveCharacter(fs, workspaceUri, c.fileName, next); added = true; }
+        });
+        if (busy) s.notes.push(`could not add a line to ${c.name}'s card: ${busy}.`);
+        else if (added) s.backLinked.push(c.name);
+        else s.notes.push(`${c.name}'s card already names ${s.name}.`);
       } catch (err) {
         s.notes.push(`could not add a line to ${c.name}'s card: ${err?.message || String(err)}.`);
       }
@@ -9487,6 +9504,103 @@ async function saveCharacterBatch(fs, workspaceUri, list, extra) {
   }
   const content = saveResultText({ saved, failed, extra, total: list.length + extra });
   return saved.length ? { content } : { content, isError: true };
+}
+
+/**
+ * Write one card the chat changes, with every Studio open on it in step: its
+ * unsaved typing saved first, never while it is writing the card itself, and
+ * the card opened again after. Returns '' or why it could not.
+ */
+async function writeCardAroundStudios(fileName, write) {
+  const open = [..._studioPages].map((p) => ({ page: p, studio: p.studioOn(fileName) })).filter((x) => x.studio);
+  if (open.some((x) => x.studio.isBusy?.())) return 'the Character Studio is writing this character right now; try again when it finishes';
+  for (const x of open) await x.studio.flush?.();
+  await write();
+  for (const x of open) { try { x.studio.abandon?.(); x.page.reopen(fileName); } catch { /* the page is cosmetic */ } }
+  return '';
+}
+
+async function readCharacterFile(fs, workspaceUri, fileName) {
+  const { content } = await fs.readFile(resolveUri(workspaceUri, `${EXT_ROOT}/characters/${fileName}`));
+  return JSON.parse(content);
+}
+
+/** A list argument as a model may send it: an array, a JSON string of one, or one item. */
+function listArg(v) {
+  if (typeof v === 'string') { const t = v.trim(); if (t.startsWith('[') || t.startsWith('{')) { try { v = JSON.parse(t); } catch { /* a plain name */ } } }
+  if (v == null || v === '') return [];
+  return Array.isArray(v) ? v : [v];
+}
+
+async function characterToolEdit(args) {
+  const w = characterToolWorkspace();
+  if (!w) return { content: 'Open a workspace first: Creations keeps its characters in the workspace.', isError: true };
+  const run = _characterSaveChain.then(() => editCharacterOnce(w.fs, w.workspaceUri, args));
+  _characterSaveChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+async function editCharacterOnce(fs, workspaceUri, args) {
+  const [structure, roster] = await Promise.all([
+    characterSheetStructure(fs, workspaceUri),
+    scanCharacters(fs, workspaceUri).catch(() => []),
+  ]);
+  const target = resolveCharacterTarget(roster, args.character ?? args.link ?? args.file ?? args.name);
+  if (target.problem) return { content: `Nothing was changed: ${target.problem}`, isError: true };
+  const fileName = target.entry.fileName;
+  const link = characterLink(fileName);
+  const name = rosterName(target.entry);
+  let changes = args.changes;
+  if (typeof changes === 'string') { try { changes = JSON.parse(changes); } catch { changes = null; } }
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) changes = {};
+  // Fields sent beside "character" instead of inside "changes" count the same.
+  const beside = {};
+  for (const k of STUDIO_KEYS) if (k !== 'name' && args[k] != null) beside[k] = args[k];
+  if (typeof args.newName === 'string') beside.name = args.newName;
+  changes = { ...beside, ...changes };
+
+  let content = '';
+  let isError = false;
+  const why = await writeCardAroundStudios(fileName, async () => {
+    // Read after the Studio saved, so its last typing is what the edit starts from.
+    const data = await readCharacterFile(fs, workspaceUri, fileName);
+    if (args.undo === true) {
+      const result = undoLastChatEdit(data);
+      if (result) await saveCharacter(fs, workspaceUri, fileName, result.data);
+      content = undoResultText({ name, link, result });
+      isError = !result;
+      return;
+    }
+    const plan = planEdit({ ...target.entry, rawData: data }, roster, {
+      changes, connect: listArg(args.connect), disconnect: listArg(args.disconnect), allowSameName: args.allowSameName === true, structure,
+    });
+    if (plan.problems.length) { content = editResultText({ name, link, plan, failed: true }); isError = true; return; }
+    if (!plan.changed.length && !plan.connectionsChanged && !plan.backLinks.length) { content = editResultText({ name, link, plan, noChange: true }); return; }
+    if (plan.changed.length || plan.connectionsChanged) {
+      await saveCharacter(fs, workspaceUri, fileName, applyEdit(data, plan, { request: typeof args.request === 'string' ? args.request : '', at: Date.now() }));
+    }
+    const backLinked = [];
+    const notes = [];
+    for (const b of plan.backLinks) {
+      try {
+        let added = false;
+        const busy = await writeCardAroundStudios(b.fileName, async () => {
+          const next = backLinkedCard(await readCharacterFile(fs, workspaceUri, b.fileName), plan.sheet.name, b.how);
+          if (next) { await saveCharacter(fs, workspaceUri, b.fileName, next); added = true; }
+        });
+        if (busy) notes.push(`could not add a line to ${b.name}'s card: ${busy}.`);
+        else if (added) backLinked.push(b.name);
+        else notes.push(`${b.name}'s card already names ${plan.sheet.name}.`);
+      } catch (err) { notes.push(`could not add a line to ${b.name}'s card: ${err?.message || String(err)}.`); }
+    }
+    content = editResultText({ name, link, plan, backLinked, notes });
+  }).catch((err) => `it could not be written: ${err?.message || String(err)}`);
+  if (why) return { content: `Nothing was changed on ${name}: ${why}.`, isError: true };
+  if (!isError) {
+    _refreshSidebar?.();
+    try { _liveCharacters?.refresh?.(); } catch { /* the page is cosmetic */ }
+  }
+  return isError ? { content, isError } : { content };
 }
 
 const CHARACTER_BRIEF_TOOL = {
@@ -9573,7 +9687,41 @@ const CHARACTER_SAVE_TOOL = {
   handler: async (args) => {
     try { return await characterToolSave(args || {}); } catch (err) { return { content: `The characters could not be saved: ${err?.message || String(err)}`, isError: true }; }
   },
-  requiresConfirmation: false,
+  // A write: runs at once in a turn the user started, asks first in a
+  // scheduled or background turn and in Careful Mode (M90).
+  requiresConfirmation: true,
+  profiles: ['standard'],
+};
+
+const CHARACTER_EDIT_TOOL = {
+  description:
+    'Creations AI: change an existing character when the user asks ("make her older", "give Tom a scar", "less cheerful", "connect Nell to Lord Ashby"), ' +
+    'or undo the chat\'s last change to one (undo: true). Read the character first with creations_find_characters (names), so you change only what was asked. ' +
+    'In changes, send only the fields that change, each whole; for Drives or a field written in sections (e.g. Appearance), you may send just the lines or sections that change, by their labels, and the rest is kept. ' +
+    'The card must still pass the checks a new one does: if not, nothing changes and the result says what to fix. Fields the user locked in the Studio are never changed. ' +
+    'What each field said before is kept, so the change can be undone. Returns the character\'s link; give it to the user.',
+  parameters: {
+    type: 'object',
+    properties: {
+      character: { type: 'string', description: 'Exact name, or the parallx://creations/character link.' },
+      changes: { type: 'object', description: 'Only the fields that change, by key: name (to rename), tagline, description (the Overview), appearance, personality, voice, backstory, drives, secrets, relationships, exampleDialogue, reminder. Strings; line breaks as \\n.' },
+      connect: {
+        type: 'array',
+        description: 'Roster characters to connect this one to.',
+        items: { type: 'object', properties: { name: { type: 'string' }, how: { type: 'string', description: 'How this character stands to them.' }, addToTheirCard: { type: 'boolean', description: 'Also add a line to their Relationships (only when the user wants it).' } }, required: ['name'] },
+      },
+      disconnect: { type: 'array', items: { type: 'string' }, description: 'Names of connected characters to disconnect.' },
+      request: { type: 'string', description: 'What the user asked for, in short (kept with the change).' },
+      undo: { type: 'boolean', description: 'Put back what the chat\'s last change replaced, instead of changing anything.' },
+      allowSameName: { type: 'boolean', description: 'Rename even though another character has that name (only when the user wants it).' },
+    },
+    required: ['character'],
+  },
+  handler: async (args) => {
+    try { return await characterToolEdit(args || {}); } catch (err) { return { content: `The character could not be changed: ${err?.message || String(err)}`, isError: true }; }
+  },
+  // A write, like the save: asks first in a scheduled or background turn and in Careful Mode.
+  requiresConfirmation: true,
   profiles: ['standard'],
 };
 
@@ -9625,6 +9773,7 @@ function registerChatCharacterTools(parallx, context) {
     try { context.subscriptions.push(parallx.chat.registerTool('creations_character_brief', CHARACTER_BRIEF_TOOL)); } catch (err) { console.warn('[TextGenerator] character brief tool not registered:', err); }
     try { context.subscriptions.push(parallx.chat.registerTool('creations_save_characters', CHARACTER_SAVE_TOOL)); } catch (err) { console.warn('[TextGenerator] character save tool not registered:', err); }
     try { context.subscriptions.push(parallx.chat.registerTool('creations_find_characters', CHARACTER_FIND_TOOL)); } catch (err) { console.warn('[TextGenerator] character find tool not registered:', err); }
+    try { context.subscriptions.push(parallx.chat.registerTool('creations_edit_character', CHARACTER_EDIT_TOOL)); } catch (err) { console.warn('[TextGenerator] character edit tool not registered:', err); }
   }
   if (parallx.links && typeof parallx.links.register === 'function') {
     try { context.subscriptions.push(parallx.links.register(characterLinkContract(parallx))); } catch (err) { console.warn('[TextGenerator] character link kind not registered:', err); }
@@ -11358,6 +11507,8 @@ export const __testables = {
   CHARACTER_BRIEF_TOOL,
   CHARACTER_SAVE_TOOL,
   CHARACTER_FIND_TOOL,
+  CHARACTER_EDIT_TOOL,
+  studioPagesForTests: _studioPages,
   resolveContextWindow,
   migrateContextDefault,
   DEFAULT_DIALOGUE_RULES,

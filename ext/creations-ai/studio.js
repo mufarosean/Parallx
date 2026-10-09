@@ -20,6 +20,7 @@ import {
   editCanonFact, applyCanonEdits, sourcesKey,
   sheetFromCharacter, characterFromSheet, lineageOf, stripDashes, backLinkLine, withRelationshipLine,
 } from './studio-core.js';
+import { pendingChatEdit, fieldListText } from './character-tool-core.js';
 import { createPortrait, updatePortrait, hueOf, PORTRAIT_HUES, createDots, CREATIONS_PARTS_CSS } from './portrait.js';
 
 const STYLE_ID = 'creations-studio-styles';
@@ -85,6 +86,9 @@ export function injectStudioStyles() {
 .cs-crumb:hover { text-decoration: underline; }
 .cs-crumb--here { color: var(--px-text); cursor: default; text-decoration: none; }
 .cs-crumb--here:hover { text-decoration: none; }
+.cs-chat-edit { display: flex; align-items: center; gap: var(--px-space-2); flex-wrap: wrap; font-size: var(--px-text-sm); color: var(--px-text-secondary); padding: var(--px-space-2) var(--px-space-3); border: 1px solid var(--px-border); border-radius: var(--px-radius-md); background: var(--px-bg-inset); }
+.cs-chat-edit-text { flex: 1; min-width: 0; }
+.cs-chat-edit-asked { color: var(--px-text-muted); }
 .cs-error { display: flex; align-items: center; gap: var(--px-space-2); font-size: var(--px-text-sm); color: var(--px-danger); }
 .cs-section { border-top: 1px solid var(--px-divider); padding-top: var(--px-space-3); }
 .cs-section-head { display: flex; align-items: center; gap: var(--px-space-2); cursor: pointer; user-select: none; min-height: 24px; }
@@ -281,6 +285,10 @@ export function renderStudioPane(container, parallx, ctx, deps) {
   const crumbs = el('div', 'cs-crumbs');
   crumbs.style.display = 'none';
   root.appendChild(crumbs);
+  // What the chat last changed on this card, with Undo (character-tool-core.js, chatEdits).
+  const chatEditLine = el('div', 'cs-chat-edit');
+  chatEditLine.style.display = 'none';
+  root.appendChild(chatEditLine);
   const errorLine = el('div', 'cs-error');
   errorLine.style.display = 'none';
   root.appendChild(errorLine);
@@ -639,13 +647,74 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     r.rerollBtn.disabled = on;
     markDirty();
   }
-  function showUndo(key) { rows[key].undoBtn.style.display = ''; rows[key].row.classList.add('cs-row--undo'); }
+  function showUndo(key, hint = '') {
+    const r = rows[key];
+    const tip = hint || `Undo the last reroll of ${r.label.toLowerCase()}`;
+    r.undoBtn.title = tip;
+    r.undoBtn.setAttribute('aria-label', tip);
+    r.undoBtn.style.display = '';
+    r.row.classList.add('cs-row--undo');
+  }
   function hideUndo(key) { if (!rows[key]) return; rows[key].undoBtn.style.display = 'none'; rows[key].row.classList.remove('cs-row--undo'); state.undo.delete(key); }
   function undoReroll(key) {
     if (!state.undo.has(key)) return;
     const prev = state.undo.get(key);
     hideUndo(key);
     setField(key, prev);
+    showChatEdit();
+  }
+
+  // ── The chat's last change ─────────────────────────────────────────────
+  // The chat can change a card (creations_edit_character); what it replaced
+  // is kept on the card. Opened, the Studio says what changed and offers
+  // Undo for all of it, or field by field on each row; Keep puts the offer
+  // away. A field changed by hand since is not the chat's to undo.
+  function currentChatEdit() {
+    if (!state.base) return null;
+    const p = pendingChatEdit({ ...state.base, studio: { ...(state.base.studio || {}), sheet: { ...state.sheet }, connections: state.connections } });
+    return p;
+  }
+  function showChatEdit({ offerRows = false } = {}) {
+    const p = currentChatEdit();
+    chatEditLine.replaceChildren();
+    if (!p) { chatEditLine.style.display = 'none'; return; }
+    if (offerRows) {
+      for (const k of p.keys) {
+        if (!rows[k]) continue;
+        state.undo.set(k, p.entry.fields[k].before || '');
+        showUndo(k, `Undo the chat's change to ${rows[k].label.toLowerCase()}`);
+      }
+    }
+    const what = fieldListText([...p.keys, ...(p.connections ? ['connections'] : [])]);
+    const text = el('span', 'cs-chat-edit-text');
+    text.append(document.createTextNode(`The chat changed ${what}.`));
+    if (p.entry.request) text.append(document.createTextNode(' '), el('span', 'cs-chat-edit-asked', { text: `Asked for: ${p.entry.request}` }));
+    chatEditLine.append(el('span', null, { html: icon('message-circle', 14) }), text,
+      smallButton('Undo Chat Edit', 'undo-2', () => undoChatEdit()),
+      smallButton('Keep', 'check', () => keepChatEdit()));
+    chatEditLine.style.display = '';
+  }
+  function undoChatEdit() {
+    const p = currentChatEdit();
+    if (!p) { showChatEdit(); return; }
+    for (const k of p.keys) {
+      const before = p.entry.fields[k].before || '';
+      if (k === 'name') { setField('name', before, { silent: true }); title.value = before; } else { hideUndo(k); setField(k, before, { silent: true }); }
+    }
+    if (p.connections) { state.connections = p.entry.connections.before.map((c) => ({ ...c })); renderConnections(); void renderCrumbs(); }
+    const edits = state.base.studio && Array.isArray(state.base.studio.chatEdits) ? state.base.studio.chatEdits : [];
+    if (edits[edits.length - 1] === p.entry) state.base.studio.chatEdits = edits.slice(0, -1);
+    markDirty();
+    showChatEdit();
+  }
+  function keepChatEdit() {
+    const p = currentChatEdit();
+    if (p) {
+      for (const k of p.keys) if (rows[k] && state.undo.get(k) === (p.entry.fields[k].before || '')) hideUndo(k);
+      p.entry.kept = true;
+      markDirty();
+    }
+    showChatEdit();
   }
   function rowError(key, message, retry, retryLabel = 'Try Again') {
     const r = rows[key];
@@ -1577,6 +1646,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     renderSources();
     renderCanon();
     state.dirty = false;
+    showChatEdit({ offerRows: true });
     refreshStatus();
     paintPortrait();
     await renderCrumbs();
@@ -1613,6 +1683,13 @@ export function renderStudioPane(container, parallx, ctx, deps) {
       if (state.dirty && (state.fileName || state.sheet.name.trim())) void save();
       root.remove();
     },
+    /** Save what is typed now: the chat is about to change this card. */
+    async flush() {
+      if (state.saveTimer) { clearTimeout(state.saveTimer); state.saveTimer = null; }
+      if (state.dirty) await save();
+    },
+    /** True while the Studio is writing the card itself (a sheet, a reroll). */
+    isBusy: () => !!state.busy,
     /** For tests and probes. */
     __state: state,
   };

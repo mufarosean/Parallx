@@ -3,10 +3,29 @@
 Last updated 2026-10-09. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7947 tests) and `npm run build` pass.
+tsc, the full vitest suite (7961 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
+
+## Done on 2026-10-09, cloud: the chat can change a character, and undo it
+
+A fourth tool, `creations_edit_character`, changes one existing card where
+the user asked: only the fields sent, and in Drives or a sectioned field
+(Appearance under the Sheet structure) only the lines or sections sent, the
+rest word for word. Same checks as a new card on what it touched; Studio
+locks are respected; renames, connect and disconnect too. What it replaced
+is kept on the card (`studio.chatEdits`, last ten): `undo: true` from the
+chat, or **Undo Chat Edit** / **Keep** and a per-row undo in the Studio. A
+Studio open on the card saves its typing first and reopens after; the chat
+waits while the Studio is writing that card. Save and edit are now
+`requiresConfirmation: true`: no prompt in a turn the user started, a
+prompt in scheduled or background turns and in Careful Mode. The authoring
+guide's stale "a write after an untrusted read asks first" line is
+corrected (M90 removed that). Probe: 40 checks pass, including the edit and
+undo with Tom open in the Studio. Still open from the tools review: the
+handlers ignore `resultCharBudget`, Stop is not honoured mid-save, and the
+per-turn schema (now four tools) could be trimmed.
 
 ## Done on 2026-10-09, cloud: Creations characters from the chat
 

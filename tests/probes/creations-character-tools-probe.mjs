@@ -5,7 +5,10 @@
 // creations_save_characters call (a brother and sister connected to each
 // other and to Lord Ashby, who is already in the roster; one of them with an
 // Appearance short of the user's sections), then sends only the fix, then
-// answers with the links. The model is a 3B one on purpose: the app runs
+// answers with the links. Then, with Tom open in the Studio, a third chat
+// asks to make him older: the model reads him (find) and changes two parts
+// of him (creations_edit_character); the Studio opens him again with the
+// change and its Undo; a fourth chat undoes it. The model is a 3B one on purpose: the app runs
 // small models with the `standard` tool profile, which hides extension tools
 // that do not opt into it. Checks what reached the model, what was written,
 // that the links check out and open the Studio, and shoots the Studio and the
@@ -63,13 +66,23 @@ function replyFor(msgs) {
   let lastUser = -1;
   msgs.forEach((m, i) => { if (m.role === 'user') lastUser = i; });
   const asked = String(msgs[lastUser]?.content || '');
+  const done = msgs.slice(lastUser + 1).filter((m) => m.role === 'tool');
+  if (/Make Tom older/.test(asked)) {
+    if (done.length === 0) return toolCall('creations_find_characters', { names: ['Tom Hale'] });
+    if (done.length === 1) return toolCall('creations_edit_character', { character: 'Tom Hale', request: 'older, greying, afraid of the river', changes: { appearance: 'Face: A long jaw gone slack at the edges, pale grey eyes set close, hair grey at the temples, a nose broken once and set a little crooked.', drives: 'Fears: the river he grew up on.' } });
+    return { role: 'assistant', content: `Done. ${(String(done.at(-1)?.content || '').match(/parallx:\/\/creations\/character\?file=\S+/) || [''])[0]}` };
+  }
+  if (/Undo that change/.test(asked)) {
+    if (done.length === 0) return toolCall('creations_edit_character', { character: 'Tom Hale', undo: true });
+    return { role: 'assistant', content: 'Undone.' };
+  }
   if (/look like/.test(asked)) {
     const found = msgs.slice(lastUser + 1).filter((m) => m.role === 'tool');
     if (found.length === 0) return toolCall('creations_find_characters', { names: ['Tom Hale'] });
     if (found.length === 1) return toolCall('creations_find_characters', { query: '"harrow court"' });
     return { role: 'assistant', content: 'Tom is tall and weathered. Near Harrow Court you have Nell and Lord Ashby.' };
   }
-  const tools = msgs.slice(lastUser + 1).filter((m) => m.role === 'tool');
+  const tools = done;
   const last = tools.at(-1);
   const lastText = String(last?.content || '');
   if (tools.length === 0) return toolCall('creations_character_brief', { connectTo: ['Lord Ashby'] });
@@ -178,13 +191,13 @@ async function main() {
       try { lm.setActiveModel(model); await lm.getModelInfo(model); } catch { /* the probe checks the turn */ }
       const links = svc('ILinkResolverService');
       return {
-        tools: ['creations_character_brief', 'creations_save_characters', 'creations_find_characters'].filter((n) => tools._tools.has(n)),
+        tools: ['creations_character_brief', 'creations_save_characters', 'creations_find_characters', 'creations_edit_character'].filter((n) => tools._tools.has(n)),
         contract: links.allContracts().some((c) => c.segment === 'creations'),
         activeModel: lm.getActiveModel(),
       };
     }, MODEL);
     console.log(`[probe] setup: ${JSON.stringify(setup)}`);
-    check(setup.tools?.length === 3, `Creations registers its three character tools when it is turned on (${setup.tools?.join(', ')})`);
+    check(setup.tools?.length === 4, `Creations registers its four character tools when it is turned on (${setup.tools?.join(', ')})`);
     check(setup.contract === true, 'Creations registers the parallx://creations link kind');
 
     // One chat turn, as the user would send it.
@@ -269,6 +282,46 @@ async function main() {
     const crumbs = await page.locator('.cs-crumbs').first().textContent().catch(() => '');
     check(/Connected to Lord Ashby, Nell Hale/.test(crumbs || ''), `the Studio shows his connections (${crumbs})`);
     await shot('character-tools-studio.png');
+
+    // With Tom open in the Studio, a chat changes him; another undoes it.
+    const say = (text) => page.evaluate(async ({ model, text }) => {
+      const chat = window.__parallx_workbench__._services.get({ id: 'IChatService' });
+      const s = chat.createSession('agent', model);
+      const p = chat.sendRequest(s.id, text).catch((e) => ({ thrown: String(e && e.message || e) }));
+      const res = await Promise.race([p, new Promise((r) => setTimeout(() => r({ timedOut: true }), 60_000))]);
+      const session = chat.getSession(s.id) || s;
+      const parts = session.messages.at(-1)?.response.parts || [];
+      return { res: res && (res.timedOut || res.thrown) ? res : null, text: parts.filter((x) => x.kind === 'markdown').map((x) => x.content).join('\n'), tools: parts.filter((x) => x.kind === 'toolInvocation').map((x) => ({ name: x.toolName, isError: !!(x.result && x.result.isError), result: x.result ? String(x.result.content) : '' })) };
+    }, { model: MODEL, text });
+    const tomBefore = (await read(tom.f)).studio.sheet;
+    const edit = await say('Make Tom older, grey at the temples, and he has started to fear the river.');
+    check(!edit.res && edit.tools.map((t) => t.name).join(',') === 'creations_find_characters,creations_edit_character', `a change runs find, then edit (${edit.tools.map((t) => `${t.name}${t.isError ? '(error)' : ''}`).join(',')})`);
+    check(requests.filter((r) => r.toolNames.length).at(-1)?.toolNames.includes('creations_edit_character'), 'the edit tool is offered to a 3B model');
+    const edited = edit.tools[1]?.result || '';
+    check(edited.startsWith(`Changed Tom Hale: parallx://creations/character?file=${tom.f}\n- appearance: the Face section (the rest kept)\n- drives: the Fears line (the rest kept)`), `the edit says what it changed (${edited.split('\n').slice(0, 3).join(' | ')})`);
+    const tomAfter = (await read(tom.f)).studio;
+    const paras = tomAfter.sheet.appearance.split('\n\n');
+    check(paras.length === 5 && paras[2].includes('grey at the temples') && paras[0] === tomBefore.appearance.split('\n\n')[0] && paras[4] === tomBefore.appearance.split('\n\n')[4], 'only the Face section changed; the other four are word for word');
+    check(tomAfter.sheet.drives === 'Wants: the cottage to stay his.\nFears: the river he grew up on.\nIn the way: Lord Ashby\'s debts.', 'only the Fears line of Drives changed');
+    check(tomAfter.sheet.voice === tomBefore.voice && tomAfter.sheet.exampleDialogue === tomBefore.exampleDialogue && JSON.stringify(tomAfter.connections) === JSON.stringify(tom.d.studio.connections), 'the rest of Tom, and his connections, are as they were');
+    check(tomAfter.chatEdits?.length === 1 && tomAfter.chatEdits[0].request === 'older, greying, afraid of the river', 'what it replaced is kept on the card, with what was asked');
+    check((await fs.readdir(charsDir)).filter((f) => f.endsWith('.json')).length === 4, 'no new file: the same card was changed');
+    await page.waitForTimeout(1_500);
+    const studioNow = await page.evaluate(() => ({
+      face: document.querySelector('.cs-row[data-key="appearance"] textarea')?.value || '',
+      notice: document.querySelector('.cs-chat-edit')?.textContent || '',
+      undo: [...document.querySelectorAll('.cs-row[data-key="appearance"] .cs-icon-btn')].find((b) => b.title.startsWith('Undo'))?.title || '',
+    }));
+    check(studioNow.face.includes('grey at the temples'), 'the open Studio shows the change at once');
+    check(/The chat changed Appearance and Drives\. Asked for: older, greying, afraid of the river/.test(studioNow.notice) && studioNow.undo === 'Undo the chat\'s change to appearance', `and offers Undo for it (${studioNow.notice})`);
+    await shot('character-tools-edited.png');
+    const undo = await say('Undo that change to Tom.');
+    check(!undo.res && /^Undid the chat's last change to Tom Hale: Appearance and Drives are back as before\./.test(undo.tools[0]?.result || ''), `undo from the chat puts both back (${(undo.tools[0]?.result || '').split('\n')[0]})`);
+    const tomUndone = (await read(tom.f)).studio;
+    check(JSON.stringify(tomUndone.sheet) === JSON.stringify(tomBefore) && tomUndone.chatEdits.length === 0, 'Tom is exactly as he was before the change');
+    await page.waitForTimeout(1_500);
+    const studioAfterUndo = await page.evaluate(() => ({ face: document.querySelector('.cs-row[data-key="appearance"] textarea')?.value || '', notice: getComputedStyle(document.querySelector('.cs-chat-edit')).display }));
+    check(!studioAfterUndo.face.includes('grey at the temples') && studioAfterUndo.notice === 'none', 'and the Studio shows him as he was, with nothing left to undo');
     await page.evaluate(async () => window.__parallx_workbench__._services.get({ id: 'ICommandService' }).executeCommand('textGenerator.openCharacters'));
     await page.waitForTimeout(2_000);
     const cards = await page.$$eval('.cr-char-card, .cr-card, [class*="cr-gallery"] [class*="card"]', (els) => els.map((e) => (e.textContent || '').slice(0, 40)));

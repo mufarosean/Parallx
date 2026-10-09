@@ -272,6 +272,19 @@ export function structureSystemLine(structure) {
 
 const normLabel = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
+/** A section's label at the start of a line: "Face:", "**Face:**", "## Face -". */
+const SECTION_HEAD = /^\s*(?:\*\*|__|#+\s*)?([^:\n*_]{1,60}?)(?:\*\*|__)?\s*[:\-\u2013\u2014]/;
+
+/** The structure section a paragraph starts with, by its label; '' when it names none of `entry`'s. */
+export function sectionOfParagraph(paragraph, entry) {
+  if (!entry || !Array.isArray(entry.sections)) return '';
+  const m = SECTION_HEAD.exec(String(paragraph || '').trimStart().split('\n')[0]);
+  if (!m) return '';
+  const n = normLabel(m[1]);
+  const hit = entry.sections.find((x) => normLabel(x.name) === n);
+  return hit ? hit.name : '';
+}
+
 /**
  * Which of a structure's sections a field's text has. With labels, a section
  * is present when a paragraph or a line begins with its label (bold or not,
@@ -287,7 +300,7 @@ export function sectionsPresent(value, entry) {
   }
   const heads = new Set();
   for (const line of text.split('\n')) {
-    const m = /^\s*(?:\*\*|__|#+\s*)?([^:\n*_]{1,60}?)(?:\*\*|__)?\s*[:\-\u2013\u2014]/.exec(line);
+    const m = SECTION_HEAD.exec(line);
     if (m) heads.add(normLabel(m[1]));
   }
   const present = [];

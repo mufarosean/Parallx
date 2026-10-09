@@ -604,7 +604,7 @@ The owner asked for the chat's AI to make characters, one or several, from
 whatever is in the conversation (a concept of any length, canvas pages,
 files, links, photos), and wanted it perfect. The creative work stays in the
 conversation, where the model already sees all of that; what must be exact is
-code. Three chat tools, registered while Creations runs, and a link kind:
+code. Four chat tools, registered while Creations runs, and a link kind:
 
 - **`creations_character_brief`** returns what a sheet must be right now: the
   twelve fields and their requirements with the user's Sheet structure from
@@ -637,27 +637,58 @@ code. Three chat tools, registered while Creations runs, and a link kind:
   the link, the tagline, connections and how many chats the character is in;
   `names` (or `full: true`) gives whole sheets, secrets included (it is the
   user's own chat), four at most, the rest as list lines.
+- **`creations_edit_character`** (added 2026-10-09: "if it creates a
+  character but I don't like it, it can't edit it?") changes one existing
+  card, any card, not only chat-made ones. `character` is the exact name or
+  the link (two of one name: the link). `changes` holds only the fields that
+  change; in Drives, or a field written in sections (Settings, Sheet
+  structure), only the lines or sections sent are replaced, by their labels,
+  and the rest stays word for word (a section the card lacks goes in at its
+  place). The card must still pass the save's checks on what the edit
+  touched; a gap it already had in a field the edit leaves alone is only
+  noted. A field locked in the Studio is never changed. `name` in `changes`
+  renames (never to another character's name without `allowSameName`, and
+  the result names the cards that still use the old one). `connect` and
+  `disconnect` change who the card stands beside; a newly connected person
+  needs a Relationships line, and a line for someone still connected may not
+  be dropped. Refused, nothing is written. What each field said before is
+  kept on the card (`studio.chatEdits`, the last ten, with what was asked);
+  `undo: true` puts back the last change where the field still says what the
+  chat wrote, and names what was changed since and kept. A Studio open on
+  the card saves its typing first, the chat waits while the Studio is
+  writing that card, and the Studio opens the card again after (also for the
+  save's `addToTheirCard` lines). The Studio then says "The chat changed
+  Appearance and Drives", with **Undo Chat Edit**, **Keep**, and an undo on
+  each changed row.
 - **`parallx://creations/character?file=<fileName>`** opens the character in
   the Studio; `verify` checks the file is in the roster, so the chat marks a
   dead one. Each saved character comes back with its link.
 
 A chat-made character is the Studio's own shape (`characterFromSheet`,
 `studio.madeIn: 'chat'`, the concept kept), so it opens and rerolls like any
-other. The open Characters page and the rail refresh after a save. Both tools
-declare the `standard` profile (the brief `readonly` too) through a generic
-bridge option, so a small model, which runs with `standard`, still sees them.
+other. The open Characters page and the rail refresh after a save. Every tool
+declares the `standard` profile (the brief and find `readonly` too) through a
+generic bridge option, so a small model, which runs with `standard`, still
+sees them. Save and edit are writes (`requiresConfirmation: true`): they run
+at once in a turn the user started, and ask first in a scheduled or
+background turn and in Careful Mode.
 
 Files: `ext/creations-ai/character-tool-core.js` (pure), `main.js` (SECTION
 10B9: the tools, drafts, the link kind), `src/api/bridges/chatBridge.ts`
-(`profiles` passthrough). Tests: `creationsCharacterTools.test.ts` (31: the
-core, and the tools through the real ChatBridge, LanguageModelToolsService,
-tool policy and link resolver). Probe:
+(`profiles` passthrough), `studio.js` (the chat's change and its Undo).
+Tests: `creationsCharacterTools.test.ts` (42: the core, and the tools
+through the real ChatBridge, LanguageModelToolsService, tool policy, policy
+decision point and link resolver) and `creationsStudioPane.test.ts` (the
+Undo). Probe:
 `xvfb-run -a node tests/probes/creations-character-tools-probe.mjs <outDir>`
 (the app built, port 11434 free, the sqlite module built for Electron): a
 stand-in 3B model does brief, save three, save the fix, answer, in one chat
 turn, then in a second chat finds Tom by name and the people around Harrow
-Court by words; 27 checks pass, no renderer errors, and shots of the Studio
-and the Characters page. A skill (`build-character`) that drives the tools is the
+Court by words; then, with Tom open in the Studio, a third chat makes him
+older (find, then edit of one Appearance section and one Drives line), the
+Studio shows it with Undo, and a fourth chat undoes it; 40 checks pass, no
+renderer errors, and shots of the Studio, the edited Studio and the
+Characters page. A skill (`build-character`) that drives the tools is the
 next step, not yet built.
 
 ## Directions (built 2026-10-07)

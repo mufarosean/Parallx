@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as core from '../../ext/creations-ai/character-tool-core.js';
-import { parseSheetStructure, DEFAULT_SHEET_STRUCTURE, sheetFromCharacter } from '../../ext/creations-ai/studio-core.js';
+import { parseSheetStructure, DEFAULT_SHEET_STRUCTURE, sheetFromCharacter, characterFromSheet } from '../../ext/creations-ai/studio-core.js';
 import { __testables } from '../../ext/creations-ai/main.js';
 import { ChatBridge } from '../../src/api/bridges/chatBridge';
 import { ChatAgentService } from '../../src/services/chatAgentService';
@@ -22,8 +22,10 @@ const {
   readIncomingCharacter, checkSheet, planBatch, characterFileFor, backLinkedCard, buildCharacterBrief,
   saveResultText, characterLink, fileFromCharacterLink, dialogueExchanges, fieldText, MAX_CHARACTERS_PER_CALL,
   incomingList, mergeDraft, asDraft, searchCharacters, findResultText, findTerms, FIND_FULL_MAX,
+  resolveCharacterTarget, mergeSections, mergeDrives, planEdit, applyEdit, undoLastChatEdit, pendingChatEdit,
+  editResultText, undoResultText, CHAT_EDITS_KEPT,
 } = core as any;
-const { registerChatCharacterTools, clearCharacterDrafts } = __testables as any;
+const { registerChatCharacterTools, clearCharacterDrafts, studioPagesForTests } = __testables as any;
 
 const STRUCTURE = parseSheetStructure(DEFAULT_SHEET_STRUCTURE);
 
@@ -370,10 +372,11 @@ describe('the tools, through the chat', () => {
 
   it('are registered under their names, visible to every profile a turn can use, and go when Creations does', () => {
     const defs = w.tools.getToolDefinitions().map((d) => d.name).sort();
-    expect(defs).toEqual(['creations_character_brief', 'creations_find_characters', 'creations_save_characters']);
+    expect(defs).toEqual(['creations_character_brief', 'creations_edit_character', 'creations_find_characters', 'creations_save_characters']);
     const all = w.tools.getToolDefinitions();
     expect(applyOpenclawToolPolicy({ tools: all, mode: 'full' }).map((d) => d.name).sort()).toEqual(defs);
     // A small model runs with `standard`: all stay. Read-only keeps the two that only read.
+    // (The edit tool is `standard` too: changing a card is what a small model is asked as often as making one.)
     expect(applyOpenclawToolPolicy({ tools: all, mode: 'standard' }).map((d) => d.name).sort()).toEqual(defs);
     expect(applyOpenclawToolPolicy({ tools: all, mode: 'readonly' }).map((d) => d.name).sort()).toEqual(['creations_character_brief', 'creations_find_characters']);
     expect(w.links.allContracts().some((c) => c.segment === 'creations')).toBe(true);
@@ -517,5 +520,240 @@ describe('the tools, through the chat', () => {
     expect((await n.call('creations_save_characters', { characters: [goodSheet('X Y')] })).content).toMatch(/Open a workspace first/);
     expect((await n.call('creations_character_brief', {})).content).toMatch(/Open a workspace first/);
     expect((await n.call('creations_find_characters', {})).content).toMatch(/Open a workspace first/);
+  });
+});
+
+// ── Editing a character ──────────────────────────────────────────────────────
+
+const ROSTER_STRUCTURE = STRUCTURE;
+const card = (fileName: string, sheet: any, studio: any = {}) => ({ fileName, rawData: characterFromSheet(readIncomingCharacter(sheet).sheet, { id: fileName }, studio) });
+
+describe('editing a character', () => {
+  const marit = () => card('character-marit.json', goodSheet('Marit Holm'), { locks: ['secrets'] });
+  const tom = () => card('character-tom.json', goodSheet('Tom Hale'));
+
+  it('finds the card by exact name, link or file, and says how to name it otherwise', () => {
+    const roster = [marit(), tom(), card('character-tom2.json', goodSheet('Tom Hale'))];
+    expect(resolveCharacterTarget(roster, 'marit holm').entry.fileName).toBe('character-marit.json');
+    expect(resolveCharacterTarget(roster, 'parallx://creations/character?file=character-marit.json').entry.fileName).toBe('character-marit.json');
+    expect(resolveCharacterTarget(roster, 'character-tom2.json').entry.fileName).toBe('character-tom2.json');
+    expect(resolveCharacterTarget(roster, 'Tom Hale').problem).toMatch(/2 characters are named Tom Hale: send the link of the one to change \(parallx:\/\/creations\/character\?file=character-tom\.json, parallx:\/\/creations\/character\?file=character-tom2\.json\)/);
+    expect(resolveCharacterTarget(roster, 'Marit').problem).toMatch(/no character is named "Marit"\. Close: Marit Holm\./);
+    expect(resolveCharacterTarget(roster, 'character-none.json').problem).toMatch(/no character has the file character-none\.json/);
+    expect(resolveCharacterTarget(roster, '').problem).toMatch(/name the character to change/);
+  });
+
+  it('puts sections and drives lines sent alone in their place, and the rest stays word for word', () => {
+    const entry = STRUCTURE.appearance;
+    const was = goodSheet('X').appearance;
+    const m = mergeSections(was, 'Face: Lined now, grey eyes gone pale.\n\nClothes: Oilskins, always.', entry);
+    expect(m.sections).toEqual(['Face', 'Clothes']);
+    const paras = m.text.split('\n\n');
+    expect(paras).toHaveLength(5);
+    expect(paras[0]).toBe(was.split('\n\n')[0]);
+    expect(paras[2]).toBe('Face: Lined now, grey eyes gone pale.');
+    expect(paras[3]).toBe('Clothes: Oilskins, always.');
+    expect(paras[4]).toBe(was.split('\n\n')[4]);
+    // A section the card lacks goes in at its place in the structure.
+    expect(mergeSections('Overview: Square.\n\nClothes: Navy.', 'Face: Red.', entry).text).toBe('Overview: Square.\n\nFace: Red.\n\nClothes: Navy.');
+    // Every section, or paragraphs without labels: the whole field.
+    expect(mergeSections(was, was, entry)).toBeNull();
+    expect(mergeSections(was, 'Just older now.', entry)).toBeNull();
+    // A card written before the structure: the sections have nowhere to go.
+    expect(mergeSections('A square woman, red-faced.', 'Face: Red.', entry).problem).toMatch(/not written in sections yet/);
+    expect(mergeDrives('Wants: company.\nFears: automation.\nIn the way: her mouth.', 'Fears: the sea.')).toEqual({ text: 'Wants: company.\nFears: the sea.\nIn the way: her mouth.', lines: ['Fears'] });
+    expect(mergeDrives('Wants: company.\nIn the way: her mouth.', 'Fears: the sea.').text).toBe('Wants: company.\nFears: the sea.\nIn the way: her mouth.');
+    expect(mergeDrives('Wants: a.', 'Wants: b.\nFears: c.\nIn the way: d.')).toBeNull();
+  });
+
+  it('changes only what was sent, refuses locked fields and taken names, and wants a Relationships line for a new connection', () => {
+    const m = marit();
+    const roster = [m, tom()];
+    const ok = planEdit(m, roster, { changes: { appearance: 'Face: Lined, grey.', drives: 'Fears: the sea.' }, structure: ROSTER_STRUCTURE });
+    expect(ok.problems).toEqual([]);
+    expect(ok.changed).toEqual([
+      { key: 'appearance', how: 'the Face section (the rest kept)' },
+      { key: 'drives', how: 'the Fears line (the rest kept)' },
+    ]);
+    const before = sheetFromCharacter(m.rawData);
+    for (const k of ['tagline', 'voice', 'backstory', 'exampleDialogue']) expect(ok.sheet[k]).toBe(before[k]);
+    const locked = planEdit(m, roster, { changes: { secrets: 'Another secret.' }, structure: ROSTER_STRUCTURE });
+    expect(locked.problems.join('\n')).toMatch(/secrets \(Secrets\) is locked in the Studio/);
+    const rename = planEdit(m, roster, { changes: { name: 'Tom Hale' }, structure: ROSTER_STRUCTURE });
+    expect(rename.problems.join('\n')).toMatch(/name "Tom Hale" is already a character in the roster \(character-tom\.json\)/);
+    expect(planEdit(m, roster, { changes: { name: 'Tom Hale' }, allowSameName: true, structure: ROSTER_STRUCTURE }).problems).toEqual([]);
+    const conn = planEdit(m, roster, { connect: [{ name: 'Tom Hale', how: 'her oldest friend' }], structure: ROSTER_STRUCTURE });
+    expect(conn.problems.join('\n')).toMatch(/relationships must have a line for each connected person, by exact name: send relationships with "Tom Hale: \.\.\." added/);
+    const conn2 = planEdit(m, roster, { connect: [{ name: 'Tom Hale', how: 'her oldest friend', addToTheirCard: true }], changes: { relationships: `${before.relationships}\nTom Hale: her oldest friend.` }, structure: ROSTER_STRUCTURE });
+    expect(conn2.problems).toEqual([]);
+    expect(conn2.connections).toEqual([{ fileName: 'character-tom.json', name: 'Tom Hale', how: 'her oldest friend' }]);
+    expect(conn2.backLinks).toEqual([{ fileName: 'character-tom.json', name: 'Tom Hale', how: 'her oldest friend' }]);
+    expect(planEdit(m, roster, { disconnect: ['Nobody'], structure: ROSTER_STRUCTURE }).problems.join('\n')).toMatch(/disconnect names "Nobody", who this card is not connected to/);
+    expect(planEdit(m, roster, { connect: [{ name: 'Marit Holm' }], structure: ROSTER_STRUCTURE }).problems.join('\n')).toMatch(/the character itself/);
+    // What it breaks in what it touched stops it.
+    expect(planEdit(m, roster, { changes: { voice: 'Fast.' }, structure: ROSTER_STRUCTURE }).problems.join('\n')).toMatch(/voice is 1 line/);
+  });
+
+  it('a gap the card already had in a field the edit leaves alone is noted, not a reason to refuse', () => {
+    const old = card('character-old.json', goodSheet('Old Card', { exampleDialogue: '[USER]: Hi\n[AI]: Sit.', secrets: '' }));
+    const p = planEdit(old, [old], { changes: { tagline: 'Keeps the light, and the peace' }, structure: ROSTER_STRUCTURE });
+    expect(p.problems).toEqual([]);
+    expect(p.notes.join('\n')).toMatch(/the card already had gaps this edit does not touch \(offer to fix them if it fits\): secrets \(Secrets\) is missing; exampleDialogue has 1 exchange/);
+  });
+
+  it('remembers what it replaced; Undo puts back what still says what the chat wrote, and keeps what was changed since', () => {
+    const m = marit();
+    const roster = [m, tom()];
+    const plan = planEdit(m, roster, { changes: { appearance: 'Face: Lined, grey.', voice: 'Slow now.\nFew words.\nNo questions.' }, structure: ROSTER_STRUCTURE });
+    const after = applyEdit(m.rawData, plan, { request: 'make her older', at: 5 });
+    expect(after.studio.chatEdits).toHaveLength(1);
+    expect(after.studio.chatEdits[0]).toMatchObject({ at: 5, by: 'chat', request: 'make her older' });
+    expect(after.studio.chatEdits[0].fields.voice).toEqual({ before: sheetFromCharacter(m.rawData).voice, after: 'Slow now.\nFew words.\nNo questions.' });
+    expect(after.studio.locks).toEqual(['secrets']);
+    expect(after.voiceAnchor).toBe('Slow now.\nFew words.\nNo questions.');
+    expect(pendingChatEdit(after)).toMatchObject({ keys: ['appearance', 'voice'], connections: false });
+    // The user rewrote the voice by hand since: Undo leaves it and says so.
+    const handEdited = characterFromSheet({ ...sheetFromCharacter(after), voice: 'Mine.\nAll mine.\nHands off.' }, after, after.studio);
+    const u = undoLastChatEdit(handEdited);
+    expect(u.restored).toEqual(['appearance']);
+    expect(u.kept).toEqual(['voice']);
+    expect(sheetFromCharacter(u.data).appearance).toBe(sheetFromCharacter(m.rawData).appearance);
+    expect(sheetFromCharacter(u.data).voice).toBe('Mine.\nAll mine.\nHands off.');
+    expect(u.data.studio.chatEdits).toEqual([]);
+    expect(undoLastChatEdit(u.data)).toBeNull();
+    expect(undoResultText({ name: 'Marit Holm', link: 'L', result: u })).toBe('Undid the chat\'s last change to Marit Holm: Appearance is back as before. L\nKept as they are now (changed since, or locked in the Studio): Voice.\nThat change was: make her older');
+    // Kept in the Studio: nothing to offer.
+    expect(pendingChatEdit({ ...after, studio: { ...after.studio, chatEdits: [{ ...after.studio.chatEdits[0], kept: true }] } })).toBeNull();
+    // A card remembers the last ten.
+    let d = m.rawData;
+    for (let i = 0; i < CHAT_EDITS_KEPT + 3; i++) d = applyEdit(d, planEdit({ ...m, rawData: d }, roster, { changes: { tagline: `Take ${i}` }, structure: ROSTER_STRUCTURE }), { at: i });
+    expect(d.studio.chatEdits).toHaveLength(CHAT_EDITS_KEPT);
+    expect(d.studio.chatEdits[0].at).toBe(3);
+  });
+
+  it('says what changed, or that nothing did and why', () => {
+    const m = marit();
+    const plan = planEdit(m, [m], { changes: { appearance: 'Face: Lined, grey.' }, structure: ROSTER_STRUCTURE });
+    const t = editResultText({ name: 'Marit Holm', link: 'parallx://creations/character?file=character-marit.json', plan, backLinked: ['Tom Hale'] });
+    expect(t).toBe([
+      'Changed Marit Holm: parallx://creations/character?file=character-marit.json',
+      '- appearance: the Face section (the rest kept)',
+      '- a line added to Tom Hale\'s card',
+      '',
+      'What it said before is kept: the user can undo it in the Studio, or you can, with "undo": true. Give the user the link exactly as written above.',
+    ].join('\n'));
+    const bad = planEdit(m, [m], { changes: { secrets: 'x' }, structure: ROSTER_STRUCTURE });
+    expect(editResultText({ name: 'Marit Holm', link: 'L', plan: bad, failed: true })).toMatch(/^Nothing was changed on Marit Holm\. Fix these and call creations_edit_character again with every change you meant \(nothing from this call was kept\):\n- secrets/);
+  });
+});
+
+describe('the edit tool, through the chat', () => {
+  let w: ReturnType<typeof world>;
+  beforeEach(() => { clearCharacterDrafts(); studioPagesForTests.clear(); w = world(); });
+
+  const fileOf = (name: string) => [...w.fs.saved()].find(([, d]) => d.name === name)![0];
+  const dataOf = (name: string) => [...w.fs.saved()].find(([, d]) => d.name === name)![1];
+
+  it('the writes ask first in a scheduled or background turn and in Careful Mode, and run at once in a turn the user started', () => {
+    const pdp = w.tools.policyDecisionPoint;
+    let initiator = 'interactive';
+    let careful = false;
+    pdp.setPermissionService({
+      isManagedSessionBlocked: () => false,
+      checkPermission: (_n: string, level: string) => ({ level, autoApproved: level === 'always-allowed', source: 'default' }),
+      isCarefulMode: () => careful,
+      getSessionInitiator: () => initiator,
+      isCommandAllowed: () => false,
+    } as any);
+    const decide = (name: string) => pdp.decide({ caller: { kind: 'built-in', id: 'chat' }, tool: { name, defaultLevel: w.tools.getTool(name)!.requiresConfirmation ? 'requires-approval' : 'always-allowed' }, args: {}, sessionId: 's' }).outcome;
+    for (const n of ['creations_save_characters', 'creations_edit_character']) expect(decide(n)).toBe('allow');
+    initiator = 'autonomous';
+    for (const n of ['creations_save_characters', 'creations_edit_character']) expect(decide(n)).toBe('require-approval');
+    for (const n of ['creations_character_brief', 'creations_find_characters']) expect(decide(n)).toBe('allow');
+    initiator = 'interactive'; careful = true;
+    for (const n of ['creations_save_characters', 'creations_edit_character']) expect(decide(n)).toBe('require-approval');
+  });
+
+  it('changes a card the chat made, by its link, only where asked; then undoes it', async () => {
+    await w.call('creations_save_characters', { characters: [goodSheet('Marit Holm')] });
+    const file = fileOf('Marit Holm');
+    const before = sheetFromCharacter(dataOf('Marit Holm'));
+    const r = await w.call('creations_edit_character', { character: core.characterLink(file), changes: { appearance: 'Face: Lined, grey eyes gone pale.', drives: 'Fears: the sea taking her.' }, request: 'make her older and more afraid' });
+    expect(r.isError).toBeFalsy();
+    expect(r.content).toMatch(new RegExp(`^Changed Marit Holm: parallx://creations/character\\?file=${file}\\n- appearance: the Face section \\(the rest kept\\)\\n- drives: the Fears line \\(the rest kept\\)`));
+    const after = dataOf('Marit Holm');
+    const sheet = sheetFromCharacter(after);
+    expect(sheet.appearance.split('\n\n')[2]).toBe('Face: Lined, grey eyes gone pale.');
+    expect(sheet.appearance.split('\n\n')[0]).toBe(before.appearance.split('\n\n')[0]);
+    expect(sheet.drives).toBe('Wants: someone to stay the winter.\nFears: the sea taking her.\nIn the way: her own mouth.');
+    expect(sheet.voice).toBe(before.voice);
+    expect(after.studio).toMatchObject({ madeIn: 'chat' });
+    expect(after.studio.chatEdits[0].request).toBe('make her older and more afraid');
+    expect(after.roleInstruction).toContain('Lined, grey eyes gone pale.');
+    expect(w.fs.saved().size).toBe(1);
+    const undo = await w.call('creations_edit_character', { character: 'Marit Holm', undo: true });
+    expect(undo.content).toMatch(/^Undid the chat's last change to Marit Holm: Appearance and Drives are back as before\./);
+    expect(sheetFromCharacter(dataOf('Marit Holm'))).toEqual(before);
+    expect((await w.call('creations_edit_character', { character: 'Marit Holm', undo: true })).content).toMatch(/has no change from the chat to undo/);
+  });
+
+  it('connects to a roster character with a line on their card, renames, and refuses what it cannot do without writing anything', async () => {
+    await w.seed('character-ashby.json', { name: 'Lord Ashby', studio: { sheet: { name: 'Lord Ashby', relationships: 'Clara Ashby: his wife.' } } });
+    await w.call('creations_save_characters', { characters: [goodSheet('Tom Hale')] });
+    const file = fileOf('Tom Hale');
+    const rel = `${goodSheet('Tom Hale').relationships}\nLord Ashby: his employer.`;
+    const r = await w.call('creations_edit_character', { character: 'Tom Hale', changes: JSON.stringify({ relationships: rel, name: 'Tom Hale-Wick' }), connect: [{ name: 'Lord Ashby', how: 'his gamekeeper', addToTheirCard: true }] });
+    expect(r.isError).toBeFalsy();
+    expect(r.content).toContain('- name: was Tom Hale');
+    expect(r.content).toContain('- connected to Lord Ashby');
+    expect(r.content).toContain('- a line added to Lord Ashby\'s card');
+    expect(dataOf('Tom Hale-Wick').studio.connections).toEqual([{ fileName: 'character-ashby.json', name: 'Lord Ashby', how: 'his gamekeeper' }]);
+    expect(fileOf('Tom Hale-Wick')).toBe(file);
+    expect(dataOf('Lord Ashby').studio.sheet.relationships).toBe('Clara Ashby: his wife.\nTom Hale-Wick: his gamekeeper.');
+    const snapshot = JSON.stringify([...w.fs.saved()]);
+    const bad = await w.call('creations_edit_character', { character: 'Tom Hale-Wick', changes: { voice: 'Gruff.' } });
+    expect(bad.isError).toBe(true);
+    expect(bad.content).toMatch(/^Nothing was changed on Tom Hale-Wick\./);
+    expect(JSON.stringify([...w.fs.saved()])).toBe(snapshot);
+    expect((await w.call('creations_edit_character', { character: 'Nobody Here', changes: { tagline: 'x' } })).content).toMatch(/^Nothing was changed: no character is named "Nobody Here"/);
+    const same = await w.call('creations_edit_character', { character: 'Tom Hale-Wick', changes: { tagline: dataOf('Tom Hale-Wick').studio.sheet.tagline } });
+    expect(same).toMatchObject({ content: expect.stringMatching(/^Nothing to change on Tom Hale-Wick: the card already says that\./) });
+    expect(JSON.stringify([...w.fs.saved()])).toBe(snapshot);
+  });
+
+  it('a Studio open on the card saves its typing first and opens the card again after; while it is writing, the chat waits', async () => {
+    await w.call('creations_save_characters', { characters: [goodSheet('Marit Holm')] });
+    const file = fileOf('Marit Holm');
+    const order: string[] = [];
+    let busy = false;
+    const studio = {
+      isBusy: () => busy,
+      flush: vi.fn(async () => {
+        order.push('flush');
+        // The user's last typing, saved by the Studio before the chat reads the card.
+        const d = dataOf('Marit Holm');
+        d.studio.sheet.reminder = 'Typed in the Studio.';
+        w.fs.files.set(`${CHARS}/${file}`, JSON.stringify(d));
+      }),
+      abandon: vi.fn(() => order.push('abandon')),
+    };
+    const page = { studioOn: (f: string) => (f === file ? studio : null), reopen: vi.fn(() => order.push('reopen')) };
+    studioPagesForTests.add(page);
+    const r = await w.call('creations_edit_character', { character: 'Marit Holm', changes: { tagline: 'Keeps the light, and the peace' } });
+    expect(r.isError).toBeFalsy();
+    expect(order).toEqual(['flush', 'abandon', 'reopen']);
+    expect(page.reopen).toHaveBeenCalledWith(file);
+    const sheet = sheetFromCharacter(dataOf('Marit Holm'));
+    expect(sheet.reminder).toBe('Typed in the Studio.');
+    expect(sheet.tagline).toBe('Keeps the light, and the peace');
+    busy = true;
+    const held = await w.call('creations_edit_character', { character: 'Marit Holm', changes: { tagline: 'Another take' } });
+    expect(held).toMatchObject({ isError: true });
+    expect(held.content).toMatch(/Nothing was changed on Marit Holm: the Character Studio is writing this character right now/);
+    expect(sheetFromCharacter(dataOf('Marit Holm')).tagline).toBe('Keeps the light, and the peace');
+  });
+
+  it('needs a workspace', async () => {
+    expect((await world({ workspace: false }).call('creations_edit_character', { character: 'X' })).content).toMatch(/Open a workspace first/);
   });
 });

@@ -25,7 +25,7 @@
 import {
   STUDIO_FIELDS, STUDIO_KEYS, cleanFieldValue, emptySheet, fieldRequirements, structureSystemLine,
   sectionsPresent, characterFromSheet, sheetFromCharacter, connectionsBlock, parseRelationshipLines,
-  SHEET_CRAFT_RULES, stripDashes,
+  SHEET_CRAFT_RULES, stripDashes, sectionOfParagraph,
 } from './studio-core.js';
 
 /** Most characters one save call takes; the rest go in another call. */
@@ -417,7 +417,7 @@ export function buildCharacterBrief({ structure = null, roster = [], connectTo =
   parts.push('', SHEET_CRAFT_RULES.replace(/^- Inside the JSON strings.*$/m, '- Inside the strings, quote phrases with single quotes. Write all twelve fields for every character.'));
   parts.push('', 'Connections: a character can be connected to people in the roster (below) or in the same call, each as { "name": "<their exact name>", "how": "<how this character stands to them, from this character\'s side>" }. Their card then comes along into every chat with this character. The relationships field must have a line for each connected person, by exact name. To also add a line about the new character to an existing character\'s card, set "addToTheirCard": true on that connection (only when the user wants it).');
   parts.push('', 'Send to creations_save_characters:', '{"characters": [{"name": "...", "tagline": "...", "description": "...", "appearance": "...", "personality": "...", "voice": "...", "backstory": "...", "drives": "Wants: ...\\nFears: ...\\nIn the way: ...", "secrets": "...", "relationships": "Name: ...\\nName: ...", "exampleDialogue": "[USER]: ...\\n[AI]: ...\\n[USER]: ...\\n[AI]: ...\\n[USER]: ...\\n[AI]: ...", "reminder": "...", "concept": "<the user\'s request for this character, in short>", "connections": [{"name": "...", "how": "..."}]}]}');
-  parts.push('Each field is a string; line breaks inside it are \\n. What the save cannot accept comes back with exactly what to change. To fix a character, send its name and only the fields that change: the rest of it is kept from the earlier call.');
+  parts.push('Each field is a string; line breaks inside it are \\n. What the save cannot accept comes back with exactly what to change. To fix a character, send its name and only the fields that change: the rest of it is kept from the earlier call. A save only ever makes new characters: to change one that is already in the roster, use creations_edit_character.');
   const named = [];
   for (const n of Array.isArray(connectTo) ? connectTo : []) {
     const hit = roster.find((r) => norm(rosterName(r)) === norm(n));
@@ -547,7 +547,299 @@ export function findResultText(hits, { query = '', names = [], full = false, cha
   const left = hits.length - fullOnes.length - rest.length;
   if (left > 0) lines.push(`- and ${left} more: narrow the search.`);
   if (!showFull) lines.push('', 'For whole sheets, call again with "names" (or "full": true).');
-  lines.push('Give the user a character with its link exactly as written.');
+  lines.push('Give the user a character with its link exactly as written. To change one, creations_edit_character.');
+  return lines.join('\n');
+}
+
+// ── Editing a character ────────────────────────────────────────────────────
+// The owner asked (2026-10-09) for the chat to change a character it made,
+// or any other, when the user does not like it: "make her older", "give Tom
+// a scar", "connect Nell to Ashby". Only what the user asked changes: the
+// fields sent, and in a field written in sections (Settings, Sheet
+// structure) or in Drives, only the sections or lines sent, by their labels.
+// The edited card must pass the checks a new one does, but a gap the card
+// already had in a field the edit leaves alone does not stop it. Fields the
+// user locked in the Studio are never changed. What each field said before
+// is kept on the card (`studio.chatEdits`, the last ten), so the Studio's
+// Undo, or the chat's, puts it back.
+
+/** Chat edits a card remembers, newest last. */
+export const CHAT_EDITS_KEPT = 10;
+
+/**
+ * The roster entry a reference names: its link, its file name or its exact
+ * name (any case). `{ entry }`, or `{ problem }` saying how to name it.
+ */
+export function resolveCharacterTarget(roster, ref) {
+  const list = Array.isArray(roster) ? roster : [];
+  const r = String(ref || '').trim();
+  if (!r) return { problem: 'name the character to change: "character" is its exact name or its parallx://creations/character link.' };
+  let file = '';
+  const q = /[?&]file=([^&\s)]+)/.exec(r);
+  if (/^parallx:\/\//i.test(r) && q) { try { file = decodeURIComponent(q[1]); } catch { file = q[1]; } }
+  else if (/^[\w.-]{1,120}\.json$/.test(r)) file = r;
+  if (file) {
+    const hit = list.find((e) => e.fileName === file);
+    return hit ? { entry: hit } : { problem: `no character has the file ${file}. creations_find_characters gives every character's link.` };
+  }
+  const hits = list.filter((e) => norm(rosterName(e)) === norm(r));
+  if (hits.length === 1) return { entry: hits[0] };
+  if (hits.length > 1) return { problem: `${hits.length} characters are named ${r}: send the link of the one to change (${hits.map((h) => characterLink(h.fileName)).join(', ')}).` };
+  const close = searchCharacters(list, { query: r.split(/\s+/)[0] }).slice(0, 6).map((h) => h.name);
+  return { problem: `no character is named "${r}".${close.length ? ` Close: ${close.join(', ')}.` : ''} Names are matched exactly; creations_find_characters finds one by what is in their sheet.` };
+}
+
+const andList = (xs) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+const paragraphs = (t) => String(t || '').replace(/\r/g, '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+
+/**
+ * A structured field with only some of its sections sent: those sections
+ * replace theirs, the rest stay word for word, a section the card lacks goes
+ * in at its place in the structure. `null` when the text is the whole field
+ * (every section, or paragraphs without labels); `{ problem }` when the card's
+ * own text has no sections to put them in.
+ */
+export function mergeSections(existing, incoming, entry) {
+  if (!entry || !entry.labels || !Array.isArray(entry.sections) || !entry.sections.length) return null;
+  const inc = paragraphs(incoming).map((text) => ({ text, section: sectionOfParagraph(text, entry) }));
+  if (!inc.length || inc.some((p) => !p.section)) return null;
+  const sent = [...new Set(inc.map((p) => p.section))];
+  if (sent.length >= entry.sections.length) return null;
+  const out = paragraphs(existing).map((text) => ({ text, section: sectionOfParagraph(text, entry) }));
+  if (out.length && !out.some((p) => p.section)) return { problem: `the card's text for this field is not written in sections yet, so the ${sent.join(', ')} section${sent.length === 1 ? '' : 's'} cannot be put in place: send the whole field, all ${entry.sections.length} sections.` };
+  const order = (name) => entry.sections.findIndex((x) => x.name === name);
+  for (const p of inc) {
+    const at = out.findIndex((x) => x.section === p.section);
+    if (at >= 0) { out[at] = p; continue; }
+    let after = -1;
+    out.forEach((x, i) => { if (x.section && order(x.section) < order(p.section)) after = i; });
+    out.splice(after + 1, 0, p);
+  }
+  return { text: out.map((p) => p.text).join('\n\n'), sections: sent };
+}
+
+const DRIVE_LINES = [['Wants', /^\s*wants?\s*:/i], ['Fears', /^\s*fears?\s*:/i], ['In the way', /^\s*in the way\s*:/i]];
+const driveOf = (line) => (DRIVE_LINES.find(([, re]) => re.test(line)) || [''])[0];
+
+/** Drives with only some of its three lines sent: those lines replace theirs. `null` when the text is the whole field. */
+export function mergeDrives(existing, incoming) {
+  const inc = String(incoming || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!inc.length || inc.some((l) => !driveOf(l))) return null;
+  const sent = [...new Set(inc.map(driveOf))];
+  if (sent.length >= DRIVE_LINES.length) return null;
+  const out = String(existing || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  for (const l of inc) {
+    const at = out.findIndex((x) => driveOf(x) === driveOf(l));
+    if (at >= 0) out[at] = l;
+    else {
+      const rank = DRIVE_LINES.findIndex(([n]) => n === driveOf(l));
+      let after = -1;
+      out.forEach((x, i) => { const k = DRIVE_LINES.findIndex(([n]) => n === driveOf(x)); if (k >= 0 && k < rank) after = i; });
+      out.splice(after + 1, 0, l);
+    }
+  }
+  return { text: out.join('\n'), lines: sent };
+}
+
+const sameText = (a, b) => String(a || '').trim() === String(b || '').trim();
+const connectionsOf = (data) => (Array.isArray(data?.studio?.connections) ? data.studio.connections : [])
+  .filter((c) => c && c.fileName).map((c) => ({ fileName: String(c.fileName), name: String(c.name || ''), how: String(c.how || '') }));
+
+/**
+ * One edit, checked: `{ problems, notes, sheet, before, changed: [{ key, how }],
+ * connections, connectionsChanged, backLinks: [{ fileName, name, how }], renamedFrom }`.
+ * `changes` holds only the fields that change (any of the names a save
+ * takes); `connect` `[{ name, how, addToTheirCard }]` and `disconnect`
+ * `[name]` change who the card stands beside.
+ */
+export function planEdit(entry, roster = [], { changes = {}, connect = [], disconnect = [], allowSameName = false, structure = null } = {}) {
+  const data = entry.rawData || {};
+  const before = sheetFromCharacter(data);
+  const problems = [];
+  const notes = [];
+  const read = readIncomingCharacter(changes && typeof changes === 'object' && !Array.isArray(changes) ? changes : {});
+  if (read.unknownKeys.length) notes.push(`ignored ${read.unknownKeys.length === 1 ? 'a key' : 'keys'} that ${read.unknownKeys.length === 1 ? 'is' : 'are'} not a field: ${read.unknownKeys.join(', ')}.`);
+  // Connections sent inside the changes are connections to add.
+  connect = [...(Array.isArray(connect) ? connect : connect ? [connect] : []), ...read.connections];
+  if (read.allowSameName) allowSameName = true;
+  const locks = new Set(Array.isArray(data.studio?.locks) ? data.studio.locks : []);
+  const sheet = { ...before };
+  const changed = [];
+  for (const key of STUDIO_KEYS) {
+    const sent = read.sheet[key];
+    if (!sent) continue;
+    let next = sent;
+    let how = 'rewritten';
+    if (key === 'drives') {
+      const m = mergeDrives(before.drives, sent);
+      if (m) { next = m.text; how = `the ${andList(m.lines)} line${m.lines.length === 1 ? '' : 's'} (the rest kept)`; }
+    } else if (structure && structure[key]) {
+      const m = mergeSections(before[key], sent, structure[key]);
+      if (m && m.problem) { problems.push(`${key}: ${m.problem}`); continue; }
+      if (m) { next = m.text; how = `the ${andList(m.sections)} section${m.sections.length === 1 ? '' : 's'} (the rest kept)`; }
+    }
+    if (sameText(next, before[key])) continue;
+    if (locks.has(key)) { problems.push(`${key} (${label(key)}) is locked in the Studio, so nothing rewrites it: leave it out, or ask the user to unlock it there (the lock on its row).`); continue; }
+    sheet[key] = next;
+    changed.push({ key, how });
+  }
+
+  // A new name may not be another character's, unless asked.
+  const renamedFrom = sheet.name && norm(sheet.name) !== norm(before.name) ? before.name : '';
+  const others = (Array.isArray(roster) ? roster : []).filter((r) => r.fileName !== entry.fileName);
+  if (renamedFrom) {
+    const taken = others.find((r) => norm(rosterName(r)) === norm(sheet.name));
+    if (taken && !allowSameName) problems.push(`name "${sheet.name}" is already a character in the roster (${taken.fileName}). Pick another name; or, if a second character of that name is really wanted, send "allowSameName": true.`);
+    const mention = others.filter((r) => connectionsOf(r.rawData).some((c) => c.fileName === entry.fileName)
+      || parseRelationshipLines(sheetFromCharacter(r.rawData || {}).relationships).some((p) => norm(p.name) === norm(renamedFrom)))
+      .map(rosterName);
+    if (mention.length) notes.push(`${mention.join(', ')} still call${mention.length === 1 ? 's' : ''} them ${renamedFrom} on their own card${mention.length === 1 ? '' : 's'}; those were not changed.`);
+  }
+
+  // Who the card stands beside.
+  const was = connectionsOf(data);
+  let connections = was.map((c) => ({ ...c }));
+  const rosterByName = new Map();
+  for (const r of others) { const n = norm(rosterName(r)); if (n && !rosterByName.has(n)) rosterByName.set(n, r); }
+  for (const raw of Array.isArray(disconnect) ? disconnect : [disconnect]) {
+    const n = norm(typeof raw === 'string' ? raw : raw && raw.name);
+    if (!n) continue;
+    const at = connections.findIndex((c) => norm(c.name) === n || (rosterByName.get(n) && rosterByName.get(n).fileName === c.fileName));
+    if (at < 0) { problems.push(`disconnect names "${raw.name || raw}", who this card is not connected to${connections.length ? ` (it is connected to ${connections.map((c) => c.name).join(', ')})` : ''}.`); continue; }
+    connections.splice(at, 1);
+  }
+  const backLinks = [];
+  const added = [];
+  for (const raw of Array.isArray(connect) ? connect : [connect]) {
+    if (!raw) continue;
+    const c = typeof raw === 'string'
+      ? (() => { const i = raw.indexOf(':'); return { name: (i > 0 ? raw.slice(0, i) : raw).trim(), how: i > 0 ? raw.slice(i + 1).trim() : '', addToTheirCard: false }; })()
+      : { name: String(raw.name || raw.character || '').trim(), how: stripDashes(String(raw.how || raw.relationship || '')).trim(), addToTheirCard: raw.addToTheirCard === true };
+    if (!c.name) { problems.push('a connection has no name: each is { "name": "<a character>", "how": "<how this one stands to them>" }.'); continue; }
+    if (norm(c.name) === norm(sheet.name) || norm(c.name) === norm(before.name)) { problems.push(`connect names "${c.name}", the character itself.`); continue; }
+    const hit = rosterByName.get(norm(c.name));
+    if (!hit) { problems.push(`connect names "${c.name}", who is not in the roster. Characters are connected by their exact name; creations_find_characters lists them.`); continue; }
+    const at = connections.findIndex((x) => x.fileName === hit.fileName);
+    const next = { fileName: hit.fileName, name: rosterName(hit), how: c.how || (at >= 0 ? connections[at].how : '') };
+    if (at >= 0) connections[at] = next; else { connections.push(next); added.push(next); }
+    if (!next.how) notes.push(`the connection to ${next.name} has no "how" line (how this character stands to them).`);
+    if (c.addToTheirCard) backLinks.push({ fileName: hit.fileName, name: next.name, how: c.how });
+  }
+  const connectionsChanged = JSON.stringify(connections) !== JSON.stringify(was);
+
+  // Each person newly connected has a line in Relationships; a line for one already connected is not dropped.
+  const namedAfter = parseRelationshipLines(sheet.relationships).map((p) => norm(p.name));
+  const namedBefore = parseRelationshipLines(before.relationships).map((p) => norm(p.name));
+  const unnamed = added.filter((c) => !namedAfter.includes(norm(c.name)));
+  if (unnamed.length) problems.push(`relationships must have a line for each connected person, by exact name: send relationships with ${unnamed.map((u) => `"${u.name}: ..."`).join(', ')} added (the whole field, the lines already there kept).`);
+  const dropped = connections.filter((c) => !added.includes(c) && namedBefore.includes(norm(c.name)) && !namedAfter.includes(norm(c.name)));
+  if (dropped.length) problems.push(`relationships no longer has a line for ${dropped.map((d) => d.name).join(', ')}, who this card is connected to: keep their line, or disconnect them.`);
+
+  // The checks a new card passes, on what this edit touched; a gap the card already had elsewhere is only noted.
+  const touched = changed.map((c) => c.key);
+  const was0 = checkSheet(before, { structure }).problems;
+  const now = checkSheet(sheet, { structure });
+  const own = (p) => touched.some((k) => p.startsWith(`${k} `)) || !was0.includes(p);
+  problems.push(...now.problems.filter(own));
+  const old = now.problems.filter((p) => !own(p));
+  if (old.length) notes.push(`the card already had gaps this edit does not touch (offer to fix them if it fits): ${old.map((p) => p.replace(/[.:].*$/, '')).join('; ')}.`);
+  notes.push(...now.notes.filter((n) => touched.includes('tagline') || touched.includes('name') ? true : !/^tagline/.test(n)));
+
+  return { problems, notes, sheet, before, changed, connections, connectionsChanged, wasConnections: was, backLinks, renamedFrom };
+}
+
+/** The card with an edit applied and what it replaced remembered, so it can be undone. */
+export function applyEdit(data, plan, { request = '', at = 0 } = {}) {
+  const fields = {};
+  for (const c of plan.changed) fields[c.key] = { before: plan.before[c.key] || '', after: plan.sheet[c.key] || '' };
+  const record = { at, by: 'chat', request: stripDashes(String(request || '')).trim().slice(0, 300), fields };
+  if (plan.connectionsChanged) record.connections = { before: plan.wasConnections, after: plan.connections };
+  const studio = { ...(data.studio || {}) };
+  if (plan.connectionsChanged) studio.connections = plan.connections;
+  const edits = Array.isArray(studio.chatEdits) ? studio.chatEdits : [];
+  studio.chatEdits = [...edits, record].slice(-CHAT_EDITS_KEPT);
+  return characterFromSheet(plan.sheet, data, studio);
+}
+
+/**
+ * The last chat edit taken back: each field the chat changed that still says
+ * what the chat wrote gets its old text again; a field changed since, or
+ * locked, is kept and named. `null` when the card has no chat edit.
+ * `{ data, restored: [keys], kept: [keys], entry }`.
+ */
+export function undoLastChatEdit(data) {
+  const edits = Array.isArray(data?.studio?.chatEdits) ? data.studio.chatEdits : [];
+  if (!edits.length) return null;
+  const entry = edits[edits.length - 1];
+  const now = sheetFromCharacter(data);
+  const locks = new Set(Array.isArray(data.studio?.locks) ? data.studio.locks : []);
+  const next = { ...now };
+  const restored = [];
+  const kept = [];
+  for (const [k, v] of Object.entries(entry.fields || {})) {
+    if (!STUDIO_KEYS.includes(k) || !v) continue;
+    if (sameText(now[k], v.after) && !locks.has(k)) { next[k] = v.before || ''; restored.push(k); } else kept.push(k);
+  }
+  const studio = { ...data.studio, chatEdits: edits.slice(0, -1) };
+  if (entry.connections) {
+    if (JSON.stringify(connectionsOf(data)) === JSON.stringify(entry.connections.after)) { studio.connections = entry.connections.before; restored.push('connections'); } else kept.push('connections');
+  }
+  return { data: characterFromSheet(next, data, studio), restored, kept, entry };
+}
+
+/**
+ * What the Studio offers to undo when it opens a card: the last chat edit,
+ * unless the user kept it, with the fields that still say what the chat
+ * wrote. `null` when there is nothing to offer.
+ */
+export function pendingChatEdit(data) {
+  const edits = Array.isArray(data?.studio?.chatEdits) ? data.studio.chatEdits : [];
+  const entry = edits[edits.length - 1];
+  if (!entry || entry.kept) return null;
+  const now = sheetFromCharacter(data);
+  const keys = Object.entries(entry.fields || {}).filter(([k, v]) => STUDIO_KEYS.includes(k) && v && sameText(now[k], v.after)).map(([k]) => k);
+  const connections = !!entry.connections && JSON.stringify(connectionsOf(data)) === JSON.stringify(entry.connections.after);
+  return keys.length || connections ? { entry, keys, connections } : null;
+}
+
+/** The fields an edit or undo touched, by their Studio labels: "Appearance, Voice and connections". */
+export function fieldListText(keys) {
+  return andList(keys.map((k) => (k === 'connections' ? 'connections' : label(k))));
+}
+
+/** The text the model gets back from an edit. */
+export function editResultText({ name, link, plan, backLinked = [], notes = [], failed = false, noChange = false } = {}) {
+  if (failed) {
+    return [`Nothing was changed on ${name}. Fix these and call creations_edit_character again with every change you meant (nothing from this call was kept):`, ...plan.problems.map((p) => `- ${p}`)].join('\n');
+  }
+  if (noChange) return `Nothing to change on ${name}: the card already says that. ${link}`;
+  const lines = [`Changed ${plan.sheet.name || name}: ${link}`];
+  if (plan.renamedFrom) lines.push(`- name: was ${plan.renamedFrom}`);
+  for (const c of plan.changed) if (c.key !== 'name') lines.push(`- ${c.key}: ${c.how}`);
+  if (plan.connectionsChanged) {
+    const was = new Set(plan.wasConnections.map((c) => c.fileName));
+    const now = new Set(plan.connections.map((c) => c.fileName));
+    const add = plan.connections.filter((c) => !was.has(c.fileName)).map((c) => c.name);
+    const gone = plan.wasConnections.filter((c) => !now.has(c.fileName)).map((c) => c.name);
+    const re = plan.connections.filter((c) => was.has(c.fileName) && JSON.stringify(c) !== JSON.stringify(plan.wasConnections.find((x) => x.fileName === c.fileName))).map((c) => c.name);
+    if (add.length) lines.push(`- connected to ${add.join(', ')}`);
+    if (gone.length) lines.push(`- no longer connected to ${gone.join(', ')}`);
+    if (re.length) lines.push(`- how they stand to ${re.join(', ')}: updated`);
+  }
+  if (backLinked.length) lines.push(`- a line added to ${backLinked.join(', ')}'s card`);
+  for (const n of [...plan.notes, ...notes]) lines.push(`note: ${n}`);
+  lines.push('', 'What it said before is kept: the user can undo it in the Studio, or you can, with "undo": true. Give the user the link exactly as written above.');
+  return lines.join('\n');
+}
+
+/** The text the model gets back from an undo. */
+export function undoResultText({ name, link, result }) {
+  if (!result) return `${name} has no change from the chat to undo. ${link}`;
+  const lines = [];
+  if (result.restored.length) lines.push(`Undid the chat's last change to ${name}: ${fieldListText(result.restored)} ${result.restored.length === 1 ? 'is' : 'are'} back as before. ${link}`);
+  else lines.push(`Nothing was put back on ${name}. ${link}`);
+  if (result.kept.length) lines.push(`Kept as they are now (changed since, or locked in the Studio): ${fieldListText(result.kept)}.`);
+  if (result.entry && result.entry.request) lines.push(`That change was: ${result.entry.request}`);
   return lines.join('\n');
 }
 

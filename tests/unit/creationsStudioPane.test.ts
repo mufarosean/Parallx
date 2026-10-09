@@ -836,3 +836,83 @@ describe('a structured field the model left short (2026-10-06)', () => {
     expect(w.requests.length).toBe(before + 1);
   });
 });
+
+describe('a change the chat made (2026-10-09)', () => {
+  const edited = (extra: Record<string, any> = {}) => ({
+    id: 'char-legacy', name: 'Ada Lovelace', roleInstruction: 'Ada counts everything.', exampleDialogue: SHEET.exampleDialogue, reminder: SHEET.reminder,
+    studio: {
+      mode: 'concept', concept: 'A counter', sheet: { ...SHEET }, locks: [],
+      chatEdits: [{ at: 1, by: 'chat', request: 'make her taller', fields: {
+        name: { before: 'Ada Byron', after: 'Ada Lovelace' },
+        appearance: { before: 'Overview: Small.', after: SHEET.appearance },
+        voice: { before: 'Old voice.', after: 'Not what the card says now.' },
+      } }],
+      ...extra,
+    },
+  });
+
+  it('says what the chat changed and undoes all of it, leaving what was changed since', async () => {
+    const w = makeWorld({ existing: edited() });
+    w.ctx.fileName = 'character-legacy.json';
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    const line = root.querySelector('.cs-chat-edit') as HTMLElement;
+    expect(line.style.display).toBe('');
+    // Voice was changed by hand after the chat: not the chat's to undo, not named.
+    expect(line.textContent).toContain('The chat changed Name and Appearance. Asked for: make her taller');
+    const undoBtn = rowOf(root, 'appearance').querySelector('.cs-icon-btn') as HTMLButtonElement;
+    expect(undoBtn.style.display).toBe('');
+    expect(undoBtn.title).toBe('Undo the chat\'s change to appearance');
+    expect((rowOf(root, 'voice').querySelector('.cs-icon-btn') as HTMLButtonElement).style.display).toBe('none');
+    buttonNamed(root, 'Undo Chat Edit').click();
+    expect((root.querySelector('.cs-title') as HTMLInputElement).value).toBe('Ada Byron');
+    expect(areaOf(root, 'appearance').value).toBe('Overview: Small.');
+    expect(areaOf(root, 'voice').value).toBe(SHEET.voice);
+    expect(line.style.display).toBe('none');
+    await flush(900);
+    const data = w.saved.get('character-legacy.json');
+    expect(data.name).toBe('Ada Byron');
+    expect(data.studio.sheet.appearance).toBe('Overview: Small.');
+    expect(data.studio.chatEdits).toEqual([]);
+  });
+
+  it('Keep puts the offer away for good; one row can be undone on its own', async () => {
+    const w = makeWorld({ existing: edited() });
+    w.ctx.fileName = 'character-legacy.json';
+    renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    const line = root.querySelector('.cs-chat-edit') as HTMLElement;
+    (rowOf(root, 'appearance').querySelector('.cs-icon-btn') as HTMLButtonElement).click();
+    expect(areaOf(root, 'appearance').value).toBe('Overview: Small.');
+    expect(line.textContent).toContain('The chat changed Name.');
+    buttonNamed(root, 'Keep').click();
+    expect(line.style.display).toBe('none');
+    await flush(900);
+    const data = w.saved.get('character-legacy.json');
+    expect(data.name).toBe('Ada Lovelace');
+    expect(data.studio.chatEdits[0].kept).toBe(true);
+    // Opened again: nothing offered.
+    container.replaceChildren();
+    const again = makeWorld({ existing: data });
+    again.ctx.fileName = 'character-legacy.json';
+    renderStudioPane(container, again.parallx, again.ctx, again.deps);
+    await flush();
+    expect((container.querySelector('.cs-chat-edit') as HTMLElement).style.display).toBe('none');
+  });
+
+  it('saves what is typed at once when the chat is about to change the card, and says when it is writing', async () => {
+    const w = makeWorld({ existing: edited({ chatEdits: [] }) });
+    w.ctx.fileName = 'character-legacy.json';
+    const pane = renderStudioPane(container, w.parallx, w.ctx, w.deps);
+    await flush();
+    const root = container.querySelector('.cs') as HTMLElement;
+    expect((root.querySelector('.cs-chat-edit') as HTMLElement).style.display).toBe('none');
+    typeInto(areaOf(root, 'secrets'), 'She hums.');
+    expect(w.saved.size).toBe(0);
+    await pane.flush();
+    expect(w.saved.get('character-legacy.json').studio.sheet.secrets).toBe('She hums.');
+    expect(pane.isBusy()).toBe(false);
+  });
+});
