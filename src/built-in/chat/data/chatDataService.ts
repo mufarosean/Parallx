@@ -59,7 +59,7 @@ import { extractTextContent } from '../tools/builtInTools.js';
 import { tiptapJsonToMarkdown } from '../../canvas/markdownExport.js';
 import { decodeCanvasContent } from '../../canvas/contentSchema.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
-import { buildChatWidgetAttachmentServices, isAttachableFsPath } from '../utilities/chatWidgetAttachmentAdapter.js';
+import { buildChatWidgetAttachmentServices, attachableEditorPath } from '../utilities/chatWidgetAttachmentAdapter.js';
 import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
 import { buildChatWidgetRequestServices } from '../utilities/chatWidgetRequestAdapter.js';
 import { buildChatWidgetSessionServices } from '../utilities/chatWidgetSessionAdapter.js';
@@ -2151,8 +2151,8 @@ export class ChatDataService {
             // Other tool editors (media-organizer, settings, …) have no file
             // identity — their description is "Tool editor: <typeId>", which
             // would attach as an unreadable junk file. Only real paths pass.
-            const fullPath = ed.description || ed.name;
-            return isAttachableFsPath(fullPath) ? [{ name: ed.name, fullPath }] : [];
+            const fullPath = attachableEditorPath(ed);
+            return fullPath ? [{ name: ed.name, fullPath }] : [];
           })
         : undefined,
       getActiveEditorFile: this._d.editorService
@@ -2162,8 +2162,8 @@ export class ChatDataService {
             if (active.typeId === 'canvas' || active.typeId === 'database') {
               return { name: active.name, fullPath: `parallx-page://${active.id}` };
             }
-            const fullPath = active.description || active.name;
-            return isAttachableFsPath(fullPath) ? { name: active.name, fullPath } : undefined;
+            const fullPath = attachableEditorPath(active);
+            return fullPath ? { name: active.name, fullPath } : undefined;
           }
         : undefined,
       onDidChangeOpenEditors: this._d.editorService?.onDidChangeOpenEditors,

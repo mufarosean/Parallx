@@ -3,10 +3,21 @@
 Last updated 2026-10-09. Branches: `dev` (app work) and
 `exam7-campaign` (the owner's study campaign work), both pushed; `master`
 was fast-forwarded to `2e1e8719` when `dev` started. Working tree clean.
-tsc, the full vitest suite (7969 tests) and `npm run build` pass.
+tsc, the full vitest suite (7970 tests) and `npm run build` pass.
 
 Read `CLAUDE.md` first: git rules, the first principle (the app is only
 what the user turned on), house rules, copy rules, checks.
+
+## Done on 2026-10-09, cloud: the chat suggests open text files again
+
+With a Markdown (or any text or code) file open, the chat suggested nothing
+to attach, while canvas pages, PDFs and Word files were suggested. A text
+editor's description is the workspace-relative path, and the suggestion
+only took absolute paths. It now takes the editor's file URI first
+(`attachableEditorPath`, `chatWidgetAttachmentAdapter.ts`), for the
+suggestion and the open-editors list. Probe:
+`xvfb-run -a node tests/probes/chat-suggested-file-probe.mjs <outDir>` opens
+a .md and a .txt from the Explorer and adds one; it fails without the fix.
 
 ## Done on 2026-10-09, cloud: the chat can change a character, and undo it
 

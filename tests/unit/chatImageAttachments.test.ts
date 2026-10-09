@@ -180,3 +180,17 @@ describe('isAttachableFsPath', () => {
     expect(isAttachableFsPath('')).toBe(false);
   });
 });
+
+describe('attachableEditorPath (2026-10-09)', () => {
+  it('takes a text editor\'s file from its URI, not its workspace-relative description', async () => {
+    const { attachableEditorPath } = await import('../../src/built-in/chat/utilities/chatWidgetAttachmentAdapter');
+    // A Markdown file in the text editor: description "notes/plan.md", the URI the real file.
+    expect(attachableEditorPath({ name: 'plan.md', description: 'notes/plan.md', uri: { scheme: 'file', fsPath: '/home/me/ws/notes/plan.md' } })).toBe('/home/me/ws/notes/plan.md');
+    expect(attachableEditorPath({ name: 'Guide.pdf', description: 'C:\\ws\\Guide.pdf', uri: { scheme: 'file', fsPath: 'C:\\ws\\Guide.pdf' } })).toBe('C:\\ws\\Guide.pdf');
+    // No file behind it: an untitled buffer, a tool editor, a chat.
+    expect(attachableEditorPath({ name: 'Untitled-1', description: '', uri: { scheme: 'untitled', fsPath: 'Untitled-1' } })).toBeUndefined();
+    expect(attachableEditorPath({ name: 'Media', description: 'Tool editor: media-organizer-grid' })).toBeUndefined();
+    // An editor without a URI still passes on a full path in its description.
+    expect(attachableEditorPath({ name: 'x.docx', description: '/home/me/x.docx' })).toBe('/home/me/x.docx');
+  });
+});

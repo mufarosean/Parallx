@@ -25,6 +25,21 @@ export function isAttachableFsPath(p: string): boolean {
   return /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('/') || p.startsWith('\\\\');
 }
 
+/**
+ * The filesystem path an open editor shows, or undefined when it shows no
+ * file. Its URI first: a text editor's description is the path relative to
+ * the workspace (`notes/plan.md`), which the absolute-path check refused, so
+ * every Markdown, text and code file was left out of the chat's suggestion
+ * while PDFs and Word files (whose description is the full path) were not
+ * (found 2026-10-09). The description is the fallback for an editor with no
+ * file URI.
+ */
+export function attachableEditorPath(editor: { readonly uri?: { readonly scheme: string; readonly fsPath: string }; readonly description?: string; readonly name: string }): string | undefined {
+  if (editor.uri && editor.uri.scheme === 'file' && editor.uri.fsPath) return editor.uri.fsPath;
+  const p = editor.description || editor.name;
+  return isAttachableFsPath(p) ? p : undefined;
+}
+
 export function buildChatWidgetAttachmentServices(
   deps: IChatWidgetAttachmentAdapterDeps,
 ): Pick<IChatWidgetServices, 'attachmentServices' | 'openFile' | 'openPage' | 'openCanvasBlock' | 'openImage' | 'openMemory'> {
