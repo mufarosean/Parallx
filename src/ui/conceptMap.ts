@@ -8,8 +8,12 @@
 // chat and canvas can never drift apart.
 //
 // Labels are RICH: word-wrapped over multiple lines, inline markdown
-// (**bold**, *italic*, `code`), and $LaTeX$ spans through an injected
-// renderer (chat and canvas both pass KaTeX). Boxes size to their
+// (**bold**, *italic*, `code`, ~~strike~~, [links](…)), and $LaTeX$ spans
+// through an injected renderer (chat and canvas both pass KaTeX). A box
+// can hold a small markdown document: `\n` in its outline line breaks the
+// line, and the lines may be paragraphs, - and 1. lists (nested by
+// indent), # headings, > quotes and $$display math$$. One outline line
+// stays one box, so every editing helper below keeps working by line. Boxes size to their
 // content: per-node width AND height, estimated generously — a slightly
 // roomy box is invisible, a clipped word is not.
 //
@@ -28,7 +32,7 @@ export interface MindMapNode {
 
 const MAX_NODES = 40;
 const MAX_DEPTH = 5;
-const MAX_LABEL_CHARS = 220;
+const MAX_LABEL_CHARS = 2000;
 
 /** Leading-whitespace width, counting a tab as two columns. */
 function indentWidth(line: string): number {
@@ -55,6 +59,37 @@ function safeTruncate(label: string, max: number): string {
   return `${label.slice(0, cut).trimEnd()}…`;
 }
 
+/** A line break inside a box, as written in its outline line. */
+const BREAK = '\\n';
+
+/**
+ * A label split at its line breaks. A `\n` inside $…$ is TeX (\nu, \neq)
+ * and never breaks.
+ */
+export function splitBreaks(label: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let inMath = false;
+  for (let i = 0; i < label.length; i++) {
+    const ch = label[i];
+    if (ch === '$') inMath = !inMath;
+    if (!inMath && ch === '\\' && label[i + 1] === 'n') { out.push(cur); cur = ''; i++; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+/** Outline line text → editor text: break escapes become real newlines. */
+export function decodeBreaks(text: string): string {
+  return splitBreaks(String(text ?? '')).join('\n');
+}
+
+/** Editor text → outline line text: real newlines become break escapes. */
+export function encodeBreaks(text: string): string {
+  return String(text ?? '').replace(/\r\n?/g, '\n').split('\n').join(BREAK);
+}
+
 /** An outline line's leading indent + list marker (kept across edits). */
 const LINE_PREFIX_RE = /^([ \t]*)((?:[-*•]\s+|\d+[.)]\s+)?)/;
 
@@ -64,10 +99,16 @@ const LINE_PREFIX_RE = /^([ \t]*)((?:[-*•]\s+|\d+[.)]\s+)?)/;
  * keyed by label (layout overrides) must key this, never raw text.
  */
 export function normalizeLabel(raw: string): string {
-  return safeTruncate(
-    String(raw ?? '').replace(LINE_PREFIX_RE, '').replace(/\s+/g, ' ').trim(),
-    MAX_LABEL_CHARS,
-  );
+  const parts = splitBreaks(String(raw ?? '').replace(LINE_PREFIX_RE, ''));
+  // Inside a box, a line's leading spaces are its list nesting: kept.
+  const lines = parts.map((p, i) => {
+    const body = p.replace(/\s+/g, ' ').trim();
+    if (i === 0 || !body) return body;
+    const lead = p.length - p.trimStart().length;
+    return ' '.repeat(Math.min(lead, 12)) + body;
+  });
+  while (lines.length > 1 && !lines[lines.length - 1]) lines.pop();
+  return safeTruncate(lines.join(BREAK).trim(), MAX_LABEL_CHARS);
 }
 
 /**
@@ -128,7 +169,7 @@ export function coerceMindMapDirection(value: unknown): MindMapDirection {
 // ── Rich labels: math + inline markdown, tokenised then wrapped ─────────────
 
 export interface LabelSegment {
-  readonly kind: 'text' | 'bold' | 'italic' | 'code' | 'math';
+  readonly kind: 'text' | 'bold' | 'italic' | 'code' | 'math' | 'strike' | 'link';
   readonly value: string;
 }
 
@@ -147,12 +188,12 @@ export function splitLabel(label: string): LabelSegment[] {
   return out.length > 0 ? out : [{ kind: 'text', value: label }];
 }
 
-/** Inline markdown inside the non-math stretches: **bold**, *italic*, `code`. */
+/** Inline markdown inside the non-math stretches: **bold**, *italic*, `code`, ~~strike~~, [link](url). */
 function splitInline(text: string): LabelSegment[] {
   const out: LabelSegment[] = [];
   // An underscore run is emphasis only at word boundaries: C_ik, f_k and
   // E[C_i,k+1] are subscripts, never italics (CommonMark's intraword rule).
-  const re = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|((?<!\w)_([^_]+)_(?!\w))|(`([^`]+)`)/g;
+  const re = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|((?<!\w)_([^_]+)_(?!\w))|(`([^`]+)`)|(~~([^~]+)~~)|(\[([^\]]+)\]\(([^)\s]+)\))/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
@@ -161,6 +202,8 @@ function splitInline(text: string): LabelSegment[] {
     else if (m[4] !== undefined) out.push({ kind: 'italic', value: m[4] });
     else if (m[6] !== undefined) out.push({ kind: 'italic', value: m[6] });
     else if (m[8] !== undefined) out.push({ kind: 'code', value: m[8] });
+    else if (m[10] !== undefined) out.push({ kind: 'strike', value: m[10] });
+    else if (m[12] !== undefined) out.push({ kind: 'link', value: m[12] });
     last = m.index + m[0].length;
   }
   if (last < text.length) out.push({ kind: 'text', value: text.slice(last) });
@@ -319,7 +362,7 @@ function segWidth(seg: LabelSegment, m: CardMetrics): number {
 export function minCardWidth(label: string, depth: number): number {
   const m = cardMetrics(depth);
   let widest = 24;
-  for (const seg of tokenizeLabel(label)) {
+  for (const seg of tokenizeLabel(splitBreaks(label).join(' '))) {
     if (seg.kind === 'math' || seg.kind === 'code') { widest = Math.max(widest, segWidth(seg, m)); continue; }
     for (const word of seg.value.split(/\s+/)) {
       if (word) widest = Math.max(widest, segWidth({ kind: seg.kind, value: word }, m));
@@ -333,28 +376,31 @@ export interface MeasuredLabel {
   readonly width: number;
   readonly height: number;
   readonly rich: boolean;
+  /** A box holding several lines (paragraphs, lists, headings): its rows, drawn in order. */
+  readonly rows?: readonly LabelRow[];
 }
 
-/**
- * Greedy word-wrap over the token stream for a card at DEPTH. Math spans
- * never break; text splits on spaces. Width is the widest resulting line
- * (capped near the level's wrap width plus padding); height is the line
- * count at each line's pitch, never under the level's minimum (a sticky
- * note is a note, not a strip).
- */
-export function measureLabel(label: string, maxTextW?: number, depth = 1): MeasuredLabel {
-  const m = cardMetrics(depth);
-  const wrapW = maxTextW ?? m.maxTextW;
-  const segs = tokenizeLabel(label);
+/** One drawn row of a multi-line box. */
+export interface LabelRow {
+  readonly kind: 'text' | 'heading' | 'quote' | 'math' | 'gap';
+  readonly segs: LabelSegment[];
+  /** Left inset of the row's text, px (list nesting, quote bar). */
+  readonly indent: number;
+  /** The list marker on an item's first row ('•', '◦', '3.'); '' otherwise. */
+  readonly marker: string;
+  readonly height: number;
+}
 
-  // Explode text-ish segments into word atoms; opaque kinds stay whole.
+const LIST_STEP = 14;
+
+/** Greedy word-wrap of a token stream: math and code never break, text splits on spaces. */
+function wrapSegs(segs: readonly LabelSegment[], wrapW: number, m: CardMetrics): LabelSegment[][] {
   const atoms: LabelSegment[] = [];
   for (const seg of segs) {
     if (seg.kind === 'math' || seg.kind === 'code') { atoms.push(seg); continue; }
     const words = seg.value.split(/(\s+)/).filter((w) => w.length > 0);
     for (const w of words) atoms.push({ kind: seg.kind, value: w });
   }
-
   const lines: LabelSegment[][] = [];
   let line: LabelSegment[] = [];
   let lineW = 0;
@@ -373,9 +419,89 @@ export function measureLabel(label: string, maxTextW?: number, depth = 1): Measu
     lineW += w;
   }
   flush();
+  return lines;
+}
+
+const lineWidth = (l: readonly LabelSegment[], m: CardMetrics): number => l.reduce((acc, seg) => acc + segWidth(seg, m), 0);
+
+/** A multi-line box: each line read as markdown, then wrapped at its own inset. */
+function measureRows(parts: readonly string[], wrapW: number, m: CardMetrics): { rows: LabelRow[]; widest: number } {
+  const rows: LabelRow[] = [];
+  let widest = 0;
+  for (const raw of parts) {
+    const text = raw.trim();
+    if (!text) {
+      if (rows.length && rows[rows.length - 1].kind !== 'gap') rows.push({ kind: 'gap', segs: [], indent: 0, marker: '', height: Math.round(m.lineH / 2) });
+      continue;
+    }
+    const level = Math.floor((raw.length - raw.trimStart().length) / 2);
+    let kind: LabelRow['kind'] = 'text';
+    let body = text;
+    let marker = '';
+    let indent = level * LIST_STEP;
+    let mt: RegExpExecArray | null;
+    if ((mt = /^\$\$(.+)\$\$$/.exec(text))) {
+      const seg: LabelSegment = { kind: 'math', value: mt[1].trim() };
+      rows.push({ kind: 'math', segs: [seg], indent: 0, marker: '', height: m.mathLineH });
+      widest = Math.max(widest, segWidth(seg, m));
+      continue;
+    }
+    if ((mt = /^[-*+•]\s+(.*)$/.exec(text))) {
+      body = mt[1]; marker = level > 0 ? '◦' : '•'; indent = (level + 1) * LIST_STEP;
+    } else if ((mt = /^(\d+)[.)]\s+(.*)$/.exec(text))) {
+      body = mt[2]; marker = `${mt[1]}.`; indent = (level + 1) * LIST_STEP + 4;
+    } else if ((mt = /^#{1,6}\s+(.*)$/.exec(text))) {
+      body = mt[1]; kind = 'heading';
+    } else if ((mt = /^>\s?(.*)$/.exec(text))) {
+      body = mt[1]; kind = 'quote'; indent = level * LIST_STEP + 10;
+    }
+    let segs = tokenizeLabel(body);
+    if (kind === 'heading') segs = segs.map((sg): LabelSegment => (sg.kind === 'text' || sg.kind === 'italic' ? { kind: 'bold', value: sg.value } : sg));
+    const wrapped = wrapSegs(segs, Math.max(40, wrapW - indent), m);
+    if (wrapped.length === 0) wrapped.push([{ kind: 'text', value: ' ' }]);
+    wrapped.forEach((l, i) => {
+      rows.push({
+        kind, segs: l, indent, marker: i === 0 ? marker : '',
+        height: l.some((sg) => sg.kind === 'math') ? m.mathLineH : m.lineH,
+      });
+      widest = Math.max(widest, indent + lineWidth(l, m));
+    });
+  }
+  while (rows.length && rows[rows.length - 1].kind === 'gap') rows.pop();
+  if (rows.length === 0) rows.push({ kind: 'text', segs: [{ kind: 'text', value: ' ' }], indent: 0, marker: '', height: m.lineH });
+  return { rows, widest };
+}
+
+/**
+ * Greedy word-wrap over the token stream for a card at DEPTH. Math spans
+ * never break; text splits on spaces. Width is the widest resulting line
+ * (capped near the level's wrap width plus padding); height is the line
+ * count at each line's pitch, never under the level's minimum (a sticky
+ * note is a note, not a strip). A box with line breaks lays out its rows
+ * (lists, headings, quotes, display math) at a wider wrap.
+ */
+export function measureLabel(label: string, maxTextW?: number, depth = 1): MeasuredLabel {
+  const m = cardMetrics(depth);
+  const parts = splitBreaks(label);
+  if (parts.length > 1) {
+    const wrapW = maxTextW ?? m.maxTextW + 80;
+    const { rows, widest } = measureRows(parts, wrapW, m);
+    const width = ceilSize(Math.round(Math.min(Math.max(widest, 24), wrapW + 12)) + m.padX * 2);
+    const natural = rows.reduce((acc, r) => acc + r.height, 0) + m.padY * 2;
+    return {
+      lines: rows.filter((r) => r.kind !== 'gap').map((r) => r.segs),
+      width,
+      height: ceilSize(Math.max(natural, m.minHeight)),
+      rich: true,
+      rows,
+    };
+  }
+  const wrapW = maxTextW ?? m.maxTextW;
+  const segs = tokenizeLabel(label);
+  const lines = wrapSegs(segs, wrapW, m);
   if (lines.length === 0) lines.push([{ kind: 'text', value: ' ' }]);
 
-  const lineWidths = lines.map((l) => l.reduce((acc, seg) => acc + segWidth(seg, m), 0));
+  const lineWidths = lines.map((l) => lineWidth(l, m));
   // Sizes round UP to two cells so every edge AND every centre sits on a dot.
   const width = ceilSize(Math.round(Math.min(Math.max(...lineWidths, 24), wrapW + 12)) + m.padX * 2);
   const natural = lines.reduce(
@@ -609,13 +735,15 @@ function placeTree(
       y = nextLeafTop + size.height / 2;
       nextLeafTop += size.height + LEAF_GAP;
     } else {
+      const startTop = nextLeafTop;
       const childYs = node.children.map((child) => {
         const childIndex = place(child, depth + 1);
         edges.push({ from: index, to: childIndex });
         return nodes[childIndex].y;
       });
-      // Centred on its children, then its TOP snapped to the grid.
-      y = snapGrid((childYs[0] + childYs[childYs.length - 1]) / 2 - size.height / 2) + size.height / 2;
+      // Centred on its children, then its TOP snapped to the grid; a parent
+      // taller than its children never rises into the card placed above it.
+      y = Math.max(snapGrid((childYs[0] + childYs[childYs.length - 1]) / 2 - size.height / 2), startTop) + size.height / 2;
       // A tall parent must still claim vertical room past its children.
       nextLeafTop = Math.max(nextLeafTop, y + size.height / 2 + LEAF_GAP);
     }
@@ -1480,6 +1608,8 @@ function segHtml(seg: LabelSegment, renderMath?: (tex: string) => string): strin
     case 'bold': return '<b>' + escapeXml(seg.value) + '</b>';
     case 'italic': return '<i>' + escapeXml(seg.value) + '</i>';
     case 'code': return '<code>' + escapeXml(seg.value) + '</code>';
+    case 'strike': return '<s>' + escapeXml(seg.value) + '</s>';
+    case 'link': return '<span class="parallx-mindmap__link">' + escapeXml(seg.value) + '</span>';
     case 'math':
       return renderMath
         ? '<span class="parallx-mindmap__math">' + renderMath(seg.value) + '</span>'
@@ -1576,6 +1706,28 @@ export function renderMindMapSvg(src: string, opts: RenderMindMapOptions = {}): 
         + '<path class="parallx-mindmap__fold" d="M' + (right - f) + ' ' + bottom + ' L' + (right - f) + ' ' + (bottom - f) + ' L' + right + ' ' + (bottom - f) + ' Z" />';
     }
 
+    if (measured.rows) {
+      const rowsHtml = measured.rows.map((row) => {
+        if (row.kind === 'gap') return '<div class="parallx-mindmap__gap" style="height:' + row.height + 'px"></div>';
+        // Wrapping split the row into word atoms; same-styled neighbours draw as one run.
+        const runs: LabelSegment[] = [];
+        for (const seg of row.segs) {
+          const prev = runs[runs.length - 1];
+          if (prev && prev.kind === seg.kind && seg.kind !== 'math' && seg.kind !== 'code') runs[runs.length - 1] = { kind: seg.kind, value: prev.value + seg.value };
+          else runs.push(seg);
+        }
+        const inner = runs.map((seg) => segHtml(seg, opts.renderMath)).join('');
+        const marker = row.marker
+          ? '<span class="parallx-mindmap__marker" style="width:' + Math.max(0, row.indent - 5) + 'px">' + escapeXml(row.marker) + '</span>'
+          : '';
+        return '<div class="parallx-mindmap__line parallx-mindmap__line--' + row.kind + '" style="padding-left:' + row.indent + 'px;height:' + row.height + 'px;line-height:' + row.height + 'px">'
+          + marker + inner + '</div>';
+      }).join('');
+      return open + '<foreignObject x="' + (n.x + m.padX) + '" y="' + (top + m.padY) + '" '
+        + 'width="' + Math.max(4, n.width - m.padX * 2) + '" height="' + Math.max(4, n.height - m.padY * 2) + '">'
+        + '<div class="parallx-mindmap__flabel parallx-mindmap__flabel--rows" xmlns="http://www.w3.org/1999/xhtml">' + rowsHtml + '</div>'
+        + '</foreignObject></g>';
+    }
     const needsHtml = measured.rich && (opts.renderMath || measured.lines.length > 1
       || measured.lines.some((l) => l.some((seg) => seg.kind !== 'text' && seg.kind !== 'math')));
     if (needsHtml) {

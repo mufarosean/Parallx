@@ -159,6 +159,45 @@
   padding: 0 3px;
 }
 
+/* A box with several lines: rows read top to bottom, left aligned, even
+   on the index card. Each row's inset and height come from the layout. */
+.parallx-mindmap__flabel--rows,
+.parallx-mindmap__node--card .parallx-mindmap__flabel--rows {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.parallx-mindmap__flabel--rows .parallx-mindmap__line {
+  position: relative;
+  box-sizing: border-box;
+}
+
+.parallx-mindmap__marker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  text-align: right;
+  opacity: 0.8;
+}
+
+.parallx-mindmap__line--heading {
+  font-weight: 700;
+}
+
+.parallx-mindmap__line--quote {
+  font-style: italic;
+  border-left: 2px solid color-mix(in srgb, var(--px-paper-ink) 35%, transparent);
+}
+
+.parallx-mindmap__line--math {
+  text-align: center;
+}
+
+.parallx-mindmap__link {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .parallx-mindmap__math .katex {
   font-size: 1.05em;
 }

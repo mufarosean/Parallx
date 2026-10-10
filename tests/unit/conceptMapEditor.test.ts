@@ -62,10 +62,10 @@ describe('line-addressed outline edits', () => {
   });
 
   it('a LONG line seeds its full text, so editing never truncates the outline', () => {
-    const long = 'x'.repeat(300);
+    const long = 'x'.repeat(2500);
     const src = `Root\n  ${long}`;
     const drawn = parseMindMap(src)[0].children[0];
-    expect(drawn.label.length).toBeLessThan(long.length); // the box shows a cut label
+    expect(drawn.label.length).toBeLessThan(long.length); // past the cap (2,000) the box shows a cut label
     expect(outlineLineText(src, drawn.line)).toBe(long);  // the editor gets it all
     // Committing an edit of the FULL text keeps every character.
     const next = replaceOutlineLine(src, drawn.line, `${long}y`)!;

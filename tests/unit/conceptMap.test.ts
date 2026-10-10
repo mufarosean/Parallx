@@ -224,7 +224,7 @@ describe('rich labels', () => {
 
   it('truncation never cuts through a math span', () => {
     const tex = String.raw`\frac{CL_n - CL_{n-1}}{L_n - L_{n-1}} \cdot L_{ultimate}`;
-    const label = 'x'.repeat(200) + ' $' + tex + '$';
+    const label = 'x'.repeat(1990) + ' $' + tex + '$';
     const roots = parseMindMap(label);
     const dollars = (roots[0].label.match(/\$/g) ?? []).length;
     expect(dollars % 2).toBe(0); // never an unmatched $

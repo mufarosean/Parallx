@@ -49,6 +49,8 @@ import {
   replaceOutlineLine,
   resolveSourceOffset,
   serializeEditorDom,
+  decodeBreaks,
+  encodeBreaks,
   subtreeLines,
   topmostLines,
   type EdgeBox,
@@ -673,7 +675,8 @@ export const ConceptMap = Node.create({
         hintEl.textContent = spec.hint;
         hintEl.style.left = `${Math.round(spec.rect.left)}px`;
 
-        let src = spec.initial;
+        // The editor shows a box's line breaks as real lines; the outline keeps them as \n.
+        let src = decodeBreaks(spec.initial);
         let composing = false;
         let lastSig = editorSignature(src, { start: src.length, end: src.length });
 
@@ -741,7 +744,8 @@ export const ConceptMap = Node.create({
           e.preventDefault();
           const sel = window.getSelection();
           if (!sel || sel.rangeCount === 0) return;
-          const flat = text.replace(/\s+/g, ' ');
+          // Lines survive a paste (a box can hold several); other runs of space collapse.
+          const flat = text.replace(/\r\n?/g, '\n').replace(/[^\S\n]+/g, ' ');
           const range = sel.getRangeAt(0);
           range.deleteContents();
           const node = document.createTextNode(flat);
@@ -752,7 +756,22 @@ export const ConceptMap = Node.create({
         };
         const onKeyDown = (e: KeyboardEvent): void => {
           e.stopPropagation();
-          if (e.key === 'Enter') { e.preventDefault(); finishBoxEdit?.('enter'); }
+          if (e.key === 'Enter' && e.shiftKey) {
+            // A new line inside the box.
+            e.preventDefault();
+            if (!document.execCommand('insertText', false, '\n')) {
+              const sel = window.getSelection();
+              if (sel && sel.rangeCount > 0) {
+                const range = sel.getRangeAt(0);
+                range.deleteContents();
+                const node = document.createTextNode('\n');
+                range.insertNode(node);
+                src = serializeEditorDom(ed);
+                const after = caretSourceOffset(ed, node, 1);
+                repaint({ start: after, end: after });
+              }
+            }
+          } else if (e.key === 'Enter') { e.preventDefault(); finishBoxEdit?.('enter'); }
           else if (e.key === 'Tab') { e.preventDefault(); finishBoxEdit?.('tab'); }
           else if (e.key === 'Escape') { e.preventDefault(); finishBoxEdit?.('escape'); }
         };
@@ -796,7 +815,8 @@ export const ConceptMap = Node.create({
           if (!teardown) return;
           boxEditTeardown = null;
           teardown();
-          const text = src.replace(/\s+/g, ' ').trim();
+          // Lines kept (a line's leading spaces are its list nesting), other space collapsed.
+          const text = encodeBreaks(src.split('\n').map((l) => l.replace(/(?<=\S)[^\S\n]+/g, ' ').trimEnd()).join('\n').trim());
           refocusMap = true;
           spec.onDone(via === 'escape' ? null : text, via);
         };
@@ -838,7 +858,7 @@ export const ConceptMap = Node.create({
             height: rectB.height,
           },
           branch: branchOfEl(parts.g),
-          hint: 'Enter saves. Tab adds a child. Esc cancels. Empty deletes.',
+          hint: 'Enter saves. Shift+Enter adds a line. Tab adds a child. Esc cancels. Empty deletes.',
           onDone: (text, via) => {
             restoreLabel();
             if (text === null) { render(); return; }
@@ -920,7 +940,7 @@ export const ConceptMap = Node.create({
           selectAll: false,
           rect: { ...seat, width: 90, height: 24 },
           branch: branchOfEl(g) + (kind === 'child' ? 1 : 0),
-          hint: 'Enter adds another. Tab adds a child. Esc closes.',
+          hint: 'Enter adds another. Shift+Enter adds a line. Tab adds a child. Esc closes.',
           onDone: (text, via) => {
             if (!text) { render(); return; }
             const next = kind === 'child'
