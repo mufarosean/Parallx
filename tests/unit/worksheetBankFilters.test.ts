@@ -63,3 +63,11 @@ describe('bank filters', () => {
     for (const c of BANK_COUNTED) expect(all).toContain(c);
   });
 });
+
+describe('the Custom source chip', () => {
+  it('shows only the custom bank', () => {
+    const base = { title: 't', sheetName: 'SHA-07', questionMd: '', paper: 'shapland', note: '', tags: '', kind: 'quant', starred: false, attemptCount: 0, attemptState: '' };
+    expect(bankMatches({ ...base, source: 'custom' }, new Set(['custom']), '')).toBe(true);
+    expect(bankMatches({ ...base, source: 'rf' }, new Set(['custom']), '')).toBe(false);
+  });
+});

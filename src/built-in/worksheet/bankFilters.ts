@@ -30,14 +30,14 @@ export interface BankFilterItem {
 export const BANK_FACETS = {
   status: ['starred', 'noted', 'done', 'incomplete'],
   rating: ['easy', 'medium', 'hard'],
-  source: ['rf', 'cas', 'exam'],
+  source: ['rf', 'cas', 'exam', 'custom'],
   kind: ['quant', 'qual', 'essay'],
 } as const satisfies Record<string, readonly string[]>;
 
 export const BANK_FILTERS: readonly (readonly [string, string])[] = [
   ['starred', 'Starred'], ['noted', 'Noted'], ['done', 'Done'], ['incomplete', 'Incomplete'],
   ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'],
-  ['rf', 'Rising Fellow'], ['cas', 'CAS Exam'], ['exam', 'Practice Exam'],
+  ['rf', 'Rising Fellow'], ['cas', 'CAS Exam'], ['exam', 'Practice Exam'], ['custom', 'Custom'],
   ['quant', 'Quantitative'], ['qual', 'Qualitative'], ['essay', 'Essay'],
 ];
 
@@ -67,7 +67,7 @@ export function bankMatches(item: BankFilterItem, filters: ReadonlySet<string>, 
     if (f === 'done') return isDone(item);
     if (f === 'incomplete') return item.attemptCount === 0 || item.attemptState === 'open';
     if (f === 'easy' || f === 'medium' || f === 'hard') return state === f;
-    if (f === 'rf' || f === 'cas' || f === 'exam') return item.source === f;
+    if (f === 'rf' || f === 'cas' || f === 'exam' || f === 'custom') return item.source === f;
     return item.kind === f;
   };
   for (const facet of Object.values(BANK_FACETS) as readonly (readonly string[])[]) {
