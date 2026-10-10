@@ -96,9 +96,11 @@ export interface WorksheetItem {
   readonly recipe: string;
   /** The paper the recipe belongs to (a paper key); '' when unknown. */
   readonly recipePaper: string;
+  /** When the sheet was last replaced from its workbook; 0 = never. Work saved earlier sits on the old layout. */
+  readonly sheetAt: number;
 }
 
-export interface WorksheetItemSummary extends Omit<WorksheetItem, 'givensJson' | 'solutionJson' | 'sheetJson'> {
+export interface WorksheetItemSummary extends Omit<WorksheetItem, 'givensJson' | 'solutionJson' | 'sheetJson' | 'sheetAt'> {
   /** '' = never attempted, 'open' = in progress, else the last self grade (easy | medium | hard, or a legacy value). */
   readonly attemptState: string;
   readonly attemptCount: number;
@@ -145,6 +147,7 @@ function rowToItem(row: Record<string, unknown>): WorksheetItem {
     points: row.points == null ? null : Number(row.points),
     recipe: String(row.recipe ?? ''),
     recipePaper: String(row.recipe_paper ?? ''),
+    sheetAt: Number(row.sheet_at ?? 0),
   };
 }
 
@@ -282,6 +285,38 @@ export async function createItem(input: CreateItemInput): Promise<number | null>
 /** The points an exam question carries, filled in when a later import of its workbook says. */
 export async function updateItemPoints(id: number, points: number): Promise<void> {
   await run('UPDATE ws_items SET points = ? WHERE id = ? AND points IS NULL', [points, id]);
+}
+
+export interface ReplaceSheetInput {
+  title: string;
+  questionMd: string;
+  sheetJson: string;
+  solutionCol: number;
+  workRow: number;
+  solutionRow: number;
+  points?: number | null;
+}
+
+/**
+ * A problem's sheet replaced by a newer version of its workbook sheet. Only
+ * what the sheet itself defines changes; ratings, stars, notes, time and the
+ * attempt history stay with the problem. sheet_at marks the change so work
+ * saved on the old layout is not laid over the new one.
+ */
+export async function replaceItemSheet(id: number, input: ReplaceSheetInput): Promise<void> {
+  const points = typeof input.points === 'number' && Number.isFinite(input.points) ? input.points : null;
+  await run(
+    `UPDATE ws_items SET title = ?, question_md = ?, sheet_json = ?, solution_col = ?, work_row = ?, solution_row = ?,
+       points = COALESCE(?, points), sheet_at = ? WHERE id = ?`,
+    [input.title.trim(), input.questionMd, input.sheetJson, input.solutionCol, input.workRow, input.solutionRow, points, Date.now(), id],
+  );
+  emitChange();
+}
+
+/** When a problem's sheet was last replaced (0 = never): a cheap check for an open problem tab. */
+export async function getItemSheetAt(id: number): Promise<number> {
+  const row = await getRow('SELECT sheet_at FROM ws_items WHERE id = ?', [id]);
+  return Number(row?.sheet_at ?? 0);
 }
 
 /** A problem's recipe, set by hand (Set Recipe…); '' clears it. */

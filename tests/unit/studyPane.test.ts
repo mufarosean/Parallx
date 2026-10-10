@@ -21,7 +21,25 @@
 // animationend, mastery is predicted from the stored answer times).
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
+// Node's built-in SQLite, not better-sqlite3: the repo's better-sqlite3 is
+// built for Electron's ABI and plain-node vitest cannot load it. The wrapper
+// adds the two better-sqlite3 calls the bridge below uses.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { DatabaseSync } = require('node:sqlite') as typeof import('node:sqlite');
+class Database {
+  private readonly d: InstanceType<typeof DatabaseSync>;
+  constructor(path: string) { this.d = new DatabaseSync(path); }
+  pragma(setting: string): void { this.d.exec(`PRAGMA ${setting}`); }
+  exec(sql: string): void { this.d.exec(sql); }
+  prepare(sql: string) { return this.d.prepare(sql); }
+  close(): void { this.d.close(); }
+  transaction<T>(fn: () => T): () => T {
+    return () => {
+      this.d.exec('BEGIN');
+      try { const out = fn(); this.d.exec('COMMIT'); return out; } catch (e) { this.d.exec('ROLLBACK'); throw e; }
+    };
+  }
+}
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import * as kit from '../../src/ui/kit.js';

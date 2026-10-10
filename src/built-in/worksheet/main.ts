@@ -39,7 +39,7 @@ import { detectProblems, readWorkbookTimeline, normalizeRating, ratingLabel, pap
 import { createDashboardPane, planDay, dayStrip } from './dashboardPane.js';
 import { createPlanPane, examClockFor, type PlanActions } from './planPane.js';
 import { parsePlan } from './plan.js';
-import { getPlanBlockBySession, savePlanJson, clearPlan, updateItemPoints, setItemRecipe, listUnreadRecipeSheets, storeReadRecipe, notifyWorksheetDataChanged } from './worksheetData.js';
+import { getPlanBlockBySession, savePlanJson, clearPlan, updateItemPoints, replaceItemSheet, getItemSheetAt, setItemRecipe, listUnreadRecipeSheets, storeReadRecipe, notifyWorksheetDataChanged } from './worksheetData.js';
 import { recipeOfSheet, recipeGroups, recipeKey } from './recipes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { planCampaign, campaignProgress, addDays, spanDays, workingDays, restDaysLabel, isCampaignProblem, WEEKDAY_LABELS } from './campaign.js';
@@ -2704,7 +2704,7 @@ function createExcelImportPane(container: HTMLElement) {
   const dropIcon = createIconElement('upload', 28);
   dropIcon.classList.add('ws-drop__icon');
   const dropHead = el('div', 'ws-drop__head', 'Choose an Excel workbook');
-  const dropHint = el('div', 'ws-hint', 'Every sheet comes in with its formatting, the solution hidden until you reveal it, your ratings carried over. Importing the same workbook again adds only new problems.');
+  const dropHint = el('div', 'ws-hint', 'Every sheet comes in with its formatting, the solution hidden until you reveal it, your ratings carried over. Importing the same workbook again adds new problems and can replace the sheets already in the bank.');
   dropHint.title = 'Other spreadsheets: Item/Answer sheet pairs and question-left, solution-right sheets are detected; anything else can be imported whole.';
   const pickBtn = createButton(null, { label: 'Choose Excel File…', kind: 'primary' });
   const status = el('span', 'ws-hint ws-drop__status');
@@ -2829,13 +2829,23 @@ function createExcelImportPane(container: HTMLElement) {
     }
     if (disposed) return;
     const rows: { problem: ProblemImport; box: HTMLInputElement }[] = [];
+    // Problems already in the bank take the workbook's sheet only when asked:
+    // a corrected or re-laid-out workbook replaces their sheets in place.
+    let replace = false;
+    const willImport = (r: { problem: ProblemImport; box: HTMLInputElement }): boolean => r.box.checked && (replace || !existing.has(r.problem.sheetName));
     // The footer says what Import will do; with nothing new it brings the history.
     const countSelected = () => {
-      const n = rows.filter((r) => r.box.checked && !existing.has(r.problem.sheetName)).length;
-      const papersOn = new Set(rows.filter((r) => r.box.checked && !existing.has(r.problem.sheetName)).map((r) => r.problem.paper)).size;
-      footNote.textContent = n ? `${n} selected · ${papersOn} ${papersOn === 1 ? 'paper' : 'papers'}` : timeline.length ? 'Nothing new selected' : 'Nothing selected';
+      const chosen = rows.filter(willImport);
+      const r = chosen.filter((x) => existing.has(x.problem.sheetName)).length;
+      const n = chosen.length - r;
+      const papersOn = new Set(chosen.map((x) => x.problem.paper)).size;
+      footNote.textContent = chosen.length ? `${chosen.length} selected · ${papersOn} ${papersOn === 1 ? 'paper' : 'papers'}` : timeline.length ? 'Nothing new selected' : 'Nothing selected';
       const l = importBtn.querySelector('.px-btn__label');
-      if (l) l.textContent = n ? `Import ${n} ${n === 1 ? 'Problem' : 'Problems'}` : timeline.length > 0 ? 'Import Dashboard History' : 'Import Selected Problems';
+      if (l) {
+        l.textContent = n && r ? `Import ${n}, Replace ${r}`
+          : r ? `Replace ${r} ${r === 1 ? 'Sheet' : 'Sheets'}`
+            : n ? `Import ${n} ${n === 1 ? 'Problem' : 'Problems'}` : timeline.length > 0 ? 'Import Dashboard History' : 'Import Selected Problems';
+      }
     };
     listHost.onchange = () => countSelected();
     const rated = problems.filter((p) => p.rating).length;
@@ -2846,6 +2856,20 @@ function createExcelImportPane(container: HTMLElement) {
     createButton(toggles, { label: 'Select New', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) r.box.checked = !existing.has(r.problem.sheetName); countSelected(); } });
     createButton(toggles, { label: 'Select None', kind: 'ghost', size: 'sm', onClick: () => { for (const r of rows) r.box.checked = false; countSelected(); } });
     listHost.appendChild(toggles);
+    if (existing.size > 0) {
+      const replaceRow = el('label', 'ws-import__row');
+      const replaceBox = el('input') as HTMLInputElement;
+      replaceBox.type = 'checkbox';
+      replaceRow.appendChild(replaceBox);
+      replaceRow.appendChild(el('span', 'ws-xlrow__title', 'Replace sheets already in the bank'));
+      replaceRow.title = 'Their ratings, stars, notes, time and history stay. Work saved on an old sheet stays in the history; the problem opens on the new sheet.';
+      replaceBox.addEventListener('change', () => {
+        replace = replaceBox.checked;
+        for (const r of rows) if (existing.has(r.problem.sheetName)) r.box.checked = replace;
+        countSelected();
+      });
+      listHost.appendChild(replaceRow);
+    }
     const byPaper = new Map<string, ProblemImport[]>();
     for (const p of problems) { if (!byPaper.has(p.paper)) byPaper.set(p.paper, []); byPaper.get(p.paper)!.push(p); }
     for (const [paper, list] of [...byPaper.entries()].sort((a, b) => paperLabel(a[0]).localeCompare(paperLabel(b[0])))) {
@@ -2890,12 +2914,22 @@ function createExcelImportPane(container: HTMLElement) {
         importBtn.disabled = true;
         let done = 0;
         let carried = 0;
+        let replaced = 0;
         try {
           for (const r of keep) {
             const p = r.problem;
+            const known = existing.get(p.sheetName);
+            if (known != null && replace) {
+              await replaceItemSheet(known, {
+                title: p.title, questionMd: p.questionMd, sheetJson: p.sheetJson,
+                solutionCol: p.solutionCol, workRow: p.workRow, solutionRow: p.solutionRow, points: p.points ?? null,
+              });
+              replaced++;
+              if (replaced % 10 === 0) status.textContent = `Replacing ${replaced} of ${keep.length}…`;
+              continue;
+            }
             if (existing.has(p.sheetName)) {
               // Already in the bank: a point value the workbook gives now fills a blank one.
-              const known = existing.get(p.sheetName);
               if (known != null && typeof p.points === 'number') await updateItemPoints(known, p.points).catch(() => {});
               done++; continue;
             }
@@ -2908,15 +2942,19 @@ function createExcelImportPane(container: HTMLElement) {
             done++;
             if (done % 10 === 0) status.textContent = `Importing ${done} of ${keep.length}…`;
           }
+          // Sheets cached by closed problem tabs hold the old layouts; every entry is
+          // already saved to its attempt, so the cache can simply start over.
+          if (replaced) _workingCache.clear();
           await readPendingRecipes();
           // The workbook's own dashboard history, so the timeline starts where his did.
           for (const s of timeline) await upsertProgressSnapshot(s.day, s.attempted, s.score, 'workbook');
           status.textContent = '';
-          _api?.activity?.note('imported', `${done} problems from ${fileLabel}`, carried ? `${carried} ratings carried over` : undefined);
+          _api?.activity?.note('imported', `${done} problems from ${fileLabel}`, [carried ? `${carried} ratings carried over` : '', replaced ? `${replaced} sheets replaced` : ''].filter(Boolean).join(', ') || undefined);
           const history = timeline.length ? `${timeline.length} ${timeline.length === 1 ? 'day' : 'days'} of dashboard history` : '';
+          const sheets = replaced ? `Replaced ${replaced} ${replaced === 1 ? 'sheet' : 'sheets'}` : '';
           await _api?.window?.showInformationMessage?.(
-            done === 0 && history ? `Nothing new to import. Added ${history}.`
-              : `Imported ${done} ${done === 1 ? 'problem' : 'problems'}${carried ? `, ${carried} with your rating` : ''}${history ? `, ${history}` : ''}.`,
+            done === 0 && (history || sheets) ? `${[sheets, history ? `Added ${history}` : ''].filter(Boolean).join('. ')}.`
+              : `Imported ${done} ${done === 1 ? 'problem' : 'problems'}${carried ? `, ${carried} with your rating` : ''}${history ? `, ${history}` : ''}${sheets ? `. ${sheets}` : ''}.`,
           );
           await openWorksheet('bank', 'Problem Bank');
         } catch (e) {
@@ -3061,6 +3099,7 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
   /** Study seconds on this problem, every sitting (the header clock); -1 before a problem is loaded. */
   let problemSeconds = -1;
   let studyTicker: { dispose(): void } | null = null;
+  let sheetSub: { dispose(): void } | null = null;
 
   const captureWorking = (): IWorkbookData | null => {
     if (mode !== 'working') return null;
@@ -3592,13 +3631,29 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
       else lastSavedCells = JSON.stringify(host?.getSnapshot() ?? null);
     };
     paintHeader();
-    const carried = open ?? prior;
+    // Work saved before the sheet was replaced sits on the old layout: the new sheet opens instead.
+    const carried = [open, prior].find((a) => a && a.updatedAt >= problem.sheetAt) ?? null;
     const base = _workingCache.get(instanceId) ?? (carried ? (parseWorkbook(carried.cellsJson) as IWorkbookData | null) : null);
     await mountSheet(applyRatingCell(applySolutionVisibility((base ?? parseWorkbook(problem.sheetJson)) as IWorkbookData, revealed), latestRating));
     // Baseline = what the sheet holds once the engine has settled after the
     // mount, so merely reopening a problem (rated or not) starts no new attempt.
     lastSavedCells = await settledSnapshotJson();
     if (disposed) return;
+    // The sheet replaced from its workbook while this tab is open: the new layout takes over.
+    sheetSub?.dispose();
+    sheetSub = onWorksheetDataChanged(() => {
+      void (async () => {
+        const at = await getItemSheetAt(problem.id).catch(() => 0);
+        if (disposed || at <= problem.sheetAt) return;
+        const fresh = await getItem(problem.id).catch(() => null);
+        if (disposed || !fresh) return;
+        problem = fresh;
+        item = fresh;
+        _workingCache.delete(instanceId);
+        await mountSheet(applyRatingCell(applySolutionVisibility(parseWorkbook(problem.sheetJson) as IWorkbookData, revealed), latestRating));
+        lastSavedCells = await settledSnapshotJson();
+      })();
+    });
     // Work is what the campaign counts, not the rating alone. The first cell
     // edit records it, so a problem that arrived carrying its workbook rating
     // still closes out the day once it has actually been done. Armed only
@@ -3704,6 +3759,8 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
       if (autosaveTimer) clearInterval(autosaveTimer);
       studyTicker?.dispose();
       studyTicker = null;
+      sheetSub?.dispose();
+      sheetSub = null;
       // Capture-before-teardown so close-without-save cannot drop work.
       void persistWorking();
       disposed = true;
