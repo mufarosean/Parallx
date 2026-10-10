@@ -189,7 +189,8 @@
   border-left: 2px solid color-mix(in srgb, var(--px-paper-ink) 35%, transparent);
 }
 
-.parallx-mindmap__line--math {
+/* A display-math row is centred; inline math in an ordinary line is not. */
+.parallx-mindmap__flabel--rows .parallx-mindmap__line--math {
   text-align: center;
 }
 
