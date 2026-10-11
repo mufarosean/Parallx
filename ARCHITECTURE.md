@@ -231,6 +231,7 @@ Lines are counted at the time of writing; the point is the shape, not the number
 | `src/agent/` (0.4K) | The agent task model and lifecycle types | `platform` |
 | `src/aiSettings/` (4.4K) | The AI configuration service (presets, profiles) and the AI Settings panel sections | `platform`, `ui`, `services` |
 | `src/links/` (0.4K) | `parallx://` links: parsing, minting, resolving | `platform`, `services` |
+| `src/vendor/` | The libraries that load on first use, not at boot: pdf.js, highlight.js, JSZip. Each entry builds as its own bundle (`dist/renderer/vendor-<name>.js`); `lazy.ts` holds the loaders the app calls | the packages only |
 | `src/built-in/<tool>/` (117K) | The 18 first-party tools: canvas, chat, dashboard, settings, explorer, search, terminal, output, planner, worksheet, agents, ai-settings, activity-log, indexing-log, diagnostics, tool-gallery, theme-editor, welcome. `main.ts` is each one's activation | everything below; never another built-in, never the workbench |
 | `src/workbench/` (11.7K) | The composition root: boot phases, service wiring (`workbenchServices.ts`), parts and layout, editor setup, the status bar | anything |
 | `electron/` (16K) | The main process: window and lifecycle (`main.cjs`), the preload bridge (`preload.cjs`), and one bridge per capability (database, files, documents, browser, Python, MCP, models) | (CommonJS, outside the renderer) |
@@ -342,6 +343,7 @@ may only fall.
 | Chat files import only through their gates | `tests/unit/chatGateCompliance.test.ts` |
 | A packaged extension holds every module it imports | `tests/unit/packageExtension.test.ts` |
 | `ext/study/main.js` matches its sources | `tests/unit/studyBundle.test.ts` |
+| pdf.js, highlight.js and JSZip stay in their own bundles: nothing outside `src/vendor/` imports them for a value | `tests/unit/lazyVendorBundles.test.ts` |
 
 The checks every change runs: `npm run typecheck` (the app and the
 tests), `npx vitest run`, `npm run build`.

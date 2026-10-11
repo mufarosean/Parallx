@@ -7,7 +7,8 @@
 // solution columns).
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
-import { openXlsx, sheetToSnapshot, shiftFormula, applyTint, columnWidthPx, parseXml, cellText, findCell } from '../../src/built-in/worksheet/ooxml.js';
+import { openXlsx, sheetToSnapshot, shiftFormula, applyTint, columnWidthPx, cellText, findCell } from '../../src/built-in/worksheet/ooxml.js';
+import { parseXml } from '../../src/built-in/worksheet/xml.js';
 
 const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 

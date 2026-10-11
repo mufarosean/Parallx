@@ -14,7 +14,8 @@ import { escapeHtml } from '../../ui/format.js';
 import MarkdownIt from 'markdown-it';
 import markdownItMark from 'markdown-it-mark';
 import MarkdownItGitHubAlerts from 'markdown-it-github-alerts';
-import hljs from 'highlight.js/lib/common';
+import type { HLJSApi } from 'highlight.js';
+import { loadHljs } from '../../vendor/lazy.js';
 import katex from 'katex';
 
 import { EditorPane } from '../../editor/editorPane.js';
@@ -86,6 +87,7 @@ export class MarkdownEditorPane extends EditorPane {
     _previous: IEditorInput | undefined,
   ): Promise<void> {
     this._inputListeners.clear();
+    await ensureHighlighter();
 
     // ReadonlyMarkdownInput — in-memory content, no file resolution needed
     if (input instanceof ReadonlyMarkdownInput) {
@@ -237,15 +239,27 @@ export class MarkdownEditorPane extends EditorPane {
 
 // ── Shared markdown-it renderer for the editor preview pane ──────────────────
 
+// highlight.js is its own bundle (src/vendor/hljs.ts), parsed on the first
+// preview rather than at boot; renderInput waits for it, so code blocks are
+// coloured from the first paint. Without it (a build with no bundle), code
+// renders plain.
+let _hljs: HLJSApi | null = null;
+let _hljsLoading: Promise<void> | null = null;
+function ensureHighlighter(): Promise<void> {
+  return (_hljsLoading ??= loadHljs()
+    .then((m) => { _hljs = m.default; })
+    .catch((err) => { console.warn('[MarkdownEditorPane] highlight.js did not load; code renders plain:', err); }));
+}
+
 function _createPreviewRenderer(): MarkdownIt {
   const md = new MarkdownIt({
     html: false,
     breaks: true,
     linkify: true,
     highlight(str, lang) {
-      if (lang && hljs.getLanguage(lang)) {
+      if (lang && _hljs?.getLanguage(lang)) {
         try {
-          return hljs.highlight(str, { language: lang }).value;
+          return _hljs.highlight(str, { language: lang }).value;
         } catch { /* fall through */ }
       }
       return ''; // markdown-it will escape the content

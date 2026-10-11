@@ -18,24 +18,14 @@
 //   - Outline sidebar (document TOC)
 //   - Keyboard shortcuts
 
-// ── Bootstrap: pdf_viewer.mjs requires globalThis.pdfjsLib ──────────────
-import './pdfViewerBootstrap.js';
+// ── pdf.js: types here, the library on the first PDF ───────────────────
+// The display and viewer layers are their own bundle (src/vendor/pdfjs.ts),
+// loaded by renderInput, so a boot with no PDF open never parses them.
+import type { PDFViewer, EventBus, PDFLinkService, PDFFindController } from 'pdfjs-dist/web/pdf_viewer.mjs';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { loadPdfjs } from '../../vendor/lazy.js';
 
-// ── PDF.js Viewer layer ─────────────────────────────────────────────────
-import {
-  PDFViewer,
-  EventBus,
-  PDFLinkService,
-  PDFFindController,
-  GenericL10n,
-  FindState,
-  SpreadMode,
-  ScrollMode,
-} from 'pdfjs-dist/web/pdf_viewer.mjs';
-
-// ── PDF.js Display layer (for getDocument) ──────────────────────────────
-import * as pdfjsLib from 'pdfjs-dist';
-import { AnnotationMode } from 'pdfjs-dist';
+type PdfVendor = Awaited<ReturnType<typeof loadPdfjs>>;
 import { getToolSelectionActions } from '../../services/selectionActionDispatcher.js';
 
 // ── CSS ─────────────────────────────────────────────────────────────────
@@ -261,7 +251,9 @@ export class PdfEditorPane extends EditorPane {
   private _linkService: PDFLinkService | null = null;
   private _findController: PDFFindController | null = null;
   private _pdfViewer: PDFViewer | null = null;
-  private _pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
+  private _pdfDoc: PDFDocumentProxy | null = null;
+  /** The loaded pdf.js, from the first renderInput on. */
+  private _pdf: PdfVendor | null = null;
 
   // ── State ────────────────────────────────────────────────────────────
   private _scaleValue = 'page-fit';  // default fit mode
@@ -1789,6 +1781,9 @@ export class PdfEditorPane extends EditorPane {
 
   private _showOverflowMenu(anchor: HTMLElement): void {
     this._dismissContextMenu();
+    const pdf = this._pdf;
+    if (!pdf) return;
+    const { SpreadMode, ScrollMode } = pdf;
     const r = anchor.getBoundingClientRect();
     const spread = this._pdfViewer?.spreadMode ?? SpreadMode.NONE;
     const scroll = this._pdfViewer?.scrollMode ?? ScrollMode.VERTICAL;
@@ -2346,6 +2341,8 @@ export class PdfEditorPane extends EditorPane {
     _previous: IEditorInput | undefined,
   ): Promise<void> {
     this._cleanup();
+    const pdf = await loadPdfjs();
+    this._pdf = pdf;
 
     if (!(input instanceof PdfEditorInput)) {
       this._showError('Not a PDF input.');
@@ -2382,9 +2379,9 @@ export class PdfEditorPane extends EditorPane {
 
       // ── Initialize PDF.js Viewer components ────────────────────────
 
-      this._eventBus = new EventBus();
+      this._eventBus = new pdf.EventBus();
 
-      this._linkService = new PDFLinkService({
+      this._linkService = new pdf.PDFLinkService({
         eventBus: this._eventBus,
         // External anchors (http/https/mailto) render with target="_blank"
         // so the click hits window.open → caught by Electron's
@@ -2395,25 +2392,25 @@ export class PdfEditorPane extends EditorPane {
         externalLinkRel: 'noopener noreferrer',
       });
 
-      this._findController = new PDFFindController({
+      this._findController = new pdf.PDFFindController({
         linkService: this._linkService,
         eventBus: this._eventBus,
       });
 
-      this._pdfViewer = new PDFViewer({
+      this._pdfViewer = new pdf.PDFViewer({
         container: this._viewerContainer,
         viewer: this._viewerEl,
         eventBus: this._eventBus,
         linkService: this._linkService,
         findController: this._findController,
         textLayerMode: TEXT_LAYER_ENABLE,
-        annotationMode: AnnotationMode.ENABLE_FORMS,
+        annotationMode: pdf.AnnotationMode.ENABLE_FORMS,
         removePageBorders: false,
         enableHWA: true,
         supportsPinchToZoom: true,
         enableAutoLinking: true,
         minDurationToUpdateCanvas: 0,
-        l10n: new GenericL10n('en-US'),
+        l10n: new pdf.GenericL10n('en-US'),
       });
 
       this._linkService.setViewer(this._pdfViewer);
@@ -2465,7 +2462,7 @@ export class PdfEditorPane extends EditorPane {
 
       this._eventBus.on('updatefindcontrolstate', (evt: any) => {
         const { state, matchesCount } = evt;
-        if (state === FindState.NOT_FOUND) {
+        if (state === pdf.FindState.NOT_FOUND) {
           this._matchCountEl.textContent = 'No matches';
           this._searchBar.classList.add('is-not-found');
         } else {
@@ -2479,7 +2476,7 @@ export class PdfEditorPane extends EditorPane {
 
       // ── Load document ──────────────────────────────────────────────
 
-      this._pdfDoc = await pdfjsLib.getDocument({
+      this._pdfDoc = await pdf.pdfjsLib.getDocument({
         data,
         cMapUrl: PDFJS_CMAP_URL,
         cMapPacked: true,
@@ -2669,7 +2666,7 @@ export class PdfEditorPane extends EditorPane {
 
   // ── Thumbnail sidebar ────────────────────────────────────────────────
 
-  private _buildThumbnails(pdfDoc: pdfjsLib.PDFDocumentProxy): void {
+  private _buildThumbnails(pdfDoc: PDFDocumentProxy): void {
     this._thumbnailList.replaceChildren();
     this._thumbCanvases.clear();
 

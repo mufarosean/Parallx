@@ -11,7 +11,7 @@
 // superscripts (including pre-scripts), fractions, radicals, n-ary operators
 // with limits, delimiters, accents, functions, equation arrays, matrices,
 // line breaks and plain-text runs.
-import type { XNode } from './ooxml.js';
+import type { XNode } from './xml.js';
 
 const child = (n: XNode | undefined, name: string): XNode | undefined => n?.children.find((c) => c.name === name);
 const kids = (n: XNode | undefined, name: string): XNode[] => (n ? n.children.filter((c) => c.name === name) : []);

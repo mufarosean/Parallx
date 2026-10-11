@@ -4,7 +4,7 @@
 // the math-italic letters Word writes into runs. The first case is a verbatim
 // equation from Practice Exam 1.
 import { describe, it, expect } from 'vitest';
-import { parseXml } from '../../src/built-in/worksheet/ooxml';
+import { parseXml } from '../../src/built-in/worksheet/xml';
 import { ommlToLatex, findOmml, stripLinearPlaceholders } from '../../src/built-in/worksheet/omml';
 
 const M = 'xmlns:m="m"';

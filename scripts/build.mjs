@@ -14,8 +14,18 @@ import { build } from 'esbuild';
 import { copyFile, cp, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { VENDOR_BUNDLES, lazyVendorPlugin } from './vendorBundles.mjs';
 
 const isProduction = process.argv.includes('--production');
+
+const assetLoaders = {
+  '.woff2': 'file',
+  '.woff': 'file',
+  '.ttf': 'file',
+  '.svg': 'dataurl',
+  '.gif': 'dataurl',
+  '.cur': 'dataurl',
+};
 
 // Bundle the renderer entry point (JS + CSS)
 await build({
@@ -28,16 +38,31 @@ await build({
   sourcemap: isProduction ? 'external' : true,
   minify: isProduction,
   logLevel: 'info',
-  loader: {
-    '.woff2': 'file',
-    '.woff': 'file',
-    '.ttf': 'file',
-    '.svg': 'dataurl',
-    '.gif': 'dataurl',
-    '.cur': 'dataurl',
-  },
+  loader: assetLoaders,
   assetNames: 'fonts/[name]',
+  plugins: [lazyVendorPlugin()],
 });
+
+// ── Vendor bundles ─────────────────────────────────────────────────────────
+// pdf.js, highlight.js and JSZip are parsed when something first needs them
+// (a PDF, a Markdown preview, an Excel import), not at every boot. Each is
+// its own ESM bundle; the main bundle's imports of src/vendor/* became
+// requests for these files (lazyVendorPlugin, scripts/vendorBundles.mjs).
+for (const { name, entry } of VENDOR_BUNDLES) {
+  await build({
+    entryPoints: [entry],
+    bundle: true,
+    outfile: `dist/renderer/vendor-${name}.js`,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2022',
+    sourcemap: isProduction ? 'external' : true,
+    minify: isProduction,
+    logLevel: 'info',
+    loader: assetLoaders,
+    assetNames: 'fonts/[name]',
+  });
+}
 
 // ── Worksheet engine bundle (M99) ──────────────────────────────────────────
 // The Univer spreadsheet engine is several MB and used only by the Worksheets

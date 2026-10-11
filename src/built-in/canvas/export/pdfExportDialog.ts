@@ -9,7 +9,8 @@
 
 import './pdfExport.css';
 
-import * as pdfjsLib from 'pdfjs-dist';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { loadPdfjs } from '../../../vendor/lazy.js';
 import { Dropdown } from '../../../ui/dropdown.js';
 import { SegmentedControl } from '../../../ui/segmentedControl.js';
 import {
@@ -24,12 +25,6 @@ import {
   type PdfMarginPresetId,
 } from './printHtml.js';
 import { resolveFontStack, getFontFaceCss } from '../config/fontRegistry.js';
-
-// The PDF editor pane sets this too; set defensively so export previews work
-// even when no PDF has ever been opened this session.
-if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = './dist/renderer/pdf.worker.min.mjs';
-}
 
 const PREVIEW_MAX_PAGES = 30;
 const PREVIEW_DEBOUNCE_MS = 350;
@@ -98,7 +93,7 @@ export function openPdfExportDialog(source: PdfExportSource): void {
 
   let settings: PdfExportSettings = { ...DEFAULT_PDF_SETTINGS };
   let generation = 0;
-  let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
+  let pdfDoc: PDFDocumentProxy | null = null;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   const disposables: { dispose(): void }[] = [];
 
@@ -327,6 +322,7 @@ export function openPdfExportDialog(source: PdfExportSource): void {
 
       const bytes = Uint8Array.from(atob(result.data), (c) => c.charCodeAt(0));
       const oldDoc = pdfDoc;
+      const { pdfjsLib } = await loadPdfjs(); // its own bundle, parsed on the first preview
       const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
       if (gen !== generation) { void doc.destroy().catch(() => { /* ignore */ }); return; }
       pdfDoc = doc;
