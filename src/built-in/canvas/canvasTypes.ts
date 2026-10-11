@@ -393,19 +393,19 @@ export interface ICanvasDataService {
   // ── Favorites / Archive ──
 
   toggleFavorite(pageId: string): Promise<IPage>;
-  getFavoritedPages(): Promise<IPage[]>;
+  getFavoritedPages(): Promise<IPageSummary[]>;
   /**
    * Most-recently-updated non-archived pages, ordered newest first.
    * Bounded by `limit` (defaults to 5). M77 Phase 11.3 — surfaces a
    * "Recents" section in the sidebar.
    */
-  getRecentPages(limit?: number): Promise<IPage[]>;
+  getRecentPages(limit?: number): Promise<IPageSummary[]>;
   archivePage(pageId: string): Promise<void>;
   restorePage(pageId: string): Promise<IPage>;
   permanentlyDeletePage(pageId: string): Promise<void>;
   /** Permanently delete every page in the Trash, read when it runs. */
   emptyTrash(): Promise<void>;
-  getArchivedPages(): Promise<IPage[]>;
+  getArchivedPages(): Promise<IPageSummary[]>;
 
   // ── Duplication ──
 

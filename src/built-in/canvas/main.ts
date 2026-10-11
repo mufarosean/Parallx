@@ -31,7 +31,7 @@ import { decodeCanvasContent, encodeCanvasContentFromDoc } from './contentSchema
 import { CanvasDataService } from './canvasDataService.js';
 import { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
-import type { IPage, IPageSummaryTreeNode, IPageTreeNode, PageChangeEvent, PageMutationField } from './canvasTypes.js';
+import type { IPageSummary, IPageSummaryTreeNode, PageChangeEvent, PageMutationField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
@@ -400,7 +400,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   });
 
   // 2a. Publish read-only page query service to DI for cross-tool access
-  api.services.registerInstance(ICanvasPageQueryService, _dataService);
+  // Tools see pages without their bodies: lists, trees and change events only.
+  const pageQuery: ICanvasPageQueryService = {
+    getRootPages: () => _dataService!.getRootPages(),
+    getChildren: (parentId) => _dataService!.getChildren(parentId),
+    getPageTree: () => _dataService!.getPageSummaryTree(),
+    onDidChangePage: _dataService.onDidChangePage,
+  };
+  api.services.registerInstance(ICanvasPageQueryService, pageQuery);
   // Publish the FULL data service too, so the dashboard's notes widget can host
   // a real canvas page (create/get/save + live reload) via the shared editor view.
   api.services.registerInstance(ICanvasDataService, _dataService);
@@ -472,13 +479,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         const ds = _dataService;
         if (!ds) return { linked: [], missing: [...relatedTitles] };
         const flat: { id: string; title: string }[] = [];
-        const walk = (nodes: readonly IPageTreeNode[]) => {
+        const walk = (nodes: readonly IPageSummaryTreeNode[]) => {
           for (const n of nodes) {
             flat.push({ id: n.id, title: n.title });
             if (n.children?.length) walk(n.children);
           }
         };
-        try { walk(await ds.getPageTree()); } catch { return { linked: [], missing: [...relatedTitles] }; }
+        try { walk(await ds.getPageSummaryTree()); } catch { return { linked: [], missing: [...relatedTitles] }; }
         const norm = (s: string) => s.trim().toLowerCase();
         const find = (t: string) => flat.find((p) => norm(p.title) === norm(t));
         const hub = find(hubTitle);
@@ -1413,7 +1420,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       const pageId = args[0] as string | undefined;
       if (!_dataService || !pageId) return;
       try {
-        const [page, tree] = await Promise.all([_dataService.getPage(pageId), _dataService.getPageTree()]);
+        const [page, tree] = await Promise.all([_dataService.getPage(pageId), _dataService.getPageSummaryTree()]);
         if (!page) return;
         const targets = pageMoveTargets(tree, pageId, (id) => _databaseService?.isDatabase(id) ?? false);
         const items = [
@@ -1443,9 +1450,9 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.commands.registerCommand('canvas.pickPageLink', async (): Promise<{ uri: string; title: string; icon: string | null } | null> => {
       if (!_dataService) return null;
-      let tree: IPageTreeNode[];
+      let tree: IPageSummaryTreeNode[];
       try {
-        tree = await _dataService.getPageTree();
+        tree = await _dataService.getPageSummaryTree();
       } catch (err) {
         console.error('[Canvas] pickPageLink: getPageTree failed:', err);
         return null;
@@ -1453,8 +1460,8 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
 
       // Flatten the tree depth-first, indenting nested pages so the
       // hierarchy reads naturally in the flat quick-pick list.
-      const flat: { page: IPage; depth: number }[] = [];
-      const walk = (nodes: readonly IPageTreeNode[], depth: number): void => {
+      const flat: { page: IPageSummary; depth: number }[] = [];
+      const walk = (nodes: readonly IPageSummaryTreeNode[], depth: number): void => {
         for (const node of nodes) {
           flat.push({ page: node, depth });
           if (node.children.length) walk(node.children, depth + 1);
@@ -1517,14 +1524,14 @@ async function captureNoteToCanvas(
   if (!text && !imageDataUrl) return null;
 
   // Build the target picker: a "new page" option plus every existing page.
-  let tree: IPageTreeNode[] = [];
+  let tree: IPageSummaryTreeNode[] = [];
   try {
-    tree = await _dataService.getPageTree();
+    tree = await _dataService.getPageSummaryTree();
   } catch (err) {
     console.error('[Canvas] captureNote: getPageTree failed:', err);
   }
-  const flat: { page: IPage; depth: number }[] = [];
-  const walk = (nodes: readonly IPageTreeNode[], depth: number): void => {
+  const flat: { page: IPageSummary; depth: number }[] = [];
+  const walk = (nodes: readonly IPageSummaryTreeNode[], depth: number): void => {
     for (const node of nodes) {
       flat.push({ page: node, depth });
       if (node.children.length) walk(node.children, depth + 1);

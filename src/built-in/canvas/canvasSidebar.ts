@@ -17,7 +17,7 @@ import { escapeHtml } from '../../ui/format.js';
 import { EMPTY_STATES } from '../../ui/emptyStates.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { doesPageChangeAffectSidebar } from './canvasTypes.js';
-import type { IPage, IPageTreeNode, ICanvasDataService } from './canvasTypes.js';
+import type { IPage, IPageSummaryTreeNode, ICanvasDataService, IPageSummary } from './canvasTypes.js';
 import { $, layoutPopup, attachPopupDismiss } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { IconPicker } from '../../ui/iconPicker.js';
@@ -57,7 +57,7 @@ export class CanvasSidebar {
   private _selectedPageId: string | null = null;
   private _expandedIds = new Set<string>();
   private _favExpandedIds = new Set<string>();
-  private _tree: IPageTreeNode[] = [];
+  private _tree: IPageSummaryTreeNode[] = [];
 
   // ── Multi-selection ──
   // Set of page IDs the user has shift/ctrl-selected in the tree. Distinct
@@ -84,10 +84,10 @@ export class CanvasSidebar {
   private _multiSelectAnchorPos: number | null = null;
 
   // ── Favorites / Trash state ──
-  private _favoritedPages: IPage[] = [];
-  private _archivedPages: IPage[] = [];
+  private _favoritedPages: IPageSummary[] = [];
+  private _archivedPages: IPageSummary[] = [];
   // ── Recents ──
-  private _recentPages: IPage[] = [];
+  private _recentPages: IPageSummary[] = [];
   private _recentsExpanded = true;
 
   // ── Trash panel ──
@@ -332,7 +332,7 @@ export class CanvasSidebar {
 
     try {
       const [tree, favorites, archived, recents] = await Promise.all([
-        this._dataService.getPageTree(),
+        this._dataService.getPageSummaryTree(),
         this._dataService.getFavoritedPages(),
         this._dataService.getArchivedPages(),
         this._dataService.getRecentPages(5),
@@ -443,7 +443,7 @@ export class CanvasSidebar {
           const childrenEl = $('div.canvas-children');
           if (!this._favExpandedIds.has(page.id)) childrenEl.classList.add('canvas-children--collapsed');
           for (const child of treeNode.children) {
-            this._renderNode(childrenEl, child as IPageTreeNode, 1, this._favExpandedIds);
+            this._renderNode(childrenEl, child as IPageSummaryTreeNode, 1, this._favExpandedIds);
           }
           favSection.appendChild(childrenEl);
         }
@@ -582,7 +582,7 @@ export class CanvasSidebar {
 
   // ── Render a favorites row ──
 
-  private _renderFavoriteRow(page: IPage): HTMLElement {
+  private _renderFavoriteRow(page: IPageSummary): HTMLElement {
     const row = $('div.canvas-node.canvas-favorite-node');
     row.setAttribute('data-page-id', page.id);
 
@@ -670,7 +670,7 @@ export class CanvasSidebar {
 
   // ── Render a trash row ──
 
-  private _renderTrashRow(page: IPage, container: HTMLElement): void {
+  private _renderTrashRow(page: IPageSummary, container: HTMLElement): void {
     const row = $('div.canvas-node.canvas-trash-panel-node');
     row.setAttribute('data-page-id', page.id);
 
@@ -726,7 +726,7 @@ export class CanvasSidebar {
     container.appendChild(row);
   }
 
-  private _renderNode(parent: HTMLElement, node: IPageTreeNode, depth: number, expandSet?: Set<string>): void {
+  private _renderNode(parent: HTMLElement, node: IPageSummaryTreeNode, depth: number, expandSet?: Set<string>): void {
     const exSet = expandSet ?? this._expandedIds;
     const row = $('div.canvas-node');
     row.setAttribute('role', 'treeitem');
@@ -852,7 +852,7 @@ export class CanvasSidebar {
   // ══════════════════════════════════════════════════════════════════════════
 
   private _showPageOptionsPopup(
-    page: IPage | IPageTreeNode,
+    page: IPageSummary | IPageSummaryTreeNode,
     anchor: DOMRect | { x: number; y: number },
     options?: { focusTitle?: boolean; selectTitle?: boolean },
   ): void {
@@ -1316,7 +1316,7 @@ export class CanvasSidebar {
   // Selection & Editor Opening (Task 4.2)
   // ══════════════════════════════════════════════════════════════════════════
 
-  private async _selectAndOpenPage(page: IPage | IPageTreeNode): Promise<void> {
+  private async _selectAndOpenPage(page: IPageSummary | IPageSummaryTreeNode): Promise<void> {
     this._selectedPageId = page.id;
     this._renderTree();
 
@@ -1591,7 +1591,7 @@ export class CanvasSidebar {
    * was hitting the editor's handler (or none at all) instead of the
    * sidebar's bulk-delete.
    */
-  private _handleRowClick(e: MouseEvent, node: { id: string } & (IPage | IPageTreeNode)): void {
+  private _handleRowClick(e: MouseEvent, node: { id: string } & (IPageSummary | IPageSummaryTreeNode)): void {
     if (e.shiftKey && this._multiSelectAnchor) {
       e.preventDefault();
       // Resolve the clicked row's DOM position right now (BEFORE we
@@ -1716,7 +1716,7 @@ export class CanvasSidebar {
   // Drag-and-Drop (Task 4.4)
   // ══════════════════════════════════════════════════════════════════════════
 
-  private _onDragStart(e: DragEvent, node: IPageTreeNode): void {
+  private _onDragStart(e: DragEvent, node: IPageSummaryTreeNode): void {
     // M77 Phase 3/7 — start drag state with a frozen snapshot of the tree
     // so ancestry checks and drop-target validation can't be invalidated
     // by a concurrent DB event firing mid-drag.
@@ -1731,7 +1731,7 @@ export class CanvasSidebar {
     }
   }
 
-  private _onDragOver(e: DragEvent, row: HTMLElement, node: IPageTreeNode, _depth: number): void {
+  private _onDragOver(e: DragEvent, row: HTMLElement, node: IPageSummaryTreeNode, _depth: number): void {
     const draggedPageId = this._dragState.getDraggedPageId();
     if (!draggedPageId || draggedPageId === node.id) return;
 
@@ -1806,9 +1806,9 @@ export class CanvasSidebar {
     // the page to its exact prior position (parent + after-sibling).
     // Read from the live tree BEFORE the drop fires.
     const oldNode = this._findNode(this._tree, pageId);
-    const oldSiblings: IPageTreeNode[] = oldNode
+    const oldSiblings: IPageSummaryTreeNode[] = oldNode
       ? (oldParentId
-          ? (this._findNode(this._tree, oldParentId)?.children as IPageTreeNode[] ?? [])
+          ? (this._findNode(this._tree, oldParentId)?.children as IPageSummaryTreeNode[] ?? [])
           : this._tree)
       : [];
     const oldIdx = oldSiblings.findIndex((s) => s.id === pageId);
@@ -2098,21 +2098,21 @@ export class CanvasSidebar {
    * to keep the path to each match visible.
    */
   private _filterTreeByQuery(
-    nodes: IPageTreeNode[],
+    nodes: IPageSummaryTreeNode[],
     query: string,
-  ): { tree: IPageTreeNode[]; forceExpand: Set<string> } {
+  ): { tree: IPageSummaryTreeNode[]; forceExpand: Set<string> } {
     const forceExpand = new Set<string>();
-    const walk = (list: IPageTreeNode[]): IPageTreeNode[] => {
-      const out: IPageTreeNode[] = [];
+    const walk = (list: IPageSummaryTreeNode[]): IPageSummaryTreeNode[] => {
+      const out: IPageSummaryTreeNode[] = [];
       for (const node of list) {
         const titleLower = (node.title || '').toLowerCase();
         const selfMatch = titleLower.includes(query);
-        const filteredChildren = walk(node.children as IPageTreeNode[]);
+        const filteredChildren = walk(node.children as IPageSummaryTreeNode[]);
         if (selfMatch || filteredChildren.length > 0) {
           // Keep this node. If we kept it because a descendant matched,
           // record it as force-expanded so the user sees the path.
           if (filteredChildren.length > 0) forceExpand.add(node.id);
-          const cloned: IPageTreeNode = { ...node, children: filteredChildren };
+          const cloned: IPageSummaryTreeNode = { ...node, children: filteredChildren };
           out.push(cloned);
         }
       }
@@ -2127,15 +2127,15 @@ export class CanvasSidebar {
    * lower-cased title starts with `prefix`. Falls back to a contains
    * match if no prefix match exists so the buffer is forgiving.
    */
-  private _findFirstMatching(prefix: string): IPageTreeNode | null {
+  private _findFirstMatching(prefix: string): IPageSummaryTreeNode | null {
     if (!prefix) return null;
-    let containsMatch: IPageTreeNode | null = null;
-    const walk = (nodes: IPageTreeNode[]): IPageTreeNode | null => {
+    let containsMatch: IPageSummaryTreeNode | null = null;
+    const walk = (nodes: IPageSummaryTreeNode[]): IPageSummaryTreeNode | null => {
       for (const node of nodes) {
         const t = (node.title || '').toLowerCase();
         if (t.startsWith(prefix)) return node;
         if (!containsMatch && t.includes(prefix)) containsMatch = node;
-        const childHit = walk(node.children as IPageTreeNode[]);
+        const childHit = walk(node.children as IPageSummaryTreeNode[]);
         if (childHit) return childHit;
       }
       return null;
@@ -2147,10 +2147,10 @@ export class CanvasSidebar {
   // Tree Helpers
   // ══════════════════════════════════════════════════════════════════════════
 
-  private _findNode(tree: IPageTreeNode[], pageId: string): IPageTreeNode | null {
+  private _findNode(tree: IPageSummaryTreeNode[], pageId: string): IPageSummaryTreeNode | null {
     for (const node of tree) {
       if (node.id === pageId) return node;
-      const found = this._findNode(node.children as IPageTreeNode[], pageId);
+      const found = this._findNode(node.children as IPageSummaryTreeNode[], pageId);
       if (found) return found;
     }
     return null;
@@ -2159,7 +2159,7 @@ export class CanvasSidebar {
   /**
    * Get the ID of the previous sibling of a node, or undefined if it's the first.
    */
-  private _getPreviousSiblingId(node: IPageTreeNode): string | undefined {
+  private _getPreviousSiblingId(node: IPageSummaryTreeNode): string | undefined {
     const siblings = node.parentId
       ? (this._findNode(this._tree, node.parentId)?.children ?? [])
       : this._tree;

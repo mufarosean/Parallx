@@ -12,7 +12,7 @@ import type {
   WidgetTypeRegistration,
 } from '../../api/bridges/dashboardBridge.js';
 import type { CanvasDataService } from './canvasDataService.js';
-import type { IPageTreeNode } from './canvasTypes.js';
+import type { IPageSummaryTreeNode } from './canvasTypes.js';
 import { tiptapJsonToMarkdown } from './markdownExport.js';
 import { decodeCanvasContent } from './contentSchema.js';
 
@@ -24,7 +24,7 @@ const MAX_EMBED_CHARS = 24_000;
 
 const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>';
 
-function flattenTree(nodes: readonly IPageTreeNode[], out: IPageTreeNode[] = []): IPageTreeNode[] {
+function flattenTree(nodes: readonly IPageSummaryTreeNode[], out: IPageSummaryTreeNode[] = []): IPageSummaryTreeNode[] {
   for (const n of nodes) {
     out.push(n);
     if (n.children?.length) flattenTree(n.children, out);
@@ -67,7 +67,7 @@ export function buildPageEmbedWidget(
       // Resolve by id first, then by title against the live page tree.
       let page = await data.getPage(identifier);
       if (!page) {
-        const all = flattenTree(await data.getPageTree());
+        const all = flattenTree(await data.getPageSummaryTree());
         const lower = identifier.toLowerCase();
         const found = all.find((p) => p.title.toLowerCase() === lower)
           ?? all.find((p) => p.title.toLowerCase().includes(lower));

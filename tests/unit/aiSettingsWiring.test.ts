@@ -260,7 +260,7 @@ describe('ProactiveSuggestionsService with Unified Config (M40 Phase 6)', () => 
 
 describe('Chat Participant Unified Config Integration (M40 Phase 6)', () => {
   it('IDefaultParticipantServices accepts unifiedConfigService', () => {
-    const mockServices: Partial<import('../../src/built-in/chat/chatTypes').IDefaultParticipantServices> = {
+    const mockServices: Partial<import('../../src/openclaw/openclawTypes').IDefaultParticipantServices> = {
       // A partial fake: the test only checks that the slot takes a service.
       unifiedConfigService: {
         getEffectiveConfig: () => ({

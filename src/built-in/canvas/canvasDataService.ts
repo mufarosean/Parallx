@@ -1782,26 +1782,26 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * powers the sidebar Recents section. Defaults to 5 entries; sidebar
    * tunes the limit.
    */
-  async getRecentPages(limit: number = 5): Promise<IPage[]> {
+  async getRecentPages(limit: number = 5): Promise<IPageSummary[]> {
     const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
     const result = await this._db.all(
-      `SELECT * FROM pages WHERE is_archived = 0 AND id NOT IN (${SYNCED_CONTENT_PAGES})
+      `SELECT ${PAGE_SUMMARY_COLUMNS} FROM pages WHERE is_archived = 0 AND id NOT IN (${SYNCED_CONTENT_PAGES})
         ORDER BY updated_at DESC LIMIT ?`,
       [safeLimit],
     );
     if (result.error) throw new Error(result.error.message);
-    return (result.rows ?? []).map(rowToPage);
+    return (result.rows ?? []).map(rowToPageSummary);
   }
 
   /**
    * Get all favorited (non-archived) pages, ordered by title.
    */
-  async getFavoritedPages(): Promise<IPage[]> {
+  async getFavoritedPages(): Promise<IPageSummary[]> {
     const result = await this._db.all(
-      `SELECT * FROM pages WHERE is_favorited = 1 AND is_archived = 0 AND id NOT IN (${SYNCED_CONTENT_PAGES}) ORDER BY title`,
+      `SELECT ${PAGE_SUMMARY_COLUMNS} FROM pages WHERE is_favorited = 1 AND is_archived = 0 AND id NOT IN (${SYNCED_CONTENT_PAGES}) ORDER BY title`,
     );
     if (result.error) throw new Error(result.error.message);
-    return (result.rows ?? []).map(rowToPage);
+    return (result.rows ?? []).map(rowToPageSummary);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -2103,12 +2103,12 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   /**
    * Get all archived pages, ordered by most recently deleted.
    */
-  async getArchivedPages(): Promise<IPage[]> {
+  async getArchivedPages(): Promise<IPageSummary[]> {
     const result = await this._db.all(
-      'SELECT * FROM pages WHERE is_archived = 1 ORDER BY updated_at DESC',
+      `SELECT ${PAGE_SUMMARY_COLUMNS} FROM pages WHERE is_archived = 1 ORDER BY updated_at DESC`,
     );
     if (result.error) throw new Error(result.error.message);
-    return (result.rows ?? []).map(rowToPage);
+    return (result.rows ?? []).map(rowToPageSummary);
   }
 
   // ══════════════════════════════════════════════════════════════════════════

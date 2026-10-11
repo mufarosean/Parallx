@@ -626,7 +626,7 @@ describe('A.4 Consumer wiring', () => {
   describe('ChatDataServiceDeps unifiedConfigService field', () => {
     it('IDefaultParticipantServices accepts unifiedConfigService', async () => {
       // Type-level test: if this compiles, the field exists on the interface
-      const mockServices: Partial<import('../../src/built-in/chat/chatTypes').IDefaultParticipantServices> = {
+      const mockServices: Partial<import('../../src/openclaw/openclawTypes').IDefaultParticipantServices> = {
         unifiedConfigService: undefined,
       };
       expect(mockServices).toHaveProperty('unifiedConfigService');

@@ -417,7 +417,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
           const walk = (nodes: readonly { id: string; title: string; icon: string | null; children: readonly any[] }[]) => {
             for (const n of nodes) { out.push(summary(n)); walk(n.children); }
           };
-          walk(await this._dataService.getPageTree());
+          walk(await this._dataService.getPageSummaryTree());
           return out;
         },
       },

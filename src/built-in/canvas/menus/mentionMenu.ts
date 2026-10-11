@@ -135,7 +135,7 @@ export class MentionMenuController implements ICanvasMenu {
 
   private async _loadPages(): Promise<void> {
     try {
-      const tree = await this._host.dataService!.getPageTree();
+      const tree = await this._host.dataService!.getPageSummaryTree();
       this._pages = flatten(tree as unknown as TreeLike[]);
     } catch {
       this._pages = [];
