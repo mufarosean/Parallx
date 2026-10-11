@@ -39,7 +39,7 @@ const ONLY = args.includes('--only') ? args[args.indexOf('--only') + 1].split(',
 // scene-dressing, uniform cadence, stock imagery.
 const TUNED_STYLE = `Vivid roleplay prose. Hard rules:
 - OPENINGS: Never begin two replies the same way. Do not begin with scenery, weather, or light. Begin with dialogue, a physical action, or a direct reaction to the last message.
-- Dialogue in "double quotes"; inner thoughts in *italics*; actions in plain prose.
+- Dialogue in "double quotes"; actions in plain prose.
 - Vary cadence hard: mix very short sentences with long flowing ones.
 - Concrete, specific detail only — no stock imagery (no dancing candlelight, no held breath, no shivers).
 - Default to 1-2 paragraphs. Leave room for the other person.
