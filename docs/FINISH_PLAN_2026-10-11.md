@@ -341,6 +341,11 @@ rest is fair game." So:
 - Creations AI's UI still migrates onto the shared pieces with every other
   tool (Track F).
 
+**Decided later the same day.** Mufaro: "we need it turned on for all
+features inc creations AI." Reasoning is on for every AI feature, Creations
+AI included (`6f7e7362`). Every call asks for it explicitly and gets room
+for it. Creations AI's prompts and model choice are otherwise unchanged.
+
 ---
 
 ## 5. This week: quick wins you will feel
@@ -641,12 +646,9 @@ F needs A. D can start after the quick wins.
 | 2026-10-11 | §5.3 | **Room to reason** (`49b233b6`). Cluster naming and lineage caps get a reasoning allowance (`capWithReasoningRoom`). Canvas inline AI, PDF Ask and Notebook ask for reasoning and say Thinking…. Worksheets sizes its window. Flashcards thinks by default, with room. The post-turn summary is background work. The provider's think-tag state is per stream. **Found:** canvas inline AI was dead whenever chat started after canvas; canvas now asks for the provider per request. | Real app: inline AI opens on a new page, shows Thinking…, then answers; 6 new tests |
 | 2026-10-11 | §5.4 | **MCP catalog** (`1494b002`). GitHub, Slack and Fetch (deprecated or nonexistent) leave; Brave Search moves to Brave's package; Filesystem gets `{workspaceRoot}`, resolved at connect. | Both servers started and answered the MCP handshake |
 | 2026-10-11 | §5.5 | **Ctrl+P finds pages** (`9c567ad1`), through a generic `quickOpenSources` registry that Canvas registers into. | Real app: "loss dev" finds the page, Enter opens it |
+| 2026-10-11 | Decision | **Every AI feature reasons** (`6f7e7362`). Creations AI covers memory, Directions, smart turn order, Story and Studio; also Atelier tagging, Budget sync, Workspace Graph, Study (setting on by default, window room), summaries, compaction, consolidation, `/init` and the settings preview. Every call asks explicitly and gets room for the reasoning. | 8,007 tests, including the updated Creations and Study expectations |
 | 2026-10-11 | §5.6 | **Plain pages open on their text** (`efc35a52`). The Properties panel hides on a page in no database; Add Properties in the title's hover row shows it. | Real app: hidden, revealed, tagged, reopened |
 
-**Open for Mufaro:** Atelier's bulk photo tagging hard-codes reasoning off
-(`ext/media-organizer/main.js:30558`). Reasoning on would improve tags and
-multiply the time per photo across a whole library. Turn it on, make it a
-setting, or leave it?
 
 ## Parking list (ideas that wait for the freeze to lift)
 
