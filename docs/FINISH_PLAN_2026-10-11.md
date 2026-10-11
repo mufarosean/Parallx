@@ -346,6 +346,12 @@ features inc creations AI." Reasoning is on for every AI feature, Creations
 AI included (`6f7e7362`). Every call asks for it explicitly and gets room
 for it. Creations AI's prompts and model choice are otherwise unchanged.
 
+**One exception, decided 2026-10-11 (evening).** Mufaro: "turn off thinking
+for AI Creations directions only." Directions are short, many and wanted
+the moment a scene changes, so that one call sends `think: false`
+(`ext/creations-ai/main.js`, the Directions request). Every other Creations
+call keeps reasoning on.
+
 ---
 
 ## 5. This week: quick wins you will feel

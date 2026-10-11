@@ -6073,8 +6073,9 @@ function renderChatEditor(container, parallx, input) {
       const numCtx = await chatContextWindow(modelId);
       if (run !== _directionsRun) return;
       // Room for every option asked for: the Narrator's, then each character's.
+      // Directions do not reason: they are short, many, and wanted at once.
       const optionCount = (narratorKinds.length ? narratorKinds.length : 0) + (characterKinds.length ? chosen.length * characterKinds.length : 0);
-      const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, maxTokens: directorReplyTokens(optionCount) + TG_REASONING_TOKENS, think: true, ...(numCtx ? { numCtx } : {}) });
+      const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, maxTokens: directorReplyTokens(optionCount), think: false, ...(numCtx ? { numCtx } : {}) });
       for await (const chunk of stream) {
         if (run !== _directionsRun) return;
         if (!chunk?.content) continue;
