@@ -257,11 +257,6 @@ function detectSystemPython() {
   return null;
 }
 
-/** Clear the cached probe (used by tests and after a user installs Python). */
-function resetInterpreterCache() {
-  _interpreter = undefined;
-}
-
 // ── Environment construction ────────────────────────────────────────────────
 
 /**
@@ -1130,7 +1125,6 @@ module.exports = {
   shutdown,
   cancelWorkspaceRuns,
   detectSystemPython,
-  resetInterpreterCache,
   // Shared with notebookKernelBridge.cjs (M96) — the kernel host is just
   // another workspace-local Python process, so it must get the SAME rebuilt
   // environment and the same process-tree kill as a script run. Duplicating

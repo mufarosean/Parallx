@@ -15,7 +15,7 @@ import {
 } from '../../src/aiSettings/unifiedConfigTypes';
 import type { IUnifiedAIConfig, IUnifiedPreset } from '../../src/aiSettings/unifiedConfigTypes';
 import type { AISettingsProfile } from '../../src/aiSettings/aiSettingsTypes';
-import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from '../../src/aiSettings/aiSettingsDefaults';
+import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from './fixtures/aiSettingsDefaults';
 import { UnifiedAIConfigService, deepMerge } from '../../src/aiSettings/unifiedAIConfigService';
 import { DEFAULT_CONFIG } from '../../src/services/parallxConfigService';
 

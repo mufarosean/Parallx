@@ -2404,11 +2404,6 @@ ipcMain.handle('document:isRichDocument', (_event, ext) => {
   return isRichDocument(ext);
 });
 
-// ── document:richExtensions ──
-ipcMain.handle('document:richExtensions', () => {
-  return [...RICH_DOCUMENT_EXTENSIONS];
-});
-
 // ════════════════════════════════════════════════════════════════════════════════
 // Docling Bridge IPC Handlers (M21 Phase A)
 // ════════════════════════════════════════════════════════════════════════════════
@@ -2623,20 +2618,6 @@ ipcMain.handle('database:all', timedDbHandler('database:all', async (_event, sql
 // Check if a database is currently open.
 ipcMain.handle('database:isOpen', async () => {
   return { isOpen: databaseManager.isOpen };
-});
-
-// ── database:dropToolData ──
-// Drop all tables and migration records belonging to an external tool.
-ipcMain.handle('database:dropToolData', async (_event, migrationPrefix, tablePrefix) => {
-  try {
-    if (!databaseManager.isOpen) {
-      return { error: { code: 'DB_NOT_OPEN', message: 'No database is open' } };
-    }
-    const result = await databaseManager.dropToolData(migrationPrefix, tablePrefix);
-    return { error: null, ...result };
-  } catch (err) {
-    return { error: { code: 'DROP_FAILED', message: err.message } };
-  }
 });
 
 // ── database:runTransaction ──

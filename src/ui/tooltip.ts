@@ -164,18 +164,6 @@ export function setupTooltip(
   };
 }
 
-/**
- * Update the text of an existing tooltip.
- * This re-attaches the tooltip with the new text.
- */
-export function updateTooltip(
-  target: HTMLElement,
-  text: string,
-  options?: TooltipOptions,
-): IDisposable {
-  return setupTooltip(target, text, options);
-}
-
 // ─── Global Delegate ─────────────────────────────────────────────────────────
 // Intercepts every element with a `title` attribute and shows the custom
 // tooltip instead of the browser-native one. This ensures a single tooltip

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // tests/unit/uiComponents.test.ts — M15 Group C: UI Primitives unit tests
 //
-// Validates Slider, Toggle, Dropdown, SegmentedControl, and Textarea
+// Validates that the Slider, Toggle, Dropdown and SegmentedControl
 // UI components render and function correctly under jsdom.
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -9,7 +9,6 @@ import { Slider } from '../../src/ui/slider';
 import { Toggle } from '../../src/ui/toggle';
 import { Dropdown } from '../../src/ui/dropdown';
 import { SegmentedControl } from '../../src/ui/segmentedControl';
-import { Textarea } from '../../src/ui/textarea';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -560,118 +559,5 @@ describe('SegmentedControl', () => {
     sc.value = 'week';
     expect(sc.value).toBe('week');
     sc.dispose();
-  });
-});
-
-// ─── Textarea ────────────────────────────────────────────────────────────────
-
-describe('Textarea', () => {
-  let parent: HTMLElement;
-
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    parent = container();
-  });
-
-  it('renders into the container', () => {
-    const ta = new Textarea(parent);
-    expect(parent.querySelector('.ui-textarea')).toBeTruthy();
-    expect(parent.querySelector('.ui-textarea__input')).toBeTruthy();
-    ta.dispose();
-  });
-
-  it('applies initial value', () => {
-    const ta = new Textarea(parent, { value: 'Hello world' });
-    expect(ta.value).toBe('Hello world');
-    ta.dispose();
-  });
-
-  it('applies placeholder', () => {
-    const ta = new Textarea(parent, { placeholder: 'Type here...' });
-    const el = parent.querySelector('.ui-textarea__input') as HTMLTextAreaElement;
-    expect(el.placeholder).toBe('Type here...');
-    ta.dispose();
-  });
-
-  it('applies rows option', () => {
-    const ta = new Textarea(parent, { rows: 8 });
-    const el = parent.querySelector('.ui-textarea__input') as HTMLTextAreaElement;
-    expect(el.rows).toBe(8);
-    ta.dispose();
-  });
-
-  it('defaults to 4 rows', () => {
-    const ta = new Textarea(parent);
-    const el = parent.querySelector('.ui-textarea__input') as HTMLTextAreaElement;
-    expect(el.rows).toBe(4);
-    ta.dispose();
-  });
-
-  it('fires onDidChange on input event', () => {
-    const ta = new Textarea(parent);
-    const values: string[] = [];
-    ta.onDidChange(v => values.push(v));
-
-    const el = parent.querySelector('.ui-textarea__input') as HTMLTextAreaElement;
-    el.value = 'new text';
-    el.dispatchEvent(new Event('input'));
-
-    expect(values).toEqual(['new text']);
-    ta.dispose();
-  });
-
-  it('fires onDidBlur on blur event', () => {
-    const ta = new Textarea(parent);
-    let blurred = false;
-    ta.onDidBlur(() => { blurred = true; });
-
-    const el = parent.querySelector('.ui-textarea__input') as HTMLTextAreaElement;
-    el.dispatchEvent(new Event('blur'));
-
-    expect(blurred).toBe(true);
-    ta.dispose();
-  });
-
-  it('allows setting value programmatically', () => {
-    const ta = new Textarea(parent);
-    ta.value = 'programmatic';
-    expect(ta.value).toBe('programmatic');
-    ta.dispose();
-  });
-
-  it('applies readonly state', () => {
-    const ta = new Textarea(parent, { readonly: true });
-    expect(ta.readonly).toBe(true);
-    expect(parent.querySelector('.ui-textarea--readonly')).toBeTruthy();
-
-    ta.readonly = false;
-    expect(ta.readonly).toBe(false);
-    expect(parent.querySelector('.ui-textarea--readonly')).toBeFalsy();
-    ta.dispose();
-  });
-
-  it('applies disabled state', () => {
-    const ta = new Textarea(parent, { disabled: true });
-    expect(ta.disabled).toBe(true);
-    expect(parent.querySelector('.ui-textarea--disabled')).toBeTruthy();
-
-    ta.disabled = false;
-    expect(ta.disabled).toBe(false);
-    expect(parent.querySelector('.ui-textarea--disabled')).toBeFalsy();
-    ta.dispose();
-  });
-
-  it('applies aria-label', () => {
-    const ta = new Textarea(parent, { ariaLabel: 'Description' });
-    const el = parent.querySelector('.ui-textarea__input') as HTMLTextAreaElement;
-    expect(el.getAttribute('aria-label')).toBe('Description');
-    ta.dispose();
-  });
-
-  it('has working select method', () => {
-    const ta = new Textarea(parent, { value: 'select me' });
-    // Just ensure the method exists and doesn't throw
-    expect(() => ta.select()).not.toThrow();
-    ta.dispose();
   });
 });

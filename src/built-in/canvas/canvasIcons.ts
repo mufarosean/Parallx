@@ -11,36 +11,6 @@
 // See docs/ICON_REGISTRY.md for the three-registry architecture.
 
 import { getIcon, hasIcon, getAllLucideIconIds } from '../../ui/iconRegistry.js';
-
-// ─── Canvas icon IDs ─────────────────────────────────────────────────────────
-// These are the icon keys the canvas surface uses, all backed by the central
-// Lucide registry.  Nothing here contains SVG data — it's just a list of
-// valid keys so the rest of canvas can iterate.
-
-export const ICON_IDS: string[] = [
-  'page', 'page-filled', 'folder', 'chevron-right', 'star', 'star-filled',
-  'plus', 'info', 'trash', 'restore', 'close', 'ellipsis', 'edit',
-  'new-page', 'duplicate', 'export', 'lock', 'expand-width', 'text-size',
-  'image', 'smile', 'link', 'search', 'view-table', 'view-board',
-  'view-list', 'view-gallery', 'view-calendar', 'view-timeline',
-  'database-link', 'db-filter', 'db-sort', 'db-group', 'db-settings',
-  'db-collapse', 'db-expand', 'open', 'bookmark', 'lightbulb', 'note',
-  'checklist', 'calendar', 'flag', 'heart', 'target', 'bolt', 'globe',
-  'home', 'inbox', 'tag', 'code', 'rocket', 'book', 'compass', 'puzzle',
-  'terminal', 'math', 'math-block', 'database', 'grid', 'layers', 'users',
-  'pin', 'archive', 'music', 'coffee', 'diamond', 'key', 'bullet-list',
-  'numbered-list', 'quote', 'divider', 'columns', 'toc', 'video', 'audio',
-  'file-attachment', 'open-full-page', 'automations', 'arrow-up',
-  'arrow-down', 'arrow-left', 'arrow-right', 'chevron-left', 'chevron-down',
-  'chevron-up', 'eye', 'eye-off', 'clock', 'bell', 'comment', 'share',
-  'at-sign', 'check', 'warning', 'refresh', 'upload', 'menu',
-  'more-vertical', 'grip-vertical', 'sidebar-left', 'sidebar-right',
-  'panel-bottom', 'fullscreen', 'exit-fullscreen', 'format-bold',
-  'format-italic', 'format-underline', 'format-strikethrough', 'align-left',
-  'align-center', 'align-right', 'circle', 'circle-check', 'hash', 'user',
-  'sun', 'moon', 'undo', 'redo', 'filter-x', 'color', 'highlight',
-];
-
 /** Icon IDs specifically for the page icon picker. */
 export const PAGE_ICON_IDS: string[] = [
   'page', 'page-filled', 'note', 'bookmark', 'folder',

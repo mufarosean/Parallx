@@ -902,7 +902,6 @@ function setupBrowserBridge(ipcMain, opts) {
     return { ok: true };
   });
   ipcMain.handle('browser:listPermissions', () => Object.entries(permissions).map(([key, decision]) => { const i = key.indexOf('|'); return { site: key.slice(0, i), permission: key.slice(i + 1), decision }; }));
-  ipcMain.handle('browser:revokePermission', (_e, site, permission) => { delete permissions[`${site}|${permission}`]; writeJson(permissionsPath, permissions); return { ok: true }; });
   ipcMain.handle('browser:permissionReply', (_e, requestId, allow, remember) => {
     const pending = pendingPermissions.get(requestId);
     if (!pending) return { ok: false };
@@ -946,7 +945,6 @@ function setupBrowserBridge(ipcMain, opts) {
     return prefs.holdRedirects;
   });
   ipcMain.handle('browser:blockedFor', (_e, webContentsId) => blockedSummary(webContentsId));
-  ipcMain.handle('browser:listDownloads', () => [...downloads.values()].map((d) => ({ ...d })));
   ipcMain.handle('browser:openDownload', async (_e, p) => { const d = [...downloads.values()].find((x) => x.path === p); if (!d) return { ok: false }; const err = await shell.openPath(p); return { ok: !err, error: err || null }; });
   ipcMain.handle('browser:showDownload', (_e, p) => { const d = [...downloads.values()].find((x) => x.path === p); if (!d) return { ok: false }; shell.showItemInFolder(p); return { ok: true }; });
 

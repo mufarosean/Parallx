@@ -134,7 +134,7 @@ import {
 import { SelectionActionDispatcher } from '../../services/selectionActionDispatcher.js';
 import { createBuiltInActionHandlers } from '../../services/selectionActionHandlers.js';
 import { ChatProgrammaticAccess } from './chatProgrammaticAccess.js';
-import type { IChatSelectionAttachment, ICanvasBlockReferencePayload } from '../../services/selectionActionTypes.js';
+import type { IChatSelectionAttachment } from '../../services/selectionActionTypes.js';
 import type { IHabitReading } from '../../openclaw/mind/habitDetector.js';
 import { habitToWorkflow } from '../../services/workflows/workflowSuggestions.js';
 import { isWorkspaceSealed, SEALED_WORKSPACE_SETTING } from '../../services/sealedWorkspace.js';
@@ -308,7 +308,6 @@ let _ollamaProvider: OllamaProvider | undefined;
  *  (continuity injection) which build earlier in activate() than the MIND. */
 let _mindServiceRef: MindService | undefined;
 let _activeWidget: ChatWidget | undefined;
-let _chatIsStreamingKey: { set(value: boolean): void } | undefined;
 let _lastIndexStats: { pages: number; files: number } | undefined;
 let _promptFileService: PromptFileService | undefined;
 let _permissionService: PermissionService | undefined;
@@ -3109,12 +3108,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const chatVisibleKey = api.context.createContextKey('chatVisible', false);
   context.subscriptions.push({ dispose: () => chatVisibleKey.reset() });
 
-  const chatIsStreamingKey = api.context.createContextKey('chatIsStreaming', false);
-  context.subscriptions.push({ dispose: () => chatIsStreamingKey.reset() });
-
-  // Expose streaming key setter for the chat widget to update
-  _chatIsStreamingKey = chatIsStreamingKey;
-
   // ── 8. Apply chat font settings via CSS custom properties ──
 
   const applyFontSettings = (): void => {
@@ -3336,12 +3329,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         title: opts.title || 'Autonomous run',
         instanceId: opts.sessionId,
       });
-    }),
-  );
-  context.subscriptions.push(
-    api.commands.registerCommand('chat.getArchivedRunSummaries', async (...args: unknown[]) => {
-      const limit = (args[0] as { limit?: number } | undefined)?.limit;
-      return _archivedChatSvc.getArchivedRunSummaries(limit);
     }),
   );
 
@@ -3662,17 +3649,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // LIVE canvas-block reference → chat input (driven by the canvas block menu's
-  // "Send to Chat"). Resolves current content at send time, not here.
-  context.subscriptions.push(
-    api.commands.registerCommand('chat.addCanvasBlockReference', async (...args: unknown[]) => {
-      const payload = args[0] as ICanvasBlockReferencePayload | undefined;
-      if (_chatProgrammaticAccess && payload?.pageId && Array.isArray(payload.blocks) && payload.blocks.length) {
-        await _chatProgrammaticAccess.addCanvasBlockReference(payload);
-      }
-    }),
-  );
-
   context.subscriptions.push(_selectionDispatcher);
 
   // Global listener for bubbling selection-action events from editor panes
@@ -3761,16 +3737,10 @@ export function setActiveWidget(widget: ChatWidget | undefined): void {
   }
 }
 
-/** Update the chatIsStreaming context key (called from chatWidget). */
-export function setChatIsStreaming(streaming: boolean): void {
-  _chatIsStreamingKey?.set(streaming);
-}
-
 export function deactivate(): void {
   _ollamaProvider = undefined;
   _mindServiceRef = undefined;
   _activeWidget = undefined;
-  _chatIsStreamingKey = undefined;
   _promptFileService = undefined;
   _fsAccessor = undefined;
   _api = undefined;

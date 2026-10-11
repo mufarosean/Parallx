@@ -71,7 +71,6 @@ let _pythonPath = null;
 let _doclingInstalled = false;
 
 /** @type {((status: DoclingStatus) => void) | null} */
-let _onStatusChange = null;
 
 /** @type {boolean} */
 let _shutdownRequested = false;
@@ -236,10 +235,6 @@ function httpRequest(method, endpoint, body, timeout = 10000) {
 function _setStatus(status) {
   if (_status === status) return;
   _status = status;
-  if (_onStatusChange) {
-    try { _onStatusChange(status); }
-    catch (e) { console.error('[DoclingBridge] Status callback error:', e); }
-  }
 }
 
 /**
@@ -497,14 +492,6 @@ function getStatus() {
 }
 
 /**
- * Register a status change callback.
- * @param {(status: DoclingStatus) => void} callback
- */
-function onStatusChange(callback) {
-  _onStatusChange = callback;
-}
-
-/**
  * Check if the bridge is available and ready for conversions.
  * @returns {boolean}
  */
@@ -613,7 +600,6 @@ module.exports = {
   convertDocument,
   convertBatch,
   getStatus,
-  onStatusChange,
   isAvailable,
   installDocling,
   setAppRoot,

@@ -364,12 +364,6 @@ export interface ICalendarSyncProvider {
    *  orchestrator skips pushing local tasks (the provider still self-gates its
    *  pull). Absent ⇒ tasks are not pushed. */
   wantsTaskSync?(): Promise<boolean>;
-
-  /** @deprecated M82 placeholder, superseded by `pull()`. Kept optional so any
-   *  external implementer of the published shape still type-checks. */
-  pullEvents?(sinceMs: number): Promise<readonly SyncedEvent[]>;
-  /** @deprecated superseded by `pull()`. */
-  pullTasks?(sinceMs: number): Promise<readonly SyncedTask[]>;
 }
 
 // ─── Change events ───────────────────────────────────────────────────────────

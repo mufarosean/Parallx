@@ -388,23 +388,6 @@ export interface IChatRuntimeTrace {
   readonly note?: string;
 }
 
-// ── /init command ──
-
-/** Services injected into the /init command handler. */
-export interface IInitCommandServices {
-  sendChatRequest(
-    messages: readonly IChatMessage[],
-    options?: undefined,
-    signal?: AbortSignal,
-  ): AsyncIterable<IChatResponseChunk>;
-  getWorkspaceName(): string;
-  listFiles?(relativePath: string): Promise<{ name: string; type: 'file' | 'directory' }[]>;
-  readFile?(relativePath: string): Promise<string | null>;
-  writeFile?(relativePath: string, content: string): Promise<void>;
-  exists?(relativePath: string): Promise<boolean>;
-  invalidatePromptFiles?(): void;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Widget & UI Service Interfaces
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { AISettingsProfile } from '../../src/aiSettings/aiSettingsTypes';
-import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from '../../src/aiSettings/aiSettingsDefaults';
+import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from './fixtures/aiSettingsDefaults';
 import { Emitter } from '../../src/platform/events';
 import { createSettingRow } from '../../src/aiSettings/ui/sectionBase';
 import { AISettingsPanel } from '../../src/aiSettings/ui/aiSettingsPanel';

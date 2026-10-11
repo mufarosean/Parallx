@@ -33,49 +33,9 @@ export interface IPropertyDefinition {
   readonly updatedAt: string;
 }
 
-// ─── Page Property (value on a specific page) ────────────────────────────────
-
-export interface IPageProperty {
-  readonly id: string;
-  readonly pageId: string;
-  readonly key: string;
-  readonly valueType: string;
-  readonly value: unknown;
-}
-
-export interface IPropertyUsagePage {
-  readonly pageId: string;
-  readonly title: string;
-}
-
-export interface IPropertyUsage {
-  readonly totalCount: number;
-  readonly pages: readonly IPropertyUsagePage[];
-  readonly otherPages: readonly IPropertyUsagePage[];
-}
-
-// ─── Type-Specific Configs ───────────────────────────────────────────────────
+// ─── Select options ──────────────────────────────────────────────────────────
 
 export interface ISelectOption {
   readonly value: string;
   readonly color: string;
 }
-
-export interface ISelectConfig {
-  readonly options: ISelectOption[];
-}
-
-export interface INumberConfig {
-  readonly format?: 'number' | 'percent' | 'currency';
-  readonly min?: number;
-  readonly max?: number;
-}
-
-export interface ITagsConfig {
-  readonly options?: ISelectOption[];
-}
-
-// NOTE: the legacy IPropertyDataService interface (workspace-level property
-// service) is retired — properties live in DATABASES (databaseDataService).
-// This module keeps only the shared types the database UI consumes
-// (PropertyType, IPropertyDefinition, option configs, icons).

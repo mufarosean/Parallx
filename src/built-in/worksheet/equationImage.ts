@@ -10,7 +10,7 @@
 // captured at 2x; the metafiles are rasterised by GDI+. The renderer cannot
 // do the first itself, because an SVG with HTML inside taints any canvas it
 // is drawn on. Anything that fails leaves the item as it was.
-import type { RenderedEquation, XlsxSheet } from './ooxml.js';
+import type { XlsxSheet } from './ooxml.js';
 
 interface MetafileResult { readonly png: Uint8Array; readonly width: number; readonly height: number; readonly scale: number }
 interface EquationResult { readonly png: Uint8Array; readonly width: number; readonly height: number }
@@ -40,16 +40,6 @@ function bytesToBase64(bytes: Uint8Array): string {
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(bin);
-}
-
-/** One equation as a PNG at 2x, sized to the rendered maths at `fontPx`. */
-export async function renderEquationPng(latex: string, opts: { fontPx?: number } = {}): Promise<RenderedEquation | null> {
-  const images = bridge();
-  if (!images?.renderEquations || !latex.trim()) return null;
-  try {
-    const [res] = await images.renderEquations([{ latex, fontPx: opts.fontPx ?? 15 }]);
-    return res && res.png.length ? { mime: 'image/png', base64: bytesToBase64(res.png), width: res.width, height: res.height } : null;
-  } catch { return null; }
 }
 
 export interface EnrichStats { equations: number; equationsFailed: number; metafiles: number; metafilesFailed: number }

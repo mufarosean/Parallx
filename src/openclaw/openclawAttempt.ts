@@ -946,7 +946,7 @@ export async function executeOpenclawAttempt(
 /**
  * Execute a single model call and stream the response.
  *
- * Adapted from the existing executeOpenclawModelTurn in openclawParticipantRuntime.ts,
+ * Adapted from the first model-turn runner in openclawParticipantRuntime.ts,
  * but simplified: handles streaming, collects markdown/thinking/toolCalls/tokens.
  *
  * The answer streams to the response as it is written, like the reasoning:

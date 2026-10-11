@@ -29,10 +29,6 @@ const EXEMPT_FILES = new Set([
   'widgets/chatWidget.css',         // Stylesheet
   'widgets/chatView.css',           // Stylesheet
   'widgets/chatTokenStatusBar.css', // Stylesheet
-  'skills/exhaustive-summary/SKILL.md',   // Built-in workflow skill (M39)
-  'skills/folder-overview/SKILL.md',      // Built-in workflow skill (M39)
-  'skills/document-comparison/SKILL.md',  // Built-in workflow skill (M39)
-  'skills/scoped-extraction/SKILL.md',    // Built-in workflow skill (M39)
   'skills/builtInSkillManifests.ts',      // Built-in skill manifest registry (M41)
   'skills/defaultSkillContents.ts',       // Default skill file contents for /init (M45)
   'chatProgrammaticAccess.ts',            // M48 selection→AI bridge (thin ChatWidget wrapper)
@@ -119,16 +115,12 @@ const FOLDER_RULES: Record<string, string[]> = {
   'providers/ollamaProvider.ts': [],
   'providers/anthropicProvider.ts': [],
 
-  // ── commands/ — slash/init commands ─────────────────────────────────────
-  'commands/initCommand.ts': ['skills/'],
-
   // ── utilities/ — mention resolution, shared helpers ──────────────────
   'utilities/backgroundPromptRunner.ts': [],  // M86 C4 — headless prompt turns (imports openclaw/services, outside chat)
   'utilities/chatAgentTaskWidgetAdapter.ts': [],
   'utilities/chatBridgeParticipantRuntime.ts': ['utilities/'],
   'utilities/chatGroundedResponseHelpers.ts': ['utilities/'],
   'utilities/chatMentionResolver.ts': [],
-  'utilities/chatParticipantCommandDispatcher.ts': ['utilities/'],
   'utilities/chatParticipantInterpretation.ts': ['utilities/'],
   'utilities/chatParticipantRuntimeTrace.ts': [],
   'utilities/chatRuntimePromptMessages.ts': [],

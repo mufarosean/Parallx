@@ -290,8 +290,6 @@ contextBridge.exposeInMainWorld('parallxElectron', {
      * @param {string} tablePrefix — prefix of table names (e.g. 'mo_')
      * @returns {Promise<{ error: null, droppedTables: string[], removedMigrations: number } | { error: { code: string, message: string } }>}
      */
-    dropToolData: (migrationPrefix, tablePrefix) =>
-      ipcRenderer.invoke('database:dropToolData', migrationPrefix, tablePrefix),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -406,7 +404,6 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     resetSite: (url) => ipcRenderer.invoke('browser:resetSite', url),
     clearSiteData: (url) => ipcRenderer.invoke('browser:clearSiteData', url),
     listPermissions: () => ipcRenderer.invoke('browser:listPermissions'),
-    revokePermission: (site, permission) => ipcRenderer.invoke('browser:revokePermission', site, permission),
     permissionReply: (requestId, allow, remember) => ipcRenderer.invoke('browser:permissionReply', requestId, allow, remember),
     allowHttpOnce: (url) => ipcRenderer.invoke('browser:allowHttpOnce', url),
     clearData: (kind) => ipcRenderer.invoke('browser:clearData', kind),
@@ -418,7 +415,6 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     /** Claim http(s) links clicked anywhere in the app (true) or hand them back to the system browser (false). */
     setInAppLinks: (on) => ipcRenderer.invoke('browser:setInAppLinks', on !== false),
     blockedFor: (webContentsId) => ipcRenderer.invoke('browser:blockedFor', webContentsId),
-    listDownloads: () => ipcRenderer.invoke('browser:listDownloads'),
     openDownload: (p) => ipcRenderer.invoke('browser:openDownload', p),
     showDownload: (p) => ipcRenderer.invoke('browser:showDownload', p),
     blockedLog: () => ipcRenderer.invoke('browser:blockedLog'),
@@ -488,7 +484,6 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     isRichDocument: (ext) => ipcRenderer.invoke('document:isRichDocument', ext),
 
     /** Get array of supported rich document extensions. Returns string[]. */
-    richExtensions: () => ipcRenderer.invoke('document:richExtensions'),
   },
 
 

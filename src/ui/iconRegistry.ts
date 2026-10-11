@@ -107,26 +107,6 @@ export function getPageIcon(): string {
   return _icons.get('page') ?? '';
 }
 
-// ── Avatar Icons ──────────────────────────────────────────────────────────────
-// All sourced from LUCIDE_ICONS via the generated registry.
-
-/**
- * Ordered array of avatar icon IDs, matching the persona picker's display order.
- */
-export const AVATAR_ICON_IDS: readonly string[] = [
-  'avatar-brain', 'avatar-briefcase', 'avatar-pen', 'avatar-coins',
-  'avatar-microscope', 'avatar-chart', 'avatar-target', 'avatar-robot',
-  'avatar-fox', 'avatar-wave', 'avatar-lightning', 'avatar-puzzle',
-];
-
-/**
- * Get the SVG markup for an avatar icon by its registry ID.
- * Returns an empty string if the ID is unknown.
- */
-export function getAvatarIcon(id: string): string {
-  return _icons.get(id) ?? '';
-}
-
 // ── Icon Rendering Helper ─────────────────────────────────────────────────────
 
 /**

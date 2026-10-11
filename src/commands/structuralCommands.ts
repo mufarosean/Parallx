@@ -21,34 +21,6 @@ import { wb } from './structuralCommandTypes.js';
 import { ALL_LAYOUT_COMMANDS } from './layoutCommands.js';
 import { ALL_TEXT_SIZE_COMMANDS } from './textSizeCommands.js';
 
-//  Re-export sub-modules for backward compatibility 
-export {
-  showCommands, quickOpen, gotoLine,
-  toggleSidebar, togglePanel, toggleMaximizedPanel, toggleAuxiliaryBar, toggleStatusBar, toggleZenMode, saveLayout, addWidget, adoptWidget,
-  viewMoveToSidebar, viewMoveToPanel, partResize,
-  showSearchView, showExplorerView, showView,
-} from './viewCommands.js';
-export {
-  splitEditor, splitEditorOrthogonal, closeActiveEditor, nextEditor, previousEditor,
-  markdownOpenPreviewToSide, markdownOpenPreview,
-  addSelectionToChat,
-} from './editorCommands.js';
-export {
-  workspaceSave, workspaceSwitch, workspaceDuplicate,
-  workspaceAddFolder, workspaceRemoveFolder, workspaceCloseFolder,
-  workspaceCloseWindow, workspaceOpenRecent, workspaceSaveAs,
-  workspaceRename, workspaceOpenFolder, workspaceExportToFile, workspaceImportFromFile,
-} from './workspaceCommands.js';
-export {
-  fileOpenFile, fileNewTextFile, fileSave, fileSaveAs, fileSaveAll, fileRevert,
-} from './fileCommands.js';
-export {
-  focusNextPart, focusPreviousPart,
-  focusFirstEditorGroup, focusSecondEditorGroup, focusThirdEditorGroup,
-  focusSideBar, focusPanel, focusActivityBar, focusStatusBar,
-} from './focusCommands.js';
-export { installDocling } from './doclingCommands.js';
-export { questionsGetRegistry } from './questionCommands.js';
 
 //  Import for aggregation 
 import {

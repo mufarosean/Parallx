@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProactiveSuggestionsService } from '../../src/services/proactiveSuggestionsService';
-import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from '../../src/aiSettings/aiSettingsDefaults';
+import { DEFAULT_PROFILE } from './fixtures/aiSettingsDefaults';
 import { Emitter } from '../../src/platform/events';
 
 // ─── Mock Factories ──────────────────────────────────────────────────────────

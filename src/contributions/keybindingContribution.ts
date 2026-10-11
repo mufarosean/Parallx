@@ -11,119 +11,12 @@ import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { IContributedKeybinding, IContributionProcessor } from './contributionTypes.js';
+import { normalizeKeybinding, reservedKeyOwner } from '../services/keybindingUtils.js';
 
 /** Minimal shape of KeybindingService to avoid circular imports (M3 Capability 0.3). */
 interface IKeybindingServiceLike {
   registerKeybinding(key: string, commandId: string, when?: string, source?: string): import('../platform/lifecycle.js').IDisposable;
   removeKeybindingsBySource(source: string): void;
-}
-
-// ─── Reserved keybindings ────────────────────────────────────────────────────
-
-/**
- * Keys that may only be bound by their canonical owner command. Contributions
- * (and user rebinds) that try to point one of these at a different command are
- * rejected, so core shortcuts can't be silently shadowed — the failure mode
- * that let Planner steal Ctrl+Shift+P from the Command Palette.
- *
- * Keys are stored in normalized form (see normalizeKeybinding).
- */
-export const RESERVED_KEYBINDINGS: ReadonlyMap<string, string> = new Map([
-  ['ctrl+shift+p', 'workbench.action.showCommands'],
-  ['f1', 'workbench.action.showCommands'],
-]);
-
-/** Returns the owner command if `key` (any form) is reserved, else undefined. */
-export function reservedKeyOwner(key: string): string | undefined {
-  return RESERVED_KEYBINDINGS.get(normalizeKeybinding(key));
-}
-
-// ─── Key Normalization ───────────────────────────────────────────────────────
-
-/**
- * Normalize a keybinding string to a canonical form for matching.
- * - Lowercases all parts
- * - Sorts modifiers alphabetically: alt, ctrl, meta, shift
- * - Handles Mac Cmd → Meta mapping
- *
- * Examples:
- * - 'Ctrl+Shift+P' → 'ctrl+shift+p'
- * - 'Shift+Ctrl+P' → 'ctrl+shift+p'
- * - 'Cmd+S' → 'meta+s'
- */
-export function normalizeKeybinding(key: string): string {
-  const parts = key.toLowerCase().split('+').map(p => p.trim());
-  const modifiers: string[] = [];
-  let mainKey = '';
-
-  for (const part of parts) {
-    switch (part) {
-      case 'ctrl':
-      case 'control':
-        modifiers.push('ctrl');
-        break;
-      case 'shift':
-        modifiers.push('shift');
-        break;
-      case 'alt':
-      case 'option':
-        modifiers.push('alt');
-        break;
-      case 'meta':
-      case 'cmd':
-      case 'command':
-      case 'win':
-      case 'super':
-        modifiers.push('meta');
-        break;
-      default:
-        mainKey = part;
-        break;
-    }
-  }
-
-  modifiers.sort();
-  if (mainKey) {
-    modifiers.push(mainKey);
-  }
-  return modifiers.join('+');
-}
-
-// One formatter for every surface (menus, palette, Keyboard Shortcuts).
-export { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
-
-/**
- * Build a normalized key string from a keyboard event.
- */
-export function keyFromEvent(e: KeyboardEvent): string {
-  const modifiers: string[] = [];
-  if (e.ctrlKey) modifiers.push('ctrl');
-  if (e.shiftKey) modifiers.push('shift');
-  if (e.altKey) modifiers.push('alt');
-  if (e.metaKey) modifiers.push('meta');
-  modifiers.sort();
-
-  // Normalize key name
-  let key = e.key.toLowerCase();
-  // Map common key names
-  if (key === ' ') key = 'space';
-  if (key === 'escape') key = 'escape';
-  if (key === 'enter') key = 'enter';
-  if (key === 'tab') key = 'tab';
-  if (key === 'backspace') key = 'backspace';
-  if (key === 'delete') key = 'delete';
-  if (key === 'arrowup') key = 'up';
-  if (key === 'arrowdown') key = 'down';
-  if (key === 'arrowleft') key = 'left';
-  if (key === 'arrowright') key = 'right';
-
-  // Skip if key is only a modifier
-  if (['control', 'shift', 'alt', 'meta'].includes(key)) {
-    return '';
-  }
-
-  modifiers.push(key);
-  return modifiers.join('+');
 }
 
 // ─── KeybindingContributionProcessor ─────────────────────────────────────────
@@ -194,7 +87,7 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
 
       // Reserved-key guard — a contribution may not point a reserved key at a
       // command other than its canonical owner.
-      const reservedOwner = RESERVED_KEYBINDINGS.get(normalizedKey);
+      const reservedOwner = reservedKeyOwner(normalizedKey);
       if (reservedOwner && reservedOwner !== kb.command) {
         console.warn(
           `[KeybindingContribution] Ignoring "${kb.key}" from tool "${toolId}" → "${kb.command}": ` +

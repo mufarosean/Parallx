@@ -7,31 +7,6 @@
 
 import { IDisposable, toDisposable, DisposableStore } from './lifecycle.js';
 
-// ─── Leak Detection ──────────────────────────────────────────────────────────
-
-/**
- * Global toggle for development-time listener leak detection.
- * When enabled, emitters warn if listener count exceeds a threshold.
- */
-let _leakWarningThreshold = 0;
-let _leakWarningEnabled = false;
-
-/**
- * Enable event listener leak detection in development.
- * @param threshold Fire a console.warn when an emitter exceeds this many listeners.
- */
-export function enableLeakWarnings(threshold = 25): void {
-  _leakWarningThreshold = threshold;
-  _leakWarningEnabled = true;
-}
-
-/**
- * Disable event listener leak detection.
- */
-export function disableLeakWarnings(): void {
-  _leakWarningEnabled = false;
-}
-
 // ─── Event Type ──────────────────────────────────────────────────────────────
 
 /**
@@ -50,7 +25,6 @@ export class Emitter<T> implements IDisposable {
   private _listeners = new Set<(e: T) => void>();
   private _disposed = false;
   private _event: Event<T> | undefined;
-  private _leakWarnCount = 0;
 
   /**
    * The event function that listeners subscribe to.
@@ -62,23 +36,8 @@ export class Emitter<T> implements IDisposable {
           return toDisposable(() => {});
         }
         this._listeners.add(listener);
-
-        // Leak detection
-        if (_leakWarningEnabled) {
-          this._leakWarnCount++;
-          if (this._leakWarnCount > _leakWarningThreshold) {
-            console.warn(
-              `[Emitter] Potential listener leak detected: ${this._leakWarnCount} listeners.` +
-              ` Use enableLeakWarnings() to configure threshold.`
-            );
-          }
-        }
-
         return toDisposable(() => {
           this._listeners.delete(listener);
-          if (_leakWarningEnabled) {
-            this._leakWarnCount--;
-          }
         });
       };
     }

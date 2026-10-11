@@ -79,32 +79,6 @@ export enum SashState {
 }
 
 /**
- * Which edge of a grid node a sash (resize handle) is on.
- */
-export enum SashEdge {
-  Top = 'top',
-  Right = 'right',
-  Bottom = 'bottom',
-  Left = 'left',
-}
-
-/**
- * Events emitted by the grid system.
- */
-export enum GridEventType {
-  /** A node was added to the grid */
-  NodeAdded = 'nodeAdded',
-  /** A node was removed from the grid */
-  NodeRemoved = 'nodeRemoved',
-  /** A node was resized */
-  NodeResized = 'nodeResized',
-  /** The grid structure changed (split, merge) */
-  StructureChanged = 'structureChanged',
-  /** The grid was fully serialized/deserialized */
-  StateRestored = 'stateRestored',
-}
-
-/**
  * Location within the grid tree, represented as a path of child indices.
  * e.g. [0, 1] means "first child's second child".
  */

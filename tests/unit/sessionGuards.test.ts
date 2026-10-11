@@ -5,12 +5,10 @@
 //   - ChatService.sendRequest
 //   - DefaultParticipant agentic loop
 //
-// Also verifies SessionLogger behavior.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SessionManager } from '../../src/workspace/sessionManager';
 import { captureSession } from '../../src/workspace/staleGuard';
-import { SessionLogger } from '../../src/workspace/sessionLogger';
 import { WorkspaceSessionContext } from '../../src/workspace/workspaceSessionContext';
 
 // ── Mock URI for roots ──
@@ -140,76 +138,5 @@ describe('WorkspaceSessionContext', () => {
     expect(ctx1.primaryRoot).toBe(uri1);
     const ctx2 = new WorkspaceSessionContext('ws', 'sid', []);
     expect(ctx2.primaryRoot).toBeUndefined();
-  });
-});
-
-describe('SessionLogger', () => {
-  it('logs with session prefix', () => {
-    const ctx = new WorkspaceSessionContext('ws-abc', 'sid-def', []);
-    const logger = new SessionLogger(ctx);
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    logger.info('test message');
-    expect(spy).toHaveBeenCalledWith('[ws:ws-abc sid:sid-def] test message');
-    spy.mockRestore();
-  });
-
-  it('logs with fallback prefix when no context', () => {
-    const logger = new SessionLogger();
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    logger.info('test message');
-    expect(spy).toHaveBeenCalledWith('[ws:? sid:?] test message');
-    spy.mockRestore();
-  });
-
-  it('warn method uses console.warn', () => {
-    const ctx = new WorkspaceSessionContext('ws', 'sid', []);
-    const logger = new SessionLogger(ctx);
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    logger.warn('warning!');
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('warning!'));
-    spy.mockRestore();
-  });
-
-  it('error method uses console.error', () => {
-    const ctx = new WorkspaceSessionContext('ws', 'sid', []);
-    const logger = new SessionLogger(ctx);
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    logger.error('error!');
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('error!'));
-    spy.mockRestore();
-  });
-
-  it('debug method uses console.debug', () => {
-    const ctx = new WorkspaceSessionContext('ws', 'sid', []);
-    const logger = new SessionLogger(ctx);
-    const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
-    logger.debug('debug info');
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('debug info'));
-    spy.mockRestore();
-  });
-
-  it('setContext updates the prefix', () => {
-    const logger = new SessionLogger();
-    expect(logger.prefix).toBe('[ws:? sid:?]');
-    const ctx = new WorkspaceSessionContext('newws', 'newsid', []);
-    logger.setContext(ctx);
-    expect(logger.prefix).toContain('newws');
-  });
-
-  it('never throws even if console methods throw', () => {
-    const ctx = new WorkspaceSessionContext('ws', 'sid', []);
-    const logger = new SessionLogger(ctx);
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => { throw new Error('boom'); });
-    expect(() => logger.info('test')).not.toThrow();
-    spy.mockRestore();
-  });
-
-  it('passes extra arguments through', () => {
-    const ctx = new WorkspaceSessionContext('ws', 'sid', []);
-    const logger = new SessionLogger(ctx);
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    logger.info('count: %d', 42);
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('count: %d'), 42);
-    spy.mockRestore();
   });
 });

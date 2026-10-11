@@ -95,7 +95,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   };
   context.subscriptions.push(api.commands.registerCommand('agents.showRoutines', () => showTab('routines')));
   context.subscriptions.push(api.commands.registerCommand('agents.showHistory', () => showTab('history')));
-  context.subscriptions.push(api.commands.registerCommand('workflows.showPanel', () => showTab('routines')));
   context.subscriptions.push(api.commands.registerCommand('autonomyLog.markAllRead', () => { resolveServices(api); svc.log?.markRead(); }));
   context.subscriptions.push(api.commands.registerCommand('autonomyLog.clear', () => { resolveServices(api); svc.log?.clear(); }));
 

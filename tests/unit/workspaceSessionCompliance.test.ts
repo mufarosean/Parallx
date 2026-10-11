@@ -61,14 +61,6 @@ describe('M14 Workspace Session Compliance', () => {
     expect(content).toContain('sessionId');
   });
 
-  it('SessionLogger utility exists', () => {
-    const content = readSrc('workspace/sessionLogger.ts');
-    expect(content).toContain('export class SessionLogger');
-    expect(content).toContain('info');
-    expect(content).toContain('warn');
-    expect(content).toContain('error');
-  });
-
   // ── Stale guard usage in pipeline entry points ──
 
   it('captureSession is used in IndexingPipelineService', () => {

@@ -3,11 +3,7 @@ import type {
   IChatParticipantContext,
   IChatParticipantRequest,
   IChatRequestOptions,
-  IChatResponseChunk,
-  IChatResponseStream,
   IChatToolInvocationContent,
-  ICancellationToken,
-  IToolCall,
   IToolDefinition,
 } from '../../services/chatTypes.js';
 import { ChatContentPartKind } from '../../services/chatTypes.js';
@@ -465,58 +461,6 @@ export function buildOpenclawSeedMessages(
   });
 
   return messages;
-}
-
-/**
- * @deprecated Use {@link runOpenclawReadOnlyTurn} from openclawReadOnlyTurnRunner.ts
- * for readonly participants, or {@link runOpenclawTurn} from openclawTurnRunner.ts
- * for the default participant. This function lacks retry logic and tool policy filtering.
- */
-export async function executeOpenclawModelTurn(
-  sendChatRequest: (
-    messages: readonly IChatMessage[],
-    options?: IChatRequestOptions,
-    signal?: AbortSignal,
-  ) => AsyncIterable<IChatResponseChunk>,
-  messages: readonly IChatMessage[],
-  requestOptions: IChatRequestOptions,
-  response: IChatResponseStream,
-  token: ICancellationToken,
-): Promise<{
-  markdown: string;
-  thinking: string;
-  toolCalls: IToolCall[];
-  promptTokens?: number;
-  completionTokens?: number;
-}> {
-  let markdown = '';
-  let thinking = '';
-  let promptTokens: number | undefined;
-  let completionTokens: number | undefined;
-  const toolCalls: IToolCall[] = [];
-
-  for await (const chunk of sendChatRequest(messages, requestOptions)) {
-    if (token.isCancellationRequested) {
-      break;
-    }
-
-    markdown += chunk.content;
-    if (chunk.thinking) {
-      thinking += chunk.thinking;
-      response.thinking(chunk.thinking);
-    }
-    if (chunk.toolCalls) {
-      toolCalls.push(...chunk.toolCalls);
-    }
-    if (typeof chunk.promptEvalCount === 'number') {
-      promptTokens = chunk.promptEvalCount;
-    }
-    if (typeof chunk.evalCount === 'number') {
-      completionTokens = chunk.evalCount;
-    }
-  }
-
-  return { markdown, thinking, toolCalls, promptTokens, completionTokens };
 }
 
 export function buildOpenclawReadOnlyRequestOptions(options: {

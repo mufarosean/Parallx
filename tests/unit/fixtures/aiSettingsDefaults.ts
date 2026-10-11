@@ -4,7 +4,7 @@
 // The three built-in presets (Default, Finance Focus, Creative Mode) are always
 // present and cannot be deleted.
 
-import type { AISettingsProfile } from './aiSettingsTypes.js';
+import type { AISettingsProfile } from '../../../src/aiSettings/aiSettingsTypes.js';
 
 // ─── Default Profile ───────────────────────────────────────────────────────
 

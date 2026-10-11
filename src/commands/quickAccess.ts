@@ -1286,9 +1286,3 @@ export class QuickAccessWidget extends Disposable {
     super.dispose();
   }
 }
-
-// ─── Legacy re-export ────────────────────────────────────────────────────────
-// Allows existing imports of `CommandPalette` to keep working.
-
-/** @deprecated Use `QuickAccessWidget` instead. */
-export { QuickAccessWidget as CommandPalette };

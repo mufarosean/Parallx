@@ -54,7 +54,7 @@ import type { StatusBarEntryAccessor } from '../services/serviceTypes.js';
 import { StatusBarAlignment } from '../services/serviceTypes.js';
 import { IAutonomySignalService } from '../services/autonomySignalService.js';
 import { IActivityJournalService } from '../services/activityJournalService.js';
-import { PARALLX_VERSION } from './apiVersionValidation.js';
+import { PARALLX_VERSION } from '../tools/toolValidator.js';
 import type { INotificationService } from '../services/serviceTypes.js';
 import { CommandsBridge } from './bridges/commandsBridge.js';
 import { ViewsBridge } from './bridges/viewsBridge.js';

@@ -410,15 +410,6 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   /**
-   * @deprecated No-op. parentId is the single source of truth for hierarchy;
-   * pageBlock content is a visual subsystem that follows parentId, not the
-   * other way around. Retained for API compatibility.
-   */
-  async reconcileEmbeddedHierarchyForAllPages(): Promise<void> {
-    // Intentionally empty — hierarchy is driven by parentId, not content.
-  }
-
-  /**
    * Update a page's mutable fields (title, icon, content).
    * Sets updated_at to the current timestamp.
    */

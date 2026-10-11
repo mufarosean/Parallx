@@ -1,13 +1,12 @@
 // Unit tests for chatSessionPersistence.ts — M9.2 Cap 9 Task 9.1
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   ensureChatTables,
   saveSession,
   loadSessions,
   loadSessionMetas,
   loadSessionMessages,
-  adoptOrphanedSessions,
   deletePersistedSession,
 } from '../../src/services/chatSessionPersistence';
 import type { IChatPersistenceDatabase } from '../../src/services/chatSessionPersistence';
@@ -410,23 +409,6 @@ describe('chatSessionPersistence', () => {
         .filter((s) => s.includes('CREATE INDEX') && s.includes('workspace'));
 
       expect(indexSql.length).toBeGreaterThan(0);
-    });
-
-    it('adoptOrphanedSessions only adopts legacy unassigned sessions', async () => {
-      db.get = async <T>(sql: string, params?: unknown[]) => {
-        db._getCalls.push({ sql, params });
-        return { cnt: 2 } as T;
-      };
-
-      await adoptOrphanedSessions(db, 'ws-new');
-
-      expect(db._getCalls).toHaveLength(1);
-      expect(db._getCalls[0].sql).toContain("workspace_id = ''");
-
-      const updateCalls = db._runCalls.filter((c) => c.sql.includes('UPDATE chat_sessions SET workspace_id'));
-      expect(updateCalls).toHaveLength(1);
-      expect(updateCalls[0].sql).toContain("workspace_id = ''");
-      expect(updateCalls[0].params).toEqual(['ws-new']);
     });
   });
 

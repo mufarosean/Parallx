@@ -652,42 +652,6 @@ export async function loadSessionMessages(
 
   return _normalizeReplayChains(_reconstructPairs(messageRows));
 }
-
-/**
- * Recover legacy unassigned sessions after workspace scoping was introduced.
- *
- * Only sessions with an empty workspace_id are adopted. Sessions already tagged
- * with a different non-empty workspace_id belong to a different named workspace
- * and must not bleed into the current workspace.
- */
-export async function adoptOrphanedSessions(
-  db: IChatPersistenceDatabase,
-  currentWorkspaceId: string,
-): Promise<IChatSession[]> {
-  if (!db.isOpen || !currentWorkspaceId) { return []; }
-
-  // Count legacy sessions with no workspace assignment.
-  const orphanCount = await db.get<{ cnt: number }>(
-    `SELECT COUNT(*) as cnt FROM chat_sessions WHERE workspace_id = ''`,
-    [],
-  );
-  if (!orphanCount || orphanCount.cnt === 0) { return []; }
-
-  console.log(
-    '[ChatPersistence] Adopting %d legacy unassigned sessions',
-    orphanCount.cnt,
-  );
-
-  // Re-tag only unassigned legacy sessions to the current workspace ID.
-  await db.run(
-    `UPDATE chat_sessions SET workspace_id = ? WHERE workspace_id = ''`,
-    [currentWorkspaceId],
-  );
-
-  // Now load normally
-  return loadSessions(db, currentWorkspaceId);
-}
-
 /**
  * Delete a session and its messages from the database.
  * Messages are cascade-deleted via the foreign key.
