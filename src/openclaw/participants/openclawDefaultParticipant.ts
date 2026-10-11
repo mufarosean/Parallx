@@ -44,7 +44,7 @@ import { tryHandleOpenclawStatusCommand } from '../commands/openclawStatusComman
 import { tryHandleOpenclawNewCommand } from '../commands/openclawNewCommand.js';
 import { tryHandleOpenclawModelsCommand } from '../commands/openclawModelsCommand.js';
 import { tryHandleOpenclawDoctorCommand } from '../commands/openclawDoctorCommand.js';
-import { tryHandleOpenclawThinkCommand, THINK_SESSION_FLAG } from '../commands/openclawThinkCommand.js';
+import { tryHandleOpenclawThinkCommand, REASONING_OFF_SESSION_FLAG } from '../commands/openclawThinkCommand.js';
 import { tryHandleOpenclawUsageCommand } from '../commands/openclawUsageCommand.js';
 import { tryHandleOpenclawToolsCommand } from '../commands/openclawToolsCommand.js';
 import { tryHandleOpenclawVerboseCommand, VERBOSE_SESSION_FLAG } from '../commands/openclawVerboseCommand.js';
@@ -128,7 +128,7 @@ export function createOpenclawDefaultParticipant(
       { name: 'new', description: 'Start a new conversation' },
       { name: 'models', description: 'List available Ollama models' },
       { name: 'doctor', description: 'Run diagnostic checks on AI runtime' },
-      { name: 'think', description: 'Toggle extended thinking mode for this session' },
+      { name: 'think', description: 'Turn reasoning off or on for this session' },
       { name: 'usage', description: 'Show token usage statistics for this session' },
       { name: 'tools', description: 'List available tools and their status' },
       { name: 'verbose', description: 'Toggle verbose debug output for this session' },
@@ -366,7 +366,7 @@ async function runOpenclawDefaultTurn(
       `- **History:** ${turnContext.history.length} messages`,
       `- **Bootstrap Files:** ${turnContext.bootstrapFiles.length}`,
       `- **Agent:** ${turnContext.agentConfig?.id ?? 'default'}`,
-      `- **Think:** ${services.getSessionFlag?.(THINK_SESSION_FLAG) ? 'enabled' : 'disabled'}`,
+      `- **Reasoning:** ${turnContext.think !== false ? 'on' : 'off'}`,
       `- **Auto-RAG:** ${turnContext.autoRag !== false ? 'enabled' : 'disabled'}`,
       '\n</details>\n',
     ];
@@ -708,6 +708,8 @@ async function buildOpenclawTurnContext(
         : undefined;
     })(),
     linkContracts: services.getLinkContractDescriptors?.(),
+    // D2: `/think` turns reasoning off for the session; unset keeps it on.
+    think: !(services.getSessionFlag?.(REASONING_OFF_SESSION_FLAG) ?? false),
     temperature: resolvedAgentConfig?.temperature ?? effectiveConfig?.model?.temperature,
     maxTokens: resolvedAgentConfig?.maxTokens ?? effectiveConfig?.model?.maxTokens,
     autoRag: resolvedAgentConfig?.autoRag ?? effectiveConfig?.retrieval?.autoRag,
@@ -718,11 +720,7 @@ async function buildOpenclawTurnContext(
     promptOverlay: preprocessed?.promptOverlay,
     isSteeringTurn: preprocessed?.isSteeringTurn,
     reportSystemPromptReport: services.reportSystemPromptReport,
-    sendChatRequest: (messages, options, signal) => services.sendChatRequest(messages, {
-      ...options,
-      // D2: Inject session-level thinking flag
-      think: options?.think ?? (services.getSessionFlag?.(THINK_SESSION_FLAG) || undefined),
-    }, signal),
+    sendChatRequest: (messages, options, signal) => services.sendChatRequest(messages, options, signal),
     fallbackModels: undefined,
     rebuildSendChatRequest: services.sendChatRequestForModel ?? undefined,
     invokeToolWithRuntimeControl: services.invokeToolWithRuntimeControl

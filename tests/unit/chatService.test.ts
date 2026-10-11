@@ -884,6 +884,33 @@ describe('ChatService', () => {
       expect(md.citations[0].label).toBe('test.md');
     });
 
+    it('replaceMarkdownTail() rewrites only the streamed end of the last markdown part', async () => {
+      const outcomes: boolean[] = [];
+      const agent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Test',
+        description: 'Test',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          response.markdown('Intro. ');
+          response.markdown('Half an ans');
+          outcomes.push(response.replaceMarkdownTail!('Half an ans', ''));
+          response.markdown('The whole answer.');
+          outcomes.push(response.replaceMarkdownTail!('not the end', 'x'));
+          return {};
+        },
+      };
+      const svc = new ChatAgentService();
+      svc.registerAgent(agent);
+      const cs = new ChatService(svc, modeService, lmService);
+      const session = cs.createSession();
+      await cs.sendRequest(session.id, 'test');
+
+      const md = session.messages[0].response.parts.filter(p => p.kind === ChatContentPartKind.Markdown) as any[];
+      expect(outcomes).toEqual([true, false]);
+      expect(md.map(p => p.content)).toEqual(['Intro. The whole answer.']);
+    });
+
     it('progress creates thinking when none exists', async () => {
       const agent: IChatParticipant = {
         id: 'parallx.chat.default',

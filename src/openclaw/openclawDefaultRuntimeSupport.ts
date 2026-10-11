@@ -73,7 +73,7 @@ const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
   },
   think: {
     name: 'think',
-    description: 'Toggle extended thinking mode for this session',
+    description: 'Turn reasoning off or on for this session',
     promptTemplate: '{input}',
     isBuiltIn: true,
   },

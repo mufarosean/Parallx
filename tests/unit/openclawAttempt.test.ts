@@ -606,4 +606,82 @@ describe('executeOpenclawAttempt', () => {
       expect(result.emptyResponseContinuations).toBeUndefined();
     });
   });
+
+  describe('the answer streams as it is written', () => {
+    it('sends each answer chunk to the response before the model call ends', async () => {
+      const response = createResponse();
+      const seenBeforeSecondChunk: string[] = [];
+      async function* chunks(): AsyncIterable<IChatResponseChunk> {
+        yield { content: 'The factor ', done: false } as IChatResponseChunk;
+        seenBeforeSecondChunk.push(...vi.mocked(response.markdown).mock.calls.map((c) => c[0]));
+        yield textChunk('is 1.25.');
+      }
+      const result = await executeOpenclawAttempt(
+        createRequest(),
+        createContext({ sendChatRequest: vi.fn(() => chunks()) }),
+        createAssembled(),
+        response,
+        createToken(),
+      );
+
+      expect(seenBeforeSecondChunk).toEqual(['The factor ']);
+      expect(vi.mocked(response.markdown).mock.calls.map((c) => c[0])).toEqual(['The factor ', 'is 1.25.']);
+      expect(result.markdown).toBe('The factor is 1.25.');
+    });
+
+    it('takes back what a failed call streamed, so a retry does not show it twice', async () => {
+      const response = { ...createResponse(), replaceMarkdownTail: vi.fn(() => true) };
+      async function* chunks(): AsyncIterable<IChatResponseChunk> {
+        yield { content: 'Half an ans', done: false } as IChatResponseChunk;
+        throw new Error('fetch failed: connection reset');
+      }
+
+      await expect(executeOpenclawAttempt(
+        createRequest(),
+        createContext({ sendChatRequest: vi.fn(() => chunks()) }),
+        createAssembled(),
+        response,
+        createToken(),
+      )).rejects.toThrow('connection reset');
+      expect(response.replaceMarkdownTail).toHaveBeenCalledWith('Half an ans', '');
+    });
+
+    it('shows a tool round\'s narration once, before its tool card', async () => {
+      let call = 0;
+      const sendChatRequest = vi.fn(() => {
+        call++;
+        return call === 1
+          ? streamChunks([toolCallChunk('Let me read it.', [{ function: { name: 'readFile', arguments: { path: 'a.md' } } }])])
+          : streamChunks([textChunk('It says X.')]);
+      });
+      const order: string[] = [];
+      const response = createResponse();
+      vi.mocked(response.markdown).mockImplementation((text: string) => { order.push(`text:${text}`); });
+      vi.mocked(response.beginToolInvocation).mockImplementation((_id: string, name: string) => { order.push(`tool:${name}`); });
+
+      await executeOpenclawAttempt(
+        createRequest(),
+        createContext({
+          sendChatRequest,
+          invokeToolWithRuntimeControl: vi.fn(async (): Promise<IToolResult> => ({ content: 'X' })),
+          toolState: { availableDefinitions: [{ name: 'readFile', description: 'Read file', parameters: {} }] } as any,
+        }),
+        createAssembled(),
+        response,
+        createToken(),
+      );
+
+      expect(order).toEqual(['text:Let me read it.', 'tool:readFile', 'text:It says X.']);
+    });
+
+    it('asks the model to reason by default, and not when the session turned reasoning off', async () => {
+      const on = vi.fn(() => streamChunks([textChunk('a')]));
+      await executeOpenclawAttempt(createRequest(), createContext({ sendChatRequest: on }), createAssembled(), createResponse(), createToken());
+      expect(on.mock.calls[0][1]).toMatchObject({ think: true });
+
+      const off = vi.fn(() => streamChunks([textChunk('a')]));
+      await executeOpenclawAttempt(createRequest(), createContext({ sendChatRequest: off, think: false }), createAssembled(), createResponse(), createToken());
+      expect(off.mock.calls[0][1]).toMatchObject({ think: false });
+    });
+  });
 });

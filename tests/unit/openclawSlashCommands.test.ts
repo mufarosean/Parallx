@@ -6,7 +6,7 @@ import { tryHandleOpenclawModelsCommand } from '../../src/openclaw/commands/open
 import { tryHandleOpenclawDoctorCommand } from '../../src/openclaw/commands/openclawDoctorCommand';
 import { DiagnosticsService } from '../../src/services/diagnosticsService';
 import { ALL_DIAGNOSTIC_CHECKS } from '../../src/services/diagnosticChecks';
-import { tryHandleOpenclawThinkCommand, THINK_SESSION_FLAG } from '../../src/openclaw/commands/openclawThinkCommand';
+import { tryHandleOpenclawThinkCommand, REASONING_OFF_SESSION_FLAG } from '../../src/openclaw/commands/openclawThinkCommand';
 import { tryHandleOpenclawUsageCommand } from '../../src/openclaw/commands/openclawUsageCommand';
 import { tryHandleOpenclawToolsCommand } from '../../src/openclaw/commands/openclawToolsCommand';
 import { tryHandleOpenclawVerboseCommand, VERBOSE_SESSION_FLAG } from '../../src/openclaw/commands/openclawVerboseCommand';
@@ -214,7 +214,7 @@ describe('/think command', () => {
     expect(result).toBe(false);
   });
 
-  it('toggles thinking mode on', async () => {
+  it('turns reasoning off from the default', async () => {
     const flags = new Map<string, boolean>();
     const response = createMockResponse();
     const services = createMinimalServices({
@@ -223,12 +223,12 @@ describe('/think command', () => {
     });
     const result = await tryHandleOpenclawThinkCommand(services, 'think', response);
     expect(result).toBe(true);
-    expect(flags.get(THINK_SESSION_FLAG)).toBe(true);
-    expect(response._chunks[0]).toContain('enabled');
+    expect(flags.get(REASONING_OFF_SESSION_FLAG)).toBe(true);
+    expect(response._chunks[0]).toContain('Reasoning off');
   });
 
-  it('toggles thinking mode off', async () => {
-    const flags = new Map<string, boolean>([[THINK_SESSION_FLAG, true]]);
+  it('turns reasoning back on', async () => {
+    const flags = new Map<string, boolean>([[REASONING_OFF_SESSION_FLAG, true]]);
     const response = createMockResponse();
     const services = createMinimalServices({
       getSessionFlag: (key: string) => flags.get(key) ?? false,
@@ -236,8 +236,8 @@ describe('/think command', () => {
     });
     const result = await tryHandleOpenclawThinkCommand(services, 'think', response);
     expect(result).toBe(true);
-    expect(flags.get(THINK_SESSION_FLAG)).toBe(false);
-    expect(response._chunks[0]).toContain('disabled');
+    expect(flags.get(REASONING_OFF_SESSION_FLAG)).toBe(false);
+    expect(response._chunks[0]).toContain('Reasoning on');
   });
 });
 
@@ -480,9 +480,9 @@ describe('/doctor edge cases', () => {
 
 // ━━━ Cross-command: /new clears session flags ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 describe('/new session flag clearing', () => {
-  it('clears think and verbose flags on /new', async () => {
+  it('returns reasoning to its default and clears verbose on /new', async () => {
     const flags = new Map<string, boolean>([
-      [THINK_SESSION_FLAG, true],
+      [REASONING_OFF_SESSION_FLAG, true],
       [VERBOSE_SESSION_FLAG, true],
     ]);
     const executeCommand = vi.fn();
@@ -493,7 +493,7 @@ describe('/new session flag clearing', () => {
       executeCommand,
     });
     await tryHandleOpenclawNewCommand(services, 'new', response);
-    expect(flags.get(THINK_SESSION_FLAG)).toBe(false);
+    expect(flags.get(REASONING_OFF_SESSION_FLAG)).toBe(false);
     expect(flags.get(VERBOSE_SESSION_FLAG)).toBe(false);
     expect(executeCommand).toHaveBeenCalledWith('chat.clearSession');
   });
@@ -510,20 +510,20 @@ describe('cross-command interactions', () => {
 
     const r1 = createMockResponse();
     await tryHandleOpenclawThinkCommand(services, 'think', r1);
-    expect(flags.get(THINK_SESSION_FLAG)).toBe(true);
+    expect(flags.get(REASONING_OFF_SESSION_FLAG)).toBe(true);
 
     const r2 = createMockResponse();
     await tryHandleOpenclawVerboseCommand(services, 'verbose', r2);
     expect(flags.get(VERBOSE_SESSION_FLAG)).toBe(true);
 
     // Both should still be true
-    expect(flags.get(THINK_SESSION_FLAG)).toBe(true);
+    expect(flags.get(REASONING_OFF_SESSION_FLAG)).toBe(true);
     expect(flags.get(VERBOSE_SESSION_FLAG)).toBe(true);
   });
 
   it('toggling one does not affect the other', async () => {
     const flags = new Map<string, boolean>([
-      [THINK_SESSION_FLAG, true],
+      [REASONING_OFF_SESSION_FLAG, true],
       [VERBOSE_SESSION_FLAG, true],
     ]);
     const services = createMinimalServices({
@@ -534,7 +534,7 @@ describe('cross-command interactions', () => {
     // Toggle think off
     const r1 = createMockResponse();
     await tryHandleOpenclawThinkCommand(services, 'think', r1);
-    expect(flags.get(THINK_SESSION_FLAG)).toBe(false);
+    expect(flags.get(REASONING_OFF_SESSION_FLAG)).toBe(false);
     expect(flags.get(VERBOSE_SESSION_FLAG)).toBe(true); // unaffected
   });
 });

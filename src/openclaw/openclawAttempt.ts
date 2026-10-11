@@ -268,6 +268,10 @@ export interface IOpenclawTurnContext {
   readonly sinceLastTurnText?: string;
 
   // Model parameters from config
+  /** Whether the model reasons before it answers (Ollama `think`, Claude
+   *  extended thinking). Defaults to true; `/think` turns it off for a
+   *  session. */
+  readonly think?: boolean;
   readonly temperature?: number;
   readonly maxTokens?: number;
   /** When false, skip workspace retrieval (RAG). Defaults to true. */
@@ -468,7 +472,7 @@ export async function executeOpenclawAttempt(
   //    Upstream: wrapOllamaCompatNumCtx wraps stream to inject num_ctx
   //    Parallx: pass tokenBudget as numCtx so Ollama allocates matching KV cache
   const requestOptions: IChatRequestOptions = {
-    think: true,
+    think: context.think !== false,
     tools: context.toolState.availableDefinitions.length > 0 ? context.toolState.availableDefinitions : undefined,
     numCtx: context.tokenBudget,
     temperature: context.temperature,
@@ -477,7 +481,6 @@ export async function executeOpenclawAttempt(
 
   const loopSafety = new ChatToolLoopSafety();
   let markdown = '';
-  let markdownFlushedThisRound = false;
   let thinking = '';
   let toolCallCount = 0;
   let promptTokens: number | undefined;
@@ -626,16 +629,10 @@ export async function executeOpenclawAttempt(
     }
     lastHadToolCalls = true;
 
-    // Stream this round's narration BEFORE its tool calls so the transcript
-    // reads chronologically, Claude-style: thinking → text → tools → next
-    // round. Previously this text was silently dropped (`markdown = ''` at
-    // the end of each round streamed only the FINAL round's text), so
-    // between-tool narration never rendered. The `markdown` variable itself
-    // stays intact — the next round's history message still needs it.
-    if (markdown.trim().length > 0) {
-      response.markdown(markdown);
-      markdownFlushedThisRound = true;
-    }
+    // This round's narration already streamed, before its tool cards, so the
+    // transcript reads chronologically: thinking → text → tools → next
+    // round. The `markdown` variable stays intact — the next round's history
+    // message still needs it.
 
     // Process tool calls
     if (!context.invokeToolWithRuntimeControl) {
@@ -873,10 +870,9 @@ export async function executeOpenclawAttempt(
     }
 
     iterations++;
-    // Reset for the next round — this round's text is already streamed (the
-    // pre-tool flush above) and already captured in the history messages.
+    // Reset for the next round — this round's text already streamed and is
+    // captured in the history messages.
     markdown = '';
-    markdownFlushedThisRound = false;
   }
 
   // Salvage exhausted: the model answered inside its reasoning on every
@@ -892,17 +888,15 @@ export async function executeOpenclawAttempt(
     } catch { /* diagnostics must not break the return path */ }
   }
 
-  // 6. Validate citations before streaming — remap mismatched indices
-  //    so the displayed markdown matches the citation metadata.
+  // 6. Validate citations — remap mismatched indices so the displayed
+  //    markdown matches the citation metadata.
   const validated = validateCitations(markdown, [...assembled.ragSources]);
   const displayMarkdown = validated.markdown;
 
-  // 7. Stream final markdown to response — unless this exact text already
-  // streamed via the pre-tool flush and the loop exited before its reset
-  // (cancellation / loop-safety break). Streaming it again would duplicate
-  // the visible paragraph.
-  if (displayMarkdown && !markdownFlushedThisRound) {
-    response.markdown(displayMarkdown);
+  // 7. The answer already streamed as it was written; when the citation
+  //    check changed it, the checked text takes its place.
+  if (displayMarkdown !== markdown) {
+    response.replaceMarkdownTail?.(markdown, displayMarkdown);
   }
 
   // 8. Report token usage
@@ -955,9 +949,10 @@ export async function executeOpenclawAttempt(
  * Adapted from the existing executeOpenclawModelTurn in openclawParticipantRuntime.ts,
  * but simplified: handles streaming, collects markdown/thinking/toolCalls/tokens.
  *
- * Note: markdown is NOT streamed to the response here — the caller handles
- * that after the tool loop completes, to avoid partial markdown from
- * iterations that will be followed by tool results.
+ * The answer streams to the response as it is written, like the reasoning:
+ * a round followed by tool calls shows its text before its tool cards. When
+ * the call fails partway, the text it streamed is taken back so a retry does
+ * not show it twice. Stop keeps what was written.
  */
 async function executeModelStream(
   sendChatRequest: (
@@ -992,7 +987,10 @@ async function executeModelStream(
     for await (const chunk of sendChatRequest(messages, options, abort.signal)) {
       if (token.isCancellationRequested) break;
 
-      markdown += chunk.content;
+      if (chunk.content) {
+        markdown += chunk.content;
+        response.markdown(chunk.content);
+      }
       if (chunk.thinking) {
         thinking += chunk.thinking;
         response.thinking(chunk.thinking);
@@ -1007,6 +1005,11 @@ async function executeModelStream(
         completionTokens = chunk.evalCount;
       }
     }
+  } catch (error) {
+    if (markdown) {
+      try { response.replaceMarkdownTail?.(markdown, ''); } catch { /* a closed stream keeps its text */ }
+    }
+    throw error;
   } finally {
     cancelSub?.dispose();
   }

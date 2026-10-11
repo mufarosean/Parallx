@@ -898,6 +898,14 @@ export interface IChatResponseStream {
    */
   replaceLastMarkdown(content: string): void;
   /**
+   * Rewrite the end of the most recent Markdown part: when it ends with
+   * `tail`, that text becomes `replacement` and the rest of the part stays.
+   * Returns false when the part does not end with `tail` (nothing changes).
+   * A streamed answer uses it to take back text from a failed model call
+   * and to swap in its citation-checked form.
+   */
+  replaceMarkdownTail?(tail: string, replacement: string): boolean;
+  /**
    * Guard: throws Error('Stream is closed') if the response has been
    * finalized or cancelled. Prevents writing after completion.
    */

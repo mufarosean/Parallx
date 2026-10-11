@@ -3,7 +3,7 @@
 
 import type { IChatResponseStream } from '../../services/chatTypes.js';
 import type { IDefaultParticipantServices } from '../openclawTypes.js';
-import { THINK_SESSION_FLAG } from './openclawThinkCommand.js';
+import { REASONING_OFF_SESSION_FLAG } from './openclawThinkCommand.js';
 import { VERBOSE_SESSION_FLAG } from './openclawVerboseCommand.js';
 
 export async function tryHandleOpenclawNewCommand(
@@ -15,7 +15,7 @@ export async function tryHandleOpenclawNewCommand(
 
   // Clear session-scoped flags before starting new session
   if (services.setSessionFlag) {
-    services.setSessionFlag(THINK_SESSION_FLAG, false);
+    services.setSessionFlag(REASONING_OFF_SESSION_FLAG, false);
     services.setSessionFlag(VERBOSE_SESSION_FLAG, false);
   }
 

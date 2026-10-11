@@ -272,6 +272,7 @@ class ChatResponseStream implements IChatResponseStream {
     this.setCitations = this.setCitations.bind(this);
     this.getMarkdownText = this.getMarkdownText.bind(this);
     this.replaceLastMarkdown = this.replaceLastMarkdown.bind(this);
+    this.replaceMarkdownTail = this.replaceMarkdownTail.bind(this);
     this.markdown = this.markdown.bind(this);
     this.codeBlock = this.codeBlock.bind(this);
     this.progress = this.progress.bind(this);
@@ -424,6 +425,20 @@ class ChatResponseStream implements IChatResponseStream {
       parts.push({ kind: ChatContentPartKind.Markdown, content });
       this._scheduleUpdate();
     }
+  }
+
+  replaceMarkdownTail(tail: string, replacement: string): boolean {
+    this.throwIfDone();
+    const parts = this._response.parts as IChatContentPart[];
+    for (let i = parts.length - 1; i >= 0; i--) {
+      if (parts[i].kind !== ChatContentPartKind.Markdown) continue;
+      const part = parts[i] as IChatMarkdownContent;
+      if (!part.content.endsWith(tail)) return false;
+      part.content = part.content.slice(0, part.content.length - tail.length) + replacement;
+      this._scheduleUpdate();
+      return true;
+    }
+    return false;
   }
 
   markdown(content: string): void {

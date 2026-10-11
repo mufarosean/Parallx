@@ -1,10 +1,15 @@
-// D2: /think command — Toggle extended thinking mode for this session
+// D2: /think command — Turn the model's reasoning off or on for this session
 // Upstream: src/commands/think.ts — thinking/reasoning mode control
+//
+// The model reasons before it answers by default. `/think` turns that off for
+// the session (faster answers, no reasoning shown) and on again. `/new`
+// returns to the default.
 
 import type { IChatResponseStream } from '../../services/chatTypes.js';
 import type { IDefaultParticipantServices } from '../openclawTypes.js';
 
-export const THINK_SESSION_FLAG = 'openclaw.thinkingEnabled';
+/** Set while the session has reasoning turned off. Unset means the default (on). */
+export const REASONING_OFF_SESSION_FLAG = 'openclaw.reasoningOff';
 
 export async function tryHandleOpenclawThinkCommand(
   services: IDefaultParticipantServices,
@@ -13,19 +18,17 @@ export async function tryHandleOpenclawThinkCommand(
 ): Promise<boolean> {
   if (command !== 'think') return false;
 
-  const current = services.getSessionFlag?.(THINK_SESSION_FLAG) ?? false;
-  const next = !current;
-
-  if (services.setSessionFlag) {
-    services.setSessionFlag(THINK_SESSION_FLAG, next);
-    response.markdown(
-      next
-        ? '**Thinking mode enabled.** The model will show its reasoning process for subsequent messages in this session.'
-        : '**Thinking mode disabled.** Returning to standard response mode.',
-    );
-  } else {
-    response.markdown('Warning: Session flag storage is not available. Thinking mode cannot be toggled.');
+  if (!services.setSessionFlag) {
+    response.markdown('Warning: Session flag storage is not available. Reasoning cannot be turned off.');
+    return true;
   }
 
+  const off = !(services.getSessionFlag?.(REASONING_OFF_SESSION_FLAG) ?? false);
+  services.setSessionFlag(REASONING_OFF_SESSION_FLAG, off);
+  response.markdown(
+    off
+      ? '**Reasoning off.** The model answers directly for the rest of this session. Run `/think` again to turn it back on.'
+      : '**Reasoning on.** The model reasons before it answers, and its reasoning is shown.',
+  );
   return true;
 }
