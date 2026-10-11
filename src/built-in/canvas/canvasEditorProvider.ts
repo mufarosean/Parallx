@@ -27,6 +27,7 @@
 //   • ColumnDrop plugin (drag block to side of another to create/modify columns)
 
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
+import { escapeHtml } from '../../ui/format.js';
 import { parsePageLink } from './pageLinks.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { ICanvasDataService } from './canvasTypes.js';
@@ -651,7 +652,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
   /** BlockActionMenuHost: a link pasted into a page keeps its label (HTML);
    *  anywhere else it is the plain link. */
   async copyLabelledLink(href: string, label: string): Promise<void> {
-    const html = `<a href="${escapeHtmlAttr(href)}">${escapeHtmlAttr(label)}</a>`;
+    const html = `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
     let copied = false;
     try {
       await navigator.clipboard.write([new ClipboardItem({
@@ -1686,6 +1687,3 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
   }
 }
 
-function escapeHtmlAttr(text: string): string {
-  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
-}

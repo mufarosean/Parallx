@@ -463,6 +463,41 @@ export namespace ui {
    */
   export function rafThrottle<A extends unknown[]>(fn: (...args: A) => void): RafThrottled<A>;
 
+  /** A callback wrapped by {@link debounce}. */
+  export interface Debounced<A extends unknown[]> {
+    (...args: A): void;
+    /** Drop the pending call. Call from your dispose/teardown. */
+    cancel(): void;
+    /** Run the pending call now instead of waiting out the delay. */
+    flush(): void;
+    /** Whether a call is waiting. */
+    readonly pending: boolean;
+  }
+
+  /**
+   * Run `fn` once, `ms` after the last of a burst of calls, with the
+   * arguments of that last call. For typing, saving and searching; use
+   * {@link rafThrottle} for mouse and scroll handlers.
+   */
+  export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number): Debounced<A>;
+
+  /** Make text safe to put in HTML: `& < > " '` become entities; null is "". */
+  export function escapeHtml(text: unknown): string;
+
+  /** A byte count for people: "512 B", "1.5 KB", "12.3 MB", "1.25 GB". */
+  export function formatBytes(bytes: number): string;
+
+  /** Title Case: the first letter of each word goes up, the rest stays. */
+  export function titleCase(text: string): string;
+
+  /**
+   * "just now", "5 minutes ago", "yesterday", "Aug 20" (`long`), or
+   * "now", "5m ago", "3d ago" (`short`). Days turn over at midnight in the
+   * app's Time Zone. Accepts a timestamp in ms, an ISO string, a database
+   * timestamp or a Date.
+   */
+  export function formatRelativeTime(when: number | string | Date, style?: 'long' | 'short'): string;
+
   /** An option in a {@link createDropdown} dropdown. */
   export interface DropdownItem {
     readonly value: string;

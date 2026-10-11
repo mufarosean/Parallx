@@ -9,6 +9,7 @@
 //   src/vs/workbench/contrib/chat/browser/chatContentParts/
 
 import 'katex/dist/katex.min.css';
+import { escapeHtml } from '../../../ui/format.js';
 import { argsWithoutIntent, readToolIntent } from '../../../services/toolIntent.js';
 import { buildApprovalNode, settleApprovalNode } from './chatApproval.js';
 
@@ -816,13 +817,6 @@ export function _markdownToHtml(md: string): string {
   return CHAT_MARKDOWN.render(_normalizeChatMarkdown(md));
 }
 
-function _escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
 function _createChatMarkdownRenderer(): MarkdownIt {
   const markdown = new MarkdownIt({
     html: false,
@@ -992,7 +986,7 @@ function _renderKatex(expression: string, displayMode: boolean): string {
       output: 'html',
     });
   } catch {
-    const escaped = _escapeHtml(expression);
+    const escaped = escapeHtml(expression);
     return displayMode
       ? `<pre class="parallx-chat-math-fallback">${escaped}</pre>`
       : `<code class="parallx-chat-math-fallback">${escaped}</code>`;

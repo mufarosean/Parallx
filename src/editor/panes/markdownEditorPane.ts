@@ -9,6 +9,7 @@
 //   (VS Code uses a webview; we render directly into the DOM for simplicity.)
 
 import './markdownEditorPane.css';
+import { escapeHtml } from '../../ui/format.js';
 
 import MarkdownIt from 'markdown-it';
 import markdownItMark from 'markdown-it-mark';
@@ -346,7 +347,7 @@ function _renderKatex(expression: string, displayMode: boolean): string {
       output: 'html',
     });
   } catch {
-    const escaped = expression.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escaped = escapeHtml(expression);
     return displayMode
       ? `<pre class="markdown-math-fallback">${escaped}</pre>`
       : `<code class="markdown-math-fallback">${escaped}</code>`;

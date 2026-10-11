@@ -13,6 +13,7 @@
 //   • Right-click page options popup (Task 10.7)
 
 import { DisposableStore, toDisposable } from '../../platform/lifecycle.js';
+import { escapeHtml } from '../../ui/format.js';
 import { EMPTY_STATES } from '../../ui/emptyStates.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { doesPageChangeAffectSidebar } from './canvasTypes.js';
@@ -2195,6 +2196,3 @@ export class CanvasSidebar {
   }
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
-}

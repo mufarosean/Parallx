@@ -10,6 +10,7 @@ import type {
   WidgetTypeRegistration,
 } from '../../dashboard/dashboardTypes.js';
 import type { PlannerDataService } from '../plannerDataService.js';
+import { escapeHtml } from '../../../ui/format.js';
 import type { PlannerEvent } from '../plannerTypes.js';
 import { addAppDays, appDateParts, appDateString, appTime, appTimeString, isSameAppDay, startOfAppDay } from '../../../services/localTime.js';
 
@@ -33,10 +34,6 @@ function addDays(t: number, n: number): number { return addAppDays(t, n); }
 
 function fmtTime(ts: number): string {
   return appTimeString(ts, { hour: 'numeric', minute: '2-digit' });
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }
 
 export function buildCalendarViewWidget(data: PlannerDataService): WidgetTypeRegistration<Config> {

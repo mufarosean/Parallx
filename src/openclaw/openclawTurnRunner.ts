@@ -13,7 +13,7 @@
  *   - Wraps executeOpenclawAttempt in error-handling retry loop
  *   - Context overflow → compact → re-assemble → retry (max 3)
  *   - Timeout → compact(force) → re-assemble → retry (max 2)
- *   - Transient → delay(2500ms) → retry
+ *   - Transient → sleep(2500ms) → retry
  *   - Unrecoverable errors → throw
  */
 
@@ -23,6 +23,7 @@ import type {
   ICancellationToken,
 } from '../services/chatTypes.js';
 import type { IOpenclawTurnContext } from './openclawAttempt.js';
+import { sleep } from '../platform/timing.js';
 import { executeOpenclawAttempt } from './openclawAttempt.js';
 import { isContextOverflow, isModelError, isTimeoutError, isTransientError } from './openclawErrorClassification.js';
 import { beginNewTurn as beginColorGateTurn } from './openclawToolPolicy.js';
@@ -268,7 +269,7 @@ export async function runOpenclawTurn(
       if (isTransientError(error) && transientRetries < MAX_TRANSIENT_RETRIES) {
         const backoff = transientDelay(transientRetries);
         response.progress(`Transient error, retrying in ${backoff}ms...`);
-        await delay(backoff);
+        await sleep(backoff);
         transientRetries++;
         continue;
       }
@@ -324,6 +325,3 @@ export async function runOpenclawTurn(
 // Helpers
 // ---------------------------------------------------------------------------
 
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}

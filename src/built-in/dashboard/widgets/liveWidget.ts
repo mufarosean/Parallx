@@ -22,6 +22,7 @@ import type {
   WidgetTypeRegistration,
 } from '../dashboardTypes.js';
 import { collectThemeVars, createSandboxFrame, buildSandboxDocument } from './sandboxedHtml.js';
+import { escapeHtml } from '../../../ui/format.js';
 import { getIcon } from '../../../ui/iconRegistry.js';
 
 interface LiveWidgetConfig {
@@ -193,12 +194,6 @@ function placeholderHtml(title: string, body: string): string {
      </div>`,
     collectThemeVars(),
   );
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, c => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string
-  ));
 }
 
 export function buildLivePrompt(cfg: LiveWidgetConfig, instanceId: string): string {

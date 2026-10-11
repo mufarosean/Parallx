@@ -11,6 +11,8 @@
 // Everything here is DOM-in/string-out and unit-testable under jsdom. The
 // dialog (pdfExportDialog.ts) owns all interaction.
 
+import { escapeHtml } from '../../../ui/format.js';
+
 // ─── Settings model ──────────────────────────────────────────────────────────
 
 export interface PdfMarginsMm {
@@ -407,10 +409,6 @@ export interface BuildPrintHtmlInput {
    * (unstyled math/code, never a broken export).
    */
   readonly appPath?: string;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function toFileUrl(absPath: string): string {

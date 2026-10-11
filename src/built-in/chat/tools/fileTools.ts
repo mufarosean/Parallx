@@ -12,6 +12,7 @@ import type {
   IBuiltInToolRetrieval,
 } from '../chatTypes.js';
 import { markResourceSeen, fileResourceKey } from '../../../services/toolResourceRegistry.js';
+import { formatBytes } from '../../../ui/format.js';
 import { contributedSkillFile } from '../../../services/chatContributions.js';
 import { formatPagesForReading, pageLabelForPassage } from '../../../services/quoteLocator.js';
 
@@ -153,7 +154,7 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
 
         const lines = entries.map((e) => {
           const typeLabel = e.type === 'directory' ? '[dir]' : '[file]';
-          const sizeLabel = e.type === 'file' ? ` (${formatSize(e.size)})` : '';
+          const sizeLabel = e.type === 'file' ? ` (${formatBytes(e.size)})` : '';
           return `${typeLabel} ${e.name}${sizeLabel}`;
         });
 
@@ -573,13 +574,6 @@ async function searchRecursive(
 function isIgnoredDir(name: string): boolean {
   const ignored = ['node_modules', '.git', 'dist', 'out', '.next', '__pycache__', '.cache', 'coverage'];
   return ignored.includes(name);
-}
-
-/** Format byte size to human-readable string. */
-function formatSize(bytes: number): string {
-  if (bytes < 1024) { return `${bytes} B`; }
-  if (bytes < 1024 * 1024) { return `${(bytes / 1024).toFixed(1)} KB`; }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // ── RAG tools (M10 Phase 3 — Task 3.3) ──

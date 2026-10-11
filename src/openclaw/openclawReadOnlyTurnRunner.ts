@@ -26,6 +26,7 @@ import type {
   IToolResult,
 } from '../services/chatTypes.js';
 import { applyOpenclawToolPolicy } from './openclawToolPolicy.js';
+import { sleep } from '../platform/timing.js';
 import { normalizeToolResultContent } from './openclawAttempt.js';
 import { isTransientError, isTimeoutError } from './openclawErrorClassification.js';
 import { ChatToolLoopSafety } from '../services/chatToolLoopSafety.js';
@@ -42,10 +43,6 @@ const MAX_TIMEOUT_RETRIES = 2;
 
 function transientDelay(attempt: number): number {
   return Math.min(TRANSIENT_BASE_DELAY * Math.pow(2, attempt), TRANSIENT_MAX_DELAY);
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // ---------------------------------------------------------------------------
@@ -192,7 +189,7 @@ export async function runOpenclawReadOnlyTurn(
         if (isTransientError(error) && transientRetries < MAX_TRANSIENT_RETRIES) {
           const backoff = transientDelay(transientRetries);
           response.progress(`Transient error, retrying in ${backoff}ms...`);
-          await delay(backoff);
+          await sleep(backoff);
           transientRetries++;
           continue;
         }

@@ -29,6 +29,9 @@ import {
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import { rafThrottle } from '../platform/rafThrottle.js';
+import { debounce } from '../platform/timing.js';
+import { escapeHtml, formatBytes, titleCase } from '../ui/format.js';
+import { formatRelativeTime } from '../ui/relativeTime.js';
 import { createDropdownHandle, IDropdownItem } from '../ui/dropdown.js';
 import { renderMarkdown } from '../ui/renderMarkdown.js';
 import { createAiButton } from '../ui/aiButton.js';
@@ -147,6 +150,11 @@ export interface ParallxApiObject {
   /** Shared UI performance helpers (see parallx.d.ts `ui` namespace). */
   readonly ui: {
     rafThrottle<A extends unknown[]>(fn: (...args: A) => void): ((...args: A) => void) & { dispose(): void; flush(): void };
+    debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number): ((...args: A) => void) & { cancel(): void; flush(): void; readonly pending: boolean };
+    escapeHtml(text: unknown): string;
+    formatBytes(bytes: number): string;
+    titleCase(text: string): string;
+    formatRelativeTime(when: number | string | Date, style?: 'long' | 'short'): string;
     createDropdown(container: HTMLElement, options?: {
       readonly items?: readonly { value: string; label: string }[];
       readonly selected?: string;
@@ -615,6 +623,13 @@ export function createToolApi(
     // layout work is coalesced to one run per frame everywhere.
     ui: Object.freeze({
       rafThrottle,
+      // The same text formatters and debounce the workbench uses, so no
+      // extension writes its own escaper, byte count or "5m ago".
+      debounce,
+      escapeHtml,
+      formatBytes,
+      titleCase,
+      formatRelativeTime,
       // The SAME .ui-dropdown component the built-in workbench uses —
       // native <select> popups are Chromium-drawn and unthemeable, so
       // extensions get the themed primitive instead of cloning it

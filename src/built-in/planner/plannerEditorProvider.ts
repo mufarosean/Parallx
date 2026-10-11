@@ -4,6 +4,7 @@
 // week / day view). Pure DOM + CSS Grid; no layout engine.
 
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { escapeHtml } from '../../ui/format.js';
 import { renderEmptyStateEntry } from '../../ui/emptyStates.js';
 import { PLANNER_EMPTY_STATES } from './plannerEmptyStates.js';
 import type { PlannerDataService } from './plannerDataService.js';
@@ -3072,10 +3073,6 @@ function formatTimeRange(ev: PlannerEvent): string {
   const fmt = (ts: number) => appTimeString(ts, { hour: 'numeric', minute: '2-digit' });
   if (ev.allDay) return 'All Day';
   return `${fmt(ev.startAt)} – ${fmt(ev.endAt)}`;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }
 
 /** Normalize a raw href to a safe http/https URL, or null if not web-openable. */

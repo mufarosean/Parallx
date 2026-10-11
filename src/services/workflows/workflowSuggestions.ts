@@ -10,6 +10,7 @@
 // Pure: no services, no clock of its own.
 
 import type { WorkflowDoc } from './workflowTypes.js';
+import { titleCase } from '../../ui/format.js';
 import { habitKey } from '../../openclaw/mind/habitDetector.js';
 
 /** The slice of a habit reading this builder needs (see mind/habitDetector). */
@@ -46,10 +47,6 @@ export function humanizeHabitAction(action: string): string {
   // A quoted file keeps its quotes; a bare noun gets an article once.
   if (/^open\s+(?!the\b|"|'|a\b|an\b)/.test(s)) s = s.replace(/^open\s+/, 'open the ');
   return s;
-}
-
-function titleCase(s: string): string {
-  return s.replace(/(^|\s)([a-z])/g, (_m, sp: string, c: string) => `${sp}${c.toUpperCase()}`);
 }
 
 /**

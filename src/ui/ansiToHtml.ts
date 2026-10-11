@@ -18,6 +18,8 @@
 // Colours resolve to theme tokens, not raw hex. A hardcoded 8-colour ANSI
 // palette is exactly the thing that turns unreadable in light mode.
 
+import { escapeHtml } from './format.js';
+
 // ─── Escape matching ─────────────────────────────────────────────────────────
 
 /**
@@ -172,14 +174,6 @@ function styleOf(state: SgrState): string {
   if (state.underline) parts.push('text-decoration:underline');
   if (state.dim) parts.push('opacity:0.7');
   return parts.join(';');
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 function wrap(escaped: string, state: SgrState): string {

@@ -14,6 +14,7 @@
 // is built so each phase plugs in without restructuring this file.
 
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { escapeHtml } from '../../ui/format.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { Emitter } from '../../platform/events.js';
 import { Dropdown } from '../../ui/dropdown.js';
@@ -717,10 +718,9 @@ class DashboardEditorPane implements IDisposable {
     if (!typeReg) {
       // Unavailable placeholder. Never evict the instance — layout, config,
       // and cached output all survive until the providing tool returns.
-      const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const source = row.providerToolId
-        ? `Provided by <code>${esc(row.providerToolId)}</code>, which isn't currently active.`
-        : `The "<code>${esc(row.widgetTypeId)}</code>" widget type is not registered.`;
+        ? `Provided by <code>${escapeHtml(row.providerToolId)}</code>, which isn't currently active.`
+        : `The "<code>${escapeHtml(row.widgetTypeId)}</code>" widget type is not registered.`;
       body.innerHTML = `
         <div class="dashboard-widget__unavailable">
           <strong>Widget unavailable</strong>

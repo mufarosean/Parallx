@@ -13,6 +13,7 @@
 // cannot keep is worse than no claim at all.
 
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
+import { formatBytes } from '../../ui/format.js';
 import type { ISettingsPanel } from '../../services/settingsPanelRegistry.js';
 import type {
   IPythonEnvService,
@@ -28,14 +29,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes <= 0) return '0 MB';
-  const mb = bytes / (1024 * 1024);
-  if (mb < 1) return '<1 MB';
-  if (mb < 1024) return `${Math.round(mb)} MB`;
-  return `${(mb / 1024).toFixed(1)} GB`;
 }
 
 function formatDuration(ms: number | null): string {
