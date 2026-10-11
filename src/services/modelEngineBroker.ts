@@ -40,6 +40,18 @@ export const LEASE_IDLE_MS = 90_000;
 export const TYPING_HOLD_MS = 4_000;
 /** Output cap for a background call that names none (thinking counts too). */
 export const BACKGROUND_MAX_TOKENS = 8_192;
+/** Output tokens a reasoning model may spend thinking before it answers. */
+export const REASONING_ROOM_TOKENS = 4_096;
+
+/**
+ * The output cap for a short answer from a model that reasons first. The cap
+ * counts the reasoning too, so a cap sized for the answer alone (a 3-word
+ * label at 30 tokens) leaves a reasoning model nothing to answer with. A
+ * model that does not reason stops at its answer either way.
+ */
+export function capWithReasoningRoom(answerTokens: number): number {
+  return answerTokens + REASONING_ROOM_TOKENS;
+}
 
 /** How a caller tags a call (IChatRequestOptions.engine). */
 export interface IEngineCallTag {

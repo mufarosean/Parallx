@@ -174,6 +174,37 @@ describe('OllamaProvider', () => {
       freshProvider.dispose();
     });
 
+    it('keeps inline <think> state per stream: one stream inside a tag does not file another stream\'s answer as reasoning', async () => {
+      const line = (content: string, done = false) => JSON.stringify({ model: 'test', message: { role: 'assistant', content }, done });
+      vi.stubGlobal('fetch', createMockFetch(new Map([
+        ['/api/version', () => jsonResponse({ version: '0.5.4' })],
+        ['/api/ps', () => jsonResponse({ models: [] })],
+        ['/api/tags', () => jsonResponse({ models: [] })],
+        ['/api/chat', () => streamResponse([line('<think>weighing the factors'), line(' still thinking'), line('', true)])],
+      ])));
+      const provider = new OllamaProvider();
+      const a = provider.sendChatRequest('test', [{ role: 'user' as const, content: 'A' }])[Symbol.asyncIterator]();
+      const first = await a.next();
+      expect(first.value?.thinking).toContain('weighing');
+
+      // A second stream starts while the first is inside its <think> tag.
+      vi.stubGlobal('fetch', createMockFetch(new Map([
+        ['/api/chat', () => streamResponse([line('The answer is 1.25.'), line('', true)])],
+      ])));
+      let content = '';
+      let thinking = '';
+      for await (const chunk of provider.sendChatRequest('test', [{ role: 'user' as const, content: 'B' }])) {
+        content += chunk.content;
+        thinking += chunk.thinking ?? '';
+      }
+      expect(content).toBe('The answer is 1.25.');
+      expect(thinking).toBe('');
+
+      const second = await a.next();
+      expect(second.value?.thinking).toContain('still thinking');
+      provider.dispose();
+    });
+
     it('says why it stopped: a reply that ran out of room ends with doneReason "length"', async () => {
       const chunks = [
         JSON.stringify({ model: 'test', message: { role: 'assistant', content: 'She turned to' }, done: false }),

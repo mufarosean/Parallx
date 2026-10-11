@@ -62,7 +62,7 @@ import { takeFileReveal } from '../fileReveal.js';
 // Inline-AI provider shape (chat extension's `chat.getInlineAIProvider`).
 type InlineAISendChat = (
   messages: readonly IChatMessage[],
-  options?: { temperature?: number; maxTokens?: number },
+  options?: { temperature?: number; maxTokens?: number; think?: boolean },
   signal?: AbortSignal,
 ) => AsyncIterable<IChatResponseChunk>;
 type InlineAIProvider = {
@@ -1319,9 +1319,15 @@ export class PdfEditorPane extends EditorPane {
       const signal = this._aiAbort.signal;
       let answer = '';
       try {
-        for await (const chunk of provider.sendChatRequest(messages, { temperature: 0.4 }, signal)) {
+        // The model reasons first; until its answer starts, the bubble says so.
+        for await (const chunk of provider.sendChatRequest(messages, { temperature: 0.4, think: true }, signal)) {
           if (signal.aborted) return;
+          if (chunk.thinking && !answer) {
+            aiBubble.textContent = 'Thinking\u2026';
+            aiBubble.classList.add('pdf-highlight-turn--thinking');
+          }
           if (chunk.content) {
+            aiBubble.classList.remove('pdf-highlight-turn--thinking');
             answer += chunk.content;
             aiBubble.textContent = answer;
             transcript.scrollTop = transcript.scrollHeight;

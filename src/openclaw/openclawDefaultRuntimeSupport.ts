@@ -892,7 +892,9 @@ function queueOpenclawMemoryWriteBack(
       ];
 
       let summaryText = '';
-      for await (const chunk of deps.sendSummarizationRequest(summaryPrompt)) {
+      // Background work: it waits while you chat, and a new turn takes the
+      // model from it (engine broker) instead of queuing behind it.
+      for await (const chunk of deps.sendSummarizationRequest(summaryPrompt, undefined, { engine: { priority: 'maintenance', label: 'Remembering this conversation' } })) {
         if (chunk.content) {
           summaryText += chunk.content;
         }

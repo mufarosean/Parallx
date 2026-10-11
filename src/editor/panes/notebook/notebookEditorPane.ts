@@ -64,7 +64,7 @@ import { getIcon } from '../../../ui/iconRegistry.js';
 export interface INotebookGenerateProvider {
   sendChatRequest(
     messages: readonly IChatMessage[],
-    options?: { temperature?: number; maxTokens?: number },
+    options?: { temperature?: number; maxTokens?: number; think?: boolean },
     signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk>;
 }
@@ -1269,8 +1269,11 @@ export class NotebookEditorPane extends EditorPane {
 
     try {
       let sawText = false;
-      for await (const chunk of provider.sendChatRequest(messages, { temperature: 0.2 }, abort.signal)) {
+      let saidThinking = false;
+      for await (const chunk of provider.sendChatRequest(messages, { temperature: 0.2, think: true }, abort.signal)) {
         if (abort.signal.aborted || this._torndown) break;
+        // The model reasons before it writes; say so instead of waiting silently.
+        if (chunk.thinking && !sawText && !saidThinking) { saidThinking = true; onStatus('Thinking\u2026'); }
         if (!chunk.content) continue;
         raw += chunk.content;
         if (!sawText) { sawText = true; onStatus('Writing…'); }

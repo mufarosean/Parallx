@@ -2,7 +2,7 @@
 // with room for the user's own question, the work goes as attached context;
 // an empty sheet refuses before anything is staged.
 import { describe, it, expect } from 'vitest';
-import { buildReviewContext, buildReviewRequest } from '../../src/built-in/worksheet/worksheetAi.js';
+import { buildReviewContext, buildReviewRequest, worksheetContextWindow } from '../../src/built-in/worksheet/worksheetAi.js';
 
 const sheet = (cells: Record<number, Record<number, { v?: unknown; f?: string }>>) =>
   JSON.stringify({ sheetOrder: ['s1'], sheets: { s1: { name: 'Sheet1', cellData: cells } } });
@@ -40,5 +40,18 @@ describe('buildReviewRequest', () => {
     // the user's question goes there before they send.
     expect(prompt).toMatch(/^[^\n]+\n\n$/);
     expect(context).toBe(buildReviewContext(item, work));
+  });
+});
+
+describe('worksheetContextWindow', () => {
+  it('holds the whole prompt and the answer, so the system prompt is never cut from the top', () => {
+    const promptChars = 60_000 + 2_000;
+    const window = worksheetContextWindow(promptChars);
+    expect(window).toBeGreaterThanOrEqual(Math.ceil(promptChars / 3) + 8_192);
+    expect(window % 2_048).toBe(0);
+  });
+
+  it('never asks for less than a small default window', () => {
+    expect(worksheetContextWindow(100)).toBe(8_192 + 2_048);
   });
 });

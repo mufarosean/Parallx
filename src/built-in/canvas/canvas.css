@@ -5030,6 +5030,11 @@
   color: var(--px-text);
 }
 
+.canvas-ai-chat-msg--assistant .canvas-ai-chat-msg-content.canvas-ai-chat-msg-content--thinking {
+  color: var(--px-text-secondary);
+  font-style: italic;
+}
+
 .canvas-ai-chat-msg--assistant .canvas-ai-chat-msg-content {
   background: color-mix(in srgb, var(--px-text) 4%, transparent);
   border: 1px solid var(--vscode-widget-border, color-mix(in srgb, var(--px-text) 6%, transparent));

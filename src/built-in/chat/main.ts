@@ -3153,7 +3153,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       const provider: {
         sendChatRequest: (
           messages: readonly IChatMessage[],
-          options?: { temperature?: number; maxTokens?: number },
+          options?: { temperature?: number; maxTokens?: number; think?: boolean },
           signal?: AbortSignal,
         ) => AsyncIterable<IChatResponseChunk>;
         retrieveContext?: (query: string) => Promise<string | undefined>;

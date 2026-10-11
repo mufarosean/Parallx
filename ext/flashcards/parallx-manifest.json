@@ -108,8 +108,8 @@
           },
           "flashcards.aiThinking": {
             "type": "boolean",
-            "default": false,
-            "description": "Let reasoning models (qwen3.x, DeepSeek-R1) think before writing cards or answering discussion questions. Slower per run; sometimes better on tricky material."
+            "default": true,
+            "description": "Let reasoning models (qwen3.x, DeepSeek-R1) think before writing cards, judging answers or answering discussion questions. Better cards with fewer mistakes, at the cost of slower runs. Turn it off only on a machine where generation is too slow."
           },
           "flashcards.dailyReminder": {
             "type": "boolean",

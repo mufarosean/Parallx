@@ -38,6 +38,7 @@ import { DatabaseDataService } from './database/databaseDataService.js';
 import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
 import { pageMoveTargets } from './pageMoveTargets.js';
+import type { SendChatRequestFn } from './menus/inlineAIChat.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -667,18 +668,22 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // 4b. Wire inline AI provider from chat tool (M10 Phase 7 — Task 7.3)
-  //     The chat tool may activate before or after the canvas tool.
-  //     Try immediately, and if the command doesn't exist yet, it's okay —
-  //     new editor panes created after the chat tool activates will get the provider.
-  api.commands.executeCommand<{
-    sendChatRequest: (...args: any[]) => AsyncIterable<any>;
+  // 4b. Inline AI from the chat tool (M10 Phase 7 — Task 7.3). The provider
+  //     is asked for at each request, not once here: chat and canvas start in
+  //     either order, and a provider asked for before chat registered it left
+  //     the selection's AI button dead for the whole session.
+  const resolveInlineAI = () => api.commands.executeCommand<{
+    sendChatRequest: SendChatRequestFn;
     retrieveContext?: (query: string) => Promise<string | undefined>;
-  }>('chat.getInlineAIProvider').then((provider) => {
-    if (provider?.sendChatRequest) {
-      editorProvider.setInlineAIProvider(provider.sendChatRequest, provider.retrieveContext);
-    }
-  }).catch(() => { /* chat tool not activated yet — that's fine */ });
+  }>('chat.getInlineAIProvider').catch(() => undefined);
+  editorProvider.setInlineAIProvider(
+    (messages, options, signal) => (async function* () {
+      const provider = await resolveInlineAI();
+      if (!provider?.sendChatRequest) throw new Error('The AI is not ready yet. Open the Chat panel and pick a model.');
+      yield* provider.sendChatRequest(messages, options, signal);
+    })(),
+    async (query) => (await resolveInlineAI())?.retrieveContext?.(query),
+  );
 
   // 5. Register command handlers
   _registerCommands(api, context);

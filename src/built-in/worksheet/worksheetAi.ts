@@ -14,7 +14,7 @@ export interface LmApiLike {
   sendChatRequest(
     modelId: string,
     messages: { role: string; content: string }[],
-    options?: { temperature?: number },
+    options?: { temperature?: number; think?: boolean; numCtx?: number },
   ): AsyncIterable<{ content?: string; done?: boolean }>;
   getActiveModel?(): string | undefined;
   getModels?(): Promise<{ id: string }[]>;
@@ -55,6 +55,21 @@ async function streamWithStall(
     if (step.done) return;
     onChunk(step.value);
   }
+}
+
+/** Output room for the items plus the reasoning before them (the window counts both). */
+const WS_OUTPUT_ROOM_TOKENS = 8_192;
+
+/**
+ * A context window that holds the whole prompt and the answer. Without one the
+ * request gets whatever window is loaded, and a prompt that overflows it is
+ * cut from the top: the system prompt with the JSON rules goes first.
+ * Characters per token is estimated low (3) so the window errs large; Ollama
+ * clamps it to the model's real maximum.
+ */
+export function worksheetContextWindow(promptChars: number): number {
+  const needed = Math.ceil(promptChars / 3) + WS_OUTPUT_ROOM_TOKENS;
+  return Math.max(8_192, Math.ceil(needed / 2_048) * 2_048);
 }
 
 // ── Item generation ─────────────────────────────────────────────────────────
@@ -132,7 +147,7 @@ export async function generateItems(
   const stream = lm.sendChatRequest(modelId, [
     { role: 'system', content: WS_GENERATE_SYSTEM },
     { role: 'user', content: user },
-  ], { temperature: 0.3 });
+  ], { temperature: 0.3, think: true, numCtx: worksheetContextWindow(WS_GENERATE_SYSTEM.length + user.length) });
   await streamWithStall(stream, (chunk) => { if (chunk.content) output += chunk.content; });
 
   const { items, error } = extractItemsJson(output);
@@ -214,7 +229,7 @@ export async function reviewAttempt(
   const stream = lm.sendChatRequest(modelId, [
     { role: 'system', content: WS_REVIEW_SYSTEM },
     { role: 'user', content: user },
-  ], { temperature: 0.3 });
+  ], { temperature: 0.3, think: true, numCtx: worksheetContextWindow(WS_REVIEW_SYSTEM.length + user.length) });
   await streamWithStall(stream, (chunk) => {
     if (chunk.content) {
       output += chunk.content;

@@ -242,9 +242,6 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
    */
   private _lastNumCtx = 0;
 
-  /** Tracks whether we're inside a `<think>` tag across stream chunks. */
-  private _inThinkTag = false;
-
   /** Models that returned 400 for think:true — skip on subsequent calls. */
   private _noThinkModels = new Set<string>();
 
@@ -283,7 +280,6 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
   /** Reset streaming parser state (called on model switch to avoid stale artifacts). */
   resetStreamState(): void {
-    this._inThinkTag = false;
     this._noThinkModels.clear();
   }
 
@@ -506,12 +502,11 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     options?: IChatRequestOptions,
     signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk> {
-    // Per-request parser reset: a stream aborted mid-<think> (user cancel,
-    // stall timeout, regenerate) never reaches the done-chunk reset below,
-    // leaving _inThinkTag latched — the NEXT response would then be silently
-    // reclassified as thinking in its entirety and render as an empty reply.
-    // Tag tracking is per-stream state, so it must not survive across requests.
-    this._inThinkTag = false;
+    // Whether this stream is inside an inline <think> tag. Per stream, never
+    // on the provider: the chat and a feature can stream at the same time,
+    // and a shared flag let one stream's open tag file the other's answer as
+    // reasoning (and a stream aborted mid-tag latched it for the next one).
+    const thinkTag = { open: false };
 
     // Build request body
     const body: Record<string, unknown> = {
@@ -675,7 +670,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
           }
 
           if (chunk.done) { receivedDone = true; }
-          yield this._parseChunk(chunk);
+          yield this._parseChunk(chunk, thinkTag);
         }
       }
 
@@ -693,7 +688,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
           }
           if (chunk.done) { receivedDone = true; }
           if (chunk.message) {
-            yield this._parseChunk(chunk);
+            yield this._parseChunk(chunk, thinkTag);
           }
         }
       }
@@ -763,7 +758,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     };
   }
 
-  private _parseChunk(chunk: OllamaChatChunk): IChatResponseChunk {
+  private _parseChunk(chunk: OllamaChatChunk, thinkTag: { open: boolean }): IChatResponseChunk {
     let content = chunk.message.content || '';
     let thinking = chunk.message.thinking || undefined;
 
@@ -771,11 +766,11 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     // reasoning in the content stream (e.g. DeepSeek-R1 via older Ollama).
     // Extract thinking text and strip the tags from the content.
     if (!thinking && content) {
-      const parsed = _extractInlineThinking(content, this._inThinkTag);
+      const parsed = _extractInlineThinking(content, thinkTag.open);
       if (parsed) {
         content = parsed.content;
         thinking = parsed.thinking || undefined;
-        this._inThinkTag = parsed.stillInTag;
+        thinkTag.open = parsed.stillInTag;
       }
     }
 
@@ -791,11 +786,6 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       evalDuration: chunk.eval_duration,
       ...(chunk.done && chunk.done_reason ? { doneReason: chunk.done_reason } : {}),
     };
-
-    // Reset tag tracker on final chunk
-    if (chunk.done) {
-      this._inThinkTag = false;
-    }
 
     return result;
   }

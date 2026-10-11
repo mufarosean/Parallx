@@ -820,6 +820,11 @@
   max-width: 100%;
 }
 
+.pdf-highlight-turn.is-ai.pdf-highlight-turn--thinking {
+  color: var(--px-text-secondary);
+  font-style: italic;
+}
+
 .pdf-highlight-turn-error {
   color: var(--px-danger);
 }

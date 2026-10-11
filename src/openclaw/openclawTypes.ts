@@ -156,7 +156,7 @@ export interface IOpenclawRuntimeLifecycle {
       storeSessionMemory?: (sessionId: string, summary: string, messageCount: number) => Promise<void>;
       isSessionEligibleForSummary?: (messageCount: number) => boolean;
       getSessionMemoryMessageCount?: (sessionId: string) => Promise<number | null>;
-      sendSummarizationRequest?: (messages: readonly IChatMessage[], signal?: AbortSignal) => AsyncIterable<IChatResponseChunk>;
+      sendSummarizationRequest?: (messages: readonly IChatMessage[], signal?: AbortSignal, options?: { readonly engine?: import('../services/modelEngineBroker.js').IEngineCallTag }) => AsyncIterable<IChatResponseChunk>;
       buildFallbackSessionSummary: (history: readonly { request: { text: string } }[], currentRequestText: string) => string;
     },
     options: {

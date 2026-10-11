@@ -2646,7 +2646,7 @@ async function fcJudgeDuplicateClusters(clusters, cardById, { onProgress } = {})
     let judged = null;
     try {
       const chars = group.reduce((n, c) => n + clusterText(c).length, 0);
-      const { numCtx } = fcContextPlan({ chars, count: group.length, modelCtx, setting: contextSetting });
+      const { numCtx } = fcContextPlan({ chars, count: group.length, modelCtx, setting: contextSetting, think });
       const user = group.map((c, i) => `CLUSTER ${i + 1}\n${clusterText(c)}`).join('\n\n---\n\n');
       let output = '';
       const stream = _api.lm.sendChatRequest(modelId, [
@@ -2745,7 +2745,7 @@ async function fcJudgeGenerationDups(cards, dups) {
         const ex = byId.get(dups[cardIdx].matchId);
         return `PAIR ${k + 1}\nNEW CARD:\nFRONT: ${c.front}\nBACK: ${c.back}\nEXISTING CARD:\nFRONT: ${ex?.front ?? dups[cardIdx].matchFront}\nBACK: ${ex?.back ?? '(unavailable)'}`;
       }).join('\n\n---\n\n');
-      const { numCtx } = fcContextPlan({ chars: user.length, count: group.length, modelCtx, setting: contextSetting });
+      const { numCtx } = fcContextPlan({ chars: user.length, count: group.length, modelCtx, setting: contextSetting, think });
       let output = '';
       const stream = _api.lm.sendChatRequest(modelId, [
         { role: 'system', content: FC_PAIR_JUDGE_SYSTEM },
@@ -2814,7 +2814,7 @@ async function fcScoreDeckImportance(deckId, { onProgress } = {}) {
     const group = rows.slice(start, start + BATCH);
     try {
       const user = group.map((r) => `CARD ${r.id}:\nFRONT: ${r.front}\nBACK: ${r.back}`).join('\n\n---\n\n');
-      const { numCtx } = fcContextPlan({ chars: user.length, count: group.length, modelCtx, setting: contextSetting });
+      const { numCtx } = fcContextPlan({ chars: user.length, count: group.length, modelCtx, setting: contextSetting, think });
       let output = '';
       const stream = _api.lm.sendChatRequest(modelId, [
         { role: 'system', content: FC_SCORE_SYSTEM },
@@ -2906,7 +2906,7 @@ async function fcClassifyDeckRecall(deckId, { onProgress } = {}) {
     try {
       const user = group.map((r) => `CARD ${r.id}:\nFRONT: ${r.front}\nBACK: ${r.back}`).join('\n\n---\n\n');
       const { numCtx } = fcContextPlan({
-        chars: user.length, count: group.length, modelCtx, setting: contextSetting, withRubrics: true,
+        chars: user.length, count: group.length, modelCtx, setting: contextSetting, withRubrics: true, think,
       });
       let output = '';
       const stream = _api.lm.sendChatRequest(modelId, [
@@ -2964,7 +2964,7 @@ async function fcCoverageReview(docs, deckCards, { onChunk } = {}) {
   // Existing cards ride in the prompt too — budget for both.
   const cardsBlock = deckCards.map((c, i) => `${i + 1}. ${c.front} => ${c.back.slice(0, 200)}`).join('\n');
   const { numCtx, maxChars } = fcContextPlan({
-    chars: totalChars + cardsBlock.length, count: 20, modelCtx, setting: contextSetting,
+    chars: totalChars + cardsBlock.length, count: 20, modelCtx, setting: contextSetting, think,
   });
   const built = docs.length > 1
     ? fcBuildMaterialDocs(docs, Math.max(4000, maxChars - cardsBlock.length))
@@ -3556,6 +3556,8 @@ const FC_SCAFFOLD_TOKENS = 600;
  */
 const FC_OUTPUT_BASE_TOKENS = 1500;
 const FC_OUTPUT_TOKENS_PER_CARD = 280;
+/** Output tokens a reasoning model may spend thinking before its answer. */
+const FC_REASONING_TOKENS = 4096;
 /**
  * Extra output reserve per card when generation also emits a recall mode and
  * a rubric (M102). A rubric is 2-6 claims at roughly 15 tokens each plus the
@@ -3591,10 +3593,12 @@ const FC_FALLBACK_MODEL_CTX = 131072;
  * clip limit for the chosen window — in auto mode it only bites when even
  * the model's maximum window can't hold document + output.
  */
-function fcContextPlan({ chars, count = 15, modelCtx = 0, setting = 0, withRubrics = false } = {}) {
+function fcContextPlan({ chars, count = 15, modelCtx = 0, setting = 0, withRubrics = false, think = false } = {}) {
   const nCards = Math.min(50, Math.max(1, Number(count) || 15));
   const perCard = FC_OUTPUT_TOKENS_PER_CARD + (withRubrics ? FC_OUTPUT_TOKENS_PER_RUBRIC : 0);
-  const outputTokens = FC_OUTPUT_BASE_TOKENS + perCard * nCards;
+  // A model that reasons spends output tokens on that first, inside the same
+  // window: without room for it, the cards' JSON is cut off.
+  const outputTokens = FC_OUTPUT_BASE_TOKENS + perCard * nCards + (think ? FC_REASONING_TOKENS : 0);
   const ceiling = modelCtx > 0 ? modelCtx : FC_FALLBACK_MODEL_CTX;
   let numCtx;
   if (Number.isFinite(setting) && setting > 0) {
@@ -3621,7 +3625,7 @@ function fcContextPlan({ chars, count = 15, modelCtx = 0, setting = 0, withRubri
 function fcAiOptions() {
   return {
     contextSetting: Number(cfg('generationContext', 0)) || 0,
-    think: !!cfg('aiThinking', false),
+    think: !!cfg('aiThinking', true),
   };
 }
 
@@ -3774,7 +3778,7 @@ async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts
   const planCount = count ?? fcAutoCardEstimate(totalChars);
   const withRubrics = fcProductionRecallEnabled();
   const { numCtx, maxChars } = fcContextPlan({
-    chars: totalChars, count: planCount, modelCtx, setting: contextSetting, withRubrics,
+    chars: totalChars, count: planCount, modelCtx, setting: contextSetting, withRubrics, think,
   });
   const built = multiDoc
     ? fcBuildMaterialDocs(docs, maxChars)
@@ -3932,9 +3936,9 @@ const FC_MARK_OUTPUT_TOKENS = 700;
  * excerpt capped at 2K chars, a short rubric, one answer — so it plans from
  * the real lengths rather than borrowing generation's card-count model.
  */
-function fcMarkNumCtx(promptChars) {
+function fcMarkNumCtx(promptChars, think = false) {
   const tokens = Math.ceil(promptChars / FC_CHARS_PER_TOKEN * FC_PROMPT_HEADROOM)
-    + FC_SCAFFOLD_TOKENS + FC_MARK_OUTPUT_TOKENS;
+    + FC_SCAFFOLD_TOKENS + FC_MARK_OUTPUT_TOKENS + (think ? FC_REASONING_TOKENS : 0);
   return Math.max(2048, Math.ceil(tokens / 1024) * 1024);
 }
 
@@ -3961,7 +3965,7 @@ async function fcDeriveRubric(card) {
   const stream = _api.lm.sendChatRequest(modelId, [
     { role: 'system', content: FC_RUBRIC_SYSTEM },
     { role: 'user', content: user },
-  ], { temperature: 0.1, think, numCtx: fcMarkNumCtx(user.length) });
+  ], { temperature: 0.1, think, numCtx: fcMarkNumCtx(user.length, think) });
   await fcStreamWithStall(stream, (chunk) => { if (chunk.content) output += chunk.content; });
   const { items } = fcExtractJsonArray(output, (parsed) => fcNormalizeRubric(parsed));
   return fcNormalizeRubric(items);
@@ -4010,7 +4014,7 @@ async function fcMarkAnswer(card, answer, rubric, { provisional = null } = {}) {
   const stream = _api.lm.sendChatRequest(modelId, [
     { role: 'system', content: FC_MARK_SYSTEM },
     { role: 'user', content: user },
-  ], { temperature: 0, think, numCtx: fcMarkNumCtx(user.length) });
+  ], { temperature: 0, think, numCtx: fcMarkNumCtx(user.length, think) });
   await fcStreamWithStall(stream, (chunk) => { if (chunk.content) output += chunk.content; });
   const raw = fcExtractJsonObject(output);
   if (!raw) {
@@ -4164,7 +4168,7 @@ async function fcAiTranscribePairs(cards, { onProgress } = {}) {
       const chars = group.reduce((n, c) => n + c.front.length + c.back.length, 0);
       // chars * 2: the prompt holds the raw text AND the output reserve must
       // hold its cleaned twin.
-      const { numCtx } = fcContextPlan({ chars: chars * 2, count: group.length, modelCtx, setting: contextSetting });
+      const { numCtx } = fcContextPlan({ chars: chars * 2, count: group.length, modelCtx, setting: contextSetting, think });
       const user = group.map((c, i) =>
         `CARD ${i + 1}\nFRONT:\n${c.front}\nBACK:\n${c.back}`).join('\n\n---\n\n');
       let output = '';
@@ -4202,7 +4206,7 @@ async function fcGenerateStudyNotes(card) {
     card.sourceExcerpt ? `SOURCE EXCERPT:\n${card.sourceExcerpt}` : '',
     card.notes ? `EXISTING LEARNER NOTES:\n${card.notes}` : '',
   ].filter(Boolean).join('\n\n');
-  const { numCtx, maxChars } = fcContextPlan({ chars: material.length, count: 1, modelCtx, setting: contextSetting });
+  const { numCtx, maxChars } = fcContextPlan({ chars: material.length, count: 1, modelCtx, setting: contextSetting, think });
   let output = '';
   const stream = _api.lm.sendChatRequest(modelId, [
     { role: 'system', content: [
@@ -4248,7 +4252,7 @@ async function fcGenerateRewrites(card) {
     card.notes ? `NOTES: ${card.notes}` : '',
     card.sourceLabel ? `SOURCE: ${card.sourceLabel}` : '',
   ].filter(Boolean).join('\n');
-  const { numCtx } = fcContextPlan({ chars: user.length, count: 3, modelCtx, setting: contextSetting });
+  const { numCtx } = fcContextPlan({ chars: user.length, count: 3, modelCtx, setting: contextSetting, think });
   let output = '';
   const stream = _api.lm.sendChatRequest(modelId, [
     { role: 'system', content: FC_REWRITE_SYSTEM },

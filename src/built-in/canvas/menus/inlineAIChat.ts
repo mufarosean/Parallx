@@ -27,7 +27,7 @@ export interface InlineAIChatHost {
 /** Function that streams an AI response for given messages. */
 export type SendChatRequestFn = (
   messages: readonly IChatMessage[],
-  options?: { temperature?: number; maxTokens?: number },
+  options?: { temperature?: number; maxTokens?: number; think?: boolean },
   signal?: AbortSignal,
 ) => AsyncIterable<IChatResponseChunk>;
 
@@ -329,10 +329,17 @@ export class InlineAIChatController implements ICanvasMenu {
     let result = '';
 
     try {
-      const stream = this._sendChatRequest(messagesToSend, { temperature: 0.5 }, signal);
+      // The model reasons first; until its answer starts, the bubble says so
+      // instead of sitting empty.
+      const stream = this._sendChatRequest(messagesToSend, { temperature: 0.5, think: true }, signal);
       for await (const chunk of stream) {
         if (signal.aborted) return;
+        if (chunk.thinking && !result) {
+          contentEl.textContent = 'Thinking\u2026';
+          contentEl.classList.add('canvas-ai-chat-msg-content--thinking');
+        }
         if (chunk.content) {
+          contentEl.classList.remove('canvas-ai-chat-msg-content--thinking');
           result += chunk.content;
           contentEl.textContent = result;
           this._scrollToBottom();

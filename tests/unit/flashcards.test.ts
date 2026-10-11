@@ -1208,6 +1208,13 @@ describe('fcContextPlan', () => {
     expect(many.outputTokens).toBeGreaterThan(few.outputTokens);
     expect(many.maxChars).toBeLessThan(few.maxChars);
   });
+
+  it('leaves room for reasoning when the model thinks, so the cards are not cut off', () => {
+    const plain = fcContextPlan({ chars: 20_000, count: 15, modelCtx: 262_144, setting: 0 });
+    const thinking = fcContextPlan({ chars: 20_000, count: 15, modelCtx: 262_144, setting: 0, think: true });
+    expect(thinking.outputTokens - plain.outputTokens).toBeGreaterThanOrEqual(4096);
+    expect(thinking.numCtx).toBeGreaterThan(plain.numCtx);
+  });
 });
 
 describe('fcParseTags', () => {

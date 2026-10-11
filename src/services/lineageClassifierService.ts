@@ -38,6 +38,7 @@ import type {
   SemanticGraphSourceType,
 } from './semanticGraphService.js';
 import { semanticSourceToNodeId } from './semanticGraphService.js';
+import { capWithReasoningRoom } from './modelEngineBroker.js';
 
 const PASS_ID = 'lineage';
 const PASS_DISPLAY_NAME = 'Lineage classification';
@@ -376,7 +377,9 @@ export class LineageClassifierService extends Disposable {
         modelId,
         messages,
         // Automatic background work: waits while you chat (engine broker).
-        { temperature: 0.1, format: 'json', maxTokens: 200, engine: { priority: 'maintenance', label: 'Linking pages' } },
+        // The model reasons first, so the cap leaves room for that before
+        // the 200-token JSON answer.
+        { temperature: 0.1, format: 'json', think: true, maxTokens: capWithReasoningRoom(200), engine: { priority: 'maintenance', label: 'Linking pages' } },
         signal,
       );
       for await (const chunk of stream) {
