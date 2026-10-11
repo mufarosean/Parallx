@@ -34,6 +34,18 @@ describe('Mozilla Readability — vendored at pinned SHA (M65 F1)', () => {
     expect(raw).not.toContain('Readability not vendored yet');
   });
 
+  it('keeps its non-ASCII patterns intact (no mojibake from a wrong-encoding save)', () => {
+    // A copy saved through the wrong encoding turns » into Â», and the
+    // next-page and title-separator regexes silently stop matching.
+    const browserCopy = readFileSync(path.resolve(path.dirname(READABILITY_PATH), '../browser/main.js'), 'utf8');
+    for (const [name, text] of [['readability.js', raw], ['browser/main.js', browserCopy]] as const) {
+      expect(text, name).not.toMatch(/Â[«»]|â€[“”–—¦]|Ã©/);
+      expect(text, name).toContain('|»([^\\|]|$))/i');
+      expect(text, name).toContain('/(prev|earl|old|new|<|«)/i');
+      expect(text, name).toContain('正在加载|Загрузка');
+    }
+  });
+
   it('exports Readability for ES-module consumers', () => {
     expect(raw).toMatch(/export\s*\{\s*Readability\s*\}/);
   });

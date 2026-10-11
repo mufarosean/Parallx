@@ -2465,8 +2465,8 @@ Readability.prototype = {
     videos:
       /\/\/(www\.)?((dailymotion|youtube|youtube-nocookie|player\.vimeo|v\.qq|bilibili|live.bilibili)\.com|(archive|upload\.wikimedia)\.org|player\.twitch\.tv)/i,
     shareElements: /(\b|_)(share|sharedaddy)(\b|_)/i,
-    nextLink: /(next|weiter|continue|>([^\|]|$)|Â»([^\|]|$))/i,
-    prevLink: /(prev|earl|old|new|<|Â«)/i,
+    nextLink: /(next|weiter|continue|>([^\|]|$)|»([^\|]|$))/i,
+    prevLink: /(prev|earl|old|new|<|«)/i,
     tokenize: /\W+/g,
     whitespace: /^\s*$/,
     hasContent: /\S$/,
@@ -2481,9 +2481,9 @@ Readability.prototype = {
       /^Article|AdvertiserContentArticle|NewsArticle|AnalysisNewsArticle|AskPublicNewsArticle|BackgroundNewsArticle|OpinionNewsArticle|ReportageNewsArticle|ReviewNewsArticle|Report|SatiricalArticle|ScholarlyArticle|MedicalScholarlyArticle|SocialMediaPosting|BlogPosting|LiveBlogPosting|DiscussionForumPosting|TechArticle|APIReference$/,
     // used to see if a node's content matches words commonly used for ad blocks or loading indicators
     adWords:
-      /^(ad(vertising|vertisement)?|pub(licitÃ©)?|werb(ung)?|å¹¿å‘Š|Ð ÐµÐºÐ»Ð°Ð¼Ð°|Anuncio)$/iu,
+      /^(ad(vertising|vertisement)?|pub(licité)?|werb(ung)?|广告|Реклама|Anuncio)$/iu,
     loadingWords:
-      /^((loading|æ­£åœ¨åŠ è½½|Ð—Ð°Ð³Ñ€ÑƒÐ·ÐºÐ°|chargement|cargando)(â€¦|\.\.\.)?)$/iu,
+      /^((loading|正在加载|Загрузка|chargement|cargando)(…|\.\.\.)?)$/iu,
   },
 
   UNLIKELY_ROLES: [
@@ -2905,9 +2905,9 @@ Readability.prototype = {
     }
 
     // If there's a separator in the title, first remove the final part
-    const titleSeparators = /\|\-â€“â€”\\\/>Â»/.source;
+    const titleSeparators = /\|\-–—\\\/>»/.source;
     if (new RegExp(`\\s[${titleSeparators}]\\s`).test(curTitle)) {
-      titleHadHierarchicalSeparators = /\s[\\\/>Â»]\s/.test(curTitle);
+      titleHadHierarchicalSeparators = /\s[\\\/>»]\s/.test(curTitle);
       let allSeparators = Array.from(
         origTitle.matchAll(new RegExp(`\\s[${titleSeparators}]\\s`, "gi"))
       );
@@ -2952,7 +2952,7 @@ Readability.prototype = {
 
     curTitle = curTitle.trim().replace(this.REGEXPS.normalize, " ");
     // If we now have 4 words or fewer as our title, and either no
-    // 'hierarchical' separators (\, /, > or Â») were found in the original
+    // 'hierarchical' separators (\, /, > or ») were found in the original
     // title or we decreased the number of words by more than 1 word, use
     // the original title.
     var curTitleWordCount = wordCount(curTitle);
@@ -4086,7 +4086,7 @@ Readability.prototype = {
   /**
    * Attempts to get excerpt and byline metadata for the article.
    *
-   * @param {Object} jsonld â€” object containing any metadata that
+   * @param {Object} jsonld — object containing any metadata that
    * could be extracted from JSON-LD object.
    *
    * @return Object with optional "excerpt" and "byline" properties
