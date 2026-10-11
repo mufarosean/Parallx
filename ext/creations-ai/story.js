@@ -562,7 +562,7 @@ export function renderStoryPane(container, parallx, ctx, deps) {
     return { modelId, numCtx: ctxPick > 0 ? ctxPick : (settings.defaultContextWindow || undefined), dialogueRules: typeof settings.dialogueRules === 'string' ? settings.dialogueRules : '' };
   }
   async function streamText(modelId, numCtx, messages, onPartial, options = {}) {
-    const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.85, think: false, numCtx, ...options });
+    const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.85, think: true, numCtx, ...options });
     let text = '';
     for await (const chunk of stream) {
       if (state.disposed || state.stop) break;

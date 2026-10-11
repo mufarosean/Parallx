@@ -85,6 +85,8 @@ export interface ISummarizationRequestOptions {
   readonly numCtx?: number;
   /** The run asking (model engine broker); see IChatRequestOptions.engine. */
   readonly engine?: import('../../services/modelEngineBroker.js').IEngineCallTag;
+  /** Let the model reason before it writes the summary. */
+  readonly think?: boolean;
 }
 
 export interface IDefaultParticipantServices {

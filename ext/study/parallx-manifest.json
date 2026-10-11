@@ -39,7 +39,7 @@
       "study.syllabus":           { "type": "string",  "default": "", "editPresentation": "multilineText", "rows": 8, "description": "What your exam expects: paste the syllabus or learning objectives. Concepts and questions are aimed at it. Empty: questions follow the material alone." },
       "study.aiModel":            { "type": "string",  "default": "", "description": "Model id used to write and grade questions. Leave empty to use the chat's active model." },
       "study.generationContext":  { "type": "number",  "default": 0,  "description": "Context window (tokens) for generation and grading. 0 = auto: sized per run from the scope's length and the model's limit. A fixed value caps VRAM on a smaller machine." },
-      "study.aiThinking":         { "type": "boolean", "default": false, "description": "Let reasoning models think before writing or grading. Slower; sometimes better on dense material." },
+      "study.aiThinking":         { "type": "boolean", "default": true, "description": "Let reasoning models think before writing or grading. Better questions and fairer grading, at the cost of slower runs. Turn it off only on a machine where generation is too slow." },
       "study.checkAnchor":        { "type": "boolean", "default": true, "description": "Drop a question whose quote is not on its page." },
       "study.checkSupport":       { "type": "boolean", "default": true, "description": "Drop a question whose quote, read with its page, does not settle its answer." },
       "study.checkDistractors":   { "type": "boolean", "default": true, "description": "Drop a multiple-choice question when any wrong option could be defended as correct." },

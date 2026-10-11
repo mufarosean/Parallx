@@ -560,6 +560,7 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
         { role: 'user', content: userMessage },
       ],
       {
+        think: true,
         temperature: config.model.temperature,
         maxTokens: config.model.maxTokens || undefined,
       },

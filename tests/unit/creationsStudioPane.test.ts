@@ -190,7 +190,7 @@ describe('the Studio screen', () => {
     expect(w.ctx.onCreated).toHaveBeenCalledTimes(1);
     expect(root.querySelector('.cs-chip')?.textContent).toBe('Saved');
     const sheetReq = w.requests.find((r) => r.messages[0].content.includes('character designer for roleplay fiction'))!;
-    expect(sheetReq.options).toMatchObject({ format: 'json', think: false, numCtx: 4096 });
+    expect(sheetReq.options).toMatchObject({ format: 'json', think: true, numCtx: 4096 });
     expect(sheetReq.messages[1].content).not.toContain('ATTRIBUTES');
     // The shipped sheet structure rides in the request: Appearance in sections, one paragraph each.
     expect(sheetReq.messages[1].content).toMatch(/"appearance": written as 5 separate paragraphs/);

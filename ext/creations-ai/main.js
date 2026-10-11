@@ -2562,6 +2562,14 @@ function parseSlashCommand(input) {
 // could starve the model of conversation entirely and produce drift.
 const MIN_HISTORY_FRACTION = 0.15;
 
+/**
+ * Output tokens a model may spend reasoning before it answers. Every
+ * Creations call reasons (Mufaro, 2026-10-11); a call with an output cap
+ * adds this on top, because the cap counts the reasoning too and a cap
+ * sized for the answer alone leaves nothing to answer with.
+ */
+const TG_REASONING_TOKENS = 4096;
+
 function computeTokenBudget(contextWindow, settings = null) {
   const total = Math.max(0, Math.floor(contextWindow));
   // Clamp negatives — a malformed settings file used to flip the lane.
@@ -4719,7 +4727,7 @@ async function autoExtractMemoryBackground({
     const stream = parallx.lm.sendChatRequest(modelId, [
       { role: 'system', content: sysPrompt },
       { role: 'user', content: userPrompt },
-    ], { temperature: 0.2, maxTokens: 1500, think: false, format: 'json', ...(numCtx ? { numCtx } : {}) });
+    ], { temperature: 0.2, maxTokens: 1500 + TG_REASONING_TOKENS, think: true, format: 'json', ...(numCtx ? { numCtx } : {}) });
     let raw = '';
     for await (const chunk of stream) {
       if (chunk?.content) raw += chunk.content;
@@ -6066,7 +6074,7 @@ function renderChatEditor(container, parallx, input) {
       if (run !== _directionsRun) return;
       // Room for every option asked for: the Narrator's, then each character's.
       const optionCount = (narratorKinds.length ? narratorKinds.length : 0) + (characterKinds.length ? chosen.length * characterKinds.length : 0);
-      const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, maxTokens: directorReplyTokens(optionCount), think: false, ...(numCtx ? { numCtx } : {}) });
+      const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature: 0.9, maxTokens: directorReplyTokens(optionCount) + TG_REASONING_TOKENS, think: true, ...(numCtx ? { numCtx } : {}) });
       for await (const chunk of stream) {
         if (run !== _directionsRun) return;
         if (!chunk?.content) continue;
@@ -7348,7 +7356,8 @@ function renderChatEditor(container, parallx, input) {
         { role: 'system', content: `You are a turn-order selector for a group roleplay. Available characters: ${charNames.join(', ')}. The last speaker was "${lastCharFile ? (characters.find(c => c.fileName === lastCharFile)?.frontmatter.name || lastCharFile) : 'unknown'}". Based on the recent conversation, reply with ONLY the name of the character who should speak next. Do not add any explanation.` },
         { role: 'user', content: recentLines || '(conversation just started)' },
       ];
-      const stream = parallx.lm.sendChatRequest(modelId, prompt, { temperature: 0.3, maxTokens: 30 });
+      // The cap leaves room to reason before the name (30 tokens alone went to reasoning).
+      const stream = parallx.lm.sendChatRequest(modelId, prompt, { temperature: 0.3, think: true, maxTokens: 30 + TG_REASONING_TOKENS });
       let response = '';
       for await (const chunk of stream) {
         if (chunk.content) response += chunk.content;

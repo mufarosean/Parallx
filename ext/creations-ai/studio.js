@@ -1275,7 +1275,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     return { modelId, numCtx };
   }
   async function streamJson(modelId, numCtx, messages, onPartial, temperature = 0.9) {
-    const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature, think: false, format: 'json', numCtx });
+    const stream = parallx.lm.sendChatRequest(modelId, messages, { temperature, think: true, format: 'json', numCtx });
     let raw = '';
     for await (const chunk of stream) {
       if (state.disposed) break;
@@ -1486,7 +1486,7 @@ export function renderStudioPane(container, parallx, ctx, deps) {
     tryYou.textContent = line;
     try {
       const { modelId, numCtx } = await resolveModel();
-      const stream = parallx.lm.sendChatRequest(modelId, buildTryLineMessages(state.sheet, line), { temperature: 0.85, think: false, numCtx });
+      const stream = parallx.lm.sendChatRequest(modelId, buildTryLineMessages(state.sheet, line), { temperature: 0.85, think: true, numCtx });
       let text = '';
       for await (const chunk of stream) {
         if (state.disposed) break;

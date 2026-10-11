@@ -30553,9 +30553,11 @@ async function moTagOnePhoto(photoId, model, mode = 'add') {
       images: images.map((im, i) => ({ kind: 'image', id: `mo-ai-tag-${photoId}-${i}`, name, mimeType: im.mimeType, data: im.data })),
     },
   ];
-  // Temperature 0 and no thinking: this is classification. The context size
-  // is left to the provider, because changing it makes Ollama reload the model.
-  const options = { temperature: 0, think: false, format: moTagReplySchema(entries.map((e) => e.path)) };
+  // Temperature 0: this is classification. The model reasons before it picks
+  // (Mufaro, 2026-10-11: every feature reasons); no output cap, so the
+  // reasoning never crowds out the tag list. The context size is left to the
+  // provider, because changing it makes Ollama reload the model.
+  const options = { temperature: 0, think: true, format: moTagReplySchema(entries.map((e) => e.path)) };
   let text = '';
   for await (const chunk of _api.lm.sendChatRequest(model.id, messages, options)) {
     if (chunk && typeof chunk.content === 'string') text += chunk.content;

@@ -156,7 +156,7 @@ export interface IOpenclawRuntimeLifecycle {
       storeSessionMemory?: (sessionId: string, summary: string, messageCount: number) => Promise<void>;
       isSessionEligibleForSummary?: (messageCount: number) => boolean;
       getSessionMemoryMessageCount?: (sessionId: string) => Promise<number | null>;
-      sendSummarizationRequest?: (messages: readonly IChatMessage[], signal?: AbortSignal, options?: { readonly engine?: import('../services/modelEngineBroker.js').IEngineCallTag }) => AsyncIterable<IChatResponseChunk>;
+      sendSummarizationRequest?: (messages: readonly IChatMessage[], signal?: AbortSignal, options?: { readonly engine?: import('../services/modelEngineBroker.js').IEngineCallTag; readonly think?: boolean }) => AsyncIterable<IChatResponseChunk>;
       buildFallbackSessionSummary: (history: readonly { request: { text: string } }[], currentRequestText: string) => string;
     },
     options: {
@@ -253,7 +253,7 @@ export interface IDefaultParticipantServices {
   getModelContextLength?(): number;
   /** A run's own context window, when it names one (a routine's "Context"). Background runs size their prompt to it. */
   getSessionContextWindow?(sessionId: string): number | undefined;
-  sendSummarizationRequest?(messages: readonly IChatMessage[], signal?: AbortSignal, options?: { readonly numCtx?: number; readonly engine?: IChatRequestOptions['engine'] }): AsyncIterable<IChatResponseChunk>;
+  sendSummarizationRequest?(messages: readonly IChatMessage[], signal?: AbortSignal, options?: { readonly numCtx?: number; readonly engine?: IChatRequestOptions['engine']; readonly think?: boolean }): AsyncIterable<IChatResponseChunk>;
   getFileCount?(): Promise<number>;
   isRAGAvailable?(): boolean;
   isIndexing?(): boolean;

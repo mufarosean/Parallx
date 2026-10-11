@@ -844,10 +844,11 @@ export class ChatDataService {
     // conversation is at the window's edge. Sent without num_ctx it fell back
     // to the provider default and was truncated or rejected on exactly the
     // sessions that needed it. The caller passes the session's own budget.
-    const requestOptions: IChatRequestOptions | undefined = (options?.numCtx && options.numCtx > 0) || options?.engine
+    const requestOptions: IChatRequestOptions | undefined = (options?.numCtx && options.numCtx > 0) || options?.engine || options?.think !== undefined
       ? {
         ...(options?.numCtx && options.numCtx > 0 ? { numCtx: options.numCtx } : {}),
         ...(options?.engine ? { engine: options.engine } : {}),
+        ...(options?.think !== undefined ? { think: options.think } : {}),
       }
       : undefined;
     // Compaction uses the selected model's registered provider just like a

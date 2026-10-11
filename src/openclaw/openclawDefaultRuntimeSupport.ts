@@ -301,7 +301,8 @@ async function executeOpenclawInitCommand(
 
   let generatedContent = '';
   try {
-    for await (const chunk of services.sendChatRequest(messages, undefined, signal)) {
+    for await (const chunk of services.sendChatRequest(messages, { think: true }, signal)) {
+      if (chunk.thinking) response.thinking(chunk.thinking);
       if (chunk.content) {
         generatedContent += chunk.content;
         response.markdown(chunk.content);
@@ -481,7 +482,8 @@ async function runLessonsConsolidationPass(
 
   let raw = '';
   try {
-    for await (const chunk of services.sendChatRequest(messages, undefined, signal)) {
+    for await (const chunk of services.sendChatRequest(messages, { think: true }, signal)) {
+      if (chunk.thinking) response.thinking(chunk.thinking);
       if (chunk.content) {
         raw += chunk.content;
       }
@@ -652,7 +654,7 @@ interface IOpenclawCompactCommandDeps {
   readonly sendSummarizationRequest?: (
     messages: readonly IChatMessage[],
     signal?: AbortSignal,
-    options?: { readonly numCtx?: number },
+    options?: { readonly numCtx?: number; readonly think?: boolean },
   ) => AsyncIterable<IChatResponseChunk>;
   readonly compactSession?: (sessionId: string, summaryText: string) => void;
   readonly storeSessionMemory?: (sessionId: string, summary: string, messageCount: number) => Promise<void>;
@@ -716,7 +718,7 @@ async function tryExecuteCompactOpenclawCommand(
     ];
 
     let candidate = '';
-    for await (const chunk of deps.sendSummarizationRequest(summaryPrompt, undefined, { numCtx: contextWindow || undefined })) {
+    for await (const chunk of deps.sendSummarizationRequest(summaryPrompt, undefined, { numCtx: contextWindow || undefined, think: true })) {
       if (chunk.content) {
         candidate += chunk.content;
       }
@@ -894,7 +896,7 @@ function queueOpenclawMemoryWriteBack(
       let summaryText = '';
       // Background work: it waits while you chat, and a new turn takes the
       // model from it (engine broker) instead of queuing behind it.
-      for await (const chunk of deps.sendSummarizationRequest(summaryPrompt, undefined, { engine: { priority: 'maintenance', label: 'Remembering this conversation' } })) {
+      for await (const chunk of deps.sendSummarizationRequest(summaryPrompt, undefined, { think: true, engine: { priority: 'maintenance', label: 'Remembering this conversation' } })) {
         if (chunk.content) {
           summaryText += chunk.content;
         }

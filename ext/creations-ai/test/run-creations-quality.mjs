@@ -92,7 +92,7 @@ async function modelIsLoaded() {
   return (j.models || []).some((m) => m.name === MODEL || m.model === MODEL);
 }
 
-/** One request, never in parallel. Mirrors the app's option mapping (think off, json only where asked). */
+/** One request, never in parallel. Mirrors the app's option mapping (reasoning on, json only where asked). */
 async function chat(label, messages, { json = false, temperature = 0.8 } = {}) {
   const started = Date.now();
   if (MOCK) {
@@ -106,7 +106,7 @@ async function chat(label, messages, { json = false, temperature = 0.8 } = {}) {
     calls.push({ label, ms: 0, promptTokens: 0, evalTokens: 0, chars: content.length });
     return content;
   }
-  const body = { model: MODEL, messages, stream: false, think: false, options: { num_ctx: NUM_CTX, temperature } };
+  const body = { model: MODEL, messages, stream: false, think: true, options: { num_ctx: NUM_CTX, temperature } };
   if (json) body.format = 'json';
   const res = await fetch(`${OLLAMA}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(`Ollama ${res.status}: ${(await res.text()).slice(0, 300)}`);

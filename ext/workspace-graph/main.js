@@ -2462,7 +2462,7 @@ Respond using this exact JSON with no other text before or after it:
     try {
       const provider = await api.commands.executeCommand('chat.getInlineAIProvider').catch(() => null);
       if (provider?.sendChatRequest) {
-        stream = provider.sendChatRequest(messages);
+        stream = provider.sendChatRequest(messages, { think: true });
       } else {
         const models = await api.lm.getModels();
         if (!models || !models.length) {
@@ -2471,7 +2471,7 @@ Respond using this exact JSON with no other text before or after it:
           }
           return;
         }
-        stream = api.lm.sendChatRequest(models[0].id, messages);
+        stream = api.lm.sendChatRequest(models[0].id, messages, { think: true });
       }
     } catch (err) {
       console.warn('[WorkspaceGraph] AI model error:', err);

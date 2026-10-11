@@ -1142,7 +1142,8 @@ describe('Study end to end', () => {
     expect(dropped.every((d) => d.numeric === null)).toBe(true);
     expect(runs.reduce((n, r) => n + r.kept, 0)).toBe(generated.length);
 
-    // Every model call: JSON where a reply is parsed, a planned window, no thinking.
+    // Every model call: JSON where a reply is parsed, a planned window, and
+    // the model reasons first (on for every feature, 2026-10-11).
     const kinds = env.lmCalls.map((c) => c.kind);
     expect(kinds[0]).toBe('map');
     expect(kinds.filter((k) => k === 'map').length).toBe(1);
@@ -1153,7 +1154,7 @@ describe('Study end to end', () => {
       expect(c.format).toBe('json');
       expect(c.numCtx).toBeGreaterThanOrEqual(8192);
       expect(c.numCtx).toBeLessThanOrEqual(40960);
-      expect(c.think).toBe(false);
+      expect(c.think).toBe(true);
     }
     expect(env.lmCalls.filter((c) => c.kind === 'questions').every((c) => c.temperature === 0.3)).toBe(true);
     expect(env.lmCalls.filter((c) => c.kind === 'support' || c.kind === 'distractor').every((c) => c.temperature === 0)).toBe(true);
@@ -2244,7 +2245,12 @@ describe('Study end to end', () => {
     expect(grades[0].numCtx).toBeGreaterThan(8192);
     expect(grades[0].numCtx).toBeLessThanOrEqual(40960);
     expect(grades[0].numCtx % 2048).toBe(0);
-    for (const g of grades.slice(1)) expect(g.numCtx).toBe(8192);
+    // The short grades share one small window: the prompt, the answer and
+    // room for the model to reason first, smaller than the long grade's.
+    const small = grades[1].numCtx;
+    expect(small).toBeGreaterThan(8192);
+    expect(small).toBeLessThan(grades[0].numCtx);
+    for (const g of grades.slice(1)) expect(g.numCtx).toBe(small);
     for (const c of run2) { expect(c.numCtx).toBeGreaterThanOrEqual(8192); expect(c.numCtx).toBeLessThanOrEqual(40960); }
   });
 

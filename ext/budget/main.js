@@ -6703,8 +6703,10 @@ const BUDGET_DEFAULT_GMAIL_QUERY = 'from:chase.com';
 let _lastMalformedSample = null;
 
 function budgetLmOptions(_stage) {
-  // No maxTokens — let the model think and answer to completion.
+  // No maxTokens — let the model think and answer to completion. Reasoning is
+  // asked for explicitly: left unset, only some local models reason.
   return {
+    think: true,
     temperature: 0,
     format: 'json',
     numCtx: BUDGET_LM_NUM_CTX,

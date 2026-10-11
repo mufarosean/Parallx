@@ -554,7 +554,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
 
         let candidateSummary = '';
         try {
-          for await (const chunk of this.services.sendSummarizationRequest(summaryPrompt, undefined, { numCtx: params.tokenBudget })) {
+          for await (const chunk of this.services.sendSummarizationRequest(summaryPrompt, undefined, { numCtx: params.tokenBudget, think: true })) {
             if (chunk.content) {
               candidateSummary += chunk.content;
             }

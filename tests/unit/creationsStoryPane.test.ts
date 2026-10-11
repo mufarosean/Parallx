@@ -123,7 +123,7 @@ describe('the Story Writer', () => {
     const req = w.requests.find((r) => r.messages[0].content.includes('You are a novelist'))!;
     expect(req.messages[0].content).toContain('Premise: A keeper who cannot swim.');
     expect(req.messages[1].content).toContain('Direction for this beat: the boat arrives');
-    expect(req.options).toMatchObject({ numCtx: 4096, think: false });
+    expect(req.options).toMatchObject({ numCtx: 4096, think: true });
     await flush(900);
     const saved = [...w.files.entries()].find(([n]) => n.startsWith('story-'))!;
     const story = JSON.parse(saved[1]);

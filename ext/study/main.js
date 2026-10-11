@@ -3499,7 +3499,10 @@ function stContextSettingFor(material, numCtx) {
 /** Plan one call's window. */
 async function stPlanFor(modelId, material, chars, outputTokens, numCtx) {
   const modelCtx = await stModelContextLength(modelId);
-  return stContextPlan({ chars, outputTokens, modelCtx, setting: stContextSettingFor(material, numCtx) });
+  // A model that reasons spends output tokens on that first, inside the same
+  // window: without room for it, the answer's JSON is cut off.
+  const reasoning = cfg('aiThinking', true) ? ST_THINK_TOKENS : 0;
+  return stContextPlan({ chars, outputTokens: outputTokens + reasoning, modelCtx, setting: stContextSettingFor(material, numCtx) });
 }
 
 /**
@@ -3554,7 +3557,7 @@ async function stChat(modelId, system, user, { temperature = ST_TEMP_CHECK, numC
     throw new Error('No model backend is available. Start the model backend and try again.');
   }
   if (token && token.cancelled) throw stStoppedError();
-  const think = !!cfg('aiThinking', false);
+  const think = !!cfg('aiThinking', true);
   const options = { temperature, think };
   if (numCtx > 0) options.numCtx = numCtx;
   if (maxTokens > 0) options.maxTokens = maxTokens + (think ? ST_THINK_TOKENS : 0);
