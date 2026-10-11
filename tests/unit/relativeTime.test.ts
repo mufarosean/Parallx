@@ -4,8 +4,11 @@
  * "yesterday" means yesterday by the calendar, not "24 to 48 hours ago".
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { formatRelativeTime } from '../../src/ui/relativeTime';
+import { setAssistantTimeZone } from '../../src/platform/localTime';
+
+afterEach(() => setAssistantTimeZone(''));
 
 const NOW = new Date(2026, 8, 3, 15, 30).getTime(); // Sep 3 2026 15:30 local
 const ago = (ms: number) => NOW - ms;
@@ -51,6 +54,30 @@ describe('formatRelativeTime — long', () => {
     // Read as local, a page saved two hours ago in Chicago said "just now" for five hours.
     const sqlite = new Date(ago(2 * HOUR)).toISOString().slice(0, 19).replace('T', ' ');
     expect(formatRelativeTime(sqlite, 'long', NOW)).toBe('2 hours ago');
+  });
+});
+
+describe('formatRelativeTime — days are the app Time Zone\'s days', () => {
+  // 02:00 UTC on Oct 11 is still Oct 10 at 14:00 in UTC-12, and 23:00 UTC on
+  // Oct 9 is Oct 9 at 11:00 there: one day apart for that user, two in UTC.
+  // Whatever zone the machine running this is in, one of the two would be
+  // wrong if days were counted on the machine's clock.
+  const now = Date.UTC(2026, 9, 11, 2, 0);
+  const then = Date.UTC(2026, 9, 9, 23, 0);
+
+  it('"yesterday" turns over at the user\'s midnight, not the machine\'s', () => {
+    setAssistantTimeZone('Etc/GMT+12');
+    expect(formatRelativeTime(then, 'long', now)).toBe('yesterday');
+    setAssistantTimeZone('UTC');
+    expect(formatRelativeTime(then, 'long', now)).toBe('2 days ago');
+  });
+
+  it('a calendar date is the user\'s date', () => {
+    setAssistantTimeZone('Etc/GMT+12');
+    // 03:00 UTC on Sep 1 is Aug 31 at 15:00 in UTC-12.
+    expect(formatRelativeTime(Date.UTC(2026, 8, 1, 3, 0), 'long', now)).toBe('Aug 31');
+    setAssistantTimeZone('Etc/GMT-12');
+    expect(formatRelativeTime(Date.UTC(2026, 8, 1, 3, 0), 'long', now)).toBe('Sep 1');
   });
 });
 

@@ -9,9 +9,13 @@
 //          "3 days ago" · "Aug 20" · "Aug 20, 2025"
 //   short  "now" · "5m ago" · "14h ago" · "yesterday" · "3d ago" · "Aug 20"
 //
+// Days are the user's days: "yesterday" turns over at midnight in the app
+// Time Zone (the one every stamp in the app is written in), not the machine's.
+//
 // Dependency rules: src/ui/ depends only on src/platform/.
 
 import { parseStoredTime } from '../platform/storedTime.js';
+import { appDateString, startOfAppDay } from '../platform/localTime.js';
 
 export type RelativeTimeStyle = 'long' | 'short';
 
@@ -23,9 +27,9 @@ function plural(n: number, unit: string): string {
   return `${n} ${unit}${n === 1 ? '' : 's'} ago`;
 }
 
-function calendarDate(then: Date, now: Date): string {
-  const sameYear = then.getFullYear() === now.getFullYear();
-  return then.toLocaleDateString(undefined, sameYear
+function calendarDate(thenMs: number, nowMs: number): string {
+  const sameYear = appDateString(thenMs, { year: 'numeric' }) === appDateString(nowMs, { year: 'numeric' });
+  return appDateString(thenMs, sameYear
     ? { month: 'short', day: 'numeric' }
     : { month: 'short', day: 'numeric', year: 'numeric' });
 }
@@ -61,11 +65,7 @@ export function formatRelativeTime(
 
   // Past a day, count calendar days so "yesterday" means yesterday, not
   // "between 24 and 48 hours ago".
-  const thenDate = new Date(thenMs);
-  const nowDate = new Date(now);
-  const startOfThen = new Date(thenDate.getFullYear(), thenDate.getMonth(), thenDate.getDate()).getTime();
-  const startOfNow = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
-  const days = Math.round((startOfNow - startOfThen) / DAY);
+  const days = Math.round((startOfAppDay(now) - startOfAppDay(thenMs)) / DAY);
 
   if (days <= 1) return 'yesterday';
   if (days < 7) return short ? `${days}d ago` : plural(days, 'day');
@@ -73,5 +73,5 @@ export function formatRelativeTime(
     const w = Math.floor(days / 7);
     return short ? `${w}w ago` : plural(w, 'week');
   }
-  return calendarDate(thenDate, nowDate);
+  return calendarDate(thenMs, now);
 }
