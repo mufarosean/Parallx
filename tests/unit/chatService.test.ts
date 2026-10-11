@@ -1058,11 +1058,12 @@ describe('ChatService deferred hydration', () => {
       async get(): Promise<null> { return null; },
       async all(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]> {
         allCalls.push({ sql, params });
+        if (sql.includes('AS preview')) {
+          // The preview query: one row per session of the workspace
+          return [{ session_id: 'restored-1', preview: 'earlier question' }];
+        }
         if (sql.includes('FROM chat_sessions')) {
           return [{ id: 'restored-1', title: 'Restored', mode: 'agent', model_id: 'qwen', context_window_override: null, plan_json: null, created_at: 1, updated_at: 2 }];
-        }
-        if (sql.includes('GROUP BY session_id')) {
-          return [{ session_id: 'restored-1', preview: 'earlier question' }];
         }
         if (sql.includes('FROM chat_messages')) {
           return [
@@ -1079,7 +1080,7 @@ describe('ChatService deferred hydration', () => {
   }
 
   function messageBodyQueries(db: ReturnType<typeof createHydrationDb>): number {
-    return db.allCalls.filter((c) => c.sql.includes('FROM chat_messages') && !c.sql.includes('GROUP BY')).length;
+    return db.allCalls.filter((c) => c.sql.includes('FROM chat_messages') && !c.sql.includes('AS preview')).length;
   }
 
   let chatService: ChatService;

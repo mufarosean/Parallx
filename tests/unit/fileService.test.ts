@@ -128,6 +128,27 @@ describe('FileService', () => {
       // readFile called: 1 (original, hung) + 1 (fresh after write)
       expect(mockFs.readFile).toHaveBeenCalledTimes(2);
     });
+
+    it('does not cache a read that overlapped a write to any file (one counter, not one per file)', async () => {
+      const uri = URI.file('/test/reader.txt');
+      let resolveRead: (value: any) => void;
+      const readPromise = new Promise(r => { resolveRead = r; });
+      mockFs.readFile.mockImplementationOnce(() => readPromise);
+      const readP = fileService.readFile(uri);
+
+      await fileService.writeFile(URI.file('/test/other.txt'), 'elsewhere');
+
+      resolveRead!({ content: 'maybe stale', encoding: 'utf-8', size: 11, mtime: 1000 });
+      await readP;
+
+      mockFs.readFile.mockResolvedValue({ content: 'fresh', encoding: 'utf-8', size: 5, mtime: 2000 });
+      expect((await fileService.readFile(uri)).content).toBe('fresh');
+      expect(mockFs.readFile).toHaveBeenCalledTimes(2);
+
+      // With no write in flight, the read is cached.
+      expect((await fileService.readFile(uri)).content).toBe('fresh');
+      expect(mockFs.readFile).toHaveBeenCalledTimes(2);
+    });
   });
 
   // ── Error normalization ──

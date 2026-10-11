@@ -157,8 +157,12 @@ export class FileService extends Disposable implements IFileService {
   // ── Cache ──
   private static readonly LRU_MAX_ENTRIES = 20;
   private readonly _contentCache = new LRUCache<string, FileContent>(FileService.LRU_MAX_ENTRIES);
-  /** Per-URI generation counter to prevent TOCTOU stale-cache races. */
-  private readonly _cacheGeneration = new Map<string, number>();
+  /**
+   * Bumped by every write. A read that overlapped any write is not cached
+   * (the TOCTOU guard): one number, where a counter per file grew with
+   * every file ever written and was never emptied.
+   */
+  private _writeGeneration = 0;
   private _boundaryChecker: ((uri: URI, operation: string) => void) | undefined;
   /** Where quotes sit in files; caches extracted pages per file. */
   private readonly _locator = new FileLocator({
@@ -197,8 +201,8 @@ export class FileService extends Disposable implements IFileService {
     const cached = this._contentCache.get(cacheKey);
     if (cached) return cached;
 
-    // Capture generation before IPC to detect concurrent writes
-    const genBefore = this._cacheGeneration.get(cacheKey) ?? 0;
+    // Capture the generation before IPC to detect a concurrent write
+    const genBefore = this._writeGeneration;
 
     const fs = getElectronFs();
     const result = await fs.readFile(uri.fsPath);
@@ -212,11 +216,8 @@ export class FileService extends Disposable implements IFileService {
     };
 
     // Only cache if no write occurred during our async read (TOCTOU guard)
-    if (result.encoding !== 'base64') {
-      const genAfter = this._cacheGeneration.get(cacheKey) ?? 0;
-      if (genAfter === genBefore) {
-        this._contentCache.set(cacheKey, content);
-      }
+    if (result.encoding !== 'base64' && this._writeGeneration === genBefore) {
+      this._contentCache.set(cacheKey, content);
     }
 
     return content;
@@ -226,8 +227,8 @@ export class FileService extends Disposable implements IFileService {
     this._assertBoundary(uri, 'writeFile');
     const cacheKey = uri.toKey();
 
-    // Bump generation BEFORE IPC to invalidate any in-flight reads (TOCTOU guard)
-    this._cacheGeneration.set(cacheKey, (this._cacheGeneration.get(cacheKey) ?? 0) + 1);
+    // Bump the generation BEFORE IPC to invalidate any in-flight reads (TOCTOU guard)
+    this._writeGeneration++;
     this._contentCache.delete(cacheKey);
 
     const fs = getElectronFs();
@@ -546,7 +547,6 @@ export class FileService extends Disposable implements IFileService {
 
     // Clear cache
     this._contentCache.clear();
-    this._cacheGeneration.clear();
 
     // clear any pending coalesced events so a teardown
     // doesn't drop a fire() into the void on a disposed emitter.

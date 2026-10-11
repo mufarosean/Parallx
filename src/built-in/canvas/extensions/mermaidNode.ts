@@ -25,6 +25,38 @@ function loadMermaid(): Promise<MermaidModule> {
   return loading;
 }
 
+/**
+ * Tell `listener` when the page switches between light and dark. One
+ * observer serves every diagram on the page (each node used to watch the
+ * root and the body itself, so every attribute change cost a style read per
+ * diagram); it starts with the first listener and stops with the last.
+ * Returns the function that removes the listener.
+ */
+export function onMermaidThemeChange(listener: (theme: 'dark' | 'default') => void): () => void {
+  _themeListeners.add(listener);
+  if (!_themeObserver) {
+    _lastTheme = mermaidTheme();
+    _themeObserver = new MutationObserver(() => {
+      const next = mermaidTheme();
+      if (next === _lastTheme) return;
+      _lastTheme = next;
+      for (const fn of [..._themeListeners]) fn(next);
+    });
+    _themeObserver.observe(document.documentElement, { attributes: true });
+    _themeObserver.observe(document.body, { attributes: true });
+  }
+  return () => {
+    _themeListeners.delete(listener);
+    if (_themeListeners.size === 0 && _themeObserver) {
+      _themeObserver.disconnect();
+      _themeObserver = null;
+    }
+  };
+}
+const _themeListeners = new Set<(theme: 'dark' | 'default') => void>();
+let _themeObserver: MutationObserver | null = null;
+let _lastTheme: 'dark' | 'default' = 'dark';
+
 /** Light pages get Mermaid's default look, dark ones its dark look. Read
  *  from the colour the page is actually painted with: the app does not
  *  always mark its mode on the root (dark mode drew pale boxes and arrows
@@ -172,13 +204,7 @@ export const MermaidDiagram = Node.create({
       preview.addEventListener('dblclick', open);
 
       // Redraw in the other look when the app switches light and dark.
-      let theme = mermaidTheme();
-      const observer = new MutationObserver(() => {
-        const next = mermaidTheme();
-        if (next !== theme) { theme = next; redraw(String(current.attrs.code ?? '')); }
-      });
-      observer.observe(document.documentElement, { attributes: true });
-      observer.observe(document.body, { attributes: true });
+      const stopThemeWatch = onMermaidThemeChange(() => redraw(String(current.attrs.code ?? '')));
 
       redraw(String(current.attrs.code ?? ''));
 
@@ -196,7 +222,7 @@ export const MermaidDiagram = Node.create({
           return !!t && (!!t.closest?.('.canvas-mermaid__editor') || !!t.closest?.('button') || (e.type === 'dblclick'));
         },
         ignoreMutation: () => true,
-        destroy() { observer.disconnect(); },
+        destroy() { stopThemeWatch(); },
       };
     };
   },

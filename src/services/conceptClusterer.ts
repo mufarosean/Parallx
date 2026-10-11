@@ -91,6 +91,25 @@ export function dbscan(
   const assignments = new Map<string, number>();
   if (points.length === 0) return { assignments, clusterCount: 0 };
 
+  // Each vector's length once: a pair then costs one dot product, not three
+  // sums. The arithmetic is cosineDistance's exactly, so the neighbourhoods
+  // are the same; vectors of unequal length take the slow path.
+  const norms = new Map<string, number>();
+  for (const p of points) {
+    let sum = 0;
+    for (let i = 0; i < p.vector.length; i++) sum += p.vector[i] * p.vector[i];
+    norms.set(p.id, Math.sqrt(sum));
+  }
+  const distance = (a: ClusterPoint, b: ClusterPoint): number => {
+    if (a.vector.length !== b.vector.length) return cosineDistance(a.vector, b.vector);
+    const na = norms.get(a.id)!;
+    const nb = norms.get(b.id)!;
+    if (na === 0 || nb === 0) return 1;
+    let dot = 0;
+    for (let i = 0; i < a.vector.length; i++) dot += a.vector[i] * b.vector[i];
+    return 1 - Math.max(-1, Math.min(1, dot / (na * nb)));
+  };
+
   // Pre-compute neighborhood lookups. We do it lazily on first need so
   // workspaces with mostly-noise points don't pay the O(n²) cost.
   const neighborCache = new Map<string, ClusterPoint[]>();
@@ -100,7 +119,7 @@ export function dbscan(
     const result: ClusterPoint[] = [];
     for (const candidate of points) {
       if (candidate.id === point.id) continue;
-      if (cosineDistance(point.vector, candidate.vector) <= opts.epsilon) {
+      if (distance(point, candidate) <= opts.epsilon) {
         result.push(candidate);
       }
     }
@@ -125,10 +144,11 @@ export function dbscan(
     const cid = clusterIdx++;
     assignments.set(point.id, cid);
 
-    // BFS expansion through reachable core points.
+    // BFS expansion through reachable core points. An index, not shift():
+    // shift() moves every remaining element, which made a big cluster quadratic.
     const queue: ClusterPoint[] = [...neighbors];
-    while (queue.length > 0) {
-      const current = queue.shift() as ClusterPoint;
+    for (let head = 0; head < queue.length; head++) {
+      const current = queue[head];
       const currentAssignment = assignments.get(current.id);
       if (currentAssignment === -1) {
         // Border point: upgrade from noise into this cluster.

@@ -255,8 +255,8 @@ class CommandsProvider implements IQuickAccessProvider {
     const contextKeyService = this._getContextKeyService();
     const menuContribution = this._getMenuContribution();
     const keybindingContribution = this._getKeybindingContribution();
-    const recentIds = this._getRecentCommandIds();
-    const recentSet = new Set(recentIds);
+    // Recency rank by id: the comparator below runs n log n times.
+    const recentRank = new Map(this._getRecentCommandIds().map((id, i) => [id, i]));
     const items: QuickAccessItem[] = [];
 
     for (const [, desc] of commands) {
@@ -293,7 +293,7 @@ class CommandsProvider implements IQuickAccessProvider {
         label: desc.title,
         category: desc.category,
         keybinding,
-        isRecent: recentSet.has(desc.id),
+        isRecent: recentRank.has(desc.id),
         score,
         labelMatches,
         accept: () => this._executeCommand(desc.id),
@@ -306,7 +306,7 @@ class CommandsProvider implements IQuickAccessProvider {
         if (a.isRecent && !b.isRecent) return -1;
         if (!a.isRecent && b.isRecent) return 1;
         if (a.isRecent && b.isRecent) {
-          return recentIds.indexOf(a.id) - recentIds.indexOf(b.id);
+          return recentRank.get(a.id)! - recentRank.get(b.id)!;
         }
       }
       if (a.score !== b.score) return a.score - b.score;
@@ -495,8 +495,8 @@ class GeneralProvider implements IQuickAccessProvider {
       const files = this._fileScanner.cached;
 
       if (files) {
-        const recentOrder = this._recents?.getRecentFileUris() ?? [];
-        const recentSet = new Set(recentOrder);
+        // Recency rank by uri: the comparator below runs n log n times.
+        const recentRank = new Map((this._recents?.getRecentFileUris() ?? []).map((uri, i) => [uri, i]));
         const openFn = this._openFileEditor;
 
         // Score and collect
@@ -506,18 +506,18 @@ class GeneralProvider implements IQuickAccessProvider {
             // Match against filename first, then relative path
             const nameResult = fuzzyMatch(query, file.name);
             if (nameResult) {
-              scored.push({ entry: file, score: nameResult.score, isRecent: recentSet.has(file.uri), labelMatches: nameResult.matches });
+              scored.push({ entry: file, score: nameResult.score, isRecent: recentRank.has(file.uri), labelMatches: nameResult.matches });
               continue;
             }
             const pathResult = fuzzyMatch(query, file.relativePath);
             if (pathResult) {
-              scored.push({ entry: file, score: pathResult.score + 1, isRecent: recentSet.has(file.uri), detailMatches: pathResult.matches });
+              scored.push({ entry: file, score: pathResult.score + 1, isRecent: recentRank.has(file.uri), detailMatches: pathResult.matches });
               continue;
             }
             // No match
             continue;
           }
-          scored.push({ entry: file, score: 0, isRecent: recentSet.has(file.uri) });
+          scored.push({ entry: file, score: 0, isRecent: recentRank.has(file.uri) });
         }
 
         // Sort: recent first (by recency order), then score, then alpha
@@ -525,7 +525,7 @@ class GeneralProvider implements IQuickAccessProvider {
           if (a.isRecent && !b.isRecent) return -1;
           if (!a.isRecent && b.isRecent) return 1;
           if (a.isRecent && b.isRecent) {
-            return recentOrder.indexOf(a.entry.uri) - recentOrder.indexOf(b.entry.uri);
+            return recentRank.get(a.entry.uri)! - recentRank.get(b.entry.uri)!;
           }
           if (a.score !== b.score) return a.score - b.score;
           return a.entry.name.localeCompare(b.entry.name);

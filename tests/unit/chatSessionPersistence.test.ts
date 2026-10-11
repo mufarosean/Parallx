@@ -424,16 +424,19 @@ describe('chatSessionPersistence', () => {
       db.all = async <T>(sql: string, params?: unknown[]): Promise<T[]> => {
         db._allCalls.push({ sql, params });
 
+        if (sql.includes('AS preview')) {
+          // The preview query: one row per session; only session-1 has a user message
+          return [
+            { session_id: 'session-1', preview: 'How do I study reserving?' },
+            { session_id: 'session-2', preview: null },
+          ] as T[];
+        }
+
         if (sql.includes('FROM chat_sessions')) {
           return [
             { id: 'session-1', title: 'S1', mode: 'agent', model_id: 'qwen', context_window_override: null, plan_json: null, created_at: 1, updated_at: 2 },
             { id: 'session-2', title: 'New Chat', mode: 'agent', model_id: 'qwen', context_window_override: null, plan_json: null, created_at: 3, updated_at: 4 },
           ] as T[];
-        }
-
-        if (sql.includes('FROM chat_messages')) {
-          // Preview aggregate — only session-1 has persisted messages
-          return [{ session_id: 'session-1', preview: 'How do I study reserving?' }] as T[];
         }
 
         return [];
@@ -444,10 +447,13 @@ describe('chatSessionPersistence', () => {
       stubSessionRows();
       await loadSessionMetas(db, 'ws-1');
 
-      // One chat_sessions query + one aggregate preview query — regardless
-      // of session count. The old loadSessions path was 1 + N.
+      // One chat_sessions query + one preview query — regardless of session
+      // count. The old loadSessions path was 1 + N.
       expect(db._allCalls.length).toBe(2);
-      expect(db._allCalls[1].sql).toContain('GROUP BY session_id');
+      expect(db._allCalls[1].sql).toContain('ORDER BY sort_order LIMIT 1');
+      // Only this workspace's sessions, not every message in the database.
+      expect(db._allCalls[1].sql).toContain('WHERE s.workspace_id = ?');
+      expect(db._allCalls[1].params).toEqual(['ws-1']);
     });
 
     it('flags sessions with persisted messages as pending-load with a preview', async () => {

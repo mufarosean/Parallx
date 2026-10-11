@@ -11,6 +11,7 @@
 //   src/vs/workbench/contrib/chat/common/chatService/chatService.ts — _persistSession()
 
 import { URI } from '../platform/uri.js';
+import { CREATE_SESSIONS_TABLE, CREATE_SESSIONS_ORIGIN_INDEX, CREATE_SESSIONS_WORKSPACE_INDEX, CREATE_MESSAGES_TABLE, CREATE_MESSAGES_INDEX } from './chatSessionSchema.js';
 import type {
   IChatSession,
   IChatUserMessage,
@@ -55,53 +56,6 @@ export interface IChatPersistenceDatabase {
 // ── Schema ──
 
 const CHAT_SESSION_SCHEME = 'parallx-chat-session';
-
-const CREATE_SESSIONS_TABLE = `
-CREATE TABLE IF NOT EXISTS chat_sessions (
-  id                      TEXT PRIMARY KEY,
-  workspace_id            TEXT NOT NULL DEFAULT '',
-  title                   TEXT NOT NULL DEFAULT 'New Chat',
-  mode                    TEXT NOT NULL DEFAULT 'agent',
-  model_id                TEXT NOT NULL DEFAULT '',
-  context_window_override INTEGER,
-  plan_json               TEXT,
-  created_at              INTEGER NOT NULL,
-  updated_at              INTEGER NOT NULL,
-  origin                  TEXT
-)`;
-
-// archived autonomous runs (heartbeat/cron/dashboard/subagent) are
-// stored in the SAME tables as chat, tagged by `origin`. NULL origin = an
-// interactive chat (the only rows the chat list shows). Index supports the
-// archive list + retention prune.
-const CREATE_SESSIONS_ORIGIN_INDEX = `
-CREATE INDEX IF NOT EXISTS idx_chat_sessions_origin
-ON chat_sessions(origin, updated_at DESC)
-`;
-
-const CREATE_SESSIONS_WORKSPACE_INDEX = `
-CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace
-ON chat_sessions(workspace_id, updated_at DESC)
-`;
-
-const CREATE_MESSAGES_TABLE = `
-CREATE TABLE IF NOT EXISTS chat_messages (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id  TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
-  role        TEXT NOT NULL,
-  content     TEXT NOT NULL DEFAULT '',
-  parts_json  TEXT NOT NULL DEFAULT '[]',
-  model_id    TEXT NOT NULL DEFAULT '',
-  is_complete INTEGER NOT NULL DEFAULT 0,
-  timestamp   INTEGER NOT NULL,
-  sort_order  INTEGER NOT NULL DEFAULT 0,
-  prompt_tokens     INTEGER,
-  completion_tokens INTEGER
-)`;
-
-const CREATE_MESSAGES_INDEX = `
-CREATE INDEX IF NOT EXISTS idx_chat_messages_session
-ON chat_messages(session_id, sort_order)`;
 
 /**
  * Whether a database's chat_messages has the token columns (ensureChatTables
@@ -605,17 +559,20 @@ export async function loadSessionMetas(db: IChatPersistenceDatabase, workspaceId
   );
   if (rows.length === 0) { return []; }
 
-  // First user message per session, in one pass. SQLite's bare-column rule
-  // with MIN() guarantees `content` comes from the row holding the minimum
-  // sort_order within each group.
+  // The first user message of each session, in one query that seeks the
+  // (session_id, sort_order) index once per session of this workspace. The
+  // old GROUP BY read every message of every workspace at each boot.
   let previews = new Map<string, string>();
   try {
-    const previewRows = await db.all<{ session_id: string; preview: string }>(
-      `SELECT session_id, substr(content, 1, 200) AS preview, MIN(sort_order)
-       FROM chat_messages WHERE role = 'user'
-       GROUP BY session_id`,
+    const previewRows = await db.all<{ session_id: string; preview: string | null }>(
+      `SELECT s.id AS session_id,
+              (SELECT substr(content, 1, 200) FROM chat_messages
+                WHERE session_id = s.id AND role = 'user'
+                ORDER BY sort_order LIMIT 1) AS preview
+       FROM chat_sessions s WHERE s.workspace_id = ?`,
+      [workspaceId],
     );
-    previews = new Map(previewRows.map((r) => [r.session_id, r.preview]));
+    previews = new Map(previewRows.filter((r) => r.preview != null).map((r) => [r.session_id, r.preview as string]));
   } catch (e) {
     console.warn('[ChatPersistence] session preview query failed:', e);
   }
