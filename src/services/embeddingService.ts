@@ -13,6 +13,7 @@
 //   POST /api/embed  — batch embedding generation
 
 import { Disposable } from '../platform/lifecycle.js';
+import { LRUCache } from '../platform/lruCache.js';
 import { Emitter } from '../platform/events.js';
 import type { Event } from '../platform/events.js';
 import type { IEmbeddingService } from './serviceTypes.js';
@@ -36,6 +37,8 @@ const PULL_TIMEOUT_MS = 600_000; // 10 minutes
 
 /** Maximum batch size per /api/embed call. */
 const MAX_BATCH_SIZE = 64;
+/** How many document vectors the cache keeps (about 12 MB at 768 floats each). */
+const EMBEDDING_CACHE_MAX = 2048;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -74,8 +77,12 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
   private readonly _baseUrl: string;
   private readonly _model: string;
 
-  /** In-memory cache: contentHash → embedding vector. */
-  private readonly _cache = new Map<string, number[]>();
+  /**
+   * contentHash → embedding vector, for the chunks indexed most recently.
+   * Bounded: a workspace indexes tens of thousands of chunks, and an
+   * unbounded map kept every vector (6 KB each) for the life of the app.
+   */
+  private readonly _cache = new LRUCache<string, number[]>(EMBEDDING_CACHE_MAX);
 
   /** Whether the model is confirmed installed (avoids repeated checks). */
   private _modelVerified = false;

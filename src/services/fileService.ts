@@ -9,6 +9,7 @@
 //   src/vs/platform/files/node/diskFileSystemProvider.ts — Node.js operations
 
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { LRUCache } from '../platform/lruCache.js';
 import { Emitter, Event } from '../platform/events.js';
 import { URI } from '../platform/uri.js';
 import {
@@ -92,41 +93,6 @@ function throwIfError(result: any, uri: URI): void {
   if (result?.error) {
     const e = result.error;
     throw new FileOperationError(e.message || 'Unknown error', e.code || FileOperationErrorCode.FILE_UNKNOWN, uri);
-  }
-}
-
-// ── Simple LRU Cache ───────────────────────────────────────────────────────
-
-class LRUCache<K, V> {
-  private readonly _map = new Map<K, V>();
-  constructor(private readonly _max: number) {}
-
-  get(key: K): V | undefined {
-    const v = this._map.get(key);
-    if (v !== undefined) {
-      // Move to end (most recently used)
-      this._map.delete(key);
-      this._map.set(key, v);
-    }
-    return v;
-  }
-
-  set(key: K, value: V): void {
-    this._map.delete(key);
-    this._map.set(key, value);
-    if (this._map.size > this._max) {
-      // Evict oldest
-      const first = this._map.keys().next().value;
-      if (first !== undefined) this._map.delete(first);
-    }
-  }
-
-  delete(key: K): void {
-    this._map.delete(key);
-  }
-
-  clear(): void {
-    this._map.clear();
   }
 }
 

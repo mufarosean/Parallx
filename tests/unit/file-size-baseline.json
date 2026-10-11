@@ -82,7 +82,7 @@
   "src/services/indexingPipeline.ts": 1614,
   "src/services/semanticGraphService.ts": 1561,
   "src/services/serviceTypes.ts": 2312,
-  "src/services/vectorStoreService.ts": 1343,
+  "src/services/vectorStoreService.ts": 1130,
   "src/services/workspaceMemoryService.ts": 818,
   "src/ui/conceptMap.ts": 1769,
   "src/views/viewContainer.ts": 1106,

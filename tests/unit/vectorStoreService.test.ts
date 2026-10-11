@@ -1,14 +1,14 @@
 // vectorStoreService.test.ts — Unit tests for VectorStoreService (M10 Task 1.2)
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { VectorStoreService } from '../../src/services/vectorStoreService.js';
 import {
-  VectorStoreService,
   float32ArrayToBuffer,
   sanitizeFts5Query,
   sanitizeFts5QueryOr,
   isStopword,
   reciprocalRankFusion,
-} from '../../src/services/vectorStoreService.js';
+} from '../../src/services/vectorStoreHelpers.js';
 import type { EmbeddedChunk } from '../../src/services/vectorStoreService.js';
 
 // ─── Mock DatabaseService ────────────────────────────────────────────────────

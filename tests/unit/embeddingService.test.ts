@@ -252,6 +252,19 @@ describe('EmbeddingService', () => {
       expect(service.cacheSize).toBe(1);
     });
 
+    it('keeps a bounded number of vectors, forgetting the least recently used', async () => {
+      fetchSpy.mockResolvedValue({ ok: true, json: async () => mockEmbedResponse(1) });
+      for (let i = 0; i < 2050; i++) await service.embedDocument(`text ${i}`, `hash-${i}`);
+      expect(service.cacheSize).toBe(2048);
+      // The first two are gone: embedding one again calls the API.
+      const before = fetchSpy.mock.calls.length;
+      await service.embedDocument('text 0', 'hash-0');
+      expect(fetchSpy.mock.calls.length).toBe(before + 1);
+      // A recent one is still cached: no call.
+      await service.embedDocument('text 2049', 'hash-2049');
+      expect(fetchSpy.mock.calls.length).toBe(before + 1);
+    });
+
     it('clearCache resets cache', async () => {
       fetchSpy.mockResolvedValueOnce({
         ok: true,

@@ -14,7 +14,11 @@
 //   - Emits status events via callbacks (no Node EventEmitter — keep it simple)
 //   - Falls back silently when Python/Docling unavailable
 
-const { spawn, execSync } = require('child_process');
+const { spawn, exec, execSync } = require('child_process');
+const { promisify } = require('util');
+
+/** A shell command's stdout, off the main thread; rejects when it fails or times out. */
+const run = promisify(exec);
 const http = require('http');
 const net = require('net');
 const path = require('path');
@@ -87,10 +91,12 @@ const MAX_RESTARTS = 1;
 // ─── Python Detection ───────────────────────────────────────────────────────
 
 /**
- * Find a Python 3.10+ executable on the system.
- * @returns {string | null} Path to Python executable, or null if not found.
+ * Find a Python 3.10+ executable on the system. Asynchronous: each probe
+ * used to run with execSync and held the main process (every IPC handler
+ * with it) for up to five seconds per candidate.
+ * @returns {Promise<string | null>} Path to Python executable, or null if not found.
  */
-function detectPython() {
+async function detectPython() {
   if (_pythonPath) return _pythonPath;
 
   const candidates = process.platform === 'win32'
@@ -99,11 +105,12 @@ function detectPython() {
 
   for (const cmd of candidates) {
     try {
-      const version = execSync(`${cmd} --version 2>&1`, {
+      const { stdout } = await run(`${cmd} --version 2>&1`, {
         encoding: 'utf-8',
         timeout: 5000,
         windowsHide: true,
-      }).trim();
+      });
+      const version = stdout.trim();
 
       // Parse "Python 3.x.y"
       const match = version.match(/Python\s+(\d+)\.(\d+)/);
@@ -125,14 +132,14 @@ function detectPython() {
 
 /**
  * Check if the `docling` Python package is installed.
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-function checkDoclingInstalled() {
-  const python = detectPython();
+async function checkDoclingInstalled() {
+  const python = await detectPython();
   if (!python) return false;
 
   try {
-    execSync(`${python} -c "import docling; print(docling.__version__)"`, {
+    await run(`${python} -c "import docling; print(docling.__version__)"`, {
       encoding: 'utf-8',
       timeout: 10000,
       windowsHide: true,
@@ -244,14 +251,14 @@ function _setStatus(status) {
 async function startService() {
   if (_process) return true; // Already running
 
-  const python = detectPython();
+  const python = await detectPython();
   if (!python) {
     console.log('[DoclingBridge] Python 3.10+ not found');
     _setStatus('unavailable');
     return false;
   }
 
-  if (!checkDoclingInstalled()) {
+  if (!(await checkDoclingInstalled())) {
     console.log('[DoclingBridge] Docling package not installed');
     _setStatus('unavailable');
     return false;
@@ -508,7 +515,7 @@ function isAvailable() {
  * @returns {Promise<{ ok: boolean, pythonPath: string | null, output: string, alreadyInstalled: boolean }>}
  */
 async function installDocling() {
-  const python = detectPython();
+  const python = await detectPython();
   if (!python) {
     return {
       ok: false,
@@ -519,7 +526,7 @@ async function installDocling() {
   }
 
   // Check if already installed
-  if (checkDoclingInstalled()) {
+  if (await checkDoclingInstalled()) {
     return {
       ok: true,
       pythonPath: python,
@@ -528,20 +535,21 @@ async function installDocling() {
     };
   }
 
-  // Run pip install
+  // Run pip install, off the main thread: the first install downloads
+  // models for minutes, and the window must stay responsive meanwhile.
   try {
-    const { execSync: execSyncLocal } = require('child_process');
-    const output = execSyncLocal(
+    const { stdout: output } = await run(
       `${python} -m pip install docling`,
       {
         encoding: 'utf-8',
         timeout: 300000, // 5 min — first install downloads models
         windowsHide: true,
+        maxBuffer: 16 * 1024 * 1024,
       },
     );
 
     // Verify installation
-    const installed = checkDoclingInstalled();
+    const installed = await checkDoclingInstalled();
     return {
       ok: installed,
       pythonPath: python,
