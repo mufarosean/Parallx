@@ -5031,11 +5031,11 @@ function renderRulesSection(body, api) {
           const rows = await db.all(`SELECT id, merchant, category_id, categorization_source FROM transactions
                                       WHERE status='confirmed' AND tx_type='purchase' AND merchant IS NOT NULL`);
           const { ids } = ruleDryRun({ pattern, match_type: matchType }, rows, categoryId, othersFor(rule));
-          for (const rid of ids) {
-            const r = { id: rid };
-            await db.run(`UPDATE transactions SET category_id=?, categorization_source='rule', matched_rule_id=?, updated_at=? WHERE id=?`,
-              [categoryId, id, now, r.id]);
-            changed++;
+          for (let i = 0; i < ids.length; i += 500) {
+            const chunk = ids.slice(i, i + 500);
+            await db.run(`UPDATE transactions SET category_id=?, categorization_source='rule', matched_rule_id=?, updated_at=? WHERE id IN (${chunk.map(() => '?').join(',')})`,
+              [categoryId, id, now, ...chunk]);
+            changed += chunk.length;
           }
         }
         editorWrap.replaceChildren();

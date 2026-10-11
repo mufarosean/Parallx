@@ -129,6 +129,23 @@ const db = {
     if (res.error) throw new Error(`[ST-DB] ${res.error.message}`);
     return res.rows ?? [];
   },
+  /**
+   * Run `statements` ([{ sql, params }]) in one transaction and return each
+   * statement's lastInsertRowid, in order. One round trip for a batch instead
+   * of one per row; a host without the transaction bridge runs them one by one.
+   */
+  async runAll(statements) {
+    if (!_dbBridge) throw stStoppedError();
+    if (!statements.length) return [];
+    if (typeof _dbBridge.runTransaction === 'function') {
+      const res = await _dbBridge.runTransaction(statements.map((s) => ({ type: 'run', sql: s.sql, params: s.params })));
+      if (res.error) throw new Error(`[ST-DB] ${res.error.message}`);
+      return (res.results ?? []).map((r) => r?.lastInsertRowid);
+    }
+    const ids = [];
+    for (const s of statements) ids.push((await db.run(s.sql, s.params)).lastInsertRowid);
+    return ids;
+  },
 };
 
 /** The preload bridge (document extraction, python, fs). Copied from Flashcards. */
@@ -2484,16 +2501,14 @@ async function stInsertConcepts(materialId, sectionId, concepts) {
   if (!list.length) return [];
   const base = await db.get('SELECT COALESCE(MAX(ord), -1) AS m FROM st_concepts WHERE material_id = ? AND section_id = ?', [materialId, sectionId || 0]);
   let ord = base && base.m != null && Number.isFinite(Number(base.m)) ? Number(base.m) : -1;
-  const ids = [];
   const now = stNow();
-  for (const c of list) {
+  const ids = await db.runAll(list.map((c) => {
     ord += 1;
-    const res = await db.run(
-      'INSERT INTO st_concepts (material_id, section_id, title, summary, page, anchor_quote, ord, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [materialId, sectionId || 0, String(c.title || '').trim(), String(c.summary || '').trim(), Number(c.page) || 0, String(c.anchorQuote || ''), Number.isInteger(c.ord) ? c.ord : ord, now],
-    );
-    ids.push(res.lastInsertRowid);
-  }
+    return {
+      sql: 'INSERT INTO st_concepts (material_id, section_id, title, summary, page, anchor_quote, ord, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      params: [materialId, sectionId || 0, String(c.title || '').trim(), String(c.summary || '').trim(), Number(c.page) || 0, String(c.anchorQuote || ''), Number.isInteger(c.ord) ? c.ord : ord, now],
+    };
+  }));
   _emitDataChanged();
   const rows = await db.all(`SELECT * FROM st_concepts WHERE id IN (${stPlaceholders(ids)}) ORDER BY ord, id`, ids);
   return rows.map(stRowToConcept);
@@ -2600,12 +2615,8 @@ async function stInsertQuestions(questions) {
   const list = Array.isArray(questions) ? questions : [];
   if (!list.length) return [];
   const now = stNow();
-  const ids = [];
   const sql = `INSERT INTO st_questions (${ST_QUESTION_COLS.join(', ')}) VALUES (${stPlaceholders(ST_QUESTION_COLS)})`;
-  for (const q of list) {
-    const res = await db.run(sql, stQuestionParams(q, now));
-    ids.push(res.lastInsertRowid);
-  }
+  const ids = await db.runAll(list.map((q) => ({ sql, params: stQuestionParams(q, now) })));
   _emitDataChanged();
   const rows = await db.all(`SELECT * FROM st_questions WHERE id IN (${stPlaceholders(ids)})`, ids);
   const byId = new Map(rows.map((r) => [r.id, stRowToQuestion(r)]));
@@ -2902,22 +2913,24 @@ async function stDeleteBankMaterial(bankId) {
 async function stEnsureBankConcepts(questions) {
   const list = Array.isArray(questions) ? questions : [];
   const materials = new Map();
-  let made = 0;
+  const pending = [];
   for (const q of list) {
     if (!q || q.conceptId) continue;
     const bankId = Number(q.bankId) || 0;
     if (!materials.has(bankId)) materials.set(bankId, await stBankMaterial(bankId));
     const material = materials.get(bankId);
     if (!material) continue;
-    const res = await db.run(
-      'INSERT INTO st_concepts (material_id, section_id, title, summary, page, anchor_quote, ord, created_at) VALUES (?, 0, ?, \'\', ?, ?, ?, ?)',
-      [material.id, stBankConceptTitle(q), Number(q.sourcePage) || 0, String(q.sourceQuote || ''), Number(q.id) || 0, stNow()],
-    );
-    await db.run('UPDATE st_questions SET concept_id = ? WHERE id = ?', [res.lastInsertRowid, q.id]);
-    q.conceptId = res.lastInsertRowid;
-    made += 1;
+    pending.push({
+      q,
+      sql: 'INSERT INTO st_concepts (material_id, section_id, title, summary, page, anchor_quote, ord, created_at) VALUES (?, 0, ?, \'\', ?, ?, ?, ?)',
+      params: [material.id, stBankConceptTitle(q), Number(q.sourcePage) || 0, String(q.sourceQuote || ''), Number(q.id) || 0, stNow()],
+    });
   }
-  if (made) _emitDataChanged();
+  if (!pending.length) return list;
+  const ids = await db.runAll(pending);
+  await db.runAll(pending.map(({ q }, i) => ({ sql: 'UPDATE st_questions SET concept_id = ? WHERE id = ?', params: [ids[i], q.id] })));
+  pending.forEach(({ q }, i) => { q.conceptId = ids[i]; });
+  _emitDataChanged();
   return list;
 }
 

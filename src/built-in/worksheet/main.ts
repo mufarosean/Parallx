@@ -60,7 +60,8 @@ import { worksheetQuestionProvider } from './questionProvider.js';
 import { listQuestionRows } from './worksheetData.js';
 import { registerQuestionProvider } from '../../services/questionProviders.js';
 import './worksheet.css';
-import { appDateString, appDateTimeString, startOfAppDay } from '../../services/localTime.js';
+import { appDateString, appDateTimeString } from '../../services/localTime.js';
+import { defaultQuizName, fmtSeconds, fmtShortDay, fmtStudy, gradeLabel, newQuizId, when, whenCap } from './labels.js';
 
 // ── API typings (structural — the tool API surface) ─────────────────────────
 
@@ -703,27 +704,6 @@ function createBankPane(container: HTMLElement) {
   };
 }
 
-/** Easy, Medium, Hard: the workbook's words, for new and legacy grades alike. */
-function gradeLabel(grade: string): string {
-  return ratingLabel(grade) || grade;
-}
-/** Study time in a summary: "12m", "3h 08m", never seconds (those belong to the sheet's clock). */
-function fmtStudy(total: number): string {
-  const s = Math.max(0, Math.round(total));
-  if (s < 60) return s === 0 ? '0m' : '<1m';
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (h === 0) return `${m}m`;
-  return m === 0 ? `${h}h` : `${h}h ${String(m).padStart(2, '0')}m`;
-}
-function fmtSeconds(total: number): string {
-  const s = Math.max(0, Math.round(total));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
-}
-
 // ── The bank (sidebar): papers with counts and rating colours, filters, search ──
 //
 // The workbook's sidebar was 331 hidden tabs and three unhide buttons; this
@@ -1078,12 +1058,6 @@ function createLauncherPane(container: HTMLElement) {
 }
 
 // ── Settings (instanceId 'settings') ────────────────────────────────────────
-
-function fmtShortDay(day: string): string {
-  // A day key is a calendar date: written as one, through no zone's clock.
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-}
 
 function createSettingsPane(container: HTMLElement) {
   const root = el('div', 'ws-pane ws-settings');
@@ -1557,34 +1531,12 @@ const _markListeners = new Set<() => void>();
 /** Open Quiz tabs, told when a different quiz begins so they show it. */
 const _practiceListeners = new Set<() => void>();
 
-function newQuizId(): string {
-  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
-  return c?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
 /** The running quiz as stored: a restart or a tool reload resumes it. */
 async function persistPractice(announce = false): Promise<void> {
   const s = _practice;
   if (!s) return;
   await saveQuizSession({ id: s.id, name: s.name, itemIds: s.ids, position: s.index, skipped: [...s.skipped], marked: [...s.marked], startedAt: s.startedAt, finishedAt: s.finishedAt }, announce)
     .catch((err) => console.warn('[Worksheet] quiz session save failed:', err));
-}
-/** "today", "yesterday", "N days ago": how Home and the quiz screens date things. */
-function when(ms: number): string {
-  // Calendar days, not 24-hour spans: 11 pm last night is "yesterday" at
-  // 8 am, which the elapsed-time count called "today".
-  // The user's days, in the app's Time Zone.
-  const days = Math.round((startOfAppDay(Date.now()) - startOfAppDay(ms)) / 86400000);
-  return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
-}
-/** `when` at the start of a fragment: "Today", "Yesterday", "3 days ago". */
-function whenCap(ms: number): string {
-  const w = when(ms);
-  return w.charAt(0).toUpperCase() + w.slice(1);
-}
-/** A quiz named after the moment it began, when nothing better was given. */
-function defaultQuizName(count: number): string {
-  const at = appDateTimeString(Date.now(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  return `${count} ${count === 1 ? 'Problem' : 'Problems'} · ${at}`;
 }
 /** A new, named quiz over these problems, starting at `startAt`. Open quizzes
  *  stay open: a quiz is a saved thing, and only Complete Quiz on its summary
@@ -3092,7 +3044,10 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
   let visibilitySub: { dispose(): void } | null = null;
   /** Set by a Problem Bank item: the first cell edit is the proof it was worked. */
   let onSheetEdited: (() => void) | null = null;
+  /** Something changed since the last snapshot; the autosave tick skips a clean sheet. */
+  let dirty = false;
   let editedSub: { dispose(): void } | null = null;
+  let changedSub: { dispose(): void } | null = null;
   let autosaveTimer: ReturnType<typeof setInterval> | null = null;
   let lastSavedCells = '';
   /** Problem Bank items: time on the open attempt (-1 = not a problem item). */
@@ -3106,7 +3061,11 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
     return host?.getSnapshot() ?? null;
   };
 
-  const persistWorking = async (): Promise<void> => {
+  // The timer passes nothing and saves only after an edit; every other
+  // caller (leaving the problem, rating it, closing) saves regardless.
+  const persistWorking = async (force = true): Promise<void> => {
+    if (!force && !dirty) return;
+    dirty = false;
     if (itemId == null) {
       const snap = captureWorking();
       if (snap) _scratchCache.set(instanceId, snap);
@@ -3161,6 +3120,8 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
     visibilitySub = host.onColumnsVisibilityChanged(() => syncRevealFromSheet?.());
     editedSub?.dispose();
     editedSub = host.onEdited(() => onSheetEdited?.());
+    changedSub?.dispose();
+    changedSub = host.onChanged(() => { dirty = true; });
   };
 
   // Sheet appearance: re-skin the live engine when the setting changes
@@ -3667,7 +3628,7 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
         if (!disposed) paintHeader();
       })();
     };
-    autosaveTimer = setInterval(() => { void persistWorking(); }, AUTOSAVE_MS);
+    autosaveTimer = setInterval(() => { void persistWorking(false); }, AUTOSAVE_MS);
     // The study clock: elapsed time on screen while active, whatever the
     // cells do; flushed to the ledger every half minute and at teardown,
     // which announces the change so the dashboard's day catches up.
@@ -3706,7 +3667,7 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
         // flagged it In Progress forever.
         lastSavedCells = await settledSnapshotJson();
         if (disposed) return;
-        autosaveTimer = setInterval(() => { void persistWorking(); }, AUTOSAVE_MS);
+        autosaveTimer = setInterval(() => { void persistWorking(false); }, AUTOSAVE_MS);
       } else {
         // Scratch sheet: a slim bar so export is reachable without an item.
         const bar = el('div', 'ws-scratchbar');
@@ -3768,6 +3729,7 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
       _decimalsListeners.delete(applyDecimals);
       visibilitySub?.dispose();
       editedSub?.dispose();
+      changedSub?.dispose();
       modeObserver.disconnect();
       host?.dispose();
       host = null;

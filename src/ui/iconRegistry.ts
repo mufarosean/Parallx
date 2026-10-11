@@ -19,9 +19,11 @@ import { FILE_TYPE_ICONS, FILE_TYPE_MAP } from './fileTypeIcons.js';
 
 const _icons = new Map<string, string>();
 
-// Seed registry with every Lucide icon from the generated file
-for (const [id, svg] of Object.entries(LUCIDE_ICONS)) {
-  _icons.set(id, svg);
+// Seed the registry with every Lucide icon. The generated file holds each
+// icon's strokes; the one wrapper every icon shares is added here.
+export const LUCIDE_SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+for (const [id, inner] of Object.entries(LUCIDE_ICONS)) {
+  _icons.set(id, `${LUCIDE_SVG_OPEN}${inner}</svg>`);
 }
 
 // Parallx-original brand icons (`px-*`) for the core's own nouns (see

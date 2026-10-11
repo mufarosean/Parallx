@@ -14,6 +14,7 @@
 import './search.css';
 
 import { SEARCH_EMPTY_STATES } from './searchEmptyStates.js';
+import { buildGlobMatcher, buildSearchRegex, getExtension, type SearchRegexOptions } from './searchPatterns.js';
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
@@ -96,10 +97,7 @@ interface FileResult {
   expanded: boolean;
 }
 
-interface SearchOptions {
-  caseSensitive: boolean;
-  wholeWord: boolean;
-  useRegex: boolean;
+interface SearchOptions extends SearchRegexOptions {
   includePattern: string;
   excludePattern: string;
 }
@@ -580,99 +578,20 @@ async function searchFile(
         expanded: true,
       });
 
-      // Progressive rendering: render every few files
+      // Progressive rendering: the new file's group is appended on the next frame
       if (_results.length <= 10 || _results.length % 5 === 0) {
         updateMessage(
           `${_totalMatches} result${_totalMatches !== 1 ? 's' : ''} in ${_results.length} file${_results.length !== 1 ? 's' : ''} (searching…)`,
         );
-        renderResults();
       }
+      appendNewResults();
     }
   } catch (err) {
     // Skip files we can't read
   }
 }
 
-// ─── Regex Builder ───────────────────────────────────────────────────────────
-
-function buildSearchRegex(query: string, opts: SearchOptions): RegExp | null {
-  try {
-    let pattern: string;
-    if (opts.useRegex) {
-      pattern = query;
-    } else {
-      // Escape regex special characters
-      pattern = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
-    if (opts.wholeWord) {
-      pattern = `\\b${pattern}\\b`;
-    }
-
-    const flags = opts.caseSensitive ? 'g' : 'gi';
-    return new RegExp(pattern, flags);
-  } catch {
-    return null;
-  }
-}
-
-// ─── Glob Matcher ────────────────────────────────────────────────────────────
-
-/**
- * Converts a simple glob pattern (comma-separated) to a matcher function.
- * Supports: * (any chars), ** (any path segments), ? (one char)
- */
-function buildGlobMatcher(pattern: string): ((path: string) => boolean) | null {
-  const trimmed = pattern.trim();
-  if (!trimmed) return null;
-
-  const parts = trimmed.split(',').map((p) => p.trim()).filter(Boolean);
-  if (parts.length === 0) return null;
-
-  const regexes: RegExp[] = [];
-  for (const part of parts) {
-    const re = globToRegex(part);
-    if (re) regexes.push(re);
-  }
-
-  if (regexes.length === 0) return null;
-
-  return (path: string) => regexes.some((re) => re.test(path));
-}
-
-function globToRegex(glob: string): RegExp | null {
-  try {
-    let regex = '';
-    for (let i = 0; i < glob.length; i++) {
-      const c = glob[i];
-      if (c === '*') {
-        if (glob[i + 1] === '*') {
-          regex += '.*';
-          i++; // skip second *
-          if (glob[i + 1] === '/') i++; // skip /
-        } else {
-          regex += '[^/]*';
-        }
-      } else if (c === '?') {
-        regex += '[^/]';
-      } else if (c === '.') {
-        regex += '\\.';
-      } else {
-        regex += c;
-      }
-    }
-    return new RegExp(regex, 'i');
-  } catch {
-    return null;
-  }
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function getExtension(fileName: string): string {
-  const dot = fileName.lastIndexOf('.');
-  return dot >= 0 ? fileName.slice(dot).toLowerCase() : '';
-}
 
 function saveOptions(): void {
   _context.workspaceState.update('search.options', _options);
@@ -702,81 +621,103 @@ function updateMessage(text?: string): void {
 
 // ─── Results Rendering ───────────────────────────────────────────────────────
 
+/** How many of `_results` already have a group in the list. */
+let _renderedCount = 0;
+
+/** Rebuild the whole list: after a search starts, ends or a result is removed. */
 function renderResults(): void {
   if (!_resultsContainer) return;
   _resultsContainer.innerHTML = '';
+  for (const fileResult of _results) _resultsContainer.appendChild(renderFileGroup(fileResult));
+  _renderedCount = _results.length;
+}
 
-  for (const fileResult of _results) {
-    const fileGroup = $('div');
-    fileGroup.className = 'search-file-group';
+// While a search runs, each new file adds its own group; rebuilding the list
+// for every fifth file made a large search quadratic.
+let _appendQueued = false;
+function appendNewResults(): void {
+  if (_appendQueued) return;
+  _appendQueued = true;
+  requestAnimationFrame(() => {
+    _appendQueued = false;
+    if (!_resultsContainer) return;
+    if (_renderedCount > _results.length) { renderResults(); return; }
+    for (; _renderedCount < _results.length; _renderedCount++) {
+      _resultsContainer.appendChild(renderFileGroup(_results[_renderedCount]));
+    }
+  });
+}
 
-    // File header
-    const fileHeader = $('div');
-    fileHeader.className = 'search-file-header';
-    fileHeader.addEventListener('click', () => {
-      fileResult.expanded = !fileResult.expanded;
-      chevron.textContent = fileResult.expanded ? '▾' : '▸';
-      fileResult.expanded ? show(matchList) : hide(matchList);
+function renderFileGroup(fileResult: FileResult): HTMLElement {
+  const fileGroup = $('div');
+  fileGroup.className = 'search-file-group';
+
+  // File header
+  const fileHeader = $('div');
+  fileHeader.className = 'search-file-header';
+  fileHeader.addEventListener('click', () => {
+    fileResult.expanded = !fileResult.expanded;
+    chevron.textContent = fileResult.expanded ? '▾' : '▸';
+    fileResult.expanded ? show(matchList) : hide(matchList);
+  });
+
+  const chevron = $('span');
+  chevron.className = 'search-file-chevron';
+  chevron.textContent = fileResult.expanded ? '▾' : '▸';
+  fileHeader.appendChild(chevron);
+
+  const fileIcon = $('span');
+  fileIcon.className = 'search-file-icon';
+  fileIcon.innerHTML = getFileIcon(fileResult.fileName);
+  fileHeader.appendChild(fileIcon);
+
+  const filePath = $('span');
+  filePath.className = 'search-file-path';
+  fileHeader.appendChild(filePath);
+
+  // File name (bold) + directory (dim)
+  const nameSpan = $('span');
+  nameSpan.className = 'search-file-name';
+  nameSpan.textContent = fileResult.fileName;
+  filePath.appendChild(nameSpan);
+
+  const dirSpan = $('span');
+  dirSpan.className = 'search-file-dir';
+  const dir = fileResult.relativePath.slice(0, -(fileResult.fileName.length + 1));
+  if (dir) {
+    dirSpan.textContent = ` ${dir}`;
+  }
+  filePath.appendChild(dirSpan);
+
+  // Match count badge
+  const badge = $('span');
+  badge.className = 'search-file-badge';
+  badge.textContent = String(fileResult.matches.length);
+  fileHeader.appendChild(badge);
+
+  fileGroup.appendChild(fileHeader);
+
+  // Match list
+  const matchList = $('div');
+  matchList.className = 'search-match-list';
+  fileResult.expanded ? show(matchList) : hide(matchList);
+
+  for (const match of fileResult.matches) {
+    const matchEl = $('div');
+    matchEl.className = 'search-match-item';
+    matchEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openResult(fileResult.uri, match.line, match.column);
     });
 
-    const chevron = $('span');
-    chevron.className = 'search-file-chevron';
-    chevron.textContent = fileResult.expanded ? '▾' : '▸';
-    fileHeader.appendChild(chevron);
+    // Render line text with match highlighting
+    renderMatchLine(matchEl, match);
 
-    const fileIcon = $('span');
-    fileIcon.className = 'search-file-icon';
-    fileIcon.innerHTML = getFileIcon(fileResult.fileName);
-    fileHeader.appendChild(fileIcon);
-
-    const filePath = $('span');
-    filePath.className = 'search-file-path';
-    fileHeader.appendChild(filePath);
-
-    // File name (bold) + directory (dim)
-    const nameSpan = $('span');
-    nameSpan.className = 'search-file-name';
-    nameSpan.textContent = fileResult.fileName;
-    filePath.appendChild(nameSpan);
-
-    const dirSpan = $('span');
-    dirSpan.className = 'search-file-dir';
-    const dir = fileResult.relativePath.slice(0, -(fileResult.fileName.length + 1));
-    if (dir) {
-      dirSpan.textContent = ` ${dir}`;
-    }
-    filePath.appendChild(dirSpan);
-
-    // Match count badge
-    const badge = $('span');
-    badge.className = 'search-file-badge';
-    badge.textContent = String(fileResult.matches.length);
-    fileHeader.appendChild(badge);
-
-    fileGroup.appendChild(fileHeader);
-
-    // Match list
-    const matchList = $('div');
-    matchList.className = 'search-match-list';
-    fileResult.expanded ? show(matchList) : hide(matchList);
-
-    for (const match of fileResult.matches) {
-      const matchEl = $('div');
-      matchEl.className = 'search-match-item';
-      matchEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openResult(fileResult.uri, match.line, match.column);
-      });
-
-      // Render line text with match highlighting
-      renderMatchLine(matchEl, match);
-
-      matchList.appendChild(matchEl);
-    }
-
-    fileGroup.appendChild(matchList);
-    _resultsContainer.appendChild(fileGroup);
+    matchList.appendChild(matchEl);
   }
+
+  fileGroup.appendChild(matchList);
+  return fileGroup;
 }
 
 function renderMatchLine(container: HTMLElement, match: SearchMatch): void {

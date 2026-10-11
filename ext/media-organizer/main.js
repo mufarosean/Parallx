@@ -59,6 +59,9 @@
 //   43. AI TAGGING (one tool, Tag Review)
 //   44. ACTIVATION
 //
+
+import { mapBounded, qMarks, sqlChunks } from './batches.js';
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -3232,12 +3235,12 @@ async function processIncrementalDeleteBatch(filePaths) {
   for (const [dirPath, names] of byDir) {
     const folder = await FolderQueries.findByPath(dirPath);
     if (!folder) continue;
-    for (const chunk of _sqlChunks(names)) {
+    for (const chunk of sqlChunks(names)) {
       const rows = await db.all(
         `SELECT f.id AS id,
                 (SELECT value FROM mo_fingerprints WHERE file_id = f.id AND type = 'md5' LIMIT 1) AS checksum
            FROM mo_files f
-          WHERE f.folder_id = ? AND f.basename IN (${_qMarks(chunk)})`,
+          WHERE f.folder_id = ? AND f.basename IN (${qMarks(chunk)})`,
         [folder.id, ...chunk]
       );
       for (const r of rows) fileEntries.push({ id: r.id, checksum: r.checksum || null });
@@ -19366,7 +19369,7 @@ async function moPurgeOrphanRecordings(api) {
     try { queuedToEraser = await _tryEraseWithEraser(api, paths); } catch { queuedToEraser = false; }
     if (queuedToEraser) return; // Eraser owns the overwrite + removal
     // Hard delete (never the recycle bin) when Eraser isn't available.
-    await _mapBounded(paths, 8, (p) => window.parallxElectron.fs.delete(p, { useTrash: false }).catch(() => {}));
+    await mapBounded(paths, 8, (p) => window.parallxElectron.fs.delete(p, { useTrash: false }).catch(() => {}));
   } catch { /* best effort */ }
 }
 
@@ -28319,11 +28322,11 @@ function moRebuildSearchIndex() {
 // flows that mutate a known subset (duplicate resolver, empty trash) and
 // don't want to pay for a full rebuild.
 async function _refreshFtsForIds(photoIds, videoIds) {
-  for (const chunk of _sqlChunks(photoIds || [])) {
-    try { await db.run(`DELETE FROM mo_photos_fts WHERE rowid IN (${_qMarks(chunk)})`, chunk); } catch { /* fts may be absent */ }
+  for (const chunk of sqlChunks(photoIds || [])) {
+    try { await db.run(`DELETE FROM mo_photos_fts WHERE rowid IN (${qMarks(chunk)})`, chunk); } catch { /* fts may be absent */ }
   }
-  for (const chunk of _sqlChunks(videoIds || [])) {
-    try { await db.run(`DELETE FROM mo_videos_fts WHERE rowid IN (${_qMarks(chunk)})`, chunk); } catch { /* fts may be absent */ }
+  for (const chunk of sqlChunks(videoIds || [])) {
+    try { await db.run(`DELETE FROM mo_videos_fts WHERE rowid IN (${qMarks(chunk)})`, chunk); } catch { /* fts may be absent */ }
   }
 }
 
@@ -29269,11 +29272,11 @@ function _unwindPendingEraseBatch(api, photoIds, videoIds, fileRows) {
 async function _hideForErase(photoIds, videoIds) {
   const hid = { photoIds: [], videoIds: [] };
   for (const [table, ids, out] of [['mo_photos', photoIds, hid.photoIds], ['mo_videos', videoIds, hid.videoIds]]) {
-    for (const chunk of _sqlChunks(ids || [])) {
-      const live = await db.all(`SELECT id FROM ${table} WHERE deleted_at IS NULL AND id IN (${_qMarks(chunk)})`, chunk);
+    for (const chunk of sqlChunks(ids || [])) {
+      const live = await db.all(`SELECT id FROM ${table} WHERE deleted_at IS NULL AND id IN (${qMarks(chunk)})`, chunk);
       const liveIds = live.map((r) => Number(r.id));
       if (!liveIds.length) continue;
-      await db.run(`UPDATE ${table} SET deleted_at = datetime('now') WHERE id IN (${_qMarks(liveIds)})`, liveIds);
+      await db.run(`UPDATE ${table} SET deleted_at = datetime('now') WHERE id IN (${qMarks(liveIds)})`, liveIds);
       out.push(...liveIds);
     }
   }
@@ -29283,7 +29286,7 @@ async function _hideForErase(photoIds, videoIds) {
 async function _unhideEraseBatch(batch) {
   try {
     for (const [table, ids] of [['mo_photos', batch.hidPhotoIds], ['mo_videos', batch.hidVideoIds]]) {
-      for (const chunk of _sqlChunks(ids || [])) await db.run(`UPDATE ${table} SET deleted_at = NULL WHERE id IN (${_qMarks(chunk)})`, chunk);
+      for (const chunk of sqlChunks(ids || [])) await db.run(`UPDATE ${table} SET deleted_at = NULL WHERE id IN (${qMarks(chunk)})`, chunk);
     }
   } catch (err) { console.warn('[MediaOrganizer] Could not bring items back into view after a failed erase:', err?.message || err); }
 }
@@ -29498,39 +29501,6 @@ async function _pathsStillAlive(batch) {
   return alive;
 }
 
-// ── Set-based purge plumbing ────────────────────────────────────────────────
-// Every db.* call is a renderer→main→worker round-trip; the per-row loops the
-// purge paths used before cost thousands of sequential round-trips for a
-// large delete and visibly churned the renderer event loop. These helpers
-// collapse each cleanup into a handful of IN-list statements inside one
-// transaction. IN lists are chunked well under SQLite's parameter limit.
-
-const SQL_ID_CHUNK = 500;
-
-function _sqlChunks(arr, size = SQL_ID_CHUNK) {
-  const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-}
-
-function _qMarks(arr) {
-  return arr.map(() => '?').join(',');
-}
-
-/** Run `fn(item, index)` over items with at most `limit` in flight. */
-async function _mapBounded(items, limit, fn) {
-  const results = new Array(items.length);
-  let next = 0;
-  const lanes = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i], i);
-    }
-  });
-  await Promise.all(lanes);
-  return results;
-}
-
 /**
  * Delete thumbnail + cover-frame files for checksums that no surviving
  * mo_fingerprints row references, then evict the renderer-side caches that
@@ -29545,9 +29515,9 @@ async function _sweepOrphanThumbs(api, checksums) {
   const thumbDir = getThumbDir(api);
   if (!thumbDir) return;
   const stillRef = new Set();
-  for (const chunk of _sqlChunks(list)) {
+  for (const chunk of sqlChunks(list)) {
     const rows = await db.all(
-      `SELECT DISTINCT value FROM mo_fingerprints WHERE type = 'md5' AND value IN (${_qMarks(chunk)})`,
+      `SELECT DISTINCT value FROM mo_fingerprints WHERE type = 'md5' AND value IN (${qMarks(chunk)})`,
       chunk
     );
     for (const r of rows) stillRef.add(r.value);
@@ -29558,7 +29528,7 @@ async function _sweepOrphanThumbs(api, checksums) {
     deadPaths.push(getThumbnailPath(thumbDir, ck, THUMB_MAX_SIZE), getCoverFramePath(thumbDir, ck));
   }
   if (deadPaths.length === 0) return;
-  await _mapBounded(deadPaths, 16, (p) =>
+  await mapBounded(deadPaths, 16, (p) =>
     window.parallxElectron.fs.delete(p, { useTrash: false }).catch(() => { /* missing thumbs are fine */ })
   );
   _revokeCachedBlobUrlsFor(deadPaths);
@@ -29577,8 +29547,8 @@ async function _purgeFileRowsSetBased(fileEntries) {
 
   const candPhotoIds = new Set();
   const candVideoIds = new Set();
-  for (const chunk of _sqlChunks(fileIds)) {
-    const ph = _qMarks(chunk);
+  for (const chunk of sqlChunks(fileIds)) {
+    const ph = qMarks(chunk);
     for (const r of await db.all(`SELECT DISTINCT photo_id AS id FROM mo_photos_files WHERE file_id IN (${ph})`, chunk)) candPhotoIds.add(r.id);
     for (const r of await db.all(`SELECT DISTINCT video_id AS id FROM mo_videos_files WHERE file_id IN (${ph})`, chunk)) candVideoIds.add(r.id);
   }
@@ -29586,9 +29556,9 @@ async function _purgeFileRowsSetBased(fileEntries) {
   const purgedVideoIds = await _idsFullyBacked('mo_videos_files', 'video_id', candVideoIds, gone);
 
   const ops = [];
-  for (const chunk of _sqlChunks(purgedPhotoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_photos WHERE id IN (${_qMarks(chunk)})`, params: chunk });
-  for (const chunk of _sqlChunks(purgedVideoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_videos WHERE id IN (${_qMarks(chunk)})`, params: chunk });
-  for (const chunk of _sqlChunks(fileIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_files WHERE id IN (${_qMarks(chunk)})`, params: chunk });
+  for (const chunk of sqlChunks(purgedPhotoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_photos WHERE id IN (${qMarks(chunk)})`, params: chunk });
+  for (const chunk of sqlChunks(purgedVideoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_videos WHERE id IN (${qMarks(chunk)})`, params: chunk });
+  for (const chunk of sqlChunks(fileIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_files WHERE id IN (${qMarks(chunk)})`, params: chunk });
   await db.transaction(ops);
 
   return { purgedFiles: fileIds.length, purgedPhotoIds, purgedVideoIds };
@@ -29599,9 +29569,9 @@ async function _purgeFileRowsSetBased(fileEntries) {
 async function _idsFullyBacked(joinTable, entityCol, candidateIds, goneFileIds) {
   const cand = [...candidateIds];
   const out = [];
-  for (const chunk of _sqlChunks(cand)) {
+  for (const chunk of sqlChunks(cand)) {
     const links = await db.all(
-      `SELECT ${entityCol} AS eid, file_id AS fid FROM ${joinTable} WHERE ${entityCol} IN (${_qMarks(chunk)})`,
+      `SELECT ${entityCol} AS eid, file_id AS fid FROM ${joinTable} WHERE ${entityCol} IN (${qMarks(chunk)})`,
       chunk
     );
     const survives = new Set();
@@ -29626,12 +29596,12 @@ async function _commitMediaPurge(api, photoIds, videoIds, fileRows) {
   // join rows first, so the NOT EXISTS guards evaluate against the
   // post-delete state; deleting mo_files cascades its fingerprints.
   const ops = [];
-  for (const chunk of _sqlChunks(photoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_photos WHERE id IN (${_qMarks(chunk)})`, params: chunk });
-  for (const chunk of _sqlChunks(videoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_videos WHERE id IN (${_qMarks(chunk)})`, params: chunk });
-  for (const chunk of _sqlChunks(candidateFileIds)) {
+  for (const chunk of sqlChunks(photoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_photos WHERE id IN (${qMarks(chunk)})`, params: chunk });
+  for (const chunk of sqlChunks(videoIds)) ops.push({ type: 'run', sql: `DELETE FROM mo_videos WHERE id IN (${qMarks(chunk)})`, params: chunk });
+  for (const chunk of sqlChunks(candidateFileIds)) {
     ops.push({
       type: 'run',
-      sql: `DELETE FROM mo_files WHERE id IN (${_qMarks(chunk)})
+      sql: `DELETE FROM mo_files WHERE id IN (${qMarks(chunk)})
               AND NOT EXISTS (SELECT 1 FROM mo_photos_files pf WHERE pf.file_id = mo_files.id)
               AND NOT EXISTS (SELECT 1 FROM mo_videos_files vf WHERE vf.file_id = mo_files.id)`,
       params: chunk,
@@ -29643,8 +29613,8 @@ async function _commitMediaPurge(api, photoIds, videoIds, fileRows) {
   // candidates actually died? The survivors are the files another photo /
   // video still references.
   const survivors = new Set();
-  for (const chunk of _sqlChunks(candidateFileIds)) {
-    const rows = await db.all(`SELECT id FROM mo_files WHERE id IN (${_qMarks(chunk)})`, chunk);
+  for (const chunk of sqlChunks(candidateFileIds)) {
+    const rows = await db.all(`SELECT id FROM mo_files WHERE id IN (${qMarks(chunk)})`, chunk);
     for (const r of rows) survivors.add(r.id);
   }
   const orphanChecksums = new Set();
@@ -29779,7 +29749,7 @@ async function moPurgeMedia(api, items, opts = {}) {
     // Recycle-bin fallback (Eraser unavailable or refused). The OS unlink
     // happens synchronously, so DB cleanup right after is safe. Bounded
     // parallelism — sequential round-trips made big deletes crawl.
-    const results = await _mapBounded(uniquePaths, 8, (p) =>
+    const results = await mapBounded(uniquePaths, 8, (p) =>
       window.parallxElectron.fs.delete(p, { useTrash: 'auto' }).catch(() => ({ error: 'fail' }))
     );
     for (const r of results) {
@@ -29819,7 +29789,7 @@ async function moOfflineRootsFor(goneFiles) {
   const rows = await db.all('SELECT id, path, parent_folder_id AS parent FROM mo_folders');
   _moFolderTree = new Map(rows.map((r) => [r.id, { path: r.path, parent: r.parent }]));
   const roots = [...new Set(goneFiles.map((f) => moRootPathOf(f.folder_id)).filter(Boolean))];
-  const present = await _mapBounded(roots, 8, (p) => window.parallxElectron.fs.exists(p).catch(() => false));
+  const present = await mapBounded(roots, 8, (p) => window.parallxElectron.fs.exists(p).catch(() => false));
   return new Set(roots.filter((_, i) => !present[i]));
 }
 function moFolderIsOffline(folderPath) {
@@ -29842,7 +29812,7 @@ async function moPurgeMissingFiles() {
     // library, competing with the first grid load. Mid-erase paths are the
     // commit scheduler's to reconcile — skip them.
     const candidates = files.filter((f) => !_isPathPendingErase((f.folder_path || '') + sep + f.basename));
-    const present = await _mapBounded(candidates, 32, (f) =>
+    const present = await mapBounded(candidates, 32, (f) =>
       window.parallxElectron.fs.exists((f.folder_path || '') + sep + f.basename).catch(() => false)
     );
     const gone = candidates.filter((_, i) => !present[i]);
@@ -29908,33 +29878,34 @@ function moAnnounceRemoved(items) {
   document.dispatchEvent(new CustomEvent('mo:refresh-grid'));
 }
 
+/** Set `deleted_at` for many items at once: one UPDATE per table per 500 ids. */
+async function _moSetDeletedAt(items, value) {
+  const byTable = { mo_photos: [], mo_videos: [] };
+  for (const it of items) byTable[it.type === 'photo' ? 'mo_photos' : 'mo_videos'].push(it.id);
+  for (const [table, ids] of Object.entries(byTable)) {
+    for (const chunk of sqlChunks(ids)) {
+      await db.run(`UPDATE ${table} SET deleted_at = ${value} WHERE id IN (${qMarks(chunk)})`, chunk);
+    }
+  }
+}
+
 async function moMoveToTrash(api, items) {
   // items: array of { type, id }
   if (!items || items.length === 0) return 0;
-  let n = 0;
-  for (const it of items) {
-    const table = it.type === 'photo' ? 'mo_photos' : 'mo_videos';
-    await db.run(`UPDATE ${table} SET deleted_at = datetime('now') WHERE id = ?`, [it.id]);
-    n++;
-  }
+  await _moSetDeletedAt(items, "datetime('now')");
   _notifySidebarRefresh();
   moAnnounceRemoved(items);
-  return n;
+  return items.length;
 }
 
 async function moRestoreFromTrash(api, items) {
   if (!items || items.length === 0) return 0;
-  let n = 0;
-  for (const it of items) {
-    // A file that is being erased cannot be had back.
-    if (_isAnyIdPendingErase([it])) continue;
-    const table = it.type === 'photo' ? 'mo_photos' : 'mo_videos';
-    await db.run(`UPDATE ${table} SET deleted_at = NULL WHERE id = ?`, [it.id]);
-    n++;
-  }
+  // A file that is being erased cannot be had back.
+  const restorable = items.filter((it) => !_isAnyIdPendingErase([it]));
+  await _moSetDeletedAt(restorable, 'NULL');
   _notifySidebarRefresh();
   moAnnounceRemoved(items);
-  return n;
+  return restorable.length;
 }
 
 // Empty Trash removes files the same way Delete does: through moPurgeMedia,

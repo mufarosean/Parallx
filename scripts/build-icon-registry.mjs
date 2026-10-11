@@ -24,7 +24,9 @@ function lucide(filename) {
     .replace(/> </g, '><')
     .replace(/\s*\/>/g, '/>')
     .trim();
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+  // Only the strokes: the registry wraps every icon in the one shared <svg>
+  // element, so the wrapper is not repeated two thousand times in the bundle.
+  return inner;
 }
 
 function L(name) { return lucide(`${name}.svg`); }
@@ -344,7 +346,8 @@ const output = `// AUTO-GENERATED — DO NOT EDIT MANUALLY
 // Re-run: node scripts/build-icon-registry.mjs
 //
 // Every icon in this file is a real Lucide icon from https://lucide.dev
-// Spec: 24×24 viewBox, stroke-width 2, round linecap/linejoin, currentColor
+// Spec: 24×24 viewBox, stroke-width 2, round linecap/linejoin, currentColor.
+// Each value is the icon's inner markup; iconRegistry.ts adds the <svg> wrapper.
 
 export const LUCIDE_ICONS: Record<string, string> = {
 ${entries.join('\n')}

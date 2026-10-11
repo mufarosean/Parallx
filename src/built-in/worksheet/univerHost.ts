@@ -27,7 +27,7 @@ import { sequenceNodeType } from '@univerjs/engine-formula';
 import { IEditorBridgeService, MoveSelectionCommand, MoveSelectionEnterAndTabCommand, SetCellEditVisibleOperation, SheetScrollManagerService, SheetSkeletonManagerService } from '@univerjs/sheets-ui';
 import { SheetInterceptorService, INTERCEPTOR_POINT, SetSelectionsOperation, SetColHiddenMutation, SetColVisibleMutation } from '@univerjs/sheets';
 import { DeviceInputEventType, IRenderManagerService, type IRender } from '@univerjs/engine-render';
-import * as XLSX from 'xlsx';
+import { writeSnapshotXlsx } from './xlsxExport.js';
 import type { IWorkbookData, Univer } from '@univerjs/core';
 import type { FUniver } from '@univerjs/core/lib/facade';
 import { ATHENA_FUNCTIONS } from './athenaFunctions.js';
@@ -176,67 +176,17 @@ export interface IWorksheetHost {
    * results, and it fires on every edit (the caller marks once).
    */
   onEdited(listener: () => void): { dispose(): void };
+  /**
+   * Anything in the workbook changed: contents, styles, sizes, merges,
+   * drawings (every mutation, the engine's own included). It fires often and
+   * says nothing about work; the autosave uses it to know a snapshot is
+   * worth taking at all.
+   */
+  onChanged(listener: () => void): { dispose(): void };
   /** Resolves once the engine reports itself rendered (or after a short fallback), so a pane can be swapped in already painted. */
   whenRendered(): Promise<void>;
   /** Tear down the engine and all DOM it created. */
   dispose(): void;
-}
-
-// A pane hidden with display:none (the editor keeps tabs alive that way)
-// measures 0x0, and the engine's resize observer then resized every canvas
-// to 0x0, which wipes its bitmap; the tab came back blank until the
-// idle-time redraw ("navigating to a different tab and
-// back causes flashes"). With the resize skipped while hidden, the canvas
-// keeps its last picture, and a reveal at the same size repaints nothing.
-interface SnapshotSheet {
-  name?: string;
-  cellData?: Record<string, Record<string, { v?: unknown; f?: string }>>;
-  mergeData?: { startRow: number; startColumn: number; endRow: number; endColumn: number }[];
-}
-
-/** Convert one workbook sheet into a SheetJS worksheet (values, formulas,
- *  merges). Null when the sheet holds nothing exportable. */
-function sheetToSheetJs(sheet: SnapshotSheet): XLSX.WorkSheet | null {
-  const ws: XLSX.WorkSheet = {};
-  let maxRow = 0;
-  let maxCol = 0;
-  let any = false;
-  for (const [rowStr, cols] of Object.entries(sheet.cellData ?? {})) {
-    const r = Number(rowStr);
-    for (const [colStr, data] of Object.entries(cols ?? {})) {
-      const c = Number(colStr);
-      if (data?.v === undefined && !data?.f) continue;
-      const cell: XLSX.CellObject = { t: typeof data.v === 'number' ? 'n' : 's', v: data.v as string | number };
-      if (data.f) cell.f = String(data.f).replace(/^=/, '');
-      if (data.v === undefined) { cell.t = 'n'; delete cell.v; }
-      ws[XLSX.utils.encode_cell({ r, c })] = cell;
-      maxRow = Math.max(maxRow, r);
-      maxCol = Math.max(maxCol, c);
-      any = true;
-    }
-  }
-  if (!any) return null;
-  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxRow, c: maxCol } });
-  const merges = (sheet.mergeData ?? []).map((m) => ({
-    s: { r: m.startRow, c: m.startColumn }, e: { r: m.endRow, c: m.endColumn },
-  }));
-  if (merges.length) ws['!merges'] = merges;
-  return ws;
-}
-
-/** All sheets of a snapshot in tab order, as named SheetJS worksheets. */
-function snapshotToSheetJs(snapshot: IWorkbookData): { name: string; ws: XLSX.WorkSheet }[] {
-  const cast = snapshot as unknown as { sheetOrder?: string[]; sheets?: Record<string, SnapshotSheet> };
-  const sheets = cast.sheets ?? {};
-  const order = Array.isArray(cast.sheetOrder) && cast.sheetOrder.length > 0
-    ? cast.sheetOrder.filter((id) => sheets[id])
-    : Object.keys(sheets);
-  const out: { name: string; ws: XLSX.WorkSheet }[] = [];
-  for (const id of order) {
-    const ws = sheetToSheetJs(sheets[id]);
-    if (ws) out.push({ name: (sheets[id].name || `Sheet${out.length + 1}`).slice(0, 31), ws });
-  }
-  return out;
 }
 
 let _hostCounter = 0;
@@ -890,6 +840,15 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       });
     } catch { return { dispose: () => {} }; }
   };
+  const onChanged = (listener: () => void): { dispose(): void } => {
+    if (disposed) return { dispose: () => {} };
+    try {
+      return univer.__getInjector().get(ICommandService).onCommandExecuted((c) => {
+        if (c.type !== CommandType.MUTATION) return;
+        try { listener(); } catch { /* pane torn down */ }
+      });
+    } catch { return { dispose: () => {} }; }
+  };
   const onColumnsVisibilityChanged = (listener: () => void): { dispose(): void } => {
     if (disposed) return { dispose: () => {} };
     try {
@@ -1026,6 +985,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     probeRecalculate,
     onColumnsVisibilityChanged,
     onEdited,
+    onChanged,
     setDarkMode: (dark: boolean) => {
       if (disposed) return;
       try { univerAPI.toggleDarkMode(dark); } catch { /* engine disposed */ }
@@ -1037,19 +997,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
     },
     exportToXlsx: (filename: string) => {
       const snapshot = getSnapshot();
-      if (!snapshot) return false;
-      const sheets = snapshotToSheetJs(snapshot);
-      if (sheets.length === 0) return false;
-      const wb = XLSX.utils.book_new();
-      const used = new Set<string>();
-      for (const { name, ws } of sheets) {
-        let tab = name;
-        for (let n = 2; used.has(tab); n++) tab = `${name.slice(0, 28)} ${n}`;
-        used.add(tab);
-        XLSX.utils.book_append_sheet(wb, ws, tab);
-      }
-      XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
-      return true;
+      return snapshot ? writeSnapshotXlsx(snapshot, filename) : false;
     },
     whenRendered: () => rendered,
     dispose: () => {

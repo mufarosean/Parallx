@@ -18,9 +18,13 @@ const sqliteVec = require('sqlite-vec');
 
 // ─── DatabaseManager ─────────────────────────────────────────────────────────
 
+const { preparedStatement } = require('./statementCache.cjs');
+
 class DatabaseManager {
   /** @type {import('better-sqlite3').Database | null} */
   _db = null;
+  /** Prepared statements by SQL text; cleared when the database closes. */
+  _statements = new Map();
 
   /** @type {string | null} */
   _dbPath = null;
@@ -46,6 +50,7 @@ class DatabaseManager {
 
     this._db = new Database(dbPath);
     this._dbPath = dbPath;
+    this._statements.clear();
 
     // performance PRAGMAs.
     //
@@ -62,6 +67,10 @@ class DatabaseManager {
     this._db.pragma('synchronous = NORMAL');
     this._db.pragma('wal_autocheckpoint = 1000');
     this._db.pragma('temp_store = MEMORY');
+    // cache_size: 32 MB of pages in memory (negative = KiB); mmap_size: read
+    // the file through the OS page cache up to 256 MB instead of copying.
+    this._db.pragma('cache_size = -32000');
+    this._db.pragma('mmap_size = 268435456');
 
     // Enforce foreign key constraints
     this._db.pragma('foreign_keys = ON');
@@ -72,10 +81,15 @@ class DatabaseManager {
     console.log(`[DatabaseManager] Opened database: ${dbPath}`);
   }
 
+  _prepare(sql) {
+    return preparedStatement(this._statements, this._db, sql);
+  }
+
   /**
    * Close the current database cleanly.
    */
   close() {
+    this._statements.clear();
     if (this._db) {
       try {
         this._db.close();
@@ -147,7 +161,7 @@ class DatabaseManager {
 
     // Get already-applied migrations
     const applied = new Set(
-      this._db.prepare('SELECT name FROM _migrations').all().map(r => r.name),
+      this._prepare('SELECT name FROM _migrations').all().map(r => r.name),
     );
 
     let appliedCount = 0;
@@ -157,7 +171,7 @@ class DatabaseManager {
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
       const runMigration = this._db.transaction(() => {
         this._db.exec(sql);
-        this._db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file);
+        this._prepare('INSERT INTO _migrations (name) VALUES (?)').run(file);
       });
 
       try {
@@ -189,7 +203,7 @@ class DatabaseManager {
    */
   run(sql, params = []) {
     this._ensureOpen();
-    return this._db.prepare(sql).run(...params);
+    return this._prepare(sql).run(...params);
   }
 
   /**
@@ -201,7 +215,7 @@ class DatabaseManager {
    */
   get(sql, params = []) {
     this._ensureOpen();
-    return this._db.prepare(sql).get(...params);
+    return this._prepare(sql).get(...params);
   }
 
   /**
@@ -213,7 +227,7 @@ class DatabaseManager {
    */
   all(sql, params = []) {
     this._ensureOpen();
-    return this._db.prepare(sql).all(...params);
+    return this._prepare(sql).all(...params);
   }
 
   /**
@@ -243,7 +257,7 @@ class DatabaseManager {
         let result;
         switch (op.type) {
           case 'run':
-            result = this._db.prepare(op.sql).run(...params);
+            result = this._prepare(op.sql).run(...params);
             // Atomicity guard: an op flagged `expectChanges` that matches 0 rows
             // means its optimistic-concurrency `WHERE ... revision = ?` clause
             // missed (a concurrent writer bumped the revision). Throw so
@@ -263,10 +277,10 @@ class DatabaseManager {
             results.push(result);
             break;
           case 'get':
-            results.push(this._db.prepare(op.sql).get(...params));
+            results.push(this._prepare(op.sql).get(...params));
             break;
           case 'all':
-            results.push(this._db.prepare(op.sql).all(...params));
+            results.push(this._prepare(op.sql).all(...params));
             break;
           default:
             throw new Error(`[DatabaseManager] Unknown operation type: ${op.type}`);
@@ -358,6 +372,9 @@ class ExtensionDatabaseManager {
   /** @type {Map<string, string>} extensionId → dbPath */
   _paths = new Map();
 
+  /** @type {Map<string, Map<string, any>>} extensionId → prepared statements by SQL text */
+  _statements = new Map();
+
   /**
    * Open (or create) a database for the given extension.
    *
@@ -390,11 +407,14 @@ class ExtensionDatabaseManager {
     db.pragma('synchronous = NORMAL');
     db.pragma('wal_autocheckpoint = 1000');
     db.pragma('temp_store = MEMORY');
+    db.pragma('cache_size = -32000');
+    db.pragma('mmap_size = 268435456');
     db.pragma('foreign_keys = ON');
     sqliteVec.load(db);
 
     this._databases.set(extensionId, db);
     this._paths.set(extensionId, dbPath);
+    this._statements.set(extensionId, new Map());
 
     console.log(`[ExtensionDB] Opened database for "${extensionId}": ${dbPath}`);
     return dbPath;
@@ -415,6 +435,7 @@ class ExtensionDatabaseManager {
       }
       this._databases.delete(extensionId);
       this._paths.delete(extensionId);
+      this._statements.delete(extensionId);
     }
   }
 
@@ -446,6 +467,17 @@ class ExtensionDatabaseManager {
       throw new Error(`[ExtensionDB] No database open for extension "${extensionId}". Call open() first.`);
     }
     return db;
+  }
+
+  /** The prepared statement for `sql` on the extension's database, reused across calls. */
+  _prepare(extensionId, sql) {
+    const db = this._getDb(extensionId);
+    let cache = this._statements.get(extensionId);
+    if (!cache) {
+      cache = new Map();
+      this._statements.set(extensionId, cache);
+    }
+    return preparedStatement(cache, db, sql);
   }
 
   /**
@@ -506,17 +538,17 @@ class ExtensionDatabaseManager {
 
   /** @param {string} extensionId */
   run(extensionId, sql, params = []) {
-    return this._getDb(extensionId).prepare(sql).run(...params);
+    return this._prepare(extensionId, sql).run(...params);
   }
 
   /** @param {string} extensionId */
   get(extensionId, sql, params = []) {
-    return this._getDb(extensionId).prepare(sql).get(...params);
+    return this._prepare(extensionId, sql).get(...params);
   }
 
   /** @param {string} extensionId */
   all(extensionId, sql, params = []) {
-    return this._getDb(extensionId).prepare(sql).all(...params);
+    return this._prepare(extensionId, sql).all(...params);
   }
 
   /**
@@ -538,7 +570,7 @@ class ExtensionDatabaseManager {
         let result;
         switch (op.type) {
           case 'run':
-            result = db.prepare(op.sql).run(...params);
+            result = this._prepare(extensionId, op.sql).run(...params);
             if (result.lastInsertRowid != null) {
               lastRowId = typeof result.lastInsertRowid === 'bigint'
                 ? Number(result.lastInsertRowid)
@@ -547,10 +579,10 @@ class ExtensionDatabaseManager {
             results.push(result);
             break;
           case 'get':
-            results.push(db.prepare(op.sql).get(...params));
+            results.push(this._prepare(extensionId, op.sql).get(...params));
             break;
           case 'all':
-            results.push(db.prepare(op.sql).all(...params));
+            results.push(this._prepare(extensionId, op.sql).all(...params));
             break;
           default:
             throw new Error(`[ExtensionDB] Unknown operation type: ${op.type}`);

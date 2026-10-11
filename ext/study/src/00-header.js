@@ -127,6 +127,23 @@ const db = {
     if (res.error) throw new Error(`[ST-DB] ${res.error.message}`);
     return res.rows ?? [];
   },
+  /**
+   * Run `statements` ([{ sql, params }]) in one transaction and return each
+   * statement's lastInsertRowid, in order. One round trip for a batch instead
+   * of one per row; a host without the transaction bridge runs them one by one.
+   */
+  async runAll(statements) {
+    if (!_dbBridge) throw stStoppedError();
+    if (!statements.length) return [];
+    if (typeof _dbBridge.runTransaction === 'function') {
+      const res = await _dbBridge.runTransaction(statements.map((s) => ({ type: 'run', sql: s.sql, params: s.params })));
+      if (res.error) throw new Error(`[ST-DB] ${res.error.message}`);
+      return (res.results ?? []).map((r) => r?.lastInsertRowid);
+    }
+    const ids = [];
+    for (const s of statements) ids.push((await db.run(s.sql, s.params)).lastInsertRowid);
+    return ids;
+  },
 };
 
 /** The preload bridge (document extraction, python, fs). Copied from Flashcards. */

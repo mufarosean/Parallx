@@ -29,6 +29,8 @@
 // aggregation) is exported through __testables and unit-tested from
 // tests/unit/flashcards.test.ts — keep those functions side-effect free.
 
+import { FC_DUP_SIM_EMBEDDING, FC_DUP_SIM_TRIGRAM, FC_EMB_DIMS, FC_SWEEP_SIM_EMBEDDING, fcCardEmbedText, fcOllamaVersionUrl, fcTrigramSimilarity, fcVecBlob } from './similarity.js';
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: DATABASE WRAPPER
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2261,13 +2263,6 @@ async function fcReconcileClozeGroup(noteGroup, deckId, newFront, newBack, edite
 // Everything here is best-effort: no embedding path ever blocks or throws
 // into a caller.
 
-const FC_EMB_DIMS = 768; // nomic-embed-text v1.5; EmbeddingService hard-validates
-const FC_DUP_SIM_EMBEDDING = 0.88; // cosine similarity flag threshold
-const FC_DUP_SIM_TRIGRAM = 0.5;    // Jaccard 3-gram fallback threshold
-// Deck-wide sweep shortlist threshold: recall-biased (lower than the flag
-// threshold) because the AI judge arbitrates every candidate cluster.
-const FC_SWEEP_SIM_EMBEDDING = 0.83;
-
 let _embSvcCache; // undefined = unprobed; null = unavailable
 function fcEmbeddingService() {
   if (_embSvcCache !== undefined) return _embSvcCache;
@@ -2317,21 +2312,6 @@ async function fcEmbeddingsAvailable() {
   } catch { return false; }
 }
 
-/** The Ollama the embedding service talks to (the `ollama.baseUrl` setting), never a fixed localhost. */
-function fcOllamaVersionUrl(svc) {
-  const base = String(svc?.baseUrl || 'http://localhost:11434').replace(/\/+$/, '');
-  return `${base}/api/version`;
-}
-
-function fcCardEmbedText(front, back) {
-  return `${String(front || '').trim()}\n${String(back || '').trim()}`.slice(0, 4000);
-}
-
-/** Standalone byte copy — IPC structured clone can misalign shared buffers. */
-function fcVecBlob(vec) {
-  return new Uint8Array(new Float32Array(vec).buffer.slice(0));
-}
-
 /** Embed and store vectors for cards [{id, front, back}]. Never throws. */
 async function fcEmbedCards(cards) {
   try {
@@ -2339,14 +2319,20 @@ async function fcEmbedCards(cards) {
     const svc = fcEmbeddingService();
     const texts = cards.map((c) => fcCardEmbedText(c.front, c.back));
     const vectors = await svc.embedDocumentBatch(texts);
+    // One transaction for the batch: a delete and an insert per card, not a
+    // round trip each.
+    const statements = [];
     for (let i = 0; i < cards.length; i++) {
       const vec = vectors[i];
       if (!Array.isArray(vec) || vec.length !== FC_EMB_DIMS) continue;
-      await db.run('DELETE FROM fc_card_embeddings WHERE card_id = ?', [String(cards[i].id)]);
-      await db.run(
-        'INSERT INTO fc_card_embeddings (embedding, card_id) VALUES (?, ?)',
-        [fcVecBlob(vec), String(cards[i].id)],
-      );
+      statements.push({ type: 'run', sql: 'DELETE FROM fc_card_embeddings WHERE card_id = ?', params: [String(cards[i].id)] });
+      statements.push({ type: 'run', sql: 'INSERT INTO fc_card_embeddings (embedding, card_id) VALUES (?, ?)', params: [fcVecBlob(vec), String(cards[i].id)] });
+    }
+    if (_dbBridge && typeof _dbBridge.runTransaction === 'function') {
+      const res = await _dbBridge.runTransaction(statements);
+      if (res?.error) throw new Error(res.error.message);
+    } else {
+      for (const s of statements) await db.run(s.sql, s.params);
     }
   } catch (e) {
     console.warn('[Flashcards] card embedding skipped:', e?.message);
@@ -2362,21 +2348,6 @@ async function fcEmbedNewBulk(deckId, createdAt) {
     );
     await fcEmbedCards(rows);
   } catch { /* best-effort */ }
-}
-
-/** 3-gram Jaccard similarity — the no-Ollama fallback. */
-function fcTrigramSimilarity(a, b) {
-  const grams = (s) => {
-    const norm = String(s || '').toLowerCase().replace(/[^a-z0-9$\\]+/g, ' ').replace(/\s+/g, ' ').trim();
-    const set = new Set();
-    for (let i = 0; i <= norm.length - 3; i++) set.add(norm.slice(i, i + 3));
-    return set;
-  };
-  const ga = grams(a), gb = grams(b);
-  if (ga.size === 0 || gb.size === 0) return 0;
-  let inter = 0;
-  for (const g of ga) if (gb.has(g)) inter++;
-  return inter / (ga.size + gb.size - inter);
 }
 
 /**
@@ -2442,6 +2413,19 @@ async function fcFindDuplicates(deckId, candidates, { noteGroup = '' } = {}) {
 }
 
 /**
+ * Cards with no vector yet, up to `cap`, in a deck or in the whole library.
+ * The vector table's card_id is an unindexed auxiliary column, so the ids
+ * are read once into a set rather than joined per card.
+ */
+async function fcCardsWithoutEmbedding(cap, deckId = null) {
+  const have = new Set((await db.all('SELECT card_id FROM fc_card_embeddings')).map((r) => String(r.card_id)));
+  const cards = deckId == null
+    ? await db.all('SELECT id, front, back FROM fc_cards')
+    : await db.all('SELECT id, front, back FROM fc_cards WHERE deck_id = ?', [deckId]);
+  return cards.filter((c) => !have.has(String(c.id))).slice(0, cap);
+}
+
+/**
  * Lazy backfill: embed cards that have no vector yet. Runs off the
  * activation path (delayed), capped per run so a huge legacy deck spreads
  * across sessions instead of pinning the embed endpoint for minutes.
@@ -2449,12 +2433,7 @@ async function fcFindDuplicates(deckId, candidates, { noteGroup = '' } = {}) {
 async function fcBackfillEmbeddings(cap = 512) {
   try {
     if (!(await fcEmbeddingsAvailable())) return;
-    const rows = await db.all(
-      `SELECT c.id, c.front, c.back FROM fc_cards c
-       LEFT JOIN fc_card_embeddings e ON e.card_id = CAST(c.id AS TEXT)
-       WHERE e.card_id IS NULL LIMIT ?`,
-      [cap],
-    );
+    const rows = await fcCardsWithoutEmbedding(cap);
     if (rows.length) await fcEmbedCards(rows);
   } catch { /* best-effort */ }
 }
@@ -2545,20 +2524,22 @@ async function fcSweepDeckPairs(deckId, { onProgress } = {}) {
   try {
     if (await fcEmbeddingsAvailable()) {
       // Deck-scoped backfill so a partially-embedded deck sweeps fully.
-      const missing = await db.all(
-        `SELECT c.id, c.front, c.back FROM fc_cards c
-         LEFT JOIN fc_card_embeddings e ON e.card_id = CAST(c.id AS TEXT)
-         WHERE e.card_id IS NULL AND c.deck_id = ? LIMIT 512`,
-        [deckId],
-      );
+      const missing = await fcCardsWithoutEmbedding(512, deckId);
       if (missing.length) await fcEmbedCards(missing);
+
+      // Every card's vector in one read, not one lookup per card.
+      const vecById = new Map();
+      const ids = cards.map((c) => String(c.id));
+      for (let i = 0; i < ids.length; i += 500) {
+        const chunk = ids.slice(i, i + 500);
+        const rows = await db.all(`SELECT card_id, embedding FROM fc_card_embeddings WHERE card_id IN (${chunk.map(() => '?').join(',')})`, chunk);
+        for (const r of rows) vecById.set(String(r.card_id), r);
+      }
 
       const pairMap = new Map();
       let done = 0;
       for (const card of cards) {
-        const vecRow = await db.get(
-          'SELECT embedding FROM fc_card_embeddings WHERE card_id = ?', [String(card.id)],
-        );
+        const vecRow = vecById.get(String(card.id));
         done++;
         try { onProgress?.(done, cards.length); } catch { /* UI gone */ }
         if (!vecRow?.embedding) continue;
