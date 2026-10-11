@@ -9,6 +9,7 @@
 // add one (New Routine, Build Steps, a template).
 
 import { appDateTimeString } from '../../services/localTime.js';
+import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { $ } from '../../ui/dom.js';
 import { createButton, createSectionLabel } from '../../ui/kit.js';
 import { createIconElement } from '../../ui/iconRegistry.js';
@@ -25,16 +26,6 @@ import { isPaused, svc, type ParallxApi } from './agentsServices.js';
 
 /** The routine whose last run is unfolded (survives repaints). */
 let openRoutine: string | null = null;
-
-function ago(ms: number): string {
-  const s = Math.round((Date.now() - ms) / 1000);
-  if (s < 60) return 'just now';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  return `${Math.round(h / 24)} d ago`;
-}
 
 function every(ms: number): string {
   const min = Math.round(ms / 60_000);
@@ -108,7 +99,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
       const line = card.querySelector('.agents-rt__line');
       if (!s || !line) return;
       const parts = [`Looks over your workspace ${every(hb.intervalMs)}`];
-      if (s.lastRunMs) parts.push(`last ${ago(s.lastRunMs)}`);
+      if (s.lastRunMs) parts.push(`last ${formatRelativeTime(s.lastRunMs, 'short')}`);
       if (s.nextDueMs && s.nextDueMs > Date.now()) parts.push(`next ${formatWhen(s.nextDueMs, Date.now())}`);
       line.textContent = parts.join(' · ');
     }).catch(() => undefined);
@@ -171,7 +162,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
       key: `wf:${wf.id}`,
       on: wf.enabled,
       name: wf.name,
-      line: [triggerWords(wf), last ? `last ${runWords(last)} ${ago(last.startedAt)}` : '', next ? `next ${formatWhen(next, Date.now())}` : ''].filter(Boolean).join(' · '),
+      line: [triggerWords(wf), last ? `last ${runWords(last)} ${formatRelativeTime(last.startedAt, 'short')}` : '', next ? `next ${formatWhen(next, Date.now())}` : ''].filter(Boolean).join(' · '),
       failed: last?.status === 'error',
       chips: [wf.class === 'destructive' ? 'Asks First' : ''].filter(Boolean),
       trace: last ? [`${appDateTimeString(new Date(last.startedAt))} · ${last.trigger.summary}`, ...last.nodes.map((n) => `${n.label}: ${n.status}${n.error ? `, ${n.error}` : n.summary ? `, ${n.summary}` : ''}`)] : undefined,
@@ -198,7 +189,7 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
       key: `job:${job.id}`,
       on: job.enabled,
       name: job.name,
-      line: [jobWords(job), last ? `last ${last.success ? 'ran fine' : 'failed'} ${ago(last.firedAt)}` : '',
+      line: [jobWords(job), last ? `last ${last.success ? 'ran fine' : 'failed'} ${formatRelativeTime(last.firedAt, 'short')}` : '',
         !cronOn && job.enabled ? 'waits until Scheduled Jobs is on in Settings'
           : job.enabled && job.nextRunAt ? `next ${formatWhen(job.nextRunAt, Date.now())}` : ''].filter(Boolean).join(' · '),
       failed: last ? !last.success : false,

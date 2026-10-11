@@ -33,7 +33,7 @@ export const HISTORY_TAGS: Record<string, RegExp> = {
 };
 
 const SOURCE_GLOBS = ['src/**/*.{ts,css}', 'ext/**/*.{js,css}', 'electron/**/*.{cjs,mjs,js}'];
-const NOT_COUNTED = ['**/node_modules/**', '**/*.generated.ts', 'ext/study/main.js', 'ext/web-research/readability.js', 'ext/**/test/**'];
+const NOT_COUNTED = ['**/node_modules/**', '**/*.generated.ts', 'ext/study/main.js', 'ext/**/readability.js', 'ext/**/test/**'];
 
 /** Every comment in a file, block and line, as one string. */
 function commentsOf(text: string): string {

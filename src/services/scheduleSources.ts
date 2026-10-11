@@ -10,8 +10,9 @@
 // Module-global hub (registrations survive activation order), fed by the
 // tool's activation and disposed with its subscriptions.
 
-import { Emitter, type Event } from '../platform/events.js';
-import { toDisposable, type IDisposable } from '../platform/lifecycle.js';
+import { createRegistry } from '../platform/registry.js';
+import type { Event } from '../platform/events.js';
+import type { IDisposable } from '../platform/lifecycle.js';
 
 /** An open task, lightweight. */
 export interface ScheduleOpenTask {
@@ -65,20 +66,15 @@ export interface ScheduleSource {
   captureFollowUp?(input: { title: string; description?: string; sourceKey: string }): Promise<boolean>;
 }
 
-const _sources = new Map<string, ScheduleSource>();
-const _onDidChange = new Emitter<void>();
-export const onDidChangeScheduleSources: Event<void> = _onDidChange.event;
+const registry = createRegistry<ScheduleSource>();
+export const onDidChangeScheduleSources: Event<void> = registry.onDidChange;
 
 export function registerScheduleSource(source: ScheduleSource): IDisposable {
-  _sources.set(source.id, source);
-  _onDidChange.fire();
-  return toDisposable(() => {
-    if (_sources.get(source.id) === source) { _sources.delete(source.id); _onDidChange.fire(); }
-  });
+  return registry.register(source.id, source);
 }
 
 export function getScheduleSources(): readonly ScheduleSource[] {
-  return [..._sources.values()];
+  return registry.list();
 }
 
 // ── Readers: every registered source, combined; a failing source is skipped ──

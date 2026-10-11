@@ -13,6 +13,7 @@
 
 import { Emitter, type Event } from '../platform/events.js';
 import { toDisposable, type IDisposable } from '../platform/lifecycle.js';
+import { createRegistry } from '../platform/registry.js';
 
 export interface ContributedSlashCommand {
   readonly name: string;
@@ -28,15 +29,17 @@ export interface ContributedSkill {
   readonly ownerToolId: string;
 }
 
-const _commands = new Map<string, ContributedSlashCommand>();
-const _skills = new Map<string, ContributedSkill>();
+const _commands = createRegistry<ContributedSlashCommand>();
+const _skills = createRegistry<ContributedSkill>();
 const _onDidChange = new Emitter<void>();
+_commands.onDidChange(() => _onDidChange.fire());
+_skills.onDidChange(() => _onDidChange.fire());
 
-/** Fires when a tool adds or removes a command or a skill. */
+/** Fires when a tool adds or removes a command, a skill or a drop handler. */
 export const onDidChangeChatContributions: Event<void> = _onDidChange.event;
 
 export function getContributedSlashCommands(): readonly ContributedSlashCommand[] {
-  return [..._commands.values()];
+  return _commands.list();
 }
 
 export function getContributedSlashCommand(name: string): ContributedSlashCommand | undefined {
@@ -44,7 +47,7 @@ export function getContributedSlashCommand(name: string): ContributedSlashComman
 }
 
 export function getContributedSkills(): readonly ContributedSkill[] {
-  return [..._skills.values()];
+  return _skills.list();
 }
 
 const NAME = /^[a-z][a-z0-9-]{0,40}$/;
@@ -54,12 +57,7 @@ export function registerContributedSlashCommand(cmd: ContributedSlashCommand): I
   if (typeof cmd.promptTemplate !== 'string' || !cmd.promptTemplate) throw new Error(`[api.chat] /${cmd.name} needs a promptTemplate.`);
   const existing = _commands.get(cmd.name);
   if (existing && existing.ownerToolId !== cmd.ownerToolId) throw new Error(`[api.chat] /${cmd.name} is already registered by "${existing.ownerToolId}".`);
-  const entry = { ...cmd, description: String(cmd.description ?? '') };
-  _commands.set(cmd.name, entry);
-  _onDidChange.fire();
-  return toDisposable(() => {
-    if (_commands.get(cmd.name) === entry) { _commands.delete(cmd.name); _onDidChange.fire(); }
-  });
+  return _commands.register(cmd.name, { ...cmd, description: String(cmd.description ?? '') });
 }
 
 /** `name` is the skill's frontmatter name (the key the skill loader uses). */
@@ -67,12 +65,7 @@ export function registerContributedSkill(name: string, skill: ContributedSkill):
   if (!NAME.test(name)) throw new Error(`[api.chat] Skill name "${name}" must be lowercase letters, digits and dashes.`);
   const existing = _skills.get(name);
   if (existing && existing.ownerToolId !== skill.ownerToolId) throw new Error(`[api.chat] Skill "${name}" is already registered by "${existing.ownerToolId}".`);
-  const entry = { ...skill };
-  _skills.set(name, entry);
-  _onDidChange.fire();
-  return toDisposable(() => {
-    if (_skills.get(name) === entry) { _skills.delete(name); _onDidChange.fire(); }
-  });
+  return _skills.register(name, { ...skill });
 }
 
 /**

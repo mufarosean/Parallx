@@ -22,6 +22,7 @@ import type {
   WidgetTypeRegistration,
 } from '../../api/bridges/dashboardBridge.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { formatRelativeTime } from '../../ui/relativeTime.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import { IRecentsService, type IRecentsServiceShape, type RecentOpenedItem } from '../../services/recentsService.js';
@@ -142,17 +143,6 @@ function fileFolder(uri: string): string {
   return '';
 }
 
-function relativeTime(ts: number): string {
-  if (!Number.isFinite(ts)) return '';
-  const sec = Math.round((Date.now() - ts) / 1000);
-  if (sec < 60) return 'just now';
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.round(hr / 24)}d ago`;
-}
-
 export const RECENT_ITEMS_WIDGET: WidgetTypeRegistration<RecentFilesConfig> = {
   typeId: 'parallx.dashboard.recent-files',
   displayName: 'Recent items',
@@ -243,7 +233,7 @@ export const RECENT_ITEMS_WIDGET: WidgetTypeRegistration<RecentFilesConfig> = {
         text.appendChild(nameEl);
         const subEl = document.createElement('span');
         subEl.className = 'rfw__folder';
-        subEl.textContent = item.kind === 'file' ? (fileFolder(item.target) || relativeTime(item.ts)) : `Canvas page · ${relativeTime(item.ts)}`;
+        subEl.textContent = item.kind === 'file' ? (fileFolder(item.target) || formatRelativeTime(item.ts, 'short')) : `Canvas page · ${formatRelativeTime(item.ts, 'short')}`;
         text.appendChild(subEl);
         row.appendChild(text);
 

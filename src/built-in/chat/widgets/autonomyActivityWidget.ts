@@ -27,6 +27,7 @@ import type {
   WidgetTypeRegistration,
 } from '../../../api/bridges/dashboardBridge.js';
 import { getIcon } from '../../../ui/iconRegistry.js';
+import { formatRelativeTime } from '../../../ui/relativeTime.js';
 
 interface AutonomyActivityConfig {
   readonly maxItems: number;
@@ -71,20 +72,6 @@ async function fetchEvents(api: unknown, cfg: AutonomyActivityConfig): Promise<A
 }
 
 // ─── Formatting helpers ──────────────────────────────────────────────────────
-
-function relativeTime(iso: string): string {
-  const then = Date.parse(iso);
-  if (!Number.isFinite(then)) return '';
-  const diff = Date.now() - then;
-  const sec = Math.round(diff / 1000);
-  if (sec < 60) return 'just now';
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.round(hr / 24);
-  return `${day}d ago`;
-}
 
 function formatDuration(ms?: number): string {
   if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) return '';
@@ -198,7 +185,7 @@ export const AUTONOMY_ACTIVITY_WIDGET: WidgetTypeRegistration<AutonomyActivityCo
 
         const meta = document.createElement('div');
         meta.className = 'aaw__meta';
-        const parts: string[] = [relativeTime(row.triggeredAt)];
+        const parts: string[] = [formatRelativeTime(row.triggeredAt, 'short')];
         const dur = formatDuration(row.durationMs);
         if (dur) parts.push(dur);
         if (typeof row.toolCount === 'number' && row.toolCount > 0) {

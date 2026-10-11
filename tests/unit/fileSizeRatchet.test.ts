@@ -27,7 +27,7 @@ const NOT_COUNTED = [
   '**/node_modules/**',
   '**/*.generated.ts',
   'ext/study/main.js',
-  'ext/web-research/readability.js',
+  'ext/**/readability.js',
   'ext/**/test/**',
 ];
 

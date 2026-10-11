@@ -13,8 +13,9 @@
 // command `questions.getRegistry` (src/commands/questionCommands.ts),
 // which returns `{ register, list, onDidChange }`.
 
-import { Emitter, type Event } from '../platform/events.js';
-import { toDisposable, type IDisposable } from '../platform/lifecycle.js';
+import { createRegistry } from '../platform/registry.js';
+import type { Event } from '../platform/events.js';
+import type { IDisposable } from '../platform/lifecycle.js';
 
 export type QuestionKind = 'essay' | 'short' | 'quant' | 'mc' | 'other';
 
@@ -62,14 +63,13 @@ export interface IQuestionProviderRegistry {
   onDidChange: Event<void>;
 }
 
-const _providers = new Map<string, IQuestionProvider>();
-const _onDidChange = new Emitter<void>();
+const registry = createRegistry<IQuestionProvider>();
 
 /** Fires when a provider is registered, replaced or disposed. */
-export const onDidChangeQuestionProviders: Event<void> = _onDidChange.event;
+export const onDidChangeQuestionProviders: Event<void> = registry.onDidChange;
 
 export function listQuestionProviders(): readonly IQuestionProvider[] {
-  return [..._providers.values()];
+  return registry.list();
 }
 
 /**
@@ -84,16 +84,10 @@ export function registerQuestionProvider(provider: IQuestionProvider): IDisposab
   if (typeof provider.list !== 'function') {
     throw new Error(`[questionProviders] Provider "${provider.id}" needs a list() function.`);
   }
-  if (_providers.has(provider.id)) {
+  if (registry.get(provider.id)) {
     console.warn(`[questionProviders] Provider "${provider.id}" registered twice; the later one replaces the earlier.`);
   }
-  _providers.set(provider.id, provider);
-  _onDidChange.fire();
-  return toDisposable(() => {
-    if (_providers.get(provider.id) !== provider) return;
-    _providers.delete(provider.id);
-    _onDidChange.fire();
-  });
+  return registry.register(provider.id, provider);
 }
 
 /** One live object, so a consumer holding it sees every later registration. */

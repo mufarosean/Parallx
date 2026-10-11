@@ -5,8 +5,9 @@
 // runs, and Quick Open lists them beside the files, ranked by the same
 // fuzzy match. Turned off, the source goes and its items with it.
 
-import { Emitter, type Event } from '../platform/events.js';
-import { toDisposable, type IDisposable } from '../platform/lifecycle.js';
+import { createRegistry } from '../platform/registry.js';
+import type { Event } from '../platform/events.js';
+import type { IDisposable } from '../platform/lifecycle.js';
 
 export interface QuickOpenSourceItem {
   /** Unique within the source. */
@@ -28,18 +29,13 @@ export interface QuickOpenSource {
   listItems(): Promise<readonly QuickOpenSourceItem[]>;
 }
 
-const _sources = new Map<string, QuickOpenSource>();
-const _onDidChange = new Emitter<void>();
-export const onDidChangeQuickOpenSources: Event<void> = _onDidChange.event;
+const registry = createRegistry<QuickOpenSource>();
+export const onDidChangeQuickOpenSources: Event<void> = registry.onDidChange;
 
 export function registerQuickOpenSource(source: QuickOpenSource): IDisposable {
-  _sources.set(source.id, source);
-  _onDidChange.fire();
-  return toDisposable(() => {
-    if (_sources.get(source.id) === source) { _sources.delete(source.id); _onDidChange.fire(); }
-  });
+  return registry.register(source.id, source);
 }
 
 export function getQuickOpenSources(): readonly QuickOpenSource[] {
-  return [..._sources.values()];
+  return registry.list();
 }

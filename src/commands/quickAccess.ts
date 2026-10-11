@@ -21,7 +21,7 @@
 //   Escape       → dismiss
 
 import { formatKeybindingForDisplay } from '../services/keybindingUtils.js';
-import { appDateString } from '../services/localTime.js';
+import { formatRelativeTime } from '../ui/relativeTime.js';
 import { glideHighlight } from '../ui/glide.js';
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
@@ -575,7 +575,7 @@ class GeneralProvider implements IQuickAccessProvider {
           if (query.length > 0 && score < 0) continue;
 
           const lastAccessed = entry.metadata.lastAccessedAt
-            ? _formatRelativeTime(entry.metadata.lastAccessedAt)
+            ? formatRelativeTime(entry.metadata.lastAccessedAt, 'short')
             : '';
 
           items.push({
@@ -599,26 +599,6 @@ class GeneralProvider implements IQuickAccessProvider {
     // Sort: files before workspaces (group order), then within each group
     // the items are already sorted by their insertion logic
     return items;
-  }
-}
-
-/** Format an ISO date string as a relative time label (e.g. "2 hours ago"). */
-function _formatRelativeTime(isoString: string): string {
-  try {
-    const dt = new Date(isoString);
-    const now = Date.now();
-    const diffMs = now - dt.getTime();
-    if (diffMs < 0) return '';
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return 'just now';
-    if (diffMin < 60) return `${diffMin}m ago`;
-    const diffH = Math.floor(diffMin / 60);
-    if (diffH < 24) return `${diffH}h ago`;
-    const diffD = Math.floor(diffH / 24);
-    if (diffD < 30) return `${diffD}d ago`;
-    return appDateString(dt);
-  } catch {
-    return '';
   }
 }
 

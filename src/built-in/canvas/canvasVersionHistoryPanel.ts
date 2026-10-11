@@ -8,6 +8,7 @@
 
 import { $ } from '../../ui/dom.js';
 import { formatLocalDateTime } from '../../services/localTime.js';
+import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { decodeCanvasContent } from './contentSchema.js';
 import type { ICanvasDataService, IPageRevision, RevisionSource } from './canvasTypes.js';
 
@@ -117,7 +118,7 @@ export function showVersionHistoryPanel(deps: VersionHistoryDeps): Promise<void>
         item.type = 'button';
         item.dataset.id = rev.id;
         const when = $('div.canvas-vh-item-when');
-        when.textContent = formatRelative(Date.now() - Date.parse(rev.createdAt));
+        when.textContent = formatRelativeTime(rev.createdAt, 'long');
         const badge = $('span.canvas-vh-badge');
         badge.dataset.source = rev.source;
         badge.textContent = SOURCE_LABEL[rev.source] ?? rev.source;
@@ -173,16 +174,6 @@ function extractPlainText(rawContent: string): string {
 }
 
 /** Coarse "x ago". */
-function formatRelative(deltaMs: number): string {
-  const s = Math.max(0, Math.round(deltaMs / 1000));
-  if (s < 60) return 'just now';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  return `${Math.round(h / 24)} d ago`;
-}
-
 /** Absolute local timestamp ('YYYY-MM-DD HH:mm' from the SQLite UTC string). */
 function formatTimestamp(iso: string): string {
   // SQLite datetime('now') yields 'YYYY-MM-DD HH:MM:SS' in UTC — normalise to a

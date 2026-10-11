@@ -14,6 +14,7 @@
 // is built so each phase plugs in without restructuring this file.
 
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { Emitter } from '../../platform/events.js';
 import { Dropdown } from '../../ui/dropdown.js';
 import type { DashboardDataService } from './dashboardDataService.js';
@@ -700,7 +701,7 @@ class DashboardEditorPane implements IDisposable {
     const footer = el('footer', 'dashboard-widget__footer');
     footer.dataset.role = 'footer';
     if (row.cachedAt) {
-      footer.textContent = `Updated ${this._formatRelative(row.cachedAt)}`;
+      footer.textContent = `Updated ${formatRelativeTime(row.cachedAt, 'short')}`;
     } else {
       footer.textContent = typeReg?.refresh ? 'Never refreshed' : '';
     }
@@ -853,13 +854,6 @@ class DashboardEditorPane implements IDisposable {
     };
   }
 
-  private _formatRelative(ts: number): string {
-    const diff = Date.now() - ts;
-    if (diff < 60_000) return 'just now';
-    if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m ago`;
-    if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h ago`;
-    return `${Math.round(diff / 86_400_000)}d ago`;
-  }
 
   private _updateStatusBadge(el: HTMLElement, status: string, errorMessage: string | null): void {
     el.dataset.value = status;
@@ -981,7 +975,7 @@ class DashboardEditorPane implements IDisposable {
     const footer = inst.cardEl.querySelector('[data-role="footer"]') as HTMLElement | null;
     if (!footer) return;
     if (inst.row.cachedAt) {
-      footer.textContent = `Updated ${this._formatRelative(inst.row.cachedAt)}`;
+      footer.textContent = `Updated ${formatRelativeTime(inst.row.cachedAt, 'short')}`;
       footer.style.display = '';
     } else {
       footer.style.display = 'none';

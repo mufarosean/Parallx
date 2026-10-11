@@ -7,6 +7,7 @@
 // 'calendar-changed'.
 
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
+import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { Dropdown } from '../../ui/dropdown.js';
 import type { ISettingsPanel } from '../../services/settingsPanelRegistry.js';
 import { DEFAULT_EVENT_CALENDAR_KEY, type PlannerDataService } from './plannerDataService.js';
@@ -388,7 +389,7 @@ function renderGoogleSyncSection(
         syncStatus.classList.remove('is-error');
         const pruned = mine.reduce((n, r) => n + r.prunedStale, 0);
         const suffix = pruned > 0 ? ` · removed ${pruned} stale event${pruned === 1 ? '' : 's'}` : '';
-        syncStatus.textContent = last ? `Last synced ${formatRelative(Date.now() - last)}${suffix}` : 'Not synced yet.';
+        syncStatus.textContent = last ? `Last synced ${formatRelativeTime(last, 'long')}${suffix}` : 'Not synced yet.';
       };
       statusUpdater = () => { void updateStatus(); };
       void updateStatus();
@@ -512,16 +513,6 @@ function renderGoogleSyncSection(
 }
 
 /** Coarse "x ago" for the last-sync line. */
-function formatRelative(deltaMs: number): string {
-  const s = Math.max(0, Math.round(deltaMs / 1000));
-  if (s < 60) return 'just now';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  return `${Math.round(h / 24)} d ago`;
-}
-
 /** Map raw OAuth error codes to a sentence the user can act on. */
 function friendlyAuthError(code?: string): string {
   switch (code) {

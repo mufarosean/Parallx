@@ -34,11 +34,16 @@ describe('Mozilla Readability — vendored at pinned SHA (M65 F1)', () => {
     expect(raw).not.toContain('Readability not vendored yet');
   });
 
+  it('the Browser carries the same vendored file', () => {
+    const browserCopy = readFileSync(path.resolve(path.dirname(READABILITY_PATH), '../browser/readability.js'), 'utf8');
+    expect(browserCopy).toBe(raw);
+  });
+
   it('keeps its non-ASCII patterns intact (no mojibake from a wrong-encoding save)', () => {
     // A copy saved through the wrong encoding turns » into Â», and the
     // next-page and title-separator regexes silently stop matching.
-    const browserCopy = readFileSync(path.resolve(path.dirname(READABILITY_PATH), '../browser/main.js'), 'utf8');
-    for (const [name, text] of [['readability.js', raw], ['browser/main.js', browserCopy]] as const) {
+    const browserCopy = readFileSync(path.resolve(path.dirname(READABILITY_PATH), '../browser/readability.js'), 'utf8');
+    for (const [name, text] of [['readability.js', raw], ['browser/readability.js', browserCopy]] as const) {
       expect(text, name).not.toMatch(/Â[«»]|â€[“”–—¦]|Ã©/);
       expect(text, name).toContain('|»([^\\|]|$))/i');
       expect(text, name).toContain('/(prev|earl|old|new|<|«)/i');
