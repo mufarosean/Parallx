@@ -111,9 +111,6 @@ test.describe('File Menu Commands', () => {
   test('Revert File restores original content', async ({ window, electronApp }) => {
     await addWorkspaceFolder(electronApp, window);
 
-    // Read original content
-    const originalContent = await fs.readFile(path.join(wsPath, 'README.md'), 'utf-8');
-
     // Open and edit
     const fileNode = window.locator('.tree-node .tree-node-label', { hasText: 'README.md' }).first();
     await fileNode.click();

@@ -13,7 +13,6 @@
  *   npx playwright test tests/e2e/20-cross-page-diagnostic.spec.ts --headed
  */
 import { sharedTest as test, expect, setupCanvasPage, waitForEditor, getDocStructure } from './fixtures';
-import type { Page } from '@playwright/test';
 
 test.describe('Cross-Page DnD Diagnostic', () => {
 

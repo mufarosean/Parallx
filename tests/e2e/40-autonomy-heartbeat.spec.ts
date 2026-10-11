@@ -15,7 +15,7 @@
 import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
 import fs from 'fs/promises';
 import path from 'path';
-import type { Page, ElectronApplication } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 const ARTIFACT_DIR = path.join(process.cwd(), 'test-results', 'autonomy-heartbeat');
 

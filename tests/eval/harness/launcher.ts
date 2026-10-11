@@ -29,8 +29,10 @@ async function loadToolIds(): Promise<string[]> {
 }
 
 export async function launchEvalSession(opts?: { workspacePath?: string }): Promise<EvalSession> {
-  const env = { ...process.env };
-  delete (env as any).ELECTRON_RUN_AS_NODE;
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v;
+  }
   env.PARALLX_TEST_MODE = '1';
   env.PARALLX_RENDERER_PORT = '0';
 

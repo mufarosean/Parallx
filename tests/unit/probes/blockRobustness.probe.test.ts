@@ -30,7 +30,7 @@ import { Video, Audio, FileAttachment } from '../../../src/built-in/canvas/exten
 import { TableOfContents } from '../../../src/built-in/canvas/extensions/tableOfContentsNode';
 import { Dataview } from '../../../src/built-in/canvas/extensions/dataviewNode';
 import { moveBlockAboveBelow } from '../../../src/built-in/canvas/config/blockStateRegistry/blockMovement';
-import { deleteDraggedSource, resolveMovableBlock } from '../../../src/built-in/canvas/config/blockStateRegistry/columnInvariants';
+import { resolveMovableBlock } from '../../../src/built-in/canvas/config/blockStateRegistry/columnInvariants';
 import { deleteBlockAt, duplicateBlockAt } from '../../../src/built-in/canvas/config/blockStateRegistry/blockLifecycle';
 import { turnBlockWithSharedStrategy } from '../../../src/built-in/canvas/config/blockStateRegistry/blockTransforms';
 

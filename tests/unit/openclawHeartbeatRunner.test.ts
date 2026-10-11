@@ -8,7 +8,6 @@ import {
   DUPLICATE_SUPPRESSION_WINDOW_MS,
   type IHeartbeatConfig,
   type IHeartbeatSystemEvent,
-  type HeartbeatTurnExecutor,
 } from '../../src/openclaw/openclawHeartbeatRunner';
 
 // ---------------------------------------------------------------------------

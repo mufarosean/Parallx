@@ -198,7 +198,7 @@ test.describe('PDF diagnostics', () => {
       range.setStart(first.firstChild, 0);
       range.setEnd(last.firstChild, (last.textContent || '').length);
 
-      const selection = window.getSelection();
+      const selection = document.getSelection();
       selection?.removeAllRanges();
       selection?.addRange(range);
 
@@ -267,7 +267,7 @@ test.describe('PDF diagnostics', () => {
       range.setStart(first.firstChild, 0);
       range.setEnd(last.firstChild, (last.textContent || '').length);
 
-      const selection = window.getSelection();
+      const selection = document.getSelection();
       selection?.removeAllRanges();
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       selection?.addRange(range);

@@ -13,7 +13,7 @@
  * Ollama is intercepted at the network level — no real LLM inference needed.
  */
 import { test, expect, openFolderViaMenu } from './fixtures';
-import type { Page, ElectronApplication } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
 

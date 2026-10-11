@@ -105,7 +105,6 @@ test.describe('Toggle with task list — handle anchor diagnostic', () => {
       const view = ed.view;
       const hitResult = view.posAtCoords({ left: x, top: y });
       const $pos = hitResult ? view.state.doc.resolve(hitResult.pos) : null;
-      const $inside = (hitResult && hitResult.inside >= 0) ? view.state.doc.resolve(hitResult.inside) : null;
       const elt = document.elementFromPoint(x, y);
       const path: string[] = [];
       if ($pos) {

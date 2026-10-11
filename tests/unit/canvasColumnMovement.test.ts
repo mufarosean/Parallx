@@ -25,7 +25,6 @@ import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { Column, ColumnList } from '../../src/built-in/canvas/extensions/columnNodes';
 import { MathBlock } from '../../src/built-in/canvas/extensions/mathBlockNode';
 import { moveBlockAboveBelow } from '../../src/built-in/canvas/config/blockStateRegistry/blockMovement';
-import { deleteDraggedSource } from '../../src/built-in/canvas/config/blockStateRegistry/columnInvariants';
 import {
   createColumnLayoutFromDrop,
   addColumnToLayoutFromDrop,

@@ -6,7 +6,7 @@ const TOK = {} as ICancellationToken;
 
 describe('canvas_relate_pages tool', () => {
   it('links the found related pages under the hub and reports success', async () => {
-    const relate = vi.fn(async (hub: string, related: readonly string[]) => ({
+    const relate = vi.fn(async (_hub: string, related: readonly string[]) => ({
       hub: 'Q3 Planning',
       linked: [...related],
       missing: [],

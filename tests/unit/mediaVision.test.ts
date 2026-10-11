@@ -13,7 +13,7 @@ import {
   type IToolSummary,
 } from '../../src/openclaw/openclawSystemPrompt';
 import { OpenclawContextEngine, type IOpenclawContextEngineServices } from '../../src/openclaw/openclawContextEngine';
-import type { IChatMessage, IChatResponseChunk } from '../../src/services/chatTypes';
+import type { IChatMessage } from '../../src/services/chatTypes';
 
 // ---------------------------------------------------------------------------
 // Fixtures

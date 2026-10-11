@@ -8,7 +8,7 @@
 //     AND emits a `completed` event with surfaceRoutes recorded.
 //   - When no flags service is installed, gating is disabled (back-compat).
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { SurfaceRouterService } from '../../src/services/surfaceRouterService';
 import {
   AutonomyFeatureFlagsService,

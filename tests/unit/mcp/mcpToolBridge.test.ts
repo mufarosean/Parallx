@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { McpToolBridge } from '../../../src/openclaw/mcp/mcpToolBridge.js';
 import { Emitter } from '../../../src/platform/events.js';
-import type { IMcpClientService } from '../../../src/services/serviceTypes.js';
-import type { ILanguageModelToolsService, IChatTool, IToolResult } from '../../../src/services/chatTypes.js';
+import type { IChatTool } from '../../../src/services/chatTypes.js';
 import type { IMcpToolSchema, IMcpToolCallResult, McpConnectionState } from '../../../src/openclaw/mcp/mcpTypes.js';
 import type { IDisposable } from '../../../src/platform/lifecycle.js';
 

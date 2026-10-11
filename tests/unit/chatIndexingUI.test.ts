@@ -4,7 +4,7 @@
 //
 // Task 6.2: Source citation Reference rendering (clickable pills)
 
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 
 // ── Task 6.2: Reference content part rendering ──
 
