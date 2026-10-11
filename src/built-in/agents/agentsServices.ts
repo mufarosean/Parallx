@@ -69,6 +69,7 @@ export interface ParallxApi {
   window: {
     showWarningMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+    showErrorMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
     createStatusBarItem(alignment?: number, priority?: number): {
       text: string;
       tooltip: string | undefined;

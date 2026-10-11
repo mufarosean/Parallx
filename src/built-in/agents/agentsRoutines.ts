@@ -88,6 +88,10 @@ function statusCard(host: HTMLElement, state: 'on' | 'off' | 'paused', name: str
   return card;
 }
 
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutine: () => void, repaint: () => void): void {
   const run = (id: string, ...args: unknown[]): void => { void api.commands.executeCommand(id, ...args).catch(() => undefined); };
   const paused = isPaused();
@@ -137,9 +141,9 @@ export function renderRoutines(host: HTMLElement, api: ParallxApi, openNewRoutin
       const name = $('div.agents-card__name'); name.textContent = wf.name;
       const det = $('div.agents-card__detail'); det.textContent = wf.description ?? triggerWords(wf);
       const bar = $('div.agents-card__actions');
-      createButton(bar, { label: 'Add', kind: 'primary', size: 'sm', title: 'Keep it and turn it on', onClick: () => { try { svc.workflows?.updateWorkflow(wf.id, { source: 'user', enabled: true }); } catch { /* repaint */ } } });
+      createButton(bar, { label: 'Add', kind: 'primary', size: 'sm', title: 'Keep it and turn it on', onClick: () => { try { svc.workflows?.updateWorkflow(wf.id, { source: 'user', enabled: true }); } catch (err) { void api.window.showErrorMessage(`Could not add "${wf.name}": ${errorText(err)}`); } } });
       createButton(bar, { label: 'Review', kind: 'secondary', size: 'sm', onClick: () => run('workflows.openEditor', wf.id) });
-      createButton(bar, { label: 'Dismiss', kind: 'ghost', size: 'sm', title: 'Delete the suggestion; this habit is not suggested again', onClick: () => { try { svc.workflows?.removeWorkflow(wf.id); } catch { /* repaint */ } } });
+      createButton(bar, { label: 'Dismiss', kind: 'ghost', size: 'sm', title: 'Delete the suggestion; this habit is not suggested again', onClick: () => { try { svc.workflows?.removeWorkflow(wf.id); } catch (err) { void api.window.showErrorMessage(`Could not dismiss "${wf.name}": ${errorText(err)}`); } } });
       card.append(name, det, bar);
       sec.appendChild(card);
     }

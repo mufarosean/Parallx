@@ -880,13 +880,17 @@ export class CronService implements IDisposable {
     }
   }
 
-  /** M60 Phase γ — persist the current job set; swallows errors. */
+  /**
+   * Persist the current job set. The in-memory jobs stay the truth for this
+   * session whatever happens, but a failed write means they are gone at the
+   * next start, so it is logged with the cause rather than swallowed.
+   */
   private async _save(): Promise<void> {
     if (!this._persistence) return;
     try {
       await this._persistence.save({ jobs: Array.from(this._jobs.values()) });
-    } catch {
-      /* persistence failures don't affect in-memory truth */
+    } catch (err) {
+      console.error(`[CronService] Could not save ${this._jobs.size} routine(s); they will be missing after a restart:`, err);
     }
   }
 

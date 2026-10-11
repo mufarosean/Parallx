@@ -8990,7 +8990,10 @@ function renderCharactersPage(container, parallx, input) {
       await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/characters/${ch.fileName}`));
       await refresh();
       _refreshSidebar?.();
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn('[TextGenerator] Character delete failed:', err);
+      showToastLite('Delete failed: ' + (err?.message || String(err)));
+    }
   }
   async function createLorebook() {
     const dir = resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks`);
@@ -9014,7 +9017,13 @@ function renderCharactersPage(container, parallx, input) {
   async function removeLore(lb, loreName) {
     const choice = await parallx.window.showWarningMessage(`Delete the lorebook "${loreName}"? This cannot be undone.`, { title: 'Delete' });
     if (!choice || choice.title !== 'Delete') return;
-    try { await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lb.fileName}`)); await refresh(); } catch { /* ignore */ }
+    try {
+      await fs.delete(resolveUri(workspaceUri, `${EXT_ROOT}/lorebooks/${lb.fileName}`));
+      await refresh();
+    } catch (err) {
+      console.warn('[TextGenerator] Lorebook delete failed:', err);
+      showToastLite('Delete failed: ' + (err?.message || String(err)));
+    }
   }
 
   function moreButton(host, label, items) {
