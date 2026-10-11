@@ -324,6 +324,17 @@ adds to the drift.
 | **F6** | Tool settings | Only in Settings: tools lose their sidebar Settings rows (DESIGN_UNIFICATION D5). |
 | **F7** | The freeze | Holds until Tracks A, B and C are done. |
 
+**Decided 2026-10-11.** Mufaro: "Do not touch AI for Creations AI, but the
+rest is fair game." So:
+- The plan goes ahead as recommended.
+- Creations AI's prompts, model calls, model choice and request settings
+  stay as they are. That covers its chat, Studio, Story, memory and
+  Directions.
+- Track B and the request policy leave Creations AI out.
+- Core changes must not alter what Creations AI's calls send or receive.
+- Creations AI's UI still migrates onto the shared pieces with every other
+  tool (Track F).
+
 ---
 
 ## 5. This week: quick wins you will feel
@@ -342,11 +353,15 @@ Each is small, contained and testable.
    - MCP env values marked `secret` move to safeStorage and old plaintext
      entries migrate.
    - A sealed workspace neither spawns nor offers network MCP servers.
-3. **A request policy in the bridge, for every non-chat call:**
-   - `think` defaults to `false` unless the caller asks.
+3. **A request policy for every non-chat call except Creations AI's:**
+   - `think` is set explicitly, off unless the feature needs reasoning.
    - `numCtx` is sized to prompt plus output.
-   - `_inThinkTag` becomes per-stream.
-   - Embedding models leave `api.lm.getModels`.
+   - It is applied per feature, not as a bridge-wide default, because a
+     bridge default would change what Creations AI sends.
+   - `_inThinkTag` becomes per-stream: a provider correctness fix that
+     changes no request.
+   - Leaving embedding models out of `api.lm.getModels` is held, because it
+     would change which model Creations AI falls back to.
    - This alone should make several features stop returning empty or
      truncated results.
 4. **Dead MCP catalog entries** are removed or replaced with the current
@@ -425,10 +440,11 @@ and the ratchet fails on a new hand-built button anywhere.
    Keep/Undo marks. One AI on the page.
 2. Flashcards generation and judges.
 3. Worksheets generate and review.
-4. Creations.
-5. Atelier tagging.
-6. Budget sync (background priority, still single calls with a schema; not
+4. Atelier tagging.
+5. Budget sync (background priority, still single calls with a schema; not
    the tool loop, which did worse on local models).
+
+Creations AI is out of scope (decided 2026-10-11): it keeps its own calls.
 
 **It replaces** about 900–1,100 lines in ~12 files: 3 watchdogs, 11 parsers,
 8 pickers, the context planners, and the inline-provider facade with its
