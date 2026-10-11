@@ -355,11 +355,11 @@ Each is small, contained and testable.
    - Measured in the real app: the first answer words appear at 1.4 s
      instead of 7.0 s.
    - Reasoning stays on by default; `/think` is a working opt-out.
-2. **Privacy (two bugs):**
+2. **Privacy (two bugs):** **Done, `a0aeb16a`.**
    - MCP env values marked `secret` move to safeStorage and old plaintext
      entries migrate.
    - A sealed workspace neither spawns nor offers network MCP servers.
-3. **A request policy for every non-chat call except Creations AI's:**
+3. **A request policy for every non-chat call except Creations AI's:** **Done, `49b233b6`.**
    - `think` is set explicitly and stays on. Output caps leave room for the
      reasoning (no more 30- or 200-token caps on a thinking model), and a
      feature that shows text shows the reasoning while it happens.
@@ -374,10 +374,10 @@ Each is small, contained and testable.
      would change which model Creations AI falls back to.
    - This alone should make several features stop returning empty or
      truncated results.
-4. **Dead MCP catalog entries** are removed or replaced with the current
+4. **Done, `1494b002`.** **Dead MCP catalog entries** are removed or replaced with the current
    packages.
-5. **Ctrl+P finds pages.**
-6. **The Properties block** on plain pages shows only once a property is
+5. **Ctrl+P finds pages.** **Done, `9c567ad1`.**
+6. **Done, `efc35a52`.** **The Properties block** on plain pages shows only once a property is
    added.
 
 ---
@@ -631,6 +631,22 @@ Tracks A and B can run side by side. C needs A's menu and row primitives.
 F needs A. D can start after the quick wins.
 
 ---
+
+## Ledger
+
+| Date | Step | Shipped | Verified |
+|---|---|---|---|
+| 2026-10-11 | §5.1 | **The chat answer streams** (`d40b6fab`). The first answer words appear at 1.4 s instead of 7.0 s; a failed call takes back what it streamed; `/think` is a working per-session opt-out (reasoning stays on by default). | Real app against a slow-streaming fake model (before and after); 4 new tests |
+| 2026-10-11 | §5.2 | **MCP privacy** (`a0aeb16a`). Env values (tokens) move to the OS-encrypted secret store, migrated on load. A sealed workspace runs no MCP server and hides MCP tools. The seal push is one workbench method. Security moves to General in Settings. | Real app with a stdio MCP server (connect, seal, unseal); migration fallback checked where the OS store is unavailable; 7 new tests |
+| 2026-10-11 | §5.3 | **Room to reason** (`49b233b6`). Cluster naming and lineage caps get a reasoning allowance (`capWithReasoningRoom`). Canvas inline AI, PDF Ask and Notebook ask for reasoning and say Thinking…. Worksheets sizes its window. Flashcards thinks by default, with room. The post-turn summary is background work. The provider's think-tag state is per stream. **Found:** canvas inline AI was dead whenever chat started after canvas; canvas now asks for the provider per request. | Real app: inline AI opens on a new page, shows Thinking…, then answers; 6 new tests |
+| 2026-10-11 | §5.4 | **MCP catalog** (`1494b002`). GitHub, Slack and Fetch (deprecated or nonexistent) leave; Brave Search moves to Brave's package; Filesystem gets `{workspaceRoot}`, resolved at connect. | Both servers started and answered the MCP handshake |
+| 2026-10-11 | §5.5 | **Ctrl+P finds pages** (`9c567ad1`), through a generic `quickOpenSources` registry that Canvas registers into. | Real app: "loss dev" finds the page, Enter opens it |
+| 2026-10-11 | §5.6 | **Plain pages open on their text** (`efc35a52`). The Properties panel hides on a page in no database; Add Properties in the title's hover row shows it. | Real app: hidden, revealed, tagged, reopened |
+
+**Open for Mufaro:** Atelier's bulk photo tagging hard-codes reasoning off
+(`ext/media-organizer/main.js:30558`). Reasoning on would improve tags and
+multiply the time per photo across a whole library. Turn it on, make it a
+setting, or leave it?
 
 ## Parking list (ideas that wait for the freeze to lift)
 
