@@ -79,17 +79,7 @@ h1, h2, h3, h4,
 .part-workbench-parts-titlebar,
 .part-workbench-parts-activitybar {
   background: var(--px-bg);
-}
-
-/* Tab strip — the active tab connects to the editor body below it instead of
-   floating as a separate colored chip. */
-.part-workbench-parts-editor .tabs-container,
-.editor-tabs {
-  background: var(--px-bg);
-}
-
-
-/* Form controls inherit the UI font and size (Chromium gives <button> and
+}/* Form controls inherit the UI font and size (Chromium gives <button> and
    <input> 13.33px system text otherwise — the "unstyled control" look).
    :where() keeps this at zero specificity: any component rule wins. */
 :where(button, input, select, textarea) {

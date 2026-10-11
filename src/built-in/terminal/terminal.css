@@ -79,19 +79,7 @@ input[type="text"].parallx-terminal-input:focus-visible {
   box-shadow: none;
   outline: none;
 }
-.parallx-terminal-input::placeholder { color: var(--px-text-faint); }
-
-/* ── Basic ANSI color classes (reserved; stream is ANSI-stripped today) ── */
-.ansi-bold { font-weight: 700; }
-.ansi-red { color: var(--px-danger); }
-.ansi-green { color: var(--px-success); }
-.ansi-yellow { color: var(--px-warning); }
-.ansi-blue { color: var(--px-accent-text); }
-.ansi-magenta { color: #c586c0; }
-.ansi-cyan { color: #4ec9b0; }
-.ansi-white { color: var(--px-text); }
-
-/* ── Environment strip (M97) ──────────────────────────────────────────────
+.parallx-terminal-input::placeholder { color: var(--px-text-faint); }/* ── Environment strip (M97) ──────────────────────────────────────────────
    Shows which Python environment the shell is using, and — the case that
    matters — says so when a running shell has gone stale, because a live
    process's environment cannot be changed from outside. Tokens only. */

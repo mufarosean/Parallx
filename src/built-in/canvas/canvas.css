@@ -114,26 +114,7 @@
   color: var(--vscode-descriptionForeground);
   font-size: var(--parallx-fontSize-md);
   text-align: center;
-}
-
-.canvas-empty-btn {
-  display: inline-block;
-  margin-top: 8px;
-  cursor: pointer;
-  color: var(--vscode-textLink-foreground);
-  background: none;
-  border: none;
-  font: inherit;
-  font-size: var(--parallx-fontSize-md);
-  padding: 0;
-  text-decoration: underline;
-}
-
-.canvas-empty-btn:hover {
-  color: var(--vscode-textLink-activeForeground);
-}
-
-/* M77 Phase 11.8 — sidebar undo toast */
+}/* M77 Phase 11.8 — sidebar undo toast */
 .canvas-sidebar-toast {
   position: absolute;
   left: 8px;
@@ -1586,16 +1567,7 @@
 .canvas-bubble-btn--active {
   background: rgba(var(--px-accent-rgb), 0.2);
   color: var(--vscode-textLink-foreground);
-}
-
-.canvas-bubble-highlight-icon {
-  /* Legacy class — bubble menu now uses Color submenu instead of a
-     standalone Highlight button.  Retained as a no-op so any cached
-     stylesheet references don't 404, and intentionally empty so it
-     contributes nothing to layout. */
-}
-
-/* ── Link input row inside bubble menu ── */
+}/* ── Link input row inside bubble menu ── */
 
 .canvas-bubble-link-input {
   display: flex;
@@ -3996,8 +3968,6 @@
   user-select: none;
 }
 
-
-
 /* ─────────────────────────────────────────────────────────────────────────────
  * Sidebar Favorites Section (Cap 10 — Task 10.2)
  * ───────────────────────────────────────────────────────────────────────────── */
@@ -4358,8 +4328,6 @@
   animation: slashMenuFadeIn 0.1s ease-out;
 }
 
-
-
 /* ══════════════════════════════════════════════════════════════════════════════
    Math / KaTeX — Inline & Block Equations
    ══════════════════════════════════════════════════════════════════════════════ */
@@ -4601,8 +4569,6 @@
 }
 .canvas-dataview-page:hover { background: var(--px-surface-hover); }
 .canvas-tiptap-editor .canvas-dataview-empty { color: var(--px-text-muted); padding: 4px 6px; }
-
-
 
 .canvas-tiptap-editor .tiptap-math.latex:hover {
   background: color-mix(in srgb, var(--px-text) 6%, transparent);
@@ -5153,7 +5119,6 @@
 .canvas-ai-chat-send:hover {
   background: rgba(var(--px-accent-rgb), 0.25);
 }
-
 
 /* -- M66 Iter B � parallx:// deep-link block highlight ------------------- */
 /* Applied transiently by the canvas editor pane when a parallx://canvas/page/<id>?block=<blockId> link is opened. Auto-removed after ~2s. */

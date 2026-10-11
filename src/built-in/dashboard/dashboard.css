@@ -11,7 +11,6 @@
      don't reinvent it.
    ========================================================================== */
 
-
 /* ── Pane shell ─────────────────────────────────────────────────────────── */
 
 .dashboard-pane-host {
@@ -41,7 +40,6 @@
   .dashboard-pane { padding: 24px 20px 48px; }
 }
 
-
 /* ── Header ─────────────────────────────────────────────────────────────── */
 
 .dashboard-header {
@@ -52,30 +50,7 @@
   margin-bottom: 28px;
   padding-bottom: 24px;
   border-bottom: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-}
-
-.dashboard-header__title-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.dashboard-header__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: var(--px-bg-inset);
-  color: var(--vscode-button-background, #007acc);
-  margin-bottom: 6px;
-}
-.dashboard-header__icon svg { width: 16px; height: 16px; }
-
-.dashboard-header__title {
+}.dashboard-header__title {
   margin: 0;
   font-size: var(--px-text-xl);
   font-weight: 600;
@@ -87,23 +62,12 @@
 }
 .dashboard-header__title:hover {
   color: var(--vscode-button-background, #007acc);
-}
-
-.dashboard-header__subtitle {
-  margin: 4px 0 0;
-  font-size: var(--px-text-base);
-  font-weight: 400;
-  color: var(--px-text-secondary);
-  letter-spacing: 0;
-}
-
-.dashboard-header__actions {
+}.dashboard-header__actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
 }
-
 
 /* ── Collapsible pane header ────────────────────────────────────────────── */
 /* When the header is hidden, the title bar collapses entirely and a slim
@@ -164,7 +128,6 @@
   width: 28px;
 }
 
-
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 
 .dashboard-btn {
@@ -207,15 +170,7 @@
 }
 .dashboard-btn--ghost:hover {
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
-}
-.dashboard-btn--active {
-  background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 22%, transparent);
-  color: var(--vscode-button-background, #0e639c);
-  border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 40%, transparent);
-}
-
-.dashboard-btn svg { flex: 0 0 auto; }
-
+}.dashboard-btn svg { flex: 0 0 auto; }
 
 /* ── Grid ───────────────────────────────────────────────────────────────── */
 
@@ -247,7 +202,6 @@
   width: 100%;
 }
 .dashboard-grid--hidden { display: none; }
-
 
 /* ── Empty state ────────────────────────────────────────────────────────── */
 
@@ -298,7 +252,6 @@
   font-size: var(--px-text-base);
 }
 
-
 /* ── Widget card ────────────────────────────────────────────────────────── */
 
 .dashboard-widget {
@@ -332,7 +285,6 @@
   0%   { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
-
 
 /* ── Widget header ──────────────────────────────────────────────────────── */
 
@@ -457,7 +409,6 @@
   outline-offset: 1px;
 }
 
-
 /* ── Widget body / footer ───────────────────────────────────────────────── */
 
 .dashboard-widget__body {
@@ -500,7 +451,6 @@
   border-radius: 4px;
   background: color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
 }
-
 
 /* ── Chrome presets ─────────────────────────────────────────────────────── */
 /* 'card' (default) keeps the full chrome defined above.
@@ -619,7 +569,6 @@
   font-size: var(--px-text-base);
 }
 
-
 /* ── Live-edit affordances (hover-revealed; no separate edit mode) ───────── */
 /* The grip + action buttons already reveal on widget hover (above). Resize
    handles do the same — they're the widget's edges/corners, so they never
@@ -696,7 +645,6 @@
   outline: 1.5px solid var(--vscode-button-background, #0e639c);
   outline-offset: -1px;
 }
-
 
 /* ── Widget picker overlay ──────────────────────────────────────────────── */
 
@@ -839,7 +787,6 @@
   border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
 }
 
-
 /* ============================================================================
    Widget — clock-and-links
    ========================================================================== */
@@ -905,7 +852,6 @@
   color: var(--px-text-muted);
   font-style: italic;
 }
-
 
 /* ============================================================================
    Widget — recent files
@@ -999,7 +945,6 @@
 .rfw__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
 .rfw__empty p { margin: 0; line-height: 1.5; }
 
-
 /* ============================================================================
    Widget — autonomy activity
    ========================================================================== */
@@ -1084,7 +1029,6 @@
 .aaw__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
 .aaw__empty p { margin: 0; line-height: 1.5; }
 
-
 /* ============================================================================
    Widget — image
    ========================================================================== */
@@ -1152,7 +1096,6 @@
 .iw:hover .iw__replace { opacity: 1; }
 .iw__replace:hover { background: rgba(8, 12, 16, 0.82); }
 .iw--loading { opacity: 0.6; pointer-events: none; }
-
 
 /* ============================================================================
    Shared markdown surface — used by AI-backed widgets (news brief, custom AI)
@@ -1292,7 +1235,6 @@ video.vw__fill { object-fit: contain; background: #000; }
   color-scheme: dark;
 }
 
-
 /* ============================================================================
    Settings drawer (Phase 5)
    ========================================================================== */
@@ -1392,7 +1334,6 @@ video.vw__fill { object-fit: contain; background: #000; }
   gap: 8px;
   border-top: 1px solid color-mix(in srgb, var(--vscode-editor-foreground, #d4d4d4) 8%, transparent);
 }
-
 
 /* ============================================================================
    Sidebar view (Dashboards list, mounted in the workbench primary sidebar)
@@ -1556,7 +1497,6 @@ video.vw__fill { object-fit: contain; background: #000; }
   line-height: 1.45;
 }
 
-
 /* ── Sidebar context menu ───────────────────────────────────────────────── */
 
 .dashboard-sidebar-menu-overlay {
@@ -1611,7 +1551,6 @@ video.vw__fill { object-fit: contain; background: #000; }
   opacity: 0.7;
 }
 
-
 /* ============================================================================
    Widget — notes (freeform sticky note)
    ========================================================================== */
@@ -1650,7 +1589,6 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 .ntw__empty strong { display: block; margin-bottom: 4px; color: var(--px-text-secondary); font-weight: 600; }
 .ntw__empty p { margin: 0; line-height: 1.5; }
-
 
 /* ============================================================================
    Widget — task list (checklist)
@@ -1800,7 +1738,6 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 .tkw__empty strong { display: block; margin-bottom: 4px; color: var(--vscode-editor-foreground, #f3f3f3); font-weight: 600; }
 .tkw__empty p { margin: 0; line-height: 1.5; }
-
 
 /* ============================================================================
    Widget — countdown
