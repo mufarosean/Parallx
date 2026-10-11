@@ -22,6 +22,8 @@ import {
   type IPageRevision,
   type IPageRevisionContent,
   type RevisionSource,
+  type IPageSummary,
+  type IPageSummaryTreeNode,
   PageChangeKind,
   SaveStateKind,
 } from './canvasTypes.js';
@@ -64,13 +66,22 @@ interface DatabaseBridge {
 /** Pages that hold synced-block content: never listed as pages. */
 const SYNCED_CONTENT_PAGES = 'SELECT page_id FROM synced_blocks';
 
-export function rowToPage(row: Record<string, unknown>): IPage {
+/**
+ * The page columns a list or tree needs: every column but `content`, named
+ * one by one so a `SELECT` with them never drags page bodies through IPC.
+ */
+export const PAGE_SUMMARY_COLUMNS =
+  'id, parent_id, title, icon, content_schema_version, revision, sort_order, is_archived, '
+  + 'cover_url, cover_y_offset, font_family, full_width, small_text, is_locked, is_favorited, '
+  + 'created_at, updated_at';
+
+/** Convert a row read with `PAGE_SUMMARY_COLUMNS` to a page without its body. */
+export function rowToPageSummary(row: Record<string, unknown>): IPageSummary {
   return {
     id: row.id as string,
     parentId: (row.parent_id as string) ?? null,
     title: row.title as string,
     icon: (row.icon as string) ?? null,
-    content: row.content as string,
     contentSchemaVersion: (row.content_schema_version as number) ?? CURRENT_CANVAS_CONTENT_SCHEMA_VERSION,
     revision: (row.revision as number) ?? 1,
     sortOrder: row.sort_order as number,
@@ -86,6 +97,14 @@ export function rowToPage(row: Record<string, unknown>): IPage {
     updatedAt: row.updated_at as string,
   };
 }
+
+/** Convert a full row (`SELECT *`) to a page with its body. */
+export function rowToPage(row: Record<string, unknown>): IPage {
+  return { ...rowToPageSummary(row), content: row.content as string };
+}
+
+/** A page of either shape with its children, as `_assembleTree` builds it. */
+type TreeNodeOf<T extends IPageSummary> = T & { children: TreeNodeOf<T>[] };
 
 // ─── CanvasDataService ───────────────────────────────────────────────────────
 
@@ -354,12 +373,25 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       'SELECT * FROM pages WHERE is_archived = 0 ORDER BY sort_order',
     );
     if (result.error) throw new Error(result.error.message);
+    return this._treeWithoutInternalPages((result.rows ?? []).map(rowToPage));
+  }
 
-    const pages = (result.rows ?? []).map(rowToPage);
+  async getPageSummaryTree(): Promise<IPageSummaryTreeNode[]> {
+    const result = await this._db.all(
+      `SELECT ${PAGE_SUMMARY_COLUMNS} FROM pages WHERE is_archived = 0 ORDER BY sort_order`,
+    );
+    if (result.error) throw new Error(result.error.message);
+    return this._treeWithoutInternalPages((result.rows ?? []).map(rowToPageSummary));
+  }
+
+  /**
+   * Assemble flat rows into a tree and drop the pages the app keeps for its
+   * own bookkeeping ("Page properties" databases, synced-block sources): they
+   * are not pages the user made, and showed up as stray root pages. Tags
+   * stays: it lists the tagged pages.
+   */
+  private async _treeWithoutInternalPages<T extends IPageSummary>(pages: T[]): Promise<TreeNodeOf<T>[]> {
     const tree = this._assembleTree(pages);
-    // The databases the app keeps for its own bookkeeping ("Page properties")
-    // are not pages the user made, so the tree leaves them out (they showed
-    // up as a stray root page). Tags stays: it lists the tagged pages.
     let hidden: Set<string>;
     try {
       const internal = await this._db.all(
@@ -371,9 +403,9 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       hidden = new Set();
     }
     if (hidden.size === 0) return tree;
-    const prune = (nodes: IPageTreeNode[]): IPageTreeNode[] => nodes
+    const prune = (nodes: TreeNodeOf<T>[]): TreeNodeOf<T>[] => nodes
       .filter((n) => !hidden.has(n.id))
-      .map((n) => ({ ...n, children: prune(n.children as IPageTreeNode[]) }));
+      .map((n) => ({ ...n, children: prune(n.children) }));
     return prune(tree);
   }
 
@@ -2507,9 +2539,9 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   /**
    * Assemble a flat list of pages into a tree structure.
    */
-  private _assembleTree(pages: IPage[]): IPageTreeNode[] {
-    const nodeMap = new Map<string, IPageTreeNode>();
-    const roots: IPageTreeNode[] = [];
+  private _assembleTree<T extends IPageSummary>(pages: T[]): TreeNodeOf<T>[] {
+    const nodeMap = new Map<string, TreeNodeOf<T>>();
+    const roots: TreeNodeOf<T>[] = [];
 
     // Create mutable nodes
     for (const page of pages) {
@@ -2524,7 +2556,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       } else {
         const parent = nodeMap.get(page.parentId);
         if (parent) {
-          (parent.children as IPageTreeNode[]).push(node);
+          parent.children.push(node);
         } else {
           // Orphan — treat as root, but log so corruption is visible.
           console.warn(`[CanvasDataService] Orphan page "${page.id}" — parent "${page.parentId}" missing; promoting to root`);

@@ -57,6 +57,13 @@ export interface IPage {
   readonly updatedAt: string;
 }
 
+/**
+ * A page without its body. Lists, trees and pickers show titles and places,
+ * never content, so they read this and the query behind it never loads the
+ * body. Anything that needs the body reads `IPage` through `getPage`.
+ */
+export type IPageSummary = Omit<IPage, 'content'>;
+
 // ─── Tree Node ───────────────────────────────────────────────────────────────
 
 /**
@@ -65,6 +72,11 @@ export interface IPage {
 export interface IPageTreeNode extends IPage {
   /** Child pages, ordered by sortOrder. */
   readonly children: IPageTreeNode[];
+}
+
+/** The page tree with no bodies: what the sidebar, Quick Open and pickers walk. */
+export interface IPageSummaryTreeNode extends IPageSummary {
+  readonly children: IPageSummaryTreeNode[];
 }
 
 // ─── Change Events ───────────────────────────────────────────────────────────
@@ -274,6 +286,8 @@ export interface ICanvasDataService {
   getRootPages(): Promise<IPage[]>;
   getChildren(parentId: string): Promise<IPage[]>;
   getPageTree(): Promise<IPageTreeNode[]>;
+  /** The same tree as `getPageTree`, without page bodies: cheap enough to call per keystroke. */
+  getPageSummaryTree(): Promise<IPageSummaryTreeNode[]>;
   updatePage(pageId: string, updates: PageUpdateData): Promise<IPage>;
   deletePage(pageId: string): Promise<void>;
 

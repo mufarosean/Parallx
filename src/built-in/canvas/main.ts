@@ -31,7 +31,7 @@ import { decodeCanvasContent, encodeCanvasContentFromDoc } from './contentSchema
 import { CanvasDataService } from './canvasDataService.js';
 import { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
-import type { IPage, IPageTreeNode, PageChangeEvent, PageMutationField } from './canvasTypes.js';
+import type { IPage, IPageSummaryTreeNode, IPageTreeNode, PageChangeEvent, PageMutationField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
@@ -572,14 +572,14 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     id: 'canvas.pages',
     group: 'pages',
     listItems: async () => {
-      const flat: { page: IPageTreeNode; path: string }[] = [];
-      const walk = (nodes: readonly IPageTreeNode[], path: string): void => {
+      const flat: { page: IPageSummaryTreeNode; path: string }[] = [];
+      const walk = (nodes: readonly IPageSummaryTreeNode[], path: string): void => {
         for (const node of nodes) {
           flat.push({ page: node, path });
           walk(node.children, path ? `${path} / ${node.title || 'Untitled'}` : (node.title || 'Untitled'));
         }
       };
-      walk(await dataServiceRef.getPageTree(), '');
+      walk(await dataServiceRef.getPageSummaryTree(), '');
       flat.sort((a, b) => (b.page.updatedAt ?? '').localeCompare(a.page.updatedAt ?? ''));
       return flat.map(({ page, path }) => ({
         id: page.id,
