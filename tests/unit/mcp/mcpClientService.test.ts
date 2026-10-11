@@ -923,6 +923,33 @@ describe('McpClientService: env values and the seal', () => {
     reloaded.dispose();
   });
 
+  it('keeps pointing at a secret it could not read, so a locked keychain does not lose the token', async () => {
+    const storage = createStorage();
+    const secrets = createSecrets();
+    await service.initStorage(storage as any, secrets as any);
+    await service.addServerConfig(github);
+    const key = JSON.parse(storage.store['mcp.servers'])[0].envSecret as string;
+
+    // Next start: the store is there but every read fails (safeStorage unavailable).
+    const locked = { ...secrets, getString: vi.fn(async () => ({ ok: false, error: 'safe-storage-unavailable' })) };
+    const reloaded = new McpClientService();
+    await reloaded.initStorage(storage as any, locked as any);
+    expect(reloaded.getConfiguredServers()[0].env).toBeUndefined();
+
+    // Any change in that session persists every config; the pointer must survive it.
+    await reloaded.addServerConfig({ id: 'other', name: 'Other', transport: 'stdio', command: 'x', args: [], enabled: false });
+    const stored = JSON.parse(storage.store['mcp.servers']);
+    expect(stored.find((c: { id: string }) => c.id === 'github').envSecret).toBe(key);
+    expect(secrets.kept.get(key)).toContain('ghp_secret123');
+    reloaded.dispose();
+
+    // The keychain is back: the token is still there.
+    const later = new McpClientService();
+    await later.initStorage(storage as any, secrets as any);
+    expect(later.getConfiguredServers()[0].env).toEqual({ GITHUB_TOKEN: 'ghp_secret123' });
+    later.dispose();
+  });
+
   it('gives each server its own secret, and removing the server deletes it', async () => {
     const storage = createStorage();
     const secrets = createSecrets();

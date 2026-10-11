@@ -78,6 +78,8 @@ export class McpClientService extends Disposable implements IMcpClientService {
   private _secrets: ISecretStorageService | undefined;
   /** The secret holding each server's env, by server id. */
   private readonly _envSecretKeys = new Map<string, string>();
+  /** Servers whose env is in the secret store but could not be read this session. */
+  private readonly _envUnreadable = new Set<string>();
   private _configuredServers: IMcpServerConfig[] = [];
   /** A sealed workspace runs no MCP server (see setSealed). */
   private _sealed = false;
@@ -168,7 +170,9 @@ export class McpClientService extends Disposable implements IMcpClientService {
             const { envSecret, ...config } = stored;
             if (envSecret) {
               this._envSecretKeys.set(config.id, envSecret);
-              configs.push({ ...config, ...(await this._readEnvSecret(envSecret, config.id)) });
+              const read = await this._readEnvSecret(envSecret, config.id);
+              if (!read.env) this._envUnreadable.add(config.id);
+              configs.push({ ...config, ...read });
             } else {
               configs.push(config);
               if (config.env && Object.keys(config.env).length > 0) plaintextEnv = true;
@@ -201,7 +205,14 @@ export class McpClientService extends Disposable implements IMcpClientService {
   /** The config as written to workspace storage: env values go to the secret store. */
   private async _toStored(config: IMcpServerConfig): Promise<StoredServerConfig> {
     const { env, ...rest } = config;
-    if (!env || Object.keys(env).length === 0) return rest;
+    if (!env || Object.keys(env).length === 0) {
+      // The env is in the store but could not be read this session (the
+      // keychain was locked, or unavailable): keep pointing at it, so one bad
+      // start does not lose the token for good.
+      const key = this._envSecretKeys.get(config.id);
+      return key && this._envUnreadable.has(config.id) ? { ...rest, envSecret: key } : rest;
+    }
+    this._envUnreadable.delete(config.id);
     if (!this._secrets) return config;
     let key = this._envSecretKeys.get(config.id);
     if (!key) {
