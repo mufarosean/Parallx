@@ -8,7 +8,7 @@
 // against fake data. (Atelier's gallery queries: moEmbedQueries.test.ts.)
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { Editor } from '@tiptap/core';
+import { Editor, type JSONContent } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { createEditorExtensions } from '../../src/built-in/canvas/config/tiptapExtensions';
 import { CanvasBlocksBridge, getContributedBlocks, type CanvasBlockRegistration } from '../../src/api/bridges/canvasBlocksBridge';
@@ -227,7 +227,7 @@ describe('blocks a tool registers', () => {
 
 const lowlight = createLowlight(common);
 let editors: Editor[] = [];
-function mount(content: unknown[]): Editor {
+function mount(content: JSONContent[]): Editor {
   const element = document.createElement('div');
   document.body.appendChild(element);
   const ed = new Editor({ element, extensions: createEditorExtensions(lowlight, {}), content: { type: 'doc', content } });
@@ -389,8 +389,9 @@ describe('Practice Problems (Worksheets\' block)', () => {
     rows[1].click();
     expect(openProblem).toHaveBeenCalledWith(2, 'Clark LDF');
 
-    const paperField = reg.settings!.fields.paper.options as () => Promise<Array<{ label: string }>>;
-    expect((await paperField()).map((o) => o.label)).toEqual(['Any paper', 'Clark', 'Mack (1994)']);
+    const paperOptions = reg.settings!.fields.paper.options;
+    if (typeof paperOptions !== 'function') throw new Error('paper options are read when the menu opens');
+    expect((await paperOptions()).map((o) => o.label)).toEqual(['Any paper', 'Clark', 'Mack (1994)']);
 
     items = [];
     for (const l of listeners) l();

@@ -330,7 +330,7 @@ describe('defaultLayoutState', () => {
     ];
     expect(sidebar.size + column.size + aux.size).toBe(1000);
     expect(column.orientation).toBe(Orientation.Vertical);
-    const [editor, panel] = column.children as [{ size: number }, { size: number }];
+    const [editor, panel] = column.children;
     expect(editor.size + panel.size).toBe(700);
     expect(panel.size).toBe(200);
   });

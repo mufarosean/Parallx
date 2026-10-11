@@ -9,6 +9,7 @@ import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import * as url from 'node:url';
+// @ts-expect-error — JS module with no types
 import { collectExtensionFiles } from '../../scripts/package-extension.mjs';
 
 const EXT_ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '../../ext');
@@ -21,7 +22,7 @@ function relativeImports(file: string): string[] {
 describe('collectExtensionFiles', () => {
   it('every module main.js imports from ext/creations-ai is in its package', () => {
     const dir = path.join(EXT_ROOT, 'creations-ai');
-    const files = collectExtensionFiles(dir).map((f) => f.file);
+    const files: string[] = collectExtensionFiles(dir).map((f: { file: string }) => f.file);
     const imported = relativeImports(path.join(dir, 'main.js'));
     expect(imported.length).toBeGreaterThan(5);
     for (const name of imported) expect(files).toContain(name);
@@ -36,7 +37,7 @@ describe('collectExtensionFiles', () => {
       let entries: string[];
       try { entries = readdirSync(dir); } catch { continue; }
       if (!entries.includes('parallx-manifest.json')) continue;
-      const files = collectExtensionFiles(dir).map((f) => f.file);
+      const files: string[] = collectExtensionFiles(dir).map((f: { file: string }) => f.file);
       for (const name of entries.filter((e) => e.endsWith('.js'))) expect(files).toContain(name);
     }
   });

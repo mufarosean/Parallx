@@ -92,7 +92,7 @@ function makeWorld(opts: { existing?: Record<string, any> | null } = {}) {
         return url === 'https://example.org/ada' ? { ok: true, text: 'Ada Lovelace was born in 1815 in London.', title: 'Ada Lovelace', source: url } : { ok: false, error: { code: 'BLOCKLISTED', message: 'Host on egress blocklist' } };
       },
     },
-    window: { showInputBox: async () => undefined, showWarningMessage: async () => undefined, showQuickPick: async (items: { label: string }[]) => items[items.length - 1] },
+    window: { showInputBox: async (): Promise<string | undefined> => undefined, showWarningMessage: async () => undefined, showQuickPick: async (items: { label: string }[]) => items[items.length - 1] },
     ui: { createDropdown: dropdownStub },
   };
   const fs = {

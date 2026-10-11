@@ -137,7 +137,7 @@ describe('page order survives many moves into one gap', () => {
   it('a hundred moves between the same two pages keep a strict order', async () => {
     const parent = await service.createPage(null, 'Parent');
     const a = await service.createPage(parent.id, 'A');
-    const b = await service.createPage(parent.id, 'B');
+    await service.createPage(parent.id, 'B');
     const moved: string[] = [];
     // Each new page goes right after A, so every move halves the A–next gap.
     for (let i = 0; i < 100; i++) {

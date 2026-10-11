@@ -22,6 +22,7 @@ function createPair(requestId: string, text: string, markdown: string): IChatReq
     response: {
       parts: [{ kind: ChatContentPartKind.Markdown, content: markdown }],
       isComplete: true,
+      modelId: 'test-model',
       timestamp: Date.now(),
     },
   };
@@ -76,7 +77,7 @@ describe('ChatListRenderer', () => {
 function createStreamingPair(parts: IChatContentPart[]): IChatRequestResponsePair {
   return {
     request: { text: 'Question', requestId: 'req-s', attempt: 0, timestamp: Date.now() },
-    response: { parts, isComplete: false, timestamp: Date.now() },
+    response: { parts, isComplete: false, modelId: 'test-model', timestamp: Date.now() },
   };
 }
 

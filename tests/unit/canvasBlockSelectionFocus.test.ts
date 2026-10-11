@@ -15,6 +15,12 @@ function setup(content: any[]) {
 }
 const posOf = (ed: any, text: string) => { let at = -1; ed.state.doc.forEach((n: any, off: number) => { if (n.textContent === text) at = off; }); return at; };
 
+/** The per-editor storage of BlockKeyboardShortcuts (see its addStorage), as its shortcuts read it. */
+type BlockKeyboardShortcutsStorage = {
+  hasSelection: (() => boolean) | null;
+  deleteSelected: (() => void) | null;
+};
+
 describe('block selection keeps the keyboard', () => {
   it('focusEditor puts the editor caret in the selected block and focuses it', () => {
     const { ed, sel } = setup([p('one'), p('two'), p('three')]);
@@ -39,8 +45,9 @@ describe('block selection keeps the keyboard', () => {
 
   it('Delete then removes the selected blocks', () => {
     const { ed, sel } = setup([p('one'), p('two'), p('three')]);
-    ed.storage.blockKeyboardShortcuts.hasSelection = () => sel.hasSelection;
-    ed.storage.blockKeyboardShortcuts.deleteSelected = () => sel.deleteSelected();
+    const kbStorage = (ed.storage as typeof ed.storage & { blockKeyboardShortcuts: BlockKeyboardShortcutsStorage }).blockKeyboardShortcuts;
+    kbStorage.hasSelection = () => sel.hasSelection;
+    kbStorage.deleteSelected = () => sel.deleteSelected();
     sel.selectMultiple([posOf(ed, 'two'), posOf(ed, 'three')]);
     sel.focusEditor();
     press(ed, 'Delete');

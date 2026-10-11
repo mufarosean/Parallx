@@ -187,7 +187,7 @@ describe('CommandContributionProcessor', () => {
       const proxy = commandService.getHandler('cmd.async')!;
       const resultPromise = (proxy as any)({}, 'input');
 
-      processor.wireRealHandler('cmd.async', async (arg: string) => {
+      processor.wireRealHandler('cmd.async', async (arg: unknown) => {
         return `async: ${arg}`;
       });
 

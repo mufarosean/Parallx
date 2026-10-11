@@ -12,6 +12,7 @@ class FakeStorage implements IStorage {
   async delete(k: string) { this.map.delete(k); }
   async has(k: string) { return this.map.has(k); }
   async keys(prefix?: string) { return [...this.map.keys()].filter(k => !prefix || k.startsWith(prefix)); }
+  async clear() { this.map.clear(); }
 }
 
 let n = 0;
@@ -67,7 +68,7 @@ describe('MindStore', () => {
   it('survives a swallowed storage read error by returning empty', async () => {
     const broken: IStorage = {
       get: async () => { throw new Error('disk gone'); },
-      set: async () => {}, delete: async () => {}, has: async () => false, keys: async () => [],
+      set: async () => {}, delete: async () => {}, has: async () => false, keys: async () => [], clear: async () => {},
     };
     expect(await new MindStore(broken).load()).toEqual([]);
   });

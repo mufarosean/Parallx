@@ -53,7 +53,7 @@ async function* streamChunks(chunks: IChatResponseChunk[]): AsyncIterable<IChatR
 
 describe('openclaw default participant', () => {
   it('builds a fresh-session bootstrap prompt from workspace files', async () => {
-    const sendChatRequest = vi.fn(() => streamChunks([
+    const sendChatRequest = vi.fn<IDefaultParticipantServices['sendChatRequest']>(() => streamChunks([
       { content: 'OpenClaw answer', done: true, promptEvalCount: 10, evalCount: 12 },
     ]));
     const services: IDefaultParticipantServices = {
@@ -120,7 +120,7 @@ describe('openclaw default participant', () => {
   });
 
   it('answers /context without sending a model request', async () => {
-    const sendChatRequest = vi.fn(() => streamChunks([{ content: 'should not run', done: true }]));
+    const sendChatRequest = vi.fn<IDefaultParticipantServices['sendChatRequest']>(() => streamChunks([{ content: 'should not run', done: true }]));
     const reportSystemPromptReport = vi.fn();
     const services: IDefaultParticipantServices = {
       sendChatRequest,
@@ -165,7 +165,7 @@ describe('openclaw default participant', () => {
   });
 
   it('uses canonical skill state for prompt visibility and reporting', async () => {
-    const sendChatRequest = vi.fn(() => streamChunks([
+    const sendChatRequest = vi.fn<IDefaultParticipantServices['sendChatRequest']>(() => streamChunks([
       { content: 'Skilled answer', done: true, promptEvalCount: 8, evalCount: 12 },
     ]));
     const reportSystemPromptReport = vi.fn();
@@ -248,7 +248,7 @@ describe('openclaw default participant', () => {
   });
 
   it('derives skill tools at runtime and reports filtered capability state', async () => {
-    const sendChatRequest = vi.fn(() => streamChunks([
+    const sendChatRequest = vi.fn<IDefaultParticipantServices['sendChatRequest']>(() => streamChunks([
       { content: 'Runtime skill answer', done: true, promptEvalCount: 9, evalCount: 14 },
     ]));
     const reportSystemPromptReport = vi.fn();
@@ -299,7 +299,7 @@ describe('openclaw default participant', () => {
     } as IChatParticipantContext, response, createToken());
 
     const requestOptions = sendChatRequest.mock.calls[0][1];
-    expect(requestOptions.tools).toEqual([
+    expect(requestOptions?.tools).toEqual([
       expect.objectContaining({ name: 'policy_playbook' }),
     ]);
     expect(reportSystemPromptReport).toHaveBeenCalledWith(expect.objectContaining({
@@ -365,7 +365,7 @@ describe('openclaw default participant', () => {
   });
 
   it('does NOT passively inject the open canvas page into grounded turns (M84 removal)', async () => {
-    const sendChatRequest = vi.fn(() => streamChunks([
+    const sendChatRequest = vi.fn<IDefaultParticipantServices['sendChatRequest']>(() => streamChunks([
       { content: 'Vehicle answer', done: true },
     ]));
     const getCurrentPageContent = vi.fn(async () => ({
@@ -420,7 +420,7 @@ describe('openclaw default participant', () => {
   });
 
   it('seeds prior conversation turns into the default OpenClaw model prompt', async () => {
-    const sendChatRequest = vi.fn(() => streamChunks([
+    const sendChatRequest = vi.fn<IDefaultParticipantServices['sendChatRequest']>(() => streamChunks([
       { content: 'Follow-up answer', done: true },
     ]));
     const services: IDefaultParticipantServices = {
@@ -475,7 +475,7 @@ describe('openclaw default participant', () => {
   });
 
   it('queues shared session-memory write-back after a completed OpenClaw turn', async () => {
-    const sendChatRequest = vi.fn(() => streamChunks([
+    const sendChatRequest = vi.fn<IDefaultParticipantServices['sendChatRequest']>(() => streamChunks([
       { content: 'I remember the accident details you shared.', done: true },
     ]));
     const storeSessionMemory = vi.fn(async () => {});
@@ -560,7 +560,7 @@ describe('openclaw default participant — unhandled slash commands', () => {
   }
 
   async function sendWithCommand(command: string, text: string) {
-    const sendChatRequest = vi.fn(() => streamChunks([{ content: 'ok', done: true }]));
+    const sendChatRequest = vi.fn<IDefaultParticipantServices['sendChatRequest']>(() => streamChunks([{ content: 'ok', done: true }]));
     const participant = createOpenclawDefaultParticipant(baseServices(sendChatRequest));
     await participant.handler({
       text,

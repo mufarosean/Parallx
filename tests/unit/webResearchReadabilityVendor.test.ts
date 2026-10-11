@@ -56,15 +56,18 @@ describe('Mozilla Readability — vendored at pinned SHA (M65 F1)', () => {
   });
 
   it('can be imported and instantiated (smoke test)', async () => {
+    // @ts-expect-error — JS module with no types
     const mod = await import('../../ext/web-research/readability.js');
     expect(typeof mod.Readability).toBe('function');
 
     let Document: any = null;
     try {
+      // @ts-expect-error — optional DOM library, probed at runtime
       const { JSDOM } = await import('jsdom') as any;
       Document = new JSDOM('<!doctype html><html><head><title>x</title></head><body><article><h1>Title</h1><p>Body paragraph for readability to chew on.</p></article></body></html>').window.document;
     } catch {
       try {
+        // @ts-expect-error — optional DOM library, probed at runtime
         const mod2: any = await import('happy-dom');
         const w = new mod2.Window();
         w.document.write('<!doctype html><html><head><title>x</title></head><body><article><h1>Title</h1><p>Body paragraph for readability to chew on.</p></article></body></html>');

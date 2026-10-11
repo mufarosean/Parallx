@@ -106,7 +106,7 @@ describe('ChatSurfacePlugin → AutonomyLog', () => {
     const plugin = new ChatSurfacePlugin({ autonomyLog: log });
     await plugin.deliver(makeDelivery({
       content: { ok: true, count: 2 } as unknown as string,
-      contentType: 'application/json',
+      contentType: 'structured',
       metadata: { heartbeatResult: true },
     }));
     const e = log.getEntries()[0];

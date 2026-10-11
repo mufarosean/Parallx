@@ -110,9 +110,10 @@ describe('parse → serialise round trip', () => {
 
     // Widget state and papermill parameters are other tools' data. Dropping
     // them is silent data loss on somebody's work.
-    expect(reparsed.metadata.widgets).toEqual(original.metadata['widgets' as never]);
-    expect(reparsed.metadata.papermill).toEqual((original.metadata as never)['papermill']);
-    expect(reparsed.metadata.authors).toEqual((original.metadata as never)['authors']);
+    const originalMetadata = original.metadata as Record<string, unknown>;
+    expect(reparsed.metadata.widgets).toEqual(originalMetadata.widgets);
+    expect(reparsed.metadata.papermill).toEqual(originalMetadata.papermill);
+    expect(reparsed.metadata.authors).toEqual(originalMetadata.authors);
   });
 
   it('preserves cell metadata and unmodelled cell fields', () => {

@@ -79,20 +79,6 @@ describe('buildDataviewSql', () => {
 });
 
 describe('renderDataviewRows', () => {
-  // jsdom is not configured in vitest, so we substitute a minimal element shim.
-  function makeFakeEl() {
-    const children: any[] = [];
-    const el: any = {
-      innerHTML: '',
-      classList: { add: () => {} },
-      tagName: 'DIV',
-      appendChild(child: any) { children.push(child); },
-      get firstChild() { return children[0]; },
-      get _children() { return children; },
-    };
-    return el;
-  }
-
   it('renders an empty-state message when rows are empty', () => {
     // Use a pseudo-DOM via a shadow document for renderDataviewRows.
     // If document is available (jsdom-less env), this test exits early.

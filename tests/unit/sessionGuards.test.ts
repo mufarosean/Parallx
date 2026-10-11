@@ -6,7 +6,7 @@
 //   - DefaultParticipant agentic loop
 //
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { SessionManager } from '../../src/workspace/sessionManager';
 import { captureSession } from '../../src/workspace/staleGuard';
 import { WorkspaceSessionContext } from '../../src/workspace/workspaceSessionContext';

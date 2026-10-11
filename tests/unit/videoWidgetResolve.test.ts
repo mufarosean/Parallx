@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { resolveVideoSource } from '../../src/built-in/dashboard/widgets/videoWidget';
 
+/** The src of a resolved source; a `kind: 'none'` result has none. */
+function srcOf(source: ReturnType<typeof resolveVideoSource>): string | undefined {
+  return 'src' in source ? source.src : undefined;
+}
+
 describe('resolveVideoSource', () => {
   it('direct video files → native <video>', () => {
     expect(resolveVideoSource('https://cdn.example.com/clip.mp4')).toEqual({ kind: 'video', src: 'https://cdn.example.com/clip.mp4' });
@@ -11,16 +16,16 @@ describe('resolveVideoSource', () => {
   it('YouTube variants → embed', () => {
     expect(resolveVideoSource('https://www.youtube.com/watch?v=dQw4w9WgXcQ'))
       .toEqual({ kind: 'embed', src: 'https://www.youtube.com/embed/dQw4w9WgXcQ' });
-    expect(resolveVideoSource('https://youtu.be/dQw4w9WgXcQ').src).toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
-    expect(resolveVideoSource('https://youtube.com/shorts/abc123XYZ_').src).toContain('/embed/abc123XYZ_');
+    expect(srcOf(resolveVideoSource('https://youtu.be/dQw4w9WgXcQ'))).toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
+    expect(srcOf(resolveVideoSource('https://youtube.com/shorts/abc123XYZ_'))).toContain('/embed/abc123XYZ_');
   });
 
   it('Vimeo / Dailymotion / Streamable / Loom → their embeds', () => {
     expect(resolveVideoSource('https://vimeo.com/123456789'))
       .toEqual({ kind: 'embed', src: 'https://player.vimeo.com/video/123456789' });
-    expect(resolveVideoSource('https://www.dailymotion.com/video/x8abcde').src).toBe('https://www.dailymotion.com/embed/video/x8abcde');
-    expect(resolveVideoSource('https://streamable.com/abcd1').src).toBe('https://streamable.com/e/abcd1');
-    expect(resolveVideoSource('https://www.loom.com/share/deadbeef1234').src).toBe('https://www.loom.com/embed/deadbeef1234');
+    expect(srcOf(resolveVideoSource('https://www.dailymotion.com/video/x8abcde'))).toBe('https://www.dailymotion.com/embed/video/x8abcde');
+    expect(srcOf(resolveVideoSource('https://streamable.com/abcd1'))).toBe('https://streamable.com/e/abcd1');
+    expect(srcOf(resolveVideoSource('https://www.loom.com/share/deadbeef1234'))).toBe('https://www.loom.com/embed/deadbeef1234');
   });
 
   it('arbitrary page → <webview> page fallback', () => {

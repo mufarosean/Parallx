@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RelatedContentService } from '../../src/services/relatedContentService';
 import type { RelatedItem } from '../../src/services/relatedContentService';
 import { AutoTaggingService } from '../../src/services/autoTaggingService';
-import type { PageTag, TagSuggestion } from '../../src/services/autoTaggingService';
 import { ProactiveSuggestionsService } from '../../src/services/proactiveSuggestionsService';
 import type { ProactiveSuggestion } from '../../src/services/proactiveSuggestionsService';
 

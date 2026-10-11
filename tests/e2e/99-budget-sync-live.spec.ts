@@ -13,6 +13,7 @@ import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+// @ts-expect-error — sql.js ships no types here
 import initSqlJs from 'sql.js';
 
 const __filename = fileURLToPath(import.meta.url);

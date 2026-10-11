@@ -3,7 +3,14 @@
  * Happy-path tests for hexPrefixProgress, validateCachedThumbnail, getCacheStats,
  * deleteEntityThumbnails, and the enhanced cleanOrphanThumbnails.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+
+/** The slice of the file-system bridge the cache helpers call. */
+type FsMock = {
+  exists: Mock<(path: string) => Promise<boolean>>;
+  stat: Mock<(path: string) => Promise<{ size?: number; error?: string }>>;
+  delete: Mock<(path: string) => Promise<void>>;
+};
 
 // ---------------------------------------------------------------------------
 // We can't import the extension's main.js directly (it relies on globals like
@@ -48,7 +55,7 @@ describe('F14: hexPrefixProgress', () => {
 // --- validateCachedThumbnail (async, needs mocked fs) ---
 
 describe('F14: validateCachedThumbnail', () => {
-  let fs: { exists: ReturnType<typeof vi.fn>; stat: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn> };
+  let fs: FsMock;
 
   async function validateCachedThumbnail(thumbPath: string): Promise<boolean> {
     const exists = await fs.exists(thumbPath);
@@ -101,7 +108,7 @@ describe('F14: validateCachedThumbnail', () => {
 // --- deleteEntityThumbnails (async, needs mocked fs + path helpers) ---
 
 describe('F14: deleteEntityThumbnails', () => {
-  let fs: { exists: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn> };
+  let fs: Pick<FsMock, 'exists' | 'delete'>;
 
   function getThumbnailPath(_dir: string, checksum: string, _w: number) {
     return `/thumb/${checksum.slice(0, 2)}/${checksum.slice(2, 4)}/${checksum}_640.jpg`;

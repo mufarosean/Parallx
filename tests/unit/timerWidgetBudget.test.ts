@@ -7,14 +7,15 @@ import {registerTaskSource} from '../../src/services/taskSources.js';
 describe('timer task budgets in the widget', () => {
   let host: HTMLElement;
   let saved: string | null;
-  let handle: ReturnType<typeof TIMER_WIDGET.createWidget>;
+  let handle: ReturnType<NonNullable<typeof TIMER_WIDGET.createWidget>>;
   let changeConfig: (cfg: unknown) => void;
   const task = (id='a',budgetMinutes=27) => ({id,title:`Study ${id}`,est:1,act:0,done:false,createdAt:0,budgetMinutes,spentMinutes:0});
   const data = {listTasks:vi.fn(),listEvents:vi.fn(),updateTask:vi.fn()};
   const mount = (state = {tasks:[task()],activeTaskId:'a'} as unknown) => {
     host = document.createElement('div'); document.body.append(host);
     saved = JSON.stringify(state);
-    handle = TIMER_WIDGET.createWidget(host, {
+    expect(TIMER_WIDGET.createWidget).toBeDefined();
+    handle = TIMER_WIDGET.createWidget!(host, {
       config:{...DEFAULT_TIMER_CONFIG,alarm:'none',autoStartBreaks:true,autoStartFocus:true},cachedOutput:saved,
       api:{commands:{executeCommand:async()=>({data})}},
       setCachedOutput:(s:string)=>{saved=s;handle?.refreshFromCache?.(s)},

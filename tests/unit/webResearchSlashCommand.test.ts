@@ -9,6 +9,7 @@ import { registerContributedSlashCommand, registerContributedSkill } from '../..
 
 const registered: Array<{ dispose(): void }> = [];
 beforeAll(async () => {
+  // @ts-expect-error — JS module with no types
   const ext: any = await import('../../ext/web-research/main.js');
   // What api.chat gives the extension (apiFactory), minus the rest of the api.
   ext.__test__.registerChatContributions({
@@ -24,7 +25,8 @@ describe('/research slash command (C4)', () => {
   const reg = createOpenclawCommandRegistry();
 
   it('is offered while Web Research runs', () => {
-    expect(reg.getRegisteredCommands().map(c => c.name)).toContain('research');
+    expect(reg.getRegisteredCommands).toBeDefined();
+    expect(reg.getRegisteredCommands!().map(c => c.name)).toContain('research');
   });
 
   it('parses "/research rust async runtimes"', () => {
@@ -36,20 +38,20 @@ describe('/research slash command (C4)', () => {
 
   it('expands the template with {input}', () => {
     const parsed = reg.parseSlashCommand('/research rust async runtimes');
-    const expanded = reg.applyCommandTemplate(parsed.command!, parsed.remainingText);
+    const expanded = reg.applyCommandTemplate(parsed.command!, parsed.remainingText, '');
     expect(expanded).toContain('research-topic skill');
     expect(expanded).toContain('rust async runtimes');
   });
 
   it('template references the research-topic skill (defense in depth — verifies the LLM is steered to the skill, not free-form URL fetching)', () => {
     const parsed = reg.parseSlashCommand('/research foo');
-    const expanded = reg.applyCommandTemplate(parsed.command!, parsed.remainingText);
+    const expanded = reg.applyCommandTemplate(parsed.command!, parsed.remainingText, '');
     expect(expanded).toMatch(/research-topic skill/i);
   });
 
   it('does NOT contain any URL pattern in the template body (no provenance bypass)', () => {
     const parsed = reg.parseSlashCommand('/research foo');
-    const expanded = reg.applyCommandTemplate(parsed.command!, parsed.remainingText);
+    const expanded = reg.applyCommandTemplate(parsed.command!, parsed.remainingText, '');
     // The slash command template MUST NOT inject https:// URLs — those can
     // only come from the user's literal message, prior webSearch results,
     // or prior webFetch finalUrls (M65 Layer 2).
@@ -63,7 +65,8 @@ describe('/research slash command (C4)', () => {
 
   it('is gone when Web Research is turned off', () => {
     for (const d of registered) d.dispose();
-    expect(reg.getRegisteredCommands().map(c => c.name)).not.toContain('research');
+    expect(reg.getRegisteredCommands).toBeDefined();
+    expect(reg.getRegisteredCommands!().map(c => c.name)).not.toContain('research');
     expect(reg.parseSlashCommand('/research x').command).toBeUndefined();
   });
 });

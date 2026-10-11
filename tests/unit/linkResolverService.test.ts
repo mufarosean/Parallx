@@ -40,7 +40,7 @@ describe('LinkResolverService', () => {
 
   it('open() dispatches to the matching handler', async () => {
     const svc = new LinkResolverService();
-    const openSpy = vi.fn(async () => true);
+    const openSpy = vi.fn<(parsed: ParsedLink) => Promise<boolean>>(async () => true);
     svc.register({
       segment: 'foo',
       displayName: 'Foo',
@@ -56,7 +56,7 @@ describe('LinkResolverService', () => {
     const ok = await svc.open('parallx://foo/thing/123');
     expect(ok).toBe(true);
     expect(openSpy).toHaveBeenCalledOnce();
-    const parsed = openSpy.mock.calls[0][0] as ParsedLink;
+    const parsed = openSpy.mock.calls[0][0];
     expect(parsed.segment).toBe('foo');
     expect(parsed.pathSegments).toEqual(['thing', '123']);
   });

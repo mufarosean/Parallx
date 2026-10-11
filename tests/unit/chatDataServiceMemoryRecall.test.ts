@@ -1,14 +1,31 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import { ChatDataService } from '../../src/built-in/chat/data/chatDataService';
+import type { IBuiltInToolFileSystem } from '../../src/built-in/chat/chatTypes';
+import type { ICanonicalMemorySearchService, IMemoryService, IWorkspaceMemoryService } from '../../src/services/serviceTypes';
+
+/**
+ * Legacy DB memory fake. `hasMemory` and `getMemoryMessageCount` stay absent on
+ * purpose: the tests assert the canonical path never needs them.
+ */
+interface IFakeMemoryService {
+  evictStaleContent: Mock<IMemoryService['evictStaleContent']>;
+  storeMemory: Mock<IMemoryService['storeMemory']>;
+  recallMemories: Mock<IMemoryService['recallMemories']>;
+  getAllMemories: Mock<IMemoryService['getAllMemories']>;
+  getPreferences: Mock<IMemoryService['getPreferences']>;
+  formatMemoryContext: Mock<IMemoryService['formatMemoryContext']>;
+  hasMemory?: Mock<IMemoryService['hasMemory']>;
+  getMemoryMessageCount?: Mock<IMemoryService['getMemoryMessageCount']>;
+}
 
 function createDataService(overrides: Partial<any> = {}) {
-  const memoryService = {
-    evictStaleContent: vi.fn(async () => ({ memoriesEvicted: 0 })),
-    storeMemory: vi.fn(async () => {}),
-    recallMemories: vi.fn(async () => []),
-    getAllMemories: vi.fn(async () => []),
-    getPreferences: vi.fn(async () => []),
-    formatMemoryContext: vi.fn(() => '[Conversation Memory]\n---\nPrevious session (2026-03-12T00:00:00.000Z):\nLegacy DB memory'),
+  const memoryService: IFakeMemoryService = {
+    evictStaleContent: vi.fn<IMemoryService['evictStaleContent']>(async () => ({ memoriesEvicted: 0 })),
+    storeMemory: vi.fn<IMemoryService['storeMemory']>(async () => {}),
+    recallMemories: vi.fn<IMemoryService['recallMemories']>(async () => []),
+    getAllMemories: vi.fn<IMemoryService['getAllMemories']>(async () => []),
+    getPreferences: vi.fn<IMemoryService['getPreferences']>(async () => []),
+    formatMemoryContext: vi.fn<IMemoryService['formatMemoryContext']>(() => '[Conversation Memory]\n---\nPrevious session (2026-03-12T00:00:00.000Z):\nLegacy DB memory'),
   };
 
   const retrievalService = {
@@ -16,9 +33,9 @@ function createDataService(overrides: Partial<any> = {}) {
   };
 
   const fsAccessor = {
-    readdir: vi.fn(async () => []),
-    readFileContent: vi.fn(async () => ({ content: '', type: 'text' as const, totalChars: 0 })),
-    exists: vi.fn(async () => false),
+    readdir: vi.fn<IBuiltInToolFileSystem['readdir']>(async () => []),
+    readFileContent: vi.fn<IBuiltInToolFileSystem['readFileContent']>(async () => ({ content: '', type: 'text', totalChars: 0 })),
+    exists: vi.fn<IBuiltInToolFileSystem['exists']>(async () => false),
     workspaceRootName: 'Test Workspace',
   };
 
@@ -26,14 +43,14 @@ function createDataService(overrides: Partial<any> = {}) {
     appendSessionSummary: vi.fn(async () => {}),
     syncPreferences: vi.fn(async () => {}),
     upsertPreferences: vi.fn(async () => {}),
-    getPreferencesPromptBlock: vi.fn(async () => undefined),
+    getPreferencesPromptBlock: vi.fn<IWorkspaceMemoryService['getPreferencesPromptBlock']>(async () => undefined),
     getDurableMemoryRelativePath: vi.fn(() => '.parallx/memory/MEMORY.md'),
     hasSessionSummary: vi.fn(async () => false),
-    getSessionSummaryMessageCount: vi.fn(async () => null),
+    getSessionSummaryMessageCount: vi.fn<IWorkspaceMemoryService['getSessionSummaryMessageCount']>(async () => null),
   };
 
   const canonicalMemorySearchService = {
-    search: vi.fn(async () => []),
+    search: vi.fn<ICanonicalMemorySearchService['search']>(async () => []),
   };
 
   const chatService = {
@@ -143,7 +160,7 @@ describe('ChatDataService.recallMemories', () => {
     const harness = createDataService({ workspaceMemoryService: undefined });
     harness.canonicalMemorySearchService.search.mockResolvedValueOnce([]);
     harness.memoryService.recallMemories.mockResolvedValueOnce([
-      { sessionId: 's1', summary: 'Legacy database memory', createdAt: '2026-03-12T00:00:00.000Z', lastAccessed: '2026-03-12T00:00:00.000Z', importance: 0.5, decayScore: 1, messageCount: 4 },
+      { sessionId: 's1', summary: 'Legacy database memory', createdAt: '2026-03-12T00:00:00.000Z', messageCount: 4 },
     ]);
 
     const result = await harness.service.recallMemories('legacy fallback query');

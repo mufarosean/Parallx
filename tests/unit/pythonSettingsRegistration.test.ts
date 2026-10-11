@@ -53,7 +53,7 @@ describe('SettingsRegistryService.getValue — the sharp edge', () => {
   it('throws on an unregistered key rather than returning a default', () => {
     // Documented here because it is the reason a missed registration became a
     // blank panel instead of a setting stuck at its default.
-    const registry = new SettingsRegistryService();
+    const registry = new SettingsRegistryService(undefined, undefined);
     expect(() => registry.getValue('python.enabled')).toThrow(/unregistered key/);
   });
 });
@@ -72,7 +72,7 @@ describe('PythonEnvService settings registration', () => {
 
   it('registers its schemas once the registry appears late', () => {
     service = new PythonEnvService();          // constructed first…
-    const registry = new SettingsRegistryService();
+    const registry = new SettingsRegistryService(undefined, undefined);
     setGlobalSettingsRegistry(registry);       // …registry arrives afterwards
 
     service.ensureSettingsRegistered();
@@ -84,7 +84,7 @@ describe('PythonEnvService settings registration', () => {
 
   it('registers lazily on first read, without an explicit call', () => {
     service = new PythonEnvService();
-    const registry = new SettingsRegistryService();
+    const registry = new SettingsRegistryService(undefined, undefined);
     setGlobalSettingsRegistry(registry);
 
     // Merely reading is enough — this is the path the Settings panel takes.
@@ -94,7 +94,7 @@ describe('PythonEnvService settings registration', () => {
 
   it('reading every setting is safe with a registry but no schemas yet', () => {
     service = new PythonEnvService();
-    setGlobalSettingsRegistry(new SettingsRegistryService());
+    setGlobalSettingsRegistry(new SettingsRegistryService(undefined, undefined));
     // The original failure: registry present, schema absent, getValue throws.
     expect(() => {
       void service!.isEnabled;
@@ -108,7 +108,7 @@ describe('PythonEnvService settings registration', () => {
     // guard has to be a getSchema check, not a boolean flag that could be
     // wrong after a registry swap.
     service = new PythonEnvService();
-    setGlobalSettingsRegistry(new SettingsRegistryService());
+    setGlobalSettingsRegistry(new SettingsRegistryService(undefined, undefined));
     expect(() => {
       service!.ensureSettingsRegistered();
       service!.ensureSettingsRegistered();
@@ -121,10 +121,10 @@ describe('PythonEnvService settings registration', () => {
     // global registry — so the service can outlive the registry it registered
     // with.
     service = new PythonEnvService();
-    setGlobalSettingsRegistry(new SettingsRegistryService());
+    setGlobalSettingsRegistry(new SettingsRegistryService(undefined, undefined));
     service.ensureSettingsRegistered();
 
-    const second = new SettingsRegistryService();
+    const second = new SettingsRegistryService(undefined, undefined);
     setGlobalSettingsRegistry(second);
     expect(second.getSchema(PYTHON_ENABLED_KEY)).toBeUndefined();
 
@@ -134,7 +134,7 @@ describe('PythonEnvService settings registration', () => {
 
   it('declares the gate off by default, at workspace scope', () => {
     service = new PythonEnvService();
-    const registry = new SettingsRegistryService();
+    const registry = new SettingsRegistryService(undefined, undefined);
     setGlobalSettingsRegistry(registry);
     service.ensureSettingsRegistered();
 
@@ -152,7 +152,7 @@ describe('PythonEnvService settings registration', () => {
 
   it('every python.* schema lands in getAllSchemas, so Settings can list them', () => {
     service = new PythonEnvService();
-    const registry = new SettingsRegistryService();
+    const registry = new SettingsRegistryService(undefined, undefined);
     setGlobalSettingsRegistry(registry);
     service.ensureSettingsRegistered();
 
@@ -165,7 +165,7 @@ describe('PythonEnvService settings registration', () => {
     // which would reintroduce exactly this bug.
     service = new PythonEnvService();
     expect(getGlobalSettingsRegistry()).toBeUndefined();
-    const registry = new SettingsRegistryService();
+    const registry = new SettingsRegistryService(undefined, undefined);
     setGlobalSettingsRegistry(registry);
     void service.isEnabled;
     expect(registry.getSchema(PYTHON_ENABLED_KEY)).toBeDefined();

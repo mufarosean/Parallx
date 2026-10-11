@@ -352,7 +352,7 @@ describe('ChatSessionSidebar', () => {
     filterInput.value = 'zzz_nonexistent_zzz';
     filterInput.dispatchEvent(new Event('input'));
 
-    const empty = container.querySelector('.parallx-chat-session-sidebar-empty');
+    const empty = container.querySelector<HTMLElement>('.parallx-chat-session-sidebar-empty');
     expect(empty!.style.display).not.toBe('none');
     expect(empty!.textContent).toBe('No sessions match that');
 

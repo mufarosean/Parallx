@@ -7,6 +7,7 @@ import { CanvasDataService } from '../../src/built-in/canvas/canvasDataService';
 import { DatabaseDataService } from '../../src/built-in/canvas/database/databaseDataService';
 import { DatabaseEditorPane } from '../../src/built-in/canvas/database/databaseEditorPane';
 import { realSqlite } from './realSqlite';
+// @ts-expect-error — jsdom ships no types here
 import { JSDOM } from 'jsdom';
 
 // node:sqlite cannot load in vitest's jsdom environment, so the DOM is made here.

@@ -11,9 +11,6 @@ import {
   parseCronField,
   type ICronJobCreateParams,
   type ICronSchedule,
-  type CronTurnExecutor,
-  type ContextLineFetcher,
-  type HeartbeatWaker,
 } from '../../src/openclaw/openclawCronService';
 
 // ---------------------------------------------------------------------------
@@ -309,7 +306,7 @@ describe('CronService', () => {
     it('skips disabled jobs', async () => {
       const svc = new CronService(executor, contextFetcher, heartbeatWaker);
 
-      const job = svc.addJob(createParams({ enabled: false }));
+      svc.addJob(createParams({ enabled: false }));
 
       svc.start();
       vi.advanceTimersByTime(5 * 60 * 1000 + CRON_CHECK_INTERVAL_MS);
@@ -461,7 +458,7 @@ describe('CronService', () => {
       const svc = new CronService(executor, contextFetcher, heartbeatWaker);
 
       // Add a job that is already due
-      const job = svc.addJob(createParams({ schedule: { every: '1m' } }));
+      svc.addJob(createParams({ schedule: { every: '1m' } }));
 
       // Advance time past the job's nextRunAt
       vi.advanceTimersByTime(60_001);

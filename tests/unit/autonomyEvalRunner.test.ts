@@ -52,7 +52,8 @@ describe('autonomy-eval runner — Gmail fixture mode', () => {
     const fixture = loadGmailFixture(fixturePath);
     expect(fixture.messages.length).toBeGreaterThanOrEqual(5);
     for (const m of fixture.messages) {
-      expect((m as Record<string, unknown>).body).toBeUndefined();
+      const fields: Record<string, unknown> = { ...m };
+      expect(fields.body).toBeUndefined();
       expect(typeof m.subject).toBe('string');
       expect(typeof m.from).toBe('string');
     }

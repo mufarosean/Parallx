@@ -235,7 +235,7 @@ describe('resolveVariables', () => {
 
   it('resolves #file with quoted path', async () => {
     const services = createMockServices();
-    const result = await resolveVariables('check #file:"my file.ts"', services);
+    await resolveVariables('check #file:"my file.ts"', services);
     expect(services.readFileRelative).toHaveBeenCalledWith('my file.ts');
   });
 
@@ -264,7 +264,7 @@ describe('resolveVariables', () => {
 
   it('resolves only once for multiple #activeFile', async () => {
     const services = createMockServices();
-    const result = await resolveVariables('#activeFile and again #activeFile', services);
+    await resolveVariables('#activeFile and again #activeFile', services);
     expect(services.getCurrentPageContent).toHaveBeenCalledTimes(1);
   });
 

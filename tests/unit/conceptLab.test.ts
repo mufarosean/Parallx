@@ -44,10 +44,10 @@ const {
 // Paper-exhibit reproduction — every module's declared checks
 // ---------------------------------------------------------------------------
 
-describe.each(MODULES.map((m: any) => [m.id, m] as const))(
+describe.each<[string, any]>(MODULES.map((m: any) => [m.id, m] as const))(
   'module %s reproduces its paper',
   (_id: string, mod: any) => {
-    it.each(mod.checks.map((c: any) => [c.name, c] as const))(
+    it.each<[string, any]>(mod.checks.map((c: any) => [c.name, c] as const))(
       '%s',
       (_name: string, check: any) => {
         const got = check.got();

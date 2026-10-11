@@ -36,7 +36,8 @@ function mount(config: Partial<YearProgressConfig>) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const { ctx, change } = makeCtx(config);
-  const handle = YEAR_PROGRESS_WIDGET.createWidget(container, ctx);
+  expect(YEAR_PROGRESS_WIDGET.createWidget).toBeDefined();
+  const handle = YEAR_PROGRESS_WIDGET.createWidget!(container, ctx);
   return { container, handle, change };
 }
 

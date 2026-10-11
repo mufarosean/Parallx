@@ -26,8 +26,11 @@ test.describe('media-organizer grid scroll restore', () => {
     // CRITICAL: ELECTRON_RUN_AS_NODE may be inherited from the shell (Claude
     // Code sets it); if it leaks through, Electron behaves as plain Node and
     // `require('electron').app` is undefined, crashing main.cjs:108.
-    const env = { ...process.env };
-    delete (env as any).ELECTRON_RUN_AS_NODE;
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) env[key] = value;
+    }
+    delete env.ELECTRON_RUN_AS_NODE;
     env.PARALLX_TEST_MODE = '1';
     env.PARALLX_RENDERER_PORT = '0';
 

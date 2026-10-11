@@ -615,7 +615,7 @@ test.describe('Column Drag-Drop', () => {
       // columnList > column > paragraph("InCol")
       // doc[0] = columnList, doc[0].child(0) = column, doc[0].child(0).child(0) = paragraph
       const colList = doc.child(0); // columnList
-      const col = colList.child(0); // first column
+      colList.child(0); // first column
       // pos of first paragraph in first column:
       // 0 (before columnList) + 1 (inside columnList) + 1 (inside column) = 2
       return 2; // position of the paragraph inside the first column
@@ -815,9 +815,11 @@ test.describe('Column Drag-Drop', () => {
       return { boundaryX, boundaryY, col1Right: col1Rect.right, col2Left: col2Rect.left };
     });
     console.log('Resize boundary:', JSON.stringify(resizeBoundary));
+    const { boundaryX, boundaryY } = resizeBoundary;
+    if (boundaryX === undefined || boundaryY === undefined) throw new Error('Resize boundary not found');
 
     // Simulate mousemove at the boundary to trigger resize cursor
-    await page.mouse.move(resizeBoundary.boundaryX, resizeBoundary.boundaryY);
+    await page.mouse.move(boundaryX, boundaryY);
     await page.waitForTimeout(200);
 
     const hasResizeCursor = await page.evaluate(() => {
@@ -833,7 +835,7 @@ test.describe('Column Drag-Drop', () => {
     });
 
     await page.mouse.down();
-    await page.mouse.move(resizeBoundary.boundaryX + 50, resizeBoundary.boundaryY, { steps: 5 });
+    await page.mouse.move(boundaryX + 50, boundaryY, { steps: 5 });
     await page.waitForTimeout(100);
     await page.mouse.up();
     await page.waitForTimeout(200);

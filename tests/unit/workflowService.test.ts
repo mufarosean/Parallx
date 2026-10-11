@@ -209,7 +209,7 @@ describe('scheduling', () => {
 
 describe('persistence', () => {
   it('round-trips docs, runs, and the ledger; past nextRunAt coalesces to now', async () => {
-    let stored: IWorkflowPersistedSnapshot | null = null;
+    let stored = null as IWorkflowPersistedSnapshot | null;
     const persistence = {
       load: async () => stored,
       save: async (s: IWorkflowPersistedSnapshot) => { stored = s; },
@@ -239,8 +239,7 @@ describe('the arbiter', () => {
   it('mutex: a firing while the group is busy is HELD and recorded, never silent', async () => {
     const gate = { release: () => { /* replaced */ } };
     const slow = new Promise<void>((r) => { gate.release = r; });
-    const deps = makeDeps();
-    deps.runAgentTurn = vi.fn(async () => { await slow; return 'done'; });
+    const deps = { ...makeDeps(), runAgentTurn: vi.fn(async () => { await slow; return 'done'; }) };
     const { service } = makeService(deps);
     const mk = (name: string) => service.addWorkflow({
       name, class: 'quiet', enabled: true, source: 'user', mutexGroup: 'planner',
@@ -355,7 +354,7 @@ describe('suggestions', () => {
   });
 
   it('dismissed keys survive a persistence round-trip', async () => {
-    let stored: IWorkflowPersistedSnapshot | null = null;
+    let stored = null as IWorkflowPersistedSnapshot | null;
     const persistence = {
       load: async () => stored,
       save: async (s: IWorkflowPersistedSnapshot) => { stored = s; },

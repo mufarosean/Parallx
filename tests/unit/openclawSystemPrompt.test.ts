@@ -734,6 +734,9 @@ describe('buildOpenclawPromptArtifacts', () => {
         totalCount: 0,
         visibleCount: 0,
         hiddenCount: 0,
+        compact: false,
+        truncated: false,
+        truncationNote: '',
       },
       toolState: {
         exposedDefinitions: [],

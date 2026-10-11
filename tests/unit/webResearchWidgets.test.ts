@@ -8,6 +8,7 @@ import { DashboardBridge, getContributedDashboardWidgetTypes } from '../../src/a
 
 describe('Weather and Market widgets', () => {
   it('Web Research registers them under their stored ids; no other tool may', async () => {
+    // @ts-expect-error — JS module with no types
     const ext: any = await import('../../ext/web-research/main.js');
     const subs: Array<{ dispose(): void }> = [];
     const bridge = new DashboardBridge('parallx.web-research', subs);
@@ -22,6 +23,7 @@ describe('Weather and Market widgets', () => {
   });
 
   it('prompts ask for the configured place and symbols and deliver to the widget', async () => {
+    // @ts-expect-error — JS module with no types
     const ext: any = await import('../../ext/web-research/main.js');
     const w = ext.__test__.buildWeatherPrompt({ location: 'Harare', units: 'metric', forecastDays: 2 }, 'w1');
     expect(w).toContain('Harare');

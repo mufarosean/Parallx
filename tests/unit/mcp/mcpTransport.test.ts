@@ -14,7 +14,7 @@ function createMockElectronApi() {
 
   return {
     mcp: {
-      spawn: vi.fn(async () => ({ error: null })),
+      spawn: vi.fn(async (): Promise<{ error: string | null }> => ({ error: null })),
       send: vi.fn(async () => {}),
       kill: vi.fn(async () => {}),
       onMessage: vi.fn((cb: MessageCallback) => {

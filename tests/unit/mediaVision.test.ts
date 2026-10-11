@@ -13,7 +13,7 @@ import {
   type IToolSummary,
 } from '../../src/openclaw/openclawSystemPrompt';
 import { OpenclawContextEngine, type IOpenclawContextEngineServices } from '../../src/openclaw/openclawContextEngine';
-import type { IChatMessage } from '../../src/services/chatTypes';
+import type { IChatImageAttachment, IChatMessage } from '../../src/services/chatTypes';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -43,14 +43,21 @@ function createMockServices(overrides?: Partial<IOpenclawContextEngineServices>)
     })),
     recallMemories: vi.fn(async () => ''),
     recallTranscripts: vi.fn(async () => ''),
-    getCurrentPageContent: vi.fn(async () => undefined),
     storeSessionMemory: vi.fn(async () => {}),
     sendSummarizationRequest: undefined,
     ...overrides,
   };
 }
 
-const FAKE_IMAGE = { kind: 'image' as const, mimeType: 'image/png', data: 'iVBOR...base64' };
+const FAKE_IMAGE: IChatImageAttachment = {
+  kind: 'image',
+  id: 'fake-image',
+  name: 'fake.png',
+  fullPath: 'fake.png',
+  isImplicit: false,
+  mimeType: 'image/png',
+  data: 'iVBOR...base64',
+};
 
 // ---------------------------------------------------------------------------
 // D5-G1: Token estimation with images

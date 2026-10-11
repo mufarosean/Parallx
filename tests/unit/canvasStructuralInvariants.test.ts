@@ -64,7 +64,14 @@ function makeValidDoc(): MockNode {
   ]);
 }
 
-function cloneDeep<T>(value: T): T {
+/** A node after a JSON round-trip: the data without the MockNode methods. */
+type PlainNode = {
+  type: { name: string };
+  attrs: Record<string, unknown>;
+  content: PlainNode[];
+};
+
+function cloneDeep(value: MockNode): PlainNode {
   return JSON.parse(JSON.stringify(value));
 }
 

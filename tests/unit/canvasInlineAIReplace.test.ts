@@ -4,7 +4,7 @@
 // when the selected text was edited, and reads the reply as markdown.
 
 import { describe, expect, it, vi } from 'vitest';
-import { Editor } from '@tiptap/core';
+import { Editor, type JSONContent } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { common, createLowlight } from 'lowlight';
 import { createEditorExtensions } from '../../src/built-in/canvas/config/tiptapExtensions';
@@ -15,7 +15,7 @@ import type { IChatMessage } from '../../src/services/chatTypes';
 const lowlight = createLowlight(common);
 const p = (t: string) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
 
-function make(content: unknown[]): Editor {
+function make(content: JSONContent[]): Editor {
   const ed = new Editor({
     element: document.createElement('div'),
     extensions: createEditorExtensions(lowlight, {}),

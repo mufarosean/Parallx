@@ -8,7 +8,6 @@ import type {
   IChatParticipantContext,
   IChatResponseStream,
   ICancellationToken,
-  IChatParticipantResult,
 } from '../../src/services/chatTypes';
 import { ChatMode } from '../../src/services/chatTypes';
 
@@ -52,6 +51,14 @@ function createMockStream(): IChatResponseStream {
     beginToolInvocation: vi.fn(),
     updateToolInvocation: vi.fn(),
     push: vi.fn(),
+    provenance: vi.fn(),
+    editProposal: vi.fn(),
+    editBatch: vi.fn(),
+    replaceLastMarkdown: vi.fn(),
+    throwIfDone: vi.fn(),
+    reportTokenUsage: vi.fn(),
+    setCitations: vi.fn(),
+    getMarkdownText: vi.fn(() => ''),
   };
 }
 
@@ -149,7 +156,7 @@ describe('ChatAgentService', () => {
   });
 
   it('invokeAgent falls back to default agent when participant not found', async () => {
-    const defaultHandler = vi.fn(async () => ({ fallback: true }));
+    const defaultHandler = vi.fn<IChatParticipant['handler']>(async () => ({ metadata: { fallback: true } }));
     service.registerAgent(createMockParticipant('parallx.chat.default', defaultHandler));
 
     const result = await service.invokeAgent(
@@ -161,7 +168,7 @@ describe('ChatAgentService', () => {
     );
 
     expect(defaultHandler).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ fallback: true });
+    expect(result).toEqual({ metadata: { fallback: true } });
   });
 
   it('invokeAgent throws when participant not found and no default', async () => {
@@ -217,7 +224,6 @@ describe('ChatAgentService', () => {
             isExplicitTranscriptRecall: false,
             isFileEnumeration: false,
             isExhaustiveWorkspaceReview: false,
-            workflowTypeHint: 'generic-grounded',
           },
           queryScope: {
             level: 'workspace',
@@ -227,7 +233,6 @@ describe('ChatAgentService', () => {
           turnRoute: {
             kind: 'grounded',
             reason: 'test route',
-            coverageMode: 'representative',
           },
           hasActiveSlashCommand: false,
           isRagReady: true,

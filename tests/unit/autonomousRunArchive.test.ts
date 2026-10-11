@@ -14,11 +14,10 @@ import {
   loadArchivedRun,
   loadSessions,
   saveSession,
-  pruneArchivedRuns,
   type IChatPersistenceDatabase,
 } from '../../src/services/chatSessionPersistence';
 
-interface SessionRow { id: string; workspace_id: string; title: string; mode: string; model_id: string; context_window_override: number | null; plan_json: string | null; created_at: number; updated_at: number; origin: string | null }
+type SessionRow = { id: string; workspace_id: string; title: string; mode: string; model_id: string; context_window_override: number | null; plan_json: string | null; created_at: number; updated_at: number; origin: string | null };
 interface MsgRow { session_id: string; role: string; content: string; parts_json: string; model_id: string; is_complete: number; timestamp: number; sort_order: number }
 
 function makeDb(): IChatPersistenceDatabase {
@@ -94,9 +93,9 @@ function runSession(nMsgs: number, title = 'Run'): IChatSession {
     response: { parts: [{ kind: 'text', text: `a${i}` }], modelId: 'llama3', isComplete: true, timestamp: 1001 + i } as never,
   }));
   return {
-    id, title, mode: ChatMode.Agent, modelId: 'llama3', createdAt: 500, updatedAt: 500,
-    messages, requestInProgress: false, sessionResource: URI.parse(`parallx-chat-session:///${id}`),
-  } as IChatSession;
+    id, title, mode: ChatMode.Agent, modelId: 'llama3', createdAt: 500,
+    messages, requestInProgress: false, pendingRequests: [], sessionResource: URI.parse(`parallx-chat-session:///${id}`),
+  };
 }
 
 describe('autonomous run archive (M91 S1)', () => {

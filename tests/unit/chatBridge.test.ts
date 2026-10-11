@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { ChatBridge } from '../../src/api/bridges/chatBridge';
+import type { IChatParticipantHandler } from '../../src/services/chatTypes';
 
 describe('ChatBridge', () => {
   it('registers bridged participants with an explicit bridge surface', () => {
@@ -27,7 +28,7 @@ describe('ChatBridge', () => {
         return { dispose: vi.fn() };
       }),
     };
-    const rawHandler = vi.fn(async () => ({}));
+    const rawHandler = vi.fn<IChatParticipantHandler>(async () => ({}));
     const bridge = new ChatBridge('tool.test', agentService as any, undefined, []);
 
     bridge.createChatParticipant('tool.test.participant', rawHandler as any);
@@ -95,7 +96,7 @@ describe('ChatBridge', () => {
         return { dispose: vi.fn() };
       }),
     };
-    const rawHandler = vi.fn(async () => ({}));
+    const rawHandler = vi.fn<IChatParticipantHandler>(async () => ({}));
     const reportTrace = vi.fn();
     const bridge = new ChatBridge('tool.test', agentService as any, undefined, []);
 

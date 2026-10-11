@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { URI } from '../../src/platform/uri';
 
 describe('chat autonomy UI', () => {
   beforeEach(() => {
@@ -158,8 +159,8 @@ describe('chat autonomy UI', () => {
               proposedAction: {
                 toolName: 'apply_patch',
                 targetUris: [
-                  { fsPath: '/workspace/docs/Claims Guide.md' },
-                  { fsPath: '/workspace/docs/FAQ.md' },
+                  URI.file('/workspace/docs/Claims Guide.md'),
+                  URI.file('/workspace/docs/FAQ.md'),
                 ],
               },
               approvalState: 'approved',

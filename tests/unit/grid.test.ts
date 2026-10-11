@@ -739,7 +739,7 @@ describe('cellRect — model-derived geometry', () => {
     grid.addView(createMockView('side'), 200);
     grid.addView(createMockView('editor'), 800);
     grid.splitView('editor', createMockView('panel'), 200, Orientation.Vertical);
-    grid.layout(1000, 600);
+    grid.layout();
 
     expect(grid.cellRect('side')).toEqual({ left: 0, top: 0, width: 200, height: 600 });
     const editor = grid.cellRect('editor')!;
@@ -767,7 +767,7 @@ describe('resizeSash in a nested branch — cross axis stays truthful', () => {
     grid.addView(editor, 800);
     const panel = createMockView('panel');
     grid.splitView('editor', panel, 200, Orientation.Vertical);
-    grid.layout(1000, 600);
+    grid.layout();
     // A cross-axis split halves the slot; settle exact pixels first.
     grid.resizeView('panel', 200);
 
@@ -793,7 +793,7 @@ describe('resizeSash in a nested branch — cross axis stays truthful', () => {
     grid.addView(a, 200);
     const b = createMockView('b');
     grid.splitView('a', b, 500, Orientation.Horizontal);
-    grid.layout(1000, 600);
+    grid.layout();
 
     const inner = grid.root.children.find(
       (c) => c.type === GridNodeType.Branch,

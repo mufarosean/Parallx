@@ -126,8 +126,8 @@ describe('words', () => {
 });
 
 describe('the Character Seeds table', () => {
-  // @ts-expect-error — JS module with no types
   it('parses clean and rolls a concept, a want, a fear and a secret', async () => {
+    // @ts-expect-error — JS module with no types
     const { CHARACTER_SEEDS_TABLE, CHARACTER_SEEDS_NAME } = await import('../../ext/creations-ai/tables-core.js');
     const gen = parseTables(CHARACTER_SEEDS_TABLE);
     expect(gen.errors).toEqual([]);

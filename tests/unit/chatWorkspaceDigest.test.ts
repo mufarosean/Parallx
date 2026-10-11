@@ -12,7 +12,8 @@ describe('chat workspace digest (deprecated)', () => {
   it('returns undefined even when database and fs are fully populated', async () => {
     const databaseService = {
       isOpen: true,
-      all: vi.fn(async () => [{ id: 'page-1', title: 'Claims Page' }]),
+      // Answers every query with the same rows, whatever row type the caller asks for.
+      all: async <T>(): Promise<T[]> => [{ id: 'page-1', title: 'Claims Page' }] as T[],
     };
     const fsAccessor = {
       readdir: vi.fn(async () => [{ name: 'README.md', type: 'file' as const }]),

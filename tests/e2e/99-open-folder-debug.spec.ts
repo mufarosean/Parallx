@@ -2,7 +2,7 @@
  * Diagnostic test: Launch into Exam 7 workspace, then Open Folder to Personal Workspace.
  * Captures console logs, screenshots, and state at each step.
  */
-import { test as base, expect } from '@playwright/test';
+import { test as base } from '@playwright/test';
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright';
 import path from 'path';
 import fs from 'fs/promises';
@@ -91,7 +91,7 @@ test('open folder: Exam 7 → Personal Workspace', async ({ electronApp, window:
     console.log('[TEST] Trying via executeCommand...');
     
     // Check if there's another way to access it
-    const altResult = await page.evaluate(async (targetPath) => {
+    const altResult = await page.evaluate(async () => {
       try {
         // Try the Workbench static/singleton
         const w = (window as any).__parallx_workbench__;
@@ -109,7 +109,7 @@ test('open folder: Exam 7 → Personal Workspace', async ({ electronApp, window:
       } catch (e: any) {
         return { error: e.message };
       }
-    }, TARGET_WORKSPACE);
+    });
     console.log('[TEST] Workbench introspection:', altResult);
   }
 

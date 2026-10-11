@@ -16,31 +16,30 @@ import { URI } from '../../src/platform/uri';
 
 // ── Mock database ──
 
-function createMockDb(): IChatPersistenceDatabase & {
+type MockDb = IChatPersistenceDatabase & {
   _tables: Map<string, unknown[]>;
   _runCalls: Array<{ sql: string; params?: unknown[] }>;
   _allCalls: Array<{ sql: string; params?: unknown[] }>;
   _getCalls: Array<{ sql: string; params?: unknown[] }>;
-} {
+};
+
+function createMockDb(): MockDb {
   const tables = new Map<string, unknown[]>();
 
-  const db: IChatPersistenceDatabase & {
-    _tables: Map<string, unknown[]>;
-    _runCalls: Array<{ sql: string; params?: unknown[] }>;
-    _allCalls: Array<{ sql: string; params?: unknown[] }>;
-  } = {
+  const db: MockDb = {
     _tables: tables,
     _runCalls: [],
     _allCalls: [],
     _getCalls: [],
 
-    async run(sql: string, params?: unknown[]): Promise<void> {
+    async run(sql: string, params?: unknown[]): Promise<{ changes: number }> {
       db._runCalls.push({ sql, params });
+      return { changes: 0 };
     },
 
-    async get<T>(sql: string, params?: unknown[]): Promise<T | undefined> {
+    async get<T>(sql: string, params?: unknown[]): Promise<T | null> {
       db._getCalls.push({ sql, params });
-      return undefined;
+      return null;
     },
 
     async all<T>(sql: string, params?: unknown[]): Promise<T[]> {
@@ -68,9 +67,9 @@ function createTestSession(): IChatSession {
     mode: ChatMode.Agent,
     modelId: 'llama3.1:8b',
     createdAt: Date.now(),
-    updatedAt: Date.now(),
     messages: [],
     requestInProgress: false,
+    pendingRequests: [],
     sessionResource: URI.parse('parallx-chat-session:///test-session-1'),
   };
 }
@@ -109,15 +108,17 @@ describe('chatSessionPersistence', () => {
   describe('saveSession', () => {
     it('calls runTransaction with insert/replace statements', async () => {
       const session = createTestSession();
-      session.messages = [
+      session.messages.push(
         {
           request: { text: 'Hello', requestId: 'req-1', participantId: 'parallx.chat.default', attempt: 0, timestamp: Date.now() },
           response: {
             parts: [{ kind: ChatContentPartKind.Markdown, content: 'Hi there!' }],
             isComplete: true,
+            modelId: 'llama3.1:8b',
+            timestamp: Date.now(),
           },
         },
-      ];
+      );
 
       await saveSession(db, session);
 
@@ -128,7 +129,7 @@ describe('chatSessionPersistence', () => {
 
     it('serializes parts as JSON', async () => {
       const session = createTestSession();
-      session.messages = [
+      session.messages.push(
         {
           request: { text: 'Test', requestId: 'req-2', participantId: 'parallx.chat.default', attempt: 0, timestamp: Date.now() },
           response: {
@@ -137,9 +138,11 @@ describe('chatSessionPersistence', () => {
               { kind: ChatContentPartKind.Warning, message: 'A warning' },
             ],
             isComplete: true,
+            modelId: 'llama3.1:8b',
+            timestamp: Date.now(),
           },
         },
-      ];
+      );
 
       await saveSession(db, session);
 
@@ -152,7 +155,7 @@ describe('chatSessionPersistence', () => {
 
     it('serializes user request metadata into parts_json', async () => {
       const session = createTestSession();
-      session.messages = [
+      session.messages.push(
         {
           request: {
             text: 'Hello',
@@ -166,9 +169,11 @@ describe('chatSessionPersistence', () => {
           response: {
             parts: [{ kind: ChatContentPartKind.Markdown, content: 'Hi there!' }],
             isComplete: true,
+            modelId: 'llama3.1:8b',
+            timestamp: Date.now(),
           },
         },
-      ];
+      );
 
       await saveSession(db, session);
       const userInsert = db._runCalls.find((call) => Array.isArray(call.params) && call.params[1] === 'user');
@@ -511,12 +516,12 @@ describe('chatSessionPersistence', () => {
     it('rewrites messages normally once the flag is cleared', async () => {
       const session = createTestSession();
       session.messagesPendingLoad = false;
-      session.messages = [
+      session.messages.push(
         {
           request: { text: 'Hello', requestId: 'req-1', participantId: 'parallx.chat.default', attempt: 0, timestamp: Date.now() },
-          response: { parts: [{ kind: ChatContentPartKind.Markdown, content: 'Hi' }], isComplete: true },
+          response: { parts: [{ kind: ChatContentPartKind.Markdown, content: 'Hi' }], isComplete: true, modelId: 'llama3.1:8b', timestamp: Date.now() },
         },
-      ];
+      );
 
       await saveSession(db, session, 'ws-1');
 

@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
-import { resolve, relative, posix } from 'path';
+import { resolve, relative } from 'path';
 
 // ── Canvas root ─────────────────────────────────────────────────────────────
 

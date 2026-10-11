@@ -54,7 +54,7 @@ async function* streamChunks(chunks: IChatResponseChunk[]): AsyncIterable<IChatR
 
 describe('openclaw scoped participants', () => {
   it('builds workspace prompts with OpenClaw bootstrap markers', async () => {
-    const sendChatRequest = vi.fn(() => streamChunks([{ content: 'workspace answer', done: true }]));
+    const sendChatRequest = vi.fn<IWorkspaceParticipantServices['sendChatRequest']>(() => streamChunks([{ content: 'workspace answer', done: true }]));
     const reportBootstrapDebug = vi.fn();
     const participant = createOpenclawWorkspaceParticipant({
       sendChatRequest,
@@ -96,7 +96,7 @@ describe('openclaw scoped participants', () => {
   });
 
   it('runs canvas describe through the OpenClaw canvas lane', async () => {
-    const sendChatRequest = vi.fn(() => streamChunks([{ content: 'canvas answer', done: true }]));
+    const sendChatRequest = vi.fn<ICanvasParticipantServices['sendChatRequest']>(() => streamChunks([{ content: 'canvas answer', done: true }]));
     const participant = createOpenclawCanvasParticipant({
       sendChatRequest,
       getActiveModel: () => 'test-model',
@@ -111,7 +111,9 @@ describe('openclaw scoped participants', () => {
       readFileContent: vi.fn(async () => null),
       getReadOnlyToolDefinitions: () => [],
       reportRuntimeTrace: vi.fn(),
-    } as ICanvasParticipantServices);
+      // readFileContent answers null for a missing file, which the runtime's reader
+      // (ReadWorkspaceFile) accepts though the service interface types it as a string.
+    } as unknown as ICanvasParticipantServices);
     const response = createResponse();
 
     await participant.handler({
@@ -145,7 +147,8 @@ describe('openclaw scoped participants', () => {
       getReadOnlyToolDefinitions: () => [],
       reportRuntimeTrace: vi.fn(),
       reportRetrievalDebug,
-    } as ICanvasParticipantServices);
+      // Same null-for-missing readFileContent as above.
+    } as unknown as ICanvasParticipantServices);
     const response = createResponse();
 
     await participant.handler({

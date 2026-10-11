@@ -27,7 +27,6 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 import {
   CronService,
-  type ICronJob,
   type ICronRunResult,
 } from '../../src/openclaw/openclawCronService';
 import {

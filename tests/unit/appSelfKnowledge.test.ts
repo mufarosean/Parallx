@@ -27,7 +27,7 @@ function fakeIntrospection(overrides: Partial<IIntrospectionService> = {}): IInt
       railIcons: [],
       prose: 'Left of the editor: sidebar.',
     }),
-    describeEditors: () => [{ id: 'e', name: 'notes.md', isDirty: false, isActive: true, groupId: 'g' }],
+    describeEditors: () => [{ id: 'e', name: 'notes.md', description: '', isDirty: false, isActive: true, groupId: 'g' }],
     describeSettings: () => [{ key: 'k', type: 'string', scope: 'user', value: 'v', isDefault: true }],
     describeContext: () => ({ sidebarVisible: true }),
     describeServices: () => ['ICommandService'],

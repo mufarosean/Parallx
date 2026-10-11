@@ -9,7 +9,7 @@ import {
   isStopword,
   reciprocalRankFusion,
 } from '../../src/services/vectorStoreService.js';
-import type { EmbeddedChunk, SearchResult } from '../../src/services/vectorStoreService.js';
+import type { EmbeddedChunk } from '../../src/services/vectorStoreService.js';
 
 // ─── Mock DatabaseService ────────────────────────────────────────────────────
 

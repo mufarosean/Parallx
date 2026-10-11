@@ -11,6 +11,7 @@ import {
 } from '../../src/services/fileCheckpointService';
 import { tryHandleOpenclawRewindCommand } from '../../src/openclaw/commands/openclawRewindCommand';
 import type { IChatResponseStream } from '../../src/services/chatTypes';
+import type { IBuiltInToolFileSystem, IBuiltInToolFileWriter } from '../../src/built-in/chat/chatTypes';
 
 function fakeResponse(): { response: IChatResponseStream; text: () => string } {
   const parts: string[] = [];
@@ -63,19 +64,18 @@ describe('fileCheckpoints — recovery over permission (HARNESS.md 2.2)', () => 
 
   it('revert restores prior content through the writer and records the inverse', async () => {
     const writes: Array<{ path: string; content: string }> = [];
-    bindCheckpointEnvironment({
-      fs: {
-        exists: async () => true,
-        readFileContent: async () => ({ content: 'CURRENT', type: 'text', totalChars: 7 }),
-        readdir: async () => [],
-        workspaceRootName: 'ws',
-      },
-      writer: {
-        writeFile: async (path: string, content: string) => { writes.push({ path, content }); },
-        isPathAllowed: () => true,
-      },
-      workspaceRoot: 'D:/ws',
-    });
+    // The full chat accessors, as production binds them; the checkpoint service needs a subset.
+    const fs: IBuiltInToolFileSystem = {
+      exists: async () => true,
+      readFileContent: async () => ({ content: 'CURRENT', type: 'text', totalChars: 7 }),
+      readdir: async () => [],
+      workspaceRootName: 'ws',
+    };
+    const writer: IBuiltInToolFileWriter = {
+      writeFile: async (path: string, content: string) => { writes.push({ path, content }); },
+      isPathAllowed: () => true,
+    };
+    bindCheckpointEnvironment({ fs, writer, workspaceRoot: 'D:/ws' });
 
     const entry = recordCheckpoint({ path: 'a.ts', priorContent: 'ORIGINAL', tool: 'fs_edit_file', intent: 'Fix import' });
     const result = await revertCheckpoint(entry.id);
@@ -102,15 +102,14 @@ describe('fileCheckpoints — recovery over permission (HARNESS.md 2.2)', () => 
 
   it('/rewind lists checkpoints with intent and restores by id', async () => {
     const writes: Array<{ path: string; content: string }> = [];
-    bindCheckpointEnvironment({
-      fs: {
-        exists: async () => true,
-        readFileContent: async () => ({ content: 'NOW', type: 'text', totalChars: 3 }),
-        readdir: async () => [],
-        workspaceRootName: 'ws',
-      },
-      writer: { writeFile: async (p: string, c: string) => { writes.push({ path: p, content: c }); }, isPathAllowed: () => true },
-    });
+    const fs: IBuiltInToolFileSystem = {
+      exists: async () => true,
+      readFileContent: async () => ({ content: 'NOW', type: 'text', totalChars: 3 }),
+      readdir: async () => [],
+      workspaceRootName: 'ws',
+    };
+    const writer: IBuiltInToolFileWriter = { writeFile: async (p: string, c: string) => { writes.push({ path: p, content: c }); }, isPathAllowed: () => true };
+    bindCheckpointEnvironment({ fs, writer });
     recordCheckpoint({ path: 'notes.md', priorContent: 'BEFORE', tool: 'fs_edit_file', intent: 'Tighten the summary' });
 
     const list = fakeResponse();

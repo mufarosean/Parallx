@@ -1,19 +1,20 @@
 // autonomySubagentGate.test.ts — M60 Phase γ §3.6 (depth-1 cap) + §3.8
 // (flag gate) + §3.10 (event emit) for SubagentSpawner.
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import {
   SubagentSpawner,
   type ISubagentSpawnAutonomyInfo,
+  type SubagentTurnExecutor,
 } from '../../src/openclaw/openclawSubagentSpawn';
 
 function makeSpawner(opts: {
   isFlagEnabled?: () => boolean;
   onAutonomyEvent?: (info: ISubagentSpawnAutonomyInfo) => void;
-  executor?: ReturnType<typeof vi.fn>;
+  executor?: Mock<SubagentTurnExecutor>;
   maxDepth?: number;
 } = {}) {
-  const executor = opts.executor ?? vi.fn().mockResolvedValue('ok');
+  const executor = opts.executor ?? vi.fn<SubagentTurnExecutor>().mockResolvedValue('ok');
   const announcer = vi.fn().mockResolvedValue(undefined);
   const spawner = new SubagentSpawner(executor, announcer, opts.maxDepth ?? 1);
   if (opts.isFlagEnabled || opts.onAutonomyEvent) {

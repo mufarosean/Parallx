@@ -21,7 +21,7 @@ const BASE: WidgetAppearance = {
 function open(overrides?: Partial<Parameters<typeof openAppearanceDrawer>[0]>) {
   const card = document.createElement('div');
   document.body.appendChild(card);
-  const onSave = vi.fn(async () => {});
+  const onSave = vi.fn<(next: WidgetAppearance) => Promise<void>>(async () => {});
   const showError = vi.fn();
   openAppearanceDrawer({
     card,
@@ -72,7 +72,7 @@ describe('openAppearanceDrawer', () => {
     saveBtn().click();
     await flush();
     expect(onSave).toHaveBeenCalledTimes(1);
-    const saved = onSave.mock.calls[0]![0] as WidgetAppearance;
+    const saved = onSave.mock.calls[0][0];
     expect(saved.title).toBe('Study Clock');
     expect(saved.contentAlign).toBe('start'); // always present in the saved shape
     expect(overlay()).toBeNull(); // closed on success

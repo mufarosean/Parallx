@@ -325,7 +325,7 @@ describe('sessions_spawn tool', () => {
 
     // Simulate being inside a subagent turn by driving the shared counter.
     _resetSubagentDepthForTests();
-    // @ts-expect-error — monkey-reach into module depth by running the real path
+    // Monkey-reaching into module depth by running the real path
     // is overkill; use the exported helper to simulate depth>0 by invoking
     // the executor briefly. Simpler: wrap via a spawn to a fake and freeze
     // depth at 1 for the duration of this test.

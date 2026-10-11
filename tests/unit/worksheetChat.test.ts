@@ -10,6 +10,10 @@ function summary(over: Partial<WorksheetItemSummary>): WorksheetItemSummary {
     id: 1, title: 'Item', questionMd: '', solutionNotesMd: '',
     sourceUri: '', sourceLabel: '', sourcePage: 0, tags: '',
     createdAt: 1_700_000_000_000, attemptState: '', attemptCount: 0,
+    solutionCol: 0, workRow: 0, solutionRow: 0, paper: '', source: '', kind: '',
+    quadrant: 0, sheetName: '', points: null, recipe: '', recipePaper: '',
+    seconds: 0, lastAttemptAt: 0, hasSheet: false, ratingImported: false, worked: false,
+    starred: false, starredAt: 0, note: '', noteAt: 0,
     ...over,
   };
 }
@@ -19,6 +23,8 @@ function item(over: Partial<WorksheetItem>): WorksheetItem {
     id: 1, title: 'Item', questionMd: '', givensJson: '', solutionJson: '',
     solutionNotesMd: '', sourceUri: '', sourceLabel: '', sourcePage: 0,
     tags: '', createdAt: 1_700_000_000_000,
+    sheetJson: '', solutionCol: 0, workRow: 0, solutionRow: 0, paper: '', source: '', kind: '',
+    quadrant: 0, sheetName: '', points: null, recipe: '', recipePaper: '', sheetAt: 0,
     ...over,
   };
 }
@@ -64,6 +70,7 @@ describe('buildUserWorkReport', () => {
     const attempt: WorksheetAttempt = {
       id: 9, itemId: 4, startedAt: 1, updatedAt: 2,
       cellsJson: CELLS, selfGrade: 'partial', aiReviewMd: 'Watch the tail factor.', completed: true,
+      seconds: 0, sessionId: '', imported: false, workedAt: 0,
     };
     const out = buildUserWorkReport(item({
       id: 4, title: 'Loss Ratio', questionMd: 'Compute it.',
@@ -84,6 +91,7 @@ describe('buildUserWorkReport', () => {
     const attempt: WorksheetAttempt = {
       id: 9, itemId: 1, startedAt: 1, updatedAt: 2,
       cellsJson: '{"sheets":{}}', selfGrade: '', aiReviewMd: '', completed: false,
+      seconds: 0, sessionId: '', imported: false, workedAt: 0,
     };
     const out = buildUserWorkReport(item({}), attempt);
     expect(out).toContain('in progress');

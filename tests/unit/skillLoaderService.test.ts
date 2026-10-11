@@ -260,6 +260,7 @@ describe('manifestToToolDefinition', () => {
       name: 'fs_read_file',
       description: 'Read a file',
       version: '1.0.0',
+      bundledFiles: [],
       author: 'parallx',
       permission: 'always-allowed',
       parameters: [{ name: 'path', type: 'string', description: 'File path', required: true }],

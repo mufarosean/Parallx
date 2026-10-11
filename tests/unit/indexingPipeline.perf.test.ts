@@ -264,7 +264,7 @@ describe('IndexingPipelineService — M60 B2 deferred start', () => {
   });
 
   it('waits for requestIdleCallback before doing any indexing work', async () => {
-    let idleResolver: (() => void) | null = null;
+    let idleResolver = null as (() => void) | null;
     const ric: IdleCb = (cb) => {
       idleResolver = cb as () => void;
       return 1;
@@ -294,7 +294,7 @@ describe('IndexingPipelineService — M60 B2 deferred start', () => {
   });
 
   it('proceeds immediately when cancel() fires during idle wait', async () => {
-    let idleResolver: (() => void) | null = null;
+    let idleResolver = null as (() => void) | null;
     const ric: IdleCb = (cb) => {
       idleResolver = cb as () => void;
       return 1;

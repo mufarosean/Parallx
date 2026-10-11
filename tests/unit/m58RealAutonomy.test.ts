@@ -76,7 +76,7 @@ function buildFakeAgentService(): IChatAgentService {
 
 function buildFakeModeService(): IChatModeService {
   return {
-    getMode: () => ChatMode.Ask,
+    getMode: () => ChatMode.Agent,
     setMode: () => {},
     onDidChangeMode: () => ({ dispose: () => {} }),
   } as unknown as IChatModeService;

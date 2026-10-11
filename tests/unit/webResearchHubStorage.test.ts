@@ -8,6 +8,7 @@ let ext: any;
 let stored: Record<string, string>;
 
 beforeEach(async () => {
+  // @ts-expect-error — JS module with no types
   ext = await import('../../ext/web-research/main.js');
   stored = {};
   ext.__test__._setGlobalStorage({

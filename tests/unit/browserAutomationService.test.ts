@@ -18,6 +18,7 @@ import { TOOL_NEEDS_A_CHAT_TURN, type IChatTool, type ICancellationToken, type I
 import type { IBrowserAutomationHost, IBrowserAutomationToolSpec } from '../../src/services/browserAutomationTypes';
 import { isToolImageGone } from '../../src/services/toolImageLifetime';
 // The Browser extension's own tool specs: the core holds none.
+// @ts-expect-error — JS module with no types
 import { AUTOMATION_TOOLS } from '../../ext/browser/main.js';
 
 const TOOLS = AUTOMATION_TOOLS as readonly IBrowserAutomationToolSpec[];

@@ -1,5 +1,4 @@
 import { sharedTest as test, expect, setupCanvasPage, setContent } from './fixtures';
-import type { Page } from '@playwright/test';
 
 function p(text: string) {
   return { type: 'paragraph', content: [{ type: 'text', text }] };

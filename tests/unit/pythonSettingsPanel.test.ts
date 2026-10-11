@@ -38,7 +38,7 @@ afterEach(() => {
 /** Reproduce the real boot order: service first, registry afterwards. */
 function bootInRealOrder(): { registry: SettingsRegistryService; service: PythonEnvService } {
   const svc = new PythonEnvService();
-  const registry = new SettingsRegistryService();
+  const registry = new SettingsRegistryService(undefined, undefined);
   setGlobalSettingsRegistry(registry);
   return { registry, service: svc };
 }
