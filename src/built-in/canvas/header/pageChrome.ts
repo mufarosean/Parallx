@@ -84,6 +84,7 @@ export class PageChromeController {
   private _iconEl: HTMLElement | null = null;
   private _titleEl: HTMLElement | null = null;
   private _hoverAffordances: HTMLElement | null = null;
+  private _revealProperties: (() => void) | null = null;
   private _pageMenuBtn: HTMLElement | null = null;
   private _pageMenuDropdown: HTMLElement | null = null;
   private _detachPageMenuDismiss: (() => void) | null = null;
@@ -527,35 +528,9 @@ export class PageChromeController {
     const titleRow = $('div.canvas-page-title-row');
     titleRow.appendChild(this._iconEl);
 
-    // ── Hover affordances (Add icon / Add cover) ──
+    // ── Hover affordances (Add Icon / Add Cover / Add Properties) ──
     this._hoverAffordances = $('div.canvas-page-affordances');
-
-    if (!this._currentPage?.icon) {
-      const addIconBtn = $('button.canvas-affordance-btn');
-      addIconBtn.dataset.action = 'add-icon';
-      addIconBtn.appendChild(createIconElement('smile', 14));
-      const lbl = $('span'); lbl.textContent = 'Add Icon';
-      addIconBtn.appendChild(lbl);
-      addIconBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
-      addIconBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._showIconPicker(e.currentTarget as HTMLElement);
-      });
-      this._hoverAffordances.appendChild(addIconBtn);
-    }
-
-    if (!this._currentPage?.coverUrl) {
-      const addCoverBtn = $('button.canvas-affordance-btn');
-      addCoverBtn.dataset.action = 'add-cover';
-      addCoverBtn.appendChild(createIconElement('image', 14));
-      const lbl2 = $('span'); lbl2.textContent = 'Add Cover';
-      addCoverBtn.appendChild(lbl2);
-      addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
-      addCoverBtn.addEventListener('click', (e) => {
-        this._handleAddCoverClick(e, addCoverBtn as HTMLButtonElement);
-      });
-      this._hoverAffordances.appendChild(addCoverBtn);
-    }
+    this._refreshHoverAffordances();
 
     // Affordances always render ABOVE the title row (Notion-canonical
     // placement). The prior absolute-positioned variant landed in dead
@@ -836,6 +811,31 @@ export class PageChromeController {
       });
       this._hoverAffordances.appendChild(addCoverBtn);
     }
+
+    // A page in no database shows no property panel; this brings it up.
+    const revealProperties = this._revealProperties;
+    if (revealProperties) {
+      const addPropsBtn = $('button.canvas-affordance-btn');
+      addPropsBtn.dataset.action = 'add-properties';
+      addPropsBtn.appendChild(createIconElement('tag', 14));
+      const lbl3 = $('span'); lbl3.textContent = 'Add Properties';
+      addPropsBtn.appendChild(lbl3);
+      addPropsBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
+      addPropsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        revealProperties();
+      });
+      this._hoverAffordances.appendChild(addPropsBtn);
+    }
+  }
+
+  /**
+   * Offer Add Properties in the hover row while the page's property panel is
+   * hidden (a page in no database); null once the panel shows.
+   */
+  setPropertiesReveal(reveal: (() => void) | null): void {
+    this._revealProperties = reveal;
+    this._refreshHoverAffordances();
   }
 
   /**

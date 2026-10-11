@@ -57,10 +57,18 @@ interface IHome {
   readonly values: Record<string, unknown>;
 }
 
+/** The mounted panel: dispose it, or reveal it on a page that has none yet. */
+export interface IRowPropertiesSection extends IDisposable {
+  /** Show the panel on a page in no database, focused on its Tags row. */
+  reveal(): void;
+}
+
 /**
- * Mount the property panel for `pageId` into `host` (before `beforeEl` —
- * Notion order: title, properties, content). Always mounts; the home's rows
- * stay live as schema/values/membership change.
+ * Mount the property panel for `pageId` into `host` (before `beforeEl`:
+ * title, properties, content). A page that belongs to no database has no
+ * properties, so its panel stays hidden until `reveal()` (the header's Add
+ * Properties) or until the page gains a database (a tag, a property).
+ * The home's rows stay live as schema/values/membership change.
  */
 export async function mountRowPropertiesSection(
   host: HTMLElement,
@@ -71,9 +79,13 @@ export async function mountRowPropertiesSection(
   openPage?: (pageId: string) => void,
   /** Page timestamps for the read-only created/modified rows. */
   getPageMeta?: () => Promise<{ createdAt: string; updatedAt: string } | null>,
-): Promise<IDisposable | null> {
+  /** Told when the panel hides or shows, so the header can offer Add Properties. */
+  onHiddenChange?: (hidden: boolean) => void,
+): Promise<IRowPropertiesSection | null> {
   const disposables = new DisposableStore();
   let disposed = false;
+  let revealed = false;
+  let lastHidden: boolean | undefined;
 
   // ── Shell: the SAME structure/classes the PropertyBar used ──
   const root = document.createElement('div');
@@ -95,9 +107,20 @@ export async function mountRowPropertiesSection(
   body.className = 'canvas-property-bar__body';
   root.appendChild(body);
 
-  // The panel is on EVERY page (the old bar's behavior).
+  // Hidden until the first render knows whether the page has properties, so
+  // a plain page never flashes an empty panel above its first line.
+  root.style.display = 'none';
   if (beforeEl && beforeEl.parentElement) beforeEl.parentElement.insertBefore(root, beforeEl);
   else host.prepend(root);
+
+  const applyHidden = (hasHome: boolean): void => {
+    const hidden = !hasHome && !revealed;
+    root.style.display = hidden ? 'none' : '';
+    if (hidden !== lastHidden) {
+      lastHidden = hidden;
+      onHiddenChange?.(hidden);
+    }
+  };
 
   // ── "Pages with value X" popover (M85 parity over database rows) ──
   let activePopover: HTMLElement | null = null;
@@ -269,6 +292,7 @@ export async function mountRowPropertiesSection(
       getPageMeta?.() ?? Promise.resolve(null),
     ]);
     if (disposed) { rendering = false; return; }
+    applyHidden(!!home);
 
     // Adding a tag saves, and the save re-renders this section. Without this
     // the cursor would fall out of the tag field after every tag, so a second
@@ -360,6 +384,16 @@ export async function mountRowPropertiesSection(
   await render();
 
   return {
+    reveal: () => {
+      if (disposed) return;
+      revealed = true;
+      applyHidden(true);
+      if (root.classList.contains('collapsed')) {
+        root.classList.remove('collapsed');
+        writeCollapsed(false);
+      }
+      body.querySelector<HTMLInputElement>('.canvas-prop-tag-input')?.focus();
+    },
     dispose: () => {
       disposed = true;
       disposables.dispose();

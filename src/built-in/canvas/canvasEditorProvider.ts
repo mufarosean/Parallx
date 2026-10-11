@@ -1081,9 +1081,15 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
         const page = await this._dataService.getPage(this._pageId);
         return page ? { createdAt: page.createdAt, updatedAt: page.updatedAt } : null;
       };
+      // A page in no database hides its panel; the header then offers Add
+      // Properties, which reveals it.
+      let section: { reveal(): void } | null = null;
+      const onHiddenChange = (hidden: boolean): void => {
+        this._pageChrome?.setPropertiesReveal(hidden ? () => section?.reveal() : null);
+      };
       import('./database/rowPropertiesSection.js')
-        .then((m) => m.mountRowPropertiesSection(this._editorContainer!, this._pageId, dbService, editorDom, openMemberPage, getPageMeta))
-        .then((d) => { if (d) this._saveDisposables.add(d); })
+        .then((m) => m.mountRowPropertiesSection(this._editorContainer!, this._pageId, dbService, editorDom, openMemberPage, getPageMeta, onHiddenChange))
+        .then((d) => { if (d) { section = d; this._saveDisposables.add(d); } })
         .catch((err) => console.warn('[CanvasEditorPane] Row-properties section failed:', err));
     }
 
