@@ -866,3 +866,103 @@ describe('McpClientService', () => {
     });
   });
 });
+
+// ─── Secrets and the workspace seal ─────────────────────────────────────────
+
+describe('McpClientService: env values and the seal', () => {
+  let service: McpClientService;
+  let mockTransport: ReturnType<typeof createMockTransport>;
+
+  function createStorage(data: Record<string, string> = {}) {
+    const store: Record<string, string> = { ...data };
+    return { store, get: vi.fn(async (k: string) => store[k]), set: vi.fn(async (k: string, v: string) => { store[k] = v; }) };
+  }
+  function createSecrets() {
+    const kept = new Map<string, string>();
+    return {
+      kept,
+      available: true,
+      setString: vi.fn(async (k: string, v: string) => { kept.set(k, v); return { ok: true }; }),
+      getString: vi.fn(async (k: string) => (kept.has(k) ? { ok: true, value: kept.get(k) } : { ok: false, error: 'not-found' })),
+      delete: vi.fn(async (k: string) => { kept.delete(k); return { ok: true }; }),
+    };
+  }
+  const github: IMcpServerConfig = { id: 'github', name: 'GitHub', transport: 'stdio', command: 'npx', args: [], env: { GITHUB_TOKEN: 'ghp_secret123' }, enabled: true };
+
+  beforeEach(() => {
+    service = new McpClientService();
+    mockTransport = createMockTransport();
+    vi.spyOn(service as any, '_createTransport').mockReturnValue(mockTransport);
+  });
+  afterEach(() => { service.dispose(); });
+
+  it('keeps env values out of workspace storage, in the secret store', async () => {
+    const storage = createStorage();
+    const secrets = createSecrets();
+    await service.initStorage(storage as any, secrets as any);
+    await service.addServerConfig(github);
+
+    expect(storage.store['mcp.servers']).not.toContain('ghp_secret123');
+    const stored = JSON.parse(storage.store['mcp.servers']);
+    expect(stored[0].env).toBeUndefined();
+    expect(secrets.kept.get(stored[0].envSecret)).toContain('ghp_secret123');
+    expect(service.getConfiguredServers()[0].env).toEqual({ GITHUB_TOKEN: 'ghp_secret123' });
+  });
+
+  it('moves env saved in plaintext by an older version into the secret store', async () => {
+    const storage = createStorage({ 'mcp.servers': JSON.stringify([github]) });
+    const secrets = createSecrets();
+    await service.initStorage(storage as any, secrets as any);
+
+    expect(storage.store['mcp.servers']).not.toContain('ghp_secret123');
+    expect(service.getConfiguredServers()[0].env).toEqual({ GITHUB_TOKEN: 'ghp_secret123' });
+
+    const reloaded = new McpClientService();
+    await reloaded.initStorage(storage as any, secrets as any);
+    expect(reloaded.getConfiguredServers()[0].env).toEqual({ GITHUB_TOKEN: 'ghp_secret123' });
+    reloaded.dispose();
+  });
+
+  it('gives each server its own secret, and removing the server deletes it', async () => {
+    const storage = createStorage();
+    const secrets = createSecrets();
+    await service.initStorage(storage as any, secrets as any);
+    await service.addServerConfig(github);
+    const key = JSON.parse(storage.store['mcp.servers'])[0].envSecret as string;
+    expect(key).toMatch(/^mcp\.env\.[a-zA-Z0-9-]+$/);
+    expect(key).not.toContain('github');
+
+    await service.removeServerConfig('github');
+    expect(secrets.kept.has(key)).toBe(false);
+  });
+
+  it('keeps env in workspace storage only when no secret store is available', async () => {
+    const storage = createStorage();
+    await service.initStorage(storage as any);
+    await service.addServerConfig(github);
+    expect(storage.store['mcp.servers']).toContain('ghp_secret123');
+  });
+
+  it('runs no server while sealed: running ones stop, connecting is refused, unsealing starts the enabled ones', async () => {
+    const storage = createStorage();
+    await service.initStorage(storage as any);
+    await service.addServerConfig({ ...github, env: undefined });
+    let handshakes = 0;
+    mockTransport.send = vi.fn(async (data: string) => {
+      const msg = JSON.parse(data);
+      if (msg.method === 'notifications/initialized') handshakes++;
+      if (msg.id !== undefined) setTimeout(() => mockTransport.fireMessage(jsonRpcResponse(msg.id, {})), 0);
+    });
+    await service.connectServer(service.getConfiguredServers()[0]);
+    expect(service.getConnectedServers()).toEqual(['github']);
+
+    await service.setSealed(true);
+    expect(service.isSealed).toBe(true);
+    expect(service.getConnectedServers()).toEqual([]);
+    await expect(service.connectServer(service.getConfiguredServers()[0])).rejects.toThrow('sealed');
+
+    await service.setSealed(false);
+    await vi.waitFor(() => expect(handshakes).toBe(2));
+    expect(service.getConnectedServers()).toEqual(['github']);
+  });
+});

@@ -2220,7 +2220,12 @@ export const IRuntimeHookRegistry = createServiceIdentifier<IRuntimeHookRegistry
 import type { IMcpServerConfig, IMcpToolSchema, IMcpToolCallResult, McpConnectionState, IMcpHealthInfo } from '../openclaw/mcp/mcpTypes.js';
 
 export interface IMcpClientService extends IDisposable {
-  initStorage(storage: IStorage): Promise<void>;
+  /** Load the workspace's server configs. Env values (tokens) live in `secrets` when it is available. */
+  initStorage(storage: IStorage, secrets?: import('./secretStorageService.js').ISecretStorageService): Promise<void>;
+  /** A sealed workspace runs no MCP server: running ones stop and none connects until unsealed. */
+  setSealed(sealed: boolean): Promise<void>;
+  /** True while the workspace is sealed (no server runs). */
+  readonly isSealed: boolean;
   getConfiguredServers(): readonly IMcpServerConfig[];
   addServerConfig(config: IMcpServerConfig): Promise<void>;
   removeServerConfig(serverId: string): Promise<void>;

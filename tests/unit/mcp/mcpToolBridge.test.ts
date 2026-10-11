@@ -95,6 +95,13 @@ describe('McpToolBridge', () => {
     expect(registeredTool.name).toBe('mcp__srv-1__read_file');
   });
 
+  it('marks every MCP tool as reaching the network, so a sealed workspace hides and refuses it', async () => {
+    mcpClient.listTools.mockResolvedValue([{ name: 'read_file', description: 'Read', inputSchema: { type: 'object' } }]);
+    await bridge.refreshTools('srv-1');
+    const registeredTool = (toolsService.registerTool as ReturnType<typeof vi.fn>).mock.calls[0][0] as IChatTool;
+    expect(registeredTool.reachesNetwork).toBe(true);
+  });
+
   it('refreshTools replaces old registrations', async () => {
     mcpClient.listTools.mockResolvedValue(makeToolSchemas(2));
     await bridge.refreshTools('srv-1');

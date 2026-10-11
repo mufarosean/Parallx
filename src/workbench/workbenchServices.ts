@@ -4,6 +4,7 @@ import { setAssistantTimeZone } from '../services/localTime.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager, ISettingsRegistryService } from '../services/serviceTypes.js';
 import { isWorkspaceSealed } from '../services/sealedWorkspace.js';
+import { createSecretStorageService } from '../services/secretStorageService.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService, IObservabilityService, IRuntimeHookRegistry, IMcpClientService, IAutonomyLogService, ISemanticGraphService, IMindMapRefreshOrchestrator } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
@@ -450,8 +451,12 @@ export function registerIndexingServices(
     }
   });
 
-  // Initialize MCP server config persistence + auto-connect
-  mcpClientService.initStorage(storage).then(() => {
+  // Initialize MCP server config persistence + auto-connect. Env values
+  // (tokens) live in the OS-encrypted secret store; a sealed workspace
+  // starts no server.
+  mcpClientService.initStorage(storage, createSecretStorageService()).then(async () => {
+    await mcpClientService.setSealed(isWorkspaceSealed(services.has(ISettingsRegistryService) ? services.get(ISettingsRegistryService) : undefined));
+    if (mcpClientService.isSealed) return;
     const servers = mcpClientService.getConfiguredServers();
     for (const server of servers) {
       if (server.enabled) {

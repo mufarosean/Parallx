@@ -19,6 +19,7 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import type { Event } from '../../platform/events.js';
 import type { IMcpClientService } from '../../services/serviceTypes.js';
 import type { IStorage } from '../../platform/storage.js';
+import type { ISecretStorageService } from '../../services/secretStorageService.js';
 import type { IMcpServerConfig, IMcpToolSchema, IMcpToolCallResult, McpConnectionState, IJsonRpcRequest, IJsonRpcResponse, IMcpHealthInfo } from './mcpTypes.js';
 import { McpStdioTransport, type IMcpTransport } from './mcpTransport.js';
 
@@ -30,6 +31,15 @@ const DEFAULT_MAX_RECONNECT_ATTEMPTS = 5;
 const DEFAULT_RECONNECT_BASE_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const STORAGE_KEY_SERVERS = 'mcp.servers';
+/** Env values (tokens, API keys) live in the OS-encrypted secret store under this prefix. */
+const SECRET_ENV_PREFIX = 'mcp.env.';
+
+/**
+ * A server config as written to workspace storage. Its env values are not in
+ * it: `envSecret` names the secret that holds them. A config keeps plaintext
+ * env only when the secret store is unavailable.
+ */
+type StoredServerConfig = IMcpServerConfig & { readonly envSecret?: string };
 
 const DEFAULT_MCP_SERVERS: IMcpServerConfig[] = [];
 
@@ -63,7 +73,12 @@ export class McpClientService extends Disposable implements IMcpClientService {
   private readonly _pending = new Map<number, IPendingRequest>();
   private _nextId = 1;
   private _storage: IStorage | undefined;
+  private _secrets: ISecretStorageService | undefined;
+  /** The secret holding each server's env, by server id. */
+  private readonly _envSecretKeys = new Map<string, string>();
   private _configuredServers: IMcpServerConfig[] = [];
+  /** A sealed workspace runs no MCP server (see setSealed). */
+  private _sealed = false;
 
   private readonly _onDidChangeStatus = new Emitter<{ serverId: string; status: McpConnectionState }>();
   readonly onDidChangeStatus: Event<{ serverId: string; status: McpConnectionState }> = this._onDidChangeStatus.event;
@@ -73,9 +88,35 @@ export class McpClientService extends Disposable implements IMcpClientService {
 
   // ── Server Config Persistence ──────────────────────────────────────
 
-  async initStorage(storage: IStorage): Promise<void> {
+  async initStorage(storage: IStorage, secrets?: ISecretStorageService): Promise<void> {
     this._storage = storage;
+    this._secrets = secrets?.available ? secrets : undefined;
     await this._loadServerConfigs();
+  }
+
+  /**
+   * A sealed workspace keeps its documents on the machine. An MCP server is a
+   * separate program and Parallx cannot see what it reaches, so while sealed
+   * no server runs: running ones stop, and none connects until the seal is
+   * lifted, when the enabled ones start again. Their tools are hidden and
+   * refused by the tools service (McpToolBridge marks them reachesNetwork).
+   */
+  async setSealed(sealed: boolean): Promise<void> {
+    if (sealed === this._sealed) return;
+    this._sealed = sealed;
+    if (sealed) {
+      await Promise.all([...this._servers.keys()].map((id) => this.disconnectServer(id).catch(() => {})));
+      return;
+    }
+    for (const server of this._configuredServers) {
+      if (server.enabled && !this._servers.has(server.id)) {
+        this.connectServer(server).catch((err) => console.warn(`[MCP] Connect after unseal failed for ${server.id}:`, err));
+      }
+    }
+  }
+
+  get isSealed(): boolean {
+    return this._sealed;
   }
 
   getConfiguredServers(): readonly IMcpServerConfig[] {
@@ -93,7 +134,10 @@ export class McpClientService extends Disposable implements IMcpClientService {
 
   async removeServerConfig(serverId: string): Promise<void> {
     this._configuredServers = this._configuredServers.filter(s => s.id !== serverId);
+    const secretKey = this._envSecretKeys.get(serverId);
+    this._envSecretKeys.delete(serverId);
     await this._persistServerConfigs();
+    if (secretKey) await this._secrets?.delete(secretKey).catch(() => undefined);
   }
 
   private async _loadServerConfigs(): Promise<void> {
@@ -103,7 +147,21 @@ export class McpClientService extends Disposable implements IMcpClientService {
       if (json) {
         const parsed = JSON.parse(json);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          this._configuredServers = parsed;
+          let plaintextEnv = false;
+          const configs: IMcpServerConfig[] = [];
+          for (const stored of parsed as StoredServerConfig[]) {
+            const { envSecret, ...config } = stored;
+            if (envSecret) {
+              this._envSecretKeys.set(config.id, envSecret);
+              configs.push({ ...config, ...(await this._readEnvSecret(envSecret, config.id)) });
+            } else {
+              configs.push(config);
+              if (config.env && Object.keys(config.env).length > 0) plaintextEnv = true;
+            }
+          }
+          this._configuredServers = configs;
+          // Configs saved before env moved to the secret store: move it now.
+          if (plaintextEnv && this._secrets) await this._persistServerConfigs();
           return;
         }
       }
@@ -118,13 +176,48 @@ export class McpClientService extends Disposable implements IMcpClientService {
   private async _persistServerConfigs(): Promise<void> {
     if (!this._storage) return;
     try {
-      await this._storage.set(STORAGE_KEY_SERVERS, JSON.stringify(this._configuredServers));
+      const stored = await Promise.all(this._configuredServers.map((c) => this._toStored(c)));
+      await this._storage.set(STORAGE_KEY_SERVERS, JSON.stringify(stored));
     } catch (e) {
       console.warn('[McpClientService] Failed to persist server configs:', e);
     }
   }
 
+  /** The config as written to workspace storage: env values go to the secret store. */
+  private async _toStored(config: IMcpServerConfig): Promise<StoredServerConfig> {
+    const { env, ...rest } = config;
+    if (!env || Object.keys(env).length === 0) return rest;
+    if (!this._secrets) return config;
+    let key = this._envSecretKeys.get(config.id);
+    if (!key) {
+      // Random, not derived from the server id: the store is shared by every
+      // workspace, and two of them may name a server the same.
+      key = `${SECRET_ENV_PREFIX}${crypto.randomUUID()}`;
+      this._envSecretKeys.set(config.id, key);
+    }
+    const saved = await this._secrets.setString(key, JSON.stringify(env));
+    if (saved.ok) return { ...rest, envSecret: key };
+    console.warn(`[McpClientService] Secret store refused env for ${config.id} (${saved.error}); kept in workspace storage.`);
+    return config;
+  }
+
+  private async _readEnvSecret(key: string, serverId: string): Promise<{ env?: Record<string, string> }> {
+    const read = await this._secrets?.getString(key);
+    if (!read?.ok || !read.value) {
+      console.warn(`[McpClientService] Env for ${serverId} could not be read from the secret store (${read?.error ?? 'store unavailable'}).`);
+      return {};
+    }
+    try {
+      return { env: JSON.parse(read.value) as Record<string, string> };
+    } catch {
+      return {};
+    }
+  }
+
   async connectServer(config: IMcpServerConfig): Promise<void> {
+    if (this._sealed) {
+      throw new Error('This workspace is sealed, so MCP servers do not run in it.');
+    }
     if (this._servers.has(config.id)) {
       await this.disconnectServer(config.id);
     }
@@ -439,6 +532,13 @@ export class McpClientService extends Disposable implements IMcpClientService {
 
     entry.reconnectTimer = setTimeout(async () => {
       entry.reconnectTimer = null;
+      if (this._sealed) {
+        for (const sub of entry.subscriptions) sub.dispose();
+        this._servers.delete(config.id);
+        entry.isReconnecting = false;
+        this._onDidChangeStatus.fire({ serverId: config.id, status: 'disconnected' });
+        return;
+      }
       try {
         // Clean up old entry before reconnecting
         for (const sub of entry.subscriptions) sub.dispose();

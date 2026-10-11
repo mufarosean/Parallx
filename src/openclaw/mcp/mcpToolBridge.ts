@@ -101,6 +101,9 @@ export class McpToolBridge implements IDisposable {
       permissionLevel: 'requires-approval',
       source: 'mcp',
       ownerToolId: serverId,
+      // A server is a separate program and Parallx cannot see what it
+      // reaches, so a sealed workspace treats every MCP tool as network.
+      reachesNetwork: true,
     };
   }
 }

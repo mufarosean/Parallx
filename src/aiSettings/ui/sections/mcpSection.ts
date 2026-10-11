@@ -110,6 +110,14 @@ export class McpSection extends SettingsSection {
     if (!this._listContainer) return;
     this._listContainer.innerHTML = '';
 
+    // A sealed workspace runs no MCP server; say so instead of offering
+    // Connect buttons that cannot work.
+    if (this._mcpClient?.isSealed) {
+      const sealed = $('div.ai-settings-mcp-empty');
+      sealed.textContent = 'This workspace is sealed, so MCP servers don\u2019t run in it. Unseal it in Settings \u203a Security to use them.';
+      this._listContainer.appendChild(sealed);
+    }
+
     const servers = this._getServers();
     if (servers.length === 0) {
       const empty = $('div.ai-settings-mcp-empty');
@@ -170,7 +178,7 @@ export class McpSection extends SettingsSection {
       right.appendChild(this._makeBtn('Cancel', () => {
         this._mcpClient?.disconnectServer(server.id);
       }));
-    } else {
+    } else if (!this._mcpClient?.isSealed) {
       if (server.requiresOAuth) {
         right.appendChild(this._makeBtn('Authorize', () => {
           void this._authorizeServer(server);

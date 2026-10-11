@@ -62,7 +62,7 @@ import { LAYOUT_SCHEMA_VERSION, SerializedNodeType, type SerializedGridNode } fr
 import { IIntrospectionService, IntrospectionService } from '../services/introspectionService.js';
 import { createWorkbenchDiagnosticChecks } from '../services/workbenchDiagnosticChecks.js';
 import { bootstrapSettingsRegistry } from '../services/settingsRegistryBootstrap.js';
-import { ISettingsRegistryService } from '../services/serviceTypes.js';
+import { ISettingsRegistryService, IMcpClientService } from '../services/serviceTypes.js';
 import { registerSealedSetting, applyWorkspaceSeal, SEALED_WORKSPACE_SETTING } from '../services/sealedWorkspace.js';
 import { registerDeletePolicySettings, applyDeletePolicy, isDeletePolicySetting } from '../services/deletePolicy.js';
 import { bootstrapAutonomyServices } from '../services/autonomyBootstrap.js';
@@ -998,7 +998,7 @@ export class Workbench extends Layout {
       // Delete policy (Recycle Bin or not, Eraser path): same push, to fs:delete.
       registerDeletePolicySettings(reg);
       this._register(reg.onDidChange((c) => {
-        if (c.key === SEALED_WORKSPACE_SETTING) applyWorkspaceSeal(reg, { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { workspaceSeal?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.workspaceSeal });
+        if (c.key === SEALED_WORKSPACE_SETTING) this._pushWorkspaceSeal();
         if (isDeletePolicySetting(c.key)) applyDeletePolicy(reg);
       }));
     }
@@ -1450,7 +1450,7 @@ export class Workbench extends Layout {
     // lifecycle catches & swallows errors, which would silently skip the
     // title update if it were at the end of this method).
     this._titlebar.setWorkspaceName(this._workspace.displayName);
-    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { workspaceSeal?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.workspaceSeal }); applyDeletePolicy(this._services.get(ISettingsRegistryService));
+    this._pushWorkspaceSeal(); applyDeletePolicy(this._services.get(ISettingsRegistryService));
 
     // Configure the saver with live sources so subsequent saves capture real state
     this._configureSaver();
@@ -1523,7 +1523,7 @@ export class Workbench extends Layout {
     // handlers or folder changes altered the display name since the
     // early update above (after restoreFolders).
     this._titlebar.setWorkspaceName(this._workspace.displayName);
-    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { workspaceSeal?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.workspaceSeal }); applyDeletePolicy(this._services.get(ISettingsRegistryService));
+    this._pushWorkspaceSeal(); applyDeletePolicy(this._services.get(ISettingsRegistryService));
 
     // Begin the workspace session (M14).
     // Services can now read sessionManager.activeContext for identity,
@@ -2098,7 +2098,7 @@ export class Workbench extends Layout {
   private _setupTitlebar(): void {
     // Task 1.1: Wire workspace name reactively (VS Code style: folder name for single-root)
     this._titlebar.setWorkspaceName(this._workspace.displayName);
-    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { workspaceSeal?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.workspaceSeal }); applyDeletePolicy(this._services.get(ISettingsRegistryService));
+    this._pushWorkspaceSeal(); applyDeletePolicy(this._services.get(ISettingsRegistryService));
 
     // Track per-workspace subscriptions so they can be rebound when the
     // workspace object is replaced (Phase 4 replaces this._workspace).
@@ -2113,13 +2113,13 @@ export class Workbench extends Layout {
       // Update when folders change (add/remove folder changes the display name)
       wsFolderSub = ws.onDidChangeFolders(() => {
         this._titlebar.setWorkspaceName(this._workspace.displayName);
-    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { workspaceSeal?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.workspaceSeal }); applyDeletePolicy(this._services.get(ISettingsRegistryService));
+    this._pushWorkspaceSeal(); applyDeletePolicy(this._services.get(ISettingsRegistryService));
       });
 
       // A9: Update titlebar and window title when workspace is renamed
       wsRenameSub = ws.onDidRename(() => {
         this._titlebar.setWorkspaceName(this._workspace.displayName);
-    applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { workspaceSeal?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.workspaceSeal }); applyDeletePolicy(this._services.get(ISettingsRegistryService));
+    this._pushWorkspaceSeal(); applyDeletePolicy(this._services.get(ISettingsRegistryService));
         this._statusBarController.updateWindowTitle();
       });
     };
@@ -3136,6 +3136,18 @@ export class Workbench extends Layout {
    * Initialize tool activator, contribution processors, and fire startup-finished event.
    * Called in Phase 5 (Ready) after all services and UI are available.
    */
+  /**
+   * Push the workspace seal (docs/BROWSER.md phase 2) to everything that
+   * enforces or shows it: the title bar, the main-process egress chokepoint,
+   * and MCP, which runs no server while sealed.
+   */
+  private _pushWorkspaceSeal(): void {
+    const sealed = applyWorkspaceSeal(this._services.get(ISettingsRegistryService), { titlebar: this._titlebar, egress: (globalThis as { parallxElectron?: { workspaceSeal?: { setSealed?(s: boolean): Promise<unknown> } } }).parallxElectron?.workspaceSeal });
+    if (this._services.has(IMcpClientService)) {
+      void this._services.get(IMcpClientService).setSealed(sealed).catch(() => { /* a server that will not stop is retried at the next push */ });
+    }
+  }
+
   private async _initializeToolLifecycle(): Promise<void> {
     // Resolve services
     const registry = this._services.get(IToolRegistryService) as unknown as ToolRegistry;
