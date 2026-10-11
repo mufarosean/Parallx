@@ -1341,6 +1341,18 @@ export class PdfEditorPane extends EditorPane {
       }
       if (signal.aborted) { streaming = false; return; }
 
+      // A model can spend its whole turn reasoning and answer nothing. Say so,
+      // and keep neither the question nor an empty answer in the thread.
+      if (!answer.trim()) {
+        aiBubble.classList.remove('pdf-highlight-turn--thinking');
+        aiBubble.textContent = 'The model gave no answer. Try again.';
+        aiBubble.classList.add('pdf-highlight-turn-error');
+        hl.thread.pop();
+        this._saveHighlights();
+        streaming = false;
+        return;
+      }
+
       // Persist the AI turn.
       hl.thread.push({ role: 'ai', text: answer, at: Date.now() });
       this._saveHighlights();

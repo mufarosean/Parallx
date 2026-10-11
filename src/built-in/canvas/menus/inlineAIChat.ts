@@ -348,6 +348,16 @@ export class InlineAIChatController implements ICanvasMenu {
 
       if (signal.aborted) return;
 
+      // A model can spend its whole turn reasoning and answer nothing. Say so;
+      // an empty answer is not a reply to act on or to keep in the thread.
+      if (!result.trim()) {
+        contentEl.classList.remove('canvas-ai-chat-msg-content--thinking');
+        contentEl.textContent = 'The model gave no answer. Try again.';
+        contentEl.classList.add('canvas-ai-chat-error');
+        this._messages.pop();
+        return;
+      }
+
       // Record the assistant response
       this._messages.push({ role: 'assistant', content: result });
       this._lastAssistantText = result;
