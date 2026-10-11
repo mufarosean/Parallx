@@ -1,4 +1,4 @@
-// notebookEditorPane.ts — the notebook surface (M96)
+// notebookEditorPane.ts — the notebook surface
 //
 // Cell list, execution, and the keyboard model. Cell editors are the SAME
 // CodeEditor primitive the file editor uses, in `autoHeight` mode — which is

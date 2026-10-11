@@ -364,7 +364,7 @@ export class ActivityJournalService extends Disposable implements IActivityJourn
       await this._db.run(CREATE_INDEX);
       try { await this._db.run(MIGRATE_REF); } catch { /* column already exists */ }
       this._tableReady = true;
-      // Count-capped retention (M91 precedent): keep the newest N rows.
+      // Count-capped retention: keep the newest N rows.
       await this._db.run(
         `DELETE FROM activity_log WHERE id NOT IN (SELECT id FROM activity_log ORDER BY ts DESC LIMIT ?)`,
         [RETENTION_ROWS],

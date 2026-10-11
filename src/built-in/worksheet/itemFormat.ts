@@ -1,4 +1,4 @@
-// itemFormat.ts — Worksheets (M99): the model-facing item format and its
+// itemFormat.ts — Worksheets: the model-facing item format and its
 // conversion to real workbook snapshots. PURE functions only (unit-tested in
 // tests/unit/worksheetItemFormat.test.ts); no Univer imports beyond types.
 //
@@ -43,7 +43,7 @@ export interface GeneratedItem {
   readonly tags: string[];
   readonly parts: ItemPart[];
   readonly solutionNotes: string;
-  /** Page attribution when the material was page-tagged (M98 pattern). */
+  /** Page attribution when the material was page-tagged. */
   readonly page?: number;
 }
 

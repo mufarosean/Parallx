@@ -258,7 +258,7 @@ function _createTagsEditor(
       chip.style.background = getTagColor(tag);
       chip.textContent = tag;
 
-      // M85 — click a tag to see the other pages that share it (tags that link
+      // click a tag to see the other pages that share it (tags that link
       // pages). The host provides the navigation; the × still removes.
       if (context?.onValueClick) {
         chip.classList.add('canvas-prop-tag--clickable');

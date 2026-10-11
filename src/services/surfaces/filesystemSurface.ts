@@ -1,4 +1,4 @@
-// filesystemSurface.ts — FilesystemSurfacePlugin (M58 W6)
+// filesystemSurface.ts — FilesystemSurfacePlugin
 //
 // Routes file-write deliveries through the workspace IFileService.
 //

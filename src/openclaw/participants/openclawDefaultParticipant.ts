@@ -49,7 +49,7 @@ import { tryHandleOpenclawUsageCommand } from '../commands/openclawUsageCommand.
 import { tryHandleOpenclawToolsCommand } from '../commands/openclawToolsCommand.js';
 import { tryHandleOpenclawVerboseCommand, VERBOSE_SESSION_FLAG } from '../commands/openclawVerboseCommand.js';
 import { tryHandleOpenclawRewindCommand } from '../commands/openclawRewindCommand.js';
-// W1 (M58): Self-continuation wiring
+// W1: Self-continuation wiring
 import {
   createFollowupRunner,
   type FollowupTurnSender,
@@ -57,7 +57,7 @@ import {
 } from '../openclawFollowupRunner.js';
 
 /**
- * W1 (M58) \u2014 per-session followup state. Created lazily on first turn
+ * W1 \u2014 per-session followup state. Created lazily on first turn
  * per session because `createOpenclawDefaultParticipant` is instantiated
  * once but dispatches turns for many sessions.
  *
@@ -252,13 +252,13 @@ async function runOpenclawDefaultTurn(
     services.reportContextPills?.(mentionResult.pills as any[]);
   }
 
-  // M43: Resolve #activeFile, #file:path variables
+  // Resolve #activeFile, #file:path variables
   const variableResult = await resolveVariables(mentionResult.strippedText, services);
   if (variableResult.pills.length > 0) {
     services.reportContextPills?.(variableResult.pills as any[]);
   }
 
-  // M11: Load pattern-scoped rules from .parallx/rules/*.md
+  // Load pattern-scoped rules from .parallx/rules/*.md
   const patternRulesOverlay = await services.getPromptOverlay?.().catch(() => undefined);
 
   const effectiveOverlay = patternRulesOverlay || undefined;
@@ -299,7 +299,7 @@ async function runOpenclawDefaultTurn(
     }
   }
 
-  // M48: Resolve selection attachments into context blocks
+  // Resolve selection attachments into context blocks
   const selectionAttachmentBlocks: string[] = [];
   if (request.attachments?.length) {
     const selectionAttachments = request.attachments.filter(isChatSelectionAttachment);
@@ -396,7 +396,7 @@ async function runOpenclawDefaultTurn(
     }
 
     // Aborted — skip memory writeback and record as aborted, not completed.
-    // M60 §3.10: emit a 'cancelled' autonomy event so the chain has an
+    // emit a 'cancelled' autonomy event so the chain has an
     // observability record of the kill-switch firing mid-turn.
     if (token.isCancellationRequested) {
       lifecycle.recordAborted();
@@ -425,7 +425,7 @@ async function runOpenclawDefaultTurn(
       response.setCitations(attributable.map(s => ({ index: s.index, uri: s.uri, label: s.label })));
     }
 
-    // M43: Edit mode — emit response as tracked-change edit proposal
+    // Edit mode — emit response as tracked-change edit proposal
     if (request.mode === ChatMode.Edit && result.markdown.trim() && services.getCurrentPageContent) {
       const page = await services.getCurrentPageContent().catch(() => undefined);
       if (page) {
@@ -458,7 +458,7 @@ async function runOpenclawDefaultTurn(
     );
     lifecycle.recordCompleted();
 
-    // W1 (M58): Self-continuation \u2014 evaluate whether to queue a followup turn.
+    // W1: Self-continuation \u2014 evaluate whether to queue a followup turn.
     // If the tool loop hit the iteration cap with pending tool calls,
     // continuationRequested=true triggers a queued followup (up to
     // MAX_FOLLOWUP_DEPTH). Depth resets whenever a chain ends (evaluation
@@ -688,7 +688,7 @@ async function buildOpenclawTurnContext(
     skillState,
     runtimeInfo,
     preferencesPrompt: await services.getPreferencesForPrompt?.(),
-    // M85 — a getter (not a snapshot) so mid-turn re-assembly after
+    // a getter (not a snapshot) so mid-turn re-assembly after
     // compaction reads the LATEST plan, including plan_update calls made
     // earlier in the same tool loop.
     getPlanText: () => services.getSessionPlanText?.(context.sessionId),
@@ -737,6 +737,6 @@ async function buildOpenclawTurnContext(
 // the persisted tool exchange record instead of dropping it. HARNESS.md §1.)
 
 // ---------------------------------------------------------------------------
-// Followup suggestions removed (M41 anti-pattern A3: heuristic patchwork).
+// Followup suggestions removed.
 // The 3 hardcoded generic strings ("Explain more", "Alternatives", "Apply it")
 // provided no value. Return empty array from provideFollowups instead.

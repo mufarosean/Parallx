@@ -1,4 +1,4 @@
-// savedQueryWidget.ts — a pinned question over the workspace (M86 C3).
+// savedQueryWidget.ts — a pinned question over the workspace.
 //
 // The water-leak loop, made persistent: organize information into a
 // workspace, then keep the answer to a standing question on the dashboard.

@@ -15,7 +15,7 @@ import { EMPTY_STATES } from '../../../ui/emptyStates.js';
 import { chatIcons } from '../chatIcons.js';
 import type { IModelPickerServices } from '../chatTypes.js';
 
-// IModelPickerServices — now defined in chatTypes.ts (M13 Phase 1)
+// IModelPickerServices — now defined in chatTypes.ts
 export type { IModelPickerServices } from '../chatTypes.js';
 
 /**

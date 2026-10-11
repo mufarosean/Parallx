@@ -58,7 +58,7 @@ export class CanvasSidebar {
   private _favExpandedIds = new Set<string>();
   private _tree: IPageTreeNode[] = [];
 
-  // ── Multi-selection (M81 P12) ──
+  // ── Multi-selection ──
   // Set of page IDs the user has shift/ctrl-selected in the tree. Distinct
   // from `_selectedPageId` (the page open in the editor). When non-empty,
   // Delete and the right-click "Delete N pages" action operate on every ID
@@ -85,7 +85,7 @@ export class CanvasSidebar {
   // ── Favorites / Trash state ──
   private _favoritedPages: IPage[] = [];
   private _archivedPages: IPage[] = [];
-  // ── Recents (M77 Phase 11.3) ──
+  // ── Recents ──
   private _recentPages: IPage[] = [];
   private _recentsExpanded = true;
 
@@ -116,14 +116,14 @@ export class CanvasSidebar {
   private _refreshSeq = 0;
   private _refreshScheduled = false;
 
-  // ── Type-to-find buffer (M77 Phase 11.9) ──
+  // ── Type-to-find buffer ──
   // Tracks the last few characters the user typed while the tree had
   // focus. Used to jump-focus to the first page whose title starts with
   // the buffer. Reset after 1 second of inactivity.
   private _typeAheadBuffer = '';
   private _typeAheadTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // ── Quick-find search (M77 Phase 11.2) ──
+  // ── Quick-find search ──
   // Lower-cased filter query bound to the pinned search input at the top
   // of the sidebar. Empty string means "no filter" (the default tree).
   // When non-empty, _renderTree restricts both Favorites and the main
@@ -131,7 +131,7 @@ export class CanvasSidebar {
   // ancestor chain so deep matches stay in context.
   private _filterQuery = '';
 
-  // ── Undo toast (M77 Phase 11.8) ──
+  // ── Undo toast ──
   // Active toast element + timer used to dismiss the previous toast when
   // a new operation surfaces another one. Single-toast-at-a-time policy
   // avoids stacked toasts on rapid sequential moves.
@@ -152,7 +152,7 @@ export class CanvasSidebar {
   createView(container: HTMLElement): IDisposable {
     container.classList.add('canvas-tree');
 
-    // M77 Phase 11.2 — quick-find search input pinned to the top of the
+    // quick-find search input pinned to the top of the
     // sidebar. Filters the tree as the user types; matching pages are
     // shown along with their ancestor chain (so a deep match is still
     // discoverable in context). Esc clears.
@@ -260,7 +260,7 @@ export class CanvasSidebar {
   }
 
   /**
-   * M77 Phase 2 — convert previously-silent failure paths into visible
+   * convert previously-silent failure paths into visible
    * errors. Logs the full error to console (for debugging) and surfaces
    * a brief message to the user via `api.window.showErrorMessage`. The
    * notification is fire-and-forget; if it itself fails we already have
@@ -294,7 +294,7 @@ export class CanvasSidebar {
   }
 
   /**
-   * M77 Phase 3 — process any refreshes that arrived while drag/drop
+   * process any refreshes that arrived while drag/drop
    * suppressed the tree DOM rebuild. Called from drop's finally and
    * from _onDragEnd as a belt-and-suspenders fallback. Coalesces — a
    * single refresh covers any number of suppressed requests.
@@ -360,7 +360,7 @@ export class CanvasSidebar {
     if (!this._treeList) return;
     this._treeList.innerHTML = '';
 
-    // ── Recents section (M77 Phase 11.3) ──
+    // ── Recents section ──
     // Hidden when the user is actively filtering (the filter result is
     // the primary surface in that mode) and when there are no pages at
     // all (the empty state covers the introduction). Otherwise: a
@@ -491,7 +491,7 @@ export class CanvasSidebar {
 
     // ── Main tree ──
     if (this._tree.length === 0) {
-      // M77 Phase 11.7 — richer empty state. Replaces the bare "No pages
+      // richer empty state. Replaces the bare "No pages
       // yet." with a hero + two primary actions + a short hint set so a
       // first-time user has guidance on what canvas is and how to start.
       const empty = $('div.canvas-empty');
@@ -537,7 +537,7 @@ export class CanvasSidebar {
 
       this._treeList.appendChild(empty);
     } else {
-      // M77 Phase 11.2 — filter the tree if a search query is active.
+      // filter the tree if a search query is active.
       // Filtering produces a pruned tree containing only nodes whose
       // title matches OR whose subtree contains a match. Matched-by-
       // descendant nodes are auto-expanded so the user sees the path
@@ -922,7 +922,7 @@ export class CanvasSidebar {
     const commitTitleChange = async (): Promise<void> => {
       const nextTitle = titleInput.value.trim() || 'Untitled';
       if (nextTitle === lastCommittedTitle) return;
-      // M77 Phase 11.8 — capture the prior title for the Undo toast.
+      // capture the prior title for the Undo toast.
       const priorTitle = lastCommittedTitle;
       try {
         await this._dataService.updatePage(page.id, { title: nextTitle });
@@ -1458,7 +1458,7 @@ export class CanvasSidebar {
   private async _createPage(parentId?: string | null): Promise<void> {
     let page: IPage | null = null;
     try {
-      // M77 Phase 1 — atomic page create + parent-block append. Replaces
+      // atomic page create + parent-block append. Replaces
       // the prior two-step `createPage` + `ensurePageBlockOnParent` flow
       // that left an orphan page on partial failure.
       page = await this._dataService.createChildPageWithBlock({
@@ -1575,7 +1575,7 @@ export class CanvasSidebar {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Multi-selection helpers (M81 P12)
+  // Multi-selection helpers
   // ══════════════════════════════════════════════════════════════════════════
 
   /**
@@ -1735,7 +1735,7 @@ export class CanvasSidebar {
     if (!draggedPageId || draggedPageId === node.id) return;
 
     // Prevent dropping onto own descendants. Uses the drag-time snapshot
-    // (M77 Phase 3) so concurrent DB changes can't invalidate the check.
+    // so concurrent DB changes can't invalidate the check.
     if (this._dragState.isDescendantInSnapshot(draggedPageId, node.id)) return;
 
     e.preventDefault();
@@ -1789,7 +1789,7 @@ export class CanvasSidebar {
     const pageId = draggedPageId;
     const { parentId: newParentId, afterSiblingId } = dropTarget;
 
-    // M77 Phase 3 — read the old parent from the drag-time snapshot so
+    // read the old parent from the drag-time snapshot so
     // a concurrent DB event can't shift our view of where the page used
     // to be. The data service will read the canonical previous parent
     // from the DB anyway, but having a snapshot-consistent old parent
@@ -1801,7 +1801,7 @@ export class CanvasSidebar {
     // are deferred until the async work completes.
     this._dragState.beginDrop();
 
-    // M77 Phase 11.8 — capture the pre-move siblings so Undo can restore
+    // capture the pre-move siblings so Undo can restore
     // the page to its exact prior position (parent + after-sibling).
     // Read from the live tree BEFORE the drop fires.
     const oldNode = this._findNode(this._tree, pageId);
@@ -1842,7 +1842,7 @@ export class CanvasSidebar {
   /**
    * Perform the drop: atomically move the page and sync pageBlock content
    * so old/new parents stay in sync with the DB hierarchy in one
-   * transaction (M77 Phase 1).
+   * transaction.
    *
    * The `oldParentId` parameter is accepted only for legacy callsites;
    * `movePageWithBlocks` reads the actual previous parent from the DB so
@@ -1939,7 +1939,7 @@ export class CanvasSidebar {
         }
       }
     } else if (
-      // M77 Phase 11.9 — type-to-find. Single printable keys (letters /
+      // type-to-find. Single printable keys (letters /
       // digits / punctuation) accumulate into a short buffer and jump to
       // the first page whose title starts with that buffer. The buffer
       // resets after 1s of inactivity or Escape. Skipped when any
@@ -2039,7 +2039,7 @@ export class CanvasSidebar {
   }
 
   /**
-   * Show an undo toast (M77 Phase 11.8). The toast is a non-modal
+   * Show an undo toast. The toast is a non-modal
    * affordance near the bottom of the sidebar; clicking Undo invokes
    * the supplied callback. Replaces any active toast and auto-dismisses
    * after 5 seconds.
@@ -2090,7 +2090,7 @@ export class CanvasSidebar {
   }
 
   /**
-   * Quick-find filter (M77 Phase 11.2). Returns a pruned copy of the
+   * Quick-find filter. Returns a pruned copy of the
    * tree containing only nodes whose title matches `query` (case-
    * insensitive contains) OR whose subtree contains a match. Along with
    * the tree, returns a Set of node ids that should be auto-expanded
@@ -2121,7 +2121,7 @@ export class CanvasSidebar {
   }
 
   /**
-   * Type-ahead search helper (M77 Phase 11.9). Walks the full tree
+   * Type-ahead search helper. Walks the full tree
    * (depth-first, sibling order) and returns the first page whose
    * lower-cased title starts with `prefix`. Falls back to a contains
    * match if no prefix match exists so the buffer is forgiving.

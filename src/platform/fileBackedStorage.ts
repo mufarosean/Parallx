@@ -1,4 +1,4 @@
-// fileBackedStorage.ts — File-backed IStorage implementation (M53)
+// fileBackedStorage.ts — File-backed IStorage implementation
 //
 // Replaces localStorage with a JSON file persisted through the Electron IPC
 // bridge. ONE class serves both scopes (the Retirement phase folded the

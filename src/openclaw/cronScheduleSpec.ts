@@ -3,7 +3,7 @@
 // One implementation of "daily at 08:00" ↔ `0 8 * * *` shared by every
 // surface that edits cron jobs: the Planner's Automations tab and the AI
 // Hub's Scheduled-jobs section. Pure functions only — UI stays with the
-// surfaces. Extracted from plannerAutomations.ts (M93) when the AI Hub
+// surfaces. Extracted from plannerAutomations.ts when the AI Hub
 // section dropped its raw `cron:<expr>` text field for the same friendly
 // builder.
 

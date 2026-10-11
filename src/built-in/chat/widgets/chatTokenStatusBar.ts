@@ -25,7 +25,7 @@ import { $ } from '../../../ui/dom.js';
 import './chatTokenStatusBar.css';
 import type { ITokenStatusBarServices } from '../chatTypes.js';
 
-// ITokenStatusBarServices — now defined in chatTypes.ts (M13 Phase 1)
+// ITokenStatusBarServices — now defined in chatTypes.ts
 export type { ITokenStatusBarServices } from '../chatTypes.js';
 
 /** Sub-component within a top-level category. */

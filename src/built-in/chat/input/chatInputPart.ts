@@ -240,7 +240,7 @@ export class ChatInputPart extends Disposable {
       this._onDidRequestStop.fire();
     }));
 
-    // ── @Mention / /Command autocomplete (M11 Task 3.1, 3.5) ──
+    // ── @Mention / /Command autocomplete ──
     this._mentionAutocomplete = this._register(new ChatMentionAutocomplete(this._textarea, this._root));
     this._register(this._mentionAutocomplete.onDidAccept((ev) => {
       // If a /command was selected from autocomplete, show it as a pill
@@ -400,7 +400,7 @@ export class ChatInputPart extends Disposable {
 
   /**
    * Show or hide the Configure Tools button based on current mode.
-   * M41 Phase 9: All modes now have tools — always show the button.
+   * All modes now have tools — always show the button.
    */
   updateToolsButtonForMode(_mode: ChatMode): void {
     // Only show wrench if no token meter has taken its slot.
@@ -424,7 +424,7 @@ export class ChatInputPart extends Disposable {
     return this._contextRibbon.getAttachments();
   }
 
-  /** Add a text selection as context (M48). */
+  /** Add a text selection as context. */
   addSelectionAttachment(attachment: IChatSelectionAttachment): void {
     this._contextRibbon.addSelectionAttachment(attachment);
   }

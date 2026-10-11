@@ -114,7 +114,7 @@
   color: var(--vscode-descriptionForeground);
   font-size: var(--parallx-fontSize-md);
   text-align: center;
-}/* M77 Phase 11.8 — sidebar undo toast */
+}/* sidebar undo toast */
 .canvas-sidebar-toast {
   position: absolute;
   left: 8px;
@@ -175,7 +175,7 @@
   position: relative;
 }
 
-/* M77 Phase 11.3 — Recents section */
+/* Recents section */
 .canvas-sidebar-recents {
   margin-bottom: 6px;
   padding-bottom: 4px;
@@ -215,7 +215,7 @@
   cursor: pointer;
 }
 
-/* M77 Phase 11.2 — pinned sidebar quick-find search */
+/* pinned sidebar quick-find search */
 .canvas-sidebar-search {
   display: flex;
   align-items: center;
@@ -252,7 +252,7 @@
   text-align: center;
 }
 
-/* M77 Phase 11.7 — richer empty state */
+/* richer empty state */
 .canvas-empty-title {
   font-size: var(--px-text-md);
   font-weight: 600;
@@ -296,7 +296,7 @@
   color: var(--px-text-secondary);
 }
 
-/* M77 Phase 11.4 — template picker modal */
+/* template picker modal */
 .canvas-template-picker-backdrop {
   position: fixed;
   inset: 0;
@@ -489,7 +489,7 @@
   outline: none;
 }
 
-/* M77 Phase 11.6 — keyboard shortcuts overlay */
+/* keyboard shortcuts overlay */
 .canvas-shortcuts-backdrop {
   position: fixed;
   inset: 0;
@@ -2765,7 +2765,7 @@
   background: var(--px-surface-hover);
 }
 
-/* M77 Phase 11.1 — save-state indicator (subtle, ribbon-right). */
+/* save-state indicator (subtle, ribbon-right). */
 .canvas-top-ribbon-save {
   font-size: var(--px-text-sm);
   color: var(--px-text-muted);
@@ -4876,7 +4876,7 @@
   font-style: italic;
 }
 
-/* ── Inline AI Chat (M48 Phase 5) ──────────────────────────────────────── */
+/* ── Inline AI Chat ──────────────────────────────────────── */
 
 .canvas-ai-chat {
   position: fixed;

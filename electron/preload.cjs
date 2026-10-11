@@ -139,7 +139,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
 
     /**
      * Register the current workspace root with the main process for write-path
-     * validation (M67 Phase 2.4). Call this when a workspace is opened or
+     * validation. Call this when a workspace is opened or
      * switched. Pass null to clear the root (unrestricted mode).
      */
     setWorkspaceRoot: (rootPath) => ipcRenderer.invoke('fs:setWorkspaceRoot', rootPath),
@@ -495,7 +495,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     /** Delete a stored asset by id (best-effort). */
     delete: (id) => ipcRenderer.invoke('dashboardAsset:delete', id),
     /**
-     * M86 C3: read a .csv/.tsv/.xlsx/.xls as structured rows for the
+     * read a .csv/.tsv/.xlsx/.xls as structured rows for the
      * Table/Chart widget. Returns { header, rows, sheetNames, totalRows }
      * or { error }.
      */
@@ -687,7 +687,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Docling Bridge API (M21 Phase A)
+  // Docling Bridge API
   // ══════════════════════════════════════════════════════════════════════════
 
   docling: {
@@ -708,7 +708,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Per-workspace Python runtime (M94)
+  // Per-workspace Python runtime
   //
   // Every call takes an explicit workspaceRoot — the main process never
   // assumes which workspace is current. The consent gate (`python.enabled`)
@@ -775,7 +775,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Notebook kernel (M96)
+  // Notebook kernel
   //
   // One Jupyter kernel per workspace, hosted by tools/jupyter-bridge/
   // parallx_kernel_host.py. Every call names its workspace explicitly.

@@ -53,7 +53,7 @@ export type IToolPermissions = Record<string, ToolPermissionLevel>;
  *       Per-tool profile membership tags. Tools default to `profiles: []`
  *       (excluded from all profiles except `full`).
  *
- * Parallx implementation (M65 parity fix):
+ * Parallx implementation:
  *   - `readonly`  → upstream `minimal` analogue (read-only browsing).
  *   - `standard`  → upstream `coding` analogue (read + safe writes, no shell).
  *   - `full`      → upstream `full` (allow everything).
@@ -92,7 +92,7 @@ const TOOL_PROFILES: Record<OpenclawToolProfile, {
       'cron_status', 'cron_list', 'cron_runs', 'surface_list',
       // Autonomy log (read-only)
       'autonomy_log',
-      // M85 — the durable session plan. Writing your OWN plan is safe in
+      // the durable session plan. Writing your OWN plan is safe in
       // every profile: it mutates only the session's plan field (no
       // workspace side effects), and planning discipline matters most in
       // constrained profiles.
@@ -199,7 +199,7 @@ function isToolAllowedByProfile(tool: IToolDefinition, mode: OpenclawToolProfile
  * Parallx pipeline:
  *   Step 1: Profile filter (allowlist + per-tool `profiles[]` + deny-first)
  *   Step 1b: D8 agent tool policy (per-agent allow/deny)
- *   Step 2: Permission filter (M11 3-tier: never-allowed tools removed)
+ *   Step 2: Permission filter
  *
  * Tools that require approval are NOT removed — the approval gate is
  * handled by the caller (invokeToolWithRuntimeControl). This function
@@ -237,7 +237,7 @@ export function applyOpenclawToolPolicy(params: {
 }
 
 /**
- * Tier→profile coupling (M65 parity fix, divergence 5).
+ * Tier→profile coupling.
  *
  * Small models choke on large tool catalogs. Upstream addresses this by
  * letting deployments select a tighter profile (e.g. `coding` instead of
@@ -262,7 +262,7 @@ export function applyTierToProfile(
 }
 
 // ---------------------------------------------------------------------------
-// Surface routing approval policy (M58 W6)
+// Surface routing approval policy
 // ---------------------------------------------------------------------------
 
 /**
@@ -271,7 +271,7 @@ export function applyTierToProfile(
  * Upstream parity: channel outbound-policy inspection (github.com/openclaw/openclaw
  * src/channels/) — persistent / user-destructive channels are gated.
  *
- * Parallx posture (M58):
+ * Parallx posture:
  *   - filesystem, canvas → persistence risk → approval required
  *   - chat, notifications, status → ephemeral / user-visible only → free
  *
@@ -295,7 +295,7 @@ export function surfaceSendRequiresApproval(surfaceId: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Cron tool approval policy (M58 W4)
+// Cron tool approval policy
 // ---------------------------------------------------------------------------
 
 /**
@@ -307,7 +307,7 @@ export function surfaceSendRequiresApproval(surfaceId: string): boolean {
  * never auto-approved). Read-only (status/list/runs) and user-initiated
  * (run/wake) actions are free.
  *
- * Parallx posture (M58 W4):
+ * Parallx posture:
  *   - cron_add / cron_update / cron_remove → schedule mutation → approval
  *   - cron_status / cron_list / cron_runs / cron_run / cron_wake → free
  *     - status/list/runs are pure reads
@@ -339,11 +339,11 @@ export function cronToolPermissionLevel(toolName: string): ToolPermissionLevel {
 }
 
 // ---------------------------------------------------------------------------
-// Subagent tool approval policy (M58 W5)
+// Subagent tool approval policy
 // ---------------------------------------------------------------------------
 
 /**
- * The `sessions_spawn` tool (M58 W5) delegates work to an isolated
+ * The `sessions_spawn` tool delegates work to an isolated
  * subagent turn that runs a real LLM call against an ephemeral session.
  *
  * Subagent spawn keeps the `requires-approval` permission level, and the
@@ -353,7 +353,7 @@ export function cronToolPermissionLevel(toolName: string): ToolPermissionLevel {
  * delegates — while autonomous turns (heartbeat/cron) stay gated through
  * the autonomy dial. Typed profiles ('reader' → readonly tools) bound what
  * the spawned session can do; the spawn's tool allowlist is enforced in the
- * participant's tool policy (M59 debt, paid in HARNESS §4.1).
+ * participant's tool policy.
  *
  * Upstream parity: Claude Code's Agent tool runs without per-spawn
  * prompts; the subagent's tool set is bounded by its agent definition.
@@ -377,7 +377,7 @@ export function subagentToolPermissionLevel(_toolName: string): ToolPermissionLe
  * Maps Parallx chat modes to tool profiles.
  */
 export function resolveToolProfile(mode: string | undefined): OpenclawToolProfile {
-  // M41 Phase 9: Most modes get full tool access. Edit mode uses standard
+  // Most modes get full tool access. Edit mode uses standard
   // profile (no command execution). Approval gates on write tools are the
   // real safety boundary, not mode-based tool denial.
   switch (mode) {
@@ -389,7 +389,7 @@ export function resolveToolProfile(mode: string | undefined): OpenclawToolProfil
 }
 
 // ---------------------------------------------------------------------------
-// M65 Iter 2 — Tool color gating (Kellogg "MCP Colors" / Layer 5)
+// Tool color gating (Kellogg "MCP Colors" / Layer 5)
 // ---------------------------------------------------------------------------
 
 /**
@@ -412,7 +412,7 @@ export function resolveToolProfile(mode: string | undefined): OpenclawToolProfil
 export type ToolColor = 'red' | 'blue' | 'green';
 
 /**
- * Red tools — sources of untrusted external content (M65 Iter 2).
+ * Red tools — sources of untrusted external content.
  * Their output may carry attacker-controlled instructions; any turn that executes
  * one is "tainted" and subsequent blue tool calls require explicit user approval.
  *
@@ -463,7 +463,7 @@ const BLUE_TOOLS: ReadonlySet<string> = new Set<string>([
   'fs_delete_file',
   // Shell execution — destructive, irreversible side effects
   'terminal_run_command',
-  // M94 — Python. Running a script is arbitrary code execution with the
+  // Python. Running a script is arbitrary code execution with the
   // user's own permissions; installing a package fetches and executes
   // third-party setup code. Both belong in the same class as the shell,
   // and both must gate after a turn has ingested untrusted content.
@@ -488,7 +488,7 @@ const BLUE_TOOLS: ReadonlySet<string> = new Set<string>([
   // policy; listed here so post-red the gate fires even for surfaces that
   // are otherwise auto-allowed).
   'surface_send',
-  // M70 — App command control. Executing a workbench command mutates app
+  // App command control. Executing a workbench command mutates app
   // state (theme, layout, view visibility, etc). Blue so it post-red gates
   // the same way file writes do. `app__find_commands` stays green (read-only
   // search over a curated registry).

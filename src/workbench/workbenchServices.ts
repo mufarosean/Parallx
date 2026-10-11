@@ -75,7 +75,7 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
   // ── Lifecycle ──
   services.registerInstance(ILifecycleService, new LifecycleService());
 
-  // ── Session Manager (M14) ── workspace session identity
+  // ── Session Manager ── workspace session identity
   services.registerInstance(ISessionManager, new SessionManager());
 
   // ── Context Key (Capability 8) ──
@@ -115,13 +115,13 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
     ALL_DIAGNOSTIC_CHECKS,
   ));
 
-  // ── Per-workspace Python runtime (M94) ──
+  // ── Per-workspace Python runtime ──
   // Dep-free like the journal: it registers its settings schemas at
   // construction (so Settings can render the Python category even before a
   // workspace is open) and is pointed at the workspace + journal later in boot.
   services.registerInstance(IPythonEnvService, new PythonEnvService());
 
-  // ── Notebook kernel (M96) ──
+  // ── Notebook kernel ──
   // Dep-free at construction like the Python service; the workspace root, the
   // journal, and the Python consent gate are attached later in boot.
   services.registerInstance(INotebookKernelService, new NotebookKernelService());
@@ -134,7 +134,7 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
   const textFileModelManager = new TextFileModelManager(fileService);
   services.registerInstance(ITextFileModelManager, textFileModelManager);
 
-  // ── Agent task persistence + approvals (M24 Phase C foundation) ──
+  // ── Agent task persistence + approvals ──
   const agentTaskStore = new AgentTaskStore();
   services.registerInstance(IAgentTaskStore, agentTaskStore);
   services.registerInstance(IAgentApprovalService, new AgentApprovalService(agentTaskStore));
@@ -328,7 +328,7 @@ export function registerIndexingServices(
   const chunkingService = new ChunkingService();
   const vectorStoreService = new VectorStoreService(databaseService);
   const documentExtractionService = new DocumentExtractionService();
-  // M21: Kick off Docling bridge detection in the background.
+  // Kick off Docling bridge detection in the background.
   // This is fire-and-forget — the pipeline will use legacy extractors
   // until Docling becomes available, then auto-reindex rich documents.
   documentExtractionService.initialize().catch((err) => {
@@ -355,17 +355,17 @@ export function registerIndexingServices(
   services.registerInstance(IRetrievalService, retrievalService);
   services.registerInstance(IMemoryService, memoryService);
 
-  // ── Phase 7: Advanced Feature Services (M10) ──
+  // ── Phase 7: Advanced Feature Services ──
 
   const relatedContentService = new RelatedContentService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
   const autoTaggingService = new AutoTaggingService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
   const semanticGraphService = new SemanticGraphService(databaseService, vectorStoreService, indexingPipeline, workspaceService);
-  // M76 Phase 3 — user-initiated mind-map refresh. Phase 4 (lineage) and
+  // user-initiated mind-map refresh. Phase 4 (lineage) and
   // Phase 5 (concept clustering) register their RefreshPass with this
   // orchestrator during their own service construction below.
   const mindMapRefreshOrchestrator = new MindMapRefreshOrchestrator(databaseService);
 
-  // M76 Phase 4 — lineage classifier. Self-registers a RefreshPass with the
+  // lineage classifier. Self-registers a RefreshPass with the
   // orchestrator. Requires ILanguageModelsService, which registerChatServices
   // has already added to the DI container by the time this runs.
   const languageModelsService = services.has(ILanguageModelsService)
@@ -386,7 +386,7 @@ export function registerIndexingServices(
     // effect (pass registration) is the point of the assignment.
     void _lineageClassifier;
 
-    // M76 Phase 5 — concept clustering. Same self-registration pattern.
+    // concept clustering. Same self-registration pattern.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const _conceptNodeService = new ConceptNodeService(
       databaseService,
@@ -398,7 +398,7 @@ export function registerIndexingServices(
     void _conceptNodeService;
   }
 
-  // M40 Phase 6: Proactive suggestions read thresholds from unified effective config.
+  // Proactive suggestions read thresholds from unified effective config.
   const unifiedConfigService = services.has(IUnifiedAIConfigService) ? services.get(IUnifiedAIConfigService) : undefined;
   const proactiveSuggestionsService = new ProactiveSuggestionsService(embeddingService, vectorStoreService, databaseService, indexingPipeline, unifiedConfigService);
 
@@ -479,7 +479,7 @@ export function registerIndexingServices(
 }
 
 /**
- * Creates and registers the Unified AI Config service (M20 Task A.4).
+ * Creates and registers the Unified AI Config service.
  * Called after storage and chat services are available.
  *
  * @returns The UnifiedAIConfigService instance for further wiring.

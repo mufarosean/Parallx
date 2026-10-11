@@ -177,7 +177,7 @@ export type ContextLineFetcher = (count: number) => Promise<readonly string[]>;
 export type HeartbeatWaker = (reason: 'cron') => void;
 
 // ---------------------------------------------------------------------------
-// M60 Phase γ — controls layer types
+// controls layer types
 // ---------------------------------------------------------------------------
 
 /**
@@ -194,7 +194,7 @@ export interface ICronFireAutonomyInfo {
   readonly note?: string;
 }
 
-/** Optional autonomy controls (M60 §3.8/§3.10). */
+/** Optional autonomy controls. */
 export interface ICronObservers {
   /** Returns `true` when the `autonomy.cron.enabled` flag is on. */
   readonly isFlagEnabled?: () => boolean;
@@ -202,7 +202,7 @@ export interface ICronObservers {
   readonly onAutonomyEvent?: (info: ICronFireAutonomyInfo) => void;
 }
 
-/** Snapshot persisted across reloads (M60 §3.6 / W4 plan). */
+/** Snapshot persisted across reloads. */
 export interface ICronPersistedSnapshot {
   readonly jobs: readonly ICronJob[];
 }
@@ -252,13 +252,13 @@ export class CronService implements IDisposable {
   private _jobsSub: { dispose(): void } | undefined;
   private _disposed = false;
   private _nextJobId = 1;
-  /** M60 §3.7 — idempotency keys for `(cronId, scheduledAt)` firings. */
+  /** idempotency keys for `(cronId, scheduledAt)` firings. */
   private readonly _idempotencyKeys = new Set<string>();
-  /** M60 §3.7 — set by `suspendForShutdown()`; blocks all subsequent firings. */
+  /** set by `suspendForShutdown()`; blocks all subsequent firings. */
   private _shuttingDown = false;
-  /** M60 Phase γ — optional controls layer observers. */
+  /** optional controls layer observers. */
   private _observers: ICronObservers = {};
-  /** M60 Phase γ — optional persistence (load on `loadFromPersistence()`, save after every mutation). */
+  /** optional persistence (load on `loadFromPersistence()`, save after every mutation). */
   private _persistence: ICronPersistence | undefined;
 
   /**
@@ -312,7 +312,7 @@ export class CronService implements IDisposable {
   }
 
   /**
-   * M60 Phase γ — install persistence. After install, callers should
+   * install persistence. After install, callers should
    * `await loadFromPersistence()` before `start()` to restore jobs across
    * reload. Mutations (add/update/remove + run completion) auto-save.
    */
@@ -321,7 +321,7 @@ export class CronService implements IDisposable {
   }
 
   /**
-   * M60 Phase γ — hydrate jobs from persistence. Idempotent. Errors are
+   * hydrate jobs from persistence. Idempotent. Errors are
    * swallowed (corrupt persistence → start with empty job set).
    */
   async loadFromPersistence(): Promise<void> {
@@ -346,7 +346,7 @@ export class CronService implements IDisposable {
               : now);
         // Recompute nextRunAt at load time to coalesce sleep/wake firings:
         // multiple missed firings of the same job collapse into a single
-        // catch-up at start() time (M60 §3.7).
+        // catch-up at start() time.
         const restored: ICronJob = {
           ...job,
           anchorMs,
@@ -367,7 +367,7 @@ export class CronService implements IDisposable {
     }
   }
 
-  /** M60 §3.7 — suspend cron for shutdown. Idempotent. Stops timer; rejects new firings. */
+  /** suspend cron for shutdown. Idempotent. Stops timer; rejects new firings. */
   suspendForShutdown(): void {
     if (this._shuttingDown) return;
     this._shuttingDown = true;
@@ -654,7 +654,7 @@ export class CronService implements IDisposable {
    * Upstream: CronService.runMissedJobs — catches up on jobs
    * whose nextRunAt has passed while the service was stopped.
    *
-   * M60 §3.7: collapse repeated missed firings into a SINGLE coalesced
+   * collapse repeated missed firings into a SINGLE coalesced
    * catch-up per job. The idempotency-key set prevents re-running the
    * same `(jobId, scheduledAt)` if it was already executed pre-shutdown,
    * and the in-loop tracking ensures no second firing within the same
@@ -685,7 +685,7 @@ export class CronService implements IDisposable {
     opts: { trackIdempotency: boolean } = { trackIdempotency: false },
   ): Promise<ICronRunResult> {
     const now = Date.now();
-    // M60 §3.7: idempotency key — `(cronId, scheduledAt)`. Re-firing the
+    // idempotency key — `(cronId, scheduledAt)`. Re-firing the
     // same key is a no-op. `nextRunAt` is the canonical scheduled-at
     // timestamp; manual `runJob` falls back to `now`.
     const scheduledAt = job.nextRunAt ?? now;
@@ -719,7 +719,7 @@ export class CronService implements IDisposable {
       }
     }
 
-    // M60 §3.7: shutting-down gate.
+    // shutting-down gate.
     if (this._shuttingDown) {
       this._emitFireEvent({
         outcome: 'cancelled',
@@ -739,7 +739,7 @@ export class CronService implements IDisposable {
       };
     }
 
-    // M60 §3.8: autonomy.cron.enabled feature flag gate.
+    // autonomy.cron.enabled feature flag gate.
     if (this._observers.isFlagEnabled && !this._observers.isFlagEnabled()) {
       const result: ICronRunResult = {
         jobId: job.id,
@@ -870,7 +870,7 @@ export class CronService implements IDisposable {
     }
   }
 
-  /** M60 Phase γ — emit a per-firing autonomy event; never throws. */
+  /** emit a per-firing autonomy event; never throws. */
   private _emitFireEvent(info: ICronFireAutonomyInfo): void {
     if (!this._observers.onAutonomyEvent) return;
     try {
@@ -1206,7 +1206,7 @@ function computeNextCronRun(expr: string, fromMs: number): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// DI Service Identifier (M63 P0)
+// DI Service Identifier
 // ---------------------------------------------------------------------------
 
 /**

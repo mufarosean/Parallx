@@ -1,4 +1,4 @@
-// lineageClassifierService.ts — chat-model lineage classification (M76 Phase 4)
+// lineageClassifierService.ts — chat-model lineage classification
 //
 // Registers a RefreshPass with the MindMapRefreshOrchestrator that classifies
 // pairs of related sources as one of:

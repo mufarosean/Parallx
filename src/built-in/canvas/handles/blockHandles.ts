@@ -1,4 +1,4 @@
-﻿// blockHandles.ts — Block Handles controller (+ button, drag handle, block resolution)
+// blockHandles.ts — Block Handles controller (+ button, drag handle, block resolution)
 //
 // Owns the full drag-handle lifecycle:
 //   • Handle element creation & positioning (replaces GlobalDragHandle library)

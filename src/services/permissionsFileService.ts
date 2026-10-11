@@ -1,4 +1,4 @@
-// permissionsFileService.ts — .parallx/permissions.json integration (M11 Task 2.10)
+// permissionsFileService.ts — .parallx/permissions.json integration
 //
 // Bridges the PermissionService's persistent overrides to the filesystem.
 // On startup, reads `.parallx/permissions.json` and loads it into the

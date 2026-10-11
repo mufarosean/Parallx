@@ -1,4 +1,4 @@
-// electron/notebookKernelBridge.cjs — one Jupyter kernel per workspace (M96)
+// electron/notebookKernelBridge.cjs — one Jupyter kernel per workspace
 //
 // Thin by design. The protocol work lives in tools/jupyter-bridge/
 // parallx_kernel_host.py, which owns the kernel through jupyter_client; this

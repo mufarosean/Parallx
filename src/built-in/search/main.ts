@@ -453,7 +453,7 @@ async function executeSearch(): Promise<void> {
     if (_searchVersion !== version) return;
 
     if (_results.length === 0) {
-      // M89 S2 — registry voice: warm line + a concrete next step.
+      // registry voice: warm line + a concrete next step.
       updateMessage(`No matches for "${query}". ${SEARCH_EMPTY_STATES.noResults.hint}`);
     } else {
       updateMessage(

@@ -1,4 +1,4 @@
-// chatContextPills.ts — Context pills UI component (M11 Task 1.10)
+// chatContextPills.ts — Context pills UI component
 //
 // Visual chips below the context ribbon showing what the LLM sees:
 //   1. **RAG** sources (auto-retrieved files from vector search)
@@ -24,7 +24,7 @@ import { chatIcons } from '../chatIcons.js';
 import type { IContextPill } from '../../../services/chatTypes.js';
 import type { ITokenBudgetSlot } from '../chatTypes.js';
 
-// ITokenBudgetSlot — now defined in chatTypes.ts (M13 Phase 1)
+// ITokenBudgetSlot — now defined in chatTypes.ts
 export type { ITokenBudgetSlot } from '../chatTypes.js';
 
 type ContextPillGroupKey = IContextPill['type'];

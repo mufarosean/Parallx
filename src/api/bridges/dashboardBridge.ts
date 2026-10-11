@@ -31,7 +31,7 @@ export const DASHBOARD_LIMITS = {
   MIN_REFRESH_INTERVAL_MS: 60_000,
   /**
    * Default concurrent AI-policy refreshes per workspace. The live value
-   * comes from the `dashboard.aiRefreshConcurrency` setting (M86 C4);
+   * comes from the `dashboard.aiRefreshConcurrency` setting;
    * this constant is the fallback when the setting is unavailable.
    */
   MAX_CONCURRENT_AI_REFRESHES: 2,
@@ -40,7 +40,7 @@ export const DASHBOARD_LIMITS = {
   /** Per-refresh timeout — refresh that doesn't complete is killed. */
   REFRESH_TIMEOUT_MS: 60_000,
   /**
-   * Per-refresh timeout for AI-category widgets (M86 C4): a background
+   * Per-refresh timeout for AI-category widgets: a background
    * agent turn (research, tools, delivery) legitimately takes minutes.
    */
   AI_REFRESH_TIMEOUT_MS: 300_000,
@@ -107,7 +107,7 @@ export interface WidgetRefreshContext<TConfig = unknown> {
   /** Last cached output for this instance, if any. */
   readonly cachedOutput: string | null;
   /**
-   * How an AI-category refresh should run (M86 C4). 'background' (default):
+   * How an AI-category refresh should run. 'background' (default):
    * an isolated agent turn on the ephemeral-session rail — the user's chat
    * is never touched. 'chat': the pre-M86 visible path through the active
    * chat session (the per-widget "Run in chat" escape hatch for debugging
@@ -183,7 +183,7 @@ export interface WidgetTypeRegistration<TConfig = Record<string, unknown>> {
   readonly chromeStyle?: WidgetChromeStyle;
 
   /**
-   * How the widget body is rendered (M86):
+   * How the widget body is rendered:
    * - 'custom' (default): the widget owns its DOM via `createWidget`.
    * - 'markdown': the DASHBOARD renders the cached output as Markdown —
    *   no `createWidget` needed. This is how extensions (especially plain-JS
@@ -244,7 +244,7 @@ export function validateWidgetRefreshPolicy(policy: WidgetRefreshPolicy): void {
 }
 
 /**
- * Widget typeIds that predate organ ownership (M86 re-homing). Persisted
+ * Widget typeIds that predate organ ownership. Persisted
  * dashboards reference these id strings, so the ids are frozen while their
  * OWNER moved to the tool that owns the underlying data. Only the mapped
  * tool may register the id. Closed set — never add entries for new widgets;

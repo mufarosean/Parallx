@@ -899,7 +899,7 @@ export namespace workspace {
    */
   export const name: string | undefined;
 
-  // ── Canvas Pages (M56) ──
+  // ── Canvas Pages ──
 
   /**
    * Read-only metadata for a canvas page.
@@ -1029,7 +1029,7 @@ export namespace editors {
   export const onDidChangeOpenEditors: Event<void>;
 }
 
-// ─── Links (M66) ─────────────────────────────────────────────────────────────
+// ─── Links ─────────────────────────────────────────────────────────────
 
 /**
  * A parsed `parallx://` URI, passed to a {@link LinkKindHandler}.
@@ -1175,7 +1175,7 @@ export namespace links {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Dashboard Widget Contribution (M86)
+// Dashboard Widget Contribution
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** Field types the dashboard's settings drawer can render. */

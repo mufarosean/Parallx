@@ -125,7 +125,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   private readonly _onDidChangeTools = this._register(new Emitter<void>());
   readonly onDidChangeTools: Event<void> = this._onDidChangeTools.event;
 
-  // ── Permission service (M11 Task 2.1) + Policy Decision Point (M67 Phase 2) ──
+  // ── Permission service + Policy Decision Point ──
 
   private _permissionService: PermissionService | undefined;
   // HARNESS.md §2.3 — ONE decision owner, constructed here so a "PDP not
@@ -139,7 +139,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     this._disabledTools = new Set<string>();
   }
 
-  // ── Storage binding (M53 D3.10) ──
+  // ── Storage binding ──
 
   /**
    * Bind global storage and hydrate persisted disabled-tools set.
@@ -165,7 +165,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   // ── Permission service binding ──
 
   /**
-   * Set the permission service (M11 Task 2.1).
+   * Set the permission service.
    * Called from chatTool.ts during activation.
    */
   setPermissionService(service: PermissionService): void {
@@ -183,7 +183,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     return this._pdp;
   }
 
-  // ── Tool-enablement binding (M62 follow-up) ──
+  // ── Tool-enablement binding ──
 
   /**
    * Bind the tool-enablement service so the LLM-facing tool list can
@@ -455,7 +455,7 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
         ...(callOptions?.resultCharBudget !== undefined ? { resultCharBudget: callOptions.resultCharBudget } : {}),
         ...(callOptions?.acceptsImages ? { acceptsImages: true } : {}),
       });
-      // Taint the session turn if a red tool succeeded (M65 Layer 5).
+      // Taint the session turn if a red tool succeeded.
       // Taint is set ONLY here, ONLY on success, ONLY when sessionId is in scope.
       if (!result.isError && sessionId && decision.willTaintOnSuccess) {
         markTurnTainted(sessionId);

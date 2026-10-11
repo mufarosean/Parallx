@@ -1,4 +1,4 @@
-// terminalTools.ts — Terminal/command tool registrations (M13 Phase 5)
+// terminalTools.ts — Terminal/command tool registrations
 
 import { INTENT_PARAM_NAME, INTENT_PARAM_SCHEMA } from '../../../services/toolIntent.js';
 import type {

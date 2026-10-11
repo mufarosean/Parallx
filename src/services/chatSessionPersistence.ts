@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
   origin                  TEXT
 )`;
 
-// M91 — archived autonomous runs (heartbeat/cron/dashboard/subagent) are
+// archived autonomous runs (heartbeat/cron/dashboard/subagent) are
 // stored in the SAME tables as chat, tagged by `origin`. NULL origin = an
 // interactive chat (the only rows the chat list shows). Index supports the
 // archive list + retention prune.
@@ -110,7 +110,7 @@ ON chat_messages(session_id, sort_order)`;
  */
 const _tokenColumns = new WeakMap<IChatPersistenceDatabase, boolean>();
 
-// ── Ephemeral session substrate (M58 W5-A) ──
+// ── Ephemeral session substrate ──
 //
 // Ephemeral sessions are in-memory scratch sessions used by the
 // SubagentSpawner so an isolated LLM turn can run end-to-end without
@@ -167,12 +167,12 @@ export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<vo
     if (!hasCtxOverride) {
       await db.run(`ALTER TABLE chat_sessions ADD COLUMN context_window_override INTEGER`);
     }
-    // M85 — durable session plan (the planning organ).
+    // durable session plan (the planning organ).
     const hasPlan = cols.some((c) => c.name === 'plan_json');
     if (!hasPlan) {
       await db.run(`ALTER TABLE chat_sessions ADD COLUMN plan_json TEXT`);
     }
-    // M91 — archived autonomous-run origin.
+    // archived autonomous-run origin.
     const hasOrigin = cols.some((c) => c.name === 'origin');
     if (!hasOrigin) {
       await db.run(`ALTER TABLE chat_sessions ADD COLUMN origin TEXT`);
@@ -327,7 +327,7 @@ export interface IArchivedRunSummary {
 const DEFAULT_ARCHIVE_RETENTION = 100;
 
 /**
- * Archive a completed autonomous run's FULL transcript (M91). Unlike
+ * Archive a completed autonomous run's FULL transcript. Unlike
  * `saveSession`, this INTENTIONALLY persists an ephemeral-id session — it is
  * the one sanctioned bypass of the isolation guard, called from
  * `purgeEphemeralSession` when the seed set `archiveOrigin`. Writes the
@@ -511,7 +511,7 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
   if (!db.isOpen) { return []; }
 
   const rows = await db.all<IPersistedSessionRow>(
-    // M91 — `origin IS NULL` keeps archived autonomous runs out of the chat
+    // `origin IS NULL` keeps archived autonomous runs out of the chat
     // list; they surface only through the autonomy-log review surface.
     `SELECT id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at FROM chat_sessions WHERE workspace_id = ? AND origin IS NULL ORDER BY updated_at DESC`,
     [workspaceId],
@@ -551,7 +551,7 @@ interface IPersistedSessionRow {
 const SESSION_ROW_COLUMNS = 'id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at';
 
 function _buildSessionFromRow(row: IPersistedSessionRow, messages: IChatRequestResponsePair[]): IChatSession {
-  // M85 — hydrate the durable plan (best-effort; a corrupt blob never
+  // hydrate the durable plan (best-effort; a corrupt blob never
   // blocks session load).
   let plan: IChatSession['plan'];
   if (row.plan_json) {
@@ -783,7 +783,7 @@ function _normalizeReplayChains(
   return { messages: normalized, changed };
 }
 
-// ── Cross-session search (M11 Task 4.5) ──
+// ── Cross-session search ──
 
 /**
  * Search result from cross-session keyword search.
@@ -858,7 +858,7 @@ function _extractSearchSnippet(content: string, query: string): string {
   return snippet;
 }
 
-// ── Semantic session search (M11 Task 4.6) ──
+// ── Semantic session search ──
 
 /**
  * Semantic search result — from vector-based memory search with session metadata.

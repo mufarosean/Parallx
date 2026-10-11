@@ -12,7 +12,7 @@
 // deep safety nets beneath this remain trash (deletes) and git.
 //
 // Module-level store in the SERVICES layer, same pattern (and for the same
-// gate-compliance reason) as toolResourceRegistry (M85 Slice C): the chat
+// gate-compliance reason) as toolResourceRegistry: the chat
 // write tools and the openclaw /rewind command both import it, and neither
 // tree may import from the other. File access is bound structurally so this
 // module needs no chat-tree type imports.

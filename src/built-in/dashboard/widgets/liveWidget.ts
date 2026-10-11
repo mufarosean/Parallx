@@ -80,7 +80,7 @@ export const LIVE_WIDGET: WidgetTypeRegistration<LiveWidgetConfig> = {
 
     const prompt = buildLivePrompt(cfg, ctx.instanceId);
 
-    // Default (M86 C4): isolated background agent turn; the model delivers
+    // Default: isolated background agent turn; the model delivers
     // the finished HTML via dashboard_render_widget mid-turn, so return null
     // to avoid clobbering it. Failures surface as real widget errors.
     if (ctx.mode !== 'chat') {

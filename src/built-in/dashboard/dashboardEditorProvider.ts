@@ -281,7 +281,7 @@ class DashboardEditorPane implements IDisposable {
     addBtn.addEventListener('click', () => void this._openWidgetPicker());
     actions.appendChild(addBtn);
 
-    // Refresh all (M86 C4): one click refreshes every widget on the page.
+    // Refresh all: one click refreshes every widget on the page.
     // Query/static widgets run in parallel; AI widgets fan out to background
     // agents through the scheduler's admission queue (concurrency-capped) —
     // the chat panel is never touched.
@@ -294,7 +294,7 @@ class DashboardEditorPane implements IDisposable {
     });
     actions.appendChild(refreshAllBtn);
 
-    // Page schedule (M86 C4): "refresh this whole page on a schedule" —
+    // Page schedule: "refresh this whole page on a schedule" —
     // runs headlessly whether or not the page is open.
     const scheduleBtn = el('button', 'dashboard-btn dashboard-btn--ghost dashboard-btn--icon-only');
     scheduleBtn.type = 'button';
@@ -392,7 +392,7 @@ class DashboardEditorPane implements IDisposable {
     if (hidden) root.classList.add('dashboard-pane--header-hidden');
   }
 
-  // ── Page schedule editor (M86 C4) ──────────────────────────────────────
+  // ── Page schedule editor ──────────────────────────────────────
 
   /**
    * Compact popover to set the page's headless refresh schedule.
@@ -614,7 +614,7 @@ class DashboardEditorPane implements IDisposable {
       refreshBtn.addEventListener('click', () => void this._triggerManualRefresh(row.id));
       actions.appendChild(refreshBtn);
 
-      // Escape hatch (M86 C4): run this AI widget's prompt through the
+      // Escape hatch: run this AI widget's prompt through the
       // visible chat session instead of a background agent — for debugging
       // a prompt while watching the turn stream. Never the default path.
       if (typeReg.category === 'ai') {
@@ -730,7 +730,7 @@ class DashboardEditorPane implements IDisposable {
     } else {
       const ctx = this._buildContext(row, configEmitter);
       try {
-        // renderMode 'markdown' (M86): the dashboard renders cached output
+        // renderMode 'markdown': the dashboard renders cached output
         // itself, so contributed widgets (especially plain-JS extensions)
         // don't need to ship a renderer.
         handle = typeReg.createWidget
@@ -766,7 +766,7 @@ class DashboardEditorPane implements IDisposable {
   }
 
   /**
-   * Built-in body renderer for `renderMode: 'markdown'` widget types (M86):
+   * Built-in body renderer for `renderMode: 'markdown'` widget types:
    * paints the cached output as Markdown, mirrors the AI widgets' empty and
    * error states, and re-paints from cache on delivery.
    */
@@ -879,7 +879,7 @@ class DashboardEditorPane implements IDisposable {
    * bypassed the cap and N clicks meant N concurrent AI turns).
    */
   private async _triggerManualRefresh(widgetId: string, mode?: 'background' | 'chat'): Promise<void> {
-    // A manual click / Refresh-all is a USER gesture — consented (M90).
+    // A manual click / Refresh-all is a USER gesture — consented.
     await this._scheduler.runOnce(widgetId, () => this._runRefresh(widgetId, mode, 'user'));
   }
 
@@ -1088,7 +1088,7 @@ class DashboardEditorPane implements IDisposable {
       `;
       sheet.appendChild(empty);
     } else {
-      // ── Templates rail (M86 C3): preconfigured recipes — one click adds
+      // ── Templates rail: preconfigured recipes — one click adds
       // a fully configured widget. Only recipes whose type is currently
       // registered are shown, so a disabled extension hides its recipes.
       const grid = el('div', 'dashboard-picker__grid');

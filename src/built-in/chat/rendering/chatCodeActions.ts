@@ -1,4 +1,4 @@
-// chatCodeActions.ts — Code action buttons for code blocks (M11 Task 2.6)
+// chatCodeActions.ts — Code action buttons for code blocks
 //
 // Detects `// filepath: <path>` (or `# filepath:`, `<!-- filepath: -->`)
 // comment headers at the top of code blocks. When detected, adds
@@ -11,7 +11,7 @@
 import { $ } from '../../../ui/dom.js';
 import type { ICodeActionRequest } from '../chatTypes.js';
 
-// Code action types — now defined in chatTypes.ts (M13 Phase 1)
+// Code action types — now defined in chatTypes.ts
 export type { CodeActionKind, ICodeActionRequest, CodeActionHandler } from '../chatTypes.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════

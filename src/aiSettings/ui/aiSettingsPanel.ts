@@ -1,6 +1,6 @@
-// aiSettingsPanel.ts — AI Hub Panel Shell (M20 Task C.1, originally M15 Task 2.2)
+// aiSettingsPanel.ts — AI Hub Panel Shell
 //
-// M61 Phase 5: trimmed to a managers-only sidebar. The unified Settings
+// trimmed to a managers-only sidebar. The unified Settings
 // overlay (`Ctrl+Alt+S` → `settings.open`) is the canonical editor for
 // every value-shaped setting; this panel now only hosts the manager
 // sections (Model, Tools, MCP servers, Agent) that

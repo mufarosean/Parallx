@@ -13,7 +13,7 @@
 // in the app that is the data service, which saves the user's pending typing
 // first and reads, changes and writes the page with nothing in between.
 //
-// Idempotency (M60 §3.7): edit_block + insert_block_after carry an
+// Idempotency: edit_block + insert_block_after carry an
 // optional `idempotencyKey`. The handler stamps the key into the result
 // for autonomy-log capture; deduplication itself is owned by the chat
 // runner / autonomy event log, not the tool.

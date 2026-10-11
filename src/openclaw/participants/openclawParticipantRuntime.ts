@@ -75,7 +75,7 @@ You help the user understand and work with their project files and canvas pages.
 - Always explain what you're about to do before invoking a tool
 - Report tool results clearly and concisely
 - If a tool fails, explain the failure and suggest alternatives`],
-  // M87 S2 — heartbeat purpose file. Scaffolded by /init like SOUL/TOOLS,
+  // heartbeat purpose file. Scaffolded by /init like SOUL/TOOLS,
   // but deliberately NOT in OPENCLAW_BOOTSTRAP_FILES: watches are heartbeat
   // seed context only (see heartbeatPurpose.ts), never per-turn prompt bloat.
   [HEARTBEAT_PURPOSE_PATH, HEARTBEAT_PURPOSE_TEMPLATE],

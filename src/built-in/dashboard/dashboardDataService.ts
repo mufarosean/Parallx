@@ -264,7 +264,7 @@ export class DashboardDataService extends Disposable {
     if (res.error) throw new Error(`setPageHeaderHidden failed: ${res.error.message}`);
   }
 
-  /** Set (or clear, with null) a page's headless refresh schedule (M86 C4). */
+  /** Set (or clear, with null) a page's headless refresh schedule. */
   async setPageRefreshPolicy(id: string, policy: WidgetRefreshPolicy | null): Promise<void> {
     const res = await this._db.run(
       `UPDATE dashboard_pages SET refresh_policy_json = ?, updated_at = ? WHERE id = ?`,

@@ -1,4 +1,4 @@
-// notebookEditorInput.ts — the `.ipynb` document as an editor input (M96)
+// notebookEditorInput.ts — the `.ipynb` document as an editor input
 //
 // Owns the parsed document and the dirty flag. Deliberately NOT backed by
 // TextFileModel like FileEditorInput: that model tracks a string, and a

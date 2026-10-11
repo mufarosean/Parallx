@@ -229,7 +229,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     );
   }
 
-  // ── Python panel inside the Settings hub (M94) ───────────────────────
+  // ── Python panel inside the Settings hub ───────────────────────
   // The flat `python.*` schema rows cover configuration; this panel covers
   // the parts that only exist on disk — whether an environment is there,
   // what it weighs, what is installed, and what recently ran.

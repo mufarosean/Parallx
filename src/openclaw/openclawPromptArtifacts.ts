@@ -28,7 +28,7 @@ export interface IOpenclawPromptArtifactInput {
   readonly preferencesPrompt?: string;
   readonly promptOverlay?: string;
   readonly promptProvenance?: IOpenclawSystemPromptReport['promptProvenance'];
-  /** M42: Model tier for conditional guidance (small/medium/large). */
+  /** Model tier for conditional guidance (small/medium/large). */
   readonly modelTier?: 'small' | 'medium' | 'large';
   /** Whether the model supports native tool calling (orthogonal to tool count). */
   readonly supportsTools?: boolean;
@@ -42,7 +42,7 @@ export interface IOpenclawPromptArtifactInput {
   readonly agentSystemPromptOverlay?: string;
   /** Whether this turn includes explicit file or selection attachments. */
   readonly hasExplicitAttachments?: boolean;
-  /** M66 — Registered `parallx://` link contracts for prompt auto-injection. */
+  /** Registered `parallx://` link contracts for prompt auto-injection. */
   readonly linkContracts?: readonly IOpenclawLinkContractDescriptor[];
 }
 

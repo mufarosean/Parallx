@@ -16,7 +16,7 @@ import { ChatMode } from '../../../services/chatTypes.js';
 import { chatIcons } from '../chatIcons.js';
 import type { IModePickerServices } from '../chatTypes.js';
 
-// IModePickerServices — now defined in chatTypes.ts (M13 Phase 1)
+// IModePickerServices — now defined in chatTypes.ts
 export type { IModePickerServices } from '../chatTypes.js';
 
 // HARNESS.md §2.3 — the old "Agent autonomy" dial (Manual / Allow Reads /
@@ -97,7 +97,7 @@ export class ChatModePicker extends Disposable {
     const meta = MODE_META[current];
     this._button.innerHTML = '';
 
-    // M83 — icon + chevron only. The mode name lives in the dropdown (with
+    // icon + chevron only. The mode name lives in the dropdown (with
     // icon + description) and in the hover title, keeping the toolbar tight.
     const icon = document.createElement('span');
     icon.className = 'parallx-chat-picker-icon';

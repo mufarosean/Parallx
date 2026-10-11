@@ -1,4 +1,4 @@
-/* pythonSettings.css — workspace Python runtime panel (M94).
+/* pythonSettings.css — workspace Python runtime panel.
    Tokens only: no literal colours, per the --px design-token system. */
 
 .pysettings {
@@ -264,7 +264,7 @@
   word-break: break-word;
 }
 
-/* ── Live operation output (M97) ──────────────────────────────────────────
+/* ── Live operation output ──────────────────────────────────────────
    pip and venv stream here while they work, beside the control that started
    them. The Terminal panel mirrors the same stream. */
 

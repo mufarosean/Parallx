@@ -2246,7 +2246,7 @@ ${CREATIONS_PARTS_CSS}
 
 /**
  * Wrap a save-shaped promise so its failure is surfaced to the user
- * instead of being silently swallowed (M79 Phase 5).
+ * instead of being silently swallowed.
  *
  * Most thread / settings writes were `.catch(() => {})` before this
  * helper existed — failures left the user thinking their edit was saved
@@ -2406,7 +2406,7 @@ function estimateTokens(text) {
 }
 
 /**
- * M79 Phase 3c — extract repeated phrases from a set of recent
+ * extract repeated phrases from a set of recent
  * outputs by the same speaker. Returns a deduped list of n-gram
  * strings that occur at least `minOccurrences` times across the
  * inputs. Used to feed the variation-avoidance system message so the
@@ -3175,7 +3175,7 @@ function buildSystemPrompt(params = {}) {
     userDescription = '',
     responseLength = null,
     customStyleContent = '',
-    sceneState = null, // M79 Phase 3a — auto-derived scene context
+    sceneState = null, // auto-derived scene context
     // How people talk: the user's rules for dialogue (Settings › Dialogue
     // rules). Empty means none.
     dialogueRules = '',
@@ -3259,7 +3259,7 @@ function buildSystemPrompt(params = {}) {
     parts.push(['## User Identity', `The user (${userName}) is described as: ${userDescription}`].join('\n'));
   }
 
-  // 1c. Scene state — auto-derived structured channel (M79 Phase 3a).
+  // 1c. Scene state — auto-derived structured channel.
   // ~50–100 tokens that orient the model on every turn: where, when,
   // what mood, who's present. Carries over from the previous turn
   // unless the model emitted a <scene-update/> tag.
@@ -3502,7 +3502,7 @@ function assembleContext(params) {
     ephemeralInstruction = null,
     historySummary = '',
     sceneState = null, // M79 Phase 3a
-    // Overhaul (M92): explicit per-thread overrides + persistent note.
+    // Overhaul: explicit per-thread overrides + persistent note.
     // Overrides sit ABOVE the per-character resolution — they are the
     // user's explicit "in this chat, do X" choice, so they win over
     // whatever the character card says. Empty string = no override.
@@ -3703,7 +3703,7 @@ function assembleContext(params) {
     );
     if (respondChar) {
       const rName = respondChar.frontmatter.name || respondChar.fileName.replace(/\.(md|json)$/, '');
-      // M79 Phase 3b — authored voice anchor wins over the legacy
+      // authored voice anchor wins over the legacy
       // 220-char description slice. If the character defines a
       // `voiceAnchor` (3–5 lines covering voice / signature phrases /
       // no-go phrases), use it directly. Otherwise fall back to up to
@@ -3727,7 +3727,7 @@ function assembleContext(params) {
       const personaLine = anchorBody ? ` How ${rName} talks, as a tendency and not a rule for every line: most of what ${rName} says is plain, ordinary speech that answers what was just said, and these habits show now and then (quoted phrases show the register and are not lines to repeat: use one rarely, never twice in a scene, never to open a reply): ${anchorBody.slice(0, 400)}` : '';
       speakerLateAnchor = `[You are ${rName}. Sound like ${rName}. Do not write, quote, or describe internal thoughts for any other character. Do not write the user's words or actions.${personaLine}]`;
 
-      // M79 Phase 3c — variation avoidance v2. Pull the last 5 outputs
+      // variation avoidance v2. Pull the last 5 outputs
       // by this speaker (was: 2), extract 3–5 word phrases, find the
       // ones that repeat across messages, and ask the model to avoid
       // them. Also keeps the prior opening-line guard since the
@@ -4031,7 +4031,7 @@ async function createThread(fs, workspaceUri, characterFile, modelId) {
 }
 
 /**
- * M79 Phase 4b — fork a thread at a specific message index. Creates a
+ * fork a thread at a specific message index. Creates a
  * new thread that is a verbatim copy of the source up to (and
  * including) the message at `forkAtIndex`. The new thread inherits
  * all metadata (characters, writingPreset, model, scene state, etc.)
@@ -4129,7 +4129,7 @@ async function loadThread(fs, workspaceUri, threadId) {
   if (thread.maxTokensOverride === undefined) thread.maxTokensOverride = null;
   if (thread.contextWindowOverride === undefined) thread.contextWindowOverride = null;
   if (thread.autoReply === undefined) thread.autoReply = true;
-  // Overhaul (M92) — explicit per-chat overrides + standing note. Distinct
+  // Overhaul — explicit per-chat overrides + standing note. Distinct
   // from the legacy seeded `writingPreset`/`responseLength` fields (which
   // were snapshots taken at creation and are deliberately NOT honored):
   // null/'' here means "inherit from character/global".
@@ -4231,7 +4231,7 @@ async function readMessages(fs, workspaceUri, threadId) {
         else if (msg.author === 'ai' && msg.characterFile) msg.name = msg.characterFile.replace(/\.(md|json)$/, '').replace(/-/g, ' ');
         else if (msg.author === 'system') msg.name = 'System';
       }
-      // M79 — backfill stable IDs for any message that predates the
+      // backfill stable IDs for any message that predates the
       // ID column. We persist the upgraded JSONL once so the next
       // load doesn't re-mutate the in-memory array. Memory provenance
       // (and therefore reliable delete-pruning) depends on these IDs.
@@ -4267,7 +4267,7 @@ async function readMemories(fs, workspaceUri, threadId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 7A: SCENE STATE (M79 Phase 3a)
+// SECTION 7A: SCENE STATE
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // The scene state is a small structured channel stored on the thread:
@@ -4360,7 +4360,7 @@ function mergeSceneState(prior, update) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 7B: STRUCTURED MEMORY (M79 Phase 1)
+// SECTION 7B: STRUCTURED MEMORY
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // Two files complement the legacy `memories.md`:
@@ -5173,8 +5173,8 @@ function renderChatEditor(container, parallx, input) {
   const tokenCountEl = el('span', 'tg-token-count');
   const viewPromptBtn = el('button', 'tg-chat-toolbar-btn', { html: icon('eye', 16) });
   viewPromptBtn.title = 'Inspect prompt: see exactly what the model receives';
-  // M79 Phase 5 — Scene state edit panel toggle. The AI emits scene
-  // updates via the `<scene-update/>` tag (M79 Phase 3a) and they're
+  // Scene state edit panel toggle. The AI emits scene
+  // updates via the `<scene-update/>` tag and they're
   // auto-stored on `thread.sceneState`; this button lets the user view
   // and override the current scene without having to drop into the
   // thread JSON.
@@ -5377,7 +5377,7 @@ function renderChatEditor(container, parallx, input) {
   const optionsBtn = el('button', 'tg-input-options-btn', { html: icon('sliders', 16) });
   optionsBtn.title = 'Chat settings';
 
-  // M79 Phase 4a — OOC toggle. When active, the next message is logged
+  // OOC toggle. When active, the next message is logged
   // but the AI never sees it (hiddenFrom: 'ai', kind: 'ooc'). Visually
   // styled as a muted "Backstage" entry so the user can scan their
   // notes alongside the in-character conversation.
@@ -5512,7 +5512,7 @@ function renderChatEditor(container, parallx, input) {
   // per-chunk updates patch one element instead of rebuilding the
   // whole transcript (see queueRender).
   let _transientBodyEl = null;
-  // M79 Phase 1 — track how many AI replies have happened since the
+  // track how many AI replies have happened since the
   // last auto-extract. We only count completed AI turns so a chatty
   // session with hidden OOC notes doesn't fire premature extractions.
   let _extractMisses = 0;
@@ -5525,7 +5525,7 @@ function renderChatEditor(container, parallx, input) {
   }
 
   /**
-   * M79 Phase 1 — fire-and-forget memory extraction.
+   * fire-and-forget memory extraction.
    *
    * Called from generateTurn's post-flow when an AI message has been
    * successfully persisted. Counts AI replies; every Nth call kicks
@@ -6623,7 +6623,7 @@ function renderChatEditor(container, parallx, input) {
 
   function renderMessageRow(msg, index = null, isTransient = false) {
     const hiddenClass = msg.hiddenFrom ? ` tg-msg--dim` : '';
-    // M79 Phase 4a — OOC entries get a distinct "Backstage" treatment
+    // OOC entries get a distinct "Backstage" treatment
     // so the user can scan them at a glance without confusing them
     // for in-character beats.
     const oocClass = msg.kind === 'ooc' ? ' tg-msg--ooc' : '';
@@ -6647,7 +6647,7 @@ function renderChatEditor(container, parallx, input) {
       });
       actions.appendChild(editBtn);
 
-      // M79 Phase 5 — Remember this (user-promoted semantic memory).
+      // Remember this (user-promoted semantic memory).
       // Writes the message content as a semantic fact with source:user
       // and confidence:1.0. The fact is always-on for future generations
       // until the user removes it manually from memory.semantic.jsonl.
@@ -6672,7 +6672,7 @@ function renderChatEditor(container, parallx, input) {
             confidence: 1.0,
             createdAt: Date.now(),
             source: 'user',
-            // M79 — record the pinned message's ID so delete-pruning
+            // record the pinned message's ID so delete-pruning
             // also removes user pins when the source is hard-deleted.
             // Matches user intent: "delete means the AI forgets."
             sources: target.id ? [target.id] : [],
@@ -6688,7 +6688,7 @@ function renderChatEditor(container, parallx, input) {
       actions.appendChild(rememberBtn);
 
       if (msg.author === 'ai') {
-        // M79 Phase 4b — fork-from-here. Creates a sibling thread that
+        // fork-from-here. Creates a sibling thread that
         // contains everything up to (and including) this message, with
         // a `forkedFrom` pointer. The new thread opens automatically;
         // the original is preserved untouched. This lets users explore
@@ -7080,7 +7080,7 @@ function renderChatEditor(container, parallx, input) {
     _transientBodyEl = null;
     messagesEl.innerHTML = '';
     let visibleCount = 0;
-    // M79 Phase 5 — `[Active turn: X]` system messages are prompt-builder
+    // `[Active turn: X]` system messages are prompt-builder
     // artifacts (orphans of a partial generation). They're invisible to
     // the AI in subsequent turns but used to appear in the UI as bare
     // bracketed strings whenever the thread had been started but the AI's
@@ -7150,7 +7150,7 @@ function renderChatEditor(container, parallx, input) {
       sceneState: thread?.sceneState || null,
       presentCharNames,
     }) : [];
-    // M79 Phase 1 — combine legacy memories.md with auto-extracted
+    // combine legacy memories.md with auto-extracted
     // semantic facts (always-on, grouped by category) and episodic
     // beats (recency × importance, trimmed to lane budget). The
     // existing memories.md file is preserved verbatim and surfaces
@@ -7399,7 +7399,7 @@ function renderChatEditor(container, parallx, input) {
   }
 
   function buildHumanMessage(text) {
-    // M79 Phase 4a — OOC mode: message is logged but never reaches the AI.
+    // OOC mode: message is logged but never reaches the AI.
     // The kind:'ooc' flag drives the muted "Backstage" styling in
     // renderMessageRow.
     const hiddenFrom = oocMode ? 'ai' : null;
@@ -7620,7 +7620,7 @@ function renderChatEditor(container, parallx, input) {
         const speakerName = gen.transient?.name || '';
         let cleaned = stripSpeakerLabel(fullResponse.trim(), speakerName, _knownOtherNames);
 
-        // M79 Phase 3a — parse and strip any <scene-update/> tag the
+        // parse and strip any <scene-update/> tag the
         // model emitted. The tag is a control signal and never reaches
         // the user-facing message. The parsed update is merged into
         // thread.sceneState so the next generation sees the new
@@ -7652,7 +7652,7 @@ function renderChatEditor(container, parallx, input) {
           );
         }
 
-        // M79 Phase 5 — auto-title also fires after the FIRST AI
+        // auto-title also fires after the FIRST AI
         // reply so AI-led / template-seeded chats (no user message
         // yet) don't stay "New Chat" forever in the sidebar.
         if (thread.title === 'New Chat'
@@ -7667,7 +7667,7 @@ function renderChatEditor(container, parallx, input) {
           _refreshSidebar?.();
         }
 
-        // M79 Phase 1 — fire-and-forget memory extraction every N
+        // fire-and-forget memory extraction every N
         // user/AI exchanges. Counts only AI-visible message pairs so
         // hidden/OOC entries don't trigger early extractions. The call
         // runs in the background; failure is logged and ignored.
@@ -7895,7 +7895,7 @@ function renderChatEditor(container, parallx, input) {
     messageHistory.push(userMessage);
     await appendMessage(fs, workspaceUri, threadId, userMessage);
 
-    // M79 Phase 4a — OOC messages don't count toward auto-title (they
+    // OOC messages don't count toward auto-title (they
     // shouldn't name the chat after a backstage note) and don't
     // trigger the auto-reply path.
     const wasOocMessage = userMessage.kind === 'ooc';
@@ -9582,7 +9582,7 @@ const CHARACTER_SAVE_TOOL = {
     try { return await characterToolSave(args || {}, token); } catch (err) { return { content: `The characters could not be saved: ${err?.message || String(err)}`, isError: true }; }
   },
   // A write: runs at once in a turn the user started, asks first in a
-  // scheduled or background turn and in Careful Mode (M90).
+  // scheduled or background turn and in Careful Mode.
   requiresConfirmation: true,
   profiles: ['standard'],
 };
@@ -10248,7 +10248,7 @@ function renderCharacterEditor(container, parallx, input) {
   ));
 
   // ── Lorebooks (lifted out of "More") ──
-  // M79 Phase 5 — Lorebook picker filter input. The picker can grow to
+  // Lorebook picker filter input. The picker can grow to
   // dozens of files in mature workspaces; a substring filter makes it
   // workable. Case-insensitive plain-text contains check (no regex —
   // user-typed input).
@@ -11195,7 +11195,7 @@ export function activate(parallx, context) {
 
     const characters = await scanCharacters(fs, workspaceUri);
     if (characters.length === 0) {
-      // M79 Phase 5 — replace the dead-end error toast with an actionable
+      // replace the dead-end error toast with an actionable
       // information message: let the user jump straight to the Characters
       // page instead of having to find it themselves.
       const choice = await parallx.window?.showInformationMessage(

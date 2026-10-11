@@ -1,4 +1,4 @@
-// cronBridge.ts — bridges parallx.cron to CronService (M63 P0)
+// cronBridge.ts — bridges parallx.cron to CronService
 //
 // Provides idempotent upsert keyed by a stable extension-provided id.
 // The underlying CronService auto-generates internal ids (`cron-N`), so we

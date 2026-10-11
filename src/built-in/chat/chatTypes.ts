@@ -1,4 +1,4 @@
-// chatTypes.ts — Centralized type definitions for the chat built-in (M13 Phase 1)
+// chatTypes.ts — Centralized type definitions for the chat built-in
 //
 // Single source of truth for every interface and type alias exported by the
 // chat subsystem.  Mirrors the canvas pattern (`canvasTypes.ts`).
@@ -170,7 +170,7 @@ export interface IDefaultParticipantServices {
   getLastSystemPromptReport?(): IOpenclawSystemPromptReport | undefined;
   /** Session manager for stale session detection during tool invocations. */
   sessionManager?: ISessionManager;
-  /** Unified AI Config service for all configuration (M20). */
+  /** Unified AI Config service for all configuration. */
   unifiedConfigService?: IUnifiedAIConfigService;
   createAutonomyMirror?(
     input: {
@@ -180,7 +180,7 @@ export interface IDefaultParticipantServices {
       runtime: 'claw' | 'openclaw';
     },
   ): Promise<IChatRuntimeAutonomyMirror | undefined>;
-  /** M39: Return the canonical file-backed skill catalog for runtime loading. */
+  /** Return the canonical file-backed skill catalog for runtime loading. */
   getSkillCatalog?(): ISkillCatalogEntry[];
 }
 
@@ -270,7 +270,7 @@ export interface ICanvasParticipantServices {
 
 // ── Participant data types ──
 
-/** Retrieval plan from the 2-call pipeline (M12). */
+/** Retrieval plan from the 2-call pipeline. */
 export interface IRetrievalPlan {
   intent: 'question' | 'situation' | 'task' | 'conversational' | 'exploration';
   reasoning: string;
@@ -281,7 +281,7 @@ export interface IRetrievalPlan {
 
 // ── M38: Scope resolution ──
 
-/** A resolved entity reference from freeform user text (M38). */
+/** A resolved entity reference from freeform user text. */
 export interface IResolvedEntity {
   /** What the user wrote, e.g. "RF Guides" */
   readonly naturalName: string;
@@ -291,7 +291,7 @@ export interface IResolvedEntity {
   readonly kind: 'folder' | 'file' | 'page';
 }
 
-/** Canonical scope object passed through all downstream pipeline stages (M38). */
+/** Canonical scope object passed through all downstream pipeline stages. */
 export interface IQueryScope {
   /** Granularity of the resolved scope. */
   readonly level: 'workspace' | 'folder' | 'document' | 'selection';
@@ -307,7 +307,7 @@ export interface IQueryScope {
   readonly confidence: number;
 }
 
-// ── Execution Plan Types (M38 Phase 2) ─────────────────────────────────────
+// ── Execution Plan Types ─────────────────────────────────────
 
 
 
@@ -333,14 +333,14 @@ export interface ISkillCatalogEntry {
   }[];
   readonly body?: string;
   /**
-   * M81 Phase 6 — workspace-relative paths of bundled scripts/references/
+   * workspace-relative paths of bundled scripts/references/
    * assets discovered under the skill folder. Optional for backward
    * compatibility with consumers that pre-date bundled-file support.
    */
   readonly bundledFiles?: readonly string[];
 }
 
-/** M39 Phase C — an activated skill ready for injection into the system prompt. */
+/** an activated skill ready for injection into the system prompt. */
 export interface IActivatedSkill {
   readonly manifest: import('../../services/skillLoaderService.js').ISkillManifest;
   readonly resolvedBody: string;
@@ -426,7 +426,7 @@ export interface IChatWidgetServices {
    *  hydrated). The service fires onDidChangeSession when they arrive. */
   readonly ensureSessionHydrated?: (sessionId: string) => Promise<void>;
   readonly deleteSession?: (sessionId: string) => void;
-  /** M86 — user-initiated plan removal (the ✕ on the plan card). */
+  /** user-initiated plan removal (the ✕ on the plan card). */
   readonly clearSessionPlan?: (sessionId: string) => void;
   readonly updateSessionModel?: (sessionId: string, modelId: string) => void;
   readonly updateSessionContextWindow?: (sessionId: string, contextWindow: number | undefined) => void;
@@ -534,7 +534,7 @@ export interface ITokenStatusBarServices {
   isIndexing(): boolean;
   getIndexingProgress?(): import('../../services/indexingPipeline.js').IndexingProgress;
   getIndexStats?(): { pages: number; files: number } | undefined;
-  /** M42 Phase 3: Check provider connection health. */
+  /** Check provider connection health. */
   checkConnectionHealth?(): Promise<{ available: boolean; model?: string; error?: string }>;
   /** F11: Get the most recent system prompt report from the OpenClaw runtime. */
   getLastSystemPromptReport?(): import('../../services/chatRuntimeTypes.js').IOpenclawSystemPromptReport | undefined;
@@ -676,7 +676,7 @@ export interface IBuiltInToolCanonicalMemorySearch {
 }
 
 /**
- * Workspace memory write accessor for built-in tools (M81 Phase 2).
+ * Workspace memory write accessor for built-in tools.
  *
  * Surfaces the subset of `IWorkspaceMemoryService` that `memory_write` needs.
  * Keeps the tool factory decoupled from the full service interface so we can
@@ -698,7 +698,7 @@ export interface IBuiltInToolWorkspaceMemory {
   appendDailyMemory(text: string, date?: Date): Promise<void>;
   writeDailyMemory(body: string, date?: Date): Promise<void>;
   ensureDailyMemory(date?: Date): Promise<string>;
-  // M81 Phase 8 — lesson files (progressive disclosure).
+  // lesson files (progressive disclosure).
   getLessonFileRelativePath(slug: string): string;
   readLessonFile(slug: string): Promise<string>;
   writeLessonFile(slug: string, content: string): Promise<void>;
@@ -751,7 +751,7 @@ export interface ISystemPromptContext {
   readonly isIndexing?: boolean;
   readonly promptOverlay?: string;
   readonly workspaceDigest?: string;
-  /** M39: Lightweight catalog of available workflow skills. */
+  /** Lightweight catalog of available workflow skills. */
   readonly skillCatalog?: readonly ISkillCatalogEntry[];
 }
 

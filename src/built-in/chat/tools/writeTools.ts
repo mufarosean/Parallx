@@ -1,4 +1,4 @@
-// writeTools.ts — File write/edit/delete tool registrations (M13 Phase 5)
+// writeTools.ts — File write/edit/delete tool registrations
 
 import type {
   IChatTool,
@@ -311,7 +311,7 @@ export function createEditFileTool(
   };
 }
 
-// ── Delete file tool (M11 Task 4.4) ──
+// ── Delete file tool ──
 
 export function createDeleteFileTool(
   fs: IBuiltInToolFileSystem | undefined,

@@ -1,4 +1,4 @@
-// dashboardWidgets.ts — canvas's dashboard widget contributions (M86 C2).
+// dashboardWidgets.ts — canvas's dashboard widget contributions.
 //
 // The canvas owns page data, so the canvas contributes the page-embed
 // widget: a live rendering of any canvas page on a dashboard. renderMode

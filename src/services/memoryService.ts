@@ -1,4 +1,4 @@
-// memoryService.ts — IMemoryService implementation (M10 Tasks 5.1 + 5.2)
+// memoryService.ts — IMemoryService implementation
 //
 // Conversation Memory (Task 5.1):
 //   After a session reaches a message threshold, summarise it via the LLM,
@@ -30,7 +30,7 @@ import type { EmbeddedChunk } from './vectorStoreService.js';
 /** Minimum number of message pairs before a session is eligible for summarisation. */
 const MIN_MESSAGES_FOR_SUMMARY = 2;
 
-// M81 Phase 4 — MAX_PREFERENCE_VALUE_LENGTH removed (used only by the now-deleted
+// MAX_PREFERENCE_VALUE_LENGTH removed (used only by the now-deleted
 // extractAndStorePreferences regex pipeline).
 
 /** Maximum memories to retrieve for context injection. */
@@ -57,7 +57,7 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-// M81 Phase 4 — detectPreferences regex extractor removed alongside the
+// detectPreferences regex extractor removed alongside the
 // extractPreferences pipeline. Preferences are now agent-authored via
 // `memory_write` (USER.md for user-scoped, MEMORY.md for project-scoped).
 
@@ -66,7 +66,7 @@ function estimateTokens(text: string): number {
 // per-turn via the standard RAG retrieval lane.
 
 /**
- * Compute exponential decay score (M17 P1.3 Task 1.3.3).
+ * Compute exponential decay score.
  *
  *   decay_score = baseImportance × exp(-λ × daysSinceLastAccess)
  */
@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
  *      conversation summaries via hybrid search.
  *   3. `formatMemoryContext()` produces a readable block for injection.
  *
- * Preference flow (M81 Phase 4):
+ * Preference flow:
  *   - Preference writes are agent-driven via `memory_write` (USER.md / MEMORY.md).
  *   - This service still owns the `user_preferences` SQL table for legacy
  *     callers; `getPreferences()` and `formatPreferencesForPrompt()` read from
@@ -204,7 +204,7 @@ export class MemoryService extends Disposable implements IMemoryService {
     await this._db.run(CREATE_MEMORIES_TABLE);
     await this._db.run(CREATE_PREFERENCES_TABLE);
 
-    // M17 Task 1.1.1: Migrate existing DBs — add updated_at if missing
+    // Migrate existing DBs — add updated_at if missing
     try {
       await this._db.run(
         `ALTER TABLE conversation_memories ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))`,
@@ -213,7 +213,7 @@ export class MemoryService extends Disposable implements IMemoryService {
       // Column already exists — ignore
     }
 
-    // M17 P1.3 Task 1.3.1: Migrate — add last_accessed, importance, decay_score to conversation_memories
+    // Migrate — add last_accessed, importance, decay_score to conversation_memories
     for (const alter of [
       `ALTER TABLE conversation_memories ADD COLUMN last_accessed TEXT NOT NULL DEFAULT (datetime('now'))`,
       `ALTER TABLE conversation_memories ADD COLUMN importance REAL NOT NULL DEFAULT 0.5`,
@@ -250,7 +250,7 @@ export class MemoryService extends Disposable implements IMemoryService {
    * Get the message count stored with the last summary for a session.
    * Returns `null` if no memory exists yet.
    *
-   * Used by the growth-based re-summarization guard (M17 Task 1.1.2):
+   * Used by the growth-based re-summarization guard:
    * if current message count ≥ stored × 2, or ≥ stored + 10, re-summarize.
    */
   async getMemoryMessageCount(sessionId: string): Promise<number | null> {
@@ -312,7 +312,7 @@ export class MemoryService extends Disposable implements IMemoryService {
    * Uses hybrid search (vector + keyword) on the vector index,
    * filtered to source_type='memory'.
    *
-   * M17 P1.3: Updates last_accessed on recalled rows, applies decay-weighted re-ranking.
+   * Updates last_accessed on recalled rows, applies decay-weighted re-ranking.
    */
   async recallMemories(
     query: string,
@@ -422,7 +422,7 @@ export class MemoryService extends Disposable implements IMemoryService {
     }));
   }
 
-  // ── Concept-Level Memory (M17 P1.2) ──
+  // ── Concept-Level Memory ──
 
   // M81 Phase 3 Stage 2 — storeConcepts / recallConcepts / formatConceptContext
   // removed. These backed the auto-extraction pipeline that's been replaced by
@@ -430,7 +430,7 @@ export class MemoryService extends Disposable implements IMemoryService {
   // 'concept' vector-store source type are also gone.
 
   // ── User Preference Learning (Task 5.2) ──
-  // M81 Phase 4 — extractAndStorePreferences removed. The regex pipeline that
+  // extractAndStorePreferences removed. The regex pipeline that
   // backed it (detectPreferences + the chatDataService.extractPreferences
   // wrapper + the queueMemoryWriteBack caller) is gone in favor of agent-
   // authored writes through `memory_write`. The read methods (getPreferences /
@@ -486,7 +486,7 @@ export class MemoryService extends Disposable implements IMemoryService {
     await this._db.run('DELETE FROM user_preferences WHERE key = ?', [key]);
   }
 
-  /** Delete a specific memory by session ID (M20 F.2). */
+  /** Delete a specific memory by session ID. */
   async deleteMemory(sessionId: string): Promise<void> {
     await this._ensureInitialized();
     await this._db.run('DELETE FROM conversation_memories WHERE session_id = ?', [sessionId]);
@@ -498,7 +498,7 @@ export class MemoryService extends Disposable implements IMemoryService {
 
   // M81 Phase 3 Stage 2 — getAllConcepts / deleteConcept removed.
 
-  // ── Decay & Eviction (M17 P1.3) ──
+  // ── Decay & Eviction ──
 
   /**
    * Recalculate decay scores for all memories (Task 1.3.3).

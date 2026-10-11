@@ -1,4 +1,4 @@
-// mcpBridge.ts — bridges parallx.mcp to ILanguageModelToolsService (M63 P0)
+// mcpBridge.ts — bridges parallx.mcp to ILanguageModelToolsService
 //
 // Provides extensions a stable surface for invoking MCP tools registered with
 // the host. MCP tools are namespaced as `mcp__<serverId>__<toolName>` (see

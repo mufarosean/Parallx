@@ -183,7 +183,7 @@ export function createFollowupRunner(
     currentDepth: number,
     token?: { isCancellationRequested: boolean },
   ): Promise<IFollowupEvaluation> => {
-    // M60 §3.7: cancellation cooperation — refuse to evaluate after cancel.
+    // cancellation cooperation — refuse to evaluate after cancel.
     if (token?.isCancellationRequested) {
       return { shouldFollowup: false, reason: 'cancelled' };
     }
@@ -198,7 +198,7 @@ export function createFollowupRunner(
       // Upstream: queue debounce via DEFAULT_QUEUE_DEBOUNCE_MS (queue/state.ts:18)
       // and waitForQueueDebounce in drain.ts prevents rapid-fire followup turns.
       // Parallx: explicit delay since we have no queue drain mechanism.
-      // M60 §3.7: delay must be cancellable so the kill-switch terminates
+      // delay must be cancellable so the kill-switch terminates
       // a chain mid-flight in <2s rather than after the full FOLLOWUP_DELAY_MS.
       const cancelled = await waitCancellable(FOLLOWUP_DELAY_MS, token);
       if (cancelled) {

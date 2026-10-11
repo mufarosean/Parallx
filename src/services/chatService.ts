@@ -82,7 +82,7 @@ import { ChatRequestQueueKind } from './chatTypes.js';
 
 const CHAT_SESSION_SCHEME = 'parallx-chat-session';
 
-// ── Ephemeral session handle types (M58 W5-A) ──
+// ── Ephemeral session handle types ──
 
 /**
  * Seed passed to `ChatService.createEphemeralSession`.
@@ -100,7 +100,7 @@ export interface IEphemeralSessionSeed {
   /** Informational: the first user message the caller plans to send. */
   readonly firstUserMessage?: string;
   /**
-   * M91 — when set, this autonomous run's FULL transcript is ARCHIVED to
+   * when set, this autonomous run's FULL transcript is ARCHIVED to
    * SQLite at purge time (reopenable via getArchivedRun), tagged with this
    * origin ('heartbeat' | 'cron' | 'dashboard' | 'subagent'). Omit to keep
    * the pre-M91 behavior (purge with no transcript).
@@ -693,7 +693,7 @@ export class ChatService extends Disposable implements IChatService {
   /** Background runs: label, and when their current turn started. */
   private readonly _runLabels = new Map<string, string>();
   private readonly _runStarted = new Map<string, number>();
-  /** M91 — ephemeral sessions to archive at purge (id → origin tag). */
+  /** ephemeral sessions to archive at purge (id → origin tag). */
   private readonly _ephemeralArchiveOrigins = new Map<string, string>();
 
   // ── Dependencies ──
@@ -1127,7 +1127,7 @@ export class ChatService extends Disposable implements IChatService {
     return [...this._sessions.values()].filter((s) => !isEphemeralSessionId(s.id));
   }
 
-  // ── Ephemeral session substrate (M58 W5-A) ──
+  // ── Ephemeral session substrate ──
   //
   // Creates an in-memory session that:
   //   • participates in the normal sendRequest pipeline (tool loop, approval
@@ -1198,7 +1198,7 @@ export class ChatService extends Disposable implements IChatService {
       this._ephemeralSystemPrompts.set(id, seed.systemMessage);
     }
     if (typeof seed.label === 'string' && seed.label.trim()) this._runLabels.set(id, seed.label.trim());
-    // M91 — remember to archive this run's transcript at purge time.
+    // remember to archive this run's transcript at purge time.
     if (typeof seed.archiveOrigin === 'string' && seed.archiveOrigin.trim().length > 0) {
       this._ephemeralArchiveOrigins.set(id, seed.archiveOrigin.trim());
     }
@@ -1231,7 +1231,7 @@ export class ChatService extends Disposable implements IChatService {
       this._activeCancellations.delete(sessionId);
     }
 
-    // M91 — archive the full transcript BEFORE dropping it, when this run
+    // archive the full transcript BEFORE dropping it, when this run
     // asked for it (seed.archiveOrigin). Capture the session + origin now;
     // the async write runs on the captured reference so the synchronous
     // delete below can't race it. Best-effort: a failed archive never
@@ -1327,7 +1327,7 @@ export class ChatService extends Disposable implements IChatService {
       ? captureSession(this._sessionManager)
       : undefined;
 
-    // Session-scoped diagnostic log (M14 Phase 3)
+    // Session-scoped diagnostic log
     const logPrefix = this._sessionManager?.activeContext?.logPrefix ?? '';
     if (logPrefix) {
       console.log('%s [ChatService] sendRequest sessionId=%s', logPrefix, sessionId);

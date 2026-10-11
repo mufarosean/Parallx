@@ -1,4 +1,4 @@
-// chatDiffViewer.ts — Inline diff review component (M11 Task 2.5)
+// chatDiffViewer.ts — Inline diff review component
 //
 // Renders a unified diff with red/green highlighted lines inside the
 // chat response. Includes "Accept" and "Reject" buttons plus file
@@ -14,7 +14,7 @@ import type { IDiffResult, IDiffHunk, ILineDiffChange, IWordChange } from '../..
 import { computeWordDiff, estimateDiffTokens } from '../../../services/diffService.js';
 import type { DiffReviewDecision, IDiffViewerOptions } from '../chatTypes.js';
 
-// Diff viewer types — now defined in chatTypes.ts (M13 Phase 1)
+// Diff viewer types — now defined in chatTypes.ts
 export type { DiffReviewDecision, DiffReviewCallback, IDiffViewerOptions } from '../chatTypes.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════

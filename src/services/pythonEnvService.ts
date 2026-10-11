@@ -1,5 +1,5 @@
 // pythonEnvService.ts — the renderer-side owner of the per-workspace Python
-// runtime (M94).
+// runtime.
 //
 // Division of responsibility with electron/pythonBridge.cjs:
 //

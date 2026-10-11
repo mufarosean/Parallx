@@ -1643,7 +1643,7 @@ export {
 } from './blockStateRegistry/blockStateRegistry.js';
 export type { CanvasDragSession, CrossPageMoveParams } from './blockStateRegistry/blockStateRegistry.js';
 
-// ── Cover gallery (M93 slop audit, finding 7) ────────────────────────────
+// ── Cover gallery ────────────────────────────
 // The default page-cover art, derived from the three Parallx moods
 // (Slate / Warm / Ember): quiet, desaturated, confident. Covers appear in
 // every canvas screenshot, so even content art carries the identity — no

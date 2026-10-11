@@ -1,4 +1,4 @@
-// inlineAIChat.ts — Floating AI mini-chat for canvas editor (M48 Phase 5)
+// inlineAIChat.ts — Floating AI mini-chat for canvas editor
 //
 // Replaces the preset-action InlineAIMenuController with a free-form
 // multi-turn chat triggered from a ✨ button in the bubble menu.

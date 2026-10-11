@@ -49,7 +49,7 @@ interface ToolWorkspaceFoldersChangeEvent {
   readonly removed: readonly ToolWorkspaceFolder[];
 }
 
-/** Serialized canvas page info for tool API (M56). */
+/** Serialized canvas page info for tool API. */
 export interface ToolCanvasPageInfo {
   readonly id: string;
   readonly parentId: string | null;
@@ -61,12 +61,12 @@ export interface ToolCanvasPageInfo {
   readonly updatedAt: string;
 }
 
-/** Serialized canvas page tree node for tool API (M56). */
+/** Serialized canvas page tree node for tool API. */
 export interface ToolCanvasPageTreeNode extends ToolCanvasPageInfo {
   readonly children: ToolCanvasPageTreeNode[];
 }
 
-/** Serialized canvas page change event for tool API (M56). */
+/** Serialized canvas page change event for tool API. */
 export interface ToolCanvasPageChangeEvent {
   readonly kind: string;
   readonly pageId: string;
@@ -111,7 +111,7 @@ export class WorkspaceBridge {
   /** Fires when the workspace is renamed via `workspace.rename` command. */
   readonly onDidRename: Event<string>;
 
-  /** Fires when a canvas page is created, updated, deleted, moved, or reordered (M56). */
+  /** Fires when a canvas page is created, updated, deleted, moved, or reordered. */
   readonly onDidChangeCanvasPages: Event<ToolCanvasPageChangeEvent>;
 
   constructor(
@@ -197,7 +197,7 @@ export class WorkspaceBridge {
       this.onDidFilesChange = fallbackEmitter.event;
     }
 
-    // Canvas page change events (M56)
+    // Canvas page change events
     // Late-bound: the canvas tool registers the service after activation,
     // so we subscribe lazily on first access. The emitter is always available.
     const canvasEmitter = new Emitter<ToolCanvasPageChangeEvent>();
@@ -257,7 +257,7 @@ export class WorkspaceBridge {
     return this._workspaceService?.workspaceName;
   }
 
-  // ── Canvas Page Query (M56) ──
+  // ── Canvas Page Query ──
 
   private _canvasPageEmitter!: Emitter<ToolCanvasPageChangeEvent>;
   private _canvasEventSubscribed = false;
@@ -278,7 +278,7 @@ export class WorkspaceBridge {
   }
 
   /**
-   * Get all non-archived root-level canvas pages (M56).
+   * Get all non-archived root-level canvas pages.
    */
   async getCanvasPages(): Promise<ToolCanvasPageInfo[]> {
     this._throwIfDisposed();
@@ -290,7 +290,7 @@ export class WorkspaceBridge {
   }
 
   /**
-   * Get the full canvas page tree (M56).
+   * Get the full canvas page tree.
    */
   async getCanvasPageTree(): Promise<ToolCanvasPageTreeNode[]> {
     this._throwIfDisposed();

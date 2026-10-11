@@ -1,5 +1,5 @@
 // mindMapRefreshOrchestrator.ts — user-initiated incremental refresh of
-// LLM-driven mind-map producers (M76 Phase 3).
+// LLM-driven mind-map producers.
 //
 // Phases 4 (lineage classifier) and 5 (concept clustering) each register
 // themselves as a RefreshPass. The orchestrator owns:

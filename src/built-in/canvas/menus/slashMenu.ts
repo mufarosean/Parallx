@@ -308,7 +308,7 @@ export class SlashMenuController implements ICanvasMenu {
   private async _execute(item: SlashMenuItem, editor: Editor): Promise<void> {
     // Track for recents-hoisting on next open. Done before insertion so a
     // failure in the insert path still records the user's intent.
-    // M77 Phase 8.2 — record BEFORE we flip the suppress flag so a throw
+    // record BEFORE we flip the suppress flag so a throw
     // here (e.g. localStorage quota) can't leave the flag stuck on, which
     // would silently swallow every subsequent user edit.
     _slashRecents.record(item.blockId);

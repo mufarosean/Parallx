@@ -53,7 +53,7 @@ export const workspaceAddFolder: CommandDescriptor = {
   id: 'workspace.addFolderToWorkspace',
   title: 'Add Folder to Workspace…',
   category: 'Workspace',
-  // M53 D4.6: Single-folder workspaces only — redirect to open folder
+  // Single-folder workspaces only — redirect to open folder
   handler: async (ctx) => {
     const bridge = electronBridge();
     if (!bridge) {

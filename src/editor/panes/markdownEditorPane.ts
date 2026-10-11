@@ -61,7 +61,7 @@ export class MarkdownEditorPane extends EditorPane {
     this._scrollContainer.appendChild(this._contentEl);
     container.appendChild(this._scrollContainer);
 
-    // M48: Context menu for selection AI actions
+    // Context menu for selection AI actions
     this._scrollContainer.addEventListener('contextmenu', this._onContextMenu);
   }
 
@@ -142,14 +142,14 @@ export class MarkdownEditorPane extends EditorPane {
 
   // ── M48: Selection API & Context Menu ──────────────────────────────
 
-  /** Get the currently selected text in the markdown preview (M48). */
+  /** Get the currently selected text in the markdown preview. */
   getSelectedText(): string | undefined {
     const sel = window.getSelection();
     const text = sel?.toString()?.trim();
     return text && text.length > 0 ? text : undefined;
   }
 
-  /** Get selection source metadata for the AI action system (M48). */
+  /** Get selection source metadata for the AI action system. */
   getSelectionSource(): { fileName: string; filePath: string } | undefined {
     const text = this.getSelectedText();
     if (!text || !this.input) return undefined;
@@ -173,7 +173,7 @@ export class MarkdownEditorPane extends EditorPane {
           label: 'Copy',
           keybinding: 'Ctrl+C',
         },
-        // M48 Phase 4: Single AI action
+        // Single AI action
         {
           id: 'ai.addToChat',
           label: 'Add Selection to Chat',
@@ -199,7 +199,7 @@ export class MarkdownEditorPane extends EditorPane {
     this._activeContextMenu = menu;
   };
 
-  /** Dispatch a selection action to the unified dispatcher (M48 Phase 4). */
+  /** Dispatch a selection action to the unified dispatcher. */
   private _dispatchSelectionAction(actionId: string): void {
     const selected = this.getSelectedText();
     const source = this.getSelectionSource();

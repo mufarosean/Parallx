@@ -38,7 +38,7 @@ import type {
 
 const CHAT_MARKDOWN = _createChatMarkdownRenderer();
 
-// ── parallx:// link checks (M66) ─────────────────────────────────────────────
+// ── parallx:// link checks ─────────────────────────────────────────────
 //
 // A citation link that points nowhere must not look like one that works.
 // Chat installs a checker (the link's own kind decides whether its target
@@ -169,7 +169,7 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
     _stripExfilImageVectors(el);
   }
 
-  // M15: Post-process [N] citation markers into clickable superscript badges.
+  // Post-process [N] citation markers into clickable superscript badges.
   // The model emits [1], [2] etc. based on numbered retrieved context.
   // We replace those text nodes with interactive badges that navigate to the source.
   if (part.citations && part.citations.length > 0) {
@@ -179,10 +179,10 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
     _autoLinkSourceMentions(el, part.citations);
   }
 
-  // M102: make concept-map nodes ask their own follow-up question.
+  // make concept-map nodes ask their own follow-up question.
   _wireMindMapNodes(el);
 
-  // M66: a citation link whose target is gone is marked, not left looking live.
+  // a citation link whose target is gone is marked, not left looking live.
   void markParallxLinks(el);
 
   return el;
@@ -591,7 +591,7 @@ function _toPipeTableRow(cells: string[]): string {
  * Replaces them with clickable superscript badges that navigate to the
  * corresponding source. This is the Perplexity-style citation UX.
  *
- * M15 — Citation Attribution Redesign.
+ * Citation Attribution Redesign.
  */
 function _postProcessCitations(
   container: HTMLElement,
@@ -842,7 +842,7 @@ function _createChatMarkdownRenderer(): MarkdownIt {
 
   _installKatexRules(markdown);
 
-  // M102: a ```mindmap fence renders as a concept map instead of code. Model
+  // a ```mindmap fence renders as a concept map instead of code. Model
   // prose reaches markdown-it as one blob (codeBlock() parts are an explicit
   // participant API, not a split of the text), so overriding `fence` is
   // enough — no custom block rule needed. Every other language falls through
@@ -1004,7 +1004,7 @@ function _renderKatex(expression: string, displayMode: boolean): string {
 function _renderCodeBlock(part: IChatCodeBlockContent): HTMLElement {
   const root = $('div.parallx-chat-code-block');
 
-  // Check for filepath header (M11 Task 2.6)
+  // Check for filepath header
   const fileInfo = extractFilePath(part.code);
 
   // Header with language label + copy button
@@ -1036,7 +1036,7 @@ function _renderCodeBlock(part: IChatCodeBlockContent): HTMLElement {
   pre.appendChild(code);
   root.appendChild(pre);
 
-  // Code action buttons when filepath detected (M11 Task 2.6)
+  // Code action buttons when filepath detected
   if (fileInfo) {
     const actionBar = renderCodeActionButtons(
       fileInfo.filePath,
@@ -1643,7 +1643,7 @@ const EDIT_OP_LABELS: Record<string, { label: string; icon: string }> = {
 
 import type { EditApplyEventDetail } from '../chatTypes.js';
 
-// EditApplyEventDetail — now defined in chatTypes.ts (M13 Phase 1)
+// EditApplyEventDetail — now defined in chatTypes.ts
 export type { EditApplyEventDetail } from '../chatTypes.js';
 
 function _renderEditProposal(part: IChatEditProposalContent): HTMLElement {

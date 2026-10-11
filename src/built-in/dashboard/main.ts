@@ -121,7 +121,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _registry = new DashboardWidgetRegistry();
   context.subscriptions.push(_registry);
 
-  // AI concurrency comes from the settings registry (M86 C4) — read live at
+  // AI concurrency comes from the settings registry — read live at
   // each admission decision so changes apply without restart.
   _scheduler = new DashboardRefreshScheduler(() => {
     try {
@@ -275,7 +275,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   );
 
   // 4b. Mirror the `parallx.dashboard` contribution hub into the registry
-  //     (M86). Tools register widget types through their own api bridge at
+  //. Tools register widget types through their own api bridge at
   //     any point — before or after this activate — and the mirror keeps
   //     the registry in sync, including live placeholder⇄widget swaps when
   //     an extension is disabled or (re-)enabled mid-session.
@@ -372,7 +372,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 6. Register commands the user / picker can invoke.
   _registerCommands(api, context);
 
-  // 6c. Page-level refresh schedules (M86 C4) — headless. A page with a
+  // 6c. Page-level refresh schedules — headless. A page with a
   //     refresh policy fires whether or not it is open: every widget on it
   //     refreshes through the scheduler's admission queue (AI cap applies),
   //     writing results to the DB; any open editor repaints via the normal
@@ -450,7 +450,7 @@ async function _maybeAutoOpen(api: ParallxApi, context: ToolContext): Promise<vo
 // Inline SVG for tab icon. Kept in sync with the editor provider's header icon.
 const _DASHBOARD_ICON_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>';
 
-// ─── Page-level refresh schedules (M86 C4) ─────────────────────────────────
+// ─── Page-level refresh schedules ─────────────────────────────────
 //
 // Pages are few, so on any page change we simply cancel and rebuild every
 // page schedule. Each fire enumerates the page's widgets and kicks their
@@ -558,7 +558,7 @@ async function _headlessWidgetRefresh(api: ParallxApi, widgetId: string): Promis
       cachedOutput: row.cachedOutput,
       mode: 'background',
       // A page-schedule fire is automation, not a user gesture — say so
-      // explicitly instead of relying on downstream defaults (M90).
+      // explicitly instead of relying on downstream defaults.
       initiator: 'autonomous',
     });
     if (typeof output === 'string') {

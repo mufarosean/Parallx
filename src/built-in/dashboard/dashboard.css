@@ -1,5 +1,5 @@
 /* ============================================================================
-   Dashboard (M71) — top-class chrome, grid, widgets, picker, settings drawer.
+   Dashboard — top-class chrome, grid, widgets, picker, settings drawer.
 
    Style rules:
    - Inherits workbench color tokens via `var(--vscode-*)` / `var(--parallx-*)`
@@ -1799,7 +1799,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 }
 .cdw--done .cdw__title { color: var(--px-text-secondary); }
 
-/* ── Page schedule popover (M86 C4) ── */
+/* ── Page schedule popover ── */
 .dashboard-schedule-pop {
   position: fixed;
   z-index: 1000;
@@ -1840,7 +1840,7 @@ video.vw__fill { object-fit: contain; background: #000; }
   justify-content: flex-end;
 }
 
-/* ── Timer widget (M86 C3): focus and break intervals, tasks, a report ── */
+/* ── Timer widget: focus and break intervals, tasks, a report ── */
 .dtimer {
   --dtimer-accent: var(--px-accent);
   display: flex; flex-direction: column; align-items: stretch; gap: 10px; height: 100%; min-height: 0; overflow-y: auto;
@@ -1930,7 +1930,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtimer__taskcount:hover { color: var(--px-text); }
 .dtimer__btn:disabled { opacity: .5; cursor: default; }
 .dtimer__budget[hidden], .dtimer__pickrow[hidden], .dtimer__pickerempty[hidden] { display: none; }
-/* ── Tracker board widget (M86 C3) ── */
+/* ── Tracker board widget ── */
 .dtracker { display: flex; flex-direction: column; gap: 8px; height: 100%; }
 .dtracker__summary { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .dtracker__strip { display: flex; flex: 1; height: 6px; border-radius: 3px; overflow: hidden; gap: 2px; }
@@ -1951,7 +1951,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtracker__empty, .dtable__empty { font-size: var(--px-text-sm); opacity: .75; padding: 8px; }
 .dtracker__empty strong, .dtable__empty strong { display: block; margin-bottom: 4px; }
 
-/* ── Table/chart widget (M86 C3) ── */
+/* ── Table/chart widget ── */
 .dtable { height: 100%; }
 .dtable__host { height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
 .dtable__table { border-collapse: collapse; font-size: var(--px-text-sm); width: 100%; }
@@ -1967,7 +1967,7 @@ video.vw__fill { object-fit: contain; background: #000; }
 .dtable__chartvalue { font-variant-numeric: tabular-nums; opacity: .8; }
 .dtable__more { font-size: var(--px-text-xs); opacity: .6; }
 
-/* ── Picker templates (M86 C3) ──
+/* ── Picker templates ──
    Same label and the same 20px edge as the sections below; the cards wrap
    into a grid (a sideways rail hid every card past the third). */
 .dashboard-picker__templates {

@@ -1,5 +1,5 @@
 // selectionActionHandlers.ts — Built-in action handlers for the Unified
-// Selection → AI Action System (M48).
+// Selection → AI Action System.
 //
 // Phase 4: Simplified to a single AddSelectionToChat handler + SendToCanvas.
 // Explain/Summarize are handled as model-driven skills (defaultSkillContents.ts),

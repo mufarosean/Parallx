@@ -462,7 +462,7 @@ export class FileService extends Disposable implements IFileService {
 
   // ── Event Handling ─────────────────────────────────────────────────────
 
-  // M78 Phase 6 — file watcher event coalescing.
+  // file watcher event coalescing.
   //
   // OS file-change events arrive one IPC callback at a time with no
   // deduplication: a build tool that writes 50 files produces 50
@@ -548,7 +548,7 @@ export class FileService extends Disposable implements IFileService {
     this._contentCache.clear();
     this._cacheGeneration.clear();
 
-    // M78 Phase 6 — clear any pending coalesced events so a teardown
+    // clear any pending coalesced events so a teardown
     // doesn't drop a fire() into the void on a disposed emitter.
     if (this._coalesceTimer) {
       clearTimeout(this._coalesceTimer);

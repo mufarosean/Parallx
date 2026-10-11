@@ -44,7 +44,7 @@ import type {
   ISessionSidebarServices,
 } from '../chatTypes.js';
 
-// IChatWidgetServices — now defined in chatTypes.ts (M13 Phase 1)
+// IChatWidgetServices — now defined in chatTypes.ts
 export type { IChatWidgetServices } from '../chatTypes.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -80,7 +80,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _mainArea: HTMLElement;
   private readonly _messageListContainer: HTMLElement;
   private readonly _taskRailContainer: HTMLElement;
-  /** M85 — active plan card host (hidden when the session has no plan). */
+  /** active plan card host (hidden when the session has no plan). */
   private readonly _planCardContainer: HTMLElement;
   /** Signature of the last rendered plan — skips re-render when unchanged. */
   private _renderedPlanSig = '';
@@ -136,7 +136,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   readonly onDidAcceptInput: Event<string> = this._onDidAcceptInput.event;
 
   private readonly _onDidRequestOpenToolSettings = this._register(new Emitter<void>());
-  /** Fired when the wrench icon is clicked — callers should open AI Hub → Tools (M20 E.2). */
+  /** Fired when the wrench icon is clicked — callers should open AI Hub → Tools. */
   readonly onDidRequestOpenToolSettings: Event<void> = this._onDidRequestOpenToolSettings.event;
 
   private readonly _sessionDisposables = this._register(new DisposableStore());
@@ -189,7 +189,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._scrollBtn.innerHTML = chatIcons.chevronDown;
     this._mainArea.appendChild(this._scrollBtn);
 
-    // M85 — Active plan card (the agent's durable working plan). Docked just
+    // Active plan card (the agent's durable working plan). Docked just
     // above the input (VS Code-style), where the user's attention already is,
     // instead of eating space at the top of the conversation. Hidden when no
     // plan; collapsible via its header.
@@ -285,7 +285,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       }
     }) as EventListener));
 
-    // M102: a concept-map node click stages a follow-up about that idea.
+    // a concept-map node click stages a follow-up about that idea.
     // Staged, never sent — the label is what you want to ask ABOUT, and the
     // user still has to say what they actually want to know.
     this._register(addDisposableListener(this._messageListContainer, 'parallx:mindmap-ask' as keyof HTMLElementEventMap, ((e: CustomEvent<{ label: string }>) => {
@@ -569,7 +569,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._inputPart.focus();
   }
 
-  /** Add a text selection as context (M48). */
+  /** Add a text selection as context. */
   addSelectionAttachment(attachment: IChatSelectionAttachment): void {
     this._inputPart.addSelectionAttachment(attachment);
   }
@@ -609,7 +609,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     return this._session;
   }
 
-  /** Update context pills UI with sources the LLM sees (M11 Task 1.10). */
+  /** Update context pills UI with sources the LLM sees. */
   setContextPills(pills: readonly IContextPill[]): void {
     this._inputPart.setContextPills(pills);
   }
@@ -1132,7 +1132,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       const progress = $('span.parallx-chat-plan-progress', `${doneCount}/${plan.steps.length}`);
       header.appendChild(progress);
     }
-    // M86 — user-side clear. The model is SUPPOSED to clear its plan when
+    // user-side clear. The model is SUPPOSED to clear its plan when
     // the work is done (plan_update {clear:true}), but models — local ones
     // especially — forget; the user must never be stuck with a stale card.
     const clearBtn = $('button.parallx-chat-plan-clear');
@@ -1466,7 +1466,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     const icon = $('div.parallx-chat-empty-state-icon');
     icon.innerHTML = chatIcons.sparkle;
-    // M89 S2 — copy lives in the voice registry (ui/emptyStates.ts).
+    // copy lives in the voice registry (ui/emptyStates.ts).
     const title = $('div.parallx-chat-empty-state-title', EMPTY_STATES['chat.newSession'].headline);
     const subtitle = $('div.parallx-chat-empty-state-subtitle',
       EMPTY_STATES['chat.newSession'].hint);

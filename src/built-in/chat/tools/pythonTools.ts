@@ -1,4 +1,4 @@
-// pythonTools.ts — chat tools for the workspace Python runtime (M94).
+// pythonTools.ts — chat tools for the workspace Python runtime.
 //
 // These are registered only while `python.enabled` is on for the workspace
 // (see chat/main.ts), so a workspace that has not opted in carries zero

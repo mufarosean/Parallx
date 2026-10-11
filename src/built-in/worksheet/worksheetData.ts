@@ -1,4 +1,4 @@
-// worksheetData.ts — Worksheets (M99) data layer over the workspace SQLite.
+// worksheetData.ts — Worksheets data layer over the workspace SQLite.
 //
 // Same access pattern as the planner: the shared workspace database via
 // window.parallxElectron.database (worker-thread proxied; NEVER touch

@@ -1,4 +1,4 @@
-// printHtml.ts — pure builders for the canvas "Export as PDF" pipeline (M93).
+// printHtml.ts — pure builders for the canvas "Export as PDF" pipeline.
 //
 // The export clones the LIVE ProseMirror DOM (so everything the user sees —
 // rendered KaTeX, highlighted code, task checkboxes, columns — exports with

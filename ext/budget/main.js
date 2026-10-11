@@ -56,7 +56,7 @@ function onSyncEvent(fn) {
 // ─── Manual-sync orchestrator ─────────────────────────────────────────────
 //
 // Single entry point for every "Sync now" / "Run First Sync" button in the UI.
-// M82: runs the deterministic in-process pipeline (budgetSync) directly — one
+// runs the deterministic in-process pipeline (budgetSync) directly — one
 // focused LLM call per stage per email — so it is reliable on local models and
 // the user sees a concrete result immediately. No cron hand-off, no invisible
 // ephemeral chat turn. Guards against double-click while a sync is in flight.
@@ -7572,7 +7572,7 @@ async function budgetSync(api) {
   }
 }
 
-// M80: seed the bundled budget-sync skill into the workspace at .parallx/skills/.
+// seed the bundled budget-sync skill into the workspace at .parallx/skills/.
 // Idempotent — only writes if the skill file is missing. Best-effort.
 async function _seedBudgetSyncSkill(api) {
   try {
@@ -8716,7 +8716,7 @@ export async function activate(api, context) {
   if (_activated) return;
   _activated = true;
   _api = api;
-  api_ref = api; // M80: shared by the budget.* chat-tool helpers.
+  api_ref = api; // shared by the budget.* chat-tool helpers.
   _toolPath = api.env.toolPath;
 
   if (!api.database) {
@@ -8731,12 +8731,12 @@ export async function activate(api, context) {
     return;
   }
 
-  // M80: trash purge — keep soft-deleted transactions 30 days, then drop.
+  // trash purge — keep soft-deleted transactions 30 days, then drop.
   try {
     await db.run(`DELETE FROM transactions_trash WHERE deleted_at < datetime('now','-30 days')`);
   } catch { /* table may not exist yet on first migration; harmless */ }
 
-  // M80: seed the budget-sync skill into this workspace (idempotent).
+  // seed the budget-sync skill into this workspace (idempotent).
   try { await _seedBudgetSyncSkill(api); } catch { /* best-effort */ }
 
   try {

@@ -1,4 +1,4 @@
-// selectionActionTypes.ts — Unified Selection → AI Action System (M48)
+// selectionActionTypes.ts — Unified Selection → AI Action System
 //
 // Core contracts for the three-layer architecture:
 //   Layer 1: Surface Adapters  — per-editor selection capture

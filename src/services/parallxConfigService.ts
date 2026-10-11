@@ -1,4 +1,4 @@
-// parallxConfigService.ts — .parallx/config.json loader (M11 Task 2.9)
+// parallxConfigService.ts — .parallx/config.json loader
 //
 // Reads and validates `.parallx/config.json`, provides typed access to
 // all settings, and watches for changes. Falls back to defaults.
@@ -160,7 +160,7 @@ function _mergeSection(defaults: Record<string, unknown>, override: unknown): Re
 export interface IConfigFileSystem {
   readFile(relativePath: string): Promise<string>;
   exists(relativePath: string): Promise<boolean>;
-  /** Optional write capability — required for workspace override persistence (M20 B.1). */
+  /** Optional write capability — required for workspace override persistence. */
   writeFile?(relativePath: string, content: string): Promise<void>;
 }
 

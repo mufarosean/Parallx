@@ -18,7 +18,7 @@
 //                       <workspaceRoot>/.parallx/workspace-state.json)
 //
 // Both backends are M53 portable storage — JSON via the existing electron
-// IPC bridge. No new IPC handlers needed (M60 §3.4 boundary preserved).
+// IPC bridge. No new IPC handlers needed.
 //
 // Concurrency (§3.7):
 //   - Writes are serialized through the underlying IStorage write queue.

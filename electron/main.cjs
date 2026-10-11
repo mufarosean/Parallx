@@ -127,7 +127,7 @@ registerTeardown('docling', 'appQuit', () => {
   try { doclingBridge.stopServiceSync(); } catch { /* best-effort */ }
 });
 
-// Python runs are workspace-scoped by construction (M94): a script started
+// Python runs are workspace-scoped by construction: a script started
 // against one workspace must not outlive a switch to another, or it keeps
 // writing into a workspace the user has closed.
 registerTeardown('python-runs', 'workspace', () => {
@@ -741,7 +741,7 @@ async function createWindow() {
     lastEditableContextMenu = null;
   });
 
-  // M67 Phase 4.2 — Block renderer-initiated window.open() calls. Extensions
+  // Block renderer-initiated window.open() calls. Extensions
   // must use api.window.startDrag() or shell.openExternal() via IPC; they must
   // NOT be able to spawn new BrowserWindows that bypass CSP/preload.
   //
@@ -1026,7 +1026,7 @@ ipcMain.handle('tools:get-directories', async () => {
   return { builtinDir, userDir, devDir };
 });
 
-// ── .plx package integrity verification (M67 Phase 4.3) ─────────────────────
+// ── .plx package integrity verification ─────────────────────
 
 const _PLX_INTEGRITY_FILENAME = 'parallx-integrity.json';
 
@@ -1205,7 +1205,7 @@ ipcMain.handle('tools:install-from-file', async (_event) => {
       return { error: 'Invalid manifest: missing or invalid "version" field' };
     }
 
-    // 4b. Verify SHA-256 hash manifest + optional Ed25519 signature (M67 Phase 4.3).
+    // 4b. Verify SHA-256 hash manifest + optional Ed25519 signature.
     const integrityError = _verifyPackageIntegrity(zip);
     if (integrityError) {
       return { error: integrityError };
@@ -1963,7 +1963,7 @@ ipcMain.handle('shell:openExternal', async (_event, url, opts) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
-// Secret Storage IPC (M60 §T6.F3)
+// Secret Storage IPC
 // ════════════════════════════════════════════════════════════════════════════════
 //
 // Encrypted-at-rest secret storage backed by `app.safeStorage`. Used by
@@ -1971,7 +1971,7 @@ ipcMain.handle('shell:openExternal', async (_event, url, opts) => {
 // tokens stay in renderer memory and never reach disk.
 //
 // Storage path: <APP_ROOT>/data/secrets/<sha256(key)[:32]>.enc
-//   — Lives inside the portable APP_ROOT/data tree (M53), so encrypted
+//   — Lives inside the portable APP_ROOT/data tree, so encrypted
 //     blobs travel with the install. This is a deliberate trade-off:
 //     portability beats per-user-profile isolation. Documented in
 //     docs/ai/GMAIL_MCP_INTEGRATION.md.
@@ -2405,7 +2405,7 @@ ipcMain.handle('document:isRichDocument', (_event, ext) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
-// Docling Bridge IPC Handlers (M21 Phase A)
+// Docling Bridge IPC Handlers
 // ════════════════════════════════════════════════════════════════════════════════
 //
 // Manages the Docling Python bridge for intelligent document extraction.
@@ -3004,7 +3004,7 @@ ipcMain.handle('terminal:exec', async (_event, command, options) => {
     const cwd = options?.cwd || options?.workspaceRoot || (mainWindow ? app.getPath('home') : undefined);
     const shellOption = process.platform === 'win32' ? { shell: 'powershell.exe' } : { shell: true };
 
-    // Same activation as an interactive shell (M97), so `python`, `pip` and
+    // Same activation as an interactive shell, so `python`, `pip` and
     // console scripts mean the same thing whether the user types them or the
     // agent runs them through terminal_run_command. Two different answers to
     // `pip list` depending on who asked would be its own kind of bug.
@@ -3142,7 +3142,7 @@ ipcMain.handle('terminal:spawn', async (_event, options) => {
     // single time.
     const cwd = options?.cwd || options?.workspaceRoot || app.getPath('home');
 
-    // M97 — activate the workspace venv if there is one. An overlay on the
+    // activate the workspace venv if there is one. An overlay on the
     // inherited environment, never a rebuild: this is the user's own shell and
     // it must keep git, node, ssh and their prompt. No-ops without a venv.
     const env = pythonBridge.buildTerminalEnv(options?.workspaceRoot, {

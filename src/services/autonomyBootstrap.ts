@@ -62,13 +62,13 @@ export async function bootstrapAutonomyServices(
   const appPath = bridge?.dataRoot ?? bridge?.appPath;
   const fs = bridge?.fs;
 
-  // ── Feature flags (M60 §3.8) — per-workspace storage, defaults apply. ──
+  // ── Feature flags — per-workspace storage, defaults apply. ──
   const flags = new AutonomyFeatureFlagsService(services.tryGet(IWorkspaceStorageService));
   void flags.initialize().catch(() => { /* defaults apply */ });
   disposables.push(flags);
   services.registerInstance(IAutonomyFeatureFlagsService, flags);
 
-  // ── Event log (M60 §3.10) — ndjson under <workspace>/.parallx/logs. ──
+  // ── Event log — ndjson under <workspace>/.parallx/logs. ──
   const logDir = workspaceFolder
     ? `${workspaceFolder}/.parallx/logs`
     : (appPath ? `${appPath}/data` : undefined);
@@ -84,7 +84,7 @@ export async function bootstrapAutonomyServices(
     services.registerInstance(IAutonomyEventLog, eventLog);
   }
 
-  // ── Task rail (M60 §8 Phase ζ) — read-only viewmodel over live entries
+  // ── Task rail — read-only viewmodel over live entries
   //    (AutonomyLogService, workbench-registered) + persisted history. ──
   const autonomyLog = services.tryGet(IAutonomyLogService);
   if (autonomyLog) {
@@ -115,7 +115,7 @@ export async function bootstrapAutonomyServices(
     services.registerInstance(IAutonomyPatternMemoryService, patterns);
   }
 
-  // ── Cron scheduler (M58 W4 / step 5b) — constructed and HYDRATED here,
+  // ── Cron scheduler — constructed and HYDRATED here,
   //    started by chat once it attaches the execution half. Hydration is
   //    awaited so every extension that upserts jobs during activation sees
   //    the restored set (the fresh-anchor corruption race, M61). ──

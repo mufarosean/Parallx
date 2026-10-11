@@ -252,7 +252,7 @@ export interface IOpenclawTurnContext {
   readonly mentionContextBlocks?: readonly string[];
 
   /**
-   * M85 — reads the session's CURRENT plan, formatted for the prompt.
+   * reads the session's CURRENT plan, formatted for the prompt.
    * A getter (not a snapshot) so mid-turn re-assembly after compaction picks
    * up plan_update calls made earlier in the same tool loop.
    */
@@ -320,7 +320,7 @@ export interface IOpenclawTurnContext {
   readonly toolObserver?: IChatRuntimeToolInvocationObserver;
   /** D4: Optional message lifecycle observer for runtime hooks. */
   readonly messageObserver?: import('../services/serviceTypes.js').IChatRuntimeMessageObserver;
-  /** M66 — Registered `parallx://` link contracts for prompt auto-injection. */
+  /** Registered `parallx://` link contracts for prompt auto-injection. */
   readonly linkContracts?: readonly IOpenclawLinkContractDescriptor[];
 }
 

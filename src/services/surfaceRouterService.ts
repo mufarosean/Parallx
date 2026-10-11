@@ -1,4 +1,4 @@
-// surfaceRouterService.ts — DI service facade for the SurfaceRouter (M58 W6)
+// surfaceRouterService.ts — DI service facade for the SurfaceRouter
 //
 // Wraps the audit-closed `SurfaceRouter` (src/openclaw/openclawSurfacePlugin.ts,
 // D6 13/13 ALIGNED) with an ISurfaceRouterService identifier so the workbench
@@ -13,7 +13,7 @@
 // Parallx adaptation:
 //   - Single-process desktop: one router owned by the workbench lifecycle
 //   - Origin tag in delivery metadata breaks surface→heartbeat→surface loops
-//     (M58 risk register, §8)
+//
 
 import { Disposable } from '../platform/lifecycle.js';
 import {
@@ -102,7 +102,7 @@ export interface ISurfaceRouterService extends Disposable {
   getDeliveriesByOrigin(origin: string): readonly ISurfaceDelivery[];
 
   /**
-   * M60 §3.8: install/replace the autonomy feature-flag service used to
+   * install/replace the autonomy feature-flag service used to
    * gate per-surface deliveries. Setter (rather than constructor arg) so
    * the workbench can wire after activation, before the chat extension
    * starts dispatching. Calling with `undefined` removes gating.
@@ -110,7 +110,7 @@ export interface ISurfaceRouterService extends Disposable {
   setFeatureFlags(flags: IAutonomyFeatureFlagsService | undefined): void;
 
   /**
-   * M60 §3.10: install/replace the structured event log so every route
+   * install/replace the structured event log so every route
    * attempt produces an autonomy event record (success, gated, error).
    */
   setEventLog(log: IAutonomyEventLog | undefined): void;

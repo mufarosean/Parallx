@@ -2,7 +2,7 @@
  * HeartbeatTurnExecutor — M58 W2-real wiring factory.
  *
  * Wires the audit-closed {@link `openclawHeartbeatRunner.ts`.HeartbeatRunner}
- * (D2 13/13 ALIGNED) to the workbench SurfaceRouter (M58 W6) AND to the W5
+ * (D2 13/13 ALIGNED) to the workbench SurfaceRouter AND to the W5
  * ephemeral-session substrate so that:
  *
  *   - `interval` ticks emit status-only pulses (no LLM turn — periodic
@@ -191,13 +191,13 @@ export interface IHeartbeatRealTurnDeps {
    */
   readonly getRecentActivity?: () => Promise<string>;
   /**
-   * M87 — the deterministic fact→trigger→delivery pass (no model, no chat
+   * the deterministic fact→trigger→delivery pass (no model, no chat
    * session). Invoked on every interval beat BEFORE the idle gate: the gate
    * exists to protect token spend, and this lane spends none.
    */
   readonly deterministicLane?: () => Promise<unknown>;
   /**
-   * M87 S2 — the user's standing watches from .parallx/HEARTBEAT.md. Folded
+   * the user's standing watches from .parallx/HEARTBEAT.md. Folded
    * into every real-turn seed (reviews AND the daily reflection, so each
    * watch is evaluated at least daily).
    */
@@ -546,7 +546,7 @@ export function createHeartbeatTurnExecutor(
     const handle = realTurnDeps.chatService.createEphemeralSession(parentId, {
       systemMessage,
       firstUserMessage: userMessage,
-      // M91 — keep the full transcript so this run is reopenable like chat.
+      // keep the full transcript so this run is reopenable like chat.
       archiveOrigin: 'heartbeat',
     });
 

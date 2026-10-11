@@ -358,7 +358,7 @@ export function createReadPageTool(
   };
 }
 
-// M81 Phase 9 — `createGetPageTool` was folded into `createReadPageTool`. The
+// `createGetPageTool` was folded into `createReadPageTool`. The
 // merged tool returns body + metadata + custom properties in one call. For
 // workspace-wide property definitions, use `canvas_list_property_definitions`.
 
@@ -449,7 +449,7 @@ function formatPropertyValue(raw: string, _type: string): string {
   }
 }
 
-// ── Property tools (M55 Domain 4) ──
+// ── Property tools ──
 
 export function createListPropertyDefinitionsTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {

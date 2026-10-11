@@ -32,7 +32,7 @@ import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import type { OpenAttachmentHandler, RegenerateMessageHandler } from '../chatTypes.js';
 import { ContextMenu } from '../../../ui/contextMenu.js';
 
-// OpenAttachmentHandler — now defined in chatTypes.ts (M13 Phase 1)
+// OpenAttachmentHandler — now defined in chatTypes.ts
 export type { OpenAttachmentHandler } from '../chatTypes.js';
 
 /**
@@ -237,7 +237,7 @@ function renderUserSafeMarkdown(text: string, body: HTMLElement, pill?: HTMLElem
 /**
  * Renders the conversation message list.
  *
- * M11 Task 3.10: Incremental rendering — only re-renders the last assistant
+ * Incremental rendering — only re-renders the last assistant
  * message during streaming instead of tearing down the entire DOM.
  * Shows a typing indicator (bouncing dots) before content arrives.
  */
@@ -668,7 +668,7 @@ export class ChatListRenderer extends Disposable {
         chip.title = attachment.fullPath;
 
         if (isChatSelectionAttachment(attachment)) {
-          // M48: Selection attachments show excerpt + source
+          // Selection attachments show excerpt + source
           chip.classList.add('parallx-chat-message-attachment-chip--selection');
 
           const icon = document.createElement('span');

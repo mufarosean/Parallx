@@ -195,7 +195,7 @@ export interface IChatSessionPlan {
   readonly note?: string;
   readonly updatedAt: number;
   /**
-   * Session message count at the last plan_update (M86). The context engine
+   * Session message count at the last plan_update. The context engine
    * compares it against the live count to detect a DRIFTING plan — models
    * (especially small local ones) reliably forget bookkeeping tool calls, so
    * a staleness nudge is appended to the Active Plan section when the plan
@@ -256,7 +256,7 @@ export interface IChatSession {
   requestInProgress: boolean;
   /** Pending messages queued while a request is in progress. */
   readonly pendingRequests: IChatPendingRequest[];
-  /** M85 — the agent's durable working plan (undefined until first plan_update). */
+  /** the agent's durable working plan (undefined until first plan_update). */
   plan?: IChatSessionPlan;
 }
 
@@ -375,7 +375,7 @@ export interface IChatImageAttachment extends IChatAttachmentBase {
   readonly origin?: 'clipboard' | 'file';
 }
 
-/** A text selection attached as context to a chat message (M48). */
+/** A text selection attached as context to a chat message. */
 export interface IChatSelectionAttachment extends IChatAttachmentBase {
   readonly kind: 'selection';
   /** The selected text content. */
@@ -448,7 +448,7 @@ export interface IChatAssistantResponse {
   completionTokens?: number;
 }
 
-// ── Context Pills (M11 Task 1.10) ──
+// ── Context Pills ──
 
 /**
  * A context pill — represents a single context source visible to the LLM.
@@ -1012,7 +1012,7 @@ export interface IToolDefinition {
    */
   readonly profiles?: readonly string[];
   /**
-   * M81 Phase 10 — coarse feature-area grouping. Threaded through from
+   * coarse feature-area grouping. Threaded through from
    * `IChatTool.category` so the OpenClaw prompt builder can emit a
    * category-to-tools map that teaches the model which surface each tool
    * family operates on.
@@ -1062,7 +1062,7 @@ export interface IToolResult {
   readonly images?: readonly IChatImageAttachment[];
 }
 
-// ── Permission Model (M11 Task 2.1) ──
+// ── Permission Model ──
 
 /**
  * 3-tier permission level for tool execution.
@@ -1084,7 +1084,7 @@ export type ToolPermissionLevel = 'always-allowed' | 'requires-approval' | 'neve
 export type ToolGrantDecision = 'allow-once' | 'allow-session' | 'always-allow' | 'reject';
 
 /**
- * M81 Phase 10 — coarse feature-area grouping for built-in tools.
+ * coarse feature-area grouping for built-in tools.
  *
  * Drives:
  *   1. Settings UI sub-grouping inside the "Built-In" bucket (so users see
@@ -1156,7 +1156,7 @@ export interface IChatTool {
   readonly handler: (args: Record<string, unknown>, token: ICancellationToken, invocation?: IChatToolInvocationCallContext) => Promise<IToolResult>;
   /** Whether this tool requires user confirmation before execution. @deprecated Use permissionLevel. */
   readonly requiresConfirmation: boolean;
-  /** 3-tier permission level (M11 Task 2.1). Defaults to 'always-allowed' if not set. */
+  /** 3-tier permission level. Defaults to 'always-allowed' if not set. */
   readonly permissionLevel?: ToolPermissionLevel;
   /** Registration origin for runtime provenance. */
   readonly source?: 'built-in' | 'bridge' | 'mcp';
@@ -1173,7 +1173,7 @@ export interface IChatTool {
    */
   readonly profiles?: readonly string[];
   /**
-   * M81 Phase 10 — coarse feature-area grouping. Used by the settings UI to
+   * coarse feature-area grouping. Used by the settings UI to
    * sub-group inside the "Built-In" bucket, and by the system prompt's
    * tooling section to give the model a clear surface map so it stops
    * picking the wrong tool. Optional — extensions that don't set this fall
@@ -1355,7 +1355,7 @@ export interface IChatService extends IDisposable {
   /** Late-bind a database for persistence (called after DB opens in Phase 5).
    * @param workspaceId — the active workspace ID for session scoping */
   setDatabase(database: import('./chatSessionPersistence.js').IChatPersistenceDatabase, workspaceId?: string): void;
-  /** Late-bind a session manager for stale session detection (M14 Phase 2). */
+  /** Late-bind a session manager for stale session detection. */
   setSessionManager(sessionManager: import('./serviceTypes.js').ISessionManager): void;
   /** Late-bind a workspace transcript service for canonical transcript persistence. */
   setTranscriptService(transcriptService: import('./serviceTypes.js').IWorkspaceTranscriptService): void;
@@ -1371,9 +1371,9 @@ export interface IChatService extends IDisposable {
   /** Update the model ID for an existing session and persist. */
   updateSessionModel(sessionId: string, modelId: string): void;
 
-  /** M85 — read a session's durable plan (the planning organ). */
+  /** read a session's durable plan (the planning organ). */
   getSessionPlan?(sessionId: string): IChatSessionPlan | undefined;
-  /** M85 — write (or clear, with undefined) a session's durable plan.
+  /** write (or clear, with undefined) a session's durable plan.
    *  Fires onDidChangeSession and schedules a persist. */
   setSessionPlan?(sessionId: string, plan: IChatSessionPlan | undefined): void;
 

@@ -98,7 +98,7 @@ export class CanvasEditorView implements CanvasMenuHost, PaneMirrorTarget {
   get suppressUpdate(): boolean { return this._suppressUpdate; }
   set suppressUpdate(v: boolean) { this._suppressUpdate = v; }
 
-  /** BubbleMenuHost (M98): page identity for selection-action provenance.
+  /** BubbleMenuHost: page identity for selection-action provenance.
    * No synchronous title source here — consumers fall back to a generic label. */
   getPageContext(): { pageId: string; pageTitle: string } {
     return { pageId: this._pageId, pageTitle: '' };

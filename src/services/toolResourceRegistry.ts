@@ -1,4 +1,4 @@
-// toolResourceRegistry.ts — per-session read-before-edit registry (M85 Slice C)
+// toolResourceRegistry.ts — per-session read-before-edit registry
 //
 // The harness principle this enforces: an agent must not edit what it has not
 // seen. A from-memory anchor out of a stale context can still match content

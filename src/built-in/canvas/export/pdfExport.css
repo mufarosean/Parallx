@@ -1,6 +1,6 @@
-/* pdfExport.css — canvas "Export as PDF" dialog (M93).
+/* pdfExport.css — canvas "Export as PDF" dialog.
  *
- * Native --px semantic tokens (M83). The dialog is a true floating surface:
+ * Native --px semantic tokens. The dialog is a true floating surface:
  * elevated background, hairline border, --px-shadow-lg with the top sheen.
  * The preview column sits on --px-window — the recessed tone the workbench
  * uses behind floating panels — so the white pages read as paper on a desk.

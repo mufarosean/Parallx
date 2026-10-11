@@ -107,7 +107,7 @@ export async function runOpenclawTurn(
   const isFollowup = context.isFollowupTurn === true;
   const followupDepth = context.followupDepth ?? 0;
 
-  // M65 Iter 2 — clear the color-gate taint for this session at every turn
+  // clear the color-gate taint for this session at every turn
   // boundary. Red-touched state is strictly per-turn and must never leak
   // across user messages. See openclawToolPolicy.beginNewTurn.
   beginColorGateTurn(context.sessionId);

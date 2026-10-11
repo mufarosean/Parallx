@@ -1,4 +1,4 @@
-// vectorStoreService.ts — IVectorStoreService implementation (M10 Task 1.2)
+// vectorStoreService.ts — IVectorStoreService implementation
 //
 // Manages the vec_embeddings (sqlite-vec vec0) and fts_chunks (FTS5) tables.
 // Provides upsert, delete, and dual-index search (vector + keyword).
@@ -226,7 +226,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
   }
 
   /**
-   * M60 B4 — batch multiple source upserts into ONE `runTransaction` IPC.
+   * batch multiple source upserts into ONE `runTransaction` IPC.
    *
    * The `$lastRowId` sentinel is per-op (resolved against the most-recent
    * INSERT's rowid), so concatenating ops across sources stays correct as
@@ -342,7 +342,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
         ],
       });
 
-      // BM25 metadata enrichment (M16 Task 3.1): prepend contextPrefix to
+      // BM25 metadata enrichment: prepend contextPrefix to
       // FTS5 content so keyword search can match on page titles, section
       // headings, and file paths — not just the chunk body text.
       const ftsContent = chunk.contextPrefix
@@ -731,7 +731,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     }
   }
 
-  // ── Embedding Lookup (M16 Task 2.1) ──
+  // ── Embedding Lookup ──
 
   /**
    * Fetch stored embedding vectors for the given rowids.
@@ -824,7 +824,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
   }
 
   /**
-   * M88 S2 — evenly-sampled per-chunk embeddings for segment-level
+   * evenly-sampled per-chunk embeddings for segment-level
    * similarity. A whole-document centroid smears topics (a chapter-level
    * connection between two long texts dies in the average); comparing a
    * bounded sample of chunk vectors finds partial overlap. Sampling is
@@ -860,7 +860,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
   }
 
   /**
-   * M88 S3 — one title per indexed source, in a SINGLE grouped query.
+   * one title per indexed source, in a SINGLE grouped query.
    * Page titles come from the chunk context prefix ("[Page: Title | …]");
    * file titles fall back to the basename (sans extension) of the
    * workspace-relative source id. Drives wiki-link resolution and
@@ -1064,7 +1064,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       }
     };
 
-    // M16 Task 1.3: AND-first with OR fallback.
+    // AND-first with OR fallback.
     // AND semantics provide precision; if too few results, broaden to OR.
     const andResults = await runFts(sanitized);
 
@@ -1170,7 +1170,7 @@ function normalizeVectorInPlace(vector: number[]): void {
  * Common English stopwords that add noise to keyword search.
  * These appear in nearly every document and dilute BM25 relevance.
  *
- * M16: Removed domain-useful words (page, section, table, figure, note,
+ * Removed domain-useful words (page, section, table, figure, note,
  * chapter, book, part, example, find, show, help, use, work, read, look,
  * call, give) that carry meaning in knowledge-base search contexts.
  */
@@ -1259,7 +1259,7 @@ function sanitizeFts5Query(query: string): string {
 
 /**
  * Sanitize query with OR semantics for FTS5 fallback.
- * Used when AND returns too few results (M16 Task 1.3).
+ * Used when AND returns too few results.
  *
  * OR semantics match documents containing ANY of the terms,
  * providing broader recall at the cost of precision.

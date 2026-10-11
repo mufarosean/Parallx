@@ -38,7 +38,7 @@ import {
 } from './contentSchema.js';
 import { unwrapUnknownContent } from './unknownContent.js';
 
-// SaveStateKind / SaveStateEvent moved to canvasTypes.ts (M77 Phase 11.1)
+// SaveStateKind / SaveStateEvent moved to canvasTypes.ts
 // so consumers can subscribe via ICanvasDataService without coupling to
 // this concrete class. Re-exported for backwards compatibility with
 // existing imports (main.ts, tests).
@@ -122,7 +122,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   readonly onDidChangePage: Event<PageChangeEvent> = this._onDidChangePage.event;
 
   /** Fires after an auto-save flush completes for a specific page. */
-  // M78 Phase 8 — onDidSavePage now carries the saved page object so
+  // onDidSavePage now carries the saved page object so
   // listeners (indexing scheduler etc.) don't need to redo a getPage.
   private readonly _onDidSavePage = this._register(new Emitter<import('./canvasTypes.js').PageSaveEvent>());
   readonly onDidSavePage: Event<import('./canvasTypes.js').PageSaveEvent> = this._onDidSavePage.event;
@@ -184,7 +184,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   /** Per-page debounce timers for content auto-save.
    * `schemaVersion` is captured alongside the content so the coalesce-by-equality
    * check (scheduleContentSave) doesn't drop a schedule that differs only in
-   * schema version (M77 Phase 9.3).
+   * schema version.
    * `baseContent` is the last-known stored content at schedule time — the state
    * the editor's edit is based on. If a DIFFERENT writer (an AI tool streaming a
    * page, a sidebar merge) commits new content before this debounce fires, the
@@ -690,7 +690,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * persisted content directly.
    */
   async ensurePageBlockOnParent(parentPageId: string, childPageId: string): Promise<void> {
-    // M77 Phase 6 — retry on revision conflict. Legacy API kept for
+    // retry on revision conflict. Legacy API kept for
     // external callers; internal sidebar/editor flows use the atomic
     // movePageWithBlocks / createChildPageWithBlock helpers.
     await this._retryOnRevisionConflict(async () => {
@@ -713,7 +713,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * callouts, details, etc.) so embedded cards never get stranded.
    */
   async removePageBlockFromParent(parentPageId: string, childPageId: string): Promise<void> {
-    // M77 Phase 6 — retry on revision conflict. If the parent is being
+    // retry on revision conflict. If the parent is being
     // auto-saved while we're computing the pruned content, our flush
     // hits a revision conflict; re-read and re-prune from the new
     // revision instead of failing the operation.
@@ -935,7 +935,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
   /**
    * Atomic move that keeps the embedded pageBlock cards in sync with the
-   * hierarchy in a single transaction (M77 Phase 1).
+   * hierarchy in a single transaction.
    *
    * The legacy combination of `movePage` + `removePageBlockFromParent` +
    * `ensurePageBlockOnParent` was three separate transactions with no
@@ -963,7 +963,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     newParentId: string | null;
     afterSiblingId?: string;
   }): Promise<void> {
-    // M77 Phase 6 — retry on transient revision conflicts. A revision
+    // retry on transient revision conflicts. A revision
     // conflict means another writer committed between our read and our
     // transaction; the right response is to re-read and try again.
     // Cap at 3 attempts so a genuinely-stuck contention doesn't loop
@@ -1180,7 +1180,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   /**
-   * Atomic page creation with optional parent page block (M77 Phase 1).
+   * Atomic page creation with optional parent page block.
    *
    * Replaces the unsafe combination of `createPage` + `ensurePageBlockOnParent`
    * in the sidebar's create flow. The page INSERT and the parent's
@@ -1196,7 +1196,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     parentId: string | null;
     title?: string;
   }): Promise<IPage> {
-    // M77 Phase 6 — retry on revision conflict so a burst of auto-saves
+    // retry on revision conflict so a burst of auto-saves
     // on the parent can't make page creation fail spuriously. Mints a
     // fresh UUID inside each attempt so a partially-applied attempt
     // (which can't actually happen with runTransaction, but defensive)
@@ -1315,7 +1315,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
   /**
    * Repair drift between DB parent_id and embedded pageBlock nodes in a
-   * parent's content (M77 Phase 1).
+   * parent's content.
    *
    * Walks the page's content looking for pageBlock nodes; for each, checks
    * the referenced child page exists AND has this page as its parent. If
@@ -1518,7 +1518,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     const pendingSave = this._pendingSaves.get(pageId);
     const retrySave = this._retryQueue.get(pageId);
 
-    // M77 Phase 9.3 — equality must compare BOTH stored content and schema
+    // equality must compare BOTH stored content and schema
     // version. Content equal but schemaVersion changed = the schema-migrate
     // hot-path; coalescing it away would silently drop the version bump.
     if (
@@ -1560,7 +1560,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
         this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'debounce' });
         return;
       }
-      // M77 Phase 9.1 — capture `expectedRevision` at FIRE TIME, not at
+      // capture `expectedRevision` at FIRE TIME, not at
       // schedule time. Between schedule and fire (up to `_autoSaveMs`),
       // another writer (title/icon reconciler, AI page tool, etc.) may
       // have bumped the revision; using the stale capture forces a
@@ -1677,7 +1677,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'flush' });
       return;
     }
-    // M77 Phase 9.1 — refresh expectedRevision at flush time instead of
+    // refresh expectedRevision at flush time instead of
     // trusting the value captured at schedule time. The pending entry's
     // captured revision could be stale by the time flush runs.
     const expectedRevision = this._knownRevisions.get(pageId);
@@ -1916,7 +1916,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     // invisible in the tree and Empty Trash deleted it with the parent (C3).
     await this._rerootIfParentGone(pageId);
 
-    // M77 Phase 9.2 — fetch the entire restored subtree + every parent we
+    // fetch the entire restored subtree + every parent we
     // might re-attach a pageBlock card to in TWO queries instead of N
     // sequential getPage() round-trips. For a subtree of K pages the old
     // path issued ~3K IPC calls (Updated emit, child fetch, parent
@@ -1968,7 +1968,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       }
     }
 
-    // M77 Phase 9.4 — Re-append pageBlock cards to non-archived parents.
+    // Re-append pageBlock cards to non-archived parents.
     // Collect per-child failures instead of throwing on the first one so
     // a single bad child can't strand the rest of the cascade. The first
     // failure is rethrown at the end carrying all failed ids so the
@@ -2392,7 +2392,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   // ── Internal ──
 
   /**
-   * M77 Phase 6 — retry a transactional operation on revision conflict.
+   * retry a transactional operation on revision conflict.
    *
    * Atomic helpers (movePageWithBlocks, createChildPageWithBlock) include
    * `revision = ?` guards in their UPDATE clauses so a write that races

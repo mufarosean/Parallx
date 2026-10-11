@@ -2291,7 +2291,7 @@ function registerAutomationHost(api, context) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 12: VENDORED READABILITY (appended below; source of truth ext/web-research/readability.js)
 // ═══════════════════════════════════════════════════════════════════════════════
-﻿// ext/web-research/readability.js — Mozilla Readability (vendored).
+// ext/web-research/readability.js — Mozilla Readability (vendored).
 //
 // SOURCE:  https://github.com/mozilla/readability
 // SHA:     08be6b4bdb204dd333c9b7a0cfbc0e730b257252

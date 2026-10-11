@@ -40,7 +40,7 @@ export interface IOpenclawTokenBudget {
 /**
  * Compute the token budget split from a total context window size.
  *
- * Split: System 10%, RAG 30%, History 30%, User 30% (from M11 spec).
+ * Split: System 10%, RAG 30%, History 30%, User 30%.
  *
  * @param contextWindow — the model's total context window in tokens
  */

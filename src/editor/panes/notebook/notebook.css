@@ -1,4 +1,4 @@
-/* notebook.css — the notebook surface (M96). Tokens only, no literal colours.
+/* notebook.css — the notebook surface. Tokens only, no literal colours.
    No ::-webkit-scrollbar rules and no scrollbar-width anywhere: .nb-cells and
    the CodeMirror scrollers are picked up by the app-wide scrollbar-reveal
    delegation, and setting either here would break it. */

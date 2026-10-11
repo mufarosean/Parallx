@@ -11,7 +11,7 @@ const LEGACY_IMPORT_SECTION_HEADING = '## Legacy Import';
 // file paths / URIs / capitalized entities. Removed in favor of agent-curated
 // MEMORY.md content via the `memory_write` tool.
 
-// M81 Phase 8 — lessons + index. MEMORY.md becomes a bounded INDEX of pointers
+// lessons + index. MEMORY.md becomes a bounded INDEX of pointers
 // to per-topic lesson files at `.parallx/memory/lessons/<slug>.md`. Archived
 // lessons and the pre-M81 regex-extraction noise move to `_archive/`.
 const LESSONS_DIR = 'lessons';
@@ -42,7 +42,7 @@ const LEGACY_CONCEPTS_SIGNATURE_PATTERNS: readonly RegExp[] = [
 ];
 
 /**
- * M81 — USER.md is an identity bootstrap file (sibling of SOUL.md and AGENTS.md),
+ * USER.md is an identity bootstrap file (sibling of SOUL.md and AGENTS.md),
  * not a memory file. It lives at `.parallx/USER.md`, not under `.parallx/memory/`.
  * Scaffolding to disk is owned by `/init` (the single workspace-setup command),
  * matching how SOUL.md and TOOLS.md behave. We keep the path segments here so
@@ -293,7 +293,7 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
   }
 
   /**
-   * M81 — Overwrite the daily memory file for a date with the given body.
+   * Overwrite the daily memory file for a date with the given body.
    * The date header (`# YYYY-MM-DD`) is re-applied at the top so callers
    * passing pure body content don't need to know the header convention.
    * Used by `memory_write` action=replace/remove on daily files.

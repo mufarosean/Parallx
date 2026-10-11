@@ -1,5 +1,5 @@
 /* ============================================================================
-   Planner (M82) — sidebar, editor pane (tasks + calendar), widgets.
+   Planner — sidebar, editor pane (tasks + calendar), widgets.
 
    Style philosophy: same workbench-color tokens as the rest of Parallx,
    refined typography, hover-revealed affordances, subtle motion.
@@ -1159,7 +1159,7 @@
 .planner-month__chip--task:hover { background: color-mix(in srgb, var(--cal-color, #4c8bf5) 16%, transparent); }
 .planner-month__chip--done .planner-month__chiptext { text-decoration: line-through; opacity: 0.6; }
 .planner-month__more { font-size: var(--px-text-2xs); color: var(--px-text-muted); padding-left: 6px; }
-/* M98 — provider day-load badge (e.g. "38 flashcards"). Quiet decoration:
+/* provider day-load badge (e.g. "38 flashcards"). Quiet decoration:
    muted ink, no fill, sits under the day number above the event chips. */
 .planner-month__load {
   display: block; font-size: var(--px-text-2xs); line-height: 1.3;

@@ -54,7 +54,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
   /** Cached model list from the last aggregation. */
   private _cachedModels: readonly ILanguageModelInfo[] = [];
 
-  // ── Model intelligence cache (M42 Phase 2) ──
+  // ── Model intelligence cache ──
 
   /** Model ID → detected context length from /api/show. */
   private readonly _modelContextLengths = new Map<string, number>();
@@ -253,7 +253,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
     }
   }
 
-  // ── Model Intelligence (M42 Phase 2) ──
+  // ── Model Intelligence ──
 
   /**
    * Probe a model via getModelInfo and cache context length + capabilities.

@@ -1,5 +1,5 @@
 // timerWidget.ts — an interval timer with a break cycle, tasks with
-// estimates, and a log that becomes data (M86 C3).
+// estimates, and a log that becomes data.
 //
 // Domain-blind by design: a pomodoro is the 25/5/15 preset, not a feature.
 // The shape follows what people know from pomofocus: three intervals as tabs

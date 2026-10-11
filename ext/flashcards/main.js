@@ -1,4 +1,4 @@
-// Flashcards — spaced-repetition study system for Parallx (M93).
+// Flashcards — spaced-repetition study system for Parallx.
 //
 // Create cards by hand, or let the AI generate them from a canvas page, a
 // PDF, a photo (Docling OCR), or pasted text. Study with an SM-2 scheduler
@@ -169,7 +169,7 @@ function fcSchedule(card, rating, now) {
   return next;
 }
 
-// ── FSRS-6 (M98) ────────────────────────────────────────────────────────────
+// ── FSRS-6 ────────────────────────────────────────────────────────────
 // Hand-implemented from the py-fsrs reference (no npm dep — see M98 doc).
 // State per card: stability S (days until recall probability drops to 90%)
 // and difficulty D ∈ [1,10], persisted in fc_cards.stability / .difficulty
@@ -250,7 +250,7 @@ function fcFsrsStabilityShortTerm(s, grade) {
 }
 
 /**
- * Deadline cap (M98): with a deck exam date, never schedule past the point
+ * Deadline cap: with a deck exam date, never schedule past the point
  * where at least one more review still fits before the exam. Generic — any
  * deadline works. No cap once the date has passed.
  */
@@ -554,7 +554,7 @@ function fcBuildQueue(cards, now, { newLimit = 20, reviewLimit = 200, newAllowan
 }
 
 /**
- * Deadline-aware pacing for one deck (M101). Pure.
+ * Deadline-aware pacing for one deck. Pure.
  *
  * The user gives the TRUE exam date; this derives the internal dates. The
  * introduction cutoff sits `freezeDays` before the exam — after it, sessions
@@ -572,7 +572,7 @@ function fcPacePlan({ examDate, newCount }, now, { freezeDays = 14, ceiling = 20
   }
   const daysLeft = Math.max(1, Math.ceil((cutoff - now) / DAY));
   const needed = Math.ceil(Math.max(0, Number(newCount) || 0) / daysLeft);
-  // The deadline wins over the batch-size setting (M102 follow-up).
+  // The deadline wins over the batch-size setting.
   //
   // This used to clamp to `ceiling`, which quietly made a large deck
   // unfinishable: 2,000 cards with 76 intro days needs 27/day, the default
@@ -592,7 +592,7 @@ function fcPacePlan({ examDate, newCount }, now, { freezeDays = 14, ceiling = 20
 }
 
 /**
- * Per-deck new-card allowances for a session (M101). Pure.
+ * Per-deck new-card allowances for a session. Pure.
  *
  * Decks with a future exam date get their paced rate; decks without one get
  * the fixed batch ceiling (pre-pacing behavior). `total` is the sum, used to
@@ -1305,7 +1305,7 @@ async function fcBatchWrites(fn) {
   }
 }
 
-/** The pacing knobs (M101), normalized. */
+/** The pacing knobs, normalized. */
 function fcPaceSettings() {
   const freeze = Number(cfg('freezeDays', 14));
   return {
@@ -1384,7 +1384,7 @@ function el(tag, className, text) {
 const FC_ICON_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>';
 
 /**
- * Open a card's source material (M98 grounding). Canvas pages route through
+ * Open a card's source material. Canvas pages route through
  * canvas.openPage; files open in their editor, and PDFs additionally jump to
  * the cited page via the parallx.pdf.goToPage event (the pane listens; the
  * delay lets a freshly-opened pane finish mounting first).
@@ -1653,7 +1653,7 @@ function fcNormalizeCardText(text) {
     .trim();
 }
 
-// ── Cloze + reverse notes (M98) ─────────────────────────────────────────────
+// ── Cloze + reverse notes ─────────────────────────────────────────────
 // Anki-compatible cloze syntax: {{c1::answer}} or {{c1::answer::hint}}.
 // One NOTE (the raw text) yields one scheduled CARD per distinct ordinal;
 // siblings share a note_group so edits propagate and dedup exempts them.
@@ -1683,7 +1683,7 @@ function fcRenderCloze(text, targetIndex, mode) {
   return source.replace(FC_CLOZE_RE, (_all, ordStr, answer, hint, offset) => {
     const ord = Number(ordStr);
     // Markdown ** inside $...$ math renders as literal asterisks (KaTeX owns
-    // that span) — emphasize only outside math (M99 review). Inside-math
+    // that span) — emphasize only outside math. Inside-math
     // detection: an odd count of unescaped $ before the match.
     const dollars = (source.slice(0, offset).match(/(?<!\\)\$/g) || []).length;
     const inMath = dollars % 2 === 1;
@@ -1702,7 +1702,7 @@ function fcNormalizeImportance(v) {
   return Math.min(100, n);
 }
 
-// ── Recall modes (M102) ──────────────────────────────────────────────────────
+// ── Recall modes ──────────────────────────────────────────────────────
 //
 // What a review ELICITS, and therefore which grader runs. Orthogonal to
 // card_type ('basic' | 'cloze' | 'reverse'), which picks how a note renders.
@@ -1835,7 +1835,7 @@ const FC_RECALL_MODE_HINTS = {
   formula: 'Write the formula out. Compared exactly, ignoring spacing and delimiters.',
 };
 
-// ── Grading a produced answer (M102) ─────────────────────────────────────────
+// ── Grading a produced answer ─────────────────────────────────────────
 //
 // The model is never asked for a rating. It answers the factual question it
 // is actually reliable at — for each rubric point, did the answer contain it?
@@ -2085,7 +2085,7 @@ let _lastBulkStamp = 0;
 async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = '' } = {}) {
   const now = Math.max(Date.now(), _lastBulkStamp + 1);
   _lastBulkStamp = now;
-  // M98: per-card provenance/type overrides (c.sourceUri, c.sourcePage,
+  // per-card provenance/type overrides (c.sourceUri, c.sourcePage,
   // c.cardType, c.noteGroup, …) win over the call-level defaults. Tags are
   // normalized to comma-joined — the bulk path used spaces while every other
   // path used commas, which any tag filtering would have tripped over.
@@ -2136,7 +2136,7 @@ async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = 
   }
 
   // Preferred path: one real transaction — all-or-nothing at the SQL layer.
-  // The runner dispatches on op.type; omitting it fails every op (M99 review).
+  // The runner dispatches on op.type; omitting it fails every op.
   if (_dbBridge && typeof _dbBridge.runTransaction === 'function') {
     const res = await _dbBridge.runTransaction(statements.map((s) => ({ type: 'run', sql: s.sql, params: s.params })));
     if (res?.error) throw new Error(`[FC-DB] ${res.error.message}`);
@@ -2167,7 +2167,7 @@ async function fcCreateCardsBulk(deckId, cards, { sourceUri = '', sourceLabel = 
   return inserted;
 }
 
-// ── Note creation: basic / cloze / reverse (M98) ────────────────────────────
+// ── Note creation: basic / cloze / reverse ────────────────────────────
 
 /**
  * Create the card row(s) for one authored note. Cloze text ({{cN::…}} in the
@@ -2253,7 +2253,7 @@ async function fcReconcileClozeGroup(noteGroup, deckId, newFront, newBack, edite
   _emitDataChanged();
 }
 
-// ── Card embeddings + duplicate detection (M98) ─────────────────────────────
+// ── Card embeddings + duplicate detection ─────────────────────────────
 // Vectors live in a sqlite-vec vec0 virtual table INSIDE the extension DB
 // (the ext bridge loads sqlite-vec for every extension database). The table
 // is created lazily in code — NOT in a migration — so a host without vec
@@ -2716,7 +2716,7 @@ const FC_PAIR_JUDGE_SYSTEM = [
 ].join('\n');
 
 /**
- * Creation-time duplicate arbitration (M101). The embedding scan
+ * Creation-time duplicate arbitration. The embedding scan
  * (fcFindDuplicates) is RECALL only — cosine similarity flags contrast
  * pairs ("what is X under method A" vs "under method B") as duplicates,
  * which made the warning read as noise (user report). This pass shows the
@@ -2796,7 +2796,7 @@ const FC_SCORE_SYSTEM = [
 ].join('\n');
 
 /**
- * Retroactively score a deck's unscored cards for exam criticality (M101).
+ * Retroactively score a deck's unscored cards for exam criticality.
  * Cards created before importance existed (or added manually) sit at 0 and
  * would introduce LAST behind every scored card; this backfills them so the
  * paced queue orders the whole deck. Batched; a failed batch leaves its
@@ -2850,7 +2850,7 @@ async function fcScoreDeckImportance(deckId, { onProgress } = {}) {
   return { scored, total: rows.length };
 }
 
-// ── Retrofitting recall modes onto an existing deck (M102) ───────────────────
+// ── Retrofitting recall modes onto an existing deck ───────────────────
 //
 // Generation marks new cards as it makes them, but a deck built before M102 —
 // or imported from Anki — is entirely recognition, so the feature would do
@@ -3036,7 +3036,7 @@ async function fcUpdateCard(id, patch) {
   if (patch.rubric !== undefined) { sets.push('rubric = ?'); params.push(fcSerializeRubric(patch.rubric)); }
   if (patch.sourceExcerpt !== undefined) { sets.push('source_excerpt = ?'); params.push(String(patch.sourceExcerpt || '').slice(0, FC_SOURCE_EXCERPT_MAX_CHARS)); }
   if (sets.length === 0) return;
-  // M98: text edits on a cloze sibling rewrite the whole group (the text IS
+  // text edits on a cloze sibling rewrite the whole group (the text IS
   // the note) — grab identity before the UPDATE.
   const before = (patch.front !== undefined || patch.back !== undefined)
     ? await db.get('SELECT deck_id, card_type, note_group, front, back FROM fc_cards WHERE id = ?', [id])
@@ -3243,7 +3243,7 @@ async function fcUndoGrade(cardBefore, reviewedAt) {
 /**
  * Apply a grading: schedule + persist + log.
  *
- * `answer` / `verdict` (M102) are the production-recall record — what was
+ * `answer` / `verdict` are the production-recall record — what was
  * typed and what the grader made of it. They ride on the review row rather
  * than the card because they are history: fc_reviews is append-only and
  * fcHealFsrsState replays it, so a card's answers accumulate instead of
@@ -3280,7 +3280,7 @@ async function fcGradeCard(card, rating, msTaken = 0, deckOpts = {}, { answer = 
 }
 
 /**
- * One-shot SM-2 → FSRS state derivation (M98). Cards scheduled before the
+ * One-shot SM-2 → FSRS state derivation. Cards scheduled before the
  * FSRS migration have reps but no stability; replay each one's append-only
  * fc_reviews history through FSRS-6 to derive honest S/D. The visible
  * schedule (state/interval/due) is left untouched — FSRS takes over from
@@ -3316,7 +3316,7 @@ async function fcHealFsrsState() {
 }
 
 /**
- * Written answers for one card, newest first (M102).
+ * Written answers for one card, newest first.
  *
  * Only reviews that actually carry an answer — a card promoted to a
  * production mode partway through its life has recognition reviews behind
@@ -3383,7 +3383,7 @@ async function fcLoadStats() {
 
 /**
  * Per-day SCHEDULED review counts for [fromMs, toMs) — the planner badge +
- * widget forecast (M98). Honest minimum, not a promise: FSRS reshuffles the
+ * widget forecast. Honest minimum, not a promise: FSRS reshuffles the
  * future after every review, and unscheduled new cards aren't included.
  * Overdue cards roll into today (that is when they will actually be seen).
  */
@@ -3478,7 +3478,7 @@ const FC_GENERATE_SYSTEM = [
 ].join('\n');
 
 /**
- * Appended when production recall is on (M102). Kept as a separate block so
+ * Appended when production recall is on. Kept as a separate block so
  * the base prompt above stays exactly what it was when the feature is off —
  * a model asked for fields it then never uses is a model spending output
  * tokens on nothing.
@@ -3502,7 +3502,7 @@ const FC_GENERATE_RECALL_RULES = [
 ].join('\n');
 
 /**
- * Density levels for AUTO card count (M101). A truncation cap ("stop at N")
+ * Density levels for AUTO card count. A truncation cap ("stop at N")
  * would amputate coverage mid-chapter; these instead shape SELECTIVITY while
  * the model plans across the whole material — every core concept still gets
  * a card, the low-importance tail gets consolidated or skipped.
@@ -3522,7 +3522,7 @@ function fcGenerationDensity() {
   return FC_DENSITY_LEVELS[v] ? v : 'balanced';
 }
 
-/** M102: whether generation marks recall modes and writes rubrics. */
+/** whether generation marks recall modes and writes rubrics. */
 function fcProductionRecallEnabled() {
   return cfg('productionRecall', true) !== false;
 }
@@ -3566,7 +3566,7 @@ const FC_OUTPUT_TOKENS_PER_CARD = 280;
 const FC_REASONING_TOKENS = 4096;
 /**
  * Extra output reserve per card when generation also emits a recall mode and
- * a rubric (M102). A rubric is 2-6 claims at roughly 15 tokens each plus the
+ * a rubric. A rubric is 2-6 claims at roughly 15 tokens each plus the
  * JSON scaffolding around them, and `recallMode` adds a short string.
  *
  * Reserved separately rather than folded into the 280 because most of the
@@ -3658,7 +3658,7 @@ function fcAutoCardEstimate(chars) {
 }
 
 /**
- * Consume an LM stream with a stall watchdog (M98). The extension-facing LM
+ * Consume an LM stream with a stall watchdog. The extension-facing LM
  * API has no AbortSignal and no timeout, so a hung Ollama socket previously
  * left every "Generating…" spinner alive forever. This wrapper re-arms a
  * timer per chunk and throws once no chunk arrives for `stallMs`. It cannot
@@ -3700,7 +3700,7 @@ async function fcStreamWithStall(stream, onChunk, stallMs = 90_000, firstChunkMs
 }
 
 /**
- * Build the prompt material block (M98 grounding). With per-page text
+ * Build the prompt material block. With per-page text
  * available (PDF extraction), pages are individually tagged so the model can
  * attribute each card to the page its fact came from — flattening the pages
  * first (the pre-M98 behavior) makes any page attribution a hallucination.
@@ -3798,7 +3798,7 @@ async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts
     // Explicit count = a ceiling the user chose. Auto = the material decides,
     // shaped by the density level: a raw number here would only anchor the
     // model into padding thin material or truncating rich material at an
-    // arbitrary line, so density steers selectivity instead (M101).
+    // arbitrary line, so density steers selectivity instead.
     count
       ? `Create up to ${Math.min(50, Math.max(1, count))} flashcards from the material below.`
       : FC_DENSITY_LEVELS[fcGenerationDensity()],
@@ -3849,7 +3849,7 @@ async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts
   } else {
     for (const c of cards) { delete c.page; delete c.doc; }
   }
-  // M102: freeze the passage each production card was made from.
+  // freeze the passage each production card was made from.
   //
   // Captured here because generation is the only moment the page text is
   // already in memory. Reading it back at review time would mean
@@ -3880,7 +3880,7 @@ async function fcGenerateCards(sourceText, { count = null, focus = '', pageTexts
 }
 
 
-// ── Grading a produced answer (M102) ─────────────────────────────────────────
+// ── Grading a produced answer ─────────────────────────────────────────
 //
 // The model judges facts; fcMapVerdictToRating turns the judgement into a
 // grade. Nothing here ever asks a model for a rating.
@@ -4097,7 +4097,7 @@ async function fcGradeAnswer(card, answer) {
 }
 
 
-// ── Leech loop (M98) ─────────────────────────────────────────────────────────
+// ── Leech loop ─────────────────────────────────────────────────────────
 // A card failed `flashcards.leechThreshold`+ times is a leech: the formulation
 // is not sticking. The study view flags it and offers an AI reformulation;
 // scheduling state is deliberately preserved (the FACT is unchanged — only
@@ -4274,7 +4274,7 @@ async function fcGenerateRewrites(card) {
 async function fcLeechRewriteFlow(card) {
   // Cloze siblings share their text group-wide, and a model rewrite would
   // drop the {{cN::…}} markers — reconciliation would then tear the group
-  // apart (M99 review). Honest scope cut: point at the editor instead.
+  // apart. Honest scope cut: point at the editor instead.
   if (card.cardType === 'cloze') {
     await _api.window.showInformationMessage(
       'Cloze cards cannot be auto-rewritten. Edit the note text in Browse instead; changes apply to all of its sibling cards.',
@@ -4303,7 +4303,7 @@ async function fcLeechRewriteFlow(card) {
 }
 
 /**
- * "Explain This" (M98): open the main chat with the card staged as a context
+ * "Explain This": open the main chat with the card staged as a context
  * attachment, then submit a focused prompt. chat.show (idempotent reveal),
  * NEVER chat.focus — that one is a blind toggle that can hide the panel.
  */
@@ -4361,7 +4361,7 @@ function fcMarkingTranscript(marking) {
 /**
  * Stage a grounded question about a card in the chat.
  *
- * `marking` (M102) carries a graded answer across — live from the study
+ * `marking` carries a graded answer across — live from the study
  * verdict, or an older one picked out of the card's history. When it is
  * present the ask changes entirely: not "explain this card" but "here is
  * what I could not produce, close that gap". Handing the model the generic
@@ -5959,7 +5959,7 @@ function createSidebarView(container) {
       // Promise what the session will actually hand over. The counts above
       // are uncapped totals; fcBuildQueue's per-session caps are not, so a
       // 100-card import used to advertise "Study 103 cards" and serve 23.
-      // Pacing (M101) shrinks the new batch further — the promise follows it.
+      // Pacing shrinks the new batch further — the promise follows it.
       // Computed SYNCHRONOUSLY from the decks already fetched: an await here
       // would split the paint and let an overlapping stale refresh land last.
       const pace = fcNewAllowances(decks, Date.now(), fcPaceSettings());
@@ -6145,7 +6145,7 @@ const _fcScoringDecks = new Set();
 const _fcClassifyingDecks = new Set();
 
 /**
- * Backfill exam-criticality scores on a deck's unscored cards (M101). Runs
+ * Backfill exam-criticality scores on a deck's unscored cards. Runs
  * in the background with a start toast and a completion toast; progress is
  * visible in the card browser as scores land (data-change events repaint).
  */
@@ -6195,12 +6195,12 @@ async function _classifyRecallFlow(deck) {
   }
 }
 
-// ── Exam-date picking (M101) ─────────────────────────────────────────────────
+// ── Exam-date picking ─────────────────────────────────────────────────
 // A real calendar, not a typed YYYY-MM-DD box. One month-grid component
 // (fcCalendarEl) backs both the single-deck dialog and the bulk dialog.
 // Stored stamps stay local 23:59 — NOT toISOString, which is the NEXT day in
 // UTC west of Greenwich and silently advanced the exam a day per re-confirm
-// (M99 review).
+//.
 
 /** ms epoch → local 23:59 stamp for the given year/month/day. */
 function fcExamStamp(y, m, d) {
@@ -6328,7 +6328,7 @@ async function _setExamDateFlow(deck) {
 }
 
 /**
- * Set (or clear) exam dates for MANY decks at once (M101). One calendar,
+ * Set (or clear) exam dates for MANY decks at once. One calendar,
  * a checkbox per deck; sitting one exam usually means several source decks
  * share the date, and setting six decks one dialog at a time was the chore
  * that left decks unprotected by the deadline cap.
@@ -6590,7 +6590,7 @@ function createEditorPane(container, input) {
     // re-rendering mid-review would eat the current card. The import view is
     // excluded too: its own commit loop emits data changes, and a re-render
     // mid-commit would blank the preview and progress it is reporting.
-    // Browse joined the exclusions (M99 review): its writes all re-render
+    // Browse joined the exclusions: its writes all re-render
     // locally via renderList, and a global re-render mid-inline-edit
     // destroyed unsaved editor text and collapsed the add-card form.
     // Custom Study joins the exclusions: it is a form, and a background write
@@ -6912,7 +6912,7 @@ async function renderDecks(body, setRoute) {
     counts.appendChild(count(deck.dueCount, 'due', 'due'));
     counts.appendChild(count(deck.total, 'total', 'total'));
 
-    // The pace line (M101): what the deadline math actually plans for this
+    // The pace line: what the deadline math actually plans for this
     // deck, so the new-card backlog reads as a schedule instead of a dread
     // counter.
     if (paceSettings.paceEnabled && deck.newCount > 0) {
@@ -7202,7 +7202,7 @@ function fcCardEditorEl(card, { onSave, onCancel }) {
     card.importanceReason ? `AI: ${card.importanceReason}` : '1-100 · high scores introduce first · 0 = unscored'));
   form.appendChild(impRow);
 
-  // ── Recall mode + rubric (M102) ────────────────────────────────────────
+  // ── Recall mode + rubric ────────────────────────────────────────
   //
   // The rubric is editable here because it IS the grading standard: when a
   // verdict looks wrong, the fix is a five-second edit to the points rather
@@ -7430,7 +7430,7 @@ async function renderBrowse(body, route, setRoute) {
   const addRow = el('div', 'fc-row');
   const saveCard = el('button', 'fc-btn fc-btn--primary');
   saveCard.textContent = 'Save Card';
-  // M98 — reverse pair option + cloze affordance. Cloze wins over reverse
+  // reverse pair option + cloze affordance. Cloze wins over reverse
   // when markers are present (a cloze note is already multi-card).
   const reverseWrap = el('label', 'fc-check');
   const reverseIn = el('input');
@@ -7825,7 +7825,7 @@ async function renderBrowse(body, route, setRoute) {
       meta.appendChild(el('span', '', card.dueAt <= Date.now()
         ? 'Due Now'
         : `Due ${new Date(card.dueAt).toLocaleDateString()}`));
-      // FSRS state (M98); legacy ease only for cards not yet migrated.
+      // FSRS state; legacy ease only for cards not yet migrated.
       if (card.stability > 0) {
         const s = el('span', '', `Stability ${card.stability < 100 ? card.stability.toFixed(1) : Math.round(card.stability)}d`);
         s.title = `Difficulty ${card.difficulty.toFixed(1)} / 10`;
@@ -7837,7 +7837,7 @@ async function renderBrowse(body, route, setRoute) {
       if (card.lapses > 0) meta.appendChild(el('span', '', `${card.lapses} ${card.lapses === 1 ? 'Lapse' : 'Lapses'}`));
       if (fcIsLeech(card)) meta.appendChild(el('span', 'fc-meta-leech', 'Leech'));
     }
-    // M102: the recall mode is scheduling-relevant metadata — it changes what
+    // the recall mode is scheduling-relevant metadata — it changes what
     // a review of this card costs, so it belongs on the row rather than
     // hidden one click deep in the editor.
     if (fcIsProductionMode(card.recallMode)) {
@@ -8962,7 +8962,7 @@ function fcPruneCustomSessions(keepKey) {
   while (live.length > 3) _fcStudySessions.delete(live.shift());
 }
 
-// ── Production recall UI (M102) ──────────────────────────────────────────────
+// ── Production recall UI ──────────────────────────────────────────────
 
 /** What each production mode asks for, and how much room to ask for it in. */
 const FC_PRODUCE_SPECS = {
@@ -9132,7 +9132,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
   // Shuffle is a remembered choice (flashcards.shuffle), toggled from the
   // study toolbar; a resumed session keeps the order it already had.
   const shuffleOn = cfg('shuffle', false) === true;
-  // Deadline-aware pacing (M101): each deck's new band is sliced to its
+  // Deadline-aware pacing: each deck's new band is sliced to its
   // paced allowance. Custom study deliberately bypasses pacing — "extra"
   // exists precisely to work past the paced batch.
   const pace = (resuming || custom) ? null : await fcSessionNewAllowances(route.deckId ?? null);
@@ -9246,7 +9246,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
 
   const deckRows = await db.all('SELECT id, name, exam_date, desired_retention FROM fc_decks');
   const deckNames = new Map(deckRows.map((d) => [d.id, d.name]));
-  // Per-deck scheduling options (M98): desired retention + deadline cap.
+  // Per-deck scheduling options: desired retention + deadline cap.
   const deckSchedOpts = new Map(deckRows.map((d) => [d.id, {
     desiredRetention: d.desired_retention || 0.9,
     examDate: d.exam_date || 0,
@@ -9375,7 +9375,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
     main.innerHTML = '';
     session.revealed = false;
     session.editing = false;
-    // M102: a held card's grade has already landed, so both guards clear
+    // a held card's grade has already landed, so both guards clear
     // with the card. Leaving `settled` set would freeze grading on the next
     // one; leaving `marking` set would do the same after a torn-down mark.
     session.settled = false;
@@ -9815,7 +9815,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
      *               passes false and the next card appears immediately.
      */
     const grade = (rating, { answer = '', verdict = null, hold = false } = {}) => {
-      // Re-entrancy guard (M99 review): a double-click or key repeat before
+      // Re-entrancy guard: a double-click or key repeat before
       // the async grade lands would grade the same card twice and skip one.
       // `settled` extends that guard across the held window: the card is
       // still on screen after its grade landed, so 1-4 must no longer fire.
@@ -10049,7 +10049,7 @@ async function renderStudy(body, route, paneState, setRoute, aheadMs = 0) {
       })();
     }
 
-    // ── Production recall (M102) ────────────────────────────────────────────
+    // ── Production recall ────────────────────────────────────────────
     //
     // A card whose value is an explanation asks for one BEFORE it shows the
     // answer. Recognition cards are untouched: reveal-then-self-grade is the
@@ -10338,7 +10338,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
   countIn.style.width = '70px';
   optRow.appendChild(el('span', 'fc-hint', 'Cards:'));
   optRow.appendChild(countIn);
-  // Density (M101): shapes SELECTIVITY in auto mode. Writes straight to the
+  // Density: shapes SELECTIVITY in auto mode. Writes straight to the
   // setting so the choice sticks across runs and surfaces in Settings too.
   optRow.appendChild(el('span', 'fc-hint', 'Density:'));
   const densityDd = _api.ui.createDropdown(optRow, {
@@ -10440,7 +10440,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
         });
         lastDocs = docs;
         // Duplicate scan against the target deck (existing decks only).
-        // Embeddings are recall; the judge decides (M101) — cosine similarity
+        // Embeddings are recall; the judge decides — cosine similarity
         // alone flagged contrast pairs as duplicates.
         let dups = cards.map(() => null);
         const deckSel = parseInt(deckDropdown.value, 10);
@@ -10495,7 +10495,7 @@ async function renderCreate(body, route, setRoute, viewDisposables = []) {
           chips.appendChild(impChip);
         }
         if (dup) {
-          // Judge verdicts (M101) replace the raw similarity reading; a
+          // Judge verdicts replace the raw similarity reading; a
           // similarity-only chip means the judge was unavailable this run.
           const label = dup.verdict === 'duplicate'
             ? `Duplicate of: ${String(dup.matchFront).slice(0, 60)}`
@@ -11086,7 +11086,7 @@ function registerDashboardWidget(context) {
       defaultRefreshPolicy: { kind: 'interval', ms: 15 * 60 * 1000 },
       refresh: async () => {
         const s = await fcDueSummary();
-        // M98: streak + 7-day scheduled forecast ride along.
+        // streak + 7-day scheduled forecast ride along.
         const start = new Date(); start.setHours(0, 0, 0, 0);
         const [streak, loads] = await Promise.all([
           fcStudyStreak(),
@@ -11817,7 +11817,7 @@ async function _cmdNewDeck() {
   await openFlashcards({ view: 'browse', deckId });
 }
 
-// ─── Selection → flashcard (M48 selection-action system) ────────────────────
+// ─── Selection → flashcard ────────────────────
 // Any surface that dispatches a 'create-flashcard' selection action (PDF
 // viewer, text/markdown editors) lands here: pick a deck, generate a few
 // cards from the selection, import, confirm with a toast.
@@ -11847,7 +11847,7 @@ async function fcCaptureSelection(selectedText, source) {
   }
   if (!deckId) return;
 
-  // M98: page number lives in the structured source_page column (clickable
+  // page number lives in the structured source_page column (clickable
   // source line in study; PDF reveal), not baked into the display label.
   const sourceLabel = source?.fileName || 'Selection';
   const sourcePage = Number.isInteger(source?.pageNumber) && source.pageNumber > 0 ? source.pageNumber : 0;
@@ -11899,7 +11899,7 @@ function registerSelectionAction(context, attempt = 0) {
 }
 
 /**
- * M98 — contribute the per-day review forecast to the planner calendar via
+ * contribute the per-day review forecast to the planner calendar via
  * its generic day-load seam. Same retry shape as the dispatcher above: the
  * planner is a built-in that may activate after this extension.
  */
@@ -11907,7 +11907,7 @@ function registerPlannerDayLoads(context, attempt = 0) {
   _api.commands.executeCommand('planner.getRegistry')
     .then((registry) => {
       // A retry can land after deactivate; a provider over a nulled bridge
-      // would throw on every calendar render (M99 review).
+      // would throw on every calendar render.
       if (!_dbBridge) return;
       if (!registry || typeof registry.registerDayLoadProvider !== 'function') throw new Error('no registry');
       context.subscriptions.push(registry.registerDayLoadProvider({
@@ -12090,7 +12090,7 @@ async function ensureDatabase(api) {
     console.error('[Flashcards] Migration failed:', res.error.message);
     return false;
   }
-  // M98: derive FSRS state for cards scheduled under SM-2. Idempotent; runs
+  // derive FSRS state for cards scheduled under SM-2. Idempotent; runs
   // once per pre-existing card population, then the guard query is empty.
   try {
     const healed = await fcHealFsrsState();
@@ -12116,7 +12116,7 @@ export async function activate(api, context) {
 
   injectStyles();
 
-  // M98: lazy embedding backfill for dedup — well off the activation path,
+  // lazy embedding backfill for dedup — well off the activation path,
   // capped per run, and a silent no-op when Ollama is absent.
   const backfillTimer = setTimeout(() => { void fcBackfillEmbeddings(); }, 8000);
   context.subscriptions.push({ dispose: () => clearTimeout(backfillTimer) });

@@ -15,7 +15,7 @@ const MEMORY_ROOT = '.parallx/memory';
 const DURABLE_MEMORY_PATH = `${MEMORY_ROOT}/MEMORY.md`;
 
 /**
- * M81 Phase 2 — bounded curation caps for agent-writable memory files.
+ * bounded curation caps for agent-writable memory files.
  *
  * Mirrors the Hermes pattern (~2,200 chars for MEMORY, ~1,375 for USER) but
  * uses round numbers (2,500 / 1,500) that survive minor edits without triggering
@@ -74,7 +74,7 @@ function formatSearchResults(results: Array<{ sourceId: string; contextPrefix: s
  * activate the tool before `WorkspaceMemoryService` is bound (and for unit
  * tests that exercise the read path without the full service surface).
  *
- * M81 Phase 8 — `name=<slug>` reads `.parallx/memory/lessons/<slug>.md` and
+ * `name=<slug>` reads `.parallx/memory/lessons/<slug>.md` and
  * requires `workspaceMemory` (lessons live behind the service, not the raw fs).
  */
 export function createMemoryGetTool(
@@ -104,7 +104,7 @@ export function createMemoryGetTool(
     permissionLevel: 'always-allowed' as ToolPermissionLevel,
     category: 'memory',
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
-      // ── Lesson read by slug (M81 Phase 8) ──
+      // ── Lesson read by slug ──
       const rawName = typeof args['name'] === 'string' ? args['name'].trim() : '';
       if (rawName) {
         if (!workspaceMemory) {
@@ -221,7 +221,7 @@ export function createMemorySearchTool(memorySearch: IBuiltInToolCanonicalMemory
   };
 }
 
-// ─── memory_write (M81 Phase 2 + Phase 8) ─────────────────────────────────────
+// ─── memory_write ─────────────────────────────────────
 
 type MemoryEditFile = 'USER' | 'MEMORY' | 'daily' | 'lesson';
 type MemoryEditAction = 'add' | 'replace' | 'remove';
@@ -402,7 +402,7 @@ function formatBoundedRejection(file: MemoryEditBodyFile, current: string, cap: 
 /**
  * memory_write — single tool the agent uses to mutate workspace memory.
  *
- * Design (M81 Phase 2):
+ * Design:
  *   - Three files: USER (identity), MEMORY (durable facts), daily (date log).
  *   - Three actions: add (append), replace (substring match), remove.
  *   - Bounded files (USER, MEMORY) enforce char caps before writing; daily is
@@ -503,7 +503,7 @@ export function createMemoryEditTool(
         date = new Date(appTime(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
       }
 
-      // ── file=lesson branch (M81 Phase 8) ──
+      // ── file=lesson branch ──
       if (file === 'lesson') {
         const slug = typeof args['slug'] === 'string' ? args['slug'].trim() : '';
         const slugError = validateLessonSlug(slug);

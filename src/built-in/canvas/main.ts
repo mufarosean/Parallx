@@ -1,10 +1,10 @@
-﻿// Canvas Built-In Tool â€” main activation entry point
+// Canvas Built-In Tool — main activation entry point
 //
 // Implements:
-//   â€¢ CanvasDataService creation and migration (Task 3.2)
-//   â€¢ Sidebar view provider registration for page tree (deferred to Cap 4)
-//   â€¢ Editor provider registration for Canvas panes (deferred to Cap 5)
-//   â€¢ Command handlers for page CRUD
+//   • CanvasDataService creation and migration (Task 3.2)
+//   • Sidebar view provider registration for page tree (deferred to Cap 4)
+//   • Editor provider registration for Canvas panes (deferred to Cap 5)
+//   • Command handlers for page CRUD
 //
 // Follows the same pattern as src/built-in/explorer/main.ts.
 
@@ -41,7 +41,7 @@ import { pageMoveTargets } from './pageMoveTargets.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
 import { registerQuickOpenSource } from '../../services/quickOpenSources.js';
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface ParallxApi {
   views: {
@@ -122,7 +122,7 @@ function doesPageChangeAffectIndexMetadata(event: PageChangeEvent): boolean {
   return event.changedFields.some((field) => INDEX_METADATA_PAGE_FIELDS.has(field));
 }
 
-// â”€â”€â”€ Module State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Module State ────────────────────────────────────────────────────────────
 
 /** Payload for capturing a PDF/other-surface selection into a canvas page. */
 interface CaptureDetail {
@@ -144,7 +144,7 @@ let _databaseService: DatabaseDataService | null = null;
  *  signal actor stamp reads this so agent work never counts as the user's. */
 const _aiMutatedPageIds = new Set<string>();
 
-// â”€â”€â”€ Activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Activation ──────────────────────────────────────────────────────────────
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
   _api = api;
@@ -399,7 +399,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     dispose: () => window.removeEventListener('parallx:canvas-run-legacy-migration', onForceLegacyMigration),
   });
 
-  // 2a. Publish read-only page query service to DI for cross-tool access (M56)
+  // 2a. Publish read-only page query service to DI for cross-tool access
   api.services.registerInstance(ICanvasPageQueryService, _dataService);
   // Publish the FULL data service too, so the dashboard's notes widget can host
   // a real canvas page (create/get/save + live reload) via the shared editor view.
@@ -719,7 +719,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   //     chosen/new page. Two entry points share one implementation:
   //       • window event `parallx:capture-to-canvas` — fire-and-forget, and
   //       • command `canvas.captureSelection` — awaitable, returns the target
-  //         page so the caller can record a bidirectional link (M84).
+  //         page so the caller can record a bidirectional link.
   const onCaptureToCanvas = (ev: Event): void => {
     const detail = (ev as CustomEvent).detail as CaptureDetail | undefined;
     if (!detail?.text && !detail?.imageDataUrl) return;
@@ -936,7 +936,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 5c. Keep the knowledge index in sync with page lifecycle changes.
   context.subscriptions.push(
     _dataService.onDidSavePage((event) => {
-      // M78 Phase 8 — onDidSavePage now carries the saved page object,
+      // onDidSavePage now carries the saved page object,
       // so we skip the redundant getPage IPC that previously fired on
       // every autosave. The reindex scheduler reads only id/title/
       // content from the page, which the carried IPage already provides.
@@ -1029,7 +1029,7 @@ export async function deactivate(): Promise<void> {
   if (isDevMode) console.log('[Canvas] Tool deactivated');
 }
 
-// â”€â”€â”€ Commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Commands ────────────────────────────────────────────────────────────────
 
 function _registerCommands(api: ParallxApi, context: ToolContext): void {
   // canvas.resolveBlockForChat — resolve a single block's CURRENT markdown for a
@@ -1061,7 +1061,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
       return { markdown, blockType: block.type, pageTitle: page.title };
     }),
   );
-  // canvas.newPage â€” Create a new page at root level
+  // canvas.newPage — Create a new page at root level
   context.subscriptions.push(
     api.commands.registerCommand('canvas.newDatabase', async () => {
       if (!_databaseService) return;
@@ -1093,7 +1093,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
   );
 
   // canvas.showKeyboardShortcuts — Open the keyboard shortcut cheatsheet
-  // (M77 Phase 11.6). Bound from the editor via Mod+/ and from the empty
+  //. Bound from the editor via Mod+/ and from the empty
   // state hint.
   context.subscriptions.push(
     api.commands.registerCommand('canvas.showKeyboardShortcuts', async () => {
@@ -1106,7 +1106,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // canvas.getPageMarkdown (M93) — cross-extension read surface: return a
+  // canvas.getPageMarkdown — cross-extension read surface: return a
   // page's content as markdown. Built for the flashcards extension (generate
   // cards from a canvas page) but generic: anything that can execute commands
   // can read a page without touching canvas internals.
@@ -1165,7 +1165,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // canvas.exportPdf (M93) — open the print-style PDF export dialog for the
+  // canvas.exportPdf — open the print-style PDF export dialog for the
   // ACTIVE canvas editor. Ctrl+Alt+P: on Ctrl+P it shadowed Go to File on
   // every canvas page, where finding a page matters most.
   context.subscriptions.push(
@@ -1320,7 +1320,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // canvas.deletePage â€” Delete the selected page (requires pageId argument)
+  // canvas.deletePage — Delete the selected page (requires pageId argument)
   context.subscriptions.push(
     api.commands.registerCommand('canvas.deletePage', async (...args: unknown[]) => {
       if (!_dataService) return;
@@ -1352,7 +1352,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // canvas.renamePage â€” Rename a page (requires pageId argument)
+  // canvas.renamePage — Rename a page (requires pageId argument)
   context.subscriptions.push(
     api.commands.registerCommand('canvas.renamePage', async (...args: unknown[]) => {
       if (!_dataService) return;
@@ -1377,7 +1377,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // canvas.duplicatePage â€” Duplicate a page (requires pageId argument).
+  // canvas.duplicatePage — Duplicate a page (requires pageId argument).
   // Delegates to the data service's deep-recursive duplicate so the new
   // page (a) gets a pageBlock on its parent and (b) recursively copies
   // descendants with pageBlock pageIds remapped. The earlier shallow
@@ -1486,7 +1486,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
   );
 }
 
-// â”€â”€â”€ Exported for internal use by sidebar / editor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Exported for internal use by sidebar / editor ───────────────────────────
 
 /** Access the Canvas data service from other Canvas modules. */
 export function getDataService(): ICanvasDataService | null {
@@ -1503,7 +1503,7 @@ export function getApi(): ParallxApi {
  * canvas page as text or an image block, then open the page. Lets the user
  * pick an existing page or create a fresh "Study Notes" page.
  *
- * M84: returns the target page `{ pageId, title }` so callers (the PDF reader)
+ * returns the target page `{ pageId, title }` so callers (the PDF reader)
  * can record a bidirectional link back to the highlight. Returns null if the
  * user cancelled or the capture was empty.
  */

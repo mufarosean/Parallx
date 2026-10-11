@@ -1,4 +1,4 @@
-// univerHost.ts — the Univer spreadsheet engine host (M99).
+// univerHost.ts — the Univer spreadsheet engine host.
 //
 // THIS FILE IS A SEPARATE BUNDLE. scripts/build.mjs compiles it to
 // dist/renderer/worksheet-univer.js (+ .css), and the worksheet pane loads it
@@ -185,7 +185,7 @@ export interface IWorksheetHost {
 // A pane hidden with display:none (the editor keeps tabs alive that way)
 // measures 0x0, and the engine's resize observer then resized every canvas
 // to 0x0, which wipes its bitmap; the tab came back blank until the
-// idle-time redraw (Mufaro, 2026-09-15: "navigating to a different tab and
+// idle-time redraw ("navigating to a different tab and
 // back causes flashes"). With the resize skipped while hidden, the canvas
 // keeps its last picture, and a reveal at the same size repaints nothing.
 interface SnapshotSheet {
@@ -260,7 +260,7 @@ export function blankWorkbookData(): Partial<IWorkbookData> {
 }
 
 /**
- * Athena fidelity (M99 S4): unregister every function the Pearson exam
+ * Athena fidelity: unregister every function the Pearson exam
  * driver does not support, so using one yields the same #NAME? the real
  * exam would — and it disappears from the fx catalog and autocomplete.
  * The allowlist is generated from Pearson's own comparison workbook.
@@ -404,7 +404,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
 
   // Array formulas keep their spilled cells in the engine, not in the saved
   // snapshot, so a sheet reopened from a snapshot showed only the first cell
-  // of every spill (Mufaro, 2026-09-14: "formula spillage does not work
+  // of every spill ("formula spillage does not work
   // consistently"). A full recalculation on mount brings them back; the
   // snapshot itself does not change, so the autosave baseline holds.
   // The engine registers the workbook's formulas a moment after creation
@@ -496,7 +496,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
       stripResultStyles(params?.arrayFormulaCellData);
     }));
   }
-  // Formula errors leave evidence (Mufaro, 2026-09-14: formulas failing
+  // Formula errors leave evidence (formulas failing
   // intermittently in a long session, cleared by a restart, never reproduced
   // outside the app). Every calculation result is scanned for error values;
   // each one is reported once per cell with the formula text and the state
@@ -561,7 +561,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   // and forgets the run the moment you navigate any other way (a click, an
   // arrow key). Univer 0.25 records the run's start on the first Tab and
   // forgets it only when Enter uses it, so a click elsewhere followed by
-  // typing and Enter jumps back to that old column (Mufaro, 2026-09-14:
+  // typing and Enter jumps back to that old column (
   // "Enter sends you to an unpredictable cell"). The service holding that
   // memory is not exported; it is found in the injector by its shape and
   // cleared on every selection change that is not part of a Tab run.
@@ -720,7 +720,7 @@ export function createWorksheetHost(opts: IWorksheetHostOptions): IWorksheetHost
   // fixes the editor's screen position once, when editing starts, and every
   // keystroke re-places it there, so while a formula is being typed the box
   // stays put on screen as the grid moves under it; scroll back to any other
-  // offset and it sits over the wrong cell (Mufaro, 2026-09-08: picking a
+  // offset and it sits over the wrong cell (picking a
   // reference far to the left). On each scroll of the sheet's main viewport
   // while the editor is open, recompute the editor's layout from the current
   // scroll (position only; the typed text is untouched) and let the engine's

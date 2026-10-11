@@ -71,7 +71,7 @@ function setupMcpBridge(ipcMain, getMainWindow, appRoot) {
         ? args.filter((a) => typeof a === 'string')
         : [];
 
-      // M67 P1-3: migrate Gmail creds before the server starts.
+      // 3: migrate Gmail creds before the server starts.
       if (_isGmailServer(safeArgs)) await _migrateGmailCreds(appRoot);
 
       // Security: Use spawn (not exec), explicit args array.

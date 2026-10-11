@@ -222,7 +222,7 @@ export interface FreeSlot {
   readonly endAt: number;
 }
 
-// ─── Sync (M82 ships the shape; no providers built yet) ─────────────────────
+// ─── Sync ─────────────────────
 
 export interface SyncedTask extends Partial<PlannerTask> {
   readonly title: string;

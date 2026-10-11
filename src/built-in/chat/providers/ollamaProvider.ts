@@ -349,7 +349,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     }
   }
 
-  // ── Model Pre-loading (M17 Task 0.2.2 / 0.2.3) ──
+  // ── Model Pre-loading ──
 
   /**
    * Pre-loads a chat model (and the embedding model) into VRAM so the
@@ -564,7 +564,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
     // Keep the model loaded in VRAM for 30 minutes after the last request
     // instead of Ollama's default 5 minutes. This eliminates cold-start
-    // penalties during active study sessions (M17 Task 0.2.1).
+    // penalties during active study sessions.
     body['keep_alive'] = '30m';
 
     // Forward the caller's abort signal (user cancellation + participant stall
@@ -903,7 +903,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       // Also poll loaded models
       await this._pollLoadedModels();
 
-      // Pre-load the active model on first availability detection (M17 Task 0.2.2)
+      // Pre-load the active model on first availability detection
       if (!this._preloadRequested && this._loadedModels.length === 0) {
         this._preloadRequested = true;
         // Defer to avoid blocking the poll cycle — preload is fire-and-forget

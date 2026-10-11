@@ -1,5 +1,5 @@
 // canvasSidebarDragState.ts — drag-and-drop state machine for the canvas
-// sidebar (M77 Phase 7).
+// sidebar.
 //
 // Extracted from canvasSidebar.ts to give the drag lifecycle its own
 // surface. The sidebar holds one instance and delegates state queries

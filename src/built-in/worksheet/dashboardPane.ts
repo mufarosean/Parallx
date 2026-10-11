@@ -83,7 +83,7 @@ function daysAgoLabel(n: number): string {
 
 // ── Pieces ──────────────────────────────────────────────────────────────────
 
-/** A label and a number; the sentence behind them is the tooltip (Mufaro, 2026-09-21: no wording the number already says). */
+/** A label and a number; the sentence behind them is the tooltip (no wording the number already says). */
 export function tile(label: string, value: string, sub: string): HTMLElement {
   const t = el('div', 'ws-dash__tile');
   t.title = sub;
@@ -98,7 +98,7 @@ export function card(title: string, hint: string, onQuiz?: () => void): { root: 
   const head = el('div', 'ws-dash__cardhead');
   const t = el('div', 'ws-dash__cardtitle', title);
   t.title = onQuiz ? `${hint}. Click the card for a quiz of these.` : hint;
-  // The card is the way to a quiz of what it lists (Mufaro, 2026-09-21: no
+  // The card is the way to a quiz of what it lists (no
   // button repeated under every card). A problem row keeps its own click;
   // anywhere else on the card opens the builder with the set handed over.
   if (onQuiz) {
@@ -502,7 +502,7 @@ function campaignSection(root: HTMLElement, items: InsightItem[], attempts: Insi
   const off = restDaysLabel(campaign.restDays);
 
   // Three columns, the same facts as before, each in its own place: today,
-  // the plan, the level (Mufaro, 2026-09-21: "busy, imbalanced").
+  // the plan, the level ("busy, imbalanced").
   const grid = el('div', 'ws-camp__grid');
   sec.appendChild(grid);
   const colToday = el('div', 'ws-camp__col ws-camp__col--today');
@@ -797,7 +797,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     cleanups.push(lineChart(charts, 'Minutes per problem', perProblem, null, tip, { max: top, fmt: (v) => `${Math.round(v)}m` }));
 
     // Rewards last: milestones as a row of chips, each worth its XP and, at
-    // the rate set, its cash (Mufaro, 2026-09-21: "should be at the bottom").
+    // the rate set, its cash ("should be at the bottom").
     if (rewards) rewardsSection(root, rewards, (id, size) => actions.renderIcon?.(id, size) ?? '', actions.xpCashRate?.() ?? 0);
   };
 

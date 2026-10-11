@@ -174,7 +174,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // Register commands
   registerCommands(api, context);
 
-  // M86: recent-items recency tracking + the "Recent items" dashboard widget.
+  // recent-items recency tracking + the "Recent items" dashboard widget.
   // The explorer owns file/page recency; the dashboard just displays it.
   setupRecentItemsTracking(api, context);
   context.subscriptions.push(api.dashboard.registerWidgetType(RECENT_ITEMS_WIDGET));
@@ -215,7 +215,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // M66 — the explorer link contract: `parallx://explorer/file?path=<path>`
+  // the explorer link contract: `parallx://explorer/file?path=<path>`
   // opens a workspace file in its editor, at the cited spot. `path` is the
   // workspace-relative path the file tools show, resolved against the open
   // workspace (fileLink.ts); absolute paths and `uri=file:///…` still open.

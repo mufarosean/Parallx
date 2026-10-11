@@ -1,4 +1,4 @@
-// cronTools.ts — 8 cron tool actions (M58 W4)
+// cronTools.ts — 8 cron tool actions
 //
 // Upstream parity:
 //   - cron-tool.ts:1-541 @ github.com/openclaw/openclaw — exposes 8 actions:
@@ -15,7 +15,7 @@
 //   - Outputs are shallow JSON summaries suitable for direct model consumption
 //     — ICronJob / ICronRunResult already carry only JSON-safe fields
 //
-// Ship-thin scope (M58 §6.5): the cron executor itself emits surface
+// Ship-thin scope: the cron executor itself emits surface
 // deliveries only (no LLM call). These tools fully drive the scheduler —
 // add/update/remove/list/etc. work end-to-end today. Only the *effect of
 // firing* is thin until M59's isolated-turn substrate lands.

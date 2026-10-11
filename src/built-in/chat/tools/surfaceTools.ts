@@ -1,4 +1,4 @@
-// surfaceTools.ts — `surface_send` + `surface_list` chat tools (M58 W6)
+// surfaceTools.ts — `surface_send` + `surface_list` chat tools
 //
 // Upstream parity:
 //   - message-tool (src/tools/message-tool) — "send content to a named
@@ -8,7 +8,7 @@
 // Parallx adaptation:
 //   - Tools operate over the workbench-owned ISurfaceRouterService
 //   - Approval posture is conservative: `surface_send` is
-//     `requires-approval` uniformly this milestone (M58 plan §5 W6.6).
+//     `requires-approval` uniformly this milestone.
 //     Per-surface free list (chat/notifications/status) is scheduled for
 //     M59 once the AI-settings permission-map editor can expose it.
 //   - Every tool-initiated send is stamped with `origin: 'agent'` so the

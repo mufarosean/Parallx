@@ -36,7 +36,7 @@ export function registerBuiltInDashboardWidgets(
   // editor pane stuffs it into the context object). Nothing to capture here
   // beyond registration.
 
-  // M86: organ-owned widgets are NOT registered here — they are contributed
+  // organ-owned widgets are NOT registered here — they are contributed
   // by the tool that owns their data via `api.dashboard.registerWidgetType`
   // (recent-files → explorer; autonomy-activity → chat; news-brief,
   // weather, market → web-research extension, whose search tools they
@@ -50,7 +50,7 @@ export function registerBuiltInDashboardWidgets(
     registry.registerWidgetType(NOTES_WIDGET),
     registry.registerWidgetType(TASKS_WIDGET),
     registry.registerWidgetType(COUNTDOWN_WIDGET),
-    // M86 C3 — the generic slate: domain-blind, config-shaped widgets.
+    // the generic slate: domain-blind, config-shaped widgets.
     registry.registerWidgetType(TIMER_WIDGET),
     registry.registerWidgetType(TRACKER_BOARD_WIDGET),
     registry.registerWidgetType(SAVED_QUERY_WIDGET),

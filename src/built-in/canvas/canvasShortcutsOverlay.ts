@@ -1,4 +1,4 @@
-// canvasShortcutsOverlay.ts — Keyboard shortcut cheatsheet (M77 Phase 11.6)
+// canvasShortcutsOverlay.ts — Keyboard shortcut cheatsheet
 //
 // Notion-parity: pressing Ctrl+/ (or invoking the
 // `canvas.showKeyboardShortcuts` command) opens a modal listing every

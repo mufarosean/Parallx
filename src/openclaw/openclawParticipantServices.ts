@@ -45,7 +45,7 @@ export interface IOpenclawDefaultParticipantAdapterDeps {
   readonly writeFileRelative?: IDefaultParticipantServices['writeFileRelative'];
   readonly existsRelative?: IDefaultParticipantServices['existsRelative'];
   readonly invalidatePromptFiles?: IDefaultParticipantServices['invalidatePromptFiles'];
-  // M81 Phase 8 — workspace memory accessor for `/init` (legacy archive +
+  // workspace memory accessor for `/init` (legacy archive +
   // lessons consolidation). Optional; chat/main.ts wires this when a
   // WorkspaceMemoryService is registered.
   readonly workspaceMemory?: IDefaultParticipantServices['workspaceMemory'];

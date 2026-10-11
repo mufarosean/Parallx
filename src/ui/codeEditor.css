@@ -1,4 +1,4 @@
-/* codeEditor.css — layout shell for the shared CodeMirror surface (M95).
+/* codeEditor.css — layout shell for the shared CodeMirror surface.
  *
  * Colours live in the EditorView.theme() inside codeEditor.ts, driven by
  * --px-syntax-* tokens. This file only does box geometry, which CodeMirror

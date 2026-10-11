@@ -1,4 +1,4 @@
-// semanticGraphService.ts - cached semantic edges for Workspace Graph (M68)
+// semanticGraphService.ts - cached semantic edges for Workspace Graph
 //
 // This service is intentionally built on stored vector data only. It does not
 // depend on IEmbeddingService and must not call Ollama or any chat/model path.
@@ -25,9 +25,9 @@ import { extractDistinctiveTerms } from './distinctiveTermExtractor.js';
 export type SemanticGraphSourceType = 'page_block' | 'file_chunk';
 
 /**
- * Edge kinds in the semantic / mind-map graph (M76).
+ * Edge kinds in the semantic / mind-map graph.
  *
- * `similar-to` (M68 baseline) is the only kind written today; M76 phases 2
+ * `similar-to` is the only kind written today; M76 phases 2
  * and 4 add the others. The kind taxonomy is fixed up-front so the schema
  * and rendering can be in place before the producers are wired.
  */
@@ -57,7 +57,7 @@ const ALL_EDGE_KINDS: readonly SemanticGraphEdgeKind[] = [
 ];
 
 /**
- * M88 S1 — per-kind score floors. Scores mean DIFFERENT things per kind:
+ * per-kind score floors. Scores mean DIFFERENT things per kind:
  * cosine similarity (similar-to), shared-term mass (co-occurrence,
  * log2(1+n)/log2(11) → 0.45 ≈ two shared terms), classifier confidence
  * (extends/refutes — accepted from 0.55 at write time, so the read floor
@@ -65,14 +65,14 @@ const ALL_EDGE_KINDS: readonly SemanticGraphEdgeKind[] = [
  * deterministic, written at 1.0 — floor 0 keeps them unconditional).
  * A single flat threshold across kinds is a category error.
  */
-/** M88 S3 — cap the title map scanned for wiki links + mentions. */
+/** cap the title map scanned for wiki links + mentions. */
 const TITLE_MENTION_MAX_TITLES = 500;
-/** M88 S3 — cap reference edges per source (priority-ordered before cap). */
+/** cap reference edges per source (priority-ordered before cap). */
 const MAX_REFERENCE_EDGES_PER_SOURCE = 20;
 
-/** M88 S2 — chunk vectors sampled per source for the segment-level pass. */
+/** chunk vectors sampled per source for the segment-level pass. */
 const SEGMENT_SAMPLE_LIMIT = 12;
-/** M88 S2 — KNN k per sampled chunk (smaller than the centroid's k). */
+/** KNN k per sampled chunk (smaller than the centroid's k). */
 const SEGMENT_CANDIDATE_K = 5;
 
 const KIND_MIN_SCORE: Record<SemanticGraphEdgeKind, number> = {
@@ -109,7 +109,7 @@ export interface SemanticGraphEdge {
 
 /**
  * Diagnostics surfaced through `/context` to help bake-and-tune the
- * mind map (M76 Phase 7). Counts only — no semantic content — so the
+ * mind map. Counts only — no semantic content — so the
  * report stays compact and privacy-clean.
  */
 export interface IMindMapDiagnostics {
@@ -128,7 +128,7 @@ export interface IMindMapDiagnostics {
 }
 
 /**
- * Concept node read by the workspace-graph UI (M76 Phase 5). One row per
+ * Concept node read by the workspace-graph UI. One row per
  * cluster currently materialised in concept_nodes. The graph extension
  * uses these to render concept nodes as first-class graph nodes (label,
  * member count) and to filter the user-deleted tombstones out of the
@@ -210,7 +210,7 @@ export function semanticSourceToNodeId(
  * Return the parent folder of a workspace-relative file path, or null for a
  * top-level file. Path separators are normalized to forward slashes. Empty
  * input and unparseable paths return null. Used by the same-folder edge
- * producer (M76 Phase 2).
+ * producer.
  */
 function _parentFolder(filePath: string): string | null {
   if (typeof filePath !== 'string' || filePath.length === 0) return null;
@@ -364,7 +364,7 @@ export class SemanticGraphService extends Disposable {
     const kinds: readonly SemanticGraphEdgeKind[] =
       options.kinds && options.kinds.length > 0 ? options.kinds : ALL_EDGE_KINDS;
 
-    // M88 S1 — one query per kind with that kind's OWN score floor, then a
+    // one query per kind with that kind's OWN score floor, then a
     // fair merge. The old single query applied one flat minScore (0.72,
     // calibrated for cosine) to every kind, silently discarding lineage
     // edges written at confidence 0.55–0.71 and co-occurrence edges below
@@ -480,7 +480,7 @@ export class SemanticGraphService extends Disposable {
   }
 
   /**
-   * Rename a concept node (M76 Phase 6). Sets user_renamed=1 so future
+   * Rename a concept node. Sets user_renamed=1 so future
    * LLM labelling passes preserve the user's choice. No-op if the
    * concept doesn't exist.
    */
@@ -497,7 +497,7 @@ export class SemanticGraphService extends Disposable {
   }
 
   /**
-   * Soft-delete a concept node (M76 Phase 6). Sets user_deleted=1 so the
+   * Soft-delete a concept node. Sets user_deleted=1 so the
    * carry-over rule keeps skipping this cluster on future refreshes —
    * the deletion is sticky. Also wipes its member-of edges and member
    * rows so the deleted concept stops appearing in the graph.
@@ -529,7 +529,7 @@ export class SemanticGraphService extends Disposable {
   }
 
   /**
-   * Merge `mergedId` INTO `survivorId` (M76 Phase 6). The survivor keeps
+   * Merge `mergedId` INTO `survivorId`. The survivor keeps
    * its label, stable_id, and user_renamed flag. The merged concept's
    * members are moved over and the merged concept node is removed
    * entirely (not tombstoned — a fresh re-cluster could re-form it
@@ -618,7 +618,7 @@ export class SemanticGraphService extends Disposable {
   }
 
   /**
-   * Force a full concept-clustering rebuild (M76 Phase 6). Wipes:
+   * Force a full concept-clustering rebuild. Wipes:
    *   - the refresh_pass_state rows for 'concept-clustering' so every
    *     source appears changed on next refresh
    *   - every concept_nodes row INCLUDING user-deleted tombstones
@@ -651,7 +651,7 @@ export class SemanticGraphService extends Disposable {
 
   /**
    * Compact diagnostics for the /context report and the workspace-graph
-   * settings panel (M76 Phase 7). Counts only — no source content or
+   * settings panel. Counts only — no source content or
    * cluster member ids — so the report stays privacy-clean and short.
    */
   async getMindMapDiagnostics(): Promise<IMindMapDiagnostics> {
@@ -868,7 +868,7 @@ export class SemanticGraphService extends Disposable {
       )
     `);
 
-    // M76 Phase 2 — per-source distinctive term storage drives co-occurrence
+    // per-source distinctive term storage drives co-occurrence
     // edges. Each row is one (source, term) pair; the per-term index makes
     // "find sources sharing term T" a fast lookup.
     await this._db.run(`
@@ -921,7 +921,7 @@ export class SemanticGraphService extends Disposable {
     this._processing = true;
     let changed = false;
     // Track per-drain counters so getStats() can show real diagnostics
-    // (M68 Iteration D). Skipped = sources where _recomputeSource returned
+    //. Skipped = sources where _recomputeSource returned
     // false without producing edges (deleted, no content hash, etc).
     let drainProcessed = 0;
     let drainSkipped = 0;
@@ -996,7 +996,7 @@ export class SemanticGraphService extends Disposable {
 
     const candidates = await this._vectorStore.vectorSearch(centroid.vector, this._candidateK);
 
-    // M88 S2 — segment-level pass. The centroid smears topics: a strong
+    // segment-level pass. The centroid smears topics: a strong
     // chapter-level connection between two long texts dies in the average.
     // Search a bounded, evenly-sampled set of this source's chunk vectors
     // and pool the hits; _groupCandidates max-aggregates per target, so a
@@ -1073,7 +1073,7 @@ export class SemanticGraphService extends Disposable {
       };
     }));
 
-    // M76 Phase 2 — additional edge kinds derived from the same source. Each
+    // additional edge kinds derived from the same source. Each
     // producer is independent and shares the per-kind upsert in
     // _replaceSourceEdges so its edges don't interfere with similarity.
     await this._recomputeReferenceEdges(sourceType, sourceId, sourceNodeId);
@@ -1084,7 +1084,7 @@ export class SemanticGraphService extends Disposable {
   }
 
   /**
-   * M76 Phase 2 — extract `references` edges from a source's text. Scans the
+   * extract `references` edges from a source's text. Scans the
    * source's stored chunks for `parallx://` URIs that resolve to indexed
    * workspace items and emits a directed edge per resolved reference.
    *
@@ -1109,7 +1109,7 @@ export class SemanticGraphService extends Disposable {
 
     const text = chunks.map((c) => c.text).join('\n');
 
-    // M88 S3 — references come from FOUR signals now, priority-ordered:
+    // references come from FOUR signals now, priority-ordered:
     //   1.0  parallx:// URIs           (explicit, canonical)
     //   1.0  markdown links to files   (explicit)
     //   0.9  [[wiki links]] by title   (explicit but name-resolved)
@@ -1221,7 +1221,7 @@ export class SemanticGraphService extends Disposable {
   }
 
   /**
-   * M76 Phase 2 — emit `same-folder` edges between files that live in the
+   * emit `same-folder` edges between files that live in the
    * same parent directory. Pages don't have folders (they have parent
    * pages, which Phase 4+ may treat similarly), so this producer is a
    * no-op for page sources.
@@ -1290,7 +1290,7 @@ export class SemanticGraphService extends Disposable {
   }
 
   /**
-   * M76 Phase 2 — emit `co-occurrence` edges between sources that share
+   * emit `co-occurrence` edges between sources that share
    * distinctive terms (multi-word capitalised phrases, acronyms). The
    * intuition: two documents that mention "Bayesian Inference", "CAPM",
    * and "Black-Scholes" are likely conceptually related even if their

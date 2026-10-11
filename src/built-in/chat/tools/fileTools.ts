@@ -1,4 +1,4 @@
-// fileTools.ts — File system tool registrations (M13 Phase 5)
+// fileTools.ts — File system tool registrations
 
 import type {
   IChatTool,
@@ -330,7 +330,7 @@ export function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): I
   };
 }
 
-// ── fs_grep_search tool (M41 Phase 8) ──
+// ── fs_grep_search tool ──
 
 export function createGrepSearchTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {

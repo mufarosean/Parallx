@@ -20,7 +20,7 @@ import type { IThemeService } from './serviceTypes.js';
 const THEME_STYLE_ID = 'parallx-theme-colors';
 
 /**
- * M83 — VS Code → Parallx token bridge.
+ * VS Code → Parallx token bridge.
  *
  * The app's 38 CSS files reference `var(--vscode-*)`. Rather than edit all
  * of them, we remap the character-defining VS Code tokens to the new
@@ -280,7 +280,7 @@ const THEME_VSCODE_BRIDGE: ReadonlyArray<readonly [string, string]> = [
 ];
 
 /**
- * M83 — Parallx design-token (type / radius / font) refinement bridge.
+ * Parallx design-token (type / radius / font) refinement bridge.
  *
  * The app uses a second token namespace, `--parallx-fontSize-*` /
  * `--parallx-radius-*` / `--parallx-fontFamily-*`, ~600 references across

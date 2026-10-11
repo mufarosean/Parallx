@@ -47,7 +47,7 @@ class DatabaseManager {
     this._db = new Database(dbPath);
     this._dbPath = dbPath;
 
-    // M78 Phase 2 — performance PRAGMAs.
+    // performance PRAGMAs.
     //
     // journal_mode = WAL: writers don't block readers; fsync only on
     //   checkpoint (not per commit). Big win on slow disks (USB).
@@ -66,7 +66,7 @@ class DatabaseManager {
     // Enforce foreign key constraints
     this._db.pragma('foreign_keys = ON');
 
-    // Load sqlite-vec extension for vector similarity search (M10)
+    // Load sqlite-vec extension for vector similarity search
     sqliteVec.load(this._db);
 
     console.log(`[DatabaseManager] Opened database: ${dbPath}`);
@@ -385,7 +385,7 @@ class ExtensionDatabaseManager {
 
     const dbPath = path.join(extDir, 'data.db');
     const db = new Database(dbPath);
-    // M78 Phase 2 — same performance PRAGMAs as the workspace DB.
+    // same performance PRAGMAs as the workspace DB.
     db.pragma('journal_mode = WAL');
     db.pragma('synchronous = NORMAL');
     db.pragma('wal_autocheckpoint = 1000');

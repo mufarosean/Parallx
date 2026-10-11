@@ -28,7 +28,7 @@ const BUILTIN_THEMES: ThemeCatalogEntry[] = [
 /** Global-storage key for user-created themes (file-backed since M53). */
 export const USER_THEMES_KEY = 'parallx.userThemes';
 
-// ─── User theme cache (M53 D3) ──────────────────────────────────────────────
+// ─── User theme cache ──────────────────────────────────────────────
 
 /** Module-level cache for user themes, populated at startup from file-backed storage. */
 let _userThemesCache: ThemeCatalogEntry[] | undefined;

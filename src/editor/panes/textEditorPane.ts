@@ -151,7 +151,7 @@ export class TextEditorPane extends EditorPane {
     this._textarea.addEventListener('select', this._renderMinimap.bind(this));
     this._textarea.addEventListener('mouseup', this._renderMinimap.bind(this));
 
-    // M48: Context menu for text selection AI actions
+    // Context menu for text selection AI actions
     this._textarea.addEventListener('contextmenu', this._onContextMenu);
 
     container.appendChild(this._editorBody);
@@ -764,7 +764,7 @@ export class TextEditorPane extends EditorPane {
 
   // ── M48: Selection API & Context Menu ──────────────────────────────
 
-  /** Get the currently selected text in the textarea (M48). */
+  /** Get the currently selected text in the textarea. */
   getSelectedText(): string | undefined {
     if (!this._textarea) return undefined;
     const start = this._textarea.selectionStart;
@@ -773,7 +773,7 @@ export class TextEditorPane extends EditorPane {
     return this._textarea.value.substring(start, end);
   }
 
-  /** Get selection source metadata for the AI action system (M48). */
+  /** Get selection source metadata for the AI action system. */
   getSelectionSource(): { fileName: string; filePath: string; startLine?: number; endLine?: number } | undefined {
     const text = this.getSelectedText();
     if (!text || !this.input) return undefined;
@@ -804,7 +804,7 @@ export class TextEditorPane extends EditorPane {
           label: 'Copy',
           keybinding: 'Ctrl+C',
         },
-        // M48 Phase 4: Single AI action
+        // Single AI action
         {
           id: 'ai.addToChat',
           label: 'Add Selection to Chat',
@@ -830,7 +830,7 @@ export class TextEditorPane extends EditorPane {
     this._activeContextMenu = menu;
   };
 
-  /** Dispatch a selection action to the unified dispatcher (M48 Phase 4). */
+  /** Dispatch a selection action to the unified dispatcher. */
   private _dispatchSelectionAction(actionId: string): void {
     const selected = this.getSelectedText();
     const source = this.getSelectionSource();

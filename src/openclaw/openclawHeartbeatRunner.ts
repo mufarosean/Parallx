@@ -139,7 +139,7 @@ export interface IHeartbeatConfig {
    */
   readonly shouldDeferTick?: () => boolean;
   /**
-   * M60 Phase γ §3.8 — autonomy feature-flag gate. When provided and returns
+   * autonomy feature-flag gate. When provided and returns
    * `false`, every tick short-circuits with reason `'skipped-flag-disabled'`
    * and emits a `gated` autonomy event (when `onAutonomyEvent` is wired).
    * System-event payloads are dropped (not re-queued) to prevent unbounded
@@ -147,7 +147,7 @@ export interface IHeartbeatConfig {
    */
   readonly isFlagEnabled?: () => boolean;
   /**
-   * M60 Phase γ §3.10 — autonomy event emit hook. Called once per `_tick`
+   * autonomy event emit hook. Called once per `_tick`
    * with `{ outcome, reason, eventsProcessed }`. Implementations must not
    * throw — errors are swallowed.
    */
@@ -193,7 +193,7 @@ export class HeartbeatRunner implements IDisposable {
   private _pendingEvents: IHeartbeatSystemEvent[] = [];
   private _recentPayloads = new Map<string, number>(); // payload hash → timestamp
   private _disposed = false;
-  /** M60 §3.7 — set by `suspendForShutdown()`; blocks all subsequent ticks. */
+  /** set by `suspendForShutdown()`; blocks all subsequent ticks. */
   private _shuttingDown = false;
   /** Single-flight guard: true while a heartbeat turn is executing. */
   private _executing = false;
@@ -327,7 +327,7 @@ export class HeartbeatRunner implements IDisposable {
     const config = this._getConfig();
     const tickStartMs = Date.now();
 
-    // Gate (M60 §3.7): shutting-down — emit a single shutdown notice and stop.
+    // Gate: shutting-down — emit a single shutdown notice and stop.
     if (this._shuttingDown) {
       this._emitTickEvent(config, {
         outcome: 'cancelled',
@@ -339,7 +339,7 @@ export class HeartbeatRunner implements IDisposable {
       return { executed: false, reason: 'skipped-shutting-down', eventsProcessed: 0, timestamp: tickStartMs };
     }
 
-    // Gate (M60 §3.8): autonomy.heartbeat.enabled feature flag.
+    // Gate: autonomy.heartbeat.enabled feature flag.
     if (config.isFlagEnabled && !config.isFlagEnabled()) {
       // Drop pending events while gated to prevent unbounded growth.
       const dropped = this._pendingEvents.length;
@@ -441,7 +441,7 @@ export class HeartbeatRunner implements IDisposable {
   }
 
   /**
-   * Suspend the runner for shutdown (M60 §3.7). Stops the timer, drops
+   * Suspend the runner for shutdown. Stops the timer, drops
    * pending events, and refuses subsequent `pushEvent` / `wake` / tick
    * dispatches. In-flight ticks complete normally; this only blocks new
    * work. Idempotent.

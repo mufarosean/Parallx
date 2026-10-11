@@ -13,7 +13,7 @@
 //   - Single-flight per instanceId (overlap → no-op)
 //   - AI-concurrency cap (queue the rest, FIFO). Live value comes from the
 //     `dashboard.aiRefreshConcurrency` setting via the constructor getter;
-//     falls back to DASHBOARD_LIMITS.MAX_CONCURRENT_AI_REFRESHES (M86 C4).
+//     falls back to DASHBOARD_LIMITS.MAX_CONCURRENT_AI_REFRESHES.
 //   - Per-refresh timeout via Promise.race: 60s for query/static widgets,
 //     5min for AI widgets (a background agent turn legitimately takes minutes)
 

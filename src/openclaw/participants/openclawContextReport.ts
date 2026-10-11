@@ -143,7 +143,7 @@ export async function tryHandleOpenclawContextCommand(
 
   response.markdown(formatContextReport(report, sub === 'detail' || sub === 'deep', services.getModelContextLength?.()));
 
-  // M76 Phase 7 — append a Mind Map section if diagnostics are available.
+  // append a Mind Map section if diagnostics are available.
   // Optional and silent on services that don't provide it; failures swallow
   // cleanly so a stale or empty workspace can't break /context.
   if (services.getMindMapDiagnostics) {

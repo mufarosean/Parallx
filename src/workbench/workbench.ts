@@ -126,7 +126,7 @@ import type { ConfigurationRegistry } from '../configuration/configurationRegist
 import { ToolEnablementService } from '../tools/toolEnablementService.js';
 import { ToolEnablementState } from '../tools/toolEnablement.js';
 
-// M66 — Unified linking (link contracts registered per extension)
+// Unified linking (link contracts registered per extension)
 import { ILinkResolverService, LinkResolverService } from '../links/linkResolverService.js';
 
 // Database Service (M6 Capability 1)
@@ -308,10 +308,10 @@ export class Workbench extends Layout {
   // Database Service (M6 Capability 1)
   private _databaseService!: DatabaseService;
 
-  // Indexing pipeline (M10) — tracked for cancel/dispose on workspace switch
+  // Indexing pipeline — tracked for cancel/dispose on workspace switch
   private _indexingPipeline: import('../services/indexingPipeline.js').IndexingPipelineService | null = null;
 
-  /** Disposable store for RAG services created by registerIndexingServices (M14 Phase 4). */
+  /** Disposable store for RAG services created by registerIndexingServices. */
   private _ragServiceStore = new DisposableStore();
 
   // Configuration (M2 Capability 4)
@@ -487,7 +487,7 @@ export class Workbench extends Layout {
         this._container.clientHeight,
       );
     }
-    // M53: Write initial state to the new workspace's storage file via bridge
+    // Write initial state to the new workspace's storage file via bridge
     if (path) {
       const bridge = window.parallxElectron!.storage;
       await bridge.writeJson(`${path}/.parallx/workspace-state.json`, { version: 1, workbench: JSON.stringify(state) });
@@ -960,14 +960,14 @@ export class Workbench extends Layout {
     await this._savedLayouts.load();
     this._register(settingsPanelRegistry.register(createLayoutsSettingsPanel(this)));
 
-    // M53 D4.1: The workspace object is a placeholder until Phase 4 restores the real workspace.
+    // The workspace object is a placeholder until Phase 4 restores the real workspace.
     // On first launch (no folders), the user sees the welcome screen.
     this._workspace = Workspace.create('Parallx');
 
     // Recent workspaces manager (stored in global storage — persists across workspaces)
     this._recentWorkspaces = new RecentWorkspaces(this._globalStorage);
 
-    // M53 D3: Expose global storage via DI for built-in tools
+    // Expose global storage via DI for built-in tools
     this._services.registerInstance(IGlobalStorageService, this._globalStorage);
     this._services.registerInstance(IWorkspaceStorageService, this._storage);
 
@@ -1010,7 +1010,7 @@ export class Workbench extends Layout {
     // ── Theme Service (M5 Capability 3) ──
     // Must be applied before layout rendering to avoid flash of unstyled content.
     // workbenchColors.ts import above ensures all tokens are registered.
-    // M53 D3: Init user themes cache from file-backed storage before theme lookup.
+    // Init user themes cache from file-backed storage before theme lookup.
     await initUserThemesCache(this._globalStorage);
     // Restore persisted theme or fall back to Dark Modern.
     // A stored High Contrast theme (retired) becomes its mode with Increase
@@ -1024,7 +1024,7 @@ export class Workbench extends Layout {
     // Appearance › Mode › Match System: follow the computer's light or dark.
     this._register(watchSystemMode(themeService, this._globalStorage));
 
-    // ── Unified AI Config Service (M20) ──
+    // ── Unified AI Config Service ──
     // Replaces AISettingsService + ParallxConfigService as single source of truth.
     await registerUnifiedAIConfigService(this._services, this._storage);
 
@@ -1045,7 +1045,7 @@ export class Workbench extends Layout {
       }
     }
 
-    // ── Language Model Tools Service: late-bind storage (M53 D3.10) ──
+    // ── Language Model Tools Service: late-bind storage ──
     const lmts = this._services.tryGet(ILanguageModelToolsService);
     if (lmts && 'setStorage' in lmts) {
       await (lmts as any).setStorage(this._globalStorage);
@@ -1374,10 +1374,10 @@ export class Workbench extends Layout {
   // ════════════════════════════════════════════════════════════════════════
 
   private async _restoreWorkspace(): Promise<void> {
-    // M53: Load workspace state from file-backed storage (already scoped to workspace path)
+    // Load workspace state from file-backed storage (already scoped to workspace path)
     const savedState = await this._workspaceLoader.load();
 
-    // M54: Detect contaminated state — if restored folders don't include the
+    // Detect contaminated state — if restored folders don't include the
     // workspace folder path, this state was written by a previous buggy seeding
     // pass and must be discarded.
     const stateIsValid = savedState && this._workspaceFolderPath
@@ -1475,7 +1475,7 @@ export class Workbench extends Layout {
     // active workspace.
     await this._workspaceSaver.save();
 
-    // M53 D4.3: Only add to recent list if workspace has actual folders (not first-launch placeholder)
+    // Only add to recent list if workspace has actual folders (not first-launch placeholder)
     if (this._workspace.folders.length > 0) {
       await this._recentWorkspaces.add(this._workspace);
     }
@@ -1525,7 +1525,7 @@ export class Workbench extends Layout {
     this._titlebar.setWorkspaceName(this._workspace.displayName);
     this._pushWorkspaceSeal(); applyDeletePolicy(this._services.get(ISettingsRegistryService));
 
-    // Begin the workspace session (M14).
+    // Begin the workspace session.
     // Services can now read sessionManager.activeContext for identity,
     // log prefix, and abort signal.
     const sessionMgr = this._services.get(ISessionManager);
@@ -2615,7 +2615,7 @@ export class Workbench extends Layout {
   private _setupPanelViews(): ViewContainer {
     const container = new ViewContainer('panel');
 
-    // No eager view creation here (M86): every panel view (Terminal, Output,
+    // No eager view creation here: every panel view (Terminal, Output,
     // Indexing, Diagnostics, Autonomy Log) is a manifest contribution added
     // by the contribution handler when its tool activates. Eagerly creating
     // view.terminal / view.output from core placeholder descriptors froze
@@ -3176,7 +3176,7 @@ export class Workbench extends Layout {
       }));
     }
 
-    // ── Surface Router (M58 W6) ──
+    // ── Surface Router ──
     // Instantiate the workbench-owned SurfaceRouter + register the plugins
     // whose dependencies (status bar, notification service) are already
     // available here. Chat / filesystem / canvas plugins are registered by
@@ -3295,7 +3295,7 @@ export class Workbench extends Layout {
     };
 
     // ── Tool Enablement Service (M6 Capability 0) ──
-    // M53: Storage is already workspace-scoped, so no sub-namespacing needed.
+    // Storage is already workspace-scoped, so no sub-namespacing needed.
     console.log(`[Workbench] Enablement storage for workspace: "${this._workspace.name}"`);
     this._toolEnablementService = this._register(
       new ToolEnablementService(this._storage, registry),
@@ -3319,14 +3319,14 @@ export class Workbench extends Layout {
     // Wire enablement service into API factory deps (created before enablement service)
     (apiFactoryDeps as any).toolEnablementService = this._toolEnablementService;
 
-    // ── Link Resolver Service (M66) ──
+    // ── Link Resolver Service ──
     // Shared workbench-wide registry of LinkContracts. Every extension's
     // `parallx.links.register(...)` call ultimately writes here. Has no
     // dependencies — safe to register before tool activation.
     const linkResolverService = this._register(new LinkResolverService());
     this._services.registerInstance(ILinkResolverService, linkResolverService);
 
-    // M66 — workbench-wide click interceptor for `parallx://` anchors.
+    // workbench-wide click interceptor for `parallx://` anchors.
     // A single document-level listener routes every parallx:// click in
     // every surface (chat markdown, canvas content, panels, anywhere) into
     // the link resolver. Plain `http://` / `file://` / etc. links are
@@ -3448,7 +3448,7 @@ export class Workbench extends Layout {
 
       // The notebook kernel runs in that same environment and sits behind the
       // same consent gate, so it is wired from the Python service rather than
-      // carrying a second, weaker one of its own (M96).
+      // carrying a second, weaker one of its own.
       if (this._services.has(INotebookKernelService)) {
         const kernelService = this._services.get(INotebookKernelService) as NotebookKernelService;
         kernelService.setWorkspaceRoot(workspaceFsPath);
@@ -3470,7 +3470,7 @@ export class Workbench extends Layout {
         chatService.setTranscriptService(this._services.get(IWorkspaceTranscriptService));
       }
 
-      // Late-bind session manager for stale session detection (M14 Phase 2)
+      // Late-bind session manager for stale session detection
       if (this._services.has(ISessionManager)) {
         chatService.setSessionManager(this._services.get(ISessionManager));
       }
@@ -3769,7 +3769,7 @@ export class Workbench extends Layout {
 
     if (!this._databaseService.isOpen) { return; }
 
-    // Guard: skip pipeline start if session is ending (M14 Phase 4.3)
+    // Guard: skip pipeline start if session is ending
     if (this._services.has(ISessionManager)) {
       const ctx = this._services.get(ISessionManager).activeContext;
       if (ctx && !ctx.isActive()) {
@@ -3780,7 +3780,7 @@ export class Workbench extends Layout {
 
     const result = registerIndexingServices(this._services, this._storage);
 
-    // M20: Wire retrieval service to read defaults from unified config
+    // Wire retrieval service to read defaults from unified config
     if (this._services.has(IUnifiedAIConfigService)) {
       result.retrievalService.setConfigProvider(this._services.get(IUnifiedAIConfigService));
       result.indexingPipeline.setConfigProvider(this._services.get(IUnifiedAIConfigService));
@@ -4012,7 +4012,7 @@ export class Workbench extends Layout {
       { manifest: SETTINGS_MANIFEST, module: SettingsTool },
       { manifest: DASHBOARD_MANIFEST, module: DashboardTool },
       { manifest: PLANNER_MANIFEST, module: PlannerTool },
-      // Worksheets (M99) — exam-faithful practice sheets; the Univer engine
+      // Worksheets — exam-faithful practice sheets; the Univer engine
       // loads lazily from its own bundle when a sheet first opens.
       { manifest: WORKSHEET_MANIFEST, module: WorksheetTool },
     ];

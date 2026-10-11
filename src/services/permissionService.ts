@@ -1,4 +1,4 @@
-// permissionService.ts — 3-tier tool permission manager (M11 Task 2.1)
+// permissionService.ts — 3-tier tool permission manager
 //
 // Manages tool execution permissions with three tiers:
 //   1. always-allowed  — auto-approved (read-only tools)
@@ -204,7 +204,7 @@ export class PermissionService extends Disposable {
   }
 
   /**
-   * M90 — who started the turn this session is running. Decides consent:
+   * who started the turn this session is running. Decides consent:
    * 'interactive' (normal chat; the user is present), 'user-task'
    * (user-triggered headless run), 'autonomous' (the AI gave itself work).
    */

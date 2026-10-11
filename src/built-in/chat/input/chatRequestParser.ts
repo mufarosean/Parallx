@@ -8,7 +8,7 @@
 
 import type { IChatParsedRequest, IChatParsedVariable } from '../chatTypes.js';
 
-// IChatParsedRequest, IChatParsedVariable — now defined in chatTypes.ts (M13 Phase 1)
+// IChatParsedRequest, IChatParsedVariable — now defined in chatTypes.ts
 export type { IChatParsedRequest, IChatParsedVariable } from '../chatTypes.js';
 
 // ── Regex Patterns ──

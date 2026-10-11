@@ -1,4 +1,4 @@
-// main.ts — AI Settings built-in tool activation (M15 Task 2.9)
+// main.ts — AI Settings built-in tool activation
 //
 // Registers the AI Settings panel as a Parallx sidebar view.
 // Uses api.services.get() to obtain IAISettingsService.
@@ -58,7 +58,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // Get the AI Settings service from DI
   const aiSettingsService = api.services.get<import('../../aiSettings/aiSettingsTypes.js').IAISettingsService>(IAISettingsService);
 
-  // Get the Unified AI Config service for workspace override info (M20 B.2)
+  // Get the Unified AI Config service for workspace override info
   const unifiedConfigService = api.services.has(IUnifiedAIConfigService)
     ? api.services.get<import('../../aiSettings/unifiedConfigTypes.js').IUnifiedAIConfigService>(IUnifiedAIConfigService)
     : undefined;
@@ -72,12 +72,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../services/chatTypes.js').ILanguageModelsService>(ILanguageModelsService)
     : undefined;
 
-  // Get the Notification service for toast messages (M20 D.2/D.3)
+  // Get the Notification service for toast messages
   const notificationService = api.services.has(INotificationService)
     ? api.services.get<import('../../api/notificationService.js').NotificationService>(INotificationService)
     : undefined;
 
-  // Get the Language Model Tools service for tool tree in Tools section (M20 E.1)
+  // Get the Language Model Tools service for tool tree in Tools section
   const languageModelToolsService = api.services.has(ILanguageModelToolsService)
     ? api.services.get<import('../../services/chatTypes.js').ILanguageModelToolsService>(ILanguageModelToolsService)
     : undefined;
@@ -96,7 +96,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           name: t.name,
           description: t.description,
           enabled: languageModelToolsService.isToolEnabled(t.name),
-          extensionId: t.ownerToolId, // M66 — used to group by extension in the UI
+          extensionId: t.ownerToolId, // used to group by extension in the UI
           extensionName: extensionNameOf(t.ownerToolId),
           category: t.category, // M81 P10 — sub-group within Built-In
         })),
@@ -114,7 +114,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   // Get the Autonomy Feature Flags service so the Heartbeat section's
   // "Enable" toggle drives the single source of truth for the runtime gate
-  // (M60 §3.8) instead of exposing two parallel switches.
+  // instead of exposing two parallel switches.
   const autonomyFlagsService = api.services.has(IAutonomyFeatureFlagsService)
     ? api.services.get<import('../../services/autonomyFeatureFlags.js').IAutonomyFeatureFlagsService>(IAutonomyFeatureFlagsService)
     : undefined;
@@ -225,7 +225,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // ── Toast Notifications (M20 D.2) ──
+  // ── Toast Notifications ──
 
   if (notificationService) {
     // Track preset name for switch detection
@@ -273,7 +273,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       });
       context.subscriptions.push(overrideListener);
 
-      // Clone-on-write notification (M20 D.3)
+      // Clone-on-write notification
       const cloneListener = unifiedConfigService.onDidCloneBuiltIn(({ originalName, cloneName }) => {
         notificationService.info(
           `Built-in preset '${originalName}' is read-only. Created editable copy: '${cloneName}'`,

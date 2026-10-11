@@ -76,7 +76,7 @@ export const CUSTOM_AI_WIDGET: WidgetTypeRegistration<CustomAiConfig> = {
 
     const prompt = buildCustomAiPrompt(cfg, ctx.instanceId);
 
-    // Default (M86 C4): one isolated background agent turn on the ephemeral
+    // Default: one isolated background agent turn on the ephemeral
     // rail — the user's chat is never touched. The model delivers the
     // finished Markdown via `dashboard_render_widget` mid-turn (writing the
     // cache directly), so return null: writing anything here would clobber

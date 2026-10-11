@@ -1,8 +1,8 @@
-// unifiedConfigTypes.ts — Unified AI Configuration types (M20 Task A.1)
+// unifiedConfigTypes.ts — Unified AI Configuration types
 //
 // Merges all AI configuration from three sources into one type system:
-//   1. AISettingsProfile (M15) — persona, chat, model, suggestions
-//   2. IParallxConfig (M11) — retrieval, agent, context budget, indexing
+//   1. AISettingsProfile — persona, chat, model, suggestions
+//   2. IParallxConfig — retrieval, agent, context budget, indexing
 //   3. NEW — memory settings
 //
 // Consumer code imports unified types from this file.
@@ -24,7 +24,7 @@ import type { IConfigFileSystem } from '../services/parallxConfigService.js';
 // Unified Configuration Shape
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── Behavior (from M15 persona + chat) ──────────────────────────────────────
+// ─── Behavior ──────────────────────────────────────
 
 /**
  * @deprecated F11: Persona config is dead code — OpenClaw uses SOUL.md for personality.
@@ -73,7 +73,7 @@ export interface IUnifiedModelConfig {
 // ─── Retrieval (from config.json — newly surfaced in UI) ─────────────────────
 
 /**
- * Elastic context budget configuration (M20 Phase G).
+ * Elastic context budget configuration.
  *
  * Replaces the old fixed-percentage system. Trim priority controls which
  * slots are trimmed first when the context window is exceeded. Lower
@@ -121,7 +121,7 @@ export interface IUnifiedRetrievalConfig {
   readonly contextBudget: IUnifiedContextBudgetConfig;
 }
 
-// ─── Suggestions (from M15) ──────────────────────────────────────────────────
+// ─── Suggestions ──────────────────────────────────────────────────
 
 /**
  * @deprecated F11: Suggestion config fields are dead code — OpenClaw does not read tone/focus/threshold.
@@ -220,7 +220,7 @@ export interface IUnifiedIndexingConfig {
   readonly excludePatterns: readonly string[];
 }
 
-// ─── Tool Overrides (M20 E.3) ────────────────────────────────────────────────
+// ─── Tool Overrides ────────────────────────────────────────────────
 
 /**
  * Per-workspace tool enable/disable overrides.
@@ -239,7 +239,7 @@ export interface IUnifiedToolsConfig {
   readonly workbenchControlEnabled: boolean;
 }
 
-// ─── Heartbeat (M58 W2) ──────────────────────────────────────────────────────
+// ─── Heartbeat ──────────────────────────────────────────────────────
 
 /**
  * All allowed heartbeat trigger reasons. Mirrors
@@ -251,7 +251,7 @@ export const HEARTBEAT_REASON_OPTIONS = ['interval', 'system-event', 'cron', 'wa
 export type HeartbeatReasonKey = typeof HEARTBEAT_REASON_OPTIONS[number];
 
 /**
- * Configuration for the proactive heartbeat loop (M58 W2).
+ * Configuration for the proactive heartbeat loop.
  *
  * Safety defaults (non-negotiable per M58 plan §5 "Critical safety defaults"):
  *   - `enabled: false` — heartbeat ships OFF; user must opt in explicitly
@@ -344,7 +344,7 @@ export interface IUnifiedAIConfig {
   readonly memory: IUnifiedMemoryConfig;
   readonly indexing: IUnifiedIndexingConfig;
   readonly tools: IUnifiedToolsConfig;
-  /** Heartbeat / proactive tick config (M58 W2). */
+  /** Heartbeat / proactive tick config. */
   readonly heartbeat: IUnifiedHeartbeatConfig;
 }
 
@@ -393,7 +393,7 @@ export interface IWorkspaceAIOverride {
 /**
  * Unified AI Configuration Service.
  *
- * Replaces both AISettingsService (M15) and ParallxConfigService (M11)
+ * Replaces both AISettingsService and ParallxConfigService
  * with a single source of truth. Provides:
  *   - Global preset management (create, delete, rename, switch)
  *   - Workspace override layer (sparse patch per-workspace)
@@ -578,10 +578,10 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   },
   tools: {
     enabledOverrides: {},
-    workbenchControlEnabled: false, // M70: ships OFF; user opts in explicitly
+    workbenchControlEnabled: false, // ships OFF; user opts in explicitly
   },
   heartbeat: {
-    enabled: false, // M58 W2: non-negotiable default — user opts in explicitly
+    enabled: false, // non-negotiable default — user opts in explicitly
     // 30 min: the interval now runs a REAL periodic app-awareness review (not a
     // status flash), so the cadence matches OpenClaw's default rather than the
     // old 5-min reflex. Runtime-clamped to [15s, 1h]; user-configurable.
@@ -628,7 +628,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Convert a legacy AISettingsProfile (M15) into a unified preset.
+ * Convert a legacy AISettingsProfile into a unified preset.
  * Fields that don't exist in the old profile are filled from defaults.
  */
 export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
@@ -682,7 +682,7 @@ export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
 }
 
 /**
- * Convert a legacy IParallxConfig (M11 config.json) into a sparse
+ * Convert a legacy IParallxConfig into a sparse
  * workspace override. Only imports fields that config.json controls.
  */
 export function fromLegacyParallxConfig(config: IParallxConfig): DeepPartial<IUnifiedAIConfig> {

@@ -1,4 +1,4 @@
-// outputRenderer.ts — notebook cell outputs → DOM (M96)
+// outputRenderer.ts — notebook cell outputs → DOM
 //
 // A kernel answers with a MIME bundle and expects the front end to pick the
 // richest representation it can display. That negotiation is the whole job

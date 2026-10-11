@@ -1,6 +1,6 @@
 // canvasAITools.ts — Canvas's AI tool contribution.
 //
-// M84: canvas owns the tools it exposes to the AI, the same way it owns its
+// canvas owns the tools it exposes to the AI, the same way it owns its
 // commands, views, and editor. Previously these page/block tools were created
 // and registered inside the chat module, which coupled chat to the canvas data
 // model. Now canvas registers them from its own activate() via this module.

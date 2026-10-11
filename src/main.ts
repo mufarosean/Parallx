@@ -2,15 +2,15 @@
 // Boots the Parallx workbench inside the Electron renderer process.
 // Delegates all orchestration to the Workbench class and its lifecycle phases.
 
-import './theme/px-tokens.css';   // M83: design-token foundation (load first)
+import './theme/px-tokens.css';   // design-token foundation (load first)
 import './theme/px-fonts.css';    // the bundled UI typeface (Inter)
 import './workbench.css';
-import './theme/px-base.css';     // M83: global presentation layer (load after workbench)
-import './theme/px-controls.css'; // M83: tactile control primitives
-import './theme/px-motion.css';   // M83: purposeful motion for overlays
+import './theme/px-base.css';     // global presentation layer (load after workbench)
+import './theme/px-controls.css'; // tactile control primitives
+import './theme/px-motion.css';   // purposeful motion for overlays
 import { Workbench } from './workbench/workbench.js';
 import { installGlobalTooltipDelegate } from './ui/tooltip.js';
-import { applySavedAppearance, healAppearanceFromDurable, healPresetsFromDurable } from './theme/pxAppearance.js'; // M83: restore base palette + accent
+import { applySavedAppearance, healAppearanceFromDurable, healPresetsFromDurable } from './theme/pxAppearance.js'; // restore base palette + accent
 
 // ── Electron window controls bridge ──
 
@@ -97,7 +97,7 @@ declare global {
 // ── Bootstrap ──
 
 async function bootstrap(): Promise<void> {
-  // M83: apply the saved base palette + accent before the workbench paints,
+  // apply the saved base palette + accent before the workbench paints,
   // so there is no flash of the default theme on launch. Then reconcile with
   // the durable file — localStorage flushes lazily and loses writes on a
   // quick quit, so the fs copy may hold a newer choice (repaints at most

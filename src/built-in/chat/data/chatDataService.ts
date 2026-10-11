@@ -1,4 +1,4 @@
-// chatDataService.ts — Centralised data-layer service for the chat built-in (M13 Phase 2)
+// chatDataService.ts — Centralised data-layer service for the chat built-in
 //
 // Every database query, filesystem operation, retrieval call, memory access,
 // and workspace digest computation lives in this single, testable class.
@@ -146,11 +146,11 @@ export interface ChatDataServiceDeps {
   readonly getActiveWidget: () => ChatWidget | undefined;
   /** Callback to open a canvas page by its UUID. Provided by main.ts via api.editors. */
   readonly openPage?: (pageId: string) => Promise<void>;
-  /** Workspace session context (M14). Carries sessionId, logPrefix, abort signal. */
+  /** Workspace session context. Carries sessionId, logPrefix, abort signal. */
   readonly sessionContext?: IWorkspaceSessionContext;
-  /** Session manager (M14). Used for stale session detection in tool invocations. */
+  /** Session manager. Used for stale session detection in tool invocations. */
   readonly sessionManager?: ISessionManager;
-  /** Unified AI Config service (M20). Single source of truth for all AI configuration. */
+  /** Unified AI Config service. Single source of truth for all AI configuration. */
   readonly unifiedConfigService?: IUnifiedAIConfigService;
   readonly permissionService?: PermissionService;
   /** Autonomy services used for task and approval UI surfaces. */
@@ -739,7 +739,7 @@ export class ChatDataService {
   };
 
   constructor(private _d: ChatDataServiceDeps) {
-    // M17 P1.3 Task 1.3.6: Fire-and-forget memory eviction + decay recalculation on startup
+    // Fire-and-forget memory eviction + decay recalculation on startup
     if (this._d.memoryService) {
       this._d.memoryService.evictStaleContent().catch(() => {});
     }
@@ -1524,7 +1524,7 @@ export class ChatDataService {
 
   /**
    * Get the message count stored with the last summary for a session.
-   * Returns `null` if no memory exists (M17 Task 1.1.3).
+   * Returns `null` if no memory exists.
    */
   async getSessionMemoryMessageCount(sessionId: string): Promise<number | null> {
     if (this._d.workspaceMemoryService) {
@@ -1534,7 +1534,7 @@ export class ChatDataService {
     try { return await this._d.memoryService.getMemoryMessageCount(sessionId); } catch { return null; }
   }
 
-  // M81 Phase 4 — extractPreferences removed. Preferences are now written
+  // extractPreferences removed. Preferences are now written
   // explicitly by the agent via `memory_write` (USER.md for user-facing,
   // MEMORY.md for project-level). No invisible regex extraction.
 
@@ -1826,7 +1826,7 @@ export class ChatDataService {
   }
 
   /**
-   * M38: Recursive enumeration returning structured file metadata.
+   * Recursive enumeration returning structured file metadata.
    * Walks subdirectories up to `maxDepth` (default 3) and returns file
    * entries with their relative path and extension — no content reading.
    */

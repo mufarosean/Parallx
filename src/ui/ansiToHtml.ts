@@ -1,4 +1,4 @@
-// ansiToHtml.ts — SGR escape sequences → themed HTML (M96)
+// ansiToHtml.ts — SGR escape sequences → themed HTML
 //
 // Kernel tracebacks arrive coloured. IPython emits real ANSI SGR codes, so a
 // ZeroDivisionError comes over the wire as

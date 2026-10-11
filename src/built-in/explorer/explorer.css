@@ -58,7 +58,7 @@
 
 /* ── Tree node ── */
 
-/* M83 — rows carry a rounded, inset highlight (Notion/Obsidian), not a
+/* rows carry a rounded, inset highlight (Notion/Obsidian), not a
    full-bleed IDE bar. The 4px side margin + radius turn hover/selection
    into a soft chip; a left accent rail marks the selected row. */
 .tree-node {

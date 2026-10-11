@@ -185,7 +185,7 @@ export type SubagentAnnouncer = (
 ) => Promise<void>;
 
 // ---------------------------------------------------------------------------
-// M60 Phase γ — controls layer types
+// controls layer types
 // ---------------------------------------------------------------------------
 
 /**
@@ -201,14 +201,14 @@ export interface ISubagentSpawnAutonomyInfo {
   readonly note?: string;
 }
 
-/** Optional autonomy controls (M60 §3.8/§3.10/§8). */
+/** Optional autonomy controls. */
 export interface ISubagentObservers {
   /** Returns `true` when the `autonomy.subagent.enabled` flag is on AND `autonomy.paused.global` is off. */
   readonly isFlagEnabled?: () => boolean;
   /** Called once per spawn lifecycle event. */
   readonly onAutonomyEvent?: (info: ISubagentSpawnAutonomyInfo) => void;
   /**
-   * M60 §8 E3 — pattern memory pre-flight. Returns `true` when the spawn
+   * pattern memory pre-flight. Returns `true` when the spawn
    * shape matches a remembered pattern. The spawner records a matched
    * pattern via `notePatternMatch` after completion. Pattern memory only
    * shapes the *presentation* (skip user prompt) — the flag gate is still
@@ -343,7 +343,7 @@ export class SubagentRegistry implements IDisposable {
 export class SubagentSpawner implements IDisposable {
   private readonly _registry: SubagentRegistry;
   private _disposed = false;
-  /** M60 Phase γ — controls layer observers (flag + event emit). */
+  /** controls layer observers (flag + event emit). */
   private _observers: ISubagentObservers = {};
   /** Running helper turns, by run id: abort stops the turn. */
   private readonly _controllers = new Map<string, AbortController>();
@@ -381,7 +381,7 @@ export class SubagentSpawner implements IDisposable {
     const depth = params.callerDepth ?? 0;
     const startMsGate = Date.now();
 
-    // M60 §3.8: autonomy.subagent.enabled feature flag gate. Refuse spawn
+    // autonomy.subagent.enabled feature flag gate. Refuse spawn
     // when off and emit a `gated` autonomy event.
     if (this._observers.isFlagEnabled && !this._observers.isFlagEnabled()) {
       this._emitSpawnEvent({
@@ -401,7 +401,7 @@ export class SubagentSpawner implements IDisposable {
     }
 
     // Gate: depth limit — upstream enforces maxSpawnDepth.
-    // M60 §3.6: M60 hard-caps at depth=1 (no nested spawns) via the
+    // M60 hard-caps at depth=1 (no nested spawns) via the
     // chat extension wiring; this is an additional defense.
     if (depth >= this._maxDepth) {
       this._emitSpawnEvent({
@@ -438,7 +438,7 @@ export class SubagentSpawner implements IDisposable {
       };
     }
 
-    // M60 §8 E3 — note remembered-pattern match (for visibility in the
+    // note remembered-pattern match (for visibility in the
     // task rail). This does NOT replace the flag gate above; it only
     // bumps the match counter and surfaces a `pattern-approved` note in
     // the autonomy event so the user can see why a spawn skipped manual
@@ -584,7 +584,7 @@ export class SubagentSpawner implements IDisposable {
     }
   }
 
-  /** M60 Phase γ — emit a spawn-lifecycle autonomy event; never throws. */
+  /** emit a spawn-lifecycle autonomy event; never throws. */
   private _emitSpawnEvent(info: ISubagentSpawnAutonomyInfo): void {
     if (!this._observers.onAutonomyEvent) return;
     try {

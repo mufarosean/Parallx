@@ -111,7 +111,7 @@
   border-bottom: 1px solid var(--px-part-border, var(--vscode-editorGroupHeader-tabsBorder));
 }
 
-/* M83 — content tabs, not IDE chrome. Borderless and quiet by default; a
+/* content tabs, not IDE chrome. Borderless and quiet by default; a
    subtle hairline divider only between inactive tabs; the active tab carries
    a crisp accent top indicator and connects to the editor below. */
 .ui-tab {

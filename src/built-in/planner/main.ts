@@ -96,7 +96,7 @@ const _dayLoadProviders = new Map<string, IDayLoadProvider>();
 // ─── Public registry surface (planner.getRegistry command) ──────────────────
 
 /**
- * One per-day load entry a provider reports for the calendar (M98).
+ * One per-day load entry a provider reports for the calendar.
  * `dayStartMs` is the LOCAL midnight of the day the load belongs to.
  */
 export interface IDayLoad {
@@ -107,7 +107,7 @@ export interface IDayLoad {
 }
 
 /**
- * A read-only per-day workload contributor (M98). GENERIC seam: any
+ * A read-only per-day workload contributor. GENERIC seam: any
  * extension may register one via the live `planner.getRegistry` object —
  * flashcards reports scheduled reviews, but nothing here is flashcards-
  * specific. Providers contribute DECORATIONS (day badges), never rows.
@@ -125,7 +125,7 @@ export interface PlannerRegistry {
   registerSyncProvider(provider: ICalendarSyncProvider): IDisposable;
   /** Snapshot of currently registered providers. */
   listSyncProviders(): readonly ICalendarSyncProvider[];
-  /** Register a per-day load decorator for the calendar views (M98). */
+  /** Register a per-day load decorator for the calendar views. */
   registerDayLoadProvider(provider: IDayLoadProvider): IDisposable;
   /** Snapshot of currently registered day-load providers. */
   listDayLoadProviders(): readonly IDayLoadProvider[];
@@ -164,7 +164,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           return tasks.map((t) => ({ title: t.title, dueAt: t.dueAt }));
         } catch { return []; }
       },
-      // M87 — full task facts for the heartbeat's deterministic senses.
+      // full task facts for the heartbeat's deterministic senses.
       listTaskFacts: async () => {
         try {
           const tasks = await data.listTasks({ status: ['reviewing', 'planned'], includeUndated: true });
@@ -173,7 +173,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           }));
         } catch { return []; }
       },
-      // M87 — heartbeat follow-ups land in the review queue. The sourceUri
+      // heartbeat follow-ups land in the review queue. The sourceUri
       // carries the finding key so the same finding never creates a second
       // OPEN task (completed/cancelled ones don't block a fresh follow-up).
       captureFollowUp: async (input: { title: string; description?: string; sourceKey: string }) => {
@@ -192,7 +192,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           return true;
         } catch { return false; }
       },
-      // M87 S3 — morning digest inputs: today's events + tasks due today
+      // morning digest inputs: today's events + tasks due today
       // (local calendar day).
       getToday: async () => {
         const hint = 'Open the planner for the full picture.';
@@ -206,7 +206,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           return { events: events.length, tasksDue: tasks.length, hint };
         } catch { return { events: 0, tasksDue: 0, hint }; }
       },
-      // M87 S3 — sync health for the rising-edge failure alert. Reads the
+      // sync health for the rising-edge failure alert. Reads the
       // orchestrator lazily: it is constructed after this registration but
       // long before any heartbeat asks.
       getSyncHealth: async () => {
@@ -306,7 +306,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     commands: api.commands,
     links: api.links,
     window: api.window,
-    // M86 — per-workspace UI-state persistence (calendar month/week/day).
+    // per-workspace UI-state persistence (calendar month/week/day).
     viewState: {
       get: <T>(key: string, defaultValue: T): T => context.workspaceState.get<T>(key, defaultValue),
       set: (key: string, value: unknown): void => { void context.workspaceState.update(key, value); },
@@ -340,7 +340,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     api.commands.registerCommand('planner.getRegistry', () => publicRegistry),
   );
 
-  // 8. Dashboard widgets — contributed through `api.dashboard` (M86 C1).
+  // 8. Dashboard widgets — contributed through `api.dashboard`.
   //
   // Pre-M86 this polled `dashboard.getRegistry` with a backoff because
   // built-ins activate in parallel and the command might not exist yet.

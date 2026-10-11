@@ -1,4 +1,4 @@
-// referenceExtractor.ts — extract workspace references from document text (M76 Phase 2)
+// referenceExtractor.ts — extract workspace references from document text
 //
 // Scans canvas page block text and file chunk text for explicit references
 // that resolve to workspace items. Emits one entry per match; the caller is
@@ -36,7 +36,7 @@ export interface ExtractedReference {
  * indexing-time edge producer path.
  */
 /**
- * M88 S3 — markdown link targets: `[label](target)`. Returns raw targets
+ * markdown link targets: `[label](target)`. Returns raw targets
  * for the caller to resolve against indexed files. Excludes images
  * (`![alt](…)`), external schemes, and pure-anchor links. Pure.
  */
@@ -60,7 +60,7 @@ export function extractMarkdownLinkTargets(text: string): string[] {
 }
 
 /**
- * M88 S3 — wiki-link titles: `[[Title]]` / `[[Title|alias]]`. Returns the
+ * wiki-link titles: `[[Title]]` / `[[Title|alias]]`. Returns the
  * title half; the caller resolves against known page/file titles. Pure.
  */
 export function extractWikiLinkTitles(text: string): string[] {
@@ -76,7 +76,7 @@ export function extractWikiLinkTitles(text: string): string[] {
 }
 
 /**
- * M88 S3 — resolve a markdown link target relative to the linking file's
+ * resolve a markdown link target relative to the linking file's
  * folder into a normalized workspace-relative path ('/' separators, no
  * './', '../' collapsed). `baseDir` is '' for root-level / page sources.
  * Pure string math — no fs.
@@ -99,7 +99,7 @@ export interface TitleEntry {
 }
 
 /**
- * M88 S3 — the cross-type bridge: find which known TITLES a text mentions
+ * the cross-type bridge: find which known TITLES a text mentions
  * ("cites"). A PDF that names another paper's title links to it with no
  * LLM involved. Guards against noise: titles under 6 chars are skipped,
  * single lowercase common words are skipped, and matches must sit on word

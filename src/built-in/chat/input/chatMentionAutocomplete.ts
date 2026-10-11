@@ -1,4 +1,4 @@
-// chatMentionAutocomplete.ts — @mention autocomplete dropdown (M11 Task 3.1)
+// chatMentionAutocomplete.ts — @mention autocomplete dropdown
 //
 // Detects `@` keystroke in the chat textarea, shows a dropdown with:
 //   - Special scopes: @workspace, @terminal, @file:, @folder:
@@ -19,7 +19,7 @@ import { $, addDisposableListener } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import type { IMentionSuggestion, IMentionAcceptEvent, IMentionSuggestionProvider, ISlashCommandProvider } from '../chatTypes.js';
 
-// Mention & autocomplete types — now defined in chatTypes.ts (M13 Phase 1)
+// Mention & autocomplete types — now defined in chatTypes.ts
 export type { IMentionSuggestion, IMentionAcceptEvent, IMentionSuggestionProvider, ISlashCommandProvider } from '../chatTypes.js';
 
 // ── Built-in scopes ──

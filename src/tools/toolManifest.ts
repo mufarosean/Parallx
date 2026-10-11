@@ -95,13 +95,13 @@ export interface IManifestCommandDescriptor {
   /** When-clause expression controlling availability. */
   readonly when?: string;
   /**
-   * M70 — Set to `true` to opt this command in for AI invocation through
+   * Set to `true` to opt this command in for AI invocation through
    * the `app__run_command` tool. When true, `aiDescription` is required.
    * Defaults to `false` (command is not surfaced to the AI).
    */
   readonly aiInvocable?: boolean;
   /**
-   * M70 — Capability-phrased description shown to the AI. Required when
+   * Capability-phrased description shown to the AI. Required when
    * `aiInvocable` is `true`. Title is for humans scanning the command
    * palette; aiDescription is the verb phrase the model uses to decide
    * whether to call this command.
@@ -236,7 +236,7 @@ export interface IManifestEngines {
 
 // ─── Tool Manifest ───────────────────────────────────────────────────────────
 
-// ─── Capability declarations (M67 Phase 3) ──────────────────────────────────
+// ─── Capability declarations ──────────────────────────────────
 
 /** Filesystem capability declaration in a tool manifest. */
 export interface IManifestFsCapability {

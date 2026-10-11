@@ -512,7 +512,7 @@ export class McpSection extends SettingsSection {
     }
     this._renderServerList();
     this._updateSummary();
-    // M61 Phase 3: auto-connect when enabled, so the user doesn't have to
+    // auto-connect when enabled, so the user doesn't have to
     // click Connect after install.
     // M62 follow-up: skip auto-connect for OAuth servers — they need
     // authorization first. The user clicks "Authorize" on the row,

@@ -1,4 +1,4 @@
-// electron/pythonBridge.cjs — per-workspace Python runtime (M94)
+// electron/pythonBridge.cjs — per-workspace Python runtime
 //
 // One virtual environment per workspace, living at <workspace>/.parallx/venv.
 // Packages installed in one workspace are invisible to every other workspace,
@@ -1125,7 +1125,7 @@ module.exports = {
   shutdown,
   cancelWorkspaceRuns,
   detectSystemPython,
-  // Shared with notebookKernelBridge.cjs (M96) — the kernel host is just
+  // Shared with notebookKernelBridge.cjs — the kernel host is just
   // another workspace-local Python process, so it must get the SAME rebuilt
   // environment and the same process-tree kill as a script run. Duplicating
   // either would let the two drift, and the one that drifts silently is the
@@ -1133,7 +1133,7 @@ module.exports = {
   ensureMachineryDirs,
   killTree,
   invalidateSizeCache,
-  // Terminal activation (M97) — an overlay, NOT buildChildEnv. See its docs.
+  // Terminal activation — an overlay, NOT buildChildEnv. See its docs.
   buildTerminalEnv,
   terminalEnvInfo,
   // Exported for tests.

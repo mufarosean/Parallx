@@ -1,4 +1,4 @@
-// Worksheets (M99) — exam-faithful practice sheets.
+// Worksheets — exam-faithful practice sheets.
 //
 // A generic substrate surface: bounded spreadsheet items with givens and
 // solutions, for practicing under a target tool's constraints (first user:
@@ -68,7 +68,7 @@ import { appDateString, appDateTimeString, startOfAppDay } from '../../services/
 // The learner's cells and the model solution go to the chat as an attached
 // context chip, with the review brief STAGED in the input, not sent: the user
 // adds their own question under the brief and presses send, the same hand-off
-// the flashcards' Discuss with AI uses (Mufaro, 2026-09-21: auto-sending asked
+// the flashcards' Discuss with AI uses (auto-sending asked
 // only the question the code guessed; 2026-09-08: the one-shot panel left
 // nowhere to ask further). Returns 'inline' when the chat surface is not
 // there, so the caller can fall back to the one-shot review. An empty sheet
@@ -102,7 +102,7 @@ async function reviewInChat(
   return 'chat';
 }
 
-/** Every note, staged in the chat (Mufaro, 2026-09-21: "have AI look at the
+/** Every note, staged in the chat ("have AI look at the
  *  whole bank, which problems have notes, gain some insights"). The digest
  *  is the text the worksheet.getNotes tool returns, so what he sees in the
  *  chip is what the model reads. Staged, never sent. */
@@ -337,7 +337,7 @@ async function setDisplayDecimalsSetting(value: string): Promise<void> {
 /** The scratch-bar / item-header toggle: flips the sheet light↔dark (a
  *  pinned choice — 'app' is reachable in Settings). */
 /** An icon button for the sheet bars: the icon is the label and the word is
- *  the tooltip's first line (Mufaro, 2026-09-14: no more rows of word
+ *  the tooltip's first line (no more rows of word
  *  buttons; same pattern as the flashcards study toolbar). Falls back to the
  *  word when the registry lacks the icon. */
 function iconBtn(iconId: string, label: string, opts: { hint?: string; primary?: boolean; danger?: boolean; onClick?: () => void } = {}): HTMLButtonElement {
@@ -381,7 +381,7 @@ function starBtn(itemId: number, starred: boolean, onChange?: (on: boolean) => v
   return b;
 }
 /** Mark For Later: the flag on a problem inside ONE quiz, an exam's mark for
- *  review (Mufaro, 2026-09-21: no easy way to come back to a problem later in
+ *  review (no easy way to come back to a problem later in
  *  the quiz). Same pressed look as the star, a flag instead of a star, so the
  *  two never read as one thing; stored on the quiz, so it goes with it. */
 const MARK_HINT = 'Flags this problem to come back to in this quiz. Marked problems show in Quiz Overview, and Next Marked jumps between them.';
@@ -979,7 +979,7 @@ function createLauncherPane(container: HTMLElement) {
     });
     if (disposed || seq !== renderSeq) return;
     root.replaceChildren();
-    // Home is where you continue and where you go (Mufaro, 2026-09-21: nine
+    // Home is where you continue and where you go (nine
     // tiles was a wall). The three places you go every day are cards with a
     // live line; the ways to add problems sit in the header's Add menu.
     const col = el('div', 'ws-home__col');
@@ -2175,14 +2175,14 @@ function createPracticeRunPane(container: HTMLElement, input?: { setName?(name: 
       credit: (secs, final) => { void addStudySeconds(dayKey(Date.now()), 0, session.id, secs, final).catch(() => {}); },
     });
 
-    // The quiz's lifecycle, one action each (Mufaro, 2026-09-17: one button
+    // The quiz's lifecycle, one action each (one button
     // used to start, finish and replace). Complete Quiz is the only way a
     // quiz finishes; Reopen Quiz undoes it; Copy Quiz is a new open quiz over
     // the same problems; Rename changes what Home lists it under.
     const completeQuiz = async () => {
       if (session.finishedAt) return;
       // A quiz never closes quietly one short. Anything neither worked nor
-      // rated is counted out loud first (Mufaro, 2026-09-20: a day ended 16
+      // rated is counted out loud first (a day ended 16
       // of 17 with every problem in it gone over).
       const states = await getSessionItemStates(session.ids, session.startedAt).catch(() => new Map());
       const byId = new Map((await listItems().catch(() => [])).map((s) => [s.id, s]));
@@ -3281,7 +3281,7 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
         header.appendChild(notes);
       }
 
-      // M99 S6 — AI critique of the work vs the model solution. Feedback,
+      // AI critique of the work vs the model solution. Feedback,
       // never a score: CAS grades method, and false precision misleads.
       const reviewWrap = el('div', 'ws-item__review');
       const reviewBtn = el('button', 'px-btn px-btn--secondary') as HTMLButtonElement;
@@ -3430,7 +3430,7 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
     await refreshRating();
     const timerEl = el('span', 'ws-problem__timer', fmtSeconds(problemSeconds));
     timerEl.title = 'Study time on this problem, every sitting. Counts while it is on screen and you are active; idle stretches are taken back.';
-    // The note on this problem, taken where the work is (Mufaro, 2026-09-21:
+    // The note on this problem, taken where the work is (
     // it lived only on the quiz overview, a screen away). One button on the
     // header opens the editor under it; saved on blur, kept across quizzes.
     let problemNote = (await getProblemNotes([problem.id]).catch(() => new Map<number, string>())).get(problem.id) ?? '';
@@ -3703,7 +3703,7 @@ function createSheetPane(container: HTMLElement, instanceId: string, opts: { rev
         // Baseline = what the sheet holds RIGHT AFTER mount. Autosave only
         // writes when the snapshot moves off this baseline — without it,
         // merely opening an item wrote the givens as an "attempt" and
-        // flagged it In Progress forever (M99 review).
+        // flagged it In Progress forever.
         lastSavedCells = await settledSnapshotJson();
         if (disposed) return;
         autosaveTimer = setInterval(() => { void persistWorking(); }, AUTOSAVE_MS);
@@ -3935,7 +3935,7 @@ export async function activate(api: ParallxApiLike, context: ToolContextLike): P
   context.subscriptions.push(
     api.editors.registerEditorProvider('worksheet', {
       createEditorPane: (container: HTMLElement, input?: { id?: string; instanceId?: string }) => {
-        // Provenance contract (M98 lesson): key on instanceId, never parse
+        // Provenance contract: key on instanceId, never parse
         // the namespaced input.id.
         const instanceId = input?.instanceId ?? input?.id ?? 'home';
         if (instanceId === 'home') return createLauncherPane(container);

@@ -1,6 +1,6 @@
 // registerPlannerWidgets.ts — register the planner's dashboard widgets.
 //
-// M86: contributed through `api.dashboard` (the narrow registrar interface
+// contributed through `api.dashboard` (the narrow registrar interface
 // below), which is activation-order independent — no more getRegistry
 // polling. typeIds are already namespaced under this tool's id.
 

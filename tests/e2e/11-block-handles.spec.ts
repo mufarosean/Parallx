@@ -1,12 +1,12 @@
 /**
- * E2E tests: Block Handles â€” Plus (+) button and Block Action Menu.
+ * E2E tests: Block Handles — Plus (+) button and Block Action Menu.
  *
  * Tests the two Notion-style block handle features:
  *
- * 1. Plus (+) button â€” appears left of the drag handle on hover.
+ * 1. Plus (+) button — appears left of the drag handle on hover.
  *    Click adds a block below and opens the slash menu.
  *
- * 2. Block Action Menu â€” clicking the 6-dot drag handle opens a context menu:
+ * 2. Block Action Menu — clicking the 6-dot drag handle opens a context menu:
  *    - Turn Into submenu (convert between block types)
  *    - Color submenu (text and background colors)
  *    - Duplicate (clone block)
@@ -16,9 +16,9 @@ import { sharedTest as test, expect, setupCanvasPage, waitForEditor, setContent,
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-test.describe('Block Handles â€” Plus Button and Action Menu', () => {
+test.describe('Block Handles — Plus Button and Action Menu', () => {
 
-  // â”€â”€ Plus Button Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Plus Button Tests ─────────────────────────────────────────────────────
 
   test('plus button appears alongside drag handle on hover', async ({
     window,
@@ -194,7 +194,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     // Hover first block
     await hoverBlockByIndex(window, 0);
 
-    // Click the plus button via dispatchEvent â€” the editor overlay covers the
+    // Click the plus button via dispatchEvent — the editor overlay covers the
     // button position, so Playwright's native click is intercepted.
     const addBtn = window.locator('.block-add-btn');
     await expect(addBtn).toBeVisible({ timeout: 3_000 });
@@ -221,7 +221,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await expect(slashMenu).not.toBeVisible();
   });
 
-  // â”€â”€ Block Action Menu Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Block Action Menu Tests ───────────────────────────────────────────────
 
   test('clicking drag handle opens block action menu', async ({
     window,
@@ -436,7 +436,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await expect(bubble).not.toBeVisible();
   });
 
-  // â”€â”€ Turn Into Submenu Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Turn Into Submenu Tests ───────────────────────────────────────────────
 
   test('Turn Into submenu appears on hover', async ({
     window,
@@ -474,7 +474,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await expect(check).toBeVisible();
   });
 
-  test('Turn Into: paragraph â†’ heading 1', async ({
+  test('Turn Into: paragraph → heading 1', async ({
     window,
     electronApp,
     workspacePath,
@@ -510,7 +510,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('h1:Become a heading');
   });
 
-  test('Turn Into: paragraph â†’ bullet list', async ({
+  test('Turn Into: paragraph → bullet list', async ({
     window,
     electronApp,
     workspacePath,
@@ -539,7 +539,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('bulletList');
   });
 
-  test('Turn Into: paragraph â†’ 3 columns', async ({
+  test('Turn Into: paragraph → 3 columns', async ({
     window,
     electronApp,
     workspacePath,
@@ -576,7 +576,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     expect(doc.content[0].content[0].content[0].content?.[0]?.text).toBe('Split this block');
   });
 
-  test('Turn Into: heading â†’ paragraph', async ({
+  test('Turn Into: heading → paragraph', async ({
     window,
     electronApp,
     workspacePath,
@@ -608,7 +608,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('p:Was a heading');
   });
 
-  test('Turn Into: paragraph â†’ callout', async ({
+  test('Turn Into: paragraph → callout', async ({
     window,
     electronApp,
     workspacePath,
@@ -674,7 +674,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     expect(callout?.attrs?.emoji).toBe('rocket');
   });
 
-  test('Turn Into: paragraph â†’ code block', async ({
+  test('Turn Into: paragraph → code block', async ({
     window,
     electronApp,
     workspacePath,
@@ -703,7 +703,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('codeBlock');
   });
 
-  // â”€â”€ Color Submenu Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Color Submenu Tests ───────────────────────────────────────────────────
 
   test('Color submenu appears on hover with text and background colors', async ({
     window,
@@ -803,7 +803,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await colorItem.hover();
     await window.waitForTimeout(300);
 
-    // Click "Blue background" via dispatchEvent â€” the panel tab bar sits atop
+    // Click "Blue background" via dispatchEvent — the panel tab bar sits atop
     // this item so Playwright's native click is intercepted.
     const colorSubmenu = window.locator('.block-color-submenu');
     await expect(colorSubmenu).toBeVisible({ timeout: 3_000 });
@@ -825,7 +825,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     expect(hasBg).toBe(true);
   });
 
-  // â”€â”€ Duplicate Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Duplicate Tests ───────────────────────────────────────────────────────
 
   test('Duplicate creates a copy of the block', async ({
     window,
@@ -886,7 +886,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     expect(structure).toEqual(['h1:My Title', 'h1:My Title', 'p:Body text']);
   });
 
-  // â”€â”€ Delete Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Delete Tests ──────────────────────────────────────────────────────────
 
   test('Delete removes the block', async ({
     window,
@@ -948,7 +948,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     expect(structure).toEqual(['p:Remains']);
   });
 
-  // â”€â”€ Block Action Menu Header Label Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Block Action Menu Header Label Tests ──────────────────────────────────
 
   test('block action menu shows correct label for different block types', async ({
     window,
@@ -982,9 +982,9 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     await expect(header).toHaveText('Code');
   });
 
-  // â”€â”€ Turn Into with Multiple Block Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Turn Into with Multiple Block Types ───────────────────────────────────
 
-  test('Turn Into: paragraph â†’ quote', async ({
+  test('Turn Into: paragraph → quote', async ({
     window,
     electronApp,
     workspacePath,
@@ -1013,7 +1013,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('blockquote');
   });
 
-  test('Turn Into: paragraph â†’ to-do list', async ({
+  test('Turn Into: paragraph → to-do list', async ({
     window,
     electronApp,
     workspacePath,
@@ -1042,7 +1042,7 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('taskList');
   });
 
-  test('Turn Into: paragraph â†’ numbered list', async ({
+  test('Turn Into: paragraph → numbered list', async ({
     window,
     electronApp,
     workspacePath,

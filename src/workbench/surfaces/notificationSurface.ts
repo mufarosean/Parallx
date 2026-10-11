@@ -1,4 +1,4 @@
-// notificationSurface.ts — NotificationsSurfacePlugin (M58 W6)
+// notificationSurface.ts — NotificationsSurfacePlugin
 //
 // Routes agent output to the workbench toast system.
 //

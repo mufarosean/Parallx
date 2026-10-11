@@ -366,7 +366,7 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     write: (v) => ({ agent: { maxIterations: v as number } }),
   } as IBoundSchema<number>,
 
-  // ── Tools (M70 App Command Control) ──
+  // ── Tools ──
   {
     schema: {
       key: 'tools.workbenchControl',

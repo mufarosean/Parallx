@@ -20,7 +20,7 @@ import { chatIcons } from '../chatIcons.js';
 import type { ISessionSidebarServices } from '../chatTypes.js';
 import { formatRelativeTime } from '../../../ui/relativeTime.js';
 
-// ISessionSidebarServices — now defined in chatTypes.ts (M13 Phase 1)
+// ISessionSidebarServices — now defined in chatTypes.ts
 export type { ISessionSidebarServices } from '../chatTypes.js';
 
 // ── Date grouping buckets ──
@@ -191,7 +191,7 @@ export class ChatSessionSidebar extends Disposable {
     this._sessionList = $('div.parallx-chat-session-sidebar-list');
     this._root.appendChild(this._sessionList);
 
-    // ── Empty state (M89 voice registry) ──
+    // ── Empty state ──
     this._emptyEl = $('div.parallx-chat-session-sidebar-empty', EMPTY_STATES['chat.sessions'].headline);
     this._emptyEl.style.display = 'none';
     this._root.appendChild(this._emptyEl);
@@ -279,7 +279,7 @@ export class ChatSessionSidebar extends Disposable {
     }
   }
 
-  /** Perform full-text search across session messages (M11 Task 4.5). */
+  /** Perform full-text search across session messages. */
   private async _performSearch(query: string): Promise<void> {
     if (!this._services.searchSessions) return;
     try {

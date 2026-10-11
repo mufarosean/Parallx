@@ -1,4 +1,4 @@
-// Terminal Tool — built-in tool for Parallx (M11 Task 4.1)
+// Terminal Tool — built-in tool for Parallx
 //
 // Provides an integrated terminal panel in the bottom panel area.
 // Spawns a shell via Electron IPC and streams output to the UI.
@@ -64,7 +64,7 @@ let _unsubExit: (() => void) | null = null;
 let _commandHistory: string[] = [];
 let _historyIndex = -1;
 
-/** Workspace root, so shells open in the project and pick up its venv (M97). */
+/** Workspace root, so shells open in the project and pick up its venv. */
 let _workspaceRoot: string | undefined;
 /** The venv the CURRENT shell was started with — null when none. */
 let _sessionVenv: string | null = null;
@@ -384,7 +384,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       }));
       root.appendChild(actions);
 
-      // ── Environment strip (M97) — hidden unless there is something to say ──
+      // ── Environment strip — hidden unless there is something to say ──
       _envBar = $('div');
       _envBar.className = 'parallx-terminal-env';
       _envBar.hidden = true;

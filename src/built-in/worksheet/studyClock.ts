@@ -1,5 +1,5 @@
 // studyClock.ts — study time is time with the work on screen and the student
-// at the desk, whatever the cells do (Mufaro, 2026-09-21: "I care more about
+// at the desk, whatever the cells do ("I care more about
 // the amount of time I spend studying. Sometimes I look through a problem and
 // the answer and change no cells; sometimes I work it against the model
 // solution; hyperfocusing on cell changes does not capture the spectrum").

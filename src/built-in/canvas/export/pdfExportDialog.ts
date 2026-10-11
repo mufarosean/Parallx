@@ -1,4 +1,4 @@
-// pdfExportDialog.ts — the canvas "Export as PDF" dialog (M93).
+// pdfExportDialog.ts — the canvas "Export as PDF" dialog.
 //
 // A Ctrl+P-style overlay: options on the left (paper size, orientation,
 // margins, scale, title/page-number/background toggles), a REAL preview on

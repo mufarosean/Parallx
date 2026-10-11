@@ -118,7 +118,7 @@ function _initFileEditorResolver(
 
   // CodeEditorPane needs the Python service for its Run/Format actions,
   // resolved per construction rather than captured once because a workspace
-  // can be swapped underneath the factory (M95).
+  // can be swapped underneath the factory.
   const getPythonService = (): IPythonEnvService | undefined =>
     services.has(IPythonEnvService) ? services.get(IPythonEnvService) : undefined;
 
@@ -144,7 +144,7 @@ function _initFileEditorResolver(
 
   // ── Register built-in format readers (priority-sorted) ──
 
-  // M53 D3.4: Helper to create PDF panes with global storage wired
+  // Helper to create PDF panes with global storage wired
   const createPdfPane = (): PdfEditorPane => {
     const pane = new PdfEditorPane();
     if (services.has(IGlobalStorageService)) {
@@ -207,7 +207,7 @@ function _initFileEditorResolver(
     createPane: () => new ExcelEditorPane(),
   }));
 
-  // Notebooks (M96). Registered above the text fallback so `.ipynb` opens as a
+  // Notebooks. Registered above the text fallback so `.ipynb` opens as a
   // notebook rather than as the raw JSON it happens to be stored as.
   disposables.add(resolver.registerEditor({
     id: NotebookEditorInput.TYPE_ID,
@@ -254,7 +254,7 @@ function _initFileEditorResolver(
     // Code files get the real editing surface; everything else keeps the
     // textarea pane. Routing on language support rather than a second
     // extension list keeps CodeEditor's LANGUAGE_LOADERS the single source of
-    // "what counts as code" (M95).
+    // "what counts as code".
     if (input instanceof FileEditorInput && hasCodeLanguage(input.name)) {
       return new CodeEditorPane(getPythonService());
     }

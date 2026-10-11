@@ -13,7 +13,7 @@
 import type { IContextPill } from '../../../services/chatTypes.js';
 import type { IChatMention, IMentionResolutionResult, IMentionResolutionServices } from '../chatTypes.js';
 
-// IChatMention, IMentionResolutionResult, IMentionResolutionServices — now defined in chatTypes.ts (M13 Phase 1)
+// IChatMention, IMentionResolutionResult, IMentionResolutionServices — now defined in chatTypes.ts
 export type { IChatMention, IMentionResolutionResult, IMentionResolutionServices } from '../chatTypes.js';
 
 // ── Regex: matches @file:path, @folder:path, @workspace, @terminal ──

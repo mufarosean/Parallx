@@ -122,7 +122,7 @@ export async function mountRowPropertiesSection(
     }
   };
 
-  // ── "Pages with value X" popover (M85 parity over database rows) ──
+  // ── "Pages with value X" popover ──
   let activePopover: HTMLElement | null = null;
   const closePopover = (): void => { activePopover?.remove(); activePopover = null; };
   disposables.add({ dispose: closePopover });

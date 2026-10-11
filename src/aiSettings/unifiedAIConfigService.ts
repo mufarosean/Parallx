@@ -1,7 +1,7 @@
-// unifiedAIConfigService.ts — Unified AI Configuration Service (M20 Task A.2)
+// unifiedAIConfigService.ts — Unified AI Configuration Service
 //
 // Single source of truth for all AI configuration.
-// Replaces both AISettingsService (M15) and ParallxConfigService (M11).
+// Replaces both AISettingsService and ParallxConfigService.
 //
 // Config resolution (lowest → highest priority):
 //   Built-in defaults → Active global preset → Workspace override

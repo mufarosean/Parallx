@@ -1,4 +1,4 @@
-// skillLoaderService.ts â€” SKILL.md loader and watcher (M11 Task 2.8)
+// skillLoaderService.ts — SKILL.md loader and watcher
 //
 // Scans `.parallx/skills/*/SKILL.md` at workspace open, parses YAML
 // frontmatter, and registers skills with the tool service.  Watches
@@ -16,7 +16,7 @@ import type { ToolPermissionLevel } from './chatTypes.js';
 // Types
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-/** Skill kind â€” tool (M11) or workflow (M39). */
+/** Skill kind — tool or workflow. */
 export type SkillKind = 'tool' | 'workflow';
 
 /** Parsed SKILL.md frontmatter. */
@@ -33,7 +33,7 @@ export interface ISkillManifest {
   /** Path to the SKILL.md file relative to workspace. */
   readonly relativePath: string;
 
-  // â”€â”€ M39 fields â”€â”€
+  // ── M39 fields ──
 
   /** Whether this skill is a tool declaration or a workflow playbook. Default: 'tool'. */
   readonly kind: SkillKind;
@@ -73,7 +73,7 @@ export interface ISkillsChangeEvent {
 /**
  * Parse YAML-like frontmatter from a SKILL.md file.
  *
- * This is a lightweight parser â€” only supports the flat key-value and
+ * This is a lightweight parser — only supports the flat key-value and
  * simple list structures used in SKILL.md. Not a full YAML parser.
  */
 export function parseSkillFrontmatter(content: string): { frontmatter: Record<string, unknown>; body: string } | null {
@@ -103,13 +103,13 @@ export function parseSkillFrontmatter(content: string): { frontmatter: Record<st
       continue;
     }
 
-    // Inside a block scalar â€” collect indented continuation lines
+    // Inside a block scalar — collect indented continuation lines
     if (blockScalarKey) {
       if (/^\s{2,}/.test(line)) {
         blockScalarLines.push(trimmed);
         continue;
       }
-      // Not indented â†’ flush the block scalar
+      // Not indented → flush the block scalar
       const joined = blockScalarFolded
         ? blockScalarLines.filter(Boolean).join(' ')
         : blockScalarLines.join('\n');
@@ -144,7 +144,7 @@ export function parseSkillFrontmatter(content: string): { frontmatter: Record<st
       continue;
     }
 
-    // End of list context â€” flush
+    // End of list context — flush
     if (currentListKey && !/^\s/.test(line)) {
       frontmatter[currentListKey] = currentList;
       currentListKey = null;
@@ -212,7 +212,7 @@ function _parseYamlValue(raw: string): string | number | boolean {
   const num = Number(raw);
   if (!isNaN(num) && raw.length > 0) { return num; }
 
-  // Quoted strings â€” strip quotes
+  // Quoted strings — strip quotes
   if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
     return raw.slice(1, -1);
   }
@@ -254,7 +254,7 @@ export function validateSkillManifest(
   const rawTags = Array.isArray(fm['tags']) ? fm['tags'] : [];
   const tags = rawTags.map((t) => String(t).trim()).filter(Boolean);
 
-  // M39 fields â€” kind, disableModelInvocation, userInvocable
+  // M39 fields — kind, disableModelInvocation, userInvocable
   const kind = _validKind(String(fm['kind'] ?? 'tool'));
   const disableModelInvocation = fm['disableModelInvocation'] === true
     || fm['disableModelInvocation'] === 'true'
@@ -295,13 +295,13 @@ function _validKind(raw: string): SkillKind {
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// Manifest â†’ IChatTool conversion
+// Manifest → IChatTool conversion
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 /**
  * Convert a skill manifest to the standard IChatTool shape.
  *
- * The tool won't have an `invoke()` handler â€” it's a declaration only.
+ * The tool won't have an `invoke()` handler — it's a declaration only.
  * The invoker must check whether a handler is bound (built-in tools wire
  * this up at registration time).
  */
@@ -352,7 +352,7 @@ export interface ISkillFileSystem {
   listDirs(parentRelativePath: string): Promise<string[]>;
   exists(relativePath: string): Promise<boolean>;
   /**
-   * M81 Phase 6 — enumerate FILES (not directories) directly inside the
+   * enumerate FILES (not directories) directly inside the
    * given parent. Used by `scanSkills` to discover bundled scripts /
    * references / assets one level deep under a skill folder. Optional
    * for backward compatibility with existing callers; when absent,
@@ -481,7 +481,7 @@ export class SkillLoaderService extends Disposable {
         const baseManifest = validateSkillManifest(parsed, skillPath);
         if (!baseManifest) { continue; }
 
-        // M81 Phase 6 — discover bundled scripts/references/assets one level deep
+        // discover bundled scripts/references/assets one level deep
         const skillDir = `${SKILLS_DIR}/${dir}`;
         const bundledFiles = await this._collectBundledFiles(skillDir);
 
@@ -546,7 +546,7 @@ export class SkillLoaderService extends Disposable {
       const baseManifest = validateSkillManifest(parsed, skillPath);
       if (!baseManifest) { return; }
 
-      // M81 Phase 6 — refresh bundled-file list on reload
+      // refresh bundled-file list on reload
       const skillDir = `.parallx/skills/${skillName}`;
       const bundledFiles = await this._collectBundledFiles(skillDir);
       const manifest: ISkillManifest = bundledFiles.length > 0
@@ -561,7 +561,7 @@ export class SkillLoaderService extends Disposable {
   }
 
   /**
-   * M81 Phase 6 — enumerate the workspace-relative paths of files under
+   * enumerate the workspace-relative paths of files under
    * `<skillDir>/scripts/`, `<skillDir>/references/`, `<skillDir>/assets/`
    * (one level deep). Returns a stable, alphabetically-sorted array.
    * Returns `[]` when the filesystem accessor cannot enumerate files

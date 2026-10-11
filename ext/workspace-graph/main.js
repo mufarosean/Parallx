@@ -1,4 +1,4 @@
-// Workspace Graph — Parallx Extension (M56)
+// Workspace Graph — Parallx Extension
 // Obsidian-style force-directed graph visualization.
 // All data lives under .parallx/extensions/workspace-graph/.
 //
@@ -202,16 +202,16 @@ const GS = {
   showFiles:       true,
   showCanvasPages: true,
   showSessions:    true,
-  // M88 S4 — 'workspace' = everything incl. the file tree; 'mindmap' =
+  // 'workspace' = everything incl. the file tree; 'mindmap' =
   // content only: canvas pages + concept hubs + semantically-connected
   // files. No directory scaffolding, no sessions.
   viewMode:        'workspace',
-  // M76: per-edge-kind visibility. Default: all off. Legacy
+  // per-edge-kind visibility. Default: all off. Legacy
   // `showConceptualLinks: true` settings migrate to `similar-to: true` in
   // `_loadSettings`. Phase 1 only renders 'similar-to' since the other kinds
   // have no producers yet, but the UI surfaces just the one checkbox.
   edgeKindVisibility: {
-    // M88 S1 — meaning edges are the product; hiding one is a bug. Every
+    // meaning edges are the product; hiding one is a bug. Every
     // kind with a producer ships ON: the LLM kinds (extends/refutes/
     // member-of) simply render nothing until the user runs a Refresh, and
     // co-occurrence now has a sane per-kind score floor service-side.
@@ -661,7 +661,7 @@ async function buildGraphData(api) {
   const edges = [];
   _nodeIndex = 0; // reset phyllotaxis counter
 
-  // M88 S4 — mindmap mode drops the scaffolding: no directory tree, no
+  // mindmap mode drops the scaffolding: no directory tree, no
   // sessions, no memory internals. Canvas pages give the containment
   // skeleton; concept hubs + semantically-connected files arrive via the
   // providers (the semantic provider self-supplies file endpoints).
@@ -871,7 +871,7 @@ function _isIgnoredWorkspaceInternalPath(value) {
   return false;
 }
 
-// M88 S4 — canonical form for cross-collector node-id comparison. The
+// canonical form for cross-collector node-id comparison. The
 // four collectors and the semantic engine each build 'file:' ids from
 // their own uri joins; on Windows the same file can differ by drive-letter
 // case, separators, encoded spaces, or a trailing slash — which produced
@@ -954,7 +954,7 @@ function _getRefreshOrchestrator(api) {
   } catch { return null; }
 }
 
-// M76 Phase 3 — relative-time formatter for the "Last refreshed" line.
+// relative-time formatter for the "Last refreshed" line.
 // Buckets: just now, X min ago, X hr ago, X day ago, then absolute date.
 function _formatRelativeTime(isoTs) {
   if (!isoTs) return 'never';
@@ -1006,7 +1006,7 @@ function _fileLabelFromNodeId(nodeId) {
 }
 
 function _makeSemanticEndpointNode(nodeId, conceptMetaById, pageTitleById) {
-  // M76 Phase 5 — concept node endpoints (member-of edges point at these).
+  // concept node endpoints (member-of edges point at these).
   if (nodeId.startsWith('concept:')) {
     const stableId = nodeId.slice(8);
     const meta = conceptMetaById ? conceptMetaById.get(stableId) : null;
@@ -1089,13 +1089,13 @@ function _registerSemanticGraphProvider(api, context) {
       if (typeof service.ensureCacheStarted === 'function') {
         service.ensureCacheStarted();
       }
-      // M88 S1 — no flat minScore: the service applies per-kind floors
+      // no flat minScore: the service applies per-kind floors
       // (cosine 0.72, lineage 0.55, co-occurrence 0.45, structural 0).
       // The old uniform 0.72 silently discarded most lineage and
       // co-occurrence edges even when the user toggled them on.
       const cached = await service.getCachedEdges({ maxEdges: 500, kinds: visible });
 
-      // M76 Phase 5 — concept-node metadata (labels + member counts) lives
+      // concept-node metadata (labels + member counts) lives
       // in a separate table from the edges. Fetch it whenever the user has
       // member-of edges visible so concept nodes render with real labels.
       let conceptMetaById = null;
@@ -1269,7 +1269,7 @@ function drawGraph(ctx, cvs, nodes, edges, byId, view, selected, hovered, showEd
       ctx.stroke();
       if (dash.length > 0) ctx.setLineDash([]);
 
-      // Arrowhead for directed concept edges (M76). Phase 1 has no producers
+      // Arrowhead for directed concept edges. Phase 1 has no producers
       // for directed edges yet, but the rendering is in place so Phase 4
       // (lineage) and Phase 5 (member-of) plug in without further work.
       if (concept && e.direction === 'forward') {
@@ -1481,7 +1481,7 @@ function createGraphEditor(container, api) {
   const edgesBtn = _iconBtn(api, 'eye-off', 'Hide Edges');
   const fitBtn = _iconBtn(api, 'maximize', 'Fit All');
   const refreshBtn = _iconBtn(api, 'refresh-cw', 'Refresh');
-  // M88 S4 — the mind map is a first-class MODE, not a settings toggle;
+  // the mind map is a first-class MODE, not a settings toggle;
   // and the LLM refresh that produces lineage/concept edges lives on the
   // toolbar where it can actually be discovered (the settings-panel copy
   // remains for status + history).
@@ -1517,7 +1517,7 @@ function createGraphEditor(container, api) {
     const L = 'style="display:flex;justify-content:space-between;color:var(--vscode-editor-foreground,#ccc);margin-top:6px;"';
     const H = 'style="color:var(--vscode-editor-foreground,#ddd);font-size:12px;font-weight:600;margin:12px 0 6px;border-bottom:1px solid var(--vscode-panel-border,#333);padding-bottom:4px;"';
 
-    // M76 Phase 3 — synchronous status snapshot so the section renders
+    // synchronous status snapshot so the section renders
     // immediately. preview() + getRefreshHistory() are async and populate
     // the dynamic spans after first paint via _updateRefreshSectionAsync.
     const _orch = _getRefreshOrchestrator(api);
@@ -1686,7 +1686,7 @@ function createGraphEditor(container, api) {
     _wireCheck('pages', 'showCanvasPages');
     _wireCheck('sessions', 'showSessions');
 
-    // M76 — per-edge-kind checkboxes. Each binds GS.edgeKindVisibility[kind].
+    // per-edge-kind checkboxes. Each binds GS.edgeKindVisibility[kind].
     // Phase 1 only renders the Similarity checkbox; this helper is shared
     // with future phases.
     const _wireKindCheck = (id, kind) => {
@@ -1716,7 +1716,7 @@ function createGraphEditor(container, api) {
     // polling needed because edge counts only change after a drain).
     _updateCacheDiagnosticsAsync();
 
-    // M76 Phase 3 — wire the refresh section. Status line + history are
+    // wire the refresh section. Status line + history are
     // populated async; button + history toggle attach handlers now.
     if (_orch) {
       _updateRefreshSectionAsync(_orch);
@@ -1784,7 +1784,7 @@ function createGraphEditor(container, api) {
         });
       }
 
-      // M76 Phase 6 — wire the concept-curation section.
+      // wire the concept-curation section.
       _populateConceptList(api);
 
       const rebuildBtn = settingsInner.querySelector('#__gs_concept_rebuild');
@@ -1815,7 +1815,7 @@ function createGraphEditor(container, api) {
     }
   }
 
-  // M76 Phase 6 — render the concept list inside the settings panel and
+  // render the concept list inside the settings panel and
   // attach rename / delete / merge handlers. Called on panel build, after
   // every curation action, and after refresh completion (the orchestrator
   // already triggers _buildSettingsPanel via onDidComplete).
@@ -1974,7 +1974,7 @@ function createGraphEditor(container, api) {
     }
   }
 
-  // M76 Phase 3 — populate the dynamic parts of the refresh section
+  // populate the dynamic parts of the refresh section
   // (idle status line uses preview() data). Called after _buildSettingsPanel
   // and again when orchestrator events fire.
   async function _updateRefreshSectionAsync(orch) {
@@ -2065,7 +2065,7 @@ function createGraphEditor(container, api) {
   fitBtn.addEventListener('click', _fitAndDraw);
   refreshBtn.addEventListener('click', _refresh);
 
-  // M88 S4 — mode toggle rebuilds with the other node universe.
+  // mode toggle rebuilds with the other node universe.
   modeBtn.addEventListener('click', () => {
     GS.viewMode = GS.viewMode === 'mindmap' ? 'workspace' : 'mindmap';
     modeBtn.textContent = GS.viewMode === 'mindmap' ? 'Workspace View' : 'Mind Map View';
@@ -2073,7 +2073,7 @@ function createGraphEditor(container, api) {
     _refresh();
   });
 
-  // M88 S4 — AI refresh (lineage classifier + concept clustering) from the
+  // AI refresh (lineage classifier + concept clustering) from the
   // graph itself. Same orchestrator the settings panel drives; the graph
   // rebuilds when the run completes so new edges appear without a reopen.
   aiRefreshBtn.addEventListener('click', async () => {
@@ -2611,7 +2611,7 @@ Respond using this exact JSON with no other text before or after it:
     changePageSub = api.workspace.onDidChangeCanvasPages(() => _refresh());
   }
 
-  // M76 Phase 3 — subscribe to mind-map refresh status events so the
+  // subscribe to mind-map refresh status events so the
   // settings panel stays in sync with refresh progress. Only meaningful
   // while the panel is open; if closed, the rebuild is a cheap no-op.
   let refreshStatusSub;

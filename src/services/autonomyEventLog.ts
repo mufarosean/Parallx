@@ -5,7 +5,7 @@
 // 90-day retention by default. Independent from `AutonomyLogService`,
 // which is a UX surface (markdown ring buffer the user reads in-app).
 //
-// Schema (M60 §3.10):
+// Schema:
 //   {
 //     id: ulid,
 //     triggeredAt: iso,
@@ -18,7 +18,7 @@
 //     durationMs?, tokensIn?, tokensOut?
 //   }
 //
-// Privacy posture (M60 §3.9):
+// Privacy posture:
 //   - Bodies, message contents, file contents — never logged.
 //   - systemPromptHash and argsDigest are sha256 — never the raw text.
 //
@@ -204,7 +204,7 @@ export class AutonomyEventLog extends Disposable implements IAutonomyEventLog {
   /** Last day for which retention was pruned. Avoids spamming pruning on every emit. */
   private _lastPrunedDay: string | undefined;
 
-  // M78 Phase 5 — buffered append.
+  // buffered append.
   //
   // The pre-M78 path did a full read-modify-write of the whole day's
   // log on every event. Over a day the file grew, so each event cost

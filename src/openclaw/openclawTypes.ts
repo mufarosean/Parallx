@@ -193,7 +193,7 @@ export interface ISkillCatalogEntry {
   }[];
   readonly body?: string;
   /**
-   * M81 Phase 6 — workspace-relative paths of bundled scripts/references/
+   * workspace-relative paths of bundled scripts/references/
    * assets discovered under the skill folder. Optional for backward
    * compatibility.
    */
@@ -201,7 +201,7 @@ export interface ISkillCatalogEntry {
 }
 
 /**
- * M81 Phase 8 — narrow accessor for the workspace memory service exposed to
+ * narrow accessor for the workspace memory service exposed to
  * `/init`. Only the methods needed for the legacy-concept archive migration
  * and the lessons-consolidation pass are surfaced here; this keeps the
  * init command decoupled from the full `IWorkspaceMemoryService` interface
@@ -291,7 +291,7 @@ export interface IDefaultParticipantServices {
   hasSessionMemory?(sessionId: string): Promise<boolean>;
   getSessionMemoryMessageCount?(sessionId: string): Promise<number | null>;
   getPreferencesForPrompt?(): Promise<string | undefined>;
-  /** M85 — the session's durable plan, formatted for prompt injection.
+  /** the session's durable plan, formatted for prompt injection.
    *  Read fresh on every context assembly (mid-turn plan_update included). */
   getSessionPlanText?(sessionId: string): string | undefined;
   /** MIND continuity for INTERACTIVE turns — the agent's durable beliefs,
@@ -307,7 +307,7 @@ export interface IDefaultParticipantServices {
   existsRelative?(relativePath: string): Promise<boolean>;
   invalidatePromptFiles?(): void;
   /**
-   * M81 Phase 8 — workspace memory accessor used by `/init` for the legacy
+   * workspace memory accessor used by `/init` for the legacy
    * concept archive migration and the lessons-consolidation pass. Wired by
    * `chat/main.ts` from the same WorkspaceMemoryService instance that backs
    * the `memory_write` tool. Undefined when no workspace is open or in tests
@@ -341,7 +341,7 @@ export interface IDefaultParticipantServices {
   getExcludedContextIds?(): ReadonlySet<string>;
   getWorkspaceDigest?(): Promise<string | undefined>;
   /**
-   * M76 Phase 7 — mind-map diagnostics for the /context report (edge
+   * mind-map diagnostics for the /context report (edge
    * counts by kind, concept node counts, last refresh). Returning
    * undefined skips the section cleanly.
    */
@@ -356,7 +356,7 @@ export interface IDefaultParticipantServices {
     readonly lastRefreshStatus: string | null;
   } | undefined>;
   /**
-   * M66 — Snapshot of registered `parallx://` link contracts for prompt
+   * Snapshot of registered `parallx://` link contracts for prompt
    * auto-injection. Returning `undefined` (or an empty array) suppresses
    * the `## Linking` section. Implementations should call
    * `LinkResolverService.allContracts()` and flatten to descriptor shape.
@@ -366,7 +366,7 @@ export interface IDefaultParticipantServices {
   sessionManager?: ISessionManager;
   unifiedConfigService?: IUnifiedAIConfigService;
   /**
-   * W1 (M58) — Self-continuation: queue a followup turn for this session
+   * W1 — Self-continuation: queue a followup turn for this session
    * via the chat service's pending-request queue. Maps to
    * chatService.queueRequest(sessionId, message, ChatRequestQueueKind.Queued).
    * When undefined (e.g. isolated unit tests), followup evaluation runs but
@@ -377,13 +377,13 @@ export interface IDefaultParticipantServices {
    */
   queueFollowupRequest?(sessionId: string, message: string): void;
   /**
-   * M60 §3.8: read an autonomy feature flag. Used at the participant
+   * read an autonomy feature flag. Used at the participant
    * post-turn hook to gate followup evaluation. When undefined, callers
    * default to "on" (legacy behavior).
    */
   isAutonomyFlagEnabled?(flagId: string): boolean;
   /**
-   * M60 §3.10: emit a structured autonomy event record. Used at the
+   * emit a structured autonomy event record. Used at the
    * post-turn hook to record followup outcomes (completed / cancelled /
    * gated). When undefined, the runtime is observability-blind and
    * proceeds without logging.

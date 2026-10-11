@@ -1,4 +1,4 @@
-// structuralRepair.ts — active, production structural normalization (M85)
+// structuralRepair.ts — active, production structural normalization
 //
 // The dev-only structuralInvariantPlugin DETECTS malformed composite blocks but
 // never fixes them, so in production an off-schema shape from a drag / delete /

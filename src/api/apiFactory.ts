@@ -340,7 +340,7 @@ export interface ParallxApiObject {
     /** Check if a DI service is registered. */
     has(id: { readonly id: string }): boolean;
     /**
-     * Register a pre-built service instance (M56).
+     * Register a pre-built service instance.
      *
      * BUILT-IN PRIVILEGE (Phase D Decision 1, 2026-08-29): external tools
      * may read services but not register them — an external write here
@@ -389,7 +389,7 @@ export interface ParallxApiObject {
     runTransaction(operations: { type: 'run' | 'get' | 'all'; sql: string; params?: unknown[] }[]): Promise<{ error: null; results: unknown[] } | { error: { code: string; message: string } }>;
   } | undefined;
   /**
-   * MCP tool invocation surface (M63 P0).
+   * MCP tool invocation surface.
    * Wraps {@link ILanguageModelToolsService} to invoke MCP-namespaced tools
    * (`mcp__<serverId>__<toolName>`). Undefined when the service is unavailable.
    */
@@ -402,7 +402,7 @@ export interface ParallxApiObject {
     registerAutomationHost(host: IBrowserAutomationHost, tools: readonly IBrowserAutomationToolSpec[]): IBrowserAutomationHostRegistration;
   } | undefined;
   /**
-   * Cron scheduling surface (M63 P0).
+   * Cron scheduling surface.
    * Idempotent upsert by stable extension-owned id. Undefined when
    * {@link ICronService} is not registered.
    */
@@ -412,7 +412,7 @@ export interface ParallxApiObject {
   } | undefined;
 
   /**
-   * Request a scoped capability handle (M67 Phase 3).
+   * Request a scoped capability handle.
    * Extensions must declare the capability in their manifest under `capabilities`.
    *
    * Currently only `'fs'` is supported.
@@ -567,7 +567,7 @@ export function createToolApi(
     ? new ChatBridge(toolId, chatAgentService, languageModelToolsService, subscriptions)
     : undefined;
 
-  // M63 P0 — MCP & Cron bridges. Undefined when underlying services absent.
+  // MCP & Cron bridges. Undefined when underlying services absent.
   const mcpBridge = languageModelToolsService
     ? new McpBridge(toolId, languageModelToolsService)
     : undefined;
@@ -581,7 +581,7 @@ export function createToolApi(
     ? new CronBridge(toolId, deps.services.get<import('../openclaw/openclawCronService.js').CronService>(ICronService))
     : undefined;
 
-  // M66 — Links / unified citation linking. Shared workbench service.
+  // Links / unified citation linking. Shared workbench service.
   const linkResolverService = deps.services.has(ILinkResolverService)
     ? deps.services.get<ILinkResolverService>(ILinkResolverService)
     : undefined;
@@ -591,7 +591,7 @@ export function createToolApi(
   const workspaceGraphBridge = new WorkspaceGraphBridge(toolId, subscriptions);
   subscriptions.push(workspaceGraphBridge);
 
-  // M86 — Dashboard widget contribution API. Pure hub; the dashboard tool
+  // Dashboard widget contribution API. Pure hub; the dashboard tool
   // mirrors it into its registry, so registration order doesn't matter.
   const dashboardBridge = new DashboardBridge(toolId, subscriptions);
   subscriptions.push(dashboardBridge);
@@ -1148,7 +1148,7 @@ export function createToolApi(
         })
       : undefined,
 
-    // M63 P0 — MCP tool invocation surface.
+    // MCP tool invocation surface.
     mcp: mcpBridge
       ? Object.freeze({
           invokeTool: (toolName: string, args: Record<string, unknown>, token?: IMcpInvokeToken) =>
@@ -1163,7 +1163,7 @@ export function createToolApi(
         })
       : undefined,
 
-    // M63 P0 — Cron scheduling surface.
+    // Cron scheduling surface.
     cron: cronBridge
       ? Object.freeze({
           upsertJob: (job: IExtensionCronJob) => cronBridge.upsertJob(job),
@@ -1171,7 +1171,7 @@ export function createToolApi(
         })
       : undefined,
 
-    // M67 Phase 3 — Capability IPC.
+    // Capability IPC.
     requestCapability(
       capability: 'fs',
       opts?: { scope?: 'extension-data' | 'workspace-read' | 'workspace-files'; modes?: readonly FsCapabilityMode[] },
@@ -1189,7 +1189,7 @@ export function createToolApi(
         );
       }
 
-      // M67: clamp opts against the manifest declaration. The manifest is the
+      // clamp opts against the manifest declaration. The manifest is the
       // security contract; runtime opts may only narrow it, never expand.
       const manifestScope = manifestFsCap.scope ?? 'workspace-read';
       const manifestModes: readonly FsCapabilityMode[] = manifestFsCap.modes ?? ['read'];

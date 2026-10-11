@@ -169,13 +169,13 @@ export interface IWorkspaceMemoryService extends IDisposable {
   /** Overwrite the durable memory markdown file. */
   writeDurableMemory(content: string): Promise<void>;
 
-  /** Relative path for the user identity file (M81). */
+  /** Relative path for the user identity file. */
   getUserFileRelativePath(): string;
 
-  /** Read the user identity markdown file. Returns '' if missing (M81). */
+  /** Read the user identity markdown file. Returns '' if missing. */
   readUserFile(): Promise<string>;
 
-  /** Overwrite the user identity markdown file (M81). */
+  /** Overwrite the user identity markdown file. */
   writeUserFile(content: string): Promise<void>;
 
   /** Read the daily memory markdown file for a date. */
@@ -187,10 +187,10 @@ export interface IWorkspaceMemoryService extends IDisposable {
   /** Append a note to the daily memory markdown file for a date. */
   appendDailyMemory(text: string, date?: Date): Promise<void>;
 
-  /** Overwrite the daily memory markdown file for a date (M81). Body is rewritten beneath the date header. */
+  /** Overwrite the daily memory markdown file for a date. Body is rewritten beneath the date header. */
   writeDailyMemory(body: string, date?: Date): Promise<void>;
 
-  // M81 Phase 8 — lesson files (progressive disclosure). MEMORY.md is an INDEX
+  // lesson files (progressive disclosure). MEMORY.md is an INDEX
   // of pointers to per-topic lesson files at .parallx/memory/lessons/<slug>.md.
   // Bodies are read on demand by the agent, not auto-loaded.
 
@@ -334,10 +334,10 @@ import type { IWorkspaceSessionContext } from '../workspace/workspaceSessionCont
 
 // ─── IGlobalStorageService ──────────────────────────────────────────────────
 
-/** M53 D3: Global storage exposed as a DI service for built-in tools. */
+/** Global storage exposed as a DI service for built-in tools. */
 export const IGlobalStorageService = createServiceIdentifier<IStorage>('IGlobalStorageService');
 
-/** M53 D3: Workspace storage exposed as a DI service for built-in tools. */
+/** Workspace storage exposed as a DI service for built-in tools. */
 export const IWorkspaceStorageService = createServiceIdentifier<IStorage>('IWorkspaceStorageService');
 
 /**
@@ -909,7 +909,7 @@ export interface INotificationService extends IDisposable {
 
 export const INotificationService = createServiceIdentifier<INotificationService>('INotificationService');
 
-// ─── ISurfaceRouterService (M58 W6) ──────────────────────────────────────────
+// ─── ISurfaceRouterService ──────────────────────────────────────────
 
 import type { ISurfaceRouterService as ISurfaceRouterServiceType } from './surfaceRouterService.js';
 /**
@@ -1375,7 +1375,7 @@ export interface IThemeService extends IDisposable {
 
 export const IThemeService = createServiceIdentifier<IThemeService>('IThemeService');
 
-// ─── IDocumentExtractionService (M21 Phase A) ─────────────────────────────
+// ─── IDocumentExtractionService ─────────────────────────────
 
 /**
  * Pipeline type indicating which extraction method was used.
@@ -1450,7 +1450,7 @@ export interface IDocumentExtractionService extends IDisposable {
 
 export const IDocumentExtractionService = createServiceIdentifier<IDocumentExtractionService>('IDocumentExtractionService');
 
-// ─── IEmbeddingService (M10 Task 1.1) ──────────────────────────────────────
+// ─── IEmbeddingService ──────────────────────────────────────
 
 /**
  * Generates text embeddings via Ollama's /api/embed endpoint.
@@ -1487,23 +1487,23 @@ export interface IEmbeddingService extends IDisposable {
   readonly onDidFinishEmbedding: Event<{ count: number; durationMs: number }>;
 
   /**
-   * M60 B3 — install (or clear) an off-thread transport that replaces the
+   * install (or clear) an off-thread transport that replaces the
    * in-process `/api/embed` fetch. Caching, retry, and prefixing all stay
    * on the main thread; the transport just owns the network round-trip +
    * JSON parse + dimension check.
    */
   setTransport?(transport: ((inputs: string[], signal?: AbortSignal) => Promise<number[][]>) | null): void;
 
-  /** M60 B3 — Ollama base URL (so transports can forward the same config). */
+  /** Ollama base URL (so transports can forward the same config). */
   readonly baseUrl?: string;
 
-  /** M60 B3 — embedding model name (so transports can forward the same config). */
+  /** embedding model name (so transports can forward the same config). */
   readonly model?: string;
 }
 
 export const IEmbeddingService = createServiceIdentifier<IEmbeddingService>('IEmbeddingService');
 
-// ─── IChunkingService (M10 Task 1.3) ───────────────────────────────────────
+// ─── IChunkingService ───────────────────────────────────────
 
 /**
  * Splits content into chunks suitable for embedding and retrieval.
@@ -1521,7 +1521,7 @@ export interface IChunkingService extends IDisposable {
 
 export const IChunkingService = createServiceIdentifier<IChunkingService>('IChunkingService');
 
-// ─── IVectorStoreService (M10 Task 1.2) ────────────────────────────────────
+// ─── IVectorStoreService ────────────────────────────────────
 
 /**
  * Manages the dual vector + keyword index (sqlite-vec vec0 + FTS5).
@@ -1541,7 +1541,7 @@ export interface IVectorStoreService extends IDisposable {
   ): Promise<void>;
 
   /**
-   * M60 B4 — batch upsert N sources into one `runTransaction` IPC.
+   * batch upsert N sources into one `runTransaction` IPC.
    * Drops main-process IPC count by ≥10× during bulk indexing.
    */
   upsertMany?(
@@ -1593,11 +1593,11 @@ export interface IVectorStoreService extends IDisposable {
   /** Compute a centroid from stored vectors for one indexed source. Does not embed. */
   getSourceCentroid(sourceType: string, sourceId: string): Promise<import('./vectorStoreService.js').SourceCentroid | undefined>;
 
-  /** M88 S2 — evenly-sampled per-chunk embeddings for segment-level
+  /** evenly-sampled per-chunk embeddings for segment-level
    *  similarity (optional so lightweight fakes stay valid). Does not embed. */
   getSourceChunkVectors?(sourceType: string, sourceId: string, limit?: number): Promise<number[][]>;
 
-  /** M88 S3 — one title per indexed source (page titles from chunk context
+  /** one title per indexed source (page titles from chunk context
    *  prefixes, file basenames otherwise). Optional, read-only. */
   getSourceTitles?(): Promise<Array<{ sourceType: string; sourceId: string; title: string }>>;
 
@@ -1629,7 +1629,7 @@ export interface IVectorStoreService extends IDisposable {
 
 export const IVectorStoreService = createServiceIdentifier<IVectorStoreService>('IVectorStoreService');
 
-// ─── IIndexingPipelineService (M10 Task 2.1, 2.2) ─────────────────────────
+// ─── IIndexingPipelineService ─────────────────────────
 
 /**
  * Orchestrates indexing of canvas pages and workspace files into the
@@ -1667,7 +1667,7 @@ export interface IIndexingPipelineService extends IDisposable {
   scheduleFileReindex(filePath: string): void;
 
   /**
-   * M60 B5 — Wire a feature-flag accessor (typically backed by
+   * Wire a feature-flag accessor (typically backed by
    * `AutonomyFeatureFlagsService`). When `'indexing.lazyMtime.enabled'`
    * returns true, page-side mtime fast-skip is active. Optional;
    * unwired pipelines fall back to the legacy content-hash check.
@@ -1684,7 +1684,7 @@ export interface IIndexingPipelineService extends IDisposable {
   readonly onDidCompleteInitialIndex: Event<{ pages: number; files: number; durationMs: number }>;
 }
 
-// ─── Canvas Page Query Service (M56) ────────────────────────────────────────
+// ─── Canvas Page Query Service ────────────────────────────────────────
 
 /**
  * Read-only canvas page query service exposed to the tool API.
@@ -1712,7 +1712,7 @@ export const ICanvasPageQueryService = createServiceIdentifier<ICanvasPageQueryS
 
 export const IIndexingPipelineService = createServiceIdentifier<IIndexingPipelineService>('IIndexingPipelineService');
 
-// ─── ISemanticGraphService (M68) ───────────────────────────────────────────
+// ─── ISemanticGraphService ───────────────────────────────────────────
 
 /**
  * Builds and serves cached semantic edges for Workspace Graph from stored
@@ -1764,25 +1764,25 @@ export interface ISemanticGraphService extends IDisposable {
    */
   getConceptNodes(): Promise<import('./semanticGraphService.js').ConceptNodeRow[]>;
 
-  /** Rename a concept node and mark it user_renamed (M76 Phase 6). */
+  /** Rename a concept node and mark it user_renamed. */
   renameConceptNode(stableId: string, newLabel: string): Promise<void>;
 
-  /** Soft-delete a concept node — sticky across refreshes (M76 Phase 6). */
+  /** Soft-delete a concept node — sticky across refreshes. */
   deleteConceptNode(stableId: string): Promise<void>;
 
-  /** Merge `mergedId` into `survivorId`; survivor keeps label/id (M76 Phase 6). */
+  /** Merge `mergedId` into `survivorId`; survivor keeps label/id. */
   mergeConceptNodes(survivorId: string, mergedId: string): Promise<void>;
 
-  /** Wipe all concept-clustering state for a clean restart (M76 Phase 6). */
+  /** Wipe all concept-clustering state for a clean restart. */
   forceFullReCluster(): Promise<void>;
 
-  /** Compact diagnostics for /context and the settings panel (M76 Phase 7). */
+  /** Compact diagnostics for /context and the settings panel. */
   getMindMapDiagnostics(): Promise<import('./semanticGraphService.js').IMindMapDiagnostics>;
 }
 
 export const ISemanticGraphService = createServiceIdentifier<ISemanticGraphService>('ISemanticGraphService');
 
-// ─── IMindMapRefreshOrchestrator (M76 Phase 3) ────────────────────────────
+// ─── IMindMapRefreshOrchestrator ────────────────────────────
 
 /**
  * Owns the user-initiated, incremental refresh of LLM-driven mind-map
@@ -1810,7 +1810,7 @@ export const IMindMapRefreshOrchestrator = createServiceIdentifier<IMindMapRefre
   'IMindMapRefreshOrchestrator',
 );
 
-// ─── IRetrievalService (M10 Task 3.1) ─────────────────────────────────────
+// ─── IRetrievalService ─────────────────────────────────────
 
 /**
  * Query-time retrieval: embeds user queries, runs hybrid search, applies
@@ -1837,7 +1837,7 @@ export interface IRetrievalService extends IDisposable {
 
 export const IRetrievalService = createServiceIdentifier<IRetrievalService>('IRetrievalService');
 
-// ─── IMemoryService (M10 Tasks 5.1 + 5.2) ──────────────────────────────────
+// ─── IMemoryService ──────────────────────────────────
 
 /**
  * Manages conversation memory and user preference learning.
@@ -1864,7 +1864,7 @@ export interface IMemoryService extends IDisposable {
 
   /**
    * Get the message count stored with the last summary for a session.
-   * Returns `null` if no memory exists. Used for growth-based re-summarization (M17 Task 1.1.2).
+   * Returns `null` if no memory exists. Used for growth-based re-summarization.
    */
   getMemoryMessageCount(sessionId: string): Promise<number | null>;
 
@@ -1883,7 +1883,7 @@ export interface IMemoryService extends IDisposable {
   /** Get all stored memories. */
   getAllMemories(): Promise<import('./memoryService.js').ConversationMemory[]>;
 
-  /** Delete a specific memory by session ID (M20 F.2). */
+  /** Delete a specific memory by session ID. */
   deleteMemory(sessionId: string): Promise<void>;
 
   /** Get all stored user preferences, ordered by frequency. */
@@ -1898,7 +1898,7 @@ export interface IMemoryService extends IDisposable {
   /** Clear all memories and preferences. */
   clearAll(): Promise<void>;
 
-  // ── Decay & Eviction (M17 P1.3) ──
+  // ── Decay & Eviction ──
 
   /** Recalculate decay scores for all memories. */
   recalculateDecayScores(): Promise<void>;
@@ -1909,7 +1909,7 @@ export interface IMemoryService extends IDisposable {
 
 export const IMemoryService = createServiceIdentifier<IMemoryService>('IMemoryService');
 
-// ─── IRelatedContentService (M10 Task 7.1) ─────────────────────────────────
+// ─── IRelatedContentService ─────────────────────────────────
 
 /**
  * Finds pages and files semantically related to a given page using
@@ -1928,7 +1928,7 @@ export interface IRelatedContentService extends IDisposable {
 
 export const IRelatedContentService = createServiceIdentifier<IRelatedContentService>('IRelatedContentService');
 
-// ─── IAutoTaggingService (M10 Task 7.2) ────────────────────────────────────
+// ─── IAutoTaggingService ────────────────────────────────────
 
 /**
  * Embedding-based auto-tagging for canvas pages.
@@ -1956,7 +1956,7 @@ export interface IAutoTaggingService extends IDisposable {
 
 export const IAutoTaggingService = createServiceIdentifier<IAutoTaggingService>('IAutoTaggingService');
 
-// ─── IProactiveSuggestionsService (M10 Task 7.4) ──────────────────────────
+// ─── IProactiveSuggestionsService ──────────────────────────
 
 /**
  * Periodically analyses the knowledge base to detect patterns and
@@ -1978,7 +1978,7 @@ export interface IProactiveSuggestionsService extends IDisposable {
 
 export const IProactiveSuggestionsService = createServiceIdentifier<IProactiveSuggestionsService>('IProactiveSuggestionsService');
 
-// ─── IAISettingsService (M15) ────────────────────────────────────────────────
+// ─── IAISettingsService ────────────────────────────────────────────────
 
 /**
  * Manages AI personality & behavior settings profiles.
@@ -1992,11 +1992,11 @@ export const IProactiveSuggestionsService = createServiceIdentifier<IProactiveSu
 import type { IAISettingsService as IAISettingsServiceType } from '../aiSettings/aiSettingsTypes.js';
 export const IAISettingsService = createServiceIdentifier<IAISettingsServiceType>('IAISettingsService');
 
-// ─── IUnifiedAIConfigService (M20) ──────────────────────────────────────────
+// ─── IUnifiedAIConfigService ──────────────────────────────────────────
 
 /**
- * Unified AI Configuration Service — replaces both AISettingsService (M15)
- * and ParallxConfigService (M11) with a single source of truth.
+ * Unified AI Configuration Service — replaces both AISettingsService
+ * and ParallxConfigService with a single source of truth.
  *
  * Provides preset management, workspace overrides, and merged effective config.
  * Interface defined in aiSettings/unifiedConfigTypes.ts.
@@ -2243,7 +2243,7 @@ export interface IMcpClientService extends IDisposable {
 
 export const IMcpClientService = createServiceIdentifier<IMcpClientService>('IMcpClientService');
 
-// ── Autonomy Log Service (M58-real post-ship UX reshape) ────────────────────
+// ── Autonomy Log Service ────────────────────
 //
 // Dedicated dedicated log for heartbeat / cron / subagent results so the
 // chat transcript stays clean. Identifier only here — the concrete class
@@ -2254,7 +2254,7 @@ export const IMcpClientService = createServiceIdentifier<IMcpClientService>('IMc
 export type IAutonomyLogService = import('./autonomyLogService.js').AutonomyLogService;
 export const IAutonomyLogService = createServiceIdentifier<IAutonomyLogService>('IAutonomyLogService');
 
-// ─── IAutonomyFeatureFlagsService (M60 §3.8) ────────────────────────────────
+// ─── IAutonomyFeatureFlagsService ────────────────────────────────
 //
 // Live-toggleable boolean flags that gate autonomy entry points. Defaults
 // per M60 §3.8. Followup runner + SurfaceRouter consult this service on
@@ -2265,7 +2265,7 @@ export type IAutonomyFeatureFlagsService = IAutonomyFeatureFlagsServiceType;
 export const IAutonomyFeatureFlagsService =
   createServiceIdentifier<IAutonomyFeatureFlagsServiceType>('IAutonomyFeatureFlagsService');
 
-// ─── IAutonomyEventLog (M60 §3.10) ──────────────────────────────────────────
+// ─── IAutonomyEventLog ──────────────────────────────────────────
 //
 // Structured ndjson event log for autonomous turns. One record per
 // followup / cron firing / heartbeat tick / subagent spawn / surface route.
@@ -2276,7 +2276,7 @@ export type IAutonomyEventLog = IAutonomyEventLogType;
 export const IAutonomyEventLog =
   createServiceIdentifier<IAutonomyEventLogType>('IAutonomyEventLog');
 
-// ─── ISettingsRegistryService (M60 §7 Phase ε T4.D1) ────────────────────────
+// ─── ISettingsRegistryService ────────────────────────
 //
 // Schema-driven settings registry. Every service / extension registers
 // its settings up-front; the registry owns validation, persistence, change
@@ -2289,7 +2289,7 @@ export type ISettingsRegistryService = ISettingsRegistryServiceType;
 export const ISettingsRegistryService =
   createServiceIdentifier<ISettingsRegistryServiceType>('ISettingsRegistryService');
 
-// ─── IAutonomyTaskRailService (M60 §8 Phase ζ T5.E1) ────────────────────────
+// ─── IAutonomyTaskRailService ────────────────────────
 //
 // Read-only viewmodel that merges live in-memory autonomy log entries with
 // persisted ndjson history into a single rail feed (filterable + paginated).
@@ -2299,7 +2299,7 @@ export type IAutonomyTaskRailService = IAutonomyTaskRailServiceType;
 export const IAutonomyTaskRailService =
   createServiceIdentifier<IAutonomyTaskRailServiceType>('IAutonomyTaskRailService');
 
-// ─── IAutonomyPatternMemoryService (M60 §8 Phase ζ T5.E3) ───────────────────
+// ─── IAutonomyPatternMemoryService ───────────────────
 //
 // "Approve this pattern" memory for sub-agent spawn approvals. Patterns are
 // reduced to (toolName, parentSessionPattern, argsShape) before storage —

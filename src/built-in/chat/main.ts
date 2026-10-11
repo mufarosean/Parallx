@@ -316,7 +316,7 @@ const _sessionFlags = new Map<string, boolean>();
 let _fsAccessor: IBuiltInToolFileSystem | undefined;
 let _api: ParallxApi | undefined;
 
-// M48: Unified Selection → AI Action System
+// Unified Selection → AI Action System
 let _selectionDispatcher: SelectionActionDispatcher | undefined;
 let _chatProgrammaticAccess: ChatProgrammaticAccess | undefined;
 
@@ -368,7 +368,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     cronHeartbeatRunnerRef?.wake(reason);
   };
 
-  // ── Autonomy log (M58-real post-ship UX reshape) ──
+  // ── Autonomy log ──
   //
   // Dedicated, in-memory store for heartbeat / cron / subagent results
   // so the chat transcript stays clean. The AutonomyLogSection in AI
@@ -443,7 +443,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // (canvas.propertyBar.collapsed removed — the legacy property bar is
     // retired; properties live in databases now.)
 
-    // M62: Gmail-specific settings removed. Provider integrations now
+    // Gmail-specific settings removed. Provider integrations now
     // ship as MCP servers (see tools/gmail-mcp-server). Users register
     // them via chat-gear → MCP Servers.
 
@@ -583,7 +583,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   let indexingPipelineService = api.services.has(IIndexingPipelineService)
     ? api.services.get<import('../../services/serviceTypes.js').IIndexingPipelineService>(IIndexingPipelineService)
     : undefined;
-  // M60 Phase θ B5 — wire flag accessor so the pipeline can consult
+  // wire flag accessor so the pipeline can consult
   // `indexing.lazyMtime.enabled` for page mtime fast-skip. The pipeline is
   // constructed by the workbench before the chat extension activates, so
   // this is the first reachable seam.
@@ -616,13 +616,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     ? api.services.get<import('../../services/serviceTypes.js').IProactiveSuggestionsService>(IProactiveSuggestionsService)
     : undefined;
 
-  // Session manager (M14) — carries workspace/session identity for diagnostics
+  // Session manager — carries workspace/session identity for diagnostics
   const sessionManager = api.services.has(ISessionManager)
     ? api.services.get<import('../../services/serviceTypes.js').ISessionManager>(ISessionManager)
     : undefined;
   const sessionContext = sessionManager?.activeContext;
 
-  // Unified AI Config service (M20) — single source of truth
+  // Unified AI Config service — single source of truth
   const unifiedConfigService = api.services.has(IUnifiedAIConfigService)
     ? api.services.get<import('../../aiSettings/unifiedConfigTypes.js').IUnifiedAIConfigService>(IUnifiedAIConfigService)
     : undefined;
@@ -663,7 +663,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   const fsAccessor = buildFileSystemAccessor(fileService, workspaceService);
   _fsAccessor = fsAccessor ?? undefined;
 
-  // ── 1b2. Prompt file service (M11 Task 1.1 + 1.4) ──
+  // ── 1b2. Prompt file service ──
   //
   // Reads .parallx/SOUL.md, .parallx/AGENTS.md, .parallx/TOOLS.md, .parallx/rules/*.md from workspace.
   // Falls back to built-in defaults when files don't exist.
@@ -838,7 +838,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     context.subscriptions.push(_permissionService);
   }
 
-  // ── 3. Create ChatDataService (M13 Phase 2) ──
+  // ── 3. Create ChatDataService ──
 
   const dataService = new ChatDataService({
     databaseService,
@@ -1171,11 +1171,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         return text.trim() ? text : undefined;
       }
       : undefined,
-    // M85 — the session's durable plan, formatted for the "## Active Plan"
+    // the session's durable plan, formatted for the "## Active Plan"
     // context section. Read fresh per assembly so mid-turn plan_update calls
     // are reflected after compaction re-assembly.
     //
-    // M86 — staleness nudge: telling models to "update as you work" in the
+    // staleness nudge: telling models to "update as you work" in the
     // system prompt is not enough (small local models reliably forget
     // bookkeeping calls). When the plan hasn't been touched for several
     // messages, append an imperative nudge to the section the model reads
@@ -1207,7 +1207,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       const block = _mindServiceRef.continuityBlock();
       return block || undefined;
     },
-    // M66 — Snapshot every registered `parallx://` link contract for the
+    // Snapshot every registered `parallx://` link contract for the
     // system prompt builder. Flattened to the descriptor shape that the
     // openclaw layer expects, so adding a new extension contract surfaces
     // its templates to the AI with zero core changes.
@@ -1228,7 +1228,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     writeFileRelative: (fileService && workspaceService?.folders?.length) ? (r, c) => dataService.writeFileRelative(r, c) : undefined,
     existsRelative: fsAccessor ? (r) => dataService.existsRelative(r) : undefined,
     invalidatePromptFiles: _promptFileService ? () => dataService.invalidatePromptFiles() : undefined,
-    // M81 Phase 8 — workspace memory accessor for `/init`. Bound only when
+    // workspace memory accessor for `/init`. Bound only when
     // a WorkspaceMemoryService is registered; the openclaw layer treats
     // `undefined` as "no Phase 8 work to do" and falls through to the
     // existing AGENTS.md generation.
@@ -1253,7 +1253,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     userCommandFileSystem: dataService.getUserCommandFileSystem(),
     compactSession: (s, t) => dataService.compactSession(s, t),
     getWorkspaceDigest: () => dataService.getWorkspaceDigest(),
-    // M76 Phase 7 — surface mind-map diagnostics through /context.
+    // surface mind-map diagnostics through /context.
     getMindMapDiagnostics: async () => {
       const sg = api.services.has(ISemanticGraphService)
         ? api.services.get<import('../../services/serviceTypes.js').ISemanticGraphService>(ISemanticGraphService)
@@ -1295,13 +1295,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       if (cmd) { void cmd.executeCommandFrom('ai', commandId, ...args); }
       else { void api.commands.executeCommand(commandId, ...args); }
     },
-    // W1 (M58): Bridge followup runner to chat service queue.
+    // W1: Bridge followup runner to chat service queue.
     // Upstream: scheduleFollowupDrain + enqueueFollowupRun.
     queueFollowupRequest: (sessionId: string, message: string) => {
       chatService.queueRequest(sessionId, message, ChatRequestQueueKind.Queued);
     },
-    // M60 §3.8: gate followup evaluation on autonomy.followup.enabled.
-    // M60 §8 Phase ζ: also honor the global pause kill-switch — when
+    // gate followup evaluation on autonomy.followup.enabled.
+    // also honor the global pause kill-switch — when
     // `autonomy.paused.global` is on, every trigger reports disabled
     // regardless of its per-trigger flag.
     isAutonomyFlagEnabled: (flagId: string) => {
@@ -1316,7 +1316,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         return true;
       }
     },
-    // M60 §3.10: emit a structured autonomy event record.
+    // emit a structured autonomy event record.
     emitAutonomyEvent: autonomyEventLog
       ? (input) => { autonomyEventLog!.emit(input); }
       : undefined,
@@ -1431,7 +1431,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // ── 3d. Register built-in tools (Cap 6 Task 6.3) ──
 
   if (languageModelToolsService && _permissionService) {
-    // ── Wire permission service (M11 Task 2.1); constructed above, before
+    // ── Wire permission service; constructed above, before
     // its captures (see the §2.3 note by ChatDataService) ──
 
     // Wire heartbeat-aware approval queue: heartbeat-originated tool calls
@@ -1493,7 +1493,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     // LanguageModelToolsService now (one decision owner, no unwired state);
     // setPermissionService above already forwarded the dependency.
 
-    // Build retrieval accessor for the fs_search_knowledge tool (M10 Phase 3)
+    // Build retrieval accessor for the fs_search_knowledge tool
     const retrievalAccessor = retrievalService && indexingPipelineService
       ? {
         isReady: () => indexingPipelineService!.isInitialIndexComplete,
@@ -1525,7 +1525,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         })()
       : undefined;
 
-    // M81 Phase 2 — workspace memory write accessor for the `memory_write` tool.
+    // workspace memory write accessor for the `memory_write` tool.
     // Thin wrapper around IWorkspaceMemoryService that exposes only the methods
     // the tool needs (USER.md / MEMORY.md / daily file read+write). Lets the
     // tool stay decoupled from the full service interface.
@@ -1542,7 +1542,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           appendDailyMemory: (text: string, date?: Date) => workspaceMemoryService.appendDailyMemory(text, date),
           writeDailyMemory: (body: string, date?: Date) => workspaceMemoryService.writeDailyMemory(body, date),
           ensureDailyMemory: (date?: Date) => workspaceMemoryService.ensureDailyMemory(date),
-          // M81 Phase 8 — lesson files.
+          // lesson files.
           getLessonFileRelativePath: (slug: string) => workspaceMemoryService.getLessonFileRelativePath(slug),
           readLessonFile: (slug: string) => workspaceMemoryService.readLessonFile(slug),
           writeLessonFile: (slug: string, content: string) => workspaceMemoryService.writeLessonFile(slug, content),
@@ -1563,7 +1563,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         }
       : undefined;
 
-    // Build file writer accessor for fs_write_file / fs_edit_file tools (M11 Task 2.2 + 2.3)
+    // Build file writer accessor for fs_write_file / fs_edit_file tools
     //
     // The writer accessor has two concerns:
     //   1. writeFile — resolves against workspaceService.folders[0].uri
@@ -1633,7 +1633,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       })()
       : undefined;
 
-    // M11 Task 4.3 — Terminal accessor for terminal_run_command tool
+    // Terminal accessor for terminal_run_command tool
     const terminalAccessor: import('./tools/builtInTools.js').IBuiltInToolTerminal | undefined = (() => {
       const electron = (globalThis as Record<string, unknown>).parallxElectron as Record<string, unknown> | undefined;
       const termBridge = electron?.terminal as {
@@ -1645,7 +1645,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       };
     })();
 
-    // ── CronService (M58 W4) ──
+    // ── CronService ──
     //
     // The scheduler is instantiated here (before tool registration) so the 8
     // cron tool actions (cron_status, cron_list, cron_add, cron_update,
@@ -1670,7 +1670,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       // activated. Chat attaches the half only it can supply — the
       // executor that runs real isolated LLM turns via the W5
       // ephemeral-session substrate — and then starts the timer, so
-      // missed-job catchup (M60 §3.7) still runs against the restored set.
+      // missed-job catchup still runs against the restored set.
       cronService = api.services.has(ICronService)
         ? api.services.get<CronService>(ICronService)
         : undefined;
@@ -1781,7 +1781,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           runAgentTurn: async ({ workflowName, prompt, contextMessages, initiator, model, contextWindow }) => {
             // The background prompt runner is THE headless-turn seam: it
             // falls back widget session > any session > minted session,
-            // marks the ephemeral session by initiator (M90), applies a
+            // marks the ephemeral session by initiator, applies a
             // timeout, and inspects errorDetails. Never hand-roll this.
             let text = prompt;
             if (contextMessages > 0) {
@@ -1855,7 +1855,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       }
     }
 
-    // ── SubagentSpawner (M58 W5) ──
+    // ── SubagentSpawner ──
     //
     // The keystone domain: W5 builds the ephemeral-session substrate AND
     // the first real isolated-turn consumer of it. Unlike W2/W4 (which
@@ -1970,7 +1970,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       context.subscriptions.push(subagentSpawner);
     }
 
-    // M84: canvas page/block tools are registered by the canvas tool itself
+    // canvas page/block tools are registered by the canvas tool itself
     // (src/built-in/canvas/ai/), so the DB / current-page / page-mutation
     // wiring no longer threads through here. This registers the workspace-level
     // tools (files, memory, transcripts, write, terminal, RAG, surface, cron,
@@ -2041,13 +2041,13 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       }).catch(() => { /* tool module load failed — chat continues without it */ });
     }
 
-    // M85 — `plan_update`: the agent's durable working plan (the planning
+    // `plan_update`: the agent's durable working plan (the planning
     // organ). Registered separately so it closes over the ChatService's
     // session-plan accessors without threading them through the big
     // registerBuiltInTools(...) signature.
     context.subscriptions.push(languageModelToolsService.registerTool(createPlanUpdateTool({
       readPlan: (sid) => chatService.getSessionPlan?.(sid),
-      // Stamp the session's message count at write time (M86): the context
+      // Stamp the session's message count at write time: the context
       // engine compares it to the live count to detect a drifting plan and
       // nudge the model to update or clear it.
       writePlan: (sid, plan) => chatService.setSessionPlan?.(
@@ -2056,7 +2056,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       ),
     })));
 
-    // M87 S2 — `heartbeat_watch`: standing watches in .parallx/HEARTBEAT.md.
+    // `heartbeat_watch`: standing watches in .parallx/HEARTBEAT.md.
     // "Watch this for me" becomes a durable gesture the heartbeat reads on
     // every review. Registered separately (closes over the dataService's
     // workspace-relative file access).
@@ -2079,7 +2079,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       context.subscriptions.push(languageModelToolsService.registerTool(mod.createAppDescribeTool(getIntrospection)));
     }).catch(() => { /* tool module load failed — chat continues without it */ });
 
-    // M66 — chat marks citation links whose target is gone (file moved or
+    // chat marks citation links whose target is gone (file moved or
     // never there), checked by each link's own kind.
     setChatLinkChecker((uri) => api.links.verify(uri));
     context.subscriptions.push({ dispose: () => setChatLinkChecker(undefined) });
@@ -2102,7 +2102,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       context.subscriptions.push(languageModelToolsService.registerTool(parallxLinkTool));
     }).catch(() => { /* tool module load failed — chat continues without it */ });
 
-    // M70 — App Command Control tools. Gated on `tools.workbenchControl`.
+    // App Command Control tools. Gated on `tools.workbenchControl`.
     // The two tool schemas are registered when the toggle is ON and
     // disposed when it goes OFF, so the chat context has zero footprint
     // whenever the user is not opted in. The subscription is live: flipping
@@ -2175,7 +2175,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   }
 
 
-  // ── 3b. Register chat-owned surface plugins (M58 W6) ──
+  // ── 3b. Register chat-owned surface plugins ──
   // The surface router is created in the workbench Phase 5; the chat-owned
   // plugins (chat, filesystem, canvas) can only be built here because their
   // backing services live in chat activation scope.
@@ -2203,7 +2203,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     context.subscriptions.push({ dispose: () => surfaceRouter.unregisterSurface('canvas') });
   }
 
-  // ── 3c. Heartbeat runner (M58 W2) ──
+  // ── 3c. Heartbeat runner ──
   //
   // Wires the audit-closed HeartbeatRunner (D2 13/13 ALIGNED) to the workbench
   // so that interval ticks + real workspace events (file changes, index
@@ -2251,7 +2251,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         // — the "I turned it on but nothing happens" trap. Closure picks up
         // live changes; no restart required.
         isFlagEnabled: () => !autonomyFlags.isEnabled(FLAG_PAUSED_GLOBAL),
-        // M60 Phase γ §3.10 — emit a structured autonomy event per tick.
+        // emit a structured autonomy event per tick.
         onAutonomyEvent: autonomyEventLog
           ? (info) => {
               autonomyEventLog!.emit({
@@ -2335,7 +2335,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       }).catch(() => { /* best-effort; never break the bus */ });
     };
 
-    // M87 S4 — the deterministic lane's last result, surfaced through
+    // the deterministic lane's last result, surfaced through
     // parallx.heartbeat.status so silence is legible on the status board.
     let _lastTriggerLane: { at: number; delivered: number; suppressed: number; failed: number } | null = null;
     // The tool that took the last heartbeat follow-up, named in the status pulse.
@@ -2344,7 +2344,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     const executor = createHeartbeatTurnExecutor(
       surfaceRouter,
       () => ({ reasons: unifiedConfigService.getEffectiveConfig().heartbeat.reasons }),
-      // M58-real (W2-real): real-turn deps for system-event / wake / hook.
+      // real (W2-real): real-turn deps for system-event / wake / hook.
       // `interval` stays status-only inside the executor (token-burn guard);
       // `cron` is a no-op (delegated to cron executor).
       {
@@ -2391,7 +2391,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           try { return (await canvas.getRootPages()).map((p) => ({ title: p.title, updatedAt: p.updatedAt })); }
           catch { return []; }
         },
-        // M87 S2 — standing watches from HEARTBEAT.md, evaluated on every
+        // standing watches from HEARTBEAT.md, evaluated on every
         // model review (and the daily reflection).
         getPurposeWatches: async () => {
           try {
@@ -2415,7 +2415,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
         // Continuity + audit (Build-1d.3). The loop reads its prior beliefs into
         // the seed and ledgers every outcome. Best-effort: never breaks the tick.
         mind: mindService,
-        // M87 — deterministic fact→trigger→delivery lane (no model, no chat
+        // deterministic fact→trigger→delivery lane (no model, no chat
         // session; runs before the idle gate). Findings land in the planner
         // review queue / notifications and mirror to the autonomy log.
         // S4: the last result is captured for parallx.heartbeat.status so
@@ -2500,7 +2500,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           },
           });
           _lastTriggerLane = { at: Date.now(), ...result };
-          // M89 S3 — presence: filed findings get one status-bar pulse.
+          // presence: filed findings get one status-bar pulse.
           if (surfaceRouter && (result as { delivered?: number }).delivered! > 0) {
             const n = (result as { delivered: number }).delivered;
             void surfaceRouter.sendWithOrigin({
@@ -2780,7 +2780,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     context.subscriptions.push(
       api.commands.registerCommand('parallx.heartbeat.status', () => ({
         ...heartbeatRunner.state,
-        // M87 S4 — last deterministic-lane pass (null until the first beat).
+        // last deterministic-lane pass (null until the first beat).
         triggerLane: _lastTriggerLane,
       })),
     );
@@ -2838,7 +2838,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     );
   }
 
-  // M62: `gmail.disconnect` removed. To disconnect the Gmail MCP server,
+  // `gmail.disconnect` removed. To disconnect the Gmail MCP server,
   // delete `~/.parallx/gmail-mcp/credentials.json` and remove the entry
   // from chat-gear → MCP Servers.
 
@@ -2854,7 +2854,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   (widgetServices as unknown as Record<string, unknown>).runCommand =
     (id: string, ...args: unknown[]) => api.commands.executeCommand(id, ...args);
 
-  // M86 — user-initiated plan removal (the ✕ on the plan card). The model
+  // user-initiated plan removal (the ✕ on the plan card). The model
   // has plan_update {clear:true}; the USER gets this. setSessionPlan fires
   // onDidChangeSession, so the card disappears immediately.
   (widgetServices as unknown as Record<string, unknown>).clearSessionPlan = (sessionId: string) => {
@@ -2903,7 +2903,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // M86: clear the active session's plan from the palette — the user-side
+  // clear the active session's plan from the palette — the user-side
   // counterpart of plan_update {clear:true} for when the model finishes the
   // work but leaves its plan behind.
   context.subscriptions.push(
@@ -2913,7 +2913,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // M48: Ensure chat panel is visible (no-op if already shown)
+  // Ensure chat panel is visible (no-op if already shown)
   context.subscriptions.push(
     api.commands.registerCommand('chat.show', () => {
       const layout = api.services.has(ILayoutService)
@@ -2937,7 +2937,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // M66 — register the chat link contract. Makes
+  // register the chat link contract. Makes
   // `parallx://chat/session/<sessionId>` swap the active chat to the named
   // session (does not create — only opens an existing session).
   context.subscriptions.push(
@@ -3024,7 +3024,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   context.subscriptions.push(
     api.commands.registerCommand('chat.switchMode', () => {
-      // M41 Phase 9: Cycle Agent ↔ Edit (Ask collapsed into Agent)
+      // Cycle Agent ↔ Edit (Ask collapsed into Agent)
       const modes = modeService.getAvailableModes();
       const current = modeService.getMode();
       const idx = modes.indexOf(current);
@@ -3240,7 +3240,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  // chat.runBackgroundPrompt — the HEADLESS sibling of submitPrompt (M86 C4).
+  // chat.runBackgroundPrompt — the HEADLESS sibling of submitPrompt.
   //
   // Runs the prompt as one isolated agent turn on the ephemeral-session rail
   // (same substrate as heartbeat/cron): the chat panel is never revealed and
@@ -3449,7 +3449,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
             return entries.filter(e => e.type === 'directory').map(e => e.name);
           } catch { return []; }
         },
-        // M81 Phase 6 — enumerate files (not directories) for bundled
+        // enumerate files (not directories) for bundled
         // scripts/references/assets discovery under each skill folder.
         listFiles: async (path: string) => {
           try {
@@ -3535,8 +3535,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }).catch(() => { /* optional service */ });
   }
 
-  // M20: Wire workspace filesystem to UnifiedAIConfigService for config.json import
-  // Replaces the standalone ParallxConfigService (M11 Task 2.9).
+  // Wire workspace filesystem to UnifiedAIConfigService for config.json import
+  // Replaces the standalone ParallxConfigService.
   if (fsAccessor && unifiedConfigService) {
     unifiedConfigService.setFileSystem({
       readFile: async (path: string) => { const r = await fsAccessor!.readFileContent(path); return r.content; },
@@ -3570,7 +3570,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }
   }
 
-  // PermissionsFileService (M11 Task 2.10): persist permission overrides
+  // PermissionsFileService: persist permission overrides
   if (fsAccessor && fileService && workspaceService && _permissionService) {
     import('../../services/permissionsFileService.js').then(({ PermissionsFileService }) => {
       const permsFileService = new PermissionsFileService();
@@ -3698,7 +3698,7 @@ export function setActiveWidget(widget: ChatWidget | undefined): void {
 
   // Wire mention/command providers once the widget is available
   if (widget) {
-    // Wrench icon → open AI Hub scrolled to Tools section (M20 E.2)
+    // Wrench icon → open AI Hub scrolled to Tools section
     widget.onDidRequestOpenToolSettings(() => {
       _api?.commands.executeCommand('ai-settings.open');
       // Allow the view to render before scrolling

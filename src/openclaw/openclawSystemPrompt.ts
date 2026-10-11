@@ -33,7 +33,7 @@ export interface ISkillEntry {
   readonly description: string;
   readonly location: string;
   /**
-   * M81 Phase 6 — workspace-relative paths of bundled files discovered
+   * workspace-relative paths of bundled files discovered
    * under `<skill>/scripts/`, `<skill>/references/`, `<skill>/assets/`.
    * Surfaced to the agent inside a `<bundle>` child of the `<skill>` XML
    * so the model can `fs_read_file` the path on demand (Execution stage of
@@ -59,7 +59,7 @@ export interface IToolSummary {
    */
   readonly displaySummary?: string;
   /**
-   * M81 Phase 10 — coarse feature-area grouping. When present on at least
+   * coarse feature-area grouping. When present on at least
    * one tool, `buildToolSummariesSection` emits a category-to-tools map so
    * the model sees the surface boundary (canvas vs file-system vs memory…)
    * up front and stops cross-routing (e.g. calling `fs_read_file` on a canvas
@@ -69,7 +69,7 @@ export interface IToolSummary {
 }
 
 /**
- * M66 — One descriptor per registered LinkContract kind. Flattened from
+ * One descriptor per registered LinkContract kind. Flattened from
  * `LinkResolverService.allContracts()` so the prompt builder doesn't need to
  * know about the link service's internal types.
  */
@@ -120,9 +120,9 @@ export interface IOpenclawSystemPromptParams {
   readonly preferencesPrompt?: string;
   /** Prompt overlay from active file pattern rules */
   readonly promptOverlay?: string;
-  /** M42: Model tier derived from parameter size — adjusts behavioral guidance */
+  /** Model tier derived from parameter size — adjusts behavioral guidance */
   readonly modelTier?: 'small' | 'medium' | 'large';
-  /** M42: Whether the model supports tool calling */
+  /** Whether the model supports tool calling */
   readonly supportsTools?: boolean;
   /** D5: Whether the model supports vision/image input */
   readonly supportsVision?: boolean;
@@ -136,7 +136,7 @@ export interface IOpenclawSystemPromptParams {
   /** D8: Per-agent system prompt overlay text. */
   readonly agentSystemPromptOverlay?: string;
   /**
-   * M66 — Registered `parallx://` link contracts. When present, a `## Linking`
+   * Registered `parallx://` link contracts. When present, a `## Linking`
    * section is auto-generated from this list so the AI knows every URI
    * template it can mint via `link_create`. The whole point is that adding
    * a new extension contract makes the AI aware of it with zero core changes.
@@ -367,7 +367,7 @@ export function buildSkillsSection(
 
   const entries = skills
     .map(s => {
-      // M81 Phase 6 — render <bundle> child when bundledFiles is non-empty.
+      // render <bundle> child when bundledFiles is non-empty.
       // Existing skills without bundled files render exactly as before.
       const bundle = s.bundledFiles && s.bundledFiles.length > 0
         ? `    <bundle>\n${s.bundledFiles.map(f => `      <file>${escapeXml(f)}</file>`).join('\n')}\n    </bundle>`
@@ -496,7 +496,7 @@ export function buildToolSummariesSection(tools: readonly IToolSummary[]): strin
 }
 
 /**
- * M66 — Linking section. Auto-generated from registered LinkContracts.
+ * Linking section. Auto-generated from registered LinkContracts.
  *
  * Tells the AI:
  *   - That Parallx resources are citable via `parallx://` URIs.
@@ -559,7 +559,7 @@ export function buildLinkingSection(
  * Upstream: resolveBootstrapContextForRun from bootstrap-files.ts:47-118
  */
 /**
- * Concept maps (M102).
+ * Concept maps.
  *
  * A rendering capability of the reply, not a tool — a ```mindmap fence in the
  * answer draws as a small diagram. The section exists because the model will
@@ -723,7 +723,7 @@ export function formatTurnClock(timeZone?: string, now: Date = new Date()): stri
  * Memory section — tells the model the workspace memory subsystem exists,
  * what the layers are for, and when to read or write.
  *
- * M81 Phase 8: MEMORY.md is no longer a single content file — it is now an
+ * MEMORY.md is no longer a single content file — it is now an
  * INDEX of pointers to per-topic lesson files. Lesson bodies live at
  * `.parallx/memory/lessons/<slug>.md` and are read on demand, never auto-
  * loaded. This mirrors the skill catalog shape (name + description +
@@ -875,7 +875,7 @@ export function buildWorkflowSuggestSection(): string {
 }
 
 /**
- * M85 — Planning discipline section (the planning organ). Rendered only when
+ * Planning discipline section (the planning organ). Rendered only when
  * `plan_update` is in the tool catalog. The behavioral contract mirrors what
  * makes harness-managed agents stay on track over long multi-step work: an
  * externalized plan, updated AS the work proceeds, that survives context
@@ -910,7 +910,7 @@ export function estimateSystemPromptTokens(params: IOpenclawSystemPromptParams):
 }
 
 // ---------------------------------------------------------------------------
-// M42 Phase 2: Model-tier guidance
+// Model-tier guidance
 // ---------------------------------------------------------------------------
 
 /**

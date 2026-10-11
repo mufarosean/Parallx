@@ -1,4 +1,4 @@
-// mcpCatalog.ts — M61 Phase 3
+// mcpCatalog.ts
 //
 // Curated, in-app catalog of well-known MCP servers. Shipped statically;
 // no network fetch. Each entry declares the install command, the env vars

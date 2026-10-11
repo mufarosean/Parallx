@@ -1,4 +1,4 @@
-// emptyStates.ts — the app's voice registry for blank surfaces (M89 S2).
+// emptyStates.ts — the app's voice registry for blank surfaces.
 //
 // Empty states are the app's speaking moments (Slack/Duolingo school —
 // see docs/Parallx_Milestone_89.md): the one place a blank panel either

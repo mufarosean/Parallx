@@ -1,5 +1,5 @@
 // chatProgrammaticAccess.ts — Wraps the active ChatWidget to provide
-// IChatProgrammaticAccess for external consumers (M48).
+// IChatProgrammaticAccess for external consumers.
 
 import type { IChatProgrammaticAccess, IChatSelectionAttachment, ICanvasBlockReferencePayload } from '../../services/selectionActionTypes.js';
 

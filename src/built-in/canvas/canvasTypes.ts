@@ -245,7 +245,7 @@ export interface ICanvasDataService {
   readonly onDidChangePage: Event<PageChangeEvent>;
 
   /** Fires after an auto-save flush completes for a specific page.
-   *  M78 Phase 8 — the event payload now carries the saved IPage so
+   *  the event payload now carries the saved IPage so
    *  listeners that need it (indexing scheduler, etc.) don't have to
    *  re-fetch via getPage, saving one IPC round-trip per save.
    *  Legacy listeners can still ignore the second argument; the event
@@ -332,7 +332,7 @@ export interface ICanvasDataService {
   removePageBlockFromParent(parentPageId: string, childPageId: string): Promise<void>;
 
   /**
-   * M77 Phase 1 — atomic page-hierarchy operations. Bundle the page row
+   * atomic page-hierarchy operations. Bundle the page row
    * update and the affected parents' content updates in one transaction
    * so partial failures can't leave embedded pageBlock cards out of
    * sync with the DB hierarchy.

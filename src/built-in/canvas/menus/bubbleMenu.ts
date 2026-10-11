@@ -24,7 +24,7 @@ export interface BubbleMenuHost {
   copyLinkToClipboard(href: string): Promise<void>;
   openLinkInExternalBrowser(href: string): Promise<void>;
   /**
-   * Identity of the page hosting the selection (M98). Selection actions
+   * Identity of the page hosting the selection. Selection actions
    * dispatched from the bubble menu carry this as their source so consumers
    * (chat attachments, flashcard capture) get NAVIGABLE provenance — the
    * hardcoded `filePath: 'canvas'` they used to receive led nowhere.

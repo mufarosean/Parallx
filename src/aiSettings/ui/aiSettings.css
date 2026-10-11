@@ -1,4 +1,4 @@
-/* ── AI Settings Panel (M15 Tasks 4.1 + 4.2) ────────────────────────────── */
+/* ── AI Settings Panel ────────────────────────────── */
 /* All colors via var(--vscode-*) tokens. No --parallx-* variables. */
 
 /* ── Panel Layout ─────────────────────────────────────────────────────── */
@@ -327,7 +327,7 @@
   color: var(--vscode-foreground, #ccc);
 }
 
-/* ── Scope Indicator (M20 C.2) ────────────────────────────────────────── */
+/* ── Scope Indicator ────────────────────────────────────────── */
 
 .ai-settings-row__scope {
   font-size: var(--parallx-fontSize-xs);

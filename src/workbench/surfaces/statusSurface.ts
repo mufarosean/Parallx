@@ -1,4 +1,4 @@
-// statusSurface.ts — StatusSurfacePlugin (M58 W6)
+// statusSurface.ts — StatusSurfacePlugin
 //
 // Routes short-lived status messages (heartbeat ticks, background job state,
 // index progress) to a single persistent status-bar entry.
@@ -73,7 +73,7 @@ export class StatusSurfacePlugin implements ISurfacePlugin {
 
     this._accessor.update({ text, ...(tooltip !== undefined ? { tooltip } : {}) });
 
-    // M89 S3 — presence pulse: a delivery flagged `pulse` plays one brief
+    // presence pulse: a delivery flagged `pulse` plays one brief
     // accent pulse on the status entry so autonomous findings (heartbeat
     // watchers filing follow-ups) get a visible moment without a popup.
     if (delivery.metadata.pulse === true) {

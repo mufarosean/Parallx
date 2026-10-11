@@ -19,7 +19,7 @@
 // stateless so it can be killed and re-spawned freely (and so the cache
 // doesn't fragment across two memory spaces).
 //
-// Boundary (M60 §3.4): no IPC additions. Worker runs in the renderer
+// Boundary: no IPC additions. Worker runs in the renderer
 // process, just on a different thread. Default-OFF feature flag means
 // existing users see no behavior change until the flag is flipped.
 // ─────────────────────────────────────────────────────────────────────────────

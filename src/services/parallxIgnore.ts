@@ -1,4 +1,4 @@
-// parallxIgnore.ts — .parallxignore file parser (M11 Task 1.9)
+// parallxIgnore.ts — .parallxignore file parser
 //
 // Git-style ignore patterns for excluding files from:
 //   - Indexing pipeline (RAG embedding)

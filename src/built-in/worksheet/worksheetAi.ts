@@ -1,4 +1,4 @@
-// worksheetAi.ts — Worksheets (M99): AI item generation + attempt review.
+// worksheetAi.ts — Worksheets: AI item generation + attempt review.
 //
 // Same LM discipline as the M98 flashcards work: page-tagged material so page
 // attribution is real, a stall watchdog because the LM API has no
@@ -103,7 +103,7 @@ export interface GenerateItemsOptions {
   pageTexts?: string[] | null;
 }
 
-/** Build the material block, page-tagged when per-page text exists (M98). */
+/** Build the material block, page-tagged when per-page text exists. */
 export function buildItemMaterial(sourceText: string, pageTexts: string[] | null | undefined, maxChars: number): { material: string; paged: boolean } {
   if (!Array.isArray(pageTexts) || pageTexts.length === 0) {
     return { material: sourceText.slice(0, maxChars), paged: false };
@@ -119,7 +119,7 @@ export function buildItemMaterial(sourceText: string, pageTexts: string[] | null
     used += block.length + 2;
   }
   // A single page larger than the budget would otherwise yield EMPTY
-  // material (M99 review) — degrade to untagged clipped text instead.
+  // material — degrade to untagged clipped text instead.
   if (parts.length === 0) {
     return { material: sourceText.slice(0, maxChars), paged: false };
   }
@@ -156,7 +156,7 @@ export async function generateItems(
     throw new Error(`${error} (model: ${modelId}; raw output logged to console)`);
   }
   if (!paged) return items.map((i) => ({ ...i, page: undefined }));
-  // Attribution hygiene: only pages that exist in the material (M99 review).
+  // Attribution hygiene: only pages that exist in the material.
   const maxPage = pageTexts?.length ?? 0;
   return items.map((i) => (i.page && i.page <= maxPage ? i : { ...i, page: undefined }));
 }
@@ -199,7 +199,7 @@ export function buildReviewContext(item: ReviewItem, attemptCellsJson: string): 
  *
  * The brief ends with a blank line on purpose: the caret lands below it, so
  * the user types their own question under the brief and sends when ready
- * (Mufaro, 2026-09-21: firing the brief on its own asked only the question
+ * (firing the brief on its own asked only the question
  * the code guessed; the flashcards hand-off already works this way).
  */
 export function buildReviewRequest(item: ReviewItem, attemptCellsJson: string): { prompt: string; context: string } {

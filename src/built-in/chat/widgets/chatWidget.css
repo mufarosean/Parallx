@@ -1023,7 +1023,7 @@
   padding: 2px 6px;
 }
 
-/* ── Concept maps (M102) ──────────────────────────────────────────────────
+/* ── Concept maps ──────────────────────────────────────────────────
    Colour lives here, never in the emitted SVG, so a map follows the theme in
    light and dark. The wrapper scrolls rather than widening the message
    column — a wide map must never push the conversation sideways. */
@@ -1271,7 +1271,7 @@
   color: var(--vscode-editor-foreground, #d4d4d4);
 }
 
-/* ── Code Action Buttons (M11 Task 2.6) ── */
+/* ── Code Action Buttons ── */
 
 .parallx-chat-code-actions {
   display: flex;
@@ -2078,7 +2078,7 @@
 }
 
 
-/* ── Diff Review Viewer (M11 Task 2.5) ── */
+/* ── Diff Review Viewer ── */
 
 .parallx-chat-diff-viewer {
   margin: 8px 0;
@@ -2930,7 +2930,7 @@
   flex-shrink: 0;
 }
 
-/* M86 — user-side plan clear (the model forgets plan_update {clear:true}) */
+/* user-side plan clear (the model forgets plan_update {clear:true}) */
 .parallx-chat-plan-clear {
   flex-shrink: 0;
   border: 0;

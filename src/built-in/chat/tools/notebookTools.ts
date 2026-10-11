@@ -1,4 +1,4 @@
-// notebookTools.ts — let the assistant build and run notebooks (M96 follow-on)
+// notebookTools.ts — let the assistant build and run notebooks
 //
 // M96 shipped the notebook surface as an editor and stopped there, so the
 // assistant could write a `.ipynb` with fs_write_file and then had no way to

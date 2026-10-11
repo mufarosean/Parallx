@@ -37,7 +37,7 @@ interface PlannerEditorApi {
     open(uri: string): Promise<boolean>;
     resolveMetadata(uri: string): Promise<{ title: string; icon?: string } | null>;
   };
-  /** M86 — per-workspace persistence for small UI state (calendar view). */
+  /** per-workspace persistence for small UI state (calendar view). */
   viewState?: {
     get<T>(key: string, defaultValue: T): T;
     set(key: string, value: unknown): void;
@@ -53,7 +53,7 @@ interface PlannerEditorApi {
   activity?: {
     note(n: { actor?: 'user' | 'ai' | 'system'; source: string; verb: string; object: string; detail?: string; ref?: string }): void;
   };
-  /** M98 — lazy snapshot of registered day-load providers (generic seam:
+  /** lazy snapshot of registered day-load providers (generic seam:
    *  extensions decorate calendar days with per-day workload badges).
    *  Resolved per access because providers register at their own pace. */
   dayLoads?: {
@@ -61,7 +61,7 @@ interface PlannerEditorApi {
   };
 }
 
-/** Structural mirror of planner main's IDayLoadProvider (M98). */
+/** Structural mirror of planner main's IDayLoadProvider. */
 export interface IDayLoadProviderLike {
   readonly id: string;
   getDayLoads(fromMs: number, toMs: number): Promise<readonly { dayStartMs: number; count: number; label: string }[]>;
@@ -242,7 +242,7 @@ class PlannerEditorPane implements IDisposable {
     if (this._disposed) return;
     // Honour a tab the sidebar requested before this pane existed (deterministic
     // first-open). The focusTab event below handles re-clicks while already open.
-    // M86 — restore the full view state for this workspace. The pane is
+    // restore the full view state for this workspace. The pane is
     // rebuilt every time the user switches editor tabs away and back, so
     // anything not persisted silently resets to defaults ("why am I on
     // Tasks again?"). Restored: active tab, calendar view, tasks filter,
@@ -297,7 +297,7 @@ class PlannerEditorPane implements IDisposable {
       void this._renderTab();
     }));
 
-    // M98 — day-load providers repaint the calendar when their data moves
+    // day-load providers repaint the calendar when their data moves
     // (e.g. flashcards reviewed → tomorrow's badge shrinks). Providers that
     // register after this pane exists are still picked up per render; the
     // subscription is only for LIVE updates while the calendar is visible.
@@ -497,7 +497,7 @@ class PlannerEditorPane implements IDisposable {
   }
 
   /**
-   * Persist the pane's view state per-workspace (M86). Deduped by signature
+   * Persist the pane's view state per-workspace. Deduped by signature
    * so the render loop (which also fires on data changes) doesn't spam the
    * memento with identical writes.
    */
@@ -772,7 +772,7 @@ class PlannerEditorPane implements IDisposable {
       : '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
     checkbox.addEventListener('click', () => {
       const next: TaskStatus = task.status === 'done' ? 'planned' : 'done';
-      // M89 S3 — optimistic UI: flip the visuals NOW (Linear rule: common
+      // optimistic UI: flip the visuals NOW (Linear rule: common
       // actions feel instant); the data-change event repaints truth after
       // the worker-thread round-trip.
       row.classList.toggle('planner-task--done', next === 'done');
@@ -1074,7 +1074,7 @@ class PlannerEditorPane implements IDisposable {
     return v[0].toUpperCase() + v.slice(1);
   }
 
-  /** Set the calendar view and persist it per-workspace (M86). */
+  /** Set the calendar view and persist it per-workspace. */
   private _setCalendarView(v: CalendarView): void {
     this._calendarView = v;
     this._api.viewState?.set('planner.calendarView', v);
@@ -1880,7 +1880,7 @@ class PlannerEditorPane implements IDisposable {
   }
 
   /**
-   * M98 — gather per-day loads from every registered provider for the given
+   * gather per-day loads from every registered provider for the given
    * window, keyed by LOCAL day start. Provider failures are isolated: a
    * throwing provider contributes nothing and cannot break the calendar.
    */
@@ -1888,7 +1888,7 @@ class PlannerEditorPane implements IDisposable {
     const byDay = new Map<number, { count: number; label: string }[]>();
     const providers = this._api.dayLoads?.get() ?? [];
     if (providers.length === 0) return byDay;
-    // Per-provider timeout (M99 review): this await sits inside the
+    // Per-provider timeout: this await sits inside the
     // serialized render loop — a hung provider without a deadline would
     // freeze every future planner render, not just this one.
     const withTimeout = <T,>(p: Promise<T>): Promise<T> => Promise.race([
@@ -1951,7 +1951,7 @@ class PlannerEditorPane implements IDisposable {
       number.textContent = String(appDateParts(day).day);
       cell.appendChild(number);
 
-      // M98 — provider day-load badge ("38 cards"), a decoration, not a row.
+      // provider day-load badge ("38 cards"), a decoration, not a row.
       const loads = dayLoads.get(dayStart);
       if (loads?.length) {
         const badge = el('span', 'planner-month__load');
@@ -2031,7 +2031,7 @@ class PlannerEditorPane implements IDisposable {
       if (sameDay(day, new Date())) wd.classList.add('planner-week__weekday--today');
       wd.appendChild(wdLabel);
       wd.appendChild(wdNum);
-      // M98 — provider day-load chip under the weekday header.
+      // provider day-load chip under the weekday header.
       const loads = dayLoads.get(startOfDay(day).getTime());
       if (loads?.length) {
         const chip = el('span', 'planner-week__load');

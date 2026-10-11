@@ -1,4 +1,4 @@
-// notebookModel.ts — nbformat v4 parse / serialise (M96)
+// notebookModel.ts — nbformat v4 parse / serialise
 //
 // The whole reason notebooks are a separate surface rather than executable
 // canvas blocks is interoperability: a notebook written here must open in

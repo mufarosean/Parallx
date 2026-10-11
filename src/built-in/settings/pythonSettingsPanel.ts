@@ -1,4 +1,4 @@
-// pythonSettingsPanel.ts — the workspace Python runtime panel (M94).
+// pythonSettingsPanel.ts — the workspace Python runtime panel.
 //
 // The flat schema registry already renders the `python.*` keys as rows. This
 // panel exists for everything a key/value row cannot express: whether an

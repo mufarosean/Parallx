@@ -1,4 +1,4 @@
-﻿import {
+import {
   type IChatMessage,
   type IChatParticipantContext,
   type IChatParticipantResult,
@@ -95,7 +95,7 @@ const OPENCLAW_COMMANDS: Record<string, IChatSlashCommand> = {
     promptTemplate: '{input}',
     isBuiltIn: true,
   },
-  // M48 Phase 4: /skill forwards to model for skill invocation
+  // /skill forwards to model for skill invocation
   skill: {
     name: 'skill',
     description: 'Run a skill by name — forwards the request to the model',
@@ -170,7 +170,7 @@ interface IInitCommandServices {
   readonly writeFile?: IDefaultParticipantServices['writeFileRelative'];
   readonly exists?: IDefaultParticipantServices['existsRelative'];
   readonly invalidatePromptFiles?: IDefaultParticipantServices['invalidatePromptFiles'];
-  // M81 Phase 8 — workspace memory accessor. Optional so the init command
+  // workspace memory accessor. Optional so the init command
   // remains usable in tests without a real WorkspaceMemoryService; when
   // bound, /init runs the legacy-concept archive migration and the
   // lessons-consolidation pass.
@@ -233,7 +233,7 @@ async function executeOpenclawInitCommand(
 
   response.progress('Scanning workspace...');
 
-  // M81 Phase 8 — archive pre-M81 regex-extracted `## Concepts` from MEMORY.md.
+  // archive pre-M81 regex-extracted `## Concepts` from MEMORY.md.
   // Idempotent: no-op on a clean MEMORY.md. Runs BEFORE AGENTS.md generation
   // so that any later consolidation pass sees a clean slate.
   await runLegacyConceptArchiveMigration(services, response);
@@ -279,21 +279,21 @@ async function executeOpenclawInitCommand(
     {
       role: 'system',
       content: [
-        'You are an expert at analyzing codebases. Your task is to generate an AGENTS.md file â€” a markdown document that describes a project to an AI assistant.',
+        'You are an expert at analyzing codebases. Your task is to generate an AGENTS.md file — a markdown document that describes a project to an AI assistant.',
         '',
         'The document should include:',
         '1. **Project name and one-line description**',
-        '2. **Architecture overview** â€” key directories and their purpose',
-        '3. **Conventions** â€” coding style, naming patterns, important rules',
-        '4. **Important files** â€” files an AI should know about',
-        '5. **Build & Run instructions** â€” how to develop, test, and build',
+        '2. **Architecture overview** — key directories and their purpose',
+        '3. **Conventions** — coding style, naming patterns, important rules',
+        '4. **Important files** — files an AI should know about',
+        '5. **Build & Run instructions** — how to develop, test, and build',
         '',
         'Guidelines:',
         '- Be concise but thorough (aim for 30-60 lines)',
         '- Use markdown headers (##) for sections',
         '- Reference actual file paths from the tree',
         '- If you see a README or ARCHITECTURE.md, use it as primary source',
-        '- Output ONLY the AGENTS.md content â€” no preamble, no "here is the file"',
+        '- Output ONLY the AGENTS.md content — no preamble, no "here is the file"',
       ].join('\n'),
     },
     { role: 'user', content: scanData.join('\n') },
@@ -314,7 +314,7 @@ async function executeOpenclawInitCommand(
       return;
     }
     response.warning(`Failed to generate AGENTS.md: ${err instanceof Error ? err.message : String(err)}`);
-    // M81 Phase 8 — consolidation pass is reachable even when AGENTS.md
+    // consolidation pass is reachable even when AGENTS.md
     // generation fails. The user may want lessons derived from past dailies
     // even if the model couldn't produce an AGENTS.md draft.
     await runLessonsConsolidationPass(services, response, signal);
@@ -681,11 +681,11 @@ async function tryExecuteCompactOpenclawCommand(
     return true;
   }
   if (input.history.length < 2) {
-    input.response.markdown('Nothing to compact â€” conversation history is too short.');
+    input.response.markdown('Nothing to compact — conversation history is too short.');
     return true;
   }
 
-  input.response.progress('Compacting conversation historyâ€¦');
+  input.response.progress('Compacting conversation history…');
 
   // HARNESS.md §1.2/§1.3 — this used to be a THIRD lossy flattener (duck-typed
   // text parts only, tool record dropped). The shared flattener + transcript
@@ -849,7 +849,7 @@ function queueOpenclawMemoryWriteBack(
     return;
   }
 
-  // M81 Phase 4 — regex preference extraction removed. Agent now writes
+  // regex preference extraction removed. Agent now writes
   // preferences explicitly via `memory_write` on USER.md (and MEMORY.md for
   // project-level facts). No invisible regex path.
 

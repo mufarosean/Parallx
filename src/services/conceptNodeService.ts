@@ -1,4 +1,4 @@
-// conceptNodeService.ts — concept-clustering refresh pass (M76 Phase 5)
+// conceptNodeService.ts — concept-clustering refresh pass
 //
 // Runs DBSCAN over stored source centroids, applies the 70% carry-over
 // rule to preserve stable cluster identity, LLM-labels new/changed

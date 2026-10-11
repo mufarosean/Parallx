@@ -25,7 +25,7 @@
  * Parallx adaptation:
  *   - Session fork is `chatService.createEphemeralSession(parentId, seed)`
  *   - Turn driver is the existing `chatService.sendRequest` — no parallel
- *     turn engine (M41 P6)
+ *     turn engine
  *   - Final assistant text is extracted from the completed pair's
  *     `response.parts` (text + markdown parts joined)
  *   - Announcement is a `surfaceRouter.sendWithOrigin(ORIGIN_SUBAGENT, ...)`
@@ -218,7 +218,7 @@ export function createSubagentTurnExecutor(
 
     const seed: IEphemeralSessionSeed = {
       firstUserMessage: task,
-      // M91 — keep the transcript so subagent runs are reopenable like chat.
+      // keep the transcript so subagent runs are reopenable like chat.
       archiveOrigin: 'subagent',
       label: task.length > 60 ? `${task.slice(0, 59)}…` : task,
       spawnedBy: control?.parentRunId,

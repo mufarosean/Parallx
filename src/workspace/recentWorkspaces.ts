@@ -59,7 +59,7 @@ export class RecentWorkspaces {
     const entry: RecentWorkspaceEntry = {
       identity: {
         ...workspace.identity,
-        // M53: Ensure path is populated from primary folder for path-based switching
+        // Ensure path is populated from primary folder for path-based switching
         path: workspace.identity.path ?? workspace.folders[0]?.uri.fsPath,
       },
       metadata: workspace.metadata,

@@ -91,7 +91,7 @@ export class EditorGroupView extends Disposable implements IGridView {
   private readonly _viewStateCache = new Map<string, EditorPaneViewState>();
 
   /**
-   * Pane retention (M101 seamless tabs). Switching tabs used to DISPOSE the
+   * Pane retention. Switching tabs used to DISPOSE the
    * outgoing pane and rebuild the incoming one from scratch — every return
    * to an open tab flashed empty, re-fetched content, and lost ephemeral
    * state the view-state contract doesn't carry (a revealed flashcard answer,
@@ -769,7 +769,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     const activeInput = this.model.activeEditor;
 
     // HIDE the outgoing pane. Panes are retained per input so returning to a
-    // tab is instant and stateful (M101 seamless tabs). View state is still
+    // tab is instant and stateful. View state is still
     // captured: it is the durable fallback when the retention cap later
     // evicts this pane. A pane that declines retention (retainOnHide false:
     // it embeds an engine that must not live hidden) is torn down here

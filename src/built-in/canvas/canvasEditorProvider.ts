@@ -257,7 +257,7 @@ export class CanvasEditorProvider {
     return { dispose: () => { this._pageMenuHandlers.delete(pageId); } };
   }
 
-  /** M93 — pageId → open the PDF-export dialog for that pane's live editor.
+  /** pageId → open the PDF-export dialog for that pane's live editor.
    *  Registered by panes on init; invoked by the `canvas.exportPdf` command
    *  (Ctrl+Alt+P) for whichever canvas editor is active. */
   private readonly _pdfExportHandlers = new Map<string, () => void>();
@@ -364,7 +364,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
   private _pageBlockIds = new Set<string>();
 
   /**
-   * Monotonic generation counter for `_loadContent` calls (M77 Phase 8.3).
+   * Monotonic generation counter for `_loadContent` calls.
    * Each call increments and captures the new value; before applying its
    * result it checks the captured value still matches `_loadGeneration`.
    * A later call invalidates earlier in-flight loads so a slow reload
@@ -588,7 +588,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
   }
   get blockSelection(): BlockSelectionController { return this._blockSelection; }
 
-  /** BubbleMenuHost (M98): page identity for selection-action provenance. */
+  /** BubbleMenuHost: page identity for selection-action provenance. */
   getPageContext(): { pageId: string; pageTitle: string } {
     return { pageId: this._pageId, pageTitle: this._input?.name || '' };
   }
@@ -1047,7 +1047,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
         this._pageChrome.showPageMenu();
       }),
     );
-    // M93 — Ctrl+Alt+P / command-driven PDF export routes to the active pane.
+    // Ctrl+Alt+P / command-driven PDF export routes to the active pane.
     this._saveDisposables.add(
       this._provider.registerPdfExportHandler(this._pageId, () => {
         void this._pageChrome.exportPdf();
@@ -1187,7 +1187,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
   private async _loadContent(): Promise<void> {
     if (!this._editor || !this._pageId) return;
 
-    // M77 Phase 8.3 — capture this call's generation. Each async await
+    // capture this call's generation. Each async await
     // below re-checks against `_loadGeneration` and bails if a newer
     // call has started, preventing a slow load from clobbering a fast
     // subsequent one.
@@ -1195,7 +1195,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     const isCurrent = (): boolean =>
       !this._disposed && this._loadGeneration === generation && !!this._editor;
 
-    // M77 Phase 1 — repair any pageBlock drift before loading content.
+    // repair any pageBlock drift before loading content.
     // No-op when no orphan blocks exist (just one DB read + content scan).
     // Reconciliation does NOT fire its own reload event so we don't
     // re-enter this method; we're about to read the (now-repaired) page
@@ -1645,7 +1645,7 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
     this._blockSelection?.clear();
     this._pageChrome?.dismissPopups();
 
-    // M86 — on close, commit the editor's final content as the page's LATEST
+    // on close, commit the editor's final content as the page's LATEST
     // version and snapshot it into version history ("what you closed with is
     // saved"). getJSON is captured synchronously here, before the editor is
     // destroyed below; commitPageClose then flushes any pending debounced save,

@@ -15,7 +15,7 @@
 //     this service; flags ship before the UI does.
 //
 // Upstream parity: none — controls layer is Parallx-specific by design
-// (M60 §3.8). Upstream openclaw runs as a server, gating happens through
+//. Upstream openclaw runs as a server, gating happens through
 // per-channel config there.
 
 import { Disposable } from '../platform/lifecycle.js';
@@ -33,12 +33,12 @@ export const FLAG_SURFACE_NOTIFICATION_ENABLED = 'autonomy.surface.notification.
 export const FLAG_SURFACE_STATUSBAR_ENABLED = 'autonomy.surface.statusbar.enabled';
 export const FLAG_SURFACE_CANVAS_ENABLED = 'autonomy.surface.canvas.enabled';
 export const FLAG_SURFACE_FILESYSTEM_ENABLED = 'autonomy.surface.filesystem.enabled';
-// M60 Phase γ §3.8 — autonomy substrate (heartbeat/cron/subagent).
+// autonomy substrate (heartbeat/cron/subagent).
 // All three default OFF until proven via dogfood + autonomy eval, per M60 §3.8.
 export const FLAG_HEARTBEAT_ENABLED = 'autonomy.heartbeat.enabled';
 export const FLAG_CRON_ENABLED = 'autonomy.cron.enabled';
 export const FLAG_SUBAGENT_ENABLED = 'autonomy.subagent.enabled';
-// M60 Phase δ §3.8 — canvas depth.
+// canvas depth.
 // blockIds default ON: TipTap's `extension-unique-id` is already wired
 // in src/built-in/canvas/config/tiptapExtensions.ts (UNIQUE_ID_BLOCK_TYPES);
 // the flag exists for emergency rollback, not for opt-in.
@@ -46,7 +46,7 @@ export const FLAG_SUBAGENT_ENABLED = 'autonomy.subagent.enabled';
 // rendered by the canvas editor; flag gates registration.
 const FLAG_CANVAS_BLOCKIDS_ENABLED = 'canvas.blockIds.enabled';
 const FLAG_CANVAS_DATAVIEW_ENABLED = 'canvas.dataview.enabled';
-// M60 Phase ζ §8 — autonomy task rail polish.
+// autonomy task rail polish.
 // `paused.global` is the kill switch (default false; trips → no autonomous
 // trigger fires). `rail.enabled` lets the user hide the whole rail UI
 // (default true). `patternMemory.enabled` gates the auto-approve-on-pattern
@@ -81,7 +81,7 @@ export type AutonomyFlagId =
 /**
  * Defaults per M60 §3.8. Canvas + filesystem are gated until C3 lands.
  * Followup + chat/notification/statusbar default ON because those wires
- * are already shipped (M58) and proven.
+ * are already shipped and proven.
  * Heartbeat / cron / subagent default OFF (Phase γ — controls layer).
  */
 export const AUTONOMY_FLAG_DEFAULTS: Readonly<Record<AutonomyFlagId, boolean>> = Object.freeze({
@@ -105,7 +105,7 @@ export const AUTONOMY_FLAG_DEFAULTS: Readonly<Record<AutonomyFlagId, boolean>> =
   [FLAG_RAIL_ENABLED]: true,
   [FLAG_PATTERN_MEMORY_ENABLED]: true,
   [FLAG_INDEXING_LAZY_MTIME_ENABLED]: true,
-  // M78 Phase 3 — embedding worker is now on by default. The worker
+  // embedding worker is now on by default. The worker
   // moves Ollama /api/embed calls off the renderer thread so indexing
   // doesn't stutter the UI. Users with the flag explicitly set keep
   // their preference (the flag system reads stored values first).
@@ -209,7 +209,7 @@ export class AutonomyFeatureFlagsService extends Disposable implements IAutonomy
 }
 
 // ---------------------------------------------------------------------------
-// Kill-switch helper (M60 §8 Phase ζ)
+// Kill-switch helper
 // ---------------------------------------------------------------------------
 
 /**

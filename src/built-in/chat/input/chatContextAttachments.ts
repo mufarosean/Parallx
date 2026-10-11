@@ -21,7 +21,7 @@ import { isChatImageAttachment, isChatCanvasBlockAttachment } from '../../../ser
 import type { IChatAttachment, IChatImageAttachment, IChatSelectionAttachment, IChatCanvasBlockAttachment } from '../../../services/chatTypes.js';
 import type { IOpenEditorFile, IAttachmentServices } from '../chatTypes.js';
 
-// IOpenEditorFile, IWorkspaceFileEntry, IAttachmentServices — now defined in chatTypes.ts (M13 Phase 1)
+// IOpenEditorFile, IWorkspaceFileEntry, IAttachmentServices — now defined in chatTypes.ts
 export type { IOpenEditorFile, IWorkspaceFileEntry, IAttachmentServices } from '../chatTypes.js';
 
 // ── Component ──
@@ -323,7 +323,7 @@ export class ChatContextAttachments extends Disposable {
     this._onDidChange.fire();
   }
 
-  /** Add a text selection as an explicit attachment (M48). */
+  /** Add a text selection as an explicit attachment. */
   addSelectionAttachment(attachment: IChatSelectionAttachment): void {
     // Replace any existing selection attachment — only one at a time
     for (const [key, existing] of this._explicit) {

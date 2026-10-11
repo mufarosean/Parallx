@@ -178,7 +178,7 @@ export async function resolveMentions(
 }
 
 // ---------------------------------------------------------------------------
-// M43: Variable resolution — #activeFile, #file:path
+// Variable resolution — #activeFile, #file:path
 // ---------------------------------------------------------------------------
 
 export interface IVariableResolutionResult {

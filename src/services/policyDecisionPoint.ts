@@ -6,7 +6,7 @@
 //   1. terminalTools.ts    COMMAND_BLOCKLIST  (hard-deny by command string)
 //   2. permissionService   ALWAYS_REQUIRE_CONFIRMATION (safety belt)
 //   3. permissionService   checkPermission (3-tier level + autoApprove)
-//   4. openclawToolPolicy  resolveColorGate (M65 taint gate)
+//   4. openclawToolPolicy  resolveColorGate
 //   5. permissionService   heartbeat / subagent autonomy=manual blocking
 //
 // Decision rule order (first match wins — see decide()):
@@ -193,7 +193,7 @@ export class PolicyDecisionPoint {
       });
     }
 
-    // Rule 5 (M65 web-taint color gate) REMOVED — M90 consent model,
+    // Rule 5 REMOVED — M90 consent model,
     // Mufaro's explicit informed decision 2026-07-20 ("remove it entirely",
     // injection risk shown and accepted; docs/Parallx_Milestone_90.md).
     // Web-read-then-write no longer forces re-approval on any turn type.
@@ -218,7 +218,7 @@ export class PolicyDecisionPoint {
       }
     }
 
-    // Rule 6 — requires-approval gates ONLY autonomous sessions (M90).
+    // Rule 6 — requires-approval gates ONLY autonomous sessions.
     // Interactive turns and user-task runs (a widget Refresh click) were
     // started by an explicit user gesture — the gesture IS the approval, so
     // ordinary consequential tools proceed. Autonomous sessions
@@ -241,7 +241,7 @@ export class PolicyDecisionPoint {
         });
       }
       // Interactive or user-task turn, ordinary write — the user's gesture
-      // approved it (M90 consent model). Proceed without a prompt.
+      // approved it. Proceed without a prompt.
       reasons.push('user-consent');
       return this._emit(caller, name, {
         outcome: 'allow', reasons, autoApproved: true,

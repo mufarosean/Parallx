@@ -1,4 +1,4 @@
-// widgetTemplates.ts — the picker's Templates rail (M86 C3).
+// widgetTemplates.ts — the picker's Templates rail.
 //
 // A template is a preconfigured widget recipe: type + config + refresh
 // policy. One click adds a working widget instead of a blank one to

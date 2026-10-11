@@ -1,4 +1,4 @@
-// toolsSection.ts — Tools configuration section (M20 Task E.1)
+// toolsSection.ts — Tools configuration section
 //
 // Renders the tool tree inline in the AI Hub panel (same checkbox-tree UX
 // as the modal ChatToolPicker, but embedded as a settings section).
@@ -367,7 +367,7 @@ export class ToolsSection extends SettingsSection {
     }
   }
 
-  /** Persist a tool enable/disable to workspace override (M20 E.3). */
+  /** Persist a tool enable/disable to workspace override. */
   private _persistToolOverride(toolName: string, enabled: boolean): void {
     if (!this._unifiedService) return;
     const current = this._unifiedService.getEffectiveConfig().tools?.enabledOverrides ?? {};

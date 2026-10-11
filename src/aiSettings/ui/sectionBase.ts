@@ -1,6 +1,6 @@
 // sectionBase.ts — Base class and types for AI Settings panel sections
 //
-// Sections (M61 Phase 5, managers-only): Model, Agent, Cron, Tools, MCP, WebResearch.
+// Sections: Model, Agent, Cron, Tools, MCP, WebResearch.
 // Each extends SettingsSection for consistent layout, reset, scope indicators, and search.
 
 import { Disposable } from '../../platform/lifecycle.js';
@@ -73,7 +73,7 @@ export function createSettingRow(options: ISettingRowOptions): {
   const label = $('div.ai-settings-row__label', options.label);
   headerLine.appendChild(label);
 
-  // Scope indicator (M20 C.2)
+  // Scope indicator
   if (options.scopePath && options.unifiedService) {
     const scopeBadge = $('span.ai-settings-row__scope');
     const isWs = options.unifiedService.isOverridden(options.scopePath);

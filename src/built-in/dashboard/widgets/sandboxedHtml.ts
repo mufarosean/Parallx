@@ -26,7 +26,7 @@
 
 /**
  * The `--px-*` design tokens we forward into the frame so model-authored
- * visuals match the active theme (M83: no hardcoded colors). Resolved from the
+ * visuals match the active theme. Resolved from the
  * host document at paint time and re-declared on the frame's :root.
  */
 export const FORWARDED_THEME_TOKENS: readonly string[] = [

@@ -1,4 +1,4 @@
-// subagentTools.ts — `sessions_spawn` chat tool (M58 W5)
+// subagentTools.ts — `sessions_spawn` chat tool
 //
 // Upstream parity:
 //   - sessions-spawn-tool.ts:1-212 @ github.com/openclaw/openclaw
@@ -7,7 +7,7 @@
 //
 // Parallx adaptation:
 //   - Backed by the audit-closed SubagentSpawner (D5 15/15 ALIGNED) wired to
-//     the ephemeral-session substrate (M58 W5-A) via
+//     the ephemeral-session substrate via
 //     createSubagentTurnExecutor.
 //   - Always approval-gated via `subagentToolPermissionLevel` — no read-only
 //     exemption. Spawning a subagent is privileged.

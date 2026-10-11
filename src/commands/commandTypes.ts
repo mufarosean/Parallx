@@ -100,7 +100,7 @@ export interface CommandDescriptor {
   readonly keybindingWhen?: string;
 
   /**
-   * M70— Opt-in for AI invocation through `app__run_command`.
+   * Opt-in for AI invocation through `app__run_command`.
    * When true, this command is surfaced in `app__find_commands` search
    * results and is callable by the AI. Requires `aiDescription` to be
    * present. Commands without this flag are invisible to the AI even

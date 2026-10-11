@@ -1,4 +1,4 @@
-// autonomyReplayCommand.ts — dev-only `autonomy.replay` command (M60 §3.10).
+// autonomyReplayCommand.ts — dev-only `autonomy.replay` command.
 //
 // Inspects a past autonomy event by id: summarizes what it did (its recorded
 // tool calls and surface routes) and logs the inspection as a `replay`-trigger

@@ -69,7 +69,7 @@ export class ProactiveSuggestionsService extends Disposable {
   private _lastAnalysisTime = 0;
   private _analysisTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // M15: Configurable thresholds (defaults match original hardcoded values)
+  // Configurable thresholds (defaults match original hardcoded values)
   private _suggestionsEnabled = false;
   private _clusterThreshold = CLUSTER_THRESHOLD;
   private _maxSuggestions = MAX_SUGGESTIONS;
@@ -83,7 +83,7 @@ export class ProactiveSuggestionsService extends Disposable {
   ) {
     super();
 
-    // M40 Phase 6: Read authoritative unified config and subscribe to changes.
+    // Read authoritative unified config and subscribe to changes.
     if (unifiedConfigService) {
       this._applyUnifiedConfig(unifiedConfigService);
       this._register(unifiedConfigService.onDidChangeConfig(() => {
@@ -102,7 +102,7 @@ export class ProactiveSuggestionsService extends Disposable {
     }));
   }
 
-  /** M40 Phase 6: Apply authoritative unified config to configurable thresholds. */
+  /** Apply authoritative unified config to configurable thresholds. */
   private _applyUnifiedConfig(unifiedConfigService: Pick<IUnifiedAIConfigService, 'getEffectiveConfig'>): void {
     const suggestions = unifiedConfigService.getEffectiveConfig().suggestions;
     this._suggestionsEnabled = suggestions.suggestionsEnabled;
@@ -141,7 +141,7 @@ export class ProactiveSuggestionsService extends Disposable {
   // ── Analysis Engine ──
 
   private _scheduleAnalysis(): void {
-    // M15: Skip analysis entirely when suggestions are disabled
+    // Skip analysis entirely when suggestions are disabled
     if (!this._suggestionsEnabled) { return; }
 
     if (this._analysisTimer) {
@@ -150,7 +150,7 @@ export class ProactiveSuggestionsService extends Disposable {
     const elapsed = Date.now() - this._lastAnalysisTime;
     const cooldownDelay = Math.max(0, ANALYSIS_COOLDOWN_MS - elapsed);
 
-    // M78 Phase 7 — the very first analysis after workspace open used
+    // the very first analysis after workspace open used
     // to run immediately (cooldown delay = 0 because _lastAnalysisTime
     // starts at 0), which fired clustering on every indexed page right
     // when the user was trying to start working. Defer the first run

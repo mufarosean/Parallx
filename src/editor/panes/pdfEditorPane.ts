@@ -161,7 +161,7 @@ interface PdfHighlightRect {
   y2: number;
 }
 
-// M84: one saved turn of the per-highlight AI discussion (a review record,
+// one saved turn of the per-highlight AI discussion (a review record,
 // not a live session).
 interface PdfHighlightThreadTurn {
   role: 'user' | 'ai';
@@ -169,7 +169,7 @@ interface PdfHighlightThreadTurn {
   at: number;
 }
 
-// M84: a canvas page this highlight's passage was captured to.
+// a canvas page this highlight's passage was captured to.
 interface PdfHighlightCanvasLink {
   pageId: string;
   title: string;
@@ -183,8 +183,8 @@ interface PdfHighlight {
   rects: PdfHighlightRect[];
   text: string;          // captured selection text (for reference/export)
   note: string;          // optional margin note
-  thread?: PdfHighlightThreadTurn[];      // M84: saved AI discussion
-  canvasLinks?: PdfHighlightCanvasLink[]; // M84: pages this became
+  thread?: PdfHighlightThreadTurn[];      // saved AI discussion
+  canvasLinks?: PdfHighlightCanvasLink[]; // pages this became
   createdAt: number;
 }
 
@@ -299,12 +299,12 @@ export class PdfEditorPane extends EditorPane {
     super(PANE_ID);
   }
 
-  /** M53 D3.4: Late-bind global storage for preference persistence. */
+  /** Late-bind global storage for preference persistence. */
   setGlobalStorage(storage: IStorage): void {
     this._globalStorage = storage;
   }
 
-  /** M84: Late-bind the command service so the pane can reach the chat
+  /** Late-bind the command service so the pane can reach the chat
    *  extension's inline-AI provider and the canvas capture command. */
   setCommandService(commandService: IPaneCommandService): void {
     this._commandService = commandService;
@@ -1129,7 +1129,7 @@ export class PdfEditorPane extends EditorPane {
     });
     body.appendChild(ta);
 
-    // M84: linked canvas pages — open them in the canvas editor.
+    // linked canvas pages — open them in the canvas editor.
     if (hl.canvasLinks && hl.canvasLinks.length > 0) {
       const section = document.createElement('div');
       section.classList.add('pdf-highlight-section');
@@ -1150,7 +1150,7 @@ export class PdfEditorPane extends EditorPane {
       body.appendChild(section);
     }
 
-    // M84: AI discussion thread anchored to this highlight.
+    // AI discussion thread anchored to this highlight.
     this._buildHighlightThreadSection(body, hl);
 
     document.body.appendChild(pop);
@@ -1478,7 +1478,7 @@ export class PdfEditorPane extends EditorPane {
    * Send the captured detail to a canvas page via the `canvas.captureSelection`
    * command, then record the returned page as a link on the anchoring
    * highlight(s) so the highlight becomes the durable hub between the two
-   * surfaces (M84). Falls back to a fire-and-forget window event if the canvas
+   * surfaces. Falls back to a fire-and-forget window event if the canvas
    * command isn't available (canvas extension not activated).
    */
   private async _captureToCanvas(
@@ -2820,12 +2820,12 @@ export class PdfEditorPane extends EditorPane {
 
   // ── Text selection context menu ────────────────────────────────────
 
-  /** Get the currently selected text in the PDF viewer (M48). */
+  /** Get the currently selected text in the PDF viewer. */
   getSelectedText(): string {
     return this._capturedSelection;
   }
 
-  /** Get selection source metadata for the AI action system (M48). */
+  /** Get selection source metadata for the AI action system. */
   getSelectionSource(): { fileName: string; filePath: string; pageNumber?: number } | undefined {
     if (!this._capturedSelection || !this._currentInput) return undefined;
     return {
@@ -3068,7 +3068,7 @@ export class PdfEditorPane extends EditorPane {
     );
   }
 
-  /** Dispatch a selection action to the unified dispatcher (M48 Phase 4). */
+  /** Dispatch a selection action to the unified dispatcher. */
   private _dispatchSelectionAction(actionId: string): void {
     if (!this._capturedSelection || !this._currentInput) return;
 

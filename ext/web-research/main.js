@@ -912,7 +912,7 @@ function _registerTools(api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION 8b — Dashboard widget: News brief (M86)
+// SECTION 8b — Dashboard widget: News brief
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // The news brief is a web-research consumer (webSearch + webFetch drive it),

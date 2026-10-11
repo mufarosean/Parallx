@@ -274,7 +274,7 @@ const openSettings: CommandDescriptor = {
   // Keybinding is owned by the `parallx.settings` manifest binding `settings.open`
   // to `Ctrl+,`. This legacy id is kept as an alias so menus, the welcome card,
   // and any external command-palette muscle memory all route to the single,
-  // schema-driven editor (M60 Phase ε).
+  // schema-driven editor.
   async handler(ctx) {
     const commandService = ctx.getService<import('../services/serviceTypes.js').ICommandService>('ICommandService');
     if (commandService) {
@@ -394,9 +394,9 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   openSettings,
   openKeybindings,
   selectColorTheme,
-  // Docling (M21)
+  // Docling
   installDocling,
-  // M48: Selection → AI command
+  // Selection → AI command
   addSelectionToChat,
   // The question-provider registry, for extensions
   questionsGetRegistry,

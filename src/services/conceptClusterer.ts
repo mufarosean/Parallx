@@ -1,4 +1,4 @@
-// conceptClusterer.ts — DBSCAN clustering + stable-ID carry-over (M76 Phase 5)
+// conceptClusterer.ts — DBSCAN clustering + stable-ID carry-over
 //
 // Pure helpers used by ConceptNodeService. Kept dependency-free so they can
 // be unit-tested without spinning up the orchestrator / vector store / DB.

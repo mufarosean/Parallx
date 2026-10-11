@@ -1,4 +1,4 @@
-// worksheetChat.ts — the AI's read surface over Worksheets (M99).
+// worksheetChat.ts — the AI's read surface over Worksheets.
 //
 // Three chat tools make the practice bank, the user's ACTUAL sheet work and
 // the user's own notes visible to any chat/autonomous turn, mirroring how
@@ -87,7 +87,7 @@ export function buildProgressReport(items: WorksheetItemSummary[]): string {
 
 /** Every note the user wrote on a problem, newest first, with what the
  *  problem is and how it went: the worksheet.getNotes tool's text and the
- *  Discuss Notes In Chat chip, one and the same (Mufaro, 2026-09-21: "have
+ *  Discuss Notes In Chat chip, one and the same ("have
  *  AI look at the whole bank, which problems have notes, gain insights"). */
 export function buildNotesDigest(items: WorksheetItemSummary[]): string {
   const noted = items.filter((i) => i.note && i.note.trim()).sort((a, b) => (b.noteAt ?? 0) - (a.noteAt ?? 0));

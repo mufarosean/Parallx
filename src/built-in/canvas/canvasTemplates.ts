@@ -1,4 +1,4 @@
-// canvasTemplates.ts — Page template catalog (M77 Phase 11.4 + post-ship rev)
+// canvasTemplates.ts — Page template catalog
 //
 // Provides starter templates so a new page isn't always an empty
 // paragraph. Templates have two flavors:

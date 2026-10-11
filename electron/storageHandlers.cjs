@@ -1,4 +1,4 @@
-// electron/storageHandlers.cjs — IPC handlers for file-backed storage (M53)
+// electron/storageHandlers.cjs — IPC handlers for file-backed storage
 //
 // Provides three IPC channels (storage:read-json, storage:write-json,
 // storage:exists) that the renderer uses via the preload bridge to persist

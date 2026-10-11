@@ -1,4 +1,4 @@
-// chunkingService.ts — IChunkingService implementation (M10 Task 1.3)
+// chunkingService.ts — IChunkingService implementation
 //
 // Splits content into chunks suitable for embedding and retrieval.
 // Supports canvas pages (TipTap JSON block-level chunking) and workspace
@@ -21,7 +21,7 @@ import type { IChunkingService } from './serviceTypes.js';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /** Target max characters per chunk (~256 tokens at 4 chars/token).
- *  M16: Reduced from 2048 to 1024 — industry consensus is 800-1200 chars.
+ *  Reduced from 2048 to 1024 — industry consensus is 800-1200 chars.
  *  Smaller chunks produce more precise embeddings.
  */
 const MAX_CHUNK_CHARS = 1024;
@@ -31,14 +31,14 @@ const MIN_CHUNK_CHARS = 100;
 
 /** Max table/code block size before forced split (2× normal max).
  * Tables and code blocks can exceed MAX_CHUNK_CHARS up to this limit
- * to preserve structural integrity (M21 D.1/D.2).
+ * to preserve structural integrity.
  */
 const MAX_STRUCTURAL_BLOCK_CHARS = MAX_CHUNK_CHARS * 2;
 
 /** Overlap between consecutive chunks (~50 tokens at 4 chars/token).
  * Carries the tail of one chunk into the head of the next to preserve
- * context that spans chunk boundaries (M10 DR-8 recommendation).
- * Applied to both file chunks and canvas page size-limit flushes (M16).
+ * context that spans chunk boundaries.
+ * Applied to both file chunks and canvas page size-limit flushes.
  * Heading boundaries remain clean breaks (no overlap).
  */
 const OVERLAP_CHARS = 200;
@@ -142,7 +142,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
         structuralRole: normalizeStructuralRole(bufferBlockTypes[0]),
       });
 
-      // M16: Carry overlap on size-limit flushes (same as file chunks).
+      // Carry overlap on size-limit flushes (same as file chunks).
       // Heading boundaries remain clean breaks — overlap=false there.
       if (overlap && trimmed.length > OVERLAP_CHARS) {
         buffer = trimmed.slice(-OVERLAP_CHARS);

@@ -1,5 +1,5 @@
 // backgroundPromptRunner.ts — run a prompt as an isolated background agent
-// turn on the ephemeral-session rail (M86 C4).
+// turn on the ephemeral-session rail.
 //
 // Where `chat.submitPrompt` reveals the chat panel and streams into the
 // user's ACTIVE session, this runner forks an ephemeral session (same
@@ -161,7 +161,7 @@ export function createBackgroundPromptRunner(
     const handle = deps.chatService.createEphemeralSession(parentId, {
       systemMessage: req.systemMessage?.trim() || DEFAULT_SYSTEM_MESSAGE,
       firstUserMessage: text,
-      // M91 — archive the run's transcript under its origin (e.g. 'dashboard')
+      // archive the run's transcript under its origin (e.g. 'dashboard')
       // so it's reopenable from the autonomy log like a chat session.
       archiveOrigin: origin,
       label: typeof req.originLabel === 'string' && req.originLabel.trim() ? req.originLabel.trim() : undefined,
@@ -174,7 +174,7 @@ export function createBackgroundPromptRunner(
     }
 
 
-    // M90 — the initiator sets the session's consent policy. 'user' runs
+    // the initiator sets the session's consent policy. 'user' runs
     // (a Refresh click) are consented: gated tools proceed, the belt
     // defers. 'autonomous' runs follow the autonomy dial. Either way the
     // session is headless, so nothing can prompt — marking guarantees it.

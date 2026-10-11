@@ -72,7 +72,7 @@ export interface IOpenclawAssembleParams {
   readonly tokenBudget: number;
   readonly prompt: string;
   /**
-   * M85 — the session's durable plan, pre-formatted for the prompt.
+   * the session's durable plan, pre-formatted for the prompt.
    * Injected as a GUARANTEED section outside history and outside the RAG
    * budget lanes (the plan_update tool hard-caps its size), so the mission
    * survives compaction and history trimming by construction.
@@ -349,7 +349,7 @@ export class OpenclawContextEngine implements IOpenclawContextEngine {
     // M81 Phase 3 Stage 2: the concept retrieval lane was removed — its 5%
     // moved to RAG, which now also picks up agent-curated MEMORY.md content
     // via the standard vector index.
-    // M84: the "currently open page" lane was removed — passively injecting the
+    // the "currently open page" lane was removed — passively injecting the
     // open editor page every turn spent budget on content the user often didn't
     // mean to include. To bring a page/file into context, attach it explicitly;
     // the agent can also pull any page on demand via the canvas read tools. Its

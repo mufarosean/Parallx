@@ -1,5 +1,5 @@
 // tableWidget.ts — a table (with optional bar chart) over a spreadsheet or
-// CSV file in the workspace (M86 C3).
+// CSV file in the workspace.
 //
 // The first real consumer of the `xlsx` capability: the main process parses
 // .csv/.tsv/.xlsx/.xls via the dashboard:readTable bridge (the renderer's fs

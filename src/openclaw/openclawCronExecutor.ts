@@ -2,7 +2,7 @@
  * CronTurnExecutor — M58 W4-real wiring factory.
  *
  * Wires the audit-closed {@link ./openclawCronService.ts.CronService}
- * (D4 17/17 ALIGNED) to the workbench SurfaceRouter (M58 W6) AND to the W5
+ * (D4 17/17 ALIGNED) to the workbench SurfaceRouter AND to the W5
  * ephemeral-session substrate so that each cron fire:
  *
  *   1. Emits an origin-stamped status flash immediately (so the user
@@ -248,7 +248,7 @@ export function createCronTurnExecutor(
     const handle = realTurnDeps!.chatService.createEphemeralSession(parentId!, {
       systemMessage,
       firstUserMessage: userMessage,
-      // M91 — keep the transcript so cron runs are reopenable like chat.
+      // keep the transcript so cron runs are reopenable like chat.
       archiveOrigin: 'cron',
       label: job.name,
     });

@@ -1,4 +1,4 @@
-// indexingPipeline.ts — IIndexingPipelineService implementation (M10 Task 2.1, 2.2)
+// indexingPipeline.ts — IIndexingPipelineService implementation
 //
 // Orchestrates the indexing pipeline:
 //   1. On workspace open: index all canvas pages + workspace text files
@@ -58,7 +58,7 @@ const FILE_DEBOUNCE_MS = 5_000;
 const BATCH_SIZE = 32;
 
 /**
- * M60 B4 — Flush the pending upsert batch every N source records during
+ * Flush the pending upsert batch every N source records during
  * bulk indexing. Empirically 20 sources × ~6 chunks/source ≈ 120 ops per
  * `runTransaction`, well under SQLite's per-transaction practical ceiling
  * and small enough that a renderer cancel mid-bulk only loses ≤20 sources.
@@ -86,7 +86,7 @@ const RICH_DOCUMENT_EXTENSIONS = new Set([
   '.pdf',
   '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
   '.docx',
-  '.pptx',  // M21: PowerPoint support via Docling
+  '.pptx',  // PowerPoint support via Docling
   '.ppt',   // M21 C.2: Legacy PowerPoint
   '.epub',  // M21 C.2: E-books via Docling
 ]);
@@ -99,7 +99,7 @@ function buildPageIndexPayload(title: string, content: string, properties?: Reco
 }
 
 /**
- * Image extensions that can be indexed via Docling OCR (M21).
+ * Image extensions that can be indexed via Docling OCR.
  */
 const IMAGE_EXTENSIONS = new Set([
   '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp', '.webp',
@@ -124,7 +124,7 @@ const MAX_RICH_DOC_SIZE = 100 * 1024 * 1024;
 const DIRECTORY_WALK_YIELD_EVERY = 200;
 
 /**
- * M60 B2 — Fallback delay (ms) used to defer the first indexing run when
+ * Fallback delay (ms) used to defer the first indexing run when
  * `requestIdleCallback` isn't available. The renderer is Chromium-based so
  * rIC is normally present; this is a safety net for environments where it
  * may have been polyfilled away. 2.5s lets Phase 5 (DB open, builtin tool
@@ -132,7 +132,7 @@ const DIRECTORY_WALK_YIELD_EVERY = 200;
  */
 const STARTUP_DEFER_FALLBACK_MS = 2_500;
 
-/** M60 B2 — rIC timeout for the deferred start. Indexing must begin within
+/** rIC timeout for the deferred start. Indexing must begin within
  * this window even if the renderer never reports idle (e.g. continuous user
  * activity right after workspace open). */
 const STARTUP_DEFER_RIC_TIMEOUT_MS = 3_000;
@@ -150,7 +150,7 @@ const STARTUP_DEFER_RIC_TIMEOUT_MS = 3_000;
  * and re-indexes everything from scratch on the next run.
  *
  * History:
- *   1 — implicit (pre-M21 pipeline)
+ *   1 — implicit
  *   2 — M21: Docling integration, rich-document extraction overhaul
  *   3 — M23: retrieval metadata expansion (chunk/source metadata persisted)
  */
@@ -186,9 +186,9 @@ export interface IndexingSourceResult {
   chunkCount?: number;
   /** Time taken in milliseconds. */
   durationMs: number;
-  /** Which extraction pipeline was used (M21 E.1). */
+  /** Which extraction pipeline was used. */
   pipeline?: 'docling' | 'docling-ocr' | 'legacy' | 'text';
-  /** True if Docling failed and the file fell back to legacy (M21 E.2). */
+  /** True if Docling failed and the file fell back to legacy. */
   fallback?: boolean;
 }
 
@@ -302,17 +302,17 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   /** Whether initial full indexing has completed at least once. */
   private _initialIndexComplete = false;
 
-  /** ParallxIgnore instance for file exclusion (M11 Task 1.9). */
+  /** ParallxIgnore instance for file exclusion. */
   private _ignore: ParallxIgnore = createParallxIgnore();
 
-  /** Optional session manager for stale-session guards (M14). */
+  /** Optional session manager for stale-session guards. */
   private readonly _sessionManager: ISessionManager | undefined;
 
   /** Optional config provider for feature-gated indexing behavior. */
   private _configProvider: { getEffectiveConfig(): { memory?: { transcriptIndexingEnabled?: boolean } } } | undefined;
 
   /**
-   * M60 B5 — Optional flag accessor. When the host wires this and it returns
+   * Optional flag accessor. When the host wires this and it returns
    * `true` for `'indexing.lazyMtime.enabled'`, `_indexAllPages` partitions
    * pages by `updated_at` against the persisted `indexed_at` timestamp (the
    * same fast-skip pattern files already use), avoiding content reads + hash
@@ -323,7 +323,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   private _flagAccessor: ((flagId: string) => boolean) | undefined;
 
   /**
-   * M60 B4 — IPC batching. When the bulk paths (`_indexAllPages` /
+   * IPC batching. When the bulk paths (`_indexAllPages` /
    * `_indexAllFiles`) set this to a non-null array, `_commitSource()`
    * enqueues into it instead of doing an immediate `vectorStore.upsert`
    * (= one `runTransaction` IPC). The bulk caller flushes every
@@ -336,7 +336,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   private _pendingUpsertBatch: UpsertRecord[] | null = null;
 
   /**
-   * M60 B3 — off-thread embedding transport. Lazily constructed in
+   * off-thread embedding transport. Lazily constructed in
    * `beginIndexing` when `indexing.worker.enabled` is on AND `Worker`
    * is available. On worker error or disposal we revert
    * `_embeddingService.setTransport(null)` so subsequent calls go
@@ -347,7 +347,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   /** Session guard captured at pipeline start — checked before commits. */
   private _sessionGuard: SessionGuard | undefined;
 
-  /** Diagnostic log prefix from session context (M14). */
+  /** Diagnostic log prefix from session context. */
   private get _logPrefix(): string {
     return this._sessionManager?.activeContext?.logPrefix ?? '[ws:? sid:?]';
   }
@@ -390,7 +390,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   }
 
   /**
-   * M60 B5 — Wire the feature-flag accessor (typically backed by
+   * Wire the feature-flag accessor (typically backed by
    * `AutonomyFeatureFlagsService`). Optional; tests + early-boot paths
    * may leave it unset and the pipeline falls back to the legacy hash check.
    */
@@ -524,7 +524,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     this._abortController = new AbortController();
     this._sessionGuard = this._sessionManager ? captureSession(this._sessionManager) : undefined;
 
-    // M60 B2 — Defer the first run so the workbench can paint and built-in
+    // Defer the first run so the workbench can paint and built-in
     // tool activations can settle before embedding CPU spikes. See
     // docs/STARTUP_PERFORMANCE.md and Future_Improvements.md §1 Option 2.
     await this._waitForIdleStart();
@@ -537,7 +537,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     const startTime = performance.now();
 
     try {
-      // 0. Load .parallxignore from workspace root (M11 Task 1.9)
+      // 0. Load .parallxignore from workspace root
       await this._loadIgnoreFile();
 
       // 0b. Pipeline version check — purge all indexed data if the pipeline
@@ -548,7 +548,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       this._updateProgress('pages', 0, 0, 'Checking embedding model...');
       await this._embeddingService.ensureModel(this._abortController?.signal);
 
-      // M60 B3 — Off-thread embedding transport. Default-OFF flag; on a
+      // Off-thread embedding transport. Default-OFF flag; on a
       // worker error we revert to the in-process transport (the
       // EmbeddingService cache + retry path still owns correctness).
       this._maybeInstallEmbeddingWorker();
@@ -612,7 +612,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   }
 
   /**
-   * M60 B2 — Wait for the renderer to be idle before kicking off the
+   * Wait for the renderer to be idle before kicking off the
    * initial indexing pass. Uses `requestIdleCallback` (always available in
    * Chromium-based Electron renderers) so the workbench can paint, restore
    * editors, and finish built-in tool activation before embedding work
@@ -715,7 +715,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     }
   }
 
-  // ── Internal: .parallxignore Loading (M11 Task 1.9) ──
+  // ── Internal: .parallxignore Loading ──
 
   /**
    * Load `.parallxignore` from workspace root (if present) and merge with defaults.
@@ -768,7 +768,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   // ── Internal: Full Page Indexing ──
 
   private async _indexAllPages(): Promise<number> {
-    // M60 B5 — page mtime fast-skip. When the lazyMtime flag is enabled,
+    // page mtime fast-skip. When the lazyMtime flag is enabled,
     // partition pages by `updated_at` against persisted `indexed_at` and
     // only hydrate content + properties for the candidates that need
     // re-checking. Mirrors the file-side fast-skip path that landed in
@@ -855,7 +855,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
         });
       }
       this._updateProgress('pages', this._progress.processed + 1, candidates.length, page.title);
-      // M60 B1 — Cooperative yield between page iterations. Each page
+      // Cooperative yield between page iterations. Each page
       // includes chunking + an embedding round-trip, so yielding every
       // iteration lets the renderer paint and dispatch UI events between
       // pages without measurably slowing total indexing time.
@@ -902,7 +902,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       return false;
     }
 
-    // M14: stale session guard — skip commit if session changed
+    // stale session guard — skip commit if session changed
     if (this._sessionGuard && !this._sessionGuard.isValid()) {
       console.warn('[IndexingPipeline] Stale session — skipping page commit for %s', pageId);
       return false;
@@ -1098,7 +1098,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
         language = cachedResult.pipeline !== 'legacy' ? 'markdown' : undefined;
         this._batchExtractionCache.delete(absolutePath); // Free memory
       } else if ((isRichDoc || isImage) && this._documentExtractionService) {
-        // M21: Classify the document and use the appropriate extraction pipeline
+        // Classify the document and use the appropriate extraction pipeline
         // For PDFs, attempt scan detection via lightweight pre-check
         let useOcr = classification.documentClass === 'scanned-doc' || classification.documentClass === 'image';
 
@@ -1176,7 +1176,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       return false;
     }
 
-    // M14: stale session guard — skip commit if session changed
+    // stale session guard — skip commit if session changed
     if (this._sessionGuard && !this._sessionGuard.isValid()) {
       console.warn('[IndexingPipeline] Stale session — skipping file commit for %s', relPath);
       return false;
@@ -1205,7 +1205,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
   /**
    * Recursively walk a directory, collecting indexable file paths with mtimes.
-   * Respects .parallxignore patterns (M11 Task 1.9) and INDEXABLE_EXTENSIONS filters.
+   * Respects .parallxignore patterns and INDEXABLE_EXTENSIONS filters.
    */
   private async _walkDirectory(dirUri: URI, results: IndexableFile[], relativePath: string = ''): Promise<void> {
     this._checkAborted();
@@ -1256,7 +1256,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
         } else if (ext && RICH_DOCUMENT_EXTENSIONS.has(ext) && entry.size <= MAX_RICH_DOC_SIZE) {
           results.push({ path: entry.uri.fsPath, relativePath: relPath, mtime: entry.mtime });
         } else if (ext && IMAGE_EXTENSIONS.has(ext) && entry.size <= MAX_RICH_DOC_SIZE) {
-          // M21: Images are indexable via Docling OCR
+          // Images are indexable via Docling OCR
           results.push({ path: entry.uri.fsPath, relativePath: relPath, mtime: entry.mtime });
         }
       }
@@ -1275,7 +1275,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       this._checkAborted();
 
-      // M60 B1 — Cooperative yield between embedding batches. Mirrors the
+      // Cooperative yield between embedding batches. Mirrors the
       // pattern used by the directory walker (DIRECTORY_WALK_YIELD_EVERY)
       // so a long file with many chunks doesn't monopolize the renderer
       // thread between Ollama batch round-trips.

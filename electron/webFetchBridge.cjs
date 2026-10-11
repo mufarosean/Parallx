@@ -1,5 +1,5 @@
 // electron/webFetchBridge.cjs — Web egress chokepoint for the web-research
-// extension (M65 Iter 1, Security Layer 1).
+// extension.
 //
 // SECURITY CRITICAL — DO NOT WEAKEN ANY CONTROL.
 // Every outbound HTTP from the extension goes through this single file.
@@ -357,7 +357,7 @@ function _doSingleHopRequest({ urlStr, signal, headers, method = 'GET' }) {
         host: parsed.hostname,
         port: parsed.port || 443,
         path: parsed.pathname + (parsed.search || ''),
-        // F3 (M65 Iter 2) — pin the connect-time DNS lookup to the same
+        // F3 — pin the connect-time DNS lookup to the same
         // address set we just validated. Closes the TOCTOU between
         // _resolveAndGuard and Node's internal dns.lookup at socket.connect.
         lookup: _makePinnedLookup(prevalidated),

@@ -1,4 +1,4 @@
-// distinctiveTermExtractor.ts — extract distinctive terms from document text (M76 Phase 2)
+// distinctiveTermExtractor.ts — extract distinctive terms from document text
 //
 // "Distinctive terms" here means tokens that are likely to be content-bearing
 // proper nouns or technical terms — the kind of words whose co-occurrence

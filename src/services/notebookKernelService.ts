@@ -1,4 +1,4 @@
-// notebookKernelService.ts — renderer-side owner of the notebook kernel (M96)
+// notebookKernelService.ts — renderer-side owner of the notebook kernel
 //
 // Same division as M94's pythonEnvService: the main process enforces what it
 // can enforce (process lifecycle, containment, the rebuilt environment), and

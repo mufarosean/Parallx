@@ -1,4 +1,4 @@
-// codeEditorPane.ts — the editor pane for code files (M95).
+// codeEditorPane.ts — the editor pane for code files.
 //
 // Sits alongside TextEditorPane rather than replacing it. TextEditorPane is a
 // textarea with a hand-rolled gutter and minimap, which is the right tool for

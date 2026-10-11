@@ -27,7 +27,7 @@ import type {
   IBuiltInToolWorkspaceMemory,
 } from '../chatTypes.js';
 
-// Re-export for backward compatibility (M13 Phase 1)
+// Re-export for backward compatibility
 export type {
   IBuiltInToolDatabase,
   IBuiltInToolCanonicalMemorySearch,
@@ -42,7 +42,7 @@ export type {
 } from '../chatTypes.js';
 
 // ── Domain tool factories ──
-// NOTE (M84): canvas page + block tools moved to src/built-in/canvas/ai/ and
+// NOTE: canvas page + block tools moved to src/built-in/canvas/ai/ and
 // are now registered by the canvas tool itself (canvas owns the tools it
 // exposes to the agent).
 import {
@@ -124,23 +124,23 @@ export function registerBuiltInTools(
     createMemoryEditTool(workspaceMemory),
     createTranscriptGetTool(fs),
     createTranscriptSearchTool(transcriptSearch),
-    // ── Write tools (M11 Task 2.2 + 2.3) ──
+    // ── Write tools ──
     createWriteFileTool(fs, writer),
     createEditFileTool(fs, writer),
-    // ── Delete tool (M11 Task 4.4) ──
+    // ── Delete tool ──
     createDeleteFileTool(fs, writer, workspaceRoot),
-    // ── Terminal tool (M11 Task 4.3) ──
+    // ── Terminal tool ──
     createRunCommandTool(terminal, workspaceRoot),
-    // ── RAG tools (M10 Phase 3) ──
+    // ── RAG tools ──
     createSearchKnowledgeTool(retrieval, fs),
-    // ── Surface routing tools (M58 W6) ──
+    // ── Surface routing tools ──
     createSurfaceSendTool(surfaceRouter),
     createSurfaceListTool(surfaceRouter),
-    // ── Cron scheduling tools (M58 W4) ──
+    // ── Cron scheduling tools ──
     ...createCronTools(cronHost),
-    // ── Subagent spawn tool (M58 W5) ──
+    // ── Subagent spawn tool ──
     createSessionsSpawnTool(subagentSpawner),
-    // ── Autonomy log read tool (M58-real post-ship UX reshape) ──
+    // ── Autonomy log read tool ──
     createAutonomyLogTool(autonomyLog),
     // ── Activity journal read tool (the app's common activity language) ──
     createActivityLogTool(activityJournal),

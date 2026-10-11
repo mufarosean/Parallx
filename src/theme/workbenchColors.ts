@@ -1,20 +1,20 @@
-// workbenchColors.ts â€” registers all workbench color tokens
+// workbenchColors.ts — registers all workbench color tokens
 //
 // Import this file during workbench startup to ensure all color tokens
 // are registered before theme application.
 //
 // Token names match VS Code's workbench.colorCustomizations keys exactly.
 // Dark defaults match the values previously hardcoded in workbench.css / ui.css / explorer.css.
-// Light and HC defaults are best-effort for M5 â€” only Dark Modern ships.
+// Light and HC defaults are best-effort for M5 — only Dark Modern ships.
 
 import { colorRegistry } from './colorRegistry.js';
 
-// Helper â€” shorthand for registering a color with all 4 theme defaults
+// Helper — shorthand for registering a color with all 4 theme defaults
 function reg(id: string, description: string, dark: string, light: string, hcDark: string, hcLight: string): void {
   colorRegistry.registerColor(id, description, { dark, light, hcDark, hcLight });
 }
 
-// â”€â”€â”€ Core / Shared â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Core / Shared ───────────────────────────────────────────────────────────
 
 reg('foreground',                      'Default foreground color',                       '#cccccc', '#3b3b3b', '#ffffff', '#292929');
 reg('focusBorder',                     'Border color for focused elements',              '#9333ea', '#a855f7', '#f38518', '#a855f7');
@@ -26,7 +26,7 @@ reg('errorForeground',                 'Foreground for error text',             
 reg('sash.hoverBorder',                'Sash/resize handle on hover',                    '#9333ea', '#9333ea', '#6fc3df', '#9333ea');
 reg('toolbar.hoverBackground',         'Toolbar item hover background',                  'rgba(90, 93, 94, 0.31)', 'rgba(0, 0, 0, 0.08)', 'rgba(255, 255, 255, 0.1)', 'rgba(0, 0, 0, 0.08)');
 
-// â”€â”€â”€ Titlebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Titlebar ────────────────────────────────────────────────────────────────
 
 reg('titleBar.activeBackground',       'Titlebar background (active window)',            '#181818', '#dddddd', '#000000', '#ffffff');
 reg('titleBar.activeForeground',       'Titlebar foreground (active window)',            '#cccccc', '#333333', '#ffffff', '#292929');
@@ -34,7 +34,7 @@ reg('titleBar.inactiveBackground',     'Titlebar background (inactive window)', 
 reg('titleBar.inactiveForeground',     'Titlebar foreground (inactive window)',          '#9d9d9d', 'rgba(51, 51, 51, 0.6)', 'rgba(255, 255, 255, 0.5)', 'rgba(41, 41, 41, 0.6)');
 reg('titleBar.border',                 'Titlebar bottom border',                        '#2b2b2b', '#e0e0e0', '#6fc3df', '#cecece');
 
-// â”€â”€â”€ Menu â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Menu ────────────────────────────────────────────────────────────────────
 
 reg('menu.foreground',                 'Menu item foreground',                           '#cccccc', '#616161', '#ffffff', '#292929');
 reg('menu.background',                 'Menu/dropdown background',                       '#1f1f1f', '#ffffff', '#000000', '#ffffff');
@@ -43,7 +43,7 @@ reg('menu.selectionForeground',        'Menu item selection foreground',        
 reg('menu.border',                     'Menu border',                                    '#454545', '#d4d4d4', '#6fc3df', '#cecece');
 reg('menu.separatorBackground',        'Menu separator color',                           '#454545', 'rgba(0, 0, 0, 0.1)', '#6fc3df', '#cecece');
 
-// â”€â”€â”€ Activity Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Activity Bar ────────────────────────────────────────────────────────────
 
 reg('activityBar.background',           'Activity bar background',                       '#181818', '#2c2c2c', '#000000', '#ffffff');
 reg('activityBar.foreground',           'Active icon foreground',                        '#d7d7d7', '#ffffff', '#ffffff', '#292929');
@@ -53,7 +53,7 @@ reg('activityBar.activeBorder',         'Active item indicator border',         
 reg('activityBarBadge.background',      'Badge background',                              '#9333ea', '#9333ea', '#9333ea', '#9333ea');
 reg('activityBarBadge.foreground',      'Badge foreground',                              '#ffffff', '#ffffff', '#ffffff', '#ffffff');
 
-// â”€â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 reg('sideBar.background',               'Sidebar background',                            '#181818', '#f3f3f3', '#000000', '#ffffff');
 reg('sideBar.foreground',               'Sidebar foreground',                            '#cccccc', '#616161', '#ffffff', '#292929');
@@ -63,7 +63,7 @@ reg('sideBarSectionHeader.background',   'Section header background',           
 reg('sideBarSectionHeader.foreground',   'Section header foreground',                   '#cccccc', '#616161', '#ffffff', '#292929');
 reg('sideBarSectionHeader.border',       'Section header border',                       '#2b2b2b', '#cccccc', '#6fc3df', '#cecece');
 
-// â”€â”€â”€ Editor / Editor Groups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Editor / Editor Groups ──────────────────────────────────────────────────
 
 reg('editor.background',                'Editor background',                             '#1f1f1f', '#ffffff', '#000000', '#ffffff');
 reg('editor.foreground',                'Editor foreground',                             '#cccccc', '#333333', '#ffffff', '#292929');
@@ -82,31 +82,31 @@ reg('tab.border',                       'Tab right separator border',           
 reg('tab.modifiedBorder',               'Dirty indicator on modified tabs',              '#bb800966', '#333333', '#ffffff', '#292929');
 reg('tab.hoverBackground',              'Tab hover background',                          '#1f1f1f', 'rgba(0, 0, 0, 0.04)', 'rgba(255, 255, 255, 0.1)', 'rgba(0, 0, 0, 0.04)');
 
-// â”€â”€â”€ Editor Line Numbers / Indent Guides â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Editor Line Numbers / Indent Guides ─────────────────────────────────────
 
 reg('editorLineNumber.foreground',       'Line number color',                             '#858585', '#237893', '#858585', '#237893');
 reg('editorLineNumber.activeForeground', 'Active line number color',                      '#c6c6c6', '#0b216f', '#ffffff', '#292929');
 reg('editorIndentGuide.background',      'Indent guide color',                            '#404040', '#d3d3d3', '#606060', '#d3d3d3');
 
-// â”€â”€â”€ Editor Widgets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Editor Widgets ──────────────────────────────────────────────────────────
 
 reg('editorWidget.background',           'Find widget / editor widget background',        '#252526', '#f3f3f3', '#000000', '#ffffff');
 reg('editorWidget.foreground',           'Editor widget text color',                      '#cccccc', '#616161', '#ffffff', '#292929');
 reg('editorWidget.border',               'Editor widget border',                          '#454545', '#c8c8c8', '#6fc3df', '#cecece');
 
-// â”€â”€â”€ Breadcrumbs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Breadcrumbs ─────────────────────────────────────────────────────────────
 
 reg('breadcrumb.background',             'Breadcrumb bar background',                     '#1f1f1f', '#ffffff', '#000000', '#ffffff');
 reg('breadcrumb.foreground',             'Breadcrumb item foreground',                    '#9d9d9d', '#6c6c6c', '#ffffff', '#292929');
 reg('breadcrumb.focusForeground',        'Focused breadcrumb item foreground',            '#cccccc', '#333333', '#ffffff', '#292929');
 reg('breadcrumb.activeSelectionForeground','Active breadcrumb item foreground',            '#cccccc', '#333333', '#ffffff', '#292929');
 
-// â”€â”€â”€ Minimap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Minimap ─────────────────────────────────────────────────────────────────
 
 reg('minimapSlider.hoverBackground',     'Minimap slider hover',                          'rgba(121, 121, 121, 0.15)', 'rgba(100, 100, 100, 0.15)', 'rgba(111, 195, 223, 0.2)', 'rgba(100, 100, 100, 0.15)');
 reg('minimapSlider.activeBackground',    'Minimap slider active/dragged',                 'rgba(121, 121, 121, 0.25)', 'rgba(100, 100, 100, 0.25)', 'rgba(111, 195, 223, 0.3)', 'rgba(100, 100, 100, 0.25)');
 
-// â”€â”€â”€ Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Panel ───────────────────────────────────────────────────────────────────
 
 reg('panel.background',                 'Panel background',                              '#181818', '#ffffff', '#000000', '#ffffff');
 reg('panel.border',                     'Panel top border',                              '#2b2b2b', '#e0e0e0', '#6fc3df', '#cecece');
@@ -114,13 +114,13 @@ reg('panelTitle.activeForeground',       'Active panel tab foreground',         
 reg('panelTitle.inactiveForeground',     'Inactive panel tab foreground',                '#9d9d9d', '#999999', 'rgba(255, 255, 255, 0.5)', '#292929');
 reg('panelTitle.activeBorder',           'Active panel tab bottom border',               '#9333ea', '#333333', '#f38518', '#292929');
 
-// â”€â”€â”€ Auxiliary Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Auxiliary Bar ───────────────────────────────────────────────────────────
 
 reg('auxiliaryBar.background',           'Auxiliary sidebar background',                  '#181818', '#f3f3f3', '#000000', '#ffffff');
 reg('auxiliaryBar.border',               'Auxiliary sidebar border',                      '#2b2b2b', '#e0e0e0', '#6fc3df', '#cecece');
 reg('auxiliaryBar.headerForeground',     'Auxiliary bar header text',                    '#cccccc', '#6f6f6f', '#ffffff', '#292929');
 
-// â”€â”€â”€ Status Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Status Bar ──────────────────────────────────────────────────────────────
 
 reg('statusBar.background',             'Status bar background',                         '#181818', '#9333ea', '#000000', '#ffffff');
 reg('statusBar.foreground',             'Status bar foreground',                         '#cccccc', '#ffffff', '#ffffff', '#292929');
@@ -128,14 +128,14 @@ reg('statusBarItem.hoverBackground',     'Status bar item hover',               
 reg('statusBarItem.hoverForeground',     'Status bar item hover foreground',             'inherit', 'inherit', 'inherit', 'inherit');
 reg('statusBarItem.activeBackground',    'Status bar item active/pressed',               'rgba(90, 93, 94, 0.45)', 'rgba(255, 255, 255, 0.18)', 'rgba(255, 255, 255, 0.18)', 'rgba(0, 0, 0, 0.12)');
 
-// â”€â”€â”€ Lists and Trees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Lists and Trees ─────────────────────────────────────────────────────────
 
 reg('list.hoverBackground',             'List/tree item hover',                          '#2a2d2e', 'rgba(0, 0, 0, 0.04)', 'rgba(255, 255, 255, 0.08)', 'rgba(0, 0, 0, 0.04)');
 reg('list.activeSelectionBackground',    'Selected item background',                     '#37373d', '#e8e8e8', '#4c1d95', '#e9d5ff');
 reg('list.activeSelectionForeground',    'Selected item foreground',                     '#ffffff', '#333333', '#ffffff', '#292929');
 reg('list.focusOutline',                 'Focus border for list items',                  '#9333ea', '#9333ea', '#f38518', '#9333ea');
 
-// â”€â”€â”€ Inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Inputs ──────────────────────────────────────────────────────────────────
 
 reg('input.background',                 'Text input background',                         '#313131', '#ffffff', '#000000', '#ffffff');
 reg('input.foreground',                 'Text input foreground',                         '#cccccc', '#616161', '#ffffff', '#292929');
@@ -145,7 +145,7 @@ reg('inputOption.activeBackground',      'Active toggle option background',     
 reg('inputOption.activeForeground',      'Active toggle option foreground',               '#ffffff', '#000000', '#ffffff', '#000000');
 reg('inputOption.activeBorder',          'Active toggle option border',                   '#9333ea', '#9333ea', '#f38518', '#9333ea');
 
-// â”€â”€â”€ Buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Buttons ─────────────────────────────────────────────────────────────────
 
 reg('button.background',                'Primary button background',                     '#9333ea', '#9333ea', '#000000', '#9333ea');
 reg('button.foreground',                'Primary button foreground',                     '#ffffff', '#ffffff', '#ffffff', '#ffffff');
@@ -154,7 +154,7 @@ reg('button.secondaryBackground',       'Secondary button background',          
 reg('button.secondaryForeground',       'Secondary button foreground',                  '#cccccc', '#333333', '#ffffff', '#292929');
 reg('button.secondaryHoverBackground',   'Secondary button hover',                       '#3c3c3c', '#cccccc', '#3c3c3c', '#cccccc');
 
-// â”€â”€â”€ Notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Notifications ───────────────────────────────────────────────────────────
 
 reg('notifications.background',          'Notification toast background',                '#1f1f1f', '#ffffff', '#000000', '#ffffff');
 reg('notifications.foreground',          'Notification text color',                      '#cccccc', '#616161', '#ffffff', '#292929');
@@ -165,7 +165,7 @@ reg('notificationsInfoIcon.foreground',  'Info icon color',                     
 reg('notificationsWarningIcon.foreground','Warning icon color',                           '#cca700', '#bf8803', '#cca700', '#bf8803');
 reg('notificationsErrorIcon.foreground', 'Error icon color',                             '#f85149', '#a1260d', '#f85149', '#a1260d');
 
-// â”€â”€â”€ Quick Access â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Quick Access ────────────────────────────────────────────────────────────
 
 reg('quickInput.background',             'Quick access background',                      '#222222', '#ffffff', '#000000', '#ffffff');
 reg('quickInput.foreground',             'Quick access text',                             '#cccccc', '#616161', '#ffffff', '#292929');
@@ -173,12 +173,12 @@ reg('quickInputList.focusBackground',    'Focused item in quick access',        
 reg('quickInputTitle.background',        'Quick access header background',               '#2b2b2b', '#e0e0e0', '#000000', '#ffffff');
 reg('quickInputList.focusForeground',    'Focused item foreground in quick access',      '#ffffff', '#333333', '#ffffff', '#292929');
 
-// â”€â”€â”€ Drop Targets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Drop Targets ────────────────────────────────────────────────────────────
 
 reg('editorGroup.dropBackground',        'Editor group drop overlay',                    'rgba(168, 85, 247, 0.18)', 'rgba(168, 85, 247, 0.18)', 'rgba(168, 85, 247, 0.18)', 'rgba(168, 85, 247, 0.18)');
 reg('editorGroup.dropBorder',            'Editor group drop border',                     'rgba(168, 85, 247, 0.5)', 'rgba(168, 85, 247, 0.5)', 'rgba(168, 85, 247, 0.5)', 'rgba(168, 85, 247, 0.5)');
 
-// â”€â”€â”€ Links â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Links ───────────────────────────────────────────────────────────────────
 
 reg('textLink.foreground',              'Link color',                                    '#c084fc', '#7e22ce', '#c084fc', '#7e22ce');
 reg('textLink.activeForeground',        'Active/hovered link color',                     '#c084fc', '#7e22ce', '#c084fc', '#7e22ce');
@@ -186,22 +186,22 @@ reg('textCodeBlock.background',          'Inline/fenced code block background', 
 reg('textBlockQuote.border',             'Block-quote left border',                       '#555555', '#9333ea', '#f38518', '#9333ea');
 reg('textBlockQuote.foreground',         'Block-quote foreground',                        '#9da5b4', '#6a737d', '#ffffff', '#292929');
 
-// â”€â”€â”€ Badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Badge ───────────────────────────────────────────────────────────────────
 
 reg('badge.background',                  'Badge background (e.g. in explorer)',            '#4d4d4d', '#c4c4c4', '#000000', '#ffffff');
 reg('badge.foreground',                  'Badge foreground',                              '#cccccc', '#333333', '#ffffff', '#292929');
 
-// â”€â”€â”€ Toolbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Toolbar ─────────────────────────────────────────────────────────────────
 
 reg('toolbar.activeBackground',          'Toolbar item active/pressed background',        'rgba(99, 102, 103, 0.4)', 'rgba(0, 0, 0, 0.12)', 'rgba(255, 255, 255, 0.15)', 'rgba(0, 0, 0, 0.12)');
 
-// â”€â”€â”€ Scrollbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Scrollbar ───────────────────────────────────────────────────────────────
 
 reg('scrollbar.shadow',                  'Scrollbar shadow on scroll',                    '#000000', 'rgba(0, 0, 0, 0.2)', 'rgba(0, 0, 0, 0.5)', 'rgba(0, 0, 0, 0.2)');
 reg('scrollbarSlider.background',        'Scrollbar slider default background',           'rgba(121, 121, 121, 0.4)', 'rgba(100, 100, 100, 0.4)', 'rgba(111, 195, 223, 0.6)', 'rgba(100, 100, 100, 0.4)');
 reg('scrollbarSlider.hoverBackground',   'Scrollbar slider hover background',             'rgba(121, 121, 121, 0.7)', 'rgba(100, 100, 100, 0.7)', 'rgba(111, 195, 223, 0.8)', 'rgba(100, 100, 100, 0.7)');
 reg('scrollbarSlider.activeBackground',  'Scrollbar slider active/dragged background',    'rgba(191, 191, 191, 0.5)', 'rgba(0, 0, 0, 0.6)', 'rgba(111, 195, 223, 1.0)', 'rgba(0, 0, 0, 0.6)');
 
-// â”€â”€â”€ Window close button (platform convention â€” not theme-switchable) â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Window close button (platform convention — not theme-switchable) ────────
 // Note: #e81123 for close-button hover is kept as a hardcoded CSS value
 // because it is a Windows platform convention, not a theme color.

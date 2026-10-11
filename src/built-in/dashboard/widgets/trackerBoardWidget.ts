@@ -1,4 +1,4 @@
-// trackerBoardWidget.ts — user-defined items × user-defined stages (M86 C3).
+// trackerBoardWidget.ts — user-defined items × user-defined stages.
 //
 // The generic "where does each thing stand?" board. Items and stages are
 // pure config; per-item stage assignments are user-owned state persisted in

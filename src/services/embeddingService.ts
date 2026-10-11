@@ -1,4 +1,4 @@
-// embeddingService.ts — IEmbeddingService implementation (M10 Task 1.1)
+// embeddingService.ts — IEmbeddingService implementation
 //
 // Wraps Ollama's /api/embed endpoint for local embedding generation.
 // Uses nomic-embed-text v1.5 with mandatory task prefixes.
@@ -81,7 +81,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
   private _modelVerified = false;
 
   /**
-   * M60 B3 — optional off-thread transport. When set, replaces the in-process
+   * optional off-thread transport. When set, replaces the in-process
    * `_callEmbedApi` for the actual `/api/embed` call. Caching, retry, and
    * prefixing all stay on the renderer thread; the transport is responsible
    * only for the network round-trip + JSON parse + dimension check.
@@ -120,7 +120,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
   }
 
   /**
-   * M60 B3 — install (or clear, with `null`) an off-thread transport for the
+   * install (or clear, with `null`) an off-thread transport for the
    * actual `/api/embed` fetch. Pass a function with the same shape as
    * `_callEmbedApi`. Pass `null` to revert to the in-process default.
    */
@@ -129,7 +129,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
   }
 
   /**
-   * M60 B3 — read-only accessors for the worker transport (so callers can
+   * read-only accessors for the worker transport (so callers can
    * forward the same Ollama config without re-deriving it).
    */
   get baseUrl(): string { return this._baseUrl; }
@@ -345,7 +345,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
   /**
    * Single /api/embed API call.
    *
-   * M60 B3: when an off-thread transport is installed via `setTransport`,
+   * when an off-thread transport is installed via `setTransport`,
    * the actual fetch + parse runs there; otherwise we use the in-process
    * default. Either way, model verification + dimension validation logic
    * for the in-process branch is preserved here.

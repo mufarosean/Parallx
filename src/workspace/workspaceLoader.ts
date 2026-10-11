@@ -10,7 +10,7 @@ import {
 /**
  * Loads workspace state from persistent storage.
  *
- * M53: Storage is already scoped to the correct workspace file,
+ * Storage is already scoped to the correct workspace file,
  * so load() reads from the 'workbench' key directly.
  *
  * Features:
@@ -27,7 +27,7 @@ export class WorkspaceLoader {
 
   /**
    * Load workspace state from storage.
-   * M53: Storage is already scoped to the workspace file, so we read
+   * Storage is already scoped to the workspace file, so we read
    * from the 'workbench' key directly. Returns undefined if no saved
    * state exists (first launch or empty workspace).
    */

@@ -25,7 +25,7 @@ export const EXPLORER_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
-      // M70: newFile / newFolder / rename are DUPLICATE (existing file tools).
+      // newFile / newFolder / rename are DUPLICATE (existing file tools).
       // delete is EXCLUDED (destructive, irreversible from headless agent context).
       // revealInExplorer is DUPLICATE (not actionable in headless agent context).
       { id: 'explorer.newFile', title: 'Explorer: New File…' },
@@ -137,7 +137,7 @@ export const WELCOME_MANIFEST: IToolManifest = {
 };
 
 // ── Terminal ─────────────────────────────────────────────────────────────
-// M86 — the terminal tool existed (src/built-in/terminal + electron bridge)
+// the terminal tool existed (src/built-in/terminal + electron bridge)
 // but was never registered here, so its panel view never activated and the
 // old core "Console" placeholder rendered as a permanent empty tab.
 
@@ -336,7 +336,7 @@ export const CHAT_MANIFEST: IToolManifest = {
   activationEvents: ['onStartupFinished'],
   contributes: {
     commands: [
-      // M70: chat.switchMode and chat.selectModel are EXCLUDED (AI-settings
+      // chat.switchMode and chat.selectModel are EXCLUDED (AI-settings
       // mutation policy — the AI must not steer its own invocation policy).
       // chat.show is NOT in the manifest; it's registered at runtime by
       // main.ts. Annotated there via the bridge if/when needed.
@@ -352,7 +352,7 @@ export const CHAT_MANIFEST: IToolManifest = {
         aiInvocable: true, aiDescription: 'Stop the current AI generation.' },
       { id: 'chat.focus', title: 'Chat: Focus Input',
         aiInvocable: true, aiDescription: 'Move focus into the chat input.' },
-      // M86: deliberately NOT aiInvocable — the model has plan_update
+      // deliberately NOT aiInvocable — the model has plan_update
       // {clear:true}; this is the USER's escape hatch for stale plans.
       { id: 'chat.clearPlan', title: 'Chat: Clear Plan' },
     ],
@@ -508,7 +508,7 @@ export const THEME_EDITOR_MANIFEST: IToolManifest = {
   },
 };
 
-// ── Planner (M82) ────────────────────────────────────────────────────────
+// ── Planner ────────────────────────────────────────────────────────
 
 export const PLANNER_MANIFEST: IToolManifest = {
   manifestVersion: 1,
@@ -547,7 +547,7 @@ export const PLANNER_MANIFEST: IToolManifest = {
   },
 };
 
-// ── Worksheets (M99) ─────────────────────────────────────────────────────
+// ── Worksheets ─────────────────────────────────────────────────────
 
 export const WORKSHEET_MANIFEST: IToolManifest = {
   manifestVersion: 1,
@@ -629,7 +629,7 @@ export const WORKSHEET_MANIFEST: IToolManifest = {
   },
 };
 
-// ── Dashboard (M71) ──────────────────────────────────────────────────────
+// ── Dashboard ──────────────────────────────────────────────────────
 
 export const DASHBOARD_MANIFEST: IToolManifest = {
   manifestVersion: 1,
@@ -678,7 +678,7 @@ export const DASHBOARD_MANIFEST: IToolManifest = {
   },
 };
 
-// ── Settings (M60 Phase ε §7 T4.D2) ──────────────────────────────────────
+// ── Settings ──────────────────────────────────────
 
 export const SETTINGS_MANIFEST: IToolManifest = {
   manifestVersion: 1,

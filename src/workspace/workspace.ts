@@ -171,7 +171,7 @@ export class Workspace {
    * undefined if the URI is already present.
    */
   addFolder(uri: URI, name?: string): WorkspaceFolder | undefined {
-    // M53 D4.6: Single-folder workspaces only
+    // Single-folder workspaces only
     if (this._folders.length >= 1) {
       console.warn('[Workspace] Cannot add folder — single-folder workspace. Use openFolder() to switch.');
       return undefined;
@@ -222,7 +222,7 @@ export class Workspace {
    * Reorder folders to match the given URI order.
    */
   reorderFolders(_uris: URI[]): void {
-    // M53 D4.6: Single-folder workspaces — reordering is a no-op
+    // Single-folder workspaces — reordering is a no-op
   }
 
   /**

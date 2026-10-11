@@ -1,6 +1,6 @@
 // selectionActionDispatcher.ts — Routes selection action payloads to handlers.
 //
-// Central dispatcher for the Unified Selection → AI Action System (M48).
+// Central dispatcher for the Unified Selection → AI Action System.
 
 import type { IDisposable } from '../platform/lifecycle.js';
 import type {

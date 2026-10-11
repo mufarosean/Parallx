@@ -1,4 +1,4 @@
-// canvasSurface.ts — CanvasSurfacePlugin (M58 W6)
+// canvasSurface.ts — CanvasSurfacePlugin
 //
 // Upstream parity:
 //   - ChannelPlugin.outbound for the canvas/dashboard channel

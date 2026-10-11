@@ -1,4 +1,4 @@
-// worksheetConstants.ts — shared Worksheets constants (M99).
+// worksheetConstants.ts — shared Worksheets constants.
 //
 // Lives alone so BOTH bundles can import it: univerHost.ts (the separate
 // engine bundle) and the main-bundle modules (itemFormat, main). Anything

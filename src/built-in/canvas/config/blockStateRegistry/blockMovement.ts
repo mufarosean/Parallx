@@ -41,7 +41,7 @@ function _wrapListFragment(schema: any, listType: 'bulletList' | 'orderedList' |
 }
 
 /**
- * Safely dispatch a Tiptap transaction and report success (M77 Phase 4).
+ * Safely dispatch a Tiptap transaction and report success.
  *
  * Dispatch can throw if a plugin's appendTransaction / filter throws, or
  * if positions in the tr are invalid for the current doc. Previously
@@ -63,7 +63,7 @@ function _safeDispatch(editor: Editor, tr: any, opLabel: string): boolean {
 }
 
 /**
- * Bounds-check positions before they're used in a transaction (M77 Phase 4).
+ * Bounds-check positions before they're used in a transaction.
  * Returns true when both positions are non-negative and within the doc
  * size. Catches stale-position bugs where the caller's resolved positions
  * predate intermediate plugin transactions.

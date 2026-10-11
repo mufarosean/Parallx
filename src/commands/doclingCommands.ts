@@ -1,6 +1,6 @@
 // doclingCommands.ts — Docling installation and diagnostics commands
 //
-// M21 Phase F.3: Provides the `Parallx: Install Docling` command that
+// Provides the `Parallx: Install Docling` command that
 // detects Python, installs the Docling package via pip, and verifies
 // the installation.
 

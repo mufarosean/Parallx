@@ -1,4 +1,4 @@
-// aiSettingsTypes.ts — AI Settings types and service interface (M15 Task 1.1)
+// aiSettingsTypes.ts — AI Settings types and service interface
 //
 // All types for the AI Personality & Behavior Settings system.
 // Consumer code imports types only from this file.

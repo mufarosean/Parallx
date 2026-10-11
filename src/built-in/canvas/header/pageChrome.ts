@@ -242,7 +242,7 @@ export class PageChromeController {
     await electron.fs.writeFile(filePath, markdown, 'utf-8');
   }
 
-  /** Open the print-style PDF export dialog (M93). Lazy-loads the dialog +
+  /** Open the print-style PDF export dialog. Lazy-loads the dialog +
    *  pdf.js preview machinery so pages that never export pay nothing. */
   async exportPdf(): Promise<void> {
     if (!this._currentPage) return;
@@ -316,7 +316,7 @@ export class PageChromeController {
     this._currentPage = null;
   }
 
-  // ── Save indicator (M77 Phase 11.1) ─────────────────────────────────────
+  // ── Save indicator ─────────────────────────────────────
   //
   // Subtle persistence-trust signal in the top ribbon. The data service
   // already emits SaveStateKind transitions; before this phase nothing in
@@ -408,7 +408,7 @@ export class PageChromeController {
     // ── Right: save indicator, edited timestamp, favorite star, ⋯ menu ──
     const ribbonRight = $('div.canvas-top-ribbon-right');
 
-    // M77 Phase 11.1 — save indicator. Subtle text + dot that reflects
+    // save indicator. Subtle text + dot that reflects
     // the auto-save pipeline state ("Saving…", "Saved", "Retrying…").
     // Idle is invisible to keep the chrome quiet when nothing's happening.
     this._ribbonSaveIndicator = $('span.canvas-top-ribbon-save');
@@ -839,7 +839,7 @@ export class PageChromeController {
   }
 
   /**
-   * M77 Phase 5 — single click handler for Add Cover. Solves the
+   * single click handler for Add Cover. Solves the
    * "needs two clicks" symptom: the first click fired updatePage but
    * didn't disable the button, so a rapid second click queued a second
    * updatePage (with a different random gradient). The user perceived

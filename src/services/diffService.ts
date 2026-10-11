@@ -1,4 +1,4 @@
-// diffService.ts — Diff computation engine (M11 Task 2.4)
+// diffService.ts — Diff computation engine
 //
 // Computes unified diffs between two strings at line-level and word-level
 // granularity. Output is usable by the diff review UI and the LLM.

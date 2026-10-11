@@ -1,4 +1,4 @@
-/* Worksheets (M99) — pane chrome around the Univer engine. */
+/* Worksheets — pane chrome around the Univer engine. */
 
 /* The spreadsheet in a Worksheets pane (ribbon, formula bar, sheet tabs and
    the sheet's own menus) stands in for the exam's sheet, so it keeps one
@@ -73,8 +73,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
    Marked in the session bar, Rename / Copy / Quiz Summary by a title). */
 
 /* The star (a bookmark on the problem) and the mark (a flag inside one quiz):
-   on = accent stroke, the app's pressed look, never a filled glyph (Mufaro,
-   2026-09-21: the filled amber star read as an emoji). */
+   on = accent stroke, the app's pressed look, never a filled glyph (the filled amber star read as an emoji). */
 
 /* The note editor under a problem's header, opened by the note button. */
 .ws-item__note { margin-top: var(--px-space-2); }
@@ -95,7 +94,7 @@ body > [data-radix-popper-content-wrapper] :where(input, textarea, select) {
 .ws-chip--open { color: var(--px-accent-text); background: transparent;
   border: 1px solid color-mix(in srgb, var(--px-accent) 45%, transparent);
 }
-/* Semantic tokens only (M83 rule) — hardcoded pastels broke dark mode. */
+/* Semantic tokens only — hardcoded pastels broke dark mode. */
 .ws-chip--nailed { color: var(--px-success); background: color-mix(in srgb, var(--px-success) 14%, transparent); }
 .ws-chip--partial { color: var(--px-warning); background: color-mix(in srgb, var(--px-warning) 14%, transparent); }
 .ws-chip--missed { color: var(--px-danger); background: color-mix(in srgb, var(--px-danger) 12%, transparent); }

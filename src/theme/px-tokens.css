@@ -1,5 +1,5 @@
 /* ============================================================================
-   Parallx Design Tokens (M83)
+   Parallx Design Tokens
    ----------------------------------------------------------------------------
    The single source of truth for the app's visual identity. Three tiers,
    modeled on Obsidian's foundation → semantic → component structure:
@@ -159,7 +159,7 @@
   --px-warning-soft:  rgba(var(--px-yellow-rgb), 0.15);
   --px-info:          rgb(var(--px-blue-rgb));
 
-  /* Syntax — ONE palette for every place code is coloured (M95).
+  /* Syntax — ONE palette for every place code is coloured.
      The code editor, and eventually canvas code blocks, both read these.
      Before this existed the only syntax colours in the app were hardcoded
      hexes behind `--vscode-*` fallbacks in canvas.css, which no theme could

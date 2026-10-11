@@ -46,16 +46,16 @@
 //   31. AUTO-ALBUM FROM DIRECTORY STRUCTURE (F31)
 //   32. ALBUM EDITOR VIEW (F32)
 //   33. LIGHTBOX / SLIDESHOW (F7)
-//   34. COMPARE VIEW (M59 P10 / F15)
+//   34. COMPARE VIEW
 //   35. CONTEXT MENU (F1)
 //   36. BULK OPERATIONS (F33, F34)
 //   37. M59 PHASE 1 — CLIP/GIF EXPORT, FRAME CAPTURE, WEBP CONVERSION
 //   38. GIF OPTIMIZER — target-size re-encode for existing GIFs
 //   38B. UPSCALE (Real-ESRGAN ncnn-vulkan)
-//   39. SEARCH (FTS5) + QUERY PARSER + SMART ALBUMS — M59 P3
-//   40. PERCEPTUAL HASH (dHash 64-bit) — M59 P3
-//   41. STACKS + TRASH — M59 P5
-//   42. TIMELINE + MAP — M59 P6
+//   39. SEARCH (FTS5) + QUERY PARSER + SMART ALBUMS
+//   40. PERCEPTUAL HASH (dHash 64-bit)
+//   41. STACKS + TRASH
+//   42. TIMELINE + MAP
 //   43. AI TAGGING (one tool, Tag Review)
 //   44. ACTIVATION
 //
@@ -3065,7 +3065,7 @@ async function runScan(rootPath, api) {
     // Refresh sidebar sections (folders, tags, albums)
     _notifySidebarRefresh();
 
-    // M59 P3: rebuild FTS search index (best-effort)
+    // rebuild FTS search index (best-effort)
     if (!stats.cancelled) {
       moRebuildSearchIndex().catch(err => {
         console.warn('[MediaOrganizer] FTS rebuild post-scan failed:', err);
@@ -4365,7 +4365,7 @@ async function generateImageThumbnail(checksum, filePath, width, height, api, ov
   await window.parallxElectron.fs.mkdir(parentDir);
 
   // HEIC (phone photos): no decoder in Chromium, so the thumbnail and every
-  // display come from a JPEG copy made once by the bundled magick (M104 Part C).
+  // display come from a JPEG copy made once by the bundled magick.
   const heicCopy = MO_HEIC_RE.test(filePath) ? await moHeicDisplayCopy(filePath, api) : null;
   const input = heicCopy || filePath;
 
@@ -9989,7 +9989,7 @@ function renderCardGrid(container, items, options) {
   let _currentSelectedIds = new Set(options.selectedIds || []);
   let _currentSelecting = !!options.selecting;
 
-  // M59 P4: lazy thumbnail resolution — only kick off DB queries for cards
+  // lazy thumbnail resolution — only kick off DB queries for cards
   // visible (or near-visible) in the viewport. Saves 100s of queries when
   // perPage is high or "Auto" mode is on.
   const _thumbObserver = ('IntersectionObserver' in window) ? new IntersectionObserver((entries, obs) => {
@@ -10092,7 +10092,7 @@ function renderCardGrid(container, items, options) {
         newChildren.push(card);
         if (focIdx === idx) focusedNode = card;
 
-        // M59 P4: defer thumbnail resolution until card scrolls near viewport
+        // defer thumbnail resolution until card scrolls near viewport
         _attachLazyThumb(card, item);
         _cardByKey.set(`${item.type}:${item.id}`, card);
       }
@@ -10108,7 +10108,7 @@ function renderCardGrid(container, items, options) {
         item.thumbnailPath = result.path;
         // Persist GIF source on item so it survives grid refreshes (zoom changes)
         if (result.sourcePath) item._gifSourcePath = result.sourcePath;
-        // M59 P7: stash original source path for drag-out interop (text/uri-list).
+        // stash original source path for drag-out interop (text/uri-list).
         // Prefer the explicit originalPath (always present for resolved photos +
         // videos) and fall back to sourcePath (GIF/skip-small case) for safety.
         const dragPath = result.originalPath || result.sourcePath;
@@ -12845,7 +12845,7 @@ function renderGridBrowser(container, api, input) {
       params.push(filters.dateTo + 'T23:59:59');
     }
 
-    // M59 P3: id whitelist from FTS / folder lookup
+    // id whitelist from FTS / folder lookup
     const wl = alias === 'p' ? filters.idWhitelistPhotos : filters.idWhitelistVideos;
     if (wl != null) {
       if (wl.length === 0) {
@@ -12894,7 +12894,7 @@ function renderGridBrowser(container, api, input) {
       videoWhere.push(`dfv.value IN (SELECT value FROM mo_fingerprints WHERE type = 'md5' GROUP BY value HAVING COUNT(DISTINCT file_id) > 1)`);
     }
 
-    // M59 P5: trash filter — exclude trashed by default, include only when filterType is 'trash'
+    // trash filter — exclude trashed by default, include only when filterType is 'trash'
     if (filterType === 'trash') {
       photoWhere.push('p.deleted_at IS NOT NULL');
       videoWhere.push('v.deleted_at IS NOT NULL');
@@ -13005,7 +13005,7 @@ function renderGridBrowser(container, api, input) {
       where.push(`dfp.value IN (SELECT value FROM mo_fingerprints WHERE type = 'md5' GROUP BY value HAVING COUNT(DISTINCT file_id) > 1)`);
     }
 
-    // M59 P5: trash filter
+    // trash filter
     if (filterType === 'trash') {
       where.push(`${alias}.deleted_at IS NOT NULL`);
     } else {
@@ -13145,7 +13145,7 @@ function renderGridBrowser(container, api, input) {
     const limit = opts && opts.limit ? opts.limit : state.perPage;
     const offset = opts && typeof opts.offset === 'number' ? opts.offset : (state.currentPage - 1) * state.perPage;
 
-    // M59 P3: parse search syntax (tag:, rating:, folder:, taken:, type:, free text → FTS)
+    // parse search syntax (tag:, rating:, folder:, taken:, type:, free text → FTS)
     const parsed = moParseSearchQuery(rawSearch);
 
     // The media-type filter, or a type: operator for this query: Photos is
@@ -13211,7 +13211,7 @@ function renderGridBrowser(container, api, input) {
       }
     }
 
-    // M59 P3: FTS lookup → restrict to matching ids
+    // FTS lookup → restrict to matching ids
     // If FTS returns no hits (index empty/stale, or tokenizer doesn't match
     // the query), fall back to a LIKE-on-title path so basic name search
     // always works even when FTS hasn't been rebuilt.
@@ -13228,7 +13228,7 @@ function renderGridBrowser(container, api, input) {
       }
     }
 
-    // M59 P3: folder: operator → restrict ids
+    // folder: operator → restrict ids
     if (parsed.folderTerm) {
       const fids = await moResolveFolderMatchIds(parsed.folderTerm);
       // Intersect with existing whitelist if any
@@ -13525,7 +13525,7 @@ function renderGridBrowser(container, api, input) {
   let feedLoading = false;
   let feedExhausted = false;
   let feedGen = 0;          // bumped by every restart and unmount: a late page for an old run is dropped
-  let dailyCard = null;     // Daily Study above the Library feed (M104), while the art tools are on
+  let dailyCard = null;     // Daily Study above the Library feed, while the art tools are on
   const feedKey = (item) => `${item.type}:${item.id}`;
   const feedMounted = () => feedEl.parentNode === gridArea;
   function feedColumnsWanted() {
@@ -13779,7 +13779,7 @@ function renderGridBrowser(container, api, input) {
   // Files dropped from the OS are imported into the library (Section 26B).
   moEnableDropImport(gridArea, api);
 
-  // M59 P3: respond to smart album save/open commands
+  // respond to smart album save/open commands
   const _smartAlbumReplyHandler = () => {
     const ev = new CustomEvent('mo:reply-search-state', {
       detail: { query: searchInput.value || '', filters: state.filters },
@@ -13816,7 +13816,7 @@ function renderGridBrowser(container, api, input) {
     }).catch(() => {});
   }
 
-  // M59 P5: respond to selection requests + grid refresh broadcasts
+  // respond to selection requests + grid refresh broadcasts
   const _selectionReplyHandler = () => {
     document.dispatchEvent(new CustomEvent('mo:reply-selection', {
       detail: { selectedIds: new Set(state.selectedIds) },
@@ -17371,7 +17371,7 @@ function openLightbox(items, startIndex, resolveFilePath) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 34: COMPARE VIEW (M59 P10 / F15)
+// SECTION 34: COMPARE VIEW
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let _activeCompareView = null;
@@ -22419,7 +22419,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
     speedRow.style.display = more ? '' : 'none';
   }
 
-  // Fit To Length (M104): a painting session becomes a timelapse of a chosen
+  // Fit To Length: a painting session becomes a timelapse of a chosen
   // length; the speed follows from the clip's length and is applied at export.
   const fitRow = moEl('div', 'mo-clip-row');
   fitRow.appendChild(lbl('Fit to'));
@@ -26450,7 +26450,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         dither: ditherSel.value,
         filter: filterSel.value,
         loops: parseInt(loopInput.value, 10) || 0,
-        // M59 P4: crop region (normalized [0..1] relative to source frame).
+        // crop region (normalized [0..1] relative to source frame).
         // Position from the live rect, size from the BASE window — with zoom
         // keys the live rect's size is playhead-interpolated and must not
         // define the export's output resolution.
@@ -26465,7 +26465,7 @@ function moBuildClipEditor(api, container, instanceId, videoPath, duration, init
         // Source dims — the zoompan export path needs absolute pixels.
         srcW: preview.videoWidth || 0,
         srcH: preview.videoHeight || 0,
-        // M59 P2: per-frame edits (GIF only)
+        // per-frame edits (GIF only)
         frameEdits: useFrameEdits ? {
           frames: frames.map(f => ({ src: f.src, deleted: f.deleted, delayMs: f.delayMs })),
           reverseFrameOrder: revFrames,
@@ -26709,7 +26709,7 @@ async function moExportClip(api, opts) {
   // Build filter chain
   const filters = [];
   filters.push(`fps=${opts.fps}`);
-  // M59 P4: crop must precede scale so the user's normalized rect maps to
+  // crop must precede scale so the user's normalized rect maps to
   // source pixels. With ≥2 cropKeys the segment carries per-frame x/y
   // expressions (animated camera window); dimensions stay even either way.
   // Crop also precedes setpts/reverse, so t here is source-clip time and
@@ -26740,7 +26740,7 @@ async function moExportClip(api, opts) {
   for (const vf of moCaptionsVf(opts.captions, opts.fontFile || '')) filters.push(vf);
 
   if (opts.format === 'gif') {
-    // M59 P2: per-frame edits (delete/delay/reverse-frame-order) → concat path
+    // per-frame edits (delete/delay/reverse-frame-order) → concat path
     if (opts.frameEdits && opts.frameEdits.frames && opts.frameEdits.frames.length > 0) {
       return await moExportGifWithFrameEdits(api, opts, outPath);
     }
@@ -26980,7 +26980,7 @@ async function moExportClip(api, opts) {
   return { outPath };
 }
 
-// ─── GIF export with per-frame edits (M59 P2) ─────────────────────────────────
+// ─── GIF export with per-frame edits ─────────────────────────────────
 // When the user has marked frames as deleted, set per-frame delays, or toggled
 // "reverse frame order", we re-extract frames at the strip cadence (one frame
 // per strip cell) at the configured scale, drop the deleted ones, optionally
@@ -27658,7 +27658,7 @@ async function moCleanupOptimizerOrphans(filePaths) {
 }
 
 
-// M59 P2: simple key/value settings. Currently used for autoWebpMode.
+// simple key/value settings. Currently used for autoWebpMode.
 async function moGetSetting(key, fallback) {
   try {
     const row = await db.get('SELECT value FROM mo_settings WHERE key = ?', [key]);
@@ -28215,7 +28215,7 @@ function showUpscaleSetupDialog(api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 39: SEARCH (FTS5) + QUERY PARSER + SMART ALBUMS — M59 P3
+// SECTION 39: SEARCH (FTS5) + QUERY PARSER + SMART ALBUMS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── FTS5 rebuild ──
@@ -28521,7 +28521,7 @@ async function moManageSmartAlbums(api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 40: PERCEPTUAL HASH (dHash 64-bit) — M59 P3
+// SECTION 40: PERCEPTUAL HASH (dHash 64-bit)
 // ═══════════════════════════════════════════════════════════════════════════════
 // Computes a 64-bit difference hash by resizing each image to 9×8 grayscale,
 // then comparing adjacent horizontal pixels. Hamming distance ≤ 8 across two
@@ -28880,7 +28880,7 @@ function buildDupGroup(api, files, label) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 41: TRASH — M59 P5
+// SECTION 41: TRASH
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── Permanent purge ──
@@ -29804,7 +29804,7 @@ async function moPurgeMedia(api, items, opts = {}) {
 // disk is purged, and any photo/video that has no surviving backing file is
 // purged with it. Guards against historical bugs where deletion left orphan
 // rows behind, and against folders that drift out of scan roots.
-// Offline roots (M104 Part C): scan roots that are not on disk right now.
+// Offline roots: scan roots that are not on disk right now.
 const _moOfflineRoots = new Set();
 let _moFolderTree = null; // id -> { path, parent }
 function moRootPathOf(folderId) {
@@ -30553,7 +30553,7 @@ async function moTagOnePhoto(photoId, model, mode = 'add') {
     },
   ];
   // Temperature 0: this is classification. The model reasons before it picks
-  // (Mufaro, 2026-10-11: every feature reasons); no output cap, so the
+  // (every feature reasons); no output cap, so the
   // reasoning never crowds out the tag list. The context size is left to the
   // provider, because changing it makes Ollama reload the model.
   const options = { temperature: 0, think: true, format: moTagReplySchema(entries.map((e) => e.path)) };
@@ -31196,7 +31196,7 @@ let _toolPath = '';
 let _activated = false;
 const _sidebarRefreshCallbacks = [];
 // ═══════════════════════════════════════════════════════════════════════════
-// ── Preview and display copies (M104 Part C) ─────────────────────────────
+// ── Preview and display copies ─────────────────────────────
 // Phone footage and photos the renderer cannot decode play from copies made
 // once into the thumbnail cache. Originals are never touched.
 const MO_HEIC_RE = /\.(heic|heif)$/i;
@@ -31278,7 +31278,7 @@ async function moClipPreviewSource(videoPath, api) {
   return videoPath;
 }
 
-// Section 44: Practice (M104, docs/Parallx_Milestone_104.md)
+// Section 44: Practice
 //
 // Timed drawing from the library. Daily Study and Practice Sessions are one
 // engine with four parts: a pool (where pictures come from), a picker (random,
@@ -32394,7 +32394,7 @@ function buildPracticeHistoryStrip(ctx, api) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Section 45: Painting plans (M104 Part B, docs/Parallx_Milestone_104.md)
+// Section 45: Painting plans
 //
 // The step before the canvas. A plan is one painting: a source photo, the
 // canvas size in inches, and variations, each a recipe of non-destructive
@@ -38491,7 +38491,7 @@ export async function activate(api, context) {
     console.log('[MediaOrganizer] activate() completed core init, registering views...');
   } catch (e) {}
 
-  // M59 P3: Ensure the FTS index is populated on cold start. If the user has
+  // Ensure the FTS index is populated on cold start. If the user has
   // photos/videos in the DB but the FTS tables are empty (e.g. they upgraded
   // to a build with FTS but haven't re-scanned), search would return nothing.
   // Rebuild lazily here — best-effort, never blocks activation.
@@ -38588,7 +38588,7 @@ export async function activate(api, context) {
     if (sub2 && typeof sub2.dispose === 'function') _commandDisposables.push(sub2);
   }
 
-  // Drawing and Painting Tools (M104, decision D7) and the practice settings.
+  // Drawing and Painting Tools and the practice settings.
   try { moReadArtCfg(api); } catch { /* keep defaults */ }
   if (api.workspace.onDidChangeConfiguration) {
     const sub3 = api.workspace.onDidChangeConfiguration((e) => {
@@ -38984,7 +38984,7 @@ export async function activate(api, context) {
     _commandDisposables.push(api.canvas.registerBlock(moGalleryBlock(api)));
   }
 
-  // M59 P3: Search index, perceptual hash, duplicate finder, smart albums
+  // Search index, perceptual hash, duplicate finder, smart albums
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.rebuildSearchIndex', async () => {
       api.window.showInformationMessage('Rebuilding search index…');
@@ -39028,7 +39028,7 @@ export async function activate(api, context) {
     })
   );
 
-  // M59 P5: trash
+  // trash
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.moveToTrash', () => {
       const ev = new CustomEvent('mo:request-selection');
@@ -39054,7 +39054,7 @@ export async function activate(api, context) {
     api.commands.registerCommand('media-organizer.emptyTrash', () => moEmptyTrash(api))
   );
 
-  // M59 P7: reveal-in-MO from any file path
+  // reveal-in-MO from any file path
   _commandDisposables.push(
     api.commands.registerCommand('media-organizer.revealInMO', async (arg) => {
       const path = (typeof arg === 'string') ? arg : (arg && arg.path) || '';
@@ -39079,7 +39079,7 @@ export async function activate(api, context) {
     })
   );
 
-  // M59 P5: auto-empty trash older than N days (default 30)
+  // auto-empty trash older than N days (default 30)
   moAutoEmptyTrashIfStale(api).catch(() => {});
   // Favorites replaced the 1–5 star scale (2026-10-01): any rating became a favorite (1).
   (async () => {
@@ -39108,7 +39108,7 @@ export async function activate(api, context) {
   moRegisterTagTool(api);
   moRegisterChatDrop(api);
 
-  // M66 — register the media-organizer link contract. Iter A: open the grid;
+  // register the media-organizer link contract. Iter A: open the grid;
   // Iter B will deepen to per-item focus (photo lightbox, video clip).
   if (api.links && typeof api.links.register === 'function') {
     _commandDisposables.push(api.links.register({

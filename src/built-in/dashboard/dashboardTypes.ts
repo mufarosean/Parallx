@@ -127,7 +127,7 @@ export interface DashboardPageRow {
   readonly position: number;
   readonly headerHidden: boolean;
   /**
-   * Page-level refresh schedule (M86 C4, migration 005). When set, firing
+   * Page-level refresh schedule. When set, firing
    * refreshes every widget on the page headlessly. Null = off.
    */
   readonly refreshPolicy: WidgetRefreshPolicy | null;
@@ -192,7 +192,7 @@ export interface DashboardWidgetRow {
   readonly errorMessage: string | null;
   /**
    * Tool that provided the widget type when this instance was added
-   * (M86, migration 004). Used by the unavailable-placeholder to say who
+   *. Used by the unavailable-placeholder to say who
    * to re-enable. Null for instances created before the column existed.
    */
   readonly providerToolId: string | null;

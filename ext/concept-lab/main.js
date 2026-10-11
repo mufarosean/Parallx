@@ -1,5 +1,5 @@
 // ============================================================================
-// Concept Lab — interactive exam explorables (M100)
+// Concept Lab — interactive exam explorables
 //
 // Maps the statistical machinery of CAS Exam 7 papers to live, animated,
 // direct-manipulation graphics. Every module's defaults ARE its paper's own
