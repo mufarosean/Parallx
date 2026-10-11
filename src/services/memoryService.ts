@@ -12,7 +12,7 @@
 //   and optionally embedded for semantic retrieval.
 //
 // References:
-//   - docs/Parallx_Milestone_10.md Phase 5 Tasks 5.1, 5.2
+//   - docs/archive/milestones/Parallx_Milestone_10.md Phase 5 Tasks 5.1, 5.2
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';

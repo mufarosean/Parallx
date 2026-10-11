@@ -12,7 +12,7 @@
 //   - Reciprocal Rank Fusion merges vector + keyword results
 //
 // References:
-//   - docs/Parallx_Milestone_10.md DR-3 (sqlite-vec), DR-4 (FTS5), DR-5 (RRF)
+//   - docs/archive/milestones/Parallx_Milestone_10.md DR-3 (sqlite-vec), DR-4 (FTS5), DR-5 (RRF)
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';

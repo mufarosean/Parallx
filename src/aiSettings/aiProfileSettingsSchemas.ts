@@ -5,7 +5,7 @@
 // adapter-binds them to IUnifiedAIConfigService so the unified-overlay editor
 // (`Ctrl+Alt+S` → `settings.open`) is the single UI for these values.
 //
-// All settings here are workspace-scoped. The audit (docs/SETTINGS_AUDIT.md)
+// All settings here are workspace-scoped. The audit (docs/archive/root-audits/SETTINGS_AUDIT.md)
 // confirmed the underlying storage already lives in workspace state via
 // UnifiedAIConfigService → IWorkspaceStorageService — so this file only
 // adds schema/binding plumbing; no storage changes.
@@ -26,7 +26,7 @@ import type { DeepPartial } from './aiSettingsTypes.js';
 //   read  : (cfg) → primitive value
 //   write : (value) → DeepPartial patch for updateActivePreset
 //
-// Keep type/default/scope aligned with docs/SETTINGS_AUDIT.md §1.
+// Keep type/default/scope aligned with docs/archive/root-audits/SETTINGS_AUDIT.md §1.
 
 interface IBoundSchema<T = unknown> {
   readonly schema: ISettingSchema;

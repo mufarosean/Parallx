@@ -14,7 +14,7 @@
 //   - All long-running work is serialized through a queue to avoid Ollama overload
 //
 // References:
-//   - docs/Parallx_Milestone_10.md Phase 2 (Tasks 2.1, 2.2)
+//   - docs/archive/milestones/Parallx_Milestone_10.md Phase 2 (Tasks 2.1, 2.2)
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
@@ -526,7 +526,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
     // Defer the first run so the workbench can paint and built-in
     // tool activations can settle before embedding CPU spikes. See
-    // docs/STARTUP_PERFORMANCE.md and Future_Improvements.md §1 Option 2.
+    // docs/archive/root-audits/STARTUP_PERFORMANCE.md and Future_Improvements.md §1 Option 2.
     await this._waitForIdleStart();
     if (this._abortController?.signal.aborted) {
       this._isIndexing = false;

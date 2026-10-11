@@ -12,7 +12,7 @@ Copy the tool folder to your user tools directory:
 xcopy /E /I tools\samples\hello-world "%USERPROFILE%\.parallx\tools\hello-world"
 
 # macOS / Linux
-cp -r tools/samples/hello-world ~/.parallx/tools/hello-world
+cp -r tools/samples/hello-world data/extensions/hello-world
 ```
 
 Restart Parallx. The tool will be automatically discovered, registered, and
@@ -20,7 +20,7 @@ activated based on its `activationEvents`.
 
 ## Creating Your Own Tool
 
-1. Create a folder under `~/.parallx/tools/<your-tool-name>/`
+1. Create a folder under `data/extensions/<your-tool-name>/` (under the app root)
 2. Add a `parallx-manifest.json` — see [hello-world/parallx-manifest.json](hello-world/parallx-manifest.json)
 3. Add a `main.js` (ES module) that exports `activate(parallx, context)` — see [hello-world/main.js](hello-world/main.js)
 4. Restart Parallx

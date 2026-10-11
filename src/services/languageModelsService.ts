@@ -391,7 +391,7 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
    * (`parallx.lm.sendChatRequest`).  It resolves the provider for `modelId`
    * directly — no call to `setActiveModel`, no storage write, no streaming-
    * state reset, no `onDidChangeModels` event.  Multiple concurrent callers
-   * (OpenClaw, text-generator, inline AI) can therefore dispatch requests to
+   * (the chat runtime, extensions, inline AI) can therefore dispatch requests to
    * different models without interfering with each other.
    *
    * The existing `sendChatRequest(messages)` (no modelId) is preserved for

@@ -1,6 +1,6 @@
 // columnDropPlugin.ts — Drag-and-drop event shell for block movement
 //
-// Per docs/BLOCK_INTERACTION_RULES.md Rules 3-4.
+// Per docs/canvas/BLOCK_INTERACTION_RULES.md Rules 3-4.
 //
 // Two guide types:
 //   • Horizontal (above/below) — reorder blocks at any level

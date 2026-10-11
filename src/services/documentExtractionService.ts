@@ -3,7 +3,7 @@
 // Manages document extraction via the Docling bridge (primary path) with
 // automatic fallback to legacy extractors (pdf-parse, mammoth, SheetJS).
 //
-// Reference: docs/Parallx_Milestone_21.md Phase A — Task A.4
+// Reference: docs/archive/milestones/Parallx_Milestone_21.md Phase A — Task A.4
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';

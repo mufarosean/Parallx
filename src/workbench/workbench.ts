@@ -1815,8 +1815,8 @@ export class Workbench extends Layout {
    * Errors for individual editors are swallowed — partial restore is acceptable.
    *
    * Called in Phase 5 (after tool activation) so tool-backed editors
-   * (canvas, budget, workspace-graph, media-organizer, text-generator) can be
-   * restored alongside built-in editors (files, PDFs, images, etc.). For
+   * (canvas pages and every editor a tool registers) can be restored
+   * alongside built-in editors (files, PDFs, images, etc.). For
    * editors whose owning tool has not yet activated (e.g. an external tool
    * with `onCommand` activation), the owning tool is activated on demand from
    * its manifest's `contributes.editors[].typeId` mapping.
@@ -3653,7 +3653,7 @@ export class Workbench extends Layout {
     await this._registerAndActivateBuiltinTools(registry, activationEvents);
 
     // ── Discover and register external tools (M6 Capability 0) ──
-    // Scans ~/.parallx/tools/ for user-installed tools with parallx-manifest.json.
+    // Scans data/extensions/ (the app's user tools folder) for installed tools with parallx-manifest.json.
     // External tools are registered in the ToolRegistry and their activation events
     // are wired up. Tools with `*` events are activated immediately. Tools with
     // `onStartupFinished` will activate when fireStartupFinished() is called below.
@@ -3679,8 +3679,8 @@ export class Workbench extends Layout {
 
     // ── Restore editor tabs (deferred from Phase 4) ──
     // We delay editor restore until after tool activation so that tool-backed
-    // editors (canvas pages, budget, workspace-graph, media-organizer,
-    // text-generator) can be reconstructed. _restoreEditors itself will
+    // editors (canvas pages and every editor a tool registers) can be
+    // reconstructed. _restoreEditors itself will
     // activate any owning tool that hasn't activated yet so editors backed by
     // lazy-activated tools also survive a relaunch.
     if (this._restoredState?.editors) {
@@ -4070,7 +4070,7 @@ export class Workbench extends Layout {
   }
 
   /**
-   * Discover external tools from the user's tools directory (~/.parallx/tools/)
+   * Discover external tools from the user's tools directory (data/extensions/ under the app root)
    * and register them in the ToolRegistry.
    *
    * This follows VS Code's extension discovery pattern:

@@ -373,13 +373,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // Dedicated, in-memory store for heartbeat / cron / subagent results
   // so the chat transcript stays clean. The AutonomyLogSection in AI
   // Settings renders it; the `autonomy_log` built-in tool lets the
-  // agent read it back between turns. Registered globally in
-  // workbenchServices.ts so AI Settings activation can see it too.
-  // The workbench registers IAutonomyLogService in workbenchServices.ts
-  // before any extension activates. Falling back to a private instance here
-  // would silently desync ChatSurfacePlugin from the autonomy-log panel,
-  // which subscribes to the workbench-registered instance — that's exactly
-  // how the "panel doesn't update" regression sneaks in. Fail loudly.
+  // agent read it back between turns. The workbench registers it in
+  // workbenchServices.ts before any extension activates, so AI Settings
+  // sees the same instance. Falling back to a private instance here would
+  // silently desync ChatSurfacePlugin from the autonomy-log panel, which
+  // subscribes to the workbench-registered one; that is exactly how the
+  // "panel doesn't update" regression sneaks in. Fail loudly.
   if (!api.services.has(IAutonomyLogService)) {
     throw new Error('[chat] IAutonomyLogService not registered — workbench bootstrap order broken');
   }

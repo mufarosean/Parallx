@@ -2,8 +2,8 @@
 // Obsidian-style force-directed graph visualization.
 // All data lives under .parallx/extensions/workspace-graph/.
 //
-// Single-file constraint: Parallx loads extensions via blob URL,
-// so all JS lives in this one file.
+// One file today; the loader resolves relative imports, so the sections
+// below can become modules beside main.js.
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STORAGE

@@ -7,9 +7,9 @@
 // can weaken it. This file owns the UI: address bar, shield panel, bookmarks,
 // history, downloads, the New Tab page, reader mode, find, zoom.
 //
-// Single-file constraint: extensions load through a blob URL, so Mozilla's
-// Readability is appended at the bottom of this file (Section 12), the same
-// way ext/web-research does it.
+// Mozilla's Readability is appended at the bottom of this file (Section 12),
+// the same way ext/web-research does it. The loader resolves relative
+// imports, so it can become `import { Readability } from './readability.js'`.
 //
 // ── SECTIONS ──
 //   1. Constants and module state

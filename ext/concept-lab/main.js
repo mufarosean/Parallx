@@ -8,10 +8,9 @@
 // via the __testables export). A module that cannot recompute its paper's
 // printed numbers does not ship.
 //
-// Single-file ESM: external tools load as blob-URL modules, so relative
-// imports are unreachable at runtime — all code lives here (web-research
-// precedent). No npm deps: math is closed-form + seeded simulation, charts
-// are hand-built SVG.
+// One file today; the loader resolves relative imports, so the sections
+// below can become modules beside main.js. No npm deps: math is closed-form
+// + seeded simulation, charts are hand-built SVG.
 //
 // Section map:
 //   1. Math kernel (pure, side-effect free — exported via __testables)

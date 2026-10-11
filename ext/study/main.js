@@ -3507,9 +3507,9 @@ async function stPlanFor(modelId, material, chars, outputTokens, numCtx) {
 
 /**
  * Consume an LM stream with a stall watchdog. Copy of fcStreamWithStall:
- * the extension LM API has no AbortSignal, so a hung backend would leave a
- * spinner alive forever. The first chunk gets a longer leash because a cold
- * model load takes minutes.
+ * the LM API has no timeout, so a hung backend would leave a spinner alive
+ * forever. The first chunk gets a longer leash because a cold model load
+ * takes minutes.
  */
 async function stStreamWithStall(stream, onChunk, stallMs = 90000, firstChunkMs = 240000) {
   const it = stream[Symbol.asyncIterator]();

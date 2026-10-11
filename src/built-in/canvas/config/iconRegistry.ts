@@ -15,7 +15,7 @@
 //   2. Resolution — resolvePageIcon() validates stored icon IDs
 //   3. Catalogs — which icons are user-selectable for pages/callouts
 //
-// See docs/ICON_REGISTRY.md for the three-registry architecture.
+// See docs/canvas/ICON_REGISTRY.md for the three-registry architecture.
 
 import {
   svgIcon as _svgIcon,

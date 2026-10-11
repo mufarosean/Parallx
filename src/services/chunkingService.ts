@@ -13,7 +13,7 @@
 //
 // References:
 //   - Anthropic Contextual Retrieval blog
-//   - docs/Parallx_Milestone_10.md DR-6, DR-8
+//   - docs/archive/milestones/Parallx_Milestone_10.md DR-6, DR-8
 
 import { Disposable } from '../platform/lifecycle.js';
 import type { IChunkingService } from './serviceTypes.js';

@@ -8,7 +8,7 @@
 // Only config/iconRegistry.ts imports here (single gate).
 // All other code gets icons through blockRegistry or canvasMenuRegistry.
 //
-// See docs/ICON_REGISTRY.md for the three-registry architecture.
+// See docs/canvas/ICON_REGISTRY.md for the three-registry architecture.
 
 import { getIcon, hasIcon, getAllLucideIconIds } from '../../ui/iconRegistry.js';
 /** Icon IDs specifically for the page icon picker. */

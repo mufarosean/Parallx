@@ -3658,12 +3658,11 @@ function fcAutoCardEstimate(chars) {
 }
 
 /**
- * Consume an LM stream with a stall watchdog. The extension-facing LM
- * API has no AbortSignal and no timeout, so a hung Ollama socket previously
- * left every "Generating…" spinner alive forever. This wrapper re-arms a
- * timer per chunk and throws once no chunk arrives for `stallMs`. It cannot
- * abort the underlying request (no signal to abort with) — it abandons the
- * iterator, which is enough to unwedge the UI.
+ * Consume an LM stream with a stall watchdog. The LM API has no timeout, so
+ * a hung Ollama socket once left every "Generating…" spinner alive forever.
+ * This wrapper re-arms a timer per chunk and throws once no chunk arrives
+ * for `stallMs`. It does not abort the request; it abandons the iterator,
+ * which is enough to unwedge the UI.
  */
 async function fcStreamWithStall(stream, onChunk, stallMs = 90_000, firstChunkMs = 240_000) {
   const it = stream[Symbol.asyncIterator]();

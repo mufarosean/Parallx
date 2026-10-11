@@ -6727,14 +6727,12 @@ function tryParseModelJson(raw) {
 }
 
 // ─── LM stall watchdog ───────────────────────────────────────────────────────
-// The extension-facing LM API has no AbortSignal and no timeout, so a hung
-// Ollama socket used to freeze budgetSync mid-run FOREVER: the dashboard
-// banner sat at "77 of 98" and the cursor never advanced (observed
-// 2026-08-18 — three runs with a fetch line and no commit, no error, no
-// per-email log rows). This consumer re-arms a timer per chunk and throws
-// once the stream goes quiet. It cannot abort the underlying request
-// (nothing to abort with) — abandoning the iterator is enough to unwedge
-// the sync loop.
+// The LM API has no timeout, so a hung Ollama socket once froze budgetSync
+// mid-run for good: the dashboard banner sat at "77 of 98" and the cursor
+// never advanced, with no error and no per-email log rows. This consumer
+// re-arms a timer per chunk and throws once the stream goes quiet. It does
+// not abort the request; abandoning the iterator is enough to unwedge the
+// sync loop.
 //
 // Deliberately DUPLICATED from the flashcards extension's equivalent:
 // extensions stay self-contained, so neither can break the other.

@@ -4,8 +4,8 @@
 // All data lives in a per-extension isolated SQLite database at
 // <workspace>/.parallx/extensions/media-organizer/data.db.
 //
-// Single-file constraint: Parallx loads extensions via blob URL, so all JS
-// must live in this file. SQL migrations are separate (read by main process).
+// One file today; the loader resolves relative imports, so the sections below
+// can become modules beside main.js. SQL migrations live in db/migrations.
 //
 // Upstream reference: github.com/stashapp/stash
 

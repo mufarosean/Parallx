@@ -10,7 +10,7 @@
 //   That's it — slash menu, turn-into, placeholder, bubble menu, drag handle,
 //   and extension loading all flow from the single registry entry.
 //
-// See docs/BLOCK_REGISTRY.md for architecture rationale.
+// See docs/canvas/BLOCK_REGISTRY.md for architecture rationale.
 
 // ── Extension imports ───────────────────────────────────────────────────────
 // Tiptap packages (non-StarterKit blocks)
@@ -1504,7 +1504,7 @@ export function getNodePlaceholder(typeName: string, attrs?: Record<string, any>
 // sidebar never import iconRegistry directly.  They import these re-exports
 // from blockRegistry — their single entry point.
 //
-// See docs/ICON_REGISTRY.md for the three-registry architecture.
+// See docs/canvas/ICON_REGISTRY.md for the three-registry architecture.
 
 import {
   svgIcon as _ir_svgIcon,

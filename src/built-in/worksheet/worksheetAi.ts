@@ -1,8 +1,8 @@
 // worksheetAi.ts — Worksheets: AI item generation + attempt review.
 //
-// Same LM discipline as the M98 flashcards work: page-tagged material so page
-// attribution is real, a stall watchdog because the LM API has no
-// AbortSignal, and structured JSON extracted by pure code (itemFormat.ts).
+// Same LM discipline as Flashcards: page-tagged material so page attribution
+// is real, a stall watchdog because the LM API has no timeout, and structured
+// JSON extracted by pure code (itemFormat.ts).
 
 import { extractItemsJson, serializeWorkbookCells, type GeneratedItem } from './itemFormat.js';
 import { ATHENA_ROWS, ATHENA_COLUMNS } from './worksheetConstants.js';

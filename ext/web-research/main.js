@@ -15,11 +15,9 @@
 // require('http'), or require('https') to this file — there is a grep regression test for it
 // (C14, tests/unit/webResearchNoDirectFetch.test.ts).
 //
-// Readability is INLINED at the bottom of this file (Section 11). External
-// extensions are loaded via blob URL, and blob URLs cannot resolve relative
-// imports — so a separate `./readability.js` is unreachable at runtime.
-// The vendored Readability source remains in readability.js for source-of-
-// truth / refresh diffing only; main.js is the single executable artifact.
+// Readability is inlined at the bottom of this file (Section 11) as a copy
+// of ./readability.js, the vendored source. The loader resolves relative
+// imports, so the copy can become `import { Readability } from './readability.js'`.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION 1 — Constants & module state

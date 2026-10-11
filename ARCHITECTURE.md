@@ -1,7 +1,41 @@
 # Parallx – Architecture
 
-> This document defines the responsibility of each module and the allowed dependencies between them.
-> Circular dependencies are **explicitly forbidden**.
+> What each folder is for, which folders may import which, and where to
+> start reading. The rules here are enforced by tests (see "What the tests
+> enforce"), so this document and the code cannot drift apart silently.
+
+---
+
+## Where to start reading
+
+1. `src/main.ts` creates the `Workbench` (`src/workbench/workbench.ts`),
+   the composition root: it builds the services, lays out the parts and
+   activates the built-in tools in named boot phases.
+2. `src/tools/builtinManifests.ts` lists the 18 built-in tools and
+   `src/built-in/<tool>/main.ts` is each one's `activate()`. Everything a
+   tool adds (editors, views, commands, AI tools, blocks, widgets, settings)
+   is registered there through `api.*`, the same API extensions in `ext/`
+   use.
+3. The AI chat is two halves: `src/built-in/chat/` is the panel the user
+   sees; `src/openclaw/` is the runtime behind it (the turn loop, tools,
+   context, memory, routines).
+4. `src/services/serviceTypes.ts` declares every service interface the
+   app wires through dependency injection; implementations sit beside it in
+   `src/services/`.
+
+## Glossary
+
+One idea, one word, in the UI and in code:
+
+| In the UI | In code | Meaning |
+|---|---|---|
+| Tool | built-in (`src/built-in/`) or extension (`ext/`) | A feature the user can turn on or off |
+| Page | canvas page | A document in the Canvas editor |
+| Routine | cron job, workflow | Work that runs on a schedule or a trigger |
+| Chat | chat (UI), openclaw (runtime) | The AI assistant |
+| Atelier | `media-organizer` | The photo and video library; its ids keep the old name because data is stored under them |
+| Creations AI | `creations-ai`, `textGenerator.*` commands | Characters, roleplay and stories |
+| Workspace | workspace | A folder the app has open, with its own `.parallx/` state |
 
 ---
 
@@ -171,263 +205,90 @@ The circular dependency that broke column editing (`978539d`) was caused by exac
 
 ---
 
-## Module Responsibilities
+## Folder Map
 
-### `platform/`
-**Foundational utilities shared across all modules.**
-- Storage abstraction (localStorage, IndexedDB, in-memory)
-- Event emitter system with typed events
-- IDisposable pattern and lifecycle management
-- Service instantiation utilities and decorators
-- Shared types and constants
+Lines are counted at the time of writing; the point is the shape, not the number.
 
-### `services/`
-**Service interfaces and implementations providing capabilities through dependency injection.**
-- Dependency injection container (`ServiceCollection`)
-- Service interface definitions (`serviceTypes.ts`)
-- Concrete service implementations (layout, view, workspace, editor, command, context key)
-- Services are the primary API surface — consumers interact through interfaces, not implementations
+| Folder | What it holds | May import |
+|---|---|---|
+| `src/platform/` (1.8K) | The basics with no DOM: events (`Emitter`), disposables (`Disposable`, `DisposableStore`), storage, URIs, the app clock (`localTime`), DI primitives | nothing else in `src` |
+| `src/ui/` (11K) | DOM widgets and the kit: `kit.ts` (buttons, headers, empty states), context menus, dropdowns, tooltips, the icon registry, Markdown rendering, the code editor host | `platform` |
+| `src/theme/` (1.6K) | The `--px-*` tokens, light and dark themes, appearance settings | `platform`, `ui` |
+| `src/layout/` (2.4K) | The serializable grid the workbench is laid out on | `platform`, `ui` |
+| `src/parts/` (3.4K) | The fixed regions: title bar, activity bar, side bar, editor area, panel, auxiliary bar, status bar | `platform`, `ui`, `layout`, `editor`, service interfaces |
+| `src/views/` (1.6K) | Views and the containers that host them inside parts | `platform`, `ui`, `layout`, service interfaces |
+| `src/editor/` (12.7K) | Editor groups and tabs, and `panes/`: one pane per file kind (code, Markdown, PDF, EPUB, Word, Excel, image, notebook) | `platform`, `ui`, `layout`, `views`, service interfaces |
+| `src/workspace/` (1.6K) | What a workspace is, how its state is saved and restored, recent workspaces | `platform`, service interfaces |
+| `src/commands/` (4.3K) | The command registry, Quick Open and the command palette, the built-in structural commands | `platform`, `context`, service interfaces |
+| `src/context/` (1.4K) | Context keys and `when` clauses (which part is active, what is focused) | `platform`, service interfaces |
+| `src/dnd/` (0.5K) | Drag and drop between parts and views | `platform`, `ui`, `layout`, `views` |
+| `src/tools/` (3.9K) | The extension host: manifests and their schema, discovery, validation, activation events, the module loader (which resolves an extension's relative imports), error isolation | `platform`, `api`, `configuration`, service interfaces |
+| `src/api/` (7.1K) | The `parallx.*` API a tool sees: `apiFactory.ts` builds it per tool; `bridges/` connect each namespace to the services; `parallx.d.ts` is the public type | `platform`, `ui`, `layout`, `views`, `editor`, `commands`, `context`, `configuration`, service interfaces |
+| `src/configuration/` (1K) | Settings schemas tools contribute and per-tool storage | `platform`, service interfaces |
+| `src/contributions/` (2.3K) | Processors for manifest contribution points: commands, keybindings, menus, icons, views | `platform`, `ui`, `views`, `commands`, `context` |
+| `src/services/` (38K) | Service interfaces (`serviceTypes.ts`) and implementations: files, editors, layout, settings, indexing and search, embeddings, language models, agents, autonomy, policies | anything below the tools and the workbench; never a built-in tool |
+| `src/openclaw/` (19K) | The chat runtime: the turn loop (`openclawTurnRunner`, `openclawAttempt`), the context engine, participants, slash commands, routines (cron, heartbeat), MCP clients, the agent "mind" | `platform`, `services`, `agent`; never a built-in tool |
+| `src/agent/` (0.4K) | The agent task model and lifecycle types | `platform` |
+| `src/aiSettings/` (4.4K) | The AI configuration service (presets, profiles) and the AI Settings panel sections | `platform`, `ui`, `services` |
+| `src/links/` (0.4K) | `parallx://` links: parsing, minting, resolving | `platform`, `services` |
+| `src/built-in/<tool>/` (117K) | The 18 first-party tools: canvas, chat, dashboard, settings, explorer, search, terminal, output, planner, worksheet, agents, ai-settings, activity-log, indexing-log, diagnostics, tool-gallery, theme-editor, welcome. `main.ts` is each one's activation | everything below; never another built-in, never the workbench |
+| `src/workbench/` (11.7K) | The composition root: boot phases, service wiring (`workbenchServices.ts`), parts and layout, editor setup, the status bar | anything |
+| `electron/` (16K) | The main process: window and lifecycle (`main.cjs`), the preload bridge (`preload.cjs`), and one bridge per capability (database, files, documents, browser, Python, MCP, models) | (CommonJS, outside the renderer) |
+| `ext/` (125K) | The nine extensions shipped with the app, loaded like any third-party extension: Browser, Budget, Concept Lab, Creations AI, Flashcards, Atelier (`media-organizer`), Study, Web Research, Workspace Graph | only `api.*` |
+| `tests/` | `unit/` (vitest), `e2e/` (Playwright against the built app), `probes/`, `ui-polish/` (screenshot sweeps), `eval/` and `ai-eval/` (model-in-the-loop) | |
 
-### `workbench/`
-**Top-level shell orchestrator.**
-- Root entry point for application initialization
-- Startup and teardown lifecycle sequencing
-- Service registration and wiring
-- Coordinates layout, parts, views, and workspace restoration
-- Does not contain business logic — delegates to services
+### The first principle, in code
 
-### `layout/`
-**Serializable, constraint-based grid layout system.**
-- Layout data model (JSON-serializable schema)
-- Grid tree structure with splitting and resizing
-- Grid view interface for layout participation
-- Layout rendering (state → DOM)
-- Layout persistence (save/load)
+The core knows no optional tool. A built-in or extension adds what it adds
+through a contribution point while it runs: editors and views, commands,
+menus, keybindings, settings, page blocks (`api.canvas.registerBlock`),
+dashboard widgets, AI tools (`api.chat.registerTool`), skills, icons and
+styles. Turned off, all of it goes without a restart. `CLAUDE.md` states
+the rule; `coreToolMentionsRatchet.test.ts` keeps the core from naming a
+tool it may not have.
 
-### `parts/`
-**Structural containers occupying fixed regions in the workbench.**
-- Base `Part` class with lifecycle and grid integration
-- Part registry for registration and lookup
-- Standard parts: Titlebar, Sidebar, Panel, Editor, AuxiliaryBar, StatusBar
-- Parts host view containers but do not own view logic
+### Built-in tools
 
-### `views/`
-**Content-based UI elements hosted within parts.**
-- Generic view interface with full lifecycle
-- View descriptor (metadata and registration)
-- View manager (lifecycle orchestration and placement)
-- View container (tabbed multi-view host)
-- Placeholder views for development and testing
+A built-in lives in `src/built-in/<tool>/` with its manifest in
+`src/tools/builtinManifests.ts`. Those with `required: true` (canvas, chat,
+settings, dashboard and the shell views) are always on; the rest can be
+turned off. A built-in may import the layers below it and the service
+interfaces; it may not import another built-in or the workbench. Two
+built-ins that need each other go through a contribution point.
 
-### `editor/`
-**Editor group system for document hosting.**
-- Editor group container and model (state management)
-- Editor group view (tab UI rendering)
-- Abstract editor input (document/resource representation)
-- Abstract editor pane (content rendering)
-- Editor-related types
+#### Canvas (`src/built-in/canvas/`)
 
-### `workspace/`
-**Workspace identity, state persistence, and switching.**
-- Workspace identity model (ID, name, metadata)
-- Workspace state loading from storage
-- Workspace state saving to storage
-- Workspace-related types
+The page editor, on Tiptap. Its own six-gate import structure is described
+at the top of this document. `canvasDataService.ts` is the data layer
+(pages, trees, autosave, trash, version history); `canvasEditorProvider.ts`
+is the editor; `extensions/` holds one file per block type; `database/` is
+the table system; `ai/` registers the canvas AI tools.
 
-### `commands/`
-**Command registration, lookup, and execution.**
-- Command registry with metadata and when-clause preconditions
-- Command type definitions and interfaces
-- Structural commands (toggle sidebar, split editor, resize, etc.)
+#### Chat (`src/built-in/chat/` and `src/openclaw/`)
 
-### `context/`
-**Structural context tracking and conditional evaluation.**
-- Context key definitions and API
-- Context key evaluation engine
-- Workbench context model (active part, focused view, visibility)
-- Focus tracker (active view/part/region tracking)
-- When-clause expression parser
+`chat/main.ts` is the activation: it builds the providers (Ollama,
+Anthropic), the data service, the tools, the widget and the session list,
+and hands the runtime its services. The runtime in `src/openclaw/` runs a
+turn: `openclawTurnRunner.ts` retries and compacts, `openclawAttempt.ts`
+streams the model and runs tools, `openclawContextEngine.ts` assembles the
+prompt (identity, `SOUL.md`, `USER.md`, `AGENTS.md`, skills, rules, the
+workspace digest, retrieved context, memory, history). Routines run from
+`openclawCronService.ts` and `openclawHeartbeatRunner.ts`; MCP servers from
+`mcp/`; the agent's persistent model from `mind/`. Slash commands are one
+file each in `commands/`.
 
-### `dnd/`
-**Drag-and-drop coordination for views and editors.**
-- Drag-and-drop coordination logic
-- Drop zone rendering and hit detection
-- Visual drop overlay feedback
-- Drag-and-drop types
+### Electron (`electron/`)
 
-### `tools/`
-**Tool discovery, validation, activation, and isolation.**
-- Manifest schema and validation (`parallx-manifest.schema.json`, `toolManifest.ts`, `toolValidator.ts`)
-- Tool scanning from filesystem (`toolScanner.ts`)
-- Tool module loading (`toolModuleLoader.ts`)
-- Registry of discovered and activated tools (`toolRegistry.ts`)
-- Activation event matching (`activationEventService.ts`)
-- Tool activation lifecycle (`toolActivator.ts`)
-- Error isolation to prevent tool crashes from affecting the shell (`toolErrorIsolation.ts`)
+The renderer never touches `ipcRenderer`: everything goes through the
+preload bridge (`window.parallxElectron`), and each main-process capability
+is one `*Bridge.cjs` file with its own IPC handlers. The database runs in a
+worker (`databaseWorker.cjs`) behind `databaseClient.cjs`.
 
-### `api/`
-**Public API surface exposed to tool extensions.**
-- API factory that creates scoped `parallx.*` namespaces per tool (`apiFactory.ts`)
-- API type definitions for tools (`parallx.d.ts`)
-- API version validation (`apiVersionValidation.ts`)
-- Notification, input box, and quick pick UI (`notificationService.ts`)
-- Bridge modules connecting API calls to internal services (`bridges/`)
+### UI (`src/ui/`)
 
-### `configuration/`
-**Configuration schema registration and tool-scoped storage.**
-- Configuration registry for tool-contributed settings (`configurationRegistry.ts`)
-- Configuration service for reading/writing values (`configurationService.ts`)
-- Per-tool memento storage with quota enforcement (`toolMemento.ts`)
-- Configuration types (`configurationTypes.ts`)
-
-### `contributions/`
-**Processing of tool manifest contribution points.**
-- Command registration from manifests (`commandContribution.ts`)
-- Keybinding registration from manifests (`keybindingContribution.ts`)
-- Menu contribution processing (`menuContribution.ts`)
-- Shared contribution types (`contributionTypes.ts`)
-
-### `built-in/`
-**First-party features shipped with the workbench (not loaded as tools).**
-- `welcome/` — Welcome tab shown on startup with start actions (New File, Open File, Open Folder) and recent workspaces/files
-- `editor/` — Built-in editor panes for system UIs:
-  - Keyboard shortcuts viewer (`keybindingsEditorInput.ts`, `keybindingsEditorPane.ts`) — searchable table of all registered keybindings
-  - Settings editor (`settingsEditorInput.ts`, `settingsEditorPane.ts`) — grouped, searchable settings with type-appropriate controls (checkbox, select, number, text)
-- `explorer/` — Built-in file explorer view
-- `output/` — Output panel view
-- `tool-gallery/` — Tool discovery and installation view
-- `canvas/` — Canvas built-in with six-gate registry architecture (five original canvas-core gates plus `databaseRegistry`) (see "Canvas Registry Gate Architecture" above)
-- `chat/` — AI chat assistant (see "Chat / AI Subsystem" below)
-- `search/` — Workspace search view
-
-> Built-in features follow the same `EditorInput` / `EditorPane` patterns as tool-contributed editors.
-> They may depend on `platform`, `services` (interfaces), `editor` (abstract base classes), and `configuration`.
-
-#### Chat / AI Subsystem (`built-in/chat/`)
-
-The chat built-in is the AI assistant — Parallx's "Jarvis". It runs entirely local via Ollama and comprises:
-
-| File | Responsibility |
-|------|---------------|
-| `chatTool.ts` | **Central activation** (~1700 lines). Constructs all chat services, builds `defaultParticipantServices` and `widgetServices`, wires providers, assembles workspace digest. |
-| `chatWidget.ts` | Chat panel UI — TipTap input, message list, context pills, code action handling |
-| `chatContextPills.ts` | Visual context chips above chat input — shows attached files, RAG results, token counts |
-| `chatSessionSidebar.ts` | Session list with full-text search |
-| `chatListRenderer.ts` | Renders chat messages — markdown, code blocks with action buttons, token counts |
-| `participants/defaultParticipant.ts` | Default chat participant with agentic loop (max 10 iterations). Handles prompt assembly, tool invocation, RAG context, budget management. |
-| `tools/builtInTools.ts` | 11+ built-in tools (search, read, write, edit, delete, run_command, etc.) |
-
-**Workspace Digest Pipeline:**
-
-Every system prompt includes a pre-computed workspace digest (~2000 tokens) so the AI "already knows" the workspace without tool calls:
-
-```
-getWorkspaceDigest()
-  ├── DB query: canvas page titles (limit 30)
-  ├── File tree walk: depth 3, max 80 entries, skip hidden/node_modules
-  └── Key file previews: README.md, SOUL.md, AGENTS.md (first 500 chars)
-        │
-        ▼
-  ISystemPromptContext.workspaceDigest
-        │
-        ▼
-  appendWorkspaceStats() → injected into system prompt
-```
-
-**Prompt Assembly Order:**
-1. Core PARALLX_IDENTITY (hardcoded personality + behavior rules)
-2. `SOUL.md` (user-editable personality, `.parallx/SOUL.md`)
-3. `USER.md` (user-editable identity + preferences, `.parallx/USER.md`, M81)
-4. `AGENTS.md` (user-editable project context, `.parallx/AGENTS.md`)
-5. `TOOLS.md` (auto-generated from skill manifests)
-6. `.parallx/rules/*.md` (pattern-matched to active file)
-7. Workspace digest (auto-generated page titles + file tree + key file previews)
-8. RAG results (auto-retrieved per user message; reads MEMORY.md + daily logs through the standard vector index)
-9. Explicit `@` mentions / attachments
-10. Memory context (recalled from past sessions)
-11. Conversation history
-12. User's current message
-
-**Agent-curated memory surface (M81 Phase 8):** `.parallx/memory/` is now an index + topic-file layout, structurally identical to how skills work.
-
-- `MEMORY.md` is a **bounded INDEX** (~2,500 chars). Each line points to a lesson file: `- [Title](lessons/<slug>.md) — one-line description`.
-- `lessons/<slug>.md` files hold the full body. They are **NOT auto-loaded** — the agent reads them on demand via `memory_get name=<slug>` (or `read_file`). Same progressive-disclosure pattern as the skill catalog.
-- `YYYY-MM-DD.md` daily logs are unchanged (append-only, unbounded).
-- `_archive/` holds removed lessons and the pre-M81 regex-extraction noise from MEMORY.md (migrated on first `/init`).
-
-Writes go through one tool, `memory_edit`, with four file values (USER / MEMORY / daily / lesson). The regex-based preference and concept auto-extraction pipelines were removed in Phases 3–4 — agent-authored writes are the single substrate. Corrections, tool-use gotchas, and durable lessons live in `lessons/`; preferences live in `USER.md`; events live in dailies.
-
-`/init` runs a one-time legacy archive (moves pre-M81 `## Concepts` blocks to `_archive/pre-m81-concepts.md`) and, when daily logs exist but no lessons yet, runs an LLM consolidation pass to derive 3–8 starter lessons from recent dailies.
-
-### `electron/`
-**Electron main process and preload bridge (outside `src/`).**
-- `main.cjs` — Window creation, native menu, lifecycle management, IPC handlers
-  - Intercepts window close (`lifecycle:beforeClose` → renderer) to allow unsaved-changes prompts
-  - Confirms close via `lifecycle:confirmClose` IPC from renderer
-- `preload.cjs` — Context bridge exposing `window.parallxElectron` API to the renderer
-  - `onBeforeClose(callback)` — registers listener for close interception
-  - `confirmClose()` — signals main process to proceed with window close
-  - File system, dialog, and shell helpers
-
-> Renderer code must **never** use `ipcRenderer` directly — all IPC goes through the preload bridge.
-
-### `ui/`
-**Reusable UI primitives shared across feature modules.**
-- Mirrors VS Code's `src/vs/base/browser/ui/` pattern
-- Components: `inputBox`, `contextMenu`, `button`, `overlay`, `list`, `breadcrumbs`, `tabBar`, `dialog`, `findReplaceWidget`
-- DOM helpers: `$()` element factory, `addDisposableListener()`, visibility toggles, drag helpers
-- All components extend `Disposable`, accept `(container, options?)`, use co-located CSS
-- Context-agnostic — components don't know which part hosts them
-
-> `ui/` may depend on `platform/` only (events, lifecycle, types).
-
----
-
-## Dependency Rules
-
-### Dependency Matrix
-
-| Module ↓ may depend on → | platform | ui | services | workbench | layout | parts | views | editor | workspace | commands | context | dnd | tools | api | configuration | contributions |
-|--------------------------|:--------:|:--:|:--------:|:---------:|:------:|:-----:|:-----:|:------:|:---------:|:--------:|:-------:|:---:|:-----:|:---:|:-------------:|:-------------:|
-| **platform**             |    —     | ✗  |    ✗     |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **ui**                   |    ✓     | —  |    ✗     |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **services**             |    ✓     | ✗  |    —     |     ✗     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |   ✓   |  ✗  |       ✓       |       ✗       |
-| **workbench**            |    ✓     | ✓  |    ✓     |     —     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |   ✓   |  ✓  |       ✓       |       ✓       |
-| **layout**               |    ✓     | ✓  |    ✗     |     ✗     |   —    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **parts**                |    ✓     | ✓  |    ✓*    |     ✗     |   ✓    |   —   |   ✗   |   ✓    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **views**                |    ✓     | ✓  |    ✓*    |     ✗     |   ✓    |   ✗   |   —   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **editor**               |    ✓     | ✓  |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   —    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **workspace**            |    ✓     | ✗  |    ✓*    |     ✗     |   ✓†   |   ✓†  |   ✓†  |   ✗    |     —     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **commands**             |    ✓     | ✗  |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    —     |    ✓    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **context**              |    ✓     | ✗  |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    —    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **dnd**                  |    ✓     | ✓  |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✗    |     ✗     |    ✗     |    ✗    |  —  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **tools**                |    ✓     | ✗  |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   —   |  ✓  |       ✓       |       ✗       |
-| **api**                  |    ✓     | ✓  |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✓    |     ✗     |    ✓     |    ✓    |  ✗  |   ✓†  |  —  |       ✓       |       ✓†      |
-| **configuration**        |    ✓     | ✗  |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       —       |       ✗       |
-| **contributions**        |    ✓     | ✓  |    ✓*    |     ✗     |   ✗    |   ✗   |   ✓   |   ✗    |     ✗     |    ✓     |    ✓    |  ✗  |   ✓†  |  ✗  |       ✗       |       —       |
-
-> `✓*` = May depend on service **interfaces** only (from `services/serviceTypes.ts`), never on concrete implementations.
->
-> `✓†` = Type-only imports allowed (`import type`). The dependency is on **type definitions** (interfaces, enums, type aliases) only — no runtime coupling.
-
-### Rules in Plain Language
-
-1. **`platform` depends on nothing.** It is the foundational layer.
-2. **`ui` depends only on `platform`.** Reusable UI primitives. Mirrors VS Code's `base/browser/ui/`.
-3. **`layout` depends on `platform` and `ui`.** Grid and layout logic uses UI primitives (VS Code: grid IS in `base/browser/ui/grid/`).
-4. **`parts` depend on `platform`, `ui`, `layout`, `editor`, and service interfaces.** EditorPart integrates with EditorGroupView at runtime — mirroring VS Code's `EditorPart` → `EditorGroupView` pattern.
-5. **`views` depend on `platform`, `ui`, `layout`, and service interfaces.** Views participate in layout but don't know about parts or editors.
-6. **`editor` depends on `platform`, `ui`, `layout`, `views`, and service interfaces.** Editors extend view concepts but don't depend on parts directly.
-7. **`workspace` depends on `platform`, `layout`†, `views`†, `parts`† (type-only), and service interfaces.** Workspace serialization references layout models, view descriptors, and part types for state persistence.
-8. **`commands` depend on `platform`, `context`, and service interfaces.** Commands evaluate context and call services — never import concrete editor/part/built-in types.
-9. **`context` depends on `platform` and service interfaces.** Context is a data tracking layer.
-10. **`dnd` depends on `platform`, `ui`, `layout`, `views`, and service interfaces.** DnD coordinates view movement through layout.
-11. **`tools` depend on `platform`, `api`, `configuration`, and service interfaces.** Tool lifecycle management loads, validates, and activates tools.
-12. **`api` depends on `platform`, `ui`, `layout`, `views`, `editor`, `commands`, `context`, `configuration`, `tools`† (type-only), `contributions`† (type-only), and service interfaces.** API bridges connect tool calls to internal services; the factory imports tool manifest types and contribution processor types.
-13. **`configuration` depends on `platform` and service interfaces.** Configuration is a data/schema concern.
-14. **`contributions` depend on `platform`, `ui`, `views`, `commands`, `context`, `tools`† (type-only), and service interfaces.** Contributions process manifest declarations into registered entities.
-15. **`services` depend on `platform` and may import from any module** to provide concrete implementations behind interfaces.
-16. **`workbench` is the composition root.** It may depend on everything to wire the system together.
+Reusable widgets, each extending `Disposable`, taking `(container,
+options?)`, with co-located CSS. The kit (`kit.ts`) is the vocabulary every
+surface draws from; `--px-*` tokens are the only colours, sizes and motion.
 
 ### Absolute Prohibitions
 
@@ -438,35 +299,69 @@ Writes go through one tool, `memory_edit`, with four file values (USER / MEMORY 
 
 ---
 
-## Layered Architecture Diagram
+## Layers
 
 ```
-┌─────────────────────────────────────────────────┐
-│                   workbench/                     │  ← Composition root
-│          (orchestrates everything)               │
-├─────────────────────────────────────────────────┤
-│                   services/                      │  ← Service layer
-│       (interfaces + implementations)             │
-├────────┬────────┬────────┬────────┬─────────────┤
-│ parts/ │ views/ │editor/ │  dnd/  │  commands/   │  ← Feature modules
-│        │        │        │        │  context/    │
-│        │        │        │        │  workspace/  │
-├────────┴────────┴────────┴────────┴─────────────┤
-│                   layout/                        │  ← Layout engine
-├─────────────────────────────────────────────────┤
-│                  platform/                       │  ← Foundation
-│  (events, lifecycle, storage, instantiation)     │
-└─────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│                       workbench/                              │  composition root
+├───────────────────────────────────────────────────────────────┤
+│              built-in/<tool>/            ext/<tool>/          │  tools (on or off)
+├───────────────────────────────────────────────────────────────┤
+│   tools/   api/   contributions/   configuration/             │  extension host
+├───────────────────────────────────────────────────────────────┤
+│   services/   openclaw/   agent/   aiSettings/   links/       │  services and the chat runtime
+├────────┬────────┬────────┬────────┬──────────┬────────────────┤
+│ parts/ │ views/ │editor/ │  dnd/  │ commands/│ context/       │  shell pieces
+│        │        │        │        │ workspace/                │
+├────────┴────────┴────────┴────────┴──────────┴────────────────┤
+│                        layout/                                │
+├───────────────────────────────────────────────────────────────┤
+│                    ui/        theme/                          │
+├───────────────────────────────────────────────────────────────┤
+│                       platform/                               │  foundation
+└───────────────────────────────────────────────────────────────┘
 ```
+
+Imports point down. `importDirectionRatchet.test.ts` encodes these rules
+and holds a baseline of the few imports that still point up; the baseline
+may only fall.
+
+---
+
+## What the tests enforce
+
+| Rule | Test |
+|---|---|
+| Imports point down the layers | `tests/unit/importDirectionRatchet.test.ts` |
+| The core names no optional tool | `tests/unit/coreToolMentionsRatchet.test.ts` |
+| Files over 800 lines may only shrink | `tests/unit/fileSizeRatchet.test.ts` |
+| Comments carry no milestone tags, dates or names | `tests/unit/historyTagRatchet.test.ts` |
+| Extensions use only names that exist | `tests/unit/extUndefinedNames.test.ts` |
+| Extensions use the kit and the tokens | `tests/unit/extStyleRatchet.test.ts` |
+| The canvas gates (above) | `tests/unit/gateCompliance.test.ts` |
+| Chat files import only through their gates | `tests/unit/chatGateCompliance.test.ts` |
+| A packaged extension holds every module it imports | `tests/unit/packageExtension.test.ts` |
+| `ext/study/main.js` matches its sources | `tests/unit/studyBundle.test.ts` |
+
+The checks every change runs: `npm run typecheck` (the app and the
+tests), `npx vitest run`, `npm run build`.
 
 ---
 
 ## Conventions
 
-- **One concern per file.** Each file has a single, clear responsibility described in its header comment.
-- **Types files are co-located.** Each module has a `*Types.ts` file for shared type definitions within that module.
-- **Interfaces before implementations.** Service interfaces live in `services/serviceTypes.ts`; implementations live alongside them in `services/`.
-- **Test files mirror source structure.** Tests for `src/layout/grid.ts` live at `tests/layout/grid.test.ts` (when testing is introduced).
+- **One concern per file**, named for what it does, with a header comment
+  that says what the file is for and who uses it. No milestone codes,
+  dates or names in comments: history lives in git.
+- **Types beside their module.** Shared types live in a `*Types.ts` file
+  next to the code; service interfaces live in `services/serviceTypes.ts`.
+- **A file fits in one sitting:** under 800 lines, 1,500 at most.
+- **Persisted strings are frozen.** Command ids, setting keys, storage
+  keys, table names, extension ids and migration file names are stored on
+  disk or typed by users; rename the constant, never the value.
+- **Tests live in `tests/unit/`**, named after the subject they test.
+- **Copy:** Title Case for actions and titles, sentence case for section
+  labels and hints, `…` when an action opens a dialog.
 
 ---
 

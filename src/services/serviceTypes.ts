@@ -1409,7 +1409,7 @@ export type DoclingBridgeStatus = 'unavailable' | 'starting' | 'available' | 'do
  * Manages document extraction via the Docling bridge (primary) with
  * fallback to legacy extractors (pdf-parse, mammoth, SheetJS).
  *
- * Reference: docs/Parallx_Milestone_21.md Phase A
+ * Reference: docs/archive/milestones/Parallx_Milestone_21.md Phase A
  */
 export interface IDocumentExtractionService extends IDisposable {
   /** Whether Docling is available on this system. */
@@ -1456,7 +1456,7 @@ export const IDocumentExtractionService = createServiceIdentifier<IDocumentExtra
  * Generates text embeddings via Ollama's /api/embed endpoint.
  * Uses nomic-embed-text v1.5 with mandatory task prefixes.
  *
- * Reference: docs/Parallx_Milestone_10.md DR-1, DR-2
+ * Reference: docs/archive/milestones/Parallx_Milestone_10.md DR-1, DR-2
  */
 export interface IEmbeddingService extends IDisposable {
   /** Embed a single document text (adds 'search_document:' prefix). */
@@ -1509,7 +1509,7 @@ export const IEmbeddingService = createServiceIdentifier<IEmbeddingService>('IEm
  * Splits content into chunks suitable for embedding and retrieval.
  * Supports canvas pages (TipTap JSON) and workspace files.
  *
- * Reference: docs/Parallx_Milestone_10.md DR-6, DR-8
+ * Reference: docs/archive/milestones/Parallx_Milestone_10.md DR-6, DR-8
  */
 export interface IChunkingService extends IDisposable {
   /** Chunk a canvas page by TipTap block boundaries. */
@@ -1527,7 +1527,7 @@ export const IChunkingService = createServiceIdentifier<IChunkingService>('IChun
  * Manages the dual vector + keyword index (sqlite-vec vec0 + FTS5).
  * Provides upsert, delete, and hybrid search with RRF fusion.
  *
- * Reference: docs/Parallx_Milestone_10.md DR-3, DR-4, DR-5
+ * Reference: docs/archive/milestones/Parallx_Milestone_10.md DR-3, DR-4, DR-5
  */
 export interface IVectorStoreService extends IDisposable {
   /** Upsert embedded chunks for a source. */
@@ -1636,7 +1636,7 @@ export const IVectorStoreService = createServiceIdentifier<IVectorStoreService>(
  * vector store. Handles initial full-index on workspace open and
  * incremental re-indexing on saves/file changes.
  *
- * Reference: docs/Parallx_Milestone_10.md Phase 2
+ * Reference: docs/archive/milestones/Parallx_Milestone_10.md Phase 2
  */
 export interface IIndexingPipelineService extends IDisposable {
   /** Whether the pipeline is currently running. */
@@ -1817,7 +1817,7 @@ export const IMindMapRefreshOrchestrator = createServiceIdentifier<IMindMapRefre
  * post-retrieval filtering (score threshold, dedup, token budget), and
  * returns ranked context chunks with source attribution.
  *
- * Reference: docs/Parallx_Milestone_10.md Phase 3 Task 3.1
+ * Reference: docs/archive/milestones/Parallx_Milestone_10.md Phase 3 Task 3.1
  */
 export interface IRetrievalService extends IDisposable {
   /** Retrieve relevant context chunks for a query. */

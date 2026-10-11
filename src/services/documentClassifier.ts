@@ -4,7 +4,7 @@
 // whether a file should be read directly (text), processed via Docling
 // (digital or scanned), or skipped.
 //
-// Reference: docs/Parallx_Milestone_21.md Phase B — Task B.1
+// Reference: docs/archive/milestones/Parallx_Milestone_21.md Phase B — Task B.1
 
 import { Disposable } from '../platform/lifecycle.js';
 
