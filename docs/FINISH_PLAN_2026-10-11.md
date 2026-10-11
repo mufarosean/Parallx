@@ -136,15 +136,18 @@ The chat runs every request through a harness:
 is a bare `sendChatRequest` with its own prompt, model choice and parser.
 That is why they perform worse. The mechanisms, all checked in code:
 
-1. **Reasoning eats the answer.**
+1. **Reasoning has no room.**
    - When a call leaves `think` unset, thinking models reason by default
      (`ollamaProvider.ts:557-566` says so itself).
-   - The output cap counts reasoning tokens.
-   - So the 30- and 200-token calls very likely spend their whole budget
-     thinking and return nothing: cluster naming, Creations turn order,
-     lineage. Their fallbacks then fire silently.
+   - The output cap counts reasoning tokens, and some caps leave no room for
+     it. The 30- and 200-token calls (cluster naming, lineage) very likely
+     spend the whole cap reasoning and return nothing, and their fallbacks
+     then fire silently. Creations turn order has the same shape, but it
+     stays as it is (§4).
    - Canvas inline AI, PDF Ask and Notebook discard the reasoning, so the
      user stares at an empty bubble.
+   - The fix is room to reason, not less reasoning. Mufaro (2026-10-11):
+     "Unthinking models are useless and tend to make more mistakes."
 2. **The context window is unsized.**
    - Calls that omit `numCtx` get whatever window is loaded. Worksheets
      sends up to 60K characters into it.
@@ -180,12 +183,15 @@ That is why they perform worse. The mechanisms, all checked in code:
    answer is sent in one piece after the model finishes (`:905`). The first
    word of an answer arrives when the whole answer is done; until then you
    watch "thinking".
-2. **Reasoning is always on.**
-   - `think: true` is hard-set (`openclawAttempt.ts:471`).
-   - The session flag is only a `??` fallback behind it
-     (`openclawDefaultParticipant.ts:724`), so `/think` cannot turn it off.
-   - Together with (1), a one-line question waits for full reasoning plus a
-     full answer before any answer text appears.
+2. **`/think` did nothing.**
+   - `think: true` was hard-set (`openclawAttempt.ts:471`).
+   - The session flag was only a `??` fallback behind it
+     (`openclawDefaultParticipant.ts:724`), so `/think` could not change
+     anything.
+   - Reasoning on is the right default. With (1), though, the reasoning was
+     the only thing the user could watch until the whole answer arrived.
+   - **Fixed in `d40b6fab`:** reasoning stays on, and `/think` is a working
+     per-session opt-out.
 3. **A fixed prefix of about 15–20K tokens goes out on every turn.**
    - It is 10–15K of tool schemas plus a system prompt of about 5–6K.
    - The schemas are not counted in the token budget at all.
@@ -341,20 +347,24 @@ rest is fair game." So:
 
 Each is small, contained and testable.
 
-1. **The chat answer streams.**
-   - Answer text streams into a provisional part as it is generated;
-     citations are checked at the end and the part is replaced in place.
-   - Per-round narration is already flushed before tool calls, so the
-     original reason for buffering is gone.
-   - `/think` and a setting decide reasoning: `auto` by default, with short
-     turns not reasoning.
-   - This is the single most noticeable change to the chat.
+1. **The chat answer streams.** **Done, `d40b6fab`.**
+   - Answer text streams as it is generated.
+   - A call that fails partway takes back what it streamed.
+   - Citations are checked at the end and replace the streamed text only
+     when they change it.
+   - Measured in the real app: the first answer words appear at 1.4 s
+     instead of 7.0 s.
+   - Reasoning stays on by default; `/think` is a working opt-out.
 2. **Privacy (two bugs):**
    - MCP env values marked `secret` move to safeStorage and old plaintext
      entries migrate.
    - A sealed workspace neither spawns nor offers network MCP servers.
 3. **A request policy for every non-chat call except Creations AI's:**
-   - `think` is set explicitly, off unless the feature needs reasoning.
+   - `think` is set explicitly and stays on. Output caps leave room for the
+     reasoning (no more 30- or 200-token caps on a thinking model), and a
+     feature that shows text shows the reasoning while it happens.
+   - This includes the post-turn conversation summary
+     (`openclawDefaultRuntimeSupport.ts:889`).
    - `numCtx` is sized to prompt plus output.
    - It is applied per feature, not as a bridge-wide default, because a
      bridge default would change what Creations AI sends.
@@ -419,7 +429,7 @@ and the ratchet fails on a new hand-built button anywhere.
 - `schema` (sent to `format`, validated, one repair retry);
 - `context: { page?, selection?, retrieval?, memory? }`;
 - `model: 'chat' | { needs: ['vision'] }`;
-- `think: 'off' | 'auto'`;
+- `think` (on by default, with an output budget that leaves room for it);
 - `maxTokens`;
 - `priority: interactive | background`;
 - `signal`, `timeoutMs`.
