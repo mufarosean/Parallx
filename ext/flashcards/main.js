@@ -2311,10 +2311,16 @@ async function fcEmbeddingsAvailable() {
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 2000);
-    const res = await fetch('http://localhost:11434/api/version', { signal: ctl.signal });
+    const res = await fetch(fcOllamaVersionUrl(svc), { signal: ctl.signal });
     clearTimeout(t);
     return res.ok;
   } catch { return false; }
+}
+
+/** The Ollama the embedding service talks to (the `ollama.baseUrl` setting), never a fixed localhost. */
+function fcOllamaVersionUrl(svc) {
+  const base = String(svc?.baseUrl || 'http://localhost:11434').replace(/\/+$/, '');
+  return `${base}/api/version`;
 }
 
 function fcCardEmbedText(front, back) {
@@ -12296,6 +12302,7 @@ function fcParsePastedRows(text) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const __testables = {
+  fcOllamaVersionUrl,
   fcCustomDeckTag,
   fcListCustomDecks,
   fcCreateCustomDeck,

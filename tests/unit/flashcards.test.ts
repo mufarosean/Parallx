@@ -10,6 +10,17 @@ import { describe, it, expect } from 'vitest';
 // @ts-expect-error â€” JS module with no types
 import { __testables } from '../../ext/flashcards/main.js';
 
+describe('fcOllamaVersionUrl', () => {
+  it('asks the Ollama the embedding service is configured for', () => {
+    expect(__testables.fcOllamaVersionUrl({ baseUrl: 'http://10.0.0.5:11434' })).toBe('http://10.0.0.5:11434/api/version');
+    expect(__testables.fcOllamaVersionUrl({ baseUrl: 'http://gpu-box:11434/' })).toBe('http://gpu-box:11434/api/version');
+  });
+  it('falls back to localhost only when the service names no address', () => {
+    expect(__testables.fcOllamaVersionUrl({})).toBe('http://localhost:11434/api/version');
+    expect(__testables.fcOllamaVersionUrl(null)).toBe('http://localhost:11434/api/version');
+  });
+});
+
 const {
   fcSchedule,
   fcScheduleFsrs,
