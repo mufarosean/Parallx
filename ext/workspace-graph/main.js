@@ -2463,12 +2463,8 @@ Respond using this exact JSON with no other text before or after it:
 
     if (selected?.id !== requestNodeId) return;
 
-    // Parse structured JSON response — greedy match to tolerate preamble/postamble
-    let parsed = null;
-    try {
-      const match = fullText.match(/\{[\s\S]*\}/);
-      if (match) parsed = JSON.parse(match[0]);
-    } catch { /* fall through to raw render */ }
+    // The structured reply, past any preamble or postamble; null falls through to the raw render.
+    const parsed = api.lm.parseJson(fullText);
 
     const askBtnStyle = 'background:none;border:none;color:var(--vscode-descriptionForeground,#555);cursor:pointer;font-size:11px;padding:4px 0 0;font-family:var(--parallx-fontFamily-ui);';
     const actionRowHtml = `<div style="display:flex;gap:12px;margin-top:4px"><button id="__wg_reaskAi" style="${askBtnStyle}">↺ Re-ask AI</button><button id="__wg_addToChat" style="${askBtnStyle}">→ Add to Chat</button></div>`;

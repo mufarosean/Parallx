@@ -22,6 +22,7 @@ import {
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
 import { createUiApi } from './bridges/uiBridge.js';
+import { createLmApi } from './bridges/languageModelBridge.js';
 import type { ExtensionMenuAnchor, IExtensionMenuHandle, IExtensionMenuItem, IExtensionMenuOptions } from '../ui/contextMenu.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
@@ -356,6 +357,7 @@ export interface ParallxApiObject {
     sendChatRequest(modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>, signal?: AbortSignal): AsyncIterable<{ content: string; done: boolean }>;
     registerProvider(provider: { id: string; displayName: string; getModels(): Promise<unknown[]>; checkStatus(): Promise<unknown>; sendChatRequest(...args: unknown[]): AsyncIterable<unknown>; getModelInfo(id: string): Promise<unknown> }): IDisposable;
     onDidChangeModels: (listener: () => void) => IDisposable;
+    parseJson(text: string): Record<string, unknown> | unknown[] | null;
   } | undefined;
   readonly chat: {
     createChatParticipant(id: string, handler: (...args: unknown[]) => Promise<unknown>): IDisposable & { id: string; displayName: string; description: string; iconPath?: string; commands: { name: string; description: string }[] };
@@ -1041,17 +1043,7 @@ export function createToolApi(
     }),
 
     // AI chat namespaces (M9 Cap 8) — undefined if services not available
-    lm: languageModelBridge
-      ? Object.freeze({
-          getModels: () => languageModelBridge.getModels(),
-          getModelInfo: (modelId: string) => languageModelBridge.getModelInfo(modelId),
-          getActiveModel: () => languageModelBridge.getActiveModel(),
-          sendChatRequest: (modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>, signal?: AbortSignal) =>
-            languageModelBridge.sendChatRequest(modelId, messages as any, options as any, signal),
-          registerProvider: (provider: any) => languageModelBridge.registerProvider(provider),
-          onDidChangeModels: (listener: () => void) => languageModelBridge.onDidChangeModels(listener),
-        })
-      : undefined,
+    lm: languageModelBridge ? createLmApi(languageModelBridge) : undefined,
 
     chat: chatBridge
       ? Object.freeze({

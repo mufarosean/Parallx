@@ -23,6 +23,7 @@
 // from the M76 design ("the user's chosen model, not a separate one").
 
 import { Disposable, type IDisposable } from '../platform/lifecycle.js';
+import { findJsonObject } from '../platform/modelJson.js';
 import type {
   IDatabaseService,
   IVectorStoreService,
@@ -479,16 +480,9 @@ export function parseLineageResponse(raw: string): LineageClassification {
   const fallback: LineageClassification = { relationship: 'none', confidence: 0 };
   if (typeof raw !== 'string' || raw.length === 0) return fallback;
 
-  // Extract the first JSON object if there's surrounding prose.
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) return fallback;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[0]);
-  } catch {
-    return fallback;
-  }
+  // The first JSON object in the reply, prose and reasoning around it aside.
+  const parsed: unknown = findJsonObject(raw);
+  if (!parsed) return fallback;
   if (!parsed || typeof parsed !== 'object') return fallback;
   const obj = parsed as { relationship?: unknown; confidence?: unknown };
 

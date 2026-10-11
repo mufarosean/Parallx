@@ -1683,6 +1683,14 @@ export namespace lm {
   export function getModels(): Promise<LanguageModelInfo[]>;
 
   /**
+   * The JSON a reply carries: the whole reply when it is JSON, else the
+   * first object or array in it, past prose, code fences and a leaked
+   * reasoning block; null when none parses. Use it instead of a greedy
+   * regular expression, which fails on two objects or a brace in the prose.
+   */
+  export function parseJson(text: string): Record<string, unknown> | unknown[] | null;
+
+  /**
    * Send a chat request to a specific model and stream the response.
    *
    * @param modelId The model to use (e.g. 'llama3.1:8b').

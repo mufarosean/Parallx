@@ -8,6 +8,7 @@
 // generation speaks THAT, and this file builds the snapshots.
 
 import type { IWorkbookData } from '@univerjs/core';
+import { findJsonArray, stripModelNoise } from '../../platform/modelJson.js';
 import { ATHENA_ROWS, ATHENA_COLUMNS } from './worksheetConstants.js';
 
 // ── Model-facing shapes ─────────────────────────────────────────────────────
@@ -209,22 +210,14 @@ export function workbookHasOnSheetQuestion(json: string): boolean {
  * prose around the array. Returns { items, error } — items is [] on failure.
  */
 export function extractItemsJson(raw: string): { items: GeneratedItem[]; error: string | null } {
-  const text = String(raw ?? '')
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/```(?:json)?/gi, '')
-    .trim();
-
-  const start = text.indexOf('[');
-  const end = text.lastIndexOf(']');
-  if (start < 0 || end <= start) return { items: [], error: 'No JSON array found in the model output.' };
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text.slice(start, end + 1));
-  } catch (err) {
-    return { items: [], error: `The model output was not valid JSON: ${(err as Error).message}` };
+  const text = stripModelNoise(raw);
+  if (!text.includes('[')) return { items: [], error: 'No JSON array found in the model output.' };
+  // Items are objects; a bare "[1]" before the array is a citation, not it.
+  const found = findJsonArray(text, { accept: (arr) => arr.length === 0 || arr.some((e) => !!e && typeof e === 'object') });
+  if (!found.value) {
+    return { items: [], error: found.truncated ? 'The model output was cut off before its JSON array closed.' : 'The model output was not valid JSON.' };
   }
-  if (!Array.isArray(parsed)) return { items: [], error: 'The model output was not a JSON array.' };
+  const parsed: unknown[] = found.value;
 
   const items: GeneratedItem[] = [];
   for (const entry of parsed.slice(0, 10)) {

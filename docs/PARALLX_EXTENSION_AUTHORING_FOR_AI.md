@@ -422,6 +422,7 @@ for await (const chunk of api.lm.sendChatRequest(modelId, messages, options)) {
   // chunk: { content, done, thinking?, toolCalls?, evalCount?, evalDuration? }
 }
 api.lm.onDidChangeModels(listener)
+api.lm.parseJson(replyText)                        // → the JSON in a reply (object or array), past prose, fences and a leaked <think> block; null when none. Never a greedy regex.
 ```
 
 `messages`: `[{ role: 'system'|'user'|'assistant'|'tool', content: string }]`.
@@ -1353,7 +1354,7 @@ api.icons.{getIcon, hasIcon, getAllIconIds, createIconHtml, getFileTypeIcon}
 api.tools.{getAll, getById, isEnabled, setEnabled, onDidChangeEnablement,
            installFromFile, uninstall, onDidInstallTool, onDidUninstallTool, onDidChangeTools}
 api.env.{appName, appVersion, toolPath, timeZone}
-api.lm?.{getModels, sendChatRequest, registerProvider, onDidChangeModels}            // may be undefined
+api.lm?.{getModels, sendChatRequest, registerProvider, onDidChangeModels, parseJson} // may be undefined
 api.chat?.{createChatParticipant, registerTool, registerDropHandler}                 // may be undefined
 api.mcp?.{invokeTool, listTools}                                                     // may be undefined
 api.cron?.{upsertJob, removeJob}                                                     // may be undefined

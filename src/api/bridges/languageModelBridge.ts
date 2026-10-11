@@ -12,6 +12,7 @@ import type {
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
 import type { Event } from '../../platform/events.js';
+import { parseModelJson } from '../../platform/modelJson.js';
 
 /**
  * Bridge for the `parallx.lm` API namespace.
@@ -107,4 +108,19 @@ export class LanguageModelBridge {
       throw new Error(`[LanguageModelBridge] tool "${this._toolId}" is disposed`);
     }
   }
+}
+
+/** The `parallx.lm` object a tool sees, built on its bridge. */
+export function createLmApi(bridge: LanguageModelBridge) {
+  return Object.freeze({
+    getModels: () => bridge.getModels(),
+    getModelInfo: (modelId: string) => bridge.getModelInfo(modelId),
+    getActiveModel: () => bridge.getActiveModel(),
+    sendChatRequest: (modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>, signal?: AbortSignal) =>
+      bridge.sendChatRequest(modelId, messages as any, options as any, signal),
+    registerProvider: (provider: any) => bridge.registerProvider(provider),
+    onDidChangeModels: (listener: () => void) => bridge.onDidChangeModels(listener),
+    // The JSON in a reply, found one way for every tool (platform/modelJson).
+    parseJson: (text: string) => parseModelJson(text),
+  });
 }
