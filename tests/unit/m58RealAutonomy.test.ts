@@ -41,9 +41,7 @@ import { createHeartbeatTurnExecutor } from '../../src/openclaw/openclawHeartbea
 import { createCronTurnExecutor } from '../../src/openclaw/openclawCronExecutor';
 import { HeartbeatRunner, type IHeartbeatConfig } from '../../src/openclaw/openclawHeartbeatRunner';
 import { CronService, type ICronJob } from '../../src/openclaw/openclawCronService';
-import type { IChatAgentService } from '../../src/services/chatAgent';
-import type { IChatModeService } from '../../src/services/chatMode';
-import type { ILanguageModelsService } from '../../src/services/languageModels';
+import type { IChatAgentService, IChatModeService, ILanguageModelsService } from '../../src/services/chatTypes';
 import { ChatMode } from '../../src/services/chatTypes';
 import { ChatContentPartKind, type IChatContentPart } from '../../src/services/chatTypes';
 

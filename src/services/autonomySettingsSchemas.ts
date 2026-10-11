@@ -20,7 +20,7 @@ import { Emitter } from '../platform/events.js';
 //
 // Mirrors M60 §3.8 rationale column. Editor surfaces this verbatim.
 
-const FLAG_DESCRIPTIONS: Readonly<Record<AutonomyFlagId, string>> = Object.freeze({
+export const FLAG_DESCRIPTIONS: Readonly<Record<AutonomyFlagId, string>> = Object.freeze({
   'autonomy.followup.enabled':
     'Let Chat take one more turn on its own when its answer says there is more to do.',
   'autonomy.surface.chat.enabled':
@@ -52,7 +52,7 @@ const FLAG_DESCRIPTIONS: Readonly<Record<AutonomyFlagId, string>> = Object.freez
   'indexing.lazyMtime.enabled':
     'Use page mtime fast-skip during workspace re-open. Avoids re-hashing pages whose `updated_at` predates the persisted `indexed_at` timestamp. Default on (M60 §6 B5).',
   'indexing.worker.enabled':
-    'Run embedding generation inside a Web Worker so the renderer thread stays responsive during bulk indexing. Default off; bake before flipping (M60 §3.8 line 188, §6 B3).',
+    'Run embedding generation inside a Web Worker so the renderer thread stays responsive during bulk indexing. Default on.',
 });
 
 const FLAG_LABELS: Readonly<Partial<Record<AutonomyFlagId, string>>> = Object.freeze({

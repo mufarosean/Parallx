@@ -54,10 +54,9 @@ const FLAG_CANVAS_DATAVIEW_ENABLED = 'canvas.dataview.enabled';
 export const FLAG_PAUSED_GLOBAL = 'autonomy.paused.global';
 const FLAG_RAIL_ENABLED = 'autonomy.rail.enabled';
 export const FLAG_PATTERN_MEMORY_ENABLED = 'autonomy.patternMemory.enabled';
-// M60 Phase θ §6 — T2 perf finish (B3 worker + B5 lazy mtime fast-skip).
-// `indexing.lazyMtime.enabled` (default ON) gates the page mtime fast-skip in
+// `indexing.lazyMtime.enabled` (default on) gates the page mtime fast-skip in
 // `IndexingPipelineService._indexAllPages`. `indexing.worker.enabled` (default
-// OFF per §3.8 line 188) gates the embedding worker offload.
+// on) gates the embedding worker offload.
 const FLAG_INDEXING_LAZY_MTIME_ENABLED = 'indexing.lazyMtime.enabled';
 const FLAG_INDEXING_WORKER_ENABLED = 'indexing.worker.enabled';
 
