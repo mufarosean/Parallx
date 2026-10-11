@@ -95,8 +95,15 @@ export class FileBackedStorage implements IStorage, IDisposable {
 
   // ── Serialized write ──
 
+  private _flushQueued = false;
+
   private _flush(): void {
+    // A burst of sets queues one write: the write reads the cache when it
+    // runs, so every set before then is in it.
+    if (this._flushQueued) return;
+    this._flushQueued = true;
     this._writeQueue = this._writeQueue.then(async () => {
+      this._flushQueued = false;
       if (!this._cache) return;
       const snapshot = new Map(this._cache);
       const obj: Record<string, unknown> = this._options.envelope ? { version: 1 } : {};

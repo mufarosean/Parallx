@@ -61,7 +61,8 @@ const EXEMPT_FILES = new Set([
   'pageMoveTargets.ts',            // Move To…: which pages a page can go under (pure)
   'markdownExport.ts',             // Export utility
   'markdownImport.ts',             // Import utility (M64 Iter 1)
-  'dashboardWidgets.ts',           // M86 — dashboard widget contribution (data service + markdownExport only; no gate interaction)
+  'dashboardWidgets.ts',           // Dashboard widget contribution (data service + markdownExport only; no gate interaction)
+  'pageSources.ts',                // What tools and Quick Open see of the pages (data service only; no gate interaction)
   'main.ts',                       // Activation entry point
   'canvas.css',                    // Stylesheet
   'database/databaseTypes.ts',     // Database type definitions (M8)

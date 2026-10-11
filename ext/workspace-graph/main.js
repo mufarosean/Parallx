@@ -5,6 +5,8 @@
 // One file today; the loader resolves relative imports, so the sections
 // below can become modules beside main.js.
 
+import { EDGE_KINDS, EDGE_KIND_LABEL, EDGE_KIND_RGB, EDGE_KIND_DASH, isConceptEdge } from './edgeKinds.js';
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // STORAGE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -29,61 +31,6 @@ async function _ensureNestedDirs(fs, baseUri, segments) {
     await _ensureDir(fs, current);
   }
   return current;
-}
-
-// M76 edge-kind taxonomy. Phase 1 only writes 'similar-to'; Phases 2/4/5
-// add the others. Defining them up-front keeps the rendering and settings
-// code shape-stable as kinds come online.
-const EDGE_KINDS = [
-  'similar-to', 'references', 'co-occurrence',
-  'same-folder', 'same-author', 'same-date',
-  'extends', 'refutes', 'member-of',
-];
-
-const EDGE_KIND_LABEL = {
-  'similar-to':    'Similarity',
-  'references':    'References',
-  'co-occurrence': 'Co-occurrence',
-  'same-folder':   'Same folder',
-  'same-author':   'Same author',
-  'same-date':     'Same date',
-  'extends':       'Extends',
-  'refutes':       'Refutes',
-  'member-of':     'Concept membership',
-};
-
-// Per-kind visual treatment. All values keyed by edge.kind. Phase 1 only
-// uses 'similar-to'; the others are placeholders ready for Phases 2/4/5.
-const EDGE_KIND_RGB = {
-  'similar-to':    '126,196,244',
-  'references':    '167,230,168',
-  'co-occurrence': '240,198,116',
-  'same-folder':   '180,180,180',
-  'same-author':   '180,180,180',
-  'same-date':     '180,180,180',
-  'extends':       '200,130,230',
-  'refutes':       '230,130,130',
-  'member-of':     '255,192,100',
-};
-
-const EDGE_KIND_DASH = {
-  'similar-to':    [4, 4],
-  'references':    [],
-  'co-occurrence': [2, 3],
-  'same-folder':   [1, 6],
-  'same-author':   [1, 6],
-  'same-date':     [1, 6],
-  'extends':       [],
-  'refutes':       [6, 3],
-  'member-of':     [],
-};
-
-// True if the edge kind is a "concept edge" — anything from the semantic
-// graph service, as opposed to structural workspace edges (file tree,
-// canvas page hierarchy). Used in places that need to distinguish concept
-// edges from structural ones for force-strength and rendering decisions.
-function isConceptEdge(kind) {
-  return typeof kind === 'string' && EDGE_KINDS.indexOf(kind) >= 0;
 }
 
 // Keys in GS that we persist (skip computed/non-serializable values)
@@ -241,6 +188,14 @@ let _linkDistances = [];
 /** Reset the simulation temperature so the graph reanimates. */
 function resetSimulation() { _alpha = 1; }
 
+/** True when two graphs have the same nodes and edges, so the layout can stay put. */
+function sameGraph(nodesA, edgesA, nodesB, edgesB) {
+  if (nodesA.length !== nodesB.length || edgesA.length !== edgesB.length) return false;
+  for (let i = 0; i < nodesA.length; i++) if (nodesA[i].id !== nodesB[i].id) return false;
+  for (let i = 0; i < edgesA.length; i++) if (edgesA[i].source !== edgesB[i].source || edgesA[i].target !== edgesB[i].target) return false;
+  return true;
+}
+
 // ── Visibility: the graph works only while someone can see it ──
 // The sidebar view mounts at boot. Its loop used to draw (and reallocate the
 // canvas) 60 times a second forever, and every trigger, including a 30 s
@@ -298,12 +253,15 @@ const _model = {
         n._pulseStart = now;  // pulse for ~1.5s after first appearance
       }
     }
+    // The physics restarts only when the graph itself changed; a refresh
+    // after an edit to a page's text keeps the layout where it was.
+    const changed = !this.ready || !sameGraph(this.nodes, this.edges, data.nodes, data.edges);
     this.nodes = data.nodes;
     this.edges = data.edges;
     this.byId.clear();
     for (const n of this.nodes) this.byId.set(n.id, n);
     this.ready = true;
-    resetSimulation();
+    if (changed) resetSimulation();
     this._notify();
   },
 
@@ -2796,7 +2754,9 @@ function createGraphSidebar(container, api) {
 
   let changePageSub;
   if (api.workspace.onDidChangeCanvasPages) {
-    changePageSub = api.workspace.onDidChangeCanvasPages(() => m.refresh());
+    // Through the debounced refresh: a burst of autosaves is one rebuild,
+    // and none while no graph is on screen.
+    changePageSub = api.workspace.onDidChangeCanvasPages(() => (_requestRefresh ? _requestRefresh() : m.refresh()));
   }
 
   return {

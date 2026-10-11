@@ -20,6 +20,7 @@ import katex from 'katex';
 import { EditorPane } from '../../editor/editorPane.js';
 import { type IEditorInput } from '../../editor/editorInput.js';
 import { DisposableStore } from '../../platform/lifecycle.js';
+import { rafThrottle } from '../../platform/rafThrottle.js';
 import { FileEditorInput } from './fileEditorInput.js';
 import { MarkdownPreviewInput } from './markdownPreviewInput.js';
 import { ReadonlyMarkdownInput } from './readonlyMarkdownInput.js';
@@ -111,10 +112,11 @@ export class MarkdownEditorPane extends EditorPane {
       const model = await fileInput.resolve();
       this._renderMarkdown(model.content);
 
-      // Re-render on content changes (live preview as user types in text editor)
-      this._inputListeners.add(fileInput.onDidChangeContent((newContent) => {
-        this._renderMarkdown(newContent);
-      }));
+      // Re-render on content changes (live preview as the user types), at
+      // most once per frame: a keystroke burst renders the latest text once.
+      const render = rafThrottle((newContent: string) => this._renderMarkdown(newContent));
+      this._inputListeners.add(render);
+      this._inputListeners.add(fileInput.onDidChangeContent(render));
     } catch (err) {
       console.error('[MarkdownEditorPane] Failed to resolve file:', err);
       this._contentEl.textContent = 'Failed to load markdown file.';

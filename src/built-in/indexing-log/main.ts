@@ -231,10 +231,16 @@ export function deactivate(): void {
 // ── Entry Management ─────────────────────────────────────────────────────────
 
 function addEntry(result: IndexingSourceResult): void {
-  entries.push({ timestamp: Date.now(), result });
+  const entry: IndexingLogEntry = { timestamp: Date.now(), result };
+  entries.push(entry);
 
-  // Trim old entries
-  if (entries.length > MAX_ENTRIES) { entries.shift(); }
+  // Trim old entries, in the list too when the oldest is shown
+  if (entries.length > MAX_ENTRIES) {
+    const dropped = entries.shift()!;
+    if (listEl && listShowsRows && (currentFilter !== 'error' || dropped.result.status === 'error')) {
+      listEl.firstElementChild?.remove();
+    }
+  }
 
   // Update counters
   totalCount++;
@@ -244,7 +250,33 @@ function addEntry(result: IndexingSourceResult): void {
     case 'error': errorCount++; break;
   }
 
-  refreshView();
+  refreshHeader();
+  refreshCounts();
+  appendRow(entry);
+}
+
+/** Whether the list holds rows (true) or the empty state (false). */
+let listShowsRows = false;
+
+/** One row for a new entry; the list is rebuilt only by a filter change or Clear. */
+function appendRow(entry: IndexingLogEntry): void {
+  if (!listEl) { return; }
+  if (currentFilter === 'error' && entry.result.status !== 'error') { return; }
+  if (!listShowsRows) { listEl.innerHTML = ''; listShowsRows = true; }
+  listEl.appendChild(createEntryRow(entry));
+  if (autoScroll) { scrollToEnd(); }
+}
+
+// Scrolling reads the list's height, which forces layout; a burst of
+// indexed sources scrolls once, on the next frame.
+let scrollPending = false;
+function scrollToEnd(): void {
+  if (scrollPending) { return; }
+  scrollPending = true;
+  requestAnimationFrame(() => {
+    scrollPending = false;
+    if (listEl && autoScroll) { listEl.scrollTop = listEl.scrollHeight; }
+  });
 }
 
 function updatePhaseHeader(progress: IndexingProgress): void {
@@ -400,6 +432,7 @@ function refreshList(): void {
   }
 
   listEl.innerHTML = '';
+  listShowsRows = filtered.length > 0;
   if (filtered.length === 0) {
     listEl.appendChild(createPanelEmptyState(
       currentFilter === 'error'

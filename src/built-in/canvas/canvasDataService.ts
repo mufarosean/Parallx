@@ -1373,6 +1373,8 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   private _collectPageBlockIds(node: any, into: Set<string>): void {
     if (!node || typeof node !== 'object') return;
     const t = typeof node.type === 'string' ? node.type : '';
+    // Text nodes are the bulk of a document and never hold a block.
+    if (t === 'text') return;
     const attrs = node.attrs as Record<string, unknown> | undefined;
     if (t === 'pageBlock' && typeof attrs?.pageId === 'string') {
       into.add(attrs.pageId as string);

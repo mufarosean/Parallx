@@ -10,13 +10,6 @@
 
 import { assistantTimeZone } from '../services/localTime.js';
 import {
-  createButton as kitCreateButton,
-  createIconButton as kitCreateIconButton,
-  createPageHeader as kitCreatePageHeader,
-  createEmptyState as kitCreateEmptyState,
-  createSectionLabel as kitCreateSectionLabel,
-  createFilterChip as kitCreateFilterChip,
-  createSegmented as kitCreateSegmented,
   type IKitFilterChipOptions,
   type IKitFilterChip,
   type IKitSegmentedOptions,
@@ -28,15 +21,8 @@ import {
 } from '../ui/kit.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter } from '../platform/events.js';
-import { rafThrottle } from '../platform/rafThrottle.js';
-import { debounce } from '../platform/timing.js';
-import { escapeHtml, formatBytes, titleCase } from '../ui/format.js';
-import { formatRelativeTime } from '../ui/relativeTime.js';
-import { createDropdownHandle, IDropdownItem } from '../ui/dropdown.js';
-import { renderMarkdown } from '../ui/renderMarkdown.js';
-import { createAiButton } from '../ui/aiButton.js';
-import { showExtensionContextMenu, type ExtensionMenuAnchor, type IExtensionMenuHandle, type IExtensionMenuItem, type IExtensionMenuOptions } from '../ui/contextMenu.js';
-import { createIconElement } from '../ui/iconRegistry.js';
+import { createUiApi } from './bridges/uiBridge.js';
+import type { ExtensionMenuAnchor, IExtensionMenuHandle, IExtensionMenuItem, IExtensionMenuOptions } from '../ui/contextMenu.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import {
@@ -617,74 +603,7 @@ export function createToolApi(
         viewsBridge.setBadge(containerId, badge),
     }),
 
-    // Shared UI performance primitives. Extensions building editor pages/panes
-    // should route their own mousemove/scroll/resize handlers through
-    // rafThrottle — the SAME helper the built-in workbench uses — so hot-path
-    // layout work is coalesced to one run per frame everywhere.
-    ui: Object.freeze({
-      rafThrottle,
-      // The same text formatters and debounce the workbench uses, so no
-      // extension writes its own escaper, byte count or "5m ago".
-      debounce,
-      escapeHtml,
-      formatBytes,
-      titleCase,
-      formatRelativeTime,
-      // The SAME .ui-dropdown component the built-in workbench uses —
-      // native <select> popups are Chromium-drawn and unthemeable, so
-      // extensions get the themed primitive instead of cloning it
-      // (media-organizer's hand-rolled mo-dropdown predates this).
-      // Delegates to createDropdownHandle so the extension-facing surface has ONE
-      // definition, co-located with the component. Inlining it here meant a test
-      // could only exercise a stand-in, which is how an extension ends up quietly
-      // depending on behaviour the real handle does not have.
-      createDropdown(container: HTMLElement, options?: {
-        readonly items?: readonly { value: string; label: string; color?: string }[];
-        readonly selected?: string;
-        readonly placeholder?: string;
-        readonly ariaLabel?: string;
-        readonly disabled?: boolean;
-      }) {
-        return createDropdownHandle(container, {
-          items: options?.items as readonly IDropdownItem[] | undefined,
-          selected: options?.selected,
-          placeholder: options?.placeholder,
-          ariaLabel: options?.ariaLabel,
-          disabled: options?.disabled,
-        });
-      },
-      // The shared compact Markdown + KaTeX renderer (.px-markdown). Safe for
-      // model-generated content: raw HTML is never interpreted.
-      renderMarkdown(markdown: string): HTMLElement {
-        return renderMarkdown(markdown);
-      },
-      // THE AI button (.px-ai-btn): the brand mark in an accent pill. Every
-      // "the assistant acts here" affordance uses this, nothing else.
-      createAiButton(container: HTMLElement, options: {
-        readonly label: string;
-        readonly compact?: boolean;
-        readonly ariaLabel?: string;
-        readonly title?: string;
-      }): HTMLButtonElement {
-        return createAiButton(container, options);
-      },
-      // The SAME `.context-menu` the workbench uses (keyboard nav, submenu,
-      // viewport clamp, click-outside dismiss). Extensions were rolling their
-      // own (media-organizer's mo-context-menu predates this).
-      showContextMenu(anchor: ExtensionMenuAnchor, items: ReadonlyArray<IExtensionMenuItem>, options?: IExtensionMenuOptions): IExtensionMenuHandle {
-        return showExtensionContextMenu(anchor, items, options, (icon, c) => c.appendChild(createIconElement(icon, 14)));
-      },
-      // THE chrome kit (src/ui/kit.ts): the same buttons, page header, empty
-      // state and section label the workbench draws. An extension that needs
-      // one of these calls it; it does not style its own.
-      createButton: (container: HTMLElement | null, options: IKitButtonOptions) => kitCreateButton(container, options),
-      createIconButton: (container: HTMLElement | null, options: IKitIconButtonOptions) => kitCreateIconButton(container, options),
-      createPageHeader: (container: HTMLElement | null, options: IKitPageHeaderOptions) => kitCreatePageHeader(container, options),
-      createEmptyState: (container: HTMLElement | null, options: IKitEmptyStateOptions) => kitCreateEmptyState(container, options),
-      createSectionLabel: (container: HTMLElement | null, text: string) => kitCreateSectionLabel(container, text),
-      createFilterChip: (container: HTMLElement | null, options: IKitFilterChipOptions) => kitCreateFilterChip(container, options),
-      createSegmented: (container: HTMLElement | null, options: IKitSegmentedOptions) => kitCreateSegmented(container, options),
-    }),
+    ui: createUiApi(),
 
     // Keybindings feed the SAME single dispatcher the built-in workbench uses.
     // Prefer this (or manifest `contributes.keybindings`) over attaching your own

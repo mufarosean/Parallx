@@ -16,7 +16,7 @@ import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { LinksApi } from '../../links/linksApi.js';
-import { ICanvasPageQueryService, IIndexingPipelineService, IVectorStoreService, IDatabaseService, IEditorService, ISettingsRegistryService } from '../../services/serviceTypes.js';
+import { IIndexingPipelineService, IVectorStoreService, IDatabaseService, IEditorService, ISettingsRegistryService } from '../../services/serviceTypes.js';
 import { ILanguageModelToolsService } from '../../services/chatTypes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
 import { registerCanvasAITools, canvasPageIdFromEditorId } from './ai/canvasAITools.js';
@@ -39,7 +39,7 @@ import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
 import { pageMoveTargets } from './pageMoveTargets.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
-import { registerQuickOpenSource } from '../../services/quickOpenSources.js';
+import { registerCanvasPageSources } from './pageSources.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -399,15 +399,8 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     dispose: () => window.removeEventListener('parallx:canvas-run-legacy-migration', onForceLegacyMigration),
   });
 
-  // 2a. Publish read-only page query service to DI for cross-tool access
-  // Tools see pages without their bodies: lists, trees and change events only.
-  const pageQuery: ICanvasPageQueryService = {
-    getRootPages: () => _dataService!.getRootPages(),
-    getChildren: (parentId) => _dataService!.getChildren(parentId),
-    getPageTree: () => _dataService!.getPageSummaryTree(),
-    onDidChangePage: _dataService.onDidChangePage,
-  };
-  api.services.registerInstance(ICanvasPageQueryService, pageQuery);
+  // 2a. What other tools and Quick Open see of the pages (no bodies).
+  registerCanvasPageSources(api, context.subscriptions, _dataService, openPageInEditor);
   // Publish the FULL data service too, so the dashboard's notes widget can host
   // a real canvas page (create/get/save + live reload) via the shared editor view.
   api.services.registerInstance(ICanvasDataService, _dataService);
@@ -572,30 +565,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   }
 
   const dataServiceRef = _dataService;
-
-  // 2a. Quick Open (Ctrl+P) finds pages beside files, most recently edited
-  //     first, each with the pages above it as its place.
-  context.subscriptions.push(registerQuickOpenSource({
-    id: 'canvas.pages',
-    group: 'pages',
-    listItems: async () => {
-      const flat: { page: IPageSummaryTreeNode; path: string }[] = [];
-      const walk = (nodes: readonly IPageSummaryTreeNode[], path: string): void => {
-        for (const node of nodes) {
-          flat.push({ page: node, path });
-          walk(node.children, path ? `${path} / ${node.title || 'Untitled'}` : (node.title || 'Untitled'));
-        }
-      };
-      walk(await dataServiceRef.getPageSummaryTree(), '');
-      flat.sort((a, b) => (b.page.updatedAt ?? '').localeCompare(a.page.updatedAt ?? ''));
-      return flat.map(({ page, path }) => ({
-        id: page.id,
-        label: page.title || 'Untitled',
-        detail: path || undefined,
-        open: () => { void openPageInEditor(page.id); },
-      }));
-    },
-  }));
 
   // 2b. The LEGACY per-page property system (PropertyDataService + property
   //     bar + page_properties/property_definitions tables) is RETIRED:

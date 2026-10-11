@@ -44,7 +44,7 @@ import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuReg
 import type { SendChatRequestFn, RetrieveContextFn } from './menus/canvasMenuRegistry.js';
 import { motionReduced } from '../../ui/motionPreference.js';
 import { editorContentForStorage, wrapUnknownContent } from './unknownContent.js';
-import { joinPaneMirror, broadcastPaneDoc, type PaneMirrorTarget } from './paneMirror.js';
+import { joinPaneMirror, broadcastPaneDoc, type PaneMirrorTarget, paneMirrorSize } from './paneMirror.js';
 import { mergeLocalEdits } from './reloadMerge.js';
 import { setBlockDocValidator } from './ai/blockApi.js';
 import { decodeCanvasContent } from './contentSchema.js';
@@ -856,8 +856,9 @@ class CanvasEditorPane implements IDisposable, PaneMirrorTarget {
         if (!this._initialContentLoaded) return;
         const json = editorContentForStorage(editor);
         this._dataService.scheduleContentSave(this._pageId, json);
-        // Other editors showing this page take the edit too (C5).
-        broadcastPaneDoc(this, editor.getJSON());
+        // Other editors showing this page take the edit too. Serializing a
+        // second time is only worth it when there is one.
+        if (paneMirrorSize(this._pageId) > 1) broadcastPaneDoc(this, editor.getJSON());
       },
       onTransaction: ({ editor, transaction }) => {
         if (this._suppressUpdate) return;

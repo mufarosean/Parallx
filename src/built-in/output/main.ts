@@ -119,39 +119,62 @@ export function deactivate(): void {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+const MAX_ENTRIES = 1000;
+
+/** A console message arrives: keep it, and add one row rather than rebuild the list. */
 function addEntry(source: string, message: string): void {
-  logEntries.push({ timestamp: Date.now(), source, message });
-  // Cap at 1000 entries
-  if (logEntries.length > 1000) logEntries.shift();
-  refreshList();
+  const entry: LogEntry = { timestamp: Date.now(), source, message };
+  logEntries.push(entry);
+  if (logEntries.length > MAX_ENTRIES) {
+    logEntries.shift();
+    listEl?.firstElementChild?.remove();
+  }
+  if (!listEl) return;
+  listEl.appendChild(createRow(entry));
+  if (emptyEl) emptyEl.hidden = true;
+  scrollToEnd();
 }
 
+/** Rebuild every row: after Clear or a timestamp toggle, not per message. */
 function refreshList(): void {
   if (!listEl) return;
   listEl.innerHTML = '';
-  for (const entry of logEntries) {
-    const row = $('div');
-    row.className = 'px-panel-log-row';
-    if (entry.source === 'warn') row.classList.add('is-warn');
-    else if (entry.source === 'error') row.classList.add('is-error');
-
-    if (showTimestamps) {
-      const d = appDateParts(entry.timestamp);
-      const ts = `${String(d.hour).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}:${String(d.second).padStart(2, '0')}.${String(d.millisecond).padStart(3, '0')}`;
-      const time = $('span.px-panel-log-time');
-      time.textContent = ts;
-      row.appendChild(time);
-    }
-    const message = $('span');
-    message.textContent = entry.message;
-    row.appendChild(message);
-    listEl.appendChild(row);
-  }
-
+  const fragment = document.createDocumentFragment();
+  for (const entry of logEntries) fragment.appendChild(createRow(entry));
+  listEl.appendChild(fragment);
   if (emptyEl) emptyEl.hidden = logEntries.length > 0;
+  scrollToEnd();
+}
 
-  // Auto-scroll to bottom
-  listEl.scrollTop = listEl.scrollHeight;
+function createRow(entry: LogEntry): HTMLElement {
+  const row = $('div');
+  row.className = 'px-panel-log-row';
+  if (entry.source === 'warn') row.classList.add('is-warn');
+  else if (entry.source === 'error') row.classList.add('is-error');
+
+  if (showTimestamps) {
+    const d = appDateParts(entry.timestamp);
+    const ts = `${String(d.hour).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}:${String(d.second).padStart(2, '0')}.${String(d.millisecond).padStart(3, '0')}`;
+    const time = $('span.px-panel-log-time');
+    time.textContent = ts;
+    row.appendChild(time);
+  }
+  const message = $('span');
+  message.textContent = entry.message;
+  row.appendChild(message);
+  return row;
+}
+
+// Scrolling reads the list's height, which forces layout; a burst of
+// messages scrolls once, on the next frame.
+let scrollPending = false;
+function scrollToEnd(): void {
+  if (scrollPending) return;
+  scrollPending = true;
+  requestAnimationFrame(() => {
+    scrollPending = false;
+    if (listEl) listEl.scrollTop = listEl.scrollHeight;
+  });
 }
 
 function renderOutputView(container: HTMLElement): IDisposable {

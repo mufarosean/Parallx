@@ -1288,11 +1288,11 @@ export class PlannerDataService extends Disposable {
     );
     if (res.error) return 0;
     const keep = new Set(sourceIds);
-    const doomed = (res.rows ?? []).filter((r) => !keep.has(r.source_id as string));
-    for (const row of doomed) {
-      const del = await this._db.run(`DELETE FROM planner_events WHERE id = ?`, [row.id as string]);
-      if (!del.error) this._onDidChange.fire({ kind: 'event-removed', eventId: row.id as string });
-    }
+    const doomed = (res.rows ?? []).filter((r) => !keep.has(r.source_id as string)).map((r) => r.id as string);
+    if (doomed.length === 0) return 0;
+    const del = await this._db.run(`DELETE FROM planner_events WHERE id IN (${doomed.map(() => '?').join(',')})`, doomed);
+    if (del.error) return 0;
+    for (const id of doomed) this._onDidChange.fire({ kind: 'event-removed', eventId: id });
     return doomed.length;
   }
 

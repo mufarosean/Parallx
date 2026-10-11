@@ -26,6 +26,7 @@ const SOURCE_GLOBS = ['src/**/*.{ts,css}', 'ext/**/*.{js,css}', 'electron/**/*.{
 const NOT_COUNTED = [
   '**/node_modules/**',
   '**/*.generated.ts',
+  '**/*.d.ts',
   'ext/study/main.js',
   'ext/**/readability.js',
   'ext/**/test/**',

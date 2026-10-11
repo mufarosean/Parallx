@@ -252,8 +252,9 @@ export class ChatSessionSidebar extends Disposable {
     }
   }
 
-  /** Re-render the session list from services. */
+  /** Re-render the session list from services. Hidden, it waits: show() renders. */
   refresh(): void {
+    if (!this._visible) return;
     this._renderSessionList();
   }
 
