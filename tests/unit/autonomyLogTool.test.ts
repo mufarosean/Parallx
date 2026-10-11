@@ -59,7 +59,7 @@ describe('autonomy_log tool', () => {
 
   it('clamps limit to [1, 200]', async () => {
     const log = new AutonomyLogService();
-    for (let i = 0; i < 5; i++) log.append({ origin: 'cron', content: `e${i}` });
+    for (let i = 0; i < 5; i++) log.append({ origin: 'cron', requestText: '', content: `e${i}` });
     const tool = createAutonomyLogTool(log);
 
     const hi = parseResult((await tool.handler({ limit: 9999 }, noCancel)).content);
@@ -71,8 +71,8 @@ describe('autonomy_log tool', () => {
 
   it('forwards origin filter', async () => {
     const log = new AutonomyLogService();
-    log.append({ origin: 'cron', content: 'c' });
-    log.append({ origin: 'heartbeat', content: 'h' });
+    log.append({ origin: 'cron', requestText: '', content: 'c' });
+    log.append({ origin: 'heartbeat', requestText: '', content: 'h' });
     const tool = createAutonomyLogTool(log);
     const parsed = parseResult((await tool.handler({ origin: 'cron' }, noCancel)).content);
     expect(parsed.returned).toBe(1);
@@ -82,8 +82,8 @@ describe('autonomy_log tool', () => {
 
   it('forwards onlyUnread filter', async () => {
     const log = new AutonomyLogService();
-    const a = log.append({ origin: 'cron', content: 'a' });
-    log.append({ origin: 'cron', content: 'b' });
+    const a = log.append({ origin: 'cron', requestText: '', content: 'a' });
+    log.append({ origin: 'cron', requestText: '', content: 'b' });
     log.markRead([a.id]);
 
     const tool = createAutonomyLogTool(log);
@@ -95,8 +95,8 @@ describe('autonomy_log tool', () => {
 
   it('markRead marks returned entries and reduces unreadCount', async () => {
     const log = new AutonomyLogService();
-    log.append({ origin: 'cron', content: 'a' });
-    log.append({ origin: 'cron', content: 'b' });
+    log.append({ origin: 'cron', requestText: '', content: 'a' });
+    log.append({ origin: 'cron', requestText: '', content: 'b' });
     const tool = createAutonomyLogTool(log);
 
     const parsed = parseResult((await tool.handler({ markRead: true }, noCancel)).content);

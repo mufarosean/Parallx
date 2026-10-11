@@ -25,11 +25,12 @@ function makeDb(): {
   const updates: Array<{ sql: string; params: readonly unknown[] }> = [];
   const db: IBuiltInToolDatabase = {
     isOpen: true,
-    async run(sql: string, params: readonly unknown[]) {
-      updates.push({ sql, params: [...params] });
+    async run(sql: string, params?: unknown[]) {
+      updates.push({ sql, params: [...(params ?? [])] });
+      return { changes: 1 };
     },
     async all<T>() { return [] as T[]; },
-    async get<T>(_sql: string, _params: readonly unknown[]) {
+    async get<T>() {
       return { id: 'page-1', title: 'Cover Test' } as unknown as T;
     },
   };

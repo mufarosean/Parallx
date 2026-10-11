@@ -12,7 +12,7 @@
 // model configured.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { NotebookEditorPane } from '../../src/editor/panes/notebook/notebookEditorPane.js';
+import { NotebookEditorPane, type INotebookGenerateProvider, type NotebookGenerateProviderResolver } from '../../src/editor/panes/notebook/notebookEditorPane.js';
 import { NotebookEditorInput } from '../../src/editor/panes/notebook/notebookEditorInput.js';
 import { URI } from '../../src/platform/uri.js';
 import type { IFileService } from '../../src/services/serviceTypes.js';
@@ -57,8 +57,10 @@ function scriptedStream(text: string, chunkSize = 3) {
 interface Harness {
   readonly pane: NotebookEditorPane;
   readonly root: HTMLElement;
+  readonly input: NotebookEditorInput;
   readonly gaps: () => HTMLElement[];
   readonly cellSources: () => string[];
+  readonly renderedSources: () => string[];
   readonly gapButton: (gapIndex: number, label: string) => HTMLButtonElement;
 }
 
@@ -67,7 +69,7 @@ let containers: HTMLElement[] = [];
 
 async function mount(
   sources: readonly string[],
-  provider?: () => Promise<{ sendChatRequest: (...a: never[]) => AsyncIterable<IChatResponseChunk> } | undefined>,
+  provider?: NotebookGenerateProviderResolver,
 ): Promise<Harness> {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -81,7 +83,7 @@ async function mount(
 
   // No kernel: cell execution is not what this file tests, and the pane's
   // no-kernel path is a banner rather than an error.
-  const pane = new NotebookEditorPane(undefined, provider as never);
+  const pane = new NotebookEditorPane(undefined, provider);
   created.push(pane);
   pane.create(container);
   await pane.setInput(input);
@@ -220,7 +222,7 @@ describe('between-cell insert strip', () => {
 
 describe('Generate', () => {
   const withProvider = (text: string) => {
-    const send = vi.fn(scriptedStream(text));
+    const send = vi.fn<INotebookGenerateProvider['sendChatRequest']>(scriptedStream(text));
     return { send, resolve: async () => ({ sendChatRequest: send }) };
   };
 
@@ -400,7 +402,7 @@ describe('Generate', () => {
   });
 
   it('offers Generate on the toolbar as well as in the strips', async () => {
-    const h = await mount(['a = 1']);
+    await mount(['a = 1']);
     const labels = [...document.querySelectorAll('.nb-toolbar .nb-btn')].map((b) => b.textContent?.trim());
     expect(labels).toContain('Generate');
   });

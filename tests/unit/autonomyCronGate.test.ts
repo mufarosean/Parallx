@@ -1,9 +1,10 @@
 // autonomyCronGate.test.ts — M60 Phase γ §3.7 (idempotency, missed-job
 // coalesce, shutdown) + §3.8 (flag gate) + §3.10 (event emit) for CronService.
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import {
   CronService,
+  type CronTurnExecutor,
   type ICronFireAutonomyInfo,
   type ICronJob,
   type ICronPersistedSnapshot,
@@ -12,9 +13,9 @@ import {
 function makeService(opts: {
   isFlagEnabled?: () => boolean;
   onAutonomyEvent?: (info: ICronFireAutonomyInfo) => void;
-  executor?: ReturnType<typeof vi.fn>;
+  executor?: Mock<CronTurnExecutor>;
 } = {}) {
-  const executor = opts.executor ?? vi.fn().mockResolvedValue(undefined);
+  const executor = opts.executor ?? vi.fn<CronTurnExecutor>().mockResolvedValue(undefined);
   const fetcher = vi.fn().mockResolvedValue([]);
   const svc = new CronService(executor, fetcher, null);
   if (opts.isFlagEnabled || opts.onAutonomyEvent) {
@@ -102,15 +103,11 @@ describe('CronService — M60 §3.7 idempotency keys (auto-firings only)', () =>
     });
     // Pin nextRunAt so two _checkDueJobs passes hit the same scheduledAt.
     const fixedJob: ICronJob = { ...svc.getJob(job.id)!, nextRunAt: 1234567890 };
-    // @ts-expect-error — reach into private map for the test only.
     svc['_jobs'].set(fixedJob.id, fixedJob);
     // First auto-fire: executes.
-    // @ts-expect-error — private method access for test only.
     await svc['_executeJob'](fixedJob, { trackIdempotency: true });
     // Reset nextRunAt so scheduledAt matches; second auto-fire: deduped.
-    // @ts-expect-error — same.
     svc['_jobs'].set(fixedJob.id, fixedJob);
-    // @ts-expect-error — private method access for test only.
     await svc['_executeJob'](fixedJob, { trackIdempotency: true });
     expect(executor).toHaveBeenCalledTimes(1);
     expect(

@@ -76,7 +76,7 @@ describe('createSandboxFrame — the jail', () => {
   });
 
   it('falls back to srcdoc when createObjectURL is unavailable', () => {
-    // @ts-expect-error — simulate an env without blob URLs.
+    // Simulate an env without blob URLs.
     const original = URL.createObjectURL;
     // @ts-expect-error
     URL.createObjectURL = undefined;

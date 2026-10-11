@@ -12,14 +12,15 @@ import {
   isDeletePolicySetting,
   applyDeletePolicy,
 } from '../../src/services/deletePolicy';
+import type { ISettingSchema } from '../../src/services/settingsRegistryService';
 
 function fakeRegistry(initial?: Record<string, unknown>) {
-  const schemas = new Map<string, { default: unknown }>();
+  const schemas = new Map<string, ISettingSchema>();
   const values = new Map<string, unknown>(Object.entries(initial ?? {}));
   let registrations = 0;
   return {
     registrations: () => registrations,
-    register(schema: { key: string; default: unknown }) { registrations++; schemas.set(schema.key, schema); },
+    register(schema: ISettingSchema) { registrations++; schemas.set(schema.key, schema); },
     getSchema(key: string) { return schemas.get(key); },
     getValue<T>(key: string): T {
       const s = schemas.get(key);

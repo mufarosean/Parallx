@@ -28,14 +28,6 @@ function p(text: string) {
   return { type: 'paragraph', content: [{ type: 'text', text }] };
 }
 
-async function getTopLevelBlockTypes(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const editor = (window as any).__tiptapEditor;
-    if (!editor) return [];
-    return (editor.getJSON().content || []).map((n: any) => n.type);
-  });
-}
-
 async function getPageCount(page: Page): Promise<number> {
   // A page can show twice (Recent and Pages); count pages, not rows.
   return page.evaluate(async () => {

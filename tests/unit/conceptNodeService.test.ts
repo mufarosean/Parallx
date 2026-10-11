@@ -5,6 +5,7 @@ import {
   cleanLabel,
 } from '../../src/services/conceptNodeService.js';
 import { MindMapRefreshOrchestrator } from '../../src/services/mindMapRefreshOrchestrator.js';
+import type { ILanguageModelsService } from '../../src/services/chatTypes.js';
 
 // ── cleanLabel (pure helper) ──────────────────────────────────────────
 
@@ -246,7 +247,7 @@ function createMockLanguageModels(modelId: string = 'mock', response: string = '
     setStorage: vi.fn(async () => {}),
     setDefaultModel: vi.fn(),
     sendChatRequest: vi.fn(),
-    sendChatRequestForModel: vi.fn(() => mockChatStream(response)),
+    sendChatRequestForModel: vi.fn<ILanguageModelsService['sendChatRequestForModel']>(() => mockChatStream(response)),
     checkStatus: vi.fn(),
     dispose: vi.fn(),
   };
@@ -299,7 +300,7 @@ describe('ConceptNodeService', () => {
     // 1-3 word label (a 30-token cap left a reasoning model nothing to say).
     const labelOptions = vi.mocked(lm.sendChatRequestForModel).mock.calls[0][2];
     expect(labelOptions).toMatchObject({ think: true });
-    expect(labelOptions.maxTokens).toBeGreaterThan(30 + 1000);
+    expect(labelOptions!.maxTokens).toBeGreaterThan(30 + 1000);
 
     // Three member-of edges
     const memberOfEdges = db.semanticGraphEdges.filter((e) => e.kind === 'member-of');

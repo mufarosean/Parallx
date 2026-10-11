@@ -37,7 +37,6 @@ function layerOf(srcPath: string): string {
   return parts.length > 1 ? parts[0] : '(root)';
 }
 
-const LOWER = new Set(['platform', 'ui', 'theme', 'layout']);
 const NEVER_UPWARD = new Set([
   'services', 'openclaw', 'agent', 'aiSettings', 'links',
   'api', 'tools', 'contributions', 'configuration', 'commands', 'context', 'editor', 'parts', 'views', 'dnd', 'workspace',

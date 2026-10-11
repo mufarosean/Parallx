@@ -35,7 +35,7 @@ function memoryFs(): IAutonomyEventLogFs {
 beforeEach(async () => {
   if (!(globalThis as { crypto?: { subtle?: SubtleCrypto } }).crypto?.subtle) {
     const { webcrypto } = await import('node:crypto');
-    (globalThis as { crypto: typeof webcrypto }).crypto = webcrypto;
+    (globalThis as { crypto?: unknown }).crypto = webcrypto;
   }
 });
 

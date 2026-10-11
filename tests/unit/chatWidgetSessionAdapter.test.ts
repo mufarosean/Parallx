@@ -16,7 +16,7 @@ describe('chat widget session adapter', () => {
       getSystemPrompt: vi.fn().mockResolvedValue('system prompt'),
     });
 
-    expect(services.getSessions()).toBe(sessions);
+    expect(services.getSessions?.()).toBe(sessions);
     expect(services.getSession?.('session-2')).toEqual({ id: 'session-2' });
     services.deleteSession?.('session-1');
     expect(deleteSession).toHaveBeenCalledWith('session-1');

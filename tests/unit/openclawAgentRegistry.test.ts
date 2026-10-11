@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { AgentRegistry, createAgentRegistry } from '../../src/openclaw/agents/openclawAgentRegistry';
+import { createAgentRegistry } from '../../src/openclaw/agents/openclawAgentRegistry';
 import type { IAgentConfig } from '../../src/openclaw/agents/openclawAgentConfig';
 import { DEFAULT_AGENT_CONFIGS } from '../../src/openclaw/agents/openclawAgentConfig';
 

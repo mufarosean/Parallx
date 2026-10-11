@@ -57,6 +57,23 @@ const id = (chatSessionId: string, turnId: string, workspaceSessionId = 'wss1') 
 
 interface Hook { match: (method: string, params: Any, sid: string | null, rec: Any) => boolean; fn: (params: Any, rec: Any) => Any; once: boolean }
 
+/** What makeHarness adds to its base object after the broker is made. */
+interface HarnessMembers {
+  broker: Any;
+  clearedPrivate?: string[];
+  makeRec: (tabId: string, kind: string) => Any;
+  views: Any;
+  trusted: () => { sender: Any; senderFrame: object };
+  call: (method: string, payload?: Any, budget?: number, event?: Any) => Promise<Any>;
+  run: (action: Any, identity?: Any, budget?: number) => Promise<Any>;
+  state: () => Any;
+  tabOf: (chat: string) => string | null;
+  recOf: (chat: string) => Any;
+  hold: (match: Hook['match']) => { reached: Promise<Any>; release: (v?: Any) => void };
+  inputs: (fromIndex?: number) => { tabId: string; method: string; params: Any; sid: string | null }[];
+  runStates: (chat?: string) => Any[];
+}
+
 /**
  * A broker over fake views. Every view shares one page model (`page`); each
  * has its own address and history. The debugger's commands land in `log`;
@@ -102,7 +119,9 @@ function makeHarness(o: { userData?: string; allowLocal?: string; resolvesPrivat
     }, 10),
     hang: (wc: Any, u: string) => setTimeout(() => { wc.emit('did-start-navigation', { url: u, isMainFrame: true, isSameDocument: false }); }, 5),
   };
-  const h: Any = { userData, handlers, events, mainFrame, mw, page, log, hooks, recs, loads, loaders, loader: loaders.commit };
+  const base = { userData, handlers, events, mainFrame, mw, page, log, hooks, recs, loads, loaders, loader: loaders.commit as (wc: Any, u: string) => void };
+  // The members in HarnessMembers are set below, once the broker exists.
+  const h = base as typeof base & HarnessMembers;
 
   const node = (backendNodeId: number) => page.nodes.find((n) => n.backendDOMNodeId === backendNodeId);
   function evaluate(rec: Any, expression: string): Any {
@@ -230,7 +249,7 @@ function makeHarness(o: { userData?: string; allowLocal?: string; resolvesPrivat
   };
   h.state = () => h.broker._state();
   h.tabOf = (chat: string) => { const c = h.state().chats.get(chat); return c ? c.activeTab : null; };
-  h.recOf = (chat: string) => recs.get(h.tabOf(chat));
+  h.recOf = (chat: string) => { const tab = h.tabOf(chat); return tab === null ? undefined : recs.get(tab); };
   /** Hold the next matching command until release(); `reached` resolves when it is sent. */
   h.hold = (match: Hook['match']) => {
     let release: (v?: Any) => void = () => {};
@@ -827,7 +846,7 @@ describe('page dialogs', () => {
     expect((await h.run({ op: 'wait', for: 'text', value: 'x', timeoutMs: 500 })).error.code).toBe('DIALOG_OPEN');
     // Answering it: the page did not change, so it says so.
     const a = await h.run({ op: 'act', action: 'dialog', accept: true, text: 'my answer' });
-    expect(h.log.find((e: Any) => e.method === 'Page.handleJavaScriptDialog').params).toEqual({ accept: true, promptText: 'my answer' });
+    expect(h.log.find((e) => e.method === 'Page.handleJavaScriptDialog')?.params).toEqual({ accept: true, promptText: 'my answer' });
     expect(a.status).toBe('ok');
     expect(a.summary).not.toContain('IGNORE');
     const kinds = a.evidence.map((e: Any) => e.kind);

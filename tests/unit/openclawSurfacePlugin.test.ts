@@ -14,7 +14,6 @@ import {
   type ISurfacePlugin,
   type ISurfaceCapabilities,
   type ISurfaceDelivery,
-  type ISurfaceDeliveryParams,
 } from '../../src/openclaw/openclawSurfacePlugin';
 
 // ---------------------------------------------------------------------------

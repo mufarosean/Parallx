@@ -151,7 +151,7 @@ describe('ChunkingService', () => {
 
     it('carries overlap on size-limit flushes within a page section', async () => {
       // Build a page with many paragraph blocks under one heading that exceed MAX_CHUNK_CHARS (1024)
-      const blocks = [heading(1, 'Long Section')];
+      const blocks: Record<string, unknown>[] = [heading(1, 'Long Section')];
       for (let i = 0; i < 10; i++) {
         blocks.push(paragraph('This is a substantial paragraph with plenty of text to fill up space. '.repeat(3)));
       }

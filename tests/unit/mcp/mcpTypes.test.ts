@@ -9,7 +9,6 @@ import type {
   IMcpToolCallResultContent,
   IMcpToolCallParams,
   IMcpInitializeParams,
-  IMcpInitializeResult,
   IMcpServerConfig,
   McpConnectionState,
   McpTransportType,

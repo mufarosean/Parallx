@@ -41,7 +41,11 @@ function createMockToolsService(): ILanguageModelToolsService & { registeredTool
     getTools: () => registeredTools,
     getTool: (name: string) => registeredTools.find(t => t.name === name),
     getToolDefinitions: () => [],
+    getReadOnlyToolDefinitions: () => [],
     invokeTool: vi.fn(async () => ({ content: '' })),
+    isToolEnabled: () => true,
+    setToolEnabled: vi.fn(),
+    getEnabledCount: () => registeredTools.length,
     onDidChangeTools: vi.fn(() => ({ dispose: vi.fn() })) as any,
     dispose: vi.fn(),
   };
@@ -786,7 +790,7 @@ describe('memory_search tool', () => {
   it('filters retrieval results to canonical memory files', async () => {
     const toolsService = createMockToolsService();
     const canonicalMemorySearch = createMockCanonicalMemorySearch({
-      search: vi.fn(async () => [
+      search: vi.fn<IBuiltInToolCanonicalMemorySearch['search']>(async () => [
         {
           sourceId: '.parallx/memory/MEMORY.md',
           contextPrefix: 'Durable memory',
@@ -909,17 +913,6 @@ describe('set_page_property tool', () => {
     registerToolsForTest(toolsService, db);
     tool = toolsService.registeredTools.find(t => t.name === 'canvas_set_page_property')!;
   });
-
-  /** Mock the new database-aware flow: page lookup (get) → memberships (all)
-   *  → per-membership property lookup (get) [→ MAX sort (get) when creating]. */
-  function mockMemberPage(opts: { property?: { id: string; type: string } | undefined }): void {
-    (db.get as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({ id: 'p1', title: 'My Page' })                 // page lookup
-      .mockResolvedValueOnce(opts.property)                                  // property by name in db1
-      .mockResolvedValueOnce({ max_sort: 1 });                               // MAX sort (creation path only)
-    (db.all as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce([{ database_id: 'db1', title: 'Projects' }]);   // memberships
-  }
 
   it('errors helpfully when the page is not in any database', async () => {
     (db.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'p1', title: 'My Page' });

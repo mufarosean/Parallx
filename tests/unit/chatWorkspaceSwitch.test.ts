@@ -1,11 +1,11 @@
 // chatWorkspaceSwitch.test.ts — Tests for workspace-scoped chat persistence behaviour.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ChatService } from '../../src/services/chatService';
 import { ChatAgentService } from '../../src/services/chatAgentService';
 import { ChatModeService } from '../../src/services/chatModeService';
 import { LanguageModelsService } from '../../src/services/languageModelsService';
-import type { IChatPersistenceDatabase } from '../../src/services/chatSessionPersistence';
+import type { IChatPersistenceDatabase, IChatPersistenceTxnOp } from '../../src/services/chatSessionPersistence';
 import type {
   IChatParticipant,
   IChatParticipantRequest,
@@ -36,16 +36,18 @@ function createDefaultAgent(): IChatParticipant {
 
 function createMockDb(): IChatPersistenceDatabase {
   return {
-    async run(_sql: string, _params?: unknown[]): Promise<void> {},
-    async get<T>(_sql: string, _params?: unknown[]): Promise<T | undefined> {
-      return undefined;
+    async run(_sql: string, _params?: unknown[]): Promise<{ changes: number }> {
+      return { changes: 0 };
+    },
+    async get<T>(_sql: string, _params?: unknown[]): Promise<T | null> {
+      return null;
     },
     async all<T>(_sql: string, _params?: unknown[]): Promise<T[]> {
       return [];
     },
-    async runTransaction(fn: (tx: { run: (sql: string, params?: unknown[]) => Promise<void> }) => Promise<void>): Promise<void> {
-      const tx = { async run(_sql: string, _params?: unknown[]): Promise<void> {} };
-      await fn(tx);
+    // A transaction whose statements do nothing, like `run` above.
+    async runTransaction(operations: IChatPersistenceTxnOp[]): Promise<unknown[]> {
+      return operations.map(() => undefined);
     },
     isOpen: true,
   };

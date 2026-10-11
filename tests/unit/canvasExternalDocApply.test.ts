@@ -5,7 +5,7 @@
 // stay on screen and be saved back).
 
 import { describe, expect, it } from 'vitest';
-import { Editor } from '@tiptap/core';
+import { Editor, type JSONContent } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { common, createLowlight } from 'lowlight';
 import { createEditorExtensions } from '../../src/built-in/canvas/config/tiptapExtensions';
@@ -15,7 +15,7 @@ const lowlight = createLowlight(common);
 const p = (id: string, text: string) => ({ type: 'paragraph', attrs: { id }, content: [{ type: 'text', text }] });
 const h = (id: string, text: string) => ({ type: 'heading', attrs: { id, level: 1 }, content: [{ type: 'text', text }] });
 
-function make(content: unknown[], focused = true): Editor {
+function make(content: JSONContent[], focused = true): Editor {
   const ed = new Editor({
     element: document.createElement('div'),
     extensions: createEditorExtensions(lowlight, {}),

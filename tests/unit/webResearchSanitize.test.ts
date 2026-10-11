@@ -6,12 +6,14 @@ let ext: any;
 let DOMParserCtor: any;
 
 beforeEach(async () => {
+  // @ts-expect-error — JS module with no types
   ext = await import('../../ext/web-research/main.js');
   // jsdom-style parser. Node has none built in; we use a tiny shim by lazy-
   // loading jsdom if available, otherwise we synthesize one with linkedom-
   // style fall-back via the `happy-dom` package. Both are dev deps via vitest.
   if (!DOMParserCtor) {
     try {
+      // @ts-expect-error — no declaration file for jsdom in this probe
       const mod = await import('jsdom');
       const { JSDOM } = mod as any;
       DOMParserCtor = class {
@@ -19,6 +21,7 @@ beforeEach(async () => {
       };
     } catch {
       // Fall back to happy-dom (vitest dep)
+      // @ts-expect-error — happy-dom may be absent; this probe falls back to it
       const mod = await import('happy-dom');
       const { Window } = mod as any;
       DOMParserCtor = class {

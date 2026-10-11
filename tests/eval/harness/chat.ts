@@ -102,7 +102,7 @@ export async function sendChatTurn(page: Page, message: string, timeoutMs = 150_
   }
 
   const assistantText = (await body.textContent().catch(() => '')) || '';
-  const toolInvocations = await collectToolInvocations(page, body);
+  const toolInvocations = await collectToolInvocations(body);
 
   return {
     assistantText: assistantText.trim(),
@@ -112,7 +112,7 @@ export async function sendChatTurn(page: Page, message: string, timeoutMs = 150_
   };
 }
 
-async function collectToolInvocations(page: Page, body: import('@playwright/test').Locator): Promise<ToolInvocationRecord[]> {
+async function collectToolInvocations(body: import('@playwright/test').Locator): Promise<ToolInvocationRecord[]> {
   const cards = body.locator('.parallx-chat-tool-invocation');
   const n = await cards.count();
   const out: ToolInvocationRecord[] = [];

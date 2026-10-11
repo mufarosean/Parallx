@@ -42,7 +42,7 @@ describe('governance #1 — provenance required', () => {
     const a = applyUpdate([], belief(), 0, () => 'fixed');
     const b = applyUpdate(a, belief({ id: 'fixed', provenance: ['receipt-2'], confidence: 0.9 }), DAY, genId);
     expect(b).toHaveLength(1);
-    expect(b[0].provenance.sort()).toEqual(['receipt-1', 'receipt-2']);
+    expect([...b[0].provenance].sort()).toEqual(['receipt-1', 'receipt-2']);
     expect(b[0].confidence).toBe(0.9);
     expect(b[0].updatedMs).toBe(DAY);
   });

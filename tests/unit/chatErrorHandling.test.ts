@@ -1,19 +1,12 @@
 // Unit tests for M9.2 error handling, token estimation, and edit mode parsing
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { ChatService } from '../../src/services/chatService';
 import { ChatAgentService } from '../../src/services/chatAgentService';
 import { ChatModeService } from '../../src/services/chatModeService';
 import { LanguageModelsService } from '../../src/services/languageModelsService';
 import { ChatMode, ChatContentPartKind } from '../../src/services/chatTypes';
-import type {
-  IChatParticipant,
-  IChatParticipantRequest,
-  IChatParticipantContext,
-  IChatResponseStream,
-  ICancellationToken,
-  IChatParticipantResult,
-} from '../../src/services/chatTypes';
+import type { IChatParticipant } from '../../src/services/chatTypes';
 
 // ── Helpers ──
 

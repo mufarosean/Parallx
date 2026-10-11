@@ -8,8 +8,11 @@
 // policy and link resolver, against an in-memory workspace.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+// @ts-expect-error — JS module with no types
 import * as core from '../../ext/creations-ai/character-tool-core.js';
+// @ts-expect-error — JS module with no types
 import { parseSheetStructure, DEFAULT_SHEET_STRUCTURE, sheetFromCharacter, characterFromSheet, keepSheetInStep } from '../../ext/creations-ai/studio-core.js';
+// @ts-expect-error — JS module with no types
 import { __testables } from '../../ext/creations-ai/main.js';
 import { ChatBridge } from '../../src/api/bridges/chatBridge';
 import { ChatAgentService } from '../../src/services/chatAgentService';

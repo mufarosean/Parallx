@@ -9,14 +9,17 @@ let ext: any;
 let DOMParserCtor: any;
 
 beforeEach(async () => {
+  // @ts-expect-error — JS module with no types
   ext = await import('../../ext/web-research/main.js');
   if (!DOMParserCtor) {
     try {
+      // @ts-expect-error — no declaration file for jsdom in this probe
       const mod: any = await import('jsdom');
       DOMParserCtor = class {
         parseFromString(s: string, _ct: string) { return new mod.JSDOM(s).window.document; }
       };
     } catch {
+      // @ts-expect-error — happy-dom may be absent; this probe falls back to it
       const mod: any = await import('happy-dom');
       DOMParserCtor = class {
         parseFromString(s: string, _ct: string) {

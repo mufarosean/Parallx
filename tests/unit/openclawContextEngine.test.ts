@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
 
 import { OpenclawContextEngine, historyFingerprint, COMPACTION_SUMMARIZATION_PROMPT, type IOpenclawContextEngineServices } from '../../src/openclaw/openclawContextEngine';
 import type { IOpenclawCompactionCacheEntry } from '../../src/openclaw/openclawTypes';
@@ -9,7 +9,12 @@ import type { IChatMessage, IChatResponseChunk } from '../../src/services/chatTy
 // Mock services factory
 // ---------------------------------------------------------------------------
 
-function createMockServices(overrides?: Partial<IOpenclawContextEngineServices>): IOpenclawContextEngineServices {
+/** The engine's services, plus the open-page reader it no longer calls (M84). */
+type MockServices = IOpenclawContextEngineServices & {
+  getCurrentPageContent?: Mock<() => Promise<{ title: string; pageId: string; textContent: string }>>;
+};
+
+function createMockServices(overrides?: Partial<MockServices>): MockServices {
   return {
     retrieveContext: vi.fn(async () => ({
       text: 'Insurance policy covers collision damage with $500 deductible.',
@@ -117,7 +122,7 @@ describe('trimTextToBudget', () => {
 // ---------------------------------------------------------------------------
 
 describe('OpenclawContextEngine', () => {
-  let services: IOpenclawContextEngineServices;
+  let services: MockServices;
   let engine: OpenclawContextEngine;
 
   beforeEach(() => {
@@ -1196,10 +1201,10 @@ describe('compaction honesty (HARNESS.md 1.2)', () => {
   });
 
   it('compact() transcript labels tool activity so the summarizer can fill Failures/State', async () => {
-    const summarizer = vi.fn(async function* (): AsyncIterable<IChatResponseChunk> {
+    const summarizer = vi.fn<NonNullable<IOpenclawContextEngineServices['sendSummarizationRequest']>>(async function* () {
       yield { content: 'Mission: keep going. fs_read_file a.ts 2026-08-30', done: true } as IChatResponseChunk;
     });
-    const services = createMockServices({ sendSummarizationRequest: summarizer as never });
+    const services = createMockServices({ sendSummarizationRequest: summarizer });
     const engine = new OpenclawContextEngine(services);
     await engine.bootstrap({ sessionId: 's-tools', tokenBudget: 100_000 });
 

@@ -153,8 +153,8 @@ describe('Worksheets and the timer follow the setting', () => {
   it('a streak counts Auckland days', () => {
     // Both on Sunday Oct 4 in UTC; Sunday 22:00 and Monday 00:30 in Auckland.
     const log = [
-      { mode: 'focus' as const, startedAt: Date.UTC(2026, 9, 4, 9, 0), minutes: 25 },
-      { mode: 'focus' as const, startedAt: Date.UTC(2026, 9, 4, 11, 30), minutes: 25 },
+      { mode: 'focus' as const, startedAt: Date.UTC(2026, 9, 4, 9, 0), minutes: 25, label: '' },
+      { mode: 'focus' as const, startedAt: Date.UTC(2026, 9, 4, 11, 30), minutes: 25, label: '' },
     ];
     expect(dayStreak(log, NOW)).toBe(1);
     setAssistantTimeZone('Pacific/Auckland');

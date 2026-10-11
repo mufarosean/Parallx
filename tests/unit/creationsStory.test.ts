@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 // @ts-expect-error — JS module with no types
 import * as story from '../../ext/creations-ai/story-core.js';
 
-const { emptyBrief, newStory, castEntryFromCharacter, castBlock, briefBlock, beatsForContext, buildBeatMessages, buildMemoryMessages, cleanBeat, storyMarkdown, storyFileName, storyWords, BEAT_LENGTHS } = story;
+const { emptyBrief, newStory, castEntryFromCharacter, beatsForContext, buildBeatMessages, buildMemoryMessages, cleanBeat, storyMarkdown, storyFileName, storyWords, BEAT_LENGTHS } = story;
 
 const beat = (id: string, text: string, chapterId = 'ch-1') => ({ id, text, chapterId, instruction: '', createdAt: 1 });
 
@@ -60,9 +60,9 @@ describe('prompts', () => {
   });
   it('keeps only the most recent beats inside the budget', () => {
     const beats = [beat('1', 'a'.repeat(4000)), beat('2', 'b'.repeat(4000)), beat('3', 'c'.repeat(4000))];
-    expect(beatsForContext(beats, 9000).map((b) => b.id)).toEqual(['2', '3']);
-    expect(beatsForContext(beats, 100).map((b) => b.id)).toEqual(['3']);
-    expect(beatsForContext(beats, 9000, '3').map((b) => b.id)).toEqual(['1', '2']);
+    expect(beatsForContext(beats, 9000).map((b: { id: string }) => b.id)).toEqual(['2', '3']);
+    expect(beatsForContext(beats, 100).map((b: { id: string }) => b.id)).toEqual(['3']);
+    expect(beatsForContext(beats, 9000, '3').map((b: { id: string }) => b.id)).toEqual(['1', '2']);
   });
   it('asks for the memory as JSON with the existing memory and the new beats', () => {
     const [system, user] = buildMemoryMessages(s, 1);

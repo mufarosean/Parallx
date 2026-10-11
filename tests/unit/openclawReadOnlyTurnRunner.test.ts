@@ -11,7 +11,6 @@ import type {
 import {
   runOpenclawReadOnlyTurn,
   type IReadOnlyTurnOptions,
-  type IReadOnlyTurnResult,
 } from '../../src/openclaw/openclawReadOnlyTurnRunner';
 
 // ---------------------------------------------------------------------------
@@ -273,7 +272,7 @@ describe('openclawReadOnlyTurnRunner', () => {
 
   it('applies readonly tool policy to filter tools', async () => {
     // Provide tools and verify the runner uses filtered tools in request options
-    const sendChatRequest = vi.fn((_messages: any, options: any) => {
+    const sendChatRequest = vi.fn<IReadOnlyTurnOptions['sendChatRequest']>(() => {
       // The runner should pass policy-filtered (or undefined) tools
       return streamChunks([makeFinalChunk('Done')]);
     });

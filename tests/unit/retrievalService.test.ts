@@ -2,7 +2,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RetrievalService, dotProduct, cosineSimilarity } from '../../src/services/retrievalService';
-import type { RetrievalOptions } from '../../src/services/retrievalService';
 import type { SearchResult } from '../../src/services/vectorStoreService';
 
 // ── Mock factories ──

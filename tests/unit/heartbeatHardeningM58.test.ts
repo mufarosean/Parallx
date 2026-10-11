@@ -5,7 +5,7 @@
  *   - Fix 2: Executor NOOP drop + output dedup
  */
 
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from 'vitest';
 
 import {
   shouldHeartbeatAcceptPath,
@@ -23,7 +23,6 @@ import {
 } from '../../src/openclaw/openclawHeartbeatExecutor';
 import {
   SurfaceRouterService,
-  ORIGIN_HEARTBEAT,
 } from '../../src/services/surfaceRouterService';
 import {
   SURFACE_STATUS,
@@ -109,15 +108,15 @@ describe('HeartbeatRunner burst coalescing (Fix 4)', () => {
 
   function makeRunner(coalesceWindowMs: number): {
     runner: HeartbeatRunner;
-    executor: ReturnType<typeof vi.fn>;
+    executor: Mock<HeartbeatTurnExecutor>;
   } {
-    const executor = vi.fn<Parameters<HeartbeatTurnExecutor>, ReturnType<HeartbeatTurnExecutor>>().mockResolvedValue(undefined);
+    const executor = vi.fn<HeartbeatTurnExecutor>().mockResolvedValue(undefined);
     const cfg: IHeartbeatConfig = {
       enabled: true,
       intervalMs: 60 * 60 * 1000, // very long — only coalesce timer matters
       coalesceWindowMs,
     };
-    const runner = new HeartbeatRunner(executor as unknown as HeartbeatTurnExecutor, () => cfg);
+    const runner = new HeartbeatRunner(executor, () => cfg);
     return { runner, executor };
   }
 
@@ -152,7 +151,7 @@ describe('HeartbeatRunner burst coalescing (Fix 4)', () => {
 
     await vi.advanceTimersByTimeAsync(2100);
     expect(executor).toHaveBeenCalledTimes(1);
-    const [events, reason] = executor.mock.calls[0] as [readonly { payload: { path: string } }[], string];
+    const [events, reason] = executor.mock.calls[0];
     expect(reason).toBe('system-event');
     expect(events.map(e => e.payload.path)).toEqual(['/a.ts', '/b.ts', '/c.ts']);
   });
@@ -333,13 +332,13 @@ describe('HeartbeatRunner shouldDeferTick (chat-turn back-pressure)', () => {
 
   it('skips system-event tick when shouldDeferTick returns true and re-queues events', async () => {
     let busy = true;
-    const executor = vi.fn<Parameters<HeartbeatTurnExecutor>, ReturnType<HeartbeatTurnExecutor>>().mockResolvedValue(undefined);
+    const executor = vi.fn<HeartbeatTurnExecutor>().mockResolvedValue(undefined);
     const cfg: IHeartbeatConfig = {
       enabled: true,
       intervalMs: 60 * 60 * 1000,
       shouldDeferTick: () => busy,
     };
-    const runner = new HeartbeatRunner(executor as unknown as HeartbeatTurnExecutor, () => cfg);
+    const runner = new HeartbeatRunner(executor, () => cfg);
     runner.pushEvent({ type: 'file-change', payload: { path: '/a.ts' }, timestamp: 1 });
     await Promise.resolve();
     expect(executor).not.toHaveBeenCalled();
@@ -348,30 +347,30 @@ describe('HeartbeatRunner shouldDeferTick (chat-turn back-pressure)', () => {
     runner.wake('wake');
     await Promise.resolve();
     expect(executor).toHaveBeenCalledTimes(1);
-    const [events] = executor.mock.calls[0] as [readonly { payload: { path: string } }[], string];
+    const [events] = executor.mock.calls[0];
     expect(events.map(e => e.payload.path)).toEqual(['/a.ts']);
   });
 
   it('runs normally when shouldDeferTick returns false', async () => {
-    const executor = vi.fn<Parameters<HeartbeatTurnExecutor>, ReturnType<HeartbeatTurnExecutor>>().mockResolvedValue(undefined);
+    const executor = vi.fn<HeartbeatTurnExecutor>().mockResolvedValue(undefined);
     const cfg: IHeartbeatConfig = {
       enabled: true,
       intervalMs: 60 * 60 * 1000,
       shouldDeferTick: () => false,
     };
-    const runner = new HeartbeatRunner(executor as unknown as HeartbeatTurnExecutor, () => cfg);
+    const runner = new HeartbeatRunner(executor, () => cfg);
     runner.pushEvent({ type: 'file-change', payload: { path: '/a.ts' }, timestamp: 1 });
     await Promise.resolve();
     expect(executor).toHaveBeenCalledTimes(1);
   });
 
   it('absent shouldDeferTick = no back-pressure (legacy behavior)', async () => {
-    const executor = vi.fn<Parameters<HeartbeatTurnExecutor>, ReturnType<HeartbeatTurnExecutor>>().mockResolvedValue(undefined);
+    const executor = vi.fn<HeartbeatTurnExecutor>().mockResolvedValue(undefined);
     const cfg: IHeartbeatConfig = {
       enabled: true,
       intervalMs: 60 * 60 * 1000,
     };
-    const runner = new HeartbeatRunner(executor as unknown as HeartbeatTurnExecutor, () => cfg);
+    const runner = new HeartbeatRunner(executor, () => cfg);
     runner.pushEvent({ type: 'file-change', payload: { path: '/a.ts' }, timestamp: 1 });
     await Promise.resolve();
     expect(executor).toHaveBeenCalledTimes(1);

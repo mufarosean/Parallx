@@ -8,7 +8,7 @@
 // ConfigurationService, making the config: store the single truth. These
 // tests drive the REAL registry and REAL ConfigurationService end to end.
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { SettingsRegistryService } from '../../src/services/settingsRegistryService';
 import { ConfigurationService } from '../../src/configuration/configurationService';
 import { ConfigurationRegistry } from '../../src/configuration/configurationRegistry';

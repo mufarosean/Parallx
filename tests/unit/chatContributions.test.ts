@@ -14,9 +14,9 @@ describe('skills a tool brings', () => {
     const loader = new SkillLoaderService();
     const files: Record<string, string> = { '.parallx/skills/mine/SKILL.md': skill('mine', 'My own.') };
     loader.setFileSystem({
-      readFile: async (p) => files[p],
+      readFile: async (p: string) => files[p],
       listDirs: async () => Object.keys(files).map((k) => k.split('/')[2]),
-      exists: async (p) => p === '.parallx/skills' || p in files,
+      exists: async (p: string) => p === '.parallx/skills' || p in files,
       listFiles: async () => [],
     } as any);
     await loader.scanSkills();

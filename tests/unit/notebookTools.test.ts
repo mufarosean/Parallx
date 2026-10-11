@@ -17,6 +17,7 @@ import {
 import { parseNotebook, serialiseNotebook, createEmptyNotebook, createEmptyCell } from '../../src/editor/panes/notebook/notebookModel.js';
 import type { NotebookOutput } from '../../src/editor/panes/notebook/notebookModel.js';
 import { _resetResourceRegistryForTest } from '../../src/services/toolResourceRegistry.js';
+import type { INotebookKernelService } from '../../src/services/notebookKernelService.js';
 
 // ── Fakes ────────────────────────────────────────────────────────────────────
 
@@ -128,8 +129,8 @@ function makeKernel(opts: {
         dispose: () => {},
       };
     },
-  } as never;
-  return kernel as never & { executed: string[] };
+  };
+  return kernel;
 }
 
 const stream = (text: string): NotebookOutput =>
@@ -727,7 +728,8 @@ describe('permission levels and the consent split', () => {
     // file operation that fs_* can already do, so gating it bought nothing.
     const mod = await import('../../src/built-in/chat/tools/notebookTools.js');
     const files = mod.createNotebookFileTools(makeFs({}), makeWriter({}), makeResolver({}));
-    const runners = mod.createNotebookRunTools(makeKernel(), makeFs({}), makeWriter({}), makeResolver({}));
+    // The fake kernel covers only what the tools call.
+    const runners = mod.createNotebookRunTools(makeKernel() as unknown as INotebookKernelService, makeFs({}), makeWriter({}), makeResolver({}));
     expect(files.map(t => t.name).sort()).toEqual(['notebook_create', 'notebook_edit_cell', 'notebook_read']);
     expect(runners.map(t => t.name)).toEqual(['notebook_run']);
   });

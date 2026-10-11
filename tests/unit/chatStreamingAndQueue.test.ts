@@ -278,7 +278,7 @@ describe('ChatService pending request queue', () => {
       markSlowTurnStarted = resolve;
     });
     const capture = vi.fn(async (
-      request: IChatParticipantRequest,
+      _request: IChatParticipantRequest,
       _context: IChatParticipantContext,
       response: IChatResponseStream,
     ) => {

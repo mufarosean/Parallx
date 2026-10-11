@@ -12,7 +12,6 @@ import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details';
-import { TextSelection } from '@tiptap/pm/state';
 import { Column, ColumnList } from '../../../src/built-in/canvas/extensions/columnNodes';
 import { MathBlock } from '../../../src/built-in/canvas/extensions/mathBlockNode';
 import { Callout } from '../../../src/built-in/canvas/extensions/calloutNode';

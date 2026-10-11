@@ -8,9 +8,11 @@ let DOMParserCtor: any;
 async function loadDOMParser() {
   if (DOMParserCtor) return DOMParserCtor;
   try {
+    // @ts-expect-error — no declaration file for jsdom in this probe
     const mod: any = await import('jsdom');
     DOMParserCtor = class { parseFromString(s: string) { return new mod.JSDOM(s).window.document; } };
   } catch {
+    // @ts-expect-error — happy-dom may be absent; this probe falls back to it
     const mod: any = await import('happy-dom');
     DOMParserCtor = class { parseFromString(s: string) { const w = new mod.Window(); w.document.write(s); return w.document; } };
   }
@@ -20,6 +22,7 @@ async function loadDOMParser() {
 // Import the extension via dynamic import — its top-level `export` syntax is
 // a real ES module and vitest can load it directly.
 beforeEach(async () => {
+  // @ts-expect-error — JS module with no types
   ext = await import('../../ext/web-research/main.js');
   ext.__test__._setDOMParser(await loadDOMParser());
   ext.__test__.resetTurn('t1');
@@ -87,7 +90,7 @@ describe('webFetchTool — redirect final URL is added to provenance', () => {
   it('a follow-up fetch of the redirect destination is allowed', async () => {
     ext.__test__.seedTurnFromUserMessage('t1', 'https://allowed.example/start');
     ext.__test__._setBridge({
-      'webFetch:request': async ({ url }: { url: string }) => ({
+      'webFetch:request': async () => ({
         ok: true,
         result: {
           status: 200,

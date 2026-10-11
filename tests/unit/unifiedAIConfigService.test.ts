@@ -13,7 +13,7 @@ import {
   fromLegacyParallxConfig,
   tolegacyProfile,
 } from '../../src/aiSettings/unifiedConfigTypes';
-import type { IUnifiedAIConfig, IUnifiedPreset } from '../../src/aiSettings/unifiedConfigTypes';
+import type { IUnifiedPreset } from '../../src/aiSettings/unifiedConfigTypes';
 import type { AISettingsProfile } from '../../src/aiSettings/aiSettingsTypes';
 import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from './fixtures/aiSettingsDefaults';
 import { UnifiedAIConfigService, deepMerge } from '../../src/aiSettings/unifiedAIConfigService';

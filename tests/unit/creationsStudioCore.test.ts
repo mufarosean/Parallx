@@ -145,7 +145,7 @@ describe('parsing', () => {
       { text: 'X likes tea.', status: 'weird' },
       'X is tall.',
     ] }, ['base']);
-    expect(twisted.map((f) => f.status)).toEqual(['kept', 'changed', 'added', 'kept', 'kept']);
+    expect(twisted.map((f: { status: string }) => f.status)).toEqual(['kept', 'changed', 'added', 'kept', 'kept']);
     expect(twisted[1].was).toBe('X is an actor.');
     expect(canonCounts(twisted)).toEqual({ total: 5, kept: 3, changed: 1, added: 1 });
     expect(parseTwistedCanon({ facts: [] }, ['base'])).toEqual([{ text: 'base', status: 'kept', was: '' }]);
@@ -189,9 +189,9 @@ describe('sheet <-> character file', () => {
       ['x', { id: 'x', studio: { parentId: 'y' } }], ['y', { id: 'y', studio: { parentId: 'x' } }],
       ['lost', { id: 'lost', studio: { parentId: 'gone' } }],
     ]);
-    expect(lineageOf(byId, 'c').map((c) => c.id)).toEqual(['a', 'b', 'c']);
-    expect(lineageOf(byId, 'x').map((c) => c.id)).toEqual(['y', 'x']);
-    expect(lineageOf(byId, 'lost').map((c) => c.id)).toEqual(['lost']);
+    expect(lineageOf(byId, 'c').map((c: { id: string }) => c.id)).toEqual(['a', 'b', 'c']);
+    expect(lineageOf(byId, 'x').map((c: { id: string }) => c.id)).toEqual(['y', 'x']);
+    expect(lineageOf(byId, 'lost').map((c: { id: string }) => c.id)).toEqual(['lost']);
   });
 });
 
@@ -299,13 +299,13 @@ describe('the sheet structure (2026-10-06)', () => {
 
   it('writes a structured field as one detailed paragraph per section, in order, labelled unless told not to', () => {
     const st = parseSheetStructure(DEFAULT_SHEET_STRUCTURE);
-    const line = fieldRequirements(st).split('\n').find((l) => l.startsWith('- "appearance"'))!;
+    const line = fieldRequirements(st).split('\n').find((l: string) => l.startsWith('- "appearance"'))!;
     expect(line).toMatch(/5 separate paragraphs, one per section, in this order/);
     expect(line).toMatch(/begins with its section's label and a colon, like "Overview: \.\.\."/);
     expect(line).toMatch(/none is skipped, merged or padded out/);
     expect(line).toContain('Physicality (how they move, sit, stand and gesture; the habits of their body; what their hands do)');
     // Every other field keeps its usual line.
-    expect(fieldRequirements(st).split('\n').find((l) => l.startsWith('- "voice"'))).toBe(fieldRequirements(null).split('\n').find((l) => l.startsWith('- "voice"')));
+    expect(fieldRequirements(st).split('\n').find((l: string) => l.startsWith('- "voice"'))).toBe(fieldRequirements(null).split('\n').find((l: string) => l.startsWith('- "voice"')));
     const plain = structureRequirement('personality', { labels: false, sections: [{ name: 'Temper', hint: '' }, { name: 'Under it', hint: 'the need' }] });
     expect(plain).toMatch(/2 separate paragraphs/);
     expect(plain).toMatch(/each paragraph is plain, with no label/);
@@ -360,7 +360,7 @@ describe('connected people (2026-10-06)', () => {
     expect(block[0]).toMatch(/must not be contradicted or renamed/);
     expect(block).toContain('### Lord Ashby');
     expect(block).toContain("Tom Hale to them, from Tom Hale's side: works for Lord Ashby at Harrow Court as his gamekeeper");
-    expect(block.some((l) => l.startsWith('Overview: Ashby holds Harrow Court'))).toBe(true);
+    expect(block.some((l: string) => l.startsWith('Overview: Ashby holds Harrow Court'))).toBe(true);
     expect(connectionsBlock([], 'Tom')).toEqual([]);
     // A card that is gone is still named.
     expect(connectionsBlock([{ name: 'Gone Person', how: 'her brother', data: null }], 'Tom')).toContain('### Gone Person');
@@ -474,6 +474,7 @@ describe('the canon, edited by hand (2026-10-08)', () => {
 
 describe('one section of a field (2026-10-09)', () => {
   it('puts a rewritten section back in its place, the rest word for word', async () => {
+    // @ts-expect-error — JS module with no types
     const { spliceSection, sectionNamedIn, buildSectionMessages, parseSheetStructure: parse, DEFAULT_SHEET_STRUCTURE: DEF } = await import('../../ext/creations-ai/studio-core.js');
     const entry = parse(DEF).appearance;
     const was = ['Overview: Old.', 'Height and build: Old.', 'Face: Old.', 'Clothes: Old.', 'Physicality: Old.'].join('\n\n');

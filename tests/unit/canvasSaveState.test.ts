@@ -23,6 +23,7 @@ function makePage(overrides: Partial<IPage> = {}): IPage {
     icon: null,
     content: '{"type":"doc","content":[{"type":"paragraph"}]}',
     contentSchemaVersion: 1,
+    revision: 1,
     sortOrder: 1,
     isArchived: false,
     coverUrl: null,

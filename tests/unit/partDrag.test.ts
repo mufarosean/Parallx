@@ -105,14 +105,15 @@ describe('indicatorRect', () => {
 
 function fakeDataTransfer(): DataTransfer {
   const store = new Map<string, string>();
+  const types: string[] = [];
   return {
-    types: [] as unknown as readonly string[],
+    types,
     dropEffect: '',
     effectAllowed: '',
     setData(type: string, value: string) {
       store.set(type, value);
-      (this.types as string[]).length = 0;
-      (this.types as string[]).push(...store.keys());
+      types.length = 0;
+      types.push(...store.keys());
     },
     getData(type: string) { return store.get(type) ?? ''; },
   } as unknown as DataTransfer;

@@ -10,9 +10,11 @@ let DOMParserCtor: any;
 async function loadDOMParser() {
   if (DOMParserCtor) return DOMParserCtor;
   try {
+    // @ts-expect-error — no declaration file for jsdom in this probe
     const mod: any = await import('jsdom');
     DOMParserCtor = class { parseFromString(s: string) { return new mod.JSDOM(s).window.document; } };
   } catch {
+    // @ts-expect-error — happy-dom may be absent; this probe falls back to it
     const mod: any = await import('happy-dom');
     DOMParserCtor = class { parseFromString(s: string) { const w = new mod.Window(); w.document.write(s); return w.document; } };
   }
@@ -20,6 +22,7 @@ async function loadDOMParser() {
 }
 
 beforeEach(async () => {
+  // @ts-expect-error — JS module with no types
   ext = await import('../../ext/web-research/main.js');
   ext.__test__._setDOMParser(await loadDOMParser());
   ext.__test__.resetTurn('turn-a');

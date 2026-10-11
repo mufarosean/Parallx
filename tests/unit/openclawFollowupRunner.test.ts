@@ -6,7 +6,6 @@ import {
   createFollowupRunner,
   MAX_FOLLOWUP_DEPTH,
   FOLLOWUP_DELAY_MS,
-  type IOpenclawFollowupRun,
 } from '../../src/openclaw/openclawFollowupRunner';
 
 // ---------------------------------------------------------------------------

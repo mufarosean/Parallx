@@ -71,7 +71,8 @@ describe('an extraction writes Facts and Timeline into memories.md', () => {
     };
     const msgs = chat(6);
     files.set('ws/.parallx/extensions/text-generator/threads/t1/messages.jsonl', msgs.map((m) => JSON.stringify(m)).join('\n'));
-    const parallx = { lm: { sendChatRequest: async function* () { yield { content: reply }; } } };
+    type SendChatRequest = (modelId: string, messages: unknown[], options?: Record<string, unknown>) => AsyncGenerator<{ content: string }>;
+    const parallx = { lm: { sendChatRequest: (async function* () { yield { content: reply }; }) as SendChatRequest } };
     return { files, fs, msgs, parallx };
   }
 

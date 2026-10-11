@@ -104,6 +104,8 @@ describe('background session permission marking', () => {
     const permissionService = {
       markHeartbeatSession: vi.fn((sid: string) => calls.push(`mark:${sid}`)),
       unmarkHeartbeatSession: vi.fn((sid: string) => calls.push(`unmark:${sid}`)),
+      markUserTaskSession: vi.fn(),
+      unmarkUserTaskSession: vi.fn(),
     };
     const run = createBackgroundPromptRunner({
       ...deps,
@@ -121,6 +123,8 @@ describe('background session permission marking', () => {
     const permissionService = {
       markHeartbeatSession: vi.fn(),
       unmarkHeartbeatSession: vi.fn(),
+      markUserTaskSession: vi.fn(),
+      unmarkUserTaskSession: vi.fn(),
     };
     const run = createBackgroundPromptRunner({ ...deps, permissionService, getAutonomyLevel: () => undefined });
     const res = await run({ text: 'x' });

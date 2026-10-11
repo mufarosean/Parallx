@@ -103,8 +103,9 @@ test.describe('media-organizer watcher latency', () => {
     await fsp.writeFile(seedPath, PNG_1x1);
 
     // ── Launch Electron pointed at the temp workspace ──────────────────
-    const env = { ...process.env };
-    delete (env as any).ELECTRON_RUN_AS_NODE;
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
+    delete env.ELECTRON_RUN_AS_NODE;
     env.PARALLX_TEST_MODE = '1';
     env.PARALLX_RENDERER_PORT = '0';
 

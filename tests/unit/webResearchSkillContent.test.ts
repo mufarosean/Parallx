@@ -9,6 +9,7 @@ import { defaultSkillContents, RETIRED_SEEDED_SKILLS } from '../../src/built-in/
 describe('research-topic skill (M65 Iter 3), Web Research\'s own', () => {
   let body: string | undefined;
   beforeAll(async () => {
+    // @ts-expect-error — JS module with no types
     const ext: any = await import('../../ext/web-research/main.js');
     body = ext.__test__.RESEARCH_TOPIC_SKILL;
   });

@@ -8,8 +8,6 @@ import {
   MAX_CONCURRENT_RUNS,
   MAX_REGISTRY_HISTORY,
   type ISubagentSpawnParams,
-  type SubagentTurnExecutor,
-  type SubagentAnnouncer,
 } from '../../src/openclaw/openclawSubagentSpawn';
 
 // ---------------------------------------------------------------------------
@@ -180,7 +178,7 @@ describe('SubagentRegistry', () => {
       }
 
       // Register one more to trigger final prune (gap map verify pattern)
-      const trigger = reg.register(createParams({ task: 'trigger' }));
+      reg.register(createParams({ task: 'trigger' }));
 
       // Completed runs should be capped at MAX_REGISTRY_HISTORY
       const completedRuns = reg.runs.filter(r => r.status === 'completed');

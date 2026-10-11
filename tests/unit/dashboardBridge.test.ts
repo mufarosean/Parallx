@@ -181,8 +181,9 @@ describe('hub semantics', () => {
       category: 'query',
       ownerToolId: 'parallx.budget',
     });
-    expect((desc as Record<string, unknown>).createWidget).toBeUndefined();
-    expect((desc as Record<string, unknown>).refresh).toBeUndefined();
+    const plain: Record<string, unknown> = { ...desc };
+    expect(plain.createWidget).toBeUndefined();
+    expect(plain.refresh).toBeUndefined();
   });
 
   it('two tools contribute independently', () => {

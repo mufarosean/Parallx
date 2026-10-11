@@ -38,6 +38,7 @@ function makeApi() {
 }
 
 beforeEach(async () => {
+  // @ts-expect-error — JS module with no types
   ext = await import('../../ext/web-research/main.js');
   ext.__test__._setApi(makeApi());
 });

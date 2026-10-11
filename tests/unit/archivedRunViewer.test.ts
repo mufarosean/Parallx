@@ -2,13 +2,13 @@
 // archivedRunViewer.test.ts — M91 S3: read-only transcript renderer.
 import { describe, expect, it } from 'vitest';
 import { renderArchivedRun } from '../../src/built-in/chat/archivedRunViewer';
-import { ChatContentPartKind } from '../../src/services/chatTypes';
+import { ChatContentPartKind, ChatMode } from '../../src/services/chatTypes';
 import type { IChatSession } from '../../src/services/chatTypes';
 
 function run(): IChatSession {
   return {
-    id: 'ephemeral-x', title: 'Morning brief', mode: 'agent' as never, modelId: 'llama3',
-    createdAt: Date.now(), updatedAt: Date.now(), requestInProgress: false,
+    id: 'ephemeral-x', title: 'Morning brief', mode: ChatMode.Agent, modelId: 'llama3',
+    createdAt: Date.now(), updatedAt: Date.now(), requestInProgress: false, pendingRequests: [],
     sessionResource: { toString: () => 'x' } as never,
     messages: [{
       request: { text: 'summarize my day', timestamp: 1, id: 'u1' } as never,

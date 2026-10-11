@@ -219,7 +219,7 @@ describe('ChatService', () => {
 
       chatService.setTurnPreparationServices({
         isRAGAvailable: () => true,
-        listFilesRelative: vi.fn(async (relativePath: string) => {
+        listFilesRelative: vi.fn(async (relativePath: string): Promise<{ name: string; type: 'file' | 'directory' }[]> => {
           if (relativePath === '') {
             return [{ name: 'RF Guides', type: 'directory' }];
           }
@@ -242,7 +242,7 @@ describe('ChatService', () => {
 
     it('dispatches tool-contributed participants with the bridge surface contract', async () => {
       const capture = vi.fn(async (
-        request: IChatParticipantRequest,
+        _request: IChatParticipantRequest,
         _context: IChatParticipantContext,
         response: IChatResponseStream,
       ) => {
@@ -663,7 +663,7 @@ describe('ChatService', () => {
     });
 
     it('fires onDidChangeSession during request', async () => {
-      const listener = vi.fn();
+      const listener = vi.fn<(sessionId: string) => void>();
       chatService.onDidChangeSession(listener);
 
       const session = chatService.createSession();
@@ -1189,7 +1189,7 @@ describe('default participant integration helpers', () => {
     } as any;
 
     const result = await participant.handler(
-      { text: 'How many files are there?', requestId: '1', mode: 'agent', modelId: 'test-model', attempt: 0 },
+      { text: 'How many files are there?', requestId: '1', mode: ChatMode.Agent, modelId: 'test-model', attempt: 0 },
       { sessionId: 's1', history: [] },
       stream,
       { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
@@ -1240,7 +1240,7 @@ describe('default participant integration helpers', () => {
     } as any;
 
     const result = await participant.handler(
-      { text: 'How do I file a claim and who do I call?', requestId: '1', mode: 'agent', modelId: 'test-model', attempt: 0 },
+      { text: 'How do I file a claim and who do I call?', requestId: '1', mode: ChatMode.Agent, modelId: 'test-model', attempt: 0 },
       { sessionId: 's1', history: [] },
       stream,
       { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
@@ -1315,7 +1315,7 @@ describe('default participant integration helpers', () => {
     } as any;
 
     const result = await participant.handler(
-      { text: 'And what about comprehensive?', requestId: '2', mode: 'agent', modelId: 'test-model', attempt: 0 },
+      { text: 'And what about comprehensive?', requestId: '2', mode: ChatMode.Agent, modelId: 'test-model', attempt: 0 },
       {
         sessionId: 's1',
         history: [{
@@ -1386,7 +1386,7 @@ describe('default participant integration helpers', () => {
     } as any;
 
     const result = await participant.handler(
-      { text: 'OK I want to file a claim. How do I do that and who do I call?', requestId: '1', mode: 'agent', modelId: 'test-model', attempt: 0 },
+      { text: 'OK I want to file a claim. How do I do that and who do I call?', requestId: '1', mode: ChatMode.Agent, modelId: 'test-model', attempt: 0 },
       { sessionId: 's1', history: [] },
       stream,
       { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
@@ -1450,7 +1450,7 @@ describe('default participant integration helpers', () => {
     } as any;
 
     const result = await participant.handler(
-      { text: 'Which repair shops are recommended under my policy? Please cite your sources.', requestId: '1', mode: 'agent', modelId: 'test-model', attempt: 0 },
+      { text: 'Which repair shops are recommended under my policy? Please cite your sources.', requestId: '1', mode: ChatMode.Agent, modelId: 'test-model', attempt: 0 },
       { sessionId: 's1', history: [] },
       stream,
       { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
@@ -1500,7 +1500,7 @@ describe('default participant integration helpers', () => {
     } as any;
 
     const result = await participant.handler(
-      { text: 'hello', requestId: '1', mode: 'agent', modelId: 'test-model', attempt: 0 },
+      { text: 'hello', requestId: '1', mode: ChatMode.Agent, modelId: 'test-model', attempt: 0 },
       { sessionId: 's1', history: [] },
       stream,
       { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
@@ -1557,7 +1557,7 @@ describe('default participant integration helpers', () => {
     } as any;
 
     const result = await participant.handler(
-      { text: 'What does Claims Guide.md say about filing deadlines?', requestId: '1', mode: 'agent', modelId: 'test-model', attempt: 0 },
+      { text: 'What does Claims Guide.md say about filing deadlines?', requestId: '1', mode: ChatMode.Agent, modelId: 'test-model', attempt: 0 },
       { sessionId: 's1', history: [] },
       stream,
       { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
@@ -1609,7 +1609,7 @@ describe('default participant integration helpers', () => {
     } as any;
 
     const result = await participant.handler(
-      { text: 'In my last conversation, I told you about an accident I had. What details do you remember about it?', requestId: '1', mode: 'agent', modelId: 'test-model', attempt: 0 },
+      { text: 'In my last conversation, I told you about an accident I had. What details do you remember about it?', requestId: '1', mode: ChatMode.Agent, modelId: 'test-model', attempt: 0 },
       { sessionId: 's2', history: [] },
       stream,
       { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },

@@ -1,6 +1,6 @@
 // indexingPipeline.test.ts — Unit tests for IndexingPipelineService (M10 Task 2.1, 2.2)
 
-import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   IndexingPipelineService,
   getExtension,

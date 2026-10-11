@@ -1,5 +1,5 @@
 // D3: Diagnostics service + diagnostic checks unit tests
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { DiagnosticsService } from '../../src/services/diagnosticsService';
 import { CORE_DIAGNOSTIC_CHECKS, EXTENDED_DIAGNOSTIC_CHECKS, ALL_DIAGNOSTIC_CHECKS } from '../../src/services/diagnosticChecks';
 import type { IDiagnosticCheckDeps, IDiagnosticResult, IDiagnosticCheckProducer } from '../../src/services/serviceTypes';

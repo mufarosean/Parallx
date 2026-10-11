@@ -18,6 +18,7 @@ class FakeStorage implements IStorage {
   async delete(k: string) { this.map.delete(k); }
   async has(k: string) { return this.map.has(k); }
   async keys(p?: string) { return [...this.map.keys()].filter(k => !p || k.startsWith(p)); }
+  async clear() { this.map.clear(); }
 }
 
 const act = (over: Partial<IAgentActionInput> = {}): IAgentActionInput => ({

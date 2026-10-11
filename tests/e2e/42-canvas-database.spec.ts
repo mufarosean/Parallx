@@ -7,7 +7,7 @@
  * switches to a board view, and opens a row as a page to see the
  * row-properties section.
  */
-import { sharedTest as test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
+import { sharedTest as test, expect, openFolderViaMenu, createTestWorkspace } from './fixtures';
 
 async function openCanvasSidebar(page: import('@playwright/test').Page): Promise<void> {
   const canvasBtn = page.locator('button.activity-bar-item[data-icon-id="canvas-container"]');
@@ -127,7 +127,8 @@ test.describe('Canvas Databases', () => {
     }, { a: pageA, b: pageB });
 
     // Force the migration (support hook; normally runs once at activation).
-    await window.evaluate(() => window.dispatchEvent(new CustomEvent('parallx:canvas-run-legacy-migration')));
+    // `window` here is the Playwright page; in the browser, globalThis is the DOM window.
+    await window.evaluate(() => globalThis.dispatchEvent(new CustomEvent('parallx:canvas-run-legacy-migration')));
     await window.waitForTimeout(2500);
 
     // Both target databases exist in the tree.

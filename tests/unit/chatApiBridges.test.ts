@@ -13,7 +13,6 @@ import type {
   IChatMessage,
   IChatResponseChunk,
   IProviderStatus,
-  ICancellationToken,
 } from '../../src/services/chatTypes';
 
 // ── Mock Provider ──
@@ -53,7 +52,7 @@ function createMockProvider(): ILanguageModelProvider {
       _modelId: string,
       _messages: readonly IChatMessage[],
     ): AsyncIterable<IChatResponseChunk> {
-      yield { content: 'Hello from test' };
+      yield { content: 'Hello from test', done: false };
     },
   };
 }

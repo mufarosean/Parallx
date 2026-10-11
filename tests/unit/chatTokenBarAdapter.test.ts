@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { buildChatTokenBarServices } from '../../src/built-in/chat/utilities/chatTokenBarAdapter';
+import type { IndexingProgress } from '../../src/services/indexingPipeline';
 
 describe('chat token bar adapter', () => {
   it('delegates token bar queries', async () => {
@@ -18,7 +19,7 @@ describe('chat token bar adapter', () => {
       getFileCount: vi.fn().mockResolvedValue(17),
       isRAGAvailable: vi.fn(() => true),
       isIndexing: vi.fn(() => false),
-      getIndexingProgress: vi.fn(() => ({ phase: 'idle', processed: 0, total: 0 })),
+      getIndexingProgress: vi.fn((): IndexingProgress => ({ phase: 'idle', processed: 0, total: 0 })),
       getIndexStats: vi.fn(() => ({ pages: 42, files: 17 })),
     });
 
@@ -48,7 +49,7 @@ describe('chat token bar adapter', () => {
       getFileCount: vi.fn().mockResolvedValue(0),
       isRAGAvailable: vi.fn(() => false),
       isIndexing: vi.fn(() => false),
-      getIndexingProgress: vi.fn(() => ({ phase: 'idle', processed: 0, total: 0 })),
+      getIndexingProgress: vi.fn((): IndexingProgress => ({ phase: 'idle', processed: 0, total: 0 })),
       getIndexStats: vi.fn(() => undefined),
     });
 

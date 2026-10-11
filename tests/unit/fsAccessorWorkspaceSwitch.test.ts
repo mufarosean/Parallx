@@ -61,8 +61,8 @@ function createMockWorkspaceService(
   return {
     get folders() { return _folders as any; },
     get activeWorkspace() { return _activeWorkspace as any; },
-    _setFolders(f) { _folders = f as any; },
-    _setActiveWorkspace(ws) { _activeWorkspace = ws as any; },
+    _setFolders(f: { uri: ReturnType<typeof makeUri>; name: string; index: number }[]) { _folders = f as any; },
+    _setActiveWorkspace(ws: { name: string } | undefined) { _activeWorkspace = ws as any; },
     // Stubs for unused interface members
     onDidChangeWorkspace: { event: vi.fn() } as any,
     onDidChangeFolders: { event: vi.fn() } as any,

@@ -171,10 +171,6 @@ function fakeOk(body = '<html><body>hi</body></html>', status = 200, contentType
   });
 }
 
-function fakeRedirect(to: string, status = 302) {
-  return async () => ({ redirected: true, nextUrl: to, status });
-}
-
 describe('doWebFetch — protocol + blocklist gates (C3, C4)', () => {
   beforeEach(() => _resetTurnFetchCount('test'));
 
@@ -212,7 +208,7 @@ describe('doWebFetch — redirect handling (C2)', () => {
 
   it('redirect to https://127.0.0.1 is rejected on hop 2 (private IP)', async () => {
     let hop = 0;
-    const transport = async ({ urlStr }: { urlStr: string }) => {
+    const transport = async () => {
       hop++;
       if (hop === 1) return { redirected: true, nextUrl: 'https://127.0.0.1/secret', status: 302 };
       throw new Error('should-not-reach');

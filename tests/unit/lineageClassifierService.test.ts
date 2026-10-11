@@ -228,7 +228,7 @@ function createMockVectorStore() {
     deleteSource: vi.fn(),
     search: vi.fn(),
     vectorSearch: vi.fn(),
-    getContentHash: vi.fn(async (sourceType: string, sourceId: string) => {
+    getContentHash: vi.fn<(sourceType: string, sourceId: string) => Promise<string | null>>(async () => {
       // Mirror what's in the db's semanticGraphSources
       // Tests will override this via mockImplementation when needed
       return null;
@@ -264,7 +264,7 @@ function createMockLanguageModels(modelId: string = 'mock-model', response: stri
     registerProvider: vi.fn(),
     getProviders: vi.fn(() => []),
     getModels: vi.fn(async () => []),
-    getActiveModel: vi.fn(() => modelId),
+    getActiveModel: vi.fn<() => string | undefined>(() => modelId),
     setActiveModel: vi.fn(),
     setStorage: vi.fn(async () => {}),
     setDefaultModel: vi.fn(),
@@ -347,7 +347,7 @@ describe('LineageClassifierService', () => {
       kind: 'similar-to',
       direction: 'undirected',
     });
-    vectorStore.getContentHash.mockImplementation(async (st: string, sid: string) =>
+    vectorStore.getContentHash.mockImplementation(async (_st: string, sid: string) =>
       sid === 'a' ? 'hash-a' : sid === 'b' ? 'hash-b' : null);
     vectorStore.getSourceChunks.mockResolvedValue([{ text: 'Independent doc.', contextPrefix: '' }]);
     const lm = createMockLanguageModels('mock-model', '{"relationship":"none","confidence":0.9}');
@@ -369,7 +369,7 @@ describe('LineageClassifierService', () => {
       origin_type: 'page_block', origin_id: 'a',
       kind: 'similar-to', direction: 'undirected',
     });
-    vectorStore.getContentHash.mockImplementation(async (st: string, sid: string) =>
+    vectorStore.getContentHash.mockImplementation(async (_st: string, sid: string) =>
       sid === 'a' ? 'hash-a' : sid === 'b' ? 'hash-b' : null);
     vectorStore.getSourceChunks.mockResolvedValue([{ text: 'Content here.', contextPrefix: '' }]);
     // Confidence 0.3 is below the 0.55 threshold.
@@ -396,7 +396,7 @@ describe('LineageClassifierService', () => {
       relationship: 'extends',
       confidence: 0.9,
     });
-    vectorStore.getContentHash.mockImplementation(async (st: string, sid: string) =>
+    vectorStore.getContentHash.mockImplementation(async (_st: string, sid: string) =>
       sid === 'a' ? 'hash-a' : sid === 'b' ? 'hash-b' : null);
     const lm = createMockLanguageModels('mock-model', '{"relationship":"none","confidence":0.0}');
     new LineageClassifierService(db as any, vectorStore as any, lm as any, workspaceService as any, orchestrator);
@@ -420,11 +420,11 @@ describe('LineageClassifierService', () => {
       origin_type: 'page_block', origin_id: 'a',
       kind: 'similar-to', direction: 'undirected',
     });
-    vectorStore.getContentHash.mockImplementation(async (st: string, sid: string) =>
+    vectorStore.getContentHash.mockImplementation(async (_st: string, sid: string) =>
       sid === 'a' ? 'hash-a' : sid === 'b' ? 'hash-b' : null);
     vectorStore.getSourceChunks.mockResolvedValue([{ text: 'Some content.', contextPrefix: '' }]);
     const lm = createMockLanguageModels();
-    lm.getActiveModel = vi.fn(() => undefined);
+    lm.getActiveModel = vi.fn<() => string | undefined>(() => undefined);
     new LineageClassifierService(db as any, vectorStore as any, lm as any, workspaceService as any, orchestrator);
 
     await orchestrator.startRefresh();
@@ -454,7 +454,7 @@ describe('LineageClassifierService', () => {
         kind: 'similar-to', direction: 'undirected',
       },
     );
-    vectorStore.getContentHash.mockImplementation(async (st: string, sid: string) =>
+    vectorStore.getContentHash.mockImplementation(async (_st: string, sid: string) =>
       ({ a: 'hash-a', b: 'hash-b', c: 'hash-c' } as any)[sid] ?? null);
     vectorStore.getSourceChunks.mockResolvedValue([{ text: 'Content.', contextPrefix: '' }]);
 

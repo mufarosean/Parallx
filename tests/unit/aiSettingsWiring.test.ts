@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProactiveSuggestionsService } from '../../src/services/proactiveSuggestionsService';
 import { DEFAULT_PROFILE } from './fixtures/aiSettingsDefaults';
 import { Emitter } from '../../src/platform/events';
+import type { IUnifiedAIConfigService } from '../../src/aiSettings/unifiedConfigTypes';
 
 // ─── Mock Factories ──────────────────────────────────────────────────────────
 
@@ -260,12 +261,13 @@ describe('ProactiveSuggestionsService with Unified Config (M40 Phase 6)', () => 
 describe('Chat Participant Unified Config Integration (M40 Phase 6)', () => {
   it('IDefaultParticipantServices accepts unifiedConfigService', () => {
     const mockServices: Partial<import('../../src/built-in/chat/chatTypes').IDefaultParticipantServices> = {
+      // A partial fake: the test only checks that the slot takes a service.
       unifiedConfigService: {
         getEffectiveConfig: () => ({
           chat: { systemPrompt: DEFAULT_PROFILE.chat.systemPrompt },
           model: { temperature: DEFAULT_PROFILE.model.temperature, maxTokens: DEFAULT_PROFILE.model.maxTokens },
         } as any),
-      },
+      } as unknown as IUnifiedAIConfigService,
     };
     expect(mockServices.unifiedConfigService).toBeDefined();
     expect(mockServices.unifiedConfigService!.getEffectiveConfig().chat.systemPrompt).toBeDefined();

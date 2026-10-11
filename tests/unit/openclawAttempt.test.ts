@@ -145,7 +145,7 @@ describe('executeOpenclawAttempt', () => {
 
   it('refuses a tool the turn did not offer: the catalog filter is honoured at dispatch', async () => {
     let callCount = 0;
-    const sendChatRequest = vi.fn(() => {
+    const sendChatRequest = vi.fn<IOpenclawTurnContext['sendChatRequest']>(() => {
       callCount++;
       if (callCount === 1) {
         return streamChunks([
@@ -171,7 +171,7 @@ describe('executeOpenclawAttempt', () => {
 
   it('refuses a call carrying an argument the offered schema does not declare, and says where it belongs', async () => {
     let callCount = 0;
-    const sendChatRequest = vi.fn(() => {
+    const sendChatRequest = vi.fn<IOpenclawTurnContext['sendChatRequest']>(() => {
       callCount++;
       if (callCount === 1) {
         return streamChunks([
@@ -354,7 +354,7 @@ describe('executeOpenclawAttempt', () => {
       maxToolIterations: 2,
     });
 
-    const result = await executeOpenclawAttempt(
+    await executeOpenclawAttempt(
       createRequest(),
       context,
       createAssembled(),
@@ -675,11 +675,11 @@ describe('executeOpenclawAttempt', () => {
     });
 
     it('asks the model to reason by default, and not when the session turned reasoning off', async () => {
-      const on = vi.fn(() => streamChunks([textChunk('a')]));
+      const on = vi.fn<IOpenclawTurnContext['sendChatRequest']>(() => streamChunks([textChunk('a')]));
       await executeOpenclawAttempt(createRequest(), createContext({ sendChatRequest: on }), createAssembled(), createResponse(), createToken());
       expect(on.mock.calls[0][1]).toMatchObject({ think: true });
 
-      const off = vi.fn(() => streamChunks([textChunk('a')]));
+      const off = vi.fn<IOpenclawTurnContext['sendChatRequest']>(() => streamChunks([textChunk('a')]));
       await executeOpenclawAttempt(createRequest(), createContext({ sendChatRequest: off, think: false }), createAssembled(), createResponse(), createToken());
       expect(off.mock.calls[0][1]).toMatchObject({ think: false });
     });

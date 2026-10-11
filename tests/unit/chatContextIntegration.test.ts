@@ -146,7 +146,11 @@ function createMockToolsService(): ILanguageModelToolsService & { registeredTool
     getTools: () => registeredTools,
     getTool: (name: string) => registeredTools.find(t => t.name === name),
     getToolDefinitions: () => [],
+    getReadOnlyToolDefinitions: () => [],
     invokeTool: vi.fn(async () => ({ content: '' })),
+    isToolEnabled: () => true,
+    setToolEnabled: vi.fn(),
+    getEnabledCount: () => registeredTools.length,
     onDidChangeTools: vi.fn(() => ({ dispose: vi.fn() })) as any,
     dispose: vi.fn(),
   };
