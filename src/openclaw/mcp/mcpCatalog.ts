@@ -63,44 +63,25 @@ export interface IMcpCatalogEntry {
  * Keep entries conservative: only servers the user can install with a
  * single `npx` invocation and no extra OS dependencies. Servers that need
  * Docker, Python, or local databases are not listed.
+ *
+ * Checked against npm on 2026-10-11. GitHub and Slack left: their npx
+ * packages are deprecated and the maintained servers run in Docker or
+ * remotely (over HTTP, which Parallx does not speak yet). Fetch left: no
+ * npx package exists (the reference server is Python). Brave Search moved
+ * to Brave's own package.
  */
 export const MCP_CATALOG: readonly IMcpCatalogEntry[] = Object.freeze([
   {
     id: 'filesystem',
     displayName: 'Filesystem',
-    description: 'Read and write files on your local disk under the directories you allow.',
+    description: 'Read and write files in your workspace folder.',
     category: 'Storage',
     homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem',
     command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-filesystem'],
-    env: [
-      {
-        key: 'PARALLX_MCP_FS_ROOT',
-        label: 'Allowed root path',
-        description:
-          'Absolute path the server is allowed to read/write under. Leave blank to default to your workspace folder.',
-        required: false,
-      },
-    ],
-  },
-  {
-    id: 'github',
-    displayName: 'GitHub',
-    description: 'Browse, search, and modify GitHub repos via the REST API.',
-    category: 'Dev',
-    homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/github',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-github'],
-    env: [
-      {
-        key: 'GITHUB_PERSONAL_ACCESS_TOKEN',
-        label: 'GitHub PAT',
-        description:
-          'Personal access token. Create one at https://github.com/settings/tokens with the scopes you need (repo, read:org).',
-        required: true,
-        secret: true,
-      },
-    ],
+    // The server takes the folders it may touch as arguments; {workspaceRoot}
+    // is resolved to the open workspace folder each time it connects.
+    args: ['-y', '@modelcontextprotocol/server-filesystem', '{workspaceRoot}'],
+    env: [],
   },
   // Gmail intentionally not in the npx catalog: the bundled
   // `tools/gmail-mcp-server/` is self-contained and installed via the
@@ -120,38 +101,13 @@ export const MCP_CATALOG: readonly IMcpCatalogEntry[] = Object.freeze([
     env: [],
   },
   {
-    id: 'slack',
-    displayName: 'Slack',
-    description: 'Read and post Slack messages with a bot token.',
-    category: 'Communication',
-    homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/slack',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-slack'],
-    env: [
-      {
-        key: 'SLACK_BOT_TOKEN',
-        label: 'Bot token',
-        description:
-          'Slack bot user OAuth token (xoxb-...). Create a Slack app and grant scopes (chat:write, channels:read).',
-        required: true,
-        secret: true,
-      },
-      {
-        key: 'SLACK_TEAM_ID',
-        label: 'Team ID',
-        description: 'Your Slack workspace ID (e.g. T0123ABCD).',
-        required: true,
-      },
-    ],
-  },
-  {
     id: 'brave-search',
     displayName: 'Brave Search',
     description: 'Web and local search via the Brave Search API.',
     category: 'Web',
-    homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search',
+    homepage: 'https://github.com/brave/brave-search-mcp-server',
     command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-brave-search'],
+    args: ['-y', '@brave/brave-search-mcp-server', '--transport', 'stdio'],
     env: [
       {
         key: 'BRAVE_API_KEY',
@@ -181,16 +137,6 @@ export const MCP_CATALOG: readonly IMcpCatalogEntry[] = Object.freeze([
       'https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-sequential-thinking'],
-    env: [],
-  },
-  {
-    id: 'fetch',
-    displayName: 'Fetch',
-    description: 'Fetch arbitrary URLs and convert HTML to markdown for the agent.',
-    category: 'Web',
-    homepage: 'https://github.com/modelcontextprotocol/servers/tree/main/src/fetch',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-fetch'],
     env: [],
   },
   {

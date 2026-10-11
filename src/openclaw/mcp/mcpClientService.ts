@@ -31,6 +31,8 @@ const DEFAULT_MAX_RECONNECT_ATTEMPTS = 5;
 const DEFAULT_RECONNECT_BASE_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const STORAGE_KEY_SERVERS = 'mcp.servers';
+/** In a server's args, the open workspace folder (resolved at each connect). */
+export const WORKSPACE_ROOT_PLACEHOLDER = '{workspaceRoot}';
 /** Env values (tokens, API keys) live in the OS-encrypted secret store under this prefix. */
 const SECRET_ENV_PREFIX = 'mcp.env.';
 
@@ -79,6 +81,7 @@ export class McpClientService extends Disposable implements IMcpClientService {
   private _configuredServers: IMcpServerConfig[] = [];
   /** A sealed workspace runs no MCP server (see setSealed). */
   private _sealed = false;
+  private _workspaceRoot: () => string | undefined = () => undefined;
 
   private readonly _onDidChangeStatus = new Emitter<{ serverId: string; status: McpConnectionState }>();
   readonly onDidChangeStatus: Event<{ serverId: string; status: McpConnectionState }> = this._onDidChangeStatus.event;
@@ -117,6 +120,18 @@ export class McpClientService extends Disposable implements IMcpClientService {
 
   get isSealed(): boolean {
     return this._sealed;
+  }
+
+  /** Where `{workspaceRoot}` in a server's args points (the Filesystem server's allowed folder). */
+  setWorkspaceRootProvider(provider: () => string | undefined): void {
+    this._workspaceRoot = provider;
+  }
+
+  private _withWorkspaceRoot(config: IMcpServerConfig): IMcpServerConfig {
+    if (!config.args?.some((a) => a.includes(WORKSPACE_ROOT_PLACEHOLDER))) return config;
+    const root = this._workspaceRoot();
+    if (!root) throw new Error(`${config.name} works in the open workspace folder. Open a folder first.`);
+    return { ...config, args: config.args.map((a) => a.split(WORKSPACE_ROOT_PLACEHOLDER).join(root)) };
   }
 
   getConfiguredServers(): readonly IMcpServerConfig[] {
@@ -222,7 +237,7 @@ export class McpClientService extends Disposable implements IMcpClientService {
       await this.disconnectServer(config.id);
     }
 
-    const transport = this._createTransport(config);
+    const transport = this._createTransport(this._withWorkspaceRoot(config));
     const subscriptions: IDisposable[] = [];
 
     subscriptions.push(

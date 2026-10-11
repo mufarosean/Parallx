@@ -435,6 +435,7 @@ export function registerIndexingServices(
   // ── D1: MCP Client Service ──
   const mcpClientService = new McpClientService();
   services.registerInstance(IMcpClientService, mcpClientService);
+  mcpClientService.setWorkspaceRootProvider(() => (services.has(IWorkspaceService) ? services.get(IWorkspaceService).folders[0]?.uri.fsPath : undefined));
 
   // ── M58-real post-ship UX reshape: Autonomy Log Service ──
   const autonomyLogService = new AutonomyLogService();

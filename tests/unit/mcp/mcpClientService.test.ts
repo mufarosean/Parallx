@@ -965,4 +965,20 @@ describe('McpClientService: env values and the seal', () => {
     await vi.waitFor(() => expect(handshakes).toBe(2));
     expect(service.getConnectedServers()).toEqual(['github']);
   });
+
+  it('resolves {workspaceRoot} in a server\'s args to the open folder at each connect', async () => {
+    const spy = vi.spyOn(service as any, '_createTransport');
+    service.setWorkspaceRootProvider(() => '/home/me/notes');
+    mockTransport.send = vi.fn(async (data: string) => {
+      const msg = JSON.parse(data);
+      if (msg.id !== undefined) setTimeout(() => mockTransport.fireMessage(jsonRpcResponse(msg.id, {})), 0);
+    });
+    await service.connectServer({ id: 'fs', name: 'Filesystem', transport: 'stdio', command: 'npx', args: ['-y', 'server-filesystem', '{workspaceRoot}'], enabled: true });
+    expect((spy.mock.calls[0][0] as IMcpServerConfig).args).toEqual(['-y', 'server-filesystem', '/home/me/notes']);
+  });
+
+  it('refuses a {workspaceRoot} server when no folder is open, and says why', async () => {
+    await expect(service.connectServer({ id: 'fs', name: 'Filesystem', transport: 'stdio', command: 'npx', args: ['{workspaceRoot}'], enabled: true }))
+      .rejects.toThrow('Open a folder first');
+  });
 });

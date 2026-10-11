@@ -333,7 +333,7 @@ export class McpSection extends SettingsSection {
     const cmdLine = $('div.ai-settings-mcp-install-cmd');
     const appRootForDisplay = (window as unknown as { parallxElectron?: { appPath?: string } })
       .parallxElectron?.appPath ?? '{appRoot}';
-    const displayArgs = entry.args.map((a) => a.replace('{appRoot}', appRootForDisplay));
+    const displayArgs = entry.args.map((a) => a.replace('{appRoot}', appRootForDisplay).replace('{workspaceRoot}', '<workspace folder>'));
     cmdLine.textContent = `${entry.command} ${displayArgs.join(' ')}`;
     host.appendChild(cmdLine);
 
