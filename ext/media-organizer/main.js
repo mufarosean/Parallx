@@ -17704,7 +17704,6 @@ async function exportSelectedItems(state, api) {
   if (!destFolder) return;
 
   const { photos, videos } = parseSelectedIds(state.selectedIds);
-  const db = _db;
   let copied = 0;
   let failed = 0;
 

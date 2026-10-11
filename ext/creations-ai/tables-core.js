@@ -15,7 +15,7 @@ const MAX_DEPTH = 100;
 
 // ── Parsing ────────────────────────────────────────────────────────────────
 
-/** @returns {{ lists: Map<string, ListNode>, imports: Map<string, string>, errors: string[] }} */
+/** @returns {{ lists: Map<string, object>, imports: Map<string, string>, errors: string[] }} */
 export function parseTables(source) {
   const lists = new Map();
   const imports = new Map();
@@ -77,7 +77,7 @@ export function listNames(gen) {
 /**
  * Evaluate one list (default `output`) to a string.
  * @param gen a parsed table
- * @param opts { rng?: () => number, imports?: (name) => parsedTable | null }
+ * @param {{ rng?: () => number, imports?: (name: string) => object | null }} opts
  */
 export function evaluate(gen, listName = 'output', opts = {}) {
   const ctx = { rng: opts.rng || Math.random, imports: opts.imports || null, vars: new Map(), depth: 0, errors: [] };
