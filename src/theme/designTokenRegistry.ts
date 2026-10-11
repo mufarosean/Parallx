@@ -6,7 +6,8 @@
 //
 // VS Code reference: None — Parallx extension.
 
-import { ThemeType } from './themeTypes.js';
+import type { ThemeType } from './themeTypes.js';
+import { TokenRegistry } from './tokenRegistry.js';
 
 // ─── Token Default ───────────────────────────────────────────────────────────
 
@@ -76,48 +77,11 @@ export interface IDesignTokenRegistry {
 /**
  * Central registry of all workbench design tokens (non-color).
  */
-export class DesignTokenRegistry implements IDesignTokenRegistry {
-  private readonly _tokens = new Map<string, DesignTokenRegistration>();
-
-  registerToken(id: string, description: string, defaults: DesignTokenDefault): DesignTokenRegistration {
-    if (this._tokens.has(id)) {
-      throw new Error(`Design token '${id}' is already registered`);
-    }
-    const registration: DesignTokenRegistration = { id, description, defaults };
-    this._tokens.set(id, registration);
-    return registration;
-  }
-
-  getRegisteredToken(id: string): DesignTokenRegistration | undefined {
-    return this._tokens.get(id);
-  }
-
-  getRegisteredTokens(): ReadonlyArray<DesignTokenRegistration> {
-    return [...this._tokens.values()];
-  }
-
-  resolveDefault(id: string, themeType: ThemeType): string | undefined {
-    const reg = this._tokens.get(id);
-    if (!reg) { return undefined; }
-    switch (themeType) {
-      case ThemeType.DARK: return reg.defaults.dark;
-      case ThemeType.LIGHT: return reg.defaults.light;
-      case ThemeType.HIGH_CONTRAST_DARK: return reg.defaults.hcDark;
-      case ThemeType.HIGH_CONTRAST_LIGHT: return reg.defaults.hcLight;
-    }
-  }
-
-  /**
-   * Converts 'fontFamily.ui' → '--parallx-fontFamily-ui'
-   * Dots become hyphens within the key.
-   */
-  asCssVariableName(id: string): string {
-    return `--parallx-${id.replace(/\./g, '-')}`;
-  }
-
-  get size(): number {
-    return this._tokens.size;
-  }
+export class DesignTokenRegistry extends TokenRegistry<DesignTokenDefault> implements IDesignTokenRegistry {
+  constructor() { super('parallx', 'Design token'); }
+  registerToken(id: string, description: string, defaults: DesignTokenDefault): DesignTokenRegistration { return this.register(id, description, defaults); }
+  getRegisteredToken(id: string): DesignTokenRegistration | undefined { return this.get(id); }
+  getRegisteredTokens(): ReadonlyArray<DesignTokenRegistration> { return this.list(); }
 }
 
 // ─── Singleton Instance ──────────────────────────────────────────────────────

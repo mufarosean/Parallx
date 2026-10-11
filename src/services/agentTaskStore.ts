@@ -20,17 +20,17 @@ export class AgentTaskStore extends Disposable implements IAgentTaskStore {
   async setStorage(storage: IStorage): Promise<void> {
     this._storage = storage;
     await Promise.all([
-      this._loadTasks(),
-      this._loadPlanSteps(),
-      this._loadApprovalRequests(),
-      this._loadMemoryEntries(),
-      this._loadTraceEntries(),
+      this._loadInto(TASKS_STORAGE_KEY, this._tasks, 'tasks'),
+      this._loadInto(PLAN_STEPS_STORAGE_KEY, this._planSteps, 'plan steps'),
+      this._loadInto(APPROVALS_STORAGE_KEY, this._approvalRequests, 'approval requests'),
+      this._loadInto(MEMORY_STORAGE_KEY, this._memoryEntries, 'memory entries'),
+      this._loadInto(TRACE_STORAGE_KEY, this._traceEntries, 'trace entries'),
     ]);
   }
 
   async upsertTask(task: AgentTaskRecord): Promise<void> {
     this._tasks.set(task.id, task);
-    await this._persistTasks();
+    await this._persist(TASKS_STORAGE_KEY, this._tasks);
   }
 
   getTask(taskId: string): AgentTaskRecord | undefined {
@@ -45,7 +45,7 @@ export class AgentTaskStore extends Disposable implements IAgentTaskStore {
 
   async upsertPlanStep(step: AgentPlanStep): Promise<void> {
     this._planSteps.set(step.id, step);
-    await this._persistPlanSteps();
+    await this._persist(PLAN_STEPS_STORAGE_KEY, this._planSteps);
   }
 
   getPlanStep(stepId: string): AgentPlanStep | undefined {
@@ -60,7 +60,7 @@ export class AgentTaskStore extends Disposable implements IAgentTaskStore {
 
   async upsertApprovalRequest(request: AgentApprovalRequest): Promise<void> {
     this._approvalRequests.set(request.id, request);
-    await this._persistApprovalRequests();
+    await this._persist(APPROVALS_STORAGE_KEY, this._approvalRequests);
   }
 
   getApprovalRequest(requestId: string): AgentApprovalRequest | undefined {
@@ -81,7 +81,7 @@ export class AgentTaskStore extends Disposable implements IAgentTaskStore {
 
   async upsertMemoryEntry(entry: AgentMemoryEntry): Promise<void> {
     this._memoryEntries.set(entry.id, entry);
-    await this._persistMemoryEntries();
+    await this._persist(MEMORY_STORAGE_KEY, this._memoryEntries);
   }
 
   getMemoryEntry(entryId: string): AgentMemoryEntry | undefined {
@@ -96,7 +96,7 @@ export class AgentTaskStore extends Disposable implements IAgentTaskStore {
 
   async upsertTraceEntry(entry: AgentTraceEntry): Promise<void> {
     this._traceEntries.set(entry.id, entry);
-    await this._persistTraceEntries();
+    await this._persist(TRACE_STORAGE_KEY, this._traceEntries);
   }
 
   listTraceEntriesForTask(taskId: string): readonly AgentTraceEntry[] {
@@ -105,183 +105,27 @@ export class AgentTaskStore extends Disposable implements IAgentTaskStore {
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
 
-  private async _loadTasks(): Promise<void> {
-    this._tasks.clear();
-    if (!this._storage) {
-      return;
-    }
-
-    const raw = await this._storage.get(TASKS_STORAGE_KEY);
-    if (!raw) {
-      return;
-    }
-
+  /** Read a JSON array of records from storage into `into`, skipping anything that is not a record with an id. */
+  private async _loadInto<T extends { readonly id: string }>(key: string, into: Map<string, T>, what: string): Promise<void> {
+    into.clear();
+    if (!this._storage) return;
+    const raw = await this._storage.get(key);
+    if (!raw) return;
     try {
-      const parsed = JSON.parse(raw) as AgentTaskRecord[];
-      if (!Array.isArray(parsed)) {
-        return;
-      }
-
-      for (const task of parsed) {
-        if (!task || typeof task !== 'object' || typeof task.id !== 'string') {
-          continue;
-        }
-        this._tasks.set(task.id, task);
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return;
+      for (const item of parsed as T[]) {
+        if (!item || typeof item !== 'object' || typeof item.id !== 'string') continue;
+        into.set(item.id, item);
       }
     } catch {
-      console.warn('[AgentTaskStore] Failed to parse persisted tasks, resetting to empty state.');
+      console.warn(`[AgentTaskStore] Failed to parse persisted ${what}, resetting to empty state.`);
     }
   }
 
-  private async _loadApprovalRequests(): Promise<void> {
-    this._approvalRequests.clear();
-    if (!this._storage) {
-      return;
-    }
-
-    const raw = await this._storage.get(APPROVALS_STORAGE_KEY);
-    if (!raw) {
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as AgentApprovalRequest[];
-      if (!Array.isArray(parsed)) {
-        return;
-      }
-
-      for (const request of parsed) {
-        if (!request || typeof request !== 'object' || typeof request.id !== 'string') {
-          continue;
-        }
-        this._approvalRequests.set(request.id, request);
-      }
-    } catch {
-      console.warn('[AgentTaskStore] Failed to parse persisted approval requests, resetting to empty state.');
-    }
+  private async _persist(key: string, from: ReadonlyMap<string, unknown>): Promise<void> {
+    if (!this._storage) return;
+    await this._storage.set(key, JSON.stringify([...from.values()]));
   }
 
-  private async _loadPlanSteps(): Promise<void> {
-    this._planSteps.clear();
-    if (!this._storage) {
-      return;
-    }
-
-    const raw = await this._storage.get(PLAN_STEPS_STORAGE_KEY);
-    if (!raw) {
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as AgentPlanStep[];
-      if (!Array.isArray(parsed)) {
-        return;
-      }
-
-      for (const step of parsed) {
-        if (!step || typeof step !== 'object' || typeof step.id !== 'string') {
-          continue;
-        }
-        this._planSteps.set(step.id, step);
-      }
-    } catch {
-      console.warn('[AgentTaskStore] Failed to parse persisted plan steps, resetting to empty state.');
-    }
-  }
-
-  private async _loadMemoryEntries(): Promise<void> {
-    this._memoryEntries.clear();
-    if (!this._storage) {
-      return;
-    }
-
-    const raw = await this._storage.get(MEMORY_STORAGE_KEY);
-    if (!raw) {
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as AgentMemoryEntry[];
-      if (!Array.isArray(parsed)) {
-        return;
-      }
-
-      for (const entry of parsed) {
-        if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string') {
-          continue;
-        }
-        this._memoryEntries.set(entry.id, entry);
-      }
-    } catch {
-      console.warn('[AgentTaskStore] Failed to parse persisted memory entries, resetting to empty state.');
-    }
-  }
-
-  private async _loadTraceEntries(): Promise<void> {
-    this._traceEntries.clear();
-    if (!this._storage) {
-      return;
-    }
-
-    const raw = await this._storage.get(TRACE_STORAGE_KEY);
-    if (!raw) {
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as AgentTraceEntry[];
-      if (!Array.isArray(parsed)) {
-        return;
-      }
-
-      for (const entry of parsed) {
-        if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string') {
-          continue;
-        }
-        this._traceEntries.set(entry.id, entry);
-      }
-    } catch {
-      console.warn('[AgentTaskStore] Failed to parse persisted trace entries, resetting to empty state.');
-    }
-  }
-
-  private async _persistTasks(): Promise<void> {
-    if (!this._storage) {
-      return;
-    }
-
-    await this._storage.set(TASKS_STORAGE_KEY, JSON.stringify([...this._tasks.values()]));
-  }
-
-  private async _persistApprovalRequests(): Promise<void> {
-    if (!this._storage) {
-      return;
-    }
-
-    await this._storage.set(APPROVALS_STORAGE_KEY, JSON.stringify([...this._approvalRequests.values()]));
-  }
-
-  private async _persistPlanSteps(): Promise<void> {
-    if (!this._storage) {
-      return;
-    }
-
-    await this._storage.set(PLAN_STEPS_STORAGE_KEY, JSON.stringify([...this._planSteps.values()]));
-  }
-
-  private async _persistMemoryEntries(): Promise<void> {
-    if (!this._storage) {
-      return;
-    }
-
-    await this._storage.set(MEMORY_STORAGE_KEY, JSON.stringify([...this._memoryEntries.values()]));
-  }
-
-  private async _persistTraceEntries(): Promise<void> {
-    if (!this._storage) {
-      return;
-    }
-
-    await this._storage.set(TRACE_STORAGE_KEY, JSON.stringify([...this._traceEntries.values()]));
-  }
 }

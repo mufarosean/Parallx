@@ -6,7 +6,8 @@
 //
 // VS Code reference: src/vs/platform/theme/common/colorRegistry.ts
 
-import { ThemeType } from './themeTypes.js';
+import type { ThemeType } from './themeTypes.js';
+import { TokenRegistry } from './tokenRegistry.js';
 export { ThemeType } from './themeTypes.js';
 
 // ─── Color Default ───────────────────────────────────────────────────────────
@@ -79,50 +80,11 @@ export interface IColorRegistry {
  *
  * VS Code reference: ColorRegistry in src/vs/platform/theme/common/colorRegistry.ts
  */
-export class ColorRegistry implements IColorRegistry {
-  private readonly _colors = new Map<string, ColorRegistration>();
-
-  registerColor(id: string, description: string, defaults: ColorDefault): ColorRegistration {
-    if (this._colors.has(id)) {
-      throw new Error(`Color '${id}' is already registered`);
-    }
-    const registration: ColorRegistration = { id, description, defaults };
-    this._colors.set(id, registration);
-    return registration;
-  }
-
-  getRegisteredColor(id: string): ColorRegistration | undefined {
-    return this._colors.get(id);
-  }
-
-  getRegisteredColors(): ReadonlyArray<ColorRegistration> {
-    return [...this._colors.values()];
-  }
-
-  resolveDefault(id: string, themeType: ThemeType): string | undefined {
-    const reg = this._colors.get(id);
-    if (!reg) { return undefined; }
-    switch (themeType) {
-      case ThemeType.DARK: return reg.defaults.dark;
-      case ThemeType.LIGHT: return reg.defaults.light;
-      case ThemeType.HIGH_CONTRAST_DARK: return reg.defaults.hcDark;
-      case ThemeType.HIGH_CONTRAST_LIGHT: return reg.defaults.hcLight;
-    }
-  }
-
-  /**
-   * Converts 'editor.background' → '--vscode-editor-background'
-   * Dots become hyphens within the key.
-   *
-   * VS Code reference: asCssVariableName() in src/vs/platform/theme/common/colorUtils.ts
-   */
-  asCssVariableName(id: string): string {
-    return `--vscode-${id.replace(/\./g, '-')}`;
-  }
-
-  get size(): number {
-    return this._colors.size;
-  }
+export class ColorRegistry extends TokenRegistry<ColorDefault> implements IColorRegistry {
+  constructor() { super('vscode', 'Color'); }
+  registerColor(id: string, description: string, defaults: ColorDefault): ColorRegistration { return this.register(id, description, defaults); }
+  getRegisteredColor(id: string): ColorRegistration | undefined { return this.get(id); }
+  getRegisteredColors(): ReadonlyArray<ColorRegistration> { return this.list(); }
 }
 
 // ─── Singleton Instance ──────────────────────────────────────────────────────

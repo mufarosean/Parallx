@@ -37,10 +37,6 @@ import type { IDiffResult } from '../../services/diffService.js';
 // Participant Service Interfaces
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** Services injected into the default (agentic) participant. */
-import type { ISessionManager } from '../../services/serviceTypes.js';
-import type { IUnifiedAIConfigService } from '../../aiSettings/unifiedConfigTypes.js';
-
 // ── Shared runtime types (canonical source: services/chatRuntimeTypes.ts) ──
 export type {
   ChatRuntimeKind,
@@ -70,9 +66,7 @@ import type {
   ChatRuntimeRunState,
   ChatRuntimeApprovalState,
   IChatRuntimeToolInvocationObserver,
-  IChatRuntimeAutonomyMirror,
   IOpenclawBootstrapDebugReport,
-  IOpenclawSystemPromptReport,
   IPageSummary,
   IPageStructure,
   IChatAgentTaskViewModel,
@@ -87,101 +81,6 @@ export interface ISummarizationRequestOptions {
   readonly engine?: import('../../services/modelEngineBroker.js').IEngineCallTag;
   /** Let the model reason before it writes the summary. */
   readonly think?: boolean;
-}
-
-export interface IDefaultParticipantServices {
-  sendChatRequest(
-    messages: readonly IChatMessage[],
-    options?: IChatRequestOptions,
-    signal?: AbortSignal,
-  ): AsyncIterable<IChatResponseChunk>;
-  getActiveModel(): string | undefined;
-  getWorkspaceName(): string;
-  getPageCount(): Promise<number>;
-  getCurrentPageTitle(): string | undefined;
-  getToolDefinitions(): readonly IToolDefinition[];
-  getReadOnlyToolDefinitions(): readonly IToolDefinition[];
-  invokeTool?(
-    name: string,
-    args: Record<string, unknown>,
-    token: ICancellationToken,
-  ): Promise<IToolResult>;
-  invokeToolWithRuntimeControl?(
-    name: string,
-    args: Record<string, unknown>,
-    token: ICancellationToken,
-    observer?: IChatRuntimeToolInvocationObserver,
-    sessionId?: string,
-    callOptions?: { readonly resultCharBudget?: number; readonly acceptsImages?: boolean },
-  ): Promise<IToolResult>;
-  maxIterations?: number;
-  networkTimeout?: number;
-  getModelContextLength?(): number;
-  sendSummarizationRequest?(
-    messages: readonly IChatMessage[],
-    signal?: AbortSignal,
-    options?: ISummarizationRequestOptions,
-  ): AsyncIterable<IChatResponseChunk>;
-  getFileCount?(): Promise<number>;
-  isRAGAvailable?(): boolean;
-  isIndexing?(): boolean;
-  readFileContent?(fullPath: string): Promise<string>;
-  getCurrentPageContent?(): Promise<{ title: string; pageId: string; textContent: string } | undefined>;
-  retrieveContext?(query: string, pathPrefixes?: string[]): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>;
-  recallMemories?(query: string, sessionId?: string): Promise<string | undefined>;
-  recallTranscripts?(query: string): Promise<string | undefined>;
-  storeSessionMemory?(sessionId: string, summary: string, messageCount: number): Promise<void>;
-  isSessionEligibleForSummary?(messageCount: number): boolean;
-  hasSessionMemory?(sessionId: string): Promise<boolean>;
-  getSessionMemoryMessageCount?(sessionId: string): Promise<number | null>;
-  getPreferencesForPrompt?(): Promise<string | undefined>;
-  getPromptOverlay?(activeFilePath?: string): Promise<string | undefined>;
-  listFilesRelative?(relativePath: string): Promise<{ name: string; type: 'file' | 'directory' }[]>;
-  readFileRelative?(relativePath: string): Promise<string | null>;
-  writeFileRelative?(relativePath: string, content: string): Promise<void>;
-  existsRelative?(relativePath: string): Promise<boolean>;
-  invalidatePromptFiles?(): void;
-  reportContextPills?(pills: IContextPill[]): void;
-  reportRetrievalDebug?(debug: {
-    hasActiveSlashCommand: boolean;
-    isRagReady: boolean;
-    needsRetrieval: boolean;
-    attempted: boolean;
-    returnedSources?: number;
-  }): void;
-  reportResponseDebug?(debug: {
-    phase: string;
-    markdownLength: number;
-    yielded: boolean;
-    cancelled: boolean;
-    retrievedContextLength: number;
-    note?: string;
-  }): void;
-  reportRuntimeTrace?(trace: IChatRuntimeTrace): void;
-  reportBootstrapDebug?(debug: IOpenclawBootstrapDebugReport): void;
-  reportSystemPromptReport?(report: IOpenclawSystemPromptReport): void;
-  reportBudget?(slots: ReadonlyArray<{ label: string; used: number; allocated: number; color: string }>): void;
-  listFolderFiles?(folderPath: string): Promise<Array<{ relativePath: string; content: string }>>;
-  getTerminalOutput?(): Promise<string | undefined>;
-  userCommandFileSystem?: IUserCommandFileSystem;
-  compactSession?(sessionId: string, summaryText: string): void;
-  getExcludedContextIds?(): ReadonlySet<string>;
-  getWorkspaceDigest?(): Promise<string | undefined>;
-  getLastSystemPromptReport?(): IOpenclawSystemPromptReport | undefined;
-  /** Session manager for stale session detection during tool invocations. */
-  sessionManager?: ISessionManager;
-  /** Unified AI Config service for all configuration. */
-  unifiedConfigService?: IUnifiedAIConfigService;
-  createAutonomyMirror?(
-    input: {
-      sessionId: string;
-      requestText: string;
-      mode: import('../../services/chatTypes.js').ChatMode;
-      runtime: 'claw' | 'openclaw';
-    },
-  ): Promise<IChatRuntimeAutonomyMirror | undefined>;
-  /** Return the canonical file-backed skill catalog for runtime loading. */
-  getSkillCatalog?(): ISkillCatalogEntry[];
 }
 
 /** Services injected into the @workspace participant. */
