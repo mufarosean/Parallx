@@ -39,6 +39,7 @@ import { DatabaseEditorPane } from './database/databaseEditorPane.js';
 import { setOnLinkedPageBlockDeleted, renderPageIconHtml } from './config/blockRegistry.js';
 import { pageMoveTargets } from './pageMoveTargets.js';
 import type { SendChatRequestFn } from './menus/inlineAIChat.js';
+import { registerQuickOpenSource } from '../../services/quickOpenSources.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -563,13 +564,38 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     for (const d of canvasToolDisposables) context.subscriptions.push(d);
   }
 
+  const dataServiceRef = _dataService;
+
+  // 2a. Quick Open (Ctrl+P) finds pages beside files, most recently edited
+  //     first, each with the pages above it as its place.
+  context.subscriptions.push(registerQuickOpenSource({
+    id: 'canvas.pages',
+    group: 'pages',
+    listItems: async () => {
+      const flat: { page: IPageTreeNode; path: string }[] = [];
+      const walk = (nodes: readonly IPageTreeNode[], path: string): void => {
+        for (const node of nodes) {
+          flat.push({ page: node, path });
+          walk(node.children, path ? `${path} / ${node.title || 'Untitled'}` : (node.title || 'Untitled'));
+        }
+      };
+      walk(await dataServiceRef.getPageTree(), '');
+      flat.sort((a, b) => (b.page.updatedAt ?? '').localeCompare(a.page.updatedAt ?? ''));
+      return flat.map(({ page, path }) => ({
+        id: page.id,
+        label: page.title || 'Untitled',
+        detail: path || undefined,
+        open: () => { void openPageInEditor(page.id); },
+      }));
+    },
+  }));
+
   // 2b. The LEGACY per-page property system (PropertyDataService + property
   //     bar + page_properties/property_definitions tables) is RETIRED:
   //     properties live in DATABASES (Notion model). Existing data is moved
   //     by runLegacyPropertyMigration (below, one-time, backup-first); the
   //     legacy tables stay on disk untouched as an archive. created/modified
   //     are derived from pages.created_at/updated_at — no seeding needed.
-  const dataServiceRef = _dataService;
   context.subscriptions.push(
     dataServiceRef.onDidChangePage((event) => {
       if (event.kind !== PageChangeKind.Created) return;

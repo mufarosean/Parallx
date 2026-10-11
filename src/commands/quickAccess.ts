@@ -27,6 +27,7 @@ import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { CommandService } from './commandRegistry.js';
 import type { IRecentsServiceShape } from '../services/recentsService.js';
+import { getQuickOpenSources, type QuickOpenSourceItem } from '../services/quickOpenSources.js';
 import { $ } from '../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -429,7 +430,13 @@ class GoToLineProvider implements IQuickAccessProvider {
 
 class GeneralProvider implements IQuickAccessProvider {
   readonly prefix = '';
-  readonly placeholder = 'Search files, workspaces, or type > for commands.';
+
+  /** Names what can be found: the running tools' sources, then files and workspaces. */
+  get placeholder(): string {
+    const kinds = [...getQuickOpenSources().map((s) => s.group), 'files', 'workspaces'];
+    const listed = kinds.length > 1 ? `${kinds.slice(0, -1).join(', ')} and ${kinds[kinds.length - 1]}` : kinds[0];
+    return `Search ${listed}, or type > for commands.`;
+  }
 
   // ── File picker state (M4 Cap 6) ──────────────────────────────────────
   private _fileScanner: WorkspaceFileScanner | undefined;
@@ -454,6 +461,33 @@ class GeneralProvider implements IQuickAccessProvider {
 
   async getItems(query: string): Promise<QuickAccessItem[]> {
     const items: QuickAccessItem[] = [];
+
+    // ── What running tools contribute (Canvas pages), before files ──────
+    for (const source of getQuickOpenSources()) {
+      let entries: readonly QuickOpenSourceItem[];
+      try { entries = await source.listItems(); } catch { continue; }
+      const scored: { entry: QuickOpenSourceItem; score: number; labelMatches?: number[]; detailMatches?: number[] }[] = [];
+      entries.forEach((entry, order) => {
+        if (query.length === 0) { scored.push({ entry, score: order }); return; }
+        const onLabel = fuzzyMatch(query, entry.label);
+        if (onLabel) { scored.push({ entry, score: onLabel.score, labelMatches: onLabel.matches }); return; }
+        const onDetail = entry.detail ? fuzzyMatch(query, entry.detail) : null;
+        if (onDetail) scored.push({ entry, score: onDetail.score + 1, detailMatches: onDetail.matches });
+      });
+      if (query.length > 0) scored.sort((a, b) => a.score - b.score || a.entry.label.localeCompare(b.entry.label));
+      for (const { entry, score, labelMatches, detailMatches } of scored.slice(0, MAX_FILE_RESULTS)) {
+        items.push({
+          id: `${source.id}:${entry.id}`,
+          label: entry.label,
+          detail: entry.detail,
+          group: source.group,
+          score,
+          labelMatches,
+          detailMatches,
+          accept: () => entry.open(),
+        });
+      }
+    }
 
     // ── File results (M4 Cap 6) ─────────────────────────────────────────
     if (this._fileScanner) {
