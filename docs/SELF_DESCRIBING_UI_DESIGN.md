@@ -861,6 +861,17 @@ they use `tests/probes/scene.mjs`.
 
 Section 8.
 
+Done 2026-10-12, in the cloud. The rendering lives in
+`tests/unit/referenceDocs.test.ts`, because it needs the TypeScript
+modules vitest loads: the core command modules (a check keeps that list
+complete), the built-in manifests through `builtinManifests.ts`, and
+every `ext/*/parallx-manifest.json`. `scripts/build-reference.mjs` runs
+that file with `UPDATE_REFERENCE=1`, and `npm run build` runs the
+script; without the flag the test fails when a file on disk differs
+from what the registries say. Settings the workbench registers at run
+time are not in `settings.md` (its header says so); the manifests'
+are.
+
 ### Step 11. The audit (cloud, after steps 5 and 7)
 
 `scripts/scene-sweep.mjs`, on the model of `scripts/dead-code-sweep.mjs`:
@@ -978,7 +989,7 @@ Sessions append here. Each line: date, step, what was left and why.
      Inventory with `grep -n "\$('button\|createElement('button')" -r src/built-in/canvas`.
   4. chat: done except `chatWidget.ts` (see step 5's notes); the
      message list's markdown is never declared.
-  Steps 6 and 8 are done. Then steps 7, 9, 4, 10, 11 as section 9 orders them.
+  Steps 6, 8 and 10 are done. Then steps 7, 9, 4, 11 as section 9 orders them.
 
   What this session learned, for whoever continues:
   - A repeated card (a widget, a routine row, an approval) is a surface
