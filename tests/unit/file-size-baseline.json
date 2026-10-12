@@ -34,7 +34,7 @@
   "src/built-in/canvas/extensions/conceptMapNode.ts": 1213,
   "src/built-in/canvas/handles/blockHandles.ts": 1305,
   "src/built-in/canvas/handles/blockSelection.ts": 906,
-  "src/built-in/canvas/header/pageChrome.ts": 1466,
+  "src/built-in/canvas/header/pageChrome.ts": 1327,
   "src/built-in/canvas/main.ts": 1534,
   "src/built-in/canvas/markdownImport.ts": 1305,
   "src/built-in/canvas/menus/canvasMenuRegistry.ts": 825,

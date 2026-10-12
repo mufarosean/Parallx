@@ -14,9 +14,9 @@ import { $, layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, renderPageIconHtml, COVER_GALLERY } from '../config/blockRegistry.js';
 import { showVersionHistoryPanel } from '../canvasVersionHistoryPanel.js';
-import {
-  listFonts, resolveFontStack, getWorkspaceDefaultFontId, setWorkspaceDefaultFontId,
-  registerCustomFont, removeCustomFont, fontFormatFromExtension, type CanvasFont, getFont } from '../config/fontRegistry.js';
+import { resolveFontStack } from '../config/fontRegistry.js';
+import { buildFontSection } from './pageFontMenu.js';
+import { createSurface, declareControl, sceneSlug } from '../../../ui/kit.js';
 import { formatRelativeTime } from '../../../ui/relativeTime.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
@@ -435,6 +435,7 @@ export class PageChromeController {
     if (!this._options.hideFavoriteButton) {
       this._ribbonFavoriteBtn = $('button.canvas-top-ribbon-btn.canvas-top-ribbon-favorite');
       this._ribbonFavoriteBtn.title = 'Add to Favorites';
+      declareControl(this._ribbonFavoriteBtn, { id: 'canvas.page.favorite', label: 'Favorite', kind: 'iconButton', state: () => ({ kind: 'pressed', value: this._currentPage?.isFavorited === true }) });
       this._updateFavoriteIcon();
       this._ribbonFavoriteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -451,6 +452,7 @@ export class PageChromeController {
     const menuSvg = this._pageMenuBtn.querySelector('svg');
     if (menuSvg) { menuSvg.setAttribute('width', '16'); menuSvg.setAttribute('height', '16'); }
     this._pageMenuBtn.title = 'Page settings';
+    declareControl(this._pageMenuBtn, { id: 'canvas.page.menu', label: 'Page settings', kind: 'iconButton' });
     this._pageMenuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._showPageMenu();
@@ -619,6 +621,7 @@ export class PageChromeController {
     const toggle = $('button.canvas-backlinks__toggle') as HTMLButtonElement;
     toggle.type = 'button';
     toggle.setAttribute('aria-expanded', String(this._backlinksOpen));
+    declareControl(toggle, { id: 'canvas.page.backlinks', label: 'Linked from', state: () => ({ kind: 'pressed', value: toggle.getAttribute('aria-expanded') === 'true' }) });
     toggle.appendChild(createIconElement('link', 14));
     const label = $('span');
     label.textContent = pages.length === 1 ? '1 backlink' : `${pages.length} backlinks`;
@@ -721,6 +724,7 @@ export class PageChromeController {
     // affordance buttons at the top of the header already use.
     const repositionBtn = $('button.canvas-cover-btn.canvas-cover-reposition-btn');
     repositionBtn.textContent = 'Reposition';
+    declareControl(repositionBtn, { id: 'canvas.cover.reposition', label: 'Reposition' });
     repositionBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
     repositionBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -729,6 +733,7 @@ export class PageChromeController {
 
     const changeBtn = $('button.canvas-cover-btn');
     changeBtn.textContent = 'Change Cover';
+    declareControl(changeBtn, { id: 'canvas.cover.change', label: 'Change Cover' });
     changeBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
     changeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -737,6 +742,7 @@ export class PageChromeController {
 
     const removeBtn = $('button.canvas-cover-btn');
     removeBtn.textContent = 'Remove';
+    declareControl(removeBtn, { id: 'canvas.cover.remove', label: 'Remove cover' });
     removeBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -790,6 +796,7 @@ export class PageChromeController {
       addIconBtn.dataset.action = 'add-icon';
       addIconBtn.appendChild(createIconElement('smile', 14));
       const lbl = $('span'); lbl.textContent = 'Add Icon';
+      declareControl(addIconBtn, { id: 'canvas.page.addIcon', label: 'Add Icon' });
       addIconBtn.appendChild(lbl);
       addIconBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addIconBtn.addEventListener('click', (e) => {
@@ -804,6 +811,7 @@ export class PageChromeController {
       addCoverBtn.dataset.action = 'add-cover';
       addCoverBtn.appendChild(createIconElement('image', 14));
       const lbl2 = $('span'); lbl2.textContent = 'Add Cover';
+      declareControl(addCoverBtn, { id: 'canvas.page.addCover', label: 'Add Cover' });
       addCoverBtn.appendChild(lbl2);
       addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addCoverBtn.addEventListener('click', (e) => {
@@ -819,6 +827,7 @@ export class PageChromeController {
       addPropsBtn.dataset.action = 'add-properties';
       addPropsBtn.appendChild(createIconElement('tag', 14));
       const lbl3 = $('span'); lbl3.textContent = 'Add Properties';
+      declareControl(addPropsBtn, { id: 'canvas.page.addProperties', label: 'Add Properties' });
       addPropsBtn.appendChild(lbl3);
       addPropsBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addPropsBtn.addEventListener('click', (e) => {
@@ -928,6 +937,7 @@ export class PageChromeController {
 
     const cancelBtn = $('button.canvas-cover-btn');
     cancelBtn.textContent = 'Cancel';
+    declareControl(cancelBtn, { id: 'canvas.cover.cancel', label: 'Cancel' });
     cancelBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       document.removeEventListener('mousemove', onMouseMove);
@@ -951,6 +961,7 @@ export class PageChromeController {
 
     const saveBtn = $('button.canvas-cover-btn.canvas-cover-btn--primary');
     saveBtn.textContent = 'Save Position';
+    declareControl(saveBtn, { id: 'canvas.cover.save', label: 'Save Position' });
     saveBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       document.removeEventListener('mousemove', onMouseMove);
@@ -1041,6 +1052,7 @@ export class PageChromeController {
     this.dismissPopups();
 
     this._pageMenuDropdown = $('div.canvas-page-menu');
+    createSurface(this._pageMenuDropdown, { id: 'canvas.pageMenu', owner: 'canvas', label: 'Page settings' });
     const page = this._currentPage;
 
     if (this._options.menuKind === 'database') {
@@ -1196,6 +1208,7 @@ export class PageChromeController {
 
     for (const act of actions) {
       const btn = $('button.canvas-page-menu-action');
+      declareControl(btn, { id: `canvas.pageMenu.${sceneSlug(act.label)}`, label: act.label });
       btn.appendChild(createIconElement(act.iconId as any, 14));
       const actLabel = $('span');
       actLabel.textContent = ` ${act.label}`;
@@ -1215,164 +1228,11 @@ export class PageChromeController {
   private _buildFontSection(page: IPage | null): void {
     const dd = this._pageMenuDropdown;
     if (!dd) return;
-
-    const fontLabel = $('div.canvas-page-menu-label');
-    fontLabel.textContent = 'Font';
-    dd.appendChild(fontLabel);
-
-    const currentId = page?.fontFamily || 'default';
-
-    // One row shows the current font (in its own face). Clicking it opens the
-    // list below; picking a font closes it again. The menu used to spend half
-    // its height on every font at once.
-    const current = $('button.canvas-page-menu-font-current');
-    const currentName = $('span.canvas-page-menu-font-current-name');
-    const paintCurrent = (): void => {
-      const font = getFont(this._currentPage?.fontFamily || 'default') ?? getFont('default');
-      currentName.textContent = font?.label ?? 'Default';
-      currentName.style.fontFamily = font?.stack ?? '';
-    };
-    current.appendChild(currentName);
-    current.appendChild(createIconElement('chevron-down', 12));
-    current.title = 'Choose the font for this page.';
-    current.setAttribute('aria-haspopup', 'listbox');
-    dd.appendChild(current);
-
-    const list = $('div.canvas-page-menu-font-list');
-    list.hidden = true;
-    if (this._locked) {
-      current.setAttribute('aria-disabled', 'true');
-      current.title = 'This page is locked.';
-    }
-    current.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (this._locked) return;
-      list.hidden = !list.hidden;
-      current.classList.toggle('canvas-page-menu-font-current--open', !list.hidden);
+    buildFontSection(dd, {
+      page,
+      locked: this._locked,
+      applyFont: (id) => this._host.dataService.updatePage(this._host.pageId, { fontFamily: id }),
     });
-
-    const refreshDefaultBadges = (): void => {
-      const defId = getWorkspaceDefaultFontId();
-      list.querySelectorAll<HTMLElement>('.canvas-page-menu-font-row').forEach((row) => {
-        const isDef = row.dataset.fontId === defId;
-        row.classList.toggle('canvas-page-menu-font-row--default', isDef);
-      });
-    };
-
-    const renderRow = (font: CanvasFont): void => {
-      const row = $('div.canvas-page-menu-font-row');
-      row.dataset.fontId = font.id;
-      if (font.id === currentId) row.classList.add('canvas-page-menu-font-row--active');
-
-      // The name previews itself in its own font.
-      const pick = $('button.canvas-page-menu-font-pick');
-      pick.style.fontFamily = font.stack;
-      const name = $('span.canvas-page-menu-font-name');
-      name.textContent = font.label;
-      pick.appendChild(name);
-      const defBadge = $('span.canvas-page-menu-font-default-badge');
-      defBadge.textContent = 'default';
-      pick.appendChild(defBadge);
-      pick.addEventListener('click', () => {
-        if (this._locked) return;
-        this._host.dataService.updatePage(this._host.pageId, { fontFamily: font.id });
-        list.querySelectorAll('.canvas-page-menu-font-row').forEach((r) => r.classList.remove('canvas-page-menu-font-row--active'));
-        row.classList.add('canvas-page-menu-font-row--active');
-        currentName.textContent = font.label;
-        currentName.style.fontFamily = font.stack;
-        list.hidden = true;
-        current.classList.remove('canvas-page-menu-font-current--open');
-      });
-      row.appendChild(pick);
-
-      const actions = $('span.canvas-page-menu-font-actions');
-      const setDefault = $('button.canvas-page-menu-font-action');
-      setDefault.classList.add('canvas-page-menu-font-action--pin');
-      setDefault.title = 'Set as default for new pages';
-      setDefault.appendChild(createIconElement('pin', 12));
-      setDefault.addEventListener('click', (e) => {
-        e.stopPropagation();
-        void setWorkspaceDefaultFontId(font.id).then(refreshDefaultBadges);
-      });
-      actions.appendChild(setDefault);
-
-      if (font.source === 'custom') {
-        const del = $('button.canvas-page-menu-font-action');
-        del.classList.add('canvas-page-menu-font-action--danger');
-        del.title = 'Remove custom font';
-        del.appendChild(createIconElement('trash', 12));
-        del.addEventListener('click', (e) => {
-          e.stopPropagation();
-          void removeCustomFont(font.id).then(() => {
-            if (this._currentPage?.fontFamily === font.id) {
-              this._host.dataService.updatePage(this._host.pageId, { fontFamily: 'default' });
-            }
-            row.remove();
-          });
-        });
-        actions.appendChild(del);
-      }
-      row.appendChild(actions);
-      list.appendChild(row);
-    };
-
-    for (const font of listFonts()) renderRow(font);
-    dd.appendChild(list);
-    refreshDefaultBadges();
-    paintCurrent();
-
-    const upload = $('button.canvas-page-menu-font-upload');
-    upload.appendChild(createIconElement('upload', 13));
-    const uploadLabel = $('span');
-    uploadLabel.textContent = ' Upload font…';
-    upload.appendChild(uploadLabel);
-    upload.addEventListener('click', (e) => {
-      e.stopPropagation();
-      void this._uploadCustomFont(list, renderRow);
-    });
-    list.appendChild(upload);
-  }
-
-  /**
-   * Prompt for a font file, embed it as a data URL, register it, and apply it
-   * to the current page. Mirrors the cover-image upload flow.
-   */
-  private async _uploadCustomFont(
-    list: HTMLElement,
-    renderRow: (font: CanvasFont) => void,
-  ): Promise<void> {
-    const electron = (window as any).parallxElectron;
-    if (!electron?.dialog?.openFile || !electron?.fs?.readFile) return;
-
-    const filePaths = await electron.dialog.openFile({
-      title: 'Upload font',
-      filters: [{ name: 'Fonts', extensions: ['woff2', 'woff', 'ttf', 'otf'] }],
-      properties: ['openFile'],
-    });
-    const filePath = Array.isArray(filePaths) ? filePaths[0] : filePaths;
-    if (!filePath || typeof filePath !== 'string') return;
-
-    const ext = filePath.split('.').pop() ?? '';
-    const fmt = fontFormatFromExtension(ext);
-    if (!fmt) return;
-
-    const result = await electron.fs.readFile(filePath);
-    if (!result?.content || result.encoding !== 'base64') return;
-    // Guard against bloating the workspace settings file. ~3.2M base64 chars
-    // ≈ 2.4 MB of font bytes — plenty for a woff2/ttf face.
-    if (result.content.length > 3_200_000) {
-      console.warn('[canvas] custom font too large — pick a woff2 under ~2 MB');
-      return;
-    }
-
-    const dataUrl = `data:${fmt.mime};base64,${result.content}`;
-    const rawName = (filePath.split(/[\\/]/).pop() ?? 'Custom font').replace(/\.[^.]+$/, '');
-    const label = rawName.replace(/[_-]+/g, ' ').trim() || 'Custom font';
-
-    const font = await registerCustomFont(label, dataUrl, fmt.format);
-    // Show the new font in the open list and apply it to the current page.
-    if (!list.querySelector(`[data-font-id="${font.id}"]`)) renderRow(font);
-    this._host.dataService.updatePage(this._host.pageId, { fontFamily: font.id });
   }
 
   private _buildDatabaseMenu(page: IPage | null): void {
@@ -1453,6 +1313,7 @@ export class PageChromeController {
 
     for (const act of actions) {
       const btn = $('button.canvas-page-menu-action');
+      declareControl(btn, { id: `canvas.pageMenu.${sceneSlug(act.label)}`, label: act.label });
       btn.appendChild(createIconElement(act.iconId as any, 14));
       const actLabel = $('span');
       actLabel.textContent = ` ${act.label}`;

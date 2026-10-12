@@ -116,7 +116,9 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/pageBlockNode.ts':           ['config/blockRegistry'],
   'extensions/conceptMapNode.ts':          ['config/blockRegistry'],
   // M93 — the ⋯ menu / Ctrl+P lazy-load the PDF export dialog.
-  'header/pageChrome.ts':                  ['config/blockRegistry', 'canvasVersionHistoryPanel', 'export/pdfExportDialog', 'config/fontRegistry'],
+  'header/pageChrome.ts':                  ['config/blockRegistry', 'canvasVersionHistoryPanel', 'export/pdfExportDialog', 'config/fontRegistry', 'header/pageFontMenu'],
+  // The page menu's Font section, split out of pageChrome.
+  'header/pageFontMenu.ts':                ['config/blockRegistry', 'config/fontRegistry', 'canvasTypes'],
   // contentSchema: the versioned-envelope decoder for the md-export action
   // (raw JSON.parse of page.content hands the wrapper to the converter and
   // silently exports title-only markdown — the M93 flashcards bug).

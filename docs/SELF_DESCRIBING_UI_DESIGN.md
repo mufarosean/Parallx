@@ -768,6 +768,24 @@ extracted from it (the empty state, lines 1480 to 1570, is the natural
 cut). The probe checks the input, send, add context, mode, engine and
 context ids.
 
+Canvas page chrome and bubble menu done 2026-10-12, in the cloud. The
+page menu's Font section moved to `header/pageFontMenu.ts` (the gate
+test lists it) so `pageChrome.ts` could take its declarations under
+the size limit: the ribbon's favorite (pressed while favorited) and
+page menu, the backlinks toggle, the cover's reposition, change and
+remove, the hover affordances (add icon, cover, properties), the
+reposition bar's cancel and save, the page menu as a surface
+`canvas.pageMenu` with each action (`canvas.pageMenu.<label>`), and
+in the font section the current font, each font's pick, set-default
+and remove, and upload. The bubble menu is a surface
+`canvas.bubbleMenu` with its formatting buttons (`canvas.bubble.<title>`,
+pressed while the mark is active), the link field and its apply, copy,
+open and remove, and the tool actions (`canvas.bubble.tool.<action>`).
+Not done: the sidebar (`canvasSidebar.ts`, 2198 lines), the property
+editors and picker, the template picker and the version history panel;
+each is a session of its own and the sidebar needs an extraction first.
+The probe makes a new page and checks the ribbon and an affordance.
+
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
 (`src/editor/panes/pdf/`), explorer, search, dashboard, settings (the
@@ -912,17 +930,20 @@ Sessions append here. Each line: date, step, what was left and why.
   worksheet, planner, PDF, explorer, search, dashboard, settings panels,
   welcome, terminal, activity log, tool gallery, theme editor, the
   Agents view, run pane and routine form, the workflow editor, AI
-  settings, the three panel logs, and the chat chrome outside
-  `chatWidget.ts`). Left in
+  settings, the three panel logs, the chat chrome outside
+  `chatWidget.ts`, and the canvas page chrome and bubble menu). Left in
   step 5, in this order, one commit each, each verified by the probe
   (section 13; in the cloud run it as
   `timeout 280 xvfb-run -a node tests/probes/scene-probe.mjs <outDir>`
   after `npm run build`) and the full suite:
   1. (done, see step 5's notes) the workflow editor, ai-settings,
      output, diagnostics and indexing-log.
-  3. canvas: only the toolbar, menus and property editors, never the
-     Tiptap document. Inventory with
-     `grep -n "createElement('button')\|\$('button" src/canvas -r`.
+  3. canvas: the page chrome and bubble menu are done (see step 5's
+     notes); left are the sidebar (`canvasSidebar.ts`, over the limit:
+     extract first), `properties/propertyEditors.ts`,
+     `properties/propertyPicker.ts`, `canvasTemplatePicker.ts` and
+     `canvasVersionHistoryPanel.ts`. Never the Tiptap document.
+     Inventory with `grep -n "\$('button\|createElement('button')" -r src/built-in/canvas`.
   4. chat: done except `chatWidget.ts` (see step 5's notes); the
      message list's markdown is never declared.
   Then steps 6, 7, 8, 9, 4, 10, 11 as section 9 orders them.

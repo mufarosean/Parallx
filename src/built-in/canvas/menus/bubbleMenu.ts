@@ -10,6 +10,7 @@
 import { getToolSelectionActions } from '../../../services/selectionActionDispatcher.js';
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
+import { createSurface, declareControl, sceneSlug } from '../../../ui/kit.js';
 import { svgIcon, recordRecentColor, renderColorPalette } from './canvasMenuRegistry.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
@@ -72,6 +73,7 @@ export class BubbleMenuController implements ICanvasMenu {
   /** Build the hidden bubble menu DOM and attach it to the container. */
   create(): void {
     this._menu = $('div.canvas-bubble-menu');
+    createSurface(this._menu, { id: 'canvas.bubbleMenu', owner: 'canvas', label: 'Selection' });
     this._menu.style.display = 'none';
     // The menu stays above its selection when the page scrolls.
     window.addEventListener('scroll', this._onScroll, true);
@@ -174,6 +176,7 @@ export class BubbleMenuController implements ICanvasMenu {
       const el = $('button.canvas-bubble-btn');
       el.innerHTML = btn.label;
       el.title = btn.title;
+      declareControl(el, { id: `canvas.bubble.${sceneSlug(btn.title.replace(/\s*\(.*\)$/, ''))}`, label: btn.title, kind: 'iconButton', state: () => ({ kind: 'pressed', value: el.classList.contains('canvas-bubble-btn--active') }) });
       el.addEventListener('mousedown', (ev) => {
         ev.preventDefault();  // prevent editor blur
         const editor = this._host.editor;
@@ -192,15 +195,19 @@ export class BubbleMenuController implements ICanvasMenu {
     const linkField = $('input.canvas-bubble-link-field') as HTMLInputElement;
     linkField.type = 'url';
     linkField.placeholder = 'Paste link…';
+    declareControl(linkField, { id: 'canvas.bubble.linkUrl', label: 'Link', kind: 'input', state: () => ({ kind: 'value', value: linkField.value }) });
     const linkApply = $('button.canvas-bubble-link-apply');
     linkApply.textContent = '✓';
     linkApply.title = 'Apply link';
+    declareControl(linkApply, { id: 'canvas.bubble.link.apply', label: 'Apply link', kind: 'iconButton' });
     const linkCopy = $('button.canvas-bubble-link-copy');
     linkCopy.innerHTML = svgIcon('copy');
     linkCopy.title = 'Copy link';
+    declareControl(linkCopy, { id: 'canvas.bubble.link.copy', label: 'Copy link', kind: 'iconButton' });
     const linkOpen = $('button.canvas-bubble-link-open');
     linkOpen.innerHTML = svgIcon('external-link');
     linkOpen.title = 'Open link';
+    declareControl(linkOpen, { id: 'canvas.bubble.link.open', label: 'Open link', kind: 'iconButton' });
     const linkRemove = $('button.canvas-bubble-link-remove');
     linkRemove.innerHTML = svgIcon('close');
     for (const iconButton of [linkCopy, linkOpen, linkRemove]) {
@@ -208,6 +215,7 @@ export class BubbleMenuController implements ICanvasMenu {
       if (svg) { svg.setAttribute('width', '12'); svg.setAttribute('height', '12'); }
     }
     linkRemove.title = 'Remove link';
+    declareControl(linkRemove, { id: 'canvas.bubble.link.remove', label: 'Remove link', kind: 'iconButton' });
 
     const getCurrentLinkHref = (): string => {
       const fieldValue = linkField.value.trim();
@@ -464,6 +472,7 @@ export class BubbleMenuController implements ICanvasMenu {
       el.title = a.label.replace(/…$/, '');
       el.setAttribute('aria-label', a.label);
       el.dataset.action = a.actionId;
+      declareControl(el, { id: `canvas.bubble.tool.${sceneSlug(a.actionId)}`, label: a.label, kind: 'iconButton' });
       el.addEventListener('mousedown', (ev) => {
         ev.preventDefault();  // prevent editor blur
         const editor = this._host.editor;
