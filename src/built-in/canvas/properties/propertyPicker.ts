@@ -3,6 +3,7 @@
 // Shows workspace property definitions not already on the current page,
 // with search/filter and a "Create new property" option at the bottom.
 
+import { createSurface, declareControl } from '../../../ui/kit.js';
 import { isSystemPropertyName, type IPropertyDefinition, type PropertyType } from './propertyTypes.js';
 import { createTypeIconElement } from './propertyEditors.js';
 import { layoutPopup, attachPopupDismiss } from '../../../ui/dom.js';
@@ -38,6 +39,7 @@ export function showPropertyPicker(
 
   const picker = document.createElement('div');
   picker.className = 'canvas-property-picker';
+  createSurface(picker, { id: 'canvas.propertyPicker', owner: 'canvas', label: 'Add a property' });
 
   // ── Search input ──
   const searchWrap = document.createElement('div');
@@ -45,6 +47,7 @@ export function showPropertyPicker(
   const searchInput = document.createElement('input');
   searchInput.type = 'text';
   searchInput.placeholder = 'Search properties…';
+  declareControl(searchInput, { id: 'canvas.propertyPicker.search', label: 'Search properties', kind: 'input', state: () => ({ kind: 'value', value: searchInput.value }) });
   searchWrap.appendChild(searchInput);
   picker.appendChild(searchWrap);
 
@@ -75,12 +78,14 @@ export function showPropertyPicker(
       label.className = 'canvas-property-picker__item-label';
       label.textContent = def.name;
       item.appendChild(label);
+      createSurface(item, { id: 'canvas.propertyPicker.item', owner: 'canvas', label: def.name, instance: def.name });
 
       if (onDeleteDefinition && !isSystemPropertyName(def.name)) {
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
         deleteBtn.className = 'canvas-property-picker__delete';
         deleteBtn.title = `Delete property "${def.name}" everywhere`;
+        declareControl(deleteBtn, { id: 'canvas.propertyPicker.item.delete', label: deleteBtn.title, kind: 'iconButton' });
         deleteBtn.appendChild(createIconElement('trash', 13));
         deleteBtn.addEventListener('mousedown', (e) => {
           e.preventDefault();
@@ -127,6 +132,7 @@ export function showPropertyPicker(
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.placeholder = 'Property name';
+    declareControl(nameInput, { id: 'canvas.propertyPicker.name', label: 'Property name', kind: 'input', state: () => ({ kind: 'value', value: nameInput.value }) });
     newForm.appendChild(nameInput);
 
     // Custom type picker (replaces native <select> so icons render)
@@ -135,6 +141,7 @@ export function showPropertyPicker(
     const typeBtn = document.createElement('button');
     typeBtn.type = 'button';
     typeBtn.className = 'canvas-property-picker__type-btn';
+    declareControl(typeBtn, { id: 'canvas.propertyPicker.type', label: 'Property type', state: () => ({ kind: 'value', value: selectedType }) });
     const _updateTypeBtn = () => {
       typeBtn.innerHTML = '';
       const icon = createTypeIconElement(selectedType, 14);
@@ -196,6 +203,7 @@ export function showPropertyPicker(
 
     const submitBtn = document.createElement('button');
     submitBtn.textContent = 'Create';
+    declareControl(submitBtn, { id: 'canvas.propertyPicker.create', label: 'Create' });
     submitBtn.addEventListener('click', () => {
       const name = nameInput.value.trim();
       if (!name) return;

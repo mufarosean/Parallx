@@ -786,6 +786,17 @@ editors and picker, the template picker and the version history panel;
 each is a session of its own and the sidebar needs an extraction first.
 The probe makes a new page and checks the ribbon and an affordance.
 
+Canvas pickers done 2026-10-12, in the cloud: the template picker as
+`canvas.templatePicker` with each template card (`canvas.template.<id>`),
+blank, manage and cancel; the version history panel as
+`canvas.versionHistory` with close and restore (the version rows are
+not); the property picker as `canvas.propertyPicker` with its search,
+each property row as `canvas.propertyPicker.item` by name with its
+delete, and the new-property name, type and create. Left in canvas:
+the sidebar and the property editors (`properties/propertyEditors.ts`,
+one editor per property, so ids need the property name from
+`createPropertyEditor`'s caller).
+
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
 (`src/editor/panes/pdf/`), explorer, search, dashboard, settings (the
@@ -940,9 +951,8 @@ Sessions append here. Each line: date, step, what was left and why.
      output, diagnostics and indexing-log.
   3. canvas: the page chrome and bubble menu are done (see step 5's
      notes); left are the sidebar (`canvasSidebar.ts`, over the limit:
-     extract first), `properties/propertyEditors.ts`,
-     `properties/propertyPicker.ts`, `canvasTemplatePicker.ts` and
-     `canvasVersionHistoryPanel.ts`. Never the Tiptap document.
+     extract first) and `properties/propertyEditors.ts`. Never the
+     Tiptap document.
      Inventory with `grep -n "\$('button\|createElement('button')" -r src/built-in/canvas`.
   4. chat: done except `chatWidget.ts` (see step 5's notes); the
      message list's markdown is never declared.

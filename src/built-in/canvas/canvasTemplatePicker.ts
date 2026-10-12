@@ -12,6 +12,7 @@
 // Emoji icons in templates are NOT allowed — the loader replaces them
 // with the `file-text` fallback. System UI never uses emoji.
 
+import { createSurface, declareControl, sceneSlug } from '../../ui/kit.js';
 import { $ } from '../../ui/dom.js';
 import type { CanvasPageTemplate, CanvasTemplateApi } from './canvasTemplates.js';
 import { getAllCanvasTemplates } from './canvasTemplates.js';
@@ -37,6 +38,7 @@ export async function showCanvasTemplatePicker(api: CanvasTemplateApi): Promise<
   return new Promise((resolve) => {
     const backdrop = $('div.canvas-template-picker-backdrop');
     const modal = $('div.canvas-template-picker');
+    createSurface(modal, { id: 'canvas.templatePicker', owner: 'canvas', label: 'New page' });
     backdrop.appendChild(modal);
 
     const title = $('div.canvas-template-picker-title');
@@ -69,6 +71,7 @@ export async function showCanvasTemplatePicker(api: CanvasTemplateApi): Promise<
     const appendCard = (tpl: CanvasPageTemplate): void => {
       const card = $('button.canvas-template-card') as HTMLButtonElement;
       card.type = 'button';
+      declareControl(card, { id: `canvas.template.${sceneSlug(tpl.id)}`, label: tpl.name });
 
       const iconRow = $('div.canvas-template-card-icon');
       // SVG via the Parallx icon registry. `createIconElement` falls
@@ -124,6 +127,7 @@ export async function showCanvasTemplatePicker(api: CanvasTemplateApi): Promise<
     blankBtn.appendChild(createIconElement('file', 14));
     const blankLabel = document.createElement('span');
     blankLabel.textContent = 'Start with a blank page';
+    declareControl(blankBtn, { id: 'canvas.templatePicker.blank', label: 'Start with a blank page' });
     blankBtn.appendChild(blankLabel);
     blankBtn.addEventListener('click', () => finish({ template: null, blank: true }));
     footer.appendChild(blankBtn);
@@ -134,12 +138,14 @@ export async function showCanvasTemplatePicker(api: CanvasTemplateApi): Promise<
     const manageLabel = document.createElement('span');
     manageLabel.textContent = userTemplates.length > 0 ? 'Manage templates…' : 'Create a custom template…';
     manageBtn.appendChild(manageLabel);
+    declareControl(manageBtn, { id: 'canvas.templatePicker.manage', label: manageLabel.textContent });
     manageBtn.addEventListener('click', () => finish({ template: null, openedManager: true }));
     footer.appendChild(manageBtn);
 
     const cancelBtn = $('button.canvas-template-picker-cancel') as HTMLButtonElement;
     cancelBtn.type = 'button';
     cancelBtn.textContent = 'Cancel';
+    declareControl(cancelBtn, { id: 'canvas.templatePicker.cancel', label: 'Cancel' });
     cancelBtn.addEventListener('click', () => finish({ template: null }));
     footer.appendChild(cancelBtn);
 

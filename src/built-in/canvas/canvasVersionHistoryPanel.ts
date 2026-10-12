@@ -6,6 +6,7 @@
 // this panel reads them (listPageRevisions / getPageRevision) and restores them
 // (restorePageRevision — non-destructive: it snapshots the current state first).
 
+import { createSurface, declareControl } from '../../ui/kit.js';
 import { $ } from '../../ui/dom.js';
 import { formatLocalDateTime } from '../../services/localTime.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
@@ -31,6 +32,7 @@ export function showVersionHistoryPanel(deps: VersionHistoryDeps): Promise<void>
 
     const backdrop = $('div.canvas-vh-backdrop');
     const modal = $('div.canvas-vh-modal');
+    createSurface(modal, { id: 'canvas.versionHistory', owner: 'canvas', label: 'Version history' });
     backdrop.appendChild(modal);
 
     // Header
@@ -41,6 +43,7 @@ export function showVersionHistoryPanel(deps: VersionHistoryDeps): Promise<void>
     const closeBtn = $('button.canvas-vh-close') as HTMLButtonElement;
     closeBtn.type = 'button';
     closeBtn.setAttribute('aria-label', 'Close');
+    declareControl(closeBtn, { id: 'canvas.versionHistory.close', label: 'Close', kind: 'iconButton' });
     closeBtn.textContent = '×';
     closeBtn.addEventListener('click', () => finish());
     header.appendChild(closeBtn);
@@ -85,6 +88,7 @@ export function showVersionHistoryPanel(deps: VersionHistoryDeps): Promise<void>
       const restoreBtn = $('button.canvas-vh-restore') as HTMLButtonElement;
       restoreBtn.type = 'button';
       restoreBtn.textContent = 'Restore This Version';
+      declareControl(restoreBtn, { id: 'canvas.versionHistory.restore', label: 'Restore This Version' });
       const status = $('span.canvas-vh-status');
       restoreBtn.addEventListener('click', async () => {
         restoreBtn.disabled = true;
