@@ -126,7 +126,7 @@ async function main() {
     await page.waitForTimeout(1_500);
     if (newPage === true) {
       const pageIds = new Set(flatten(await sceneOf(page)).map((n) => n.id));
-      for (const id of ['canvas.page.menu', 'canvas.page.favorite', 'canvas.page.addIcon']) if (!pageIds.has(id)) stats.problems.push(`canvas: no "${id}" on a new page`);
+      for (const id of ['canvas.page.menu', 'canvas.page.favorite', 'canvas.page.addIcon', 'canvas.sidebar.tree', 'canvas.sidebar.newPage']) if (!pageIds.has(id)) stats.problems.push(`canvas: no "${id}" on a new page`);
     } else console.log(`[open] canvas.newPage: ${newPage}`);
     // AI settings (design step 5): the settings editor shows one panel at a time, so open the AI panel again and read it.
     const ai = await cmd(page, 'settings.open', 'ai');

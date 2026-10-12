@@ -26,7 +26,8 @@ import { createIconElement, ALL_PAGE_SELECTABLE_ICONS, PAGE_ICON_RECENT_STORAGE_
 import { CanvasSidebarDragState } from './canvasSidebarDragState.js';
 import { formatRelativeTime } from '../../ui/relativeTime.js';
 import { pageLinkHref } from './pageLinks.js';
-import { createButton } from '../../ui/kit.js';
+import { createButton, createSurface, createTree, declareControl, sceneSlug } from '../../ui/kit.js';
+import { UndoToast } from './canvasSidebarToast.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -136,8 +137,7 @@ export class CanvasSidebar {
   // Active toast element + timer used to dismiss the previous toast when
   // a new operation surfaces another one. Single-toast-at-a-time policy
   // avoids stacked toasts on rapid sequential moves.
-  private _undoToastEl: HTMLElement | null = null;
-  private _undoToastTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly _undoToast = new UndoToast();
 
   constructor(
     private readonly _dataService: ICanvasDataService,
@@ -194,6 +194,7 @@ export class CanvasSidebar {
 
     // Tree list container (toolbar is integrated into section headers)
     this._treeList = $('div.canvas-tree-list');
+    createTree(this._treeList, { id: 'canvas.sidebar.tree', label: 'Pages', rows: () => Array.from(this._treeList?.children ?? []) as HTMLElement[], selected: () => (this._selectedPageId ? [this._selectedPageId] : []) });
     this._treeList.tabIndex = 0;
     this._treeList.setAttribute('role', 'tree');
     container.appendChild(this._treeList);
@@ -204,6 +205,7 @@ export class CanvasSidebar {
     trashBtn.appendChild(trashIcon);
     const trashText = $('span');
     trashText.textContent = 'Trash';
+    declareControl(trashBtn, { id: 'canvas.sidebar.trash', label: 'Trash' });
     trashBtn.appendChild(trashText);
     trashBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -373,6 +375,7 @@ export class CanvasSidebar {
 
       const header = $('button.canvas-sidebar-recents-header') as HTMLButtonElement;
       header.type = 'button';
+      declareControl(header, { id: 'canvas.sidebar.recents', label: 'Recent' });
       const chev = $('span.canvas-sidebar-recents-chevron');
       chev.innerHTML = svgIcon('chevron-right');
       const chevSvg = chev.querySelector('svg');
@@ -470,6 +473,7 @@ export class CanvasSidebar {
 
     const addBtn = $('button.canvas-sidebar-add-btn');
     addBtn.title = 'New page';
+    declareControl(addBtn, { id: 'canvas.sidebar.newPage', label: 'New page', kind: 'iconButton' });
     addBtn.appendChild(createIconElement('plus', 14));
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -480,6 +484,7 @@ export class CanvasSidebar {
     const addMenuBtn = $('button.canvas-sidebar-add-menu-btn');
     addMenuBtn.title = 'New page options';
     addMenuBtn.setAttribute('aria-label', 'Show new-page options');
+    declareControl(addMenuBtn, { id: 'canvas.sidebar.newPageOptions', label: 'Show new-page options', kind: 'iconButton' });
     addMenuBtn.appendChild(createIconElement('chevron-down', 12));
     addMenuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -507,12 +512,12 @@ export class CanvasSidebar {
 
       const actions = $('div.canvas-empty-actions');
 
-      createButton(actions, { label: 'Blank Page', kind: 'primary', size: 'sm', icon: 'plus', onClick: () => this._createPage() });
+      createButton(actions, { id: 'canvas.sidebar.empty.blankPage', label: 'Blank Page', kind: 'primary', size: 'sm', icon: 'plus', onClick: () => this._createPage() });
 
       // M77 Phase 11.4 ties templates in; the button is wired up here
       // and the modal opens via a command exposed by canvas main.ts.
       createButton(actions, {
-        label: 'Use a Template…', size: 'sm', icon: 'book-template',
+        id: 'canvas.sidebar.empty.template', command: 'canvas.showTemplatePicker', label: 'Use a Template…', size: 'sm', icon: 'book-template',
         onClick: () => { void this._api.commands.executeCommand('canvas.showTemplatePicker'); },
       });
 
@@ -874,11 +879,13 @@ export class CanvasSidebar {
     const popupStore = new DisposableStore();
     const popup = $('div.canvas-sidebar-page-menu');
     popup.setAttribute('data-page-id', page.id);
+    createSurface(popup, { id: 'canvas.pageOptions', owner: 'canvas', label: page.title || 'Page', instance: page.id });
     const header = $('div.canvas-sidebar-page-menu__header');
     const iconButton = $('button.canvas-sidebar-page-menu__icon-btn') as HTMLButtonElement;
     iconButton.type = 'button';
     let currentIcon = page.icon;
     iconButton.title = currentIcon ? 'Change icon' : 'Add icon';
+    declareControl(iconButton, { id: 'canvas.pageOptions.icon', label: 'Page icon', kind: 'iconButton' });
     const renderIconButton = (iconId: string | null | undefined) => {
       const resolvedIcon = resolvePageIcon(iconId);
       iconButton.innerHTML = '';
@@ -904,6 +911,7 @@ export class CanvasSidebar {
     const addAction = (config: { id: string; label: string; iconId: string; danger?: boolean; action: () => void | Promise<void> }) => {
       const actionBtn = $('button.canvas-sidebar-page-menu__action') as HTMLButtonElement;
       actionBtn.type = 'button';
+      declareControl(actionBtn, { id: `canvas.pageOptions.${sceneSlug(config.id)}`, label: config.label });
       actionBtn.appendChild(createIconElement(config.iconId, 14));
       const text = $('span.canvas-sidebar-page-menu__action-label');
       text.textContent = config.label;
@@ -1202,6 +1210,7 @@ export class CanvasSidebar {
     const closeBtn = $('button.canvas-trash-panel-close');
     closeBtn.title = 'Close';
     closeBtn.setAttribute('aria-label', 'Close');
+    declareControl(closeBtn, { id: 'canvas.trash.close', label: 'Close', kind: 'iconButton' });
     closeBtn.appendChild(createIconElement('close', 14));
     closeBtn.addEventListener('click', () => this._dismissTrashPanel());
     header.appendChild(closeBtn);
@@ -1259,6 +1268,7 @@ export class CanvasSidebar {
       footer.appendChild(note);
       const emptyBtn = $('button.canvas-trash-panel-empty-btn');
       emptyBtn.textContent = 'Empty Trash';
+      declareControl(emptyBtn, { id: 'canvas.trash.empty', label: 'Empty Trash' });
       emptyBtn.addEventListener('click', async () => {
         const result = await this._api.window.showWarningMessage(
           count === 1
@@ -1397,6 +1407,7 @@ export class CanvasSidebar {
     document.querySelectorAll('.canvas-sidebar-add-popover').forEach((el) => el.remove());
 
     const pop = $('div.canvas-sidebar-add-popover');
+    createSurface(pop, { id: 'canvas.addPopover', owner: 'canvas', label: 'New page options' });
     const items: { label: string; icon: string; onClick: () => void }[] = [
       {
         label: 'Blank Page',
@@ -1428,6 +1439,7 @@ export class CanvasSidebar {
     for (const item of items) {
       const row = $('button.canvas-sidebar-add-popover-item') as HTMLButtonElement;
       row.type = 'button';
+      declareControl(row, { id: `canvas.add.${sceneSlug(item.label)}`, label: item.label });
       row.appendChild(createIconElement(item.icon, 14));
       const label = document.createElement('span');
       label.textContent = item.label;
@@ -2046,48 +2058,12 @@ export class CanvasSidebar {
    * after 5 seconds.
    */
   private _showUndoToast(label: string, undo: () => Promise<void>): void {
-    this._dismissUndoToast();
-    if (!this._treeList) return;
-    const container = this._treeList.parentElement;
-    if (!container) return;
-
-    const toast = $('div.canvas-sidebar-toast');
-    const text = $('span.canvas-sidebar-toast-text');
-    text.textContent = label;
-    toast.appendChild(text);
-    const btn = $('button.canvas-sidebar-toast-undo') as HTMLButtonElement;
-    btn.type = 'button';
-    btn.textContent = 'Undo';
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._dismissUndoToast();
-      void undo().catch((err) => this._surfaceError('Undo', err));
-    });
-    toast.appendChild(btn);
-    const closeBtn = $('button.canvas-sidebar-toast-close') as HTMLButtonElement;
-    closeBtn.type = 'button';
-    closeBtn.textContent = '×';
-    closeBtn.setAttribute('aria-label', 'Dismiss');
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._dismissUndoToast();
-    });
-    toast.appendChild(closeBtn);
-
-    container.appendChild(toast);
-    this._undoToastEl = toast;
-    this._undoToastTimer = setTimeout(() => this._dismissUndoToast(), 5000);
+    const container = this._treeList?.parentElement;
+    if (container) this._undoToast.show(container, label, undo, (err) => this._surfaceError('Undo', err));
   }
 
   private _dismissUndoToast(): void {
-    if (this._undoToastTimer) {
-      clearTimeout(this._undoToastTimer);
-      this._undoToastTimer = null;
-    }
-    if (this._undoToastEl) {
-      this._undoToastEl.remove();
-      this._undoToastEl = null;
-    }
+    this._undoToast.dismiss();
   }
 
   /**

@@ -810,9 +810,21 @@ carries a `sceneId`, with the property's name as label and what the
 editor shows as state (a box's checked, a field's text, else the words
 on it). A page's property panel passes `canvas.property.<name>` per
 property; the database table passes none, since one id per cell would
-repeat under one surface. Left in canvas: the sidebar
-(`canvasSidebar.ts`, 2198 lines; extract the add popover or the trash
-panel first).
+repeat under one surface.
+
+Canvas sidebar done 2026-10-12, in the cloud. The undo toast moved to
+`canvasSidebarToast.ts` (the gate test lists it) so the sidebar could
+take its declarations under the size limit: the page tree as one
+`createTree` (`canvas.sidebar.tree`, selection is the selected page),
+the new page button and its options chevron, the recents header, the
+trash button, the empty state's two buttons, the page options popup as
+`canvas.pageOptions` by page id with its icon button and each action
+(`canvas.pageOptions.<id>`), the trash panel's close and empty, the add
+popover as `canvas.addPopover` with each choice (`canvas.add.<label>`),
+and the toast's undo and dismiss. Tree rows, their hover buttons and
+the trash rows are not. With this, step 5 is complete for the
+built-ins; the sweep's remaining raw DOM in them is chrome the kit does
+not draw (rows, cells, cards), which stays.
 
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
@@ -1004,17 +1016,15 @@ Sessions append here. Each line: date, step, what was left and why.
   welcome, terminal, activity log, tool gallery, theme editor, the
   Agents view, run pane and routine form, the workflow editor, AI
   settings, the three panel logs, the chat chrome, the chat widget, and
-  the canvas page chrome, bubble menu and pickers). Left in
+  the canvas: step 5 is complete for the built-ins). Left in
   step 5, in this order, one commit each, each verified by the probe
   (section 13; in the cloud run it as
   `timeout 280 xvfb-run -a node tests/probes/scene-probe.mjs <outDir>`
   after `npm run build`) and the full suite:
   1. (done, see step 5's notes) the workflow editor, ai-settings,
      output, diagnostics and indexing-log.
-  3. canvas: the page chrome and bubble menu are done (see step 5's
-     notes); left are the sidebar (`canvasSidebar.ts`, over the limit:
-     extract first). Never the Tiptap document.
-     Inventory with `grep -n "\$('button\|createElement('button')" -r src/built-in/canvas`.
+  3. canvas: done (page chrome, bubble menu, pickers, property editors,
+     sidebar). Never the Tiptap document.
   4. chat: done; the message list's markdown is never declared.
   Steps 6, 8 and 10 are done, and step 11's script exists (run it after
   step 7). Then steps 7 and 9 (local), then 4 and the step 11 audit.
