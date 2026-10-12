@@ -1,7 +1,11 @@
 // plannerEditorProvider.ts — Planner editor pane.
 //
-// Two tabs: Tasks (review queue + grouped list) and Calendar (month /
-// week / day view). Pure DOM + CSS Grid; no layout engine.
+// Three tabs: Today, Tasks and Calendar. The pane keeps the shell, the tab
+// and view state, Today and the keys; each other part is a module here:
+// plannerTaskList (Tasks), plannerCalendarViews (Calendar), plannerEventBars
+// and plannerAllDay (what the grids draw and drag), plannerTaskPopover and
+// plannerEventPopover (the dialogs), plannerNotes, plannerCalendarsMenu, and
+// plannerUi (what they share). Pure DOM + CSS Grid; no layout engine.
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { PlannerDataService } from './plannerDataService.js';
