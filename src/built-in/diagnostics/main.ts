@@ -1,6 +1,7 @@
 // D3: Diagnostics panel — built-in panel tool for AI runtime health checks
 // Pattern: Panel view contribution (same as indexing-log tool)
 
+import { createList } from '../../ui/kit.js';
 import './diagnostics.css';
 import { appTimeString } from '../../services/localTime.js';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
@@ -142,6 +143,7 @@ function renderDiagnosticsView(container: HTMLElement): IDisposable {
   // Results list
   const listContainer = $('div.diagnostics-list');
   listContainer.classList.add('px-panel-body');
+  createList(listContainer, { id: 'diagnostics.results', label: 'Health checks', rows: () => Array.from(listContainer.querySelectorAll<HTMLElement>('.diagnostics-row')), selected: () => [] });
 
   container.appendChild(header);
   container.appendChild(statusLine);

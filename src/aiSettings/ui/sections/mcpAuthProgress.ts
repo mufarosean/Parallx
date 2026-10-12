@@ -5,6 +5,7 @@
 // server's row, so a sign-in that takes a minute does not sit silent and a
 // blocked browser window can be worked around by copying the link.
 
+import { declareControl } from '../../../ui/kit.js';
 import { $ } from '../../../ui/dom.js';
 
 /** How many log lines the box keeps; the helper's output is mostly progress. */
@@ -37,6 +38,7 @@ export function createMcpAuthProgress(): IMcpAuthProgress {
   copy.type = 'button';
   copy.className = 'ai-settings-mcp-btn';
   copy.textContent = 'Copy Link';
+  declareControl(copy, { id: 'aiSettings.mcp.copyLink', label: 'Copy Link' });
   copy.addEventListener('click', () => {
     void navigator.clipboard?.writeText(link.href).then(() => { copy.textContent = 'Copied'; }).catch(() => { /* the link is still visible */ });
   });

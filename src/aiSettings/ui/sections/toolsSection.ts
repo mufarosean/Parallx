@@ -10,6 +10,7 @@
 //   - Collapse/expand per category
 //   - Individual tool checkboxes
 
+import { declareControl, sceneSlug } from '../../../ui/kit.js';
 import { $ } from '../../../ui/dom.js';
 import { InputBox } from '../../../ui/inputBox.js';
 import type { IToolPickerServices, ToolCategory as ToolCategoryKind } from '../../../services/chatTypes.js';
@@ -225,6 +226,7 @@ export class ToolsSection extends SettingsSection {
       const groupCb = document.createElement('input');
       groupCb.type = 'checkbox';
       groupCb.className = 'ai-settings-tools-checkbox';
+      declareControl(groupCb, { id: `aiSettings.tools.group.${sceneSlug(groupLabel)}`, label: `All ${groupLabel} tools`, kind: 'toggle', state: () => ({ kind: 'pressed', value: groupCb.checked }) });
       const groupEnabled = groupTools.filter((t) => t.enabled).length;
       groupCb.checked = groupEnabled > 0;
       groupCb.indeterminate = groupEnabled > 0 && groupEnabled < groupTools.length;
@@ -274,6 +276,7 @@ export class ToolsSection extends SettingsSection {
           const catCb = document.createElement('input');
           catCb.type = 'checkbox';
           catCb.className = 'ai-settings-tools-checkbox';
+          declareControl(catCb, { id: `aiSettings.tools.category.${sceneSlug(cat.label)}`, label: `All ${cat.label} tools`, kind: 'toggle', state: () => ({ kind: 'pressed', value: catCb.checked }) });
           const catEnabled = cat.tools.filter((t) => t.enabled).length;
           catCb.checked = catEnabled > 0;
           catCb.indeterminate = catEnabled > 0 && catEnabled < cat.tools.length;
@@ -312,6 +315,7 @@ export class ToolsSection extends SettingsSection {
           const toolCb = document.createElement('input');
           toolCb.type = 'checkbox';
           toolCb.className = 'ai-settings-tools-checkbox';
+          declareControl(toolCb, { id: `aiSettings.tools.tool.${sceneSlug(tool.name)}`, label: tool.name, kind: 'toggle', state: () => ({ kind: 'pressed', value: toolCb.checked }) });
           toolCb.checked = tool.enabled;
           toolRow.appendChild(toolCb);
 

@@ -13,6 +13,7 @@
 // Below Providers: Default Model + Default Context Length (workspace-scoped
 // unified config, unchanged).
 
+import { declareControl, sceneSlug } from '../../../ui/kit.js';
 import { addDisposableListener } from '../../../ui/dom.js';
 import { InputBox } from '../../../ui/inputBox.js';
 import { Dropdown } from '../../../ui/dropdown.js';
@@ -239,6 +240,7 @@ export class ModelSection extends SettingsSection {
       toggle.type = 'checkbox';
       toggle.checked = isOn(d);
       toggle.setAttribute('aria-label', `Enable ${d.name} in this workspace`);
+      declareControl(toggle, { id: `aiSettings.provider.${sceneSlug(d.id)}`, label: `Enable ${d.name}`, kind: 'toggle', state: () => ({ kind: 'pressed', value: toggle.checked }) });
       const toggleText = document.createElement('span');
       toggleText.textContent = 'Enabled';
       toggleLabel.append(toggle, toggleText);
@@ -280,16 +282,19 @@ export class ModelSection extends SettingsSection {
     }));
     input.inputElement.type = 'password';
     input.inputElement.autocomplete = 'off';
+    declareControl(input.inputElement, { id: `aiSettings.key.${sceneSlug(d.id)}`, label: `${d.name} API key`, kind: 'input', state: () => ({ kind: 'value', value: input.inputElement.value ? '•••' : '' }) });
 
     const saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.className = 'ai-settings-key-btn';
     saveBtn.textContent = 'Save';
+    declareControl(saveBtn, { id: `aiSettings.key.${sceneSlug(d.id)}.save`, label: `Save ${d.name} API key` });
 
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
     clearBtn.className = 'ai-settings-key-btn';
     clearBtn.textContent = 'Clear';
+    declareControl(clearBtn, { id: `aiSettings.key.${sceneSlug(d.id)}.clear`, label: `Clear ${d.name} API key` });
 
     const keyStatus = document.createElement('span');
     keyStatus.className = 'ai-settings-key-status';

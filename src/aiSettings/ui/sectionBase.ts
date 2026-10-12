@@ -3,6 +3,7 @@
 // Sections: Model, Agent, Cron, Tools, MCP, WebResearch.
 // Each extends SettingsSection for consistent layout, reset, scope indicators, and search.
 
+import { declareControl, sceneSlug } from '../../ui/kit.js';
 import { Disposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
 import type { IAISettingsService, AISettingsProfile } from '../aiSettingsTypes.js';
@@ -98,6 +99,7 @@ export function createSettingRow(options: ISettingRowOptions): {
     resetBtn.title = 'Reset to default';
     resetBtn.textContent = '↺';
     resetBtn.setAttribute('aria-label', `Reset ${options.label} to default`);
+    declareControl(resetBtn, { id: `aiSettings.reset.${sceneSlug(options.label)}`, label: `Reset ${options.label} to default`, kind: 'iconButton' });
     resetBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       options.onReset!();
@@ -188,6 +190,7 @@ export abstract class SettingsSection extends Disposable {
     const link = $('button.ai-settings-section__reset-link');
     link.setAttribute('type', 'button');
     link.textContent = 'Reset Section to Defaults';
+    declareControl(link, { id: `aiSettings.resetSection.${sceneSlug(sectionKey)}`, label: 'Reset Section to Defaults' });
     link.addEventListener('click', () => {
       this._service.resetSection(sectionKey as 'chat' | 'model');
     });

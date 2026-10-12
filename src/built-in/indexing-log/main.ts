@@ -5,6 +5,7 @@
 //
 // Pattern: Panel view contribution (same as Output tool).
 
+import { createList } from '../../ui/kit.js';
 import './indexingLog.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
@@ -366,6 +367,7 @@ function renderIndexingLogView(container: HTMLElement): IDisposable {
   // ── Scrollable log list ──
   const list = $('div.indexing-log-list');
   list.classList.add('px-panel-body');
+  createList(list, { id: 'indexingLog.log', label: 'Indexing log', rows: () => Array.from(list.querySelectorAll<HTMLElement>('.indexing-log-row')), selected: () => [] });
   container.appendChild(list);
 
   // Store refs

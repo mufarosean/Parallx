@@ -7,6 +7,7 @@
 // Reads/writes through IUnifiedAIConfigService.
 // Upstream: src/commands/agents.config.ts (agent config management), ui/src/ui/views/agents.ts
 
+import { createSurface, declareControl } from '../../../ui/kit.js';
 import { $ } from '../../../ui/dom.js';
 import { Slider } from '../../../ui/slider.js';
 import type { IUnifiedAIConfigService, IUnifiedAIConfig, IAgentConfigData } from '../../unifiedConfigTypes.js';
@@ -93,6 +94,7 @@ export class AgentSection extends SettingsSection {
 
     // Add Agent button
     const addBtn = $('button.ai-settings-agent-list__add-btn', '+ Add Agent');
+    declareControl(addBtn, { id: 'aiSettings.agent.add', label: 'Add Agent' });
     addBtn.addEventListener('click', () => this._addAgent());
     container.appendChild(addBtn);
 
@@ -119,6 +121,7 @@ export class AgentSection extends SettingsSection {
   private _renderAgentCard(agent: IAgentConfigData, isBuiltIn: boolean): HTMLElement {
     const card = $('div.ai-settings-agent-card');
     card.dataset.agentId = agent.id;
+    createSurface(card, { id: 'aiSettings.agent', owner: 'ai-settings', label: agent.name, instance: agent.id });
 
     // ── Summary row (always visible, clickable to expand) ──
     const summary = $('div.ai-settings-agent-card__summary');
@@ -146,12 +149,14 @@ export class AgentSection extends SettingsSection {
     const editBtn = $('button.ai-settings-agent-card__action-btn');
     editBtn.textContent = 'Configure';
     editBtn.title = `Configure ${agent.name}`;
+    declareControl(editBtn, { id: 'aiSettings.agent.configure', label: 'Configure' });
     actions.appendChild(editBtn);
 
     if (!isBuiltIn) {
       const removeBtn = $('button.ai-settings-agent-card__action-btn.ai-settings-agent-card__action-btn--danger');
       removeBtn.textContent = '✕';
       removeBtn.title = `Remove ${agent.name}`;
+      declareControl(removeBtn, { id: 'aiSettings.agent.remove', label: `Remove ${agent.name}`, kind: 'iconButton' });
       removeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this._removeAgent(agent.id);
@@ -207,6 +212,7 @@ export class AgentSection extends SettingsSection {
     // Button row
     const btnRow = $('div.ai-settings-agent-card__btn-row');
     const saveBtn = $('button.ai-settings-agent-card__save-btn', 'Save');
+    declareControl(saveBtn, { id: 'aiSettings.agent.save', label: 'Save' });
     saveBtn.addEventListener('click', () => {
       const updated: IAgentConfigData = {
         ...agent,
@@ -218,6 +224,7 @@ export class AgentSection extends SettingsSection {
       this._refreshAgentList();
     });
     const cancelBtn = $('button.ai-settings-agent-card__cancel-btn', 'Cancel');
+    declareControl(cancelBtn, { id: 'aiSettings.agent.cancel', label: 'Cancel' });
     cancelBtn.addEventListener('click', () => {
       card.classList.remove('ai-settings-agent-card--expanded');
       panel.remove();

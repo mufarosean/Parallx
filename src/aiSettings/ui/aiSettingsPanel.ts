@@ -13,6 +13,7 @@
 // unified config on startup and reacts to onDidChangeConfig, so edits
 // here become the defaults for every new chat session.
 
+import { createSurface, declareControl } from '../../ui/kit.js';
 import { Disposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
@@ -63,6 +64,7 @@ export class AISettingsPanel extends Disposable {
 
     // Root two-column layout
     this.element = $('div.ai-settings-panel');
+    this._register(createSurface(this.element, { id: 'aiSettings', owner: 'ai-settings', label: 'AI & Models' }));
 
     // ── Left Column ──
     const leftCol = $('div.ai-settings-panel__left');
@@ -84,6 +86,7 @@ export class AISettingsPanel extends Disposable {
       placeholder: 'Search managers…',
       ariaLabel: 'Search AI settings managers',
     }));
+    declareControl(this._searchBox.inputElement, { id: 'aiSettings.search', label: 'Search AI settings', kind: 'input', state: () => ({ kind: 'value', value: this._searchBox.inputElement.value }) });
     rightCol.appendChild(searchRow);
 
     // Scrollable content area
@@ -138,6 +141,7 @@ export class AISettingsPanel extends Disposable {
       item.setAttribute('type', 'button');
       item.textContent = s.label;
       item.dataset.sectionId = s.id;
+      declareControl(item, { id: `aiSettings.nav.${s.id}`, label: s.label, state: () => ({ kind: 'pressed', value: item.classList.contains('ai-settings-nav__item--active') }) });
       item.addEventListener('click', () => this._scrollToSection(s.id));
       nav.appendChild(item);
       this._navItems.push({ id: s.id, el: item });

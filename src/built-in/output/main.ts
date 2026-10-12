@@ -3,6 +3,7 @@
 // Provides a scrollable log viewer in the panel area.
 // Demonstrates: panel view contribution, commands, workspace state.
 
+import { createList } from '../../ui/kit.js';
 import './output.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
@@ -216,6 +217,7 @@ function renderOutputView(container: HTMLElement): IDisposable {
   const list = $('div');
   list.className = 'px-panel-log';
   body.appendChild(list);
+  createList(list, { id: 'output.log', label: 'Output', rows: () => Array.from(list.querySelectorAll<HTMLElement>('.px-panel-log-row')), selected: () => [] });
 
   const empty = createPanelEmptyState({
     icon: 'scroll-text',

@@ -44,7 +44,7 @@ const BUILTIN_IDS = {
   appearance: ['appearance.mode.dark', 'appearance.hue', 'appearance.themeName', 'appearance.saveTheme'],
 };
 /** Panel views shown by `workbench.view.show`, and an id each declares once its view is rendered. */
-const PANEL_VIEWS = { 'view.terminal': 'terminal.input', 'view.activityLog': 'activityLog.filter.all' };
+const PANEL_VIEWS = { 'view.terminal': 'terminal.input', 'view.activityLog': 'activityLog.filter.all', 'view.output': 'output.log', 'view.diagnostics': 'diagnostics.results', 'view.indexingLog': 'indexingLog.log' };
 /** Ids present once a scratch sheet is open (`worksheet.openScratch`). */
 const SCRATCH_IDS = ['worksheet.sheetTheme', 'worksheet.sheet.export'];
 
@@ -117,9 +117,18 @@ async function main() {
     for (const id of FRAME_IDS) if (!ids.has(id)) stats.problems.push(`frame: no "${id}"`);
     for (const [tool, want] of Object.entries(BUILTIN_IDS)) for (const id of want) if (!ids.has(id)) stats.problems.push(`${tool}: no "${id}"`);
     for (const [viewId, id] of Object.entries(PANEL_VIEWS)) if (!ids.has(id)) stats.problems.push(`${viewId}: no "${id}"`);
-    // The appearance panel opened as a centred overlay over everything; it closes on Escape, so the clicks below land.
+    // The settings editor (showing the appearance panel) is a centred overlay over everything; it closes on Escape, so the clicks below land.
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
+    // AI settings (design step 5): the settings editor shows one panel at a time, so open the AI panel again and read it.
+    const ai = await cmd(page, 'settings.open', 'ai');
+    await page.waitForTimeout(800);
+    if (ai === true) {
+      const aiIds = new Set(flatten(await sceneOf(page)).map((n) => n.id));
+      for (const id of ['aiSettings', 'aiSettings.search', 'aiSettings.nav.model', 'aiSettings.agent.add', 'aiSettings.mcp.add']) if (!aiIds.has(id)) stats.problems.push(`ai-settings: no "${id}"`);
+      await page.keyboard.press('Escape'); // the settings editor is a centred overlay too
+      await page.waitForTimeout(300);
+    }
     // Agents (design step 5): the Routines tab's buttons, then the New Routine form as a surface.
     const routines = await cmd(page, 'agents.showRoutines');
     await page.waitForTimeout(800);

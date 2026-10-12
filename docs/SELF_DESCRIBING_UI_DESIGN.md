@@ -730,6 +730,24 @@ Back To Editing. The node cards on the canvas and the run picker
 dropdown are not. The probe opens a new workflow and checks the header
 and one palette item.
 
+AI settings, Output, Diagnostics and Indexing log done 2026-10-12, in
+the cloud. The AI & Models panel (`src/aiSettings/ui/`) is a surface
+`aiSettings` owned by ai-settings inside the settings editor, with its
+search, nav buttons (pressed while active), every row's reset and each
+section's reset link, the providers' enable toggles and API key fields,
+each agent card as `aiSettings.agent` by id with configure, remove,
+save and cancel, the tool tree's group, category and tool checkboxes as
+toggles, each MCP server row as `aiSettings.mcp.server` by id with its
+state buttons (`aiSettings.mcp.server.<label>`), the add form's tabs,
+each catalog card as `aiSettings.mcp.catalog` with its install, the
+environment inputs, and the custom form's fields and buttons. The three
+panel logs are one `createList` each (`output.log`,
+`diagnostics.results`, `indexingLog.log`); their commands live in the
+view title menus, not in the view. The probe opens the AI panel again
+after the openers (the settings editor shows one panel at a time, as a
+centred overlay) and checks the panel, its search, a nav item, add
+agent and add server, then presses Escape.
+
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
 (`src/editor/panes/pdf/`), explorer, search, dashboard, settings (the
@@ -873,17 +891,14 @@ Sessions append here. Each line: date, step, what was left and why.
 - 2026-10-12, step 5, hand-off (steps 1, 2, 3 done; step 5 done for
   worksheet, planner, PDF, explorer, search, dashboard, settings panels,
   welcome, terminal, activity log, tool gallery, theme editor, the
-  Agents view, run pane and routine form, and the workflow editor). Left in
+  Agents view, run pane and routine form, the workflow editor, AI
+  settings and the three panel logs). Left in
   step 5, in this order, one commit each, each verified by the probe
   (section 13; in the cloud run it as
   `timeout 280 xvfb-run -a node tests/probes/scene-probe.mjs <outDir>`
   after `npm run build`) and the full suite:
-  1. (done, see step 5's notes) the workflow editor.
-  2. ai-settings (`src/built-in/ai-settings/main.ts`, 273 lines),
-     output (240), diagnostics (221), indexing-log (548): small; one
-     commit for the four is fine. Probe: `ai-settings.open` is already
-     in OPENERS; the other three are panel views, add them to
-     `PANEL_VIEWS` with one id each.
+  1. (done, see step 5's notes) the workflow editor, ai-settings,
+     output, diagnostics and indexing-log.
   3. canvas: only the toolbar, menus and property editors, never the
      Tiptap document. Inventory with
      `grep -n "createElement('button')\|\$('button" src/canvas -r`.

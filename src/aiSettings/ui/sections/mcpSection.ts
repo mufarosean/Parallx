@@ -9,6 +9,7 @@
 //   - Env-var support in the manual install form
 //   - Auto-connect after add (so the user doesn't have to click Connect)
 
+import { createSurface, declareControl, sceneSlug } from '../../../ui/kit.js';
 import { $ } from '../../../ui/dom.js';
 import { SettingsSection } from '../sectionBase.js';
 import type { IAISettingsService, AISettingsProfile } from '../../aiSettingsTypes.js';
@@ -58,6 +59,7 @@ export class McpSection extends SettingsSection {
     // ── Add Server button ──
     const addBtn = $('button.ai-settings-mcp-add-btn');
     addBtn.textContent = '+ Add Server';
+    declareControl(addBtn, { id: 'aiSettings.mcp.add', label: 'Add Server' });
     addBtn.addEventListener('click', () => this._showAddForm());
     this.contentElement.appendChild(addBtn);
 
@@ -138,6 +140,7 @@ export class McpSection extends SettingsSection {
     const meta = STATUS_META[status];
     const row = $('div.ai-settings-mcp-row');
     row.dataset.serverId = server.id;
+    createSurface(row, { id: 'aiSettings.mcp.server', owner: 'ai-settings', label: server.name || server.id, instance: server.id });
     row.dataset.status = meta.cls;
 
     // Left: status dot + server info
@@ -206,6 +209,7 @@ export class McpSection extends SettingsSection {
     btn.className = 'ai-settings-mcp-btn';
     if (danger) btn.classList.add('ai-settings-mcp-btn--danger');
     btn.textContent = label;
+    declareControl(btn, { id: `aiSettings.mcp.server.${sceneSlug(label)}`, label });
     btn.addEventListener('click', handler);
     return btn;
   }
@@ -240,10 +244,12 @@ export class McpSection extends SettingsSection {
     catalogTab.className = 'ai-settings-mcp-tab ai-settings-mcp-tab--active';
     catalogTab.textContent = 'Catalog';
     catalogTab.type = 'button';
+    declareControl(catalogTab, { id: 'aiSettings.mcp.tab.catalog', label: 'Catalog', state: () => ({ kind: 'pressed', value: catalogTab.classList.contains('ai-settings-mcp-tab--active') }) });
     const customTab = document.createElement('button');
     customTab.className = 'ai-settings-mcp-tab';
     customTab.textContent = 'Custom';
     customTab.type = 'button';
+    declareControl(customTab, { id: 'aiSettings.mcp.tab.custom', label: 'Custom', state: () => ({ kind: 'pressed', value: customTab.classList.contains('ai-settings-mcp-tab--active') }) });
     tabs.appendChild(catalogTab);
     tabs.appendChild(customTab);
     form.appendChild(tabs);
@@ -280,6 +286,7 @@ export class McpSection extends SettingsSection {
 
     for (const entry of MCP_CATALOG) {
       const card = $('div.ai-settings-mcp-catalog-card');
+      createSurface(card, { id: 'aiSettings.mcp.catalog', owner: 'ai-settings', label: entry.displayName, instance: entry.id });
 
       const head = $('div.ai-settings-mcp-catalog-card__head');
       const title = $('span.ai-settings-mcp-catalog-card__title');
@@ -299,6 +306,7 @@ export class McpSection extends SettingsSection {
       installBtn.className = 'ai-settings-mcp-btn';
       installBtn.type = 'button';
       installBtn.textContent = 'Install';
+      declareControl(installBtn, { id: 'aiSettings.mcp.catalog.install', label: `Install ${entry.displayName}` });
       installBtn.addEventListener('click', () => {
         this._showCatalogInstall(host, entry, close);
       });
@@ -358,6 +366,7 @@ export class McpSection extends SettingsSection {
       input.className = 'ai-settings-mcp-input';
       input.type = v.secret ? 'password' : 'text';
       input.placeholder = v.key;
+      declareControl(input, { id: `aiSettings.mcp.env.${sceneSlug(v.key)}`, label: v.key, kind: 'input', state: () => ({ kind: 'value', value: v.secret && input.value ? '•••' : input.value }) });
       wrap.appendChild(input);
 
       const help = $('div.ai-settings-mcp-install-help');
@@ -377,6 +386,7 @@ export class McpSection extends SettingsSection {
     installBtn.className = 'ai-settings-mcp-btn';
     installBtn.textContent = 'Install';
     installBtn.type = 'button';
+    declareControl(installBtn, { id: 'aiSettings.mcp.install', label: 'Install' });
     installBtn.addEventListener('click', () => {
       const env: Record<string, string> = {};
       for (const f of envInputs) {
@@ -413,6 +423,7 @@ export class McpSection extends SettingsSection {
     backBtn.className = 'ai-settings-mcp-btn';
     backBtn.textContent = 'Back';
     backBtn.type = 'button';
+    declareControl(backBtn, { id: 'aiSettings.mcp.back', label: 'Back' });
     backBtn.addEventListener('click', () => this._renderCatalogPicker(host, close));
 
     btnRow.appendChild(installBtn);
@@ -427,16 +438,19 @@ export class McpSection extends SettingsSection {
     const idInput = document.createElement('input');
     idInput.className = 'ai-settings-mcp-input';
     idInput.placeholder = 'Server ID (e.g. filesystem)';
+    declareControl(idInput, { id: 'aiSettings.mcp.custom.id', label: 'Server ID', kind: 'input', state: () => ({ kind: 'value', value: idInput.value }) });
     host.appendChild(idInput);
 
     const nameInput = document.createElement('input');
     nameInput.className = 'ai-settings-mcp-input';
     nameInput.placeholder = 'Display Name (optional)';
+    declareControl(nameInput, { id: 'aiSettings.mcp.custom.name', label: 'Display Name', kind: 'input', state: () => ({ kind: 'value', value: nameInput.value }) });
     host.appendChild(nameInput);
 
     const cmdInput = document.createElement('input');
     cmdInput.className = 'ai-settings-mcp-input';
     cmdInput.placeholder = 'Command (e.g. npx -y @modelcontextprotocol/server-everything)';
+    declareControl(cmdInput, { id: 'aiSettings.mcp.custom.command', label: 'Command', kind: 'input', state: () => ({ kind: 'value', value: cmdInput.value }) });
     host.appendChild(cmdInput);
 
     const envHelp = $('div.ai-settings-mcp-install-help');
@@ -458,6 +472,7 @@ export class McpSection extends SettingsSection {
     saveBtn.className = 'ai-settings-mcp-btn';
     saveBtn.textContent = 'Save & connect';
     saveBtn.type = 'button';
+    declareControl(saveBtn, { id: 'aiSettings.mcp.custom.save', label: 'Save & connect' });
     saveBtn.addEventListener('click', () => {
       const id = idInput.value.trim();
       const name = nameInput.value.trim() || id;
@@ -484,6 +499,7 @@ export class McpSection extends SettingsSection {
     cancelBtn.className = 'ai-settings-mcp-btn';
     cancelBtn.textContent = 'Cancel';
     cancelBtn.type = 'button';
+    declareControl(cancelBtn, { id: 'aiSettings.mcp.custom.cancel', label: 'Cancel' });
     cancelBtn.addEventListener('click', close);
 
     btnRow.appendChild(saveBtn);
