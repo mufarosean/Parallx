@@ -4,16 +4,27 @@
 import { describe, it, expect } from 'vitest';
 import {
   decodeDocContent,
-  encodeDocContent,
   filterToSubquery,
   findBlockById,
   generateBlockId,
   insertAfter,
   iterateBlocks,
   nodeToPlainText,
-  paragraphFromText,
   replaceAt,
 } from '../../src/built-in/canvas/ai/blockApi';
+import type { DocNode } from '../../src/built-in/canvas/ai/blockApi';
+import { encodeCanvasContentFromDoc } from '../../src/built-in/canvas/contentSchema';
+
+/** Stored page content, as the canvas writes it. */
+const encodeDocContent = (doc: unknown): string => encodeCanvasContentFromDoc(doc).storedContent;
+
+/** A paragraph node holding plain text. */
+function paragraphFromText(text: string, blockId?: string): DocNode {
+  const para: DocNode = { type: 'paragraph' };
+  if (blockId) para.attrs = { id: blockId };
+  if (text) para.content = [{ type: 'text', text }];
+  return para;
+}
 
 function makeDoc(): { type: 'doc'; content: any[] } {
   return {

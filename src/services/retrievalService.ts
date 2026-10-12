@@ -36,18 +36,6 @@ export function dotProduct(a: number[], b: number[]): number {
   return sum;
 }
 
-/**
- * Cosine similarity between two vectors: dot(a,b) / (‖a‖ × ‖b‖).
- * Returns 0 if either vector has zero magnitude.
- */
-export function cosineSimilarity(a: number[], b: number[]): number {
-  const dot = dotProduct(a, b);
-  const magA = Math.sqrt(dotProduct(a, a));
-  const magB = Math.sqrt(dotProduct(b, b));
-  if (magA === 0 || magB === 0) { return 0; }
-  return dot / (magA * magB);
-}
-
 // ─── Internal artifact detection (desktop platform adaptation) ───────────────
 
 function isInternalArtifactPath(sourceId: string): boolean {

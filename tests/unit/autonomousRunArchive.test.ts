@@ -12,10 +12,10 @@ import {
   archiveSession,
   loadArchivedRunSummaries,
   loadArchivedRun,
-  loadSessions,
   saveSession,
   type IChatPersistenceDatabase,
 } from '../../src/services/chatSessionPersistence';
+import { loadSessions } from './fixtures/chatSessions';
 
 type SessionRow = { id: string; workspace_id: string; title: string; mode: string; model_id: string; context_window_override: number | null; plan_json: string | null; created_at: number; updated_at: number; origin: string | null };
 interface MsgRow { session_id: string; role: string; content: string; parts_json: string; model_id: string; is_complete: number; timestamp: number; sort_order: number }

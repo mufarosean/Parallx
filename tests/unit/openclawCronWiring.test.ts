@@ -32,7 +32,6 @@ import {
 import {
   createCronTurnExecutor,
   createCronContextLineFetcher,
-  createCronHeartbeatWaker,
 } from '../../src/openclaw/openclawCronExecutor';
 import {
   SurfaceRouterService,
@@ -52,9 +51,7 @@ import {
 } from '../../src/openclaw/openclawToolPolicy';
 import {
   createCronTools,
-  CRON_TOOL_NAMES,
 } from '../../src/built-in/chat/tools/cronTools';
-import type { HeartbeatRunner } from '../../src/openclaw/openclawHeartbeatRunner';
 import type { IChatSession } from '../../src/services/chatTypes';
 
 // ---------------------------------------------------------------------------
@@ -202,13 +199,6 @@ describe('M58 W4 — Cron wiring', () => {
     svc.dispose();
   });
 
-  it('createCronHeartbeatWaker forwards to HeartbeatRunner.wake("cron")', () => {
-    const fakeRunner = { wake: vi.fn() } as unknown as HeartbeatRunner;
-    const waker = createCronHeartbeatWaker(fakeRunner);
-    waker('cron');
-    expect((fakeRunner.wake as any)).toHaveBeenCalledWith('cron');
-  });
-
   // -----------------------------------------------------------------------
   // 4. Missed-job catchup path
   // -----------------------------------------------------------------------
@@ -287,7 +277,7 @@ describe('M58 W4 — Cron wiring', () => {
     const tools = createCronTools(undefined);
     expect(tools.length).toBe(8);
     const names = tools.map(t => t.name);
-    expect(names).toEqual([...CRON_TOOL_NAMES]);
+    expect(names).toEqual(['cron_status', 'cron_list', 'cron_add', 'cron_update', 'cron_remove', 'cron_run', 'cron_runs', 'cron_wake']);
   });
 
   it('cron_add / cron_update / cron_remove require approval; others are free', () => {

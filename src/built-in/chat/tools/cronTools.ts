@@ -434,15 +434,3 @@ export function createCronTools(host: ICronToolHost | undefined): IChatTool[] {
     createCronWakeTool(host),
   ];
 }
-
-/** The 8 upstream cron tool names, exported for tests + introspection. */
-export const CRON_TOOL_NAMES = [
-  'cron_status',
-  'cron_list',
-  'cron_add',
-  'cron_update',
-  'cron_remove',
-  'cron_run',
-  'cron_runs',
-  'cron_wake',
-] as const;

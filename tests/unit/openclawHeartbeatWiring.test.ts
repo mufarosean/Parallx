@@ -25,9 +25,11 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 import {
   HeartbeatRunner,
-  DEFAULT_HEARTBEAT_INTERVAL_MS,
   type IHeartbeatConfig,
 } from '../../src/openclaw/openclawHeartbeatRunner';
+import { DEFAULT_UNIFIED_CONFIG } from '../../src/aiSettings/unifiedConfigTypes';
+
+const DEFAULT_HEARTBEAT_INTERVAL_MS = DEFAULT_UNIFIED_CONFIG.heartbeat.intervalMs;
 import { createHeartbeatTurnExecutor } from '../../src/openclaw/openclawHeartbeatExecutor';
 import {
   SurfaceRouterService,

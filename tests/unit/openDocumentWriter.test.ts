@@ -14,7 +14,7 @@
 // the two.
 
 import { describe, it, expect, vi } from 'vitest';
-import { writeThroughOpenDocument, isDocumentOpen } from '../../src/services/openDocumentWriter.js';
+import { writeThroughOpenDocument } from '../../src/services/openDocumentWriter.js';
 import { URI } from '../../src/platform/uri.js';
 
 const FILE = URI.parse('file:///work/ws/notes.md');
@@ -115,21 +115,5 @@ describe('writeThroughOpenDocument', () => {
 
     expect(state.content).toBe('assistant version');
     expect(fsvc.written).toEqual([]);
-  });
-});
-
-describe('isDocumentOpen', () => {
-  it('reports an open document', () => {
-    const { model } = makeModel();
-    expect(isDocumentOpen(makeManager({ [FILE.toString()]: model }), FILE)).toBe(true);
-  });
-
-  it('reports a disposed model as not open', () => {
-    const { model } = makeModel({ disposed: true });
-    expect(isDocumentOpen(makeManager({ [FILE.toString()]: model }), FILE)).toBe(false);
-  });
-
-  it('reports an untracked file as not open', () => {
-    expect(isDocumentOpen(makeManager({}), FILE)).toBe(false);
   });
 });

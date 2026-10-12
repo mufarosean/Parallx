@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveAgentConfig, resolveDefaultAgentId } from '../../src/openclaw/agents/openclawAgentResolver';
+import { resolveAgentConfig } from '../../src/openclaw/agents/openclawAgentResolver';
 import { createAgentRegistry } from '../../src/openclaw/agents/openclawAgentRegistry';
 import type { IAgentConfig, IAgentDefaults } from '../../src/openclaw/agents/openclawAgentConfig';
 import type { IGlobalConfigSlice } from '../../src/openclaw/agents/openclawAgentResolver';
@@ -145,19 +145,5 @@ describe('resolveAgentConfig', () => {
     const resolved = resolveAgentConfig(registry, 'a', GLOBAL);
     expect(resolved.identity).toBeUndefined();
     expect(resolved.systemPromptOverlay).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// resolveDefaultAgentId
-// ---------------------------------------------------------------------------
-
-describe('resolveDefaultAgentId', () => {
-  it('returns correct ID', () => {
-    const registry = createAgentRegistry([
-      agent('a'),
-      agent('b', { isDefault: true }),
-    ]);
-    expect(resolveDefaultAgentId(registry)).toBe('b');
   });
 });

@@ -6,7 +6,6 @@
 // fuzzy match. Turned off, the source goes and its items with it.
 
 import { createRegistry } from '../platform/registry.js';
-import type { Event } from '../platform/events.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 
 export interface QuickOpenSourceItem {
@@ -30,7 +29,6 @@ export interface QuickOpenSource {
 }
 
 const registry = createRegistry<QuickOpenSource>();
-export const onDidChangeQuickOpenSources: Event<void> = registry.onDidChange;
 
 export function registerQuickOpenSource(source: QuickOpenSource): IDisposable {
   return registry.register(source.id, source);

@@ -4,7 +4,6 @@ import {
   COLUMN_BLOCK_NODE_TYPES,
   COLUMN_CONTENT_EXPRESSION,
   COLUMN_CONTENT_NODE_TYPES,
-  DRAG_HANDLE_CUSTOM_NODE_TYPES,
   PAGE_CONTAINERS,
   getBlockExtensions,
   getBlockLabel,
@@ -35,15 +34,6 @@ const ORIGINAL_COLUMN_BLOCK_NODE_TYPES = [
   // 2026-10-03: placeholder for stored blocks this build can't show (C1).
   'unsupportedBlock',
   // 2026-10-04: blocks added since (docs/CANVAS_BLOCKS.md).
-  ...ADDED_BLOCK_TYPES,
-];
-
-/** From blockCapabilities.ts */
-const ORIGINAL_DRAG_HANDLE_CUSTOM_NODE_TYPES = [
-  'mathBlock', 'callout', 'details', 'toggleHeading', 'pageBlock',
-  'bookmark', 'conceptMap', 'tableOfContents', 'video', 'audio', 'fileAttachment',
-  'horizontalRule', 'image',
-  'unsupportedBlock',
   ...ADDED_BLOCK_TYPES,
 ];
 
@@ -87,14 +77,6 @@ describe('blockRegistry', () => {
     it('contains the same set of node types as the original', () => {
       const registrySet = new Set(COLUMN_BLOCK_NODE_TYPES);
       const originalSet = new Set(ORIGINAL_COLUMN_BLOCK_NODE_TYPES);
-      expect(registrySet).toEqual(originalSet);
-    });
-  });
-
-  describe('DRAG_HANDLE_CUSTOM_NODE_TYPES parity', () => {
-    it('contains the same set of node types as the original', () => {
-      const registrySet = new Set(DRAG_HANDLE_CUSTOM_NODE_TYPES);
-      const originalSet = new Set(ORIGINAL_DRAG_HANDLE_CUSTOM_NODE_TYPES);
       expect(registrySet).toEqual(originalSet);
     });
   });

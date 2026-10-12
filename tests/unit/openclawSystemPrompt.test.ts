@@ -8,7 +8,6 @@ import {
   buildRuntimeSection,
   formatTurnClock,
   buildMemorySection,
-  estimateSystemPromptTokens,
   type IBootstrapFile,
   type IOpenclawRuntimeInfo,
   type IOpenclawSystemPromptParams,
@@ -619,25 +618,6 @@ describe('buildMemorySection', () => {
     const section = buildMemorySection();
     // Carried over from the Phase 5 version — memory can go stale, agent must verify.
     expect(section).toMatch(/can go stale/i);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// estimateSystemPromptTokens
-// ---------------------------------------------------------------------------
-
-describe('estimateSystemPromptTokens', () => {
-  it('returns a positive number for standard params', () => {
-    const tokens = estimateSystemPromptTokens(createBaseParams());
-    expect(tokens).toBeGreaterThan(0);
-  });
-
-  it('returns approximately chars/4 of the built prompt', () => {
-    const params = createBaseParams();
-    const prompt = buildOpenclawSystemPrompt(params);
-    const tokens = estimateSystemPromptTokens(params);
-    // estimateTokens = Math.ceil(chars / 4)
-    expect(tokens).toBe(Math.ceil(prompt.length / 4));
   });
 });
 

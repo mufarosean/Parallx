@@ -76,9 +76,7 @@ import type {
   ICronJob,
   ContextLineFetcher,
   CronTurnExecutor,
-  HeartbeatWaker,
 } from './openclawCronService.js';
-import type { HeartbeatRunner } from './openclawHeartbeatRunner.js';
 import type { IChatSession } from '../services/chatTypes.js';
 import { ChatContentPartKind } from '../services/chatTypes.js';
 import { extractFinalAssistantText } from './openclawSubagentExecutor.js';
@@ -375,22 +373,4 @@ function extractAssistantText(parts: readonly unknown[]): string {
     }
   }
   return out.join('\n');
-}
-
-// ---------------------------------------------------------------------------
-// HeartbeatWaker adapter (unchanged from M58 W4)
-// ---------------------------------------------------------------------------
-
-/**
- * Build a HeartbeatWaker that forwards cron wake requests to the runtime
- * HeartbeatRunner. The runner's reasons allowlist already accepts `'cron'`
- * (see `HEARTBEAT_REASON_OPTIONS` in unifiedConfigTypes.ts).
- *
- * If the heartbeat runner is disabled in config, `wake()` is a no-op inside
- * the runner — cron never fails because heartbeat is off.
- */
-export function createCronHeartbeatWaker(runner: HeartbeatRunner): HeartbeatWaker {
-  return (reason: 'cron') => {
-    runner.wake(reason);
-  };
 }

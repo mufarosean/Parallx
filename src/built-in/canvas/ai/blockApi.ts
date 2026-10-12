@@ -130,11 +130,6 @@ export function decodeDocContent(stored: string | null | undefined): DocNode | n
   return null;
 }
 
-/** Re-encode a doc into the schema-versioned envelope used by canvas. */
-export function encodeDocContent(doc: DocNode, schemaVersion = 2): string {
-  return JSON.stringify({ schemaVersion, doc });
-}
-
 /** Walk the doc and yield every node with an `attrs.id`. Depth-first,
  * pre-order. */
 export function* iterateBlocks(doc: DocNode): Generator<{ node: DocNode; path: number[] }> {
@@ -347,14 +342,6 @@ export function setBlockDocValidator(fn: ((doc: DocNode) => string | null) | nul
 }
 export function validateBlockDoc(doc: DocNode): string | null {
   try { return _docValidator ? _docValidator(doc) : null; } catch (err) { return err instanceof Error ? err.message : String(err); }
-}
-
-/** Build a paragraph node from a plain-text string. */
-export function paragraphFromText(text: string, blockId?: string): DocNode {
-  const para: DocNode = { type: 'paragraph' };
-  if (blockId) para.attrs = { id: blockId };
-  if (text) para.content = [{ type: 'text', text }];
-  return para;
 }
 
 /**

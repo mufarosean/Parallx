@@ -1,12 +1,10 @@
 // Quick Open sources: a running tool lists its own things in Ctrl+P, and
 // they leave when the tool does.
 import { describe, it, expect } from 'vitest';
-import { registerQuickOpenSource, getQuickOpenSources, onDidChangeQuickOpenSources } from '../../src/services/quickOpenSources';
+import { registerQuickOpenSource, getQuickOpenSources } from '../../src/services/quickOpenSources';
 
 describe('quickOpenSources', () => {
   it('lists a source while it is registered, and drops it when disposed', async () => {
-    let changes = 0;
-    const sub = onDidChangeQuickOpenSources(() => { changes++; });
     const d = registerQuickOpenSource({
       id: 'test.pages',
       group: 'pages',
@@ -16,8 +14,6 @@ describe('quickOpenSources', () => {
     expect((await getQuickOpenSources()[0].listItems())[0].label).toBe('Loss Development Factors');
     d.dispose();
     expect(getQuickOpenSources().map((s) => s.id)).not.toContain('test.pages');
-    expect(changes).toBe(2);
-    sub.dispose();
   });
 
   it('keeps the newer registration when an older one with the same id is disposed', () => {

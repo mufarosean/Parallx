@@ -720,16 +720,3 @@ export function createNotebookRunTools(
 ): IChatTool[] {
   return [createNotebookRunTool(kernel, fs, writer, resolveOpen)];
 }
-
-/** Everything, for callers that do not need the split (and for tests). */
-export function createNotebookTools(
-  kernel: INotebookKernelService | undefined,
-  fs: IBuiltInToolFileSystem | undefined,
-  writer: IBuiltInToolFileWriter | undefined,
-  resolveOpen: OpenNotebookResolver | undefined,
-): IChatTool[] {
-  return [
-    ...createNotebookFileTools(fs, writer, resolveOpen),
-    ...createNotebookRunTools(kernel, fs, writer, resolveOpen),
-  ];
-}

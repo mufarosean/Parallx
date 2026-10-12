@@ -12,7 +12,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   enterMode,
   beginPointerDrag,
-  activeModeIds,
+  _activeModeIdsForTest,
   type ModeExitReason,
 } from '../../src/ui/interactionMode';
 import { ContextMenu } from '../../src/ui/contextMenu';
@@ -32,7 +32,7 @@ function key(k: string, target: EventTarget = document.body): KeyboardEvent {
 
 afterEach(() => {
   // No mode may survive a test — the subsystem's own leak check.
-  for (const id of [...activeModeIds()]) void id;
+  for (const id of [..._activeModeIdsForTest()]) void id;
   document.body.textContent = '';
 });
 
@@ -47,13 +47,13 @@ describe('enterMode — the exit contract', () => {
       onExit: (r) => reasons.push(r),
     });
     expect(handle.isActive).toBe(true);
-    expect(activeModeIds()).toContain('test');
+    expect(_activeModeIdsForTest()).toContain('test');
 
     handle.exit();
     handle.exit(); // idempotent
     key('Escape'); // stale keys touch nothing
     expect(reasons).toEqual(['programmatic']);
-    expect(activeModeIds()).not.toContain('test');
+    expect(_activeModeIdsForTest()).not.toContain('test');
   });
 
   it('Escape exits the TOPMOST mode only', async () => {
@@ -281,7 +281,7 @@ describe('ContextMenu under the contract — the first citizen', () => {
     menu.onDidDismiss(dismissed);
     menu.dispose(); // the textEditorPane path that used to skip dismissal
     expect(dismissed).toHaveBeenCalledTimes(1);
-    expect(activeModeIds()).not.toContain('context-menu');
+    expect(_activeModeIdsForTest()).not.toContain('context-menu');
   });
 
   it('Home/End stay with the editable unless a row is armed', () => {

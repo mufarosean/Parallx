@@ -5,15 +5,13 @@
 //     one of the allowed strings.
 //   - emit() persists ndjson lines and readDay() returns parsed records.
 //   - findById() walks the retention window.
-//   - sha256Hex / canonicalArgsDigest are stable & 64-hex-char.
+//   - sha256Hex is 64 hex chars.
 //   - No plaintext bodies are persisted: caller's note is stored verbatim,
 //     but the schema does not include any body field.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AutonomyEventLog,
-  canonicalArgsDigest,
-  isUlid,
   sha256Hex,
   type IAutonomyEventLogFs,
   type IAutonomyEventRecord,
@@ -73,6 +71,9 @@ beforeEach(async () => {
 afterEach(() => {
   vi.useRealTimers();
 });
+
+/** 26 characters of Crockford's base32, the shape of a ULID. */
+const isUlid = (value: string): boolean => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(value);
 
 describe('AutonomyEventLog (M60 §3.10)', () => {
   it('writes a structured ndjson record on emit', async () => {
@@ -155,12 +156,6 @@ describe('AutonomyEventLog (M60 §3.10)', () => {
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
     // Stable for identical input.
     expect(await sha256Hex('hello world')).toBe(hash);
-  });
-
-  it('canonicalArgsDigest is order-independent', async () => {
-    const a = await canonicalArgsDigest({ b: 2, a: 1 });
-    const b = await canonicalArgsDigest({ a: 1, b: 2 });
-    expect(a).toBe(b);
   });
 
   it('ulids are 26 chars and time-prefix sortable', () => {

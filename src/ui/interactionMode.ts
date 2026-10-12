@@ -266,7 +266,7 @@ export function enterMode(options: InteractionModeOptions): ModeHandle {
 }
 
 /** The compliance harness looks here; production code should not. */
-export function activeModeIds(): readonly string[] {
+export function _activeModeIdsForTest(): readonly string[] {
   return _stack.map((m) => m.options.id);
 }
 

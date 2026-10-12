@@ -92,11 +92,3 @@ function mergeToolsConfig(
     deny: [...(defaultTools.deny ?? []), ...(agentTools.deny ?? [])],
   };
 }
-
-// ---------------------------------------------------------------------------
-// Default agent ID resolution
-// ---------------------------------------------------------------------------
-
-export function resolveDefaultAgentId(registry: IAgentRegistry): string {
-  return registry.getDefault().id;
-}

@@ -1,7 +1,7 @@
 // Worksheets: practice-session selection logic (pure).
 
 import { describe, it, expect } from 'vitest';
-import { buildPracticeSet, tagCounts, itemTags } from '../../src/built-in/worksheet/practiceSession.js';
+import { buildPracticeSet, itemTags } from '../../src/built-in/worksheet/practiceSession.js';
 
 const item = (id: number, tags: string, attemptState = '', attemptCount = 0) =>
   ({ id, tags, attemptState, attemptCount });
@@ -49,15 +49,7 @@ describe('buildPracticeSet', () => {
   });
 });
 
-describe('tagCounts / itemTags', () => {
-  it('counts items per tag across the bank', () => {
-    const counts = tagCounts(bank);
-    expect(counts.get('brosius')).toBe(2);
-    expect(counts.get('mack1994')).toBe(2);
-    expect(counts.get('reserves')).toBe(1);
-    expect(counts.has('')).toBe(false);
-  });
-
+describe('itemTags', () => {
   it('itemTags trims and drops empties', () => {
     expect(itemTags(' a , b ,, ')).toEqual(['a', 'b']);
   });

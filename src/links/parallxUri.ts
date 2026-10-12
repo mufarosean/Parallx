@@ -100,8 +100,3 @@ export function mintParallxUri(
   }
   return uri;
 }
-
-/** Cheap predicate: does this string start with the `parallx://` scheme? */
-export function isParallxUri(s: unknown): s is string {
-  return typeof s === 'string' && s.trim().toLowerCase().startsWith('parallx://');
-}

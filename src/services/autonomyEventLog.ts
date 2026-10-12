@@ -461,37 +461,3 @@ export async function sha256Hex(input: string): Promise<string> {
   }
   return out;
 }
-
-/**
- * Canonical-stringify args (sorted keys, no whitespace) before hashing.
- * Ensures argsDigest is stable for equivalent calls.
- */
-export async function canonicalArgsDigest(args: unknown): Promise<string> {
-  return sha256Hex(canonicalize(args));
-}
-
-function canonicalize(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) {
-    return '[' + value.map(canonicalize).join(',') + ']';
-  }
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  const parts: string[] = [];
-  for (const k of keys) {
-    parts.push(JSON.stringify(k) + ':' + canonicalize(obj[k]));
-  }
-  return '{' + parts.join(',') + '}';
-}
-
-// ---------------------------------------------------------------------------
-// ULID validation (used by tests + replay command)
-// ---------------------------------------------------------------------------
-
-export function isUlid(value: string): boolean {
-  if (typeof value !== 'string' || value.length !== 26) return false;
-  for (let i = 0; i < value.length; i++) {
-    if (ULID_ALPHABET.indexOf(value[i]) < 0) return false;
-  }
-  return true;
-}

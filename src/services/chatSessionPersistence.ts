@@ -454,43 +454,6 @@ function _reconstructPairs(messageRows: readonly IPersistedMessageRow[]): IChatR
   return messages;
 }
 
-/**
- * Load persisted sessions for a specific workspace from the database.
- * Returns fully hydrated IChatSession objects scoped to the given workspace.
- *
- * @param workspaceId — only sessions belonging to this workspace are returned.
- *   Pass empty string to load sessions with no workspace assignment (legacy data).
- */
-export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: string = ''): Promise<IChatSession[]> {
-  if (!db.isOpen) { return []; }
-
-  const rows = await db.all<IPersistedSessionRow>(
-    // `origin IS NULL` keeps archived autonomous runs out of the chat
-    // list; they surface only through the autonomy-log review surface.
-    `SELECT id, title, mode, model_id, context_window_override, plan_json, created_at, updated_at FROM chat_sessions WHERE workspace_id = ? AND origin IS NULL ORDER BY updated_at DESC`,
-    [workspaceId],
-  );
-
-  const sessions: IChatSession[] = [];
-
-  for (const row of rows) {
-    const messageRows = await db.all<IPersistedMessageRow>(
-      `SELECT *
-        FROM chat_messages WHERE session_id = ? ORDER BY sort_order`, [row.id]);
-
-    const { messages: normalizedMessages, changed } = _normalizeReplayChains(_reconstructPairs(messageRows));
-
-    const session = _buildSessionFromRow(row, normalizedMessages);
-    sessions.push(session);
-
-    if (changed) {
-      await saveSession(db, session, workspaceId);
-    }
-  }
-
-  return sessions;
-}
-
 interface IPersistedSessionRow {
   id: string;
   title: string;
@@ -535,10 +498,8 @@ function _buildSessionFromRow(row: IPersistedSessionRow, messages: IChatRequestR
 /**
  * Load session METADATA only for a workspace — no chat_messages reads.
  *
- * Startup-latency path: `loadSessions` issues one message query per session
- * (N+1 through the DB worker) and JSON-parses every part of every message,
- * even though most sessions are never reopened. This variant runs exactly two
- * queries regardless of session count:
+ * The startup path: it runs exactly two queries regardless of session count
+ * (no message is read or JSON-parsed until a chat is opened):
  *   1. the session rows,
  *   2. one aggregate over chat_messages for each session's FIRST user message
  *      (the sidebar's preview/title fallback).

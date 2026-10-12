@@ -17,7 +17,10 @@ import { createReadFileTool } from '../../src/built-in/chat/tools/fileTools';
 import { createWriteFileTool, createEditFileTool } from '../../src/built-in/chat/tools/writeTools';
 import { createBlockTools } from '../../src/built-in/canvas/ai/blockTools';
 import { createEditPageTool } from '../../src/built-in/canvas/ai/pageTools';
-import { encodeDocContent } from '../../src/built-in/canvas/ai/blockApi';
+import { encodeCanvasContentFromDoc } from '../../src/built-in/canvas/contentSchema';
+
+/** Stored page content, as the canvas writes it. */
+const encodeDocContent = (doc: unknown): string => encodeCanvasContentFromDoc(doc).storedContent;
 import type { IBuiltInToolFileSystem, IBuiltInToolFileWriter, IBuiltInToolDatabase } from '../../src/built-in/chat/chatTypes';
 import type { ICancellationToken } from '../../src/services/chatTypes';
 

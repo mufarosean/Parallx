@@ -53,7 +53,6 @@ import {
 import { createSessionsSpawnTool } from '../../src/built-in/chat/tools/subagentTools';
 import {
   subagentToolPermissionLevel,
-  subagentToolRequiresApproval,
 } from '../../src/openclaw/openclawToolPolicy';
 import { ORIGIN_SUBAGENT } from '../../src/services/surfaceRouterService';
 import { SURFACE_CHAT } from '../../src/openclaw/openclawSurfacePlugin';
@@ -264,11 +263,6 @@ describe('createSubagentAnnouncer', () => {
 // ---------------------------------------------------------------------------
 
 describe('subagent tool policy (always-approval)', () => {
-  it('subagentToolRequiresApproval returns true for any tool name', () => {
-    expect(subagentToolRequiresApproval('sessions_spawn')).toBe(true);
-    expect(subagentToolRequiresApproval('anything_else')).toBe(true);
-  });
-
   it('subagentToolPermissionLevel is always requires-approval', () => {
     expect(subagentToolPermissionLevel('sessions_spawn')).toBe('requires-approval');
   });

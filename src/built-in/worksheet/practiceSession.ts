@@ -43,15 +43,6 @@ export function itemTags(tags: string): string[] {
   return String(tags || '').split(',').map((t) => t.trim()).filter(Boolean);
 }
 
-/** Tag → item count over the bank (for the filter chips). */
-export function tagCounts(items: readonly ItemLike[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const item of items) {
-    for (const t of itemTags(item.tags)) counts.set(t, (counts.get(t) || 0) + 1);
-  }
-  return counts;
-}
-
 /**
  * Build the ordered id list for a session. `rng` is injectable for
  * deterministic tests (Fisher-Yates when shuffling; bank order otherwise).

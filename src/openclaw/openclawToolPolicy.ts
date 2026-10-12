@@ -358,15 +358,6 @@ export function cronToolPermissionLevel(toolName: string): ToolPermissionLevel {
  * Upstream parity: Claude Code's Agent tool runs without per-spawn
  * prompts; the subagent's tool set is bounded by its agent definition.
  */
-export function subagentToolRequiresApproval(_toolName: string): boolean {
-  return true;
-}
-
-/**
- * Permission level for subagent tools. Always `requires-approval` by
- * design (see `subagentToolRequiresApproval`). Kept as a function to match
- * the shape of `cronToolPermissionLevel` / `surfaceSendRequiresApproval`.
- */
 export function subagentToolPermissionLevel(_toolName: string): ToolPermissionLevel {
   return 'requires-approval';
 }
@@ -548,15 +539,6 @@ export function isTurnTainted(sessionId: string | undefined): boolean {
  * new turn (`runOpenclawTurn`). Per-turn semantics, per spec §Layer 5.
  */
 export function beginNewTurn(sessionId: string | undefined): void {
-  if (!sessionId) return;
-  _taintedSessions.delete(sessionId);
-}
-
-/**
- * Remove a session from the registry — call on session delete for hygiene.
- * Bounded leak is anyway capped by `MAX_TAINTED_SESSIONS`.
- */
-export function resetSession(sessionId: string | undefined): void {
   if (!sessionId) return;
   _taintedSessions.delete(sessionId);
 }

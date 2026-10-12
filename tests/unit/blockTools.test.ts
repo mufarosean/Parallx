@@ -9,9 +9,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   createBlockTools,
-  BLOCK_TOOL_NAMES,
 } from '../../src/built-in/canvas/ai/blockTools';
-import { encodeDocContent } from '../../src/built-in/canvas/ai/blockApi';
+import { encodeCanvasContentFromDoc } from '../../src/built-in/canvas/contentSchema';
+
+/** Stored page content, as the canvas writes it. */
+const encodeDocContent = (doc: unknown): string => encodeCanvasContentFromDoc(doc).storedContent;
 import type { IBuiltInToolDatabase } from '../../src/built-in/chat/chatTypes';
 import type { ICancellationToken } from '../../src/services/chatTypes';
 
@@ -95,9 +97,9 @@ function buildDocEnvelope(blocks: { id: string; text: string }[]): string {
 }
 
 describe('blockTools — registration', () => {
-  it('exposes 4 tools matching BLOCK_TOOL_NAMES', () => {
+  it('exposes the 4 block tools', () => {
     const tools = createBlockTools(undefined);
-    expect(tools.map(t => t.name).sort()).toEqual([...BLOCK_TOOL_NAMES].sort());
+    expect(tools.map(t => t.name).sort()).toEqual(['canvas_edit_block', 'canvas_insert_block_after', 'canvas_link_block', 'canvas_read_block']);
   });
 });
 

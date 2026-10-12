@@ -1,7 +1,7 @@
 // Unit tests for RetrievalService
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { RetrievalService, dotProduct, cosineSimilarity } from '../../src/services/retrievalService';
+import { RetrievalService, dotProduct } from '../../src/services/retrievalService';
 import type { SearchResult } from '../../src/services/vectorStoreService';
 
 // ── Mock factories ──
@@ -65,26 +65,6 @@ describe('dotProduct()', () => {
 
   it('handles empty vectors', () => {
     expect(dotProduct([], [])).toBe(0);
-  });
-});
-
-describe('cosineSimilarity()', () => {
-  it('returns 1.0 for identical vectors', () => {
-    expect(cosineSimilarity([1, 2, 3], [1, 2, 3])).toBeCloseTo(1.0, 5);
-  });
-
-  it('returns 0 for orthogonal vectors', () => {
-    expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0, 5);
-  });
-
-  it('returns 0 for zero-magnitude vector', () => {
-    expect(cosineSimilarity([0, 0, 0], [1, 2, 3])).toBe(0);
-  });
-
-  it('is independent of vector magnitude', () => {
-    const a = cosineSimilarity([1, 2, 3], [4, 5, 6]);
-    const b = cosineSimilarity([2, 4, 6], [4, 5, 6]);
-    expect(a).toBeCloseTo(b, 5);
   });
 });
 

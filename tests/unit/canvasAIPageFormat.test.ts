@@ -3,7 +3,10 @@
 // links, nesting and callouts away and dropped sub-page cards.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createEditPageTool, createReadPageTool } from '../../src/built-in/canvas/ai/pageTools';
-import { encodeDocContent } from '../../src/built-in/canvas/ai/blockApi';
+import { encodeCanvasContentFromDoc } from '../../src/built-in/canvas/contentSchema';
+
+/** Stored page content, as the canvas writes it. */
+const encodeDocContent = (doc: unknown): string => encodeCanvasContentFromDoc(doc).storedContent;
 import { decodeCanvasContent } from '../../src/built-in/canvas/contentSchema';
 import { tiptapJsonToMarkdown } from '../../src/built-in/canvas/markdownExport';
 import { markdownToTiptapJson } from '../../src/built-in/canvas/markdownImport';

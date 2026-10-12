@@ -12,7 +12,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
-  createNotebookTools,
+  createNotebookFileTools,
+  createNotebookRunTools,
 } from '../../src/built-in/chat/tools/notebookTools.js';
 import { parseNotebook, serialiseNotebook, createEmptyNotebook, createEmptyCell } from '../../src/editor/panes/notebook/notebookModel.js';
 import type { NotebookOutput } from '../../src/editor/panes/notebook/notebookModel.js';
@@ -153,6 +154,12 @@ function tools(opts: {
   );
   const by = (n: string) => list.find(t => t.name === n)!;
   return { files, list, create: by('notebook_create'), read: by('notebook_read'), edit: by('notebook_edit_cell'), run: by('notebook_run') };
+}
+
+/** All four notebook tools, file tools first, as the chat registers them. */
+function createNotebookTools(...args: Parameters<typeof createNotebookRunTools>) {
+  const [kernel, fs, writer, resolveOpen] = args;
+  return [...createNotebookFileTools(fs, writer, resolveOpen), ...createNotebookRunTools(kernel, fs, writer, resolveOpen)];
 }
 
 const NOOP_TOKEN = { isCancellationRequested: false } as never;

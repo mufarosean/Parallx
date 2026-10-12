@@ -6,7 +6,7 @@
 // being stable.
 
 import { describe, it, expect } from 'vitest';
-import { parseParallxUri, mintParallxUri, isParallxUri } from '../../src/links/parallxUri.js';
+import { parseParallxUri, mintParallxUri } from '../../src/links/parallxUri.js';
 
 describe('parallxUri', () => {
   describe('parseParallxUri', () => {
@@ -90,17 +90,4 @@ describe('parallxUri', () => {
     });
   });
 
-  describe('isParallxUri', () => {
-    it('accepts parallx:// strings', () => {
-      expect(isParallxUri('parallx://canvas/page/1')).toBe(true);
-      expect(isParallxUri('  PARALLX://canvas/page/1  ')).toBe(true);
-    });
-    it('rejects everything else', () => {
-      expect(isParallxUri('https://x.com')).toBe(false);
-      expect(isParallxUri('')).toBe(false);
-      expect(isParallxUri(null)).toBe(false);
-      expect(isParallxUri(undefined)).toBe(false);
-      expect(isParallxUri(42)).toBe(false);
-    });
-  });
 });

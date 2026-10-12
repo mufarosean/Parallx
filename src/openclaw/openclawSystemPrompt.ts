@@ -900,15 +900,6 @@ export function buildPlanningSection(): string {
 
 // ---------------------------------------------------------------------------
 
-/**
- * Estimate the token count of the built system prompt.
- * Useful for budget planning before sending to the model.
- */
-export function estimateSystemPromptTokens(params: IOpenclawSystemPromptParams): number {
-  const prompt = buildOpenclawSystemPrompt(params);
-  return estimateTokens(prompt);
-}
-
 // ---------------------------------------------------------------------------
 // Model-tier guidance
 // ---------------------------------------------------------------------------

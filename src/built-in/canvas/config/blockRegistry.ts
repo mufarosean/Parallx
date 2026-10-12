@@ -1339,19 +1339,6 @@ export const COLUMN_CONTENT_NODE_TYPES: readonly string[] = [
 export const COLUMN_CONTENT_EXPRESSION: string =
   `(${COLUMN_CONTENT_NODE_TYPES.join(' | ')})+`;
 
-/** Non-standard block nodes that need explicit drag-handle registration. */
-export const DRAG_HANDLE_CUSTOM_NODE_TYPES: readonly string[] = (() => {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const def of definitions) {
-    if (def.capabilities.customDragHandle && !seen.has(def.name)) {
-      seen.add(def.name);
-      result.push(def.name);
-    }
-  }
-  return result;
-})();
-
 // ── Helper Functions ────────────────────────────────────────────────────────
 
 /**

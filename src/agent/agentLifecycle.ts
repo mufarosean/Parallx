@@ -12,16 +12,8 @@ const AGENT_TASK_TRANSITIONS: Record<AgentTaskStatus, readonly AgentTaskStatus[]
   cancelled: [],
 };
 
-export function getAllowedAgentTaskTransitions(status: AgentTaskStatus): readonly AgentTaskStatus[] {
-  return AGENT_TASK_TRANSITIONS[status];
-}
-
 export function canTransitionAgentTaskStatus(from: AgentTaskStatus, to: AgentTaskStatus): boolean {
   return AGENT_TASK_TRANSITIONS[from].includes(to);
-}
-
-export function isTerminalAgentTaskStatus(status: AgentTaskStatus): boolean {
-  return AGENT_TASK_TRANSITIONS[status].length === 0;
 }
 
 export function assertAgentTaskTransition(from: AgentTaskStatus, to: AgentTaskStatus): void {

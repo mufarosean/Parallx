@@ -2,13 +2,16 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 import {
   HeartbeatRunner,
-  DEFAULT_HEARTBEAT_INTERVAL_MS,
   MIN_HEARTBEAT_INTERVAL_MS,
   MAX_HEARTBEAT_INTERVAL_MS,
   DUPLICATE_SUPPRESSION_WINDOW_MS,
   type IHeartbeatConfig,
   type IHeartbeatSystemEvent,
 } from '../../src/openclaw/openclawHeartbeatRunner';
+import { DEFAULT_UNIFIED_CONFIG } from '../../src/aiSettings/unifiedConfigTypes';
+
+/** The heartbeat interval a workspace starts with (AI settings). */
+const DEFAULT_HEARTBEAT_INTERVAL_MS = DEFAULT_UNIFIED_CONFIG.heartbeat.intervalMs;
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -343,7 +346,7 @@ describe('HeartbeatRunner', () => {
 // ---------------------------------------------------------------------------
 
 describe('heartbeat constants', () => {
-  it('DEFAULT_HEARTBEAT_INTERVAL_MS is 30 minutes', () => {
+  it('the default heartbeat interval is 30 minutes', () => {
     expect(DEFAULT_HEARTBEAT_INTERVAL_MS).toBe(30 * 60 * 1000);
   });
 

@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { ChatDataService } from '../../src/built-in/chat/data/chatDataService';
 import { ChatMode, type IChatSession } from '../../src/services/chatTypes';
-import { ensureChatTables, saveSession, loadSessions, type IChatPersistenceDatabase } from '../../src/services/chatSessionPersistence';
+import { ensureChatTables, saveSession, type IChatPersistenceDatabase } from '../../src/services/chatSessionPersistence';
+import { loadSessions } from './fixtures/chatSessions';
 import { WorkspaceTranscriptService } from '../../src/services/workspaceTranscriptService';
 import { URI } from '../../src/platform/uri';
 

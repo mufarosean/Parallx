@@ -397,12 +397,3 @@ export function createBlockTools(
     createLinkBlockTool(db, notifyPageMutated, writer),
   ];
 }
-
-/** Stable list of tool names registered by createBlockTools — used by
- * tests and documentation to detect drift. */
-export const BLOCK_TOOL_NAMES = [
-  'canvas_read_block',
-  'canvas_edit_block',
-  'canvas_insert_block_after',
-  'canvas_link_block',
-] as const;

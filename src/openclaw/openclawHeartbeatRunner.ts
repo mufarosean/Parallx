@@ -23,17 +23,6 @@ import type { IDisposable } from '../platform/lifecycle.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Default heartbeat interval in milliseconds (30 minutes).
- *
- * Now that an interval tick runs a REAL periodic app-awareness review (an LLM
- * turn seeded with the app-context snapshot), the cadence matches OpenClaw's
- * 30-min default rather than the old 5-min status-flash reflex. Local Ollama
- * has no per-token cost, but a real turn every few minutes is still needless
- * churn; event-driven reactions handle the fast path. Configurable via AI settings.
- */
-export const DEFAULT_HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000;
-
-/**
  * Minimum heartbeat interval — prevents runaway timers.
  *
  * @deviation D2.11 — Upstream has no min/max bounds (relies on config

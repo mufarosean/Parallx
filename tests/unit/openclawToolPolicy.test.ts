@@ -9,7 +9,6 @@ import {
   markTurnTainted,
   isTurnTainted,
   beginNewTurn,
-  resetSession,
   _resetColorGateRegistryForTests,
 } from '../../src/openclaw/openclawToolPolicy';
 import {
@@ -428,12 +427,6 @@ describe('tainted-turn registry (M65 Iter 2)', () => {
     beginNewTurn('session-a');
     expect(isTurnTainted('session-a')).toBe(false);
     expect(isTurnTainted('session-b')).toBe(true);
-  });
-
-  it('resetSession removes session from registry', () => {
-    markTurnTainted('session-a');
-    resetSession('session-a');
-    expect(isTurnTainted('session-a')).toBe(false);
   });
 
   it('falsy sessionId is a no-op (no global taint)', () => {

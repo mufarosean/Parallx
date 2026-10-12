@@ -4,12 +4,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   ensureChatTables,
   saveSession,
-  loadSessions,
   loadSessionMetas,
   loadSessionMessages,
   deletePersistedSession,
 } from '../../src/services/chatSessionPersistence';
 import type { IChatPersistenceDatabase } from '../../src/services/chatSessionPersistence';
+import { loadSessions } from './fixtures/chatSessions';
 import type { IChatSession } from '../../src/services/chatTypes';
 import { ChatMode, ChatContentPartKind } from '../../src/services/chatTypes';
 import { URI } from '../../src/platform/uri';

@@ -49,9 +49,3 @@ export async function writeThroughOpenDocument(
   if (ensureParent) await ensureParent();
   await fileService.writeFile(uri, content);
 }
-
-/** True when `uri` is currently held by an open editor document. */
-export function isDocumentOpen(models: ITextFileModelManager | undefined, uri: URI): boolean {
-  const open = models?.get(uri);
-  return !!open && !open.isDisposed;
-}
