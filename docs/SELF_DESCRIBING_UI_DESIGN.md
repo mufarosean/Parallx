@@ -592,14 +592,20 @@ palette and quick open), `src/workbench/menuBuilder.ts`,
 feature hangs in, so once they are done every later probe row can
 navigate by id.
 
-### Step 4. `id` becomes required (cloud)
+### Step 4. `id` becomes required (cloud, after steps 5 and 7)
 
-`id` is made required on the seven original functions. Typecheck lists
-every caller still without one; they are given ids in this step (the
-few outside the frame and the built-ins). From here a kit call without
-a declaration is a type error.
+`id` is made required on the seven original functions. This comes
+after the built-ins and the extensions are converted, not before: the
+184 kit calls without an id today are nearly all inside built-ins and
+extensions, and each gets its id in its own conversion session, where
+the person converting it knows the feature. Once typecheck lists no
+caller without one, the field turns required and a kit call without a
+declaration is a type error from then on.
 
-### Step 5. Built-ins, one per session (local)
+### Step 5. Built-ins, one per session (local or cloud)
+
+Either place: the scene probe runs in the cloud container under xvfb,
+so a conversion can be verified in a real window there too.
 
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
