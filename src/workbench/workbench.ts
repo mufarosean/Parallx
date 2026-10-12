@@ -3792,9 +3792,6 @@ export class Workbench extends Layout {
     this._ragServiceStore.add(result.vectorStoreService);
     this._ragServiceStore.add(result.retrievalService);
     this._ragServiceStore.add(result.memoryService);
-    this._ragServiceStore.add(result.relatedContentService);
-    this._ragServiceStore.add(result.autoTaggingService);
-    this._ragServiceStore.add(result.proactiveSuggestionsService);
 
     this._indexingPipeline = result.indexingPipeline;
     this._ragServiceStore.add(result.indexingPipeline);

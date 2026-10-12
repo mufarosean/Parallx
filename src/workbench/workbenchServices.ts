@@ -6,7 +6,7 @@ import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandServ
 import { isWorkspaceSealed } from '../services/sealedWorkspace.js';
 import { createSecretStorageService } from '../services/secretStorageService.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
-import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService, IObservabilityService, IRuntimeHookRegistry, IMcpClientService, IAutonomyLogService, ISemanticGraphService, IMindMapRefreshOrchestrator } from '../services/serviceTypes.js';
+import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService, IDiagnosticsService, IObservabilityService, IRuntimeHookRegistry, IMcpClientService, IAutonomyLogService, ISemanticGraphService, IMindMapRefreshOrchestrator } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -40,9 +40,6 @@ import { VectorStoreService } from '../services/vectorStoreService.js';
 import { IndexingPipelineService } from '../services/indexingPipeline.js';
 import { RetrievalService } from '../services/retrievalService.js';
 import { MemoryService } from '../services/memoryService.js';
-import { RelatedContentService } from '../services/relatedContentService.js';
-import { AutoTaggingService } from '../services/autoTaggingService.js';
-import { ProactiveSuggestionsService } from '../services/proactiveSuggestionsService.js';
 import { SemanticGraphService } from '../services/semanticGraphService.js';
 import { MindMapRefreshOrchestrator } from '../services/mindMapRefreshOrchestrator.js';
 import { LineageClassifierService } from '../services/lineageClassifierService.js';
@@ -295,9 +292,6 @@ export function registerIndexingServices(
   indexingPipeline: IndexingPipelineService;
   retrievalService: RetrievalService;
   memoryService: MemoryService;
-  relatedContentService: RelatedContentService;
-  autoTaggingService: AutoTaggingService;
-  proactiveSuggestionsService: ProactiveSuggestionsService;
   semanticGraphService: SemanticGraphService;
   mindMapRefreshOrchestrator: MindMapRefreshOrchestrator;
 } {
@@ -357,8 +351,6 @@ export function registerIndexingServices(
 
   // ── Phase 7: Advanced Feature Services ──
 
-  const relatedContentService = new RelatedContentService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
-  const autoTaggingService = new AutoTaggingService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
   const semanticGraphService = new SemanticGraphService(databaseService, vectorStoreService, indexingPipeline, workspaceService);
   // user-initiated mind-map refresh. Phase 4 (lineage) and
   // Phase 5 (concept clustering) register their RefreshPass with this
@@ -400,11 +392,7 @@ export function registerIndexingServices(
 
   // Proactive suggestions read thresholds from unified effective config.
   const unifiedConfigService = services.has(IUnifiedAIConfigService) ? services.get(IUnifiedAIConfigService) : undefined;
-  const proactiveSuggestionsService = new ProactiveSuggestionsService(embeddingService, vectorStoreService, databaseService, indexingPipeline, unifiedConfigService);
 
-  services.registerInstance(IRelatedContentService, relatedContentService);
-  services.registerInstance(IAutoTaggingService, autoTaggingService);
-  services.registerInstance(IProactiveSuggestionsService, proactiveSuggestionsService);
   services.registerInstance(ISemanticGraphService, semanticGraphService);
   services.registerInstance(IMindMapRefreshOrchestrator, mindMapRefreshOrchestrator);
 
@@ -475,7 +463,7 @@ export function registerIndexingServices(
     getObservabilityMetrics: () => observabilityService.getSessionMetrics(),
   });
 
-  return { embeddingService, chunkingService, vectorStoreService, indexingPipeline, retrievalService, memoryService, relatedContentService, autoTaggingService, proactiveSuggestionsService, semanticGraphService, mindMapRefreshOrchestrator };
+  return { embeddingService, chunkingService, vectorStoreService, indexingPipeline, retrievalService, memoryService, semanticGraphService, mindMapRefreshOrchestrator };
 }
 
 /**

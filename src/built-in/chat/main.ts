@@ -53,7 +53,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService, IAutonomyLogService, IAutonomyEventLog, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentPolicyService, IAgentSessionService, IAgentTaskStore, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService, IDiagnosticsService, IDocumentExtractionService, IObservabilityService, IRuntimeHookRegistry, ILayoutService, IEmbeddingService, IWorkspaceStorageService, ISurfaceRouterService, IAutonomyLogService, IAutonomyEventLog, ISettingsRegistryService, IAutonomyTaskRailService, IAutonomyPatternMemoryService, IAutonomyFeatureFlagsService, ISemanticGraphService, IMindMapRefreshOrchestrator, ICanvasPageQueryService } from '../../services/serviceTypes.js';
 import { getScheduleSources, listScheduleOpenTasks, listScheduleTaskFacts, getScheduleToday, getScheduleSyncHealth, captureScheduleFollowUp } from '../../services/scheduleSources.js';
 import { normalizeFactsInclude, type FactsInclude } from '../../services/workflows/workflowTypes.js';
 import { IActivityJournalService } from '../../services/activityJournalService.js';
@@ -603,17 +603,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     const _memoryForCleanup = memoryService;
     chatService.setMemoryCleanup((id) => _memoryForCleanup.deleteMemory(id));
   }
-
-  // Phase 7: Advanced Feature services
-  const relatedContentService = api.services.has(IRelatedContentService)
-    ? api.services.get<import('../../services/serviceTypes.js').IRelatedContentService>(IRelatedContentService)
-    : undefined;
-  const autoTaggingService = api.services.has(IAutoTaggingService)
-    ? api.services.get<import('../../services/serviceTypes.js').IAutoTaggingService>(IAutoTaggingService)
-    : undefined;
-  const proactiveSuggestionsService = api.services.has(IProactiveSuggestionsService)
-    ? api.services.get<import('../../services/serviceTypes.js').IProactiveSuggestionsService>(IProactiveSuggestionsService)
-    : undefined;
 
   // Session manager — carries workspace/session identity for diagnostics
   const sessionManager = api.services.has(ISessionManager)
@@ -3373,66 +3362,6 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       }));
     }),
   );
-
-  // 9b. Related Content commands
-  if (relatedContentService) {
-    context.subscriptions.push(
-      api.commands.registerCommand('chat.getRelatedContent', async (...args: unknown[]) => {
-        const pageId = args[0] as string | undefined;
-        if (!pageId) return [];
-        return relatedContentService.findRelated(pageId);
-      }),
-    );
-  }
-
-  // 9c. Auto-tagging commands
-  if (autoTaggingService) {
-    context.subscriptions.push(
-      api.commands.registerCommand('chat.suggestTags', async (...args: unknown[]) => {
-        const pageId = args[0] as string | undefined;
-        if (!pageId) return [];
-        return autoTaggingService.suggestTags(pageId);
-      }),
-    );
-
-    context.subscriptions.push(
-      api.commands.registerCommand('chat.autoTagPage', async (...args: unknown[]) => {
-        const pageId = args[0] as string | undefined;
-        if (!pageId) return;
-        await autoTaggingService.autoTagOnSave(pageId);
-      }),
-    );
-
-    context.subscriptions.push(
-      api.commands.registerCommand('chat.getPageTags', async (...args: unknown[]) => {
-        const pageId = args[0] as string | undefined;
-        if (!pageId) return [];
-        return autoTaggingService.getPageTags(pageId);
-      }),
-    );
-  }
-
-  // 9d. Proactive suggestions commands
-  if (proactiveSuggestionsService) {
-    context.subscriptions.push(
-      api.commands.registerCommand('chat.getSuggestions', () => {
-        return proactiveSuggestionsService.suggestions;
-      }),
-    );
-
-    context.subscriptions.push(
-      api.commands.registerCommand('chat.dismissSuggestion', (...args: unknown[]) => {
-        const suggestionId = args[0] as string | undefined;
-        if (suggestionId) proactiveSuggestionsService.dismiss(suggestionId);
-      }),
-    );
-
-    context.subscriptions.push(
-      api.commands.registerCommand('chat.analyzeSuggestions', async () => {
-        return proactiveSuggestionsService.analyze();
-      }),
-    );
-  }
 
   // ── 10. Instantiate M11 services (skill loader, config, permissions) ──
 
