@@ -38,23 +38,20 @@ import { PdfEditorInput } from './pdfEditorInput.js';
 import { $, hide, show } from '../../../ui/dom.js';
 import { beginPointerDrag } from '../../../ui/interactionMode.js';
 import { ContextMenu } from '../../../ui/contextMenu.js';
-import type { IContextMenuItem } from '../../../ui/contextMenu.js';
-import { getEditorTitleActions } from '../../../contributions/menuContribution.js';
 import { toDisposable } from '../../../platform/lifecycle.js';
 import type { IStorage } from '../../../platform/storage.js';
-import { ICON } from './pdfIcons.js';
 import type { IPaneCommandService, PdfOutlineItem } from './pdfTypes.js';
 import { PdfHighlightStore } from './pdfHighlightStore.js';
 import { PdfSelectionOverlay, selectionRectsOnLayer } from './pdfSelectionOverlay.js';
 import { PdfSelectionActions } from './pdfSelectionActions.js';
 import { PdfSelectionMenu } from './pdfSelectionMenu.js';
-import { setupTooltip } from '../../../ui/tooltip.js';
+import { PdfToolbar } from './pdfToolbar.js';
+import { showOverflowMenu, showZoomPresets } from './pdfToolbarMenus.js';
 import { SegmentedControl } from '../../../ui/segmentedControl.js';
 import { takeFileReveal } from '../../fileReveal.js';
 import { PdfThumbnails } from './pdfThumbnails.js';
 import { PdfOutline } from './pdfOutline.js';
 import { PdfSearchBar } from './pdfSearchBar.js';
-import { pdfButton, labelButton } from './pdfButtons.js';
 
 const PANE_ID = 'pdf-editor-pane';
 const PDFJS_CMAP_URL = './dist/renderer/pdfjs/cmaps/';
@@ -86,14 +83,7 @@ export class PdfEditorPane extends EditorPane {
   private _errorEl!: HTMLElement;
   private _activeContextMenu: ContextMenu | null = null;
 
-  // Toolbar elements
-  private _pageInput!: HTMLInputElement;
-  private _pageLabelEl!: HTMLElement;
-  private _pageTotalEl!: HTMLElement;
-  private _panelBtn!: HTMLButtonElement;
-  private _invertBtn!: HTMLButtonElement;
-  private _fitBtn!: HTMLButtonElement;
-  private _zoomInput!: HTMLInputElement;
+  private _toolbarView: PdfToolbar | null = null;
 
   // Find widget
   private _search: PdfSearchBar | null = null;
@@ -236,8 +226,7 @@ export class PdfEditorPane extends EditorPane {
         this._viewerContainer.scrollLeft = pending.scrollLeft;
       }
     }
-    this._zoomInput.value = `${Math.round(this._pdfViewer.currentScale * 100)}%`;
-    this._updateFitButton();
+    this._toolbarView?.showScale(this._pdfViewer.currentScale, this._pdfViewer.currentScaleValue);
   }
 
   private _installTestDebugHook(): void {
@@ -347,7 +336,21 @@ export class PdfEditorPane extends EditorPane {
     // Toolbar
     this._toolbar = $('div');
     this._toolbar.classList.add('pdf-toolbar');
-    this._buildToolbar();
+    this._toolbarView = new PdfToolbar(this._toolbar, {
+      previousPage: () => this._pdfViewer?.previousPage(),
+      nextPage: () => this._pdfViewer?.nextPage(),
+      goToPage: (pageNum) => { if (this._pdfViewer) this._pdfViewer.currentPageNumber = pageNum; },
+      currentPage: () => this._pdfViewer?.currentPageNumber,
+      zoomOut: () => this._pdfViewer?.decreaseScale(),
+      zoomIn: () => this._pdfViewer?.increaseScale(),
+      applyScale: (value) => this._setScaleValue(value),
+      scale: () => (this._pdfViewer ? { scale: this._pdfViewer.currentScale, value: this._pdfViewer.currentScaleValue } : null),
+      toggleFind: () => this._search?.toggle(),
+      togglePanel: () => this._togglePanel(),
+      toggleNight: () => this._toggleReadingDark(),
+      showZoomPresets: (x, y) => this._showZoomPresets(x, y),
+      showMore: (anchor) => this._showOverflowMenu(anchor),
+    });
     container.appendChild(this._toolbar);
 
     // Find widget (hidden by default): floats over the top right of the
@@ -519,7 +522,7 @@ export class PdfEditorPane extends EditorPane {
     if (!this._pdfViewer) return;
     if (typeof page === 'number' && page > 0 && page <= (this._pdfDoc?.numPages ?? 0)) {
       this._pdfViewer.currentPageNumber = page;
-      if (this._pageInput) this._pageInput.value = String(page);
+      this._toolbarView?.setPage(page);
     }
     if (typeof quote === 'string' && quote.length > 0 && this._eventBus) {
       // Normalize whitespace so URI-encoded quotes still match the text
@@ -564,241 +567,24 @@ export class PdfEditorPane extends EditorPane {
 
   // ── Toolbar ──────────────────────────────────────────────────────────
 
-  private _buildToolbar(): void {
-    // ── Left: page navigation ──
-    const nav = $('div');
-    nav.classList.add('pdf-toolbar-cluster');
-
-    const prev = pdfButton(ICON.chevronLeft, 'Previous Page');
-    prev.addEventListener('click', () => this._pdfViewer?.previousPage());
-
-    const pagePill = $('div');
-    pagePill.classList.add('pdf-toolbar-pill');
-
-    this._pageInput = document.createElement('input');
-    this._pageInput.type = 'text';
-    this._pageInput.classList.add('pdf-toolbar-page-input', 'px-input-bare');
-    this._pageInput.setAttribute('aria-label', 'Page number');
-    this._pageInput.value = '1';
-    this._pageInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        const n = parseInt(this._pageInput.value, 10);
-        if (!isNaN(n) && this._pdfViewer) {
-          this._pdfViewer.currentPageNumber = n;
-        }
-      }
-    });
-    this._pageInput.addEventListener('blur', () => {
-      if (this._pdfViewer) {
-        this._pageInput.value = String(this._pdfViewer.currentPageNumber);
-      }
-    });
-
-    const sep = $('span');
-    sep.classList.add('pdf-toolbar-page-sep');
-    sep.textContent = '/';
-
-    this._pageTotalEl = $('span');
-    this._pageTotalEl.classList.add('pdf-toolbar-page-total');
-    this._pageTotalEl.textContent = '0';
-
-    // Page label (shown when document has custom labels like i, ii, iii)
-    this._pageLabelEl = $('span');
-    this._pageLabelEl.classList.add('pdf-toolbar-page-label');
-    hide(this._pageLabelEl);
-
-    pagePill.append(this._pageInput, sep, this._pageTotalEl, this._pageLabelEl);
-
-    const next = pdfButton(ICON.chevronRight, 'Next Page');
-    next.addEventListener('click', () => this._pdfViewer?.nextPage());
-
-    nav.append(prev, pagePill, next);
-
-    // ── Zoom ──
-    const zoom = $('div');
-    zoom.classList.add('pdf-toolbar-cluster');
-
-    const zoomOut = pdfButton(ICON.zoomOut, 'Zoom Out');
-    zoomOut.addEventListener('click', () => this._pdfViewer?.decreaseScale());
-
-    // One pill: editable % input + preset dropdown chevron.
-    const zoomPill = $('div');
-    zoomPill.classList.add('pdf-toolbar-pill');
-
-    this._zoomInput = document.createElement('input');
-    this._zoomInput.type = 'text';
-    this._zoomInput.classList.add('px-input-bare');
-    this._zoomInput.classList.add('pdf-toolbar-zoom-input');
-    this._zoomInput.value = '100%';
-    this._zoomInput.setAttribute('aria-label', 'Zoom level');
-    setupTooltip(this._zoomInput, 'Zoom level (type a % and press Enter)');
-    this._zoomInput.addEventListener('focus', () => this._zoomInput.select());
-    this._zoomInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { this._applyZoomInput(); this._zoomInput.blur(); e.preventDefault(); }
-      if (e.key === 'Escape') { this._syncZoomInput(); this._zoomInput.blur(); e.preventDefault(); }
-    });
-    this._zoomInput.addEventListener('blur', () => this._syncZoomInput());
-
-    const zoomPreset = pdfButton(ICON.chevronDownSm, 'Zoom Presets');
-    zoomPreset.classList.add('pdf-toolbar-zoom-preset');
-    zoomPreset.addEventListener('click', (e) => {
-      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      this._showZoomPresets(r.left, r.bottom + 4);
-    });
-
-    zoomPill.append(this._zoomInput, zoomPreset);
-
-    const zoomIn = pdfButton(ICON.zoomIn, 'Zoom In');
-    zoomIn.addEventListener('click', () => this._pdfViewer?.increaseScale());
-
-    // Single fit button that alternates between the two fit modes.
-    this._fitBtn = pdfButton(ICON.fitWidth, 'Fit Width');
-    this._fitBtn.addEventListener('click', () => this._toggleFitMode());
-
-    zoom.append(zoomOut, zoomPill, zoomIn, this._fitBtn);
-
-    // ── Center spacer ──
-    const spacer = $('span');
-    spacer.classList.add('pdf-toolbar-spacer');
-
-    // ── Right: search, panels, night reading, overflow ──
-    const right = $('div');
-    right.classList.add('pdf-toolbar-cluster');
-
-    const searchBtn = pdfButton(ICON.search, 'Find (Ctrl+F)');
-    searchBtn.addEventListener('click', () => this._search?.toggle());
-
-    this._panelBtn = pdfButton(ICON.panelLeft, 'Outline And Pages');
-    this._panelBtn.setAttribute('aria-pressed', 'false');
-    this._panelBtn.addEventListener('click', () => this._togglePanel());
-
-    this._invertBtn = pdfButton(ICON.moon, 'Night Reading');
-    this._invertBtn.addEventListener('click', () => this._toggleReadingDark());
-
-    // Rarely-used actions live in the ⋯ menu (rotate, spread, scroll, print, open).
-    const moreBtn = pdfButton(ICON.more, 'More Actions');
-    moreBtn.addEventListener('click', (e) => {
-      this._showOverflowMenu(e.currentTarget as HTMLElement);
-    });
-
-    right.append(searchBtn, this._panelBtn, this._invertBtn, moreBtn);
-
-    this._toolbar.append(nav, zoom, spacer, right);
-  }
-
-  /** One fit button that alternates fit-width ↔ fit-page (advertises the mode it switches TO). */
-  private _toggleFitMode(): void {
-    const next = this._pdfViewer?.currentScaleValue === 'page-width' ? 'page-fit' : 'page-width';
-    this._setScaleValue(next);
-    this._syncZoomInput();
-    this._updateFitButton();
-  }
-
-  private _updateFitButton(): void {
-    if (!this._fitBtn) return;
-    const isWidth = this._pdfViewer?.currentScaleValue === 'page-width';
-    this._fitBtn.innerHTML = isWidth ? ICON.fitPage : ICON.fitWidth;
-    labelButton(this._fitBtn, isWidth ? 'Fit Page' : 'Fit Width');
-  }
-
-  // ── Overflow menu (rotate / spread / scroll / print / open) ────────────
-
+  /** The ⋯ menu: rotate, spread, scroll, print, open, and tools' entries. */
   private _showOverflowMenu(anchor: HTMLElement): void {
     this._dismissContextMenu();
-    const pdf = this._pdf;
-    if (!pdf) return;
-    const { SpreadMode, ScrollMode } = pdf;
-    const r = anchor.getBoundingClientRect();
-    const spread = this._pdfViewer?.spreadMode ?? SpreadMode.NONE;
-    const scroll = this._pdfViewer?.scrollMode ?? ScrollMode.VERTICAL;
-    // Every submenu item gets an icon slot so labels stay aligned; only the
-    // current mode draws the check. The icon span has no CSS sizing of its
-    // own, so size it (and the SVG) inline — same as viewContainer's menu.
-    const checked = (on: boolean) => (el: HTMLElement) => {
-      el.style.width = '16px';
-      el.style.display = 'inline-flex';
-      el.style.alignItems = 'center';
-      if (on) {
-        el.innerHTML = ICON.check;
-        const svg = el.querySelector('svg');
-        if (svg) { svg.style.width = '13px'; svg.style.height = '13px'; }
-      }
-    };
-
-    // Entries running tools added through the `editor/title` menu location
-    // (when: activeEditor == this pane's typeId). The pane names no tool: it
-    // lists what is there, with the tool's name at the right so the user can
-    // tell what added it. ContextMenu has no slot for trailing text other
-    // than the keybinding span (muted, right-aligned), so the tag goes there.
-    const toolActions = getEditorTitleActions();
-    const toolItems: IContextMenuItem[] = toolActions.map((a) => ({
-      id: `tool:${a.commandId}`,
-      label: a.label,
-      keybinding: a.toolName,
-      group: 'tools',
-    }));
-
-    const menu = ContextMenu.show({
-      items: [
-        { id: 'pdf.rotate', label: 'Rotate 90°', keybinding: 'R' },
-        {
-          id: 'pdf.spread',
-          label: 'Two-page spread',
-          submenu: [
-            { id: 'pdf.spread.none', label: 'Off',        renderIcon: checked(spread === SpreadMode.NONE) },
-            { id: 'pdf.spread.odd',  label: 'Odd Pages',  renderIcon: checked(spread === SpreadMode.ODD) },
-            { id: 'pdf.spread.even', label: 'Even Pages', renderIcon: checked(spread === SpreadMode.EVEN) },
-          ],
-        },
-        {
-          id: 'pdf.scroll',
-          label: 'Scroll Direction',
-          submenu: [
-            { id: 'pdf.scroll.vertical',   label: 'Vertical',    renderIcon: checked(scroll === ScrollMode.VERTICAL) },
-            { id: 'pdf.scroll.horizontal', label: 'Horizontal',  renderIcon: checked(scroll === ScrollMode.HORIZONTAL) },
-            { id: 'pdf.scroll.wrapped',    label: 'Wrapped',     renderIcon: checked(scroll === ScrollMode.WRAPPED) },
-            { id: 'pdf.scroll.page',       label: 'Single Page', renderIcon: checked(scroll === ScrollMode.PAGE) },
-          ],
-        },
-        { id: 'pdf.print', label: 'Print…', group: 'doc' },
-        { id: 'pdf.openExternal', label: 'Open in System Viewer', group: 'doc' },
-        ...toolItems,
-      ],
-      anchor: { x: r.left, y: r.bottom + 4 },
+    this._activeContextMenu = showOverflowMenu(anchor, {
+      viewer: () => this._pdfViewer,
+      modes: () => (this._pdf ? { SpreadMode: this._pdf.SpreadMode, ScrollMode: this._pdf.ScrollMode } : null),
+      file: () => (this._currentInput ? { uri: this._currentInput.uri.toString(), fsPath: this._currentInput.uri.fsPath } : null),
+      commands: () => this._commandService,
+      rotate: () => this._rotate(),
     });
+  }
 
-    menu.onDidSelect((e) => {
-      const id = e.item.id;
-      const toolAction = toolActions.find((a) => `tool:${a.commandId}` === id);
-      if (toolAction) {
-        // One argument: where the reader is. The command decides what to do with it.
-        const uri = this._currentInput?.uri;
-        if (!uri || !this._commandService) return;
-        void this._commandService.executeCommand(toolAction.commandId, {
-          uri: uri.toString(),
-          fsPath: uri.fsPath,
-          page: this._pdfViewer?.currentPageNumber ?? 1,
-        }).catch((err) => console.error(`[PdfEditorPane] "${toolAction.commandId}" failed:`, err));
-        return;
-      }
-      if (id === 'pdf.rotate') this._rotate();
-      else if (id === 'pdf.print') this._print();
-      else if (id === 'pdf.openExternal') this._openExternal();
-      else if (id.startsWith('pdf.spread.') && this._pdfViewer) {
-        const mode = id.slice('pdf.spread.'.length);
-        this._pdfViewer.spreadMode =
-          mode === 'odd' ? SpreadMode.ODD : mode === 'even' ? SpreadMode.EVEN : SpreadMode.NONE;
-      } else if (id.startsWith('pdf.scroll.') && this._pdfViewer) {
-        const mode = id.slice('pdf.scroll.'.length);
-        this._pdfViewer.scrollMode =
-          mode === 'horizontal' ? ScrollMode.HORIZONTAL
-          : mode === 'wrapped' ? ScrollMode.WRAPPED
-          : mode === 'page' ? ScrollMode.PAGE
-          : ScrollMode.VERTICAL;
-      }
+  private _showZoomPresets(x: number, y: number): void {
+    this._dismissContextMenu();
+    this._activeContextMenu = showZoomPresets(x, y, (value) => {
+      this._setScaleValue(value);
+      this._toolbarView?.syncScale();
     });
-
-    this._activeContextMenu = menu;
   }
 
   // ── Outline sidebar ──────────────────────────────────────────────────
@@ -822,8 +608,7 @@ export class PdfEditorPane extends EditorPane {
     const open = this._panelOpen;
     this._outlineVisible = open && this._panelSide === 'outline';
     this._thumbnailVisible = open && this._panelSide === 'pages';
-    this._panelBtn?.classList.toggle('active', open);
-    this._panelBtn?.setAttribute('aria-pressed', String(open));
+    this._toolbarView?.setPanelOpen(open);
     if (!open) {
       hide(this._outlineSidebar);
       hide(this._outlineSash);
@@ -980,15 +765,14 @@ export class PdfEditorPane extends EditorPane {
 
       this._eventBus.on('pagechanging', (evt: any) => {
         const pageNum = evt.pageNumber;
-        this._pageInput.value = String(pageNum);
+        this._toolbarView?.setPage(pageNum);
         this._updatePageLabel(pageNum);
         this._thumbs?.markActive(pageNum, this._thumbnailVisible);
         if (this._currentInput) this._currentInput.page = pageNum;
       });
 
       this._eventBus.on('scalechanging', (evt: any) => {
-        this._zoomInput.value = `${Math.round(evt.scale * 100)}%`;
-        this._updateFitButton();
+        this._toolbarView?.showScale(evt.scale, this._pdfViewer?.currentScaleValue);
         this._pdfViewer?.update();
         this._selectionOverlay.schedule();
         this._highlightStore.renderAll();
@@ -1051,8 +835,7 @@ export class PdfEditorPane extends EditorPane {
         // the very top instead.
         else if (restoredPage <= 1 && this._viewerContainer) this._viewerContainer.scrollTop = 0;
 
-        this._zoomInput.value = `${Math.round(this._pdfViewer!.currentScale * 100)}%`;
-        this._updateFitButton();
+        this._toolbarView?.showScale(this._pdfViewer!.currentScale, this._pdfViewer!.currentScaleValue);
         this._pdfViewer!.update();
         this._selectionOverlay.schedule();
         this._highlightStore.renderAll();
@@ -1077,8 +860,8 @@ export class PdfEditorPane extends EditorPane {
       this._installTestDebugHook();
 
       // Update toolbar page count
-      this._pageTotalEl.textContent = String(this._pdfDoc.numPages);
-      this._pageInput.value = '1';
+      this._toolbarView?.setPageCount(this._pdfDoc.numPages);
+      this._toolbarView?.setPage(1);
 
       // ── Load page labels ───────────────────────────────────────────
 
@@ -1086,10 +869,9 @@ export class PdfEditorPane extends EditorPane {
       if (labels && labels.some((l: string | null) => l !== null)) {
         this._pageLabels = labels;
         this._updatePageLabel(1);
-        show(this._pageLabelEl);
       } else {
         this._pageLabels = null;
-        hide(this._pageLabelEl);
+        this._toolbarView?.setPageLabel(null);
       }
 
       // ── Load outline ───────────────────────────────────────────────
@@ -1125,42 +907,6 @@ export class PdfEditorPane extends EditorPane {
     this._globalStorage?.set('parallx.pdfScaleValue', value);  // fire-and-forget
   }
 
-  /** Reflect the viewer's current scale back into the editable zoom input. */
-  private _syncZoomInput(): void {
-    if (!this._pdfViewer) return;
-    this._zoomInput.value = `${Math.round(this._pdfViewer.currentScale * 100)}%`;
-  }
-
-  /** Parse the zoom input and apply it as an explicit numeric scale. */
-  private _applyZoomInput(): void {
-    if (!this._pdfViewer) return;
-    const pct = parseInt(this._zoomInput.value.replace(/[^0-9.]/g, ''), 10);
-    if (isNaN(pct) || pct <= 0) { this._syncZoomInput(); return; }
-    const clamped = Math.max(25, Math.min(1000, pct));
-    this._setScaleValue(String(clamped / 100));
-    this._syncZoomInput();
-  }
-
-  private _showZoomPresets(x: number, y: number): void {
-    this._dismissContextMenu();
-    const presets = [50, 75, 100, 125, 150, 200, 400];
-    const menu = ContextMenu.show({
-      items: [
-        ...presets.map((p) => ({ id: `zoom.${p}`, label: `${p}%` })),
-        { id: 'zoom.page-width', label: 'Fit Width', group: 'fit' },
-        { id: 'zoom.page-fit', label: 'Fit Page', group: 'fit' },
-      ],
-      anchor: { x, y },
-    });
-    menu.onDidSelect((e) => {
-      const v = e.item.id.slice('zoom.'.length);
-      if (v === 'page-width' || v === 'page-fit') this._setScaleValue(v);
-      else this._setScaleValue(String(parseInt(v, 10) / 100));
-      this._syncZoomInput();
-    });
-    this._activeContextMenu = menu;
-  }
-
   // ── Reading modes (night invert / scroll mode) ───────────────────────
 
   private _toggleReadingDark(): void {
@@ -1172,12 +918,7 @@ export class PdfEditorPane extends EditorPane {
   private _applyReadingDark(): void {
     if (!this._viewerContainer) return;
     this._viewerContainer.classList.toggle('pdf-reading-dark', this._readingDark);
-    if (this._invertBtn) {
-      this._invertBtn.classList.toggle('active', this._readingDark);
-      this._invertBtn.innerHTML = this._readingDark ? ICON.sun : ICON.moon;
-      labelButton(this._invertBtn, this._readingDark ? 'Day Reading' : 'Night Reading');
-      this._invertBtn.setAttribute('aria-pressed', String(this._readingDark));
-    }
+    this._toolbarView?.setNight(this._readingDark);
   }
 
   // ── Rotation ─────────────────────────────────────────────────────────
@@ -1187,46 +928,11 @@ export class PdfEditorPane extends EditorPane {
     this._pdfViewer.pagesRotation = (this._pdfViewer.pagesRotation + 90) % 360;
   }
 
-  // ── Thumbnail sidebar ────────────────────────────────────────────────
-
   // ── Page labels ──────────────────────────────────────────────────────
 
   private _updatePageLabel(pageNum: number): void {
     if (!this._pageLabels) return;
-    const label = this._pageLabels[pageNum - 1];
-    if (label) {
-      this._pageLabelEl.textContent = `(${label})`;
-      show(this._pageLabelEl);
-    } else {
-      hide(this._pageLabelEl);
-    }
-  }
-
-  // ── Print ────────────────────────────────────────────────────────────
-
-  // The renderer hosts the whole workbench, so window.print() would print
-  // the app chrome, and the Chromium PDF plugin is disabled. Hand the file
-  // to the OS default PDF viewer, which prints with full fidelity.
-  private _print(): void {
-    if (!this._currentInput) return;
-    const shell = (globalThis as any).parallxElectron?.shell;
-    if (shell?.openPath) {
-      void shell.openPath(this._currentInput.uri.fsPath);
-    } else {
-      window.print();
-    }
-  }
-
-  // ── Open externally ──────────────────────────────────────────────────
-
-  private _openExternal(): void {
-    if (!this._currentInput) return;
-    const shell = (globalThis as any).parallxElectron?.shell;
-    if (shell?.openPath) {
-      void shell.openPath(this._currentInput.uri.fsPath);
-    } else if (shell?.showItemInFolder) {
-      void shell.showItemInFolder(this._currentInput.uri.fsPath);
-    }
+    this._toolbarView?.setPageLabel(this._pageLabels[pageNum - 1]);
   }
 
   // ── Text selection context menu ────────────────────────────────────
@@ -1276,7 +982,7 @@ export class PdfEditorPane extends EditorPane {
 
     // Don't intercept keyboard when search input or page input is focused
     if (this._search?.ownsFocus() ||
-        document.activeElement === this._pageInput) {
+        this._toolbarView?.ownsFocus()) {
       return;
     }
 
@@ -1290,7 +996,7 @@ export class PdfEditorPane extends EditorPane {
       case '-':
         if (e.ctrlKey || e.metaKey) { this._pdfViewer?.decreaseScale(); e.preventDefault(); } break;
       case '0':
-        if (e.ctrlKey || e.metaKey) { this._setScaleValue('page-fit'); this._syncZoomInput(); e.preventDefault(); } break;
+        if (e.ctrlKey || e.metaKey) { this._setScaleValue('page-fit'); this._toolbarView?.syncScale(); e.preventDefault(); } break;
       case 'h': case 'H':
         if (!e.ctrlKey && !e.metaKey) {
           const sel = window.getSelection()?.toString()?.trim() ?? '';
@@ -1298,7 +1004,7 @@ export class PdfEditorPane extends EditorPane {
         }
         break;
       case 'g':
-        if (e.ctrlKey || e.metaKey) { this._pageInput.focus(); this._pageInput.select(); e.preventDefault(); } break;
+        if (e.ctrlKey || e.metaKey) { this._toolbarView?.focusPage(); e.preventDefault(); } break;
       case 'r': case 'R':
         if (!e.ctrlKey && !e.metaKey) { this._rotate(); e.preventDefault(); } break;
       case 't': case 'T':

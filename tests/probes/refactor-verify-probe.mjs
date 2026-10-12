@@ -202,6 +202,27 @@ async function main() {
     await page.waitForTimeout(800);
     const redo = await page.evaluate(() => document.querySelectorAll('.pdf-highlight-box').length);
     log('pdf', `highlight boxes: made=${made} afterUndo=${after} afterRedo=${redo}`);
+    // The toolbar's own controls: fit, a typed zoom, a preset, night reading, the page field.
+    const bar = () => page.evaluate(() => {
+      const label = (sel) => document.querySelector(sel)?.getAttribute('aria-label');
+      return `zoom=${document.querySelector('.pdf-toolbar-zoom-input')?.value} fitBtn="${Array.from(document.querySelectorAll('.pdf-toolbar .pdf-toolbar-btn')).map((b) => b.getAttribute('aria-label')).find((l) => /^Fit/.test(l))}" night="${Array.from(document.querySelectorAll('.pdf-toolbar .pdf-toolbar-btn')).map((b) => b.getAttribute('aria-label')).find((l) => /Reading$/.test(l))}" page=${document.querySelector('.pdf-toolbar-page-input')?.value}`;
+    });
+    const clickLabel = (l) => page.evaluate((l) => Array.from(document.querySelectorAll('.pdf-toolbar .pdf-toolbar-btn')).find((b) => b.getAttribute('aria-label') === l)?.click(), l);
+    log('pdf', `toolbar start: ${await bar()}`);
+    await clickLabel('Fit Width'); await page.waitForTimeout(500);
+    log('pdf', `after Fit Width: ${await bar()}`);
+    await page.fill('.pdf-toolbar-zoom-input', '150'); await page.press('.pdf-toolbar-zoom-input', 'Enter'); await page.waitForTimeout(500);
+    log('pdf', `after typing 150: ${await bar()}`);
+    await clickLabel('Zoom Presets'); await page.waitForTimeout(400);
+    await page.evaluate(() => Array.from(document.querySelectorAll('.context-menu .context-menu-item')).find((x) => x.textContent.trim().startsWith('75%'))?.click());
+    await page.waitForTimeout(500);
+    log('pdf', `after preset 75%: ${await bar()}`);
+    await clickLabel('Night Reading'); await page.waitForTimeout(300);
+    log('pdf', `after Night Reading: ${await bar()} dark=${await page.evaluate(() => document.querySelector('.pdf-viewer-container')?.classList.contains('pdf-reading-dark'))}`);
+    await clickLabel('Day Reading'); await page.waitForTimeout(300);
+    await page.fill('.pdf-toolbar-page-input', '3'); await page.press('.pdf-toolbar-page-input', 'Enter'); await page.waitForTimeout(600);
+    log('pdf', `after page 3: ${await bar()}`);
+    await clickLabel('Fit Page'); await page.waitForTimeout(300);
     // Overflow menu: list it, then pick spread and scroll modes.
     const openMore = async () => {
       await page.evaluate(() => document.querySelector('.pdf-toolbar [aria-label="More Actions"]')?.click());
