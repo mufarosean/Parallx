@@ -276,8 +276,10 @@ export interface IKitSurfaceDeclaration {
 }
 ```
 
-and then the kind's own fields. A control runs either a command or a
-handler, never both; the kit throws in development on both:
+and then the kind's own fields. A control runs a command, or a handler,
+or names both: then the handler runs and the command is recorded in the
+scene (a page header's action that calls a command through its own code
+says which command that is):
 
 ```ts
 export type KitAction =
@@ -436,8 +438,8 @@ assert: `data-px-id` set; role as 5.4 says; a readable label
 `test` surface with the right kind; `state()` returns the shape the
 table says; `dispose()` empties `scene.find(id)`; removing the element
 from the document without disposing also empties it once the observer
-has run. Also: a declaration with both `command` and `onClick`
-throws; a missing `label` throws; a duplicate id under one surface
+has run. Also: a declaration with both `command` and `onClick` runs the
+handler and records the command; a missing `label` throws; a duplicate id under one surface
 throws and is not added.
 
 ### 6.3 `kitHandlerRatchet.test.ts`, baseline `kit-handler-baseline.json`
@@ -606,6 +608,24 @@ declaration is a type error from then on.
 
 Either place: the scene probe runs in the cloud container under xvfb,
 so a conversion can be verified in a real window there too.
+
+Worksheets done 2026-10-12, in the cloud. Every pane's single controls
+carry ids (`worksheet.<pane>.<name>`, the shared ones `worksheet.home`,
+`worksheet.newQuiz`, `worksheet.sheetTheme`): header actions, the
+sidebar's rows, Home's cards, the bank's search, filters and recipes,
+the builder's filters, switches, length, shuffle and name, the quiz's
+overview and next-marked, the sheet's star, mark, rating, note, reveal,
+grades, try-again and review, the import pane's buttons and checkboxes,
+the generate pane's fields, the settings pane's switches, fields,
+campaign and rest days. Four of the sheet pane's hand-built `px-btn`
+buttons became kit calls. What stayed undeclared on purpose: anything in
+a row (a problem's star in the bank, a quiz row's Resume, a plan day's
+cell), per the one-entry-per-list rule. Two things learned: a page
+header's or empty state's action is itself a control, so `IKitAction`
+carries `id` and `command` and the header passes them through; and the
+dashboard pane, a giant, lost its day planner to `dayPlan.ts` so it
+ended under budget. The probe checks Home's and the sidebar's ids and
+the scratch sheet's theme and export buttons.
 
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer

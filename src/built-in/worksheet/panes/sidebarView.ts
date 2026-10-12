@@ -1,5 +1,6 @@
 // Worksheets: the sidebar view.
 
+import { declareControl } from '../../../ui/kit.js';
 import { listItems, onWorksheetDataChanged } from '../worksheetData.js';
 import { openWorksheet } from '../actions.js';
 import { renderBankSnapshot } from './bankPane.js';
@@ -29,6 +30,7 @@ export function createSidebarView(container: HTMLElement) {
       b.append(ic, el('span', 'ws-nav__label', label));
       b.addEventListener('click', () => void openWorksheet(instanceId, tabTitle));
       nav.appendChild(b);
+      declareControl(b, { id: `worksheet.side.${instanceId}`, label, hint: tip });
     };
     navItem('Home', 'home', 'home', 'Worksheets', 'Quiz, dashboard, bank, import, generate, scratch sheet');
     navItem('Study Dashboard', 'gauge', 'dashboard', 'Study Dashboard', 'Progress, pace, the campaign, what to work on next');

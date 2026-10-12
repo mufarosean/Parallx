@@ -23,7 +23,7 @@ export function createQuizzesPane(container: HTMLElement) {
     back: BACK_TO_HOME,
     title: 'Quizzes',
     subtitle: 'A quiz stays open until you complete it from its summary.',
-    primary: { label: 'New Quiz', icon: 'plus', title: 'The quiz builder: papers, sources, kinds, a rating band, a length, a name.', onClick: () => openBuilder() },
+    primary: { id: 'worksheet.newQuiz', label: 'New Quiz', icon: 'plus', title: 'The quiz builder: papers, sources, kinds, a rating band, a length, a name.', onClick: () => openBuilder() },
   });
   const listHost = el('div', 'ws-quizzes');
   root.appendChild(listHost);

@@ -57,7 +57,6 @@
   "src/built-in/planner/plannerDataService.ts": 1401,
   "src/built-in/tool-gallery/main.ts": 1102,
   "src/built-in/worksheet/ooxml.ts": 1034,
-  "src/built-in/worksheet/panes/dashboardPane.ts": 821,
   "src/built-in/worksheet/univerHost.ts": 1027,
   "src/built-in/worksheet/worksheetData.ts": 895,
   "src/commands/quickAccess.ts": 1130,

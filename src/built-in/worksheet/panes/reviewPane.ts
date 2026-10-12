@@ -47,7 +47,7 @@ export function createReviewPane(container: HTMLElement) {
     next.disabled = walk.index === walk.ids.length - 1;
     const spacer = el('div'); spacer.style.flex = '1';
     bar.appendChild(spacer);
-    createButton(bar, { label: 'Problem Bank', icon: 'library', kind: 'ghost', size: 'sm', title: 'Back to the bank and its filters. This review stays open.', onClick: () => void openWorksheet('bank', 'Problem Bank') });
+    createButton(bar, { id: 'worksheet.review.bank', label: 'Problem Bank', icon: 'library', kind: 'ghost', size: 'sm', title: 'Back to the bank and its filters. This review stays open.', onClick: () => void openWorksheet('bank', 'Problem Bank') });
   };
 
   const goTo = (index: number) => {

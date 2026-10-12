@@ -1,5 +1,6 @@
 // Worksheets: the quiz builder.
 
+import { declareControl } from '../../../ui/kit.js';
 import { createButton, createEmptyState, createFilterChip, createIconButton, createPageHeader, createSectionLabel, createSegmented } from '../../../ui/kit.js';
 import { listItems, type WorksheetItemSummary } from '../worksheetData.js';
 import { paperLabel, SOURCE_LABELS, KIND_LABELS } from '../problemImport.js';
@@ -66,6 +67,7 @@ export function createPracticeConfigPane(container: HTMLElement) {
   const countIn = el('input', 'ws-stepper__value') as HTMLInputElement;
   countIn.type = 'number'; countIn.min = '1'; countIn.max = '100'; countIn.value = '10';
   countIn.setAttribute('aria-label', 'Number of problems');
+  declareControl(countIn, { id: 'worksheet.builder.length', label: 'Number of problems', kind: 'input', state: () => ({ kind: 'value', value: countIn.value }) });
   const ofLine = el('span', 'ws-hint');
   let matching = 0;
   const clampCount = () => {
@@ -85,6 +87,7 @@ export function createPracticeConfigPane(container: HTMLElement) {
   const shuffleIn = el('input') as HTMLInputElement;
   shuffleIn.type = 'checkbox'; shuffleIn.checked = true;
   shuffleWrap.append(shuffleIn, document.createTextNode('Shuffle'));
+  declareControl(shuffleIn, { id: 'worksheet.builder.shuffle', label: 'Shuffle', kind: 'toggle', state: () => ({ kind: 'pressed', value: shuffleIn.checked }) });
   side.appendChild(shuffleWrap);
   // The quiz's name: what Home lists it under, filled from the choices until you type one.
   const nameLabel = el('label', 'ws-builder__field');
@@ -95,9 +98,10 @@ export function createPracticeConfigPane(container: HTMLElement) {
   nameIn.title = 'The quiz is saved under this name and listed on Home until you complete it.';
   let nameEdited = false;
   nameIn.addEventListener('input', () => { nameEdited = nameIn.value.trim().length > 0; });
+  declareControl(nameIn, { id: 'worksheet.builder.name', label: 'Quiz name', kind: 'input', hint: nameIn.title, state: () => ({ kind: 'value', value: nameIn.value }) });
   nameLabel.appendChild(nameIn);
   side.appendChild(nameLabel);
-  const startBtn = createButton(side, { label: 'Start Quiz', kind: 'primary' });
+  const startBtn = createButton(side, { id: 'worksheet.builder.start', label: 'Start Quiz', kind: 'primary' });
   startBtn.classList.add('ws-builder__start');
 
   const filtersName = (): string => {
@@ -135,13 +139,13 @@ export function createPracticeConfigPane(container: HTMLElement) {
     if (!nameEdited) nameIn.value = filtersName();
   };
 
-  const multi = (host: HTMLElement, values: [string, string, number][], selected: Set<string>) => {
+  const multi = (key: string, host: HTMLElement, values: [string, string, number][], selected: Set<string>) => {
     host.replaceChildren();
     for (const [value, label, n] of values) {
-      createFilterChip(host, { label, count: n, pressed: selected.has(value), onToggle: (on) => { if (on) selected.add(value); else selected.delete(value); syncSide(); } });
+      createFilterChip(host, { id: `worksheet.builder.${key}.${sceneSlug(value)}`, label, count: n, pressed: selected.has(value), onToggle: (on) => { if (on) selected.add(value); else selected.delete(value); syncSide(); } });
     }
     if (selected.size) {
-      createButton(host, { label: 'Clear', kind: 'ghost', size: 'sm', onClick: () => { selected.clear(); renderFilters(); } });
+      createButton(host, { id: `worksheet.builder.${key}.clear`, label: 'Clear', kind: 'ghost', size: 'sm', onClick: () => { selected.clear(); renderFilters(); } });
     }
   };
   const renderFilters = () => {
@@ -155,14 +159,15 @@ export function createPracticeConfigPane(container: HTMLElement) {
       for (const it of bank) { const k = pick(it); if (k) m.set(k, (m.get(k) ?? 0) + 1); }
       return m;
     };
-    multi(papers.host, [...count((it) => it.paper).entries()].sort((a, b) => paperLabel(a[0]).localeCompare(paperLabel(b[0]))).map(([k, n]) => [k, paperLabel(k), n]), filters.papers);
-    multi(sources.host, [...count((it) => it.source || 'generated').entries()].map(([k, n]) => [k, SOURCE_LABELS[k] ?? (k === 'generated' ? 'Generated' : k), n] as [string, string, number]), filters.sources);
-    multi(kinds.host, [...count((it) => it.kind).entries()].map(([k, n]) => [k, KIND_LABELS[k] ?? k, n] as [string, string, number]), filters.kinds);
+    multi('papers', papers.host, [...count((it) => it.paper).entries()].sort((a, b) => paperLabel(a[0]).localeCompare(paperLabel(b[0]))).map(([k, n]) => [k, paperLabel(k), n]), filters.papers);
+    multi('sources', sources.host, [...count((it) => it.source || 'generated').entries()].map(([k, n]) => [k, SOURCE_LABELS[k] ?? (k === 'generated' ? 'Generated' : k), n] as [string, string, number]), filters.sources);
+    multi('kinds', kinds.host, [...count((it) => it.kind).entries()].map(([k, n]) => [k, KIND_LABELS[k] ?? k, n] as [string, string, number]), filters.kinds);
     syncSide();
   };
   const renderSwitches = () => {
     // One rating band and one starred choice: switches, made once.
     const rating = createSegmented(ratingGroup.host, {
+      id: 'worksheet.builder.rating',
       ariaLabel: 'Rating',
       items: [['all', 'Any'], ['unseen', 'Never tried'], ['incomplete', 'Incomplete'], ['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['struggling', 'Medium or hard']].map(([value, label]) => ({ value, label })),
       value: filters.state,
@@ -170,6 +175,7 @@ export function createPracticeConfigPane(container: HTMLElement) {
     });
     const nStarred = bank.filter((it) => it.starred).length;
     const star = createSegmented(starGroup.host, {
+      id: 'worksheet.builder.starred',
       ariaLabel: 'Starred',
       items: [{ value: 'any', label: 'Any' }, { value: 'starred', label: `Starred (${nStarred})` }, { value: 'unstarred', label: 'Not starred' }],
       value: filters.starred,
@@ -225,4 +231,9 @@ export function createPracticeConfigPane(container: HTMLElement) {
   })();
 
   return { dispose: () => { disposed = true; for (const d of disposables) d.dispose(); root.remove(); } };
+}
+
+/** A filter value as a scene id segment: lower case, words joined by dashes. */
+function sceneSlug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'none';
 }

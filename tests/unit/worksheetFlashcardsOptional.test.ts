@@ -7,7 +7,7 @@ vi.mock('../../src/built-in/worksheet/worksheetData.js', async (orig) => ({
   saveDailyDraw: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { planDay } from '../../src/built-in/worksheet/panes/dashboardPane.js';
+import { planDay } from '../../src/built-in/worksheet/panes/dayPlan.js';
 
 const campaign = { startDay: '2026-10-01', days: 30, dailyTarget: 5, startedAt: Date.parse('2026-10-01T08:00:00'), restDays: [] };
 const now = Date.parse('2026-10-04T12:00:00');

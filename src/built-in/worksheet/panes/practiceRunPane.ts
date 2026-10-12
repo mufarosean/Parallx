@@ -229,10 +229,10 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
 
       const n = session.ids.length;
       createPageHeader(wrap, {
-        back: { label: 'Quizzes', onClick: () => void openWorksheet('quizzes', 'Quizzes') },
+        back: { id: 'worksheet.quizzes', label: 'Quizzes', onClick: () => void openWorksheet('quizzes', 'Quizzes') },
         title: session.name || 'Quiz',
         subtitle: [`Quiz summary · ${n} ${n === 1 ? 'problem' : 'problems'}`, seconds ? fmtStudy(seconds) : '', session.finishedAt ? `completed ${when(session.finishedAt)}` : 'open'].filter(Boolean).join(' · '),
-        secondary: session.finishedAt ? [] : [{ label: 'Back to Quiz', title: 'Continues where the quiz was. It stays open.', onClick: () => { state.practice = session; goTo(session.ids.length - 1); } }],
+        secondary: session.finishedAt ? [] : [{ id: 'worksheet.quiz.backToQuiz', label: 'Back to Quiz', title: 'Continues where the quiz was. It stays open.', onClick: () => { state.practice = session; goTo(session.ids.length - 1); } }],
         primary: session.finishedAt
           ? { label: 'Reopen Quiz', title: 'Makes this completed quiz open again, at its last problem.', onClick: () => void reopenQuiz() }
           : { label: 'Complete Quiz…', icon: 'check', title: 'Marks this quiz completed. Ratings stay on the problems; Reopen Quiz undoes it.', onClick: () => void completeQuiz() },
@@ -402,10 +402,10 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
       const header = createPageHeader(wrap, {
         title: session.name || 'Quiz',
         subtitle: countsLine.textContent ?? '',
-        secondary: [{ label: `Back to Problem ${back + 1}`, title: 'The problem you were on.', onClick: () => { view = 'sheet'; goTo(back); } }],
+        secondary: [{ id: 'worksheet.quiz.backToProblem', label: `Back to Problem ${back + 1}`, title: 'The problem you were on.', onClick: () => { view = 'sheet'; goTo(back); } }],
         primary: session.finishedAt
-          ? { label: 'Reopen Quiz', title: 'Makes this completed quiz open again.', onClick: () => void reopenQuiz() }
-          : { label: 'Quiz Summary', title: 'The ratings so far, and Complete Quiz when you are done.', onClick: () => goTo(session.ids.length) },
+          ? { id: 'worksheet.quiz.reopen', label: 'Reopen Quiz', title: 'Makes this completed quiz open again.', onClick: () => void reopenQuiz() }
+          : { id: 'worksheet.quiz.summary', label: 'Quiz Summary', title: 'The ratings so far, and Complete Quiz when you are done.', onClick: () => goTo(session.ids.length) },
         more: [
           { label: 'Rename…', icon: 'pencil', onSelect: () => {
             const nameEl = header.querySelector('.px-page-header__title') as HTMLElement | null;
@@ -496,13 +496,13 @@ export function createPracticeRunPane(container: HTMLElement, input?: { setName?
       const spacer = el('div'); spacer.style.flex = '1';
       bar.appendChild(spacer);
       const overviewBtn = createButton(bar, {
-        label: 'Overview', icon: 'list', kind: 'ghost', size: 'sm',
+        id: 'worksheet.quiz.overview', label: 'Overview', icon: 'list', kind: 'ghost', size: 'sm',
         title: view === 'overview' ? 'Back to the problem' : 'Every problem in this quiz, with status, rating, time and notes',
         onClick: () => { view = view === 'overview' ? 'sheet' : 'overview'; serve(); },
       });
       overviewBtn.setAttribute('aria-pressed', String(view === 'overview'));
       // Next Marked carries its count, shown only while there is one.
-      const nextMarkedBtn = createButton(bar, { label: 'Next Marked', icon: 'skip-forward', kind: 'ghost', size: 'sm', title: 'Goes to the next problem you marked for later, round the quiz.', onClick: () => goToMarked(session.index) });
+      const nextMarkedBtn = createButton(bar, { id: 'worksheet.quiz.nextMarked', label: 'Next Marked', icon: 'skip-forward', kind: 'ghost', size: 'sm', title: 'Goes to the next problem you marked for later, round the quiz.', onClick: () => goToMarked(session.index) });
       const paintNextMarked = () => {
         const n = session.marked.size;
         const lbl = nextMarkedBtn.querySelector('.px-btn__label');

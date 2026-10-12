@@ -1,5 +1,6 @@
 // Worksheets: the settings pane.
 
+import { declareControl } from '../../../ui/kit.js';
 import { createButton, createFilterChip, createPageHeader, createSectionLabel, createSegmented } from '../../../ui/kit.js';
 import { listItems, onWorksheetDataChanged, getCampaign, startCampaign, endCampaign, listAttemptHistory } from '../worksheetData.js';
 import { planCampaign, campaignProgress, addDays, spanDays, workingDays, restDaysLabel, isCampaignProblem, WEEKDAY_LABELS } from '../campaign.js';
@@ -51,8 +52,8 @@ export function createSettingsPane(container: HTMLElement) {
       host.appendChild(r);
       return r;
     };
-    const switchOf = (ariaLabel: string, items: { value: string; label: string }[], value: string, onChange: (v: string) => void) => {
-      const seg = createSegmented(null, { ariaLabel, items, value, onChange });
+    const switchOf = (id: string, ariaLabel: string, items: { value: string; label: string }[], value: string, onChange: (v: string) => void) => {
+      const seg = createSegmented(null, { id, ariaLabel, items, value, onChange });
       disposables.push(seg);
       return seg.element;
     };
@@ -70,9 +71,11 @@ export function createSettingsPane(container: HTMLElement) {
       const daysIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
       daysIn.type = 'number'; daysIn.min = '1'; daysIn.max = '365'; daysIn.value = '18';
       daysIn.id = 'ws-camp-days';
+      declareControl(daysIn, { id: 'worksheet.settings.campaignDays', label: 'Campaign days', kind: 'input', state: () => ({ kind: 'value', value: daysIn.value }) });
       const endIn = el('input', 'ws-input ws-input--date') as HTMLInputElement;
       endIn.type = 'date'; endIn.min = today;
       endIn.id = 'ws-camp-end';
+      declareControl(endIn, { id: 'worksheet.settings.campaignEnd', label: 'Campaign end date', kind: 'input', state: () => ({ kind: 'value', value: endIn.value }) });
       const readDays = () => Math.max(1, Math.min(365, parseInt(daysIn.value, 10) || 18));
       const sync = () => {
         const d = readDays();
@@ -91,7 +94,7 @@ export function createSettingsPane(container: HTMLElement) {
         sync();
       });
       const start = createButton(null, {
-        label: 'Start Campaign', kind: 'primary', disabled: problems.length === 0,
+        id: 'worksheet.settings.startCampaign', label: 'Start Campaign', kind: 'primary', disabled: problems.length === 0,
         title: problems.length === 0 ? 'Import a workbook first.' : `${problems.length} problems, every one but the essay sheets, from today.`,
         onClick: () => { void startCampaign(planCampaign(problems.length, readDays(), Date.now(), [...rest])); },
       });
@@ -103,7 +106,7 @@ export function createSettingsPane(container: HTMLElement) {
       weekdays.setAttribute('aria-label', 'Rest days');
       for (const wd of [1, 2, 3, 4, 5, 6, 0]) {
         createFilterChip(weekdays, {
-          label: WEEKDAY_LABELS[wd].slice(0, 3),
+          id: `worksheet.settings.rest.${WEEKDAY_LABELS[wd].slice(0, 3).toLowerCase()}`, label: WEEKDAY_LABELS[wd].slice(0, 3),
           title: `${WEEKDAY_LABELS[wd]}s carry no quota; the streak and the pace step over them`,
           onToggle: (on) => { if (on && rest.size < 6) rest.add(wd); else rest.delete(wd); sync(); },
         });
@@ -115,7 +118,7 @@ export function createSettingsPane(container: HTMLElement) {
       const p = campaignProgress(campaign, items, attempts);
       const off = restDaysLabel(campaign.restDays);
       const end = createButton(null, {
-        label: 'End Campaign…', kind: 'danger',
+        id: 'worksheet.settings.endCampaign', label: 'End Campaign…', kind: 'danger',
         title: 'Stops the campaign. Ratings and attempts stay; the streak, XP and draws are dropped.',
         onClick: () => {
           void (async () => {
@@ -139,8 +142,9 @@ export function createSettingsPane(container: HTMLElement) {
     examIn.id = 'ws-exam-date';
     examIn.value = getExamDate();
     examIn.addEventListener('change', () => { void setExamDate(examIn.value).then(() => render()); });
+    declareControl(examIn, { id: 'worksheet.settings.examDate', label: 'Exam date', kind: 'input', state: () => ({ kind: 'value', value: examIn.value }) });
     examWrap.appendChild(examIn);
-    if (getExamDate()) createButton(examWrap, { label: 'Clear', kind: 'ghost', size: 'sm', onClick: () => { void setExamDate('').then(() => render()); } });
+    if (getExamDate()) createButton(examWrap, { id: 'worksheet.settings.clearExamDate', label: 'Clear', kind: 'ghost', size: 'sm', onClick: () => { void setExamDate('').then(() => render()); } });
     row(camp, 'Exam date', 'The Dashboard counts down to it.', examWrap, examIn.id);
 
     // XP as cash: what the campaign's points are worth, paid to yourself.
@@ -149,6 +153,7 @@ export function createSettingsPane(container: HTMLElement) {
     const cashIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
     cashIn.type = 'number';
     cashIn.id = 'ws-xp-cash';
+    declareControl(cashIn, { id: 'worksheet.settings.xpCashRate', label: 'Dollars per 100 XP', kind: 'input', state: () => ({ kind: 'value', value: cashIn.value }) });
     cashIn.min = '0';
     cashIn.step = '0.25';
     cashIn.value = String(getXpCashRate() || 0);
@@ -159,14 +164,14 @@ export function createSettingsPane(container: HTMLElement) {
     // The sheet's look, independent of the app theme.
     const sheet = card('Practice sheet');
     row(sheet, 'Sheet appearance', 'Light matches the exam tool. Follow app uses the workbench theme.',
-      switchOf('Sheet appearance', [{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'app', label: 'Follow app' }], getSheetAppearance(), (v) => { void setSheetAppearance(v as SheetAppearance); }));
+      switchOf('worksheet.settings.sheetAppearance', 'Sheet appearance', [{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'app', label: 'Follow app' }], getSheetAppearance(), (v) => { void setSheetAppearance(v as SheetAppearance); }));
     row(sheet, 'Decimals shown', 'A cell without a number format shows at most this many. The value and the cell editor keep full precision, and a format set on a cell always wins.',
-      switchOf('Decimals shown', DISPLAY_DECIMALS_CHOICES.map((v) => ({ value: v, label: v === 'full' ? 'Full' : v })), getDisplayDecimalsSetting(), (v) => { void setDisplayDecimalsSetting(v); }));
+      switchOf('worksheet.settings.displayDecimals', 'Decimals shown', DISPLAY_DECIMALS_CHOICES.map((v) => ({ value: v, label: v === 'full' ? 'Full' : v })), getDisplayDecimalsSetting(), (v) => { void setDisplayDecimalsSetting(v); }));
 
     // The study clock: when a stretch without input stops being study.
     const clock = card('Study clock');
     row(clock, 'Stop counting after', 'Time counts while a problem or quiz is on screen and you are active. After this long with no input, the stretch is taken back, so a break with the tab up counts for nothing.',
-      switchOf('Stop counting after', IDLE_MINUTES_CHOICES.map((v) => ({ value: String(v), label: `${v} min` })), String(getIdleMinutes()), (v) => { void setIdleMinutes(Number(v)); }));
+      switchOf('worksheet.settings.idleMinutes', 'Stop counting after', IDLE_MINUTES_CHOICES.map((v) => ({ value: String(v), label: `${v} min` })), String(getIdleMinutes()), (v) => { void setIdleMinutes(Number(v)); }));
   };
 
   void render();

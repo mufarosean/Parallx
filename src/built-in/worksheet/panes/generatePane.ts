@@ -1,5 +1,6 @@
 // Worksheets: the Generate pane, problems written by a model.
 
+import { declareControl } from '../../../ui/kit.js';
 import { createButton, createPageHeader, createSectionLabel } from '../../../ui/kit.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
 import { createItem } from '../worksheetData.js';
@@ -135,22 +136,25 @@ export function createGeneratePane(container: HTMLElement) {
   root.appendChild(status);
 
   const pasteIn = el('textarea', 'ws-textarea') as HTMLTextAreaElement;
+  declareControl(pasteIn, { id: 'worksheet.generate.source', label: 'Source material', kind: 'input', state: () => ({ kind: 'value', value: pasteIn.value }) });
   pasteIn.placeholder = 'Or paste study material here (overrides the loaded file).';
   pasteIn.rows = 5;
   root.appendChild(pasteIn);
 
   const controls = el('div', 'ws-create__controls');
   const guideIn = el('input', 'ws-input') as HTMLInputElement;
+  declareControl(guideIn, { id: 'worksheet.generate.guide', label: 'Guidance', kind: 'input', state: () => ({ kind: 'value', value: guideIn.value }) });
   guideIn.placeholder = 'Guidance, e.g. focus on Brosius least squares';
   controls.appendChild(guideIn);
   const countIn = el('input', 'ws-input ws-input--count') as HTMLInputElement;
+  declareControl(countIn, { id: 'worksheet.generate.count', label: 'How many items', kind: 'input', state: () => ({ kind: 'value', value: countIn.value }) });
   countIn.type = 'number';
   countIn.min = '1'; countIn.max = '6'; countIn.value = '3';
   countIn.title = 'How many items to generate';
   controls.appendChild(countIn);
   countIn.setAttribute('aria-label', 'How many items to generate');
   guideIn.setAttribute('aria-label', 'Guidance');
-  const genBtn = createButton(controls, { label: 'Generate Items', icon: 'sparkles', kind: 'primary' });
+  const genBtn = createButton(controls, { id: 'worksheet.generate.run', label: 'Generate Items', icon: 'sparkles', kind: 'primary' });
   const genLabel = genBtn.querySelector('.px-btn__label') as HTMLElement;
   root.appendChild(controls);
 
@@ -239,7 +243,7 @@ export function createGeneratePane(container: HTMLElement) {
       reviewHost.appendChild(row);
     }
 
-    const saveBtn = createButton(null, { label: `Save ${items.length} ${items.length === 1 ? 'Item' : 'Items'}`, kind: 'primary' });
+    const saveBtn = createButton(null, { id: 'worksheet.generate.save', label: `Save ${items.length} ${items.length === 1 ? 'Item' : 'Items'}`, kind: 'primary' });
     saveBtn.addEventListener('click', () => {
       void (async () => {
         const keep = rows.filter((r) => !r.dropped && r.titleIn.value.trim());

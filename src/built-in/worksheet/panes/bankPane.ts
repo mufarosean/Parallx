@@ -2,6 +2,7 @@
 // with the notes digest and the recipe sheets a quiz leaves behind.
 
 import { BANK_FACETS, BANK_FILTERS, BANK_COUNTED, bankMatches, stateClass } from '../bankFilters.js';
+import { declareControl } from '../../../ui/kit.js';
 import { createButton, createEmptyState, createFilterChip, createIconButton, createPageHeader } from '../../../ui/kit.js';
 import type { IExtensionMenuItem } from '../../../ui/contextMenu.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
@@ -48,10 +49,10 @@ export function createBankPane(container: HTMLElement) {
       title: 'Problem Bank',
       subtitle: problems.length ? `${problems.length} problems · ${rated} rated · ${papers} ${papers === 1 ? 'paper' : 'papers'}` : undefined,
       secondary: [
-        ...(shown.length ? [{ label: 'Review These', icon: 'eye', title: 'Walks through the problems shown here with your work and the solution showing. Not a quiz: nothing is scored or recorded.', onClick: () => void beginReview(shown.map((it) => it.id)) }] : []),
-        ...(noted.length ? [{ label: `Discuss Notes in Chat (${noted.length})`, icon: 'message-square', title: 'Stages every note, with its problem, paper and rating, in the chat. Add your question under the brief, then send.', onClick: () => void discussNotesInChat(items) }] : []),
+        ...(shown.length ? [{ id: 'worksheet.reviewShown', label: 'Review These', icon: 'eye', title: 'Walks through the problems shown here with your work and the solution showing. Not a quiz: nothing is scored or recorded.', onClick: () => void beginReview(shown.map((it) => it.id)) }] : []),
+        ...(noted.length ? [{ id: 'worksheet.discussNotes', label: `Discuss Notes in Chat (${noted.length})`, icon: 'message-square', title: 'Stages every note, with its problem, paper and rating, in the chat. Add your question under the brief, then send.', onClick: () => void discussNotesInChat(items) }] : []),
       ],
-      primary: shown.length ? { label: 'Quiz These…', title: 'Opens the quiz builder with the problems shown here.', onClick: () => { state.quizPreset = { ids: shown.map((it) => it.id), name: '' }; openBuilder(); } } : undefined,
+      primary: shown.length ? { id: 'worksheet.quizShown', label: 'Quiz These…', title: 'Opens the quiz builder with the problems shown here.', onClick: () => { state.quizPreset = { ids: shown.map((it) => it.id), name: '' }; openBuilder(); } } : undefined,
       more: generated.length ? [{ label: `Delete All Generated Items (${generated.length})…`, icon: 'trash-2', danger: true, onSelect: () => void deleteGeneratedItems(generated) }] : [],
     });
   };
@@ -125,6 +126,7 @@ export function createBankPane(container: HTMLElement) {
         const clear = el('button', 'ws-linkbtn', 'Clear filters') as HTMLButtonElement;
         clear.type = 'button';
         clear.addEventListener('click', () => { _bankFilters.clear(); _bankRecipes.clear(); _bankQuery = ''; paintBar(); paintList(); });
+        declareControl(clear, { id: 'worksheet.bank.clearFilters', label: 'Clear filters' });
         countEl.append(document.createTextNode(' · '), clear);
       }
     }
@@ -187,6 +189,7 @@ export function createBankPane(container: HTMLElement) {
     input.title = 'Every word must appear, in any order. Quote a phrase to match it whole; put a minus before a word to leave those problems out: brosius credibility -essay';
     input.value = _bankQuery;
     input.setAttribute('aria-label', 'Search problems');
+    declareControl(input, { id: 'worksheet.bank.search', label: 'Search problems', kind: 'input', hint: input.title, state: () => ({ kind: 'value', value: input.value }) });
     let searchTimer: ReturnType<typeof setTimeout> | null = null;
     input.addEventListener('input', () => {
       if (searchTimer) clearTimeout(searchTimer);
@@ -206,7 +209,7 @@ export function createBankPane(container: HTMLElement) {
       if (([...BANK_FACETS.source, ...BANK_FACETS.kind] as readonly string[]).includes(value) && !present.has(value)) continue;
       const withCount = BANK_COUNTED.has(value);
       createFilterChip(chips, {
-        label, count: withCount ? count(value) : undefined, pressed: _bankFilters.has(value),
+        id: `worksheet.bank.filter.${value}`, label, count: withCount ? count(value) : undefined, pressed: _bankFilters.has(value),
         onToggle: (on) => { if (on) _bankFilters.add(value); else _bankFilters.delete(value); paintList(); },
       });
     }
@@ -215,7 +218,7 @@ export function createBankPane(container: HTMLElement) {
     if (groups.size) {
       const n = _bankRecipes.size;
       const recipeBtn = createButton(bar, {
-        label: n ? `Recipes (${n})` : 'Recipe', icon: 'tag', size: 'sm', kind: n ? 'secondary' : 'ghost',
+        id: 'worksheet.bank.recipes', label: n ? `Recipes (${n})` : 'Recipe', icon: 'tag', size: 'sm', kind: n ? 'secondary' : 'ghost',
         title: 'Show only problems that follow a recipe, grouped by paper',
         onClick: () => showMenu(recipeBtn, recipeMenu(groups, () => { paintBar(); paintList(); })),
       });
@@ -370,6 +373,7 @@ export function renderBankSnapshot(root: HTMLElement, items: WorksheetItemSummar
   title.type = 'button';
   title.title = 'Open the Problem Bank as a tab';
   title.addEventListener('click', () => void openWorksheet('bank', 'Problem Bank'));
+  declareControl(title, { id: 'worksheet.side.bank', label: 'Problem Bank', hint: 'Opens the Problem Bank as a tab.' });
   section.appendChild(title);
   const ratedAll = problems.filter((it) => normalizeRating(it.attemptState)).length;
   section.appendChild(el('span', 'ws-side__sectioncount', `${ratedAll}/${problems.length}`));

@@ -30,6 +30,13 @@ const FRAME_IDS = [
   'editorGroup.tabs', 'status.workspace', 'status.notifications', 'settings', 'settings.search',
 ];
 
+/** Ids a converted built-in declares (design step 5), checked after its surfaces open. */
+const BUILTIN_IDS = {
+  worksheet: ['worksheet.side.home', 'worksheet.side.dashboard', 'worksheet.home.study-dashboard', 'worksheet.home.problem-bank', 'worksheet.home.quizzes', 'worksheet.home.campaign', 'worksheet.home.addProblems'],
+};
+/** Ids present once a scratch sheet is open (`worksheet.openScratch`). */
+const SCRATCH_IDS = ['worksheet.sheetTheme', 'worksheet.sheet.export'];
+
 async function seed() {
   const stamp = Date.now();
   const appRoot = path.join(os.tmpdir(), `parallx-scene-root-${stamp}`);
@@ -91,6 +98,13 @@ async function main() {
     // The frame (design step 3): the controls every feature hangs in, by id.
     const ids = new Set(flatten(full).map((n) => n.id));
     for (const id of FRAME_IDS) if (!ids.has(id)) stats.problems.push(`frame: no "${id}"`);
+    for (const [tool, want] of Object.entries(BUILTIN_IDS)) for (const id of want) if (!ids.has(id)) stats.problems.push(`${tool}: no "${id}"`);
+    const scratch = await cmd(page, 'worksheet.openScratch');
+    await page.waitForTimeout(2_500);
+    if (scratch === true) {
+      const after = new Set(flatten(await sceneOf(page)).map((n) => n.id));
+      for (const id of SCRATCH_IDS) if (!after.has(id)) stats.problems.push(`worksheet: no "${id}" on the scratch sheet`);
+    }
     const r = await cmd(page, 'workbench.action.quickOpen');
     await page.waitForTimeout(500);
     const quick = flatten(await sceneOf(page)).map((n) => n.id);

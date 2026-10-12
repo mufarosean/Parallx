@@ -11,9 +11,10 @@ import { markListeners, persistPractice, resolveSheetDark, setSheetAppearance, s
  *  the tooltip's first line (no more rows of word
  *  buttons; same pattern as the flashcards study toolbar). Falls back to the
  *  word when the registry lacks the icon. */
-export function iconBtn(iconId: string, label: string, opts: { hint?: string; primary?: boolean; danger?: boolean; onClick?: () => void } = {}): HTMLButtonElement {
+export function iconBtn(iconId: string, label: string, opts: { id?: string; hint?: string; primary?: boolean; danger?: boolean; onClick?: () => void } = {}): HTMLButtonElement {
   // The kit's icon button; an accent glyph for the primary one, red on hover for a danger one.
-  const b = createIconButton(null, { icon: iconId, title: label });
+  // `id` declares it in the scene: given for the one button of its kind on a pane, never for one in a row.
+  const b = createIconButton(null, { id: opts.id, icon: iconId, title: label, hint: opts.hint });
   if (opts.primary) b.classList.add('ws-icon--accent');
   if (opts.danger) b.classList.add('ws-icon--danger');
   paintIconBtn(b, iconId, label, opts.hint);
@@ -37,8 +38,8 @@ function paintStarBtn(b: HTMLButtonElement, on: boolean): void {
   b.classList.toggle('ws-star--on', on);
   b.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
-export function starBtn(itemId: number, starred: boolean, onChange?: (on: boolean) => void): HTMLButtonElement {
-  const b = iconBtn('star', 'Star Problem');
+export function starBtn(itemId: number, starred: boolean, onChange?: (on: boolean) => void, opts: { id?: string } = {}): HTMLButtonElement {
+  const b = iconBtn('star', 'Star Problem', { id: opts.id });
   b.classList.add('ws-star');
   let on = starred;
   paintStarBtn(b, on);
@@ -61,8 +62,8 @@ function paintMarkBtn(b: HTMLButtonElement, on: boolean): void {
   b.classList.toggle('ws-mark--on', on);
   b.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
-export function markBtn(session: RunningPractice, itemId: number, onChange?: (on: boolean) => void): HTMLButtonElement {
-  const b = iconBtn('flag', 'Mark for Later');
+export function markBtn(session: RunningPractice, itemId: number, onChange?: (on: boolean) => void, opts: { id?: string } = {}): HTMLButtonElement {
+  const b = iconBtn('flag', 'Mark for Later', { id: opts.id });
   b.classList.add('ws-mark');
   paintMarkBtn(b, session.marked.has(itemId));
   b.addEventListener('click', (e) => {
@@ -82,7 +83,7 @@ export function paintSheetThemeButton(btn: HTMLButtonElement): void {
   paintIconBtn(btn, dark ? 'sun' : 'moon', dark ? 'Light Sheet' : 'Dark Sheet', 'Flips this practice sheet only. Light matches the real exam surface; Settings has a follow-the-app option.');
 }
 export function makeSheetThemeButton(): HTMLButtonElement {
-  const btn = iconBtn('moon', 'Dark Sheet', { onClick: () => { void setSheetAppearance(resolveSheetDark() ? 'light' : 'dark'); } });
+  const btn = iconBtn('moon', 'Dark Sheet', { id: 'worksheet.sheetTheme', onClick: () => { void setSheetAppearance(resolveSheetDark() ? 'light' : 'dark'); } });
   paintSheetThemeButton(btn);
   return btn;
 }

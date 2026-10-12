@@ -3,6 +3,7 @@
 import type { IWorkbookData } from '@univerjs/core';
 import type { IWorksheetHost, SheetViewState } from '../univerHost.js';
 import { renderMarkdown } from '../../../ui/renderMarkdown.js';
+import { declareControl } from '../../../ui/kit.js';
 import { createButton, createIconButton, createSegmented } from '../../../ui/kit.js';
 import { listItems, getItem, getOpenAttempt, getLatestWork, saveAttemptCells, discardOpenAttempt, completeAttempt, markAttemptWorked, saveAttemptReview, onWorksheetDataChanged, getProblemNotes, setProblemNote, getStarred, addStudySeconds, getStudySecondsForItem, type WorksheetItem, getItemSheetAt } from '../worksheetData.js';
 import { normalizeRating, ratingLabel, paperLabel, SOURCE_LABELS, KIND_LABELS, QUADRANT_LABELS } from '../problemImport.js';
@@ -159,11 +160,12 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
     const spacer = el('div'); spacer.style.flex = '1';
     titleRow.appendChild(spacer);
 
-    titleRow.appendChild(starBtn(item.id, itemStarred, (on) => { itemStarred = on; }));
+    titleRow.appendChild(starBtn(item.id, itemStarred, (on) => { itemStarred = on; }, { id: 'worksheet.sheet.star' }));
     titleRow.appendChild(makeSheetThemeButton());
 
     if (mode === 'working') {
       titleRow.appendChild(iconBtn('file-spreadsheet', 'Export to Excel', {
+        id: 'worksheet.sheet.export',
         hint: 'Saves this sheet as a real .xlsx, values and formulas, in your Downloads folder.',
         onClick: () => {
           const name = (item?.title || 'practice-sheet').replace(/[^\w\- ]+/g, '').trim() || 'practice-sheet';
@@ -173,7 +175,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
         },
       }));
 
-      const resetBtn = iconBtn('rotate-ccw', 'Reset Sheet', { danger: true, hint: 'Restores the item to its original state. Cannot be undone.' });
+      const resetBtn = iconBtn('rotate-ccw', 'Reset Sheet', { id: 'worksheet.sheet.reset', danger: true, hint: 'Restores the item to its original state. Cannot be undone.' });
       resetBtn.addEventListener('click', () => {
         void (async () => {
           const ok = await state.api?.window?.showConfirmModal?.({
@@ -190,9 +192,9 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
       });
       titleRow.appendChild(resetBtn);
 
-      titleRow.appendChild(iconBtn('eye', 'Reveal Solution', { primary: true, hint: 'Shows the worked solution.', onClick: () => void revealSolution() }));
+      titleRow.appendChild(iconBtn('eye', 'Reveal Solution', { id: 'worksheet.sheet.reveal', primary: true, hint: 'Shows the worked solution.', onClick: () => void revealSolution() }));
     } else {
-      titleRow.appendChild(iconBtn('eye-off', 'Show My Work', { hint: 'Back to your own sheet.', onClick: () => void showWorking() }));
+      titleRow.appendChild(iconBtn('eye-off', 'Show My Work', { id: 'worksheet.sheet.showWork', hint: 'Back to your own sheet.', onClick: () => void showWorking() }));
     }
     header.appendChild(titleRow);
 
@@ -213,8 +215,8 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
         const gradeWrap = el('span', 'ws-item__grades');
         gradeWrap.appendChild(el('span', 'ws-item__gradeprompt', 'How did it go?'));
         for (const [grade, label] of [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']] as const) {
-          const b = el('button', `px-btn px-btn--secondary px-btn--sm ws-grade ws-grade--${grade}`) as HTMLButtonElement;
-          b.textContent = label;
+          const b = createButton(null, { id: `worksheet.sheet.grade.${grade}`, label, size: 'sm' });
+          b.classList.add('ws-grade', `ws-grade--${grade}`);
           b.addEventListener('click', () => {
             void (async () => {
               if (!item) return;
@@ -228,9 +230,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
         }
         sol.appendChild(gradeWrap);
       } else {
-        const again = el('button', 'px-btn px-btn--secondary') as HTMLButtonElement;
-        again.textContent = 'Try Again';
-        again.title = 'Start a fresh attempt from the original sheet.';
+        const again = createButton(null, { id: 'worksheet.sheet.tryAgain', label: 'Try Again', title: 'Start a fresh attempt from the original sheet.' });
         again.addEventListener('click', () => {
           void (async () => {
             if (!item) return;
@@ -255,9 +255,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
       // AI critique of the work vs the model solution. Feedback,
       // never a score: CAS grades method, and false precision misleads.
       const reviewWrap = el('div', 'ws-item__review');
-      const reviewBtn = el('button', 'px-btn px-btn--secondary') as HTMLButtonElement;
-      reviewBtn.textContent = 'Review in Chat';
-      reviewBtn.title = 'Stages your cells, the model solution and a review brief in the chat. Add your question under the brief, then send.';
+      const reviewBtn = createButton(null, { id: 'worksheet.sheet.reviewInChat', label: 'Review in Chat', title: 'Stages your cells, the model solution and a review brief in the chat. Add your question under the brief, then send.' });
       const reviewOut = el('div', 'ws-item__reviewout');
       reviewOut.style.display = 'none';
       reviewBtn.addEventListener('click', () => {
@@ -408,6 +406,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
     const noteHost = el('div', 'ws-item__note');
     noteHost.style.display = 'none';
     const noteArea = el('textarea', 'ws-quiz__notetext') as HTMLTextAreaElement;
+    declareControl(noteArea, { id: 'worksheet.sheet.note', label: 'Note', kind: 'input', state: () => ({ kind: 'value', value: noteArea.value }) });
     noteArea.placeholder = 'What to remember about this problem.';
     noteArea.value = problemNote;
     noteArea.setAttribute('aria-label', 'Note on this problem');
@@ -468,6 +467,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
         })();
       };
       const rate = createSegmented(titleRow, {
+        id: 'worksheet.sheet.rating',
         ariaLabel: 'Rate this problem',
         items: (['easy', 'medium', 'hard'] as const).map((g) => ({ value: g, label: ratingLabel(g) })),
         value: ownRating || '',
@@ -480,10 +480,11 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
         if (seg?.classList.contains('ui-segmented-control__segment--active') && seg.dataset.value === ownRating) rateWith(ownRating as 'easy' | 'medium' | 'hard');
       }, true);
       titleRow.appendChild(el('span', 'ws-vdiv'));
-      titleRow.appendChild(starBtn(problem.id, starred, (on) => { starred = on; }));
+      titleRow.appendChild(starBtn(problem.id, starred, (on) => { starred = on; }, { id: 'worksheet.sheet.star' }));
       // The flag belongs to a quiz: shown only while this problem is in the running one.
-      if (state.practice && state.practice.ids.includes(problem.id)) titleRow.appendChild(markBtn(state.practice, problem.id));
+      if (state.practice && state.practice.ids.includes(problem.id)) titleRow.appendChild(markBtn(state.practice, problem.id, undefined, { id: 'worksheet.sheet.mark' }));
       const noteBtn = iconBtn('notebook-pen', problemNote ? 'Edit Note' : 'Add Note', {
+        id: 'worksheet.sheet.noteToggle',
         hint: problemNote || 'A note on this problem, kept with it across quizzes and shown in the bank.',
         onClick: () => { const open = noteHost.style.display === 'none'; noteHost.style.display = open ? '' : 'none'; if (open) noteArea.focus(); },
       });
@@ -493,6 +494,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
       if (problem.solutionCol >= 0 || problem.solutionRow >= 0) {
         // Revealing changes the whole sheet, so it says so in words.
         createButton(titleRow, {
+          id: 'worksheet.sheet.reveal',
           label: revealed ? 'Hide Solution' : 'Reveal Solution',
           icon: revealed ? 'eye-off' : 'eye',
           title: revealed ? 'Hides the worked solution again. Your work stays.' : 'Shows the worked solution beside your work, as in the workbook.',
@@ -551,9 +553,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
       header.replaceChildren(titleRow, noteHost);
       if (revealed && state.api?.lm) {
         const reviewWrap = el('div', 'ws-item__review');
-        const reviewBtn = el('button', 'px-btn px-btn--secondary') as HTMLButtonElement;
-        reviewBtn.textContent = 'Review in Chat';
-        reviewBtn.title = 'Stages your cells, the worked solution and a review brief in the chat. Add your question under the brief, then send.';
+        const reviewBtn = createButton(null, { id: 'worksheet.sheet.reviewInChat', label: 'Review in Chat', title: 'Stages your cells, the worked solution and a review brief in the chat. Add your question under the brief, then send.' });
         const reviewOut = el('div', 'ws-item__reviewout');
         reviewOut.style.display = 'none';
         reviewBtn.addEventListener('click', () => {
@@ -687,6 +687,7 @@ export function createSheetPane(container: HTMLElement, instanceId: string, opts
         scratchThemeBtn = makeSheetThemeButton();
         bar.appendChild(scratchThemeBtn);
         bar.appendChild(iconBtn('file-spreadsheet', 'Export to Excel', {
+          id: 'worksheet.sheet.export',
           hint: 'Saves this sheet as a real .xlsx, values and formulas, in your Downloads folder.',
           onClick: () => {
             if (!host?.exportToXlsx('scratch-sheet')) {

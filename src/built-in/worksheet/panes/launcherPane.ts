@@ -1,11 +1,13 @@
 // Worksheets: the launcher pane.
 
 import { stateClass } from '../bankFilters.js';
+import { declareControl } from '../../../ui/kit.js';
 import { createButton, createPageHeader, createSectionLabel } from '../../../ui/kit.js';
 import { createIconElement } from '../../../ui/iconRegistry.js';
 import { listItems, onWorksheetDataChanged, getCampaign, listAttemptHistory, getOpenQuizSession, listQuizSessions, type WorksheetItemSummary } from '../worksheetData.js';
 import { normalizeRating, paperLabel } from '../problemImport.js';
-import { planDay, dayStrip } from './dashboardPane.js';
+import { dayStrip } from './dashboardPane.js';
+import { planDay } from './dayPlan.js';
 import { isCampaignProblem } from '../campaign.js';
 import { syncRewards } from '../rewardsSync.js';
 import { computeInsights } from '../progressInsights.js';
@@ -59,8 +61,8 @@ export function createLauncherPane(container: HTMLElement) {
     const header = createPageHeader(col, {
       title: 'Worksheets',
       subtitle: problems.length ? `${problems.length} problems · ${rated} rated${noted.length ? ` · ${noted.length} noted` : ''}` : 'The bank is empty. Import a workbook to begin.',
-      secondary: [{ label: 'Add Problems', icon: 'plus', onClick: () => {} }],
-      primary: problems.length ? { label: 'New Quiz', onClick: () => openBuilder() } : { label: 'Import Workbook…', onClick: () => void openWorksheet('excel-import', 'Import Workbook') },
+      secondary: [{ id: 'worksheet.home.addProblems', label: 'Add Problems', icon: 'plus', onClick: () => {} }],
+      primary: problems.length ? { id: 'worksheet.newQuiz', label: 'New Quiz', onClick: () => openBuilder() } : { id: 'worksheet.importWorkbook', label: 'Import Workbook…', onClick: () => void openWorksheet('excel-import', 'Import Workbook') },
       more: [
         ...(noted.length ? [{ label: `Discuss Notes in Chat (${noted.length})`, icon: 'message-square', onSelect: () => void discussNotesInChat(items) }] : []),
         { label: 'Worksheets Settings', icon: 'settings', onSelect: () => void openWorksheet('settings', 'Worksheets Settings') },
@@ -88,6 +90,7 @@ export function createLauncherPane(container: HTMLElement) {
       const text = el('span', 'ws-home__desttext');
       text.append(el('span', 'ws-home__desttitle', label), el('span', 'ws-home__destline', line));
       b.append(ic, text);
+      declareControl(b, { id: `worksheet.home.${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`, label, hint: line });
       b.addEventListener('click', go);
       dest.appendChild(b);
     };
@@ -107,10 +110,10 @@ export function createLauncherPane(container: HTMLElement) {
     today.appendChild(text);
     const acts = el('div', 'ws-home__todayacts');
     const first = plan.actions.secondary.find((a) => !a.label.startsWith('Review Due Flashcards'));
-    if (first) createButton(acts, { label: first.label, title: first.title, onClick: () => first.onClick() });
+    if (first) createButton(acts, { id: first.id, label: first.label, title: first.title, onClick: () => first.onClick() });
     if (plan.actions.primary) {
       const a = plan.actions.primary;
-      createButton(acts, { label: a.label, icon: a.icon, title: a.title, kind: 'primary', onClick: () => a.onClick() });
+      createButton(acts, { id: a.id, label: a.label, icon: a.icon, title: a.title, kind: 'primary', onClick: () => a.onClick() });
     }
     if (acts.childElementCount) today.appendChild(acts);
     col.appendChild(today);

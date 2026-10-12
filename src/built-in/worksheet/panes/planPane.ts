@@ -238,7 +238,7 @@ export function createPlanPane(container: HTMLElement, actions: PlanActions): { 
     tip.hide();
     content.replaceChildren();
     const root = content;
-    const back = actions.openHome ? { label: 'Worksheets', onClick: () => actions.openHome!() } : undefined;
+    const back = actions.openHome ? { id: 'worksheet.home', label: 'Worksheets', onClick: () => actions.openHome!() } : undefined;
     if (!L) {
       createPageHeader(root, { back, title: 'Campaign' });
       createEmptyState(root, {

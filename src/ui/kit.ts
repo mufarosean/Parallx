@@ -81,11 +81,16 @@ function runCommand(action: IKitCommandAction): void {
   void _runCommand(action.command, ...(action.args ?? [])).catch((err) => console.warn(`[kit] command "${action.command}" failed:`, err));
 }
 
-/** The click handler a control gets from its options; throws on a handler and a command together. */
-function actionOf(options: { readonly command?: IKitCommandAction['command']; readonly args?: readonly unknown[]; readonly onClick?: (e: MouseEvent) => void }, what: string): ((e: MouseEvent) => void) | undefined {
-  if (options.command && options.onClick) throw new Error(`[kit] ${what} has both a command and a handler; keep one`);
+/**
+ * The click handler a control gets from its options. A command alone runs
+ * through the command service; a handler alone runs itself; both together
+ * run the handler and record the command in the scene (a header action
+ * that calls a command through its own code says which).
+ */
+function actionOf(options: { readonly command?: IKitCommandAction['command']; readonly args?: readonly unknown[]; readonly onClick?: (e: MouseEvent) => void }): ((e: MouseEvent) => void) | undefined {
+  if (options.onClick) return options.onClick;
   if (options.command) return () => runCommand({ command: options.command!, args: options.args });
-  return options.onClick;
+  return undefined;
 }
 
 // ── Registration ─────────────────────────────────────────────────────────────
@@ -128,7 +133,7 @@ export interface IKitButtonOptions extends IKitControlDeclaration {
   readonly icon?: string;
   readonly title?: string;
   readonly disabled?: boolean;
-  /** The command this button runs. Not with `onClick`. */
+  /** The command this button runs; with `onClick` too, the handler runs and the command is recorded. */
   readonly command?: string;
   readonly args?: readonly unknown[];
   readonly onClick?: (e: MouseEvent) => void;
@@ -147,10 +152,14 @@ export interface IKitIconButtonOptions extends IKitControlDeclaration {
 }
 
 export interface IKitAction {
+  /** The action's id in the scene (docs/SELF_DESCRIBING_UI_DESIGN.md section 4.3). */
+  readonly id?: string;
   readonly label: string;
   readonly icon?: string;
   readonly title?: string;
   readonly disabled?: boolean;
+  /** The command the action runs, recorded in the scene; `onClick` still runs it. */
+  readonly command?: string;
   readonly onClick: () => void;
 }
 
@@ -233,7 +242,7 @@ export function createButton(container: HTMLElement | null | undefined, options:
   btn.appendChild(label);
   if (options.title) btn.title = options.title;
   if (options.disabled) btn.disabled = true;
-  const onClick = actionOf(options, `button "${options.label}"`);
+  const onClick = actionOf(options);
   if (onClick) btn.addEventListener('click', onClick);
   mount(container, btn);
   declare(btn, 'button', options, options.label, { command: options.command, state: enabledState(btn) });
@@ -248,7 +257,7 @@ export function createIconButton(container: HTMLElement | null | undefined, opti
   btn.title = options.title;
   btn.setAttribute('aria-label', options.title);
   if (options.disabled) btn.disabled = true;
-  const onClick = actionOf(options, `icon button "${options.title}"`);
+  const onClick = actionOf(options);
   if (onClick) btn.addEventListener('click', onClick);
   mount(container, btn);
   declare(btn, 'iconButton', options, options.title, { command: options.command, state: enabledState(btn) });
@@ -341,7 +350,7 @@ export function createEmptyState(container: HTMLElement | null | undefined, opti
   }
   if (options.action) {
     const a = options.action;
-    const btn = createButton(root, { label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => a.onClick() });
+    const btn = createButton(root, { id: a.id, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => a.onClick() });
     btn.classList.add('px-empty__action');
   }
   return mount(container, root);
@@ -369,6 +378,7 @@ export function createPageHeader(container: HTMLElement | null | undefined, opti
     if (back.title) a.title = back.title;
     a.addEventListener('click', () => back.onClick());
     titles.appendChild(a);
+    if (back.id) declareControl(a, { id: back.id, label: back.label, hint: back.title, command: back.command });
   }
   const h = document.createElement('h1');
   h.className = 'px-page-header__title';
@@ -392,11 +402,11 @@ export function createPageHeader(container: HTMLElement | null | undefined, opti
   const more = [...overflow, ...(overflow.length && options.more?.length ? [{ separator: true }] : []), ...(options.more ?? [])];
 
   for (const a of visible) {
-    createButton(actions, { label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'secondary', onClick: () => a.onClick() });
+    createButton(actions, { id: a.id, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'secondary', onClick: () => a.onClick() });
   }
   if (options.primary) {
     const a = options.primary;
-    createButton(actions, { label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => a.onClick() });
+    createButton(actions, { id: a.id, command: a.command, label: a.label, icon: a.icon, title: a.title, disabled: a.disabled, kind: 'primary', onClick: () => a.onClick() });
   }
   if (more.length) {
     const btn = createIconButton(actions, { icon: 'ellipsis', title: 'More Actions' });

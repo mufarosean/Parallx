@@ -7,13 +7,15 @@
 // is due again, what keeps going wrong, the weakest papers, and the vendor's
 // easy-and-likely problems never tried. Every row opens the problem or
 // starts a quiz; the arithmetic lives in progressInsights.ts.
-import { listItems, listAttemptHistory, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getDailyDraw, saveDailyDraw, getOpenQuizSession, getStudySecondsByDay, getXpCashouts } from '../worksheetData.js';
+import { planDay, type DayPlan, type QuizResume } from './dayPlan.js';
+import { listItems, listAttemptHistory, listProgressSnapshots, onWorksheetDataChanged, getCampaign, getOpenQuizSession, getStudySecondsByDay, getXpCashouts } from '../worksheetData.js';
 import { computeInsights, dayKey, type Insights, type PaperProgress, type InsightItem, type InsightAttempt, type TimelinePoint } from '../progressInsights.js';
-import { campaignProgress, campaignDone, drawToday, dayStory, addDays, restDaysLabel, isCampaignProblem, LEVEL_TITLES, XP_PER_PROBLEM, XP_EASY_BONUS, XP_FULL_DAY, type Campaign, type CampaignProgress, type DayStory } from '../campaign.js';
+import { dayStory, addDays, restDaysLabel, isCampaignProblem, LEVEL_TITLES, XP_PER_PROBLEM, XP_EASY_BONUS, XP_FULL_DAY, type CampaignProgress, type DayStory } from '../campaign.js';
 import { syncRewards, type RewardState } from '../rewardsSync.js';
 import { REWARDS } from '../rewards.js';
 import { paperLabel, ratingLabel, normalizeRating, QUADRANT_LABELS } from '../problemImport.js';
-import { createButton, createEmptyState, createPageHeader, type IKitAction } from '../../../ui/kit.js';
+import { declareControl } from '../../../ui/kit.js';
+import { createButton, createEmptyState, createPageHeader } from '../../../ui/kit.js';
 import { appTime } from '../../../services/localTime.js';
 
 export interface DashboardActions {
@@ -320,13 +322,6 @@ function lineChart(host: HTMLElement, title: string, points: ChartPoint[], targe
 
 type Tip = ReturnType<typeof makeTooltip>;
 
-type QuizResume = { name: string; position: number; total: number } | null;
-
-/**
- * The day's story under the quota line: today's tally while the day is on,
- * the last working day's tally first thing in the morning, the week's on a
- * rest day. Nothing at all when there is nothing to tell.
- */
 function storyRow(story: DayStory, p: CampaignProgress): HTMLElement | null {
   const row = el('div', 'ws-camp__tally');
   const chip = (cls: string, text: string, title?: string) => {
@@ -372,101 +367,6 @@ function storyRow(story: DayStory, p: CampaignProgress): HTMLElement | null {
   return row;
 }
 
-/** The day's actions, for a page header: one primary, the rest secondary. */
-export interface DayActions {
-  primary?: IKitAction;
-  secondary: IKitAction[];
-  /** Overrides the day (Draw Anyway on a rest day): drawn quietly in the card. */
-  quiet: IKitAction[];
-}
-
-/** What today asks for: the campaign's numbers, today's saved draw and the
- *  actions that follow from them. Home and the Dashboard both draw from this,
- *  so the day's one action is the same in both places. */
-export interface DayPlan {
-  readonly campaign: Campaign | null;
-  readonly progress: CampaignProgress | null;
-  /** One line: "Day 8 of 22 · Rest day". */
-  readonly title: string;
-  /** The day's sentence. */
-  readonly line: string;
-  readonly drawPapers: number;
-  readonly actions: DayActions;
-}
-
-export async function planDay(items: InsightItem[], attempts: InsightAttempt[], campaign: Campaign | null, due: number[], resume: QuizResume, bonusXp: number, actions: Pick<DashboardActions, 'startQuiz' | 'resumeQuiz' | 'studyFlashcards' | 'openSettings'>, now = Date.now()): Promise<DayPlan> {
-  const problems = items.filter(isCampaignProblem);
-  const out: DayActions = { secondary: [], quiet: [] };
-  // A quiz left unfinished comes first, wherever it came from: resuming
-  // keeps its order and lets you go back to what you rated.
-  if (resume) out.primary = { label: `Resume ${resume.name || 'Quiz'} (${resume.position + 1} of ${resume.total})`, icon: 'play', title: 'The open quiz you used last, where it stands.', onClick: () => actions.resumeQuiz() };
-  const add = (a: IKitAction) => { if (!out.primary) out.primary = a; else out.secondary.push(a); };
-
-  if (!campaign) {
-    out.secondary.push({ label: 'Set Up Campaign…', title: 'Every problem in the bank in a set number of days, drawn across all papers', onClick: () => actions.openSettings() });
-    return { campaign, progress: null, title: 'No campaign running', line: `${problems.length} problems in the bank.`, drawPapers: 0, actions: out };
-  }
-
-  const today = dayKey(now);
-  const p = campaignProgress(campaign, items, attempts, now, bonusXp);
-  const byId = new Map(items.map((i) => [i.id, i]));
-  const done = campaignDone(campaign, items, attempts);
-  // A rest day draws nothing; the day belongs to repeats. Otherwise today's
-  // saved draw is kept, minus anything no longer in the campaign (an essay
-  // sheet, a deleted item), and topped up to the target.
-  let draw: number[] = [];
-  if (!p.restToday) {
-    const saved = await getDailyDraw(today).catch(() => null);
-    draw = (saved ?? []).filter((id) => { const it = byId.get(id); return !!it && isCampaignProblem(it); });
-    if (draw.length < p.target) {
-      const inDraw = new Set(draw);
-      for (const id of drawToday(campaign, items, attempts, p.target + draw.length, today)) {
-        if (draw.length >= p.target) break;
-        if (!inDraw.has(id) && !done.has(id)) { draw.push(id); inDraw.add(id); }
-      }
-    }
-    const changed = !saved || saved.length !== draw.length || saved.some((id, i) => id !== draw[i]);
-    if (changed) void saveDailyDraw(today, draw).catch(() => {});
-  }
-  const drawLeft = draw.filter((id) => !done.has(id));
-  const drawPapers = new Set(drawLeft.map((id) => byId.get(id)?.paper).filter(Boolean)).size;
-
-  // Today's quiz is the whole draw, rated problems included, opened at the
-  // first one not yet rated; once the quota is met the rest stays as a lead.
-  if (p.restToday && !p.finished) {
-    if (due.length > 0) add({ label: `Quiz Due Problems (${due.length})`, onClick: () => actions.startQuiz(due, 0, 'Due Problems') });
-    if (p.remaining > 0) out.quiet.push({
-      label: 'Draw Anyway',
-      title: 'New problems on a rest day. They count toward the campaign, not toward a quota.',
-      onClick: () => {
-        const ids = drawToday(campaign, items, attempts, p.target, today);
-        if (ids.length) actions.startQuiz(ids, 0, `Day ${p.dayIndex} Rest Day Draw`);
-      },
-    });
-  } else if (drawLeft.length > 0) {
-    const startAt = Math.max(0, draw.findIndex((id) => !done.has(id)));
-    add({ label: p.leftToday > 0 ? `Start Today's Quiz (${drawLeft.length} left)` : `Keep Going (${drawLeft.length})`, onClick: () => actions.startQuiz(draw, startAt, `Day ${p.dayIndex} Draw`) });
-  } else if (!p.finished && p.remaining > 0) {
-    add({ label: 'Draw More For Today', onClick: () => {
-      const extra = drawToday(campaign, items, attempts, p.target, `${today}+`);
-      if (extra.length) actions.startQuiz(extra, 0, `Day ${p.dayIndex} Extra Draw`);
-    } });
-  }
-  // Worked without a rating of his own: counted already, and one click from
-  // the rating that scores them, so the tally's chip is never a dead end.
-  const unrated = problems.filter((it) => it.worked && (it.ratingImported || !normalizeRating(it.attemptState))).map((it) => it.id);
-  if (unrated.length > 0 && !p.finished) add({ label: `Rate Worked Problems (${unrated.length})`, title: 'Problems you worked without rating. They count already; a rating scores them and sets when they come back.', onClick: () => actions.startQuiz(unrated, 0, 'Worked, Not Rated') });
-  const study = actions.studyFlashcards;
-  if (study) out.secondary.push({ label: 'Review Due Flashcards', onClick: () => study() });
-
-  const title = p.finished ? 'Campaign complete' : p.dayIndex > campaign.days ? `Day ${p.dayIndex}, ${p.dayIndex - campaign.days} past the plan` : p.restToday ? `Day ${p.dayIndex} of ${campaign.days} · Rest day` : `Day ${p.dayIndex} of ${campaign.days} · ${p.doneToday} of ${p.target} today`;
-  const pace = p.delta === 0 ? 'on pace' : p.delta > 0 ? `${p.delta} ahead` : `${-p.delta} behind`;
-  const line = p.finished ? 'Nothing left to draw. The bank is yours.'
-    : `${p.done} of ${p.total} done · ${pace}${p.restToday && due.length ? ` · ${due.length} ${due.length === 1 ? 'problem' : 'problems'} due for a repeat` : ''}`;
-  return { campaign, progress: p, title, line, drawPapers, actions: out };
-}
-
-/** One square per planned day; the tooltip says the day and how it went. */
 export function dayStrip(p: CampaignProgress, tip?: Tip): HTMLElement {
   const strip = el('div', 'ws-camp__strip');
   strip.setAttribute('role', 'img');
@@ -534,13 +434,13 @@ function campaignSection(root: HTMLElement, items: InsightItem[], attempts: Insi
     const worth = el('span', 'ws-camp__xp', `$${(cents / 100).toFixed(2)} to cash out`);
     worth.title = `${availXp} XP at $${rate} per 100 XP.${cash.cents ? ` Cashed out so far: $${(cash.cents / 100).toFixed(2)} for ${cash.xp} XP.` : ''}`;
     cashRow.appendChild(worth);
-    if (availXp > 0 && actions.cashOut) createButton(cashRow, { label: 'Cash Out…', size: 'sm', onClick: () => void actions.cashOut!(availXp, cents) });
+    if (availXp > 0 && actions.cashOut) createButton(cashRow, { id: 'worksheet.dashboard.cashOut', label: 'Cash Out…', size: 'sm', onClick: () => void actions.cashOut!(availXp, cents) });
     lvl.appendChild(cashRow);
   }
   colLevel.appendChild(lvl);
   if (plan.actions.quiet.length) {
     const quiet = el('div', 'ws-camp__more');
-    for (const a of plan.actions.quiet) createButton(quiet, { label: a.label, title: a.title, kind: 'ghost', size: 'sm', onClick: () => a.onClick() });
+    for (const a of plan.actions.quiet) createButton(quiet, { id: a.id, label: a.label, title: a.title, kind: 'ghost', size: 'sm', onClick: () => a.onClick() });
     colLevel.appendChild(quiet);
   }
 
@@ -640,7 +540,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
     // actions on the right. Drawn once the plan is known.
     const headHost = el('div', 'ws-dash__head');
     root.appendChild(headHost);
-    const back = actions.openHome ? { label: 'Worksheets', onClick: () => actions.openHome!() } : undefined;
+    const back = actions.openHome ? { id: 'worksheet.home', label: 'Worksheets', onClick: () => actions.openHome!() } : undefined;
 
     if (ins.totalProblems === 0) {
       createPageHeader(headHost, { back, title: 'Study Dashboard' });
@@ -698,6 +598,7 @@ export function createDashboardPane(container: HTMLElement, actions: DashboardAc
       const set = el('button', 'ws-dash__tilelink', 'Set exam date…') as HTMLButtonElement;
       set.type = 'button';
       set.addEventListener('click', () => actions.openSettings());
+      declareControl(set, { id: 'worksheet.dashboard.setExamDate', label: 'Set exam date…' });
       t.querySelector('.ws-dash__tilevalue')?.replaceWith(set);
       tiles.appendChild(t);
     }

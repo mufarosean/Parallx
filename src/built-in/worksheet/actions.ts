@@ -148,7 +148,7 @@ export function planActions(): PlanActions {
 }
 
 /** The page every Worksheets tab links back to. */
-export const BACK_TO_HOME: IKitAction = { label: 'Worksheets', onClick: () => void openWorksheet('home', 'Worksheets') };
+export const BACK_TO_HOME: IKitAction = { id: 'worksheet.home', label: 'Worksheets', onClick: () => void openWorksheet('home', 'Worksheets') };
 export const openBuilder = () => void openWorksheet('practice', 'New Quiz');
 /** The quiz tab: one tab for the running quiz, named after it. */
 export const openQuizTab = () => void openWorksheet('practice-run', state.practice?.name || 'Quiz');

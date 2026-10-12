@@ -49,14 +49,20 @@ describe('kit contract', () => {
     expect(e.state?.()).toEqual({ kind: 'enabled', value: false });
   });
 
-  it('button: a command runs through the installed service; a handler and a command together throw', async () => {
+  it('button: a command runs through the installed service; with a handler too, the handler runs and the command is recorded', async () => {
     const ran: string[] = [];
     installKitCommands({ executeCommand: async (id, ...args) => { ran.push(`${id}:${JSON.stringify(args)}`); } });
     const btn = createButton(host, { id: 'test.run', label: 'Run', command: 'x.run', args: [1] });
     btn.click();
     await settle();
     expect(ran).toEqual(['x.run:[1]']);
-    expect(() => createButton(host, { id: 'test.both', label: 'Both', command: 'a', onClick: () => {} })).toThrow(/both a command and a handler/);
+    let handled = 0;
+    const both = createButton(host, { id: 'test.both', label: 'Both', command: 'x.both', onClick: () => { handled++; } });
+    both.click();
+    await settle();
+    expect(handled).toBe(1);
+    expect(ran).toEqual(['x.run:[1]']);
+    expect(scene.find('test.both')[0].command).toBe('x.both');
   });
 
   it('button without an id registers nothing and renders as before', () => {
