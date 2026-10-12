@@ -13,15 +13,9 @@ function makeDefaultProfile(): AISettingsProfile {
     id: 'default',
     presetName: 'Default',
     isBuiltIn: true,
-    persona: {
-      name: 'Parallx AI',
-      description: 'Your intelligent workspace assistant',
-      avatarEmoji: 'avatar-brain',
-    },
     chat: {
       systemPrompt: '',
       systemPromptIsCustom: false,
-      responseLength: 'adaptive',
       timeZone: '',               // this computer's zone
     },
     model: {
@@ -29,16 +23,6 @@ function makeDefaultProfile(): AISettingsProfile {
       temperature: -1,            // model default
       maxTokens: 0, // model default
       contextWindow: 0, // model default
-    },
-    suggestions: {
-      tone: 'balanced',
-      focusDomain: 'general',
-      customFocusDescription: '',
-      suggestionConfidenceThreshold: 0.65,
-      // Off: nothing shows suggestions yet (no chat cards are built), and
-      // the analysis embeds and scans pages while you edit them.
-      suggestionsEnabled: false,
-      maxPendingSuggestions: 5,
     },
     createdAt: 0,
     updatedAt: 0,
@@ -57,17 +41,6 @@ function makeFinanceFocusProfile(): AISettingsProfile {
     id: 'finance-focus',
     presetName: 'Finance Focus',
     isBuiltIn: true,
-    persona: {
-      name: 'Finance Assistant',
-      description: 'Focused on transactions, budgeting, and financial insights',
-      avatarEmoji: 'avatar-coins',
-    },
-    suggestions: {
-      ...DEFAULT_PROFILE.suggestions,
-      tone: 'concise',
-      focusDomain: 'finance',
-      suggestionConfidenceThreshold: 0.6,
-    },
   };
   return profile;
 }
@@ -78,19 +51,9 @@ function makeCreativeModeProfile(): AISettingsProfile {
     id: 'creative-mode',
     presetName: 'Creative Mode',
     isBuiltIn: true,
-    persona: {
-      name: 'Creative Partner',
-      description: 'Playful and exploratory, great for writing and brainstorming',
-      avatarEmoji: 'avatar-pen',
-    },
     model: {
       ...DEFAULT_PROFILE.model,
       temperature: 0.9,
-    },
-    suggestions: {
-      ...DEFAULT_PROFILE.suggestions,
-      tone: 'detailed',
-      focusDomain: 'writing',
     },
   };
   return profile;

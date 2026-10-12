@@ -99,17 +99,6 @@ function makeBuiltInPresets(): IUnifiedPreset[] {
     updatedAt: 0,
     config: {
       ...DEFAULT_UNIFIED_CONFIG,
-      persona: {
-        name: 'Finance Assistant',
-        description: 'Focused on transactions, budgeting, and financial insights',
-        avatarEmoji: 'avatar-coins',
-      },
-      suggestions: {
-        ...DEFAULT_UNIFIED_CONFIG.suggestions,
-        tone: 'concise',
-        focusDomain: 'finance',
-        suggestionConfidenceThreshold: 0.6,
-      },
     },
   };
 
@@ -121,19 +110,9 @@ function makeBuiltInPresets(): IUnifiedPreset[] {
     updatedAt: 0,
     config: {
       ...DEFAULT_UNIFIED_CONFIG,
-      persona: {
-        name: 'Creative Partner',
-        description: 'Playful and exploratory, great for writing and brainstorming',
-        avatarEmoji: 'avatar-pen',
-      },
       model: {
         ...DEFAULT_UNIFIED_CONFIG.model,
         temperature: 0.9,
-      },
-      suggestions: {
-        ...DEFAULT_UNIFIED_CONFIG.suggestions,
-        tone: 'detailed',
-        focusDomain: 'writing',
       },
     },
   };
@@ -502,9 +481,6 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
   async updateActiveProfile(patch: DeepPartial<AISettingsProfile>): Promise<void> {
     // Convert legacy profile patch to unified config patch
     const configPatch: Record<string, unknown> = {};
-    if (patch.persona) {
-      configPatch.persona = patch.persona;
-    }
     if (patch.chat) {
       configPatch.chat = patch.chat;
     }
@@ -523,9 +499,6 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
         modelPatch.contextWindow = patch.model.contextWindow;
       }
       configPatch.model = modelPatch;
-    }
-    if (patch.suggestions) {
-      configPatch.suggestions = patch.suggestions;
     }
     return this.updateActivePreset(configPatch as DeepPartial<IUnifiedAIConfig>);
   }

@@ -35,43 +35,6 @@ interface IBoundSchema<T = unknown> {
 }
 
 const SCHEMAS: readonly IBoundSchema[] = ([
-  // ── Persona ──
-  {
-    schema: {
-      key: 'persona.name',
-      type: 'string',
-      default: 'Parallx AI',
-      scope: 'workspace',
-      description: 'Display name shown in the chat header and suggestion cards.',
-      category: 'Persona',
-    },
-    read: (c) => c.persona.name,
-    write: (v) => ({ persona: { name: v as string } }),
-  } as IBoundSchema<string>,
-  {
-    schema: {
-      key: 'persona.description',
-      type: 'string',
-      default: 'Your intelligent workspace assistant',
-      scope: 'workspace',
-      description: 'One-sentence description shown under the agent name.',
-      category: 'Persona',
-    },
-    read: (c) => c.persona.description,
-    write: (v) => ({ persona: { description: v as string } }),
-  } as IBoundSchema<string>,
-  {
-    schema: {
-      key: 'persona.avatar',
-      type: 'string',
-      default: 'avatar-brain',
-      scope: 'workspace',
-      description: 'Avatar icon ID (e.g. avatar-brain, avatar-coins, avatar-pen).',
-      category: 'Persona',
-    },
-    read: (c) => c.persona.avatarEmoji,
-    write: (v) => ({ persona: { avatarEmoji: v as string } }),
-  } as IBoundSchema<string>,
 
   // ── Chat ──
   {
@@ -86,19 +49,6 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     },
     read: (c) => c.chat.systemPrompt,
     write: (v) => ({ chat: { systemPrompt: v as string, systemPromptIsCustom: (v as string).length > 0 } }),
-  } as IBoundSchema<string>,
-  {
-    schema: {
-      key: 'chat.responseLength',
-      type: 'enum',
-      default: 'adaptive',
-      scope: 'workspace',
-      description: 'Preferred response length: short, medium, long, or adaptive (chooses based on the prompt).',
-      category: 'Chat',
-      enumValues: ['short', 'medium', 'long', 'adaptive'],
-    },
-    read: (c) => c.chat.responseLength,
-    write: (v) => ({ chat: { responseLength: v as 'short' | 'medium' | 'long' | 'adaptive' } }),
   } as IBoundSchema<string>,
 
   // ── General (app-wide, stored with the chat profile) ──
@@ -174,86 +124,6 @@ const SCHEMAS: readonly IBoundSchema[] = ([
     },
     read: (c) => c.model.maxTokens,
     write: (v) => ({ model: { maxTokens: v as number } }),
-  } as IBoundSchema<number>,
-
-  // ── Suggestions ──
-  {
-    schema: {
-      key: 'suggestions.enabled',
-      type: 'boolean',
-      default: false,
-      scope: 'workspace',
-      description: 'Look over pages as you edit them for things to suggest. Nothing shows the suggestions yet, so this only costs embedding work; leave it off.',
-      category: 'Suggestions',
-    },
-    read: (c) => c.suggestions.suggestionsEnabled,
-    write: (v) => ({ suggestions: { suggestionsEnabled: v as boolean } }),
-  } as IBoundSchema<boolean>,
-  {
-    schema: {
-      key: 'suggestions.tone',
-      type: 'enum',
-      default: 'balanced',
-      scope: 'workspace',
-      description: 'Tone the AI uses when crafting suggestions.',
-      category: 'Suggestions',
-      enumValues: ['concise', 'balanced', 'detailed'],
-    },
-    read: (c) => c.suggestions.tone,
-    write: (v) => ({ suggestions: { tone: v as 'concise' | 'balanced' | 'detailed' } }),
-  } as IBoundSchema<string>,
-  {
-    schema: {
-      key: 'suggestions.focusDomain',
-      type: 'enum',
-      default: 'general',
-      scope: 'workspace',
-      description: 'Domain the AI pays extra attention to when generating suggestions.',
-      category: 'Suggestions',
-      enumValues: ['general', 'finance', 'writing', 'coding', 'research', 'custom'],
-    },
-    read: (c) => c.suggestions.focusDomain,
-    write: (v) => ({ suggestions: { focusDomain: v as 'general' | 'finance' | 'writing' | 'coding' | 'research' | 'custom' } }),
-  } as IBoundSchema<string>,
-  {
-    schema: {
-      key: 'suggestions.customFocus',
-      type: 'string',
-      default: '',
-      scope: 'workspace',
-      description: 'Free-text description of the custom focus domain (used when focusDomain = custom).',
-      category: 'Suggestions',
-    },
-    read: (c) => c.suggestions.customFocusDescription,
-    write: (v) => ({ suggestions: { customFocusDescription: v as string } }),
-  } as IBoundSchema<string>,
-  {
-    schema: {
-      key: 'suggestions.confidenceThreshold',
-      type: 'number',
-      default: 0.65,
-      scope: 'workspace',
-      description: 'Minimum confidence (0–1) for a suggestion to surface.',
-      category: 'Suggestions',
-      min: 0,
-      max: 1,
-    },
-    read: (c) => c.suggestions.suggestionConfidenceThreshold,
-    write: (v) => ({ suggestions: { suggestionConfidenceThreshold: v as number } }),
-  } as IBoundSchema<number>,
-  {
-    schema: {
-      key: 'suggestions.maxPending',
-      type: 'number',
-      default: 5,
-      scope: 'workspace',
-      description: 'Max number of suggestion cards visible at once.',
-      category: 'Suggestions',
-      min: 1,
-      max: 20,
-    },
-    read: (c) => c.suggestions.maxPendingSuggestions,
-    write: (v) => ({ suggestions: { maxPendingSuggestions: v as number } }),
   } as IBoundSchema<number>,
 
   // ── Retrieval ──

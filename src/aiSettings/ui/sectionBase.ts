@@ -189,7 +189,7 @@ export abstract class SettingsSection extends Disposable {
     link.setAttribute('type', 'button');
     link.textContent = 'Reset Section to Defaults';
     link.addEventListener('click', () => {
-      this._service.resetSection(sectionKey as 'persona' | 'chat' | 'model' | 'suggestions');
+      this._service.resetSection(sectionKey as 'chat' | 'model');
     });
     this.contentElement.appendChild(link);
   }

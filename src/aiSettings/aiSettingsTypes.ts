@@ -8,28 +8,7 @@ import type { Event } from '../platform/events.js';
 
 // ─── Tone / Style Enums ────────────────────────────────────────────────────
 
-export type AITone = 'concise' | 'balanced' | 'detailed';
-
-export type AIFocusDomain =
-  | 'general'
-  | 'finance'
-  | 'writing'
-  | 'coding'
-  | 'research'
-  | 'custom';
-
-export type AIResponseLength = 'short' | 'medium' | 'long' | 'adaptive';
-
 // ─── The Full Settings Profile ─────────────────────────────────────────────
-
-export interface AIPersonaSettings {
-  /** Display name shown in the UI and in suggestion cards (e.g. "Parallx AI") */
-  name: string;
-  /** One-sentence description shown under the name */
-  description: string;
-  /** Icon key used as the avatar (e.g. "avatar-brain", "avatar-briefcase") */
-  avatarEmoji: string;
-}
 
 export interface AIChatSettings {
   /**
@@ -40,8 +19,6 @@ export interface AIChatSettings {
   systemPrompt: string;
   /** Whether the user has manually overridden the generated system prompt */
   systemPromptIsCustom: boolean;
-  /** Controls response length preference */
-  responseLength: AIResponseLength;
   /** IANA zone every time the assistant reads or writes is in; '' = this computer's zone */
   timeZone?: string;
 }
@@ -66,24 +43,6 @@ export interface AIModelSettings {
   contextWindow: number;
 }
 
-export interface AISuggestionSettings {
-  /** Friendly tone for the proactive suggestions system */
-  tone: AITone;
-  /** Domain the AI pays extra attention to */
-  focusDomain: AIFocusDomain;
-  /** If focusDomain === 'custom', this free-text field describes it */
-  customFocusDescription: string;
-  /**
-   * Minimum confidence 0–1 to surface a suggestion.
-   * Wires into ProactiveSuggestionsService threshold.
-   */
-  suggestionConfidenceThreshold: number;
-  /** Whether proactive suggestion cards are shown */
-  suggestionsEnabled: boolean;
-  /** Max suggestion cards visible at once */
-  maxPendingSuggestions: number;
-}
-
 export interface AISettingsProfile {
   /** Unique ID — used as the preset key */
   id: string;
@@ -91,10 +50,8 @@ export interface AISettingsProfile {
   presetName: string;
   /** Whether this is a built-in read-only preset */
   isBuiltIn: boolean;
-  persona: AIPersonaSettings;
   chat: AIChatSettings;
   model: AIModelSettings;
-  suggestions: AISuggestionSettings;
   createdAt: number;
   updatedAt: number;
 }
@@ -124,7 +81,7 @@ export interface IAISettingsService extends IDisposable {
   renameProfile(id: string, newName: string): Promise<void>;
 
   /** Reset a specific section of the active profile to factory defaults */
-  resetSection(section: 'persona' | 'chat' | 'model' | 'suggestions'): Promise<void>;
+  resetSection(section: 'chat' | 'model'): Promise<void>;
 
   /** Reset the entire active profile to factory defaults */
   resetAll(): Promise<void>;
@@ -150,7 +107,7 @@ export type DeepPartial<T> = {
  * Stored in .parallx/ai-settings.json inside the workspace root.
  */
 export type WorkspaceAIOverride = DeepPartial<
-  Pick<AISettingsProfile, 'chat' | 'model' | 'suggestions'>
+  Pick<AISettingsProfile, 'chat' | 'model'>
 > & {
   /** Human label shown in the status bar when override is active */
   label?: string;

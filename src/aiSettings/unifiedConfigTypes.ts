@@ -1,7 +1,7 @@
 // unifiedConfigTypes.ts — Unified AI Configuration types
 //
 // Merges all AI configuration from three sources into one type system:
-//   1. AISettingsProfile — persona, chat, model, suggestions
+//   1. AISettingsProfile — chat, model
 //   2. IParallxConfig — retrieval, agent, context budget, indexing
 //   3. NEW — memory settings
 //
@@ -10,13 +10,7 @@
 
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
-import type {
-  AITone,
-  AIFocusDomain,
-  AIResponseLength,
-  AISettingsProfile,
-  DeepPartial,
-} from './aiSettingsTypes.js';
+import type { AISettingsProfile, DeepPartial } from './aiSettingsTypes.js';
 import type { IParallxConfig } from '../services/parallxConfigService.js';
 import type { IConfigFileSystem } from '../services/parallxConfigService.js';
 
@@ -26,26 +20,11 @@ import type { IConfigFileSystem } from '../services/parallxConfigService.js';
 
 // ─── Behavior ──────────────────────────────────────
 
-/**
- * @deprecated F11: Persona config is dead code — OpenClaw uses SOUL.md for personality.
- * No runtime consumer reads these fields. Retained for UI display compatibility.
- */
-export interface IUnifiedPersonaConfig {
-  /** Display name shown in UI and suggestion cards */
-  readonly name: string;
-  /** One-sentence description */
-  readonly description: string;
-  /** Emoji or icon key used as the avatar */
-  readonly avatarEmoji: string;
-}
-
 export interface IUnifiedChatConfig {
   /** System prompt injected at top of every chat */
   readonly systemPrompt: string;
   /** Whether user has manually edited the system prompt */
   readonly systemPromptIsCustom: boolean;
-  /** @deprecated F11: No OpenClaw consumer. Vestigial field preserved for stored data compatibility. */
-  readonly responseLength: AIResponseLength;
   /**
    * The one zone every time the assistant reads or writes is in (an IANA
    * name such as America/Chicago). Empty: this computer's zone. Resolved by
@@ -119,27 +98,6 @@ export interface IUnifiedRetrievalConfig {
   readonly ragScoreThreshold: number;
   /** Token budget allocation across system/RAG/history/user */
   readonly contextBudget: IUnifiedContextBudgetConfig;
-}
-
-// ─── Suggestions ──────────────────────────────────────────────────
-
-/**
- * @deprecated F11: Suggestion config fields are dead code — OpenClaw does not read tone/focus/threshold.
- * Only `suggestionsEnabled` has a potential consumer. Retained for UI compatibility.
- */
-export interface IUnifiedSuggestionsConfig {
-  /** Friendly tone for proactive suggestions */
-  readonly tone: AITone;
-  /** Domain the AI pays extra attention to */
-  readonly focusDomain: AIFocusDomain;
-  /** Free-text when focusDomain === 'custom' */
-  readonly customFocusDescription: string;
-  /** Minimum confidence 0–1 to surface a suggestion */
-  readonly suggestionConfidenceThreshold: number;
-  /** Whether proactive suggestion cards are shown */
-  readonly suggestionsEnabled: boolean;
-  /** Max suggestion cards visible at once */
-  readonly maxPendingSuggestions: number;
 }
 
 // ─── Agent (from config.json) ────────────────────────────────────────────────
@@ -334,11 +292,9 @@ export interface IUnifiedHeartbeatConfig {
  * + workspace overrides. This is what consumers read at runtime.
  */
 export interface IUnifiedAIConfig {
-  readonly persona: IUnifiedPersonaConfig;
   readonly chat: IUnifiedChatConfig;
   readonly model: IUnifiedModelConfig;
   readonly retrieval: IUnifiedRetrievalConfig;
-  readonly suggestions: IUnifiedSuggestionsConfig;
   readonly agent: IUnifiedAgentConfig;
   readonly runtime: IUnifiedRuntimeConfig;
   readonly memory: IUnifiedMemoryConfig;
@@ -507,15 +463,9 @@ export interface IUnifiedAIConfigService extends IDisposable {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
-  persona: {
-    name: 'Parallx AI',
-    description: 'Your intelligent workspace assistant',
-    avatarEmoji: 'avatar-brain',
-  },
   chat: {
     systemPrompt: '', // generated at runtime from tone/focus/length
     systemPromptIsCustom: false,
-    responseLength: 'adaptive',
     timeZone: '',                // this computer's zone
   },
   model: {
@@ -544,14 +494,6 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
         userMessage: 0,
       },
     },
-  },
-  suggestions: {
-    tone: 'balanced',
-    focusDomain: 'general',
-    customFocusDescription: '',
-    suggestionConfidenceThreshold: 0.65,
-    suggestionsEnabled: false, // nothing shows suggestions yet (aiSettingsDefaults)
-    maxPendingSuggestions: 5,
   },
   agent: {
     maxIterations: 25,
@@ -639,15 +581,9 @@ export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
     config: {
-      persona: {
-        name: profile.persona.name,
-        description: profile.persona.description,
-        avatarEmoji: profile.persona.avatarEmoji,
-      },
       chat: {
         systemPrompt: profile.chat.systemPrompt,
         systemPromptIsCustom: profile.chat.systemPromptIsCustom,
-        responseLength: profile.chat.responseLength,
         timeZone: profile.chat.timeZone ?? '',
       },
       model: {
@@ -658,14 +594,6 @@ export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
         contextWindow: profile.model.contextWindow,
       },
       retrieval: { ...DEFAULT_UNIFIED_CONFIG.retrieval },
-      suggestions: {
-        tone: profile.suggestions.tone,
-        focusDomain: profile.suggestions.focusDomain,
-        customFocusDescription: profile.suggestions.customFocusDescription,
-        suggestionConfidenceThreshold: profile.suggestions.suggestionConfidenceThreshold,
-        suggestionsEnabled: profile.suggestions.suggestionsEnabled,
-        maxPendingSuggestions: profile.suggestions.maxPendingSuggestions,
-      },
       agent: { ...DEFAULT_UNIFIED_CONFIG.agent },
       runtime: { ...DEFAULT_UNIFIED_CONFIG.runtime },
       memory: { ...DEFAULT_UNIFIED_CONFIG.memory },
@@ -735,7 +663,6 @@ export function tolegacyProfile(preset: IUnifiedPreset): AISettingsProfile {
     isBuiltIn: preset.isBuiltIn,
     createdAt: preset.createdAt,
     updatedAt: preset.updatedAt,
-    persona: { ...preset.config.persona },
     chat: { ...preset.config.chat },
     model: {
       defaultModel: preset.config.model.chatModel,
@@ -743,6 +670,5 @@ export function tolegacyProfile(preset: IUnifiedPreset): AISettingsProfile {
       maxTokens: preset.config.model.maxTokens,
       contextWindow: preset.config.model.contextWindow,
     },
-    suggestions: { ...preset.config.suggestions },
   };
 }

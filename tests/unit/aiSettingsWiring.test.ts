@@ -12,15 +12,10 @@ import type { IUnifiedAIConfigService } from '../../src/aiSettings/unifiedConfig
 // ─── Mock Factories ──────────────────────────────────────────────────────────
 
 function createMockUnifiedConfigService(overrides?: {
-  suggestions?: Partial<typeof DEFAULT_PROFILE.suggestions>;
   chat?: { systemPrompt?: string };
   model?: { temperature?: number; maxTokens?: number };
 }) {
   const config = {
-    suggestions: {
-      ...DEFAULT_PROFILE.suggestions,
-      ...overrides?.suggestions,
-    },
     chat: {
       systemPrompt: overrides?.chat?.systemPrompt ?? DEFAULT_PROFILE.chat.systemPrompt,
     },
@@ -34,9 +29,6 @@ function createMockUnifiedConfigService(overrides?: {
     getEffectiveConfig: vi.fn(() => structuredClone(config) as any),
     onDidChangeConfig: onDidChangeEmitter.event,
     _fireChange: () => onDidChangeEmitter.fire(undefined),
-    _updateSuggestions: (patch: Partial<typeof DEFAULT_PROFILE.suggestions>) => {
-      Object.assign(config.suggestions, patch);
-    },
     dispose: vi.fn(),
   };
 }

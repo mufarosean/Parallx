@@ -38,11 +38,9 @@ function createMockStorage(): Record<string, string> & {
 
 describe('IUnifiedAIConfig defaults', () => {
   it('has all required sections', () => {
-    expect(DEFAULT_UNIFIED_CONFIG.persona).toBeDefined();
     expect(DEFAULT_UNIFIED_CONFIG.chat).toBeDefined();
     expect(DEFAULT_UNIFIED_CONFIG.model).toBeDefined();
     expect(DEFAULT_UNIFIED_CONFIG.retrieval).toBeDefined();
-    expect(DEFAULT_UNIFIED_CONFIG.suggestions).toBeDefined();
     expect(DEFAULT_UNIFIED_CONFIG.agent).toBeDefined();
     expect(DEFAULT_UNIFIED_CONFIG.memory).toBeDefined();
     expect(DEFAULT_UNIFIED_CONFIG.indexing).toBeDefined();
@@ -85,7 +83,6 @@ describe('fromLegacyProfile', () => {
     expect(preset.id).toBe('default');
     expect(preset.presetName).toBe('Default');
     expect(preset.isBuiltIn).toBe(true);
-    expect(preset.config.persona.name).toBe('Parallx AI');
     expect(preset.config.model.chatModel).toBe(''); // was defaultModel
     expect(preset.config.model.temperature).toBe(-1);
   });
@@ -107,12 +104,10 @@ describe('fromLegacyProfile', () => {
       id: 'my-custom',
       presetName: 'My Custom',
       isBuiltIn: false,
-      persona: { name: 'Test Bot', description: 'Testing', avatarEmoji: '🤖' },
       model: { defaultModel: 'llama3.1', temperature: 0.5, maxTokens: 2048, contextWindow: 4096 },
     };
 
     const preset = fromLegacyProfile(custom);
-    expect(preset.config.persona.name).toBe('Test Bot');
     expect(preset.config.model.chatModel).toBe('llama3.1');
     expect(preset.config.model.temperature).toBe(0.5);
     expect(preset.config.model.maxTokens).toBe(2048);
@@ -132,12 +127,10 @@ describe('fromLegacyParallxConfig', () => {
     expect(override.indexing?.autoIndex).toBe(true);
   });
 
-  it('does not include persona/chat/suggestions (not in config.json)', () => {
+  it('does not include chat (not in config.json)', () => {
     const override = fromLegacyParallxConfig(DEFAULT_CONFIG);
 
-    expect(override.persona).toBeUndefined();
     expect(override.chat).toBeUndefined();
-    expect(override.suggestions).toBeUndefined();
     expect(override.memory).toBeUndefined();
   });
 });
@@ -156,9 +149,8 @@ describe('tolegacyProfile', () => {
     const profile = tolegacyProfile(preset);
     expect(profile.id).toBe('test-1');
     expect(profile.presetName).toBe('Test');
-    expect(profile.persona.name).toBe('Parallx AI');
+    expect(profile.chat.systemPrompt).toBe('');
     expect(profile.model.defaultModel).toBe(''); // chatModel → defaultModel
-    expect(profile.suggestions.tone).toBe('balanced');
   });
 
   it('round-trips: fromLegacyProfile → tolegacyProfile preserves key fields', () => {
@@ -168,7 +160,7 @@ describe('tolegacyProfile', () => {
 
       expect(backToProfile.id).toBe(builtIn.id);
       expect(backToProfile.presetName).toBe(builtIn.presetName);
-      expect(backToProfile.persona.name).toBe(builtIn.persona.name);
+      expect(backToProfile.chat.systemPrompt).toBe(builtIn.chat.systemPrompt);
       expect(backToProfile.model.temperature).toBe(builtIn.model.temperature);
     }
   });
@@ -262,7 +254,7 @@ describe('UnifiedAIConfigService', () => {
   describe('getEffectiveConfig', () => {
     it('returns default config on fresh start', () => {
       const config = service.getEffectiveConfig();
-      expect(config.persona.name).toBe('Parallx AI');
+      expect(config.chat.timeZone).toBe('');
       expect(config.retrieval.ragTopK).toBe(20);
       expect(config.agent.maxIterations).toBe(25);
     });
@@ -335,14 +327,14 @@ describe('UnifiedAIConfigService', () => {
       expect(service.getActivePreset().isBuiltIn).toBe(true);
 
       await service.updateActivePreset({
-        persona: { name: 'Custom Name' },
+        chat: { timeZone: 'Europe/Paris' },
       });
 
       // Active should now be a cloned non-built-in
       const active = service.getActivePreset();
       expect(active.isBuiltIn).toBe(false);
       expect(active.presetName).toBe('Default (Modified)');
-      expect(active.config.persona.name).toBe('Custom Name');
+      expect(active.config.chat.timeZone).toBe('Europe/Paris');
       expect(service.getAllPresets().length).toBe(4); // 3 built-in + 1 clone
     });
   });
@@ -414,7 +406,7 @@ describe('UnifiedAIConfigService', () => {
       expect(keys).toContain('model.temperature');
       expect(keys).toContain('retrieval.ragTopK');
       expect(keys).toContain('retrieval.autoRag');
-      expect(keys).not.toContain('persona.name');
+      expect(keys).not.toContain('chat.timeZone');
     });
   });
 
@@ -484,10 +476,10 @@ describe('UnifiedAIConfigService', () => {
       const listener = vi.fn();
       service.onDidChangeConfig(listener);
 
-      await service.setActivePreset('finance-focus');
+      await service.setActivePreset('creative-mode');
 
       expect(listener).toHaveBeenCalledOnce();
-      expect(listener.mock.calls[0][0].persona.name).toBe('Finance Assistant');
+      expect(listener.mock.calls[0][0].model.temperature).toBe(0.9);
     });
 
     it('fires onDidChangeConfig on workspace override', async () => {
@@ -504,12 +496,12 @@ describe('UnifiedAIConfigService', () => {
       const listener = vi.fn();
       service.onDidChange(listener);
 
-      await service.setActivePreset('finance-focus');
+      await service.setActivePreset('creative-mode');
 
       expect(listener).toHaveBeenCalledOnce();
       const profile = listener.mock.calls[0][0];
-      expect(profile.id).toBe('finance-focus');
-      expect(profile.persona.name).toBe('Finance Assistant');
+      expect(profile.id).toBe('creative-mode');
+      expect(profile.model.temperature).toBe(0.9);
     });
   });
 
@@ -520,11 +512,9 @@ describe('UnifiedAIConfigService', () => {
       const profile = service.getActiveProfile();
       expect(profile.id).toBe('default');
       expect(profile.presetName).toBe('Default');
-      expect(profile.persona).toBeDefined();
       expect(profile.chat).toBeDefined();
       expect(profile.model).toBeDefined();
       expect(profile.model.defaultModel).toBeDefined(); // legacy field name
-      expect(profile.suggestions).toBeDefined();
     });
 
     it('getAllProfiles returns AISettingsProfile[] shape', () => {
@@ -843,7 +833,7 @@ describe('Phase B: Workspace override persistence', () => {
 
       // Non-overridden fields come from the preset
       const creative = service.getActivePreset();
-      expect(service.getEffectiveConfig().persona.name).toBe(creative.config.persona.name);
+      expect(service.getEffectiveConfig().chat.timeZone).toBe(creative.config.chat.timeZone);
     });
 
     it('workspace override only applies non-undefined keys', async () => {
@@ -860,12 +850,12 @@ describe('Phase B: Workspace override persistence', () => {
     });
 
     it('workspace preset pin changes base config', async () => {
-      // Pin to finance-focus preset
-      await service.setWorkspacePreset('finance-focus');
+      // Pin to the creative-mode preset (its temperature differs from the default's)
+      await service.setWorkspacePreset('creative-mode');
 
       const config = service.getEffectiveConfig();
-      const financePreset = service.getAllPresets().find(p => p.id === 'finance-focus')!;
-      expect(config.persona.name).toBe(financePreset.config.persona.name);
+      const creativePreset = service.getAllPresets().find(p => p.id === 'creative-mode')!;
+      expect(config.model.temperature).toBe(creativePreset.config.model.temperature);
     });
 
     it('workspace pin + global switch: workspace pin wins', async () => {
@@ -877,7 +867,7 @@ describe('Phase B: Workspace override persistence', () => {
       // Workspace pin should still control effective config
       const config = service.getEffectiveConfig();
       const creative = service.getAllPresets().find(p => p.id === 'creative-mode')!;
-      expect(config.persona.name).toBe(creative.config.persona.name);
+      expect(config.model.temperature).toBe(creative.config.model.temperature);
     });
 
     it('clearWorkspaceOverride() clears overrides but preserves preset pin', async () => {
@@ -947,7 +937,7 @@ describe('Phase B: Workspace override persistence', () => {
 
       const configAfter = svc2.getEffectiveConfig();
       expect(configAfter.model.temperature).toBe(configBefore.model.temperature);
-      expect(configAfter.persona.name).toBe(configBefore.persona.name);
+      expect(configAfter.chat.timeZone).toBe(configBefore.chat.timeZone);
     });
   });
 });

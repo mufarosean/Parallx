@@ -4,8 +4,8 @@
 // overlay (`Ctrl+Alt+S` → `settings.open`) is the canonical editor for
 // every value-shaped setting; this panel now only hosts the manager
 // sections (Model, Tools, MCP servers, Agent) that
-// action rows in the overlay deep-link to. Persona / Chat / Retrieval /
-// Indexing / Suggestions / Heartbeat / Advanced / Preview sections, the
+// action rows in the overlay deep-link to. Chat / Retrieval /
+// Indexing / Heartbeat / Advanced / Preview sections, the
 // PresetSwitcher, and the profiles concept have been removed.
 //
 // The Model section (workspace-scoped Default Model + Default Context

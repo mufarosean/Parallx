@@ -27,10 +27,8 @@ function createMockService(overrides?: Partial<AISettingsProfile>) {
   const profile: AISettingsProfile = {
     ...structuredClone(DEFAULT_PROFILE),
     ...overrides,
-    persona: { ...DEFAULT_PROFILE.persona, ...overrides?.persona },
     chat: { ...DEFAULT_PROFILE.chat, ...overrides?.chat },
     model: { ...DEFAULT_PROFILE.model, ...overrides?.model },
-    suggestions: { ...DEFAULT_PROFILE.suggestions, ...overrides?.suggestions },
   };
 
   const profiles: AISettingsProfile[] = structuredClone(BUILT_IN_PRESETS) as AISettingsProfile[];
@@ -193,7 +191,7 @@ describe('AISettingsPanel', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const updated = {
       ...structuredClone(DEFAULT_PROFILE),
-      persona: { ...DEFAULT_PROFILE.persona, name: 'New Name' },
+      chat: { ...DEFAULT_PROFILE.chat, timeZone: 'Europe/Paris' },
     };
     service.getActiveProfile.mockReturnValue(updated);
     service._fireChange(updated);
