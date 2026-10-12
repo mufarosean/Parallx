@@ -881,6 +881,18 @@ label, every id registered under two parents, every kit call with
 whose raw DOM count is above zero. Its output goes into section 11 as
 the remaining work.
 
+The script is done (2026-10-12, in the cloud); the audit re-runs after
+step 7. Its first run, on the probe's scene at commit 7db7ace6:
+unlabeled 0, twoParents 0, onClick 0, rawDom 242 files. The raw DOM
+list is led by the extension mains (flashcards 783, creations-ai 541,
+budget 503, media-organizer 460, browser 241, study's pane 218,
+concept-lab 182), which step 7 converts, then by the built-ins step 5
+still owes or only partly declared: the chat's content parts (118),
+the canvas database editor (109) and sidebar (108), the dashboard
+editor (106), the worksheet dashboard pane (91) and the workflow editor
+(85). Section 11 carries the summary; the full list is the script's
+output.
+
 ## 10. The conversion recipe
 
 For one file. Follow it in order, every time.
@@ -989,7 +1001,8 @@ Sessions append here. Each line: date, step, what was left and why.
      Inventory with `grep -n "\$('button\|createElement('button')" -r src/built-in/canvas`.
   4. chat: done except `chatWidget.ts` (see step 5's notes); the
      message list's markdown is never declared.
-  Steps 6, 8 and 10 are done. Then steps 7, 9, 4, 11 as section 9 orders them.
+  Steps 6, 8 and 10 are done, and step 11's script exists (run it after
+  step 7). Then steps 7 and 9 (local), then 4 and the step 11 audit.
 
   What this session learned, for whoever continues:
   - A repeated card (a widget, a routine row, an approval) is a surface
