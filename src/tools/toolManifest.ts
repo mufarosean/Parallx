@@ -369,8 +369,3 @@ export interface IToolDescription {
   /** Whether this is a built-in tool (shipped with the shell). */
   readonly isBuiltin: boolean;
 }
-
-// ─── Manifest Filename ───────────────────────────────────────────────────────
-
-/** The filename the scanner looks for in each tool directory. */
-export const TOOL_MANIFEST_FILENAME = 'parallx-manifest.json';

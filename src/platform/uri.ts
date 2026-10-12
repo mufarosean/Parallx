@@ -255,13 +255,6 @@ function encodeURIPath(path: string): string {
 }
 
 /**
- * Utility: compare two URIs for use in sorting.
- */
-export function uriCompare(a: URI, b: URI): number {
-  return a.toKey() < b.toKey() ? -1 : a.toKey() > b.toKey() ? 1 : 0;
-}
-
-/**
  * Map keyed by URI (uses toKey() for hashing).
  */
 export class URIMap<T> {

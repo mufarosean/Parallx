@@ -139,10 +139,6 @@ export function isActionNode(n: WorkflowNode): n is WorkflowActionNode {
   return n.kind.startsWith('action.');
 }
 
-export function isContextNode(n: WorkflowNode): n is WorkflowContextNode {
-  return n.kind.startsWith('context.');
-}
-
 // ── Edges & the document ────────────────────────────────────────────────────
 
 export interface WorkflowEdge {

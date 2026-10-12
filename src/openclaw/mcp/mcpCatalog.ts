@@ -169,8 +169,3 @@ export const MCP_CATALOG: readonly IMcpCatalogEntry[] = Object.freeze([
     ],
   },
 ]);
-
-/** Look up a catalog entry by id. */
-export function getCatalogEntry(id: string): IMcpCatalogEntry | undefined {
-  return MCP_CATALOG.find((entry) => entry.id === id);
-}

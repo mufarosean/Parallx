@@ -304,11 +304,6 @@ function _sanitizeTemplateId(raw: string): string {
   return raw.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'template';
 }
 
-/** Built-in templates as-is. Synchronous since they're code-defined. */
-export function getBuiltinCanvasTemplates(): readonly CanvasPageTemplate[] {
-  return BUILTIN_CANVAS_TEMPLATES;
-}
-
 /**
  * Load user templates from `<workspace>/.parallx/canvas-templates/*.json`.
  * Returns an empty array if the directory doesn't exist or the fs bridge

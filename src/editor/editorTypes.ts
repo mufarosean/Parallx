@@ -117,18 +117,6 @@ export interface SerializedEditorGroupLayout {
   readonly size: number;
 }
 
-// ─── Close Result ────────────────────────────────────────────────────────────
-
-/**
- * Result of an editor close attempt.
- */
-export enum EditorCloseResult {
-  /** Editor was closed successfully. */
-  Closed = 'closed',
-  /** Editor close was vetoed (e.g. unsaved changes). */
-  Vetoed = 'vetoed',
-}
-
 // ─── Editor Change Events ────────────────────────────────────────────────────
 
 export interface EditorGroupChangeEvent {

@@ -120,14 +120,6 @@ export function toggleClass(element: HTMLElement, className: string, condition: 
   element.classList.toggle(className, condition);
 }
 
-// ─── Focus ───────────────────────────────────────────────────────────────────
-
-/**
- * Check if the given element or any descendant has focus.
- */
-export function isAncestorOfActiveElement(element: HTMLElement): boolean {
-  return element.contains(document.activeElement);
-}
 // ─── Popup Viewport Layout ──────────────────────────────────────────────
 
 /**

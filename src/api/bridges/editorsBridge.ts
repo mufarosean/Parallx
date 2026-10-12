@@ -54,14 +54,6 @@ interface ToolEditorProviderEntry {
 
 const _toolEditorProviders = new Map<string, ToolEditorProviderEntry>();
 
-/**
- * Look up the owning tool id for a registered editor typeId.
- * Returns undefined if no provider is currently registered.
- */
-export function getToolEditorOwner(typeId: string): string | undefined {
-  return _toolEditorProviders.get(typeId)?.toolId;
-}
-
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /**

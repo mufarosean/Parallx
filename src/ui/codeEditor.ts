@@ -88,11 +88,6 @@ export function hasCodeLanguage(fileName: string): boolean {
   return extensionOf(fileName) in LANGUAGE_LOADERS;
 }
 
-/** The set of extensions the code editor claims. */
-export function codeExtensions(): readonly string[] {
-  return Object.keys(LANGUAGE_LOADERS);
-}
-
 function extensionOf(fileName: string): string {
   const dot = fileName.lastIndexOf('.');
   return dot >= 0 ? fileName.slice(dot).toLowerCase() : '';

@@ -147,9 +147,6 @@ export function clockLabel(t: string): string {
   return `${hh}:${String(m || 0).padStart(2, '0')} ${ap}`;
 }
 
-export function planDayOf(plan: StudyPlan, day: string): PlanDay | null {
-  return plan.days.find((d) => d.day === day) ?? null;
-}
 export function blockKey(day: string, blockId: string): string { return `${day}/${blockId}`; }
 
 // ── Draws ───────────────────────────────────────────────────────────────────

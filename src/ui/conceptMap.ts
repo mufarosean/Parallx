@@ -683,11 +683,6 @@ export function migrateFlatOverrides(src: string, overrides: MindMapOverrides): 
   return out;
 }
 
-/** Back-compat single-line width estimate (tests, external callers). */
-export function boxWidth(label: string): number {
-  return measureLabel(label).width;
-}
-
 interface PlacedTree {
   readonly nodes: LaidOutNode[];
   readonly edges: { from: number; to: number }[];

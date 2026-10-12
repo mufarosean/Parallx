@@ -174,5 +174,3 @@ export function createPlanUpdateTool(host: IPlanToolHost | undefined): IChatTool
     },
   };
 }
-
-export const PLAN_TOOL_NAMES = ['plan_update'] as const;

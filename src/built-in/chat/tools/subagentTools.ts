@@ -176,5 +176,3 @@ export function createSessionsSpawnTool(
     },
   };
 }
-
-export const SUBAGENT_TOOL_NAMES = ['sessions_spawn'] as const;

@@ -88,11 +88,6 @@ export function getSubagentSessionPolicy(sessionId: string | undefined): ISubage
   return sessionId ? _sessionPolicies.get(sessionId) : undefined;
 }
 
-/** Test-only: reset shared subagent state. */
-export function _resetSubagentSessionPoliciesForTests(): void {
-  _sessionPolicies.clear();
-}
-
 /** Current observed subagent depth. 0 == caller is the user / parent turn. */
 export function currentSubagentDepth(): number {
   return _subagentDepth;

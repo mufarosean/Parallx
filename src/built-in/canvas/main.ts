@@ -1415,18 +1415,6 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
   );
 }
 
-// ─── Exported for internal use by sidebar / editor ───────────────────────────
-
-/** Access the Canvas data service from other Canvas modules. */
-export function getDataService(): ICanvasDataService | null {
-  return _dataService;
-}
-
-/** Access the API from other Canvas modules. */
-export function getApi(): ParallxApi {
-  return _api;
-}
-
 /**
  * Append a captured selection (from the PDF viewer or other surfaces) to a
  * canvas page as text or an image block, then open the page. Lets the user

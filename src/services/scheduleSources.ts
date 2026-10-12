@@ -11,7 +11,6 @@
 // tool's activation and disposed with its subscriptions.
 
 import { createRegistry } from '../platform/registry.js';
-import type { Event } from '../platform/events.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 
 /** An open task, lightweight. */
@@ -67,7 +66,6 @@ export interface ScheduleSource {
 }
 
 const registry = createRegistry<ScheduleSource>();
-export const onDidChangeScheduleSources: Event<void> = registry.onDidChange;
 
 export function registerScheduleSource(source: ScheduleSource): IDisposable {
   return registry.register(source.id, source);

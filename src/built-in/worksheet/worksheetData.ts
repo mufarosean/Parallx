@@ -201,12 +201,6 @@ export async function listItems(): Promise<WorksheetItemSummary[]> {
   });
 }
 
-/** Has this workbook sheet been imported before? (source label + sheet name.) */
-export async function findItemBySheet(sourceLabel: string, sheetName: string): Promise<number | null> {
-  const row = await getRow('SELECT id FROM ws_items WHERE source_label = ? AND sheet_name = ? LIMIT 1', [sourceLabel, sheetName]);
-  return row ? Number(row.id) : null;
-}
-
 export async function getItem(id: number): Promise<WorksheetItem | null> {
   const row = await getRow('SELECT * FROM ws_items WHERE id = ?', [id]);
   return row ? rowToItem(row) : null;

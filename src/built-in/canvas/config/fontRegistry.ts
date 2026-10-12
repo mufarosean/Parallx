@@ -169,13 +169,6 @@ export function listFonts(): CanvasFont[] {
   return [...BUILTIN_FONTS, ..._customFonts.values()];
 }
 
-export function getBuiltinFonts(): readonly CanvasFont[] { return BUILTIN_FONTS; }
-
-export function getCustomFonts(): CanvasFont[] {
-  ensureLoaded();
-  return [..._customFonts.values()];
-}
-
 export function getFont(id: string | null | undefined): CanvasFont {
   ensureLoaded();
   if (id) {
@@ -247,8 +240,4 @@ export async function removeCustomFont(id: string): Promise<void> {
     rebuildStyleEl();
     await persist();
   }
-}
-
-export function isCustomFontId(id: string | null | undefined): boolean {
-  return !!id && id.startsWith('custom:');
 }

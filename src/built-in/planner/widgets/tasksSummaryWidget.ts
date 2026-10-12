@@ -177,6 +177,4 @@ export function buildTasksSummaryWidget(data: PlannerDataService): WidgetTypeReg
   };
 }
 
-// Helper exported for the registration barrel.
-export const TASKS_SUMMARY_TYPE_ID = 'parallx.planner.tasks-summary';
 export type { PlannerTask };

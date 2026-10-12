@@ -399,13 +399,6 @@ export function parseWhenClause(expression: string | undefined): WhenClauseNode 
   return node;
 }
 
-/**
- * Clear the parse cache. Useful for testing.
- */
-export function clearWhenClauseCache(): void {
-  _parseCache.clear();
-}
-
 // ─── Evaluator ───────────────────────────────────────────────────────────────
 
 /**
