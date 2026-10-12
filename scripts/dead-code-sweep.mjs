@@ -23,6 +23,8 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+/** Repo-relative, '/'-separated on every platform, so the patterns below read the same on Windows. */
+const rel = (p) => path.relative(ROOT, p).split(path.sep).join('/');
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git']);
 const SKIP_FILES = [/\.d\.ts$/, /\.generated\.ts$/, /ext\/study\/main\.js$/, /readability\.js$/, /\/test\//];
 
@@ -32,12 +34,11 @@ function walk(dir, exts, out = []) {
     if (SKIP_DIRS.has(e.name)) continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walk(p, exts, out);
-    else if (exts.some((x) => e.name.endsWith(x)) && !SKIP_FILES.some((re) => re.test(p))) out.push(p);
+    else if (exts.some((x) => e.name.endsWith(x)) && !SKIP_FILES.some((re) => re.test(rel(p)))) out.push(p);
   }
   return out;
 }
 
-const rel = (p) => path.relative(ROOT, p).split(path.sep).join('/');
 // Block comments only where they start a token, so a glob like `**/*.md`
 // inside a string does not swallow code up to the next `*/`.
 const stripComments = (s) =>
@@ -53,7 +54,7 @@ const allFiles = [...srcFiles, ...testFiles, ...extFiles, ...electronFiles, ...s
 
 const raw = new Map(allFiles.map((p) => [p, fs.readFileSync(p, 'utf8')]));
 const code = new Map([...raw].map(([p, s]) => [p, stripComments(s)]));
-const isTest = (p) => p.startsWith(path.join(ROOT, 'tests'));
+const isTest = (p) => rel(p).startsWith('tests/');
 
 /** Occurrences of `name` as a whole identifier (property access counts). */
 function occurrences(name, text) {
@@ -103,8 +104,8 @@ for (const f of [...extFiles, ...electronFiles]) {
 const SCHEMA_ENTRY = /\bkey:\s*'([a-z][\w-]*(?:\.[\w-]+)+)'[\s\S]*?read:\s*\(\w+\)\s*=>\s*\w+(?:\.\w+)*\.(\w+)/g;
 const declared = [];
 for (const [f, t] of raw) {
-  if (/SettingsSchemas\.ts$/.test(f)) for (const m of t.matchAll(SCHEMA_ENTRY)) declared.push({ key: m[1], field: m[2], where: f });
-  if (/manifest\.ts$/.test(f) || /\/ext\/[^/]+\/main\.js$/.test(f)) for (const m of t.matchAll(MANIFEST_KEY)) declared.push({ key: m[1], where: f });
+  if (/SettingsSchemas\.ts$/.test(rel(f))) for (const m of t.matchAll(SCHEMA_ENTRY)) declared.push({ key: m[1], field: m[2], where: f });
+  if (/manifest\.ts$/.test(rel(f)) || /^ext\/[^/]+\/main\.js$/.test(rel(f))) for (const m of t.matchAll(MANIFEST_KEY)) declared.push({ key: m[1], where: f });
 }
 for (const { key, field, where } of declared) {
   const short = key.slice(key.lastIndexOf('.') + 1);
@@ -112,7 +113,7 @@ for (const { key, field, where } of declared) {
   for (const [p, t] of code) {
     if (p === where || isTest(p)) continue;
     if (field) {
-      if (p.includes('/aiSettings/')) continue;
+      if (rel(p).includes('/aiSettings/')) continue;
       reads += occurrences(field, t);
     } else {
       reads += t.split(`'${key}'`).length - 1 + t.split(`"${key}"`).length - 1;

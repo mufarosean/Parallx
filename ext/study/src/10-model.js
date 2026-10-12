@@ -992,12 +992,6 @@ function stNormalizeRubric(raw) {
   return out;
 }
 
-/** Stored form: '' for an empty rubric, so `= ''` reads as absent. */
-function stSerializeRubric(points) {
-  const norm = stNormalizeRubric(points);
-  return norm.length ? JSON.stringify(norm) : '';
-}
-
 /** Coerce a model's judgement into a StVerdict: points positional to the rubric, short arrays padded with misses. */
 function stNormalizeVerdict(raw, rubric) {
   const src = typeof raw === 'string' ? (stExtractJsonObject(raw) || {}) : (raw || {});

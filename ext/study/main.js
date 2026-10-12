@@ -1280,12 +1280,6 @@ function stNormalizeRubric(raw) {
   return out;
 }
 
-/** Stored form: '' for an empty rubric, so `= ''` reads as absent. */
-function stSerializeRubric(points) {
-  const norm = stNormalizeRubric(points);
-  return norm.length ? JSON.stringify(norm) : '';
-}
-
 /** Coerce a model's judgement into a StVerdict: points positional to the rubric, short arrays padded with misses. */
 function stNormalizeVerdict(raw, rubric) {
   const src = typeof raw === 'string' ? (stExtractJsonObject(raw) || {}) : (raw || {});
@@ -2237,23 +2231,6 @@ function stRowToQuestion(row) {
   };
 }
 
-function stRowToRun(row) {
-  return {
-    id: row.id,
-    materialId: row.material_id,
-    sectionId: row.section_id || 0,
-    model: row.model || '',
-    numCtx: row.num_ctx || 0,
-    startedAt: row.started_at || 0,
-    finishedAt: row.finished_at || 0,
-    status: row.status || 'running',
-    written: row.written || 0,
-    kept: row.kept || 0,
-    dropped: stParseJson(row.dropped_json, {}),
-    error: row.error || '',
-  };
-}
-
 function stRowToSession(row) {
   return {
     id: row.id,
@@ -2301,31 +2278,6 @@ function stRowToBank(row) {
     count: row.count || 0,
     importedAt: row.imported_at || 0,
   };
-}
-
-// ── Database ────────────────────────────────────────────────────────────────
-
-/** Open the per-extension database and apply db/migrations. False on failure. */
-async function stEnsureDatabase(api) {
-  if (!api || !api.database) {
-    console.error('[Study] api.database unavailable; cannot activate.');
-    return false;
-  }
-  _dbBridge = api.database;
-  const openResult = await api.database.open();
-  if (openResult && openResult.error) {
-    console.error('[Study] Database open failed:', openResult.error.message);
-    return false;
-  }
-  const toolPath = String(api.env?.toolPath || '');
-  const sep = toolPath.includes('\\') ? '\\' : '/';
-  const migrationsDir = toolPath + sep + 'db' + sep + 'migrations';
-  const res = await api.database.migrate(migrationsDir);
-  if (res && res.error) {
-    console.error('[Study] Migration failed:', res.error.message);
-    return false;
-  }
-  return true;
 }
 
 // ── Materials ───────────────────────────────────────────────────────────────
@@ -2660,20 +2612,6 @@ async function stFinishRun(id, { status = 'done', written = 0, kept = 0, dropped
     [stNow(), String(status), Number(written) || 0, Number(kept) || 0, stJsonCol(dropped || {}, '{}'), String(error || ''), id],
   );
   _emitDataChanged();
-}
-
-async function stGetRun(id) {
-  if (!id) return null;
-  const row = await db.get('SELECT * FROM st_runs WHERE id = ?', [id]);
-  return row ? stRowToRun(row) : null;
-}
-
-/** Generation runs, newest first, for one material or all. The sidebar's per-model record. */
-async function stListRuns({ materialId, limit = 50 } = {}) {
-  const rows = materialId
-    ? await db.all('SELECT * FROM st_runs WHERE material_id = ? ORDER BY started_at DESC LIMIT ?', [materialId, limit])
-    : await db.all('SELECT * FROM st_runs ORDER BY started_at DESC LIMIT ?', [limit]);
-  return rows.map(stRowToRun);
 }
 
 // ── Sessions ────────────────────────────────────────────────────────────────
