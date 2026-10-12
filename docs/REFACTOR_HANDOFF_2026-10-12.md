@@ -165,15 +165,125 @@ that say what went wrong, one way per structural job.
 
 ## 5. Decisions for the owner
 
-These are product calls, not refactors, and are untouched:
+These are product calls the audit found and the refactor left alone, since
+each removes or changes something a user could notice. Decide each one;
+the local session then does the work in one commit per decision. The
+recommendation is mine; the choice is yours.
 
-- the three suggestion services (about 1,080 lines) that nothing surfaces;
-- settings with no effect (`canvas.blockIds.enabled`,
-  `canvas.dataview.enabled`, `persona.*`, `chat.responseLength`,
-  `suggestions.*`, the retired autonomy flags);
-- the old boot migrations (the tools folder move, legacy properties,
-  legacy profiles);
-- `mcp.onOauthStderr` and `mcp.onOauthUrl`, which may be a missing feature.
+### 5.1 The three suggestion services
+
+What they are: `relatedContentService.ts`, `autoTaggingService.ts` and
+`proactiveSuggestionsService.ts` (934 lines) compute related pages, tag
+suggestions and proactive prompts from the vector index.
+
+What happens today: all three are constructed at every boot and listen to
+index updates. Their setting, `suggestions.enabled` in AI Settings, says
+"Nothing shows the suggestions yet, so this only costs embedding work;
+leave it off." The only things that reach them are seven chat commands
+(`chat/main.ts` around line 3378) that no menu, button or shortcut runs.
+Nothing in the UI shows a suggestion.
+
+Options:
+- **A. Delete them** (the three services, their service interfaces, the
+  seven commands, the `suggestions.*` settings). About 1,100 lines less,
+  no boot work, nothing a user loses because nothing shows them.
+- **B. Keep them and build the surface** that shows suggestions (a panel
+  or a page side rail). This is a feature, not a cleanup.
+- **C. Keep the code but stop constructing them at boot** until the
+  surface exists. Cheapest, but the dead code stays.
+
+Recommendation: A. If you want suggestions later, the git history keeps
+the code, and the vector index they read from is still there.
+
+### 5.2 Settings that do nothing
+
+Each of these appears in Settings or AI Settings, saves a value, and
+changes nothing:
+
+- `canvas.blockIds.enabled` and `canvas.dataview.enabled`
+  (`autonomySettingsSchemas.ts`): declared as feature flags; no code
+  reads them.
+- `persona.name`, `persona.description`, `persona.avatar` (AI Settings,
+  profile section): stored in the profile; no prompt or screen reads them.
+- `chat.responseLength` (AI Settings): stored in the profile; the chat
+  never applies it (the Creations extension has its own, working one).
+- `suggestions.*` (six keys): see 5.1.
+- `autonomy.heartbeat.enabled` and `autonomy.rail.enabled`: already
+  retired from the settings screen (`NO_ROW`), still in the schema and
+  the flag list.
+
+Options, per setting:
+- **Remove it** from the schema and the screen. A saved value in an
+  existing workspace is ignored, as it is today.
+- **Make it work.** `chat.responseLength` is the one with an obvious
+  meaning: a length hint in the chat prompt, as Creations does. `persona.*`
+  could go into the chat's system prompt. The two canvas flags and the
+  two autonomy flags have no feature behind them to turn on.
+
+Recommendation: remove the canvas flags, the autonomy flags and the
+`suggestions.*` keys now; decide `persona.*` and `chat.responseLength`
+together, since both are "how the assistant presents itself", and either
+wire both into the chat prompt or remove both.
+
+### 5.3 Migrations that run on every boot
+
+Three one-time migrations have no "done" marker, so they run each start:
+
+- **The tools folder move** (`electron/main.cjs`, the block after
+  `setupMediaStreamBridge`): copies any folder from `~/.parallx/tools/`
+  into the user extensions folder if it is not there yet. Cost: one
+  directory read per boot once the old folder is gone.
+- **Legacy canvas properties** (`legacyPropertyMigration.ts`, started
+  from `canvas/main.ts`): moves pre-database page properties into the
+  database, writing a JSON backup first; returns "nothing-to-migrate"
+  when the old tables are empty. Cost: a query per boot.
+- **Legacy AI profiles** (`_migrateLegacyProfiles` in
+  `unifiedAIConfigService.ts`): reshapes profiles saved in the old format
+  when the settings file loads.
+
+Only you know whether every workspace you still open has been through
+these at least once. The question for each: has every workspace you care
+about been opened since the migration shipped?
+
+Options:
+- **Delete the migration** (yes to the question above).
+- **Keep it, add a done marker** so it runs once per workspace, not per
+  boot. Small code; keeps safety for an old backup you might restore.
+- **Keep it as is.** Costs a little each boot, forever.
+
+Recommendation: delete the tools folder move (it is a year-old layout,
+and copying a folder you can copy by hand is not worth code on the boot
+path); keep the other two with a done marker, because a restored backup
+of an old workspace would otherwise lose its properties or profiles.
+
+### 5.4 MCP sign-in events nobody listens to
+
+What they are: when you sign in to an MCP server (`oauthBootstrap` in AI
+Settings → MCP), the main process already opens the sign-in URL in your
+browser, and also sends two events to the window, `mcp:oauth-url` and
+`mcp:oauth-stderr` (the URL, and the helper's log lines). The preload
+exposes them as `mcp.onOauthUrl` and `mcp.onOauthStderr`; nothing in the
+renderer subscribes, so the MCP section waits silently until sign-in
+finishes.
+
+Options:
+- **Finish the feature:** the MCP section shows "Opened your browser to
+  sign in" with the URL (so a blocked popup can be copied) and the
+  helper's log lines while it waits.
+- **Remove the two events** from the preload and the main process; the
+  browser still opens.
+
+Recommendation: finish it. It is a small UI change, and a sign-in that
+sits silent for a minute is the kind of thing that reads as broken.
+
+### 5.5 How to hand a decision to the local session
+
+One line per decision is enough, for example: "5.1 A; 5.2 remove the
+canvas and autonomy flags, wire persona and responseLength into the chat
+prompt; 5.3 delete the tools move, done markers for the other two; 5.4
+finish it." The session makes one commit per decision, with a test
+where the behaviour is visible (a setting gone from the schema, a
+migration that runs once, the MCP section showing the URL).
 
 ## 6. Where to read
 
