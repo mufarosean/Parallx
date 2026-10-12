@@ -53,6 +53,8 @@ import type { IChatMessage, IChatResponseChunk } from '../../../services/chatTyp
 import { takeFileReveal } from '../../fileReveal.js';
 import { PdfThumbnails } from './pdfThumbnails.js';
 import { PdfOutline } from './pdfOutline.js';
+import { PdfSearchBar } from './pdfSearchBar.js';
+import { pdfButton, labelButton } from './pdfButtons.js';
 
 // Inline-AI provider shape (chat extension's `chat.getInlineAIProvider`).
 type InlineAISendChat = (
@@ -111,12 +113,8 @@ export class PdfEditorPane extends EditorPane {
   private _fitBtn!: HTMLButtonElement;
   private _zoomInput!: HTMLInputElement;
 
-  // Search bar elements
-  private _searchInput!: HTMLInputElement;
-  private _matchCountEl!: HTMLElement;
-  private _searchVisible = false;
-  private _findCaseSensitive = false;
-  private _findWholeWord = false;
+  // Find widget
+  private _search: PdfSearchBar | null = null;
 
   // Side panel (Outline | Pages). _outlineVisible / _thumbnailVisible say
   // which side is showing while the panel is open.
@@ -369,7 +367,7 @@ export class PdfEditorPane extends EditorPane {
     // viewer, like the text editor's, so it never pushes the page down.
     this._searchBar = $('div');
     this._searchBar.classList.add('pdf-find-widget');
-    this._buildSearchBar();
+    this._search = new PdfSearchBar(this._searchBar, { eventBus: () => this._eventBus, source: this });
     hide(this._searchBar);
 
     // Body: outline + viewer
@@ -981,7 +979,7 @@ export class PdfEditorPane extends EditorPane {
     // still brings the highlight back.
     const spacer = document.createElement('span');
     spacer.classList.add('pdf-highlight-spacer');
-    const del = this._btn(ICON.trash, 'Delete Highlight');
+    const del = pdfButton(ICON.trash, 'Delete Highlight');
     del.classList.add('pdf-highlight-delete');
     del.addEventListener('click', () => {
       this._deleteHighlight(hl.id);
@@ -1519,7 +1517,7 @@ export class PdfEditorPane extends EditorPane {
     const nav = $('div');
     nav.classList.add('pdf-toolbar-cluster');
 
-    const prev = this._btn(ICON.chevronLeft, 'Previous Page');
+    const prev = pdfButton(ICON.chevronLeft, 'Previous Page');
     prev.addEventListener('click', () => this._pdfViewer?.previousPage());
 
     const pagePill = $('div');
@@ -1559,7 +1557,7 @@ export class PdfEditorPane extends EditorPane {
 
     pagePill.append(this._pageInput, sep, this._pageTotalEl, this._pageLabelEl);
 
-    const next = this._btn(ICON.chevronRight, 'Next Page');
+    const next = pdfButton(ICON.chevronRight, 'Next Page');
     next.addEventListener('click', () => this._pdfViewer?.nextPage());
 
     nav.append(prev, pagePill, next);
@@ -1568,7 +1566,7 @@ export class PdfEditorPane extends EditorPane {
     const zoom = $('div');
     zoom.classList.add('pdf-toolbar-cluster');
 
-    const zoomOut = this._btn(ICON.zoomOut, 'Zoom Out');
+    const zoomOut = pdfButton(ICON.zoomOut, 'Zoom Out');
     zoomOut.addEventListener('click', () => this._pdfViewer?.decreaseScale());
 
     // One pill: editable % input + preset dropdown chevron.
@@ -1589,7 +1587,7 @@ export class PdfEditorPane extends EditorPane {
     });
     this._zoomInput.addEventListener('blur', () => this._syncZoomInput());
 
-    const zoomPreset = this._btn(ICON.chevronDownSm, 'Zoom Presets');
+    const zoomPreset = pdfButton(ICON.chevronDownSm, 'Zoom Presets');
     zoomPreset.classList.add('pdf-toolbar-zoom-preset');
     zoomPreset.addEventListener('click', (e) => {
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -1598,11 +1596,11 @@ export class PdfEditorPane extends EditorPane {
 
     zoomPill.append(this._zoomInput, zoomPreset);
 
-    const zoomIn = this._btn(ICON.zoomIn, 'Zoom In');
+    const zoomIn = pdfButton(ICON.zoomIn, 'Zoom In');
     zoomIn.addEventListener('click', () => this._pdfViewer?.increaseScale());
 
     // Single fit button that alternates between the two fit modes.
-    this._fitBtn = this._btn(ICON.fitWidth, 'Fit Width');
+    this._fitBtn = pdfButton(ICON.fitWidth, 'Fit Width');
     this._fitBtn.addEventListener('click', () => this._toggleFitMode());
 
     zoom.append(zoomOut, zoomPill, zoomIn, this._fitBtn);
@@ -1615,18 +1613,18 @@ export class PdfEditorPane extends EditorPane {
     const right = $('div');
     right.classList.add('pdf-toolbar-cluster');
 
-    const searchBtn = this._btn(ICON.search, 'Find (Ctrl+F)');
-    searchBtn.addEventListener('click', () => this._toggleSearch());
+    const searchBtn = pdfButton(ICON.search, 'Find (Ctrl+F)');
+    searchBtn.addEventListener('click', () => this._search?.toggle());
 
-    this._panelBtn = this._btn(ICON.panelLeft, 'Outline And Pages');
+    this._panelBtn = pdfButton(ICON.panelLeft, 'Outline And Pages');
     this._panelBtn.setAttribute('aria-pressed', 'false');
     this._panelBtn.addEventListener('click', () => this._togglePanel());
 
-    this._invertBtn = this._btn(ICON.moon, 'Night Reading');
+    this._invertBtn = pdfButton(ICON.moon, 'Night Reading');
     this._invertBtn.addEventListener('click', () => this._toggleReadingDark());
 
     // Rarely-used actions live in the ⋯ menu (rotate, spread, scroll, print, open).
-    const moreBtn = this._btn(ICON.more, 'More Actions');
+    const moreBtn = pdfButton(ICON.more, 'More Actions');
     moreBtn.addEventListener('click', (e) => {
       this._showOverflowMenu(e.currentTarget as HTMLElement);
     });
@@ -1648,7 +1646,7 @@ export class PdfEditorPane extends EditorPane {
     if (!this._fitBtn) return;
     const isWidth = this._pdfViewer?.currentScaleValue === 'page-width';
     this._fitBtn.innerHTML = isWidth ? ICON.fitPage : ICON.fitWidth;
-    this._label(this._fitBtn, isWidth ? 'Fit Page' : 'Fit Width');
+    labelButton(this._fitBtn, isWidth ? 'Fit Page' : 'Fit Width');
   }
 
   // ── Overflow menu (rotate / spread / scroll / print / open) ────────────
@@ -1749,114 +1747,6 @@ export class PdfEditorPane extends EditorPane {
     });
 
     this._activeContextMenu = menu;
-  }
-
-  private _btn(svgOrText: string, title: string): HTMLButtonElement {
-    const b = document.createElement('button');
-    b.classList.add('pdf-toolbar-btn');
-    b.innerHTML = svgOrText;
-    this._label(b, title);
-    return b;
-  }
-
-  /** Name a button for screen readers and its tooltip, together. */
-  private _label(b: HTMLElement, title: string): void {
-    b.setAttribute('aria-label', title);
-    setupTooltip(b, title);
-  }
-
-  // ── Search bar ───────────────────────────────────────────────────────
-
-  private _buildSearchBar(): void {
-    // The field: input plus the match-case / whole-word toggles, in one
-    // bordered box (the app's find widget layout, without Replace: a PDF is
-    // read-only).
-    const field = $('div');
-    field.classList.add('pdf-find-field');
-
-    this._searchInput = document.createElement('input');
-    this._searchInput.type = 'text';
-    this._searchInput.classList.add('pdf-find-input', 'px-input-bare');
-    this._searchInput.placeholder = 'Find';
-    this._searchInput.spellcheck = false;
-    this._searchInput.setAttribute('aria-label', 'Find in document');
-    this._searchInput.addEventListener('input', () => this._dispatchFind('find'));
-    this._searchInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        this._dispatchFind('again', e.shiftKey);
-        e.preventDefault();
-      }
-      if (e.key === 'Escape') {
-        this._toggleSearch(false);
-        e.preventDefault();
-      }
-    });
-
-    const toggle = (text: string, label: string, get: () => boolean, set: (v: boolean) => void): HTMLButtonElement => {
-      const b = document.createElement('button');
-      b.classList.add('pdf-find-toggle');
-      b.textContent = text;
-      b.setAttribute('aria-label', label);
-      b.setAttribute('aria-pressed', 'false');
-      setupTooltip(b, label);
-      b.addEventListener('click', () => {
-        set(!get());
-        b.classList.toggle('active', get());
-        b.setAttribute('aria-pressed', String(get()));
-        this._dispatchFind('find');
-        this._searchInput.focus();
-      });
-      return b;
-    };
-    const caseBtn = toggle('Aa', 'Match Case', () => this._findCaseSensitive, (v) => { this._findCaseSensitive = v; });
-    const wordBtn = toggle('Ab|', 'Match Whole Word', () => this._findWholeWord, (v) => { this._findWholeWord = v; });
-    field.append(this._searchInput, caseBtn, wordBtn);
-
-    this._matchCountEl = $('span');
-    this._matchCountEl.classList.add('pdf-find-count');
-    this._matchCountEl.setAttribute('aria-live', 'polite');
-
-    const prevMatch = this._btn(ICON.chevronUp, 'Previous Match (Shift+Enter)');
-    prevMatch.addEventListener('click', () => this._dispatchFind('again', true));
-
-    const nextMatch = this._btn(ICON.chevronDown, 'Next Match (Enter)');
-    nextMatch.addEventListener('click', () => this._dispatchFind('again', false));
-
-    const closeBtn = this._btn(ICON.close, 'Close (Escape)');
-    closeBtn.addEventListener('click', () => this._toggleSearch(false));
-
-    this._searchBar.append(field, this._matchCountEl, prevMatch, nextMatch, closeBtn);
-  }
-
-  private _toggleSearch(forceState?: boolean): void {
-    this._searchVisible = forceState ?? !this._searchVisible;
-    if (this._searchVisible) {
-      show(this._searchBar);
-      this._searchInput.focus();
-      this._searchInput.select();
-      // Re-dispatch current query if any
-      if (this._searchInput.value) {
-        this._dispatchFind('find');
-      }
-    } else {
-      hide(this._searchBar);
-      // Clear search highlights
-      this._eventBus?.dispatch('findbarclose', { source: this });
-      this._matchCountEl.textContent = '';
-    }
-  }
-
-  private _dispatchFind(type: string, findPrevious = false): void {
-    if (!this._eventBus) return;
-    this._eventBus.dispatch('find', {
-      source: this,
-      type,
-      query: this._searchInput.value,
-      caseSensitive: this._findCaseSensitive,
-      entireWord: this._findWholeWord,
-      highlightAll: true,
-      findPrevious,
-    });
   }
 
   // ── Outline sidebar ──────────────────────────────────────────────────
@@ -2062,28 +1952,7 @@ export class PdfEditorPane extends EditorPane {
         if (typeof pageNumber === 'number') this._renderHighlightsForPage(pageNumber);
       });
 
-      this._eventBus.on('updatefindmatchescount', (evt: any) => {
-        const { current, total } = evt.matchesCount;
-        if (total > 0) {
-          this._matchCountEl.textContent = `${current} of ${total}`;
-        } else {
-          this._matchCountEl.textContent = '';
-        }
-      });
-
-      this._eventBus.on('updatefindcontrolstate', (evt: any) => {
-        const { state, matchesCount } = evt;
-        if (state === pdf.FindState.NOT_FOUND) {
-          this._matchCountEl.textContent = 'No matches';
-          this._searchBar.classList.add('is-not-found');
-        } else {
-          this._searchBar.classList.remove('is-not-found');
-          if (matchesCount) {
-            const { current, total } = matchesCount;
-            this._matchCountEl.textContent = total > 0 ? `${current} of ${total}` : '';
-          }
-        }
-      });
+      this._search?.attach(this._eventBus, pdf.FindState.NOT_FOUND);
 
       // ── Load document ──────────────────────────────────────────────
 
@@ -2255,7 +2124,7 @@ export class PdfEditorPane extends EditorPane {
     if (this._invertBtn) {
       this._invertBtn.classList.toggle('active', this._readingDark);
       this._invertBtn.innerHTML = this._readingDark ? ICON.sun : ICON.moon;
-      this._label(this._invertBtn, this._readingDark ? 'Day Reading' : 'Night Reading');
+      labelButton(this._invertBtn, this._readingDark ? 'Day Reading' : 'Night Reading');
       this._invertBtn.setAttribute('aria-pressed', String(this._readingDark));
     }
   }
@@ -2413,7 +2282,7 @@ export class PdfEditorPane extends EditorPane {
     bubble.appendChild(sep);
 
     const act = (icon: string, label: string, run: () => void): void => {
-      const b = this._btn(icon, label);
+      const b = pdfButton(icon, label);
       b.addEventListener('click', () => { run(); });
       bubble.appendChild(b);
     };
@@ -2508,11 +2377,7 @@ export class PdfEditorPane extends EditorPane {
         this._createHighlightFromSelection(e.item.id.slice('pdf.highlight.'.length));
       } else if (e.item.id === 'pdf.findInDocument') {
         const sel = this._capturedSelection.trim();
-        if (sel) {
-          this._toggleSearch(true);
-          this._searchInput.value = sel;
-          this._dispatchFind('find');
-        }
+        if (sel) this._search?.find(sel);
       } else if (e.item.id === 'canvas.captureNote') {
         this._captureSelectionToCanvas();
       } else if (e.item.id === 'canvas.captureImage') {
@@ -2598,7 +2463,7 @@ export class PdfEditorPane extends EditorPane {
    * the active pane — so the pane's own keydown never sees it.
    */
   showFind(): void {
-    this._toggleSearch(true);
+    this._search?.toggle(true);
   }
 
   private _onKeyDown(e: KeyboardEvent): void {
@@ -2607,7 +2472,7 @@ export class PdfEditorPane extends EditorPane {
     // Print lives in the ⋯ menu.
 
     // Don't intercept keyboard when search input or page input is focused
-    if (document.activeElement === this._searchInput ||
+    if (this._search?.ownsFocus() ||
         document.activeElement === this._pageInput) {
       return;
     }
@@ -2640,7 +2505,7 @@ export class PdfEditorPane extends EditorPane {
       case 'End':
         if (this._pdfViewer) { this._pdfViewer.currentPageNumber = this._pdfViewer.pagesCount; e.preventDefault(); } break;
       case 'Escape':
-        if (this._searchVisible) { this._toggleSearch(false); e.preventDefault(); }
+        if (this._search?.isOpen) { this._search.toggle(false); e.preventDefault(); }
         else if (this._panelOpen) { this._togglePanel(false); e.preventDefault(); }
         break;
     }
@@ -2743,7 +2608,7 @@ export class PdfEditorPane extends EditorPane {
     this._removeTestDebugHook();
 
     // Reset UI
-    this._searchVisible = false;
+    this._search?.reset();
     this._outlineVisible = false;
     this._thumbnailVisible = false;
   }
