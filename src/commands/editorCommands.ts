@@ -174,6 +174,11 @@ export const markdownOpenPreviewToSide: CommandDescriptor = {
     if (!activeEditor || activeEditor.typeId !== 'parallx.editor.file') return;
     if (!isMarkdownFile(activeEditor.name)) return;
 
+    // The preview input exists before the split: an emptied group waiting on
+    // an await is closed before the preview can land in it.
+    const { MarkdownPreviewInput } = await import('../editor/panes/markdownPreviewInput.js');
+    const previewInput = MarkdownPreviewInput.create(activeEditor as any);
+
     // Split right to create a new group
     const newGroup = editorGroupService.splitGroup(activeGroup.id, GroupDirection.Right);
     if (!newGroup) return;
@@ -182,10 +187,6 @@ export const markdownOpenPreviewToSide: CommandDescriptor = {
     if (newGroup.model.count > 0) {
       newGroup.model.closeEditor(0, true);
     }
-
-    // Create a MarkdownPreviewInput wrapping the source FileEditorInput (dynamic import)
-    const { MarkdownPreviewInput } = await import('../editor/panes/markdownPreviewInput.js');
-    const previewInput = MarkdownPreviewInput.create(activeEditor as any);
     newGroup.openEditor(previewInput, { pinned: true });
   },
 };
