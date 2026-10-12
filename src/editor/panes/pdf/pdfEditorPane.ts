@@ -52,6 +52,7 @@ import { SegmentedControl } from '../../../ui/segmentedControl.js';
 import type { IChatMessage, IChatResponseChunk } from '../../../services/chatTypes.js';
 import { takeFileReveal } from '../../fileReveal.js';
 import { PdfThumbnails } from './pdfThumbnails.js';
+import { PdfOutline } from './pdfOutline.js';
 
 // Inline-AI provider shape (chat extension's `chat.getInlineAIProvider`).
 type InlineAISendChat = (
@@ -125,11 +126,7 @@ export class PdfEditorPane extends EditorPane {
   private _outlineView!: HTMLElement;
   private _outlineEmpty!: HTMLElement;
   private _outlineVisible = false;
-  private _outline: PdfOutlineItem[] | null = null;
-  private _outlineRows: { row: HTMLElement; page: number; top: number | null }[] = [];
-  private _currentOutlineRow: HTMLElement | null = null;
-  private _viewTopPage = 1;
-  private _viewTop: number | null = null;
+  private _outline: PdfOutline | null = null;
 
   // Thumbnails
   private _thumbnailVisible = false;
@@ -406,6 +403,14 @@ export class PdfEditorPane extends EditorPane {
     this._outlineTree = $('div');
     this._outlineTree.classList.add('pdf-outline-tree');
     this._outlineView.appendChild(this._outlineTree);
+    this._outline = new PdfOutline(this._outlineTree, {
+      document: () => this._pdfDoc,
+      pageLabel: (pageNum) => this._pageLabels?.[pageNum - 1],
+      goToDestination: (dest) => { void this._linkService?.goToDestination(dest as string | any[]); },
+      scale: () => this._pdfViewer?.currentScale ?? 1,
+      viewHeight: () => this._viewerContainer?.clientHeight ?? 0,
+      isShowing: () => this._outlineVisible,
+    });
 
     this._outlineEmpty = $('div');
     this._outlineEmpty.classList.add('pdf-side-panel-empty');
@@ -1886,14 +1891,14 @@ export class PdfEditorPane extends EditorPane {
     show(this._outlineSash);
     this._outlineView.style.display = this._outlineVisible ? '' : 'none';
     this._thumbnailSidebar.style.display = this._thumbnailVisible ? '' : 'none';
-    const hasOutline = !!this._outline?.length;
+    const hasOutline = !!this._outline?.hasItems;
     this._outlineTree.style.display = hasOutline ? '' : 'none';
     this._outlineEmpty.style.display = hasOutline ? 'none' : '';
     if (this._thumbnailVisible) {
       this._thumbs?.observe();
       this._thumbs?.revealActive();
     }
-    if (this._outlineVisible) this._currentOutlineRow?.scrollIntoView({ block: 'nearest' });
+    if (this._outlineVisible) this._outline?.revealCurrent();
     // Restore persisted width
     this._globalStorage?.get('parallx.pdfOutlineWidth').then(stored => {
       if (stored) {
@@ -1940,267 +1945,6 @@ export class PdfEditorPane extends EditorPane {
         },
       });
     });
-  }
-
-  private _renderOutline(outline: PdfOutlineItem[]): void {
-    this._outlineTree.replaceChildren();
-    this._outlineRows = [];
-    this._currentOutlineRow = null;
-    this._buildOutlineNodes(outline, this._outlineTree, 0);
-    this._wireOutlineKeyboard();
-    void this._resolveOutlinePages();
-  }
-
-  /**
-   * Each outline row learns its page number (shown at the row's end) once the
-   * destinations resolve; the rows then mark where the reader is.
-   */
-  private async _resolveOutlinePages(): Promise<void> {
-    const doc = this._pdfDoc;
-    if (!doc) return;
-    const rows = Array.from(this._outlineTree.querySelectorAll<HTMLElement>('.pdf-outline-item'));
-    const found: { row: HTMLElement; page: number; top: number | null }[] = [];
-    for (const row of rows) {
-      const dest = (row as any).__pdfDest as string | any[] | undefined;
-      if (!dest) continue;
-      try {
-        const explicit = typeof dest === 'string' ? await doc.getDestination(dest) : dest;
-        const ref = explicit?.[0];
-        const index = ref == null ? -1
-          : typeof ref === 'number' ? ref
-          : await doc.getPageIndex(ref);
-        if (index < 0 || doc !== this._pdfDoc) continue;
-        const page = index + 1;
-        const pageEl = row.querySelector('.pdf-outline-page');
-        if (pageEl) pageEl.textContent = this._pageLabels?.[index] ?? String(page);
-        // Where on the page the entry starts (PDF units, measured up from the
-        // bottom), when the destination says: XYZ carries it third, FitH and
-        // FitBH second.
-        const kind = explicit?.[1]?.name;
-        const rawTop = kind === 'XYZ' ? explicit?.[3] : (kind === 'FitH' || kind === 'FitBH') ? explicit?.[2] : null;
-        found.push({ row, page, top: typeof rawTop === 'number' ? rawTop : null });
-      } catch { /* a broken destination just has no page number */ }
-    }
-    if (doc !== this._pdfDoc) return;
-    this._outlineRows = found;
-    this._markCurrentOutlineRow(this._viewTopPage, this._viewTop);
-  }
-
-  /**
-   * The current section: the last outline entry (in outline order) that
-   * starts above the top of the view or just under it (a heading near the
-   * top of the view is the one being read): within a third of the view, and
-   * at most an inch and a half, so a zoomed-out view showing a whole page
-   * does not jump to its last heading. `viewTop` is the PDF y at the view's
-   * top edge; null means the top of the page. Before the first entry, the
-   * first entry.
-   */
-  private _markCurrentOutlineRow(pageNum: number, viewTop: number | null): void {
-    // CSS px = PDF pt × scale × 96/72.
-    const scale = (this._pdfViewer?.currentScale ?? 1) * (96 / 72);
-    const SLACK = Math.min((this._viewerContainer?.clientHeight ?? 0) / 3 / scale, 108);
-    let best: HTMLElement | null = null;
-    for (const { row, page, top } of this._outlineRows) {
-      const started = page < pageNum
-        || (page === pageNum && (top === null || viewTop === null || top + SLACK >= viewTop));
-      if (started) best = row;
-    }
-    best ??= this._outlineRows[0]?.row ?? null;
-    if (best === this._currentOutlineRow) return;
-    this._currentOutlineRow?.classList.remove('is-current');
-    this._currentOutlineRow = best;
-    if (best) {
-      best.classList.add('is-current');
-      if (this._outlineVisible && best.offsetParent) best.scrollIntoView({ block: 'nearest' });
-    }
-  }
-
-  private _buildOutlineNodes(
-    items: PdfOutlineItem[],
-    parent: HTMLElement,
-    depth: number,
-  ): void {
-    for (const item of items) {
-      const hasChildren = item.items?.length > 0;
-
-      const row = $('div');
-      row.classList.add('pdf-outline-item');
-      if (hasChildren) row.classList.add('pdf-outline-item--parent');
-      row.style.paddingLeft = `${depth * 14 + 4}px`;
-      row.tabIndex = -1; // focusable via roving tabindex
-      row.setAttribute('role', 'treeitem');
-
-      // Store destination on the DOM node for keyboard Enter navigation
-      if (item.dest) {
-        (row as any).__pdfDest = item.dest;
-      }
-
-      // Toggle arrow
-      const toggleEl = $('span');
-      toggleEl.classList.add('pdf-outline-toggle');
-      if (hasChildren) {
-        toggleEl.innerHTML = ICON.chevronDown;
-      } else {
-        toggleEl.classList.add('pdf-outline-toggle--leaf');
-      }
-      row.appendChild(toggleEl);
-
-      const title = $('span');
-      title.classList.add('pdf-outline-title');
-      title.textContent = item.title;
-      if (item.bold) title.style.fontWeight = 'bold';
-      if (item.italic) title.style.fontStyle = 'italic';
-      row.appendChild(title);
-
-      const pageEl = $('span');
-      pageEl.classList.add('pdf-outline-page');
-      row.appendChild(pageEl);
-      parent.appendChild(row);
-
-      // Build children container and wire collapse
-      let childContainer: HTMLElement | null = null;
-      if (hasChildren) {
-        childContainer = $('div');
-        childContainer.classList.add('pdf-outline-children');
-        childContainer.setAttribute('role', 'group');
-        this._buildOutlineNodes(item.items, childContainer, depth + 1);
-        parent.appendChild(childContainer);
-      }
-
-      // Collapse helper (captured by closures below)
-      const doToggle = () => {
-        if (!childContainer) return;
-        const collapsed = childContainer.classList.toggle('pdf-outline-children--collapsed');
-        toggleEl.innerHTML = collapsed ? ICON.chevronRight : ICON.chevronDown;
-      };
-
-      // Click chevron → toggle only (no navigation)
-      toggleEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        doToggle();
-      });
-
-      // Click title → navigate only (no collapse)
-      title.addEventListener('click', () => {
-        if (item.dest && this._linkService) {
-          void this._linkService.goToDestination(item.dest);
-        }
-      });
-    }
-  }
-
-  /**
-   * Wire keyboard navigation on the outline tree (B2.3).
-   *
-   * ArrowUp/Down — move focus between visible items
-   * ArrowLeft   — collapse node (or move to parent if already collapsed/leaf)
-   * ArrowRight  — expand node (or move to first child if already expanded)
-   * Enter       — navigate to the focused item's destination
-   */
-  private _wireOutlineKeyboard(): void {
-    this._outlineTree.setAttribute('role', 'tree');
-
-    this._outlineTree.addEventListener('keydown', (e) => {
-      const currentItem = document.activeElement as HTMLElement | null;
-      if (!currentItem || !currentItem.classList.contains('pdf-outline-item')) return;
-
-      switch (e.key) {
-        case 'ArrowDown': {
-          e.preventDefault();
-          const next = this._getNextVisibleOutlineItem(currentItem);
-          if (next) next.focus();
-          break;
-        }
-        case 'ArrowUp': {
-          e.preventDefault();
-          const prev = this._getPreviousVisibleOutlineItem(currentItem);
-          if (prev) prev.focus();
-          break;
-        }
-        case 'ArrowRight': {
-          e.preventDefault();
-          const isParent = currentItem.classList.contains('pdf-outline-item--parent');
-          if (!isParent) break;
-          const childContainer = currentItem.nextElementSibling;
-          if (childContainer && childContainer.classList.contains('pdf-outline-children')) {
-            const isCollapsed = childContainer.classList.contains('pdf-outline-children--collapsed');
-            if (isCollapsed) {
-              // Expand
-              const toggle = currentItem.querySelector('.pdf-outline-toggle') as HTMLElement | null;
-              toggle?.click();
-            } else {
-              // Move to first child
-              const firstChild = childContainer.querySelector('.pdf-outline-item') as HTMLElement | null;
-              if (firstChild) firstChild.focus();
-            }
-          }
-          break;
-        }
-        case 'ArrowLeft': {
-          e.preventDefault();
-          const isParent = currentItem.classList.contains('pdf-outline-item--parent');
-          const childContainer = currentItem.nextElementSibling;
-          const isExpanded = isParent && childContainer
-            && childContainer.classList.contains('pdf-outline-children')
-            && !childContainer.classList.contains('pdf-outline-children--collapsed');
-
-          if (isExpanded) {
-            // Collapse
-            const toggle = currentItem.querySelector('.pdf-outline-toggle') as HTMLElement | null;
-            toggle?.click();
-          } else {
-            // Move to parent
-            const parentGroup = currentItem.parentElement;
-            if (parentGroup && parentGroup.classList.contains('pdf-outline-children')) {
-              // Parent row is the sibling before this group container
-              const parentRow = parentGroup.previousElementSibling as HTMLElement | null;
-              if (parentRow && parentRow.classList.contains('pdf-outline-item')) {
-                parentRow.focus();
-              }
-            }
-          }
-          break;
-        }
-        case 'Enter': {
-          e.preventDefault();
-          const dest = (currentItem as any).__pdfDest;
-          if (dest && this._linkService) {
-            void this._linkService.goToDestination(dest);
-          }
-          break;
-        }
-      }
-    });
-
-    // Set initial roving tabindex on first item
-    const firstItem = this._outlineTree.querySelector('.pdf-outline-item') as HTMLElement | null;
-    if (firstItem) firstItem.tabIndex = 0;
-  }
-
-  /** Get the next visible outline item in DOM order. */
-  private _getNextVisibleOutlineItem(current: HTMLElement): HTMLElement | null {
-    const allItems = Array.from(this._outlineTree.querySelectorAll<HTMLElement>('.pdf-outline-item'));
-    const visibleItems = allItems.filter(el => this._isOutlineItemVisible(el));
-    const idx = visibleItems.indexOf(current);
-    return idx >= 0 && idx < visibleItems.length - 1 ? visibleItems[idx + 1] : null;
-  }
-
-  /** Get the previous visible outline item in DOM order. */
-  private _getPreviousVisibleOutlineItem(current: HTMLElement): HTMLElement | null {
-    const allItems = Array.from(this._outlineTree.querySelectorAll<HTMLElement>('.pdf-outline-item'));
-    const visibleItems = allItems.filter(el => this._isOutlineItemVisible(el));
-    const idx = visibleItems.indexOf(current);
-    return idx > 0 ? visibleItems[idx - 1] : null;
-  }
-
-  /** Check if an outline item is visible (not inside a collapsed ancestor). */
-  private _isOutlineItemVisible(el: HTMLElement): boolean {
-    let parent = el.parentElement;
-    while (parent && parent !== this._outlineTree) {
-      if (parent.classList.contains('pdf-outline-children--collapsed')) return false;
-      parent = parent.parentElement;
-    }
-    return true;
   }
 
   // ── Load PDF ─────────────────────────────────────────────────────────
@@ -2290,9 +2034,7 @@ export class PdfEditorPane extends EditorPane {
       this._eventBus.on('updateviewarea', (evt: any) => {
         const loc = evt?.location;
         if (!loc) return;
-        this._viewTopPage = loc.pageNumber;
-        this._viewTop = typeof loc.top === 'number' ? loc.top : null;
-        this._markCurrentOutlineRow(this._viewTopPage, this._viewTop);
+        this._outline?.updateViewArea(loc.pageNumber, typeof loc.top === 'number' ? loc.top : null);
       });
 
       this._eventBus.on('pagechanging', (evt: any) => {
@@ -2436,16 +2178,8 @@ export class PdfEditorPane extends EditorPane {
       // The panel opens on the side last chosen, except that a document
       // with no outline opens on its pages.
       const storedSide = await this._globalStorage?.get('parallx.pdfPanelSide');
-      if (outline?.length) {
-        this._outline = outline;
-        this._renderOutline(outline);
-        this._panelSide = storedSide === 'pages' ? 'pages' : 'outline';
-      } else {
-        this._outline = null;
-        this._outlineTree.replaceChildren();
-        this._outlineRows = [];
-        this._panelSide = 'pages';
-      }
+      this._outline?.render(outline);
+      this._panelSide = outline?.length && storedSide !== 'pages' ? 'outline' : 'pages';
       this._panelSwitch.value = this._panelSide;
       if (this._panelOpen) this._applyPanel();
 
@@ -3001,10 +2735,9 @@ export class PdfEditorPane extends EditorPane {
     }
 
     this._viewerEl?.replaceChildren();
-    this._outlineTree?.replaceChildren();
+    this._outline?.clear();
     this._thumbs?.clear();
     this._clearSelectionOverlay();
-    this._outline = null;
     this._pageLabels = null;
     this._currentInput = null;
     this._removeTestDebugHook();
@@ -3013,10 +2746,6 @@ export class PdfEditorPane extends EditorPane {
     this._searchVisible = false;
     this._outlineVisible = false;
     this._thumbnailVisible = false;
-    this._outlineRows = [];
-    this._currentOutlineRow = null;
-    this._viewTopPage = 1;
-    this._viewTop = null;
   }
 
   private _showError(msg: string): void {
