@@ -23,6 +23,8 @@
    app wires through dependency injection; implementations sit beside it in
    `src/services/`.
 
+- `docs/SELF_DESCRIBING_UI_DESIGN.md`: where the UI layer is going (the kit as the one vocabulary, the scene, the ratchets) and the order it gets there.
+
 ## Glossary
 
 One idea, one word, in the UI and in code:

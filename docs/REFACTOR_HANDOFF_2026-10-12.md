@@ -219,6 +219,14 @@ move the same code.
   match the current code; confirm against a live turn with logging before
   spending time on it.
 
+### After the splits: the self-describing UI
+
+`docs/SELF_DESCRIBING_UI_DESIGN.md` is the full design and build order
+for the next phase: every control made through the kit from a
+declaration, a live scene of what is on screen, three ratchets, probes
+by id, docs from the registries. Its section 9 is the step list; start
+at step 1 once the splits above are done.
+
 ### Phases 7 to 10
 
 As the audit lays them out: renames one per commit, Prettier once, errors
