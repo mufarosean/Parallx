@@ -47,6 +47,8 @@ import { PdfSelectionActions } from './pdfSelectionActions.js';
 import { PdfSelectionMenu } from './pdfSelectionMenu.js';
 import { PdfToolbar } from './pdfToolbar.js';
 import { showOverflowMenu, showZoomPresets } from './pdfToolbarMenus.js';
+import { applyViewState, parseViewState, readViewState, type PdfViewState } from './pdfViewState.js';
+import { installPdfDebugHook, removePdfDebugHook } from './pdfDebugHook.js';
 import { SegmentedControl } from '../../../ui/segmentedControl.js';
 import { takeFileReveal } from '../../fileReveal.js';
 import { PdfThumbnails } from './pdfThumbnails.js';
@@ -149,8 +151,6 @@ export class PdfEditorPane extends EditorPane {
   // ── M84: inline AI + canvas partnership ──────────────────────────────
   private _commandService: IPaneCommandService | undefined;
 
-  // ── View state (page + scale persistence) ────────────────────────────
-
   constructor() {
     super(PANE_ID);
   }
@@ -169,13 +169,7 @@ export class PdfEditorPane extends EditorPane {
   // ── View state persistence ───────────────────────────────────────────
 
   protected override savePaneViewState(): Record<string, unknown> {
-    const page = this._pdfViewer?.currentPageNumber ?? 1;
-    const scaleValue = this._pdfViewer?.currentScaleValue ?? this._scaleValue;
-    const scrollLeft = this._viewerContainer?.scrollLeft ?? 0;
-    // scrollTop is the EXACT reading position; page alone lands the user at
-    // the top of the page they were halfway down.
-    const scrollTop = this._viewerContainer?.scrollTop ?? 0;
-    return { page, scaleValue, scrollLeft, scrollTop };
+    return readViewState(this._pdfViewer, this._viewerContainer ?? null, this._scaleValue);
   }
 
   /**
@@ -184,9 +178,7 @@ export class PdfEditorPane extends EditorPane {
    * are already up — the workbench restores after setInput resolves, which
    * can land either side of pagesinit).
    */
-  private _pendingViewState: {
-    page?: number; scaleValue?: string; scrollLeft?: number; scrollTop?: number;
-  } | null = null;
+  private _pendingViewState: PdfViewState | null = null;
   private _pagesInited = false;
   /**
    * The group has shown this document (laid out, view state restored). A
@@ -196,12 +188,7 @@ export class PdfEditorPane extends EditorPane {
   private _shownSinceLoad = false;
 
   protected override restorePaneViewState(state: Record<string, unknown>): void {
-    this._pendingViewState = {
-      page: typeof state.page === 'number' ? state.page : undefined,
-      scaleValue: typeof state.scaleValue === 'string' ? state.scaleValue : undefined,
-      scrollLeft: typeof state.scrollLeft === 'number' ? state.scrollLeft : undefined,
-      scrollTop: typeof state.scrollTop === 'number' ? state.scrollTop : undefined,
-    };
+    this._pendingViewState = parseViewState(state);
     if (this._pagesInited) this._applyPendingViewState();
   }
 
@@ -209,123 +196,9 @@ export class PdfEditorPane extends EditorPane {
     const pending = this._pendingViewState;
     if (!pending || !this._pdfViewer) return;
     this._pendingViewState = null;
-    if (pending.scaleValue) {
-      this._scaleValue = pending.scaleValue;
-      this._pdfViewer.currentScaleValue = pending.scaleValue;
-    }
-    if (pending.page && pending.page >= 1 && pending.page <= (this._pdfDoc?.numPages ?? 1)) {
-      this._pdfViewer.currentPageNumber = pending.page;
-    }
-    // Absolute offsets AFTER the page jump: pdf.js scrolls to the page top
-    // synchronously, then the exact reading position wins.
-    if (this._viewerContainer) {
-      if (typeof pending.scrollTop === 'number' && pending.scrollTop > 0) {
-        this._viewerContainer.scrollTop = pending.scrollTop;
-      }
-      if (typeof pending.scrollLeft === 'number' && pending.scrollLeft > 0) {
-        this._viewerContainer.scrollLeft = pending.scrollLeft;
-      }
-    }
+    if (pending.scaleValue) this._scaleValue = pending.scaleValue;
+    applyViewState(pending, this._pdfViewer, this._viewerContainer ?? null, this._pdfDoc?.numPages ?? 1);
     this._toolbarView?.showScale(this._pdfViewer.currentScale, this._pdfViewer.currentScaleValue);
-  }
-
-  private _installTestDebugHook(): void {
-    if (!(globalThis as any).parallxElectron?.testMode) {
-      return;
-    }
-
-    (globalThis as any).__parallxPdfDebug = {
-      getState: () => this._collectDebugState(),
-      setScaleValue: (value: string) => {
-        this._setScaleValue(value);
-        return this._collectDebugState();
-      },
-      setNumericScale: (value: number) => {
-        if (this._pdfViewer) {
-          this._pdfViewer.currentScale = value;
-        }
-        return this._collectDebugState();
-      },
-    };
-  }
-
-  private _removeTestDebugHook(): void {
-    if ((globalThis as any).__parallxPdfDebug?.getState === undefined) {
-      return;
-    }
-    delete (globalThis as any).__parallxPdfDebug;
-  }
-
-  private _collectDebugState(): Record<string, unknown> {
-    const pageView = this._pdfViewer?.getPageView(0) as any;
-    const pageDiv = pageView?.div ?? this._viewerContainer?.querySelector('.page');
-    const canvas = pageView?.canvas ?? pageDiv?.querySelector('canvas');
-    const textLayerDiv = pageView?.textLayer?.div ?? pageDiv?.querySelector('.textLayer');
-    const rectOf = (node: Element | null | undefined) => {
-      if (!node) {
-        return null;
-      }
-      const rect = node.getBoundingClientRect();
-      return {
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height,
-      };
-    };
-    const fonts = typeof document !== 'undefined' && 'fonts' in document
-      ? Array.from(document.fonts as FontFaceSet).slice(0, 40).map((font) => {
-        const face = font as FontFace;
-        return {
-          family: face.family,
-          status: face.status,
-          weight: face.weight,
-          style: face.style,
-        };
-      })
-      : [];
-
-    return {
-      currentScale: this._pdfViewer?.currentScale ?? null,
-      currentScaleValue: this._pdfViewer?.currentScaleValue ?? null,
-      pagesCount: this._pdfViewer?.pagesCount ?? 0,
-      devicePixelRatio: globalThis.devicePixelRatio ?? 1,
-      pageView: pageView ? {
-        renderingState: pageView.renderingState ?? null,
-        scale: pageView.scale ?? null,
-        hasRestrictedScaling: pageView.hasRestrictedScaling ?? null,
-      } : null,
-      pageRect: rectOf(pageDiv),
-      canvas: canvas ? {
-        width: (canvas as HTMLCanvasElement).width,
-        height: (canvas as HTMLCanvasElement).height,
-        styleWidth: (canvas as HTMLElement).style.width || null,
-        styleHeight: (canvas as HTMLElement).style.height || null,
-        rect: rectOf(canvas),
-      } : null,
-      textLayer: textLayerDiv ? {
-        rect: rectOf(textLayerDiv),
-        spanCount: textLayerDiv.querySelectorAll('span').length,
-      } : null,
-      selectionOverlay: {
-        rootCount: this._viewerContainer?.querySelectorAll('.pdf-selection-overlay-root').length ?? 0,
-        boxCount: this._viewerContainer?.querySelectorAll('.pdf-selection-overlay-box').length ?? 0,
-        boxes: Array.from(this._viewerContainer?.querySelectorAll<HTMLElement>('.pdf-selection-overlay-box') ?? []).slice(0, 20).map((box) => rectOf(box)),
-        endOfContent: (() => {
-          const endOfContent = this._viewerContainer?.querySelector<HTMLElement>('.textLayer .endOfContent');
-          if (!endOfContent) {
-            return null;
-          }
-          return {
-            parentClassName: endOfContent.parentElement?.className ?? null,
-            widthStyle: endOfContent.style.width || null,
-            heightStyle: endOfContent.style.height || null,
-            rect: rectOf(endOfContent),
-          };
-        })(),
-      },
-      fonts,
-    };
   }
 
   // ── DOM setup ────────────────────────────────────────────────────────
@@ -857,7 +730,11 @@ export class PdfEditorPane extends EditorPane {
       // one call, an early find waits for the document and then runs.
       this._pdfViewer.setDocument(this._pdfDoc);
       this._linkService.setDocument(this._pdfDoc, null);
-      this._installTestDebugHook();
+      installPdfDebugHook({
+        viewer: () => this._pdfViewer,
+        container: () => this._viewerContainer ?? null,
+        setScaleValue: (value) => this._setScaleValue(value),
+      });
 
       // Update toolbar page count
       this._toolbarView?.setPageCount(this._pdfDoc.numPages);
@@ -1105,7 +982,7 @@ export class PdfEditorPane extends EditorPane {
     this._selectionOverlay.clear();
     this._pageLabels = null;
     this._currentInput = null;
-    this._removeTestDebugHook();
+    removePdfDebugHook();
 
     // Reset UI
     this._search?.reset();

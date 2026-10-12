@@ -281,6 +281,17 @@ async function main() {
       log('pdf', `${parent}#${i}: ${await subPick(parent, i)} -> ${await viewerClass()}`);
       await page.keyboard.press('Escape');
     }
+    // Away and back: the reader returns to the same page and scroll offset.
+    await page.evaluate(() => { const c = document.querySelector('.pdf-viewer-container'); c.scrollTop = c.scrollHeight * 0.6; });
+    await page.waitForTimeout(800);
+    const beforeAway = await page.evaluate(() => ({ top: Math.round(document.querySelector('.pdf-viewer-container').scrollTop), page: document.querySelector('.pdf-toolbar-page-input')?.value }));
+    await openFile(page, 'alpha.md');
+    await page.waitForTimeout(800);
+    await openFile(page, 'reading.pdf');
+    await page.waitForTimeout(1_500);
+    const afterBack = await page.evaluate(() => ({ top: Math.round(document.querySelector('.pdf-viewer-container')?.scrollTop ?? -1), page: document.querySelector('.pdf-toolbar-page-input')?.value }));
+    log('pdf', `away and back: before=${JSON.stringify(beforeAway)} after=${JSON.stringify(afterBack)}`);
+    log('pdf', `test hook: ${await page.evaluate(() => { const d = window.__parallxPdfDebug; if (typeof d?.getState !== 'function') return 'not installed'; const s = d.getState(); return `pages=${s.pagesCount} scale=${s.currentScaleValue} canvas=${!!s.canvas}`; })}`);
     // Add to Canvas Note: the passage goes to a canvas page and its new
     // highlight links back. Last, since the canvas page it opens hides the PDF.
     const noted = await page.evaluate(async () => {
