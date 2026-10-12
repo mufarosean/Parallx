@@ -640,6 +640,17 @@ cells, month chips, calendar rows, colour swatches. The probe checks the
 Today tab's ids and opens the task popover by command to find its
 surface, title and save button.
 
+PDF viewer done 2026-10-12, in the cloud. `pdfButton` takes an id and an
+optional pressed reader, so the toolbar (page arrows and field, zoom
+field, presets, in, out, fit, find, panel, night reading, more), the find
+bar (query, match case, whole word, previous, next, close), the
+highlight popover as a surface (colours, delete, note, continue in chat,
+ask, send) and the selection bubble as a surface (highlight colours,
+copy, ask AI, add to note, more) are declared. Undeclared: outline rows,
+thumbnails, highlight tabs in the margin, canvas-link rows. The probe
+writes a one-page PDF by hand (`tinyPdf` in `tests/probes/scene.mjs`),
+opens it through quick open, and checks the toolbar's ids.
+
 In this order, because the first three are already split into panes and
 the last two are the largest: worksheet, planner, the PDF viewer
 (`src/editor/panes/pdf/`), explorer, search, dashboard, settings (the

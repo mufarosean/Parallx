@@ -5,6 +5,7 @@
 // discussion about the passage that is saved on the highlight. The panel
 // changes the highlight in place and asks its host to save and redraw.
 
+import { createSurface, declareControl } from '../../../ui/kit.js';
 import type { IChatMessage } from '../../../services/chatTypes.js';
 import { setupTooltip } from '../../../ui/tooltip.js';
 import { ICON } from './pdfIcons.js';
@@ -43,6 +44,7 @@ export interface HighlightPopover {
 export function openHighlightPopover(hl: PdfHighlight, anchor: DOMRect, host: HighlightPopoverHost): HighlightPopover {
   const pop = document.createElement('div');
   pop.classList.add('pdf-highlight-popover');
+  createSurface(pop, { id: 'pdf.highlight', owner: 'core', label: 'Highlight' });
 
   const swatches = document.createElement('div');
   swatches.classList.add('pdf-highlight-swatches');
@@ -53,6 +55,7 @@ export function openHighlightPopover(hl: PdfHighlight, anchor: DOMRect, host: Hi
     sw.style.backgroundColor = highlightSolid(c.rgba);
     sw.setAttribute('aria-label', c.label);
     setupTooltip(sw, c.label);
+    declareControl(sw, { id: `pdf.highlight.colour.${c.key}`, label: c.label, state: () => ({ kind: 'pressed', value: sw.classList.contains('selected') }) });
     sw.addEventListener('click', () => {
       host.recolor(hl, c.key);
       swatches.querySelectorAll('.pdf-highlight-swatch').forEach((n) => n.classList.remove('selected'));
@@ -64,7 +67,7 @@ export function openHighlightPopover(hl: PdfHighlight, anchor: DOMRect, host: Hi
   // still brings the highlight back.
   const spacer = document.createElement('span');
   spacer.classList.add('pdf-highlight-spacer');
-  const del = pdfButton(ICON.trash, 'Delete Highlight');
+  const del = pdfButton(ICON.trash, 'Delete Highlight', 'pdf.highlight.delete');
   del.classList.add('pdf-highlight-delete');
   del.addEventListener('click', () => host.remove(hl));
   swatches.append(spacer, del);
@@ -77,6 +80,7 @@ export function openHighlightPopover(hl: PdfHighlight, anchor: DOMRect, host: Hi
   const ta = document.createElement('textarea');
   ta.classList.add('pdf-highlight-note');
   ta.placeholder = 'Add a note…';
+  declareControl(ta, { id: 'pdf.highlight.note', label: 'Note', kind: 'input', state: () => ({ kind: 'value', value: ta.value }) });
   ta.value = hl.note;
   ta.addEventListener('input', () => {
     hl.note = ta.value;
@@ -191,6 +195,7 @@ function buildThreadSection(parent: HTMLElement, hl: PdfHighlight, host: Highlig
   continueBtn.innerHTML = `<span class="pdf-highlight-continue-icon">${ICON.messages}</span>Continue in Chat`;
   setupTooltip(continueBtn, 'Open this discussion in the main chat panel');
   continueBtn.addEventListener('click', () => host.continueInChat(hl));
+  declareControl(continueBtn, { id: 'pdf.highlight.continueInChat', label: 'Continue in Chat' });
   header.appendChild(continueBtn);
   section.appendChild(header);
 
@@ -219,11 +224,13 @@ function buildThreadSection(parent: HTMLElement, hl: PdfHighlight, host: Highlig
   input.rows = 1;
   input.placeholder = 'Ask about this passage…';
   input.setAttribute('aria-label', 'Ask AI about this passage');
+  declareControl(input, { id: 'pdf.highlight.ask', label: 'Ask AI about this passage', kind: 'input', state: () => ({ kind: 'value', value: input.value }) });
   const sendBtn = document.createElement('button');
   sendBtn.classList.add('pdf-highlight-ask-send');
   sendBtn.innerHTML = ICON.send;
   sendBtn.setAttribute('aria-label', 'Ask AI');
   setupTooltip(sendBtn, 'Ask AI');
+  declareControl(sendBtn, { id: 'pdf.highlight.send', label: 'Ask AI', kind: 'iconButton' });
   inputRow.appendChild(input);
   inputRow.appendChild(sendBtn);
   section.appendChild(inputRow);

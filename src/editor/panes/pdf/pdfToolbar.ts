@@ -6,6 +6,7 @@
 // the right Find, the side panel, night reading and the ⋯ menu. The pane
 // moves the viewer; the toolbar shows where it is.
 
+import { declareControl } from '../../../ui/kit.js';
 import { $, hide, show } from '../../../ui/dom.js';
 import { setupTooltip } from '../../../ui/tooltip.js';
 import { ICON } from './pdfIcons.js';
@@ -44,13 +45,14 @@ export class PdfToolbar {
     const nav = $('div');
     nav.classList.add('pdf-toolbar-cluster');
 
-    const prev = pdfButton(ICON.chevronLeft, 'Previous Page');
+    const prev = pdfButton(ICON.chevronLeft, 'Previous Page', 'pdf.previousPage');
     prev.addEventListener('click', () => _host.previousPage());
 
     const pagePill = $('div');
     pagePill.classList.add('pdf-toolbar-pill');
 
     this._pageInput = document.createElement('input');
+    declareControl(this._pageInput, { id: 'pdf.page', label: 'Page', kind: 'input', state: () => ({ kind: 'value', value: this._pageInput?.value ?? '' }) });
     this._pageInput.type = 'text';
     this._pageInput.classList.add('pdf-toolbar-page-input', 'px-input-bare');
     this._pageInput.setAttribute('aria-label', 'Page number');
@@ -80,7 +82,7 @@ export class PdfToolbar {
 
     pagePill.append(this._pageInput, sep, this._pageTotal, this._pageLabel);
 
-    const next = pdfButton(ICON.chevronRight, 'Next Page');
+    const next = pdfButton(ICON.chevronRight, 'Next Page', 'pdf.nextPage');
     next.addEventListener('click', () => _host.nextPage());
 
     nav.append(prev, pagePill, next);
@@ -89,7 +91,7 @@ export class PdfToolbar {
     const zoom = $('div');
     zoom.classList.add('pdf-toolbar-cluster');
 
-    const zoomOut = pdfButton(ICON.zoomOut, 'Zoom Out');
+    const zoomOut = pdfButton(ICON.zoomOut, 'Zoom Out', 'pdf.zoomOut');
     zoomOut.addEventListener('click', () => _host.zoomOut());
 
     // One pill: the editable percentage and the presets chevron.
@@ -97,6 +99,7 @@ export class PdfToolbar {
     zoomPill.classList.add('pdf-toolbar-pill');
 
     this._zoomInput = document.createElement('input');
+    declareControl(this._zoomInput, { id: 'pdf.zoom', label: 'Zoom', kind: 'input', state: () => ({ kind: 'value', value: this._zoomInput?.value ?? '' }) });
     this._zoomInput.type = 'text';
     this._zoomInput.classList.add('px-input-bare', 'pdf-toolbar-zoom-input');
     this._zoomInput.value = '100%';
@@ -109,7 +112,7 @@ export class PdfToolbar {
     });
     this._zoomInput.addEventListener('blur', () => this.syncScale());
 
-    const zoomPreset = pdfButton(ICON.chevronDownSm, 'Zoom Presets');
+    const zoomPreset = pdfButton(ICON.chevronDownSm, 'Zoom Presets', 'pdf.zoomPresets');
     zoomPreset.classList.add('pdf-toolbar-zoom-preset');
     zoomPreset.addEventListener('click', (e) => {
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -118,11 +121,11 @@ export class PdfToolbar {
 
     zoomPill.append(this._zoomInput, zoomPreset);
 
-    const zoomIn = pdfButton(ICON.zoomIn, 'Zoom In');
+    const zoomIn = pdfButton(ICON.zoomIn, 'Zoom In', 'pdf.zoomIn');
     zoomIn.addEventListener('click', () => _host.zoomIn());
 
     // One fit button that alternates between the two fit modes.
-    this._fitBtn = pdfButton(ICON.fitWidth, 'Fit Width');
+    this._fitBtn = pdfButton(ICON.fitWidth, 'Fit Width', 'pdf.fit');
     this._fitBtn.addEventListener('click', () => this._toggleFit());
 
     zoom.append(zoomOut, zoomPill, zoomIn, this._fitBtn);
@@ -134,18 +137,18 @@ export class PdfToolbar {
     const right = $('div');
     right.classList.add('pdf-toolbar-cluster');
 
-    const searchBtn = pdfButton(ICON.search, 'Find (Ctrl+F)');
+    const searchBtn = pdfButton(ICON.search, 'Find (Ctrl+F)', 'pdf.find');
     searchBtn.addEventListener('click', () => _host.toggleFind());
 
-    this._panelBtn = pdfButton(ICON.panelLeft, 'Outline And Pages');
+    this._panelBtn = pdfButton(ICON.panelLeft, 'Outline And Pages', 'pdf.panel', () => this._panelBtn?.classList.contains('active') ?? false);
     this._panelBtn.setAttribute('aria-pressed', 'false');
     this._panelBtn.addEventListener('click', () => _host.togglePanel());
 
-    this._nightBtn = pdfButton(ICON.moon, 'Night Reading');
+    this._nightBtn = pdfButton(ICON.moon, 'Night Reading', 'pdf.nightReading', () => this._nightBtn?.classList.contains('active') ?? false);
     this._nightBtn.addEventListener('click', () => _host.toggleNight());
 
     // Rarely used actions live in the ⋯ menu (rotate, spread, scroll, print, open).
-    const moreBtn = pdfButton(ICON.more, 'More Actions');
+    const moreBtn = pdfButton(ICON.more, 'More Actions', 'pdf.more');
     moreBtn.addEventListener('click', (e) => _host.showMore(e.currentTarget as HTMLElement));
 
     right.append(searchBtn, this._panelBtn, this._nightBtn, moreBtn);

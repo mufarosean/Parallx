@@ -13,13 +13,13 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
-import { PROJECT_ROOT, launchApp, cmd, sceneOf, flatten } from './scene.mjs';
+import { PROJECT_ROOT, launchApp, cmd, sceneOf, flatten, openFile, tinyPdf } from './scene.mjs';
 
 const outDir = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'parallx-scene'));
 
 /** One command per built-in that opens its main surface, in the design's step 5 order. */
 const OPENERS = [
-  'worksheet.open', 'planner.open', 'explorer.open', 'dashboard.open', 'settings.open',
+  'worksheet.open', 'planner.open', 'explorer.open', 'search.findInFiles', 'dashboard.open', 'settings.open',
   'welcome.openWelcome', 'agents.show', 'ai-settings.open', 'tools.showInstalled',
   'theme-editor.open', 'chat.show',
 ];
@@ -32,6 +32,8 @@ const FRAME_IDS = [
 
 /** Ids a converted built-in declares (design step 5), checked after its surfaces open. */
 const BUILTIN_IDS = {
+  explorer: ['explorer.tree', 'explorer.openEditors'],
+  search: ['search.query', 'search.replace', 'search.toggleReplace', 'search.match-case', 'search.results'],
   planner: ['planner.tab.today', 'planner.tab.tasks', 'planner.tab.calendar', 'planner.today.capture', 'planner.newEvent', 'planner.side.tasks'],
   worksheet: ['worksheet.side.home', 'worksheet.side.dashboard', 'worksheet.home.study-dashboard', 'worksheet.home.problem-bank', 'worksheet.home.quizzes', 'worksheet.home.campaign', 'worksheet.home.addProblems'],
 };
@@ -47,6 +49,7 @@ async function seed() {
   await fs.writeFile(path.join(appRoot, 'data', 'last-workspace.json'), JSON.stringify({ path: ws }));
   try { await fs.symlink(path.join(PROJECT_ROOT, 'ext'), path.join(appRoot, 'ext'), 'junction'); } catch { /* ok */ }
   await fs.writeFile(path.join(ws, 'alpha.md'), '# Alpha\n\nA note.\n');
+  await fs.writeFile(path.join(ws, 'reading.pdf'), tinyPdf());
   return appRoot;
 }
 
@@ -108,6 +111,15 @@ async function main() {
       for (const id of ['planner.taskPopover', 'planner.task.title', 'planner.task.save']) if (!pop.has(id)) stats.problems.push(`planner: no "${id}" in the task popover`);
       await page.keyboard.press('Escape');
       await page.waitForTimeout(300);
+    }
+    // The PDF viewer (design step 5): its toolbar declared once a PDF is open.
+    await openFile(page, 'reading.pdf');
+    const pdfOpen = await page.waitForSelector('.pdf-editor-pane', { timeout: 20_000 }).then(() => true).catch(() => false);
+    if (!pdfOpen) stats.problems.push('pdf: reading.pdf did not open');
+    else {
+      await page.waitForTimeout(1_500);
+      const pdfIds = new Set(flatten(await sceneOf(page)).map((n) => n.id));
+      for (const id of ['pdf.previousPage', 'pdf.page', 'pdf.nextPage', 'pdf.zoom', 'pdf.fit', 'pdf.find', 'pdf.panel', 'pdf.nightReading', 'pdf.more']) if (!pdfIds.has(id)) stats.problems.push(`pdf: no "${id}"`);
     }
     const scratch = await cmd(page, 'worksheet.openScratch');
     await page.waitForTimeout(2_500);

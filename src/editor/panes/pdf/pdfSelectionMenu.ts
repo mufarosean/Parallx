@@ -5,6 +5,7 @@
 // including the actions running tools add. The text is captured when the
 // bubble or menu opens, so an action still has it after the click.
 
+import { createSurface, declareControl } from '../../../ui/kit.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import { toDisposable } from '../../../platform/lifecycle.js';
 import { ContextMenu } from '../../../ui/contextMenu.js';
@@ -127,6 +128,7 @@ export class PdfSelectionMenu {
     bubble.classList.add('pdf-selection-bubble');
     bubble.setAttribute('role', 'toolbar');
     bubble.setAttribute('aria-label', 'Selection');
+    createSurface(bubble, { id: 'pdf.selection', owner: 'core', label: 'Selection' });
     // Pressing a bubble button must not collapse the selection it acts on.
     bubble.addEventListener('mousedown', (e) => e.preventDefault());
 
@@ -136,6 +138,7 @@ export class PdfSelectionMenu {
       dot.style.backgroundColor = highlightSolid(c.rgba);
       dot.setAttribute('aria-label', `Highlight ${c.label}`);
       setupTooltip(dot, `Highlight ${c.label}`);
+      declareControl(dot, { id: `pdf.selection.highlight.${c.key}`, label: `Highlight ${c.label}`, kind: 'iconButton' });
       dot.addEventListener('click', () => {
         this._host.highlights.createFromSelection(c.key);
         this.dismiss();
@@ -146,18 +149,18 @@ export class PdfSelectionMenu {
     sep.classList.add('pdf-selection-sep');
     bubble.appendChild(sep);
 
-    const act = (icon: string, label: string, run: () => void): void => {
-      const b = pdfButton(icon, label);
+    const act = (icon: string, label: string, run: () => void, id: string): void => {
+      const b = pdfButton(icon, label, id);
       b.addEventListener('click', () => { run(); });
       bubble.appendChild(b);
     };
-    act(ICON.copy, 'Copy (Ctrl+C)', () => { this._host.actions.copy(); this.dismiss(); });
-    act(ICON.sparkles, 'Ask AI About Selection', () => { this.dismiss(); this._host.actions.askAI(); });
-    act(ICON.canvasNote, 'Add to Canvas Note', () => { this.dismiss(); this._host.actions.captureNote(); });
+    act(ICON.copy, 'Copy (Ctrl+C)', () => { this._host.actions.copy(); this.dismiss(); }, 'pdf.selection.copy');
+    act(ICON.sparkles, 'Ask AI About Selection', () => { this.dismiss(); this._host.actions.askAI(); }, 'pdf.selection.askAI');
+    act(ICON.canvasNote, 'Add to Canvas Note', () => { this.dismiss(); this._host.actions.captureNote(); }, 'pdf.selection.addToNote');
     act(ICON.more, 'More Actions', () => {
       const r = bubble.getBoundingClientRect();
       this._showMenu(r.right - 4, r.bottom + 4, true);
-    });
+    }, 'pdf.selection.more');
 
     document.body.appendChild(bubble);
     bubble.style.visibility = 'hidden';
