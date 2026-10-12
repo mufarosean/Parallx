@@ -554,7 +554,7 @@ export async function loadSessionMetas(db: IChatPersistenceDatabase, workspaceId
   if (!db.isOpen) { return []; }
 
   const rows = await db.all<IPersistedSessionRow>(
-    `SELECT ${SESSION_ROW_COLUMNS} FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC`,
+    `SELECT ${SESSION_ROW_COLUMNS} FROM chat_sessions WHERE workspace_id = ? AND origin IS NULL ORDER BY updated_at DESC`,
     [workspaceId],
   );
   if (rows.length === 0) { return []; }
@@ -569,7 +569,7 @@ export async function loadSessionMetas(db: IChatPersistenceDatabase, workspaceId
               (SELECT substr(content, 1, 200) FROM chat_messages
                 WHERE session_id = s.id AND role = 'user'
                 ORDER BY sort_order LIMIT 1) AS preview
-       FROM chat_sessions s WHERE s.workspace_id = ?`,
+       FROM chat_sessions s WHERE s.workspace_id = ? AND s.origin IS NULL`,
       [workspaceId],
     );
     previews = new Map(previewRows.filter((r) => r.preview != null).map((r) => [r.session_id, r.preview as string]));
